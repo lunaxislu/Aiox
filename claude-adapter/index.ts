@@ -14,12 +14,9 @@
  *   BRIDGE_REPLY_URL  - Claude Code 응답을 전달할 bridge URL (기본값: http://localhost:8789/claude-reply)
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 const LISTEN_PORT = Number(process.env.LISTEN_PORT ?? 8788);
 const BRIDGE_REPLY_URL =
@@ -28,7 +25,7 @@ const MAX_RELAY_DEPTH = 3;
 
 // ─── MCP 서버 초기화 ──────────────────────────────────────────────────────────
 
-const server = new Server(
+const mcpServer = new McpServer(
   { name: "claude-adapter", version: "0.1.0" },
   {
     capabilities: {
@@ -36,7 +33,6 @@ const server = new Server(
         // Claude Code가 이 서버를 channel로 인식하기 위한 필수 선언
         "claude/channel": {},
       },
-      tools: {},
     },
     instructions: `You are connected to the claude-adapter channel.
 Messages arrive as: <channel source="claude-adapter" chat_id="..." origin="..." relay_depth="...">text</channel>
@@ -45,61 +41,40 @@ Rules:
 - Always reply using the "reply" tool with the same chat_id from the channel tag.
 - If origin is "claude", do NOT reply — this is a loop prevention check.
 - If relay_depth is 3 or more, do NOT reply.`,
-  }
+  },
 );
 
 // ─── reply tool 등록 ──────────────────────────────────────────────────────────
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
-    {
-      name: "reply",
-      description:
-        "Send a response back to the bridge. Use the chat_id from the channel event.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          chat_id: {
-            type: "string",
-            description: "Conversation ID — copy from the channel event's chat_id attribute",
-          },
-          text: {
-            type: "string",
-            description: "Response text to send back to the bridge",
-          },
-        },
-        required: ["chat_id", "text"],
-      },
-    },
-  ],
-}));
+mcpServer.registerTool(
+  "reply",
+  {
+    description:
+      "Send a response back to the bridge. Use the chat_id from the channel event.",
+    inputSchema: z.object({
+      chat_id: z
+        .string()
+        .describe("Conversation ID — copy from the channel event's chat_id attribute"),
+      text: z.string().describe("Response text to send back to the bridge"),
+    }),
+  },
+  async ({ chat_id, text }) => {
+    try {
+      await fetch(BRIDGE_REPLY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id, text, origin: "claude" }),
+      });
+    } catch {
+      // bridge가 실행 중이 아니면 조용히 무시 (채널 서버는 계속 동작)
+      process.stderr.write(
+        `[claude-adapter] bridge 응답 전달 실패: ${BRIDGE_REPLY_URL}\n`,
+      );
+    }
 
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  if (req.params.name !== "reply") {
-    throw new Error(`Unknown tool: ${req.params.name}`);
-  }
-
-  const { chat_id, text } = req.params.arguments as {
-    chat_id: string;
-    text: string;
-  };
-
-  // bridge로 응답 전달
-  try {
-    await fetch(BRIDGE_REPLY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id, text, origin: "claude" }),
-    });
-  } catch {
-    // bridge가 실행 중이 아니면 조용히 무시 (채널 서버는 계속 동작)
-    process.stderr.write(
-      `[claude-adapter] bridge 응답 전달 실패: ${BRIDGE_REPLY_URL}\n`
-    );
-  }
-
-  return { content: [{ type: "text", text: "sent" }] };
-});
+    return { content: [{ type: "text" as const, text: "sent" }] };
+  },
+);
 
 // ─── HTTP 인바운드 서버 (bridge → Claude Code) ────────────────────────────────
 
@@ -138,7 +113,7 @@ const httpServer = Bun.serve({
     if (body.origin === "claude") {
       return new Response(
         JSON.stringify({ status: "ignored", reason: "loop: origin is claude" }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -149,7 +124,7 @@ const httpServer = Bun.serve({
           status: "ignored",
           reason: `loop: relay_depth ${relayDepth} >= MAX_RELAY_DEPTH ${MAX_RELAY_DEPTH}`,
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -157,7 +132,7 @@ const httpServer = Bun.serve({
 
     // ── Claude Code 세션으로 channel 이벤트 전달 ──────────────────────────────
     try {
-      await server.notification({
+      await mcpServer.server.notification({
         method: "notifications/claude/channel",
         params: {
           content: body.text,
@@ -170,11 +145,11 @@ const httpServer = Bun.serve({
       });
     } catch (err) {
       process.stderr.write(
-        `[claude-adapter] channel 이벤트 전달 실패: ${err}\n`
+        `[claude-adapter] channel 이벤트 전달 실패: ${err}\n`,
       );
       return new Response(
         JSON.stringify({ error: "Failed to deliver channel event" }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -186,13 +161,13 @@ const httpServer = Bun.serve({
 });
 
 process.stderr.write(
-  `[claude-adapter] HTTP 서버 시작: http://127.0.0.1:${httpServer.port}\n`
+  `[claude-adapter] HTTP 서버 시작: http://127.0.0.1:${httpServer.port}\n`,
 );
 process.stderr.write(
-  `[claude-adapter] bridge reply URL: ${BRIDGE_REPLY_URL}\n`
+  `[claude-adapter] bridge reply URL: ${BRIDGE_REPLY_URL}\n`,
 );
 
 // ─── stdio transport 연결 (Claude Code가 subprocess로 실행) ──────────────────
 
 const transport = new StdioServerTransport();
-await server.connect(transport);
+await mcpServer.connect(transport);
