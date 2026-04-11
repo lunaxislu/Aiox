@@ -19,22 +19,30 @@ bridge와 Claude Code 세션 사이에서 메시지를 양방향으로 중계하
 |------|------|
 | Claude Code 버전 | v2.1.97, Channels 기능 작동 확인 |
 | channel 등록 | `capabilities.experimental['claude/channel']: {}` 선언 필수 |
-| 채널 이벤트 전송 | `server.notification({ method: 'notifications/claude/channel', params: { content, meta } })` |
-| reply tool | 표준 MCP tool. `chat_id`, `text` 파라미터 |
+| 채널 이벤트 전송 | `mcpServer.server.notification({ method: 'notifications/claude/channel', params: { content, meta } })` |
+| reply tool | 표준 MCP tool. `chat_id`, `text` 파라미터. Zod schema로 타입 추론 |
 | 런타임 | **Bun 필수** — Node.js에서는 Claude Code 플러그인 silent fail |
 | 활성화 플래그 | `--dangerously-load-development-channels` 필요 (custom channel) |
 | 보안 | bridge 통신은 `127.0.0.1` (localhost only) |
+| MCP SDK | `Server` deprecated → `McpServer` 사용 (`@modelcontextprotocol/sdk/server/mcp.js`) |
 
 ---
 
-## 파일 구조
+## 프로젝트 구조
 
 ```
-ai-orchestration/
+ai-orchestration/                  # monorepo root
+  package.json                     # pnpm workspaces, ESLint/Prettier devDeps
+  pnpm-workspace.yaml              # 워크스페이스 선언 (claude-adapter, bridge)
+  eslint.config.js                 # ESLint v9 flat config (typescript-eslint + prettier)
+  .prettierrc                      # Prettier 규칙
+  .prettierignore
+  .gitignore                       # node_modules (leading slash 없이 — 모든 depth 적용)
   claude-adapter/
-    index.ts       # MCP channel 서버 + Bun HTTP 인바운드 서버
-    package.json   # @modelcontextprotocol/sdk 의존
-    README.md      # 실행 방법 및 API 문서
+    index.ts                       # MCP channel 서버 + Bun HTTP 인바운드 서버
+    package.json                   # @modelcontextprotocol/sdk, zod 의존
+    tsconfig.json                  # "types": ["bun"] — Bun 전역 타입
+    README.md
 ```
 
 ---
@@ -45,7 +53,7 @@ ai-orchestration/
 bridge
   │  HTTP POST  localhost:8788
   ▼
-claude-adapter (HTTP 서버 + MCP 서버)
+claude-adapter (Bun HTTP 서버 + MCP 서버)
   │  notifications/claude/channel (stdio)
   ▼
 Claude Code 세션
@@ -69,54 +77,81 @@ bridge
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "bun install --no-summary && bun index.ts"
+    "start": "bun install --no-summary && bun index.ts",
+    "dev": "bun index.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "^1.3.12"
   }
 }
 ```
 
-- 종속성 1개 (`@modelcontextprotocol/sdk`) — 명세 제약 준수
+### 2. tsconfig.json
 
----
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "types": ["bun"]
+  },
+  "include": ["index.ts"]
+}
+```
 
-### 2. index.ts
+- `"types": ["bun"]` → `@types/bun` 패키지 참조. `process`, `Bun.serve()` 등 Bun 전역 타입 인식
+- `@types/node` 설치 금지 — `@types/bun`과 전역 타입 충돌
+
+### 3. index.ts
 
 #### A. MCP 서버 초기화 + channel capability 선언
 
 ```typescript
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 
-const server = new Server(
+const mcpServer = new McpServer(
   { name: "claude-adapter", version: "0.1.0" },
   {
     capabilities: {
       experimental: { "claude/channel": {} },  // 채널 등록 필수
-      tools: {},
     },
     instructions: `...`,  // loop 방지 지시사항 포함
   }
 );
 ```
 
+- `Server` → **deprecated**. `McpServer`로 교체
+- `capabilities.tools: {}` 불필요 — `McpServer`가 registerTool 시 자동 처리
+
 #### B. reply tool
 
 ```typescript
-// ListToolsRequestSchema 핸들러 → reply tool 스키마 반환
-// CallToolRequestSchema 핸들러 → BRIDGE_REPLY_URL로 HTTP POST
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const { chat_id, text } = req.params.arguments;
-  await fetch(BRIDGE_REPLY_URL, {
-    method: "POST",
-    body: JSON.stringify({ chat_id, text, origin: "claude" }),
-  });
-  return { content: [{ type: "text", text: "sent" }] };
-});
+mcpServer.registerTool(
+  "reply",
+  {
+    description: "Send a response back to the bridge.",
+    inputSchema: z.object({
+      chat_id: z.string().describe("channel event의 chat_id"),
+      text: z.string().describe("bridge로 전달할 응답 텍스트"),
+    }),
+  },
+  async ({ chat_id, text }) => {
+    // 타입 자동 추론 — 수동 캐스팅 불필요
+    await fetch(BRIDGE_REPLY_URL, {
+      method: "POST",
+      body: JSON.stringify({ chat_id, text, origin: "claude" }),
+    });
+    return { content: [{ type: "text" as const, text: "sent" }] };
+  }
+);
 ```
 
 #### C. HTTP 인바운드 서버 (Bun.serve)
@@ -128,7 +163,7 @@ Bun.serve({
   async fetch(req) {
     // 1. loop 방지: origin === "claude" → 무시
     // 2. loop 방지: relay_depth >= 3 → 무시
-    // 3. server.notification({ method: "notifications/claude/channel", ... })
+    // 3. mcpServer.server.notification({ method: "notifications/claude/channel", ... })
   },
 });
 ```
@@ -137,12 +172,12 @@ Bun.serve({
 
 ```typescript
 const transport = new StdioServerTransport();
-await server.connect(transport);
+await mcpServer.connect(transport);
 ```
 
 ---
 
-### 3. loop 방지 로직
+### 4. loop 방지 로직
 
 | 조건 | 처리 |
 |------|------|
@@ -153,7 +188,7 @@ await server.connect(transport);
 
 ---
 
-### 4. 환경변수
+### 5. 환경변수
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
@@ -173,6 +208,12 @@ claude --channels plugin:./claude-adapter/index.ts \
 curl -X POST http://127.0.0.1:8788 \
   -H "Content-Type: application/json" \
   -d '{"text": "안녕, Claude!", "chat_id": "test-001", "origin": "bridge"}'
+
+# loop 방지 테스트
+curl -X POST http://127.0.0.1:8788 \
+  -H "Content-Type: application/json" \
+  -d '{"text": "무시됨", "origin": "claude"}'
+# → {"status":"ignored","reason":"loop: origin is claude"}
 ```
 
 ---
@@ -184,13 +225,12 @@ curl -X POST http://127.0.0.1:8788 \
 - [ ] Claude Code reply tool 호출 시 bridge로 전달됨
 - [ ] `origin: "claude"` loop 방지 동작 확인
 - [ ] `relay_depth >= 3` loop 방지 동작 확인
-- [ ] README에 실행 방법 작성됨
 
 ---
 
 ## 주의사항
 
 - `Bun.serve`는 Bun 전용 API. 반드시 Bun 런타임으로 실행
-- `server.notification()` 은 MCP SDK 1.x 기준. 버전 충돌 시 `server.sendNotification()` 확인 필요
+- `mcpServer.server.notification()` — `McpServer`의 프로액티브 notification은 내부 `server` 프로퍼티를 통해 접근
 - Claude Code reply는 비동기(tool call) — HTTP 응답에 reply 내용을 직접 담을 수 없음. bridge가 `/claude-reply` 엔드포인트를 열어두어야 함
 - fakechat 참조: https://github.com/anthropics/claude-plugins-official
