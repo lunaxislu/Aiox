@@ -23,6 +23,57 @@ const BRIDGE_REPLY_URL =
   process.env.BRIDGE_REPLY_URL ?? "http://localhost:8789/claude-reply";
 const MAX_RELAY_DEPTH = 3;
 
+type InboundBody = {
+  chat_id: string;
+  origin?: string;
+  relay_depth?: number;
+  text: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseInboundBody(value: unknown): InboundBody | { error: string } {
+  if (!isRecord(value)) {
+    return { error: "Invalid JSON body" };
+  }
+
+  const text = value.text;
+  if (typeof text !== "string" || text.trim().length === 0) {
+    return { error: "text field required" };
+  }
+
+  const chat_id = value.chat_id;
+  if (typeof chat_id !== "string" || chat_id.trim().length === 0) {
+    return { error: "chat_id field required" };
+  }
+
+  const origin = value.origin;
+  if (origin !== undefined && typeof origin !== "string") {
+    return { error: "origin must be a string when provided" };
+  }
+
+  const relayDepth = value.relay_depth;
+  if (
+    relayDepth !== undefined &&
+    (typeof relayDepth !== "number" ||
+      !Number.isInteger(relayDepth) ||
+      relayDepth < 0)
+  ) {
+    return {
+      error: "relay_depth must be a non-negative integer when provided",
+    };
+  }
+
+  return {
+    chat_id,
+    origin,
+    relay_depth: relayDepth,
+    text,
+  };
+}
+
 // ─── MCP 서버 초기화 ──────────────────────────────────────────────────────────
 
 const mcpServer = new McpServer(
@@ -54,21 +105,38 @@ mcpServer.registerTool(
     inputSchema: z.object({
       chat_id: z
         .string()
-        .describe("Conversation ID — copy from the channel event's chat_id attribute"),
+        .describe(
+          "Conversation ID — copy from the channel event's chat_id attribute",
+        ),
       text: z.string().describe("Response text to send back to the bridge"),
     }),
   },
   async ({ chat_id, text }) => {
+    let response: Response;
+    let responseText = "";
+
     try {
-      await fetch(BRIDGE_REPLY_URL, {
+      response = await fetch(BRIDGE_REPLY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat_id, text, origin: "claude" }),
       });
-    } catch {
-      // bridge가 실행 중이 아니면 조용히 무시 (채널 서버는 계속 동작)
+      responseText = await response.text();
+    } catch (error) {
       process.stderr.write(
-        `[claude-adapter] bridge 응답 전달 실패: ${BRIDGE_REPLY_URL}\n`,
+        `[claude-adapter] bridge 응답 전달 실패: ${BRIDGE_REPLY_URL} (${
+          error instanceof Error ? error.message : String(error)
+        })\n`,
+      );
+      throw new Error("Failed to deliver bridge reply");
+    }
+
+    if (!response.ok) {
+      process.stderr.write(
+        `[claude-adapter] bridge 응답 전달 실패: ${BRIDGE_REPLY_URL} status=${response.status} body=${responseText}\n`,
+      );
+      throw new Error(
+        `Bridge reply rejected: HTTP ${response.status} ${responseText}`,
       );
     }
 
@@ -82,19 +150,20 @@ const httpServer = Bun.serve({
   port: LISTEN_PORT,
   hostname: "127.0.0.1", // localhost only — 보안
   async fetch(req) {
+    const pathname = new URL(req.url).pathname;
+
+    if (pathname !== "/") {
+      return new Response("Not Found", { status: 404 });
+    }
+
     if (req.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
 
-    let body: {
-      text: string;
-      chat_id?: string;
-      origin?: string;
-      relay_depth?: number;
-    };
+    let rawBody: unknown;
 
     try {
-      body = await req.json();
+      rawBody = await req.json();
     } catch {
       return new Response(JSON.stringify({ error: "Invalid JSON" }), {
         status: 400,
@@ -102,8 +171,9 @@ const httpServer = Bun.serve({
       });
     }
 
-    if (!body.text) {
-      return new Response(JSON.stringify({ error: "text field required" }), {
+    const body = parseInboundBody(rawBody);
+    if ("error" in body) {
+      return new Response(JSON.stringify({ error: body.error }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
@@ -128,8 +198,6 @@ const httpServer = Bun.serve({
       );
     }
 
-    const chat_id = body.chat_id ?? crypto.randomUUID();
-
     // ── Claude Code 세션으로 channel 이벤트 전달 ──────────────────────────────
     try {
       await mcpServer.server.notification({
@@ -137,7 +205,7 @@ const httpServer = Bun.serve({
         params: {
           content: body.text,
           meta: {
-            chat_id,
+            chat_id: body.chat_id,
             origin: body.origin ?? "bridge",
             relay_depth: String(relayDepth),
           },
@@ -153,10 +221,13 @@ const httpServer = Bun.serve({
       );
     }
 
-    return new Response(JSON.stringify({ status: "ok", chat_id }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ status: "ok", chat_id: body.chat_id }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   },
 });
 

@@ -4,6 +4,7 @@
 > 전 과정을 기록한다. 발생한 문제, 원인 분석, 해결 방법을 모두 담았다.
 >
 > 날짜: 2026-04-12
+> 업데이트 : 2026-04-14
 
 ---
 
@@ -18,6 +19,54 @@ Claude Code → reply tool (MCP) → claude-adapter → bridge(미구현)
 - reply tool 호출: ✅
 - loop 방지 로직: ✅
 - bridge 없는 상태에서 reply 전달 실패는 예상된 동작 (정상)
+
+---
+
+## 2026-04-14 추가 수정 — 예외처리 강화 by codex
+
+### 변경 내용
+
+- `claude-adapter/index.ts:26-75`
+  - inbound body 검증 함수 추가
+  - `text`, `chat_id`, `origin`, `relay_depth`를 명시적으로 검사
+- `claude-adapter/index.ts:114-143`
+  - `reply` tool에서 `fetch()` 실패와 HTTP 비정상 응답을 모두 실패로 처리
+  - `response.ok === false`를 성공으로 보지 않도록 수정
+  - 브리지 응답 상태코드와 본문을 stderr에 기록
+- `claude-adapter/index.ts:152-230`
+  - `POST /`만 허용
+  - 잘못된 JSON / 필드 누락 / 타입 오류를 400으로 거절
+  - `origin === "claude"` 차단
+  - `relay_depth >= 3` 차단
+
+### 코드 기준
+
+```ts
+// claude-adapter/index.ts:37-75
+function parseInboundBody(value: unknown): InboundBody | { error: string } {
+  // text, chat_id, origin, relay_depth 검증
+}
+```
+
+```ts
+// claude-adapter/index.ts:114-143
+async ({ chat_id, text }) => {
+  const response = await fetch(BRIDGE_REPLY_URL, ...);
+  if (!response.ok) throw new Error(...);
+}
+```
+
+```ts
+// claude-adapter/index.ts:152-230
+if (pathname !== "/") return new Response("Not Found", { status: 404 });
+if (body.origin === "claude") return ignoredResponse;
+if (relayDepth >= MAX_RELAY_DEPTH) return ignoredResponse;
+```
+
+### 의도
+
+기존 구현은 전송 실패와 입력 오류를 충분히 구분하지 못했다.
+이번 수정은 잘못된 요청을 4xx로 명시적으로 거절하고, 브리지 장애를 성공으로 오인하지 않도록 만들기 위한 것이다.
 
 ---
 

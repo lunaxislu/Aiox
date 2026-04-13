@@ -38,7 +38,7 @@ claude --channels plugin:./claude-adapter/index.ts \
 
 ## API
 
-### POST `http://127.0.0.1:8788`
+### POST `http://127.0.0.1:8788/`
 
 bridge → claude-adapter: Claude Code 세션에 메시지 전달
 
@@ -47,7 +47,7 @@ bridge → claude-adapter: Claude Code 세션에 메시지 전달
 ```json
 {
   "text": "Claude에게 전달할 메시지",
-  "chat_id": "optional-conversation-id",
+  "chat_id": "conversation-id",
   "origin": "bridge",
   "relay_depth": 0
 }
@@ -56,7 +56,7 @@ bridge → claude-adapter: Claude Code 세션에 메시지 전달
 | 필드 | 필수 | 설명 |
 |------|------|------|
 | `text` | ✅ | Claude Code에 전달할 메시지 내용 |
-| `chat_id` | ❌ | 대화 추적용 ID (없으면 자동 생성) |
+| `chat_id` | ✅ | 대화 추적용 ID |
 | `origin` | ❌ | 메시지 출처 (`"claude"` 이면 loop로 간주하여 무시) |
 | `relay_depth` | ❌ | 릴레이 횟수 (3 이상이면 무시) |
 
@@ -96,7 +96,7 @@ claude --channels plugin:./claude-adapter/index.ts \
 ### 2. bridge에서 메시지 전송
 
 ```bash
-curl -X POST http://127.0.0.1:8788 \
+curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
   -d '{"text": "안녕, Claude!", "chat_id": "test-001", "origin": "bridge"}'
 ```
@@ -107,13 +107,13 @@ Claude Code 세션 화면에 채널 메시지가 나타나야 함.
 
 ```bash
 # origin이 "claude"인 메시지 — 무시되어야 함
-curl -X POST http://127.0.0.1:8788 \
+curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
   -d '{"text": "이 메시지는 무시됨", "origin": "claude"}'
 # 응답: {"status":"ignored","reason":"loop: origin is claude"}
 
 # relay_depth >= 3 — 무시되어야 함
-curl -X POST http://127.0.0.1:8788 \
+curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
   -d '{"text": "이것도 무시됨", "relay_depth": 3}'
 # 응답: {"status":"ignored","reason":"loop: relay_depth 3 >= MAX_RELAY_DEPTH 3"}
