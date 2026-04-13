@@ -1,10 +1,17 @@
-# Session Bridge Notes
+# Session Bridge Notes - Legacy
 
-This document records the live investigation into how a bridge can connect Codex CLI, the app-server, and another agent system.
+This document records the investigation into how a bridge could connect Codex CLI, the app-server, and another agent system.
 
-## Goal
+## Status
 
-The goal was to build a bridge with this shape:
+This file is kept as legacy context only.
+
+The current active architecture does not use Codex app-server WebSocket thread sharing.  
+The bridge now runs as a Codex MCP tool server and talks to `claude-adapter` through HTTP instead.
+
+## Original Goal
+
+The original goal was to build a bridge with this shape:
 
 ```text
 Codex CLI session
@@ -34,7 +41,7 @@ Codex CLI session
 
 - `Session:` is the CLI session identifier.
 - `thread.id` is the app-server thread identifier.
-- The bridge must use `thread.id` for `thread/resume` and `turn/start`.
+- The bridge had to use `thread.id` for `thread/resume` and `turn/start`.
 
 ### UI vs Server
 
@@ -129,10 +136,10 @@ codex debug app-server send-message-v2 "ping"
 
 ## Current Best Understanding
 
-- The app-server is a shared hub.
-- Multiple CLI clients can connect to the same server.
-- `threadId` is the real shared conversation key.
-- The bridge can inject messages into the same thread, but only if it uses the correct `threadId`.
-- The persisted JSONL log is good for detection and replay, but it is not itself the live UI channel.
-- `Session:` is not sufficient for inter-process coordination.
-- The bridge architecture only works when the UI and bridge converge on one exact `threadId`.
+- The app-server was a shared hub for the old architecture.
+- Multiple CLI clients could connect to the same server.
+- `threadId` was the real shared conversation key.
+- The bridge could inject messages into the same thread, but only if it used the correct `threadId`.
+- The persisted JSONL log was good for detection and replay, but it was not itself the live UI channel.
+- `Session:` was not sufficient for inter-process coordination.
+- The bridge architecture only worked when the UI and bridge converged on one exact `threadId`.

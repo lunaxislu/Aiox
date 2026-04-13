@@ -1,8 +1,14 @@
-# Bridge Architecture and Investigation Log
+# Bridge Architecture and Investigation Log - Legacy
 
 This document is the high-context record of the Codex CLI / app-server / bridge investigation performed in this project.
 
 It is written so another AI can reconstruct the environment, the verified behavior, the mistakes we hit, and the final design constraints without re-running the entire conversation.
+
+## Status
+
+This file is kept as legacy context only.
+
+The current active architecture uses a Codex MCP bridge plus `claude-adapter`, and no longer depends on Codex app-server WS relay.
 
 ## Executive Summary
 
@@ -94,7 +100,7 @@ We also verified:
 
 ## Thread Identity Rules
 
-This is the main rule set that matters for the bridge.
+This is the main rule set that mattered for the old bridge.
 
 - `thread.id` is the shared conversation key.
 - `Session:` is a CLI-level identifier, not the app-server conversation key.
@@ -162,7 +168,7 @@ The server also emitted:
 - reasoning and agent message events
 - `turn/completed`
 
-This showed that the server is not just returning a static RPC result. It is also streaming runtime state changes.
+This showed that the server was not just returning a static RPC result. It was also streaming runtime state changes.
 
 ### 3. We tailed the JSONL file
 
@@ -174,7 +180,7 @@ The file under `~/.codex/sessions/.../rollout-*.jsonl` contained appended record
 - assistant/agent message records
 - task completion records
 
-This proved that the session file is a live append-only record of the session activity.
+This proved that the session file was a live append-only record of the session activity.
 
 ### 4. We connected a bridge client
 
@@ -235,7 +241,7 @@ Failure:
 
 Cause:
 
-- That package is not built into Node.
+- That package was not built into Node.
 
 Fix:
 
@@ -255,106 +261,22 @@ Fix:
 
 - Create a new thread with the desired model or set the model at creation time.
 
-## Useful Commands
+## What This Taught Us
 
-### Start the app-server
+These findings were the reason the architecture changed.
 
-```bash
-codex app-server --listen ws://127.0.0.1:4500
-```
+The original plan assumed the bridge could coordinate with the Codex UI by sharing app-server threads.
+That turned out to be too brittle for the current scope:
 
-### Attach the CLI UI
+- the bridge could create or resume threads, but the UI had to be on the same thread to see the same conversation
+- thread identity had to be passed around manually
+- the trigger only worked when the bridge was watching the exact conversation that produced the text
 
-```bash
-codex --remote ws://127.0.0.1:4500
-```
+Once the MCP tool approach was adopted, the app-server-specific threading requirements were no longer part of the active architecture.
 
-### Smoke test the app-server
+## What Will Not Work
 
-```bash
-codex debug app-server send-message-v2 "ping"
-```
-
-### Inspect sessions
-
-```bash
-tail -f ~/.codex/sessions/2026/04/09/rollout-*.jsonl
-```
-
-## Data Path
-
-```text
-Codex CLI session
-  -> writes JSONL
-  -> ~/.codex/sessions/.../rollout-*.jsonl
-  -> tail -f
-  -> bridge sees event
-  -> relay to external agent system
-  -> bridge sends WS JSON-RPC to app-server
-  -> app-server emits thread/turn/item events
-  -> UI shows events only if it is attached to the same thread
-```
-
-## Three-Terminal Layout
-
-```text
-Terminal 1
-  codex app-server --listen ws://127.0.0.1:4500
-
-Terminal 2
-  codex --remote ws://127.0.0.1:4500
-
-Terminal 3
-  bridge client
-    -> initialize
-    -> initialized
-    -> thread/resume <threadId>
-    -> turn/start <threadId>
-```
-
-## What Must Be True For The Bridge To Work
-
-The bridge only works as intended if all of the following are true:
-
-- The bridge connects to the same app-server instance as the UI.
-- The bridge uses the exact same `threadId` as the UI thread.
-- The bridge sends `initialize` and `initialized` before any thread operations.
-- The bridge resumes the thread before appending a new turn.
-- The turn is still active if `turn/steer` is used.
-
-If any of these are false, the behavior splits into a separate conversation.
-
-## Model Selection Note
-
-Model selection in the app-server is per thread and per turn lifecycle, not by the CLI `Session:` string alone.
-
-Observed lesson:
-
-- Resuming an existing thread keeps the existing thread state.
-- If a thread was created elsewhere, the bridge inherits that thread state.
-- That is why a thread created via the debug helper may stay on `gpt-5.4-mini`.
-
-## Current State Of The Project
-
-The project now has:
-
-- a verified app-server transport path
-- a verified CLI remote attach path
-- a verified JSONL observation path
-- a verified thread identity rule
-- a verified bridge/resume/start flow
-
-What remains to be built is the actual bridge logic that:
-
-1. tails JSONL
-2. filters the events it cares about
-3. forwards those events to another agent system
-4. maps the response back to the correct `threadId`
-5. appends to the same active conversation on the app-server
-
-## Practical Implementation Rule
-
-If the bridge is meant to affect what the user sees in the Codex UI, the bridge must target the UI's exact `threadId`.
-
-If it does not, the bridge may still be “working” at the server level, but it will be working on a different conversation.
-
+- Starting a new thread in the bridge and expecting the UI to automatically follow that thread without resuming it.
+- Resuming a different thread and expecting it to affect the current UI conversation.
+- Using only `Session:` as the shared key between the CLI and the bridge.
+- Calling `turn/steer` after the turn had already completed.

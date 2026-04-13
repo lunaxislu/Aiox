@@ -8,7 +8,7 @@
 
 bridge와 Claude Code 세션 사이에서 메시지를 양방향으로 중계하는 custom channel 서버.
 
-- bridge → Claude Code: HTTP POST 수신 → `notifications/claude/channel` 이벤트 전달
+- bridge(Codex MCP server) → Claude Code: HTTP POST 수신 → `notifications/claude/channel` 이벤트 전달
 - Claude Code → bridge: `reply` tool 호출 → bridge callback URL로 POST 전달
 
 ---
@@ -201,16 +201,15 @@ await mcpServer.connect(transport);
 
 ```bash
 # Claude Code 세션 시작
-claude --channels plugin:./claude-adapter/index.ts \
-       --dangerously-load-development-channels
+claude --dangerously-load-development-channels server:claude-adapter
 
 # 메시지 주입 테스트
-curl -X POST http://127.0.0.1:8788 \
+curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
   -d '{"text": "안녕, Claude!", "chat_id": "test-001", "origin": "bridge"}'
 
 # loop 방지 테스트
-curl -X POST http://127.0.0.1:8788 \
+curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
   -d '{"text": "무시됨", "origin": "claude"}'
 # → {"status":"ignored","reason":"loop: origin is claude"}

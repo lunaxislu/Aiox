@@ -8,7 +8,7 @@
 
 ## 네가 만들어야 하는 것
 
-**Claude Code용 custom channel 서버** — bridge가 Claude Code 세션에 메시지를 보내고, Claude Code 응답을 bridge로 받아오는 MCP 서버.
+**Claude Code용 custom channel 서버** — Codex `bridge`가 Claude Code 세션에 메시지를 보내고, Claude Code 응답을 bridge로 받아오는 MCP 서버.
 
 프로젝트 경로: `/Users/lunaxislu/Documents/ai-orchestration`
 
@@ -41,8 +41,7 @@ custom channel 서버  ←→  bridge core
 
 custom channel 서버는 bridge와 Claude Code 세션 사이에 위치한다.
 
-bridge가 메시지를 보내면 Claude Code 세션에 전달하고,
-
+bridge가 HTTP POST로 메시지를 보내면 Claude Code 세션에 전달하고,
 Claude Code가 reply tool을 호출하면 bridge로 전달한다.
 
 ---
@@ -55,7 +54,7 @@ Claude Code가 reply tool을 호출하면 bridge로 전달한다.
 - **프로토콜**: MCP (Model Context Protocol) — `@modelcontextprotocol/sdk` 사용
 - **스키마**: `zod` (tool inputSchema 타입 추론)
 - **transport**: stdio (Claude Code가 subprocess로 실행)
-- **배포 방식**: npx로 실행 가능한 단일 파일
+- **배포 방식**: `claude --dangerously-load-development-channels server:claude-adapter`로 실행되는 로컬 개발 채널 서버
 
 ### 파일 구조
 
@@ -124,8 +123,7 @@ mcpServer.registerTool("reply", {
 
 ```bash
 # Claude Code 세션 시작 시
-claude --channels plugin:./claude-adapter/index.ts \
-       --dangerously-load-development-channels
+claude --dangerously-load-development-channels server:claude-adapter
 ```
 
 ---
@@ -133,7 +131,7 @@ claude --channels plugin:./claude-adapter/index.ts \
 ## 제약조건
 
 - Python 사용 금지. Bun만 사용
-- 외부 개발자가 npx 한 줄로 실행 가능해야 함
+- 외부 개발자가 로컬 `.mcp.json` 또는 Codex `~/.codex/config.toml` 등록으로 실행 가능해야 함
 - 종속성 최소화. `@modelcontextprotocol/sdk`, `zod` 외 추가 패키지 없음
 - bridge와의 통신은 localhost만 (보안)
 - loop 방지: Claude Code가 보낸 메시지가 다시 Claude Code로 돌아오지 않도록 `origin` 태그 확인
