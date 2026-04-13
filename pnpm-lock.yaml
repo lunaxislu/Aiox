@@ -24,6 +24,15 @@ importers:
         specifier: ^8.0.0
         version: 8.58.1(eslint@9.39.4)(typescript@6.0.2)
 
+  bridge:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.0
+        version: 1.29.0(zod@4.3.6)
+      zod:
+        specifier: ^4.0.0
+        version: 4.3.6
+
   claude-adapter:
     dependencies:
       '@modelcontextprotocol/sdk':
