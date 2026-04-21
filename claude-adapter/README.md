@@ -1,6 +1,6 @@
 # claude-adapter
 
-Claude Code용 custom channel 서버. bridge가 Claude Code 세션에 메시지를 보내고, Claude Code 응답을 bridge로 받아오는 MCP 서버.
+Claude Code용 custom channel 서버. bridge가 Claude Code 세션에 메시지를 보내고, Claude Code 응답을 bridge로 받아오는 MCP 서버다. 같은 서버에서 `ask_codex(text)` tool도 제공해서 Claude Code가 Codex에게 역방향 질문을 보낼 수 있다.
 
 ## 구조
 
@@ -14,6 +14,16 @@ Claude Code 세션
 claude-adapter
     ↓ HTTP POST
 bridge (localhost:8789/claude-reply)
+
+Claude Code 세션
+    ↓ ask_codex tool 호출
+claude-adapter
+    ↓ HTTP POST
+bridge (localhost:8789/codex-request)
+    ↓ codex exec helper turn
+Codex helper session
+    ↓ reply via exec / reply_to_claude
+bridge
 ```
 
 ## 요구사항
@@ -35,6 +45,7 @@ claude --channels plugin:./claude-adapter/index.ts \
 |------|--------|------|
 | `LISTEN_PORT` | `8788` | claude-adapter가 bridge 메시지를 수신할 HTTP 포트 |
 | `BRIDGE_REPLY_URL` | `http://localhost:8789/claude-reply` | Claude Code 응답을 전달할 bridge 엔드포인트 |
+| `BRIDGE_CLAUDE_REQUEST_URL` | `http://localhost:8789/codex-request` | Claude Code가 Codex에게 질문할 때 사용하는 bridge 엔드포인트 |
 
 ## API
 
@@ -48,6 +59,7 @@ bridge → claude-adapter: Claude Code 세션에 메시지 전달
 {
   "text": "Claude에게 전달할 메시지",
   "chat_id": "conversation-id",
+  "direction": "forward",
   "origin": "bridge",
   "relay_depth": 0
 }
@@ -57,6 +69,7 @@ bridge → claude-adapter: Claude Code 세션에 메시지 전달
 |------|------|------|
 | `text` | ✅ | Claude Code에 전달할 메시지 내용 |
 | `chat_id` | ✅ | 대화 추적용 ID |
+| `direction` | ❌ | `forward`만 허용 |
 | `origin` | ❌ | 메시지 출처 (`"claude"` 이면 loop로 간주하여 무시) |
 | `relay_depth` | ❌ | 릴레이 횟수 (3 이상이면 무시) |
 
@@ -84,6 +97,28 @@ claude-adapter – reply(chat_id: "...", text: "...")
 }
 ```
 
+### ask_codex tool (MCP)
+
+Claude Code → bridge: reverse 질문을 보낼 때 이 tool을 호출
+
+```
+claude-adapter – ask_codex(text: "...")
+```
+
+호출 시 `BRIDGE_CLAUDE_REQUEST_URL`로 아래 payload를 POST:
+
+```json
+{
+  "chat_id": "...",
+  "text": "Codex에게 보낼 질문",
+  "origin": "claude",
+  "direction": "reverse",
+  "relay_depth": 0
+}
+```
+
+bridge가 `codex exec` helper turn을 실행하고, helper가 반환한 text를 tool 결과로 반환한다.
+
 ## 테스트
 
 ### 1. Claude Code 세션 시작
@@ -98,7 +133,7 @@ claude --channels plugin:./claude-adapter/index.ts \
 ```bash
 curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
-  -d '{"text": "안녕, Claude!", "chat_id": "test-001", "origin": "bridge"}'
+  -d '{"text": "안녕, Claude!", "chat_id": "test-001", "direction":"forward", "origin": "bridge"}'
 ```
 
 Claude Code 세션 화면에 채널 메시지가 나타나야 함.
@@ -109,20 +144,27 @@ Claude Code 세션 화면에 채널 메시지가 나타나야 함.
 # origin이 "claude"인 메시지 — 무시되어야 함
 curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
-  -d '{"text": "이 메시지는 무시됨", "origin": "claude"}'
+  -d '{"text": "이 메시지는 무시됨", "origin": "claude", "direction":"forward"}'
 # 응답: {"status":"ignored","reason":"loop: origin is claude"}
 
 # relay_depth >= 3 — 무시되어야 함
 curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
-  -d '{"text": "이것도 무시됨", "relay_depth": 3}'
+  -d '{"text": "이것도 무시됨", "relay_depth": 3, "direction":"forward"}'
 # 응답: {"status":"ignored","reason":"loop: relay_depth 3 >= MAX_RELAY_DEPTH 3"}
 ```
+
+### 4. reverse 질문 확인
+
+Claude Code 세션에서 `ask_codex("Codex에게 물어봐")`를 호출한다.
 
 ## 완료 기준
 
 - [ ] `--channels ... --dangerously-load-development-channels`로 채널 서버 실행됨
 - [ ] `curl` HTTP POST 후 Claude Code 세션에 메시지 도착
 - [ ] Claude Code reply tool 호출 시 bridge로 전달됨
+- [ ] Claude Code `ask_codex` tool 호출 시 bridge reverse ingress로 전달됨
+- [ ] bridge가 `codex exec` helper turn을 실행함
+- [ ] helper Codex가 반환한 text로 Claude Code 세션이 응답받음
 - [ ] `origin: "claude"` loop 방지 동작 확인
 - [ ] `relay_depth >= 3` loop 방지 동작 확인

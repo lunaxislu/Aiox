@@ -1,13 +1,13 @@
 # bridge / claude-adapter MCP 전환 계획
 
-> 참조 문서: `docs/README.md`, `history/bridge.history.md`, `docs/bridge.spec.md`, `docs/bridge-test.md`, `docs/legacy/app-server-legacy.md`, `docs/claude-adapter.spec.md`
+> 참조 문서: `docs/README.md`, `history/1-bridge.history.md`, `docs/bridge.spec.md`, `docs/bridge-test.md`, `docs/legacy/app-server-legacy.md`, `docs/claude-adapter.spec.md`
 
 ---
 
 ## Summary
 
 bridge를 Codex가 호출하는 stdio MCP server로 전환한다.  
-이전의 Codex app-server WebSocket relay 구조는 폐기하고, `ask_claude(text)` tool 하나만 제공하는 형태로 단순화한다.
+이전의 Codex app-server WebSocket relay 구조는 폐기하고, `ask_claude(text)`와 `reply_to_claude(chat_id, text)`를 제공하는 양방향 MCP server로 정리한다.
 
 최종적으로 남는 책임은 다음과 같다.
 
@@ -24,7 +24,7 @@ bridge를 Codex가 호출하는 stdio MCP server로 전환한다.
 ### 1. bridge를 Codex MCP server로 운영
 
 - `bridge/index.js`는 stdio transport를 사용하는 MCP server여야 한다.
-- tool은 `ask_claude` 하나만 제공한다.
+- tool은 `ask_claude`와 `reply_to_claude`를 제공한다.
 - 입력은 `{ text: string }` 하나로 제한한다.
 - tool 호출 시 `chat_id = crypto.randomUUID()`를 생성한다.
 - pending reply는 `Map<chat_id, resolver>` 형태로 관리한다.
@@ -37,6 +37,8 @@ bridge를 Codex가 호출하는 stdio MCP server로 전환한다.
 - payload는 `{ text, chat_id, origin: "codex", relay_depth: 0 }` 형식이다.
 - bridge는 reply가 돌아올 때까지 tool 호출을 block한다.
 - reply가 오면 tool 결과로 그대로 반환한다.
+- Claude Code에서 `ask_codex`를 호출하면 bridge reverse ingress를 받아 `codex exec` helper turn을 시작한다.
+- Codex는 helper response 또는 `reply_to_claude(chat_id, text)`로 reverse pending을 완료한다.
 
 ### 3. claude-adapter 역할 고정
 
@@ -47,7 +49,7 @@ bridge를 Codex가 호출하는 stdio MCP server로 전환한다.
 
 ### 4. Codex 등록 방식
 
-- Codex는 `~/.codex/config.toml`의 `[mcp_servers.bridge]`로 bridge를 등록한다.
+- Codex는 repo root의 `./.codex/config.toml`의 `[mcp_servers.bridge]`로 bridge를 등록한다.
 - 실행 command는 `node` 또는 현재 프로젝트의 엔트리 포인트에 맞는 런타임을 사용한다.
 - 필요 시 `--claude-url`, `--reply-port`, `--timeout-ms`를 args로 전달한다.
 
@@ -76,12 +78,23 @@ bridge를 Codex가 호출하는 stdio MCP server로 전환한다.
 - bridge가 `/claude-reply`를 받아 pending을 resolve한다.
 - tool 결과가 Codex로 반환된다.
 
-### C. 실패 케이스 확인
+### C. reverse 왕복 확인
+
+- Claude Code에서 `ask_codex("Codex에게 확인해줘")`를 호출한다.
+- `claude-adapter`가 bridge reverse ingress로 요청을 보낸다.
+- bridge가 `codex exec` helper turn을 시작한다.
+- Codex가 helper response 또는 `reply_to_claude(chat_id, text)`로 응답한다.
+- bridge가 reverse pending을 resolve하고 Claude Code 세션으로 결과를 반환한다.
+
+### D. 실패 케이스 확인
 
 - 30초 동안 reply가 없으면 timeout 실패해야 한다.
+- 30초 동안 Codex reply가 없으면 reverse timeout 실패해야 한다.
 - `/claude-reply` 외 경로는 404여야 한다.
+- `/codex-request` 외 경로는 404여야 한다.
 - 잘못된 JSON body는 400이어야 한다.
 - `origin !== "claude"`인 reply는 거절해야 한다.
+- `direction !== "reverse"`인 reverse ingress는 거절해야 한다.
 - 중복 reply 또는 이미 완료된 pending은 409/404 중 명시된 방식으로 거절해야 한다.
 
 ### D. 로그 및 런타임 확인
@@ -94,11 +107,12 @@ bridge를 Codex가 호출하는 stdio MCP server로 전환한다.
 
 ## Assumptions
 
-- Codex는 `~/.codex/config.toml`의 MCP 서버 등록을 지원한다.
-- bridge는 현재 스코프에서 단일 tool `ask_claude`만 제공한다.
+- Codex는 repo root 기준의 project-scope `./.codex/config.toml` MCP 서버 등록을 지원한다.
+- bridge는 현재 스코프에서 `ask_claude`와 `reply_to_claude`를 제공한다.
 - `claude-adapter`의 HTTP ingress와 reply tool 계약은 기존 구현을 유지한다.
 - app-server WebSocket 기반 thread 공유는 더 이상 active path가 아니다.
 - `docs/legacy/app-server-legacy.md`는 조사/회고 용도이며 새 구현의 기준 문서는 아니다.
+- reverse의 현재 활성 경로는 `codex exec` helper turn이다.
 
 ---
 

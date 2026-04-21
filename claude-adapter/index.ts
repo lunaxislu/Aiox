@@ -4,6 +4,7 @@
  * 역할:
  *   - bridge가 HTTP POST로 메시지를 보내면 Claude Code 세션에 channel 이벤트로 전달
  *   - Claude Code가 reply tool을 호출하면 bridge로 응답 전달
+ *   - Claude Code가 ask_codex tool을 호출하면 bridge reverse ingress로 전달
  *
  * 실행:
  *   claude --channels plugin:./claude-adapter/index.ts \
@@ -21,10 +22,15 @@ import { z } from "zod";
 const LISTEN_PORT = Number(process.env.LISTEN_PORT ?? 8788);
 const BRIDGE_REPLY_URL =
   process.env.BRIDGE_REPLY_URL ?? "http://localhost:8789/claude-reply";
+const BRIDGE_CLAUDE_REQUEST_URL =
+  process.env.BRIDGE_CLAUDE_REQUEST_URL ??
+  "http://localhost:8789/codex-request";
+const DEFAULT_TOOL_TIMEOUT_MS = 60_000;
 const MAX_RELAY_DEPTH = 3;
 
 type InboundBody = {
   chat_id: string;
+  direction?: string;
   origin?: string;
   relay_depth?: number;
   text: string;
@@ -54,6 +60,11 @@ function parseInboundBody(value: unknown): InboundBody | { error: string } {
     return { error: "origin must be a string when provided" };
   }
 
+  const direction = value.direction;
+  if (direction !== undefined && direction !== "forward") {
+    return { error: 'direction must be "forward" when provided' };
+  }
+
   const relayDepth = value.relay_depth;
   if (
     relayDepth !== undefined &&
@@ -68,6 +79,7 @@ function parseInboundBody(value: unknown): InboundBody | { error: string } {
 
   return {
     chat_id,
+    direction,
     origin,
     relay_depth: relayDepth,
     text,
@@ -144,6 +156,83 @@ mcpServer.registerTool(
   },
 );
 
+// ─── ask_codex tool 등록 ────────────────────────────────────────────────────
+
+mcpServer.registerTool(
+  "ask_codex",
+  {
+    description:
+      "Send a prompt to Codex via the bridge codex exec helper path and return the reply.",
+    inputSchema: z.object({
+      text: z.string().trim().min(1),
+    }),
+  },
+  async ({ text }) => {
+    const chat_id = crypto.randomUUID();
+    let response: Response;
+    let responseText = "";
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => {
+      abortController.abort();
+    }, DEFAULT_TOOL_TIMEOUT_MS);
+
+    try {
+      response = await fetch(BRIDGE_CLAUDE_REQUEST_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id,
+          direction: "reverse",
+          origin: "claude",
+          relay_depth: 0,
+          text,
+        }),
+        signal: abortController.signal,
+      });
+      responseText = await response.text();
+    } catch (error) {
+      process.stderr.write(
+        `[claude-adapter] Codex 요청 실패: ${BRIDGE_CLAUDE_REQUEST_URL} (${
+          error instanceof Error ? error.message : String(error)
+        })\n`,
+      );
+      throw new Error("Failed to deliver Codex request");
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!response.ok) {
+      process.stderr.write(
+        `[claude-adapter] Codex 요청 실패: ${BRIDGE_CLAUDE_REQUEST_URL} status=${response.status} body=${responseText}\n`,
+      );
+      throw new Error(
+        `Codex request rejected: HTTP ${response.status} ${responseText}`,
+      );
+    }
+
+    try {
+      const parsed = JSON.parse(responseText) as {
+        chat_id?: string;
+        status?: string;
+        text?: string;
+      };
+
+      if (parsed.status !== "ok" || typeof parsed.text !== "string") {
+        throw new Error("Invalid Codex response payload");
+      }
+
+      return { content: [{ type: "text" as const, text: parsed.text }] };
+    } catch (error) {
+      process.stderr.write(
+        `[claude-adapter] Codex 응답 파싱 실패: ${BRIDGE_CLAUDE_REQUEST_URL} (${
+          error instanceof Error ? error.message : String(error)
+        })\n`,
+      );
+      throw new Error("Failed to parse Codex response");
+    }
+  },
+);
+
 // ─── HTTP 인바운드 서버 (bridge → Claude Code) ────────────────────────────────
 
 const httpServer = Bun.serve({
@@ -206,6 +295,7 @@ const httpServer = Bun.serve({
           content: body.text,
           meta: {
             chat_id: body.chat_id,
+            direction: body.direction ?? "forward",
             origin: body.origin ?? "bridge",
             relay_depth: String(relayDepth),
           },

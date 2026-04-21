@@ -10,6 +10,8 @@
 
 **Claude Code용 custom channel 서버** — Codex `bridge`가 Claude Code 세션에 메시지를 보내고, Claude Code 응답을 bridge로 받아오는 MCP 서버.
 
+같은 서버에서 `ask_codex(text)` tool도 제공해서 Claude Code가 Codex에게 역방향 질문을 보낼 수 있어야 한다.
+
 프로젝트 경로: `/Users/lunaxislu/Documents/ai-orchestration`
 
 ---
@@ -27,6 +29,7 @@
 - custom channel은 `--dangerously-load-development-channels` 필요
 - MCP SDK 1.x에서 `Server`는 deprecated → `McpServer` 사용
 - `mcpServer.server.notification()` — 프로액티브 notification은 내부 `server` 프로퍼티를 통해 접근
+- bridge는 `POST /codex-request` reverse ingress도 제공하고, `codex exec` helper turn으로 응답을 돌려준다
 
 ---
 
@@ -37,12 +40,19 @@ Claude Code 세션
     ↑ (channel event)
     ↓ (reply tool)
 custom channel 서버  ←→  bridge core
+
+Claude Code 세션
+    ↑ (ask_codex tool)
+    ↓ (reply_to_claude tool)
+bridge core  ←→  Codex MCP notification
 ```
 
 custom channel 서버는 bridge와 Claude Code 세션 사이에 위치한다.
 
 bridge가 HTTP POST로 메시지를 보내면 Claude Code 세션에 전달하고,
 Claude Code가 reply tool을 호출하면 bridge로 전달한다.
+Claude Code가 ask_codex tool을 호출하면 bridge reverse ingress로 전달하고,
+bridge는 `codex exec` helper turn을 시작하고 응답을 받을 때까지 대기한다.
 
 ---
 
@@ -112,10 +122,26 @@ mcpServer.registerTool("reply", {
 }, async ({ chat_id, text }) => { ... });
 ```
 
-**5. bridge와의 통신**
+**5. `ask_codex` tool 구현**
+
+```typescript
+mcpServer.registerTool("ask_codex", {
+  description: "Ask Codex via the bridge reverse notification path.",
+  inputSchema: z.object({
+    text: z.string(),
+  }),
+}, async ({ text }) => { ... });
+```
+
+- tool 내부에서 `http://127.0.0.1:8789/codex-request`로 POST한다.
+- bridge는 `codex exec` helper turn을 시작하고 응답을 받을 때까지 대기한다.
+- bridge가 응답한 text를 그대로 Claude Code 세션의 tool 결과로 반환한다.
+
+**6. bridge와의 통신**
 
 - bridge가 `localhost:8788`로 HTTP POST를 보낼 때 Claude Code 세션으로 전달
 - Claude Code reply는 `BRIDGE_REPLY_URL`(기본: `localhost:8789/claude-reply`)로 전달
+- Claude Code reverse 질문은 `BRIDGE_CLAUDE_REQUEST_URL`(기본: `localhost:8789/codex-request`)로 전달
 
 ---
 
@@ -131,7 +157,7 @@ claude --dangerously-load-development-channels server:claude-adapter
 ## 제약조건
 
 - Python 사용 금지. Bun만 사용
-- 외부 개발자가 로컬 `.mcp.json` 또는 Codex `~/.codex/config.toml` 등록으로 실행 가능해야 함
+- 외부 개발자가 로컬 `.mcp.json` 또는 repo root의 `./.codex/config.toml` 등록으로 실행 가능해야 함
 - 종속성 최소화. `@modelcontextprotocol/sdk`, `zod` 외 추가 패키지 없음
 - bridge와의 통신은 localhost만 (보안)
 - loop 방지: Claude Code가 보낸 메시지가 다시 Claude Code로 돌아오지 않도록 `origin` 태그 확인
@@ -151,5 +177,8 @@ claude --dangerously-load-development-channels server:claude-adapter
 - [x] `claude --channels ... --dangerously-load-development-channels` 로 채널 서버 실행됨 *(구현 완료, 테스트 대기)*
 - [ ] bridge에서 HTTP POST 보내면 Claude Code 세션에 메시지 도착
 - [ ] Claude Code가 응답하면 bridge가 수신
+- [ ] Claude Code `ask_codex` tool 호출 시 bridge reverse ingress로 전달됨
+- [ ] bridge가 `codex exec` helper turn을 시작함
+- [ ] live Codex 세션이 응답하면 Claude Code 세션으로 돌아옴
 - [ ] loop 방지 동작 확인
 - [x] README에 실행 방법 작성

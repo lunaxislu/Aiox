@@ -8,7 +8,7 @@
 
 - [docs/README.md](/Users/lunaxislu/Documents/ai-orchestration/docs/README.md)
   - active / legacy 문서 진입점
-- [history/bridge.history.md](/Users/lunaxislu/Documents/ai-orchestration/history/bridge.history.md)
+- [history/1-bridge.history.md](/Users/lunaxislu/Documents/ai-orchestration/history/1-bridge.history.md)
   - bridge가 왜 Codex app-server relay에서 MCP tool 구조로 바뀌었는지에 대한 전체 히스토리
 - [docs/bridge.spec.md](/Users/lunaxislu/Documents/ai-orchestration/docs/bridge.spec.md)
   - bridge MCP server 구현 명세
@@ -43,7 +43,7 @@
 새 작업을 시작할 때는 아래 문서를 우선 읽는다.
 
 1. [docs/README.md](/Users/lunaxislu/Documents/ai-orchestration/docs/README.md)
-2. [history/bridge.history.md](/Users/lunaxislu/Documents/ai-orchestration/history/bridge.history.md)
+2. [history/1-bridge.history.md](/Users/lunaxislu/Documents/ai-orchestration/history/1-bridge.history.md)
 3. [docs/bridge.spec.md](/Users/lunaxislu/Documents/ai-orchestration/docs/bridge.spec.md)
 4. [docs/bridge-test.md](/Users/lunaxislu/Documents/ai-orchestration/docs/bridge-test.md)
 5. [docs/claude-adapter.spec.md](/Users/lunaxislu/Documents/ai-orchestration/docs/claude-adapter.spec.md)

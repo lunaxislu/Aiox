@@ -1,0 +1,4 @@
+[mcp_servers.bridge]
+command = "node"
+args = ["/Users/lunaxislu/Documents/ai-orchestration/bridge/index.js"]
+startup_timeout_sec = 120

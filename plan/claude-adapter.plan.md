@@ -10,6 +10,7 @@ bridge와 Claude Code 세션 사이에서 메시지를 양방향으로 중계하
 
 - bridge(Codex MCP server) → Claude Code: HTTP POST 수신 → `notifications/claude/channel` 이벤트 전달
 - Claude Code → bridge: `reply` tool 호출 → bridge callback URL로 POST 전달
+- Claude Code → bridge: `ask_codex` tool 호출 → bridge reverse ingress로 POST 전달
 
 ---
 
@@ -21,6 +22,7 @@ bridge와 Claude Code 세션 사이에서 메시지를 양방향으로 중계하
 | channel 등록 | `capabilities.experimental['claude/channel']: {}` 선언 필수 |
 | 채널 이벤트 전송 | `mcpServer.server.notification({ method: 'notifications/claude/channel', params: { content, meta } })` |
 | reply tool | 표준 MCP tool. `chat_id`, `text` 파라미터. Zod schema로 타입 추론 |
+| ask_codex tool | 표준 MCP tool. `text` 파라미터. bridge reverse ingress로 전달 |
 | 런타임 | **Bun 필수** — Node.js에서는 Claude Code 플러그인 silent fail |
 | 활성화 플래그 | `--dangerously-load-development-channels` 필요 (custom channel) |
 | 보안 | bridge 통신은 `127.0.0.1` (localhost only) |
@@ -62,6 +64,20 @@ Claude Code 세션
 claude-adapter
   │  HTTP POST  localhost:8789/claude-reply
   ▼
+bridge
+
+Claude Code 세션
+    │  ask_codex tool 호출 (MCP)
+    ▼
+claude-adapter
+    │  HTTP POST  localhost:8789/codex-request
+    ▼
+bridge
+    │  codex exec helper turn
+    ▼
+Codex live session
+    │  helper response or reply_to_claude tool 호출
+    ▼
 bridge
 ```
 
@@ -166,6 +182,21 @@ Bun.serve({
     // 3. mcpServer.server.notification({ method: "notifications/claude/channel", ... })
   },
 });
+
+#### D. ask_codex tool
+
+```typescript
+mcpServer.registerTool("ask_codex", {
+  description: "Ask Codex via the bridge codex exec helper path.",
+  inputSchema: z.object({
+    text: z.string(),
+  }),
+}, async ({ text }) => { ... });
+```
+
+- `http://127.0.0.1:8789/codex-request`로 POST한다.
+- bridge가 `codex exec` helper turn을 시작한다.
+- 반환된 text를 Claude Code 세션의 tool 결과로 돌려준다.
 ```
 
 #### D. stdio transport 연결
@@ -194,6 +225,7 @@ await mcpServer.connect(transport);
 |------|--------|------|
 | `LISTEN_PORT` | `8788` | bridge 메시지 수신 포트 |
 | `BRIDGE_REPLY_URL` | `http://localhost:8789/claude-reply` | Claude Code 응답 전달 URL |
+| `BRIDGE_CLAUDE_REQUEST_URL` | `http://localhost:8789/codex-request` | Claude Code가 Codex에게 질문할 때 사용하는 URL |
 
 ---
 
@@ -213,6 +245,9 @@ curl -X POST http://127.0.0.1:8788/ \
   -H "Content-Type: application/json" \
   -d '{"text": "무시됨", "origin": "claude"}'
 # → {"status":"ignored","reason":"loop: origin is claude"}
+
+# reverse 질문 테스트
+ask_codex("Codex에게 확인해줘")
 ```
 
 ---
