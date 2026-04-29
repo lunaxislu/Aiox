@@ -25,13 +25,26 @@ Claude Code <-> Codex 양방향 MCP relay 시스템을 기능 변경 없이 리�
 
 ### 0. baseline 검증
 
-- [ ] `git status --short`로 작업트리 확인
-- [ ] `pnpm lint` 통과 확인
-- [ ] `node --check bridge/index.js` 통과 확인
-- [ ] `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit` 통과 확인
-- [ ] bridge가 실행 중이면 `curl -sS http://127.0.0.1:8789/debug/status` 동작 확인
-- [ ] 현재 baseline 결과 기록
-- [ ] Codex 리뷰 요청
+- [x] `git status --short`로 작업트리 확인
+- [x] `pnpm lint` 통과 확인
+- [x] `node --check bridge/index.js` 통과 확인
+- [x] `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit` 통과 확인
+- [x] bridge가 실행 중이면 `curl -sS http://127.0.0.1:8789/debug/status` 동작 확인
+- [x] 현재 baseline 결과 기록
+- [x] Codex 리뷰 요청
+
+Baseline 기록 (2026-04-29 22:40 KST):
+
+- `git status --short`: clean
+- `git log --oneline -4`: `d07dc99`, `b1d1d83`, `bf931f3`, `79a8e4f`
+- `pnpm lint`: pass
+- `node --check bridge/index.js`: pass
+- `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit`: pass
+- `curl -sS http://127.0.0.1:8789/debug/status`: pass
+  - bridge pid: `38354`
+  - status: `ok`
+  - forward pending count: `0`
+  - reverse pending count: `0`
 
 ### 1A. bridge TypeScript 빌드 설정 추가
 
