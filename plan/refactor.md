@@ -73,13 +73,29 @@ Baseline 기록 (2026-04-29 22:40 KST):
 
 ### 1B. bridge TS entrypoint 병렬 생성
 
-- [ ] `bridge/src/index.ts` 생성
-- [ ] 기존 `bridge/index.js`와 동일한 동작을 유지하도록 TS로 변환
-- [ ] `bridge/index.js`는 아직 삭제하지 않기
-- [ ] `bridge/dist/index.js` 생성 확인
-- [ ] `node --check bridge/dist/index.js` 통과 확인
-- [ ] 기존 `node bridge/index.js --help`와 `node bridge/dist/index.js --help` 출력 동등성 확인
-- [ ] Codex 리뷰 요청
+- [x] `bridge/src/index.ts` 생성
+- [x] 기존 `bridge/index.js`와 동일한 동작을 유지하도록 TS로 변환
+- [x] `bridge/index.js`는 아직 삭제하지 않기
+- [x] `bridge/dist/index.js` 생성 확인
+- [x] `node --check bridge/dist/index.js` 통과 확인
+- [x] 기존 `node bridge/index.js --help`와 `node bridge/dist/index.js --help` 출력 동등성 확인
+- [x] Codex 리뷰 요청
+
+1B 기록:
+
+- `bridge/src/index.ts`는 기존 `bridge/index.js`의 병렬 TS entrypoint다.
+- `bridge/tsconfig.json`은 이제 `src/**/*.ts`를 입력으로 사용하고 `dist/index.js`를 생성한다.
+- 기존 `bridge/index.js`, `bridge/package.json` 실행 경로, `.codex/config.toml`은 변경하지 않았다.
+- 현재 TS entrypoint는 동작 동일성 확보를 우선해 `@ts-nocheck`를 임시로 사용한다. 세부 타입 강화는 protocol/pending/client 분리 단계에서 테스트와 함께 진행한다.
+- 검증:
+  - `pnpm --filter bridge typecheck`: pass
+  - `pnpm --filter bridge build`: pass
+  - `pnpm --filter bridge test`: pass (0 tests)
+  - `node --check bridge/index.js`: pass
+  - `node --check bridge/dist/index.js`: pass
+  - `diff <(node bridge/index.js --help) <(node bridge/dist/index.js --help)`: pass
+  - `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit`: pass
+  - `pnpm lint`: pass
 
 ### 1C. bridge 실행 경로 전환 준비
 

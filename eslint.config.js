@@ -15,6 +15,6 @@ export default defineConfig(
   // Prettier와 충돌하는 ESLint 규칙 비활성화 (항상 마지막에)
   prettier,
   {
-    ignores: ["node_modules/", "dist/"],
+    ignores: ["node_modules/", "dist/", "**/dist/"],
   },
 );
