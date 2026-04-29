@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "description": "Codex MCP bridge to claude-adapter",
+  "main": "./dist/index.js",
   "bin": {
-    "codex-claude-bridge": "./index.js"
+    "codex-claude-bridge": "./dist/index.js"
   },
   "scripts": {
-    "start": "node index.js",
+    "start": "node dist/index.js",
     "dev": "node index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

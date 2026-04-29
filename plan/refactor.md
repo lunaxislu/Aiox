@@ -99,12 +99,28 @@ Baseline 기록 (2026-04-29 22:40 KST):
 
 ### 1C. bridge 실행 경로 전환 준비
 
-- [ ] `bridge/package.json`의 `main`과 `bin.codex-claude-bridge`를 `dist/index.js`로 전환
-- [ ] `start` script를 `node dist/index.js`로 전환
-- [ ] `dev` script는 기존 JS 또는 TS 개발 방식 중 하나로 명확히 지정
-- [ ] `.codex/config.toml`은 아직 변경하지 않기
-- [ ] build/typecheck/lint 통과 확인
-- [ ] Codex 리뷰 요청
+- [x] `bridge/package.json`의 `main`과 `bin.codex-claude-bridge`를 `dist/index.js`로 전환
+- [x] `start` script를 `node dist/index.js`로 전환
+- [x] `dev` script는 기존 JS 또는 TS 개발 방식 중 하나로 명확히 지정
+- [x] `.codex/config.toml`은 아직 변경하지 않기
+- [x] build/typecheck/lint 통과 확인
+- [x] Codex 리뷰 요청
+
+1C 기록:
+
+- `bridge/package.json`의 package entry(`main`, `bin.codex-claude-bridge`)와 `start` script만 `dist/index.js`로 전환했다.
+- `dev` script는 현재 운영 중인 legacy entrypoint를 명확히 실행하도록 `node index.js`로 유지했다.
+- `.codex/config.toml`은 아직 `bridge/index.js`를 가리키며 변경하지 않았다.
+- 검증:
+  - `pnpm --filter bridge build`: pass
+  - `pnpm --filter bridge typecheck`: pass
+  - `pnpm --filter bridge test`: pass (0 tests)
+  - `node --check bridge/index.js`: pass
+  - `node --check bridge/dist/index.js`: pass
+  - `diff <(node bridge/index.js --help) <(node bridge/dist/index.js --help)`: pass
+  - `pnpm --filter bridge start --help`: pass
+  - `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit`: pass
+  - `pnpm lint`: pass
 
 ### 1D. bridge 실행 경로 전환
 
