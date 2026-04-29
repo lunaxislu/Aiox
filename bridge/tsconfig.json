@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "allowJs": true,
+    "checkJs": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"],
+    "skipLibCheck": true,
+    "noEmitOnError": true
+  },
+  "include": ["index.js", "src/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -48,14 +48,28 @@ Baseline 기록 (2026-04-29 22:40 KST):
 
 ### 1A. bridge TypeScript 빌드 설정 추가
 
-- [ ] `bridge/tsconfig.json` 추가
-- [ ] `bridge/package.json`에 `build`, `typecheck`, `test`, `prepack` 스크립트 추가
-- [ ] 필요한 경우 `@types/node` dev dependency 추가
-- [ ] 아직 `bridge/index.js` 실행 경로는 변경하지 않기
-- [ ] 아직 `.codex/config.toml`은 변경하지 않기
-- [ ] `pnpm --filter bridge typecheck` 실행
-- [ ] `pnpm --filter bridge build` 실행
-- [ ] Codex 리뷰 요청
+- [x] `bridge/tsconfig.json` 추가
+- [x] `bridge/package.json`에 `build`, `typecheck`, `test`, `prepack` 스크립트 추가
+- [x] 필요한 경우 `@types/node` dev dependency 추가
+- [x] 아직 `bridge/index.js` 실행 경로는 변경하지 않기
+- [x] 아직 `.codex/config.toml`은 변경하지 않기
+- [x] `pnpm --filter bridge typecheck` 실행
+- [x] `pnpm --filter bridge build` 실행
+- [x] Codex 리뷰 요청
+
+1A 기록:
+
+- `bridge/tsconfig.json`은 다음 단계의 TS entrypoint 전환 전까지 기존 `index.js`를 `allowJs` 입력으로 사용한다.
+- `bridge/package.json` 실행 경로, `bin.codex-claude-bridge`, `.codex/config.toml`은 변경하지 않았다.
+- `typescript`는 루트 `pnpm exec tsc ...` 검증 명령 안정화를 위해 루트 devDependency에도 명시했다.
+- 검증:
+  - `pnpm --filter bridge typecheck`: pass
+  - `pnpm --filter bridge build`: pass
+  - `pnpm --filter bridge test`: pass (0 tests)
+  - `node --check bridge/index.js`: pass
+  - `node --check bridge/dist/index.js`: pass
+  - `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit`: pass
+  - `pnpm lint`: pass
 
 ### 1B. bridge TS entrypoint 병렬 생성
 
