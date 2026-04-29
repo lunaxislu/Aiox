@@ -126,7 +126,7 @@ Baseline 기록 (2026-04-29 22:40 KST):
 
 - [x] `.codex/config.toml`을 `node bridge/dist/index.js` 실행으로 변경
 - [x] `pnpm --filter bridge build` 실행
-- [ ] Codex remote session 재시작 후 `/debug/status` 확인
+- [x] Codex remote session 재시작 후 `/debug/status` 확인
 - [ ] fresh remote session에서 forward/reverse smoke test 실행
 - [ ] 기존 `bridge/index.js` 제거 여부 결정
 - [x] Codex 리뷰 요청
@@ -135,7 +135,12 @@ Baseline 기록 (2026-04-29 22:40 KST):
 
 - `.codex/config.toml`의 bridge MCP command args를 `bridge/dist/index.js`로 전환했다.
 - `bridge/index.js`는 아직 삭제하지 않았다. 실행 경로 전환 후 fresh remote smoke가 끝난 뒤 제거 여부를 결정한다.
-- 현재 작업 세션에서는 bridge HTTP 서버가 떠 있지 않아 `curl -sS http://127.0.0.1:8789/debug/status`는 connection refused였다. Codex remote session 재시작 후 재확인해야 한다.
+- 최초 작업 세션에서는 bridge HTTP 서버가 떠 있지 않아 `curl -sS http://127.0.0.1:8789/debug/status`는 connection refused였다.
+- 사용자 재시작 확인 결과 `curl -sS http://127.0.0.1:8789/debug/events`가 pass:
+  - bridge pid: `72314`
+  - started_at: `2026-04-29T13:55:11.731Z`
+  - timeout_ms: `120000`
+  - startup event recorded: yes
 - 검증:
   - `pnpm --filter bridge build`: pass
   - `pnpm --filter bridge typecheck`: pass
