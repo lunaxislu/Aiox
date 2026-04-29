@@ -12,21 +12,69 @@ Claude Code <-> Codex 양방향 MCP relay 시스템을 기능 변경 없이 리�
 - 테스트 가능한 단위로 로직을 분리한다.
 - 각 단계 완료 후 리뷰를 받고 다음 단계로 진행한다.
 
+## 작업 원칙
+
+- `.ai/tdd.md`의 TDD/Tidy First 원칙을 따른다.
+- Red -> Green -> Refactor 순서로 진행한다.
+- 구조적 변경과 행위 변경을 같은 커밋에 섞지 않는다.
+- 한 번에 하나의 작은 테스트/작은 변경만 진행한다.
+- 리팩터링은 테스트가 통과한 뒤에만 수행한다.
+- 각 단계는 검증 후 커밋한다.
+
 ## TODO
 
-### 1. bridge TypeScript 빌드 기반 만들기
+### 0. baseline 검증
+
+- [ ] `git status --short`로 작업트리 확인
+- [ ] `pnpm lint` 통과 확인
+- [ ] `node --check bridge/index.js` 통과 확인
+- [ ] `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit` 통과 확인
+- [ ] bridge가 실행 중이면 `curl -sS http://127.0.0.1:8789/debug/status` 동작 확인
+- [ ] 현재 baseline 결과 기록
+- [ ] Codex 리뷰 요청
+
+### 1A. bridge TypeScript 빌드 설정 추가
 
 - [ ] `bridge/tsconfig.json` 추가
 - [ ] `bridge/package.json`에 `build`, `typecheck`, `test`, `prepack` 스크립트 추가
 - [ ] 필요한 경우 `@types/node` dev dependency 추가
-- [ ] `bridge/index.js`를 `bridge/src/index.ts`로 이동/변환
-- [ ] `bridge/dist/index.js`가 생성되는지 확인
+- [ ] 아직 `bridge/index.js` 실행 경로는 변경하지 않기
+- [ ] 아직 `.codex/config.toml`은 변경하지 않기
+- [ ] `pnpm --filter bridge typecheck` 실행
+- [ ] `pnpm --filter bridge build` 실행
+- [ ] Codex 리뷰 요청
+
+### 1B. bridge TS entrypoint 병렬 생성
+
+- [ ] `bridge/src/index.ts` 생성
+- [ ] 기존 `bridge/index.js`와 동일한 동작을 유지하도록 TS로 변환
+- [ ] `bridge/index.js`는 아직 삭제하지 않기
+- [ ] `bridge/dist/index.js` 생성 확인
+- [ ] `node --check bridge/dist/index.js` 통과 확인
+- [ ] 기존 `node bridge/index.js --help`와 `node bridge/dist/index.js --help` 출력 동등성 확인
+- [ ] Codex 리뷰 요청
+
+### 1C. bridge 실행 경로 전환 준비
+
+- [ ] `bridge/package.json`의 `main`과 `bin.codex-claude-bridge`를 `dist/index.js`로 전환
+- [ ] `start` script를 `node dist/index.js`로 전환
+- [ ] `dev` script는 기존 JS 또는 TS 개발 방식 중 하나로 명확히 지정
 - [ ] `.codex/config.toml`은 아직 변경하지 않기
-- [ ] 동작 변경 없이 build/typecheck 통과 확인
+- [ ] build/typecheck/lint 통과 확인
+- [ ] Codex 리뷰 요청
+
+### 1D. bridge 실행 경로 전환
+
+- [ ] `.codex/config.toml`을 `node bridge/dist/index.js` 실행으로 변경
+- [ ] `pnpm --filter bridge build` 실행
+- [ ] Codex remote session 재시작 후 `/debug/status` 확인
+- [ ] fresh remote session에서 forward/reverse smoke test 실행
+- [ ] 기존 `bridge/index.js` 제거 여부 결정
 - [ ] Codex 리뷰 요청
 
 ### 2. bridge protocol/pure logic 분리
 
+- [ ] 먼저 `parseRequestBody` 또는 `wrapRelayPrompt` 중 하나에 대한 실패 테스트 작성
 - [ ] payload validation을 `bridge/src/protocol.ts`로 분리
 - [ ] relay constants를 `bridge/src/protocol.ts`로 분리
 - [ ] `wrapRelayPrompt`를 `bridge/src/protocol.ts`로 분리
@@ -57,9 +105,13 @@ Claude Code <-> Codex 양방향 MCP relay 시스템을 기능 변경 없이 리�
 
 ### 5. Bridge HTTP/router 분리 및 integration test
 
+- [ ] `/debug/status` 테스트 작성
+- [ ] `/debug/forward-pending` 테스트 작성
+- [ ] `/debug/events` 테스트 작성
 - [ ] HTTP route handling을 테스트 가능한 모듈로 분리
 - [ ] `/claude-reply` 정상 resolve 테스트
 - [ ] `/claude-reply` invalid origin 테스트
+- [ ] `/claude-reply` missing pending 404 diagnostics 테스트
 - [ ] `/codex-request` 정상 pending 생성 테스트
 - [ ] `/codex-request` loop prevention 테스트
 - [ ] unknown path/method 테스트
@@ -90,7 +142,6 @@ Claude Code <-> Codex 양방향 MCP relay 시스템을 기능 변경 없이 리�
 
 ### 8. 실행 경로 전환 및 smoke test
 
-- [ ] `.codex/config.toml`을 `node bridge/dist/index.js` 실행으로 변경
 - [ ] `pnpm --filter bridge build` 실행
 - [ ] `pnpm --filter bridge test` 실행
 - [ ] `pnpm --filter bridge typecheck` 실행
@@ -100,6 +151,17 @@ Claude Code <-> Codex 양방향 MCP relay 시스템을 기능 변경 없이 리�
 - [ ] reverse `ask_codex` 왕복 확인
 - [ ] Codex UI transcript에 `[MCP RELAY]` prompt가 남는지 확인
 - [ ] 최종 Codex 리뷰 요청
+
+### 9. durable relay broker 후속 설계
+
+- [ ] `history/12-durable-relay-architecture.history.md`를 기준으로 별도 plan 작성
+- [ ] broker process 책임 정의
+- [ ] SQLite/file-backed store schema 초안 작성
+- [ ] 기존 synchronous tool compatibility 정책 정의
+- [ ] late reply 조회/알림 interface 정의
+- [ ] stale session/reply 처리 정책 정의
+- [ ] 기존 direct relay path에서 broker path로 전환하는 migration plan 작성
+- [ ] Codex 리뷰 요청
 
 ## 진행 원칙
 
