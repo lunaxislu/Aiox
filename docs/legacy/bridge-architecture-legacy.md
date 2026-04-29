@@ -8,7 +8,8 @@ It is written so another AI can reconstruct the environment, the verified behavi
 
 This file is kept as legacy context only.
 
-The current active architecture uses a Codex MCP bridge plus `claude-adapter`, and no longer depends on Codex app-server WS relay.
+As of 2026-04-29, the old trigger/stream relay architecture no longer depends on Codex app-server WS relay.
+As of 2026-04-29, the Claude -> Codex reverse path still uses shared Codex app-server WS for prompt injection via `thread/loaded/list` and `turn/start`.
 
 ## Executive Summary
 

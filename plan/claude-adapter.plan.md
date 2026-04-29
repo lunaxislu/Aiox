@@ -1,5 +1,9 @@
 # claude-adapter 구현 계획
 
+> 2026-04-29 Superseded note: 이 계획의 `codex exec` helper 경로 설명은 2026-04-29 기준 reverse 활성 경로가 아니다.
+> 2026-04-29 기준 reverse 경로는 `claude-adapter`의 `ask_codex` -> bridge `/codex-request` ->
+> shared Codex app-server WS `turn/start` -> `[MCP RELAY]` -> `reply_to_claude`다.
+
 > 참조 명세: `docs/claude-adapter.spec.md`
 
 ---

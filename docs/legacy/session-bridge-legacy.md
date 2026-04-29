@@ -6,8 +6,9 @@ This document records the investigation into how a bridge could connect Codex CL
 
 This file is kept as legacy context only.
 
-The current active architecture does not use Codex app-server WebSocket thread sharing.  
-The bridge now runs as a Codex MCP tool server and talks to `claude-adapter` through HTTP instead.
+As of 2026-04-29, the old JSONL tail + trigger/stream relay architecture is not active.
+As of 2026-04-29, the bridge runs as a Codex MCP tool server and talks to `claude-adapter` through HTTP.
+The Claude -> Codex reverse path still uses shared Codex app-server WS for prompt injection via `thread/loaded/list` and `turn/start`.
 
 ## Original Goal
 

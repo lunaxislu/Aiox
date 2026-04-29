@@ -1,5 +1,10 @@
 # bridge / claude-adapter MCP 전환 계획
 
+> 2026-04-29 Superseded: 이 계획은 2026-04-15의 `plan/shared-app-server.plan.md`와
+> 2026-04-29 현재 `docs/bridge.spec.md` 기준으로 대체되었다.
+> 특히 `codex exec` helper turn을 reverse 활성 경로로 설명하는 부분은 2026-04-29 실행 기준이 아니다.
+> 2026-04-29 기준 reverse 경로는 shared Codex app-server WS `turn/start` + `[MCP RELAY]` + `reply_to_claude`다.
+
 > 참조 문서: `docs/README.md`, `history/1-bridge.history.md`, `docs/bridge.spec.md`, `docs/bridge-test.md`, `docs/legacy/app-server-legacy.md`, `docs/claude-adapter.spec.md`
 
 ---
@@ -110,9 +115,9 @@ bridge를 Codex가 호출하는 stdio MCP server로 전환한다.
 - Codex는 repo root 기준의 project-scope `./.codex/config.toml` MCP 서버 등록을 지원한다.
 - bridge는 현재 스코프에서 `ask_claude`와 `reply_to_claude`를 제공한다.
 - `claude-adapter`의 HTTP ingress와 reply tool 계약은 기존 구현을 유지한다.
-- app-server WebSocket 기반 thread 공유는 더 이상 active path가 아니다.
+- app-server WebSocket 기반 trigger/stream relay는 더 이상 active path가 아니다.
 - `docs/legacy/app-server-legacy.md`는 조사/회고 용도이며 새 구현의 기준 문서는 아니다.
-- reverse의 현재 활성 경로는 `codex exec` helper turn이다.
+- 이 계획에 적힌 reverse `codex exec` helper 경로는 이후 shared app-server WS 경로로 대체되었다.
 
 ---
 

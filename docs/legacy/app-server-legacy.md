@@ -6,8 +6,10 @@ This document summarizes the Codex app-server behavior that was verified in this
 
 This file is kept as a legacy reference only.
 
-The bridge architecture used in the current scope no longer depends on Codex app-server WebSocket thread sharing.  
-It remains here because the investigation that led to the MCP-based bridge was built on top of these findings.
+As of 2026-04-29, the old trigger/stream relay architecture based on Codex app-server WebSocket thread sharing is not active.
+As of 2026-04-29, the Claude -> Codex reverse path still uses the shared Codex app-server WebSocket for prompt injection:
+`thread/loaded/list` -> `turn/start` -> `[MCP RELAY]` -> `reply_to_claude`.
+This file remains here because the investigation that led to the 2026-04-29 bridge design was built on top of these findings.
 
 ## What Ran Where
 

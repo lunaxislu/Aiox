@@ -2,6 +2,12 @@
 
 이 문서는 초기 조사 과정에서 만들어진 제안 묶음을 현재 저장소 상태에 맞게 정리한 인덱스다.
 
+> 2026-04-29 기준 안내: 2026-04-09~14에 검토한 초기 trigger/stream relay 방식의
+> Codex app-server WebSocket 구조는 legacy다. 다만 2026-04-15 이후 Claude → Codex
+> reverse prompt injection은 shared Codex app-server WS
+> (`thread/loaded/list` -> `turn/start`)를 활성 경로로 사용한다.
+> 2026-04-29 현재 구현 기준은 `docs/bridge.spec.md`, `docs/bridge-test.md`, `bridge/index.js`다.
+
 이전에는 Codex app-server WebSocket relay 구조와 Claude Code channel 구조를 함께 묶어 생각했지만, 현재는 그 접근을 정리했고 아래 active docs 기준으로 유지한다.
 
 ## 현재 active 문서
@@ -21,7 +27,8 @@
 
 ## 정리된 결론
 
-- Codex app-server WebSocket relay는 active path가 아니다.
+- 초기 trigger/stream relay 방식의 Codex app-server WebSocket relay는 active path가 아니다.
+- Claude → Codex reverse prompt injection용 shared app-server WS는 active path다.
 - bridge는 이제 Codex용 stdio MCP server다.
 - Claude 쪽은 `claude-adapter` 채널 서버가 담당한다.
 - threadId 동기화는 더 이상 현재 구현의 핵심 제약이 아니다.

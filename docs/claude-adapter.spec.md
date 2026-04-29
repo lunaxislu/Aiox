@@ -94,7 +94,7 @@ mcpServer.registerTool("reply", {
 
 ```typescript
 mcpServer.registerTool("ask_codex", {
-  description: "Ask Codex via the bridge reverse notification path.",
+  description: "Ask Codex via the bridge reverse relay path.",
   inputSchema: z.object({
     text: z.string(),
   }),

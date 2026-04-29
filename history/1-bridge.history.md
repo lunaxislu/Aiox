@@ -1,5 +1,12 @@
 # bridge 구현 및 아키텍처 전환 히스토리
 
+> 2026-04-29 기준 안내: 이 문서는 전환 과정을 시간순으로 보존하는 history다.
+> 2026-04-14의 "Codex app-server WebSocket relay 제거" 결론은 Codex → Claude forward를
+> MCP tool 구조로 바꾼 시점의 결론이다. 2026-04-15 이후 Claude → Codex reverse 경로에는
+> shared Codex app-server WS `turn/start` + `[MCP RELAY]` + `reply_to_claude` 구조가
+> 활성 경로로 다시 도입되었다. 2026-04-29 현재 구현 기준은 `docs/bridge.spec.md`와
+> `bridge/index.js`다.
+
 > 이 문서는 bridge를 처음의 Codex app-server WebSocket relay 구조에서,
 > Codex MCP tool 기반 구조로 전환하기까지의 전 과정을 기록한다.
 >
@@ -545,12 +552,12 @@ forward 경로가 안정화된 뒤, `Claude -> Codex` reverse를 더 단단하�
 reverse 경로는 forward보다 훨씬 자주 깨질 수 있고, 그럴 때 가장 중요한 것은 "어떤 경로를 실제로 따라가고 있는지"가 한눈에 보이는 것이다.
 sampling 우선 구조는 그 관찰 가능성을 오히려 낮췄다.
 
-현재는 다시 다음 원칙으로 정리되어 있다.
+2026-04-14 당시에는 다시 다음 원칙으로 정리되어 있었다. 이 원칙은 2026-04-15 이후 shared app-server reverse 도입으로 대체되었다.
 
 - forward: `ask_claude(text)` -> `claude-adapter` -> Claude Code reply -> bridge pending resolve
 - reverse: `ask_codex(text)` -> bridge notification wake-up -> `reply_to_claude(chat_id, text)` -> Claude Code reply
 
-즉, reverse는 다시 단순하고 명시적인 notification fallback 모델로 돌아왔다.
+즉, 2026-04-14 당시 reverse는 다시 단순하고 명시적인 notification fallback 모델로 돌아왔다.
 
 ### 2026-04-14 추가 기록 — reverse timeout의 실제 원인과 `codex exec` helper fallback
 
@@ -560,22 +567,22 @@ sampling 우선 구조는 그 관찰 가능성을 오히려 낮췄다.
 - `notify` / notification 계열 경로는 Codex가 inbound trigger로 소비해 주지 않았다.
 - 그래서 `reply_to_claude`는 호출되지 않았고, reverse pending은 항상 timeout으로 끝났다.
 
-이 저장소의 현재 활성 해결책은 notification wake-up이 아니라 `codex exec` helper turn이다.
+2026-04-14 당시 이 저장소의 활성 해결책은 notification wake-up이 아니라 `codex exec` helper turn이었다.
 
 - bridge가 reverse ingress를 받는다.
 - bridge가 repo root에서 `codex exec`를 짧게 실행한다.
 - helper Codex가 답변 텍스트를 출력한다.
 - bridge가 그 텍스트를 reverse pending의 결과로 돌려준다.
 
-이 방식은 live Codex 세션을 깨우는 진짜 inbound hook은 아니지만, 현재 repo 안에서 reverse를 실제로 동작시키는 경로로 확인됐다.
+이 방식은 live Codex 세션을 깨우는 진짜 inbound hook은 아니지만, 2026-04-14 당시 repo 안에서 reverse를 실제로 동작시키는 경로로 확인됐다.
 
 검증 결과:
 
 - `POST /codex-request` → 30초 timeout: ❌ old path
-- `POST /codex-request` → `codex exec` helper turn → 200 OK: ✅ current path
+- `POST /codex-request` → `codex exec` helper turn → 200 OK: ✅ 2026-04-14 당시 활성 경로
 
-따라서 앞으로 reverse 문제를 다시 볼 때는 “Codex notification이 왜 안 왔나”보다
-“helper Codex exec이 왜 답을 못 냈나”를 먼저 봐야 한다.
+따라서 2026-04-14 당시 reverse 문제를 다시 볼 때는 “Codex notification이 왜 안 왔나”보다
+“helper Codex exec이 왜 답을 못 냈나”를 먼저 봐야 했다.
 
 ### 2026-04-14 추가 기록 — reverse helper exec를 live MCP elicitation으로 교체
 

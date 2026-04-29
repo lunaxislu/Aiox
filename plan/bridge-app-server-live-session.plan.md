@@ -1,5 +1,10 @@
 # bridge App Server live session 전환 계획
 
+> 2026-04-29 Superseded: 이 계획은 2026-04-15의 `plan/shared-app-server.plan.md`와
+> 2026-04-29 현재 `docs/bridge.spec.md` 기준으로 대체되었다.
+> 이 계획에 남아 있는 `codex exec` helper 및 notification 회수 가설은 2026-04-29 실행 기준이 아니다.
+> 2026-04-29 기준 reverse 경로는 shared Codex app-server WS `turn/start` + `[MCP RELAY]` + `reply_to_claude`다.
+
 > 참조 문서:
 > `history/4-bridge-app-server-live-session-investigation.history.md`,
 > `history/1-bridge.history.md`,
