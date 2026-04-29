@@ -124,12 +124,27 @@ Baseline 기록 (2026-04-29 22:40 KST):
 
 ### 1D. bridge 실행 경로 전환
 
-- [ ] `.codex/config.toml`을 `node bridge/dist/index.js` 실행으로 변경
-- [ ] `pnpm --filter bridge build` 실행
+- [x] `.codex/config.toml`을 `node bridge/dist/index.js` 실행으로 변경
+- [x] `pnpm --filter bridge build` 실행
 - [ ] Codex remote session 재시작 후 `/debug/status` 확인
 - [ ] fresh remote session에서 forward/reverse smoke test 실행
 - [ ] 기존 `bridge/index.js` 제거 여부 결정
-- [ ] Codex 리뷰 요청
+- [x] Codex 리뷰 요청
+
+1D 기록:
+
+- `.codex/config.toml`의 bridge MCP command args를 `bridge/dist/index.js`로 전환했다.
+- `bridge/index.js`는 아직 삭제하지 않았다. 실행 경로 전환 후 fresh remote smoke가 끝난 뒤 제거 여부를 결정한다.
+- 현재 작업 세션에서는 bridge HTTP 서버가 떠 있지 않아 `curl -sS http://127.0.0.1:8789/debug/status`는 connection refused였다. Codex remote session 재시작 후 재확인해야 한다.
+- 검증:
+  - `pnpm --filter bridge build`: pass
+  - `pnpm --filter bridge typecheck`: pass
+  - `pnpm --filter bridge test`: pass (0 tests)
+  - `node --check bridge/index.js`: pass
+  - `node --check bridge/dist/index.js`: pass
+  - `diff <(node bridge/index.js --help) <(node bridge/dist/index.js --help)`: pass
+  - `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit`: pass
+  - `pnpm lint`: pass
 
 ### 2. bridge protocol/pure logic 분리
 

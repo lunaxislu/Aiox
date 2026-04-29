@@ -1,7 +1,7 @@
 [mcp_servers.bridge]
 command = "node"
 args = [
-  "/Users/lunaxislu/Documents/ai-orchestration/bridge/index.js",
+  "/Users/lunaxislu/Documents/ai-orchestration/bridge/dist/index.js",
   "--timeout-ms",
   "120000",
 ]
