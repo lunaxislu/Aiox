@@ -15,6 +15,7 @@ const DEFAULT_CODEX_APP_SERVER_URL = "ws://127.0.0.1:4500";
 const MCP_NAME = "bridge";
 const MCP_VERSION = "0.2.0";
 const MAX_RELAY_DEPTH = 3;
+const MAX_DEBUG_EVENTS = 100;
 
 function parseArgs(argv) {
   const options = {
@@ -120,36 +121,6 @@ function isRecord(value) {
   return typeof value === "object" && value !== null;
 }
 
-function extractToolText(result) {
-  if (!isRecord(result)) {
-    return null;
-  }
-
-  const structuredContent = result.structuredContent;
-  if (isRecord(structuredContent)) {
-    const structuredText = structuredContent.content;
-    if (
-      typeof structuredText === "string" &&
-      structuredText.trim().length > 0
-    ) {
-      return structuredText.trim();
-    }
-  }
-
-  const content = result.content;
-  if (Array.isArray(content) && content.length > 0) {
-    const firstItem = content[0];
-    if (isRecord(firstItem) && typeof firstItem.text === "string") {
-      const text = firstItem.text.trim();
-      if (text.length > 0) {
-        return text;
-      }
-    }
-  }
-
-  return null;
-}
-
 function parseRequestBody(value) {
   if (!isRecord(value)) {
     return { error: "Invalid JSON body" };
@@ -201,13 +172,14 @@ function parseRequestBody(value) {
 }
 
 class PendingRequest {
-  constructor(collection, chatId, timeoutMs, onTimeout) {
+  constructor(collection, chatId, timeoutMs, onTimeout, onEvent) {
     this.collection = collection;
     this.chatId = chatId;
     this.settled = false;
     this.resolveFn = null;
     this.rejectFn = null;
     this.timer = null;
+    this.onEvent = onEvent;
 
     this.promise = new Promise((resolve, reject) => {
       this.resolveFn = resolve;
@@ -225,6 +197,7 @@ class PendingRequest {
       const timeoutError = new Error(
         `Timed out waiting after ${timeoutMs}ms (chat_id=${chatId})`,
       );
+      this.onEvent?.("timeout", timeoutError);
       this.rejectFn?.(timeoutError);
       onTimeout?.(timeoutError);
     }, timeoutMs);
@@ -241,6 +214,7 @@ class PendingRequest {
       this.timer = null;
     }
     this.collection.delete(this.chatId);
+    this.onEvent?.("resolve", value);
     this.resolveFn?.(value);
     return true;
   }
@@ -256,6 +230,7 @@ class PendingRequest {
       this.timer = null;
     }
     this.collection.delete(this.chatId);
+    this.onEvent?.("reject", error);
     this.rejectFn?.(error);
     return true;
   }
@@ -271,6 +246,7 @@ class PendingRequest {
       this.timer = null;
     }
     this.collection.delete(this.chatId);
+    this.onEvent?.("cancel");
     return true;
   }
 }
@@ -561,7 +537,14 @@ class CodexAppServerClient {
     if (this.ws) {
       try {
         this.ws.close();
-      } catch {}
+      } catch (error) {
+        logLine(
+          "codex-app-server",
+          `failed to close ws: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       this.ws = null;
     }
     this.connectPromise = null;
@@ -571,10 +554,12 @@ class CodexAppServerClient {
 class Bridge {
   constructor(options) {
     this.options = options;
+    this.startedAt = new Date();
     this.httpServer = null;
     this.shuttingDown = false;
     this.forwardReplies = new Map();
     this.reverseRequests = new Map();
+    this.debugEvents = [];
     this.codexAppServerClient = null;
     this.codexAppServerReady = null;
     this.mcpServer = new McpServer(
@@ -654,6 +639,14 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
 
   async start() {
     this.installSignalHandlers();
+    this.recordDebugEvent("startup", {
+      pid: process.pid,
+      timeout_ms: this.options.timeoutMs,
+    });
+    logLine(
+      "startup",
+      `pid=${process.pid} started_at=${this.startedAt.toISOString()} timeout_ms=${this.options.timeoutMs}`,
+    );
     void this.startHttpServer().catch((error) => {
       if (this.shuttingDown) {
         return;
@@ -767,6 +760,25 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/debug/forward-pending") {
+      this.handleDebugForwardPending(res);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/debug/status") {
+      writeJson(res, 200, this.getDebugStatus());
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/debug/events") {
+      writeJson(res, 200, {
+        bridge: this.getDebugStatus().bridge,
+        events: this.debugEvents,
+        status: "ok",
+      });
+      return;
+    }
+
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method Not Allowed" });
       return;
@@ -786,11 +798,55 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
   }
 
   handleDebugReversePending(res) {
+    const status = this.getDebugStatus();
     writeJson(res, 200, {
-      count: this.reverseRequests.size,
-      chat_ids: Array.from(this.reverseRequests.keys()),
+      bridge: status.bridge,
+      count: status.reverse_pending.count,
+      chat_ids: status.reverse_pending.chat_ids,
       status: "ok",
     });
+  }
+
+  handleDebugForwardPending(res) {
+    const status = this.getDebugStatus();
+    writeJson(res, 200, {
+      bridge: status.bridge,
+      count: status.forward_pending.count,
+      chat_ids: status.forward_pending.chat_ids,
+      status: "ok",
+    });
+  }
+
+  getDebugStatus() {
+    return {
+      bridge: {
+        pid: process.pid,
+        started_at: this.startedAt.toISOString(),
+        uptime_ms: Date.now() - this.startedAt.getTime(),
+        timeout_ms: this.options.timeoutMs,
+      },
+      forward_pending: {
+        count: this.forwardReplies.size,
+        chat_ids: Array.from(this.forwardReplies.keys()),
+      },
+      reverse_pending: {
+        count: this.reverseRequests.size,
+        chat_ids: Array.from(this.reverseRequests.keys()),
+      },
+      status: "ok",
+    };
+  }
+
+  recordDebugEvent(type, details = {}) {
+    this.debugEvents.push({
+      at: new Date().toISOString(),
+      details,
+      type,
+    });
+
+    if (this.debugEvents.length > MAX_DEBUG_EVENTS) {
+      this.debugEvents.splice(0, this.debugEvents.length - MAX_DEBUG_EVENTS);
+    }
   }
 
   async handleClaudeReply(req, res) {
@@ -815,8 +871,14 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
 
     const pending = this.forwardReplies.get(parsed.chat_id);
     if (!pending) {
+      this.recordDebugEvent("claude_reply_missing_pending", {
+        chat_id: parsed.chat_id,
+        forward_pending_chat_ids: Array.from(this.forwardReplies.keys()),
+      });
       writeJson(res, 404, {
         error: "No pending ask_claude request for chat_id",
+        chat_id: parsed.chat_id,
+        diagnostics: this.getDebugStatus(),
       });
       return;
     }
@@ -830,6 +892,9 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
     }
 
     logLine("claude-reply", `resolved chat_id=${parsed.chat_id}`);
+    this.recordDebugEvent("claude_reply_resolved", {
+      chat_id: parsed.chat_id,
+    });
     writeJson(res, 200, { status: "ok", chat_id: parsed.chat_id });
   }
 
@@ -911,9 +976,20 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
       (error) => {
         logLine("timeout", error.message);
       },
+      (event, value) => {
+        this.recordDebugEvent(`forward_pending_${event}`, {
+          chat_id: chatId,
+          detail: value instanceof Error ? value.message : undefined,
+          forward_pending_count: this.forwardReplies.size,
+        });
+      },
     );
 
     this.forwardReplies.set(chatId, pending);
+    this.recordDebugEvent("forward_pending_created", {
+      chat_id: chatId,
+      forward_pending_count: this.forwardReplies.size,
+    });
     return pending;
   }
 
@@ -925,10 +1001,21 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
       (error) => {
         logLine("timeout", error.message);
       },
+      (event, value) => {
+        this.recordDebugEvent(`reverse_pending_${event}`, {
+          chat_id: chatId,
+          detail: value instanceof Error ? value.message : undefined,
+          reverse_pending_count: this.reverseRequests.size,
+        });
+      },
     );
 
     this.reverseRequests.set(chatId, pending);
     logLine("reverse-request", `pending chat_id=${chatId}`);
+    this.recordDebugEvent("reverse_pending_created", {
+      chat_id: chatId,
+      reverse_pending_count: this.reverseRequests.size,
+    });
     return pending;
   }
 
@@ -952,6 +1039,10 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
     } catch (error) {
       pending.cancel();
       this.forwardReplies.delete(chatId);
+      this.recordDebugEvent("forward_send_failed", {
+        chat_id: chatId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error instanceof Error ? error : new Error(String(error));
     }
 
@@ -960,6 +1051,10 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
       replyText = await pending.promise;
     } finally {
       this.forwardReplies.delete(chatId);
+      this.recordDebugEvent("forward_pending_finished", {
+        chat_id: chatId,
+        forward_pending_count: this.forwardReplies.size,
+      });
     }
 
     logLine(
@@ -994,6 +1089,9 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
 
     this.reverseRequests.delete(chatId);
     logLine("codex-reply", `resolved chat_id=${chatId}`);
+    this.recordDebugEvent("codex_reply_resolved", {
+      chat_id: chatId,
+    });
 
     return {
       content: [

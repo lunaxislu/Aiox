@@ -46,6 +46,7 @@ claude --channels plugin:./claude-adapter/index.ts \
 | `LISTEN_PORT` | `8788` | claude-adapter가 bridge 메시지를 수신할 HTTP 포트 |
 | `BRIDGE_REPLY_URL` | `http://localhost:8789/claude-reply` | Claude Code 응답을 전달할 bridge 엔드포인트 |
 | `BRIDGE_CLAUDE_REQUEST_URL` | `http://localhost:8789/codex-request` | Claude Code가 Codex에게 질문할 때 사용하는 bridge 엔드포인트 |
+| `BRIDGE_REQUEST_TIMEOUT_MS` | `120000` | `ask_codex`가 bridge 응답을 기다리는 시간 |
 
 ## API
 

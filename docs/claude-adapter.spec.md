@@ -109,7 +109,8 @@ mcpServer.registerTool("ask_codex", {
 
 - `LISTEN_PORT` — HTTP 서버 포트 (기본: 8788)
 - `BRIDGE_REPLY_URL` — claude reply 전달 URL (기본: http://localhost:8789/claude-reply)
-- `BRIDGE_CODEX_REQUEST_URL` — reverse ingress URL (기본: http://localhost:8789/codex-request)
+- `BRIDGE_CLAUDE_REQUEST_URL` — reverse ingress URL (기본: http://localhost:8789/codex-request)
+- `BRIDGE_REQUEST_TIMEOUT_MS` — `ask_codex`가 bridge 응답을 기다리는 시간 (기본: 120000)
 
 ### inbound HTTP 서버 (bridge → Claude Code)
 

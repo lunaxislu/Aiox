@@ -13,6 +13,7 @@
  * 환경변수:
  *   LISTEN_PORT       - HTTP 서버 포트 (기본값: 8788)
  *   BRIDGE_REPLY_URL  - Claude Code 응답을 전달할 bridge URL (기본값: http://localhost:8789/claude-reply)
+ *   BRIDGE_REQUEST_TIMEOUT_MS - ask_codex bridge 요청 timeout (기본값: 120000)
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -25,7 +26,11 @@ const BRIDGE_REPLY_URL =
 const BRIDGE_CLAUDE_REQUEST_URL =
   process.env.BRIDGE_CLAUDE_REQUEST_URL ??
   "http://localhost:8789/codex-request";
-const DEFAULT_TOOL_TIMEOUT_MS = 60_000;
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
+const BRIDGE_REQUEST_TIMEOUT_MS = parsePositiveIntegerEnv(
+  "BRIDGE_REQUEST_TIMEOUT_MS",
+  DEFAULT_TOOL_TIMEOUT_MS,
+);
 const MAX_RELAY_DEPTH = 3;
 
 type InboundBody = {
@@ -38,6 +43,23 @@ type InboundBody = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function parsePositiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim().length === 0) {
+    return fallback;
+  }
+
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    process.stderr.write(
+      `[claude-adapter] invalid ${name}=${JSON.stringify(raw)}; using ${fallback}\n`,
+    );
+    return fallback;
+  }
+
+  return value;
 }
 
 function parseInboundBody(value: unknown): InboundBody | { error: string } {
@@ -174,7 +196,7 @@ mcpServer.registerTool(
     const abortController = new AbortController();
     const timeout = setTimeout(() => {
       abortController.abort();
-    }, DEFAULT_TOOL_TIMEOUT_MS);
+    }, BRIDGE_REQUEST_TIMEOUT_MS);
 
     try {
       response = await fetch(BRIDGE_CLAUDE_REQUEST_URL, {
@@ -326,6 +348,9 @@ process.stderr.write(
 );
 process.stderr.write(
   `[claude-adapter] bridge reply URL: ${BRIDGE_REPLY_URL}\n`,
+);
+process.stderr.write(
+  `[claude-adapter] bridge request timeout: ${BRIDGE_REQUEST_TIMEOUT_MS}ms\n`,
 );
 
 // ─── stdio transport 연결 (Claude Code가 subprocess로 실행) ──────────────────

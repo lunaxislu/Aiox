@@ -250,6 +250,13 @@ Message from Claude:
 - timeout 시 reject 후 삭제
 - 종료 시 남은 pending 전부 cancel
 
+중요 제약:
+
+- pending은 bridge 프로세스 메모리에만 저장된다.
+- bridge/Codex remote UI/Codex app-server/Claude Code session 재시작을 넘어서 pending을 복구하지 않는다.
+- Codex `resume`으로 과거 대화에 돌아온 세션은 현재 bridge child, app-server loaded thread, Claude channel session과 lifecycle이 어긋날 수 있다.
+- live relay 왕복 테스트는 fresh `codex --remote ws://127.0.0.1:4500` session에서 수행한다.
+
 ### 10. timeout
 
 기본 30초. `--timeout-ms`로 override.
@@ -262,8 +269,11 @@ Message from Claude:
 - bind: `127.0.0.1`만
 - 포트: 기본 `8789` (`--reply-port`)
 - 경로: `POST /claude-reply`, `POST /codex-request` 만 허용
+- 진단 경로: `GET /debug/status`, `GET /debug/forward-pending`, `GET /debug/reverse-pending`
+- 최근 pending lifecycle 확인: `GET /debug/events`
 - 다른 method/path/잘못된 JSON은 거절
 - listen 실패는 stderr 로그 후 에러 흐름
+- `/claude-reply`에서 `chat_id` pending이 없으면 404와 함께 bridge `pid`, 시작 시각, pending 목록을 반환한다.
 
 ### 12. 로그
 
