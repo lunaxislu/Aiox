@@ -21,3 +21,8 @@ Always use the OpenAI developer documentation MCP server if you need to work wit
 2. `docs/legacy/` 디렉터리에 legacy 문서를 모은다.
 3. `plan/` 안의 오래된 전제 문구를 주기적으로 점검한다.
 4. `history/1-bridge.history.md`와 `docs/bridge.spec.md`를 기준 문서로 고정한다.
+
+
+## 구현 원칙
+반드시 원칙을 지킬것 
+.ai/tdd.md를 확인하고 실행할것
