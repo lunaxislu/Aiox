@@ -163,34 +163,68 @@ Baseline 기록 (2026-04-29 22:40 KST):
 
 ### 2. bridge protocol/pure logic 분리
 
-- [ ] 먼저 `parseRequestBody` 또는 `wrapRelayPrompt` 중 하나에 대한 실패 테스트 작성
-- [ ] payload validation을 `bridge/src/protocol.ts`로 분리
-- [ ] relay constants를 `bridge/src/protocol.ts`로 분리
-- [ ] `wrapRelayPrompt`를 `bridge/src/protocol.ts`로 분리
-- [ ] `parseRequestBody` 테스트 작성
-- [ ] `wrapRelayPrompt` 테스트 작성
-- [ ] `node:test`로 unit test 실행
+- [x] 먼저 `parseRequestBody` 또는 `wrapRelayPrompt` 중 하나에 대한 실패 테스트 작성
+- [x] payload validation을 `bridge/src/protocol.ts`로 분리
+- [x] relay constants를 `bridge/src/protocol.ts`로 분리
+- [x] `wrapRelayPrompt`를 `bridge/src/protocol.ts`로 분리
+- [x] `parseRequestBody` 테스트 작성
+- [x] `wrapRelayPrompt` 테스트 작성
+- [x] `node:test`로 unit test 실행
 - [ ] Codex 리뷰 요청
+
+2 기록:
+
+- Red: `wrapRelayPrompt` 테스트를 먼저 추가하고 임시 구현으로 `pnpm --filter bridge test` 실패를 확인했다.
+- `bridge/src/protocol.ts`를 추가해 `parseRequestBody`, `wrapRelayPrompt`, `MAX_RELAY_DEPTH`를 분리했다.
+- `bridge/src/protocol.test.ts`를 추가해 정상 payload, invalid `relay_depth`, relay prompt marker/instruction/source text를 검증한다.
+- `MAX_RELAY_DEPTH` 상수값 직접 테스트는 제거했다. loop prevention 동작은 Step 5의 `/codex-request` route-level 테스트에서 검증한다.
+- `bridge/package.json`의 `test` script는 먼저 build한 뒤 Node가 `src/*.ts`를 직접 discover하지 않도록 `dist/**/*.test.js`만 실행하게 좁혔다.
+- 검증:
+  - `pnpm --filter bridge build`: pass
+  - `pnpm --filter bridge test`: pass (3 tests)
+  - `pnpm --filter bridge typecheck`: pass
+  - `pnpm lint`: pass
 
 ### 3. PendingRequest 분리 및 테스트
 
-- [ ] `PendingRequest`를 `bridge/src/pending-request.ts`로 분리
-- [ ] resolve 시 map cleanup 테스트
-- [ ] cancel 시 map cleanup 테스트
-- [ ] timeout 시 reject 및 cleanup 테스트
-- [ ] double resolve 거절 테스트
+- [x] `PendingRequest`를 `bridge/src/pending-request.ts`로 분리
+- [x] resolve 시 map cleanup 테스트
+- [x] cancel 시 map cleanup 테스트
+- [x] timeout 시 reject 및 cleanup 테스트
+- [x] double resolve 거절 테스트
 - [ ] Codex 리뷰 요청
+
+3 기록:
+
+- `bridge/src/pending-request.ts`를 추가해 pending lifecycle 로직을 `index.ts`에서 분리했다.
+- `bridge/src/pending-request.test.ts`를 추가해 resolve/cancel/timeout cleanup과 double resolve 거절을 검증한다.
+- `cancel()`은 기존 동작을 유지해 promise를 settle하지 않고 map cleanup과 timer clear만 수행한다.
+- 검증:
+  - `pnpm --filter bridge test`: pass (7 tests)
+  - `pnpm --filter bridge typecheck`: pass
+  - `pnpm lint`: pass
 
 ### 4. CodexAppServerClient 분리 및 fake WS 테스트
 
-- [ ] `CodexAppServerClient`를 `bridge/src/codex-app-server-client.ts`로 분리
-- [ ] fake WebSocket 또는 fake app-server 테스트 구조 작성
-- [ ] `initialize` 요청 검증
-- [ ] `thread/loaded/list` 요청 검증
-- [ ] `turn/start` payload 검증
-- [ ] no loaded thread 에러 테스트
-- [ ] app-server unavailable 테스트
+- [x] `CodexAppServerClient`를 `bridge/src/codex-app-server-client.ts`로 분리
+- [x] fake WebSocket 또는 fake app-server 테스트 구조 작성
+- [x] `initialize` 요청 검증
+- [x] `thread/loaded/list` 요청 검증
+- [x] `turn/start` payload 검증
+- [x] no loaded thread 에러 테스트
+- [x] app-server unavailable 테스트
 - [ ] Codex 리뷰 요청
+
+4 기록:
+
+- `bridge/src/codex-app-server-client.ts`를 추가해 shared app-server WS client를 `index.ts`에서 분리했다.
+- `bridge/src/codex-app-server-client.test.ts`를 추가해 fake WebSocket으로 `initialize`, `thread/loaded/list`, `turn/start` payload를 검증한다.
+- no loaded thread와 WebSocket 생성 실패를 에러 경로로 검증한다.
+- `CodexAppServerClient`는 테스트 주입을 위해 `webSocketCtor` 옵션을 받되, production 기본값은 `globalThis.WebSocket`이다.
+- 검증:
+  - `pnpm --filter bridge test`: pass (12 tests)
+  - `pnpm --filter bridge typecheck`: pass
+  - `pnpm lint`: pass
 
 ### 5. Bridge HTTP/router 분리 및 integration test
 

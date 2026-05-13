@@ -3,13 +3,21 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 
-/* global Buffer, URL, WebSocket, clearTimeout, fetch, process, setTimeout */
+/* global Buffer, URL, fetch, process */
 
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+
+import { CodexAppServerClient } from "./codex-app-server-client.js";
+import { PendingRequest } from "./pending-request.js";
+import {
+  MAX_RELAY_DEPTH,
+  parseRequestBody,
+} from "./protocol.js";
+
 const DEFAULT_CLAUDE_URL = "http://127.0.0.1:8788";
 const DEFAULT_REPLY_PORT = 8789;
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -17,7 +25,6 @@ const DEFAULT_BIND_HOST = "127.0.0.1";
 const DEFAULT_CODEX_APP_SERVER_URL = "ws://127.0.0.1:4500";
 const MCP_NAME = "bridge";
 const MCP_VERSION = "0.2.0";
-const MAX_RELAY_DEPTH = 3;
 const MAX_DEBUG_EVENTS = 100;
 
 function parseArgs(argv) {
@@ -80,24 +87,6 @@ function logLine(prefix, message) {
   process.stderr.write(`[bridge] ${prefix}: ${message}\n`);
 }
 
-function wrapRelayPrompt(text, chatId) {
-  return [
-    `[MCP RELAY — chat_id: ${chatId}]`,
-    "This message was relayed from Claude via the bridge MCP server.",
-    "",
-    "INSTRUCTIONS (MUST FOLLOW):",
-    "- Do NOT treat this as a task or a work request unless the message body explicitly asks you to implement or fix something.",
-    "- Do NOT run git, grep, file reads, or any other investigation tools to 'understand' the message.",
-    "- Just read the message and write a direct, concise reply.",
-    `- When your reply is ready, call the bridge tool: reply_to_claude(chat_id="${chatId}", text="<your reply>")`,
-    "- The chat_id above is the ONLY valid chat_id for this reply. Copy it exactly.",
-    "- Nothing else is required from you. Do not ask the user anything.",
-    "",
-    "Message from Claude:",
-    text,
-  ].join("\n");
-}
-
 function writeJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
@@ -117,440 +106,6 @@ async function readJsonBody(req) {
     return { value: JSON.parse(raw) };
   } catch {
     return { error: "Invalid JSON" };
-  }
-}
-
-function isRecord(value) {
-  return typeof value === "object" && value !== null;
-}
-
-function parseRequestBody(value) {
-  if (!isRecord(value)) {
-    return { error: "Invalid JSON body" };
-  }
-
-  const chatId = value.chat_id;
-  if (typeof chatId !== "string" || chatId.length === 0) {
-    return { error: "chat_id field required" };
-  }
-
-  const text = value.text;
-  if (typeof text !== "string" || text.length === 0) {
-    return { error: "text field required" };
-  }
-
-  const origin = value.origin;
-  if (origin !== undefined && origin !== "codex" && origin !== "claude") {
-    return { error: 'origin must be "codex" or "claude" when provided' };
-  }
-
-  const relayDepth = value.relay_depth;
-  if (
-    relayDepth !== undefined &&
-    (typeof relayDepth !== "number" ||
-      !Number.isInteger(relayDepth) ||
-      relayDepth < 0)
-  ) {
-    return {
-      error: "relay_depth must be a non-negative integer when provided",
-    };
-  }
-
-  const direction = value.direction;
-  if (
-    direction !== undefined &&
-    direction !== "forward" &&
-    direction !== "reverse"
-  ) {
-    return { error: 'direction must be "forward" or "reverse" when provided' };
-  }
-
-  return {
-    chat_id: chatId,
-    direction,
-    origin,
-    relay_depth: relayDepth,
-    text,
-  };
-}
-
-class PendingRequest {
-  constructor(collection, chatId, timeoutMs, onTimeout, onEvent) {
-    this.collection = collection;
-    this.chatId = chatId;
-    this.settled = false;
-    this.resolveFn = null;
-    this.rejectFn = null;
-    this.timer = null;
-    this.onEvent = onEvent;
-
-    this.promise = new Promise((resolve, reject) => {
-      this.resolveFn = resolve;
-      this.rejectFn = reject;
-    });
-
-    this.timer = setTimeout(() => {
-      if (this.settled) {
-        return;
-      }
-
-      this.settled = true;
-      this.timer = null;
-      this.collection.delete(this.chatId);
-      const timeoutError = new Error(
-        `Timed out waiting after ${timeoutMs}ms (chat_id=${chatId})`,
-      );
-      this.onEvent?.("timeout", timeoutError);
-      this.rejectFn?.(timeoutError);
-      onTimeout?.(timeoutError);
-    }, timeoutMs);
-  }
-
-  resolve(value) {
-    if (this.settled) {
-      return false;
-    }
-
-    this.settled = true;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-    this.collection.delete(this.chatId);
-    this.onEvent?.("resolve", value);
-    this.resolveFn?.(value);
-    return true;
-  }
-
-  reject(error) {
-    if (this.settled) {
-      return false;
-    }
-
-    this.settled = true;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-    this.collection.delete(this.chatId);
-    this.onEvent?.("reject", error);
-    this.rejectFn?.(error);
-    return true;
-  }
-
-  cancel() {
-    if (this.settled) {
-      return false;
-    }
-
-    this.settled = true;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-    this.collection.delete(this.chatId);
-    this.onEvent?.("cancel");
-    return true;
-  }
-}
-
-function isNonEmptyString(value) {
-  return typeof value === "string" && value.length > 0;
-}
-
-function extractUserAgent(result) {
-  if (!isRecord(result)) {
-    return null;
-  }
-
-  if (isNonEmptyString(result.userAgent)) {
-    return result.userAgent;
-  }
-
-  return null;
-}
-
-function extractTurnIdFromTurnResponse(result) {
-  if (!isRecord(result)) {
-    return null;
-  }
-
-  const turn = result.turn;
-  if (isRecord(turn) && isNonEmptyString(turn.id)) {
-    return turn.id;
-  }
-
-  if (isNonEmptyString(result.turnId)) {
-    return result.turnId;
-  }
-
-  return null;
-}
-
-class CodexAppServerClient {
-  constructor(options) {
-    this.options = options;
-    this.url = options.url;
-    this.timeoutMs = options.timeoutMs;
-    this.ws = null;
-    this.requestId = 1;
-    this.pendingRequests = new Map();
-    this.connectPromise = null;
-    this.closed = false;
-  }
-
-  async connect() {
-    if (this.closed) {
-      throw new Error("Codex App Server client is closed");
-    }
-
-    if (this.ws && this.ws.readyState === 1) {
-      return;
-    }
-
-    if (!this.connectPromise) {
-      this.connectPromise = this.openAndInitialize().catch((error) => {
-        this.connectPromise = null;
-        throw error;
-      });
-    }
-
-    await this.connectPromise;
-  }
-
-  openAndInitialize() {
-    return new Promise((resolve, reject) => {
-      let ws;
-      try {
-        ws = new WebSocket(this.url);
-      } catch (error) {
-        reject(
-          new Error(
-            `Failed to open WebSocket to Codex app-server at ${this.url}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          ),
-        );
-        return;
-      }
-
-      let opened = false;
-      let initialized = false;
-
-      ws.addEventListener("open", () => {
-        opened = true;
-        this.ws = ws;
-
-        this.request("initialize", {
-          clientInfo: { name: MCP_NAME, version: MCP_VERSION },
-          protocolVersion: "1",
-          capabilities: {},
-        })
-          .then((result) => {
-            initialized = true;
-            logLine(
-              "codex-app-server",
-              `connected url=${this.url} userAgent=${
-                extractUserAgent(result) ?? "unknown"
-              }`,
-            );
-            resolve();
-          })
-          .catch((error) => {
-            reject(
-              error instanceof Error
-                ? error
-                : new Error(`initialize failed: ${String(error)}`),
-            );
-          });
-      });
-
-      ws.addEventListener("message", (ev) => this.handleMessage(ev));
-
-      ws.addEventListener("error", (ev) => {
-        const message =
-          (ev && typeof ev.message === "string" && ev.message) || "ws error";
-        const error = new Error(
-          `Codex app-server WS error at ${this.url}: ${message}`,
-        );
-        if (!opened || !initialized) {
-          reject(error);
-        }
-        this.failAllPending(error);
-      });
-
-      ws.addEventListener("close", (ev) => {
-        const code = ev && typeof ev.code === "number" ? ev.code : null;
-        const reason = ev && typeof ev.reason === "string" ? ev.reason : "";
-        const error = new Error(
-          `Codex app-server WS closed code=${code ?? "?"} reason=${reason || "none"}`,
-        );
-        if (!opened || !initialized) {
-          reject(error);
-        }
-        this.failAllPending(error);
-        this.ws = null;
-        this.connectPromise = null;
-      });
-    });
-  }
-
-  async discoverThreadId() {
-    const result = await this.request("thread/loaded/list", {});
-    const data = isRecord(result) ? result.data : null;
-    if (!Array.isArray(data) || data.length === 0) {
-      throw new Error(
-        `No loaded Codex thread at ${this.url}. Attach UI with \`codex --remote ${this.url}\` first.`,
-      );
-    }
-
-    if (data.length > 1) {
-      logLine(
-        "codex-app-server",
-        `multiple loaded threads (${data.length}); picking first`,
-      );
-    }
-
-    const threadId = data[0];
-    if (!isNonEmptyString(threadId)) {
-      throw new Error("thread/loaded/list returned non-string threadId");
-    }
-    return threadId;
-  }
-
-  async dispatchPrompt(text, chatId) {
-    await this.connect();
-    const threadId = await this.discoverThreadId();
-
-    const wrappedText = wrapRelayPrompt(text, chatId);
-
-    const startResult = await this.request("turn/start", {
-      threadId,
-      input: [{ type: "text", text: wrappedText }],
-    });
-
-    const turnId = extractTurnIdFromTurnResponse(startResult);
-    logLine(
-      "codex-app-server",
-      `dispatched chat_id=${chatId} threadId=${threadId} turnId=${turnId ?? "unknown"}`,
-    );
-    return { threadId, turnId };
-  }
-
-  handleMessage(ev) {
-    const raw =
-      typeof ev.data === "string"
-        ? ev.data
-        : ev.data && typeof ev.data.toString === "function"
-          ? ev.data.toString()
-          : "";
-
-    if (!raw) return;
-
-    let message;
-    try {
-      message = JSON.parse(raw);
-    } catch (error) {
-      logLine(
-        "codex-app-server",
-        `failed to parse message: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      return;
-    }
-
-    if (
-      isRecord(message) &&
-      "id" in message &&
-      ("result" in message || "error" in message)
-    ) {
-      this.handleResponse(message);
-    }
-  }
-
-  handleResponse(message) {
-    const pending = this.pendingRequests.get(message.id);
-    if (!pending) return;
-
-    clearTimeout(pending.timeout);
-    this.pendingRequests.delete(message.id);
-
-    if ("error" in message && message.error) {
-      const errorMessage =
-        isRecord(message.error) && typeof message.error.message === "string"
-          ? message.error.message
-          : `App Server request ${message.id} failed`;
-      pending.reject(new Error(errorMessage));
-      return;
-    }
-
-    pending.resolve(message.result);
-  }
-
-  request(method, params) {
-    if (!this.ws || this.ws.readyState !== 1) {
-      return Promise.reject(
-        new Error(
-          `Codex app-server WS not connected (readyState=${this.ws?.readyState ?? "null"})`,
-        ),
-      );
-    }
-
-    const id = this.requestId++;
-    const payload = {
-      jsonrpc: "2.0",
-      id,
-      method,
-      params: params ?? {},
-    };
-
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(
-          new Error(`Timed out waiting for app-server response to ${method}`),
-        );
-      }, this.timeoutMs);
-
-      this.pendingRequests.set(id, { resolve, reject, timeout });
-
-      try {
-        this.ws.send(JSON.stringify(payload));
-      } catch (error) {
-        clearTimeout(timeout);
-        this.pendingRequests.delete(id);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
-  }
-
-  failAllPending(error) {
-    for (const pending of this.pendingRequests.values()) {
-      clearTimeout(pending.timeout);
-      pending.reject(error);
-    }
-    this.pendingRequests.clear();
-  }
-
-  async close() {
-    this.closed = true;
-    this.failAllPending(new Error("Codex app-server client closed"));
-
-    if (this.ws) {
-      try {
-        this.ws.close();
-      } catch (error) {
-        logLine(
-          "codex-app-server",
-          `failed to close ws: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-      this.ws = null;
-    }
-    this.connectPromise = null;
   }
 }
 
@@ -673,6 +228,9 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
     }
 
     this.codexAppServerClient = new CodexAppServerClient({
+      clientName: MCP_NAME,
+      clientVersion: MCP_VERSION,
+      logLine,
       url: this.options.codexAppServerUrl,
       timeoutMs: this.options.timeoutMs,
     });
