@@ -25,7 +25,7 @@ Codex MCP 서버로 등록해서 실행한다.
 ```toml
 [mcp_servers.bridge]
 command = "node"
-args = ["/Users/lunaxislu/Documents/ai-orchestration/bridge/index.js"]
+args = ["/Users/lunaxislu/Documents/ai-orchestration/bridge/dist/index.js"]
 ```
 
 필요하면 `claude-adapter` 주소, reply timeout, shared Codex app-server URL을 args로 덮어쓸 수 있다.
@@ -35,7 +35,7 @@ Codex를 다른 디렉터리에서 시작할 경우 이 파일을 읽지 못할 
 [mcp_servers.bridge]
 command = "node"
 args = [
-  "/Users/lunaxislu/Documents/ai-orchestration/bridge/index.js",
+  "/Users/lunaxislu/Documents/ai-orchestration/bridge/dist/index.js",
   "--claude-url",
   "http://127.0.0.1:8788",
   "--reply-port",
@@ -50,7 +50,7 @@ args = [
 ## 수동 실행
 
 ```bash
-node bridge/index.js \
+node bridge/dist/index.js \
   --claude-url http://127.0.0.1:8788 \
   --reply-port 8789 \
   --timeout-ms 30000 \

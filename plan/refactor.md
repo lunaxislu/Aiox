@@ -127,27 +127,37 @@ Baseline 기록 (2026-04-29 22:40 KST):
 - [x] `.codex/config.toml`을 `node bridge/dist/index.js` 실행으로 변경
 - [x] `pnpm --filter bridge build` 실행
 - [x] Codex remote session 재시작 후 `/debug/status` 확인
-- [ ] fresh remote session에서 forward/reverse smoke test 실행
-- [ ] 기존 `bridge/index.js` 제거 여부 결정
+- [x] fresh remote session에서 forward/reverse smoke test 실행
+- [x] 기존 `bridge/index.js` 제거 여부 결정
 - [x] Codex 리뷰 요청
 
 1D 기록:
 
 - `.codex/config.toml`의 bridge MCP command args를 `bridge/dist/index.js`로 전환했다.
-- `bridge/index.js`는 아직 삭제하지 않았다. 실행 경로 전환 후 fresh remote smoke가 끝난 뒤 제거 여부를 결정한다.
 - 최초 작업 세션에서는 bridge HTTP 서버가 떠 있지 않아 `curl -sS http://127.0.0.1:8789/debug/status`는 connection refused였다.
 - 사용자 재시작 확인 결과 `curl -sS http://127.0.0.1:8789/debug/events`가 pass:
   - bridge pid: `72314`
   - started_at: `2026-04-29T13:55:11.731Z`
   - timeout_ms: `120000`
   - startup event recorded: yes
+- 2026-05-13 fresh remote session smoke test (bridge pid `5407`, started_at `2026-05-13T06:15:50.847Z`):
+  - reverse 왕복(`ask_codex` → `pong from codex`): pass.
+    - bridge event: `reverse_pending_resolve` → `codex_reply_resolved` (chat_id `20759c12-ac52-411d-87da-21d4b529eb8b`).
+  - forward 왕복(codex `ask_claude` → `pong from claude`): pass.
+    - bridge event: `forward_pending_created` → `forward_pending_resolve` → `claude_reply_resolved` → `forward_pending_finished` (chat_id `b1a507aa-76f5-4fe8-99d1-80e9dc203054`).
+  - smoke 종료 후 forward/reverse pending count 모두 `0`, status `ok`.
+  - 참고: 현재 bridge는 여전히 자기 child Codex를 spawn하는 구조라 reverse turn은 remote UI transcript에는 보이지 않을 수 있다. 이는 shared-app-server.plan.md가 다루는 별개 문제이며 1D 검증 대상이 아니다.
+- `bridge/index.js` 제거 결정:
+  - 제거 완료. 실제 실행 경로(`package.json`의 `main`/`bin`/`start`, `.codex/config.toml`)는 모두 `dist/index.js`를 가리킨다.
+  - `bridge/package.json`의 `dev` script도 `node dist/index.js`로 갱신해 더 이상 legacy entrypoint에 의존하지 않는다.
+  - `bridge/src/index.ts`의 `printUsage()` 텍스트와 `bridge/README.md`의 config/실행 예시도 `bridge/dist/index.js`로 갱신했다.
+  - `.claude/settings.local.json`에 남아 있는 `node --check .../bridge/index.js` permission entry는 추가 권한일 뿐이며 영향이 없어 손대지 않았다.
 - 검증:
   - `pnpm --filter bridge build`: pass
   - `pnpm --filter bridge typecheck`: pass
   - `pnpm --filter bridge test`: pass (0 tests)
-  - `node --check bridge/index.js`: pass
   - `node --check bridge/dist/index.js`: pass
-  - `diff <(node bridge/index.js --help) <(node bridge/dist/index.js --help)`: pass
+  - `node bridge/dist/index.js --help`: pass (usage가 `node bridge/dist/index.js [options]`로 출력)
   - `pnpm exec tsc -p claude-adapter/tsconfig.json --noEmit`: pass
   - `pnpm lint`: pass
 

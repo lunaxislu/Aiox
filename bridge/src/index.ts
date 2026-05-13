@@ -1168,7 +1168,7 @@ That reply_to_claude call is what delivers your answer back to Claude. There is 
 
 function printUsage() {
   process.stdout.write(`Usage:
-  node bridge/index.js [options]
+  node bridge/dist/index.js [options]
 
 Options:
   --claude-url <url>              claude-adapter URL (default: ${DEFAULT_CLAUDE_URL})
