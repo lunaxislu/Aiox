@@ -5,7 +5,7 @@
 ## 사전 조건
 
 - `claude-adapter`의 HTTP 서버가 `127.0.0.1:8788`에 떠 있어야 한다.
-- `./.codex/config.toml`에 `[mcp_servers.bridge]`가 등록되어 있어야 한다 (`command=node`, `args=["bridge/index.js"]`).
+- `./.codex/config.toml`에 `[mcp_servers.bridge]`가 등록되어 있어야 한다 (`command=node`, `args=["bridge/dist/index.js"]`). 편집은 `bridge/src/index.ts`에서 하고 `pnpm --filter bridge build`로 `dist/index.js`를 갱신한다.
 - `bridge`는 Codex가 MCP 자식 프로세스로 직접 spawn한다. 별도 기동 불필요.
 - Codex app-server는 `ws://127.0.0.1:4500`에서 listen 한다.
 - Codex UI는 `codex --remote ws://127.0.0.1:4500`로 같은 app-server에 붙어 있어야 한다. 이 UI가 bridge가 `turn/start`로 주입한 relay 프롬프트를 수신할 주체다.

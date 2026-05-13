@@ -288,7 +288,7 @@ Message from Claude:
 ```toml
 [mcp_servers.bridge]
 command = "node"
-args = ["/Users/lunaxislu/Documents/ai-orchestration/bridge/index.js"]
+args = ["/Users/lunaxislu/Documents/ai-orchestration/bridge/dist/index.js"]
 startup_timeout_sec = 120
 ```
 
@@ -296,7 +296,7 @@ CLI override가 필요하면 `args`에 추가:
 
 ```toml
 args = [
-  "/Users/lunaxislu/Documents/ai-orchestration/bridge/index.js",
+  "/Users/lunaxislu/Documents/ai-orchestration/bridge/dist/index.js",
   "--claude-url", "http://127.0.0.1:8788",
   "--reply-port", "8789",
   "--timeout-ms", "30000",
@@ -350,7 +350,9 @@ claude --dangerously-load-development-channels server:claude-adapter
 ```text
 ai-orchestration/
   bridge/
-    index.js
+    src/index.ts        # TypeScript entrypoint (편집 대상)
+    dist/index.js       # 빌드 산출물 (실행 대상)
+    tsconfig.json
     package.json
     README.md
   claude-adapter/
