@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "router_poc": {
+      "type": "http",
+      "url": "http://127.0.0.1:9100/mcp/claude"
+    }
+  }
+}

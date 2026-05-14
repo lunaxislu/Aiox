@@ -1,0 +1,7 @@
+# Append this to your ~/.codex/config.toml to register the PoC router with stock codex.
+# Do NOT add to ai-orchestration/.codex/config.toml — that file is production bridge.
+# After editing, run: codex (in a throwaway cwd so it doesn't read the production project config)
+
+[mcp_servers.router_poc]
+url = "http://127.0.0.1:9100/mcp/codex"
+# Some codex builds use `transport = "http"`; the `url` key is the modern shape.
