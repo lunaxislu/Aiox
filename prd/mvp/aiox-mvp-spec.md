@@ -91,6 +91,8 @@ Behavior:
 Name policy:
 
 - Reject duplicate name if existing agent is `connected`.
+- If existing agent is `pending_attach`, attach using the same durable identity
+  and transition it to `connected`.
 - Allow same-name reconnect if existing agent is `disconnected` or `stale`.
 
 ### Routing
@@ -121,11 +123,14 @@ Behavior:
 
 - Creates durable pair reservation.
 - Expected sides: one Codex and one Claude.
+- Capacity: one Codex and one Claude.
 - Does not launch terminal panes or agent processes.
+- Does not create AgentInstance rows at reservation time.
 - No MVP timeout.
 - No MVP cancel command.
 - Agents attach with `--pair <pair-name>`.
 - When both expected sides attach, daemon creates bidirectional routes.
+- Rejects a second agent of the same kind for an already occupied pair side.
 
 ### Global
 
@@ -400,6 +405,11 @@ ready
 stale
 ```
 
+MVP pair is a 1:1 shortcut, not a group. A pair has one Codex slot and one
+Claude slot. If the Codex slot is already occupied, another
+`aiox codex --name ... --pair <same-pair>` must be rejected. Use explicit
+`connect` for extra agents and 1:N routing.
+
 ### Route
 
 Fields:
@@ -414,6 +424,9 @@ updated_at
 ```
 
 Route is directed. For bidirectional communication, two routes exist.
+
+MVP route status starts as `active`. `disconnect` removes the directed route
+from the active route set; historical messages, deliveries, and events remain.
 
 ### Message
 
@@ -513,6 +526,16 @@ When source agent sends one message to a route with N targets:
 
 MVP does not implement quorum or aggregated completion.
 
+1:N fan-out is MVP behavior. The MVP command surface for 1:N is explicit
+directed connect, for example:
+
+```text
+aiox connect impl reviewer researcher
+```
+
+This creates `impl -> reviewer` and `impl -> researcher`. Pair reservation does
+not provide 1:N group membership.
+
 ## Pair Attach Behavior
 
 Given:
@@ -535,6 +558,20 @@ If only one side attaches:
 - attached agent remains `connected`.
 - pair remains `pending`.
 - no timeout.
+
+If a second agent of the same kind tries to attach to the same pair:
+
+```text
+aiox codex --name stranger --pair feature-x
+```
+
+and the pair already has a Codex side, daemon rejects the attach with a clear
+message. The user should either create another pair or attach the agent normally
+and use `aiox connect` for explicit routes.
+
+`aiox pair --name feature-x` does not create `pending_attach` agents, because
+the agent names are not known yet. `pending_attach` is reserved for desired
+state flows that already know agent names, such as future YAML compose.
 
 ## Adapter Scope
 

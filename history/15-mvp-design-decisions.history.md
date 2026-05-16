@@ -119,9 +119,12 @@ aiox pair --name feature-x
 
 - `feature-x` pair reservation을 SQLite에 기록한다.
 - expected sides는 Codex 1개와 Claude 1개다.
+- capacity도 Codex 1개와 Claude 1개다.
 - pair reservation은 timeout이 없다.
 - daemon restart 후에도 복구된다.
 - MVP에는 `pair cancel`이 없다.
+- `pair --name` 시점에는 AgentInstance를 만들지 않는다. agent name은
+  이후 `aiox codex/claude --name ... --pair ...` attach 시점에 결정된다.
 
 agent는 pair에 attach할 수 있다.
 
@@ -139,6 +142,29 @@ feature-x-claude -> feature-x-codex
 
 이것은 전역 자동 pairing이 아니라 사용자가 명시한 pair reservation 안에서만
 일어나는 자동 connect다.
+
+이미 한 side가 찬 pair에 같은 kind의 agent를 추가 attach하려 하면 MVP에서는
+거부한다.
+
+```text
+aiox codex --name stranger --pair feature-x
+  -> reject if feature-x already has a codex side
+```
+
+추가 agent를 route에 붙이고 싶으면 pair가 아니라 explicit connect를 사용한다.
+
+```text
+aiox codex --name stranger
+aiox connect stranger feature-x-claude
+aiox connect feature-x-claude stranger
+```
+
+따라서 MVP 구분은 다음이다.
+
+```text
+pair: codex 1 + claude 1 shortcut
+connect: 1:N directed route control
+```
 
 ### YAML compose는 Post-MVP다
 
@@ -247,13 +273,17 @@ stale
 
 의미:
 
-- `pending_attach`: pair reservation 같은 desired state는 있지만 실제 process가 아직 attach되지 않음.
+- `pending_attach`: future compose처럼 이름이 포함된 desired agent state는 있지만 실제 process가 아직 attach되지 않음.
 - `connected`: foreground agent가 daemon에 attach되어 메시지 수신 가능.
 - `disconnected`: 한 번 attach됐지만 현재 연결이 끊김. 같은 name으로 reconnect 가능.
 - `stale`: durable state는 있지만 adapter/session metadata가 오래되었거나 신뢰 불가.
 
 `pending_attach`와 `disconnected`를 구분하는 이유는 UX 때문이다. 아직 attach되지
 않은 desired agent를 disconnected로 표시하면 사용자가 장애로 오해할 수 있다.
+
+단, MVP의 `aiox pair --name`은 agent name을 아직 모르므로 `pending_attach`
+AgentInstance를 만들지 않는다. `pending_attach`는 future compose처럼 이름까지
+포함된 desired agent가 먼저 선언되는 흐름을 위해 유지한다.
 
 ## Agent Name 정책
 
@@ -262,6 +292,7 @@ agent name은 connected/running agent 사이에서 unique해야 한다.
 정책:
 
 - 같은 name의 agent가 `connected`면 새 attach를 거부한다.
+- 같은 name의 agent가 `pending_attach`면 같은 durable identity를 `connected`로 전환한다.
 - 같은 name의 agent가 `disconnected` 또는 `stale`이면 reconnect/takeover를 허용한다.
 - reconnect는 durable AgentInstance identity를 유지하고 adapter/session metadata만 교체한다.
 
