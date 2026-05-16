@@ -54,9 +54,54 @@ export interface RouteRepository {
 }
 
 export function createRouteRepository(db: Database): RouteRepository {
+  const findBySourceAndTarget = (
+    sourceAgentId: string,
+    targetAgentId: string,
+  ): StoredRoute | null => {
+    const row = db
+      .prepare(
+        `
+          select *
+          from routes
+          where source_agent_id = @sourceAgentId
+            and target_agent_id = @targetAgentId
+        `,
+      )
+      .get({ sourceAgentId, targetAgentId }) as RouteRow | undefined;
+
+    return row ? mapRouteRow(row) : null;
+  };
+
+  const removeRouteStmt = db.prepare(
+    `
+      delete from routes
+      where source_agent_id = @sourceAgentId
+        and target_agent_id = @targetAgentId
+    `,
+  );
+
+  const disconnectTxn = db.transaction(
+    (input: DisconnectRoutesInput): StoredRoute[] => {
+      const removed = input.targetAgentIds
+        .map((targetAgentId) =>
+          findBySourceAndTarget(input.sourceAgentId, targetAgentId),
+        )
+        .filter((route): route is StoredRoute => route !== null);
+
+      for (const targetAgentId of input.targetAgentIds) {
+        removeRouteStmt.run({
+          sourceAgentId: input.sourceAgentId,
+          targetAgentId,
+        });
+      }
+
+      return removed;
+    },
+  );
+
   return {
     create(input) {
-      const existing = this.findBySourceAndTarget(
+      const existing = findBySourceAndTarget(
         input.sourceAgentId,
         input.targetAgentId,
       );
@@ -105,39 +150,10 @@ export function createRouteRepository(db: Database): RouteRepository {
     },
 
     disconnect(input) {
-      const removed = input.targetAgentIds
-        .map((targetAgentId) =>
-          this.findBySourceAndTarget(input.sourceAgentId, targetAgentId),
-        )
-        .filter((route): route is StoredRoute => route !== null);
-
-      const removeRoute = db.prepare(
-        `
-          delete from routes
-          where source_agent_id = ? and target_agent_id = ?
-        `,
-      );
-
-      for (const targetAgentId of input.targetAgentIds) {
-        removeRoute.run([input.sourceAgentId, targetAgentId]);
-      }
-
-      return removed;
+      return disconnectTxn(input);
     },
 
-    findBySourceAndTarget(sourceAgentId, targetAgentId) {
-      const row = db
-        .prepare(
-          `
-            select *
-            from routes
-            where source_agent_id = ? and target_agent_id = ?
-          `,
-        )
-        .all([sourceAgentId, targetAgentId])[0] as RouteRow | undefined;
-
-      return row ? mapRouteRow(row) : null;
-    },
+    findBySourceAndTarget,
 
     list() {
       return db

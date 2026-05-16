@@ -148,7 +148,7 @@ export function createAgentRepository(db: Database): AgentRepository {
     findByName(name) {
       const row = db
         .prepare("select * from agents where name = ?")
-        .all(name)[0] as AgentRow | undefined;
+        .get(name) as AgentRow | undefined;
 
       return row ? mapAgentRow(row) : null;
     },

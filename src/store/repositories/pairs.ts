@@ -61,11 +61,11 @@ export function createPairRepository(db: Database): PairRepository {
               and id <> @agentId
           `,
         )
-        .all({
+        .get({
           pairId: input.pairId,
           kind: input.kind,
           agentId: input.agentId,
-        })[0] as { id: string } | undefined;
+        }) as { id: string } | undefined;
 
       if (occupied) {
         return {
@@ -104,7 +104,7 @@ export function createPairRepository(db: Database): PairRepository {
 
       const row = db
         .prepare("select * from pairs where id = ?")
-        .all(input.pairId)[0] as PairRow;
+        .get(input.pairId) as PairRow;
 
       return {
         ok: true,
@@ -151,7 +151,7 @@ export function createPairRepository(db: Database): PairRepository {
     findByName(name) {
       const row = db
         .prepare("select * from pairs where name = ?")
-        .all(name)[0] as PairRow | undefined;
+        .get(name) as PairRow | undefined;
 
       return row ? mapPairRow(row) : null;
     },

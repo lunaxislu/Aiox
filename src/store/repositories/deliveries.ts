@@ -151,7 +151,7 @@ function findByIdempotencyKey(
 ): StoredDelivery | null {
   const row = db
     .prepare("select * from message_deliveries where idempotency_key = ?")
-    .all(idempotencyKey)[0] as DeliveryRow | undefined;
+    .get(idempotencyKey) as DeliveryRow | undefined;
 
   return row ? mapDeliveryRow(row) : null;
 }
