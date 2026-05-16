@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   createQueuedDeliveries,
   messageDeliveryStatuses,
+  recoverDeliveryStatusAfterRestart,
+  transitionDelivery,
 } from "../../../src/core/deliveries.js";
 import type { Route } from "../../../src/core/routes.js";
 
@@ -52,5 +54,29 @@ describe("Message deliveries", () => {
         idempotencyKey: "message-1:target-2",
       },
     ]);
+  });
+
+  it("transitions a queued delivery to delivering", () => {
+    const [delivery] = createQueuedDeliveries({
+      messageId: "message-1",
+      routes: [
+        {
+          sourceAgentId: "source-1",
+          targetAgentId: "target-1",
+          status: "active",
+        },
+      ],
+    });
+
+    const result = transitionDelivery(delivery, "delivering");
+
+    expect(result).toEqual({
+      ...delivery,
+      status: "delivering",
+    });
+  });
+
+  it("recovers an in-flight delivery as queued after restart", () => {
+    expect(recoverDeliveryStatusAfterRestart("delivering")).toBe("queued");
   });
 });

@@ -34,3 +34,23 @@ export function createQueuedDeliveries(
     idempotencyKey: `${request.messageId}:${route.targetAgentId}`,
   }));
 }
+
+export function transitionDelivery(
+  delivery: MessageDelivery,
+  status: MessageDeliveryStatus,
+): MessageDelivery {
+  return {
+    ...delivery,
+    status,
+  };
+}
+
+export function recoverDeliveryStatusAfterRestart(
+  status: MessageDeliveryStatus,
+): MessageDeliveryStatus {
+  if (status === "delivering") {
+    return "queued";
+  }
+
+  return status;
+}
