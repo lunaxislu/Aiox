@@ -21,7 +21,8 @@ Always use the OpenAI developer documentation MCP server if you need to work wit
 2. `legacy/bridge-relay-v1/`는 이전 구현을 참고하기 위한 local-only 보존 영역이다. git에는 올리지 않는다.
 3. `history/13-aiox-rewrite-decision.history.md`를 rewrite 기준 결정 문서로 둔다.
 4. `history/15-mvp-design-decisions.history.md` + `prd/mvp/aiox-mvp-spec.md`를 MVP 설계 권위 문서로 둔다.
-5. 새 `docs/`와 `plan/`은 `pnpm init` 이후 필요한 시점에 다시 만든다.
+5. `plan/mvp-implementation-checklist.md`를 MVP 진행 추적 execution checklist로 둔다. 권위는 `history/`+`prd/`, plan/은 실행 레이어.
+6. 새 `docs/`는 필요한 시점에 다시 만든다.
 
 ## Memory와 권위 문서 패턴
 
@@ -42,6 +43,16 @@ Agent별 메모리 위치:
 - **메모리에 한 화면 이상 detail이 박혀 있으면 권위 문서로 옮겨야 한다는 신호.** 메모리는 길어지면 무력화된다.
 - **권위 문서 작성 워크플로우**: 합의 완료 → agent가 권위 문서 초안 작성 → 리뷰/보완 → 메모리에 요약 + reference 갱신 → 다음 세션에서 메모리를 entry point로 사용.
 - **세션 진입 시 본인 메모리 확인.** 각 agent는 새 세션/프로젝트 진입 시 자신의 메모리 위치를 읽고 권위 문서 reference를 따라가 현재 상태를 파악한다. 시스템이 자동 로드하지 않으면 명시적으로 read한다.
+
+## Checklist / Todo 위치 원칙
+
+execution checklist와 todo는 **repo `plan/` 아래에만** 둔다. vault에는 todo 표기/체크박스를 만들지 않는다.
+
+- **권위는 repo `plan/<project>-implementation-checklist.md`.** Completed/Next 형식으로 commit과 1:1 매핑되는 execution 추적이 여기 산다.
+- **vault `work/active/<project>.md`에는 todo 항목을 두지 않는다.** 대신 "Implementation Status" 같은 status 요약과 repo checklist로 가는 link만 둔다.
+- **이유:** todo가 양쪽에 있으면 drift가 반복된다. checklist는 코드 작업과 같은 공간(repo)에 두는 게 commit과 동기화하기 쉽고 source of truth가 명확해진다.
+- **권위는 여전히 `history/`+`prd/`.** checklist는 그 위의 실행 레이어일 뿐이며, 권위 문서가 바뀌면 checklist도 갱신한다.
+- **vault drift check:** 권위 문서나 checklist가 크게 바뀌면 vault의 status 요약이 stale해지지 않는지 확인한다.
 
 ## Vault 활용 패턴
 
