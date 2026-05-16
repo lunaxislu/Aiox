@@ -639,6 +639,41 @@ implementation, but adapter behavior and UX must reference them.
    still needs a policy for when a disconnected agent becomes stale. This likely
    depends on last-seen time, adapter kind, and whether pending deliveries exist.
 
+4. Long-running delivery timeout policy
+
+   MVP delivery에는 자동 timeout/expire가 없다. agent가 connected이면 reply가
+   몇 시간이 걸리든 `delivering`으로 머무르고, disconnected이면 `queued`로
+   무한 대기한다. 다음 결정이 필요하다:
+
+   - delivery에 max age 정책을 둘 것인가 (예: 7일 후 `failed` 자동 전환)
+   - source agent가 ask 시점에 per-message timeout을 지정할 수 있게 할 것인가
+   - 사용자가 명시적 cancel하는 명령(`aiox cancel <delivery-id>` 등)을 둘 것인가
+   - timeout 발생 시 delivery status는 새 `expired` enum인가, 기존 `failed`인가
+
+   현재는 Post-MVP `resume-safe long-running workflow`에 묶여 있지만, 실사용에서
+   먼저 필요해질 가능성이 크므로 별도 정책 결정이 필요하다.
+
+5. AI agent session expiry handling
+
+   adapter 외부 세션은 다양한 이유로 만료될 수 있다:
+
+   - Claude의 development channel/MCP server 연결 idle timeout
+   - Codex `app-server` WebSocket idle disconnect
+   - Codex thread가 일정 시간 후 unload되거나 사라짐
+   - 사용자 auth token/세션 만료 (Claude, Codex 둘 다)
+
+   결정 필요:
+
+   - adapter가 만료를 어떻게 감지하는가 (heartbeat? WS close? thread/loaded/list
+     polling? API error 감지?)
+   - 감지 후 agent를 자동으로 `stale`로 전환할 것인가, `disconnected`로 둘 것인가
+   - in-flight delivery는 어떻게 처리하는가 (재시도? 즉시 failed? 사용자 알림 후 대기?)
+   - reconnect 시도 정책 (자동 backoff? 사용자 수동? 새 attach 명령 필요?)
+   - source agent에게 만료 사실을 어떻게 surface하는가
+
+   이 정책은 `stale` 판정(#3)과는 별개다. #3는 daemon 관점의 시간 기반 판정이고,
+   #5는 adapter가 외부 세션 단절을 능동 감지하는 시나리오다.
+
 ## Testing Requirements
 
 Follow TDD.

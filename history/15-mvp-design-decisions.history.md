@@ -398,6 +398,41 @@ delivery/route 단위 status와 debug 출력을 위해 `delivery_id`, `route_id`
    정하지 않았다. `last_seen_at`, adapter kind, pending delivery 유무를 기준으로
    MVP 구현 중 정책을 확정해야 한다.
 
+4. long-running delivery timeout policy
+
+   MVP delivery는 자동 timeout이 없다. agent가 connected이면 `delivering`으로
+   무한 머무르고, disconnected이면 `queued`로 무한 대기한다. 다음을 결정해야 한다.
+
+   - delivery에 max age 정책을 둘 것인가 (예: 7일 후 `failed` 자동 전환)
+   - source agent가 ask 시점에 per-message timeout을 지정할 수 있게 할 것인가
+   - 사용자가 명시적으로 cancel하는 명령을 둘 것인가
+   - timeout 발생 시 delivery status는 새 `expired` enum인가, 기존 `failed` 재사용인가
+
+   Post-MVP `resume-safe long-running workflow`에 묶여 있지만, 실사용에서 먼저
+   필요해질 가능성이 커서 별도 issue로 추적한다. vault `aiox-message-lifecycle.md`의
+   "에이전트 상태와 배달의 상관관계" 섹션이 현재 documented 동작 (timeout 없음).
+
+5. AI agent session expiry handling
+
+   adapter가 다루는 외부 세션은 여러 이유로 만료될 수 있다.
+
+   - Claude development channel/MCP server 연결 idle timeout
+   - Codex `app-server` WebSocket idle disconnect
+   - Codex thread가 일정 시간 후 unload/소실
+   - 사용자 auth token/세션 만료 (Claude, Codex 양쪽)
+
+   결정 필요:
+
+   - adapter가 만료를 어떻게 감지하는가 (heartbeat, WS close, thread/loaded/list
+     polling, API error 감지 등)
+   - 감지 후 agent를 자동으로 `stale`로 전환할 것인가, `disconnected`로 둘 것인가
+   - in-flight delivery는 어떻게 처리하는가 (재시도, 즉시 failed, 사용자 알림 후 대기)
+   - reconnect 시도 정책 (자동 backoff, 사용자 수동, 새 attach 명령 필요)
+   - source agent에게 만료 사실을 어떻게 surface하는가
+
+   이 정책은 #3 stale 판정과 별개다. #3은 daemon 관점의 시간 기반 판정이고,
+   #5는 adapter가 외부 세션 단절을 능동 감지하는 시나리오다.
+
 ## MVP Command Set
 
 MVP command set은 다음 13개로 확정한다.
