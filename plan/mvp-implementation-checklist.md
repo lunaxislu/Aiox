@@ -62,10 +62,11 @@
     - restart recovery maps `delivering -> queued`
     - other delivery states remain unchanged
 
-- [ ] Core ids/events domain
+- [x] Core ids/events domain
+  - Commit: `this commit: behavior: add core ids and events`
   - Files: `src/core/ids.ts`, `src/core/events.ts`,
     `tests/unit/core/ids.test.ts`, `tests/unit/core/events.test.ts`
-  - Cover:
+  - Covered:
     - deterministic id factory injection for tests
     - default prefixed ids for `agent`, `pair`, `route`, `message`,
       `delivery`, and `event`
@@ -246,7 +247,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 Latest full verification:
 
-- `pnpm test`: passing, 9 files, 37 tests (Step 1-2 schema까지 반영)
+- `pnpm test`: passing, 11 files, 43 tests (Step 1 complete + Step 2 schema까지 반영)
 - `pnpm typecheck`: passing
 
 각 step 완료 시 위 baseline을 갱신한다.
