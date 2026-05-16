@@ -76,9 +76,9 @@
 
 ---
 
-## Step 2: SQLite schema/repository tests with `message_deliveries` — 🟡 진행 중
+## Step 2: SQLite schema/repository tests with `message_deliveries` — ✅ 완료
 
-SQLite open/schema/agents/pairs/routes/messages/deliveries repository part 완료, repositories 진행 중.
+SQLite open/schema/repositories 완료.
 
 - [x] Initial SQLite schema
   - Commit: `3dc72de behavior: add initial sqlite schema`
@@ -143,7 +143,10 @@ SQLite open/schema/agents/pairs/routes/messages/deliveries repository part 완�
   - Preserve idempotency key uniqueness.
   - Apply restart recovery policy for delivery states.
 
-- [ ] Add `src/store/repositories/events.ts`
+- [x] Add `src/store/repositories/events.ts`
+  - Commit: `this commit: behavior: add sqlite event repository`
+  - Files: `src/store/repositories/events.ts`,
+    `tests/unit/store/repositories/events.test.ts`
   - Persist append-only events.
   - Support nullable `agent_id`, `message_id`, `delivery_id`, and `route_id`.
   - Preserve insertion order with `created_at`.
@@ -262,7 +265,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 Latest full verification:
 
-- `pnpm test`: passing, 16 files, 56 tests (Step 1 complete + Step 2 message/delivery repositories까지 반영)
+- `pnpm test`: passing, 17 files, 58 tests (Step 1-2 complete)
 - `pnpm typecheck`: passing
 
 각 step 완료 시 위 baseline을 갱신한다.
