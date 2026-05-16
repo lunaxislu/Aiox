@@ -55,57 +55,70 @@ export interface DeliveryRepository {
 }
 
 export function createDeliveryRepository(db: Database): DeliveryRepository {
+  const insertDelivery = db.prepare(
+    `
+      insert into message_deliveries (
+        id,
+        message_id,
+        target_agent_id,
+        route_id,
+        status,
+        idempotency_key,
+        created_at,
+        updated_at
+      ) values (
+        @id,
+        @messageId,
+        @targetAgentId,
+        @routeId,
+        @status,
+        @idempotencyKey,
+        @createdAt,
+        @updatedAt
+      )
+    `,
+  );
+
+  const insertAll = db.transaction((deliveries: StoredDelivery[]) => {
+    for (const delivery of deliveries) {
+      insertDelivery.run(delivery);
+    }
+  });
+
   return {
     createQueuedForRoutes(input) {
-      const deliveries = input.routes.map((route) => ({
+      const deliveries: StoredDelivery[] = input.routes.map((route) => ({
         id: input.createDeliveryId(route.targetAgentId),
         messageId: input.messageId,
         targetAgentId: route.targetAgentId,
         routeId: route.id,
-        status: "queued" as const,
+        status: "queued",
         idempotencyKey: `${input.messageId}:${route.targetAgentId}`,
         createdAt: input.now,
         updatedAt: input.now,
       }));
 
-      for (const delivery of deliveries) {
-        const existing = findByIdempotencyKey(db, delivery.idempotencyKey);
+      try {
+        insertAll(deliveries);
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          const conflicting = deliveries.find(
+            (delivery) =>
+              findByIdempotencyKey(db, delivery.idempotencyKey) !== null,
+          );
+          const existing = conflicting
+            ? findByIdempotencyKey(db, conflicting.idempotencyKey)
+            : null;
 
-        if (existing) {
-          return {
-            ok: false,
-            reason: "delivery_idempotency_key_exists",
-            existing,
-          };
+          if (existing) {
+            return {
+              ok: false,
+              reason: "delivery_idempotency_key_exists",
+              existing,
+            };
+          }
         }
-      }
-
-      const insertDelivery = db.prepare(
-        `
-          insert into message_deliveries (
-            id,
-            message_id,
-            target_agent_id,
-            route_id,
-            status,
-            idempotency_key,
-            created_at,
-            updated_at
-          ) values (
-            @id,
-            @messageId,
-            @targetAgentId,
-            @routeId,
-            @status,
-            @idempotencyKey,
-            @createdAt,
-            @updatedAt
-          )
-        `,
-      );
-
-      for (const delivery of deliveries) {
-        insertDelivery.run(delivery);
+        throw error;
       }
 
       return deliveries;
@@ -141,6 +154,15 @@ function findByIdempotencyKey(
     .all(idempotencyKey)[0] as DeliveryRow | undefined;
 
   return row ? mapDeliveryRow(row) : null;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
+  );
 }
 
 function mapDeliveryRow(row: DeliveryRow): StoredDelivery {
