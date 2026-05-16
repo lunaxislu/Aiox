@@ -103,13 +103,13 @@ SQLite open/schema/repositories 완료.
     - unique delivery idempotency keys
 
 - [x] Add `src/store/sqlite.ts`
-  - Commit: `this commit: behavior: add sqlite database open`
+  - Commit: `e9f8d0d behavior: add sqlite database open`
   - Files: `src/store/sqlite.ts`, `tests/unit/store/sqlite.test.ts`
   - First red test: opening a database applies schema and enables WAL.
   - Verify `pragma journal_mode` reports `wal` for a file-backed database.
 
 - [x] Add `src/store/repositories/agents.ts`
-  - Commit: `this commit: behavior: add sqlite agent repository`
+  - Commit: `7794792 behavior: add sqlite agent repository`
   - Files: `src/store/repositories/agents.ts`,
     `tests/unit/store/repositories/agents.test.ts`
   - Persist `AgentInstance`.
@@ -118,7 +118,7 @@ SQLite open/schema/repositories 완료.
   - Implement pending_attach attach transition to connected.
 
 - [x] Add `src/store/repositories/pairs.ts`
-  - Commit: `this commit: behavior: add sqlite pair repository`
+  - Commit: `c24e036 behavior: add sqlite pair repository`
   - Files: `src/store/repositories/pairs.ts`,
     `tests/unit/store/repositories/pairs.test.ts`
   - Persist pair reservations.
@@ -126,7 +126,7 @@ SQLite open/schema/repositories 완료.
   - Preserve no-agent-created-at-reservation behavior.
 
 - [x] Add `src/store/repositories/routes.ts`
-  - Commit: `this commit: behavior: add sqlite route repository`
+  - Commit: `650415e behavior: add sqlite route repository`
   - Files: `src/store/repositories/routes.ts`,
     `tests/unit/store/repositories/routes.test.ts`
   - Persist directed routes.
@@ -134,7 +134,7 @@ SQLite open/schema/repositories 완료.
   - Support directed disconnect.
 
 - [x] Add `src/store/repositories/messages.ts` and `deliveries.ts`
-  - Commit: `this commit: behavior: add sqlite message delivery repositories`
+  - Commit: `5323a8e behavior: add sqlite message delivery repositories`
   - Files: `src/store/repositories/messages.ts`,
     `src/store/repositories/deliveries.ts`,
     `tests/unit/store/repositories/messages-deliveries.test.ts`
@@ -144,7 +144,7 @@ SQLite open/schema/repositories 완료.
   - Apply restart recovery policy for delivery states.
 
 - [x] Add `src/store/repositories/events.ts`
-  - Commit: `this commit: behavior: add sqlite event repository`
+  - Commit: `296d615 behavior: add sqlite event repository`
   - Files: `src/store/repositories/events.ts`,
     `tests/unit/store/repositories/events.test.ts`
   - Persist append-only events.
