@@ -78,7 +78,7 @@
 
 ## Step 2: SQLite schema/repository tests with `message_deliveries` — 🟡 진행 중
 
-Schema part 완료, repositories 진행 중.
+SQLite open/schema part 완료, repositories 진행 중.
 
 - [x] Initial SQLite schema
   - Commit: `3dc72de behavior: add initial sqlite schema`
@@ -102,7 +102,9 @@ Schema part 완료, repositories 진행 중.
     - unique directed source-target routes
     - unique delivery idempotency keys
 
-- [ ] Add `src/store/sqlite.ts`
+- [x] Add `src/store/sqlite.ts`
+  - Commit: `this commit: behavior: add sqlite database open`
+  - Files: `src/store/sqlite.ts`, `tests/unit/store/sqlite.test.ts`
   - First red test: opening a database applies schema and enables WAL.
   - Verify `pragma journal_mode` reports `wal` for a file-backed database.
 
@@ -247,7 +249,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 Latest full verification:
 
-- `pnpm test`: passing, 11 files, 43 tests (Step 1 complete + Step 2 schema까지 반영)
+- `pnpm test`: passing, 12 files, 44 tests (Step 1 complete + Step 2 sqlite open까지 반영)
 - `pnpm typecheck`: passing
 
 각 step 완료 시 위 baseline을 갱신한다.
