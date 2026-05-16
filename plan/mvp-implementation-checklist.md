@@ -78,7 +78,7 @@
 
 ## Step 2: SQLite schema/repository tests with `message_deliveries` — 🟡 진행 중
 
-SQLite open/schema/agents/pairs repository part 완료, repositories 진행 중.
+SQLite open/schema/agents/pairs/routes repository part 완료, repositories 진행 중.
 
 - [x] Initial SQLite schema
   - Commit: `3dc72de behavior: add initial sqlite schema`
@@ -125,7 +125,10 @@ SQLite open/schema/agents/pairs repository part 완료, repositories 진행 중.
   - Enforce one Codex and one Claude slot.
   - Preserve no-agent-created-at-reservation behavior.
 
-- [ ] Add `src/store/repositories/routes.ts`
+- [x] Add `src/store/repositories/routes.ts`
+  - Commit: `this commit: behavior: add sqlite route repository`
+  - Files: `src/store/repositories/routes.ts`,
+    `tests/unit/store/repositories/routes.test.ts`
   - Persist directed routes.
   - Enforce source-target uniqueness.
   - Support directed disconnect.
@@ -255,7 +258,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 Latest full verification:
 
-- `pnpm test`: passing, 14 files, 50 tests (Step 1 complete + Step 2 pairs repository까지 반영)
+- `pnpm test`: passing, 15 files, 53 tests (Step 1 complete + Step 2 routes repository까지 반영)
 - `pnpm typecheck`: passing
 
 각 step 완료 시 위 baseline을 갱신한다.
