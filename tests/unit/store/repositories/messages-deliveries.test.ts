@@ -1,24 +1,33 @@
 import Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createDeliveryRepository } from "../../../../src/store/repositories/deliveries.js";
-import { createMessageRepository } from "../../../../src/store/repositories/messages.js";
+import {
+  createDeliveryRepository,
+  type DeliveryRepository,
+} from "../../../../src/store/repositories/deliveries.js";
+import {
+  createMessageRepository,
+  type MessageRepository,
+} from "../../../../src/store/repositories/messages.js";
 import { applySchema } from "../../../../src/store/schema.js";
 
 describe("SQLite message and delivery repositories", () => {
-  let db: Database | undefined;
+  let db: Database;
+  let messages: MessageRepository;
+  let deliveries: DeliveryRepository;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+    messages = createMessageRepository(db);
+    deliveries = createDeliveryRepository(db);
+  });
 
   afterEach(() => {
-    db?.close();
-    db = undefined;
+    db.close();
   });
 
   it("persists one logical message and one queued delivery per target route", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const messages = createMessageRepository(db);
-    const deliveries = createDeliveryRepository(db);
-
     const message = messages.create({
       id: "message-1",
       sourceAgentId: "agent-source",
@@ -69,10 +78,6 @@ describe("SQLite message and delivery repositories", () => {
   });
 
   it("rejects duplicate delivery idempotency keys", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const deliveries = createDeliveryRepository(db);
-
     const first = deliveries.createQueuedForRoutes({
       messageId: "message-1",
       routes: [{ id: "route-1", targetAgentId: "agent-target-1" }],
@@ -98,10 +103,6 @@ describe("SQLite message and delivery repositories", () => {
   });
 
   it("recovers delivering deliveries as queued after restart", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const deliveries = createDeliveryRepository(db);
-
     const created = deliveries.createQueuedForRoutes({
       messageId: "message-1",
       routes: [

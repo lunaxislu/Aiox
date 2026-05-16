@@ -1,22 +1,27 @@
 import Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createAgentRepository } from "../../../../src/store/repositories/agents.js";
+import {
+  createAgentRepository,
+  type AgentRepository,
+} from "../../../../src/store/repositories/agents.js";
 import { applySchema } from "../../../../src/store/schema.js";
 
 describe("SQLite agent repository", () => {
-  let db: Database | undefined;
+  let db: Database;
+  let agents: AgentRepository;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+    agents = createAgentRepository(db);
+  });
 
   afterEach(() => {
-    db?.close();
-    db = undefined;
+    db.close();
   });
 
   it("persists an attached agent instance", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const agents = createAgentRepository(db);
-
     const result = agents.attach({
       id: "agent-1",
       name: "impl",
@@ -48,10 +53,6 @@ describe("SQLite agent repository", () => {
   });
 
   it("rejects a same-name attach when the existing agent is connected", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const agents = createAgentRepository(db);
-
     const first = agents.attach({
       id: "agent-1",
       name: "impl",
@@ -78,21 +79,17 @@ describe("SQLite agent repository", () => {
     expect(agents.findByName("impl")).toEqual(first.agent);
   });
 
-  it("reconnects disconnected and stale agents with the same durable identity", () => {
-    for (const status of ["disconnected", "stale"] as const) {
-      db?.close();
-      db = new Database(":memory:");
-      applySchema(db);
-      const agents = createAgentRepository(db);
-
+  it.each(["disconnected", "stale"] as const)(
+    "reconnects %s agents with the same durable identity",
+    (status) => {
       const first = agents.attach({
         id: `existing-${status}`,
         name: "impl",
         kind: "codex",
         cwd: "/repo/old",
         adapterSessionId: "old-thread",
-      now: "2026-05-16T00:00:00.000Z",
-    });
+        now: "2026-05-16T00:00:00.000Z",
+      });
       if (!first.ok) {
         throw new Error("expected first attach to succeed");
       }
@@ -125,14 +122,10 @@ describe("SQLite agent repository", () => {
         throw new Error("expected reconnect to succeed");
       }
       expect(agents.findByName("impl")).toEqual(reconnect.agent);
-    }
-  });
+    },
+  );
 
   it("transitions a same-name pending attach to connected with the same durable identity", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const agents = createAgentRepository(db);
-
     db.prepare(
       `
         insert into agents (

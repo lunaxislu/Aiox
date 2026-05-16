@@ -163,6 +163,31 @@ SQLite open/schema/repositories 완료.
 
 작업 시작 시 sub-task로 분해.
 
+### Open Question: `src/store/transaction.ts` helper 도입 여부
+
+**Step 2에서 도입하지 않은 이유**:
+- Step 2의 트랜잭션 수요는 **single-repository 내부**에 국한됨
+  (`pairs.attachAgent`, `deliveries.createQueuedForRoutes`, `routes.disconnect`).
+- 각 repository가 자체적으로 `db.transaction(...)`을 호출하는 것으로 충분했고,
+  helper를 미리 만들면 step3 요구사항을 보기 전에 인터페이스가 굳어버릴 위험이
+  있어 보류함.
+
+**Step 3에서 필요해질 수 있는 이유**:
+- daemon API가 한 호출에서 **여러 repository를 동시에** 변경하는 시나리오가 등장:
+  - `agent attach + pair attach + bidirectional route 자동 생성` 한 단위
+  - `message create + N개 deliveries 생성 + event append` 한 단위
+- 이 cross-repository 작업이 atomic해야 하면 repository 외부에서 트랜잭션을
+  열어야 하는데, 현재 각 repository는 자체 트랜잭션을 가짐 → SQLite는 nested
+  트랜잭션을 지원하지 않으므로 충돌 발생 가능.
+- 해결안: `src/store/transaction.ts` helper로 트랜잭션 컨텍스트를 외부에서
+  주입하고, repository는 컨텍스트 내에서 statement만 실행하도록 변경.
+
+**결정**: Step 3 작업 시작 시 **agent (codex 등) 와 상의 후 결정**.
+- daemon API 첫 sub-task가 cross-repository write를 요구하는지 확인
+- 요구한다면 helper 도입 + 기존 repository의 `db.transaction()` 호출을 외부
+  주입형으로 재구성
+- 요구하지 않으면 현재 구조 유지
+
 ---
 
 ## Step 4: CLI command parsing tests — ⏳ To be planned
@@ -265,7 +290,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 Latest full verification:
 
-- `pnpm test`: passing, 17 files, 58 tests (Step 1-2 complete)
+- `pnpm test`: passing, 17 files, 60 tests (Step 1-2 complete + repository cleanup)
 - `pnpm typecheck`: passing
 
 각 step 완료 시 위 baseline을 갱신한다.

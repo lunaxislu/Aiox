@@ -1,22 +1,27 @@
 import Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createEventRepository } from "../../../../src/store/repositories/events.js";
+import {
+  createEventRepository,
+  type EventRepository,
+} from "../../../../src/store/repositories/events.js";
 import { applySchema } from "../../../../src/store/schema.js";
 
 describe("SQLite event repository", () => {
-  let db: Database | undefined;
+  let db: Database;
+  let events: EventRepository;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+    events = createEventRepository(db);
+  });
 
   afterEach(() => {
-    db?.close();
-    db = undefined;
+    db.close();
   });
 
   it("persists append-only events with nullable links", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const events = createEventRepository(db);
-
     const event = events.append({
       id: "event-1",
       type: "delivery_status_changed",
@@ -42,10 +47,6 @@ describe("SQLite event repository", () => {
   });
 
   it("lists events in created_at insertion order", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const events = createEventRepository(db);
-
     const first = events.append({
       id: "event-1",
       type: "message_created",

@@ -1,22 +1,27 @@
 import Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createRouteRepository } from "../../../../src/store/repositories/routes.js";
+import {
+  createRouteRepository,
+  type RouteRepository,
+} from "../../../../src/store/repositories/routes.js";
 import { applySchema } from "../../../../src/store/schema.js";
 
 describe("SQLite route repository", () => {
-  let db: Database | undefined;
+  let db: Database;
+  let routes: RouteRepository;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+    routes = createRouteRepository(db);
+  });
 
   afterEach(() => {
-    db?.close();
-    db = undefined;
+    db.close();
   });
 
   it("persists directed routes", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const routes = createRouteRepository(db);
-
     const result = routes.create({
       id: "route-1",
       sourceAgentId: "agent-source",
@@ -42,10 +47,6 @@ describe("SQLite route repository", () => {
   });
 
   it("rejects duplicate directed routes for the same source and target", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const routes = createRouteRepository(db);
-
     const first = routes.create({
       id: "route-1",
       sourceAgentId: "agent-source",
@@ -72,10 +73,6 @@ describe("SQLite route repository", () => {
   });
 
   it("disconnects only the specified directed routes", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const routes = createRouteRepository(db);
-
     const sourceToFirst = routes.create({
       id: "route-1",
       sourceAgentId: "agent-source",

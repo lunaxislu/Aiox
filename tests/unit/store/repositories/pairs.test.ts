@@ -1,22 +1,27 @@
 import Database from "better-sqlite3";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createPairRepository } from "../../../../src/store/repositories/pairs.js";
+import {
+  createPairRepository,
+  type PairRepository,
+} from "../../../../src/store/repositories/pairs.js";
 import { applySchema } from "../../../../src/store/schema.js";
 
 describe("SQLite pair repository", () => {
-  let db: Database | undefined;
+  let db: Database;
+  let pairs: PairRepository;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+    pairs = createPairRepository(db);
+  });
 
   afterEach(() => {
-    db?.close();
-    db = undefined;
+    db.close();
   });
 
   it("persists a pair reservation without creating agents", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const pairs = createPairRepository(db);
-
     const pair = pairs.createReservation({
       id: "pair-1",
       name: "feature-x",
@@ -35,9 +40,6 @@ describe("SQLite pair repository", () => {
   });
 
   it("enforces one Codex and one Claude slot per pair", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const pairs = createPairRepository(db);
     const pair = pairs.createReservation({
       id: "pair-1",
       name: "feature-x",
@@ -128,9 +130,6 @@ describe("SQLite pair repository", () => {
   });
 
   it("treats a same-agent re-attach to the same pair slot as idempotent", () => {
-    db = new Database(":memory:");
-    applySchema(db);
-    const pairs = createPairRepository(db);
     const pair = pairs.createReservation({
       id: "pair-1",
       name: "feature-x",
