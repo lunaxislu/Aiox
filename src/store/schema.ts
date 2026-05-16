@@ -16,23 +16,53 @@ export function applySchema(db: Database): void {
     );
 
     create table if not exists pairs (
-      id text primary key
+      id text primary key,
+      name text not null unique,
+      status text not null,
+      created_at text not null,
+      updated_at text not null
     );
 
     create table if not exists routes (
-      id text primary key
+      id text primary key,
+      source_agent_id text not null,
+      target_agent_id text not null,
+      status text not null,
+      created_at text not null,
+      updated_at text not null,
+      unique (source_agent_id, target_agent_id)
     );
 
     create table if not exists messages (
-      id text primary key
+      id text primary key,
+      source_agent_id text not null,
+      parent_message_id text,
+      type text not null,
+      content text not null,
+      created_at text not null,
+      updated_at text not null
     );
 
     create table if not exists message_deliveries (
-      id text primary key
+      id text primary key,
+      message_id text not null,
+      target_agent_id text not null,
+      route_id text,
+      status text not null,
+      idempotency_key text not null unique,
+      created_at text not null,
+      updated_at text not null
     );
 
     create table if not exists events (
-      id text primary key
+      id text primary key,
+      agent_id text,
+      message_id text,
+      delivery_id text,
+      route_id text,
+      type text not null,
+      data_json text not null,
+      created_at text not null
     );
   `);
 }

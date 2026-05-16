@@ -99,4 +99,125 @@ describe("SQLite schema", () => {
       ]);
     }).toThrow();
   });
+
+  it("creates the pairs table with MVP columns", () => {
+    db = new Database(":memory:");
+
+    applySchema(db);
+
+    const columns = db.prepare("pragma table_info(pairs)").all() as Array<{
+      name: string;
+      pk: 0 | 1;
+    }>;
+
+    expect(columns.map((column) => column.name)).toEqual([
+      "id",
+      "name",
+      "status",
+      "created_at",
+      "updated_at",
+    ]);
+    expect(columns.find((column) => column.name === "id")).toMatchObject({
+      pk: 1,
+    });
+  });
+
+  it("creates the routes table with MVP columns", () => {
+    db = new Database(":memory:");
+
+    applySchema(db);
+
+    const columns = db.prepare("pragma table_info(routes)").all() as Array<{
+      name: string;
+      pk: 0 | 1;
+    }>;
+
+    expect(columns.map((column) => column.name)).toEqual([
+      "id",
+      "source_agent_id",
+      "target_agent_id",
+      "status",
+      "created_at",
+      "updated_at",
+    ]);
+    expect(columns.find((column) => column.name === "id")).toMatchObject({
+      pk: 1,
+    });
+  });
+
+  it("creates the messages table with MVP columns", () => {
+    db = new Database(":memory:");
+
+    applySchema(db);
+
+    const columns = db.prepare("pragma table_info(messages)").all() as Array<{
+      name: string;
+      pk: 0 | 1;
+    }>;
+
+    expect(columns.map((column) => column.name)).toEqual([
+      "id",
+      "source_agent_id",
+      "parent_message_id",
+      "type",
+      "content",
+      "created_at",
+      "updated_at",
+    ]);
+    expect(columns.find((column) => column.name === "id")).toMatchObject({
+      pk: 1,
+    });
+  });
+
+  it("creates the message deliveries table with MVP columns", () => {
+    db = new Database(":memory:");
+
+    applySchema(db);
+
+    const columns = db
+      .prepare("pragma table_info(message_deliveries)")
+      .all() as Array<{
+      name: string;
+      pk: 0 | 1;
+    }>;
+
+    expect(columns.map((column) => column.name)).toEqual([
+      "id",
+      "message_id",
+      "target_agent_id",
+      "route_id",
+      "status",
+      "idempotency_key",
+      "created_at",
+      "updated_at",
+    ]);
+    expect(columns.find((column) => column.name === "id")).toMatchObject({
+      pk: 1,
+    });
+  });
+
+  it("creates the events table with MVP columns", () => {
+    db = new Database(":memory:");
+
+    applySchema(db);
+
+    const columns = db.prepare("pragma table_info(events)").all() as Array<{
+      name: string;
+      pk: 0 | 1;
+    }>;
+
+    expect(columns.map((column) => column.name)).toEqual([
+      "id",
+      "agent_id",
+      "message_id",
+      "delivery_id",
+      "route_id",
+      "type",
+      "data_json",
+      "created_at",
+    ]);
+    expect(columns.find((column) => column.name === "id")).toMatchObject({
+      pk: 1,
+    });
+  });
 });
