@@ -1,0 +1,129 @@
+import Database from "better-sqlite3";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createPairRepository } from "../../../../src/store/repositories/pairs.js";
+import { applySchema } from "../../../../src/store/schema.js";
+
+describe("SQLite pair repository", () => {
+  let db: Database | undefined;
+
+  afterEach(() => {
+    db?.close();
+    db = undefined;
+  });
+
+  it("persists a pair reservation without creating agents", () => {
+    db = new Database(":memory:");
+    applySchema(db);
+    const pairs = createPairRepository(db);
+
+    const pair = pairs.createReservation({
+      id: "pair-1",
+      name: "feature-x",
+      now: "2026-05-16T00:00:00.000Z",
+    });
+
+    expect(pair).toEqual({
+      id: "pair-1",
+      name: "feature-x",
+      status: "pending",
+      createdAt: "2026-05-16T00:00:00.000Z",
+      updatedAt: "2026-05-16T00:00:00.000Z",
+    });
+    expect(pairs.findByName("feature-x")).toEqual(pair);
+    expect(db.prepare("select id from agents").all()).toEqual([]);
+  });
+
+  it("enforces one Codex and one Claude slot per pair", () => {
+    db = new Database(":memory:");
+    applySchema(db);
+    const pairs = createPairRepository(db);
+    const pair = pairs.createReservation({
+      id: "pair-1",
+      name: "feature-x",
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    const insertAgent = db.prepare(`
+      insert into agents (
+        id,
+        name,
+        kind,
+        status,
+        cwd,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertAgent.run([
+      "agent-codex-1",
+      "impl",
+      "codex",
+      "connected",
+      "/repo",
+      "2026-05-16T00:00:00.000Z",
+      "2026-05-16T00:00:00.000Z",
+    ]);
+    insertAgent.run([
+      "agent-claude-1",
+      "reviewer",
+      "claude",
+      "connected",
+      "/repo",
+      "2026-05-16T00:00:00.000Z",
+      "2026-05-16T00:00:00.000Z",
+    ]);
+    insertAgent.run([
+      "agent-codex-2",
+      "stranger",
+      "codex",
+      "connected",
+      "/repo",
+      "2026-05-16T00:00:00.000Z",
+      "2026-05-16T00:00:00.000Z",
+    ]);
+
+    const codexAttach = pairs.attachAgent({
+      pairId: pair.id,
+      agentId: "agent-codex-1",
+      kind: "codex",
+      now: "2026-05-16T00:00:01.000Z",
+    });
+    const claudeAttach = pairs.attachAgent({
+      pairId: pair.id,
+      agentId: "agent-claude-1",
+      kind: "claude",
+      now: "2026-05-16T00:00:02.000Z",
+    });
+    const secondCodexAttach = pairs.attachAgent({
+      pairId: pair.id,
+      agentId: "agent-codex-2",
+      kind: "codex",
+      now: "2026-05-16T00:00:03.000Z",
+    });
+
+    expect(codexAttach).toEqual({
+      ok: true,
+      pair: {
+        ...pair,
+        updatedAt: "2026-05-16T00:00:01.000Z",
+      },
+    });
+    expect(claudeAttach).toEqual({
+      ok: true,
+      pair: {
+        ...pair,
+        status: "ready",
+        updatedAt: "2026-05-16T00:00:02.000Z",
+      },
+    });
+    if (!claudeAttach.ok) {
+      throw new Error("expected Claude attach to succeed");
+    }
+    expect(secondCodexAttach).toEqual({
+      ok: false,
+      reason: "pair_kind_slot_occupied",
+      existingAgentId: "agent-codex-1",
+    });
+    expect(pairs.findByName("feature-x")).toEqual(claudeAttach.pair);
+  });
+});
