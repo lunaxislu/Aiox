@@ -83,10 +83,19 @@ export function createPairRepository(db: Database): PairRepository {
 
     attachAgent(input) {
       const occupied = db
-        .prepare("select id from agents where pair_id = ? and kind = ?")
-        .all([input.pairId, input.kind])[0] as
-        | { id: string }
-        | undefined;
+        .prepare(
+          `
+            select id from agents
+            where pair_id = @pairId
+              and kind = @kind
+              and id <> @agentId
+          `,
+        )
+        .all({
+          pairId: input.pairId,
+          kind: input.kind,
+          agentId: input.agentId,
+        })[0] as { id: string } | undefined;
 
       if (occupied) {
         return {

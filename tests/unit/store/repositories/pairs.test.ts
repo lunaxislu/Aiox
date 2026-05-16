@@ -126,4 +126,64 @@ describe("SQLite pair repository", () => {
     });
     expect(pairs.findByName("feature-x")).toEqual(claudeAttach.pair);
   });
+
+  it("treats a same-agent re-attach to the same pair slot as idempotent", () => {
+    db = new Database(":memory:");
+    applySchema(db);
+    const pairs = createPairRepository(db);
+    const pair = pairs.createReservation({
+      id: "pair-1",
+      name: "feature-x",
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    db.prepare(
+      `
+        insert into agents (
+          id,
+          name,
+          kind,
+          status,
+          cwd,
+          created_at,
+          updated_at
+        ) values (?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run([
+      "agent-codex-1",
+      "impl",
+      "codex",
+      "connected",
+      "/repo",
+      "2026-05-16T00:00:00.000Z",
+      "2026-05-16T00:00:00.000Z",
+    ]);
+
+    const firstAttach = pairs.attachAgent({
+      pairId: pair.id,
+      agentId: "agent-codex-1",
+      kind: "codex",
+      now: "2026-05-16T00:00:01.000Z",
+    });
+    const secondAttach = pairs.attachAgent({
+      pairId: pair.id,
+      agentId: "agent-codex-1",
+      kind: "codex",
+      now: "2026-05-16T00:00:02.000Z",
+    });
+
+    expect(firstAttach).toEqual({
+      ok: true,
+      pair: {
+        ...pair,
+        updatedAt: "2026-05-16T00:00:01.000Z",
+      },
+    });
+    expect(secondAttach).toEqual({
+      ok: true,
+      pair: {
+        ...pair,
+        updatedAt: "2026-05-16T00:00:02.000Z",
+      },
+    });
+  });
 });
