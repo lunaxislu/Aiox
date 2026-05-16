@@ -50,6 +50,69 @@ export interface PairRepository {
 }
 
 export function createPairRepository(db: Database): PairRepository {
+  const attachAgentTxn = db.transaction(
+    (input: AttachAgentToPairInput): AttachAgentToPairResult => {
+      const occupied = db
+        .prepare(
+          `
+            select id from agents
+            where pair_id = @pairId
+              and kind = @kind
+              and id <> @agentId
+          `,
+        )
+        .all({
+          pairId: input.pairId,
+          kind: input.kind,
+          agentId: input.agentId,
+        })[0] as { id: string } | undefined;
+
+      if (occupied) {
+        return {
+          ok: false,
+          reason: "pair_kind_slot_occupied",
+          existingAgentId: occupied.id,
+        };
+      }
+
+      db.prepare(
+        `
+          update agents
+          set pair_id = @pairId, updated_at = @now
+          where id = @agentId
+        `,
+      ).run({
+        pairId: input.pairId,
+        now: input.now,
+        agentId: input.agentId,
+      });
+
+      const status =
+        readAttachedKinds(db, input.pairId).size === 2 ? "ready" : "pending";
+
+      db.prepare(
+        `
+          update pairs
+          set status = @status, updated_at = @now
+          where id = @pairId
+        `,
+      ).run({
+        status,
+        now: input.now,
+        pairId: input.pairId,
+      });
+
+      const row = db
+        .prepare("select * from pairs where id = ?")
+        .all(input.pairId)[0] as PairRow;
+
+      return {
+        ok: true,
+        pair: mapPairRow(row),
+      };
+    },
+  );
+
   return {
     createReservation(input) {
       const pair: StoredPair = {
@@ -82,57 +145,7 @@ export function createPairRepository(db: Database): PairRepository {
     },
 
     attachAgent(input) {
-      const occupied = db
-        .prepare(
-          `
-            select id from agents
-            where pair_id = @pairId
-              and kind = @kind
-              and id <> @agentId
-          `,
-        )
-        .all({
-          pairId: input.pairId,
-          kind: input.kind,
-          agentId: input.agentId,
-        })[0] as { id: string } | undefined;
-
-      if (occupied) {
-        return {
-          ok: false,
-          reason: "pair_kind_slot_occupied",
-          existingAgentId: occupied.id,
-        };
-      }
-
-      db.prepare(
-        `
-          update agents
-          set pair_id = ?, updated_at = ?
-          where id = ?
-        `,
-      ).run([input.pairId, input.now, input.agentId]);
-
-      const status = readAttachedKinds(db, input.pairId).size === 2
-        ? "ready"
-        : "pending";
-
-      db.prepare(
-        `
-          update pairs
-          set status = ?, updated_at = ?
-          where id = ?
-        `,
-      ).run([status, input.now, input.pairId]);
-
-      const row = db
-        .prepare("select * from pairs where id = ?")
-        .all(input.pairId)[0] as PairRow;
-
-      return {
-        ok: true,
-        pair: mapPairRow(row),
-      };
+      return attachAgentTxn(input);
     },
 
     findByName(name) {
