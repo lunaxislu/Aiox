@@ -54,6 +54,15 @@ execution checklist와 todo는 **repo `plan/` 아래에만** 둔다. vault에는
 - **권위는 여전히 `history/`+`prd/`.** checklist는 그 위의 실행 레이어일 뿐이며, 권위 문서가 바뀌면 checklist도 갱신한다.
 - **vault drift check:** 권위 문서나 checklist가 크게 바뀌면 vault의 status 요약이 stale해지지 않는지 확인한다.
 
+## Step 진행 규칙
+
+- `plan/mvp-implementation-checklist.md`의 Step은 순차적으로 진행한다.
+- 다음 Step을 시작하기 전에 현재 Step의 모든 체크박스가 완료됐는지 확인한다.
+- 현재 Step에 미완료 항목이 있으면 다음 Step을 `진행 중`으로 바꾸거나 구현을 시작하지 않는다.
+- 다음 Step의 세부 sub-task를 미리 분해할 수는 있지만, 상태는 `Planned`로 유지한다.
+- 각 Step은 해당 Step의 모든 체크박스 완료 후 `pnpm test`와 `pnpm typecheck`를 통과해야 완료로 본다.
+- Step 완료 직후 checklist의 Step 상태, 체크박스, verification baseline을 갱신하고 그 변경까지 포함해 커밋한다.
+
 ## Vault 활용 패턴
 
 `/Users/lunaxislu/my-vault`는 cross-project 장기 기억, 작업 색인, 회고용 vault다. 이 repo의 권위 문서를 대체하지 않는다.
