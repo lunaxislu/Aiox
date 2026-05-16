@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "claude-adapter": {
-      "command": "bun",
-      "args": ["./claude-adapter/index.ts"]
-    }
-  }
-}
