@@ -158,6 +158,16 @@ SQLite open/schema/repositories 완료.
 
 ## Step 3: daemon API tests with fake in-process transport — ⏳ To be planned
 
+- [x] Step 3 pre-work: `src/store/transaction.ts` helper
+  - Commit: `this commit: behavior: add sqlite transaction helper`
+  - Files: `src/store/transaction.ts`, `tests/unit/store/transaction.test.ts`
+  - Covered:
+    - callback 내부 여러 insert가 함께 persisted
+    - callback throw 시 callback 내부 변경 전체 rollback
+    - 외부 `withTransaction` 안에서 내부 transaction을 가진
+      `pairs.attachAgent` 호출 후 외부 throw 시 attach 변경까지 rollback
+  - `history/16-step-2-sqlite-repository-cleanup.history.md` 4-2 해결.
+
 - [ ] `src/daemon/api.ts` — CLI ↔ daemon API contract
 - [ ] `src/daemon/server.ts` — daemon entry point + lifecycle
 - [ ] `src/daemon/supervisor.ts` — daemon-owned child process 관리 (Post-MVP에서 활용)
@@ -193,11 +203,11 @@ SQLite open/schema/repositories 완료.
   - cross-repository atomicity: daemon/usecase layer의 `withTransaction`.
   - single-repository atomicity: repository 내부 transaction.
 
-**TDD memo for Step 3 pre-work**:
-- `tests/unit/store/transaction.test.ts`를 먼저 작성한다.
-- commit: callback 내부 여러 insert가 함께 persisted.
-- rollback: callback throw 시 callback 내부 변경 전체 rollback.
-- nested: 외부 `withTransaction` 안에서 내부 transaction을 가진
+**TDD result for Step 3 pre-work**:
+- [x] `tests/unit/store/transaction.test.ts`를 먼저 작성하고 Red 확인.
+- [x] commit: callback 내부 여러 insert가 함께 persisted.
+- [x] rollback: callback throw 시 callback 내부 변경 전체 rollback.
+- [x] nested: 외부 `withTransaction` 안에서 내부 transaction을 가진
   `pairs.attachAgent` 호출 후 외부 throw 시 attach 변경까지 rollback.
 
 **확장 기준**:
@@ -310,7 +320,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 Latest full verification:
 
-- `pnpm test`: passing, 17 files, 60 tests (Step 1-2 complete + repository cleanup)
+- `pnpm test`: passing, 18 files, 65 tests (Step 3 transaction pre-work)
 - `pnpm typecheck`: passing
 
 각 step 완료 시 위 baseline을 갱신한다.

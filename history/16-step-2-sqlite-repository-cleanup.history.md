@@ -320,6 +320,28 @@ TDD 순서:
 - `routes.disconnect`: agent disconnect cleanup에서 묶일 가능성이 있으나 우선순위는
   위 두 항목보다 낮다.
 
+**해결 기록**:
+
+- Commit: `this commit: behavior: add sqlite transaction helper`
+- Files:
+  - `src/store/transaction.ts`
+  - `tests/unit/store/transaction.test.ts`
+  - `plan/mvp-implementation-checklist.md`
+- Red:
+  - `pnpm test tests/unit/store/transaction.test.ts` 실패 확인:
+    `Cannot find module '../../../src/store/transaction.js'`.
+- 구현:
+  - `withTransaction<T>(db, fn): T`는 `db.transaction(fn)()`만 호출하는 얇은
+    helper로 유지.
+  - 기존 repository 내부 `db.transaction(...)`은 유지.
+- 검증:
+  - commit test: callback 내부 pair insert 2개가 함께 persisted.
+  - rollback test: callback throw 시 pair/agent insert가 모두 rollback.
+  - nested test: 외부 `withTransaction` 내부에서 `pairs.attachAgent` 호출 후
+    외부 throw 시 agent `pair_id`와 pair `updated_at/status`가 원상태로 rollback.
+  - `pnpm test`: 18 files, 65 tests passing
+  - `pnpm typecheck`: passing
+
 ---
 
 ## 5. 변경된 파일 목록
@@ -329,6 +351,7 @@ TDD 순서:
 - `src/store/repositories/pairs.ts`
 - `src/store/repositories/routes.ts`
 - `src/store/repositories/deliveries.ts`
+- `src/store/transaction.ts`
 
 테스트:
 - `tests/unit/store/repositories/agents.test.ts`
@@ -336,6 +359,7 @@ TDD 순서:
 - `tests/unit/store/repositories/routes.test.ts`
 - `tests/unit/store/repositories/messages-deliveries.test.ts`
 - `tests/unit/store/repositories/events.test.ts`
+- `tests/unit/store/transaction.test.ts`
 
 타입:
 - `spikes/sqlite-restart-recovery-poc/better-sqlite3.d.ts`
