@@ -181,16 +181,40 @@ TDD red-green 사이클 유지.
 
 ## 4. 보류 항목 (다음 세션에서 결정 필요)
 
-### 4-1. `pairs.attachAgent`의 orphan `pair_id` 검증
+### 4-1. `pairs.attachAgent`의 agent 존재 + kind consistency 검증
 
-이슈 #1의 두 번째 항목. 현재 `attachAgent`는 `input.agentId`가 `agents` 테이블에
-존재하는지 검증하지 않음. step3 daemon이 항상 agent attach 후 호출하는 contract라면
-OK지만, repository 단에서 명시하는 게 안전.
+이슈 #1의 두 번째 항목에서 확장됨. 현재 `attachAgent`는 `input.agentId`가
+`agents` 테이블에 존재하는지 검증하지 않음. step3 daemon이 항상 agent attach 후
+호출하는 contract라면 OK지만, repository 단에서 명시하는 게 안전.
 
-**결정 절차**: gemini와 상의 후, 추가하기로 하면 다음 작업:
-- `attachAgent`에 `agent_not_found` 결과 분기 추가
-- 회귀 테스트 추가
-- `AttachAgentToPairResult` 타입에 분기 추가
+Codex review에서 추가로 확인한 같은 계열의 문제:
+
+- `attachAgent`가 `input.kind`를 caller-provided 값으로 신뢰한다.
+- persisted `agents.kind`와 `input.kind`가 다르면 pair slot invariant가 깨질 수 있다.
+- 예: 이미 Codex side가 찬 pair에 다른 Codex agent를 `kind: "claude"`로 넘기면
+  Claude slot이 비어 있다고 판단해 attach가 성공할 수 있다.
+- 따라서 이 보류 항목은 단순 `agent_not_found`뿐 아니라
+  `agent_kind_mismatch` 또는 "DB의 agent kind를 source of truth로 사용" 결정을 포함한다.
+
+**해결 위치**: Step 2 cleanup follow-up으로 닫는 것이 맞다.
+
+이유:
+
+- pair capacity는 Step 2 repository invariant다.
+- Step 3 daemon API가 이 repository 위에 올라가기 전에 boundary contract를 고정해야 한다.
+- daemon layer에서만 막으면 repository test가 우회 가능한 상태로 남는다.
+
+**수정 후보**:
+
+- `attachAgent`가 먼저 `agents` row를 조회한다.
+- agent가 없으면 `agent_not_found` 반환.
+- agent가 있으면 DB의 `agents.kind`를 slot 판단의 source of truth로 사용한다.
+- API 입력에서 `kind`를 제거하거나, 유지한다면 DB kind와 다를 때
+  `agent_kind_mismatch`를 반환한다.
+- 회귀 테스트:
+  - missing agent attach rejects.
+  - persisted Codex agent cannot occupy Claude slot by passing mismatched kind.
+  - same-agent same-pair re-attach remains idempotent.
 
 ### 4-2. `src/store/transaction.ts` helper 도입
 
@@ -206,6 +230,17 @@ SQLite는 nested 트랜잭션 미지원이라 현재 구조와 충돌.
 
 **결정 절차**: Step 3 첫 sub-task가 cross-repository write를 요구하는지 확인 후
 codex와 상의.
+
+**해결 위치**: Step 3 시작 시 결정한다.
+
+이유:
+
+- Step 2에서는 single-repository 내부 transaction으로 충분했다.
+- Step 3 daemon API가 `agent attach + pair attach + bidirectional routes` 또는
+  `message create + deliveries + events` 같은 cross-repository write를 요구하면
+  외부 transaction boundary가 필요해질 수 있다.
+- SQLite nested transaction 미지원 때문에, 이 경우 기존 repository 내부
+  `db.transaction(...)` 구조를 조정해야 할 수 있다.
 
 ---
 
