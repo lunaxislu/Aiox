@@ -7,7 +7,10 @@
 > Step 순서는 `history/15` "다음 구현 순서" + `prd/mvp/aiox-mvp-spec.md`
 > "Testing Requirements"를 기준으로 한다.
 >
-> Last updated: 2026-05-16
+> Step 2 cleanup + Step 3 transaction boundary context:
+> `history/16-step-2-sqlite-repository-cleanup.history.md`.
+>
+> Last updated: 2026-05-17
 
 ---
 
@@ -163,7 +166,7 @@ SQLite open/schema/repositories 완료.
 
 작업 시작 시 sub-task로 분해.
 
-### Open Question: `src/store/transaction.ts` helper 도입 여부
+### Decision: `src/store/transaction.ts` helper 도입
 
 **Step 2에서 도입하지 않은 이유**:
 - Step 2의 트랜잭션 수요는 **single-repository 내부**에 국한됨
@@ -177,16 +180,33 @@ SQLite open/schema/repositories 완료.
   - `agent attach + pair attach + bidirectional route 자동 생성` 한 단위
   - `message create + N개 deliveries 생성 + event append` 한 단위
 - 이 cross-repository 작업이 atomic해야 하면 repository 외부에서 트랜잭션을
-  열어야 하는데, 현재 각 repository는 자체 트랜잭션을 가짐 → SQLite는 nested
-  트랜잭션을 지원하지 않으므로 충돌 발생 가능.
-- 해결안: `src/store/transaction.ts` helper로 트랜잭션 컨텍스트를 외부에서
-  주입하고, repository는 컨텍스트 내에서 statement만 실행하도록 변경.
+  열어야 한다.
 
-**결정**: Step 3 작업 시작 시 **agent (codex 등) 와 상의 후 결정**.
-- daemon API 첫 sub-task가 cross-repository write를 요구하는지 확인
-- 요구한다면 helper 도입 + 기존 repository의 `db.transaction()` 호출을 외부
-  주입형으로 재구성
-- 요구하지 않으면 현재 구조 유지
+**결정**: Step 3 진입 전에 minimal helper를 도입한다.
+- Reference: `history/16-step-2-sqlite-repository-cleanup.history.md` 4-2.
+- 신규: `src/store/transaction.ts`의 `withTransaction(db, fn)`.
+- 기존 repository 내부 `db.transaction(...)`은 유지한다.
+- 이유: 현재 `better-sqlite3@12.10.0`은 nested `db.transaction()` 호출을
+  `SAVEPOINT` / `RELEASE` / `ROLLBACK TO`로 처리하므로, 외부 transaction과
+  repository 내부 transaction이 충돌하지 않는다.
+- boundary ownership:
+  - cross-repository atomicity: daemon/usecase layer의 `withTransaction`.
+  - single-repository atomicity: repository 내부 transaction.
+
+**TDD memo for Step 3 pre-work**:
+- `tests/unit/store/transaction.test.ts`를 먼저 작성한다.
+- commit: callback 내부 여러 insert가 함께 persisted.
+- rollback: callback throw 시 callback 내부 변경 전체 rollback.
+- nested: 외부 `withTransaction` 안에서 내부 transaction을 가진
+  `pairs.attachAgent` 호출 후 외부 throw 시 attach 변경까지 rollback.
+
+**확장 기준**:
+- write 경합에서 `SQLITE_BUSY`/lock wait가 보이면 mode(`immediate` 등), retry,
+  timeout을 추가한다.
+- 두 번째 이상 cross-repository write usecase에서 같은 패턴이 반복되면
+  `createStore(db)` 또는 transaction-aware store context로 확장한다.
+- result failure에서도 rollback해야 하는 규칙이 반복되면 result-aware transaction
+  helper를 검토한다.
 
 ---
 

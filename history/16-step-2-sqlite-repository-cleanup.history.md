@@ -231,7 +231,7 @@ Codex review에서 추가로 확인한 같은 계열의 문제:
 
 ### 4-2. `src/store/transaction.ts` helper 도입
 
-`plan/mvp-implementation-checklist.md`의 Step 3 "Open Question" 섹션에 상세 기록.
+`plan/mvp-implementation-checklist.md`의 Step 3 transaction decision 섹션에 상세 기록.
 
 **Step 2에서 안 한 이유**: Step 2의 트랜잭션 수요는 single-repository 내부에 국한.
 helper를 미리 만들면 step3 요구사항 보기 전에 인터페이스가 굳어버릴 위험.
@@ -254,6 +254,71 @@ codex와 상의.
   외부 transaction boundary가 필요해질 수 있다.
 - SQLite nested transaction 미지원 때문에, 이 경우 기존 repository 내부
   `db.transaction(...)` 구조를 조정해야 할 수 있다.
+
+**2026-05-17 결정 기록**:
+
+Claude와 Codex 양쪽 의견을 비교한 결과, Step 3 진입 전에 transaction boundary를
+minimal하게 도입하기로 결정했다.
+
+결론:
+
+- `src/store/transaction.ts`에 얇은 `withTransaction(db, fn)` helper를 도입한다.
+- 기존 repository 내부 `db.transaction(...)`은 제거하지 않는다.
+- cross-repository atomicity는 daemon/usecase layer가 `withTransaction`으로 감싼다.
+- single-repository atomicity는 repository 내부 transaction이 계속 책임진다.
+
+근거:
+
+- 현재 의존성은 `better-sqlite3@12.10.0`.
+- better-sqlite3의 `db.transaction()`은 이미 transaction 안에서 호출되면 raw
+  `BEGIN`을 중첩하지 않고 `SAVEPOINT` / `RELEASE` / `ROLLBACK TO`를 사용한다.
+- 따라서 이전 문구의 "SQLite는 nested transaction 미지원이라 충돌"은 raw SQLite
+  `BEGIN/COMMIT` 기준으로는 맞지만, 현재 library API 사용 방식에서는 그대로 적용되지
+  않는다.
+- repository 내부 transaction을 지금 제거하면 단일 repository 호출의 atomicity가
+  caller 책임으로 새어 나가고, Step 3 전에 구조를 과하게 흔든다.
+
+최소 설계:
+
+```ts
+// src/store/transaction.ts
+import type Database from "better-sqlite3";
+
+export function withTransaction<T>(db: Database, fn: () => T): T {
+  return db.transaction(fn)();
+}
+```
+
+TDD 순서:
+
+- `withTransaction` commit 테스트: callback 내부 여러 insert가 함께 persisted.
+- rollback 테스트: callback throw 시 callback 내부 변경 전체 rollback.
+- nested 테스트: 외부 `withTransaction` 안에서 내부 transaction을 가진
+  `pairs.attachAgent` 호출 후 외부 throw 시 attach 변경까지 rollback.
+- nested 테스트가 실패하면 better-sqlite3 SAVEPOINT 전제가 깨진 것이므로
+  repository transaction 제거/조정 전략으로 재검토한다.
+
+확장 시점:
+
+- daemon write 경합에서 `SQLITE_BUSY`, writer starvation, lock wait 문제가 보이면
+  transaction mode(`immediate` 등), retry, timeout을 추가한다.
+- 두 번째 이상 cross-repository write usecase에서 `withTransaction(db, () => ...)`
+  패턴이 반복되면 `createStore(db)` 또는 transaction-aware store context로 올린다.
+- usecase 함수가 `db`, `agents`, `pairs`, `routes`, `events`를 계속 개별 인자로
+  받게 되어 시그니처가 흐려지면 store context를 도입한다.
+- `{ ok: false }` domain result에서도 rollback해야 하는 규칙이 반복되면
+  `withTransactionResult` 같은 result-aware helper를 검토한다.
+- transaction duration logging, label, correlation id가 필요해지면 helper 옵션으로
+  observability를 확장한다.
+
+우선 영향을 받을 메서드:
+
+- `pairs.attachAgent`: `agent attach + pair attach + bidirectional routes + events`
+  usecase에 묶일 가능성이 가장 높다.
+- `deliveries.createQueuedForRoutes`: `message create + deliveries + events` usecase에
+  묶일 가능성이 높다.
+- `routes.disconnect`: agent disconnect cleanup에서 묶일 가능성이 있으나 우선순위는
+  위 두 항목보다 낮다.
 
 ---
 
