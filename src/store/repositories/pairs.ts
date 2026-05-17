@@ -31,9 +31,26 @@ export type AttachAgentToPairResult =
     }
   | {
       ok: false;
+      reason: "agent_not_found";
+      agentId: string;
+    }
+  | {
+      ok: false;
+      reason: "agent_kind_mismatch";
+      agentId: string;
+      expectedKind: AgentKind;
+      actualKind: AgentKind;
+    }
+  | {
+      ok: false;
       reason: "pair_kind_slot_occupied";
       existingAgentId: string;
     };
+
+interface AgentRow {
+  id: string;
+  kind: AgentKind;
+}
 
 interface PairRow {
   id: string;
@@ -52,18 +69,40 @@ export interface PairRepository {
 export function createPairRepository(db: Database): PairRepository {
   const attachAgentTxn = db.transaction(
     (input: AttachAgentToPairInput): AttachAgentToPairResult => {
+      const agent = db
+        .prepare("select id, kind from agents where id = ?")
+        .get(input.agentId) as AgentRow | undefined;
+
+      if (!agent) {
+        return {
+          ok: false,
+          reason: "agent_not_found",
+          agentId: input.agentId,
+        };
+      }
+
+      if (agent.kind !== input.kind) {
+        return {
+          ok: false,
+          reason: "agent_kind_mismatch",
+          agentId: input.agentId,
+          expectedKind: input.kind,
+          actualKind: agent.kind,
+        };
+      }
+
       const occupied = db
         .prepare(
           `
             select id from agents
             where pair_id = @pairId
-              and kind = @kind
+              and kind = @agentKind
               and id <> @agentId
           `,
         )
         .get({
           pairId: input.pairId,
-          kind: input.kind,
+          agentKind: agent.kind,
           agentId: input.agentId,
         }) as { id: string } | undefined;
 

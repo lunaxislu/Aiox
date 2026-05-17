@@ -185,4 +185,71 @@ describe("SQLite pair repository", () => {
       },
     });
   });
+
+  it("rejects attaching an agent that does not exist", () => {
+    const pair = pairs.createReservation({
+      id: "pair-1",
+      name: "feature-x",
+      now: "2026-05-16T00:00:00.000Z",
+    });
+
+    const result = pairs.attachAgent({
+      pairId: pair.id,
+      agentId: "missing-agent",
+      kind: "codex",
+      now: "2026-05-16T00:00:01.000Z",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "agent_not_found",
+      agentId: "missing-agent",
+    });
+    expect(pairs.findByName("feature-x")).toEqual(pair);
+  });
+
+  it("rejects attaching an agent when the requested kind does not match the stored kind", () => {
+    const pair = pairs.createReservation({
+      id: "pair-1",
+      name: "feature-x",
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    db.prepare(
+      `
+        insert into agents (
+          id,
+          name,
+          kind,
+          status,
+          cwd,
+          created_at,
+          updated_at
+        ) values (?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run([
+      "agent-codex-1",
+      "impl",
+      "codex",
+      "connected",
+      "/repo",
+      "2026-05-16T00:00:00.000Z",
+      "2026-05-16T00:00:00.000Z",
+    ]);
+
+    const result = pairs.attachAgent({
+      pairId: pair.id,
+      agentId: "agent-codex-1",
+      kind: "claude",
+      now: "2026-05-16T00:00:01.000Z",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "agent_kind_mismatch",
+      agentId: "agent-codex-1",
+      expectedKind: "claude",
+      actualKind: "codex",
+    });
+    expect(pairs.findByName("feature-x")).toEqual(pair);
+  });
 });
