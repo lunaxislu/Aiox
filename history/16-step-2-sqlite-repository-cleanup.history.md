@@ -216,6 +216,19 @@ Codex review에서 추가로 확인한 같은 계열의 문제:
   - persisted Codex agent cannot occupy Claude slot by passing mismatched kind.
   - same-agent same-pair re-attach remains idempotent.
 
+**해결 기록**:
+
+- Commit: `71ef70c behavior: validate sqlite pair attach agent`
+- 결정: `kind` 입력은 유지하되, persisted `agents.kind`와 다르면
+  `agent_kind_mismatch`를 반환한다. slot 판단은 DB의 agent kind를 기준으로 한다.
+- 추가 결과:
+  - missing agent attach는 `agent_not_found`를 반환한다.
+  - missing/mismatched attach는 pair row를 변경하지 않는다.
+  - same-agent same-pair re-attach idempotency는 유지한다.
+- Verification:
+  - `pnpm test`: 17 files, 62 tests passing
+  - `pnpm typecheck`: passing
+
 ### 4-2. `src/store/transaction.ts` helper 도입
 
 `plan/mvp-implementation-checklist.md`의 Step 3 "Open Question" 섹션에 상세 기록.
