@@ -71,10 +71,12 @@ export function parseCli(argv: string[], options: ParseCliOptions = {}): ParsedC
   } catch (error) {
     if (error instanceof CommanderError) {
       if (error.code === "commander.helpDisplayed" && includesHelpFlag(argv)) {
+        // Help is multi-line user-facing output, so preserve commander formatting.
         return { kind: "help", text: output.join("") };
       }
 
       if (error.code === "commander.version" && includesVersionFlag(argv)) {
+        // Version is a scalar value for callers, not a formatted output block.
         return { kind: "version", value: output.join("").trim() };
       }
 

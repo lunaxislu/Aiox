@@ -42,6 +42,7 @@ describe("CLI parser", () => {
       kind: "help",
     });
     expect(parsed.kind === "help" ? parsed.text : "").toContain("Usage: aiox");
+    expect(parsed.kind === "help" ? parsed.text : "").toMatch(/\n$/);
   });
 
   it("parses version output as a successful command result", () => {
@@ -56,6 +57,12 @@ describe("CLI parser", () => {
       kind: "version",
       value: "9.9.9",
     });
+  });
+
+  it("trims the single-line version output", () => {
+    const parsed = parseCli(["--version"]);
+
+    expect(parsed.kind === "version" ? parsed.value : "").not.toMatch(/\n$/);
   });
 
   it("parses codex attach with a name", () => {
