@@ -45,6 +45,16 @@ describe("CLI parser", () => {
     expect(parsed.kind === "help" ? parsed.text : "").toMatch(/\n$/);
   });
 
+  it("includes root and command descriptions in help output", () => {
+    const parsed = parseCli(["--help"]);
+    const text = parsed.kind === "help" ? parsed.text : "";
+
+    expect(text).toContain("aiox - local agent orchestrator");
+    expect(text).toContain("daemon start");
+    expect(text).toContain("codex --name");
+    expect(text).toContain("connect <source> <target...>");
+  });
+
   it("parses version output as a successful command result", () => {
     expect(parseCli(["--version"])).toEqual({
       kind: "version",

@@ -10,7 +10,7 @@
 > Step 2 cleanup + Step 3 transaction boundary context:
 > `history/16-step-2-sqlite-repository-cleanup.history.md`.
 >
-> Last updated: 2026-05-17
+> Last updated: 2026-05-18
 
 ---
 
@@ -465,6 +465,24 @@ isolated commits, Step 3 header stays `✅ 완료`.
   - Green: `parseCli` accepts `{ version }` while keeping a default fallback.
 - [x] Help/error intent clarified without behavior changes.
   - Behavior unchanged: existing tests and typecheck stayed green.
+
+### Step 4 Polish (Round 4)
+
+- [x] Help/version output trim policy clarified.
+  - Red: added explicit assertions that help preserves commander trailing newline while version exposes a trimmed scalar.
+  - Green: documented the mixed policy in parser code without changing behavior.
+- [x] `createProgram` converted to an options object.
+  - Red: changing the caller first failed typecheck against the old positional signature.
+  - Green: added `CreateProgramOptions` and destructured `{ version, output, setParsed }`.
+- [x] Invalid input code assertions strengthened.
+  - Red: `stop extra` was first asserted as `aiox.unknownArgument`, exposing commander normalized it as `aiox.excessArguments`.
+  - Green: typed code assertions now cover previously loose invalid parser cases.
+- [x] Parser exit code semantics aligned.
+  - Red: added coverage for representative commander-origin and aiox-origin parse errors.
+  - Green: parser errors are documented and tested as exit code `1`; a shared constant backs aiox-origin throws.
+- [x] CLI help descriptions added.
+  - Red: root help lacked the orchestrator description and spec-facing command phrases.
+  - Green: root, daemon, attach, routing, pair, global status/stop, and doctor commands expose short descriptions.
 
 ---
 

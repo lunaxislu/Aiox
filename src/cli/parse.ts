@@ -148,6 +148,8 @@ function createProgram({ version, output, setParsed }: CreateProgramOptions): Co
 
   program
     .name("aiox")
+    .description("aiox - local agent orchestrator")
+    .usage("[options] <command>")
     .version(version)
     .exitOverride()
     .configureOutput({
@@ -157,26 +159,36 @@ function createProgram({ version, output, setParsed }: CreateProgramOptions): Co
       writeErr: () => {},
     });
 
-  const daemon = program.command("daemon");
+  const daemon = program.command("daemon").description("Manage daemon lifecycle: daemon start, stop, restart, status");
 
-  daemon.command("start").action(() => {
-    setParsed({ kind: "daemon-start" });
-  });
+  daemon
+    .command("start")
+    .description("Start the daemon if absent")
+    .action(() => {
+      setParsed({ kind: "daemon-start" });
+    });
 
   daemon
     .command("stop")
+    .description("Stop the daemon and daemon-owned child processes")
     .option("--daemon-only")
     .action((options: { daemonOnly?: boolean }) => {
       setParsed({ kind: "daemon-stop", daemonOnly: options.daemonOnly === true });
     });
 
-  daemon.command("restart").action(() => {
-    setParsed({ kind: "daemon-restart" });
-  });
+  daemon
+    .command("restart")
+    .description("Restart the daemon")
+    .action(() => {
+      setParsed({ kind: "daemon-restart" });
+    });
 
-  daemon.command("status").action(() => {
-    setParsed({ kind: "daemon-status" });
-  });
+  daemon
+    .command("status")
+    .description("Show daemon pid, socket, database, uptime, and version")
+    .action(() => {
+      setParsed({ kind: "daemon-status" });
+    });
 
   addAgentAttachCommand(program, "codex", setParsed);
   addAgentAttachCommand(program, "claude", setParsed);
@@ -195,6 +207,7 @@ function addAgentAttachCommand(
 ): void {
   program
     .command(agentKind)
+    .description(`Attach ${agentKind} --name <name> [--pair <pair-name>]`)
     .requiredOption("--name <name>")
     .option("--pair <pair-name>")
     .action((options: { name: string; pair?: string }) => {
@@ -214,25 +227,29 @@ function addRoutingCommand(
   kind: "connect" | "disconnect",
   setParsed: (command: ParsedCommand) => void,
 ): void {
-  program.command(`${kind} <source> [target...]`).action((source: string, targets: string[]) => {
-    if (targets.length === 0) {
-      throw new CliParseError("At least one target is required", {
-        code: "aiox.missingTargets",
-        exitCode: parseErrorExitCode,
-      });
-    }
+  program
+    .command(`${kind} <source> [target...]`)
+    .description(`${kind} <source> <target...> directed routes`)
+    .action((source: string, targets: string[]) => {
+      if (targets.length === 0) {
+        throw new CliParseError("At least one target is required", {
+          code: "aiox.missingTargets",
+          exitCode: parseErrorExitCode,
+        });
+      }
 
-    setParsed({
-      kind,
-      sourceName: requireNonEmptyName(source),
-      targetNames: targets.map(requireNonEmptyName),
+      setParsed({
+        kind,
+        sourceName: requireNonEmptyName(source),
+        targetNames: targets.map(requireNonEmptyName),
+      });
     });
-  });
 }
 
 function addPairCommand(program: Command, setParsed: (command: ParsedCommand) => void): void {
   program
     .command("pair")
+    .description("Create a durable pair reservation with --name <pair-name>")
     .requiredOption("--name <pair-name>")
     .action((options: { name: string }) => {
       setParsed({ kind: "pair-create", name: requireNonEmptyName(options.name) });
@@ -240,15 +257,24 @@ function addPairCommand(program: Command, setParsed: (command: ParsedCommand) =>
 }
 
 function addGlobalCommands(program: Command, setParsed: (command: ParsedCommand) => void): void {
-  program.command("status").action(() => {
-    setParsed({ kind: "status" });
-  });
+  program
+    .command("status")
+    .description("Show daemon, agents, pairs, routes, messages, and deliveries")
+    .action(() => {
+      setParsed({ kind: "status" });
+    });
 
-  program.command("stop").action(() => {
-    setParsed({ kind: "global-stop" });
-  });
+  program
+    .command("stop")
+    .description("Shortcut for daemon stop")
+    .action(() => {
+      setParsed({ kind: "global-stop" });
+    });
 
-  program.command("doctor").action(() => {
-    setParsed({ kind: "doctor" });
-  });
+  program
+    .command("doctor")
+    .description("Check local runtime, agent CLIs, SQLite, and daemon paths")
+    .action(() => {
+      setParsed({ kind: "doctor" });
+    });
 }
