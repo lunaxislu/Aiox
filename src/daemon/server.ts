@@ -43,13 +43,19 @@ export function createDaemonServer(
         now: options.now,
       });
       const api = createDaemonApi(state);
+      let stoppedResponse: StopResponse | null = null;
 
       handle = {
         api,
         stop(stopOptions) {
+          if (stoppedResponse) {
+            return stoppedResponse;
+          }
+
           const response = api.stop(stopOptions ?? {});
           supervisor.stop();
           handle = null;
+          stoppedResponse = response;
           return response;
         },
       };

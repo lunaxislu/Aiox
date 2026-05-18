@@ -90,6 +90,63 @@ describe("daemon server lifecycle shell", () => {
     expect((await handle.api.status()).agents[0]?.status).toBe("connected");
   });
 
+  it("returns the cached response when a handle is stopped twice", async () => {
+    const supervisor = createRecordingSupervisor();
+    const server = createDaemonServer({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-05-18T00:00:00.000Z",
+      supervisor,
+    });
+    const handle = server.start();
+
+    await handle.api.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    const first = await handle.stop();
+    const second = await handle.stop();
+
+    expect(second).toEqual(first);
+    expect(supervisor.stopCalls).toBe(1);
+  });
+
+  it("does not let an old stopped handle affect a restarted server", async () => {
+    const supervisor = createRecordingSupervisor();
+    const ids = ["agent-old", "agent-fresh"];
+    const server = createDaemonServer({
+      db,
+      createId: () => {
+        const id = ids.shift();
+
+        if (!id) {
+          throw new Error("unexpected id request");
+        }
+
+        return id;
+      },
+      now: () => "2026-05-18T00:00:00.000Z",
+      supervisor,
+    });
+
+    const old = server.start();
+    await old.api.attachAgent({ kind: "codex", name: "old", cwd: "/repo" });
+    await old.stop();
+
+    const fresh = server.start();
+    await fresh.api.attachAgent({ kind: "claude", name: "fresh", cwd: "/repo" });
+
+    await old.stop();
+
+    expect(supervisor.stopCalls).toBe(1);
+    expect((await fresh.api.status()).agents).toContainEqual({
+      id: "agent-fresh",
+      name: "fresh",
+      kind: "claude",
+      status: "connected",
+      cwd: "/repo",
+      pairId: null,
+    });
+  });
+
   it("reconnects an agent by name after restart", async () => {
     const ids = ["agent-1", "unused-new-agent-id"];
     const server = createDaemonServer({
