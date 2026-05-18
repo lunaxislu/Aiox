@@ -499,7 +499,9 @@ Step 1에서 core unit으로 cover된 fan-out logic을 **daemon API + store 결�
 - [x] message fan-out → message + N deliveries store 영속화
   - Red: added daemon-level store assertions for messages, queued deliveries, and fan-out events created from active directed routes.
   - Green: added minimal `sendMessage` daemon API/state path that persists the message, deliveries, and events in one transaction.
-- [ ] idempotency (message_id, target_agent_id) 거부
+- [x] idempotency (message_id, target_agent_id) 거부
+  - Red: duplicate `sendMessage` with a newly added active route hit a message primary-key error instead of typed delivery idempotency and all-or-nothing store preservation.
+  - Green: daemon preflights active-route delivery idempotency keys and returns the existing delivery without adding message, delivery, or event rows.
 
 ---
 

@@ -280,11 +280,25 @@ export function createDaemonState(
         };
       }
 
+      const sourceRoutes = routes
+        .list()
+        .filter((route) => route.sourceAgentId === source.id);
+      const existingDelivery = sourceRoutes
+        .map((route) =>
+          deliveries.findByIdempotencyKey(`${request.messageId}:${route.targetAgentId}`),
+        )
+        .find((delivery): delivery is StoredDelivery => delivery !== null);
+
+      if (existingDelivery) {
+        return {
+          ok: false,
+          reason: "delivery_idempotency_key_exists",
+          existing: existingDelivery,
+        };
+      }
+
       return withTransaction(options.db, () => {
         const now = options.now();
-        const sourceRoutes = routes
-          .list()
-          .filter((route) => route.sourceAgentId === source.id);
         const message = messages.create({
           id: request.messageId,
           sourceAgentId: source.id,

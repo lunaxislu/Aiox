@@ -50,6 +50,7 @@ interface DeliveryRow {
 
 export interface DeliveryRepository {
   createQueuedForRoutes(input: CreateQueuedDeliveriesInput): CreateQueuedDeliveriesResult;
+  findByIdempotencyKey(idempotencyKey: string): StoredDelivery | null;
   recoverAfterRestart(input: RecoverDeliveriesAfterRestartInput): number;
   list(): StoredDelivery[];
 }
@@ -122,6 +123,10 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
       }
 
       return deliveries;
+    },
+
+    findByIdempotencyKey(idempotencyKey) {
+      return findByIdempotencyKey(db, idempotencyKey);
     },
 
     recoverAfterRestart(input) {
