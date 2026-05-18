@@ -493,7 +493,9 @@ Step 1에서 core unit으로 cover된 fan-out logic을 **daemon API + store 결�
 - [x] daemon connect 호출 → store에 directed routes 생성
   - Red: added store-level assertions for directed route rows, internal timestamps, duplicate connect idempotency, and missing-target all-or-nothing.
   - Green: existing daemon/store implementation already persisted the expected route rows without code changes.
-- [ ] daemon disconnect → 명시 route만 제거, history 보존
+- [x] daemon disconnect → 명시 route만 제거, history 보존
+  - Red: added store-level assertions that disconnect removes only explicit routes and keeps messages, deliveries, and events.
+  - Green: existing daemon/store implementation already preserved historical rows without code changes.
 - [ ] message fan-out → message + N deliveries store 영속화
 - [ ] idempotency (message_id, target_agent_id) 거부
 
