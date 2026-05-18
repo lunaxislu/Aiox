@@ -409,11 +409,16 @@ isolated commits, Step 3 header stays `✅ 완료`.
 
 ---
 
-## Step 4: CLI command parsing tests — ⏳ To be planned
+## Step 4: CLI command parsing tests — 🔄 진행 중
 
 13개 명령 모두 parse + validation:
 
-- [ ] `aiox daemon start | stop | stop --daemon-only | restart | status`
+- [x] `aiox daemon start | stop | stop --daemon-only | restart | status`
+  - Round 1 files: `src/cli/parse.ts`, `tests/unit/cli/parse.test.ts`.
+  - Red 1: `parseCli(["daemon", "start"])` failed because parser module did not exist.
+  - Green 1: commander-backed parser skeleton returns `{ kind: "daemon-start" }`.
+  - Red 2: daemon stop/restart/status happy paths failed as unknown commands.
+  - Green 2: daemon lifecycle 5 commands parse; invalid daemon input throws typed `CliParseError`.
 - [ ] `aiox codex --name <name> [--pair <pair-name>]`
 - [ ] `aiox claude --name <name> [--pair <pair-name>]`
 - [ ] `aiox connect <source> <target...>`

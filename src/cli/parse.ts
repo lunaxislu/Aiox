@@ -2,6 +2,13 @@ import { Command, CommanderError } from "commander";
 
 export type ParsedCommand = {
   kind: "daemon-start";
+} | {
+  kind: "daemon-stop";
+  daemonOnly: boolean;
+} | {
+  kind: "daemon-restart";
+} | {
+  kind: "daemon-status";
 };
 
 export class CliParseError extends Error {
@@ -60,6 +67,21 @@ function createProgram(setParsed: (command: ParsedCommand) => void): Command {
 
   daemon.command("start").action(() => {
     setParsed({ kind: "daemon-start" });
+  });
+
+  daemon
+    .command("stop")
+    .option("--daemon-only")
+    .action((options: { daemonOnly?: boolean }) => {
+      setParsed({ kind: "daemon-stop", daemonOnly: options.daemonOnly === true });
+    });
+
+  daemon.command("restart").action(() => {
+    setParsed({ kind: "daemon-restart" });
+  });
+
+  daemon.command("status").action(() => {
+    setParsed({ kind: "daemon-status" });
   });
 
   return program;
