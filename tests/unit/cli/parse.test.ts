@@ -215,14 +215,30 @@ describe("CLI parser", () => {
   it("rejects an unknown daemon stop flag", () => {
     expectCliParseError(["daemon", "stop", "--bogus"], "aiox.unknownOption");
   });
+
+  it.each([
+    { argv: [], code: "aiox.missingCommand" },
+    { argv: ["daemon"], code: "aiox.missingCommand" },
+    { argv: ["daemon", "unknown"], code: "aiox.unknownCommand" },
+    { argv: ["status", "--bogus"], code: "aiox.unknownOption" },
+    { argv: ["stop", "extra"], code: "aiox.excessArguments" },
+    { argv: ["connect"], code: "aiox.missingArgument" },
+    { argv: ["connect", "a"], code: "aiox.missingTargets" },
+    { argv: ["codex", "--name", ""], code: "aiox.invalidName" },
+  ])("assigns exit code 1 to parse error $code for $argv", ({ argv, code }) => {
+    expectCliParseError(argv, code, 1);
+  });
 });
 
-function expectCliParseError(argv: string[], code: string): void {
+function expectCliParseError(argv: string[], code: string, exitCode?: number): void {
   try {
     parseCli(argv);
   } catch (error) {
     expect(error).toBeInstanceOf(CliParseError);
     expect((error as CliParseError).code).toBe(code);
+    if (exitCode !== undefined) {
+      expect((error as CliParseError).exitCode).toBe(exitCode);
+    }
     return;
   }
 

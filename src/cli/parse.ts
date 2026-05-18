@@ -42,6 +42,7 @@ export type ParsedCommand = {
 };
 
 const defaultCliVersion = "1.0.0";
+const parseErrorExitCode = 1;
 
 export interface ParseCliOptions {
   version?: string;
@@ -102,7 +103,7 @@ export function parseCli(argv: string[], options: ParseCliOptions = {}): ParsedC
   if (!parsed) {
     throw new CliParseError("No command parsed", {
       code: "aiox.missingCommand",
-      exitCode: 1,
+      exitCode: parseErrorExitCode,
     });
   }
 
@@ -135,7 +136,7 @@ function requireNonEmptyName(value: string): string {
   if (value.trim().length === 0) {
     throw new CliParseError("Name must not be empty", {
       code: "aiox.invalidName",
-      exitCode: 1,
+      exitCode: parseErrorExitCode,
     });
   }
 
@@ -217,7 +218,7 @@ function addRoutingCommand(
     if (targets.length === 0) {
       throw new CliParseError("At least one target is required", {
         code: "aiox.missingTargets",
-        exitCode: 1,
+        exitCode: parseErrorExitCode,
       });
     }
 
