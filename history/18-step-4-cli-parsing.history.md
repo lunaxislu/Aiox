@@ -53,7 +53,17 @@ Follow-ups"** 패턴이 Round 2부터 정착됨 (Step 5+에도 그대로 적용 
 | `a26fba0` | `behavior: add pair create parser` |
 | `38edb79` | `behavior: add global status, stop, and doctor parsers` |
 
-테스트는 Step 4 진입 시점 ~86에서 최종 122로 증가. typecheck 통과 유지.
+### Round 4 — Round 3 minor + parser layer polish
+
+| commit | 내용 |
+|---|---|
+| `d39565a` | `refactor: clarify CLI help and version output trimming` (Round 3 minor M1) |
+| `bb46f91` | `refactor: convert createProgram to options object` (Round 3 minor M2) |
+| `7154c4b` | `test: assert typed error code for CLI invalid input cases` (Round 3 minor M3) |
+| `22b3dbf` | `refactor: align CLI parser exit code semantics` (A1) |
+| `eb79df0` | `behavior: add CLI help descriptions for aiox and subcommands` (A2) |
+
+테스트는 Step 4 진입 시점 ~86에서 최종 132로 증가. typecheck 통과 유지.
 
 ---
 
@@ -166,6 +176,42 @@ invocation layer 책임.
 처리된다. Step 4 parser는 routing 의미 오류를 `aiox.missingTargets`로 명시하기
 위해 `[target...]`로 받은 뒤 action 내부에서 직접 검증한다.
 
+### Round 4 결정 (parser layer polish)
+
+#### 12. help/version output trim 정책 (Round 4, `d39565a`)
+
+**결정**: help는 commander가 출력한 multi-line raw 그대로 (`output.join("")`), version은
+scalar 값으로 trim (`output.join("").trim()`). 동작은 기존 그대로 유지하고
+`parse.ts:85,90`에 의도 주석만 추가.
+
+**근거**: 세 옵션 중 — (a) 둘 다 trim 안 함, (b) 둘 다 trim, (c) 현 상태 + 주석 — (c)
+채택. help는 user-facing multi-line 출력이라 commander formatting 보존이 자연스럽고,
+version은 caller가 scalar로 받아 활용하므로 trailing newline 제거가 적절. 두 변수의
+의도가 다른 것이 정상이라 강제 통일하지 않음.
+
+#### 13. exit code 일관성 (Round 4, `22b3dbf`)
+
+**결정**: aiox-origin 자체 throw는 모듈 상수 `parseErrorExitCode = 1`로 통일. commander
+origin 에러는 `error.exitCode` 값을 그대로 통과 (normalize 안 함).
+
+**근거**: 자체 throw 3곳 (`aiox.missingCommand` / `aiox.invalidName` /
+`aiox.missingTargets`)이 같은 상수를 참조하므로 변경 시 한 곳만 수정하면 됨. commander
+origin은 commander 14 기준 대부분 1이지만 `commander.version` 등 일부는 0을 부여하는데,
+이 동작을 강제로 1로 normalize하면 commander의 user expectation을 깨뜨림. invocation/bin
+step에서 `process.exit(error.exitCode)` 호출 시 commander 기본을 따르는 것이 깔끔.
+
+**남은 한계**: "parser/usage errors expose exitCode 1" 결정과 commander origin이 한 비트
+불일치 가능. 다음 step에서 자연스럽게 재검토.
+
+#### 14. help description은 spec 표현과 정합 (Round 4, `eb79df0`)
+
+**결정**: root program + 13 surface command 모두 description 추가. description 표현은
+spec line 36–158과 정합 (예: `global stop` description은 `"Shortcut for daemon stop"`로
+spec line 150 인용).
+
+**근거**: parser는 surface intent를 보존하지만 사용자에게 노출되는 help text는 spec의
+의도된 사용자 메시지여야 함. description이 spec과 어긋나면 사용자 혼란.
+
 ### 11. "Previous Round Minor Follow-ups" 패턴 정착 (Round 2부터)
 
 **결정**: 매 라운드 직전, 직전 라운드의 리뷰 minor 지적을 먼저 처리하고 본
@@ -182,18 +228,17 @@ invocation layer 책임.
 
 ## 보류 / 다음 step 후보
 
-### Round 4 (선택, 미진입)
-- **exit code 매핑**: typed `CliParseError`의 `code` → process exit code 매핑
-  정책. 13개 명령 전체의 typed error 모양이 다 잡힌 뒤 일관성 잡기 쉬움.
-- **help text 다듬기**: commander의 default help text가 사용자에게 자연스러운지
-  검수. `aiox --help` 출력 형식, sub-command help 출력 등.
-- **CLI bin entrypoint**: `package.json#bin` + `src/cli/bin.ts` 등. parser →
-  invocation → process.exit 흐름. version은 여기서 package.json 로드.
-- **Round 3 minor 4건**:
-  - `output.join("").trim()` 비일관 (help는 trim 안 함, version만 trim)
-  - `createProgram` positional args → 옵션 객체 리팩토링
-  - `aiox stop extra-positional` invalid test는 존재하나 code까지 assert할지 검토
-  - Round 4 진입 시 Step 4 헤더 처리 (`✅ 완료` → `🔄` 또는 별도 "Polish" 절)
+### Round 4 (✅ 완료)
+- exit code 일관성: `parseErrorExitCode = 1`로 자체 throw 통일. commander origin은 그대로 통과 (결정 #13).
+- help text 다듬기: root + 13 surface command description 추가 (결정 #14).
+- output trim 정책 명시 (결정 #12).
+- Round 3 minor 3건 (M1/M2/M3) 처리됨.
+- Step 4 헤더는 `✅ 완료` 유지 + `Step 4 Polish (Round 4)` 절을 checklist 본문 아래에 추가.
+- 132 tests.
+
+### Round 4 이후 follow-up (다음 step에서 자연스럽게)
+- **commander origin `exitCode` normalize 여부**: 자체 throw는 모두 1로 통일했지만 commander origin은 1이 아닐 수 있음 (예: `commander.version` = 0). invocation/bin layer에서 `process.exit(error.exitCode)` 호출 시 재검토.
+- **CLI bin entrypoint**: `package.json#bin` + `src/cli/bin.ts`. parser → invocation → `process.exit` 흐름. version은 여기서 package.json 로드.
 
 ### 다음 step 후보
 - **Step 5 (route/connect fan-out tests at daemon level)**: parse 결과를
