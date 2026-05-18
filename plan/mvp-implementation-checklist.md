@@ -320,13 +320,50 @@ SQLite open/schema/repositories 완료.
   - Files: `src/daemon/supervisor.ts`,
     `tests/unit/daemon/supervisor.test.ts`
   - Red: missing `src/daemon/supervisor.ts` module.
-  - Green: defines minimal `Supervisor` interface plus
-    `createNoopSupervisor()` with observable `idle | started | stopped` state;
-    repeated `start()`/`stop()` calls are harmless.
-  - Decision: expose state instead of call counts because Step 3 only needs a
-    lifecycle boundary; tests can use a recording supervisor when call count is
-    the behavior under inspection.
+  - Green: defines minimal `Supervisor` interface (`start(): void`, `stop():
+    void`) and `createNoopSupervisor()` returning empty no-op implementations;
+    repeated `start()`/`stop()` calls are harmless by construction.
+  - Decision (Round D follow-up `2e1e316`): the initial cut exposed an
+    observable `idle | started | stopped` state field, but that field was only
+    consumed by its own test. It was dropped to keep the boundary contract
+    narrow — real supervisor will need a different state model (children
+    health, restart policy) that wouldn't reuse this enum. Tests that need to
+    observe lifecycle calls construct a local recording supervisor instead.
   - Verification: `pnpm test`, `pnpm typecheck`.
+
+### Step 3 Review Follow-ups (Round D)
+
+After Step 3 closed, code review surfaced three follow-up gaps. All handled in
+isolated commits, Step 3 header stays `✅ 완료`.
+
+- [x] `server.stop` propagates `daemonOnly` to `api.stop` (`1c2254c`)
+  - Red: `handle.stop({ daemonOnly: true })` was silently dropped; agents got
+    marked `disconnected` even though spec says daemon-only stop preserves
+    them.
+  - Green: `DaemonServerHandle.stop` signature becomes
+    `stop(options?: StopRequest): StopResponse`; server passes
+    `options ?? {}` to `api.stop`.
+  - Decision: `supervisor.stop()` is invoked for both stop modes. Reason:
+    `prd/mvp/aiox-mvp-spec.md` line 60–65 protects "externally owned /
+    user-attached" processes only; daemon-owned children remain in the
+    supervisor's domain regardless of `daemonOnly`.
+- [x] `Supervisor` interface trimmed to `{ start; stop }` (`2e1e316`)
+  - See `src/daemon/supervisor.ts` entry above.
+- [x] `DaemonServerHandle.stop` is idempotent and restart-safe (`f566931`)
+  - Red: calling `handle.stop()` twice re-invoked `api.stop` and
+    `supervisor.stop`. Additionally, retaining an old handle across
+    `server.start() → stop → start()` could mutate the shared DB state used by
+    the fresh session because the old handle's closure still held the original
+    `api`.
+  - Green: handle closure captures a `stoppedResponse` cache; the first call
+    runs `api.stop` + `supervisor.stop` and freezes the response, every
+    subsequent call returns the cached `StopResponse` without re-touching
+    state.
+  - Decision: prefer the cached response over a typed
+    `{ ok: false, reason: "already_stopped" }`. Reason: a typed error widens
+    the `StopResponse` contract and forces every caller to branch. The cache
+    keeps the contract narrow and matches the supervisor's idempotent
+    posture.
 
 ### Decision: `src/store/transaction.ts` helper 도입
 
