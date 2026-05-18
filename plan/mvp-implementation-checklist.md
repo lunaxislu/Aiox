@@ -486,11 +486,13 @@ isolated commits, Step 3 header stays `✅ 완료`.
 
 ---
 
-## Step 5: route/connect fan-out tests (daemon level) — ⏳ To be planned
+## Step 5: route/connect fan-out tests (daemon level) — 🔄 진행 중
 
 Step 1에서 core unit으로 cover된 fan-out logic을 **daemon API + store 결합 레벨**에서 재검증.
 
-- [ ] daemon connect 호출 → store에 directed routes 생성
+- [x] daemon connect 호출 → store에 directed routes 생성
+  - Red: added store-level assertions for directed route rows, internal timestamps, duplicate connect idempotency, and missing-target all-or-nothing.
+  - Green: existing daemon/store implementation already persisted the expected route rows without code changes.
 - [ ] daemon disconnect → 명시 route만 제거, history 보존
 - [ ] message fan-out → message + N deliveries store 영속화
 - [ ] idempotency (message_id, target_agent_id) 거부
