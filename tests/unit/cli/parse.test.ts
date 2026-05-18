@@ -171,6 +171,32 @@ describe("CLI parser", () => {
     expectCliParseError(["pair", "--name", ""], "aiox.invalidName");
   });
 
+  it("parses global status", () => {
+    expect(parseCli(["status"])).toEqual({
+      kind: "status",
+    });
+  });
+
+  it("parses global stop", () => {
+    expect(parseCli(["stop"])).toEqual({
+      kind: "global-stop",
+    });
+  });
+
+  it("parses doctor", () => {
+    expect(parseCli(["doctor"])).toEqual({
+      kind: "doctor",
+    });
+  });
+
+  it("rejects an unknown global status flag", () => {
+    expectCliParseError(["status", "--bogus"], "aiox.unknownOption");
+  });
+
+  it("rejects global stop with an extra positional", () => {
+    expect(() => parseCli(["stop", "extra"])).toThrow(CliParseError);
+  });
+
   it("rejects daemon without a subcommand", () => {
     expectCliParseError(["daemon"], "aiox.missingCommand");
   });

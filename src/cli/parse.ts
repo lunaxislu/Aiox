@@ -33,6 +33,12 @@ export type ParsedCommand = {
 } | {
   kind: "pair-create";
   name: string;
+} | {
+  kind: "status";
+} | {
+  kind: "global-stop";
+} | {
+  kind: "doctor";
 };
 
 const defaultCliVersion = "1.0.0";
@@ -168,6 +174,7 @@ function createProgram(
   addRoutingCommand(program, "connect", setParsed);
   addRoutingCommand(program, "disconnect", setParsed);
   addPairCommand(program, setParsed);
+  addGlobalCommands(program, setParsed);
 
   return program;
 }
@@ -221,4 +228,18 @@ function addPairCommand(program: Command, setParsed: (command: ParsedCommand) =>
     .action((options: { name: string }) => {
       setParsed({ kind: "pair-create", name: requireNonEmptyName(options.name) });
     });
+}
+
+function addGlobalCommands(program: Command, setParsed: (command: ParsedCommand) => void): void {
+  program.command("status").action(() => {
+    setParsed({ kind: "status" });
+  });
+
+  program.command("stop").action(() => {
+    setParsed({ kind: "global-stop" });
+  });
+
+  program.command("doctor").action(() => {
+    setParsed({ kind: "doctor" });
+  });
 }

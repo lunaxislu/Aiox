@@ -409,7 +409,7 @@ isolated commits, Step 3 header stays `✅ 완료`.
 
 ---
 
-## Step 4: CLI command parsing tests — 🔄 진행 중
+## Step 4: CLI command parsing tests — ✅ 완료
 
 13개 명령 모두 parse + validation:
 
@@ -435,8 +435,14 @@ isolated commits, Step 3 header stays `✅ 완료`.
   - Round 2 files: `src/cli/parse.ts`, `tests/unit/cli/parse.test.ts`.
   - Red: disconnect happy paths failed as unknown commands; missing target did not reach typed parser errors.
   - Green: disconnect shares routing parser path and one-or-more target validation.
-- [ ] `aiox pair --name <pair-name>`
-- [ ] `aiox status | stop | doctor`
+- [x] `aiox pair --name <pair-name>`
+  - Round 3 files: `src/cli/parse.ts`, `tests/unit/cli/parse.test.ts`.
+  - Red: pair create happy path failed as unknown command; empty pair name did not reach `aiox.invalidName`.
+  - Green: pair create parses required `--name` and reuses non-empty name validation.
+- [x] `aiox status | stop | doctor`
+  - Round 3 files: `src/cli/parse.ts`, `tests/unit/cli/parse.test.ts`.
+  - Red: global status/stop/doctor happy paths failed as unknown commands; status unknown flag did not reach `aiox.unknownOption`.
+  - Green: global status, global stop, and doctor parse as surface-intent variants.
 
 각 명령의 invalid input rejection test 포함.
 
@@ -448,6 +454,17 @@ isolated commits, Step 3 header stays `✅ 완료`.
 - [x] Help/version handled as successful parse results.
   - Red: `--help` threw a commander help exit and `--version` was unknown.
   - Green: parser captures commander output and returns `{ kind: "help" }` / `{ kind: "version" }`.
+
+### Step 4 Review Follow-ups (Round 2 minor 처리)
+
+- [x] CLI `AgentKind` aligned with the core literal.
+  - Red: switching parser/core imports to a shared literal module failed typecheck before the module existed.
+  - Green: `src/core/agent-kind.ts` now owns the literal and `src/core/agents.ts` re-exports it.
+- [x] CLI version injection replaces parser-local hardcoding.
+  - Red: injected version test still returned the default `1.0.0`.
+  - Green: `parseCli` accepts `{ version }` while keeping a default fallback.
+- [x] Help/error intent clarified without behavior changes.
+  - Behavior unchanged: existing tests and typecheck stayed green.
 
 ---
 
