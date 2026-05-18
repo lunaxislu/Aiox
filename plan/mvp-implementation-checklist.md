@@ -156,7 +156,7 @@ SQLite open/schema/repositories 완료.
 
 ---
 
-## Step 3: daemon API tests with fake in-process transport — 🔄 진행 중
+## Step 3: daemon API tests with fake in-process transport — ✅ 완료
 
 - [x] Step 3 pre-work: `src/store/transaction.ts` helper
   - Commit: `this commit: behavior: add sqlite transaction helper`
@@ -168,7 +168,7 @@ SQLite open/schema/repositories 완료.
       `pairs.attachAgent` 호출 후 외부 throw 시 attach 변경까지 rollback
   - `history/16-step-2-sqlite-repository-cleanup.history.md` 4-2 해결.
 
-- [ ] `src/daemon/api.ts` — CLI ↔ daemon API contract
+- [x] `src/daemon/api.ts` — CLI ↔ daemon API contract
   - [x] TDD first red: fake in-process client can call `attachAgent` and receive a
     registered `connected` agent response.
     - Files: `src/daemon/api.ts`, `src/daemon/state.ts`,
@@ -278,12 +278,15 @@ SQLite open/schema/repositories 완료.
   - Keep route fan-out and pair auto-route assertions for Step 5/6 daemon-level
     tests; Step 3 only proves API shape, state persistence, and transport
     round-trip.
-- [ ] `src/daemon/state.ts` — daemon state/usecase layer + SQLite sync
+- [x] `src/daemon/state.ts` — daemon state/usecase layer + SQLite sync
   - Build repositories from a single `Database` handle.
   - Own deterministic `createId`/`now` injection for daemon tests.
   - Wrap cross-repository writes in `withTransaction`.
   - Attach behavior:
-    - register/reconnect agent by name through repository rules
+    - [x] register/reconnect agent by name through repository rules
+      - Covered by `tests/unit/daemon/server.test.ts` restart scenario:
+        start → attach agent `"impl"` → stop → start → attach same name keeps
+        the same agent id and restores `connected` status via repository rules.
     - [x] missing pair returns typed error without partial agent attach
     - [x] optional `pairName` attaches the agent to the existing pair
   - Pair behavior:
@@ -295,21 +298,35 @@ SQLite open/schema/repositories 완료.
     - [x] persist directed route changes through route repository
   - Status behavior:
     - [x] report daemon metadata plus stored agents, pairs, and routes
-- [ ] fake in-process transport로 control plane round-trip 검증
+- [x] fake in-process transport로 control plane round-trip 검증
   - [x] Add `tests/unit/daemon/api.test.ts`.
   - [x] Create a fake transport/client pair that calls the daemon API in-process.
   - [x] Verify request/response serialization boundary uses DTOs, not repository
     internals.
   - [x] Cover error responses through the same fake client.
-- [ ] `src/daemon/server.ts` — daemon entry point + lifecycle shell
-  - Compose database, state, API, and transport.
-  - Start is idempotent at API-lifecycle level for tests.
-  - Stop marks connected agents disconnected and closes the transport shell.
-  - No real socket/process management in Step 3.
-- [ ] `src/daemon/supervisor.ts` — daemon-owned child process boundary stub
-  - Define minimal interface for daemon-owned child process lifecycle.
-  - Add tests for no-op supervisor behavior used by Step 3 server stop.
-  - Keep real adapter child supervision for Post-MVP/future steps.
+- [x] `src/daemon/server.ts` — daemon entry point + lifecycle shell
+  - Files: `src/daemon/server.ts`, `tests/unit/daemon/server.test.ts`
+  - Red: missing `src/daemon/server.ts` module.
+  - Green: server composes db, state, API, and supervisor; `start()` is
+    idempotent and returns the same handle while running; `stop()` delegates to
+    API stop, marks connected agents disconnected, calls `supervisor.stop()`,
+    and clears the in-process transport shell for a later restart.
+  - Restart coverage: start → attach `"impl"` → stop → start → attach same name
+    reconnects the existing row with the same agent id and `connected` status.
+  - Policy: repeated `start()` returns the existing handle instead of erroring,
+    matching `daemon start` idempotence in the PRD.
+  - Verification: `pnpm test`, `pnpm typecheck`.
+- [x] `src/daemon/supervisor.ts` — daemon-owned child process boundary stub
+  - Files: `src/daemon/supervisor.ts`,
+    `tests/unit/daemon/supervisor.test.ts`
+  - Red: missing `src/daemon/supervisor.ts` module.
+  - Green: defines minimal `Supervisor` interface plus
+    `createNoopSupervisor()` with observable `idle | started | stopped` state;
+    repeated `start()`/`stop()` calls are harmless.
+  - Decision: expose state instead of call counts because Step 3 only needs a
+    lifecycle boundary; tests can use a recording supervisor when call count is
+    the behavior under inspection.
+  - Verification: `pnpm test`, `pnpm typecheck`.
 
 ### Decision: `src/store/transaction.ts` helper 도입
 
