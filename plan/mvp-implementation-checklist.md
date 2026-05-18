@@ -156,7 +156,7 @@ SQLite open/schema/repositories 완료.
 
 ---
 
-## Step 3: daemon API tests with fake in-process transport — ⏳ To be planned
+## Step 3: daemon API tests with fake in-process transport — 🔄 진행 중
 
 - [x] Step 3 pre-work: `src/store/transaction.ts` helper
   - Commit: `this commit: behavior: add sqlite transaction helper`
@@ -169,12 +169,75 @@ SQLite open/schema/repositories 완료.
   - `history/16-step-2-sqlite-repository-cleanup.history.md` 4-2 해결.
 
 - [ ] `src/daemon/api.ts` — CLI ↔ daemon API contract
-- [ ] `src/daemon/server.ts` — daemon entry point + lifecycle
-- [ ] `src/daemon/supervisor.ts` — daemon-owned child process 관리 (Post-MVP에서 활용)
-- [ ] `src/daemon/state.ts` — in-memory state cache + SQLite sync
+  - [x] TDD first red: fake in-process client can call `attachAgent` and receive a
+    registered `connected` agent response.
+    - Files: `src/daemon/api.ts`, `src/daemon/state.ts`,
+      `tests/unit/daemon/api.test.ts`
+    - Red: missing `src/daemon/api.ts` module.
+    - Green: minimal daemon state wraps `agents.attach`; daemon API exposes
+      `attachAgent`.
+    - Review follow-up:
+      - `pairName` was removed from first-increment `attachAgent`; pair attach
+        will be added with a failing test for typed missing-pair behavior.
+      - DTO response boundary is intentionally still pending; current return
+        type reuses repository result and must be replaced before this API task
+        is checked complete.
+    - fake client JSON serialization boundary is intentionally pending and
+      should be added with the DTO increment.
+    - Verification: `pnpm test`, `pnpm typecheck`.
+  - [x] TDD red/green: `attachAgent` with missing `pairName` returns typed error
+    and does not register a partial agent.
+    - Files: `src/daemon/state.ts`, `tests/unit/daemon/api.test.ts`
+    - Red: request with `pairName` was silently accepted and created an agent
+      with `pairId: null`.
+    - Green: daemon state checks pair existence before agent attach and returns
+      `{ ok: false, reason: "pair_not_found", pairName }`.
+    - Verification: `pnpm test`, `pnpm typecheck`.
+  - Define daemon request/response types without binding to HTTP/socket yet.
+  - Replace repository return types with daemon API DTO response types.
+  - Expose MVP control methods needed before CLI parsing:
+    - `attachAgent({ kind, name, cwd })`
+    - `attachAgent({ kind, name, cwd, pairName })`
+    - `createPair({ name })`
+    - `connect({ sourceName, targetNames })`
+    - `disconnect({ sourceName, targetNames })`
+    - `status()`
+    - `stop({ daemonOnly? })`
+  - Keep route fan-out and pair auto-route assertions for Step 5/6 daemon-level
+    tests; Step 3 only proves API shape, state persistence, and transport
+    round-trip.
+- [ ] `src/daemon/state.ts` — daemon state/usecase layer + SQLite sync
+  - Build repositories from a single `Database` handle.
+  - Own deterministic `createId`/`now` injection for daemon tests.
+  - Wrap cross-repository writes in `withTransaction`.
+  - Attach behavior:
+    - register/reconnect agent by name through repository rules
+    - [x] missing pair returns typed error without partial agent attach
+    - optional `pairName` attaches the agent to the existing pair
+  - Pair behavior:
+    - create durable reservation
+    - duplicate pair name returns typed error
+  - Connect/disconnect behavior:
+    - resolve names to agent ids
+    - return typed error for missing source/target
+    - persist directed route changes through route repository
+  - Status behavior:
+    - report daemon metadata plus stored agents, pairs, and routes
 - [ ] fake in-process transport로 control plane round-trip 검증
-
-작업 시작 시 sub-task로 분해.
+  - Add `tests/unit/daemon/api.test.ts`.
+  - Create a fake transport/client pair that calls the daemon API in-process.
+  - Verify request/response serialization boundary uses DTOs, not repository
+    internals.
+  - Cover error responses through the same fake client.
+- [ ] `src/daemon/server.ts` — daemon entry point + lifecycle shell
+  - Compose database, state, API, and transport.
+  - Start is idempotent at API-lifecycle level for tests.
+  - Stop marks connected agents disconnected and closes the transport shell.
+  - No real socket/process management in Step 3.
+- [ ] `src/daemon/supervisor.ts` — daemon-owned child process boundary stub
+  - Define minimal interface for daemon-owned child process lifecycle.
+  - Add tests for no-op supervisor behavior used by Step 3 server stop.
+  - Keep real adapter child supervision for Post-MVP/future steps.
 
 ### Decision: `src/store/transaction.ts` helper 도입
 
