@@ -1,5 +1,7 @@
 import { Command, CommanderError } from "commander";
 
+import type { AgentKind } from "../core/agent-kind.js";
+
 export type ParsedCommand = {
   kind: "daemon-start";
 } | {
@@ -31,8 +33,6 @@ export type ParsedCommand = {
 };
 
 const cliVersion = "1.0.0";
-
-type AgentKind = "codex" | "claude";
 
 export class CliParseError extends Error {
   readonly code: string;

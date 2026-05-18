@@ -1,3 +1,7 @@
+import type { AgentKind } from "./agent-kind.js";
+
+export { agentKinds, type AgentKind } from "./agent-kind.js";
+
 export const agentInstanceStatuses = [
   "pending_attach",
   "connected",
@@ -6,10 +10,6 @@ export const agentInstanceStatuses = [
 ] as const;
 
 export type AgentInstanceStatus = (typeof agentInstanceStatuses)[number];
-
-export const agentKinds = ["codex", "claude"] as const;
-
-export type AgentKind = (typeof agentKinds)[number];
 
 export interface AgentInstance {
   id: string;
