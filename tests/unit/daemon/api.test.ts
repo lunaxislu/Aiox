@@ -70,6 +70,53 @@ describe("daemon API with fake in-process transport", () => {
     });
     expect(db.prepare("select id from agents").all()).toEqual([]);
   });
+
+  it("creates a pair reservation through a round-trip request", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "pair-1",
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const response = await client.createPair({
+      name: "feature-x",
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      pair: {
+        id: "pair-1",
+        name: "feature-x",
+        status: "pending",
+        createdAt: "2026-05-18T00:00:00.000Z",
+        updatedAt: "2026-05-18T00:00:00.000Z",
+      },
+    });
+  });
+
+  it("rejects duplicate pair reservation names with a typed error", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "pair-1",
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.createPair({
+      name: "feature-x",
+    });
+
+    const response = await client.createPair({
+      name: "feature-x",
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      reason: "pair_name_already_exists",
+      name: "feature-x",
+    });
+  });
 });
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {

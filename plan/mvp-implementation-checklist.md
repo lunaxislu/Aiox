@@ -198,7 +198,16 @@ SQLite open/schema/repositories 완료.
   - Expose MVP control methods needed before CLI parsing:
     - `attachAgent({ kind, name, cwd })`
     - `attachAgent({ kind, name, cwd, pairName })`
-    - `createPair({ name })`
+    - [x] `createPair({ name })`
+      - Files: `src/daemon/api.ts`, `src/daemon/state.ts`,
+        `tests/unit/daemon/api.test.ts`
+      - Red: `client.createPair` missing method.
+      - Green: daemon state delegates to pair repository with injected
+        `createId`/`now`.
+      - Red: duplicate pair name leaked SQLite unique constraint.
+      - Green: duplicate pair name returns
+        `{ ok: false, reason: "pair_name_already_exists", name }`.
+      - Verification: `pnpm test`, `pnpm typecheck`.
     - `connect({ sourceName, targetNames })`
     - `disconnect({ sourceName, targetNames })`
     - `status()`
@@ -215,8 +224,8 @@ SQLite open/schema/repositories 완료.
     - [x] missing pair returns typed error without partial agent attach
     - optional `pairName` attaches the agent to the existing pair
   - Pair behavior:
-    - create durable reservation
-    - duplicate pair name returns typed error
+    - [x] create durable reservation
+    - [x] duplicate pair name returns typed error
   - Connect/disconnect behavior:
     - resolve names to agent ids
     - return typed error for missing source/target
