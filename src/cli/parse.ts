@@ -20,6 +20,14 @@ export type ParsedCommand = {
   agentKind: AgentKind;
   name: string;
   pairName?: string;
+} | {
+  kind: "connect";
+  sourceName: string;
+  targetNames: string[];
+} | {
+  kind: "disconnect";
+  sourceName: string;
+  targetNames: string[];
 };
 
 const cliVersion = "1.0.0";
@@ -144,6 +152,8 @@ function createProgram(output: string[], setParsed: (command: ParsedCommand) => 
 
   addAgentAttachCommand(program, "codex", setParsed);
   addAgentAttachCommand(program, "claude", setParsed);
+  addRoutingCommand(program, "connect", setParsed);
+  addRoutingCommand(program, "disconnect", setParsed);
 
   return program;
 }
@@ -167,4 +177,25 @@ function addAgentAttachCommand(
           : { kind: "agent-attach", agentKind, name, pairName },
       );
     });
+}
+
+function addRoutingCommand(
+  program: Command,
+  kind: "connect" | "disconnect",
+  setParsed: (command: ParsedCommand) => void,
+): void {
+  program.command(`${kind} <source> [target...]`).action((source: string, targets: string[]) => {
+    if (targets.length === 0) {
+      throw new CliParseError("At least one target is required", {
+        code: "aiox.missingTargets",
+        exitCode: 1,
+      });
+    }
+
+    setParsed({
+      kind,
+      sourceName: requireNonEmptyName(source),
+      targetNames: targets.map(requireNonEmptyName),
+    });
+  });
 }

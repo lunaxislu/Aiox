@@ -101,6 +101,50 @@ describe("CLI parser", () => {
     expectCliParseError(["codex", "--name", ""], "aiox.invalidName");
   });
 
+  it("parses connect with multiple targets", () => {
+    expect(parseCli(["connect", "a", "b", "c"])).toEqual({
+      kind: "connect",
+      sourceName: "a",
+      targetNames: ["b", "c"],
+    });
+  });
+
+  it("parses connect with one target", () => {
+    expect(parseCli(["connect", "a", "b"])).toEqual({
+      kind: "connect",
+      sourceName: "a",
+      targetNames: ["b"],
+    });
+  });
+
+  it("parses disconnect with multiple targets", () => {
+    expect(parseCli(["disconnect", "a", "b", "c"])).toEqual({
+      kind: "disconnect",
+      sourceName: "a",
+      targetNames: ["b", "c"],
+    });
+  });
+
+  it("rejects connect without positionals", () => {
+    expect(() => parseCli(["connect"])).toThrow(CliParseError);
+  });
+
+  it("rejects connect without targets", () => {
+    expectCliParseError(["connect", "a"], "aiox.missingTargets");
+  });
+
+  it("rejects disconnect without targets", () => {
+    expectCliParseError(["disconnect", "a"], "aiox.missingTargets");
+  });
+
+  it("rejects an empty routing source name", () => {
+    expectCliParseError(["connect", "", "b"], "aiox.invalidName");
+  });
+
+  it("rejects an empty routing target name", () => {
+    expectCliParseError(["connect", "a", ""], "aiox.invalidName");
+  });
+
   it("rejects daemon without a subcommand", () => {
     expectCliParseError(["daemon"], "aiox.missingCommand");
   });

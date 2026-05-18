@@ -419,14 +419,35 @@ isolated commits, Step 3 header stays `✅ 완료`.
   - Green 1: commander-backed parser skeleton returns `{ kind: "daemon-start" }`.
   - Red 2: daemon stop/restart/status happy paths failed as unknown commands.
   - Green 2: daemon lifecycle 5 commands parse; invalid daemon input throws typed `CliParseError`.
-- [ ] `aiox codex --name <name> [--pair <pair-name>]`
-- [ ] `aiox claude --name <name> [--pair <pair-name>]`
-- [ ] `aiox connect <source> <target...>`
-- [ ] `aiox disconnect <source> <target...>`
+- [x] `aiox codex --name <name> [--pair <pair-name>]`
+  - Round 2 files: `src/cli/parse.ts`, `tests/unit/cli/parse.test.ts`.
+  - Red: codex attach happy paths failed as unknown commands; empty name could not reach `aiox.invalidName`.
+  - Green: codex attach parses required `--name`, optional `--pair`, and rejects empty names.
+- [x] `aiox claude --name <name> [--pair <pair-name>]`
+  - Round 2 files: `src/cli/parse.ts`, `tests/unit/cli/parse.test.ts`.
+  - Red: claude attach happy paths failed as unknown commands.
+  - Green: claude attach shares the agent attach parser path and non-empty validation.
+- [x] `aiox connect <source> <target...>`
+  - Round 2 files: `src/cli/parse.ts`, `tests/unit/cli/parse.test.ts`.
+  - Red: connect happy paths failed as unknown commands; missing/empty routing args did not reach typed parser errors.
+  - Green: connect parses source plus one-or-more targets, rejects missing targets and empty names.
+- [x] `aiox disconnect <source> <target...>`
+  - Round 2 files: `src/cli/parse.ts`, `tests/unit/cli/parse.test.ts`.
+  - Red: disconnect happy paths failed as unknown commands; missing target did not reach typed parser errors.
+  - Green: disconnect shares routing parser path and one-or-more target validation.
 - [ ] `aiox pair --name <pair-name>`
 - [ ] `aiox status | stop | doctor`
 
 각 명령의 invalid input rejection test 포함.
+
+### Step 4 Review Follow-ups (Round 1 minor 처리)
+
+- [x] Error code namespace normalized to `aiox.*`.
+  - Red: invalid parser tests expected `aiox.*`, but commander-origin errors exposed `commander.*`.
+  - Green: `CommanderError` conversion preserves message/exitCode while normalizing public codes.
+- [x] Help/version handled as successful parse results.
+  - Red: `--help` threw a commander help exit and `--version` was unknown.
+  - Green: parser captures commander output and returns `{ kind: "help" }` / `{ kind: "version" }`.
 
 ---
 
