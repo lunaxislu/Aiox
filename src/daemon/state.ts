@@ -1,10 +1,20 @@
 import type Database from "better-sqlite3";
 
 import type { AgentKind } from "../core/agents.js";
+import type { MessageType } from "../core/messages.js";
 import {
   createAgentRepository,
   type AttachStoredAgentResult,
 } from "../store/repositories/agents.js";
+import {
+  createDeliveryRepository,
+  type StoredDelivery,
+} from "../store/repositories/deliveries.js";
+import { createEventRepository } from "../store/repositories/events.js";
+import {
+  createMessageRepository,
+  type StoredMessage,
+} from "../store/repositories/messages.js";
 import { createPairRepository } from "../store/repositories/pairs.js";
 import type { StoredPair } from "../store/repositories/pairs.js";
 import {
@@ -92,6 +102,31 @@ export type DisconnectResult =
       missing: string[];
     };
 
+export interface SendMessageRequest {
+  sourceName: string;
+  messageId: string;
+  parentMessageId?: string | null;
+  type: MessageType;
+  content: string;
+}
+
+export type SendMessageResult =
+  | {
+      ok: true;
+      message: StoredMessage;
+      deliveries: StoredDelivery[];
+    }
+  | {
+      ok: false;
+      reason: "source_agent_not_found";
+      sourceName: string;
+    }
+  | {
+      ok: false;
+      reason: "delivery_idempotency_key_exists";
+      existing: StoredDelivery;
+    };
+
 export interface StatusResult {
   daemon: {
     startedAt: string;
@@ -117,6 +152,7 @@ export interface DaemonState {
   createPair(request: CreatePairRequest): CreatePairResult;
   connect(request: ConnectRequest): ConnectResult;
   disconnect(request: DisconnectRequest): DisconnectResult;
+  sendMessage(request: SendMessageRequest): SendMessageResult;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
@@ -125,6 +161,9 @@ export function createDaemonState(
   options: CreateDaemonStateOptions,
 ): DaemonState {
   const agents = createAgentRepository(options.db);
+  const deliveries = createDeliveryRepository(options.db);
+  const events = createEventRepository(options.db);
+  const messages = createMessageRepository(options.db);
   const pairs = createPairRepository(options.db);
   const routes = createRouteRepository(options.db);
   const startedAt = options.now();
@@ -228,6 +267,75 @@ export function createDaemonState(
           targetAgentIds: resolved.targets.map((target) => target.id),
         }),
       };
+    },
+
+    sendMessage(request) {
+      const source = agents.findByName(request.sourceName);
+
+      if (!source) {
+        return {
+          ok: false,
+          reason: "source_agent_not_found",
+          sourceName: request.sourceName,
+        };
+      }
+
+      return withTransaction(options.db, () => {
+        const now = options.now();
+        const sourceRoutes = routes
+          .list()
+          .filter((route) => route.sourceAgentId === source.id);
+        const message = messages.create({
+          id: request.messageId,
+          sourceAgentId: source.id,
+          parentMessageId: request.parentMessageId,
+          type: request.type,
+          content: request.content,
+          now,
+        });
+        const queued = deliveries.createQueuedForRoutes({
+          messageId: message.id,
+          routes: sourceRoutes.map((route) => ({
+            id: route.id,
+            targetAgentId: route.targetAgentId,
+          })),
+          createDeliveryId: () => options.createId(),
+          now,
+        });
+
+        if (!Array.isArray(queued)) {
+          return queued;
+        }
+
+        events.append({
+          id: options.createId(),
+          type: "message_created",
+          data: {},
+          createdAt: now,
+          agentId: source.id,
+          messageId: message.id,
+          deliveryId: null,
+          routeId: null,
+        });
+        for (const delivery of queued) {
+          events.append({
+            id: options.createId(),
+            type: "delivery_queued",
+            data: {},
+            createdAt: now,
+            agentId: null,
+            messageId: message.id,
+            deliveryId: delivery.id,
+            routeId: delivery.routeId,
+          });
+        }
+
+        return {
+          ok: true,
+          message,
+          deliveries: queued,
+        };
+      });
     },
 
     status() {

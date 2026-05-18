@@ -8,13 +8,19 @@ import type {
   DaemonState,
   DisconnectRequest,
   DisconnectResult,
+  SendMessageRequest,
+  SendMessageResult,
   StatusResult,
   StopRequest,
   StopResult,
 } from "./state.js";
 import type { AgentInstanceStatus, AgentKind } from "../core/agents.js";
+import type { MessageDeliveryStatus } from "../core/deliveries.js";
+import type { MessageType } from "../core/messages.js";
 import type { PairStatus } from "../core/pairs.js";
 import type { StoredAgent } from "../store/repositories/agents.js";
+import type { StoredDelivery } from "../store/repositories/deliveries.js";
+import type { StoredMessage } from "../store/repositories/messages.js";
 import type { StoredRoute } from "../store/repositories/routes.js";
 
 export interface DaemonApi {
@@ -22,6 +28,7 @@ export interface DaemonApi {
   createPair(request: CreatePairRequest): CreatePairResponse;
   connect(request: ConnectRequest): ConnectResponse;
   disconnect(request: DisconnectRequest): DisconnectResponse;
+  sendMessage(request: SendMessageRequest): SendMessageResponse;
   status(): StatusResponse;
   stop(request: StopRequest): StopResponse;
 }
@@ -46,6 +53,23 @@ export interface RouteDto {
   sourceAgentId: string;
   targetAgentId: string;
   status: "active";
+}
+
+export interface MessageDto {
+  id: string;
+  sourceAgentId: string;
+  parentMessageId: string | null;
+  type: MessageType;
+  content: string;
+}
+
+export interface DeliveryDto {
+  id: string;
+  messageId: string;
+  targetAgentId: string;
+  routeId: string | null;
+  status: MessageDeliveryStatus;
+  idempotencyKey: string;
 }
 
 export type AttachAgentResponse =
@@ -108,6 +132,23 @@ export type DisconnectResponse =
       missing: string[];
     };
 
+export type SendMessageResponse =
+  | {
+      ok: true;
+      message: MessageDto;
+      deliveries: DeliveryDto[];
+    }
+  | {
+      ok: false;
+      reason: "source_agent_not_found";
+      sourceName: string;
+    }
+  | {
+      ok: false;
+      reason: "delivery_idempotency_key_exists";
+      existing: DeliveryDto;
+    };
+
 export interface StatusResponse {
   daemon: {
     startedAt: string;
@@ -135,6 +176,9 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     disconnect(request) {
       return mapDisconnectResult(state.disconnect(request));
+    },
+    sendMessage(request) {
+      return mapSendMessageResult(state.sendMessage(request));
     },
     status() {
       return mapStatusResult(state.status());
@@ -202,6 +246,26 @@ function mapDisconnectResult(result: DisconnectResult): DisconnectResponse {
   return result;
 }
 
+function mapSendMessageResult(result: SendMessageResult): SendMessageResponse {
+  if (result.ok) {
+    return {
+      ok: true,
+      message: mapMessage(result.message),
+      deliveries: result.deliveries.map(mapDelivery),
+    };
+  }
+
+  if (result.reason === "delivery_idempotency_key_exists") {
+    return {
+      ok: false,
+      reason: result.reason,
+      existing: mapDelivery(result.existing),
+    };
+  }
+
+  return result;
+}
+
 function mapStatusResult(result: StatusResult): StatusResponse {
   return {
     daemon: result.daemon,
@@ -226,6 +290,27 @@ function mapAgent(agent: StoredAgent): AgentDto {
     status: agent.status,
     cwd: agent.cwd,
     pairId: agent.pairId ?? null,
+  };
+}
+
+function mapMessage(message: StoredMessage): MessageDto {
+  return {
+    id: message.id,
+    sourceAgentId: message.sourceAgentId,
+    parentMessageId: message.parentMessageId,
+    type: message.type,
+    content: message.content,
+  };
+}
+
+function mapDelivery(delivery: StoredDelivery): DeliveryDto {
+  return {
+    id: delivery.id,
+    messageId: delivery.messageId,
+    targetAgentId: delivery.targetAgentId,
+    routeId: delivery.routeId,
+    status: delivery.status,
+    idempotencyKey: delivery.idempotencyKey,
   };
 }
 

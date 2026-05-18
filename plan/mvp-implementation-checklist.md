@@ -496,7 +496,9 @@ Step 1에서 core unit으로 cover된 fan-out logic을 **daemon API + store 결�
 - [x] daemon disconnect → 명시 route만 제거, history 보존
   - Red: added store-level assertions that disconnect removes only explicit routes and keeps messages, deliveries, and events.
   - Green: existing daemon/store implementation already preserved historical rows without code changes.
-- [ ] message fan-out → message + N deliveries store 영속화
+- [x] message fan-out → message + N deliveries store 영속화
+  - Red: added daemon-level store assertions for messages, queued deliveries, and fan-out events created from active directed routes.
+  - Green: added minimal `sendMessage` daemon API/state path that persists the message, deliveries, and events in one transaction.
 - [ ] idempotency (message_id, target_agent_id) 거부
 
 ---
