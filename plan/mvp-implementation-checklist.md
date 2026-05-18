@@ -229,8 +229,25 @@ SQLite open/schema/repositories 완료.
       - Green: duplicate pair name returns
         `{ ok: false, reason: "pair_name_already_exists", name }`.
       - Verification: `pnpm test`, `pnpm typecheck`.
-    - `connect({ sourceName, targetNames })`
-    - `disconnect({ sourceName, targetNames })`
+    - [x] `connect({ sourceName, targetNames })`
+      - Files: `src/daemon/api.ts`, `src/daemon/state.ts`,
+        `tests/unit/daemon/api.test.ts`
+      - Red: `client.connect` missing method.
+      - Green: daemon state resolves source/targets by name, wraps multi-target
+        route creation in `withTransaction`, separates `created` from
+        `alreadyExisted`, and returns typed source/target missing errors.
+      - Atomicity: missing target names are checked before route writes, so no
+        partial route is created when any target is absent.
+      - Verification: `pnpm test`, `pnpm typecheck`.
+    - [x] `disconnect({ sourceName, targetNames })`
+      - Files: `src/daemon/api.ts`, `src/daemon/state.ts`,
+        `tests/unit/daemon/api.test.ts`
+      - Red: `client.disconnect` missing method.
+      - Green: daemon state resolves source/targets by name and delegates route
+        removal to the route repository.
+      - Policy: missing agent names are typed errors; an absent route between
+        existing agents is not an error and is omitted from `removed`.
+      - Verification: `pnpm test`, `pnpm typecheck`.
     - `status()`
     - `stop({ daemonOnly? })`
   - Keep route fan-out and pair auto-route assertions for Step 5/6 daemon-level
@@ -248,9 +265,9 @@ SQLite open/schema/repositories 완료.
     - [x] create durable reservation
     - [x] duplicate pair name returns typed error
   - Connect/disconnect behavior:
-    - resolve names to agent ids
-    - return typed error for missing source/target
-    - persist directed route changes through route repository
+    - [x] resolve names to agent ids
+    - [x] return typed error for missing source/target
+    - [x] persist directed route changes through route repository
   - Status behavior:
     - report daemon metadata plus stored agents, pairs, and routes
 - [ ] fake in-process transport로 control plane round-trip 검증
@@ -258,7 +275,7 @@ SQLite open/schema/repositories 완료.
   - [x] Create a fake transport/client pair that calls the daemon API in-process.
   - [x] Verify request/response serialization boundary uses DTOs, not repository
     internals.
-  - Cover error responses through the same fake client.
+  - [x] Cover error responses through the same fake client.
 - [ ] `src/daemon/server.ts` — daemon entry point + lifecycle shell
   - Compose database, state, API, and transport.
   - Start is idempotent at API-lifecycle level for tests.

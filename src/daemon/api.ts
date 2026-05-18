@@ -1,17 +1,24 @@
 import type {
   AttachAgentRequest,
   AttachAgentResult,
+  ConnectRequest,
+  ConnectResult,
   CreatePairRequest,
   CreatePairResult,
   DaemonState,
+  DisconnectRequest,
+  DisconnectResult,
 } from "./state.js";
 import type { AgentInstanceStatus, AgentKind } from "../core/agents.js";
 import type { PairStatus } from "../core/pairs.js";
 import type { StoredAgent } from "../store/repositories/agents.js";
+import type { StoredRoute } from "../store/repositories/routes.js";
 
 export interface DaemonApi {
   attachAgent(request: AttachAgentRequest): AttachAgentResponse;
   createPair(request: CreatePairRequest): CreatePairResponse;
+  connect(request: ConnectRequest): ConnectResponse;
+  disconnect(request: DisconnectRequest): DisconnectResponse;
 }
 
 export interface AgentDto {
@@ -27,6 +34,13 @@ export interface PairDto {
   id: string;
   name: string;
   status: PairStatus;
+}
+
+export interface RouteDto {
+  id: string;
+  sourceAgentId: string;
+  targetAgentId: string;
+  status: "active";
 }
 
 export type AttachAgentResponse =
@@ -56,6 +70,39 @@ export type CreatePairResponse =
       name: string;
     };
 
+export type ConnectResponse =
+  | {
+      ok: true;
+      created: RouteDto[];
+      alreadyExisted: RouteDto[];
+    }
+  | {
+      ok: false;
+      reason: "source_agent_not_found";
+      sourceName: string;
+    }
+  | {
+      ok: false;
+      reason: "target_agent_not_found";
+      missing: string[];
+    };
+
+export type DisconnectResponse =
+  | {
+      ok: true;
+      removed: RouteDto[];
+    }
+  | {
+      ok: false;
+      reason: "source_agent_not_found";
+      sourceName: string;
+    }
+  | {
+      ok: false;
+      reason: "target_agent_not_found";
+      missing: string[];
+    };
+
 export function createDaemonApi(state: DaemonState): DaemonApi {
   return {
     attachAgent(request) {
@@ -63,6 +110,12 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     createPair(request) {
       return mapCreatePairResult(state.createPair(request));
+    },
+    connect(request) {
+      return mapConnectResult(state.connect(request));
+    },
+    disconnect(request) {
+      return mapDisconnectResult(state.disconnect(request));
     },
   };
 }
@@ -101,6 +154,29 @@ function mapCreatePairResult(result: CreatePairResult): CreatePairResponse {
   return result;
 }
 
+function mapConnectResult(result: ConnectResult): ConnectResponse {
+  if (result.ok) {
+    return {
+      ok: true,
+      created: result.created.map(mapRoute),
+      alreadyExisted: result.alreadyExisted.map(mapRoute),
+    };
+  }
+
+  return result;
+}
+
+function mapDisconnectResult(result: DisconnectResult): DisconnectResponse {
+  if (result.ok) {
+    return {
+      ok: true,
+      removed: result.removed.map(mapRoute),
+    };
+  }
+
+  return result;
+}
+
 function mapAgent(agent: StoredAgent): AgentDto {
   return {
     id: agent.id,
@@ -109,5 +185,14 @@ function mapAgent(agent: StoredAgent): AgentDto {
     status: agent.status,
     cwd: agent.cwd,
     pairId: agent.pairId ?? null,
+  };
+}
+
+function mapRoute(route: StoredRoute): RouteDto {
+  return {
+    id: route.id,
+    sourceAgentId: route.sourceAgentId,
+    targetAgentId: route.targetAgentId,
+    status: route.status,
   };
 }
