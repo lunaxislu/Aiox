@@ -34,7 +34,7 @@ export function parseCli(argv: string[]): ParsedCommand {
   } catch (error) {
     if (error instanceof CommanderError) {
       throw new CliParseError(error.message, {
-        code: error.code,
+        code: normalizeCommanderErrorCode(error.code),
         exitCode: error.exitCode,
       });
     }
@@ -50,6 +50,18 @@ export function parseCli(argv: string[]): ParsedCommand {
   }
 
   return parsed;
+}
+
+function normalizeCommanderErrorCode(code: string): string {
+  if (code === "commander.help") {
+    return "aiox.missingCommand";
+  }
+
+  if (code.startsWith("commander.")) {
+    return `aiox.${code.slice("commander.".length)}`;
+  }
+
+  return code;
 }
 
 function createProgram(setParsed: (command: ParsedCommand) => void): Command {

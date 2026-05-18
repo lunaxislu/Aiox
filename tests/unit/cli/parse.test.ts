@@ -36,14 +36,26 @@ describe("CLI parser", () => {
   });
 
   it("rejects daemon without a subcommand", () => {
-    expect(() => parseCli(["daemon"])).toThrow(CliParseError);
+    expectCliParseError(["daemon"], "aiox.missingCommand");
   });
 
   it("rejects an unknown daemon subcommand", () => {
-    expect(() => parseCli(["daemon", "unknown"])).toThrow(CliParseError);
+    expectCliParseError(["daemon", "unknown"], "aiox.unknownCommand");
   });
 
   it("rejects an unknown daemon stop flag", () => {
-    expect(() => parseCli(["daemon", "stop", "--bogus"])).toThrow(CliParseError);
+    expectCliParseError(["daemon", "stop", "--bogus"], "aiox.unknownOption");
   });
 });
+
+function expectCliParseError(argv: string[], code: string): void {
+  try {
+    parseCli(argv);
+  } catch (error) {
+    expect(error).toBeInstanceOf(CliParseError);
+    expect((error as CliParseError).code).toBe(code);
+    return;
+  }
+
+  throw new Error(`Expected parseCli(${JSON.stringify(argv)}) to throw`);
+}
