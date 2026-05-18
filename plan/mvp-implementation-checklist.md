@@ -193,6 +193,18 @@ SQLite open/schema/repositories 완료.
     - Green: daemon state checks pair existence before agent attach and returns
       `{ ok: false, reason: "pair_not_found", pairName }`.
     - Verification: `pnpm test`, `pnpm typecheck`.
+  - [x] TDD red/green: `attachAgent` with existing `pairName` stores the pair id
+    on the attached agent.
+    - Files: `src/daemon/state.ts`, `tests/unit/daemon/api.test.ts`
+    - Red: existing pair was found but `agents.attach` still created an agent
+      with `pairId: null`.
+    - Green: daemon state passes the resolved pair id to `agents.attach`.
+    - Transaction decision: no outer `withTransaction` yet. This increment does
+      one durable write after a pair existence read; MVP has no pair delete
+      command, and the existing missing-pair test covers the current partial
+      write risk. Revisit when pair slot status/auto-route updates add
+      cross-repository writes.
+    - Verification: `pnpm test`, `pnpm typecheck`.
   - Define daemon request/response types without binding to HTTP/socket yet.
   - Replace repository return types with daemon API DTO response types.
   - Expose MVP control methods needed before CLI parsing:
@@ -222,7 +234,7 @@ SQLite open/schema/repositories 완료.
   - Attach behavior:
     - register/reconnect agent by name through repository rules
     - [x] missing pair returns typed error without partial agent attach
-    - optional `pairName` attaches the agent to the existing pair
+    - [x] optional `pairName` attaches the agent to the existing pair
   - Pair behavior:
     - [x] create durable reservation
     - [x] duplicate pair name returns typed error

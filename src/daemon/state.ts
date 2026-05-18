@@ -57,12 +57,16 @@ export function createDaemonState(
 
   return {
     attachAgent(request) {
-      if (request.pairName && !pairs.findByName(request.pairName)) {
-        return {
-          ok: false,
-          reason: "pair_not_found",
-          pairName: request.pairName,
-        };
+      const pair = request.pairName ? pairs.findByName(request.pairName) : null;
+
+      if (request.pairName) {
+        if (!pair) {
+          return {
+            ok: false,
+            reason: "pair_not_found",
+            pairName: request.pairName,
+          };
+        }
       }
 
       return agents.attach({
@@ -70,6 +74,7 @@ export function createDaemonState(
         name: request.name,
         kind: request.kind,
         cwd: request.cwd,
+        pairId: pair?.id,
         now: options.now(),
       });
     },

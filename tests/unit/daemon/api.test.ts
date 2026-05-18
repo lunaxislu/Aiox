@@ -117,6 +117,51 @@ describe("daemon API with fake in-process transport", () => {
       name: "feature-x",
     });
   });
+
+  it("attaches an agent to an existing pair by pairName", async () => {
+    const ids = ["pair-1", "agent-1"];
+    const state = createDaemonState({
+      db,
+      createId: () => {
+        const id = ids.shift();
+
+        if (!id) {
+          throw new Error("unexpected id request");
+        }
+
+        return id;
+      },
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.createPair({
+      name: "feature-x",
+    });
+
+    const response = await client.attachAgent({
+      kind: "codex",
+      name: "impl",
+      cwd: "/repo",
+      pairName: "feature-x",
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      agent: {
+        id: "agent-1",
+        name: "impl",
+        kind: "codex",
+        status: "connected",
+        cwd: "/repo",
+        pairId: "pair-1",
+        adapterSessionId: null,
+        lastSeenAt: "2026-05-18T00:00:00.000Z",
+        createdAt: "2026-05-18T00:00:00.000Z",
+        updatedAt: "2026-05-18T00:00:00.000Z",
+      },
+    });
+  });
 });
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {
