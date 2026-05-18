@@ -9,6 +9,8 @@ import type {
   DisconnectRequest,
   DisconnectResult,
   StatusResult,
+  StopRequest,
+  StopResult,
 } from "./state.js";
 import type { AgentInstanceStatus, AgentKind } from "../core/agents.js";
 import type { PairStatus } from "../core/pairs.js";
@@ -21,6 +23,7 @@ export interface DaemonApi {
   connect(request: ConnectRequest): ConnectResponse;
   disconnect(request: DisconnectRequest): DisconnectResponse;
   status(): StatusResponse;
+  stop(request: StopRequest): StopResponse;
 }
 
 export interface AgentDto {
@@ -114,6 +117,11 @@ export interface StatusResponse {
   routes: RouteDto[];
 }
 
+export interface StopResponse {
+  ok: true;
+  stoppedAgents: AgentDto[];
+}
+
 export function createDaemonApi(state: DaemonState): DaemonApi {
   return {
     attachAgent(request) {
@@ -130,6 +138,9 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     status() {
       return mapStatusResult(state.status());
+    },
+    stop(request) {
+      return mapStopResult(state.stop(request));
     },
   };
 }
@@ -197,6 +208,13 @@ function mapStatusResult(result: StatusResult): StatusResponse {
     agents: result.agents.map(mapAgent),
     pairs: result.pairs.map(mapPair),
     routes: result.routes.map(mapRoute),
+  };
+}
+
+function mapStopResult(result: StopResult): StopResponse {
+  return {
+    ok: true,
+    stoppedAgents: result.stoppedAgents.map(mapAgent),
   };
 }
 

@@ -262,7 +262,19 @@ SQLite open/schema/repositories 완료.
       - Serialization: fake client now JSON round-trips no-arg calls via an
         argument list, so `status()` participates in the same boundary check.
       - Verification: `pnpm test`, `pnpm typecheck`.
-    - `stop({ daemonOnly? })`
+    - [x] `stop({ daemonOnly? })`
+      - Files: `src/daemon/api.ts`, `src/daemon/state.ts`,
+        `src/store/repositories/agents.ts`, `tests/unit/daemon/api.test.ts`
+      - Red: `client.stop` missing method.
+      - Green: daemon state wraps stop in `withTransaction`; default stop marks
+        all connected agents `disconnected` and returns `stoppedAgents`; daemon
+        shell-only stop leaves agent status unchanged and returns
+        `stoppedAgents: []`.
+      - Repository change: added `agents.markAllConnectedDisconnected(now)` for
+        the bulk state transition.
+      - Serialization: stop requests/responses pass through the fake JSON
+        round-trip with DTO-only agent payloads.
+      - Verification: `pnpm test`, `pnpm typecheck`.
   - Keep route fan-out and pair auto-route assertions for Step 5/6 daemon-level
     tests; Step 3 only proves API shape, state persistence, and transport
     round-trip.

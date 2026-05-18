@@ -434,6 +434,79 @@ describe("daemon API with fake in-process transport", () => {
       ],
     });
   });
+
+  it("stops connected agents through a round-trip request", async () => {
+    const ids = ["agent-source", "agent-target"];
+    const state = createDaemonState({
+      db,
+      createId: () => {
+        const id = ids.shift();
+
+        if (!id) {
+          throw new Error("unexpected id request");
+        }
+
+        return id;
+      },
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
+
+    expect(await client.stop({})).toEqual({
+      ok: true,
+      stoppedAgents: [
+        {
+          id: "agent-source",
+          name: "impl",
+          kind: "codex",
+          status: "disconnected",
+          cwd: "/repo",
+          pairId: null,
+        },
+        {
+          id: "agent-target",
+          name: "reviewer",
+          kind: "claude",
+          status: "disconnected",
+          cwd: "/repo",
+          pairId: null,
+        },
+      ],
+    });
+    expect((await client.status()).agents.map((agent) => agent.status)).toEqual([
+      "disconnected",
+      "disconnected",
+    ]);
+  });
+
+  it("stops only the daemon shell without disconnecting agents", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    expect(await client.stop({ daemonOnly: true })).toEqual({
+      ok: true,
+      stoppedAgents: [],
+    });
+    expect((await client.status()).agents).toEqual([
+      {
+        id: "agent-1",
+        name: "impl",
+        kind: "codex",
+        status: "connected",
+        cwd: "/repo",
+        pairId: null,
+      },
+    ]);
+  });
 });
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {

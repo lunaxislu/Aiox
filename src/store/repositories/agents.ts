@@ -53,6 +53,7 @@ export interface AgentRepository {
   attach(request: AttachStoredAgentRequest): AttachStoredAgentResult;
   findByName(name: string): StoredAgent | null;
   list(): StoredAgent[];
+  markAllConnectedDisconnected(now: string): StoredAgent[];
 }
 
 export function createAgentRepository(db: Database): AgentRepository {
@@ -159,6 +160,29 @@ export function createAgentRepository(db: Database): AgentRepository {
         .prepare("select * from agents order by id")
         .all()
         .map((row) => mapAgentRow(row as AgentRow));
+    },
+
+    markAllConnectedDisconnected(now) {
+      const connected = db
+        .prepare("select * from agents where status = 'connected' order by id")
+        .all()
+        .map((row) => mapAgentRow(row as AgentRow));
+
+      db.prepare(
+        `
+          update agents
+          set
+            status = 'disconnected',
+            updated_at = @now
+          where status = 'connected'
+        `,
+      ).run({ now });
+
+      return connected.map((agent) => ({
+        ...agent,
+        status: "disconnected",
+        updatedAt: now,
+      }));
     },
   };
 }

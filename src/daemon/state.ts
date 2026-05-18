@@ -101,12 +101,24 @@ export interface StatusResult {
   routes: ReturnType<ReturnType<typeof createRouteRepository>["list"]>;
 }
 
+export interface StopRequest {
+  daemonOnly?: boolean;
+}
+
+export interface StopResult {
+  ok: true;
+  stoppedAgents: ReturnType<
+    ReturnType<typeof createAgentRepository>["markAllConnectedDisconnected"]
+  >;
+}
+
 export interface DaemonState {
   attachAgent(request: AttachAgentRequest): AttachAgentResult;
   createPair(request: CreatePairRequest): CreatePairResult;
   connect(request: ConnectRequest): ConnectResult;
   disconnect(request: DisconnectRequest): DisconnectResult;
   status(): StatusResult;
+  stop(request: StopRequest): StopResult;
 }
 
 export function createDaemonState(
@@ -227,6 +239,15 @@ export function createDaemonState(
         pairs: pairs.list(),
         routes: routes.list(),
       };
+    },
+
+    stop(request) {
+      return withTransaction(options.db, () => ({
+        ok: true,
+        stoppedAgents: request.daemonOnly
+          ? []
+          : agents.markAllConnectedDisconnected(options.now()),
+      }));
     },
   };
 }
