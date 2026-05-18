@@ -90,6 +90,7 @@ export function parseCli(argv: string[], options: ParseCliOptions = {}): ParsedC
 
 function normalizeCommanderErrorCode(code: string): string {
   if (code === "commander.help" || code === "commander.helpDisplayed") {
+    // A missing nested subcommand can surface as commander help; explicit help is handled earlier.
     return "aiox.missingCommand";
   }
 
@@ -101,6 +102,7 @@ function normalizeCommanderErrorCode(code: string): string {
 }
 
 function includesHelpFlag(argv: readonly string[]): boolean {
+  // Intentional argv-wide check: subcommand help is still a successful help parse result.
   return argv.includes("--help") || argv.includes("-h");
 }
 
