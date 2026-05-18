@@ -51,6 +51,56 @@ describe("CLI parser", () => {
     });
   });
 
+  it("parses codex attach with a name", () => {
+    expect(parseCli(["codex", "--name", "impl"])).toEqual({
+      kind: "agent-attach",
+      agentKind: "codex",
+      name: "impl",
+    });
+  });
+
+  it("parses codex attach with a pair name", () => {
+    expect(parseCli(["codex", "--name", "impl", "--pair", "feature-x"])).toEqual({
+      kind: "agent-attach",
+      agentKind: "codex",
+      name: "impl",
+      pairName: "feature-x",
+    });
+  });
+
+  it("parses claude attach with a name", () => {
+    expect(parseCli(["claude", "--name", "review"])).toEqual({
+      kind: "agent-attach",
+      agentKind: "claude",
+      name: "review",
+    });
+  });
+
+  it("parses claude attach with a pair name", () => {
+    expect(parseCli(["claude", "--name", "review", "--pair", "feature-y"])).toEqual({
+      kind: "agent-attach",
+      agentKind: "claude",
+      name: "review",
+      pairName: "feature-y",
+    });
+  });
+
+  it("rejects codex attach without a name option", () => {
+    expect(() => parseCli(["codex"])).toThrow(CliParseError);
+  });
+
+  it("rejects codex attach without a name value", () => {
+    expect(() => parseCli(["codex", "--name"])).toThrow(CliParseError);
+  });
+
+  it("rejects claude attach without a pair value", () => {
+    expect(() => parseCli(["claude", "--name", "impl", "--pair"])).toThrow(CliParseError);
+  });
+
+  it("rejects an empty agent attach name", () => {
+    expectCliParseError(["codex", "--name", ""], "aiox.invalidName");
+  });
+
   it("rejects daemon without a subcommand", () => {
     expectCliParseError(["daemon"], "aiox.missingCommand");
   });

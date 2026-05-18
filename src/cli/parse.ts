@@ -15,9 +15,16 @@ export type ParsedCommand = {
 } | {
   kind: "version";
   value: string;
+} | {
+  kind: "agent-attach";
+  agentKind: AgentKind;
+  name: string;
+  pairName?: string;
 };
 
 const cliVersion = "1.0.0";
+
+type AgentKind = "codex" | "claude";
 
 export class CliParseError extends Error {
   readonly code: string;
@@ -89,6 +96,17 @@ function includesVersionFlag(argv: readonly string[]): boolean {
   return argv.includes("--version") || argv.includes("-V");
 }
 
+function requireNonEmptyName(value: string): string {
+  if (value.trim().length === 0) {
+    throw new CliParseError("Name must not be empty", {
+      code: "aiox.invalidName",
+      exitCode: 1,
+    });
+  }
+
+  return value;
+}
+
 function createProgram(output: string[], setParsed: (command: ParsedCommand) => void): Command {
   const program = new Command();
 
@@ -124,5 +142,29 @@ function createProgram(output: string[], setParsed: (command: ParsedCommand) => 
     setParsed({ kind: "daemon-status" });
   });
 
+  addAgentAttachCommand(program, "codex", setParsed);
+  addAgentAttachCommand(program, "claude", setParsed);
+
   return program;
+}
+
+function addAgentAttachCommand(
+  program: Command,
+  agentKind: AgentKind,
+  setParsed: (command: ParsedCommand) => void,
+): void {
+  program
+    .command(agentKind)
+    .requiredOption("--name <name>")
+    .option("--pair <pair-name>")
+    .action((options: { name: string; pair?: string }) => {
+      const name = requireNonEmptyName(options.name);
+      const pairName = options.pair === undefined ? undefined : requireNonEmptyName(options.pair);
+
+      setParsed(
+        pairName === undefined
+          ? { kind: "agent-attach", agentKind, name }
+          : { kind: "agent-attach", agentKind, name, pairName },
+      );
+    });
 }
