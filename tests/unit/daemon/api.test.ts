@@ -40,10 +40,6 @@ describe("daemon API with fake in-process transport", () => {
         status: "connected",
         cwd: "/repo",
         pairId: null,
-        adapterSessionId: null,
-        lastSeenAt: "2026-05-18T00:00:00.000Z",
-        createdAt: "2026-05-18T00:00:00.000Z",
-        updatedAt: "2026-05-18T00:00:00.000Z",
       },
     });
   });
@@ -89,8 +85,6 @@ describe("daemon API with fake in-process transport", () => {
         id: "pair-1",
         name: "feature-x",
         status: "pending",
-        createdAt: "2026-05-18T00:00:00.000Z",
-        updatedAt: "2026-05-18T00:00:00.000Z",
       },
     });
   });
@@ -155,10 +149,6 @@ describe("daemon API with fake in-process transport", () => {
         status: "connected",
         cwd: "/repo",
         pairId: "pair-1",
-        adapterSessionId: null,
-        lastSeenAt: "2026-05-18T00:00:00.000Z",
-        createdAt: "2026-05-18T00:00:00.000Z",
-        updatedAt: "2026-05-18T00:00:00.000Z",
       },
     });
   });
@@ -175,7 +165,12 @@ function createInProcessClient<TApi extends object>(api: TApi): TApi {
 
       const fn = value as (request: unknown) => unknown;
 
-      return async (request: unknown) => fn(request);
+      return async (request: unknown) => {
+        const serializedRequest = JSON.parse(JSON.stringify(request));
+        const response = await fn(serializedRequest);
+
+        return JSON.parse(JSON.stringify(response));
+      };
     },
   });
 }

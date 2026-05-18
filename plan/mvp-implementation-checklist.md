@@ -176,14 +176,9 @@ SQLite open/schema/repositories 완료.
     - Red: missing `src/daemon/api.ts` module.
     - Green: minimal daemon state wraps `agents.attach`; daemon API exposes
       `attachAgent`.
-    - Review follow-up:
-      - `pairName` was removed from first-increment `attachAgent`; pair attach
-        will be added with a failing test for typed missing-pair behavior.
-      - DTO response boundary is intentionally still pending; current return
-        type reuses repository result and must be replaced before this API task
-        is checked complete.
-    - fake client JSON serialization boundary is intentionally pending and
-      should be added with the DTO increment.
+    - Review follow-up: resolved by later Step 3 increments for missing
+      `pairName`, pair attach, DTO response mapping, and fake client JSON
+      serialization.
     - Verification: `pnpm test`, `pnpm typecheck`.
   - [x] TDD red/green: `attachAgent` with missing `pairName` returns typed error
     and does not register a partial agent.
@@ -205,8 +200,22 @@ SQLite open/schema/repositories 완료.
       write risk. Revisit when pair slot status/auto-route updates add
       cross-repository writes.
     - Verification: `pnpm test`, `pnpm typecheck`.
-  - Define daemon request/response types without binding to HTTP/socket yet.
-  - Replace repository return types with daemon API DTO response types.
+  - [x] TDD red/green: daemon API maps repository results to explicit DTO
+    responses and fake in-process transport applies JSON request/response
+    round-trip.
+    - Files: `src/daemon/api.ts`, `tests/unit/daemon/api.test.ts`
+    - Red: `attachAgent` and `createPair` responses leaked repository
+      timestamp/session fields.
+    - Green: introduced `AgentDto`, `PairDto`, `AttachAgentResponse`, and
+      `CreatePairResponse`; API maps state results to DTOs.
+    - DTO field decision: attach responses expose `id`, `name`, `kind`,
+      `status`, `cwd`, and `pairId`; pair responses expose `id`, `name`, and
+      `status`. Repository timestamps, adapter session metadata, and last-seen
+      timestamps stay internal until a status/inspect API needs them.
+    - Serialization: fake client now JSON round-trips request and response.
+    - Verification: `pnpm test`, `pnpm typecheck`.
+  - [x] Define daemon request/response types without binding to HTTP/socket yet.
+  - [x] Replace repository return types with daemon API DTO response types.
   - Expose MVP control methods needed before CLI parsing:
     - `attachAgent({ kind, name, cwd })`
     - `attachAgent({ kind, name, cwd, pairName })`
@@ -245,9 +254,9 @@ SQLite open/schema/repositories 완료.
   - Status behavior:
     - report daemon metadata plus stored agents, pairs, and routes
 - [ ] fake in-process transport로 control plane round-trip 검증
-  - Add `tests/unit/daemon/api.test.ts`.
-  - Create a fake transport/client pair that calls the daemon API in-process.
-  - Verify request/response serialization boundary uses DTOs, not repository
+  - [x] Add `tests/unit/daemon/api.test.ts`.
+  - [x] Create a fake transport/client pair that calls the daemon API in-process.
+  - [x] Verify request/response serialization boundary uses DTOs, not repository
     internals.
   - Cover error responses through the same fake client.
 - [ ] `src/daemon/server.ts` — daemon entry point + lifecycle shell
