@@ -30,6 +30,9 @@ export type ParsedCommand = {
   kind: "disconnect";
   sourceName: string;
   targetNames: string[];
+} | {
+  kind: "pair-create";
+  name: string;
 };
 
 const defaultCliVersion = "1.0.0";
@@ -164,6 +167,7 @@ function createProgram(
   addAgentAttachCommand(program, "claude", setParsed);
   addRoutingCommand(program, "connect", setParsed);
   addRoutingCommand(program, "disconnect", setParsed);
+  addPairCommand(program, setParsed);
 
   return program;
 }
@@ -208,4 +212,13 @@ function addRoutingCommand(
       targetNames: targets.map(requireNonEmptyName),
     });
   });
+}
+
+function addPairCommand(program: Command, setParsed: (command: ParsedCommand) => void): void {
+  program
+    .command("pair")
+    .requiredOption("--name <pair-name>")
+    .action((options: { name: string }) => {
+      setParsed({ kind: "pair-create", name: requireNonEmptyName(options.name) });
+    });
 }

@@ -152,6 +152,25 @@ describe("CLI parser", () => {
     expectCliParseError(["connect", "a", ""], "aiox.invalidName");
   });
 
+  it("parses pair create with a name", () => {
+    expect(parseCli(["pair", "--name", "feature-x"])).toEqual({
+      kind: "pair-create",
+      name: "feature-x",
+    });
+  });
+
+  it("rejects pair create without a name option", () => {
+    expect(() => parseCli(["pair"])).toThrow(CliParseError);
+  });
+
+  it("rejects pair create without a name value", () => {
+    expect(() => parseCli(["pair", "--name"])).toThrow(CliParseError);
+  });
+
+  it("rejects pair create with an empty name", () => {
+    expectCliParseError(["pair", "--name", ""], "aiox.invalidName");
+  });
+
   it("rejects daemon without a subcommand", () => {
     expectCliParseError(["daemon"], "aiox.missingCommand");
   });
