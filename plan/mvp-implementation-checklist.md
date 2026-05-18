@@ -486,7 +486,7 @@ isolated commits, Step 3 header stays `✅ 완료`.
 
 ---
 
-## Step 5: route/connect fan-out tests (daemon level) — 🔄 진행 중
+## Step 5: route/connect fan-out tests (daemon level) — ✅ 완료
 
 Step 1에서 core unit으로 cover된 fan-out logic을 **daemon API + store 결합 레벨**에서 재검증.
 
