@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 
 import { createDaemonApi, type DaemonApi, type StopResponse } from "./api.js";
-import { createDaemonState } from "./state.js";
+import { createDaemonState, type StopRequest } from "./state.js";
 import {
   createNoopSupervisor,
   type Supervisor,
@@ -20,7 +20,7 @@ export interface DaemonServer {
 
 export interface DaemonServerHandle {
   api: DaemonApi;
-  stop(): StopResponse;
+  stop(options?: StopRequest): StopResponse;
 }
 
 export function createDaemonServer(
@@ -46,8 +46,8 @@ export function createDaemonServer(
 
       handle = {
         api,
-        stop() {
-          const response = api.stop({});
+        stop(stopOptions) {
+          const response = api.stop(stopOptions ?? {});
           supervisor.stop();
           handle = null;
           return response;

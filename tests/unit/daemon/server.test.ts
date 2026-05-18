@@ -70,6 +70,26 @@ describe("daemon server lifecycle shell", () => {
     expect((await handle.api.status()).agents[0]?.status).toBe("disconnected");
   });
 
+  it("propagates daemonOnly stop without disconnecting connected agents", async () => {
+    const supervisor = createRecordingSupervisor();
+    const server = createDaemonServer({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-05-18T00:00:00.000Z",
+      supervisor,
+    });
+    const handle = server.start();
+
+    await handle.api.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    expect(await handle.stop({ daemonOnly: true })).toEqual({
+      ok: true,
+      stoppedAgents: [],
+    });
+    expect(supervisor.stopCalls).toBe(1);
+    expect((await handle.api.status()).agents[0]?.status).toBe("connected");
+  });
+
   it("reconnects an agent by name after restart", async () => {
     const ids = ["agent-1", "unused-new-agent-id"];
     const server = createDaemonServer({
