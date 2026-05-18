@@ -51,6 +51,13 @@ describe("CLI parser", () => {
     });
   });
 
+  it("parses injected version output", () => {
+    expect(parseCli(["--version"], { version: "9.9.9" })).toEqual({
+      kind: "version",
+      value: "9.9.9",
+    });
+  });
+
   it("parses codex attach with a name", () => {
     expect(parseCli(["codex", "--name", "impl"])).toEqual({
       kind: "agent-attach",

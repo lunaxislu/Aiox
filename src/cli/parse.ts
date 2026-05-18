@@ -32,7 +32,11 @@ export type ParsedCommand = {
   targetNames: string[];
 };
 
-const cliVersion = "1.0.0";
+const defaultCliVersion = "1.0.0";
+
+export interface ParseCliOptions {
+  version?: string;
+}
 
 export class CliParseError extends Error {
   readonly code: string;
@@ -46,10 +50,10 @@ export class CliParseError extends Error {
   }
 }
 
-export function parseCli(argv: string[]): ParsedCommand {
+export function parseCli(argv: string[], options: ParseCliOptions = {}): ParsedCommand {
   let parsed: ParsedCommand | undefined;
   const output: string[] = [];
-  const program = createProgram(output, (command) => {
+  const program = createProgram(options.version ?? defaultCliVersion, output, (command) => {
     parsed = command;
   });
 
@@ -115,12 +119,16 @@ function requireNonEmptyName(value: string): string {
   return value;
 }
 
-function createProgram(output: string[], setParsed: (command: ParsedCommand) => void): Command {
+function createProgram(
+  version: string,
+  output: string[],
+  setParsed: (command: ParsedCommand) => void,
+): Command {
   const program = new Command();
 
   program
     .name("aiox")
-    .version(cliVersion)
+    .version(version)
     .exitOverride()
     .configureOutput({
       writeOut: (value) => {
