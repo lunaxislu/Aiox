@@ -132,19 +132,11 @@ describe("daemon server lifecycle shell", () => {
 });
 
 function createRecordingSupervisor(): Supervisor & { stopCalls: number } {
-  let state: Supervisor["state"] = "idle";
-
   return {
     stopCalls: 0,
-    get state() {
-      return state;
-    },
-    start() {
-      state = "started";
-    },
+    start() {},
     stop() {
       this.stopCalls += 1;
-      state = "stopped";
     },
   };
 }
