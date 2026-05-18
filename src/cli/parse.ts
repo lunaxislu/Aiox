@@ -47,6 +47,12 @@ export interface ParseCliOptions {
   version?: string;
 }
 
+interface CreateProgramOptions {
+  version: string;
+  output: string[];
+  setParsed: (command: ParsedCommand) => void;
+}
+
 export class CliParseError extends Error {
   readonly code: string;
   readonly exitCode: number;
@@ -62,8 +68,12 @@ export class CliParseError extends Error {
 export function parseCli(argv: string[], options: ParseCliOptions = {}): ParsedCommand {
   let parsed: ParsedCommand | undefined;
   const output: string[] = [];
-  const program = createProgram(options.version ?? defaultCliVersion, output, (command) => {
-    parsed = command;
+  const program = createProgram({
+    version: options.version ?? defaultCliVersion,
+    output,
+    setParsed: (command) => {
+      parsed = command;
+    },
   });
 
   try {
@@ -132,11 +142,7 @@ function requireNonEmptyName(value: string): string {
   return value;
 }
 
-function createProgram(
-  version: string,
-  output: string[],
-  setParsed: (command: ParsedCommand) => void,
-): Command {
+function createProgram({ version, output, setParsed }: CreateProgramOptions): Command {
   const program = new Command();
 
   program
