@@ -8,6 +8,7 @@ import type {
   DaemonState,
   DisconnectRequest,
   DisconnectResult,
+  StatusResult,
 } from "./state.js";
 import type { AgentInstanceStatus, AgentKind } from "../core/agents.js";
 import type { PairStatus } from "../core/pairs.js";
@@ -19,6 +20,7 @@ export interface DaemonApi {
   createPair(request: CreatePairRequest): CreatePairResponse;
   connect(request: ConnectRequest): ConnectResponse;
   disconnect(request: DisconnectRequest): DisconnectResponse;
+  status(): StatusResponse;
 }
 
 export interface AgentDto {
@@ -103,6 +105,15 @@ export type DisconnectResponse =
       missing: string[];
     };
 
+export interface StatusResponse {
+  daemon: {
+    startedAt: string;
+  };
+  agents: AgentDto[];
+  pairs: PairDto[];
+  routes: RouteDto[];
+}
+
 export function createDaemonApi(state: DaemonState): DaemonApi {
   return {
     attachAgent(request) {
@@ -116,6 +127,9 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     disconnect(request) {
       return mapDisconnectResult(state.disconnect(request));
+    },
+    status() {
+      return mapStatusResult(state.status());
     },
   };
 }
@@ -177,6 +191,15 @@ function mapDisconnectResult(result: DisconnectResult): DisconnectResponse {
   return result;
 }
 
+function mapStatusResult(result: StatusResult): StatusResponse {
+  return {
+    daemon: result.daemon,
+    agents: result.agents.map(mapAgent),
+    pairs: result.pairs.map(mapPair),
+    routes: result.routes.map(mapRoute),
+  };
+}
+
 function mapAgent(agent: StoredAgent): AgentDto {
   return {
     id: agent.id,
@@ -185,6 +208,14 @@ function mapAgent(agent: StoredAgent): AgentDto {
     status: agent.status,
     cwd: agent.cwd,
     pairId: agent.pairId ?? null,
+  };
+}
+
+function mapPair(pair: { id: string; name: string; status: PairStatus }): PairDto {
+  return {
+    id: pair.id,
+    name: pair.name,
+    status: pair.status,
   };
 }
 

@@ -64,6 +64,7 @@ export interface PairRepository {
   createReservation(input: CreatePairReservationInput): StoredPair;
   attachAgent(input: AttachAgentToPairInput): AttachAgentToPairResult;
   findByName(name: string): StoredPair | null;
+  list(): StoredPair[];
 }
 
 export function createPairRepository(db: Database): PairRepository {
@@ -193,6 +194,13 @@ export function createPairRepository(db: Database): PairRepository {
         .get(name) as PairRow | undefined;
 
       return row ? mapPairRow(row) : null;
+    },
+
+    list() {
+      return db
+        .prepare("select * from pairs order by id")
+        .all()
+        .map((row) => mapPairRow(row as PairRow));
     },
   };
 }

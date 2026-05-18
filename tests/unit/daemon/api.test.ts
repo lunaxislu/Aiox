@@ -346,6 +346,94 @@ describe("daemon API with fake in-process transport", () => {
       missing: ["missing"],
     });
   });
+
+  it("returns empty daemon status through a round-trip request", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "unused",
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    expect(await client.status()).toEqual({
+      daemon: {
+        startedAt: "2026-05-18T00:00:00.000Z",
+      },
+      agents: [],
+      pairs: [],
+      routes: [],
+    });
+  });
+
+  it("returns agents, pairs, and routes in daemon status", async () => {
+    const ids = ["pair-1", "agent-source", "agent-target", "route-1"];
+    const state = createDaemonState({
+      db,
+      createId: () => {
+        const id = ids.shift();
+
+        if (!id) {
+          throw new Error("unexpected id request");
+        }
+
+        return id;
+      },
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.createPair({ name: "feature-x" });
+    await client.attachAgent({
+      kind: "codex",
+      name: "impl",
+      cwd: "/repo",
+      pairName: "feature-x",
+    });
+    await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
+    await client.connect({
+      sourceName: "impl",
+      targetNames: ["reviewer"],
+    });
+
+    expect(await client.status()).toEqual({
+      daemon: {
+        startedAt: "2026-05-18T00:00:00.000Z",
+      },
+      agents: [
+        {
+          id: "agent-source",
+          name: "impl",
+          kind: "codex",
+          status: "connected",
+          cwd: "/repo",
+          pairId: "pair-1",
+        },
+        {
+          id: "agent-target",
+          name: "reviewer",
+          kind: "claude",
+          status: "connected",
+          cwd: "/repo",
+          pairId: null,
+        },
+      ],
+      pairs: [
+        {
+          id: "pair-1",
+          name: "feature-x",
+          status: "pending",
+        },
+      ],
+      routes: [
+        {
+          id: "route-1",
+          sourceAgentId: "agent-source",
+          targetAgentId: "agent-target",
+          status: "active",
+        },
+      ],
+    });
+  });
 });
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {
@@ -357,11 +445,11 @@ function createInProcessClient<TApi extends object>(api: TApi): TApi {
         return value;
       }
 
-      const fn = value as (request: unknown) => unknown;
+      const fn = value as (...args: unknown[]) => unknown;
 
-      return async (request: unknown) => {
-        const serializedRequest = JSON.parse(JSON.stringify(request));
-        const response = await fn(serializedRequest);
+      return async (...args: unknown[]) => {
+        const serializedArgs = JSON.parse(JSON.stringify(args));
+        const response = await fn(...serializedArgs);
 
         return JSON.parse(JSON.stringify(response));
       };

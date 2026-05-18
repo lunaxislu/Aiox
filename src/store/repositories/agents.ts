@@ -52,6 +52,7 @@ interface AgentRow {
 export interface AgentRepository {
   attach(request: AttachStoredAgentRequest): AttachStoredAgentResult;
   findByName(name: string): StoredAgent | null;
+  list(): StoredAgent[];
 }
 
 export function createAgentRepository(db: Database): AgentRepository {
@@ -151,6 +152,13 @@ export function createAgentRepository(db: Database): AgentRepository {
         .get(name) as AgentRow | undefined;
 
       return row ? mapAgentRow(row) : null;
+    },
+
+    list() {
+      return db
+        .prepare("select * from agents order by id")
+        .all()
+        .map((row) => mapAgentRow(row as AgentRow));
     },
   };
 }

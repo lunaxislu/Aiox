@@ -248,7 +248,20 @@ SQLite open/schema/repositories 완료.
       - Policy: missing agent names are typed errors; an absent route between
         existing agents is not an error and is omitted from `removed`.
       - Verification: `pnpm test`, `pnpm typecheck`.
-    - `status()`
+    - [x] `status()`
+      - Files: `src/daemon/api.ts`, `src/daemon/state.ts`,
+        `src/store/repositories/agents.ts`,
+        `src/store/repositories/pairs.ts`,
+        `tests/unit/daemon/api.test.ts`
+      - Red: `client.status` missing method.
+      - Green: daemon state returns deterministic daemon metadata plus
+        repository-listed agents, pairs, and routes; API maps them to DTOs.
+      - Repository change: added `agents.list()` and `pairs.list()` so daemon
+        state reads through repositories instead of direct SQL. `routes.list()`
+        already existed.
+      - Serialization: fake client now JSON round-trips no-arg calls via an
+        argument list, so `status()` participates in the same boundary check.
+      - Verification: `pnpm test`, `pnpm typecheck`.
     - `stop({ daemonOnly? })`
   - Keep route fan-out and pair auto-route assertions for Step 5/6 daemon-level
     tests; Step 3 only proves API shape, state persistence, and transport
@@ -269,7 +282,7 @@ SQLite open/schema/repositories 완료.
     - [x] return typed error for missing source/target
     - [x] persist directed route changes through route repository
   - Status behavior:
-    - report daemon metadata plus stored agents, pairs, and routes
+    - [x] report daemon metadata plus stored agents, pairs, and routes
 - [ ] fake in-process transport로 control plane round-trip 검증
   - [x] Add `tests/unit/daemon/api.test.ts`.
   - [x] Create a fake transport/client pair that calls the daemon API in-process.

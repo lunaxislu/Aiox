@@ -92,11 +92,21 @@ export type DisconnectResult =
       missing: string[];
     };
 
+export interface StatusResult {
+  daemon: {
+    startedAt: string;
+  };
+  agents: ReturnType<ReturnType<typeof createAgentRepository>["list"]>;
+  pairs: ReturnType<ReturnType<typeof createPairRepository>["list"]>;
+  routes: ReturnType<ReturnType<typeof createRouteRepository>["list"]>;
+}
+
 export interface DaemonState {
   attachAgent(request: AttachAgentRequest): AttachAgentResult;
   createPair(request: CreatePairRequest): CreatePairResult;
   connect(request: ConnectRequest): ConnectResult;
   disconnect(request: DisconnectRequest): DisconnectResult;
+  status(): StatusResult;
 }
 
 export function createDaemonState(
@@ -105,6 +115,7 @@ export function createDaemonState(
   const agents = createAgentRepository(options.db);
   const pairs = createPairRepository(options.db);
   const routes = createRouteRepository(options.db);
+  const startedAt = options.now();
 
   return {
     attachAgent(request) {
@@ -204,6 +215,17 @@ export function createDaemonState(
           sourceAgentId: resolved.source.id,
           targetAgentIds: resolved.targets.map((target) => target.id),
         }),
+      };
+    },
+
+    status() {
+      return {
+        daemon: {
+          startedAt,
+        },
+        agents: agents.list(),
+        pairs: pairs.list(),
+        routes: routes.list(),
       };
     },
   };
