@@ -35,6 +35,22 @@ describe("CLI parser", () => {
     });
   });
 
+  it("parses help output as a successful command result", () => {
+    const parsed = parseCli(["--help"]);
+
+    expect(parsed).toMatchObject({
+      kind: "help",
+    });
+    expect(parsed.kind === "help" ? parsed.text : "").toContain("Usage: aiox");
+  });
+
+  it("parses version output as a successful command result", () => {
+    expect(parseCli(["--version"])).toEqual({
+      kind: "version",
+      value: "1.0.0",
+    });
+  });
+
   it("rejects daemon without a subcommand", () => {
     expectCliParseError(["daemon"], "aiox.missingCommand");
   });

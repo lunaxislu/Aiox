@@ -9,7 +9,15 @@ export type ParsedCommand = {
   kind: "daemon-restart";
 } | {
   kind: "daemon-status";
+} | {
+  kind: "help";
+  text: string;
+} | {
+  kind: "version";
+  value: string;
 };
+
+const cliVersion = "1.0.0";
 
 export class CliParseError extends Error {
   readonly code: string;
@@ -25,7 +33,8 @@ export class CliParseError extends Error {
 
 export function parseCli(argv: string[]): ParsedCommand {
   let parsed: ParsedCommand | undefined;
-  const program = createProgram((command) => {
+  const output: string[] = [];
+  const program = createProgram(output, (command) => {
     parsed = command;
   });
 
@@ -33,6 +42,14 @@ export function parseCli(argv: string[]): ParsedCommand {
     program.parse(argv, { from: "user" });
   } catch (error) {
     if (error instanceof CommanderError) {
+      if (error.code === "commander.helpDisplayed" && includesHelpFlag(argv)) {
+        return { kind: "help", text: output.join("") };
+      }
+
+      if (error.code === "commander.version" && includesVersionFlag(argv)) {
+        return { kind: "version", value: output.join("").trim() };
+      }
+
       throw new CliParseError(error.message, {
         code: normalizeCommanderErrorCode(error.code),
         exitCode: error.exitCode,
@@ -53,7 +70,7 @@ export function parseCli(argv: string[]): ParsedCommand {
 }
 
 function normalizeCommanderErrorCode(code: string): string {
-  if (code === "commander.help") {
+  if (code === "commander.help" || code === "commander.helpDisplayed") {
     return "aiox.missingCommand";
   }
 
@@ -64,14 +81,25 @@ function normalizeCommanderErrorCode(code: string): string {
   return code;
 }
 
-function createProgram(setParsed: (command: ParsedCommand) => void): Command {
+function includesHelpFlag(argv: readonly string[]): boolean {
+  return argv.includes("--help") || argv.includes("-h");
+}
+
+function includesVersionFlag(argv: readonly string[]): boolean {
+  return argv.includes("--version") || argv.includes("-V");
+}
+
+function createProgram(output: string[], setParsed: (command: ParsedCommand) => void): Command {
   const program = new Command();
 
   program
     .name("aiox")
+    .version(cliVersion)
     .exitOverride()
     .configureOutput({
-      writeOut: () => {},
+      writeOut: (value) => {
+        output.push(value);
+      },
       writeErr: () => {},
     });
 
