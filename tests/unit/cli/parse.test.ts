@@ -100,15 +100,15 @@ describe("CLI parser", () => {
   });
 
   it("rejects codex attach without a name option", () => {
-    expect(() => parseCli(["codex"])).toThrow(CliParseError);
+    expectCliParseError(["codex"], "aiox.missingMandatoryOptionValue");
   });
 
   it("rejects codex attach without a name value", () => {
-    expect(() => parseCli(["codex", "--name"])).toThrow(CliParseError);
+    expectCliParseError(["codex", "--name"], "aiox.optionMissingArgument");
   });
 
   it("rejects claude attach without a pair value", () => {
-    expect(() => parseCli(["claude", "--name", "impl", "--pair"])).toThrow(CliParseError);
+    expectCliParseError(["claude", "--name", "impl", "--pair"], "aiox.optionMissingArgument");
   });
 
   it("rejects an empty agent attach name", () => {
@@ -140,7 +140,7 @@ describe("CLI parser", () => {
   });
 
   it("rejects connect without positionals", () => {
-    expect(() => parseCli(["connect"])).toThrow(CliParseError);
+    expectCliParseError(["connect"], "aiox.missingArgument");
   });
 
   it("rejects connect without targets", () => {
@@ -167,11 +167,11 @@ describe("CLI parser", () => {
   });
 
   it("rejects pair create without a name option", () => {
-    expect(() => parseCli(["pair"])).toThrow(CliParseError);
+    expectCliParseError(["pair"], "aiox.missingMandatoryOptionValue");
   });
 
   it("rejects pair create without a name value", () => {
-    expect(() => parseCli(["pair", "--name"])).toThrow(CliParseError);
+    expectCliParseError(["pair", "--name"], "aiox.optionMissingArgument");
   });
 
   it("rejects pair create with an empty name", () => {
@@ -201,7 +201,7 @@ describe("CLI parser", () => {
   });
 
   it("rejects global stop with an extra positional", () => {
-    expect(() => parseCli(["stop", "extra"])).toThrow(CliParseError);
+    expectCliParseError(["stop", "extra"], "aiox.excessArguments");
   });
 
   it("rejects daemon without a subcommand", () => {
