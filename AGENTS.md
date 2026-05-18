@@ -11,9 +11,28 @@ Always use the OpenAI developer documentation MCP server if you need to work wit
 ## Docs Rules
 
 - `docs/`에는 새 `aiox` 구현에 직접 필요한 것만 둔다.
+- `docs/aiox/`는 예외적으로 사용자가 이해해야 하는 개념, agent 설명,
+  시각화, 학습 기록을 둔다. 구현 결정 자체의 권위 문서가 아니라
+  사용자가 나중에 다시 볼 수 있는 learning record다.
 - 기존 bridge/claude-adapter 문서와 구현은 `legacy/bridge-relay-v1/`에 보존한다.
 - `history/`는 사건 순서와 판단 과정을 기록한다.
 - `plan/`은 다음 변경을 위한 실행 문서만 둔다.
+- `.claude/plans/`는 Claude가 한 cleanup/feature를 진행하기 위한 단기 실행
+  scratch다. 권위 문서가 아니며, 작업이 끝나면 필요한 결정/검증/결과만
+  `history/`와 `plan/`으로 흡수한다.
+
+## Authority Priority
+
+문서/메모리/세션 컨텍스트가 어긋나면 아래 순서가 우선한다.
+
+Priority: `prd/history > plan > docs/aiox > memory/session > agent-specific scratch`.
+
+1. `prd/` + `history/`: 제품/spec, 결정, 판단 과정의 권위.
+2. `plan/`: 현재 execution checklist와 Step 진행 상태.
+3. `docs/aiox/`: 사용자 학습/설명 기록. 권위 결정을 대체하지 않는다.
+4. agent memory + 현재 session context: 빠른 참조용 요약.
+5. agent-specific scratch (`.claude/plans/`, 임시 조사 노트 등): 작업 중
+   보조 자료이며 장기 권위가 아니다.
 
 ## Current Doc Layout
 
@@ -22,7 +41,9 @@ Always use the OpenAI developer documentation MCP server if you need to work wit
 3. `history/13-aiox-rewrite-decision.history.md`를 rewrite 기준 결정 문서로 둔다.
 4. `history/15-mvp-design-decisions.history.md` + `prd/mvp/aiox-mvp-spec.md`를 MVP 설계 권위 문서로 둔다.
 5. `plan/mvp-implementation-checklist.md`를 MVP 진행 추적 execution checklist로 둔다. 권위는 `history/`+`prd/`, plan/은 실행 레이어.
-6. 새 `docs/`는 필요한 시점에 다시 만든다.
+6. `docs/aiox/`는 사용자가 이해해야 하는 개념 설명과 learning record를 둔다.
+   예: `docs/aiox/pair-attach-kind-mismatch.md`.
+7. 새 일반 `docs/`는 구현에 직접 필요한 시점에만 다시 만든다.
 
 ## Memory와 권위 문서 패턴
 
@@ -62,6 +83,57 @@ execution checklist와 todo는 **repo `plan/` 아래에만** 둔다. vault에는
 - 다음 Step의 세부 sub-task를 미리 분해할 수는 있지만, 상태는 `Planned`로 유지한다.
 - 각 Step은 해당 Step의 모든 체크박스 완료 후 `pnpm test`와 `pnpm typecheck`를 통과해야 완료로 본다.
 - Step 완료 직후 checklist의 Step 상태, 체크박스, verification baseline을 갱신하고 그 변경까지 포함해 커밋한다.
+
+## Critical Issue Workflow
+
+Step 진행 중 repository invariant, product contract, data loss, atomicity, adapter
+boundary 같은 critical 이슈를 발견하면 현재 구현으로 바로 섞지 말고 다음 순서로
+처리한다.
+
+1. **발견 기록**: 해당 Step의 `history/` 문서에 보류 항목을 추가한다. 왜 critical인지,
+   재현/위험 시나리오, 해결 후보, 지금 해결할지 보류할지의 판단을 함께 적는다.
+2. **해결 기록**: follow-up commit으로 해결한 뒤 같은 `history/` 보류 항목 아래에
+   해결 기록을 추가한다. commit, 결정, 변경 파일, verification 결과를 남긴다.
+3. **Checklist 동기화**: 실행 상태나 baseline이 바뀌면
+   `plan/mvp-implementation-checklist.md`도 같은 commit에 갱신한다.
+4. **Learning record**: 사용자가 이해하기 어려워한 개념이면 `docs/aiox/<topic>.md`에
+   시각화와 설명을 추가한다. 이 문서는 학습 기록이며, 결정 권위는 `history/`와
+   `prd/`에 둔다.
+
+예시는 `history/16-step-2-sqlite-repository-cleanup.history.md`의 4-1 보류 →
+해결 기록과 `docs/aiox/pair-attach-kind-mismatch.md`를 따른다.
+
+## Decision Options Workflow
+
+agent가 architecture/product/workflow 결정, critical issue 대응, 되돌리기 어려운
+변경, 다음 Step 진입 여부를 사용자에게 물을 때는 MUST 규칙으로 아래 4가지를
+함께 제시한다.
+
+1. 각 옵션의 trade-off.
+2. agent의 추천 옵션과 근거.
+3. reversibility: 나중에 바꿀 수 있는지, 바꾸면 비용이 무엇인지.
+4. deferrability: 지금 결정하지 않고 보류할 수 있는지.
+
+목표는 사용자가 전체 코드/리소스를 다 몰라도 "추천대로 가", "다른 옵션", "보류",
+"더 알아보고 와" 중 하나로 결정할 수 있게 만드는 것이다.
+
+단순 구현 세부사항, 명백한 bug fix, 이미 checklist에 정의된 작업에는 이 형식을
+기계적으로 적용하지 않는다. 이 규칙은 무거운 결정의 품질을 높이기 위한 것이지,
+모든 작은 선택을 문서화하기 위한 것이 아니다.
+
+## Delegated Investigation Workflow
+
+사용자가 "잘 모르겠다", "더 알아봐 와", "다른 agent로 검증해줘",
+"Codex/Gemini/Claude에게 물어봐", "옵션 trade-off를 더 봐줘"처럼 말하면
+현재 세션에서 깊게 파기보다 분리 조사 또는 subagent 위임 후보로 본다.
+
+- subagent 위임은 사용자 신호 또는 명시 승인 기반으로만 진행한다.
+- 현재 agent가 직접 깊게 파면 결정 컨텍스트가 오염될 위험이 크다고 판단하면,
+  먼저 위임/분리 조사를 제안하고 승인 후 진행한다.
+- 위임 결과는 결론, 근거, 권위 문서 반영 후보만 현재 맥락으로 가져온다.
+  긴 탐색 로그나 미확정 추론을 권위 문서처럼 섞지 않는다.
+- 최종 결정은 항상 `prd/`, `history/`, `plan/`, 필요 시 `docs/aiox/`에
+  반영한 뒤 memory/session context를 동기화한다.
 
 ## Vault 활용 패턴
 
