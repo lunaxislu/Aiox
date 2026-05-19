@@ -574,9 +574,20 @@ Phase B 결과:
 
 ---
 
-## Step 8: fake adapter integration tests — ⏳ To be planned
+## Step 8: fake adapter integration tests — 🔄 Phase A 완료 / Phase B 진행 예정
 
 실제 Codex/Claude 의존 없이 adapter contract 검증.
+Phase A pre-implementation decisions: `history/24-step-8-phase-a-decisions.history.md`.
+
+Phase A 결정:
+- thin adapter-facing interface 를 `src` 에 두고, fake Codex/Claude 는 그 contract 를 구현.
+- source outgoing capture 와 target inject capture 는 별도 buffer 로 분리.
+- reply round-trip 은 새 `reply` message fan-out 까지만 검증하고 parent/thread
+  correlation 은 Step 9 Codex UUID mapping 정책으로 이월.
+- partial failure 는 실패 target delivery 를 `failed` 로 기록하고 다른 target 은
+  계속 진행.
+- real socket transport + O1 + `sendMessage` sentinel 정정은 Step 9 시작 전까지
+  deferrable 로 유지.
 
 - [ ] fake Codex adapter: outgoing capture + turn/start injection 시뮬레이션
 - [ ] fake Claude adapter: outgoing capture + channel push 시뮬레이션
