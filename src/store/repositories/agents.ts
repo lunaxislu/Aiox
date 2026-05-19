@@ -20,7 +20,6 @@ export interface AttachStoredAgentRequest {
   name: string;
   kind: AgentKind;
   cwd: string;
-  pairId?: string | null;
   adapterSessionId?: string | null;
   now: string;
 }
@@ -74,7 +73,7 @@ export function createAgentRepository(db: Database): AgentRepository {
           ...existing,
           status: "connected",
           cwd: request.cwd,
-          pairId: request.pairId ?? existing.pairId,
+          pairId: existing.pairId,
           adapterSessionId: request.adapterSessionId ?? null,
           lastSeenAt: request.now,
           updatedAt: request.now,
@@ -106,7 +105,7 @@ export function createAgentRepository(db: Database): AgentRepository {
         kind: request.kind,
         status: "connected",
         cwd: request.cwd,
-        pairId: request.pairId ?? null,
+        pairId: null,
         adapterSessionId: request.adapterSessionId ?? null,
         lastSeenAt: request.now,
         createdAt: request.now,

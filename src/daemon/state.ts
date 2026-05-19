@@ -23,6 +23,8 @@ import {
 } from "../store/repositories/routes.js";
 import { withTransaction } from "../store/transaction.js";
 
+const attachRollbackSentinel = Symbol("aiox.attach.rollback");
+
 export interface CreateDaemonStateOptions {
   db: Database;
   createId: () => string;
@@ -42,6 +44,18 @@ export type AttachAgentResult =
       ok: false;
       reason: "pair_not_found";
       pairName: string;
+    }
+  | {
+      ok: false;
+      reason: "pair_kind_slot_occupied";
+      existingAgentId: string;
+    }
+  | {
+      ok: false;
+      reason: "agent_kind_mismatch";
+      agentId: string;
+      expectedKind: AgentKind;
+      actualKind: AgentKind;
     };
 
 export interface CreatePairRequest {
@@ -186,14 +200,66 @@ export function createDaemonState(
         }
       }
 
-      return agents.attach({
-        id: options.createId(),
-        name: request.name,
-        kind: request.kind,
-        cwd: request.cwd,
-        pairId: pair?.id,
-        now: options.now(),
-      });
+      try {
+        return withTransaction(options.db, () => {
+          const now = options.now();
+          const attachResult = agents.attach({
+            id: options.createId(),
+            name: request.name,
+            kind: request.kind,
+            cwd: request.cwd,
+            now,
+          });
+
+          if (!attachResult.ok || !pair) {
+            return attachResult;
+          }
+
+          const pairAttachResult = pairs.attachAgent({
+            pairId: pair.id,
+            agentId: attachResult.agent.id,
+            kind: request.kind,
+            now,
+          });
+
+          if (!pairAttachResult.ok) {
+            if (
+              pairAttachResult.reason === "pair_kind_slot_occupied" ||
+              pairAttachResult.reason === "agent_kind_mismatch"
+            ) {
+              throw createAttachRollback(pairAttachResult);
+            }
+
+            throw new Error(
+              `unexpected pair attach failure: ${pairAttachResult.reason}`,
+            );
+          }
+
+          if (pairAttachResult.pair.status === "ready") {
+            createBidirectionalPairRoutes({
+              agents,
+              createId: options.createId,
+              now,
+              pairId: pair.id,
+              routes,
+            });
+          }
+
+          return {
+            ok: true,
+            agent: {
+              ...attachResult.agent,
+              pairId: pair.id,
+            },
+          };
+        });
+      } catch (error) {
+        if (isAttachRollback(error)) {
+          return error.response;
+        }
+
+        throw error;
+      }
     },
 
     createPair(request) {
@@ -384,6 +450,83 @@ export function createDaemonState(
       }));
     },
   };
+}
+
+type AttachRollbackResponse = Extract<
+  AttachAgentResult,
+  { ok: false; reason: "pair_kind_slot_occupied" | "agent_kind_mismatch" }
+>;
+
+interface AttachRollback {
+  [attachRollbackSentinel]: true;
+  response: AttachRollbackResponse;
+}
+
+function createAttachRollback(response: AttachRollbackResponse): AttachRollback {
+  return {
+    [attachRollbackSentinel]: true,
+    response,
+  };
+}
+
+function isAttachRollback(error: unknown): error is AttachRollback {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as Partial<AttachRollback>)[attachRollbackSentinel] === true
+  );
+}
+
+function createBidirectionalPairRoutes(input: {
+  agents: ReturnType<typeof createAgentRepository>;
+  createId: () => string;
+  now: string;
+  pairId: string;
+  routes: ReturnType<typeof createRouteRepository>;
+}): void {
+  const pairAgents = input.agents
+    .list()
+    .filter((agent) => agent.pairId === input.pairId);
+  const codex = pairAgents.find((agent) => agent.kind === "codex");
+  const claude = pairAgents.find((agent) => agent.kind === "claude");
+
+  if (!codex || !claude) {
+    return;
+  }
+
+  createRouteIfMissing(input.routes, {
+    id: input.createId,
+    now: input.now,
+    sourceAgentId: codex.id,
+    targetAgentId: claude.id,
+  });
+  createRouteIfMissing(input.routes, {
+    id: input.createId,
+    now: input.now,
+    sourceAgentId: claude.id,
+    targetAgentId: codex.id,
+  });
+}
+
+function createRouteIfMissing(
+  routes: ReturnType<typeof createRouteRepository>,
+  input: {
+    id: () => string;
+    now: string;
+    sourceAgentId: string;
+    targetAgentId: string;
+  },
+): void {
+  if (routes.findBySourceAndTarget(input.sourceAgentId, input.targetAgentId)) {
+    return;
+  }
+
+  routes.create({
+    id: input.id(),
+    sourceAgentId: input.sourceAgentId,
+    targetAgentId: input.targetAgentId,
+    now: input.now,
+  });
 }
 
 function resolveRouteAgents(

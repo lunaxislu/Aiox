@@ -86,6 +86,18 @@ export type AttachAgentResponse =
       ok: false;
       reason: "pair_not_found";
       pairName: string;
+    }
+  | {
+      ok: false;
+      reason: "pair_kind_slot_occupied";
+      existingAgentId: string;
+    }
+  | {
+      ok: false;
+      reason: "agent_kind_mismatch";
+      agentId: string;
+      expectedKind: AgentKind;
+      actualKind: AgentKind;
     };
 
 export type CreatePairResponse =
