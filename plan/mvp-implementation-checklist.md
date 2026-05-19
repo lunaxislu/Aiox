@@ -584,11 +584,10 @@ Phase A 결정:
 - thin adapter-facing interface 를 `src` 에 두고, fake Codex/Claude 는 그 contract 를 구현.
 - source outgoing capture 와 target inject capture 는 별도 buffer 로 분리.
 - reply round-trip 은 새 `reply` message fan-out 까지만 검증하고 parent/thread
-  correlation 은 Step 9 Codex UUID mapping 정책으로 이월.
+  correlation 은 Step 10 Codex UUID mapping 정책으로 이월.
 - partial failure 는 실패 target delivery 를 `failed` 로 기록하고 다른 target 은
   계속 진행.
-- real socket transport + O1 + `sendMessage` sentinel 정정은 Step 9 시작 전까지
-  deferrable 로 유지.
+- real socket transport + O1 + `sendMessage` sentinel 정정은 Step 9 에서 처리.
 
 Phase B 결과:
 - `src/adapters/contract.ts` 의 thin adapter-facing interface 와
@@ -597,8 +596,7 @@ Phase B 결과:
   buffer 로 유지.
 - `DaemonApi.updateDeliveryStatus` + `DeliveryRepository.updateStatus` 로 adapter inject
   결과를 delivery status 와 `delivery_status_changed` event 에 반영.
-- O1 / `sendMessage` sentinel / real socket transport 는 Step 9 시작 전 follow-up 으로
-  유지.
+- O1 / `sendMessage` sentinel / real socket transport 는 Step 9 follow-up 으로 유지.
 
 - [x] fake Codex adapter: outgoing capture + turn/start injection 시뮬레이션
 - [x] fake Claude adapter: outgoing capture + channel push 시뮬레이션
@@ -607,7 +605,42 @@ Phase B 결과:
 
 ---
 
-## Step 9: Codex app-server adapter skeleton — ⏳ To be planned
+## Step 9: real socket transport + O1/sendMessage atomicity — 🔄 Phase A complete
+
+권위 범위: real socket transport interface 도입 + O1 idempotency preflight
+transaction 경계 정정 + `sendMessage` sentinel rollback 정정.
+Phase A pre-implementation decisions:
+`history/25-step-9-phase-a-real-socket-transport.history.md`.
+
+Step 9 밖:
+- Codex app-server adapter skeleton.
+- Claude channel adapter skeleton.
+- Codex thread UUID mapping.
+- Claude channel trust/confirmation policy.
+- doctor/status output.
+
+Phase A 결정:
+- transport protocol 은 Unix domain socket primary. TCP loopback 은 future/test hook,
+  Windows named pipe 는 MVP 밖.
+- framing 은 NDJSON request/response envelope.
+- client identity 는 stateless control client. request `id` 로 response correlation.
+- O1 은 preflight transaction 내부 이동 + UNIQUE catch reclassify 를 함께 적용.
+- rollback sentinel 적용 범위는 `sendMessage` flow 로 제한.
+- transport/protocol error 만 envelope error 로 두고 daemon API typed response 는
+  기존 shape 를 보존.
+- shutdown 은 listening server close, live sockets 종료, owned socket path cleanup.
+
+- [ ] transport interface + NDJSON codec contract tests
+- [ ] daemon server socket listen/connect boundary
+- [ ] CLI/bin runtime socket client 재결합
+- [ ] `sendMessage` sentinel regression test + rollback pattern 적용
+- [ ] O1 idempotency preflight transaction 경계 정정 + UNIQUE violation typed reclassify
+- [ ] 신규 transport contract tests + 가능한 idempotency race-ish regression
+- [ ] Step 9 Phase B history/verification baseline 갱신
+
+---
+
+## Step 10: Codex app-server adapter skeleton — ⏳ To be planned
 
 - [ ] `src/adapters/codex/app-server.ts` — adapter-managed Codex app-server
   endpoint process/connection metadata; daemon does not host app-server
@@ -620,7 +653,7 @@ Phase B 결과:
 
 ---
 
-## Step 10: Claude channel adapter skeleton — ⏳ To be planned
+## Step 11: Claude channel adapter skeleton — ⏳ To be planned
 
 - [ ] `src/adapters/claude/channel-server.ts` — Node.js MCP channel server
   loaded by Claude dev channel over stdio, exposing HTTP ingress for daemon
@@ -632,7 +665,7 @@ Phase B 결과:
 
 ---
 
-## Step 11: doctor/status output — ⏳ To be planned
+## Step 12: doctor/status output — ⏳ To be planned
 
 - [ ] `aiox doctor` — Node.js, pnpm, Codex CLI, Claude CLI, SQLite native binding, daemon socket/db path, 선택적 recipe tool (cmux/tmux) 점검
 - [ ] `aiox status` — daemon + agents + pairs + routes + deliveries 요약 출력
@@ -646,11 +679,11 @@ Phase B 결과:
 
 권위: `prd/mvp/aiox-mvp-spec.md` "Open Product Issues" 섹션.
 
-1. Claude channel trust/confirmation policy → **Step 10 시작 전 결정 필요**
-2. Codex thread UUID → agent name mapping → **Step 9 시작 전 결정 필요**
+1. Claude channel trust/confirmation policy → **Step 11 시작 전 결정 필요**
+2. Codex thread UUID → agent name mapping → **Step 10 시작 전 결정 필요**
 3. Stale agent transition policy → Step 2 repositories 또는 Step 3 daemon API 단계에 영향
 4. Long-running delivery timeout policy → MVP에는 timeout 없음 default. Step 5/8 통합 테스트에서 노출될 수 있음
-5. AI agent session expiry handling → Step 9/10 adapter 구현 시 노출될 수 있음
+5. AI agent session expiry handling → Step 10/11 adapter 구현 시 노출될 수 있음
 
 ---
 
@@ -671,5 +704,5 @@ Latest full verification:
 - Keep this file as an execution checklist only.
 - If product behavior changes, update `history/15` 또는 `prd/mvp/aiox-mvp-spec.md` first, then adjust this checklist.
 - Do not use this file as the source of truth for MVP decisions.
-- Step 3-11 sub-task는 해당 step 시작 시점에 더 구체화한다. 지금은 placeholder.
+- Step 3-12 sub-task는 해당 step 시작 시점에 더 구체화한다. 지금은 placeholder.
 - vault `work/active/aiox.md` Implementation Status 섹션은 이 checklist의 high-level mirror일 뿐이고 todo 표기는 두지 않는다 (AGENTS.md "Checklist / Todo 위치 원칙").
