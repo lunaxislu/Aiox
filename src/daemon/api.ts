@@ -145,6 +145,10 @@ export type SendMessageResponse =
     }
   | {
       ok: false;
+      reason: "no_active_routes";
+    }
+  | {
+      ok: false;
       reason: "delivery_idempotency_key_exists";
       existing: DeliveryDto;
     };

@@ -188,6 +188,32 @@ describe("daemon message fan-out store persistence", () => {
       },
     ]);
   });
+
+  it("rejects messages from a source with no active routes without inserting rows", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-source",
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    expect(
+      await client.sendMessage({
+        sourceName: "impl",
+        messageId: "message-1",
+        type: "instruction",
+        content: "please review this change",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: "no_active_routes",
+    });
+    expect(readMessages(db)).toEqual([]);
+    expect(readDeliveries(db)).toEqual([]);
+    expect(readEvents(db)).toEqual([]);
+  });
 });
 
 function readMessages(db: Database): MessageRow[] {

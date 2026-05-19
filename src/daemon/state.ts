@@ -123,6 +123,10 @@ export type SendMessageResult =
     }
   | {
       ok: false;
+      reason: "no_active_routes";
+    }
+  | {
+      ok: false;
       reason: "delivery_idempotency_key_exists";
       existing: StoredDelivery;
     };
@@ -283,6 +287,14 @@ export function createDaemonState(
       const sourceRoutes = routes
         .list()
         .filter((route) => route.sourceAgentId === source.id);
+
+      if (sourceRoutes.length === 0) {
+        return {
+          ok: false,
+          reason: "no_active_routes",
+        };
+      }
+
       const existingDelivery = sourceRoutes
         .map((route) =>
           deliveries.findByIdempotencyKey(`${request.messageId}:${route.targetAgentId}`),
