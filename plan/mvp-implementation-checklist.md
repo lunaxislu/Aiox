@@ -508,19 +508,27 @@ Step 1에서 core unit으로 cover된 fan-out logic을 **daemon API + store 결�
 
 ---
 
-## Step 6: invocation layer + CLI bin entrypoint — ⏳ To be planned
+## Step 6: invocation layer + CLI bin entrypoint — 🔄 Phase B Round 1 in progress
 
-Step 4 parser가 만든 `ParsedCommand`를 Step 3/5 daemon API로 dispatch하고, `package.json#bin` + `src/cli/bin.ts`로 사용자가 실제 명령을 실행할 수 있게 한다. parse layer는 surface intent만 표현했고 daemon-* / global-* shortcut 매핑, exit code 전파, help/version 출력은 이 step의 책임.
+Step 4 parser가 만든 `ParsedCommand`를 Step 3/5 daemon API로 dispatch하고, `package.json#bin` + `src/bin/aiox.ts`로 사용자가 실제 명령을 실행할 수 있게 한다. parse layer는 surface intent만 표현했고 daemon-* / global-* shortcut 매핑, exit code 전파, help/version 출력은 이 step의 책임.
 
-진입 전 결정해야 할 spec 항목 (Round 1 옵션 제시 대상):
-1. **commander origin `exitCode` normalize 정책** (Step 4 결정 #13 보류 항목) — 자체 throw는 `parseErrorExitCode = 1`로 통일됐지만 commander origin은 `0` (`commander.version`)/`1` 혼재. invocation에서 `process.exit(error.exitCode)`로 통과 vs. 강제 normalize.
-2. **`sendMessage` CLI surface** (Step 5에서 daemon API만 추가) — (i) 새 명령 (`aiox send` 등) 추가, (ii) CLI 노출 안 함 (daemon API/내부 흐름 only), (iii) MVP 범위 밖 deferral.
-3. (위 (2)에서 CLI 노출 채택 시) **`sourceRoutes` empty 시 동작** (`history/19` Open Concern O2) — `ok: true` + `deliveries: []` 유지 vs. `no_active_routes` reject vs. 명시 flag 요구.
+진입 전 spec 결정 마감 (`history/20-step-6-phase-a-decisions.history.md`):
+1. **commander origin `exitCode` 정책** — 옵션 A. `err.exitCode ?? 1`로 commander origin 값을 통과하고 없으면 1.
+2. **`sendMessage` CLI surface** — 옵션 (ii). MVP CLI에 `aiox send` 류 명령을 추가하지 않고 daemon API/internal only로 유지.
+3. **`sourceRoutes` empty 시 동작** — 옵션 β-1. `{ ok: false, reason: "no_active_routes" }` atomic reject, message/delivery/event row 추가 없음.
+
+Phase B Round 1 구조 결정 마감 (`history/20-step-6-phase-a-decisions.history.md`):
+- invocation 위치: `src/cli/invocation.ts` 단일 파일.
+- dispatch 패턴: exhaustive `switch` + `assertNever`.
+- shortcut 정규화: invocation 단계.
+- invocation/runtime error: `aiox.invocation.*` namespace.
+- β-1 구현: `sourceRoutes` 조회 직후 early return.
+- bin source: `src/bin/aiox.ts`; `src/cli/`는 parser/invocation 모듈 전용.
 
 - [ ] parse → daemon API dispatch mapping
   - 13개 `ParsedCommand` variant 각각이 daemon API 호출(또는 stdout 출력)로 매핑되는 invocation table.
   - `global-stop` → `daemon.stop()` 등 shortcut 정규화 위치 결정.
-- [ ] CLI bin entrypoint (`package.json#bin` + `src/cli/bin.ts`)
+- [ ] CLI bin entrypoint (`package.json#bin` + `src/bin/aiox.ts`)
   - `process.argv` 수신 → parse → invocation → daemon 연결 → `process.exit(code)`.
   - 현 단계는 fake/in-process transport로 충분. real socket transport는 별도 후속 step/보류 항목으로 유지.
 - [ ] exit code propagation
@@ -528,8 +536,9 @@ Step 4 parser가 만든 `ParsedCommand`를 Step 3/5 daemon API로 dispatch하고
   - invocation/runtime error는 별도 코드 체계 정의.
 - [ ] help/version stdout 처리
   - parser가 capture한 `{ kind: "help", text }` / `{ kind: "version", value }` variant를 bin이 stdout 출력. parser 자체는 side-effect free 유지 (Step 4 결정 #5).
-- [ ] `sendMessage` CLI 노출 (조건부)
-  - 위 spec 결정 (2)가 (i) 채택 시 추가. (ii)/(iii) 시 이 sub-item drop 후 history에 deferral 기록.
+- [ ] `sendMessage` CLI 노출 deferred (OA1)
+  - `history/20-step-6-phase-a-decisions.history.md` 결정 2에 따라 MVP Step 6에서는 CLI surface 미노출.
+  - post-MVP 또는 send CLI 필요 시점에 `aiox send` 및 `allowOrphanMessage` flag 여부 재검토.
 
 ---
 
