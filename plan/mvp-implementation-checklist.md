@@ -611,6 +611,8 @@ Phase B 결과:
 transaction 경계 정정 + `sendMessage` sentinel rollback 정정.
 Phase A pre-implementation decisions:
 `history/25-step-9-phase-a-real-socket-transport.history.md`.
+Follow-up hardening:
+`history/26-step-9-socket-transport-hardening.history.md`.
 
 Step 9 밖:
 - Codex app-server adapter skeleton.
@@ -647,6 +649,9 @@ Phase B 결과:
 - [x] O1 idempotency preflight transaction 경계 정정 + UNIQUE violation typed reclassify
 - [x] 신규 transport contract tests + 가능한 idempotency race-ish regression
 - [x] Step 9 Phase B history/verification baseline 갱신
+- [ ] Follow-up: socket client connection reuse + id multiplex
+- [ ] Follow-up: socket client request timeout + close fallback
+- [ ] Follow-up: stale socket `EADDRINUSE` race hardening
 
 ---
 
