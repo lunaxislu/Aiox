@@ -226,6 +226,43 @@ describe("daemon pair store persistence", () => {
     expect(readEventRows()).toEqual(eventsBefore);
   });
 
+  it("rejects a kind mismatch during pair reconnect without changing agent, pair, route, or event rows", async () => {
+    const client = createClient(["pair-1", "agent-codex", "agent-reused"]);
+
+    await client.createPair({ name: "feature-x" });
+    await client.attachAgent({
+      kind: "codex",
+      name: "impl",
+      cwd: "/repo",
+    });
+    db.prepare("update agents set status = 'disconnected' where id = ?").run(
+      "agent-codex",
+    );
+    const agentsBefore = readAgentRows();
+    const pairsBefore = readPairRows();
+    const routesBefore = readRouteRows();
+    const eventsBefore = readEventRows();
+
+    expect(
+      await client.attachAgent({
+        kind: "claude",
+        name: "impl",
+        cwd: "/repo/reconnect",
+        pairName: "feature-x",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: "agent_kind_mismatch",
+      agentId: "agent-codex",
+      expectedKind: "claude",
+      actualKind: "codex",
+    });
+    expect(readAgentRows()).toEqual(agentsBefore);
+    expect(readPairRows()).toEqual(pairsBefore);
+    expect(readRouteRows()).toEqual(routesBefore);
+    expect(readEventRows()).toEqual(eventsBefore);
+  });
+
   function createClient(ids: string[]) {
     const state = createDaemonState({
       db,
