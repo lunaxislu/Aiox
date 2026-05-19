@@ -25,6 +25,7 @@ import {
 import { withTransaction } from "../store/transaction.js";
 
 const attachRollbackSentinel = Symbol("aiox.attach.rollback");
+const sendMessageRollbackSentinel = Symbol("aiox.sendMessage.rollback");
 
 export interface CreateDaemonStateOptions {
   db: Database;
@@ -362,94 +363,107 @@ export function createDaemonState(
     },
 
     sendMessage(request) {
-      const source = agents.findByName(request.sourceName);
+      try {
+        return withTransaction(options.db, () => {
+          const source = agents.findByName(request.sourceName);
 
-      if (!source) {
-        return {
-          ok: false,
-          reason: "source_agent_not_found",
-          sourceName: request.sourceName,
-        };
-      }
+          if (!source) {
+            return {
+              ok: false,
+              reason: "source_agent_not_found",
+              sourceName: request.sourceName,
+            };
+          }
 
-      const sourceRoutes = routes
-        .list()
-        .filter((route) => route.sourceAgentId === source.id);
+          const sourceRoutes = routes
+            .list()
+            .filter((route) => route.sourceAgentId === source.id);
 
-      if (sourceRoutes.length === 0) {
-        return {
-          ok: false,
-          reason: "no_active_routes",
-        };
-      }
+          if (sourceRoutes.length === 0) {
+            return {
+              ok: false,
+              reason: "no_active_routes",
+            };
+          }
 
-      const existingDelivery = sourceRoutes
-        .map((route) =>
-          deliveries.findByIdempotencyKey(`${request.messageId}:${route.targetAgentId}`),
-        )
-        .find((delivery): delivery is StoredDelivery => delivery !== null);
+          const existingDelivery = sourceRoutes
+            .map((route) =>
+              deliveries.findByIdempotencyKey(`${request.messageId}:${route.targetAgentId}`),
+            )
+            .find((delivery): delivery is StoredDelivery => delivery !== null);
 
-      if (existingDelivery) {
-        return {
-          ok: false,
-          reason: "delivery_idempotency_key_exists",
-          existing: existingDelivery,
-        };
-      }
+          if (existingDelivery) {
+            throw createSendMessageRollback({
+              ok: false,
+              reason: "delivery_idempotency_key_exists",
+              existing: existingDelivery,
+            });
+          }
 
-      return withTransaction(options.db, () => {
-        const now = options.now();
-        const message = messages.create({
-          id: request.messageId,
-          sourceAgentId: source.id,
-          parentMessageId: request.parentMessageId,
-          type: request.type,
-          content: request.content,
-          now,
-        });
-        const queued = deliveries.createQueuedForRoutes({
-          messageId: message.id,
-          routes: sourceRoutes.map((route) => ({
-            id: route.id,
-            targetAgentId: route.targetAgentId,
-          })),
-          createDeliveryId: () => options.createId(),
-          now,
-        });
+          const now = options.now();
+          const message = createMessageOrRollback({
+            deliveries,
+            messageId: request.messageId,
+            write: () =>
+              messages.create({
+                id: request.messageId,
+                sourceAgentId: source.id,
+                parentMessageId: request.parentMessageId,
+                type: request.type,
+                content: request.content,
+                now,
+              }),
+          });
+          const queued = deliveries.createQueuedForRoutes({
+            messageId: message.id,
+            routes: sourceRoutes.map((route) => ({
+              id: route.id,
+              targetAgentId: route.targetAgentId,
+            })),
+            createDeliveryId: () => options.createId(),
+            now,
+          });
 
-        if (!Array.isArray(queued)) {
-          return queued;
-        }
+          if (!Array.isArray(queued)) {
+            throw createSendMessageRollback(queued);
+          }
 
-        events.append({
-          id: options.createId(),
-          type: "message_created",
-          data: {},
-          createdAt: now,
-          agentId: source.id,
-          messageId: message.id,
-          deliveryId: null,
-          routeId: null,
-        });
-        for (const delivery of queued) {
           events.append({
             id: options.createId(),
-            type: "delivery_queued",
+            type: "message_created",
             data: {},
             createdAt: now,
-            agentId: null,
+            agentId: source.id,
             messageId: message.id,
-            deliveryId: delivery.id,
-            routeId: delivery.routeId,
+            deliveryId: null,
+            routeId: null,
           });
+          for (const delivery of queued) {
+            events.append({
+              id: options.createId(),
+              type: "delivery_queued",
+              data: {},
+              createdAt: now,
+              agentId: null,
+              messageId: message.id,
+              deliveryId: delivery.id,
+              routeId: delivery.routeId,
+            });
+          }
+
+          return {
+            ok: true,
+            message,
+            deliveries: queued,
+          };
+        });
+      } catch (error) {
+        if (isSendMessageRollback(error)) {
+          return error.response;
         }
 
-        return {
-          ok: true,
-          message,
-          deliveries: queued,
-        };
-      });
+        throw error;
+      }
     },
 
     updateDeliveryStatus(request) {
@@ -536,9 +550,28 @@ interface AttachRollback {
   response: AttachRollbackResponse;
 }
 
+type SendMessageRollbackResponse = Extract<
+  SendMessageResult,
+  { ok: false; reason: "delivery_idempotency_key_exists" }
+>;
+
+interface SendMessageRollback {
+  [sendMessageRollbackSentinel]: true;
+  response: SendMessageRollbackResponse;
+}
+
 function createAttachRollback(response: AttachRollbackResponse): AttachRollback {
   return {
     [attachRollbackSentinel]: true,
+    response,
+  };
+}
+
+function createSendMessageRollback(
+  response: SendMessageRollbackResponse,
+): SendMessageRollback {
+  return {
+    [sendMessageRollbackSentinel]: true,
     response,
   };
 }
@@ -548,6 +581,50 @@ function isAttachRollback(error: unknown): error is AttachRollback {
     typeof error === "object" &&
     error !== null &&
     (error as Partial<AttachRollback>)[attachRollbackSentinel] === true
+  );
+}
+
+function isSendMessageRollback(error: unknown): error is SendMessageRollback {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as Partial<SendMessageRollback>)[sendMessageRollbackSentinel] === true
+  );
+}
+
+function createMessageOrRollback(input: {
+  deliveries: ReturnType<typeof createDeliveryRepository>;
+  messageId: string;
+  write(): StoredMessage;
+}): StoredMessage {
+  try {
+    return input.write();
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const existing = input.deliveries
+        .list()
+        .find((delivery) => delivery.messageId === input.messageId);
+
+      if (existing) {
+        throw createSendMessageRollback({
+          ok: false,
+          reason: "delivery_idempotency_key_exists",
+          existing,
+        });
+      }
+    }
+
+    throw error;
+  }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code: unknown }).code === "string" &&
+    (error as { code: string }).code.startsWith("SQLITE_CONSTRAINT")
   );
 }
 
