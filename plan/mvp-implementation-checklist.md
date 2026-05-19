@@ -605,7 +605,7 @@ Phase B 결과:
 
 ---
 
-## Step 9: real socket transport + O1/sendMessage atomicity — 🔄 Phase A complete
+## Step 9: real socket transport + O1/sendMessage atomicity — ✅ 완료
 
 권위 범위: real socket transport interface 도입 + O1 idempotency preflight
 transaction 경계 정정 + `sendMessage` sentinel rollback 정정.
@@ -630,13 +630,23 @@ Phase A 결정:
   기존 shape 를 보존.
 - shutdown 은 listening server close, live sockets 종료, owned socket path cleanup.
 
-- [ ] transport interface + NDJSON codec contract tests
-- [ ] daemon server socket listen/connect boundary
-- [ ] CLI/bin runtime socket client 재결합
-- [ ] `sendMessage` sentinel regression test + rollback pattern 적용
-- [ ] O1 idempotency preflight transaction 경계 정정 + UNIQUE violation typed reclassify
-- [ ] 신규 transport contract tests + 가능한 idempotency race-ish regression
-- [ ] Step 9 Phase B history/verification baseline 갱신
+Phase B 결과:
+- `src/daemon/socket-transport.ts` 에 UDS + NDJSON request/response transport 추가.
+- socket transport 는 daemon API typed response 를 보존하고, protocol error 만
+  envelope error 로 반환.
+- `src/bin/aiox.ts` default runtime 을 socket client boundary 로 재결합.
+- `sendMessage` preflight 를 transaction 내부로 이동하고, delivery conflict 는
+  rollback sentinel throw 로 처리.
+- `messages.id` / delivery idempotency UNIQUE conflict 를 typed
+  `delivery_idempotency_key_exists` 로 reclassify.
+
+- [x] transport interface + NDJSON codec contract tests
+- [x] daemon server socket listen/connect boundary
+- [x] CLI/bin runtime socket client 재결합
+- [x] `sendMessage` sentinel regression test + rollback pattern 적용
+- [x] O1 idempotency preflight transaction 경계 정정 + UNIQUE violation typed reclassify
+- [x] 신규 transport contract tests + 가능한 idempotency race-ish regression
+- [x] Step 9 Phase B history/verification baseline 갱신
 
 ---
 
@@ -691,7 +701,7 @@ Phase A 결정:
 
 Latest full verification:
 
-- `pnpm test`: passing, 30 files, 154 tests (Step 8 마감, 2026-05-19)
+- `pnpm test`: passing, 31 files, 159 tests (Step 9 마감, 2026-05-19)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

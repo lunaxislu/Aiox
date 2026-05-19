@@ -227,7 +227,7 @@ start 시 connect probe 후 죽은 socket 으로 확인될 때만 제거한다.
 
 ## Open Concerns / Deferred
 
-본 Phase A 신규 Open Concern 없음.
+본 step 신규 Open Concern 없음.
 
 다음 항목은 명시적으로 본 step 밖이다.
 
@@ -239,10 +239,64 @@ start 시 connect probe 후 죽은 socket 으로 확인될 때만 제거한다.
 
 ---
 
+## Phase B 구현 결과
+
+| commit | 내용 |
+|---|---|
+| `eb333c5` | `behavior: add daemon socket transport` |
+| `fa9ae04` | `behavior: fix send message idempotency atomicity` |
+
+주요 변경:
+
+- `src/daemon/socket-transport.ts` 에 Unix domain socket + NDJSON request/response
+  transport 를 추가했다.
+- socket server 는 기존 `DaemonApi` 를 dispatcher 로 받아 transport/protocol error 만
+  envelope `error` 로 반환하고, daemon API typed response 는 `result` 로 보존한다.
+- socket close 는 live sockets 를 종료하고 owned socket path 를 unlink 한다. start 시
+  stale path 는 connect probe 실패 후에만 제거한다.
+- `src/bin/aiox.ts` 의 default runtime 을 socket client boundary 로 재결합했다.
+  `createInProcessRuntime` 은 테스트/fixture 용도로 유지했다.
+- `sendMessage` 의 source/routes/idempotency preflight 를 transaction 안으로 이동했다.
+- `sendMessage` 에 Step 7 과 같은 module-local Symbol rollback sentinel 을 적용했다.
+  delivery idempotency conflict 가 transaction 내부에서 `{ ok:false }` 로 반환돼도
+  message/events partial commit 없이 rollback 된다.
+- `messages.id` 또는 delivery idempotency UNIQUE conflict 는 typed
+  `delivery_idempotency_key_exists` response 로 reclassify 한다.
+
+TDD 기록:
+
+- Red: `tests/unit/daemon/socket-transport.test.ts` 가
+  `src/daemon/socket-transport.js` missing import 로 실패.
+- Green: UDS socket server/client + NDJSON dispatch 를 추가해 daemon API JSON
+  round-trip 통과.
+- Red: invalid JSON transport test 가 `invalid_json` 대신 `invalid_envelope` 로
+  반환돼 실패.
+- Green: parse error envelope 을 transport error 로 그대로 반환.
+- Red: CLI socket runtime test 가 Promise resolution 의 `then` lookup 을 socket method
+  로 dispatch 하며 timeout.
+- Green: socket client Proxy 에서 `then` 을 undefined 로 처리해 thenable 오인 방지.
+- Red: duplicate `messageId` + changed route-set test 가 `messages.id` UNIQUE raw
+  SQLite exception 으로 실패.
+- Green: message UNIQUE conflict 를 existing delivery 기반
+  `delivery_idempotency_key_exists` 로 reclassify.
+- Regression: SQLite trigger 로 delivery idempotency conflict 를 message insert 직후
+  발생시켜, `sendMessage` sentinel 이 message/delivery/event rows 를 rollback 하는지
+  검증.
+
+결정 Trace:
+
+- **D1/D7**: UDS primary + socket path cleanup 구현.
+- **D2/D6**: NDJSON envelope + transport/protocol error 분리 구현.
+- **D3**: socket client 는 stateless request/response client 로 유지.
+- **D4**: preflight transaction 내부 이동 + UNIQUE catch reclassify 구현.
+- **D5**: `sendMessage` flow 한정 rollback sentinel 구현.
+
+---
+
 ## Verification
 
-Phase A docs-only. Phase B 시작 전 baseline:
+2026-05-19 Step 9 마감 검증:
 
-- `pnpm test`: passing, 30 files, 154 tests (Step 8 마감, 2026-05-19)
+- `pnpm test`: passing, 31 files, 159 tests
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
