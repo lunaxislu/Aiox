@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 
 import type { AgentKind } from "../core/agents.js";
+import type { MessageDeliveryStatus } from "../core/deliveries.js";
 import type { MessageType } from "../core/messages.js";
 import {
   createAgentRepository,
@@ -145,6 +146,26 @@ export type SendMessageResult =
       existing: StoredDelivery;
     };
 
+export interface UpdateDeliveryStatusRequest {
+  deliveryId: string;
+  status: MessageDeliveryStatus;
+  error?: {
+    reason: string;
+    message: string;
+  };
+}
+
+export type UpdateDeliveryStatusResult =
+  | {
+      ok: true;
+      delivery: StoredDelivery;
+    }
+  | {
+      ok: false;
+      reason: "delivery_not_found";
+      deliveryId: string;
+    };
+
 export interface StatusResult {
   daemon: {
     startedAt: string;
@@ -171,6 +192,7 @@ export interface DaemonState {
   connect(request: ConnectRequest): ConnectResult;
   disconnect(request: DisconnectRequest): DisconnectResult;
   sendMessage(request: SendMessageRequest): SendMessageResult;
+  updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResult;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
@@ -426,6 +448,58 @@ export function createDaemonState(
           ok: true,
           message,
           deliveries: queued,
+        };
+      });
+    },
+
+    updateDeliveryStatus(request) {
+      return withTransaction(options.db, () => {
+        const existing = deliveries.findById(request.deliveryId);
+
+        if (!existing) {
+          return {
+            ok: false,
+            reason: "delivery_not_found",
+            deliveryId: request.deliveryId,
+          };
+        }
+
+        const now = options.now();
+        const delivery = deliveries.updateStatus({
+          id: request.deliveryId,
+          status: request.status,
+          now,
+        });
+
+        if (!delivery) {
+          return {
+            ok: false,
+            reason: "delivery_not_found",
+            deliveryId: request.deliveryId,
+          };
+        }
+
+        events.append({
+          id: options.createId(),
+          type: "delivery_status_changed",
+          data: request.error
+            ? {
+                status: request.status,
+                error: request.error,
+              }
+            : {
+                status: request.status,
+              },
+          createdAt: now,
+          agentId: existing.targetAgentId,
+          messageId: existing.messageId,
+          deliveryId: existing.id,
+          routeId: existing.routeId,
+        });
+
+        return {
+          ok: true,
+          delivery,
         };
       });
     },

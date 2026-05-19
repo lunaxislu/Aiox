@@ -29,6 +29,12 @@ export interface RecoverDeliveriesAfterRestartInput {
   now: string;
 }
 
+export interface UpdateDeliveryStatusInput {
+  id: string;
+  status: MessageDeliveryStatus;
+  now: string;
+}
+
 export type CreateQueuedDeliveriesResult =
   | StoredDelivery[]
   | {
@@ -50,8 +56,10 @@ interface DeliveryRow {
 
 export interface DeliveryRepository {
   createQueuedForRoutes(input: CreateQueuedDeliveriesInput): CreateQueuedDeliveriesResult;
+  findById(id: string): StoredDelivery | null;
   findByIdempotencyKey(idempotencyKey: string): StoredDelivery | null;
   recoverAfterRestart(input: RecoverDeliveriesAfterRestartInput): number;
+  updateStatus(input: UpdateDeliveryStatusInput): StoredDelivery | null;
   list(): StoredDelivery[];
 }
 
@@ -129,6 +137,10 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
       return findByIdempotencyKey(db, idempotencyKey);
     },
 
+    findById(id) {
+      return findById(db, id);
+    },
+
     recoverAfterRestart(input) {
       const result = db.prepare(
         `
@@ -141,6 +153,18 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
       return result.changes;
     },
 
+    updateStatus(input) {
+      db.prepare(
+        `
+          update message_deliveries
+          set status = @status, updated_at = @now
+          where id = @id
+        `,
+      ).run(input);
+
+      return findById(db, input.id);
+    },
+
     list() {
       return db
         .prepare("select * from message_deliveries order by created_at, id")
@@ -148,6 +172,14 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
         .map((row) => mapDeliveryRow(row as DeliveryRow));
     },
   };
+}
+
+function findById(db: Database, id: string): StoredDelivery | null {
+  const row = db
+    .prepare("select * from message_deliveries where id = ?")
+    .get(id) as DeliveryRow | undefined;
+
+  return row ? mapDeliveryRow(row) : null;
 }
 
 function findByIdempotencyKey(

@@ -13,6 +13,8 @@ import type {
   StatusResult,
   StopRequest,
   StopResult,
+  UpdateDeliveryStatusRequest,
+  UpdateDeliveryStatusResult,
 } from "./state.js";
 import type { AgentInstanceStatus, AgentKind } from "../core/agents.js";
 import type { MessageDeliveryStatus } from "../core/deliveries.js";
@@ -29,6 +31,7 @@ export interface DaemonApi {
   connect(request: ConnectRequest): ConnectResponse;
   disconnect(request: DisconnectRequest): DisconnectResponse;
   sendMessage(request: SendMessageRequest): SendMessageResponse;
+  updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResponse;
   status(): StatusResponse;
   stop(request: StopRequest): StopResponse;
 }
@@ -165,6 +168,17 @@ export type SendMessageResponse =
       existing: DeliveryDto;
     };
 
+export type UpdateDeliveryStatusResponse =
+  | {
+      ok: true;
+      delivery: DeliveryDto;
+    }
+  | {
+      ok: false;
+      reason: "delivery_not_found";
+      deliveryId: string;
+    };
+
 export interface StatusResponse {
   daemon: {
     startedAt: string;
@@ -195,6 +209,9 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     sendMessage(request) {
       return mapSendMessageResult(state.sendMessage(request));
+    },
+    updateDeliveryStatus(request) {
+      return mapUpdateDeliveryStatusResult(state.updateDeliveryStatus(request));
     },
     status() {
       return mapStatusResult(state.status());
@@ -276,6 +293,19 @@ function mapSendMessageResult(result: SendMessageResult): SendMessageResponse {
       ok: false,
       reason: result.reason,
       existing: mapDelivery(result.existing),
+    };
+  }
+
+  return result;
+}
+
+function mapUpdateDeliveryStatusResult(
+  result: UpdateDeliveryStatusResult,
+): UpdateDeliveryStatusResponse {
+  if (result.ok) {
+    return {
+      ok: true,
+      delivery: mapDelivery(result.delivery),
     };
   }
 
