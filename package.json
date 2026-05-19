@@ -2,7 +2,7 @@
   "name": "ai-orchestration",
   "type": "module",
   "bin": {
-    "aiox": "./dist/bin/aiox.js"
+    "aiox": "./dist/src/bin/aiox.js"
   },
   "version": "1.0.0",
   "description": "",
