@@ -508,7 +508,7 @@ Step 1에서 core unit으로 cover된 fan-out logic을 **daemon API + store 결�
 
 ---
 
-## Step 6: invocation layer + CLI bin entrypoint — 🔄 Phase B Round 1 in progress
+## Step 6: invocation layer + CLI bin entrypoint — ✅ 완료
 
 Step 4 parser가 만든 `ParsedCommand`를 Step 3/5 daemon API로 dispatch하고, `package.json#bin` + `src/bin/aiox.ts`로 사용자가 실제 명령을 실행할 수 있게 한다. parse layer는 surface intent만 표현했고 daemon-* / global-* shortcut 매핑, exit code 전파, help/version 출력은 이 step의 책임.
 
@@ -525,18 +525,27 @@ Phase B Round 1 구조 결정 마감 (`history/20-step-6-phase-a-decisions.histo
 - β-1 구현: `sourceRoutes` 조회 직후 early return.
 - bin source: `src/bin/aiox.ts`; `src/cli/`는 parser/invocation 모듈 전용.
 
-- [ ] parse → daemon API dispatch mapping
+- [x] parse → daemon API dispatch mapping
   - 13개 `ParsedCommand` variant 각각이 daemon API 호출(또는 stdout 출력)로 매핑되는 invocation table.
   - `global-stop` → `daemon.stop()` 등 shortcut 정규화 위치 결정.
-- [ ] CLI bin entrypoint (`package.json#bin` + `src/bin/aiox.ts`)
+  - Red: added invocation tests for all parser variants, shortcut normalization, help/version stdout, and `aiox.invocation.*` error wrapping.
+  - Green: added `src/cli/invocation.ts` with exhaustive `switch` + `assertNever`.
+- [x] CLI bin entrypoint (`package.json#bin` + `src/bin/aiox.ts`)
   - `process.argv` 수신 → parse → invocation → daemon 연결 → `process.exit(code)`.
   - 현 단계는 fake/in-process transport로 충분. real socket transport는 별도 후속 step/보류 항목으로 유지.
-- [ ] exit code propagation
+  - Red: added bin tests for help/version stdout, parse/invocation exit codes, and package bin path alignment.
+  - Green: added `src/bin/aiox.ts` with fake in-process runtime and aligned `package.json#bin` to compiled output.
+- [x] exit code propagation
   - `CliParseError.exitCode` 직통 vs. normalize (위 spec 결정 (1)에 따름).
   - invocation/runtime error는 별도 코드 체계 정의.
-- [ ] help/version stdout 처리
+  - Green: bin catch returns `err.exitCode ?? 1`; invocation failures use `aiox.invocation.*`.
+- [x] help/version stdout 처리
   - parser가 capture한 `{ kind: "help", text }` / `{ kind: "version", value }` variant를 bin이 stdout 출력. parser 자체는 side-effect free 유지 (Step 4 결정 #5).
-- [ ] `sendMessage` CLI 노출 deferred (OA1)
+  - Green: bin writes parser-captured help/version to stdout and leaves parser side-effect free.
+- [x] `sendMessage` empty route β-1 적용
+  - Red: added daemon store test expecting `no_active_routes` with no message, delivery, or event rows.
+  - Green: `sendMessage` now returns before transaction when active source routes are empty.
+- [x] `sendMessage` CLI 노출 deferred (OA1)
   - `history/20-step-6-phase-a-decisions.history.md` 결정 2에 따라 MVP Step 6에서는 CLI surface 미노출.
   - post-MVP 또는 send CLI 필요 시점에 `aiox send` 및 `allowOrphanMessage` flag 여부 재검토.
 
@@ -615,8 +624,9 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 Latest full verification:
 
-- `pnpm test`: passing, 26 files, 138 tests (Step 5 마감, commit `b631ac5`)
+- `pnpm test`: passing, 28 files, 147 tests (Step 6 마감, 2026-05-19)
 - `pnpm typecheck`: passing
+- `pnpm build`: passing
 
 각 step 완료 시 위 baseline을 갱신한다.
 
