@@ -1,16 +1,19 @@
 # aiox MVP Implementation Checklist
 
-> Purpose: Track implementation progress for the MVP TDD 10단계 without replacing
+> Purpose: Track implementation progress for the MVP TDD 11단계 without replacing
 > the authority of `history/15-mvp-design-decisions.history.md` and
 > `prd/mvp/aiox-mvp-spec.md`.
 >
 > Step 순서는 `history/15` "다음 구현 순서" + `prd/mvp/aiox-mvp-spec.md`
-> "Testing Requirements"를 기준으로 한다.
+> "Testing Requirements"를 기준으로 한다. Step 6 (invocation layer + CLI bin
+> entrypoint)은 Step 5 마감 후 추가된 단계로, 기존 Step 6~10이 Step 7~11로
+> 재번호됐다 (`history/19-step-5-route-fanout-tests.history.md` "다음 step 후보"
+> 절 참고).
 >
 > Step 2 cleanup + Step 3 transaction boundary context:
 > `history/16-step-2-sqlite-repository-cleanup.history.md`.
 >
-> Last updated: 2026-05-18
+> Last updated: 2026-05-19
 
 ---
 
@@ -275,9 +278,9 @@ SQLite open/schema/repositories 완료.
       - Serialization: stop requests/responses pass through the fake JSON
         round-trip with DTO-only agent payloads.
       - Verification: `pnpm test`, `pnpm typecheck`.
-  - Keep route fan-out and pair auto-route assertions for Step 5/6 daemon-level
+  - Keep route fan-out and pair auto-route assertions for Step 5/7 daemon-level
     tests; Step 3 only proves API shape, state persistence, and transport
-    round-trip.
+    round-trip. (Step 6 invocation layer는 2026-05-19에 신규 삽입되어 pair는 Step 7로 밀림.)
 - [x] `src/daemon/state.ts` — daemon state/usecase layer + SQLite sync
   - Build repositories from a single `Database` handle.
   - Own deterministic `createId`/`now` injection for daemon tests.
@@ -505,7 +508,32 @@ Step 1에서 core unit으로 cover된 fan-out logic을 **daemon API + store 결�
 
 ---
 
-## Step 6: pair reservation tests (daemon level) — ⏳ To be planned
+## Step 6: invocation layer + CLI bin entrypoint — ⏳ To be planned
+
+Step 4 parser가 만든 `ParsedCommand`를 Step 3/5 daemon API로 dispatch하고, `package.json#bin` + `src/cli/bin.ts`로 사용자가 실제 명령을 실행할 수 있게 한다. parse layer는 surface intent만 표현했고 daemon-* / global-* shortcut 매핑, exit code 전파, help/version 출력은 이 step의 책임.
+
+진입 전 결정해야 할 spec 항목 (Round 1 옵션 제시 대상):
+1. **commander origin `exitCode` normalize 정책** (Step 4 결정 #13 보류 항목) — 자체 throw는 `parseErrorExitCode = 1`로 통일됐지만 commander origin은 `0` (`commander.version`)/`1` 혼재. invocation에서 `process.exit(error.exitCode)`로 통과 vs. 강제 normalize.
+2. **`sendMessage` CLI surface** (Step 5에서 daemon API만 추가) — (i) 새 명령 (`aiox send` 등) 추가, (ii) CLI 노출 안 함 (daemon API/내부 흐름 only), (iii) MVP 범위 밖 deferral.
+3. (위 (2)에서 CLI 노출 채택 시) **`sourceRoutes` empty 시 동작** (`history/19` Open Concern O2) — `ok: true` + `deliveries: []` 유지 vs. `no_active_routes` reject vs. 명시 flag 요구.
+
+- [ ] parse → daemon API dispatch mapping
+  - 13개 `ParsedCommand` variant 각각이 daemon API 호출(또는 stdout 출력)로 매핑되는 invocation table.
+  - `global-stop` → `daemon.stop()` 등 shortcut 정규화 위치 결정.
+- [ ] CLI bin entrypoint (`package.json#bin` + `src/cli/bin.ts`)
+  - `process.argv` 수신 → parse → invocation → daemon 연결 → `process.exit(code)`.
+  - 현 단계는 fake/in-process transport로 충분. real socket transport는 별도 후속 step/보류 항목으로 유지.
+- [ ] exit code propagation
+  - `CliParseError.exitCode` 직통 vs. normalize (위 spec 결정 (1)에 따름).
+  - invocation/runtime error는 별도 코드 체계 정의.
+- [ ] help/version stdout 처리
+  - parser가 capture한 `{ kind: "help", text }` / `{ kind: "version", value }` variant를 bin이 stdout 출력. parser 자체는 side-effect free 유지 (Step 4 결정 #5).
+- [ ] `sendMessage` CLI 노출 (조건부)
+  - 위 spec 결정 (2)가 (i) 채택 시 추가. (ii)/(iii) 시 이 sub-item drop 후 history에 deferral 기록.
+
+---
+
+## Step 7: pair reservation tests (daemon level) — ⏳ To be planned
 
 Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 레벨**에서 재검증.
 
@@ -516,7 +544,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 ---
 
-## Step 7: fake adapter integration tests — ⏳ To be planned
+## Step 8: fake adapter integration tests — ⏳ To be planned
 
 실제 Codex/Claude 의존 없이 adapter contract 검증.
 
@@ -527,7 +555,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 ---
 
-## Step 8: Codex app-server adapter skeleton — ⏳ To be planned
+## Step 9: Codex app-server adapter skeleton — ⏳ To be planned
 
 - [ ] `src/adapters/codex/app-server.ts` — adapter-managed Codex app-server
   endpoint process/connection metadata; daemon does not host app-server
@@ -540,7 +568,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 ---
 
-## Step 9: Claude channel adapter skeleton — ⏳ To be planned
+## Step 10: Claude channel adapter skeleton — ⏳ To be planned
 
 - [ ] `src/adapters/claude/channel-server.ts` — Node.js MCP channel server
   loaded by Claude dev channel over stdio, exposing HTTP ingress for daemon
@@ -552,7 +580,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 ---
 
-## Step 10: doctor/status output — ⏳ To be planned
+## Step 11: doctor/status output — ⏳ To be planned
 
 - [ ] `aiox doctor` — Node.js, pnpm, Codex CLI, Claude CLI, SQLite native binding, daemon socket/db path, 선택적 recipe tool (cmux/tmux) 점검
 - [ ] `aiox status` — daemon + agents + pairs + routes + deliveries 요약 출력
@@ -566,11 +594,11 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 권위: `prd/mvp/aiox-mvp-spec.md` "Open Product Issues" 섹션.
 
-1. Claude channel trust/confirmation policy → **Step 9 시작 전 결정 필요**
-2. Codex thread UUID → agent name mapping → **Step 8 시작 전 결정 필요**
+1. Claude channel trust/confirmation policy → **Step 10 시작 전 결정 필요**
+2. Codex thread UUID → agent name mapping → **Step 9 시작 전 결정 필요**
 3. Stale agent transition policy → Step 2 repositories 또는 Step 3 daemon API 단계에 영향
-4. Long-running delivery timeout policy → MVP에는 timeout 없음 default. Step 5/7 통합 테스트에서 노출될 수 있음
-5. AI agent session expiry handling → Step 8/9 adapter 구현 시 노출될 수 있음
+4. Long-running delivery timeout policy → MVP에는 timeout 없음 default. Step 5/8 통합 테스트에서 노출될 수 있음
+5. AI agent session expiry handling → Step 9/10 adapter 구현 시 노출될 수 있음
 
 ---
 
@@ -578,7 +606,7 @@ Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 
 
 Latest full verification:
 
-- `pnpm test`: passing, 18 files, 65 tests (Step 3 transaction pre-work)
+- `pnpm test`: passing, 26 files, 138 tests (Step 5 마감, commit `b631ac5`)
 - `pnpm typecheck`: passing
 
 각 step 완료 시 위 baseline을 갱신한다.
@@ -590,5 +618,5 @@ Latest full verification:
 - Keep this file as an execution checklist only.
 - If product behavior changes, update `history/15` 또는 `prd/mvp/aiox-mvp-spec.md` first, then adjust this checklist.
 - Do not use this file as the source of truth for MVP decisions.
-- Step 3-10 sub-task는 해당 step 시작 시점에 더 구체화한다. 지금은 placeholder.
+- Step 3-11 sub-task는 해당 step 시작 시점에 더 구체화한다. 지금은 placeholder.
 - vault `work/active/aiox.md` Implementation Status 섹션은 이 checklist의 high-level mirror일 뿐이고 todo 표기는 두지 않는다 (AGENTS.md "Checklist / Todo 위치 원칙").

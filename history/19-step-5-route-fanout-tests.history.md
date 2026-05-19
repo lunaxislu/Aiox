@@ -190,6 +190,14 @@ Step 4의 보류 항목 + Step 5 결과로 다음 진입 후보는 변동 없음
 - **real socket transport** (Step 3 보류): daemon socket + CLI client. O1
   결정 시점과 자연스럽게 묶일 가능성.
 
+### 2026-05-19 follow-up: checklist 재번호
+
+Step 5 마감 후 `plan/mvp-implementation-checklist.md`에 **invocation layer + CLI
+bin entrypoint**가 새 Step 6으로 삽입됨. 이에 따라 위 "다음 step 후보"의
+`Step 6 (pair reservation)`은 실행 checklist 기준 Step 7, `Step 7 (fake
+adapter integration)`은 Step 8로 재번호됐다. 본 history의 기존 문구는 Step 5
+마감 당시 후보 기록으로 보존한다.
+
 ---
 
 ## 산출물 요약
