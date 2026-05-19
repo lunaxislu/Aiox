@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import Database from "better-sqlite3";
@@ -7,6 +9,11 @@ import Database from "better-sqlite3";
 import { invokeParsedCommand, type InvocationRuntime } from "../cli/invocation.js";
 import { parseCli } from "../cli/parse.js";
 import { createDaemonServer, type DaemonServerHandle } from "../daemon/server.js";
+import {
+  createDaemonSocketClient,
+  createDaemonSocketServer,
+  type DaemonSocketServerHandle,
+} from "../daemon/socket-transport.js";
 import { applySchema } from "../store/schema.js";
 
 export interface RunAioxCliOptions {
@@ -29,7 +36,7 @@ export async function runAioxCli(
       version: options.version ?? readPackageVersion(),
     });
     const result = await invokeParsedCommand(command, {
-      runtime: options.runtime ?? createInProcessRuntime(),
+      runtime: options.runtime ?? createSocketRuntime(),
       cwd: options.cwd ?? process.cwd(),
     });
 
@@ -42,6 +49,99 @@ export async function runAioxCli(
     stderr.write(`${formatErrorMessage(error)}\n`);
     return getExitCode(error);
   }
+}
+
+export interface CreateSocketRuntimeOptions {
+  socketPath?: string;
+}
+
+export function createSocketRuntime(
+  options: CreateSocketRuntimeOptions = {},
+): InvocationRuntime & { close(): Promise<void> } {
+  const db = new Database(":memory:");
+  applySchema(db);
+
+  const server = createDaemonServer({
+    db,
+    createId: createSequentialId,
+    now: () => new Date().toISOString(),
+  });
+  const socketPath = options.socketPath ?? createDefaultSocketPath();
+  let daemonHandle: DaemonServerHandle | null = null;
+  let socketHandle: DaemonSocketServerHandle | null = null;
+  let client: ReturnType<typeof createDaemonSocketClient> | null = null;
+
+  async function start(): Promise<void> {
+    if (socketHandle) {
+      return;
+    }
+
+    daemonHandle = server.start();
+    socketHandle = await createDaemonSocketServer({
+      api: daemonHandle.api,
+      socketPath,
+    }).start();
+    client = createDaemonSocketClient({ socketPath });
+  }
+
+  async function stop(request = {}): Promise<unknown> {
+    if (!daemonHandle) {
+      return { ok: true, stoppedAgents: [] };
+    }
+
+    const activeClient = client ?? createDaemonSocketClient({ socketPath });
+    const response = await activeClient.stop(request);
+    activeClient.close();
+
+    if (socketHandle) {
+      await socketHandle.close();
+    }
+
+    daemonHandle = null;
+    socketHandle = null;
+    client = null;
+    return response;
+  }
+
+  return {
+    async getDaemonApi() {
+      await start();
+
+      if (!client) {
+        throw new Error("socket client was not initialized");
+      }
+
+      return client;
+    },
+    async startDaemon() {
+      await start();
+      return { ok: true };
+    },
+    stopDaemon(request) {
+      return stop(request);
+    },
+    async restartDaemon() {
+      await stop({});
+      await start();
+      return { ok: true };
+    },
+    async daemonStatus() {
+      await start();
+
+      if (!client) {
+        throw new Error("socket client was not initialized");
+      }
+
+      return client.status();
+    },
+    doctor() {
+      return { ok: true };
+    },
+    async close() {
+      await stop({ daemonOnly: true });
+      db.close();
+    },
+  };
 }
 
 export function createInProcessRuntime(): InvocationRuntime {
@@ -92,6 +192,14 @@ export function createInProcessRuntime(): InvocationRuntime {
       return { ok: true };
     },
   };
+}
+
+function createDefaultSocketPath(): string {
+  if (process.env.AIOX_SOCKET_PATH) {
+    return process.env.AIOX_SOCKET_PATH;
+  }
+
+  return join(mkdtempSync(join(tmpdir(), "aiox-")), "daemon.sock");
 }
 
 function readPackageVersion(): string {

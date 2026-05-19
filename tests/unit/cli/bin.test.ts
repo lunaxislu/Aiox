@@ -1,8 +1,9 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { runAioxCli } from "../../../src/bin/aiox.js";
+import { createSocketRuntime, runAioxCli } from "../../../src/bin/aiox.js";
 import type { InvocationRuntime } from "../../../src/cli/invocation.js";
 import type { DaemonApi } from "../../../src/daemon/api.js";
 
@@ -73,6 +74,37 @@ describe("aiox CLI bin", () => {
     expect(code).toBe(1);
     expect(written.stdoutText()).toBe("");
     expect(written.stderrText()).toContain("Invocation failed: source_agent_not_found");
+  });
+
+  it("uses the socket runtime for default daemon API dispatch", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-bin-"), "daemon.sock");
+    const runtime = createSocketRuntime({ socketPath });
+    const written = createWritableBuffers();
+
+    try {
+      const code = await runAioxCli(["codex", "--name", "impl"], {
+        stdout: written.stdout,
+        stderr: written.stderr,
+        runtime,
+        cwd: "/repo",
+      });
+      const api = await runtime.getDaemonApi();
+
+      expect(code).toBe(0);
+      expect(written.stderrText()).toBe("");
+      expect((await api.status()).agents).toEqual([
+        {
+          id: "cli-1",
+          name: "impl",
+          kind: "codex",
+          status: "connected",
+          cwd: "/repo",
+          pairId: null,
+        },
+      ]);
+    } finally {
+      await runtime.close();
+    }
   });
 
   it("keeps package bin aligned with the compiled src/bin entrypoint", () => {
