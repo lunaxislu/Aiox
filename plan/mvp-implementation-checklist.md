@@ -551,23 +551,26 @@ Phase B Round 1 구조 결정 마감 (`history/20-step-6-phase-a-decisions.histo
 
 ---
 
-## Step 7: pair reservation tests (daemon level) — ⏳ Phase A closed
+## Step 7: pair reservation tests (daemon level) — ✅ 완료
 
 Step 1에서 core unit으로 cover된 pair logic을 **daemon API + store 결합 레벨**에서 재검증.
 Phase A pre-implementation decisions: `history/22-step-7-phase-a-decisions.history.md`.
+Phase B implementation record: `history/23-step-7-phase-b-pair-daemon.history.md`.
 
-Phase B 진입 기준:
+Phase B 결과:
 - TDD red 로 pair daemon/store gap 을 먼저 고정한 뒤 X-strict signature 정리와
-  daemon orchestration 변경을 최소 커밋 단위로 분리.
+  daemon orchestration 변경을 green commit 으로 구현.
 - daemon attach flow 는 single transaction + rollback sentinel + `pairs.attachAgent`
-  호출 + bidirectional auto-route 로 구현.
+  호출 + bidirectional auto-route 로 구현 완료.
 - `sendMessage` sentinel 회귀 정정 / idempotency preflight transaction 경계 (O1) /
-  send CLI surface (OA1)는 본 step 밖.
+  send CLI surface (OA1)는 본 step 밖으로 유지.
 
-- [ ] daemon pair create → reservation row, AgentInstance 미생성
-- [ ] codex/claude attach with `--pair` → AgentInstance 생성 + pair slot occupy
-- [ ] 두 expected side attach 완료 → bidirectional routes 자동 생성
-- [ ] 같은 kind 두 번째 attach → reject
+- [x] daemon pair create → reservation row, AgentInstance 미생성
+- [x] codex/claude attach with `--pair` → AgentInstance 생성 + pair slot occupy
+- [x] 두 expected side attach 완료 → bidirectional routes 자동 생성
+- [x] 같은 kind 두 번째 attach → reject
+  - 추가 cover: `agent_kind_mismatch` typed reject + rollback, reject 시 agents /
+    pairs / routes / events row 상태 무변경.
 
 ---
 
@@ -633,7 +636,7 @@ Phase B 진입 기준:
 
 Latest full verification:
 
-- `pnpm test`: passing, 28 files, 147 tests (Step 6 마감, 2026-05-19)
+- `pnpm test`: passing, 29 files, 152 tests (Step 7 마감, 2026-05-19)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 
