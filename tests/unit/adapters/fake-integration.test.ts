@@ -18,6 +18,17 @@ interface DeliveryRow {
   updated_at: string;
 }
 
+interface EventRow {
+  id: string;
+  agent_id: string | null;
+  message_id: string | null;
+  delivery_id: string | null;
+  route_id: string | null;
+  type: string;
+  data_json: string;
+  created_at: string;
+}
+
 describe("fake adapter integration", () => {
   let db: Database;
 
@@ -141,6 +152,159 @@ describe("fake adapter integration", () => {
       },
     ]);
   });
+
+  it("marks only failed target deliveries failed while other targets complete", async () => {
+    const ids = [
+      "agent-codex",
+      "agent-reviewer",
+      "agent-blocked",
+      "route-one",
+      "route-two",
+      "delivery-one",
+      "delivery-two",
+      "event-message",
+      "event-queued-one",
+      "event-queued-two",
+      "event-delivering-one",
+      "event-delivered-one",
+      "event-completed-one",
+      "event-delivering-two",
+      "event-failed-two",
+    ];
+    const api = createDaemonApi(
+      createDaemonState({
+        db,
+        createId: () => shiftId(ids),
+        now: () => "2026-05-19T00:00:00.000Z",
+      }),
+    );
+    const codex = createFakeAgentAdapter("codex");
+    const claude = createFakeAgentAdapter("claude", {
+      failInjectForAgentNames: ["blocked"],
+    });
+    const router = createAdapterRouter({ api, adapters: [codex, claude] });
+
+    await api.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    await api.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
+    await api.attachAgent({ kind: "claude", name: "blocked", cwd: "/repo" });
+    await api.connect({ sourceName: "impl", targetNames: ["reviewer", "blocked"] });
+
+    const outgoing = codex.sendOutgoing({
+      sourceName: "impl",
+      messageId: "message-1",
+      type: "instruction",
+      content: "please review",
+    });
+
+    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+      ok: true,
+      deliveries: [
+        {
+          deliveryId: "delivery-one",
+          targetAgentName: "reviewer",
+          ok: true,
+        },
+        {
+          deliveryId: "delivery-two",
+          targetAgentName: "blocked",
+          ok: false,
+          reason: "adapter_inject_failed",
+          message: "fake claude inject failed for blocked",
+        },
+      ],
+    });
+    expect(claude.injections.map((input) => input.targetAgent.name)).toEqual([
+      "reviewer",
+      "blocked",
+    ]);
+    expect(readDeliveries(db).map((delivery) => [delivery.id, delivery.status])).toEqual([
+      ["delivery-one", "completed"],
+      ["delivery-two", "failed"],
+    ]);
+    expect(readEvents(db)).toEqual([
+      {
+        id: "event-message",
+        agent_id: "agent-codex",
+        message_id: "message-1",
+        delivery_id: null,
+        route_id: null,
+        type: "message_created",
+        data_json: "{}",
+        created_at: "2026-05-19T00:00:00.000Z",
+      },
+      {
+        id: "event-queued-one",
+        agent_id: null,
+        message_id: "message-1",
+        delivery_id: "delivery-one",
+        route_id: "route-one",
+        type: "delivery_queued",
+        data_json: "{}",
+        created_at: "2026-05-19T00:00:00.000Z",
+      },
+      {
+        id: "event-queued-two",
+        agent_id: null,
+        message_id: "message-1",
+        delivery_id: "delivery-two",
+        route_id: "route-two",
+        type: "delivery_queued",
+        data_json: "{}",
+        created_at: "2026-05-19T00:00:00.000Z",
+      },
+      {
+        id: "event-delivering-one",
+        agent_id: "agent-reviewer",
+        message_id: "message-1",
+        delivery_id: "delivery-one",
+        route_id: "route-one",
+        type: "delivery_status_changed",
+        data_json: "{\"status\":\"delivering\"}",
+        created_at: "2026-05-19T00:00:00.000Z",
+      },
+      {
+        id: "event-delivered-one",
+        agent_id: "agent-reviewer",
+        message_id: "message-1",
+        delivery_id: "delivery-one",
+        route_id: "route-one",
+        type: "delivery_status_changed",
+        data_json: "{\"status\":\"delivered\"}",
+        created_at: "2026-05-19T00:00:00.000Z",
+      },
+      {
+        id: "event-completed-one",
+        agent_id: "agent-reviewer",
+        message_id: "message-1",
+        delivery_id: "delivery-one",
+        route_id: "route-one",
+        type: "delivery_status_changed",
+        data_json: "{\"status\":\"completed\"}",
+        created_at: "2026-05-19T00:00:00.000Z",
+      },
+      {
+        id: "event-delivering-two",
+        agent_id: "agent-blocked",
+        message_id: "message-1",
+        delivery_id: "delivery-two",
+        route_id: "route-two",
+        type: "delivery_status_changed",
+        data_json: "{\"status\":\"delivering\"}",
+        created_at: "2026-05-19T00:00:00.000Z",
+      },
+      {
+        id: "event-failed-two",
+        agent_id: "agent-blocked",
+        message_id: "message-1",
+        delivery_id: "delivery-two",
+        route_id: "route-two",
+        type: "delivery_status_changed",
+        data_json:
+          "{\"status\":\"failed\",\"error\":{\"reason\":\"adapter_inject_failed\",\"message\":\"fake claude inject failed for blocked\"}}",
+        created_at: "2026-05-19T00:00:00.000Z",
+      },
+    ]);
+  });
 });
 
 function shiftId(ids: string[]): string {
@@ -157,4 +321,8 @@ function readDeliveries(db: Database): DeliveryRow[] {
   return db
     .prepare("select * from message_deliveries order by created_at, id")
     .all() as DeliveryRow[];
+}
+
+function readEvents(db: Database): EventRow[] {
+  return db.prepare("select * from events order by rowid").all() as EventRow[];
 }
