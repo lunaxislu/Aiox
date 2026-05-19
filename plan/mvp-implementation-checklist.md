@@ -574,10 +574,11 @@ Phase B 결과:
 
 ---
 
-## Step 8: fake adapter integration tests — 🔄 Phase A 완료 / Phase B 진행 예정
+## Step 8: fake adapter integration tests — ✅ 완료
 
 실제 Codex/Claude 의존 없이 adapter contract 검증.
 Phase A pre-implementation decisions: `history/24-step-8-phase-a-decisions.history.md`.
+Phase B implementation record: `history/24-step-8-phase-a-decisions.history.md`.
 
 Phase A 결정:
 - thin adapter-facing interface 를 `src` 에 두고, fake Codex/Claude 는 그 contract 를 구현.
@@ -589,10 +590,20 @@ Phase A 결정:
 - real socket transport + O1 + `sendMessage` sentinel 정정은 Step 9 시작 전까지
   deferrable 로 유지.
 
-- [ ] fake Codex adapter: outgoing capture + turn/start injection 시뮬레이션
-- [ ] fake Claude adapter: outgoing capture + channel push 시뮬레이션
-- [ ] end-to-end: source agent → fake adapter outgoing → router → fake target adapter inject → reply round-trip
-- [ ] partial failure: 한 target inject 실패해도 다른 target 진행 (best-effort)
+Phase B 결과:
+- `src/adapters/contract.ts` 의 thin adapter-facing interface 와
+  `src/adapters/router.ts` 의 fake/real 공통 dispatch path 추가.
+- fake adapter fixture 는 source outgoing capture 와 target inject capture 를 별도
+  buffer 로 유지.
+- `DaemonApi.updateDeliveryStatus` + `DeliveryRepository.updateStatus` 로 adapter inject
+  결과를 delivery status 와 `delivery_status_changed` event 에 반영.
+- O1 / `sendMessage` sentinel / real socket transport 는 Step 9 시작 전 follow-up 으로
+  유지.
+
+- [x] fake Codex adapter: outgoing capture + turn/start injection 시뮬레이션
+- [x] fake Claude adapter: outgoing capture + channel push 시뮬레이션
+- [x] end-to-end: source agent → fake adapter outgoing → router → fake target adapter inject → reply round-trip
+- [x] partial failure: 한 target inject 실패해도 다른 target 진행 (best-effort)
 
 ---
 
@@ -647,7 +658,7 @@ Phase A 결정:
 
 Latest full verification:
 
-- `pnpm test`: passing, 29 files, 152 tests (Step 7 마감, 2026-05-19)
+- `pnpm test`: passing, 30 files, 154 tests (Step 8 마감, 2026-05-19)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

@@ -144,11 +144,55 @@ fake 구현은 테스트 전용이다. production surface 를 fake helper 로 �
 4. end-to-end reply round-trip 과 partial failure best-effort 를 새 test file 에서
    검증한다.
 
+---
+
+## Phase B 구현 결과
+
+| commit | 내용 |
+|---|---|
+| `88b67fc` | `behavior: add fake adapter contract integration` |
+| `bce3bc8` | `test: verify adapter partial failure handling` |
+
+주요 변경:
+
+- `src/adapters/contract.ts` 에 thin adapter-facing interface 를 추가했다.
+- `src/adapters/router.ts` 가 fake/real adapter 공통 contract 를 받아 source outgoing 을
+  `DaemonApi.sendMessage` 로 fan-out 하고, target agent kind 에 맞는 adapter inject 를
+  호출한다.
+- `tests/fixtures/fake-adapter.ts` 에 fake Codex/Claude 공용 adapter fixture 를 추가했다.
+  source outgoing capture 와 target inject capture 는 별도 buffer 로 유지한다.
+- delivery status persistence 를 `DeliveryRepository.updateStatus` +
+  `DaemonApi.updateDeliveryStatus` 로 추가했다. status 변경은 `delivery_status_changed`
+  event 로 남긴다.
+- Step 8 test 는 `tests/unit/adapters/fake-integration.test.ts` 에 분리했다.
+
+TDD 기록:
+
+- Red: `tests/unit/adapters/fake-integration.test.ts` 가
+  `src/adapters/router.js` missing import 로 실패.
+- Green: adapter contract/router, delivery status update path, fake fixture 를 추가해
+  round-trip test 통과.
+- Red: partial failure test 가 동일 timestamp event ordering 을 id sort 로 읽는 helper
+  때문에 lifecycle order mismatch 로 실패.
+- Green: Step 8 test helper 는 insertion order(`rowid`) 로 event lifecycle 을 검증하도록
+  조정.
+
+결정 Trace:
+
+- **D1/D6**: production contract 는 `src/adapters/contract.ts`, fake 구현은
+  `tests/fixtures/fake-adapter.ts`.
+- **D2**: fake adapter 는 `outgoing` 과 `injections` buffer 를 분리.
+- **D3**: reply round-trip 은 `parentMessageId: null` 인 새 `reply` message 로 검증.
+- **D4**: 성공 delivery 는 `delivering` -> `delivered` -> `completed`, 실패 delivery 는
+  `delivering` -> `failed`.
+- **D5**: O1 / `sendMessage` sentinel 정정은 건드리지 않았다.
+
+본 step 신규 Open Concern 없음.
+
 ## Verification
 
-Phase A 는 docs-only 변경이므로 test baseline 은 Step 7 baseline 을 유지한다.
+2026-05-19 Step 8 마감 검증:
 
-- `pnpm test`: passing, 29 files, 152 tests (Step 7 마감, 2026-05-19)
+- `pnpm test`: passing, 30 files, 154 tests
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
-
