@@ -96,10 +96,46 @@ minimal fix 로 닫는다.
 
 ## Phase B 구현 결과
 
-TBD.
+주요 변경:
+
+- `createDaemonSocketClient` 는 lazy persistent socket 을 만들고 request `id` 별
+  pending map 으로 response 를 resolve/reject 한다.
+- 한 socket 에 multiple in-flight request 를 허용한다. out-of-order response 는
+  response `id` 로 원래 request 에 매칭된다.
+- client option `requestTimeoutMs` 를 추가했다. default 는 `30_000`ms, `0` 은 timeout
+  disabled 이다.
+- socket 이 response 없이 close 되면 모든 pending request 를 reject 한다.
+- daemon socket start 는 먼저 `listen` 을 시도한다. `EADDRINUSE` 발생 시
+  `canConnect` 로 live daemon 여부를 한 번 재확인하고, stale path 면 unlink 후 한 번만
+  retry 한다.
+
+TDD 기록:
+
+- Red: concurrent client request test 에서 connection count 가 `2` 로 실패했다.
+  기존 client 는 request 마다 `net.createConnection(socketPath)` 를 열었다.
+- Green: persistent client transport + pending request map 을 추가해 한 connection 에서
+  concurrent request/response id correlation 을 통과했다.
+- Red: response 없는 socket close/request hang fixture 에서 pending request 가 bounded
+  error 로 닫히지 않았다.
+- Green: close fallback 과 `requestTimeoutMs` 를 추가해 close 는 `closed`, hang 은
+  `timed out` error 로 reject 하도록 했다.
+- Red: stale socket file 에 대해 listen-first retry contract 를 추가했다.
+- Green: `EADDRINUSE` 시 live daemon 은 `already in use` 로 실패하고 stale path 는 unlink
+  후 retry 한다.
+
+변경 파일:
+
+- `src/daemon/socket-transport.ts`
+- `tests/unit/daemon/socket-transport.test.ts`
+- `plan/mvp-implementation-checklist.md`
 
 ---
 
 ## Verification
 
-TBD.
+2026-05-19 Step 9 follow-up 마감 검증:
+
+- `pnpm test tests/unit/daemon/socket-transport.test.ts`: passing, 1 file, 7 tests
+- `pnpm test`: passing, 31 files, 164 tests
+- `pnpm typecheck`: passing
+- `pnpm build`: passing

@@ -19,6 +19,7 @@ export interface DaemonSocketServerHandle {
 
 export interface CreateDaemonSocketClientOptions {
   socketPath: string;
+  requestTimeoutMs?: number;
 }
 
 type DaemonApiMethod = keyof DaemonApi;
@@ -55,8 +56,6 @@ export function createDaemonSocketServer(
         return handle;
       }
 
-      await removeStaleSocketPath(options.socketPath);
-
       const sockets = new Set<net.Socket>();
       const server = net.createServer((socket) => {
         sockets.add(socket);
@@ -82,13 +81,7 @@ export function createDaemonSocketServer(
         });
       });
 
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(options.socketPath, () => {
-          server.off("error", reject);
-          resolve();
-        });
-      });
+      await listenWithStaleSocketRetry(server, options.socketPath);
 
       handle = {
         socketPath: options.socketPath,
@@ -126,10 +119,13 @@ export function createDaemonSocketClient(
   options: CreateDaemonSocketClientOptions,
 ): DaemonApi & { close(): void } {
   let nextRequestId = 1;
+  const transport = createPersistentDaemonSocketClient(options);
 
   return new Proxy(
     {
-      close() {},
+      close() {
+        transport.close();
+      },
     },
     {
       get(target, property) {
@@ -146,7 +142,7 @@ export function createDaemonSocketClient(
         }
 
         return (params?: unknown) =>
-          sendRequest(options.socketPath, {
+          transport.send({
             id: `request-${nextRequestId++}`,
             method: property as DaemonApiMethod,
             params,
@@ -257,51 +253,192 @@ function isRequestEnvelope(value: unknown): value is RequestEnvelope {
   );
 }
 
-async function sendRequest(
-  socketPath: string,
-  request: RequestEnvelope,
-): Promise<unknown> {
-  const socket = net.createConnection(socketPath);
-  socket.setEncoding("utf8");
-
-  return new Promise<unknown>((resolve, reject) => {
-    let buffer = "";
-
-    socket.once("error", reject);
-    socket.on("data", (chunk) => {
-      buffer += chunk;
-      const newlineIndex = buffer.indexOf("\n");
-
-      if (newlineIndex === -1) {
-        return;
-      }
-
-      const line = buffer.slice(0, newlineIndex);
-      socket.end();
-
-      const response = JSON.parse(line) as ResponseEnvelope;
-
-      if (!response.ok) {
-        reject(new Error(response.error.message));
-        return;
-      }
-
-      resolve(response.result);
-    });
-    socket.write(`${JSON.stringify(request)}\n`);
-  });
+interface PendingRequest {
+  resolve(value: unknown): void;
+  reject(error: Error): void;
+  timeout?: NodeJS.Timeout;
 }
 
-async function removeStaleSocketPath(socketPath: string): Promise<void> {
-  if (!existsSync(socketPath)) {
+function createPersistentDaemonSocketClient(options: CreateDaemonSocketClientOptions): {
+  send(request: RequestEnvelope): Promise<unknown>;
+  close(): void;
+} {
+  const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
+  const pending = new Map<string, PendingRequest>();
+  let socket: net.Socket | null = null;
+  let buffer = "";
+  let closed = false;
+
+  function ensureSocket(): net.Socket {
+    if (closed) {
+      throw new Error("daemon socket client is closed");
+    }
+
+    if (socket && !socket.destroyed) {
+      return socket;
+    }
+
+    socket = net.createConnection(options.socketPath);
+    socket.setEncoding("utf8");
+    socket.on("data", onData);
+    socket.once("error", (error) => {
+      failAll(error instanceof Error ? error : new Error(String(error)));
+    });
+    socket.once("close", () => {
+      socket = null;
+      buffer = "";
+
+      if (!closed) {
+        failAll(new Error("daemon socket closed before response"));
+      }
+    });
+
+    return socket;
+  }
+
+  function onData(chunk: string): void {
+    buffer += chunk;
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line.length === 0) {
+        continue;
+      }
+
+      let response: ResponseEnvelope;
+      try {
+        response = JSON.parse(line) as ResponseEnvelope;
+      } catch (error) {
+        failAll(
+          new Error(
+            error instanceof Error ? error.message : "Invalid daemon socket response JSON",
+          ),
+        );
+        return;
+      }
+
+      settleResponse(response);
+    }
+  }
+
+  function settleResponse(response: ResponseEnvelope): void {
+    const request = pending.get(response.id);
+    if (!request) {
+      return;
+    }
+
+    pending.delete(response.id);
+    clearPendingTimeout(request);
+
+    if (!response.ok) {
+      request.reject(new Error(response.error.message));
+      return;
+    }
+
+    request.resolve(response.result);
+  }
+
+  function failAll(error: Error): void {
+    for (const request of pending.values()) {
+      clearPendingTimeout(request);
+      request.reject(error);
+    }
+
+    pending.clear();
+  }
+
+  function clearPendingTimeout(request: PendingRequest): void {
+    if (request.timeout) {
+      clearTimeout(request.timeout);
+    }
+  }
+
+  return {
+    send(request) {
+      return new Promise<unknown>((resolve, reject) => {
+        let activeSocket: net.Socket;
+        try {
+          activeSocket = ensureSocket();
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+
+        const pendingRequest: PendingRequest = { resolve, reject };
+        if (requestTimeoutMs > 0) {
+          pendingRequest.timeout = setTimeout(() => {
+            pending.delete(request.id);
+            reject(new Error(`daemon socket request timed out: ${request.id}`));
+          }, requestTimeoutMs);
+        }
+
+        pending.set(request.id, pendingRequest);
+        activeSocket.write(`${JSON.stringify(request)}\n`);
+      });
+    },
+    close() {
+      closed = true;
+      failAll(new Error("daemon socket client is closed"));
+
+      if (socket) {
+        socket.end();
+        socket.destroy();
+        socket = null;
+      }
+    },
+  };
+}
+
+async function listenWithStaleSocketRetry(
+  server: net.Server,
+  socketPath: string,
+): Promise<void> {
+  try {
+    await listen(server, socketPath);
     return;
+  } catch (error) {
+    if (!isAddressInUseError(error)) {
+      throw error;
+    }
   }
 
   if (await canConnect(socketPath)) {
     throw new Error(`daemon socket is already in use: ${socketPath}`);
   }
 
-  unlinkSync(socketPath);
+  if (existsSync(socketPath)) {
+    unlinkSync(socketPath);
+  }
+
+  try {
+    await listen(server, socketPath);
+  } catch (error) {
+    if (isAddressInUseError(error)) {
+      throw new Error(`daemon socket is already in use: ${socketPath}`);
+    }
+
+    throw error;
+  }
+}
+
+async function listen(server: net.Server, socketPath: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function isAddressInUseError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "EADDRINUSE"
+  );
 }
 
 async function canConnect(socketPath: string): Promise<boolean> {

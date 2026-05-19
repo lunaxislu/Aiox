@@ -649,9 +649,18 @@ Phase B 결과:
 - [x] O1 idempotency preflight transaction 경계 정정 + UNIQUE violation typed reclassify
 - [x] 신규 transport contract tests + 가능한 idempotency race-ish regression
 - [x] Step 9 Phase B history/verification baseline 갱신
-- [ ] Follow-up: socket client connection reuse + id multiplex
-- [ ] Follow-up: socket client request timeout + close fallback
-- [ ] Follow-up: stale socket `EADDRINUSE` race hardening
+- [x] Follow-up: socket client connection reuse + id multiplex
+- [x] Follow-up: socket client request timeout + close fallback
+- [x] Follow-up: stale socket `EADDRINUSE` race hardening
+  - History: `history/26-step-9-socket-transport-hardening.history.md`.
+  - Files: `src/daemon/socket-transport.ts`,
+    `tests/unit/daemon/socket-transport.test.ts`.
+  - Red/Green: per-request connection count failed at `2`; pending close/hang
+    requests failed to reject; stale path retry contract added.
+  - Green: persistent socket client with pending id map, request timeout,
+    close fallback, and listen-first `EADDRINUSE` stale retry.
+  - Verification: `pnpm test tests/unit/daemon/socket-transport.test.ts`,
+    `pnpm test`, `pnpm typecheck`, `pnpm build`.
 
 ---
 
@@ -706,7 +715,7 @@ Phase B 결과:
 
 Latest full verification:
 
-- `pnpm test`: passing, 31 files, 159 tests (Step 9 마감, 2026-05-19)
+- `pnpm test`: passing, 31 files, 164 tests (Step 9 follow-up hardening, 2026-05-19)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 
