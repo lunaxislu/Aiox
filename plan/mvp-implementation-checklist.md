@@ -13,7 +13,7 @@
 > Step 2 cleanup + Step 3 transaction boundary context:
 > `history/16-step-2-sqlite-repository-cleanup.history.md`.
 >
-> Last updated: 2026-05-19
+> Last updated: 2026-05-20
 
 ---
 
@@ -664,16 +664,79 @@ Phase B 결과:
 
 ---
 
-## Step 10: Codex app-server adapter skeleton — ⏳ To be planned
+## Step 10: Codex per-agent app-server runtime — ⏳ To be planned
 
-- [ ] `src/adapters/codex/app-server.ts` — adapter-managed Codex app-server
-  endpoint process/connection metadata; daemon does not host app-server
-  in-process
+- [ ] `src/adapters/codex/runtime.ts` — `CodexAgentRuntime` contract:
+  per-agent app-server endpoint, active thread id, lifecycle
+  cleanup, and injection metadata
+- [ ] `src/adapters/codex/app-server.ts` — per-agent Codex app-server
+  process/connection metadata; launch with `--listen ws://127.0.0.1:0`; daemon
+  does not host app-server in-process
 - [ ] `src/adapters/codex/websocket.ts` — WS client utilities
 - [ ] `src/adapters/codex/injector.ts` — `turn/start` 호출
-- [ ] `src/adapters/codex/launcher.ts` — codex CLI invoke
+- [ ] `src/adapters/codex/launcher.ts` — codex CLI invoke with
+  `codex --remote <assigned-app-server-url>`
 
-**Dependency**: Open Product Issue #2 (Codex thread UUID → agent name mapping) 정책 결정 필요.
+**Dependency**: Open Product Issue #2 (Codex thread UUID → agent name mapping)
+MVP direction decided in
+`history/31-step-10-per-agent-app-server-runtime.history.md`: **Codex agent
+1개당 Codex app-server 1개, port는 OS 자동 할당 (`ws://127.0.0.1:0`)**.
+
+Product model: `CodexAgentRuntime` is the user-facing runtime boundary, similar
+to a lightweight container handle managed by an engine. This is not OS-level
+containerization. MVP runtime owns process/app-server endpoint/thread id/health
+lifecycle metadata so future implementations can switch to a proxy design
+without changing the user model.
+
+`history/27-step-10-codex-clear-new-rebind-spike.history.md` 기준으로
+TUI `/clear`/`/new`는 `thread/started`를 내지만 old thread가 loaded 상태로
+남을 수 있다. `thread/loaded/list`는 active TUI 목록이 아니라 app-server
+memory/cache 목록으로 취급한다.
+
+2026-05-20 spike 결과: config-injected `agentNickname`은 root TUI attribution
+신호로 사용할 수 없다. Unique cwd pathing과 in-band proxy는 verified fallback이지만
+path/protocol complexity가 있다. Per-agent app-server endpoint는 현재 MVP의
+agent identity boundary다.
+
+2026-05-20 proxy matrix 결과: empty-session `/clear`와 `/new`는 same-client
+`thread/start` response가 새 thread id를 반환해 rebind 가능함을 확인했다.
+Empty-session `/fork`는 same-client `thread/fork` request를 보내지만 app-server가
+`no rollout found` error를 반환한다. 이는 fork할 rollout/history가 없는 빈
+thread의 expected error로 취급한다. 따라서 기존 binding을 유지하고 rebind하지
+않는다.
+
+2026-05-20 per-agent app-server resume/rebind spike:
+`history/32-step-10-per-agent-app-server-resume-spike.history.md`. Completed-turn
+`/clear`와 `/new`는 same-client `thread/start` success response가 각각 새
+thread id를 반환함을 확인했다. Completed-turn `/fork`는 same-client
+`thread/fork` success response가 새 thread id와 expected `forkedFromId`를
+반환함을 확인했다. `codex resume <thread-id> --remote <endpoint>`는 app-server
+`thread/resume` method를 사용하며, rollout-backed thread는 새 app-server
+process에서도 resume 가능하고, resume 직후 같은 client의 `turn/start`
+injection이 동일 thread id에서 completed turn으로 처리됨을 확인했다. Empty
+thread resume은 실패했다.
+
+현재 확인된 Step 10 정책: Codex app-server endpoint 자체가 agent identity
+boundary다. `/clear`와 `/new`는 per-agent app-server 안에서 active thread id를
+새 thread id로 갱신한다. `thread/fork`는 성공 response가 새 thread id와 expected
+`forkedFromId`를 반환할 때만 active thread id를 갱신한다. Empty-thread
+`no rollout found` error는 fork 대상 부재로 인한 expected error라 agent binding
+uncertainty로 올리지 않는다.
+
+Step 10 Phase A next decisions before implementation:
+
+- [ ] Define `CodexAgentRuntime` state shape and what is persisted in
+  `AgentInstance.adapter_session_id` versus in-memory runtime state.
+- [ ] Implement per-agent app-server launch with `--listen ws://127.0.0.1:0`,
+  parse assigned endpoint from stdout, and wait for `readyz`.
+- [ ] Ensure user-facing CLI never asks for or exposes a required fixed Codex
+  app-server port; ports are runtime metadata.
+- [ ] Define app-server lifecycle: graceful shutdown, healthz check, process
+  exit handling, zombie defense, and restart/reconnect policy.
+- [ ] Define binding uncertainty policy for injection: pause/fail delivery
+  instead of sending to a possibly wrong thread.
+- [x] Re-run completed-turn `/clear`, `/new` matrix after Codex usage limit
+  cleared.
 
 ---
 

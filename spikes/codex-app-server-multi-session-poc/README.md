@@ -97,3 +97,41 @@ Use per-session app-server for MVP if:
 
 The loaded list response schema currently only exposes thread ids, so this PoC
 focuses on whether thread ids are stable and addressable.
+
+## Record App-Server Events
+
+Use `event-recorder.ts` when investigating TUI-originated lifecycle changes such
+as `/clear`, `/new`, and fork:
+
+```bash
+pnpm tsx spikes/codex-app-server-multi-session-poc/event-recorder.ts \
+  --url=ws://127.0.0.1:4500 \
+  --out=/private/tmp/aiox-codex-events.jsonl \
+  --duration-ms=120000 \
+  --poll-ms=1000
+```
+
+It records all JSON-RPC notifications and periodic `thread/loaded/list` results
+as JSONL. Summarize the relevant event sequence in `history/`; do not commit
+large raw runtime logs.
+
+## Run An In-Band Proxy Spike
+
+Use `inband-proxy.ts` to check whether a Codex TUI command is visible as a
+same-connection request/response through a per-agent proxy:
+
+```bash
+codex app-server --listen ws://127.0.0.1:4515
+
+pnpm tsx spikes/codex-app-server-multi-session-poc/inband-proxy.ts \
+  --upstream=ws://127.0.0.1:4515 \
+  --listen-port=4520 \
+  --out=/private/tmp/aiox-codex-inband-proxy-events.jsonl
+
+codex --remote ws://127.0.0.1:4520 --no-alt-screen
+```
+
+The proxy is transparent by default. It records JSON-RPC frames and emits a
+`binding_candidate` only when a `thread/start` or `thread/fork` response on the
+same connection contains a returned thread id. Broadcast `thread/started`
+notifications are not binding authority.

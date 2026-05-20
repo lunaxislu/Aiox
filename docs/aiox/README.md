@@ -56,3 +56,8 @@
 ## 현재 진입점
 
 - `pair-attach-kind-mismatch.md` — Step 2 cleanup 중 발견한 caller-trusted kind 버그 (관련 권위: `history/16-step-2-sqlite-repository-cleanup.history.md` 4-1).
+- `step-6-cli-decisions-walkthrough.md` — Step 6 CLI invocation 결정 walkthrough (관련 권위: `history/20-step-6-phase-a-decisions.history.md`).
+- `proxy-cost-model.md` — Codex in-band proxy의 cost model + lazy observation 제안. 현재 Step 10 production은 per-agent app-server라 historical/fallback 학습 기록이다.
+- `proxy-attribution-signals.md` — Codex `/clear`·`/new`·`/fork` 신호 매핑 (method + sessionStartSource + forkedFromId). Proxy production 여부와 별개로 active thread id 갱신 이해에 유효하다.
+- `proxy-vs-app-server-tradeoff.md` — Step 10 Codex rebind 방법 3가지 비교 학습 기록: per-agent app-server(채택), per-agent proxy port(fallback), one proxy listener(multi-agent routing 후보/비추천). 현재 권위 결정은 `history/31-step-10-per-agent-app-server-runtime.history.md`.
+- `agent-runtime-container-model.md` — Docker Engine/container 비유를 aiox agent runtime product model로 번역한 학습 기록. 현재 Step 10 권위 결정: `history/31-step-10-per-agent-app-server-runtime.history.md`.

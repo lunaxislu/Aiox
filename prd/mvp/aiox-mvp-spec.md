@@ -178,10 +178,10 @@ aiox doctor
 ┌──────────▼────────────────────▼────────────────────────────┐
 │  Layer 2: adapter-managed external processes/endpoints     │
 │  ┌────────────────────┐   ┌─────────────────────────────┐  │
-│  │ codex app-server   │   │ MCP channel server          │  │
-│  │ (별도 Codex proc;  │   │ (Claude의 자식 process;     │  │
-│  │  daemon spawn 또는 │   │  HTTP ingress 노출)         │  │
-│  │  외부 띄우고 connect)│  │                             │  │
+│  │ CodexAgentRuntime  │   │ MCP channel server          │  │
+│  │ per-agent          │   │ (Claude의 자식 process;     │  │
+│  │ codex app-server   │   │  HTTP ingress 노출)         │  │
+│  │ port :0            │   │                             │  │
 │  └─────────┬──────────┘   └──────────┬──────────────────┘  │
 └────────────┼─────────────────────────┼─────────────────────┘
              │ WS                       │ HTTP /send
@@ -200,11 +200,19 @@ aiox doctor
 ```
 
 - daemon은 SQLite WAL, router, local API/MCP, adapter client/injector를 소유한다. router는 daemon process 안에 in-process로 산다.
-- Codex `app-server`와 Claude MCP channel server는 **adapter-managed 외부 process/endpoint**다. daemon은 이를 spawn/supervise하거나 외부에서 띄운 것에 connect한다. **daemon process 안에서 라이브러리처럼 내장하지 않는다.**
+- Codex runtime과 Claude MCP channel server는 **adapter-managed 외부 process/endpoint**다. daemon은 이를 spawn/supervise하거나 외부에서 띄운 것에 connect한다. **daemon process 안에서 라이브러리처럼 내장하지 않는다.**
 - Claude channel server는 Claude CLI가 stdio로 자식 process로 load한 MCP server이고, 그 server가 HTTP ingress(`/send`)를 노출해 daemon이 push한다.
-- Codex app-server는 Codex CLI가 제공하는 별도 process이고, daemon은 WS client로 접속해 `turn/start`를 호출한다.
+- Codex MVP runtime은 `CodexAgentRuntime` 단위로 본다. 현재 Step 10 구현 방향은 **Codex agent 1개당 Codex app-server 1개**다. 각 app-server는 `codex app-server --listen ws://127.0.0.1:0`로 OS 자동 포트를 할당받고, 각 Codex TUI는 자기 app-server endpoint로 `codex --remote` 연결한다.
+- Codex app-server endpoint는 agent identity boundary다. `/clear`, `/new`, `/fork`는 identity attribution 문제가 아니라 같은 per-agent app-server 안에서 active thread id가 바뀌는 문제로 취급한다.
 - agent CLI process(Layer 1)는 사용자 터미널의 foreground다. daemon의 child가 아니므로 daemon이 직접 kill하지 않는다.
 - adapter는 daemon 안의 client/injector(Layer 3) + Layer 2 외부 process의 협업 단위로 본다.
+
+`CodexAgentRuntime`은 Docker Engine의 container와 비슷한 product boundary로
+취급한다. 이는 OS-level container, namespace, cgroup, 또는 별도 VM을 뜻하지
+않는다. MVP에서는 process/app-server endpoint/thread id/health/lifecycle을 하나의
+named agent runtime으로 묶는 추상화다. 이 경계 덕분에 나중에 내부 구현을
+proxy listener나 다른 adapter topology로 바꿔도 사용자 모델은
+`aiox codex --name <name>` 중심으로 유지된다.
 
 ### Message Flow (1:N fan-out + reply)
 
@@ -580,12 +588,25 @@ state flows that already know agent names, such as future YAML compose.
 MVP adapter skeleton should preserve this boundary:
 
 ```text
-codex app-server WebSocket
-thread/loaded/list
-turn/start
+CodexAgentRuntime
+per-agent codex app-server endpoint
+OS-assigned localhost port (:0)
+thread/start and thread/fork active-thread tracking
+turn/start injection to active thread id
 ```
 
 The pre-validation proved thread-targeted `turn/start` works.
+
+Step 10 production direction is per-agent app-server first:
+
+- Each Codex agent gets its own local Codex app-server endpoint.
+- Each app-server is launched with `--listen ws://127.0.0.1:0`; the OS assigns
+  an available port atomically, avoiding developer port collisions.
+- Aiox parses the assigned endpoint, waits for `readyz`, and launches the TUI
+  with `codex --remote <assigned-endpoint>`.
+- MVP does not require users to choose or remember Codex app-server ports.
+- `thread/loaded/list` is app-server memory/cache state, not an active TUI list.
+- In-band proxy remains a validated spike/fallback, not the MVP production path.
 
 ### Claude
 
@@ -630,8 +651,12 @@ implementation, but adapter behavior and UX must reference them.
 
 2. Codex thread id to agent name mapping
 
-   `thread/loaded/list` exposes loaded Codex thread UUIDs. MVP needs a stable
-   strategy to associate those UUIDs with human-friendly `aiox` agent names/tags.
+   `thread/loaded/list` exposes loaded Codex thread UUIDs, but it is app-server
+   memory/cache state rather than an active TUI list. MVP Step 10 maps Codex
+   thread ids to human-friendly `aiox` names through a per-agent app-server
+   endpoint: endpoint = agent identity boundary. Active thread id is then tracked
+   within that per-agent app-server. In-band proxy remains a validated fallback,
+   not the production path.
 
 3. Stale agent transition policy
 
