@@ -61,3 +61,4 @@
 - `proxy-attribution-signals.md` — Codex `/clear`·`/new`·`/fork` 신호 매핑 (method + sessionStartSource + forkedFromId). Proxy production 여부와 별개로 active thread id 갱신 이해에 유효하다.
 - `proxy-vs-app-server-tradeoff.md` — Step 10 Codex rebind 방법 3가지 비교 학습 기록: per-agent app-server(채택), per-agent proxy port(fallback), one proxy listener(multi-agent routing 후보/비추천). 현재 권위 결정은 `history/31-step-10-per-agent-app-server-runtime.history.md`.
 - `agent-runtime-container-model.md` — Docker Engine/container 비유를 aiox agent runtime product model로 번역한 학습 기록. 현재 Step 10 권위 결정: `history/31-step-10-per-agent-app-server-runtime.history.md`.
+- `phase-a-design-decisions.md` — Step 10 Phase A에서 결정된 Codex 앱 서버 실행, TUI 프로세스 소유권, 웹소켓 인젝터 통신 설계 (관련 권위: `history/32-step-10-per-agent-app-server-resume-spike.history.md` 및 후속 세션).

@@ -738,8 +738,9 @@ Step 10 Phase A next decisions before implementation:
   app-server port; ports are runtime metadata.
 - [ ] Define app-server lifecycle: graceful shutdown, healthz check, process
   exit handling, zombie defense, and restart/reconnect policy.
-- [ ] Define binding uncertainty policy for injection: pause/fail delivery
-  instead of sending to a possibly wrong thread.
+- [ ] Define binding/rebind policy: replace the previous binding only when Codex
+  returns an authoritative thread/session id; fail-fast on missing/conflicting
+  ids or notification-only signals.
 - [x] Re-run completed-turn `/clear`, `/new` matrix after Codex usage limit
   cleared.
 
