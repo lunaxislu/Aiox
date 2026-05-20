@@ -96,9 +96,14 @@ codex measurements (Codex CLI v0.131.0, empty app-server, local):
 
 - Codex supports OS-assigned port via `--listen ws://127.0.0.1:0`.
 - Verified locally: server emits `listening on: ws://127.0.0.1:<assigned>`
-  on stdout, plus `readyz`/`healthz` HTTP endpoints on the same port.
-- Workflow: launch with `:0` → parse stdout → wait for readyz → launch TUI
-  with `--remote ws://127.0.0.1:<assigned>` → store endpoint in agent state.
+  plus `readyz`/`healthz` HTTP endpoints on the same port.
+- 2026-05-21 follow-up verification corrected the stream detail: in the current
+  project environment the app-server banner is emitted on stderr, not stdout.
+  Implementation must parse the process output banner with stderr-first support
+  and drain both stdout/stderr.
+- Workflow: launch with `:0` → parse output banner → wait for readyz → launch
+  TUI with `--remote ws://127.0.0.1:<assigned>` → store endpoint in agent
+  state.
 - Atomic port allocation. No "find free port then bind" race.
 
 ### Q-D: one proxy listener for multiple TUIs (user follow-up)

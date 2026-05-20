@@ -602,8 +602,11 @@ Step 10 production direction is per-agent app-server first:
 - Each Codex agent gets its own local Codex app-server endpoint.
 - Each app-server is launched with `--listen ws://127.0.0.1:0`; the OS assigns
   an available port atomically, avoiding developer port collisions.
-- Aiox parses the assigned endpoint, waits for `readyz`, and launches the TUI
-  with `codex --remote <assigned-endpoint>`.
+- Aiox parses the assigned endpoint from the app-server output banner, waits
+  for `readyz`, and launches the TUI with
+  `codex --remote <assigned-endpoint>`. Current Codex CLI verification observed
+  the banner on stderr, so implementation drains both stdout and stderr and does
+  not rely on stdout as the endpoint source.
 - MVP does not require users to choose or remember Codex app-server ports.
 - `thread/loaded/list` is app-server memory/cache state, not an active TUI list.
 - In-band proxy remains a validated spike/fallback, not the MVP production path.

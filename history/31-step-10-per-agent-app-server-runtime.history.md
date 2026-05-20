@@ -35,8 +35,8 @@ Each app-server is launched with an OS-assigned localhost port:
 codex app-server --listen ws://127.0.0.1:0
 ```
 
-Aiox parses the assigned endpoint from stdout, waits for `readyz`, then launches
-the TUI:
+Aiox parses the assigned endpoint from the app-server output banner, waits for
+`readyz`, then launches the TUI:
 
 ```bash
 codex --remote ws://127.0.0.1:<assigned>
@@ -86,15 +86,50 @@ still tracks active thread id changes:
 
 1. Define `CodexAgentRuntime` state shape.
 2. Implement per-agent app-server launch with `--listen ws://127.0.0.1:0`.
-3. Parse assigned endpoint from stdout and wait for `readyz`.
+3. Parse assigned endpoint from the app-server output banner and wait for
+   `readyz`.
 4. Launch Codex TUI with `codex --remote <assigned-endpoint>`.
 5. Store runtime endpoint and active thread id in adapter state.
 6. Implement injector through the per-agent app-server endpoint.
 7. Add lifecycle handling: graceful shutdown, process exit, health failure,
    zombie defense, and reconnect/fallback policy.
 
+## 2026-05-21 Launch Banner Verification
+
+Decision 2 follow-up checked the app-server launch output directly before
+locking the Phase B implementation contract.
+
+Command shape:
+
+```bash
+codex app-server --listen ws://127.0.0.1:0
+```
+
+Observed result over 3 runs in this project environment:
+
+- The app-server banner was emitted on **stderr**, not stdout.
+- stdout was empty.
+- stderr contained one observed chunk per run with:
+  - `listening on: ws://127.0.0.1:<assigned>`
+  - `readyz: http://127.0.0.1:<assigned>/readyz`
+  - `healthz: http://127.0.0.1:<assigned>/healthz`
+- Node 18 `fetch` to the emitted `readyz` URL returned HTTP 200.
+
+Implementation consequence:
+
+- Do not make stdout the endpoint source contract.
+- Parse the endpoint/readyz banner from process output with stderr-first
+  support, while draining both stdout and stderr.
+- Treat stream chunk boundaries as non-contractual. Even though the banner was
+  observed as one stderr chunk, implementation must accumulate chunks until the
+  endpoint/readyz pattern is matched or the endpoint parse timeout expires.
+- Keep draining both streams after endpoint parse so child output cannot block
+  the process.
+
 ## Status
 
 - 2026-05-20: current production direction corrected to per-agent Codex
   app-server. No implementation yet.
-
+- 2026-05-21: launch banner verification corrected the earlier stdout
+  assumption. Current contract is process output banner parse with stderr-first
+  support and stdout/stderr drain.

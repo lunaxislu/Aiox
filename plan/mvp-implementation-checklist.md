@@ -681,6 +681,10 @@ Phase B 결과:
 MVP direction decided in
 `history/31-step-10-per-agent-app-server-runtime.history.md`: **Codex agent
 1개당 Codex app-server 1개, port는 OS 자동 할당 (`ws://127.0.0.1:0`)**.
+2026-05-21 D2 launch banner verification: current Codex CLI emits the
+app-server banner on stderr, not stdout. Phase B must parse the endpoint/readyz
+from the process output banner with stderr-first support, drain both
+stdout/stderr, and not rely on stream chunk boundaries matching lines.
 
 Product model: `CodexAgentRuntime` is the user-facing runtime boundary, similar
 to a lightweight container handle managed by an engine. This is not OS-level
@@ -728,7 +732,8 @@ Step 10 Phase A next decisions before implementation:
 - [ ] Define `CodexAgentRuntime` state shape and what is persisted in
   `AgentInstance.adapter_session_id` versus in-memory runtime state.
 - [ ] Implement per-agent app-server launch with `--listen ws://127.0.0.1:0`,
-  parse assigned endpoint from stdout, and wait for `readyz`.
+  parse assigned endpoint from the process output banner, and wait for
+  `readyz`.
 - [ ] Ensure user-facing CLI never asks for or exposes a required fixed Codex
   app-server port; ports are runtime metadata.
 - [ ] Define app-server lifecycle: graceful shutdown, healthz check, process

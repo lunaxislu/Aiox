@@ -88,10 +88,14 @@ codex가 로컬에서 직접 측정 (Codex CLI v0.131.0, 빈 app-server 1개):
   ```
 - 운영 흐름:
   1. `codex app-server --listen ws://127.0.0.1:0` 실행
-  2. stdout에서 `ws://127.0.0.1:<assigned>` 파싱
+  2. app-server output banner에서 `ws://127.0.0.1:<assigned>` 파싱
   3. readyz HTTP 확인
   4. `codex --remote ws://127.0.0.1:<assigned>` 실행
   5. agent state에 endpoint 저장
+- 2026-05-21 재검증: 현재 환경의 Codex CLI는 이 banner를 stdout이 아니라
+  stderr에 emit했다. 따라서 Step 10 구현은 stderr-first로 banner를 parse하고
+  stdout/stderr를 모두 drain해야 한다. Stream chunk boundary는 line boundary로
+  취급하지 않는다.
 - OS가 원자적으로 빈 포트 할당 → "빈 포트 찾고 나중에 bind" race 없음.
 - 개발자 점유 포트와 충돌 X.
 
@@ -192,7 +196,7 @@ process C: --listen ws://:0    process C: listening on :58706 ◄─ OS가 할�
                                
                                개발자가 점유한 port (3000, 8080, ...) 회피
                                race condition 없음 (atomic 할당)
-                               stdout parsing으로 endpoint 획득
+                               output banner parsing으로 endpoint 획득
 ```
 
 ## 5. 해결 단계
