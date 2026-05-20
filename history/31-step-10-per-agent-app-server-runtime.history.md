@@ -105,7 +105,7 @@ Command shape:
 codex app-server --listen ws://127.0.0.1:0
 ```
 
-Observed result over 3 runs in this project environment:
+Observed result over 3 initial runs in this project environment:
 
 - The app-server banner was emitted on **stderr**, not stdout.
 - stdout was empty.
@@ -114,6 +114,17 @@ Observed result over 3 runs in this project environment:
   - `readyz: http://127.0.0.1:<assigned>/readyz`
   - `healthz: http://127.0.0.1:<assigned>/healthz`
 - Node 18 `fetch` to the emitted `readyz` URL returned HTTP 200.
+
+Follow-up verification in the same environment repeated the check with two
+capture modes:
+
+- Node `child_process` pipe capture: 5/5 runs wrote the banner to stderr and
+  wrote 0 bytes to stdout.
+- Direct fd-file capture with stdout and stderr redirected to separate files:
+  5/5 runs wrote the banner to stderr and wrote 0 bytes to stdout.
+
+This confirms the observed stream is not a Node stream artifact. The current
+Codex CLI writes the app-server launch banner to stderr at the fd level.
 
 Implementation consequence:
 
