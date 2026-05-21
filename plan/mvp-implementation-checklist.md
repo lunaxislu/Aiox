@@ -666,6 +666,9 @@ Phase B 결과:
 
 ## Step 10: Codex per-agent app-server runtime — ⏳ To be planned
 
+Phase B started on 2026-05-21. Round 1 foundation is in progress under
+`history/34-step-10-phase-b-codex-runtime.history.md`.
+
 - [ ] `src/adapters/codex/runtime.ts` — `CodexAgentRuntime` contract:
   per-agent app-server endpoint, active thread id, lifecycle
   cleanup, and injection metadata
@@ -727,7 +730,12 @@ boundary다. `/clear`와 `/new`는 per-agent app-server 안에서 active thread 
 `no rollout found` error는 fork 대상 부재로 인한 expected error라 agent binding
 uncertainty로 올리지 않는다.
 
-Step 10 Phase A next decisions before implementation:
+Step 10 Phase A decisions are closed in
+`history/33-step-10-phase-a-decisions.history.md`. Phase B implementation must
+follow the D5-A/D5-B MVP invariant: no zombie defense, process group kill,
+setsid, `PR_SET_PDEATHSIG`, periodic healthz, auto-reconnect, or TUI heartbeat.
+
+Phase B implementation tasks:
 
 - [ ] Define `CodexAgentRuntime` state shape and what is persisted in
   `AgentInstance.adapter_session_id` versus in-memory runtime state.
@@ -736,8 +744,9 @@ Step 10 Phase A next decisions before implementation:
   `readyz`.
 - [ ] Ensure user-facing CLI never asks for or exposes a required fixed Codex
   app-server port; ports are runtime metadata.
-- [ ] Define app-server lifecycle: graceful shutdown, healthz check, process
-  exit handling, zombie defense, and restart/reconnect policy.
+- [ ] Define app-server lifecycle: graceful shutdown, process exit handling,
+  and event-listener-only WS close handling. Hardening items are deferred by
+  D5-B.
 - [ ] Define binding/rebind policy: replace the previous binding only when Codex
   returns an authoritative thread/session id; fail-fast on missing/conflicting
   ids or notification-only signals.
