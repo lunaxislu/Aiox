@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   attachCodexAgentRuntime,
@@ -10,6 +10,10 @@ import {
 } from "../../../src/adapters/codex/runtime.js";
 
 describe("Codex agent runtime", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("attaches in D2 order: app-server launch, WS connect, initialize, ready", async () => {
     const events: string[] = [];
     const appServer = {
@@ -55,30 +59,76 @@ describe("Codex agent runtime", () => {
     });
   });
 
-  it("closes the WS client from dispose while leaving process cleanup to Round 3", async () => {
+  it("disposes by closing WS, sending SIGTERM, then SIGKILL after the grace period", async () => {
+    vi.useFakeTimers();
     const events: string[] = [];
+    const child = fakeChild();
+    vi.mocked(child.kill).mockImplementation((signal?: NodeJS.Signals | number) => {
+      events.push(`kill:${String(signal)}`);
+      if (signal === "SIGKILL") {
+        Object.assign(child, { exitCode: 1 });
+        child.emit("exit", 1, null);
+      }
+      return true;
+    });
     const runtime = await attachCodexAgentRuntime({
       agentName: "codex-one",
       activeThreadId: "thread-1",
-      launchAppServer: async () => ({
-        child: fakeChild(),
-        endpoint: {
-          endpoint: new URL("ws://127.0.0.1:54321"),
-          readyz: new URL("http://127.0.0.1:54321/readyz"),
-          healthz: new URL("http://127.0.0.1:54321/healthz"),
-        },
-        output: {
-          stdout: { capacityBytes: 10, text: "" },
-          stderr: { capacityBytes: 10, text: "" },
-        },
-      }),
+      launchAppServer: async () => fakeAppServer(child),
       connectWebSocket: async () => fakeWebSocket(events),
     });
 
-    runtime.dispose();
+    const disposed = runtime.dispose();
 
-    expect(events).toContain("close");
+    expect(events).toEqual(["initialize", "close", "kill:SIGTERM"]);
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(events).toEqual(["initialize", "close", "kill:SIGTERM"]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await disposed;
+
+    expect(events).toEqual(["initialize", "close", "kill:SIGTERM", "kill:SIGKILL"]);
     expect(runtime.state).toBe("disposed");
+  });
+
+  it("dispose is idempotent and skips process signals after the first cleanup", async () => {
+    const events: string[] = [];
+    const child = fakeChild();
+    vi.mocked(child.kill).mockImplementation((signal?: NodeJS.Signals | number) => {
+      events.push(`kill:${String(signal)}`);
+      Object.assign(child, { exitCode: 0 });
+      child.emit("exit", 0, null);
+      return true;
+    });
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: "thread-1",
+      launchAppServer: async () => fakeAppServer(child),
+      connectWebSocket: async () => fakeWebSocket(events),
+    });
+
+    await runtime.dispose();
+    await runtime.dispose();
+
+    expect(events).toEqual(["initialize", "close", "kill:SIGTERM"]);
+    expect(child.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispose skips process signals when the app-server already exited", async () => {
+    const events: string[] = [];
+    const child = fakeChild();
+    Object.assign(child, { exitCode: 0 });
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: "thread-1",
+      launchAppServer: async () => fakeAppServer(child),
+      connectWebSocket: async () => fakeWebSocket(events),
+    });
+
+    await runtime.dispose();
+
+    expect(events).toEqual(["initialize", "close"]);
+    expect(child.kill).not.toHaveBeenCalled();
   });
 
   it("delegates injectTurnStart through the injector backbone", async () => {

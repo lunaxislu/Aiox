@@ -3,7 +3,10 @@ import { dirname, join, parse } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { CodexAppServerProcess } from "./app-server.js";
-import { disposeCodexAppServerOnAttachFailure } from "./app-server.js";
+import {
+  disposeCodexAppServer,
+  disposeCodexAppServerOnAttachFailure,
+} from "./app-server.js";
 import type { AdapterInjectResult } from "../contract.js";
 import { launchCodexAppServer } from "./launcher.js";
 import {
@@ -87,9 +90,18 @@ export class CodexAgentRuntime {
     this.state = "failed";
   }
 
-  dispose(): void {
-    // TODO(round-3-D5-A.5): WS close -> SIGTERM -> 3s grace -> SIGKILL.
-    this.webSocket.close();
+  async dispose(): Promise<void> {
+    if (this.state === "disposed") {
+      return;
+    }
+
+    try {
+      this.webSocket.close();
+    } catch {
+      // Cleanup must preserve the caller path.
+    }
+
+    await disposeAppServer(this.appServer);
     this.state = "disposed";
   }
 
@@ -165,6 +177,14 @@ function disposeAppServerOnAttachFailure(appServer: CodexAppServerProcess): void
     disposeCodexAppServerOnAttachFailure(appServer);
   } catch {
     // Preserve the original attach failure.
+  }
+}
+
+async function disposeAppServer(appServer: CodexAppServerProcess): Promise<void> {
+  try {
+    await disposeCodexAppServer(appServer);
+  } catch {
+    // Cleanup is best-effort.
   }
 }
 

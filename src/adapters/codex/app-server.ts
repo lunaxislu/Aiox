@@ -51,9 +51,14 @@ export interface WaitForCodexReadyzOptions {
   child?: ChildProcess;
 }
 
+export interface DisposeCodexAppServerOptions {
+  sigtermGraceMs?: number;
+}
+
 const defaultOutputRingCapacityBytes = 256 * 1024;
 const defaultReadyzTimeoutMs = 10_000;
 const defaultReadyzPollIntervalMs = 200;
+const defaultSigtermGraceMs = 3_000;
 
 export function createCodexAppServerOutputBuffer(
   options: CreateCodexAppServerOutputBufferOptions = {},
@@ -179,6 +184,40 @@ export function disposeCodexAppServerOnAttachFailure(
   appServer.child.kill("SIGTERM");
 }
 
+export async function disposeCodexAppServer(
+  appServer: CodexAppServerProcess,
+  options: DisposeCodexAppServerOptions = {},
+): Promise<void> {
+  const child = appServer.child;
+
+  if (child.exitCode !== null) {
+    return;
+  }
+
+  const exit = waitForChildExit(child);
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    return;
+  }
+
+  const exitedAfterSigterm = await waitForExitOrTimeout(
+    exit,
+    options.sigtermGraceMs ?? defaultSigtermGraceMs,
+  );
+  if (exitedAfterSigterm || child.exitCode !== null) {
+    return;
+  }
+
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    return;
+  }
+
+  await exit.catch(() => undefined);
+}
+
 function findBannerUrl(lines: readonly string[], token: string): URL {
   const prefix = `${token}:`;
   const line = lines.find((candidate) =>
@@ -256,6 +295,38 @@ function isLoopbackHostname(hostname: string): boolean {
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function waitForChildExit(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    child.once("exit", () => {
+      resolve();
+    });
+  });
+}
+
+async function waitForExitOrTimeout(
+  exit: Promise<void>,
+  timeoutMs: number,
+): Promise<boolean> {
+  let timeout: NodeJS.Timeout | null = null;
+
+  try {
+    return await Promise.race([
+      exit.then(() => true),
+      new Promise<boolean>((resolve) => {
+        timeout = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 function createProcessExitedBeforeReadyError(
