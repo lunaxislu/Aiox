@@ -279,3 +279,68 @@ sequence before later rounds can build on runtime startup.
   - `pnpm test` — 33 files / 172 tests passed.
   - `pnpm typecheck` — passed.
   - `pnpm build` — passed.
+
+## Round 2 — D4 Protocol Surface
+
+Status: in progress.
+
+### D4.4 turn/start ack frame spike
+
+Local Codex CLI 0.132.0 probe on 2026-05-21:
+
+- Started `codex app-server --listen ws://127.0.0.1:0`.
+- Connected two initialized WS clients:
+  - `actor`: sends `thread/start` and `turn/start`.
+  - `monitor`: observes broadcast notifications on a separate connection.
+- `actor` received the same-client JSON-RPC `turn/start` response.
+- `actor` and `monitor` also observed notifications after the request, including
+  `thread/status/changed`; `actor` observed `turn/started`.
+
+Raw frame lock:
+
+```json
+actor {"id":4,"result":{"turn":{"id":"019e4934-2329-7d73-aac1-9da171f13084","items":[],"itemsView":"notLoaded","status":"inProgress","error":null,"startedAt":null,"completedAt":null,"durationMs":null}}}
+```
+
+Decision: D4.4 Option B remains valid. `inject()` succeeds when the
+same-client `turn/start` JSON-RPC response is acknowledged and the requested
+thread id equals `runtime.activeThreadId`. It does not wait for
+`turn/started`, `turn/completed`, or model output.
+
+### D4.4 turn/start payload shape
+
+Generated current protocol schema with:
+
+```bash
+codex app-server generate-json-schema --experimental --out /private/tmp/aiox-codex-schema-round2
+```
+
+`v2/TurnStartParams.json` requires only `threadId` and `input`, but `input` is
+an array of `UserInput` items, not a string. Text injection therefore uses:
+
+```json
+{"threadId":"<thread-id>","input":[{"type":"text","text":"<message>"}]}
+```
+
+The first probe using string `input` failed with JSON-RPC `-32600`:
+`invalid type: string ..., expected a sequence`.
+
+### D4.7 initialize default
+
+Generated `v1/InitializeParams.json` requires `clientInfo` and supports optional
+`capabilities`. It does not advertise `protocolVersion`.
+
+User-confirmed Round 2 default:
+
+```json
+{
+  "clientInfo": { "name": "aiox", "version": "<package.version>" },
+  "capabilities": { "experimentalApi": false }
+}
+```
+
+Decision rationale:
+
+- Follows the generated Codex CLI 0.132.0 schema.
+- Keeps broadcast notifications available for future listener plumbing.
+- Avoids relying on ignored extra fields such as `protocolVersion`.
