@@ -737,3 +737,81 @@ Changed files:
 - D5-B hardening stays out of scope: no process group kill, no setsid, no
   `PR_SET_PDEATHSIG`, no periodic healthz, no auto-reconnect, and no TUI
   heartbeat.
+
+## Round 4 — D7 replacement + TUI launch + --resume
+
+Status: in progress.
+
+### Round 4 critical issue 4-1 — production attach runtime ownership
+
+Discovered during Round 4 entry on 2026-05-21.
+
+Problem:
+
+- The current production `agent-attach` path still ends at daemon DB
+  registration (`attachAgent`) and does not yet instantiate
+  `CodexAgentRuntime`.
+- Round 4 requires daemon-owned app-server launch, daemon-owned same-client
+  `thread/start` / `thread/resume` authority, and CLI-owned TUI launch after
+  runtime readiness.
+- Therefore the responsibility boundary for production attach runtime ownership
+  must be fixed before wiring D3/D6/D7. In particular, daemon-originated
+  `thread/start` for fresh Codex attach cannot be inferred from broadcast
+  notifications and must run on the daemon-owned WS client if it is implemented
+  in Round 4.
+
+Why critical:
+
+- Putting app-server launch in the CLI would violate the D5-B invariant that
+  the daemon manages exactly one direct child per Codex agent: the app-server.
+- Putting TUI launch in the daemon would violate D3.4; TUI must remain a
+  CLI-child with `stdio: "inherit"`.
+- Rebinding from notification-only `thread/started` would violate D7 Option D.
+- Delaying this decision risks mixing DB attach, app-server lifecycle, and TUI
+  lifecycle in one unclear ownership path.
+
+Decision options:
+
+Option A — `attachAgent` creates the Codex runtime.
+
+- Trade-off: one daemon API call owns DB attach, app-server launch, WS
+  initialize, daemon-owned `thread/start` / `thread/resume` authority, and
+  endpoint return to the CLI. The cost is that `attachAgent` becomes a lifecycle
+  API for Codex rather than a pure DB registration call.
+- Recommendation: choose A.
+- Reversibility: medium. The runtime creation can later be moved behind a
+  separate RPC, but response shapes and tests would need migration.
+- Deferrability: low. D3/D6/D7 production wire cannot be completed without this
+  boundary.
+
+Option B — keep `attachAgent` DB-only and add a separate
+`startCodexRuntime(agentName, resumeSessionId?)` daemon RPC.
+
+- Trade-off: DB registration and runtime lifecycle boundaries are cleaner, but
+  CLI attach becomes two-step and rollback ordering becomes more complex when
+  DB attach succeeds but runtime startup fails.
+- Recommendation: viable but higher Round 4 implementation cost.
+- Reversibility: high because the API boundary is explicit.
+- Deferrability: low for the same reason as Option A.
+
+Option C — defer production runtime/TUI launch to a later round.
+
+- Trade-off: safest scope reduction, but Round 4 would not complete the assigned
+  production surfaces for D3 TUI launch, D6 `--resume`, D7 replacement, or CLI
+  `notifyTuiExited`.
+- Recommendation: reject for this Round 4 delegation.
+- Reversibility: high, but it changes Round 4 disposition to partial.
+- Deferrability: possible only by lowering the Round 4 goal.
+
+Decision:
+
+- User selected Option A on 2026-05-21.
+- Rationale: Option A best preserves the locked ownership model. The daemon
+  remains the only owner of the per-agent app-server child and daemon-owned
+  same-client JSON-RPC authority; the CLI receives endpoint metadata after
+  runtime readiness and remains the only parent of the TUI child with
+  `stdio: "inherit"`.
+- Implementation direction: `attachAgent` will create and store
+  `CodexAgentRuntime` for Codex agents, return the assigned endpoint and active
+  thread id to the CLI, and keep rollback atomicity inside the attach failure
+  path. Claude attach remains DB-only.
