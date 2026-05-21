@@ -13,6 +13,10 @@
 
 Status: in progress.
 
+Commits:
+
+- `af97b20` — Add codex app-server runtime foundation.
+
 Changed files:
 
 - `src/adapters/codex/app-server.ts`
@@ -124,4 +128,3 @@ sequence before later rounds can build on runtime startup.
   - `pnpm test` — 33 files / 172 tests passed.
   - `pnpm typecheck` — passed.
   - `pnpm build` — passed.
-- Round 1 commit hash to be appended in the round report after commit.
