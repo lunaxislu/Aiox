@@ -29,7 +29,8 @@ const defaultTotalTimeoutMs = 15_000;
 export async function launchCodexAppServer(
   options: LaunchCodexAppServerOptions = {},
 ): Promise<CodexAppServerProcess> {
-  const command = options.command ?? "codex";
+  const command =
+    options.command ?? process.env.AIOX_CODEX_APP_SERVER_COMMAND ?? "codex";
   const args = options.args ?? ["app-server", "--listen", "ws://127.0.0.1:0"];
   const output = createCodexAppServerOutputBuffer();
   const child = spawn(command, [...args], {
@@ -61,7 +62,8 @@ export async function launchCodexAppServer(
 }
 
 export function launchCodexTui(options: LaunchCodexTuiOptions): ChildProcess {
-  const command = options.command ?? "codex";
+  const command =
+    options.command ?? process.env.AIOX_CODEX_TUI_COMMAND ?? "codex";
   const args = options.resumeSessionId
     ? ["resume", options.resumeSessionId, "--remote", options.endpoint.toString()]
     : ["--remote", options.endpoint.toString()];
