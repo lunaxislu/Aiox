@@ -1,4 +1,5 @@
 import type {
+  AdapterInjectFailureReason,
   AdapterInjectResult,
   AdapterOutgoingMessage,
   AgentAdapter,
@@ -20,7 +21,7 @@ export type AdapterDeliveryDispatchResult =
       deliveryId: string;
       targetAgentName: string;
       ok: false;
-      reason: "adapter_inject_failed" | "adapter_not_found" | "target_agent_not_found";
+      reason: AdapterInjectFailureReason | "adapter_not_found" | "target_agent_not_found";
       message: string;
     };
 

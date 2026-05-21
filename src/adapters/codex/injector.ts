@@ -67,13 +67,13 @@ function toInjectFailure(error: unknown): AdapterInjectResult {
   const message = error instanceof Error ? error.message : String(error);
 
   if (isCodexAdapterReason(error)) {
-    return ({
+    return {
       ok: false,
       reason: error.code,
       message,
       jsonRpcCode:
         error instanceof CodexAppServerWebSocketError ? error.jsonRpcCode : undefined,
-    } as unknown) as AdapterInjectResult;
+    };
   }
 
   return {
