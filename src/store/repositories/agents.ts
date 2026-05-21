@@ -54,6 +54,11 @@ export interface AgentRepository {
   list(): StoredAgent[];
   markByNameDisconnected(name: string, now: string): StoredAgent | null;
   markAllConnectedDisconnected(now: string): StoredAgent[];
+  rebindAdapterSessionId(request: {
+    name: string;
+    adapterSessionId: string;
+    now: string;
+  }): StoredAgent | null;
 }
 
 export function createAgentRepository(db: Database): AgentRepository {
@@ -207,6 +212,30 @@ export function createAgentRepository(db: Database): AgentRepository {
         status: "disconnected",
         updatedAt: now,
       }));
+    },
+
+    rebindAdapterSessionId(request) {
+      const existing = this.findByName(request.name);
+
+      if (!existing) {
+        return null;
+      }
+
+      db.prepare(
+        `
+          update agents
+          set
+            adapter_session_id = @adapterSessionId,
+            updated_at = @now
+          where name = @name
+        `,
+      ).run(request);
+
+      return {
+        ...existing,
+        adapterSessionId: request.adapterSessionId,
+        updatedAt: request.now,
+      };
     },
   };
 }

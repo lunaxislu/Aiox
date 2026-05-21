@@ -177,4 +177,31 @@ describe("SQLite agent repository", () => {
     }
     expect(agents.findByName("impl")).toEqual(result.agent);
   });
+
+  it("rebinds adapter session id for an attached agent", () => {
+    const attach = agents.attach({
+      id: "agent-1",
+      name: "impl",
+      kind: "codex",
+      cwd: "/repo",
+      adapterSessionId: "thread-old",
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    if (!attach.ok) {
+      throw new Error("expected attach to succeed");
+    }
+
+    expect(
+      agents.rebindAdapterSessionId({
+        name: "impl",
+        adapterSessionId: "thread-new",
+        now: "2026-05-16T00:00:01.000Z",
+      }),
+    ).toEqual({
+      ...attach.agent,
+      adapterSessionId: "thread-new",
+      updatedAt: "2026-05-16T00:00:01.000Z",
+    });
+    expect(agents.findByName("impl")?.adapterSessionId).toBe("thread-new");
+  });
 });
