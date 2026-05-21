@@ -493,7 +493,7 @@ no-reconnect invariants.
 
 ## Round 3 — D5-A lifecycle + daemon RPC
 
-Status: in progress.
+Status: completed.
 
 Round 3 scope:
 
@@ -628,3 +628,112 @@ Cleanup is WS close -> SIGTERM -> 3s grace -> SIGKILL. No process group kill,
 no setsid, no PR_SET_PDEATHSIG, no periodic healthz, no auto-reconnect,
 no TUI heartbeat. TUI lifecycle is owned by the CLI process scope.
 ```
+
+### Round 3 commits
+
+- `0de85ff` — docs: record codex round 3 entry decisions.
+- `8519286` — behavior: add codex lifecycle event types.
+- `e4b1a44` — behavior: dispose codex app-server lifecycle.
+- `1e891f9` — behavior: type codex websocket drops.
+- `34112e5` — behavior: add codex lifecycle daemon rpcs.
+- `df7c376` — behavior: emit codex lifecycle failures.
+- This closeout commit — docs: record codex round 3 closeout.
+
+Changed files:
+
+- `src/adapters/codex/app-server.ts`
+- `src/adapters/codex/injector.ts`
+- `src/adapters/codex/runtime.ts`
+- `src/adapters/codex/websocket.ts`
+- `src/adapters/contract.ts`
+- `src/core/events.ts`
+- `src/daemon/api.ts`
+- `src/daemon/state.ts`
+- `src/store/repositories/agents.ts`
+- `tests/unit/adapters/codex-injector.test.ts`
+- `tests/unit/adapters/codex-runtime.test.ts`
+- `tests/unit/adapters/codex-websocket.test.ts`
+- `tests/unit/core/events.test.ts`
+- `tests/unit/daemon/api.test.ts`
+- `history/34-step-10-phase-b-codex-runtime.history.md`
+- `plan/mvp-implementation-checklist.md`
+
+### Round 3 implementation notes
+
+- `CodexAgentRuntime.dispose()` is now idempotent and best-effort:
+  close WS, send `SIGTERM`, wait 3000ms, send `SIGKILL`, then wait for child
+  exit. If the child already exited, process signals are skipped.
+- `CodexAppServerWebSocketErrorCode` now includes
+  `codex_app_server_ws_dropped`. Pending JSON-RPC requests are rejected with the
+  typed error when the app-server socket drops, and the injector passes that
+  adapter failure reason through.
+- Daemon API/state now expose `rollbackAgentAttach`, `detachAgent`, and
+  `notifyTuiExited`. The MVP contract remains `agentName`-only.
+- `detachAgent` and `notifyTuiExited` share cleanup logic while preserving
+  trigger identity in `agent_graceful_detach` event data:
+  `explicit_detach` vs `tui_exit`.
+- Runtime listen-only lifecycle observers are wired for app-server child `exit`
+  and WebSocket `close`. They mark the runtime failed and surface typed reasons:
+  `app_server_process_exited` and `ws_dropped`.
+- `remoteControl/status/changed` notifications are captured only as diagnostic
+  context for lifecycle failure events. They are not D7 binding authority.
+- Daemon state records runtime failures by transitioning the agent to
+  `disconnected` and appending `agent_runtime_failed` with typed reason data.
+
+### Round 3 regression coverage
+
+- Event type union includes `agent_runtime_failed` and
+  `agent_graceful_detach`.
+- Runtime dispose sends `SIGTERM`, escalates to `SIGKILL` after the grace
+  period, is idempotent, and skips process signals for an already-exited child.
+- WebSocket pending requests reject with `codex_app_server_ws_dropped` on socket
+  drop.
+- Injector returns `codex_app_server_ws_dropped` as a typed adapter failure.
+- Daemon RPCs cover rollback before ready, ready-runtime rollback no-op,
+  graceful detach, TUI exit notification, and idempotent cleanup after detach.
+- Runtime failure recording covers `ws_dropped` reason data and diagnostic
+  notification context.
+
+### Round 3 verification
+
+- Red check: `pnpm test tests/unit/core/events.test.ts` failed before event type
+  expansion because `agent_runtime_failed` and `agent_graceful_detach` were
+  missing.
+- Red check: `pnpm test tests/unit/adapters/codex-runtime.test.ts` failed before
+  dispose implementation because `SIGTERM` was not sent.
+- Red check: `pnpm test tests/unit/adapters/codex-websocket.test.ts` failed
+  before typed WS drop wiring because pending requests rejected with a generic
+  close error.
+- Red check: `pnpm test tests/unit/daemon/api.test.ts` failed before daemon RPC
+  implementation because `rollbackAgentAttach`, `detachAgent`, and
+  `notifyTuiExited` were missing.
+- Red check: `pnpm test tests/unit/adapters/codex-runtime.test.ts` failed before
+  listen-only lifecycle listener wiring because runtime state stayed `ready`
+  after child exit / WS close.
+- Green slice checks:
+  - `pnpm test tests/unit/core/events.test.ts` — 3 tests passed.
+  - `pnpm test tests/unit/adapters/codex-runtime.test.ts` — 8 tests passed
+    after dispose lifecycle implementation.
+  - `pnpm test tests/unit/adapters/codex-websocket.test.ts tests/unit/adapters/codex-injector.test.ts`
+    — 12 tests passed.
+  - `pnpm test tests/unit/daemon/api.test.ts` — 20 tests passed.
+  - `pnpm test tests/unit/adapters/codex-runtime.test.ts tests/unit/adapters/codex-websocket.test.ts`
+    — 18 tests passed after lifecycle listener wiring.
+- Full Round 3 verification:
+  - `pnpm test` — 36 files / 204 tests passed.
+  - `pnpm typecheck` — passed.
+  - `pnpm build` — passed.
+
+### Round 3 disposition / Round 4 reservation
+
+- `rollbackAgentAttach` token plumbing remains an open follow-up. Current MVP
+  behavior is agentName-only, with a documented stale rollback race during rapid
+  reattach.
+- D7 Round 4 remains reserved for aiox-originated authoritative replacement
+  only. Round 3 did not add `agent_thread_id_rebound`.
+- `codex_binding_uncertain_observed` and the injector mismatch swap to
+  `codex_binding_uncertain` remain Round 4 work.
+- TUI-originated `/clear`, `/new`, and `/fork` rebind remains post-MVP.
+- D5-B hardening stays out of scope: no process group kill, no setsid, no
+  `PR_SET_PDEATHSIG`, no periodic healthz, no auto-reconnect, and no TUI
+  heartbeat.

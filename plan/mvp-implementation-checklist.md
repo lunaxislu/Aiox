@@ -749,10 +749,11 @@ Phase B implementation tasks:
   `readyz`.
 - [x] Ensure user-facing CLI never asks for or exposes a required fixed Codex
   app-server port; ports are runtime metadata.
-- [ ] Define app-server lifecycle: graceful shutdown, process exit handling,
+- [x] Define app-server lifecycle: graceful shutdown, process exit handling,
   and event-listener-only WS close handling. `CodexAgentRuntime.dispose()`
-  cleanup is Round 3 D5-A.5 work: WS close → SIGTERM → 3s grace → SIGKILL.
-  Hardening items are deferred by D5-B.
+  cleanup is Round 3 D5-A.5: WS close → SIGTERM → 3s grace → SIGKILL.
+  `agent_runtime_failed` and `agent_graceful_detach` lifecycle events are
+  wired. Hardening items remain deferred by D5-B.
 - [x] Define binding/rebind policy for aiox-originated authoritative operations:
   replace the previous binding only when Codex returns an authoritative
   thread/session id to the daemon-owned request; fail-fast on missing/conflicting
@@ -772,6 +773,7 @@ Round 2 D4 protocol surface closed on 2026-05-21:
   `codex_app_server_unavailable`,
   `codex_app_server_ws_connect_failed`,
   `codex_app_server_ws_initialize_failed`,
+  `codex_app_server_ws_dropped`,
   `codex_turn_start_timeout`, and `codex_jsonrpc_error`.
 - [x] Runtime attach flow extended to launch app-server, connect WS,
   initialize, and mark ready. `dispose()` closes WS now; process cleanup remains
@@ -826,7 +828,7 @@ Round 2 D4 protocol surface closed on 2026-05-21:
 
 Latest full verification:
 
-- `pnpm test`: passing, 36 files, 189 tests (Step 10 Phase B Round 2, 2026-05-21)
+- `pnpm test`: passing, 36 files, 204 tests (Step 10 Phase B Round 3, 2026-05-21)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 
