@@ -98,6 +98,71 @@ Round 1 recommendation: proceed with direct topology foundation and do not infer
 binding from notifications. Before Round 4 D7 replacement implementation, choose
 between Option C (proxy observation) and Option D (scope reduction).
 
+### Codex app-server callback / hook follow-up
+
+User question after Round 1:
+
+> If Codex app-server had a hook/callback to daemon, would that solve D7?
+> Does the current app-server expose such a hook/callback?
+
+Conclusion:
+
+Current `codex-cli 0.132.0` app-server / `--remote` protocol does **not**
+expose a hook, webhook, callback, subscription, config flag, or response
+forwarding API that lets a separate aiox daemon receive authoritative
+same-operation success callbacks for TUI-originated `thread/start`,
+`thread/fork`, or `thread/resume`.
+
+The authoritative returned id remains the JSON-RPC response on the originating
+WebSocket connection. A separate daemon-owned WS connection sees notifications
+and context only.
+
+Evidence:
+
+- Official OpenAI Codex app-server documentation describes JSON-RPC messages as
+  requests, responses, and notifications. `thread/start` returns `result.thread`
+  to the requesting client and separately emits `thread/started`. Notifications
+  omit `id`; they are not response forwarding.
+  Source: `https://developers.openai.com/codex/app-server`.
+- Official docs list `initialize.params.capabilities.optOutNotificationMethods`,
+  which can suppress exact notification method names per connection. This is a
+  notification filtering control, not a callback/subscription for another
+  connection's request/response.
+- `codex app-server --help` in this environment exposes transport/auth/schema
+  generation options, but no callback/webhook/hook routing option for thread
+  operation responses.
+- Generated current protocol schema with:
+
+  ```bash
+  codex app-server generate-json-schema --experimental \
+    --out /private/tmp/aiox-codex-schema-check
+  ```
+
+  The schema contains `thread/start`, `thread/resume`, `thread/fork`,
+  `thread/read`, `thread/list`, `thread/loaded/list`, `thread/unsubscribe`,
+  `thread/started`, and `InitializeCapabilities.optOutNotificationMethods`.
+  It does not contain a response-forwarding subscription or operation callback
+  API.
+- Delegated Codex subagent investigation independently reached the same
+  conclusion using local history, installed package/version checks, generated
+  protocol, and a live probe against `codex-cli 0.132.0`: the actor connection
+  received a `thread/start` id, while the monitor connection saw only
+  `remoteControl/status/changed` and `thread/started`, not the actor response.
+
+Decision consequence:
+
+- A hypothetical authoritative app-server callback would satisfy D7 if it
+  carried the operation success, returned id, and enough source/session context
+  to prove ownership.
+- The current Codex app-server does not provide that surface.
+- Do not implement D7 replacement from `thread/started` broadcast
+  notifications.
+- For full TUI-originated `/clear`, `/new`, `/fork`, and CLI resume rebinding,
+  use the validated transparent proxy path so aiox observes same-client
+  request/response, or explicitly scope Phase B D7 replacement down to
+  aiox-originated authoritative operations and leave TUI-originated replacement
+  as an Open Product Issue.
+
 ### D2.5 follow-ups closed
 
 1. Banner parser shape: implement a small line/token parser over accumulated
