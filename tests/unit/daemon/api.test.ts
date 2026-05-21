@@ -652,6 +652,53 @@ describe("daemon API with fake in-process transport", () => {
       { type: "agent_graceful_detach" },
     ]);
   });
+
+  it("records runtime failure by disconnecting the agent and appending typed reason data", async () => {
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1", "event-1"]),
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    expect(
+      state.recordCodexRuntimeFailed({
+        agentName: "impl",
+        reason: {
+          type: "ws_dropped",
+          closeCode: 1006,
+          closeReason: "network dropped",
+        },
+        latestDiagnosticNotification: {
+          method: "remoteControl/status/changed",
+          params: { status: "disconnected" },
+        },
+      }),
+    ).toEqual({
+      ok: true,
+      agentName: "impl",
+      recorded: true,
+    });
+    expect((await client.status()).agents[0].status).toBe("disconnected");
+    expect(db.prepare("select type, data_json from events").all()).toEqual([
+      {
+        type: "agent_runtime_failed",
+        data_json: JSON.stringify({
+          reason: {
+            type: "ws_dropped",
+            closeCode: 1006,
+            closeReason: "network dropped",
+          },
+          latestDiagnosticNotification: {
+            method: "remoteControl/status/changed",
+            params: { status: "disconnected" },
+          },
+        }),
+      },
+    ]);
+  });
 });
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {

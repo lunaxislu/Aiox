@@ -66,6 +66,7 @@ export interface CodexAppServerWebSocketClient {
     params?: unknown,
     options?: CodexJsonRpcRequestOptions,
   ): Promise<unknown>;
+  onClose(listener: (code: number, reason: string) => void): () => void;
   onNotification(
     listener: (notification: CodexJsonRpcNotification) => void,
   ): () => void;
@@ -118,6 +119,7 @@ function createClient(
   const requestTimeoutMs = options.requestTimeoutMs ?? defaultRequestTimeoutMs;
   const pending = new Map<number, PendingRequest>();
   const notificationListeners = new Set<(notification: CodexJsonRpcNotification) => void>();
+  const closeListeners = new Set<(code: number, reason: string) => void>();
   let nextRequestId = 1;
   let closed = false;
 
@@ -154,6 +156,9 @@ function createClient(
           { closeCode: code, closeReason },
         ),
       );
+      for (const listener of closeListeners) {
+        listener(code, closeReason);
+      }
     }
   });
 
@@ -262,6 +267,12 @@ function createClient(
       notificationListeners.add(listener);
       return () => {
         notificationListeners.delete(listener);
+      };
+    },
+    onClose(listener) {
+      closeListeners.add(listener);
+      return () => {
+        closeListeners.delete(listener);
       };
     },
     close() {

@@ -16,16 +16,36 @@ import {
 import {
   connectCodexAppServerWebSocket,
   type CodexInitializeResponse,
+  type CodexJsonRpcNotification,
   type CodexJsonRpcRequestOptions,
 } from "./websocket.js";
 
 export type CodexAgentRuntimeState = "starting" | "ready" | "failed" | "disposed";
+
+export type CodexAgentRuntimeFailureReason =
+  | {
+      type: "app_server_process_exited";
+      exitCode: number | null;
+      signal: NodeJS.Signals | null;
+    }
+  | {
+      type: "ws_dropped";
+      closeCode: number;
+      closeReason: string;
+    };
+
+export interface CodexAgentRuntimeFailure {
+  agentName: string;
+  reason: CodexAgentRuntimeFailureReason;
+  latestDiagnosticNotification?: CodexJsonRpcNotification;
+}
 
 export interface CodexAgentRuntimeOptions {
   agentName: string;
   activeThreadId: string | null;
   appServer: CodexAppServerProcess;
   webSocket: CodexAgentRuntimeWebSocketClient;
+  onRuntimeFailed?: (failure: CodexAgentRuntimeFailure) => void;
 }
 
 export interface CodexAgentRuntimeSnapshot {
@@ -43,6 +63,10 @@ export interface CodexAgentRuntimeWebSocketClient {
     params?: unknown,
     options?: CodexJsonRpcRequestOptions,
   ): Promise<unknown>;
+  onClose?(listener: (code: number, reason: string) => void): () => void;
+  onNotification?(
+    listener: (notification: CodexJsonRpcNotification) => void,
+  ): () => void;
   close(): void;
 }
 
@@ -54,6 +78,7 @@ export interface AttachCodexAgentRuntimeOptions {
     endpoint: URL,
     clientVersion: string,
   ) => Promise<CodexAgentRuntimeWebSocketClient>;
+  onRuntimeFailed?: (failure: CodexAgentRuntimeFailure) => void;
 }
 
 export class CodexAgentRuntime {
@@ -62,12 +87,16 @@ export class CodexAgentRuntime {
   readonly webSocket: CodexAgentRuntimeWebSocketClient;
   state: CodexAgentRuntimeState = "starting";
   #activeThreadId: string | null;
+  #latestDiagnosticNotification: CodexJsonRpcNotification | undefined;
+  #onRuntimeFailed?: (failure: CodexAgentRuntimeFailure) => void;
 
   constructor(options: CodexAgentRuntimeOptions) {
     this.agentName = options.agentName;
     this.#activeThreadId = options.activeThreadId;
     this.appServer = options.appServer;
     this.webSocket = options.webSocket;
+    this.#onRuntimeFailed = options.onRuntimeFailed;
+    this.registerLifecycleListeners();
   }
 
   get activeThreadId(): string | null {
@@ -88,6 +117,19 @@ export class CodexAgentRuntime {
     }
 
     this.state = "failed";
+  }
+
+  recordRuntimeFailure(reason: CodexAgentRuntimeFailureReason): void {
+    if (this.state !== "ready") {
+      return;
+    }
+
+    this.markFailed();
+    this.#onRuntimeFailed?.({
+      agentName: this.agentName,
+      reason,
+      latestDiagnosticNotification: this.#latestDiagnosticNotification,
+    });
   }
 
   async dispose(): Promise<void> {
@@ -126,6 +168,30 @@ export class CodexAgentRuntime {
       appServerPid: this.appServer.child.pid ?? null,
     };
   }
+
+  private registerLifecycleListeners(): void {
+    this.appServer.child.once("exit", (exitCode, signal) => {
+      this.recordRuntimeFailure({
+        type: "app_server_process_exited",
+        exitCode,
+        signal,
+      });
+    });
+
+    this.webSocket.onClose?.((closeCode, closeReason) => {
+      this.recordRuntimeFailure({
+        type: "ws_dropped",
+        closeCode,
+        closeReason,
+      });
+    });
+
+    this.webSocket.onNotification?.((notification) => {
+      if (notification.method === "remoteControl/status/changed") {
+        this.#latestDiagnosticNotification = notification;
+      }
+    });
+  }
 }
 
 export async function attachCodexAgentRuntime(
@@ -156,6 +222,7 @@ export async function attachCodexAgentRuntime(
     activeThreadId: options.activeThreadId,
     appServer,
     webSocket,
+    onRuntimeFailed: options.onRuntimeFailed,
   });
   runtime.markReady();
 

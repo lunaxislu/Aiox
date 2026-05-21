@@ -211,6 +211,33 @@ export interface NotifyTuiExitedResult {
   detached: boolean;
 }
 
+export type CodexRuntimeFailureReason =
+  | {
+      type: "app_server_process_exited";
+      exitCode: number | null;
+      signal: string | null;
+    }
+  | {
+      type: "ws_dropped";
+      closeCode: number;
+      closeReason: string;
+    };
+
+export interface RecordCodexRuntimeFailedRequest {
+  agentName: string;
+  reason: CodexRuntimeFailureReason;
+  latestDiagnosticNotification?: {
+    method: string;
+    params?: unknown;
+  };
+}
+
+export interface RecordCodexRuntimeFailedResult {
+  ok: true;
+  agentName: string;
+  recorded: boolean;
+}
+
 export interface StatusResult {
   daemon: {
     startedAt: string;
@@ -243,6 +270,9 @@ export interface DaemonState {
   ): Promise<RollbackAgentAttachResult>;
   detachAgent(request: DetachAgentRequest): Promise<DetachAgentResult>;
   notifyTuiExited(request: NotifyTuiExitedRequest): Promise<NotifyTuiExitedResult>;
+  recordCodexRuntimeFailed(
+    request: RecordCodexRuntimeFailedRequest,
+  ): RecordCodexRuntimeFailedResult;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
@@ -615,6 +645,46 @@ export function createDaemonState(
         exitCode: request.exitCode,
         signal: request.signal ?? null,
       });
+    },
+
+    recordCodexRuntimeFailed(request) {
+      const agent = agents.findByName(request.agentName);
+
+      if (!agent || agent.status === "disconnected") {
+        return {
+          ok: true,
+          agentName: request.agentName,
+          recorded: false,
+        };
+      }
+
+      const now = options.now();
+      codexRuntimes?.delete(request.agentName);
+      agents.markByNameDisconnected(request.agentName, now);
+      events.append({
+        id: options.createId(),
+        type: "agent_runtime_failed",
+        data: {
+          reason: request.reason,
+          ...(request.latestDiagnosticNotification
+            ? {
+                latestDiagnosticNotification:
+                  request.latestDiagnosticNotification,
+              }
+            : {}),
+        },
+        createdAt: now,
+        agentId: agent.id,
+        messageId: null,
+        deliveryId: null,
+        routeId: null,
+      });
+
+      return {
+        ok: true,
+        agentName: request.agentName,
+        recorded: true,
+      };
     },
 
     status() {

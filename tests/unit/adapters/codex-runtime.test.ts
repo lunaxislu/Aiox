@@ -219,10 +219,82 @@ describe("Codex agent runtime", () => {
     expect(seenVersions).toEqual([packageVersion]);
   });
 
+  it("marks runtime failed when the ready app-server process exits", async () => {
+    const child = fakeChild();
+    const failures: unknown[] = [];
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: "thread-1",
+      launchAppServer: async () => fakeAppServer(child),
+      connectWebSocket: async () => fakeWebSocket([]),
+      onRuntimeFailed: (failure) => {
+        failures.push(failure);
+      },
+    });
+
+    child.emit("exit", 7, "SIGTERM");
+
+    expect(runtime.state).toBe("failed");
+    expect(failures).toEqual([
+      {
+        agentName: "codex-one",
+        reason: {
+          type: "app_server_process_exited",
+          exitCode: 7,
+          signal: "SIGTERM",
+        },
+      },
+    ]);
+  });
+
+  it("marks runtime failed on ready WS close with diagnostic notification context", async () => {
+    const failures: unknown[] = [];
+    const websocket = fakeWebSocket([]);
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: "thread-1",
+      launchAppServer: async () => fakeAppServer(fakeChild()),
+      connectWebSocket: async () => websocket,
+      onRuntimeFailed: (failure) => {
+        failures.push(failure);
+      },
+    });
+
+    websocket.emitNotification({
+      method: "remoteControl/status/changed",
+      params: { status: "disconnected" },
+    });
+    websocket.emitClose(1006, "network dropped");
+
+    expect(runtime.state).toBe("failed");
+    expect(failures).toEqual([
+      {
+        agentName: "codex-one",
+        reason: {
+          type: "ws_dropped",
+          closeCode: 1006,
+          closeReason: "network dropped",
+        },
+        latestDiagnosticNotification: {
+          method: "remoteControl/status/changed",
+          params: { status: "disconnected" },
+        },
+      },
+    ]);
+  });
+
   function fakeWebSocket(
     events: string[],
     options: { initializeError?: Error } = {},
-  ): CodexAgentRuntimeWebSocketClient {
+  ): CodexAgentRuntimeWebSocketClient & {
+    emitClose(code: number, reason: string): void;
+    emitNotification(notification: { method: string; params?: unknown }): void;
+  } {
+    const closeListeners = new Set<(code: number, reason: string) => void>();
+    const notificationListeners = new Set<
+      (notification: { method: string; params?: unknown }) => void
+    >();
+
     return {
       initialize() {
         events.push("initialize");
@@ -247,6 +319,28 @@ describe("Codex agent runtime", () => {
       },
       close() {
         events.push("close");
+      },
+      onClose(listener) {
+        closeListeners.add(listener);
+        return () => {
+          closeListeners.delete(listener);
+        };
+      },
+      onNotification(listener) {
+        notificationListeners.add(listener);
+        return () => {
+          notificationListeners.delete(listener);
+        };
+      },
+      emitClose(code, reason) {
+        for (const listener of closeListeners) {
+          listener(code, reason);
+        }
+      },
+      emitNotification(notification) {
+        for (const listener of notificationListeners) {
+          listener(notification);
+        }
       },
     };
   }
