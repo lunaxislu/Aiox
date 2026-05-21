@@ -788,6 +788,24 @@ Round 2 D4 protocol surface closed on 2026-05-21:
   - Verification: `pnpm test tests/unit/adapters/codex-runtime.test.ts`,
     `pnpm test` (36 files / 192 tests), `pnpm typecheck`, `pnpm build`.
 
+Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
+
+- [x] `codex_binding_uncertain` and `codex_resume_failed` adapter reasons
+  wired; injector pre-request and post-ack mismatch now fail with
+  `codex_binding_uncertain`.
+- [x] `agent_thread_id_rebound` and `codex_binding_uncertain_observed` event
+  types added; daemon-owned thread start/resume rebind emits
+  `agent_thread_id_rebound`.
+- [x] Option A attach ownership decision recorded: daemon `attachAgent` creates
+  and stores `CodexAgentRuntime`; CLI receives endpoint metadata and launches
+  the TUI as its own child.
+- [x] `aiox codex --name <name> --resume <session-id>` parser/invocation/API
+  path wired. Claude `--resume` remains rejected by parser.
+- [x] CLI TUI lifecycle wired: `codex --remote <endpoint>` for attach,
+  `codex resume <session-id> --remote <endpoint>` for resume, spawn error
+  rollback via `rollbackAgentAttach`, and TUI exit notify via
+  `notifyTuiExited`.
+
 ---
 
 ## Step 11: Claude channel adapter skeleton — ⏳ To be planned
@@ -828,7 +846,7 @@ Round 2 D4 protocol surface closed on 2026-05-21:
 
 Latest full verification:
 
-- `pnpm test`: passing, 36 files, 204 tests (Step 10 Phase B Round 3, 2026-05-21)
+- `pnpm test`: passing, 37 files, 220 tests (Step 10 Phase B Round 4, 2026-05-21)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

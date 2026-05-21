@@ -76,7 +76,7 @@ aiox daemon status
 ### Agent Attach
 
 ```text
-aiox codex --name <name> [--pair <pair-name>]
+aiox codex --name <name> [--pair <pair-name>] [--resume <session-id>]
 aiox claude --name <name> [--pair <pair-name>]
 ```
 
@@ -87,6 +87,10 @@ Behavior:
 - Attach/run the agent in the current terminal.
 - Keep the agent connected to daemon while process is alive.
 - On process exit, mark the agent `disconnected` or `stale`.
+- Codex only: `--resume <session-id>` explicitly resumes/rebinds a
+  rollout-backed Codex thread. The daemon does not auto-resume from
+  `adapter_session_id`, does not create fallback threads, and fails fast if
+  Codex returns a different thread id.
 
 Name policy:
 

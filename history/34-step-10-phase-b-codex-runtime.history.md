@@ -815,3 +815,128 @@ Decision:
   `CodexAgentRuntime` for Codex agents, return the assigned endpoint and active
   thread id to the CLI, and keep rollback atomicity inside the attach failure
   path. Claude attach remains DB-only.
+
+### Round 4 scope
+
+Round 4 implemented the assigned six surfaces:
+
+1. TUI spawn shape in `launcher.ts`: attach uses
+   `codex --remote <endpoint>`; resume uses
+   `codex resume <session-id> --remote <endpoint>`; `stdio: "inherit"` remains
+   CLI-child only.
+2. `aiox codex --name <name> [--resume <session-id>]` parser, invocation, and
+   daemon API propagation. Claude `--resume` remains rejected.
+3. D7 Option D replacement for daemon-owned authoritative operations:
+   daemon attach creates `CodexAgentRuntime`, issues daemon-owned
+   `thread/start` or `thread/resume`, validates returned ids, persists
+   `agents.adapter_session_id`, and emits `agent_thread_id_rebound`.
+4. Injector mismatch reason swap from generic `adapter_inject_failed` to
+   `codex_binding_uncertain`.
+5. New diagnostic event types:
+   `agent_thread_id_rebound` and `codex_binding_uncertain_observed`.
+6. CLI TUI exit path: CLI observes TUI child exit and calls
+   `notifyTuiExited`; spawn error rolls back via `rollbackAgentAttach`.
+
+### Round 4 commits
+
+- `3727150` — `behavior: type codex binding uncertainty`
+- `99cf318` — `docs: record codex round 4 attach ownership decision`
+- `ebc5424` — `behavior: add codex thread diagnostic events`
+- `82e4034` — `behavior: add agent adapter session rebind helper`
+- `da654ee` — `behavior: attach codex runtime from daemon`
+- `27ba42f` — `behavior: add codex resume and tui cli lifecycle`
+- `23f10f4` — `test: cover codex tui launcher shape`
+
+### Changed files
+
+- `src/adapters/contract.ts`
+- `src/adapters/codex/injector.ts`
+- `src/adapters/codex/launcher.ts`
+- `src/adapters/codex/runtime.ts`
+- `src/bin/aiox.ts`
+- `src/cli/invocation.ts`
+- `src/cli/parse.ts`
+- `src/core/events.ts`
+- `src/daemon/api.ts`
+- `src/daemon/server.ts`
+- `src/daemon/state.ts`
+- `src/store/repositories/agents.ts`
+- `tests/unit/adapters/codex-injector.test.ts`
+- `tests/unit/adapters/codex-launcher.test.ts`
+- `tests/unit/adapters/codex-runtime.test.ts`
+- `tests/unit/cli/bin.test.ts`
+- `tests/unit/cli/invocation.test.ts`
+- `tests/unit/cli/parse.test.ts`
+- `tests/unit/core/events.test.ts`
+- `tests/unit/daemon/api.test.ts`
+- `tests/unit/store/repositories/agents.test.ts`
+
+### Implementation notes
+
+- Option A is now the production ownership model for Codex attach:
+  `attachAgent` creates and stores the daemon-owned `CodexAgentRuntime`; the
+  API response returns endpoint metadata to the CLI; the CLI owns only the TUI
+  child.
+- Fresh Codex attach sends daemon-owned `thread/start` with `{}` params. Local
+  red signal during Round 4 showed current Codex rejects missing `params`.
+- Explicit resume sends daemon-owned `thread/resume { threadId }`; returned id
+  must equal the requested id or attach fails with `codex_resume_failed`.
+- TUI-originated `/clear`, `/new`, and `/fork` rebind remains excluded. No
+  notification-only binding update was added.
+- D5-B invariant preserved: no process group kill, no setsid, no
+  `PR_SET_PDEATHSIG`, no periodic healthz, no auto-reconnect, and no TUI
+  heartbeat.
+
+### Regression coverage
+
+| Surface | Coverage |
+|---|---|
+| Injector mismatch | `tests/unit/adapters/codex-injector.test.ts` pre-request mismatch, post-ack mismatch, typed pass-through |
+| Events | `tests/unit/core/events.test.ts` event type union |
+| Repository rebind | `tests/unit/store/repositories/agents.test.ts` `adapter_session_id` rebind helper |
+| Runtime thread ops | `tests/unit/adapters/codex-runtime.test.ts` `thread/start`, `thread/resume`, resume mismatch |
+| Daemon attach ownership | `tests/unit/daemon/api.test.ts` runtime creation, start rebind event, resume rebind event, resume mismatch atomic cleanup |
+| CLI parser/invocation | `tests/unit/cli/parse.test.ts`, `tests/unit/cli/invocation.test.ts`, `tests/unit/cli/bin.test.ts` |
+| TUI launcher shape | `tests/unit/adapters/codex-launcher.test.ts` attach/resume args and inherited stdio |
+
+### Verification
+
+Red checks:
+
+- `pnpm test tests/unit/adapters/codex-injector.test.ts` failed with mismatch
+  still returning `adapter_inject_failed`.
+- `pnpm test tests/unit/core/events.test.ts` failed before event union update.
+- `pnpm test tests/unit/store/repositories/agents.test.ts` failed because
+  `rebindAdapterSessionId` was missing.
+- `pnpm test tests/unit/daemon/api.test.ts` failed before Option A daemon
+  runtime attach and failed again until resume mismatch disposed the starting
+  runtime.
+- `pnpm test tests/unit/cli/parse.test.ts tests/unit/cli/invocation.test.ts`
+  failed before `--resume` parse/propagation.
+
+Green slice checks:
+
+- `pnpm test tests/unit/adapters/codex-injector.test.ts` — 6 tests passed.
+- `pnpm test tests/unit/core/events.test.ts` — 3 tests passed.
+- `pnpm test tests/unit/store/repositories/agents.test.ts` — 6 tests passed.
+- `pnpm test tests/unit/daemon/api.test.ts` — 23 tests passed.
+- `pnpm test tests/unit/adapters/codex-runtime.test.ts` — 13 tests passed.
+- `pnpm test tests/unit/cli/parse.test.ts tests/unit/cli/invocation.test.ts`
+  — 52 tests passed.
+- `pnpm test tests/unit/adapters/codex-launcher.test.ts` — 2 tests passed.
+
+Full closeout verification:
+
+- `pnpm test` — 37 files / 220 tests passed.
+- `pnpm typecheck` — passed.
+- `pnpm build` — passed.
+
+### Round 4 disposition / Step 11 reservation
+
+Round 4 is closed for the assigned six surfaces. Remaining reservations:
+
+- Manual TUI smoke check remains separate from automated closeout because it
+  requires launching the real Codex TUI in a foreground terminal.
+- TUI-originated `/clear`, `/new`, and `/fork` rebind remains post-MVP.
+- Reply capture and long-running delivery timeout remain out of Step 10 Round 4
+  scope and belong to later product decisions.
