@@ -11,6 +11,8 @@ export const eventTypes = [
   "delivery_status_changed",
   "agent_runtime_failed",
   "agent_graceful_detach",
+  "agent_thread_id_rebound",
+  "codex_binding_uncertain_observed",
   "late_reply",
 ] as const;
 
