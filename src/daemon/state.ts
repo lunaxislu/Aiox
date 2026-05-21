@@ -31,6 +31,17 @@ export interface CreateDaemonStateOptions {
   db: Database;
   createId: () => string;
   now: () => string;
+  codexRuntimes?: AgentRuntimeRegistry;
+}
+
+export interface ManagedAgentRuntime {
+  readonly state: "starting" | "ready" | "failed" | "disposed";
+  dispose(): Promise<void> | void;
+}
+
+export interface AgentRuntimeRegistry {
+  get(agentName: string): ManagedAgentRuntime | undefined;
+  delete(agentName: string): boolean;
 }
 
 export interface AttachAgentRequest {
@@ -167,6 +178,39 @@ export type UpdateDeliveryStatusResult =
       deliveryId: string;
     };
 
+export interface RollbackAgentAttachRequest {
+  agentName: string;
+  token?: string;
+}
+
+export interface RollbackAgentAttachResult {
+  ok: true;
+  agentName: string;
+  rolledBack: boolean;
+}
+
+export interface DetachAgentRequest {
+  agentName: string;
+}
+
+export interface DetachAgentResult {
+  ok: true;
+  agentName: string;
+  detached: boolean;
+}
+
+export interface NotifyTuiExitedRequest {
+  agentName: string;
+  exitCode: number | null;
+  signal?: string | null;
+}
+
+export interface NotifyTuiExitedResult {
+  ok: true;
+  agentName: string;
+  detached: boolean;
+}
+
 export interface StatusResult {
   daemon: {
     startedAt: string;
@@ -194,6 +238,11 @@ export interface DaemonState {
   disconnect(request: DisconnectRequest): DisconnectResult;
   sendMessage(request: SendMessageRequest): SendMessageResult;
   updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResult;
+  rollbackAgentAttach(
+    request: RollbackAgentAttachRequest,
+  ): Promise<RollbackAgentAttachResult>;
+  detachAgent(request: DetachAgentRequest): Promise<DetachAgentResult>;
+  notifyTuiExited(request: NotifyTuiExitedRequest): Promise<NotifyTuiExitedResult>;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
@@ -207,6 +256,7 @@ export function createDaemonState(
   const messages = createMessageRepository(options.db);
   const pairs = createPairRepository(options.db);
   const routes = createRouteRepository(options.db);
+  const codexRuntimes = options.codexRuntimes;
   const startedAt = options.now();
 
   return {
@@ -518,6 +568,55 @@ export function createDaemonState(
       });
     },
 
+    async rollbackAgentAttach(request) {
+      const runtime = codexRuntimes?.get(request.agentName);
+
+      if (runtime?.state === "ready") {
+        return {
+          ok: true,
+          agentName: request.agentName,
+          rolledBack: false,
+        };
+      }
+
+      if (runtime) {
+        await disposeRuntime(runtime);
+        codexRuntimes?.delete(request.agentName);
+      }
+
+      const agent = agents.findByName(request.agentName);
+      if (agent?.status === "connected") {
+        agents.markByNameDisconnected(request.agentName, options.now());
+        return {
+          ok: true,
+          agentName: request.agentName,
+          rolledBack: true,
+        };
+      }
+
+      return {
+        ok: true,
+        agentName: request.agentName,
+        rolledBack: runtime !== undefined,
+      };
+    },
+
+    async detachAgent(request) {
+      return detachCodexAgent({
+        agentName: request.agentName,
+        trigger: "explicit_detach",
+      });
+    },
+
+    async notifyTuiExited(request) {
+      return detachCodexAgent({
+        agentName: request.agentName,
+        trigger: "tui_exit",
+        exitCode: request.exitCode,
+        signal: request.signal ?? null,
+      });
+    },
+
     status() {
       return {
         daemon: {
@@ -538,6 +637,65 @@ export function createDaemonState(
       }));
     },
   };
+
+  async function detachCodexAgent(input: {
+    agentName: string;
+    trigger: "explicit_detach" | "tui_exit";
+    exitCode?: number | null;
+    signal?: string | null;
+  }): Promise<DetachAgentResult> {
+    const agent = agents.findByName(input.agentName);
+
+    if (!agent || agent.status === "disconnected") {
+      return {
+        ok: true,
+        agentName: input.agentName,
+        detached: false,
+      };
+    }
+
+    const runtime = codexRuntimes?.get(input.agentName);
+    if (runtime) {
+      await disposeRuntime(runtime);
+      codexRuntimes?.delete(input.agentName);
+    }
+
+    const now = options.now();
+    agents.markByNameDisconnected(input.agentName, now);
+    events.append({
+      id: options.createId(),
+      type: "agent_graceful_detach",
+      data:
+        input.trigger === "tui_exit"
+          ? {
+              trigger: input.trigger,
+              exitCode: input.exitCode ?? null,
+              signal: input.signal ?? null,
+            }
+          : {
+              trigger: input.trigger,
+            },
+      createdAt: now,
+      agentId: agent.id,
+      messageId: null,
+      deliveryId: null,
+      routeId: null,
+    });
+
+    return {
+      ok: true,
+      agentName: input.agentName,
+      detached: true,
+    };
+  }
+}
+
+async function disposeRuntime(runtime: ManagedAgentRuntime): Promise<void> {
+  try {
+    await runtime.dispose();
+  } catch {
+    // Lifecycle cleanup is best-effort.
+  }
 }
 
 type AttachRollbackResponse = Extract<

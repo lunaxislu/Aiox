@@ -52,6 +52,7 @@ export interface AgentRepository {
   attach(request: AttachStoredAgentRequest): AttachStoredAgentResult;
   findByName(name: string): StoredAgent | null;
   list(): StoredAgent[];
+  markByNameDisconnected(name: string, now: string): StoredAgent | null;
   markAllConnectedDisconnected(now: string): StoredAgent[];
 }
 
@@ -159,6 +160,30 @@ export function createAgentRepository(db: Database): AgentRepository {
         .prepare("select * from agents order by id")
         .all()
         .map((row) => mapAgentRow(row as AgentRow));
+    },
+
+    markByNameDisconnected(name, now) {
+      const existing = this.findByName(name);
+
+      if (!existing) {
+        return null;
+      }
+
+      db.prepare(
+        `
+          update agents
+          set
+            status = 'disconnected',
+            updated_at = @now
+          where name = @name
+        `,
+      ).run({ name, now });
+
+      return {
+        ...existing,
+        status: "disconnected",
+        updatedAt: now,
+      };
     },
 
     markAllConnectedDisconnected(now) {

@@ -6,8 +6,14 @@ import type {
   CreatePairRequest,
   CreatePairResult,
   DaemonState,
+  DetachAgentRequest,
+  DetachAgentResult,
   DisconnectRequest,
   DisconnectResult,
+  NotifyTuiExitedRequest,
+  NotifyTuiExitedResult,
+  RollbackAgentAttachRequest,
+  RollbackAgentAttachResult,
   SendMessageRequest,
   SendMessageResult,
   StatusResult,
@@ -32,6 +38,11 @@ export interface DaemonApi {
   disconnect(request: DisconnectRequest): DisconnectResponse;
   sendMessage(request: SendMessageRequest): SendMessageResponse;
   updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResponse;
+  rollbackAgentAttach(
+    request: RollbackAgentAttachRequest,
+  ): Promise<RollbackAgentAttachResponse>;
+  detachAgent(request: DetachAgentRequest): Promise<DetachAgentResponse>;
+  notifyTuiExited(request: NotifyTuiExitedRequest): Promise<NotifyTuiExitedResponse>;
   status(): StatusResponse;
   stop(request: StopRequest): StopResponse;
 }
@@ -179,6 +190,12 @@ export type UpdateDeliveryStatusResponse =
       deliveryId: string;
     };
 
+export type RollbackAgentAttachResponse = RollbackAgentAttachResult;
+
+export type DetachAgentResponse = DetachAgentResult;
+
+export type NotifyTuiExitedResponse = NotifyTuiExitedResult;
+
 export interface StatusResponse {
   daemon: {
     startedAt: string;
@@ -212,6 +229,15 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     updateDeliveryStatus(request) {
       return mapUpdateDeliveryStatusResult(state.updateDeliveryStatus(request));
+    },
+    async rollbackAgentAttach(request) {
+      return state.rollbackAgentAttach(request);
+    },
+    async detachAgent(request) {
+      return state.detachAgent(request);
+    },
+    async notifyTuiExited(request) {
+      return state.notifyTuiExited(request);
     },
     status() {
       return mapStatusResult(state.status());

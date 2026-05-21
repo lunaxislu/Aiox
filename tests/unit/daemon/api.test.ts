@@ -507,6 +507,151 @@ describe("daemon API with fake in-process transport", () => {
       },
     ]);
   });
+
+  it("rolls back a pre-ready agent attach by disposing runtime and disconnecting the agent", async () => {
+    const runtime = fakeRuntime("starting");
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1"]),
+      now: () => "2026-05-18T00:00:00.000Z",
+      codexRuntimes: new Map([["impl", runtime]]),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    await expect(client.rollbackAgentAttach({ agentName: "impl" })).resolves.toEqual({
+      ok: true,
+      agentName: "impl",
+      rolledBack: true,
+    });
+    expect(runtime.disposeCalls).toBe(1);
+    expect((await client.status()).agents[0].status).toBe("disconnected");
+  });
+
+  it("does not roll back a ready runtime by agent name", async () => {
+    const runtime = fakeRuntime("ready");
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1"]),
+      now: () => "2026-05-18T00:00:00.000Z",
+      codexRuntimes: new Map([["impl", runtime]]),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    await expect(client.rollbackAgentAttach({ agentName: "impl" })).resolves.toEqual({
+      ok: true,
+      agentName: "impl",
+      rolledBack: false,
+    });
+    expect(runtime.disposeCalls).toBe(0);
+    expect((await client.status()).agents[0].status).toBe("connected");
+  });
+
+  it("detaches a ready agent by disposing runtime, preserving adapter session id, and emitting a graceful event", async () => {
+    const runtime = fakeRuntime("ready");
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1", "event-1"]),
+      now: () => "2026-05-18T00:00:00.000Z",
+      codexRuntimes: new Map([["impl", runtime]]),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    db.prepare("update agents set adapter_session_id = ? where name = ?").run(
+      "thread-1",
+      "impl",
+    );
+
+    await expect(client.detachAgent({ agentName: "impl" })).resolves.toEqual({
+      ok: true,
+      agentName: "impl",
+      detached: true,
+    });
+
+    expect(runtime.disposeCalls).toBe(1);
+    expect(
+      db.prepare("select status, adapter_session_id from agents where name = ?").get(
+        "impl",
+      ),
+    ).toEqual({
+      status: "disconnected",
+      adapter_session_id: "thread-1",
+    });
+    expect(db.prepare("select type, data_json from events").all()).toEqual([
+      {
+        type: "agent_graceful_detach",
+        data_json: JSON.stringify({ trigger: "explicit_detach" }),
+      },
+    ]);
+  });
+
+  it("records TUI exit by reusing the graceful detach cleanup path", async () => {
+    const runtime = fakeRuntime("ready");
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1", "event-1"]),
+      now: () => "2026-05-18T00:00:00.000Z",
+      codexRuntimes: new Map([["impl", runtime]]),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    await expect(
+      client.notifyTuiExited({ agentName: "impl", exitCode: 0, signal: null }),
+    ).resolves.toEqual({
+      ok: true,
+      agentName: "impl",
+      detached: true,
+    });
+
+    expect(runtime.disposeCalls).toBe(1);
+    expect(db.prepare("select type, data_json from events").all()).toEqual([
+      {
+        type: "agent_graceful_detach",
+        data_json: JSON.stringify({
+          trigger: "tui_exit",
+          exitCode: 0,
+          signal: null,
+        }),
+      },
+    ]);
+  });
+
+  it("keeps detach and TUI-exit cleanup idempotent after the agent is disconnected", async () => {
+    const runtime = fakeRuntime("ready");
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1", "event-1"]),
+      now: () => "2026-05-18T00:00:00.000Z",
+      codexRuntimes: new Map([["impl", runtime]]),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    expect(await client.detachAgent({ agentName: "impl" })).toEqual({
+      ok: true,
+      agentName: "impl",
+      detached: true,
+    });
+    expect(
+      await client.notifyTuiExited({ agentName: "impl", exitCode: 0, signal: null }),
+    ).toEqual({
+      ok: true,
+      agentName: "impl",
+      detached: false,
+    });
+
+    expect(runtime.disposeCalls).toBe(1);
+    expect(db.prepare("select type from events").all()).toEqual([
+      { type: "agent_graceful_detach" },
+    ]);
+  });
 });
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {
@@ -528,4 +673,27 @@ function createInProcessClient<TApi extends object>(api: TApi): TApi {
       };
     },
   });
+}
+
+function createIdSequence(ids: string[]): () => string {
+  return () => {
+    const id = ids.shift();
+
+    if (!id) {
+      throw new Error("unexpected id request");
+    }
+
+    return id;
+  };
+}
+
+function fakeRuntime(state: "starting" | "ready") {
+  return {
+    state,
+    disposeCalls: 0,
+    async dispose() {
+      this.disposeCalls += 1;
+      this.state = "disposed" as typeof this.state;
+    },
+  };
 }
