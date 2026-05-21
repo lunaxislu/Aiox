@@ -1,5 +1,7 @@
 import { mkdtempSync, readFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
 import { join } from "node:path";
+import type { ChildProcess } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
@@ -90,6 +92,11 @@ describe("aiox CLI bin", () => {
         stderr: written.stderr,
         runtime,
         cwd: "/repo",
+        launchCodexTui: () => {
+          const child = new EventEmitter() as ChildProcess;
+          setTimeout(() => child.emit("exit", 0, null), 0);
+          return child;
+        },
       });
       const api = await runtime.getDaemonApi();
 
@@ -100,7 +107,7 @@ describe("aiox CLI bin", () => {
           id: "cli-1",
           name: "impl",
           kind: "codex",
-          status: "connected",
+          status: "disconnected",
           cwd: "/repo",
           pairId: null,
           adapterSessionId: "thread-1",

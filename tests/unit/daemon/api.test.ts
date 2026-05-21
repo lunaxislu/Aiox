@@ -106,6 +106,88 @@ describe("daemon API with fake in-process transport", () => {
     ]);
   });
 
+  it("resumes an explicit Codex session during attach and records a resume rebind", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      resumedThreadId: "thread-resume",
+    });
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1", "event-1"]),
+      now: createNowSequence([
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
+      ]),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const response = await client.attachAgent({
+      kind: "codex",
+      name: "impl",
+      cwd: "/repo",
+      resumeSessionId: "thread-resume",
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      agent: {
+        adapterSessionId: "thread-resume",
+      },
+      codexRuntime: {
+        activeThreadId: "thread-resume",
+      },
+    });
+    expect(runtime.resumeThreadCalls).toEqual(["thread-resume"]);
+    expect(db.prepare("select type, data_json from events").all()).toEqual([
+      {
+        type: "agent_thread_id_rebound",
+        data_json: JSON.stringify({
+          previousId: null,
+          nextId: "thread-resume",
+          operation: "thread/resume",
+        }),
+      },
+    ]);
+  });
+
+  it("fails explicit Codex resume attach atomically on returned id mismatch", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      resumedThreadId: "thread-other",
+    });
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1"]),
+      now: createNowSequence([
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
+      ]),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await expect(
+      client.attachAgent({
+        kind: "codex",
+        name: "impl",
+        cwd: "/repo",
+        resumeSessionId: "thread-requested",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "codex_resume_failed",
+      message: expect.stringContaining("thread-other"),
+    });
+    expect(runtime.disposeCalls).toBe(1);
+    expect((await client.status()).agents[0].status).toBe("disconnected");
+    expect(db.prepare("select type from events").all()).toEqual([]);
+  });
+
   it("rejects pair attach when the pair does not exist without registering the agent", async () => {
     const state = createDaemonState({
       db,

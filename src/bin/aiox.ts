@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type { ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import { pathToFileURL } from "node:url";
 
 import Database from "better-sqlite3";
 
+import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { invokeParsedCommand, type InvocationRuntime } from "../cli/invocation.js";
 import { parseCli } from "../cli/parse.js";
 import { createDaemonServer, type DaemonServerHandle } from "../daemon/server.js";
@@ -26,6 +28,10 @@ export interface RunAioxCliOptions {
   runtime?: InvocationRuntime;
   cwd?: string;
   version?: string;
+  launchCodexTui?: (options: {
+    endpoint: URL;
+    resumeSessionId?: string;
+  }) => ChildProcess;
 }
 
 export async function runAioxCli(
@@ -42,6 +48,7 @@ export async function runAioxCli(
     const result = await invokeParsedCommand(command, {
       runtime: options.runtime ?? createSocketRuntime(),
       cwd: options.cwd ?? process.cwd(),
+      launchCodexTui: options.launchCodexTui ?? launchCodexTui,
     });
 
     if (result.stdout) {

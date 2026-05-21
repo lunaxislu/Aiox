@@ -1,6 +1,9 @@
+import type { ChildProcess } from "node:child_process";
+
 import type { ParsedCommand } from "./parse.js";
 import type { DaemonApi } from "../daemon/api.js";
 import type { StopRequest } from "../daemon/state.js";
+import { launchCodexTui } from "../adapters/codex/launcher.js";
 
 export interface InvocationRuntime {
   getDaemonApi(): DaemonApi | Promise<DaemonApi>;
@@ -14,6 +17,10 @@ export interface InvocationRuntime {
 export interface InvocationOptions {
   runtime: InvocationRuntime;
   cwd: string;
+  launchCodexTui?: (options: {
+    endpoint: URL;
+    resumeSessionId?: string;
+  }) => ChildProcess;
 }
 
 export interface InvocationResult {
@@ -60,9 +67,34 @@ export async function invokeParsedCommand(
         kind: command.agentKind,
         name: command.name,
         cwd: options.cwd,
-        pairName: command.pairName,
+        ...(command.pairName === undefined ? {} : { pairName: command.pairName }),
+        ...(command.resumeSessionId === undefined
+          ? {}
+          : { resumeSessionId: command.resumeSessionId }),
       });
       ensureOk(response);
+      if (command.agentKind === "codex" && response.ok && response.codexRuntime) {
+        const child = launchTuiOrRollback({
+          api,
+          agentName: command.name,
+          endpoint: new URL(response.codexRuntime.endpoint),
+          resumeSessionId: command.resumeSessionId,
+          launch: options.launchCodexTui ?? launchCodexTui,
+        });
+        let tuiExit: { exitCode: number | null; signal: string | null };
+        try {
+          tuiExit = await waitForTuiExit(child);
+        } catch (error) {
+          await api.rollbackAgentAttach({ agentName: command.name });
+          throw error;
+        }
+        await api.notifyTuiExited({
+          agentName: command.name,
+          exitCode: tuiExit.exitCode,
+          signal: tuiExit.signal,
+        });
+        return { exitCode: tuiExit.exitCode ?? (tuiExit.signal ? 1 : 0) };
+      }
       return success();
     }
     case "connect": {
@@ -103,6 +135,70 @@ export async function invokeParsedCommand(
     default:
       return assertNever(command);
   }
+}
+
+function launchTuiOrRollback(input: {
+  api: DaemonApi;
+  agentName: string;
+  endpoint: URL;
+  resumeSessionId?: string;
+  launch: (options: { endpoint: URL; resumeSessionId?: string }) => ChildProcess;
+}): ChildProcess {
+  try {
+    return input.launch({
+      endpoint: input.endpoint,
+      ...(input.resumeSessionId === undefined
+        ? {}
+        : { resumeSessionId: input.resumeSessionId }),
+    });
+  } catch (error) {
+    void input.api.rollbackAgentAttach({ agentName: input.agentName });
+    throw new InvocationError(
+      error instanceof Error ? error.message : String(error),
+      {
+        code: "aiox.invocation.tui_launch_failed",
+        exitCode: 1,
+      },
+    );
+  }
+}
+
+async function waitForTuiExit(
+  child: ChildProcess,
+): Promise<{ exitCode: number | null; signal: string | null }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    function finish(result: { exitCode: number | null; signal: string | null }): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.off("error", onError);
+      resolve(result);
+    }
+
+    function onError(error: Error): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.off("exit", onExit);
+      reject(
+        new InvocationError(error.message, {
+          code: "aiox.invocation.tui_launch_failed",
+          exitCode: 1,
+        }),
+      );
+    }
+
+    function onExit(exitCode: number | null, signal: NodeJS.Signals | null): void {
+      finish({ exitCode, signal });
+    }
+
+    child.once("error", onError);
+    child.once("exit", onExit);
+  });
 }
 
 function success(): InvocationResult {

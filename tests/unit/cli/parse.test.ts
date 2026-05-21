@@ -92,6 +92,29 @@ describe("CLI parser", () => {
     });
   });
 
+  it("parses codex attach with an explicit resume session id", () => {
+    expect(parseCli(["codex", "--name", "impl", "--resume", "thread-1"])).toEqual({
+      kind: "agent-attach",
+      agentKind: "codex",
+      name: "impl",
+      resumeSessionId: "thread-1",
+    });
+  });
+
+  it("rejects claude attach with a codex-only resume flag", () => {
+    expectCliParseError(
+      ["claude", "--name", "review", "--resume", "thread-1"],
+      "aiox.unknownOption",
+    );
+  });
+
+  it("shows the codex resume flag in command help", () => {
+    const parsed = parseCli(["codex", "--help"]);
+    const text = parsed.kind === "help" ? parsed.text : "";
+
+    expect(text).toContain("--resume <session-id>");
+  });
+
   it("parses claude attach with a name", () => {
     expect(parseCli(["claude", "--name", "review"])).toEqual({
       kind: "agent-attach",

@@ -337,6 +337,7 @@ export function createDaemonState(
       }
 
       let storedAgent: StoredAgent | null = null;
+      let startingCodexRuntime: ManagedCodexAgentRuntime | null = null;
       try {
         const attachResult = withTransaction(options.db, () => {
           const now = options.now();
@@ -400,6 +401,7 @@ export function createDaemonState(
           agentName: request.name,
           activeThreadId: storedAgent.adapterSessionId,
         });
+        startingCodexRuntime = runtime;
         const nextThreadId = request.resumeSessionId
           ? await runtime.resumeThread(request.resumeSessionId)
           : await runtime.startThread();
@@ -435,6 +437,7 @@ export function createDaemonState(
         }
 
         codexRuntimes.set(request.name, runtime);
+        startingCodexRuntime = null;
         events.append({
           id: options.createId(),
           type: "agent_thread_id_rebound",
@@ -464,6 +467,9 @@ export function createDaemonState(
         }
 
         if (storedAgent) {
+          if (startingCodexRuntime) {
+            await disposeRuntime(startingCodexRuntime);
+          }
           agents.markByNameDisconnected(request.name, options.now());
         }
 

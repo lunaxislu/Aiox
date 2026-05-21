@@ -22,6 +22,7 @@ export type ParsedCommand = {
   agentKind: AgentKind;
   name: string;
   pairName?: string;
+  resumeSessionId?: string;
 } | {
   kind: "connect";
   sourceName: string;
@@ -205,19 +206,31 @@ function addAgentAttachCommand(
   agentKind: AgentKind,
   setParsed: (command: ParsedCommand) => void,
 ): void {
-  program
+  const command = program
     .command(agentKind)
     .description(`Attach ${agentKind} --name <name> [--pair <pair-name>]`)
     .requiredOption("--name <name>")
-    .option("--pair <pair-name>")
-    .action((options: { name: string; pair?: string }) => {
+    .option("--pair <pair-name>");
+
+  if (agentKind === "codex") {
+    command.option("--resume <session-id>");
+  }
+
+  command
+    .action((options: { name: string; pair?: string; resume?: string }) => {
       const name = requireNonEmptyName(options.name);
       const pairName = options.pair === undefined ? undefined : requireNonEmptyName(options.pair);
+      const resumeSessionId =
+        options.resume === undefined ? undefined : requireNonEmptyName(options.resume);
 
       setParsed(
-        pairName === undefined
-          ? { kind: "agent-attach", agentKind, name }
-          : { kind: "agent-attach", agentKind, name, pairName },
+        {
+          kind: "agent-attach",
+          agentKind,
+          name,
+          ...(pairName === undefined ? {} : { pairName }),
+          ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
+        },
       );
     });
 }
