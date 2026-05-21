@@ -38,6 +38,38 @@ Claude+User 작업 → commit → Codex review (cold start) → 다음 세션 en
 ### Goal
 `history/35` 권위 entry 문서를 만들고 spike R/L/T 시나리오 명세를 동시에 박는다. Decision 섹션은 placeholder.
 
+### Claude entry prompt (verbatim, cold start — 새 Claude 세션 첫 메시지로 paste)
+
+```
+당신은 Claude 코드이고 새 세션입니다. 본 prompt만으로 컨텍스트를 자가완결하세요.
+
+# Goal
+Step 11 Phase A 진입. Session 1 — `history/35` 권위 entry 문서 작성 + Spike Plan S1~S6 박기. Decision 섹션은 placeholder.
+
+# Authority entry points (이 순서로 읽으세요)
+1. `.claude/plans/step-11-phase-a-sessions.md` — 사이클 운영 노트.
+2. 메모리 aiox-step-progress — Step 10 closed 상태 + "다음 세션 인계" 4건이 본 Phase A 어젠다 기원.
+3. `history/34-step-10-phase-b-codex-runtime.history.md` — Step 11 reservation 섹션.
+4. `prd/mvp/aiox-mvp-spec.md` Open Product Issue #1.
+5. `prd/pre-validation/claude-codex-pre-validation.md` — Claude channel injection PoC + trust PARTIAL.
+6. `AGENTS.md` — Step 진행 규칙, Decision Options Workflow.
+
+# Scope
+- `history/35-step-11-phase-a-claude-channel-decisions.history.md` 신규 작성.
+- `.claude/plans/step-11-phase-a-sessions.md` 신규 scratch.
+- 코드 변경 0.
+
+# Out of scope
+- spike 코드 (Session 2).
+- 실행 결과 (Session 3).
+- Decision wording (Session 4).
+- plan/PRD drift sync (Session 5).
+
+# Cycle rules
+- 세션 종료 = entry commit + (필요 시) Codex review fix commit.
+- Codex review prompt 본문은 scratch §Session 1 Codex review prompt 그대로 사용자에게 전달.
+```
+
 ### My deliverable
 - `history/35-step-11-phase-a-claude-channel-decisions.history.md`
   - §Status (현재 Phase A skeleton)
@@ -113,6 +145,41 @@ Step 11 (Claude channel adapter skeleton) Phase A 진입 직전, Claude(클로�
 
 ### Goal
 `spikes/claude-channel-registration-poc/` 디렉토리에 token-based registration handshake spike 작성.
+
+### Claude entry prompt (verbatim, cold start — 새 Claude 세션 첫 메시지로 paste)
+
+```
+당신은 Claude 코드이고 새 세션입니다. 본 prompt만으로 컨텍스트를 자가완결하세요.
+
+# Goal
+Step 11 Phase A Session 2 진입. Spike R (Claude channel registration handshake POC) 코드 작성. 본 세션은 코드 작성만, 실제 Claude CLI 실행은 Session 3 사용자 손.
+
+# Authority entry points (이 순서로 읽으세요)
+1. `.claude/plans/step-11-phase-a-sessions.md` — §Session 2 §My deliverable + §Session 2 내부 진행 방식.
+2. `history/35-step-11-phase-a-claude-channel-decisions.history.md` — Spike Plan S1~S6 + Decision D1~D4 placeholder + §Review log.
+3. `spikes/claude-channel-node-poc/{server.ts, README.md}` — 재사용 baseline.
+4. 메모리 aiox-step-progress — Step 10 closed, Step 11 Phase A Session 1 closed.
+5. `AGENTS.md`.
+
+# Scope (사용자 directive 순서, scratch §Session 2 deliverable)
+1. `spikes/claude-channel-registration-poc/daemon.ts` — fake daemon (`/register`, pending token, memory registry, `/push` helper).
+2. `spikes/claude-channel-registration-poc/server.ts` — channel MCP server + ephemeral ingress + daemon register POST + `/send` → `notifications/claude/channel` 변환.
+3. `spikes/claude-channel-registration-poc/README.md` — S1~S6 명령/env/예상 로그/PASS 조건 + same terminal exit + leftover observation 관찰 포인트.
+4. (선택) `spikes/claude-channel-registration-poc/daemon.test.ts` — daemon.ts token verify/memory registry unit test. Claude CLI/MCP stdio 모킹 X.
+- 파일별 diff 보여주기 → 사용자 confirm → 다음 파일.
+- 단일 commit: `spike: claude channel registration handshake poc`.
+
+# Out of scope
+- 실제 Claude CLI 실행 (Session 3 사용자 손).
+- Decision wording (Session 4).
+- plan/PRD drift sync (Session 5).
+- production code 변경 (spike는 `spikes/` 디렉토리만).
+
+# Cycle rules
+- 매 파일 diff confirm 필수, 본 prompt 받자마자 즉시 4파일 일괄 작성 금지.
+- 세션 종료 = commit 완료 + Codex review prompt 본문 사용자에게 전달.
+- Codex review prompt는 scratch §Session 2 Codex review prompt 그대로, <HASH>를 실제 commit hash로 치환.
+```
 
 ### My deliverable — 사용자 directive (2026-05-22)
 
@@ -207,7 +274,37 @@ Step 11 Phase A의 Spike R (Claude channel registration handshake POC) 코드를
 ## Session 3 — 사용자 수동 실행 + Observation 누적
 
 ### Goal
-사용자가 S1~S5를 직접 실행하고 결과를 paste/공유. Claude(나)는 결과를 `history/35` Observation 섹션에 박는다.
+사용자가 S1~S6를 직접 실행하고 결과를 paste/공유. Claude(나)는 결과를 `history/35` Observation 섹션에 박는다.
+
+### Claude entry prompt (verbatim, cold start — 새 Claude 세션 첫 메시지로 paste)
+
+```
+당신은 Claude 코드이고 새 세션입니다. 본 prompt만으로 컨텍스트를 자가완결하세요.
+
+# Goal
+Step 11 Phase A Session 3 진입. Spike R 수동 실행은 사용자 손. 본 Claude 세션 역할 = 사용자가 paste한 결과를 `history/35` Observation 섹션에 박기.
+
+# Authority entry points
+1. `.claude/plans/step-11-phase-a-sessions.md` — §Session 3.
+2. `history/35-step-11-phase-a-claude-channel-decisions.history.md` — §Observation 누적 위치 + Spike Plan S1~S6.
+3. `spikes/claude-channel-registration-poc/README.md` — S1~S6 시나리오와 PASS 조건.
+4. `prd/pre-validation/claude-codex-pre-validation.md` — 비교 baseline.
+5. 메모리 aiox-step-progress.
+
+# Scope
+- 사용자가 S1~S6 실제 실행 결과 (터미널 log / stderr / 판정) paste 받음.
+- 결과를 `history/35` §Observation에 박음. 어젠다 4건 결정에 직접 영향을 주는 핵심 사실은 별도 "Decision-input facts" sub-section에 정리.
+- 추측/extrapolation 박지 않음. spike에서 직접 관찰된 사실만 박음.
+
+# Out of scope
+- Spike 코드 수정 (Session 2 closed).
+- Decision wording (Session 4) — Observation 보고 섣불리 Decision 닫지 않음.
+
+# Cycle rules
+- 사용자 결과 paste 받기 전까지 다음 단계 자동 진행 안 함.
+- 세션 종료 = commit + Codex review prompt 본문 사용자에게 전달.
+- Commit: `docs: record spike R observation results`.
+```
 
 ### My deliverable
 - `history/35` Observation 섹션 확장:
@@ -278,6 +375,41 @@ Step 11 Phase A의 Spike R observation 결과가 history/35에 정확히 박혔�
 
 ### Goal
 어젠다 4건을 walkthrough하고 `history/35` Decision 섹션을 박는다. 각 결정에 AGENTS.md Decision Options Workflow 4가지 (trade-off / 추천+근거 / reversibility / deferrability).
+
+### Claude entry prompt (verbatim, cold start — 새 Claude 세션 첫 메시지로 paste)
+
+```
+당신은 Claude 코드이고 새 세션입니다. 본 prompt만으로 컨텍스트를 자가완결하세요.
+
+# Goal
+Step 11 Phase A Session 4 진입. 어젠다 D1~D4 walkthrough → `history/35` Decision 섹션에 권위 박음. AGENTS.md Decision Options Workflow MUST 4가지 (trade-off / 추천+근거 / reversibility / deferrability) 강제.
+
+# Authority entry points
+1. `.claude/plans/step-11-phase-a-sessions.md` — §Session 4.
+2. `history/35-step-11-phase-a-claude-channel-decisions.history.md` — Observation (Session 3 결과 박힌 후) + Decision placeholder + Options placeholder 4칸.
+3. `history/33-step-10-phase-a-decisions.history.md` + `history/34-step-10-phase-b-codex-runtime.history.md` — Step 10 권위. 충돌/mirror 강요/invariant 위반 검토 baseline.
+4. `prd/mvp/aiox-mvp-spec.md` Open Product Issue #1·#4·#5.
+5. 메모리 aiox-deferred-decisions — session expiry deferral rationale.
+6. `AGENTS.md` — Decision Options Workflow.
+
+# Scope (어젠다 4건)
+- D1 Trust stance + framing.
+- D2 Ownership boundary (attach = DB-only + endpoint registration callback, daemon memory registry, registration token handshake).
+- D3 Reply round-trip + D6-B cross-cut.
+- D4 Session expiry exposure.
+- 각 Decision의 Options 4칸 모두 채움. 추측/default 박지 않음.
+- Deferred 보존: Long-running timeout (#4), Session expiry policy (#5), TUI-originated rebind 동치 (자연 소거), Codex Round 4 Option A mirror reject.
+
+# Out of scope
+- plan/PRD drift sync (Session 5).
+- Phase B 실제 구현.
+- 새 spike (Phase A는 input 확보 단계 closed).
+
+# Cycle rules
+- 어젠다별 옵션 비교 → 사용자 선택 → wording 박음. 사용자 confirm 없이 자체 결정 금지.
+- 세션 종료 = commit + Codex review prompt 본문 사용자에게 전달.
+- Commit: `docs: lock step 11 phase a decisions`.
+```
 
 ### My deliverable
 - `history/35` Decision 섹션:
@@ -359,7 +491,42 @@ Step 11 Phase A 결정 4건 wording이 권위 문서로 박을 만큼 ambiguity 
 ## Session 5 — Closeout + Phase B 진입 준비
 
 ### Goal
-plan checklist / PRD / 메모리 drift를 동기화하고 Phase B 위임 prompt 윤곽을 만든다.
+plan checklist / PRD / 메모리 drift를 동기화하고 Phase B 위임 prompt 윤곽을 만든다. 본 scratch 파일 삭제.
+
+### Claude entry prompt (verbatim, cold start — 새 Claude 세션 첫 메시지로 paste)
+
+```
+당신은 Claude 코드이고 새 세션입니다. 본 prompt만으로 컨텍스트를 자가완결하세요.
+
+# Goal
+Step 11 Phase A Session 5 진입. Phase A closeout + Phase B 진입 준비 + 본 scratch 파일 삭제.
+
+# Authority entry points
+1. `.claude/plans/step-11-phase-a-sessions.md` — §Session 5 + §흡수 방향 (삭제 체크리스트 5개).
+2. `history/35-step-11-phase-a-claude-channel-decisions.history.md` — Decision 4건 박힌 상태.
+3. `plan/mvp-implementation-checklist.md` Step 11 sub-task.
+4. `prd/mvp/aiox-mvp-spec.md` Open Product Issue #1 (상태 갱신 대상).
+5. 메모리 aiox-step-progress (상태 갱신 대상).
+6. `history/34-step-10-phase-b-codex-runtime.history.md` "Step 11 reservation".
+7. `AGENTS.md` — Step 진행 규칙.
+
+# Scope
+- `plan/mvp-implementation-checklist.md` Step 11 sub-task 갱신 (Phase A 결정 반영, Phase B 진입 가능 상태).
+- `prd/mvp/aiox-mvp-spec.md` Open Product Issue #1 상태 갱신 (Phase A로 close/partial-close 명시).
+- `history/35` §Verification 섹션 갱신 (test 변경 없으면 baseline 224 유지).
+- 메모리 aiox-step-progress Step 11 Phase A closed 한 줄 갱신.
+- Phase B 위임 prompt 윤곽 (코덱스/클로드 누가 작성할지 + scope + Round 1 surface).
+- **scratch 삭제**: §흡수 방향 체크리스트 5개 모두 done 확인 후 `git rm .claude/plans/step-11-phase-a-sessions.md` Session 5 closeout commit에 포함.
+
+# Out of scope
+- Phase B 실제 구현 (별도 step).
+- 새 spike 제안 (Phase A closed).
+
+# Cycle rules
+- 흡수 체크리스트 5개 모두 done 아니면 삭제 금지. 부족하면 보강 후 진행.
+- 세션 종료 = closeout commit (scratch 삭제 포함) + Codex review prompt 본문 사용자에게 전달.
+- Commit: `docs: close step 11 phase a + sync plan/PRD`.
+```
 
 ### My deliverable
 - `plan/mvp-implementation-checklist.md` Step 11 sub-task 갱신 (Phase A 결정 반영, Phase B 진입 가능 상태).
