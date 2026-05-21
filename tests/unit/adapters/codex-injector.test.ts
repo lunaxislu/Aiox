@@ -45,6 +45,26 @@ describe("Codex turn/start injector", () => {
     });
   });
 
+  it("returns a typed ws_dropped failure when the app-server socket drops", async () => {
+    const runtime = fakeRuntime({
+      activeThreadId: "thread-1",
+      rejectWith: Object.assign(new Error("socket dropped"), {
+        code: "codex_app_server_ws_dropped",
+      }),
+    });
+
+    await expect(
+      injectTurnStart(runtime, {
+        threadId: "thread-1",
+        input: "hello",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "codex_app_server_ws_dropped",
+      message: "socket dropped",
+    });
+  });
+
   it("returns success when turn/start is acknowledged for the active thread", async () => {
     const runtime = fakeRuntime({
       activeThreadId: "thread-1",

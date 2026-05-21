@@ -21,6 +21,7 @@ export type AdapterInjectFailureReason =
   | "codex_app_server_unavailable"
   | "codex_app_server_ws_connect_failed"
   | "codex_app_server_ws_initialize_failed"
+  | "codex_app_server_ws_dropped"
   | "codex_turn_start_timeout"
   | "codex_jsonrpc_error";
 

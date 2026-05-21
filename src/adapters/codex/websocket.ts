@@ -3,16 +3,21 @@ import WebSocket from "ws";
 export type CodexAppServerWebSocketErrorCode =
   | "codex_app_server_ws_connect_failed"
   | "codex_app_server_ws_initialize_failed"
+  | "codex_app_server_ws_dropped"
   | "codex_turn_start_timeout"
   | "codex_jsonrpc_error";
 
 export interface CodexJsonRpcErrorDetails {
   jsonRpcCode?: number;
+  closeCode?: number;
+  closeReason?: string;
 }
 
 export class CodexAppServerWebSocketError extends Error {
   readonly code: CodexAppServerWebSocketErrorCode;
   readonly jsonRpcCode?: number;
+  readonly closeCode?: number;
+  readonly closeReason?: string;
 
   constructor(
     code: CodexAppServerWebSocketErrorCode,
@@ -23,6 +28,8 @@ export class CodexAppServerWebSocketError extends Error {
     this.name = "CodexAppServerWebSocketError";
     this.code = code;
     this.jsonRpcCode = details.jsonRpcCode;
+    this.closeCode = details.closeCode;
+    this.closeReason = details.closeReason;
   }
 }
 
@@ -137,9 +144,16 @@ function createClient(
   socket.once("error", (error) => {
     failAll(error instanceof Error ? error : new Error(String(error)));
   });
-  socket.once("close", () => {
+  socket.once("close", (code, reason) => {
     if (!closed) {
-      failAll(new Error("Codex app-server WebSocket closed before response"));
+      const closeReason = reason.toString("utf8");
+      failAll(
+        new CodexAppServerWebSocketError(
+          "codex_app_server_ws_dropped",
+          `Codex app-server WebSocket dropped before response: code=${code} reason=${closeReason}`,
+          { closeCode: code, closeReason },
+        ),
+      );
     }
   });
 

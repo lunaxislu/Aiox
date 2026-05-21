@@ -203,6 +203,20 @@ describe("Codex app-server WebSocket client", () => {
     client.close();
   });
 
+  it("rejects pending requests with typed ws_dropped when the socket closes", async () => {
+    const endpoint = await listen((socket) => {
+      socket.on("message", () => {
+        socket.close(1000, "dropped");
+      });
+    });
+    const client = await connectCodexAppServerWebSocket({ endpoint });
+
+    await expect(client.request("turn/start")).rejects.toMatchObject({
+      code: "codex_app_server_ws_dropped",
+      message: expect.stringContaining("Codex app-server WebSocket dropped"),
+    });
+  });
+
   it("reports connect failures with a typed error", async () => {
     await expect(
       connectCodexAppServerWebSocket({

@@ -85,12 +85,18 @@ function toInjectFailure(error: unknown): AdapterInjectResult {
 
 function isCodexAdapterReason(
   error: unknown,
-): error is { code: "codex_turn_start_timeout" | "codex_jsonrpc_error" } {
+): error is {
+  code:
+    | "codex_app_server_ws_dropped"
+    | "codex_turn_start_timeout"
+    | "codex_jsonrpc_error";
+} {
   return (
     typeof error === "object" &&
     error !== null &&
     "code" in error &&
-    (error.code === "codex_turn_start_timeout" ||
+    (error.code === "codex_app_server_ws_dropped" ||
+      error.code === "codex_turn_start_timeout" ||
       error.code === "codex_jsonrpc_error")
   );
 }
