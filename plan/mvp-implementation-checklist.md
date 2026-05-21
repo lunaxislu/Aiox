@@ -709,8 +709,8 @@ agent identity boundary다.
 `thread/start` response가 새 thread id를 반환해 rebind 가능함을 확인했다.
 Empty-session `/fork`는 same-client `thread/fork` request를 보내지만 app-server가
 `no rollout found` error를 반환한다. 이는 fork할 rollout/history가 없는 빈
-thread의 expected error로 취급한다. 따라서 기존 binding을 유지하고 rebind하지
-않는다.
+thread의 expected error로 취급한다. 이 spike는 post-MVP TUI-originated rebind
+revival 근거로 보존한다.
 
 2026-05-20 per-agent app-server resume/rebind spike:
 `history/32-step-10-per-agent-app-server-resume-spike.history.md`. Completed-turn
@@ -724,11 +724,15 @@ injection이 동일 thread id에서 completed turn으로 처리됨을 확인했�
 thread resume은 실패했다.
 
 현재 확인된 Step 10 정책: Codex app-server endpoint 자체가 agent identity
-boundary다. `/clear`와 `/new`는 per-agent app-server 안에서 active thread id를
-새 thread id로 갱신한다. `thread/fork`는 성공 response가 새 thread id와 expected
-`forkedFromId`를 반환할 때만 active thread id를 갱신한다. Empty-thread
-`no rollout found` error는 fork 대상 부재로 인한 expected error라 agent binding
-uncertainty로 올리지 않는다.
+boundary다. Phase B Round 4 D7 replacement 범위는 사용자 결정에 따라
+**aiox-originated authoritative 작업**으로 한정한다. 즉 daemon이 직접 보낸
+programmatic `thread/start` / 이후 `sendMessage`(`turn/start`)처럼 same-operation
+success response를 받을 수 있는 작업만 active thread id 갱신 근거로 사용한다.
+TUI-originated `/clear`, `/new`, `/fork` rebind는 direct per-agent app-server에서
+daemon이 same-client returned id를 볼 수 없으므로 post-MVP Open Product Issue로
+분리한다. 해당 기능을 부활시킬 때는 `history/27` / `history/32`의 transparent
+proxy same-client response 근거 또는 future Codex authoritative callback/read API
+근거를 사용한다.
 
 Step 10 Phase A decisions are closed in
 `history/33-step-10-phase-a-decisions.history.md`. Phase B implementation must
@@ -745,11 +749,13 @@ Phase B implementation tasks:
 - [ ] Ensure user-facing CLI never asks for or exposes a required fixed Codex
   app-server port; ports are runtime metadata.
 - [ ] Define app-server lifecycle: graceful shutdown, process exit handling,
-  and event-listener-only WS close handling. Hardening items are deferred by
-  D5-B.
-- [ ] Define binding/rebind policy: replace the previous binding only when Codex
-  returns an authoritative thread/session id; fail-fast on missing/conflicting
-  ids or notification-only signals.
+  and event-listener-only WS close handling. `CodexAgentRuntime.dispose()`
+  cleanup is Round 3 D5-A.5 work: WS close → SIGTERM → 3s grace → SIGKILL.
+  Hardening items are deferred by D5-B.
+- [ ] Define binding/rebind policy for aiox-originated authoritative operations:
+  replace the previous binding only when Codex returns an authoritative
+  thread/session id to the daemon-owned request; fail-fast on missing/conflicting
+  ids or notification-only signals. TUI-originated rebind is post-MVP.
 - [x] Re-run completed-turn `/clear`, `/new` matrix after Codex usage limit
   cleared.
 
