@@ -15,14 +15,21 @@ Status: in progress.
 
 Commits:
 
-- `af97b20` — Add codex app-server runtime foundation.
+- `af97b20` — Add codex app-server runtime foundation (Round 1 code).
+- `d6326c6` — Record step 10 round 1 commit (history scaffold).
+- `e1b15a5` — Record codex app-server callback investigation (history).
+- `82d6b27` — docs: record codex D7 option D follow-up (history + plan).
+- `1f9d7d6` — behavior: detect codex app-server exit during readyz polling (TDD red→green).
+- `3fb808e` — docs: mark codex runtime dispose placeholder.
+- `c70ea3c` — test: cover codex app-server endpoint validation.
 
-Changed files:
+Changed files (Round 1 + follow-up):
 
 - `src/adapters/codex/app-server.ts`
 - `src/adapters/codex/launcher.ts`
 - `src/adapters/codex/runtime.ts`
 - `tests/unit/adapters/codex-app-server.test.ts`
+- `plan/mvp-implementation-checklist.md`
 
 ### D7 returned-id acquisition first blocker
 
