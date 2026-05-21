@@ -805,6 +805,8 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
   `codex resume <session-id> --remote <endpoint>` for resume, spawn error
   rollback via `rollbackAgentAttach`, and TUI exit notify via
   `notifyTuiExited`.
+- [x] Round 4-fix: launcher TUI/app-server command env override added for
+  testability; S4 full manual smoke passed via TUI-only ENOENT path.
 
 ---
 
@@ -846,7 +848,7 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 
 Latest full verification:
 
-- `pnpm test`: passing, 37 files, 220 tests (Step 10 Phase B Round 4, 2026-05-21)
+- `pnpm test`: passing, 37 files, 224 tests (Step 10 Phase B Round 4-fix, 2026-05-21)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

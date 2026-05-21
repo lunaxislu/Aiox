@@ -940,3 +940,89 @@ Round 4 is closed for the assigned six surfaces. Remaining reservations:
 - TUI-originated `/clear`, `/new`, and `/fork` rebind remains post-MVP.
 - Reply capture and long-running delivery timeout remain out of Step 10 Round 4
   scope and belong to later product decisions.
+
+### Manual TUI smoke follow-up (2026-05-21)
+
+User ran the manual foreground-terminal smoke checks after Round 4 closeout.
+
+Results:
+
+- S1 fresh attach golden path: PASS.
+  - `pnpm tsx src/bin/aiox.ts codex --name alpha` launched the real Codex TUI.
+  - User sent `hello from aiox smoke`.
+  - `/exit` returned to the shell.
+  - `echo $?` returned `0`.
+  - Process check found no aiox `codex app-server --listen`, `codex --remote`,
+    or `codex resume` leftover.
+- S2 explicit resume: PASS.
+  - Resume id from S1:
+    `019e4a3e-ef83-7ee2-a55d-6d7eed96b129`.
+  - `pnpm tsx src/bin/aiox.ts codex --name alpha --resume
+    019e4a3e-ef83-7ee2-a55d-6d7eed96b129` launched the real Codex TUI.
+  - User sent `resume smoke`.
+  - `/exit` returned to the shell.
+  - `echo $?` returned `0`.
+  - Process check found no aiox `codex app-server --listen`, `codex --remote`,
+    or `codex resume` leftover.
+- S3 bad resume id: PASS.
+  - User ran `pnpm tsx src/bin/aiox.ts codex --name alpha --resume
+    00000000-0000-0000-0000-000000000000; echo "exit=$?"`.
+  - Output included `no rollout found for thread id
+    00000000-0000-0000-0000-000000000000`.
+  - Same-terminal exit measurement returned `exit=1`.
+  - Process check found no leftover. The user's earlier separate-terminal
+    `echo $?` reading of `0` was discarded as an invalid measurement.
+  - This confirms Codex JSON-RPC error passthrough, no silent rebind, atomic
+    cleanup, and non-zero CLI exit.
+- S4 TUI failure cleanup: PARTIAL PASS.
+  - User placed a temporary `/tmp/aiox-smoke-bin/codex` wrapper before PATH.
+  - The wrapper forwarded `codex app-server` to the real Codex binary and made
+    the TUI command print `S4 intentional TUI spawn failure` then `exit 127`.
+  - `PATH="/tmp/aiox-smoke-bin:$PATH" pnpm tsx src/bin/aiox.ts codex --name
+    no-codex-2` returned exit code `127`.
+  - Process check found no aiox `codex app-server --listen`, `codex --remote`,
+    or `codex resume` leftover.
+- S4-full TUI spawn failure cleanup: PASS.
+  - Round 4-fix commit `3961550` added separate launcher command env overrides:
+    `AIOX_CODEX_APP_SERVER_COMMAND` for app-server and
+    `AIOX_CODEX_TUI_COMMAND` for TUI. Explicit `options.command` remains the
+    highest precedence and production default remains `codex`.
+  - Smoke command:
+    `AIOX_CODEX_TUI_COMMAND=/tmp/nonexistent-codex pnpm tsx
+    src/bin/aiox.ts codex --name s4-smoke; rc=$?; echo "exit=$rc"; ps -axo
+    pid,command | grep -E 'codex (app-server.*--listen|--remote|resume)' |
+    grep -v grep || echo "no leftover"`.
+  - Output included `spawn /tmp/nonexistent-codex ENOENT` and `exit=1`.
+  - Immediate process check observed the just-launched app-server while the
+    rollback cascade was still inside its 3s grace window.
+  - A follow-up process check after the grace window returned `no leftover`.
+  - This closes the exact D3.6 spawn ENOENT path: app-server launched normally,
+    TUI spawn failed through the injected TUI-only command, CLI returned typed
+    non-zero failure, and rollback cleanup completed.
+- S5 Claude `--resume` reject: PASS.
+  - User ran `pnpm tsx src/bin/aiox.ts claude --name reviewer --resume fake`.
+  - Output was `error: unknown option '--resume'`.
+  - This confirms commander rejects `--resume` on the Claude subcommand before
+    daemon or adapter runtime launch.
+
+Round 4-fix TDD / verification:
+
+- Red: `pnpm test tests/unit/adapters/codex-launcher.test.ts` failed with 2
+  expected failures because launcher still spawned default `codex` instead of
+  `AIOX_CODEX_TUI_COMMAND` / `AIOX_CODEX_APP_SERVER_COMMAND`.
+- Green slice: `pnpm test tests/unit/adapters/codex-launcher.test.ts` passed,
+  1 file / 6 tests.
+- Full verification after behavior change: `pnpm test` passed, 37 files / 224
+  tests; `pnpm typecheck` passed; `pnpm build` passed.
+
+Disposition:
+
+- The core foreground TUI production path is now manually smoke-checked for
+  fresh attach and explicit resume.
+- S1, S2, S3, and S5 are PASS; S4 wrapper-based immediate TUI exit remains a
+  useful partial check; S4-full via launcher env override is PASS for the exact
+  D3.6 `spawn` ENOENT rollback path.
+- Step 11 entry condition is satisfied: S1/S2/S3/S5 PASS plus S4 wrapper
+  partial plus S4 full PASS via env override.
+- Learning record:
+  `docs/aiox/round-4-tui-smoke-check.md`.
