@@ -666,17 +666,18 @@ Phase B 결과:
 
 ## Step 10: Codex per-agent app-server runtime — ⏳ To be planned
 
-Phase B started on 2026-05-21. Round 1 foundation is in progress under
+Phase B started on 2026-05-21. Round 1 foundation and Round 2 D4 protocol
+surface are recorded under
 `history/34-step-10-phase-b-codex-runtime.history.md`.
 
-- [ ] `src/adapters/codex/runtime.ts` — `CodexAgentRuntime` contract:
+- [x] `src/adapters/codex/runtime.ts` — `CodexAgentRuntime` contract:
   per-agent app-server endpoint, active thread id, lifecycle
   cleanup, and injection metadata
-- [ ] `src/adapters/codex/app-server.ts` — per-agent Codex app-server
+- [x] `src/adapters/codex/app-server.ts` — per-agent Codex app-server
   process/connection metadata; launch with `--listen ws://127.0.0.1:0`; daemon
   does not host app-server in-process
-- [ ] `src/adapters/codex/websocket.ts` — WS client utilities
-- [ ] `src/adapters/codex/injector.ts` — `turn/start` 호출
+- [x] `src/adapters/codex/websocket.ts` — WS client utilities
+- [x] `src/adapters/codex/injector.ts` — `turn/start` 호출
 - [ ] `src/adapters/codex/launcher.ts` — codex CLI invoke with
   `codex --remote <assigned-app-server-url>`
 
@@ -743,21 +744,38 @@ Phase B implementation tasks:
 
 - [ ] Define `CodexAgentRuntime` state shape and what is persisted in
   `AgentInstance.adapter_session_id` versus in-memory runtime state.
-- [ ] Implement per-agent app-server launch with `--listen ws://127.0.0.1:0`,
+- [x] Implement per-agent app-server launch with `--listen ws://127.0.0.1:0`,
   parse assigned endpoint from the process output banner, and wait for
   `readyz`.
-- [ ] Ensure user-facing CLI never asks for or exposes a required fixed Codex
+- [x] Ensure user-facing CLI never asks for or exposes a required fixed Codex
   app-server port; ports are runtime metadata.
 - [ ] Define app-server lifecycle: graceful shutdown, process exit handling,
   and event-listener-only WS close handling. `CodexAgentRuntime.dispose()`
   cleanup is Round 3 D5-A.5 work: WS close → SIGTERM → 3s grace → SIGKILL.
   Hardening items are deferred by D5-B.
-- [ ] Define binding/rebind policy for aiox-originated authoritative operations:
+- [x] Define binding/rebind policy for aiox-originated authoritative operations:
   replace the previous binding only when Codex returns an authoritative
   thread/session id to the daemon-owned request; fail-fast on missing/conflicting
   ids or notification-only signals. TUI-originated rebind is post-MVP.
 - [x] Re-run completed-turn `/clear`, `/new` matrix after Codex usage limit
   cleared.
+
+Round 2 D4 protocol surface closed on 2026-05-21:
+
+- [x] Persistent per-agent WebSocket client with numeric request ids, pending
+  response map, notification listener channel, initialize handshake, timeout,
+  and JSON-RPC typed errors.
+- [x] `turn/start` injector with D4.4 Option B ack semantics:
+  same-client JSON-RPC response accepted on the active runtime thread, not
+  `turn/completed`.
+- [x] `AdapterInjectResult` reason union extended for Codex D4.6 reasons:
+  `codex_app_server_unavailable`,
+  `codex_app_server_ws_connect_failed`,
+  `codex_app_server_ws_initialize_failed`,
+  `codex_turn_start_timeout`, and `codex_jsonrpc_error`.
+- [x] Runtime attach flow extended to launch app-server, connect WS,
+  initialize, and mark ready. `dispose()` closes WS now; process cleanup remains
+  Round 3 D5-A.5.
 
 ---
 
@@ -799,7 +817,7 @@ Phase B implementation tasks:
 
 Latest full verification:
 
-- `pnpm test`: passing, 31 files, 164 tests (Step 9 follow-up hardening, 2026-05-19)
+- `pnpm test`: passing, 36 files, 189 tests (Step 10 Phase B Round 2, 2026-05-21)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

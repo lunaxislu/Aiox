@@ -11,7 +11,7 @@
 
 ## Round 1 — Foundation + D7 Acquisition Path
 
-Status: in progress.
+Status: completed.
 
 Commits:
 
@@ -282,7 +282,7 @@ sequence before later rounds can build on runtime startup.
 
 ## Round 2 — D4 Protocol Surface
 
-Status: in progress.
+Status: completed.
 
 ### D4.4 turn/start ack frame spike
 
@@ -344,3 +344,88 @@ Decision rationale:
 - Follows the generated Codex CLI 0.132.0 schema.
 - Keeps broadcast notifications available for future listener plumbing.
 - Avoids relying on ignored extra fields such as `protocolVersion`.
+
+### Round 2 commits
+
+- `a9c7623` — docs: record codex round 2 protocol spike.
+- `382208c` — behavior: add codex app-server websocket client.
+- `5968c8d` — behavior: add codex turn start injector.
+- `a1f9b93` — behavior: attach codex runtime over websocket.
+- `7c1f62d` — behavior: widen adapter inject failure reasons.
+- Closeout commit: sync `history/33`, this history file, and
+  `plan/mvp-implementation-checklist.md`.
+
+Changed files:
+
+- `src/adapters/codex/websocket.ts`
+- `src/adapters/codex/injector.ts`
+- `src/adapters/codex/runtime.ts`
+- `src/adapters/contract.ts`
+- `src/adapters/router.ts`
+- `tests/unit/adapters/codex-websocket.test.ts`
+- `tests/unit/adapters/codex-injector.test.ts`
+- `tests/unit/adapters/codex-runtime.test.ts`
+- `history/33-step-10-phase-a-decisions.history.md`
+- `history/34-step-10-phase-b-codex-runtime.history.md`
+- `plan/mvp-implementation-checklist.md`
+
+### Round 2 implementation notes
+
+- `src/adapters/codex/websocket.ts` owns the persistent per-agent WS client:
+  monotonic numeric request ids, pending response map, JSON-RPC error
+  passthrough, request timeout plumbing, initialize handshake, and notification
+  listener channel.
+- `src/adapters/codex/injector.ts` implements D4.4 Option B: `completed` means
+  the app-server accepted the `turn/start` request for
+  `runtime.activeThreadId`. It does not wait for `turn/completed`.
+- `turn/start` payload is limited to `threadId` and `input`; text input uses
+  Codex 0.132.0 schema shape `[{ "type": "text", "text": "..." }]`.
+- `src/adapters/codex/runtime.ts` attach flow now accumulates D2/D4 startup:
+  app-server launch → WS connect → JSON-RPC initialize → runtime ready.
+- `runtime.dispose()` closes the WS client now, but app-server process cleanup
+  remains the Round 3 D5-A.5 placeholder: WS close → SIGTERM → 3s grace →
+  SIGKILL.
+
+Open Follow-up closure:
+
+- `history/33` D4.4 frame follow-up is closed. `turn/start` ack source is the
+  same-client JSON-RPC response with `result.turn`; `turn/started` remains a
+  notification and is not the injector completion criterion.
+
+New unit tests:
+
+- `tests/unit/adapters/codex-websocket.test.ts`: 7 tests covering initialize
+  success/failure, request/response id matching, notification listener channel,
+  timeout, JSON-RPC error passthrough, and connect failure typed error.
+- `tests/unit/adapters/codex-injector.test.ts`: 3 tests covering active-thread
+  mismatch, ack timeout, and successful D4.4 `turn/start` ack payload.
+- `tests/unit/adapters/codex-runtime.test.ts`: 3 tests covering D2/D4 attach
+  order, WS close hook on dispose, and `injectTurnStart()` delegation.
+
+Verification:
+
+- Red check: `pnpm test tests/unit/adapters/codex-websocket.test.ts` failed
+  before production code with missing module
+  `src/adapters/codex/websocket.js`.
+- Red check: `pnpm test tests/unit/adapters/codex-injector.test.ts` failed
+  before production code with missing module
+  `src/adapters/codex/injector.js`.
+- Red check: `pnpm test tests/unit/adapters/codex-runtime.test.ts` failed
+  before production code because `attachCodexAgentRuntime` was not implemented.
+- Green slice checks:
+  - `pnpm test tests/unit/adapters/codex-websocket.test.ts` — 7 tests passed.
+  - `pnpm test tests/unit/adapters/codex-injector.test.ts` — 3 tests passed.
+  - `pnpm test tests/unit/adapters/codex-runtime.test.ts` — 3 tests passed.
+- Full Round 2 verification:
+  - `pnpm test` — 36 files / 189 tests passed.
+  - `pnpm typecheck` — passed.
+  - `pnpm build` — passed.
+
+Round 3 dependencies:
+
+- Implement D5-A.5 `runtime.dispose()` process cleanup using the already-wired
+  WS close hook, then SIGTERM → 3s grace → SIGKILL.
+- Add daemon RPC integration for `rollbackAgentAttach`, `detachAgent`, and
+  `notifyTuiExited`.
+- Keep MVP invariant: no process group kill, no setsid/`PR_SET_PDEATHSIG`, no
+  periodic healthz, no auto-reconnect, and no TUI heartbeat.

@@ -495,7 +495,7 @@ binding 정상화는 사용자 explicit action 으로만:
 | D2.5 loopback validation mechanism | `net.isIP` + IPv4/IPv6 loopback 검증 vs URL `hostname` whitelist |
 | D5-A.1 startup rollback RPC token plumbing | runtimeId / attachAttemptId 추가 비용 평가 |
 | D5-A.5 `notifyTuiExited` ↔ `detachAgent` 통합 여부 | Phase B Round 1 |
-| D4.4 `turn/start` response vs `turn/started` notification 정확한 frame | spike data 추가 검토 |
+| D4.4 `turn/start` response vs `turn/started` notification 정확한 frame | Closed in `history/34-step-10-phase-b-codex-runtime.history.md` Round 2. Codex CLI 0.132.0 returns same-client JSON-RPC `turn/start` response with `result.turn`; `turn/started` remains a later notification. |
 | D4.5 bounded ack timeout 실제 값 | Open Product Issue #4와 묶음 |
 | D7 returned-id acquisition path | Phase B first verification: aiox WS가 authoritative returned id를 볼 수 있는지 확인 후 broadcast 관찰 / aiox-initiated request / polling / proxy fallback / scope 축소 중 결정 |
 
