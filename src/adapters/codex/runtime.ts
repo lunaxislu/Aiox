@@ -45,6 +45,7 @@ export class CodexAgentRuntime {
   }
 
   dispose(): void {
+    // TODO(round-3-D5-A.5): WS close -> SIGTERM -> 3s grace -> SIGKILL.
     this.state = "disposed";
   }
 
