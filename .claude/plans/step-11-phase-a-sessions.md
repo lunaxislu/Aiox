@@ -114,14 +114,32 @@ Step 11 (Claude channel adapter skeleton) Phase A 진입 직전, Claude(클로�
 ### Goal
 `spikes/claude-channel-registration-poc/` 디렉토리에 token-based registration handshake spike 작성.
 
-### My deliverable
-- `spikes/claude-channel-registration-poc/server.ts` — channel MCP server + HTTP ingress + startup 시 daemon registration call (token + agentName + endpoint URL).
-- `spikes/claude-channel-registration-poc/daemon.ts` — fake daemon HTTP server. `/register` endpoint (token verify), `/push` 호출 헬퍼 (Session 3 시나리오 S3에서 사용).
-- `spikes/claude-channel-registration-poc/README.md` — S1~S5 수동 실행 가이드. 명령/env/판정 조건/예상 stderr log.
-- (선택) `spikes/claude-channel-registration-poc/server.test.ts` — registration handshake unit test (token verify path만, Claude CLI는 모킹 X).
+### My deliverable — 사용자 directive (2026-05-22)
+
+**작업 순서**: `daemon.ts` → `server.ts` → `README.md` → (선택) 테스트.
+
+1. **`daemon.ts` 먼저**
+   - fake daemon의 `/register`, pending token, memory registry, `/push` helper가 spike의 판정 기준.
+   - token mismatch, registration race, push timeout/dead endpoint 모두 daemon 측 관찰 로그가 중심.
+2. **`server.ts`**
+   - 기존 `spikes/claude-channel-node-poc/server.ts` 패턴 재사용.
+   - ephemeral ingress open → daemon register POST → `/send`를 `notifications/claude/channel`로 변환.
+   - token/env validation은 여기서 명확히.
+3. **`README.md`**
+   - S1/S2/S2.5/S3/S4/S5/S6 각각 명령/env/예상 로그/PASS 조건.
+   - Codex Round 4 smoke (`docs/aiox/round-4-tui-smoke-check.md`)처럼 "same terminal exit 측정"과 "leftover/process observation"에 해당하는 관찰 포인트를 명확히.
+4. **(선택) 테스트**
+   - 하려면 `daemon.ts`의 token verify / memory registry 정도만 unit test.
+   - Claude CLI나 MCP stdio는 테스트에서 모킹하지 않아도 됨.
+
+### Session 2 내부 진행 방식
+
+- 파일 하나씩 완성 후 diff 보여주기.
+- 각 파일마다 사용자 confirm 받고 다음 파일 진행.
+- Session 2 commit은 spike 코드 + README + (선택) 테스트까지 **한 번에 묶음**. 내부 진행은 잘라가되 commit은 단일.
 
 ### User action
-- 코드 읽고 token handshake / env 전달 / README 시나리오 명세 confirm. 실제 실행은 Session 3.
+- 파일별 diff 검토 + confirm. 실제 실행은 Session 3.
 
 ### Commit message
 ```
@@ -349,6 +367,7 @@ plan checklist / PRD / 메모리 drift를 동기화하고 Phase B 위임 prompt 
 - `history/35` closeout 섹션 (verification baseline 갱신 — test 변경 없으면 그대로, 변경 있으면 갱신).
 - 메모리 [[aiox-step-progress]] Step 11 Phase A closed 한 줄 갱신.
 - Phase B 위임 prompt 윤곽 (코덱스/클로드 누가 작성할지 + scope + Round 1 surface).
+- **본 scratch 파일 `.claude/plans/step-11-phase-a-sessions.md` `git rm` 삭제** — Session 5 closeout commit에 포함. 흡수 완료 확인 후 진행 (아래 §흡수 방향 체크리스트 참조).
 
 ### User action
 - 갱신된 plan/PRD/메모리 confirm.
@@ -414,7 +433,20 @@ Step 11 Phase A closeout 후 plan/PRD/메모리 drift가 없는지, Phase B Roun
 
 ## 흡수 방향 (Phase A 종료 시)
 
-- 본 파일의 결정 wording → `history/35` Decision 섹션으로 흡수 완료된 상태여야 함.
-- 본 파일의 spike 시나리오 명세 → `spikes/claude-channel-registration-poc/README.md`로 흡수 완료된 상태여야 함.
-- 본 파일의 session-by-session plan → 흡수 후 archive 또는 삭제 (AGENTS.md scratch 원칙).
-- Codex review prompt 5개 → 본 파일의 유일한 unique 자산. Phase B에서 재사용할 가능성이 있으면 패턴만 [[aiox-collaboration-workflow]]에 흡수 후 본 파일은 archive.
+### 삭제 invariant
+
+**Phase A 5 세션 모두 완료 시 본 scratch 파일 (`.claude/plans/step-11-phase-a-sessions.md`)을 `git rm`으로 삭제한다.** AGENTS.md scratch 원칙 — "권위 문서가 아니며, 작업이 끝나면 필요한 결정/검증/결과만 `history/`와 `plan/`으로 흡수한다." 삭제는 Session 5 closeout commit에 포함.
+
+### 흡수 체크리스트 (삭제 전 확인)
+
+- [ ] 본 파일의 결정 wording → `history/35` Decision 섹션으로 흡수 완료.
+- [ ] 본 파일의 spike 시나리오 명세 (S1~S6) → `spikes/claude-channel-registration-poc/README.md`로 흡수 완료.
+- [ ] 본 파일의 사용자 directive (Session 2 작업 순서 등) → 해당 산출물 (코드/README) 안에 흡수 완료 또는 history/35 review log에 보존.
+- [ ] Codex review prompt 5개 → Phase B에서 재사용 가능한 패턴이면 [[aiox-collaboration-workflow]]에 흡수. cold-start prompt 형식 자체를 패턴화할 가치 있음.
+- [ ] Session 1~5 운영 노트 (commit hash 등) → `history/35` §Review log + §Verification에 모두 박혀 있는지 확인.
+
+체크리스트 모두 done이면 Session 5 closeout commit에서:
+```
+git rm .claude/plans/step-11-phase-a-sessions.md
+```
+포함해 commit.
