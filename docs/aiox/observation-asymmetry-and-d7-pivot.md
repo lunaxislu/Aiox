@@ -39,30 +39,33 @@ D7 위반을 해결하기 위한 가장 이상적인 방법은 App Server가 "TU
 
 결론적으로, App Server 자체적인 기능 확장을 통해 Daemon에게 권위 있는(Authoritative) 응답을 전달하는 것은 현재 불가능하므로, 아키텍처 수준의 구조 변경이 불가피합니다.
 
-## 4. 해결 전략: Option D - Scope Reduction (제어권 일원화)
+## 4. 해결 전략: Option D - Scope Reduction (aiox-originated ops 한정)
 
-현재 Codex App Server가 요청 응답을 다른 클라이언트에게 전달하는 Hook이나 Subscription API를 제공하지 않으므로, 아키텍처를 다음과 같이 전환한다.
+현재 Codex App Server가 요청 응답을 다른 클라이언트에게 전달하는 Hook이나 Subscription API를 제공하지 않으므로, Phase B Round 4 D7 replacement scope를 다음과 같이 축소한다.
 
 ### 핵심 설계
-TUI가 세션 상태를 직접 변경하는 권한을 축소하고, 모든 결정론적 명령을 **Daemon을 통해 하달**하도록 변경한다.
+TUI는 그대로 둔다. Codex CLI는 aiox 통제 밖이며, slash-command를 hijack하거나 우회하지 않는다.
+
+대신 daemon이 직접 요청을 보내고 같은 operation의 success response를 받을 수 있는 **aiox-originated authoritative operations**에 대해서만 binding replacement를 수행한다.
 
 ```text
-[ TUI ] --(Command)--> [ Daemon ] --(Request)--> [ App Server ]
-                          |                         |
-                          +<-------(Response)-------+
-                          |
-                (명시적 근거 확보 - D7 충족)
+[ Daemon ] --(programmatic thread/start, turn/start, ...)--> [ App Server ]
+    |                                                            |
+    +<---------------- same-client success response -------------+
+
+(명시적 request/response 근거 확보 - D7 충족)
 ```
 
 ### 변경 사항
-1.  **TUI 제어권 축소:** TUI의 slash-command(예: `/rebind`, `/new`)가 App Server에 직접 명령을 내리지 않고 Daemon API를 호출하도록 변경한다.
-2.  **Daemon API 확장:** 세션 교체 및 런타임 재구성을 위한 전용 RPC 메서드(`rebindAgent` 등)를 추가한다.
-3.  **결정론적 상태 관리:** Daemon이 Request와 Response를 모두 소유함으로써, 상태 변경의 "이유"와 "결과"를 완벽하게 관리한다.
+1.  **TUI-originated slash-command는 binding을 변경하지 않음:** `/clear`, `/new`, `/fork`는 사용자가 계속 실행할 수 있지만, daemon이 같은 client의 returned id를 볼 수 없으므로 MVP에서는 active binding을 갱신하지 않는다.
+2.  **aiox-owned operation만 replacement 허용:** programmatic `thread/start`와 이후 `sendMessage` / `turn/start`처럼 daemon이 request와 response를 모두 소유하는 작업만 replacement 근거로 사용한다.
+3.  **Daemon RPC 명칭 정합:** Phase A에 박힌 RPC는 `rollbackAgentAttach`, `detachAgent`, `notifyTuiExited`다. `rebindAgent`는 결정된 명칭이 아니므로 사용하지 않는다.
+4.  **Post-MVP revival path:** TUI-originated replacement가 필요해지면 `history/27` / `history/32`의 transparent proxy 근거를 재도입하거나, future Codex authoritative callback/read API를 사용한다.
 
-## 4. 기대 효과
-*   **D7 원칙 완벽 준수:** 모든 세션 교체에 명확한 소유권과 근거가 부여된다.
-*   **상태 일관성 보장:** 명령의 원천이 단일화되어 레이스 컨디션 및 상태 불일치 위험이 제거된다.
-*   **시스템 신뢰도 향상:** 추측 기반 동기화가 아닌 확정된 데이터 기반으로 런타임이 관리된다.
+## 5. 기대 효과
+*   **daemon-owned authoritative ops에 대해 D7 준수:** daemon이 같은 operation의 성공 응답을 직접 받은 경우에만 binding을 교체한다.
+*   **상태 일관성 보장:** notification-only 추측으로 active binding을 바꾸지 않아 관측 비대칭으로 인한 불일치를 피한다.
+*   **시스템 신뢰도 향상:** MVP는 direct topology를 유지하고, TUI-originated rebind는 별도 Open Product Issue로 분리한다.
 
 ---
 *참조: `history/34-step-10-phase-b-codex-runtime.history.md`*
