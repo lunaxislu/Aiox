@@ -9,6 +9,8 @@ export const eventTypes = [
   "message_created",
   "delivery_queued",
   "delivery_status_changed",
+  "agent_runtime_failed",
+  "agent_graceful_detach",
   "late_reply",
 ] as const;
 
