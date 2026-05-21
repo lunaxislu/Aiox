@@ -74,7 +74,7 @@ Step 11 (Claude channel adapter skeleton) Phase A 진입 직전, Claude(클로�
 6. `plan/mvp-implementation-checklist.md` Step 11 sub-task.
 
 # Scope
-- 변경 파일: `history/35-...` (단일 파일).
+- 변경 파일: `history/35-step-11-phase-a-claude-channel-decisions.history.md` (신규), `.claude/plans/step-11-phase-a-sessions.md` (신규 scratch).
 - Commit: `<HASH>` (실제 hash는 prompt 전달 시 채워짐).
 
 # Critical review focus
