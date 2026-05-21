@@ -490,3 +490,141 @@ Remaining Round 3 dependencies: D5-A.5 runtime dispose cleanup; daemon RPCs
 `ws_dropped` typed reason wiring; Round 4 `codex_binding_uncertain` mismatch
 swap; notification listener consumer decision; MVP no-zombie-defense/no-polling/
 no-reconnect invariants.
+
+## Round 3 — D5-A lifecycle + daemon RPC
+
+Status: in progress.
+
+Round 3 scope:
+
+- Implement D5-A.5 `CodexAgentRuntime.dispose()` cleanup:
+  WS close → SIGTERM app-server → 3s grace → SIGKILL.
+- Add daemon RPCs `rollbackAgentAttach`, `detachAgent`, and
+  `notifyTuiExited`.
+- Add D5-A lifecycle events `agent_runtime_failed` and
+  `agent_graceful_detach`.
+- Wire D5-A.3 `ws_dropped` as a Codex-prefixed typed failure reason.
+- Add listen-only WS/process lifecycle listeners after attach-ready. No
+  periodic healthz poll and no reconnect.
+
+### Round 3 entry decisions
+
+#### OF-1 — `rollbackAgentAttach` token plumbing
+
+Decision: Option A. Keep the MVP RPC surface `agentName`-only and defer
+`attachAttemptId` / `runtimeId` plumbing.
+
+Trade-off:
+
+- Lowest Round 3 implementation cost and matches the D5-A MVP surface.
+- Leaves a known race window: a stale CLI rollback during rapid reattach could
+  target the newer runtime by `agentName`.
+
+Recommendation rationale:
+
+- Round 3 already carries lifecycle cleanup, daemon RPCs, lifecycle events, and
+  typed WS drop wiring.
+- `history/33` explicitly permits agentName-only MVP and leaves token plumbing
+  open when the cost is justified.
+- The race should be documented as a follow-up instead of widening the current
+  behavioral surface.
+
+Reversibility:
+
+- High. Add an optional `attachAttemptId` payload later and have the daemon
+  match it before cleanup.
+
+Deferrability:
+
+- Deferrable. Until token plumbing lands, rapid reattach rollback remains a
+  known risk.
+
+#### OF-2 — `notifyTuiExited` and `detachAgent` integration
+
+Decision: Option A. Keep separate RPCs and share the internal cleanup path.
+Record the cleanup trigger as `explicit_detach` or `tui_exit` in event data.
+
+Trade-off:
+
+- Keeps the public RPC surface at three methods.
+- Preserves the semantic difference between a user-requested detach and a
+  CLI-observed TUI exit.
+
+Recommendation rationale:
+
+- D5-A.5 separates daemon-owned app-server cleanup from CLI-owned TUI
+  lifecycle.
+- Separate RPC names make that boundary explicit while still avoiding duplicate
+  cleanup code.
+
+Reversibility:
+
+- High. A later client/API layer can wrap both triggers into one command shape
+  without changing the internal lifecycle model.
+
+Deferrability:
+
+- Low. The RPC type shape is being added in Round 3, so the boundary should be
+  locked now.
+
+#### OF-3 — first notification listener consumer
+
+Decision: Option A. Use `remoteControl/status/changed` as a diagnostic-only
+notification sink for lifecycle observability.
+
+Trade-off:
+
+- Gives the Round 2 notification listener a real consumer.
+- Requires a clear boundary that notifications are diagnostic context only and
+  not D7 binding authority.
+
+Recommendation rationale:
+
+- D7 authority remains same-operation JSON-RPC response only.
+- A diagnostic sink helps lifecycle investigation without implementing polling,
+  reconnect, or notification-derived binding.
+
+Reversibility:
+
+- High. The diagnostic sink can be removed or reused as Round 4 corroborating
+  context.
+
+Deferrability:
+
+- Deferrable, but deferral leaves the notification listener as reserved surface
+  for another round.
+
+#### Typed WS drop reason
+
+Decision: use `codex_app_server_ws_dropped`.
+
+Rationale:
+
+- Matches the existing Codex-prefixed reason family:
+  `codex_app_server_ws_connect_failed` and
+  `codex_app_server_ws_initialize_failed`.
+- Distinguishes post-connect WebSocket loss from connect/initialize failures.
+
+### Round 3 execution plan
+
+1. Red/green `agent_runtime_failed` and `agent_graceful_detach` event type
+   expansion.
+2. Red/green `CodexAgentRuntime.dispose()` idempotent cleanup with
+   SIGTERM → 3s grace → SIGKILL.
+3. Red/green `codex_app_server_ws_dropped` pending-request rejection and
+   injector pass-through.
+4. Red/green daemon RPCs:
+   `rollbackAgentAttach`, `detachAgent`, and `notifyTuiExited`.
+5. Red/green listen-only process/WS lifecycle event emission after attach-ready,
+   including diagnostic-only notification context.
+6. Closeout verification: `pnpm test`, `pnpm typecheck`, `pnpm build`; then
+   update this history file and `plan/mvp-implementation-checklist.md`.
+
+Round 3 invariant:
+
+```text
+Daemon manages exactly one direct child per Codex agent: the app-server.
+Cleanup is WS close -> SIGTERM -> 3s grace -> SIGKILL. No process group kill,
+no setsid, no PR_SET_PDEATHSIG, no periodic healthz, no auto-reconnect,
+no TUI heartbeat. TUI lifecycle is owned by the CLI process scope.
+```
