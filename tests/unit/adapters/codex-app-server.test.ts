@@ -82,6 +82,60 @@ describe("Codex app-server launch helpers", () => {
     expect(() => parseCodexAppServerBanner(output)).toThrow(/loopback/i);
   });
 
+  it("rejects app-server banners with an invalid endpoint protocol", () => {
+    const output = createCodexAppServerOutputBuffer({ capacityBytes: 1024 });
+
+    appendCodexAppServerOutput(
+      output,
+      "stderr",
+      [
+        "listening on: http://127.0.0.1:51992",
+        "readyz: http://127.0.0.1:51992/readyz",
+        "healthz: http://127.0.0.1:51992/healthz",
+      ].join("\n"),
+    );
+
+    expect(() => parseCodexAppServerBanner(output)).toThrow(
+      /app-server endpoint must use ws:/i,
+    );
+  });
+
+  it("rejects app-server banners with an invalid readyz pathname", () => {
+    const output = createCodexAppServerOutputBuffer({ capacityBytes: 1024 });
+
+    appendCodexAppServerOutput(
+      output,
+      "stderr",
+      [
+        "listening on: ws://127.0.0.1:51992",
+        "readyz: http://127.0.0.1:51992/something-else",
+        "healthz: http://127.0.0.1:51992/healthz",
+      ].join("\n"),
+    );
+
+    expect(() => parseCodexAppServerBanner(output)).toThrow(
+      /readyz URL must use \/readyz/i,
+    );
+  });
+
+  it("rejects app-server banners with an invalid healthz pathname", () => {
+    const output = createCodexAppServerOutputBuffer({ capacityBytes: 1024 });
+
+    appendCodexAppServerOutput(
+      output,
+      "stderr",
+      [
+        "listening on: ws://127.0.0.1:51992",
+        "readyz: http://127.0.0.1:51992/readyz",
+        "healthz: http://127.0.0.1:51992/something-else",
+      ].join("\n"),
+    );
+
+    expect(() => parseCodexAppServerBanner(output)).toThrow(
+      /healthz URL must use \/healthz/i,
+    );
+  });
+
   it("accepts IPv6 loopback app-server banners", () => {
     const output = createCodexAppServerOutputBuffer({ capacityBytes: 1024 });
 
