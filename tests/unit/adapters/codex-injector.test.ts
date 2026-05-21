@@ -18,7 +18,7 @@ describe("Codex turn/start injector", () => {
       }),
     ).resolves.toMatchObject({
       ok: false,
-      reason: "adapter_inject_failed",
+      reason: "codex_binding_uncertain",
       message: expect.stringContaining("thread-other"),
     });
     expect(runtime.requests).toEqual([]);
@@ -65,6 +65,50 @@ describe("Codex turn/start injector", () => {
     });
   });
 
+  it("returns binding uncertain when the active thread changes before ack validation", async () => {
+    const runtime = fakeRuntime({
+      activeThreadId: "thread-1",
+      resolveWith: {
+        turn: {
+          id: "turn-1",
+          status: "inProgress",
+        },
+      },
+      activeThreadIdAfterRequest: "thread-2",
+    });
+
+    await expect(
+      injectTurnStart(runtime, {
+        threadId: "thread-1",
+        input: "hello",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "codex_binding_uncertain",
+      message: expect.stringContaining("thread-2"),
+    });
+  });
+
+  it("passes through typed binding uncertain failures from the websocket layer", async () => {
+    const runtime = fakeRuntime({
+      activeThreadId: "thread-1",
+      rejectWith: Object.assign(new Error("binding mismatch"), {
+        code: "codex_binding_uncertain",
+      }),
+    });
+
+    await expect(
+      injectTurnStart(runtime, {
+        threadId: "thread-1",
+        input: "hello",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "codex_binding_uncertain",
+      message: "binding mismatch",
+    });
+  });
+
   it("returns success when turn/start is acknowledged for the active thread", async () => {
     const runtime = fakeRuntime({
       activeThreadId: "thread-1",
@@ -101,6 +145,7 @@ describe("Codex turn/start injector", () => {
     activeThreadId: string | null;
     resolveWith?: unknown;
     rejectWith?: Error;
+    activeThreadIdAfterRequest?: string | null;
   }): CodexTurnStartRuntime & {
     requests: Array<{
       method: string;
@@ -115,13 +160,19 @@ describe("Codex turn/start injector", () => {
     }> = [];
 
     return {
-      activeThreadId: options.activeThreadId,
+      get activeThreadId() {
+        return options.activeThreadId;
+      },
       requests,
       requestCodex(method, params, requestOptions) {
         requests.push({ method, params, options: requestOptions });
 
         if (options.rejectWith) {
           return Promise.reject(options.rejectWith);
+        }
+
+        if ("activeThreadIdAfterRequest" in options) {
+          options.activeThreadId = options.activeThreadIdAfterRequest ?? null;
         }
 
         return Promise.resolve(options.resolveWith);

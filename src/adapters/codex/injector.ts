@@ -26,7 +26,7 @@ export async function injectTurnStart(
   if (options.threadId !== runtime.activeThreadId) {
     return {
       ok: false,
-      reason: "adapter_inject_failed",
+      reason: "codex_binding_uncertain",
       message: `Codex turn/start thread mismatch: requested=${options.threadId} active=${runtime.activeThreadId ?? "null"}`,
     };
   }
@@ -52,7 +52,7 @@ export async function injectTurnStart(
     if (options.threadId !== runtime.activeThreadId) {
       return {
         ok: false,
-        reason: "adapter_inject_failed",
+        reason: "codex_binding_uncertain",
         message: `Codex turn/start ack thread mismatch: requested=${options.threadId} active=${runtime.activeThreadId ?? "null"}`,
       };
     }
@@ -89,7 +89,9 @@ function isCodexAdapterReason(
   code:
     | "codex_app_server_ws_dropped"
     | "codex_turn_start_timeout"
-    | "codex_jsonrpc_error";
+    | "codex_jsonrpc_error"
+    | "codex_resume_failed"
+    | "codex_binding_uncertain";
 } {
   return (
     typeof error === "object" &&
@@ -97,6 +99,8 @@ function isCodexAdapterReason(
     "code" in error &&
     (error.code === "codex_app_server_ws_dropped" ||
       error.code === "codex_turn_start_timeout" ||
-      error.code === "codex_jsonrpc_error")
+      error.code === "codex_jsonrpc_error" ||
+      error.code === "codex_resume_failed" ||
+      error.code === "codex_binding_uncertain")
   );
 }
