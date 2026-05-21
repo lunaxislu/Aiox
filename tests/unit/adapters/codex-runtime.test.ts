@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
+import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   attachCodexAgentRuntime,
@@ -110,10 +111,74 @@ describe("Codex agent runtime", () => {
     expect(events).toContain("request:turn/start");
   });
 
-  function fakeWebSocket(events: string[]): CodexAgentRuntimeWebSocketClient {
+  it("cleans up the launched app-server when WS connect fails", async () => {
+    const child = fakeChild();
+    const error = Object.assign(new Error("connect failed"), {
+      code: "codex_app_server_ws_connect_failed",
+    });
+
+    await expect(
+      attachCodexAgentRuntime({
+        agentName: "codex-one",
+        activeThreadId: "thread-1",
+        launchAppServer: async () => fakeAppServer(child),
+        connectWebSocket: async () => {
+          throw error;
+        },
+      }),
+    ).rejects.toBe(error);
+
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+  });
+
+  it("closes WS and cleans up the launched app-server when initialize fails", async () => {
+    const child = fakeChild();
+    const events: string[] = [];
+    const error = Object.assign(new Error("initialize failed"), {
+      code: "codex_app_server_ws_initialize_failed",
+    });
+    const websocket = fakeWebSocket(events, { initializeError: error });
+
+    await expect(
+      attachCodexAgentRuntime({
+        agentName: "codex-one",
+        activeThreadId: "thread-1",
+        launchAppServer: async () => fakeAppServer(child),
+        connectWebSocket: async () => websocket,
+      }),
+    ).rejects.toBe(error);
+
+    expect(events).toEqual(["initialize", "close"]);
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+  });
+
+  it("passes package.json version to the websocket initialize client", async () => {
+    const packageVersion = JSON.parse(readFileSync("package.json", "utf8")).version;
+    const seenVersions: string[] = [];
+
+    await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: "thread-1",
+      launchAppServer: async () => fakeAppServer(fakeChild()),
+      connectWebSocket: async (_endpoint, clientVersion) => {
+        seenVersions.push(clientVersion);
+        return fakeWebSocket([]);
+      },
+    });
+
+    expect(seenVersions).toEqual([packageVersion]);
+  });
+
+  function fakeWebSocket(
+    events: string[],
+    options: { initializeError?: Error } = {},
+  ): CodexAgentRuntimeWebSocketClient {
     return {
       initialize() {
         events.push("initialize");
+        if (options.initializeError) {
+          return Promise.reject(options.initializeError);
+        }
         return Promise.resolve({
           userAgent: "aiox/1.0.0",
           codexHome: "/tmp/codex",
@@ -142,7 +207,23 @@ describe("Codex agent runtime", () => {
       pid: 1234,
       exitCode: null,
       killed: false,
+      kill: vi.fn(() => true),
     });
     return child;
+  }
+
+  function fakeAppServer(child: ChildProcess) {
+    return {
+      child,
+      endpoint: {
+        endpoint: new URL("ws://127.0.0.1:54321"),
+        readyz: new URL("http://127.0.0.1:54321/readyz"),
+        healthz: new URL("http://127.0.0.1:54321/healthz"),
+      },
+      output: {
+        stdout: { capacityBytes: 10, text: "" },
+        stderr: { capacityBytes: 10, text: "" },
+      },
+    };
   }
 });

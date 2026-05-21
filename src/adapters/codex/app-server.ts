@@ -169,6 +169,16 @@ export async function waitForCodexReadyz(
   }
 }
 
+export function disposeCodexAppServerOnAttachFailure(
+  appServer: CodexAppServerProcess,
+): void {
+  if (appServer.child.killed || appServer.child.exitCode !== null) {
+    return;
+  }
+
+  appServer.child.kill("SIGTERM");
+}
+
 function findBannerUrl(lines: readonly string[], token: string): URL {
   const prefix = `${token}:`;
   const line = lines.find((candidate) =>

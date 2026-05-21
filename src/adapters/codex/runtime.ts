@@ -1,4 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, parse } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { CodexAppServerProcess } from "./app-server.js";
+import { disposeCodexAppServerOnAttachFailure } from "./app-server.js";
 import type { AdapterInjectResult } from "../contract.js";
 import { launchCodexAppServer } from "./launcher.js";
 import {
@@ -42,7 +47,10 @@ export interface AttachCodexAgentRuntimeOptions {
   agentName: string;
   activeThreadId: string | null;
   launchAppServer?: () => Promise<CodexAppServerProcess>;
-  connectWebSocket?: (endpoint: URL) => Promise<CodexAgentRuntimeWebSocketClient>;
+  connectWebSocket?: (
+    endpoint: URL,
+    clientVersion: string,
+  ) => Promise<CodexAgentRuntimeWebSocketClient>;
 }
 
 export class CodexAgentRuntime {
@@ -111,15 +119,23 @@ export class CodexAgentRuntime {
 export async function attachCodexAgentRuntime(
   options: AttachCodexAgentRuntimeOptions,
 ): Promise<CodexAgentRuntime> {
+  const clientVersion = readPackageVersion();
   const appServer = await (options.launchAppServer ?? launchCodexAppServer)();
-  const webSocket = await (options.connectWebSocket
-    ? options.connectWebSocket(appServer.endpoint.endpoint)
-    : connectCodexAppServerWebSocket({ endpoint: appServer.endpoint.endpoint }));
+  let webSocket: CodexAgentRuntimeWebSocketClient | null = null;
 
   try {
+    webSocket = await (options.connectWebSocket
+      ? options.connectWebSocket(appServer.endpoint.endpoint, clientVersion)
+      : connectCodexAppServerWebSocket({
+          endpoint: appServer.endpoint.endpoint,
+          clientVersion,
+        }));
     await webSocket.initialize();
   } catch (error) {
-    webSocket.close();
+    if (webSocket) {
+      closeWebSocketOnAttachFailure(webSocket);
+    }
+    disposeAppServerOnAttachFailure(appServer);
     throw error;
   }
 
@@ -132,4 +148,53 @@ export async function attachCodexAgentRuntime(
   runtime.markReady();
 
   return runtime;
+}
+
+function closeWebSocketOnAttachFailure(
+  webSocket: CodexAgentRuntimeWebSocketClient,
+): void {
+  try {
+    webSocket.close();
+  } catch {
+    // Preserve the original attach failure.
+  }
+}
+
+function disposeAppServerOnAttachFailure(appServer: CodexAppServerProcess): void {
+  try {
+    disposeCodexAppServerOnAttachFailure(appServer);
+  } catch {
+    // Preserve the original attach failure.
+  }
+}
+
+function readPackageVersion(): string {
+  const packageJsonPath = findPackageJson(dirname(fileURLToPath(import.meta.url)));
+  const parsed = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+    version?: unknown;
+  };
+
+  if (typeof parsed.version !== "string" || parsed.version.length === 0) {
+    throw new Error(`package.json is missing a valid version: ${packageJsonPath}`);
+  }
+
+  return parsed.version;
+}
+
+function findPackageJson(startDirectory: string): string {
+  let directory = startDirectory;
+
+  while (true) {
+    const candidate = join(directory, "package.json");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+
+    const parent = dirname(directory);
+    if (parent === directory || directory === parse(directory).root) {
+      throw new Error("Unable to locate package.json for Codex initialize client version");
+    }
+
+    directory = parent;
+  }
 }
