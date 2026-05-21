@@ -13,7 +13,7 @@
 > Step 2 cleanup + Step 3 transaction boundary context:
 > `history/16-step-2-sqlite-repository-cleanup.history.md`.
 >
-> Last updated: 2026-05-20
+> Last updated: 2026-05-21
 
 ---
 
@@ -776,6 +776,15 @@ Round 2 D4 protocol surface closed on 2026-05-21:
 - [x] Runtime attach flow extended to launch app-server, connect WS,
   initialize, and mark ready. `dispose()` closes WS now; process cleanup remains
   Round 3 D5-A.5.
+- [x] Round 2-fix attach atomicity and D4.7 version alignment:
+  - Commit: `d1e21cb behavior: cleanup codex app-server on attach failure`.
+  - WS connect failure and initialize failure before attach-ready now cleanup the
+    launched app-server with `SIGTERM` while preserving the original typed error.
+  - initialize sends `clientInfo.version` from `package.json.version`.
+  - Gemini D7 learning record corrected in
+    `01c4e00 docs: correct d7 option d learning record`.
+  - Verification: `pnpm test tests/unit/adapters/codex-runtime.test.ts`,
+    `pnpm test` (36 files / 192 tests), `pnpm typecheck`, `pnpm build`.
 
 ---
 

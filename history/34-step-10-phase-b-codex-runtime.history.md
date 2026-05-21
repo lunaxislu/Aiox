@@ -427,5 +427,66 @@ Round 3 dependencies:
   WS close hook, then SIGTERM → 3s grace → SIGKILL.
 - Add daemon RPC integration for `rollbackAgentAttach`, `detachAgent`, and
   `notifyTuiExited`.
+- Wire D5-A.3 `ws_dropped` typed reason: replace the current pending-request
+  generic close error in `websocket.ts` with a Codex-prefixed typed error, widen
+  `AdapterInjectFailureReason`, and let the injector pass it through.
+- Swap injector thread mismatch failures from generic `adapter_inject_failed` to
+  D7 `codex_binding_uncertain` during Round 4 replacement work, and emit the
+  `codex_binding_uncertain_observed` diagnostic event.
+- Decide the first consumer for `websocket.ts` notification listeners before
+  Round 3/4 uses them: D5-A.3 `remoteControl/status/changed` diagnostics, D7
+  corroborating context, or future log surface.
 - Keep MVP invariant: no process group kill, no setsid/`PR_SET_PDEATHSIG`, no
   periodic healthz, no auto-reconnect, and no TUI heartbeat.
+
+## Round 2-fix — attach atomicity and alignment
+
+Round 2-fix commits:
+
+- `d1e21cb` — behavior: cleanup codex app-server on attach failure.
+- `01c4e00` — docs: correct d7 option d learning record.
+- This closeout commit — docs: record codex round 2 fix closeout.
+
+Changed files:
+
+- `src/adapters/codex/app-server.ts`
+- `src/adapters/codex/runtime.ts`
+- `tests/unit/adapters/codex-runtime.test.ts`
+- `docs/aiox/observation-asymmetry-and-d7-pivot.md`
+- `history/34-step-10-phase-b-codex-runtime.history.md`
+- `plan/mvp-implementation-checklist.md`
+
+F3 decision: Option α. `attachCodexAgentRuntime` reads `package.json.version`
+before launching the app-server and passes it as the initialize client version.
+This preserves the Round 2 D4.7 default (`"<package.version>"`) and avoids
+launching a process if package metadata is invalid.
+
+F1 regression coverage:
+
+- WS connect failure after app-server launch rethrows the original
+  `codex_app_server_ws_connect_failed`-typed error and calls child
+  `kill("SIGTERM")`.
+- initialize failure rethrows the original
+  `codex_app_server_ws_initialize_failed`-typed error, closes the WS client, and
+  calls child `kill("SIGTERM")`.
+- package-version forwarding is covered by asserting the runtime passes
+  `package.json.version` to the WebSocket connector.
+
+Verification:
+
+- Red check: `pnpm test tests/unit/adapters/codex-runtime.test.ts` failed before
+  production changes with 3 failures: missing app-server cleanup on WS connect
+  failure, missing cleanup on initialize failure, and missing package-version
+  forwarding.
+- Green slice: `pnpm test tests/unit/adapters/codex-runtime.test.ts` — 6 tests
+  passed.
+- Full verification:
+  - `pnpm test` — 36 files / 192 tests passed.
+  - `pnpm typecheck` — passed.
+  - `pnpm build` — passed.
+
+Remaining Round 3 dependencies: D5-A.5 runtime dispose cleanup; daemon RPCs
+`rollbackAgentAttach`, `detachAgent`, and `notifyTuiExited`; D5-A.3
+`ws_dropped` typed reason wiring; Round 4 `codex_binding_uncertain` mismatch
+swap; notification listener consumer decision; MVP no-zombie-defense/no-polling/
+no-reconnect invariants.
