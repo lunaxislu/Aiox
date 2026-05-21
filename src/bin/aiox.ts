@@ -10,6 +10,10 @@ import { invokeParsedCommand, type InvocationRuntime } from "../cli/invocation.j
 import { parseCli } from "../cli/parse.js";
 import { createDaemonServer, type DaemonServerHandle } from "../daemon/server.js";
 import {
+  productionAttachCodexRuntime,
+  type AttachCodexRuntime,
+} from "../daemon/state.js";
+import {
   createDaemonSocketClient,
   createDaemonSocketServer,
   type DaemonSocketServerHandle,
@@ -53,6 +57,7 @@ export async function runAioxCli(
 
 export interface CreateSocketRuntimeOptions {
   socketPath?: string;
+  attachCodexRuntime?: AttachCodexRuntime;
 }
 
 export function createSocketRuntime(
@@ -65,6 +70,7 @@ export function createSocketRuntime(
     db,
     createId: createSequentialId,
     now: () => new Date().toISOString(),
+    attachCodexRuntime: options.attachCodexRuntime ?? productionAttachCodexRuntime,
   });
   const socketPath = options.socketPath ?? createDefaultSocketPath();
   let daemonHandle: DaemonServerHandle | null = null;
@@ -152,6 +158,7 @@ export function createInProcessRuntime(): InvocationRuntime {
     db,
     createId: createSequentialId,
     now: () => new Date().toISOString(),
+    attachCodexRuntime: productionAttachCodexRuntime,
   });
   let handle: DaemonServerHandle | null = null;
 

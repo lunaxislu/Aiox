@@ -20,6 +20,8 @@ import {
   type CodexJsonRpcRequestOptions,
 } from "./websocket.js";
 
+type CodexThreadOperation = "thread/start" | "thread/resume";
+
 export type CodexAgentRuntimeState = "starting" | "ready" | "failed" | "disposed";
 
 export type CodexAgentRuntimeFailureReason =
@@ -103,6 +105,10 @@ export class CodexAgentRuntime {
     return this.#activeThreadId;
   }
 
+  get endpoint(): URL {
+    return this.appServer.endpoint.endpoint;
+  }
+
   markReady(): void {
     if (this.state !== "starting") {
       return;
@@ -155,6 +161,29 @@ export class CodexAgentRuntime {
     return this.webSocket.request(method, params, options);
   }
 
+  async startThread(): Promise<string | null> {
+    const result = await this.requestCodex("thread/start", {});
+    return this.rebindFromThreadOperation(result, "thread/start");
+  }
+
+  async resumeThread(threadId: string): Promise<string | null> {
+    const result = await this.requestCodex("thread/resume", { threadId });
+    const returnedThreadId = extractThreadId(result);
+
+    if (returnedThreadId !== threadId) {
+      throw Object.assign(
+        new Error(
+          `Codex resume returned mismatched thread id: requested=${threadId} returned=${returnedThreadId ?? "null"}`,
+        ),
+        {
+          code: "codex_resume_failed",
+        },
+      );
+    }
+
+    return this.rebindFromThreadOperation(result, "thread/resume");
+  }
+
   injectTurnStart(options: InjectTurnStartOptions): Promise<AdapterInjectResult> {
     return injectTurnStart(this, options);
   }
@@ -191,6 +220,21 @@ export class CodexAgentRuntime {
         this.#latestDiagnosticNotification = notification;
       }
     });
+  }
+
+  private rebindFromThreadOperation(
+    result: unknown,
+    operation: CodexThreadOperation,
+  ): string | null {
+    const nextThreadId = extractThreadId(result);
+    if (!nextThreadId) {
+      throw Object.assign(new Error(`Codex ${operation} did not return a thread id`), {
+        code: operation === "thread/resume" ? "codex_resume_failed" : "codex_binding_uncertain",
+      });
+    }
+
+    this.#activeThreadId = nextThreadId;
+    return nextThreadId;
   }
 }
 
@@ -266,6 +310,31 @@ function readPackageVersion(): string {
   }
 
   return parsed.version;
+}
+
+function extractThreadId(result: unknown): string | null {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "thread" in result &&
+    typeof result.thread === "object" &&
+    result.thread !== null &&
+    "id" in result.thread &&
+    typeof result.thread.id === "string"
+  ) {
+    return result.thread.id;
+  }
+
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "threadId" in result &&
+    typeof result.threadId === "string"
+  ) {
+    return result.threadId;
+  }
+
+  return null;
 }
 
 function findPackageJson(startDirectory: string): string {

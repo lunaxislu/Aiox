@@ -6,6 +6,7 @@ import type { MessageType } from "../core/messages.js";
 import {
   createAgentRepository,
   type AttachStoredAgentResult,
+  type StoredAgent,
 } from "../store/repositories/agents.js";
 import {
   createDeliveryRepository,
@@ -23,6 +24,7 @@ import {
   type StoredRoute,
 } from "../store/repositories/routes.js";
 import { withTransaction } from "../store/transaction.js";
+import { attachCodexAgentRuntime } from "../adapters/codex/runtime.js";
 
 const attachRollbackSentinel = Symbol("aiox.attach.rollback");
 const sendMessageRollbackSentinel = Symbol("aiox.sendMessage.rollback");
@@ -32,15 +34,31 @@ export interface CreateDaemonStateOptions {
   createId: () => string;
   now: () => string;
   codexRuntimes?: AgentRuntimeRegistry;
+  attachCodexRuntime?: AttachCodexRuntime;
 }
+
+export const productionAttachCodexRuntime: AttachCodexRuntime = defaultAttachCodexRuntime;
 
 export interface ManagedAgentRuntime {
   readonly state: "starting" | "ready" | "failed" | "disposed";
   dispose(): Promise<void> | void;
 }
 
+export interface ManagedCodexAgentRuntime extends ManagedAgentRuntime {
+  readonly endpoint: URL;
+  readonly activeThreadId: string | null;
+  startThread(): Promise<string | null>;
+  resumeThread(threadId: string): Promise<string | null>;
+}
+
+export type AttachCodexRuntime = (request: {
+  agentName: string;
+  activeThreadId: string | null;
+}) => Promise<ManagedCodexAgentRuntime>;
+
 export interface AgentRuntimeRegistry {
   get(agentName: string): ManagedAgentRuntime | undefined;
+  set(agentName: string, runtime: ManagedAgentRuntime): unknown;
   delete(agentName: string): boolean;
 }
 
@@ -49,10 +67,19 @@ export interface AttachAgentRequest {
   name: string;
   cwd: string;
   pairName?: string;
+  resumeSessionId?: string;
 }
 
 export type AttachAgentResult =
-  | AttachStoredAgentResult
+  | {
+      ok: true;
+      agent: StoredAgent;
+      codexRuntime?: {
+        endpoint: string;
+        activeThreadId: string;
+      };
+    }
+  | Extract<AttachStoredAgentResult, { ok: false }>
   | {
       ok: false;
       reason: "pair_not_found";
@@ -69,6 +96,11 @@ export type AttachAgentResult =
       agentId: string;
       expectedKind: AgentKind;
       actualKind: AgentKind;
+    }
+  | {
+      ok: false;
+      reason: "codex_resume_failed" | "codex_runtime_attach_failed";
+      message: string;
     };
 
 export interface CreatePairRequest {
@@ -259,7 +291,7 @@ export interface StopResult {
 }
 
 export interface DaemonState {
-  attachAgent(request: AttachAgentRequest): AttachAgentResult;
+  attachAgent(request: AttachAgentRequest): Promise<AttachAgentResult>;
   createPair(request: CreatePairRequest): CreatePairResult;
   connect(request: ConnectRequest): ConnectResult;
   disconnect(request: DisconnectRequest): DisconnectResult;
@@ -286,11 +318,12 @@ export function createDaemonState(
   const messages = createMessageRepository(options.db);
   const pairs = createPairRepository(options.db);
   const routes = createRouteRepository(options.db);
-  const codexRuntimes = options.codexRuntimes;
+  const codexRuntimes = options.codexRuntimes ?? new Map<string, ManagedAgentRuntime>();
+  const attachCodexRuntime = options.attachCodexRuntime;
   const startedAt = options.now();
 
   return {
-    attachAgent(request) {
+    async attachAgent(request) {
       const pair = request.pairName ? pairs.findByName(request.pairName) : null;
 
       if (request.pairName) {
@@ -303,8 +336,9 @@ export function createDaemonState(
         }
       }
 
+      let storedAgent: StoredAgent | null = null;
       try {
-        return withTransaction(options.db, () => {
+        const attachResult = withTransaction(options.db, () => {
           const now = options.now();
           const attachResult = agents.attach({
             id: options.createId(),
@@ -349,16 +383,96 @@ export function createDaemonState(
           }
 
           return {
-            ok: true,
+            ok: true as const,
             agent: {
               ...attachResult.agent,
               pairId: pair.id,
             },
           };
         });
+
+        if (!attachResult.ok || request.kind !== "codex" || !attachCodexRuntime) {
+          return attachResult;
+        }
+
+        storedAgent = attachResult.agent;
+        const runtime = await attachCodexRuntime({
+          agentName: request.name,
+          activeThreadId: storedAgent.adapterSessionId,
+        });
+        const nextThreadId = request.resumeSessionId
+          ? await runtime.resumeThread(request.resumeSessionId)
+          : await runtime.startThread();
+
+        if (!nextThreadId) {
+          throw Object.assign(new Error("Codex did not return a thread id"), {
+            code: "codex_runtime_attach_failed",
+          });
+        }
+
+        if (request.resumeSessionId && nextThreadId !== request.resumeSessionId) {
+          throw Object.assign(
+            new Error(
+              `Codex resume returned mismatched thread id: requested=${request.resumeSessionId} returned=${nextThreadId}`,
+            ),
+            {
+              code: "codex_resume_failed",
+            },
+          );
+        }
+
+        const now = options.now();
+        const reboundAgent = agents.rebindAdapterSessionId({
+          name: request.name,
+          adapterSessionId: nextThreadId,
+          now,
+        });
+
+        if (!reboundAgent) {
+          throw Object.assign(new Error(`Codex agent not found after attach: ${request.name}`), {
+            code: "codex_runtime_attach_failed",
+          });
+        }
+
+        codexRuntimes.set(request.name, runtime);
+        events.append({
+          id: options.createId(),
+          type: "agent_thread_id_rebound",
+          data: {
+            previousId: storedAgent.adapterSessionId,
+            nextId: nextThreadId,
+            operation: request.resumeSessionId ? "thread/resume" : "thread/start",
+          },
+          createdAt: now,
+          agentId: reboundAgent.id,
+          messageId: null,
+          deliveryId: null,
+          routeId: null,
+        });
+
+        return {
+          ok: true,
+          agent: reboundAgent,
+          codexRuntime: {
+            endpoint: runtime.endpoint.toString(),
+            activeThreadId: nextThreadId,
+          },
+        };
       } catch (error) {
         if (isAttachRollback(error)) {
           return error.response;
+        }
+
+        if (storedAgent) {
+          agents.markByNameDisconnected(request.name, options.now());
+        }
+
+        if (isCodexAttachError(error)) {
+          return {
+            ok: false,
+            reason: error.code,
+            message: error.message,
+          };
         }
 
         throw error;
@@ -853,6 +967,28 @@ function isUniqueConstraintError(error: unknown): boolean {
     "code" in error &&
     typeof (error as { code: unknown }).code === "string" &&
     (error as { code: string }).code.startsWith("SQLITE_CONSTRAINT")
+  );
+}
+
+async function defaultAttachCodexRuntime(request: {
+  agentName: string;
+  activeThreadId: string | null;
+}): Promise<ManagedCodexAgentRuntime> {
+  return attachCodexAgentRuntime({
+    agentName: request.agentName,
+    activeThreadId: request.activeThreadId,
+  });
+}
+
+function isCodexAttachError(error: unknown): error is {
+  code: "codex_resume_failed" | "codex_runtime_attach_failed";
+  message: string;
+} {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error.code === "codex_resume_failed" ||
+      error.code === "codex_runtime_attach_failed")
   );
 }
 

@@ -158,7 +158,79 @@ describe("Codex agent runtime", () => {
       }),
     ).resolves.toEqual({ ok: true });
 
-    expect(events).toContain("request:turn/start");
+    expect(events.some((event) => event.startsWith("request:turn/start:"))).toBe(true);
+  });
+
+  it("starts a daemon-owned Codex thread and rebinds the active thread id", async () => {
+    const events: string[] = [];
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: null,
+      launchAppServer: async () => fakeAppServer(fakeChild()),
+      connectWebSocket: async () =>
+        fakeWebSocket(events, {
+          requestResults: {
+            "thread/start": {
+              thread: {
+                id: "thread-new",
+              },
+            },
+          },
+        }),
+    });
+
+    await expect(runtime.startThread()).resolves.toBe("thread-new");
+
+    expect(runtime.activeThreadId).toBe("thread-new");
+    expect(events).toContain("request:thread/start:{}");
+  });
+
+  it("resumes a daemon-owned Codex thread only when Codex returns the requested id", async () => {
+    const events: string[] = [];
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: null,
+      launchAppServer: async () => fakeAppServer(fakeChild()),
+      connectWebSocket: async () =>
+        fakeWebSocket(events, {
+          requestResults: {
+            "thread/resume": {
+              thread: {
+                id: "thread-resume",
+              },
+            },
+          },
+        }),
+    });
+
+    await expect(runtime.resumeThread("thread-resume")).resolves.toBe("thread-resume");
+
+    expect(runtime.activeThreadId).toBe("thread-resume");
+    expect(events).toContain('request:thread/resume:{"threadId":"thread-resume"}');
+  });
+
+  it("fails explicit Codex resume when the returned thread id differs", async () => {
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: "thread-old",
+      launchAppServer: async () => fakeAppServer(fakeChild()),
+      connectWebSocket: async () =>
+        fakeWebSocket([], {
+          requestResults: {
+            "thread/resume": {
+              thread: {
+                id: "thread-other",
+              },
+            },
+          },
+        }),
+    });
+
+    await expect(runtime.resumeThread("thread-requested")).rejects.toMatchObject({
+      code: "codex_resume_failed",
+      message: expect.stringContaining("thread-other"),
+    });
+    expect(runtime.activeThreadId).toBe("thread-old");
   });
 
   it("cleans up the launched app-server when WS connect fails", async () => {
@@ -285,7 +357,7 @@ describe("Codex agent runtime", () => {
 
   function fakeWebSocket(
     events: string[],
-    options: { initializeError?: Error } = {},
+    options: { initializeError?: Error; requestResults?: Record<string, unknown> } = {},
   ): CodexAgentRuntimeWebSocketClient & {
     emitClose(code: number, reason: string): void;
     emitNotification(notification: { method: string; params?: unknown }): void;
@@ -308,9 +380,9 @@ describe("Codex agent runtime", () => {
           platformOs: "macos",
         });
       },
-      request(method) {
-        events.push(`request:${method}`);
-        return Promise.resolve({
+      request(method, params) {
+        events.push(`request:${method}:${JSON.stringify(params)}`);
+        return Promise.resolve(options.requestResults?.[method] ?? {
           turn: {
             id: "turn-1",
             status: "inProgress",

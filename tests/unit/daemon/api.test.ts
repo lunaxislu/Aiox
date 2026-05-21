@@ -44,6 +44,68 @@ describe("daemon API with fake in-process transport", () => {
     });
   });
 
+  it("starts a Codex runtime during attach and binds the authoritative thread id", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-new",
+    });
+    const runtimes = new Map();
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1", "event-1"]),
+      now: createNowSequence([
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
+      ]),
+      codexRuntimes: runtimes,
+      attachCodexRuntime: async ({ agentName, activeThreadId }) => {
+        expect(agentName).toBe("impl");
+        expect(activeThreadId).toBe(null);
+        return runtime;
+      },
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const response = await client.attachAgent({
+      kind: "codex",
+      name: "impl",
+      cwd: "/repo",
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      agent: {
+        id: "agent-1",
+        name: "impl",
+        kind: "codex",
+        status: "connected",
+        cwd: "/repo",
+        pairId: null,
+        adapterSessionId: "thread-new",
+      },
+      codexRuntime: {
+        endpoint: "ws://127.0.0.1:54321/",
+        activeThreadId: "thread-new",
+      },
+    });
+    expect(runtimes.get("impl")).toBe(runtime);
+    expect(runtime.startThreadCalls).toBe(1);
+    expect(db.prepare("select adapter_session_id from agents where name = ?").get("impl")).toEqual({
+      adapter_session_id: "thread-new",
+    });
+    expect(db.prepare("select type, data_json from events").all()).toEqual([
+      {
+        type: "agent_thread_id_rebound",
+        data_json: JSON.stringify({
+          previousId: null,
+          nextId: "thread-new",
+          operation: "thread/start",
+        }),
+      },
+    ]);
+  });
+
   it("rejects pair attach when the pair does not exist without registering the agent", async () => {
     const state = createDaemonState({
       db,
@@ -734,10 +796,51 @@ function createIdSequence(ids: string[]): () => string {
   };
 }
 
+function createNowSequence(values: string[]): () => string {
+  return () => {
+    const value = values.shift();
+
+    if (!value) {
+      throw new Error("unexpected now request");
+    }
+
+    return value;
+  };
+}
+
 function fakeRuntime(state: "starting" | "ready") {
   return {
     state,
     disposeCalls: 0,
+    async dispose() {
+      this.disposeCalls += 1;
+      this.state = "disposed" as typeof this.state;
+    },
+  };
+}
+
+function fakeCodexRuntime(options: {
+  endpoint: string;
+  startedThreadId?: string;
+  resumedThreadId?: string;
+}) {
+  return {
+    state: "ready" as const,
+    endpoint: new URL(options.endpoint),
+    activeThreadId: null as string | null,
+    startThreadCalls: 0,
+    resumeThreadCalls: [] as string[],
+    disposeCalls: 0,
+    async startThread() {
+      this.startThreadCalls += 1;
+      this.activeThreadId = options.startedThreadId ?? null;
+      return this.activeThreadId;
+    },
+    async resumeThread(threadId: string) {
+      this.resumeThreadCalls.push(threadId);
+      this.activeThreadId = options.resumedThreadId ?? threadId;
+      return this.activeThreadId;
+    },
     async dispose() {
       this.disposeCalls += 1;
       this.state = "disposed" as typeof this.state;

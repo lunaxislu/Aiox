@@ -78,7 +78,10 @@ describe("aiox CLI bin", () => {
 
   it("uses the socket runtime for default daemon API dispatch", async () => {
     const socketPath = join(mkdtempSync("/private/tmp/aiox-bin-"), "daemon.sock");
-    const runtime = createSocketRuntime({ socketPath });
+    const runtime = createSocketRuntime({
+      socketPath,
+      attachCodexRuntime: async () => fakeCodexRuntime(),
+    });
     const written = createWritableBuffers();
 
     try {
@@ -100,6 +103,7 @@ describe("aiox CLI bin", () => {
           status: "connected",
           cwd: "/repo",
           pairId: null,
+          adapterSessionId: "thread-1",
         },
       ]);
     } finally {
@@ -141,6 +145,23 @@ function createWritableBuffers(): {
     },
     stdoutText: () => stdout.join(""),
     stderrText: () => stderr.join(""),
+  };
+}
+
+function fakeCodexRuntime() {
+  return {
+    state: "ready" as const,
+    endpoint: new URL("ws://127.0.0.1:54321/"),
+    activeThreadId: null as string | null,
+    async startThread() {
+      this.activeThreadId = "thread-1";
+      return "thread-1";
+    },
+    async resumeThread(threadId: string) {
+      this.activeThreadId = threadId;
+      return threadId;
+    },
+    async dispose() {},
   };
 }
 

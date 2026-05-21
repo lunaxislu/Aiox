@@ -32,7 +32,7 @@ import type { StoredMessage } from "../store/repositories/messages.js";
 import type { StoredRoute } from "../store/repositories/routes.js";
 
 export interface DaemonApi {
-  attachAgent(request: AttachAgentRequest): AttachAgentResponse;
+  attachAgent(request: AttachAgentRequest): Promise<AttachAgentResponse>;
   createPair(request: CreatePairRequest): CreatePairResponse;
   connect(request: ConnectRequest): ConnectResponse;
   disconnect(request: DisconnectRequest): DisconnectResponse;
@@ -54,6 +54,7 @@ export interface AgentDto {
   status: AgentInstanceStatus;
   cwd: string;
   pairId: string | null;
+  adapterSessionId?: string;
 }
 
 export interface PairDto {
@@ -90,6 +91,10 @@ export type AttachAgentResponse =
   | {
       ok: true;
       agent: AgentDto;
+      codexRuntime?: {
+        endpoint: string;
+        activeThreadId: string;
+      };
     }
   | {
       ok: false;
@@ -112,6 +117,11 @@ export type AttachAgentResponse =
       agentId: string;
       expectedKind: AgentKind;
       actualKind: AgentKind;
+    }
+  | {
+      ok: false;
+      reason: "codex_resume_failed" | "codex_runtime_attach_failed";
+      message: string;
     };
 
 export type CreatePairResponse =
@@ -212,8 +222,8 @@ export interface StopResponse {
 
 export function createDaemonApi(state: DaemonState): DaemonApi {
   return {
-    attachAgent(request) {
-      return mapAttachAgentResult(state.attachAgent(request));
+    async attachAgent(request) {
+      return mapAttachAgentResult(await state.attachAgent(request));
     },
     createPair(request) {
       return mapCreatePairResult(state.createPair(request));
@@ -253,6 +263,7 @@ function mapAttachAgentResult(result: AttachAgentResult): AttachAgentResponse {
     return {
       ok: true,
       agent: mapAgent(result.agent),
+      ...(result.codexRuntime ? { codexRuntime: result.codexRuntime } : {}),
     };
   }
 
@@ -355,7 +366,7 @@ function mapStopResult(result: StopResult): StopResponse {
 }
 
 function mapAgent(agent: StoredAgent): AgentDto {
-  return {
+  const dto: AgentDto = {
     id: agent.id,
     name: agent.name,
     kind: agent.kind,
@@ -363,6 +374,12 @@ function mapAgent(agent: StoredAgent): AgentDto {
     cwd: agent.cwd,
     pairId: agent.pairId ?? null,
   };
+
+  if (agent.adapterSessionId !== null) {
+    dto.adapterSessionId = agent.adapterSessionId;
+  }
+
+  return dto;
 }
 
 function mapMessage(message: StoredMessage): MessageDto {
