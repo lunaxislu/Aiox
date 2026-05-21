@@ -1,4 +1,6 @@
 import http from "node:http";
+import { EventEmitter } from "node:events";
+import type { ChildProcess } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -134,6 +136,31 @@ describe("Codex app-server launch helpers", () => {
       }),
     ).rejects.toMatchObject({
       code: "app_server_readyz_timeout",
+    });
+  });
+
+  it("fails fast when the app-server exits during readyz polling", async () => {
+    const child = new EventEmitter() as ChildProcess;
+    Object.assign(child, {
+      exitCode: null,
+      killed: false,
+      pid: 123,
+    });
+
+    setTimeout(() => {
+      Object.assign(child, { exitCode: 1 });
+      child.emit("exit", 1, null);
+    }, 5);
+
+    await expect(
+      waitForCodexReadyz(new URL("http://127.0.0.1:51992/readyz"), {
+        child,
+        fetchImpl: async () => new Response(null, { status: 503 }),
+        pollIntervalMs: 20,
+        timeoutMs: 80,
+      }),
+    ).rejects.toMatchObject({
+      code: "app_server_process_exited_before_ready",
     });
   });
 

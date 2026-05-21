@@ -48,6 +48,7 @@ export interface WaitForCodexReadyzOptions {
   timeoutMs?: number;
   pollIntervalMs?: number;
   fetchImpl?: typeof fetch;
+  child?: ChildProcess;
 }
 
 const defaultOutputRingCapacityBytes = 256 * 1024;
@@ -120,26 +121,52 @@ export async function waitForCodexReadyz(
   const timeoutMs = options.timeoutMs ?? defaultReadyzTimeoutMs;
   const pollIntervalMs = options.pollIntervalMs ?? defaultReadyzPollIntervalMs;
   const fetchImpl = options.fetchImpl ?? fetch;
+  const child = options.child;
   const startedAt = Date.now();
+  let onChildExit: ((code: number | null, signal: NodeJS.Signals | null) => void) | null =
+    null;
+  let childExitPromise: Promise<never> | null = null;
 
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      const response = await fetchImpl(readyz);
+  if (child) {
+    childExitPromise = new Promise<never>((_resolve, reject) => {
+      onChildExit = (code, signal) => {
+        reject(createProcessExitedBeforeReadyError(code, signal));
+      };
 
-      if (response.status === 200) {
-        return;
-      }
-    } catch {
-      // Keep polling until the startup budget is exhausted.
-    }
-
-    await sleep(pollIntervalMs);
+      child.once("exit", onChildExit);
+    });
   }
 
-  throw new CodexAppServerStartupError(
-    "app_server_readyz_timeout",
-    `Timed out waiting for Codex app-server readyz: ${readyz.toString()}`,
-  );
+  try {
+    throwIfChildExited(child);
+
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const response = await raceChildExit(Promise.resolve(fetchImpl(readyz)), childExitPromise);
+
+        if (response.status === 200) {
+          return;
+        }
+      } catch (error) {
+        if (error instanceof CodexAppServerStartupError) {
+          throw error;
+        }
+        // Keep polling until the startup budget is exhausted.
+      }
+
+      await raceChildExit(sleep(pollIntervalMs), childExitPromise);
+      throwIfChildExited(child);
+    }
+
+    throw new CodexAppServerStartupError(
+      "app_server_readyz_timeout",
+      `Timed out waiting for Codex app-server readyz: ${readyz.toString()}`,
+    );
+  } finally {
+    if (child && onChildExit) {
+      child.off("exit", onChildExit);
+    }
+  }
 }
 
 function findBannerUrl(lines: readonly string[], token: string): URL {
@@ -219,6 +246,35 @@ function isLoopbackHostname(hostname: string): boolean {
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function createProcessExitedBeforeReadyError(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+): CodexAppServerStartupError {
+  return new CodexAppServerStartupError(
+    "app_server_process_exited_before_ready",
+    `Codex app-server exited before ready: code=${code ?? "null"} signal=${signal ?? "null"}`,
+  );
+}
+
+function throwIfChildExited(child: ChildProcess | undefined): void {
+  if (!child || child.exitCode === null) {
+    return;
+  }
+
+  throw createProcessExitedBeforeReadyError(child.exitCode, child.signalCode);
+}
+
+async function raceChildExit<T>(
+  work: Promise<T>,
+  childExitPromise: Promise<never> | null,
+): Promise<T> {
+  if (!childExitPromise) {
+    return work;
+  }
+
+  return Promise.race([work, childExitPromise]);
 }
 
 function trimToLastBytes(value: string, capacityBytes: number): string {

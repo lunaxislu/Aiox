@@ -49,6 +49,7 @@ export async function launchCodexAppServer(
   });
 
   await waitForCodexReadyz(endpoint.readyz, {
+    child,
     timeoutMs: options.readyzTimeoutMs,
   });
 
