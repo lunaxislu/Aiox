@@ -319,6 +319,7 @@ export interface RecordCodexRuntimeFailedResult {
 
 export interface StatusResult {
   daemon: {
+    pid: number;
     startedAt: string;
   };
   agents: ReturnType<ReturnType<typeof createAgentRepository>["list"]>;
@@ -931,6 +932,7 @@ export function createDaemonState(
     status() {
       return {
         daemon: {
+          pid: process.pid,
           startedAt,
         },
         agents: agents.list(),

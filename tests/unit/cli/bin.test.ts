@@ -161,6 +161,52 @@ describe("aiox CLI bin", () => {
     }
   });
 
+  it("reads daemon status from an existing socket without owning the daemon handle", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-bin-"), "daemon.sock");
+    const owner = createSocketRuntime({
+      socketPath,
+      version: "owner-version",
+    });
+    const reader = createSocketRuntime({
+      socketPath,
+      version: "reader-version",
+    });
+
+    try {
+      await owner.startDaemon();
+
+      await expect(reader.daemonStatus()).resolves.toEqual({
+        running: true,
+        pid: process.pid,
+        socketPath,
+        dbPath: ":memory:",
+        startedAt: expect.any(String),
+        version: "reader-version",
+      });
+    } finally {
+      await reader.close();
+      await owner.close();
+    }
+  });
+
+  it("includes the daemon pid in API status for remote status readers", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-bin-"), "daemon.sock");
+    const runtime = createSocketRuntime({ socketPath });
+
+    try {
+      const api = await runtime.getDaemonApi();
+
+      await expect(api.status()).resolves.toMatchObject({
+        daemon: {
+          pid: process.pid,
+          startedAt: expect.any(String),
+        },
+      });
+    } finally {
+      await runtime.close();
+    }
+  });
+
   it("keeps package bin aligned with the compiled src/bin entrypoint", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),

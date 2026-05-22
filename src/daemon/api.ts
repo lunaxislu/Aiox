@@ -224,6 +224,7 @@ export type NotifyTuiExitedResponse = NotifyTuiExitedResult;
 
 export interface StatusResponse {
   daemon: {
+    pid: number;
     startedAt: string;
   };
   agents: AgentDto[];

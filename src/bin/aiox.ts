@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import type { ChildProcess } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -146,6 +146,23 @@ export function createSocketRuntime(
     },
     async daemonStatus() {
       if (!daemonHandle) {
+        if (existsSync(socketPath)) {
+          const remoteClient = createDaemonSocketClient({ socketPath });
+          try {
+            const response = await remoteClient.status();
+            return {
+              running: true,
+              pid: response.daemon.pid,
+              socketPath,
+              dbPath,
+              startedAt: response.daemon.startedAt,
+              version,
+            };
+          } finally {
+            remoteClient.close();
+          }
+        }
+
         return {
           running: false,
           socketPath,

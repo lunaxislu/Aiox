@@ -501,6 +501,7 @@ describe("daemon API with fake in-process transport", () => {
 
     expect(await client.status()).toEqual({
       daemon: {
+        pid: process.pid,
         startedAt: "2026-05-18T00:00:00.000Z",
       },
       agents: [],
@@ -549,6 +550,7 @@ describe("daemon API with fake in-process transport", () => {
 
     expect(await client.status()).toEqual({
       daemon: {
+        pid: process.pid,
         startedAt: "2026-05-18T00:00:00.000Z",
       },
       agents: [

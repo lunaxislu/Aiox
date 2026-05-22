@@ -66,6 +66,7 @@ describe("daemon socket transport", () => {
 
       await expect(client.status()).resolves.toEqual({
         daemon: {
+          pid: process.pid,
           startedAt: "2026-05-19T00:00:00.000Z",
         },
         agents: [
@@ -123,6 +124,7 @@ describe("daemon socket transport", () => {
       });
       await expect(client.status()).resolves.toEqual({
         daemon: {
+          pid: process.pid,
           startedAt: "2026-05-19T00:00:00.000Z",
         },
         agents: [],

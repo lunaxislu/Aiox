@@ -49,6 +49,7 @@ describe("CLI output formatting", () => {
   it("formats status sections with agent names and delivery counts", () => {
     const output = formatStatus({
       daemon: {
+        pid: 1234,
         startedAt: "2026-05-22T00:00:00.000Z",
       },
       agents: [

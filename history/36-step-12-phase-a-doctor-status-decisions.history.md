@@ -148,12 +148,16 @@ Resolution:
   - `running: true` includes pid/socket/db/startedAt/version.
   - `running: false` includes socket/db/version only.
 - `createSocketRuntime.daemonStatus()` no longer calls `start()`. If the socket
-  runtime has no daemon handle, it returns `running: false`.
+  runtime has no daemon handle but the configured socket exists, it connects to
+  the existing daemon socket and reads status without owning or starting the
+  daemon. If the socket does not exist, it returns `running: false`.
+- `StatusResponse.daemon` now includes `pid` so read-only status calls from a
+  separate process can report the daemon process.
 - `formatDaemonStatus()` prints `STATUS not running` and omits process-only
   fields for the non-running case.
 
 Verification:
 
-- `pnpm test`: passing, 42 files, 271 tests.
+- `pnpm test`: passing, 42 files, 273 tests.
 - `pnpm typecheck`: passing.
 - `pnpm build`: passing.

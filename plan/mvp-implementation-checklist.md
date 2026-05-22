@@ -886,7 +886,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 42 files, 271 tests (Step 12 Phase B daemon status read-only correction,
+- `pnpm test`: passing, 42 files, 273 tests (Step 12 Phase B daemon status read-only correction,
   2026-05-22)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
