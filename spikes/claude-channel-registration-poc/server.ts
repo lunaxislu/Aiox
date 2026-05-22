@@ -20,6 +20,33 @@ const InboundChannelMessage = z.object({
 
 type InboundChannelMessage = z.infer<typeof InboundChannelMessage>;
 
+export type RecordedReply = {
+  chat_id: string;
+  text: string;
+  at: string;
+};
+
+export type ReplyStore = {
+  replies: RecordedReply[];
+};
+
+export function createReplyStore(): ReplyStore {
+  return { replies: [] };
+}
+
+export function recordReply(
+  store: ReplyStore,
+  input: { chat_id: string; text: string },
+): RecordedReply {
+  const reply: RecordedReply = {
+    chat_id: input.chat_id,
+    text: input.text,
+    at: new Date().toISOString(),
+  };
+  store.replies.push(reply);
+  return reply;
+}
+
 export type ClaudeChannelNotification = {
   method: "notifications/claude/channel";
   params: {
@@ -93,7 +120,10 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-export function createClaudeChannelServer(framing: FramingVariant): McpServer {
+export function createClaudeChannelServer(
+  framing: FramingVariant,
+  replyStore: ReplyStore = createReplyStore(),
+): McpServer {
   const mcp = new McpServer(
     { name: "aiox-channel-registration-poc", version: "0.0.1" },
     {
@@ -116,11 +146,8 @@ export function createClaudeChannelServer(framing: FramingVariant): McpServer {
       outputSchema: z.object({ ok: z.literal(true) }),
     },
     async ({ chat_id, text }) => {
-      logEvent("reply", {
-        chat_id,
-        text,
-        at: new Date().toISOString(),
-      });
+      const reply = recordReply(replyStore, { chat_id, text });
+      logEvent("reply", reply);
       return {
         content: [{ type: "text", text: "reply recorded" }],
         structuredContent: { ok: true },
@@ -134,6 +161,7 @@ export function createClaudeChannelServer(framing: FramingVariant): McpServer {
 export type IngressOptions = {
   port: number;
   hangMs: number;
+  replyStore: ReplyStore;
 };
 
 export function startHttpIngress(
@@ -142,6 +170,11 @@ export function startHttpIngress(
 ): Promise<Server> {
   return new Promise((resolve) => {
     const server = createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/replies") {
+        sendJson(res, 200, options.replyStore.replies);
+        return;
+      }
+
       if (req.method !== "POST" || req.url !== "/send") {
         sendJson(res, 404, { error: "not_found" });
         return;
@@ -327,9 +360,14 @@ async function main(): Promise<void> {
     tokenHash: tokenFingerprint(token),
   });
 
-  const mcp = createClaudeChannelServer(framing);
-  const httpServer = await startHttpIngress(mcp, { port, hangMs });
+  const replyStore = createReplyStore();
+  const mcp = createClaudeChannelServer(framing, replyStore);
 
+  // Start stdio connection immediately so Claude CLI initialize is handled
+  // before the HTTP registration work.
+  const connectPromise = mcp.connect(new StdioServerTransport());
+
+  const httpServer = await startHttpIngress(mcp, { port, hangMs, replyStore });
   await registerWithDaemon({
     daemonUrl,
     agentName,
@@ -337,13 +375,8 @@ async function main(): Promise<void> {
     endpoint: `http://127.0.0.1:${port}/send`,
   });
 
-  try {
-    await mcp.connect(new StdioServerTransport());
-  } finally {
-    await new Promise<void>((resolve) => {
-      httpServer.close(() => resolve());
-    });
-  }
+  await connectPromise;
+  void httpServer;
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

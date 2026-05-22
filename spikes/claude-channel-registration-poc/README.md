@@ -322,13 +322,31 @@ curl -sX POST http://127.0.0.1:19000/push \
 {"event":"reply","chat_id":"test-001","text":"...","at":"..."}
 ```
 
+server stderr가 Claude UI에서 직접 보이지 않으면 spike-only debug endpoint로 확인:
+
+```bash
+curl -s http://127.0.0.1:18789/replies | jq
+```
+
+예상 응답 (reply tool 호출 후):
+
+```json
+[
+  {
+    "chat_id": "test-001",
+    "text": "aiox channel received",
+    "at": "..."
+  }
+]
+```
+
 **PASS 조건**
 - daemon `/push` HTTP 200 + `{ok:true, upstreamStatus:202, upstreamBody:{ok:true}}`.
 - server stderr 시퀀스 위 (reply는 Claude이 호출한 경우만).
 - Claude transcript에 channel message 도착.
 - **Confirm prompt 관찰**: Claude이 reply tool 호출 전에 사용자에게 follow 여부를 묻는지
   (기존 `claude-channel-node-poc` PARTIAL 재현). 묻고 사용자 yes 후에 reply 호출이면 PARTIAL 그대로.
-- 사용자 confirm 후 reply tool 호출 시 server stderr `reply` event 1회.
+- 사용자 confirm 후 reply tool 호출 시 server stderr `reply` event 1회 또는 `/replies`에 해당 reply 1개.
 
 **Observation note — register/connect race**: §Boundaries에서 박은 "register success ≠ transcript delivery ready" 가
 실증되는 케이스가 있는지 관찰. 정상 setup 직후 첫 push가 transcript에 안 보이고 두 번째 push만

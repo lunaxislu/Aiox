@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { AddressInfo } from "node:net";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 import {
   createDaemonState,
@@ -6,6 +8,11 @@ import {
   parseLoopbackHttpEndpoint,
   registerChannel,
 } from "../../../spikes/claude-channel-registration-poc/daemon.js";
+import {
+  createReplyStore,
+  recordReply,
+  startHttpIngress,
+} from "../../../spikes/claude-channel-registration-poc/server.js";
 
 describe("registerChannel", () => {
   it("moves pending → registry and stores endpoint on success", () => {
@@ -84,5 +91,60 @@ describe("parseLoopbackHttpEndpoint", () => {
     ["http://127.0.0.1:18789"],
   ])("rejects %s", (input) => {
     expect(parseLoopbackHttpEndpoint(input)).toBeNull();
+  });
+});
+
+describe("reply observation store", () => {
+  it("records reply tool calls for later inspection", () => {
+    const store = createReplyStore();
+
+    const reply = recordReply(store, {
+      chat_id: "test-001",
+      text: "aiox channel received",
+    });
+
+    expect(reply.chat_id).toBe("test-001");
+    expect(reply.text).toBe("aiox channel received");
+    expect(reply.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(store.replies).toEqual([reply]);
+  });
+
+  it("exposes recorded replies through the spike HTTP ingress", async () => {
+    const store = createReplyStore();
+    recordReply(store, {
+      chat_id: "test-001",
+      text: "aiox channel received",
+    });
+    const fakeMcp = {
+      server: {
+        notification: async () => {},
+      },
+    } as unknown as McpServer;
+    const server = await startHttpIngress(fakeMcp, {
+      port: 0,
+      hangMs: 0,
+      replyStore: store,
+    });
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/replies`,
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual([
+        expect.objectContaining({
+          chat_id: "test-001",
+          text: "aiox channel received",
+        }),
+      ]);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    }
   });
 });
