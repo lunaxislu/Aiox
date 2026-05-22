@@ -306,6 +306,7 @@ function createRuntime(
     daemonStatus() {
       calls.push(["daemonStatus"]);
       return {
+        running: true,
         pid: 1234,
         socketPath: "/tmp/aiox/daemon.sock",
         dbPath: ":memory:",

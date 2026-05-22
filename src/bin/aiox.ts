@@ -145,13 +145,17 @@ export function createSocketRuntime(
       return { ok: true };
     },
     async daemonStatus() {
-      await start();
-
       if (!daemonHandle) {
-        throw new Error("daemon was not initialized");
+        return {
+          running: false,
+          socketPath,
+          dbPath,
+          version,
+        };
       }
 
       return {
+        running: true,
         pid: process.pid,
         socketPath,
         dbPath,
@@ -214,6 +218,7 @@ export function createInProcessRuntime(): InvocationRuntime {
     daemonStatus() {
       const activeHandle = handle ?? start();
       return {
+        running: true,
         pid: process.pid,
         socketPath: "in-process",
         dbPath: ":memory:",

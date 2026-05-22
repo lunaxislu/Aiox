@@ -135,8 +135,25 @@ tmux             optional – not found
 - Connected `invocation.ts` status, daemon-status, and doctor commands to the
   formatter layer.
 
+### Follow-up correction: daemon status is read-only
+
+Initial Phase B implementation made `createSocketRuntime.daemonStatus()` call
+`start()`, which meant `aiox daemon status` could create the daemon/socket while
+answering a read-only query. User review clarified that status must be a pure
+read.
+
+Resolution:
+
+- `DaemonStatusInfo` is now a discriminated union:
+  - `running: true` includes pid/socket/db/startedAt/version.
+  - `running: false` includes socket/db/version only.
+- `createSocketRuntime.daemonStatus()` no longer calls `start()`. If the socket
+  runtime has no daemon handle, it returns `running: false`.
+- `formatDaemonStatus()` prints `STATUS not running` and omits process-only
+  fields for the non-running case.
+
 Verification:
 
-- `pnpm test`: passing, 42 files, 269 tests.
+- `pnpm test`: passing, 42 files, 271 tests.
 - `pnpm typecheck`: passing.
 - `pnpm build`: passing.

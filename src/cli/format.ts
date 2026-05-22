@@ -6,6 +6,16 @@ import type {
 } from "./invocation.js";
 
 export function formatDaemonStatus(info: DaemonStatusInfo): string {
+  if (!info.running) {
+    return formatKeyValues([
+      ["COMPONENT", "daemon"],
+      ["STATUS", "not running"],
+      ["SOCKET", info.socketPath],
+      ["DB", info.dbPath],
+      ["VERSION", info.version],
+    ]);
+  }
+
   return formatKeyValues([
     ["COMPONENT", "daemon"],
     ["PID", String(info.pid)],

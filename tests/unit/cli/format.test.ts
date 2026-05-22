@@ -9,6 +9,7 @@ import {
 describe("CLI output formatting", () => {
   it("formats daemon status as key-value output", () => {
     const output = formatDaemonStatus({
+      running: true,
       pid: 1234,
       socketPath: "/tmp/aiox/daemon.sock",
       dbPath: ":memory:",
@@ -23,6 +24,26 @@ describe("CLI output formatting", () => {
     expect(output).toContain("STARTED    2026-05-22T00:00:00.000Z\n");
     expect(output).toMatch(/UPTIME\s+\d+[smhd]\n/);
     expect(output).toContain("VERSION    1.2.3-test\n");
+  });
+
+  it("formats non-running daemon status without process fields", () => {
+    const output = formatDaemonStatus({
+      running: false,
+      socketPath: "/tmp/aiox/daemon.sock",
+      dbPath: ":memory:",
+      version: "1.2.3-test",
+    });
+
+    expect(output).toBe(
+      [
+        "COMPONENT  daemon",
+        "STATUS     not running",
+        "SOCKET     /tmp/aiox/daemon.sock",
+        "DB         :memory:",
+        "VERSION    1.2.3-test",
+        "",
+      ].join("\n"),
+    );
   });
 
   it("formats status sections with agent names and delivery counts", () => {

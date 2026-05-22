@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
@@ -127,13 +127,35 @@ describe("aiox CLI bin", () => {
     });
 
     try {
+      await runtime.startDaemon();
       await expect(runtime.daemonStatus()).resolves.toEqual({
+        running: true,
         pid: process.pid,
         socketPath,
         dbPath: "/tmp/aiox-test.sqlite",
         startedAt: expect.any(String),
         version: "9.8.7-test",
       });
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("does not start the daemon when reading daemon status", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-bin-"), "daemon.sock");
+    const runtime = createSocketRuntime({
+      socketPath,
+      version: "9.8.7-test",
+    });
+
+    try {
+      await expect(runtime.daemonStatus()).resolves.toEqual({
+        running: false,
+        socketPath,
+        dbPath: ":memory:",
+        version: "9.8.7-test",
+      });
+      expect(existsSync(socketPath)).toBe(false);
     } finally {
       await runtime.close();
     }
@@ -224,6 +246,7 @@ function createRuntime(daemonApiOverrides: Partial<DaemonApi> = {}): InvocationR
     stopDaemon: () => ({ ok: true, stoppedAgents: [] }),
     restartDaemon: () => ({ ok: true }),
     daemonStatus: () => ({
+      running: true,
       pid: process.pid,
       socketPath: "/tmp/aiox-test.sock",
       dbPath: ":memory:",

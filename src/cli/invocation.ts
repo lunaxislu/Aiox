@@ -6,13 +6,21 @@ import type { StopRequest } from "../daemon/state.js";
 import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
 
-export interface DaemonStatusInfo {
-  pid: number;
-  socketPath: string;
-  dbPath: string;
-  startedAt: string;
-  version: string;
-}
+export type DaemonStatusInfo =
+  | {
+      running: true;
+      pid: number;
+      socketPath: string;
+      dbPath: string;
+      startedAt: string;
+      version: string;
+    }
+  | {
+      running: false;
+      socketPath: string;
+      dbPath: string;
+      version: string;
+    };
 
 export interface DoctorCheck {
   name: string;
