@@ -657,3 +657,39 @@ Open Product Issue #5 (session expiry policy): deferral 유지. Phase A는 typed
 - 테스트 변경 없음. 코드 변경 없음.
 - **Phase A 최종 baseline**: 38 files / **239 tests** / typecheck / build all passing.
 - Session 5 commit: `725618c`. Phase B 진입 가능.
+
+---
+
+## Phase B — Implementation Review log
+
+### Phase B Round 1 (foundation, 2026-05-22)
+
+- commit `17843e7` (`behavior: claude channel adapter foundation`): `src/adapters/claude/channel-server.ts`, `launcher.ts`, daemon state/api (`claudeChannelRuntime` registry, `registerClaudeChannel`, `disconnectClaudeChannel`, `receiveClaudeChannelReply` stub), 11 new unit tests. 39 files / 250 tests.
+- commit `4aebda2` (`fix: harden claude channel adapter per codex review`): XML escaping, source hardcode, reply tool rethrow, invalid endpoint test 추가. +1 test.
+- Codex review: PASS. BLOCKER 0 / CONCERN 0.
+
+### Phase B Round 2 (injector + 3-type typed error model, 2026-05-22)
+
+- commit `f23d4fe` (`behavior: claude channel injector with 3-type typed error model`): `src/adapters/claude/injector.ts`, `src/adapters/contract.ts` D4 typed errors, 6 new unit tests. 40 files / 258 tests.
+- commit `e11c717` (`fix: remove claude_channel_registration_failed from AdapterInjectFailureReason`): inject() never emits registration_failed — belongs only to RegisterClaudeChannelResult.
+- Codex review: PASS. BLOCKER 0 / CONCERN 0 (implied by fix commit pattern).
+
+### Phase B Round 3 (daemon reply callback D3 Option A, 2026-05-22)
+
+- commit `1760cdd` (`behavior: daemon reply callback for Claude channel`): `src/core/events.ts` claude_channel_reply_received event type 추가, `src/daemon/state.ts` receiveClaudeChannelReply events.append 구현 (agentId link + chatId/text payload), 2 new unit tests. 40 files / 260 tests.
+- Codex review: **PASS 4건. BLOCKER 0 / CONCERN 0.**
+  1. correctness PASS — agents.findByName 조회 + events.append 패턴 기존 방식과 정합.
+  2. test coverage PASS — 미등록(agentId=null) + 등록 full-flow(agentId linked) 두 케이스 커버.
+  3. event type addition PASS — snake_case + claude_channel_ prefix 컨벤션 정합. events.test.ts 목록 동기 갱신.
+  4. D3 boundary PASS — messageId/deliveryId/routeId null 유지, D6-B 미강제.
+
+### Phase B closeout (2026-05-22)
+
+- Phase B 모든 checklist 항목 완료:
+  - [x] channel-server.ts (Round 1)
+  - [x] launcher.ts (Round 1)
+  - [x] injector.ts (Round 2)
+  - [x] daemon D2 — claudeChannelRuntime registry + RPCs (Round 1)
+  - [x] daemon D3 — reply callback (Round 3)
+- **Phase B 최종 baseline**: 40 files / **260 tests** / typecheck / build all passing.
+- Step 11 ✅ closed. Step 12 진입 가능.

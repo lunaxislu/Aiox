@@ -810,7 +810,7 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 
 ---
 
-## Step 11: Claude channel adapter skeleton — 🔄 Phase A ✅ closed, Phase B ready
+## Step 11: Claude channel adapter skeleton — ✅ closed (Phase A + Phase B, 2026-05-22)
 
 ### Phase A — Decision walkthrough (✅ closed, 2026-05-22)
 
@@ -831,7 +831,7 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 
 **Phase A authority**: `history/35-step-11-phase-a-claude-channel-decisions.history.md`.
 
-### Phase B — Implementation (⏳ To be planned)
+### Phase B — Implementation (✅ closed, 2026-05-22)
 
 - [x] `src/adapters/claude/channel-server.ts` — MCP server (stdio child of Claude
   CLI), HTTP ingress, daemon `registerClaudeChannel` POST on startup
