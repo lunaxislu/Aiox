@@ -388,6 +388,8 @@ S1~S5 결과 → `history/35` §Observation에 누적 (Session 3 commit).
 
 **Decision**: V1 trusted channel framing + fully automatic execution target. aiox will not add an extra confirmation gate for channel-delivered instructions. If Claude itself still requests confirmation or refuses a tool call, that behavior is surfaced as adapter/runtime behavior rather than hidden or bypassed.
 
+Trusted framing here means aiox does not add its own confirmation gate. It does not mean aiox can or should bypass Claude's own safety prompts, MCP permission behavior, or refusal behavior.
+
 **Status**: decided by user in Session 4.
 
 ### D2 — Ownership boundary
@@ -452,16 +454,16 @@ daemon-side reply receipt가 Spike R에서 관찰되지 않은 이유: Spike R d
 **Decision input source**: S4 + S6 결과 + O6 delegated investigation.
 
 **Options**:
-- **Option A — 3-type error model (채택)**: `channel_unavailable` + `channel_push_failed` + `channel_registration_failed`. Spike R 3개 관찰 경로 모두 커버. trade-off: typed error 종류 관리 비용 소폭 증가.
-- **Option B — 2-type**: `channel_unavailable` + `channel_push_failed`만. registration_failed는 generic error fallback. trade-off: registration 디버깅 어려움.
+- **Option A — 3-type error model (채택)**: `claude_channel_unavailable` + `claude_channel_push_failed` + `claude_channel_registration_failed`. Spike R 3개 관찰 경로 모두 커버. Step 10 `codex_*` prefix 패턴 정합. trade-off: typed error 종류 관리 비용 소폭 증가.
+- **Option B — 2-type**: `claude_channel_unavailable` + `claude_channel_push_failed`만. registration_failed는 generic error fallback. trade-off: registration 디버깅 어려움.
 - **Option C — Step 10 D5-A mirror**: `agent_unavailable { reason: enum }`. Codex mirror 강요 위험 (O3 reject 방향과 긴장). Claude path의 reason semantics가 Codex와 달라 semantic loss.
 
 **Decision**: **Option A (3-type error model)**.
 
-typed errors:
-- `channel_unavailable`: dead endpoint (HTTP connection refused / fetch failed). S4 관찰 근거. → agent state `disconnected`. no auto-reconnect.
-- `channel_push_failed`: alive endpoint + ack timeout (HTTP 504). S6 관찰 근거. → agent state `stale` (caller 판단에 맡김). no auto-retry.
-- `channel_registration_failed`: token mismatch / unknown pending. S2/S2.5 관찰 근거. → registration path 실패. attach 재시도는 operator/사용자 수동.
+typed errors — Step 10 `codex_*` adapter-prefixed reason union 패턴에 맞춰 `claude_*` prefix 사용:
+- `claude_channel_unavailable`: dead endpoint (HTTP connection refused / fetch failed). S4 관찰 근거. → agent state `disconnected`. no auto-reconnect.
+- `claude_channel_push_failed`: alive endpoint + bounded ack timeout (HTTP 504). S6 관찰 근거. 이것은 inject/delivery failure이며 Claude session expiry의 확정 신호가 아님. agent state는 자동으로 `stale`로 전이하지 않는다. stale/expiry 정책은 Open Product Issue #3/#5 deferral 유지. no auto-retry.
+- `claude_channel_registration_failed`: token mismatch / unknown pending. S2/S2.5 관찰 근거. → registration path 실패. attach 재시도는 operator/사용자 수동.
 
 session/rate limit: O6 결과 기준, Claude interactive TUI + MCP channel path에서 daemon이 structured signal을 확정 수신하는 경로 not available. → `awaiting_agent_reply` 또는 `unknown_pending` generic 상태로만 표현 가능. specific limit classification은 별도 adapter signal이 확인될 때까지 보류.
 
