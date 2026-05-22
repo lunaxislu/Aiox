@@ -19,6 +19,21 @@ Claude+User 작업 → commit → Codex review (cold start) → 다음 세션 en
 - Codex review 결과가 minor면 그 자리에서 fix commit (Round 2-fix 패턴), major면 별도 mini-session.
 - 사용자 손이 강제 필요한 단계 (Session 3 실제 실행)는 사이클 일시 정지.
 
+### 세션 사이클 중 chat 박는 prompt 본문 (필수 — Session 3부터 적용)
+
+Claude은 사이클에서 chat에 **verbatim**으로 두 시점에 prompt를 박는다:
+
+#### A. 현재 세션 review 요청 시점 (Round 1 commit 직후, 본 세션 마감 전)
+- **현재 세션의 Codex review prompt 본문** (commit hash 치환 완료) — 사용자가 그대로 본 세션 코덱스 cold-start 세션에 paste. 직전 세션 종료 시점 B에서 받은 Codex session entry prompt가 같은 코덱스 세션에 미리 paste되어 있어 cumulative context로 review.
+
+#### B. 세션 종료 시점 (review 회신 + Round 2-fix + closeout commit 모두 끝난 후)
+- **다음 세션의 Claude session entry prompt 본문** — 사용자가 그대로 새 Claude 세션에 paste.
+- **다음 세션의 Codex session entry prompt 본문** — 사용자가 그대로 새 코덱스 cold-start 세션에 paste. 코덱스가 세션 시작 시점부터 "어떤 세션이고 무엇이 일어날지" 자가완결 컨텍스트 확보. 그 다음 사이클의 시점 A에서 review prompt가 같은 코덱스 세션에 paste되어 cumulative.
+
+세 prompt 모두 § Goal / Authority entry points / Scope / Cycle rules로 cold-start 자가완결. 본 scratch 파일에 권위 보존되어 있지만 **scratch는 권위 보존용일 뿐이고 사용자가 직접 찾아 열어 복사하지 않는다.** chat에 박는 것이 표준 운영 protocol.
+
+Session 1, 2는 본 protocol 도입 전 closed라 Codex session entry prompt 회고적 작성 안 함. Codex review만 cold-start로 받음.
+
 ---
 
 ## Claude entry point (다음 세션 진입 시 읽을 순서)
@@ -306,6 +321,35 @@ Step 11 Phase A Session 3 진입. Spike R 수동 실행은 사용자 손. 본 Cl
 - Commit: `docs: record spike R observation results`.
 ```
 
+### Codex session entry prompt (verbatim, cold start — 새 코덱스 세션 첫 메시지로 paste)
+
+```
+당신은 코덱스이고 본 cold-start 세션은 Step 11 Phase A Session 3 진입 시점입니다. 본 prompt만으로 컨텍스트를 자가완결하세요.
+
+# Session 3 intent
+Step 11 Phase A Spike R의 manual run observation 누적. Spike 코드 + scenario specification은 Session 2까지 완성. Session 3는 사용자가 Spike R의 S1·S2·S2.5·S3·S4-a·S4-b·S5·S6를 직접 실행하고 결과 (터미널 log / stderr / 판정) 를 Claude(클로드 코드) 측 새 세션에 paste, Claude이 `history/35` §Observation에 박는 흐름. 코덱스(본 cold-start 세션)는 세션 시작 시점에는 동참자 stance로 대기하다가, 세션 종료 시점에 Claude이 chat에 박은 Codex review prompt를 본 같은 세션에 paste 받아 cumulative context로 review 수행.
+
+# Authority entry points (코덱스가 미리 읽기)
+1. `AGENTS.md` — 운영 규칙, Authority Priority, Decision Options Workflow.
+2. `history/35-step-11-phase-a-claude-channel-decisions.history.md` — §Observation 누적 위치, §Spike Plan S1~S6, §Decision D1~D4 placeholder, §Review log (Session 1·2 closed).
+3. `spikes/claude-channel-registration-poc/{daemon.ts, server.ts, README.md}` + `tests/unit/spikes/claude-channel-registration-daemon.test.ts` — Spike R 코드와 시나리오와 helper test (Session 2 산출물).
+4. `prd/pre-validation/claude-codex-pre-validation.md` — Claude channel injection PoC PARTIAL trust observation (비교 baseline).
+5. 메모리 [[aiox-step-progress]], [[aiox-collaboration-workflow]].
+
+# Expected deliverables (Session 3 종료 시점 Claude 측 commit)
+- Session 3 closeout commit: `docs: record spike R observation results`. `history/35` §Observation에 S1·S2·S2.5·S3·S4-a·S4-b·S5·S6 직접 관찰 fact만 박힘 (추측/extrapolation 금지). 어젠다 4건 (D1·D2·D3·D4) 결정 input은 별도 "Decision-input facts" sub-section에 정리.
+- Session 3 종료 시점 Claude이 chat에 Session 3 Codex review prompt 본문 박음 (commit hash 치환 완료). 본 코덱스 cold-start 세션에 paste되어 cumulative context로 review.
+
+# Out of scope (코덱스 본 cold-start 세션 입장)
+- Spike 코드 수정 (Session 2 closed).
+- Decision wording (Session 4).
+- 추측/extrapolation. Observation에 직접 관찰 안 된 fact를 박지 않음. 본 코덱스 review 시점에도 같은 invariant.
+
+# Cycle rules (본 cold-start 세션의 stance)
+- 본 prompt 받는 시점에 코덱스는 동참자 stance만 박음 — 작업 미실행. "Session 3 동참 대기. Spike R manual run observation 진행 예정. Claude 측 review prompt 대기 중." 정도 한 줄.
+- 사용자가 Claude side review prompt를 같은 세션에 paste할 때 cumulative context로 review 수행. 그 시점에 review prompt의 § Critical review focus 항목 따라 진행.
+```
+
 ### My deliverable
 - `history/35` Observation 섹션 확장:
   - S1~S5 각각의 실제 명령 / 결과 / stderr log / 판정 (PASS / FAIL / PARTIAL) 박음.
@@ -410,6 +454,10 @@ Step 11 Phase A Session 4 진입. 어젠다 D1~D4 walkthrough → `history/35` D
 - 세션 종료 = commit + Codex review prompt 본문 사용자에게 전달.
 - Commit: `docs: lock step 11 phase a decisions`.
 ```
+
+### Codex session entry prompt (verbatim, cold start — 새 코덱스 세션 첫 메시지로 paste)
+
+> Session 3 closeout 시점에 Claude이 chat에 wording 박음. 본 시점 placeholder. (사이클 protocol 시점 B — 다음 세션 두 entry prompt 박는 시점에 Session 4의 Codex session entry prompt를 생성)
 
 ### My deliverable
 - `history/35` Decision 섹션:
@@ -527,6 +575,10 @@ Step 11 Phase A Session 5 진입. Phase A closeout + Phase B 진입 준비 + 본
 - 세션 종료 = closeout commit (scratch 삭제 포함) + Codex review prompt 본문 사용자에게 전달.
 - Commit: `docs: close step 11 phase a + sync plan/PRD`.
 ```
+
+### Codex session entry prompt (verbatim, cold start — 새 코덱스 세션 첫 메시지로 paste)
+
+> Session 4 closeout 시점에 Claude이 chat에 wording 박음. 본 시점 placeholder. (사이클 protocol 시점 B)
 
 ### My deliverable
 - `plan/mvp-implementation-checklist.md` Step 11 sub-task 갱신 (Phase A 결정 반영, Phase B 진입 가능 상태).
