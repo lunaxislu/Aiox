@@ -810,17 +810,38 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 
 ---
 
-## Step 11: Claude channel adapter skeleton — ⏳ To be planned
+## Step 11: Claude channel adapter skeleton — 🔄 Phase A ✅ closed, Phase B ready
 
-- [ ] `src/adapters/claude/channel-server.ts` — Node.js MCP channel server
-  loaded by Claude dev channel over stdio, exposing HTTP ingress for daemon
-  push; daemon does not host it in-process
-- [ ] `src/adapters/claude/injector.ts` — `notifications/claude/channel` push
-- [ ] `src/adapters/claude/launcher.ts` — claude CLI invoke (`--dangerously-load-development-channels server:...`)
+### Phase A — Decision walkthrough (✅ closed, 2026-05-22)
 
-**Dependency**: Open Product Issue #1 resolved for MVP in
-`history/35-step-11-phase-a-claude-channel-decisions.history.md` D1:
-V1 trusted channel framing + fully automatic execution target.
+- [x] Spike R `spikes/claude-channel-registration-poc/` — token-based registration
+  handshake + push injection + framing variant (S1~S6 manual observation).
+- [x] D1 Trust stance + framing — V1 trusted channel framing + fully automatic
+  execution target. aiox no extra confirmation gate; Claude safety prompts surface
+  as adapter behavior. (`history/35` D1)
+- [x] D2 Ownership boundary — DB-only + daemon memory `claudeChannelRuntime`
+  registry. endpoint not persisted to DB. registration token handshake (pending
+  token → `.mcp.json` env → `registerClaudeChannel` → daemon verify).
+  channel server lifecycle owner: Claude CLI. (`history/35` D2)
+- [x] D3 Reply round-trip — reply → daemon HTTP POST back. D6-B integration
+  deferred to Phase B separate decision. (`history/35` D3)
+- [x] D4 Session expiry typed errors — 3-type model: `claude_channel_unavailable`
+  + `claude_channel_push_failed` + `claude_channel_registration_failed`.
+  Open Product Issue #5 deferral maintained. (`history/35` D4)
+
+**Phase A authority**: `history/35-step-11-phase-a-claude-channel-decisions.history.md`.
+
+### Phase B — Implementation (⏳ To be planned)
+
+- [ ] `src/adapters/claude/channel-server.ts` — MCP server (stdio child of Claude
+  CLI), HTTP ingress, daemon `registerClaudeChannel` POST on startup
+- [ ] `src/adapters/claude/launcher.ts` — `claude --dangerously-load-development-channels
+  server:...` invoke + attach token delivery via env (`.mcp.json` or equivalent)
+- [ ] `src/adapters/claude/injector.ts` — HTTP POST to registered endpoint +
+  3-type typed error model (D4)
+- [ ] daemon: `claudeChannelRuntime` registry + `registerClaudeChannel` / `disconnect`
+  RPCs + `attachAgent` integration (D2)
+- [ ] daemon: reply callback endpoint `POST /channel/reply` (D3 Option A)
 
 ---
 
@@ -857,7 +878,8 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 37 files, 224 tests (Step 10 Phase B Round 4-fix, 2026-05-21)
+- `pnpm test`: passing, 38 files, 239 tests (Step 11 Phase A Session 3 harness fix,
+  2026-05-22)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

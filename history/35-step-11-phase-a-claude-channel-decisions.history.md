@@ -605,6 +605,23 @@ Open Product Issue #5 (session expiry policy): deferral 유지. Phase A는 typed
 - `.mcp.json`은 manual run token/config가 남아 있어 commit에서 제외했다.
 - Session 3 Codex review prompt와 Session 4 entry prompts는 사용자에게 전달 예정.
 
+### Session 4 closeout (Decision walkthrough, 2026-05-22)
+
+- Session 4 decision commit: `5f0618f` (`docs: lock step 11 phase a decisions`). D1~D4 all locked. history/35 Decision 섹션 완비.
+- Session 4 Codex review fix commit: `9e4671d` (`docs: fix step 11 phase a D4 typed error prefix + D1 safety boundary`).
+  - D4 typed error prefix 정정: `channel_push_failed` → `claude_channel_push_failed` (Step 10 `codex_*` prefix 패턴 정합).
+  - D1 safety boundary wording 추가: "Trusted framing here means aiox does not add its own confirmation gate. It does not mean aiox can or should bypass Claude's own safety prompts, MCP permission behavior, or refusal behavior."
+- Phase A 4건 모두 locked. Session 5 진입 조건 충족: plan/PRD drift sync + Phase B 진입 준비 + scratch 삭제.
+
+### Session 5 closeout (Phase A closeout, 2026-05-22)
+
+- plan checklist Step 11: Phase A sub-tasks ✅ + Phase B surface 명시 + Verification baseline 224→239 갱신.
+- PRD Open Product Issue #1: Session 3에서 이미 "resolved for MVP" wording 갱신 완료.
+- memory [[aiox-step-progress]]: Step 11 Phase A closed 갱신.
+- memory [[aiox-collaboration-workflow]]: cold-start prompt 4-section pattern 흡수.
+- scratch `.claude/plans/step-11-phase-a-sessions.md` `git rm` 삭제 — 흡수 체크리스트 5개 모두 done 확인 후 포함.
+- Session 5 closeout commit: (본 commit, hash는 commit 시점 채워짐).
+
 ---
 
 ## Verification
@@ -627,5 +644,16 @@ Open Product Issue #5 (session expiry policy): deferral 유지. Phase A는 typed
 - typecheck: `pnpm typecheck` — **PASS**.
 - production code 변경 0 (`src/` 변경 없음). Spike harness + docs/PRD/history 변경만.
 
-### Phase A 종료 (Session 5)
-Phase B 진입 직전 full baseline 재확인 예정.
+### Session 4 (Decision walkthrough — docs only)
+
+- 변경 파일 (`5f0618f`): `history/35-step-11-phase-a-claude-channel-decisions.history.md` Decision 섹션 채움 (D1~D4 모두).
+- 변경 파일 (`9e4671d`): `history/35-step-11-phase-a-claude-channel-decisions.history.md` D4 typed error prefix 정정 + D1 safety boundary wording 추가.
+- 테스트 변경 없음. 코드 변경 없음. baseline 239 tests 유지.
+  - 참고: Session 2~3 spike test 추가로 224 → 239 갱신 (13 tests Session 2 + 2 tests Session 3 harness fix).
+
+### Session 5 (Phase A closeout — docs + memory + scratch delete)
+
+- 변경 파일: `history/35` (Review log + Verification 갱신), `plan/mvp-implementation-checklist.md` (Step 11 Phase A sub-tasks + baseline 갱신), `.claude/plans/step-11-phase-a-sessions.md` (git rm 삭제).
+- 테스트 변경 없음. 코드 변경 없음.
+- **Phase A 최종 baseline**: 38 files / **239 tests** / typecheck / build all passing.
+- Session 5 commit: (본 commit, hash는 commit 시점 채워짐). Phase B 진입 가능.
