@@ -169,3 +169,36 @@ User review clarified that `pnpm` is a repository development tool, not a
 runtime dependency for an installed `aiox` CLI. The doctor output now omits
 package-manager checks and keeps development verification in `pnpm
 test/typecheck/build`.
+
+### Process feedback for future agents
+
+The original D4 decision mixed three categories in one `doctor` list:
+
+1. Current runtime requirements (`node`, `codex`, `claude`,
+   `sqlite-native`, daemon socket reachability).
+2. Repository development workflow tools (`pnpm`).
+3. Future/possible operator recipe tools (`tmux`).
+
+That made the output look authoritative for runtime readiness even when some
+items were not actually required to run released `aiox`. User review caught this
+through two questions:
+
+- "tmux가 있는 의미를 모르겠는데?" → `tmux` was not used by the MVP runtime.
+- "pnpm은 선택아님? npm으로 보통 default아니냐?" → `pnpm` is required for this
+  repository's development scripts, not for a released CLI runtime.
+
+Correction rule for Codex/Claude follow-up work:
+
+- `aiox doctor` should report only checks that affect the current user-facing
+  runtime path.
+- Development workflow tools belong in repository verification docs/checklists,
+  not runtime doctor output.
+- Future recipe candidates should not appear in doctor until the recipe is
+  implemented and user-visible.
+- If a check is not required for all supported install/run paths, either omit it
+  from MVP doctor or put it under an explicitly separate non-failing section.
+
+This was not a code-only bug; it was a product signal-quality issue. Future
+agents should challenge diagnostic output by asking: "Would a released `aiox`
+user understand why this item is shown, and would absence of this item actually
+block the command they are trying to run?"
