@@ -80,6 +80,14 @@ describe("daemon socket transport", () => {
         ],
         pairs: [],
         routes: [],
+        messageCount: 0,
+        deliveryCounts: {
+          queued: 0,
+          delivering: 0,
+          delivered: 0,
+          completed: 0,
+          failed: 0,
+        },
       });
     } finally {
       client.close();
@@ -120,6 +128,14 @@ describe("daemon socket transport", () => {
         agents: [],
         pairs: [],
         routes: [],
+        messageCount: 0,
+        deliveryCounts: {
+          queued: 0,
+          delivering: 0,
+          delivered: 0,
+          completed: 0,
+          failed: 0,
+        },
       });
     } finally {
       client.close();

@@ -33,6 +33,7 @@ interface MessageRow {
 
 export interface MessageRepository {
   create(input: CreateMessageInput): StoredMessage;
+  count(): number;
   list(): StoredMessage[];
 }
 
@@ -72,6 +73,13 @@ export function createMessageRepository(db: Database): MessageRepository {
       ).run(message);
 
       return message;
+    },
+
+    count() {
+      const row = db.prepare("select count(*) as count from messages").get() as {
+        count: number;
+      };
+      return row.count;
     },
 
     list() {

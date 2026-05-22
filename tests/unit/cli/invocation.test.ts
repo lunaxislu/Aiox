@@ -87,6 +87,49 @@ describe("CLI invocation", () => {
     expect(calls).toEqual([]);
   });
 
+  it("formats status, daemon status, and doctor results as stdout", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime(calls);
+
+    await expect(
+      invokeParsedCommand({ kind: "status" }, { runtime, cwd: "/repo" }),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining("DELIVERIES\nmessages=0 queued=0"),
+    });
+    await expect(
+      invokeParsedCommand({ kind: "daemon-status" }, { runtime, cwd: "/repo" }),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining("VERSION    test-version\n"),
+    });
+    await expect(
+      invokeParsedCommand({ kind: "doctor" }, { runtime, cwd: "/repo" }),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining("node       ok"),
+    });
+  });
+
+  it("returns exit code 1 when doctor has required errors", async () => {
+    const runtime = createRuntime([], {
+      doctor: () => ({
+        checks: [
+          { name: "node", status: "ok", detail: "v22.4.0" },
+          { name: "tmux", status: "optional-missing" },
+          { name: "codex", status: "error", detail: "not found" },
+        ],
+      }),
+    });
+
+    await expect(
+      invokeParsedCommand({ kind: "doctor" }, { runtime, cwd: "/repo" }),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stdout: expect.stringContaining("codex      error (not found)"),
+    });
+  });
+
   it("wraps failed daemon responses in an invocation error namespace", async () => {
     const runtime = createRuntime([], {
       connect: () => ({
@@ -189,7 +232,7 @@ describe("CLI invocation", () => {
 
 function createRuntime(
   calls: unknown[],
-  daemonApiOverrides: Partial<DaemonApi> = {},
+  overrides: Partial<DaemonApi & InvocationRuntime> = {},
 ): InvocationRuntime {
   const api = {
     attachAgent(request: unknown) {
@@ -214,7 +257,20 @@ function createRuntime(
     },
     status() {
       calls.push(["status"]);
-      return { daemon: { startedAt: "2026-05-19T00:00:00.000Z" }, agents: [], pairs: [], routes: [] };
+      return {
+        daemon: { startedAt: "2026-05-19T00:00:00.000Z" },
+        agents: [],
+        pairs: [],
+        routes: [],
+        messageCount: 0,
+        deliveryCounts: {
+          queued: 0,
+          delivering: 0,
+          delivered: 0,
+          completed: 0,
+          failed: 0,
+        },
+      };
     },
     stop(request: unknown) {
       calls.push(["apiStop", request]);
@@ -228,7 +284,7 @@ function createRuntime(
       calls.push(["notifyTuiExited", request]);
       return { ok: true, agentName: "impl", detached: true };
     },
-    ...daemonApiOverrides,
+    ...overrides,
   } as unknown as DaemonApi;
 
   return {
@@ -249,12 +305,19 @@ function createRuntime(
     },
     daemonStatus() {
       calls.push(["daemonStatus"]);
-      return { ok: true };
+      return {
+        pid: 1234,
+        socketPath: "/tmp/aiox/daemon.sock",
+        dbPath: ":memory:",
+        startedAt: "2026-05-19T00:00:00.000Z",
+        version: "test-version",
+      };
     },
     doctor() {
       calls.push(["doctor"]);
-      return { ok: true };
+      return { checks: [{ name: "node", status: "ok", detail: "v22.4.0" }] };
     },
+    ...overrides,
   };
 }
 

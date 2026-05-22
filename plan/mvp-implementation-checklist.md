@@ -847,13 +847,19 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 
 ---
 
-## Step 12: doctor/status output — ⏳ To be planned
+## Step 12: doctor/status output — ✅ closed (2026-05-22)
 
-- [ ] `aiox doctor` — Node.js, pnpm, Codex CLI, Claude CLI, SQLite native binding, daemon socket/db path, 선택적 recipe tool (cmux/tmux) 점검
-- [ ] `aiox status` — daemon + agents + pairs + routes + deliveries 요약 출력
-- [ ] `aiox daemon status` — daemon pid/socket/port/db/uptime/version
+- [x] `aiox doctor` — Node.js, pnpm, Codex CLI, Claude CLI, SQLite native binding, daemon socket/db path, 선택적 recipe tool (tmux) 점검
+- [x] `aiox status` — daemon + agents + pairs + routes + deliveries 요약 출력
+- [x] `aiox daemon status` — daemon pid/socket/db/uptime/version
 
 출력 포맷은 Docker-like (STATUS, NAME, KIND 컬럼 정렬).
+
+Phase A authority: `history/36-step-12-phase-a-doctor-status-decisions.history.md`.
+Phase B implementation: `src/cli/format.ts`, `src/cli/doctor.ts`,
+`src/cli/invocation.ts`, `src/bin/aiox.ts`, `src/daemon/api.ts`,
+`src/daemon/state.ts`, `src/store/repositories/messages.ts`,
+`src/store/repositories/deliveries.ts`.
 
 ---
 
@@ -880,7 +886,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 40 files, 260 tests (Step 11 Phase B Round 3 daemon reply callback,
+- `pnpm test`: passing, 42 files, 269 tests (Step 12 Phase B doctor/status output,
   2026-05-22)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing

@@ -141,4 +141,53 @@ describe("SQLite message and delivery repositories", () => {
       },
     ]);
   });
+
+  it("counts messages and deliveries without materializing full lists", () => {
+    messages.create({
+      id: "message-1",
+      sourceAgentId: "agent-source",
+      type: "instruction",
+      content: "first",
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    messages.create({
+      id: "message-2",
+      sourceAgentId: "agent-source",
+      type: "instruction",
+      content: "second",
+      now: "2026-05-16T00:00:01.000Z",
+    });
+    const created = deliveries.createQueuedForRoutes({
+      messageId: "message-1",
+      routes: [
+        { id: "route-1", targetAgentId: "agent-target-1" },
+        { id: "route-2", targetAgentId: "agent-target-2" },
+        { id: "route-3", targetAgentId: "agent-target-3" },
+      ],
+      createDeliveryId: (targetAgentId) => `delivery-${targetAgentId}`,
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    if (!Array.isArray(created)) {
+      throw new Error("expected deliveries to be created");
+    }
+    deliveries.updateStatus({
+      id: "delivery-agent-target-2",
+      status: "completed",
+      now: "2026-05-16T00:00:02.000Z",
+    });
+    deliveries.updateStatus({
+      id: "delivery-agent-target-3",
+      status: "failed",
+      now: "2026-05-16T00:00:03.000Z",
+    });
+
+    expect(messages.count()).toBe(2);
+    expect(deliveries.countByStatus()).toEqual({
+      queued: 1,
+      delivering: 0,
+      delivered: 0,
+      completed: 1,
+      failed: 1,
+    });
+  });
 });

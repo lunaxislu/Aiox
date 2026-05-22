@@ -506,6 +506,14 @@ describe("daemon API with fake in-process transport", () => {
       agents: [],
       pairs: [],
       routes: [],
+      messageCount: 0,
+      deliveryCounts: {
+        queued: 0,
+        delivering: 0,
+        delivered: 0,
+        completed: 0,
+        failed: 0,
+      },
     });
   });
 
@@ -576,6 +584,14 @@ describe("daemon API with fake in-process transport", () => {
           status: "active",
         },
       ],
+      messageCount: 0,
+      deliveryCounts: {
+        queued: 0,
+        delivering: 0,
+        delivered: 0,
+        completed: 0,
+        failed: 0,
+      },
     });
   });
 

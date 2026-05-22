@@ -118,6 +118,27 @@ describe("aiox CLI bin", () => {
     }
   });
 
+  it("returns daemon process metadata from the socket runtime", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-bin-"), "daemon.sock");
+    const runtime = createSocketRuntime({
+      socketPath,
+      dbPath: "/tmp/aiox-test.sqlite",
+      version: "9.8.7-test",
+    });
+
+    try {
+      await expect(runtime.daemonStatus()).resolves.toEqual({
+        pid: process.pid,
+        socketPath,
+        dbPath: "/tmp/aiox-test.sqlite",
+        startedAt: expect.any(String),
+        version: "9.8.7-test",
+      });
+    } finally {
+      await runtime.close();
+    }
+  });
+
   it("keeps package bin aligned with the compiled src/bin entrypoint", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
@@ -179,7 +200,20 @@ function createRuntime(daemonApiOverrides: Partial<DaemonApi> = {}): InvocationR
     connect: () => ({ ok: true, created: [], alreadyExisted: [] }),
     disconnect: () => ({ ok: true, removed: [] }),
     sendMessage: () => ({ ok: true, message: {}, deliveries: [] }),
-    status: () => ({ daemon: { startedAt: "2026-05-19T00:00:00.000Z" }, agents: [], pairs: [], routes: [] }),
+    status: () => ({
+      daemon: { startedAt: "2026-05-19T00:00:00.000Z" },
+      agents: [],
+      pairs: [],
+      routes: [],
+      messageCount: 0,
+      deliveryCounts: {
+        queued: 0,
+        delivering: 0,
+        delivered: 0,
+        completed: 0,
+        failed: 0,
+      },
+    }),
     stop: () => ({ ok: true, stoppedAgents: [] }),
     ...daemonApiOverrides,
   } as unknown as DaemonApi;
@@ -189,7 +223,13 @@ function createRuntime(daemonApiOverrides: Partial<DaemonApi> = {}): InvocationR
     startDaemon: () => ({ ok: true }),
     stopDaemon: () => ({ ok: true, stoppedAgents: [] }),
     restartDaemon: () => ({ ok: true }),
-    daemonStatus: () => ({ ok: true }),
-    doctor: () => ({ ok: true }),
+    daemonStatus: () => ({
+      pid: process.pid,
+      socketPath: "/tmp/aiox-test.sock",
+      dbPath: ":memory:",
+      startedAt: "2026-05-19T00:00:00.000Z",
+      version: "test-version",
+    }),
+    doctor: () => ({ checks: [] }),
   };
 }

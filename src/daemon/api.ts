@@ -229,6 +229,8 @@ export interface StatusResponse {
   agents: AgentDto[];
   pairs: PairDto[];
   routes: RouteDto[];
+  messageCount: number;
+  deliveryCounts: Record<MessageDeliveryStatus, number>;
 }
 
 export interface StopResponse {
@@ -387,6 +389,8 @@ function mapStatusResult(result: StatusResult): StatusResponse {
     agents: result.agents.map(mapAgent),
     pairs: result.pairs.map(mapPair),
     routes: result.routes.map(mapRoute),
+    messageCount: result.messageCount,
+    deliveryCounts: result.deliveryCounts,
   };
 }
 

@@ -324,6 +324,8 @@ export interface StatusResult {
   agents: ReturnType<ReturnType<typeof createAgentRepository>["list"]>;
   pairs: ReturnType<ReturnType<typeof createPairRepository>["list"]>;
   routes: ReturnType<ReturnType<typeof createRouteRepository>["list"]>;
+  messageCount: number;
+  deliveryCounts: Record<MessageDeliveryStatus, number>;
 }
 
 export interface StopRequest {
@@ -934,6 +936,8 @@ export function createDaemonState(
         agents: agents.list(),
         pairs: pairs.list(),
         routes: routes.list(),
+        messageCount: messages.count(),
+        deliveryCounts: deliveries.countByStatus(),
       };
     },
 

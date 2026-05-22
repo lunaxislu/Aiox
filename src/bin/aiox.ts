@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
 
 import { launchCodexTui } from "../adapters/codex/launcher.js";
+import { createDoctorResult } from "../cli/doctor.js";
 import { invokeParsedCommand, type InvocationRuntime } from "../cli/invocation.js";
 import { parseCli } from "../cli/parse.js";
 import { createDaemonServer, type DaemonServerHandle } from "../daemon/server.js";
@@ -42,11 +43,12 @@ export async function runAioxCli(
   const stderr = options.stderr ?? process.stderr;
 
   try {
+    const version = options.version ?? readPackageVersion();
     const command = parseCli(argv, {
-      version: options.version ?? readPackageVersion(),
+      version,
     });
     const result = await invokeParsedCommand(command, {
-      runtime: options.runtime ?? createSocketRuntime(),
+      runtime: options.runtime ?? createSocketRuntime({ version }),
       cwd: options.cwd ?? process.cwd(),
       launchCodexTui: options.launchCodexTui ?? launchCodexTui,
     });
@@ -64,13 +66,17 @@ export async function runAioxCli(
 
 export interface CreateSocketRuntimeOptions {
   socketPath?: string;
+  dbPath?: string;
+  version?: string;
   attachCodexRuntime?: AttachCodexRuntime;
 }
 
 export function createSocketRuntime(
   options: CreateSocketRuntimeOptions = {},
 ): InvocationRuntime & { close(): Promise<void> } {
-  const db = new Database(":memory:");
+  const dbPath = options.dbPath ?? ":memory:";
+  const version = options.version ?? readPackageVersion();
+  const db = new Database(dbPath);
   applySchema(db);
 
   const server = createDaemonServer({
@@ -141,14 +147,20 @@ export function createSocketRuntime(
     async daemonStatus() {
       await start();
 
-      if (!client) {
-        throw new Error("socket client was not initialized");
+      if (!daemonHandle) {
+        throw new Error("daemon was not initialized");
       }
 
-      return client.status();
+      return {
+        pid: process.pid,
+        socketPath,
+        dbPath,
+        startedAt: daemonHandle.api.status().daemon.startedAt,
+        version,
+      };
     },
     doctor() {
-      return { ok: true };
+      return createDoctorResult({ socketPath });
     },
     async close() {
       await stop({ daemonOnly: true });
@@ -200,10 +212,17 @@ export function createInProcessRuntime(): InvocationRuntime {
       return { ok: true };
     },
     daemonStatus() {
-      return (handle ?? start()).api.status();
+      const activeHandle = handle ?? start();
+      return {
+        pid: process.pid,
+        socketPath: "in-process",
+        dbPath: ":memory:",
+        startedAt: activeHandle.api.status().daemon.startedAt,
+        version: readPackageVersion(),
+      };
     },
     doctor() {
-      return { ok: true };
+      return { checks: [] };
     },
   };
 }

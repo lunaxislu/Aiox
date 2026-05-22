@@ -1,6 +1,9 @@
 import type Database from "better-sqlite3";
 
-import type { MessageDeliveryStatus } from "../../core/deliveries.js";
+import {
+  messageDeliveryStatuses,
+  type MessageDeliveryStatus,
+} from "../../core/deliveries.js";
 
 export interface StoredDelivery {
   id: string;
@@ -60,6 +63,7 @@ export interface DeliveryRepository {
   findByIdempotencyKey(idempotencyKey: string): StoredDelivery | null;
   recoverAfterRestart(input: RecoverDeliveriesAfterRestartInput): number;
   updateStatus(input: UpdateDeliveryStatusInput): StoredDelivery | null;
+  countByStatus(): Record<MessageDeliveryStatus, number>;
   list(): StoredDelivery[];
 }
 
@@ -163,6 +167,21 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
       ).run(input);
 
       return findById(db, input.id);
+    },
+
+    countByStatus() {
+      const counts = Object.fromEntries(
+        messageDeliveryStatuses.map((status) => [status, 0]),
+      ) as Record<MessageDeliveryStatus, number>;
+      const rows = db
+        .prepare("select status, count(*) as count from message_deliveries group by status")
+        .all() as { status: MessageDeliveryStatus; count: number }[];
+
+      for (const row of rows) {
+        counts[row.status] = row.count;
+      }
+
+      return counts;
     },
 
     list() {

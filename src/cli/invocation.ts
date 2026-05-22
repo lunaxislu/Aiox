@@ -4,14 +4,33 @@ import type { ParsedCommand } from "./parse.js";
 import type { DaemonApi } from "../daemon/api.js";
 import type { StopRequest } from "../daemon/state.js";
 import { launchCodexTui } from "../adapters/codex/launcher.js";
+import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
+
+export interface DaemonStatusInfo {
+  pid: number;
+  socketPath: string;
+  dbPath: string;
+  startedAt: string;
+  version: string;
+}
+
+export interface DoctorCheck {
+  name: string;
+  status: "ok" | "error" | "optional-missing";
+  detail?: string;
+}
+
+export interface DoctorResult {
+  checks: DoctorCheck[];
+}
 
 export interface InvocationRuntime {
   getDaemonApi(): DaemonApi | Promise<DaemonApi>;
   startDaemon(): unknown | Promise<unknown>;
   stopDaemon(request: StopRequest): unknown | Promise<unknown>;
   restartDaemon(): unknown | Promise<unknown>;
-  daemonStatus(): unknown | Promise<unknown>;
-  doctor(): unknown | Promise<unknown>;
+  daemonStatus(): DaemonStatusInfo | Promise<DaemonStatusInfo>;
+  doctor(): DoctorResult | Promise<DoctorResult>;
 }
 
 export interface InvocationOptions {
@@ -55,8 +74,10 @@ export async function invokeParsedCommand(
       ensureOk(await options.runtime.restartDaemon());
       return success();
     case "daemon-status":
-      ensureOk(await options.runtime.daemonStatus());
-      return success();
+      return {
+        exitCode: 0,
+        stdout: formatDaemonStatus(await options.runtime.daemonStatus()),
+      };
     case "help":
       return { exitCode: 0, stdout: command.text };
     case "version":
@@ -123,15 +144,13 @@ export async function invokeParsedCommand(
     }
     case "status": {
       const api = await options.runtime.getDaemonApi();
-      await api.status();
-      return success();
+      return { exitCode: 0, stdout: formatStatus(await api.status()) };
     }
     case "global-stop":
       ensureOk(await options.runtime.stopDaemon({ daemonOnly: false }));
       return success();
     case "doctor":
-      ensureOk(await options.runtime.doctor());
-      return success();
+      return doctorResult(await options.runtime.doctor());
     default:
       return assertNever(command);
   }
@@ -203,6 +222,13 @@ async function waitForTuiExit(
 
 function success(): InvocationResult {
   return { exitCode: 0 };
+}
+
+function doctorResult(result: DoctorResult): InvocationResult {
+  return {
+    exitCode: result.checks.some((check) => check.status === "error") ? 1 : 0,
+    stdout: formatDoctor(result),
+  };
 }
 
 function ensureOk(response: unknown): void {
