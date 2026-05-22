@@ -337,15 +337,55 @@ race가 관찰되지 않으면 "관찰 안 됨"으로 박음 (negative observati
 
 ---
 
-### S4 — Channel server kill (lifecycle fail-mode)
+### S4 — Channel server unavailable
 
-**목적**: 정상 setup 후 server를 중단 → daemon `/push` 시도 → typed error `channel_unavailable` 매핑 확인 (D4 input).
+두 sub-case로 분리. 둘 다 daemon `/push` 결과는 동일한 502 `channel_unavailable` typed error로 매핑되지만, **server-side lifecycle path가 다르다**. Session 4 결정 input이 두 축으로 분리된다.
+
+#### S4-a — Claude CLI 종료 → channel server 자연 종료
+
+**목적**: channel server lifecycle owner = Claude CLI라는 D2 가설 검증. server.ts의 finally cleanup (`httpServer.close()`)이 stdio close 직후 HTTP ingress를 정리해 process가 자연 종료되는지 관찰.
 
 **Setup**: S1 정상 setup 후, Claude CLI 종료 (`/exit` 또는 Ctrl+D).
-- stdio close → channel server는 자연 exit (`mcp.connect`가 stdio EOF 받으면 종료).
+
+**예상 동작**
+- stdio close → `mcp.connect` resolve → server.ts `finally` 블록에서 `httpServer.close()` → Node event loop 종료 → process exit.
 - daemon은 alive 유지.
 
-종료 후 daemon `/push` 시도:
+daemon `/push` 시도 (terminal A):
+
+```bash
+curl -isX POST http://127.0.0.1:19000/push \
+  -H 'content-type: application/json' \
+  -d '{"agentName":"alpha","content":"after exit"}'
+```
+
+**PASS 조건**
+- `ps aux | grep -E "(tsx|claude).*spikes.*registration"` — channel server process 없음 (cleanup 동작 확인).
+- `lsof -i :18789` — port released.
+- daemon `/push` HTTP 502 + `{"error":"channel_unavailable", ...}`.
+- daemon stderr `push_forward_failed reason=channel_unavailable` 1회.
+
+**Negative observation (관찰 시 fact 기록)**
+- channel server process가 종료되지 않고 살아남으면 → cleanup이 작동 안 함. server.ts의 stdio EOF handling이 mcp.connect를 resolve시키지 않는 경우. 본 시나리오의 PASS가 흔들림 → history/35에 직접 박음.
+
+#### S4-b — Channel server process 명시적 kill
+
+**목적**: dead endpoint daemon-side typed error mapping deterministic 검증 (D4 input). cleanup invariant 무관 path.
+
+**Setup**: S1 정상 setup 후, channel server PID 찾아 명시적 kill.
+
+```bash
+# server PID 찾기 (Claude CLI의 child)
+ps aux | grep "spikes/claude-channel-registration-poc/server" | grep -v grep
+# kill (예: PID 12345)
+kill -TERM <PID>
+```
+
+**예상 동작**
+- channel server process 즉시 종료. Claude CLI는 alive 유지 (MCP child만 종료, host CLI는 무관).
+- daemon은 alive 유지.
+
+daemon `/push` 시도 (S4-a와 동일):
 
 ```bash
 curl -isX POST http://127.0.0.1:19000/push \
@@ -353,7 +393,14 @@ curl -isX POST http://127.0.0.1:19000/push \
   -d '{"agentName":"alpha","content":"after kill"}'
 ```
 
-**예상 응답**
+**PASS 조건**
+- daemon `/push` HTTP 502 + `{"error":"channel_unavailable", ...}`.
+- daemon stderr `push_forward_failed reason=channel_unavailable` 1회.
+- Claude CLI는 alive (별도 관찰 — Claude이 MCP server crash를 어떻게 surface하는지 fact 기록).
+
+#### 공통 — 응답 / stderr (두 sub-case)
+
+daemon 응답 shape:
 
 ```
 HTTP/1.1 502 Bad Gateway
@@ -364,22 +411,17 @@ content-type: application/json
 
 (`detail`은 Node fetch error message — `ECONNREFUSED` 또는 유사 wording.)
 
-**예상 daemon stderr**
+daemon stderr:
 
 ```json
 {"event":"push_forward_started","agentName":"alpha","endpoint":"http://127.0.0.1:18789/send","timeoutMs":2000, ...}
 {"event":"push_forward_failed","agentName":"alpha","endpoint":"http://127.0.0.1:18789/send","reason":"channel_unavailable","detail":"<fetch error>"}
 ```
 
-**PASS 조건**
-- daemon `/push` HTTP 502 + `error: "channel_unavailable"`.
-- daemon stderr `push_forward_failed reason=channel_unavailable` 1회.
-- daemon registry는 **stale entry 유지** (no GC, MVP invariant). `curl -s http://127.0.0.1:19000/state`로 alpha entry 잔존 확인.
-
-**Leftover observation**
-- `ps aux | grep -E "(tsx|claude).*spikes.*registration"` — channel server process가 자연 종료됐는지 확인.
-- `lsof -i :18789` — port release됐는지 확인.
-- daemon registry stale entry 1개는 의도된 동작 (MVP invariant: no auto-cleanup).
+#### 공통 — Leftover observation
+- `ps aux | grep -E "(tsx|claude).*spikes.*registration"` — sub-case별 channel server alive/dead 확인. S4-a는 자연 종료, S4-b는 즉시 종료.
+- `lsof -i :18789` — port release 확인.
+- daemon registry는 **두 sub-case 모두 stale entry 유지** (no GC, MVP invariant). `curl -s http://127.0.0.1:19000/state`로 alpha entry 잔존 확인.
   cleanup은 Step 12 doctor 후보.
 
 ---

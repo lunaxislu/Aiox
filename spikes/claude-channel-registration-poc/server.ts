@@ -329,7 +329,6 @@ async function main(): Promise<void> {
 
   const mcp = createClaudeChannelServer(framing);
   const httpServer = await startHttpIngress(mcp, { port, hangMs });
-  void httpServer;
 
   await registerWithDaemon({
     daemonUrl,
@@ -338,7 +337,13 @@ async function main(): Promise<void> {
     endpoint: `http://127.0.0.1:${port}/send`,
   });
 
-  await mcp.connect(new StdioServerTransport());
+  try {
+    await mcp.connect(new StdioServerTransport());
+  } finally {
+    await new Promise<void>((resolve) => {
+      httpServer.close(() => resolve());
+    });
+  }
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
