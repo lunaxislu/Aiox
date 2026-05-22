@@ -3,7 +3,7 @@
 ## Status
 
 - Phase: Step 11 Phase A (skeleton).
-- Session: 3 of 5 (Spike R manual observations in progress).
+- Session: 3 of 5 complete (Spike R manual observations recorded; Codex review prompt ready).
 - Decision 섹션은 placeholder. Session 4에서 walkthrough 후 박힘.
 - 권위 entry: 본 문서. 작업 분할 scratch는 `.claude/plans/step-11-phase-a-sessions.md`.
 - 진입 조건: Step 10 closed (`history/34` Round 4-fix manual TUI smoke 5종 PASS). 메모리 [[aiox-step-progress]] "다음 세션 인계 (2026-05-21 마감)" 항목의 cross-cut 4건이 본 Phase A 어젠다 4건의 기원.
@@ -559,6 +559,22 @@ S1~S5 결과 → `history/35` §Observation에 누적 (Session 3 commit).
 - Verification: 224 (Step 10 baseline) + 13 (신규 spike unit tests in `tests/unit/spikes/claude-channel-registration-daemon.test.ts`) = **237 tests** / typecheck / build all passing. production code 변경 0 (spike 디렉토리 + helper unit test만).
 - Session 3 진입 조건 충족: spike R 코드 + README + helper unit test + cleanup 안전망 박힘. 사용자가 S1·S2·S2.5·S3·S4-a·S4-b·S5·S6 직접 실행 가능. Open Question 1 (Claude CLI MCP child 종료 방식) 는 S4-a 관찰 항목으로 carry, 정확한 path는 사용자 paste fact로 박힘.
 
+### Session 3 closeout (manual Spike R observations, 2026-05-22)
+
+- Session 3 harness fix commit: `8669fb9` (`spike: fix claude channel registration harness lifecycle`).
+  - `server.ts` lifecycle 보정: `mcp.connect(new StdioServerTransport())`를 HTTP registration 전에 시작해 Claude CLI initialize를 먼저 받을 수 있게 했다.
+  - `httpServer.close()` cleanup 제거: Spike R의 HTTP ingress가 process lifetime을 잡도록 기존 성공 PoC와 같은 형태로 맞췄다.
+  - reply tool 직접 관찰을 위해 spike-only in-memory reply store와 `GET /replies` endpoint를 추가했다. production surface 아님.
+  - README S3 PASS 조건에 server stderr `reply` event 또는 `/replies` observation을 추가했다.
+- Session 3 observation/docs commit: `cdf1d97` (`docs: record step 11 claude channel observations`).
+  - `history/35` O5에 S1/S2/S2.5/S3/S4-a/S4-b/S5 V1/V2/V3/S6 수동 관찰을 fact-only로 기록했다.
+  - O6에 Gemini delegated investigation 결과를 기록했다: Claude interactive TUI + MCP channel에서는 structured pending/limit/approval status 수신 경로가 not available로 조사됨.
+  - D3/D4 decision input source에 O6를 연결했다.
+  - `prd/post-mvp/agent-message-lifecycle-policy.md`를 추가하고, pair-level blocked/pending 및 duplicate/fan-out/interruption policy를 Post-MVP parking lot으로 분리했다.
+  - Gemini learning docs 2건을 `docs/aiox/`에 추가했다.
+- `.mcp.json`은 manual run token/config가 남아 있어 commit에서 제외했다.
+- Session 3 Codex review prompt와 Session 4 entry prompts는 사용자에게 전달 예정.
+
 ---
 
 ## Verification
@@ -574,5 +590,12 @@ S1~S5 결과 → `history/35` §Observation에 누적 (Session 3 commit).
 - **Baseline 갱신**: 224 → **237 tests** / typecheck / build all passing.
 - production code 변경 0 (spike 디렉토리 + helper unit test만; `src/` 변경 없음).
 
+### Session 3 (Spike R manual observations + harness observability fix)
+- 변경 파일 (`8669fb9`): `spikes/claude-channel-registration-poc/{server.ts, README.md}`, `tests/unit/spikes/claude-channel-registration-daemon.test.ts`.
+- 변경 파일 (`cdf1d97`): `history/35-step-11-phase-a-claude-channel-decisions.history.md`, `plan/mvp-implementation-checklist.md`, `prd/mvp/aiox-mvp-spec.md`, `prd/post-mvp/agent-message-lifecycle-policy.md`, `docs/aiox/{claude-channel-registration-and-trust-model.md, industry-precedents-and-observability-models.md}`.
+- focused spike tests: `pnpm test tests/unit/spikes/claude-channel-registration-daemon.test.ts` — **15 tests PASS**.
+- typecheck: `pnpm typecheck` — **PASS**.
+- production code 변경 0 (`src/` 변경 없음). Spike harness + docs/PRD/history 변경만.
+
 ### Phase A 종료 (Session 5)
-Phase B 진입 직전 baseline 재확인 예정. Session 3/4에서 코드 변경 없으면 237 유지.
+Phase B 진입 직전 full baseline 재확인 예정.
