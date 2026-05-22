@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createDaemonApi } from "../../../src/daemon/api.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
+import { createEventRepository } from "../../../src/store/repositories/events.js";
 import { applySchema } from "../../../src/store/schema.js";
 import { buildChannelNotification } from "../../../src/adapters/claude/channel-server.js";
 import { buildLaunchClaudeChannelArgs } from "../../../src/adapters/claude/launcher.js";
@@ -268,6 +269,70 @@ describe("daemon receiveClaudeChannelReply", () => {
     });
 
     expect(response).toMatchObject({ ok: true });
+  });
+
+  it("records claude_channel_reply_received event with chatId and text", async () => {
+    const ids = ["agent-1", "event-1"];
+    const state = createDaemonState({
+      db,
+      createId: () => ids.shift()!,
+      now: () => "2026-05-22T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.receiveClaudeChannelReply({
+      agentName: "alpha",
+      chatId: "t1",
+      text: "reply text",
+    });
+
+    const events = createEventRepository(db).list();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "claude_channel_reply_received",
+      data: { chatId: "t1", text: "reply text" },
+      agentId: null,
+    });
+  });
+
+  it("links agentId when agent is registered", async () => {
+    const claudeChannelRuntimes = new Map();
+    const ids = ["agent-1", "event-1", "event-2"];
+    const state = createDaemonState({
+      db,
+      createId: () => ids.shift()!,
+      now: () => "2026-05-22T00:00:00.000Z",
+      claudeChannelRuntimes,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    expect(attachResponse.ok).toBe(true);
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+
+    await client.receiveClaudeChannelReply({
+      agentName: "alpha",
+      chatId: "t2",
+      text: "orchestration complete",
+    });
+
+    const events = createEventRepository(db).list();
+    const replyEvent = events.find((e) => e.type === "claude_channel_reply_received");
+    expect(replyEvent).toMatchObject({
+      type: "claude_channel_reply_received",
+      data: { chatId: "t2", text: "orchestration complete" },
+      agentId: "agent-1",
+    });
   });
 });
 

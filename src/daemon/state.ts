@@ -912,6 +912,17 @@ export function createDaemonState(
     },
 
     receiveClaudeChannelReply(request) {
+      const agent = agents.findByName(request.agentName);
+      events.append({
+        id: options.createId(),
+        type: "claude_channel_reply_received",
+        data: { chatId: request.chatId, text: request.text },
+        createdAt: options.now(),
+        agentId: agent?.id ?? null,
+        messageId: null,
+        deliveryId: null,
+        routeId: null,
+      });
       return { ok: true };
     },
 

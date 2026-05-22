@@ -839,9 +839,11 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
   server:...` invoke + attach token delivery via env (`.mcp.json` or equivalent)
 - [x] `src/adapters/claude/injector.ts` — HTTP POST to registered endpoint +
   3-type typed error model (D4)
-- [ ] daemon: `claudeChannelRuntime` registry + `registerClaudeChannel` / `disconnect`
+- [x] daemon: `claudeChannelRuntime` registry + `registerClaudeChannel` / `disconnect`
   RPCs + `attachAgent` integration (D2)
-- [ ] daemon: reply callback endpoint `POST /channel/reply` (D3 Option A)
+- [x] daemon: reply callback endpoint `POST /channel/reply` (D3 Option A) — implemented
+  via Unix socket RPC `receiveClaudeChannelReply`; records `claude_channel_reply_received`
+  event with chatId/text/agentId link
 
 ---
 
@@ -878,7 +880,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 40 files, 258 tests (Step 11 Phase B Round 2 claude injector,
+- `pnpm test`: passing, 40 files, 260 tests (Step 11 Phase B Round 3 daemon reply callback,
   2026-05-22)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing

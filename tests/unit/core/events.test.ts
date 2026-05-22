@@ -24,6 +24,7 @@ describe("append-only events", () => {
       "agent_thread_id_rebound",
       "codex_binding_uncertain_observed",
       "late_reply",
+      "claude_channel_reply_received",
     ]);
   });
 
