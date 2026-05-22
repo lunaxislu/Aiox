@@ -620,7 +620,7 @@ Open Product Issue #5 (session expiry policy): deferral 유지. Phase A는 typed
 - memory [[aiox-step-progress]]: Step 11 Phase A closed 갱신.
 - memory [[aiox-collaboration-workflow]]: cold-start prompt 4-section pattern 흡수.
 - scratch `.claude/plans/step-11-phase-a-sessions.md` `git rm` 삭제 — 흡수 체크리스트 5개 모두 done 확인 후 포함.
-- Session 5 closeout commit: (본 commit, hash는 commit 시점 채워짐).
+- Session 5 closeout commit: `725618c` (`docs: close step 11 phase a + sync plan/PRD`).
 
 ---
 
@@ -656,4 +656,4 @@ Open Product Issue #5 (session expiry policy): deferral 유지. Phase A는 typed
 - 변경 파일: `history/35` (Review log + Verification 갱신), `plan/mvp-implementation-checklist.md` (Step 11 Phase A sub-tasks + baseline 갱신), `.claude/plans/step-11-phase-a-sessions.md` (git rm 삭제).
 - 테스트 변경 없음. 코드 변경 없음.
 - **Phase A 최종 baseline**: 38 files / **239 tests** / typecheck / build all passing.
-- Session 5 commit: (본 commit, hash는 commit 시점 채워짐). Phase B 진입 가능.
+- Session 5 commit: `725618c`. Phase B 진입 가능.
