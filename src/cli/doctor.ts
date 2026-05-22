@@ -28,7 +28,7 @@ export async function createDoctorResult(
     },
   ];
 
-  for (const command of ["pnpm", "codex", "claude"] as const) {
+  for (const command of ["codex", "claude"] as const) {
     checks.push(commandCheck(command, commandExists));
   }
 

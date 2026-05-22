@@ -22,7 +22,6 @@ describe("CLI doctor checks", () => {
     });
 
     expect(calls).toEqual([
-      "pnpm",
       "codex",
       "claude",
       "sqlite-native",
@@ -31,7 +30,6 @@ describe("CLI doctor checks", () => {
     expect(result).toEqual({
       checks: [
         { name: "node", status: "ok", detail: "v22.4.0" },
-        { name: "pnpm", status: "ok" },
         { name: "codex", status: "ok" },
         { name: "claude", status: "ok" },
         { name: "sqlite-native", status: "ok" },
@@ -45,7 +43,7 @@ describe("CLI doctor checks", () => {
       socketPath: "/tmp/aiox/missing.sock",
       processVersion: "v22.4.0",
       commandExists(command) {
-        return command === "pnpm";
+        return false;
       },
       socketExists() {
         return false;
@@ -57,7 +55,6 @@ describe("CLI doctor checks", () => {
 
     expect(result.checks).toEqual([
       { name: "node", status: "ok", detail: "v22.4.0" },
-      { name: "pnpm", status: "ok" },
       { name: "codex", status: "error", detail: "not found" },
       { name: "claude", status: "error", detail: "not found" },
       { name: "sqlite-native", status: "error", detail: "native module failed" },

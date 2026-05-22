@@ -117,7 +117,7 @@ describe("CLI output formatting", () => {
     const output = formatDoctor({
       checks: [
         { name: "node", status: "ok", detail: "v22.4.0" },
-        { name: "pnpm", status: "error", detail: "not found" },
+        { name: "codex", status: "error", detail: "not found" },
       ],
     });
 
@@ -125,7 +125,7 @@ describe("CLI output formatting", () => {
       [
         "COMPONENT  STATUS",
         "node       ok (v22.4.0)",
-        "pnpm       error (not found)",
+        "codex      error (not found)",
         "",
       ].join("\n"),
     );

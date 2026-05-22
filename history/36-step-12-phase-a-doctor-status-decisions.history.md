@@ -79,7 +79,6 @@ interface DaemonStatusInfo {
 | 항목 | 방법 | 필수 여부 |
 |------|------|----------|
 | node | `process.version` | 필수 |
-| pnpm | `spawnSync("which", ["pnpm"])` | 필수 |
 | codex | `spawnSync("which", ["codex"])` | 필수 |
 | claude | `spawnSync("which", ["claude"])` | 필수 |
 | sqlite-native | better-sqlite3 import 성공 여부 | 필수 |
@@ -93,7 +92,6 @@ interface DaemonStatusInfo {
 ```
 COMPONENT        STATUS
 node             ok (v22.4.0)
-pnpm             ok
 codex            ok
 claude           ok
 sqlite-native    ok
@@ -164,3 +162,10 @@ Verification:
 User review clarified that `tmux` is not used by the current MVP runtime and
 showing it in `aiox doctor` creates noise. The doctor output now reports only
 current required runtime dependencies and daemon socket reachability.
+
+### Follow-up correction: remove pnpm from runtime doctor
+
+User review clarified that `pnpm` is a repository development tool, not a
+runtime dependency for an installed `aiox` CLI. The doctor output now omits
+package-manager checks and keeps development verification in `pnpm
+test/typecheck/build`.
