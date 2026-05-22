@@ -618,7 +618,7 @@ Step 9 밖:
 - Codex app-server adapter skeleton.
 - Claude channel adapter skeleton.
 - Codex thread UUID mapping.
-- Claude channel trust/confirmation policy.
+- Claude channel automatic execution policy.
 - doctor/status output.
 
 Phase A 결정:
@@ -818,7 +818,9 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 - [ ] `src/adapters/claude/injector.ts` — `notifications/claude/channel` push
 - [ ] `src/adapters/claude/launcher.ts` — claude CLI invoke (`--dangerously-load-development-channels server:...`)
 
-**Dependency**: Open Product Issue #1 (Claude channel trust/confirmation policy) 정책 결정 필요.
+**Dependency**: Open Product Issue #1 resolved for MVP in
+`history/35-step-11-phase-a-claude-channel-decisions.history.md` D1:
+V1 trusted channel framing + fully automatic execution target.
 
 ---
 
@@ -836,7 +838,8 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 
 권위: `prd/mvp/aiox-mvp-spec.md` "Open Product Issues" 섹션.
 
-1. Claude channel trust/confirmation policy → **Step 11 시작 전 결정 필요**
+1. Claude channel trust/confirmation policy → **MVP 결정 완료**:
+   V1 trusted channel framing + fully automatic execution target
 2. Codex thread UUID → agent name mapping → **Step 10 시작 전 결정 필요**
 3. Stale agent transition policy → Step 2 repositories 또는 Step 3 daemon API 단계에 영향
 4. Long-running delivery timeout policy → MVP에는 timeout 없음 default. Step 5/8 통합 테스트에서 노출될 수 있음

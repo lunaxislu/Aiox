@@ -650,11 +650,17 @@ durable identity and state only.
 These issues are known product policy gaps. They should not block MVP skeleton
 implementation, but adapter behavior and UX must reference them.
 
-1. Claude channel trust/confirmation policy
+1. Claude channel trust/confirmation policy — resolved for MVP
 
-   Claude may treat channel-delivered instructions as external or untrusted and
-   ask for user confirmation before following them. MVP must avoid assuming fully
-   automatic Claude-side execution until the trust/wording policy is decided.
+   MVP targets fully automatic Claude-side execution for channel-delivered
+   instructions. aiox will use trusted channel framing and will not insert an
+   additional per-message confirmation layer before Claude follows an injected
+   channel instruction. Claude MCP tools are expected to be enabled by the
+   operator for this mode.
+
+   This is a product stance, not a guarantee from Claude. If Claude still treats
+   a channel instruction as external or asks for confirmation, aiox surfaces that
+   runtime behavior instead of trying to bypass Claude's own safety boundary.
 
 2. Codex thread id to agent name mapping
 
