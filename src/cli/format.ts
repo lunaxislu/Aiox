@@ -105,10 +105,6 @@ function formatTable(headers: string[], rows: string[][]): string {
 }
 
 function formatDoctorStatus(check: DoctorResult["checks"][number]): string {
-  if (check.status === "optional-missing") {
-    return "optional – not found";
-  }
-
   return check.detail ? `${check.status} (${check.detail})` : check.status;
 }
 

@@ -849,7 +849,7 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 
 ## Step 12: doctor/status output — ✅ closed (2026-05-22)
 
-- [x] `aiox doctor` — Node.js, pnpm, Codex CLI, Claude CLI, SQLite native binding, daemon socket/db path, 선택적 recipe tool (tmux) 점검
+- [x] `aiox doctor` — Node.js, pnpm, Codex CLI, Claude CLI, SQLite native binding, daemon socket/db path 점검
 - [x] `aiox status` — daemon + agents + pairs + routes + deliveries 요약 출력
 - [x] `aiox daemon status` — daemon pid/socket/db/uptime/version
 

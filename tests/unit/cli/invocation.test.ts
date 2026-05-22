@@ -116,7 +116,6 @@ describe("CLI invocation", () => {
       doctor: () => ({
         checks: [
           { name: "node", status: "ok", detail: "v22.4.0" },
-          { name: "tmux", status: "optional-missing" },
           { name: "codex", status: "error", detail: "not found" },
         ],
       }),

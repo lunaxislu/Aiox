@@ -118,7 +118,6 @@ describe("CLI output formatting", () => {
       checks: [
         { name: "node", status: "ok", detail: "v22.4.0" },
         { name: "pnpm", status: "error", detail: "not found" },
-        { name: "tmux", status: "optional-missing" },
       ],
     });
 
@@ -127,7 +126,6 @@ describe("CLI output formatting", () => {
         "COMPONENT  STATUS",
         "node       ok (v22.4.0)",
         "pnpm       error (not found)",
-        "tmux       optional – not found",
         "",
       ].join("\n"),
     );

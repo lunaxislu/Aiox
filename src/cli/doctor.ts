@@ -38,11 +38,6 @@ export async function createDoctorResult(
       ? { name: "daemon socket", status: "ok", detail: options.socketPath }
       : { name: "daemon socket", status: "error", detail: "not found" },
   );
-  checks.push(
-    commandExists("tmux")
-      ? { name: "tmux", status: "ok" }
-      : { name: "tmux", status: "optional-missing" },
-  );
 
   return { checks };
 }

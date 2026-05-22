@@ -84,11 +84,10 @@ interface DaemonStatusInfo {
 | claude | `spawnSync("which", ["claude"])` | 필수 |
 | sqlite-native | better-sqlite3 import 성공 여부 | 필수 |
 | daemon socket | `fs.existsSync(socketPath)` | 필수 |
-| tmux | `spawnSync("which", ["tmux"])` | optional |
 
 - 명령 lookup: `spawnSync("which", [cmd])` 또는 `execFileSync("which", [cmd])` — shell string 실행(`execSync("which <cmd>")`) 금지. quoting 이슈 방지.
 - daemon socket 체크: daemon start 없이 configured socket path 존재 여부만 확인. 미실행 시 `error: not found`가 유용한 진단 정보.
-- 하나 실패해도 계속 실행. optional 제외 any-fail → exit code 1.
+- 하나 실패해도 계속 실행. any-fail → exit code 1.
 
 출력 포맷:
 ```
@@ -99,7 +98,6 @@ codex            ok
 claude           ok
 sqlite-native    ok
 daemon socket    ok (/tmp/aiox-xxx/daemon.sock)
-tmux             optional – not found
 ```
 
 ### D5: formatter 위치
@@ -128,8 +126,7 @@ tmux             optional – not found
   `state.status()` now uses repository COUNT queries instead of deriving from
   full message/delivery lists.
 - Added `src/cli/doctor.ts` and wired `InvocationRuntime.doctor()` to run all
-  checks in D4 order. Required errors set `aiox doctor` exit code to 1;
-  `tmux` missing remains `optional-missing`.
+  checks in D4 order. Any check error sets `aiox doctor` exit code to 1.
 - Extended `createSocketRuntime()` with `dbPath` and `version`; `daemonStatus()`
   now returns `DaemonStatusInfo`.
 - Connected `invocation.ts` status, daemon-status, and doctor commands to the
@@ -161,3 +158,9 @@ Verification:
 - `pnpm test`: passing, 42 files, 273 tests.
 - `pnpm typecheck`: passing.
 - `pnpm build`: passing.
+
+### Follow-up correction: remove unused tmux check
+
+User review clarified that `tmux` is not used by the current MVP runtime and
+showing it in `aiox doctor` creates noise. The doctor output now reports only
+current required runtime dependencies and daemon socket reachability.

@@ -24,7 +24,7 @@ export type DaemonStatusInfo =
 
 export interface DoctorCheck {
   name: string;
-  status: "ok" | "error" | "optional-missing";
+  status: "ok" | "error";
   detail?: string;
 }
 
