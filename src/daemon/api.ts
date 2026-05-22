@@ -8,10 +8,16 @@ import type {
   DaemonState,
   DetachAgentRequest,
   DetachAgentResult,
+  DisconnectClaudeChannelRequest,
+  DisconnectClaudeChannelResult,
   DisconnectRequest,
   DisconnectResult,
   NotifyTuiExitedRequest,
   NotifyTuiExitedResult,
+  ReceiveClaudeChannelReplyRequest,
+  ReceiveClaudeChannelReplyResult,
+  RegisterClaudeChannelRequest,
+  RegisterClaudeChannelResult,
   RollbackAgentAttachRequest,
   RollbackAgentAttachResult,
   SendMessageRequest,
@@ -43,6 +49,15 @@ export interface DaemonApi {
   ): Promise<RollbackAgentAttachResponse>;
   detachAgent(request: DetachAgentRequest): Promise<DetachAgentResponse>;
   notifyTuiExited(request: NotifyTuiExitedRequest): Promise<NotifyTuiExitedResponse>;
+  registerClaudeChannel(
+    request: RegisterClaudeChannelRequest,
+  ): Promise<RegisterClaudeChannelResponse>;
+  disconnectClaudeChannel(
+    request: DisconnectClaudeChannelRequest,
+  ): Promise<DisconnectClaudeChannelResponse>;
+  receiveClaudeChannelReply(
+    request: ReceiveClaudeChannelReplyRequest,
+  ): Promise<ReceiveClaudeChannelReplyResponse>;
   status(): StatusResponse;
   stop(request: StopRequest): StopResponse;
 }
@@ -95,6 +110,7 @@ export type AttachAgentResponse =
         endpoint: string;
         activeThreadId: string;
       };
+      claudeChannelToken?: string;
     }
   | {
       ok: false;
@@ -220,6 +236,10 @@ export interface StopResponse {
   stoppedAgents: AgentDto[];
 }
 
+export type RegisterClaudeChannelResponse = RegisterClaudeChannelResult;
+export type DisconnectClaudeChannelResponse = DisconnectClaudeChannelResult;
+export type ReceiveClaudeChannelReplyResponse = ReceiveClaudeChannelReplyResult;
+
 export function createDaemonApi(state: DaemonState): DaemonApi {
   return {
     async attachAgent(request) {
@@ -249,6 +269,15 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     async notifyTuiExited(request) {
       return state.notifyTuiExited(request);
     },
+    async registerClaudeChannel(request) {
+      return state.registerClaudeChannel(request);
+    },
+    async disconnectClaudeChannel(request) {
+      return state.disconnectClaudeChannel(request);
+    },
+    async receiveClaudeChannelReply(request) {
+      return state.receiveClaudeChannelReply(request);
+    },
     status() {
       return mapStatusResult(state.status());
     },
@@ -264,6 +293,9 @@ function mapAttachAgentResult(result: AttachAgentResult): AttachAgentResponse {
       ok: true,
       agent: mapAgent(result.agent),
       ...(result.codexRuntime ? { codexRuntime: result.codexRuntime } : {}),
+      ...(result.claudeChannelToken
+        ? { claudeChannelToken: result.claudeChannelToken }
+        : {}),
     };
   }
 

@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { AgentKind } from "../core/agents.js";
 import type { MessageDeliveryStatus } from "../core/deliveries.js";
@@ -29,12 +30,57 @@ import { attachCodexAgentRuntime } from "../adapters/codex/runtime.js";
 const attachRollbackSentinel = Symbol("aiox.attach.rollback");
 const sendMessageRollbackSentinel = Symbol("aiox.sendMessage.rollback");
 
+export interface ClaudeChannelRuntime {
+  agentName: string;
+  endpoint: string;
+  registeredAt: string;
+  tokenHash: string;
+}
+
+interface ClaudePendingToken {
+  agentName: string;
+  token: string;
+  createdAt: string;
+}
+
+export interface RegisterClaudeChannelRequest {
+  agentName: string;
+  token: string;
+  endpoint: string;
+}
+
+export type RegisterClaudeChannelResult =
+  | { ok: true; runtime: ClaudeChannelRuntime }
+  | { ok: false; reason: "claude_channel_registration_failed"; detail: string };
+
+export interface DisconnectClaudeChannelRequest {
+  agentName: string;
+}
+
+export interface DisconnectClaudeChannelResult {
+  ok: true;
+  agentName: string;
+  disconnected: boolean;
+}
+
+export interface ReceiveClaudeChannelReplyRequest {
+  agentName: string;
+  chatId: string;
+  text: string;
+}
+
+export interface ReceiveClaudeChannelReplyResult {
+  ok: true;
+}
+
 export interface CreateDaemonStateOptions {
   db: Database;
   createId: () => string;
   now: () => string;
   codexRuntimes?: AgentRuntimeRegistry;
   attachCodexRuntime?: AttachCodexRuntime;
+  claudeChannelRuntimes?: Map<string, ClaudeChannelRuntime>;
+  claudePendingTokens?: Map<string, ClaudePendingToken>;
 }
 
 export const productionAttachCodexRuntime: AttachCodexRuntime = defaultAttachCodexRuntime;
@@ -78,6 +124,7 @@ export type AttachAgentResult =
         endpoint: string;
         activeThreadId: string;
       };
+      claudeChannelToken?: string;
     }
   | Extract<AttachStoredAgentResult, { ok: false }>
   | {
@@ -305,6 +352,9 @@ export interface DaemonState {
   recordCodexRuntimeFailed(
     request: RecordCodexRuntimeFailedRequest,
   ): RecordCodexRuntimeFailedResult;
+  registerClaudeChannel(request: RegisterClaudeChannelRequest): RegisterClaudeChannelResult;
+  disconnectClaudeChannel(request: DisconnectClaudeChannelRequest): DisconnectClaudeChannelResult;
+  receiveClaudeChannelReply(request: ReceiveClaudeChannelReplyRequest): ReceiveClaudeChannelReplyResult;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
@@ -320,6 +370,10 @@ export function createDaemonState(
   const routes = createRouteRepository(options.db);
   const codexRuntimes = options.codexRuntimes ?? new Map<string, ManagedAgentRuntime>();
   const attachCodexRuntime = options.attachCodexRuntime;
+  const claudeChannelRuntimes =
+    options.claudeChannelRuntimes ?? new Map<string, ClaudeChannelRuntime>();
+  const claudePendingTokens =
+    options.claudePendingTokens ?? new Map<string, ClaudePendingToken>();
   const startedAt = options.now();
 
   return {
@@ -392,7 +446,21 @@ export function createDaemonState(
           };
         });
 
-        if (!attachResult.ok || request.kind !== "codex" || !attachCodexRuntime) {
+        if (!attachResult.ok) {
+          return attachResult;
+        }
+
+        if (request.kind === "claude") {
+          const token = randomUUID();
+          claudePendingTokens.set(request.name, {
+            agentName: request.name,
+            token,
+            createdAt: options.now(),
+          });
+          return { ...attachResult, claudeChannelToken: token };
+        }
+
+        if (request.kind !== "codex" || !attachCodexRuntime) {
           return attachResult;
         }
 
@@ -807,6 +875,46 @@ export function createDaemonState(
       };
     },
 
+    registerClaudeChannel(request) {
+      const pending = claudePendingTokens.get(request.agentName);
+      if (!pending || pending.token !== request.token) {
+        return {
+          ok: false,
+          reason: "claude_channel_registration_failed" as const,
+          detail: "unknown_token",
+        };
+      }
+
+      const parsedEndpoint = parseLoopbackHttpEndpoint(request.endpoint);
+      if (!parsedEndpoint) {
+        return {
+          ok: false,
+          reason: "claude_channel_registration_failed" as const,
+          detail: "invalid_endpoint",
+        };
+      }
+
+      claudePendingTokens.delete(request.agentName);
+      const runtime: ClaudeChannelRuntime = {
+        agentName: request.agentName,
+        endpoint: parsedEndpoint,
+        registeredAt: options.now(),
+        tokenHash: claudeTokenFingerprint(request.token),
+      };
+      claudeChannelRuntimes.set(request.agentName, runtime);
+      return { ok: true, runtime };
+    },
+
+    disconnectClaudeChannel(request) {
+      const had = claudeChannelRuntimes.has(request.agentName);
+      claudeChannelRuntimes.delete(request.agentName);
+      return { ok: true, agentName: request.agentName, disconnected: had };
+    },
+
+    receiveClaudeChannelReply(request) {
+      return { ok: true };
+    },
+
     status() {
       return {
         daemon: {
@@ -996,6 +1104,26 @@ function isCodexAttachError(error: unknown): error is {
     (error.code === "codex_resume_failed" ||
       error.code === "codex_runtime_attach_failed")
   );
+}
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
+
+function parseLoopbackHttpEndpoint(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:") return null;
+  if (!LOOPBACK_HOSTS.has(url.hostname.toLowerCase())) return null;
+  if (url.port.length === 0) return null;
+  if (!url.pathname.endsWith("/send")) return null;
+  return `${url.protocol}//${url.host}${url.pathname}`;
+}
+
+function claudeTokenFingerprint(token: string): string {
+  return createHash("sha256").update(token).digest("hex").slice(0, 12);
 }
 
 function createBidirectionalPairRoutes(input: {

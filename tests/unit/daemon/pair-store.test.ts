@@ -153,7 +153,7 @@ describe("daemon pair store persistence", () => {
         cwd: "/repo",
         pairName: "feature-x",
       }),
-    ).toEqual({
+    ).toMatchObject({
       ok: true,
       agent: {
         id: "agent-claude",
