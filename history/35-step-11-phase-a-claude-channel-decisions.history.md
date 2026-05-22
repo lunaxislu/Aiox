@@ -3,7 +3,7 @@
 ## Status
 
 - Phase: Step 11 Phase A (skeleton).
-- Session: 1 of 5 (entry doc + spike plan).
+- Session: 3 of 5 (Spike R manual observations in progress).
 - Decision 섹션은 placeholder. Session 4에서 walkthrough 후 박힘.
 - 권위 entry: 본 문서. 작업 분할 scratch는 `.claude/plans/step-11-phase-a-sessions.md`.
 - 진입 조건: Step 10 closed (`history/34` Round 4-fix manual TUI smoke 5종 PASS). 메모리 [[aiox-step-progress]] "다음 세션 인계 (2026-05-21 마감)" 항목의 cross-cut 4건이 본 Phase A 어젠다 4건의 기원.
@@ -90,6 +90,200 @@ Step 10 D5-B invariant ([[aiox-step-progress]]) 가 Claude 측에도 동일하�
 - no process group kill / setsid / `PR_SET_PDEATHSIG`.
 
 ownership boundary가 다르지만 invariant는 동일 모델. Decision 4건 각각에서 위반 없음을 명시한다.
+
+### O5. Spike R Session 3 manual observations — S1~S6
+
+사용자 직접 실행 + Codex 보조 실행으로 확인한 fact만 기록한다. S3 중간에
+spike harness lifecycle bug가 발견되어 `spikes/claude-channel-registration-poc/server.ts`
+를 보정한 뒤 S3를 재실행했다. 아래 S3는 pre-fix 실패와 post-fix 성공을 분리한다.
+
+#### S1 — Normal registration
+
+- **PASS**: `.mcp.json` env에 `AIOX_CHANNEL_POC_AGENT=alpha`와 발급 token을 넣은 뒤 Claude CLI를 실행하면 channel server가 daemon에 등록됐다.
+- daemon stderr:
+  - `daemon_listening` — `http://127.0.0.1:19000`, `pushTimeoutMs=2000`.
+  - `attach_pending_created` — `agentName=alpha`, `tokenHash=5e3e3396bec7`, `createdAt=2026-05-22T06:17:13.833Z`.
+  - `register_accepted` — `agentName=alpha`, `endpoint=http://127.0.0.1:18789/send`, `tokenHash=5e3e3396bec7`, `registeredAt=2026-05-22T06:18:25.264Z`.
+- `/state` 응답: `pending=[]`, `registry=[{agentName:"alpha", endpoint:"http://127.0.0.1:18789/send", registeredAt:"2026-05-22T06:18:25.264Z"}]`.
+- **추가 관찰**: shell prefix env (`AIOX_CHANNEL_POC_TOKEN=... claude ...`) 만으로는 MCP child `server.ts`가 token을 받는 경로가 되지 않았다. `.mcp.json` env block에 token을 넣은 뒤 registration이 성공했다.
+
+#### S2 — Token mismatch reject
+
+- **PASS (daemon reject)**: pending token과 다른 token으로 register 시도 시 daemon이 accept하지 않았다.
+- daemon stderr:
+  - `daemon_listening` — `http://127.0.0.1:19000`, `pushTimeoutMs=2000`.
+  - `attach_pending_created` — `agentName=alpha`, `tokenHash=297d01340f70`, `createdAt=2026-05-22T06:20:24.811Z`.
+  - `register_rejected` — `agentName=alpha`, wrong token `tokenHash=5e3e3396bec7`, `reason=registration_unknown_token`.
+- **Claude CLI side-effect**: Claude CLI에는 visible error/message가 관찰되지 않았다. 사용자가 `/exit`으로 정상 종료했고 same-terminal `echo $?`는 `0`.
+- **판정 범위**: token mismatch가 daemon에서 reject된 것은 직접 관찰. channel server child exit code는 Claude CLI child라 직접 관찰하지 못했다.
+
+#### S2.5 — Registration race / no pending token
+
+- **PASS**: pending attach 없이 register 시도 시 daemon이 accept하지 않았다.
+- daemon stderr:
+  - `daemon_listening` — `http://127.0.0.1:19000`, `pushTimeoutMs=2000`.
+  - `register_rejected` — `agentName=alpha`, `tokenHash=5e3e3396bec7`, `reason=registration_unknown_token`.
+- **Claude CLI side-effect**: S2와 동일하게 visible error/message는 관찰되지 않았다. 사용자가 수동 종료했고 same-terminal `echo $?`는 `0`.
+- **No auto-retry observation**: spike에서 자동 retry/reconnect는 관찰되지 않았다.
+
+#### S3 pre-fix — Push failed after registration
+
+- **FAIL (pre-fix)**: S1-style registration 후 daemon `/push`가 registered endpoint로 forward를 시작했지만 `channel_unavailable`로 실패했다.
+- daemon stderr:
+  - `register_accepted` — `endpoint=http://127.0.0.1:18789/send`.
+  - `push_forward_started` — `chat_id=test-001`, `origin=manual`, `timeoutMs=2000`.
+  - `push_forward_failed` — `reason=channel_unavailable`, `detail=fetch failed`.
+- operator `/push` 응답: `{"error":"channel_unavailable","detail":"fetch failed"}`.
+- 이 run에서는 Claude transcript delivery, confirm prompt, reply tool 호출을 관찰하지 못했다.
+
+#### Spike harness fix before S3 rerun
+
+- 원인 후보는 기존 성공 PoC `spikes/claude-channel-node-poc/server.ts`와 Spike R `server.ts`의 lifecycle 차이에서 확인했다.
+- pre-fix Spike R은 HTTP ingress + daemon registration 후 `mcp.connect()`를 호출했고, Session 2 cleanup 코드가 `mcp.connect()` resolve 후 `finally { httpServer.close() }`를 실행했다.
+- 보정:
+  - `mcp.connect(new StdioServerTransport())`를 HTTP registration work 전에 시작.
+  - `httpServer.close()` cleanup 제거. 기존 성공 PoC처럼 HTTP server가 process lifetime을 잡게 둠.
+  - reply tool 직접 관찰을 위해 spike-only in-memory reply store + `GET /replies` endpoint 추가. production surface 아님.
+- verification:
+  - `pnpm test tests/unit/spikes/claude-channel-registration-daemon.test.ts` — 15 tests PASS.
+  - `pnpm typecheck` — PASS.
+
+#### S3 post-fix — Push injection + confirm observation
+
+- **PASS**: daemon `/push`가 registered channel endpoint까지 도달했고 channel server가 HTTP 202를 반환했다.
+- daemon stderr:
+  - `daemon_listening` — `http://127.0.0.1:19000`, `pushTimeoutMs=2000`.
+  - `attach_pending_created` — `agentName=alpha`, `tokenHash=3b70b22ec13e`, `createdAt=2026-05-22T06:55:50.047Z`.
+  - `register_accepted` — `endpoint=http://127.0.0.1:18789/send`, `registeredAt=2026-05-22T06:56:10.344Z`.
+  - `push_forward_started` — `chat_id=test-001`, `origin=manual`, `timeoutMs=2000`.
+  - `push_forward_succeeded` — `upstreamStatus=202`.
+- operator `/push` 응답: HTTP 200, `{"ok":true,"upstreamStatus":202,"upstreamBody":{"ok":true}}`.
+- Claude transcript:
+  - channel message를 받았고 `chat_id=test-001` instruction을 요약했다.
+  - Claude가 "Should I execute these instructions and send the reply through the channel system?"라고 confirmation을 물었다.
+- 사용자 confirmation 후 Claude는 자연어로 완료 및 channel 전송 성공을 말했지만, 제공된 terminal log에서는 server-side `reply` stderr event를 직접 확인하지 못했다. 따라서 reply tool invocation은 이 run에서 직접 확인된 fact로 박지 않는다. `GET /replies` endpoint로 후속 재확인 예정.
+
+#### S3 follow-up — Reply tool direct observation via `/replies`
+
+- **PASS (channel-server-side observation)**: `GET /replies`로 spike-only in-memory reply store를 확인했고, Claude의 `reply` tool invocation 결과가 기록됐다.
+- `/replies` 응답: `[{"chat_id":"test-001","text":"aiox channel received.","at":"2026-05-22T07:12:25.614Z"}]`.
+- 이 확인은 **channel server spike-only store** 기준이다. production surface가 아니며 daemon-side reply receipt를 뜻하지 않는다.
+- **Daemon-side reply receipt**: not observed. 현재 Spike R daemon에는 reply callback/receipt surface가 없다.
+- Claude UI side-effect:
+  - channel message가 transcript에 도착했고 Claude가 `aiox channel received.`라고 응답했다.
+  - `aiox-channel-registration-poc - reply(chat_id: "test-001", text: "aiox channel received.")` MCP tool-use permission prompt가 표시됐다.
+  - 이 follow-up run에서는 channel-delivered instruction 실행 전 별도 confirmation prompt는 관찰되지 않았다. 위 S3 post-fix의 confirmation 관찰과 분리해서 기록한다.
+
+#### S4-a — Claude CLI exit → channel unavailable
+
+- **PASS**: Claude CLI 종료 후 daemon registry에는 stale endpoint가 남았고, 다음 `/push`는 `channel_unavailable`로 실패했다.
+- daemon stderr:
+  - `push_forward_started` — `agentName=alpha`, `endpoint=http://127.0.0.1:18789/send`, `timeoutMs=2000`.
+  - `push_forward_failed` — `agentName=alpha`, `endpoint=http://127.0.0.1:18789/send`, `reason=channel_unavailable`, `detail=fetch failed`.
+- `/state` 응답: `pending=[]`, `registry=[{agentName:"alpha", endpoint:"http://127.0.0.1:18789/send", registeredAt:"2026-05-22T07:19:41.256Z"}]`.
+- operator `/push` 응답: HTTP 502, `{"error":"channel_unavailable","detail":"fetch failed"}` (`Date: Fri, 22 May 2026 07:20:14 GMT`).
+- `lsof -i :18789`는 출력 없음으로 관찰됐다.
+- Claude CLI 종료 후 same-terminal exit code는 이 run에서 not observed.
+
+#### S4-b — Channel server process kill → channel unavailable
+
+- **PASS**: channel server parent process를 명시적으로 kill한 뒤 daemon `/push`가 `channel_unavailable`로 실패했다.
+- killed process: PID `35043`, command `pnpm tsx spikes/claude-channel-registration-poc/server.ts`.
+- kill 후 `ps aux | grep "spikes/claude-channel-registration-poc/server" | grep -v grep` 출력 없음.
+- kill 후 `lsof -i :18789` 출력 없음.
+- operator `/push` 응답: HTTP 502, `{"error":"channel_unavailable","detail":"fetch failed"}` (`Date: Fri, 22 May 2026 07:24:24 GMT`).
+- daemon stderr:
+  - `push_forward_failed` — `agentName=alpha`, `endpoint=http://127.0.0.1:18789/send`, `reason=channel_unavailable`, `detail=fetch failed`.
+- Claude CLI alive/error surface는 이 run에서 not observed.
+
+#### S5 V1 — Baseline `<channel>` framing
+
+- **PASS**: V1 framing push가 channel server까지 도달했고 reply tool invocation은 `/replies`로 확인됐다.
+- operator `/push` 응답: HTTP 200, `{"ok":true,"upstreamStatus":202,"upstreamBody":{"ok":true}}`.
+- daemon stderr:
+  - `push_forward_started` — `agentName=alpha`, `endpoint=http://127.0.0.1:18789/send`, `chat_id=t1`, `origin=manual`, `timeoutMs=2000`.
+  - `push_forward_succeeded` — `upstreamStatus=202`.
+- Claude transcript:
+  - `aiox-channel-registration-poc` channel message가 도착했다.
+  - Claude가 `reply 호출 완료 (chat_id=t1, text=hello-v1).`라고 표시했다.
+- `/replies` 응답: `[{"chat_id":"t1","text":"hello-v1","at":"2026-05-22T07:26:32.941Z"}]`.
+- instruction 실행 전 별도 confirmation prompt는 not observed.
+- reply tool permission prompt는 not observed.
+- daemon-side reply receipt는 not observed.
+
+#### S5 V2 — Explicit external-message framing
+
+- **PASS**: V2 framing push가 channel server까지 도달했고, Claude가 외부 메시지 실행 전 confirmation을 요청했다. 사용자 승인 후 reply tool invocation은 `/replies`로 확인됐다.
+- daemon stderr:
+  - `register_accepted` — `agentName=alpha`, `endpoint=http://127.0.0.1:18789/send`, `tokenHash=5b74de8f55af`, `registeredAt=2026-05-22T07:28:02.153Z`.
+  - `push_forward_started` — `agentName=alpha`, `endpoint=http://127.0.0.1:18789/send`, `chat_id=t1`, `timeoutMs=2000`.
+  - `push_forward_succeeded` — `upstreamStatus=202`.
+- operator `/push` 응답: HTTP 200, `{"ok":true,"upstreamStatus":202,"upstreamBody":{"ok":true}}`.
+- Claude transcript:
+  - `AI orchestration 채널에서 메시지를 받았습니다.`
+  - `외부 메시지: "Please call reply with chat_id t1 and text hello-v2."`
+  - `보안상 이러한 외부 지시사항을 실행하려면 먼저 귀하의 명시적 승인이 필요합니다.`
+  - `reply 호출 (chat_id: t1, 메시지: hello-v2)` 실행 여부를 물었다.
+  - 사용자 승인 후 `완료했습니다. 채널 t1에 "hello-v2" 메시지를 전송했습니다.`라고 표시했다.
+- `/replies` 응답: `[{"chat_id":"t1","text":"hello-v2","at":"2026-05-22T07:29:27.366Z"}]`.
+- daemon-side reply receipt는 not observed.
+
+#### S5 V3 — Plain content framing
+
+- **PARTIAL**: V3 plain content는 transcript에 도착했지만 Claude가 MCP server instruction에 따라 informational only로 처리했고 자동 reply는 호출하지 않았다.
+- Claude transcript:
+  - `채널 메시지가 도착했습니다 (aiox-channel-registration-poc, chat_id t1):`
+  - message content: `Please call reply with chat_id t1 and text hello-v3.`
+  - `MCP 서버 지침에 따라 채널 메시지는 informational only로 처리하며, 자동으로 reply를 호출하지 않습니다.`
+  - `프롬프트 인젝션 가능성이 있어 그대로 실행하지 않고 보고만 드립니다.`
+  - 사용자가 명시적으로 지시하면 `reply(chat_id="t1", text="hello-v3")`를 호출할 수 있다고 표시했다.
+- 사용자 후속 지시 `호출해` 후 Claude session limit에 걸렸다: `You've hit your session limit · resets 5:40pm (Asia/Seoul)`.
+- reply tool invocation은 not observed.
+- `/replies` 결과는 not observed.
+- daemon-side reply receipt는 not observed.
+
+#### S6 — Endpoint alive + hang timeout
+
+- **PASS**: endpoint는 살아 있고 channel notification은 Claude transcript에 도착한 것으로 보였지만, daemon의 bounded HTTP ack는 timeout으로 실패했다.
+- daemon stderr:
+  - `push_forward_failed` — `agentName=alpha`, `endpoint=http://127.0.0.1:18789/send`, `reason=channel_push_failed`, `subReason=timeout`, `detail=fetch aborted`.
+- operator `/push` 응답: HTTP 504, `{"error":"channel_push_failed","reason":"timeout","detail":"fetch aborted"}` (`Date: Fri, 22 May 2026 07:33:53 GMT`).
+- Claude UI:
+  - channel message line `aiox-channel-registration-poc: timeout test`가 보였다.
+  - Claude session limit message가 표시됐다: `You've hit your session limit · resets 5:40pm (Asia/Seoul)`.
+- Claude reply/tool execution은 session limit 때문에 not observed.
+- **Boundary observation**: S6에서 daemon ack는 Claude transcript delivery 여부와 다르다. 이 run에서는 transcript delivery처럼 보이는 UI가 있었지만 daemon은 HTTP response timeout으로 실패했다.
+
+#### Decision-input facts from S1~S6
+
+- **D1 Trust stance + framing**: S3 post-fix에서 Claude는 channel-delivered instruction을 자동 실행하지 않고 사용자 confirmation을 요청했다. 기존 O1 PARTIAL trust observation이 재현됐다.
+  - S5 V1: baseline `<channel>` framing에서 transcript delivery와 reply invocation은 관찰됐지만 instruction 실행 전 별도 confirmation prompt는 not observed.
+  - S5 V2: explicit external-message framing에서 Claude가 외부 메시지와 명시적 승인 필요를 표시하고 confirmation을 요청했다.
+  - S5 V3: plain content framing에서 Claude는 informational only로 처리했고 자동 reply를 호출하지 않았다.
+- **D2 Ownership boundary**:
+  - S1에서 daemon pending token이 registry entry로 이동하고 endpoint가 in-memory state에 저장되는 path가 관찰됐다.
+  - S2/S2.5에서 mismatch/no-pending registration은 `registration_unknown_token`으로 reject됐다.
+  - Claude MCP child에 attach token을 전달하려면 `.mcp.json` env 또는 동등한 explicit token delivery path가 필요하다는 관찰이 생겼다. MVP에서 `.mcp.json` rewrite를 쓸지 wrapper/token-file을 쓸지는 아직 결정하지 않는다.
+  - S4-a에서 Claude CLI 종료 후 channel server port가 released 됐고 daemon registry stale entry는 유지됐다.
+  - S4-b에서 channel server parent process kill 후 channel server process와 port가 사라졌다.
+- **D3 Reply round-trip ack boundary**: S3/S5 V1/V2에서 daemon push ack는 HTTP 200 + upstream 202로 확인됐고, reply tool invocation은 channel server spike-only `/replies`로 직접 확인됐다. 단, daemon-side reply receipt는 not observed이며 현재 Spike R daemon에는 reply callback/receipt surface가 없다.
+  - S6에서 Claude transcript delivery처럼 보이는 UI가 있었지만 daemon HTTP ack는 timeout으로 실패했다. 따라서 daemon push ack는 Claude 처리/수신의 semantic ack로 볼 수 없다.
+- **D4 Session expiry exposure**:
+  - pre-fix S3는 registered endpoint가 unavailable이면 daemon이 `channel_unavailable` / `fetch failed`를 반환하는 path를 보여줬다. 다만 이 run은 spike harness lifecycle bug가 섞였으므로 production lifecycle failure fact로 과장하지 않는다.
+  - S4-a/S4-b에서 dead endpoint는 HTTP 502 `channel_unavailable` / `fetch failed`로 관찰됐다.
+  - S6에서 alive endpoint + delayed response는 HTTP 504 `channel_push_failed` / `reason=timeout` / `detail=fetch aborted`로 관찰됐다.
+
+### O6. Delegated investigation — structured pending/limit observability
+
+사용자가 Gemini에 위임해 조사한 결과를 Session 4 decision input으로 기록한다.
+아래 항목은 Spike R 수동 관찰이 아니라 delegated investigation result다.
+
+- **Conclusion**: 현재 Claude interactive TUI + MCP channel 구조에서는 daemon이 Claude의 structured session-limit/rate-limit/pending/thinking/approval 상태를 안정적으로 받을 수 있는 경로가 not available로 조사됐다.
+- Claude Code CLI의 `--output-format stream-json` 및 hook event 계열 machine-readable output은 조사 결과 `--print` non-interactive mode에서만 동작하며, interactive TUI mode에서 동일한 structured event stream은 확인되지 않았다.
+- MCP 규격 및 Claude MCP host/server 구조에서 Host(Claude)가 Server(channel server)로 session limit, rate limit, model availability, thinking/pending, approval pending 상태를 역방향 broadcast하는 표준 event는 확인되지 않았다.
+- 현재 Spike R의 `notifications/claude/channel` push는 JSON-RPC notification이며 notification 자체는 response를 갖지 않는다. 따라서 channel server가 HTTP 200/202를 반환한 뒤 Claude가 limit, approval, policy, 또는 user action 대기로 메시지를 처리하지 못해도 daemon으로 structured refusal/error reason이 돌아오는 경로는 확인되지 않았다.
+- TUI 화면 scraping은 ANSI escape code와 terminal-size-dependent dynamic rendering 때문에 stable observability path로 채택하지 않는다. 이 항목은 implementation policy input이며, production decision은 Session 4에서 별도 확정한다.
+- **Decision input**: daemon은 short push delivery timeout과 long-running agent work/reply wait를 분리해야 한다. delivery 이후 상태는 adapter가 structured lifecycle event를 제공하지 않는 한 `awaiting_agent_reply` 또는 `unknown_pending` 류의 generic 상태로만 표현할 수 있으며, `rate_limited`/`session_limited`/`approval_pending`을 확정 상태로 표시할 근거는 현재 not observed.
 
 ---
 
@@ -221,7 +415,7 @@ S1~S5 결과 → `history/35` §Observation에 누적 (Session 3 commit).
 - `parent_message_id` linking이 Step 11 Phase A scope인지 Phase B인지 Step 10 D6-B와 통합인지.
 - Long-running reply (Open Product Issue #4) 와의 분리.
 
-**Decision input source**: S3 + S6 결과 + 어젠다 #2 결정 (ownership boundary 정해지면 reply path 자연 추론).
+**Decision input source**: S3 + S6 결과 + O6 delegated investigation + 어젠다 #2 결정 (ownership boundary 정해지면 reply path 자연 추론).
 
 **Options placeholder**:
 - Trade-off: TBD.
@@ -241,7 +435,7 @@ S1~S5 결과 → `history/35` §Observation에 누적 (Session 3 commit).
 - typed errors 종류 (`claude_channel_unavailable`, `claude_channel_push_failed`, `claude_channel_registration_failed` 등) 와 agent state 전이.
 - Open Product Issue #5 자체는 [[aiox-deferred-decisions]] 권위로 Step 11 이후 별도 step (Option C) — 본 Phase A는 그 deferral 유지하되 noticeable surface만 박는다.
 
-**Decision input source**: S4 + S6 결과.
+**Decision input source**: S4 + S6 결과 + O6 delegated investigation.
 
 **Options placeholder**:
 - Trade-off: TBD.
@@ -276,16 +470,41 @@ S1~S5 결과 → `history/35` §Observation에 누적 (Session 3 commit).
 
 - [[aiox-deferred-decisions]] Option C — Step 10/11 모두 끝난 뒤 별도 step에서 다룬다.
 - 본 Phase A D4는 expiry 정책 자체를 박지 않고, "Claude 측 expiry detection signal이 어디서 surface될 수 있는지"의 local boundary만 박는다 (typed errors + state 전이).
+- O6 delegated investigation 기준, Claude interactive TUI + MCP channel path에서는 session limit/rate limit을 daemon이 structured signal로 확정 수신하는 경로가 확인되지 않았다. 따라서 본 Phase A에서는 generic unavailable/timeout/no-reply 계열 surface까지만 decision input으로 삼고, specific limit classification은 별도 adapter signal이 확인될 때까지 보류한다.
+
+### Pair-level blocked/pending policy (Post-MVP)
+
+- 본 Session 3 논의에서 단일 message `awaiting_agent_reply`만으로는 충분하지 않을 수 있다는 user concern이 나왔다.
+- 한 agent가 session/rate limit 또는 user-reported unavailable 상태가 되면 그 agent가 포함된 모든 pair가 사실상 진행 불가 상태가 될 수 있다.
+- 아직 결정하지 않는다. `prd/post-mvp/agent-message-lifecycle-policy.md`에 기록했다.
+- 결정 후보 surface:
+  - agent-level `user_reported_limited`/`unavailable`을 pair-level `blocked_by_agent`로 투영할지
+  - blocked pair에 새 outbound message를 enqueue/reject/confirm 중 무엇으로 처리할지
+  - reset time 이후 자동 resume할지, 사용자의 explicit `available` report를 요구할지
+
+### Duplicate outbound, fan-out, and user-interrupted pending turns (Post-MVP)
+
+- 본 Session 3 논의에서 `codex -> claude` 메시지가 unresolved 상태인데 같은 방향으로 다시 메시지가 오거나, 반대 방향에서도 동일한 상황이 발생하거나, 1:N fan-out 중 일부 target만 pending/limited/interrupted 상태가 되는 경우가 제기됐다.
+- Claude TUI에서 사용자가 `Esc` 등으로 turn을 interrupt하는 경우도 같은 issue에 포함한다.
+- 현재 Step 11 Phase A에서는 이 policy를 결정하지 않는다.
+- 특히 Claude interactive TUI의 user interruption은 daemon이 structured signal로 관찰할 수 있는지 not observed다.
+- `prd/post-mvp/agent-message-lifecycle-policy.md`에 기록했다.
+- 결정 후보 surface:
+  - unresolved `awaiting_agent_reply`가 있는 pair/direction의 새 message를 queue/coalesce/reject 중 무엇으로 처리할지
+  - opposite direction을 독립 lane으로 둘지, pair 전체 single-flight로 막을지
+  - fan-out에서 partial completion과 target별 pending을 어떻게 source agent에게 surface할지
+  - user interruption을 user report/cancel command로 받을지
+  - interrupted pending message 상태를 `cancelled_by_user`, `failed`, `superseded`, 또는 pending 유지 중 무엇으로 둘지
 
 ---
 
 ## Open follow-up (Session 2 이후)
 
-- Spike R 코드 + README (Session 2).
-- Spike R 수동 실행 결과 누적 (Session 3).
+- Spike R 코드 + README (Session 2). Session 3에서 harness lifecycle fix와 reply observation endpoint 추가.
+- Spike R 수동 실행 결과 누적 (Session 3) — S1/S2/S2.5/S3/S4-a/S4-b/S5/S6 기록됨.
 - Decision 4건 walkthrough → 권위 박음 (Session 4).
 - plan checklist / PRD / 메모리 drift sync + Phase B 위임 prompt 윤곽 (Session 5).
-- 본 문서 verification baseline 갱신 — Phase A는 코드 변경 0 (Session 2 spike 코드는 `spikes/` 아래, production code 아님) 이므로 224 tests baseline 유지 예상.
+- 본 문서 verification baseline 갱신 — Session 3 현재 focused spike test 15개 PASS, `pnpm typecheck` PASS.
 
 ---
 

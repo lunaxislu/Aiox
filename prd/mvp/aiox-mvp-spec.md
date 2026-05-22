@@ -737,4 +737,6 @@ CLI sessions and user auth state.
 - GUI terminal native split adapters.
 - Shared Codex app-server optimization.
 - Full resume-safe long-running workflow.
+- Agent message lifecycle policies that are not needed for MVP:
+  `prd/post-mvp/agent-message-lifecycle-policy.md`.
 - Quorum/aggregation routing.

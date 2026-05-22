@@ -842,6 +842,12 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 4. Long-running delivery timeout policy → MVP에는 timeout 없음 default. Step 5/8 통합 테스트에서 노출될 수 있음
 5. AI agent session expiry handling → Step 10/11 adapter 구현 시 노출될 수 있음
 
+Post-MVP parking lot:
+
+- `prd/post-mvp/agent-message-lifecycle-policy.md` tracks pair-level
+  blocked/pending policy plus duplicate outbound, fan-out, and user-interrupted
+  pending-turn policy. These are not MVP implementation scope.
+
 ---
 
 ## Verification Baseline
