@@ -115,6 +115,34 @@ describe("daemon registerClaudeChannel", () => {
     });
   });
 
+  it("registerClaudeChannel with invalid endpoint returns claude_channel_registration_failed", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-05-22T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+
+    const response = await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "https://example.com/send",
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      reason: "claude_channel_registration_failed",
+    });
+  });
+
   it("registered runtime entry has correct shape", async () => {
     const claudeChannelRuntimes = new Map();
     const state = createDaemonState({

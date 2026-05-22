@@ -18,7 +18,6 @@ export interface ChannelNotificationInput {
   content: string;
   chatId?: string;
   origin?: string;
-  source?: string;
 }
 
 export interface ChannelNotification {
@@ -29,15 +28,22 @@ export interface ChannelNotification {
   };
 }
 
+function escapeXmlAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function escapeXmlContent(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export function buildChannelNotification(
   input: ChannelNotificationInput,
 ): ChannelNotification {
-  const source = input.source ?? "aiox";
-  const attrs: string[] = [`source="${source}"`];
-  if (input.chatId) attrs.push(`chat_id="${input.chatId}"`);
-  if (input.origin) attrs.push(`origin="${input.origin}"`);
+  const attrs: string[] = [`source="aiox"`];
+  if (input.chatId) attrs.push(`chat_id="${escapeXmlAttr(input.chatId)}"`);
+  if (input.origin) attrs.push(`origin="${escapeXmlAttr(input.origin)}"`);
 
-  const framedContent = `<channel ${attrs.join(" ")}>${input.content}</channel>`;
+  const framedContent = `<channel ${attrs.join(" ")}>${escapeXmlContent(input.content)}</channel>`;
 
   const meta: Record<string, string> = {};
   if (input.chatId) meta.chat_id = input.chatId;
@@ -137,6 +143,7 @@ export function createClaudeChannelMcpServer(
           chat_id,
           error: error instanceof Error ? error.message : String(error),
         });
+        throw error;
       }
       return {
         content: [{ type: "text" as const, text: "reply sent" }],
@@ -179,7 +186,6 @@ export function startClaudeChannelHttpIngress(
           content: parsed.content,
           chatId: parsed.chat_id,
           origin: parsed.origin,
-          source: parsed.source,
         });
         logEvent("ingress_send_received", {
           chat_id: parsed.chat_id,
@@ -331,7 +337,6 @@ const InboundMessage = z.object({
   content: z.string().min(1),
   chat_id: z.string().min(1).optional(),
   origin: z.string().min(1).optional(),
-  source: z.string().min(1).optional(),
 });
 
 function tokenFingerprint(token: string): string {
