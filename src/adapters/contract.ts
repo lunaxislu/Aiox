@@ -25,7 +25,10 @@ export type AdapterInjectFailureReason =
   | "codex_turn_start_timeout"
   | "codex_jsonrpc_error"
   | "codex_resume_failed"
-  | "codex_binding_uncertain";
+  | "codex_binding_uncertain"
+  | "claude_channel_unavailable"
+  | "claude_channel_push_failed"
+  | "claude_channel_registration_failed";
 
 export type AdapterInjectResult =
   | {

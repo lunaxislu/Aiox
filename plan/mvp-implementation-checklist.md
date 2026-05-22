@@ -833,11 +833,11 @@ Round 4 D7 replacement + TUI launch + explicit resume closed on 2026-05-21:
 
 ### Phase B — Implementation (⏳ To be planned)
 
-- [ ] `src/adapters/claude/channel-server.ts` — MCP server (stdio child of Claude
+- [x] `src/adapters/claude/channel-server.ts` — MCP server (stdio child of Claude
   CLI), HTTP ingress, daemon `registerClaudeChannel` POST on startup
-- [ ] `src/adapters/claude/launcher.ts` — `claude --dangerously-load-development-channels
+- [x] `src/adapters/claude/launcher.ts` — `claude --dangerously-load-development-channels
   server:...` invoke + attach token delivery via env (`.mcp.json` or equivalent)
-- [ ] `src/adapters/claude/injector.ts` — HTTP POST to registered endpoint +
+- [x] `src/adapters/claude/injector.ts` — HTTP POST to registered endpoint +
   3-type typed error model (D4)
 - [ ] daemon: `claudeChannelRuntime` registry + `registerClaudeChannel` / `disconnect`
   RPCs + `attachAgent` integration (D2)
@@ -878,7 +878,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 38 files, 239 tests (Step 11 Phase A Session 3 harness fix,
+- `pnpm test`: passing, 40 files, 258 tests (Step 11 Phase B Round 2 claude injector,
   2026-05-22)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
