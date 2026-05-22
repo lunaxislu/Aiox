@@ -317,16 +317,43 @@ S1~S5 결과 → `history/35` §Observation에 누적 (Session 3 commit).
 - Session 1 fix commit: (본 commit, hash는 commit 시점 채워짐).
 - Session 2 진입 조건 충족: history/35 Phase A skeleton + Spike Plan S1~S6 완비 + Decision D1~D4 Options placeholder 명시.
 
+### Session 2 Codex review (cold-start, 2026-05-22)
+
+회신 요약 (verbatim quotes는 commit history 참조):
+
+- **PASS 6건**: (1) token handshake one-shot (`/attach`에서 token 생성 → registration 성공 시 pending pool 삭제, mismatch/unknown pending은 `registration_unknown_token`으로 reject) / (2) daemon registry Map 기반 in-memory only (DB persist 없음, `agents.adapter_session_id` semantic drift 없음) / (3) endpoint validation loopback HTTP `/send` contract 강제 + raw input 대신 canonical URL 저장 / (4) 기존 `claude-channel-node-poc` MCP/zod/stdio 패턴 재사용 정합 / (5) README S1~S6 명령/env/예상 stderr/PASS 조건 + registration race, channel kill, timeout, framing variant, same-terminal exit, leftover observation, decision input mapping 모두 커버 / (6) MVP invariant 위반 0 (persistent connection / periodic poll / auto-reconnect / heartbeat 흔적 없음).
+- **CONCERN 1건**: `spikes/claude-channel-registration-poc/server.ts`에서 `mcp.connect`만 await하고 HTTP ingress를 finally에서 닫지 않음 (`void httpServer`로 handle 무시) → stdio close 시 Node가 HTTP server active handle 때문에 event loop를 유지, channel server process가 살아남을 가능성. README S4의 "Claude CLI 종료 → channel server 자연 exit + daemon push 502 `channel_unavailable`" 가정이 코드로 보장되지 않음.
+- **Open questions for Claude 2건**: (1) Claude CLI가 dev-channel MCP child 종료 시 child process에 명시적 signal을 보내는지 stdio만 닫는지 / (2) S4 목표가 "Claude CLI 종료로 자연 stale endpoint"인지 "사용자가 channel server process를 명시적으로 kill한 dead endpoint"인지.
+
+### Claude 답 + patch 매핑
+
+1. **server.ts finally cleanup 적용** — `mcp.connect`를 `try/finally`로 wrap, finally 블록에서 `httpServer.close()` 호출. stdio close 직후 HTTP active handle을 정리해 Node event loop가 자연 종료되도록 보장. Codex CLI가 stdio만 닫는 경우와 SIGTERM 발사 경우 모두에서 leak 없음. **Patch**: `server.ts` lifecycle order에 try/finally 추가, `void httpServer` 삭제. Round 2-fix commit `b274363`.
+2. **README S4를 S4-a / S4-b 두 sub-case로 분리** — S4-a (Claude CLI 종료 → 자연 종료, D2 lifecycle ownership input), S4-b (channel server process 명시적 kill, D4 typed error deterministic input). 두 case 모두 daemon `/push` 502 `channel_unavailable` typed error로 매핑되지만 **server-side lifecycle path가 다르다**. Session 4 결정 input이 두 축으로 분리. **Patch**: `README.md` §S4 갈아엎고 S4-a + S4-b + 공통 응답/stderr + 공통 Leftover observation 4 sub-section. Round 2-fix commit `b274363`.
+3. **Open Question 1 (Claude CLI MCP child 종료 방식) → Session 3 S4-a 관찰 항목으로 carry** — 정확한 종료 path는 spike 실행에서 직접 fact로 기록 (`ps aux | grep ...registration` + 사용자 paste). cleanup 추가로 두 가지 case (Claude CLI가 stdio만 닫음 vs 명시적 signal) 모두에서 자연 종료가 보장되도록 코드 측면 안전 띠 박음. README S4-a §Negative observation에 "cleanup이 작동 안 하면 history/35에 직접 박음" wording 박힘.
+4. **Open Question 2 (S4 목표 구분) → S4-a/S4-b 분리 자체가 답** — 자연 종료 path (D2 ownership invariant 검증) 와 explicit kill path (D4 typed error deterministic 검증) 를 명시적으로 두 sub-case로 박았고, 두 sub-case 모두 daemon `/push` 결과는 동일한 502 `channel_unavailable`로 매핑된다는 사실을 §공통 섹션에 박음.
+
+### Session 2 closeout
+
+- Session 2 Round 1 commit: `3931070` (`spike: claude channel registration handshake poc`). 4 files / 1504 insertions: `spikes/claude-channel-registration-poc/{daemon.ts, server.ts, README.md}` + `tests/unit/spikes/claude-channel-registration-daemon.test.ts`.
+- Session 2 Round 2-fix commit: `b274363` (`spike: cleanup channel server http ingress + split S4 scenarios`). 2 files / +64-17 (`server.ts` finally cleanup + `README.md` S4 split).
+- Session 2 closeout commit: (본 commit, hash는 commit 시점 채워짐).
+- Verification: 224 (Step 10 baseline) + 13 (신규 spike unit tests in `tests/unit/spikes/claude-channel-registration-daemon.test.ts`) = **237 tests** / typecheck / build all passing. production code 변경 0 (spike 디렉토리 + helper unit test만).
+- Session 3 진입 조건 충족: spike R 코드 + README + helper unit test + cleanup 안전망 박힘. 사용자가 S1·S2·S2.5·S3·S4-a·S4-b·S5·S6 직접 실행 가능. Open Question 1 (Claude CLI MCP child 종료 방식) 는 S4-a 관찰 항목으로 carry, 정확한 path는 사용자 paste fact로 박힘.
+
 ---
 
 ## Verification
 
-본 Session 1 commit은 docs only:
-- 변경 파일: `history/35-step-11-phase-a-claude-channel-decisions.history.md` (신규).
-- `.claude/plans/step-11-phase-a-sessions.md` (이전 commit으로 박힐 수 있음, Session 1 commit과 묶을지 분리할지는 Claude 작업 순서에 따름).
-- 테스트 변경 없음. 코드 변경 없음.
+### Session 1 (skeleton, docs only)
+- 변경 파일: `history/35-step-11-phase-a-claude-channel-decisions.history.md` (신규), `.claude/plans/step-11-phase-a-sessions.md` (신규 scratch).
+- 테스트 변경 없음. 코드 변경 없음. baseline 224 tests 유지.
 
-Phase A 종료 (Session 5) 시 verification baseline 갱신:
-- `pnpm test` — Phase A에서 코드 변경 없으면 224 tests 유지.
-- `pnpm typecheck` — 동일.
-- `pnpm build` — 동일.
+### Session 2 (spike R 코드 + helper unit test)
+- 변경 파일 (Round 1 `3931070`): `spikes/claude-channel-registration-poc/{daemon.ts, server.ts, README.md}`, `tests/unit/spikes/claude-channel-registration-daemon.test.ts`.
+- 변경 파일 (Round 2-fix `b274363`): `spikes/claude-channel-registration-poc/{server.ts, README.md}`.
+- 신규 test 13건: `registerChannel` pending→registry transition (1) + unknown/mismatch reject (2) + `parseLoopbackHttpEndpoint` accept variants (3) + reject variants (7).
+- **Baseline 갱신**: 224 → **237 tests** / typecheck / build all passing.
+- production code 변경 0 (spike 디렉토리 + helper unit test만; `src/` 변경 없음).
+
+### Phase A 종료 (Session 5)
+Phase B 진입 직전 baseline 재확인 예정. Session 3/4에서 코드 변경 없으면 237 유지.
