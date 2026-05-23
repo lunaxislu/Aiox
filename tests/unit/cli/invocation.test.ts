@@ -54,7 +54,10 @@ describe("CLI invocation", () => {
       ["stopDaemon", { daemonOnly: true }],
       ["restartDaemon"],
       ["daemonStatus"],
+      // agent-attach: auto-starts daemon first (PRD: "Auto-start daemon if needed")
+      ["startDaemon"],
       ["attachAgent", { kind: "codex", name: "impl", cwd: "/repo" }],
+      ["startDaemon"],
       [
         "attachAgent",
         {
@@ -64,6 +67,7 @@ describe("CLI invocation", () => {
           resumeSessionId: "thread-1",
         },
       ],
+      ["startDaemon"],
       ["attachAgent", { kind: "claude", name: "reviewer", cwd: "/repo", pairName: "pair-a" }],
       ["connect", { sourceName: "impl", targetNames: ["reviewer", "researcher"] }],
       ["disconnect", { sourceName: "impl", targetNames: ["reviewer"] }],
@@ -183,6 +187,7 @@ describe("CLI invocation", () => {
 
     await expect(invoked).resolves.toEqual({ exitCode: 7 });
     expect(calls).toEqual([
+      ["startDaemon"],
       ["attachAgent", { kind: "codex", name: "impl", cwd: "/repo" }],
       ["launchCodexTui", "ws://127.0.0.1:54321/"],
       ["notifyTuiExited", { agentName: "impl", exitCode: 7, signal: null }],
@@ -223,6 +228,7 @@ describe("CLI invocation", () => {
       exitCode: 1,
     });
     expect(calls).toEqual([
+      ["startDaemon"],
       ["attachAgent", { kind: "codex", name: "impl", cwd: "/repo" }],
       ["rollbackAgentAttach", { agentName: "impl" }],
     ]);

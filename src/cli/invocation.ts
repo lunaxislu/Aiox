@@ -5,6 +5,7 @@ import type { DaemonApi } from "../daemon/api.js";
 import type { StopRequest } from "../daemon/state.js";
 import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { runCodexIngressMcpServer } from "../adapters/codex/mcp-server.js";
+import { runDaemonProcess } from "../daemon/run.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
 
 export type DaemonStatusInfo =
@@ -56,6 +57,7 @@ export interface InvocationOptions {
     };
   }) => ChildProcess;
   runCodexMcpServer?: () => Promise<void>;
+  runDaemonProcessFn?: (socketPath: string) => Promise<void>;
 }
 
 export interface InvocationResult {
@@ -99,6 +101,8 @@ export async function invokeParsedCommand(
     case "version":
       return { exitCode: 0, stdout: `${command.value}\n` };
     case "agent-attach": {
+      // PRD: "Auto-start daemon if needed" for agent attach commands.
+      await options.runtime.startDaemon();
       const api = await options.runtime.getDaemonApi();
       const response = await api.attachAgent({
         kind: command.agentKind,
@@ -181,6 +185,11 @@ export async function invokeParsedCommand(
     case "mcp-codex": {
       const run = options.runCodexMcpServer ?? runCodexIngressMcpServer;
       await run();
+      return success();
+    }
+    case "_run-daemon": {
+      const runFn = options.runDaemonProcessFn ?? runDaemonProcess;
+      await runFn(command.socketPath);
       return success();
     }
     default:

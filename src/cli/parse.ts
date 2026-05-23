@@ -42,6 +42,11 @@ export type ParsedCommand = {
   kind: "doctor";
 } | {
   kind: "mcp-codex";
+} | {
+  // Hidden command: long-running daemon process entry point.
+  // Spawned by `aiox daemon start` as a detached child; not shown in help.
+  kind: "_run-daemon";
+  socketPath: string;
 };
 
 const defaultCliVersion = "1.0.0";
@@ -305,5 +310,13 @@ function addGlobalCommands(program: Command, setParsed: (command: ParsedCommand)
     .description("(internal) Run the launch-scoped Codex MCP server over stdio")
     .action(() => {
       setParsed({ kind: "mcp-codex" });
+    });
+
+  program
+    .command("_run-daemon", { hidden: true })
+    .description("(internal) Long-running daemon process entry point; spawned by daemon start")
+    .requiredOption("--socket <path>", "daemon socket path")
+    .action((options: { socket: string }) => {
+      setParsed({ kind: "_run-daemon", socketPath: options.socket });
     });
 }

@@ -11,12 +11,14 @@ import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { createDoctorResult } from "../cli/doctor.js";
 import { invokeParsedCommand, type InvocationRuntime } from "../cli/invocation.js";
 import { parseCli } from "../cli/parse.js";
+import { getDefaultSocketPath } from "../config/paths.js";
 import { createDaemonServer, type DaemonServerHandle } from "../daemon/server.js";
 import {
   productionAttachCodexRuntime,
   type AttachCodexRuntime,
 } from "../daemon/state.js";
 import {
+  canConnect,
   createDaemonSocketClient,
   createDaemonSocketServer,
   type DaemonSocketServerHandle,
@@ -48,7 +50,7 @@ export async function runAioxCli(
       version,
     });
     const result = await invokeParsedCommand(command, {
-      runtime: options.runtime ?? createSocketRuntime({ version }),
+      runtime: options.runtime ?? createClientRuntime({ version }),
       cwd: options.cwd ?? process.cwd(),
       launchCodexTui: options.launchCodexTui ?? launchCodexTui,
     });
@@ -63,6 +65,146 @@ export async function runAioxCli(
     return getExitCode(error);
   }
 }
+
+// ── createClientRuntime ──────────────────────────────────────────────────────
+// Pure socket client runtime. Connects to a pre-existing daemon socket.
+// Does NOT start an in-process daemon. Used by all production CLI invocations.
+
+export interface CreateClientRuntimeOptions {
+  socketPath?: string;
+  version?: string;
+}
+
+export function createClientRuntime(
+  options: CreateClientRuntimeOptions = {},
+): InvocationRuntime {
+  const socketPath = options.socketPath ?? getDefaultSocketPath();
+  const version = options.version ?? readPackageVersion();
+
+  return {
+    async getDaemonApi() {
+      if (!(await canConnect(socketPath))) {
+        throw new Error(
+          `daemon is not running (socket: ${socketPath}). Run 'aiox daemon start' first.`,
+        );
+      }
+
+      return createDaemonSocketClient({ socketPath });
+    },
+
+    async startDaemon() {
+      if (await canConnect(socketPath)) {
+        return { ok: true };
+      }
+
+      await forkDaemonProcess(socketPath);
+      return { ok: true };
+    },
+
+    async stopDaemon(request) {
+      if (!(await canConnect(socketPath))) {
+        return { ok: true, stoppedAgents: [] };
+      }
+
+      const client = createDaemonSocketClient({ socketPath });
+      let response: unknown;
+      try {
+        response = await client.stop(request);
+      } finally {
+        client.close();
+      }
+
+      // Wait for the daemon to close the socket (auto-shutdown after stop)
+      await waitForSocketGone(socketPath);
+      return response;
+    },
+
+    async restartDaemon() {
+      await this.stopDaemon({});
+      await this.startDaemon();
+      return { ok: true };
+    },
+
+    async daemonStatus() {
+      if (!(await canConnect(socketPath))) {
+        return { running: false as const, socketPath, dbPath: ":memory:", version };
+      }
+
+      const client = createDaemonSocketClient({ socketPath });
+      try {
+        const status = await client.status();
+        return {
+          running: true as const,
+          pid: status.daemon.pid,
+          socketPath,
+          dbPath: ":memory:",
+          startedAt: status.daemon.startedAt,
+          version,
+        };
+      } finally {
+        client.close();
+      }
+    },
+
+    doctor() {
+      return createDoctorResult({ socketPath });
+    },
+
+    daemonSocketPath() {
+      return socketPath;
+    },
+  };
+}
+
+// ── forkDaemonProcess / waitForSocketGone ─────────────────────────────────────
+
+async function forkDaemonProcess(socketPath: string): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const binPath = process.argv[1];
+
+  const child = spawn(process.execPath, [binPath, "_run-daemon", "--socket", socketPath], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+
+  await waitForSocketAvailable(socketPath, { timeoutMs: 10_000, pollIntervalMs: 50 });
+}
+
+async function waitForSocketAvailable(
+  socketPath: string,
+  options: { timeoutMs: number; pollIntervalMs: number },
+): Promise<void> {
+  const deadline = Date.now() + options.timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await canConnect(socketPath)) {
+      return;
+    }
+
+    await sleep(options.pollIntervalMs);
+  }
+
+  throw new Error(`daemon socket did not become available: ${socketPath}`);
+}
+
+async function waitForSocketGone(socketPath: string, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (!(await canConnect(socketPath))) {
+      return;
+    }
+
+    await sleep(50);
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ── createSocketRuntime (legacy in-process runtime, used in tests) ────────────
 
 export interface CreateSocketRuntimeOptions {
   socketPath?: string;
