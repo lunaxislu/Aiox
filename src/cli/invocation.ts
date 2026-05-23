@@ -40,6 +40,7 @@ export interface InvocationRuntime {
   restartDaemon(): unknown | Promise<unknown>;
   daemonStatus(): DaemonStatusInfo | Promise<DaemonStatusInfo>;
   doctor(): DoctorResult | Promise<DoctorResult>;
+  daemonSocketPath?(): string;
 }
 
 export interface InvocationOptions {
@@ -48,6 +49,11 @@ export interface InvocationOptions {
   launchCodexTui?: (options: {
     endpoint: URL;
     resumeSessionId?: string;
+    mcp?: {
+      agentName: string;
+      agentToken: string;
+      daemonSocketPath: string;
+    };
   }) => ChildProcess;
   runCodexMcpServer?: () => Promise<void>;
 }
@@ -105,12 +111,23 @@ export async function invokeParsedCommand(
       });
       ensureOk(response);
       if (command.agentKind === "codex" && response.ok && response.codexRuntime) {
+        const socketPath = options.runtime.daemonSocketPath?.();
+        const agentToken = response.codexChannelToken;
+        const mcp =
+          socketPath && agentToken
+            ? {
+                agentName: command.name,
+                agentToken,
+                daemonSocketPath: socketPath,
+              }
+            : undefined;
         const child = launchTuiOrRollback({
           api,
           agentName: command.name,
           endpoint: new URL(response.codexRuntime.endpoint),
           resumeSessionId: command.resumeSessionId,
           launch: options.launchCodexTui ?? launchCodexTui,
+          mcp,
         });
         let tuiExit: { exitCode: number | null; signal: string | null };
         try {
@@ -176,7 +193,20 @@ function launchTuiOrRollback(input: {
   agentName: string;
   endpoint: URL;
   resumeSessionId?: string;
-  launch: (options: { endpoint: URL; resumeSessionId?: string }) => ChildProcess;
+  launch: (options: {
+    endpoint: URL;
+    resumeSessionId?: string;
+    mcp?: {
+      agentName: string;
+      agentToken: string;
+      daemonSocketPath: string;
+    };
+  }) => ChildProcess;
+  mcp?: {
+    agentName: string;
+    agentToken: string;
+    daemonSocketPath: string;
+  };
 }): ChildProcess {
   try {
     return input.launch({
@@ -184,6 +214,7 @@ function launchTuiOrRollback(input: {
       ...(input.resumeSessionId === undefined
         ? {}
         : { resumeSessionId: input.resumeSessionId }),
+      ...(input.mcp ? { mcp: input.mcp } : {}),
     });
   } catch (error) {
     void input.api.rollbackAgentAttach({ agentName: input.agentName });

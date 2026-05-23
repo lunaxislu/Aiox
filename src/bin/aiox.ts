@@ -183,6 +183,9 @@ export function createSocketRuntime(
     doctor() {
       return createDoctorResult({ socketPath });
     },
+    daemonSocketPath() {
+      return socketPath;
+    },
     async close() {
       await stop({ daemonOnly: true });
       db.close();

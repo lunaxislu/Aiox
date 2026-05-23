@@ -21,6 +21,17 @@ export interface LaunchCodexTuiOptions {
   command?: string;
   endpoint: URL;
   resumeSessionId?: string;
+  mcp?: CodexTuiMcpInjection;
+}
+
+export interface CodexTuiMcpInjection {
+  agentName: string;
+  agentToken: string;
+  daemonSocketPath: string;
+  /** node binary or compatible runtime. Defaults to process.execPath. */
+  runtimeBinary?: string;
+  /** path to the aiox bin entry that launches `mcp-codex`. Defaults to process.argv[1]. */
+  aioxBin?: string;
 }
 
 const defaultBannerTimeoutMs = 5_000;
@@ -64,13 +75,60 @@ export async function launchCodexAppServer(
 export function launchCodexTui(options: LaunchCodexTuiOptions): ChildProcess {
   const command =
     options.command ?? process.env.AIOX_CODEX_TUI_COMMAND ?? "codex";
-  const args = options.resumeSessionId
+  const baseArgs = options.resumeSessionId
     ? ["resume", options.resumeSessionId, "--remote", options.endpoint.toString()]
     : ["--remote", options.endpoint.toString()];
+
+  const mcpArgs = buildCodexTuiMcpArgs(options.mcp);
+  const args = [...mcpArgs, ...baseArgs];
 
   return spawn(command, args, {
     stdio: "inherit",
   });
+}
+
+export function buildCodexTuiMcpArgs(
+  mcp: CodexTuiMcpInjection | undefined,
+): string[] {
+  if (!mcp) {
+    return [];
+  }
+  if (process.env.AIOX_CODEX_TUI_MCP_DISABLE === "1") {
+    return [];
+  }
+  const runtimeBinary = mcp.runtimeBinary ?? process.execPath;
+  const aioxBin = mcp.aioxBin ?? process.argv[1] ?? "aiox";
+  const inline = buildMcpServersAioxInlineToml({
+    runtimeBinary,
+    aioxBin,
+    agentName: mcp.agentName,
+    agentToken: mcp.agentToken,
+    daemonSocketPath: mcp.daemonSocketPath,
+  });
+  return ["-c", inline];
+}
+
+function buildMcpServersAioxInlineToml(input: {
+  runtimeBinary: string;
+  aioxBin: string;
+  agentName: string;
+  agentToken: string;
+  daemonSocketPath: string;
+}): string {
+  const command = tomlString(input.runtimeBinary);
+  const args = `[${tomlString(input.aioxBin)}, ${tomlString("mcp-codex")}]`;
+  const env =
+    `{ AIOX_CODEX_AGENT_NAME = ${tomlString(input.agentName)}, ` +
+    `AIOX_CODEX_AGENT_TOKEN = ${tomlString(input.agentToken)}, ` +
+    `AIOX_SOCKET_PATH = ${tomlString(input.daemonSocketPath)} }`;
+  return `mcp_servers.aiox = { command = ${command}, args = ${args}, env = ${env} }`;
+}
+
+function tomlString(value: string): string {
+  // TOML basic strings allow double-quoted with backslash escapes for control
+  // chars and double quote. This is the minimal subset we need for absolute
+  // paths and uuid-shaped tokens, neither of which contains these chars.
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 async function waitForBanner(
