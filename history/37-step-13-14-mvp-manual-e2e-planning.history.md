@@ -38,19 +38,64 @@ blocked by two separate gaps.
 
 Split the remaining MVP enablement into two steps.
 
+### MVP daemon namespace skeleton
+
+For Step 13, aiox treats the default daemon as a user-local singleton selected
+by socket path.
+
+- Same configured socket path means same daemon namespace.
+- Agent and pair names remain unique inside the selected daemon namespace.
+- Agent `cwd` is recorded for observability/debug output, but it does not create
+  a project namespace in MVP.
+- Agent-level runtime MCP/channel receives the socket path and daemon-issued
+  agent token at launch time, so a launched agent talks only to its selected
+  daemon.
+
+Deferred Post-MVP namespace decisions:
+
+- project-local daemon vs user-local singleton;
+- project-root namespace inside one daemon;
+- current-project filtered status;
+- same pair/agent name reuse across projects.
+
+### MCP category split
+
+aiox has two MCP categories:
+
+1. aiox-level control MCP
+
+   Optional user-installed control plane. External tools can use it to operate
+   daemon/pairs/routes/status. Project/global setup commands belong here and are
+   Post-MVP unless explicitly pulled forward.
+
+2. agent-level runtime MCP/channel
+
+   aiox-managed data plane. `aiox codex` and `aiox claude` attach this to the
+   launched agent session so the agent can send/reply through daemon. Users
+   should not have to manually install this globally. MVP must not mutate global
+   Codex or Claude config by default.
+
+Step 13 implements the Codex side of the agent-level runtime MCP/callback path,
+not the optional aiox-level control MCP.
+
 ### Step 13: Codex source path + reply ingress
 
 Purpose: close the `Codex -> daemon` direction.
 
 Required outcomes:
 
-- Decide the MVP Codex outbound mechanism.
+- Use explicit aiox-managed agent-level MCP/tool callback as the MVP Codex
+  outbound mechanism. App-server notification scraping is not the authoritative
+  path.
 - Add an adapter-facing API for Codex-originated outbound messages.
 - Route Codex-originated messages through the existing daemon/router
   `sendMessage` behavior.
 - Support Codex replies with `parent_message_id` where the source event/call
   carries a parent reference.
 - Preserve existing daemon -> Codex injection behavior.
+- Resolve Codex source identity using launch-injected socket path plus
+  daemon-issued agent token or equivalent capability, not user-provided hidden
+  ids and not agent name alone.
 
 ### Step 14: Long-running daemon/client reuse + manual E2E smoke
 
@@ -98,6 +143,9 @@ state.
   - Updated `doctor` to match the corrected runtime-only check list.
   - Added current implementation status under Message Flow.
   - Marked Codex source path as the remaining Codex adapter gap.
+  - Added MVP daemon namespace skeleton.
+  - Added two-category MCP model: optional aiox-level control MCP vs
+    aiox-managed agent-level runtime MCP/channel.
   - Clarified that real manual E2E requires both Codex source path and
     long-running daemon/client reuse.
 - `plan/mvp-implementation-checklist.md`

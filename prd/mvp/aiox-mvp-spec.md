@@ -32,6 +32,10 @@ message delivery state.
 - Docker's mental model is borrowed for lifecycle and observability:
   `status` now, and future `logs`/`inspect`/`rm`/`kill`.
 - The daemon only kills processes it owns.
+- The default daemon is a user-local singleton. Commands and agent runtimes that
+  use the same configured socket path share one daemon namespace.
+- `cwd` is recorded on agents for observability, but MVP does not use cwd as a
+  project namespace boundary.
 
 ## MVP Commands
 
@@ -221,6 +225,42 @@ named agent runtime으로 묶는 추상화다. 이 경계 덕분에 나중에 �
 proxy listener나 다른 adapter topology로 바꿔도 사용자 모델은
 `aiox codex --name <name>` 중심으로 유지된다.
 
+### Daemon Namespace
+
+MVP treats the default daemon as a user-local singleton selected by socket path.
+
+- Same configured socket path means same daemon namespace.
+- Pair names and agent names are unique inside the selected daemon namespace.
+- `AIOX_SOCKET_PATH` or an equivalent config override can select a different
+  daemon for tests or advanced operation.
+- Agent `cwd` is stored for status/debug output, but cwd does not create a
+  separate project namespace in MVP.
+- Project-local daemons, project-root namespaces, current-project status
+  filtering, and same-name reuse across projects are Post-MVP decisions.
+
+### MCP Categories
+
+aiox has two MCP categories with different ownership and install behavior.
+
+1. **aiox-level control MCP**
+
+   Optional user-installed control plane for external tools that want to operate
+   the daemon directly, such as creating pairs, connecting routes, reading
+   status, or stopping the daemon. Project/global setup commands for this MCP
+   are Post-MVP unless explicitly pulled forward.
+
+2. **agent-level runtime MCP/channel**
+
+   aiox-managed data plane attached only to agent sessions launched by
+   `aiox codex` or `aiox claude`. This is how an agent sends or replies through
+   its daemon. It must be launch-scoped or per-agent scoped, receive the selected
+   daemon socket path and a daemon-issued agent token at launch time, and must
+   not require users to manually install global MCP entries.
+
+MVP must not mutate global Codex or Claude config by default. If a future setup
+command supports project/global installation, that is a user-facing control MCP
+feature, not the default agent runtime path.
+
 ### Message Flow (1:N fan-out + reply)
 
 `turn/start`와 `notifications/claude/channel`은 **target에 메시지를 inject하는 경로**이지, source에서 router로 메시지를 꺼내오는 경로가 아니다. source는 별도 outgoing 메커니즘으로 router에 도달한다.
@@ -246,7 +286,7 @@ Outgoing (source agent → router)
 [source agent]
       │
       │ Claude source: channel server의 reply tool 호출
-      │ Codex source: tool call / app-server event capture
+      │ Codex source: aiox-managed agent-level MCP/tool call
       ▼
 adapter (daemon 안 client) ──► router
                                  │
@@ -269,7 +309,7 @@ delivery.status: queued → delivering → delivered (또는 failed)
 
 Reply
 ─────────────────────────────────────
-target reply 발생 (Claude: reply tool 호출, Codex: thread output capture)
+target reply 발생 (Claude: reply tool 호출, Codex: agent-level MCP/tool call)
   ──► adapter ──► router
                    │
                    ├─ messages row 생성 (parent_message_id = 원본 msg.id)
@@ -635,6 +675,9 @@ Step 10 production direction is per-agent app-server first:
 - Step 13 must add the missing Codex source path into daemon. Until that exists,
   Codex can receive injected turns from daemon but cannot authoritatively send
   or reply back into the aiox router.
+- Step 13 primary direction is an explicit aiox-managed agent-level MCP/tool
+  callback. App-server notification scraping is not the MVP authoritative
+  source path because it is brittle and makes identity attribution harder.
 
 ### Claude
 

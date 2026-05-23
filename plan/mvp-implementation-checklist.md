@@ -878,11 +878,19 @@ Authority:
 
 Scope:
 
-- [ ] Decide and document the Codex outbound mechanism for MVP:
-  - app-server event capture, Codex tool/MCP-style call, or another explicit
-    adapter callback.
+- [ ] Document the Step 13 MCP/daemon skeleton before implementation:
+  - default daemon is user-local singleton selected by socket path.
+  - same socket path = same daemon namespace.
+  - agent `cwd` is observability metadata, not a project namespace boundary.
+  - aiox-level control MCP is optional/user-installed and Post-MVP by default.
+  - agent-level runtime MCP/channel is aiox-managed and launch-scoped.
+- [ ] Implement the Codex outbound mechanism as an explicit aiox-managed
+  agent-level MCP/tool callback:
+  - app-server notification scraping is not the MVP authoritative path.
   - The selected path must identify the source `AgentInstance` without asking
     the user to pass hidden ids.
+  - Identity must use launch-injected socket path plus daemon-issued agent token
+    or equivalent capability, not agent name alone.
 - [ ] Add adapter-facing API for Codex-originated outbound messages.
 - [ ] Route Codex-originated messages through existing daemon/router
   `sendMessage` behavior.
