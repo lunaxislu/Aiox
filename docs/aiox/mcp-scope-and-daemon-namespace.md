@@ -148,6 +148,26 @@ aiox codex --name impl
   -> global Codex config remains unchanged
 ```
 
+### MVP mechanism (Step 13, 2026-05-23)
+
+aiox uses Codex CLI's `-c <key=value>` config override flag with an inline TOML
+table, verified against `codex-cli 0.132.0` and recorded in
+`history/39-step-13-codex-mcp-ingress.history.md`:
+
+```text
+codex [resume <session-id>] --remote <ws-endpoint>
+  -c 'mcp_servers.aiox = { command = "<node>", args = ["<aiox-bin>", "mcp-codex"],
+       env = { AIOX_CODEX_AGENT_NAME = "impl",
+               AIOX_CODEX_AGENT_TOKEN = "<daemon-issued-uuid>",
+               AIOX_SOCKET_PATH = "<daemon-socket>" } }'
+```
+
+`-c` is passed as a separate spawn argument (no shell escaping), the override
+is scoped to that single Codex invocation, and `~/.codex/config.toml` is never
+touched. The spawned MCP child reads the env vars and calls
+`registerCodexChannel(agentName, token)` once over the daemon socket before
+handling tool calls (`aiox_send_message`, `aiox_reply`).
+
 ## Daemon Namespace Skeleton
 
 For MVP, the daemon model is intentionally simple:

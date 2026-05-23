@@ -680,6 +680,15 @@ Step 10 production direction is per-agent app-server first:
 - Step 13 primary direction is an explicit aiox-managed agent-level MCP/tool
   callback. App-server notification scraping is not the MVP authoritative
   source path because it is brittle and makes identity attribution harder.
+- Step 13 implementation (2026-05-23, see
+  `history/39-step-13-codex-mcp-ingress.history.md`): Codex TUI launch
+  prepends `-c 'mcp_servers.aiox = { command, args, env = { AIOX_SOCKET_PATH,
+  AIOX_CODEX_AGENT_NAME, AIOX_CODEX_AGENT_TOKEN } }'` so a launch-scoped stdio
+  MCP server is spawned only for that Codex session. The MCP server exposes
+  two tools — `aiox_send_message(content)` and `aiox_reply(parent_message_id,
+  content)` — which call the daemon RPCs `receiveCodexMessage` and
+  `receiveCodexReply` after a one-time `registerCodexChannel(agentName, token)`
+  exchange. Global `~/.codex/config.toml` is never mutated.
 
 ### Claude
 

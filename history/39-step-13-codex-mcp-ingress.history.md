@@ -169,7 +169,41 @@ pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
 
-Step 13 closeout will record the post-implementation baseline.
+## Closeout (2026-05-23)
+
+Implemented and verified.
+
+### Commits
+
+| Commit | Type | Summary |
+|---|---|---|
+| `72b8bb4` | docs | spike result + mechanism decision (this file's original draft) |
+| `292a1d7` | structure | extract `runSendMessageTransaction` helper (no behavior change, 273 tests stable) |
+| `a776744` | behavior | daemon ingress RPCs: pending token Map, register/disconnect, receive*, 4 new events, typed `codex_ingress_unauthorized` / `codex_channel_registration_failed` |
+| `fe44d7e` | behavior | `aiox mcp-codex` hidden subcommand + `src/adapters/codex/mcp-server.ts` stdio MCP (tools: `aiox_send_message`, `aiox_reply`) |
+| `8ce0323` | behavior | Codex TUI launcher injects `-c 'mcp_servers.aiox = {...}'` when token + socket path are supplied; `InvocationRuntime.daemonSocketPath()` exposes it; `AIOX_CODEX_TUI_MCP_DISABLE=1` test escape |
+| (closeout) | docs | plan checklist Step 13 ✅, this closeout |
+
+### Test surface added (15 + 7 + 3 = 25 new tests)
+
+- `tests/unit/daemon/codex-ingress.test.ts` (15 tests): token issuance, register/disconnect paths, `receiveCodexMessage` + `receiveCodexReply` happy paths, missing/wrong/cross-agent token rejections, no_active_routes preservation, sendMessage regression.
+- `tests/unit/adapters/codex-mcp-server.test.ts` (7 tests): handlers route through receiveCodex* with token, typed rejects map to `isError: true`, daemon socket errors map to `daemon_call_failed`, env parsing, daemon client closed after each tool call.
+- `tests/unit/adapters/codex-launcher.test.ts` (3 added): `-c mcp_servers.aiox=...` shape, env override `AIOX_CODEX_TUI_MCP_DISABLE=1` skips injection, mcp option absent falls back to baseline args.
+
+### Final verification
+
+```
+pnpm test       # 298 passing (+25)
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
+
+### Open follow-ups (intentionally deferred to Step 14 / post-MVP)
+
+- Manual end-to-end smoke with real Codex + real Claude in separate terminals: Step 14.
+- Long-running daemon/client reuse so separate CLI invocations share state: Step 14.
+- TUI-originated `/clear` / `/new` / `/fork` rebind via MCP callback: post-MVP Open Product Issue (Step 10 D7 Option D path).
+- aiox-level control MCP setup UX (`aiox setup mcp --scope project|global`): post-MVP per `history/38`.
 
 ## Out of scope
 

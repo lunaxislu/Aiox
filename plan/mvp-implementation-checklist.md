@@ -863,7 +863,7 @@ Phase B implementation: `src/cli/format.ts`, `src/cli/doctor.ts`,
 
 ---
 
-## Step 13: Codex source path + reply ingress — ⏳ Planned
+## Step 13: Codex source path + reply ingress — ✅ Closed (2026-05-23)
 
 Goal: close the missing `Codex -> daemon` side of the message loop. After this
 step, Codex should be able to create a routed message or reply through daemon
@@ -875,42 +875,89 @@ Authority:
 - Current gap discovered during MVP manual-test planning after Step 12: daemon
   can inject into Codex, but Codex has no authoritative source path back to
   daemon.
+- `history/39-step-13-codex-mcp-ingress.history.md` (spike, decision, closeout).
 
 Scope:
 
-- [ ] Document the Step 13 MCP/daemon skeleton before implementation:
+- [x] Document the Step 13 MCP/daemon skeleton before implementation:
   - default daemon is user-local singleton selected by socket path.
   - same socket path = same daemon namespace.
   - agent `cwd` is observability metadata, not a project namespace boundary.
   - aiox-level control MCP is optional/user-installed and Post-MVP by default.
   - agent-level runtime MCP/channel is aiox-managed and launch-scoped.
-- [ ] Implement the Codex outbound mechanism as an explicit aiox-managed
+- [x] Implement the Codex outbound mechanism as an explicit aiox-managed
   agent-level MCP/tool callback:
   - app-server notification scraping is not the MVP authoritative path.
   - The selected path must identify the source `AgentInstance` without asking
     the user to pass hidden ids.
   - Identity must use launch-injected socket path plus daemon-issued agent token
     or equivalent capability, not agent name alone.
-- [ ] Add adapter-facing API for Codex-originated outbound messages.
-- [ ] Route Codex-originated messages through existing daemon/router
-  `sendMessage` behavior.
-- [ ] Support Codex replies with `parent_message_id` correlation where the
+- [x] Add adapter-facing API for Codex-originated outbound messages
+  (`receiveCodexMessage` / `receiveCodexReply` RPCs).
+- [x] Route Codex-originated messages through existing daemon/router
+  `sendMessage` behavior (shared `runSendMessageTransaction` helper).
+- [x] Support Codex replies with `parent_message_id` correlation where the
   incoming Codex event/tool call includes a parent message reference.
-- [ ] Preserve existing daemon -> Codex `turn/start` injection behavior.
-- [ ] TDD coverage:
+- [x] Preserve existing daemon -> Codex `turn/start` injection behavior
+  (273 → 298 tests; existing 273 still PASS).
+- [x] TDD coverage:
   - Codex outbound source path creates one message and deliveries for active
     routes.
   - Codex reply creates a `reply` message linked to the parent and routes back
     through the original source path.
-  - Missing/unknown Codex agent identity is a typed error.
+  - Missing/unknown Codex agent identity is a typed error
+    (`codex_ingress_unauthorized` with `missing_token` / `agent_not_registered`
+    / `token_mismatch` detail).
   - One failed Codex outbound attempt does not prevent later valid outbound
-    attempts.
+    attempts (token persists in-memory across tool calls).
 
-Out of scope:
+Implementation summary:
+
+- Pre-impl spike (`history/39`): Codex CLI 0.132.0 `-c 'mcp_servers.<name>={...}'`
+  inline TOML override verified to register a per-invocation MCP server and
+  carry `env = {...}` to the spawned child, with no mutation of the global
+  `~/.codex/config.toml`.
+- New daemon RPCs: `registerCodexChannel`, `disconnectCodexChannel`,
+  `receiveCodexMessage`, `receiveCodexReply`. Pending-token Map mirrors Claude
+  channel pattern; token is generated on Codex `attachAgent` success and
+  exchanged once on register.
+- New event types: `codex_channel_registered`, `codex_channel_disconnected`,
+  `codex_ingress_message_received`, `codex_ingress_reply_received`.
+- New `aiox mcp-codex` hidden subcommand spawns the stdio MCP server with two
+  tools: `aiox_send_message(content)` and
+  `aiox_reply(parent_message_id, content)`. All diagnostic logs go to stderr;
+  stdout is reserved for MCP protocol.
+- Codex TUI launcher prepends `-c 'mcp_servers.aiox = { command, args, env }'`
+  pair when `mcp` config is supplied. `AIOX_CODEX_TUI_MCP_DISABLE=1` skips
+  injection for tests.
+- `InvocationRuntime.daemonSocketPath()` exposes the socket path so the
+  attach-agent flow can construct the launch-scoped MCP config.
+
+Commits (in order):
+
+- `72b8bb4` docs: record codex mcp ingress decision (spike result)
+- `292a1d7` structure: extract sendMessage transaction helper
+- `a776744` behavior: add daemon codex ingress rpcs
+- `fe44d7e` behavior: add aiox mcp-codex subcommand and server
+- `8ce0323` behavior: wire codex runtime mcp launch
+- (this) docs: close step 13 plan and history
+
+Verification baseline:
+
+```
+pnpm test       # 298 passing (+25 vs Step 12 baseline of 273)
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
+
+Out of scope (preserved):
 
 - Full terminal E2E with real Codex + real Claude in separate shells. That needs
   Step 14's long-running daemon/client reuse.
 - YAML compose and terminal pane automation.
+- TUI-originated `/clear` `/new` `/fork` rebind via MCP callback (post-MVP
+  Open Product Issue carried from Step 10 D7 Option D).
+- aiox-level control MCP setup UX (Post-MVP).
 
 ---
 
