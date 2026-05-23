@@ -445,6 +445,117 @@ describe("daemon receiveCodexReply", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Codex ingress authorization revocation
+// ---------------------------------------------------------------------------
+
+describe("Codex ingress authorization revocation", () => {
+  let db: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("registered Codex channel cannot send after notifyTuiExited", async () => {
+    const setup = await setupPairedAgents(db);
+
+    await setup.client.notifyTuiExited({ agentName: "impl", exitCode: 0 });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-1",
+      content: "late message",
+    });
+
+    expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
+  });
+
+  it("registered Codex channel cannot send after detachAgent", async () => {
+    const setup = await setupPairedAgents(db);
+
+    await setup.client.detachAgent({ agentName: "impl" });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-1",
+      content: "late message",
+    });
+
+    expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
+  });
+
+  it("stop daemonOnly false clears pending and registered Codex ingress state", async () => {
+    const setup = await setupPairedAgents(db);
+
+    await setup.client.stop({ daemonOnly: false });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-1",
+      content: "late message",
+    });
+
+    expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
+  });
+
+  it("disconnected agent with stale codexChannelRuntimes entry is rejected", async () => {
+    const { createHash } = await import("node:crypto");
+    const setup = await setupPairedAgents(db);
+
+    await setup.client.detachAgent({ agentName: "impl" });
+
+    // Simulate a stale entry surviving cleanup (defense-in-depth check)
+    const staleHash = createHash("sha256").update(setup.codexToken).digest("hex");
+    setup.codexChannelRuntimes.set("impl", {
+      agentName: "impl",
+      registeredAt: "2026-05-23T00:00:00.000Z",
+      tokenHash: staleHash,
+    });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-1",
+      content: "late message",
+    });
+
+    expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
+  });
+
+  it("tokenHash stored as full 64-char SHA-256 hex", async () => {
+    const codexChannelRuntimes = new Map();
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-new",
+    });
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      codexChannelRuntimes,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attach = await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    const token = (attach as { ok: true; codexChannelToken: string }).codexChannelToken;
+    await client.registerCodexChannel({ agentName: "impl", token });
+
+    const stored = codexChannelRuntimes.get("impl");
+    expect(stored).toBeDefined();
+    expect(stored.tokenHash).toHaveLength(64);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 

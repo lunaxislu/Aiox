@@ -205,6 +205,51 @@ pnpm build      # PASS
 - TUI-originated `/clear` / `/new` / `/fork` rebind via MCP callback: post-MVP Open Product Issue (Step 10 D7 Option D path).
 - aiox-level control MCP setup UX (`aiox setup mcp --scope project|global`): post-MVP per `history/38`.
 
+## Review follow-up (2026-05-23)
+
+Post-implementation review identified and fixed 3 issues. All addressed in a single hardening commit.
+
+### Issue 1 (High): Stale Codex ingress tokens authorized after session end
+
+**Root cause:**
+- `detachCodexAgent()` / `notifyTuiExited()` / `detachAgent()` did not clear `codexChannelRuntimes` or `codexPendingTokens`.
+- `stop({ daemonOnly: false })` did not clear Codex ingress state for stopped agents.
+- `authorizeCodexIngress()` checked token hash only, not agent connection status.
+
+**Fixes applied:**
+1. `detachCodexAgent()`: added `codexChannelRuntimes.delete` + `codexPendingTokens.delete` after runtime dispose.
+2. `stop()`: iterates `stoppedAgents` and deletes each agent's entries from both maps (daemonOnly branch unchanged).
+3. `authorizeCodexIngress()`: added agent connection status check after runtime lookup — disconnected agent → `agent_disconnected` detail.
+4. `rollbackAgentAttach()`: added defensive `codexPendingTokens.delete` + `codexChannelRuntimes.delete`.
+
+### Issue 2 (Medium): Codex token authorization used 12-char SHA-256 prefix
+
+**Root cause:** `codexTokenFingerprint()` returned `.slice(0, 12)` and was used for both storage and authorization comparison.
+
+**Fix applied:**
+- `codexTokenFingerprint()` now returns full 64-char hex (no slice).
+- Added `codexTokenShortHash()` (12-char) used only for event emit display.
+- `registerCodexChannel` event uses `codexTokenShortHash` so raw token is never logged.
+
+### Issue 3 (Low): CLI name validation allowed control characters
+
+**Root cause:** `requireNonEmptyName()` only rejected empty/whitespace-only names; names with `\n`, `\x00`, etc. were accepted and could reach TOML inline injection.
+
+**Fix applied:** Added `/[\x00-\x1F\x7F]/` check in `requireNonEmptyName()` → throws `aiox.invalidName`.
+
+### Tests added (8 new, total 306)
+
+- `codex-ingress.test.ts` +5: notifyTuiExited revokes token, detachAgent revokes token, stop(daemonOnly:false) revokes token, stale-entry + disconnected agent rejected, tokenHash is 64-char full hex.
+- `parse.test.ts` +3: rejects name with `\n`, rejects name with `\x00`, accepts valid name (regression guard).
+
+### Verification
+
+```
+pnpm test       # 306 passing (+8 from 298)
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
+
 ## Out of scope
 
 Carried verbatim from `history/37` Step 13 scope:

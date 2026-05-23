@@ -950,6 +950,14 @@ pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
 
+Review follow-up (2026-05-23): 3 security/correctness issues fixed (stale token revocation, full SHA-256 hash, control-char name validation). +8 tests.
+
+```
+pnpm test       # 306 passing (+8 from review follow-up)
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
+
 Out of scope (preserved):
 
 - Full terminal E2E with real Codex + real Claude in separate shells. That needs

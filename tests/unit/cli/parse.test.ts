@@ -249,6 +249,21 @@ describe("CLI parser", () => {
     expectCliParseError(["daemon", "stop", "--bogus"], "aiox.unknownOption");
   });
 
+  it("rejects agent name containing newline character", () => {
+    expectCliParseError(["codex", "--name", "impl\nmalicious"], "aiox.invalidName");
+  });
+
+  it("rejects agent name containing null control character", () => {
+    expectCliParseError(["codex", "--name", "impl\x00null"], "aiox.invalidName");
+  });
+
+  it("accepts valid names with no control characters", () => {
+    expect(parseCli(["codex", "--name", "valid-name_123"])).toMatchObject({
+      kind: "agent-attach",
+      name: "valid-name_123",
+    });
+  });
+
   it.each([
     { argv: [], code: "aiox.missingCommand" },
     { argv: ["daemon"], code: "aiox.missingCommand" },

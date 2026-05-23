@@ -143,6 +143,13 @@ function requireNonEmptyName(value: string): string {
     });
   }
 
+  if (/[\x00-\x1F\x7F]/.test(value)) {
+    throw new CliParseError("Name must not contain control characters", {
+      code: "aiox.invalidName",
+      exitCode: parseErrorExitCode,
+    });
+  }
+
   return value;
 }
 

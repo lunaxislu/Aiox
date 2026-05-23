@@ -787,6 +787,9 @@ export function createDaemonState(
         codexRuntimes?.delete(request.agentName);
       }
 
+      codexPendingTokens.delete(request.agentName);
+      codexChannelRuntimes.delete(request.agentName);
+
       const agent = agents.findByName(request.agentName);
       if (agent?.status === "connected") {
         agents.markByNameDisconnected(request.agentName, options.now());
@@ -933,7 +936,7 @@ export function createDaemonState(
       events.append({
         id: options.createId(),
         type: "codex_channel_registered",
-        data: { tokenHash: runtime.tokenHash },
+        data: { tokenHash: codexTokenShortHash(request.token) },
         createdAt: now,
         agentId: agent?.id ?? null,
         messageId: null,
@@ -1034,12 +1037,18 @@ export function createDaemonState(
     },
 
     stop(request) {
-      return withTransaction(options.db, () => ({
-        ok: true,
-        stoppedAgents: request.daemonOnly
+      return withTransaction(options.db, () => {
+        const stoppedAgents = request.daemonOnly
           ? []
-          : agents.markAllConnectedDisconnected(options.now()),
-      }));
+          : agents.markAllConnectedDisconnected(options.now());
+        if (!request.daemonOnly) {
+          for (const agent of stoppedAgents) {
+            codexChannelRuntimes.delete(agent.name);
+            codexPendingTokens.delete(agent.name);
+          }
+        }
+        return { ok: true, stoppedAgents };
+      });
     },
   };
 
@@ -1066,6 +1075,17 @@ export function createDaemonState(
           ok: false,
           reason: "codex_ingress_unauthorized",
           detail: "agent_not_registered",
+        },
+      };
+    }
+    const agent = agents.findByName(agentName);
+    if (!agent || agent.status !== "connected") {
+      return {
+        ok: false,
+        error: {
+          ok: false,
+          reason: "codex_ingress_unauthorized",
+          detail: "agent_disconnected",
         },
       };
     }
@@ -1207,6 +1227,9 @@ export function createDaemonState(
       await disposeRuntime(runtime);
       codexRuntimes?.delete(input.agentName);
     }
+
+    codexChannelRuntimes.delete(input.agentName);
+    codexPendingTokens.delete(input.agentName);
 
     const now = options.now();
     agents.markByNameDisconnected(input.agentName, now);
@@ -1377,6 +1400,10 @@ function claudeTokenFingerprint(token: string): string {
 }
 
 function codexTokenFingerprint(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function codexTokenShortHash(token: string): string {
   return createHash("sha256").update(token).digest("hex").slice(0, 12);
 }
 
