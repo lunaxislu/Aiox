@@ -114,35 +114,47 @@ manual E2E smoke (see below).
 ## Verification
 
 ```
-pnpm test       # 316 passing (45 files; +9 from Step 14 integration tests)
+pnpm test       # 318 passing (45 files; +9 from Step 14 integration tests, +2 review fixes)
 pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
 
 ## Manual E2E Smoke Flow
 
-Prerequisites: `pnpm build` (binary at `dist/bin/aiox.js`).
+Prerequisites: `pnpm build` (binary at `dist/src/bin/aiox.js`; package bin `aiox`
+points to the same file).
 
 ```sh
 # Terminal 1
-node dist/bin/aiox.js daemon start
-node dist/bin/aiox.js daemon status    # shows running: true, same pid
-node dist/bin/aiox.js pair --name p1
-node dist/bin/aiox.js status           # shows p1 pair
+node dist/src/bin/aiox.js daemon start
+node dist/src/bin/aiox.js daemon status    # shows running: true, same pid
+node dist/src/bin/aiox.js pair --name p1
+node dist/src/bin/aiox.js status           # shows p1 pair
 
 # Terminal 2 (separate shell, same user)
-node dist/bin/aiox.js status           # sees p1 pair from Terminal 1
-node dist/bin/aiox.js codex --name impl --pair p1   # auto-starts if daemon down, else attaches
-node dist/bin/aiox.js status           # sees impl agent connected
+node dist/src/bin/aiox.js status           # sees p1 pair from Terminal 1
+node dist/src/bin/aiox.js codex --name impl --pair p1   # auto-starts if daemon down, else attaches
+node dist/src/bin/aiox.js status           # sees impl agent connected
 
 # Terminal 3
-node dist/bin/aiox.js claude --name reviewer --pair p1
-node dist/bin/aiox.js status           # sees bidirectional routes impl↔reviewer
+node dist/src/bin/aiox.js claude --name reviewer --pair p1
+node dist/src/bin/aiox.js status           # sees bidirectional routes impl↔reviewer
 
 # Cleanup
-node dist/bin/aiox.js daemon stop
-node dist/bin/aiox.js daemon status    # running: false
+node dist/src/bin/aiox.js daemon stop
+node dist/src/bin/aiox.js daemon status    # running: false
 ```
+
+## Review Fixes (2026-05-23)
+
+Codex review found three Step 14 gaps and this follow-up addressed them:
+
+- `aiox claude` now launches the Claude foreground CLI after daemon attach when
+  the daemon returns a `claudeChannelToken`, passing channel name, agent token,
+  and daemon socket path to the launcher.
+- `aiox daemon start` now prints daemon status output after the idempotent start
+  operation, including the already-running daemon case.
+- The manual smoke command path now matches `pnpm build` output.
 
 ## Commits
 

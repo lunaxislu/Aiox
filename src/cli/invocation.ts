@@ -5,6 +5,7 @@ import type { DaemonApi } from "../daemon/api.js";
 import type { StopRequest } from "../daemon/state.js";
 import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { runCodexIngressMcpServer } from "../adapters/codex/mcp-server.js";
+import { launchClaudeWithChannel } from "../adapters/claude/launcher.js";
 import { runDaemonProcess } from "../daemon/run.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
 
@@ -56,6 +57,12 @@ export interface InvocationOptions {
       daemonSocketPath: string;
     };
   }) => ChildProcess;
+  launchClaudeWithChannel?: (options: {
+    channelName: string;
+    agentName: string;
+    agentToken: string;
+    daemonSocketPath: string;
+  }) => ChildProcess;
   runCodexMcpServer?: () => Promise<void>;
   runDaemonProcessFn?: (socketPath: string) => Promise<void>;
 }
@@ -84,7 +91,10 @@ export async function invokeParsedCommand(
   switch (command.kind) {
     case "daemon-start":
       ensureOk(await options.runtime.startDaemon());
-      return success();
+      return {
+        exitCode: 0,
+        stdout: formatDaemonStatus(await options.runtime.daemonStatus()),
+      };
     case "daemon-stop":
       ensureOk(await options.runtime.stopDaemon({ daemonOnly: command.daemonOnly }));
       return success();
@@ -147,6 +157,31 @@ export async function invokeParsedCommand(
         });
         return { exitCode: tuiExit.exitCode ?? (tuiExit.signal ? 1 : 0) };
       }
+      if (command.agentKind === "claude" && response.ok && response.claudeChannelToken) {
+        const socketPath = options.runtime.daemonSocketPath?.();
+        const agentToken = response.claudeChannelToken;
+        if (!socketPath) {
+          throw new InvocationError("Claude channel requires a daemon socket path", {
+            code: "aiox.invocation.missing_daemon_socket_path",
+            exitCode: 1,
+          });
+        }
+        const channelName = `aiox-claude-${command.name}`;
+        const child = launchChildOrRollback({
+          api,
+          agentName: command.name,
+          launch: () =>
+            (options.launchClaudeWithChannel ?? launchClaudeWithChannel)({
+              channelName,
+              agentName: command.name,
+              agentToken,
+              daemonSocketPath: socketPath,
+            }),
+        });
+        const tuiExit = await waitForTuiExit(child);
+        await api.disconnectClaudeChannel({ agentName: command.name });
+        return { exitCode: tuiExit.exitCode ?? (tuiExit.signal ? 1 : 0) };
+      }
       return success();
     }
     case "connect": {
@@ -194,6 +229,25 @@ export async function invokeParsedCommand(
     }
     default:
       return assertNever(command);
+  }
+}
+
+function launchChildOrRollback(input: {
+  api: DaemonApi;
+  agentName: string;
+  launch: () => ChildProcess;
+}): ChildProcess {
+  try {
+    return input.launch();
+  } catch (error) {
+    void input.api.rollbackAgentAttach({ agentName: input.agentName });
+    throw new InvocationError(
+      error instanceof Error ? error.message : String(error),
+      {
+        code: "aiox.invocation.tui_launch_failed",
+        exitCode: 1,
+      },
+    );
   }
 }
 

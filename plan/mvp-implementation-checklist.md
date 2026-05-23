@@ -1012,7 +1012,7 @@ Commits (in order):
 Verification baseline:
 
 ```
-pnpm test       # 316 passing (45 files; +9 from Step 14 integration tests)
+pnpm test       # 318 passing (45 files; +9 from Step 14 integration tests, +2 review fixes)
 pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
@@ -1048,7 +1048,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 45 files, 316 tests (Step 14 daemon/client split, 2026-05-23)
+- `pnpm test`: passing, 45 files, 318 tests (Step 14 daemon/client split review fixes, 2026-05-23)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

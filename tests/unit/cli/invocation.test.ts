@@ -51,6 +51,7 @@ describe("CLI invocation", () => {
 
     expect(calls).toEqual([
       ["startDaemon"],
+      ["daemonStatus"],
       ["stopDaemon", { daemonOnly: true }],
       ["restartDaemon"],
       ["daemonStatus"],
@@ -233,6 +234,50 @@ describe("CLI invocation", () => {
       ["rollbackAgentAttach", { agentName: "impl" }],
     ]);
   });
+
+  it("launches Claude with channel env after daemon attach and disconnects channel on exit", async () => {
+    const calls: unknown[] = [];
+    const child = fakeChild();
+    const runtime = createRuntime(calls, {
+      attachAgent: async (request: unknown) => {
+        calls.push(["attachAgent", request]);
+        return {
+          ok: true,
+          agent: { ...fakeAgentDto(), name: "reviewer", kind: "claude" },
+          claudeChannelToken: "claude-token-1",
+        };
+      },
+    });
+
+    const invoked = invokeParsedCommand(
+      { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
+      {
+        runtime,
+        cwd: "/repo",
+        launchClaudeWithChannel: (options) => {
+          calls.push(["launchClaudeWithChannel", options]);
+          setTimeout(() => child.emit("exit", 0, null), 0);
+          return child;
+        },
+      },
+    );
+
+    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    expect(calls).toEqual([
+      ["startDaemon"],
+      ["attachAgent", { kind: "claude", name: "reviewer", cwd: "/repo", pairName: "pair-a" }],
+      [
+        "launchClaudeWithChannel",
+        {
+          channelName: "aiox-claude-reviewer",
+          agentName: "reviewer",
+          agentToken: "claude-token-1",
+          daemonSocketPath: "/tmp/aiox/daemon.sock",
+        },
+      ],
+      ["disconnectClaudeChannel", { agentName: "reviewer" }],
+    ]);
+  });
 });
 
 function createRuntime(
@@ -289,6 +334,10 @@ function createRuntime(
       calls.push(["notifyTuiExited", request]);
       return { ok: true, agentName: "impl", detached: true };
     },
+    disconnectClaudeChannel(request: unknown) {
+      calls.push(["disconnectClaudeChannel", request]);
+      return { ok: true, agentName: "reviewer", disconnected: true };
+    },
     ...overrides,
   } as unknown as DaemonApi;
 
@@ -322,6 +371,9 @@ function createRuntime(
     doctor() {
       calls.push(["doctor"]);
       return { checks: [{ name: "node", status: "ok", detail: "v22.4.0" }] };
+    },
+    daemonSocketPath() {
+      return "/tmp/aiox/daemon.sock";
     },
     ...overrides,
   };

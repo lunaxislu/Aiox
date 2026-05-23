@@ -1,12 +1,16 @@
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:child_process", () => ({
+  spawn: vi.fn(),
+}));
 
 import { createDaemonApi } from "../../../src/daemon/api.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
 import { createEventRepository } from "../../../src/store/repositories/events.js";
 import { applySchema } from "../../../src/store/schema.js";
 import { buildChannelNotification } from "../../../src/adapters/claude/channel-server.js";
-import { buildLaunchClaudeChannelArgs } from "../../../src/adapters/claude/launcher.js";
+import { buildLaunchClaudeChannelArgs, launchClaudeWithChannel } from "../../../src/adapters/claude/launcher.js";
 
 // ---------------------------------------------------------------------------
 // Daemon state — Claude channel registration
@@ -375,6 +379,34 @@ describe("buildLaunchClaudeChannelArgs", () => {
 
     expect(args).toContain("--dangerously-load-development-channels");
     expect(args).toContain("server:aiox-claude-alpha");
+  });
+
+  it("passes Claude channel identity through child process env", async () => {
+    const child = { pid: 1234 };
+    const { spawn } = await import("node:child_process");
+    vi.mocked(spawn).mockReturnValue(child as never);
+
+    expect(
+      launchClaudeWithChannel({
+        command: "claude",
+        channelName: "aiox-claude-reviewer",
+        agentName: "reviewer",
+        agentToken: "token-1",
+        daemonSocketPath: "/tmp/aiox.sock",
+      }),
+    ).toBe(child);
+    expect(spawn).toHaveBeenCalledWith(
+      "claude",
+      ["--dangerously-load-development-channels", "server:aiox-claude-reviewer"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          AIOX_CLAUDE_CHANNEL_AGENT_NAME: "reviewer",
+          AIOX_CLAUDE_CHANNEL_TOKEN: "token-1",
+          AIOX_SOCKET_PATH: "/tmp/aiox.sock",
+        }),
+        stdio: "inherit",
+      }),
+    );
   });
 });
 
