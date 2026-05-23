@@ -529,6 +529,33 @@ describe("Codex ingress authorization revocation", () => {
     expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
   });
 
+  it("runtime failure clears old channel before same-name reattach", async () => {
+    const setup = await setupPairedAgents(db);
+
+    setup.state.recordCodexRuntimeFailed({
+      agentName: "impl",
+      reason: {
+        type: "ws_dropped",
+        closeCode: 1006,
+        closeReason: "network dropped",
+      },
+    });
+    await setup.client.attachAgent({
+      kind: "codex",
+      name: "impl",
+      cwd: "/repo",
+    });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-1",
+      content: "old token after reattach",
+    });
+
+    expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
+  });
+
   it("tokenHash stored as full 64-char SHA-256 hex", async () => {
     const codexChannelRuntimes = new Map();
     const runtime = fakeCodexRuntime({
@@ -594,7 +621,7 @@ async function setupPairedAgents(
       throw new Error(`failed register: ${JSON.stringify(reg)}`);
     }
   }
-  return { client, codexToken, codexChannelRuntimes };
+  return { client, codexToken, codexChannelRuntimes, state };
 }
 
 async function setupSoloCodexAgent(db: InstanceType<typeof Database>) {

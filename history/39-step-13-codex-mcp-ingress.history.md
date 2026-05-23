@@ -250,6 +250,27 @@ pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
 
+### Additional review gap: runtime failure reattach window
+
+Follow-up review found one remaining stale-token path after commit `051839a`.
+`recordCodexRuntimeFailed()` disconnected the agent but did not clear
+`codexChannelRuntimes` / `codexPendingTokens`. The disconnected-status check
+blocked immediate sends, but a same-name reattach could make the old registered
+channel entry valid again before the new MCP server registered.
+
+**Fix applied:** `recordCodexRuntimeFailed()` now deletes both Codex ingress maps
+before marking the agent disconnected. Added a regression test that records a
+runtime failure, reattaches the same Codex name, and verifies the old token is
+rejected.
+
+**Verification:**
+
+```
+pnpm test       # 307 passing
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
+
 ## Out of scope
 
 Carried verbatim from `history/37` Step 13 scope:

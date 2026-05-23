@@ -836,6 +836,8 @@ export function createDaemonState(
 
       const now = options.now();
       codexRuntimes?.delete(request.agentName);
+      codexChannelRuntimes.delete(request.agentName);
+      codexPendingTokens.delete(request.agentName);
       agents.markByNameDisconnected(request.agentName, now);
       events.append({
         id: options.createId(),
