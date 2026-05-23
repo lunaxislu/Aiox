@@ -969,7 +969,7 @@ Out of scope (preserved):
 
 ---
 
-## Step 14: Long-running daemon/client reuse + manual E2E smoke — ⏳ Planned
+## Step 14: Long-running daemon/client reuse + manual E2E smoke — ✅ Closed (2026-05-23)
 
 Goal: make separate `aiox` CLI invocations share the same daemon process so a
 person can run real Codex and Claude terminals and verify message exchange.
@@ -977,25 +977,25 @@ person can run real Codex and Claude terminals and verify message exchange.
 Authority:
 
 - `prd/mvp/aiox-mvp-spec.md` daemon command semantics and Testing Requirements.
-- Step 12 correction: `aiox daemon status` is read-only and can inspect an
-  existing socket, but other commands still use `getDaemonApi()` which starts a
-  local in-process runtime for that command.
+- `history/40-step-14-daemon-client-split.history.md` — implementation decisions,
+  verification, and manual smoke flow.
 
 Scope:
 
-- [ ] Split CLI client behavior from daemon start behavior:
-  - `aiox daemon start` owns daemon creation.
-  - `aiox daemon status` remains read-only.
-  - user-facing commands that need daemon state connect to an existing socket or
-    auto-start according to PRD command semantics.
-- [ ] Ensure `aiox pair`, `aiox codex`, `aiox claude`, `aiox connect`, and
+- [x] Split CLI client behavior from daemon start behavior:
+  - `aiox daemon start` owns daemon creation (forks `aiox _run-daemon` as a
+    detached child process via `createClientRuntime.startDaemon()`).
+  - `aiox daemon status` remains read-only (`canConnect` probe only).
+  - `aiox codex` and `aiox claude` auto-start daemon if absent (PRD explicit).
+  - `aiox pair`, `aiox connect`, `aiox status` connect to existing daemon; error
+    if none running (E2E flow starts daemon explicitly first).
+- [x] Ensure `aiox pair`, `aiox codex`, `aiox claude`, `aiox connect`, and
   `aiox status` operate on the same long-running daemon state across terminal
-  invocations.
-- [ ] Keep MVP storage at `:memory:` unless/until a separate persistent DB step
-  is explicitly approved.
-- [ ] Add integration tests around socket client reuse without launching real
-  Codex/Claude CLIs.
-- [ ] Add a documented manual smoke flow:
+  invocations (same stable socket path `~/.aiox/daemon.sock`).
+- [x] Keep MVP storage at `:memory:` (no persistent DB path change).
+- [x] Add integration tests around socket client reuse without launching real
+  Codex/Claude CLIs (9 new tests in `tests/integration/daemon-client-split.test.ts`).
+- [x] Add a documented manual smoke flow (see `history/40`):
   - `aiox daemon start`
   - `aiox pair --name p1`
   - `aiox codex --name impl --pair p1`
@@ -1003,6 +1003,19 @@ Scope:
   - verify bidirectional routed message/reply behavior
   - `aiox status`
   - `aiox daemon stop`
+
+Commits (in order):
+
+- `cf17e68` structure: extract stable socket path + export canConnect
+- `1172a74` behavior: daemon/client split — createClientRuntime + _run-daemon entry point
+
+Verification baseline:
+
+```
+pnpm test       # 316 passing (45 files; +9 from Step 14 integration tests)
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
 
 Out of scope:
 
@@ -1035,8 +1048,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 42 files, 273 tests (Step 12 Phase B daemon status read-only correction,
-  2026-05-22)
+- `pnpm test`: passing, 45 files, 316 tests (Step 14 daemon/client split, 2026-05-23)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 
