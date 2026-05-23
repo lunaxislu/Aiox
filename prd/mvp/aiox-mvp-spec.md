@@ -241,6 +241,8 @@ MVP treats the default daemon as a user-local singleton selected by socket path.
 ### MCP Categories
 
 aiox has two MCP categories with different ownership and install behavior.
+See `docs/aiox/mcp-scope-and-daemon-namespace.md` for the learning record that
+explains the user-facing mental model.
 
 1. **aiox-level control MCP**
 

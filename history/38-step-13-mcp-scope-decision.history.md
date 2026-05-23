@@ -3,6 +3,8 @@
 ## Context
 As part of Step 13, we need an authoritative source path from Codex back into the `aiox` daemon. The preferred mechanism is an explicit adapter callback using an `aiox`-owned MCP server. However, injecting an MCP server into Codex or Claude raises questions about global state mutation and the boundaries between `aiox` orchestrator APIs and individual agent sessions.
 
+Learning record: `docs/aiox/mcp-scope-and-daemon-namespace.md`.
+
 ## Finding
 MCP servers can serve two completely different purposes in this ecosystem:
 1. **aiox-level MCP**: Providing orchestrator-level tools (e.g., "list active pairs", "disconnect routes", "read daemon status") to external clients.
