@@ -155,8 +155,11 @@ aiox doctor
 
 `doctor`:
 
-- Checks Node.js, pnpm, Codex CLI, Claude CLI, SQLite/native binding,
-  daemon socket/db path, and optional recipe tools such as cmux/tmux.
+- Checks only current user-facing runtime requirements: Node.js, Codex CLI,
+  Claude CLI, SQLite/native binding, and daemon socket reachability.
+- Repository development tools such as pnpm/yarn/npm/bun are not runtime doctor
+  checks. Future recipe tools such as tmux/cmux are not shown until the recipe
+  is implemented and user-visible.
 
 ## Architecture
 
@@ -221,6 +224,21 @@ proxy listener나 다른 adapter topology로 바꿔도 사용자 모델은
 ### Message Flow (1:N fan-out + reply)
 
 `turn/start`와 `notifications/claude/channel`은 **target에 메시지를 inject하는 경로**이지, source에서 router로 메시지를 꺼내오는 경로가 아니다. source는 별도 outgoing 메커니즘으로 router에 도달한다.
+
+Current implementation status after Step 12:
+
+- Claude → daemon source path exists through the Claude channel reply callback.
+- daemon → Claude target injection exists through the registered Claude channel.
+- daemon → Codex target injection exists through the per-agent Codex app-server
+  `turn/start` path.
+- Codex → daemon source path is not yet implemented. This means real
+  bidirectional Codex/Claude conversation is not complete even though the
+  router and fake-adapter round-trip are already covered.
+- Most CLI commands still start an in-process socket runtime for the current
+  command instead of connecting to a pre-existing long-running daemon. `aiox
+  daemon status` is read-only, but `aiox status`, `aiox pair`, `aiox codex`,
+  `aiox claude`, and `aiox connect` still need the client/daemon reuse split
+  before reliable manual multi-terminal E2E.
 
 ```text
 Outgoing (source agent → router)
@@ -614,6 +632,9 @@ Step 10 production direction is per-agent app-server first:
 - MVP does not require users to choose or remember Codex app-server ports.
 - `thread/loaded/list` is app-server memory/cache state, not an active TUI list.
 - In-band proxy remains a validated spike/fallback, not the MVP production path.
+- Step 13 must add the missing Codex source path into daemon. Until that exists,
+  Codex can receive injected turns from daemon but cannot authoritatively send
+  or reply back into the aiox router.
 
 ### Claude
 
@@ -728,7 +749,11 @@ MVP test layers:
 - Fake adapter integration tests.
 
 Actual Codex/Claude E2E tests remain manual/smoke because they depend on local
-CLI sessions and user auth state.
+CLI sessions and user auth state. A real MVP smoke requires both:
+
+- Codex source path into daemon, so Codex can send/reply through aiox.
+- Long-running daemon/client reuse, so independent terminal commands share the
+  same daemon state instead of creating isolated in-process runtimes.
 
 ## Post-MVP
 

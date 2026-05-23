@@ -863,6 +863,92 @@ Phase B implementation: `src/cli/format.ts`, `src/cli/doctor.ts`,
 
 ---
 
+## Step 13: Codex source path + reply ingress — ⏳ Planned
+
+Goal: close the missing `Codex -> daemon` side of the message loop. After this
+step, Codex should be able to create a routed message or reply through daemon
+instead of only receiving daemon-injected turns.
+
+Authority:
+
+- `prd/mvp/aiox-mvp-spec.md` "Message Flow" and "Codex" sections.
+- Current gap discovered during MVP manual-test planning after Step 12: daemon
+  can inject into Codex, but Codex has no authoritative source path back to
+  daemon.
+
+Scope:
+
+- [ ] Decide and document the Codex outbound mechanism for MVP:
+  - app-server event capture, Codex tool/MCP-style call, or another explicit
+    adapter callback.
+  - The selected path must identify the source `AgentInstance` without asking
+    the user to pass hidden ids.
+- [ ] Add adapter-facing API for Codex-originated outbound messages.
+- [ ] Route Codex-originated messages through existing daemon/router
+  `sendMessage` behavior.
+- [ ] Support Codex replies with `parent_message_id` correlation where the
+  incoming Codex event/tool call includes a parent message reference.
+- [ ] Preserve existing daemon -> Codex `turn/start` injection behavior.
+- [ ] TDD coverage:
+  - Codex outbound source path creates one message and deliveries for active
+    routes.
+  - Codex reply creates a `reply` message linked to the parent and routes back
+    through the original source path.
+  - Missing/unknown Codex agent identity is a typed error.
+  - One failed Codex outbound attempt does not prevent later valid outbound
+    attempts.
+
+Out of scope:
+
+- Full terminal E2E with real Codex + real Claude in separate shells. That needs
+  Step 14's long-running daemon/client reuse.
+- YAML compose and terminal pane automation.
+
+---
+
+## Step 14: Long-running daemon/client reuse + manual E2E smoke — ⏳ Planned
+
+Goal: make separate `aiox` CLI invocations share the same daemon process so a
+person can run real Codex and Claude terminals and verify message exchange.
+
+Authority:
+
+- `prd/mvp/aiox-mvp-spec.md` daemon command semantics and Testing Requirements.
+- Step 12 correction: `aiox daemon status` is read-only and can inspect an
+  existing socket, but other commands still use `getDaemonApi()` which starts a
+  local in-process runtime for that command.
+
+Scope:
+
+- [ ] Split CLI client behavior from daemon start behavior:
+  - `aiox daemon start` owns daemon creation.
+  - `aiox daemon status` remains read-only.
+  - user-facing commands that need daemon state connect to an existing socket or
+    auto-start according to PRD command semantics.
+- [ ] Ensure `aiox pair`, `aiox codex`, `aiox claude`, `aiox connect`, and
+  `aiox status` operate on the same long-running daemon state across terminal
+  invocations.
+- [ ] Keep MVP storage at `:memory:` unless/until a separate persistent DB step
+  is explicitly approved.
+- [ ] Add integration tests around socket client reuse without launching real
+  Codex/Claude CLIs.
+- [ ] Add a documented manual smoke flow:
+  - `aiox daemon start`
+  - `aiox pair --name p1`
+  - `aiox codex --name impl --pair p1`
+  - `aiox claude --name reviewer --pair p1`
+  - verify bidirectional routed message/reply behavior
+  - `aiox status`
+  - `aiox daemon stop`
+
+Out of scope:
+
+- CI automation for real Codex/Claude authenticated sessions.
+- GUI terminal split automation.
+- Post-MVP `logs`, `inspect`, `rm`, `kill`, and compose.
+
+---
+
 ## Open Product Issues (구현 중 정책 결정 필요)
 
 권위: `prd/mvp/aiox-mvp-spec.md` "Open Product Issues" 섹션.
