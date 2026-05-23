@@ -4,6 +4,7 @@ import type { ParsedCommand } from "./parse.js";
 import type { DaemonApi } from "../daemon/api.js";
 import type { StopRequest } from "../daemon/state.js";
 import { launchCodexTui } from "../adapters/codex/launcher.js";
+import { runCodexIngressMcpServer } from "../adapters/codex/mcp-server.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
 
 export type DaemonStatusInfo =
@@ -48,6 +49,7 @@ export interface InvocationOptions {
     endpoint: URL;
     resumeSessionId?: string;
   }) => ChildProcess;
+  runCodexMcpServer?: () => Promise<void>;
 }
 
 export interface InvocationResult {
@@ -159,6 +161,11 @@ export async function invokeParsedCommand(
       return success();
     case "doctor":
       return doctorResult(await options.runtime.doctor());
+    case "mcp-codex": {
+      const run = options.runCodexMcpServer ?? runCodexIngressMcpServer;
+      await run();
+      return success();
+    }
     default:
       return assertNever(command);
   }

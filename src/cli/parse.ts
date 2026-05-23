@@ -40,6 +40,8 @@ export type ParsedCommand = {
   kind: "global-stop";
 } | {
   kind: "doctor";
+} | {
+  kind: "mcp-codex";
 };
 
 const defaultCliVersion = "1.0.0";
@@ -289,5 +291,12 @@ function addGlobalCommands(program: Command, setParsed: (command: ParsedCommand)
     .description("Check local runtime, agent CLIs, SQLite, and daemon paths")
     .action(() => {
       setParsed({ kind: "doctor" });
+    });
+
+  program
+    .command("mcp-codex", { hidden: true })
+    .description("(internal) Run the launch-scoped Codex MCP server over stdio")
+    .action(() => {
+      setParsed({ kind: "mcp-codex" });
     });
 }

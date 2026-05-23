@@ -1,0 +1,197 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  createCodexIngressMcpServer,
+  createReplyHandler,
+  createSendMessageHandler,
+  parseCodexIngressEnv,
+} from "../../../src/adapters/codex/mcp-server.js";
+
+describe("codex MCP server — handlers", () => {
+  it("aiox_send_message routes through receiveCodexMessage with token", async () => {
+    const calls: { method: string; args: unknown }[] = [];
+    const handler = createSendMessageHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "msg-fixed",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexMessage: async (args) => {
+            calls.push({ method: "receiveCodexMessage", args });
+            return { ok: true, message: { id: "msg-fixed" }, deliveries: [] };
+          },
+        }),
+    });
+
+    const result = await handler({ content: "hello" });
+
+    expect(result.structuredContent).toMatchObject({ ok: true, message_id: "msg-fixed" });
+    expect(calls).toEqual([
+      {
+        method: "receiveCodexMessage",
+        args: {
+          agentName: "impl",
+          token: "token-1",
+          messageId: "msg-fixed",
+          content: "hello",
+        },
+      },
+    ]);
+  });
+
+  it("aiox_reply routes through receiveCodexReply with parent_message_id", async () => {
+    const calls: { method: string; args: unknown }[] = [];
+    const handler = createReplyHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "reply-fixed",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexReply: async (args) => {
+            calls.push({ method: "receiveCodexReply", args });
+            return { ok: true, message: { id: "reply-fixed" }, deliveries: [] };
+          },
+        }),
+    });
+
+    const result = await handler({
+      parent_message_id: "parent-1",
+      content: "ack",
+    });
+
+    expect(result.structuredContent).toMatchObject({ ok: true, message_id: "reply-fixed" });
+    expect(calls).toEqual([
+      {
+        method: "receiveCodexReply",
+        args: {
+          agentName: "impl",
+          token: "token-1",
+          messageId: "reply-fixed",
+          parentMessageId: "parent-1",
+          content: "ack",
+        },
+      },
+    ]);
+  });
+
+  it("daemon typed reject maps to MCP tool execution error", async () => {
+    const handler = createSendMessageHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "msg-fixed",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexMessage: async () => ({
+            ok: false,
+            reason: "codex_ingress_unauthorized",
+            detail: "token_mismatch",
+          }),
+        }),
+    });
+
+    const result = await handler({ content: "hello" });
+
+    expect(result.isError).toBe(true);
+    const text = (result.content?.[0] as { text?: string } | undefined)?.text ?? "";
+    expect(text).toContain("codex_ingress_unauthorized");
+  });
+
+  it("daemon socket error maps to daemon_call_failed", async () => {
+    const handler = createSendMessageHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "msg-fixed",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexMessage: async () => {
+            throw new Error("ECONNREFUSED");
+          },
+        }),
+    });
+
+    const result = await handler({ content: "hi" });
+
+    expect(result.isError).toBe(true);
+    const text = (result.content?.[0] as { text?: string } | undefined)?.text ?? "";
+    expect(text).toContain("daemon_call_failed");
+  });
+
+  it("closes the daemon client after every tool call", async () => {
+    let closed = 0;
+    const handler = createSendMessageHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "msg-fixed",
+      createDaemonClient: () => ({
+        ...fakeDaemonClient(),
+        close: () => {
+          closed += 1;
+        },
+      }),
+    });
+
+    await handler({ content: "hi" });
+    await handler({ content: "again" });
+
+    expect(closed).toBe(2);
+  });
+});
+
+describe("codex MCP server — factory", () => {
+  it("constructs a McpServer instance with the expected name", () => {
+    const mcp = createCodexIngressMcpServer({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () => fakeDaemonClient(),
+    });
+
+    expect(mcp).toBeDefined();
+    // server property is the underlying low-level Server instance
+    expect((mcp as unknown as { server: unknown }).server).toBeDefined();
+  });
+});
+
+describe("codex MCP server — env parsing", () => {
+  it("parses required env vars", () => {
+    const env = parseCodexIngressEnv({
+      AIOX_CODEX_AGENT_NAME: "impl",
+      AIOX_CODEX_AGENT_TOKEN: "token-1",
+      AIOX_SOCKET_PATH: "/tmp/sock",
+    });
+    expect(env).toEqual({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/sock",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+function fakeDaemonClient(overrides: Partial<{
+  receiveCodexMessage: (args: unknown) => Promise<unknown>;
+  receiveCodexReply: (args: unknown) => Promise<unknown>;
+  registerCodexChannel: (args: unknown) => Promise<unknown>;
+}> = {}) {
+  return {
+    receiveCodexMessage:
+      overrides.receiveCodexMessage ??
+      (async () => ({ ok: true, message: { id: "msg-default" }, deliveries: [] })),
+    receiveCodexReply:
+      overrides.receiveCodexReply ??
+      (async () => ({ ok: true, message: { id: "reply-default" }, deliveries: [] })),
+    registerCodexChannel:
+      overrides.registerCodexChannel ?? (async () => ({ ok: true })),
+    close() {
+      /* no-op */
+    },
+  };
+}
