@@ -25,6 +25,10 @@ describe("append-only events", () => {
       "codex_binding_uncertain_observed",
       "late_reply",
       "claude_channel_reply_received",
+      "codex_channel_registered",
+      "codex_channel_disconnected",
+      "codex_ingress_message_received",
+      "codex_ingress_reply_received",
     ]);
   });
 

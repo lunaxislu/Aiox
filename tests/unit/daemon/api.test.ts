@@ -57,6 +57,7 @@ describe("daemon API with fake in-process transport", () => {
         "2026-05-18T00:00:00.000Z",
         "2026-05-18T00:00:00.000Z",
         "2026-05-18T00:00:01.000Z",
+        "2026-05-18T00:00:01.000Z",
       ]),
       codexRuntimes: runtimes,
       attachCodexRuntime: async ({ agentName, activeThreadId }) => {
@@ -88,6 +89,7 @@ describe("daemon API with fake in-process transport", () => {
         endpoint: "ws://127.0.0.1:54321/",
         activeThreadId: "thread-new",
       },
+      codexChannelToken: expect.any(String),
     });
     expect(runtimes.get("impl")).toBe(runtime);
     expect(runtime.startThreadCalls).toBe(1);
@@ -117,6 +119,7 @@ describe("daemon API with fake in-process transport", () => {
       now: createNowSequence([
         "2026-05-18T00:00:00.000Z",
         "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
         "2026-05-18T00:00:01.000Z",
       ]),
       codexRuntimes: new Map(),

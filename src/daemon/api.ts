@@ -10,14 +10,21 @@ import type {
   DetachAgentResult,
   DisconnectClaudeChannelRequest,
   DisconnectClaudeChannelResult,
+  DisconnectCodexChannelRequest,
+  DisconnectCodexChannelResult,
   DisconnectRequest,
   DisconnectResult,
   NotifyTuiExitedRequest,
   NotifyTuiExitedResult,
   ReceiveClaudeChannelReplyRequest,
   ReceiveClaudeChannelReplyResult,
+  ReceiveCodexMessageRequest,
+  ReceiveCodexMessageResult,
+  ReceiveCodexReplyRequest,
   RegisterClaudeChannelRequest,
   RegisterClaudeChannelResult,
+  RegisterCodexChannelRequest,
+  RegisterCodexChannelResult,
   RollbackAgentAttachRequest,
   RollbackAgentAttachResult,
   SendMessageRequest,
@@ -58,6 +65,18 @@ export interface DaemonApi {
   receiveClaudeChannelReply(
     request: ReceiveClaudeChannelReplyRequest,
   ): Promise<ReceiveClaudeChannelReplyResponse>;
+  registerCodexChannel(
+    request: RegisterCodexChannelRequest,
+  ): Promise<RegisterCodexChannelResponse>;
+  disconnectCodexChannel(
+    request: DisconnectCodexChannelRequest,
+  ): Promise<DisconnectCodexChannelResponse>;
+  receiveCodexMessage(
+    request: ReceiveCodexMessageRequest,
+  ): Promise<ReceiveCodexMessageResponse>;
+  receiveCodexReply(
+    request: ReceiveCodexReplyRequest,
+  ): Promise<ReceiveCodexMessageResponse>;
   status(): StatusResponse;
   stop(request: StopRequest): StopResponse;
 }
@@ -111,6 +130,7 @@ export type AttachAgentResponse =
         activeThreadId: string;
       };
       claudeChannelToken?: string;
+      codexChannelToken?: string;
     }
   | {
       ok: false;
@@ -243,6 +263,23 @@ export type RegisterClaudeChannelResponse = RegisterClaudeChannelResult;
 export type DisconnectClaudeChannelResponse = DisconnectClaudeChannelResult;
 export type ReceiveClaudeChannelReplyResponse = ReceiveClaudeChannelReplyResult;
 
+export type RegisterCodexChannelResponse = RegisterCodexChannelResult;
+export type DisconnectCodexChannelResponse = DisconnectCodexChannelResult;
+export type ReceiveCodexMessageResponse =
+  | {
+      ok: true;
+      message: MessageDto;
+      deliveries: DeliveryDto[];
+    }
+  | { ok: false; reason: "codex_ingress_unauthorized"; detail: string }
+  | { ok: false; reason: "no_active_routes" }
+  | { ok: false; reason: "source_agent_not_found"; sourceName: string }
+  | {
+      ok: false;
+      reason: "delivery_idempotency_key_exists";
+      existing: DeliveryDto;
+    };
+
 export function createDaemonApi(state: DaemonState): DaemonApi {
   return {
     async attachAgent(request) {
@@ -281,6 +318,18 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     async receiveClaudeChannelReply(request) {
       return state.receiveClaudeChannelReply(request);
     },
+    async registerCodexChannel(request) {
+      return state.registerCodexChannel(request);
+    },
+    async disconnectCodexChannel(request) {
+      return state.disconnectCodexChannel(request);
+    },
+    async receiveCodexMessage(request) {
+      return mapReceiveCodexMessageResult(state.receiveCodexMessage(request));
+    },
+    async receiveCodexReply(request) {
+      return mapReceiveCodexMessageResult(state.receiveCodexReply(request));
+    },
     status() {
       return mapStatusResult(state.status());
     },
@@ -298,6 +347,9 @@ function mapAttachAgentResult(result: AttachAgentResult): AttachAgentResponse {
       ...(result.codexRuntime ? { codexRuntime: result.codexRuntime } : {}),
       ...(result.claudeChannelToken
         ? { claudeChannelToken: result.claudeChannelToken }
+        : {}),
+      ...(result.codexChannelToken
+        ? { codexChannelToken: result.codexChannelToken }
         : {}),
     };
   }
@@ -345,6 +397,28 @@ function mapDisconnectResult(result: DisconnectResult): DisconnectResponse {
     return {
       ok: true,
       removed: result.removed.map(mapRoute),
+    };
+  }
+
+  return result;
+}
+
+function mapReceiveCodexMessageResult(
+  result: ReceiveCodexMessageResult,
+): ReceiveCodexMessageResponse {
+  if (result.ok) {
+    return {
+      ok: true,
+      message: mapMessage(result.message),
+      deliveries: result.deliveries.map(mapDelivery),
+    };
+  }
+
+  if (result.reason === "delivery_idempotency_key_exists") {
+    return {
+      ok: false,
+      reason: result.reason,
+      existing: mapDelivery(result.existing),
     };
   }
 

@@ -73,6 +73,69 @@ export interface ReceiveClaudeChannelReplyResult {
   ok: true;
 }
 
+export interface CodexChannelRuntime {
+  agentName: string;
+  registeredAt: string;
+  tokenHash: string;
+}
+
+interface CodexPendingToken {
+  agentName: string;
+  token: string;
+  createdAt: string;
+}
+
+export interface RegisterCodexChannelRequest {
+  agentName: string;
+  token: string;
+}
+
+export type RegisterCodexChannelResult =
+  | { ok: true; runtime: CodexChannelRuntime }
+  | { ok: false; reason: "codex_channel_registration_failed"; detail: string };
+
+export interface DisconnectCodexChannelRequest {
+  agentName: string;
+}
+
+export interface DisconnectCodexChannelResult {
+  ok: true;
+  agentName: string;
+  disconnected: boolean;
+}
+
+export interface ReceiveCodexMessageRequest {
+  agentName: string;
+  token: string;
+  messageId: string;
+  content: string;
+}
+
+export type ReceiveCodexMessageResult =
+  | {
+      ok: true;
+      message: StoredMessage;
+      deliveries: StoredDelivery[];
+    }
+  | { ok: false; reason: "codex_ingress_unauthorized"; detail: string }
+  | { ok: false; reason: "no_active_routes" }
+  | { ok: false; reason: "source_agent_not_found"; sourceName: string }
+  | {
+      ok: false;
+      reason: "delivery_idempotency_key_exists";
+      existing: StoredDelivery;
+    };
+
+export interface ReceiveCodexReplyRequest {
+  agentName: string;
+  token: string;
+  messageId: string;
+  parentMessageId: string;
+  content: string;
+}
+
+export type ReceiveCodexReplyResult = ReceiveCodexMessageResult;
+
 export interface CreateDaemonStateOptions {
   db: Database;
   createId: () => string;
@@ -81,6 +144,8 @@ export interface CreateDaemonStateOptions {
   attachCodexRuntime?: AttachCodexRuntime;
   claudeChannelRuntimes?: Map<string, ClaudeChannelRuntime>;
   claudePendingTokens?: Map<string, ClaudePendingToken>;
+  codexChannelRuntimes?: Map<string, CodexChannelRuntime>;
+  codexPendingTokens?: Map<string, CodexPendingToken>;
 }
 
 export const productionAttachCodexRuntime: AttachCodexRuntime = defaultAttachCodexRuntime;
@@ -125,6 +190,7 @@ export type AttachAgentResult =
         activeThreadId: string;
       };
       claudeChannelToken?: string;
+      codexChannelToken?: string;
     }
   | Extract<AttachStoredAgentResult, { ok: false }>
   | {
@@ -358,6 +424,10 @@ export interface DaemonState {
   registerClaudeChannel(request: RegisterClaudeChannelRequest): RegisterClaudeChannelResult;
   disconnectClaudeChannel(request: DisconnectClaudeChannelRequest): DisconnectClaudeChannelResult;
   receiveClaudeChannelReply(request: ReceiveClaudeChannelReplyRequest): ReceiveClaudeChannelReplyResult;
+  registerCodexChannel(request: RegisterCodexChannelRequest): RegisterCodexChannelResult;
+  disconnectCodexChannel(request: DisconnectCodexChannelRequest): DisconnectCodexChannelResult;
+  receiveCodexMessage(request: ReceiveCodexMessageRequest): ReceiveCodexMessageResult;
+  receiveCodexReply(request: ReceiveCodexReplyRequest): ReceiveCodexMessageResult;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
@@ -377,6 +447,10 @@ export function createDaemonState(
     options.claudeChannelRuntimes ?? new Map<string, ClaudeChannelRuntime>();
   const claudePendingTokens =
     options.claudePendingTokens ?? new Map<string, ClaudePendingToken>();
+  const codexChannelRuntimes =
+    options.codexChannelRuntimes ?? new Map<string, CodexChannelRuntime>();
+  const codexPendingTokens =
+    options.codexPendingTokens ?? new Map<string, CodexPendingToken>();
   const startedAt = options.now();
 
   return {
@@ -524,6 +598,13 @@ export function createDaemonState(
           routeId: null,
         });
 
+        const codexChannelToken = randomUUID();
+        codexPendingTokens.set(request.name, {
+          agentName: request.name,
+          token: codexChannelToken,
+          createdAt: options.now(),
+        });
+
         return {
           ok: true,
           agent: reboundAgent,
@@ -531,6 +612,7 @@ export function createDaemonState(
             endpoint: runtime.endpoint.toString(),
             activeThreadId: nextThreadId,
           },
+          codexChannelToken,
         };
       } catch (error) {
         if (isAttachRollback(error)) {
@@ -829,6 +911,114 @@ export function createDaemonState(
       return { ok: true };
     },
 
+    registerCodexChannel(request) {
+      const pending = codexPendingTokens.get(request.agentName);
+      if (!pending || pending.token !== request.token) {
+        return {
+          ok: false,
+          reason: "codex_channel_registration_failed" as const,
+          detail: "unknown_token",
+        };
+      }
+
+      codexPendingTokens.delete(request.agentName);
+      const now = options.now();
+      const runtime: CodexChannelRuntime = {
+        agentName: request.agentName,
+        registeredAt: now,
+        tokenHash: codexTokenFingerprint(request.token),
+      };
+      codexChannelRuntimes.set(request.agentName, runtime);
+      const agent = agents.findByName(request.agentName);
+      events.append({
+        id: options.createId(),
+        type: "codex_channel_registered",
+        data: { tokenHash: runtime.tokenHash },
+        createdAt: now,
+        agentId: agent?.id ?? null,
+        messageId: null,
+        deliveryId: null,
+        routeId: null,
+      });
+      return { ok: true, runtime };
+    },
+
+    disconnectCodexChannel(request) {
+      const had = codexChannelRuntimes.has(request.agentName);
+      codexChannelRuntimes.delete(request.agentName);
+      codexPendingTokens.delete(request.agentName);
+      if (had) {
+        const agent = agents.findByName(request.agentName);
+        events.append({
+          id: options.createId(),
+          type: "codex_channel_disconnected",
+          data: {},
+          createdAt: options.now(),
+          agentId: agent?.id ?? null,
+          messageId: null,
+          deliveryId: null,
+          routeId: null,
+        });
+      }
+      return { ok: true, agentName: request.agentName, disconnected: had };
+    },
+
+    receiveCodexMessage(request) {
+      const authz = authorizeCodexIngress(request.agentName, request.token);
+      if (!authz.ok) {
+        return authz.error;
+      }
+      const result = runSendMessageTransaction({
+        sourceName: request.agentName,
+        messageId: request.messageId,
+        type: "question",
+        content: request.content,
+      });
+      if (result.ok) {
+        events.append({
+          id: options.createId(),
+          type: "codex_ingress_message_received",
+          data: { messageId: result.message.id },
+          createdAt: options.now(),
+          agentId: result.message.sourceAgentId,
+          messageId: result.message.id,
+          deliveryId: null,
+          routeId: null,
+        });
+      }
+      return result;
+    },
+
+    receiveCodexReply(request) {
+      const authz = authorizeCodexIngress(request.agentName, request.token);
+      if (!authz.ok) {
+        return authz.error;
+      }
+      const result = runSendMessageTransaction({
+        sourceName: request.agentName,
+        messageId: request.messageId,
+        parentMessageId: request.parentMessageId,
+        type: "reply",
+        content: request.content,
+      });
+      if (result.ok) {
+        events.append({
+          id: options.createId(),
+          type: "codex_ingress_reply_received",
+          data: {
+            messageId: result.message.id,
+            parentMessageId: request.parentMessageId,
+          },
+          createdAt: options.now(),
+          agentId: result.message.sourceAgentId,
+          messageId: result.message.id,
+          deliveryId: null,
+          routeId: null,
+        });
+      }
+      return result;
+    },
+
     status() {
       return {
         daemon: {
@@ -852,6 +1042,45 @@ export function createDaemonState(
       }));
     },
   };
+
+  function authorizeCodexIngress(
+    agentName: string,
+    token: string,
+  ):
+    | { ok: true }
+    | {
+        ok: false;
+        error: { ok: false; reason: "codex_ingress_unauthorized"; detail: string };
+      } {
+    if (!token) {
+      return {
+        ok: false,
+        error: { ok: false, reason: "codex_ingress_unauthorized", detail: "missing_token" },
+      };
+    }
+    const runtime = codexChannelRuntimes.get(agentName);
+    if (!runtime) {
+      return {
+        ok: false,
+        error: {
+          ok: false,
+          reason: "codex_ingress_unauthorized",
+          detail: "agent_not_registered",
+        },
+      };
+    }
+    if (runtime.tokenHash !== codexTokenFingerprint(token)) {
+      return {
+        ok: false,
+        error: {
+          ok: false,
+          reason: "codex_ingress_unauthorized",
+          detail: "token_mismatch",
+        },
+      };
+    }
+    return { ok: true };
+  }
 
   function runSendMessageTransaction(request: SendMessageRequest): SendMessageResult {
     try {
@@ -1144,6 +1373,10 @@ function parseLoopbackHttpEndpoint(raw: string): string | null {
 }
 
 function claudeTokenFingerprint(token: string): string {
+  return createHash("sha256").update(token).digest("hex").slice(0, 12);
+}
+
+function codexTokenFingerprint(token: string): string {
   return createHash("sha256").update(token).digest("hex").slice(0, 12);
 }
 
