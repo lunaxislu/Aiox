@@ -441,7 +441,7 @@ function isAddressInUseError(error: unknown): boolean {
   );
 }
 
-async function canConnect(socketPath: string): Promise<boolean> {
+export async function canConnect(socketPath: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const socket = net.createConnection(socketPath);
     socket.once("connect", () => {
