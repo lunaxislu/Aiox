@@ -1016,7 +1016,7 @@ Commits (in order):
 Verification baseline:
 
 ```
-pnpm test       # 323 passing (46 files; + Step 14 Codex remote MCP injection target + MCP handshake fix)
+pnpm test       # 324 passing (46 files; + Step 14 Codex -> Claude queued delivery drain)
 pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
@@ -1025,11 +1025,10 @@ Follow-up status:
 
 Resolved Step 14 follow-up:
 
+- [x] Codex -> Claude queued delivery drain: `receiveCodexMessage` now drains queued deliveries for connected Claude targets through the registered Claude channel endpoint, sends `chat_id` as the aiox message id and `origin` as the Codex source agent name, and moves delivery state through `queued -> delivering -> delivered -> completed` or `failed`. Claude `reply(chat_id, text)` remains the reply surface; users should not manually provide chat ids in normal routed flow. Verification: targeted daemon/Claude/Codex ingress tests, `pnpm test` (324 passing, 46 files), `pnpm typecheck`, `pnpm build`. Authority context: `history/40-step-14-daemon-client-split.history.md`.
 - [x] Codex remote MCP injection target mismatch: aiox MCP injection now targets the daemon-owned `codex app-server` launch instead of the foreground remote TUI. The daemon pre-issues the Codex channel token before runtime attach and passes the same daemon socket path into app-server launch. Manual smoke confirmed the prior Notion `starting` hang is resolved. Follow-up fixed `aiox mcp-codex` startup so stdio MCP connects before daemon registration and the hidden subcommand stays alive until transport close. This preserves Step 13 stdout MCP protocol, token hardening, and same socket path contract. No `CODEX_HOME`/profile/`sqlite_home` isolation was added. Authority context: `history/40-step-14-daemon-client-split.history.md`; learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`.
 
-Open Step 14 follow-up for next session:
-
-- [ ] Codex -> Claude queued delivery drain: manual smoke after `ab6699b` shows Codex MCP ingress succeeds and creates `messages=1 queued=1`, but the queued delivery is not pushed to the connected Claude channel. Start next session with a targeted failing test for `receiveCodexMessage` / queued delivery dispatch to Claude channel. Authority context: `history/40-step-14-daemon-client-split.history.md`.
+No open Step 14 follow-up remains after the queued delivery drain fix.
 
 Remaining out of scope:
 

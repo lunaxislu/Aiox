@@ -332,7 +332,7 @@ Built-command probe:
   MCP `initialize` response를 stdout으로 반환함을 확인했다.
 - registration 실패는 stderr event로 남고, initialize 전에 process가 닫히지 않는다.
 
-### Open Step 14 follow-up: queued delivery drain to Claude
+### Step 14 follow-up: queued delivery drain to Claude
 
 #### Observation
 
@@ -372,7 +372,38 @@ Therefore the next fix should start before reply handling: make Codex-originated
 queued deliveries dispatch to connected Claude channels and transition delivery
 status from `queued` to `delivering` to `delivered/completed` or `failed`.
 
-#### Next-session target
+#### Resolution (2026-05-24)
+
+Added the targeted failing daemon test first:
+
+```text
+receiveCodexMessage dispatches queued delivery to registered Claude channel
+```
+
+The fix keeps Codex ingress as the source of the message, then drains the queued
+delivery for connected Claude targets through the registered Claude channel HTTP
+endpoint. The daemon sends the message content with `chat_id` set to the aiox
+message id and `origin` set to the Codex source agent name, so Claude receives
+the normal framed channel notification and can keep using `reply(chat_id, text)`
+without asking the user to supply a chat id manually.
+
+Delivery state now transitions through the existing status API from `queued` to
+`delivering` and then `delivered`/`completed` on successful Claude channel push,
+or `failed` with the injector failure reason when the endpoint is unavailable or
+rejects the push. The reply surface was not changed. Step 13 Codex MCP stdout
+protocol/token/socket behavior and the Step 14 app-server MCP injection path
+remain unchanged.
+
+Verification:
+
+```text
+pnpm test tests/unit/daemon/codex-ingress.test.ts tests/unit/adapters/claude-injector.test.ts tests/unit/adapters/codex-mcp-server.test.ts # 40 passing
+pnpm test       # 324 passing (46 files)
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
+
+#### Original next-session target
 
 Do not start with Claude reply routing. First add a targeted failing test for
 Codex ingress to Claude delivery drain, for example:

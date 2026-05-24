@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDaemonApi } from "../../../src/daemon/api.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
@@ -305,6 +305,7 @@ describe("daemon receiveCodexMessage", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     db.close();
   });
 
@@ -335,6 +336,47 @@ describe("daemon receiveCodexMessage", () => {
       type: "question",
       parent_message_id: null,
     });
+  });
+
+  it("receiveCodexMessage dispatches queued delivery to registered Claude channel", async () => {
+    const requests: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      requests.push({ url, body: JSON.parse(init.body as string) });
+      return new Response("{}", { status: 202 });
+    });
+    const setup = await setupPairedAgents(db, {
+      claudeEndpoint: "http://127.0.0.1:18789/send",
+    });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-1",
+      content: "hello from codex",
+    });
+
+    expect(response.ok).toBe(true);
+    expect(requests).toEqual([
+      {
+        url: "http://127.0.0.1:18789/send",
+        body: {
+          content: "hello from codex",
+          chat_id: "msg-1",
+          origin: "impl",
+        },
+      },
+    ]);
+    expect(db.prepare("select status from message_deliveries").get()).toMatchObject({
+      status: "completed",
+    });
+    expect(
+      db.prepare("select type from events where delivery_id is not null order by rowid").all(),
+    ).toEqual([
+      { type: "delivery_queued" },
+      { type: "delivery_status_changed" },
+      { type: "delivery_status_changed" },
+      { type: "delivery_status_changed" },
+    ]);
   });
 
   it("missing token returns codex_ingress_unauthorized", async () => {
@@ -628,7 +670,7 @@ describe("Codex ingress authorization revocation", () => {
 
 async function setupPairedAgents(
   db: InstanceType<typeof Database>,
-  opts: { skipRegister?: boolean } = {},
+  opts: { skipRegister?: boolean; claudeEndpoint?: string } = {},
 ) {
   const codexChannelRuntimes = new Map();
   const claudeChannelRuntimes = new Map();
@@ -647,7 +689,21 @@ async function setupPairedAgents(
   });
   const client = createInProcessClient(createDaemonApi(state));
   await client.createPair({ name: "pair-1" });
-  await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo", pairName: "pair-1" });
+  const claudeAttach = await client.attachAgent({
+    kind: "claude",
+    name: "reviewer",
+    cwd: "/repo",
+    pairName: "pair-1",
+  });
+  if (opts.claudeEndpoint) {
+    const claudeToken = (claudeAttach as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "reviewer",
+      token: claudeToken,
+      endpoint: opts.claudeEndpoint,
+    });
+  }
   const codexAttach = await client.attachAgent({
     kind: "codex",
     name: "impl",
@@ -661,7 +717,7 @@ async function setupPairedAgents(
       throw new Error(`failed register: ${JSON.stringify(reg)}`);
     }
   }
-  return { client, codexToken, codexChannelRuntimes, state };
+  return { client, codexToken, codexChannelRuntimes, claudeChannelRuntimes, state };
 }
 
 async function setupSoloCodexAgent(db: InstanceType<typeof Database>) {

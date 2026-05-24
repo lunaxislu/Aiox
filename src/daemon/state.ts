@@ -25,6 +25,7 @@ import {
   type StoredRoute,
 } from "../store/repositories/routes.js";
 import { withTransaction } from "../store/transaction.js";
+import { injectClaudeChannel } from "../adapters/claude/injector.js";
 import { attachCodexAgentRuntime } from "../adapters/codex/runtime.js";
 
 const attachRollbackSentinel = Symbol("aiox.attach.rollback");
@@ -429,7 +430,7 @@ export interface DaemonState {
   receiveClaudeChannelReply(request: ReceiveClaudeChannelReplyRequest): ReceiveClaudeChannelReplyResult;
   registerCodexChannel(request: RegisterCodexChannelRequest): RegisterCodexChannelResult;
   disconnectCodexChannel(request: DisconnectCodexChannelRequest): DisconnectCodexChannelResult;
-  receiveCodexMessage(request: ReceiveCodexMessageRequest): ReceiveCodexMessageResult;
+  receiveCodexMessage(request: ReceiveCodexMessageRequest): Promise<ReceiveCodexMessageResult>;
   receiveCodexReply(request: ReceiveCodexReplyRequest): ReceiveCodexMessageResult;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
@@ -731,55 +732,7 @@ export function createDaemonState(
     },
 
     updateDeliveryStatus(request) {
-      return withTransaction(options.db, () => {
-        const existing = deliveries.findById(request.deliveryId);
-
-        if (!existing) {
-          return {
-            ok: false,
-            reason: "delivery_not_found",
-            deliveryId: request.deliveryId,
-          };
-        }
-
-        const now = options.now();
-        const delivery = deliveries.updateStatus({
-          id: request.deliveryId,
-          status: request.status,
-          now,
-        });
-
-        if (!delivery) {
-          return {
-            ok: false,
-            reason: "delivery_not_found",
-            deliveryId: request.deliveryId,
-          };
-        }
-
-        events.append({
-          id: options.createId(),
-          type: "delivery_status_changed",
-          data: request.error
-            ? {
-                status: request.status,
-                error: request.error,
-              }
-            : {
-                status: request.status,
-              },
-          createdAt: now,
-          agentId: existing.targetAgentId,
-          messageId: existing.messageId,
-          deliveryId: existing.id,
-          routeId: existing.routeId,
-        });
-
-        return {
-          ok: true,
-          delivery,
-        };
-      });
+      return updateDeliveryStatusInTransaction(request);
     },
 
     async rollbackAgentAttach(request) {
@@ -979,7 +932,7 @@ export function createDaemonState(
       return { ok: true, agentName: request.agentName, disconnected: had };
     },
 
-    receiveCodexMessage(request) {
+    async receiveCodexMessage(request) {
       const authz = authorizeCodexIngress(request.agentName, request.token);
       if (!authz.ok) {
         return authz.error;
@@ -1000,6 +953,11 @@ export function createDaemonState(
           messageId: result.message.id,
           deliveryId: null,
           routeId: null,
+        });
+        await dispatchCodexMessageToClaudeChannels({
+          sourceName: request.agentName,
+          message: result.message,
+          deliveries: result.deliveries,
         });
       }
       return result;
@@ -1064,6 +1022,123 @@ export function createDaemonState(
       });
     },
   };
+
+  function updateDeliveryStatusInTransaction(
+    request: UpdateDeliveryStatusRequest,
+  ): UpdateDeliveryStatusResult {
+    return withTransaction(options.db, () => {
+      const existing = deliveries.findById(request.deliveryId);
+
+      if (!existing) {
+        return {
+          ok: false,
+          reason: "delivery_not_found",
+          deliveryId: request.deliveryId,
+        };
+      }
+
+      const now = options.now();
+      const delivery = deliveries.updateStatus({
+        id: request.deliveryId,
+        status: request.status,
+        now,
+      });
+
+      if (!delivery) {
+        return {
+          ok: false,
+          reason: "delivery_not_found",
+          deliveryId: request.deliveryId,
+        };
+      }
+
+      events.append({
+        id: options.createId(),
+        type: "delivery_status_changed",
+        data: request.error
+          ? {
+              status: request.status,
+              error: request.error,
+            }
+          : {
+              status: request.status,
+            },
+        createdAt: now,
+        agentId: existing.targetAgentId,
+        messageId: existing.messageId,
+        deliveryId: existing.id,
+        routeId: existing.routeId,
+      });
+
+      return {
+        ok: true,
+        delivery,
+      };
+    });
+  }
+
+  async function dispatchCodexMessageToClaudeChannels(input: {
+    sourceName: string;
+    message: StoredMessage;
+    deliveries: StoredDelivery[];
+  }): Promise<void> {
+    for (const delivery of input.deliveries) {
+      const targetAgent = agents
+        .list()
+        .find((agent) => agent.id === delivery.targetAgentId);
+
+      if (!targetAgent) {
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "failed",
+          error: {
+            reason: "target_agent_not_found",
+            message: `target agent not found`,
+          },
+        });
+        continue;
+      }
+
+      if (targetAgent.kind !== "claude") {
+        continue;
+      }
+
+      updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "delivering",
+      });
+      const injectResult = await injectClaudeChannel(
+        { getRuntime: (agentName) => claudeChannelRuntimes.get(agentName) },
+        {
+          agentName: targetAgent.name,
+          content: input.message.content,
+          chatId: input.message.id,
+          origin: input.sourceName,
+        },
+      );
+
+      if (injectResult.ok) {
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "delivered",
+        });
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "completed",
+        });
+        continue;
+      }
+
+      updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "failed",
+        error: {
+          reason: injectResult.reason,
+          message: injectResult.message,
+        },
+      });
+    }
+  }
 
   function authorizeCodexIngress(
     agentName: string,
