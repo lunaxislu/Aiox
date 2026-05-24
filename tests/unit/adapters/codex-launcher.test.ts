@@ -130,15 +130,17 @@ describe("Codex launcher", () => {
     );
   });
 
-  it("injects -c mcp_servers.aiox=... when mcp config is provided", async () => {
+  it("injects aiox MCP config into app-server launch args when mcp config is provided", async () => {
     const child = fakeChild();
     spawnMock.mockReturnValue(child);
-    const { launchCodexTui } = await import(
+    const { launchCodexAppServer } = await import(
       "../../../src/adapters/codex/launcher.js"
     );
 
-    launchCodexTui({
-      endpoint: new URL("ws://127.0.0.1:54321/"),
+    const launched = launchCodexAppServer({
+      bannerTimeoutMs: 1_000,
+      readyzTimeoutMs: 50,
+      totalTimeoutMs: 1_000,
       mcp: {
         agentName: "impl",
         agentToken: "tok-123",
@@ -147,10 +149,17 @@ describe("Codex launcher", () => {
         aioxBin: "/abs/aiox.js",
       },
     });
+    emitAppServerBanner(child);
+    await launched;
 
     const [, args] = spawnMock.mock.calls[0] as [string, string[]];
-    expect(args[0]).toBe("-c");
-    const inline = args[1];
+    expect(args.slice(0, 3)).toEqual([
+      "app-server",
+      "--listen",
+      "ws://127.0.0.1:0",
+    ]);
+    expect(args[3]).toBe("-c");
+    const inline = args[4];
     expect(inline).toMatch(/^mcp_servers\.aiox = \{/);
     expect(inline).toContain('command = "/usr/bin/node"');
     expect(inline).toContain('"/abs/aiox.js"');
@@ -158,31 +167,6 @@ describe("Codex launcher", () => {
     expect(inline).toContain('AIOX_CODEX_AGENT_NAME = "impl"');
     expect(inline).toContain('AIOX_CODEX_AGENT_TOKEN = "tok-123"');
     expect(inline).toContain('AIOX_SOCKET_PATH = "/tmp/aiox.sock"');
-    expect(args.slice(2)).toEqual(["--remote", "ws://127.0.0.1:54321/"]);
-  });
-
-  it("skips mcp injection when AIOX_CODEX_TUI_MCP_DISABLE=1", async () => {
-    vi.stubEnv("AIOX_CODEX_TUI_MCP_DISABLE", "1");
-    const child = fakeChild();
-    spawnMock.mockReturnValue(child);
-    const { launchCodexTui } = await import(
-      "../../../src/adapters/codex/launcher.js"
-    );
-
-    launchCodexTui({
-      endpoint: new URL("ws://127.0.0.1:54321/"),
-      mcp: {
-        agentName: "impl",
-        agentToken: "tok-123",
-        daemonSocketPath: "/tmp/aiox.sock",
-      },
-    });
-
-    expect(spawnMock).toHaveBeenCalledWith(
-      "codex",
-      ["--remote", "ws://127.0.0.1:54321/"],
-      { stdio: "inherit" },
-    );
   });
 
   it("falls back to no mcp args when mcp option is absent", async () => {

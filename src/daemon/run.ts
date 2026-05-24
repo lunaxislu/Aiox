@@ -30,6 +30,7 @@ export async function runDaemonProcess(socketPath: string): Promise<void> {
     createId: createSequentialId,
     now: () => new Date().toISOString(),
     attachCodexRuntime: productionAttachCodexRuntime,
+    daemonSocketPath: socketPath,
   });
 
   const handle = server.start();

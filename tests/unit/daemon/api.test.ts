@@ -168,6 +168,7 @@ describe("daemon API with fake in-process transport", () => {
         "2026-05-18T00:00:00.000Z",
         "2026-05-18T00:00:00.000Z",
         "2026-05-18T00:00:01.000Z",
+        "2026-05-18T00:00:01.000Z",
       ]),
       codexRuntimes: new Map(),
       attachCodexRuntime: async () => runtime,

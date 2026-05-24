@@ -919,19 +919,23 @@ Implementation summary:
   `~/.codex/config.toml`.
 - New daemon RPCs: `registerCodexChannel`, `disconnectCodexChannel`,
   `receiveCodexMessage`, `receiveCodexReply`. Pending-token Map mirrors Claude
-  channel pattern; token is generated on Codex `attachAgent` success and
-  exchanged once on register.
+  channel pattern; after the Step 14 remote-mode follow-up, the token is
+  pre-issued before Codex runtime attach so the daemon-owned app-server can
+  launch the `aiox mcp-codex` child immediately, then exchanged once on
+  register.
 - New event types: `codex_channel_registered`, `codex_channel_disconnected`,
   `codex_ingress_message_received`, `codex_ingress_reply_received`.
 - New `aiox mcp-codex` hidden subcommand spawns the stdio MCP server with two
   tools: `aiox_send_message(content)` and
   `aiox_reply(parent_message_id, content)`. All diagnostic logs go to stderr;
   stdout is reserved for MCP protocol.
-- Codex TUI launcher prepends `-c 'mcp_servers.aiox = { command, args, env }'`
-  pair when `mcp` config is supplied. `AIOX_CODEX_TUI_MCP_DISABLE=1` skips
-  injection for tests.
-- `InvocationRuntime.daemonSocketPath()` exposes the socket path so the
-  attach-agent flow can construct the launch-scoped MCP config.
+- Codex MCP injection originally targeted the foreground TUI in Step 13, but
+  the Step 14 remote-mode follow-up moved `-c 'mcp_servers.aiox = { command, args, env }'`
+  to the daemon-owned `codex app-server` launch. The TUI launcher now keeps
+  only remote connection args.
+- The daemon/server path exposes the same socket path to Codex runtime attach so
+  the launch-scoped app-server MCP config can point `aiox mcp-codex` back at
+  the daemon.
 
 Commits (in order):
 
@@ -1012,16 +1016,18 @@ Commits (in order):
 Verification baseline:
 
 ```
-pnpm test       # 319 passing (46 files; +9 Step 14 integration tests, +2 review fixes, +1 daemon startup-failure regression)
+pnpm test       # 323 passing (46 files; + Step 14 Codex remote MCP injection target + MCP handshake fix)
 pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
 
-Out of scope:
+Follow-up status:
 
-Open Step 14 follow-up for the next session:
+Resolved Step 14 follow-up:
 
-- Codex remote MCP injection target mismatch: manual smoke indicates `codex --remote` may host MCP servers in the background app-server rather than the foreground TUI, so the current TUI-side `-c mcp_servers.aiox=...` injection can miss the real MCP host. Learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`; authority context: `history/40-step-14-daemon-client-split.history.md`. Resolve separately with TDD while preserving Step 13 `aiox mcp-codex` stdout protocol, token hardening, and same socket path contract.
+- [x] Codex remote MCP injection target mismatch: aiox MCP injection now targets the daemon-owned `codex app-server` launch instead of the foreground remote TUI. The daemon pre-issues the Codex channel token before runtime attach and passes the same daemon socket path into app-server launch. Manual smoke confirmed the prior Notion `starting` hang is resolved. Follow-up fixed `aiox mcp-codex` startup so stdio MCP connects before daemon registration and the hidden subcommand stays alive until transport close. This preserves Step 13 stdout MCP protocol, token hardening, and same socket path contract. No `CODEX_HOME`/profile/`sqlite_home` isolation was added. Authority context: `history/40-step-14-daemon-client-split.history.md`; learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`.
+
+Remaining out of scope:
 
 - CI automation for real Codex/Claude authenticated sessions.
 - GUI terminal split automation.
@@ -1052,7 +1058,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 46 files, 319 tests (Step 14 daemon/client split review fixes + daemon startup-failure regression, 2026-05-24)
+- `pnpm test`: passing, 46 files, 323 tests (Step 14 Codex remote MCP injection target + MCP handshake fix, 2026-05-24)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

@@ -59,6 +59,38 @@ describe("Codex agent runtime", () => {
     });
   });
 
+  it("passes aiox MCP injection to the app-server launch before WS connect", async () => {
+    const events: string[] = [];
+    const seenLaunchOptions: unknown[] = [];
+
+    await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: null,
+      mcp: {
+        agentToken: "tok-123",
+        daemonSocketPath: "/tmp/aiox.sock",
+      },
+      launchAppServer: async (options?: unknown) => {
+        events.push("launch");
+        seenLaunchOptions.push(options);
+        return fakeAppServer(fakeChild());
+      },
+      connectWebSocket: async () => {
+        events.push("connect");
+        return fakeWebSocket(events);
+      },
+    });
+
+    expect(events.slice(0, 2)).toEqual(["launch", "connect"]);
+    expect(seenLaunchOptions[0]).toMatchObject({
+      mcp: {
+        agentName: "codex-one",
+        agentToken: "tok-123",
+        daemonSocketPath: "/tmp/aiox.sock",
+      },
+    });
+  });
+
   it("disposes by closing WS, sending SIGTERM, then SIGKILL after the grace period", async () => {
     vi.useFakeTimers();
     const events: string[] = [];

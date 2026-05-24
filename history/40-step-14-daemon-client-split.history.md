@@ -243,36 +243,94 @@ Added `tests/unit/daemon/run.test.ts` to assert that
 `runDaemonProcess(socketPath)` rejects when the daemon socket server cannot
 start instead of hanging.
 
-### Open Step 14 follow-up: Codex remote MCP injection target
+### Step 14 follow-up: Codex remote MCP injection target
 
 #### Problem
 
-Manual Step 14 smoke still has a Codex-side blocker after daemon/client reuse:
-`aiox codex --name impl --pair p1` can launch the Codex TUI in `--remote` mode,
-but the aiox MCP tools may not appear in the remote TUI. In the observed smoke,
-startup also hung while the background app-server was starting user-configured
-MCP servers.
+문제는 Step 14 manual smoke에서 `aiox codex --name impl --pair p1`가
+Codex TUI를 `--remote ws://...`로 띄웠지만, remote TUI 안에서 aiox MCP
+도구가 보이지 않는 것이었다. 같은 smoke에서 사용자 global MCP 중 Notion이
+`starting`에 머무르며 Codex startup을 막는 듯한 현상도 함께 관찰됐다.
 
-#### Working hypothesis and evidence
+그 다음 target 이동 후 Notion `starting` hang은 해소됐지만, aiox MCP가
+다음 오류로 실패했다.
 
-Step 13 assumed the Codex TUI process was the MCP host, so aiox injected
-`-c mcp_servers.aiox = {...}` into the TUI launch. The Step 14 manual smoke
-indicates that in `codex --remote ws://...` mode the MCP host is the
-background `codex app-server`, not the foreground TUI. Therefore TUI-side
-`-c` injection is likely targeting the wrong process. A separate observed hang
-points to the daemon-owned app-server loading the user global MCP config in a
-headless context.
+```text
+MCP client for `aiox` failed to start: MCP startup failed:
+handshaking with MCP server failed: connection closed: initialize response
+MCP startup incomplete (failed: aiox)
+```
 
-Learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`.
+#### Cause Analysis
 
-#### Next-session resolution direction
+처음에는 원인을 remote mode에서 사용자 global MCP config를 headless로 읽는
+문제 또는 `CODEX_HOME`/profile/`sqlite_home` 공유 문제일 수 있다고
+생각했다. 하지만 사용자의 manual smoke에서 Notion `starting` hang이 target
+이동 후 해소됐으므로, 이 부분은 별도 격리 없이 app-server target mismatch와
+함께 해결된 것으로 관찰했다. Notion OAuth 실패 자체는 사용자 설정 문제이며,
+aiox bug로 보지 않는다. DB lock이나 `sqlite_home` 경합은 이 변경에서 원인으로
+확정하지 않았다.
 
-Treat this as the next Step 14 blocker and handle it with TDD in a separate
-behavior change. The likely minimal fix is to move the aiox MCP injection from
-the Codex TUI launcher path to the Codex app-server launch path and isolate the
-app-server from interactive user MCP config. The exact implementation must keep
-the Step 13 hidden `aiox mcp-codex` stdout protocol, token hardening, and same
-socket path contract intact.
+확인된 원인은 두 가지였다.
+
+1. Step 13 구현은 Codex TUI process가 MCP host라고 보고 foreground TUI launch에
+   `-c mcp_servers.aiox = {...}`를 주입했다. Step 14 remote mode에서는 MCP host가
+   foreground TUI가 아니라 daemon-owned `codex app-server`였기 때문에, 주입 대상이
+   틀렸다.
+2. target을 app-server로 옮긴 뒤 남은 aiox startup failure의 원인은
+   `aiox mcp-codex` lifecycle/handshake 순서였다. 기존 hidden subcommand는 stdio
+   MCP server가 안정적으로 initialize handshake를 받기 전에 daemon channel
+   registration을 먼저 시도했고, `mcp.connect()`가 resolve되면 CLI invocation이
+   반환될 수 있었다. 그 결과 registration 실패 또는 즉시 반환 경로에서 Codex가
+   initialize 응답을 받기 전에 MCP child process가 닫힐 수 있었다. built-command
+   probe로 daemon socket이 없는 조건에서 이 동작을 확인했다.
+
+#### Resolution
+
+해결은 구조 변경 없이 Step 14 blocker에 필요한 행위 변경만으로 제한했다.
+
+- `src/adapters/codex/launcher.ts`: aiox MCP
+  `-c mcp_servers.aiox = {...}` 주입을 foreground TUI launch에서 daemon-owned
+  `codex app-server --listen ...` launch로 이동했다.
+- `src/cli/invocation.ts`: foreground TUI에는 remote 접속 args만 남겼다
+  (`--remote <endpoint>` 또는 `resume <thread> --remote <endpoint>`).
+- `src/daemon/state.ts`: Codex channel token을 `attachCodexRuntime()` 전에
+  pre-issue하고, 같은 daemon socket path를 runtime attach/app-server launch 경계로
+  전달했다. attach 실패 시 pre-issued pending token은 제거한다.
+- `src/adapters/codex/runtime.ts`: `agentName`, pre-issued token,
+  daemon socket path를 app-server MCP injection으로 넘긴다.
+- `src/adapters/codex/mcp-server.ts`: `aiox mcp-codex`가 stdio MCP connect를
+  먼저 수행하고, daemon registration은 connect 이후 수행하도록 바꿨다. Registration
+  실패는 stderr event로 남기되 process를 종료하지 않는다. Hidden subcommand는 stdio
+  transport close까지 살아있게 유지한다.
+
+이 변경으로 Step 13 hidden `aiox mcp-codex` stdout MCP protocol, token hardening,
+and same socket path contract는 유지됐다. `CODEX_HOME`, profile, `sqlite_home`
+격리는 추가하지 않았다.
+
+#### Verification
+
+Manual smoke 결과:
+
+- Notion `starting` hang은 target 이동 후 해소됨.
+- aiox MCP startup failure는 MCP lifecycle/handshake fix 후 해소됨.
+- Codex TUI `/mcp`에서 `aiox`가 성공적으로 로드됨.
+
+Automated verification:
+
+```sh
+pnpm test -- tests/unit/adapters/codex-launcher.test.ts tests/unit/adapters/codex-runtime.test.ts tests/unit/daemon/codex-ingress.test.ts tests/unit/cli/invocation.test.ts tests/unit/daemon/api.test.ts
+pnpm test -- tests/unit/adapters/codex-mcp-server.test.ts tests/unit/daemon/codex-ingress.test.ts tests/integration/daemon-client-split.test.ts tests/unit/daemon/run.test.ts tests/unit/cli/invocation.test.ts
+pnpm test       # 323 passing (46 files)
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
+
+Built-command probe:
+
+- `node dist/src/bin/aiox.js mcp-codex`가 daemon registration 실패 조건에서도
+  MCP `initialize` response를 stdout으로 반환함을 확인했다.
+- registration 실패는 stderr event로 남고, initialize 전에 process가 닫히지 않는다.
 
 ## Commits
 

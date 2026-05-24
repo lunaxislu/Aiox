@@ -15,16 +15,16 @@ export interface LaunchCodexAppServerOptions {
   bannerTimeoutMs?: number;
   readyzTimeoutMs?: number;
   totalTimeoutMs?: number;
+  mcp?: CodexMcpInjection;
 }
 
 export interface LaunchCodexTuiOptions {
   command?: string;
   endpoint: URL;
   resumeSessionId?: string;
-  mcp?: CodexTuiMcpInjection;
 }
 
-export interface CodexTuiMcpInjection {
+export interface CodexMcpInjection {
   agentName: string;
   agentToken: string;
   daemonSocketPath: string;
@@ -42,9 +42,10 @@ export async function launchCodexAppServer(
 ): Promise<CodexAppServerProcess> {
   const command =
     options.command ?? process.env.AIOX_CODEX_APP_SERVER_COMMAND ?? "codex";
-  const args = options.args ?? ["app-server", "--listen", "ws://127.0.0.1:0"];
+  const baseArgs = options.args ?? ["app-server", "--listen", "ws://127.0.0.1:0"];
+  const args = [...baseArgs, ...buildCodexMcpArgs(options.mcp)];
   const output = createCodexAppServerOutputBuffer();
-  const child = spawn(command, [...args], {
+  const child = spawn(command, args, {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -79,21 +80,15 @@ export function launchCodexTui(options: LaunchCodexTuiOptions): ChildProcess {
     ? ["resume", options.resumeSessionId, "--remote", options.endpoint.toString()]
     : ["--remote", options.endpoint.toString()];
 
-  const mcpArgs = buildCodexTuiMcpArgs(options.mcp);
-  const args = [...mcpArgs, ...baseArgs];
-
-  return spawn(command, args, {
+  return spawn(command, baseArgs, {
     stdio: "inherit",
   });
 }
 
-export function buildCodexTuiMcpArgs(
-  mcp: CodexTuiMcpInjection | undefined,
+export function buildCodexMcpArgs(
+  mcp: CodexMcpInjection | undefined,
 ): string[] {
   if (!mcp) {
-    return [];
-  }
-  if (process.env.AIOX_CODEX_TUI_MCP_DISABLE === "1") {
     return [];
   }
   const runtimeBinary = mcp.runtimeBinary ?? process.execPath;

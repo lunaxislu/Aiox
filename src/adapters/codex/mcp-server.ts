@@ -180,34 +180,110 @@ export function parseCodexIngressEnv(
   return { agentName, agentToken, daemonSocketPath };
 }
 
+export interface RunCodexIngressMcpServerDependencies {
+  env?: Record<string, string | undefined>;
+  createMcpServer?: (options: CodexIngressMcpServerOptions) => {
+    connect(transport: unknown): Promise<void>;
+  };
+  createTransport?: () => unknown;
+  createDaemonClient?: (options: { socketPath: string }) => CodexIngressDaemonClient;
+  log?: (event: string, fields: Record<string, unknown>) => void;
+}
+
 export async function runCodexIngressMcpServer(): Promise<void> {
-  const env = parseCodexIngressEnv();
-  logEvent("codex_mcp_starting", {
+  await runCodexIngressMcpServerWithDependencies();
+}
+
+export async function runCodexIngressMcpServerWithDependencies(
+  dependencies: RunCodexIngressMcpServerDependencies = {},
+): Promise<void> {
+  const env = parseCodexIngressEnv(dependencies.env);
+  const log = dependencies.log ?? logEvent;
+  const createMcpServer = dependencies.createMcpServer ?? createCodexIngressMcpServer;
+  const createTransport = dependencies.createTransport ?? (() => new StdioServerTransport());
+  const createDaemonClient =
+    dependencies.createDaemonClient ??
+    ((options: { socketPath: string }) =>
+      createDaemonSocketClient({ socketPath: options.socketPath }) as unknown as
+        CodexIngressDaemonClient);
+
+  log("codex_mcp_starting", {
     agentName: env.agentName,
   });
 
-  const client = createDaemonSocketClient({ socketPath: env.daemonSocketPath });
-  try {
-    const reg = (await client.registerCodexChannel({
-      agentName: env.agentName,
-      token: env.agentToken,
-    })) as { ok: boolean; reason?: string };
-    if (!reg.ok) {
-      logEvent("codex_mcp_register_failed", { result: reg });
-      process.exit(1);
-    }
-  } finally {
-    client.close();
-  }
-
-  const mcp = createCodexIngressMcpServer({
+  const mcp = createMcpServer({
     agentName: env.agentName,
     agentToken: env.agentToken,
     daemonSocketPath: env.daemonSocketPath,
+    createDaemonClient,
+  });
+  const createTransportResult = createTransport();
+
+  await mcp.connect(createTransportResult);
+  log("codex_mcp_connected", { agentName: env.agentName });
+
+  await registerCodexChannel({
+    env,
+    createDaemonClient,
+    log,
   });
 
-  await mcp.connect(new StdioServerTransport());
-  logEvent("codex_mcp_connected", { agentName: env.agentName });
+  await waitForTransportClose(createTransportResult);
+}
+
+function waitForTransportClose(transport: unknown): Promise<void> {
+  if (
+    typeof transport !== "object" ||
+    transport === null ||
+    !("onclose" in transport)
+  ) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const target = transport as { onclose?: () => void };
+    const previous = target.onclose;
+    target.onclose = () => {
+      previous?.();
+      resolve();
+    };
+  });
+}
+
+async function registerCodexChannel(options: {
+  env: CodexIngressMcpServerEnv;
+  createDaemonClient: (opts: { socketPath: string }) => CodexIngressDaemonClient;
+  log: (event: string, fields: Record<string, unknown>) => void;
+}): Promise<void> {
+  let client: CodexIngressDaemonClient;
+  try {
+    client = options.createDaemonClient({
+      socketPath: options.env.daemonSocketPath,
+    });
+  } catch (error) {
+    options.log("codex_mcp_register_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  try {
+    const reg = (await client.registerCodexChannel({
+      agentName: options.env.agentName,
+      token: options.env.agentToken,
+    })) as { ok: boolean; reason?: string };
+    if (!reg.ok) {
+      options.log("codex_mcp_register_failed", { result: reg });
+      return;
+    }
+    options.log("codex_mcp_registered", { agentName: options.env.agentName });
+  } catch (error) {
+    options.log("codex_mcp_register_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    client.close();
+  }
 }
 
 function errorResult(reason: string, detail: string): {

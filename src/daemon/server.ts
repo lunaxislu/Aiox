@@ -17,6 +17,7 @@ export interface CreateDaemonServerOptions {
   now: () => string;
   supervisor?: Supervisor;
   attachCodexRuntime?: AttachCodexRuntime;
+  daemonSocketPath?: string;
 }
 
 export interface DaemonServer {
@@ -47,6 +48,9 @@ export function createDaemonServer(
         createId: options.createId,
         now: options.now,
         attachCodexRuntime: options.attachCodexRuntime,
+        ...(options.daemonSocketPath === undefined
+          ? {}
+          : { daemonSocketPath: options.daemonSocketPath }),
       });
       const api = createDaemonApi(state);
       let stoppedResponse: StopResponse | null = null;

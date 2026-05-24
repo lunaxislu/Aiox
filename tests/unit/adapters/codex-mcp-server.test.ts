@@ -5,6 +5,7 @@ import {
   createReplyHandler,
   createSendMessageHandler,
   parseCodexIngressEnv,
+  runCodexIngressMcpServerWithDependencies,
 } from "../../../src/adapters/codex/mcp-server.js";
 
 describe("codex MCP server — handlers", () => {
@@ -154,6 +155,99 @@ describe("codex MCP server — factory", () => {
     expect(mcp).toBeDefined();
     // server property is the underlying low-level Server instance
     expect((mcp as unknown as { server: unknown }).server).toBeDefined();
+  });
+});
+
+describe("codex MCP server — startup", () => {
+  it("connects stdio MCP before registering with the daemon", async () => {
+    const events: string[] = [];
+
+    await runCodexIngressMcpServerWithDependencies({
+      env: {
+        AIOX_CODEX_AGENT_NAME: "impl",
+        AIOX_CODEX_AGENT_TOKEN: "token-1",
+        AIOX_SOCKET_PATH: "/tmp/test.sock",
+      },
+      createMcpServer: () => ({
+        connect: async () => {
+          events.push("connect");
+        },
+      }),
+      createTransport: () => ({}),
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          registerCodexChannel: async () => {
+            events.push("register");
+            return { ok: true };
+          },
+        }),
+      log: () => {},
+    });
+
+    expect(events).toEqual(["connect", "register"]);
+  });
+
+  it("keeps the MCP process alive when daemon registration fails after connect", async () => {
+    const events: string[] = [];
+    const logs: { event: string; fields: Record<string, unknown> }[] = [];
+
+    await runCodexIngressMcpServerWithDependencies({
+      env: {
+        AIOX_CODEX_AGENT_NAME: "impl",
+        AIOX_CODEX_AGENT_TOKEN: "bad-token",
+        AIOX_SOCKET_PATH: "/tmp/test.sock",
+      },
+      createMcpServer: () => ({
+        connect: async () => {
+          events.push("connect");
+        },
+      }),
+      createTransport: () => ({}),
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          registerCodexChannel: async () => {
+            events.push("register");
+            return { ok: false, reason: "codex_channel_registration_failed" };
+          },
+        }),
+      log: (event, fields) => logs.push({ event, fields }),
+    });
+
+    expect(events).toEqual(["connect", "register"]);
+    expect(logs).toContainEqual({
+      event: "codex_mcp_register_failed",
+      fields: {
+        result: { ok: false, reason: "codex_channel_registration_failed" },
+      },
+    });
+  });
+
+  it("keeps the MCP server process alive until the stdio transport closes", async () => {
+    const transport: { onclose?: () => void } = { onclose: undefined };
+    let settled = false;
+
+    const running = runCodexIngressMcpServerWithDependencies({
+      env: {
+        AIOX_CODEX_AGENT_NAME: "impl",
+        AIOX_CODEX_AGENT_TOKEN: "token-1",
+        AIOX_SOCKET_PATH: "/tmp/test.sock",
+      },
+      createMcpServer: () => ({
+        connect: async () => {},
+      }),
+      createTransport: () => transport,
+      createDaemonClient: () => fakeDaemonClient(),
+      log: () => {},
+    }).then(() => {
+      settled = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    transport.onclose?.();
+    await running;
+    expect(settled).toBe(true);
   });
 });
 

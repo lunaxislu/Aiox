@@ -49,6 +49,46 @@ describe("daemon attachAgent issues codex channel token", () => {
     }
   });
 
+  it("passes the codex channel token and daemon socket path into runtime attach before thread start", async () => {
+    const codexPendingTokens = new Map();
+    const seenAttachRequests: unknown[] = [];
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-new",
+    });
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+      codexPendingTokens,
+      daemonSocketPath: "/tmp/aiox.sock",
+      attachCodexRuntime: async (request) => {
+        seenAttachRequests.push(request);
+        expect(codexPendingTokens.get("impl")).toMatchObject({
+          agentName: "impl",
+          token: request.codexChannelToken,
+        });
+        return runtime;
+      },
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const response = await client.attachAgent({
+      kind: "codex",
+      name: "impl",
+      cwd: "/repo",
+    });
+
+    expect(response.ok).toBe(true);
+    expect(seenAttachRequests[0]).toMatchObject({
+      agentName: "impl",
+      activeThreadId: null,
+      codexChannelToken: (response as { ok: true; codexChannelToken: string })
+        .codexChannelToken,
+      daemonSocketPath: "/tmp/aiox.sock",
+    });
+  });
+
   it("claude attach does not return codexChannelToken", async () => {
     const state = createDaemonState({
       db,

@@ -146,6 +146,7 @@ export interface CreateDaemonStateOptions {
   claudePendingTokens?: Map<string, ClaudePendingToken>;
   codexChannelRuntimes?: Map<string, CodexChannelRuntime>;
   codexPendingTokens?: Map<string, CodexPendingToken>;
+  daemonSocketPath?: string;
 }
 
 export const productionAttachCodexRuntime: AttachCodexRuntime = defaultAttachCodexRuntime;
@@ -165,6 +166,8 @@ export interface ManagedCodexAgentRuntime extends ManagedAgentRuntime {
 export type AttachCodexRuntime = (request: {
   agentName: string;
   activeThreadId: string | null;
+  codexChannelToken?: string;
+  daemonSocketPath?: string;
 }) => Promise<ManagedCodexAgentRuntime>;
 
 export interface AgentRuntimeRegistry {
@@ -469,6 +472,7 @@ export function createDaemonState(
 
       let storedAgent: StoredAgent | null = null;
       let startingCodexRuntime: ManagedCodexAgentRuntime | null = null;
+      let codexChannelToken: string | null = null;
       try {
         const attachResult = withTransaction(options.db, () => {
           const now = options.now();
@@ -542,9 +546,19 @@ export function createDaemonState(
         }
 
         storedAgent = attachResult.agent;
+        codexChannelToken = randomUUID();
+        codexPendingTokens.set(request.name, {
+          agentName: request.name,
+          token: codexChannelToken,
+          createdAt: options.now(),
+        });
         const runtime = await attachCodexRuntime({
           agentName: request.name,
           activeThreadId: storedAgent.adapterSessionId,
+          codexChannelToken,
+          ...(options.daemonSocketPath === undefined
+            ? {}
+            : { daemonSocketPath: options.daemonSocketPath }),
         });
         startingCodexRuntime = runtime;
         const nextThreadId = request.resumeSessionId
@@ -598,13 +612,6 @@ export function createDaemonState(
           routeId: null,
         });
 
-        const codexChannelToken = randomUUID();
-        codexPendingTokens.set(request.name, {
-          agentName: request.name,
-          token: codexChannelToken,
-          createdAt: options.now(),
-        });
-
         return {
           ok: true,
           agent: reboundAgent,
@@ -617,6 +624,10 @@ export function createDaemonState(
       } catch (error) {
         if (isAttachRollback(error)) {
           return error.response;
+        }
+
+        if (codexChannelToken) {
+          codexPendingTokens.delete(request.name);
         }
 
         if (storedAgent) {
@@ -1362,10 +1373,20 @@ function isUniqueConstraintError(error: unknown): boolean {
 async function defaultAttachCodexRuntime(request: {
   agentName: string;
   activeThreadId: string | null;
+  codexChannelToken?: string;
+  daemonSocketPath?: string;
 }): Promise<ManagedCodexAgentRuntime> {
   return attachCodexAgentRuntime({
     agentName: request.agentName,
     activeThreadId: request.activeThreadId,
+    ...(request.codexChannelToken && request.daemonSocketPath
+      ? {
+          mcp: {
+            agentToken: request.codexChannelToken,
+            daemonSocketPath: request.daemonSocketPath,
+          },
+        }
+      : {}),
   });
 }
 

@@ -51,11 +51,6 @@ export interface InvocationOptions {
   launchCodexTui?: (options: {
     endpoint: URL;
     resumeSessionId?: string;
-    mcp?: {
-      agentName: string;
-      agentToken: string;
-      daemonSocketPath: string;
-    };
   }) => ChildProcess;
   launchClaudeWithChannel?: (options: {
     channelName: string;
@@ -125,23 +120,12 @@ export async function invokeParsedCommand(
       });
       ensureOk(response);
       if (command.agentKind === "codex" && response.ok && response.codexRuntime) {
-        const socketPath = options.runtime.daemonSocketPath?.();
-        const agentToken = response.codexChannelToken;
-        const mcp =
-          socketPath && agentToken
-            ? {
-                agentName: command.name,
-                agentToken,
-                daemonSocketPath: socketPath,
-              }
-            : undefined;
         const child = launchTuiOrRollback({
           api,
           agentName: command.name,
           endpoint: new URL(response.codexRuntime.endpoint),
           resumeSessionId: command.resumeSessionId,
           launch: options.launchCodexTui ?? launchCodexTui,
-          mcp,
         });
         let tuiExit: { exitCode: number | null; signal: string | null };
         try {
@@ -261,17 +245,7 @@ function launchTuiOrRollback(input: {
   launch: (options: {
     endpoint: URL;
     resumeSessionId?: string;
-    mcp?: {
-      agentName: string;
-      agentToken: string;
-      daemonSocketPath: string;
-    };
   }) => ChildProcess;
-  mcp?: {
-    agentName: string;
-    agentToken: string;
-    daemonSocketPath: string;
-  };
 }): ChildProcess {
   try {
     return input.launch({
@@ -279,7 +253,6 @@ function launchTuiOrRollback(input: {
       ...(input.resumeSessionId === undefined
         ? {}
         : { resumeSessionId: input.resumeSessionId }),
-      ...(input.mcp ? { mcp: input.mcp } : {}),
     });
   } catch (error) {
     void input.api.rollbackAgentAttach({ agentName: input.agentName });

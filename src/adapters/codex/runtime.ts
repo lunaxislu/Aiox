@@ -8,7 +8,10 @@ import {
   disposeCodexAppServerOnAttachFailure,
 } from "./app-server.js";
 import type { AdapterInjectResult } from "../contract.js";
-import { launchCodexAppServer } from "./launcher.js";
+import {
+  launchCodexAppServer,
+  type LaunchCodexAppServerOptions,
+} from "./launcher.js";
 import {
   injectTurnStart,
   type InjectTurnStartOptions,
@@ -75,7 +78,15 @@ export interface CodexAgentRuntimeWebSocketClient {
 export interface AttachCodexAgentRuntimeOptions {
   agentName: string;
   activeThreadId: string | null;
-  launchAppServer?: () => Promise<CodexAppServerProcess>;
+  mcp?: {
+    agentToken: string;
+    daemonSocketPath: string;
+    runtimeBinary?: string;
+    aioxBin?: string;
+  };
+  launchAppServer?: (
+    options?: LaunchCodexAppServerOptions,
+  ) => Promise<CodexAppServerProcess>;
   connectWebSocket?: (
     endpoint: URL,
     clientVersion: string,
@@ -242,7 +253,22 @@ export async function attachCodexAgentRuntime(
   options: AttachCodexAgentRuntimeOptions,
 ): Promise<CodexAgentRuntime> {
   const clientVersion = readPackageVersion();
-  const appServer = await (options.launchAppServer ?? launchCodexAppServer)();
+  const launchOptions: LaunchCodexAppServerOptions | undefined = options.mcp
+    ? {
+        mcp: {
+          agentName: options.agentName,
+          agentToken: options.mcp.agentToken,
+          daemonSocketPath: options.mcp.daemonSocketPath,
+          ...(options.mcp.runtimeBinary === undefined
+            ? {}
+            : { runtimeBinary: options.mcp.runtimeBinary }),
+          ...(options.mcp.aioxBin === undefined ? {} : { aioxBin: options.mcp.aioxBin }),
+        },
+      }
+    : undefined;
+  const appServer = await (options.launchAppServer ?? launchCodexAppServer)(
+    launchOptions,
+  );
   let webSocket: CodexAgentRuntimeWebSocketClient | null = null;
 
   try {

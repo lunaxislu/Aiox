@@ -218,6 +218,7 @@ export function createSocketRuntime(
 ): InvocationRuntime & { close(): Promise<void> } {
   const dbPath = options.dbPath ?? ":memory:";
   const version = options.version ?? readPackageVersion();
+  const socketPath = options.socketPath ?? createDefaultSocketPath();
   const db = new Database(dbPath);
   applySchema(db);
 
@@ -226,8 +227,8 @@ export function createSocketRuntime(
     createId: createSequentialId,
     now: () => new Date().toISOString(),
     attachCodexRuntime: options.attachCodexRuntime ?? productionAttachCodexRuntime,
+    daemonSocketPath: socketPath,
   });
-  const socketPath = options.socketPath ?? createDefaultSocketPath();
   let daemonHandle: DaemonServerHandle | null = null;
   let socketHandle: DaemonSocketServerHandle | null = null;
   let client: ReturnType<typeof createDaemonSocketClient> | null = null;

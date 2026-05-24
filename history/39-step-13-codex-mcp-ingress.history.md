@@ -280,3 +280,17 @@ Carried verbatim from `history/37` Step 13 scope:
 - aiox-level control MCP.
 - Codex app-server notification scraping as authoritative source path.
 - TUI-originated `/clear` `/new` `/fork` rebind via MCP callback (post-MVP).
+
+### Step 14 remote-mode correction (2026-05-24)
+
+Step 13's stdout MCP protocol, daemon RPCs, token hardening, and inline TOML
+shape remain valid, but the injection target changed after Step 14 remote-mode
+smoke. In `codex --remote` mode, aiox now injects
+`-c mcp_servers.aiox = {...}` into the daemon-owned `codex app-server` launch
+instead of the foreground TUI launch. Current authority for that correction is
+`history/40-step-14-daemon-client-split.history.md`.
+
+Step 14 also fixed the hidden subcommand lifetime: `aiox mcp-codex` now
+connects stdio MCP before daemon registration, logs registration failure without
+exiting before initialize, and waits for stdio transport close. Token hardening
+remains daemon-enforced. Authority: `history/40-step-14-daemon-client-split.history.md`.

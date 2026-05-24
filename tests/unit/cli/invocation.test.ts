@@ -169,6 +169,7 @@ describe("CLI invocation", () => {
             endpoint: "ws://127.0.0.1:54321/",
             activeThreadId: "thread-1",
           },
+          codexChannelToken: "tok-123",
         };
       },
     });
@@ -178,8 +179,8 @@ describe("CLI invocation", () => {
       {
         runtime,
         cwd: "/repo",
-        launchCodexTui: ({ endpoint }) => {
-          calls.push(["launchCodexTui", endpoint.toString()]);
+        launchCodexTui: (options) => {
+          calls.push(["launchCodexTui", options]);
           setTimeout(() => child.emit("exit", 7, null), 0);
           return child;
         },
@@ -190,7 +191,7 @@ describe("CLI invocation", () => {
     expect(calls).toEqual([
       ["startDaemon"],
       ["attachAgent", { kind: "codex", name: "impl", cwd: "/repo" }],
-      ["launchCodexTui", "ws://127.0.0.1:54321/"],
+      ["launchCodexTui", { endpoint: new URL("ws://127.0.0.1:54321/") }],
       ["notifyTuiExited", { agentName: "impl", exitCode: 7, signal: null }],
     ]);
   });
