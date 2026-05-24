@@ -38,6 +38,11 @@ export async function runDaemonProcess(socketPath: string): Promise<void> {
     null;
   let shutdownScheduled = false;
 
+  let resolveShutdown!: () => void;
+  const shutdownPromise = new Promise<void>((resolve) => {
+    resolveShutdown = resolve;
+  });
+
   async function shutdown(): Promise<void> {
     if (shutdownScheduled) {
       return;
@@ -51,7 +56,7 @@ export async function runDaemonProcess(socketPath: string): Promise<void> {
 
     handle.stop({});
     db.close();
-    process.exit(0);
+    resolveShutdown();
   }
 
   // Wrap the stop RPC to auto-shutdown the daemon process after the client
@@ -66,10 +71,16 @@ export async function runDaemonProcess(socketPath: string): Promise<void> {
     },
   };
 
-  socketHandle = await createDaemonSocketServer({ api: wrappedApi, socketPath }).start();
+  try {
+    socketHandle = await createDaemonSocketServer({ api: wrappedApi, socketPath }).start();
+  } catch (error) {
+    handle.stop({});
+    db.close();
+    throw error;
+  }
 
   process.once("SIGTERM", () => void shutdown());
   process.once("SIGINT", () => void shutdown());
 
-  // The active net.Server keeps the event loop alive; no explicit blocking needed.
+  return shutdownPromise;
 }

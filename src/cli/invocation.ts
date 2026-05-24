@@ -166,7 +166,9 @@ export async function invokeParsedCommand(
             exitCode: 1,
           });
         }
-        const channelName = `aiox-claude-${command.name}`;
+        // Claude uses server:<name> as a static .mcp.json lookup key.
+        // See history/40-step-14-daemon-client-split.history.md.
+        const channelName = "aiox-claude-ingress";
         const child = launchChildOrRollback({
           api,
           agentName: command.name,

@@ -1,11 +1,8 @@
 {
   "mcpServers": {
-    "aiox-channel-poc": {
-      "command": "pnpm",
-      "args": ["tsx", "spikes/claude-channel-node-poc/server.ts"],
-      "env": {
-        "AIOX_CHANNEL_POC_PORT": "18788"
-      }
+    "aiox-claude-ingress": {
+      "command": "node",
+      "args": ["dist/src/adapters/claude/channel-server.js"]
     }
   }
 }

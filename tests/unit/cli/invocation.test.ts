@@ -269,7 +269,9 @@ describe("CLI invocation", () => {
       [
         "launchClaudeWithChannel",
         {
-          channelName: "aiox-claude-reviewer",
+          // Claude treats server:<name> as a static .mcp.json lookup key;
+          // per-agent identity is carried by env/token instead.
+          channelName: "aiox-claude-ingress",
           agentName: "reviewer",
           agentToken: "claude-token-1",
           daemonSocketPath: "/tmp/aiox/daemon.sock",

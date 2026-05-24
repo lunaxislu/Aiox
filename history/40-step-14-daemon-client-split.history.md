@@ -114,7 +114,7 @@ manual E2E smoke (see below).
 ## Verification
 
 ```
-pnpm test       # 318 passing (45 files; +9 from Step 14 integration tests, +2 review fixes)
+pnpm test       # 319 passing (46 files; +9 Step 14 integration tests, +2 review fixes, +1 daemon startup-failure regression)
 pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
@@ -155,6 +155,124 @@ Codex review found three Step 14 gaps and this follow-up addressed them:
 - `aiox daemon start` now prints daemon status output after the idempotent start
   operation, including the already-running daemon case.
 - The manual smoke command path now matches `pnpm build` output.
+
+### Claude channel name fix
+
+#### Problem
+
+The initial Claude foreground-launch fix still did not make the Step 14 manual
+E2E smoke viable. `aiox claude --name reviewer --pair p1` could attach the
+agent in the daemon and launch the foreground Claude CLI, but Claude could fail
+to load the aiox channel server. Without that MCP child process, the channel
+server never opened its HTTP ingress, never called `registerClaudeChannel`, and
+the daemon had no live Claude endpoint to route messages to.
+
+#### Cause
+
+The launcher used a per-agent channel name such as
+`server:aiox-claude-reviewer`. Claude Code treats the `server:<name>` value
+as an exact lookup key in the repo `.mcp.json` `mcpServers` map, not as a
+display-only channel label. Because `.mcp.json` is static project
+configuration, it cannot contain every future agent-specific key. This made the
+per-agent channel-name scheme incompatible with foreground Claude channel
+registration.
+
+Related prior facts:
+
+- `history/2-claude-adapter.history.md` records that the currently working
+  Claude Code local-channel form is
+  `--dangerously-load-development-channels server:<name>` backed by a
+  matching `.mcp.json` server entry.
+- `history/35-step-11-phase-a-claude-channel-decisions.history.md` records the
+  Step 11 launcher/channel-server split and token-based daemon registration.
+
+#### Decision
+
+Use one static MCP server key, `aiox-claude-ingress`, and pass the per-agent
+identity through inherited environment variables:
+
+- `.mcp.json` registers `mcpServers.aiox-claude-ingress` pointing at
+  `dist/src/adapters/claude/channel-server.js`.
+- `aiox claude` launches Claude with
+  `--dangerously-load-development-channels server:aiox-claude-ingress`.
+- `AIOX_CLAUDE_CHANNEL_AGENT_NAME`, `AIOX_CLAUDE_CHANNEL_TOKEN`, and
+  `AIOX_SOCKET_PATH` identify the attached agent and daemon socket to the MCP
+  child process.
+
+Rejected alternative: dynamically rewrite `.mcp.json` for each agent-specific
+channel key. That would introduce cleanup/race risk between concurrent
+`aiox claude` sessions and would make a foreground terminal attach mutate
+project configuration as a side effect. The static key plus environment
+identity keeps configuration stable while preserving per-agent registration.
+
+#### Expected verification
+
+The targeted CLI invocation test should assert that Claude attach launches the
+foreground Claude process with `channelName: "aiox-claude-ingress"` while still
+passing the agent name, token, and daemon socket path as environment inputs to
+the launcher. The Step 14 manual smoke should then use the same built CLI path,
+`node dist/src/bin/aiox.js claude --name reviewer --pair p1`, and rely on the
+static `.mcp.json` key for channel-server startup.
+
+### Daemon startup failure propagation fix
+
+#### Problem
+
+The first long-running daemon fix made `runDaemonProcess()` wait until shutdown
+instead of returning immediately, but the implementation used an async Promise
+executor. If `createDaemonSocketServer(...).start()` failed during startup, the
+outer `runDaemonProcess()` promise could remain pending while the socket start
+error escaped as an unhandled rejection.
+
+#### Cause
+
+`new Promise(async (resolve) => { await start(); ... })` does not wire the async
+executor rejection to the Promise constructor outer promise. This is a daemon
+lifecycle bug, not a socket transport contract change.
+
+#### Fix
+
+Keep the long-running shutdown promise, but perform socket startup outside the
+Promise executor. On startup failure, stop the daemon handle, close the in-memory
+SQLite database, and rethrow the original error. On normal stop/SIGTERM/SIGINT,
+resolve the shutdown promise instead of calling `process.exit(0)` directly.
+
+#### Verification
+
+Added `tests/unit/daemon/run.test.ts` to assert that
+`runDaemonProcess(socketPath)` rejects when the daemon socket server cannot
+start instead of hanging.
+
+### Open Step 14 follow-up: Codex remote MCP injection target
+
+#### Problem
+
+Manual Step 14 smoke still has a Codex-side blocker after daemon/client reuse:
+`aiox codex --name impl --pair p1` can launch the Codex TUI in `--remote` mode,
+but the aiox MCP tools may not appear in the remote TUI. In the observed smoke,
+startup also hung while the background app-server was starting user-configured
+MCP servers.
+
+#### Working hypothesis and evidence
+
+Step 13 assumed the Codex TUI process was the MCP host, so aiox injected
+`-c mcp_servers.aiox = {...}` into the TUI launch. The Step 14 manual smoke
+indicates that in `codex --remote ws://...` mode the MCP host is the
+background `codex app-server`, not the foreground TUI. Therefore TUI-side
+`-c` injection is likely targeting the wrong process. A separate observed hang
+points to the daemon-owned app-server loading the user global MCP config in a
+headless context.
+
+Learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`.
+
+#### Next-session resolution direction
+
+Treat this as the next Step 14 blocker and handle it with TDD in a separate
+behavior change. The likely minimal fix is to move the aiox MCP injection from
+the Codex TUI launcher path to the Codex app-server launch path and isolate the
+app-server from interactive user MCP config. The exact implementation must keep
+the Step 13 hidden `aiox mcp-codex` stdout protocol, token hardening, and same
+socket path contract intact.
 
 ## Commits
 

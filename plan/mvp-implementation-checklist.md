@@ -1012,12 +1012,16 @@ Commits (in order):
 Verification baseline:
 
 ```
-pnpm test       # 318 passing (45 files; +9 from Step 14 integration tests, +2 review fixes)
+pnpm test       # 319 passing (46 files; +9 Step 14 integration tests, +2 review fixes, +1 daemon startup-failure regression)
 pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
 
 Out of scope:
+
+Open Step 14 follow-up for the next session:
+
+- Codex remote MCP injection target mismatch: manual smoke indicates `codex --remote` may host MCP servers in the background app-server rather than the foreground TUI, so the current TUI-side `-c mcp_servers.aiox=...` injection can miss the real MCP host. Learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`; authority context: `history/40-step-14-daemon-client-split.history.md`. Resolve separately with TDD while preserving Step 13 `aiox mcp-codex` stdout protocol, token hardening, and same socket path contract.
 
 - CI automation for real Codex/Claude authenticated sessions.
 - GUI terminal split automation.
@@ -1048,7 +1052,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 45 files, 318 tests (Step 14 daemon/client split review fixes, 2026-05-23)
+- `pnpm test`: passing, 46 files, 319 tests (Step 14 daemon/client split review fixes + daemon startup-failure regression, 2026-05-24)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 
