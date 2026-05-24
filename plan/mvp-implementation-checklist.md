@@ -1027,6 +1027,10 @@ Resolved Step 14 follow-up:
 
 - [x] Codex remote MCP injection target mismatch: aiox MCP injection now targets the daemon-owned `codex app-server` launch instead of the foreground remote TUI. The daemon pre-issues the Codex channel token before runtime attach and passes the same daemon socket path into app-server launch. Manual smoke confirmed the prior Notion `starting` hang is resolved. Follow-up fixed `aiox mcp-codex` startup so stdio MCP connects before daemon registration and the hidden subcommand stays alive until transport close. This preserves Step 13 stdout MCP protocol, token hardening, and same socket path contract. No `CODEX_HOME`/profile/`sqlite_home` isolation was added. Authority context: `history/40-step-14-daemon-client-split.history.md`; learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`.
 
+Open Step 14 follow-up for next session:
+
+- [ ] Codex -> Claude queued delivery drain: manual smoke after `ab6699b` shows Codex MCP ingress succeeds and creates `messages=1 queued=1`, but the queued delivery is not pushed to the connected Claude channel. Start next session with a targeted failing test for `receiveCodexMessage` / queued delivery dispatch to Claude channel. Authority context: `history/40-step-14-daemon-client-split.history.md`.
+
 Remaining out of scope:
 
 - CI automation for real Codex/Claude authenticated sessions.

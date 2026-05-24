@@ -332,6 +332,76 @@ Built-command probe:
   MCP `initialize` response를 stdout으로 반환함을 확인했다.
 - registration 실패는 stderr event로 남고, initialize 전에 process가 닫히지 않는다.
 
+### Open Step 14 follow-up: queued delivery drain to Claude
+
+#### Observation
+
+After commit `ab6699b fix: resolve codex remote mcp startup`, manual smoke progressed
+past Codex MCP startup:
+
+- Codex TUI `/mcp` showed `aiox` successfully.
+- Claude MCP showed `aiox-claude-ingress` with tool
+  `reply(chat_id, text)`.
+- Pair state was ready and bidirectional routes existed:
+  `impl -> reviewer` and `reviewer -> impl`.
+- When Codex sent a message through `aiox_send_message`, daemon status showed:
+
+```text
+DELIVERIES
+messages=1 queued=1 delivering=0 delivered=0 completed=0 failed=0
+```
+
+The Claude TUI did not display the Codex message. When the user asked Claude to
+send to Codex manually, Claude asked for `chat_id` and message text. That response was
+not a routed aiox delivery; it was Claude interpreting a normal user request.
+
+#### Current interpretation
+
+The current blocker is not Codex MCP ingress. Codex -> daemon succeeded because
+the daemon created one message and one queued delivery. The blocker is the
+production path that drains queued deliveries to a connected Claude channel.
+
+The Claude `reply(chat_id, text)` contract appears intentional. The expected flow is:
+
+1. Daemon pushes a queued delivery to the registered Claude channel endpoint.
+2. Claude channel-server notifies the Claude TUI with framed content such as
+   `<channel source="aiox" chat_id="..." origin="impl">...</channel>`.
+3. Claude uses the same `chat_id` when calling `reply(chat_id, text)`.
+
+Therefore the next fix should start before reply handling: make Codex-originated
+queued deliveries dispatch to connected Claude channels and transition delivery
+status from `queued` to `delivering` to `delivered/completed` or `failed`.
+
+#### Next-session target
+
+Do not start with Claude reply routing. First add a targeted failing test for
+Codex ingress to Claude delivery drain, for example:
+
+```text
+receiveCodexMessage dispatches queued delivery to registered Claude channel
+```
+
+or:
+
+```text
+codex ingress message reaches connected claude channel and completes delivery
+```
+
+Likely files to inspect first:
+
+- `src/daemon/state.ts`: `receiveCodexMessage` / `sendMessage` creation and delivery status APIs.
+- `src/adapters/router.ts`: existing dispatch abstraction currently used by fake adapter tests.
+- `src/adapters/claude/injector.ts`: HTTP push to registered Claude channel endpoint with optional `chatId` and `origin`.
+- `src/adapters/claude/channel-server.ts`: `buildChannelNotification`, `reply(chat_id, text)`, and channel HTTP ingress.
+- `tests/unit/daemon/codex-ingress.test.ts` and `tests/unit/adapters/claude-injector.test.ts`.
+
+Constraints for next fix:
+
+- Keep Step 13 Codex `aiox mcp-codex` stdout protocol/token/socket contract intact.
+- Keep the Step 14 app-server injection and MCP handshake fix intact.
+- Preserve Claude `reply(chat_id, text)` as the reply surface; do not make users manually provide chat ids in normal routed flow.
+- TDD first: add the failing drain test before implementation.
+
 ## Commits
 
 - `cf17e68` structure: extract stable socket path + export canConnect
