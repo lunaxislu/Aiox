@@ -285,6 +285,22 @@ Test coverage added/updated:
 - Claude -> Codex delivery tests continue to model the foreground TUI as the live loaded thread and verify `thread/loaded/list` -> latest thread -> `turn/start`.
 - Verification: `pnpm test` passed (46 files, 335 tests), `pnpm typecheck` passed, and `pnpm build` passed.
 
+## Follow-up resolution: delivery target selection observability
+
+2026-05-25 follow-up implementation added audit events for the latest-loaded-thread heuristic:
+
+- `codex_delivery_target_selected` records `thread/loaded/list`, the returned loaded thread ids, the selected latest thread id, previous cached adapter session id, runtime active thread id, selection policy, message type, and source/target agent names.
+- `codex_delivery_target_unavailable` records the same selection context when no loaded thread exists and the delivery remains queued.
+- `codex_delivery_target_injection_failed` records the selected thread and failure reason/message when `turn/start` fails after a target was selected.
+- Event payloads do not include user message content; they carry routing/debug ids and selection metadata only.
+
+Effect:
+
+- If daemon status says `completed` but the visible Codex TUI does not show the reply, the event log now shows which loaded-thread set was observed and which thread the daemon selected.
+- If delivery stays queued or fails during `turn/start`, the event log separates target discovery failure from injection failure.
+
+Verification: targeted daemon/core tests passed, `pnpm test` passed (46 files, 338 tests), `pnpm typecheck` passed, and `pnpm build` passed.
+
 ## 관련 문서
 
 - `history/40-step-14-daemon-client-split.history.md` — Step 14 진행 권위.

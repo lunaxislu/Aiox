@@ -680,6 +680,60 @@ describe("daemon receiveClaudeChannelReply", () => {
     });
   });
 
+  it("records the selected Codex delivery target", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-old", "thread-new"],
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(
+      db
+        .prepare(
+          `
+            select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
+            from events
+            join agents on agents.id = events.agent_id
+            where events.type = 'codex_delivery_target_selected'
+            order by events.rowid desc
+            limit 1
+          `,
+        )
+        .get(),
+    ).toMatchObject({
+      type: "codex_delivery_target_selected",
+      data_json: JSON.stringify({
+        operation: "thread/loaded/list",
+        loadedThreadIds: ["thread-old", "thread-new"],
+        chosenThreadId: "thread-new",
+        previousAdapterSessionId: null,
+        runtimeActiveThreadId: null,
+        selectionPolicy: "latest_loaded_thread",
+        deliveryMessageType: "reply",
+        sourceAgentName: "reviewer",
+        targetAgentName: "impl",
+      }),
+      message_id: expect.any(String),
+      delivery_id: expect.any(String),
+      route_id: expect.any(String),
+      agent_name: "impl",
+    });
+  });
+
   it("keeps Claude reply delivery queued when Codex has no live loaded thread", async () => {
     const setup = await setupPairedAgents(db, {
       codexRuntime: {
@@ -745,6 +799,59 @@ describe("daemon receiveClaudeChannelReply", () => {
         reason: "codex_no_loaded_thread",
         message: "Codex runtime has no loaded thread id",
       }),
+    });
+  });
+
+  it("records unavailable Codex delivery target details when no live thread exists", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: [],
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(
+      db
+        .prepare(
+          `
+            select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
+            from events
+            join agents on agents.id = events.agent_id
+            where events.type = 'codex_delivery_target_unavailable'
+            order by events.rowid desc
+            limit 1
+          `,
+        )
+        .get(),
+    ).toMatchObject({
+      type: "codex_delivery_target_unavailable",
+      data_json: JSON.stringify({
+        operation: "thread/loaded/list",
+        loadedThreadIds: [],
+        previousAdapterSessionId: null,
+        runtimeActiveThreadId: null,
+        reason: "codex_no_loaded_thread",
+        deliveryMessageType: "reply",
+        sourceAgentName: "reviewer",
+        targetAgentName: "impl",
+      }),
+      message_id: expect.any(String),
+      delivery_id: expect.any(String),
+      route_id: expect.any(String),
+      agent_name: "impl",
     });
   });
 
@@ -853,6 +960,58 @@ describe("daemon receiveClaudeChannelReply", () => {
         timeoutMs: undefined,
         timeoutErrorCode: "codex_turn_start_timeout",
       },
+    });
+  });
+
+  it("records Codex delivery target injection failures", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        failTurnStart: true,
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(
+      db
+        .prepare(
+          `
+            select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
+            from events
+            join agents on agents.id = events.agent_id
+            where events.type = 'codex_delivery_target_injection_failed'
+            order by events.rowid desc
+            limit 1
+          `,
+        )
+        .get(),
+    ).toMatchObject({
+      type: "codex_delivery_target_injection_failed",
+      data_json: JSON.stringify({
+        chosenThreadId: "thread-new",
+        loadedThreadIds: ["thread-new"],
+        reason: "adapter_inject_failed",
+        message: "turn/start failed",
+        sourceAgentName: "reviewer",
+        targetAgentName: "impl",
+      }),
+      message_id: expect.any(String),
+      delivery_id: expect.any(String),
+      route_id: expect.any(String),
+      agent_name: "impl",
     });
   });
 

@@ -1192,11 +1192,33 @@ export function createDaemonState(
         continue;
       }
 
+      const sourceAgent = agents
+        .list()
+        .find((agent) => agent.id === input.message.sourceAgentId);
       const runtime = codexRuntimes.get(targetAgent.name);
       const target = await resolveCodexReplyTarget(runtime);
 
       if (!target.ok) {
         if (target.reason === "codex_no_loaded_thread") {
+          events.append({
+            id: options.createId(),
+            type: "codex_delivery_target_unavailable",
+            data: {
+              operation: "thread/loaded/list",
+              loadedThreadIds: target.loadedThreadIds ?? [],
+              previousAdapterSessionId: targetAgent.adapterSessionId,
+              runtimeActiveThreadId: target.runtimeActiveThreadId ?? null,
+              reason: target.reason,
+              deliveryMessageType: input.message.type,
+              sourceAgentName: sourceAgent?.name ?? "unknown",
+              targetAgentName: targetAgent.name,
+            },
+            createdAt: options.now(),
+            agentId: targetAgent.id,
+            messageId: input.message.id,
+            deliveryId: delivery.id,
+            routeId: delivery.routeId,
+          });
           events.append({
             id: options.createId(),
             type: "codex_delivery_queued_no_loaded_thread",
@@ -1224,6 +1246,27 @@ export function createDaemonState(
         continue;
       }
 
+      events.append({
+        id: options.createId(),
+        type: "codex_delivery_target_selected",
+        data: {
+          operation: "thread/loaded/list",
+          loadedThreadIds: target.loadedThreadIds,
+          chosenThreadId: target.threadId,
+          previousAdapterSessionId: targetAgent.adapterSessionId,
+          runtimeActiveThreadId: target.runtimeActiveThreadId,
+          selectionPolicy: "latest_loaded_thread",
+          deliveryMessageType: input.message.type,
+          sourceAgentName: sourceAgent?.name ?? "unknown",
+          targetAgentName: targetAgent.name,
+        },
+        createdAt: options.now(),
+        agentId: targetAgent.id,
+        messageId: input.message.id,
+        deliveryId: delivery.id,
+        routeId: delivery.routeId,
+      });
+
       updateDeliveryStatusInTransaction({
         deliveryId: delivery.id,
         status: "delivering",
@@ -1236,6 +1279,23 @@ export function createDaemonState(
       );
 
       if (!injectResult.ok) {
+        events.append({
+          id: options.createId(),
+          type: "codex_delivery_target_injection_failed",
+          data: {
+            chosenThreadId: target.threadId,
+            loadedThreadIds: target.loadedThreadIds,
+            reason: injectResult.reason,
+            message: injectResult.message,
+            sourceAgentName: sourceAgent?.name ?? "unknown",
+            targetAgentName: targetAgent.name,
+          },
+          createdAt: options.now(),
+          agentId: targetAgent.id,
+          messageId: input.message.id,
+          deliveryId: delivery.id,
+          routeId: delivery.routeId,
+        });
         updateDeliveryStatusInTransaction({
           deliveryId: delivery.id,
           status: "failed",
@@ -1350,8 +1410,20 @@ export function createDaemonState(
   async function resolveCodexReplyTarget(
     runtime: ManagedAgentRuntime | undefined,
   ): Promise<
-    | { ok: true; runtime: ResolvedCodexTurnStartRuntime; threadId: string }
-    | { ok: false; reason: string; message: string }
+    | {
+        ok: true;
+        runtime: ResolvedCodexTurnStartRuntime;
+        threadId: string;
+        loadedThreadIds: string[];
+        runtimeActiveThreadId: string | null;
+      }
+    | {
+        ok: false;
+        reason: string;
+        message: string;
+        loadedThreadIds?: string[];
+        runtimeActiveThreadId?: string | null;
+      }
   > {
     if (!isCodexTurnStartRuntime(runtime)) {
       return {
@@ -1369,6 +1441,7 @@ export function createDaemonState(
       };
     }
 
+    const runtimeActiveThreadId = runtime.activeThreadId;
     const loadedThreadIds = await runtime.listLoadedThreadIds();
     const liveThreadId = selectCodexLoadedThreadId(loadedThreadIds);
     if (!liveThreadId) {
@@ -1376,10 +1449,18 @@ export function createDaemonState(
         ok: false,
         reason: "codex_no_loaded_thread",
         message: "Codex runtime has no loaded thread id",
+        loadedThreadIds,
+        runtimeActiveThreadId,
       };
     }
 
-    return { ok: true, runtime, threadId: liveThreadId };
+    return {
+      ok: true,
+      runtime,
+      threadId: liveThreadId,
+      loadedThreadIds,
+      runtimeActiveThreadId,
+    };
   }
 
   function selectCodexLoadedThreadId(
