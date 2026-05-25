@@ -1205,7 +1205,13 @@ function fakeCodexRuntime(options: {
       requests.push({ method, params, options: requestOptions });
       if (method === "thread/loaded/list") {
         return Promise.resolve({
-          data: options.loadedThreadIds ?? (this.activeThreadId ? [this.activeThreadId] : []),
+          data:
+            options.loadedThreadIds ??
+            (options.startedThreadId
+              ? [options.startedThreadId]
+              : this.activeThreadId
+                ? [this.activeThreadId]
+                : []),
         });
       }
       if (method === "turn/start" && options.failTurnStart) {

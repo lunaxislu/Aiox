@@ -313,6 +313,7 @@ delivery.status: queued → delivering → delivered/completed (또는 failed)
 Codex target injection policy:
 
 - A stored Codex thread id is a cache only. Before pushing to Codex, the daemon checks the per-agent app-server for a live loaded thread.
+- No-resume Codex attach does not create a daemon-owned initial thread. The agent cache may remain null until the first successful live loaded-thread delivery. Explicit resume attach still binds from `thread/resume`.
 - If a live loaded thread exists, the daemon uses that thread for `turn/start` and may update the cached active thread id after successful injection.
 - If no live loaded thread exists, the delivery stays `queued`; this is not a terminal failure. A later push attempt or Codex agent-level MCP pull/read path can surface the queued message.
 - `turn/start` acknowledgement alone does not prove that the visible TUI rendered or read the message. MVP status must avoid false-positive `completed` when the live Codex thread cannot be established.

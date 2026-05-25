@@ -110,7 +110,6 @@ describe("aiox CLI bin", () => {
           status: "disconnected",
           cwd: "/repo",
           pairId: null,
-          adapterSessionId: "thread-1",
         },
       ]);
     } finally {

@@ -132,7 +132,7 @@ export type AttachAgentResponse =
       agent: AgentDto;
       codexRuntime?: {
         endpoint: string;
-        activeThreadId: string;
+        activeThreadId: string | null;
       };
       claudeChannelToken?: string;
       codexChannelToken?: string;

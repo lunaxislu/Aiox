@@ -44,7 +44,7 @@ describe("daemon API with fake in-process transport", () => {
     });
   });
 
-  it("starts a Codex runtime during attach and binds the authoritative thread id", async () => {
+  it("attaches a no-resume Codex runtime without creating a daemon-owned thread", async () => {
     const runtime = fakeCodexRuntime({
       endpoint: "ws://127.0.0.1:54321/",
       startedThreadId: "thread-new",
@@ -52,7 +52,7 @@ describe("daemon API with fake in-process transport", () => {
     const runtimes = new Map();
     const state = createDaemonState({
       db,
-      createId: createIdSequence(["agent-1", "event-1"]),
+      createId: createIdSequence(["agent-1"]),
       now: createNowSequence([
         "2026-05-18T00:00:00.000Z",
         "2026-05-18T00:00:00.000Z",
@@ -83,29 +83,19 @@ describe("daemon API with fake in-process transport", () => {
         status: "connected",
         cwd: "/repo",
         pairId: null,
-        adapterSessionId: "thread-new",
       },
       codexRuntime: {
         endpoint: "ws://127.0.0.1:54321/",
-        activeThreadId: "thread-new",
+        activeThreadId: null,
       },
       codexChannelToken: expect.any(String),
     });
     expect(runtimes.get("impl")).toBe(runtime);
-    expect(runtime.startThreadCalls).toBe(1);
+    expect(runtime.startThreadCalls).toBe(0);
     expect(db.prepare("select adapter_session_id from agents where name = ?").get("impl")).toEqual({
-      adapter_session_id: "thread-new",
+      adapter_session_id: null,
     });
-    expect(db.prepare("select type, data_json from events").all()).toEqual([
-      {
-        type: "agent_thread_id_rebound",
-        data_json: JSON.stringify({
-          previousId: null,
-          nextId: "thread-new",
-          operation: "thread/start",
-        }),
-      },
-    ]);
+    expect(db.prepare("select type, data_json from events").all()).toEqual([]);
   });
 
   it("resumes an explicit Codex session during attach and records a resume rebind", async () => {

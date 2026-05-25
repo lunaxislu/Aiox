@@ -209,7 +209,7 @@ export type AttachAgentResult =
       agent: StoredAgent;
       codexRuntime?: {
         endpoint: string;
-        activeThreadId: string;
+        activeThreadId: string | null;
       };
       claudeChannelToken?: string;
       codexChannelToken?: string;
@@ -585,9 +585,23 @@ export function createDaemonState(
             : { daemonSocketPath: options.daemonSocketPath }),
         });
         startingCodexRuntime = runtime;
-        const nextThreadId = request.resumeSessionId
-          ? await runtime.resumeThread(request.resumeSessionId)
-          : await runtime.startThread();
+
+        if (!request.resumeSessionId) {
+          codexRuntimes.set(request.name, runtime);
+          startingCodexRuntime = null;
+
+          return {
+            ok: true,
+            agent: storedAgent,
+            codexRuntime: {
+              endpoint: runtime.endpoint.toString(),
+              activeThreadId: runtime.activeThreadId,
+            },
+            codexChannelToken,
+          };
+        }
+
+        const nextThreadId = await runtime.resumeThread(request.resumeSessionId);
 
         if (!nextThreadId) {
           throw Object.assign(new Error("Codex did not return a thread id"), {
@@ -595,7 +609,7 @@ export function createDaemonState(
           });
         }
 
-        if (request.resumeSessionId && nextThreadId !== request.resumeSessionId) {
+        if (nextThreadId !== request.resumeSessionId) {
           throw Object.assign(
             new Error(
               `Codex resume returned mismatched thread id: requested=${request.resumeSessionId} returned=${nextThreadId}`,
@@ -627,7 +641,7 @@ export function createDaemonState(
           data: {
             previousId: storedAgent.adapterSessionId,
             nextId: nextThreadId,
-            operation: request.resumeSessionId ? "thread/resume" : "thread/start",
+            operation: "thread/resume",
           },
           createdAt: now,
           agentId: reboundAgent.id,
