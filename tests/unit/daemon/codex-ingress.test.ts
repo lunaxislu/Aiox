@@ -526,6 +526,58 @@ describe("daemon receiveCodexReply", () => {
   });
 });
 
+
+describe("daemon receiveClaudeChannelMessage", () => {
+  let db: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("routes a Claude initiated message to the live Codex thread without chat_id", async () => {
+    const setup = await setupPairedAgents(db);
+
+    const response = await setup.client.receiveClaudeChannelMessage({
+      agentName: "reviewer",
+      messageId: "claude-msg-1",
+      text: "hello from claude",
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      message: { id: "claude-msg-1", type: "question", parentMessageId: null },
+    });
+    expect(setup.runtime.requests).toContainEqual({
+      method: "turn/start",
+      params: {
+        threadId: "thread-impl",
+        input: [{ type: "text", text: "hello from claude" }],
+      },
+      options: {
+        timeoutMs: undefined,
+        timeoutErrorCode: "codex_turn_start_timeout",
+      },
+    });
+    expect(
+      db
+        .prepare("select type, parent_message_id, content from messages where id = ?")
+        .get("claude-msg-1"),
+    ).toMatchObject({
+      type: "question",
+      parent_message_id: null,
+      content: "hello from claude",
+    });
+    expect(
+      db.prepare("select type from events where type = 'claude_channel_message_received'").get(),
+    ).toMatchObject({ type: "claude_channel_message_received" });
+  });
+});
+
 describe("daemon receiveClaudeChannelReply", () => {
   let db: InstanceType<typeof Database>;
 

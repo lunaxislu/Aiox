@@ -546,6 +546,12 @@ Review hardening (2026-05-25):
 - Manual smoke then showed `completed` while the visible Codex TUI still did not receive the reply. The likely cause is current aiox creating a daemon-owned thread during attach before the foreground TUI creates/loads its own thread, so `thread/loaded/list` can contain both the cached hidden thread and the visible TUI thread.
 - Multi-loaded-thread behavior was revised again after manual smoke found that, once the visible thread became cached, the previous alternate-thread heuristic could select the hidden daemon-created thread on the next reply. The daemon now selects the latest id returned by `thread/loaded/list`, which matches the observed hidden-first, visible/current-last app-server behavior and keeps repeated replies on the visible TUI thread.
 
+Claude initiator path follow-up (2026-05-25):
+
+- Manual smoke clarified that `chat_id` is not required for routing. The daemon routes by source agent name and active routes; `chat_id` only preserves reply parentage as `parent_message_id`.
+- Added Claude channel `send(text)` as the chat-id-free initiator surface, separate from `reply(chat_id, text)`. This mirrors Codex `aiox_send_message(content)` and allows Claude to start a routed message after `/clear` or in a first-message scenario.
+- Added daemon `receiveClaudeChannelMessage({ agentName, messageId, text })`; it writes a `question` message with no parent and reuses the existing Claude-to-Codex delivery path.
+
 Post-MVP deferral (2026-05-25, user decision):
 
 - Queued delivery retry/drain (rebind on later loaded-thread signal) and Codex MCP queued-message pull/read/ack are deferred to post-MVP. Rationale: cold-start manual smoke (`codex -> claude -> reply`) on 2026-05-25 was confirmed visible in the foreground Codex TUI after the alternate-thread preference fix, so the visible MVP message path is covered. The queued retry/drain + MCP pull paths remain valuable as a safety net for transient no-loaded-thread windows but are no longer Step 14 smoke blockers.

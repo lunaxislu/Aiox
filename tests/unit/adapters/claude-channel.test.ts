@@ -9,7 +9,11 @@ import { createDaemonApi } from "../../../src/daemon/api.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
 import { createEventRepository } from "../../../src/store/repositories/events.js";
 import { applySchema } from "../../../src/store/schema.js";
-import { buildChannelNotification } from "../../../src/adapters/claude/channel-server.js";
+import {
+  buildChannelNotification,
+  createReplyHandler,
+  createSendHandler,
+} from "../../../src/adapters/claude/channel-server.js";
 import { buildLaunchClaudeChannelArgs, launchClaudeWithChannel } from "../../../src/adapters/claude/launcher.js";
 
 // ---------------------------------------------------------------------------
@@ -340,6 +344,75 @@ describe("daemon receiveClaudeChannelReply", () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// channel-server — MCP handlers
+// ---------------------------------------------------------------------------
+
+describe("Claude channel MCP handlers", () => {
+  it("send routes a chat_id-free message through receiveClaudeChannelMessage", async () => {
+    const calls: { method: string; args: unknown }[] = [];
+    const handler = createSendHandler({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createMessageId: () => "claude-msg-fixed",
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          receiveClaudeChannelMessage: async (args) => {
+            calls.push({ method: "receiveClaudeChannelMessage", args });
+            return { ok: true, message: { id: "claude-msg-fixed" }, deliveries: [] };
+          },
+        }),
+    });
+
+    const result = await handler({ text: "hello codex" });
+
+    expect(result.structuredContent).toMatchObject({
+      ok: true,
+      message_id: "claude-msg-fixed",
+    });
+    expect(calls).toEqual([
+      {
+        method: "receiveClaudeChannelMessage",
+        args: {
+          agentName: "reviewer",
+          messageId: "claude-msg-fixed",
+          text: "hello codex",
+        },
+      },
+    ]);
+  });
+
+  it("reply still requires chat_id and routes through receiveClaudeChannelReply", async () => {
+    const calls: { method: string; args: unknown }[] = [];
+    const handler = createReplyHandler({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          receiveClaudeChannelReply: async (args) => {
+            calls.push({ method: "receiveClaudeChannelReply", args });
+            return { ok: true };
+          },
+        }),
+    });
+
+    const result = await handler({ chat_id: "parent-1", text: "ack" });
+
+    expect(result.structuredContent).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      {
+        method: "receiveClaudeChannelReply",
+        args: {
+          agentName: "reviewer",
+          chatId: "parent-1",
+          text: "ack",
+        },
+      },
+    ]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // channel-server — notification framing
 // ---------------------------------------------------------------------------
@@ -413,6 +486,20 @@ describe("buildLaunchClaudeChannelArgs", () => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+
+function fakeClaudeDaemonClient(overrides: {
+  receiveClaudeChannelMessage?: (request: unknown) => Promise<unknown>;
+  receiveClaudeChannelReply?: (request: unknown) => Promise<unknown>;
+}) {
+  return {
+    receiveClaudeChannelMessage:
+      overrides.receiveClaudeChannelMessage ?? (async () => ({ ok: true })),
+    receiveClaudeChannelReply:
+      overrides.receiveClaudeChannelReply ?? (async () => ({ ok: true })),
+    close() {},
+  };
+}
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {
   return new Proxy(api, {

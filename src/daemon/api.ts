@@ -16,6 +16,8 @@ import type {
   DisconnectResult,
   NotifyTuiExitedRequest,
   NotifyTuiExitedResult,
+  ReceiveClaudeChannelMessageRequest,
+  ReceiveClaudeChannelMessageResult,
   ReceiveClaudeChannelReplyRequest,
   ReceiveClaudeChannelReplyResult,
   ReceiveCodexMessageRequest,
@@ -62,6 +64,9 @@ export interface DaemonApi {
   disconnectClaudeChannel(
     request: DisconnectClaudeChannelRequest,
   ): Promise<DisconnectClaudeChannelResponse>;
+  receiveClaudeChannelMessage(
+    request: ReceiveClaudeChannelMessageRequest,
+  ): Promise<ReceiveClaudeChannelMessageResponse>;
   receiveClaudeChannelReply(
     request: ReceiveClaudeChannelReplyRequest,
   ): Promise<ReceiveClaudeChannelReplyResponse>;
@@ -204,6 +209,8 @@ export type DisconnectResponse =
       missing: string[];
     };
 
+export type ReceiveClaudeChannelMessageResponse = SendMessageResponse;
+
 export type SendMessageResponse =
   | {
       ok: true;
@@ -314,6 +321,9 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     async disconnectClaudeChannel(request) {
       return state.disconnectClaudeChannel(request);
+    },
+    async receiveClaudeChannelMessage(request) {
+      return mapSendMessageResult(await state.receiveClaudeChannelMessage(request));
     },
     async receiveClaudeChannelReply(request) {
       return state.receiveClaudeChannelReply(request);

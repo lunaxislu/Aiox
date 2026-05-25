@@ -68,6 +68,14 @@ export interface DisconnectClaudeChannelResult {
   disconnected: boolean;
 }
 
+export interface ReceiveClaudeChannelMessageRequest {
+  agentName: string;
+  messageId: string;
+  text: string;
+}
+
+export type ReceiveClaudeChannelMessageResult = SendMessageResult;
+
 export interface ReceiveClaudeChannelReplyRequest {
   agentName: string;
   chatId: string;
@@ -437,6 +445,9 @@ export interface DaemonState {
   ): RecordCodexRuntimeFailedResult;
   registerClaudeChannel(request: RegisterClaudeChannelRequest): RegisterClaudeChannelResult;
   disconnectClaudeChannel(request: DisconnectClaudeChannelRequest): DisconnectClaudeChannelResult;
+  receiveClaudeChannelMessage(
+    request: ReceiveClaudeChannelMessageRequest,
+  ): Promise<ReceiveClaudeChannelMessageResult>;
   receiveClaudeChannelReply(
     request: ReceiveClaudeChannelReplyRequest,
   ): Promise<ReceiveClaudeChannelReplyResult>;
@@ -875,6 +886,39 @@ export function createDaemonState(
       const had = claudeChannelRuntimes.has(request.agentName);
       claudeChannelRuntimes.delete(request.agentName);
       return { ok: true, agentName: request.agentName, disconnected: had };
+    },
+
+    async receiveClaudeChannelMessage(request) {
+      const agent = agents.findByName(request.agentName);
+      const result = runSendMessageTransaction({
+        sourceName: request.agentName,
+        messageId: request.messageId,
+        type: "question",
+        content: request.text,
+      });
+
+      events.append({
+        id: options.createId(),
+        type: "claude_channel_message_received",
+        data: {
+          text: request.text,
+          ...(result.ok ? { messageId: result.message.id } : {}),
+        },
+        createdAt: options.now(),
+        agentId: agent?.id ?? null,
+        messageId: result.ok ? result.message.id : null,
+        deliveryId: null,
+        routeId: null,
+      });
+
+      if (result.ok) {
+        await dispatchClaudeReplyToCodexChannels({
+          message: result.message,
+          deliveries: result.deliveries,
+        });
+      }
+
+      return result;
     },
 
     async receiveClaudeChannelReply(request) {

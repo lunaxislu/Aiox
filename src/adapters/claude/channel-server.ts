@@ -4,7 +4,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
@@ -84,11 +84,26 @@ export function parseLoopbackHttpEndpoint(raw: string): string | null {
 
 const V1_INSTRUCTIONS =
   'Messages arrive as <channel source="aiox" chat_id="..." origin="...">text</channel>. ' +
-  "When a chat_id is present, call the reply tool with the same chat_id and your result.";
+  "Call reply(chat_id, text) when responding to a message that has a chat_id. " +
+  "Call send(text) to start a new routed aiox message when no chat_id applies.";
+
+export interface ClaudeChannelDaemonClient {
+  receiveClaudeChannelMessage(request: unknown): Promise<unknown>;
+  receiveClaudeChannelReply(request: unknown): Promise<unknown>;
+  close(): void;
+}
 
 export interface ClaudeChannelMcpServerOptions {
   agentName: string;
   daemonSocketPath: string;
+  createMessageId?: () => string;
+  createDaemonClient?: (options: { socketPath: string }) => ClaudeChannelDaemonClient;
+}
+
+export interface ClaudeChannelToolResult {
+  content: { type: "text"; text: string }[];
+  structuredContent?: { ok: true; message_id?: string };
+  isError?: boolean;
 }
 
 export function createClaudeChannelMcpServer(
@@ -106,6 +121,18 @@ export function createClaudeChannelMcpServer(
   );
 
   mcp.registerTool(
+    "send",
+    {
+      description: "Start a new routed aiox message without a chat_id.",
+      inputSchema: z.object({
+        text: z.string().min(1),
+      }),
+      outputSchema: z.object({ ok: z.literal(true), message_id: z.string() }),
+    },
+    createSendHandler(options) as never,
+  );
+
+  mcp.registerTool(
     "reply",
     {
       description: "Send a reply back through the aiox orchestration channel.",
@@ -115,44 +142,109 @@ export function createClaudeChannelMcpServer(
       }),
       outputSchema: z.object({ ok: z.literal(true) }),
     },
-    async ({ chat_id, text }) => {
-      logEvent("reply_tool_called", {
+    createReplyHandler(options) as never,
+  );
+
+  return mcp;
+}
+
+export function createSendHandler(
+  options: ClaudeChannelMcpServerOptions,
+): (input: { text: string }) => Promise<ClaudeChannelToolResult> {
+  const createDaemonClient = resolveDaemonClient(options);
+  const createMessageId = options.createMessageId ?? (() => `claude-msg-${randomUUID()}`);
+  return async ({ text }) => {
+    const messageId = createMessageId();
+    logEvent("send_tool_called", {
+      agentName: options.agentName,
+      message_id: messageId,
+    });
+    const client = createDaemonClient({ socketPath: options.daemonSocketPath });
+    try {
+      const result = (await client.receiveClaudeChannelMessage({
+        agentName: options.agentName,
+        messageId,
+        text,
+      })) as { ok: boolean; reason?: string };
+      if (!result.ok) {
+        return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
+      }
+      logEvent("message_sent_to_daemon", {
+        agentName: options.agentName,
+        message_id: messageId,
+      });
+      return {
+        content: [{ type: "text" as const, text: `sent ${messageId}` }],
+        structuredContent: { ok: true as const, message_id: messageId },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logEvent("send_daemon_callback_failed", {
+        agentName: options.agentName,
+        message_id: messageId,
+        error: message,
+      });
+      return errorResult("daemon_call_failed", message);
+    } finally {
+      client.close();
+    }
+  };
+}
+
+export function createReplyHandler(
+  options: ClaudeChannelMcpServerOptions,
+): (input: { chat_id: string; text: string }) => Promise<ClaudeChannelToolResult> {
+  const createDaemonClient = resolveDaemonClient(options);
+  return async ({ chat_id, text }) => {
+    logEvent("reply_tool_called", {
+      agentName: options.agentName,
+      chat_id,
+    });
+    const client = createDaemonClient({ socketPath: options.daemonSocketPath });
+    try {
+      await client.receiveClaudeChannelReply({
+        agentName: options.agentName,
+        chatId: chat_id,
+        text,
+      });
+      logEvent("reply_sent_to_daemon", {
         agentName: options.agentName,
         chat_id,
       });
-      try {
-        const socketClient = createDaemonSocketClient({
-          socketPath: options.daemonSocketPath,
-        });
-        try {
-          await socketClient.receiveClaudeChannelReply({
-            agentName: options.agentName,
-            chatId: chat_id,
-            text,
-          });
-        } finally {
-          socketClient.close();
-        }
-        logEvent("reply_sent_to_daemon", {
-          agentName: options.agentName,
-          chat_id,
-        });
-      } catch (error) {
-        logEvent("reply_daemon_callback_failed", {
-          agentName: options.agentName,
-          chat_id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
-      }
       return {
         content: [{ type: "text" as const, text: "reply sent" }],
         structuredContent: { ok: true as const },
       };
-    },
-  );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logEvent("reply_daemon_callback_failed", {
+        agentName: options.agentName,
+        chat_id,
+        error: message,
+      });
+      return errorResult("daemon_call_failed", message);
+    } finally {
+      client.close();
+    }
+  };
+}
 
-  return mcp;
+function resolveDaemonClient(
+  options: ClaudeChannelMcpServerOptions,
+): (opts: { socketPath: string }) => ClaudeChannelDaemonClient {
+  return (
+    options.createDaemonClient ??
+    ((opts) =>
+      createDaemonSocketClient({ socketPath: opts.socketPath }) as unknown as
+        ClaudeChannelDaemonClient)
+  );
+}
+
+function errorResult(reason: string, detail: string): ClaudeChannelToolResult {
+  return {
+    isError: true,
+    content: [{ type: "text", text: `${reason}: ${detail}` }],
+  };
 }
 
 // ---------------------------------------------------------------------------
