@@ -403,6 +403,59 @@ pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
 
+#### Manual smoke follow-up (2026-05-25)
+
+Clean daemon restart sequence used by the user:
+
+```text
+node dist/src/bin/aiox.js daemon stop
+node dist/src/bin/aiox.js daemon start
+node dist/src/bin/aiox.js pair --name p1
+node dist/src/bin/aiox.js claude --name reviewer --pair p1
+node dist/src/bin/aiox.js codex --name impl --pair p1
+```
+
+After the clean restart, Claude launched successfully with
+`server:aiox-claude-ingress`, Codex attached to the same pair, `p1` became
+`ready`, and routes existed in both directions: `impl -> reviewer` and
+`reviewer -> impl`.
+
+The user manually sent Codex -> Claude through `aiox_send_message`; this worked.
+Daemon status showed the expected completed delivery shape:
+
+```text
+messages=1 queued=0 delivering=0 delivered=0 completed=1 failed=0
+```
+
+Earlier `claude --name reviewer --pair p1` briefly returned `pair_not_found`.
+A clean `daemon stop` / `daemon start` cleared it. The likely cause is stale or
+mixed daemon lifecycle state against the in-memory `:memory:` DB, not a confirmed
+pair attach code defect. If this recurs from a clean daemon on the same socket,
+add a focused daemon/client split regression test before changing behavior.
+
+Open next blocker: Claude accepted the instruction to call `reply(chat_id, text)`
+and reported success, but Codex TUI did not receive anything and daemon status
+still showed only the original Codex -> Claude message/delivery. This means the
+current Claude reply path records the callback surface but does not yet create
+and drain a routed `reviewer -> impl` reply delivery to the connected Codex
+channel.
+
+Next-session target:
+
+```text
+receiveClaudeChannelReply creates routed reply delivery to Codex channel
+```
+
+or:
+
+```text
+claude reply(chat_id, text) reaches connected Codex channel and completes delivery
+```
+
+Start with a targeted failing test. Preserve the existing Claude
+`reply(chat_id, text)` surface and do not require the user to manually type chat
+ids in the normal routed flow.
+
 #### Original next-session target
 
 Do not start with Claude reply routing. First add a targeted failing test for
