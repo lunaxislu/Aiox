@@ -26,6 +26,10 @@ import {
 } from "../store/repositories/routes.js";
 import { withTransaction } from "../store/transaction.js";
 import { injectClaudeChannel } from "../adapters/claude/injector.js";
+import {
+  injectTurnStart,
+  type CodexTurnStartRuntime,
+} from "../adapters/codex/injector.js";
 import { attachCodexAgentRuntime } from "../adapters/codex/runtime.js";
 
 const attachRollbackSentinel = Symbol("aiox.attach.rollback");
@@ -427,7 +431,9 @@ export interface DaemonState {
   ): RecordCodexRuntimeFailedResult;
   registerClaudeChannel(request: RegisterClaudeChannelRequest): RegisterClaudeChannelResult;
   disconnectClaudeChannel(request: DisconnectClaudeChannelRequest): DisconnectClaudeChannelResult;
-  receiveClaudeChannelReply(request: ReceiveClaudeChannelReplyRequest): ReceiveClaudeChannelReplyResult;
+  receiveClaudeChannelReply(
+    request: ReceiveClaudeChannelReplyRequest,
+  ): Promise<ReceiveClaudeChannelReplyResult>;
   registerCodexChannel(request: RegisterCodexChannelRequest): RegisterCodexChannelResult;
   disconnectCodexChannel(request: DisconnectCodexChannelRequest): DisconnectCodexChannelResult;
   receiveCodexMessage(request: ReceiveCodexMessageRequest): Promise<ReceiveCodexMessageResult>;
@@ -865,18 +871,38 @@ export function createDaemonState(
       return { ok: true, agentName: request.agentName, disconnected: had };
     },
 
-    receiveClaudeChannelReply(request) {
+    async receiveClaudeChannelReply(request) {
       const agent = agents.findByName(request.agentName);
+      const result = runSendMessageTransaction({
+        sourceName: request.agentName,
+        messageId: options.createId(),
+        parentMessageId: request.chatId,
+        type: "reply",
+        content: request.text,
+      });
+
       events.append({
         id: options.createId(),
         type: "claude_channel_reply_received",
-        data: { chatId: request.chatId, text: request.text },
+        data: {
+          chatId: request.chatId,
+          text: request.text,
+          ...(result.ok ? { messageId: result.message.id } : {}),
+        },
         createdAt: options.now(),
         agentId: agent?.id ?? null,
-        messageId: null,
+        messageId: result.ok ? result.message.id : null,
         deliveryId: null,
         routeId: null,
       });
+
+      if (result.ok) {
+        await dispatchClaudeReplyToCodexChannels({
+          message: result.message,
+          deliveries: result.deliveries,
+        });
+      }
+
       return { ok: true };
     },
 
@@ -1077,6 +1103,65 @@ export function createDaemonState(
     });
   }
 
+  async function dispatchClaudeReplyToCodexChannels(input: {
+    message: StoredMessage;
+    deliveries: StoredDelivery[];
+  }): Promise<void> {
+    for (const delivery of input.deliveries) {
+      const targetAgent = agents
+        .list()
+        .find((agent) => agent.id === delivery.targetAgentId);
+
+      if (!targetAgent) {
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "failed",
+          error: {
+            reason: "target_agent_not_found",
+            message: "target agent not found",
+          },
+        });
+        continue;
+      }
+
+      if (targetAgent.kind !== "codex") {
+        continue;
+      }
+
+      updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "delivering",
+      });
+
+      const runtime = codexRuntimes.get(targetAgent.name);
+      const injectResult = await injectReplyIntoCodexRuntime(
+        runtime,
+        input.message.content,
+      );
+
+      if (injectResult.ok) {
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "delivered",
+        });
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "completed",
+        });
+        continue;
+      }
+
+      updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "failed",
+        error: {
+          reason: injectResult.reason,
+          message: injectResult.message,
+        },
+      });
+    }
+  }
+
   async function dispatchCodexMessageToClaudeChannels(input: {
     sourceName: string;
     message: StoredMessage;
@@ -1138,6 +1223,40 @@ export function createDaemonState(
         },
       });
     }
+  }
+
+  async function injectReplyIntoCodexRuntime(
+    runtime: ManagedAgentRuntime | undefined,
+    content: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string; message: string }> {
+    if (!isCodexTurnStartRuntime(runtime)) {
+      return {
+        ok: false,
+        reason: "codex_channel_unavailable",
+        message: "Codex runtime not available for reply delivery",
+      };
+    }
+
+    if (runtime.state !== "ready") {
+      return {
+        ok: false,
+        reason: "codex_channel_unavailable",
+        message: `Codex runtime is not ready: ${runtime.state}`,
+      };
+    }
+
+    if (!runtime.activeThreadId) {
+      return {
+        ok: false,
+        reason: "codex_binding_uncertain",
+        message: "Codex runtime has no active thread id",
+      };
+    }
+
+    return injectTurnStart(runtime, {
+      threadId: runtime.activeThreadId,
+      input: content,
+    });
   }
 
   function authorizeCodexIngress(
@@ -1463,6 +1582,17 @@ async function defaultAttachCodexRuntime(request: {
         }
       : {}),
   });
+}
+
+function isCodexTurnStartRuntime(
+  runtime: ManagedAgentRuntime | undefined,
+): runtime is ManagedAgentRuntime & CodexTurnStartRuntime {
+  return (
+    runtime !== undefined &&
+    "activeThreadId" in runtime &&
+    "requestCodex" in runtime &&
+    typeof (runtime as { requestCodex?: unknown }).requestCodex === "function"
+  );
 }
 
 function isCodexAttachError(error: unknown): error is {

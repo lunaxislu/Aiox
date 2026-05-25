@@ -526,6 +526,70 @@ describe("daemon receiveCodexReply", () => {
   });
 });
 
+describe("daemon receiveClaudeChannelReply", () => {
+  let db: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("creates routed reply delivery to connected Codex channel", async () => {
+    const setup = await setupPairedAgents(db);
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    const response = await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(response).toEqual({ ok: true });
+    expect(setup.runtime.requests).toContainEqual({
+      method: "turn/start",
+      params: {
+        threadId: "thread-impl",
+        input: [{ type: "text", text: "review complete" }],
+      },
+      options: {
+        timeoutMs: undefined,
+        timeoutErrorCode: "codex_turn_start_timeout",
+      },
+    });
+    expect(
+      db
+        .prepare(
+          `
+            select messages.type, messages.parent_message_id, messages.content
+            from messages
+            join agents on agents.id = messages.source_agent_id
+            where agents.name = ?
+            order by messages.rowid desc
+            limit 1
+          `,
+        )
+        .get("reviewer"),
+    ).toMatchObject({
+      type: "reply",
+      parent_message_id: "msg-parent",
+      content: "review complete",
+    });
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toMatchObject({ status: "completed" });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Codex ingress authorization revocation
 // ---------------------------------------------------------------------------
@@ -717,7 +781,7 @@ async function setupPairedAgents(
       throw new Error(`failed register: ${JSON.stringify(reg)}`);
     }
   }
-  return { client, codexToken, codexChannelRuntimes, claudeChannelRuntimes, state };
+  return { client, codexToken, codexChannelRuntimes, claudeChannelRuntimes, runtime, state };
 }
 
 async function setupSoloCodexAgent(db: InstanceType<typeof Database>) {
@@ -802,13 +866,24 @@ function fakeCodexRuntime(options: {
   startedThreadId?: string;
   resumedThreadId?: string;
 }) {
+  const requests: Array<{
+    method: string;
+    params: unknown;
+    options: unknown;
+  }> = [];
+
   return {
     state: "ready" as const,
     endpoint: new URL(options.endpoint),
     activeThreadId: null as string | null,
+    requests,
     startThreadCalls: 0,
     resumeThreadCalls: [] as string[],
     disposeCalls: 0,
+    requestCodex(method: string, params?: unknown, requestOptions?: unknown) {
+      requests.push({ method, params, options: requestOptions });
+      return Promise.resolve({ turn: { id: "turn-1", status: "inProgress" } });
+    },
     async startThread() {
       this.startThreadCalls += 1;
       this.activeThreadId = options.startedThreadId ?? null;

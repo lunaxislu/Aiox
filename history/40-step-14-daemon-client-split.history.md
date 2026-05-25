@@ -456,6 +456,35 @@ Start with a targeted failing test. Preserve the existing Claude
 `reply(chat_id, text)` surface and do not require the user to manually type chat
 ids in the normal routed flow.
 
+#### Resolution (2026-05-25)
+
+Added the targeted failing daemon test first:
+
+```text
+receiveClaudeChannelReply creates routed reply delivery to connected Codex channel
+```
+
+The fix keeps the Claude MCP `reply(chat_id, text)` surface unchanged. When the
+daemon receives the callback, it now creates a routed `reply` message from the
+Claude agent with `parent_message_id` set to the original aiox message id, creates
+the normal route fan-out deliveries, and drains Codex targets through the
+connected Codex runtime using the existing `turn/start` injector. Successful
+Codex injection moves the reply delivery through `queued -> delivering ->
+delivered -> completed`; missing or unready Codex runtimes fail the delivery
+with a typed injector reason.
+
+This preserves the Step 13/14 Codex MCP startup and token contracts and does not
+change the Claude channel-server tool schema.
+
+Verification:
+
+```text
+pnpm test -- tests/unit/daemon/codex-ingress.test.ts # 325 passing
+pnpm test       # 325 passing (46 files)
+pnpm typecheck  # PASS
+pnpm build      # PASS
+```
+
 #### Original next-session target
 
 Do not start with Claude reply routing. First add a targeted failing test for

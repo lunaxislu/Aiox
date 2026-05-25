@@ -1016,7 +1016,7 @@ Commits (in order):
 Verification baseline:
 
 ```
-pnpm test       # 324 passing (46 files; + Step 14 Codex -> Claude queued delivery drain)
+pnpm test       # 325 passing (46 files; + Step 14 Claude reply -> Codex routed delivery drain)
 pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
@@ -1025,12 +1025,10 @@ Follow-up status:
 
 Resolved Step 14 follow-up:
 
+- [x] Claude reply -> Codex routed delivery drain: `receiveClaudeChannelReply` now creates a routed `reply` message from the Claude agent with `parent_message_id` set to the original aiox message id, drains Codex target deliveries through the existing Codex `turn/start` injector, and moves successful reply deliveries through `queued -> delivering -> delivered -> completed`. The Claude `reply(chat_id, text)` surface is unchanged, and users should not manually provide chat ids in normal routed flow. Verification: targeted daemon/Codex/Claude channel tests, `pnpm test` (325 passing, 46 files), `pnpm typecheck`, `pnpm build`. Authority context: `history/40-step-14-daemon-client-split.history.md`.
 - [x] Codex -> Claude queued delivery drain: `receiveCodexMessage` now drains queued deliveries for connected Claude targets through the registered Claude channel endpoint, sends `chat_id` as the aiox message id and `origin` as the Codex source agent name, and moves delivery state through `queued -> delivering -> delivered -> completed` or `failed`. Claude `reply(chat_id, text)` remains the reply surface; users should not manually provide chat ids in normal routed flow. Verification: targeted daemon/Claude/Codex ingress tests, `pnpm test` (324 passing, 46 files), `pnpm typecheck`, `pnpm build`. Authority context: `history/40-step-14-daemon-client-split.history.md`.
 - [x] Codex remote MCP injection target mismatch: aiox MCP injection now targets the daemon-owned `codex app-server` launch instead of the foreground remote TUI. The daemon pre-issues the Codex channel token before runtime attach and passes the same daemon socket path into app-server launch. Manual smoke confirmed the prior Notion `starting` hang is resolved. Follow-up fixed `aiox mcp-codex` startup so stdio MCP connects before daemon registration and the hidden subcommand stays alive until transport close. This preserves Step 13 stdout MCP protocol, token hardening, and same socket path contract. No `CODEX_HOME`/profile/`sqlite_home` isolation was added. Authority context: `history/40-step-14-daemon-client-split.history.md`; learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`.
 
-Open Step 14 follow-up for next session:
-
-- [ ] Claude reply -> Codex routed delivery drain: manual smoke on 2026-05-25 confirmed Codex -> Claude delivery completes after clean daemon restart, but Claude `reply(chat_id, text)` does not create a new routed reply message/delivery to Codex and Codex TUI receives nothing. Start next session with a targeted failing test for `receiveClaudeChannelReply` creating and draining a `reviewer -> impl` reply delivery to the connected Codex channel. Preserve the Claude `reply(chat_id, text)` surface and do not require users to manually type chat ids in normal routed flow. Authority context: `history/40-step-14-daemon-client-split.history.md`.
 
 Remaining out of scope:
 
