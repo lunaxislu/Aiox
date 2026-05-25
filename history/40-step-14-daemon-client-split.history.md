@@ -543,7 +543,8 @@ Review hardening (2026-05-25):
 - Rebind persistence and `agent_thread_id_rebound` events now occur only when the live loaded thread differs from the cached agent adapter session id.
 - No-loaded-thread queued fallback now emits `codex_delivery_queued_no_loaded_thread` instead of reusing the Step 10 binding-uncertain diagnostic event.
 - Injection status ordering now preserves observability: no-loaded-thread remains `queued`, while a discovered live target transitions to `delivering` before `turn/start`.
-- Multi-loaded-thread behavior is intentionally legacy-compatible: choose the first id returned by `thread/loaded/list`; this is covered by regression tests.
+- Manual smoke then showed `completed` while the visible Codex TUI still did not receive the reply. The likely cause is current aiox creating a daemon-owned thread during attach before the foreground TUI creates/loads its own thread, so `thread/loaded/list` can contain both the cached hidden thread and the visible TUI thread.
+- Multi-loaded-thread behavior was revised from legacy-first selection to prefer a loaded thread different from the cached agent adapter session id. If every loaded id matches or no alternate exists, the daemon falls back to the first loaded id. This preserves existing single-thread behavior while avoiding the daemon-created hidden thread in first-session smoke.
 
 #### Original next-session target
 

@@ -719,11 +719,11 @@ describe("daemon receiveClaudeChannelReply", () => {
     ).toMatchObject({ n: 1 });
   });
 
-  it("uses the first loaded Codex thread when multiple loaded threads are reported", async () => {
+  it("prefers a non-cached loaded Codex thread when the cached thread is also loaded", async () => {
     const setup = await setupPairedAgents(db, {
       codexRuntime: {
         startedThreadId: "thread-old",
-        loadedThreadIds: ["thread-first", "thread-second"],
+        loadedThreadIds: ["thread-old", "thread-visible"],
       },
     });
     const parent = await setup.client.receiveCodexMessage({
@@ -743,7 +743,7 @@ describe("daemon receiveClaudeChannelReply", () => {
     expect(setup.runtime.requests).toContainEqual({
       method: "turn/start",
       params: {
-        threadId: "thread-first",
+        threadId: "thread-visible",
         input: [{ type: "text", text: "review complete" }],
       },
       options: {
