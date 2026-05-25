@@ -485,6 +485,50 @@ pnpm typecheck  # PASS
 pnpm build      # PASS
 ```
 
+#### Follow-up discovery: Codex completed delivery did not reach visible TUI (2026-05-25)
+
+Manual smoke after `b0eb67b behavior: route claude replies to codex` showed:
+
+- Claude reported that it called `reply(chat_id, text)` successfully.
+- `aiox status` showed `messages=2 queued=0 delivering=0 delivered=0 completed=2 failed=0`.
+- The visible Codex TUI did not show the Claude reply, and when asked, Codex said it had not read a Claude message.
+- The user confirmed they had not run `/new`, `/clear`, or `resume` during the smoke.
+
+Subagent comparison with `legacy/bridge-relay-v1` found the likely regression:
+
+- Legacy bridge did not trust a stored thread id. Before injection it called `thread/loaded/list`, selected the currently loaded Codex thread, and then sent `turn/start` to that thread. See `legacy/bridge-relay-v1/bridge/src/codex-app-server-client.ts`.
+- Current aiox stores the thread id returned by daemon-side Codex runtime attach and later injects replies into `runtime.activeThreadId`. The foreground TUI is launched with `codex --remote <endpoint>` and is not forced to display that daemon-created thread.
+- Therefore `turn/start` can be accepted by the app-server and marked completed while the user's TUI is attached to another loaded thread.
+
+Policy decision:
+
+1. Codex agent identity remains `agent name + per-agent app-server endpoint`. `activeThreadId` is not a durable identity; it is live binding state.
+2. Before Codex target injection, the daemon should discover the currently loaded Codex thread with `thread/loaded/list`. If a loaded thread exists, inject into that live thread and update the runtime/session cache after success.
+3. If no loaded Codex thread exists, keep the delivery `queued` rather than marking it `completed` or terminally `failed`. This covers TUI not attached, TUI restart, transient app-server state, and user actions such as `/new` or `/clear`.
+4. A future Codex agent-level MCP pull path should let Codex discover/read queued deliveries if push could not happen immediately. This preserves durable relay semantics and prevents false-positive completion.
+
+Decision options considered:
+
+| Option | Trade-off | Reversibility | Deferrability | Decision |
+|---|---|---|---|---|
+| A. Best-effort push to live loaded thread, keep queued if no live thread | Best MVP UX; may deliver an older reply into the current live thread after user switched context | Low-cost to revise later with stricter parent-thread policy | Can be staged, but false-positive `completed` remains until fixed | **Recommended / selected** |
+| B. Always queue and require Codex MCP pull | Durable and explicit, but loses real-time conversation feel | Easy to combine later as fallback | Deferrable after A | Rejected as primary MVP path |
+| C. Parent-thread strict delivery, queue/fail on mismatch | Strongest conversational correctness, but can hide messages from the visible TUI | Medium; needs parent thread metadata and policy migration | Deferrable | Post-MVP candidate |
+| D. Keep current `turn/start` ack = completed | Smallest code change, but status lies and smoke remains misleading | Easy to undo but not useful | Not acceptable for MVP smoke | Rejected |
+
+Next implementation target:
+
+```text
+Codex target delivery discovers live loaded thread and keeps delivery queued when no Codex TUI thread is loaded
+```
+
+Likely TDD entry points:
+
+- `src/adapters/codex/injector.ts`: add live thread discovery before `turn/start`, or add a small runtime method used by the daemon dispatcher.
+- `src/adapters/codex/runtime.ts`: expose `thread/loaded/list` and rebind/cache active thread after successful live injection.
+- `src/daemon/state.ts`: do not transition Codex target deliveries to `delivering/completed` when no live loaded thread exists; leave them `queued` and append an event/reason.
+- `src/adapters/codex/mcp-server.ts`: later add queued-delivery pull/read/ack tools.
+
 #### Original next-session target
 
 Do not start with Claude reply routing. First add a targeted failing test for

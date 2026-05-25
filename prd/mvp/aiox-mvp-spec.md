@@ -215,6 +215,7 @@ aiox doctor
 - Claude channel server는 Claude CLI가 stdio로 자식 process로 load한 MCP server이고, 그 server가 HTTP ingress(`/send`)를 노출해 daemon이 push한다.
 - Codex MVP runtime은 `CodexAgentRuntime` 단위로 본다. 현재 Step 10 구현 방향은 **Codex agent 1개당 Codex app-server 1개**다. 각 app-server는 `codex app-server --listen ws://127.0.0.1:0`로 OS 자동 포트를 할당받고, 각 Codex TUI는 자기 app-server endpoint로 `codex --remote` 연결한다.
 - Codex app-server endpoint는 agent identity boundary다. `/clear`, `/new`, `/fork`는 identity attribution 문제가 아니라 같은 per-agent app-server 안에서 active thread id가 바뀌는 문제로 취급한다.
+- Codex `activeThreadId` is live binding state, not durable agent identity. Target injection must prefer the currently loaded thread discovered from the per-agent app-server at delivery time. If no live loaded thread exists, durable deliveries remain `queued` until a later push or Codex MCP pull/read path can surface them.
 - agent CLI process(Layer 1)는 사용자 터미널의 foreground다. daemon의 child가 아니므로 daemon이 직접 kill하지 않는다.
 - adapter는 daemon 안의 client/injector(Layer 3) + Layer 2 외부 process의 협업 단위로 본다.
 
@@ -307,7 +308,14 @@ router ──► per delivery ──► target adapter (daemon 안 injector)
                                    HTTP POST /send → MCP channel server
                                    → `notifications/claude/channel` → Claude
 
-delivery.status: queued → delivering → delivered (또는 failed)
+delivery.status: queued → delivering → delivered/completed (또는 failed)
+
+Codex target injection policy:
+
+- A stored Codex thread id is a cache only. Before pushing to Codex, the daemon checks the per-agent app-server for a live loaded thread.
+- If a live loaded thread exists, the daemon uses that thread for `turn/start` and may update the cached active thread id after successful injection.
+- If no live loaded thread exists, the delivery stays `queued`; this is not a terminal failure. A later push attempt or Codex agent-level MCP pull/read path can surface the queued message.
+- `turn/start` acknowledgement alone does not prove that the visible TUI rendered or read the message. MVP status must avoid false-positive `completed` when the live Codex thread cannot be established.
 
 Reply
 ─────────────────────────────────────
