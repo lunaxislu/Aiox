@@ -338,7 +338,7 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
       return mapReceiveCodexMessageResult(await state.receiveCodexMessage(request));
     },
     async receiveCodexReply(request) {
-      return mapReceiveCodexMessageResult(state.receiveCodexReply(request));
+      return mapReceiveCodexMessageResult(await state.receiveCodexReply(request));
     },
     status() {
       return mapStatusResult(state.status());

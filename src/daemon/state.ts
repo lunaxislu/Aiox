@@ -454,7 +454,7 @@ export interface DaemonState {
   registerCodexChannel(request: RegisterCodexChannelRequest): RegisterCodexChannelResult;
   disconnectCodexChannel(request: DisconnectCodexChannelRequest): DisconnectCodexChannelResult;
   receiveCodexMessage(request: ReceiveCodexMessageRequest): Promise<ReceiveCodexMessageResult>;
-  receiveCodexReply(request: ReceiveCodexReplyRequest): ReceiveCodexMessageResult;
+  receiveCodexReply(request: ReceiveCodexReplyRequest): Promise<ReceiveCodexMessageResult>;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
@@ -1053,7 +1053,7 @@ export function createDaemonState(
       return result;
     },
 
-    receiveCodexReply(request) {
+    async receiveCodexReply(request) {
       const authz = authorizeCodexIngress(request.agentName, request.token);
       if (!authz.ok) {
         return authz.error;
@@ -1078,6 +1078,11 @@ export function createDaemonState(
           messageId: result.message.id,
           deliveryId: null,
           routeId: null,
+        });
+        await dispatchCodexMessageToClaudeChannels({
+          sourceName: request.agentName,
+          message: result.message,
+          deliveries: result.deliveries,
         });
       }
       return result;
@@ -1277,7 +1282,7 @@ export function createDaemonState(
       const injectResult = await injectReplyIntoCodexRuntime(
         target.runtime,
         target.threadId,
-        input.message.content,
+        formatCodexAioxChannelEnvelope(input.message),
       );
 
       if (!injectResult.ok) {
@@ -1490,6 +1495,18 @@ export function createDaemonState(
         input: content,
       },
     );
+  }
+
+  function formatCodexAioxChannelEnvelope(message: StoredMessage): string {
+    return `<aiox-channel source="claude" message_id="${escapeXmlAttr(message.id)}">\n${escapeXmlContent(message.content)}\n</aiox-channel>`;
+  }
+
+  function escapeXmlAttr(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  }
+
+  function escapeXmlContent(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   function authorizeCodexIngress(

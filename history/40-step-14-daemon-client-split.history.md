@@ -548,6 +548,15 @@ Review hardening (2026-05-25):
 - Follow-up implementation removed the no-resume attach-time `runtime.startThread()` call. A fresh Codex attach now starts the per-agent app-server and channel token, but leaves `agents.adapter_session_id` null until explicit resume or the first successful live loaded-thread delivery. This prevents a daemon-created hidden thread from being added to `thread/loaded/list` before the foreground TUI creates/loads its visible thread. Explicit `--resume` attach still calls `thread/resume` and records the resume rebind event. Verification: `pnpm test` passed (46 files, 335 tests), `pnpm typecheck` passed, and `pnpm build` passed.
 - Added Codex delivery target selection observability. Claude -> Codex dispatch now records `codex_delivery_target_selected` with the loaded thread list, chosen latest-loaded thread, previous cached adapter session id, runtime active thread id, selection policy, message type, source agent id, and source/target names. No-loaded-thread fallback records `codex_delivery_target_unavailable` before the existing queued event, and turn/start failures record `codex_delivery_target_injection_failed` with the chosen thread and failure reason. The event payloads intentionally exclude message content. Runtime-unavailable and not-ready failures remain terminal delivery failures rather than selection audit events because no loaded-thread observation occurred. Verification: targeted daemon/core tests passed, `pnpm test` passed (46 files, 338 tests), `pnpm typecheck` passed, and `pnpm build` passed.
 
+Codex inbound reply trigger follow-up (2026-05-25):
+
+- Investigation found no reliable model-visible structured metadata path for Codex `turn/start`; the local schema supports text/image/localImage/skill/mention user input variants, while extra `origin`/`meta` fields are either validation-risky or not known to surface to the model. Decision: use a minimal model-visible text envelope for daemon -> Codex aiox deliveries and keep repeated behavioral instruction in the Codex MCP server instructions/tool description, not inside every delivered message body.
+- Implemented Codex target injection envelope:
+  `<aiox-channel source="claude" message_id="...">\n...\n</aiox-channel>`.
+  The envelope uses the stored aiox message id as `message_id`, XML-escapes content/attributes for injection only, and leaves `messages.content` unchanged.
+- Updated Codex MCP guidance so `aiox_reply(parent_message_id, content)` uses the envelope `message_id` as `parent_message_id`. Also fixed reply delivery symmetry: `receiveCodexReply()` now dispatches successful reply messages through the existing Claude channel injector path.
+- Verification: targeted daemon/Codex MCP tests passed, `pnpm test` passed (46 files, 341 tests), `pnpm typecheck` passed, and `pnpm build` passed.
+
 Claude initiator path follow-up (2026-05-25):
 
 - Manual smoke clarified that `chat_id` is not required for routing. The daemon routes by source agent name and active routes; `chat_id` only preserves reply parentage as `parent_message_id`.

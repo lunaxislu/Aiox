@@ -508,6 +508,48 @@ describe("daemon receiveCodexReply", () => {
     });
   });
 
+  it("receiveCodexReply dispatches routed reply delivery to registered Claude channel", async () => {
+    const requests: { url: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      requests.push({ url, body: JSON.parse(init.body as string) });
+      return new Response("{}", { status: 202 });
+    });
+    const setup = await setupPairedAgents(db, {
+      claudeEndpoint: "http://127.0.0.1:18789/send",
+    });
+
+    const parent = await setup.client.sendMessage({
+      sourceName: "reviewer",
+      messageId: "parent-1",
+      type: "question",
+      content: "please reply",
+    });
+    expect(parent.ok).toBe(true);
+
+    const response = await setup.client.receiveCodexReply({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "reply-1",
+      parentMessageId: "parent-1",
+      content: "ack",
+    });
+
+    expect(response.ok).toBe(true);
+    expect(requests).toEqual([
+      {
+        url: "http://127.0.0.1:18789/send",
+        body: {
+          content: "ack",
+          chat_id: "reply-1",
+          origin: "impl",
+        },
+      },
+    ]);
+    expect(
+      db.prepare("select status from message_deliveries where message_id = ?").get("reply-1"),
+    ).toMatchObject({ status: "completed" });
+  });
+
   it("missing token returns codex_ingress_unauthorized", async () => {
     const setup = await setupPairedAgents(db);
 
@@ -556,7 +598,12 @@ describe("daemon receiveClaudeChannelMessage", () => {
       method: "turn/start",
       params: {
         threadId: "thread-impl",
-        input: [{ type: "text", text: "hello from claude" }],
+        input: [
+          {
+            type: "text",
+            text: '<aiox-channel source="claude" message_id="claude-msg-1">\nhello from claude\n</aiox-channel>',
+          },
+        ],
       },
       options: {
         timeoutMs: undefined,
@@ -575,6 +622,37 @@ describe("daemon receiveClaudeChannelMessage", () => {
     expect(
       db.prepare("select type from events where type = 'claude_channel_message_received'").get(),
     ).toMatchObject({ type: "claude_channel_message_received" });
+  });
+
+  it("escapes XML-sensitive text in the Codex aiox envelope without changing stored content", async () => {
+    const setup = await setupPairedAgents(db);
+
+    const response = await setup.client.receiveClaudeChannelMessage({
+      agentName: "reviewer",
+      messageId: "claude-msg-xml",
+      text: "5 < 6 & 7 > 3",
+    });
+
+    expect(response.ok).toBe(true);
+    expect(setup.runtime.requests).toContainEqual({
+      method: "turn/start",
+      params: {
+        threadId: "thread-impl",
+        input: [
+          {
+            type: "text",
+            text: '<aiox-channel source="claude" message_id="claude-msg-xml">\n5 &lt; 6 &amp; 7 &gt; 3\n</aiox-channel>',
+          },
+        ],
+      },
+      options: {
+        timeoutMs: undefined,
+        timeoutErrorCode: "codex_turn_start_timeout",
+      },
+    });
+    expect(
+      db.prepare("select content from messages where id = ?").get("claude-msg-xml"),
+    ).toMatchObject({ content: "5 < 6 & 7 > 3" });
   });
 });
 
@@ -611,13 +689,24 @@ describe("daemon receiveClaudeChannelReply", () => {
       method: "turn/start",
       params: {
         threadId: "thread-impl",
-        input: [{ type: "text", text: "review complete" }],
+        input: [
+          {
+            type: "text",
+            text: expect.stringContaining('message_id="'),
+          },
+        ],
       },
       options: {
         timeoutMs: undefined,
         timeoutErrorCode: "codex_turn_start_timeout",
       },
     });
+    const turnStart = setup.runtime.requests.find(
+      (request) => request.method === "turn/start",
+    ) as { params: { input: Array<{ text: string }> } } | undefined;
+    expect(turnStart?.params.input[0]?.text).toMatch(
+      /^<aiox-channel source="claude" message_id="[^"]+">\nreview complete\n<\/aiox-channel>$/,
+    );
     expect(
       db
         .prepare(
@@ -671,7 +760,14 @@ describe("daemon receiveClaudeChannelReply", () => {
       method: "turn/start",
       params: {
         threadId: "thread-new",
-        input: [{ type: "text", text: "review complete" }],
+        input: [
+          {
+            type: "text",
+            text: expect.stringMatching(
+              /^<aiox-channel source="claude" message_id="[^"]+">\nreview complete\n<\/aiox-channel>$/,
+            ),
+          },
+        ],
       },
       options: {
         timeoutMs: undefined,
@@ -911,7 +1007,14 @@ describe("daemon receiveClaudeChannelReply", () => {
       method: "turn/start",
       params: {
         threadId: "thread-visible",
-        input: [{ type: "text", text: "review complete" }],
+        input: [
+          {
+            type: "text",
+            text: expect.stringMatching(
+              /^<aiox-channel source="claude" message_id="[^"]+">\nreview complete\n<\/aiox-channel>$/,
+            ),
+          },
+        ],
       },
       options: {
         timeoutMs: undefined,
@@ -962,7 +1065,14 @@ describe("daemon receiveClaudeChannelReply", () => {
       method: "turn/start",
       params: {
         threadId: "thread-visible",
-        input: [{ type: "text", text: "second reply" }],
+        input: [
+          {
+            type: "text",
+            text: expect.stringMatching(
+              /^<aiox-channel source="claude" message_id="[^"]+">\nsecond reply\n<\/aiox-channel>$/,
+            ),
+          },
+        ],
       },
       options: {
         timeoutMs: undefined,

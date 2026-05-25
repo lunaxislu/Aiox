@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AIOX_REPLY_DESCRIPTION,
+  CODEX_INGRESS_INSTRUCTIONS,
   createCodexIngressMcpServer,
   createReplyHandler,
   createSendMessageHandler,
@@ -9,6 +11,15 @@ import {
 } from "../../../src/adapters/codex/mcp-server.js";
 
 describe("codex MCP server — handlers", () => {
+  it("instructs Codex to reply to aiox envelopes with the envelope message_id", () => {
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("<aiox-channel");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("message_id");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("parent_message_id");
+    expect(AIOX_REPLY_DESCRIPTION).toContain("<aiox-channel");
+    expect(AIOX_REPLY_DESCRIPTION).toContain("message_id");
+    expect(AIOX_REPLY_DESCRIPTION).toContain("parent_message_id");
+  });
+
   it("aiox_send_message routes through receiveCodexMessage with token", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createSendMessageHandler({

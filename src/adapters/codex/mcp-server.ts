@@ -3,10 +3,19 @@ import { z } from "zod";
 
 import { createDaemonSocketClient } from "../../daemon/socket-transport.js";
 
-const INSTRUCTIONS =
+export const CODEX_INGRESS_INSTRUCTIONS =
   "aiox orchestration tools available to this Codex session. " +
   "Call aiox_send_message(content) to broadcast a routed message to paired aiox agents. " +
+  'When you receive an <aiox-channel ... message_id="..."> message, call ' +
+  "aiox_reply(parent_message_id, content) with parent_message_id set to the envelope message_id " +
+  "and content set to your response. " +
   "Call aiox_reply(parent_message_id, content) to reply to a parent message id received earlier.";
+
+export const AIOX_REPLY_DESCRIPTION =
+  "Reply to a parent message id received earlier from another aiox agent. " +
+  'When the current prompt contains an <aiox-channel ... message_id="..."> envelope, ' +
+  "use that message_id as parent_message_id and put your response in content. " +
+  "Routes through the daemon.";
 
 export interface CodexIngressDaemonClient {
   receiveCodexMessage(request: unknown): Promise<unknown>;
@@ -122,7 +131,7 @@ export function createCodexIngressMcpServer(
     { name: `aiox-codex-${options.agentName}`, version: "0.1.0" },
     {
       capabilities: { tools: {} },
-      instructions: INSTRUCTIONS,
+      instructions: CODEX_INGRESS_INSTRUCTIONS,
     },
   );
 
@@ -148,8 +157,7 @@ export function createCodexIngressMcpServer(
   mcp.registerTool(
     "aiox_reply",
     {
-      description:
-        "Reply to a parent message id received earlier from another aiox agent. Routes through the daemon.",
+      description: AIOX_REPLY_DESCRIPTION,
       inputSchema: z.object({
         parent_message_id: z.string().min(1),
         content: z.string().min(1),
