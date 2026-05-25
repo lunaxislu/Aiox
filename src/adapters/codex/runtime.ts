@@ -195,6 +195,14 @@ export class CodexAgentRuntime {
     return this.rebindFromThreadOperation(result, "thread/resume");
   }
 
+  async listLoadedThreadIds(): Promise<string[]> {
+    return extractLoadedThreadIds(await this.requestCodex("thread/loaded/list", {}));
+  }
+
+  rebindActiveThread(threadId: string): void {
+    this.#activeThreadId = threadId;
+  }
+
   injectTurnStart(options: InjectTurnStartOptions): Promise<AdapterInjectResult> {
     return injectTurnStart(this, options);
   }
@@ -336,6 +344,21 @@ function readPackageVersion(): string {
   }
 
   return parsed.version;
+}
+
+function extractLoadedThreadIds(result: unknown): string[] {
+  const data =
+    typeof result === "object" && result !== null && "data" in result
+      ? (result as { data?: unknown }).data
+      : typeof result === "object" && result !== null && "threadIds" in result
+        ? (result as { threadIds?: unknown }).threadIds
+        : result;
+
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data.filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
 function extractThreadId(result: unknown): string | null {

@@ -529,6 +529,14 @@ Likely TDD entry points:
 - `src/daemon/state.ts`: do not transition Codex target deliveries to `delivering/completed` when no live loaded thread exists; leave them `queued` and append an event/reason.
 - `src/adapters/codex/mcp-server.ts`: later add queued-delivery pull/read/ack tools.
 
+Implementation result (2026-05-25):
+
+- Added TDD coverage for stale cached Codex thread ids: when `runtime.activeThreadId` is old and `thread/loaded/list` returns a different live thread, Claude reply delivery now sends `turn/start` to the live loaded thread.
+- Added TDD coverage for no loaded Codex thread: Claude reply delivery calls `thread/loaded/list`, does not call `turn/start`, and leaves the delivery `queued` instead of marking it `completed` or terminally `failed`.
+- `CodexAgentRuntime` now exposes `listLoadedThreadIds()` and `rebindActiveThread(threadId)`; daemon reply dispatch updates the agent adapter session cache after successful live-thread injection.
+- Verification: `pnpm test` passed (46 files, 327 tests), `pnpm typecheck` passed, and `pnpm build` passed.
+- Remaining follow-up: queued delivery retry/drain and Codex MCP queued-message pull/read/ack are still planned separately.
+
 #### Original next-session target
 
 Do not start with Claude reply routing. First add a targeted failing test for

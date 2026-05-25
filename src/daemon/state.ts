@@ -166,6 +166,8 @@ export interface ManagedCodexAgentRuntime extends ManagedAgentRuntime {
   readonly activeThreadId: string | null;
   startThread(): Promise<string | null>;
   resumeThread(threadId: string): Promise<string | null>;
+  listLoadedThreadIds?(): Promise<string[]>;
+  rebindActiveThread?(threadId: string): void;
 }
 
 export type AttachCodexRuntime = (request: {
@@ -1128,11 +1130,6 @@ export function createDaemonState(
         continue;
       }
 
-      updateDeliveryStatusInTransaction({
-        deliveryId: delivery.id,
-        status: "delivering",
-      });
-
       const runtime = codexRuntimes.get(targetAgent.name);
       const injectResult = await injectReplyIntoCodexRuntime(
         runtime,
@@ -1142,11 +1139,55 @@ export function createDaemonState(
       if (injectResult.ok) {
         updateDeliveryStatusInTransaction({
           deliveryId: delivery.id,
+          status: "delivering",
+        });
+
+        const now = options.now();
+        const reboundAgent = agents.rebindAdapterSessionId({
+          name: targetAgent.name,
+          adapterSessionId: injectResult.threadId,
+          now,
+        });
+        if (reboundAgent) {
+          events.append({
+            id: options.createId(),
+            type: "agent_thread_id_rebound",
+            data: {
+              previousId: targetAgent.adapterSessionId,
+              nextId: injectResult.threadId,
+              operation: "thread/loaded/list",
+            },
+            createdAt: now,
+            agentId: reboundAgent.id,
+            messageId: input.message.id,
+            deliveryId: delivery.id,
+            routeId: delivery.routeId,
+          });
+        }
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
           status: "delivered",
         });
         updateDeliveryStatusInTransaction({
           deliveryId: delivery.id,
           status: "completed",
+        });
+        continue;
+      }
+
+      if (injectResult.reason === "codex_no_loaded_thread") {
+        events.append({
+          id: options.createId(),
+          type: "codex_binding_uncertain_observed",
+          data: {
+            reason: injectResult.reason,
+            message: injectResult.message,
+          },
+          createdAt: options.now(),
+          agentId: targetAgent.id,
+          messageId: input.message.id,
+          deliveryId: delivery.id,
+          routeId: delivery.routeId,
         });
         continue;
       }
@@ -1228,7 +1269,10 @@ export function createDaemonState(
   async function injectReplyIntoCodexRuntime(
     runtime: ManagedAgentRuntime | undefined,
     content: string,
-  ): Promise<{ ok: true } | { ok: false; reason: string; message: string }> {
+  ): Promise<
+    | { ok: true; threadId: string }
+    | { ok: false; reason: string; message: string }
+  > {
     if (!isCodexTurnStartRuntime(runtime)) {
       return {
         ok: false,
@@ -1245,18 +1289,32 @@ export function createDaemonState(
       };
     }
 
-    if (!runtime.activeThreadId) {
+    const liveThreadId = await discoverCodexLoadedThreadId(runtime);
+    if (!liveThreadId) {
       return {
         ok: false,
-        reason: "codex_binding_uncertain",
-        message: "Codex runtime has no active thread id",
+        reason: "codex_no_loaded_thread",
+        message: "Codex runtime has no loaded thread id",
       };
     }
 
-    return injectTurnStart(runtime, {
-      threadId: runtime.activeThreadId,
-      input: content,
-    });
+    const injectResult = await injectTurnStart(
+      {
+        activeThreadId: liveThreadId,
+        requestCodex: runtime.requestCodex.bind(runtime),
+      },
+      {
+        threadId: liveThreadId,
+        input: content,
+      },
+    );
+
+    if (!injectResult.ok) {
+      return injectResult;
+    }
+
+    runtime.rebindActiveThread?.(liveThreadId);
+    return { ok: true, threadId: liveThreadId };
   }
 
   function authorizeCodexIngress(
@@ -1586,13 +1644,44 @@ async function defaultAttachCodexRuntime(request: {
 
 function isCodexTurnStartRuntime(
   runtime: ManagedAgentRuntime | undefined,
-): runtime is ManagedAgentRuntime & CodexTurnStartRuntime {
+): runtime is ManagedAgentRuntime &
+  CodexTurnStartRuntime & {
+    listLoadedThreadIds?: () => Promise<string[]>;
+    rebindActiveThread?: (threadId: string) => void;
+  } {
   return (
     runtime !== undefined &&
     "activeThreadId" in runtime &&
     "requestCodex" in runtime &&
     typeof (runtime as { requestCodex?: unknown }).requestCodex === "function"
   );
+}
+
+async function discoverCodexLoadedThreadId(
+  runtime: CodexTurnStartRuntime & {
+    listLoadedThreadIds?: () => Promise<string[]>;
+  },
+): Promise<string | null> {
+  const threadIds = runtime.listLoadedThreadIds
+    ? await runtime.listLoadedThreadIds()
+    : extractLoadedThreadIds(await runtime.requestCodex("thread/loaded/list", {}));
+
+  return threadIds[0] ?? null;
+}
+
+function extractLoadedThreadIds(result: unknown): string[] {
+  const data =
+    typeof result === "object" && result !== null && "data" in result
+      ? (result as { data?: unknown }).data
+      : typeof result === "object" && result !== null && "threadIds" in result
+        ? (result as { threadIds?: unknown }).threadIds
+        : result;
+
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data.filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
 function isCodexAttachError(error: unknown): error is {

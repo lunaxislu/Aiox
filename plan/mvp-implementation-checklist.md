@@ -1031,7 +1031,9 @@ Resolved Step 14 follow-up:
 
 Open Step 14 follow-up:
 
-- [ ] Codex live loaded-thread delivery + queued fallback: manual smoke on 2026-05-25 showed daemon `completed` for Claude -> Codex reply while the visible Codex TUI did not show/read the message. Legacy comparison found that bridge used `thread/loaded/list` immediately before `turn/start`, while current aiox injects into cached `runtime.activeThreadId`. Implement live loaded-thread discovery before Codex target injection, keep delivery `queued` when no loaded Codex thread exists, and add a Codex MCP queued-message pull/read/ack follow-up. Planned; do not start the next major Step until this Step 14 smoke blocker is resolved. Authority context: `history/40-step-14-daemon-client-split.history.md`; PRD policy: `prd/mvp/aiox-mvp-spec.md` Message Flow.
+- [x] Codex live loaded-thread delivery + queued fallback: manual smoke on 2026-05-25 showed daemon `completed` for Claude -> Codex reply while the visible Codex TUI did not show/read the message. Implemented live `thread/loaded/list` discovery before Codex target injection, successful rebind/cache update, and no-loaded-thread queued fallback. Verification: `pnpm test` passed (46 files, 327 tests), `pnpm typecheck` passed, `pnpm build` passed. Authority context: `history/40-step-14-daemon-client-split.history.md`; PRD policy: `prd/mvp/aiox-mvp-spec.md` Message Flow.
+- [ ] Codex queued delivery retry/drain: when a Claude -> Codex reply remains queued because no live loaded thread exists, retry/drain it after Codex channel registration or a later loaded-thread signal. Planned follow-up before closing the Step 14 smoke blocker.
+- [ ] Codex MCP queued-message pull/read/ack: add the agent-level pull path so Codex can discover and acknowledge queued deliveries if push could not happen immediately. Planned follow-up before closing the Step 14 smoke blocker.
 
 
 Remaining out of scope:

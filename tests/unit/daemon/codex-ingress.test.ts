@@ -588,6 +588,79 @@ describe("daemon receiveClaudeChannelReply", () => {
       db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
     ).toMatchObject({ status: "completed" });
   });
+
+  it("routes Claude replies into the live loaded Codex thread instead of the cached active thread", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(setup.runtime.requests).toContainEqual({
+      method: "thread/loaded/list",
+      params: {},
+      options: undefined,
+    });
+    expect(setup.runtime.requests).toContainEqual({
+      method: "turn/start",
+      params: {
+        threadId: "thread-new",
+        input: [{ type: "text", text: "review complete" }],
+      },
+      options: {
+        timeoutMs: undefined,
+        timeoutErrorCode: "codex_turn_start_timeout",
+      },
+    });
+  });
+
+  it("keeps Claude reply delivery queued when Codex has no live loaded thread", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: [],
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(setup.runtime.requests).toContainEqual({
+      method: "thread/loaded/list",
+      params: {},
+      options: undefined,
+    });
+    expect(
+      setup.runtime.requests.some((request) => request.method === "turn/start"),
+    ).toBe(false);
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toMatchObject({ status: "queued" });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -734,13 +807,21 @@ describe("Codex ingress authorization revocation", () => {
 
 async function setupPairedAgents(
   db: InstanceType<typeof Database>,
-  opts: { skipRegister?: boolean; claudeEndpoint?: string } = {},
+  opts: {
+    skipRegister?: boolean;
+    claudeEndpoint?: string;
+    codexRuntime?: {
+      startedThreadId?: string;
+      loadedThreadIds?: string[];
+    };
+  } = {},
 ) {
   const codexChannelRuntimes = new Map();
   const claudeChannelRuntimes = new Map();
   const runtime = fakeCodexRuntime({
     endpoint: "ws://127.0.0.1:54321/",
-    startedThreadId: "thread-impl",
+    startedThreadId: opts.codexRuntime?.startedThreadId ?? "thread-impl",
+    loadedThreadIds: opts.codexRuntime?.loadedThreadIds,
   });
   const state = createDaemonState({
     db,
@@ -865,6 +946,7 @@ function fakeCodexRuntime(options: {
   endpoint: string;
   startedThreadId?: string;
   resumedThreadId?: string;
+  loadedThreadIds?: string[];
 }) {
   const requests: Array<{
     method: string;
@@ -882,6 +964,11 @@ function fakeCodexRuntime(options: {
     disposeCalls: 0,
     requestCodex(method: string, params?: unknown, requestOptions?: unknown) {
       requests.push({ method, params, options: requestOptions });
+      if (method === "thread/loaded/list") {
+        return Promise.resolve({
+          data: options.loadedThreadIds ?? (this.activeThreadId ? [this.activeThreadId] : []),
+        });
+      }
       return Promise.resolve({ turn: { id: "turn-1", status: "inProgress" } });
     },
     async startThread() {
@@ -893,6 +980,16 @@ function fakeCodexRuntime(options: {
       this.resumeThreadCalls.push(threadId);
       this.activeThreadId = options.resumedThreadId ?? threadId;
       return this.activeThreadId;
+    },
+    async listLoadedThreadIds() {
+      const result = await this.requestCodex("thread/loaded/list", {});
+      if (typeof result === "object" && result !== null && "data" in result) {
+        return Array.isArray(result.data) ? result.data : [];
+      }
+      return [];
+    },
+    rebindActiveThread(threadId: string) {
+      this.activeThreadId = threadId;
     },
     async dispose() {
       this.disposeCalls += 1;
