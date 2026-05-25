@@ -701,36 +701,40 @@ describe("daemon receiveClaudeChannelReply", () => {
       text: "review complete",
     });
 
-    expect(
-      db
-        .prepare(
-          `
-            select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
-            from events
-            join agents on agents.id = events.agent_id
-            where events.type = 'codex_delivery_target_selected'
-            order by events.rowid desc
-            limit 1
-          `,
-        )
-        .get(),
-    ).toMatchObject({
+    const reviewer = db
+      .prepare("select id from agents where name = ?")
+      .get("reviewer") as { id: string };
+    const event = db
+      .prepare(
+        `
+          select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
+          from events
+          join agents on agents.id = events.agent_id
+          where events.type = 'codex_delivery_target_selected'
+          order by events.rowid desc
+          limit 1
+        `,
+      )
+      .get() as { data_json: string };
+
+    expect(event).toMatchObject({
       type: "codex_delivery_target_selected",
-      data_json: JSON.stringify({
-        operation: "thread/loaded/list",
-        loadedThreadIds: ["thread-old", "thread-new"],
-        chosenThreadId: "thread-new",
-        previousAdapterSessionId: null,
-        runtimeActiveThreadId: null,
-        selectionPolicy: "latest_loaded_thread",
-        deliveryMessageType: "reply",
-        sourceAgentName: "reviewer",
-        targetAgentName: "impl",
-      }),
       message_id: expect.any(String),
       delivery_id: expect.any(String),
       route_id: expect.any(String),
       agent_name: "impl",
+    });
+    expect(JSON.parse(event.data_json)).toMatchObject({
+      operation: "thread/loaded/list",
+      loadedThreadIds: ["thread-old", "thread-new"],
+      chosenThreadId: "thread-new",
+      previousAdapterSessionId: null,
+      runtimeActiveThreadId: null,
+      selectionPolicy: "latest_loaded_thread",
+      deliveryMessageType: "reply",
+      sourceAgentId: reviewer.id,
+      sourceAgentName: "reviewer",
+      targetAgentName: "impl",
     });
   });
 
@@ -823,35 +827,39 @@ describe("daemon receiveClaudeChannelReply", () => {
       text: "review complete",
     });
 
-    expect(
-      db
-        .prepare(
-          `
-            select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
-            from events
-            join agents on agents.id = events.agent_id
-            where events.type = 'codex_delivery_target_unavailable'
-            order by events.rowid desc
-            limit 1
-          `,
-        )
-        .get(),
-    ).toMatchObject({
+    const reviewer = db
+      .prepare("select id from agents where name = ?")
+      .get("reviewer") as { id: string };
+    const event = db
+      .prepare(
+        `
+          select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
+          from events
+          join agents on agents.id = events.agent_id
+          where events.type = 'codex_delivery_target_unavailable'
+          order by events.rowid desc
+          limit 1
+        `,
+      )
+      .get() as { data_json: string };
+
+    expect(event).toMatchObject({
       type: "codex_delivery_target_unavailable",
-      data_json: JSON.stringify({
-        operation: "thread/loaded/list",
-        loadedThreadIds: [],
-        previousAdapterSessionId: null,
-        runtimeActiveThreadId: null,
-        reason: "codex_no_loaded_thread",
-        deliveryMessageType: "reply",
-        sourceAgentName: "reviewer",
-        targetAgentName: "impl",
-      }),
       message_id: expect.any(String),
       delivery_id: expect.any(String),
       route_id: expect.any(String),
       agent_name: "impl",
+    });
+    expect(JSON.parse(event.data_json)).toMatchObject({
+      operation: "thread/loaded/list",
+      loadedThreadIds: [],
+      previousAdapterSessionId: null,
+      runtimeActiveThreadId: null,
+      reason: "codex_no_loaded_thread",
+      deliveryMessageType: "reply",
+      sourceAgentId: reviewer.id,
+      sourceAgentName: "reviewer",
+      targetAgentName: "impl",
     });
   });
 
@@ -985,33 +993,37 @@ describe("daemon receiveClaudeChannelReply", () => {
       text: "review complete",
     });
 
-    expect(
-      db
-        .prepare(
-          `
-            select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
-            from events
-            join agents on agents.id = events.agent_id
-            where events.type = 'codex_delivery_target_injection_failed'
-            order by events.rowid desc
-            limit 1
-          `,
-        )
-        .get(),
-    ).toMatchObject({
+    const reviewer = db
+      .prepare("select id from agents where name = ?")
+      .get("reviewer") as { id: string };
+    const event = db
+      .prepare(
+        `
+          select events.type, events.data_json, events.message_id, events.delivery_id, events.route_id, agents.name as agent_name
+          from events
+          join agents on agents.id = events.agent_id
+          where events.type = 'codex_delivery_target_injection_failed'
+          order by events.rowid desc
+          limit 1
+        `,
+      )
+      .get() as { data_json: string };
+
+    expect(event).toMatchObject({
       type: "codex_delivery_target_injection_failed",
-      data_json: JSON.stringify({
-        chosenThreadId: "thread-new",
-        loadedThreadIds: ["thread-new"],
-        reason: "adapter_inject_failed",
-        message: "turn/start failed",
-        sourceAgentName: "reviewer",
-        targetAgentName: "impl",
-      }),
       message_id: expect.any(String),
       delivery_id: expect.any(String),
       route_id: expect.any(String),
       agent_name: "impl",
+    });
+    expect(JSON.parse(event.data_json)).toMatchObject({
+      chosenThreadId: "thread-new",
+      loadedThreadIds: ["thread-new"],
+      reason: "adapter_inject_failed",
+      message: "turn/start failed",
+      sourceAgentId: reviewer.id,
+      sourceAgentName: "reviewer",
+      targetAgentName: "impl",
     });
   });
 

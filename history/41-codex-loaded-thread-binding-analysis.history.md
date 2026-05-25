@@ -289,10 +289,11 @@ Test coverage added/updated:
 
 2026-05-25 follow-up implementation added audit events for the latest-loaded-thread heuristic:
 
-- `codex_delivery_target_selected` records `thread/loaded/list`, the returned loaded thread ids, the selected latest thread id, previous cached adapter session id, runtime active thread id, selection policy, message type, and source/target agent names.
+- `codex_delivery_target_selected` records `thread/loaded/list`, the returned loaded thread ids, the selected latest thread id, previous cached adapter session id, runtime active thread id, selection policy, message type, source agent id, and source/target agent names.
 - `codex_delivery_target_unavailable` records the same selection context when no loaded thread exists and the delivery remains queued.
 - `codex_delivery_target_injection_failed` records the selected thread and failure reason/message when `turn/start` fails after a target was selected.
 - Event payloads do not include user message content; they carry routing/debug ids and selection metadata only.
+- Runtime-unavailable and not-ready failures remain outside these selection-specific audit events because no `thread/loaded/list` observation has occurred; those cases continue to be represented by the terminal delivery failure reason.
 
 Effect:
 
