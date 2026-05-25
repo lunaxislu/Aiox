@@ -257,6 +257,12 @@ function fakeCodexRuntime() {
       this.activeThreadId = threadId;
       return threadId;
     },
+    async listLoadedThreadIds() {
+      return this.activeThreadId ? [this.activeThreadId] : [];
+    },
+    rebindActiveThread(threadId: string) {
+      this.activeThreadId = threadId;
+    },
     async dispose() {},
   };
 }

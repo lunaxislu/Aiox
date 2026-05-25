@@ -23,6 +23,7 @@ describe("append-only events", () => {
       "agent_graceful_detach",
       "agent_thread_id_rebound",
       "codex_binding_uncertain_observed",
+      "codex_delivery_queued_no_loaded_thread",
       "late_reply",
       "claude_channel_reply_received",
       "codex_channel_registered",

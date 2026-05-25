@@ -166,9 +166,13 @@ export interface ManagedCodexAgentRuntime extends ManagedAgentRuntime {
   readonly activeThreadId: string | null;
   startThread(): Promise<string | null>;
   resumeThread(threadId: string): Promise<string | null>;
-  listLoadedThreadIds?(): Promise<string[]>;
-  rebindActiveThread?(threadId: string): void;
+  listLoadedThreadIds(): Promise<string[]>;
+  rebindActiveThread(threadId: string): void;
 }
+
+type ResolvedCodexTurnStartRuntime = ManagedAgentRuntime &
+  CodexTurnStartRuntime &
+  Pick<ManagedCodexAgentRuntime, "listLoadedThreadIds" | "rebindActiveThread">;
 
 export type AttachCodexRuntime = (request: {
   agentName: string;
@@ -1131,21 +1135,66 @@ export function createDaemonState(
       }
 
       const runtime = codexRuntimes.get(targetAgent.name);
+      const target = await resolveCodexReplyTarget(runtime);
+
+      if (!target.ok) {
+        if (target.reason === "codex_no_loaded_thread") {
+          events.append({
+            id: options.createId(),
+            type: "codex_delivery_queued_no_loaded_thread",
+            data: {
+              reason: target.reason,
+              message: target.message,
+            },
+            createdAt: options.now(),
+            agentId: targetAgent.id,
+            messageId: input.message.id,
+            deliveryId: delivery.id,
+            routeId: delivery.routeId,
+          });
+          continue;
+        }
+
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "failed",
+          error: {
+            reason: target.reason,
+            message: target.message,
+          },
+        });
+        continue;
+      }
+
+      updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "delivering",
+      });
+
       const injectResult = await injectReplyIntoCodexRuntime(
-        runtime,
+        target.runtime,
+        target.threadId,
         input.message.content,
       );
 
-      if (injectResult.ok) {
+      if (!injectResult.ok) {
         updateDeliveryStatusInTransaction({
           deliveryId: delivery.id,
-          status: "delivering",
+          status: "failed",
+          error: {
+            reason: injectResult.reason,
+            message: injectResult.message,
+          },
         });
+        continue;
+      }
 
+      target.runtime.rebindActiveThread(target.threadId);
+      if (target.threadId !== targetAgent.adapterSessionId) {
         const now = options.now();
         const reboundAgent = agents.rebindAdapterSessionId({
           name: targetAgent.name,
-          adapterSessionId: injectResult.threadId,
+          adapterSessionId: target.threadId,
           now,
         });
         if (reboundAgent) {
@@ -1154,7 +1203,7 @@ export function createDaemonState(
             type: "agent_thread_id_rebound",
             data: {
               previousId: targetAgent.adapterSessionId,
-              nextId: injectResult.threadId,
+              nextId: target.threadId,
               operation: "thread/loaded/list",
             },
             createdAt: now,
@@ -1164,41 +1213,15 @@ export function createDaemonState(
             routeId: delivery.routeId,
           });
         }
-        updateDeliveryStatusInTransaction({
-          deliveryId: delivery.id,
-          status: "delivered",
-        });
-        updateDeliveryStatusInTransaction({
-          deliveryId: delivery.id,
-          status: "completed",
-        });
-        continue;
-      }
-
-      if (injectResult.reason === "codex_no_loaded_thread") {
-        events.append({
-          id: options.createId(),
-          type: "codex_binding_uncertain_observed",
-          data: {
-            reason: injectResult.reason,
-            message: injectResult.message,
-          },
-          createdAt: options.now(),
-          agentId: targetAgent.id,
-          messageId: input.message.id,
-          deliveryId: delivery.id,
-          routeId: delivery.routeId,
-        });
-        continue;
       }
 
       updateDeliveryStatusInTransaction({
         deliveryId: delivery.id,
-        status: "failed",
-        error: {
-          reason: injectResult.reason,
-          message: injectResult.message,
-        },
+        status: "delivered",
+      });
+      updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "completed",
       });
     }
   }
@@ -1266,11 +1289,10 @@ export function createDaemonState(
     }
   }
 
-  async function injectReplyIntoCodexRuntime(
+  async function resolveCodexReplyTarget(
     runtime: ManagedAgentRuntime | undefined,
-    content: string,
   ): Promise<
-    | { ok: true; threadId: string }
+    | { ok: true; runtime: ResolvedCodexTurnStartRuntime; threadId: string }
     | { ok: false; reason: string; message: string }
   > {
     if (!isCodexTurnStartRuntime(runtime)) {
@@ -1289,7 +1311,7 @@ export function createDaemonState(
       };
     }
 
-    const liveThreadId = await discoverCodexLoadedThreadId(runtime);
+    const liveThreadId = (await runtime.listLoadedThreadIds())[0] ?? null;
     if (!liveThreadId) {
       return {
         ok: false,
@@ -1298,23 +1320,27 @@ export function createDaemonState(
       };
     }
 
-    const injectResult = await injectTurnStart(
+    return { ok: true, runtime, threadId: liveThreadId };
+  }
+
+  async function injectReplyIntoCodexRuntime(
+    runtime: CodexTurnStartRuntime,
+    threadId: string,
+    content: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string; message: string }> {
+    // The runtime cache may still point at the previous TUI thread here. The
+    // live target wrapper keeps injectTurnStart's mismatch guard meaningful
+    // without mutating daemon cache until turn/start succeeds.
+    return injectTurnStart(
       {
-        activeThreadId: liveThreadId,
+        activeThreadId: threadId,
         requestCodex: runtime.requestCodex.bind(runtime),
       },
       {
-        threadId: liveThreadId,
+        threadId,
         input: content,
       },
     );
-
-    if (!injectResult.ok) {
-      return injectResult;
-    }
-
-    runtime.rebindActiveThread?.(liveThreadId);
-    return { ok: true, threadId: liveThreadId };
   }
 
   function authorizeCodexIngress(
@@ -1644,44 +1670,17 @@ async function defaultAttachCodexRuntime(request: {
 
 function isCodexTurnStartRuntime(
   runtime: ManagedAgentRuntime | undefined,
-): runtime is ManagedAgentRuntime &
-  CodexTurnStartRuntime & {
-    listLoadedThreadIds?: () => Promise<string[]>;
-    rebindActiveThread?: (threadId: string) => void;
-  } {
+): runtime is ResolvedCodexTurnStartRuntime {
   return (
     runtime !== undefined &&
     "activeThreadId" in runtime &&
     "requestCodex" in runtime &&
-    typeof (runtime as { requestCodex?: unknown }).requestCodex === "function"
+    "listLoadedThreadIds" in runtime &&
+    "rebindActiveThread" in runtime &&
+    typeof (runtime as { requestCodex?: unknown }).requestCodex === "function" &&
+    typeof (runtime as { listLoadedThreadIds?: unknown }).listLoadedThreadIds === "function" &&
+    typeof (runtime as { rebindActiveThread?: unknown }).rebindActiveThread === "function"
   );
-}
-
-async function discoverCodexLoadedThreadId(
-  runtime: CodexTurnStartRuntime & {
-    listLoadedThreadIds?: () => Promise<string[]>;
-  },
-): Promise<string | null> {
-  const threadIds = runtime.listLoadedThreadIds
-    ? await runtime.listLoadedThreadIds()
-    : extractLoadedThreadIds(await runtime.requestCodex("thread/loaded/list", {}));
-
-  return threadIds[0] ?? null;
-}
-
-function extractLoadedThreadIds(result: unknown): string[] {
-  const data =
-    typeof result === "object" && result !== null && "data" in result
-      ? (result as { data?: unknown }).data
-      : typeof result === "object" && result !== null && "threadIds" in result
-        ? (result as { threadIds?: unknown }).threadIds
-        : result;
-
-  if (!Array.isArray(data)) {
-    return [];
-  }
-
-  return data.filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
 function isCodexAttachError(error: unknown): error is {

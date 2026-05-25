@@ -661,6 +661,139 @@ describe("daemon receiveClaudeChannelReply", () => {
       db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
     ).toMatchObject({ status: "queued" });
   });
+
+  it("records a no-loaded-thread queued event when Codex has no live loaded thread", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: [],
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(
+      db
+        .prepare("select type, data_json from events order by rowid desc limit 1")
+        .get(),
+    ).toMatchObject({
+      type: "codex_delivery_queued_no_loaded_thread",
+      data_json: JSON.stringify({
+        reason: "codex_no_loaded_thread",
+        message: "Codex runtime has no loaded thread id",
+      }),
+    });
+  });
+
+  it("does not emit a rebind event when the live Codex thread already matches the agent cache", async () => {
+    const setup = await setupPairedAgents(db);
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(
+      db
+        .prepare("select count(*) as n from events where type = 'agent_thread_id_rebound'")
+        .get(),
+    ).toMatchObject({ n: 1 });
+  });
+
+  it("uses the first loaded Codex thread when multiple loaded threads are reported", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-first", "thread-second"],
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(setup.runtime.requests).toContainEqual({
+      method: "turn/start",
+      params: {
+        threadId: "thread-first",
+        input: [{ type: "text", text: "review complete" }],
+      },
+      options: {
+        timeoutMs: undefined,
+        timeoutErrorCode: "codex_turn_start_timeout",
+      },
+    });
+  });
+
+  it("marks delivery failed when live loaded thread injection fails", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        failTurnStart: true,
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toMatchObject({ status: "failed" });
+    expect(
+      db
+        .prepare(
+          "select data_json from events where type = 'delivery_status_changed' order by rowid desc limit 1",
+        )
+        .get(),
+    ).toMatchObject({
+      data_json: JSON.stringify({
+        status: "failed",
+        error: {
+          reason: "adapter_inject_failed",
+          message: "turn/start failed",
+        },
+      }),
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -813,6 +946,7 @@ async function setupPairedAgents(
     codexRuntime?: {
       startedThreadId?: string;
       loadedThreadIds?: string[];
+      failTurnStart?: boolean;
     };
   } = {},
 ) {
@@ -822,6 +956,7 @@ async function setupPairedAgents(
     endpoint: "ws://127.0.0.1:54321/",
     startedThreadId: opts.codexRuntime?.startedThreadId ?? "thread-impl",
     loadedThreadIds: opts.codexRuntime?.loadedThreadIds,
+    failTurnStart: opts.codexRuntime?.failTurnStart,
   });
   const state = createDaemonState({
     db,
@@ -947,6 +1082,7 @@ function fakeCodexRuntime(options: {
   startedThreadId?: string;
   resumedThreadId?: string;
   loadedThreadIds?: string[];
+  failTurnStart?: boolean;
 }) {
   const requests: Array<{
     method: string;
@@ -968,6 +1104,9 @@ function fakeCodexRuntime(options: {
         return Promise.resolve({
           data: options.loadedThreadIds ?? (this.activeThreadId ? [this.activeThreadId] : []),
         });
+      }
+      if (method === "turn/start" && options.failTurnStart) {
+        return Promise.reject(new Error("turn/start failed"));
       }
       return Promise.resolve({ turn: { id: "turn-1", status: "inProgress" } });
     },

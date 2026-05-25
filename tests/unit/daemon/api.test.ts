@@ -945,6 +945,12 @@ function fakeCodexRuntime(options: {
       this.activeThreadId = options.resumedThreadId ?? threadId;
       return this.activeThreadId;
     },
+    async listLoadedThreadIds() {
+      return this.activeThreadId ? [this.activeThreadId] : [];
+    },
+    rebindActiveThread(threadId: string) {
+      this.activeThreadId = threadId;
+    },
     async dispose() {
       this.disposeCalls += 1;
       this.state = "disposed" as typeof this.state;

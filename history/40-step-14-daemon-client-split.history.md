@@ -537,6 +537,14 @@ Implementation result (2026-05-25):
 - Verification: `pnpm test` passed (46 files, 327 tests), `pnpm typecheck` passed, and `pnpm build` passed.
 - Remaining follow-up: queued delivery retry/drain and Codex MCP queued-message pull/read/ack are still planned separately.
 
+Review hardening (2026-05-25):
+
+- Removed the daemon-side loaded-thread parser fallback; Codex runtime is now responsible for `thread/loaded/list` parsing through required `listLoadedThreadIds()`.
+- Rebind persistence and `agent_thread_id_rebound` events now occur only when the live loaded thread differs from the cached agent adapter session id.
+- No-loaded-thread queued fallback now emits `codex_delivery_queued_no_loaded_thread` instead of reusing the Step 10 binding-uncertain diagnostic event.
+- Injection status ordering now preserves observability: no-loaded-thread remains `queued`, while a discovered live target transitions to `delivering` before `turn/start`.
+- Multi-loaded-thread behavior is intentionally legacy-compatible: choose the first id returned by `thread/loaded/list`; this is covered by regression tests.
+
 #### Original next-session target
 
 Do not start with Claude reply routing. First add a targeted failing test for
