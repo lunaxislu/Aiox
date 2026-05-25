@@ -1031,9 +1031,12 @@ Resolved Step 14 follow-up:
 
 Open Step 14 follow-up:
 
-- [x] Codex live loaded-thread delivery + queued fallback: manual smoke on 2026-05-25 showed daemon `completed` for Claude -> Codex reply while the visible Codex TUI did not show/read the message. Implemented live `thread/loaded/list` discovery before Codex target injection, alternate loaded-thread preference over cached hidden thread, successful rebind/cache update only when the live thread changes, no-loaded-thread queued fallback, and `codex_delivery_queued_no_loaded_thread` observability. Verification: `pnpm test` passed (46 files, 331 tests), `pnpm typecheck` passed, `pnpm build` passed. Authority context: `history/40-step-14-daemon-client-split.history.md`; PRD policy: `prd/mvp/aiox-mvp-spec.md` Message Flow.
-- [ ] Codex queued delivery retry/drain: when a Claude -> Codex reply remains queued because no live loaded thread exists, retry/drain it after Codex channel registration or a later loaded-thread signal. Planned follow-up before closing the Step 14 smoke blocker.
-- [ ] Codex MCP queued-message pull/read/ack: add the agent-level pull path so Codex can discover and acknowledge queued deliveries if push could not happen immediately. Planned follow-up before closing the Step 14 smoke blocker.
+- [x] Codex live loaded-thread delivery + queued fallback: manual smoke on 2026-05-25 showed daemon `completed` for Claude -> Codex reply while the visible Codex TUI did not show/read the message. Implemented live `thread/loaded/list` discovery before Codex target injection, latest loaded-thread selection to avoid cached/hidden thread oscillation, successful rebind/cache update only when the live thread changes, no-loaded-thread queued fallback, and `codex_delivery_queued_no_loaded_thread` observability. Verification: `pnpm test` passed (46 files, 331 tests), `pnpm typecheck` passed, `pnpm build` passed. Authority context: `history/40-step-14-daemon-client-split.history.md`; PRD policy: `prd/mvp/aiox-mvp-spec.md` Message Flow.
+
+Deferred to Post-MVP (2026-05-25, user decision):
+
+- Codex queued delivery retry/drain: when a Claude -> Codex reply remains queued because no live loaded thread exists, retry/drain it after Codex channel registration or a later loaded-thread signal. The 2026-05-25 cold-start smoke shows the alternate-thread preference already covers the visible MVP path, so the queued retry/drain safety net moves to post-MVP.
+- Codex MCP queued-message pull/read/ack: agent-level pull path so Codex can discover and acknowledge queued deliveries when push could not happen immediately. Tied to the queued retry/drain safety net; deferred together to post-MVP.
 
 
 Remaining out of scope:

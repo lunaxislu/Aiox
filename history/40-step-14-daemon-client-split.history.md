@@ -544,7 +544,11 @@ Review hardening (2026-05-25):
 - No-loaded-thread queued fallback now emits `codex_delivery_queued_no_loaded_thread` instead of reusing the Step 10 binding-uncertain diagnostic event.
 - Injection status ordering now preserves observability: no-loaded-thread remains `queued`, while a discovered live target transitions to `delivering` before `turn/start`.
 - Manual smoke then showed `completed` while the visible Codex TUI still did not receive the reply. The likely cause is current aiox creating a daemon-owned thread during attach before the foreground TUI creates/loads its own thread, so `thread/loaded/list` can contain both the cached hidden thread and the visible TUI thread.
-- Multi-loaded-thread behavior was revised from legacy-first selection to prefer a loaded thread different from the cached agent adapter session id. If every loaded id matches or no alternate exists, the daemon falls back to the first loaded id. This preserves existing single-thread behavior while avoiding the daemon-created hidden thread in first-session smoke.
+- Multi-loaded-thread behavior was revised again after manual smoke found that, once the visible thread became cached, the previous alternate-thread heuristic could select the hidden daemon-created thread on the next reply. The daemon now selects the latest id returned by `thread/loaded/list`, which matches the observed hidden-first, visible/current-last app-server behavior and keeps repeated replies on the visible TUI thread.
+
+Post-MVP deferral (2026-05-25, user decision):
+
+- Queued delivery retry/drain (rebind on later loaded-thread signal) and Codex MCP queued-message pull/read/ack are deferred to post-MVP. Rationale: cold-start manual smoke (`codex -> claude -> reply`) on 2026-05-25 was confirmed visible in the foreground Codex TUI after the alternate-thread preference fix, so the visible MVP message path is covered. The queued retry/drain + MCP pull paths remain valuable as a safety net for transient no-loaded-thread windows but are no longer Step 14 smoke blockers.
 
 #### Original next-session target
 

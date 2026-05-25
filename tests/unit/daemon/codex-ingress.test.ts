@@ -719,11 +719,11 @@ describe("daemon receiveClaudeChannelReply", () => {
     ).toMatchObject({ n: 1 });
   });
 
-  it("prefers a non-cached loaded Codex thread when the cached thread is also loaded", async () => {
+  it("uses the latest loaded Codex thread instead of the daemon-created hidden thread", async () => {
     const setup = await setupPairedAgents(db, {
       codexRuntime: {
-        startedThreadId: "thread-old",
-        loadedThreadIds: ["thread-old", "thread-visible"],
+        startedThreadId: "thread-hidden",
+        loadedThreadIds: ["thread-hidden", "thread-visible"],
       },
     });
     const parent = await setup.client.receiveCodexMessage({
@@ -745,6 +745,57 @@ describe("daemon receiveClaudeChannelReply", () => {
       params: {
         threadId: "thread-visible",
         input: [{ type: "text", text: "review complete" }],
+      },
+      options: {
+        timeoutMs: undefined,
+        timeoutErrorCode: "codex_turn_start_timeout",
+      },
+    });
+  });
+
+  it("keeps using the latest loaded Codex thread after the visible thread becomes cached", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-hidden",
+        loadedThreadIds: ["thread-hidden", "thread-visible"],
+      },
+    });
+    const firstParent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent-1",
+      content: "please review",
+    });
+    expect(firstParent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent-1",
+      text: "first reply",
+    });
+
+    const secondParent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent-2",
+      content: "please review again",
+    });
+    expect(secondParent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent-2",
+      text: "second reply",
+    });
+
+    const turnStarts = setup.runtime.requests.filter(
+      (request) => request.method === "turn/start",
+    );
+    expect(turnStarts).toContainEqual({
+      method: "turn/start",
+      params: {
+        threadId: "thread-visible",
+        input: [{ type: "text", text: "second reply" }],
       },
       options: {
         timeoutMs: undefined,

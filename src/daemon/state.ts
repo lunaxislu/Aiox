@@ -1135,7 +1135,7 @@ export function createDaemonState(
       }
 
       const runtime = codexRuntimes.get(targetAgent.name);
-      const target = await resolveCodexReplyTarget(runtime, targetAgent.adapterSessionId);
+      const target = await resolveCodexReplyTarget(runtime);
 
       if (!target.ok) {
         if (target.reason === "codex_no_loaded_thread") {
@@ -1291,7 +1291,6 @@ export function createDaemonState(
 
   async function resolveCodexReplyTarget(
     runtime: ManagedAgentRuntime | undefined,
-    cachedThreadId: string | null,
   ): Promise<
     | { ok: true; runtime: ResolvedCodexTurnStartRuntime; threadId: string }
     | { ok: false; reason: string; message: string }
@@ -1313,7 +1312,7 @@ export function createDaemonState(
     }
 
     const loadedThreadIds = await runtime.listLoadedThreadIds();
-    const liveThreadId = selectCodexLoadedThreadId(loadedThreadIds, cachedThreadId);
+    const liveThreadId = selectCodexLoadedThreadId(loadedThreadIds);
     if (!liveThreadId) {
       return {
         ok: false,
@@ -1327,13 +1326,8 @@ export function createDaemonState(
 
   function selectCodexLoadedThreadId(
     loadedThreadIds: readonly string[],
-    cachedThreadId: string | null,
   ): string | null {
-    return (
-      loadedThreadIds.find((threadId) => threadId !== cachedThreadId) ??
-      loadedThreadIds[0] ??
-      null
-    );
+    return loadedThreadIds.at(-1) ?? null;
   }
 
   async function injectReplyIntoCodexRuntime(
