@@ -550,6 +550,44 @@ describe("daemon receiveCodexReply", () => {
     ).toMatchObject({ status: "completed" });
   });
 
+  it("marks Codex reply delivery failed when Claude channel is unregistered", async () => {
+    const setup = await setupPairedAgents(db);
+
+    const parent = await setup.client.sendMessage({
+      sourceName: "reviewer",
+      messageId: "parent-1",
+      type: "question",
+      content: "please reply",
+    });
+    expect(parent.ok).toBe(true);
+
+    const response = await setup.client.receiveCodexReply({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "reply-unregistered",
+      parentMessageId: "parent-1",
+      content: "ack",
+    });
+
+    expect(response.ok).toBe(true);
+    expect(
+      db
+        .prepare("select status from message_deliveries where message_id = ?")
+        .get("reply-unregistered"),
+    ).toMatchObject({
+      status: "failed",
+    });
+    expect(
+      db
+        .prepare(
+          "select data_json from events where type = 'delivery_status_changed' order by rowid desc limit 1",
+        )
+        .get(),
+    ).toMatchObject({
+      data_json: expect.stringContaining("claude_channel_unavailable"),
+    });
+  });
+
   it("missing token returns codex_ingress_unauthorized", async () => {
     const setup = await setupPairedAgents(db);
 
@@ -629,7 +667,7 @@ describe("daemon receiveClaudeChannelMessage", () => {
 
     const response = await setup.client.receiveClaudeChannelMessage({
       agentName: "reviewer",
-      messageId: "claude-msg-xml",
+      messageId: 'claude-msg-<"&',
       text: "5 < 6 & 7 > 3",
     });
 
@@ -641,7 +679,7 @@ describe("daemon receiveClaudeChannelMessage", () => {
         input: [
           {
             type: "text",
-            text: '<aiox-channel source="claude" message_id="claude-msg-xml">\n5 &lt; 6 &amp; 7 &gt; 3\n</aiox-channel>',
+            text: '<aiox-channel source="claude" message_id="claude-msg-&lt;&quot;&amp;">\n5 &lt; 6 &amp; 7 &gt; 3\n</aiox-channel>',
           },
         ],
       },
@@ -651,7 +689,7 @@ describe("daemon receiveClaudeChannelMessage", () => {
       },
     });
     expect(
-      db.prepare("select content from messages where id = ?").get("claude-msg-xml"),
+      db.prepare("select content from messages where id = ?").get('claude-msg-<"&'),
     ).toMatchObject({ content: "5 < 6 & 7 > 3" });
   });
 });

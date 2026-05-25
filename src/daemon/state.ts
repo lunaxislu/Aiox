@@ -454,7 +454,7 @@ export interface DaemonState {
   registerCodexChannel(request: RegisterCodexChannelRequest): RegisterCodexChannelResult;
   disconnectCodexChannel(request: DisconnectCodexChannelRequest): DisconnectCodexChannelResult;
   receiveCodexMessage(request: ReceiveCodexMessageRequest): Promise<ReceiveCodexMessageResult>;
-  receiveCodexReply(request: ReceiveCodexReplyRequest): Promise<ReceiveCodexMessageResult>;
+  receiveCodexReply(request: ReceiveCodexReplyRequest): Promise<ReceiveCodexReplyResult>;
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
@@ -1502,7 +1502,7 @@ export function createDaemonState(
   }
 
   function escapeXmlAttr(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   }
 
   function escapeXmlContent(s: string): string {

@@ -556,6 +556,7 @@ Codex inbound reply trigger follow-up (2026-05-25):
   The envelope uses the stored aiox message id as `message_id`, XML-escapes content/attributes for injection only, and leaves `messages.content` unchanged.
 - Updated Codex MCP guidance so `aiox_reply(parent_message_id, content)` uses the envelope `message_id` as `parent_message_id`. Also fixed reply delivery symmetry: `receiveCodexReply()` now dispatches successful reply messages through the existing Claude channel injector path.
 - Verification: targeted daemon/Codex MCP tests passed, `pnpm test` passed (46 files, 341 tests), `pnpm typecheck` passed, and `pnpm build` passed.
+- Review follow-up: Claude review found missing `<` escaping in envelope attribute values and requested a regression for `receiveCodexReply()` when the Claude channel is unregistered. Fixed attribute escaping, switched the daemon interface to the `ReceiveCodexReplyResult` alias, and added the unregistered-channel failed-delivery test. Wrong-kind route delivery skip remains a follow-up outside current route invariants. Verification: targeted daemon tests passed, `pnpm test` passed (46 files, 342 tests), `pnpm typecheck` passed, and `pnpm build` passed.
 
 Claude initiator path follow-up (2026-05-25):
 
