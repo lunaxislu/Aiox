@@ -49,6 +49,12 @@ const bindingMethods: ReadonlySet<string> = new Set<CodexProxyBindingMethod>([
   "thread/fork",
 ]);
 
+const bindingMethodNeedles: readonly string[] = [
+  '"thread/start"',
+  '"thread/resume"',
+  '"thread/fork"',
+];
+
 export async function startCodexAgentProxy(
   options: StartCodexAgentProxyOptions,
 ): Promise<CodexAgentProxy> {
@@ -146,6 +152,9 @@ function observeClientFrame(
   data: RelayFrame,
   pendingBindings: Map<JsonRpcId, CodexProxyBindingMethod>,
 ): void {
+  if (!frameMayContainBindingMethod(data)) {
+    return;
+  }
   const message = parseJsonRpcMessage(data);
   if (!message || message.id === undefined) {
     return;
@@ -161,6 +170,9 @@ function observeUpstreamFrame(
   pendingBindings: Map<JsonRpcId, CodexProxyBindingMethod>,
   onBinding: (event: CodexProxyBindingEvent) => void,
 ): void {
+  if (pendingBindings.size === 0) {
+    return;
+  }
   const message = parseJsonRpcMessage(data);
   if (!message || message.id === undefined) {
     return;
@@ -179,6 +191,18 @@ function observeUpstreamFrame(
     return;
   }
   onBinding({ method, threadId, requestId: message.id });
+}
+
+function frameMayContainBindingMethod(data: RelayFrame): boolean {
+  if (typeof data !== "string") {
+    return false;
+  }
+  for (const needle of bindingMethodNeedles) {
+    if (data.indexOf(needle) !== -1) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function parseJsonRpcMessage(data: RelayFrame): JsonRpcMessage | null {

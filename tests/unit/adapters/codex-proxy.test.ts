@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
 
 import {
@@ -203,6 +203,136 @@ describe("Codex per-agent transparent proxy", () => {
     expect(bindings).toEqual([]);
   });
 });
+
+describe("Codex per-agent transparent proxy — lazy parse", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("does not JSON.parse unrelated client frames", async () => {
+    const harness = await setupRaw();
+    const parseSpy = vi.spyOn(JSON, "parse");
+
+    const frame =
+      '{"jsonrpc":"2.0","id":99,"method":"turn/start","params":{"x":1}}';
+    const received = harness.expectUpstreamFrame();
+    harness.client.send(frame);
+    await received;
+
+    expect(harness.upstreamReceived).toContain(frame);
+    expect(parseCalledWith(parseSpy, frame)).toBe(false);
+  });
+
+  it("does not JSON.parse upstream frames when no binding is pending", async () => {
+    const harness = await setupRaw();
+    const parseSpy = vi.spyOn(JSON, "parse");
+
+    const upstreamFrame =
+      '{"jsonrpc":"2.0","id":12345,"result":{"foo":"bar"}}';
+    const delivered = onceMessage(harness.client);
+    harness.upstreamSocket.send(upstreamFrame);
+    const relayed = await delivered;
+
+    expect(relayed).toBe(upstreamFrame);
+    expect(parseCalledWith(parseSpy, upstreamFrame)).toBe(false);
+  });
+
+  it("still parses binding request methods and skips upstream parse after pending clears", async () => {
+    const harness = await setupRaw();
+    const parseSpy = vi.spyOn(JSON, "parse");
+
+    const startRequest = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "thread/start",
+      params: {},
+    });
+    const startReceived = harness.expectUpstreamFrame();
+    harness.client.send(startRequest);
+    await startReceived;
+
+    expect(parseCalledWith(parseSpy, startRequest)).toBe(true);
+
+    const successResponse = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 7,
+      result: { thread: { id: "thread-lazy" } },
+    });
+    const relayed1 = onceMessage(harness.client);
+    harness.upstreamSocket.send(successResponse);
+    await relayed1;
+
+    expect(parseCalledWith(parseSpy, successResponse)).toBe(true);
+    expect(harness.bindings).toEqual([
+      { method: "thread/start", threadId: "thread-lazy", requestId: 7 },
+    ]);
+
+    const trailingFrame =
+      '{"jsonrpc":"2.0","method":"thread/itemUpdated","params":{"big":"payload"}}';
+    const relayed2 = onceMessage(harness.client);
+    harness.upstreamSocket.send(trailingFrame);
+    await relayed2;
+
+    expect(parseCalledWith(parseSpy, trailingFrame)).toBe(false);
+  });
+});
+
+function parseCalledWith(
+  spy: { mock: { calls: ReadonlyArray<readonly unknown[]> } },
+  text: string,
+): boolean {
+  return spy.mock.calls.some((call) => call[0] === text);
+}
+
+interface RawHarness {
+  client: WebSocket;
+  upstreamSocket: WebSocket;
+  bindings: CodexProxyBindingEvent[];
+  upstreamReceived: string[];
+  expectUpstreamFrame: () => Promise<string>;
+}
+
+async function setupRaw(): Promise<RawHarness> {
+  const upstream = new WebSocketServer({ port: 0 });
+  servers.push(upstream);
+
+  const upstreamReceived: string[] = [];
+  const upstreamFrameWaiters: Array<(text: string) => void> = [];
+  const upstreamSocketReady = new Promise<WebSocket>((resolve) => {
+    upstream.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        const text = data.toString("utf8");
+        upstreamReceived.push(text);
+        const waiter = upstreamFrameWaiters.shift();
+        if (waiter) waiter(text);
+      });
+      resolve(socket);
+    });
+  });
+
+  const bindings: CodexProxyBindingEvent[] = [];
+  const proxy = await startCodexAgentProxy({
+    upstreamUrl: `ws://127.0.0.1:${addressPort(upstream)}`,
+    listenHost: "127.0.0.1",
+    listenPort: 0,
+    onBinding: (event) => bindings.push(event),
+  });
+  proxies.push(proxy);
+
+  const client = new WebSocket(proxy.url);
+  sockets.push(client);
+  await onceOpen(client);
+  const upstreamSocket = await upstreamSocketReady;
+
+  return {
+    client,
+    upstreamSocket,
+    bindings,
+    upstreamReceived,
+    expectUpstreamFrame: () =>
+      new Promise<string>((resolve) => upstreamFrameWaiters.push(resolve)),
+  };
+}
 
 type JsonRpcRequest = { id?: number | string; method?: string; params?: unknown };
 
