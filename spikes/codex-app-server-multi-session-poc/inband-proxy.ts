@@ -13,7 +13,7 @@ type JsonRpcMessage = {
 };
 
 type PendingBindingRequest = {
-  method: "thread/start" | "thread/fork";
+  method: BindingMethod;
 };
 
 type RelayFrame = WebSocket.RawData | string;
@@ -26,13 +26,13 @@ export type ProxyObservation =
     }
   | {
       type: "binding_candidate";
-      method: "thread/start" | "thread/fork";
+      method: BindingMethod;
       requestId: JsonRpcId;
       threadId: string;
     }
   | {
       type: "binding_uncertain";
-      method: "thread/start" | "thread/fork";
+      method: BindingMethod;
       requestId: JsonRpcId;
       reason: "error_response" | "missing_thread_id" | "parse_error";
     }
@@ -242,8 +242,10 @@ function extractThreadId(result: unknown): string | null {
   return null;
 }
 
-function isBindingMethod(method: unknown): method is "thread/start" | "thread/fork" {
-  return method === "thread/start" || method === "thread/fork";
+type BindingMethod = "thread/start" | "thread/fork" | "thread/resume";
+
+function isBindingMethod(method: unknown): method is BindingMethod {
+  return method === "thread/start" || method === "thread/fork" || method === "thread/resume";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

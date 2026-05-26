@@ -132,6 +132,6 @@ codex --remote ws://127.0.0.1:4520 --no-alt-screen
 ```
 
 The proxy is transparent by default. It records JSON-RPC frames and emits a
-`binding_candidate` only when a `thread/start` or `thread/fork` response on the
-same connection contains a returned thread id. Broadcast `thread/started`
-notifications are not binding authority.
+`binding_candidate` only when a `thread/start`, `thread/fork`, or
+`thread/resume` response on the same connection contains a returned thread id.
+Broadcast `thread/started` notifications are not binding authority.

@@ -80,6 +80,60 @@ describe("Codex in-band proxy spike", () => {
     });
   });
 
+  it("records same-client thread/resume responses as binding candidates", async () => {
+    const upstream = new WebSocketServer({ port: 0 });
+    servers.push(upstream);
+    const upstreamPort = addressPort(upstream);
+
+    upstream.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        const request = JSON.parse(data.toString("utf8")) as { id: number; method: string };
+
+        socket.send(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: request.id,
+            result: {
+              thread: {
+                id: "thread-from-resume-response",
+              },
+            },
+          }),
+        );
+      });
+    });
+
+    const observations: ProxyObservation[] = [];
+    const proxy = await startCodexInbandProxy({
+      listenHost: "127.0.0.1",
+      listenPort: 0,
+      upstreamUrl: `ws://127.0.0.1:${upstreamPort}`,
+      observe: (event) => observations.push(event),
+    });
+    proxies.push(proxy);
+
+    const client = new WebSocket(proxy.url);
+    sockets.push(client);
+    await onceOpen(client);
+
+    client.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 9,
+        method: "thread/resume",
+        params: { threadId: "thread-from-resume-response" },
+      }),
+    );
+    await onceMessage(client);
+
+    expect(observations).toContainEqual({
+      type: "binding_candidate",
+      method: "thread/resume",
+      requestId: 9,
+      threadId: "thread-from-resume-response",
+    });
+  });
+
   it("does not bind from broadcast thread/started notifications alone", async () => {
     const upstream = new WebSocketServer({ port: 0 });
     servers.push(upstream);
