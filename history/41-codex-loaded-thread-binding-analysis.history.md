@@ -691,7 +691,7 @@ Remaining verification:
   `/resume -> /fork`.
 - The production proxy currently avoids raw frame logging, but still parses JSON
   frames broadly. Lazy observation remains an optional performance follow-up, not
-  a correctness blocker.
+  a correctness blocker. See "Lazy parse follow-up, 2026-05-26" below.
 
 Manual smoke result, 2026-05-26:
 
@@ -721,6 +721,45 @@ Result: all visible-thread relay scenarios passed.
 Conclusion: the original wrong-thread delivery reported after internal Codex TUI
 `/resume` is fixed in the build-output manual smoke path. The proxy-observed
 same-connection active binding is now sufficient for the exercised MVP flows.
+
+Lazy parse follow-up, 2026-05-26:
+
+Commit `edaf02b` (`perf: lazily parse Codex proxy binding frames`) changed the
+proxy observation cost model without changing external behavior.
+
+Implemented behavior:
+
+- Client -> server frames are relayed unchanged, but the proxy only attempts
+  `JSON.parse` when the text frame contains one of the binding method needles:
+  `"thread/start"`, `"thread/resume"`, or `"thread/fork"`.
+- Server -> client frames are relayed unchanged, but the proxy does not attempt
+  `JSON.parse` while no binding request is pending.
+- Binding correctness remains the same: a same-client binding request plus a
+  matching non-error response with `result.thread.id` emits the binding event.
+- Binary frames are not parsed as JSON-RPC observation candidates.
+
+Verification:
+
+- `pnpm test tests/unit/adapters/codex-proxy.test.ts` passed (11 tests).
+- `pnpm test tests/unit/adapters/codex-proxy.test.ts tests/unit/daemon/state-codex-proxy-rebind.test.ts tests/unit/adapters/codex-runtime.test.ts tests/unit/daemon/codex-ingress.test.ts`
+  passed (4 files, 69 tests).
+- `pnpm typecheck` passed.
+
+Risk note:
+
+- The prefilter uses the normal quoted JSON string form, for example
+  `"thread/start"`. A JSON encoder could theoretically emit the same value as
+  `"thread\/start"` by escaping `/`. That would parse to the same method value
+  after `JSON.parse`, but the cheap prefilter would not see the current needle.
+  This is treated as a mostly theoretical exception for the MVP because normal
+  JavaScript `JSON.stringify` output and the observed Codex frames use
+  `"thread/start"` rather than escaped slashes. If a future Codex encoder or
+  third-party client emits escaped slashes, add escaped-slash needles as a small
+  follow-up; the proxy topology and daemon rebind policy do not need to change.
+- The planned 4KB cutoff was intentionally not included. While a binding is
+  pending, unrelated upstream frames are still parsed. The binding window is
+  expected to be short, so this remains a performance follow-up rather than a
+  correctness risk.
 
 ## 관련 문서
 

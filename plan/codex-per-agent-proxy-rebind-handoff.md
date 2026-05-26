@@ -1,6 +1,6 @@
 # Codex Per-Agent Proxy Rebind Handoff
 
-Status: Implemented and manually smoke-verified
+Status: Implemented, manually smoke-verified, and lazy-parse optimized
 Owner: Claude implementation, Codex review/documentation follow-up
 Date: 2026-05-26
 
@@ -123,8 +123,29 @@ Manual smoke:
   `/fork`, `/resume`, `/resume -> /clear`, `/resume -> /new`,
   `/resume -> /fork`.
 
+Lazy parse follow-up:
+
+- Commit `edaf02b` (`perf: lazily parse Codex proxy binding frames`) completed
+  the optional lazy parse optimization.
+- Client -> server frames are parsed only if the text contains one of the
+  binding method needles: `"thread/start"`, `"thread/resume"`, or
+  `"thread/fork"`.
+- Server -> client frames are not parsed while no binding request is pending.
+- Relay transparency, binding emission semantics, raw-frame logging policy,
+  1:1 proxy/app-server topology, and daemon rebind policy are unchanged.
+
+Verification:
+
+- `pnpm test tests/unit/adapters/codex-proxy.test.ts` passed: 11 tests.
+- `pnpm test tests/unit/adapters/codex-proxy.test.ts tests/unit/daemon/state-codex-proxy-rebind.test.ts tests/unit/adapters/codex-runtime.test.ts tests/unit/daemon/codex-ingress.test.ts`
+  passed: 4 files / 69 tests.
+- `pnpm typecheck` passed.
+
 Remaining:
 
-- Optional follow-up: lazy parse optimization. Current production proxy is
-  transparent and does not raw-log frames, but it parses JSON frames broadly
-  rather than using the cost-model prefilter.
+- Mostly theoretical lazy-parse edge case: an unusual JSON encoder could emit
+  `"thread\/start"` instead of the normal `"thread/start"` form. Observed Codex
+  frames and normal `JSON.stringify` output use the unescaped slash form, so this
+  is not an MVP blocker. If it appears in the future, add escaped-slash needles.
+- The 4KB cutoff from the cost-model discussion remains a separate optional
+  performance follow-up.

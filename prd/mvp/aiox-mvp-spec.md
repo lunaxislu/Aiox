@@ -217,6 +217,10 @@ aiox doctor
 - Codex MVP runtime은 `CodexAgentRuntime` 단위로 본다. 현재 구현 방향은 **Codex agent 1개당 Codex app-server 1개**를 유지하고, 그 앞에 **Codex agent 1개당 transparent proxy 1개**를 둔다. 각 app-server는 `codex app-server --listen ws://127.0.0.1:0`로 OS 자동 포트를 할당받고, 각 Codex TUI는 자기 proxy endpoint로 `codex --remote` 연결한다. Proxy는 해당 per-agent app-server로 frame을 그대로 relay한다.
 - Codex app-server endpoint는 agent identity boundary다. Proxy는 shared 1:N app-server를 만들기 위한 routing layer가 아니라, 같은 per-agent boundary 안에서 TUI-originated `thread/start`, `thread/resume`, `thread/fork` response를 관찰하는 focus/rebind channel이다.
 - Codex `activeThreadId` is live binding state, not durable agent identity. Target injection must prefer the currently bound thread discovered from same-connection `thread/start|resume|fork` responses observed by the per-agent proxy. `thread/loaded/list` is diagnostics/cache context only and must not be authoritative when same-connection binding exists. If no live binding exists, durable deliveries remain `queued` until a later push or Codex MCP pull/read path can surface them.
+- Codex proxy observation is lazy for MVP performance: non-binding client
+  frames and upstream frames with no pending binding request are not parsed. The
+  proxy still relays all frames unchanged, binding-emission semantics are
+  unchanged, and production must not raw-log frame payloads.
 - agent CLI process(Layer 1)는 사용자 터미널의 foreground다. daemon의 child가 아니므로 daemon이 직접 kill하지 않는다.
 - adapter는 daemon 안의 client/injector(Layer 3) + Layer 2 외부 process의 협업 단위로 본다.
 
@@ -689,6 +693,10 @@ transparent proxy:
 - `thread/loaded/list` is app-server memory/cache state, not an active TUI list.
 - Per-agent proxy same-connection `thread/start|resume|fork` responses are the
   active-thread authority for TUI-visible Codex delivery.
+- The proxy uses lazy JSON observation rather than broad parsing: non-binding
+  client frames and upstream frames with no pending binding are passed through
+  without `JSON.parse`. Relay transparency and binding event semantics are
+  unchanged. Raw frame logging remains out of scope for production.
 - Step 13 must add the missing Codex source path into daemon. Until that exists,
   Codex can receive injected turns from daemon but cannot authoritatively send
   or reply back into the aiox router.
