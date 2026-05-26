@@ -203,7 +203,7 @@ describe("daemon disconnectClaudeChannel", () => {
     db.close();
   });
 
-  it("removes runtime from registry after disconnect", async () => {
+  it("removes runtime from registry and marks agent disconnected after disconnect", async () => {
     const claudeChannelRuntimes = new Map();
     const state = createDaemonState({
       db,
@@ -230,6 +230,31 @@ describe("daemon disconnectClaudeChannel", () => {
 
     expect(response).toMatchObject({ ok: true, disconnected: true });
     expect(claudeChannelRuntimes.has("alpha")).toBe(false);
+    expect((await client.status()).agents).toMatchObject([
+      { name: "alpha", kind: "claude", status: "disconnected" },
+    ]);
+  });
+
+  it("marks attached Claude agent disconnected even when channel never registered", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-05-22T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+
+    const response = await client.disconnectClaudeChannel({ agentName: "alpha" });
+
+    expect(response).toMatchObject({ ok: true, disconnected: true });
+    expect((await client.status()).agents).toMatchObject([
+      { name: "alpha", kind: "claude", status: "disconnected" },
+    ]);
   });
 
   it("disconnect when not registered returns disconnected: false", async () => {

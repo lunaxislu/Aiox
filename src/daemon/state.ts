@@ -65,6 +65,8 @@ export interface DisconnectClaudeChannelRequest {
 export interface DisconnectClaudeChannelResult {
   ok: true;
   agentName: string;
+  // True when this call removed a registered channel runtime or transitioned
+  // an attached Claude agent to disconnected.
   disconnected: boolean;
 }
 
@@ -913,7 +915,19 @@ export function createDaemonState(
     disconnectClaudeChannel(request) {
       const had = claudeChannelRuntimes.has(request.agentName);
       claudeChannelRuntimes.delete(request.agentName);
-      return { ok: true, agentName: request.agentName, disconnected: had };
+      claudePendingTokens.delete(request.agentName);
+
+      const agent = agents.findByName(request.agentName);
+      const wasConnected = agent?.status === "connected";
+      if (wasConnected) {
+        agents.markByNameDisconnected(request.agentName, options.now());
+      }
+
+      return {
+        ok: true,
+        agentName: request.agentName,
+        disconnected: had || wasConnected,
+      };
     },
 
     async receiveClaudeChannelMessage(request) {
