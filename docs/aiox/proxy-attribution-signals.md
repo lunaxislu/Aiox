@@ -8,8 +8,13 @@
 > `sessionStartSource` enum은 여전히 active다. Per-agent app-server endpoint가
 > agent identity boundary이고, 이 문서는 그 boundary 안에서 thread id가 바뀌는
 > 신호를 설명한다.
+>
+> **UPDATE (2026-05-26)**: `history/41-codex-loaded-thread-binding-analysis.history.md`
+> 에서 internal `/resume`도 same-connection `thread/resume` response로 binding
+> 가능함이 확인됐다. Production 방향은 per-agent app-server 앞에 per-agent
+> transparent proxy를 두는 것이다.
 
-Codex per-agent in-band WebSocket proxy가 TUI의 `/clear`·`/new`·`/fork`를
+Codex per-agent in-band WebSocket proxy가 TUI의 `/clear`·`/new`·`/fork`·`/resume`을
 **어떤 신호로 구분하는가**에 대한 학습 기록.
 
 비용 모델 (왜 99% 트래픽은 parse 안 해도 되는가)은 `proxy-cost-model.md`
@@ -52,6 +57,7 @@ line 651·674·696·702에 이미 있지만, 흩어진 raw observation이라 정
 | `/clear` | `thread/start` | `sessionStartSource: "clear"` | sessionStartSource 값 |
 | `/new` | `thread/start` | `sessionStartSource: null` | sessionStartSource 값 |
 | `/fork` | `thread/fork` | `threadId: <원본 thread id>` | method 자체 + threadId |
+| `/resume` | `thread/resume` | `threadId: <resume 대상 thread id>` | method 자체 + threadId |
 
 핵심: `/clear`와 `/new`는 **같은 method**라 method 이름만으로는 구분 안 됨.
 **`sessionStartSource` 파라미터 값**이 분기 기준. `/fork`는 method가 아예
@@ -65,10 +71,11 @@ line 651·674·696·702에 이미 있지만, 흩어진 raw observation이라 정
 | `/new` | `result.thread.id` = 새 thread id, `forkedFromId: null` |
 | `/fork` (성공) | `result.thread.id` = 새 thread id, `forkedFromId: <원본 thread id>` |
 | `/fork` (빈 thread) | `error: -32600 "no rollout found for thread id <id>"` |
+| `/resume` | `result.thread.id` = resumed thread id |
 
 ### 세 가지 신호의 역할
 
-- **method** — 1차 분류 (`thread/start` vs `thread/fork`)
+- **method** — 1차 분류 (`thread/start` vs `thread/fork` vs `thread/resume`)
 - **`sessionStartSource`** — `/clear` vs `/new` 분기 (`thread/start` 안에서)
 - **`forkedFromId`** — fork 안전망 (응답에서 원본 thread id 확인)
 
@@ -83,6 +90,7 @@ TUI 액션      method         sessionStartSource    forkedFromId (응답)
 /new         thread/start    null                  null
 /fork (OK)   thread/fork     (없음)                <원본 thread id>
 /fork (ERR)  thread/fork     (없음)                응답에 error
+/resume      thread/resume   (없음)                null 또는 기존 값
 ```
 
 ### 4-2. `/clear` 시퀀스

@@ -4,8 +4,13 @@
 > `history/31-step-10-per-agent-app-server-runtime.history.md`에 따라
 > **Codex agent 1개당 app-server 1개, port는 OS 자동 할당**이다.
 >
-> 이 문서의 lazy observation 제안은 proxy design을 다시 선택할 때의
-> historical/fallback 학습 기록으로 보존한다.
+> 당시 이 문서의 lazy observation 제안은 proxy design을 다시 선택할 때의
+> historical/fallback 학습 기록으로 보존했다.
+>
+> **UPDATE (2026-05-26)**: internal `/resume` wrong-thread delivery로 인해
+> proxy design이 per-agent app-server 앞의 production observation layer로
+> 승격됐다. Cost model의 핵심은 그대로다: proxy는 transparent relay이고,
+> `thread/start`, `thread/resume`, `thread/fork` binding window만 parse한다.
 
 Codex per-agent in-band WebSocket proxy의 비용 모델과, "왜 모든 frame을 parse하지 않아도 되는가"에 대한 학습 기록.
 
@@ -44,7 +49,7 @@ proxy** 구조를 채택했다. 권위 결정은 `history/27-step-10-codex-clear
 | 역할 | 빈도 | 비용 부담 가치 |
 |---|---|---|
 | **Relay obligation** — 모든 frame을 양방향으로 그대로 전달 | 항상 | 필수 (TUI ↔ app-server 연결 유지) |
-| **Attribution observation** — `thread/start`·`thread/fork` request/response correlation 관찰 | `/clear`·`/new`·`/fork` 발생 시점만 (수십 ms window) | 매우 짧은 순간만 의미 있음 |
+| **Attribution observation** — `thread/start`·`thread/resume`·`thread/fork` request/response correlation 관찰 | `/clear`·`/new`·`/resume`·`/fork` 발생 시점만 (수십 ms window) | 매우 짧은 순간만 의미 있음 |
 
 proxy의 본질은 **observation**이지만, 그것을 가능하게 하는 *obligation*이
 relay다. 현재 구현은 obligation 비용 (가만히 send)에는 영향 없지만,

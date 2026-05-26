@@ -8,6 +8,9 @@
   `history/40-step-14-daemon-client-split.history.md`,
   `history/41-codex-loaded-thread-binding-analysis.history.md`,
   `prd/mvp/aiox-mvp-spec.md`에 둔다.
+- 2026-05-26 업데이트: internal `/resume`에서 `thread/loaded/list.at(-1)`
+  휴리스틱이 깨진 것이 확인되어, production 방향은 per-agent transparent proxy의
+  same-connection response 기반 rebind로 갱신됐다.
 
 ## 한 줄 요약
 
@@ -83,9 +86,9 @@ daemon이 Claude 메시지를 D1에 넣음
 
 이게 "completed인데 Codex TUI에는 안 보임" 현상의 핵심이다.
 
-## 현재 MVP 정책
+## 이전 MVP 정책과 깨진 지점
 
-현재 MVP 정책은 다음과 같다.
+이전 MVP 정책은 다음과 같았다.
 
 ```text
 Claude -> Codex 전달 직전:
@@ -100,7 +103,7 @@ Claude -> Codex 전달 직전:
 loadedThreadIds.at(-1)
 ```
 
-이 정책은 현재 관찰된 사용자 흐름과 잘 맞는다.
+이 정책은 `/clear`, `/new`처럼 새 thread를 만드는 사용자 흐름과는 잘 맞았다.
 
 ```text
 T1: 처음 Codex TUI thread
@@ -112,12 +115,42 @@ loaded list = [T1, T2, T3, T4]
 선택        = T4
 ```
 
-사용자가 새 대화방을 만들면 TUI도 보통 그 새 대화방으로 이동한다. 그래서 MVP
-범위에서는 "마지막 loaded thread"가 사용자가 보고 있을 가능성이 가장 높다.
+사용자가 새 대화방을 만들면 TUI도 보통 그 새 대화방으로 이동한다. 그래서 한동안
+"마지막 loaded thread"가 사용자가 보고 있을 가능성이 가장 높다고 봤다.
 
 단, 이것은 Codex app-server가 공식적으로 보장한 규칙은 아니다. 현재 app-server
 protocol에는 "사용자가 지금 보고 있는 thread가 무엇인지"를 직접 알려주는
 `thread/focused` 또는 `thread/active` 같은 RPC가 없다.
+
+2026-05-26 smoke에서 이 휴리스틱은 internal `/resume`에서 깨졌다.
+
+```text
+loaded list = [T1, T2, T3]
+사용자 화면 = T1  (/resume으로 예전 thread를 다시 봄)
+daemon 선택 = T3  (loaded list 마지막)
+```
+
+그래서 app-server는 `turn/start`를 성공 처리하지만, 사용자는 현재 TUI에서
+메시지를 보지 못한다.
+
+## 갱신된 방향
+
+갱신된 방향은 `thread/loaded/list`를 active TUI authority로 쓰지 않는 것이다.
+대신 Codex TUI와 app-server 사이의 same-connection response를 관찰한다.
+
+```text
+Codex TUI -> proxy -> app-server
+              │
+              └─ thread/start|resume|fork response의 result.thread.id 관찰
+```
+
+이제 target 선택의 우선순위는 다음과 같다.
+
+```text
+1. 같은 TUI connection에서 확인된 최신 binding response
+2. binding이 없으면 queued 또는 명시적 uncertainty
+3. thread/loaded/list는 diagnostics/cache context로만 사용
+```
 
 ## 왜 cache 기반 선택이 깨졌나
 
@@ -150,5 +183,7 @@ non-cache 선택 = D1 또는 T1
   이동할 수 있다.
 - `/clear`, `/new`, `/fork`는 새 thread를 만들거나 새 thread로 이동할 수 있다.
 - `thread/loaded/list`는 loaded thread 목록만 알려준다.
-- app-server가 focused thread를 직접 알려주지 않으므로, 현재 aiox는 Claude ->
-  Codex 전달 시 마지막 loaded thread를 선택한다.
+- app-server가 focused thread를 직접 알려주지 않으므로, aiox는 per-agent
+  transparent proxy로 TUI same-connection response를 관찰한다.
+- `thread/loaded/list.at(-1)`는 `/resume`에서 깨졌기 때문에 active target
+  authority가 아니다.

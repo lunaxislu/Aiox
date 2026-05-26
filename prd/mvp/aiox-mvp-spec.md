@@ -191,8 +191,9 @@ aiox doctor
 │  ┌────────────────────┐   ┌─────────────────────────────┐  │
 │  │ CodexAgentRuntime  │   │ MCP channel server          │  │
 │  │ per-agent          │   │ (Claude의 자식 process;     │  │
-│  │ codex app-server   │   │  HTTP ingress 노출)         │  │
-│  │ port :0            │   │                             │  │
+│  │ proxy +            │   │  HTTP ingress 노출)         │  │
+│  │ codex app-server   │   │                             │  │
+│  │ ports :0           │   │                             │  │
 │  └─────────┬──────────┘   └──────────┬──────────────────┘  │
 └────────────┼─────────────────────────┼─────────────────────┘
              │ WS                       │ HTTP /send
@@ -213,9 +214,9 @@ aiox doctor
 - daemon은 SQLite WAL, router, local API/MCP, adapter client/injector를 소유한다. router는 daemon process 안에 in-process로 산다.
 - Codex runtime과 Claude MCP channel server는 **adapter-managed 외부 process/endpoint**다. daemon은 이를 spawn/supervise하거나 외부에서 띄운 것에 connect한다. **daemon process 안에서 라이브러리처럼 내장하지 않는다.**
 - Claude channel server는 Claude CLI가 stdio로 자식 process로 load한 MCP server이고, 그 server가 HTTP ingress(`/send`)를 노출해 daemon이 push한다.
-- Codex MVP runtime은 `CodexAgentRuntime` 단위로 본다. 현재 Step 10 구현 방향은 **Codex agent 1개당 Codex app-server 1개**다. 각 app-server는 `codex app-server --listen ws://127.0.0.1:0`로 OS 자동 포트를 할당받고, 각 Codex TUI는 자기 app-server endpoint로 `codex --remote` 연결한다.
-- Codex app-server endpoint는 agent identity boundary다. `/clear`, `/new`, `/fork`는 identity attribution 문제가 아니라 같은 per-agent app-server 안에서 active thread id가 바뀌는 문제로 취급한다.
-- Codex `activeThreadId` is live binding state, not durable agent identity. Target injection must prefer the currently loaded thread discovered from the per-agent app-server at delivery time. If no live loaded thread exists, durable deliveries remain `queued` until a later push or Codex MCP pull/read path can surface them.
+- Codex MVP runtime은 `CodexAgentRuntime` 단위로 본다. 현재 구현 방향은 **Codex agent 1개당 Codex app-server 1개**를 유지하고, 그 앞에 **Codex agent 1개당 transparent proxy 1개**를 둔다. 각 app-server는 `codex app-server --listen ws://127.0.0.1:0`로 OS 자동 포트를 할당받고, 각 Codex TUI는 자기 proxy endpoint로 `codex --remote` 연결한다. Proxy는 해당 per-agent app-server로 frame을 그대로 relay한다.
+- Codex app-server endpoint는 agent identity boundary다. Proxy는 shared 1:N app-server를 만들기 위한 routing layer가 아니라, 같은 per-agent boundary 안에서 TUI-originated `thread/start`, `thread/resume`, `thread/fork` response를 관찰하는 focus/rebind channel이다.
+- Codex `activeThreadId` is live binding state, not durable agent identity. Target injection must prefer the currently bound thread discovered from same-connection `thread/start|resume|fork` responses observed by the per-agent proxy. `thread/loaded/list` is diagnostics/cache context only and must not be authoritative when same-connection binding exists. If no live binding exists, durable deliveries remain `queued` until a later push or Codex MCP pull/read path can surface them.
 - agent CLI process(Layer 1)는 사용자 터미널의 foreground다. daemon의 child가 아니므로 daemon이 직접 kill하지 않는다.
 - adapter는 daemon 안의 client/injector(Layer 3) + Layer 2 외부 process의 협업 단위로 본다.
 
@@ -663,26 +664,31 @@ MVP adapter skeleton should preserve this boundary:
 ```text
 CodexAgentRuntime
 per-agent codex app-server endpoint
+per-agent transparent proxy endpoint
 OS-assigned localhost port (:0)
-thread/start and thread/fork active-thread tracking
+thread/start, thread/resume, and thread/fork active-thread tracking
 turn/start injection to active thread id
 ```
 
 The pre-validation proved thread-targeted `turn/start` works.
 
-Step 10 production direction is per-agent app-server first:
+Step 10/14 production direction is per-agent app-server plus per-agent
+transparent proxy:
 
 - Each Codex agent gets its own local Codex app-server endpoint.
 - Each app-server is launched with `--listen ws://127.0.0.1:0`; the OS assigns
   an available port atomically, avoiding developer port collisions.
 - Aiox parses the assigned endpoint from the app-server output banner, waits
-  for `readyz`, and launches the TUI with
-  `codex --remote <assigned-endpoint>`. Current Codex CLI verification observed
-  the banner on stderr, so implementation drains both stdout and stderr and does
-  not rely on stdout as the endpoint source.
-- MVP does not require users to choose or remember Codex app-server ports.
+  for `readyz`, then starts a per-agent transparent proxy in front of that
+  app-server and launches the TUI with `codex --remote <proxy-endpoint>`.
+  Current Codex CLI verification observed the app-server banner on stderr, so
+  implementation drains both stdout and stderr and does not rely on stdout as
+  the endpoint source.
+- MVP does not require users to choose or remember Codex app-server or proxy
+  ports.
 - `thread/loaded/list` is app-server memory/cache state, not an active TUI list.
-- In-band proxy remains a validated spike/fallback, not the MVP production path.
+- Per-agent proxy same-connection `thread/start|resume|fork` responses are the
+  active-thread authority for TUI-visible Codex delivery.
 - Step 13 must add the missing Codex source path into daemon. Until that exists,
   Codex can receive injected turns from daemon but cannot authoritatively send
   or reply back into the aiox router.
@@ -749,11 +755,11 @@ implementation, but adapter behavior and UX must reference them.
 2. Codex thread id to agent name mapping
 
    `thread/loaded/list` exposes loaded Codex thread UUIDs, but it is app-server
-   memory/cache state rather than an active TUI list. MVP Step 10 maps Codex
-   thread ids to human-friendly `aiox` names through a per-agent app-server
-   endpoint: endpoint = agent identity boundary. Active thread id is then tracked
-   within that per-agent app-server. In-band proxy remains a validated fallback,
-   not the production path.
+   memory/cache state rather than an active TUI list. MVP maps Codex thread ids
+   to human-friendly `aiox` names through a per-agent app-server endpoint:
+   endpoint = agent identity boundary. Active thread id is tracked by the
+   per-agent transparent proxy observing same-connection `thread/start`,
+   `thread/resume`, and `thread/fork` responses.
 
 3. Stale agent transition policy
 

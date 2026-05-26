@@ -57,10 +57,11 @@
 
 - `pair-attach-kind-mismatch.md` — Step 2 cleanup 중 발견한 caller-trusted kind 버그 (관련 권위: `history/16-step-2-sqlite-repository-cleanup.history.md` 4-1).
 - `step-6-cli-decisions-walkthrough.md` — Step 6 CLI invocation 결정 walkthrough (관련 권위: `history/20-step-6-phase-a-decisions.history.md`).
-- `proxy-cost-model.md` — Codex in-band proxy의 cost model + lazy observation 제안. 현재 Step 10 production은 per-agent app-server라 historical/fallback 학습 기록이다.
-- `proxy-attribution-signals.md` — Codex `/clear`·`/new`·`/fork` 신호 매핑 (method + sessionStartSource + forkedFromId). Proxy production 여부와 별개로 active thread id 갱신 이해에 유효하다.
-- `proxy-vs-app-server-tradeoff.md` — Step 10 Codex rebind 방법 3가지 비교 학습 기록: per-agent app-server(채택), per-agent proxy port(fallback), one proxy listener(multi-agent routing 후보/비추천). 현재 권위 결정은 `history/31-step-10-per-agent-app-server-runtime.history.md`.
+- `proxy-cost-model.md` — Codex in-band proxy의 cost model + lazy observation 제안. 2026-05-26 이후 per-agent transparent proxy가 production 방향으로 승격됐다.
+- `proxy-attribution-signals.md` — Codex `/clear`·`/new`·`/fork`·`/resume` 신호 매핑 (method + sessionStartSource + forkedFromId + result.thread.id).
+- `proxy-vs-app-server-tradeoff.md` — Step 10 Codex rebind 방법 비교 학습 기록. 2026-05-26 이후 현재 방향은 per-agent app-server 유지 + per-agent transparent proxy 추가다.
+- `per-agent-transparent-proxy-decision.md` — internal `/resume` wrong-thread delivery 이후 결정된 1:1 app-server + 1:1 transparent proxy 구조 설명. 권위: `history/41-codex-loaded-thread-binding-analysis.history.md`.
 - `agent-runtime-container-model.md` — Docker Engine/container 비유를 aiox agent runtime product model로 번역한 학습 기록. 현재 Step 10 권위 결정: `history/31-step-10-per-agent-app-server-runtime.history.md`.
 - `phase-a-design-decisions.md` — Step 10 Phase A에서 결정된 Codex 앱 서버 실행, TUI 프로세스 소유권, 웹소켓 인젝터 통신 설계 (관련 권위: `history/32-step-10-per-agent-app-server-resume-spike.history.md` 및 후속 세션).
 - `mcp-scope-and-daemon-namespace.md` — Step 13에서 정리한 aiox-level MCP vs agent-level MCP, user-local daemon namespace, launch-scoped runtime MCP 설명. 현재 권위 결정: `history/38-step-13-mcp-scope-decision.history.md`.
-- `codex-thread-focus-and-loaded-list.md` — Step 14에서 정리한 Codex `threadId`/message/TUI focus/`thread/loaded/list` 차이와 마지막 loaded thread 선택 정책 설명. 현재 권위 분석: `history/41-codex-loaded-thread-binding-analysis.history.md`.
+- `codex-thread-focus-and-loaded-list.md` — Step 14에서 정리한 Codex `threadId`/message/TUI focus/`thread/loaded/list` 차이와 why `loadedThreadIds.at(-1)`가 `/resume`에서 깨졌는지 설명. 현재 권위 분석: `history/41-codex-loaded-thread-binding-analysis.history.md`.

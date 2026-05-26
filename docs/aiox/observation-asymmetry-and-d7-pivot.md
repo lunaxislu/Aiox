@@ -2,6 +2,12 @@
 
 이 문서는 Step 10 Phase B 구현 중 발견된 **D7 원칙 위반(First Blocker)**과 이를 해결하기 위한 아키텍처 전환(Pivot)에 대해 설명한다.
 
+> **UPDATE (2026-05-26)**: 이 문서의 "Post-MVP revival path"였던
+> transparent proxy가 internal `/resume` wrong-thread delivery 때문에 MVP
+> production 방향으로 승격됐다. 최신 권위는
+> `history/41-codex-loaded-thread-binding-analysis.history.md`와
+> `prd/mvp/aiox-mvp-spec.md`를 따른다.
+
 ## 1. 현상: 관측의 비대칭 (Observation Asymmetry)
 
 Codex App Server 아키텍처에서 두 개의 독립적인 클라이언트(TUI와 Daemon)가 연결될 때, 다음과 같은 관측 불일치가 발생한다.
@@ -60,7 +66,10 @@ TUI는 그대로 둔다. Codex CLI는 aiox 통제 밖이며, slash-command를 hi
 1.  **TUI-originated slash-command는 binding을 변경하지 않음:** `/clear`, `/new`, `/fork`는 사용자가 계속 실행할 수 있지만, daemon이 같은 client의 returned id를 볼 수 없으므로 MVP에서는 active binding을 갱신하지 않는다.
 2.  **aiox-owned operation만 replacement 허용:** programmatic `thread/start`와 이후 `sendMessage` / `turn/start`처럼 daemon이 request와 response를 모두 소유하는 작업만 replacement 근거로 사용한다.
 3.  **Daemon RPC 명칭 정합:** Phase A에 박힌 RPC는 `rollbackAgentAttach`, `detachAgent`, `notifyTuiExited`다. `rebindAgent`는 결정된 명칭이 아니므로 사용하지 않는다.
-4.  **Post-MVP revival path:** TUI-originated replacement가 필요해지면 `history/27` / `history/32`의 transparent proxy 근거를 재도입하거나, future Codex authoritative callback/read API를 사용한다.
+4.  **2026-05-26 follow-up:** TUI-originated replacement가 실제로 필요해졌고,
+    `history/41`에서 per-agent transparent proxy를 production 방향으로
+    재도입했다. future Codex authoritative callback/read API가 생기면 proxy를
+    대체할 수 있다.
 
 ## 5. 기대 효과
 *   **daemon-owned authoritative ops에 대해 D7 준수:** daemon이 같은 operation의 성공 응답을 직접 받은 경우에만 binding을 교체한다.

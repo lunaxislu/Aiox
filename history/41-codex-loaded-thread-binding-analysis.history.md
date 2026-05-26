@@ -302,6 +302,426 @@ Effect:
 
 Verification: targeted daemon/core tests passed, `pnpm test` passed (46 files, 338 tests), `pnpm typecheck` passed, and `pnpm build` passed.
 
+## Critical issue: internal Codex TUI `/resume` breaks latest-loaded heuristic
+
+2026-05-26 manual smoke by user confirmed the previously listed "internal
+resume" risk as a real failure:
+
+- `claude -> codex -> claude` succeeded.
+- In the same Codex TUI, `/clear` and `/new` were executed.
+- After that, the existing Claude session could still exchange messages with
+  the visible Codex TUI successfully.
+- After an internal Codex TUI `/resume`, `claude -> codex` did not appear in
+  the visible resumed Codex thread. Instead, another loaded thread received the
+  injected turn and produced the reply back to Claude.
+- After `/resume` followed by `/clear`, `claude -> visible codex -> claude`
+  worked again.
+
+Interpretation:
+
+- This matches the Layer 1 observation gap described above. aiox still cannot
+  directly observe "which Codex thread the foreground TUI is currently showing".
+- The current `latest_loaded_thread` policy works for `/clear` and `/new`
+  because those actions create a new thread that appears at the end of
+  `thread/loaded/list`.
+- Internal `/resume` can move the TUI focus to an older already-loaded thread.
+  In that case, `thread/loaded/list.at(-1)` can remain a different, newer
+  loaded thread, so daemon injection succeeds against the wrong thread.
+- The post-resume `/clear` success is consistent with the same model: `/clear`
+  creates a fresh visible thread, making the visible target latest again.
+
+Risk:
+
+- This is not a delivery transport failure; `turn/start` can return success and
+  the delivery can be marked completed while the user-visible TUI is not the
+  target. That is a product contract risk because status can look successful
+  while the visible workflow is wrong.
+- The issue is deterministic for any action that changes TUI focus to a
+  non-latest loaded thread, including internal resume and potentially some
+  `/fork` flows.
+
+Immediate decision surface:
+
+1. **Block/unsupported path for MVP**
+   - Treat internal Codex TUI `/resume` as unsupported for live relay. Users
+     should restart via `aiox codex --name <name> --resume <thread-id>` when
+     they need a resumed thread to be relay target.
+   - Trade-off: lowest implementation risk, but weaker UX and requires a clear
+     warning/status story.
+   - Reversible: yes. A future focus observation channel can replace the
+     unsupported-path warning without changing durable schema.
+   - Deferrable: yes, but only if MVP docs/status make the limitation explicit.
+
+2. **Stop claiming success when target selection is ambiguous**
+   - Keep latest-loaded injection for `/clear` and `/new`, but detect suspicious
+     multi-loaded states after known rebind patterns and keep delivery queued or
+     mark it with an explicit uncertainty reason instead of `completed`.
+   - Trade-off: avoids false-positive success, but still cannot deliver to the
+     resumed visible thread without an authoritative focus signal.
+   - Reversible: yes. The uncertainty gate can be removed once a better target
+     signal exists.
+   - Deferrable: partially. Deferring leaves the current false-completed risk.
+
+3. **Find or build a TUI focus observation channel**
+   - Investigate Codex app-server protocol/source for an authoritative active
+     thread signal, or introduce an aiox-controlled proxy/channel that can
+     observe TUI-originated `thread/resume`, `thread/start`, and `thread/fork`
+     responses.
+   - Trade-off: highest correctness, but larger scope and may require topology
+     changes if Codex exposes no RPC.
+   - Reversible: medium. A proxy/channel boundary can remain an adapter detail,
+     but it changes runtime architecture more than an MVP warning.
+   - Deferrable: yes for MVP only if the unsupported/uncertain path is made
+     explicit.
+
+Recommendation: choose option 1 as the immediate MVP containment and run option
+3 as the next focused spike before any claim of full resume-safe relay. Option
+2 is useful only if false-positive `completed` status becomes unacceptable
+before option 3 lands; it does not solve delivery correctness by itself.
+
+Follow-up spike result, 2026-05-26:
+
+The TUI same-connection observation spike confirmed that internal Codex TUI
+navigation emits authoritative JSON-RPC responses on the same WebSocket
+connection used by that TUI. These responses are stronger binding signals than
+`thread/loaded/list` ordering.
+
+Why this spike was necessary:
+
+- The user-observed failure showed that `turn/start` could succeed against a
+  non-visible Codex thread after internal TUI `/resume`. That means transport
+  success is not enough; aiox must know which thread the foreground TUI is
+  actually showing.
+- The previous `thread/loaded/list.at(-1)` rule was only a heuristic. It happened
+  to work for `/clear` and `/new` because they create fresh threads, but it had
+  no proof for focus-moving commands such as `/resume`.
+- The spike therefore checked the values returned by TUI-originated
+  `thread/start`, `thread/resume`, and `thread/fork` calls on the same WebSocket
+  connection. If those responses carried the visible thread id, they could
+  replace the heuristic as the binding authority.
+- The important values were the JSON-RPC `id` for request/response correlation,
+  the request `method`, `params.threadId` for source/resume intent,
+  `params.sessionStartSource` for distinguishing `/clear` from `/new`, and
+  `result.thread.id`/`result.thread.forkedFromId` for the actual target chosen by
+  Codex.
+- The goal was not to rely on specific example thread ids. The goal was to prove
+  the invariant: on the same TUI connection, a successful
+  `thread/start|resume|fork` response identifies the thread that should receive
+  later aiox-injected `turn/start` messages.
+
+Observed matrix:
+
+| TUI action | Observed RPC response | Binding result |
+| --- | --- | --- |
+| Initial attach | `thread/start` | response `thread.id` is current TUI thread |
+| `/clear` | `thread/start`, `sessionStartSource: "clear"` | response `thread.id` is current TUI thread |
+| `/new` | `thread/start`, `sessionStartSource: null` | response `thread.id` is current TUI thread |
+| `/fork` | `thread/fork` | response `thread.id` is fork target; `forkedFromId` is source |
+| `/resume` | `thread/resume` | response `thread.id` is resumed current TUI thread |
+| `/resume -> /clear` | `thread/resume` then `thread/start` | clear `thread/start` supersedes resumed thread |
+| `/resume -> /new` | `thread/resume` then `thread/start` | new `thread/start` supersedes resumed thread |
+| `/resume -> /fork` | `thread/resume` then `thread/fork` | fork `thread.id` supersedes resumed source |
+
+Concrete observed examples:
+
+- `/resume` selected `019e5fe2-114a-7430-b526-5f70782e6d43`; the same
+  connection returned a `thread/resume` binding candidate for that id.
+- Immediate `/fork` from that resumed thread sent `thread/fork` with source
+  `019e5fe2-114a-7430-b526-5f70782e6d43`; the response returned new thread
+  `019e62f5-1a5c-73d1-869c-ec3b119947f5`, which becomes the new binding.
+- `/resume -> /clear` and `/resume -> /new` produced the same overwrite model:
+  the later `thread/start` response becomes the active binding.
+
+Observed RPC shapes relevant to implementation:
+
+`/clear`:
+
+```json
+{
+  "request": {
+    "id": 39,
+    "method": "thread/start",
+    "params": {
+      "sessionStartSource": "clear"
+    }
+  },
+  "response": {
+    "id": 39,
+    "result": {
+      "thread": {
+        "id": "019e62f2-ee25-7db3-a110-47fad826f75d"
+      }
+    }
+  }
+}
+```
+
+`/new`:
+
+```json
+{
+  "request": {
+    "id": 60,
+    "method": "thread/start",
+    "params": {
+      "sessionStartSource": null
+    }
+  },
+  "response": {
+    "id": 60,
+    "result": {
+      "thread": {
+        "id": "019e62f3-bc11-7401-9572-0fd02dc59070"
+      }
+    }
+  }
+}
+```
+
+`/fork`:
+
+```json
+{
+  "request": {
+    "id": 20,
+    "method": "thread/fork",
+    "params": {
+      "threadId": "019e62f0-0e4c-7fe3-9ff3-d3f722d55798"
+    }
+  },
+  "response": {
+    "id": 20,
+    "result": {
+      "thread": {
+        "id": "019e62f1-221e-7fd2-b7ee-1e346224a2d7",
+        "forkedFromId": "019e62f0-0e4c-7fe3-9ff3-d3f722d55798"
+      }
+    }
+  }
+}
+```
+
+`/resume`:
+
+```json
+{
+  "request": {
+    "id": 69,
+    "method": "thread/resume",
+    "params": {
+      "threadId": "019e5fe2-114a-7430-b526-5f70782e6d43"
+    }
+  },
+  "response": {
+    "id": 69,
+    "result": {
+      "thread": {
+        "id": "019e5fe2-114a-7430-b526-5f70782e6d43",
+        "forkedFromId": null
+      }
+    }
+  }
+}
+```
+
+`/resume -> /fork`:
+
+```json
+[
+  {
+    "request": {
+      "id": 69,
+      "method": "thread/resume",
+      "params": {
+        "threadId": "019e5fe2-114a-7430-b526-5f70782e6d43"
+      }
+    },
+    "response": {
+      "id": 69,
+      "result": {
+        "thread": {
+          "id": "019e5fe2-114a-7430-b526-5f70782e6d43"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "id": 81,
+      "method": "thread/fork",
+      "params": {
+        "threadId": "019e5fe2-114a-7430-b526-5f70782e6d43"
+      }
+    },
+    "response": {
+      "id": 81,
+      "result": {
+        "thread": {
+          "id": "019e62f5-1a5c-73d1-869c-ec3b119947f5"
+        }
+      }
+    }
+  }
+]
+```
+
+Implementation rule from these shapes:
+
+- Track pending binding requests by JSON-RPC `id` only for same-client requests
+  whose method is `thread/start`, `thread/resume`, or `thread/fork`.
+- On the matching response, if `result.thread.id` is present, rebind that Codex
+  TUI agent to `result.thread.id`.
+- For `thread/fork`, bind to the response `result.thread.id`, not request
+  `params.threadId`; the request id is the source thread and the response id is
+  the visible fork target.
+- A later binding response on the same connection supersedes the previous one.
+
+Decision update:
+
+- Proceed with option 3 for the implementation path: introduce an aiox-owned
+  same-connection observation channel, most likely as a transparent per-agent
+  Codex app-server proxy.
+- Replace `thread/loaded/list.at(-1)` as authoritative target selection with
+  response-based rebind from `thread/start`, `thread/resume`, and `thread/fork`.
+- Keep `thread/loaded/list` as diagnostics/cache context only. It should not be
+  the authority for the visible TUI target when a same-connection binding signal
+  exists.
+
+User decision, 2026-05-26:
+
+Proceed with a **per-agent 1:1 transparent proxy in front of the existing
+per-agent 1:1 Codex app-server**.
+
+This decision does not revive a shared 1:N app-server topology. The runtime
+shape is:
+
+```text
+Codex agent alpha:
+  Codex TUI alpha -> proxy alpha -> app-server alpha
+
+Codex agent beta:
+  Codex TUI beta  -> proxy beta  -> app-server beta
+```
+
+The proxy is added only to observe TUI-originated same-connection
+`thread/start`, `thread/resume`, and `thread/fork` responses. Agent identity
+continues to be bounded by the per-agent runtime/app-server. The proxy must be a
+transparent relay for all frames and must not transform Codex protocol messages.
+
+Trade-off:
+
+- Benefit: fixes the internal `/resume` wrong-thread delivery class by replacing
+  `thread/loaded/list.at(-1)` with same-connection response authority.
+- Benefit: preserves the earlier per-agent app-server isolation decision; no
+  shared app-server attribution or JSON-RPC multiplexing is introduced.
+- Cost: each Codex runtime gains one local proxy listener/process/module and the
+  associated lifecycle, port, shutdown, and health handling.
+- Cost: the adapter now depends on the observed Codex JSON-RPC response shape
+  for `thread/start`, `thread/resume`, and `thread/fork`; regression tests must
+  lock this observation.
+
+Critical constraints:
+
+- Proxy must stay transparent: relay raw frames unchanged, observe only binding
+  windows, and never alter errors or payloads.
+- Proxy must be 1:1 with the Codex agent/TUI path. Do not collapse multiple
+  agents into one shared proxy upstream or shared app-server as part of this
+  fix.
+- Production logging must emit only summarized binding events. Full raw frames
+  can contain previews, connector lists, and other sensitive or high-volume data.
+- On error responses or missing `result.thread.id`, do not rebind.
+- For `thread/fork`, bind to response `result.thread.id`, not request
+  `params.threadId`.
+
+Delegation note: the next implementation step should be handed to Claude with
+this document as the authority entry point. The implementation should start from
+tests around proxy binding events and daemon active-thread rebind, not from a
+large topology rewrite.
+
+Implementation result, 2026-05-26:
+
+Claude implemented the per-agent transparent proxy rebind path.
+
+Files added:
+
+- `src/adapters/codex/proxy.ts` — per-agent transparent WebSocket proxy. It
+  relays frames unchanged and observes `thread/start`, `thread/resume`, and
+  `thread/fork` request/response pairs to emit summarized binding events.
+- `tests/unit/adapters/codex-proxy.test.ts` — proxy binding and non-binding
+  cases.
+- `tests/unit/daemon/state-codex-proxy-rebind.test.ts` — daemon active-thread
+  rebind from proxy binding events.
+
+Files updated:
+
+- `src/adapters/codex/runtime.ts` — `CodexAgentRuntime` now owns proxy lifecycle.
+  The TUI-facing `endpoint`/`snapshot().endpoint` is the proxy URL, while
+  `appServerEndpoint` remains the app-server URL. Runtime exposes
+  `onProxyBinding(listener)`.
+- `src/daemon/state.ts` — daemon subscribes to `onProxyBinding`, stores
+  `agent_thread_id_rebound` events with `source: "proxy_binding"`, and resolves
+  Codex reply targets by preferring runtime `activeThreadId` before falling back
+  to latest loaded thread diagnostics.
+- Unit tests were updated for runtime lifecycle, API event source fields, Codex
+  ingress selection policy, and proxy binding fan-out.
+
+Implemented behavior:
+
+- Same-client successful `thread/start`, `thread/resume`, and `thread/fork`
+  responses can rebind the Codex agent active thread.
+- Error responses and responses without `result.thread.id` do not rebind.
+- `/fork` binds to response `result.thread.id`, not request `params.threadId`.
+- A later proxy binding event supersedes earlier binding state.
+- `thread/loaded/list.at(-1)` remains only a fallback when no proxy active
+  binding exists, and its event policy is labeled
+  `latest_loaded_thread_fallback`.
+
+Verification:
+
+- Claude reported `pnpm test` passed (48 files, 357 tests), `pnpm typecheck`
+  clean, and `pnpm build` clean.
+- Codex follow-up targeted verification passed:
+  `pnpm test tests/unit/adapters/codex-proxy.test.ts tests/unit/daemon/state-codex-proxy-rebind.test.ts tests/unit/adapters/codex-runtime.test.ts tests/unit/daemon/codex-ingress.test.ts`
+  (4 files, 66 tests).
+
+Remaining verification:
+
+- Manual smoke must still confirm visible TUI delivery after `/clear`, `/new`,
+  `/fork`, `/resume`, `/resume -> /clear`, `/resume -> /new`, and
+  `/resume -> /fork`.
+- The production proxy currently avoids raw frame logging, but still parses JSON
+  frames broadly. Lazy observation remains an optional performance follow-up, not
+  a correctness blocker.
+
+Manual smoke result, 2026-05-26:
+
+User ran the build-output smoke with:
+
+```bash
+node dist/src/bin/aiox.js daemon start
+node dist/src/bin/aiox.js codex --name codex-smoke
+node dist/src/bin/aiox.js claude --name claude-smoke
+node dist/src/bin/aiox.js connect claude-smoke codex-smoke
+node dist/src/bin/aiox.js connect codex-smoke claude-smoke
+```
+
+Result: all visible-thread relay scenarios passed.
+
+| Scenario | Result |
+| --- | --- |
+| Basic `claude -> codex -> claude` | pass |
+| Codex TUI `/clear`, then Claude -> Codex visible thread | pass |
+| Codex TUI `/new`, then Claude -> Codex visible thread | pass |
+| Codex TUI `/fork`, then Claude -> Codex visible thread | pass |
+| Codex TUI `/resume`, then Claude -> Codex visible thread | pass |
+| Codex TUI `/resume -> /clear`, then Claude -> Codex visible thread | pass |
+| Codex TUI `/resume -> /new`, then Claude -> Codex visible thread | pass |
+| Codex TUI `/resume -> /fork`, then Claude -> Codex visible thread | pass |
+
+Conclusion: the original wrong-thread delivery reported after internal Codex TUI
+`/resume` is fixed in the build-output manual smoke path. The proxy-observed
+same-connection active binding is now sufficient for the exercised MVP flows.
+
 ## 관련 문서
 
 - `history/40-step-14-daemon-client-split.history.md` — Step 14 진행 권위.
@@ -317,8 +737,9 @@ Verification: targeted daemon/core tests passed, `pnpm test` passed (46 files, 3
 ## 한 줄 요약
 
 **Rebind 문제처럼 보이지만 본질은 "TUI focus 관찰 채널 부재 → 휴리스틱 의존
-→ 시나리오마다 깨짐". 현재 fix(`at(-1)`)는 가정 (A)+(B) 위에서 cold·/clear
-는 안정시켰으나 `/fork`·내부 resume은 미검증. 2026-05-25 follow-up에서
-(a) no-resume register-time `thread/start` 생략을 적용해 cold-start orphan
-발생원을 줄였다. 남은 결정/검증 축은 (b) Codex focus RPC 또는 동등 관찰
-채널 발견 여부와 (c) 휴리스틱 유지 범위다.**
+→ 시나리오마다 깨짐". 현재 fix(`at(-1)`)는 cold·/clear를 안정시켰지만 내부
+`/resume`에서 wrong-thread delivery가 확인됐다. 2026-05-26 same-connection
+spike에서 `/clear`, `/new`, `/fork`, `/resume`, `/resume -> /clear`,
+`/resume -> /new`, `/resume -> /fork` 모두 `thread/start|resume|fork` response로
+binding 가능한 것이 확인됐으므로, 구현 방향은 `thread/loaded/list.at(-1)` 권위
+폐기와 TUI same-connection response 기반 rebind다.**

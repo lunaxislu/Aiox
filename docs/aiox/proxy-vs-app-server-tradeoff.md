@@ -4,6 +4,12 @@
 > **Codex agent 1개당 app-server 1개, port는 OS 자동 할당**이다. 권위:
 > `history/31-step-10-per-agent-app-server-runtime.history.md`.
 > 이 문서는 그 결정을 만든 cross-validation 학습 기록이다.
+>
+> **UPDATE (2026-05-26)**: `history/41-codex-loaded-thread-binding-analysis.history.md`
+> 에서 internal Codex TUI `/resume` 후 wrong-thread delivery가 확인되면서,
+> production 방향은 **1:1 app-server를 유지한 채 그 앞에 1:1 transparent
+> proxy를 추가**하는 쪽으로 갱신됐다. 이 업데이트는 shared 1:N app-server로
+> 되돌아가는 결정이 아니다.
 
 aiox Step 10에서 "Codex per-agent in-band WebSocket proxy"를 선택한 뒤,
 사용자 의문 → codex cross-validation → 최종적으로 **per-agent app-server**로
@@ -117,23 +123,26 @@ pivot할 거면 proxy 자체가 불필요.
 
 ## 4. 시각화
 
-### 4-1. Codex rebind 방법 3가지
+### 4-1. Codex rebind 방법
 
-Step 10에서 실제로 비교한 rebind/attribution 방법은 다음 3가지다.
+Step 10에서 실제로 비교한 rebind/attribution 방법은 다음 3가지였고,
+2026-05-26에 A+P가 추가됐다.
 
 | Option | 구조 | Rebind/attribution 기준 | 현재 상태 |
 |---|---|---|---|
-| A. **Per-agent app-server** | agent마다 `codex app-server` 1개 | endpoint 자체가 agent identity. `/clear`·`/new`·`/fork`는 그 endpoint 안의 active thread id 갱신 문제 | **MVP 채택** |
-| B. **Per-agent proxy port + shared app-server** | agent마다 proxy endpoint 1개, app-server는 shared | proxy connection의 same-client `thread/start` / `thread/fork` request-response correlation | validated fallback |
+| A. **Per-agent app-server** | agent마다 `codex app-server` 1개 | endpoint 자체가 agent identity. `/clear`·`/new`·`/fork`는 그 endpoint 안의 active thread id 갱신 문제 | 2026-05-20 채택, 현재 A+P의 base |
+| A+P. **Per-agent app-server + per-agent transparent proxy** | agent마다 `codex app-server` 1개와 그 앞의 proxy 1개 | endpoint는 agent identity, same-connection response는 visible TUI thread authority | **2026-05-26 채택** |
+| B. **Per-agent proxy port + shared app-server** | agent마다 proxy endpoint 1개, app-server는 shared | proxy connection의 same-client `thread/start` / `thread/resume` / `thread/fork` request-response correlation | shared app-server fallback |
 | C. **One proxy listener + multi-agent routing** | proxy listener 1개가 여러 TUI를 받음 | path/query/token으로 agent 식별 + connection-local state. shared upstream이면 JSON-RPC multiplex/demux 필요 | future optimization 또는 비추천 |
 
-현재 MVP는 A를 선택한다. B와 C는 Codex protocol 이해와 fallback 후보로
-남긴다.
+2026-05-20 시점의 MVP는 A를 선택했다. 2026-05-26 이후에는 A를 유지하되,
+TUI same-connection response 관찰을 위해 A 앞에 per-agent transparent proxy를
+추가하는 형태로 갱신됐다.
 
 ### 4-2. 구조 비교
 
 ```
-[A] per-agent app-server (MVP 채택)
+[A] per-agent app-server (2026-05-20 채택, A+P의 base)
 ───────────────────────────────
 TUI alpha ──ws──► codex app-server α (port :0 → :58704)
 TUI beta  ──ws──► codex app-server β (port :0 → :58705)
@@ -143,7 +152,17 @@ TUI gamma ──ws──► codex app-server γ (port :0 → :58706)
                   ↑ endpoint = agent → attribution 자명
 
 
-[B] per-agent proxy port (validated fallback)
+[A+P] per-agent app-server + per-agent transparent proxy (2026-05-26 채택)
+────────────────────────────────────────────────────────────
+TUI alpha ──ws──► proxy α ──ws──► codex app-server α (port :0)
+TUI beta  ──ws──► proxy β ──ws──► codex app-server β (port :0)
+TUI gamma ──ws──► proxy γ ──ws──► codex app-server γ (port :0)
+                  ↑ proxy는 frame을 변조하지 않고 그대로 relay
+                  ↑ 같은 TUI connection의 thread/start|resume|fork response만 관찰
+                  ↑ endpoint/process isolation은 per-agent app-server가 계속 담당
+
+
+[B] per-agent proxy port + shared app-server (fallback)
 ─────────────────────────────────────
 TUI alpha ──ws──► proxy α (port A) ──ws──► shared codex
 TUI beta  ──ws──► proxy β (port B) ──ws──► app-server
@@ -170,20 +189,20 @@ TUI gamma ──ws──┘     (manual JSON-RPC id    app-server
 
 ### 4-3. Trade-off 표
 
-| 항목 | **[A] per-agent app-server** | [B] proxy per port | [C-1] one proxy listener | [C-2] shared upstream |
-|---|---|---|---|---|
-| 포트 수 | N (OS 자동 할당) | N | 1 | 1 |
-| 포트 충돌 위험 | **없음 (`:0` bind)** | 낮음 if `:0`, 있음 if fixed | 낮음 if `:0`, 있음 if fixed | 낮음 if `:0`, 있음 if fixed |
-| Codex 프로세스 수 | N | 1 | 1 | 1 |
-| Memory | N× ~94MB | 1× Codex (~94MB) | 1× Codex | 1× Codex |
-| Attribution | **자명 (endpoint = agent)** | same-client proxy correlation | path/token + connection state | quasi-router 자체 구현 |
-| Proxy 코드 | **0 line** | ~315 line | ~315 line + routing | + multiplex/demux |
-| 회귀 테스트 | **proxy 테스트 0건** | transparent relay + binding tests | proxy routing tests 추가 | 더 많음 |
-| Codex 설계 정합 | **가장 단순** | protocol wrapper | protocol wrapper | protocol router |
-| 운영 복잡도 | process lifecycle medium | proxy medium | proxy high | very high |
-| Crash 격리 | **agent별 app-server 격리** | shared app-server 영향 큼 | shared app-server 영향 큼 | shared app-server 영향 큼 |
-| Boot 시간 | N회 (병렬 가능, <1s observed) | 1회 | 1회 | 1회 |
-| Forward-compat (Codex 변경) | **가장 강함** | relay/protocol 변화 주의 | 더 주의 | 가장 위험 |
+| 항목 | [A] per-agent app-server | **[A+P] app-server + 1:1 proxy** | [B] proxy per port | [C-1] one proxy listener | [C-2] shared upstream |
+|---|---|---|---|---|---|
+| 포트 수 | N (OS 자동 할당) | N app-server + N proxy | N | 1 | 1 |
+| 포트 충돌 위험 | 없음 (`:0` bind) | 낮음 if proxy도 `:0` | 낮음 if `:0`, 있음 if fixed | 낮음 if `:0`, 있음 if fixed | 낮음 if `:0`, 있음 if fixed |
+| Codex 프로세스 수 | N | N | 1 | 1 | 1 |
+| Memory | N× ~94MB | N× ~94MB + lightweight proxy | 1× Codex (~94MB) | 1× Codex | 1× Codex |
+| Attribution | endpoint = agent | endpoint = agent + connection = visible TUI | same-client proxy correlation | path/token + connection state | quasi-router 자체 구현 |
+| Proxy 코드 | 0 line | transparent relay + binding observer | ~315 line | ~315 line + routing | + multiplex/demux |
+| 회귀 테스트 | app-server binding tests | proxy relay + binding + daemon rebind tests | transparent relay + binding tests | proxy routing tests 추가 | 더 많음 |
+| Codex 설계 정합 | 단순하지만 focus 관찰 부족 | per-agent isolation 유지 + TUI focus 관찰 보강 | protocol wrapper | protocol wrapper | protocol router |
+| 운영 복잡도 | process lifecycle medium | process lifecycle + proxy lifecycle medium | proxy medium | proxy high | very high |
+| Crash 격리 | agent별 app-server 격리 | agent별 app-server/proxy 격리 | shared app-server 영향 큼 | shared app-server 영향 큼 | shared app-server 영향 큼 |
+| Boot 시간 | N회 (병렬 가능, <1s observed) | N app-server + N proxy, 병렬 가능 | 1회 | 1회 | 1회 |
+| Forward-compat (Codex 변경) | focus 관찰 API 없음 | relay/protocol response shape 변화 주의 | relay/protocol 변화 주의 | 더 주의 | 가장 위험 |
 
 ### 4-4. Port `:0` bind 동작
 
