@@ -141,6 +141,7 @@ describe("daemon API with fake in-process transport", () => {
           previousId: null,
           nextId: "thread-resume",
           operation: "thread/resume",
+          source: "attach_resume",
         }),
       },
     ]);

@@ -169,6 +169,12 @@ export interface ManagedAgentRuntime {
   dispose(): Promise<void> | void;
 }
 
+export interface ManagedCodexProxyBindingEvent {
+  method: "thread/start" | "thread/resume" | "thread/fork";
+  threadId: string;
+  requestId: number | string;
+}
+
 export interface ManagedCodexAgentRuntime extends ManagedAgentRuntime {
   readonly endpoint: URL;
   readonly activeThreadId: string | null;
@@ -176,6 +182,9 @@ export interface ManagedCodexAgentRuntime extends ManagedAgentRuntime {
   resumeThread(threadId: string): Promise<string | null>;
   listLoadedThreadIds(): Promise<string[]>;
   rebindActiveThread(threadId: string): void;
+  onProxyBinding?(
+    listener: (event: ManagedCodexProxyBindingEvent) => void,
+  ): () => void;
 }
 
 type ResolvedCodexTurnStartRuntime = ManagedAgentRuntime &
@@ -586,6 +595,10 @@ export function createDaemonState(
         });
         startingCodexRuntime = runtime;
 
+        runtime.onProxyBinding?.((event) => {
+          handleCodexProxyBinding(request.name, runtime, event);
+        });
+
         if (!request.resumeSessionId) {
           codexRuntimes.set(request.name, runtime);
           startingCodexRuntime = null;
@@ -642,6 +655,7 @@ export function createDaemonState(
             previousId: storedAgent.adapterSessionId,
             nextId: nextThreadId,
             operation: "thread/resume",
+            source: "attach_resume",
           },
           createdAt: now,
           agentId: reboundAgent.id,
@@ -1261,7 +1275,7 @@ export function createDaemonState(
           chosenThreadId: target.threadId,
           previousAdapterSessionId: targetAgent.adapterSessionId,
           runtimeActiveThreadId: target.runtimeActiveThreadId,
-          selectionPolicy: "latest_loaded_thread",
+          selectionPolicy: target.selectionPolicy,
           deliveryMessageType: input.message.type,
           sourceAgentId: input.message.sourceAgentId,
           sourceAgentName: sourceAgent?.name ?? "unknown",
@@ -1331,6 +1345,7 @@ export function createDaemonState(
               previousId: targetAgent.adapterSessionId,
               nextId: target.threadId,
               operation: "thread/loaded/list",
+              source: "loaded_list",
             },
             createdAt: now,
             agentId: reboundAgent.id,
@@ -1424,6 +1439,9 @@ export function createDaemonState(
         threadId: string;
         loadedThreadIds: string[];
         runtimeActiveThreadId: string | null;
+        selectionPolicy:
+          | "proxy_active_thread"
+          | "latest_loaded_thread_fallback";
       }
     | {
         ok: false;
@@ -1451,6 +1469,18 @@ export function createDaemonState(
 
     const runtimeActiveThreadId = runtime.activeThreadId;
     const loadedThreadIds = await runtime.listLoadedThreadIds();
+
+    if (runtimeActiveThreadId) {
+      return {
+        ok: true,
+        runtime,
+        threadId: runtimeActiveThreadId,
+        loadedThreadIds,
+        runtimeActiveThreadId,
+        selectionPolicy: "proxy_active_thread",
+      };
+    }
+
     const liveThreadId = selectCodexLoadedThreadId(loadedThreadIds);
     if (!liveThreadId) {
       return {
@@ -1468,6 +1498,7 @@ export function createDaemonState(
       threadId: liveThreadId,
       loadedThreadIds,
       runtimeActiveThreadId,
+      selectionPolicy: "latest_loaded_thread_fallback",
     };
   }
 
@@ -1475,6 +1506,52 @@ export function createDaemonState(
     loadedThreadIds: readonly string[],
   ): string | null {
     return loadedThreadIds.at(-1) ?? null;
+  }
+
+  function handleCodexProxyBinding(
+    agentName: string,
+    runtime: ManagedCodexAgentRuntime,
+    event: ManagedCodexProxyBindingEvent,
+  ): void {
+    const targetAgent = agents
+      .list()
+      .find((agent) => agent.name === agentName);
+    if (!targetAgent) {
+      return;
+    }
+    if (targetAgent.adapterSessionId === event.threadId) {
+      runtime.rebindActiveThread(event.threadId);
+      return;
+    }
+
+    const now = options.now();
+    withTransaction(options.db, () => {
+      const reboundAgent = agents.rebindAdapterSessionId({
+        name: agentName,
+        adapterSessionId: event.threadId,
+        now,
+      });
+      if (!reboundAgent) {
+        return;
+      }
+      events.append({
+        id: options.createId(),
+        type: "agent_thread_id_rebound",
+        data: {
+          previousId: targetAgent.adapterSessionId,
+          nextId: event.threadId,
+          operation: event.method,
+          source: "proxy_binding",
+          requestId: event.requestId,
+        },
+        createdAt: now,
+        agentId: reboundAgent.id,
+        messageId: null,
+        deliveryId: null,
+        routeId: null,
+      });
+    });
+    runtime.rebindActiveThread(event.threadId);
   }
 
   async function injectReplyIntoCodexRuntime(

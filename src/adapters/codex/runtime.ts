@@ -17,6 +17,12 @@ import {
   type InjectTurnStartOptions,
 } from "./injector.js";
 import {
+  startCodexAgentProxy,
+  type CodexAgentProxy,
+  type CodexProxyBindingEvent,
+  type StartCodexAgentProxyOptions,
+} from "./proxy.js";
+import {
   connectCodexAppServerWebSocket,
   type CodexInitializeResponse,
   type CodexJsonRpcNotification,
@@ -50,6 +56,7 @@ export interface CodexAgentRuntimeOptions {
   activeThreadId: string | null;
   appServer: CodexAppServerProcess;
   webSocket: CodexAgentRuntimeWebSocketClient;
+  proxy: CodexAgentProxy;
   onRuntimeFailed?: (failure: CodexAgentRuntimeFailure) => void;
 }
 
@@ -60,6 +67,8 @@ export interface CodexAgentRuntimeSnapshot {
   endpoint: string;
   appServerPid: number | null;
 }
+
+export type CodexAgentProxyListener = (event: CodexProxyBindingEvent) => void;
 
 export interface CodexAgentRuntimeWebSocketClient {
   initialize(): Promise<CodexInitializeResponse>;
@@ -91,6 +100,9 @@ export interface AttachCodexAgentRuntimeOptions {
     endpoint: URL,
     clientVersion: string,
   ) => Promise<CodexAgentRuntimeWebSocketClient>;
+  startProxy?: (
+    options: StartCodexAgentProxyOptions,
+  ) => Promise<CodexAgentProxy>;
   onRuntimeFailed?: (failure: CodexAgentRuntimeFailure) => void;
 }
 
@@ -98,16 +110,21 @@ export class CodexAgentRuntime {
   readonly agentName: string;
   readonly appServer: CodexAppServerProcess;
   readonly webSocket: CodexAgentRuntimeWebSocketClient;
+  readonly proxy: CodexAgentProxy;
   state: CodexAgentRuntimeState = "starting";
   #activeThreadId: string | null;
   #latestDiagnosticNotification: CodexJsonRpcNotification | undefined;
   #onRuntimeFailed?: (failure: CodexAgentRuntimeFailure) => void;
+  #proxyBindingListeners = new Set<CodexAgentProxyListener>();
+  #proxyEndpoint: URL;
 
   constructor(options: CodexAgentRuntimeOptions) {
     this.agentName = options.agentName;
     this.#activeThreadId = options.activeThreadId;
     this.appServer = options.appServer;
     this.webSocket = options.webSocket;
+    this.proxy = options.proxy;
+    this.#proxyEndpoint = new URL(options.proxy.url);
     this.#onRuntimeFailed = options.onRuntimeFailed;
     this.registerLifecycleListeners();
   }
@@ -116,8 +133,32 @@ export class CodexAgentRuntime {
     return this.#activeThreadId;
   }
 
+  /**
+   * Endpoint exposed to the foreground TUI. Resolves to the per-agent proxy
+   * URL so the TUI's same-connection JSON-RPC can be observed for thread
+   * binding signals. The daemon's own JSON-RPC client connects directly to
+   * the app-server endpoint via `appServer.endpoint.endpoint`.
+   */
   get endpoint(): URL {
+    return this.#proxyEndpoint;
+  }
+
+  get appServerEndpoint(): URL {
     return this.appServer.endpoint.endpoint;
+  }
+
+  onProxyBinding(listener: CodexAgentProxyListener): () => void {
+    this.#proxyBindingListeners.add(listener);
+    return () => {
+      this.#proxyBindingListeners.delete(listener);
+    };
+  }
+
+  /** Internal: invoked by the runtime when a proxy binding fires. */
+  emitProxyBinding(event: CodexProxyBindingEvent): void {
+    for (const listener of this.#proxyBindingListeners) {
+      listener(event);
+    }
   }
 
   markReady(): void {
@@ -160,6 +201,9 @@ export class CodexAgentRuntime {
       // Cleanup must preserve the caller path.
     }
 
+    // Proxy close is fire-and-forget so the app-server SIGTERM is dispatched
+    // before we yield the event loop to await any cleanup.
+    void closeProxyBestEffort(this.proxy);
     await disposeAppServer(this.appServer);
     this.state = "disposed";
   }
@@ -212,7 +256,7 @@ export class CodexAgentRuntime {
       agentName: this.agentName,
       activeThreadId: this.#activeThreadId,
       state: this.state,
-      endpoint: this.appServer.endpoint.endpoint.toString(),
+      endpoint: this.#proxyEndpoint.toString(),
       appServerPid: this.appServer.child.pid ?? null,
     };
   }
@@ -278,6 +322,8 @@ export async function attachCodexAgentRuntime(
     launchOptions,
   );
   let webSocket: CodexAgentRuntimeWebSocketClient | null = null;
+  let proxy: CodexAgentProxy | null = null;
+  let runtime: CodexAgentRuntime | null = null;
 
   try {
     webSocket = await (options.connectWebSocket
@@ -287,7 +333,18 @@ export async function attachCodexAgentRuntime(
           clientVersion,
         }));
     await webSocket.initialize();
+
+    const startProxy = options.startProxy ?? startCodexAgentProxy;
+    proxy = await startProxy({
+      upstreamUrl: appServer.endpoint.endpoint.toString(),
+      onBinding: (event) => {
+        runtime?.emitProxyBinding(event);
+      },
+    });
   } catch (error) {
+    if (proxy) {
+      await closeProxyBestEffort(proxy);
+    }
     if (webSocket) {
       closeWebSocketOnAttachFailure(webSocket);
     }
@@ -295,16 +352,25 @@ export async function attachCodexAgentRuntime(
     throw error;
   }
 
-  const runtime = new CodexAgentRuntime({
+  runtime = new CodexAgentRuntime({
     agentName: options.agentName,
     activeThreadId: options.activeThreadId,
     appServer,
     webSocket,
+    proxy,
     onRuntimeFailed: options.onRuntimeFailed,
   });
   runtime.markReady();
 
   return runtime;
+}
+
+async function closeProxyBestEffort(proxy: CodexAgentProxy): Promise<void> {
+  try {
+    await proxy.close();
+  } catch {
+    // Cleanup is best-effort.
+  }
 }
 
 function closeWebSocketOnAttachFailure(

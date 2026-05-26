@@ -864,12 +864,54 @@ describe("daemon receiveClaudeChannelReply", () => {
       chosenThreadId: "thread-new",
       previousAdapterSessionId: null,
       runtimeActiveThreadId: null,
-      selectionPolicy: "latest_loaded_thread",
+      selectionPolicy: "latest_loaded_thread_fallback",
       deliveryMessageType: "reply",
       sourceAgentId: reviewer.id,
       sourceAgentName: "reviewer",
       targetAgentName: "impl",
     });
+  });
+
+  it("prefers proxy-bound active thread over loaded-list when delivering a Claude reply", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        loadedThreadIds: ["thread-stale-A", "thread-stale-B"],
+      },
+    });
+    setup.runtime.fireProxyBinding({
+      method: "thread/resume",
+      threadId: "thread-focused",
+      requestId: 99,
+    });
+
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    const turnStart = setup.runtime.requests.find(
+      (request) => request.method === "turn/start",
+    ) as { params: { threadId: string } } | undefined;
+    expect(turnStart?.params.threadId).toBe("thread-focused");
+
+    const selected = db
+      .prepare(
+        "select data_json from events where type = 'codex_delivery_target_selected' order by rowid desc limit 1",
+      )
+      .get() as { data_json: string };
+    const data = JSON.parse(selected.data_json);
+    expect(data.chosenThreadId).toBe("thread-focused");
+    expect(data.selectionPolicy).toBe("proxy_active_thread");
+    expect(data.loadedThreadIds).toEqual(["thread-stale-A", "thread-stale-B"]);
   });
 
   it("keeps Claude reply delivery queued when Codex has no live loaded thread", async () => {
@@ -1557,6 +1599,32 @@ function fakeCodexRuntime(options: {
     },
     rebindActiveThread(threadId: string) {
       this.activeThreadId = threadId;
+    },
+    proxyBindingListeners: new Set<(event: {
+      method: "thread/start" | "thread/resume" | "thread/fork";
+      threadId: string;
+      requestId: number | string;
+    }) => void>(),
+    onProxyBinding(
+      listener: (event: {
+        method: "thread/start" | "thread/resume" | "thread/fork";
+        threadId: string;
+        requestId: number | string;
+      }) => void,
+    ) {
+      this.proxyBindingListeners.add(listener);
+      return () => {
+        this.proxyBindingListeners.delete(listener);
+      };
+    },
+    fireProxyBinding(event: {
+      method: "thread/start" | "thread/resume" | "thread/fork";
+      threadId: string;
+      requestId: number | string;
+    }) {
+      for (const listener of this.proxyBindingListeners) {
+        listener(event);
+      }
     },
     async dispose() {
       this.disposeCalls += 1;

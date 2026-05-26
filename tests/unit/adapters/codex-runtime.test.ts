@@ -8,6 +8,7 @@ import {
   attachCodexAgentRuntime,
   type CodexAgentRuntimeWebSocketClient,
 } from "../../../src/adapters/codex/runtime.js";
+import type { CodexAgentProxy } from "../../../src/adapters/codex/proxy.js";
 
 describe("Codex agent runtime", () => {
   afterEach(() => {
@@ -41,7 +42,7 @@ describe("Codex agent runtime", () => {
         events.push(`connect:${endpoint.toString()}`);
         return websocket;
       },
-    });
+    startProxy: startFakeProxy});
 
     expect(events).toEqual([
       "launch",
@@ -54,7 +55,7 @@ describe("Codex agent runtime", () => {
       agentName: "codex-one",
       activeThreadId: "thread-1",
       state: "ready",
-      endpoint: "ws://127.0.0.1:54321/",
+      endpoint: "ws://127.0.0.1:54900/",
       appServerPid: 1234,
     });
   });
@@ -79,7 +80,7 @@ describe("Codex agent runtime", () => {
         events.push("connect");
         return fakeWebSocket(events);
       },
-    });
+    startProxy: startFakeProxy});
 
     expect(events.slice(0, 2)).toEqual(["launch", "connect"]);
     expect(seenLaunchOptions[0]).toMatchObject({
@@ -108,7 +109,7 @@ describe("Codex agent runtime", () => {
       activeThreadId: "thread-1",
       launchAppServer: async () => fakeAppServer(child),
       connectWebSocket: async () => fakeWebSocket(events),
-    });
+    startProxy: startFakeProxy});
 
     const disposed = runtime.dispose();
 
@@ -137,7 +138,7 @@ describe("Codex agent runtime", () => {
       activeThreadId: "thread-1",
       launchAppServer: async () => fakeAppServer(child),
       connectWebSocket: async () => fakeWebSocket(events),
-    });
+    startProxy: startFakeProxy});
 
     await runtime.dispose();
     await runtime.dispose();
@@ -155,7 +156,7 @@ describe("Codex agent runtime", () => {
       activeThreadId: "thread-1",
       launchAppServer: async () => fakeAppServer(child),
       connectWebSocket: async () => fakeWebSocket(events),
-    });
+    startProxy: startFakeProxy});
 
     await runtime.dispose();
 
@@ -181,7 +182,7 @@ describe("Codex agent runtime", () => {
         },
       }),
       connectWebSocket: async () => fakeWebSocket(events),
-    });
+    startProxy: startFakeProxy});
 
     await expect(
       runtime.injectTurnStart({
@@ -209,7 +210,7 @@ describe("Codex agent runtime", () => {
             },
           },
         }),
-    });
+    startProxy: startFakeProxy});
 
     await expect(runtime.startThread()).resolves.toBe("thread-new");
 
@@ -233,7 +234,7 @@ describe("Codex agent runtime", () => {
             },
           },
         }),
-    });
+    startProxy: startFakeProxy});
 
     await expect(runtime.resumeThread("thread-resume")).resolves.toBe("thread-resume");
 
@@ -256,7 +257,7 @@ describe("Codex agent runtime", () => {
             },
           },
         }),
-    });
+    startProxy: startFakeProxy});
 
     await expect(runtime.resumeThread("thread-requested")).rejects.toMatchObject({
       code: "codex_resume_failed",
@@ -279,7 +280,7 @@ describe("Codex agent runtime", () => {
         connectWebSocket: async () => {
           throw error;
         },
-      }),
+      startProxy: startFakeProxy}),
     ).rejects.toBe(error);
 
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
@@ -299,7 +300,7 @@ describe("Codex agent runtime", () => {
         activeThreadId: "thread-1",
         launchAppServer: async () => fakeAppServer(child),
         connectWebSocket: async () => websocket,
-      }),
+      startProxy: startFakeProxy}),
     ).rejects.toBe(error);
 
     expect(events).toEqual(["initialize", "close"]);
@@ -318,7 +319,7 @@ describe("Codex agent runtime", () => {
         seenVersions.push(clientVersion);
         return fakeWebSocket([]);
       },
-    });
+    startProxy: startFakeProxy});
 
     expect(seenVersions).toEqual([packageVersion]);
   });
@@ -334,7 +335,7 @@ describe("Codex agent runtime", () => {
       onRuntimeFailed: (failure) => {
         failures.push(failure);
       },
-    });
+    startProxy: startFakeProxy});
 
     child.emit("exit", 7, "SIGTERM");
 
@@ -362,7 +363,7 @@ describe("Codex agent runtime", () => {
       onRuntimeFailed: (failure) => {
         failures.push(failure);
       },
-    });
+    startProxy: startFakeProxy});
 
     websocket.emitNotification({
       method: "remoteControl/status/changed",
@@ -447,6 +448,74 @@ describe("Codex agent runtime", () => {
         }
       },
     };
+  }
+
+  it("starts a per-agent proxy with the app-server endpoint as upstream and exposes the proxy URL", async () => {
+    const proxyCalls: Array<{ upstreamUrl: string }> = [];
+    const closeCalls: string[] = [];
+    const child = fakeChild();
+    Object.assign(child, { exitCode: 0 });
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: "thread-1",
+      launchAppServer: async () => fakeAppServer(child),
+      connectWebSocket: async () => fakeWebSocket([]),
+      startProxy: async (options) => {
+        proxyCalls.push({ upstreamUrl: options.upstreamUrl });
+        return {
+          url: "ws://127.0.0.1:54999/",
+          close: async () => {
+            closeCalls.push("proxy");
+          },
+        };
+      },
+    });
+
+    expect(proxyCalls).toEqual([{ upstreamUrl: "ws://127.0.0.1:54321/" }]);
+    expect(runtime.endpoint.toString()).toBe("ws://127.0.0.1:54999/");
+    expect(runtime.appServerEndpoint.toString()).toBe("ws://127.0.0.1:54321/");
+    expect(runtime.snapshot().endpoint).toBe("ws://127.0.0.1:54999/");
+
+    await runtime.dispose();
+    expect(closeCalls).toEqual(["proxy"]);
+  });
+
+  it("fans out proxy binding events to subscribed listeners", async () => {
+    let bindingHook: ((event: { method: "thread/start" | "thread/resume" | "thread/fork"; threadId: string; requestId: number | string }) => void) | undefined;
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: null,
+      launchAppServer: async () => fakeAppServer(fakeChild()),
+      connectWebSocket: async () => fakeWebSocket([]),
+      startProxy: async (options) => {
+        bindingHook = options.onBinding;
+        return fakeProxy();
+      },
+    });
+
+    const received: unknown[] = [];
+    runtime.onProxyBinding((event) => received.push(event));
+
+    bindingHook?.({
+      method: "thread/resume",
+      threadId: "thread-X",
+      requestId: 17,
+    });
+
+    expect(received).toEqual([
+      { method: "thread/resume", threadId: "thread-X", requestId: 17 },
+    ]);
+  });
+
+  function fakeProxy(url = "ws://127.0.0.1:54900/"): CodexAgentProxy {
+    return {
+      url,
+      close: async () => undefined,
+    };
+  }
+
+  async function startFakeProxy(): Promise<CodexAgentProxy> {
+    return fakeProxy();
   }
 
   function fakeChild(): ChildProcess {
