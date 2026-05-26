@@ -66,7 +66,7 @@ Claude channel attach/disconnect lifecycle의 DB ↔ in-memory registry 정합�
   - `disconnectClaudeChannel`이 in-memory `claudeChannelRuntimes` Map과 동작 의미가 너무 좁았음. attach 단계에서 DB는 `connected`로 마킹되는데, disconnect는 runtime registry만 청소. registration 전 disconnect 경로에서는 runtime이 애초에 없어 `disconnected: false`로 잘못 반환.
   - `claudePendingTokens`도 registerClaudeChannel 성공 경로에서만 정리되므로 register 직전 disconnect 시 token이 영구 leak.
 - Fix:
-  - commit: (this commit) — `src/daemon/state.ts:913-929` `disconnectClaudeChannel` 확장
+  - commit: `fb7d8fc` — `src/daemon/state.ts:913-929` `disconnectClaudeChannel` 확장
   - 변경:
     1. `claudePendingTokens.delete(agentName)` 추가 (token leak 차단)
     2. `agents.findByName` → `status === "connected"` 면 `agents.markByNameDisconnected(name, now())` 호출
@@ -78,7 +78,7 @@ Claude channel attach/disconnect lifecycle의 DB ↔ in-memory registry 정합�
   - 신규 "marks attached Claude agent disconnected even when channel never registered" — registration 전 disconnect 경로 cover
   - 기존 "disconnect when not registered returns disconnected: false" — agent 자체가 없으므로 false 유지 (regression 없음)
 - Re-verify:
-  - 2026-05-26 / (this commit) / `pnpm test` PASS (claude-channel.test.ts 강화 + 신규 케이스 포함)
+  - 2026-05-26 / `fb7d8fc` / `pnpm test` 361 passed, `pnpm typecheck` PASS
 
 ---
 

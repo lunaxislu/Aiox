@@ -23,7 +23,7 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 
 | ID    | Scenario                    | Status | Found  | Commit  | History ref | Note |
 | ----- | --------------------------- | ------ | ------ | ------- | ----------- | ---- |
-| QA-001 | Claude TUI 종료 후 agent가 DB에 `connected`로 남고 pending token 누수 | verified | R1 | (this commit) | `43-qa-round-1` S-1 | `disconnectClaudeChannel`가 in-memory runtime registry만 정리, DB status·`claudePendingTokens` 미동기. fix: DB markDisconnected + pending token 정리. |
+| QA-001 | Claude TUI 종료 후 agent가 DB에 `connected`로 남고 pending token 누수 | verified | R1 | `fb7d8fc` | `43-qa-round-1` S-1 | `disconnectClaudeChannel`가 in-memory runtime registry만 정리, DB status·`claudePendingTokens` 미동기. fix: DB markDisconnected + pending token 정리. |
 |       |                             |        |        |         |             |      |
 
 > 추가 시: ID는 발견 순으로 `QA-NNN`. Found 칸은 QA round 번호 (`R1`, `R2`…).
