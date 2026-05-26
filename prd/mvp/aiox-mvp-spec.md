@@ -1,8 +1,11 @@
 # aiox MVP Spec
 
 > Date: 2026-05-16
-> Status: Draft for MVP implementation
+> Status: MVP implementation closed; implementation smoke and automated
+> verification passed
 > Decision source: `history/15-mvp-design-decisions.history.md`
+> As-built reference: `docs/aiox/mvp-architecture.md` (current implementation,
+> modules, errors, events, smoke matrix)
 
 ## Goal
 
@@ -826,11 +829,37 @@ MVP test layers:
 - Fake adapter integration tests.
 
 Actual Codex/Claude E2E tests remain manual/smoke because they depend on local
-CLI sessions and user auth state. A real MVP smoke requires both:
+CLI sessions and user auth state. The implementation smoke path requires both:
 
 - Codex source path into daemon, so Codex can send/reply through aiox.
 - Long-running daemon/client reuse, so independent terminal commands share the
   same daemon state instead of creating isolated in-process runtimes.
+
+MVP implementation is closed for new feature work. The implementation smoke path
+passed with real Codex and Claude terminals, and automated verification passed.
+User-led QA can now evaluate the MVP from a product/usage perspective. The
+manual smoke path uses build output, not `pnpm tsx`, because daemon start forks
+a detached child:
+
+```bash
+node dist/src/bin/aiox.js daemon start
+node dist/src/bin/aiox.js codex --name codex-smoke
+node dist/src/bin/aiox.js claude --name claude-smoke
+node dist/src/bin/aiox.js connect claude-smoke codex-smoke
+node dist/src/bin/aiox.js connect codex-smoke claude-smoke
+node dist/src/bin/aiox.js status
+```
+
+The implementation smoke covered:
+
+- basic `claude -> codex -> claude`
+- Codex TUI `/clear`
+- Codex TUI `/new`
+- Codex TUI `/fork`
+- Codex TUI `/resume`
+- Codex TUI `/resume -> /clear`
+- Codex TUI `/resume -> /new`
+- Codex TUI `/resume -> /fork`
 
 ## Post-MVP
 

@@ -51,3 +51,4 @@
 - `13-aiox-rewrite-decision.history.md` — rewrite 기준 결정
 - `15-mvp-design-decisions.history.md` — MVP 설계 권위 (+ `prd/mvp/aiox-mvp-spec.md`)
 - `16-step-2-sqlite-repository-cleanup.history.md` — Step 2 cleanup + critical issue 처리 사례
+- `42-mvp-implementation-closeout.history.md` — MVP 구현 종료

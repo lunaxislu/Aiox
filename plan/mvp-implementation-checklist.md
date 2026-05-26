@@ -14,6 +14,10 @@
 > `history/16-step-2-sqlite-repository-cleanup.history.md`.
 >
 > Last updated: 2026-05-26
+>
+> MVP implementation status: **Closed for implementation; implementation smoke
+> and automated verification passed**.
+> Authority closeout: `history/42-mvp-implementation-closeout.history.md`.
 
 ---
 
@@ -664,7 +668,7 @@ Phase B 결과:
 
 ---
 
-## Step 10: Codex per-agent app-server runtime — ⏳ To be planned
+## Step 10: Codex per-agent app-server runtime — ✅ Closed (2026-05-26)
 
 Phase B started on 2026-05-21. Round 1 foundation and Round 2 D4 protocol
 surface are recorded under
@@ -678,8 +682,9 @@ surface are recorded under
   does not host app-server in-process
 - [x] `src/adapters/codex/websocket.ts` — WS client utilities
 - [x] `src/adapters/codex/injector.ts` — `turn/start` 호출
-- [ ] `src/adapters/codex/launcher.ts` — codex CLI invoke with
-  `codex --remote <assigned-app-server-url>`
+- [x] `src/adapters/codex/launcher.ts` — codex CLI invoke with
+  `codex --remote <assigned-proxy-url>` and
+  `codex resume <session-id> --remote <assigned-proxy-url>`
 
 **Dependency**: Open Product Issue #2 (Codex thread UUID → agent name mapping)
 MVP direction decided in
@@ -724,16 +729,12 @@ process에서도 resume 가능하고, resume 직후 같은 client의 `turn/start
 injection이 동일 thread id에서 completed turn으로 처리됨을 확인했다. Empty
 thread resume은 실패했다.
 
-현재 확인된 Step 10 정책: Codex app-server endpoint 자체가 agent identity
-boundary다. Phase B Round 4 D7 replacement 범위는 사용자 결정에 따라
-**aiox-originated authoritative 작업**으로 한정한다. 즉 daemon이 직접 보낸
-programmatic `thread/start` / 이후 `sendMessage`(`turn/start`)처럼 same-operation
-success response를 받을 수 있는 작업만 active thread id 갱신 근거로 사용한다.
-TUI-originated `/clear`, `/new`, `/fork` rebind는 direct per-agent app-server에서
-daemon이 same-client returned id를 볼 수 없으므로 post-MVP Open Product Issue로
-분리한다. 해당 기능을 부활시킬 때는 `history/27` / `history/32`의 transparent
-proxy same-client response 근거 또는 future Codex authoritative callback/read API
-근거를 사용한다.
+현재 Step 10 정책: Codex agent identity boundary는 per-agent app-server +
+per-agent transparent proxy runtime이다. `thread/loaded/list`는
+memory/cache/diagnostics state이고, TUI-visible active thread authority는
+proxy가 관찰한 same-connection `thread/start`, `thread/resume`, `thread/fork`
+response다. 이 정책은 `history/41`의 `/resume` wrong-thread issue 해결 과정에서
+MVP 범위로 들어왔고, manual smoke로 검증됐다.
 
 Step 10 Phase A decisions are closed in
 `history/33-step-10-phase-a-decisions.history.md`. Phase B implementation must
@@ -742,8 +743,11 @@ setsid, `PR_SET_PDEATHSIG`, periodic healthz, auto-reconnect, or TUI heartbeat.
 
 Phase B implementation tasks:
 
-- [ ] Define `CodexAgentRuntime` state shape and what is persisted in
-  `AgentInstance.adapter_session_id` versus in-memory runtime state.
+- [x] Define `CodexAgentRuntime` state shape and what is persisted in
+  `AgentInstance.adapter_session_id` versus in-memory runtime state. Persistent
+  agent identity stays in SQLite; runtime endpoint/proxy/app-server handles and
+  active thread binding are live runtime state, with `adapter_session_id` acting
+  as cache/resume metadata rather than visible-thread authority.
 - [x] Implement per-agent app-server launch with `--listen ws://127.0.0.1:0`,
   parse assigned endpoint from the process output banner, and wait for
   `readyz`.
@@ -1030,7 +1034,7 @@ Resolved Step 14 follow-up:
 - [x] Codex -> Claude queued delivery drain: `receiveCodexMessage` now drains queued deliveries for connected Claude targets through the registered Claude channel endpoint, sends `chat_id` as the aiox message id and `origin` as the Codex source agent name, and moves delivery state through `queued -> delivering -> delivered -> completed` or `failed`. Claude `reply(chat_id, text)` remains the reply surface; users should not manually provide chat ids in normal routed flow. Verification: targeted daemon/Claude/Codex ingress tests, `pnpm test` (324 passing, 46 files), `pnpm typecheck`, `pnpm build`. Authority context: `history/40-step-14-daemon-client-split.history.md`.
 - [x] Codex remote MCP injection target mismatch: aiox MCP injection now targets the daemon-owned `codex app-server` launch instead of the foreground remote TUI. The daemon pre-issues the Codex channel token before runtime attach and passes the same daemon socket path into app-server launch. Manual smoke confirmed the prior Notion `starting` hang is resolved. Follow-up fixed `aiox mcp-codex` startup so stdio MCP connects before daemon registration and the hidden subcommand stays alive until transport close. This preserves Step 13 stdout MCP protocol, token hardening, and same socket path contract. No `CODEX_HOME`/profile/`sqlite_home` isolation was added. Authority context: `history/40-step-14-daemon-client-split.history.md`; learning record: `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md`.
 
-Open Step 14 follow-up:
+Resolved later Step 14 / MVP closeout follow-up:
 
 - [x] Codex live loaded-thread delivery + queued fallback: manual smoke on 2026-05-25 showed daemon `completed` for Claude -> Codex reply while the visible Codex TUI did not show/read the message. Implemented live `thread/loaded/list` discovery before Codex target injection, latest loaded-thread selection to avoid cached/hidden thread oscillation, successful rebind/cache update only when the live thread changes, no-loaded-thread queued fallback, and `codex_delivery_queued_no_loaded_thread` observability. Verification: `pnpm test` passed (46 files, 331 tests), `pnpm typecheck` passed, `pnpm build` passed. Authority context: `history/40-step-14-daemon-client-split.history.md`; PRD policy: `prd/mvp/aiox-mvp-spec.md` Message Flow.
 - [x] Codex no-resume attach hidden-thread reduction: fresh Codex attach no longer calls daemon-side `runtime.startThread()`; it launches/registers the runtime and leaves `adapter_session_id` null until explicit resume or first successful live loaded-thread delivery. This removes the daemon-created hidden thread from the common cold-start loaded-list set while preserving `--resume` binding. Verification: targeted daemon API/Codex ingress/CLI tests passed, `pnpm test` passed (46 files, 335 tests), `pnpm typecheck` passed, and `pnpm build` passed. Authority context: `history/40-step-14-daemon-client-split.history.md`, `history/41-codex-loaded-thread-binding-analysis.history.md`; PRD policy: `prd/mvp/aiox-mvp-spec.md` Message Flow.
@@ -1054,22 +1058,26 @@ Remaining out of scope:
 
 ---
 
-## Open Product Issues (구현 중 정책 결정 필요)
+## Open Product Issues (MVP closed; unresolved items are Post-MVP)
 
 권위: `prd/mvp/aiox-mvp-spec.md` "Open Product Issues" 섹션.
 
 1. Claude channel trust/confirmation policy → **MVP 결정 완료**:
    V1 trusted channel framing + fully automatic execution target
-2. Codex thread UUID → agent name mapping → **Step 10 시작 전 결정 필요**
-3. Stale agent transition policy → Step 2 repositories 또는 Step 3 daemon API 단계에 영향
-4. Long-running delivery timeout policy → MVP에는 timeout 없음 default. Step 5/8 통합 테스트에서 노출될 수 있음
-5. AI agent session expiry handling → Step 10/11 adapter 구현 시 노출될 수 있음
+2. Codex thread UUID → agent name mapping → **MVP 결정 완료**:
+   per-agent app-server + per-agent transparent proxy boundary, with proxy
+   same-connection binding as active-thread authority.
+3. Stale agent transition policy → Post-MVP
+4. Long-running delivery timeout policy → Post-MVP; MVP has no automatic timeout
+5. AI agent session expiry handling → Post-MVP
 
 Post-MVP parking lot:
 
 - `prd/post-mvp/agent-message-lifecycle-policy.md` tracks pair-level
   blocked/pending policy plus duplicate outbound, fan-out, and user-interrupted
   pending-turn policy. These are not MVP implementation scope.
+- Codex queued delivery retry/drain and Codex MCP queued-message pull/read/ack
+  remain Post-MVP safety nets after the visible MVP smoke path passed.
 
 ---
 
@@ -1077,7 +1085,8 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 46 files, 323 tests (Step 14 Codex remote MCP injection target + MCP handshake fix, 2026-05-24)
+- `pnpm test`: passing, 48 files, 360 tests (MVP implementation closeout,
+  2026-05-26)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 
