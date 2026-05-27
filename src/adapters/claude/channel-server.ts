@@ -386,6 +386,11 @@ export interface ClaudeChannelHttpIngressOptions {
   port?: number;
 }
 
+export interface ClaudeChannelPortInUseError extends Error {
+  reason: "claude_channel_port_in_use";
+  port: number;
+}
+
 export interface ClaudeChannelHttpIngressResult {
   server: Server;
   port: number;
@@ -396,7 +401,7 @@ export function startClaudeChannelHttpIngress(
   mcp: McpServer,
   options: ClaudeChannelHttpIngressOptions = {},
 ): Promise<ClaudeChannelHttpIngressResult> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       if (req.method !== "POST" || req.url !== "/send") {
         sendJson(res, 404, { error: "not_found" });
@@ -426,6 +431,9 @@ export function startClaudeChannelHttpIngress(
     });
 
     const listenPort = options.port ?? 0;
+    server.once("error", (error) => {
+      reject(toListenError(error, listenPort));
+    });
     server.listen(listenPort, "127.0.0.1", () => {
       const addr = server.address();
       const assignedPort =
@@ -545,6 +553,12 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     process.stderr.write(
       JSON.stringify({
         event: "fatal",
+        ...(isClaudeChannelPortInUseError(error)
+          ? {
+              reason: error.reason,
+              port: error.port,
+            }
+          : {}),
         error: error instanceof Error ? error.message : String(error),
       }) + "\n",
     );
@@ -616,4 +630,39 @@ function parsePortEnv(raw: string): number {
     process.exit(1);
   }
   return n;
+}
+
+function toListenError(error: unknown, listenPort: number): Error {
+  if (
+    listenPort > 0 &&
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: unknown }).code === "EADDRINUSE"
+  ) {
+    return createClaudeChannelPortInUseError(listenPort);
+  }
+
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function createClaudeChannelPortInUseError(
+  port: number,
+): ClaudeChannelPortInUseError {
+  const error = new Error(
+    `Claude channel port ${port} is already in use. Unset AIOX_CLAUDE_CHANNEL_PORT to use auto-port, or free/change the port.`,
+  ) as ClaudeChannelPortInUseError;
+  error.reason = "claude_channel_port_in_use";
+  error.port = port;
+  return error;
+}
+
+function isClaudeChannelPortInUseError(
+  error: unknown,
+): error is ClaudeChannelPortInUseError {
+  return (
+    error instanceof Error &&
+    "reason" in error &&
+    (error as { reason: unknown }).reason === "claude_channel_port_in_use"
+  );
 }

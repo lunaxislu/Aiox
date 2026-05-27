@@ -25,7 +25,7 @@ export async function injectTurnStart(
 ): Promise<AdapterInjectResult> {
   if (options.threadId !== runtime.activeThreadId) {
     return {
-      ok: false,
+      kind: "failed",
       reason: "codex_binding_uncertain",
       message: `Codex turn/start thread mismatch: requested=${options.threadId} active=${runtime.activeThreadId ?? "null"}`,
     };
@@ -51,13 +51,13 @@ export async function injectTurnStart(
 
     if (options.threadId !== runtime.activeThreadId) {
       return {
-        ok: false,
+        kind: "failed",
         reason: "codex_binding_uncertain",
         message: `Codex turn/start ack thread mismatch: requested=${options.threadId} active=${runtime.activeThreadId ?? "null"}`,
       };
     }
 
-    return { ok: true };
+    return { kind: "success" };
   } catch (error) {
     return toInjectFailure(error);
   }
@@ -68,7 +68,7 @@ function toInjectFailure(error: unknown): AdapterInjectResult {
 
   if (isCodexAdapterReason(error)) {
     return {
-      ok: false,
+      kind: "failed",
       reason: error.code,
       message,
       jsonRpcCode:
@@ -77,7 +77,7 @@ function toInjectFailure(error: unknown): AdapterInjectResult {
   }
 
   return {
-    ok: false,
+    kind: "failed",
     reason: "adapter_inject_failed",
     message,
   };

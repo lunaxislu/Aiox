@@ -1,4 +1,5 @@
 import type {
+  AdapterInjectDeferredReason,
   AdapterInjectFailureReason,
   AdapterInjectResult,
   AdapterOutgoingMessage,
@@ -23,6 +24,13 @@ export type AdapterDeliveryDispatchResult =
       ok: false;
       reason: AdapterInjectFailureReason | "adapter_not_found" | "target_agent_not_found";
       message: string;
+    }
+  | {
+      deliveryId: string;
+      targetAgentName: string;
+      kind: "deferred";
+      reason: AdapterInjectDeferredReason;
+      eligibility?: string;
     };
 
 export type AdapterDispatchResult =
@@ -78,29 +86,20 @@ export function createAdapterRouter(
 
         const adapter = adapters.get(targetAgent.kind);
 
+        if (!adapter) {
+          results.push({
+            deliveryId: delivery.id,
+            targetAgentName: targetAgent.name,
+            kind: "deferred",
+            reason: "target_adapter_not_registered",
+          });
+          continue;
+        }
+
         options.api.updateDeliveryStatus({
           deliveryId: delivery.id,
           status: "delivering",
         });
-
-        if (!adapter) {
-          options.api.updateDeliveryStatus({
-            deliveryId: delivery.id,
-            status: "failed",
-            error: {
-              reason: "adapter_not_found",
-              message: `adapter ${targetAgent.kind} was not found`,
-            },
-          });
-          results.push({
-            deliveryId: delivery.id,
-            targetAgentName: targetAgent.name,
-            ok: false,
-            reason: "adapter_not_found",
-            message: `adapter ${targetAgent.kind} was not found`,
-          });
-          continue;
-        }
 
         const injectResult = await adapter.inject({
           message: fanout.message,
@@ -109,7 +108,7 @@ export function createAdapterRouter(
         });
 
         results.push(
-          injectResult.ok
+          injectResult.kind === "success"
             ? completeDelivery(options.api, delivery, targetAgent)
             : failDelivery(options.api, delivery, targetAgent, injectResult),
         );
@@ -142,8 +141,19 @@ function failDelivery(
   api: DaemonApi,
   delivery: DeliveryDto,
   targetAgent: AgentDto,
-  result: Exclude<AdapterInjectResult, { ok: true }>,
+  result: Exclude<AdapterInjectResult, { kind: "success" }>,
 ): AdapterDeliveryDispatchResult {
+  if (isDeferredInjectResult(result)) {
+    api.updateDeliveryStatus({ deliveryId: delivery.id, status: "queued" });
+    return {
+      deliveryId: delivery.id,
+      targetAgentName: targetAgent.name,
+      kind: "deferred",
+      reason: result.reason,
+      ...(result.eligibility ? { eligibility: result.eligibility } : {}),
+    };
+  }
+
   api.updateDeliveryStatus({
     deliveryId: delivery.id,
     status: "failed",
@@ -160,4 +170,10 @@ function failDelivery(
     reason: result.reason,
     message: result.message,
   };
+}
+
+function isDeferredInjectResult(
+  result: Exclude<AdapterInjectResult, { kind: "success" }>,
+): result is Extract<AdapterInjectResult, { kind: "deferred" }> {
+  return result.kind === "deferred";
 }

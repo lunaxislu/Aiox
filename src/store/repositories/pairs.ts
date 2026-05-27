@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 
 import type { AgentKind } from "../../core/agents.js";
-import type { PairStatus } from "../../core/pairs.js";
+import type { PairSlot, PairStatus } from "../../core/pairs.js";
 
 export interface StoredPair {
   id: string;
@@ -21,6 +21,7 @@ export interface AttachAgentToPairInput {
   pairId: string;
   agentId: string;
   kind: AgentKind;
+  slot?: PairSlot;
   now: string;
 }
 
@@ -28,6 +29,7 @@ export type AttachAgentToPairResult =
   | {
       ok: true;
       pair: StoredPair;
+      slot: PairSlot;
     }
   | {
       ok: false;
@@ -43,8 +45,12 @@ export type AttachAgentToPairResult =
     }
   | {
       ok: false;
-      reason: "pair_kind_slot_occupied";
+      reason: "agent_already_attached" | "pair_slot_occupied";
       existingAgentId: string;
+    }
+  | {
+      ok: false;
+      reason: "pair_full";
     };
 
 interface AgentRow {
@@ -92,25 +98,56 @@ export function createPairRepository(db: Database): PairRepository {
         };
       }
 
+      const alreadyAttached = db
+        .prepare(
+          `
+            select id from agents
+            where pair_id = @pairId
+              and id = @agentId
+            limit 1
+          `,
+        )
+        .get({
+          pairId: input.pairId,
+          agentId: input.agentId,
+        }) as { id: string } | undefined;
+
+      if (alreadyAttached) {
+        return {
+          ok: false,
+          reason: "agent_already_attached",
+          existingAgentId: alreadyAttached.id,
+        };
+      }
+
+      const slot = input.slot ?? pickFirstOpenSlot(db, input.pairId);
+
+      if (!slot) {
+        return {
+          ok: false,
+          reason: "pair_full",
+        };
+      }
+
       const occupied = db
         .prepare(
           `
             select id from agents
             where pair_id = @pairId
-              and kind = @agentKind
+              and pair_slot = @slot
               and id <> @agentId
           `,
         )
         .get({
           pairId: input.pairId,
-          agentKind: agent.kind,
+          slot,
           agentId: input.agentId,
         }) as { id: string } | undefined;
 
       if (occupied) {
         return {
           ok: false,
-          reason: "pair_kind_slot_occupied",
+          reason: "pair_slot_occupied",
           existingAgentId: occupied.id,
         };
       }
@@ -118,17 +155,17 @@ export function createPairRepository(db: Database): PairRepository {
       db.prepare(
         `
           update agents
-          set pair_id = @pairId, updated_at = @now
+          set pair_id = @pairId, pair_slot = @slot, updated_at = @now
           where id = @agentId
         `,
       ).run({
         pairId: input.pairId,
+        slot,
         now: input.now,
         agentId: input.agentId,
       });
 
-      const status =
-        readAttachedKinds(db, input.pairId).size === 2 ? "ready" : "pending";
+      const status = isPairReady(db, input.pairId) ? "ready" : "pending";
 
       db.prepare(
         `
@@ -149,6 +186,7 @@ export function createPairRepository(db: Database): PairRepository {
       return {
         ok: true,
         pair: mapPairRow(row),
+        slot,
       };
     },
   );
@@ -205,12 +243,31 @@ export function createPairRepository(db: Database): PairRepository {
   };
 }
 
-function readAttachedKinds(db: Database, pairId: string): Set<AgentKind> {
-  const rows = db
-    .prepare("select distinct kind from agents where pair_id = ?")
-    .all(pairId) as Array<{ kind: AgentKind }>;
+function pickFirstOpenSlot(db: Database, pairId: string): PairSlot | null {
+  const slots = readAttachedSlots(db, pairId);
 
-  return new Set(rows.map((row) => row.kind));
+  if (!slots.has("a")) {
+    return "a";
+  }
+
+  if (!slots.has("b")) {
+    return "b";
+  }
+
+  return null;
+}
+
+function isPairReady(db: Database, pairId: string): boolean {
+  const slots = readAttachedSlots(db, pairId);
+  return slots.size === 2 && slots.has("a") && slots.has("b");
+}
+
+function readAttachedSlots(db: Database, pairId: string): Set<PairSlot> {
+  const rows = db
+    .prepare("select distinct pair_slot from agents where pair_id = ? and pair_slot is not null")
+    .all(pairId) as Array<{ pair_slot: PairSlot }>;
+
+  return new Set(rows.map((row) => row.pair_slot));
 }
 
 function mapPairRow(row: PairRow): StoredPair {

@@ -189,7 +189,7 @@ describe("Codex agent runtime", () => {
         threadId: "thread-1",
         input: "hello",
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ kind: "success" });
 
     expect(events.some((event) => event.startsWith("request:turn/start:"))).toBe(true);
   });

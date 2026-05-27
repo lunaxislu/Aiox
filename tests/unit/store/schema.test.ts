@@ -29,6 +29,7 @@ describe("SQLite schema", () => {
       "messages",
       "pairs",
       "routes",
+      "schema_version",
     ]);
   });
 
@@ -50,6 +51,7 @@ describe("SQLite schema", () => {
       "status",
       "cwd",
       "pair_id",
+      "pair_slot",
       "adapter_session_id",
       "last_seen_at",
       "created_at",

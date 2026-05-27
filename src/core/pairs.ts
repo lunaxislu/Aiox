@@ -24,17 +24,24 @@ export interface PairAttachment {
   pairId: string;
   agentId: string;
   kind: AgentKind;
+  slot?: PairSlot;
 }
+
+export type PairSlot = "a" | "b";
 
 export type AttachAgentToPairResult =
   | {
       ok: true;
-      attachment: PairAttachment;
+      attachment: PairAttachment & { slot: PairSlot };
     }
   | {
       ok: false;
-      reason: "pair_kind_slot_occupied";
+      reason: "agent_already_attached" | "pair_slot_occupied";
       existing: PairAttachment;
+    }
+  | {
+      ok: false;
+      reason: "pair_full";
     };
 
 export function createPairReservation(
@@ -53,33 +60,72 @@ export function attachAgentToPair(
   attachments: readonly PairAttachment[],
   request: PairAttachment,
 ): AttachAgentToPairResult {
+  const alreadyAttached = attachments.find(
+    (attachment) =>
+      attachment.pairId === request.pairId && attachment.agentId === request.agentId,
+  );
+
+  if (alreadyAttached) {
+    return {
+      ok: false,
+      reason: "agent_already_attached",
+      existing: alreadyAttached,
+    };
+  }
+
+  const requestedSlot = request.slot ?? pickFirstOpenSlot(attachments);
+
+  if (!requestedSlot) {
+    return {
+      ok: false,
+      reason: "pair_full",
+    };
+  }
+
   const existing = attachments.find(
     (attachment) =>
-      attachment.pairId === request.pairId && attachment.kind === request.kind,
+      attachment.pairId === request.pairId && attachment.slot === requestedSlot,
   );
 
   if (existing) {
     return {
       ok: false,
-      reason: "pair_kind_slot_occupied",
+      reason: "pair_slot_occupied",
       existing,
     };
   }
 
   return {
     ok: true,
-    attachment: request,
+    attachment: {
+      ...request,
+      slot: requestedSlot,
+    },
   };
 }
 
 export function getPairStatus(
   attachments: readonly PairAttachment[],
 ): PairStatus {
-  const attachedKinds = new Set(attachments.map((attachment) => attachment.kind));
+  const slots = new Set(attachments.map((attachment) => attachment.slot));
 
-  if (attachedKinds.has("codex") && attachedKinds.has("claude")) {
+  if (attachments.length === 2 && slots.has("a") && slots.has("b")) {
     return "ready";
   }
 
   return "pending";
+}
+
+function pickFirstOpenSlot(attachments: readonly PairAttachment[]): PairSlot | null {
+  const slots = new Set(attachments.map((attachment) => attachment.slot));
+
+  if (!slots.has("a")) {
+    return "a";
+  }
+
+  if (!slots.has("b")) {
+    return "b";
+  }
+
+  return null;
 }

@@ -14,6 +14,7 @@ export interface FakeAgentAdapter extends AgentAdapter {
 
 export interface CreateFakeAgentAdapterOptions {
   failInjectForAgentNames?: readonly string[];
+  deferInjectForAgentNames?: readonly string[];
 }
 
 export function createFakeAgentAdapter(
@@ -23,6 +24,7 @@ export function createFakeAgentAdapter(
   const outgoing: AdapterOutgoingMessage[] = [];
   const injections: AdapterInjectInput[] = [];
   const failedNames = new Set(options.failInjectForAgentNames ?? []);
+  const deferredNames = new Set(options.deferInjectForAgentNames ?? []);
 
   return {
     kind,
@@ -37,13 +39,21 @@ export function createFakeAgentAdapter(
 
       if (failedNames.has(input.targetAgent.name)) {
         return {
-          ok: false,
+          kind: "failed",
           reason: "adapter_inject_failed",
           message: `fake ${kind} inject failed for ${input.targetAgent.name}`,
         };
       }
 
-      return { ok: true };
+      if (deferredNames.has(input.targetAgent.name)) {
+        return {
+          kind: "deferred",
+          reason: "target_runtime_unavailable",
+          eligibility: `fake ${kind} runtime for ${input.targetAgent.name}`,
+        };
+      }
+
+      return { kind: "success" };
     },
   };
 }

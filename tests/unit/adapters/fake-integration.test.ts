@@ -305,6 +305,279 @@ describe("fake adapter integration", () => {
       },
     ]);
   });
+
+  it("dispatches a Codex-Codex pair message to the receiver adapter injection", async () => {
+    const ids = [
+      "pair-1",
+      "agent-codex-a",
+      "agent-codex-b",
+      "route-codex-b-codex-a",
+      "route-codex-a-codex-b",
+      "delivery-codex-b",
+      "event-message",
+      "event-queued",
+      "event-delivering",
+      "event-delivered",
+      "event-completed",
+    ];
+    const api = createDaemonApi(
+      createDaemonState({
+        db,
+        createId: () => shiftId(ids),
+        now: () => "2026-05-19T00:00:00.000Z",
+      }),
+    );
+    const codex = createFakeAgentAdapter("codex");
+    const router = createAdapterRouter({ api, adapters: [codex] });
+
+    await api.createPair({ name: "same-vendor" });
+    expect(
+      await api.attachAgent({
+        kind: "codex",
+        name: "impl-a",
+        cwd: "/repo",
+        pairName: "same-vendor",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await api.attachAgent({
+        kind: "codex",
+        name: "impl-b",
+        cwd: "/repo",
+        pairName: "same-vendor",
+      }),
+    ).toMatchObject({ ok: true });
+
+    const outgoing = codex.sendOutgoing({
+      sourceName: "impl-a",
+      messageId: "message-1",
+      type: "instruction",
+      content: "please continue",
+    });
+
+    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+      ok: true,
+      deliveries: [
+        {
+          deliveryId: "delivery-codex-b",
+          targetAgentName: "impl-b",
+          ok: true,
+        },
+      ],
+    });
+    expect(codex.injections.map((input) => input.targetAgent.name)).toEqual([
+      "impl-b",
+    ]);
+  });
+
+  it("dispatches a Claude-Claude pair message to the receiver adapter injection", async () => {
+    const ids = [
+      "pair-1",
+      "agent-claude-a",
+      "agent-claude-b",
+      "route-claude-b-claude-a",
+      "route-claude-a-claude-b",
+      "delivery-claude-b",
+      "event-message",
+      "event-queued",
+      "event-delivering",
+      "event-delivered",
+      "event-completed",
+    ];
+    const api = createDaemonApi(
+      createDaemonState({
+        db,
+        createId: () => shiftId(ids),
+        now: () => "2026-05-19T00:00:00.000Z",
+      }),
+    );
+    const claude = createFakeAgentAdapter("claude");
+    const router = createAdapterRouter({ api, adapters: [claude] });
+
+    await api.createPair({ name: "same-vendor" });
+    expect(
+      await api.attachAgent({
+        kind: "claude",
+        name: "review-a",
+        cwd: "/repo",
+        pairName: "same-vendor",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await api.attachAgent({
+        kind: "claude",
+        name: "review-b",
+        cwd: "/repo",
+        pairName: "same-vendor",
+      }),
+    ).toMatchObject({ ok: true });
+
+    const outgoing = claude.sendOutgoing({
+      sourceName: "review-a",
+      messageId: "message-1",
+      type: "question",
+      content: "please review",
+    });
+
+    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+      ok: true,
+      deliveries: [
+        {
+          deliveryId: "delivery-claude-b",
+          targetAgentName: "review-b",
+          ok: true,
+        },
+      ],
+    });
+    expect(claude.injections.map((input) => input.targetAgent.name)).toEqual([
+      "review-b",
+    ]);
+  });
+
+  it("normalizes a missing target adapter as a deferred adapter-not-registered dispatch result", async () => {
+    const ids = [
+      "agent-codex",
+      "agent-claude",
+      "route-codex-claude",
+      "delivery-claude",
+      "event-message",
+      "event-queued",
+      "event-delivering",
+      "event-failed",
+    ];
+    const api = createDaemonApi(
+      createDaemonState({
+        db,
+        createId: () => shiftId(ids),
+        now: () => "2026-05-19T00:00:00.000Z",
+      }),
+    );
+    const codex = createFakeAgentAdapter("codex");
+    const router = createAdapterRouter({ api, adapters: [codex] });
+
+    await api.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    await api.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
+    await api.connect({ sourceName: "impl", targetNames: ["reviewer"] });
+
+    const outgoing = codex.sendOutgoing({
+      sourceName: "impl",
+      messageId: "message-1",
+      type: "instruction",
+      content: "please review",
+    });
+
+    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+      ok: true,
+      deliveries: [
+        {
+          deliveryId: "delivery-claude",
+          targetAgentName: "reviewer",
+          kind: "deferred",
+          reason: "target_adapter_not_registered",
+        },
+      ],
+    });
+    expect(readDeliveries(db)).toMatchObject([
+      {
+        id: "delivery-claude",
+        status: "queued",
+      },
+    ]);
+  });
+
+  it("leaves delivery queued when a registered adapter defers injection", async () => {
+    const ids = [
+      "agent-codex",
+      "agent-claude",
+      "route-codex-claude",
+      "delivery-claude",
+      "event-message",
+      "event-queued",
+      "event-delivering",
+      "event-queued-again",
+    ];
+    const api = createDaemonApi(
+      createDaemonState({
+        db,
+        createId: () => shiftId(ids),
+        now: () => "2026-05-19T00:00:00.000Z",
+      }),
+    );
+    const codex = createFakeAgentAdapter("codex");
+    const claude = createFakeAgentAdapter("claude", {
+      deferInjectForAgentNames: ["reviewer"],
+    });
+    const router = createAdapterRouter({ api, adapters: [codex, claude] });
+
+    await api.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    await api.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
+    await api.connect({ sourceName: "impl", targetNames: ["reviewer"] });
+
+    const outgoing = codex.sendOutgoing({
+      sourceName: "impl",
+      messageId: "message-1",
+      type: "instruction",
+      content: "please review",
+    });
+
+    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+      ok: true,
+      deliveries: [
+        {
+          deliveryId: "delivery-claude",
+          targetAgentName: "reviewer",
+          kind: "deferred",
+          reason: "target_runtime_unavailable",
+          eligibility: "fake claude runtime for reviewer",
+        },
+      ],
+    });
+    expect(readDeliveries(db)).toMatchObject([
+      {
+        id: "delivery-claude",
+        status: "queued",
+      },
+    ]);
+  });
+
+  it("returns nested dispatch counts from sendMessage after storing the message", async () => {
+    const ids = [
+      "agent-codex",
+      "agent-claude",
+      "route-1",
+      "delivery-1",
+      "event-message",
+      "event-queued",
+    ];
+    const api = createDaemonApi(
+      createDaemonState({
+        db,
+        createId: () => shiftId(ids),
+        now: () => "2026-05-19T00:00:00.000Z",
+      }),
+    );
+
+    await api.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    await api.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
+    api.connect({ sourceName: "impl", targetNames: ["reviewer"] });
+
+    expect(
+      api.sendMessage({
+        sourceName: "impl",
+        messageId: "message-1",
+        type: "instruction",
+        content: "please review",
+      }),
+    ).toMatchObject({
+      ok: true,
+      messageId: "message-1",
+      dispatch: {
+        delivered: expect.any(Number),
+        deferred: expect.any(Array),
+        failed: expect.any(Array),
+      },
+    });
+  });
 });
 
 function shiftId(ids: string[]): string {

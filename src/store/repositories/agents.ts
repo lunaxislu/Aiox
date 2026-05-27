@@ -9,6 +9,7 @@ export interface StoredAgent {
   status: AgentInstanceStatus;
   cwd: string;
   pairId: string | null;
+  pairSlot: "a" | "b" | null;
   adapterSessionId: string | null;
   lastSeenAt: string | null;
   createdAt: string;
@@ -42,6 +43,7 @@ interface AgentRow {
   status: AgentInstanceStatus;
   cwd: string;
   pair_id: string | null;
+  pair_slot: "a" | "b" | null;
   adapter_session_id: string | null;
   last_seen_at: string | null;
   created_at: string;
@@ -80,6 +82,7 @@ export function createAgentRepository(db: Database): AgentRepository {
           status: "connected",
           cwd: request.cwd,
           pairId: existing.pairId,
+          pairSlot: existing.pairSlot,
           adapterSessionId: request.adapterSessionId ?? null,
           lastSeenAt: request.now,
           updatedAt: request.now,
@@ -92,6 +95,7 @@ export function createAgentRepository(db: Database): AgentRepository {
               status = @status,
               cwd = @cwd,
               pair_id = @pairId,
+              pair_slot = @pairSlot,
               adapter_session_id = @adapterSessionId,
               last_seen_at = @lastSeenAt,
               updated_at = @updatedAt
@@ -112,6 +116,7 @@ export function createAgentRepository(db: Database): AgentRepository {
         status: "connected",
         cwd: request.cwd,
         pairId: null,
+        pairSlot: null,
         adapterSessionId: request.adapterSessionId ?? null,
         lastSeenAt: request.now,
         createdAt: request.now,
@@ -127,6 +132,7 @@ export function createAgentRepository(db: Database): AgentRepository {
             status,
             cwd,
             pair_id,
+            pair_slot,
             adapter_session_id,
             last_seen_at,
             created_at,
@@ -138,6 +144,7 @@ export function createAgentRepository(db: Database): AgentRepository {
             @status,
             @cwd,
             @pairId,
+            @pairSlot,
             @adapterSessionId,
             @lastSeenAt,
             @createdAt,
@@ -248,6 +255,7 @@ function mapAgentRow(row: AgentRow): StoredAgent {
     status: row.status,
     cwd: row.cwd,
     pairId: row.pair_id,
+    pairSlot: row.pair_slot,
     adapterSessionId: row.adapter_session_id,
     lastSeenAt: row.last_seen_at,
     createdAt: row.created_at,

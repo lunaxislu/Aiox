@@ -14,6 +14,7 @@ import type {
   DisconnectCodexChannelResult,
   DisconnectRequest,
   DisconnectResult,
+  DispatchSummary,
   NotifyTuiExitedRequest,
   NotifyTuiExitedResult,
   ReceiveClaudeChannelMessageRequest,
@@ -40,7 +41,7 @@ import type {
 import type { AgentInstanceStatus, AgentKind } from "../core/agents.js";
 import type { MessageDeliveryStatus } from "../core/deliveries.js";
 import type { MessageType } from "../core/messages.js";
-import type { PairStatus } from "../core/pairs.js";
+import type { PairSlot, PairStatus } from "../core/pairs.js";
 import type { StoredAgent } from "../store/repositories/agents.js";
 import type { StoredDelivery } from "../store/repositories/deliveries.js";
 import type { StoredMessage } from "../store/repositories/messages.js";
@@ -93,6 +94,7 @@ export interface AgentDto {
   status: AgentInstanceStatus;
   cwd: string;
   pairId: string | null;
+  pairSlot?: PairSlot | null;
   adapterSessionId?: string;
 }
 
@@ -149,8 +151,12 @@ export type AttachAgentResponse =
     }
   | {
       ok: false;
-      reason: "pair_kind_slot_occupied";
+      reason: "agent_already_attached" | "pair_slot_occupied";
       existingAgentId: string;
+    }
+  | {
+      ok: false;
+      reason: "pair_full";
     }
   | {
       ok: false;
@@ -214,8 +220,10 @@ export type ReceiveClaudeChannelMessageResponse = SendMessageResponse;
 export type SendMessageResponse =
   | {
       ok: true;
+      messageId: string;
       message: MessageDto;
       deliveries: DeliveryDto[];
+      dispatch: DispatchSummary;
     }
   | {
       ok: false;
@@ -275,8 +283,10 @@ export type DisconnectCodexChannelResponse = DisconnectCodexChannelResult;
 export type ReceiveCodexMessageResponse =
   | {
       ok: true;
+      messageId: string;
       message: MessageDto;
       deliveries: DeliveryDto[];
+      dispatch: DispatchSummary;
     }
   | { ok: false; reason: "codex_ingress_unauthorized"; detail: string }
   | { ok: false; reason: "no_active_routes" }
@@ -419,8 +429,10 @@ function mapReceiveCodexMessageResult(
   if (result.ok) {
     return {
       ok: true,
+      messageId: result.message.id,
       message: mapMessage(result.message),
       deliveries: result.deliveries.map(mapDelivery),
+      dispatch: result.dispatch,
     };
   }
 
@@ -439,8 +451,10 @@ function mapSendMessageResult(result: SendMessageResult): SendMessageResponse {
   if (result.ok) {
     return {
       ok: true,
+      messageId: result.message.id,
       message: mapMessage(result.message),
       deliveries: result.deliveries.map(mapDelivery),
+      dispatch: result.dispatch,
     };
   }
 

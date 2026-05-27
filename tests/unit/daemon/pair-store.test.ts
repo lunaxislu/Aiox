@@ -114,6 +114,7 @@ describe("daemon pair store persistence", () => {
         status: "connected",
         cwd: "/repo",
         pair_id: "pair-1",
+        pair_slot: "a",
         adapter_session_id: null,
         last_seen_at: "2026-05-18T00:00:00.000Z",
         created_at: "2026-05-18T00:00:00.000Z",
@@ -193,8 +194,14 @@ describe("daemon pair store persistence", () => {
     expect(readEventRows()).toEqual([]);
   });
 
-  it("rejects a second same-kind pair attach without changing pair, route, or event rows", async () => {
-    const client = createClient(["pair-1", "agent-codex", "agent-other"]);
+  it("allows a second same-kind pair attach and creates routes", async () => {
+    const client = createClient([
+      "pair-1",
+      "agent-codex",
+      "agent-other",
+      "route-other-codex",
+      "route-codex-other",
+    ]);
 
     await client.createPair({ name: "feature-x" });
     await client.attachAgent({
@@ -203,11 +210,6 @@ describe("daemon pair store persistence", () => {
       cwd: "/repo",
       pairName: "feature-x",
     });
-    const agentsBefore = readAgentRows();
-    const pairsBefore = readPairRows();
-    const routesBefore = readRouteRows();
-    const eventsBefore = readEventRows();
-
     expect(
       await client.attachAgent({
         kind: "codex",
@@ -215,15 +217,15 @@ describe("daemon pair store persistence", () => {
         cwd: "/repo",
         pairName: "feature-x",
       }),
-    ).toEqual({
-      ok: false,
-      reason: "pair_kind_slot_occupied",
-      existingAgentId: "agent-codex",
+    ).toMatchObject({
+      ok: true,
+      agent: {
+        id: "agent-other",
+        pairId: "pair-1",
+      },
     });
-    expect(readAgentRows()).toEqual(agentsBefore);
-    expect(readPairRows()).toEqual(pairsBefore);
-    expect(readRouteRows()).toEqual(routesBefore);
-    expect(readEventRows()).toEqual(eventsBefore);
+    expect(readPairRows()).toMatchObject([{ id: "pair-1", status: "ready" }]);
+    expect(readRouteRows()).toHaveLength(2);
   });
 
   it("rejects a kind mismatch during pair reconnect without changing agent, pair, route, or event rows", async () => {
@@ -261,6 +263,138 @@ describe("daemon pair store persistence", () => {
     expect(readPairRows()).toEqual(pairsBefore);
     expect(readRouteRows()).toEqual(routesBefore);
     expect(readEventRows()).toEqual(eventsBefore);
+  });
+
+  it("marks a Codex-Codex pair ready and creates bidirectional routes by slot", async () => {
+    const client = createClient([
+      "pair-1",
+      "agent-codex-a",
+      "agent-codex-b",
+      "route-codex-b-codex-a",
+      "route-codex-a-codex-b",
+    ]);
+
+    await client.createPair({ name: "feature-x" });
+    await client.attachAgent({
+      kind: "codex",
+      name: "impl-a",
+      cwd: "/repo",
+      pairName: "feature-x",
+    });
+
+    expect(
+      await client.attachAgent({
+        kind: "codex",
+        name: "impl-b",
+        cwd: "/repo",
+        pairName: "feature-x",
+      }),
+    ).toMatchObject({
+      ok: true,
+      agent: {
+        id: "agent-codex-b",
+        name: "impl-b",
+        kind: "codex",
+        pairId: "pair-1",
+      },
+    });
+
+    expect(readPairRows()).toMatchObject([
+      {
+        id: "pair-1",
+        status: "ready",
+      },
+    ]);
+    expect(readRouteRows()).toEqual([
+      {
+        id: "route-codex-a-codex-b",
+        source_agent_id: "agent-codex-a",
+        target_agent_id: "agent-codex-b",
+        status: "active",
+        created_at: "2026-05-18T00:00:00.000Z",
+        updated_at: "2026-05-18T00:00:00.000Z",
+      },
+      {
+        id: "route-codex-b-codex-a",
+        source_agent_id: "agent-codex-b",
+        target_agent_id: "agent-codex-a",
+        status: "active",
+        created_at: "2026-05-18T00:00:00.000Z",
+        updated_at: "2026-05-18T00:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("marks a Claude-Claude pair ready and creates bidirectional routes by slot", async () => {
+    const client = createClient([
+      "pair-1",
+      "agent-claude-a",
+      "agent-claude-b",
+      "route-claude-b-claude-a",
+      "route-claude-a-claude-b",
+    ]);
+
+    await client.createPair({ name: "feature-x" });
+    await client.attachAgent({
+      kind: "claude",
+      name: "review-a",
+      cwd: "/repo",
+      pairName: "feature-x",
+    });
+
+    expect(
+      await client.attachAgent({
+        kind: "claude",
+        name: "review-b",
+        cwd: "/repo",
+        pairName: "feature-x",
+      }),
+    ).toMatchObject({
+      ok: true,
+      agent: {
+        id: "agent-claude-b",
+        name: "review-b",
+        kind: "claude",
+        pairId: "pair-1",
+      },
+    });
+
+    expect(readPairRows()).toMatchObject([
+      {
+        id: "pair-1",
+        status: "ready",
+      },
+    ]);
+    expect(readRouteRows()).toHaveLength(2);
+  });
+
+  it("surfaces agent_already_attached when a reconnect tries to occupy the same pair twice", async () => {
+    const client = createClient(["pair-1", "agent-codex", "agent-codex-reconnect"]);
+
+    await client.createPair({ name: "feature-x" });
+    await client.attachAgent({
+      kind: "codex",
+      name: "impl",
+      cwd: "/repo",
+      pairName: "feature-x",
+    });
+    db.prepare("update agents set status = 'disconnected' where id = ?").run(
+      "agent-codex",
+    );
+
+    expect(
+      await client.attachAgent({
+        kind: "codex",
+        name: "impl",
+        cwd: "/repo",
+        pairName: "feature-x",
+        slot: "b",
+      } as Parameters<typeof client.attachAgent>[0] & { slot: "b" }),
+    ).toEqual({
+      ok: false,
+      reason: "agent_already_attached",
+      existingAgentId: "agent-codex",
+    });
   });
 
   function createClient(ids: string[]) {

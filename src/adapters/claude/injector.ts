@@ -25,7 +25,7 @@ export async function injectClaudeChannel(
   const runtime = lookup.getRuntime(options.agentName);
   if (!runtime) {
     return {
-      ok: false,
+      kind: "failed",
       reason: "claude_channel_unavailable",
       message: `Claude channel not registered for agent: ${options.agentName}`,
     };
@@ -49,26 +49,26 @@ export async function injectClaudeChannel(
 
     if (!response.ok) {
       return {
-        ok: false,
+        kind: "failed",
         reason: "claude_channel_push_failed",
         message: `Claude channel push rejected: HTTP ${response.status}`,
       };
     }
 
-    return { ok: true };
+    return { kind: "success" };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
     if (isAbortError(error)) {
       return {
-        ok: false,
+        kind: "failed",
         reason: "claude_channel_push_failed",
         message: `Claude channel push timed out after ${timeoutMs}ms: ${message}`,
       };
     }
 
     return {
-      ok: false,
+      kind: "failed",
       reason: "claude_channel_unavailable",
       message: `Claude channel endpoint unreachable: ${message}`,
     };

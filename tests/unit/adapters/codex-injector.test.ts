@@ -17,7 +17,7 @@ describe("Codex turn/start injector", () => {
         input: "hello",
       }),
     ).resolves.toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "codex_binding_uncertain",
       message: expect.stringContaining("thread-other"),
     });
@@ -39,7 +39,7 @@ describe("Codex turn/start injector", () => {
         timeoutMs: 5,
       }),
     ).resolves.toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "codex_turn_start_timeout",
       message: "ack timed out",
     });
@@ -59,7 +59,7 @@ describe("Codex turn/start injector", () => {
         input: "hello",
       }),
     ).resolves.toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "codex_app_server_ws_dropped",
       message: "socket dropped",
     });
@@ -83,7 +83,7 @@ describe("Codex turn/start injector", () => {
         input: "hello",
       }),
     ).resolves.toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "codex_binding_uncertain",
       message: expect.stringContaining("thread-2"),
     });
@@ -103,7 +103,7 @@ describe("Codex turn/start injector", () => {
         input: "hello",
       }),
     ).resolves.toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "codex_binding_uncertain",
       message: "binding mismatch",
     });
@@ -125,7 +125,7 @@ describe("Codex turn/start injector", () => {
         threadId: "thread-1",
         input: "hello",
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ kind: "success" });
     expect(runtime.requests).toEqual([
       {
         method: "turn/start",

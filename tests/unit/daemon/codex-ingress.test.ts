@@ -340,7 +340,14 @@ describe("daemon receiveCodexMessage", () => {
 
   it("receiveCodexMessage dispatches queued delivery to registered Claude channel", async () => {
     const requests: { url: string; body: unknown }[] = [];
+    const deliveryStatusesAtFetch: string[] = [];
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      const row = db
+        .prepare("select status from message_deliveries where message_id = ?")
+        .get("msg-1") as { status: string } | undefined;
+      if (row) {
+        deliveryStatusesAtFetch.push(row.status);
+      }
       requests.push({ url, body: JSON.parse(init.body as string) });
       return new Response("{}", { status: 202 });
     });
@@ -366,6 +373,7 @@ describe("daemon receiveCodexMessage", () => {
         },
       },
     ]);
+    expect(deliveryStatusesAtFetch).toEqual(["delivering"]);
     expect(db.prepare("select status from message_deliveries").get()).toMatchObject({
       status: "completed",
     });
@@ -550,7 +558,7 @@ describe("daemon receiveCodexReply", () => {
     ).toMatchObject({ status: "completed" });
   });
 
-  it("marks Codex reply delivery failed when Claude channel is unregistered", async () => {
+  it("keeps Codex reply delivery queued when Claude channel is unregistered", async () => {
     const setup = await setupPairedAgents(db);
 
     const parent = await setup.client.sendMessage({
@@ -575,17 +583,11 @@ describe("daemon receiveCodexReply", () => {
         .prepare("select status from message_deliveries where message_id = ?")
         .get("reply-unregistered"),
     ).toMatchObject({
-      status: "failed",
+      status: "queued",
     });
     expect(
-      db
-        .prepare(
-          "select data_json from events where type = 'delivery_status_changed' order by rowid desc limit 1",
-        )
-        .get(),
-    ).toMatchObject({
-      data_json: expect.stringContaining("claude_channel_unavailable"),
-    });
+      db.prepare("select type from events where type = 'delivery_status_changed'").all(),
+    ).toEqual([]);
   });
 
   it("missing token returns codex_ingress_unauthorized", async () => {
@@ -691,6 +693,81 @@ describe("daemon receiveClaudeChannelMessage", () => {
     expect(
       db.prepare("select content from messages where id = ?").get('claude-msg-<"&'),
     ).toMatchObject({ content: "5 < 6 & 7 > 3" });
+  });
+
+  it("defers Codex target injection when no authoritative active thread binding exists", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        loadedThreadIds: [],
+      },
+    });
+
+    const response = await setup.client.receiveClaudeChannelMessage({
+      agentName: "reviewer",
+      messageId: "claude-msg-1",
+      text: "hello from claude",
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      messageId: "claude-msg-1",
+      dispatch: {
+        delivered: 0,
+        deferred: [
+          {
+            targetAgentId: "id-3",
+            reason: "target_binding_unconfirmed",
+            eligibility: expect.any(String),
+          },
+        ],
+        failed: [],
+      },
+    });
+    expect(
+      db.prepare("select status from message_deliveries where message_id = ?").all(
+        "claude-msg-1",
+      ),
+    ).toEqual([{ status: "queued" }]);
+  });
+
+  it("defers Claude target injection when the target Claude channel is unavailable", async () => {
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "claude", name: "review-a", cwd: "/repo" });
+    await client.attachAgent({ kind: "claude", name: "review-b", cwd: "/repo" });
+    await client.connect({ sourceName: "review-a", targetNames: ["review-b"] });
+
+    const response = await client.receiveClaudeChannelMessage({
+      agentName: "review-a",
+      messageId: "claude-msg-1",
+      text: "hello from claude",
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      messageId: "claude-msg-1",
+      dispatch: {
+        delivered: 0,
+        deferred: [
+          {
+            targetAgentId: "id-2",
+            reason: "target_runtime_unavailable",
+            eligibility: expect.any(String),
+          },
+        ],
+        failed: [],
+      },
+    });
+    expect(
+      db.prepare("select status from message_deliveries where message_id = ?").all(
+        "claude-msg-1",
+      ),
+    ).toEqual([{ status: "queued" }]);
   });
 });
 
@@ -863,8 +940,8 @@ describe("daemon receiveClaudeChannelReply", () => {
       loadedThreadIds: ["thread-old", "thread-new"],
       chosenThreadId: "thread-new",
       previousAdapterSessionId: null,
-      runtimeActiveThreadId: null,
-      selectionPolicy: "latest_loaded_thread_fallback",
+      runtimeActiveThreadId: "thread-new",
+      selectionPolicy: "proxy_active_thread",
       deliveryMessageType: "reply",
       sourceAgentId: reviewer.id,
       sourceAgentName: "reviewer",
@@ -976,8 +1053,8 @@ describe("daemon receiveClaudeChannelReply", () => {
     ).toMatchObject({
       type: "codex_delivery_queued_no_loaded_thread",
       data_json: JSON.stringify({
-        reason: "codex_no_loaded_thread",
-        message: "Codex runtime has no loaded thread id",
+          reason: "codex_no_loaded_thread",
+          message: "Codex runtime has no authoritative active thread id",
       }),
     });
   });
@@ -1410,6 +1487,7 @@ async function setupPairedAgents(
     codexRuntime?: {
       startedThreadId?: string;
       loadedThreadIds?: string[];
+      activeThreadId?: string | null;
       failTurnStart?: boolean;
     };
   } = {},
@@ -1420,6 +1498,7 @@ async function setupPairedAgents(
     endpoint: "ws://127.0.0.1:54321/",
     startedThreadId: opts.codexRuntime?.startedThreadId ?? "thread-impl",
     loadedThreadIds: opts.codexRuntime?.loadedThreadIds,
+    activeThreadId: opts.codexRuntime?.activeThreadId,
     failTurnStart: opts.codexRuntime?.failTurnStart,
   });
   const state = createDaemonState({
@@ -1546,6 +1625,7 @@ function fakeCodexRuntime(options: {
   startedThreadId?: string;
   resumedThreadId?: string;
   loadedThreadIds?: string[];
+  activeThreadId?: string | null;
   failTurnStart?: boolean;
 }) {
   const requests: Array<{
@@ -1557,7 +1637,11 @@ function fakeCodexRuntime(options: {
   return {
     state: "ready" as const,
     endpoint: new URL(options.endpoint),
-    activeThreadId: null as string | null,
+    activeThreadId:
+      options.activeThreadId ??
+      (options.loadedThreadIds
+        ? (options.loadedThreadIds.at(-1) ?? null)
+        : (options.startedThreadId ?? null)),
     requests,
     startThreadCalls: 0,
     resumeThreadCalls: [] as string[],

@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { createServer, type Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", () => ({
@@ -16,6 +17,7 @@ import {
   CLAUDE_SEND_DESCRIPTION,
   createReplyHandler,
   createSendHandler,
+  startClaudeChannelHttpIngress,
 } from "../../../src/adapters/claude/channel-server.js";
 import { buildLaunchClaudeChannelArgs, launchClaudeWithChannel } from "../../../src/adapters/claude/launcher.js";
 
@@ -492,6 +494,54 @@ describe("buildChannelNotification", () => {
 });
 
 // ---------------------------------------------------------------------------
+// HTTP ingress — port selection
+// ---------------------------------------------------------------------------
+
+describe("startClaudeChannelHttpIngress", () => {
+  it("uses an OS-assigned auto-port when no port is specified", async () => {
+    const ingress = await startClaudeChannelHttpIngress(fakeMcpServer());
+
+    try {
+      expect(ingress.port).toBeGreaterThan(0);
+      expect(ingress.endpoint).toBe(`http://127.0.0.1:${ingress.port}/send`);
+    } finally {
+      await closeServer(ingress.server);
+    }
+  });
+
+  it("binds the requested explicit port when it is free", async () => {
+    const port = await reserveFreePort();
+    const ingress = await startClaudeChannelHttpIngress(fakeMcpServer(), { port });
+
+    try {
+      expect(ingress.port).toBe(port);
+      expect(ingress.endpoint).toBe(`http://127.0.0.1:${port}/send`);
+    } finally {
+      await closeServer(ingress.server);
+    }
+  });
+
+  it("rejects with a typed error when the requested explicit port is already in use", async () => {
+    const occupyingServer = createServer();
+    await listenOnLoopback(occupyingServer, 0);
+    const address = occupyingServer.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+
+    try {
+      await expect(
+        startClaudeChannelHttpIngress(fakeMcpServer(), { port }),
+      ).rejects.toMatchObject({
+        reason: "claude_channel_port_in_use",
+        port,
+        message: expect.stringContaining("AIOX_CLAUDE_CHANNEL_PORT"),
+      });
+    } finally {
+      await closeServer(occupyingServer);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // launcher — command shape
 // ---------------------------------------------------------------------------
 
@@ -548,6 +598,45 @@ function fakeClaudeDaemonClient(overrides: {
       overrides.receiveClaudeChannelReply ?? (async () => ({ ok: true })),
     close() {},
   };
+}
+
+function fakeMcpServer() {
+  return {
+    server: {
+      notification: async () => {},
+    },
+  } as never;
+}
+
+async function reserveFreePort(): Promise<number> {
+  const server = createServer();
+  await listenOnLoopback(server, 0);
+  const address = server.address();
+  const port = typeof address === "object" && address !== null ? address.port : 0;
+  await closeServer(server);
+  return port;
+}
+
+function listenOnLoopback(server: Server, port: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {

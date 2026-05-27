@@ -96,6 +96,7 @@ describe("daemon message fan-out store persistence", () => {
       }),
     ).toEqual({
       ok: true,
+      messageId: "message-1",
       message: {
         id: "message-1",
         sourceAgentId: "agent-source",
@@ -121,6 +122,11 @@ describe("daemon message fan-out store persistence", () => {
           idempotencyKey: "message-1:agent-two",
         },
       ],
+      dispatch: {
+        delivered: 0,
+        deferred: [],
+        failed: [],
+      },
     });
     expect(readMessages(db)).toEqual([
       {

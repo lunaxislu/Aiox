@@ -19,13 +19,13 @@ describe("injectClaudeChannel", () => {
     });
 
     expect(result).toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "claude_channel_unavailable",
       message: expect.stringContaining("alpha"),
     });
   });
 
-  it("returns ok: true when endpoint returns 2xx", async () => {
+  it("returns success when endpoint returns 2xx", async () => {
     const lookup = fakeLookup({ alpha: "http://127.0.0.1:18789/send" });
     vi.stubGlobal("fetch", async () => new Response("{}", { status: 202 }));
 
@@ -36,7 +36,7 @@ describe("injectClaudeChannel", () => {
       origin: "codex",
     });
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ kind: "success" });
   });
 
   it("sends correct JSON body to the registered endpoint", async () => {
@@ -91,7 +91,7 @@ describe("injectClaudeChannel", () => {
     });
 
     expect(result).toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "claude_channel_push_failed",
       message: expect.stringContaining("500"),
     });
@@ -114,7 +114,7 @@ describe("injectClaudeChannel", () => {
     });
 
     expect(result).toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "claude_channel_push_failed",
       message: expect.stringContaining("fetch aborted"),
     });
@@ -135,7 +135,7 @@ describe("injectClaudeChannel", () => {
     });
 
     expect(result).toMatchObject({
-      ok: false,
+      kind: "failed",
       reason: "claude_channel_unavailable",
       message: expect.stringContaining("ECONNREFUSED"),
     });

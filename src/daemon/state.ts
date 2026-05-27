@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AgentKind } from "../core/agents.js";
 import type { MessageDeliveryStatus } from "../core/deliveries.js";
 import type { MessageType } from "../core/messages.js";
+import type { PairSlot } from "../core/pairs.js";
 import {
   createAgentRepository,
   type AttachStoredAgentResult,
@@ -131,6 +132,7 @@ export type ReceiveCodexMessageResult =
       ok: true;
       message: StoredMessage;
       deliveries: StoredDelivery[];
+      dispatch: DispatchSummary;
     }
   | { ok: false; reason: "codex_ingress_unauthorized"; detail: string }
   | { ok: false; reason: "no_active_routes" }
@@ -211,6 +213,7 @@ export interface AttachAgentRequest {
   name: string;
   cwd: string;
   pairName?: string;
+  slot?: PairSlot;
   resumeSessionId?: string;
 }
 
@@ -233,8 +236,12 @@ export type AttachAgentResult =
     }
   | {
       ok: false;
-      reason: "pair_kind_slot_occupied";
+      reason: "agent_already_attached" | "pair_slot_occupied";
       existingAgentId: string;
+    }
+  | {
+      ok: false;
+      reason: "pair_full";
     }
   | {
       ok: false;
@@ -320,6 +327,7 @@ export type SendMessageResult =
       ok: true;
       message: StoredMessage;
       deliveries: StoredDelivery[];
+      dispatch: DispatchSummary;
     }
   | {
       ok: false;
@@ -335,6 +343,37 @@ export type SendMessageResult =
       reason: "delivery_idempotency_key_exists";
       existing: StoredDelivery;
     };
+
+export type AdapterInjectFailureReason =
+  | "adapter_inject_failed"
+  | "codex_app_server_unavailable"
+  | "codex_app_server_ws_connect_failed"
+  | "codex_app_server_ws_initialize_failed"
+  | "codex_app_server_ws_dropped"
+  | "codex_turn_start_timeout"
+  | "codex_jsonrpc_error"
+  | "codex_resume_failed"
+  | "codex_binding_uncertain"
+  | "claude_channel_unavailable"
+  | "claude_channel_push_failed";
+
+export type AdapterInjectDeferredReason =
+  | "target_adapter_not_registered"
+  | "target_binding_unconfirmed"
+  | "target_runtime_unavailable";
+
+export interface DispatchSummary {
+  delivered: number;
+  deferred: Array<{
+    targetAgentId: string;
+    reason: AdapterInjectDeferredReason;
+    eligibility?: string;
+  }>;
+  failed: Array<{
+    targetAgentId: string;
+    reason: AdapterInjectFailureReason | "target_agent_not_found";
+  }>;
+}
 
 export interface UpdateDeliveryStatusRequest {
   deliveryId: string;
@@ -527,13 +566,16 @@ export function createDaemonState(
             pairId: pair.id,
             agentId: attachResult.agent.id,
             kind: request.kind,
+            slot: request.slot,
             now,
           });
 
           if (!pairAttachResult.ok) {
             if (
-              pairAttachResult.reason === "pair_kind_slot_occupied" ||
-              pairAttachResult.reason === "agent_kind_mismatch"
+              pairAttachResult.reason === "agent_already_attached" ||
+              pairAttachResult.reason === "agent_kind_mismatch" ||
+              pairAttachResult.reason === "pair_full" ||
+              pairAttachResult.reason === "pair_slot_occupied"
             ) {
               throw createAttachRollback(pairAttachResult);
             }
@@ -558,6 +600,7 @@ export function createDaemonState(
             agent: {
               ...attachResult.agent,
               pairId: pair.id,
+              pairSlot: pairAttachResult.slot,
             },
           };
         });
@@ -954,7 +997,8 @@ export function createDaemonState(
       });
 
       if (result.ok) {
-        await dispatchClaudeReplyToCodexChannels({
+        result.dispatch = await dispatchToPairPeers({
+          sourceName: request.agentName,
           message: result.message,
           deliveries: result.deliveries,
         });
@@ -989,7 +1033,8 @@ export function createDaemonState(
       });
 
       if (result.ok) {
-        await dispatchClaudeReplyToCodexChannels({
+        result.dispatch = await dispatchToPairPeers({
+          sourceName: request.agentName,
           message: result.message,
           deliveries: result.deliveries,
         });
@@ -1072,7 +1117,7 @@ export function createDaemonState(
           deliveryId: null,
           routeId: null,
         });
-        await dispatchCodexMessageToClaudeChannels({
+        result.dispatch = await dispatchToPairPeers({
           sourceName: request.agentName,
           message: result.message,
           deliveries: result.deliveries,
@@ -1107,7 +1152,7 @@ export function createDaemonState(
           deliveryId: null,
           routeId: null,
         });
-        await dispatchCodexMessageToClaudeChannels({
+        result.dispatch = await dispatchToPairPeers({
           sourceName: request.agentName,
           message: result.message,
           deliveries: result.deliveries,
@@ -1200,192 +1245,13 @@ export function createDaemonState(
     });
   }
 
-  async function dispatchClaudeReplyToCodexChannels(input: {
-    message: StoredMessage;
-    deliveries: StoredDelivery[];
-  }): Promise<void> {
-    for (const delivery of input.deliveries) {
-      const targetAgent = agents
-        .list()
-        .find((agent) => agent.id === delivery.targetAgentId);
-
-      if (!targetAgent) {
-        updateDeliveryStatusInTransaction({
-          deliveryId: delivery.id,
-          status: "failed",
-          error: {
-            reason: "target_agent_not_found",
-            message: "target agent not found",
-          },
-        });
-        continue;
-      }
-
-      if (targetAgent.kind !== "codex") {
-        continue;
-      }
-
-      const sourceAgent = agents
-        .list()
-        .find((agent) => agent.id === input.message.sourceAgentId);
-      const runtime = codexRuntimes.get(targetAgent.name);
-      const target = await resolveCodexReplyTarget(runtime);
-
-      if (!target.ok) {
-        if (target.reason === "codex_no_loaded_thread") {
-          events.append({
-            id: options.createId(),
-            type: "codex_delivery_target_unavailable",
-            data: {
-              operation: "thread/loaded/list",
-              loadedThreadIds: target.loadedThreadIds ?? [],
-              previousAdapterSessionId: targetAgent.adapterSessionId,
-              runtimeActiveThreadId: target.runtimeActiveThreadId ?? null,
-              reason: target.reason,
-              deliveryMessageType: input.message.type,
-              sourceAgentId: input.message.sourceAgentId,
-              sourceAgentName: sourceAgent?.name ?? "unknown",
-              targetAgentName: targetAgent.name,
-            },
-            createdAt: options.now(),
-            agentId: targetAgent.id,
-            messageId: input.message.id,
-            deliveryId: delivery.id,
-            routeId: delivery.routeId,
-          });
-          events.append({
-            id: options.createId(),
-            type: "codex_delivery_queued_no_loaded_thread",
-            data: {
-              reason: target.reason,
-              message: target.message,
-            },
-            createdAt: options.now(),
-            agentId: targetAgent.id,
-            messageId: input.message.id,
-            deliveryId: delivery.id,
-            routeId: delivery.routeId,
-          });
-          continue;
-        }
-
-        updateDeliveryStatusInTransaction({
-          deliveryId: delivery.id,
-          status: "failed",
-          error: {
-            reason: target.reason,
-            message: target.message,
-          },
-        });
-        continue;
-      }
-
-      events.append({
-        id: options.createId(),
-        type: "codex_delivery_target_selected",
-        data: {
-          operation: "thread/loaded/list",
-          loadedThreadIds: target.loadedThreadIds,
-          chosenThreadId: target.threadId,
-          previousAdapterSessionId: targetAgent.adapterSessionId,
-          runtimeActiveThreadId: target.runtimeActiveThreadId,
-          selectionPolicy: target.selectionPolicy,
-          deliveryMessageType: input.message.type,
-          sourceAgentId: input.message.sourceAgentId,
-          sourceAgentName: sourceAgent?.name ?? "unknown",
-          targetAgentName: targetAgent.name,
-        },
-        createdAt: options.now(),
-        agentId: targetAgent.id,
-        messageId: input.message.id,
-        deliveryId: delivery.id,
-        routeId: delivery.routeId,
-      });
-
-      updateDeliveryStatusInTransaction({
-        deliveryId: delivery.id,
-        status: "delivering",
-      });
-
-      const injectResult = await injectReplyIntoCodexRuntime(
-        target.runtime,
-        target.threadId,
-        formatCodexAioxChannelEnvelope(input.message),
-      );
-
-      if (!injectResult.ok) {
-        events.append({
-          id: options.createId(),
-          type: "codex_delivery_target_injection_failed",
-          data: {
-            chosenThreadId: target.threadId,
-            loadedThreadIds: target.loadedThreadIds,
-            reason: injectResult.reason,
-            message: injectResult.message,
-            sourceAgentId: input.message.sourceAgentId,
-            sourceAgentName: sourceAgent?.name ?? "unknown",
-            targetAgentName: targetAgent.name,
-          },
-          createdAt: options.now(),
-          agentId: targetAgent.id,
-          messageId: input.message.id,
-          deliveryId: delivery.id,
-          routeId: delivery.routeId,
-        });
-        updateDeliveryStatusInTransaction({
-          deliveryId: delivery.id,
-          status: "failed",
-          error: {
-            reason: injectResult.reason,
-            message: injectResult.message,
-          },
-        });
-        continue;
-      }
-
-      target.runtime.rebindActiveThread(target.threadId);
-      if (target.threadId !== targetAgent.adapterSessionId) {
-        const now = options.now();
-        const reboundAgent = agents.rebindAdapterSessionId({
-          name: targetAgent.name,
-          adapterSessionId: target.threadId,
-          now,
-        });
-        if (reboundAgent) {
-          events.append({
-            id: options.createId(),
-            type: "agent_thread_id_rebound",
-            data: {
-              previousId: targetAgent.adapterSessionId,
-              nextId: target.threadId,
-              operation: "thread/loaded/list",
-              source: "loaded_list",
-            },
-            createdAt: now,
-            agentId: reboundAgent.id,
-            messageId: input.message.id,
-            deliveryId: delivery.id,
-            routeId: delivery.routeId,
-          });
-        }
-      }
-
-      updateDeliveryStatusInTransaction({
-        deliveryId: delivery.id,
-        status: "delivered",
-      });
-      updateDeliveryStatusInTransaction({
-        deliveryId: delivery.id,
-        status: "completed",
-      });
-    }
-  }
-
-  async function dispatchCodexMessageToClaudeChannels(input: {
+  async function dispatchToPairPeers(input: {
     sourceName: string;
     message: StoredMessage;
     deliveries: StoredDelivery[];
-  }): Promise<void> {
+  }): Promise<DispatchSummary> {
+    const summary = emptyDispatchSummary();
+
     for (const delivery of input.deliveries) {
       const targetAgent = agents
         .list()
@@ -1400,28 +1266,19 @@ export function createDaemonState(
             message: `target agent not found`,
           },
         });
+        summary.failed.push({
+          targetAgentId: delivery.targetAgentId,
+          reason: "target_agent_not_found",
+        });
         continue;
       }
 
-      if (targetAgent.kind !== "claude") {
-        continue;
-      }
+      const injectResult =
+        targetAgent.kind === "codex"
+          ? await injectMessageIntoCodexTarget(input.message, delivery, targetAgent)
+          : await injectMessageIntoClaudeTarget(input, delivery, targetAgent);
 
-      updateDeliveryStatusInTransaction({
-        deliveryId: delivery.id,
-        status: "delivering",
-      });
-      const injectResult = await injectClaudeChannel(
-        { getRuntime: (agentName) => claudeChannelRuntimes.get(agentName) },
-        {
-          agentName: targetAgent.name,
-          content: input.message.content,
-          chatId: input.message.id,
-          origin: input.sourceName,
-        },
-      );
-
-      if (injectResult.ok) {
+      if (injectResult.kind === "success") {
         updateDeliveryStatusInTransaction({
           deliveryId: delivery.id,
           status: "delivered",
@@ -1429,6 +1286,24 @@ export function createDaemonState(
         updateDeliveryStatusInTransaction({
           deliveryId: delivery.id,
           status: "completed",
+        });
+        summary.delivered += 1;
+        continue;
+      }
+
+      if (injectResult.kind === "deferred") {
+        if (deliveries.findById(delivery.id)?.status === "delivering") {
+          updateDeliveryStatusInTransaction({
+            deliveryId: delivery.id,
+            status: "queued",
+          });
+        }
+        summary.deferred.push({
+          targetAgentId: targetAgent.id,
+          reason: injectResult.reason,
+          ...(injectResult.eligibility
+            ? { eligibility: injectResult.eligibility }
+            : {}),
         });
         continue;
       }
@@ -1441,7 +1316,258 @@ export function createDaemonState(
           message: injectResult.message,
         },
       });
+      summary.failed.push({
+        targetAgentId: targetAgent.id,
+        reason: injectResult.reason,
+      });
     }
+
+    return summary;
+  }
+
+  async function injectMessageIntoClaudeTarget(
+    input: {
+      sourceName: string;
+      message: StoredMessage;
+    },
+    delivery: StoredDelivery,
+    targetAgent: StoredAgent,
+  ): Promise<
+    | { kind: "success" }
+    | {
+        kind: "failed";
+        reason: AdapterInjectFailureReason;
+        message: string;
+      }
+    | {
+        kind: "deferred";
+        reason: AdapterInjectDeferredReason;
+        eligibility: string;
+      }
+  > {
+    if (!claudeChannelRuntimes.has(targetAgent.name)) {
+      return {
+        kind: "deferred",
+        reason: "target_runtime_unavailable",
+        eligibility: "requires target claude channel runtime",
+      };
+    }
+
+    updateDeliveryStatusInTransaction({
+      deliveryId: delivery.id,
+      status: "delivering",
+    });
+
+    const injectResult = await injectClaudeChannel(
+      { getRuntime: (agentName) => claudeChannelRuntimes.get(agentName) },
+      {
+        agentName: targetAgent.name,
+        content: input.message.content,
+        chatId: input.message.id,
+        origin: input.sourceName,
+      },
+    );
+
+    if (injectResult.kind === "success") {
+      return { kind: "success" };
+    }
+
+    if (injectResult.kind === "deferred") {
+      return {
+        kind: "deferred",
+        reason: injectResult.reason,
+        eligibility: injectResult.eligibility ?? "requires target adapter runtime",
+      };
+    }
+
+    if (injectResult.reason === "claude_channel_unavailable") {
+      return {
+        kind: "deferred",
+        reason: "target_runtime_unavailable",
+        eligibility: "requires target claude channel runtime",
+      };
+    }
+
+    return {
+      kind: "failed",
+      reason: injectResult.reason,
+      message: injectResult.message,
+    };
+  }
+
+  async function injectMessageIntoCodexTarget(
+    message: StoredMessage,
+    delivery: StoredDelivery,
+    targetAgent: StoredAgent,
+  ): Promise<
+    | { kind: "success" }
+    | {
+        kind: "failed";
+        reason: AdapterInjectFailureReason;
+        message: string;
+      }
+    | {
+        kind: "deferred";
+        reason: AdapterInjectDeferredReason;
+        eligibility: string;
+      }
+  > {
+    const sourceAgent = agents.list().find((agent) => agent.id === message.sourceAgentId);
+    const runtime = codexRuntimes.get(targetAgent.name);
+    const target = await resolveCodexReplyTarget(runtime);
+
+    if (!target.ok) {
+      if (target.reason === "codex_no_loaded_thread") {
+        events.append({
+          id: options.createId(),
+          type: "codex_delivery_target_unavailable",
+          data: {
+            operation: "thread/loaded/list",
+            loadedThreadIds: target.loadedThreadIds ?? [],
+            previousAdapterSessionId: targetAgent.adapterSessionId,
+            runtimeActiveThreadId: target.runtimeActiveThreadId ?? null,
+            reason: target.reason,
+            deliveryMessageType: message.type,
+            sourceAgentId: message.sourceAgentId,
+            sourceAgentName: sourceAgent?.name ?? "unknown",
+            targetAgentName: targetAgent.name,
+          },
+          createdAt: options.now(),
+          agentId: targetAgent.id,
+          messageId: message.id,
+          deliveryId: delivery.id,
+          routeId: delivery.routeId,
+        });
+        events.append({
+          id: options.createId(),
+          type: "codex_delivery_queued_no_loaded_thread",
+          data: {
+            reason: target.reason,
+            message: target.message,
+          },
+          createdAt: options.now(),
+          agentId: targetAgent.id,
+          messageId: message.id,
+          deliveryId: delivery.id,
+          routeId: delivery.routeId,
+        });
+        return {
+          kind: "deferred",
+          reason: "target_binding_unconfirmed",
+          eligibility: "requires target codex binding",
+        };
+      }
+
+      if (target.reason === "codex_channel_unavailable") {
+        return {
+          kind: "deferred",
+          reason: "target_runtime_unavailable",
+          eligibility: "requires target codex runtime",
+        };
+      }
+
+      return {
+        kind: "failed",
+        reason: "adapter_inject_failed",
+        message: target.message,
+      };
+    }
+
+    events.append({
+      id: options.createId(),
+      type: "codex_delivery_target_selected",
+      data: {
+        operation: "thread/loaded/list",
+        loadedThreadIds: target.loadedThreadIds,
+        chosenThreadId: target.threadId,
+        previousAdapterSessionId: targetAgent.adapterSessionId,
+        runtimeActiveThreadId: target.runtimeActiveThreadId,
+        selectionPolicy: target.selectionPolicy,
+        deliveryMessageType: message.type,
+        sourceAgentId: message.sourceAgentId,
+        sourceAgentName: sourceAgent?.name ?? "unknown",
+        targetAgentName: targetAgent.name,
+      },
+      createdAt: options.now(),
+      agentId: targetAgent.id,
+      messageId: message.id,
+      deliveryId: delivery.id,
+      routeId: delivery.routeId,
+    });
+
+    updateDeliveryStatusInTransaction({
+      deliveryId: delivery.id,
+      status: "delivering",
+    });
+
+    const injectResult = await injectReplyIntoCodexRuntime(
+      target.runtime,
+      target.threadId,
+      formatCodexAioxChannelEnvelope(message),
+    );
+
+    if (injectResult.kind === "deferred") {
+      return {
+        kind: "deferred",
+        reason: injectResult.reason,
+        eligibility: injectResult.eligibility ?? "requires target codex runtime",
+      };
+    }
+
+    if (injectResult.kind === "failed") {
+      events.append({
+        id: options.createId(),
+        type: "codex_delivery_target_injection_failed",
+        data: {
+          chosenThreadId: target.threadId,
+          loadedThreadIds: target.loadedThreadIds,
+          reason: injectResult.reason,
+          message: injectResult.message,
+          sourceAgentId: message.sourceAgentId,
+          sourceAgentName: sourceAgent?.name ?? "unknown",
+          targetAgentName: targetAgent.name,
+        },
+        createdAt: options.now(),
+        agentId: targetAgent.id,
+        messageId: message.id,
+        deliveryId: delivery.id,
+        routeId: delivery.routeId,
+      });
+      return {
+        kind: "failed",
+        reason: injectResult.reason,
+        message: injectResult.message,
+      };
+    }
+
+    target.runtime.rebindActiveThread(target.threadId);
+    if (target.threadId !== targetAgent.adapterSessionId) {
+      const now = options.now();
+      const reboundAgent = agents.rebindAdapterSessionId({
+        name: targetAgent.name,
+        adapterSessionId: target.threadId,
+        now,
+      });
+      if (reboundAgent) {
+        events.append({
+          id: options.createId(),
+          type: "agent_thread_id_rebound",
+          data: {
+            previousId: targetAgent.adapterSessionId,
+            nextId: target.threadId,
+            operation: "thread/loaded/list",
+            source: "loaded_list",
+          },
+          createdAt: now,
+          agentId: reboundAgent.id,
+          messageId: message.id,
+          deliveryId: delivery.id,
+          routeId: delivery.routeId,
+        });
+      }
+    }
+
+    return { kind: "success" };
   }
 
   async function resolveCodexReplyTarget(
@@ -1453,9 +1579,7 @@ export function createDaemonState(
         threadId: string;
         loadedThreadIds: string[];
         runtimeActiveThreadId: string | null;
-        selectionPolicy:
-          | "proxy_active_thread"
-          | "latest_loaded_thread_fallback";
+        selectionPolicy: "proxy_active_thread";
       }
     | {
         ok: false;
@@ -1495,31 +1619,13 @@ export function createDaemonState(
       };
     }
 
-    const liveThreadId = selectCodexLoadedThreadId(loadedThreadIds);
-    if (!liveThreadId) {
-      return {
-        ok: false,
-        reason: "codex_no_loaded_thread",
-        message: "Codex runtime has no loaded thread id",
-        loadedThreadIds,
-        runtimeActiveThreadId,
-      };
-    }
-
     return {
-      ok: true,
-      runtime,
-      threadId: liveThreadId,
+      ok: false,
+      reason: "codex_no_loaded_thread",
+      message: "Codex runtime has no authoritative active thread id",
       loadedThreadIds,
       runtimeActiveThreadId,
-      selectionPolicy: "latest_loaded_thread_fallback",
     };
-  }
-
-  function selectCodexLoadedThreadId(
-    loadedThreadIds: readonly string[],
-  ): string | null {
-    return loadedThreadIds.at(-1) ?? null;
   }
 
   function handleCodexProxyBinding(
@@ -1572,7 +1678,11 @@ export function createDaemonState(
     runtime: CodexTurnStartRuntime,
     threadId: string,
     content: string,
-  ): Promise<{ ok: true } | { ok: false; reason: string; message: string }> {
+  ): Promise<
+    | { kind: "success" }
+    | { kind: "failed"; reason: AdapterInjectFailureReason; message: string }
+    | { kind: "deferred"; reason: AdapterInjectDeferredReason; eligibility?: string }
+  > {
     // The runtime cache may still point at the previous TUI thread here. The
     // live target wrapper keeps injectTurnStart's mismatch guard meaningful
     // without mutating daemon cache until turn/start succeeds.
@@ -1743,6 +1853,7 @@ export function createDaemonState(
           ok: true,
           message,
           deliveries: queued,
+          dispatch: emptyDispatchSummary(),
         };
       });
     } catch (error) {
@@ -1819,7 +1930,14 @@ async function disposeRuntime(runtime: ManagedAgentRuntime): Promise<void> {
 
 type AttachRollbackResponse = Extract<
   AttachAgentResult,
-  { ok: false; reason: "pair_kind_slot_occupied" | "agent_kind_mismatch" }
+  {
+    ok: false;
+    reason:
+      | "agent_already_attached"
+      | "agent_kind_mismatch"
+      | "pair_full"
+      | "pair_slot_occupied";
+  }
 >;
 
 interface AttachRollback {
@@ -1990,25 +2108,32 @@ function createBidirectionalPairRoutes(input: {
   const pairAgents = input.agents
     .list()
     .filter((agent) => agent.pairId === input.pairId);
-  const codex = pairAgents.find((agent) => agent.kind === "codex");
-  const claude = pairAgents.find((agent) => agent.kind === "claude");
+  const slotA = pairAgents.find((agent) => agent.pairSlot === "a");
+  const slotB = pairAgents.find((agent) => agent.pairSlot === "b");
 
-  if (!codex || !claude) {
+  if (!slotA || !slotB) {
     return;
   }
 
-  createRouteIfMissing(input.routes, {
-    id: input.createId,
-    now: input.now,
-    sourceAgentId: codex.id,
-    targetAgentId: claude.id,
-  });
-  createRouteIfMissing(input.routes, {
-    id: input.createId,
-    now: input.now,
-    sourceAgentId: claude.id,
-    targetAgentId: codex.id,
-  });
+  const routePairs =
+    slotA.kind === slotB.kind
+      ? [
+          [slotB.id, slotA.id],
+          [slotA.id, slotB.id],
+        ]
+      : [
+          [slotA.id, slotB.id],
+          [slotB.id, slotA.id],
+        ];
+
+  for (const [sourceAgentId, targetAgentId] of routePairs) {
+    createRouteIfMissing(input.routes, {
+      id: input.createId,
+      now: input.now,
+      sourceAgentId,
+      targetAgentId,
+    });
+  }
 }
 
 function createRouteIfMissing(
@@ -2030,6 +2155,14 @@ function createRouteIfMissing(
     targetAgentId: input.targetAgentId,
     now: input.now,
   });
+}
+
+function emptyDispatchSummary(): DispatchSummary {
+  return {
+    delivered: 0,
+    deferred: [],
+    failed: [],
+  };
 }
 
 function resolveRouteAgents(

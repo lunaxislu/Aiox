@@ -29,15 +29,25 @@ export type AdapterInjectFailureReason =
   | "claude_channel_unavailable"
   | "claude_channel_push_failed";
 
+export type AdapterInjectDeferredReason =
+  | "target_adapter_not_registered"
+  | "target_binding_unconfirmed"
+  | "target_runtime_unavailable";
+
 export type AdapterInjectResult =
   | {
-      ok: true;
+      kind: "success";
     }
   | {
-      ok: false;
+      kind: "failed";
       reason: AdapterInjectFailureReason;
       message: string;
       jsonRpcCode?: number;
+    }
+  | {
+      kind: "deferred";
+      reason: AdapterInjectDeferredReason;
+      eligibility?: string;
     };
 
 export interface AgentAdapter {
