@@ -1083,6 +1083,33 @@ Post-MVP parking lot:
   `plan/post-mvp-aiox-mcp-envelope-metadata.md`; keep detailed scope and
   triggers there.
 
+## Step 15: Pair slot generalization (same-vendor pair) — 🟡 Design locked, execution checklist pending
+
+- **Design authority**: `history/45-step-15-pair-slot-generalization-design.history.md` (2026-05-27).
+- **Status**: Step 15 진입 시 본 checklist에 실행 체크리스트를 추가한다. 현재는 design lock만.
+- **Entry condition**: 현재 QA round 종료 후 진입 권장 (라운드 mid schema 변경은 트래커 drift 위험).
+- **Scope summary** (권위는 history/45):
+  1. Pair capacity 모델 `kind slot → slot: "a" | "b"` (vendor-agnostic).
+  2. Injection dispatch generic화 (`dispatchClaudeReplyToCodexChannels` / `dispatchCodexMessageToClaudeChannels` → `dispatchToPairPeer(sourceAgentId)` 단일 함수).
+  3. Vendor-neutral `deferred` dispatch result + normalized reasons (`target_binding_unconfirmed` / `target_runtime_unavailable` / `target_adapter_not_registered`). `failed`와 분리 (terminal vs non-terminal).
+  4. Self-loop reject (core + store 이중 방어, reason `agent_already_attached`).
+  5. Migration: `agents.pair_slot` 컬럼 추가 + backfill (codex→a, claude→b) + `unique(pair_id, pair_slot)` index + `applySchema` versioned migration으로 격상.
+- **Commit 분할** (`.ai/tdd.md` Tidy First):
+  1. Red tests (core/store/daemon E2E + same-vendor deferred result).
+  2. Structural (schema + DTO slot 도입, 기존 동작 보존 — 사용자 가시 기능 0).
+  3. Behavioral (dispatch generic화 + same-vendor ready + bidirectional + fallback pair-aware + deferred wiring).
+  4. Defensive/UX (self-loop reject + source notification + migration tests + `AIOX_CLAUDE_CHANNEL_PORT` 고정 충돌 가드).
+- **머지 단위**: commit 1+2+3 단일 PR (half-state 방지), commit 4 별도 PR.
+- **Acceptance criteria** (history/45 §3 권위):
+  - codex↔codex / claude↔claude attach 모두 `ready`.
+  - same agent를 두 slot에 attach하면 `agent_already_attached` reject.
+  - target binding/runtime 미확정 시 `sendMessage:{ok:true}` + delivery `queued` + dispatch `deferred` + normalized reason이 source agent에게 surface.
+  - claude↔claude에서 target Claude channel server unavailable도 동일하게 `deferred`로 보임 (failed 아님).
+- **Open follow-up** (Phase A 진입 시 lock):
+  - Codex `loadedThreadIds.at(-1)` fallback 정책 (disable / explicit currentThreadId / slot-based 중 선택).
+  - Normalize reason union 이름 final lock (`AdapterInjectFailureReason`과 정합, deferred는 별도 type일 가능성).
+  - QA-002 (tracker)는 `wontfix`로 expected rejection 박힘. Step 15 실행 시 unblock.
+
 ---
 
 ## Verification Baseline

@@ -24,6 +24,7 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 | ID    | Scenario                    | Status | Found  | Commit  | History ref | Note |
 | ----- | --------------------------- | ------ | ------ | ------- | ----------- | ---- |
 | QA-001 | Claude TUI 종료 후 agent가 DB에 `connected`로 남고 pending token 누수 | verified | R1 | `fb7d8fc` | `43-qa-round-1` S-1 | `disconnectClaudeChannel`가 in-memory runtime registry만 정리, DB status·`claudePendingTokens` 미동기. fix: DB markDisconnected + pending token 정리. |
+| QA-002 | Same-vendor pair (codex↔codex / claude↔claude) attach 거절 (`pair_kind_slot_occupied`) | wontfix | R2 | — | `45-step-15-pair-slot-generalization-design` | **Expected rejection** — MVP는 kind-slot 모델로 mixed pair만 허용. 일반화는 Step 15 (pair slot generalization)에서 lift 예정. 권위: `history/45`, 빠른 인덱스: [[aiox-step-15-decisions]]. Step 15는 본 QA round 종료 후 진입. |
 |       |                             |        |        |         |             |      |
 
 > 추가 시: ID는 발견 순으로 `QA-NNN`. Found 칸은 QA round 번호 (`R1`, `R2`…).
@@ -32,8 +33,8 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 
 | Round | Date       | Scope                     | History file                      | Outcome |
 | ----- | ---------- | ------------------------- | --------------------------------- | ------- |
-| R1    | 2026-05-26 | Claude channel disconnect 정합성 | `history/43-qa-round-1.history.md` | in progress (1 verified) |
-| R2    | 2026-05-27 | aiox MCP collaboration protocol Phase 1.5 | `history/44-qa-round-2.history.md` | PASS — smoke 4/4; Phase 2 deferred to `plan/post-mvp-aiox-mcp-envelope-metadata.md` |
+| R1    | 2026-05-26 | Claude channel disconnect 정합성 | `history/43-qa-round-1.history.md` | **closed** (1 verified, 0 open) |
+| R2    | 2026-05-27~ | aiox MCP collaboration protocol Phase 1.5 + same-vendor pair finding | `history/44-qa-round-2.history.md` | **active** — smoke 4/4 PASS + QA-002 logged (wontfix → Step 15) |
 
 ### R2 — aiox MCP collaboration protocol Phase 1.5
 

@@ -87,15 +87,16 @@ Claude channel attach/disconnect lifecycle의 DB ↔ in-memory registry 정합�
 세션 단위로 한 줄씩 append. 다음 세션 resume의 1차 자료.
 
 - `2026-05-26` — Round goal 확정, S-1 시나리오 작성, QA-001 발견·fix·verified 동일 세션 처리 (claude channel disconnect 정합성). 다음 시나리오 미진행.
+- `2026-05-27` — R1 close. QA-001 verified로 마감. Claude channel disconnect 정합성 round goal 달성. 추가 시나리오는 R2 이후로 이월. Outcome: **closed (1 verified, 0 open)**.
 
 ---
 
-## Open items (carry to next session)
+## Open items (carried forward — not blocking R1 close)
 
-다음 세션이 들어왔을 때 가장 먼저 봐야 할 것. round 종료 시 정리.
+R1 close 시점에 남은 carry-over. R2 이후 라운드에서 다룬다.
 
-- [ ] Claude channel attach/disconnect 외 시나리오 미시작 (재진입, 동시 다중 agent, status race 등)
-- [ ] Codex 측 attach/detach 대칭성 동일 패턴 확인 필요 (`disconnectCodexChannel` 등 존재 여부 점검)
+- Claude channel attach/disconnect 외 시나리오 미시작 (재진입, 동시 다중 agent, status race 등) → R2 이후 라운드.
+- Codex 측 attach/detach 대칭성 동일 패턴 확인 필요 (`disconnectCodexChannel` 등) → R2 이후 라운드.
 
 ## Round close
 

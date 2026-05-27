@@ -82,7 +82,22 @@ No daemon protocol, schema, or persistence behavior changed in this round.
 
 ## Issues (this round)
 
-No QA issue opened in R2.
+### QA-002 Same-vendor pair attach rejection (codex↔codex / claude↔claude)
+
+- Tracker row: `plan/qa-tracker.md` QA-002
+- 발견 경위 (2026-05-27): R2 smoke 4/4 PASS 이후 사용자가 codex↔codex pair attach를 시도해 `pair_kind_slot_occupied`로 거절됨을 관찰.
+- Verdict: **expected rejection — wontfix**. MVP `prd/mvp/aiox-mvp-spec.md` §Pair의 "one Codex slot + one Claude slot" 정책에 부합. 버그 아님.
+- 후속 결정: 사용자 판단으로 vendor 무관 일반화가 확장성 측면에서 필요 → Step 15 design lock으로 격상.
+- **Design authority**: `history/45-step-15-pair-slot-generalization-design.history.md` (2026-05-27).
+  - 두 축 동시 변경 (pair capacity 모델 + injection dispatch generic화)
+  - vendor-neutral deferred semantics (`target_binding_unconfirmed` / `target_runtime_unavailable` / `target_adapter_not_registered`)
+  - claude↔claude도 channel server unavailable 시 deferred로 surface
+  - self-loop 이중 방어
+  - migration: `agents.pair_slot` column + backfill + unique index + versioned migration
+- **부수 변경**:
+  - `prd/mvp/aiox-mvp-spec.md` §Pair에 Step 15 amendment block 추가.
+  - `plan/mvp-implementation-checklist.md`에 "Step 15: Pair slot generalization — Design locked" 섹션 추가.
+- Step 15 진입 조건: 본 R2 round 종료 후.
 
 ## Deferred Follow-up
 
@@ -104,6 +119,13 @@ Trigger Phase 2 earlier if any of the following are observed:
 - `2026-05-27` — User-led Phase 1.5 smoke completed: S-1 through S-4 all PASS.
   Phase 2 remains deferred and tracked in
   `plan/post-mvp-aiox-mcp-envelope-metadata.md`.
+- `2026-05-27` — Same-vendor pair attach 시도에서 `pair_kind_slot_occupied`
+  거절 관찰. QA-002로 tracker 등록 (wontfix, expected). 후속으로 Step 15
+  (pair slot generalization) design lock 진행:
+  `history/45-step-15-pair-slot-generalization-design.history.md` 작성,
+  `prd/mvp/aiox-mvp-spec.md` §Pair에 amendment block 추가,
+  `plan/mvp-implementation-checklist.md`에 Step 15 reservation 섹션 추가.
+  R1은 동일 세션에 close 처리 (1 verified, 0 open).
 
 ## Open Items
 

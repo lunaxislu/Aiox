@@ -499,6 +499,20 @@ Claude slot. If the Codex slot is already occupied, another
 `aiox codex --name ... --pair <same-pair>` must be rejected. Use explicit
 `connect` for extra agents and 1:N routing.
 
+> **Step 15 amendment (2026-05-27)**: 위 "one Codex slot + one Claude slot"
+> 표현은 same-vendor pair 일반화 결정으로 supersede됨. 권위는
+> `history/45-step-15-pair-slot-generalization-design.history.md`. 본 Step
+> 구현 완료 후 다음 invariant로 갱신될 예정:
+>
+> - Pair는 2-slot (`slot: "a" | "b"`), vendor-agnostic.
+> - codex↔codex / claude↔claude / mixed 모두 허용.
+> - Self-loop (same `agentId`가 두 slot 점유) reject.
+> - Target injection 미확정/불가용 시 delivery는 `deferred` + normalized reason
+>   (`target_binding_unconfirmed` / `target_runtime_unavailable` /
+>   `target_adapter_not_registered`).
+>
+> Step 15는 현재 QA round 종료 후 진입.
+
 ### Route
 
 Fields:
