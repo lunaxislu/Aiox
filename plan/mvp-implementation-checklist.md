@@ -1102,38 +1102,32 @@ Post-MVP parking lot:
 - **D8 Source notification**: push 없음. `sendMessage` response를 `{ok:true, messageId, dispatch:{delivered, deferred, failed}}` nested 구조로 확장. `ok:true`는 "message stored" 의미, target inject 결과는 `dispatch` 내부.
 - **D9 Phase A 범위**: 자동 retry / push notification / 3-way pair / dynamic slot은 모두 Phase A 밖.
 
-### Phase B Commit 분할 (변경 없음, history/45 §7 그대로)
+### Phase B Commit 분할 (`.ai/tdd.md` Tidy First; 권위 = history/45 §7 + history/46 D9)
 
-1. Red tests (core/store/daemon E2E + same-vendor deferred result + claude↔claude deferred).
-2. Structural (schema + DTO slot 도입 + versioned migration + preflight, 기존 동작 보존).
-3. Behavioral (dispatch generic화 + same-vendor ready + fallback disable + deferred wiring + nested response).
-4. Defensive/UX (self-loop reject + source notification surface + migration tests + `AIOX_CLAUDE_CHANNEL_PORT` 가드).
-머지: commit 1+2+3 단일 PR, commit 4 별도 PR.
-- **Scope summary** (권위는 history/45):
-  1. Pair capacity 모델 `kind slot → slot: "a" | "b"` (vendor-agnostic).
-  2. Injection dispatch generic화 (`dispatchClaudeReplyToCodexChannels` / `dispatchCodexMessageToClaudeChannels` → `dispatchToPairPeer(sourceAgentId)` 단일 함수).
-  3. Vendor-neutral `deferred` dispatch result + normalized reasons (`target_binding_unconfirmed` / `target_runtime_unavailable` / `target_adapter_not_registered`). `failed`와 분리 (terminal vs non-terminal).
-  4. Self-loop reject (core + store 이중 방어, reason `agent_already_attached`).
-  5. Migration: `agents.pair_slot` 컬럼 추가 + backfill (codex→a, claude→b) + `unique(pair_id, pair_slot)` index + `applySchema` versioned migration으로 격상.
-- **Commit 분할** (`.ai/tdd.md` Tidy First):
-  1. Red tests (core/store/daemon E2E + same-vendor deferred result).
-  2. Structural (schema + DTO slot 도입, 기존 동작 보존 — 사용자 가시 기능 0).
-  3. Behavioral (dispatch generic화 + same-vendor ready + bidirectional + **fallback disable (모든 pair)** + deferred wiring + nested dispatch response).
-  4. Defensive/UX (self-loop reject + source notification + migration tests + `AIOX_CLAUDE_CHANNEL_PORT` 고정 충돌 가드).
-- **머지 단위**: commit 1+2+3 단일 PR (half-state 방지), commit 4 별도 PR.
-- **Acceptance criteria** (history/45 §3 권위):
-  - codex↔codex / claude↔claude attach 모두 `ready`.
-  - same agent를 두 slot에 attach하면 `agent_already_attached` reject.
-  - target binding/runtime 미확정 시 `sendMessage:{ok:true}` + delivery `queued` + dispatch `deferred` + normalized reason이 source agent에게 surface.
-  - claude↔claude에서 target Claude channel server unavailable도 동일하게 `deferred`로 보임 (failed 아님).
-- **Phase A에서 lock된 follow-up** (history/46 권위):
-  - Codex fallback: **모든 pair에서 disable** + deferred (D1).
-  - Reason union: **AdapterInjectFailureReason / AdapterInjectDeferredReason 별개 type** + `kind` discriminator (D2).
-  - QA-002는 `wontfix` 유지. Phase B commit 1+2+3 머지 시 unblock.
-- **Phase A 밖 (Post-MVP 이월)**:
-  - Deferred 자동 retry.
-  - Source agent push notification (deferred 해소 시 비동기 알림).
-  - 3-way pair / dynamic slot.
+1. **Red tests** — core/store/daemon E2E + same-vendor deferred result + claude↔claude deferred + self-loop reject + nested dispatch response shape.
+2. **Structural** — schema + DTO `slot` 도입 + versioned migration + preflight (`schema_version` 메타 테이블, `(pair_id, kind)` 중복 preflight, partial unique index). 기존 mixed pair 동작 보존, 사용자 가시 기능 0.
+3. **Behavioral** — dispatch generic화 (`dispatchToPairPeer` 단일 함수, target `agent.kind` 기반 adapter dispatch) + same-vendor `ready` + bidirectional auto-route + **fallback disable (모든 Codex target injection)** + deferred wiring + nested `dispatch:{delivered,deferred,failed}` response.
+4. **Defensive/UX** — self-loop reject (core+store) + source notification surface 정리 + migration restart tests + `AIOX_CLAUDE_CHANNEL_PORT` 고정 충돌 가드.
+
+머지: commit 1+2+3 단일 PR (half-state 방지), commit 4 별도 PR.
+
+### Acceptance criteria (history/45 §3 + history/46 D6 권위)
+
+- codex↔codex / claude↔claude attach 모두 `ready`.
+- same agent를 두 slot에 attach하면 `agent_already_attached` reject.
+- target binding/runtime 미확정 시 `sendMessage:{ok:true}` + delivery `queued` + dispatch `deferred` + normalized reason이 source agent에게 surface.
+- claude↔claude에서 target Claude channel server unavailable도 동일하게 `deferred`로 보임 (failed 아님).
+- Daemon dispatch는 route target `agent.kind`를 보고 adapter 선택 (vendor-pair hardcode 제거).
+
+### Post-MVP scope (Phase A 밖)
+
+- Deferred 자동 retry (eligibility 충족 시 자동 재주입).
+- Source agent push notification (deferred 해소 시 비동기 알림).
+- 3-way pair / dynamic slot.
+
+### QA tie-in
+
+- QA-002 (`plan/qa-tracker.md`)는 `wontfix` 유지. Phase B commit 1+2+3 머지 시 unblock.
 
 ---
 

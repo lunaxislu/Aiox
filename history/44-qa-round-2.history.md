@@ -126,9 +126,28 @@ Trigger Phase 2 earlier if any of the following are observed:
   `prd/mvp/aiox-mvp-spec.md` §Pair에 amendment block 추가,
   `plan/mvp-implementation-checklist.md`에 Step 15 reservation 섹션 추가.
   R1은 동일 세션에 close 처리 (1 verified, 0 open).
+- `2026-05-27` — Step 15 Phase A 결정 lock (Claude 1차안 → Codex
+  cross-validation 6 corrections → 사용자 final). 권위:
+  `history/46-step-15-pair-slot-generalization-phase-a-decisions.history.md`.
+  D1-D9 lock. Codex 사후 review에서 plan dedup 지적 → 정리 완료.
+  Phase B 진입은 다음 세션. **R2 close.**
 
-## Open Items
+## Round close (2026-05-27)
+
+- Smoke scenarios: 4/4 PASS (S-1 ~ S-4).
+- Issues opened: 1 (QA-002, wontfix → Step 15).
+- Side outcomes: Step 15 design lock (history/45) + Phase A lock
+  (history/46) + R1 close + plan/PRD amendment.
+- Final outcome: **R2 closed**. Next round entry는 Phase B 진행 또는
+  새 QA scope 시점에 R3 신설.
+
+## Open Items (carry to next session / next round)
 
 - [ ] At post-MVP refactoring kickoff, surface
   `plan/post-mvp-aiox-mcp-envelope-metadata.md` before implementing envelope
   metadata migration.
+- [ ] Step 15 Phase B Round 1 (Red tests) 위임 prompt 작성 — 다음 세션 첫
+  작업. 진입 시 `history/46` D1-D9 + history/45 §7 Tidy First 4-commit
+  분할 그대로 사용.
+- [ ] R1 carry-over (claude channel 외 시나리오, codex disconnect 대칭성)는
+  Phase B 진행 중 별도 R3에서 다룬다.

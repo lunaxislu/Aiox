@@ -34,7 +34,7 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 | Round | Date       | Scope                     | History file                      | Outcome |
 | ----- | ---------- | ------------------------- | --------------------------------- | ------- |
 | R1    | 2026-05-26 | Claude channel disconnect 정합성 | `history/43-qa-round-1.history.md` | **closed** (1 verified, 0 open) |
-| R2    | 2026-05-27~ | aiox MCP collaboration protocol Phase 1.5 + same-vendor pair finding | `history/44-qa-round-2.history.md` | **active** — smoke 4/4 PASS + QA-002 logged (wontfix → Step 15) |
+| R2    | 2026-05-27 | aiox MCP collaboration protocol Phase 1.5 + same-vendor pair finding | `history/44-qa-round-2.history.md` | **closed** — smoke 4/4 PASS + 1 wontfix (QA-002 → Step 15 design+Phase A lock) |
 
 ### R2 — aiox MCP collaboration protocol Phase 1.5
 
