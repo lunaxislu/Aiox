@@ -292,7 +292,7 @@ describe("daemon receiveClaudeChannelReply", () => {
     db.close();
   });
 
-  it("acknowledges reply receipt", async () => {
+  it("surfaces reply receipt failures", async () => {
     const state = createDaemonState({
       db,
       createId: () => "agent-1",
@@ -306,7 +306,11 @@ describe("daemon receiveClaudeChannelReply", () => {
       text: "done",
     });
 
-    expect(response).toMatchObject({ ok: true });
+    expect(response).toMatchObject({
+      ok: false,
+      reason: "source_agent_not_found",
+      sourceName: "alpha",
+    });
   });
 
   it("records claude_channel_reply_received event with chatId and text", async () => {
@@ -461,6 +465,47 @@ describe("Claude channel MCP handlers", () => {
         },
       },
     ]);
+  });
+
+  it("reply exposes daemon dispatch in structured content", async () => {
+    const handler = createReplyHandler({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          receiveClaudeChannelReply: async () => ({
+            ok: true,
+            dispatch: {
+              delivered: 0,
+              deferred: [
+                {
+                  targetAgentId: "agent-target",
+                  reason: "target_runtime_unavailable",
+                  eligibility: "requires target claude channel runtime",
+                },
+              ],
+              failed: [],
+            },
+          }),
+        }),
+    });
+
+    const result = await handler({ chat_id: "parent-1", text: "ack" });
+
+    expect(result.structuredContent).toEqual({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [
+          {
+            targetAgentId: "agent-target",
+            reason: "target_runtime_unavailable",
+            eligibility: "requires target claude channel runtime",
+          },
+        ],
+        failed: [],
+      },
+    });
   });
 });
 

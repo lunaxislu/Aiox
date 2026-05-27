@@ -85,9 +85,7 @@ export interface ReceiveClaudeChannelReplyRequest {
   text: string;
 }
 
-export interface ReceiveClaudeChannelReplyResult {
-  ok: true;
-}
+export type ReceiveClaudeChannelReplyResult = SendMessageResult;
 
 export interface CodexChannelRuntime {
   agentName: string;
@@ -1040,7 +1038,7 @@ export function createDaemonState(
         });
       }
 
-      return { ok: true };
+      return result;
     },
 
     registerCodexChannel(request) {

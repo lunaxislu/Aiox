@@ -459,6 +459,86 @@ describe("daemon receiveCodexMessage", () => {
     });
   });
 
+  it("keeps Codex-to-Codex delivery queued when the target Codex has no live loaded thread", async () => {
+    const runtimeA = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-impl-a",
+    });
+    const runtimeB = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54322/",
+      startedThreadId: "thread-old",
+      loadedThreadIds: [],
+    });
+    const codexRuntimeByName = new Map([
+      ["impl-a", runtimeA],
+      ["impl-b", runtimeB],
+    ]);
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async ({ agentName }) => {
+        const runtime = codexRuntimeByName.get(agentName);
+        if (!runtime) {
+          throw new Error(`missing fake runtime for ${agentName}`);
+        }
+        return runtime;
+      },
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.createPair({ name: "pair-1" });
+    const attachA = await client.attachAgent({
+      kind: "codex",
+      name: "impl-a",
+      cwd: "/repo",
+      pairName: "pair-1",
+    });
+    const attachB = await client.attachAgent({
+      kind: "codex",
+      name: "impl-b",
+      cwd: "/repo",
+      pairName: "pair-1",
+    });
+    const tokenA = (attachA as { ok: true; codexChannelToken: string }).codexChannelToken;
+    const tokenB = (attachB as { ok: true; codexChannelToken: string }).codexChannelToken;
+    await client.registerCodexChannel({ agentName: "impl-a", token: tokenA });
+    await client.registerCodexChannel({ agentName: "impl-b", token: tokenB });
+
+    const response = await client.receiveCodexMessage({
+      agentName: "impl-a",
+      token: tokenA,
+      messageId: "codex-msg-1",
+      content: "hello from codex",
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [
+          {
+            reason: "target_binding_unconfirmed",
+            eligibility: "requires target codex binding",
+          },
+        ],
+        failed: [],
+      },
+    });
+    expect(runtimeB.requests.some((request) => request.method === "turn/start")).toBe(false);
+    expect(db.prepare("select status from message_deliveries").get()).toMatchObject({
+      status: "queued",
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as n from events where type = 'delivery_status_changed' and data_json = ?",
+        )
+        .get(JSON.stringify({ status: "delivering" })),
+    ).toMatchObject({ n: 0 });
+  });
+
   it("missing token returns codex_ingress_unauthorized", async () => {
     const setup = await setupPairedAgents(db);
 
@@ -871,7 +951,14 @@ describe("daemon receiveClaudeChannelReply", () => {
       text: "review complete",
     });
 
-    expect(response).toEqual({ ok: true });
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 1,
+        deferred: [],
+        failed: [],
+      },
+    });
     expect(setup.runtime.requests).toContainEqual({
       method: "turn/start",
       params: {
@@ -932,12 +1019,20 @@ describe("daemon receiveClaudeChannelReply", () => {
     });
     expect(parent.ok).toBe(true);
 
-    await setup.client.receiveClaudeChannelReply({
+    const response = await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
       chatId: "msg-parent",
       text: "review complete",
     });
 
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 1,
+        deferred: [],
+        failed: [],
+      },
+    });
     expect(setup.runtime.requests).toContainEqual({
       method: "thread/loaded/list",
       params: {},
@@ -1078,12 +1173,25 @@ describe("daemon receiveClaudeChannelReply", () => {
     });
     expect(parent.ok).toBe(true);
 
-    await setup.client.receiveClaudeChannelReply({
+    const response = await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
       chatId: "msg-parent",
       text: "review complete",
     });
 
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [
+          {
+            reason: "target_binding_unconfirmed",
+            eligibility: "requires target codex binding",
+          },
+        ],
+        failed: [],
+      },
+    });
     expect(setup.runtime.requests).toContainEqual({
       method: "thread/loaded/list",
       params: {},
@@ -1095,6 +1203,59 @@ describe("daemon receiveClaudeChannelReply", () => {
     expect(
       db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
     ).toMatchObject({ status: "queued" });
+  });
+
+  it("surfaces deferred dispatch when a Claude reply target channel is unavailable", async () => {
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.createPair({ name: "pair-1" });
+    await client.attachAgent({
+      kind: "claude",
+      name: "reviewer",
+      cwd: "/repo",
+      pairName: "pair-1",
+    });
+    await client.attachAgent({
+      kind: "claude",
+      name: "peer",
+      cwd: "/repo",
+      pairName: "pair-1",
+    });
+
+    const response = await client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      chatId: "msg-parent",
+      text: "review complete",
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [
+          {
+            reason: "target_runtime_unavailable",
+            eligibility: "requires target claude channel runtime",
+          },
+        ],
+        failed: [],
+      },
+    });
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toMatchObject({ status: "queued" });
+    expect(
+      db
+        .prepare(
+          "select count(*) as n from events where type = 'delivery_status_changed' and data_json = ?",
+        )
+        .get(JSON.stringify({ status: "delivering" })),
+    ).toMatchObject({ n: 0 });
   });
 
   it("records a no-loaded-thread queued event when Codex has no live loaded thread", async () => {

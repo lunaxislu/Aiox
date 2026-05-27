@@ -20,7 +20,6 @@ import type {
   ReceiveClaudeChannelMessageRequest,
   ReceiveClaudeChannelMessageResult,
   ReceiveClaudeChannelReplyRequest,
-  ReceiveClaudeChannelReplyResult,
   ReceiveCodexMessageRequest,
   ReceiveCodexMessageResult,
   ReceiveCodexReplyRequest,
@@ -276,7 +275,7 @@ export interface StopResponse {
 
 export type RegisterClaudeChannelResponse = RegisterClaudeChannelResult;
 export type DisconnectClaudeChannelResponse = DisconnectClaudeChannelResult;
-export type ReceiveClaudeChannelReplyResponse = ReceiveClaudeChannelReplyResult;
+export type ReceiveClaudeChannelReplyResponse = SendMessageResponse;
 
 export type RegisterCodexChannelResponse = RegisterCodexChannelResult;
 export type DisconnectCodexChannelResponse = DisconnectCodexChannelResult;
@@ -336,7 +335,7 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
       return mapSendMessageResult(await state.receiveClaudeChannelMessage(request));
     },
     async receiveClaudeChannelReply(request) {
-      return state.receiveClaudeChannelReply(request);
+      return mapSendMessageResult(await state.receiveClaudeChannelReply(request));
     },
     async registerCodexChannel(request) {
       return state.registerCodexChannel(request);

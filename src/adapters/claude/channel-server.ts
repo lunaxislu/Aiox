@@ -233,7 +233,7 @@ export interface ClaudeChannelMcpServerOptions {
 
 export interface ClaudeChannelToolResult {
   content: { type: "text"; text: string }[];
-  structuredContent?: { ok: true; message_id?: string };
+  structuredContent?: { ok: true; message_id?: string; dispatch?: unknown };
   isError?: boolean;
 }
 
@@ -271,7 +271,7 @@ export function createClaudeChannelMcpServer(
         chat_id: z.string().min(1),
         text: z.string().min(1),
       }),
-      outputSchema: z.object({ ok: z.literal(true) }),
+      outputSchema: z.object({ ok: z.literal(true), dispatch: z.unknown().optional() }),
     },
     createReplyHandler(options) as never,
   );
@@ -333,18 +333,21 @@ export function createReplyHandler(
     });
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
     try {
-      await client.receiveClaudeChannelReply({
+      const result = (await client.receiveClaudeChannelReply({
         agentName: options.agentName,
         chatId: chat_id,
         text,
-      });
+      })) as { ok: boolean; reason?: string; dispatch?: unknown };
+      if (!result.ok) {
+        return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
+      }
       logEvent("reply_sent_to_daemon", {
         agentName: options.agentName,
         chat_id,
       });
       return {
         content: [{ type: "text" as const, text: "reply sent" }],
-        structuredContent: { ok: true as const },
+        structuredContent: { ok: true as const, dispatch: result.dispatch },
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

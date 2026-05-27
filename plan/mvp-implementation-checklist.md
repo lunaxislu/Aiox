@@ -1088,7 +1088,7 @@ Post-MVP parking lot:
 - **Design authority**: `history/45-step-15-pair-slot-generalization-design.history.md` (2026-05-27).
 - **Phase A authority**: `history/46-step-15-phase-a-decisions.history.md` (2026-05-27). D1-D9 lock 완료.
 - **Phase B closeout authority**: `history/47-step-15-phase-b-closeout.history.md` (2026-05-27).
-- **Status**: Phase B 구현 + cross-validation follow-up (F1/F2/F3) + AIOX_CLAUDE_CHANNEL_PORT 가드 모두 완료. Main에 단일 squashed green commit으로 머지. 386 tests / 48 files passing, typecheck clean.
+- **Status**: Phase B 구현 + cross-validation follow-up (F1/F2/F3) + AIOX_CLAUDE_CHANNEL_PORT 가드 모두 완료. F4/F5 follow-up으로 Claude reply dispatch surface + same-vendor deferred coverage 보강. Main에 green commit으로 머지. 390 tests / 48 files passing, typecheck clean.
 - **Post-MVP defer**: D6 registry refactor (`adapter[kind].inject(...)`) → `prd/post-mvp/aiox-post-mvp-spec.md` §P1. Channel server boot failure → daemon surface → `prd/post-mvp/aiox-post-mvp-spec.md` §P2.
 
 ### Phase A 결정 요약 (권위는 history/46)
@@ -1136,7 +1136,7 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 48 files, 386 tests (Step 15 Phase B closeout,
+- `pnpm test`: passing, 48 files, 390 tests (Step 15 F4/F5 follow-up,
   2026-05-27)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
