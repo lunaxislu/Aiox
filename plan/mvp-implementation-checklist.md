@@ -1083,12 +1083,13 @@ Post-MVP parking lot:
   `plan/post-mvp-aiox-mcp-envelope-metadata.md`; keep detailed scope and
   triggers there.
 
-## Step 15: Pair slot generalization (same-vendor pair) — 🟡 Phase A locked, Phase B pending
+## Step 15: Pair slot generalization (same-vendor pair) — 🟢 Phase B complete (2026-05-27)
 
 - **Design authority**: `history/45-step-15-pair-slot-generalization-design.history.md` (2026-05-27).
 - **Phase A authority**: `history/46-step-15-phase-a-decisions.history.md` (2026-05-27). D1-D9 lock 완료.
-- **Status**: Phase A 결정 lock 완료, Phase B (Red tests → Structural → Behavioral → Defensive) 진입 대기.
-- **Entry condition for Phase B**: R2 round close 후 진입.
+- **Phase B closeout authority**: `history/47-step-15-phase-b-closeout.history.md` (2026-05-27).
+- **Status**: Phase B 구현 + cross-validation follow-up (F1/F2/F3) + AIOX_CLAUDE_CHANNEL_PORT 가드 모두 완료. Main에 단일 squashed green commit으로 머지. 386 tests / 48 files passing, typecheck clean.
+- **Post-MVP defer**: D6 registry refactor (`adapter[kind].inject(...)`) → `prd/post-mvp/aiox-post-mvp-spec.md` §P1. Channel server boot failure → daemon surface → `prd/post-mvp/aiox-post-mvp-spec.md` §P2.
 
 ### Phase A 결정 요약 (권위는 history/46)
 
@@ -1127,7 +1128,7 @@ Post-MVP parking lot:
 
 ### QA tie-in
 
-- QA-002 (`plan/qa-tracker.md`)는 `wontfix` 유지. Phase B commit 1+2+3 머지 시 unblock.
+- QA-002 (`plan/qa-tracker.md`)는 Phase B 머지로 **unblocked** (2026-05-27).
 
 ---
 
@@ -1135,8 +1136,8 @@ Post-MVP parking lot:
 
 Latest full verification:
 
-- `pnpm test`: passing, 48 files, 360 tests (MVP implementation closeout,
-  2026-05-26)
+- `pnpm test`: passing, 48 files, 386 tests (Step 15 Phase B closeout,
+  2026-05-27)
 - `pnpm typecheck`: passing
 - `pnpm build`: passing
 

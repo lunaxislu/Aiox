@@ -187,6 +187,8 @@ self-loop는 same-name 중복 실행과 다른 문제다:
 
 **머지 단위**: commit 1+2+3을 단일 PR로 묶어 머지 (사용자 가시 half-state 방지). commit 4는 별도 PR 가능.
 
+**Commit policy amendment (2026-05-27)**: 위 4-commit 분할은 *로컬 작업 단계 표시*로 사용한다. main에는 깨진 Red commit을 영구 보존하지 않는다. `.ai/tdd.md`의 commit discipline("모든 테스트 통과 시에만 commit") + bisect 가능성 + main invariant를 우선해, 최종 git history는 green commit만 남긴다. 실제 적용: 본 Step에서는 commit 1+2+3+4를 단일 squashed green commit으로 머지. Defensive(4)를 별도 commit으로 분리할지는 Step별 재량. 권위는 `history/47-step-15-phase-b-closeout.history.md`.
+
 ---
 
 ## 8. Post-MVP scope
