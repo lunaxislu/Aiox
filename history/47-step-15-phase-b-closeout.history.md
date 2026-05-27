@@ -130,6 +130,55 @@ D6 acceptance criteria 본문 ("vendor-pair hardcode 제거 + target agent.kind 
 
 ---
 
+## Post-closeout follow-up — Step 15 leftover bug audit
+
+Phase B closeout 이후에도 dispatch generic화 시 제거됐어야 할 vendor-pair 가정의 hardcode가 코드 곳곳에 살아남는 패턴이 추가로 발견됨. 본 섹션은 audit 가이드와 발견된 사례를 누적 기록한다.
+
+### 발견된 사례 (시간순)
+
+1. **F1** — `AdapterInjectResult` mixed discriminator (`{ok}` + `{kind}` 혼용), D2 lock 위반. 단일 `kind:"success"|"failed"|"deferred"`로 통일. 권위: 본 history §F1.
+2. **F2** — Router deferred 시 delivery `delivering` stuck, D8 contract 위반. pre-inject deferred는 전이 skip / post-inject deferred는 `delivering → queued` revert. 권위: 본 history §F2.
+3. **F3** — Daemon dispatch inject-before-mark race. side-effect 직전 `delivering` commit + post-inject deferred revert. restart recovery `delivering→queued` 불변. 권위: 본 history §F3.
+4. **AIOX_CLAUDE_CHANNEL_PORT typed fail-fast** — same-vendor pair에서 fixed port 사용 시 silent EADDRINUSE crash 위험. typed `claude_channel_port_in_use` + 명확한 action 안내. 권위: 본 history §AIOX_CLAUDE_CHANNEL_PORT 처리.
+5. **`formatCodexAioxChannelEnvelope` source hardcoded** (commit `148ea8b`, 2026-05-27) — `source="claude"` 하드코딩이 잔존. codex↔codex delivery 시 inject 페이로드가 `source="claude"`로 잘못 라벨링됨. `sourceAgent.kind` 동적 주입 + XML escape 유지. 회귀 테스트: codex↔codex 시 `source="codex"` 검증 + 기존 claude→codex `source="claude"` 6건 보존.
+
+### 검사 영역 (audit 진행 시 검토 카테고리)
+
+1. **문자열 hardcode**: `"claude"` / `"codex"` literal이 vendor-agnostic 동작에서 한쪽으로 박혀 있는지.
+2. **vendor-pair 가정의 message format / envelope / event payload**: source / target / origin / metadata 필드가 한쪽 vendor를 가정하는지.
+3. **lifecycle 상태 전이의 vendor-편향**: 특정 transition / runtime / channel 관찰 경로가 한쪽 vendor만 다루는지.
+4. **typed error reason union 정합성**: 새 deferred semantics (D2)와 reason mapping이 일관적인지 (특히 새로 추가될 reason도 동일 패턴).
+5. **테스트의 vendor-pair 가정**: 회귀 테스트가 mixed pair만 다루는지, same-vendor pair에서 새 invariant 검증을 빠뜨렸는지.
+
+### 검사 명령 예시
+
+```bash
+# vendor hardcode literal
+grep -rn 'source="claude"\|source="codex"' src/
+
+# vendor 분기 패턴
+grep -rn '"claude"\|"codex"' src/ | grep -v test
+grep -rn 'kind === "claude"\|kind === "codex"' src/
+grep -rn 'targetAgent.kind\|sourceAgent.kind' src/
+
+# pair-specific 가정
+grep -rn 'mixed\|pair_kind\|claudeAgent\|codexAgent' src/
+```
+
+### 다음 세션 entry 절차
+
+1. 위 명령 + 본문 검사 영역 5개 카테고리로 walk → 의심 지점 list-up.
+2. 각 지점이 **의도된** vendor-specific 로직인지(예: Codex thread binding 자체는 Codex 고유 개념이라 그대로 맞음), **누락된** generic화인지 판별. 분류 근거를 본 섹션의 누적 사례와 비교.
+3. 누락 발견 시: fix + 회귀 테스트(same-vendor pair 시나리오 포함) + 단일 green commit.
+4. 본 섹션 §발견된 사례에 항목 누적. 발견 사례가 같은 카테고리로 쌓이면 별도 step으로 승격 검토.
+5. 의심 지점이 의도된 vendor-specific으로 판별되면 본 섹션 끝의 "False positives" 하위 항목에 사유와 함께 기록 (다음 세션이 같은 지점에 재차 시간 쓰지 않도록).
+
+### False positives (의도된 vendor-specific 로직)
+
+- (현 시점 비어있음. audit 진행 시 채워나감.)
+
+---
+
 ## Docs 갱신 (본 closeout과 함께)
 
 - `plan/mvp-implementation-checklist.md` §Step 15: 🟡 Phase A locked → 🟢 Phase B complete. Verification baseline 382 → 386.
