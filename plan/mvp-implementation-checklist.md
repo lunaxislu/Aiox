@@ -1083,11 +1083,32 @@ Post-MVP parking lot:
   `plan/post-mvp-aiox-mcp-envelope-metadata.md`; keep detailed scope and
   triggers there.
 
-## Step 15: Pair slot generalization (same-vendor pair) — 🟡 Design locked, execution checklist pending
+## Step 15: Pair slot generalization (same-vendor pair) — 🟡 Phase A locked, Phase B pending
 
 - **Design authority**: `history/45-step-15-pair-slot-generalization-design.history.md` (2026-05-27).
-- **Status**: Step 15 진입 시 본 checklist에 실행 체크리스트를 추가한다. 현재는 design lock만.
-- **Entry condition**: 현재 QA round 종료 후 진입 권장 (라운드 mid schema 변경은 트래커 drift 위험).
+- **Phase A authority**: `history/46-step-15-phase-a-decisions.history.md` (2026-05-27). D1-D9 lock 완료.
+- **Status**: Phase A 결정 lock 완료, Phase B (Red tests → Structural → Behavioral → Defensive) 진입 대기.
+- **Entry condition for Phase B**: R2 round close 후 진입.
+
+### Phase A 결정 요약 (권위는 history/46)
+
+- **D1 Codex fallback**: `loadedThreadIds.at(-1)` fallback을 모든 pair에서 disable. activeThreadId 없으면 `deferred` + `target_binding_unconfirmed`. 자동 retry는 Post-MVP, Phase A는 eligibility condition만 표현.
+- **D2 Reason union 분리**: `AdapterInjectFailureReason`과 `AdapterInjectDeferredReason` 별개 type union. `AdapterInjectResult`는 `kind: "success"|"failed"|"deferred"` discriminator. `target_adapter_not_registered`는 router `adapter_not_found`의 normalized deferred mapping.
+- **D3 Slot DTO**: `slot:"a"|"b"` 필드 추가, `kind` metadata 유지. auto-slot은 deterministic (a 우선). 거절 reason 분리: `pair_slot_occupied` (explicit slot 점유) / `pair_full` (auto + 두 slot 모두 점유) / `agent_already_attached` (self-loop, D7).
+- **D4 Migration**: schema_version 메타 테이블 + Migration 1 single transaction. **Preflight**: `(pair_id, kind)` 중복 검사 → 발견 시 `schema_migration_failed` + `duplicate_pair_slot_after_backfill` detail로 fail-fast. backfill: codex→a, claude→b. partial unique index `(pair_id, pair_slot) WHERE pair_id IS NOT NULL`.
+- **D5 getPairStatus**: `attachments.length === 2 && slots == {"a","b"}` → ready.
+- **D6 Dispatch generic화 (behavioral 본체)**: `dispatchClaudeReplyToCodexChannels`/`dispatchCodexMessageToClaudeChannels` → `dispatchToPairPeer(sourceAgentId)` 단일 함수, target `agent.kind` 기반 adapter 선택. vendor-pair hardcode 제거.
+- **D7 Self-loop guard**: core + store 이중 방어. reason `agent_already_attached`. daemon은 typed passthrough만.
+- **D8 Source notification**: push 없음. `sendMessage` response를 `{ok:true, messageId, dispatch:{delivered, deferred, failed}}` nested 구조로 확장. `ok:true`는 "message stored" 의미, target inject 결과는 `dispatch` 내부.
+- **D9 Phase A 범위**: 자동 retry / push notification / 3-way pair / dynamic slot은 모두 Phase A 밖.
+
+### Phase B Commit 분할 (변경 없음, history/45 §7 그대로)
+
+1. Red tests (core/store/daemon E2E + same-vendor deferred result + claude↔claude deferred).
+2. Structural (schema + DTO slot 도입 + versioned migration + preflight, 기존 동작 보존).
+3. Behavioral (dispatch generic화 + same-vendor ready + fallback disable + deferred wiring + nested response).
+4. Defensive/UX (self-loop reject + source notification surface + migration tests + `AIOX_CLAUDE_CHANNEL_PORT` 가드).
+머지: commit 1+2+3 단일 PR, commit 4 별도 PR.
 - **Scope summary** (권위는 history/45):
   1. Pair capacity 모델 `kind slot → slot: "a" | "b"` (vendor-agnostic).
   2. Injection dispatch generic화 (`dispatchClaudeReplyToCodexChannels` / `dispatchCodexMessageToClaudeChannels` → `dispatchToPairPeer(sourceAgentId)` 단일 함수).
@@ -1097,7 +1118,7 @@ Post-MVP parking lot:
 - **Commit 분할** (`.ai/tdd.md` Tidy First):
   1. Red tests (core/store/daemon E2E + same-vendor deferred result).
   2. Structural (schema + DTO slot 도입, 기존 동작 보존 — 사용자 가시 기능 0).
-  3. Behavioral (dispatch generic화 + same-vendor ready + bidirectional + fallback pair-aware + deferred wiring).
+  3. Behavioral (dispatch generic화 + same-vendor ready + bidirectional + **fallback disable (모든 pair)** + deferred wiring + nested dispatch response).
   4. Defensive/UX (self-loop reject + source notification + migration tests + `AIOX_CLAUDE_CHANNEL_PORT` 고정 충돌 가드).
 - **머지 단위**: commit 1+2+3 단일 PR (half-state 방지), commit 4 별도 PR.
 - **Acceptance criteria** (history/45 §3 권위):
@@ -1105,10 +1126,14 @@ Post-MVP parking lot:
   - same agent를 두 slot에 attach하면 `agent_already_attached` reject.
   - target binding/runtime 미확정 시 `sendMessage:{ok:true}` + delivery `queued` + dispatch `deferred` + normalized reason이 source agent에게 surface.
   - claude↔claude에서 target Claude channel server unavailable도 동일하게 `deferred`로 보임 (failed 아님).
-- **Open follow-up** (Phase A 진입 시 lock):
-  - Codex `loadedThreadIds.at(-1)` fallback 정책 (disable / explicit currentThreadId / slot-based 중 선택).
-  - Normalize reason union 이름 final lock (`AdapterInjectFailureReason`과 정합, deferred는 별도 type일 가능성).
-  - QA-002 (tracker)는 `wontfix`로 expected rejection 박힘. Step 15 실행 시 unblock.
+- **Phase A에서 lock된 follow-up** (history/46 권위):
+  - Codex fallback: **모든 pair에서 disable** + deferred (D1).
+  - Reason union: **AdapterInjectFailureReason / AdapterInjectDeferredReason 별개 type** + `kind` discriminator (D2).
+  - QA-002는 `wontfix` 유지. Phase B commit 1+2+3 머지 시 unblock.
+- **Phase A 밖 (Post-MVP 이월)**:
+  - Deferred 자동 retry.
+  - Source agent push notification (deferred 해소 시 비동기 알림).
+  - 3-way pair / dynamic slot.
 
 ---
 
