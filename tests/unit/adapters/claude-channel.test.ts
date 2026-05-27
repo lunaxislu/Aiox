@@ -11,6 +11,9 @@ import { createEventRepository } from "../../../src/store/repositories/events.js
 import { applySchema } from "../../../src/store/schema.js";
 import {
   buildChannelNotification,
+  CLAUDE_CHANNEL_INSTRUCTIONS,
+  CLAUDE_REPLY_DESCRIPTION,
+  CLAUDE_SEND_DESCRIPTION,
   createReplyHandler,
   createSendHandler,
 } from "../../../src/adapters/claude/channel-server.js";
@@ -375,6 +378,27 @@ describe("daemon receiveClaudeChannelReply", () => {
 // ---------------------------------------------------------------------------
 
 describe("Claude channel MCP handlers", () => {
+  it("instructs Claude to use aiox tools only for intentional collaboration", () => {
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("<channel");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Language Policy");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("User-Requested Collaboration");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: delegation");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: discussion");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: clarification");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: result");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: conclusion");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Multi-round Discussion");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("[[CONCLUDE]]");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Bad, do not send");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).not.toContain("- an instruction");
+    expect(CLAUDE_REPLY_DESCRIPTION).toContain("Intent:");
+    expect(CLAUDE_REPLY_DESCRIPTION).toContain("[[CONCLUDE]]");
+    expect(CLAUDE_REPLY_DESCRIPTION).toContain("concrete");
+    expect(CLAUDE_SEND_DESCRIPTION).toContain("Intent:");
+    expect(CLAUDE_SEND_DESCRIPTION).toContain("new aiox thread");
+    expect(CLAUDE_SEND_DESCRIPTION).toContain("expected output");
+  });
+
   it("send routes a chat_id-free message through receiveClaudeChannelMessage", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createSendHandler({

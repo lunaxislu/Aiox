@@ -3,18 +3,142 @@ import { z } from "zod";
 
 import { createDaemonSocketClient } from "../../daemon/socket-transport.js";
 
-export const CODEX_INGRESS_INSTRUCTIONS =
-  "aiox orchestration tools available to this Codex session. " +
-  "Call aiox_send_message(content) to broadcast a routed message to paired aiox agents. " +
-  'When you receive an <aiox-channel ... message_id="..."> message, call ' +
-  "aiox_reply(parent_message_id, content) with parent_message_id set to the envelope message_id " +
-  "and content set to your response. " +
-  "Call aiox_reply(parent_message_id, content) to reply to a parent message id received earlier.";
+export const CODEX_INGRESS_INSTRUCTIONS = `
+You are part of a multi-agent orchestration system named aiox.
+These instructions define the aiox tool protocol. Follow them regardless of the natural language used by the human user or another agent.
+
+Messages arrive as <aiox-channel source="..." message_id="...">text</aiox-channel>.
+
+## Language Policy
+
+When communicating with the human user, use the user's language.
+When sending content to another agent, preserve the user's language when it carries task context.
+Use English for protocol structure, field labels, and concise task framing.
+
+## User-Requested Collaboration
+
+If the human user explicitly asks you to involve another agent, use an aiox tool.
+
+Treat these user intents as permission and instruction to use aiox:
+- ask another agent
+- discuss this with another agent
+- delegate this task
+- get another agent's review
+- cross-check with another agent
+- ask Claude/Codex/Gemini
+- Korean examples: "물어봐", "토론해봐", "검토시켜", "위임해", "확인받아"
+
+When the user requests collaboration:
+- use aiox_send_message(content) to start the request
+- MUST include an Intent label
+- MUST include a clear goal
+- MUST include expected output
+- MUST include relevant context and constraints
+- do not use greetings or social filler
+
+## Message Intent
+
+When using aiox_send_message(content) or aiox_reply(parent_message_id, content), begin the content with exactly one intent label:
+
+Intent: delegation
+Intent: discussion
+Intent: clarification
+Intent: result
+Intent: conclusion
+
+Use:
+- delegation: assigning work, giving instructions, requesting review, validation, or investigation
+- discussion: exchanging arguments, options, objections, trade-offs, or decisions
+- clarification: asking a blocking question needed to make progress
+- result: returning completed task output or a direct answer
+- conclusion: ending the thread
+
+## Collaboration Protocol
+
+Use aiox tools only when your message advances the shared task.
+
+Do NOT call any aiox tool for:
+- greetings
+- thanks
+- simple acknowledgments
+- politeness
+- "how can I help?" style follow-ups
+- confirming receipt without adding concrete task progress
+- continuing a conversation only because another agent spoke
+
+Use aiox_reply(parent_message_id, content) only when responding to an existing aiox thread with one of:
+- a concrete task result
+- a direct answer to a direct question
+- a substantive review, objection, option, or decision input
+- a clarification request that blocks progress
+- a valid multi-round discussion turn
+
+Use aiox_send_message(content) only when starting a new aiox thread with one of:
+- a delegated task
+- a new topic that needs another agent's work
+- a request for review, validation, or investigation
+- a user-requested discussion
+
+## Multi-round Discussion
+
+Discussions may span many turns when the human user requested discussion or when the task genuinely requires back-and-forth reasoning.
+
+Across a discussion, each reply MUST add at least one of:
+- a new argument, counter-argument, or piece of evidence
+- a new question the other side has not answered
+- a concrete proposal, option, or revision
+- a decision, commitment, or explicit conclusion
+
+Agreement without new content, paraphrase, restating the other side, or social acknowledgment is NOT a valid turn.
+In that case, do not call any aiox tool.
+
+## Ending a Thread
+
+To end a discussion, send one final reply with:
+
+Intent: conclusion
+[[CONCLUDE]]
+
+After sending a conclusion, do not call any aiox tool again for that thread.
+
+If you receive a message containing [[CONCLUDE]], do not reply with any aiox tool.
+If the human user says to stop, wrap up, conclude, "마무리해", or "이제 됐어", conclude the active aiox thread.
+
+## Examples
+
+Good:
+Intent: delegation
+Goal: review the diff in src/router.ts for race conditions.
+Expected output: list of findings with file:line and severity.
+Context: this is part of aiox Step 14.
+
+Bad, do not send:
+안녕! 도와줄게 있어?
+Reason: greeting or social follow-up.
+
+Bad, do not send:
+네 알겠습니다.
+Reason: simple acknowledgment.
+
+## Tool Usage
+
+- aiox_reply(parent_message_id, content): continue an existing aiox task or discussion thread. Use the envelope message_id as parent_message_id.
+- aiox_send_message(content): start a new aiox task or discussion thread.
+`;
 
 export const AIOX_REPLY_DESCRIPTION =
-  "Reply to a parent message id received earlier from another aiox agent. " +
+  "Reply to an existing aiox thread using a parent message id received earlier from another aiox agent. " +
+  "CRITICAL: Start content with exactly one Intent: label. " +
+  "Do not reply to messages containing [[CONCLUDE]]. " +
+  "Use only for concrete task results, direct answers, clarification questions, or substantive discussion turns. " +
   'When the current prompt contains an <aiox-channel ... message_id="..."> envelope, ' +
-  "use that message_id as parent_message_id and put your response in content. " +
+  "use that message_id as parent_message_id. " +
+  "Routes through the daemon.";
+
+export const AIOX_SEND_MESSAGE_DESCRIPTION =
+  "Start a new aiox thread for user-requested collaboration, delegation, review, validation, investigation, or discussion. " +
+  "CRITICAL: Start content with exactly one Intent: label and include a clear goal, expected output, relevant context, and constraints. " +
+  "Do not use for greetings, thanks, acknowledgments, or social follow-ups. " +
   "Routes through the daemon.";
 
 export interface CodexIngressDaemonClient {
@@ -29,7 +153,9 @@ export interface CodexIngressMcpServerOptions {
   agentToken: string;
   daemonSocketPath: string;
   createMessageId?: () => string;
-  createDaemonClient?: (options: { socketPath: string }) => CodexIngressDaemonClient;
+  createDaemonClient?: (options: {
+    socketPath: string;
+  }) => CodexIngressDaemonClient;
 }
 
 export interface CodexIngressToolResult {
@@ -55,7 +181,10 @@ export function createSendMessageHandler(
         content,
       })) as { ok: boolean; reason?: string };
       if (!result.ok) {
-        return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
+        return errorResult(
+          result.reason ?? "unknown_error",
+          JSON.stringify(result),
+        );
       }
       return {
         content: [{ type: "text" as const, text: `sent ${messageId}` }],
@@ -94,7 +223,10 @@ export function createReplyHandler(
         content,
       })) as { ok: boolean; reason?: string };
       if (!result.ok) {
-        return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
+        return errorResult(
+          result.reason ?? "unknown_error",
+          JSON.stringify(result),
+        );
       }
       return {
         content: [{ type: "text" as const, text: `reply sent ${messageId}` }],
@@ -115,12 +247,15 @@ function resolveDaemonClient(
   return (
     options.createDaemonClient ??
     ((opts) =>
-      createDaemonSocketClient({ socketPath: opts.socketPath }) as unknown as
-        CodexIngressDaemonClient)
+      createDaemonSocketClient({
+        socketPath: opts.socketPath,
+      }) as unknown as CodexIngressDaemonClient)
   );
 }
 
-function resolveMessageIdFactory(options: CodexIngressMcpServerOptions): () => string {
+function resolveMessageIdFactory(
+  options: CodexIngressMcpServerOptions,
+): () => string {
   return options.createMessageId ?? (() => `codex-msg-${crypto.randomUUID()}`);
 }
 
@@ -141,8 +276,7 @@ export function createCodexIngressMcpServer(
   mcp.registerTool(
     "aiox_send_message",
     {
-      description:
-        "Broadcast a message from this Codex agent to all paired aiox agents via the daemon router.",
+      description: AIOX_SEND_MESSAGE_DESCRIPTION,
       inputSchema: z.object({
         content: z.string().min(1),
       }),
@@ -194,7 +328,9 @@ export interface RunCodexIngressMcpServerDependencies {
     connect(transport: unknown): Promise<void>;
   };
   createTransport?: () => unknown;
-  createDaemonClient?: (options: { socketPath: string }) => CodexIngressDaemonClient;
+  createDaemonClient?: (options: {
+    socketPath: string;
+  }) => CodexIngressDaemonClient;
   log?: (event: string, fields: Record<string, unknown>) => void;
 }
 
@@ -207,13 +343,16 @@ export async function runCodexIngressMcpServerWithDependencies(
 ): Promise<void> {
   const env = parseCodexIngressEnv(dependencies.env);
   const log = dependencies.log ?? logEvent;
-  const createMcpServer = dependencies.createMcpServer ?? createCodexIngressMcpServer;
-  const createTransport = dependencies.createTransport ?? (() => new StdioServerTransport());
+  const createMcpServer =
+    dependencies.createMcpServer ?? createCodexIngressMcpServer;
+  const createTransport =
+    dependencies.createTransport ?? (() => new StdioServerTransport());
   const createDaemonClient =
     dependencies.createDaemonClient ??
     ((options: { socketPath: string }) =>
-      createDaemonSocketClient({ socketPath: options.socketPath }) as unknown as
-        CodexIngressDaemonClient);
+      createDaemonSocketClient({
+        socketPath: options.socketPath,
+      }) as unknown as CodexIngressDaemonClient);
 
   log("codex_mcp_starting", {
     agentName: env.agentName,
@@ -260,7 +399,9 @@ function waitForTransportClose(transport: unknown): Promise<void> {
 
 async function registerCodexChannel(options: {
   env: CodexIngressMcpServerEnv;
-  createDaemonClient: (opts: { socketPath: string }) => CodexIngressDaemonClient;
+  createDaemonClient: (opts: {
+    socketPath: string;
+  }) => CodexIngressDaemonClient;
   log: (event: string, fields: Record<string, unknown>) => void;
 }): Promise<void> {
   let client: CodexIngressDaemonClient;
@@ -294,14 +435,15 @@ async function registerCodexChannel(options: {
   }
 }
 
-function errorResult(reason: string, detail: string): {
+function errorResult(
+  reason: string,
+  detail: string,
+): {
   content: { type: "text"; text: string }[];
   isError: true;
 } {
   return {
-    content: [
-      { type: "text" as const, text: `error:${reason} ${detail}` },
-    ],
+    content: [{ type: "text" as const, text: `error:${reason} ${detail}` }],
     isError: true,
   };
 }

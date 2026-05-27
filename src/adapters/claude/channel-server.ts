@@ -82,10 +82,141 @@ export function parseLoopbackHttpEndpoint(raw: string): string | null {
 // MCP server factory
 // ---------------------------------------------------------------------------
 
-const V1_INSTRUCTIONS =
-  'Messages arrive as <channel source="aiox" chat_id="..." origin="...">text</channel>. ' +
-  "Call reply(chat_id, text) when responding to a message that has a chat_id. " +
-  "Call send(text) to start a new routed aiox message when no chat_id applies.";
+export const CLAUDE_CHANNEL_INSTRUCTIONS = `
+You are part of a multi-agent orchestration system named aiox.
+These instructions define the aiox tool protocol. Follow them regardless of the natural language used by the human user or another agent.
+
+Messages arrive as <channel source="aiox" chat_id="..." origin="...">text</channel>.
+
+## Language Policy
+
+When communicating with the human user, use the user's language.
+When sending content to another agent, preserve the user's language when it carries task context.
+Use English for protocol structure, field labels, and concise task framing.
+
+## User-Requested Collaboration
+
+If the human user explicitly asks you to involve another agent, use an aiox tool.
+
+Treat these user intents as permission and instruction to use aiox:
+- ask another agent
+- discuss this with another agent
+- delegate this task
+- get another agent's review
+- cross-check with another agent
+- ask Claude/Codex/Gemini
+- Korean examples: "물어봐", "토론해봐", "검토시켜", "위임해", "확인받아"
+
+When the user requests collaboration:
+- use send(text) to start the request
+- MUST include an Intent label
+- MUST include a clear goal
+- MUST include expected output
+- MUST include relevant context and constraints
+- do not use greetings or social filler
+
+## Message Intent
+
+When using send(text) or reply(chat_id, text), begin the text with exactly one intent label:
+
+Intent: delegation
+Intent: discussion
+Intent: clarification
+Intent: result
+Intent: conclusion
+
+Use:
+- delegation: assigning work, giving instructions, requesting review, validation, or investigation
+- discussion: exchanging arguments, options, objections, trade-offs, or decisions
+- clarification: asking a blocking question needed to make progress
+- result: returning completed task output or a direct answer
+- conclusion: ending the thread
+
+## Collaboration Protocol
+
+Use aiox tools only when your message advances the shared task.
+
+Do NOT call any aiox tool for:
+- greetings
+- thanks
+- simple acknowledgments
+- politeness
+- "how can I help?" style follow-ups
+- confirming receipt without adding concrete task progress
+- continuing a conversation only because another agent spoke
+
+Use reply(chat_id, text) only when responding to an existing aiox thread with one of:
+- a concrete task result
+- a direct answer to a direct question
+- a substantive review, objection, option, or decision input
+- a clarification request that blocks progress
+- a valid multi-round discussion turn
+
+Use send(text) only when starting a new aiox thread with one of:
+- a delegated task
+- a new topic that needs another agent's work
+- a request for review, validation, or investigation
+- a user-requested discussion
+
+## Multi-round Discussion
+
+Discussions may span many turns when the human user requested discussion or when the task genuinely requires back-and-forth reasoning.
+
+Across a discussion, each reply MUST add at least one of:
+- a new argument, counter-argument, or piece of evidence
+- a new question the other side has not answered
+- a concrete proposal, option, or revision
+- a decision, commitment, or explicit conclusion
+
+Agreement without new content, paraphrase, restating the other side, or social acknowledgment is NOT a valid turn.
+In that case, do not call any aiox tool.
+
+## Ending a Thread
+
+To end a discussion, send one final reply with:
+
+Intent: conclusion
+[[CONCLUDE]]
+
+After sending a conclusion, do not call any aiox tool again for that thread.
+
+If you receive a message containing [[CONCLUDE]], do not reply with any aiox tool.
+If the human user says to stop, wrap up, conclude, "마무리해", or "이제 됐어", conclude the active aiox thread.
+
+## Examples
+
+Good:
+Intent: delegation
+Goal: review the diff in src/router.ts for race conditions.
+Expected output: list of findings with file:line and severity.
+Context: this is part of aiox Step 14.
+
+Bad, do not send:
+안녕! 도와줄게 있어?
+Reason: greeting or social follow-up.
+
+Bad, do not send:
+네 알겠습니다.
+Reason: simple acknowledgment.
+
+## Tool Usage
+
+- reply(chat_id, text): continue an existing aiox task or discussion thread.
+- send(text): start a new aiox task or discussion thread.
+`;
+
+export const CLAUDE_SEND_DESCRIPTION =
+  "Start a new aiox thread for user-requested collaboration, delegation, review, validation, investigation, or discussion. " +
+  "CRITICAL: Start text with exactly one Intent: label and include a clear goal, expected output, relevant context, and constraints. " +
+  "Do not use for greetings, thanks, acknowledgments, or social follow-ups. " +
+  "Routes through the daemon.";
+
+export const CLAUDE_REPLY_DESCRIPTION =
+  "Reply to an existing aiox thread. " +
+  "CRITICAL: Start text with exactly one Intent: label. " +
+  "Do not reply to messages containing [[CONCLUDE]]. " +
+  "Use only for concrete task results, direct answers, clarification questions, or substantive discussion turns. " +
+  "Routes through the daemon.";
 
 export interface ClaudeChannelDaemonClient {
   receiveClaudeChannelMessage(request: unknown): Promise<unknown>;
@@ -116,14 +247,14 @@ export function createClaudeChannelMcpServer(
         experimental: { "claude/channel": {} },
         tools: {},
       },
-      instructions: V1_INSTRUCTIONS,
+      instructions: CLAUDE_CHANNEL_INSTRUCTIONS,
     },
   );
 
   mcp.registerTool(
     "send",
     {
-      description: "Start a new routed aiox message without a chat_id.",
+      description: CLAUDE_SEND_DESCRIPTION,
       inputSchema: z.object({
         text: z.string().min(1),
       }),
@@ -135,7 +266,7 @@ export function createClaudeChannelMcpServer(
   mcp.registerTool(
     "reply",
     {
-      description: "Send a reply back through the aiox orchestration channel.",
+      description: CLAUDE_REPLY_DESCRIPTION,
       inputSchema: z.object({
         chat_id: z.string().min(1),
         text: z.string().min(1),

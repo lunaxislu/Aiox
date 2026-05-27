@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AIOX_REPLY_DESCRIPTION,
+  AIOX_SEND_MESSAGE_DESCRIPTION,
   CODEX_INGRESS_INSTRUCTIONS,
   createCodexIngressMcpServer,
   createReplyHandler,
@@ -15,9 +16,26 @@ describe("codex MCP server — handlers", () => {
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("<aiox-channel");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("message_id");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("parent_message_id");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Language Policy");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("User-Requested Collaboration");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: delegation");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: discussion");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: clarification");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: result");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: conclusion");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Multi-round Discussion");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("[[CONCLUDE]]");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Bad, do not send");
+    expect(CODEX_INGRESS_INSTRUCTIONS).not.toContain("- an instruction");
     expect(AIOX_REPLY_DESCRIPTION).toContain("<aiox-channel");
     expect(AIOX_REPLY_DESCRIPTION).toContain("message_id");
     expect(AIOX_REPLY_DESCRIPTION).toContain("parent_message_id");
+    expect(AIOX_REPLY_DESCRIPTION).toContain("Intent:");
+    expect(AIOX_REPLY_DESCRIPTION).toContain("[[CONCLUDE]]");
+    expect(AIOX_REPLY_DESCRIPTION).toContain("concrete");
+    expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("Intent:");
+    expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("new aiox thread");
+    expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("expected output");
   });
 
   it("aiox_send_message routes through receiveCodexMessage with token", async () => {
