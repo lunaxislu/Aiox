@@ -33,6 +33,31 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 | Round | Date       | Scope                     | History file                      | Outcome |
 | ----- | ---------- | ------------------------- | --------------------------------- | ------- |
 | R1    | 2026-05-26 | Claude channel disconnect 정합성 | `history/43-qa-round-1.history.md` | in progress (1 verified) |
+| R2    | 2026-05-27 | aiox MCP collaboration protocol Phase 1.5 | `history/44-qa-round-2.history.md` | PASS — smoke 4/4; Phase 2 deferred to `plan/post-mvp-aiox-mcp-envelope-metadata.md` |
+
+### R2 — aiox MCP collaboration protocol Phase 1.5
+
+- **Scope**: instruction + send/reply tool description hardening for MCP collaboration protocol.
+- **Changed files**: `src/adapters/codex/mcp-server.ts`, `src/adapters/claude/channel-server.ts`, `tests/unit/adapters/codex-mcp-server.test.ts`, `tests/unit/adapters/claude-channel.test.ts`.
+- **Authority / follow-up plan**: `plan/post-mvp-aiox-mcp-envelope-metadata.md`.
+
+Scenario PASS notes:
+
+- Single delegation: delegate request produced one purposeful result reply, then stopped without acknowledgment reflex.
+- Multi-round discussion: discussion continued across substantive turns and did not stop prematurely.
+- `"마무리해"` termination trigger: active thread concluded with `Intent: conclusion` + `[[CONCLUDE]]`, and the peer did not continue the thread.
+- No-call case: greeting/acknowledgment-style input did not trigger send/reply tool calls.
+
+Observed metrics:
+
+- Intent label compliance: PASS.
+- `[[CONCLUDE]]` leak: none observed.
+- Reflex loop recurrence: none observed.
+- Unintentional calls for greeting/acknowledgment: none observed.
+
+Remaining risk:
+
+- Phase 1.5 is still a soft instruction/description contract. If intent omission, `[[CONCLUDE]]` leak, reflex loop recurrence, or unintentional calls appear, enter Phase 2 via `plan/post-mvp-aiox-mcp-envelope-metadata.md`.
 
 ---
 
