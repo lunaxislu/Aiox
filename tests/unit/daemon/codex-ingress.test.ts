@@ -387,6 +387,78 @@ describe("daemon receiveCodexMessage", () => {
     ]);
   });
 
+  it("labels Codex-to-Codex injected envelopes with the Codex source kind", async () => {
+    const runtimeA = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-impl-a",
+    });
+    const runtimeB = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54322/",
+      startedThreadId: "thread-impl-b",
+    });
+    const codexRuntimeByName = new Map([
+      ["impl-a", runtimeA],
+      ["impl-b", runtimeB],
+    ]);
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async ({ agentName }) => {
+        const runtime = codexRuntimeByName.get(agentName);
+        if (!runtime) {
+          throw new Error(`missing fake runtime for ${agentName}`);
+        }
+        return runtime;
+      },
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.createPair({ name: "pair-1" });
+    const attachA = await client.attachAgent({
+      kind: "codex",
+      name: "impl-a",
+      cwd: "/repo",
+      pairName: "pair-1",
+    });
+    const attachB = await client.attachAgent({
+      kind: "codex",
+      name: "impl-b",
+      cwd: "/repo",
+      pairName: "pair-1",
+    });
+    const tokenA = (attachA as { ok: true; codexChannelToken: string }).codexChannelToken;
+    const tokenB = (attachB as { ok: true; codexChannelToken: string }).codexChannelToken;
+    await client.registerCodexChannel({ agentName: "impl-a", token: tokenA });
+    await client.registerCodexChannel({ agentName: "impl-b", token: tokenB });
+
+    const response = await client.receiveCodexMessage({
+      agentName: "impl-a",
+      token: tokenA,
+      messageId: "codex-msg-1",
+      content: "hello from codex",
+    });
+
+    expect(response.ok).toBe(true);
+    expect(runtimeB.requests).toContainEqual({
+      method: "turn/start",
+      params: {
+        threadId: "thread-impl-b",
+        input: [
+          {
+            type: "text",
+            text: '<aiox-channel source="codex" message_id="codex-msg-1">\nhello from codex\n</aiox-channel>',
+          },
+        ],
+      },
+      options: {
+        timeoutMs: undefined,
+        timeoutErrorCode: "codex_turn_start_timeout",
+      },
+    });
+  });
+
   it("missing token returns codex_ingress_unauthorized", async () => {
     const setup = await setupPairedAgents(db);
 

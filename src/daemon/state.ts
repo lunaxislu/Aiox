@@ -1503,7 +1503,7 @@ export function createDaemonState(
     const injectResult = await injectReplyIntoCodexRuntime(
       target.runtime,
       target.threadId,
-      formatCodexAioxChannelEnvelope(message),
+      formatCodexAioxChannelEnvelope(message, sourceAgent?.kind ?? "unknown"),
     );
 
     if (injectResult.kind === "deferred") {
@@ -1698,8 +1698,8 @@ export function createDaemonState(
     );
   }
 
-  function formatCodexAioxChannelEnvelope(message: StoredMessage): string {
-    return `<aiox-channel source="claude" message_id="${escapeXmlAttr(message.id)}">\n${escapeXmlContent(message.content)}\n</aiox-channel>`;
+  function formatCodexAioxChannelEnvelope(message: StoredMessage, source: string): string {
+    return `<aiox-channel source="${escapeXmlAttr(source)}" message_id="${escapeXmlAttr(message.id)}">\n${escapeXmlContent(message.content)}\n</aiox-channel>`;
   }
 
   function escapeXmlAttr(s: string): string {
