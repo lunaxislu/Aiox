@@ -176,7 +176,7 @@ grep -rn 'mixed\|pair_kind\|claudeAgent\|codexAgent' src/
 
 ### False positives (의도된 vendor-specific 로직)
 
-- (현 시점 비어있음. audit 진행 시 채워나감.)
+- `src/daemon/state.ts:1509-1541` Codex inject 경로 post-inject remap 부재 — Codex `turn/start` 실패 reason(`codex_turn_start_timeout`, `codex_app_server_ws_dropped`, `codex_jsonrpc_error`, `codex_binding_uncertain`, generic send error)은 요청 frame 전송 이후 ack를 받지 못했거나 JSON-RPC가 명시 거절한 상태다. `src/adapters/codex/websocket.ts`는 pending request timeout/drop을 "side-effect 없음"으로 증명하지 못하고, `src/adapters/codex/injector.ts`는 binding mismatch를 `codex_binding_uncertain` terminal failure로 유지한다. F2/F3의 deferred remap은 target binding/runtime 미확정처럼 side-effect 전 precondition failure 또는 Claude endpoint race에만 안전하므로, Codex post-inject 실패를 queued/deferred로 되돌리면 중복 turn/start 위험이 있다.
 
 ---
 
