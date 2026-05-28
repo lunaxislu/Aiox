@@ -8,7 +8,16 @@ import { createHash, randomUUID } from "node:crypto";
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
+import type {
+  ReceiveClaudeChannelMessageResponse,
+  ReceiveClaudeChannelReplyResponse,
+} from "../../daemon/api.js";
 import { createDaemonSocketClient } from "../../daemon/socket-transport.js";
+import type {
+  DispatchSummary,
+  ReceiveClaudeChannelMessageRequest,
+  ReceiveClaudeChannelReplyRequest,
+} from "../../daemon/state.js";
 
 // ---------------------------------------------------------------------------
 // V1 trusted channel framing (D1)
@@ -219,8 +228,12 @@ export const CLAUDE_REPLY_DESCRIPTION =
   "Routes through the daemon.";
 
 export interface ClaudeChannelDaemonClient {
-  receiveClaudeChannelMessage(request: unknown): Promise<unknown>;
-  receiveClaudeChannelReply(request: unknown): Promise<unknown>;
+  receiveClaudeChannelMessage(
+    request: ReceiveClaudeChannelMessageRequest,
+  ): Promise<ReceiveClaudeChannelMessageResponse>;
+  receiveClaudeChannelReply(
+    request: ReceiveClaudeChannelReplyRequest,
+  ): Promise<ReceiveClaudeChannelReplyResponse>;
   close(): void;
 }
 
@@ -233,9 +246,30 @@ export interface ClaudeChannelMcpServerOptions {
 
 export interface ClaudeChannelToolResult {
   content: { type: "text"; text: string }[];
-  structuredContent?: { ok: true; message_id?: string; dispatch?: unknown };
+  structuredContent?: {
+    ok: true;
+    message_id?: string;
+    dispatch?: DispatchSummary;
+  };
   isError?: boolean;
 }
+
+const dispatchSummaryOutputSchema = z.object({
+  delivered: z.number(),
+  deferred: z.array(
+    z.object({
+      targetAgentId: z.string(),
+      reason: z.string(),
+      eligibility: z.string().optional(),
+    }),
+  ),
+  failed: z.array(
+    z.object({
+      targetAgentId: z.string(),
+      reason: z.string(),
+    }),
+  ),
+});
 
 export function createClaudeChannelMcpServer(
   options: ClaudeChannelMcpServerOptions,
@@ -271,7 +305,10 @@ export function createClaudeChannelMcpServer(
         chat_id: z.string().min(1),
         text: z.string().min(1),
       }),
-      outputSchema: z.object({ ok: z.literal(true), dispatch: z.unknown().optional() }),
+      outputSchema: z.object({
+        ok: z.literal(true),
+        dispatch: dispatchSummaryOutputSchema.optional(),
+      }),
     },
     createReplyHandler(options) as never,
   );
@@ -292,11 +329,11 @@ export function createSendHandler(
     });
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
     try {
-      const result = (await client.receiveClaudeChannelMessage({
+      const result = await client.receiveClaudeChannelMessage({
         agentName: options.agentName,
         messageId,
         text,
-      })) as { ok: boolean; reason?: string };
+      });
       if (!result.ok) {
         return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
       }
@@ -333,11 +370,11 @@ export function createReplyHandler(
     });
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
     try {
-      const result = (await client.receiveClaudeChannelReply({
+      const result = await client.receiveClaudeChannelReply({
         agentName: options.agentName,
         chatId: chat_id,
         text,
-      })) as { ok: boolean; reason?: string; dispatch?: unknown };
+      });
       if (!result.ok) {
         return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
       }

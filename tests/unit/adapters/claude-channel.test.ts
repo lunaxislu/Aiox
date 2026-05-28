@@ -15,6 +15,7 @@ import {
   CLAUDE_CHANNEL_INSTRUCTIONS,
   CLAUDE_REPLY_DESCRIPTION,
   CLAUDE_SEND_DESCRIPTION,
+  type ClaudeChannelDaemonClient,
   createReplyHandler,
   createSendHandler,
   startClaudeChannelHttpIngress,
@@ -415,7 +416,7 @@ describe("Claude channel MCP handlers", () => {
         fakeClaudeDaemonClient({
           receiveClaudeChannelMessage: async (args) => {
             calls.push({ method: "receiveClaudeChannelMessage", args });
-            return { ok: true, message: { id: "claude-msg-fixed" }, deliveries: [] };
+            return successSendMessageResponse("claude-msg-fixed");
           },
         }),
     });
@@ -447,7 +448,7 @@ describe("Claude channel MCP handlers", () => {
         fakeClaudeDaemonClient({
           receiveClaudeChannelReply: async (args) => {
             calls.push({ method: "receiveClaudeChannelReply", args });
-            return { ok: true };
+            return successSendMessageResponse("reply-fixed");
           },
         }),
     });
@@ -475,6 +476,15 @@ describe("Claude channel MCP handlers", () => {
         fakeClaudeDaemonClient({
           receiveClaudeChannelReply: async () => ({
             ok: true,
+            messageId: "reply-fixed",
+            message: {
+              id: "reply-fixed",
+              sourceAgentId: "agent-source",
+              parentMessageId: "parent-1",
+              type: "reply",
+              content: "ack",
+            },
+            deliveries: [],
             dispatch: {
               delivered: 0,
               deferred: [
@@ -632,16 +642,42 @@ describe("buildLaunchClaudeChannelArgs", () => {
 // ---------------------------------------------------------------------------
 
 
-function fakeClaudeDaemonClient(overrides: {
-  receiveClaudeChannelMessage?: (request: unknown) => Promise<unknown>;
-  receiveClaudeChannelReply?: (request: unknown) => Promise<unknown>;
-}) {
+function fakeClaudeDaemonClient(
+  overrides: Partial<
+    Pick<
+      ClaudeChannelDaemonClient,
+      "receiveClaudeChannelMessage" | "receiveClaudeChannelReply"
+    >
+  >,
+): ClaudeChannelDaemonClient {
   return {
     receiveClaudeChannelMessage:
-      overrides.receiveClaudeChannelMessage ?? (async () => ({ ok: true })),
+      overrides.receiveClaudeChannelMessage ??
+      (async () => successSendMessageResponse("message-default")),
     receiveClaudeChannelReply:
-      overrides.receiveClaudeChannelReply ?? (async () => ({ ok: true })),
+      overrides.receiveClaudeChannelReply ??
+      (async () => successSendMessageResponse("reply-default")),
     close() {},
+  };
+}
+
+function successSendMessageResponse(messageId: string) {
+  return {
+    ok: true as const,
+    messageId,
+    message: {
+      id: messageId,
+      sourceAgentId: "agent-source",
+      parentMessageId: null,
+      type: "question" as const,
+      content: "content",
+    },
+    deliveries: [],
+    dispatch: {
+      delivered: 0,
+      deferred: [],
+      failed: [],
+    },
   };
 }
 

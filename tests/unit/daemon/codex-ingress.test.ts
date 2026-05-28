@@ -530,13 +530,12 @@ describe("daemon receiveCodexMessage", () => {
     expect(db.prepare("select status from message_deliveries").get()).toMatchObject({
       status: "queued",
     });
+    const statusEvents = db
+      .prepare("select data_json from events where type = 'delivery_status_changed'")
+      .all() as { data_json: string }[];
     expect(
-      db
-        .prepare(
-          "select count(*) as n from events where type = 'delivery_status_changed' and data_json = ?",
-        )
-        .get(JSON.stringify({ status: "delivering" })),
-    ).toMatchObject({ n: 0 });
+      statusEvents.some((event) => JSON.parse(event.data_json).status === "delivering"),
+    ).toBe(false);
   });
 
   it("missing token returns codex_ingress_unauthorized", async () => {
@@ -1249,13 +1248,12 @@ describe("daemon receiveClaudeChannelReply", () => {
     expect(
       db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
     ).toMatchObject({ status: "queued" });
+    const statusEvents = db
+      .prepare("select data_json from events where type = 'delivery_status_changed'")
+      .all() as { data_json: string }[];
     expect(
-      db
-        .prepare(
-          "select count(*) as n from events where type = 'delivery_status_changed' and data_json = ?",
-        )
-        .get(JSON.stringify({ status: "delivering" })),
-    ).toMatchObject({ n: 0 });
+      statusEvents.some((event) => JSON.parse(event.data_json).status === "delivering"),
+    ).toBe(false);
   });
 
   it("records a no-loaded-thread queued event when Codex has no live loaded thread", async () => {
