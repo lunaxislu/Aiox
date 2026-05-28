@@ -276,7 +276,11 @@ export function createClaudeChannelMcpServer(
       inputSchema: z.object({
         text: z.string().min(1),
       }),
-      outputSchema: z.object({ ok: z.literal(true), message_id: z.string() }),
+      outputSchema: z.object({
+        ok: z.literal(true),
+        message_id: z.string(),
+        dispatch: dispatchSummaryOutputSchema.optional(),
+      }),
     },
     createSendHandler(options) as never,
   );
@@ -327,7 +331,11 @@ export function createSendHandler(
       });
       return {
         content: [{ type: "text" as const, text: `sent ${messageId}` }],
-        structuredContent: { ok: true as const, message_id: messageId },
+        structuredContent: {
+          ok: true as const,
+          message_id: messageId,
+          dispatch: result.dispatch,
+        },
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -12,6 +12,7 @@ import type {
   ReceiveCodexReplyRequest,
   RegisterCodexChannelRequest,
 } from "../../daemon/state.js";
+import { dispatchSummaryOutputSchema } from "../shared/dispatch-schema.js";
 
 export const CODEX_INGRESS_INSTRUCTIONS = `
 You are part of a multi-agent orchestration system named aiox.
@@ -204,7 +205,11 @@ export function createSendMessageHandler(
       }
       return {
         content: [{ type: "text" as const, text: `sent ${messageId}` }],
-        structuredContent: { ok: true as const, message_id: messageId },
+        structuredContent: {
+          ok: true as const,
+          message_id: messageId,
+          dispatch: result.dispatch,
+        },
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -246,7 +251,11 @@ export function createReplyHandler(
       }
       return {
         content: [{ type: "text" as const, text: `reply sent ${messageId}` }],
-        structuredContent: { ok: true as const, message_id: messageId },
+        structuredContent: {
+          ok: true as const,
+          message_id: messageId,
+          dispatch: result.dispatch,
+        },
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -299,6 +308,7 @@ export function createCodexIngressMcpServer(
       outputSchema: z.object({
         ok: z.literal(true),
         message_id: z.string(),
+        dispatch: dispatchSummaryOutputSchema.optional(),
       }),
     },
     sendHandler as never,
@@ -315,6 +325,7 @@ export function createCodexIngressMcpServer(
       outputSchema: z.object({
         ok: z.literal(true),
         message_id: z.string(),
+        dispatch: dispatchSummaryOutputSchema.optional(),
       }),
     },
     replyHandler as never,

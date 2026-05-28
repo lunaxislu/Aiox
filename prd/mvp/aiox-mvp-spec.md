@@ -339,7 +339,7 @@ target reply 발생 (Claude: reply tool 호출, Codex: agent-level MCP/tool call
 - `messages`는 1개, `message_deliveries`는 target 수만큼 N개.
 - delivery는 독립적으로 transition한다. 한 delivery 실패가 다른 delivery를 막지 않는다 (partial failure best-effort).
 - reply는 별도 message로 생성되고 `parent_message_id`로 원본을 가리킨다. source에 다시 보낼 때도 Injection 경로(turn/start 또는 channel push)를 재사용한다.
-- **Step 15 F4 amendment (2026-05-27)**: reply source surfaces must expose the same nested `dispatch` result as send surfaces. Claude `reply` MCP structuredContent includes `dispatch` when the daemon returns it, so deferred/failed target injection is visible to the source agent instead of being collapsed into `{ok:true}`.
+- **Step 15 D8 surface amendment (2026-05-28)**: every MCP source tool surface (`send`, `reply`, `aiox_send_message`, `aiox_reply`) exposes the daemon's nested `dispatch` result in structuredContent when the daemon returns it. Deferred/failed target injection must be visible to the source agent instead of being collapsed into `{ok:true}`.
 
 ### Plane → Module Mapping
 

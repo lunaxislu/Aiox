@@ -11,6 +11,7 @@ import {
   parseCodexIngressEnv,
   runCodexIngressMcpServerWithDependencies,
 } from "../../../src/adapters/codex/mcp-server.js";
+import type { DispatchSummary } from "../../../src/daemon/state.js";
 
 describe("codex MCP server — handlers", () => {
   it("instructs Codex to reply to aiox envelopes with the envelope message_id", () => {
@@ -71,6 +72,52 @@ describe("codex MCP server — handlers", () => {
     ]);
   });
 
+  it("aiox_send_message exposes delivered daemon dispatch in structured content", async () => {
+    const dispatch = deliveredDispatch();
+    const handler = createSendMessageHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "msg-fixed",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexMessage: async () =>
+            successCodexMessageResponse("msg-fixed", dispatch),
+        }),
+    });
+
+    const result = await handler({ content: "hello" });
+
+    expect(result.structuredContent).toEqual({
+      ok: true,
+      message_id: "msg-fixed",
+      dispatch,
+    });
+  });
+
+  it("aiox_send_message exposes deferred daemon dispatch in structured content", async () => {
+    const dispatch = deferredBindingDispatch();
+    const handler = createSendMessageHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "msg-fixed",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexMessage: async () =>
+            successCodexMessageResponse("msg-fixed", dispatch),
+        }),
+    });
+
+    const result = await handler({ content: "hello" });
+
+    expect(result.structuredContent).toEqual({
+      ok: true,
+      message_id: "msg-fixed",
+      dispatch,
+    });
+  });
+
   it("aiox_reply routes through receiveCodexReply with parent_message_id", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createReplyHandler({
@@ -105,6 +152,58 @@ describe("codex MCP server — handlers", () => {
         },
       },
     ]);
+  });
+
+  it("aiox_reply exposes delivered daemon dispatch in structured content", async () => {
+    const dispatch = deliveredDispatch();
+    const handler = createReplyHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "reply-fixed",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexReply: async () =>
+            successCodexMessageResponse("reply-fixed", dispatch),
+        }),
+    });
+
+    const result = await handler({
+      parent_message_id: "parent-1",
+      content: "ack",
+    });
+
+    expect(result.structuredContent).toEqual({
+      ok: true,
+      message_id: "reply-fixed",
+      dispatch,
+    });
+  });
+
+  it("aiox_reply exposes deferred daemon dispatch in structured content", async () => {
+    const dispatch = deferredBindingDispatch();
+    const handler = createReplyHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createMessageId: () => "reply-fixed",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexReply: async () =>
+            successCodexMessageResponse("reply-fixed", dispatch),
+        }),
+    });
+
+    const result = await handler({
+      parent_message_id: "parent-1",
+      content: "ack",
+    });
+
+    expect(result.structuredContent).toEqual({
+      ok: true,
+      message_id: "reply-fixed",
+      dispatch,
+    });
   });
 
   it("daemon typed reject maps to MCP tool execution error", async () => {
@@ -342,7 +441,10 @@ function successRegisterCodexChannelResponse() {
   };
 }
 
-function successCodexMessageResponse(messageId: string) {
+function successCodexMessageResponse(
+  messageId: string,
+  dispatch: DispatchSummary = emptyDispatch(),
+) {
   return {
     ok: true as const,
     messageId,
@@ -354,10 +456,36 @@ function successCodexMessageResponse(messageId: string) {
       content: "content",
     },
     deliveries: [],
-    dispatch: {
-      delivered: 0,
-      deferred: [],
-      failed: [],
-    },
+    dispatch,
+  };
+}
+
+function emptyDispatch(): DispatchSummary {
+  return {
+    delivered: 0,
+    deferred: [],
+    failed: [],
+  };
+}
+
+function deliveredDispatch(): DispatchSummary {
+  return {
+    delivered: 1,
+    deferred: [],
+    failed: [],
+  };
+}
+
+function deferredBindingDispatch(): DispatchSummary {
+  return {
+    delivered: 0,
+    deferred: [
+      {
+        targetAgentId: "agent-target",
+        reason: "target_binding_unconfirmed",
+        eligibility: "requires target codex binding",
+      },
+    ],
+    failed: [],
   };
 }

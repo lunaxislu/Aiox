@@ -7,6 +7,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 import { createDaemonApi } from "../../../src/daemon/api.js";
+import type { DispatchSummary } from "../../../src/daemon/state.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
 import { createEventRepository } from "../../../src/store/repositories/events.js";
 import { applySchema } from "../../../src/store/schema.js";
@@ -439,6 +440,50 @@ describe("Claude channel MCP handlers", () => {
     ]);
   });
 
+  it("send exposes delivered daemon dispatch in structured content", async () => {
+    const dispatch = deliveredDispatch();
+    const handler = createSendHandler({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createMessageId: () => "claude-msg-fixed",
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          receiveClaudeChannelMessage: async () =>
+            successSendMessageResponse("claude-msg-fixed", dispatch),
+        }),
+    });
+
+    const result = await handler({ text: "hello codex" });
+
+    expect(result.structuredContent).toEqual({
+      ok: true,
+      message_id: "claude-msg-fixed",
+      dispatch,
+    });
+  });
+
+  it("send exposes deferred daemon dispatch in structured content", async () => {
+    const dispatch = deferredRuntimeDispatch();
+    const handler = createSendHandler({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createMessageId: () => "claude-msg-fixed",
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          receiveClaudeChannelMessage: async () =>
+            successSendMessageResponse("claude-msg-fixed", dispatch),
+        }),
+    });
+
+    const result = await handler({ text: "hello codex" });
+
+    expect(result.structuredContent).toEqual({
+      ok: true,
+      message_id: "claude-msg-fixed",
+      dispatch,
+    });
+  });
+
   it("reply still requires chat_id and routes through receiveClaudeChannelReply", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createReplyHandler({
@@ -661,7 +706,10 @@ function fakeClaudeDaemonClient(
   };
 }
 
-function successSendMessageResponse(messageId: string) {
+function successSendMessageResponse(
+  messageId: string,
+  dispatch: DispatchSummary = emptyDispatch(),
+) {
   return {
     ok: true as const,
     messageId,
@@ -673,11 +721,37 @@ function successSendMessageResponse(messageId: string) {
       content: "content",
     },
     deliveries: [],
-    dispatch: {
-      delivered: 0,
-      deferred: [],
-      failed: [],
-    },
+    dispatch,
+  };
+}
+
+function emptyDispatch(): DispatchSummary {
+  return {
+    delivered: 0,
+    deferred: [],
+    failed: [],
+  };
+}
+
+function deliveredDispatch(): DispatchSummary {
+  return {
+    delivered: 1,
+    deferred: [],
+    failed: [],
+  };
+}
+
+function deferredRuntimeDispatch(): DispatchSummary {
+  return {
+    delivered: 0,
+    deferred: [
+      {
+        targetAgentId: "agent-target",
+        reason: "target_runtime_unavailable",
+        eligibility: "requires target claude channel runtime",
+      },
+    ],
+    failed: [],
   };
 }
 
