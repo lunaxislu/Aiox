@@ -35,6 +35,7 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 | ----- | ---------- | ------------------------- | --------------------------------- | ------- |
 | R1    | 2026-05-26 | Claude channel disconnect 정합성 | `history/43-qa-round-1.history.md` | **closed** (1 verified, 0 open) |
 | R2    | 2026-05-27 | aiox MCP collaboration protocol Phase 1.5 + same-vendor pair finding | `history/44-qa-round-2.history.md` | **closed** — smoke 4/4 PASS + QA-002 resolved via Step 15 Phase B (`history/47`) |
+| R3    | 2026-05-28 | Claude `--mcp-config` one-off MCP injection feasibility (vs dev-channel) | `history/49-claude-mcp-config-injection-feasibility.history.md` | **investigation** — no bug. Flag-level coexistence confirmed (exit 0); coexistence proof + inbound-push survival deferred to manual session |
 
 ### R2 — aiox MCP collaboration protocol Phase 1.5
 
@@ -59,6 +60,16 @@ Observed metrics:
 Remaining risk:
 
 - Phase 1.5 is still a soft instruction/description contract. If intent omission, `[[CONCLUDE]]` leak, reflex loop recurrence, or unintentional calls appear, enter Phase 2 via `plan/post-mvp-aiox-mcp-envelope-metadata.md`.
+
+### R3 — Claude `--mcp-config` injection feasibility
+
+- **Type**: investigation (no bug, no code change, no decision committed).
+- **Motivation**: UX symmetry with Codex `-c` one-off MCP injection from any path.
+- **Key finding**: aiox is asymmetric — Codex injects MCP via `-c`, but Claude uses dev-channel (`--dangerously-load-development-channels`), a hybrid of outbound MCP tools (`send`/`reply`) + inbound HTTP push. Replacing dev-channel with `--mcp-config` would lose inbound push (MCP is pull-only), but **running both flags together** keeps inbound push *and* adds one-off MCP.
+- **Verified**: both flags coexist in one invocation, exit 0 (empty mcp config + `-p`).
+- **Deferred** (needs interactive + daemon session): coexistence proof with a real MCP server, inbound-push survival, interactive-mode behavior.
+- **Note**: `-p` is not used anywhere in the project path (`launcher.ts:42-45` is `stdio: "inherit"` interactive-only). Name-collision (scenario C) is a non-issue — dev-channel (`channelName`) and mcp-config (`mcpServers` keys) use separate identifier spaces.
+- **Authority**: `history/49-claude-mcp-config-injection-feasibility.history.md`.
 
 ---
 
