@@ -1,7 +1,17 @@
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
+import type {
+  ReceiveCodexMessageResponse,
+  RegisterCodexChannelResponse,
+} from "../../daemon/api.js";
 import { createDaemonSocketClient } from "../../daemon/socket-transport.js";
+import type {
+  DispatchSummary,
+  ReceiveCodexMessageRequest,
+  ReceiveCodexReplyRequest,
+  RegisterCodexChannelRequest,
+} from "../../daemon/state.js";
 
 export const CODEX_INGRESS_INSTRUCTIONS = `
 You are part of a multi-agent orchestration system named aiox.
@@ -142,9 +152,15 @@ export const AIOX_SEND_MESSAGE_DESCRIPTION =
   "Routes through the daemon.";
 
 export interface CodexIngressDaemonClient {
-  receiveCodexMessage(request: unknown): Promise<unknown>;
-  receiveCodexReply(request: unknown): Promise<unknown>;
-  registerCodexChannel(request: unknown): Promise<unknown>;
+  receiveCodexMessage(
+    request: ReceiveCodexMessageRequest,
+  ): Promise<ReceiveCodexMessageResponse>;
+  receiveCodexReply(
+    request: ReceiveCodexReplyRequest,
+  ): Promise<ReceiveCodexMessageResponse>;
+  registerCodexChannel(
+    request: RegisterCodexChannelRequest,
+  ): Promise<RegisterCodexChannelResponse>;
   close(): void;
 }
 
@@ -160,7 +176,7 @@ export interface CodexIngressMcpServerOptions {
 
 export interface CodexIngressToolResult {
   content: { type: "text"; text: string }[];
-  structuredContent?: { ok: true; message_id: string };
+  structuredContent?: { ok: true; message_id: string; dispatch?: DispatchSummary };
   isError?: boolean;
 }
 
@@ -174,12 +190,12 @@ export function createSendMessageHandler(
     const messageId = createMessageId();
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
     try {
-      const result = (await client.receiveCodexMessage({
+      const result = await client.receiveCodexMessage({
         agentName: options.agentName,
         token: options.agentToken,
         messageId,
         content,
-      })) as { ok: boolean; reason?: string };
+      });
       if (!result.ok) {
         return errorResult(
           result.reason ?? "unknown_error",
@@ -215,13 +231,13 @@ export function createReplyHandler(
     const messageId = createMessageId();
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
     try {
-      const result = (await client.receiveCodexReply({
+      const result = await client.receiveCodexReply({
         agentName: options.agentName,
         token: options.agentToken,
         messageId,
         parentMessageId: parent_message_id,
         content,
-      })) as { ok: boolean; reason?: string };
+      });
       if (!result.ok) {
         return errorResult(
           result.reason ?? "unknown_error",

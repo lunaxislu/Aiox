@@ -18,6 +18,7 @@ import type {
   ReceiveClaudeChannelMessageRequest,
   ReceiveClaudeChannelReplyRequest,
 } from "../../daemon/state.js";
+import { dispatchSummaryOutputSchema } from "../shared/dispatch-schema.js";
 
 // ---------------------------------------------------------------------------
 // V1 trusted channel framing (D1)
@@ -253,23 +254,6 @@ export interface ClaudeChannelToolResult {
   };
   isError?: boolean;
 }
-
-const dispatchSummaryOutputSchema = z.object({
-  delivered: z.number(),
-  deferred: z.array(
-    z.object({
-      targetAgentId: z.string(),
-      reason: z.string(),
-      eligibility: z.string().optional(),
-    }),
-  ),
-  failed: z.array(
-    z.object({
-      targetAgentId: z.string(),
-      reason: z.string(),
-    }),
-  ),
-});
 
 export function createClaudeChannelMcpServer(
   options: ClaudeChannelMcpServerOptions,

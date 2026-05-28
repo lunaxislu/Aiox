@@ -4,6 +4,7 @@ import {
   AIOX_REPLY_DESCRIPTION,
   AIOX_SEND_MESSAGE_DESCRIPTION,
   CODEX_INGRESS_INSTRUCTIONS,
+  type CodexIngressDaemonClient,
   createCodexIngressMcpServer,
   createReplyHandler,
   createSendMessageHandler,
@@ -49,7 +50,7 @@ describe("codex MCP server — handlers", () => {
         fakeDaemonClient({
           receiveCodexMessage: async (args) => {
             calls.push({ method: "receiveCodexMessage", args });
-            return { ok: true, message: { id: "msg-fixed" }, deliveries: [] };
+            return successCodexMessageResponse("msg-fixed");
           },
         }),
     });
@@ -81,7 +82,7 @@ describe("codex MCP server — handlers", () => {
         fakeDaemonClient({
           receiveCodexReply: async (args) => {
             calls.push({ method: "receiveCodexReply", args });
-            return { ok: true, message: { id: "reply-fixed" }, deliveries: [] };
+            return successCodexMessageResponse("reply-fixed");
           },
         }),
     });
@@ -207,7 +208,7 @@ describe("codex MCP server — startup", () => {
         fakeDaemonClient({
           registerCodexChannel: async () => {
             events.push("register");
-            return { ok: true };
+            return successRegisterCodexChannelResponse();
           },
         }),
       log: () => {},
@@ -236,7 +237,11 @@ describe("codex MCP server — startup", () => {
         fakeDaemonClient({
           registerCodexChannel: async () => {
             events.push("register");
-            return { ok: false, reason: "codex_channel_registration_failed" };
+            return {
+              ok: false as const,
+              reason: "codex_channel_registration_failed" as const,
+              detail: "token_mismatch",
+            };
           },
         }),
       log: (event, fields) => logs.push({ event, fields }),
@@ -246,7 +251,11 @@ describe("codex MCP server — startup", () => {
     expect(logs).toContainEqual({
       event: "codex_mcp_register_failed",
       fields: {
-        result: { ok: false, reason: "codex_channel_registration_failed" },
+        result: {
+          ok: false,
+          reason: "codex_channel_registration_failed",
+          detail: "token_mismatch",
+        },
       },
     });
   });
@@ -299,22 +308,56 @@ describe("codex MCP server — env parsing", () => {
 // helpers
 // ---------------------------------------------------------------------------
 
-function fakeDaemonClient(overrides: Partial<{
-  receiveCodexMessage: (args: unknown) => Promise<unknown>;
-  receiveCodexReply: (args: unknown) => Promise<unknown>;
-  registerCodexChannel: (args: unknown) => Promise<unknown>;
-}> = {}) {
+function fakeDaemonClient(
+  overrides: Partial<
+    Pick<
+      CodexIngressDaemonClient,
+      "receiveCodexMessage" | "receiveCodexReply" | "registerCodexChannel"
+    >
+  > = {},
+): CodexIngressDaemonClient {
   return {
     receiveCodexMessage:
       overrides.receiveCodexMessage ??
-      (async () => ({ ok: true, message: { id: "msg-default" }, deliveries: [] })),
+      (async () => successCodexMessageResponse("msg-default")),
     receiveCodexReply:
       overrides.receiveCodexReply ??
-      (async () => ({ ok: true, message: { id: "reply-default" }, deliveries: [] })),
+      (async () => successCodexMessageResponse("reply-default")),
     registerCodexChannel:
-      overrides.registerCodexChannel ?? (async () => ({ ok: true })),
+      overrides.registerCodexChannel ?? (async () => successRegisterCodexChannelResponse()),
     close() {
       /* no-op */
+    },
+  };
+}
+
+function successRegisterCodexChannelResponse() {
+  return {
+    ok: true as const,
+    runtime: {
+      agentName: "impl",
+      registeredAt: "2026-05-23T00:00:00.000Z",
+      tokenHash: "token-hash",
+    },
+  };
+}
+
+function successCodexMessageResponse(messageId: string) {
+  return {
+    ok: true as const,
+    messageId,
+    message: {
+      id: messageId,
+      sourceAgentId: "agent-source",
+      parentMessageId: null,
+      type: "question" as const,
+      content: "content",
+    },
+    deliveries: [],
+    dispatch: {
+      delivered: 0,
+      deferred: [],
+      failed: [],
     },
   };
 }
