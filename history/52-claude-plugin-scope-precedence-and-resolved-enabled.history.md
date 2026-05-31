@@ -122,11 +122,57 @@ plugin:aiox-channel-ingress:aiox-claude-ingress: node .../channel-server.js - �
 
 해석: **directory-source(로컬 dev) 마켓플레이스의 경우 Claude는 install로 캐시 복사를 만들면서도 런타임 `${CLAUDE_PLUGIN_ROOT}`는 살아있는 소스 디렉터리로 resolve**한다(dev 편집 즉시 반영 목적 추정). 즉 `installPath`(메타데이터) ≠ 런타임 실행 루트. → history/51 entry-guard symlink "비발현"의 진짜 이유도 이것: symlink가 아니라 애초에 소스에서 직접 실행돼서 가드가 어긋날 일이 없었음.
 
-이로써 사용자 원질문에 **부분 단서**가 추가됨: Gemini의 "local/dev이면 소스 디렉터리 자체" 직관은 **scope 때문이 아니라 marketplace source type(directory) 때문**에 부분적으로 맞다. 단 우리가 측정한 user/project 두 엔트리 모두 같은 directory-source라 런타임=소스였던 것이고, **copied/git source 마켓플레이스(=npm 배포 형태)에서는 캐시 실행이 될 수 있어 별도 측정 필요**.
+이로써 사용자 원질문에 **부분 단서**가 추가됨: Gemini의 "local/dev이면 소스 디렉터리 자체" 직관은 **scope 때문이 아니라 marketplace source type(directory) 때문**에 부분적으로 맞다. 단 이 시점의 측정은 repo-local directory-source marketplace였으므로 npm-pack-installed package 경로에서도 같은지 별도 확인이 필요했다(아래 (E2)에서 회수).
 
 **preflight 함의 보강(중요):** preflight의 channel-server 존재 검증이 `entry.installPath + "/channel-server.js"`(캐시)인데, 런타임은 소스에서 돌 수 있어 **검증 대상과 실행 대상이 다를 수 있다**. 우리 케이스는 캐시·소스 둘 다 파일 존재라 통과하지만 잠재 갭. 두 방향:
 - (가) installPath fileExists는 best-effort로 남기고, 진짜 "실효적으로 로드되나"는 `claude mcp list | grep plugin:<name>:` 한 줄로 검증(= effectiveness + 실제 경로 + health를 Claude가 직접 답). 단 health-check가 서버를 spawn(부작용·느림)하고 텍스트 파싱(--json 옵션 없음)이라 brittle.
-- (나) 정식 배포는 directory-source가 아닐 수 있으니, 배포 형태에서 런타임 경로(캐시 vs 소스)를 한 번 더 측정해 (E)의 일반성을 확정한 뒤 결정.
+- (나) 정식 배포는 repo-local directory-source가 아닐 수 있으니, npm-pack-installed marketplace에서 런타임 경로(캐시 vs package source)를 한 번 더 측정해 (E)의 일반성을 확정한 뒤 결정.
+
+### (E2) npm-pack-installed local marketplace 재측정 — 런타임도 cache가 아니라 registered source
+
+사용자/Gemini가 공개 배포 없이 로컬 npm 배포 형태를 시뮬레이션:
+
+1. repo에서 임시 `.npmignore`를 만들어 `.gitignore` 우회 후 `npm pack` 실행(목적: gitignored `spike/aiox-channel-marketplace`를 tarball에 포함).
+2. `/private/tmp/aiox-spike-runtime-path`에서 `npm init -y` 후 생성된 tarball 설치.
+3. 설치된 package 내부 marketplace root를 등록:
+   `claude plugin marketplace add /private/tmp/aiox-spike-runtime-path/node_modules/ai-orchestration/spike/aiox-channel-marketplace`
+4. plugin 설치(기록상 올바른 ref는 공백 없는 형태):
+   `claude plugin install aiox-channel-ingress@aiox --scope user`
+5. `claude plugin list --json`과 `claude mcp list`로 `installPath`와 실제 command path 비교.
+6. `claude plugin uninstall aiox-channel-ingress@aiox --scope user`, `claude plugin marketplace remove aiox`, 임시 디렉터리/tarball 삭제로 원복.
+
+실측 결과:
+
+```json
+{
+  "id": "aiox-channel-ingress@aiox",
+  "version": "0.1.0",
+  "scope": "user",
+  "enabled": true,
+  "installPath": "/Users/lunaxislu/.claude/plugins/cache/aiox/aiox-channel-ingress/0.1.0",
+  "mcpServers": {
+    "aiox-claude-ingress": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/channel-server.js"]
+    }
+  }
+}
+```
+
+`claude mcp list` 해당 라인:
+
+```text
+plugin:aiox-channel-ingress:aiox-claude-ingress: node /private/tmp/aiox-spike-runtime-path/node_modules/ai-orchestration/spike/aiox-channel-marketplace/plugins/aiox-channel-ingress/channel-server.js - ✗ Failed to connect
+```
+
+해석:
+
+- `plugin list --json`의 `installPath`는 여전히 Claude 내부 cache(`~/.claude/plugins/cache/...`)를 가리킨다.
+- 그러나 실제 MCP command path는 cache가 아니라 **등록된 marketplace source**, 여기서는 npm 설치 결과물인 `node_modules/ai-orchestration/spike/aiox-channel-marketplace/...`, 를 가리킨다.
+- 즉 이 현상은 repo-local spike 디렉터리만의 특수성이 아니라 **local directory marketplace 등록 방식 자체의 동작**으로 봐야 한다. Claude는 install 시 cache 복사본을 만들지만, directory marketplace를 source로 등록한 경우 런타임 `${CLAUDE_PLUGIN_ROOT}`는 registered source 쪽으로 resolve될 수 있다.
+- `mcp list`의 `✗ Failed to connect`는 이 spike에서 expected noise다. env/socket/token 없이 health-check가 서버를 spawn하기 때문에 connected 여부가 목적이 아니며, 여기서 signal은 command path다.
+
+**결정 보강:** preflight의 `channel_server_missing`은 strong runtime-path guarantee가 아니라 **best-effort cache/artifact check**로 유지한다. cache에 `channel-server.js`가 없으면 설치/패키징이 이상하므로 빠르게 잡을 가치는 있지만, 실제 런타임 파일 존재를 100% 보장하지는 않는다. `claude mcp list/get`을 attach preflight에 넣지 않는 결정도 유지한다(`--json` 없음, 텍스트 파싱, exit-code 불신, health-check 부작용).
 
 ## (F) MCP-레벨 probe 명령 조사 + preflight 검증 방식 결정 → ① installPath fileExists
 
@@ -144,7 +190,7 @@ plugin:aiox-channel-ingress:aiox-claude-ingress: node .../channel-server.js - �
 ## 미측정/잔여 (정직하게)
 
 - **managed 스코프 미측정**: user/project 직접 측정 + local은 기존 `fakechat` 엔트리로 installPath=캐시만 확인. managed 미접촉.
-- **(E) 일반성**: directory-source 마켓플레이스에서만 "런타임=소스" 측정. copied/git-source(=npm 배포 형태)에서 캐시 실행인지 미측정 — 배포 패키징 때 확정 필요.
+- **(E) 일반성 — 부분 회수**: repo-local directory-source뿐 아니라 npm-pack-installed package 내부 marketplace를 `claude plugin marketplace add <local-dir>`로 등록한 경우에도 런타임은 cache가 아니라 registered source(`node_modules/...`)를 사용함을 (E2)에서 확인. 단 git/remote marketplace source나 Anthropic official marketplace의 internal behavior는 여전히 미측정.
 - **silent-drop (history/51 (e))**: plugin 미설치/scope-miss 시 exit/notice 양상 별개 미측정.
 - **silent-drop (history/51 (e))**: plugin 미설치/scope-miss 시 exit/notice 양상은 여전히 별개 미측정 항목.
 
@@ -200,4 +246,4 @@ plugin:aiox-channel-ingress:aiox-claude-ingress: node .../channel-server.js - �
 
 1. ✅ **적용 완료 (+ Codex 리뷰 2건 반영)** — preflight 단순화 — `enabled`(cwd-resolved) 신뢰: effective = `matching.some(e=>e.enabled)`. `isEffective`/`projectRoot` 입력 제거, `projectPath`는 진단 메시지용으로만 유지. channel-server 검증 = **① installPath fileExists 유지**(F절). 전제 계약: `claude plugin list --json`을 `options.cwd`에서 spawn. `ClaudePluginListEntry.enabled` 주석을 "raw per-scope"→"list 실행 cwd 기준 resolved effective"로 정정. 테스트 갱신.
 2. invocation.ts 배선(Finding 2 확정으로 unblock): `claude plugin list --json` 어댑터(cwd=options.cwd로 spawn) → preflight → 통과 시 `launchClaudePluginChannel`, 실패 시 non-zero + 안내.
-3. silent-drop(e) 측정 / (E) 배포형태 런타임경로 재측정은 배선과 독립적으로 병행 가능.
+3. silent-drop(e) 측정은 배선과 독립적으로 병행 가능. (E) npm-pack local marketplace 런타임경로 재측정은 완료(E2); git/remote marketplace runtime behavior는 release packaging 필요 시 별도 측정.
