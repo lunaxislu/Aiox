@@ -29,49 +29,68 @@ pnpm pair --name smoke-pair
 pnpm stop
 ```
 
-## Smoke Namespace
+## Runtime Profiles & Namespace Isolation
 
-The default daemon socket is shared per user. For reliable development and
-build-smoke checks, use explicit socket namespaces so one mode does not talk to
-another mode's daemon.
+`aiox` separates its daemon socket (and future state DB) by *runtime profile* so
+development, build-smoke, and installed-release runs never talk to each other's
+daemon. The profile is resolved once via `resolveProfile()`:
 
-> Interim manual workaround. Profile-based auto isolation (dev / build / release
-> socket·db·plugin·MCP namespaces) is tracked as QA-003 and scheduled for QA
-> round R4 — see `plan/qa-tracker.md`. Until then, set namespaces explicitly.
+- `AIOX_PROFILE` (`dev` | `build` | `release`) wins when set. The package scripts
+  inject it — `pnpm dev` → `dev`, the `dist`-runner scripts → `build`.
+- otherwise the bin path is sniffed: `*.ts` → dev, under `node_modules` → release,
+  under `dist/` → build, else release. Installed binaries land on `release`.
 
-Development:
+Socket path per profile:
 
-```bash
-AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev daemon start
-AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev claude --name claude-dev-smoke
-AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev codex --name codex-dev-smoke
-AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev daemon stop
-```
+| profile | socket |
+| ------- | ------ |
+| dev     | `~/.aiox/dev/daemon.sock` |
+| build   | `~/.aiox/build/daemon.sock` |
+| release | `~/.aiox/daemon.sock` (backward compatible) |
 
-Build smoke:
-
-```bash
-pnpm build
-AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm start
-AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm claude --name claude-build-smoke
-AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm codex --name codex-build-smoke
-AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm stop
-```
-
-Current daemon state is in-memory, so socket separation also separates state.
-When file-backed daemon state is introduced, use separate DB paths for
-development, build smoke, and installed-release runs as well.
-
-Before release smoke, verify external agent configuration too:
+So `pnpm dev daemon start` and `pnpm start` run fully independent daemons —
+stopping one leaves the other alive. No manual `AIOX_SOCKET_PATH` is needed.
 
 ```bash
-claude plugin marketplace list --json
-claude plugin list --json
+pnpm dev daemon start    # ~/.aiox/dev/daemon.sock
+pnpm start               # ~/.aiox/build/daemon.sock — independent
+pnpm dev daemon stop     # build daemon stays up
+pnpm stop
 ```
 
-For Codex smoke, confirm the MCP command points at the intended aiox binary and
-its environment uses the same `AIOX_SOCKET_PATH`. If persistent Codex config is
-involved, isolate `CODEX_HOME` per smoke mode.
+Escape hatch: `AIOX_SOCKET_PATH` (absolute path) overrides everything for extra
+isolation; a relative value fails fast. `AIOX_DB_PATH` is the equivalent override
+for the (scaffolded) state DB.
+
+Daemon state is currently `:memory:`, so socket separation already separates
+state. When a file-backed DB lands it rides the same profile mechanism
+(`~/.aiox/<profile>/state.db`).
+
+Supported transport is a Unix domain socket (macOS / Linux). Windows support
+(named pipe / TCP) is deferred — see `history/57`.
+
+### External agent config
+
+Socket isolation flows into the spawned agents: the Codex MCP inline config
+(`-c`) and the Claude channel plugin both receive the resolved daemon socket as an
+explicit `AIOX_SOCKET_PATH` env, so the child never depends on its own cwd or
+profile detection.
+
+Two external states are **not** auto-split by profile — verify manually before
+release smoke:
+
+- Claude marketplace/plugin install is global Claude state. Confirm the active
+  marketplace points at the intended source (dev source vs packaged) so a dev
+  source marketplace is not mistaken for release behavior:
+
+  ```bash
+  claude plugin marketplace list --json
+  claude plugin list --json
+  ```
+
+- Codex inline MCP (`-c`) is per-launch, not persistent, so there is no
+  `CODEX_HOME` to isolate today. If persistent Codex config is later introduced,
+  isolate `CODEX_HOME` per profile.
 
 ## Claude Plugin Setup
 

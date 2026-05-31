@@ -86,8 +86,36 @@
 
 → QA-003의 "한 모드 daemon에 다른 모드가 붙어 false PASS/FAIL"이 구조적으로 제거됨.
 
-## Open items (다음 세션에 들고 갈 것)
+## Step 3 — DONE (2026-05-31) — external config 검증 + README
 
-- **Step 3 next**: external config 검증 — Claude marketplace/plugin runtime path(dev source marketplace 오인 방지) + Codex MCP command·env(`AIOX_SOCKET_PATH`, aiox binary, persistent면 `CODEX_HOME`)가 의도한 namespace 가리키는지. README "Smoke Namespace" 수동 가이드를 profile 자동분리로 대체.
-- Step 3 완료 후 QA-003 `triaging→verified`로 close + round close commit.
-- (참고) cross-platform: `AIOX_PROFILE=...` inline env는 Unix shell 전제. B안의 macOS/Linux 지원 범위와 일치(Windows round에서 cross-env 등 재검토).
+### #1 README 갱신
+
+`README.md` "Smoke Namespace"(수동 `AIOX_SOCKET_PATH` 가이드 + QA-003 interim 경고)를 **"Runtime Profiles & Namespace Isolation"**으로 교체: profile 자동분리 표(dev/build/release socket) + escape hatch(`AIOX_SOCKET_PATH`/`AIOX_DB_PATH` absolute) + Unix-socket/Windows-deferred note + external config 검증 가이드. interim workaround 문구 제거(R4로 해결).
+
+### #3 Codex/Claude child namespace 전파 검증 (코드 read-through, 변경 없음)
+
+socket이 child agent까지 명시 전파됨을 코드로 확인:
+
+- **Codex**: 부모 CLI `getSocketPath()`(profile) → daemon fork `--socket <path>` → `run.ts:24/33` daemon이 자기 socket을 `daemonSocketPath`로 state 등록 → codex attach 시 `defaultAttachCodexRuntime`이 그 socket을 `mcp.daemonSocketPath`로 → `buildMcpServersAioxInlineToml`이 inline `-c` config에 `AIOX_SOCKET_PATH = <socket>` **명시 박음**(`launcher.ts:118`). child(mcp-codex)는 자기 cwd/binPath 자동감지가 아니라 이 명시 env로 정확한 profile socket을 본다.
+- **Claude**: `createClientRuntime.daemonSocketPath()`(= `options.socketPath ?? getSocketPath()`, profile-aware, `bin/aiox.ts:153`) → `invocation.ts:201` socketPath → `launchClaudePluginChannel({daemonSocketPath})`(`:244`) → plugin env로 전달, plugin `.mcp.json`이 `${VAR}` expand.
+- **결론**: 두 child 모두 부모 profile socket을 **명시 `AIOX_SOCKET_PATH` env**로 받음 → child가 어느 경로/profile에서 뜨든 namespace 정합. ✓
+
+### #2 Claude plugin / Codex persistent config — 한계 명시
+
+- **Claude marketplace/plugin install은 global Claude state**라 profile별 자동분리 대상이 아니다(socket과 다른 평면). dev source marketplace(`spike/aiox-channel-marketplace`)를 packaged behavior로 오인하지 않으려면 `claude plugin marketplace list --json`/`plugin list --json`으로 **수동 검증** — README에 가이드로 남김. (R3 history/52에서 다룬 installPath/enabled 영역과 연결.)
+- **Codex inline MCP(`-c`)는 per-launch, persistent 아님** → 격리할 `CODEX_HOME` 현재 없음. persistent config 도입 시 profile별 `CODEX_HOME` 분리 필요 — README에 future note.
+
+### 검증
+
+- 483 tests PASS, typecheck green (코드 변경은 README뿐, 테스트 영향 없음).
+- Step 2 smoke가 socket 실분리·격리를 이미 실증(위 표).
+
+## QA-003 CLOSE (verified, 2026-05-31)
+
+dev/build/release가 각자 profile socket으로 완전 분리되고(Step 2 smoke), child agent(Codex/Claude)도 명시 `AIOX_SOCKET_PATH`로 부모 namespace를 상속(Step 3 #3). "한 모드 daemon에 다른 모드가 붙어 false PASS/FAIL"이 구조적으로 제거됨 → **QA-003 triaging → verified**.
+
+**Round outcome**: 3 steps (paths core / wiring / external config) — DB file-backed 전환은 scaffold만(`getStatePath` dormant, `run.ts` `:memory:` 유지), Windows transport는 deferred(별도 round, transport union은 그때).
+
+## Open items
+
+- (없음 — R4 closed.) 후속 별개 추적: ① file-backed DB 전환(같은 profile 메커니즘에 `getStatePath` 배선 + `AIOX_DB_PATH`) ② Windows transport round(named pipe/TCP + `RuntimeEndpoint` 그때 도입) ③ Claude plugin profile 분리(marketplace/plugin 이름 namespacing) — 필요 시.
