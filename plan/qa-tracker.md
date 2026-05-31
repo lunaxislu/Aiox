@@ -25,7 +25,7 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 | ----- | --------------------------- | ------ | ------ | ------- | ----------- | ---- |
 | QA-001 | Claude TUI 종료 후 agent가 DB에 `connected`로 남고 pending token 누수 | verified | R1 | `fb7d8fc` | `43-qa-round-1` S-1 | `disconnectClaudeChannel`가 in-memory runtime registry만 정리, DB status·`claudePendingTokens` 미동기. fix: DB markDisconnected + pending token 정리. |
 | QA-002 | Same-vendor pair (codex↔codex / claude↔claude) attach 거절 (`pair_kind_slot_occupied`) | resolved | R2 | `4d8601f` | `47-step-15-phase-b-closeout` | **Resolved (2026-05-27)** — Step 15 Phase B 머지로 lift. slot a/b 모델로 same-vendor pair `ready`. 거절 reason은 `pair_slot_occupied` (explicit slot 점유) / `pair_full` (auto + 양쪽 점유) / `agent_already_attached` (self-loop)로 분리. 권위: `history/47`. |
-| QA-003 | dev / build-smoke / release runtime namespace(socket·state·Claude plugin·Codex MCP config) 공유로 false PASS/FAIL 가능 | open | R3(rec) | | `56-step-3b` (record) → R4 | **R3 blocker 아님 — R3 closeout 중 발견·기록만, 설계/검증은 QA4(R4)로 이관 (2026-05-31).** 기본 `~/.aiox/daemon.sock`는 사용자당 하나의 daemon 모델로는 정상이나, 검증 모드 간에는 격리 필요. R4 scope: socket/db path를 실행 프로파일(dev/build/release)별 자동 분리, Claude marketplace/plugin runtime path 검증, Codex MCP command/env(`AIOX_SOCKET_PATH`, 필요 시 `CODEX_HOME`) 분리. |
+| QA-003 | dev / build-smoke / release runtime namespace(socket·state·Claude plugin·Codex MCP config) 공유로 false PASS/FAIL 가능 | triaging | R3(rec) | | `56-step-3b` (record) → `57-qa-round-4` | **R4(QA4) 진행 중 (opened 2026-05-31).** R3 closeout 중 발견·기록만 하고 R4로 이관. 기본 `~/.aiox/daemon.sock`는 사용자당 하나의 daemon 모델로는 정상이나 검증 모드 간엔 격리 필요. **3자 합의 = B안**(호출부 집중 + Unix socket 유지, transport union 기각). Scope: `resolveProfile()`로 socket을 profile별 자동 분리(release 하위호환), DB는 `:memory:` 유지 + `getStatePath()` scaffold, Windows는 deferred. 권위 `history/57`. |
 |       |                             |        |        |         |             |      |
 
 > 추가 시: ID는 발견 순으로 `QA-NNN`. Found 칸은 QA round 번호 (`R1`, `R2`…).
@@ -37,6 +37,7 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 | R1    | 2026-05-26 | Claude channel disconnect 정합성 | `history/43-qa-round-1.history.md` | **closed** (1 verified, 0 open) |
 | R2    | 2026-05-27 | aiox MCP collaboration protocol Phase 1.5 + same-vendor pair finding | `history/44-qa-round-2.history.md` | **closed** — smoke 4/4 PASS + QA-002 resolved via Step 15 Phase B (`history/47`) |
 | R3    | 2026-05-28 | Claude `--mcp-config` one-off MCP injection feasibility (vs dev-channel) | `history/49-...feasibility.history.md` + `history/50-...strategy.history.md` + `history/56-...step3b...history.md` | **closed 2026-05-31** — R3 ships D default + inline explicit fallback + setup UX + smoke namespace issue 기록. namespace isolation(QA-003)은 R3 blocker가 아니라 **R4(QA4)로 이관**. (history) **DECIDED 2026-05-29 (Codex cross-validation): D primary + B fallback + A dev-only.** Next = minimal D spike + preflight failure contract (TDD) → non-repo-root smoke → retire A. manual smoke DONE (works + cosmetic warning); D doc-verified; QA round still paused until spike. Impl (A) in working tree (`buildClaudeChannelMcpConfig` + `--mcp-config` + `.mcp.json` removed; 398 tests PASS) — but **A dropped** under reliability-over-footprint criterion. Decision narrowed to **D (channel-as-plugin)**: all five plugin assumptions are documented-fact (`${VAR}`/`${VAR:-default}` expansion in plugin `.mcp.json`; expansion source = parent `claude` env; `${CLAUDE_PLUGIN_ROOT}`; child inherits parent env + `.mcp.json` env merges; activation arg `plugin:<name>@<marketplace>` under `--dangerously-load-development-channels`, `--channels` once approved). Dynamic-identity + npm-bundling blockers resolved by docs. Runtime flow (send/reply + inbound push) identical across server:→plugin: and dangerously→`--channels`; channel-server.ts untouched. **Remaining = integration spike (non-repo-root: no warning / `${VAR}` delivers token / inbound push survives), not doc questions.** A impl not committed (to be replaced by D or kept as fallback) |
+| R4    | 2026-05-31 | dev/build/release runtime namespace isolation (carries QA-003) | `history/57-qa-round-4-runtime-namespace-isolation.history.md` | **open** — B안 합의(profile namespace 분리, Unix socket 유지, Windows deferred). Step 1(paths profile 코어 TDD) DONE / Step 2(배선) next |
 
 ### R2 — aiox MCP collaboration protocol Phase 1.5
 
@@ -74,13 +75,13 @@ Remaining risk:
 ### R4 (QA4) — dev / build / release runtime namespace isolation
 
 - **Opened (2026-05-31). Carries QA-003.** Scope: 실행 프로파일(dev=`tsx src`, build=`node dist`, release=installed `aiox`)이 같은 runtime namespace를 공유해 검증 결과가 섞이는 문제를 코드 레벨에서 격리한다. 현재는 `getDefaultSocketPath()`가 `AIOX_SOCKET_PATH ?? ~/.aiox/daemon.sock` 단일이고, production DB는 `:memory:` 하드코딩(`src/daemon/run.ts`), 모드 판별 메커니즘 없음(`binPath`의 `.ts`/`.js`로 tsx/node만 구분).
-- **Design direction (사용자 결정 2026-05-31)**:
-  - **모드 판별 = 하이브리드** — `AIOX_PROFILE` env 우선, 없으면 `process.argv[1]`(binPath) 자동 감지(`*.ts`→dev / `<repo>/dist/...`→build / 그 외→release). pnpm dev·build script에 profile 주입, 설치본은 자동 release.
-  - **socket path** — `AIOX_SOCKET_PATH`(절대경로 명시) 최우선 → profile별 `~/.aiox/dev|build/daemon.sock`, release는 `~/.aiox/daemon.sock` 유지(하위호환).
-  - **db path = scaffold만** — `paths.ts`에 profile별 `getStatePath()`만 정의하고 `run.ts`는 `:memory:` 유지. socket 분리=process 분리=in-memory state 분리라 현재로선 충분. 파일 DB 전환 시 같은 profile 메커니즘에 얹는다(`AIOX_DB_PATH` 명시 최우선).
-  - **external config 검증** — Claude marketplace/plugin runtime path 확인(dev source marketplace를 packaged behavior로 오인 방지), Codex MCP command/env가 의도한 aiox binary·`AIOX_SOCKET_PATH` namespace를 가리키는지 확인(persistent config면 `CODEX_HOME`도 분리).
-- **Authority**: `history/56` §"QA-003" (record) + R4 round history(개시 시 `history/57-qa-round-4-runtime-namespace-isolation.history.md` 등).
-- **Type**: investigation → **goal locked** (no bug; impl pending).
+- **합의 = B안 (사용자 + Codex + Claude 3자, 2026-05-31)**: "호출부 집중 + Unix socket 유지". transport `RuntimeEndpoint` union 도입(A안)은 speculative generality라 **기각** → Windows round로 deferred. profile = namespace bundle의 단일 결정자(`resolveProfile()`), 개별 `AIOX_*_PATH`는 path 단위 최우선 escape hatch.
+- **Design direction 권위 = `history/57`** (모드 판별 하이브리드 / socket profile 분리·release 하위호환 / DB `:memory:` 유지 + `getStatePath()` scaffold / Unix socket = macOS·Linux 대상 / Windows deferred). Step 1~3 TDD 계획도 `history/57`.
+- **Authority**: `history/57-qa-round-4-runtime-namespace-isolation.history.md` (round 권위) + `history/56` §"QA-003" (발견 기록).
+- **Type**: investigation → **goal locked** → 구현 (no bug; impl pending).
+
+<!-- ─── 아래는 R3(Claude MCP auto-inject feasibility) 이력 — R4와 무관, 권위 history/49·50. 보존용. ─── -->
+#### (R3 archive — Claude MCP auto-inject feasibility)
 - **Goal (2026-05-28)**: `aiox claude` must auto-inject the aiox MCP into Claude on every launch, one-off (no permanent `.mcp.json`), like Codex `-c` (`buildCodexMcpArgs`). Scope = aiox MCP auto-injection only — not a manual `--mcp-config` user flag. Authority: `history/49` §Decision.
 - **Motivation**: UX symmetry with Codex `-c` one-off MCP injection from any path.
 - **Key finding**: aiox is asymmetric — Codex injects MCP via `-c`, but Claude uses dev-channel (`--dangerously-load-development-channels`), a hybrid of outbound MCP tools (`send`/`reply`) + inbound HTTP push. Replacing dev-channel with `--mcp-config` would lose inbound push (MCP is pull-only), but **running both flags together** keeps inbound push *and* adds one-off MCP.
