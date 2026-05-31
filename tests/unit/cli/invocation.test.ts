@@ -462,6 +462,86 @@ describe("CLI invocation", () => {
       else process.env.AIOX_SPIKE_STRATEGY_D = prev;
     }
   });
+
+  it("claude-plugin setup passes scope/cwd/marketplace path through and returns a summary", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime([]);
+    const seen: unknown[] = [];
+
+    const result = await invokeParsedCommand(
+      { kind: "claude-plugin-setup", scope: "project" },
+      {
+        runtime,
+        cwd: "/work/proj",
+        claudeChannelMarketplacePath: "/repo/spike/aiox-channel-marketplace",
+        setupClaudePlugin: async (input) => {
+          seen.push(input);
+          return { ok: true, actions: { marketplaceAdded: true, pluginInstalled: true } };
+        },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("scope: project");
+    expect(seen).toEqual([
+      {
+        pluginName: "aiox-channel-ingress",
+        marketplaceName: "aiox",
+        marketplacePath: "/repo/spike/aiox-channel-marketplace",
+        scope: "project",
+        cwd: "/work/proj",
+      },
+    ]);
+    // provisioning is daemon-independent — must not auto-start the daemon
+    expect(calls).toEqual([]);
+  });
+
+  it("claude-plugin setup surfaces the preflight verdict as a coded non-zero error", async () => {
+    const runtime = createRuntime([]);
+
+    const invoked = invokeParsedCommand(
+      { kind: "claude-plugin-setup", scope: "user" },
+      {
+        runtime,
+        cwd: "/repo",
+        claudeChannelMarketplacePath: "/repo/spike/aiox-channel-marketplace",
+        setupClaudePlugin: async () => ({
+          ok: false,
+          code: "plugin_not_enabled",
+          message: "installed but not effective in this directory",
+          actions: { marketplaceAdded: false, pluginInstalled: true },
+        }),
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      name: "InvocationError",
+      code: "aiox.invocation.claude_plugin_setup.plugin_not_enabled",
+      exitCode: 1,
+    });
+  });
+
+  it("claude-plugin setup wraps a thrown CLI failure into a coded error", async () => {
+    const runtime = createRuntime([]);
+
+    const invoked = invokeParsedCommand(
+      { kind: "claude-plugin-setup", scope: "user" },
+      {
+        runtime,
+        cwd: "/repo",
+        claudeChannelMarketplacePath: "/repo/spike/aiox-channel-marketplace",
+        setupClaudePlugin: async () => {
+          throw new Error("spawn claude ENOENT");
+        },
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      name: "InvocationError",
+      code: "aiox.invocation.claude_plugin_setup_failed",
+      exitCode: 1,
+    });
+  });
 });
 
 async function withStrategyD(fn: () => Promise<void>): Promise<void> {

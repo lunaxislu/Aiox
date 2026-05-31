@@ -5,6 +5,8 @@ vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
 import { execFile } from "node:child_process";
 
 import {
+  addClaudeMarketplace,
+  installClaudePlugin,
   loadClaudePluginInventory,
   type ClaudeCliRunner,
 } from "../../../src/adapters/claude/plugin-cli.js";
@@ -204,5 +206,72 @@ describe("loadClaudePluginInventory", () => {
 
     const inventory = await loadClaudePluginInventory({ cwd: CWD, run });
     expect(inventory.plugins[0]).toMatchObject({ scope: "future-scope", enabled: true });
+  });
+});
+
+describe("addClaudeMarketplace", () => {
+  const MARKETPLACE_PATH = "/Users/me/spike/aiox-channel-marketplace";
+
+  it("runs `plugin marketplace add <path> --scope <scope>` in the cwd", async () => {
+    const calls: { args: string[]; cwd: string }[] = [];
+    const run: ClaudeCliRunner = async (args, options) => {
+      calls.push({ args, cwd: options.cwd });
+      return { stdout: "" };
+    };
+
+    await addClaudeMarketplace({
+      marketplacePath: MARKETPLACE_PATH,
+      scope: "project",
+      cwd: CWD,
+      run,
+    });
+
+    expect(calls).toEqual([
+      {
+        args: ["plugin", "marketplace", "add", MARKETPLACE_PATH, "--scope", "project"],
+        cwd: CWD,
+      },
+    ]);
+  });
+
+  it("throws claude_plugin_cli_failed when the runner rejects", async () => {
+    const run: ClaudeCliRunner = async () => {
+      throw new Error("already registered");
+    };
+
+    await expect(
+      addClaudeMarketplace({ marketplacePath: MARKETPLACE_PATH, scope: "user", cwd: CWD, run }),
+    ).rejects.toMatchObject({
+      name: "ClaudePluginCliError",
+      code: "claude_plugin_cli_failed",
+    });
+  });
+});
+
+describe("installClaudePlugin", () => {
+  const REF = "aiox-channel-ingress@aiox";
+
+  it("runs `plugin install <ref> --scope <scope>` in the cwd", async () => {
+    const calls: { args: string[]; cwd: string }[] = [];
+    const run: ClaudeCliRunner = async (args, options) => {
+      calls.push({ args, cwd: options.cwd });
+      return { stdout: "" };
+    };
+
+    await installClaudePlugin({ pluginRef: REF, scope: "project", cwd: CWD, run });
+
+    expect(calls).toEqual([
+      { args: ["plugin", "install", REF, "--scope", "project"], cwd: CWD },
+    ]);
+  });
+
+  it("throws claude_plugin_cli_failed when the runner rejects", async () => {
+    const run: ClaudeCliRunner = async () => {
+      throw new Error("network error");
+    };
+
+    await expect(
+      installClaudePlugin({ pluginRef: REF, scope: "user", cwd: CWD, run }),
+    ).rejects.toMatchObject({ code: "claude_plugin_cli_failed" });
   });
 });

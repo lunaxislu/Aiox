@@ -103,6 +103,81 @@ export function createClaudeCliRunner(command?: string): ClaudeCliRunner {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Write ops (R3 step 3a): the mutating `claude plugin` commands `aiox
+// claude-plugin setup` issues. Same cwd-required runner contract as the
+// inventory reads (scope-affecting commands resolve per-cwd), but no JSON parse
+// — they either succeed or throw a typed ClaudePluginCliError.
+// ---------------------------------------------------------------------------
+
+export interface AddClaudeMarketplaceOptions {
+  /** local marketplace dir to register (contains .claude-plugin/marketplace.json) */
+  marketplacePath: string;
+  /**
+   * registration scope — passed through so `aiox claude-plugin setup --scope X`
+   * registers the marketplace in the SAME scope as the plugin install (Codex
+   * review): a project-scoped setup must not silently register the marketplace
+   * at the default user scope. `marketplace add` supports user|project|local;
+   * we only emit user|project (parse rejects the rest).
+   */
+  scope: "user" | "project";
+  /** user's cwd (project-scope settings are written relative to it) */
+  cwd: string;
+  command?: string;
+  run?: ClaudeCliRunner;
+}
+
+/** `claude plugin marketplace add <marketplacePath> --scope <scope>` — idempotency is the caller's job. */
+export async function addClaudeMarketplace(
+  options: AddClaudeMarketplaceOptions,
+): Promise<void> {
+  const run = options.run ?? createClaudeCliRunner(options.command);
+  await runVoid(
+    run,
+    ["plugin", "marketplace", "add", options.marketplacePath, "--scope", options.scope],
+    options.cwd,
+  );
+}
+
+export interface InstallClaudePluginOptions {
+  /** "<name>@<marketplace>", e.g. "aiox-channel-ingress@aiox" */
+  pluginRef: string;
+  /** install scope; `install` writes raw enabledPlugins:{ref:true} at this scope */
+  scope: "user" | "project";
+  /** user's cwd (project-scope install writes ./.claude/settings.json relative to it) */
+  cwd: string;
+  command?: string;
+  run?: ClaudeCliRunner;
+}
+
+/** `claude plugin install <ref> --scope <scope>` — install also raw-enables at scope (history/52). */
+export async function installClaudePlugin(
+  options: InstallClaudePluginOptions,
+): Promise<void> {
+  const run = options.run ?? createClaudeCliRunner(options.command);
+  await runVoid(
+    run,
+    ["plugin", "install", options.pluginRef, "--scope", options.scope],
+    options.cwd,
+  );
+}
+
+async function runVoid(
+  run: ClaudeCliRunner,
+  args: string[],
+  cwd: string,
+): Promise<void> {
+  const label = `claude ${args.join(" ")}`;
+  try {
+    await run(args, { cwd });
+  } catch (error) {
+    throw new ClaudePluginCliError(
+      `failed to run \`${label}\`: ${error instanceof Error ? error.message : String(error)}`,
+      "claude_plugin_cli_failed",
+    );
+  }
+}
+
 async function runJson(
   run: ClaudeCliRunner,
   args: string[],

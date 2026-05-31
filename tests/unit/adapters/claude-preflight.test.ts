@@ -209,6 +209,26 @@ describe("preflightClaudePlugin", () => {
     }
   });
 
+  it("skips the env check when requireEnv:false (setup-time provisioning)", () => {
+    // `aiox claude-plugin setup` reuses this preflight to validate
+    // marketplace/install/enable/bundle, but no token exists at setup time, so it
+    // opts out of the attach-only env gate. Steps 1–6 still apply.
+    const result = preflightClaudePlugin(
+      baseInput({ env: {}, requireEnv: false }),
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("still enforces steps 1–6 when requireEnv:false (e.g. plugin missing)", () => {
+    const result = preflightClaudePlugin(
+      baseInput({ env: {}, requireEnv: false, plugins: [] }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("plugin_not_installed");
+    }
+  });
+
   it("fails first when channels are disabled by org policy", () => {
     const result = preflightClaudePlugin(baseInput({ channelsEnabled: false }));
     expect(result.ok).toBe(false);

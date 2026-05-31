@@ -103,6 +103,15 @@ export interface PreflightClaudePluginInput {
   env: Record<string, string | undefined>;
   /** org `channelsEnabled` master switch; only `false` blocks (undefined = unknown→pass) */
   channelsEnabled?: boolean;
+  /**
+   * Whether to enforce the identity-env check (step 7). Default `true` for the
+   * attach path, where the spawned `claude` must carry the agent/token/socket the
+   * plugin `.mcp.json` expands. `aiox claude-plugin setup` reuses this preflight
+   * to validate provisioning (marketplace/install/enable/bundle) but runs with NO
+   * token (none is issued at setup time), so it passes `requireEnv: false` to skip
+   * the attach-only env gate. Set `false` only blocks step 7; steps 1–6 unchanged.
+   */
+  requireEnv?: boolean;
 }
 
 export type PreflightClaudePluginResult =
@@ -138,7 +147,8 @@ export function preflightClaudePlugin(
     return fail(
       "marketplace_not_registered",
       `aiox channel marketplace "${input.marketplaceName}" is not registered. ` +
-        `Run: claude plugin marketplace add <path-to-aiox-channel-marketplace>`,
+        `Run: aiox claude-plugin setup --scope user ` +
+        `(or --scope project to enable only in this project).`,
     );
   }
 
@@ -149,7 +159,8 @@ export function preflightClaudePlugin(
     return fail(
       "plugin_not_installed",
       `aiox channel plugin "${wantId}" is not installed. ` +
-        `Run: claude plugin install ${wantId} --scope user`,
+        `Run: aiox claude-plugin setup --scope user ` +
+        `(or --scope project to install only in this project).`,
     );
   }
 
@@ -166,8 +177,9 @@ export function preflightClaudePlugin(
       "plugin_not_enabled",
       `aiox channel plugin "${wantId}" is installed (scope: ${scopes}) but not ` +
         `effective in this directory (claude plugin list reports it disabled here). ` +
-        `Install or enable it at user scope (claude plugin install ${wantId} --scope user) ` +
-        `so it works everywhere, or enable it in this project before activating ${ref}.`,
+        `Run: aiox claude-plugin setup --scope user so it works everywhere, ` +
+        `or aiox claude-plugin setup --scope project to enable it in this project, ` +
+        `before activating ${ref}.`,
     );
   }
 
@@ -208,15 +220,19 @@ export function preflightClaudePlugin(
     );
   }
 
-  // 7. required identity env (expanded by the plugin .mcp.json ${VAR} placeholders)
-  for (const name of REQUIRED_ENV) {
-    const value = input.env[name];
-    if (typeof value !== "string" || value.length === 0) {
-      return fail(
-        "missing_env",
-        `required environment variable ${name} is missing; the plugin .mcp.json ` +
-          `cannot expand its \${${name}} placeholder.`,
-      );
+  // 7. required identity env (expanded by the plugin .mcp.json ${VAR} placeholders).
+  // Attach-only gate: `aiox claude-plugin setup` validates provisioning before any
+  // token exists, so it opts out with requireEnv:false (steps 1–6 still apply).
+  if (input.requireEnv !== false) {
+    for (const name of REQUIRED_ENV) {
+      const value = input.env[name];
+      if (typeof value !== "string" || value.length === 0) {
+        return fail(
+          "missing_env",
+          `required environment variable ${name} is missing; the plugin .mcp.json ` +
+            `cannot expand its \${${name}} placeholder.`,
+        );
+      }
     }
   }
 

@@ -211,6 +211,25 @@ describe("CLI parser", () => {
     expectCliParseError(["pair", "--name", ""], "aiox.invalidName");
   });
 
+  it("parses claude-plugin setup with the default user scope", () => {
+    expect(parseCli(["claude-plugin", "setup"])).toEqual({
+      kind: "claude-plugin-setup",
+      scope: "user",
+    });
+  });
+
+  it("parses claude-plugin setup --scope project", () => {
+    expect(parseCli(["claude-plugin", "setup", "--scope", "project"])).toEqual({
+      kind: "claude-plugin-setup",
+      scope: "project",
+    });
+  });
+
+  it("rejects an unsupported claude-plugin setup scope", () => {
+    expectCliParseError(["claude-plugin", "setup", "--scope", "local"], "aiox.invalidScope");
+    expectCliParseError(["claude-plugin", "setup", "--scope", "bogus"], "aiox.invalidScope");
+  });
+
   it("parses global status", () => {
     expect(parseCli(["status"])).toEqual({
       kind: "status",

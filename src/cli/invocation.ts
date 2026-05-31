@@ -1,5 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { ParsedCommand } from "./parse.js";
 import type { DaemonApi } from "../daemon/api.js";
@@ -11,10 +13,17 @@ import {
   launchClaudePluginChannel,
 } from "../adapters/claude/launcher.js";
 import {
+  ClaudePluginCliError,
   loadClaudePluginInventory,
   type ClaudePluginInventory,
 } from "../adapters/claude/plugin-cli.js";
 import { preflightClaudePlugin } from "../adapters/claude/preflight.js";
+import {
+  setupClaudePlugin,
+  type SetupActions,
+  type SetupClaudePluginInput,
+  type SetupClaudePluginResult,
+} from "../adapters/claude/setup.js";
 import { runDaemonProcess } from "../daemon/run.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
 
@@ -87,6 +96,13 @@ export interface InvocationOptions {
     cwd: string;
   }) => Promise<ClaudePluginInventory>;
   fileExists?: (path: string) => boolean;
+  // R3 step 3a (`aiox claude-plugin setup`): the orchestrator + the resolved
+  // local marketplace path. Both default to the real adapter / fs-resolved path;
+  // tests inject them so the command flow runs without a live `claude`.
+  setupClaudePlugin?: (
+    input: SetupClaudePluginInput,
+  ) => Promise<SetupClaudePluginResult>;
+  claudeChannelMarketplacePath?: string;
   runCodexMcpServer?: () => Promise<void>;
   runDaemonProcessFn?: (socketPath: string) => Promise<void>;
 }
@@ -269,6 +285,8 @@ export async function invokeParsedCommand(
       await run();
       return success();
     }
+    case "claude-plugin-setup":
+      return claudePluginSetupResult(command.scope, options);
     case "_run-daemon": {
       const runFn = options.runDaemonProcessFn ?? runDaemonProcess;
       await runFn(command.socketPath);
@@ -277,6 +295,92 @@ export async function invokeParsedCommand(
     default:
       return assertNever(command);
   }
+}
+
+// R3 step 3a: `aiox claude-plugin setup`. Standalone provisioning (no daemon) —
+// register the marketplace + install/enable the channel plugin idempotently, then
+// validate. ClaudePluginCliError (a failed `claude plugin ...` call) and the
+// preflight verdict both map to a coded non-zero InvocationError so the user
+// always sees what to fix.
+async function claudePluginSetupResult(
+  scope: "user" | "project",
+  options: InvocationOptions,
+): Promise<InvocationResult> {
+  const setup = options.setupClaudePlugin ?? setupClaudePlugin;
+  const marketplacePath =
+    options.claudeChannelMarketplacePath ?? resolveClaudeChannelMarketplacePath();
+
+  let result: SetupClaudePluginResult;
+  try {
+    result = await setup({
+      pluginName: CLAUDE_CHANNEL_PLUGIN_NAME,
+      marketplaceName: CLAUDE_CHANNEL_MARKETPLACE_NAME,
+      marketplacePath,
+      scope,
+      cwd: options.cwd,
+    });
+  } catch (error) {
+    const code =
+      error instanceof ClaudePluginCliError
+        ? error.code
+        : "claude_plugin_setup_failed";
+    throw new InvocationError(
+      error instanceof Error ? error.message : String(error),
+      { code: `aiox.invocation.${code}`, exitCode: 1 },
+    );
+  }
+
+  if (!result.ok) {
+    throw new InvocationError(result.message, {
+      code: `aiox.invocation.claude_plugin_setup.${result.code}`,
+      exitCode: 1,
+    });
+  }
+  return { exitCode: 0, stdout: formatSetupSummary(scope, result.actions) };
+}
+
+function formatSetupSummary(
+  scope: "user" | "project",
+  actions: SetupActions,
+): string {
+  const marketplace = actions.marketplaceAdded
+    ? "registered"
+    : "already registered";
+  const plugin = actions.pluginInstalled
+    ? "installed/enabled"
+    : "already effective";
+  return (
+    `aiox channel plugin ready (scope: ${scope}).\n` +
+    `  marketplace: ${marketplace}\n` +
+    `  plugin: ${plugin}\n`
+  );
+}
+
+// Resolve the local marketplace dir to register. Primary: the
+// AIOX_CLAUDE_CHANNEL_MARKETPLACE_PATH env override (mirrors AIOX_CLAUDE_COMMAND).
+// Default: walk up from this module to the repo dir that holds the spike
+// marketplace — works for both tsx (src/) and built (dist/) layouts in R3.
+// Post-MVP packaging relocates the bundled marketplace and finalizes this path.
+function resolveClaudeChannelMarketplacePath(): string {
+  const override = process.env.AIOX_CLAUDE_CHANNEL_MARKETPLACE_PATH;
+  if (override !== undefined && override.length > 0) {
+    return override;
+  }
+  const rel = join("spike", "aiox-channel-marketplace");
+  let dir = fileURLToPath(new URL(".", import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    const candidate = join(dir, rel);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  // Best-effort fallback (surfaced clearly by `marketplace add` if wrong).
+  return join(fileURLToPath(new URL(".", import.meta.url)), rel);
 }
 
 // R3 strategy D: load Claude's plugin inventory from the user's cwd and run the
