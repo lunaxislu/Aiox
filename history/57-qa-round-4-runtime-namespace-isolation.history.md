@@ -4,7 +4,7 @@
 
 - Date: 2026-05-31 ~
 - Round: R4 (QA4) — carries **QA-003**
-- Type: investigation → **goal locked** → 구현 (no bug; impl pending)
+- Type: investigation → goal locked → 구현 → **CLOSED (QA-003 verified, 2026-05-31)**
 - Tracker: `plan/qa-tracker.md` R4 섹션
 - Continues / record source: `history/56` §"QA-003" (발견 기록, R3 closeout 중)
 - One line: 실행 프로파일(dev=`tsx src` / build=`node dist` / release=installed `aiox`)이 같은 runtime namespace(socket·state·external config)를 공유해 검증 결과가 섞이는 문제를, **profile별 namespace 분리**로 코드 레벨에서 격리한다.

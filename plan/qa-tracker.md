@@ -25,7 +25,7 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 | ----- | --------------------------- | ------ | ------ | ------- | ----------- | ---- |
 | QA-001 | Claude TUI 종료 후 agent가 DB에 `connected`로 남고 pending token 누수 | verified | R1 | `fb7d8fc` | `43-qa-round-1` S-1 | `disconnectClaudeChannel`가 in-memory runtime registry만 정리, DB status·`claudePendingTokens` 미동기. fix: DB markDisconnected + pending token 정리. |
 | QA-002 | Same-vendor pair (codex↔codex / claude↔claude) attach 거절 (`pair_kind_slot_occupied`) | resolved | R2 | `4d8601f` | `47-step-15-phase-b-closeout` | **Resolved (2026-05-27)** — Step 15 Phase B 머지로 lift. slot a/b 모델로 same-vendor pair `ready`. 거절 reason은 `pair_slot_occupied` (explicit slot 점유) / `pair_full` (auto + 양쪽 점유) / `agent_already_attached` (self-loop)로 분리. 권위: `history/47`. |
-| QA-003 | dev / build-smoke / release runtime namespace(socket·state·Claude plugin·Codex MCP config) 공유로 false PASS/FAIL 가능 | verified | R3(rec) | `0264bb0`+`f9a8c13` | `56-step-3b` (record) → `57-qa-round-4` | **VERIFIED (R4 closed 2026-05-31).** `resolveProfile()` + `getSocketPath()`로 dev=`~/.aiox/dev/`, build=`~/.aiox/build/`, release=`~/.aiox/daemon.sock`(하위호환) 분리. Step 2 smoke로 격리 실증(dev stop 후 build 생존). child agent(Codex inline `-c` / Claude plugin)도 명시 `AIOX_SOCKET_PATH`로 부모 namespace 상속. DB는 `:memory:` 유지 + `getStatePath()` scaffold, Windows transport deferred. 권위 `history/57`. |
+| QA-003 | dev / build-smoke / release runtime namespace(socket·state·Claude plugin·Codex MCP config) 공유로 false PASS/FAIL 가능 | verified | R3(rec) | `0264bb0`+`f9a8c13`+`6aace1b` | `56-step-3b` (record) → `57-qa-round-4` | **VERIFIED (R4 closed 2026-05-31).** `resolveProfile()` + `getSocketPath()`로 dev=`~/.aiox/dev/`, build=`~/.aiox/build/`, release=`~/.aiox/daemon.sock`(하위호환) 분리. Step 2 smoke로 격리 실증(dev stop 후 build 생존). child agent(Codex inline `-c` / Claude plugin)도 명시 `AIOX_SOCKET_PATH`로 부모 namespace 상속. DB는 `:memory:` 유지 + `getStatePath()` scaffold, Windows transport deferred. 권위 `history/57`. |
 |       |                             |        |        |         |             |      |
 
 > 추가 시: ID는 발견 순으로 `QA-NNN`. Found 칸은 QA round 번호 (`R1`, `R2`…).
@@ -78,7 +78,7 @@ Remaining risk:
 - **합의 = B안 (사용자 + Codex + Claude 3자, 2026-05-31)**: "호출부 집중 + Unix socket 유지". transport `RuntimeEndpoint` union 도입(A안)은 speculative generality라 **기각** → Windows round로 deferred. profile = namespace bundle의 단일 결정자(`resolveProfile()`), 개별 `AIOX_*_PATH`는 path 단위 최우선 escape hatch.
 - **Design direction 권위 = `history/57`** (모드 판별 하이브리드 / socket profile 분리·release 하위호환 / DB `:memory:` 유지 + `getStatePath()` scaffold / Unix socket = macOS·Linux 대상 / Windows deferred). Step 1~3 TDD 계획도 `history/57`.
 - **Authority**: `history/57-qa-round-4-runtime-namespace-isolation.history.md` (round 권위) + `history/56` §"QA-003" (발견 기록).
-- **Type**: investigation → **goal locked** → 구현 (no bug; impl pending).
+- **Type**: investigation → goal locked → 구현 → **CLOSED (QA-003 verified, 2026-05-31)**.
 
 <!-- ─── 아래는 R3(Claude MCP auto-inject feasibility) 이력 — R4와 무관, 권위 history/49·50. 보존용. ─── -->
 #### (R3 archive — Claude MCP auto-inject feasibility)
