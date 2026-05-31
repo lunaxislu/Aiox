@@ -738,6 +738,43 @@ describe("launchClaudePluginChannel", () => {
     expect(env.AIOX_CLAUDE_CHANNEL_TOKEN).toBe("token-1");
     expect(env.AIOX_SOCKET_PATH).toBe("/tmp/aiox.sock");
   });
+
+  it("pins the spawn cwd so plugin scope resolves where preflight checked it", async () => {
+    const child = { pid: 4321 };
+    const { spawn } = await import("node:child_process");
+    vi.mocked(spawn).mockReturnValue(child as never);
+
+    launchClaudePluginChannel({
+      command: "claude",
+      pluginName: "aiox-channel-ingress",
+      marketplaceName: "aiox",
+      agentName: "reviewer",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/aiox.sock",
+      cwd: "/repo",
+    });
+
+    const [, , options] = vi.mocked(spawn).mock.calls.at(-1)!;
+    expect((options as { cwd?: string }).cwd).toBe("/repo");
+  });
+
+  it("omits cwd from spawn options when not provided (inherits parent cwd)", async () => {
+    const child = { pid: 4321 };
+    const { spawn } = await import("node:child_process");
+    vi.mocked(spawn).mockReturnValue(child as never);
+
+    launchClaudePluginChannel({
+      command: "claude",
+      pluginName: "aiox-channel-ingress",
+      marketplaceName: "aiox",
+      agentName: "reviewer",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/aiox.sock",
+    });
+
+    const [, , options] = vi.mocked(spawn).mock.calls.at(-1)!;
+    expect("cwd" in (options as object)).toBe(false);
+  });
 });
 
 describe("buildClaudeChannelMcpConfig", () => {

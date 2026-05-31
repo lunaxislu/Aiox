@@ -119,6 +119,14 @@ export interface LaunchClaudePluginChannelOptions {
   agentName: string;
   agentToken: string;
   daemonSocketPath: string;
+  /**
+   * cwd for the spawned `claude`. MUST match the cwd the preflight read its
+   * plugin inventory from (history/52): plugin scope is resolved per-cwd, so a
+   * mismatch could pass preflight in one dir yet resolve a different (disabled)
+   * scope at launch — re-opening the silent-drop the preflight exists to close.
+   * Omitted → spawn inherits the parent process cwd.
+   */
+  cwd?: string;
   command?: string;
 }
 
@@ -137,6 +145,7 @@ export function launchClaudePluginChannel(
   );
 
   return spawn(command, args, {
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     env: {
       ...process.env,
       AIOX_CLAUDE_CHANNEL_AGENT_NAME: options.agentName,

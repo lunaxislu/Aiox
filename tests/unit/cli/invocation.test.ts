@@ -282,25 +282,22 @@ describe("CLI invocation", () => {
     ]);
   });
 
-  it("routes to the plugin launcher when AIOX_SPIKE_STRATEGY_D=1 (spike toggle)", async () => {
-    const prev = process.env.AIOX_SPIKE_STRATEGY_D;
-    process.env.AIOX_SPIKE_STRATEGY_D = "1";
-    try {
+  it("routes to the plugin launcher when AIOX_SPIKE_STRATEGY_D=1 and preflight passes (spike toggle)", async () => {
+    await withStrategyD(async () => {
       const calls: unknown[] = [];
       const child = fakeChild();
-      const runtime = createRuntime(calls, {
-        attachAgent: async () => ({
-          ok: true,
-          agent: { ...fakeAgentDto(), name: "reviewer", kind: "claude" },
-          claudeChannelToken: "claude-token-1",
-        }),
-      });
+      const runtime = createRuntime(calls, claudeAttachOverride());
 
       const invoked = invokeParsedCommand(
         { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
         {
           runtime,
           cwd: "/repo",
+          loadClaudePluginInventory: async (options) => {
+            calls.push(["loadClaudePluginInventory", options]);
+            return passingInventory();
+          },
+          fileExists: () => true,
           launchClaudeWithChannel: () => {
             calls.push(["launchClaudeWithChannel"]);
             return child;
@@ -314,6 +311,8 @@ describe("CLI invocation", () => {
       );
 
       await expect(invoked).resolves.toEqual({ exitCode: 0 });
+      // cwd contract (history/52): the inventory MUST be loaded from the user's cwd.
+      expect(calls).toContainEqual(["loadClaudePluginInventory", { cwd: "/repo" }]);
       expect(calls).toContainEqual([
         "launchClaudePluginChannel",
         {
@@ -322,15 +321,183 @@ describe("CLI invocation", () => {
           agentName: "reviewer",
           agentToken: "claude-token-1",
           daemonSocketPath: "/tmp/aiox/daemon.sock",
+          // launcher spawn cwd must equal the cwd preflight read inventory from
+          // (Finding 1) — so plugin scope resolves the same at activation.
+          cwd: "/repo",
         },
       ]);
       expect(calls).not.toContainEqual(["launchClaudeWithChannel"]);
+    });
+  });
+
+  it("fails with a coded error and rolls back when the strategy-D preflight rejects the plugin", async () => {
+    await withStrategyD(async () => {
+      const calls: unknown[] = [];
+      const child = fakeChild();
+      const runtime = createRuntime(calls, claudeAttachOverride());
+
+      const invoked = invokeParsedCommand(
+        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
+        {
+          runtime,
+          cwd: "/repo",
+          // marketplace registered but no plugin installed → plugin_not_installed.
+          loadClaudePluginInventory: async () => ({ marketplaces: ["aiox"], plugins: [] }),
+          fileExists: () => true,
+          launchClaudePluginChannel: (options) => {
+            calls.push(["launchClaudePluginChannel", options]);
+            return child;
+          },
+        },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.claude_preflight.plugin_not_installed",
+        exitCode: 1,
+      });
+      expect(calls).toContainEqual(["rollbackAgentAttach", { agentName: "reviewer" }]);
+      expect(calls.some((c) => Array.isArray(c) && c[0] === "launchClaudePluginChannel")).toBe(
+        false,
+      );
+    });
+  });
+
+  it("fails with a coded error and rolls back when strategy-D inventory load throws", async () => {
+    await withStrategyD(async () => {
+      const calls: unknown[] = [];
+      const runtime = createRuntime(calls, claudeAttachOverride());
+
+      const invoked = invokeParsedCommand(
+        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
+        {
+          runtime,
+          cwd: "/repo",
+          loadClaudePluginInventory: async () => {
+            throw new Error("claude plugin list --json did not return valid JSON");
+          },
+          fileExists: () => true,
+          launchClaudePluginChannel: () => {
+            calls.push(["launchClaudePluginChannel"]);
+            return fakeChild();
+          },
+        },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.claude_plugin_inventory_failed",
+        exitCode: 1,
+      });
+      expect(calls).toContainEqual(["rollbackAgentAttach", { agentName: "reviewer" }]);
+      expect(calls).not.toContainEqual(["launchClaudePluginChannel"]);
+    });
+  });
+
+  it("preserves the preflight failure code even when rollback itself throws", async () => {
+    await withStrategyD(async () => {
+      const calls: unknown[] = [];
+      const runtime = createRuntime(calls, {
+        ...claudeAttachOverride(),
+        rollbackAgentAttach: async () => {
+          calls.push(["rollbackAgentAttach"]);
+          throw new Error("rollback exploded");
+        },
+      });
+
+      const invoked = invokeParsedCommand(
+        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
+        {
+          runtime,
+          cwd: "/repo",
+          loadClaudePluginInventory: async () => ({ marketplaces: ["aiox"], plugins: [] }),
+          fileExists: () => true,
+          launchClaudePluginChannel: () => fakeChild(),
+        },
+      );
+
+      // The coded preflight error survives; the rollback error is swallowed.
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.claude_preflight.plugin_not_installed",
+        exitCode: 1,
+      });
+      expect(calls).toContainEqual(["rollbackAgentAttach"]);
+    });
+  });
+
+  it("does not run the strategy-D preflight on the legacy A path (toggle off)", async () => {
+    const prev = process.env.AIOX_SPIKE_STRATEGY_D;
+    delete process.env.AIOX_SPIKE_STRATEGY_D;
+    try {
+      const calls: unknown[] = [];
+      const child = fakeChild();
+      const runtime = createRuntime(calls, claudeAttachOverride());
+
+      const invoked = invokeParsedCommand(
+        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
+        {
+          runtime,
+          cwd: "/repo",
+          loadClaudePluginInventory: async (options) => {
+            calls.push(["loadClaudePluginInventory", options]);
+            return passingInventory();
+          },
+          launchClaudeWithChannel: (options) => {
+            calls.push(["launchClaudeWithChannel", options]);
+            setTimeout(() => child.emit("exit", 0, null), 0);
+            return child;
+          },
+        },
+      );
+
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+      // The preflight gate is D-only: the A path must not touch the inventory.
+      expect(calls.some((c) => Array.isArray(c) && c[0] === "loadClaudePluginInventory")).toBe(
+        false,
+      );
+      expect(calls.some((c) => Array.isArray(c) && c[0] === "launchClaudeWithChannel")).toBe(true);
     } finally {
       if (prev === undefined) delete process.env.AIOX_SPIKE_STRATEGY_D;
       else process.env.AIOX_SPIKE_STRATEGY_D = prev;
     }
   });
 });
+
+async function withStrategyD(fn: () => Promise<void>): Promise<void> {
+  const prev = process.env.AIOX_SPIKE_STRATEGY_D;
+  process.env.AIOX_SPIKE_STRATEGY_D = "1";
+  try {
+    await fn();
+  } finally {
+    if (prev === undefined) delete process.env.AIOX_SPIKE_STRATEGY_D;
+    else process.env.AIOX_SPIKE_STRATEGY_D = prev;
+  }
+}
+
+function claudeAttachOverride() {
+  return {
+    attachAgent: async () => ({
+      ok: true as const,
+      agent: { ...fakeAgentDto(), name: "reviewer", kind: "claude" as const },
+      claudeChannelToken: "claude-token-1",
+    }),
+  };
+}
+
+function passingInventory() {
+  return {
+    marketplaces: ["aiox"],
+    plugins: [
+      {
+        id: "aiox-channel-ingress@aiox",
+        enabled: true,
+        scope: "user",
+        installPath: "/plugins/aiox-channel-ingress",
+      },
+    ],
+  };
+}
 
 function createRuntime(
   calls: unknown[],

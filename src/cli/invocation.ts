@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 
 import type { ParsedCommand } from "./parse.js";
 import type { DaemonApi } from "../daemon/api.js";
@@ -9,8 +10,18 @@ import {
   launchClaudeWithChannel,
   launchClaudePluginChannel,
 } from "../adapters/claude/launcher.js";
+import {
+  loadClaudePluginInventory,
+  type ClaudePluginInventory,
+} from "../adapters/claude/plugin-cli.js";
+import { preflightClaudePlugin } from "../adapters/claude/preflight.js";
 import { runDaemonProcess } from "../daemon/run.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
+
+// R3 strategy D channel plugin identity. Shared by the preflight gate and the
+// plugin launcher so the inventory check and the activation arg never drift.
+const CLAUDE_CHANNEL_PLUGIN_NAME = "aiox-channel-ingress";
+const CLAUDE_CHANNEL_MARKETPLACE_NAME = "aiox";
 
 export type DaemonStatusInfo =
   | {
@@ -69,7 +80,13 @@ export interface InvocationOptions {
     agentName: string;
     agentToken: string;
     daemonSocketPath: string;
+    cwd: string;
   }) => ChildProcess;
+  // Strategy-D preflight injection points (default to the real adapter / fs).
+  loadClaudePluginInventory?: (options: {
+    cwd: string;
+  }) => Promise<ClaudePluginInventory>;
+  fileExists?: (path: string) => boolean;
   runCodexMcpServer?: () => Promise<void>;
   runDaemonProcessFn?: (socketPath: string) => Promise<void>;
 }
@@ -172,17 +189,34 @@ export async function invokeParsedCommand(
         // via ${VAR}). Off by default → legacy path unchanged. Gemini/Codex both
         // endorsed an env toggle as the minimal, reversible measurement wiring.
         const useStrategyDPlugin = process.env.AIOX_SPIKE_STRATEGY_D === "1";
+        if (useStrategyDPlugin) {
+          // Pre-spawn gate (R3 step 2, history/50 item 1d): a missing/disabled
+          // channel plugin must surface as a clear non-zero CLI error here rather
+          // than the documented silent-drop (exit 0 + startup notice + no inbound
+          // push). Only on the D path; the legacy A path is untouched.
+          await preflightStrategyDPlugin({
+            api,
+            options,
+            cwd: options.cwd,
+            agentName: command.name,
+            agentToken,
+            socketPath,
+          });
+        }
         const child = launchChildOrRollback({
           api,
           agentName: command.name,
           launch: () =>
             useStrategyDPlugin
               ? (options.launchClaudePluginChannel ?? launchClaudePluginChannel)({
-                  pluginName: "aiox-channel-ingress",
-                  marketplaceName: "aiox",
+                  pluginName: CLAUDE_CHANNEL_PLUGIN_NAME,
+                  marketplaceName: CLAUDE_CHANNEL_MARKETPLACE_NAME,
                   agentName: command.name,
                   agentToken,
                   daemonSocketPath: socketPath,
+                  // Pin the spawn cwd to the dir preflight read inventory from,
+                  // so plugin scope resolves identically (Finding 1).
+                  cwd: options.cwd,
                 })
               : (options.launchClaudeWithChannel ?? launchClaudeWithChannel)({
                   channelName,
@@ -243,6 +277,77 @@ export async function invokeParsedCommand(
     default:
       return assertNever(command);
   }
+}
+
+// R3 strategy D: load Claude's plugin inventory from the user's cwd and run the
+// pre-spawn preflight. On any failure (inventory load OR preflight verdict) the
+// already-attached agent is rolled back (mirroring the launch-failure path) and
+// a coded non-zero InvocationError is thrown — so the user never enters the
+// silent-drop launch path.
+async function preflightStrategyDPlugin(input: {
+  api: DaemonApi;
+  options: InvocationOptions;
+  cwd: string;
+  agentName: string;
+  agentToken: string;
+  socketPath: string;
+}): Promise<void> {
+  const loadInventory =
+    input.options.loadClaudePluginInventory ?? loadClaudePluginInventory;
+  const fileExists = input.options.fileExists ?? existsSync;
+
+  let inventory: ClaudePluginInventory;
+  try {
+    inventory = await loadInventory({ cwd: input.cwd });
+  } catch (error) {
+    return failAfterRollback(
+      input.api,
+      input.agentName,
+      error instanceof Error ? error.message : String(error),
+      "aiox.invocation.claude_plugin_inventory_failed",
+    );
+  }
+
+  // env must mirror what launchClaudePluginChannel injects (launcher.ts), so the
+  // missing_env check guards the exact ${VAR} placeholders the plugin expands.
+  const result = preflightClaudePlugin({
+    pluginName: CLAUDE_CHANNEL_PLUGIN_NAME,
+    marketplaceName: CLAUDE_CHANNEL_MARKETPLACE_NAME,
+    marketplaces: inventory.marketplaces,
+    plugins: inventory.plugins,
+    fileExists,
+    env: {
+      AIOX_CLAUDE_CHANNEL_AGENT_NAME: input.agentName,
+      AIOX_CLAUDE_CHANNEL_TOKEN: input.agentToken,
+      AIOX_SOCKET_PATH: input.socketPath,
+    },
+  });
+  if (!result.ok) {
+    return failAfterRollback(
+      input.api,
+      input.agentName,
+      result.message,
+      `aiox.invocation.claude_preflight.${result.code}`,
+    );
+  }
+}
+
+async function failAfterRollback(
+  api: DaemonApi,
+  agentName: string,
+  message: string,
+  code: string,
+): Promise<never> {
+  // Best-effort cleanup. The coded preflight/inventory failure is the
+  // load-bearing UX, so a rollback failure must NOT mask it (Finding 2). We
+  // await (unlike the fire-and-forget rollback in launchChildOrRollback) only so
+  // call ordering stays deterministic for tests; its error is swallowed.
+  try {
+    await api.rollbackAgentAttach({ agentName });
+  } catch {
+    // ignore — surface the original failure below
+  }
+  throw new InvocationError(message, { code, exitCode: 1 });
 }
 
 function launchChildOrRollback(input: {
