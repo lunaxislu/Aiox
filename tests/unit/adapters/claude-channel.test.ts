@@ -25,6 +25,7 @@ import {
   buildClaudeChannelMcpConfig,
   buildLaunchClaudeChannelArgs,
   buildLaunchClaudePluginArgs,
+  resolveInlineChannelServerEntry,
   launchClaudeWithChannel,
   launchClaudePluginChannel,
 } from "../../../src/adapters/claude/launcher.js";
@@ -801,7 +802,9 @@ describe("buildClaudeChannelMcpConfig", () => {
     });
   });
 
-  it("defaults runtimeBinary to process.execPath and resolves an absolute channel-server path", () => {
+  it("resolves an absolute channel-server entry by execution-mode layout when no override is given", () => {
+    // This suite runs via vitest/tsx (src/TS layout), so the resolver picks the
+    // sibling channel-server.ts under tsx — exercising the dev path end-to-end.
     const parsed = JSON.parse(
       buildClaudeChannelMcpConfig({
         channelName: "aiox-claude-ingress",
@@ -812,9 +815,58 @@ describe("buildClaudeChannelMcpConfig", () => {
     );
     const server = parsed.mcpServers["aiox-claude-ingress"];
 
-    expect(server.command).toBe(process.execPath);
+    expect(server.command).toBe("tsx");
     expect(server.args[0]).toMatch(/^\//);
-    expect(server.args[0].endsWith("channel-server.js")).toBe(true);
+    expect(server.args[0].endsWith("channel-server.ts")).toBe(true);
+  });
+
+  it("honors a runtimeBinary-only override while still layout-resolving the script path", () => {
+    const server = JSON.parse(
+      buildClaudeChannelMcpConfig({
+        channelName: "aiox-claude-ingress",
+        agentName: "alpha",
+        agentToken: "tok-9",
+        daemonSocketPath: "/tmp/aiox.sock",
+        runtimeBinary: "/custom/runtime",
+      }),
+    ).mcpServers["aiox-claude-ingress"];
+
+    // command overridden independently; script path still resolved (src/TS here).
+    expect(server.command).toBe("/custom/runtime");
+    expect(server.args[0].endsWith("channel-server.ts")).toBe(true);
+  });
+});
+
+describe("resolveInlineChannelServerEntry (R3 step 3b execution-mode layout)", () => {
+  it("uses `tsx channel-server.ts` for the src/TS layout (pnpm dev)", () => {
+    const entry = resolveInlineChannelServerEntry({
+      moduleUrl: "file:///repo/src/adapters/claude/launcher.ts",
+      // dev layout: only the .ts sibling exists, no built .js.
+      fileExists: (p) => p.endsWith("channel-server.ts"),
+    });
+    expect(entry.command).toBe("tsx");
+    expect(entry.scriptPath).toBe("/repo/src/adapters/claude/channel-server.ts");
+  });
+
+  it("uses `node channel-server.js` for the dist/JS layout (pnpm build; npm-installed package uses this same built-JS layout)", () => {
+    const entry = resolveInlineChannelServerEntry({
+      moduleUrl: "file:///repo/dist/src/adapters/claude/launcher.js",
+      fileExists: (p) => p.endsWith("channel-server.js"),
+      nodeCommand: "/usr/bin/node",
+    });
+    expect(entry.command).toBe("/usr/bin/node");
+    expect(entry.scriptPath).toBe(
+      "/repo/dist/src/adapters/claude/channel-server.js",
+    );
+  });
+
+  it("throws a clear error when neither a .ts nor a built .js sibling resolves", () => {
+    expect(() =>
+      resolveInlineChannelServerEntry({
+        moduleUrl: "file:///repo/dist/src/adapters/claude/launcher.js",
+        fileExists: () => false,
+      }),
+    ).toThrow(/Cannot resolve the inline Claude channel server entrypoint/);
   });
 });
 

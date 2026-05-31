@@ -12,7 +12,17 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/bin/aiox.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "start": "node dist/src/bin/aiox.js daemon start",
+    "stop": "node dist/src/bin/aiox.js stop",
+    "status": "node dist/src/bin/aiox.js status",
+    "claude": "node dist/src/bin/aiox.js claude",
+    "codex": "node dist/src/bin/aiox.js codex",
+    "connect": "node dist/src/bin/aiox.js connect",
+    "disconnect": "node dist/src/bin/aiox.js disconnect",
+    "pair": "node dist/src/bin/aiox.js pair",
+    "doctor": "node dist/src/bin/aiox.js doctor",
+    "claude-plugin": "node dist/src/bin/aiox.js claude-plugin"
   },
   "keywords": [],
   "author": "",

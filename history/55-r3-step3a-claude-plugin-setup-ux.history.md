@@ -65,6 +65,72 @@ Codex 리뷰 finding (Medium/behavioral): `aiox claude-plugin setup --scope proj
 
 **남은 가설(미검증, history에 명시 보존)**: ① `marketplace add --scope project`가 실제 project 설정에만 등록하는지(저장 위치/precedence 미측정) ② `marketplace list --json`이 cwd-resolved인지 scope별 raw인지 ③ `plugin install --scope project`가 user-scope marketplace만 있어도 항상 성공하는지 ④ install 재실행이 disabled-at-target을 항상 re-enable하는지(history/52 측정 근거 있으나 전 scope/version 공식 계약 아님 — 단 마지막 preflight가 실패 포착하므로 운영 위험 제한적). 모두 smoke/post-MVP 측정 후 확정.
 
+## Post-commit live smoke (2026-05-31)
+
+Step 3a 커밋 `6b43b4d` 이후, Step 3b(D default flip) 전에 실제 Claude CLI로 설치 UX와 D 경로를 확인했다.
+
+### Setup smoke
+
+- 사전 상태:
+  - `claude plugin marketplace list --json`에는 `aiox` 없음.
+  - `claude plugin list --json`에는 `aiox-channel-ingress@aiox` 없음.
+- 실행:
+  - `pnpm dev claude-plugin setup --scope user`
+  - `pnpm dev claude-plugin setup` (default scope=user 재확인)
+- 결과:
+  - stdout: `aiox channel plugin ready (scope: user). marketplace: registered. plugin: installed/enabled`
+  - `claude plugin marketplace list --json`에 `aiox` 추가 확인:
+    - `source: "directory"`
+    - `path: /Users/lunaxislu/Documents/ai-orchestration/spike/aiox-channel-marketplace`
+    - `installLocation`도 동일 source dir
+  - `claude plugin list --json`에 `aiox-channel-ingress@aiox` 추가 확인:
+    - `scope: "user"`
+    - `enabled: true`
+    - `installPath: /Users/lunaxislu/.claude/plugins/cache/aiox/aiox-channel-ingress/0.1.0`
+    - `.mcp.json` env placeholder 3종이 그대로 노출됨
+  - `installPath/channel-server.js` 존재 확인:
+    - `/Users/lunaxislu/.claude/plugins/cache/aiox/aiox-channel-ingress/0.1.0/channel-server.js`
+
+판정: `aiox claude-plugin setup`의 user-scope live provisioning은 PASS.
+
+### D path smoke
+
+- `pnpm dev daemon start`는 socket wait 실패:
+  - `daemon socket did not become available: /Users/lunaxislu/.aiox/daemon.sock`
+  - 이는 plugin/preflight 실패가 아니라 dev daemon startup/wait 경로 이슈로 분리한다.
+- 대체로 built dist daemon을 직접 시작:
+  - `node dist/src/bin/aiox.js daemon start`
+  - daemon started, socket `/Users/lunaxislu/.aiox/daemon.sock`
+- 실행:
+  - `AIOX_SPIKE_STRATEGY_D=1 pnpm dev claude --name smoke-claude`
+- 결과:
+  - Claude Code v2.1.158 TUI 진입.
+  - startup에 `Listening for channel messages from: plugin:aiox-channel-ingress@aiox` 표시.
+  - `/mcp`에서 `plugin:aiox-channel-ingress:aiox-claude-ingress` 확인.
+  - tools `send`, `reply` 2개 표시.
+  - legacy A 경로의 cosmetic `server:<name>` warning은 관찰되지 않음.
+
+판정: D plugin activation path live smoke PASS. Step 3b(D default + A dev-only) 진행 가능. 단 `pnpm dev daemon start` socket wait 실패는 R3 plugin 문제가 아니므로 별도 이슈로 추적한다.
+
+## Scope policy note: `local` deferred
+
+Claude CLI help 기준 `plugin marketplace add`와 `plugin install`은 `--scope local`도 지원하지만, Step 3a의 aiox UX는 `user | project`만 지원하고 `local`은 후순위로 둔다.
+
+이유:
+
+- `user`는 전역 on-ramp로 명확하고 default에 적합하다.
+- `project`는 cwd-resolved `enabled` 측정(history/52)과 Step 3a setup/preflight 계약으로 통제 가능하다.
+- `local`은 Claude CLI에 존재하지만, 저장 위치, project와의 precedence, `plugin list --json`의 `projectPath`/`enabled` 표현, 다른 cwd에서의 visibility를 아직 실측하지 않았다.
+- 지금 `local`을 열면 scope semantics 확장이 되어 Step 3b(default flip) 전 범위가 흐려진다.
+
+따라서 현재 정책:
+
+- supported: `aiox claude-plugin setup --scope user|project`
+- default: `user`
+- deferred: `local`, `managed`, `all`, `*`
+
+`local`을 열려면 별도 spike에서 `claude plugin marketplace add <path> --scope local`, `claude plugin install aiox-channel-ingress@aiox --scope local`, `plugin marketplace list --json`, `plugin list --json`을 cwd별로 측정한 뒤 parser/setup/preflight 테스트를 확장한다.
+
 ## Next
 
 - **Step 3b — D default + A dev-only**: `AIOX_SPIKE_STRATEGY_D` 토글 승격/제거, D 기본화, A는 명시적 dev/debug fallback. 이제 설치 on-ramp(`aiox claude-plugin setup`)이 있으므로 안전하게 flip 가능.

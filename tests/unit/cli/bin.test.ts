@@ -5,7 +5,11 @@ import type { ChildProcess } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-import { createSocketRuntime, runAioxCli } from "../../../src/bin/aiox.js";
+import {
+  createSocketRuntime,
+  resolveDaemonForkCommand,
+  runAioxCli,
+} from "../../../src/bin/aiox.js";
 import type { InvocationRuntime } from "../../../src/cli/invocation.js";
 import type { DaemonApi } from "../../../src/daemon/api.js";
 
@@ -213,6 +217,31 @@ describe("aiox CLI bin", () => {
 
     expect(manifest.bin.aiox).toBe("./dist/src/bin/aiox.js");
     expect(manifest.scripts.dev).toBe("tsx src/bin/aiox.ts");
+  });
+
+  it("forks the daemon through tsx in the pnpm dev TypeScript layout", () => {
+    expect(
+      resolveDaemonForkCommand({
+        binPath: "/repo/src/bin/aiox.ts",
+        socketPath: "/tmp/aiox.sock",
+      }),
+    ).toEqual({
+      command: "tsx",
+      args: ["/repo/src/bin/aiox.ts", "_run-daemon", "--socket", "/tmp/aiox.sock"],
+    });
+  });
+
+  it("forks the daemon through node in the built JavaScript layout", () => {
+    expect(
+      resolveDaemonForkCommand({
+        binPath: "/repo/dist/src/bin/aiox.js",
+        socketPath: "/tmp/aiox.sock",
+        nodeCommand: "/usr/bin/node",
+      }),
+    ).toEqual({
+      command: "/usr/bin/node",
+      args: ["/repo/dist/src/bin/aiox.js", "_run-daemon", "--socket", "/tmp/aiox.sock"],
+    });
   });
 });
 

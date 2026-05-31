@@ -4,6 +4,7 @@ import type { ChildProcess } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 import {
+  claudePreflightFailureMessage,
   InvocationError,
   invokeParsedCommand,
   type InvocationRuntime,
@@ -236,7 +237,8 @@ describe("CLI invocation", () => {
     ]);
   });
 
-  it("launches Claude with channel env after daemon attach and disconnects channel on exit", async () => {
+  it("launches the legacy inline (A) path with channel env and disconnects on exit when AIOX_CLAUDE_CHANNEL_STRATEGY=inline", async () => {
+    await withChannelStrategy("inline", async () => {
     const calls: unknown[] = [];
     const child = fakeChild();
     const runtime = createRuntime(calls, {
@@ -255,6 +257,11 @@ describe("CLI invocation", () => {
       {
         runtime,
         cwd: "/repo",
+        // inline path must NOT touch the plugin inventory/preflight at all.
+        loadClaudePluginInventory: async (options) => {
+          calls.push(["loadClaudePluginInventory", options]);
+          return passingInventory();
+        },
         launchClaudeWithChannel: (options) => {
           calls.push(["launchClaudeWithChannel", options]);
           setTimeout(() => child.emit("exit", 0, null), 0);
@@ -264,6 +271,10 @@ describe("CLI invocation", () => {
     );
 
     await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    // The preflight gate is D-only: the inline path must not load inventory.
+    expect(calls.some((c) => Array.isArray(c) && c[0] === "loadClaudePluginInventory")).toBe(
+      false,
+    );
     expect(calls).toEqual([
       ["startDaemon"],
       ["attachAgent", { kind: "claude", name: "reviewer", cwd: "/repo", pairName: "pair-a" }],
@@ -280,10 +291,11 @@ describe("CLI invocation", () => {
       ],
       ["disconnectClaudeChannel", { agentName: "reviewer" }],
     ]);
+    });
   });
 
-  it("routes to the plugin launcher when AIOX_SPIKE_STRATEGY_D=1 and preflight passes (spike toggle)", async () => {
-    await withStrategyD(async () => {
+  it("routes to the plugin launcher (D) by default when AIOX_CLAUDE_CHANNEL_STRATEGY is unset and preflight passes", async () => {
+    await withChannelStrategy(undefined, async () => {
       const calls: unknown[] = [];
       const child = fakeChild();
       const runtime = createRuntime(calls, claudeAttachOverride());
@@ -331,7 +343,7 @@ describe("CLI invocation", () => {
   });
 
   it("fails with a coded error and rolls back when the strategy-D preflight rejects the plugin", async () => {
-    await withStrategyD(async () => {
+    await withChannelStrategy(undefined, async () => {
       const calls: unknown[] = [];
       const child = fakeChild();
       const runtime = createRuntime(calls, claudeAttachOverride());
@@ -364,7 +376,7 @@ describe("CLI invocation", () => {
   });
 
   it("fails with a coded error and rolls back when strategy-D inventory load throws", async () => {
-    await withStrategyD(async () => {
+    await withChannelStrategy(undefined, async () => {
       const calls: unknown[] = [];
       const runtime = createRuntime(calls, claudeAttachOverride());
 
@@ -395,7 +407,7 @@ describe("CLI invocation", () => {
   });
 
   it("preserves the preflight failure code even when rollback itself throws", async () => {
-    await withStrategyD(async () => {
+    await withChannelStrategy(undefined, async () => {
       const calls: unknown[] = [];
       const runtime = createRuntime(calls, {
         ...claudeAttachOverride(),
@@ -426,10 +438,8 @@ describe("CLI invocation", () => {
     });
   });
 
-  it("does not run the strategy-D preflight on the legacy A path (toggle off)", async () => {
-    const prev = process.env.AIOX_SPIKE_STRATEGY_D;
-    delete process.env.AIOX_SPIKE_STRATEGY_D;
-    try {
+  it("routes to the plugin launcher (D) when AIOX_CLAUDE_CHANNEL_STRATEGY=plugin is set explicitly", async () => {
+    await withChannelStrategy("plugin", async () => {
       const calls: unknown[] = [];
       const child = fakeChild();
       const runtime = createRuntime(calls, claudeAttachOverride());
@@ -443,8 +453,13 @@ describe("CLI invocation", () => {
             calls.push(["loadClaudePluginInventory", options]);
             return passingInventory();
           },
-          launchClaudeWithChannel: (options) => {
-            calls.push(["launchClaudeWithChannel", options]);
+          fileExists: () => true,
+          launchClaudeWithChannel: () => {
+            calls.push(["launchClaudeWithChannel"]);
+            return child;
+          },
+          launchClaudePluginChannel: (options) => {
+            calls.push(["launchClaudePluginChannel", options]);
             setTimeout(() => child.emit("exit", 0, null), 0);
             return child;
           },
@@ -452,15 +467,75 @@ describe("CLI invocation", () => {
       );
 
       await expect(invoked).resolves.toEqual({ exitCode: 0 });
-      // The preflight gate is D-only: the A path must not touch the inventory.
-      expect(calls.some((c) => Array.isArray(c) && c[0] === "loadClaudePluginInventory")).toBe(
-        false,
+      expect(calls.some((c) => Array.isArray(c) && c[0] === "launchClaudePluginChannel")).toBe(
+        true,
       );
-      expect(calls.some((c) => Array.isArray(c) && c[0] === "launchClaudeWithChannel")).toBe(true);
-    } finally {
-      if (prev === undefined) delete process.env.AIOX_SPIKE_STRATEGY_D;
-      else process.env.AIOX_SPIKE_STRATEGY_D = prev;
-    }
+      expect(calls).not.toContainEqual(["launchClaudeWithChannel"]);
+    });
+  });
+
+  it("fails fast with a coded error for an invalid AIOX_CLAUDE_CHANNEL_STRATEGY and never starts the daemon or attaches", async () => {
+    await withChannelStrategy("bogus", async () => {
+      const calls: unknown[] = [];
+      const child = fakeChild();
+      const runtime = createRuntime(calls, claudeAttachOverride());
+
+      const invoked = invokeParsedCommand(
+        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
+        {
+          runtime,
+          cwd: "/repo",
+          loadClaudePluginInventory: async () => {
+            calls.push(["loadClaudePluginInventory"]);
+            return passingInventory();
+          },
+          launchClaudePluginChannel: () => {
+            calls.push(["launchClaudePluginChannel"]);
+            return child;
+          },
+          launchClaudeWithChannel: () => {
+            calls.push(["launchClaudeWithChannel"]);
+            return child;
+          },
+        },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.invalid_claude_channel_strategy",
+        exitCode: 1,
+        message: 'Invalid AIOX_CLAUDE_CHANNEL_STRATEGY="bogus". Expected "plugin" or "inline".',
+      });
+      // Strategy is resolved BEFORE any side effect: no daemon/attach/launch.
+      expect(calls).toEqual([]);
+    });
+  });
+
+  it("appends a dev/debug inline hint to a setup-fixable D preflight failure", async () => {
+    await withChannelStrategy(undefined, async () => {
+      const runtime = createRuntime([], claudeAttachOverride());
+
+      const invoked = invokeParsedCommand(
+        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
+        {
+          runtime,
+          cwd: "/repo",
+          // marketplace registered but plugin absent → plugin_not_installed (setup-fixable).
+          loadClaudePluginInventory: async () => ({ marketplaces: ["aiox"], plugins: [] }),
+          fileExists: () => true,
+          launchClaudePluginChannel: () => fakeChild(),
+        },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.claude_preflight.plugin_not_installed",
+        exitCode: 1,
+        message: expect.stringContaining(
+          "AIOX_CLAUDE_CHANNEL_STRATEGY=inline aiox claude --name <agentName>",
+        ),
+      });
+    });
   });
 
   it("claude-plugin setup passes scope/cwd/marketplace path through and returns a summary", async () => {
@@ -544,14 +619,46 @@ describe("CLI invocation", () => {
   });
 });
 
-async function withStrategyD(fn: () => Promise<void>): Promise<void> {
-  const prev = process.env.AIOX_SPIKE_STRATEGY_D;
-  process.env.AIOX_SPIKE_STRATEGY_D = "1";
+describe("claudePreflightFailureMessage (R3 step 3b inline hint policy)", () => {
+  // Literal placeholder, NOT the real agent name — names may contain spaces/shell
+  // metacharacters, so interpolating them would break the copy-paste command.
+  const HINT = "AIOX_CLAUDE_CHANNEL_STRATEGY=inline aiox claude --name <agentName>";
+
+  it.each([
+    "marketplace_not_registered",
+    "plugin_not_installed",
+    "plugin_not_enabled",
+    "channel_server_missing",
+    "ambiguous_install_path",
+  ] as const)("appends the dev/debug inline hint for setup-fixable code %s", (code) => {
+    const message = claudePreflightFailureMessage(code, "base reason");
+    expect(message).toContain("base reason");
+    expect(message).toContain("Developer/debug only:");
+    expect(message).toContain(HINT);
+  });
+
+  it.each(["channels_disabled", "missing_env"] as const)(
+    "does NOT hint inline for non-fixable code %s (inline would mislead)",
+    (code) => {
+      const message = claudePreflightFailureMessage(code, "base reason");
+      expect(message).toBe("base reason");
+      expect(message).not.toContain("AIOX_CLAUDE_CHANNEL_STRATEGY=inline");
+    },
+  );
+});
+
+async function withChannelStrategy(
+  value: string | undefined,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const prev = process.env.AIOX_CLAUDE_CHANNEL_STRATEGY;
+  if (value === undefined) delete process.env.AIOX_CLAUDE_CHANNEL_STRATEGY;
+  else process.env.AIOX_CLAUDE_CHANNEL_STRATEGY = value;
   try {
     await fn();
   } finally {
-    if (prev === undefined) delete process.env.AIOX_SPIKE_STRATEGY_D;
-    else process.env.AIOX_SPIKE_STRATEGY_D = prev;
+    if (prev === undefined) delete process.env.AIOX_CLAUDE_CHANNEL_STRATEGY;
+    else process.env.AIOX_CLAUDE_CHANNEL_STRATEGY = prev;
   }
 }
 

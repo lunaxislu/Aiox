@@ -17,7 +17,10 @@ import {
   loadClaudePluginInventory,
   type ClaudePluginInventory,
 } from "../adapters/claude/plugin-cli.js";
-import { preflightClaudePlugin } from "../adapters/claude/preflight.js";
+import {
+  preflightClaudePlugin,
+  type PreflightFailureCode,
+} from "../adapters/claude/preflight.js";
 import {
   setupClaudePlugin,
   type SetupActions,
@@ -81,8 +84,9 @@ export interface InvocationOptions {
     agentToken: string;
     daemonSocketPath: string;
   }) => ChildProcess;
-  // Spike (R3 strategy D): used only when AIOX_SPIKE_STRATEGY_D=1 to launch the
-  // plugin-activation path instead of the legacy --mcp-config server: path.
+  // R3 strategy D (now the DEFAULT, step 3b): launches the plugin-activation
+  // path. The legacy inline --mcp-config server: path (launchClaudeWithChannel)
+  // is used only as the dev/debug opt-out AIOX_CLAUDE_CHANNEL_STRATEGY=inline.
   launchClaudePluginChannel?: (options: {
     pluginName: string;
     marketplaceName: string;
@@ -151,6 +155,13 @@ export async function invokeParsedCommand(
     case "version":
       return { exitCode: 0, stdout: `${command.value}\n` };
     case "agent-attach": {
+      // R3 step 3b: resolve the Claude channel strategy BEFORE any daemon/attach
+      // side effect, so an invalid AIOX_CLAUDE_CHANNEL_STRATEGY fails fast with a
+      // coded error and never starts the daemon or attaches the agent.
+      const claudeChannelStrategy =
+        command.agentKind === "claude"
+          ? resolveClaudeChannelStrategy(process.env.AIOX_CLAUDE_CHANNEL_STRATEGY)
+          : undefined;
       // PRD: "Auto-start daemon if needed" for agent attach commands.
       await options.runtime.startDaemon();
       const api = await options.runtime.getDaemonApi();
@@ -195,16 +206,17 @@ export async function invokeParsedCommand(
             exitCode: 1,
           });
         }
-        // dev-channel server:<name> resolves the aiox channel MCP that the launcher
-        // injects one-off via --mcp-config (no permanent .mcp.json). The name must
-        // match the injected mcpServers key. See history/49.
+        // Legacy inline (A) only: dev-channel server:<name> resolves the aiox
+        // channel MCP that the launcher injects one-off via --mcp-config (no
+        // permanent .mcp.json). The name must match the injected mcpServers key.
+        // See history/49.
         const channelName = "aiox-claude-ingress";
-        // Spike toggle (R3 strategy D, history/50-51): AIOX_SPIKE_STRATEGY_D=1
-        // routes to the plugin-activation launcher so the daemon-issued token
-        // flows into the spawned claude env (which the plugin .mcp.json expands
-        // via ${VAR}). Off by default → legacy path unchanged. Gemini/Codex both
-        // endorsed an env toggle as the minimal, reversible measurement wiring.
-        const useStrategyDPlugin = process.env.AIOX_SPIKE_STRATEGY_D === "1";
+        // R3 step 3b (history/56): D (channel-as-plugin) is the DEFAULT. The token
+        // flows into the spawned claude env, which the plugin .mcp.json expands via
+        // ${VAR}. The legacy inline (A) path stays only as the explicit dev/debug
+        // opt-out AIOX_CLAUDE_CHANNEL_STRATEGY=inline (resolved before attach). There
+        // is NO automatic fallback: a D preflight failure is a hard, coded error.
+        const useStrategyDPlugin = claudeChannelStrategy === "plugin";
         if (useStrategyDPlugin) {
           // Pre-spawn gate (R3 step 2, history/50 item 1d): a missing/disabled
           // channel plugin must surface as a clear non-zero CLI error here rather
@@ -430,10 +442,60 @@ async function preflightStrategyDPlugin(input: {
     return failAfterRollback(
       input.api,
       input.agentName,
-      result.message,
+      claudePreflightFailureMessage(result.code, result.message),
       `aiox.invocation.claude_preflight.${result.code}`,
     );
   }
+}
+
+// R3 step 3b: only these (provisioning) codes are fixable by `aiox claude-plugin
+// setup`, so only they carry the dev/debug inline escape-hatch hint.
+const SETUP_FIXABLE_PREFLIGHT_CODES: ReadonlySet<PreflightFailureCode> = new Set([
+  "marketplace_not_registered",
+  "plugin_not_installed",
+  "plugin_not_enabled",
+  "channel_server_missing",
+  "ambiguous_install_path",
+]);
+
+/**
+ * R3 step 3b: a D preflight failure NEVER auto-falls back to inline. For the
+ * setup-fixable codes we append a dev/debug-only escape hatch so an operator can
+ * still launch while diagnosing. channels_disabled / missing_env are deliberately
+ * excluded — inline would not fix an org-policy block or a missing token, so
+ * hinting it there would mislead (see history/56). The hint uses a literal
+ * `<agentName>` placeholder rather than the actual name: agent names may contain
+ * spaces/shell metacharacters (the parser does not forbid them), so interpolating
+ * them would yield a broken copy-paste command (Codex review).
+ */
+export function claudePreflightFailureMessage(
+  code: PreflightFailureCode,
+  baseMessage: string,
+): string {
+  if (!SETUP_FIXABLE_PREFLIGHT_CODES.has(code)) return baseMessage;
+  return (
+    `${baseMessage}\n\nDeveloper/debug only:\n  ` +
+    `AIOX_CLAUDE_CHANNEL_STRATEGY=inline aiox claude --name <agentName>`
+  );
+}
+
+// R3 step 3b: D (channel-as-plugin) is the default Claude channel strategy; the
+// legacy inline --mcp-config path (A) is an explicit dev/debug opt-out. Resolved
+// before any daemon/attach side effect so an invalid value fails fast.
+export type ClaudeChannelStrategy = "plugin" | "inline";
+
+function resolveClaudeChannelStrategy(
+  raw: string | undefined,
+): ClaudeChannelStrategy {
+  if (raw === undefined || raw === "" || raw === "plugin") return "plugin";
+  if (raw === "inline") return "inline";
+  throw new InvocationError(
+    `Invalid AIOX_CLAUDE_CHANNEL_STRATEGY="${raw}". Expected "plugin" or "inline".`,
+    {
+      code: "aiox.invocation.invalid_claude_channel_strategy",
+      exitCode: 1,
+    },
+  );
 }
 
 async function failAfterRollback(

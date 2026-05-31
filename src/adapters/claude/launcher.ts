@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
@@ -30,10 +31,61 @@ export interface ClaudeChannelMcpConfigInput {
   agentName: string;
   agentToken: string;
   daemonSocketPath: string;
-  /** node binary or compatible runtime. Defaults to process.execPath. */
+  /** node binary or compatible runtime. Defaults to the layout-resolved command. */
   runtimeBinary?: string;
-  /** absolute path to the compiled channel-server entry. Defaults to the sibling channel-server.js. */
+  /** absolute path to the channel-server entry. Defaults to the layout-resolved path. */
   channelServerPath?: string;
+}
+
+/** A runnable inline channel-server entrypoint: `command scriptPath`. */
+export interface InlineChannelServerEntry {
+  command: string;
+  scriptPath: string;
+}
+
+export interface ResolveInlineChannelServerDeps {
+  /** defaults to this module's URL — used to detect src/TS vs dist/JS layout. */
+  moduleUrl?: string;
+  fileExists?: (path: string) => boolean;
+  /** runtime for the dist/JS layout (defaults to the running node). */
+  nodeCommand?: string;
+  /** runtime for the src/TS layout (defaults to "tsx", resolved from PATH). */
+  tsxCommand?: string;
+}
+
+// R3 step 3b delta (history/56): the inline (A) strategy is an EXPLICIT dev/debug
+// path, so its bundled channel server must run under whichever layout `aiox` is
+// itself running from. Claude spawns this MCP server from the `--mcp-config`
+// command/args, so a fixed `node channel-server.js` breaks under `pnpm dev`
+// (tsx/src), where only channel-server.ts exists. We detect the layout from this
+// module's own URL + the adjacent file, NOT by picking whatever file happens to
+// exist:
+//   - src/TS layout  (pnpm dev → tsx src/...): `tsx channel-server.ts`
+//   - dist/JS layout (pnpm build → node dist/...; ALSO the npm-installed package,
+//     which ships the same built JS): `node channel-server.js`
+// Neither resolvable → a clear error (no silent fallback). D plugin launcher is
+// unaffected (it never builds an inline --mcp-config).
+export function resolveInlineChannelServerEntry(
+  deps: ResolveInlineChannelServerDeps = {},
+): InlineChannelServerEntry {
+  const moduleUrl = deps.moduleUrl ?? import.meta.url;
+  const fileExists = deps.fileExists ?? existsSync;
+  const modulePath = fileURLToPath(moduleUrl);
+  const jsPath = fileURLToPath(new URL("./channel-server.js", moduleUrl));
+  const tsPath = fileURLToPath(new URL("./channel-server.ts", moduleUrl));
+
+  if (modulePath.endsWith(".js") && fileExists(jsPath)) {
+    return { command: deps.nodeCommand ?? process.execPath, scriptPath: jsPath };
+  }
+  if (modulePath.endsWith(".ts") && fileExists(tsPath)) {
+    return { command: deps.tsxCommand ?? "tsx", scriptPath: tsPath };
+  }
+  throw new Error(
+    `Cannot resolve the inline Claude channel server entrypoint from "${modulePath}": ` +
+      `expected a sibling channel-server.js (dist/JS layout — also the npm-installed ` +
+      `layout) or channel-server.ts (src/TS layout via tsx). Run "pnpm build" first, ` +
+      `or launch via "pnpm dev".`,
+  );
 }
 
 // One-off aiox MCP injection for Claude, mirroring Codex `buildCodexMcpArgs`.
@@ -42,19 +94,19 @@ export interface ClaudeChannelMcpConfigInput {
 export function buildClaudeChannelMcpConfig(
   input: ClaudeChannelMcpConfigInput,
 ): string {
-  const runtimeBinary = input.runtimeBinary ?? process.execPath;
-  // Sibling of this module in the build output (dist). The published bin runs
-  // from dist, so this is absolute and cwd-independent. Launching via tsx (src)
-  // is not a supported agent path — detached children require the dist build
-  // (history/42).
-  const channelServerPath =
-    input.channelServerPath ??
-    fileURLToPath(new URL("./channel-server.js", import.meta.url));
+  // The script path comes from an explicit override or the execution-mode layout;
+  // runtimeBinary independently overrides the command in EITHER case, so passing
+  // runtimeBinary alone still takes effect (Codex review).
+  const resolved: InlineChannelServerEntry =
+    input.channelServerPath !== undefined
+      ? { command: process.execPath, scriptPath: input.channelServerPath }
+      : resolveInlineChannelServerEntry();
+  const command = input.runtimeBinary ?? resolved.command;
   return JSON.stringify({
     mcpServers: {
       [input.channelName]: {
-        command: runtimeBinary,
-        args: [channelServerPath],
+        command,
+        args: [resolved.scriptPath],
         env: {
           AIOX_CLAUDE_CHANNEL_AGENT_NAME: input.agentName,
           AIOX_CLAUDE_CHANNEL_TOKEN: input.agentToken,

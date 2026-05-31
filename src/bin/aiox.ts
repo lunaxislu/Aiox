@@ -158,11 +158,33 @@ export function createClientRuntime(
 
 // ── forkDaemonProcess / waitForSocketGone ─────────────────────────────────────
 
+export interface DaemonForkCommand {
+  command: string;
+  args: string[];
+}
+
+export function resolveDaemonForkCommand(input: {
+  binPath: string;
+  socketPath: string;
+  nodeCommand?: string;
+  tsxCommand?: string;
+}): DaemonForkCommand {
+  const commonArgs = [input.binPath, "_run-daemon", "--socket", input.socketPath];
+  if (input.binPath.endsWith(".ts")) {
+    return { command: input.tsxCommand ?? "tsx", args: commonArgs };
+  }
+  return {
+    command: input.nodeCommand ?? process.execPath,
+    args: commonArgs,
+  };
+}
+
 async function forkDaemonProcess(socketPath: string): Promise<void> {
   const { spawn } = await import("node:child_process");
   const binPath = process.argv[1];
+  const fork = resolveDaemonForkCommand({ binPath, socketPath });
 
-  const child = spawn(process.execPath, [binPath, "_run-daemon", "--socket", socketPath], {
+  const child = spawn(fork.command, fork.args, {
     detached: true,
     stdio: "ignore",
   });
