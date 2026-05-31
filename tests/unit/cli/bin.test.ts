@@ -216,7 +216,8 @@ describe("aiox CLI bin", () => {
     ) as { bin: { aiox: string }; scripts: { dev: string } };
 
     expect(manifest.bin.aiox).toBe("./dist/src/bin/aiox.js");
-    expect(manifest.scripts.dev).toBe("tsx src/bin/aiox.ts");
+    // dev runs the tsx src entrypoint and injects the dev runtime profile (R4).
+    expect(manifest.scripts.dev).toBe("AIOX_PROFILE=dev tsx src/bin/aiox.ts");
   });
 
   it("forks the daemon through tsx in the pnpm dev TypeScript layout", () => {

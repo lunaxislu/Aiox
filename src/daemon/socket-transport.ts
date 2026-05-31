@@ -278,6 +278,9 @@ function createPersistentDaemonSocketClient(options: CreateDaemonSocketClientOpt
       return socket;
     }
 
+    // Transport decision point (client connect). `options.socketPath` is a Unix
+    // domain socket — macOS / Linux only. Windows support (named pipe / TCP loopback)
+    // is deferred; when added it swaps here + the listen() site below. See history/57.
     socket = net.createConnection(options.socketPath);
     socket.setEncoding("utf8");
     socket.on("data", onData);
@@ -423,6 +426,9 @@ async function listenWithStaleSocketRetry(
   }
 }
 
+// Transport decision point (daemon listen). `socketPath` is a Unix domain socket —
+// macOS / Linux only. Windows support (named pipe / TCP loopback) is deferred; when
+// added it swaps here + the createConnection() site above. See history/57.
 async function listen(server: net.Server, socketPath: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

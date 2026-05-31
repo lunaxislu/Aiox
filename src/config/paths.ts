@@ -119,16 +119,3 @@ export function getStatePath(opts: PathResolveOptions = {}): string {
   return join(profileBaseDir(profile, home), "state.db");
 }
 
-/**
- * @deprecated Step 2에서 `getSocketPath` 로 대체 예정. profile 무관(항상 release base)
- * 한 기존 동작을 하위호환으로 유지한다. 신규 코드는 `getSocketPath` 사용.
- */
-export function getDefaultSocketPath(): string {
-  if (process.env.AIOX_SOCKET_PATH) {
-    return process.env.AIOX_SOCKET_PATH;
-  }
-
-  const dir = join(homedir(), ".aiox");
-  mkdirSync(dir, { recursive: true });
-  return join(dir, "daemon.sock");
-}

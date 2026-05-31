@@ -11,7 +11,7 @@ import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { createDoctorResult } from "../cli/doctor.js";
 import { invokeParsedCommand, type InvocationRuntime } from "../cli/invocation.js";
 import { parseCli } from "../cli/parse.js";
-import { getDefaultSocketPath } from "../config/paths.js";
+import { getSocketPath } from "../config/paths.js";
 import { createDaemonServer, type DaemonServerHandle } from "../daemon/server.js";
 import {
   productionAttachCodexRuntime,
@@ -78,7 +78,7 @@ export interface CreateClientRuntimeOptions {
 export function createClientRuntime(
   options: CreateClientRuntimeOptions = {},
 ): InvocationRuntime {
-  const socketPath = options.socketPath ?? getDefaultSocketPath();
+  const socketPath = options.socketPath ?? getSocketPath();
   const version = options.version ?? readPackageVersion();
 
   return {

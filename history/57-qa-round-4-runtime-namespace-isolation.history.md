@@ -63,7 +63,31 @@
 - **override absolute 계약 코드로 닫음** (Codex finding #1): `AIOX_SOCKET_PATH`/`AIOX_DB_PATH`가 상대경로면 fail-fast(`requireAbsoluteOverride`). 상대경로는 child process cwd마다 재해석돼 namespace isolation을 다시 흐리므로 설정 오류로 처리.
 - 테스트 `tests/unit/config/paths.test.ts` — 16 tests (override 최우선/absolute 거부 + release 불변 + profile bundle 그룹 + 휴리스틱). 전체 483 PASS, typecheck green.
 
+## Step 2 — DONE (2026-05-31) [behavioral]
+
+- `src/bin/aiox.ts`: `getDefaultSocketPath()` → `getSocketPath()` 교체(`createClientRuntime`). 이제 모든 production CLI 호출이 profile별 socket을 본다. DB는 여전히 `:memory:`(미변경).
+- `src/config/paths.ts`: dead가 된 `getDefaultSocketPath` 제거(사용처 0).
+- `src/daemon/socket-transport.ts`: transport 결정 지점 2곳(`net.createConnection` connect / `listen` daemon)에 "Unix domain socket, macOS·Linux only, Windows는 여기서 named pipe/TCP로 교체" 주석 — B안의 호출부 집중을 명시.
+- `package.json`: `dev`→`AIOX_PROFILE=dev`, runtime script 10종(start/stop/status/claude/codex/connect/disconnect/pair/doctor/claude-plugin)→`AIOX_PROFILE=build` 주입. (자동감지로도 갈리지만 우리 통제 영역은 명시 고정.)
+- `tests/unit/cli/bin.test.ts`: dev script 가드를 `AIOX_PROFILE=dev tsx …`로 갱신.
+- 483 tests PASS, typecheck green.
+
+### Smoke — dev/build socket 실제 분리 증명 (2026-05-31)
+
+`pnpm build` 후:
+
+| 검증 | 명령 | 결과 |
+| --- | --- | --- |
+| dev daemon socket 위치 | `pnpm dev daemon start` | `~/.aiox/dev/daemon.sock` 생성 |
+| build daemon socket 위치 | `pnpm start` | `~/.aiox/build/daemon.sock` 생성 (별개 STARTED) |
+| release 하위호환 경로 | `AIOX_PROFILE=release node dist/… status` | `~/.aiox/daemon.sock` 봄 → not running(우리가 안 띄움) |
+| **격리 핵심** | `pnpm dev stop` 후 `pnpm status`(build) | dev는 not running, **build는 여전히 살아있음** → 한쪽 stop이 다른 쪽을 안 죽임 |
+| cleanup | `pnpm stop` | socket 파일 모두 정리 |
+
+→ QA-003의 "한 모드 daemon에 다른 모드가 붙어 false PASS/FAIL"이 구조적으로 제거됨.
+
 ## Open items (다음 세션에 들고 갈 것)
 
-- **Step 2 next (behavioral)**: `bin/aiox.ts`를 `getSocketPath`로 교체 + `package.json` dev/build script에 `AIOX_PROFILE` 주입 + `socket-transport.ts` listen/connect에 Windows deferral 주석.
-- Step 3: external config 검증 + smoke.
+- **Step 3 next**: external config 검증 — Claude marketplace/plugin runtime path(dev source marketplace 오인 방지) + Codex MCP command·env(`AIOX_SOCKET_PATH`, aiox binary, persistent면 `CODEX_HOME`)가 의도한 namespace 가리키는지. README "Smoke Namespace" 수동 가이드를 profile 자동분리로 대체.
+- Step 3 완료 후 QA-003 `triaging→verified`로 close + round close commit.
+- (참고) cross-platform: `AIOX_PROFILE=...` inline env는 Unix shell 전제. B안의 macOS/Linux 지원 범위와 일치(Windows round에서 cross-env 등 재검토).
