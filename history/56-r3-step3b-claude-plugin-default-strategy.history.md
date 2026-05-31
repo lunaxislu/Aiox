@@ -163,6 +163,35 @@ AIOX_CLAUDE_CHANNEL_STRATEGY=bogus pnpm dev claude --name smoke-bogus
 
 `README.md`도 Development / Build Smoke / Claude Plugin Setup / Claude Channel Strategy(`unset|plugin`→plugin, `inline`→legacy, invalid=fail-fast·no auto fallback) / Manual Routes / Pair Reservation 섹션으로 갱신(기존 raw `node dist/...` 호출을 pnpm scripts로 치환).
 
+## QA-003 — dev / build-smoke / release runtime namespace isolation (R3 발견 · R4/QA4로 이관, 2026-05-31)
+
+> **R3 blocker 아님.** R3 closeout 중 발견했으나 R3로 끌어오지 않고 별도 round(QA4 = R4)에서 socket/db/Claude-plugin/Codex-MCP 격리를 설계·검증한다. R3 커밋에는 이 finding **기록**까지만 포함한다. R4 design direction(하이브리드 profile 판별 + socket profile 분리 + db scaffold)은 `plan/qa-tracker.md` "R4 (QA4)" 섹션이 권위. 아래는 발견 시점 기록.
+
+**Finding**: R3 closeout에서 실행 모드를 3개로 분리했지만, 기본 runtime namespace는 아직 실행 모드를 구분하지 않는다. `AIOX_SOCKET_PATH`가 없으면 dev(`pnpm dev`), build-smoke(`pnpm build` 후 `pnpm start`/`pnpm claude`), npm-installed release 모두 기본 `~/.aiox/daemon.sock`을 사용한다. 제품 기본값으로는 "사용자당 하나의 aiox daemon" 모델이라 타당하지만, 검증에서는 한 모드가 띄운 daemon에 다른 모드가 붙어 **false PASS/FAIL**을 만들 수 있다.
+
+**Interim QA 계약 (R4 자동화 전까지)**: dev/build/release 검증은 명시 namespace를 사용한다. 이건 기능 변경이 아니라 잠정 manual QA 계약이며, R4에서 profile 기반 자동 분리로 대체한다.
+
+```bash
+# development / src TS layout
+AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev daemon start
+AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev claude --name claude-dev-smoke
+AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev codex --name codex-dev-smoke
+
+# build smoke / dist JS layout
+pnpm build
+AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm start
+AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm claude --name claude-build-smoke
+AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm codex --name codex-build-smoke
+```
+
+**DB/state**: 현재 daemon DB는 `:memory:`이므로 socket을 분리하면 daemon process도 분리되고 state도 같이 분리된다. 파일 기반 DB를 도입하면 `AIOX_DB_PATH` 또는 동등한 설정으로 dev/build/release DB path도 socket과 같은 namespace로 분리해야 한다.
+
+**Claude-specific check**: Claude plugin 설정은 aiox daemon namespace 밖에 남는다. release/build smoke 전에 `claude plugin marketplace list --json`과 `claude plugin list --json`으로 marketplace/plugin/runtime path를 확인해 dev source marketplace(`spike/aiox-channel-marketplace`)를 packaged runtime behavior로 오인하지 않는다.
+
+**Codex-specific check**: Codex는 Claude plugin 대신 MCP command/env가 섞일 수 있다. Codex smoke에서는 MCP server command가 의도한 aiox binary(dev src / dist / installed)를 가리키는지, env의 `AIOX_SOCKET_PATH`가 해당 smoke namespace인지 확인한다. persistent Codex config를 건드리는 smoke라면 `CODEX_HOME`도 dev/build/release별로 분리한다.
+
+**Tracker**: `plan/qa-tracker.md` QA-003(open, owner=R4). R3 blocker로 끌어오지 않는다. R4 design direction(사용자 결정 2026-05-31): ① 모드 판별 = 하이브리드(`AIOX_PROFILE` env 우선 + `process.argv[1]` binPath 자동감지: `*.ts`→dev / `<repo>/dist`→build / 그 외→release), ② socket = `AIOX_SOCKET_PATH` 최우선 → profile별 `~/.aiox/dev|build/daemon.sock`, release는 `~/.aiox/daemon.sock` 하위호환, ③ db = `paths.ts`에 `getStatePath()` scaffold만 정의(`run.ts`는 `:memory:` 유지; 파일 DB 전환 시 얹기), ④ Claude marketplace/plugin runtime path + Codex MCP command/env(`AIOX_SOCKET_PATH`, 필요 시 `CODEX_HOME`) 검증. 권위 = `plan/qa-tracker.md` "R4 (QA4)" 섹션.
+
 ## 남은 가설 / 별개 추적 (불변)
 
 - D 실패 코드 중 `channels_disabled`/`missing_env`는 현 invocation 경로로 도달 불가(channelsEnabled 미배선, env 3종 항상 present) → org-policy 감지(`channelsEnabled`)는 defer.
@@ -171,5 +200,7 @@ AIOX_CLAUDE_CHANNEL_STRATEGY=bogus pnpm dev claude --name smoke-bogus
 
 ## Next
 
-- 상태: Step 3b 본체 + delta fix 1(`<agentName>` placeholder) + delta fix 2(inline entrypoint 실행모드 해석) + delta fix 3(`runtimeBinary` 독립 override) + delta fix 4(dev daemon fork 실행모드 해석) 모두 반영. **467 tests / typecheck / build green. Codex 리뷰·delta 리뷰 OK. Live smoke 4항목 + dev daemon start/stop PASS.** 커밋 대기(사용자 승인 시).
-- 커밋 → **R3 closeout 완료**(D default + A dev-only + 설치 UX). 이후 R3는 별개 추적 항목만 남음(release-plan B1 npm 패키징 / B fallback / silent-drop 실측 / 배포형태 런타임경로).
+- 상태: Step 3b 본체 + delta fix 1(`<agentName>` placeholder) + delta fix 2(inline entrypoint 실행모드 해석) + delta fix 3(`runtimeBinary` 독립 override) + delta fix 4(dev daemon fork 실행모드 해석) + QA-003 finding 기록(R4 이관) 모두 반영. **467 tests / typecheck / build green. Codex 리뷰·delta 리뷰 OK. Live smoke 4항목 + dev daemon start/stop PASS.**
+- **R3 closeout 완료 (2026-05-31)** — D default + inline explicit fallback + `aiox claude-plugin setup` 설치 UX + smoke namespace issue 기록. 커밋 범위는 이 4항목까지.
+- QA-003(dev/build/release runtime namespace isolation)은 **R3 blocker 아님 — R4(QA4)로 이관**. 별도 round에서 socket/db/Claude-plugin/Codex-MCP 격리를 설계·검증한다(권위: `plan/qa-tracker.md` "R4 (QA4)" 섹션).
+- R3에 남은 별개 추적 항목(R3 blocker 아님): release-plan B1 npm 패키징 / B fallback(`doctor --repair`) / silent-drop(e) 실측 / 배포형태 런타임경로.

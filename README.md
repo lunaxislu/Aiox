@@ -29,6 +29,50 @@ pnpm pair --name smoke-pair
 pnpm stop
 ```
 
+## Smoke Namespace
+
+The default daemon socket is shared per user. For reliable development and
+build-smoke checks, use explicit socket namespaces so one mode does not talk to
+another mode's daemon.
+
+> Interim manual workaround. Profile-based auto isolation (dev / build / release
+> socket·db·plugin·MCP namespaces) is tracked as QA-003 and scheduled for QA
+> round R4 — see `plan/qa-tracker.md`. Until then, set namespaces explicitly.
+
+Development:
+
+```bash
+AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev daemon start
+AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev claude --name claude-dev-smoke
+AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev codex --name codex-dev-smoke
+AIOX_SOCKET_PATH=/private/tmp/aiox-dev/daemon.sock pnpm dev daemon stop
+```
+
+Build smoke:
+
+```bash
+pnpm build
+AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm start
+AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm claude --name claude-build-smoke
+AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm codex --name codex-build-smoke
+AIOX_SOCKET_PATH=/private/tmp/aiox-build/daemon.sock pnpm stop
+```
+
+Current daemon state is in-memory, so socket separation also separates state.
+When file-backed daemon state is introduced, use separate DB paths for
+development, build smoke, and installed-release runs as well.
+
+Before release smoke, verify external agent configuration too:
+
+```bash
+claude plugin marketplace list --json
+claude plugin list --json
+```
+
+For Codex smoke, confirm the MCP command points at the intended aiox binary and
+its environment uses the same `AIOX_SOCKET_PATH`. If persistent Codex config is
+involved, isolate `CODEX_HOME` per smoke mode.
+
 ## Claude Plugin Setup
 
 Claude channel-as-plugin is the default Claude channel strategy. Before running
