@@ -75,7 +75,7 @@ Per running pair the OS sees the following processes:
 │          │  per Claude agent                                              │
 │          │  ┌─────────────────────────┐                                   │
 │          │  │  claude CLI             │                                   │
-│          │  │   ↓ spawns via .mcp.json│                                   │
+│          │  │   ↓ spawns via --mcp-cfg│                                   │
 │          │  │  channel-server (stdio) │                                   │
 │          │  │  HTTP /send 127.0.0.1:0 │◀── daemon HTTP POST (inject)      │
 │          │  └─────────────────────────┘                                   │
@@ -89,7 +89,7 @@ Per running pair the OS sees the following processes:
   (in-process in daemon) + 1 TUI child (CLI-owned, `stdio:"inherit"`) + 1
   `aiox mcp-codex` stdio child (app-server-owned via Codex MCP host).
 - Claude agent → 1 `claude` child (CLI-owned, foreground) + 1 channel-server
-  stdio child (Claude-owned via `.mcp.json`).
+  stdio child (Claude-owned via launcher-injected `--mcp-config`).
 
 **MVP invariant** (Round 3 D5-A.5, history/34:623-630)
 `Daemon manages exactly one direct child per Codex agent: the app-server.
@@ -287,9 +287,10 @@ transport — they are returned as `{ ok:false, reason }` results.
 ### 6.1 Topology
 
 Per Claude agent: 1 Claude CLI process + 1 channel-server stdio child
-(spawned by Claude itself via `.mcp.json` lookup of the key
-`"aiox-claude-ingress"`, hard-coded at `src/cli/invocation.ts:155`) + 1
-loopback HTTP `/send` ingress on 127.0.0.1.
+(spawned by Claude itself; the dev-channel `server:"aiox-claude-ingress"`
+resolves the MCP that the launcher injects one-off via `--mcp-config`, key
+hard-coded at `src/cli/invocation.ts:155`, history/49) + 1 loopback HTTP
+`/send` ingress on 127.0.0.1.
 
 Channel-server is **not** a daemon child. The daemon only stores an
 in-memory pointer (`claudeChannelRuntimes` Map at `state.ts:482-483`); no DB
@@ -307,11 +308,14 @@ row. Rationale: history/35 D2 Option A (DB-only + daemon memory registry).
    (`state.ts:567-574`).
 4. CLI calls `launchClaudeWithChannel({channelName:"aiox-claude-ingress",
    agentName, agentToken, daemonSocketPath})` (`src/cli/invocation.ts:144-170`,
-   `src/adapters/claude/launcher.ts:7-46`). Env injected to Claude:
-   `AIOX_CLAUDE_CHANNEL_AGENT_NAME`, `AIOX_CLAUDE_CHANNEL_TOKEN`,
+   `src/adapters/claude/launcher.ts`). The launcher appends `--mcp-config` with
+   an inline aiox channel server definition (`buildClaudeChannelMcpConfig`):
+   `command` = node, `args` = absolute `channel-server.js` (resolved from
+   `import.meta.url`, no cwd/`.mcp.json` coupling), `env` =
+   `AIOX_CLAUDE_CHANNEL_AGENT_NAME` / `AIOX_CLAUDE_CHANNEL_TOKEN` /
    `AIOX_SOCKET_PATH`.
-5. Claude reads `.mcp.json`, spawns channel-server stdio child with the same
-   env propagated.
+5. Claude resolves `server:"aiox-claude-ingress"` against the injected
+   `--mcp-config` and spawns the channel-server stdio child with that `env`.
 6. channel-server (`src/adapters/claude/channel-server.ts:378-410`):
    - `parseChannelServerEnv` fatal-exits if any required env is missing
      (`missing_env_*`, `channel-server.ts:461-473`).

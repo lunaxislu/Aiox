@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "aiox-claude-ingress": {
-      "command": "node",
-      "args": ["dist/src/adapters/claude/channel-server.js"]
-    }
-  }
-}

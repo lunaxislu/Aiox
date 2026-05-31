@@ -21,7 +21,13 @@ import {
   createSendHandler,
   startClaudeChannelHttpIngress,
 } from "../../../src/adapters/claude/channel-server.js";
-import { buildLaunchClaudeChannelArgs, launchClaudeWithChannel } from "../../../src/adapters/claude/launcher.js";
+import {
+  buildClaudeChannelMcpConfig,
+  buildLaunchClaudeChannelArgs,
+  buildLaunchClaudePluginArgs,
+  launchClaudeWithChannel,
+  launchClaudePluginChannel,
+} from "../../../src/adapters/claude/launcher.js";
 
 // ---------------------------------------------------------------------------
 // Daemon state — Claude channel registration
@@ -653,7 +659,7 @@ describe("buildLaunchClaudeChannelArgs", () => {
     expect(args).toContain("server:aiox-claude-alpha");
   });
 
-  it("passes Claude channel identity through child process env", async () => {
+  it("injects the aiox channel MCP one-off via --mcp-config with identity env", async () => {
     const child = { pid: 1234 };
     const { spawn } = await import("node:child_process");
     vi.mocked(spawn).mockReturnValue(child as never);
@@ -667,18 +673,111 @@ describe("buildLaunchClaudeChannelArgs", () => {
         daemonSocketPath: "/tmp/aiox.sock",
       }),
     ).toBe(child);
-    expect(spawn).toHaveBeenCalledWith(
-      "claude",
-      ["--dangerously-load-development-channels", "server:aiox-claude-reviewer"],
-      expect.objectContaining({
-        env: expect.objectContaining({
-          AIOX_CLAUDE_CHANNEL_AGENT_NAME: "reviewer",
-          AIOX_CLAUDE_CHANNEL_TOKEN: "token-1",
-          AIOX_SOCKET_PATH: "/tmp/aiox.sock",
-        }),
-        stdio: "inherit",
+
+    const [, args] = vi.mocked(spawn).mock.calls.at(-1)!;
+    expect(args).toEqual([
+      "--dangerously-load-development-channels",
+      "server:aiox-claude-reviewer",
+      "--mcp-config",
+      expect.any(String),
+    ]);
+
+    const mcpConfig = JSON.parse((args as string[])[3]);
+    const server = mcpConfig.mcpServers["aiox-claude-reviewer"];
+    expect(server.env).toEqual({
+      AIOX_CLAUDE_CHANNEL_AGENT_NAME: "reviewer",
+      AIOX_CLAUDE_CHANNEL_TOKEN: "token-1",
+      AIOX_SOCKET_PATH: "/tmp/aiox.sock",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// launcher — plugin: activation form (R3 strategy D spike)
+// ---------------------------------------------------------------------------
+
+describe("buildLaunchClaudePluginArgs", () => {
+  it("activates the channel via plugin:<name>@<marketplace> under the dev-channel flag", () => {
+    const args = buildLaunchClaudePluginArgs("aiox-channel-ingress", "aiox");
+
+    expect(args).toEqual([
+      "--dangerously-load-development-channels",
+      "plugin:aiox-channel-ingress@aiox",
+    ]);
+  });
+});
+
+describe("launchClaudePluginChannel", () => {
+  it("activates plugin form and injects identity via spawn env (not --mcp-config)", async () => {
+    const child = { pid: 4321 };
+    const { spawn } = await import("node:child_process");
+    vi.mocked(spawn).mockReturnValue(child as never);
+
+    expect(
+      launchClaudePluginChannel({
+        command: "claude",
+        pluginName: "aiox-channel-ingress",
+        marketplaceName: "aiox",
+        agentName: "reviewer",
+        agentToken: "token-1",
+        daemonSocketPath: "/tmp/aiox.sock",
+      }),
+    ).toBe(child);
+
+    const [command, args, options] = vi.mocked(spawn).mock.calls.at(-1)!;
+    expect(command).toBe("claude");
+    expect(args).toEqual([
+      "--dangerously-load-development-channels",
+      "plugin:aiox-channel-ingress@aiox",
+    ]);
+    // identity flows through the spawned claude's env; plugin .mcp.json ${VAR}
+    // placeholders expand from it (history/50 facts 2/4). No --mcp-config.
+    expect(args).not.toContain("--mcp-config");
+    const env = (options as { env: Record<string, string> }).env;
+    expect(env.AIOX_CLAUDE_CHANNEL_AGENT_NAME).toBe("reviewer");
+    expect(env.AIOX_CLAUDE_CHANNEL_TOKEN).toBe("token-1");
+    expect(env.AIOX_SOCKET_PATH).toBe("/tmp/aiox.sock");
+  });
+});
+
+describe("buildClaudeChannelMcpConfig", () => {
+  it("builds an inline mcpServers definition keyed by channelName", () => {
+    const json = buildClaudeChannelMcpConfig({
+      channelName: "aiox-claude-ingress",
+      agentName: "alpha",
+      agentToken: "tok-9",
+      daemonSocketPath: "/tmp/aiox.sock",
+      runtimeBinary: "/usr/bin/node",
+      channelServerPath: "/abs/dist/src/adapters/claude/channel-server.js",
+    });
+    const parsed = JSON.parse(json);
+    const server = parsed.mcpServers["aiox-claude-ingress"];
+
+    expect(server.command).toBe("/usr/bin/node");
+    expect(server.args).toEqual([
+      "/abs/dist/src/adapters/claude/channel-server.js",
+    ]);
+    expect(server.env).toEqual({
+      AIOX_CLAUDE_CHANNEL_AGENT_NAME: "alpha",
+      AIOX_CLAUDE_CHANNEL_TOKEN: "tok-9",
+      AIOX_SOCKET_PATH: "/tmp/aiox.sock",
+    });
+  });
+
+  it("defaults runtimeBinary to process.execPath and resolves an absolute channel-server path", () => {
+    const parsed = JSON.parse(
+      buildClaudeChannelMcpConfig({
+        channelName: "aiox-claude-ingress",
+        agentName: "alpha",
+        agentToken: "tok-9",
+        daemonSocketPath: "/tmp/aiox.sock",
       }),
     );
+    const server = parsed.mcpServers["aiox-claude-ingress"];
+
+    expect(server.command).toBe(process.execPath);
+    expect(server.args[0]).toMatch(/^\//);
+    expect(server.args[0].endsWith("channel-server.js")).toBe(true);
   });
 });
 

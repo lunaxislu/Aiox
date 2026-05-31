@@ -5,7 +5,10 @@ import type { DaemonApi } from "../daemon/api.js";
 import type { StopRequest } from "../daemon/state.js";
 import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { runCodexIngressMcpServer } from "../adapters/codex/mcp-server.js";
-import { launchClaudeWithChannel } from "../adapters/claude/launcher.js";
+import {
+  launchClaudeWithChannel,
+  launchClaudePluginChannel,
+} from "../adapters/claude/launcher.js";
 import { runDaemonProcess } from "../daemon/run.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
 
@@ -54,6 +57,15 @@ export interface InvocationOptions {
   }) => ChildProcess;
   launchClaudeWithChannel?: (options: {
     channelName: string;
+    agentName: string;
+    agentToken: string;
+    daemonSocketPath: string;
+  }) => ChildProcess;
+  // Spike (R3 strategy D): used only when AIOX_SPIKE_STRATEGY_D=1 to launch the
+  // plugin-activation path instead of the legacy --mcp-config server: path.
+  launchClaudePluginChannel?: (options: {
+    pluginName: string;
+    marketplaceName: string;
     agentName: string;
     agentToken: string;
     daemonSocketPath: string;
@@ -150,19 +162,34 @@ export async function invokeParsedCommand(
             exitCode: 1,
           });
         }
-        // Claude uses server:<name> as a static .mcp.json lookup key.
-        // See history/40-step-14-daemon-client-split.history.md.
+        // dev-channel server:<name> resolves the aiox channel MCP that the launcher
+        // injects one-off via --mcp-config (no permanent .mcp.json). The name must
+        // match the injected mcpServers key. See history/49.
         const channelName = "aiox-claude-ingress";
+        // Spike toggle (R3 strategy D, history/50-51): AIOX_SPIKE_STRATEGY_D=1
+        // routes to the plugin-activation launcher so the daemon-issued token
+        // flows into the spawned claude env (which the plugin .mcp.json expands
+        // via ${VAR}). Off by default → legacy path unchanged. Gemini/Codex both
+        // endorsed an env toggle as the minimal, reversible measurement wiring.
+        const useStrategyDPlugin = process.env.AIOX_SPIKE_STRATEGY_D === "1";
         const child = launchChildOrRollback({
           api,
           agentName: command.name,
           launch: () =>
-            (options.launchClaudeWithChannel ?? launchClaudeWithChannel)({
-              channelName,
-              agentName: command.name,
-              agentToken,
-              daemonSocketPath: socketPath,
-            }),
+            useStrategyDPlugin
+              ? (options.launchClaudePluginChannel ?? launchClaudePluginChannel)({
+                  pluginName: "aiox-channel-ingress",
+                  marketplaceName: "aiox",
+                  agentName: command.name,
+                  agentToken,
+                  daemonSocketPath: socketPath,
+                })
+              : (options.launchClaudeWithChannel ?? launchClaudeWithChannel)({
+                  channelName,
+                  agentName: command.name,
+                  agentToken,
+                  daemonSocketPath: socketPath,
+                }),
         });
         const tuiExit = await waitForTuiExit(child);
         await api.disconnectClaudeChannel({ agentName: command.name });

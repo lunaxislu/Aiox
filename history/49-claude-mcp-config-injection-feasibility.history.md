@@ -107,3 +107,52 @@ Not yet verified (would need interactive session + daemon):
   is open. Implementation cost is small (append the flag + payload).
 - Remaining proof (coexistence + inbound-push survival with a real MCP server, interactive
   mode) deferred — needs a manual interactive + daemon session, not automatable here.
+
+## Decision (2026-05-28) — goal locked
+
+User intent, stated directly:
+
+> Inject the aiox MCP into Claude one-off, like Codex. Inject the aiox MCP **by default**.
+> Just that, nothing else.
+
+Concretely:
+
+- `aiox claude` must **automatically inject the aiox MCP into Claude on every launch**, one-off
+  (no permanent `.mcp.json` registration), mirroring how Codex auto-injects aiox via `-c`
+  (`src/adapters/codex/launcher.ts` `buildCodexMcpArgs`).
+- Scope is exactly this — **auto-injection of the aiox MCP**. Not a manual user-facing
+  `--mcp-config` flag, not arbitrary third-party MCP passthrough, not any other feature.
+
+This supersedes the "no decision committed" stance above: the direction is decided. (A prior
+attempt that added a manual `--mcp-config` passthrough flag was reverted as out of scope — it
+was the wrong shape: it required the user to supply the config manually, instead of aiox
+auto-injecting it.)
+
+## Implementation (2026-05-28) — prepared, manual smoke pending
+
+Landed in working tree (not yet committed at time of writing):
+
+- `src/adapters/claude/launcher.ts`: `buildClaudeChannelMcpConfig(...)` (mirrors Codex
+  `buildCodexMcpArgs`) emits an inline `--mcp-config` JSON — `mcpServers["aiox-claude-ingress"]`
+  = `{ command: node, args: [<absolute channel-server.js>], env: { AIOX_CLAUDE_CHANNEL_AGENT_NAME,
+  AIOX_CLAUDE_CHANNEL_TOKEN, AIOX_SOCKET_PATH } }`. Absolute path resolved from `import.meta.url`
+  (dist sibling), removing the cwd/`.mcp.json` coupling. `launchClaudeWithChannel` appends
+  `--mcp-config <json>` after the dev-channel args and moves identity from inherited spawn env
+  into the injected MCP `env`.
+- `.mcp.json` removed (was path-dependent permanent registration).
+- `src/cli/invocation.ts` comment updated; `channelName = "aiox-claude-ingress"` constant kept
+  (dev-channel `server:<name>` must match the injected `mcpServers` key).
+- Tests: `tests/unit/adapters/claude-channel.test.ts` spawn-args assert updated + new
+  `buildClaudeChannelMcpConfig` describe; `docs/aiox/mvp-architecture.md` refreshed. 398 unit
+  tests / typecheck / build PASS.
+
+**Still pending the hard dependency below (manual interactive session):** whether dev-channel
+`server:aiox-claude-ingress` actually resolves the definition supplied by the same invocation's
+`--mcp-config`. If it only consults project/global MCP config, startup fails despite green unit
+tests — fallback would be runtime-generated absolute-path `.mcp.json` (last resort; race/cleanup/
+secret-exposure tradeoffs). Verify from a non-repo-root dir, confirm `send`/`reply` tools appear
+and inbound push survives, then commit.
+
+Cross-validated by Codex (2 review rounds): pattern parity with Codex injection, JSON quoting,
+env move, and `.mcp.json` removal all clean; tsx (src) agent launch treated as unsupported
+(dist-only, per history/42).

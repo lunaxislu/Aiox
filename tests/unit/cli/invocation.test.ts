@@ -270,8 +270,8 @@ describe("CLI invocation", () => {
       [
         "launchClaudeWithChannel",
         {
-          // Claude treats server:<name> as a static .mcp.json lookup key;
-          // per-agent identity is carried by env/token instead.
+          // dev-channel server:<name> resolves the MCP that the launcher injects
+          // one-off via --mcp-config; per-agent identity rides in that config's env.
           channelName: "aiox-claude-ingress",
           agentName: "reviewer",
           agentToken: "claude-token-1",
@@ -280,6 +280,55 @@ describe("CLI invocation", () => {
       ],
       ["disconnectClaudeChannel", { agentName: "reviewer" }],
     ]);
+  });
+
+  it("routes to the plugin launcher when AIOX_SPIKE_STRATEGY_D=1 (spike toggle)", async () => {
+    const prev = process.env.AIOX_SPIKE_STRATEGY_D;
+    process.env.AIOX_SPIKE_STRATEGY_D = "1";
+    try {
+      const calls: unknown[] = [];
+      const child = fakeChild();
+      const runtime = createRuntime(calls, {
+        attachAgent: async () => ({
+          ok: true,
+          agent: { ...fakeAgentDto(), name: "reviewer", kind: "claude" },
+          claudeChannelToken: "claude-token-1",
+        }),
+      });
+
+      const invoked = invokeParsedCommand(
+        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
+        {
+          runtime,
+          cwd: "/repo",
+          launchClaudeWithChannel: () => {
+            calls.push(["launchClaudeWithChannel"]);
+            return child;
+          },
+          launchClaudePluginChannel: (options) => {
+            calls.push(["launchClaudePluginChannel", options]);
+            setTimeout(() => child.emit("exit", 0, null), 0);
+            return child;
+          },
+        },
+      );
+
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+      expect(calls).toContainEqual([
+        "launchClaudePluginChannel",
+        {
+          pluginName: "aiox-channel-ingress",
+          marketplaceName: "aiox",
+          agentName: "reviewer",
+          agentToken: "claude-token-1",
+          daemonSocketPath: "/tmp/aiox/daemon.sock",
+        },
+      ]);
+      expect(calls).not.toContainEqual(["launchClaudeWithChannel"]);
+    } finally {
+      if (prev === undefined) delete process.env.AIOX_SPIKE_STRATEGY_D;
+      else process.env.AIOX_SPIKE_STRATEGY_D = prev;
+    }
   });
 });
 
