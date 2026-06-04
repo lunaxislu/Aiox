@@ -890,5 +890,5 @@ The implementation smoke covered:
 - Shared Codex app-server optimization.
 - Full resume-safe long-running workflow.
 - Agent message lifecycle policies that are not needed for MVP:
-  `prd/post-mvp/agent-message-lifecycle-policy.md`.
+  `prd/post-mvp/aiox-a2a-spec.md` §9.
 - Quorum/aggregation routing.

@@ -43,7 +43,7 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 
 - **Scope**: instruction + send/reply tool description hardening for MCP collaboration protocol.
 - **Changed files**: `src/adapters/codex/mcp-server.ts`, `src/adapters/claude/channel-server.ts`, `tests/unit/adapters/codex-mcp-server.test.ts`, `tests/unit/adapters/claude-channel.test.ts`.
-- **Authority / follow-up plan**: `plan/post-mvp-aiox-mcp-envelope-metadata.md`.
+- **Authority / follow-up plan**: `plan/post-mvp/envelope-metadata.plan.md` (결정 권위는 `prd/post-mvp/aiox-a2a-spec.md` §4).
 
 Scenario PASS notes:
 
@@ -61,7 +61,7 @@ Observed metrics:
 
 Remaining risk:
 
-- Phase 1.5 is still a soft instruction/description contract. If intent omission, `[[CONCLUDE]]` leak, reflex loop recurrence, or unintentional calls appear, enter Phase 2 via `plan/post-mvp-aiox-mcp-envelope-metadata.md`.
+- Phase 1.5 is still a soft instruction/description contract. If intent omission, `[[CONCLUDE]]` leak, reflex loop recurrence, or unintentional calls appear, enter Phase 2 via `plan/post-mvp/envelope-metadata.plan.md`.
 
 ### R3 — Claude `--mcp-config` injection feasibility
 

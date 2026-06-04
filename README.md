@@ -31,7 +31,7 @@ pnpm stop
 
 ## Runtime Profiles & Namespace Isolation
 
-`aiox` separates its daemon socket (and future state DB) by *runtime profile* so
+`aiox` separates its daemon socket (and future state DB) by _runtime profile_ so
 development, build-smoke, and installed-release runs never talk to each other's
 daemon. The profile is resolved once via `resolveProfile()`:
 
@@ -42,10 +42,10 @@ daemon. The profile is resolved once via `resolveProfile()`:
 
 Socket path per profile:
 
-| profile | socket |
-| ------- | ------ |
-| dev     | `~/.aiox/dev/daemon.sock` |
-| build   | `~/.aiox/build/daemon.sock` |
+| profile | socket                                      |
+| ------- | ------------------------------------------- |
+| dev     | `~/.aiox/dev/daemon.sock`                   |
+| build   | `~/.aiox/build/daemon.sock`                 |
 | release | `~/.aiox/daemon.sock` (backward compatible) |
 
 So `pnpm dev daemon start` and `pnpm start` run fully independent daemons —

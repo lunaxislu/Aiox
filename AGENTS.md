@@ -41,9 +41,15 @@ Priority: `prd/history > plan > docs/aiox > memory/session > agent-specific scra
 3. `history/13-aiox-rewrite-decision.history.md`를 rewrite 기준 결정 문서로 둔다.
 4. `history/15-mvp-design-decisions.history.md` + `prd/mvp/aiox-mvp-spec.md`를 MVP 설계 권위 문서로 둔다.
 5. `plan/mvp-implementation-checklist.md`를 MVP 진행 추적 execution checklist로 둔다. 권위는 `history/`+`prd/`, plan/은 실행 레이어.
-6. `docs/aiox/`는 사용자가 이해해야 하는 개념 설명과 learning record를 둔다.
+6. `prd/post-mvp/aiox-a2a-spec.md`를 Post-MVP A2A communication standard와
+   local-first reference runtime의 production spec으로 둔다.
+7. `history/58-post-mvp-a2a-architecture-decisions.history.md`를 Post-MVP A2A
+   product framing과 architecture 결정 경위로 둔다.
+8. `plan/post-mvp.plan.md`는 Post-MVP 구현 후보와 향후 sequencing을 위한 실행 문서다.
+   현재 항목은 unordered candidates이며, production spec이 아니다.
+9. `docs/aiox/`는 사용자가 이해해야 하는 개념 설명과 learning record를 둔다.
    예: `docs/aiox/pair-attach-kind-mismatch.md`.
-7. 새 일반 `docs/`는 구현에 직접 필요한 시점에만 다시 만든다.
+10. 새 일반 `docs/`는 구현에 직접 필요한 시점에만 다시 만든다.
 
 ## Memory와 권위 문서 패턴
 

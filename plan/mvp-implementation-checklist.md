@@ -1048,7 +1048,7 @@ Deferred to Post-MVP (2026-05-25, user decision):
 
 - Codex queued delivery retry/drain: when a Claude -> Codex reply remains queued because no live loaded thread exists, retry/drain it after Codex channel registration or a later loaded-thread signal. The 2026-05-25 cold-start smoke shows the alternate-thread preference already covers the visible MVP path, so the queued retry/drain safety net moves to post-MVP.
 - Codex MCP queued-message pull/read/ack: agent-level pull path so Codex can discover and acknowledge queued deliveries when push could not happen immediately. Tied to the queued retry/drain safety net; deferred together to post-MVP.
-- aiox MCP intent/CONCLUDE → envelope metadata 이전 (Phase 2): Phase 1.5 instruction + tool description smoke passed on 2026-05-27, but `Intent:` and `[[CONCLUDE]]` remain payload-level soft protocol markers. Detailed work, triggers, and cutover are intentionally not duplicated here; use `plan/post-mvp-aiox-mcp-envelope-metadata.md` as the single source.
+- aiox MCP intent/CONCLUDE → envelope metadata 이전 (Phase 2): Phase 1.5 instruction + tool description smoke passed on 2026-05-27, but `Intent:` and `[[CONCLUDE]]` remain payload-level soft protocol markers. Detailed work, triggers, and cutover are intentionally not duplicated here; use `plan/post-mvp/envelope-metadata.plan.md` as the execution sub-plan (decision authority `prd/post-mvp/aiox-a2a-spec.md` §4).
 
 
 Remaining out of scope:
@@ -1074,13 +1074,13 @@ Remaining out of scope:
 
 Post-MVP parking lot:
 
-- `prd/post-mvp/agent-message-lifecycle-policy.md` tracks pair-level
-  blocked/pending policy plus duplicate outbound, fan-out, and user-interrupted
-  pending-turn policy. These are not MVP implementation scope.
+- `prd/post-mvp/aiox-a2a-spec.md` §9 tracks pair-level blocked/pending policy plus
+  duplicate outbound, fan-out, and user-interrupted pending-turn policy. These are not
+  MVP implementation scope.
 - Codex queued delivery retry/drain and Codex MCP queued-message pull/read/ack
   remain Post-MVP safety nets after the visible MVP smoke path passed.
 - aiox MCP intent/CONCLUDE envelope metadata migration is tracked in
-  `plan/post-mvp-aiox-mcp-envelope-metadata.md`; keep detailed scope and
+  `plan/post-mvp/envelope-metadata.plan.md`; keep detailed scope and
   triggers there.
 
 ## Step 15: Pair slot generalization (same-vendor pair) — 🟢 Phase B complete (2026-05-27)
@@ -1089,7 +1089,7 @@ Post-MVP parking lot:
 - **Phase A authority**: `history/46-step-15-phase-a-decisions.history.md` (2026-05-27). D1-D9 lock 완료.
 - **Phase B closeout authority**: `history/47-step-15-phase-b-closeout.history.md` (2026-05-27).
 - **Status**: Phase B 구현 + cross-validation follow-up (F1/F2/F3) + AIOX_CLAUDE_CHANNEL_PORT 가드 모두 완료. F4/F5 follow-up으로 Claude reply dispatch surface + same-vendor deferred coverage 보강. D8 MCP surface consistency mini-step으로 all MCP send/reply structuredContent dispatch 노출 통일. Main에 green commit으로 머지. 396 tests / 48 files passing, typecheck clean.
-- **Post-MVP defer**: D6 registry refactor (`adapter[kind].inject(...)`) → `prd/post-mvp/aiox-post-mvp-spec.md` §P1. Channel server boot failure → daemon surface → `prd/post-mvp/aiox-post-mvp-spec.md` §P2.
+- **Post-MVP defer**: D6 registry refactor (`adapter[kind].inject(...)`) and channel server boot failure → daemon surface are tracked as unordered candidates in `plan/post-mvp.plan.md`.
 
 ### Phase A 결정 요약 (권위는 history/46)
 
