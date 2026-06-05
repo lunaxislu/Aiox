@@ -5,7 +5,7 @@ Post-MVP 구현의 **index**다. 이 파일은 production spec이 아니며, 제
 
 각 구현 후보는 `plan/post-mvp/<deliverable>.plan.md` 상세 sub-plan을 가진다. 본 파일은
 candidate 등록 + sequencing만 담는다. 상세(Motivation/scope/cutover/checklist)는 각
-sub-plan에 둔다.
+sub-plan에 둔다. 현재 다음 kickoff 후보는 `plan/post-mvp/envelope-metadata.plan.md`다.
 
 ## Session Re-entry
 
@@ -32,11 +32,11 @@ sub-plan에 둔다.
 - 각 sub-plan은 frontmatter `implements:`로 구현하는 spec §을 명시한다 (traceability).
 - 항목 추가: `plan/post-mvp/<name>.plan.md` 생성 + 아래 Candidates에 1줄 등록.
 
-## Candidates (unordered)
+## Candidates
 
 | Deliverable | Sub-plan | Implements | 한 줄 |
 | --- | --- | --- | --- |
-| A2A envelope/marker migration | [`envelope-metadata.plan.md`](post-mvp/envelope-metadata.plan.md) | §4 | payload-level `Intent:`/`[[CONCLUDE]]` marker를 envelope metadata로 이전 (P3 첫 step) |
+| A2A envelope/lifecycle migration | [`envelope-metadata.plan.md`](post-mvp/envelope-metadata.plan.md) | §4 | **Next kickoff**. payload-level marker를 A2A envelope/lifecycle metadata로 이전하고 Local single-daemon A2A v1을 안정화 |
 | Codex structured metadata spike | [`codex-structured-metadata-spike.plan.md`](post-mvp/codex-structured-metadata-spike.plan.md) | §4·§9 | Codex `turn/start` 또는 app-server surface가 structured aiox metadata를 native로 운반할 수 있는지 조사 |
 | Adapter dispatch registry refactor | [`adapter-dispatch-registry.plan.md`](post-mvp/adapter-dispatch-registry.plan.md) | §5 | daemon dispatch의 vendor 분기를 adapter registry surface로 이관 |
 | Channel server boot failure surface | [`channel-boot-surface.plan.md`](post-mvp/channel-boot-surface.plan.md) | §5 | Claude channel server child 부팅 실패를 daemon attach response에 surface |
