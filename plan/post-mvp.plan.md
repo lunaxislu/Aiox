@@ -9,6 +9,30 @@ sub-plan에 둔다. 현재 다음 kickoff 후보는 `plan/post-mvp/envelope-meta
 
 ## Session Re-entry
 
+> **Current Work Status** — 양 agent(Claude/Codex/Gemini) 공통 진입점. WS2 SessionStart onramp hook이 이 블록을 읽는다. 갱신 규칙: `Last verified`는 확인된 결과만, dirty면 baseline/working 분리.
+
+```text
+Project: aiox
+Current stage: Post-MVP 운영환경 셋업 (async-petting-hoare) — WS1 완료 · AGENTS.md 정리(cross-WS) Phase 1(item1~9) 적용 완료·Codex 교차검증 반영·사용자 확인/커밋 대기 · Phase 2(WS2 skill 동시)/WS2 구현 대기
+Authority:
+  - prd/post-mvp/aiox-a2a-spec.md        (A2A product/protocol)
+  - history/58-post-mvp-a2a-architecture-decisions.history.md
+Execution:
+  - plan/post-mvp.plan.md                (이 파일 — index)
+  - plan/post-mvp/ops-setup.plan.md      (ops-setup 진행/handoff — 셋이 공유)
+  - ~/.claude/plans/async-petting-hoare.md (WS1~4 원본 상세, Claude scratch)
+Last verified:
+  - committed baseline: 3cab3c1 (docs)
+  - last work session(2026-06-07): docs-only — AGENTS.md 정리 Phase 1 item3~9 적용(Repository Map 통합 / Authority 단순화 / Vault→transition note / Change Safety 신설 / Work Entry 불변식 hoist + 4 detail body transition note / 구 구현 원칙 흡수), inbound 2곳 sync, 자동관리 nextjs-rules 블록 복원, my-vault 경로 제거. Codex 교차검증 반영. test/typecheck 미요구(docs-only)
+  - last known green: R4 closeout (history/57)
+Working state: DIRTY (uncommitted) — AGENTS.md, docs/aiox/README.md, prd/README.md, plan/post-mvp.plan.md, plan/post-mvp/ops-setup.plan.md, plan/qa-tracker.md, prd/post-mvp/aiox-a2a-spec.md(이전 세션 잔여)
+Open:
+  - WS1 prune 완료: Claude 22→4(+MEMORY.md), Codex 9→1 thin index, sqlite untouched. AGENTS.md 메모리 정책 명시 + Current Work Status 신설 + qa workflow→qa-tracker 이관.
+  - AGENTS.md 정리(cross-WS): Phase 1(item1~9) 적용 완료 — 11섹션 구조(Repository Map/Authority/Memory/Work Entry/Change Safety/Decision/4 detail+transition/Atlas-Vault). AGENTS.md 현재 142줄(자동관리 nextjs 블록 9줄 포함; Vault 2섹션·중복 통합·@user 코멘트 제거로 본문 축소). item9 검증 통과(dead ref 0, @user 0, my-vault 경로 0). Codex 교차검증 4지적 반영(nextjs 블록 복원·my-vault 경로 제거·future path 표기·상태 sync) + 사용자 후속 3변경(legacy 일반화·Repository Map scratch bullet 제거·Authority agent-scratch tier 제거 4계층) → stale consumer 3곳 Codex 정합(plan/README·docs-aiox/README·history/README). **다음=커밋(사용자 지시: aiox-a2a-spec.md 제외)→Phase 2(WS2 /aiox-stage skill 동시)**. 상세=ops-setup.plan.md.
+  - WS2 tooling 결정 lock (구현 pending): repo-local tools / SessionStart onramp / /aiox-stage / typecheck=stage exit gate / subagent 0 / MCP 신규 0 + settings cleanup
+  - WS3 stage workflow / WS4 repo-as-vault+atlas: 미착수
+```
+
 새 Codex/Claude/Gemini 세션은 Post-MVP 작업을 시작하기 전에 이 순서로 읽는다.
 
 1. `AGENTS.md` — repo 운영 규칙.
@@ -24,6 +48,9 @@ sub-plan에 둔다. 현재 다음 kickoff 후보는 `plan/post-mvp/envelope-meta
   `plan/post-mvp/codex-structured-metadata-spike.plan.md`를 병행 조사 후보로 본다.
 - Compose, local multi-daemon, remote/federation은 A2A envelope/lifecycle과 adapter/runtime
   connector가 정리되기 전까지 구현을 시작하지 않는다.
+- **운영 환경 셋업 (async-petting-hoare): WS1 완료, WS2 구현 대기.** 진행 기록·handoff·의논거리는
+  `plan/post-mvp/ops-setup.plan.md`(Codex 포함 셋이 공유). 상태 요약은 위 Current Work Status.
+  WS1~4 원본 상세는 `~/.claude/plans/async-petting-hoare.md`(Claude scratch).
 
 ## 규약
 

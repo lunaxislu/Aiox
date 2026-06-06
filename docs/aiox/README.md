@@ -6,7 +6,7 @@
 
 - 사용자가 잘 모르는 topic에 대한 agent의 답변/설명을 기록한다.
 - **구현 결정 자체의 권위 문서가 아니다** — 권위는 `history/`와 `prd/`에 있다.
-- Authority Priority 3단계 — `prd/history > plan` 다음, `memory/session > agent-specific scratch` 보다 위.
+- Authority Priority 3단계 — `prd/history > plan` 다음이며 `memory/session`보다 위.
 - `docs/`의 일반 규칙("구현에 직접 필요한 것만")의 **예외**다 — learning record는 구현에 직접 필요하지 않더라도 사용자 본인을 위해 둔다.
 
 ## 언제 쓰나
@@ -51,7 +51,7 @@
 
 - 학습 기록 작성 트리거는 `AGENTS.md` Critical Issue Workflow 섹션 4단계.
 - 권위 우선순위는 `AGENTS.md` Authority Priority 섹션.
-- 예외 규칙은 `AGENTS.md` Docs Rules 섹션.
+- 예외 규칙은 `AGENTS.md` Repository Map 섹션.
 
 ## 현재 진입점
 

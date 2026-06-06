@@ -42,7 +42,7 @@
 
 ## 관련 규칙
 
-- 권위/메모리/scratch 우선순위는 `AGENTS.md` Authority Priority 섹션.
+- 권위 문서와 메모리의 우선순위는 `AGENTS.md` Authority Priority 섹션.
 - Critical 이슈 처리 4단계는 `AGENTS.md` Critical Issue Workflow 섹션.
 - Step 진행 규칙은 `AGENTS.md` Step 진행 규칙 섹션.
 

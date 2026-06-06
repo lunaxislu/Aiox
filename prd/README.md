@@ -47,4 +47,4 @@ prd/
 ## 관련 규칙
 
 - 권위 우선순위는 `AGENTS.md` Authority Priority 섹션.
-- 변경 흐름(권위 문서 → 메모리 → vault)은 `AGENTS.md` Memory와 권위 문서 패턴 섹션.
+- 변경 흐름(권위 문서 → 메모리)은 `AGENTS.md` Memory 섹션.

@@ -7,7 +7,20 @@ MVP 구현 완료 후 user-led QA의 **살아있는 인덱스**.
 - Codex 픽스 commit 나오면 `Commit` 칸 채우고 status: fixed
 - 재검증 통과하면 status: verified + history 파일에 Re-verify 한 줄
 
-연관: [[aiox-step-progress]] · [[aiox-history-doc]] · `history/42-mvp-implementation-closeout.history.md`
+연관: `history/42-mvp-implementation-closeout.history.md` · `history/4X-qa-round-*.history.md`.
+
+## Session workflow (6단계)
+
+QA 세션은 이 순서로 진행한다 (MVP closeout 후 확립; post-MVP QA round에도 적용):
+
+1. **Resume** — 이 tracker + 직전 round history Open items + git log + test/typecheck baseline 읽기.
+2. **Plan** — 새 round면 tracker/history 파일 신설, scope 한 줄.
+3. **Execute** — 시나리오 단위로 history에 기록, 버그는 `QA-NNN`으로 Active issues에 추가.
+4. **Delegate** — Codex에 round history + QA-ID + 재현절차 전달, status: fixed 마킹.
+5. **Re-verify** — 사용자 재실행 통과해야만 status: verified (Codex self-verify로는 부족).
+6. **Close** — Open items 갱신 + commit `qa: round N <scope> — N open / N fixed / N verified`.
+
+Why: MVP Step 진행 규칙(`AGENTS.md`)과 QA는 리듬이 달라 별도 workflow가 필요. 이슈가 라운드를 넘나들고 Codex 위임/재검증 루프가 끼므로 tracker + round 이중 구조로 stale 방지.
 
 ---
 

@@ -45,7 +45,7 @@ Execution checklist와 step 진행 상태. **실행 레이어**.
 ## .claude/plans/와의 차이
 
 - `plan/` = 장기 execution checklist, 권위 있음 (2단계).
-- `.claude/plans/` = Claude 단기 실행 scratch, 권위 X (5단계 — agent-specific scratch). 작업 끝나면 결과만 `history/`와 `plan/`으로 흡수.
+- `.claude/plans/` = Claude 단기 실행 scratch, 공유 권위가 아님. 작업 끝나면 결과만 `history/`와 `plan/`으로 흡수.
 
 ## 관련 규칙
 
