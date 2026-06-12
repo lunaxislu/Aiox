@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/scripts/onramp\"",
+            "statusMessage": "Loading work onramp",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

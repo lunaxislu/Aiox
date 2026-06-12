@@ -1,0 +1,47 @@
+#!/bin/sh
+# 세션 시작 onramp. 열린 로그와 (있으면) 진행 중 plan을 얇게 보여준다.
+#
+# 원칙: 얇게. description(로그 자기 필드)과 포인터만 출력하고, 로그 본문 상태를
+# 재구성하지 않는다. 이 출력은 권위가 아니라 onramp다 — 실제 상태는 로그가 소유한다.
+# Codex(.codex/hooks.json)와 Claude(.claude/settings.json)가 같은 이 스크립트를 부른다.
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+cd "$root" || exit 0
+
+echo "# 작업 onramp"
+echo
+
+echo "열린 로그:"
+open_logs=$(sh scripts/log search --status open 2>/dev/null)
+if [ -z "$open_logs" ] || [ "$open_logs" = "맞는 로그 없음" ]; then
+    echo "- 없음. 작업을 시작하면 scripts/log로 새 로그를 만드세요."
+else
+    printf '%s\n' "$open_logs" | sed 's/^/- /'
+fi
+
+# 진행 중 plan: plans/*.md 중 `- [>]` 현재 단계가 있는 것만.
+plan_header=0
+for p in plans/*.md; do
+    [ -e "$p" ] || continue
+    count=$(grep -c '^- \[>\]' "$p" 2>/dev/null)
+    [ "${count:-0}" -eq 0 ] && continue
+
+    title=$(awk '/^# /{ sub(/^# /, ""); print; exit }' "$p")
+    if [ "$plan_header" -eq 0 ]; then
+        echo
+        echo "진행 중 plan:"
+        plan_header=1
+    fi
+
+    if [ "$count" -eq 1 ]; then
+        step=$(grep '^- \[>\]' "$p" | sed 's/^- //')
+        printf -- '- %s (%s) → 현재 단계: %s\n' "$p" "$title" "$step"
+    else
+        printf -- '- %s (%s) ⚠ 현재 단계 [>]가 %s개 — plan 확인 필요:\n' "$p" "$title" "$count"
+        grep '^- \[>\]' "$p" | sed 's/^- /    - /'
+    fi
+done
+
+echo
+echo "→ description으로 관련 로그를 찾고, 본문의 최신 기록과 미완료 행동으로 현재 단계를 확인한 뒤"
+echo "  작업 전 현재 할 일을 사용자에게 짧게 보고하세요. (권위는 로그, 이 출력은 onramp)"
