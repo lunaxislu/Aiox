@@ -35,6 +35,19 @@ rationale: history/58-post-mvp-a2a-architecture-decisions.history.md
 - 둘 다 protocol marker가 사용자-facing answer로 새어 나갈 위험을 안고 있음
   (Phase 1.5 smoke에선 미발견)
 
+2026-06-09 실제 Codex 협업에서 `<aiox-channel source="claude" message_id="...">`를
+일반 사용자 입력처럼 처리해, `message_id`를 `aiox_reply(parent_message_id, ...)`로
+반환하지 않고 답안을 사용자-facing 응답으로 직접 출력한 회귀가 발생했다. 현재 text
+envelope가 reply routing metadata를 포함해도 agent가 이를 행동 계약으로 따르지 않을 수
+있으므로, delivery rendering과 agent guidance가 이 경로를 명시하고 회귀 테스트로 고정해야
+한다.
+
+2026-06-10에는 Codex가 `aiox_send_message`의 접수 결과를 받은 뒤 Claude의 실제 응답을
+기다리기 위해 같은 turn에서 `exec_command sleep`을 반복하는 문제가 확인됐다. send tool의
+완료는 dispatch 접수 완료이지 원격 agent 작업 완료가 아니며, 실제 응답은 이후 별도 inbound
+envelope로 전달된다. 이 비동기 경계를 agent가 polling으로 메우지 않도록 delivery lifecycle과
+turn 재개 계약을 명시해야 한다.
+
 ## 2. 목적
 
 protocol marker를 payload에서 분리해 envelope/metadata layer로 옮기는 것을 시작점으로,
@@ -65,6 +78,13 @@ pending threshold, daemon authority 등)은 §4에 있다 — 여기서 복제�
 - daemon API + 저장 schema에 `intent`, `thread_status` 필드 추가
 - agent injection prompt (`<channel ...>` envelope)에 `type`, `intent`, `reply_expected`,
   `thread_status`, delivery correlation attribute 노출
+- inbound A2A envelope를 받은 agent가 일반 사용자 응답으로 처리하지 않고, envelope의
+  correlation id를 reply tool의 `parent_message_id`로 사용하도록 명시적인 routing guidance 제공
+- send/reply tool의 접수 결과와 원격 agent의 실제 응답 완료를 구분하고, 응답 대기는
+  `sleep`이나 임의 polling이 아니라 후속 inbound envelope가 새 turn을 재개하는 방식으로 처리
+- envelope/lifecycle만으로 이 행동을 보장할 수 없으면 양쪽 MCP instruction과 tool
+  description에 send 후 `sleep`/polling하지 말고 inbound channel event를 기다리라는 fallback
+  guidance 추가
 - fan-out은 delivery 단위 rendering으로 처리하고, P3 v1에서는 `recipient_visibility`를
   추가하지 않음
 - reply timeout은 hard cutoff가 아니라 pending visibility threshold로 surface
@@ -104,6 +124,11 @@ TDD 원칙에 따라 각 increment는 실패 테스트 → 최소 구현 → 리
 4. **Delivery rendering**
    - 실패 테스트: fan-out delivery가 target별 `deliveryId`를 가진 envelope로 렌더되고,
      reply instruction은 source-only routing을 가리킨다.
+   - 실패 테스트: Codex/Claude가 inbound A2A envelope의 correlation id를 reply tool에
+     전달해야 하며, 협업 답안을 사용자-facing 응답으로 직접 출력하지 않아야 한다는 guidance가
+     렌더링된다.
+   - 실패 테스트: send tool이 dispatch 접수 결과를 반환한 뒤 agent가 같은 turn에서
+     `sleep`/polling을 실행하지 않고, 실제 응답은 후속 inbound envelope로 새 turn을 재개한다.
    - 구현: Codex/Claude injection prompt/channel rendering을 delivery metadata 기반으로 바꾼다.
 5. **Conclude lifecycle**
    - 실패 테스트: `conclusion` intent 또는 equivalent input이 payload `[[CONCLUDE]]` 없이
@@ -113,6 +138,9 @@ TDD 원칙에 따라 각 increment는 실패 테스트 → 최소 구현 → 리
    - 실패 테스트: generated instructions/tool descriptions가 "payload에 Intent prefix /
      [[CONCLUDE]]를 쓰라"는 규칙을 더 이상 포함하지 않는다.
    - 구현: agent-facing protocol guidance를 envelope metadata 책임으로 갱신한다.
+   - 구현: runtime의 event 재개만으로 보장되지 않으면 "send 결과는 접수 확인이며 원격 응답
+     완료가 아니다. 응답을 기다리기 위한 sleep/polling을 실행하지 않는다"는 fallback 행동
+     계약을 양쪽 MCP instruction과 tool description에 추가한다.
 7. **Smoke and regression**
    - 실패 테스트/fixture: Phase 1.5 user-led smoke 4개 시나리오를 새 envelope contract로
      재현한다.
@@ -128,6 +156,12 @@ TDD 원칙에 따라 각 increment는 실패 테스트 → 최소 구현 → 리
 - reply correlation은 logical message id만이 아니라 target delivery correlation을 기준으로
   parent delivery를 참조한다.
 - default reply routing은 source-only로 유지된다.
+- inbound A2A envelope의 응답은 일반 사용자 응답과 구분되며, correlation id가 reply tool의
+  `parent_message_id`로 전달되는 계약이 양쪽 adapter guidance와 테스트에 존재한다.
+- send tool의 dispatch 접수와 원격 응답 완료가 구분되며, agent는 응답을 기다리기 위해 같은
+  turn에서 `sleep` 또는 임의 polling을 실행하지 않는다.
+- 원격 agent 응답은 후속 inbound envelope가 새 turn을 재개해 전달한다. 이 계약을 runtime이
+  보장하지 못하는 경우 MCP instruction/tool description fallback과 회귀 테스트가 존재한다.
 - `reply_expected` delivery가 오래 pending이면 soft visibility threshold로 surface하며, hard
   failure cutoff는 explicit policy가 있을 때만 적용한다.
 - Codex/Claude adapter 모두 동일한 A2A metadata contract를 사용한다.
@@ -146,6 +180,8 @@ TDD 원칙에 따라 각 increment는 실패 테스트 → 최소 구현 → 리
 - user-led smoke 재수행:
   - 단발 위임
   - 다라운드 토론
+  - inbound envelope 답변이 사용자-facing 출력으로 새지 않고 원 발신자에게 reply로 반환됨
+  - send 직후 응답 대기용 `sleep`/polling 없이 후속 inbound envelope로 turn이 재개됨
   - 사용자 종료 trigger
   - 무호출/no-op
 
@@ -172,6 +208,12 @@ kickoff candidate로 승격됐으므로, 트리거 관찰 여부와 무관하게
 
 - Codex text fallback은 native structured metadata가 아니므로 `reply_expected`가 있어도 행동
   보장은 아니다. `codex-structured-metadata-spike.plan.md`로 native path를 병행 확인한다.
+- text envelope를 일반 사용자 메시지로 오인하면 correlation metadata가 있어도 reply tool을
+  호출하지 않을 수 있다. 양쪽 agent injection guidance와 smoke fixture에서 reply 경로를
+  독립 회귀 항목으로 검증한다.
+- send tool이 즉시 접수 결과만 반환하는 비동기 계약이 명확하지 않으면 agent가 응답 완료를
+  기다리려고 shell `sleep`이나 polling tool을 호출할 수 있다. 우선 runtime의 inbound event
+  turn 재개로 해결하고, 행동 보장이 부족하면 MCP instruction fallback을 함께 적용한다.
 - 저장/API/envelope model 확장은 marker migration과 lifecycle behavior cutover에 섞지 않는다.
   첫 increment의 additive structural step으로 분리해 double-source 기간을 명시적으로 관리한다.
 - `thread_status` 명칭은 spec 권위어가 아니다. kickoff 때 `conclusion`/thread lifecycle
@@ -196,6 +238,8 @@ kickoff candidate로 승격됐으므로, 트리거 관찰 여부와 무관하게
       correlation, conclusion/thread status) — spec §4와 정합
 - [ ] daemon 저장 schema migration 필요 여부 + 전략
 - [ ] agent injection prompt 새 envelope 형식 합의
+- [ ] send 접수와 원격 응답 완료의 비동기 경계, inbound event turn 재개와
+      `sleep`/polling 금지 계약 합의
 - [ ] Codex structured metadata spike를 선행/병행/후행 중 어디에 둘지 결정
 - [ ] cutover PR 책임자 / 일정 지정
 - [ ] smoke test 시나리오 재사용/갱신 합의

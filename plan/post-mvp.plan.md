@@ -13,7 +13,7 @@ sub-plan에 둔다. 현재 다음 kickoff 후보는 `plan/post-mvp/envelope-meta
 
 ```text
 Project: aiox
-Current stage: Post-MVP 운영환경 셋업 (async-petting-hoare) — WS1 완료 · AGENTS.md 정리(cross-WS) Phase 1(item1~9) 적용 완료·Codex 교차검증 반영·사용자 확인/커밋 대기 · Phase 2(WS2 skill 동시)/WS2 구현 대기
+Current stage: Post-MVP 운영환경 셋업 (async-petting-hoare) — WS1 완료 · AGENTS.md 정리(cross-WS) Phase 1(item1~9) 커밋 완료(1b26d9b) · **WS2 구현 차례**(추천 순서 hook→/aiox-stage skill→settings 위생) · Phase 2(skill 후 4 body 이동) 대기
 Authority:
   - prd/post-mvp/aiox-a2a-spec.md        (A2A product/protocol)
   - history/58-post-mvp-a2a-architecture-decisions.history.md
@@ -22,14 +22,14 @@ Execution:
   - plan/post-mvp/ops-setup.plan.md      (ops-setup 진행/handoff — 셋이 공유)
   - ~/.claude/plans/async-petting-hoare.md (WS1~4 원본 상세, Claude scratch)
 Last verified:
-  - committed baseline: 3cab3c1 (docs)
+  - committed baseline: 1b26d9b (docs: AGENTS.md Phase 1 정리)
   - last work session(2026-06-07): docs-only — AGENTS.md 정리 Phase 1 item3~9 적용(Repository Map 통합 / Authority 단순화 / Vault→transition note / Change Safety 신설 / Work Entry 불변식 hoist + 4 detail body transition note / 구 구현 원칙 흡수), inbound 2곳 sync, 자동관리 nextjs-rules 블록 복원, my-vault 경로 제거. Codex 교차검증 반영. test/typecheck 미요구(docs-only)
   - last known green: R4 closeout (history/57)
-Working state: DIRTY (uncommitted) — AGENTS.md, docs/aiox/README.md, prd/README.md, plan/post-mvp.plan.md, plan/post-mvp/ops-setup.plan.md, plan/qa-tracker.md, prd/post-mvp/aiox-a2a-spec.md(이전 세션 잔여)
+Working state: Phase 1 committed (1b26d9b). 미커밋 = prd/post-mvp/aiox-a2a-spec.md(이전 세션 잔여, 사용자 지시로 commit 제외) + 이 handoff 갱신분(plan/post-mvp.plan.md·plan/post-mvp/ops-setup.plan.md)
 Open:
   - WS1 prune 완료: Claude 22→4(+MEMORY.md), Codex 9→1 thin index, sqlite untouched. AGENTS.md 메모리 정책 명시 + Current Work Status 신설 + qa workflow→qa-tracker 이관.
-  - AGENTS.md 정리(cross-WS): Phase 1(item1~9) 적용 완료 — 11섹션 구조(Repository Map/Authority/Memory/Work Entry/Change Safety/Decision/4 detail+transition/Atlas-Vault). AGENTS.md 현재 142줄(자동관리 nextjs 블록 9줄 포함; Vault 2섹션·중복 통합·@user 코멘트 제거로 본문 축소). item9 검증 통과(dead ref 0, @user 0, my-vault 경로 0). Codex 교차검증 4지적 반영(nextjs 블록 복원·my-vault 경로 제거·future path 표기·상태 sync) + 사용자 후속 3변경(legacy 일반화·Repository Map scratch bullet 제거·Authority agent-scratch tier 제거 4계층) → stale consumer 3곳 Codex 정합(plan/README·docs-aiox/README·history/README). **다음=커밋(사용자 지시: aiox-a2a-spec.md 제외)→Phase 2(WS2 /aiox-stage skill 동시)**. 상세=ops-setup.plan.md.
-  - WS2 tooling 결정 lock (구현 pending): repo-local tools / SessionStart onramp / /aiox-stage / typecheck=stage exit gate / subagent 0 / MCP 신규 0 + settings cleanup
+  - AGENTS.md 정리(cross-WS): Phase 1(item1~9) 적용 완료 — 11섹션 구조(Repository Map/Authority/Memory/Work Entry/Change Safety/Decision/4 detail+transition/Atlas-Vault). AGENTS.md 현재 142줄(자동관리 nextjs 블록 9줄 포함; Vault 2섹션·중복 통합·@user 코멘트 제거로 본문 축소). item9 검증 통과(dead ref 0, @user 0, my-vault 경로 0). Codex 교차검증 4지적 반영(nextjs 블록 복원·my-vault 경로 제거·future path 표기·상태 sync) + 사용자 후속 3변경(legacy 일반화·Repository Map scratch bullet 제거·Authority agent-scratch tier 제거 4계층) → stale consumer 3곳 Codex 정합(plan/README·docs-aiox/README·history/README). **Phase 1 커밋 완료(1b26d9b, aiox-a2a-spec.md 제외). 다음=WS2 구현 → 그 안의 /aiox-stage skill이 생기면 Phase 2(4 body 이동)도 이어서 닫음.** 상세=ops-setup.plan.md.
+  - WS2 tooling 결정 lock (구현 pending): repo-local tools / SessionStart onramp hook / /aiox-stage skill / typecheck=stage exit gate / subagent 0 / MCP 신규 0 + settings.local.json cleanup. **추천 착수 순서 = ① SessionStart onramp hook(read-only, 선행조건 충족) → ② /aiox-stage skill(Phase 2 unblock) → ③ settings 위생.** 미결정: hook이 Current Work Status를 직접 parse vs 작은 renderer script(work-status show) 동반(의논거리 #2·#7).
   - WS3 stage workflow / WS4 repo-as-vault+atlas: 미착수
 ```
 

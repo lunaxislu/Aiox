@@ -9,8 +9,8 @@ scope: ops/tooling (spec § 아님)
 Post-MVP 본 구현(`envelope-metadata` 등)을 **여러 세션(Claude+Codex)에 걸쳐 운영**하기 위한 토대.
 메모리·툴링·workflow·Obsidian 4갈래(WS1~4). 이 파일이 **사용자·Claude·Codex 셋이 공유하는 진행 기록 + handoff**다.
 
-> **Freshness contract:** updated `2026-06-07` / baseline commit `3cab3c1` / stage = **WS1 완료 · AGENTS.md 정리 Phase 1(item1~9) 적용 완료(Codex 교차검증 in-flight·사용자 확인 대기) · Phase 2/WS2 구현 대기** /
-> worktree **DIRTY** (AGENTS.md, docs/aiox/README.md, prd/README.md, plan/post-mvp.plan.md, plan/qa-tracker.md, plan/post-mvp/ops-setup.plan.md; + prd/post-mvp/aiox-a2a-spec.md = 이전 세션 잔여).
+> **Freshness contract:** updated `2026-06-07` / baseline commit `1b26d9b` (docs: AGENTS.md Phase 1 정리) / stage = **WS1 완료 · AGENTS.md 정리 Phase 1 커밋 완료 · WS2 구현 차례 · Phase 2(skill 후 4 body 이동) 대기** /
+> worktree: Phase 1 committed. 미커밋 = prd/post-mvp/aiox-a2a-spec.md(이전 세션 잔여, commit 제외) + 이 handoff 갱신분.
 > WS1~4 원본 상세는 `~/.claude/plans/async-petting-hoare.md`(Claude scratch, Codex 접근 불가) → **이 repo 파일이 shared 진행 권위.**
 
 ## Scope — WS1~4 + 순서
@@ -212,7 +212,13 @@ AGENTS.md(Claude·Codex·Gemini 셋 공유 root 규칙)에 WS1 thin-index 원칙
 
 ## Handoff & Open questions (3자 의논)
 
-**다음 세션 진입 경로:** 이 파일 + `plan/post-mvp.plan.md`의 Current Work Status(`Session Re-entry`) 읽기 → **다음 작업 = `AGENTS.md 정리` 섹션 "편집 순서" Phase 1 item 3~9를 일괄 진행**(사용자 결정 2026-06-07; item 1+2 batch 완료): Claude가 Codex 교차검증하며 연속 편집 + Phase 1 검증까지 → 일괄 사용자 확인. 이후 WS2 구현 / WS3 의논. (AGENTS.md 나머지 섹션에 사용자 `@user` inline 코멘트가 남아 있음 — item 3~9 편집 시 함께 해소.)
+**다음 세션 진입 경로:** 이 파일 + `plan/post-mvp.plan.md`의 Current Work Status(`Session Re-entry`) 읽기 → **다음 작업 = WS2 툴링 구현**. AGENTS.md 정리 Phase 1은 커밋 완료(1b26d9b). 추천 착수 순서:
+
+1. **SessionStart onramp hook** (read-only) — Current Work Status 블록을 읽어 현 stage / next / authority links / dirty 경고 / 유효 handoff만 출력. matcher `startup|resume|clear`=full, `compact`=축약. 선행조건(machine-readable Current Work Status) 이미 충족 → 위험 최저·즉시 가치라 먼저.
+2. **`/aiox-stage` skill** — exit gate가 `pnpm test && pnpm typecheck` 강제 + handoff template(freshness contract: commit SHA + created_at + stage + dirty). 생성·검증되면 **AGENTS.md Phase 2**(Step·Critical·Checklist·Delegated 4 body를 skill로 이동, root invariant 1줄씩 잔존)도 이어서 닫는다.
+3. **settings 위생** — `settings.json`(공유) 분리 + `settings.local.json` stale MCP/permission cleanup·least-privilege.
+
+착수 전 결정 1개: hook이 Current Work Status를 직접 parse할지 vs 작은 repo-local renderer script(`work-status show`)를 동반할지(의논거리 #2·#7, Cross-WS automation 섹션). + Gemini 메모리 thin-index 확인은 Phase 2 묶음. 안전: hook은 Node/exec + input validation + timeout + no-write + fixture self-test + `claude --debug` dry-run.
 
 **의논거리:**
 1. **WS1 커밋** — repo 4파일(AGENTS/plan/qa-tracker/ops-setup)을 커밋할지, 메시지/범위(prd 잔여와 분리).
