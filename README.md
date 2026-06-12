@@ -7,12 +7,14 @@ Local multi-agent orchestration for Codex and Claude.
 Run the TypeScript entrypoint directly:
 
 ```bash
-pnpm dev daemon start
-pnpm dev daemon stop
-pnpm dev daemon status
-pnpm dev claude --name claude-smoke
-pnpm dev codex --name codex-smoke
-pnpm dev pair --name smoke-pair
+pnpm dev daemon stop    # clear any existing dev daemon
+pnpm dev daemon start   # start the dev-profile daemon
+pnpm dev daemon status  # confirm the daemon is reachable
+pnpm dev pair --name smoke-pair  # reserve bidirectional routes
+pnpm dev claude --name claude-smoke --pair smoke-pair  # attach Claude in Terminal A
+pnpm dev codex --name codex-smoke --pair smoke-pair    # attach Codex in Terminal B
+pnpm dev status         # inspect agents, pairs, and routes
+pnpm dev stop           # stop the dev daemon
 ```
 
 ## Build Smoke
@@ -20,13 +22,15 @@ pnpm dev pair --name smoke-pair
 Build first, then use the package scripts that call the built `dist` entrypoint:
 
 ```bash
-pnpm build
-pnpm start
-pnpm status
-pnpm claude --name claude-smoke
-pnpm codex --name codex-smoke
-pnpm pair --name smoke-pair
-pnpm stop
+pnpm build          # compile the dist entrypoint
+pnpm stop           # clear any existing build daemon
+pnpm start          # start the build-profile daemon
+pnpm status         # confirm the daemon is reachable
+pnpm pair --name smoke-pair  # reserve bidirectional routes
+pnpm claude --name claude-smoke --pair smoke-pair  # attach Claude in Terminal A
+pnpm codex --name codex-smoke --pair smoke-pair    # attach Codex in Terminal B
+pnpm status         # inspect agents, pairs, and routes
+pnpm stop           # stop the build daemon
 ```
 
 ## Runtime Profiles & Namespace Isolation
@@ -118,7 +122,7 @@ pnpm claude-plugin setup
 Default:
 
 ```bash
-pnpm dev claude --name claude-smoke
+pnpm dev claude --name claude-smoke  # attach Claude through the plugin channel
 ```
 
 This uses the Claude plugin channel:
@@ -146,15 +150,33 @@ Invalid values fail fast. There is no automatic fallback from plugin to inline.
 
 Use this path when you want to attach agents first and connect routes manually.
 
+Control terminal:
+
 ```bash
-pnpm build
-pnpm stop
-pnpm start
-pnpm codex --name codex-smoke
-pnpm claude --name claude-smoke
-pnpm connect claude-smoke codex-smoke
-pnpm connect codex-smoke claude-smoke
-pnpm status
+pnpm build   # compile the dist entrypoint
+pnpm stop    # clear any existing build daemon
+pnpm start   # start the build-profile daemon
+```
+
+Terminal A:
+
+```bash
+pnpm codex --name codex-smoke  # attach Codex without a pair
+```
+
+Terminal B:
+
+```bash
+pnpm claude --name claude-smoke  # attach Claude without a pair
+```
+
+Control terminal:
+
+```bash
+pnpm connect claude-smoke codex-smoke  # route Claude to Codex
+pnpm connect codex-smoke claude-smoke  # route Codex to Claude
+pnpm status                            # inspect agents and routes
+pnpm stop                              # stop the build daemon
 ```
 
 ## Pair Reservation
@@ -162,29 +184,30 @@ pnpm status
 Use this path when you want a named pair to create the bidirectional routes once
 both agents attach.
 
+Control terminal:
+
+```bash
+pnpm build                  # compile the dist entrypoint
+pnpm stop                   # clear any existing build daemon
+pnpm start                  # start the build-profile daemon
+pnpm pair --name smoke-pair # reserve bidirectional routes
+```
+
 Terminal A:
 
 ```bash
-pnpm build
-pnpm stop
-pnpm start
-pnpm pair --name smoke-pair
+pnpm claude --name claude-smoke --pair smoke-pair  # attach Claude
 ```
 
 Terminal B:
 
 ```bash
-pnpm codex --name codex-smoke --pair smoke-pair
+pnpm codex --name codex-smoke --pair smoke-pair  # attach Codex
 ```
 
-Terminal C:
+Control terminal:
 
 ```bash
-pnpm claude --name claude-smoke --pair smoke-pair
-```
-
-Terminal A:
-
-```bash
-pnpm status
+pnpm status  # inspect agents, pairs, and routes
+pnpm stop    # stop the build daemon
 ```
