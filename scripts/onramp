@@ -1,47 +1,245 @@
 #!/bin/sh
-# 세션 시작 onramp. 열린 로그와 (있으면) 진행 중 plan을 얇게 보여준다.
-#
-# 원칙: 얇게. description(로그 자기 필드)과 포인터만 출력하고, 로그 본문 상태를
-# 재구성하지 않는다. 이 출력은 권위가 아니라 onramp다 — 실제 상태는 로그가 소유한다.
-# Codex(.codex/hooks.json)와 Claude(.claude/settings.json)가 같은 이 스크립트를 부른다.
+# 세션 시작 onramp. 활성 plan과 Resume Pointer 체인으로 현재 작업 로그 하나를 찾는다.
+# 의미를 추론하지 않고 구조 포인터만 따라가며, 모호하거나 깨진 구조에서는 후보를 보여준다.
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
 cd "$root" || exit 0
 
+log_tool=.agents/skills/log/scripts/log
+
+read_field() {
+    awk -v key="$2" '
+        NR == 1 && $0 == "---" { infm = 1; next }
+        infm && $0 == "---" { exit }
+        infm {
+            prefix = key ": "
+            if (substr($0, 1, length(prefix)) == prefix) {
+                print substr($0, length(prefix) + 1)
+                exit
+            }
+        }
+    ' "$1"
+}
+
+active_plan_steps() {
+    find plans -type f -name '*.md' ! -name 'AGENTS.md' 2>/dev/null | sort | while IFS= read -r plan; do
+        awk -v plan="$plan" '
+            /^```/ { fence = !fence; next }
+            !fence && /^- \[>\]/ { print plan "\t" $0 }
+        ' "$plan"
+    done
+}
+
+resume_text() {
+    awk '
+        /^- \[ \] Resume:/ {
+            sub(/^- \[ \] Resume:[[:space:]]*/, "")
+            text = $0
+            capture = 1
+            next
+        }
+        capture && /^[[:space:]]+/ {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            text = text " " line
+            next
+        }
+        capture { print text; exit }
+        END { if (capture) print text }
+    ' "$1" | awk 'NR == 1 { print; exit }'
+}
+
+log_path_from_text() {
+    printf '%s\n' "$1" | awk '
+        {
+            line = $0
+            if (match(line, /logs\/[^`[:space:]]+\.md/)) {
+                print substr(line, RSTART, RLENGTH)
+                exit
+            }
+        }
+    '
+}
+
+log_path_from_resume() {
+    printf '%s\n' "$1" | awk '
+        {
+            line = $0
+            if (match(line, /logs\/[^`[:space:]]+\.md/)) {
+                # 분리 로그 포인터는 Resume의 첫 행동에 둔다. 뒤쪽의 owner 문서나
+                # 검토 대상 경로는 작업 목록일 수 있으므로 따라가지 않는다.
+                if (RSTART <= 40) print substr(line, RSTART, RLENGTH)
+                exit
+            }
+        }
+    '
+}
+
+latest_heading() {
+    awk '/^## / { heading = $0 } END { print heading }' "$1"
+}
+
+print_log_summary() {
+    file=$1
+    topic=$(read_field "$file" topic)
+    description=$(read_field "$file" description)
+    status=$(read_field "$file" status)
+    printf -- '- %s  [%s]  %s\n' "$file" "$status" "$topic"
+    [ -n "$description" ] && printf '  %s\n' "$description"
+
+    heading=$(latest_heading "$file")
+    [ -n "$heading" ] && printf '  latest: %s\n' "${heading#\#\# }"
+
+    resume=$(resume_text "$file")
+    if [ -n "$resume" ]; then
+        printf '  Resume: %s\n' "$resume"
+    else
+        echo "  Resume: 없음"
+    fi
+}
+
+print_open_candidates() {
+    open_logs=$($log_tool search --status open 2>/dev/null)
+    if [ -z "$open_logs" ] || [ "$open_logs" = "맞는 로그 없음" ]; then
+        echo "- 없음. 작업을 시작하면 log skill로 새 로그를 만드세요."
+    else
+        printf '%s\n' "$open_logs" | sed 's/^/- /'
+    fi
+}
+
+referenced_open_leaves() {
+    open_logs=$($log_tool search --status open 2>/dev/null)
+    paths=$(printf '%s\n' "$open_logs" | awk 'NF && $0 != "맞는 로그 없음" { print $1 }')
+    edges=""
+
+    for source in $paths; do
+        if ! $log_tool audit --resume "$source" >/dev/null 2>&1; then
+            continue
+        fi
+        resume=$(resume_text "$source")
+        target=$(log_path_from_resume "$resume")
+        [ -n "$target" ] || continue
+        [ -f "$target" ] || continue
+        [ "$(read_field "$target" status)" = "open" ] || continue
+        edges="$edges$source	$target
+"
+    done
+
+    printf '%b' "$edges" | awk -F '\t' '
+        NF == 2 { outgoing[$1] = 1; incoming[$2] = 1 }
+        END {
+            for (path in incoming) {
+                if (!outgoing[path]) print path
+            }
+        }
+    ' | sort
+}
+
 echo "# 작업 onramp"
 echo
 
-echo "열린 로그:"
-open_logs=$(sh scripts/log search --status open 2>/dev/null)
-if [ -z "$open_logs" ] || [ "$open_logs" = "맞는 로그 없음" ]; then
-    echo "- 없음. 작업을 시작하면 scripts/log로 새 로그를 만드세요."
-else
-    printf '%s\n' "$open_logs" | sed 's/^/- /'
+steps=$(active_plan_steps)
+step_count=$(printf '%s\n' "$steps" | awk 'NF { count++ } END { print count + 0 }')
+
+if [ "$step_count" -eq 0 ]; then
+    open_logs=$($log_tool search --status open 2>/dev/null)
+    open_count=$(printf '%s\n' "$open_logs" | awk 'NF && $0 != "맞는 로그 없음" { count++ } END { print count + 0 }')
+    if [ "$open_count" -eq 1 ]; then
+        current=$(printf '%s\n' "$open_logs" | awk '{ print $1 }')
+        echo "현재 작업 로그:"
+        print_log_summary "$current"
+    else
+        leaves=$(referenced_open_leaves)
+        leaf_count=$(printf '%s\n' "$leaves" | awk 'NF { count++ } END { print count + 0 }')
+        if [ "$leaf_count" -eq 1 ]; then
+            current=$(printf '%s\n' "$leaves" | awk 'NR == 1 { print }')
+            echo "현재 작업 경로:"
+            echo "- open 로그 Resume 참조 그래프의 유일한 leaf"
+            echo
+            echo "현재 작업 로그:"
+            print_log_summary "$current"
+        else
+            echo "현재 작업 후보:"
+            print_open_candidates
+            echo
+            echo "→ 활성 plan이 없고 Resume 참조 leaf가 하나로 정해지지 않아 자동 선택하지 않았습니다."
+        fi
+    fi
+    exit 0
 fi
 
-# 진행 중 plan: plans/*.md 중 `- [>]` 현재 단계가 있는 것만.
-plan_header=0
-for p in plans/*.md; do
-    [ -e "$p" ] || continue
-    count=$(grep -c '^- \[>\]' "$p" 2>/dev/null)
-    [ "${count:-0}" -eq 0 ] && continue
+if [ "$step_count" -ne 1 ]; then
+    echo "진행 중 plan 구조 확인 필요:"
+    printf '%s\n' "$steps" | awk -F '\t' '{ print "- " $1 " → " $2 }'
+    echo
+    echo "→ 활성 단계가 여러 개라 현재 작업을 자동 선택하지 않았습니다."
+    exit 0
+fi
 
-    title=$(awk '/^# /{ sub(/^# /, ""); print; exit }' "$p")
-    if [ "$plan_header" -eq 0 ]; then
-        echo
-        echo "진행 중 plan:"
-        plan_header=1
+plan=$(printf '%s\n' "$steps" | awk -F '\t' 'NR == 1 { print $1 }')
+step=$(printf '%s\n' "$steps" | awk -F '\t' 'NR == 1 { print $2 }')
+current=$(log_path_from_text "$step")
+
+if [ -z "$current" ] || [ ! -f "$current" ]; then
+    echo "진행 중 plan 포인터 확인 필요:"
+    printf -- '- %s → %s\n' "$plan" "$step"
+    echo
+    echo "→ 활성 단계의 로그 포인터가 없거나 대상이 존재하지 않습니다."
+    exit 0
+fi
+
+chain=$current
+seen="|$current|"
+warning=""
+depth=0
+
+while [ "$depth" -lt 16 ]; do
+    if ! $log_tool audit --resume "$current" >/dev/null 2>&1; then
+        warning="Resume Pointer 구조가 유효하지 않습니다: $current"
+        break
     fi
 
-    if [ "$count" -eq 1 ]; then
-        step=$(grep '^- \[>\]' "$p" | sed 's/^- //')
-        printf -- '- %s (%s) → 현재 단계: %s\n' "$p" "$title" "$step"
-    else
-        printf -- '- %s (%s) ⚠ 현재 단계 [>]가 %s개 — plan 확인 필요:\n' "$p" "$title" "$count"
-        grep '^- \[>\]' "$p" | sed 's/^- /    - /'
+    resume=$(resume_text "$current")
+    next=$(log_path_from_resume "$resume")
+    [ -n "$next" ] || break
+
+    if [ ! -f "$next" ]; then
+        warning="Resume Pointer 대상이 존재하지 않습니다: $next"
+        break
     fi
+    if [ "$(read_field "$next" status)" != "open" ]; then
+        warning="Resume Pointer 대상이 open 로그가 아닙니다: $next"
+        break
+    fi
+    case "$seen" in
+        *"|$next|"*)
+            warning="Resume Pointer 순환을 발견했습니다: $next"
+            break
+            ;;
+    esac
+
+    chain="$chain
+$next"
+    seen="$seen$next|"
+    current=$next
+    depth=$((depth + 1))
 done
 
+if [ "$depth" -ge 16 ]; then
+    warning="Resume Pointer 체인이 16단계를 초과했습니다."
+fi
+
+echo "현재 작업 경로:"
+printf -- '- %s → %s\n' "$plan" "${step#- [>] }"
+printf '%s\n' "$chain" | awk '{ print "- " $0 }'
 echo
-echo "→ description으로 관련 로그를 찾고, 본문의 최신 기록과 미완료 행동으로 현재 단계를 확인한 뒤"
-echo "  작업 전 현재 할 일을 사용자에게 짧게 보고하세요. (권위는 로그, 이 출력은 onramp)"
+echo "현재 작업 로그:"
+print_log_summary "$current"
+
+if [ -n "$warning" ]; then
+    echo
+    printf '경고: %s\n' "$warning"
+fi
+
+echo
+echo "→ 현재 작업 로그의 최신 기록·Work Items·Resume Pointer를 읽고 작업 전 범위를 짧게 보고하세요."
