@@ -9,25 +9,31 @@ agent memory 없이도 repo만으로 현재 상태와 필요한 문맥을 찾을
 찾기 위한 읽기 진입점으로만 유지한다. 현재 작업과 재개 상태는 open 로그가 소유한다.
 이 파일은 세션 진입을 위한 최상위 운영 계약만 둔다.
 
-## Work Records
+## Workflow
 
-- 현재 작업, 토론, 질문과 체크리스트는 `logs/`의 주제별 open 로그에 기록한다.
-- 로그 하나의 체크리스트로 다음 행동을 알 수 있으면 plan을 만들지 않는다.
-- 독립된 큰 작업 여러 개의 순서를 따로 관리해야 할 때만 얇은 plan을 만든다.
-- plan에는 단계 순서, 상태와 단계 로그 포인터만 둔다. 실제 작업, 토론과 재개
-  context는 단계 로그가 소유한다.
-- 작업 중 확정된 결과는 책임 있는 spec, architecture, decision, `AGENTS.md`, 코드
-  또는 테스트에 반영한다. process나 사용법이 바뀌면 해당 guide도 갱신한다.
-- 로그는 결론 반영, 필요한 구현·검증 완료와 남은 체크박스 0을 모두 만족할 때만
-  `decided`로 닫는다. 단순 중단이나 보류는 `open`으로 유지한다.
+- 현재 작업, 토론, 질문과 Work Items는 `logs/`의 주제별 open 로그에 기록한다.
+- 로그 하나의 Work Items와 Resume Pointer로 작업 범위와 재개 지점을 알 수 있으면 plan
+  문서를 만들지 않는다.
+- 독립된 큰 작업 여러 개의 순서를 따로 관리해야 할 때만 `plans/`에 얇은 plan 문서를
+  만든다.
 
-작업을 재개할 때는 관련 plan이 있으면 현재 단계가 가리키는 로그를 열고, plan이
-없으면 관련 open 로그를 찾는다. `description`은 관련 로그를 찾는 안정적인 검색
-설명으로만 사용하고, 현재 단계와 첫 행동은 로그 본문의 최신 기록과 미완료 행동에서
-확인한다. 별도 Current Work, 세션별 handoff나 세션 요약을 새로 만들지 않는다.
+현재 작업을 정하고 재개할 때는 다음 순서를 따른다.
 
-- 사례별 workflow: `docs/guides/workflow.md`
-- 로그 작성과 명령 사용법: Claude/Codex log skill과 `scripts/log`
+1. 사용자가 작업이나 로그를 지정했으면 그것을 사용한다.
+2. 현재 로그의 Resume Pointer가 분리 로그를 가리키면 그 로그를 연다.
+3. `plans/`에 관련 plan 문서가 있으면 활성 단계가 가리키는 로그를 연다.
+4. 위 포인터가 없으면 `description`으로 관련 open 로그를 찾는다.
+
+선택한 로그 본문의 최신 기록, Work Items와 Resume Pointer에서 현재 단계, 작업 범위와
+재개 지점을 확인한다. 여러 후보 중 하나로 정해지지 않으면 `open` 상태만으로 현재
+작업을 추측하지 않는다. 별도 Current Work, 세션별 handoff나 세션 요약을 새로 만들지
+않는다.
+
+- 일반 작업 흐름과 사례: `docs/guides/workflow.md`
+- plan 구조, 단계 문법과 유지: `plans/AGENTS.md`
+- 로그 작성, 재개, 상태와 종료: Claude/Codex log skill
+- 로그를 닫을 때의 owner 반영과 repo 전용 추가 점검: `logs/AGENTS.md`
+- 로그 도구: `.agents/skills/log/scripts/log`
 
 현재 작업 기록은 이 섹션의 open 로그 규칙을 따른다. 아래의 기존
 `workspace-reset.md` Current Work/Handoff는 hook 전환 전까지 읽기 진입점으로만
@@ -48,7 +54,8 @@ agent memory 없이도 repo만으로 현재 상태와 필요한 문맥을 찾을
 - 커밋은 사용자가 명시적으로 요청한 경우에만 목적별로 분류하고 범위를 보고한 뒤
   수행한다.
 - legacy `workspace-reset.md` Handoff는 더는 갱신하지 않는다. 재개에 필요한 현재
-  위치, 첫 행동과 제한 사항은 open 로그 본문의 최신 기록과 미완료 행동에 둔다.
+  위치와 제한 사항은 open 로그의 최신 기록에, 전체 작업 범위와 재개 지점은 Work
+  Items와 Resume Pointer에 둔다.
 - Vault·Atlas 설계 또는 구현을 시작할 때만
   `history/59-local-obsidian-vault-atlas-discussion.history.md`를 읽는다.
 
@@ -56,5 +63,5 @@ agent memory 없이도 repo만으로 현재 상태와 필요한 문맥을 찾을
 
 세션 시작 시 기존 hook이 `workspace-reset.md`의 `Current Work`와 `Handoff`를
 요약할 수 있다. 이 출력은 전환 중인 legacy onramp이며 현재 상태의 권위가 아니다.
-실제 작업은 관련 open 로그의 최신 기록과 미완료 행동을 기준으로 재개하고,
+실제 작업은 관련 open 로그의 최신 기록, Work Items와 Resume Pointer를 기준으로 재개하고,
 작업 전 현재 할 일, 읽을 범위와 진행 방식을 사용자에게 짧게 보고한다.
