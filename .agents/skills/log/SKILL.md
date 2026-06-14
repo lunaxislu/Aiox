@@ -25,12 +25,13 @@ handoff를 본문에서 제공한다.
 - `audit`: 미완료 체크박스 구조 점검. `--resume`은 Resume Pointer의 0·1 불변 점검
 - `set-status`: `open`, `decided`, `superseded` 변경
 - `append`: 새 날짜 블록을 끝에 추가하고 Resume Pointer를 생성·완료·대체·취소한다
+- `resolve`: 임의 위치의 미완료 Work Item을 완료·취소·이관으로 구조 전이한다
 
 필요한 참조만 읽는다.
 
 - 로그를 생성하거나 본문을 기록할 때
   [recording-contract.md](references/recording-contract.md)를 읽는다.
-- 로그 선택·재개·분리·관련 로그 영향 기록·점검·반영·종료 또는 도구 변경을 다룰 때
+- 로그 선택·재개·분리·cross-log 정합화·점검·반영·종료 또는 도구 변경을 다룰 때
   [lifecycle.md](references/lifecycle.md)를 읽는다.
 
 ## 핵심 원칙
@@ -68,26 +69,22 @@ handoff를 본문에서 제공한다.
 대상이 명확한 append는 바로 한다. 새 로그 생성·여러 로그 분리·대상 불확실은
 범위·주제·근거를 짧게 알린 뒤 시행한다(상세는 lifecycle.md).
 
-변경이 다른 open 로그의 미완료 범위를 실제로 부분 수행했으면 그 로그도 정합화한다.
-이것은 lifecycle.md의 `관련 로그 영향 기록` 계약이다. 후보는 그 섹션의 저비용
-탐색 순서로 좁히고 모든 open 로그를 일괄 탐색하지 않는다. 매 append마다 탐색하지
-않고, 다른 로그의 상태에도 영향을 줄 수 있는 checkpoint(owner 문서·코드·테스트를
-실제 변경했을 때, Resume 완료·대체, 작업 전환, 종료 전)에서만 확인한다.
+현재 문맥에서 이미 경로를 아는 로그만 갱신하고 관련 로그를 능동 탐색하지 않는다. 상세는
+lifecycle.md의 `지연 cross-log 정합화`를 따른다.
 
 ## Append
 
 ```sh
-<skill-dir>/scripts/log append <파일> "<블록 주제>" [옵션]
+<skill-dir>/scripts/log append <파일> "<블록 주제>" [옵션] <<'EOF'
+<본문>
+EOF
 ```
 
-블록 본문은 stdin으로 제공한다. script는 본문 의미를 판단하지 않는다.
+본문은 stdin으로 직접 제공하며 append만을 위한 외부 임시 파일은 만들지 않는다. script는
+본문 의미를 판단하지 않는다.
 
-append는 반영 전에 입력(주제·이유·Resume 행동은 공백 아닌 한 줄, 본문은 비어 있지
-않음), 대상 구조(유효한 open 로그 frontmatter, 미완료 Resume 최대 1개), 교체 직전
-동시 수정(원본 byte 비교)을 검증한 뒤 결과를 원자적으로 교체한다. 어느 검증이든
-실패하거나 동시 수정이 감지되면 원본을 그대로 둔다. mode 선택과 본문의 의미적
-정확성은 호출 전에 agent가 판단하며, append는 미리보기나 2차 작성 단계를 요구하지
-않는다.
+append는 입력과 open 로그 구조를 검증하고 결과를 원자적으로 반영한다. script가
+검증하는 구조와 agent가 판단하는 의미의 경계는 recording-contract.md를 따른다.
 
 Work Items는 0개 이상 둘 수 있지만 fenced code 밖의 미완료
 `- [ ] Resume: <행동>`은 로그당 최대 하나다. Resume은 본문에 직접 쓰지 않고
@@ -97,12 +94,19 @@ Work Items는 0개 이상 둘 수 있지만 fenced code 밖의 미완료
 - 기존 Resume이 없을 때 mode 없이 `--resume "<행동>"`: 최초 Resume을 만든다.
 - `--complete-resume`: 기존 Resume을 `[x]`로 닫는다. 이어갈 행동은 선택적으로
   `--resume`으로 잇는다.
-- `--replace-resume "<이유>" --resume "<행동>"`: 기존 Resume을 `Cancelled Resume:`
-  기록으로 바꾸고 새 행동을 잇는다. `--resume`은 필수다.
-- `--cancel-resume "<이유>"`: 기존 Resume을 `Cancelled Resume:` 기록으로 바꾸고 새
-  행동은 두지 않는다.
+- `--replace-resume "<이유>" --resume "<행동>"`: 기존 행동을 대체하고 새 행동을 잇는다.
+  `--resume`은 필수다.
+- `--cancel-resume "<이유>"`: 기존 행동을 취소하고 새 행동은 두지 않는다.
 - mode 없이 append: 기존 Resume이 있으면 유지하고 진행 블록만 추가한다.
 
 mode를 고르기 전에 recording-contract.md의 `Work Items와 Resume Pointer`를 읽는다.
-결정 변경을 기록하는 `Revised`와 Resume 전이는 서로 대체하지 않으며, mode 선택과
-본문 의미 판단은 agent의 책임이다(핵심 원칙).
+결정의 의미 변경과 Resume 전이는 서로 대체하지 않으며, mode 선택과 본문 의미 판단은
+agent의 책임이다.
+
+## Resolve
+
+임의 위치의 Work Item을 완료·취소·이관할 때는 `resolve`를 사용한다. agent가 항목의
+의미와 mode를 판단하고, 도구에는 audit 줄 번호와 기대 원문을 함께 전달한다. 미완료
+Resume Pointer 전이는 append 전용이다. 자세한 입력 형식은
+recording-contract.md의 `Work Items와 Resume Pointer` 절과
+`<skill-dir>/scripts/log resolve` usage를 따른다.

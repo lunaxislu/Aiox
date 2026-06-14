@@ -543,5 +543,36 @@ else
     ok "A10 임시 파일 생성 실패/충돌 경로 무변경"
 fi
 
+# ---------- 번호형 Work Item audit/close 가드 ----------
+
+# W1 번호형 미완료 Work Item(`1. [ ]`)을 audit이 검출한다.
+wfx="$WORK/w1.md"
+printf '%s\n' '---' 'topic: 테스트' 'description: 설명' 'status: open' '---' '' \
+    '## 2026-06-12 · 초기' '' '## Work Items' '' '1. [ ] 첫 항목.' '2. [x] 둘째 항목.' > "$wfx"
+if "$LOG" audit "$wfx" 2>/dev/null | grep -q '1\. \[ \] 첫 항목'; then
+    ok "W1 번호형 미완료 Work Item audit 검출"
+else
+    ng "W1 번호형 미완료 Work Item audit 미검출"
+fi
+
+# W2 번호형 미완료가 있으면 decided 전환을 거부하고 status는 open 유지.
+if "$LOG" set-status "$wfx" decided > /dev/null 2>&1; then
+    ng "W2 번호형 미완료인데 decided 성공"
+elif [ "$(read_field "$wfx" status)" != "open" ]; then
+    ng "W2 거부됐는데 status가 open이 아님"
+else
+    ok "W2 번호형 미완료 decided 거부/open 유지"
+fi
+
+# W3 번호형 Work Item이 모두 완료면 decided 통과(정상 동작 보존).
+wfx3="$WORK/w3.md"
+printf '%s\n' '---' 'topic: 테스트' 'description: 설명' 'status: open' '---' '' \
+    '## 2026-06-12 · 초기' '' '## Work Items' '' '1. [x] 첫 항목.' '2. [x] 둘째 항목.' > "$wfx3"
+if "$LOG" set-status "$wfx3" decided > /dev/null 2>&1 && [ "$(read_field "$wfx3" status)" = "decided" ]; then
+    ok "W3 번호형 전부 완료 decided 통과"
+else
+    ng "W3 번호형 전부 완료인데 decided 실패"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
