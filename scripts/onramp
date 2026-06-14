@@ -30,23 +30,33 @@ active_plan_steps() {
     done
 }
 
+# Resume 행동 텍스트를 만든다. 어느 줄이 진짜 Resume인지는 log 도구의
+# audit --resume(fence-aware·들여쓰기 허용)이 식별한 줄 번호로 정하고, 그 줄과
+# 이어지는 들여쓴 연속 줄을 합친다. 포인터 인식 규칙을 log 도구 한 곳에 둬,
+# onramp이 fenced 예시를 포인터로 오인하거나 들여쓴 Resume을 놓쳐 잘못된 로그를
+# 따라가는 drift를 막는다.
 resume_text() {
-    awk '
-        /^- \[ \] Resume:/ {
-            sub(/^- \[ \] Resume:[[:space:]]*/, "")
+    rt_file=$1
+    rt_line=$($log_tool audit --resume "$rt_file" 2>/dev/null | awk '
+        NR == 1 && match($0, /:[0-9]+: /) { print substr($0, RSTART + 1, RLENGTH - 3); exit }
+    ')
+    [ -n "$rt_line" ] || return 0
+    awk -v target="$rt_line" '
+        FNR == target {
+            sub(/^[[:space:]]*-[[:space:]]+\[ \][[:space:]]*Resume:[[:space:]]*/, "")
             text = $0
             capture = 1
             next
         }
         capture && /^[[:space:]]+/ {
-            line = $0
-            sub(/^[[:space:]]+/, "", line)
-            text = text " " line
+            cont = $0
+            sub(/^[[:space:]]+/, "", cont)
+            text = text " " cont
             next
         }
-        capture { print text; exit }
-        END { if (capture) print text }
-    ' "$1" | awk 'NR == 1 { print; exit }'
+        capture { print text; printed = 1; exit }
+        END { if (capture && !printed) print text }
+    ' "$rt_file"
 }
 
 log_path_from_text() {
@@ -76,7 +86,9 @@ log_path_from_resume() {
 }
 
 latest_heading() {
-    awk '/^## / { heading = $0 } END { print heading }' "$1"
+    # 날짜 블록(## YYYY-MM-DD …)만 최신 기록으로 본다. ## Work Items 같은 비-날짜
+    # 섹션 제목을 최신 블록으로 오인하지 않게 한다.
+    awk '/^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { heading = $0 } END { print heading }' "$1"
 }
 
 print_log_summary() {

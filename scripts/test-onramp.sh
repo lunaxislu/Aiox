@@ -153,5 +153,102 @@ else
     ng "T7 복수 referenced leaf 후보"
 fi
 
+# T8: 코드블록 안 fenced Resume 예시를 진짜 포인터로 오인하지 않고 진짜만 따라간다.
+repo="$WORK/t8"; setup_repo "$repo"
+{
+    echo '---'
+    echo 'topic: parent'
+    echo 'description: parent description'
+    echo 'status: open'
+    echo '---'
+    echo
+    echo '## 2026-06-14 · parent latest'
+    echo
+    echo '- Resume은 이렇게 씁니다:'
+    echo '```markdown'
+    echo '- [ ] Resume: Complete `logs/wrong.md`, then return.'
+    echo '```'
+    echo
+    echo '- [ ] Resume: Complete `logs/realchild.md`, then return.'
+} > "$repo/logs/parent.md"
+write_log "$repo/logs/realchild.md" realchild 'Continue real work.'
+write_log "$repo/logs/wrong.md" wrong 'Should not be selected.'
+cat > "$repo/plans/work/work.md" <<'EOF'
+# Work
+## Objective
+test
+## Completion condition
+- done
+## Stages
+- [>] active -> `logs/parent.md`
+EOF
+out=$(cd "$repo" && scripts/onramp)
+if printf '%s\n' "$out" | grep -q 'logs/realchild.md  \[open\]  realchild' &&
+   ! printf '%s\n' "$out" | grep -q 'logs/wrong.md  \[open\]  wrong'; then
+    ok "T8 fenced Resume 예시 미추적/진짜 따라감"
+else
+    ng "T8 fenced Resume 예시 미추적/진짜 따라감"
+fi
+
+# T9: 들여쓴 Resume도 log 도구와 같은 규칙으로 인식한다(컬럼0 강제 제거).
+repo="$WORK/t9"; setup_repo "$repo"
+{
+    echo '---'
+    echo 'topic: indented'
+    echo 'description: indented description'
+    echo 'status: open'
+    echo '---'
+    echo
+    echo '## 2026-06-14 · indented latest'
+    echo
+    echo '- context'
+    echo
+    echo '  - [ ] Resume: Start indented work.'
+} > "$repo/logs/indented.md"
+out=$(cd "$repo" && scripts/onramp)
+if printf '%s\n' "$out" | grep -q 'Resume: Start indented work.'; then
+    ok "T9 들여쓴 Resume 인식"
+else
+    ng "T9 들여쓴 Resume 인식"
+fi
+
+# T10: 여러 물리줄 Resume을 한 줄로 합치고 중복 없이 정확히 한 번 출력한다.
+repo="$WORK/t10"; setup_repo "$repo"
+{
+    echo '---'; echo 'topic: multiline'; echo 'description: multiline description'
+    echo 'status: open'; echo '---'; echo
+    echo '## 2026-06-14 · multiline latest'; echo
+    echo '- context'; echo
+    echo '- [ ] Resume: First part of the action'
+    echo '  and the continuation line.'
+} > "$repo/logs/multiline.md"
+out=$(cd "$repo" && scripts/onramp)
+n=$(printf '%s\n' "$out" | grep -c 'First part of the action')
+if [ "$n" -eq 1 ] && printf '%s\n' "$out" | grep -q 'First part of the action and the continuation line.'; then
+    ok "T10 멀티줄 Resume 1회·연속 줄 합침"
+else
+    ng "T10 멀티줄 Resume 1회·연속 줄 합침 (count=$n)"
+fi
+
+# T11: ## Work Items 같은 비-날짜 섹션 제목을 latest로 오인하지 않고 최신 날짜 블록을 잡는다.
+repo="$WORK/t11"; setup_repo "$repo"
+{
+    echo '---'; echo 'topic: wi'; echo 'description: wi description'
+    echo 'status: open'; echo '---'; echo
+    echo '## 2026-06-14 · 실제 최신 작업'; echo
+    echo '- 작업 내용'; echo
+    echo '## Work Items'; echo
+    echo '1. [ ] 첫 항목'
+    echo
+    echo '- [ ] Resume: 시작점'
+} > "$repo/logs/only.md"
+out=$(cd "$repo" && scripts/onramp)
+if printf '%s\n' "$out" | grep -q 'latest: 2026-06-14 · 실제 최신 작업' &&
+   ! printf '%s\n' "$out" | grep -q 'latest: Work Items'; then
+    ok "T11 latest가 날짜 블록(Work Items 오인 안 함)"
+else
+    ng "T11 latest가 날짜 블록(Work Items 오인 안 함)"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
