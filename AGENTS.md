@@ -12,7 +12,7 @@ agent memory 없이도 repo만으로 현재 상태와 필요한 문맥을 찾을
 ## Workflow
 
 - 현재 작업, 토론, 질문과 Work Items는 `logs/`의 주제별 open 로그에 기록한다.
-- 로그 하나의 Work Items와 Resume Pointer로 작업 범위와 재개 지점을 알 수 있으면 plan
+- 로그 하나의 Work Items와 next pointer로 작업 범위와 재개 지점을 알 수 있으면 plan
   문서를 만들지 않는다.
 - 독립된 큰 작업 여러 개의 순서를 따로 관리해야 할 때만 `plans/`에 얇은 plan 문서를
   만든다.
@@ -22,14 +22,14 @@ agent memory 없이도 repo만으로 현재 상태와 필요한 문맥을 찾을
 1. 사용자가 로그나 작업을 지정했으면 그것을 사용한다. 로그가 아니라 주제를 지정하면
    `description` 검색으로 해당 open 로그를 찾는다.
 2. `plans/`에 활성 단계(`[>]`)가 있으면 그 단계가 가리키는 로그를 anchor로 삼고,
-   그 로그의 Resume Pointer가 다른 open 로그를 가리키면 leaf까지 따라간다.
-3. 활성 plan 단계가 없거나 전부 `[x]`면, open 로그가 하나면 그것을, 여러 개면 Resume
+   그 로그의 next pointer가 다른 open 로그를 가리키면 leaf까지 따라간다.
+3. 활성 plan 단계가 없거나 전부 `[x]`면, open 로그가 하나면 그것을, 여러 개면 next pointer
    참조 그래프에서 다른 open 로그가 가리키고 자신은 더 가리키지 않는 leaf가 정확히
    하나일 때 그것을 현재 작업으로 한다.
 4. 위로 하나로 정해지지 않으면(leaf 복수, 깨지거나 순환된 포인터, 복수 활성 단계 등)
-   후보와 Resume Pointer를 보여주고 사용자가 선택한다.
+   후보와 next pointer를 보여주고 사용자가 선택한다.
 
-선택한 로그 본문의 최신 기록, Work Items와 Resume Pointer에서 현재 단계, 작업 범위와
+선택한 로그 본문의 최신 기록, Work Items와 next pointer에서 현재 단계, 작업 범위와
 재개 지점을 확인한다. 여러 후보 중 하나로 정해지지 않으면 `open` 상태만으로 현재
 작업을 추측하지 않는다. 별도 Current Work, 세션별 handoff나 세션 요약을 새로 만들지
 않는다.
@@ -39,6 +39,7 @@ agent memory 없이도 repo만으로 현재 상태와 필요한 문맥을 찾을
 - 로그 작성, 재개, 상태와 종료: Claude/Codex log skill
 - 로그를 닫을 때의 owner 반영과 repo 전용 추가 점검: `logs/AGENTS.md`
 - 로그 도구: `.agents/skills/log/scripts/log`
+- log skill의 기본 next pointer는 `## Work Items` 안의 단일 `[>] Wn`이다.
 
 현재 작업 기록은 이 섹션의 open 로그 규칙을 따른다. 아래의 기존
 `workspace-reset.md` Current Work/Handoff는 hook 전환 전까지 읽기 진입점으로만
@@ -60,7 +61,7 @@ agent memory 없이도 repo만으로 현재 상태와 필요한 문맥을 찾을
   수행한다.
 - legacy `workspace-reset.md` Handoff는 더는 갱신하지 않는다. 재개에 필요한 현재
   위치와 제한 사항은 open 로그의 최신 기록에, 전체 작업 범위와 재개 지점은 Work
-  Items와 Resume Pointer에 둔다.
+  Items와 next pointer에 둔다.
 - Vault·Atlas 설계 또는 구현을 시작할 때만
   `history/59-local-obsidian-vault-atlas-discussion.history.md`를 읽는다.
 
@@ -68,5 +69,5 @@ agent memory 없이도 repo만으로 현재 상태와 필요한 문맥을 찾을
 
 세션 시작 시 기존 hook이 `workspace-reset.md`의 `Current Work`와 `Handoff`를
 요약할 수 있다. 이 출력은 전환 중인 legacy onramp이며 현재 상태의 권위가 아니다.
-실제 작업은 관련 open 로그의 최신 기록, Work Items와 Resume Pointer를 기준으로 재개하고,
+실제 작업은 관련 open 로그의 최신 기록, Work Items와 next pointer를 기준으로 재개하고,
 작업 전 현재 할 일, 읽을 범위와 진행 방식을 사용자에게 짧게 보고한다.

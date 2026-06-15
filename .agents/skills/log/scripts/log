@@ -1,14 +1,13 @@
 #!/bin/sh
 # 작업 로그 관리 도구.
 #
-# 이 도구를 한 케이스 때문에 함부로 늘리지 마라. 형식·기록·도구 변경 기준은
-# 같은 skill의 SKILL.md를 따른다.
+# 이 도구는 로그의 구조 검증과 원자적 변환만 담당한다. 기록 의미, 완료/취소/이관
+# 판단과 owner 반영 판단은 agent가 수행한다.
 #
-# 서브커맨드: new / search / audit / set-status / append / resolve
+# 서브커맨드: new / search / audit / set-status / append / items
 
 LOG_DIR="${LOG_DIR:-logs}"
 
-# 오늘 날짜. 테스트·재현을 위해 LOG_TODAY로 고정할 수 있다. new와 append가 공유한다.
 today_date() {
     if [ -n "${LOG_TODAY:-}" ]; then
         printf '%s' "$LOG_TODAY"
@@ -17,14 +16,10 @@ today_date() {
     fi
 }
 
-# 날짜 블록 heading 한 줄. new와 append가 같은 형식을 쓰도록 한 곳에 둔다.
 emit_heading() {
     printf '## %s · %s\n' "$1" "$2"
 }
 
-# fenced code 판정 공유 awk 함수. audit와 append의 Resume 검사가
-# 같은 fence 로직을 쓰게 해 드리프트를 막는다. fence_skip은 fence 경계·내부 줄이면 1을
-# 반환하고 fence 상태(in_fence/fence_char/fence_len)를 갱신한다.
 FENCE_FUNCS='
 function trim_leading(line) { sub(/^ {0,3}/, "", line); return line }
 function fence_run(line, ch,   i) { for (i = 1; substr(line, i, 1) == ch; i++) {} return i - 1 }
@@ -50,393 +45,16 @@ usage() {
 사용법:
   log new "<주제>" [설명]                          새 로그를 만든다
   log search [검색어] [--status <open|decided|superseded>]   로그를 찾는다
-  log audit [--resume] <파일> [파일...]             미완료 체크박스(--resume면 Resume 불변)를 점검한다
+  log audit [--next] <파일> [파일...]               미완료 Work Items(--next면 next pointer 불변)를 점검한다
   log set-status <파일> <open|decided|superseded>   로그 상태를 바꾼다
-  log append <파일> "<주제>" [옵션]                 새 블록 추가(본문은 stdin)
-      옵션: --complete-resume | --replace-resume "<이유>" | --cancel-resume "<이유>"
-            --resume "<행동>"
-            (complete=선택, replace=필수, cancel=금지. 기존 미완료 Resume 0개면 mode 없이 --resume 단독 부트스트랩 허용)
-  log resolve <파일>                                미완료 체크박스를 변환(레코드는 stdin, 원자 적용)
-      레코드(빈 줄로 구분, key: value):
-        line: <줄번호>   expect: <그 줄 원문>   mode: complete|cancel|transfer
-        reason: <이유>   target: <대상>
-        (complete=reason/target 금지, cancel=reason 필수·target 금지, transfer=target·reason 필수.
-         미완료 Resume 줄은 대상 거부 — Resume 전이는 append.)
+  log append <파일> "<주제>"                        새 날짜 블록 추가(본문은 stdin)
+  log items <파일> add "<행동>" [--status open|active]
+                                                        W-id Work Item을 추가한다
+  log items <파일> set --id Wn --status <상태> [--reason <이유>] [--target <대상>] [--expect <행동>]
+                                                        W-id Work Item을 전이한다
+      상태: open|active|completed|cancelled|transferred
+      규칙: active는 기존 active를 open으로 내린다. cancelled는 reason 필수, transferred는 target·reason 필수.
 EOF
-}
-
-# frontmatter에서 한 키의 값을 읽는다. "키: " 뒤 전체를 값으로(콜론 허용).
-read_field() {
-    # $1=파일, $2=키
-    awk -v key="$2" '
-        BEGIN { infm = 0 }
-        NR == 1 && $0 == "---" { infm = 1; next }
-        infm == 1 && $0 == "---" { exit }
-        infm == 1 {
-            prefix = key ": "
-            if (substr($0, 1, length(prefix)) == prefix) {
-                print substr($0, length(prefix) + 1)
-                exit
-            }
-            # 값이 빈 경우("키:")도 처리
-            if ($0 == key ":") {
-                print ""
-                exit
-            }
-        }
-    ' "$1"
-}
-
-cmd_new() {
-    topic="$1"
-    description="$2"
-
-    if [ -z "$topic" ]; then
-        echo "주제를 적어 주세요." >&2
-        usage >&2
-        return 1
-    fi
-
-    if [ -z "$description" ]; then
-        echo "경고: description이 비어 있어 검색 결과에서 로그를 판별하기 어렵습니다." >&2
-    fi
-
-    today=$(today_date)
-
-    # 슬러그 만들기. 한글은 그대로 둔다(바이트 단위 자르기 금지).
-    # 1) 공백을 하이픈으로
-    slug=$(printf '%s' "$topic" | sed 's/[[:space:]]\{1,\}/-/g')
-    # 2) 파일시스템에 위험한 문자만 제거: / \ : * ? " < > |
-    slug=$(printf '%s' "$slug" | sed 's/[/\\:*?"<>|]//g')
-    # 3) 연속 하이픈을 하나로
-    slug=$(printf '%s' "$slug" | sed 's/-\{2,\}/-/g')
-    # 4) 앞뒤 하이픈 제거
-    slug=$(printf '%s' "$slug" | sed 's/^-*//; s/-*$//')
-    # 5) 너무 길면 하이픈 기준 앞 6토큰까지만
-    slug=$(printf '%s' "$slug" | awk -F- '{
-        out = ""
-        n = (NF < 6 ? NF : 6)
-        for (i = 1; i <= n; i++) {
-            if (out == "") out = $i
-            else out = out "-" $i
-        }
-        print out
-    }')
-    # 6) 비면 숫자로
-    if [ -z "$slug" ]; then
-        slug=$(date +%s)
-    fi
-
-    mkdir -p "$LOG_DIR"
-
-    base="$LOG_DIR/$today-$slug"
-    file="$base.md"
-    n=2
-    while [ -e "$file" ]; do
-        file="$base-$n.md"
-        n=$((n + 1))
-    done
-
-    {
-        printf '%s\n' "---"
-        printf 'topic: %s\n' "$topic"
-        printf 'description: %s\n' "$description"
-        printf 'status: open\n'
-        printf '%s\n' "---"
-        printf '\n'
-        emit_heading "$today" "$topic"
-        printf '\n'
-    } > "$file"
-
-    printf '%s\n' "$file"
-}
-
-cmd_search() {
-    query=""
-    status_filter=""
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --status)
-                shift
-                status_filter="$1"
-                ;;
-            *)
-                if [ -z "$query" ]; then
-                    query="$1"
-                fi
-                ;;
-        esac
-        shift
-    done
-
-    if [ -n "$status_filter" ]; then
-        case "$status_filter" in
-            open|decided|superseded) ;;
-            *)
-                echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2
-                return 1
-                ;;
-        esac
-    fi
-
-    # 검색어 소문자화(대소문자 무시 부분일치용)
-    query_lc=$(printf '%s' "$query" | tr '[:upper:]' '[:lower:]')
-
-    found=0
-    for f in "$LOG_DIR"/*.md; do
-        [ -e "$f" ] || continue
-
-        topic=$(read_field "$f" "topic")
-        description=$(read_field "$f" "description")
-        status=$(read_field "$f" "status")
-
-        # log 저장 위치의 AGENTS.md 같은 비로그 Markdown은 검색 대상에서 제외한다.
-        case "$status" in
-            open|decided|superseded) ;;
-            *) continue ;;
-        esac
-
-        if [ -n "$status_filter" ] && [ "$status" != "$status_filter" ]; then
-            continue
-        fi
-
-        if [ -n "$query" ]; then
-            hay=$(printf '%s %s' "$topic" "$description" | tr '[:upper:]' '[:lower:]')
-            case "$hay" in
-                *"$query_lc"*) ;;
-                *) continue ;;
-            esac
-        fi
-
-        printf '%s  [%s]  %s — %s\n' "$f" "$status" "$topic" "$description"
-        found=1
-    done
-
-    if [ "$found" -eq 0 ]; then
-        echo "맞는 로그 없음"
-    fi
-}
-
-# fenced code 밖의 실제 미완료 체크박스를 찾는다. dash(`- [ ]`)와 번호형(`N. [ ]`)
-# 체크박스를 모두 잡는다(순차 Work Items는 번호 체크리스트로 쓰므로). 의미를
-# 판정하거나 수정하지 않는다.
-find_incomplete() {
-    awk "$FENCE_FUNCS"'
-        FNR == 1 {
-            in_fence = 0
-            fence_char = ""
-            fence_len = 0
-            heading = "(소속 ## 블록 없음)"
-        }
-
-        {
-            if (fence_skip($0)) next
-
-            if ($0 ~ /^##[[:space:]]+/) {
-                heading = $0
-            }
-
-            if ($0 ~ /^[[:space:]]*([0-9]+\.|-)[[:space:]]+\[ \]([[:space:]]|$)/) {
-                printf "%s:%d: %s\n  %s\n", FILENAME, FNR, heading, $0
-            }
-        }
-    ' "$@"
-}
-
-# fenced code 밖의 미완료 Resume Pointer를 출력한다.
-find_resumes() {
-    awk "$FENCE_FUNCS"'
-        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
-        {
-            if (fence_skip($0)) next
-            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[ \][[:space:]]*Resume:/) {
-                printf "%d\t%s\n", FNR, $0
-            }
-        }
-    ' "$1"
-}
-
-cmd_audit() {
-    resume_only=0
-    if [ "${1:-}" = "--resume" ]; then
-        resume_only=1
-        shift
-    fi
-
-    if [ "$#" -eq 0 ]; then
-        echo "점검할 로그 파일을 지정해 주세요." >&2
-        usage >&2
-        return 1
-    fi
-
-    for file in "$@"; do
-        if [ ! -f "$file" ]; then
-            echo "파일이 없습니다: $file" >&2
-            return 1
-        fi
-    done
-
-    if [ "$resume_only" -eq 0 ]; then
-        find_incomplete "$@"
-        return
-    fi
-
-    rc=0
-    for file in "$@"; do
-        resumes=$(find_resumes "$file") || return 1
-        count=$(printf '%s\n' "$resumes" | awk 'NF { n++ } END { print n + 0 }')
-        case "$count" in
-            0) printf '%s: Resume Pointer 없음\n' "$file" ;;
-            1) printf '%s\n' "$resumes" | awk -F '\t' -v file="$file" '{ print file ":" $1 ": " $2 }' ;;
-            *)
-                printf '%s: 미완료 Resume Pointer가 %s개입니다(최대 1개):\n' "$file" "$count" >&2
-                printf '%s\n' "$resumes" | awk -F '\t' -v file="$file" '{ print "  " file ":" $1 ": " $2 }' >&2
-                rc=1
-                ;;
-        esac
-    done
-    return "$rc"
-}
-
-cmd_set_status() {
-    file="$1"
-    new_status="$2"
-
-    case "$new_status" in
-        open|decided|superseded) ;;
-        *)
-            echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2
-            return 1
-            ;;
-    esac
-
-    if [ ! -f "$file" ]; then
-        echo "파일이 없습니다: $file" >&2
-        return 1
-    fi
-
-    case "$new_status" in
-        decided|superseded)
-            audit_tmp=$(mktemp 2>/dev/null) || audit_tmp="$file.audit.tmp.$$"
-            if ! find_incomplete "$file" > "$audit_tmp"; then
-                rm -f "$audit_tmp"
-                echo "미완료 체크박스를 검사하지 못했습니다: $file" >&2
-                return 1
-            fi
-            if [ -s "$audit_tmp" ]; then
-                echo "미완료 체크박스가 있어 '$new_status' 상태로 바꿀 수 없습니다:" >&2
-                cat "$audit_tmp" >&2
-                rm -f "$audit_tmp"
-                return 1
-            fi
-            rm -f "$audit_tmp"
-            ;;
-    esac
-
-    tmp=$(mktemp 2>/dev/null) || tmp="$file.tmp.$$"
-    if awk -v newstatus="$new_status" '
-        BEGIN { infm = 0; done = 0 }
-        NR == 1 && $0 == "---" { infm = 1; print; next }
-        infm == 1 && $0 == "---" { infm = 0; print; next }
-        infm == 1 && done == 0 && substr($0, 1, 8) == "status: " {
-            print "status: " newstatus
-            done = 1
-            next
-        }
-        infm == 1 && done == 0 && $0 == "status:" {
-            print "status: " newstatus
-            done = 1
-            next
-        }
-        { print }
-        END { if (done == 0) exit 1 }
-    ' "$file" > "$tmp"; then
-        mv "$tmp" "$file"
-        echo "상태를 '$new_status'로 바꿨습니다: $file"
-    else
-        rm -f "$tmp"
-        echo "status 필드를 찾지 못해 상태를 바꾸지 못했습니다: $file" >&2
-        return 1
-    fi
-}
-
-# 원본을 출력하되 target 줄만 complete/replace 규칙으로 변환하고, 파일 끝의 빈 줄을
-# 제거해 trailing newline 한 개로 정규화한다. fenced 예시·들여쓰기·연속 줄은 건드리지
-# 않는다. complete는 체크박스 위치의 "[ ]"만 "[x]"로 바꾸고, replace는 첫 줄을 기존
-# 취소 형식 "- Cancelled Resume: <원래 행동> — <이유>"로 바꾼다.
-emit_original_transformed() {
-    # reason은 ENVIRON로 전달해 awk -v의 backslash escape 해석을 피한다(값을 literal 보존).
-    LOG_APPEND_REASON="$4" awk -v target="$2" -v mode="$3" '
-        {
-            line = $0
-            if (FNR == target) {
-                if (mode == "complete") {
-                    sub(/\[ \]/, "[x]", line)
-                } else if (mode == "replace" || mode == "cancel") {
-                    if (match(line, /^[[:space:]]*-[[:space:]]+/)) {
-                        prefix = substr(line, 1, RLENGTH)
-                        rest = substr(line, RLENGTH + 1)
-                        sub(/^\[ \][[:space:]]*Resume:[[:space:]]*/, "", rest)
-                        line = prefix "Cancelled Resume: " rest " — " ENVIRON["LOG_APPEND_REASON"]
-                    }
-                }
-            }
-            if (line ~ /^[[:space:]]*$/) {
-                pending = pending "\n"
-            } else {
-                if (started) printf "%s", pending
-                pending = ""
-                print line
-                started = 1
-            }
-        }
-    ' "$1"
-}
-
-# stdin 본문 파일을 출력하되 앞뒤 빈 줄을 제거하고 trailing newline 한 개로 정규화한다.
-# 본문 안의 빈 줄은 그대로 둔다. 본문은 의미를 해석하지 않고 그대로 둔다.
-emit_body() {
-    awk '
-        {
-            if ($0 ~ /^[[:space:]]*$/) {
-                if (started) pending = pending "\n"
-            } else {
-                if (started) printf "%s", pending
-                pending = ""
-                print
-                started = 1
-            }
-        }
-    ' "$1"
-}
-
-# 부작용 없는 result-building 경로. 최종 파일 내용을 stdout으로 만든다.
-# 레이아웃: <원본> + 빈 줄 + heading + 빈 줄 + 본문 + (빈 줄 + 새 Resume)
-build_result() {
-    _file=$1
-    _topic=$2
-    _mode=$3
-    _reason=$4
-    _has_resume=$5
-    _resume=$6
-    _body=$7
-
-    _today=$(today_date)
-    _target=0
-    if [ "$_mode" = "complete" ] || [ "$_mode" = "replace" ] || [ "$_mode" = "cancel" ]; then
-        _target=$(find_resumes "$_file" | awk -F '\t' 'NR == 1 { print $1 }')
-        [ -n "$_target" ] || _target=0
-    fi
-
-    emit_original_transformed "$_file" "$_target" "$_mode" "$_reason"
-    printf '\n'
-    emit_heading "$_today" "$_topic"
-    printf '\n'
-    emit_body "$_body"
-    if [ "$_has_resume" = "1" ]; then
-        printf '\n- [ ] Resume: %s\n' "$_resume"
-    fi
 }
 
 contains_newline() {
@@ -447,7 +65,6 @@ contains_newline() {
     esac
 }
 
-# 값이 비었거나 공백(공백·탭)만이면 0(참). CLI 값의 공백-only를 빈 값과 같이 막는다.
 is_blank() {
     case "$1" in
         *[![:blank:]]*) return 1 ;;
@@ -455,9 +72,22 @@ is_blank() {
     esac
 }
 
-# frontmatter를 결정적으로 검증한다. 유효하면 0, 아니면 이유를 출력하고 비0을 반환한다.
-# 요구: 첫 줄 "---", 이후 종료 "---", 그 안에 topic/description/status 키 존재,
-# status는 정확히 "open", topic은 공백이 아니어야 한다. description은 비어 있어도 된다.
+read_field() {
+    awk -v key="$2" '
+        BEGIN { infm = 0 }
+        NR == 1 && $0 == "---" { infm = 1; next }
+        infm == 1 && $0 == "---" { exit }
+        infm == 1 {
+            prefix = key ": "
+            if (substr($0, 1, length(prefix)) == prefix) {
+                print substr($0, length(prefix) + 1)
+                exit
+            }
+            if ($0 == key ":") { print ""; exit }
+        }
+    ' "$1"
+}
+
 validate_frontmatter() {
     awk '
         function trim(s) { gsub(/^[[:space:]]+/, "", s); gsub(/[[:space:]]+$/, "", s); return s }
@@ -484,182 +114,496 @@ validate_frontmatter() {
     ' "$1"
 }
 
-# 검증·교체. snapshot은 build_result 직전에 뜬 원본 사본이다. 교체 직전
-# 현재 원본과 byte 단위로 비교해 결과 생성 중 동시 수정이 있었으면 거부한다(content
-# identity 우선). out은 대상과 같은 디렉터리에서 원본 권한을 이미 보존한 결과 파일이어야
-# 하며, 같은 디렉터리 안의 rename이라 교체가 원자적이다. 검증이나 교체가 실패하면 원본은
-# 바뀌지 않는다. snapshot/out을 인자로 받으므로 테스트가 운영 코드에 범용 hook을 넣지
-# 않고 불일치 snapshot·미존재 out으로 동시 수정·교체 실패를 좁게 재현할 수 있다.
 apply_result() {
-    _file=$1
-    _out=$2
-    _snapshot=$3
-    if ! cmp -s "$_file" "$_snapshot"; then
-        echo "원본이 처리 중에 바뀌었습니다(동시 수정 감지). 적용하지 않습니다: $_file" >&2
+    file=$1
+    out=$2
+    snapshot=$3
+    if ! cmp -s "$file" "$snapshot"; then
+        echo "원본이 처리 중에 바뀌었습니다(동시 수정 감지). 적용하지 않습니다: $file" >&2
         return 1
     fi
-    if ! mv "$_out" "$_file"; then
-        echo "결과 파일 교체에 실패했습니다: $_file" >&2
+    if ! mv "$out" "$file"; then
+        echo "결과 파일 교체에 실패했습니다: $file" >&2
         return 1
     fi
-    return 0
 }
 
-# stdin 레코드 배치를 파싱·검증해 정규화된 스펙을 stdout으로 낸다. 레코드마다 정확히
-# 5줄(line, mode, expect, reason, target)을 순서대로 내고 빈 줄로 구분한다. 값에 콜론·탭·
-# 백슬래시가 들어가도 줄 단위 보존이라 literal이 깨지지 않는다(reason/target/expect는 한 줄
-# 불변). 의미 판단은 하지 않고 D2 입력 규칙만 검사한다. 어느 규칙이라도 어기면 비0으로 끝난다.
-parse_resolve_records() {
-    awk '
-        function fail(msg) { print "RESOLVE_PARSE_ERROR: " msg > "/dev/stderr"; failed = 1; exit 1 }
-        function flush_record(   m) {
-            if (!have_any) return
-            if (!("line" in cur))   fail("레코드에 line이 없습니다")
-            if (!("expect" in cur)) fail("레코드에 expect가 없습니다")
-            if (!("mode" in cur))   fail("레코드에 mode가 없습니다")
-            m = cur["mode"]
-            if (m != "complete" && m != "cancel" && m != "transfer")
-                fail("mode는 complete/cancel/transfer만 허용합니다: " m)
-            if (cur["line"] !~ /^[0-9]+$/) fail("line은 정수여야 합니다: " cur["line"])
-            if (cur["expect"] == "") fail("expect가 비어 있습니다")
-            if (m == "complete") {
-                if ("reason" in cur) fail("complete에는 reason을 줄 수 없습니다")
-                if ("target" in cur) fail("complete에는 target을 줄 수 없습니다")
-            } else if (m == "cancel") {
-                if (!("reason" in cur)) fail("cancel에는 reason이 필요합니다")
-                if ("target" in cur) fail("cancel에는 target을 줄 수 없습니다")
-            } else if (m == "transfer") {
-                if (!("target" in cur)) fail("transfer에는 target이 필요합니다")
-                if (!("reason" in cur)) fail("transfer에는 reason이 필요합니다")
-            }
-            if (cur["line"] in seen_line) fail("같은 line을 두 레코드가 지정했습니다: " cur["line"])
-            seen_line[cur["line"]] = 1
-            printf "%s\n%s\n%s\n%s\n%s\n\n", cur["line"], m, cur["expect"], \
-                (("reason" in cur) ? cur["reason"] : ""), \
-                (("target" in cur) ? cur["target"] : "")
-            rec_count++
-        }
-        function reset_record(   k) {
-            for (k in cur) delete cur[k]
-            have_any = 0
-        }
-        BEGIN { failed = 0; rec_count = 0; have_any = 0 }
-        # 빈 줄은 레코드 구분자.
-        /^[[:space:]]*$/ {
-            if (have_any) { flush_record(); reset_record() }
-            next
-        }
-        {
-            c = index($0, ":")
-            if (c == 0) fail("key: value 형식이 아닙니다: " $0)
-            key = substr($0, 1, c - 1)
-            # value는 첫 콜론 이후 전부(value 안의 콜론 허용). 한 칸의 선행 공백만 흡수한다.
-            val = substr($0, c + 1)
-            if (substr(val, 1, 1) == " ") val = substr(val, 2)
-            if (key != "line" && key != "expect" && key != "mode" && key != "reason" && key != "target")
-                fail("허용되지 않은 key입니다: " key)
-            if (key in cur) fail("한 레코드에서 key가 중복됩니다: " key)
-            cur[key] = val
-            have_any = 1
-        }
-        END {
-            if (failed) exit 1
-            if (have_any) flush_record()
-            if (rec_count == 0) { print "RESOLVE_PARSE_ERROR: stdin이 비었습니다" > "/dev/stderr"; exit 1 }
-        }
-    '
+with_atomic_output() {
+    file=$1
+    builder=$2
+    shift 2
+
+    dir=$(dirname "$file")
+    if ! out_tmp=$(mktemp "$dir/.log-tmp.XXXXXX" 2>/dev/null); then
+        echo "대상 디렉터리에 결과 임시 파일을 만들지 못했습니다: $dir" >&2
+        return 1
+    fi
+    if ! snapshot_tmp=$(mktemp 2>/dev/null); then
+        echo "원본 스냅샷 임시 파일 생성에 실패했습니다: $file" >&2
+        rm -f "$out_tmp"
+        return 1
+    fi
+    if ! cp "$file" "$snapshot_tmp"; then
+        echo "원본 스냅샷 생성에 실패했습니다: $file" >&2
+        rm -f "$out_tmp" "$snapshot_tmp"
+        return 1
+    fi
+    if ! cp -p "$file" "$out_tmp"; then
+        echo "결과 임시 파일 준비에 실패했습니다: $file" >&2
+        rm -f "$out_tmp" "$snapshot_tmp"
+        return 1
+    fi
+    if ! "$builder" "$file" "$@" > "$out_tmp"; then
+        echo "결과 생성에 실패했습니다: $file" >&2
+        rm -f "$out_tmp" "$snapshot_tmp"
+        return 1
+    fi
+    if ! validate_work_item_ids "$out_tmp"; then
+        echo "결과 Work Items 구조가 유효하지 않습니다: $file" >&2
+        rm -f "$out_tmp" "$snapshot_tmp"
+        return 1
+    fi
+    next_count=$(find_next_pointers "$out_tmp" | awk 'NF { n++ } END { print n + 0 }') || next_count=0
+    if [ "$next_count" -gt 1 ]; then
+        echo "결과에 next pointer가 ${next_count}개여서 적용하지 않습니다." >&2
+        rm -f "$out_tmp" "$snapshot_tmp"
+        return 1
+    fi
+    if apply_result "$file" "$out_tmp" "$snapshot_tmp"; then
+        rm -f "$snapshot_tmp"
+        return 0
+    fi
+    rm -f "$out_tmp" "$snapshot_tmp"
+    return 1
 }
 
-# 정규화된 spec($2)과 원본($1)을 읽어 대상 검증을 한다. 각 레코드의 line번째 줄이 expect와
-# byte 단위로 정확히 일치하고, fenced code 밖의 미완료 체크박스이며, 미완료 Resume이 아닌지
-# 확인한다(D4: Resume 전이는 append 전용). spec은 줄 단위 보존이라 expect의 backslash literal이
-# 그대로 비교된다. 하나라도 실패하면 이유를 stderr에 내고 비0으로 끝난다. 원본은 읽기만 한다.
-validate_resolve_targets() {
-    awk -v specfile="$2" "$FENCE_FUNCS"'
-        function fail(msg) { print "RESOLVE_TARGET_ERROR: " msg > "/dev/stderr"; failed = 1; exit 1 }
-        BEGIN {
-            failed = 0
-            nrec = 0
-            # spec을 5줄+빈 줄 묶음으로 읽는다.
-            while ((getline ln < specfile) > 0) {
-                getline md < specfile
-                getline ex < specfile
-                getline rs < specfile
-                getline tg < specfile
-                getline sep < specfile     # 구분 빈 줄
-                nrec++
-                spec_line[nrec] = ln
-                spec_expect[nrec] = ex
-                want[ln + 0] = nrec        # 줄 번호 -> 레코드 인덱스
-            }
-            close(specfile)
-        }
+find_incomplete() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; heading = "(소속 ## 블록 없음)" }
         {
-            # fence 상태를 매 줄 갱신한다. fenced 안/경계 줄이면 is_fence_line=1.
-            is_fence_line = fence_skip($0)
-            if (FNR in want) {
-                idx = want[FNR]
-                if ($0 != spec_expect[idx])
-                    fail("expect가 " FNR "번째 줄과 일치하지 않습니다")
-                if (is_fence_line)
-                    fail(FNR "번째 줄은 fenced code 영역입니다")
-                if ($0 ~ /^[[:space:]]*-[[:space:]]+\[ \][[:space:]]*Resume:/)
-                    fail(FNR "번째 줄은 미완료 Resume입니다(Resume 전이는 append 전용)")
-                if ($0 !~ /^[[:space:]]*([0-9]+\.|-)[[:space:]]+\[ \]([[:space:]]|$)/)
-                    fail(FNR "번째 줄은 미완료 체크박스가 아닙니다")
-                matched[FNR] = 1
+            if (fence_skip($0)) next
+            if ($0 ~ /^##[[:space:]]+/) heading = $0
+            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[( |>)\][[:space:]]+W[0-9]+[[:space:]]+/) {
+                printf "%s:%d: %s\n  %s\n", FILENAME, FNR, heading, $0
             }
         }
-        END {
-            if (failed) exit 1
-            # 지정한 모든 줄이 실제로 존재(파일 범위 안)했는지 확인한다.
-            for (i = 1; i <= nrec; i++) {
-                ln = spec_line[i] + 0
-                if (!(ln in matched)) {
-                    print "RESOLVE_TARGET_ERROR: 지정한 줄이 파일에 없습니다: " spec_line[i] > "/dev/stderr"
-                    exit 1
-                }
+    ' "$@"
+}
+
+find_next_pointers() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
+        {
+            if (fence_skip($0)) next
+            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+[[:space:]]+/) {
+                printf "%d\t%s\n", FNR, $0
             }
         }
     ' "$1"
 }
 
-# 정규화된 spec($2)과 원본($1)을 읽어 대상 줄을 변환한 결과를 stdout으로 낸다. 파일 끝 빈 줄은
-# trailing newline 한 개로 정규화한다(emit_body/emit_original_transformed와 같은 규칙). reason·
-# target·expect는 줄 단위 보존된 spec에서 읽어 literal을 보존한다. prefix(dash `- ` 또는 번호형
-# `N. `)와 leading whitespace는 그대로 두고, `[ ]`와 그 뒤 공백만 제거한 나머지를 행동 텍스트 X로
-# 본다. complete는 [x]로, cancel/transfer는 체크박스를 제거해 audit에서 빠지되 원문 X는 보존한다.
-emit_resolved() {
-    awk -v specfile="$2" '
-        BEGIN {
-            while ((getline ln < specfile) > 0) {
-                getline md < specfile
-                getline ex < specfile
-                getline rs < specfile
-                getline tg < specfile
-                getline sep < specfile
-                k = ln + 0
-                mode_of[k] = md
-                reason_of[k] = rs
-                target_of[k] = tg
+work_items_section_count() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; count = 0 }
+        {
+            if (fence_skip($0)) next
+            if ($0 ~ /^##[[:space:]]+Work Items[[:space:]]*$/) count++
+        }
+        END { print count + 0 }
+    ' "$1"
+}
+
+next_work_item_id() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; max = 0 }
+        {
+            if (fence_skip($0)) next
+            line = $0
+            while (match(line, /W[0-9]+/)) {
+                id = substr(line, RSTART + 1, RLENGTH - 1) + 0
+                if (id > max) max = id
+                line = substr(line, RSTART + RLENGTH)
             }
-            close(specfile)
+        }
+        END { printf "W%d\n", max + 1 }
+    ' "$1"
+}
+
+validate_work_item_ids() {
+    LOG_ITEM_TARGET_ID="${2:-}" LOG_ITEM_HAS_EXPECT="${3:-0}" LOG_ITEM_EXPECT="${4:-}" awk "$FENCE_FUNCS"'
+        function fail(msg) { print "ITEMS_ERROR: " msg > "/dev/stderr"; failed = 1; exit 1 }
+        function parse_item(line,   rest, after) {
+            item_id = ""; item_text = ""; item_marker = ""
+            if (!match(line, /^[[:space:]]*-[[:space:]]+/)) return 0
+            rest = substr(line, RLENGTH + 1)
+            if (rest !~ /^\[[ >xX]\][[:space:]]+W[0-9]+([[:space:]]|$)/) return 0
+            item_marker = substr(rest, 2, 1)
+            after = rest
+            sub(/^\[[ >xX]\][[:space:]]+/, "", after)
+            item_id = after
+            sub(/[[:space:]].*$/, "", item_id)
+            item_text = after
+            sub(/^W[0-9]+[[:space:]]*/, "", item_text)
+            return 1
+        }
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; found = 0 }
+        {
+            if (fence_skip($0)) next
+            if (!parse_item($0)) next
+            if (item_id in seen) fail("중복 Work Item id입니다: " item_id)
+            seen[item_id] = 1
+            if (item_id == ENVIRON["LOG_ITEM_TARGET_ID"]) {
+                found = 1
+                if (item_marker != " " && item_marker != ">")
+                    fail("완료된 Work Item은 다시 전이하지 않습니다: " item_id)
+                if (ENVIRON["LOG_ITEM_HAS_EXPECT"] == "1" && item_text != ENVIRON["LOG_ITEM_EXPECT"])
+                    fail("--expect가 현재 행동과 일치하지 않습니다: " item_id)
+            }
+        }
+        END {
+            if (failed) exit 1
+            if (ENVIRON["LOG_ITEM_TARGET_ID"] != "" && !found) {
+                print "ITEMS_ERROR: Work Item id를 찾지 못했습니다: " ENVIRON["LOG_ITEM_TARGET_ID"] > "/dev/stderr"
+                exit 1
+            }
+        }
+    ' "$1"
+}
+
+print_closeout_hint_if_clean() {
+    remaining=$(find_incomplete "$1") || return 0
+    if [ -z "$remaining" ]; then
+        printf '힌트: 미완료 Work Items/next pointer가 없습니다. decided 후보인지 확인하세요: %s\n' "$1"
+    fi
+}
+
+cmd_new() {
+    topic=$1
+    description=$2
+    if [ -z "$topic" ]; then
+        echo "주제를 적어 주세요." >&2
+        usage >&2
+        return 1
+    fi
+    if [ -z "$description" ]; then
+        echo "경고: description이 비어 있어 검색 결과에서 로그를 판별하기 어렵습니다." >&2
+    fi
+
+    today=$(today_date)
+    slug=$(printf '%s' "$topic" | sed 's/[[:space:]]\{1,\}/-/g')
+    slug=$(printf '%s' "$slug" | sed 's/[/\\:*?"<>|]//g')
+    slug=$(printf '%s' "$slug" | sed 's/-\{2,\}/-/g')
+    slug=$(printf '%s' "$slug" | sed 's/^-*//; s/-*$//')
+    slug=$(printf '%s' "$slug" | awk -F- '{
+        out = ""; n = (NF < 6 ? NF : 6)
+        for (i = 1; i <= n; i++) { if (out == "") out = $i; else out = out "-" $i }
+        print out
+    }')
+    [ -n "$slug" ] || slug=$(date +%s)
+
+    mkdir -p "$LOG_DIR"
+    base="$LOG_DIR/$today-$slug"
+    file="$base.md"
+    n=2
+    while [ -e "$file" ]; do
+        file="$base-$n.md"
+        n=$((n + 1))
+    done
+
+    {
+        printf '%s\n' "---"
+        printf 'topic: %s\n' "$topic"
+        printf 'description: %s\n' "$description"
+        printf 'status: open\n'
+        printf '%s\n' "---"
+        printf '\n'
+        printf '## Work Items\n'
+        printf '\n'
+        emit_heading "$today" "$topic"
+        printf '\n'
+    } > "$file"
+
+    printf '%s\n' "$file"
+}
+
+cmd_search() {
+    query=""
+    status_filter=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --status)
+                shift
+                status_filter=$1
+                ;;
+            *)
+                [ -z "$query" ] && query=$1
+                ;;
+        esac
+        shift
+    done
+    if [ -n "$status_filter" ]; then
+        case "$status_filter" in
+            open|decided|superseded) ;;
+            *) echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;;
+        esac
+    fi
+    query_lc=$(printf '%s' "$query" | tr '[:upper:]' '[:lower:]')
+    found=0
+    for f in "$LOG_DIR"/*.md; do
+        [ -e "$f" ] || continue
+        topic=$(read_field "$f" topic)
+        description=$(read_field "$f" description)
+        status=$(read_field "$f" status)
+        case "$status" in open|decided|superseded) ;; *) continue ;; esac
+        [ -z "$status_filter" ] || [ "$status" = "$status_filter" ] || continue
+        if [ -n "$query" ]; then
+            hay=$(printf '%s %s' "$topic" "$description" | tr '[:upper:]' '[:lower:]')
+            case "$hay" in *"$query_lc"*) ;; *) continue ;; esac
+        fi
+        printf '%s  [%s]  %s — %s\n' "$f" "$status" "$topic" "$description"
+        found=1
+    done
+    [ "$found" -eq 1 ] || echo "맞는 로그 없음"
+}
+
+cmd_audit() {
+    next_only=0
+    if [ "${1:-}" = "--next" ]; then
+        next_only=1
+        shift
+    fi
+    if [ "$#" -eq 0 ]; then
+        echo "점검할 로그 파일을 지정해 주세요." >&2
+        usage >&2
+        return 1
+    fi
+    for file in "$@"; do
+        [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
+    done
+    if [ "$next_only" -eq 0 ]; then
+        find_incomplete "$@"
+        return
+    fi
+    rc=0
+    for file in "$@"; do
+        pointers=$(find_next_pointers "$file") || return 1
+        count=$(printf '%s\n' "$pointers" | awk 'NF { n++ } END { print n + 0 }')
+        case "$count" in
+            0) printf '%s: next pointer 없음\n' "$file" ;;
+            1) printf '%s\n' "$pointers" | awk -F '\t' -v file="$file" '{ print file ":" $1 ": " $2 }' ;;
+            *)
+                printf '%s: 미완료 next pointer가 %s개입니다(최대 1개):\n' "$file" "$count" >&2
+                printf '%s\n' "$pointers" | awk -F '\t' -v file="$file" '{ print "  " file ":" $1 ": " $2 }' >&2
+                rc=1
+                ;;
+        esac
+    done
+    return "$rc"
+}
+
+cmd_set_status() {
+    file=$1
+    new_status=$2
+    case "$new_status" in open|decided|superseded) ;; *) echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;; esac
+    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
+    case "$new_status" in
+        decided|superseded)
+            audit_tmp=$(mktemp 2>/dev/null) || audit_tmp="$file.audit.tmp.$$"
+            if ! find_incomplete "$file" > "$audit_tmp"; then
+                rm -f "$audit_tmp"; echo "미완료 Work Items를 검사하지 못했습니다: $file" >&2; return 1
+            fi
+            if [ -s "$audit_tmp" ]; then
+                echo "미완료 Work Items가 있어 '$new_status' 상태로 바꿀 수 없습니다:" >&2
+                cat "$audit_tmp" >&2
+                rm -f "$audit_tmp"
+                return 1
+            fi
+            rm -f "$audit_tmp"
+            ;;
+    esac
+    tmp=$(mktemp 2>/dev/null) || tmp="$file.tmp.$$"
+    if awk -v newstatus="$new_status" '
+        BEGIN { infm = 0; done = 0 }
+        NR == 1 && $0 == "---" { infm = 1; print; next }
+        infm == 1 && $0 == "---" { infm = 0; print; next }
+        infm == 1 && done == 0 && substr($0, 1, 8) == "status: " { print "status: " newstatus; done = 1; next }
+        infm == 1 && done == 0 && $0 == "status:" { print "status: " newstatus; done = 1; next }
+        { print }
+        END { if (done == 0) exit 1 }
+    ' "$file" > "$tmp"; then
+        mv "$tmp" "$file"
+        echo "상태를 '$new_status'로 바꿨습니다: $file"
+    else
+        rm -f "$tmp"
+        echo "status 필드를 찾지 못해 상태를 바꾸지 못했습니다: $file" >&2
+        return 1
+    fi
+}
+
+emit_body() {
+    awk '
+        {
+            if ($0 ~ /^[[:space:]]*$/) {
+                if (started) pending = pending "\n"
+            } else {
+                if (started) printf "%s", pending
+                pending = ""
+                print
+                started = 1
+            }
+        }
+    ' "$1"
+}
+
+build_append_result() {
+    file=$1
+    topic=$2
+    body=$3
+    awk '
+        {
+            if ($0 ~ /^[[:space:]]*$/) pending = pending "\n"
+            else { if (started) printf "%s", pending; pending = ""; print; started = 1 }
+        }
+    ' "$file"
+    printf '\n'
+    emit_heading "$(today_date)" "$topic"
+    printf '\n'
+    emit_body "$body"
+}
+
+cmd_append() {
+    file=$1
+    topic=$2
+    shift 2 2>/dev/null || true
+    if [ -z "$file" ] || [ -z "$topic" ]; then
+        echo "append에는 파일과 블록 주제가 필요합니다." >&2
+        usage >&2
+        return 1
+    fi
+    if [ "$#" -gt 0 ]; then
+        echo "append는 추가 옵션을 받지 않습니다." >&2
+        return 1
+    fi
+    if contains_newline "$topic" || is_blank "$topic"; then
+        echo "블록 주제는 공백이 아닌 한 줄이어야 합니다." >&2
+        return 1
+    fi
+    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
+    if ! fm_err=$(validate_frontmatter "$file"); then
+        echo "frontmatter가 유효한 open 로그가 아닙니다: $file (${fm_err})" >&2
+        return 1
+    fi
+    body_tmp=$(mktemp 2>/dev/null) || { echo "본문 임시 파일 생성에 실패했습니다." >&2; return 1; }
+    cat > "$body_tmp"
+    if ! grep -q '[^[:space:]]' "$body_tmp"; then
+        echo "본문(stdin)이 비어 있습니다." >&2
+        rm -f "$body_tmp"
+        return 1
+    fi
+    body_next=$(find_next_pointers "$body_tmp") || { rm -f "$body_tmp"; return 1; }
+    if [ -n "$body_next" ]; then
+        echo "본문에 next pointer를 직접 쓸 수 없습니다. items 명령을 사용하세요." >&2
+        rm -f "$body_tmp"
+        return 1
+    fi
+    if with_atomic_output "$file" build_append_result "$topic" "$body_tmp"; then
+        rm -f "$body_tmp"
+        printf '적용했습니다: %s\n' "$file"
+        print_closeout_hint_if_clean "$file"
+        return 0
+    fi
+    rm -f "$body_tmp"
+    return 1
+}
+
+build_items_add_result() {
+    file=$1
+    id=$2
+    status=$3
+    action=$4
+    marker=" "
+    demote=0
+    if [ "$status" = "active" ]; then marker=">"; demote=1; fi
+    LOG_ITEM_LINE="- [${marker}] ${id} ${action}" LOG_ITEM_DEMOTE_ACTIVE="$demote" awk "$FENCE_FUNCS"'
+        function maybe_demote(line) {
+            if (ENVIRON["LOG_ITEM_DEMOTE_ACTIVE"] == "1" &&
+                line ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+[[:space:]]+/) {
+                sub(/\[>\]/, "[ ]", line)
+            }
+            return line
+        }
+        FNR == 1 {
+            in_fence = 0; fence_char = ""; fence_len = 0
+            wi_count = 0; wi_start = 0; wi_end = 0; in_wi = 0; fm = 0; fm_close = 0
         }
         {
+            skip = fence_skip($0)
+            out[NR] = (!skip ? maybe_demote($0) : $0)
+            if (NR == 1 && $0 == "---") fm = 1
+            else if (fm && $0 == "---" && fm_close == 0) fm_close = NR
+            if (!skip && $0 ~ /^##[[:space:]]+Work Items[[:space:]]*$/) {
+                wi_count++
+                if (wi_count == 1) { wi_start = NR; in_wi = 1 }
+            } else if (!skip && in_wi && $0 ~ /^##[[:space:]]+/) {
+                wi_end = NR - 1; in_wi = 0
+            }
+        }
+        END {
+            if (wi_count == 0) {
+                for (i = 1; i <= NR; i++) {
+                    print out[i]
+                    if (i == fm_close) { print ""; print "## Work Items"; print ENVIRON["LOG_ITEM_LINE"]; print "" }
+                }
+                exit
+            }
+            if (wi_end == 0) wi_end = NR
+            wi_insert_after = wi_start
+            for (i = wi_start + 1; i <= wi_end; i++) if (out[i] !~ /^[[:space:]]*$/) wi_insert_after = i
+            for (i = 1; i <= NR; i++) {
+                if (i > wi_insert_after && i <= wi_end && out[i] ~ /^[[:space:]]*$/) continue
+                print out[i]
+                if (i == wi_insert_after) { print ENVIRON["LOG_ITEM_LINE"]; print "" }
+            }
+        }
+    ' "$file"
+}
+
+build_items_set_result() {
+    file=$1
+    id=$2
+    status=$3
+    reason=$4
+    target=$5
+    LOG_ITEM_ID="$id" LOG_ITEM_STATUS="$status" LOG_ITEM_REASON="$reason" LOG_ITEM_TARGET="$target" awk "$FENCE_FUNCS"'
+        function parse_item(line,   rest, after) {
+            item_prefix = ""; item_marker = ""; item_id = ""; item_text = ""
+            if (!match(line, /^[[:space:]]*-[[:space:]]+/)) return 0
+            item_prefix = substr(line, 1, RLENGTH)
+            rest = substr(line, RLENGTH + 1)
+            if (rest !~ /^\[[ >xX]\][[:space:]]+W[0-9]+([[:space:]]|$)/) return 0
+            item_marker = substr(rest, 2, 1)
+            after = rest
+            sub(/^\[[ >xX]\][[:space:]]+/, "", after)
+            item_id = after
+            sub(/[[:space:]].*$/, "", item_id)
+            item_text = after
+            sub(/^W[0-9]+[[:space:]]*/, "", item_text)
+            return 1
+        }
+        function render(marker, text) { return item_prefix "[" marker "] " item_id " " text }
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
+        {
             line = $0
-            if (FNR in mode_of) {
-                m = mode_of[FNR]
-                if (match(line, /^[[:space:]]*([0-9]+\.|-)[[:space:]]+/)) {
-                    prefix = substr(line, 1, RLENGTH)
-                    rest = substr(line, RLENGTH + 1)
-                    sub(/^\[ \][[:space:]]*/, "", rest)
-                    if (m == "complete") {
-                        line = prefix "[x] " rest
-                    } else if (m == "cancel") {
-                        line = prefix "Cancelled: " rest " — " reason_of[FNR]
-                    } else if (m == "transfer") {
-                        line = prefix "Transferred: " rest " → " target_of[FNR] " — " reason_of[FNR]
-                    }
+            if (!fence_skip($0) && parse_item($0)) {
+                if (item_id == ENVIRON["LOG_ITEM_ID"]) {
+                    st = ENVIRON["LOG_ITEM_STATUS"]
+                    if (st == "active") line = render(">", item_text)
+                    else if (st == "open") line = render(" ", item_text)
+                    else if (st == "completed") line = render("x", item_text)
+                    else if (st == "cancelled") line = render("x", "Cancelled: " item_text " — " ENVIRON["LOG_ITEM_REASON"])
+                    else if (st == "transferred") line = render("x", "Transferred: " item_text " → " ENVIRON["LOG_ITEM_TARGET"] " — " ENVIRON["LOG_ITEM_REASON"])
+                } else if (ENVIRON["LOG_ITEM_STATUS"] == "active" && item_marker == ">") {
+                    line = render(" ", item_text)
                 }
             }
             if (line ~ /^[[:space:]]*$/) {
@@ -671,401 +615,124 @@ emit_resolved() {
                 started = 1
             }
         }
-    ' "$1"
+    ' "$file"
 }
 
-# 부작용 없는 result-building 경로. spec($2)대로 원본($1)의 대상 줄을 변환한 최종 파일 내용을
-# stdout으로 만든다(본문 추가 없음). build_result(append)와 평행한 순수 함수다.
-build_resolve_result() {
-    emit_resolved "$1" "$2"
-}
-
-cmd_resolve() {
-    file="$1"
-    if [ "$#" -gt 0 ]; then shift; fi
-
-    if [ -z "$file" ]; then
-        echo "로그 파일을 지정하세요." >&2
+cmd_items() {
+    file=$1
+    op=$2
+    [ "$#" -ge 1 ] && shift
+    [ "$#" -ge 1 ] && shift
+    if [ -z "$file" ] || [ -z "$op" ]; then
+        echo "items는 파일과 add/set 동작이 필요합니다." >&2
         usage >&2
         return 1
     fi
-    if [ "$#" -gt 0 ]; then
-        echo "resolve는 추가 인자를 받지 않습니다(레코드는 stdin)." >&2
-        return 1
-    fi
-    if [ ! -f "$file" ]; then
-        echo "파일이 없습니다: $file" >&2
-        return 1
-    fi
+    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
     if ! fm_err=$(validate_frontmatter "$file"); then
         echo "frontmatter가 유효한 open 로그가 아닙니다: $file (${fm_err})" >&2
         return 1
     fi
-
-    # stdin 레코드를 파싱·검증한다(D2). 규칙 위반이면 spec 생성에서 비0으로 끝나 원본 무변경.
-    if ! spec_tmp=$(mktemp 2>/dev/null); then
-        echo "스펙 임시 파일 생성에 실패했습니다." >&2
+    wi_count=$(work_items_section_count "$file") || return 1
+    if [ "$wi_count" -gt 1 ]; then
+        echo "## Work Items 섹션이 여러 개입니다: $file" >&2
         return 1
     fi
-    if ! parse_resolve_records > "$spec_tmp"; then
-        echo "stdin 레코드가 유효하지 않습니다." >&2
-        rm -f "$spec_tmp"
-        return 1
-    fi
-    if [ ! -s "$spec_tmp" ]; then
-        echo "처리할 레코드가 없습니다." >&2
-        rm -f "$spec_tmp"
-        return 1
-    fi
+    validate_work_item_ids "$file" || return 1
 
-    # 대상 검증(적용 전, 하나라도 실패하면 전체 거부·원본 무변경).
-    if ! validate_resolve_targets "$file" "$spec_tmp"; then
-        echo "대상 검증에 실패했습니다: $file" >&2
-        rm -f "$spec_tmp"
-        return 1
-    fi
-
-    # atomic 적용 경로(append와 동일한 안전 패턴). out_tmp는 대상과 같은 디렉터리의 점 접두
-    # 임시 파일이라 logs/*.md 검색에 잡히지 않고 같은 디렉터리 rename이라 교체가 원자적이다.
-    # snapshot_tmp는 content identity 기준 사본이다.
-    _dir=$(dirname "$file")
-    if ! out_tmp=$(mktemp "$_dir/.log-resolve.XXXXXX" 2>/dev/null); then
-        echo "대상 디렉터리에 결과 임시 파일을 만들지 못했습니다: $_dir" >&2
-        rm -f "$spec_tmp"
-        return 1
-    fi
-    if ! snapshot_tmp=$(mktemp 2>/dev/null); then
-        echo "원본 스냅샷 임시 파일 생성에 실패했습니다: $file" >&2
-        rm -f "$spec_tmp" "$out_tmp"
-        return 1
-    fi
-
-    # content identity 기준선. 교체 직전 다시 비교해 결과 생성 중 동시 수정을 감지한다.
-    if ! cp "$file" "$snapshot_tmp"; then
-        echo "원본 스냅샷 생성에 실패했습니다: $file" >&2
-        rm -f "$spec_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    # 결과 임시 파일에 원본 권한을 먼저 입힌다(cp -p). 이어지는 truncate-write는 mode를
-    # 바꾸지 않으므로 교체 후 원본 권한이 보존된다.
-    if ! cp -p "$file" "$out_tmp"; then
-        echo "결과 임시 파일 준비에 실패했습니다: $file" >&2
-        rm -f "$spec_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    # 결과 생성이 실패하면 교체로 진행하지 않아 원본이 바뀌지 않는다.
-    if ! build_resolve_result "$file" "$spec_tmp" > "$out_tmp"; then
-        echo "결과 생성에 실패했습니다: $file" >&2
-        rm -f "$spec_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    # 적용 전 결과 재검증(postcondition): 지정한 각 대상 줄이 변환 후 find_incomplete 패턴에서
-    # 빠졌는지 확인한다(complete는 [x]라 빠지고, cancel/transfer는 체크박스 제거로 빠진다).
-    if ! verify_resolved_postcondition "$out_tmp" "$spec_tmp"; then
-        echo "결과 postcondition 검증에 실패했습니다(대상이 여전히 미완료): $file" >&2
-        rm -f "$spec_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    # 교체 직전 원본을 snapshot과 byte 비교해 동시 수정을 감지하고, 통과하면 같은 디렉터리 내
-    # atomic rename으로 반영한다. 검증·교체 실패 시 원본은 바뀌지 않는다.
-    if apply_result "$file" "$out_tmp" "$snapshot_tmp"; then
-        rm -f "$spec_tmp" "$snapshot_tmp"
-        printf '적용했습니다: %s\n' "$file"
-        return 0
-    fi
-    rm -f "$spec_tmp" "$out_tmp" "$snapshot_tmp"
-    return 1
-}
-
-# 변환된 결과($1)에서 spec($2)이 지정한 각 대상 줄이 더는 미완료 체크박스가 아닌지 확인한다.
-# fence 상태를 추적해 audit(find_incomplete)과 같은 의미로 본다. 하나라도 남아 있으면 비0.
-verify_resolved_postcondition() {
-    awk -v specfile="$2" "$FENCE_FUNCS"'
-        BEGIN {
-            failed = 0
-            while ((getline ln < specfile) > 0) {
-                getline md < specfile
-                getline ex < specfile
-                getline rs < specfile
-                getline tg < specfile
-                getline sep < specfile
-                want[ln + 0] = 1
-            }
-            close(specfile)
-        }
-        {
-            is_fence_line = fence_skip($0)
-            if (FNR in want) {
-                if (!is_fence_line && $0 ~ /^[[:space:]]*([0-9]+\.|-)[[:space:]]+\[ \]([[:space:]]|$)/) {
-                    print "RESOLVE_POSTCOND_ERROR: " FNR "번째 줄이 여전히 미완료입니다" > "/dev/stderr"
-                    failed = 1
-                    exit 1
-                }
-            }
-        }
-        END { if (failed) exit 1 }
-    ' "$1"
-}
-
-cmd_append() {
-    file=""
-    topic=""
-    mode=""
-    reason=""
-    resume_val=""
-    has_resume=0
-    pos=0
-
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --complete-resume)
-                if [ -n "$mode" ]; then
-                    echo "Resume 전이 mode는 함께 쓸 수 없습니다." >&2
-                    return 1
-                fi
-                mode="complete"
-                ;;
-            --replace-resume)
-                if [ -n "$mode" ]; then
-                    echo "Resume 전이 mode는 함께 쓸 수 없습니다." >&2
-                    return 1
-                fi
-                mode="replace"
-                if [ $# -lt 2 ]; then
-                    echo "--replace-resume에는 <이유>가 필요합니다." >&2
-                    return 1
-                fi
+    case "$op" in
+        add)
+            action=$1
+            [ "$#" -ge 1 ] && shift
+            status=open
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --status) shift; status=$1 ;;
+                    --active) status=active ;;
+                    --*) echo "알 수 없는 items add 옵션입니다: $1" >&2; return 1 ;;
+                    *) echo "items add 인자가 너무 많습니다: $1" >&2; return 1 ;;
+                esac
                 shift
-                reason="$1"
-                ;;
-            --cancel-resume)
-                if [ -n "$mode" ]; then
-                    echo "Resume 전이 mode는 함께 쓸 수 없습니다." >&2
-                    return 1
-                fi
-                mode="cancel"
-                if [ $# -lt 2 ]; then
-                    echo "--cancel-resume에는 <이유>가 필요합니다." >&2
-                    return 1
-                fi
-                shift
-                reason="$1"
-                ;;
-            --resume)
-                if [ $# -lt 2 ]; then
-                    echo "--resume에는 <행동>이 필요합니다." >&2
-                    return 1
-                fi
-                shift
-                resume_val="$1"
-                has_resume=1
-                ;;
-            --*)
-                echo "알 수 없는 옵션입니다: $1" >&2
+            done
+            if contains_newline "$action" || is_blank "$action"; then
+                echo "items add의 <행동>은 공백이 아닌 한 줄이어야 합니다." >&2
                 return 1
-                ;;
-            *)
-                if [ "$pos" -eq 0 ]; then
-                    file="$1"
-                    pos=1
-                elif [ "$pos" -eq 1 ]; then
-                    topic="$1"
-                    pos=2
-                else
-                    echo "인자가 너무 많습니다: $1" >&2
-                    return 1
-                fi
-                ;;
-        esac
-        shift
-    done
-
-    if [ -z "$file" ]; then
-        echo "로그 파일을 지정하세요." >&2
-        return 1
-    fi
-    if [ -z "$topic" ]; then
-        echo "블록 주제를 지정하세요." >&2
-        return 1
-    fi
-    if contains_newline "$topic" || is_blank "$topic"; then
-        echo "블록 주제는 공백이 아닌 한 줄이어야 합니다." >&2
-        return 1
-    fi
-    if { [ "$mode" = "replace" ] || [ "$mode" = "cancel" ]; } && { contains_newline "$reason" || is_blank "$reason"; }; then
-        echo "--${mode}-resume의 <이유>는 공백이 아닌 한 줄이어야 합니다." >&2
-        return 1
-    fi
-    if [ "$has_resume" -eq 1 ] && { contains_newline "$resume_val" || is_blank "$resume_val"; }; then
-        echo "--resume의 <행동>은 공백이 아닌 한 줄이어야 합니다." >&2
-        return 1
-    fi
-
-    if [ ! -f "$file" ]; then
-        echo "파일이 없습니다: $file" >&2
-        return 1
-    fi
-    if ! fm_err=$(validate_frontmatter "$file"); then
-        echo "frontmatter가 유효한 open 로그가 아닙니다: $file (${fm_err})" >&2
-        return 1
-    fi
-
-    if [ "$mode" = "replace" ] && [ "$has_resume" -ne 1 ]; then
-        echo "--replace-resume은 --resume과 함께 사용해야 합니다." >&2
-        return 1
-    fi
-    if [ "$mode" = "cancel" ] && [ "$has_resume" -eq 1 ]; then
-        echo "--cancel-resume은 --resume과 함께 사용할 수 없습니다." >&2
-        return 1
-    fi
-
-    if ! body_tmp=$(mktemp 2>/dev/null); then
-        echo "본문 임시 파일 생성에 실패했습니다." >&2
-        return 1
-    fi
-    # atomic rename을 위해 결과 임시 파일을 대상과 같은 디렉터리에 만든다(다른
-    # 파일시스템이면 rename이 원자적이지 않다). 점 접두 이름이라 logs/*.md 검색에 잡히지
-    # 않는다. snapshot_tmp는 content identity 기준 사본이다.
-    _dir=$(dirname "$file")
-    if ! out_tmp=$(mktemp "$_dir/.log-append.XXXXXX" 2>/dev/null); then
-        echo "대상 디렉터리에 결과 임시 파일을 만들지 못했습니다: $_dir" >&2
-        rm -f "$body_tmp"
-        return 1
-    fi
-    if ! snapshot_tmp=$(mktemp 2>/dev/null); then
-        echo "원본 스냅샷 임시 파일 생성에 실패했습니다: $file" >&2
-        rm -f "$body_tmp" "$out_tmp"
-        return 1
-    fi
-    cat > "$body_tmp"
-
-    if ! grep -q '[^[:space:]]' "$body_tmp"; then
-        echo "본문(stdin)이 비어 있습니다." >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    body_resumes=$(find_resumes "$body_tmp") || {
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    }
-    if [ -n "$body_resumes" ]; then
-        echo "본문에 미완료 Resume Pointer를 직접 쓸 수 없습니다. --resume을 사용하세요." >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    resumes=$(find_resumes "$file") || {
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    }
-    resume_count=$(printf '%s\n' "$resumes" | awk 'NF { n++ } END { print n + 0 }')
-    if [ "$resume_count" -gt 1 ]; then
-        echo "미완료 Resume Pointer가 ${resume_count}개여서 append할 수 없습니다. audit --resume으로 점검하세요." >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-    if [ "$resume_count" -eq 0 ] && [ -n "$mode" ]; then
-        echo "처리할 미완료 Resume Pointer가 없습니다." >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-    if [ "$resume_count" -eq 1 ] && [ -z "$mode" ] && [ "$has_resume" -eq 1 ]; then
-        echo "기존 Resume을 해소하지 않고 새 --resume을 추가할 수 없습니다." >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    # content identity 기준선. 이후 target 탐색과 build_result가 읽는 원본이 이
-    # 사본과 같아야 하며, 교체 직전 다시 비교해 결과 생성 중 동시 수정을 감지한다.
-    if ! cp "$file" "$snapshot_tmp"; then
-        echo "원본 스냅샷 생성에 실패했습니다: $file" >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    if [ "$mode" = "complete" ] || [ "$mode" = "replace" ] || [ "$mode" = "cancel" ]; then
-        target=$(printf '%s\n' "$resumes" | awk -F '\t' 'NR == 1 { print $1 }')
-        if [ -z "$target" ]; then
-            echo "fenced code 밖에서 처리할 Resume Pointer를 찾지 못했습니다: $file" >&2
-            rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
+            fi
+            case "$status" in open|active) ;; *) echo "items add --status는 open 또는 active만 허용합니다." >&2; return 1 ;; esac
+            id=$(next_work_item_id "$file") || return 1
+            if with_atomic_output "$file" build_items_add_result "$id" "$status" "$action"; then
+                printf '적용했습니다: %s\n' "$file"
+                printf '추가한 Work Item: %s\n' "$id"
+                print_closeout_hint_if_clean "$file"
+                return 0
+            fi
             return 1
-        fi
-    fi
-
-    # 결과 임시 파일에 원본 권한을 먼저 입힌다(cp -p). 이어지는 build_result의
-    # truncate-write는 mode를 바꾸지 않으므로 교체 후 원본 권한이 보존된다. 원본 mode가
-    # 소유자 쓰기를 허용하지 않으면 결과 쓰기가 실패하고 원본은 바뀌지 않는다.
-    if ! cp -p "$file" "$out_tmp"; then
-        echo "결과 임시 파일 준비에 실패했습니다: $file" >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    # 결과 생성이 실패하면 교체로 진행하지 않아 원본이 바뀌지 않는다.
-    if ! build_result "$file" "$topic" "$mode" "$reason" "$has_resume" "$resume_val" "$body_tmp" > "$out_tmp"; then
-        echo "결과 생성에 실패했습니다: $file" >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    result_resumes=$(find_resumes "$out_tmp") || {
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    }
-    result_count=$(printf '%s\n' "$result_resumes" | awk 'NF { n++ } END { print n + 0 }')
-    if [ "$result_count" -gt 1 ]; then
-        echo "결과에 미완료 Resume Pointer가 ${result_count}개여서 적용하지 않습니다." >&2
-        rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-
-    # 교체 직전 원본을 snapshot과 byte 비교해 동시 수정을 감지하고, 통과하면 같은
-    # 디렉터리 내 atomic rename으로 반영한다. 검증·교체 실패 시 원본은 바뀌지 않는다.
-    if apply_result "$file" "$out_tmp" "$snapshot_tmp"; then
-        rm -f "$body_tmp" "$snapshot_tmp"
-        printf '적용했습니다: %s\n' "$file"
-        return 0
-    fi
-    rm -f "$body_tmp" "$out_tmp" "$snapshot_tmp"
-    return 1
-}
-
-main() {
-    sub="$1"
-    [ $# -gt 0 ] && shift
-
-    case "$sub" in
-        new)
-            cmd_new "$@"
             ;;
-        search)
-            cmd_search "$@"
-            ;;
-        audit)
-            cmd_audit "$@"
-            ;;
-        set-status)
-            cmd_set_status "$@"
-            ;;
-        append)
-            cmd_append "$@"
-            ;;
-        resolve)
-            cmd_resolve "$@"
+        set)
+            id=""; status=""; reason=""; target=""; expect=""; has_expect=0
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --id) shift; id=$1 ;;
+                    --status) shift; status=$1 ;;
+                    --reason) shift; reason=$1 ;;
+                    --target) shift; target=$1 ;;
+                    --expect) shift; expect=$1; has_expect=1 ;;
+                    --*) echo "알 수 없는 items set 옵션입니다: $1" >&2; return 1 ;;
+                    *) echo "items set 인자가 너무 많습니다: $1" >&2; return 1 ;;
+                esac
+                shift
+            done
+            if ! printf '%s\n' "$id" | grep -q '^W[1-9][0-9]*$'; then
+                echo "--id는 W1, W2 같은 형식이어야 합니다." >&2
+                return 1
+            fi
+            case "$status" in open|active|completed|cancelled|transferred) ;; *) echo "--status는 open, active, completed, cancelled, transferred 중 하나여야 합니다." >&2; return 1 ;; esac
+            case "$status" in
+                open|active|completed)
+                    if [ -n "$reason" ] || [ -n "$target" ]; then echo "$status 상태에는 --reason/--target을 줄 수 없습니다." >&2; return 1; fi
+                    ;;
+                cancelled)
+                    if contains_newline "$reason" || is_blank "$reason"; then echo "cancelled 상태에는 공백이 아닌 --reason이 필요합니다." >&2; return 1; fi
+                    if [ -n "$target" ]; then echo "cancelled 상태에는 --target을 줄 수 없습니다." >&2; return 1; fi
+                    ;;
+                transferred)
+                    if contains_newline "$reason" || is_blank "$reason"; then echo "transferred 상태에는 공백이 아닌 --reason이 필요합니다." >&2; return 1; fi
+                    if contains_newline "$target" || is_blank "$target"; then echo "transferred 상태에는 공백이 아닌 --target이 필요합니다." >&2; return 1; fi
+                    ;;
+            esac
+            if [ "$has_expect" -eq 1 ] && { contains_newline "$expect" || is_blank "$expect"; }; then
+                echo "--expect는 공백이 아닌 한 줄이어야 합니다." >&2
+                return 1
+            fi
+            validate_work_item_ids "$file" "$id" "$has_expect" "$expect" || return 1
+            if with_atomic_output "$file" build_items_set_result "$id" "$status" "$reason" "$target"; then
+                printf '적용했습니다: %s\n' "$file"
+                print_closeout_hint_if_clean "$file"
+                return 0
+            fi
+            return 1
             ;;
         *)
-            usage
+            echo "items 동작은 add 또는 set이어야 합니다: $op" >&2
+            return 1
             ;;
     esac
 }
 
-# LOG_LIB_ONLY가 설정되면 함수만 로드하고 main을 실행하지 않는다(테스트가 build_result
-# 같은 내부 경로를 직접 호출하기 위함). 평소 CLI 실행에는 영향이 없다.
+main() {
+    sub=$1
+    [ $# -gt 0 ] && shift
+    case "$sub" in
+        new) cmd_new "$@" ;;
+        search) cmd_search "$@" ;;
+        audit) cmd_audit "$@" ;;
+        set-status) cmd_set_status "$@" ;;
+        append) cmd_append "$@" ;;
+        items) cmd_items "$@" ;;
+        *) usage ;;
+    esac
+}
+
 if [ -z "${LOG_LIB_ONLY:-}" ]; then
     main "$@"
 fi

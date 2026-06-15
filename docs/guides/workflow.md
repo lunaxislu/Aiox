@@ -22,7 +22,7 @@
 
 1. **진입·재개** — 세션 시작 시 현재 작업을 정한다(아래 "세션 시작과 재개"). 작업
    전 현재 할 일과 읽을 범위를 짧게 보고한다.
-2. **작업 수행** — 작은 작업은 로그 하나의 Work Items와 Resume Pointer로, 큰 작업은 plan과 단계
+2. **작업 수행** — 작은 작업은 로그 하나의 Work Items와 next pointer로, 큰 작업은 plan과 단계
    로그로 진행한다. 진행 중 의도·판단·근거·제약·결정·남은 일을 로그에 증류한다.
 3. **owner 문서 반영** — 확정되어 계속 유효할 결론은 책임 owner 문서나 code·tests에
    반영한다. 무엇이 어느 owner인지는 `documentation-system.md`가 정한다. 승인 전
@@ -44,18 +44,18 @@
 ## 세션 시작과 재개
 
 Claude와 Codex의 `SessionStart`는 같은 `scripts/onramp`를 호출한다. onramp는 단일
-활성 plan의 단계 로그에서 시작해 Resume Pointer가 가리키는 open 로그를 따라가고,
+활성 plan의 단계 로그에서 시작해 next pointer가 가리키는 open 로그를 따라가고,
 체인의 마지막 로그 하나를 현재 작업 로그로 보여준다. 포인터 체인, 최신 블록 제목과
-Resume만 요약하며 로그 본문의 의미를 재구성하지 않는다. 활성 plan이 없을 때 open
-로그가 하나면 그 로그를 선택한다. open 로그가 여러 개면 Resume 참조 그래프에서 다른
+next pointer만 요약하며 로그 본문의 의미를 재구성하지 않는다. 활성 plan이 없을 때 open
+로그가 하나면 그 로그를 선택한다. open 로그가 여러 개면 next pointer 참조 그래프에서 다른
 open 로그가 실제로 가리키고 자신은 더 이상 다른 로그를 가리키지 않는 leaf가 정확히
 하나일 때만 그 로그를 선택한다. 복수 후보·복수 leaf·복수 활성 단계·깨진 포인터·
 순환은 자동 판단하지 않고 후보나 경고를 출력한다. 이 출력은 현재 작업의 권위가 아니다.
 
 현재 작업을 정하고 재개하는 순서는 `AGENTS.md`가 소유한다. 요약하면 사용자 지정(주제만
-지정하면 `description` 검색) → 활성 plan 단계 anchor와 Resume 체인 → 활성 plan이 없으면
-단일 open 로그 또는 Resume 참조 그래프의 유일한 leaf 순으로 대상 로그를 정하고, 선택한
-로그 본문의 최신 기록·Work Items·Resume Pointer에서 현재 단계와 재개 지점을 확인한다.
+지정하면 `description` 검색) → 활성 plan 단계 anchor와 next pointer 체인 → 활성 plan이 없으면
+단일 open 로그 또는 next pointer 참조 그래프의 유일한 leaf 순으로 대상 로그를 정하고, 선택한
+로그 본문의 최신 기록·Work Items·next pointer에서 현재 단계와 재개 지점을 확인한다.
 여러 후보 중 하나로 정해지지 않으면 추측하지 않고 사용자에게 묻는다. 작업 전 현재 할
 일과 읽을 범위를 짧게 보고한다.
 
@@ -64,13 +64,13 @@ open 로그가 실제로 가리키고 자신은 더 이상 다른 로그를 가�
 
 ## 작은 작업
 
-로그 하나의 Work Items와 Resume Pointer로 작업 범위와 재개 지점을 알 수 있으면 plan을
-만들지 않는다. 체크박스와 Resume 상태 전이, 분리 절차는 log skill을 따른다.
+로그 하나의 Work Items와 next pointer로 작업 범위와 재개 지점을 알 수 있으면 plan을
+만들지 않는다. W-id Work Items, `[>]` next pointer와 분리 절차는 log skill을 따른다.
 
 ## 다른 로그로 작업 전환
 
 현재 작업을 다른 로그의 선행 작업으로 전환할 때는, 새 로그에 행동을 기록하는 것만으로
-현재 작업 포인터가 바뀌지 않는다. 활성 plan 단계 로그의 Resume Pointer를 새 로그를
+현재 작업 포인터가 바뀌지 않는다. 활성 plan 단계 로그의 next pointer를 새 로그를
 가리키도록 함께 바꿔야 다음 세션이 올바른 작업을 재개한다. 이 규칙의
 권위는 `plans/AGENTS.md`의 Maintenance다.
 

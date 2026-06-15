@@ -6,7 +6,7 @@
 
 적용 우선순위:
 
-1. **필수 구조** — frontmatter, 날짜 block, Work Items와 Resume Pointer처럼 도구가
+1. **필수 구조** — frontmatter, 날짜 block, Work Items와 next pointer처럼 도구가
    소비하는 구조를 정확히 지킨다.
 2. **필수 의미** — 다음 agent가 의도, 결정, 이유, 현재 상태와 남은 일을 오해하지 않게
    기록한다.
@@ -22,7 +22,7 @@
 - 기록할 내용
 - 생략할 내용
 - 블록 구조와 권장 표현
-- Work Items와 Resume Pointer
+- Work Items와 next pointer
 - 외부 출처
 
 ## Frontmatter
@@ -33,8 +33,8 @@ frontmatter는 도구가 소비하는 필수 구조이며 다음 세 필드만 �
 - `description`: 본문을 열지 않고 필요한 로그인지 판별하는 안정적인 index 설명
 - `status`: 로그의 수명인 `open`, `decided`, `superseded`
 
-`description`에는 현재 단계나 Resume을 넣지 않는다. 현재 진행 상태와 handoff는
-본문의 최신 기록, Work Items와 Resume Pointer가 소유한다. `status`는 log 도구의
+`description`에는 현재 단계나 next pointer를 넣지 않는다. 현재 진행 상태와 handoff는
+본문의 최신 기록과 Work Items가 소유한다. `status`는 log 도구의
 `set-status`로만 바꾼다. log 도구는 description과 본문의 의미를 작성하지 않는다.
 
 ## 기록 품질 기준
@@ -67,12 +67,12 @@ frontmatter는 도구가 소비하는 필수 구조이며 다음 세 필드만 �
 - 반대 근거, 동의되지 않은 의견과 보류 이유
 - 결정과 결정이 변경된 이유
 - 수행한 작업과 검증 결과
-- 남은 질문, Work Items와 Resume Pointer
+- 남은 질문, Work Items와 next pointer
 - 판단·결정 또는 후속 확인에 사용한 외부 출처
 - 외부 자료에서 확인한 사실과 그 사실이 판단에 미친 영향
 
 기존 로그에 이미 있는 내용을 다시 언급했을 뿐 의도, 판단, 제약, 현재 상태 또는
-Resume Pointer가 달라지지 않았다면 추가하지 않는다. 수행·검증 결과와 사용자
+next pointer가 달라지지 않았다면 추가하지 않는다. 수행·검증 결과와 사용자
 승인·거부는 의미 변화로 본다.
 
 애매하면 결정, 근거, 제약과 미결 사항은 남긴다.
@@ -97,7 +97,7 @@ Resume Pointer가 달라지지 않았다면 추가하지 않는다. 수행·검�
 
 - 블록은 append가 생성하는 `## YYYY-MM-DD · <주제>` heading 아래 시간순으로 둔다.
 - 체크박스는 수행할 행동에만 사용한다.
-- Work Items와 Resume Pointer는 다음 절의 구조를 따른다.
+- Work Items와 next pointer는 다음 절의 구조를 따른다.
 
 권장 표현:
 
@@ -113,80 +113,61 @@ Resume Pointer가 달라지지 않았다면 추가하지 않는다. 수행·검�
   않는다.
 - 모든 블록에 같은 화자 구조, 섹션 또는 `conclusion`을 강제하지 않는다.
 
-## Work Items와 Resume Pointer
+## Work Items와 next pointer
 
 `Work Items`는 로그 수명 안에서 수행할 전체 범위다. 0개 이상 둘 수 있고 단일·복수,
-순차·비순차 작업을 표현한다. 순서가 의미 있으면 번호 체크리스트를 사용한다.
+순차·비순차 작업을 표현한다. 로그당 canonical `## Work Items` 섹션 하나를 유지한다.
 
-로그당 canonical `## Work Items` 섹션 하나를 유지한다. Work Item을 추가·완료·취소·이관할
-때는 새 `## Work Items` 섹션을 만들지 않고 기존 섹션에 항목을 추가하거나 해당 항목을
-갱신한다.
+v2 Work Item은 명시 id를 가진다. id는 `W1`, `W2`처럼 발급하고, 줄 순서와 별개인
+identity다. 완료·취소·이관된 id도 보존하며 재사용하지 않는다. `[>]`는 재개 시 먼저 볼
+단일 next pointer이고, `[ ]`는 남은 항목, `[x]`는 더 이상 actionable하지 않은 항목이다.
 
 ```markdown
 ## Work Items
 
-1. [ ] Inspect API responses.
-2. [ ] Test error handling.
-3. [ ] Document retry behavior.
+- [>] W1 Inspect API responses.
+- [ ] W2 Test error handling.
+- [ ] W3 Document retry behavior.
 ```
 
-임의 위치의 미완료 Work Item을 완료·취소·이관할 때는 `resolve`를 사용한다. agent가
-후속 기록과 현재 상태를 대조해 mode를 판단하고, 도구에는 줄 번호와 기대 원문을 함께
-전달한다.
+새 항목은 `items add`로 추가하고, 상태 변경은 `items set`으로 한다. `active`로 바꾸면
+다른 `[>]` 항목은 `[ ]`로 내려간다.
 
 ```sh
-scripts/log resolve logs/example.md <<'EOF'
-line: 128
-expect: 1. [ ] Inspect API responses.
-mode: complete
-
-line: 129
-expect: 2. [ ] Test error handling.
-mode: transfer
-target: logs/error-handling.md
-reason: 별도 로그에서 독립적으로 처리한다
-EOF
+scripts/log items logs/example.md set --id W1 --status completed
+scripts/log items logs/example.md set --id W2 --status transferred \
+  --target logs/error-handling.md \
+  --reason "별도 로그에서 독립적으로 처리한다"
 ```
 
-위 입력은 기존 Work Items 섹션의 항목을 다음처럼 갱신한다.
+결과는 다음처럼 스캔 가능한 상태만 남긴다. 자세한 이유와 판단 경위는 날짜별 기록 블록에
+쓴다.
 
 ```markdown
 ## Work Items
 
-1. [x] Inspect API responses.
-2. Transferred: Test error handling. → logs/error-handling.md — 별도 로그에서 독립적으로 처리한다
-3. [ ] Document retry behavior.
+- [x] W1 Inspect API responses.
+- [x] W2 Transferred: Test error handling. → logs/error-handling.md — 별도 로그에서 독립적으로 처리한다
+- [>] W3 Document retry behavior.
 ```
 
-`Resume Pointer`는 Work Items 전체가 아니라 중단 후 다시 시작할 단일 진입점이다.
-open 로그는 fenced code 밖의 미완료 Resume을 최대 하나만 가진다.
+`transferred` 전이는 source 로그의 해당 Work Item만 `Transferred:`로 바꾼다. target 로그에
+이어받을 Work Item과 next pointer를 만들거나 확인하는 것은 agent 책임이다.
 
-```markdown
-- [ ] Resume: Start with work item 1.
-```
+Work Item 줄은 한 줄 행동 요약과 구조 상태만 소유한다. full why, 사용자 결정,
+취소·보류·범위 변경의 의미는 날짜별 기록 블록이 소유한다. `cancelled`는 실패나 폐기를 고정 의미로
+만들지 않고, 해당 Work Item이 더 이상 현재 로그의 actionable 항목이 아니라는 구조
+마커다. 이유는 기존 행동의 완료 여부와 새 재개 지점으로 바뀐 원인을 구분해, 조건인지
+완료 사실인지 애매하지 않게 쓴다.
 
-Resume은 본문에 직접 쓰지 않고 append의 `--resume`으로 생성한다. 기존 Resume이 없으면
-mode 없는 `--resume`으로 최초 포인터를 만들 수 있다. 진행 기록만 추가하고 기존
-진입점이 계속 정확하면 mode 없이 append해 원래 위치의 Resume을 유지한다.
+선택적 `--expect`는 W-id가 가리키는 현재 행동 문자열이 맞는지 확인하는 안전장치다.
+의미 판단을 대신하지 않으며, 같은 id의 현재 문장이 바뀌었는지 확인해야 할 때만 쓴다.
 
-Resume 행동을 수행했다면 `--complete-resume`으로 원래 항목을 `[x]`로 닫는다. 이어갈
-행동이 있으면 같은 append의 `--resume`으로 새 블록 끝에 둔다.
+본문에 next pointer를 직접 쓰지 않고 Work Items의 `[>] Wn`을 `items` 명령으로 관리한다.
 
-완료·취소·대체는 append 명령으로 원래 항목 자체를 구조적으로 갱신한다. 후속 블록의
-서술만으로 원래 체크박스가 해소됐다고 보지 않는다. audit 등 구조 소비자는 후속 서술을
-의미적으로 결합하지 않기 때문이다. 미완료 Resume이 여러 개면 자동으로 하나를 고르거나
-수정하지 않고 구조 오류로 보고한다.
-
-기존 행동이 결정 변경, 부분 완료, 범위 확장·축소나 우선순위 변경으로 더는 현재의
-정확한 행동이 아니면 완료로 표시하지 않는다. `--replace-resume`이나
-`--cancel-resume`으로 기존 포인터를 해소하고 이유를 본문에 설명한다. script가 남기는
-`Cancelled Resume:`은 그 행동이 실패했다는 뜻이 아니라 기존 포인터가 더는 활성 재개
-지점이 아니라는(완료·결정 변경·범위 변경·보류로 대체되거나 해소됐다는) 도구 출력이며,
-agent가 직접 맞춰 써야 하는 본문 문법이 아니다.
-
-결정이 바뀌면 이전 기록을 지우지 않고 새 결정과 이유를 남긴다. 결정이 바뀌어도
-Resume이 계속 정확하면 유지하고, 행동도 바뀌면 `--replace-resume`, 불필요해지면
-`--cancel-resume`을 사용한다.
+결정이 바뀌면 이전 기록을 지우지 않고 새 결정과 이유를 남긴다. 결정이 바뀌어도 next
+pointer가 계속 정확하면 유지하고, 행동이 바뀌면 해당 W-id를 전이하거나 새 W-id를 active로
+올린다.
 
 행동 문장에 대상 파일·코드 경로를 적으면 다른 agent가 그 항목을 수행하기 전에 현재
 상태를 확인하기 쉬워진다. 필수 필드는 아니며, 대상이 없거나 불명확한 조사·토론·결정

@@ -22,10 +22,10 @@ handoff를 본문에서 제공한다.
 
 - `new`: 로그 생성
 - `search`: topic·description·본문 검색
-- `audit`: 미완료 체크박스 구조 점검. `--resume`은 Resume Pointer의 0·1 불변 점검
+- `audit`: 미완료 Work Items 점검. `--next`는 `[>] Wn` next pointer의 0·1 불변 점검
 - `set-status`: `open`, `decided`, `superseded` 변경
-- `append`: 새 날짜 블록을 끝에 추가하고 Resume Pointer를 생성·완료·대체·취소한다
-- `resolve`: 임의 위치의 미완료 Work Item을 완료·취소·이관으로 구조 전이한다
+- `items add|set`: v2 W-id Work Items 추가와 상태 전이
+- `append`: 새 날짜 블록 추가
 
 필요한 참조만 읽는다.
 
@@ -41,11 +41,11 @@ handoff를 본문에서 제공한다.
 - 질문과 답변마다 즉시 기록하지 않는다. 결정·제약 확정, 의미 있는 조사 결과, 작업·검증
   완료, 주제 전환이나 중단처럼 의미 변화가 확정되는 checkpoint에서 관련 내용을 한
   블록으로 증류한다.
-- 의미 변화가 기존 Work Items나 Resume Pointer에 영향을 주면 후속 서술만으로
+- 의미 변화가 기존 Work Items나 next pointer에 영향을 주면 후속 서술만으로
   해소됐다고 간주하지 않는다. 구조 갱신과 도구 한계는 recording-contract.md와
   lifecycle.md를 따른다.
 - `open` 상태만으로 현재 작업을 추측하지 않는다.
-- 미완료 Work Items나 Resume이 남은 로그를 자동으로 닫지 않는다.
+- 미완료 Work Items나 next pointer가 남은 로그를 자동으로 닫지 않는다.
 - 기록·완료·취소·분리와 결과 반영 위치의 의미 판단은 agent가 수행한다.
 - 한 사례만으로 형식이나 도구를 변경하지 않는다. 변경 판단과 절차는 lifecycle.md의
   `형식과 도구 변경`을 따른다.
@@ -55,9 +55,9 @@ handoff를 본문에서 제공한다.
 1. 사용자가 지정한 기록 범위와 주제를 우선한다.
 2. 프로젝트 포인터가 대상을 정하지 않으면 `search "<주제>" --status open`으로 같은
    수명의 로그를 찾는다.
-3. 관련 로그가 하나면 Resume Pointer, 최신 기록과 Work Items부터 읽고,
+3. 관련 로그가 하나면 next pointer, Work Items와 최신 기록부터 읽고,
    의도·근거·제약과 현재 행동을 이해할 만큼 앞선 맥락까지 읽는다. 최신 꼬리만으로
-   충분하다고 보지 않는다. 여러 후보 중 하나로 정해지지 않으면 후보와 Resume Pointer를
+   충분하다고 보지 않는다. 여러 후보 중 하나로 정해지지 않으면 후보와 next pointer를
    보고하고 사용자가 선택하게 한다.
 4. 기록할 의미 변화가 있으면 기존 로그에 새 블록을 이어 쓴다. 의미 변화가 없으면
    추가하지 않는다. 같은 작업 수명·주제의 로그가 없으면 `new`로 하나를 만든다. 여러
@@ -72,6 +72,23 @@ handoff를 본문에서 제공한다.
 현재 문맥에서 이미 경로를 아는 로그만 갱신하고 관련 로그를 능동 탐색하지 않는다. 상세는
 lifecycle.md의 `지연 cross-log 정합화`를 따른다.
 
+## Items
+
+```sh
+<skill-dir>/scripts/log items <파일> add "<행동>" [--status open|active]
+<skill-dir>/scripts/log items <파일> set --id Wn --status open|active|completed|cancelled|transferred [옵션]
+```
+
+새 로그와 새 구조의 기본 경로는 W-id Work Items다. 항목은 `- [>] W1 ...`,
+`- [ ] W2 ...`, `- [x] W3 ...`처럼 쓴다. `[>]`는 재개 시 먼저 볼 단일 next pointer다.
+`items set --status active`는 다른 active 항목을 open으로 내린다. `cancelled`는
+`--reason`, `transferred`는 `--target`과 `--reason`이 필요하다. `--expect`는 선택적
+안전장치이며 의미 판단을 대신하지 않는다.
+
+Work Items의 full why는 날짜별 기록 블록이 소유한다. Work Item 줄은 스캔용 행동 요약과
+상태만 담는다. 항목을 완료·취소·이관할 때는 후속 서술만 남기지 말고 `items set`으로
+구조를 전이한다.
+
 ## Append
 
 ```sh
@@ -81,32 +98,6 @@ EOF
 ```
 
 본문은 stdin으로 직접 제공하며 append만을 위한 외부 임시 파일은 만들지 않는다. script는
-본문 의미를 판단하지 않는다.
+본문 의미를 판단하지 않는다. append는 날짜 블록을 원자적으로 추가한다.
 
-append는 입력과 open 로그 구조를 검증하고 결과를 원자적으로 반영한다. script가
-검증하는 구조와 agent가 판단하는 의미의 경계는 recording-contract.md를 따른다.
-
-Work Items는 0개 이상 둘 수 있지만 fenced code 밖의 미완료
-`- [ ] Resume: <행동>`은 로그당 최대 하나다. Resume은 본문에 직접 쓰지 않고
-`--resume`으로만 생성한다. 미완료 Resume이 여러 개면 append하지 않고
-`audit --resume`으로 보고한다.
-
-- 기존 Resume이 없을 때 mode 없이 `--resume "<행동>"`: 최초 Resume을 만든다.
-- `--complete-resume`: 기존 Resume을 `[x]`로 닫는다. 이어갈 행동은 선택적으로
-  `--resume`으로 잇는다.
-- `--replace-resume "<이유>" --resume "<행동>"`: 기존 행동을 대체하고 새 행동을 잇는다.
-  `--resume`은 필수다.
-- `--cancel-resume "<이유>"`: 기존 행동을 취소하고 새 행동은 두지 않는다.
-- mode 없이 append: 기존 Resume이 있으면 유지하고 진행 블록만 추가한다.
-
-mode를 고르기 전에 recording-contract.md의 `Work Items와 Resume Pointer`를 읽는다.
-결정의 의미 변경과 Resume 전이는 서로 대체하지 않으며, mode 선택과 본문 의미 판단은
-agent의 책임이다.
-
-## Resolve
-
-임의 위치의 Work Item을 완료·취소·이관할 때는 `resolve`를 사용한다. agent가 항목의
-의미와 mode를 판단하고, 도구에는 audit 줄 번호와 기대 원문을 함께 전달한다. 미완료
-Resume Pointer 전이는 append 전용이다. 자세한 입력 형식은
-recording-contract.md의 `Work Items와 Resume Pointer` 절과
-`<skill-dir>/scripts/log resolve` usage를 따른다.
+next pointer와 Work Item 상태는 append 본문에 직접 쓰지 않고 `items` 명령으로 바꾼다.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# 세션 시작 onramp. 활성 plan과 Resume Pointer 체인으로 현재 작업 로그 하나를 찾는다.
+# 세션 시작 onramp. 활성 plan과 로그 next pointer 체인으로 현재 작업 로그 하나를 찾는다.
 # 의미를 추론하지 않고 구조 포인터만 따라가며, 모호하거나 깨진 구조에서는 후보를 보여준다.
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
@@ -30,20 +30,17 @@ active_plan_steps() {
     done
 }
 
-# Resume 행동 텍스트를 만든다. 어느 줄이 진짜 Resume인지는 log 도구의
-# audit --resume(fence-aware·들여쓰기 허용)이 식별한 줄 번호로 정하고, 그 줄과
-# 이어지는 들여쓴 연속 줄을 합친다. 포인터 인식 규칙을 log 도구 한 곳에 둬,
-# onramp이 fenced 예시를 포인터로 오인하거나 들여쓴 Resume을 놓쳐 잘못된 로그를
-# 따라가는 drift를 막는다.
-resume_text() {
+# next pointer 행동 텍스트를 만든다. 어느 줄이 진짜 pointer인지는 log 도구의
+# audit --next(fence-aware)이 식별한 줄 번호로 정한다.
+next_text() {
     rt_file=$1
-    rt_line=$($log_tool audit --resume "$rt_file" 2>/dev/null | awk '
+    rt_line=$($log_tool audit --next "$rt_file" 2>/dev/null | awk '
         NR == 1 && match($0, /:[0-9]+: /) { print substr($0, RSTART + 1, RLENGTH - 3); exit }
     ')
     [ -n "$rt_line" ] || return 0
     awk -v target="$rt_line" '
         FNR == target {
-            sub(/^[[:space:]]*-[[:space:]]+\[ \][[:space:]]*Resume:[[:space:]]*/, "")
+            sub(/^[[:space:]]*-[[:space:]]+\[>\][[:space:]]*/, "")
             text = $0
             capture = 1
             next
@@ -71,12 +68,12 @@ log_path_from_text() {
     '
 }
 
-log_path_from_resume() {
+log_path_from_next() {
     printf '%s\n' "$1" | awk '
         {
             line = $0
             if (match(line, /logs\/[^`[:space:]]+\.md/)) {
-                # 분리 로그 포인터는 Resume의 첫 행동에 둔다. 뒤쪽의 owner 문서나
+                # 분리 로그 포인터는 next pointer의 첫 행동에 둔다. 뒤쪽의 owner 문서나
                 # 검토 대상 경로는 작업 목록일 수 있으므로 따라가지 않는다.
                 if (RSTART <= 40) print substr(line, RSTART, RLENGTH)
                 exit
@@ -102,11 +99,11 @@ print_log_summary() {
     heading=$(latest_heading "$file")
     [ -n "$heading" ] && printf '  latest: %s\n' "${heading#\#\# }"
 
-    resume=$(resume_text "$file")
-    if [ -n "$resume" ]; then
-        printf '  Resume: %s\n' "$resume"
+    next=$(next_text "$file")
+    if [ -n "$next" ]; then
+        printf '  Next: %s\n' "$next"
     else
-        echo "  Resume: 없음"
+        echo "  Next: 없음"
     fi
 }
 
@@ -125,11 +122,11 @@ referenced_open_leaves() {
     edges=""
 
     for source in $paths; do
-        if ! $log_tool audit --resume "$source" >/dev/null 2>&1; then
+        if ! $log_tool audit --next "$source" >/dev/null 2>&1; then
             continue
         fi
-        resume=$(resume_text "$source")
-        target=$(log_path_from_resume "$resume")
+        next=$(next_text "$source")
+        target=$(log_path_from_next "$next")
         [ -n "$target" ] || continue
         [ -f "$target" ] || continue
         [ "$(read_field "$target" status)" = "open" ] || continue
@@ -166,7 +163,7 @@ if [ "$step_count" -eq 0 ]; then
         if [ "$leaf_count" -eq 1 ]; then
             current=$(printf '%s\n' "$leaves" | awk 'NR == 1 { print }')
             echo "현재 작업 경로:"
-            echo "- open 로그 Resume 참조 그래프의 유일한 leaf"
+            echo "- open 로그 next pointer 참조 그래프의 유일한 leaf"
             echo
             echo "현재 작업 로그:"
             print_log_summary "$current"
@@ -174,7 +171,7 @@ if [ "$step_count" -eq 0 ]; then
             echo "현재 작업 후보:"
             print_open_candidates
             echo
-            echo "→ 활성 plan이 없고 Resume 참조 leaf가 하나로 정해지지 않아 자동 선택하지 않았습니다."
+            echo "→ 활성 plan이 없고 next pointer 참조 leaf가 하나로 정해지지 않아 자동 선택하지 않았습니다."
         fi
     fi
     exit 0
@@ -206,26 +203,26 @@ warning=""
 depth=0
 
 while [ "$depth" -lt 16 ]; do
-    if ! $log_tool audit --resume "$current" >/dev/null 2>&1; then
-        warning="Resume Pointer 구조가 유효하지 않습니다: $current"
+    if ! $log_tool audit --next "$current" >/dev/null 2>&1; then
+        warning="next pointer 구조가 유효하지 않습니다: $current"
         break
     fi
 
-    resume=$(resume_text "$current")
-    next=$(log_path_from_resume "$resume")
+    next_pointer=$(next_text "$current")
+    next=$(log_path_from_next "$next_pointer")
     [ -n "$next" ] || break
 
     if [ ! -f "$next" ]; then
-        warning="Resume Pointer 대상이 존재하지 않습니다: $next"
+        warning="next pointer 대상이 존재하지 않습니다: $next"
         break
     fi
     if [ "$(read_field "$next" status)" != "open" ]; then
-        warning="Resume Pointer 대상이 open 로그가 아닙니다: $next"
+        warning="next pointer 대상이 open 로그가 아닙니다: $next"
         break
     fi
     case "$seen" in
         *"|$next|"*)
-            warning="Resume Pointer 순환을 발견했습니다: $next"
+            warning="next pointer 순환을 발견했습니다: $next"
             break
             ;;
     esac
@@ -238,7 +235,7 @@ $next"
 done
 
 if [ "$depth" -ge 16 ]; then
-    warning="Resume Pointer 체인이 16단계를 초과했습니다."
+    warning="next pointer 체인이 16단계를 초과했습니다."
 fi
 
 echo "현재 작업 경로:"
@@ -254,4 +251,4 @@ if [ -n "$warning" ]; then
 fi
 
 echo
-echo "→ 현재 작업 로그의 최신 기록·Work Items·Resume Pointer를 읽고 작업 전 범위를 짧게 보고하세요."
+echo "→ 현재 작업 로그의 최신 기록·Work Items·next pointer를 읽고 작업 전 범위를 짧게 보고하세요."

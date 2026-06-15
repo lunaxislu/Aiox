@@ -21,7 +21,7 @@ setup_repo() {
 }
 
 write_log() {
-    file=$1 topic=$2 resume=${3-}
+    file=$1 topic=$2 next=${3-}
     {
         echo '---'
         printf 'topic: %s\n' "$topic"
@@ -29,16 +29,18 @@ write_log() {
         echo 'status: open'
         echo '---'
         echo
+        echo '## Work Items'
+        if [ -n "$next" ]; then
+            printf -- '- [>] W1 %s\n' "$next"
+        fi
+        echo
         printf '## 2026-06-14 · %s latest\n' "$topic"
         echo
         echo '- context'
-        if [ -n "$resume" ]; then
-            printf '\n- [ ] Resume: %s\n' "$resume"
-        fi
     } > "$file"
 }
 
-# T1: 활성 plan 단계 로그에서 Resume 체인을 따라 leaf 하나만 선택한다.
+# T1: 활성 plan 단계 로그에서 next pointer 체인을 따라 leaf 하나만 선택한다.
 repo="$WORK/t1"; setup_repo "$repo"
 write_log "$repo/logs/parent.md" parent 'Complete `logs/child.md`, then return.'
 write_log "$repo/logs/child.md" child 'Review current files.'
@@ -53,14 +55,13 @@ test
 EOF
 out=$(cd "$repo" && scripts/onramp)
 if printf '%s\n' "$out" | grep -q '현재 작업 로그:' &&
-   printf '%s\n' "$out" | grep -q 'logs/child.md  \[open\]  child' &&
-   ! printf '%s\n' "$out" | grep -q '^열린 로그:'; then
+   printf '%s\n' "$out" | grep -q 'logs/child.md  \[open\]  child'; then
     ok "T1 leaf 로그 선택"
 else
     ng "T1 leaf 로그 선택"
 fi
 
-# T2: Resume 순환은 경고하고 무한 추적하지 않는다.
+# T2: next pointer 순환은 경고하고 무한 추적하지 않는다.
 repo="$WORK/t2"; setup_repo "$repo"
 write_log "$repo/logs/a.md" a '`logs/b.md`로 이동한다.'
 write_log "$repo/logs/b.md" b '`logs/a.md`로 이동한다.'
@@ -74,7 +75,7 @@ test
 - [>] active -> `logs/a.md`
 EOF
 out=$(cd "$repo" && scripts/onramp)
-if printf '%s\n' "$out" | grep -q 'Resume Pointer 순환'; then ok "T2 순환 경고"; else ng "T2 순환 경고"; fi
+if printf '%s\n' "$out" | grep -q 'next pointer 순환'; then ok "T2 순환 경고"; else ng "T2 순환 경고"; fi
 
 # T3: 활성 plan이 없고 open 로그가 여러 개면 후보를 유지한다.
 repo="$WORK/t3"; setup_repo "$repo"
@@ -94,7 +95,7 @@ write_log "$repo/logs/only.md" only 'Start here.'
 out=$(cd "$repo" && scripts/onramp)
 if printf '%s\n' "$out" | grep -q 'logs/only.md  \[open\]  only'; then ok "T4 단일 open 선택"; else ng "T4 단일 open 선택"; fi
 
-# T5: Resume 뒤쪽의 logs 문서 언급은 분리 로그 포인터로 오인하지 않는다.
+# T5: 뒤쪽의 logs 문서 언급은 분리 로그 포인터로 오인하지 않는다.
 repo="$WORK/t5"; setup_repo "$repo"
 write_log "$repo/logs/current.md" current 'Review portable contracts and then inspect root AGENTS.md, workflow.md, and logs/AGENTS.md for duplication.'
 cat > "$repo/logs/AGENTS.md" <<'EOF'
@@ -153,7 +154,7 @@ else
     ng "T7 복수 referenced leaf 후보"
 fi
 
-# T8: 코드블록 안 fenced Resume 예시를 진짜 포인터로 오인하지 않고 진짜만 따라간다.
+# T8: 코드블록 안 fenced W-id 예시를 진짜 포인터로 오인하지 않고 진짜만 따라간다.
 repo="$WORK/t8"; setup_repo "$repo"
 {
     echo '---'
@@ -162,14 +163,15 @@ repo="$WORK/t8"; setup_repo "$repo"
     echo 'status: open'
     echo '---'
     echo
+    echo '## Work Items'
+    echo '```markdown'
+    echo '- [>] W1 Complete `logs/wrong.md`, then return.'
+    echo '```'
+    echo '- [>] W2 Complete `logs/realchild.md`, then return.'
+    echo
     echo '## 2026-06-14 · parent latest'
     echo
-    echo '- Resume은 이렇게 씁니다:'
-    echo '```markdown'
-    echo '- [ ] Resume: Complete `logs/wrong.md`, then return.'
-    echo '```'
-    echo
-    echo '- [ ] Resume: Complete `logs/realchild.md`, then return.'
+    echo '- context'
 } > "$repo/logs/parent.md"
 write_log "$repo/logs/realchild.md" realchild 'Continue real work.'
 write_log "$repo/logs/wrong.md" wrong 'Should not be selected.'
@@ -185,69 +187,26 @@ EOF
 out=$(cd "$repo" && scripts/onramp)
 if printf '%s\n' "$out" | grep -q 'logs/realchild.md  \[open\]  realchild' &&
    ! printf '%s\n' "$out" | grep -q 'logs/wrong.md  \[open\]  wrong'; then
-    ok "T8 fenced Resume 예시 미추적/진짜 따라감"
+    ok "T8 fenced next 예시 미추적/진짜 따라감"
 else
-    ng "T8 fenced Resume 예시 미추적/진짜 따라감"
+    ng "T8 fenced next 예시 미추적/진짜 따라감"
 fi
 
-# T9: 들여쓴 Resume도 log 도구와 같은 규칙으로 인식한다(컬럼0 강제 제거).
+# T9: ## Work Items 같은 비-날짜 섹션 제목을 latest로 오인하지 않고 최신 날짜 블록을 잡는다.
 repo="$WORK/t9"; setup_repo "$repo"
-{
-    echo '---'
-    echo 'topic: indented'
-    echo 'description: indented description'
-    echo 'status: open'
-    echo '---'
-    echo
-    echo '## 2026-06-14 · indented latest'
-    echo
-    echo '- context'
-    echo
-    echo '  - [ ] Resume: Start indented work.'
-} > "$repo/logs/indented.md"
-out=$(cd "$repo" && scripts/onramp)
-if printf '%s\n' "$out" | grep -q 'Resume: Start indented work.'; then
-    ok "T9 들여쓴 Resume 인식"
-else
-    ng "T9 들여쓴 Resume 인식"
-fi
-
-# T10: 여러 물리줄 Resume을 한 줄로 합치고 중복 없이 정확히 한 번 출력한다.
-repo="$WORK/t10"; setup_repo "$repo"
-{
-    echo '---'; echo 'topic: multiline'; echo 'description: multiline description'
-    echo 'status: open'; echo '---'; echo
-    echo '## 2026-06-14 · multiline latest'; echo
-    echo '- context'; echo
-    echo '- [ ] Resume: First part of the action'
-    echo '  and the continuation line.'
-} > "$repo/logs/multiline.md"
-out=$(cd "$repo" && scripts/onramp)
-n=$(printf '%s\n' "$out" | grep -c 'First part of the action')
-if [ "$n" -eq 1 ] && printf '%s\n' "$out" | grep -q 'First part of the action and the continuation line.'; then
-    ok "T10 멀티줄 Resume 1회·연속 줄 합침"
-else
-    ng "T10 멀티줄 Resume 1회·연속 줄 합침 (count=$n)"
-fi
-
-# T11: ## Work Items 같은 비-날짜 섹션 제목을 latest로 오인하지 않고 최신 날짜 블록을 잡는다.
-repo="$WORK/t11"; setup_repo "$repo"
 {
     echo '---'; echo 'topic: wi'; echo 'description: wi description'
     echo 'status: open'; echo '---'; echo
     echo '## 2026-06-14 · 실제 최신 작업'; echo
     echo '- 작업 내용'; echo
-    echo '## Work Items'; echo
-    echo '1. [ ] 첫 항목'
-    echo
-    echo '- [ ] Resume: 시작점'
+    echo '## Work Items'; echo '- [>] W1 시작점'
 } > "$repo/logs/only.md"
 out=$(cd "$repo" && scripts/onramp)
 if printf '%s\n' "$out" | grep -q 'latest: 2026-06-14 · 실제 최신 작업' &&
    ! printf '%s\n' "$out" | grep -q 'latest: Work Items'; then
-    ok "T11 latest가 날짜 블록(Work Items 오인 안 함)"
+    ok "T9 latest가 날짜 블록(Work Items 오인 안 함)"
 else
-    ng "T11 latest가 날짜 블록(Work Items 오인 안 함)"
+    ng "T9 latest가 날짜 블록(Work Items 오인 안 함)"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

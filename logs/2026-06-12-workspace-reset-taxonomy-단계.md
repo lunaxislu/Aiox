@@ -4,6 +4,11 @@ description: workspace reset 문서 taxonomy(폴더 구조, 문서 종류별 책
 status: open
 ---
 
+## Work Items
+
+- [x] W1 Cancelled: Complete `logs/2026-06-14-log-skill-maintenance.md`의 closeout·next pointer 전이 개선 범위를 판정한 뒤 문서 lifecycle 책임과 type별 생성·종료·보존 조건 검토를 재개한다. — maintenance 범위가 v2 W-id 구조 정리로 바뀌어 일반 완료 포인터로 대체
+- [>] W2 Complete logs/2026-06-15-로그-스킬-완전-재설계.md, then continue document lifecycle responsibilities and type lifetime review
+
 ## 2026-06-12 · workspace reset taxonomy 단계
 
 이 로그는 `plans/workspace-reset/workspace-reset.md`의 1단계
@@ -500,7 +505,7 @@ research/
 - workflow 작업을 별도 open 로그에 기록했지만 taxonomy 단계 로그의 재개 포인터를 갱신하지 않아 새 세션이 이전 lifecycle 행동을 현재 작업으로 선택했다.
 - 선행 작업은 `logs/2026-06-09-작업-로그-시스템-구축.md`가 소유한다. workflow·plan 형식과 dry-run 정책을 확정하고 onramp를 정합화한 뒤 taxonomy의 Guides 설명을 반영한 결과를 확인하고 lifecycle 검토로 돌아온다.
 
-- [ ] Resume: `logs/2026-06-09-작업-로그-시스템-구축.md`의 workflow·plan 형식·
+- [x] Resume: `logs/2026-06-09-작업-로그-시스템-구축.md`의 workflow·plan 형식·
   dry-run·onramp 정합화를 완료한 뒤 결과를 확인하고 문서 lifecycle 검토를
   재개한다.
 
@@ -511,3 +516,47 @@ research/
 - workflow·onramp 선행 작업을 진행하는 동안 taxonomy 범위 일부가 실제로 반영됐다. `docs/architecture/documentation-system.md`의 Guides를 사람과 agent가 반복 적용하는 방법·실무 흐름 owner로 확정했고, Plans를 일반 multi-stage workstream으로 확장해 `plans/AGENTS.md`와 연결했다.
 - 이는 taxonomy 단계의 책임·권위 범위를 부분 수행한 결과다. lifecycle, naming과 문서 간 link 책임은 여전히 미완료이며 현재 선행 workflow 작업 완료 후 검토를 재개한다.
 - 이 부분 수행이 기존 선행 포인터 로그에만 기록되고 taxonomy 로그에는 즉시 반영되지 않았던 점을 확인했다. cross-log 기록·다음 행동 정합화 계약은 `logs/2026-06-13-관련-open-로그-부분-작업-기록.md`에서 별도로 설계한다.
+
+## 2026-06-15 · workflow 선행 작업 완료 확인과 lifecycle 복귀
+
+@codex
+
+- `logs/2026-06-09-작업-로그-시스템-구축.md`에서 workflow·plan 형식·dry-run·onramp 정합화와 관련된 오래된 미완료 항목 정리를 완료했다.
+- workflow 중 taxonomy 범위로 이미 반영된 Guides·Plans 책임과 `plans/AGENTS.md` 연결은 이 로그의 앞선 기록에 남아 있다.
+- 현재 taxonomy 단계의 남은 범위는 선행 작업 전 재개 지점이었던 문서 lifecycle 책임과 type별 생성·종료·보존 조건 검토다.
+
+- Cancelled Resume: 문서 lifecycle 책임과 type별 생성·종료·보존 조건 검토를 재개한다. — 사용자가 06-09 로그 종료 누락을 log skill maintenance 문제로 먼저 처리하기로 지정함
+
+## 2026-06-15 · log skill maintenance 선행 작업 포인터
+
+@user
+
+- `logs/2026-06-09-작업-로그-시스템-구축.md`를 미완료 0과 Resume 없음 상태로 만든 뒤에도 agent가 자동으로 `decided` 전환을 검토하지 않은 것은 문제이며 개선해야 한다고 판단했다.
+- 현재 작업은 taxonomy lifecycle 검토보다 이 log skill maintenance 문제를 먼저 처리한다.
+
+@codex
+
+- 해당 문제는 `logs/2026-06-14-log-skill-maintenance.md`에 기록했다.
+- taxonomy lifecycle 검토는 maintenance 쪽에서 06-09 로그 종료 누락 사례의 owner와 개선 범위를 판정한 뒤 재개한다.
+
+- Cancelled Resume: logs/2026-06-14-log-skill-maintenance.md의 06-09 로그 종료 누락 개선 범위를 판정한 뒤 문서 lifecycle 책임과 type별 생성·종료·보존 조건 검토를 재개한다. — maintenance 선행 작업에 Resume 우선순위 변경 표현 오해 사례가 추가됨
+
+## 2026-06-15 · log skill maintenance 선행 범위 확장
+
+@codex
+
+- maintenance 선행 작업에 06-09 로그 종료 누락뿐 아니라, 기존 Resume 질의응답 작업이 취소가 아닌 순서 보류였는데 `Cancelled Resume`처럼 기록된 오해 사례가 추가됐다.
+- taxonomy lifecycle 검토는 maintenance 로그에서 closeout과 Resume 전이 표현 개선 범위를 판정한 뒤 재개한다.
+
+- Migrated legacy Resume to W1: logs/2026-06-14-log-skill-maintenance.md의 closeout·next pointer 전이 개선 범위를 판정한 뒤 문서 lifecycle 책임과 type별 생성·종료·보존 조건 검토를 재개한다.
+
+## 2026-06-15 · next pointer 재배선: maintenance → redesign
+
+@user
+
+- maintenance를 닫은 뒤 이 로그의 포인터를 재배선하라고 승인했다.
+
+@claude
+
+- maintenance 로그가 decided로 닫히고 log skill 개선 작업이 redesign 로그(logs/2026-06-15-로그-스킬-완전-재설계.md)로 이어졌다. 따라서 W2 next pointer를 maintenance → redesign으로 재배선했다.
+- 의미: 의존·복귀 관계는 그대로다. log skill 작업(이제 redesign)이 선행 detour이고, 그것이 끝나면 이 로그의 document lifecycle 책임과 type별 생성·종료·보존 검토를 재개한다. 단순 흐름 정리이며 새 의존을 만든 것이 아니다.
