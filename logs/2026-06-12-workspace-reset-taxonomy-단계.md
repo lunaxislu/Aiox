@@ -7,7 +7,8 @@ status: open
 ## Work Items
 
 - [x] W1 Cancelled: Complete `logs/2026-06-14-log-skill-maintenance.md`의 closeout·next pointer 전이 개선 범위를 판정한 뒤 문서 lifecycle 책임과 type별 생성·종료·보존 조건 검토를 재개한다. — maintenance 범위가 v2 W-id 구조 정리로 바뀌어 일반 완료 포인터로 대체
-- [>] W2 Complete logs/2026-06-15-로그-스킬-완전-재설계.md, then continue document lifecycle responsibilities and type lifetime review
+- [x] W2 Complete logs/2026-06-15-로그-스킬-완전-재설계.md, then continue document lifecycle responsibilities and type lifetime review
+- [>] W3 document lifecycle 책임과 type별 생성·종료·보존 조건 검토를 재개한다
 
 ## 2026-06-12 · workspace reset taxonomy 단계
 
@@ -560,3 +561,9 @@ research/
 
 - maintenance 로그가 decided로 닫히고 log skill 개선 작업이 redesign 로그(logs/2026-06-15-로그-스킬-완전-재설계.md)로 이어졌다. 따라서 W2 next pointer를 maintenance → redesign으로 재배선했다.
 - 의미: 의존·복귀 관계는 그대로다. log skill 작업(이제 redesign)이 선행 detour이고, 그것이 끝나면 이 로그의 document lifecycle 책임과 type별 생성·종료·보존 검토를 재개한다. 단순 흐름 정리이며 새 의존을 만든 것이 아니다.
+
+## 2026-06-16 · log skill 재설계 완료·pointer 소비
+
+logs/2026-06-15-로그-스킬-완전-재설계.md가 decided로 닫혔다.
+W2(재설계 완료)를 [x] 처리하고, W2의 두 번째 부분(document lifecycle review)을 W3으로 이어받았다.
+다음 재개 지점: W3.

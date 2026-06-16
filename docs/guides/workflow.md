@@ -10,7 +10,7 @@
 - 문서 taxonomy, 영역별 owner와 충돌 해결: `docs/architecture/documentation-system.md`
 - 로그 생성·작성, Work Items, pointer, 상태 의미와 종료 조건: log skill
   (`.agents/skills/log/SKILL.md`와 `references/`)
-- 결정적인 파일 조작: log skill의 `.agents/skills/log/scripts/log`
+- 구조 검색·append·상태 guard 보조 도구: log skill의 `.agents/skills/log/scripts/log`
 - 로그를 닫을 때의 owner 반영과 repo 전용 점검: `logs/AGENTS.md`
 
 세부 규칙이 필요하면 해당 owner 문서를 읽는다. 가설을 조용히 계약으로 승격하거나
