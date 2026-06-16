@@ -31,11 +31,11 @@ active_plan_steps() {
 }
 
 # next pointer 행동 텍스트를 만든다. 어느 줄이 진짜 pointer인지는 log 도구의
-# audit --next(fence-aware)이 식별한 줄 번호로 정한다.
+# check 출력 next: 줄(fence-aware)이 식별한 줄 번호로 정한다.
 next_text() {
     rt_file=$1
-    rt_line=$($log_tool audit --next "$rt_file" 2>/dev/null | awk '
-        NR == 1 && match($0, /:[0-9]+: /) { print substr($0, RSTART + 1, RLENGTH - 3); exit }
+    rt_line=$($log_tool check "$rt_file" 2>/dev/null | awk '
+        /^next: line [0-9]+ / { print $3; exit }
     ')
     [ -n "$rt_line" ] || return 0
     awk -v target="$rt_line" '
@@ -84,8 +84,12 @@ log_path_from_next() {
 
 latest_heading() {
     # 날짜 블록(## YYYY-MM-DD …)만 최신 기록으로 본다. ## Work Items 같은 비-날짜
-    # 섹션 제목을 최신 블록으로 오인하지 않게 한다.
-    awk '/^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { heading = $0 } END { print heading }' "$1"
+    # 섹션 제목이나 fenced 예시 안의 날짜 heading을 최신 블록으로 오인하지 않게 한다.
+    awk '
+        /^```/ { fence = !fence; next }
+        !fence && /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { heading = $0 }
+        END { print heading }
+    ' "$1"
 }
 
 print_log_summary() {
@@ -122,7 +126,7 @@ referenced_open_leaves() {
     edges=""
 
     for source in $paths; do
-        if ! $log_tool audit --next "$source" >/dev/null 2>&1; then
+        if ! $log_tool check "$source" >/dev/null 2>&1; then
             continue
         fi
         next=$(next_text "$source")
@@ -203,7 +207,7 @@ warning=""
 depth=0
 
 while [ "$depth" -lt 16 ]; do
-    if ! $log_tool audit --next "$current" >/dev/null 2>&1; then
+    if ! $log_tool check "$current" >/dev/null 2>&1; then
         warning="next pointer 구조가 유효하지 않습니다: $current"
         break
     fi

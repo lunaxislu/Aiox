@@ -209,5 +209,25 @@ else
     ng "T9 latest가 날짜 블록(Work Items 오인 안 함)"
 fi
 
+# T10: fenced 예시 안의 날짜 heading을 latest로 오인하지 않고 실제 최신 블록을 잡는다.
+repo="$WORK/t10"; setup_repo "$repo"
+{
+    echo '---'; echo 'topic: fenced'; echo 'description: fenced description'
+    echo 'status: open'; echo '---'; echo
+    echo '## Work Items'; echo '- [>] W1 시작점'; echo
+    echo '## 2026-06-14 · 실제 최신 작업'; echo
+    echo '- 작업 내용'; echo
+    echo '```markdown'
+    echo '## 2026-12-31 · fenced 예시'
+    echo '```'
+} > "$repo/logs/only.md"
+out=$(cd "$repo" && scripts/onramp)
+if printf '%s\n' "$out" | grep -q 'latest: 2026-06-14 · 실제 최신 작업' &&
+   ! printf '%s\n' "$out" | grep -q 'latest: 2026-12-31'; then
+    ok "T10 latest가 fenced 날짜 오인 안 함"
+else
+    ng "T10 latest가 fenced 날짜 오인 안 함"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

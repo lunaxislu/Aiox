@@ -1,9 +1,9 @@
 # Log Owner Handoff Contract
 
 이 파일은 이 repo에서 로그의 확정 결과를 taxonomy owner에 반영하고 로그를 닫을 때
-적용하는 추가 확인 계약이다. 일반 실행 흐름은 `.agents/skills/log/SKILL.md`, 본문
-필수 구조와 표현 지침은 그 skill의 `references/recording-contract.md`, 로그 상태·점검·종료는
-`references/lifecycle.md`가 소유한다.
+적용하는 추가 확인 계약이다. 일반 실행 흐름은 `.agents/skills/log/SKILL.md`, 로그 생성과
+기록 품질·상태·종료는 그 skill의 `references/log-writing-rules.md`, Work Items와
+pointer·점검은 `references/work-items-rules.md`가 소유한다.
 
 ## Owner Handoff
 

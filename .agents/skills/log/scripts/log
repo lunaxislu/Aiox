@@ -4,7 +4,7 @@
 # 이 도구는 로그의 구조 검증과 원자적 변환만 담당한다. 기록 의미, 완료/취소/이관
 # 판단과 owner 반영 판단은 agent가 수행한다.
 #
-# 서브커맨드: new / search / audit / set-status / append / items
+# 서브커맨드: new / search / check / set-status / append / items
 
 LOG_DIR="${LOG_DIR:-logs}"
 
@@ -45,7 +45,7 @@ usage() {
 사용법:
   log new "<주제>" [설명]                          새 로그를 만든다
   log search [검색어] [--status <open|decided|superseded>]   로그를 찾는다
-  log audit [--next] <파일> [파일...]               미완료 Work Items(--next면 next pointer 불변)를 점검한다
+  log check [--status <open|decided|superseded>] [파일...]   로그 구조와 요약을 점검한다(agent-facing summary)
   log set-status <파일> <open|decided|superseded>   로그 상태를 바꾼다
   log append <파일> "<주제>"                        새 날짜 블록 추가(본문은 stdin)
   log items <파일> add "<행동>" [--status open|active]
@@ -110,6 +110,34 @@ validate_frontmatter() {
             if (!has_desc)   { print "description 키가 없습니다"; exit 2 }
             if (!has_status) { print "status 키가 없습니다"; exit 2 }
             if (status_val != "open") { print "status가 open이 아닙니다(" status_val ")"; exit 2 }
+        }
+    ' "$1"
+}
+
+validate_frontmatter_any_status() {
+    awk '
+        function trim(s) { gsub(/^[[:space:]]+/, "", s); gsub(/[[:space:]]+$/, "", s); return s }
+        NR == 1 { start = ($0 == "---"); infm = start; next }
+        infm && $0 == "---" { closed = 1; exit }
+        infm {
+            c = index($0, ":")
+            if (c > 0) {
+                key = trim(substr($0, 1, c - 1))
+                val = trim(substr($0, c + 1))
+                if (key == "topic") { has_topic = 1; topic_val = val }
+                else if (key == "description") has_desc = 1
+                else if (key == "status") { has_status = 1; status_val = val }
+            }
+        }
+        END {
+            if (!start)      { print "시작 구분자(---)가 없습니다"; exit 2 }
+            if (!closed)     { print "종료 구분자(---)가 없습니다"; exit 2 }
+            if (!has_topic || topic_val == "") { print "topic이 없거나 비어 있습니다"; exit 2 }
+            if (!has_desc)   { print "description 키가 없습니다"; exit 2 }
+            if (!has_status) { print "status 키가 없습니다"; exit 2 }
+            if (status_val != "open" && status_val != "decided" && status_val != "superseded") {
+                print "status가 open/decided/superseded가 아닙니다(" status_val ")"; exit 2
+            }
         }
     ' "$1"
 }
@@ -202,6 +230,17 @@ find_next_pointers() {
     ' "$1"
 }
 
+latest_date_heading() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; heading = ""; lineno = 0 }
+        {
+            if (fence_skip($0)) next
+            if ($0 ~ /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) { heading = $0; lineno = NR }
+        }
+        END { if (heading != "") printf "%d\t%s\n", lineno, heading }
+    ' "$1"
+}
+
 work_items_section_count() {
     awk "$FENCE_FUNCS"'
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; count = 0 }
@@ -210,6 +249,19 @@ work_items_section_count() {
             if ($0 ~ /^##[[:space:]]+Work Items[[:space:]]*$/) count++
         }
         END { print count + 0 }
+    ' "$1"
+}
+
+work_item_counts() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; open = 0; active = 0; closed = 0 }
+        {
+            if (fence_skip($0)) next
+            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[ \][[:space:]]+W[0-9]+[[:space:]]+/) open++
+            else if ($0 ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+[[:space:]]+/) active++
+            else if ($0 ~ /^[[:space:]]*-[[:space:]]+\[[xX]\][[:space:]]+W[0-9]+([[:space:]]|$)/) closed++
+        }
+        END { printf "%d %d %d\n", open, active, closed }
     ' "$1"
 }
 
@@ -366,38 +418,145 @@ cmd_search() {
     [ "$found" -eq 1 ] || echo "맞는 로그 없음"
 }
 
-cmd_audit() {
-    next_only=0
-    if [ "${1:-}" = "--next" ]; then
-        next_only=1
-        shift
-    fi
-    if [ "$#" -eq 0 ]; then
-        echo "점검할 로그 파일을 지정해 주세요." >&2
-        usage >&2
-        return 1
-    fi
-    for file in "$@"; do
-        [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
-    done
-    if [ "$next_only" -eq 0 ]; then
-        find_incomplete "$@"
-        return
-    fi
-    rc=0
-    for file in "$@"; do
-        pointers=$(find_next_pointers "$file") || return 1
-        count=$(printf '%s\n' "$pointers" | awk 'NF { n++ } END { print n + 0 }')
-        case "$count" in
-            0) printf '%s: next pointer 없음\n' "$file" ;;
-            1) printf '%s\n' "$pointers" | awk -F '\t' -v file="$file" '{ print file ":" $1 ": " $2 }' ;;
+cmd_check() {
+    status_filter=""
+    files=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --status)
+                shift
+                if [ "$#" -eq 0 ]; then
+                    echo "check --status에는 상태 값이 필요합니다." >&2
+                    return 1
+                fi
+                status_filter=${1:-}
+                ;;
+            --*)
+                echo "알 수 없는 check 옵션입니다: $1" >&2
+                return 1
+                ;;
             *)
-                printf '%s: 미완료 next pointer가 %s개입니다(최대 1개):\n' "$file" "$count" >&2
-                printf '%s\n' "$pointers" | awk -F '\t' -v file="$file" '{ print "  " file ":" $1 ": " $2 }' >&2
+                files="$files
+$1"
+                ;;
+        esac
+        shift
+    done
+    if [ -n "$status_filter" ]; then
+        case "$status_filter" in
+            open|decided|superseded) ;;
+            *) echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;;
+        esac
+    fi
+    if [ -z "$(printf '%s\n' "$files" | awk 'NF { print; exit }')" ]; then
+        if [ -z "$status_filter" ]; then
+            echo "check에는 파일 또는 --status가 필요합니다." >&2
+            usage >&2
+            return 1
+        fi
+        for f in "$LOG_DIR"/*.md; do
+            [ -e "$f" ] || continue
+            [ "$(read_field "$f" status)" = "$status_filter" ] || continue
+            files="$files
+$f"
+        done
+    fi
+
+    list_tmp=$(mktemp 2>/dev/null) || { echo "check 대상 임시 파일 생성에 실패했습니다." >&2; return 1; }
+    printf '%s\n' "$files" | awk 'NF' > "$list_tmp"
+    rc=0
+    checked=0
+    while IFS= read -r file; do
+        checked=$((checked + 1))
+        if [ ! -f "$file" ]; then
+            printf '%s\n' "ERROR $file: 파일이 없습니다"
+            rc=1
+            continue
+        fi
+
+        printf '%s\n' "== $file =="
+        if fm_err=$(validate_frontmatter_any_status "$file"); then
+            topic=$(read_field "$file" topic)
+            description=$(read_field "$file" description)
+            status=$(read_field "$file" status)
+            printf 'status: %s\n' "$status"
+            printf 'topic: %s\n' "$topic"
+            printf 'description: %s\n' "$description"
+        else
+            printf 'ERROR frontmatter: %s\n' "$fm_err"
+            rc=1
+            status=""
+        fi
+
+        heading_info=$(latest_date_heading "$file")
+        if [ -n "$heading_info" ]; then
+            lineno=$(printf '%s' "$heading_info" | cut -f1)
+            heading=$(printf '%s' "$heading_info" | cut -f2-)
+            printf 'latest: line %s · %s\n' "$lineno" "${heading#\#\# }"
+        else
+            printf 'WARN latest: 날짜 블록 없음\n'
+        fi
+
+        wi_count=$(work_items_section_count "$file") || wi_count=0
+        printf 'work_items_sections: %s\n' "$wi_count"
+        if [ "$wi_count" -gt 1 ]; then
+            printf 'ERROR work_items: ## Work Items 섹션이 여러 개입니다\n'
+            rc=1
+        fi
+
+        if ! id_err=$(validate_work_item_ids "$file" 2>&1); then
+            printf 'ERROR work_items: %s\n' "$id_err"
+            rc=1
+        fi
+
+        set -- $(work_item_counts "$file")
+        open_count=$1
+        active_count=$2
+        closed_count=$3
+        incomplete_count=$((open_count + active_count))
+        printf 'work_items: active=%s open=%s closed=%s incomplete=%s\n' "$active_count" "$open_count" "$closed_count" "$incomplete_count"
+
+        pointers=$(find_next_pointers "$file") || pointers=""
+        next_count=$(printf '%s\n' "$pointers" | awk 'NF { n++ } END { print n + 0 }')
+        case "$next_count" in
+            0)
+                printf 'next: 없음\n'
+                ;;
+            1)
+                printf '%s\n' "$pointers" | awk -F '\t' '{ print "next: line " $1 " " $2 }'
+                ;;
+            *)
+                printf 'ERROR next: next pointer가 %s개입니다\n' "$next_count"
+                printf '%s\n' "$pointers" | awk -F '\t' '{ print "  line " $1 " " $2 }'
                 rc=1
                 ;;
         esac
-    done
+
+        case "$status" in
+            open)
+                if [ "$incomplete_count" -eq 0 ]; then
+                    printf 'HINT closeout: 미완료 Work Items/next pointer가 없습니다. decided 후보인지 확인하세요\n'
+                fi
+                ;;
+            decided|superseded)
+                if [ "$incomplete_count" -gt 0 ]; then
+                    printf 'ERROR status: %s 로그에 미완료 Work Items가 있습니다\n' "$status"
+                    rc=1
+                fi
+                ;;
+        esac
+        printf '\n'
+    done < "$list_tmp"
+    rm -f "$list_tmp"
+
+    if [ "$checked" -eq 0 ]; then
+        if [ -n "$status_filter" ]; then
+            printf '맞는 로그 없음\n'
+            return 0
+        fi
+        echo "check할 로그 파일이 없습니다." >&2
+        return 1
+    fi
     return "$rc"
 }
 
@@ -408,17 +567,17 @@ cmd_set_status() {
     [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
     case "$new_status" in
         decided|superseded)
-            audit_tmp=$(mktemp 2>/dev/null) || audit_tmp="$file.audit.tmp.$$"
-            if ! find_incomplete "$file" > "$audit_tmp"; then
-                rm -f "$audit_tmp"; echo "미완료 Work Items를 검사하지 못했습니다: $file" >&2; return 1
+            incomplete_tmp=$(mktemp 2>/dev/null) || incomplete_tmp="$file.incomplete.tmp.$$"
+            if ! find_incomplete "$file" > "$incomplete_tmp"; then
+                rm -f "$incomplete_tmp"; echo "미완료 Work Items를 검사하지 못했습니다: $file" >&2; return 1
             fi
-            if [ -s "$audit_tmp" ]; then
+            if [ -s "$incomplete_tmp" ]; then
                 echo "미완료 Work Items가 있어 '$new_status' 상태로 바꿀 수 없습니다:" >&2
-                cat "$audit_tmp" >&2
-                rm -f "$audit_tmp"
+                cat "$incomplete_tmp" >&2
+                rm -f "$incomplete_tmp"
                 return 1
             fi
-            rm -f "$audit_tmp"
+            rm -f "$incomplete_tmp"
             ;;
     esac
     tmp=$(mktemp 2>/dev/null) || tmp="$file.tmp.$$"
@@ -648,7 +807,6 @@ cmd_items() {
             while [ "$#" -gt 0 ]; do
                 case "$1" in
                     --status) shift; status=$1 ;;
-                    --active) status=active ;;
                     --*) echo "알 수 없는 items add 옵션입니다: $1" >&2; return 1 ;;
                     *) echo "items add 인자가 너무 많습니다: $1" >&2; return 1 ;;
                 esac
@@ -663,7 +821,6 @@ cmd_items() {
             if with_atomic_output "$file" build_items_add_result "$id" "$status" "$action"; then
                 printf '적용했습니다: %s\n' "$file"
                 printf '추가한 Work Item: %s\n' "$id"
-                print_closeout_hint_if_clean "$file"
                 return 0
             fi
             return 1
@@ -725,7 +882,7 @@ main() {
     case "$sub" in
         new) cmd_new "$@" ;;
         search) cmd_search "$@" ;;
-        audit) cmd_audit "$@" ;;
+        check) cmd_check "$@" ;;
         set-status) cmd_set_status "$@" ;;
         append) cmd_append "$@" ;;
         items) cmd_items "$@" ;;

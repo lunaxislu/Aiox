@@ -8,7 +8,7 @@
 - 진입과 재개 순서, plan과 로그의 관계: `AGENTS.md`
 - plan 작성 형식, 단계 문법, 유효성과 유지: `plans/AGENTS.md`
 - 문서 taxonomy, 영역별 owner와 충돌 해결: `docs/architecture/documentation-system.md`
-- 로그 작성 형식, 기록 판단, 상태 의미와 종료 조건: log skill
+- 로그 생성·작성, Work Items, pointer, 상태 의미와 종료 조건: log skill
   (`.agents/skills/log/SKILL.md`와 `references/`)
 - 결정적인 파일 조작: log skill의 `.agents/skills/log/scripts/log`
 - 로그를 닫을 때의 owner 반영과 repo 전용 점검: `logs/AGENTS.md`
@@ -70,9 +70,11 @@ open 로그가 실제로 가리키고 자신은 더 이상 다른 로그를 가�
 ## 다른 로그로 작업 전환
 
 현재 작업을 다른 로그의 선행 작업으로 전환할 때는, 새 로그에 행동을 기록하는 것만으로
-현재 작업 포인터가 바뀌지 않는다. 활성 plan 단계 로그의 next pointer를 새 로그를
-가리키도록 함께 바꿔야 다음 세션이 올바른 작업을 재개한다. 이 규칙의
-권위는 `plans/AGENTS.md`의 Maintenance다.
+현재 작업 포인터가 바뀌지 않는다. plan 단계가 작업을 소유하면 plan 단계 pointer를,
+parent 로그의 Work Item에서 child 로그가 생겼다면 parent Work Item과 child의 parent
+pointer를 함께 맞춰야 다음 세션이 올바른 작업을 재개한다. plan 단계 문법의 권위는
+`plans/AGENTS.md`의 Maintenance이고, parent/child pointer 기록 규칙은 log skill이
+소유한다.
 
 ## 큰 작업과 plan
 
@@ -103,4 +105,4 @@ open 로그가 실제로 가리키고 자신은 더 이상 다른 로그를 가�
   맞춰 조정한다(`documentation-system.md`).
 - **과거 decision과 새 방향 충돌** — 기존 기록을 조용히 덮어쓰지 않는다. 같은 로그의
   결론이 바뀌면 이전 결정, 새 결정과 변경 이유를 남기고, 종료된 결정을 대체하면 이를
-  대체하는 decision을 남긴다(log lifecycle, `decisions`).
+  대체하는 decision을 남긴다(log skill의 status와 결정 변경 규칙).
