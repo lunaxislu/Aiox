@@ -7,7 +7,6 @@
 - Scope: local Obsidian vault and Atlas only; implementation and workflow design are separate follow-up work
 - Related:
   - `history/40-step-14-daemon-client-split.history.md`
-  - `plan/post-mvp/ops-setup.plan.md`
   - [Claude Code + Obsidian = AI Second Brain](https://agenticpm.substack.com/p/claude-code-obsidian-ai-second-brain)
   - [code-review-graph](https://github.com/tirth8205/code-review-graph)
   - [Obsidian Graph view](https://help.obsidian.md/plugins/graph)

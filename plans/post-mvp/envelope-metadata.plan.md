@@ -226,7 +226,7 @@ kickoff candidate로 승격됐으므로, 트리거 관찰 여부와 무관하게
 
 - 결정 권위: `prd/post-mvp/aiox-a2a-spec.md` §4 (A2A protocol & message lifecycle).
 - 근거·과정: `history/58-post-mvp-a2a-architecture-decisions.history.md`.
-- plan index: `plan/post-mvp.plan.md` (본 sub-plan을 candidate로 등록).
+- plan index: `plans/post-mvp.plan.md` (본 sub-plan을 candidate로 등록).
 - Memory: `[[aiox-deferred-decisions]]` — pointer만 보존.
 - `plan/qa-tracker.md` — Phase 1.5 smoke PASS round에서 본 문서로 link (트리거 추적).
 - `plan/mvp-implementation-checklist.md` — "Deferred to Post-MVP"에서 본 문서로 link.
