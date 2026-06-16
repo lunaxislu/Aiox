@@ -252,11 +252,12 @@ Parent pointer: `logs/A.md` W2
 - 연결을 추측하지 않고 후보(A W2 재배선 vs B의 child)와 근거를 사용자에게 제시한다.
 ```
 
-## Investigation log with no Work Item entries
+## Decision or investigation log with no Work Item entries
 
-조사·토론 로그도 canonical한 `## Work Items` 섹션은 그대로 두되 actionable한 항목은 없을 수
-있다. 이런 로그는 질문에 답이 났고, 남은 질문이 없고, known parent 반영이 끝나면 `decided`로
-전환한다. "후보"로만 두지 않는다. 이 hard rule은 `log-writing-rules.md`가 소유한다.
+판단·조사·토론형 로그도 canonical한 `## Work Items` 섹션은 그대로 두되 actionable한 항목은
+없을 수 있다. 이런 로그는 질문에 답이 났고, 남은 질문이 없고, known parent 반영이 끝나면
+`decided`로 전환한다. "후보"로만 두지 않는다. 이 hard rule은 `log-writing-rules.md`가
+소유한다.
 
 ```markdown
 # logs/term-question.md

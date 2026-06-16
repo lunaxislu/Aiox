@@ -11,7 +11,7 @@ handoff를 로그 본문에서 제공한다.
 
 ## 용어
 
-- 로그: 하나의 문제, 질문, 조사, 구현 흐름을 끝날 때까지 이어 쓰는 기록 파일.
+- 로그: 하나의 문제, 질문, 판단, 조사, 구현 흐름을 끝날 때까지 이어 쓰는 기록 파일.
 - 로그 블록: 로그 파일 안에 날짜 heading으로 추가되는 기록 단위. 토론, 질문과 답,
   근거, 결정, 조사 결과, 작업 수행, 피드백, 상태 변화처럼 다음 agent가 이어받아야 할
   checkpoint를 증류해 남긴다.
@@ -29,9 +29,14 @@ handoff를 로그 본문에서 제공한다.
 ## 참조
 
 프로젝트 진입 계약은 로그 저장 위치, 세션 시작, 현재 로그 선택을 정하는 프로젝트별
-integration 지침(root 지침, AGENTS.md, onramp 등)이다. 로그 저장 위치는 프로젝트 진입
-계약을 따르고, 위치가 지정되지 않은 경우 `references/project-setup.md`를 읽는다.
+integration 지침(root 지침, AGENTS.md, current-work command, hook 등)이다. 로그 저장
+위치나 로그 workflow가 지정되지 않은 새 프로젝트에서는 `references/project-setup.md`를
+읽고, 사용자 승인 후 로그 위치와 선택 가능한 starter workflow를 프로젝트 integration에
+반영한다.
 
+- 새 프로젝트에 로그 저장 위치나 로그 workflow가 없을 때는 `references/project-setup.md`를
+  읽는다. 이 문서는 `logs/` 기본 후보, starter workflow, current-work integration 최소 계약과
+  예시를 다룬다.
 - 로그 작성, 기록 블록, status 전환, Work Items, next pointer, parent/child pointer,
   완료, 취소, 이관, 수정, cross-log 정합화 등 어떤 reference를 읽을지 정해야 하면
   `references/work-log-rules.md`를 읽는다. reference 선택은 `work-log-rules.md`가

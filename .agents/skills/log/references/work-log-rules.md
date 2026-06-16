@@ -16,8 +16,9 @@ reference가 소유한다.
 
 ## 읽을 파일
 
-- `log-writing-rules.md`: 로그를 생성하거나 기록 블록을 작성할 때, Work Items가 없는
-  조사·토론 로그를 정리할 때, `open`, `decided`, `superseded` status를 판단할 때 읽는다.
+- `log-writing-rules.md`: 로그를 생성하거나 기록 블록을 작성할 때, Work Item entries가
+  없는 판단·조사·토론형 로그를 정리할 때, `open`, `decided`, `superseded` status를
+  판단할 때 읽는다.
 - `work-items-rules.md`: Work Items를 추가·수정·완료·취소·이관할 때, `[>]` next pointer를
   바꿀 때, parent/child pointer나 cross-log 관계를 처리할 때 읽는다.
 - `maintenance.md`: 이 skill, reference, 도구 동작, 프로젝트 integration과 skill의 경계
