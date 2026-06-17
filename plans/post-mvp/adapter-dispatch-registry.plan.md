@@ -3,15 +3,15 @@ title: Adapter dispatch registry refactor — execution sub-plan
 description: >
   daemon dispatch 지점의 vendor 분기(Codex/Claude)를 adapter registry surface로 이관하는
   실행 sub-plan. 비권위 execution 문서다 — adapter model 결정 권위는
-  prd/post-mvp/aiox-a2a-spec.md §5가 가진다.
+  docs/specs/aiox-a2a.md §5가 가진다.
 status: deferred (post-MVP, unordered candidate)
-implements: prd/post-mvp/aiox-a2a-spec.md §5
+implements: docs/specs/aiox-a2a.md §5
 owner: TBD
 rationale: history/45·46·47 (Step 15)
 ---
 
 > **권위 안내.** adapter 4-slot / runtime surface / capability tier 결정 본문은
-> `prd/post-mvp/aiox-a2a-spec.md` §5다. 본 문서는 그 §5를 구현하는 refactor 실행
+> `docs/specs/aiox-a2a.md` §5다. 본 문서는 그 §5를 구현하는 refactor 실행
 > detail만 보유한다.
 
 ## Motivation

@@ -1,5 +1,5 @@
 > Archived validation record. This file is not authority.
-> Accepted decisions were consolidated into `../aiox-a2a-spec.md`, with rationale in
+> Accepted decisions were consolidated into `../../../docs/specs/aiox-a2a.md`, with rationale in
 > `../../../history/58-post-mvp-a2a-architecture-decisions.history.md`.
 > Internal references may mention old paths as point-in-time conversation context.
 

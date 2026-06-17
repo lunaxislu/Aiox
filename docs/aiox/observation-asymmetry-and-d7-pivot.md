@@ -6,7 +6,7 @@
 > transparent proxy가 internal `/resume` wrong-thread delivery 때문에 MVP
 > production 방향으로 승격됐다. 최신 권위는
 > `history/41-codex-loaded-thread-binding-analysis.history.md`와
-> `prd/mvp/aiox-mvp-spec.md`를 따른다.
+> `docs/architecture/mvp-architecture.md`를 따른다.
 
 ## 1. 현상: 관측의 비대칭 (Observation Asymmetry)
 

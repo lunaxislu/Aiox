@@ -7,7 +7,7 @@
 - 권위: 이 문서는 설명용이다. 구현 결정의 권위는
   `history/40-step-14-daemon-client-split.history.md`,
   `history/41-codex-loaded-thread-binding-analysis.history.md`,
-  `prd/mvp/aiox-mvp-spec.md`에 둔다.
+  `docs/architecture/mvp-architecture.md`에 둔다.
 - 2026-05-26 업데이트: internal `/resume`에서 `thread/loaded/list.at(-1)`
   휴리스틱이 깨진 것이 확인되어, production 방향은 per-agent transparent proxy의
   same-connection response 기반 rebind로 갱신됐다.

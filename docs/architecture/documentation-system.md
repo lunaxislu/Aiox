@@ -4,9 +4,6 @@
 정의한다. 문서가 충돌하거나 같은 내용을 중복 소유할 때 어느 영역으로 통합할지
 판단하는 기준이다.
 
-이 문서는 문서 lifecycle, 파일 naming, metadata/frontmatter 또는 구체적인 link
-문법을 정의하지 않는다. 해당 규칙은 workspace reset의 후속 검토에서 확정한다.
-
 ## Entry And Contract Documents
 
 - `README.md`는 해당 scope를 위한 사람용 진입점이다. 제품·계약·구조 같은 durable
@@ -20,7 +17,7 @@
 
 ### Product
 
-`docs/product/product.md`는 제품의 목적, 범위, non-goals와 제품 원칙을 소유한다.
+`docs/product/product.md`는 제품의 목적, 범위와 제품 원칙을 소유한다.
 기존 PRD 전체나 구현 계약, 우선순위 목록을 통째로 소유하지 않는다.
 
 `docs/product/roadmap.md`는 제품 scope 안에서 owner나 team이 추진할 방향, 우선순위와
@@ -45,7 +42,9 @@ module과 process 경계, data flow와 내부 state 관리 원칙을 소유한�
 
 `docs/decisions/`는 여러 대안 중 선택한 결과와 아직 유효한 load-bearing rationale,
 trade-off와 재검토 조건을 소유한다. 선택 결과가 만든 제품 범위, contract, 구조나
-추진 상태 자체는 각각의 owner 문서에 반영한다.
+추진 상태 자체는 각각의 owner 문서에 반영한다. Decision 문서의 작성 규칙, 승격
+기준과 history 원본 처리 원칙은 [`docs/decisions/AGENTS.md`](../decisions/AGENTS.md)가
+소유한다.
 
 ### Guides
 
@@ -107,7 +106,7 @@ Research와 spike 결과는 owner 문서, code 또는 tests에 반영되고 검�
   조용히 바꾸지 않는다.
 - 아직 유효한 decision에 반하는 결과 변경은 기존 기록을 조용히 덮어쓰지 않고 해당
   선택을 대체하는 decision을 남긴다.
-- Product가 제품 scope와 non-goals를 정하고 roadmap은 그 안의 우선순위와 순서를
+- Product가 제품 scope를 정하고 roadmap은 그 안의 우선순위와 순서를
   정한다. Roadmap은 product scope를 확장하지 않는다.
 - `plans/`의 plan 문서에 표시된 상태가 단계 로그나 실제 검증 결과와 다르면 plan
   상태를 실제 결과에 맞춰 조정한다.

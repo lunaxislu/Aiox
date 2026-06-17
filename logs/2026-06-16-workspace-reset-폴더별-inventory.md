@@ -17,13 +17,15 @@ status: open
   - [x] W3-3 Transferred: plan/mvp-implementation-checklist.md·qa-tracker.md archive → W5 (W5-4) — inbound ~47곳 중 ~38이 W5 대상 history/라, history/ 재판정 배치에서 logs/ 이동+생존 참조 갱신을 함께 처리. 지금 이동하면 docs/aiox/(keep) 4곳 영구 dead link + history/ ~38 임시 dead link 발생. dead link 0 우선이라 연기. plan/는 이 둘 때문에 W5까지 잔존
   - [x] W3-4 plan/workspace-reset/ 전체 + plan/README.md → delete 완료. plan/ 폴더 자체는 W3-3 연기로 잔존(checklist·qa-tracker 2개)
   - [x] W3-5 ops-setup.plan.md 흡수 후 삭제 완료 — inbound 3곳 정리(post-mvp.plan.md Execution 포인터 제거·운영환경셋업 문단/Open 상세 포인터 재지정 + history/59 Related 줄 제거). vault/atlas는 W5에서 history/59 읽고 owner 확정(지금 포인터 안 박음)
-- [>] W4 prd/ migration — PRD/spec을 owner별로 분리하고 roadmap 최종 통합 (2026-06-16 재정의)
-  - [ ] W4-1 product 내용 → docs/product/product.md (기존 W4-3: prd/mvp·post-mvp spec에서 제품 목적·범위·원칙 추출)
-  - [ ] W4-2 protocol/interface/state contract → docs/specs/ (기존 W4-1·W4-2: prd/mvp/aiox-mvp-spec.md→aiox-mvp.md, prd/post-mvp/aiox-a2a-spec.md→aiox-a2a.md)
-  - [ ] W4-3 architecture/current implementation/internal flow → docs/architecture/ 판정·분리
-  - [ ] W4-4 roadmap 최종 통합 — W3 plan-side draft + prd/post-mvp/aiox-a2a-spec.md §11 Release roadmap + §12 defect stage mapping + release-plan.md G6 packaging 연결
-  - [ ] W4-5 rationale/evidence/dated audit → W5 history/decision/log 판정으로 위임
-  - [ ] W4-6 prd/README.md와 원본 PRD 파일 처리 (기존 W4-4 archive: prd/post-mvp/archive/ 5개·prd/pre-validation/ 2개, 기존 W4-5: prd/README delete)
+- [x] W4 a2a-spec monolith를 owner별 product/spec/architecture/roadmap으로 증류 완료 (2026-06-16). 기존 PRD monolith는 self-contained owner 문서로 분해하고 삭제
+  - [x] W4-1 `docs/product/product.md` 생성 — a2a §0·§13.6·§13.7 (제품 목적·primary user·JTBD·non-goal·cross-vendor framing·Google A2A naming 주의·adoption/commercial hypotheses). 로그 없이 읽히는 self-contained
+  - [x] W4-2 `docs/specs/aiox-a2a.md` 생성 — a2a §2~§9 (glossary·layer·envelope·routing·delivery·adapter·compose·capability·federation·open/deferred). **원본 §2~§9 section ID 보존**. 서두에 §0→product·§1→architecture 분리 명시. `docs/specs/aiox-mvp.md`는 만들지 않음
+  - [x] W4-3 `docs/aiox/mvp-architecture.md` → `docs/architecture/mvp-architecture.md` 승격 (as-built 권위). self-reference·authority links·inbound 갱신. a2a §1/§3 current/as-built 구조·flow·trust boundary·architecture asset은 중복 추출 없이 필요한 note만 대조
+  - [x] W4-4 `docs/product/roadmap.md` 최종 통합 — a2a §11 전체 + §12 **gate/phase 요약만** + plan-side draft + release-plan G6 연결. provisional 제거. §12 file:line·심각도·dated audit 상세는 roadmap 제외(W5 후보)
+  - [x] W4-5 W5 이관 후보 등록(지금 이동 안 함) — a2a §12 상세 audit·a2a §13 rationale/evidence·`logs/2026-06-11-A2A-spec-…`·`logs/2026-06-11-aiox-제품-방향-…`·`prd/pre-validation/*` 2개·`prd/post-mvp/archive/*` 5개 → W5 evidence/history/decision 판정
+  - [x] W4-6 inbound 갱신 후 원본 삭제 — `plans/` live 권위 참조와 `docs/aiox/` 포인터 갱신 → mvp-spec Open Issue #5(session expiry) 누락분을 새 specs §9에 흡수 → 기존 A2A PRD·MVP PRD·`prd/README.md` 삭제
+- [x] W4.5 Transferred: owner 문서 정제와 질문 중심 탐색 → `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` — parent log가 길어져 W4.5 범위를 child 로그로 분리
+- [>] W7 child W4.5 로그 완료 후 parent 반영 — `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`가 끝나면 결과를 이 로그에 반영하고 W5로 진행
 - [ ] W5 history/ migration — 핵심 결정 파일 판정 후 docs/decisions/ 이관
   - [ ] W5-1 파일별 판정: ①docs/decisions/ 후보 ②decided 로그 이관 ③제거
   - [ ] W5-2 판정 후보 docs/decisions/ 이동 실행
@@ -359,3 +361,122 @@ Stage 한 곳뿐. 실제 상태에 맞게 조정(legacy `plan/workspace-reset/` 
 서술은 historical record로 보존한다(작업 경위 owner = logs). 최종 dead-link 검증이 "과거 삭제된 source path 언급"까지
 잡을지는 기준 확정 필요. 현재 작업 기준 = 검증 범위를 **현재 권위·active 문서의 live 탐색 포인터**로 한정하고 decided
 로그의 historical 서술은 제외(W3-5·W3-4에서 이 기준으로 처리). W4 검증 단계에서 사용자 확인.
+
+## 2026-06-16 · W4 실행안 확정과 결정 2건
+
+@user W4 실행 승인. 교차 분석 결론(a2a-spec=임시 수집 monolith·base source, mvp-spec=a2a+mvp-architecture에 흡수된 삭제 후보, mvp-architecture=as-built 권위라 docs/architecture 승격, 두 2026-06-11 로그=§11~§13 rationale owner)을 W4 기준으로 고정. owner 매핑·실행 순서는 보정된 Work Items(W4-1~W4-6)가 소유.
+
+**결정 1 — specs section ID 보존:** `docs/specs/aiox-a2a.md`는 원본 a2a-spec의 **§2~§9 section ID를 그대로 보존**한다. 근거: `plans/post-mvp.plan.md` + sub-plan 5개가 `implements: aiox-a2a-spec.md §4/§5/§9`처럼 section 번호를 live 권위 참조로 가리킨다(총 7곳). 증류로 §0→product, §1→architecture가 빠져도 §2~§9 번호를 재배치하지 않아 plans/ 참조가 깨지지 않게 한다. §0·§1 자리는 비우고 서두 note로 분리 위치만 밝힌다.
+
+**결정 2 — §12 거처:** a2a §12(공개 전 결함 단계 매핑)는 roadmap에 **gate/phase 요약만** 반영하고 file:line·심각도·2026-06-11 dated audit 상세는 넣지 않는다. 근거: §12는 수정되면 낡는 시점성 dated audit이라 "제품 추진 순서" 문서(roadmap)를 오염시킨다. 상세 audit은 W5 evidence/decision/log 판정 후보로 넘긴다.
+
+**self-contained 원칙:** product/spec/architecture/roadmap 각 문서는 로그를 읽어야 이해되는 형태가 되면 안 된다. 필요한 현재 계약은 각 문서 본문이 가져가고, 로그는 provenance/rationale 근거로만 남긴다. cross-vendor framing처럼 자급에 필요한 최소 중복은 허용.
+
+**W5 이관 후보(지금 이동 안 함, W4-5에서 등록만):** a2a §12 상세 audit, a2a §13 rationale/evidence, `logs/2026-06-11-A2A-spec-구현-가능성과-제품성-조사.md`, `logs/2026-06-11-aiox-제품-방향-질의응답.md`, `prd/pre-validation/*` 2개, `prd/post-mvp/archive/*` 5개.
+
+**pre-validation 흡수 지점(확인):** sqlite-restart-recovery PASS 결론(WAL·delivering→queued·idempotency·parent_message_id) → a2a §4.3 + mvp-architecture §2에 흡수. claude-codex PASS 결론(Claude channel injection·Codex thread-targeted turn/start) → a2a §5 + mvp-architecture §6/§7에 흡수. spike 코드는 spikes/에 live(keep). 원문 처리는 W5 evidence 판정.
+
+## 2026-06-16 · W4 실행 완료 — owner 문서 생성·승격·roadmap 통합·원본 PRD 삭제
+
+@user 요청: Claude 세션 한도 도달 후 W4-2 이후를 이어서 실행. Codex가 subagent 3개를 사용해
+disjoint write scope로 나눴고, 이후 live 참조 갱신과 원본 삭제를 통합했다.
+
+**W4-1 product owner.** `docs/product/product.md` 생성 완료. A2A monolith의 §0·§13.6·§13.7을
+제품 목적, primary user, JTBD, non-goal, cross-vendor local collaboration framing, Google A2A
+naming/positioning 주의, adoption/commercial hypotheses로 증류했다. 로그 없이 읽히는
+self-contained product 문서로 둔다.
+
+**W4-2 protocol/spec owner.** `docs/specs/aiox-a2a.md` 생성 완료. 원본 §2~§9 section ID를
+그대로 보존했고, §0 product context는 `docs/product/product.md`, §1 current/as-built
+architecture는 `docs/architecture/mvp-architecture.md`로 분리됐다는 preface를 추가했다.
+`docs/specs/aiox-mvp.md`는 만들지 않았다. `prd/mvp/aiox-mvp-spec.md`의 Open Product Issue #5
+(AI agent session expiry handling)는 새 specs §9 open/deferred에 흡수했다.
+
+**W4-3 architecture owner.** `docs/aiox/mvp-architecture.md`를
+`docs/architecture/mvp-architecture.md`로 승격했다. 헤더와 §14 Authority Links를 as-built
+architecture authority 기준으로 바꾸고, legacy MVP PRD·pre-validation은 primary authority가
+아니라 흡수/삭제 또는 W5 evidence 후보로 낮췄다. `docs/aiox/README.md`에는 direct old-path
+mention이 없어 수정하지 않았다.
+
+**W4-4 roadmap owner.** `docs/product/roadmap.md`의 provisional wording을 제거하고, a2a §11
+G0~G6와 Phase 0~3를 backbone으로 최종 통합했다. `plans/release-plan.md`는 G6 packaging gate의
+실행 checklist로 연결했다. a2a §12는 file:line, severity, dated audit detail 없이
+gate/phase pressure summary만 반영했고, 상세 audit은 W5 evidence/decision/log 후보로 남겼다.
+
+**W4-5 W5 후보.** 지금 이동하지 않을 후보를 유지한다: a2a §12 상세 audit, a2a §13
+rationale/evidence, `logs/2026-06-11-A2A-spec-구현-가능성과-제품성-조사.md`,
+`logs/2026-06-11-aiox-제품-방향-질의응답.md`, `prd/pre-validation/*` 2개,
+`prd/post-mvp/archive/*` 5개. archive 5개 상단의 consolidation pointer는 새
+`docs/specs/aiox-a2a.md`로 갱신했지만 원문 내부 historical references는 W5 판정 대상으로 둔다.
+
+**W4-6 inbound와 삭제.** `plans/post-mvp.plan.md`와 post-mvp sub-plan 4개의 live A2A 권위
+참조를 `docs/specs/aiox-a2a.md`로 갱신했다. 삭제될 MVP PRD를 가리키던 `docs/aiox/` learning
+record 6개는 `docs/architecture/mvp-architecture.md` 또는 `docs/specs/aiox-a2a.md` owner로
+갱신했다. 이후 `prd/post-mvp/aiox-a2a-spec.md`, `prd/mvp/aiox-mvp-spec.md`, `prd/README.md`를
+삭제했다.
+
+**검증/잔여.** `rg` 기준 current owner docs와 `plans/`에는 삭제된 PRD를 가리키는 live 권위
+참조가 남지 않았다. 남은 mention은 이 inventory log의 historical 기록/Work Items 설명,
+`prd/post-mvp/archive/codex-opinion.md` 내부의 과거 input 목록처럼 W5 archive/evidence 판정
+대상인 historical text다. W4 완료로 next pointer는 W5로 이동한다.
+
+## 2026-06-16 · W4.5 owner 문서 정제 필요 — W4 이관본 제품 문서 topology 정제 판단
+
+@user 리뷰: W4는 정보 손실 0을 우선한 1차 이관으로 완료됐다. W5로 바로 가지 않고 W4.5 owner 문서 정제를 먼저 수행한다. next pointer = W5 → W4.5.
+
+**판단 기록:**
+
+- `docs/product/product.md`의 non-goal 목록은 roadmap/phase와 혼선을 만들 수 있으므로 product 본문에서 제거/최소화 후보.
+- spec은 현재 구현 설명 문서나 진행 상태표가 아니라 contract 문서다. 구현 구조와 실제 지원 상태는 `docs/architecture/`, code/tests, roadmap evidence가 소유한다. spec에는 필요할 때만 contract 범위, release gate 관련성, 미결정/open question을 명시한다.
+- architecture는 현재 구현 구조와 수정 지점의 as-built map이다.
+- roadmap은 현재 구현 baseline에서 release target까지 무엇을 어떤 gate로 닫는지 소유한다.
+- plans는 spec owner가 아니라 spec/roadmap/architecture를 구현하기 위한 실행 레이어다.
+- logs/AGENTS.md와 겹치지 않게, product/spec 구현 흐름은 `docs/guides/workflow.md`에 두는 후보가 맞다.
+- distribution 문서(`docs/product/distribution.md`) 생성 여부를 후보로 남긴다: roadmap=언제/어디까지, distribution=어떤 형태로 배포, plans/release-plan.md=실행 checklist라는 경계 구분.
+
+## 2026-06-16 · W4.5 진행 방식 조정 — 질문 중심 탐색과 FE 관점 이해 보조
+
+@user 피드백: W4.5는 단순 owner 문서 정제만으로는 부족하다. 사용자가 roadmap/spec/architecture의 흐름을 직접 이해해야 Codex/Claude에게 더 정확히 지시하고, 빠진 내용이나 작성 규칙을 판단할 수 있다. 사용자는 프론트엔드 배경이며 agent/backend/protocol 용어와 `gate` 같은 표현이 낯설다. 또한 한 문서를 순서대로 읽기보다 꼬리질문을 통해 spec -> roadmap -> plan -> architecture처럼 문서를 왕복하며 이해하는 패턴이 강하다.
+
+**확인한 현재 상태:**
+- 사용자가 `docs/product/product.md`의 non-goals 제거와 architecture rename을 직접 반영했다.
+- `docs/architecture/documentation-system.md`의 product/specs/architecture/roadmap/plans owner 경계 자체는 현재 확인 기준으로 바뀌지 않았다. 다만 product owner 설명에 `non-goals`가 남아 있으면 사용자 결정과 맞지 않으므로 후속 정리 후보다.
+- spec/architecture 경계의 큰 원칙은 이미 `docs/architecture/documentation-system.md`가 소유한다. W4.5에서 추가로 필요한 것은 owner map 변경보다 하위 작성 규칙이다: dated feasibility/evidence, current implementation matrix, roadmap gate와 plan task 연결, architecture에 둘 current implementation 설명의 수준 등.
+
+**진행 방식 결정:**
+- W4.5에서 큰 한국어 reading guide를 먼저 만들지 않는다.
+- 문서별 고정 세션(`roadmap -> spec -> architecture`)도 강제하지 않는다.
+- 사용자의 질문 하나를 중심으로 관련 owner 문서를 왕복하는 **질문 중심 탐색**으로 진행한다.
+- 답변마다 확인한 사실/추론/의견을 구분하고, 해당 내용의 owner를 함께 표시한다.
+- 사용자가 다른 주제로 꼬리질문을 하면 정상 흐름으로 다루되, 현재 질문과 별도 수명인 항목은 parking lot으로 남긴다.
+
+**탐색 단위 예:**
+- 질문: envelope이 무엇이고 왜 필요한가?
+- spec owner: `docs/specs/aiox-a2a.md`의 envelope/reply/delivery contract
+- roadmap owner: `docs/product/roadmap.md`의 공개 전 완료 조건(G 항목) 중 어느 범위에 속하는지
+- plan owner: `plans/post-mvp/envelope-metadata.plan.md`가 실제 작업 단위로 무엇을 하려는지
+- architecture owner: `docs/architecture/local-agent-runtime.md`에서 현재 message flow와 adapter/runtime 구조가 어떻게 되어 있는지
+- code/tests owner: 실제 구현이 현재 어디까지 되어 있는지
+
+**용어 처리:**
+- 원문 식별자 `G0`, `G1` 등은 유지하되, 사용자-facing 설명에서는 `gate`를 **공개 전 완료 조건**으로 풀어 설명한다.
+- spec은 API/props contract에 가까운 외부 동작 계약, architecture는 내부 state/module/data-flow 설명, roadmap은 공개 전 완료 조건과 추진 순서, plans는 실행 checklist/task로 설명한다.
+
+**후속 방향:**
+- 질문 중심 탐색에서 반복되는 설명과 합의된 작성 규칙이 쌓이면 그때 `docs/guides/`에 프론트엔드 개발자 관점의 탐색 guide 또는 `docs/guides/workflow.md` 반영 후보로 정리한다.
+- `workflow.md` 반영은 spec/architecture/roadmap 작성 규칙과 evidence 위치 규칙이 충분히 합의된 뒤 진행한다.
+
+## 2026-06-16 · W4.5 child 로그 분리
+
+@user: parent inventory 로그가 너무 길어졌으므로 W4.5 후속 로그를 만들자고 요청.
+
+**처리:**
+- 새 child 로그 생성: `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`
+- 기존 W4.5 범위(owner 문서 정제, 질문 중심 탐색, 작성 규칙 후보 정리)를 child 로그로 이관.
+- parent Work Items에서 W4.5는 `Transferred:`로 해소하고, 유효한 next pointer `W7`을 추가했다.
+- W7의 역할은 child 로그 완료 후 결과를 parent에 반영하고 W5 history migration으로 진행하는 것이다.
+
+**이관 이유:**
+- parent 로그가 W1~W4 실행 기록과 W4.5 논의까지 포함해 길어져 재개 비용이 커졌다.
+- W4.5는 product/spec/architecture/roadmap 정제와 사용자 질문 중심 탐색이라는 독립적인 수명을 갖는다.
+- W5/W6는 parent inventory 로그에 남겨 두고, W4.5 완료 후 parent로 돌아와 계속 진행한다.

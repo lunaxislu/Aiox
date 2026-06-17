@@ -3,9 +3,9 @@ title: A2A envelope/marker migration (Phase 2) — execution sub-plan
 description: >
   payload-level protocol marker(`Intent:` prefix, `[[CONCLUDE]]`)를 A2A envelope/lifecycle
   metadata로 이전하는 첫 Local single-daemon A2A 실행 sub-plan. 비권위 execution 문서다 —
-  A2A 결정 권위는 prd/post-mvp/aiox-a2a-spec.md §4가 가진다.
+  A2A 결정 권위는 docs/specs/aiox-a2a.md §4가 가진다.
 status: next kickoff candidate (post-MVP Local single-daemon A2A)
-implements: prd/post-mvp/aiox-a2a-spec.md §4
+implements: docs/specs/aiox-a2a.md §4
 decided_at: 2026-05-27
 owner: TBD
 rationale: history/58-post-mvp-a2a-architecture-decisions.history.md
@@ -14,7 +14,7 @@ rationale: history/58-post-mvp-a2a-architecture-decisions.history.md
 > **권위 안내.** 본 문서는 비권위 execution sub-plan이다. `type`/`intent`/`reply_expected`
 > 분리, protocol version, delivery 단위 렌더, messageId/deliveryId, source-only reply
 > routing, recipient_visibility defer, daemon authority 등 **A2A 결정 본문은
-> `prd/post-mvp/aiox-a2a-spec.md` §4가 권위**다. 여기서는 그 §4를 구현하는 실행
+> `docs/specs/aiox-a2a.md` §4가 권위**다. 여기서는 그 §4를 구현하는 실행
 > detail(trigger·scope·cutover·checklist)만 다룬다 — 결정을 복제하지 않는다.
 
 ## 1. 배경
@@ -51,13 +51,13 @@ turn 재개 계약을 명시해야 한다.
 ## 2. 목적
 
 protocol marker를 payload에서 분리해 envelope/metadata layer로 옮기는 것을 시작점으로,
-`prd/post-mvp/aiox-a2a-spec.md` §4의 Local single-daemon A2A lifecycle contract를
+`docs/specs/aiox-a2a.md` §4의 Local single-daemon A2A lifecycle contract를
 구현한다. agent는 구조화된 input field (`type`, `intent`, `reply_expected`)로 메시지
 의미와 target 행동 신호를 선언하고, daemon이 protocol version, message/delivery
 correlation, reply routing metadata를 envelope attribute로 운반한다. payload는 순수 본문만
 보관한다.
 
-2026-06-05 Post-MVP A2A architecture lock에서 본 작업은 `aiox-a2a-spec.md` §4
+2026-06-05 Post-MVP A2A architecture lock에서 본 작업은 `docs/specs/aiox-a2a.md` §4
 (A2A protocol and message lifecycle)의 **첫 구현 step**으로 격상됐다. 단순 marker
 이전이 아니라 §4 envelope/lifecycle 결정의 일부로 다룬다. 이 작업이 구현하는 결정
 본문(type/intent/reply_expected 분리, protocol version, delivery 단위 렌더,
@@ -224,7 +224,7 @@ kickoff candidate로 승격됐으므로, 트리거 관찰 여부와 무관하게
 
 ## 10. Cross-link
 
-- 결정 권위: `prd/post-mvp/aiox-a2a-spec.md` §4 (A2A protocol & message lifecycle).
+- 결정 권위: `docs/specs/aiox-a2a.md` §4 (A2A protocol & message lifecycle).
 - 근거·과정: `history/58-post-mvp-a2a-architecture-decisions.history.md`.
 - plan index: `plans/post-mvp.plan.md` (본 sub-plan을 candidate로 등록).
 - Memory: `[[aiox-deferred-decisions]]` — pointer만 보존.

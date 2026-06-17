@@ -1,7 +1,8 @@
 # MCP scope and daemon namespace
 
 > Learning record. Authority lives in `history/38-step-13-mcp-scope-decision.history.md`
-> and `prd/mvp/aiox-mvp-spec.md`.
+> and the current owner docs `docs/specs/aiox-a2a.md` and
+> `docs/architecture/mvp-architecture.md`.
 
 ## Background
 

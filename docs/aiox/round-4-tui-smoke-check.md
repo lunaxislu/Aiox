@@ -3,7 +3,7 @@
 > 이 문서는 사용자가 나중에 "manual TUI smoke check가 뭐였더라"를 다시 볼 수 있게 만든 학습 기록이다.
 > 권위 결정은 `history/33-step-10-phase-a-decisions.history.md`,
 > `history/34-step-10-phase-b-codex-runtime.history.md`,
-> `prd/mvp/aiox-mvp-spec.md`, `plan/mvp-implementation-checklist.md`에 둔다.
+> `docs/architecture/mvp-architecture.md`, `plan/mvp-implementation-checklist.md`에 둔다.
 
 ## TL;DR
 
@@ -592,4 +592,4 @@ error: unknown option '--resume'
   - Round 4 closeout
   - "Manual TUI smoke check remains separate from automated closeout because it requires launching the real Codex TUI in a foreground terminal."
 - `plan/mvp-implementation-checklist.md`
-- `prd/mvp/aiox-mvp-spec.md`
+- `docs/architecture/mvp-architecture.md`

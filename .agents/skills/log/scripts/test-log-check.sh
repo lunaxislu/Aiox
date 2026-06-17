@@ -116,5 +116,35 @@ real_line=$(grep -n '^## 2026-06-15 · 초기$' "$fx8" | cut -d: -f1)
 "$LOG" check "$fx8" > "$WORK/c8.out"
 check_contains "C8 fenced 날짜 미오인" "$WORK/c8.out" "^latest: line ${real_line} · 2026-06-15 · 초기$"
 
+# C9: 점 포함 ID(W4.5)가 next pointer와 active로 인식된다.
+fx9="$WORK/c9.md"; write_log "$fx9"
+{
+    echo '- [x] W1 이전 작업'
+    echo '- [>] W4.5 점 포함 작업'
+    echo '- [ ] W5 후속 작업'
+} >> "$fx9"
+"$LOG" check "$fx9" > "$WORK/c9.out"
+check_contains "C9 W4.5 counts" "$WORK/c9.out" '^work_items: active=1 open=1 closed=1 incomplete=2$'
+if "$LOG" check "$fx9" | grep -q '^next: line .*W4\.5 점 포함 작업'; then ok "C9 W4.5 next pointer"; else ng "C9 W4.5 next pointer"; fi
+
+# C10: 하이픈 서브 ID(W4.5-1, W5-1)가 open/active/closed로 인식된다.
+fx10="$WORK/c10.md"; write_log "$fx10"
+{
+    echo '- [>] W4.5 주 작업'
+    echo '  - [ ] W4.5-1 서브 작업 A'
+    echo '  - [x] W4.5-2 서브 작업 B'
+    echo '- [ ] W5-1 하이픈 서브'
+} >> "$fx10"
+"$LOG" check "$fx10" > "$WORK/c10.out"
+check_contains "C10 서브아이템 counts" "$WORK/c10.out" '^work_items: active=1 open=2 closed=1 incomplete=3$'
+
+# C11: 점 하이픈 혼합 ID(W4.5-1) set 전이가 작동한다.
+fx11="$WORK/c11.md"; write_log "$fx11"
+{
+    echo '- [>] W4.5-1 혼합 작업'
+} >> "$fx11"
+"$LOG" items "$fx11" set --id W4.5-1 --status completed --expect "혼합 작업" >/dev/null
+check_contains "C11 W4.5-1 completed" "$fx11" '^- \[x\] W4\.5-1 혼합 작업$'
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

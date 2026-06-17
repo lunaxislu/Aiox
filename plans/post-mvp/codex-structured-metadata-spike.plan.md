@@ -3,10 +3,10 @@ title: Codex structured metadata spike — execution sub-plan
 description: >
   Codex `turn/start` 또는 app-server surface가 aiox envelope metadata를 text injection
   없이 structured context로 운반할 수 있는지 조사하는 실행 sub-plan. 비권위 execution
-  문서다 — A2A protocol/open-question 결정 권위는 prd/post-mvp/aiox-a2a-spec.md §4·§9가
+  문서다 — A2A protocol/open-question 결정 권위는 docs/specs/aiox-a2a.md §4·§9가
   가진다.
 status: deferred (post-MVP, unordered candidate)
-implements: prd/post-mvp/aiox-a2a-spec.md §4, §9
+implements: docs/specs/aiox-a2a.md §4, §9
 decided_at: 2026-06-05
 owner: TBD (kickoff 시 지정)
 rationale: history/58-post-mvp-a2a-architecture-decisions.history.md
@@ -14,7 +14,7 @@ rationale: history/58-post-mvp-a2a-architecture-decisions.history.md
 
 > **권위 안내.** 본 문서는 비권위 investigation sub-plan이다. Codex 같은 prompt/text
 > fallback runtime의 authority 한계와 A2A lifecycle 결정 본문은
-> `prd/post-mvp/aiox-a2a-spec.md` §4·§9가 권위다. 여기서는 조사 질문, 확인 방법,
+> `docs/specs/aiox-a2a.md` §4·§9가 권위다. 여기서는 조사 질문, 확인 방법,
 > 산출물만 다룬다.
 
 ## 1. 질문

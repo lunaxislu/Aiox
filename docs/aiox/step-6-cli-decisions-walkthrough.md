@@ -3,7 +3,7 @@
 > 작성일: 2026-05-19
 > 관련 history: `history/20-step-6-phase-a-decisions.history.md`
 > 관련 plan: `plan/mvp-implementation-checklist.md` Step 6 (line 511–533)
-> 관련 prd: `prd/mvp/aiox-mvp-spec.md` (MVP 13개 명령 surface)
+> 관련 architecture: `docs/architecture/mvp-architecture.md` §9 (MVP command surface)
 
 ---
 

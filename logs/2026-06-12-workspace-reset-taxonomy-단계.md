@@ -1,14 +1,14 @@
 ---
 topic: workspace reset taxonomy 단계
 description: workspace reset 문서 taxonomy(폴더 구조, 문서 종류별 책임·권위·수명, naming, 문서 간 link 책임)를 확정하기 위한 초안 검토와 기존 taxonomy topic log 판정
-status: open
+status: decided
 ---
 
 ## Work Items
 
 - [x] W1 Cancelled: Complete `logs/2026-06-14-log-skill-maintenance.md`의 closeout·next pointer 전이 개선 범위를 판정한 뒤 문서 lifecycle 책임과 type별 생성·종료·보존 조건 검토를 재개한다. — maintenance 범위가 v2 W-id 구조 정리로 바뀌어 일반 완료 포인터로 대체
 - [x] W2 Complete logs/2026-06-15-로그-스킬-완전-재설계.md, then continue document lifecycle responsibilities and type lifetime review
-- [>] W3 document lifecycle 책임과 type별 생성·종료·보존 조건 검토를 재개한다
+- [x] W3 Decided: document lifecycle 별도 전역 규칙 불필요 — 대부분의 문서 type은 living document로 lifecycle보다 소유 경계가 중요하며 이미 documentation-system.md에 정의됨. logs/plans는 각각 log skill과 plans/AGENTS.md가 소유.
 
 ## 2026-06-12 · workspace reset taxonomy 단계
 
@@ -567,3 +567,11 @@ research/
 logs/2026-06-15-로그-스킬-완전-재설계.md가 decided로 닫혔다.
 W2(재설계 완료)를 [x] 처리하고, W2의 두 번째 부분(document lifecycle review)을 W3으로 이어받았다.
 다음 재개 지점: W3.
+
+## 2026-06-16 · taxonomy 단계 종료
+
+W3 Decided: 대부분의 문서 type은 닫히는 문서가 아닌 living document이므로 별도 lifecycle 규칙이 불필요하다는 판정. logs/plans lifecycle은 이미 각 skill과 AGENTS.md가 소유한다. 문서 소유 경계는 documentation-system.md에 반영 완료.
+
+반영 완료 목록: docs/architecture/documentation-system.md 생성(소유 경계·scoped authority·conflict 규칙·history 타입 제거), logs/AGENTS.md 정리(repo 전용 closeout 계약), root AGENTS.md 위임 구조 정리.
+
+다음: workspace-reset stage 2(taxonomy 책임 문서 확정) → logs/2026-06-16-workspace-reset-taxonomy-책임문서.md

@@ -107,7 +107,7 @@ Codex (TUI)     : "내 방(202번 방)엔 편지 안 왔어. 안 읽었어."
 
 이 문서는 사용자가 나중에 다시 볼 수 있는 learning record다. 권위 결정은
 `history/40-step-14-daemon-client-split.history.md`와
-`prd/mvp/aiox-mvp-spec.md`의 Message Flow 정책에 둔다.
+`docs/architecture/mvp-architecture.md`의 current message flow에 둔다.
 
 2026-05-25 결정:
 

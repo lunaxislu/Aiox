@@ -211,7 +211,7 @@ find_incomplete() {
         {
             if (fence_skip($0)) next
             if ($0 ~ /^##[[:space:]]+/) heading = $0
-            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[( |>)\][[:space:]]+W[0-9]+[[:space:]]+/) {
+            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[( |>)\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/) {
                 printf "%s:%d: %s\n  %s\n", FILENAME, FNR, heading, $0
             }
         }
@@ -223,7 +223,7 @@ find_next_pointers() {
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
         {
             if (fence_skip($0)) next
-            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+[[:space:]]+/) {
+            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/) {
                 printf "%d\t%s\n", FNR, $0
             }
         }
@@ -257,9 +257,9 @@ work_item_counts() {
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; open = 0; active = 0; closed = 0 }
         {
             if (fence_skip($0)) next
-            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[ \][[:space:]]+W[0-9]+[[:space:]]+/) open++
-            else if ($0 ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+[[:space:]]+/) active++
-            else if ($0 ~ /^[[:space:]]*-[[:space:]]+\[[xX]\][[:space:]]+W[0-9]+([[:space:]]|$)/) closed++
+            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[ \][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/) open++
+            else if ($0 ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/) active++
+            else if ($0 ~ /^[[:space:]]*-[[:space:]]+\[[xX]\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) closed++
         }
         END { printf "%d %d %d\n", open, active, closed }
     ' "$1"
@@ -288,14 +288,14 @@ validate_work_item_ids() {
             item_id = ""; item_text = ""; item_marker = ""
             if (!match(line, /^[[:space:]]*-[[:space:]]+/)) return 0
             rest = substr(line, RLENGTH + 1)
-            if (rest !~ /^\[[ >xX]\][[:space:]]+W[0-9]+([[:space:]]|$)/) return 0
+            if (rest !~ /^\[[ >xX]\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) return 0
             item_marker = substr(rest, 2, 1)
             after = rest
             sub(/^\[[ >xX]\][[:space:]]+/, "", after)
             item_id = after
             sub(/[[:space:]].*$/, "", item_id)
             item_text = after
-            sub(/^W[0-9]+[[:space:]]*/, "", item_text)
+            sub(/^W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]*/, "", item_text)
             return 1
         }
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; found = 0 }
@@ -739,14 +739,14 @@ build_items_set_result() {
             if (!match(line, /^[[:space:]]*-[[:space:]]+/)) return 0
             item_prefix = substr(line, 1, RLENGTH)
             rest = substr(line, RLENGTH + 1)
-            if (rest !~ /^\[[ >xX]\][[:space:]]+W[0-9]+([[:space:]]|$)/) return 0
+            if (rest !~ /^\[[ >xX]\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) return 0
             item_marker = substr(rest, 2, 1)
             after = rest
             sub(/^\[[ >xX]\][[:space:]]+/, "", after)
             item_id = after
             sub(/[[:space:]].*$/, "", item_id)
             item_text = after
-            sub(/^W[0-9]+[[:space:]]*/, "", item_text)
+            sub(/^W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]*/, "", item_text)
             return 1
         }
         function render(marker, text) { return item_prefix "[" marker "] " item_id " " text }
@@ -839,8 +839,8 @@ cmd_items() {
                 esac
                 shift
             done
-            if ! printf '%s\n' "$id" | grep -q '^W[1-9][0-9]*$'; then
-                echo "--id는 W1, W2 같은 형식이어야 합니다." >&2
+            if ! printf '%s\n' "$id" | grep -qE '^W[1-9][0-9]*(\.[0-9]+)?(-[0-9]+)?$'; then
+                echo "--id는 W1, W2, W4.5, W4.5-1, W5-1 같은 형식이어야 합니다." >&2
                 return 1
             fi
             case "$status" in open|active|completed|cancelled|transferred) ;; *) echo "--status는 open, active, completed, cancelled, transferred 중 하나여야 합니다." >&2; return 1 ;; esac
