@@ -14,10 +14,14 @@ status: open
 - [x] W2 repo-level 계약 반영 필요성을 확인하고 갱신한다
   - [x] W2-1 root `AGENTS.md` References 또는 작업 규칙 갱신 필요 여부 확인
   - [x] W2-2 `docs/architecture/documentation-system.md`의 Decisions/History/Conflict Resolution 갱신 필요 여부 확인
-- [>] W3 history/legacy 자료에서 첫 decision 승격 후보를 선별한다
-  - [ ] W3-1 후보 파일을 실제로 읽고 decision-worthy 여부를 판정한다
-  - [ ] W3-2 우선 승격 후보와 보류/삭제 후보를 기록한다
-- [ ] W4 이 child 로그 결과를 parent W4.5 로그 W6에 반영하고 W7로 복귀한다
+- [x] W3 Transferred: history/legacy 자료에서 첫 decision 승격 후보 선별 → parent W7/W8/W10 및 parent inventory W5 — owner assimilation 중 발견·승격하고, 남은 history는 최종 cleanup에서 처리
+  - [x] W3-1 Transferred: 후보 파일을 실제로 읽고 decision-worthy 여부 판정 → parent W7/W8/W10
+  - [x] W3-2 Transferred: 우선 승격 후보와 보류/삭제 후보 기록 → parent W7/W8/W10 및 parent inventory W5
+- [x] W4 workspace reset authority assimilation 로그 형식과 검증 ledger 규칙을 확정한다
+  - [x] W4-1 root `AGENTS.md`에 temporary workspace reset logging scope 반영 필요 여부를 확인하고 적용한다
+  - [x] W4-2 owner assimilation 로그의 권장 섹션(Scope/Evidence Ledger/Decision Candidates/Cross-Owner Effects/Closeout)을 확정한다
+  - [x] W4-3 W7/W8/W9/W10이 문서별 고정 작업이 아니라 primary entry point 작업 패키지임을 parent W4.5 Work Items에 반영한다
+- [ ] W5 이 child 로그 결과를 parent W4.5 로그 W6에 반영하고 W7로 복귀한다
 
 ## 2026-06-17 · workspace reset W4.5 decision 문서화 기준
 
@@ -74,3 +78,45 @@ Parent pointer: `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`
 - W2-2: `docs/architecture/documentation-system.md` Decisions 섹션 끝에 `docs/decisions/AGENTS.md` 포인터 한 줄 추가. 다른 섹션(Conflict Resolution·History) 변경 없음 — 기존 내용이 이미 충분함.
 
 **다음: W3** — history/legacy 자료에서 첫 decision 승격 후보 선별.
+
+## 2026-06-18 · history 선별 선행 취소와 assimilation log 형식 우선
+
+@user 판단: history/legacy 자료를 먼저 전역 선별하는 흐름은 실제 작업 방식과 맞지 않다. `local-agent-runtime.md` 같은 primary owner 문서를 monolithic authority로 정합하는 과정에서 history, src, tests, spike/spikes, legacy/archive 자료를 함께 확인하고, 그 과정에서 decision-worthy rationale이 발견되면 `docs/decisions/`로 승격하는 흐름이 더 자연스럽다.
+
+**정리한 내용:**
+
+- 기존 W3 “첫 decision 승격 후보 선별”은 현재 child 로그에서 수행하지 않고 W7/W8/W10 및 parent inventory W5로 이관했다.
+- 새 현재 재개 지점은 W4다. W4는 workspace reset authority assimilation 작업 로그가 어떤 검증 ledger와 closeout 형식을 남겨야 하는지 확정한다.
+- 핵심 의도는 A agent가 owner 문서에 반영한 내용을 B agent가 해당 작업 로그의 Evidence Ledger, Decision Candidates, Cross-Owner Effects, Closeout만 보고 pass/fail 검증할 수 있게 하는 것이다.
+
+**현재 next pointer:** W4 — workspace reset authority assimilation 로그 형식과 검증 ledger 규칙 확정.
+
+## 2026-06-18 · W4 완료 — root AGENTS.md Workspace Reset 섹션 추가 및 logs/AGENTS.md 템플릿 확정
+
+**W4-1 완료 — root AGENTS.md 반영:**
+
+판단: root AGENTS.md에 임시 workspace reset scope를 추가하는 것은 적절하다.
+단, 상세 템플릿 테이블(5개 섹션)은 root에 넣기에 과도하다 — root는 thin contract이고
+상세 log section 규칙은 `logs/AGENTS.md`가 소유하는 게 맞다.
+
+적용한 내용:
+- root `AGENTS.md` 끝에 `## Workspace Reset` 섹션 3 bullets 추가.
+  - 실행 순서는 active log next pointer 소유 (이 파일에 W-step 순서 금지)
+  - owner 문서 갱신 task는 task log에 검증 ledger 필수
+  - 권장 섹션 참조 위치: `logs/AGENTS.md`
+
+**W4-2 완료 — logs/AGENTS.md 권장 섹션 템플릿 확정 및 추가:**
+
+권장 섹션 5개 확정: Scope / Evidence Ledger / Decision Candidates / Cross-Owner Effects / Closeout.
+
+`logs/AGENTS.md` Closeout Check 섹션 아래에 `## Workspace Reset Log Sections` 추가.
+추가 설명: 작업 패키지는 primary entry point 기반 authority assimilation 단위이며,
+작업 중 발생하는 cross-owner 변경도 같은 package log에 기록한다는 context 포함.
+
+**W6 child log에 두지 않는 이유:**
+child log는 W5 완료 후 닫히면 검색 경로가 끊긴다. W7/W8/W9 agents가 새 log에서
+작업할 때 템플릿을 찾으려면 영구 위치(`logs/AGENTS.md`)가 필요하다.
+
+**남은 판단 없음.** W4 전체 완료.
+
+**현재 next pointer:** W5 — child log 결과를 parent W4.5 로그에 반영하고 W7로 복귀.

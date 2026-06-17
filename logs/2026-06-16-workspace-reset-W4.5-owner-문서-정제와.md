@@ -23,19 +23,27 @@ status: open
   - [x] W5-1 `docs/specs/AGENTS.md` 작성 — spec 작성 규칙, 상태 어휘, section ID 보존, harness/agent 확인 절차
   - [x] W5-2 `docs/architecture/AGENTS.md` 작성 — as-built/target 구분, code/test 근거, drift 처리, harness/agent validation 절차
   - [x] W5-3 root `AGENTS.md`, `docs/architecture/documentation-system.md` 등 상위 계약에 하위 AGENTS 구조 반영 필요 여부 확인
-- [>] W6 Complete child log `logs/2026-06-17-workspace-reset-W4.5-decision-문서화-기준.md`, then consume results and resume W7
+- [x] W6 Complete child log `logs/2026-06-17-workspace-reset-W4.5-decision-문서화-기준.md`, then consume decision/logging rules and resume W7
   - [x] W6-1 Transferred: history/legacy 자료에서 decision으로 승격해야 할 기준과 후보 확인 → child W1/W3
   - [x] W6-2 Transferred: 필요한 `docs/decisions/` 작성 규칙 또는 첫 decision 문서 작성 → child W1
   - [x] W6-3 Transferred: root `AGENTS.md`와 `docs/architecture/documentation-system.md`에 decision 작성·승격 기준 반영 필요 여부 확인 및 갱신 → child W2
-- [ ] W7 `local-agent-runtime.md`를 split 전 monolithic architecture authority로 최신화한다 — W2의 질문 중심 owner 왕복 방식을 여기서 적용
+- [>] W7 local runtime authority assimilation package → child log `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`
   - [ ] W7-1 Step 15 pair/dispatch/stale drift 반영 여부 확인 및 정리
-  - [ ] W7-2 코드 검증 중 decision-worthy rationale이 발견되면 W6 기준에 따라 `docs/decisions/`로 승격한다
-- [ ] W8 `aiox-a2a.md`를 split 전 monolithic spec authority로 최신화한다 — W2의 질문 중심 owner 왕복 방식을 여기서 적용
+  - [ ] W7-2 history/src/tests/spike/spikes/legacy evidence를 확인하고 Evidence Ledger를 남긴다
+  - [ ] W7-3 작업 중 spec/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
+- [ ] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용
   - [ ] W8-1 contract/status/cross-reference 정합성 확인 및 정리
-  - [ ] W8-2 spec 정합 중 history 기반 decision-worthy rationale이 발견되면 W6 기준에 따라 `docs/decisions/`로 승격한다
-- [ ] W9 `docs/product/roadmap.md`와 `plans/release-plan.md` 정합성을 사용자의 배포 우선순위 기준으로 갱신한다
-- [ ] W10 split 설계는 monolithic 최신화 후 검토한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다
+  - [ ] W8-2 history/src/tests/architecture/roadmap/release evidence를 확인하고 Evidence Ledger를 남긴다
+  - [ ] W8-3 작업 중 architecture/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
+- [ ] W9 release/roadmap authority assimilation package를 수행한다 — primary entry point는 `docs/product/roadmap.md`와 `plans/release-plan.md`
+  - [ ] W9-1 사용자의 배포 우선순위 기준으로 roadmap/release-plan 정합성을 갱신한다
+  - [ ] W9-2 작업 중 spec/architecture/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
+- [ ] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다
+  - 주의: W10은 단일 primary owner 문서가 없다. split 대상은 W7·W8에서 최신화된
+    `docs/specs/aiox-a2a.md`와 `docs/architecture/local-agent-runtime.md`이며,
+    Scope.Primary owner는 child log 진입 시 사용자와 확정한다.
   - [ ] W10-1 split 중 history/legacy 자료에서 decision-worthy rationale이 발견되면 W6 기준에 따라 `docs/decisions/`로 승격한다
+  - [ ] W10-2 split map, anchor preservation, inbound reference, README 필요성을 검토한다
 
 ## 2026-06-16 · workspace reset W4.5 owner 문서 정제와 질문 중심 탐색
 
@@ -389,3 +397,30 @@ Gemini W5-3 보고서 검토 후 수정 적용.
 - child 로그 첫 블록에는 Claude 작업 입력을 포함했다.
 
 **현재 next pointer:** W6 child 로그 완료.
+
+## 2026-06-18 · W7-W10을 primary entry point package로 재정의
+
+@user 판단: W7=architecture, W8=spec, W9=roadmap처럼 딱딱히 분리하면 실제 작업 흐름과 맞지 않는다. `local-agent-runtime.md` 정합 중 spec, roadmap, release-plan, decision 변경이 같이 필요할 수 있으므로 각 W는 “그 문서만 수정”이 아니라 primary entry point를 가진 authority assimilation package로 봐야 한다.
+
+**정리한 내용:**
+
+- W7은 `local-agent-runtime.md` primary entry point의 local runtime authority assimilation package로 재정의했다.
+- W8은 `aiox-a2a.md` primary entry point의 A2A spec authority assimilation package로 재정의했다.
+- W9는 roadmap/release primary entry point package로 재정의했다.
+- W10은 split readiness and map package로 재정의했다.
+- 각 package는 작업 중 관련 owner 변경이 필요하면 같은 package log에 Evidence Ledger, Decision Candidates, Cross-Owner Effects를 남기고 반영할 수 있다.
+- root `AGENTS.md`에는 W7/W8/W9 같은 세부 순서를 넣지 않고, onramp와 log next pointer가 실행 순서를 소유한다는 원칙을 유지한다.
+
+## 2026-06-18 · W6 child log 완료 — decision 기준 및 assimilation 로그 형식 확정
+
+child log `logs/2026-06-17-workspace-reset-W4.5-decision-문서화-기준.md` W1~W4 완료.
+
+**확정된 결과 (child log에서 소비):**
+
+- `docs/decisions/AGENTS.md` 작성 완료 — decision-worthy 기준, 7-섹션 템플릿(Context/Decision/Alternatives/Rationale/Trade-offs/Re-evaluation/Sources), history 원본 처리 순서.
+- root `AGENTS.md`에 `docs/decisions/AGENTS.md` References 반영.
+- `docs/architecture/documentation-system.md` Decisions 섹션에 `docs/decisions/AGENTS.md` 포인터 추가.
+- root `AGENTS.md`에 `## Workspace Reset` 섹션 추가 — 임시 scope 선언, 실행 순서 ownership, 검증 ledger 요건.
+- `logs/AGENTS.md`에 `## Workspace Reset Log Sections` 템플릿 추가 — Scope / Evidence Ledger / Decision Candidates / Cross-Owner Effects / Closeout.
+
+**현재 next pointer:** W7 — local runtime authority assimilation package.

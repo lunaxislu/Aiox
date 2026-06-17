@@ -32,3 +32,52 @@ pointer·점검은 `references/work-items-rules.md`가 소유한다.
 
 이 추가 점검은 일반 append마다 수행하지 않는다. 완료·취소·이관 여부가 불명확한
 항목은 자동으로 수정하지 않고 사용자에게 보고한다.
+
+## Workspace Reset Log Sections
+
+<!-- TEMPORARY: workspace reset 기간 한정. 종료 시 이 섹션 전체 삭제. 삭제 조건: plans/workspace-reset/workspace-reset.md -->
+
+workspace reset authority assimilation task는 아래 섹션을 task log에 남긴다.
+다른 agent가 owner 문서 반영 내용을 이 로그만 보고 pass/fail 검증할 수 있게 한다.
+작업 패키지는 primary entry point를 가진 authority assimilation 단위이며, 작업 중
+spec/roadmap/decision 등 다른 owner 변경이 필요해도 같은 package log에 기록한다.
+
+**Scope 필드 규칙:**
+
+- `Primary owner`: 이 package에서 최종 갱신할 주 문서.
+- `Allowed cross-owner updates`: primary owner 외에 이 package 작업 중 수정이 허용된 문서
+  목록을 미리 선언한다. 검증 agent가 "왜 이 문서를 건드렸지?"를 판단하는 기준이 된다.
+  목록 밖 문서를 수정했으면 이탈 신호로 본다.
+
+  예: `local-agent-runtime.md`를 정합하다가
+  - spec(`aiox-a2a.md`)에 stale reference 발견 → `aiox-a2a.md` 수정 필요
+  - decision-worthy rationale 발견 → `docs/decisions/` 파일 신규 생성 필요
+  - roadmap gate 조건이 바뀌어야 함 → `docs/product/roadmap.md` 수정 필요
+
+  이런 경우 미리 선언한 목록 안에 있으면 같은 package log에 Cross-Owner Effects로
+  기록하고 반영한다. 목록에 없던 문서를 수정해야 하면 먼저 사용자에게 확인한다.
+- `Evidence inputs`: 작업 전에 알고 있는 소스 목록. 빈 채로 시작해도 된다. 작업 중
+  사용자가 파일을 지정하거나 agent가 발견한 소스는 Evidence Ledger에 row로 추가한다.
+
+### Scope
+- Primary owner:
+- Allowed cross-owner updates:
+- Evidence inputs:
+
+### Evidence Ledger
+| Topic | Source | Lines | Finding | Owner impact | Action |
+| --- | --- | --- | --- | --- | --- |
+
+### Decision Candidates
+| Source | Lines | Why decision-worthy | Proposed decision | Status |
+| --- | --- | --- | --- | --- |
+
+### Cross-Owner Effects
+| Owner document | Change | Reason | Verification |
+| --- | --- | --- | --- |
+
+### Closeout
+- Updated owner documents:
+- Validation result:
+- Remaining gaps:
+- Next owner/log:
