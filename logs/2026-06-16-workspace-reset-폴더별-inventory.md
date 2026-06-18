@@ -25,8 +25,8 @@ status: open
   - [x] W4-5 W5 이관 후보 등록(지금 이동 안 함) — a2a §12 상세 audit·a2a §13 rationale/evidence·`logs/2026-06-11-A2A-spec-…`·`logs/2026-06-11-aiox-제품-방향-…`·`prd/pre-validation/*` 2개·`prd/post-mvp/archive/*` 5개 → W5 evidence/history/decision 판정
   - [x] W4-6 inbound 갱신 후 원본 삭제 — `plans/` live 권위 참조와 `docs/aiox/` 포인터 갱신 → mvp-spec Open Issue #5(session expiry) 누락분을 새 specs §9에 흡수 → 기존 A2A PRD·MVP PRD·`prd/README.md` 삭제
 - [x] W4.5 Transferred: owner 문서 정제와 질문 중심 탐색 → `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` — parent log가 길어져 W4.5 범위를 child 로그로 분리
-- [>] W7 child W4.5 로그 완료 후 parent 반영 — `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`가 끝나면 결과를 이 로그에 반영하고 W5로 진행
-- [ ] W5 history/ migration — 핵심 결정 파일 판정 후 docs/decisions/ 이관
+- [x] W7 child W4.5 로그 및 W7 local runtime assimilation 패키지 완료 후 parent 반영 — `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`와 `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`가 끝나면 결과를 이 로그에 반영하고 W5로 진행
+- [>] W5 history/ migration — 핵심 결정 파일 판정 후 docs/decisions/ 이관
   - [ ] W5-1 파일별 판정: ①docs/decisions/ 후보 ②decided 로그 이관 ③제거
   - [ ] W5-2 판정 후보 docs/decisions/ 이동 실행
   - [ ] W5-3 history/README.md → delete
@@ -480,3 +480,55 @@ record 6개는 `docs/architecture/mvp-architecture.md` 또는 `docs/specs/aiox-a
 - parent 로그가 W1~W4 실행 기록과 W4.5 논의까지 포함해 길어져 재개 비용이 커졌다.
 - W4.5는 product/spec/architecture/roadmap 정제와 사용자 질문 중심 탐색이라는 독립적인 수명을 갖는다.
 - W5/W6는 parent inventory 로그에 남겨 두고, W4.5 완료 후 parent로 돌아와 계속 진행한다.
+
+## 2026-06-19 · W7 완료 및 parent 복귀
+
+W7 child 로그(`logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`)와 W7 local runtime assimilation 패키지(`logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`)가 모두 성공적으로 완료되어 본 parent 로그로 복귀 및 반영되었습니다.
+
+### 1. W7 완료 요약 및 주요 산출물
+- **Primary Document 정합**: `docs/architecture/local-agent-runtime.md` (§0~§14)의 as-built 상태와 소스 코드(Step 15 kind-agnostic slot, UDS profile 경로, plugin D strategy, CLI status/doctor) 간의 모든 drift와 gaps를 최종 대조하고 정합 완료함.
+- **Decision 문서 승격**: `history/` 삭제 예정에 앞서 key rationale을 보존하기 위해 `docs/decisions/`에 6개 의사결정 문서(rewrite-go-to-typescript, proxy-lazy-observation-cost-model, agent-level-mcp-process-scoping, pair-slot-generalization, codex-per-agent-app-server, claude-channel-plugin-default)를 신규 생성 및 연계함.
+- **동적/로직 2축 검증**: `pnpm typecheck && pnpm test` (52 files, 483 tests) 실측 통과를 확인하였고, simple code symbol 매칭뿐만 아니라 framing 및 트랜잭션 로직 레벨의 pass/fail을 증명함.
+
+### 2. 남은 후속 및 Handoff (W8 / W9 / Link-Hygiene)
+- **W8 Specs Handoff**: `docs/specs/aiox-a2a.md` 내 미래 사양에 대한 `(Not implemented)` 인라인 마킹과 stale pair-slot 전제 정정 (W8 specs brief로 이관).
+- **W9 Roadmap/Release Handoff**: `plans/release-plan.md`의 B1 `dist/` tarball blocker 명시 및 roadmap/release 통합 (W9 roadmap/release brief로 이관).
+- **Link Hygiene**: `docs/aiox` dead link 정리 및 docs/aiox 삭제 판단 (별도 link-hygiene 작업으로 이관).
+
+W7 패키지 작업이 성공적으로 마감(Closed)되었으므로, parent next pointer는 **W5 history/migration**으로 정상 전이되어 복귀하였습니다.
+
+## 2026-06-19 · W5 history/migration package preparation
+
+W5는 단순 파일 이동이 아니라 `history/` 전체를 **decision 승격 / decided log 이관 / 제거**로 판정하고, `plan/mvp-implementation-checklist.md`·`qa-tracker.md`의 잔존 inbound까지 함께 정리해야 하는 작업이다. 따라서 W7과 같은 독립 child package로 진행하되, W7에서 이미 읽고 흡수한 history 근거를 seed inventory로 재사용한다.
+
+**권장 package 구조:**
+- Package log 후보: `logs/2026-06-19-workspace-reset-W5-history-migration.md`
+- Parent / controlling entry: 이 로그의 W5 next pointer
+- Required seed inputs:
+  - `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`
+  - W7에서 생성한 `docs/decisions/` 6개 문서
+  - W7 Evidence Ledger의 history 관련 rows
+  - `history/` 전체 목록과 inbound 참조 현황
+  - `plan/mvp-implementation-checklist.md`, `qa-tracker.md`
+
+**W7 seed로 재사용할 history 판정 후보:**
+- `history/5`, `history/29` → `docs/decisions/codex-per-agent-app-server.md`로 rationale 승격 완료.
+- `history/13` → `docs/decisions/rewrite-go-to-typescript.md`로 rationale 승격 완료.
+- `history/28` → `docs/decisions/proxy-lazy-observation-cost-model.md`로 rationale 승격 완료.
+- `history/38` → `docs/decisions/agent-level-mcp-process-scoping.md`로 rationale 승격 완료.
+- `history/45`~`history/48` → `docs/decisions/pair-slot-generalization.md` 및 `local-agent-runtime.md` Step 15 반영 근거로 흡수 완료.
+- `history/49`~`history/56` → `docs/decisions/claude-channel-plugin-default.md` 및 Claude channel D strategy 반영 근거로 흡수 완료.
+- `history/22`, `history/23`, `history/34`, `history/47` → W7 Evidence Ledger에서 핵심 line range까지 좁혀 검증됨. 현재 판정은 "추가 decision 불필요 / architecture·history rationale로 충분"이나, W5에서 삭제·decided log 이관 전 inbound를 재확인한다.
+
+**권장 W5 batch 분할:**
+1. B1 Inventory & Seed Mapping — `history/` 전체 목록, W7 absorbed files, unprocessed files, inbound 참조를 표로 분류.
+2. B2 Decision Candidates — W7에서 흡수되지 않은 history 중 새 `docs/decisions/` 승격 후보만 검토.
+3. B3 Decided Logs / Archive Migration — 작업 기록 성격의 history를 `logs/` decided/archive로 이관할 후보를 판정.
+4. B4 Delete / Inbound Cleanup — owner 문서·decision·logs에 흡수된 history 삭제 후보와 inbound 참조를 정리하고 `history/README.md` 삭제를 처리.
+5. B5 W3-3 Carryover — `plan/mvp-implementation-checklist.md`·`qa-tracker.md`를 history 재판정 결과와 함께 logs/archive 또는 owner 문서로 처리하고, 완료 시 빈 `plan/` 폴더 제거 여부를 확인.
+6. B6 Closeout — parent W5 완료 반영 후 W6로 next pointer 이동.
+
+**주의:**
+- 이미 W7에서 decision/architecture에 흡수된 history를 처음부터 다시 읽지 말고, W7 Evidence Ledger와 생성된 decision 문서를 근거로 `absorbed by W7` 후보로 시작한다.
+- 단, 삭제 또는 이동 전에 inbound 참조는 반드시 disk에서 재확인한다.
+- `docs/aiox` 삭제/link-hygiene 판단은 별도 작업으로 분리되어 있으므로 W5 history migration에 섞지 않는다. 다만 W5-4의 checklist/qa-tracker inbound 정리에서 `docs/aiox` 참조가 걸리면 "별도 link-hygiene dependency"로 표시한다.

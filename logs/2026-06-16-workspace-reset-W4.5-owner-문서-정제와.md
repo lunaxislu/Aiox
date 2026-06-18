@@ -32,18 +32,28 @@ status: open
   - [ ] W7-2 history/src/tests/spike/spikes/legacy evidence를 확인하고 Evidence Ledger를 남긴다
   - [ ] W7-3 작업 중 spec/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
 - [ ] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용
+  - [ ] W8-0 W8 package log/task brief 작성 전에 Claude/Gemini/Codex 등 agent 의견을 수렴해 batch 분할, 상태 라벨, cross-owner scope, blocker/release gate 처리 기준을 확정한다. 생성할 W8 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
   - [ ] W8-1 contract/status/cross-reference 정합성 확인 및 정리
   - [ ] W8-2 history/src/tests/architecture/roadmap/release evidence를 확인하고 Evidence Ledger를 남긴다
   - [ ] W8-3 작업 중 architecture/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
+  - [ ] W8-4 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
 - [ ] W9 release/roadmap authority assimilation package를 수행한다 — primary entry point는 `docs/product/roadmap.md`와 `plans/release-plan.md`
   - [ ] W9-1 사용자의 배포 우선순위 기준으로 roadmap/release-plan 정합성을 갱신한다
   - [ ] W9-2 작업 중 spec/architecture/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
+  - [ ] W9-2a 생성할 W9 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
+  - [ ] W9-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
 - [ ] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다
   - 주의: W10은 단일 primary owner 문서가 없다. split 대상은 W7·W8에서 최신화된
     `docs/specs/aiox-a2a.md`와 `docs/architecture/local-agent-runtime.md`이며,
     Scope.Primary owner는 child log 진입 시 사용자와 확정한다.
   - [ ] W10-1 split 중 history/legacy 자료에서 decision-worthy rationale이 발견되면 W6 기준에 따라 `docs/decisions/`로 승격한다
   - [ ] W10-2 split map, anchor preservation, inbound reference, README 필요성을 검토한다
+  - [ ] W10-2a 생성할 W10 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
+  - [ ] W10-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
+- [ ] W11 W7~W10에서 package workflow 시행착오를 수집하고 portable log skill 후보로 정리한다 → `logs/2026-06-18-package-workflow-portable-pattern.md`
+  - [ ] W11-1 각 package closeout 때 package log/task brief/evidence ledger/agent 의견 수렴/Scope 운영에서 생긴 문제와 보완점을 child log에 기록한다
+  - [ ] W11-2 repo 전용 taxonomy와 portable pattern을 child log에서 분리한다
+  - [ ] W11-3 portable log skill로 옮길지, repo integration에 남길지 판단하고 필요하면 log skill maintenance 절차로 별도 개선 작업을 연다
 
 ## 2026-06-16 · workspace reset W4.5 owner 문서 정제와 질문 중심 탐색
 
@@ -424,3 +434,30 @@ child log `logs/2026-06-17-workspace-reset-W4.5-decision-문서화-기준.md` W1
 - `logs/AGENTS.md`에 `## Workspace Reset Log Sections` 템플릿 추가 — Scope / Evidence Ledger / Decision Candidates / Cross-Owner Effects / Closeout.
 
 **현재 next pointer:** W7 — local runtime authority assimilation package.
+
+## 2026-06-18 · package workflow portable 후보 수집 방식 합의
+
+@user: W7/W8/W9/W10에서 package workflow를 실제로 써보며 시행착오를 보완하고, 그 내용을
+로그로 남긴 뒤 portable log skill 후보로 만들면 좋겠다고 제안. 다만 agent가 본 작업을
+진행하면서 동시에 시행착오를 인지하고 기록해야 한다는 점을 우려.
+
+**합의한 운영 방식:**
+
+- package workflow 자체를 즉시 portable log skill로 옮기지 않는다. 현재 규칙은 workspace
+  reset, owner 문서, `history/`·`plan/`·`plans/`·`prd/` assimilation 등 repo 전용 요소가
+  강하므로 먼저 W7~W10에서 실전 검증한다.
+- 각 package closeout 때 본 작업 결과뿐 아니라 workflow 시행착오를 함께 남긴다.
+  예: batch 분할이 맞았는지, task brief가 너무 넓거나 좁았는지, Evidence Ledger가
+  pass/fail 검증에 충분했는지, agent 의견 수렴이 실제로 도움이 됐는지, Scope 밖 owner가
+  자주 필요했는지.
+- 시행착오는 repo 전용 판단과 portable pattern으로 분리한다.
+  - repo 전용: docs/specs/architecture/product taxonomy, workspace reset, W7/W8/W9/W10,
+    `history/`·`plan/`·`plans/`·`prd/` owner 처리.
+  - portable 후보: primary artifact, allowed cross-artifact updates, batch task brief,
+    evidence ledger, agent/reviewer 의견 수렴 Work Item, closeout map.
+- 이 흐름을 잊지 않도록 Work Item W11과 child log
+  `logs/2026-06-18-package-workflow-portable-pattern.md`를 추가했다. W11은 W7~W10
+  package들이 끝난 뒤 package workflow 시행착오를 모아 portable log skill로 승격할지
+  판단한다.
+
+**현재 next pointer 변경 없음:** W7 child log 진행을 유지한다.
