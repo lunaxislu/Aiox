@@ -1,0 +1,331 @@
+---
+topic: package workflow portable pattern 후보
+description: W7~W10 authority assimilation package를 실제 적용하며 repo 전용 규칙과 portable package workflow 후보를 분리·수집한다
+status: open
+---
+
+## Work Items
+
+- [>] W1 W7~W10 각 package closeout에서 workflow 시행착오와 portable 후보를 수집한다
+  - [x] W1-1 W7 local runtime assimilation closeout에서 batch/task/ledger/scope 시행착오를 수집한다
+  - [ ] W1-2 W8 specs assimilation closeout에서 package 준비·agent 의견 수렴·blocker/release gate 분류 시행착오를 수집한다
+  - [ ] W1-3 W9 roadmap/release assimilation closeout에서 roadmap·plan package 운영 시행착오를 수집한다
+  - [ ] W1-4 W10 split readiness closeout에서 split map·cleanup map 운영 시행착오를 수집한다
+- [ ] W2 repo 전용 taxonomy와 portable pattern을 분리한다
+- [ ] W3 portable log skill 후보 초안을 정리하고, log skill maintenance 절차로 옮길지 판단한다
+- [ ] W4 parent W4.5 로그 W11에 결과를 반영한다
+
+## 2026-06-18 · portable package workflow 후보 로그 시작
+
+Parent pointer: `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` W11
+
+@user: W7/W8/W9/W10에서 package workflow를 실제로 써보며 시행착오를 보완하고, 그 내용을
+별도 로그에 축적한 뒤 portable log skill 후보로 만들자고 제안.
+
+**이 로그의 역할:**
+
+- W7~W10 package closeout에서 발견한 workflow 시행착오를 모은다.
+- repo 전용 규칙과 여러 프로젝트에 재사용 가능한 portable pattern을 분리한다.
+- log skill로 바로 옮기지 않고, 실제 적용 사례를 충분히 모은 뒤 maintenance 절차로
+  승격할지 판단한다.
+
+**기록할 때 구분할 범주:**
+
+- `Repo-specific`: 이 repo의 workspace reset, docs taxonomy, `history/`·`plan/`·`plans/`·
+  `prd/` 처리에만 해당하는 내용.
+- `Portable candidate`: 다른 프로젝트의 큰 작업에도 적용 가능한 package workflow pattern.
+- `Rejected / too heavy`: 일반화하면 과하거나 작은 작업에 부적합한 내용.
+- `Open question`: W7~W10 적용만으로 판단하기 어려운 질문.
+
+### Portable Draft v0
+
+아래는 현재 논의에서 나온 portable 초안이다. 아직 log skill 규칙이 아니라, W7~W10 적용
+결과로 검증할 후보이다.
+
+1. **Primary artifact를 정한다.**
+   - 문서면 primary owner document, 코드면 primary module/subsystem, 테스트면 primary test
+     suite, 릴리즈면 primary release artifact처럼 작업의 중심 artifact를 명시한다.
+2. **Allowed cross-artifact updates를 선언한다.**
+   - primary 외에 수정 가능한 주변 artifact를 미리 적는다.
+   - Scope 밖 변경이 필요하면 멈추고 사용자 확인을 받는다.
+3. **큰 작업은 package log를 만든다.**
+   - package log가 Work Items, next pointer, Evidence Ledger, Cross-Owner Effects,
+     closeout을 소유한다.
+   - task brief는 지시서이며 상태 owner가 아니다.
+4. **실행 전 필요한 agent/reviewer 의견을 수렴한다.**
+   - batch 분할, 상태 라벨, scope, 검증 기준이 불명확하면 의견 수렴을 Work Item으로 둔다.
+   - 의견 수렴 결과를 package log 또는 parent log에 기록한 뒤 task brief를 확정한다.
+5. **Batch task brief를 작성한다.**
+   - 각 batch는 범위, 제외 범위, source of truth, cross-validation source, 출력 형식,
+     완료 조건을 가진다.
+6. **Primary artifact만 보지 않는다.**
+   - 해당 작업의 source of truth와 주변 artifact를 cross-validation한다.
+   - 관련 없음도 검증 결과로 남겨야 나중에 pass/fail 판정이 가능하다.
+7. **Evidence Ledger를 남긴다.**
+   - 확인 사실, 추론, 의견/제안을 구분한다.
+   - source, line, finding, owner/artifact impact, action을 기록한다.
+8. **Closeout 때 workflow retrospective를 남긴다.**
+   - batch 분할, task brief, ledger, scope, agent 의견 수렴에서 생긴 시행착오와 portable
+     후보를 기록한다.
+9. **Closeout map을 만든다.**
+   - split, cleanup, follow-up, migration, owner 반영이 남으면 map으로 정리한다.
+
+**초기 판단:**
+
+- 이 workflow는 큰 작업, 여러 artifact에 걸친 migration/assimilation/refactor, multi-agent
+  검증, 장기 handoff가 필요한 경우에 적합하다.
+- 작은 버그 수정, 단일 파일 변경, 즉답 가능한 질문에는 과하다.
+
+**다음 기록 지점:** W7 closeout 때 실제로 유효했는지 먼저 평가한다.
+
+## 2026-06-18 · W7 중간 retrospective — B1 리뷰·brief 설계 적용 피드백 (사례·질문 기반)
+
+W7 closeout 전이지만, B1 검증·시니어 리뷰·brief(B2~B6) 설계·batch 분할을 실제 적용하며
+나온 package 형태 피드백을 **사례**와 **@user 질문**에 근거해 수집한다. W1-1 입력이며
+중간 수집이라 W1-1을 완료로 넘기지 않는다. 아래 사례는 확인된 사실, "보강 제안"은 의견이다.
+
+### 수집한 피드백 (사례 → 질문 → 분류 → 조치)
+
+**F1 — task brief가 "답"을 박으면 검증자 시야가 거기서 멈춘다.**
+- 사례: B1 brief §2 검증항목이 *"applySchema가 `schema.ts:3-68`에 CREATE TABLE 형태인가"*로
+  답을 박음 → 검증자가 "맞다"로 끝내고 `applyMigration1`(schema_version·partial unique
+  index·migration·typed error)을 전부 놓침.
+- @user 질문: "W7-B1-gemini-task.md 에서 변경해야할 가이드도 있을까?"
+- 분류: **Portable candidate** — brief의 src는 "확인할 답"이 아니라 "탐색 출발점", 진입 함수가
+  호출하는 것을 끝까지 추적.
+- 조치: AGENTS.md rule 1 + 모든 brief "src=출발점" 문구.
+
+**F2 — "변경 없음"이 식별자 존재만으로 남발된다.**
+- 사례: 직전 검증이 §0(컴포넌트 나열됨)·§3(메서드 일치)만 보고 "변경 없음" → §0 framing
+  ("one Claude+one Codex")·§3 트랜잭션 로직("kind-slot/both kinds") drift를 놓침.
+- @user 질문: "리뷰해봐 ... 너는 시니어 리뷰어 담당자다"
+- 분류: **Portable candidate** — "변경 없음"은 (a)서술/framing 축 + (b)동작/로직 축을 둘 다
+  대조한 뒤에만.
+- 조치: AGENTS.md rule 4.
+
+**F3 — current/future 혼동은 양방향이고, 미래 문서의 "현재 스냅샷"도 stale일 수 있다.**
+- 사례: 미래 문서 a2a-spec이 현재를 *"pair slot a=codex/b=claude 고정"*으로 서술했으나
+  Step 15 이후 코드는 kind-agnostic. 미래 문서가 stale current snapshot을 담고 있었다.
+- @user 질문: "prd/post-mvp/aiox-a2a-spec.md 에 있는 내용을 확인해줘봐" + "kind-agnostic ...
+  맞는거임 ... history 기록들을 보면 좀더 잘 알 수 있을거라 판단"
+- 분류: **Portable candidate** — "Post-MVP/future source"는 출처 힌트지 상태 라벨이 아니다.
+  최종 판정은 `src/` + 날짜·`history/` closeout. owner별 상태 라벨이 필요하다.
+- 조치: AGENTS.md rule 2 보강 + Owner별 상태 라벨 체계.
+
+**F4 — WHY가 legacy(history)에만 있으면 삭제 전 decision으로 추출해야 한다.**
+- 사례: pair-slot-generalization의 WHY가 `history/45~48`에만 존재, W5에서 history 삭제 예정 →
+  `docs/decisions/pair-slot-generalization.md` 생성. package의 Decision Candidates +
+  Cross-Owner Effects 구조가 같은 로그에서 이를 자연스럽게 처리.
+- @user 질문: "(나)로 하자 할 때 subagent한테 시키고 ... 추가들을 다해 줘"
+- 분류: **Portable candidate** — primary owner 작업 중 발견한 cross-owner(decision) 변경을
+  같은 package log에 기록·실행. decision은 WHY만(contract/structure 본문 복사 금지).
+
+**F5 — Scope 사전 선언이 subagent 자율성과 이탈 탐지를 동시에 준다.**
+- 사례: W7 Scope의 Allowed cross-owner에 `docs/decisions/`가 미리 선언돼 있어 subagent가
+  재확인 없이 decision 생성. 동시에 검증자는 "왜 이 문서 건드렸지?" 판단 기준 확보.
+- @user 질문: (위 위임 실행)
+- 분류: **Portable candidate** — Scope 사전 선언 = 자율성 + 검증 가능성. Scope 밖은 멈추고 확인.
+
+**F6 — subagent는 AGENTS.md를 자동 로드하지 않는다 → brief는 복붙 말고 포인터.**
+- 사례: B1 brief가 핵심 규칙을 통째 inline 복붙(14~52행). 규칙이 진화하면 stale. B2~B6는
+  "먼저 읽어라" 포인터로 전환.
+- @user 질문: "이렇게 프롬프트 주면 되려나? 어떻게 줘야 하냐? W7-B1에 업데이트?" + "교체해봐"
+- 분류: **Portable candidate** — standing rule(AGENTS.md) + thin brief(pointer) 2층 구조.
+  단, subagent엔 "이 파일들 먼저 읽어라"를 명시(자동 로드 안 되므로).
+
+**F7 — monolithic owner는 section coherence로 batch한다. 성격 다른 영역을 묶으면 무겁다.**
+- 사례: B5(§8 routing + §9 CLI) 합본이 무거움 → §8/§9 분리. routing(Step 15 핵심)과 CLI는
+  다른 관심사라 한 세션 처리가 부담.
+- @user 질문: "B2말고 다른 것들도 해줘" + "§8 / §9로 쪼개야 판단함"
+- 분류: **Portable candidate** — batch = 한 세션 처리량 + 주제 응집. 단일 primary owner라도 sub-batch.
+
+**F8 — package log는 단일 active pointer(`[>]`)가 필요하다.**
+- 사례: W7 로그가 체크박스만 써서 `log check`가 `next: 없음` → W2를 `[>]`로. parent
+  (inventory·W4.5)는 `[>]` 컨벤션을 쓰는데 leaf만 빠져 있었다.
+- 분류: **Portable candidate** — package log에 machine-discoverable 단일 active pointer.
+
+**F9 — closeout/ledger의 cross-owner 상태 주장은 실제 트리와 대조해야 한다.**
+- 사례: W4-6 closeout이 *"A2A PRD·MVP PRD 삭제"*라 적었으나 working tree엔 잔존(@user가
+  의도적으로 복원해 reference로 유지). ledger 주장 ≠ 실제 상태.
+- @user 질문: "prd/post-mvp/aiox-a2a-spec.md 에 있는 내용을 확인해줘봐" (발견 계기)
+- 분류: **Open question** — 의도적 복원(reference 유지)과 "삭제 완료" 기록을 어떻게 화해시킬지
+  (ledger 정정 vs working-state note). 삭제·이동 같은 상태 주장은 closeout 시 트리 대조 검증.
+
+**F10 — Evidence Ledger는 pass/fail 재구성을 가능케 하지만 검증 규율에 의존한다.**
+- 사례: 시니어 리뷰가 ledger rows + doc 상태만으로 무엇을 했고 놓쳤는지 재구성 가능 → format
+  강점. 그러나 "변경 없음" rows가 오히려 오도했다.
+- 분류: **Portable candidate** — ledger는 강력하나 Finding 분류(Fact/Inference/Opinion) +
+  2축 게이트(F2)가 신뢰의 전제. ledger 존재가 검증을 보장하지는 않는다.
+
+**F11 — 과도기적 레거시(하드코딩 분기)와 새로운 추상화(동적 라우터)가 병존할 때, 문서는 둘을 명확히 구분해야 오해를 막는다.**
+- 사례: W5-1 배치에서 §8.3의 `dispatchToPairPeers`를 분석할 때, 과거 branch 코드(`local-agent-runtime.md`)를 단순히 "legacy fallback"이라고 단정하여 삭제하려 했으나, 실제 프로덕션 환경에서는 여전히 활발히 동작하고 있음(새로운 `AdapterRouter` 추상화는 `tests/` 에만 존재하는 Deferred 상태).
+- 분류: **Portable candidate** — 문서/코드를 분석할 때, 새로 도입된 개념(예: `AdapterRouter`)이 등장했다고 해서 기존 코드(`dispatchToPairPeers`)가 무조건 legacy로 도태되었다고 가정하면 위험하다.
+- 조치: "현재 프로덕션이 어떤 코드를 사용하고 있는가"를 검증의 1원칙으로 삼고, 추상화 도입이 부분적이거나 테스트에만 머물러 있는 Deferred/Migration-in-progress 상태를 인지하도록 AGENTS.md rule 4 (동작/로직 검증 축)에 "공존/점진적 마이그레이션 판별" 주의를 추가한다.
+
+**F12 — 닫힌 배치에서 놓친 stale cite가 다른 배치의 중복 서술 영역에서 발견될 수 있다.**
+- 사례: W2(B2)에서 §5 API 표를 검증하고 닫았으나, W5-1(B5)의 §8.2 검증 중 동일한 `sendMessage` 라인 참조 오류(1639-1741)가 발견됨.
+- 분류: **Portable candidate** — 한 번 닫힌 배치라도, 아키텍처 문서의 중복 서술 영역에서 뒤늦게 발견된 stale 요소는 해당 배치를 다시 열지 않고 현재 진행 중인 배치에서 교차로 수정 및 Ledger에 남긴다.
+- 조치: W5-1 배치 진행 중 §5와 §8.2의 stale cite 동시 수정 및 W7 Ledger에 "닫힌 배치 잔존" 명시.
+
+**F13 — 병렬 독립 다중 리뷰는 단일 리뷰어가 놓치는 상호 비중첩 결함을 잡는다.**
+- 사례: W5-1(§8 routing) 산출물을 Codex(senior review)와 Claude가 독립 검증했더니 잡은 결함이 서로 달랐다. Codex = Evidence Ledger 재현성(test 파일명 누락)·next pointer 구조 마커 vs prose 불일치. Claude = "Not implemented" 분류가 `prd/post-mvp/aiox-a2a-spec.md` snapshot 단일 출처에만 의존(logs/AGENTS.md rule 2 위반, `src/` 교차확인 누락). 어느 한쪽도 전체를 잡지 못했고, 합쳐야 완전해졌다.
+- 분류: **Portable candidate** — 큰 owner 문서 검증은 단일 리뷰어에 의존하지 말고, 코드/테스트 축 리뷰어와 문서/spec/history 축 리뷰어를 분리해 병렬 독립 검증한 뒤 결과를 합산한다.
+- 조치: 검증 task brief에 "독립 다중 리뷰(코드축/문서축 분리) + 결과 합산" 단계를 권장으로 명시.
+
+**F14 — agent의 "완료" 보고는 disk 대조 전까지 신뢰하지 않는다. (F10의 구체 케이스)**
+- 사례: W5-1이 완료 조건(§8.1~§8.6 전체 Evidence Ledger row + 2축 검증)을 로그로 증명하지 못한 채 `[x]`로 닫혔다가 리뷰에서 premature로 판정돼 reopen됐다. 이후에도 보고된 "완료/수정함" 주장을 매 라운드 `git status`·`grep`·파일 대조로 재확인해야 실제 반영 여부가 확정됐다(spec 파일 미수정 여부, cite 교체, 마커 이동 등).
+- 분류: **Portable candidate** — 완료 전이와 보고는 산출물 disk 상태로 증명돼야 하며, 보고 텍스트만으로 pass 처리하지 않는다.
+- 조치: closeout 게이트에 "완료 조건을 로그/코드 disk에서 재현 확인한 뒤에만 `[x]` 전이" 명시. 리뷰어는 보고가 아니라 산출물을 검증한다.
+
+### Portable Draft v0 보강 제안 (의견)
+
+위 사례로 v0에 다음을 추가/정밀화 권고:
+- v0에 **"src는 답이 아니라 출발점, 진입 함수 호출을 끝까지 추적"**(F1) 추가.
+- v0에 **"'변경 없음' 2축 게이트"**(F2) 추가.
+- v0 point 6(cross-validation)에 **"미래 문서의 현재 스냅샷도 stale 가능 → src+date/history로 최종 판정"**(F3) 정밀화.
+- v0에 **"standing rule(AGENTS.md) + thin pointer brief 2층, subagent엔 명시적 read 지시"**(F6) 추가.
+- v0에 **"batch = 한 세션 처리량 + 주제 응집, 단일 owner라도 sub-batch"**(F7) 추가.
+- v0에 **"package log 단일 active pointer"**(F8) 추가.
+- v0 point 7(ledger)에 **"ledger 신뢰는 Finding 분류 + 2축 게이트에 의존"**(F10) 명시.
+- v0에 **"과도기적 레거시와 새로운 추상화가 병존할 때는 아키텍처 문서가 두 상태를 섞지 않고 분리 명시"**(F11) 추가.
+- v0에 **"단일 리뷰어 대신 코드축/문서축을 분리한 병렬 독립 다중 리뷰 권장"**(F13) 추가.
+- v0에 **"완료 보고는 텍스트가 아닌 산출물 disk 상태로 증명/재현 확인 후 승인"**(F14) 명시.
+
+### Rejected / too-heavy
+
+- **brief 과상세화**: 검증항목을 잘게 박을수록 좋아 보이지만, F1처럼 *답을 박으면* 역효과.
+  brief는 "범위 + 출발점 + 완료 기준"까지만, 항목별 답은 박지 않는다.
+
+### Repo-specific (portable 아님)
+
+- a2a-spec의 구체 stale 전제(`a=codex/b=claude`), prd 복원 상황, Step 15·history 번호,
+  docs taxonomy(specs/decisions/architecture/roadmap) 경계는 이 repo 전용. 교훈만 portable.
+
+**다음 기록 지점:** W7 closeout(B2~B6 실행 후)에서 F1~F10이 실제로 재발 방지에 유효했는지
+검증하고, Portable Draft v0를 v1로 갱신할지 판단한다.
+
+## 2026-06-18 · W7 Closeout Retrospective — Line Reference Management & Drift Control
+
+W7 B1~B4 Disk Audit를 완료하며 발생한 line reference drift 분석과 관리 규칙을 추가한다.
+
+### 1. Line Reference 관리 시행착오 및 분석 (F15)
+- **현상**: Round 3 및 Step 15의 누적 편집으로 인해 `src/daemon/state.ts` 내의 40여 개 함수/메서드 위치가 물리적으로 30~50라인 가량 아래로 밀려났다. 이로 인해 `local-agent-runtime.md` 내의 line reference들이 대거 stale화되어 있었다.
+- **교훈 (Portable Candidate)**: 
+  - **코드 변경 시 즉시 문서 라인 동기화**: 코드 구조나 헬퍼를 추가/수정하는 PR/태스크는 반드시 관련된 아키텍처/스펙 문서의 `file:line` reference를 패키지로 묶어 수정해야 한다.
+  - **시작점 외에 범위는 좁게**: 문서에서 라인 범위를 과도하게 넓게 잡기보다는, 진입점(함수 서명) 혹은 핵심 assertion 지점만 좁게(예: L660 단일 라인 등) 참조하는 것이 drift 노출도를 낮춘다.
+  - **정적 라인 인용의 한계**: 코드 주석이나 문서 본문에 정적 라인을 기록할 때, symbol을 함께 병기하여(예: `attachAgent (state.ts:532-745)`) 라인이 밀려나더라도 symbol name으로 검색 및 복원이 가능하도록 안전장치를 둔다.
+
+## 2026-06-18 · W7-B audit review 라운드 — portable 후보 F15~F17 수집
+
+W7-B audit review 라운드(@gemini 실행 + @claude senior review + 정정 + disk 재검증)에서 F1~F14에 없던 portable 후보 3건 수집. W1-1 입력이며 W7 전체 미완이라 W1-1을 완료로 넘기지 않는다.
+
+**F15 — agent의 narrative 요약은 자기 자신이 쓴 ledger와도 모순될 수 있다.**
+- 사례: @gemini가 채팅 보고 다이어그램에서 `plan/mvp-implementation-checklist.md`를 "Stale (Archive 완료) → 삭제/이관"으로 표기. 그러나 동일 agent가 작성한 W7 Evidence Ledger(row 92)는 같은 파일을 "closed/current implementation evidence로 사용 가능"으로 분류하고 §6.5/§7.3/§7.8 검증 근거로 인용 중이었다. report(prose)가 그 agent 자신의 structured artifact와 충돌.
+- 분류: **Portable candidate** — F14(report vs disk)·F9(closeout 주장 vs 트리)의 날카로운 변형. 리뷰어는 보고를 코드/트리뿐 아니라 **그 agent가 같은 작업에서 만든 ledger/표와도 교차 대조**한다. 자기모순은 삭제·이관 같은 비가역 액션의 근거일 때 특히 위험(데이터 손실).
+- 조치: 검토 게이트에 "agent narrative ↔ 그 agent의 자기 ledger 일치 확인" 추가.
+
+**F16 — pre-work baseline snapshot이 변경 attribution을 가능케 한다(over/under-report 동시 탐지).**
+- 사례: @claude가 검토 착수 시 읽은 architecture 문서가 마침 @gemini 작업 전 상태(§7 cite 1433/1511/1557/1589)였다. 이 baseline 덕에 "§7 cite가 실제 drift였고 Gemini가 1571/1629/1675/1711로 고쳤다"를 attribution할 수 있었다. Gemini는 §7 교정을 보고에서 **누락(under-report)**했고, 반대로 mvp-checklist는 **과장(over-report)**했다 — baseline 없이는 둘 다 안 보였다.
+- 분류: **Portable candidate** — 큰 작업 검토 전 primary artifact의 작업 전 스냅샷(또는 `git diff` 기준점)을 확보하면 agent 보고의 누락·과장을 양방향으로 잡는다.
+- 조치: 검토 brief에 "착수 시 baseline 스냅샷/`git diff` 기준점 확보 후 보고와 대조" 권장.
+
+**F17 — 큰 multi-round 작업의 agent topology + 모델 배정.**
+- 사례(@user 질문): "큰 작업은 subagent vs team-agent 뭐가 낫나, w7-b*엔 무엇이 적절한가, subagent마다 모델을 섞을 수 있나?"
+- 결론: 택일 아님. **2층 구조** — (1) 지속형 peer가 배치 실행 + 패키지 로그(상태 owner) 소유 + 라운드 간 교차 리뷰(이 세션 Gemini 실행 + Claude 리뷰 구도; premature close·§6.4·mvp-checklist 모순을 라운드마다 검출 = F13 재현), (2) 배치 내부 검증은 휘발성 subagent를 **축 분리(코드/테스트 축 vs 문서/spec/history 축)** 해 병렬 fan-out. 한 subagent에 두 축을 맡기면 §0/§3 "변경 없음"형 비대칭 누락(F2/F13).
+- 모델 배정(Agent 도구 `model` enum 확인: spawn마다 sonnet/opus/haiku 지정 가능): miss 비용에 매칭 — **opus**=senior review·decision-worthiness·drift/모순 판정, **sonnet**=대량 cite 검증·MAP 분류·초안, **haiku**=기계적 sweep만. **2축 "변경 없음" 게이트·drift 판정엔 haiku 금지**(미묘한 누락 은닉).
+- 분류: **Portable candidate**.
+- 조치: package 실행 계획에 "peer(실행+리뷰 루프) 위 axis-split ephemeral subagent(검증), 모델은 판정=opus/대량=sonnet/기계=haiku" 권장.
+
+**Portable Draft v0 보강 제안 추가(의견):**
+- v0 point 8(retrospective)/검토 게이트에 **F15**(narrative ↔ 자기 ledger 교차대조), **F16**(착수 baseline 스냅샷으로 over/under-report 양방향 탐지) 추가.
+- v0에 **F17**(2층 agent topology + miss-비용 기반 모델 배정) 추가.
+
+## 2026-06-19 · W7-B5-1 evidence closeout feedback
+
+W7-B5-1 (§8 routing) review loop에서 owner 문서 본문은 current code와 정합해졌지만, 같은 로그 안에 과거 Evidence Ledger row가 과장 표현으로 남아 pass/fail 재현성을 깨는 상황을 확인했다. 이후 claim 단위 source/test cite row를 추가하고 old row를 `Superseded by ...`로 명시해 해소했다.
+
+**F18 — Owner artifact correctness와 Evidence Ledger correctness는 별도 pass gate다.**
+- 사례: §8.3~§8.5 owner 문서는 고쳐졌지만, old ledger row가 "완벽히 일치" 또는 넓은 `tests/` 출처로 남아 W5-1 완료 판정을 막았다. 새 row가 정확해도 old row가 남으면 검증자가 최종 근거를 재현할 수 없다.
+- 분류: **Portable candidate**.
+- 조치: package closeout은 (1) owner artifact 본문 정합성, (2) Evidence Ledger의 재현 가능한 line/test cite, (3) 대체된 old evidence row의 삭제 또는 `Superseded by ...` 표시를 모두 확인한 뒤 통과시킨다.
+
+**F19 — Claim 단위 ledger row가 섹션 단위 "변경 없음"보다 안전하다.**
+- 사례: §8.5는 persistence, Claude reply wiring, Codex reply wiring, Codex MCP `parent_message_id` mapping이 각각 다른 source/test를 요구했다. 하나의 §8.5 row로 닫으면 어느 축이 검증됐는지 복원되지 않았다.
+- 분류: **Portable candidate**.
+- 조치: 복합 섹션은 검증 가능한 claim 단위로 row를 나누고, "변경 없음"은 row별 source/test cite를 가진 경우에만 사용한다.
+
+**F20 — 병렬 작업 중 리뷰 범위를 명시적으로 고정한다.**
+- 사례: B5-2/§9와 W6가 다른 agent 흐름에서 동시에 진행되는 동안 Codex review는 B5-1/§8만 판단했다. 전체 W7 next pointer가 이동해도 B5-1 evidence gate는 별도로 판정해야 했다.
+- 분류: **Portable candidate**.
+- 조치: concurrent package에서는 리뷰 시작 시 "이번 리뷰가 판정하는 batch/section"과 "건드리지 않을 concurrent work"를 로그와 보고에 명시한다.
+
+## 2026-06-19 · W7-B5-2 handoff line feedback
+
+W7-B5-2(§9 CLI/Invocation/Doctor/Status) review에서 batch 본문과 tests/build는 PASS였지만, W6 handoff로 적은 §10/§11 카탈로그 라인 범위 일부가 stale 또는 소비측 라인을 가리키는 것으로 확인됐다. 이는 W5-2 owner artifact의 correctness와 별개로, 다음 owner에게 넘기는 handoff claim의 신뢰도 문제다.
+
+**F21 — Handoff line range도 검증 가능한 claim으로 취급한다.**
+- 사례: W6 handoff에 `codex_channel_unavailable`, `codex_no_loaded_thread`, `message_created` 라인을 "혼선 없이 바로잡도록" 적었지만, 실제 emission 위치와 다르거나 약 120라인 이탈한 cite가 포함됐다. 숫자가 들어간 handoff는 단순 메모가 아니라 다음 agent의 작업 시작점을 좌우하는 evidence claim이다.
+- 분류: **Portable candidate**.
+- 조치: handoff에 `file:line`을 적을 때는 owner 본문 cite와 같은 기준으로 재grep 검증한다. 직접 검증하지 못했으면 `line range unverified — regrep required`처럼 confidence를 낮춰 기록한다.
+
+**F22 — Batch PASS와 handoff defect는 분리 판정하되 closeout 전에 보정한다.**
+- 사례: W5-2의 §9 command table, invocation layer, doctor/status, §10.6 CLI catalog는 독립 리뷰와 typecheck/test/build로 PASS였지만, W6 handoff 라인 3건은 부정확했다. 이 결함은 W5-2 본문 correctness를 깨지는 않지만, 다음 batch의 혼선을 만든다.
+- 분류: **Portable candidate**.
+- 조치: 리뷰 판정은 `owner artifact PASS / handoff correction required`처럼 둘로 나눈다. next pointer 이동은 허용하더라도, closeout 전에는 handoff 라인을 정정하거나 명시적으로 unverified로 downgrade한다.
+
+## 2026-06-19 · Handoff entry-binding feedback
+
+W7-B5-2에서 W6 handoff를 정밀하게 작성한 뒤, "새 agent가 실제로 이 handoff를 읽는가?"를 점검했다. 낮은 모델 subagent와 Codex 로컬 확인 결과, W7 로그 내부 handoff는 discoverable하지만 repo-level `scripts/onramp`는 parent inventory 로그를 current log로 잡고 있어 W7 handoff가 required read로 보장되지 않았다.
+
+**F23 — Handoff content와 entry binding은 별도 문제다.**
+- 사례: W7 assimilation 로그에는 W6-1 active pointer와 W6 Handoff가 있었지만, root `AGENTS.md` → `scripts/onramp` 경로는 parent inventory 로그에 멈췄다. 따라서 "handoff를 잘 썼다"와 "새 agent가 그 handoff를 읽는다"는 같은 보장이 아니었다.
+- 분류: **Portable candidate / integration candidate**.
+- 조치: handoff closeout은 (1) handoff 내용 정확성, (2) 다음 agent의 entry path가 그 로그를 required read로 만드는지, 두 축을 분리 확인한다.
+
+**F24 — Controlling log identity를 먼저 확정해야 handoff가 작동한다.**
+- 사례: 일반 작업은 onramp가 고른 current log가 controlling log지만, package/batch 작업은 task brief만 복사되어 실행될 수 있다. 이때 package log 경로가 brief에 명시되지 않으면 agent가 handoff owner를 놓칠 수 있다.
+- 분류: **Portable candidate**.
+- 조치: 작업 시작 규칙을 "controlling log 확정 → Work Items/latest block/next pointer 또는 handoff 읽기 → 작업 범위 보고" 순서로 일반화할지 검토한다. package brief에는 `Controlling log: <package-log>`를 명시하는 방식이 가장 얇다.
+
+**F25 — Package brief에는 package log를 required read로 넣되, 일반 작업 read path를 늘리지는 않는다.**
+- 사례: `logs/AGENTS.md`의 Task Brief Template에는 package log의 Scope / Work Items / 최신 기록을 읽으라는 항목이 이미 있으나, 실제 `logs/W7-B6-task.md`에는 W7 assimilation log의 최신 기록과 W6 Handoff required-read가 명시되지 않았다. 반면 일반 작업은 onramp-selected log가 handoff owner이므로 별도 task brief 규칙을 강제할 필요가 없다.
+- 분류: **Repo integration candidate**.
+- 조치: 우선 package workflow 검증 로그에는 이 사례를 남기고, 실제 규칙화 위치는 나중에 결정한다. 후보 위치는 `logs/AGENTS.md`(workspace reset package template 보강), `docs/guides/workflow.md`(repo-level controlling log 설명), 또는 log skill `work-items-rules.md`(portable controlling log identity)다. portable skill 변경은 여러 repo에 적용될 일반 문제인지 추가 검증 후 결정한다.
+
+### 대화 사례 기록 — handoff가 읽히는가?
+
+사용자는 W7-B5-2 handoff line을 보정한 뒤, 다음 질문을 던졌다: "야 근데 handoff를 만들었는데 새로운 agent들이 해당 로그를 읽게끔 되있냐? 현재 repo부터 log skill까지 어떻게 되어있는지 확인을 subagent gpt 모델 낮은 애한테 시켜서 확인해봐." Codex는 낮은 모델 subagent와 로컬 확인을 병행했고, 처음에는 W7 로그 안의 handoff가 존재하므로 읽힐 것으로 기대했지만, 확인 결과 repo-level `scripts/onramp`가 parent inventory log를 current log로 잡아 W7 handoff가 required read로 보장되지 않음을 인정했다.
+
+사용자는 이어서 "현재 workflow에 대해서 log skill과 repo의 integration을 생각했을 때, 해당 세션 로그 파일을 읽게 하라고 시켜야 하나?"라고 물었다. Codex는 package/batch task brief에서는 controlling package log를 required read로 명시하는 것이 맞고, 일반 작업에서는 onramp-selected current log가 controlling log이므로 일반 작업 read path를 늘리면 안 된다고 답했다.
+
+사용자는 다시 "현재 task brief는 package 형태일때만 유효한 지침 아니냐?"고 확인했다. Codex는 맞다고 답했고, repo 공통 진입 규칙(`AGENTS.md`/`scripts/onramp`/workflow guide/log skill)과 package 작업 규칙(`logs/AGENTS.md`의 Workspace Reset Log Sections / Package Preparation / Task Brief Template)을 구분했다.
+
+사용자는 마지막으로 이 논점이 단순 추가 작업이 아니라 workflow 설계 판단임을 짚었다: 로그 파일 자체가 handoff라면 매번 task brief에 "이 로그 읽어라"를 계속 추가하는 방식이 맞는지, package가 아닌 일반 작업에서 handoff를 어떻게 보장할지, repo integration과 log skill 사이에 더 나은 공통 원칙이 있는지. Codex는 이를 `controlling log` identity 문제로 일반화했고, 사용자는 실제 규칙화 위치를 `logs/AGENTS.md`의 workspace reset package template 보강으로 정했다.
+
+**결정:** 이 사례는 portable log skill을 즉시 바꾸기보다, repo integration인 `logs/AGENTS.md`의 workspace reset package template에 먼저 반영한다. package brief는 `Controlling log: <package-log>`를 명시하고, batch agent가 해당 log의 Scope / Work Items / 최신 기록 / active next pointer 또는 handoff / 관련 Evidence Ledger rows를 먼저 읽도록 한다. handoff의 `file:line`은 출발점이며 owner 문서 수정 전 재검증한다.
+
+**적용:** `logs/AGENTS.md` template을 보강하고, 현재 활성 W7-B6 brief도 같은 양식으로 갱신한다. 이 대화 원문 전체를 복사하지 않고, 사용자 질문과 Codex 판단 변화를 handoff 사례로 보존한다.
+
+## 2026-06-19 · W7 Closeout Retrospective 보강 — F26~F27 추가
+
+W7 패키지 최종 마감(W8 Closeout) 작업을 진행하며 도출된 추가적인 workflow 교훈이다.
+
+**F26 — Handoff 라인 검증과 신뢰도 통제**
+- **현상**: Handoff/Closeout 항목에 적힌 `file:line` 정보가 소스 코드의 실제 emission/구현 위치와 다르면, 다음 batch/package 담당 agent가 탐색을 엉뚱한 곳에서 시작해 분석을 그르치게 된다.
+- **분류**: **Portable candidate**
+- **교훈**: Handoff에 적는 모든 라인 번호 역시 일반 Evidence Ledger와 마찬가지로 엄격히 검증되어야 한다. 직접 소스 코드에서 regrep하여 확인하지 않은 라인 인용은 명시적으로 `unverified - regrep required` 마킹을 달아 신뢰도를 낮추고 통제해야 한다.
+
+**F27 — Parent-Child 로그 정합 및 복귀 자동화 계약**
+- **현상**: 독립된 하위 패키지(W7)는 종료되었으나 parent 로그(W4.5)와의 동기화 및 active pointer `[>]` 전이가 늦어지면, 상위 orchestration 흐름상 agent가 다음 태스크(W5)로 복귀하여 재개하는 데 지연이나 cyclic point 오판이 발생한다. 또한 repo log skill의 terminal status vocabulary(`decided`/`superseded`)와 사람이 쓰는 "closed" 표현이 어긋나면 구조 검증이 실패한다.
+- **분류**: **Portable candidate**
+- **교훈**: Child 로그를 terminal 상태로 닫을 때는 repo log skill이 허용하는 status(이번 사례에서는 `decided`)를 사용하고, (1) child 로그의 최종 Closeout 작성, (2) parent 로그로 복귀 및 완료 사실/주요 산출물/남은 후속 마이그레이션 이슈 요약 반영, (3) parent의 active pointer(`[>]`)를 다음 task로 전이하는 일련의 과정을 "원자적 복귀 계약"으로 묶어 처리해야 한다.
+
+## 2026-06-19 · W5 package preparation feedback — F28 추가
+
+W7 closeout 뒤 parent next pointer가 W5 history/migration으로 복귀했을 때, 사용자는 "현재 아키텍처 패키지 하면서 해당 history 작업했던 것을 쓸 수 있지 않느냐"며 W7 산출물을 W5의 seed로 재사용해야 한다고 지적했다. 실제로 W7은 `history/5`, `13`, `28`, `29`, `38`, `45~48`, `49~56`을 decision 문서와 architecture 근거로 이미 흡수했고, `history/22`, `23`, `34`, `47`도 Evidence Ledger에서 핵심 line range까지 좁혀 두었다. 이를 W5에서 다시 전수조사하면 비용이 중복된다.
+
+**F28 — 다음 package는 직전 package 산출물을 seed inventory로 시작한다.**
+- **현상**: W5 history/migration은 `history/` 전체를 판정해야 하지만, 직전 W7 architecture assimilation 과정에서 이미 많은 history 파일이 decision/architecture 근거로 흡수되었다. 이 정보를 W5 준비 단계에 고정하지 않으면 새 agent가 같은 history를 다시 읽고 같은 결론을 재생산할 위험이 있다.
+- **분류**: **Portable candidate / package planning candidate**
+- **교훈**: Package closeout 또는 parent 복귀 직후, 다음 package가 이어받을 수 있는 `seed inventory`를 parent 로그에 남긴다. seed inventory는 (1) 이미 흡수된 source, (2) 생성된 owner artifact, (3) 남은 미판정 source, (4) 재확인해야 할 inbound 참조, (5) 다음 package batch 분할을 포함한다.
+- **조치**: `logs/2026-06-16-workspace-reset-폴더별-inventory.md`에 W5 history/migration package preparation 블록을 추가했다. W5는 새 package log를 만들되 W7 Evidence Ledger와 생성된 decision 문서를 required seed로 읽고, 이미 흡수된 history는 `absorbed by W7` 후보로 시작한다. 삭제·이동 전 inbound만 disk에서 재확인한다.
