@@ -500,3 +500,44 @@ F32~F33의 activation gate 논의에 이어, package workflow에는 시작 여�
 3. Review depth gate.
 4. Authority update gate.
 5. Package split, downgrade, closeout gate는 W5/W8/W9/W10 실제 적용 후 정밀화한다.
+
+## 2026-06-21 · legacy 다중 폴더 흡수 source map & 조건부 archive 후보 — F39~F40 추가
+
+W8(A2A spec) 착수를 준비하며, `prd/`·`plan/`·`docs/aiox/`·`plans/post-mvp/`처럼
+documentation-system.md taxonomy에 없는 legacy 다중 폴더를 W8~W10에서 흡수하고 최종
+삭제까지 끌고 갈 방법을 논의했다. 아직 W8 미착수이므로 W1-2를 완료로 넘기지 않고 W8 준비
+입력으로 수집한다. 아래는 history migration(W5) 패턴을 legacy 폴더 집합으로 확장하는 후보다.
+
+**F39 — legacy 다중 폴더 흡수는 단일 source map으로 추적하고, primary package가 생성·후속 package가 append한다.**
+- 맥락: `history/`는 W5가 Seed Mapping/Evidence Ledger 단일 표로 disposition(absorbed /
+  consumer-needed / archive / delete)을 추적한다. 그러나 `prd/`·`plan/`·`docs/aiox/`·
+  `plans/post-mvp/`에는 동등한 추적 표가 없어, W8/W9/W10이 각자 흡수해도 "무엇이 흡수됐고
+  무엇이 삭제 후보인지"가 흩어진다. docs/aiox는 W5에서 명시적 제외(dependency-only,
+  W5 로그 line 22)였으므로 W5가 owner가 아니다.
+- 패턴: legacy 폴더 집합을 위한 단일 source map 표를 하나 만든다. 컬럼 후보:
+  `file | 주장 성격 | 흡수 owner(spec/arch/roadmap/release/decision) | 소비 package(W8/W9/W10) |
+  archive 필요? | self-suffic 검증 | disposition(absorb→delete / archive→delete / delete-only / keep)`.
+- append 규칙: source map은 별도 absorption package(`history/`의 W5 history migration과 형제)가
+  소유하고, 흡수 package(W8/W9/W10)는 새 표를 만들지 않고 같은 표에 row를 append/update한다.
+  최종 물리삭제 게이트는 이 표 하나만 소비한다.
+- 경계 규칙: `history/`는 W5 owner이므로 중복 금지. 한 source가 여러 package에 걸치면
+  (`prd/post-mvp/aiox-a2a-spec.md` = W8 spec + W9 roadmap/release) 소비 package를 복수로 적는다.
+- 분류: **Portable candidate**(구체 폴더 집합·W 번호는 repo-specific, "단일 source map +
+  생성/append owner 분리 + 삭제 게이트 단일 소비"는 portable).
+
+**F40 — archive는 기본이 아니라 조건부 게이트다.**
+- 맥락: 원본 삭제 전 archive는 필수가 아니다. owner 흡수만으로 충분하면 archive 없이 삭제
+  후보로 보낸다.
+- 게이트(둘 다 만족할 때만 `logs/` digest로 통합):
+  1. 보존가치: decisions/architecture로 직접 승격하기엔 너무 구체적인 `[Fact]`(TDD 마일스톤,
+     수동 에러 검증 트레이스, 스파이크 측정치)이고 역사적 검증 맥락 보존이 필요.
+  2. self-sufficiency: 원본이 사라져도 digest + 현행 owner 문서만으로 과거 경위/검증을 이해 가능.
+- 불충족 시 disposition: owner 흡수 후 `absorb→delete`(archive 불필요), 아직 필요하면 `keep`.
+- specs/release/roadmap 흡수 시에도 문서 특징별로 이 게이트를 개별 적용한다.
+- 분류: **Portable candidate**.
+
+**Portable Draft v0 보강 제안 추가(의견):**
+- v0 point 6(cross-validation)/source guard에 **F39**(legacy 다중 폴더는 단일 source map +
+  생성/append owner 분리, 삭제 게이트 단일 소비)를 추가한다.
+- v0 point 9(closeout map)에 **F40**(archive는 보존가치 + self-sufficiency 둘 다 만족할 때만,
+  기본은 흡수 후 삭제)을 추가한다.

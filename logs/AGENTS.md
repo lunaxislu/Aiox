@@ -82,6 +82,41 @@ owner별 상태로 분류하고 각 source로 검증한다.
    - Legacy source:
      - `Stale`: 현재 코드, history closeout, owner 문서에 의해 대체된 과거 서술
 
+### Legacy Source Absorption Map
+
+`prd/`·`plan/`·`docs/aiox/`·`plans/post-mvp/`처럼 documentation taxonomy
+(`docs/architecture/documentation-system.md`)에 owner가 없는 legacy 다중 폴더는 여러
+package(W8 specs, W9 roadmap/release, W10 split)가 나눠 흡수한다. 무엇이 흡수됐고 무엇이
+삭제 후보인지 흩어지지 않도록 `history/` migration과 같은 단일 source map으로 추적한다.
+
+- **단일 source map**: legacy 폴더 집합 전체를 하나의 표로 추적한다. 이 표는 별도 absorption
+  package log가 소유한다(`history/`를 다루는 W5 history migration과 형제 package). 흡수 package
+  (W8 specs, W9 roadmap/release, W10 split)는 새 표를 만들지 않고 같은 표에 row를
+  append/update하며 disposition을 채운다. 최종 물리 삭제 게이트(plan stage)는 이 표 하나만 소비한다.
+- **표 컬럼**: `file | 주장 성격 | 흡수 owner(spec/architecture/roadmap/release/decision) |
+  소비 package | archive 필요? | self-sufficiency 검증 | disposition`.
+  - disposition 값: `absorb→delete`(흡수 후 archive 없이 삭제 후보), `archive→delete`(logs
+    digest로 통합 후 삭제 후보), `delete-only`(흡수·archive 불필요), `keep`(아직 필요).
+  - 한 source가 여러 package에 걸치면 소비 package를 복수로 적는다.
+    예: `prd/post-mvp/aiox-a2a-spec.md` = W8(spec) + W9(roadmap/release).
+- **경계**: `history/`는 W5 history migration이 owner이므로 이 표에 중복 기록하지 않는다.
+  `docs/aiox`는 W5에서 명시적 제외(dependency-only)였으므로 이 source map이 owner다.
+- **삭제 가드**: disposition이 삭제 후보여도, 원본 삭제는 owner/archive successor가
+  self-contained하다는 검증과 사용자 확인을 받은 뒤 plan stage의 물리 삭제 게이트에서만 한다.
+
+#### Archive Gate
+
+원본 삭제 전 `logs/` digest archive는 필수가 아니라 조건부다. 다음 둘을 **모두** 만족할
+때만 archive한다.
+
+1. **보존 가치**: decisions/architecture로 직접 승격하기엔 너무 구체적인 `[Fact]`(TDD
+   마일스톤, 수동 에러 검증 트레이스, 스파이크 측정치)이고, 역사적 검증 맥락 보존이 필요하다.
+2. **self-sufficiency**: 원본이 사라져도 digest + 현행 owner 문서만으로 과거 경위와 검증을
+   이해할 수 있다.
+
+둘 중 하나라도 불충족이면 owner 흡수만 하고 archive 없이 삭제 후보(`absorb→delete`)로 보낸다.
+specs/release/roadmap 흡수 시에도 문서 특징별로 이 게이트를 개별 적용한다.
+
 ### Package Preparation Before Execution
 
 authority assimilation package를 실행하기 전에 다음 순서를 따른다. 특히 W8 specs package처럼

@@ -31,7 +31,7 @@ status: open
   - [x] W7-1 Step 15 pair/dispatch/stale drift 반영 여부 확인 및 정리
   - [x] W7-2 history/src/tests/spike/spikes/legacy evidence를 확인하고 Evidence Ledger를 남긴다
   - [x] W7-3 작업 중 spec/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
-- [>] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용. W5 history migration의 B1 source map, history disposition 제약, target self-sufficiency/delete guard를 입력으로 받은 뒤 착수한다. W5 B2에서 확인된 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` absolute override contract spec gap도 W8 입력으로 검토한다
+- [>] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용. W5 history migration의 B1 source map, history disposition 제약, target self-sufficiency/delete guard를 입력으로 받은 뒤 착수한다. W5 B2에서 확인된 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` absolute override contract spec gap도 W8 입력으로 검토한다. 또한 legacy 원본 disposition은 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`의 단일 source map에 append한다(별도 absorption package 소유, `logs/AGENTS.md`의 Legacy Source Absorption Map 규칙). W8 착수 전 그 package의 W1 legacy inventory로 source map을 초기화한다
   - [ ] W8-0 W8 package log/task brief 작성 전에 Claude/Gemini/Codex 등 agent 의견을 수렴해 batch 분할, 상태 라벨, cross-owner scope, blocker/release gate 처리 기준을 확정한다. 생성할 W8 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
   - [ ] W8-1 contract/status/cross-reference 정합성 확인 및 정리
   - [ ] W8-2 history/src/tests/architecture/roadmap/release evidence를 확인하고 Evidence Ledger를 남긴다
