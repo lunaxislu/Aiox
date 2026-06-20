@@ -24,7 +24,7 @@ status: open
   - [x] W4-4 `docs/product/roadmap.md` 최종 통합 — a2a §11 전체 + §12 **gate/phase 요약만** + plan-side draft + release-plan G6 연결. provisional 제거. §12 file:line·심각도·dated audit 상세는 roadmap 제외(W5 후보)
   - [x] W4-5 W5 이관 후보 등록(지금 이동 안 함) — a2a §12 상세 audit·a2a §13 rationale/evidence·`logs/2026-06-11-A2A-spec-…`·`logs/2026-06-11-aiox-제품-방향-…`·`prd/pre-validation/*` 2개·`prd/post-mvp/archive/*` 5개 → W5 evidence/history/decision 판정
   - [x] W4-6 inbound 갱신 후 원본 삭제 — `plans/` live 권위 참조와 `docs/aiox/` 포인터 갱신 → mvp-spec Open Issue #5(session expiry) 누락분을 새 specs §9에 흡수 → 기존 A2A PRD·MVP PRD·`prd/README.md` 삭제
-- [x] W4.5 Transferred: owner 문서 정제와 질문 중심 탐색 → `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` — parent log가 길어져 W4.5 범위를 child 로그로 분리
+- [>] W4.5 `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` — owner 문서 정제와 질문 중심 탐색 child 로그로 재진입한다. 목적은 W8 A2A spec authority assimilation 재시작이다
 - [x] W7 child W4.5 로그 및 W7 local runtime assimilation 패키지 완료 후 parent 반영 — `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`와 `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`가 끝나면 결과를 이 로그에 반영하고 W5로 진행
 - [x] W5 history/ migration — 최종 삭제 전환을 위한 source/index 작성과 핵심 결정 파일 docs/decisions/ 승격
   - [x] W5-1 파일별 source/index 작성: ①docs/decisions/ 후보 ②decided 로그 이관 후보 ③후속 consumer(W8/W10 등) 필요 ④최종 삭제 후보를 구분한다
@@ -32,9 +32,9 @@ status: open
   - [x] W5-3 B4 Delete Guard / Inbound Cleanup — child package `logs/2026-06-19-workspace-reset-W5-history-migration.md` active W4를 먼저 읽고, README·39·23·34·40 등 live refs를 map대로 repoint한다. repoint target은 history 원문 없이 필요한 현재 사실/WHY/경위를 복원할 수 있어야 한다. history/58 및 59는 각각 W8(A2A spec) 및 W10 작업 시 확인할 문서로 보존. history 물리 삭제 게이트는 plans/workspace-reset/workspace-reset.md의 게이트로 단일화.
   - [x] W5-4 (W3-3 이관) plan/mvp-implementation-checklist.md·qa-tracker.md disposition 재판정 + 생존 inbound 참조 갱신 계획을 history source/index와 같은 배치로 작성. `plan/mvp-implementation-checklist.md`는 W7에서 Current as-built/load-bearing 보존으로 판정된 기록과 먼저 reconcile한다. child package W5가 G4 delete-only 7개(15·16·19·30·32·43·44)의 legacy `plan/`·`prd/` inbound cleanup도 함께 점검한다. docs/aiox 흡수/삭제는 plans/workspace-reset/workspace-reset.md의 통합 물리 삭제 게이트로 단일화. 모든 carryover/legacy target은 원본 없이 self-contained인지 검증한다.
   - [x] W5-5 W5 child package B6 closeout 소비 — `logs/2026-06-19-workspace-reset-W5-history-migration.md` W6 B6 결과를 parent에 반영하고 W5 완료 또는 남은 source/index·물리삭제-gate handoff를 확정한다
-- [ ] W6 나머지 정리 — spike/, docs/claude/ split
+- [x] W6 나머지 정리 — spike/, docs/claude/ split
   - [x] W6-1 spike/ → spikes/ 이동
-  - [>] W6-2 docs/claude/mcp-channel-mental-model.md → architecture/spec/decision 섹션 분리
+  - [x] W6-2 docs/claude/mcp-channel-mental-model.md split 검증 — durable claim 전부 owner 문서에 이미 흡수(architecture §1/§6/§8, spec §4.1, decisions/claude-channel-*) 확인, spike-era 서술은 stale, 삭제 안전·dead link 없음. docs/claude/ 디렉터리 비워짐
 
 ## 2026-06-16 · stage 3 시작
 
@@ -873,3 +873,58 @@ W5 child package `logs/2026-06-19-workspace-reset-W5-history-migration.md`가 W6
 
 - W6-1은 완료했고 parent inventory next pointer는 W6-2
   `docs/claude/mcp-channel-mental-model.md → architecture/spec/decision 섹션 분리`로 이동했다.
+
+## 2026-06-20 · W6-2 mcp-channel-mental-model.md split 검증·종결
+
+inventory 판정은 "주 architecture + 일부 spec/decision 혼재 → split"이었다. working
+tree에서 `docs/claude/mcp-channel-mental-model.md`는 이미 삭제(미커밋) 상태였으므로, 이
+기록은 삭제가 durable 내용 손실 없이 안전한지를 owner 문서 대조로 검증한다. 사용자가
+미커밋 상태를 그대로 두고 진행하기로 했으므로 파일을 복원하지 않고 검증만 한다.
+
+**확인한 사실 — durable claim별 owner coverage**
+
+| 삭제 파일 claim | 분류 | owner 위치 |
+| --- | --- | --- |
+| Claude=MCP client only; channel-server=MCP server + HTTP `/send` ingress | Architecture As-built | `local-agent-runtime.md` §1, §6.1 |
+| channel = stdio child, 1:1, topic/broadcast 없음 | Architecture As-built | §6.1, §6.4 |
+| daemon → Claude `notifications/claude/channel` push 주입 | Architecture As-built | §6.4 (`channel-server.ts:432-478`) |
+| fan-out = daemon이 N개 target에 순차 push (broadcast 아님) | Architecture As-built | §8.3 Router and Fan-out |
+| Codex vs Claude injection 비대칭 | Architecture As-built | §1 per-agent counts, §6 vs §7 |
+| dynamic port + endpoint registration | Architecture As-built | §6.1 (`127.0.0.1:0`), §6.2 `registerClaudeChannel` |
+| 외부 envelope 계약 | Spec | `docs/specs/aiox-a2a.md` §4.1 canonical envelope v1 |
+| dangerously-load flag = channel role 부여(왜 위험) | Decision | `decisions/claude-channel-plugin-default.md`, `claude-channel-trust-and-registration.md` |
+
+**확인한 사실 — stale/superseded (owner로 옮기지 않음)**
+
+- `--dangerously-load-development-channels server:aiox-channel-poc` flag → plugin
+  strategy(D)/inline legacy(A)로 대체됨(§6.1). 삭제 파일 본문은 spike-era 표현.
+- hardcoded port `18788` → as-built는 `127.0.0.1:0` dynamic + `AIOX_CLAUDE_CHANNEL_PORT`.
+- `pnpm tsx server.ts` → execution-mode resolved(node/tsx, `launcher.ts:94-118`).
+- Codex "shared app-server 1개" → as-built는 per-agent app-server
+  (`decisions/codex-per-agent-app-server.md`, §1 MVP invariant). 삭제 파일의 1:N 묘사는 stale.
+- 메모리/CPU 비용표, "Claude Code 본체" 정의 = 교육용 설명이며 durable owner fact가 아님 → 미이관.
+
+**판정 (의견 포함)**
+
+- (사실) 삭제 파일의 durable architecture/spec/decision 내용은 W4/W5/W7 assimilation에서
+  이미 owner 문서로 흡수됨. 신규 3-way split 실행은 불필요했다.
+- (사실) 삭제는 durable 내용 손실이 없다. `docs/claude/` 디렉터리는 비워져 사라졌고,
+  `mcp-channel-mental-model`/`docs/claude` inbound 참조는 없다(dead link 0).
+- (의견) split 판정 당시 owner 문서가 아직 빈약하다는 전제였으나, 실제로는 후속
+  assimilation이 먼저 내용을 흡수해 split이 "검증 후 삭제"로 수렴했다.
+
+**검증 (재현 가능)**
+
+- `git show HEAD:docs/claude/mcp-channel-mental-model.md` 로 원본 claim 추출.
+- `grep -n '^#' docs/architecture/local-agent-runtime.md` + §1/§6/§8 본문 대조 PASS.
+- `decisions/claude-channel-*.md` 헤딩 확인 PASS.
+- `ls docs/claude/` → 디렉터리 없음. `grep -rn 'mcp-channel-mental-model|docs/claude'`
+  잔존 참조 없음(history/50 히트는 무관한 anthropic.com URL).
+- working tree: 파일은 이미 삭제(`D`, 미커밋). 본 작업은 복원하지 않음.
+
+**다음:**
+
+- W6-2 완료 → W6(나머지 정리) 완료. inventory의 stage 3 실행 Work Items 중 남은 active는
+  W4.5(`logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`) `[>]` 하나로 수렴.
+- W4.5 child의 active item = 2026-06-20 복구된 W8 A2A spec authority assimilation 재시작.
+  다음 세션 진입점은 그 child 로그의 W8.
