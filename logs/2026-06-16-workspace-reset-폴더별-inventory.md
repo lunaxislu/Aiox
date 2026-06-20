@@ -33,8 +33,8 @@ status: open
   - [x] W5-4 (W3-3 이관) plan/mvp-implementation-checklist.md·qa-tracker.md disposition 재판정 + 생존 inbound 참조 갱신 계획을 history source/index와 같은 배치로 작성. `plan/mvp-implementation-checklist.md`는 W7에서 Current as-built/load-bearing 보존으로 판정된 기록과 먼저 reconcile한다. child package W5가 G4 delete-only 7개(15·16·19·30·32·43·44)의 legacy `plan/`·`prd/` inbound cleanup도 함께 점검한다. docs/aiox 흡수/삭제는 plans/workspace-reset/workspace-reset.md의 통합 물리 삭제 게이트로 단일화. 모든 carryover/legacy target은 원본 없이 self-contained인지 검증한다.
   - [x] W5-5 W5 child package B6 closeout 소비 — `logs/2026-06-19-workspace-reset-W5-history-migration.md` W6 B6 결과를 parent에 반영하고 W5 완료 또는 남은 source/index·물리삭제-gate handoff를 확정한다
 - [ ] W6 나머지 정리 — spike/, docs/claude/ split
-  - [>] W6-1 spike/ → spikes/ 이동
-  - [ ] W6-2 docs/claude/mcp-channel-mental-model.md → architecture/spec/decision 섹션 분리
+  - [x] W6-1 spike/ → spikes/ 이동
+  - [>] W6-2 docs/claude/mcp-channel-mental-model.md → architecture/spec/decision 섹션 분리
 
 ## 2026-06-16 · stage 3 시작
 
@@ -51,6 +51,7 @@ subagent 3종으로 확인한 결과를 반영해 W1 판정을 보정했다.
 **보정 내용:**
 1. `docs/aiox/` → 사용자 개인 이해용이므로 전체 keep (migrate/archive/delete 취소)
 2. `spike/RUNBOOK*.md` → docs/guides/ 아님. spikes/ 내에 유지
+   (2026-06-20 W6-1 실행 중 사용자 확인으로 삭제로 대체)
 3. `legacy/bridge-relay-v1/` → 보존 (delete 취소)
 4. `history/` → 2026-06-12 결정 반영: ①책임문서 반영 ②decided 로그 이관 ③Git history로 충분하면 제거. docs/history/ 폴더는 새 taxonomy에 없음
 5. `plan/post-mvp.plan.md` + `plan/post-mvp/` 5개 파일 → 아직 유효(WS2~4 미착수). plans/로 migrate
@@ -200,7 +201,7 @@ subagent 3종으로 확인한 결과를 반영해 W1 판정을 보정했다.
 | `spikes/` 전체 (4개 PoC) | keep | taxonomy 정합 |
 | `spike/aiox-channel-marketplace/` | migrate → `spikes/` | 실험 코드, 같은 성격 |
 | `spike/build-plugin.sh` | migrate → `spikes/aiox-channel-marketplace/` | 해당 spike 빌드 스크립트 |
-| `spike/RUNBOOK.md` + `RUNBOOK_SIMPLE.md` | migrate → `spikes/aiox-channel-marketplace/` | docs/guides 아님. spike 전용 runbook으로 spike 내 유지 |
+| `spike/RUNBOOK.md` + `RUNBOOK_SIMPLE.md` | delete | 2026-06-20 W6-1 실행 중 사용자 확인. R3 수동 검증 checklist는 README·decision·preflight로 흡수됨 |
 
 ---
 
@@ -829,3 +830,46 @@ W5 child package `logs/2026-06-19-workspace-reset-W5-history-migration.md`가 W6
 - Parent inventory next pointer는 W6-1 `spike/ → spikes/ 이동`이다.
 - history/docs-aiox 물리 삭제, decision/archive Sources 평문화, legacy `plan/`·stale `prd/`
   물리 삭제는 현재 실행하지 않는다. 해당 작업은 plan의 통합 물리 삭제 게이트가 소유한다.
+
+## 2026-06-20 · W6-1 spike/ → spikes/ 이동 완료
+
+사용자 질문에 따라 현재 결정된 폴더명이 `spike/`인지 `spikes/`인지 먼저 확인했다.
+
+**확인한 사실:**
+
+- `docs/architecture/documentation-system.md`는 정식 taxonomy 폴더로 `spikes/`를 정의한다.
+- 이 로그의 stage 3 inventory도 “새 taxonomy는 `spikes/`만 정의”한다고 기록하고,
+  `spike/aiox-channel-marketplace/`, `spike/build-plugin.sh`, `spike/RUNBOOK*.md`를
+  `spikes/aiox-channel-marketplace/`로 이동하는 것으로 판정했다.
+- disk상 `spike/`에는 `aiox-channel-marketplace` spike 묶음과 전용 runbook/build script만
+  남아 있었다.
+
+**수행한 일:**
+
+- `spike/aiox-channel-marketplace/`를 `spikes/aiox-channel-marketplace/`로 이동했다.
+- `spike/RUNBOOK.md`, `spike/RUNBOOK_SIMPLE.md`, `spike/build-plugin.sh`를
+  `spikes/aiox-channel-marketplace/` 아래로 이동했다.
+- `spikes/aiox-channel-marketplace/build-plugin.sh`의 repo root 및 plugin path 계산을 새
+  위치에 맞췄다.
+- runbook의 실행 경로, `src/cli/invocation.ts`의 default marketplace path,
+  `src/adapters/claude/preflight.ts`의 사용자-facing rebuild 안내를 `spikes/` 경로로 갱신했다.
+- `.gitignore`는 `/spike/` ignore에서 generated bundle
+  `spikes/aiox-channel-marketplace/plugins/aiox-channel-ingress/channel-server.js` ignore로
+  좁혔다.
+- 사용자 확인 후 `RUNBOOK.md`와 `RUNBOOK_SIMPLE.md`는 삭제했다. 두 파일은 R3 strategy D
+  spike 당시의 수동 검증 checklist이며, 현재 setup 절차는 `README.md`, decision/preflight
+  rationale은 `docs/decisions/claude-channel-plugin-default.md`와
+  `src/adapters/claude/preflight.ts`에 흡수되어 있다.
+
+**검증:**
+
+- `spikes/aiox-channel-marketplace/build-plugin.sh` 실행 PASS. 새 경로에 bundle이 생성되고,
+  external import negative check를 통과했다.
+- `test ! -e spike` PASS. `spike/` 디렉터리는 더 이상 존재하지 않는다.
+- `git status --short --ignored` 기준 generated bundle은 ignored로 남고,
+  build script/plugin metadata는 `spikes/aiox-channel-marketplace/`의 새 tracked 후보로 노출된다.
+
+**다음:**
+
+- W6-1은 완료했고 parent inventory next pointer는 W6-2
+  `docs/claude/mcp-channel-mental-model.md → architecture/spec/decision 섹션 분리`로 이동했다.

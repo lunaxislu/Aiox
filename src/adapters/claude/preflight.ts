@@ -217,7 +217,7 @@ export function preflightClaudePlugin(
     return fail(
       "channel_server_missing",
       `bundled channel server not found at "${serverPath ?? `<installPath missing for ${wantId}>`}". ` +
-        `Rebuild the bundle (spike/build-plugin.sh) and reinstall the plugin.`,
+        `Rebuild the bundle (spikes/aiox-channel-marketplace/build-plugin.sh) and reinstall the plugin.`,
     );
   }
 

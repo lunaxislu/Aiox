@@ -1,0 +1,8 @@
+{
+  "name": "aiox-channel-ingress",
+  "version": "0.1.0",
+  "description": "aiox cross-agent channel ingress (R3 strategy D spike): wraps the aiox channel-server (claude/channel capability + send/reply tools) as a Claude plugin.",
+  "author": {
+    "name": "aiox"
+  }
+}

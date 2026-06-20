@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "aiox-claude-ingress": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/channel-server.js"],
+      "env": {
+        "AIOX_CLAUDE_CHANNEL_AGENT_NAME": "${AIOX_CLAUDE_CHANNEL_AGENT_NAME}",
+        "AIOX_CLAUDE_CHANNEL_TOKEN": "${AIOX_CLAUDE_CHANNEL_TOKEN}",
+        "AIOX_SOCKET_PATH": "${AIOX_SOCKET_PATH}"
+      }
+    }
+  }
+}

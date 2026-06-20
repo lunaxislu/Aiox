@@ -1,0 +1,16 @@
+{
+  "name": "aiox",
+  "owner": {
+    "name": "aiox"
+  },
+  "metadata": {
+    "description": "aiox cross-agent channel marketplace (R3 strategy D spike)"
+  },
+  "plugins": [
+    {
+      "name": "aiox-channel-ingress",
+      "source": "./plugins/aiox-channel-ingress",
+      "description": "aiox cross-agent channel ingress: MCP server with claude/channel capability + send/reply tools"
+    }
+  ]
+}

@@ -378,7 +378,7 @@ function resolveClaudeChannelMarketplacePath(): string {
   if (override !== undefined && override.length > 0) {
     return override;
   }
-  const rel = join("spike", "aiox-channel-marketplace");
+  const rel = join("spikes", "aiox-channel-marketplace");
   let dir = fileURLToPath(new URL(".", import.meta.url));
   for (let i = 0; i < 8; i++) {
     const candidate = join(dir, rel);
