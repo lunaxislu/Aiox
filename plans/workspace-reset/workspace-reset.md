@@ -27,9 +27,10 @@ archive, delete 판정한다. 목표는 파일 수 축소가 아니라, 각 문�
 - [x] 폴더별 inventory와 문서 판정 -> `logs/2026-06-16-workspace-reset-폴더별-inventory.md`
 - [>] 승인된 이관·통합·삭제 -> `logs/2026-06-16-workspace-reset-폴더별-inventory.md`
 - [ ] link·권위·세션 재개 가능성 검증
-- [ ] history/ · docs/aiox 물리 삭제 게이트 — 삭제 전 관련 owner 문서·decision·archive의 history 출처를 평문 provenance로 전환한 뒤 삭제 -> `logs/2026-06-16-workspace-reset-폴더별-inventory.md`
+- [ ] history/ · docs/aiox · prd/ · plan/ 물리 삭제 게이트 — 삭제 전 관련 owner 문서·decision·archive의 history 출처를 평문 provenance로 전환한 뒤 삭제 -> `logs/2026-06-16-workspace-reset-폴더별-inventory.md`
   - history/58 = W8(A2A spec) 작업 시 확인할 문서, history/59 = W10 작업 시 확인할 문서 (소비·확정 후 삭제)
-  - docs/aiox는 흡수(필요분) 후 삭제 — 기존 dependency 표현이 있으면 이 게이트로 수렴
+  - prd/post-mvp/aiox-a2a-spec.md = W8(A2A spec) 작업 시 Target Contract Input으로 소모 후 삭제
+  - docs/aiox, prd/하위, plan/하위는 흡수 완료 및 W8~W10 작업 완료 후 이 게이트로 수렴하여 일괄 물리 삭제
 - [ ] Atlas 설계와 local 구현
 - [ ] Atlas 반영·drift 재검토
 - [ ] 임시 AGENTS.md 진입 계약 졸업 (legacy `plan/workspace-reset/` 자료는 W3-4에서 삭제 완료)

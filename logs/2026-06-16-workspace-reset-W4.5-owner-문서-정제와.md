@@ -18,7 +18,7 @@ status: open
   - 답변마다 확인한 사실, 추론, 의견/제안을 구분하고 해당 owner를 표시한다
   - 현재 질문과 별도 수명인 꼬리질문은 parking lot으로 남긴다
 - [ ] W3 반복 설명과 합의된 작성 규칙을 정리해 guide 또는 `docs/guides/workflow.md` 반영 후보로 만든다 — 지금 하지 않음; 하위 AGENTS와 monolithic 최신화 이후 재검토
-- [ ] W4 Final closeout: W8-W11 완료 후 이 child 로그 결과를 parent inventory 로그에 반영하고 parent W4.5를 해소한다. 현재 W5 history migration이 선행 입력을 만드는 동안 이 로그에서는 active next pointer를 두지 않는다
+- [ ] W4 Final closeout: W8-W11 완료 후 이 child 로그 결과를 parent inventory 로그에 반영하고 parent W4.5를 해소한다
 - [x] W5 `docs/specs/AGENTS.md`와 `docs/architecture/AGENTS.md`를 작성하고 상위 문서 계약과 정합성을 확인한다
   - [x] W5-1 `docs/specs/AGENTS.md` 작성 — spec 작성 규칙, 상태 어휘, section ID 보존, harness/agent 확인 절차
   - [x] W5-2 `docs/architecture/AGENTS.md` 작성 — as-built/target 구분, code/test 근거, drift 처리, harness/agent validation 절차
@@ -31,7 +31,7 @@ status: open
   - [x] W7-1 Step 15 pair/dispatch/stale drift 반영 여부 확인 및 정리
   - [x] W7-2 history/src/tests/spike/spikes/legacy evidence를 확인하고 Evidence Ledger를 남긴다
   - [x] W7-3 작업 중 spec/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
-- [ ] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용. W5 history migration의 B1 source map, history disposition 제약, target self-sufficiency/delete guard를 입력으로 받은 뒤 착수한다. W5 B2에서 확인된 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` absolute override contract spec gap도 W8 입력으로 검토한다
+- [>] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용. W5 history migration의 B1 source map, history disposition 제약, target self-sufficiency/delete guard를 입력으로 받은 뒤 착수한다. W5 B2에서 확인된 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` absolute override contract spec gap도 W8 입력으로 검토한다
   - [ ] W8-0 W8 package log/task brief 작성 전에 Claude/Gemini/Codex 등 agent 의견을 수렴해 batch 분할, 상태 라벨, cross-owner scope, blocker/release gate 처리 기준을 확정한다. 생성할 W8 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
   - [ ] W8-1 contract/status/cross-reference 정합성 확인 및 정리
   - [ ] W8-2 history/src/tests/architecture/roadmap/release evidence를 확인하고 Evidence Ledger를 남긴다
@@ -568,3 +568,29 @@ log가 없으므로, 현재 W8을 소유하는 이 W4.5 child log의 Work Item�
 - `logs/2026-06-18-package-workflow-portable-pattern.md`의 active W1은 현재 수집용 active
   pointer로 유지해도 parent W5 진행과 충돌하지 않는다. 해당 로그의 parent W4.5 W11은
   최종 소비/정리 위치이고, 매 package closeout에서 누적 기록하는 것은 의도된 운영 방식이다.
+
+## 2026-06-20 · W8 fallback 및 재시작 포인터 복구
+
+사용자 지시에 따라 이전 W8 실행 산출물을 폐기하고 W8을 다시 시작할 수 있는 지점으로
+되돌렸다.
+
+**확인한 사실**
+
+- `prd/post-mvp/aiox-a2a-spec.md`, `plans/post-mvp.plan.md`, `plans/post-mvp/` 하위
+  sub-plan, `history/58-post-mvp-a2a-architecture-decisions.history.md`는 W8 source input으로
+  다시 살아 있어야 한다.
+- W8 재시작 시 `logs/2026-06-19-workspace-reset-W5-history-migration.md`의 delete guard,
+  owner/archive self-sufficiency, physical deletion gate 기준을 먼저 적용해야 한다.
+- 이전 W8 child log/task/decision/archive 산출물은 신뢰 가능한 closeout으로 취급하지 않는다.
+
+**수정한 Work Items**
+
+- W8을 active next pointer로 복구했다.
+- W9/W10/W11은 W8 재실행 이후 진행한다.
+
+**다음**
+
+- W8 package log/task brief를 새로 만들 때, `prd/post-mvp/aiox-a2a-spec.md`와
+  `plans/post-mvp/` 하위 sub-plan을 owner별 absorption matrix로 먼저 대조한다.
+- 원본 삭제는 owner 문서와 archive/evidence successor가 self-contained하다는 검증 후,
+  사용자 확인을 받아 별도 physical deletion gate에서만 처리한다.
