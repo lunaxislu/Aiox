@@ -113,13 +113,39 @@ primary 문서가 크고 주변 owner 변경이 예상되는 작업은 이 준�
 5. **Cross-owner 수정은 package Scope 안에서만 수행한다.**
    - Scope 밖 owner 수정이 필요하면 먼저 사용자에게 확인한다.
    - 수정하지 않는 후속도 `Owner impact`와 `Action`에 남긴다.
-6. **Closeout 때 workflow retrospective를 남긴다.**
+6. **Ledger action과 Work Items를 대조한다.**
+   - Evidence Ledger, Cross-Owner Effects, Closeout의 `Action`이 cleanup, escalation,
+     owner 반영, parent 복귀처럼 나중에 수행·검증해야 하는 행동이면 ledger에만 두지
+     않는다. package Work Item으로 추가하거나 기존 Work Item이 그 행동을 소유한다고
+     명시한다.
+   - 새 Work Item을 만들 때는 전체 Work Items와 순서·소유권·충돌 지점을 함께 점검한다.
+     다른 단계나 외부 owner가 소유하는 후속이면 현재 package의 독립 open item으로
+     붙들지 말고 이관 대상과 조건을 기록한다.
+   - 행동이 필요 없는 관찰이면 `Action` 또는 최신 기록에 no follow-up 이유를 짧게
+     남긴다.
+7. **Parent/child package read path를 맞춘다.**
+   - inventory 로그나 parent Work Item에서 child package log가 파생되면, child package의
+     active Work Item, cleanup/escalation, closeout 전제 중 parent 재개 판단에 필요한
+     내용은 parent 최신 기록이나 parent Work Item에도 짧게 반영한다.
+   - child package에 새 후속 Work Item을 추가·이관·취소했다면 parent가 다음 세션
+     onramp에서 child 상태를 복원할 수 있는지 확인한다.
+8. **Package를 재개하거나 closeout하기 전 Work Items를 감사한다.**
+   - Work Items를 Evidence Ledger, Cross-Owner Effects, 최신 기록과 대조해 순서 충돌,
+     누락된 cleanup/escalation, 이미 완료된 항목, parent로 돌려보낼 항목이 없는지
+     점검한다.
+   - 다른 단계나 package를 가리키는 지시가 있으면, source 로그의 문장만 믿지 말고
+     target 로그의 Work Item·최신 기록·Evidence Ledger에 실제로 잡혔는지 `file:line`으로
+     확인한다.
+   - 로그가 "문서 X에 반영" 또는 "문서 X에서 검증"을 주장하면, 해당 문서를 직접 열어
+     현재 내용·링크·파일명까지 확인한다. rename이나 repoint가 있었다면 historical
+     record와 현재 실행 target을 구분해 기록한다.
+9. **Closeout 때 workflow retrospective를 남긴다.**
    - batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와
      portable 후보를 package log에 기록한다.
    - 본 작업 결과와 workflow 회고를 섞지 말고, portable 후보와 repo 전용 판단을 구분한다.
    - workspace reset W7~W10의 portable 후보는
      `logs/2026-06-18-package-workflow-portable-pattern.md`에도 축적한다.
-7. **Closeout 전 split map을 만든다.**
+10. **Closeout 전 split map을 만든다.**
    - package 중 바로 split하지 않는다. 먼저 어떤 section/claim이 어느 owner 또는 split
      문서로 갈지 map을 남긴다.
    - 실제 split 실행은 해당 Work Item(W10 등)이 소유한다.
@@ -213,6 +239,9 @@ Finding은 `[Fact]`, `[Inference]`, `[Opinion]`으로 시작한다.
 - blocker, release gate, execution plan이 owner별로 분리됨
 - primary owner 본문에 다른 owner 내용을 복사하지 않음
 - 필요한 cross-owner action이 package log에 남음
+- Ledger/Cross-Owner `Action` 중 나중에 수행할 항목이 Work Item으로 등록됐거나 기존
+  Work Item이 소유함
+- package Work Items가 순서, 충돌, 누락된 cleanup/escalation, parent 복귀 기준으로 점검됨
 - Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서
   생긴 시행착오와 portable 후보가 기록됨
   - workspace reset W7~W10 task brief에서는 portable 후보 기록 대상

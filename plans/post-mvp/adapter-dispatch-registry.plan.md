@@ -7,7 +7,7 @@ description: >
 status: deferred (post-MVP, unordered candidate)
 implements: docs/specs/aiox-a2a.md §5
 owner: TBD
-rationale: history/45·46·47 (Step 15)
+rationale: docs/decisions/pair-slot-generalization.md (Step 15)
 ---
 
 > **권위 안내.** adapter 4-slot / runtime surface / capability tier 결정 본문은
@@ -49,8 +49,7 @@ const injectResult =
 
 ## Provenance
 
-- Step 15 design: `history/45-step-15-pair-slot-generalization-design.history.md`
-- Phase A lock §D6: `history/46-step-15-phase-a-decisions.history.md`
-- Phase B closeout: `history/47-step-15-phase-b-closeout.history.md`
+- Step 15 design and closeout rationale:
+  `docs/decisions/pair-slot-generalization.md`
 - 현재 dispatch 분기 지점: `src/daemon/state.ts` (target `agent.kind` dispatch).
   adapter contract: `src/adapters/contract.ts`.

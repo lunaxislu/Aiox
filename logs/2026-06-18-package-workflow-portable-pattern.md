@@ -238,6 +238,55 @@ W7-B audit review 라운드(@gemini 실행 + @claude senior review + 정정 + di
 
 **Portable Draft v0 보강 제안 추가(의견):**
 - v0 point 8(retrospective)/검토 게이트에 **F15**(narrative ↔ 자기 ledger 교차대조), **F16**(착수 baseline 스냅샷으로 over/under-report 양방향 탐지) 추가.
+
+## 2026-06-19 · W5 sync gap 회고 — package가 parent 맥락을 잃을 때의 예방 규칙 후보
+
+W5 history migration 준비 중 sync gap과 `history/` 삭제 guard 문제가 동시에 드러났다.
+이 블록은 W5 결과 자체가 아니라 package workflow portable 후보를 수집한다.
+
+**F29 — package agent는 자기 package만이 아니라 parent 흐름과 sibling/downstream work를 알아야 한다.**
+- 사례: W5는 처음에 `history/` migration/delete 후보로 보였지만, parent inventory와 W4.5/W7
+  흐름을 대조하자 W8 specs, W10 split readiness 등 downstream 작업이 `history/` evidence를
+  아직 읽어야 한다는 점이 확인됐다. 이 대조가 없었다면 `history/`를 너무 이르게 삭제하거나
+  삭제 후보로 확정해 후속 package가 필요한 source를 잃을 수 있었다.
+- 분류: **Portable candidate** — 큰 package의 task brief는 controlling log만 읽게 하면 부족할
+  수 있다. 최소한 parent log의 active Work Item, latest block, sibling/downstream Work Items,
+  known child logs를 읽고 "삭제·이동·scope 변경이 다른 작업을 막는가"를 먼저 점검한다.
+- 조치 후보: package preparation 또는 task brief의 "먼저 읽어라"에 `Parent/context audit`을
+  추가한다. 출력은 긴 요약이 아니라 "이 package가 건드리면 안 되는 source / 후속 consumer /
+  blocked deletion guard" 표로 남긴다.
+
+**F30 — 일반 로그에서 나온 package라도, package log는 origin log의 작업 흐름 맥락을 보존해야 한다.**
+- 사례: W5 package log는 parent inventory의 W5 Work Item에서 파생됐다. package log만 보면
+  source/index와 migration 범위는 보이지만, W4.5가 parent sync를 해소했고 W8/W10이 W5 source
+  map을 소비해야 한다는 흐름은 parent와 W4.5를 읽어야 복원된다.
+- 분류: **Portable candidate** — package log 첫 블록과 task brief에는 `Origin/parent context`
+  section을 둔다. 여기에는 parent path, parent Work Item id, child가 소비되면 parent에서 해야
+  할 전이, 관련 sibling/downstream Work Items, known blockers를 포함한다.
+- 조치 후보: task brief template의 `0. 먼저 읽어라`에 parent/context chain을 추가하고,
+  package log Scope에 `Context dependencies`를 둔다.
+
+**F31 — Work Item 변경 이유 기록은 log skill에 이미 있으며, package 흐름 변경에도 이 기존 규칙을 적용해야 한다.**
+- 사례: W4.5의 W7 pointer 소비, parent W5 next pointer 복귀, W5 B1 scope 보정은 단순 체크박스
+  전이가 아니라 "현재 어떤 작업이 왜 먼저인지"를 바꾸는 sync 작업이었다. `log items`와
+  Work Items 규칙은 구조 전이를 cover하지만, 다른 agent가 같은 결론을 복원하려면 변경 이유,
+  대체된 판단, 남은 guard가 latest block에 남아야 했다.
+- 분류: **Already covered by log skill / package application candidate** — Work Item 수정 시
+  원래 행동, 바뀐 행동/조건, 변경 이유, next pointer 변경 여부를 남기라는 규칙은
+  `.agents/skills/log/references/work-items-rules.md`에 이미 있다. 또한 결정 변경과
+  의미 변화 checkpoint 기록은 `log-writing-rules.md`가 이미 소유한다.
+- 조치 후보: 새 portable 규칙을 만들기보다, package/task brief 리뷰에서 기존 log skill 규칙이
+  parent/child/sibling 흐름 변경에도 적용됐는지 확인한다. 삭제·이동 같은 비가역 작업의
+  순서가 바뀌면 기존 규칙에 따라 근거와 guard를 날짜 블록에 남겼는지 점검한다.
+
+**Portable Draft v0 보강 제안 추가(의견):**
+- v0 point 3(package log)에 **Origin/parent context**와 **Context dependencies**를 추가한다.
+- v0 point 5(task brief)에 **Parent/context audit**을 추가한다. agent는 controlling log뿐 아니라
+  parent latest block, active Work Item, sibling/downstream Work Items를 먼저 읽는다.
+- v0 point 6(cross-validation)에 **source deletion/move guard**를 추가한다. source를 없애거나
+  archive 후보로 낮추기 전에 downstream consumer가 남아 있는지 확인한다.
+- v0 point 8(retrospective)에 **Flow sync checkpoint** 후보를 추가한다. Work Item 구조 전이는
+  도구가 cover하더라도, 순서 변경과 충돌 해소 이유는 로그 블록으로 남긴다.
 - v0에 **F17**(2층 agent topology + miss-비용 기반 모델 배정) 추가.
 
 ## 2026-06-19 · W7-B5-1 evidence closeout feedback
@@ -329,3 +378,125 @@ W7 closeout 뒤 parent next pointer가 W5 history/migration으로 복귀했을 �
 - **분류**: **Portable candidate / package planning candidate**
 - **교훈**: Package closeout 또는 parent 복귀 직후, 다음 package가 이어받을 수 있는 `seed inventory`를 parent 로그에 남긴다. seed inventory는 (1) 이미 흡수된 source, (2) 생성된 owner artifact, (3) 남은 미판정 source, (4) 재확인해야 할 inbound 참조, (5) 다음 package batch 분할을 포함한다.
 - **조치**: `logs/2026-06-16-workspace-reset-폴더별-inventory.md`에 W5 history/migration package preparation 블록을 추가했다. W5는 새 package log를 만들되 W7 Evidence Ledger와 생성된 decision 문서를 required seed로 읽고, 이미 흡수된 history는 `absorbed by W7` 후보로 시작한다. 삭제·이동 전 inbound만 disk에서 재확인한다.
+
+## 2026-06-19 · W5 sync gap feedback index — F29~F31 추가
+
+W5 sync gap과 `history/` delete guard 논의에서 추가된 package workflow 후보를 같은 날짜
+앞쪽 블록에 F29~F31로 기록했다.
+
+- **F29**: package agent는 자기 package뿐 아니라 parent 흐름, sibling/downstream Work Items,
+  후속 consumer를 확인해야 한다.
+- **F30**: 일반 로그에서 나온 package라도 package log와 task brief는 origin parent context를
+  보존해야 한다.
+- **F31**: Work Item 변경 이유 기록은 log skill에 이미 있다. package에서는 parent/sibling/downstream
+  흐름 변경에도 이 기존 규칙이 적용됐는지 확인한다.
+
+이 항목들은 F23~F25의 controlling log identity, F27의 parent-child 복귀 계약, F28의 seed
+inventory 규칙을 W5 `history/` 삭제 위험 사례로 확장한다.
+
+## 2026-06-19 · package activation gate feedback — F32~F33 추가
+
+W5 준비 과정에서 package log와 task brief의 필요성을 사후에 보정했다. 이 사례는
+package workflow를 언제 시작해야 하는지, 그리고 controlling log만으로 충분한지 task brief가
+필요한지에 대한 판단 게이트가 필요함을 보여준다.
+
+**F32 — package log activation gate가 필요하다.**
+- 사례: W5는 parent inventory의 일반 Work Item처럼 보였지만, 실제로는 `history/` 전체,
+  W7 seed inventory, W8/W10 downstream consumer, W3-3 carryover, delete guard가 얽힌
+  multi-step migration이었다. 처음부터 package로 분리하지 않으면 parent 로그가 너무 커지고,
+  반대로 package로 분리한 뒤에도 parent 맥락을 잃으면 sync gap이 생긴다.
+- 분류: **Portable candidate**.
+- 조치 후보: 기존 작업 재개, 신규 작업 시작, 진행 중 작업 확대 시 모두 package 필요 여부를
+  판단한다. 판단 기준 후보는 다음과 같다.
+  - 여러 artifact/owner/log를 동시에 다룬다.
+  - Work Item이 여러 단계로 나뉘고 closeout/ledger가 필요하다.
+  - 삭제·이동·migration처럼 되돌리기 어렵거나 downstream consumer를 막을 수 있다.
+  - subagent/reviewer/다중 모델을 써야 한다.
+  - parent 로그 하나에 계속 쓰면 current state와 evidence가 흐려진다.
+  - 작업 도중 위 조건이 새로 발견되면 중간에 package 전환을 검토한다.
+
+**F33 — controlling log only와 controlling log + task brief를 구분하는 gate가 필요하다.**
+- 사례: W5 B1은 controlling package log 자체에 Scope, Work Items, source map schema,
+  handoff가 있어 단일 agent가 직접 이어받기에는 충분했다. 그러나 Gemini/Claude처럼 외부
+  agent에게 작업을 위임하자 "어떤 파일을 먼저 읽고, 무엇을 직접 수정하면 안 되는지"를
+  별도 task brief 또는 prompt로 얇게 전달해야 했다.
+- 분류: **Portable candidate / task delegation candidate**.
+- 조치 후보: package log는 상태 owner이고 task brief는 실행 지시서라는 구분을 유지한다.
+  task brief 필요 여부 판단 기준 후보는 다음과 같다.
+  - 외부 agent/subagent/reviewer에게 작업을 맡긴다.
+  - 작업 범위가 batch/section/source subset으로 제한된다.
+  - 같은 package 안에서 병렬 또는 순차 batch가 여러 개다.
+  - "직접 수정 금지", "읽을 parent/context", "출력 schema", "pass/fail 기준"을 명시해야 한다.
+  - 단일 Codex 세션이 controlling log를 읽고 바로 작업하는 경우에는 task brief 없이도 된다.
+  - 진행 중 agent가 scope를 오해하거나 owner 직접 수정 위험이 보이면 task brief 또는
+    correction brief를 추가한다.
+
+**Portable Draft v0 보강 제안 추가(의견):**
+- v0 앞단에 **Package activation gate**를 추가한다. 기존 작업/신규 작업/진행 중 확대 모두에서
+  package 전환 여부를 판단한다.
+- v0의 task brief 항목 앞에 **Task brief activation gate**를 추가한다. package log만으로 충분한
+  경우와 package log + task brief가 필요한 경우를 구분한다.
+
+## 2026-06-19 · package gate set feedback — F34~F38 추가
+
+F32~F33의 activation gate 논의에 이어, package workflow에는 시작 여부뿐 아니라 분할,
+리뷰 깊이, owner 반영, downgrade, closeout을 판단하는 gate도 필요하다는 후보를 추가한다.
+아직 확정 규칙이 아니라 W5/W8/W9/W10 적용을 거쳐 검증할 portable 후보이다.
+
+**F34 — Package downgrade gate가 필요하다.**
+- 사례: package로 시작했더라도 실제 작업이 단일 판단·단일 파일·단일 Work Item 수준으로
+  줄어들면 package workflow가 과해질 수 있다.
+- 분류: **Portable candidate**.
+- 판단 기준 후보: subagent/reviewer가 불필요함, cross-owner 영향이 없음, 삭제·이동·migration이
+  없음, Work Item 1~2개로 끝남, Evidence Ledger나 task brief가 오히려 상태를 흐림.
+- 조치 후보: package를 downgrade할 때는 package log를 무시하지 말고, 기존 Work Item을 완료·취소·
+  이관 중 하나로 해소하고 controlling log 또는 parent에 복귀 위치를 남긴다.
+
+**F35 — Package split gate가 필요하다.**
+- 사례: W5는 `history/` source/index 작성과 실제 decision/log/archive migration, delete guard가
+  한 덩어리로 섞이면 너무 크고 위험하다. 그래서 B1 source/index와 이후 migration/delete를
+  분리했다.
+- 분류: **Portable candidate**.
+- 판단 기준 후보: 한 agent가 한 세션에 검토하기 어려움, 서로 다른 owner/artifact가 섞임,
+  코드축과 문서/history축 리뷰가 모두 필요함, source map 작성과 실제 변경 실행이 섞임,
+  rollback 비용이 다른 작업들이 한 Work Item에 묶임.
+- 조치 후보: split 시 각 batch/package의 primary output, 직접 수정 허용 범위, downstream
+  consumer, pass/fail 기준을 분리한다.
+
+**F36 — Review depth gate가 필요하다.**
+- 사례: W5에서 Claude 리뷰는 Gemini source map의 형식만 보는 리뷰가 아니라 controlling log,
+  parent 결론, downstream delete guard와의 정합성까지 보는 리뷰였다. 리뷰 깊이를 명시하지
+  않으면 reviewer가 format-only로 끝내거나 반대로 전체 migration 실행까지 판단할 수 있다.
+- 분류: **Portable candidate / review planning candidate**.
+- 리뷰 깊이 후보: format-only review, schema compliance review, evidence/disk verification
+  review, scope/downstream collision review, senior final judgment.
+- 조치 후보: task brief 또는 review prompt에 이번 리뷰가 판정할 depth와 판정하지 않을 범위를
+  명시한다.
+
+**F37 — Authority update gate가 필요하다.**
+- 사례: W5 B1은 `history/` source/index를 만드는 단계인데, Scope의 cross-owner wording이
+  owner docs 직접 수정 허용처럼 읽힐 수 있었다. 이후 B1에서는 `docs/specs/`,
+  `docs/architecture/`, `docs/product/roadmap.md`, `plans/release-plan.md`를 직접 수정하지
+  않고 owner-impact 후보로만 표시하도록 보정했다.
+- 분류: **Portable candidate**.
+- 판단 단계 후보: source map만 작성, decision candidate만 표시, owner impact만 기록,
+  승인 후 `docs/decisions/` 작성, 승인 후 specs/architecture/roadmap/release 수정.
+- 조치 후보: package Scope에서 "direct updates"와 "owner-impact only"를 분리해 적는다.
+
+**F38 — Package exit/closeout gate가 필요하다.**
+- 사례: W7 closeout에서는 child 로그를 `decided`로 닫고 parent W4.5 및 inventory next pointer를
+  소비해야 했다. W5는 closeout 전 source map, downstream handoff, delete guard, parent 반영이
+  모두 맞아야 한다.
+- 분류: **Portable candidate**.
+- 판단 기준 후보: Work Items 완료, parent 반영 완료, downstream handoff 작성, delete/move guard
+  해소 또는 명시적 blocked 처리, Evidence Ledger 재현 가능, owner 반영/미반영 이유 기록,
+  portable retrospective 기록.
+- 조치 후보: closeout 전에는 package log만 보지 않고 parent/known child/downstream handoff를
+  함께 점검한다.
+
+**Gate set 우선순위 후보(의견):**
+1. Package activation gate.
+2. Task brief activation gate.
+3. Review depth gate.
+4. Authority update gate.
+5. Package split, downgrade, closeout gate는 W5/W8/W9/W10 실제 적용 후 정밀화한다.

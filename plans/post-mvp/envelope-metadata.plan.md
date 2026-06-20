@@ -228,8 +228,8 @@ kickoff candidate로 승격됐으므로, 트리거 관찰 여부와 무관하게
 - 근거·과정: `history/58-post-mvp-a2a-architecture-decisions.history.md`.
 - plan index: `plans/post-mvp.plan.md` (본 sub-plan을 candidate로 등록).
 - Memory: `[[aiox-deferred-decisions]]` — pointer만 보존.
-- `plan/qa-tracker.md` — Phase 1.5 smoke PASS round에서 본 문서로 link (트리거 추적).
-- `plan/mvp-implementation-checklist.md` — "Deferred to Post-MVP"에서 본 문서로 link.
+- `logs/2026-06-20-mvp-plan-carryover-archive.md` — Phase 1.5 smoke PASS
+  round와 MVP checklist의 "Deferred to Post-MVP" provenance.
 
 ## 11. Kickoff 체크리스트
 

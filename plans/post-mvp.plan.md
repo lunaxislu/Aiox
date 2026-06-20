@@ -26,7 +26,7 @@ Execution:
 Last verified:
   - committed baseline: 1b26d9b (docs: AGENTS.md Phase 1 정리)
   - last work session(2026-06-07): docs-only — AGENTS.md 정리 Phase 1 item3~9 적용(Repository Map 통합 / Authority 단순화 / Vault→transition note / Change Safety 신설 / Work Entry 불변식 hoist + 4 detail body transition note / 구 구현 원칙 흡수), inbound 2곳 sync, 자동관리 nextjs-rules 블록 복원, my-vault 경로 제거. Codex 교차검증 반영. test/typecheck 미요구(docs-only)
-  - last known green: R4 closeout (history/57)
+  - last known green: R4 closeout (see `docs/decisions/runtime-profile-namespace-isolation.md`)
 Working state: Phase 1 committed (1b26d9b). A2A product/protocol/roadmap authority는 workspace reset W4에서 `docs/product/`와 `docs/specs/`로 증류됐다.
 Open:
   - WS1 prune 완료: Claude 22→4(+MEMORY.md), Codex 9→1 thin index, sqlite untouched. AGENTS.md 메모리 정책 명시 + Current Work Status 신설 + qa workflow→qa-tracker 이관.

@@ -9,7 +9,8 @@ import { isAbsolute, join, sep } from "node:path";
  * impossible. Individual `AIOX_*_PATH` env vars stay as per-path escape hatches.
  *
  * Supported transport today is a Unix domain socket (macOS / Linux). Windows
- * support is deferred to a later round; see `history/57`.
+ * support is deferred to a later round; see
+ * docs/decisions/runtime-profile-namespace-isolation.md.
  */
 export type AioxProfile = "dev" | "build" | "release";
 
@@ -118,4 +119,3 @@ export function getStatePath(opts: PathResolveOptions = {}): string {
   const profile = opts.profile ?? resolveProfile(env);
   return join(profileBaseDir(profile, home), "state.db");
 }
-

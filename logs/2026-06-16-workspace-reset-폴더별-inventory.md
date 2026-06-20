@@ -26,13 +26,14 @@ status: open
   - [x] W4-6 inbound 갱신 후 원본 삭제 — `plans/` live 권위 참조와 `docs/aiox/` 포인터 갱신 → mvp-spec Open Issue #5(session expiry) 누락분을 새 specs §9에 흡수 → 기존 A2A PRD·MVP PRD·`prd/README.md` 삭제
 - [x] W4.5 Transferred: owner 문서 정제와 질문 중심 탐색 → `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` — parent log가 길어져 W4.5 범위를 child 로그로 분리
 - [x] W7 child W4.5 로그 및 W7 local runtime assimilation 패키지 완료 후 parent 반영 — `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`와 `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`가 끝나면 결과를 이 로그에 반영하고 W5로 진행
-- [>] W5 history/ migration — 핵심 결정 파일 판정 후 docs/decisions/ 이관
-  - [ ] W5-1 파일별 판정: ①docs/decisions/ 후보 ②decided 로그 이관 ③제거
-  - [ ] W5-2 판정 후보 docs/decisions/ 이동 실행
-  - [ ] W5-3 history/README.md → delete
-  - [ ] W5-4 (W3-3 이관) plan/mvp-implementation-checklist.md·qa-tracker.md → logs/ archive + 생존 inbound 참조(history/ keep분·docs/aiox/ 4·plans/ 등) 갱신을 history/ 재판정과 같은 배치로 수행. 완료 후 빈 plan/ 폴더 제거
+- [x] W5 history/ migration — 최종 삭제 전환을 위한 source/index 작성과 핵심 결정 파일 docs/decisions/ 승격
+  - [x] W5-1 파일별 source/index 작성: ①docs/decisions/ 후보 ②decided 로그 이관 후보 ③후속 consumer(W8/W10 등) 필요 ④최종 삭제 후보를 구분한다
+  - [x] W5-2 판정 후보 docs/decisions/ 이동 실행 — `history/57` runtime profile namespace isolation WHY를 `docs/decisions/runtime-profile-namespace-isolation.md`로 승격
+  - [x] W5-3 B4 Delete Guard / Inbound Cleanup — child package `logs/2026-06-19-workspace-reset-W5-history-migration.md` active W4를 먼저 읽고, README·39·23·34·40 등 live refs를 map대로 repoint한다. repoint target은 history 원문 없이 필요한 현재 사실/WHY/경위를 복원할 수 있어야 한다. history/58 및 59는 각각 W8(A2A spec) 및 W10 작업 시 확인할 문서로 보존. history 물리 삭제 게이트는 plans/workspace-reset/workspace-reset.md의 게이트로 단일화.
+  - [x] W5-4 (W3-3 이관) plan/mvp-implementation-checklist.md·qa-tracker.md disposition 재판정 + 생존 inbound 참조 갱신 계획을 history source/index와 같은 배치로 작성. `plan/mvp-implementation-checklist.md`는 W7에서 Current as-built/load-bearing 보존으로 판정된 기록과 먼저 reconcile한다. child package W5가 G4 delete-only 7개(15·16·19·30·32·43·44)의 legacy `plan/`·`prd/` inbound cleanup도 함께 점검한다. docs/aiox 흡수/삭제는 plans/workspace-reset/workspace-reset.md의 통합 물리 삭제 게이트로 단일화. 모든 carryover/legacy target은 원본 없이 self-contained인지 검증한다.
+  - [x] W5-5 W5 child package B6 closeout 소비 — `logs/2026-06-19-workspace-reset-W5-history-migration.md` W6 B6 결과를 parent에 반영하고 W5 완료 또는 남은 source/index·물리삭제-gate handoff를 확정한다
 - [ ] W6 나머지 정리 — spike/, docs/claude/ split
-  - [ ] W6-1 spike/ → spikes/ 이동
+  - [>] W6-1 spike/ → spikes/ 이동
   - [ ] W6-2 docs/claude/mcp-channel-mental-model.md → architecture/spec/decision 섹션 분리
 
 ## 2026-06-16 · stage 3 시작
@@ -532,3 +533,299 @@ W5는 단순 파일 이동이 아니라 `history/` 전체를 **decision 승격 /
 - 이미 W7에서 decision/architecture에 흡수된 history를 처음부터 다시 읽지 말고, W7 Evidence Ledger와 생성된 decision 문서를 근거로 `absorbed by W7` 후보로 시작한다.
 - 단, 삭제 또는 이동 전에 inbound 참조는 반드시 disk에서 재확인한다.
 - `docs/aiox` 삭제/link-hygiene 판단은 별도 작업으로 분리되어 있으므로 W5 history migration에 섞지 않는다. 다만 W5-4의 checklist/qa-tracker inbound 정리에서 `docs/aiox` 참조가 걸리면 "별도 link-hygiene dependency"로 표시한다.
+
+## 2026-06-19 · W5 실행 순서 보정 — source/index 선행과 history delete guard
+
+@user와 W5/W4.5 sync gap을 점검한 결과, W5는 즉시 `history/` 원본 삭제를 수행하는 단계가
+아니라 최종 삭제 전환을 위한 **source/index 작성 단계**를 먼저 수행해야 한다고 보정했다.
+
+**확인한 사실:**
+- W4.5 child 로그에는 W8 A2A spec package와 W10 split readiness package가 여전히
+  `history/legacy` evidence를 후속 입력으로 요구한다.
+- W7 package는 이미 `status: decided`로 닫혔고 parent에 반영됐지만, W8/W10은 W5가 만들
+  source map을 입력으로 받아야 한다.
+- W5 child package log `logs/2026-06-19-workspace-reset-W5-history-migration.md`는 active
+  item `W1 B1 Inventory & Seed Mapping`을 소유하며, downstream consumer 제약을 기록했다.
+
+**판단/실행 guard:**
+- W5-1의 1차 산출물은 `history/` 파일별 source/index다. 각 파일을
+  `docs/decisions 후보`, `logs/ archive 후보`, `W8/W10 등 downstream consumer 필요`,
+  `최종 delete candidate`로 구분한다.
+- 후속 consumer가 남은 `history/` 원본(history/58·59)은 각각 W8(A2A spec)·W10 작업 시 확인할 문서로 표시한다. 물리 삭제는 `plans/workspace-reset/workspace-reset.md`의 단일 물리 삭제 게이트가 소유한다.
+- 최종 `history/` 삭제는 owner 문서·decision·logs 흡수와 W8/W10 등 consumer 해소가
+  확인된 뒤 별도 closeout에서 판단한다.
+- `history/`가 작업 경위나 검증 기록으로 보존되어야 하면 `logs/`로 이관하고, 현재도 유효한
+  결정 근거는 `docs/decisions/`로 승격한다. 현재 구조/contract 사실은 해당 owner 문서가
+  소유한다.
+
+## 2026-06-19 · W5-1 source/index 완료 — B2 decision candidates로 진행
+
+W5 child package log `logs/2026-06-19-workspace-reset-W5-history-migration.md`에서 B1
+Source Index & Seed Mapping을 완료 판정했다.
+
+**확인한 사실:**
+- B1 source map은 numbered history file 59개(`history/1`~`history/59`)와
+  `history/README.md`를 각각 1행씩 포함한다. parent의 과거 "60파일" 표현은 README 포함
+  60개로 해석해 정정했다.
+- B1 carryover map은 `plan/mvp-implementation-checklist.md`와 `plan/qa-tracker.md` 2행을
+  포함한다.
+- Codex arbiter 표본 재검증과 subagent 3개(Averroes/Banach/Sartre)의 read-only 검증 결과,
+  owner 문서·`history/`·`plan/` 원본 직접 수정은 발견되지 않았다.
+- Banach가 발견한 `history/59`의 잘못된 inbound anchor(`history/40#L195`)는 W5 package
+  log에서 parent inventory 실제 참조로 보정했다. `history/59` -> W10은 여전히
+  `[Inference]`이며 삭제 전 final owner/disposition 확인이 필요하다.
+
+**판단:**
+- W5-1은 완료로 parent에도 반영한다.
+- W5 package next pointer는 `W2 B2 Decision Candidates`다.
+- 다음 우선 검토 대상은 `history/57` runtime profile namespace isolation WHY의
+  `docs/decisions/` 승격 여부다.
+
+## 2026-06-19 · W5-2 decision 승격 완료 — package W3로 진행
+
+W5 child package log `logs/2026-06-19-workspace-reset-W5-history-migration.md`에서 B2
+Decision Candidates final arbiter를 완료했다.
+
+**확인한 사실:**
+- `history/57-qa-round-4-runtime-namespace-isolation.history.md`의 runtime profile namespace
+  isolation WHY를 `docs/decisions/runtime-profile-namespace-isolation.md`로 승격했다.
+- W5 package log의 `Decision Candidates`와 Cross-Owner Effects가 승격 결과로 갱신됐고,
+  package next pointer는 `W3 B3 Decided Logs / Archive Migration`으로 이동했다.
+- `history/57` 원본 삭제와 README/source/log의 inbound 갱신은 수행하지 않았다. 이는 W5
+  package의 B4 Delete Guard / Inbound Cleanup 소관으로 남는다.
+
+**판단:**
+- Parent W5-2는 완료로 반영한다.
+- Parent W5는 계속 active이며, 다음 재개 지점은 W5 child package의 `W3 B3 Decided Logs /
+  Archive Migration`이다.
+
+## 2026-06-20 · W5 child package B4 handoff and cleanup ownership sync
+
+W5 child package `logs/2026-06-19-workspace-reset-W5-history-migration.md`가 B3 assimilation/map 준비를 마치고 B4 실행 준비 상태로 전환됐다. parent inventory가 onramp read path에 먼저 잡히므로 child 최신 상태를 parent W5 Work Items에도 반영했다.
+
+- [Fact] child package active item은 `W4 B4 Delete Guard / Inbound Cleanup`이다. B4는 README·39·23·34·40 등 live refs를 map대로 repoint하는 단계이며, history 물리 삭제 게이트는 plans/workspace-reset/workspace-reset.md의 단일 게이트로 수렴한다.
+- [Fact] history/58 및 59는 각각 W8(A2A spec), W10 작업 시 확인할 문서로 보존된다.
+- [Fact] child package에서 누락 방지용으로 추가됐던 W12/W13은 owner 충돌을 피하기 위해 `Transferred:`로 닫았다. G4 delete-only 7개(15·16·19·30·32·43·44)의 legacy `plan/`·`prd/` inbound cleanup은 W5 B5가 점검하고, W5-제외 `docs/aiox` inbound는 docs/aiox link-hygiene dependency로 남긴다. archive log §5 Sources `../../history/N` 평문화는 `plans/workspace-reset/workspace-reset.md`의 단일 물리 삭제 게이트가 소유한다.
+- [Opinion] 이 사례는 inventory parent에서 파생된 package child가 cleanup/escalation을 ledger에만 담으면 다음 agent가 놓칠 수 있다는 workflow risk를 보여준다. repo integration 임시 보강은 `logs/AGENTS.md`에 반영했고, portable log skill은 이번에는 수정하지 않았다.
+
+## 2026-06-20 · Cross-log directive sync audit for inventory/W5/W7
+
+사용자 요청으로 inventory parent, W5 history migration child, W7 local runtime assimilation
+package 사이의 cross-log 지시와 owner 문서 반영 claim을 대조했다. 범위는
+`logs/2026-06-16-workspace-reset-폴더별-inventory.md`,
+`logs/2026-06-19-workspace-reset-W5-history-migration.md`,
+`logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`이며, W7 handoff target을
+확인하기 위해 W4.5 child log도 target 검증 범위로 열람했다.
+
+**확인한 사실:**
+
+- W7 package는 `status: decided`이고 Work Items W1~W8이 모두 닫혀 있다. W7의 W8
+  Closeout은 parent W4.5로 복귀하고 workflow retrospective를 기록하는 항목이다.
+- W7 Cross-Owner Effects는 W8 specs, W9 roadmap/release, docs/aiox link-hygiene 후속을
+  남겼다. W4.5 child log Work Items에는 W8/W9/W10/W11이 open으로 남아 있고, W8은 W5
+  history migration B1 source map과 runtime profile override spec gap을 입력으로 받도록
+  기록되어 있다. W10도 W5 source map을 history/legacy rationale 입력으로 사용하도록
+  기록되어 있다.
+- parent inventory W5 Work Items는 child package active item을 `W4 B4 Delete Guard /
+  Inbound Cleanup`으로 복원 가능하게 기록한다. parent W5-3은 README·39·23·34·40 live refs
+  repoint 및 history/58, 59의 W8/W10 확인 문서 보존을 명시한다. 물리 삭제 및 docs/aiox 처리는
+  plans/workspace-reset/workspace-reset.md의 단일 물리 삭제 게이트가 소유한다.
+- W5 child package Work Items는 parent와 일치한다: active W4는 B4 Delete Guard /
+  Inbound Cleanup이고, W5는 W3-3 carryover 및 legacy `plan/`·`prd/` cleanup handoff를
+  소유하며, 물리 삭제 및 docs/aiox 게이트는 plans/workspace-reset/workspace-reset.md로 단일화하여 소유한다.
+- `history/13` decision target은 생성 당시 W7/parent 기록에서
+  `docs/decisions/rewrite-go-to-typescript.md`였지만, W5 child package가 사용자 지시로
+  `docs/decisions/client-orchestrator-runtime-pivot.md`로 rename했고 B4 reconcile target을
+  새 경로로 확정했다. disk에도 현재 새 파일만 존재한다. W5 로그는 parent/W7의 옛 이름을
+  historical record로 보존하고 현재 cleanup target은 새 경로를 사용한다고 명시한다.
+- `logs/AGENTS.md` package workflow에는 이미 Ledger action과 Work Items 대조, parent/child
+  read path 정합, 재개/closeout 전 Work Items 감사 규칙이 있었다. 이번 audit에서
+  cross-log directive target 검증과 rename/repoint 사례를 더 구체화해 보강했다.
+
+**판단/추론:**
+
+- W7에 남은 W8/W9/link-hygiene handoff는 W4.5 Work Items와 parent/W5 guard로 복원 가능하다.
+  별도 W7 재오픈은 필요하지 않다.
+- parent/W7의 `rewrite-go-to-typescript.md` 명칭은 현재 실행 target으로는 stale하지만,
+  W5가 rename과 새 cleanup target을 명시했으므로 삭제/cleanup 실행 기준은 W5 B4 map을
+  따라야 한다.
+- docs/aiox link-hygiene은 아직 별도 로그가 없고, 현재는 W4.5/W7/W5의 handoff 기록으로만
+  남아 있다. 사용자가 착수하기 전에는 W5 범위에 섞지 않는 것이 현재 기록과 일치한다.
+
+**Closeout:**
+
+- Updated owner documents: `logs/AGENTS.md` package workflow 보강.
+- Validation result: onramp/log check로 현재 포인터와 구조를 확인하고, `rg`/`nl` 기반 line
+  대조와 decision 파일 disk 존재를 확인했다.
+- Remaining gaps: W5 B4 실행, W8 specs package, W9 roadmap/release package, W10 split
+  readiness, docs/aiox link-hygiene는 여전히 미완료 후속이다. 이번 audit은 후속을 수행하지
+  않고 소유 위치와 guard가 복원 가능한지만 확인했다.
+
+## 2026-06-20 · Cross-log directive sync audit follow-up — W5/W7 conflict candidates
+
+사용자 지시로 subagent A/B 결과를 로그 원문과 다시 대조했다. subagent 결과는 후보로만
+사용했고, 아래 항목은 parent inventory, W5 child, W7 package, W4.5 child 로그 원문과 disk
+존재를 직접 확인해 판정했다.
+
+**확인한 사실:**
+
+- Current executable work는 parent inventory W5와 W5 child W4다. parent Work Item은 W5 active이고, W5 child는 `W4 B4 Delete Guard / Inbound Cleanup` active다. W4.5 child는 현재 active pointer를 의도적으로 비워 두고 parent W5/W5 child가 현재 작업을 소유한다고 기록한다.
+- `history/13` target rename은 충돌 아님. W7/parent 초기 기록은 `docs/decisions/rewrite-go-to-typescript.md`를 역사적 생성 target으로 남기지만, W5 child 최신 기록은 사용자 지시로 `docs/decisions/client-orchestrator-runtime-pivot.md`로 rename했고 B4 실행 target을 새 경로로 확정했다. disk에서도 old path는 없고 new path만 있다.
+- `docs/architecture/mvp-architecture.md`는 현재 실행 target이 아니다. parent W4 기록의 old name은 후속 W4.5에서 사용자가 `docs/architecture/local-agent-runtime.md`로 rename했다고 소비됐고, W4.5 W1-2가 self-reference를 새 이름으로 정리했다고 기록한다. disk에도 `docs/architecture/mvp-architecture.md`는 없고 `docs/aiox/mvp-architecture.md`는 learning/stale source로 남아 있다.
+- PRD 파일은 disk에 여전히 존재한다. parent W4의 "기존 A2A PRD·MVP PRD 삭제" 기록만으로 현재 삭제 완료라고 보면 안 된다. W7은 `prd/post-mvp/aiox-a2a-spec.md`를 W8 Target Contract input으로, `prd/mvp/aiox-mvp-spec.md`를 Stale/archive 후보로 다시 분류했다.
+- `plan/mvp-implementation-checklist.md` disposition은 실제 충돌 후보다. parent/W5의 오래된 W3/W5 carryover 문구는 logs archive 후보라고 쓰지만, W7 package는 같은 파일을 Current as-built/load-bearing 보존 파일로 분류하고 삭제 금지라고 기록한다. 따라서 W5 B5는 archive 실행 전에 W7 판정을 먼저 reconcile해야 한다.
+- `history 물리 삭제는 W11 gate` 표현은 owner가 불명확하다. W4.5 W11은 portable workflow 수집 Work Item이며 history deletion gate가 아니다. 이번 단일화 결정을 통해 plans/workspace-reset/workspace-reset.md의 단일 물리 삭제 게이트로 이관되었다.
+- `docs/aiox`는 관련 내용을 owner 문서로 모두 흡수한 뒤 전체 삭제할 대상이다. 별도 로그가 아직 없고 W4.5/W7/W5에 handoff/dependency로만 남아 있다. 현재 W5 범위에 섞지 않는다는 기록은 일치하지만, 착수 시에는 별도 작업 로그나 Work Item 생성이 필요하다.
+
+**판단:**
+
+- Parent/W5 Work Item을 최신 실행 기준으로 보정했다. W5-4는 checklist를 곧바로 archive로 전제하지 않고 W7의 Current/load-bearing 판정과 먼저 reconcile하도록 바꿨다.
+- Parent W5-3의 "W11 gate" 표현은 plans/workspace-reset/workspace-reset.md의 단일 물리 삭제 게이트로 수렴시켰다. 이 감사는 물리 삭제를 수행하지 않는다.
+- docs/aiox 흡수/삭제는 이번 수정에서 새 Work Item으로 만들지 않았다. 현 로그들은 사용자가 나중에 착수 결정한다고 남기며, 현재 W5 B4/B5 blocker로 취급하지 않는 것이 기존 기록과 맞다.
+
+**남은 다음 작업:**
+
+- W5 child Work Items도 parent와 같은 기준으로 맞췄다. W5 B5는 `plan/mvp-implementation-checklist.md`의 W7 Current/load-bearing 판정과 archive 후보를 reconcile해야 하고, W6 closeout 대신 plans/workspace-reset/workspace-reset.md의 단일 물리 삭제 게이트를 따르도록 한다.
+- W8 package 착수 전 `prd/post-mvp/aiox-a2a-spec.md`가 Target Contract input으로 살아 있음을 task brief에 반영한다.
+
+## 2026-06-20 · Delete candidate self-sufficiency 기준 보강
+
+사용자 지적으로 W5 delete candidate 기준을 보강했다. delete candidate 정리는 단순히
+`history/N` 링크를 다른 파일로 바꾸는 것이 아니라, 그 링크를 소비하던 owner 문서나 archive
+log가 history 원문 없이 필요한 현재 사실, WHY, 검증 경위 또는 provenance를 복원할 수 있는지
+확인해야 한다.
+
+**확인/판단:**
+
+- W5 B4/B5가 먼저 해야 할 일은 source map의 각 row에 대해 repoint target과 delete candidate
+  여부를 정하되, target self-sufficiency를 함께 검증하는 것이다.
+- current owner 문서가 현재 사실을 설명하려고 archive log에 의존하면 부족하다. 현재 사실은
+  owner 문서/code/test가 소유하고, archive log는 경위/provenance를 보존해야 한다.
+- archive log target은 history 원문 없이 읽히는 digest/source note를 가져야 한다.
+- `delete-after-repoint`, `delete-only`, `repoint-needed`는 즉시 물리 삭제가 아니라 이
+  self-sufficiency 검증을 통과한 뒤 delete candidate로 둔다는 뜻이다.
+
+**수정한 Work Items:**
+
+- W5-3에 repoint target self-sufficiency 검증을 명시했다.
+- W5-4에 carryover/legacy target self-contained 검증을 명시했다.
+- W5 child package에도 같은 기준을 반영했다.
+
+## 2026-06-20 · history/ 및 docs/aiox 물리 삭제 게이트 단일화 결정
+
+사용자 결정에 따라, 여러 로그와 Work Items에 흩어져 있던 `history/` 및 `docs/aiox/` 물리 삭제의 권위와 실행을 `plans/workspace-reset/workspace-reset.md`의 단일 물리 삭제 게이트로 모으고 단일화한다.
+
+**핵심 결정 사항:**
+1. **게이트 단일화**: 물리 삭제 실행 시점을 `plans/workspace-reset/workspace-reset.md` Stage에 명시하고, 각 개별 로그(W5 history migration, W4.5 owner 문서 정제 등)에 흩어진 "W11 gate", "W12/W13 Transferred" 등 삭제 실행 조건 및 게이트 소유권 churn을 모두 이 게이트로 일원화 수렴한다.
+2. **58/59 프레이밍 정합**: `history/58`은 W8(A2A spec), `history/59`는 W10(split readiness/vault·atlas) 작업 시 "확인할 문서"로만 명시한다. "확인할 문서"로 명시됨 자체가 삭제 전 보존됨을 의미하므로, 이외의 모든 guard/삭제 금지/blocked/deletion gate 류 churn을 제거 및 평문화한다.
+3. **docs/aiox 흡수 후 삭제**: `docs/aiox/` 역시 필요 부분을 최종 owner 문서에 흡수한 후 이 통합 게이트 시점에 삭제를 실행한다.
+4. **물리 삭제 유보**: 이 결정은 게이트 "선언" 단계이며, 실제 `history/` 및 `docs/aiox/`의 물리 삭제와 Sources 평문화, decisions/archive Sources 갱신은 현재 실행하지 않고 이 게이트 시점에 수행한다.
+
+## 2026-06-20 · 게이트 단일화 cleanup 검증·정정
+
+위 게이트 단일화 후속 정리(Gemini 수행분)를 검증하고 잔여를 정정했다. 본 작업은 게이트·결정
+블록 자체가 아니라 그 후속 정합 감사다.
+
+**확인한 사실:**
+- plan 게이트와 inventory 결정 블록은 정상 반영됐고, B4 execution map·source map 등 분석
+  산출물은 과삭제 없이 보존됐다.
+- 다만 "잔여 guard 없음" 보고와 달리 새 단일 게이트와 충돌하는 5곳이 남아 있었다: plan
+  completion condition 단계 수 미갱신(8→9), inventory guard 문구 1곳, inventory·W5의 현재형
+  "W11 gate 소유" 2곳, W5의 "W6 closeout이 gate owner 명시" 1곳.
+- sonnet subagent로 이 5곳만 외과적으로 정정했다(plan 9단계, 해당 문장을 plan 단일 게이트를
+  가리키게 reframe). 서사 블록은 삭제하지 않았다. 이후 read-only subagent 재검증 PASS
+  (5개 수정 문맥 자연스러움, markdown 무손상, 단계 수 9=9, 현재형 권위 충돌 잔여 없음,
+  history/58·59 "W8/W10 확인 문서" 일관, plan↔결정 블록 정합).
+- 남은 "W11 gate"/"W6 closeout" 언급은 과거형 서사·Verification Ledger grep 기록이라 현재
+  권위 충돌이 아니다. 사용자 지시에 따라 로그상 역사적 기록은 그대로 둔다.
+
+**B4 재개 시 주의(확인된 사실):**
+- W5 child의 직전 B4 기록은 architecture 잔여 history 인용을 "history/23·34"로만 적었으나,
+  `rg`로 확인한 결과 `docs/architecture/local-agent-runtime.md`에는 history/20·23·25·26·27·
+  28·29·31·34·35·41·42·45·46·47·56 약 16개 history 인용이 남아 있다. B4 inbound repoint
+  잔여는 23·34보다 훨씬 넓다. B4 재개 시 이 범위로 reconcile한다.
+
+**다음:** W5 child package `logs/2026-06-19-workspace-reset-W5-history-migration.md` active
+W4 B4 — architecture의 남은 history 인용을 decision/archive/code owner로 repoint. 물리 삭제와
+decision/archive Sources 평문화는 plan 단일 게이트(link·권위 검증 단계 이후)가 소유한다.
+
+## 2026-06-20 · W5 B4 완료 — B5 carryover reconcile로 진행
+
+W5 child package `logs/2026-06-19-workspace-reset-W5-history-migration.md`에서 B4 Delete Guard /
+Inbound Cleanup을 완료로 전환하고 B5를 active로 넘겼다.
+
+**확인한 사실:**
+
+- child W4 B4는 Surface 1(`docs/architecture/local-agent-runtime.md` history live refs 제거)과
+  decision target self-sufficiency 검증을 기록했다.
+- `docs/architecture/local-agent-runtime.md`에는 `history/N`, `history/README`,
+  `*.history.md` 직접 참조가 남지 않는다(`rg` no matches).
+- 검토 대상 decision 문서 3개
+  (`claude-channel-plugin-default.md`, `client-orchestrator-runtime-pivot.md`,
+  `codex-per-agent-app-server.md`)는 history 원문 없이 필요한 WHY를 복원할 수 있도록
+  owner/code/legacy source 참조를 보강했다.
+- decision Sources와 archive Sources에 남은 `history/` provenance 링크는 B4 실패가 아니라
+  `plans/workspace-reset/workspace-reset.md`의 단일 물리 삭제 게이트에서 평문 provenance로
+  전환할 Surface 2 대상이다.
+
+**다음:** W5-4 / child W5 B5 — `plan/mvp-implementation-checklist.md`의 W7
+Current/load-bearing 판정과 W5 archive 후보를 reconcile하고, `plan/qa-tracker.md` 및 G4
+delete-only 7개(15·16·19·30·32·43·44)의 legacy `plan/`·`prd/` inbound cleanup을 함께
+점검한다.
+
+## 2026-06-20 · W5 B5 완료 — child B6 closeout으로 진행
+
+W5 child package에서 B5 carryover reconcile을 완료하고 parent next pointer를 child B6
+closeout 소비로 이동했다.
+
+**확인한 사실:**
+
+- `logs/2026-06-20-mvp-plan-carryover-archive.md`가 생성되어 legacy
+  `plan/mvp-implementation-checklist.md`와 `plan/qa-tracker.md`의 self-contained digest를
+  보존한다.
+- `docs/architecture/local-agent-runtime.md`,
+  `docs/decisions/runtime-profile-namespace-isolation.md`,
+  `plans/post-mvp/envelope-metadata.plan.md`, `plans/release-plan.md`의 legacy `plan/`
+  직접 참조를 archive/decision target으로 repoint했다.
+- `rg` 검증 기준으로 current owner/plans 범위에는 `plan/mvp-implementation-checklist.md` 또는
+  `plan/qa-tracker.md` 직접 참조가 남지 않는다. 남은 참조는 W5 제외 `docs/aiox/` learning
+  records뿐이다.
+- G4 delete-only 7개(`history/15·16·19·30·32·43·44`)의 current-authority 직접 inbound는
+  없다. 남은 것은 legacy `plan/`, legacy/stale `prd/`, W5 제외 `docs/aiox/` dependency다.
+
+**판정:**
+
+- `plan/mvp-implementation-checklist.md`와 `plan/qa-tracker.md`는 current owner가 아니며,
+  archive digest와 live inbound repoint가 끝났으므로 delete candidate가 됐다. 다만 실제 물리
+  삭제는 `docs/aiox` 흡수/삭제와 함께 `plans/workspace-reset/workspace-reset.md`의 통합 물리
+  삭제 게이트가 소유한다.
+- W5 child package의 active item은 W6 B6 Closeout이다.
+
+## 2026-06-20 · W5 child B6 closeout 소비 — W6로 진행
+
+W5 child package `logs/2026-06-19-workspace-reset-W5-history-migration.md`가 W6 B6 Closeout을
+완료하고 `status: decided`로 닫혔다. Parent W5-5를 소비하고 parent W5를 완료로 전환한다.
+
+**확인한 사실:**
+
+- W5 child W1~W6는 모두 완료됐다. W1 source/index, W2 runtime namespace decision 승격,
+  W3 mvp history archive/decision 보강, W4 live history refs cleanup, W5 carryover archive,
+  W6 closeout이 child log에 기록되어 있다.
+- B6 직전 검증에서 발견된 `README.md`, `src/`, post-MVP plans의 live `history/` refs도
+  closeout 전에 decision/current owner target으로 repoint했다.
+- current owner/code/plan 범위에서 legacy `plan/mvp-implementation-checklist.md` 또는
+  `plan/qa-tracker.md` 직접 참조는 남지 않는다.
+- current owner/code/plan 범위의 `history/15·16·19·30·32·43·44·45·46·47·50·51·52·53·54·55·56·57`
+  잔여 참조는 decision 문서의 Sources/body provenance로만 남는다. 이 Sources 평문화는
+  `plans/workspace-reset/workspace-reset.md`의 통합 물리 삭제 게이트가 소유한다.
+- `history/58`은 W8(A2A spec), `history/59`는 W10(split readiness) 작업 시 확인할 문서로
+  보존한다.
+- `docs/aiox/` 내부 legacy checklist/QA refs와 G4 history refs는 W5에서 수정하지 않았다.
+  필요분 흡수 후 전체 삭제하거나, 보존하기로 바뀌는 파일만 통합 물리 삭제 게이트에서
+  repoint한다.
+
+**다음:**
+
+- Parent inventory next pointer는 W6-1 `spike/ → spikes/ 이동`이다.
+- history/docs-aiox 물리 삭제, decision/archive Sources 평문화, legacy `plan/`·stale `prd/`
+  물리 삭제는 현재 실행하지 않는다. 해당 작업은 plan의 통합 물리 삭제 게이트가 소유한다.

@@ -420,14 +420,14 @@ Next: W5-2 (`logs/W7-B5-2-cli-task.md`) 검증.
   3. `agent-level-mcp-process-scoping.md` (history/38 기반)
 - **Unreferenced Files 상세 분류 및 행선지 Map**:
   - `plans/release-plan.md` -> **W9 (Roadmap/Release)**로 재분류 및 이관 (Specs 소관 아님).
-  - `plan/mvp-implementation-checklist.md` -> `Current` (as-built evidence 및 architecture §14 live migration input으로서 로드베어링 보존 파일로 분류, 삭제 금지).
+  - `plan/mvp-implementation-checklist.md` -> `Current` (as-built evidence 및 architecture §14 live migration input으로서 로드베어링 파일로 분류. W7 범위에서는 삭제 금지이며, W5가 owner/archive 흡수와 inbound repoint를 완료하면 원본은 delete candidate로 재판정 가능).
   - `plans/AGENTS.md` -> `Current` (plans/ 폴더의 문서 작성 규칙으로 유지).
 
 ### 3. 미인용 파일 상세 분류 MAP (Detailed Audit Ledger)
 
 | File Path | Target Owner Document / Target Wave | Status Label | Rationale / Verification |
 | --- | --- | --- | --- |
-| `plan/mvp-implementation-checklist.md` | `docs/architecture/local-agent-runtime.md` (§14) | `Current as-built` | MVP 개발 최종 증거 및 마이그레이션 입력(load-bearing). 삭제 없이 영구 보존. |
+| `plan/mvp-implementation-checklist.md` | `docs/architecture/local-agent-runtime.md` (§14), W5 B5 재판정 | `Current as-built until absorbed/repointed` | MVP 개발 최종 증거 및 마이그레이션 입력(load-bearing). W7 범위에서는 삭제 금지. W5가 필요한 owner/archive 흡수와 inbound repoint를 완료하면 원본은 delete candidate로 재판정 가능. |
 | `plan/qa-tracker.md` | `history/` / Archive | `Stale` | MVP 주기 중의 일시적 QA 로깅 증거. Archive. |
 | `plans/AGENTS.md` | `docs/architecture/documentation-system.md` | `Current` | 계획 문서 작성 컨벤션 정의. 유지. |
 | `plans/release-plan.md` | **W9 (Roadmap/Release)** | `Target` | 배포 체크리스트 및 릴리즈 실행 계획. W9 패키지로 handoff. |
@@ -550,4 +550,3 @@ W7 Cross-Owner Effects 작업을 아래와 같이 보강 및 마무리하였습�
   - `logs/2026-06-18-package-workflow-portable-pattern.md`에 W7 실행 및 감사 중 도출된 workflow 교훈(F1~F25, 정적 라인 인용 한계 및 drift 제어) 추가 반영 완료.
 - Next owner/log:
   - `logs/2026-06-16-workspace-reset-폴더별-inventory.md` (Parent W4.5 Log)로 복귀.
-

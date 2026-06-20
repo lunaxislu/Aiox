@@ -209,16 +209,16 @@ export async function invokeParsedCommand(
         // Legacy inline (A) only: dev-channel server:<name> resolves the aiox
         // channel MCP that the launcher injects one-off via --mcp-config (no
         // permanent .mcp.json). The name must match the injected mcpServers key.
-        // See history/49.
+        // See docs/decisions/claude-channel-plugin-default.md.
         const channelName = "aiox-claude-ingress";
-        // R3 step 3b (history/56): D (channel-as-plugin) is the DEFAULT. The token
+        // R3 step 3b: D (channel-as-plugin) is the DEFAULT. The token
         // flows into the spawned claude env, which the plugin .mcp.json expands via
         // ${VAR}. The legacy inline (A) path stays only as the explicit dev/debug
         // opt-out AIOX_CLAUDE_CHANNEL_STRATEGY=inline (resolved before attach). There
         // is NO automatic fallback: a D preflight failure is a hard, coded error.
         const useStrategyDPlugin = claudeChannelStrategy === "plugin";
         if (useStrategyDPlugin) {
-          // Pre-spawn gate (R3 step 2, history/50 item 1d): a missing/disabled
+          // Pre-spawn gate (R3 step 2): a missing/disabled
           // channel plugin must surface as a clear non-zero CLI error here rather
           // than the documented silent-drop (exit 0 + startup notice + no inbound
           // push). Only on the D path; the legacy A path is untouched.
@@ -463,7 +463,7 @@ const SETUP_FIXABLE_PREFLIGHT_CODES: ReadonlySet<PreflightFailureCode> = new Set
  * setup-fixable codes we append a dev/debug-only escape hatch so an operator can
  * still launch while diagnosing. channels_disabled / missing_env are deliberately
  * excluded — inline would not fix an org-policy block or a missing token, so
- * hinting it there would mislead (see history/56). The hint uses a literal
+ * hinting it there would mislead. The hint uses a literal
  * `<agentName>` placeholder rather than the actual name: agent names may contain
  * spaces/shell metacharacters (the parser does not forbid them), so interpolating
  * them would yield a broken copy-paste command (Codex review).

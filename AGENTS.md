@@ -1,3 +1,5 @@
+architecture.excalidraw는 사용자의 개인 자산임 신경쓸 필요가 없음
+
 ## Evidence And Reporting
 
 - 확인한 사실, 추론, 의견과 제안을 구분해서 보고한다.

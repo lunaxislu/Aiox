@@ -242,7 +242,7 @@ function addClaudePluginCommand(
     });
 }
 
-// Only user|project are supported (history/52). local/managed/all/* are out of
+// Only user|project are supported. local/managed/all/* are out of
 // scope — `*` in particular is rejected to avoid shell-glob surprises.
 function requireSetupScope(value: string): "user" | "project" {
   if (value === "user" || value === "project") {

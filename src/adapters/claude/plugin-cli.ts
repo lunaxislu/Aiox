@@ -9,7 +9,7 @@ import type { ClaudePluginListEntry } from "./preflight.js";
 //   claude plugin marketplace list --json   → registered marketplace names
 //   claude plugin list --json               → installed plugin entries
 //
-// CONTRACT (history/52, Codex review): both commands MUST run in the user's
+// CONTRACT (Codex review): both commands MUST run in the user's
 // cwd, because `plugin list --json` reports each entry's `enabled` already
 // RESOLVED for that directory's scope precedence. So `cwd` is a REQUIRED option
 // here and the default runner forwards it to the child process — there is no
@@ -30,7 +30,7 @@ export type ClaudeCliRunner = (
 export interface LoadClaudePluginInventoryOptions {
   /**
    * REQUIRED: the user's cwd. `plugin list --json` resolves `enabled` relative
-   * to this directory (history/52), so it must be the dir `aiox claude` runs in.
+   * to this directory, so it must be the dir `aiox claude` runs in.
    */
   cwd: string;
   /** claude binary; defaults to AIOX_CLAUDE_COMMAND or "claude". */
@@ -150,7 +150,7 @@ export interface InstallClaudePluginOptions {
   run?: ClaudeCliRunner;
 }
 
-/** `claude plugin install <ref> --scope <scope>` — install also raw-enables at scope (history/52). */
+/** `claude plugin install <ref> --scope <scope>` — install also raw-enables at scope. */
 export async function installClaudePlugin(
   options: InstallClaudePluginOptions,
 ): Promise<void> {
@@ -239,7 +239,7 @@ function parsePluginEntry(item: unknown, ctx: string): ClaudePluginListEntry {
   const entry: ClaudePluginListEntry = {
     id: o.id,
     enabled: o.enabled,
-    // kept as-is: scope is string-widened in the type (Codex review, history/53)
+    // kept as-is: scope is string-widened in the type (Codex review)
     // because effectiveness comes from `enabled`; an unknown scope must not break.
     scope: o.scope,
   };

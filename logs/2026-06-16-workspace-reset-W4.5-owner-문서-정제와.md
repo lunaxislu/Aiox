@@ -18,7 +18,7 @@ status: open
   - 답변마다 확인한 사실, 추론, 의견/제안을 구분하고 해당 owner를 표시한다
   - 현재 질문과 별도 수명인 꼬리질문은 parking lot으로 남긴다
 - [ ] W3 반복 설명과 합의된 작성 규칙을 정리해 guide 또는 `docs/guides/workflow.md` 반영 후보로 만든다 — 지금 하지 않음; 하위 AGENTS와 monolithic 최신화 이후 재검토
-- [ ] W4 Final closeout: W6-W10 완료 후 이 child 로그 결과를 parent inventory 로그에 반영하고 parent W4.5를 해소한다
+- [ ] W4 Final closeout: W8-W11 완료 후 이 child 로그 결과를 parent inventory 로그에 반영하고 parent W4.5를 해소한다. 현재 W5 history migration이 선행 입력을 만드는 동안 이 로그에서는 active next pointer를 두지 않는다
 - [x] W5 `docs/specs/AGENTS.md`와 `docs/architecture/AGENTS.md`를 작성하고 상위 문서 계약과 정합성을 확인한다
   - [x] W5-1 `docs/specs/AGENTS.md` 작성 — spec 작성 규칙, 상태 어휘, section ID 보존, harness/agent 확인 절차
   - [x] W5-2 `docs/architecture/AGENTS.md` 작성 — as-built/target 구분, code/test 근거, drift 처리, harness/agent validation 절차
@@ -27,11 +27,11 @@ status: open
   - [x] W6-1 Transferred: history/legacy 자료에서 decision으로 승격해야 할 기준과 후보 확인 → child W1/W3
   - [x] W6-2 Transferred: 필요한 `docs/decisions/` 작성 규칙 또는 첫 decision 문서 작성 → child W1
   - [x] W6-3 Transferred: root `AGENTS.md`와 `docs/architecture/documentation-system.md`에 decision 작성·승격 기준 반영 필요 여부 확인 및 갱신 → child W2
-- [>] W7 local runtime authority assimilation package → child log `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`
-  - [ ] W7-1 Step 15 pair/dispatch/stale drift 반영 여부 확인 및 정리
-  - [ ] W7-2 history/src/tests/spike/spikes/legacy evidence를 확인하고 Evidence Ledger를 남긴다
-  - [ ] W7-3 작업 중 spec/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
-- [ ] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용
+- [x] W7 local runtime authority assimilation package 완료 및 parent 반영 완료 → child log `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`
+  - [x] W7-1 Step 15 pair/dispatch/stale drift 반영 여부 확인 및 정리
+  - [x] W7-2 history/src/tests/spike/spikes/legacy evidence를 확인하고 Evidence Ledger를 남긴다
+  - [x] W7-3 작업 중 spec/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
+- [ ] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용. W5 history migration의 B1 source map, history disposition 제약, target self-sufficiency/delete guard를 입력으로 받은 뒤 착수한다. W5 B2에서 확인된 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` absolute override contract spec gap도 W8 입력으로 검토한다
   - [ ] W8-0 W8 package log/task brief 작성 전에 Claude/Gemini/Codex 등 agent 의견을 수렴해 batch 분할, 상태 라벨, cross-owner scope, blocker/release gate 처리 기준을 확정한다. 생성할 W8 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
   - [ ] W8-1 contract/status/cross-reference 정합성 확인 및 정리
   - [ ] W8-2 history/src/tests/architecture/roadmap/release evidence를 확인하고 Evidence Ledger를 남긴다
@@ -42,7 +42,7 @@ status: open
   - [ ] W9-2 작업 중 spec/architecture/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
   - [ ] W9-2a 생성할 W9 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
   - [ ] W9-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
-- [ ] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다
+- [ ] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다. W5 history migration의 source map과 target self-sufficiency/delete guard를 history/legacy rationale 입력으로 사용한다
   - 주의: W10은 단일 primary owner 문서가 없다. split 대상은 W7·W8에서 최신화된
     `docs/specs/aiox-a2a.md`와 `docs/architecture/local-agent-runtime.md`이며,
     Scope.Primary owner는 child log 진입 시 사용자와 확정한다.
@@ -50,7 +50,7 @@ status: open
   - [ ] W10-2 split map, anchor preservation, inbound reference, README 필요성을 검토한다
   - [ ] W10-2a 생성할 W10 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
   - [ ] W10-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
-- [ ] W11 W7~W10에서 package workflow 시행착오를 수집하고 portable log skill 후보로 정리한다 → `logs/2026-06-18-package-workflow-portable-pattern.md`
+- [ ] W11 W7~W10을 진행하는 동안 package workflow 시행착오를 계속 수집하고 portable log skill 후보로 정리한다 → `logs/2026-06-18-package-workflow-portable-pattern.md`. 수집은 각 W closeout 때 즉시 누적하고, W8~W10 package closeout 뒤 repo 전용/portable 분리와 승격 판단을 마무리한다
   - [ ] W11-1 각 package closeout 때 package log/task brief/evidence ledger/agent 의견 수렴/Scope 운영에서 생긴 문제와 보완점을 child log에 기록한다
   - [ ] W11-2 repo 전용 taxonomy와 portable pattern을 child log에서 분리한다
   - [ ] W11-3 portable log skill로 옮길지, repo integration에 남길지 판단하고 필요하면 log skill maintenance 절차로 별도 개선 작업을 연다
@@ -461,3 +461,110 @@ child log `logs/2026-06-17-workspace-reset-W4.5-decision-문서화-기준.md` W1
   판단한다.
 
 **현재 next pointer 변경 없음:** W7 child log 진행을 유지한다.
+
+## 2026-06-19 · W7 pointer 소비와 W5 sync 정합화
+
+이번 기록은 history 파일 판정/삭제/이관을 수행하지 않고, parent/W5 상태와 이 W4.5 child
+로그의 Work Items 표현만 정합화한다.
+
+**확인한 사실:**
+
+- `scripts/onramp` 출력은 현재 작업 로그를 parent
+  `logs/2026-06-16-workspace-reset-폴더별-inventory.md`로, next pointer를 W5
+  history/migration으로 표시했다.
+- parent 최신 블록 `2026-06-19 · W7 완료 및 parent 복귀`는 W7 child 로그와
+  `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`가 완료되어 parent에
+  반영됐고 W5로 복귀했다고 기록한다.
+- W7 package log frontmatter는 `status: decided`이며 Work Items W1~W8이 모두 `[x]`다.
+- W5 child package log `logs/2026-06-19-workspace-reset-W5-history-migration.md`는
+  `B1 Inventory & Seed Mapping`을 active item으로 둔다.
+- 이 로그는 기존 Work Items에서 W7을 `[>]` active로 남겨 parent의 W5 복귀 기록과
+  어긋나 있었다.
+
+**판단/추론:**
+
+- W7은 이 로그에서 더 이상 actionable하지 않으므로 완료로 소비한다.
+- W8/W10은 여전히 살아 있지만, W5가 만들 `history/` source map과 disposition 제약을
+  입력으로 받아야 한다. 따라서 지금 이 로그의 active next pointer로 두면 parent W5
+  진행과 충돌할 수 있다.
+- W9는 roadmap/release package로 살아 있으나, W8/W10처럼 history evidence를 직접 요구한다는
+  사실은 이번 확인 범위에서 새로 검증하지 않았다.
+- W11은 W7 closeout 결과를 이미 입력 하나로 갖지만, W8~W10 package closeout 후에 수행해야
+  하므로 현재 active가 아니다.
+
+**수정한 Work Items:**
+
+- W7과 W7-1~W7-3을 완료 처리했다.
+- W8에 "W5 history migration의 B1 source map과 history disposition 제약을 입력으로 받은 뒤
+  착수" 조건을 명시했다.
+- W10에 "W5 history migration의 source map을 history/legacy rationale 입력으로 사용" 조건을
+  명시했다.
+- W11에 "W7 closeout은 완료됐고 W8~W10 package closeout이 남은 뒤 수행" 조건을 명시했다.
+- W4 Final closeout은 W8~W11 완료 뒤 parent W4.5 해소로 정리했다.
+- 이 로그의 Work Items에는 현재 `[>]` active pointer를 남기지 않았다. 현재 active 작업은
+  parent W5와 W5 child package log가 소유한다.
+
+**Evidence Ledger**
+
+| Topic | Source | Lines | Finding | Owner impact | Action |
+| ----- | ------ | ----- | ------- | ------------ | ------ |
+| Current onramp | `scripts/onramp` output | N/A | [Fact] 현재 작업은 parent inventory log의 W5 history/migration으로 표시됨 | W4.5가 active pointer로 current를 가로채지 않아야 함 | W4.5 active pointer 제거 |
+| W7 parent return | `logs/2026-06-16-workspace-reset-폴더별-inventory.md` | latest block | [Fact] W7 child log와 W7 local runtime package 완료 및 parent 반영 후 W5 복귀가 기록됨 | W7은 W4.5에서 소비 완료 가능 | W7 Work Item 완료 처리 |
+| W7 package status | `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md` | frontmatter, Work Items | [Fact] `status: decided`, W1~W8 모두 완료 | W7 package 재개 불필요 | W7 결과를 W4.5에 소비 |
+| W5 package status | `logs/2026-06-19-workspace-reset-W5-history-migration.md` | Work Items, Handoff | [Fact] B1 Inventory & Seed Mapping이 active | W8/W10 history evidence 입력은 W5 B1 source map 이후에 안정화됨 | W8/W10 조건을 명시 |
+
+### Closeout
+
+- Updated owner documents: 없음. 로그 상태와 Work Items만 수정했다.
+- Validation result: `scripts/onramp`, log check 출력, parent/W7/W5 로그 본문을 대조했다.
+- Remaining gaps: W8/W10은 W5 source map과 consumer-safe history disposition 제약을 입력으로
+  받아야 한다. W9 roadmap/release package와 W11 portable 후보 수집은 아직 수행 전이다.
+- Workflow retrospective: package log 간 parent/child 복귀가 끝난 뒤 source log의 active
+  pointer 소비가 지연되면 onramp 후보가 흐려질 수 있다. child closeout 때 parent 반영과
+  source child Work Items 소비를 같은 closeout checklist로 묶을 필요가 있다.
+- Next owner/log: 현재 active 작업은
+  `logs/2026-06-19-workspace-reset-W5-history-migration.md`의 B1 Inventory & Seed Mapping이다.
+
+## 2026-06-19 · W8 input 보강 — runtime profile override contract spec gap
+
+@user 지적에 따라 W5 B2에서 확인한 spec gap을 W8 입력에도 반영했다. W8은 아직 별도 package
+log가 없으므로, 현재 W8을 소유하는 이 W4.5 child log의 Work Item과 Evidence Ledger에 기록한다.
+
+**확인한 사실:**
+- `docs/specs/aiox-a2a.md`는 profile namespace와 transport-neutral 원칙을 언급한다:
+  `docs/specs/aiox-a2a.md:577-582`, `590-605`.
+- `docs/specs/aiox-a2a.md`에는 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH`가 absolute path override여야
+  하고 relative path는 fail-fast configuration error라는 contract가 없다.
+- 해당 contract는 현재 `README.md:65-67`과 `src/config/paths.ts:65-75,88-96,104-116`에
+  존재한다.
+- `docs/architecture/local-agent-runtime.md:219-220`은 `$AIOX_SOCKET_PATH` path resolution만
+  언급하고 absolute override rule은 소유하지 않는다.
+
+**판단:**
+- 이 gap은 W5 B2 decision 승격 blocker가 아니지만, 외부 env/config contract라서 W8
+  `docs/specs/aiox-a2a.md` authority assimilation package에서 흡수 여부를 판단해야 한다.
+- W8 Work Item에 이 spec gap을 명시적으로 추가했다. 현재 active pointer는 여전히 parent W5와
+  W5 package log가 소유하므로 W8을 active로 바꾸지 않았다.
+
+**Evidence Ledger**
+
+| Topic | Source | Lines | Finding | Owner impact | Action |
+| ----- | ------ | ----- | ------- | ------------ | ------ |
+| Runtime profile override contract spec gap | `docs/specs/aiox-a2a.md`, `README.md`, `src/config/paths.ts`, `docs/architecture/local-agent-runtime.md` | specs `577-582`, `590-605`; README `65-67`; paths `65-75`, `88-96`, `104-116`; architecture `219-220` | [Fact] profile namespace는 spec에 있으나 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` absolute override 및 relative fail-fast contract는 spec에 없음. README/code에는 있고 architecture에는 socket path resolution만 있음. | W8 `docs/specs/aiox-a2a.md` assimilation input | W8 package/task brief 작성 시 spec owner에 흡수할지 판단 |
+
+## 2026-06-20 · W11 sync correction — portable workflow collection is continuous
+
+사용자 정정: W11 portable workflow 후보 수집은 W8~W10이 모두 끝난 뒤 처음 시작하는 작업이
+아니라, W7~W10 각 package를 진행하면서 closeout 때마다 계속 누적하는 base 작업이다.
+
+**수정한 Work Items:**
+
+- W11 문구를 "W7~W10 진행 중 계속 수집"으로 정정했다.
+- W11의 최종 단계는 W8~W10 closeout 뒤 repo 전용/portable 분리와 log skill 승격 여부 판단으로
+  남겼다.
+
+**판단:**
+
+- `logs/2026-06-18-package-workflow-portable-pattern.md`의 active W1은 현재 수집용 active
+  pointer로 유지해도 parent W5 진행과 충돌하지 않는다. 해당 로그의 parent W4.5 W11은
+  최종 소비/정리 위치이고, 매 package closeout에서 누적 기록하는 것은 의도된 운영 방식이다.

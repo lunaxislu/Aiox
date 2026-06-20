@@ -7,7 +7,7 @@ description: >
 status: deferred (post-MVP, unordered candidate)
 implements: docs/specs/aiox-a2a.md §5
 owner: TBD
-rationale: history/47 (Step 15 Phase B)
+rationale: docs/decisions/pair-slot-generalization.md (Step 15 Phase B)
 ---
 
 > **권위 안내.** adapter runtime surface(launch/attach/identity/health) 결정 본문은
@@ -44,5 +44,5 @@ surface되지 않는다.
 
 ## Provenance
 
-- Phase B closeout §AIOX_CLAUDE_CHANNEL_PORT: `history/47-step-15-phase-b-closeout.history.md`
+- Phase B closeout rationale: `docs/decisions/pair-slot-generalization.md`
 - 현재 child process surface 코드: `src/adapters/claude/channel-server.ts`.

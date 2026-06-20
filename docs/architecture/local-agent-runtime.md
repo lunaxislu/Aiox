@@ -1,7 +1,7 @@
 # aiox MVP — As-Built Architecture
 
 > Date: 2026-05-26
-> Status: MVP implementation closed (history/42); promoted to as-built
+> Status: MVP implementation closed (closeout baseline: logs/2026-06-19-mvp-history-archive.md §1); promoted to as-built
 > architecture authority on 2026-06-16.
 > Role: this is the `docs/architecture` authority for the current aiox MVP
 > internal structure, responsibility boundaries, data flow, and lifecycle
@@ -9,11 +9,13 @@
 > Product/spec intent lives in `docs/product/` and `docs/specs/`; the former
 > MVP PRD is absorbed/deleted during workspace reset and is not primary
 > authority. `prd/pre-validation/*` is W5 evidence candidate material, not
-> current architecture authority. Decision rationale
-> cited here remains historical evidence until W5 migration. When this document
+> current architecture authority. Decision rationale lives in `docs/decisions/`;
+> MVP implementation and QA provenance lives in
+> `logs/2026-06-19-mvp-history-archive.md`. When this document
 > conflicts with code or authority docs, update this document.
 >
-> Every concrete claim cites either `file:line` or `history/<N>`. Where a
+> Every concrete claim cites current `file:line` evidence or a migrated
+> decision/archive provenance note. Where a
 > behavior exists in code but has no recorded rationale, it is marked
 > **Implementation-only (no recorded rationale)** — the description is factual,
 > not inferred.
@@ -101,17 +103,18 @@ Per running pair the OS sees the following processes:
   `aiox mcp-codex` stdio child (app-server-owned via Codex MCP host).
 - Claude agent → 1 `claude` child (CLI-owned, foreground) + 1 channel-server
   stdio child (Claude-owned; default: activated via `plugin:aiox-channel-ingress@aiox`
-  (D strategy, history/56); legacy: launcher-injected `--mcp-config` inline
+  (D strategy; docs/decisions/claude-channel-plugin-default.md); legacy: launcher-injected `--mcp-config` inline
   (`AIOX_CLAUDE_CHANNEL_STRATEGY=inline`, dev/debug only)).
 
-**MVP invariant** (Round 3 D5-A.5, history/34:623-630)
+**MVP invariant** (WHY: docs/decisions/codex-per-agent-app-server.md §5)
 `Daemon manages exactly one direct child per Codex agent: the app-server.
 Cleanup is WS close → SIGTERM → 3s grace → SIGKILL. No process group kill,
 no setsid, no PR_SET_PDEATHSIG, no periodic healthz, no auto-reconnect, no
 TUI heartbeat. TUI lifecycle is owned by the CLI process scope.`
 
-Authority context: history/29 (per-agent app-server pivot),
-history/31 (production direction), history/34 Round 3, history/42 (closeout).
+Authority: docs/decisions/codex-per-agent-app-server.md (per-agent app-server
+pivot, production direction); Round 3 implementation and closeout provenance in
+logs/2026-06-19-mvp-history-archive.md §2.2, §1.
 
 ---
 
@@ -136,7 +139,7 @@ depends on it.
 | `schema_version` | `version PK`, `applied_at` | Migration ledger created by `applyMigration1` (`src/store/schema.ts:125-133`). `isMigrationApplied` gates re-runs (`src/store/schema.ts:137-147`). |
 | `events` | `id PK`, `agent_id`/`message_id`/`delivery_id`/`route_id` (all nullable), `type`, `data_json`, `created_at` | Append-only. |
 
-**Migration 1 + slot invariant** (Step 15; history/46 D4, history/47).
+**Migration 1 + slot invariant** (Step 15; docs/decisions/pair-slot-generalization.md).
 `applyMigration1` runs entirely inside one `withTransaction`
 (`src/store/schema.ts:89-134`) and is skipped once `schema_version` row 1
 exists. Steps: (1) preflight — if `pair_slot` is absent, group existing
@@ -181,7 +184,7 @@ domain objects. Transactional boundaries are owned by callers in
 | `deliveries` | `createQueuedForRoutes`, `updateStatus`, `findByIdempotencyKey`, `countByStatus`, `recoverAfterRestart` | `createQueuedForRoutes` inserts all rows in one `db.transaction`. UNIQUE collision on `idempotency_key` is caught and reclassified to typed `delivery_idempotency_key_exists` with the existing row attached (`deliveries.ts:117, 215-222`). |
 | `events` | `append`, `list` | Append-only. |
 
-**Rollback sentinel pattern** (history/23 D2, history/25 D5):
+**Rollback sentinel pattern** (WHY: docs/decisions/pair-attach-atomicity-and-sentinel.md):
 two module-local `Symbol`s in `src/daemon/state.ts:36-37`:
 
 - `attachRollbackSentinel` — used by `attachAgent` so
@@ -222,22 +225,22 @@ connected agents disconnected (`stop({})`), and `db.close()`s.
 **Auto-start** is wired only on the `agent-attach` branch
 (`src/cli/invocation.ts:108-111`). `aiox daemon start` and all other
 commands either start explicitly or are connect-only and will fail if the
-daemon is absent. See command table in §10.
+daemon is absent. See command table in §9.1.
 
 ### 4.2 Socket Transport
 
-`src/daemon/socket-transport.ts`. Authority: history/25, history/26.
+`src/daemon/socket-transport.ts`. WHY authority: docs/decisions/uds-transport-and-framing-contract.md.
 
 | Property | Value | Cite |
 |---|---|---|
-| Transport | Unix Domain Socket (`net.createServer`) | history/25 D1; `socket-transport.ts:60` |
-| Framing | NDJSON; `\n`-terminated lines, partial-line buffer both sides | history/25 D2; `socket-transport.ts:64-69, 269-270, 303-306` |
+| Transport | Unix Domain Socket (`net.createServer`) | `socket-transport.ts:60` |
+| Framing | NDJSON; `\n`-terminated lines, partial-line buffer both sides | `socket-transport.ts:64-69, 269-270, 303-306` |
 | Request envelope | `{ id, method, params? }` | `socket-transport.ts:27-31` |
 | Response envelope | `{ id, ok:true, result }` or `{ id, ok:false, error: { reason, message } }` | `socket-transport.ts:33-46` |
-| Client topology | Single persistent socket per `createDaemonSocketClient`; per-request id multiplex via `Map<id, PendingRequest>` | history/26 H1; `socket-transport.ts:262-392` |
-| Request timeout | `requestTimeoutMs` default 30 s | history/26 H2; `socket-transport.ts:266, 373-378` |
-| Stale-path retry | Listen-first; on EADDRINUSE, probe `canConnect`; if live → fail; else `unlink` + single retry | history/26 H3; `socket-transport.ts:397-427` |
-| Transport vs daemon API errors | Transport envelope `error.reason ∈ {invalid_json, invalid_envelope, unknown_method, internal_error}`; daemon API typed errors return as `ok:true, result:{ok:false, reason}` at the envelope layer | history/25 D6; `socket-transport.ts:155-218` |
+| Client topology | Single persistent socket per `createDaemonSocketClient`; per-request id multiplex via `Map<id, PendingRequest>` | `socket-transport.ts:262-392` |
+| Request timeout | `requestTimeoutMs` default 30 s | `socket-transport.ts:266, 373-378` |
+| Stale-path retry | Listen-first; on EADDRINUSE, probe `canConnect`; if live → fail; else `unlink` + single retry | `socket-transport.ts:397-427` |
+| Transport vs daemon API errors | Transport envelope `error.reason ∈ {invalid_json, invalid_envelope, unknown_method, internal_error}`; daemon API typed errors return as `ok:true, result:{ok:false, reason}` at the envelope layer | `socket-transport.ts:155-218` |
 
 **Implementation-only behaviors**: the `setImmediate(shutdown)` ordering in
 `run.ts:66-73` and the fact that `recordCodexRuntimeFailed` exists on
@@ -332,8 +335,8 @@ Per Claude agent: 1 Claude CLI process + 1 channel-server stdio child
 **Channel activation strategy** (`src/cli/invocation.ts:161-164, 219-220`):
 
 - **Default (D — plugin strategy)**: `plugin:aiox-channel-ingress@aiox` activates
-  the channel-server. `AIOX_CLAUDE_CHANNEL_STRATEGY` unset or `"plugin"` (history/56
-  R3 Step 3b). Preflight validates plugin installation before attach.
+  the channel-server. `AIOX_CLAUDE_CHANNEL_STRATEGY` unset or `"plugin"`. Preflight
+  validates plugin installation before attach.
   Related decision: `docs/decisions/claude-channel-plugin-default.md`.
 - **Legacy (A — inline strategy)**: `AIOX_CLAUDE_CHANNEL_STRATEGY=inline` only.
   Launcher injects `--mcp-config` with an inline aiox channel server definition
@@ -341,14 +344,13 @@ Per Claude agent: 1 Claude CLI process + 1 channel-server stdio child
 
 Channel-server is **not** a daemon child. The daemon only stores an
 in-memory pointer (`claudeChannelRuntimes` Map at `state.ts:521-522`); no DB
-row. Rationale: history/35 D2 Option A (DB-only + daemon memory registry).
+row. Rationale: docs/decisions/claude-channel-trust-and-registration.md (DB-only + daemon memory registry).
 
 ### 6.2 Launch Flow (`aiox claude --name <n>`)
 
 1. Parser registers `--name` and `--pair`. `--resume` is option-scoped to
    the codex subcommand, so commander rejects `--resume` on `claude` at
-   parse stage (`src/cli/parse.ts:268-270`, history/34:1002-1005, S5 smoke
-   PASS).
+   parse stage (`src/cli/parse.ts:268-270`).
 2. CLI auto-starts daemon, calls `attachAgent({kind:"claude", name, ...})`.
 3. Daemon mints a `randomUUID()` claude channel token, stores it in
    `claudePendingTokens[agentName]`, returns it as `claudeChannelToken`
@@ -359,7 +361,7 @@ row. Rationale: history/35 D2 Option A (DB-only + daemon memory registry).
      calls `launchClaudePluginChannel({pluginName:"aiox-channel-ingress", ...})`
      (`invocation.ts:238-248`). Claude activates channel-server via the installed
      plugin `plugin:aiox-channel-ingress@aiox`; token and socket path flow via env
-     vars that the plugin's `.mcp.json` expands (history/56 R3 Step 3b).
+     vars that the plugin's `.mcp.json` expands.
    - **Legacy — A inline strategy** (`AIOX_CLAUDE_CHANNEL_STRATEGY=inline`, dev/debug only):
      Calls `launchClaudeWithChannel({channelName:"aiox-claude-ingress", agentName,
      agentToken, daemonSocketPath})` (`src/adapters/claude/launcher.ts`). The
@@ -403,8 +405,8 @@ fresh `createDaemonSocketClient` per call and `close()` it `finally`.
 - `reply(chat_id, text)` →
   `daemon.receiveClaudeChannelReply({agentName, chatId, text})` →
   `runSendMessageTransaction({type:"reply", parentMessageId: chatId})`.
-  **`chat_id` is persisted as `parent_message_id`** (state.ts:1008-1035,
-  history/40:563).
+  **`chat_id` is persisted as `parent_message_id`** (`state.ts:1008-1035`;
+  Step 14 provenance: `logs/2026-06-19-mvp-history-archive.md` §2.3).
 - Tool errors map to MCP `isError:true` results with `daemon_call_failed`
   or the propagated daemon `reason` string
   (`channel-server.ts:326, 347, 371, 388`).
@@ -418,7 +420,8 @@ ingress paths. For each delivery whose target is a Claude agent:
 2. Call `injectClaudeChannel(lookup, {agentName, content, chatId:
    message.id, origin: sourceName})` (`src/adapters/claude/injector.ts:21-78`).
    `chat_id` is the **aiox message id**, `origin` is the **source agent
-   name** (state.ts:1364-1366, history/40:563).
+   name** (`state.ts:1364-1366`; Step 14 provenance:
+   `logs/2026-06-19-mvp-history-archive.md` §2.3).
 3. Injector resolves the runtime; absent → `claude_channel_unavailable`.
    `fetch(endpoint, POST, body)` with `AbortController` 5 s timeout.
    Non-2xx or timeout → `claude_channel_push_failed`. Other fetch error →
@@ -433,7 +436,7 @@ ingress paths. For each delivery whose target is a Claude agent:
 5. On success: `delivered → completed`. On failure: `failed` with typed
    reason.
 
-V1 trusted framing (history/35 D1) is enforced by `buildChannelNotification`
+V1 trusted framing (WHY: docs/decisions/claude-channel-trust-and-registration.md) is enforced by `buildChannelNotification`
 (`channel-server.ts:49-69`) and the MCP `instructions` string at lines
 95-216, not by per-message confirmation.
 
@@ -490,7 +493,7 @@ Daemon JSON-RPC writes go **directly** to the app-server (bypassing the
 proxy) via the runtime's persistent WS client; the proxy URL is what the
 TUI consumes (`runtime.ts:142-148, 259`).
 
-Rationale: history/29 (pivot), history/31 (production direction).
+Rationale: docs/decisions/codex-per-agent-app-server.md (per-agent app-server pivot, production direction).
 
 ### 7.2 Attach Flow (`aiox codex --name <n>`)
 
@@ -510,7 +513,7 @@ Rationale: history/29 (pivot), history/31 (production direction).
    b. `parseCodexAppServerBanner` extracts URLs from stderr+stdout for
       `listening on:`, `readyz:`, `healthz:`. Endpoint must be `ws:` on
       loopback; readyz/healthz must be `http:`. Banner timeout 5 s
-      (`app-server.ts:90-120`, history/34:79-95 stderr-first verification).
+      (`app-server.ts:90-120`; stderr-first endpoint collection — docs/decisions/codex-per-agent-app-server.md §2).
    c. `waitForCodexReadyz` polls every 200 ms up to 10 s, racing child-exit
       Promise (`app-server.ts:122-175`).
    d. `connectCodexAppServerWebSocket` opens persistent WS, 5 s connect
@@ -520,14 +523,13 @@ Rationale: history/29 (pivot), history/31 (production direction).
       limitation of the adapter.
    e. `client.initialize()` sends JSON-RPC `initialize` with
       `{clientInfo:{name:"aiox",version:<package.version>}, capabilities:
-      {experimentalApi:false}}` (history/34:328-347 Round 2 decision;
-      `runtime.ts:402-413` reads package.json). Failure → typed
+      {experimentalApi:false}}` (`runtime.ts:402-413` reads package.json). Failure → typed
       `codex_app_server_ws_initialize_failed`.
    f. `startCodexAgentProxy` opens an in-process WS server on
       `127.0.0.1:0` whose upstream is the app-server endpoint
       (`proxy.ts:58-149`, `runtime.ts:337-343`).
 5. **Fresh attach skips daemon-side `thread/start`** (Step 14 follow-up,
-   history/41:266-286). `adapter_session_id` stays null until explicit
+   provenance logs/2026-06-19-mvp-history-archive.md §3.2). `adapter_session_id` stays null until explicit
    `--resume` or first live loaded-thread delivery.
 6. Daemon returns `codexRuntime: { endpoint: proxy.url, activeThreadId:
    adapterSessionId }` (`state.ts:645-657`).
@@ -535,13 +537,13 @@ Rationale: history/29 (pivot), history/31 (production direction).
    (`invocation.ts:122-129`, `launcher.ts:76-86`):
    - Fresh: `codex --remote <proxy-url>`
    - Resume: `codex resume <session-id> --remote <proxy-url>`
-   - Stdio `"inherit"` (history/34 D3.4 — TUI is CLI-child).
+   - Stdio `"inherit"` (TUI is CLI-child — docs/decisions/codex-per-agent-app-server.md §5).
 8. CLI awaits TUI exit. On exit → `api.notifyTuiExited({agentName,
    exitCode, signal})`. On spawn error → `api.rollbackAgentAttach` then
    typed exit `aiox.invocation.tui_launch_failed`
    (`invocation.ts:130-142, 230-237`).
 
-**Attach-failure cleanup ordering** (Round 2-fix F1, history/34:464-473):
+**Attach-failure cleanup ordering**:
 WS connect / initialize failure unwinds in reverse — proxy → ws →
 `disposeCodexAppServerOnAttachFailure(appServer)` (single SIGTERM, no
 SIGKILL escalation, `app-server.ts:177-185`).
@@ -566,9 +568,10 @@ marks agent disconnected, returns the typed reason
 
 ### 7.4 Transparent Proxy
 
-File `src/adapters/codex/proxy.ts`. Authority: history/27 (transparent
-relay decision), history/28 (lazy observation cost model), history/42
-(production reintroduction).
+File `src/adapters/codex/proxy.ts`. WHY authority:
+docs/decisions/proxy-lazy-observation-cost-model.md (lazy observation cost
+model); transparent-relay spike and production reintroduction provenance in
+logs/2026-06-19-mvp-history-archive.md §3.1, §1.
 
 **Relay obligation**: every WebSocket frame, both directions, passes
 through unchanged. Binary frames preserved as-is; text frames normalized
@@ -586,14 +589,16 @@ only for inspection (`proxy.ts:225-239`). Frames received before upstream
   no event fires. Otherwise extract `result.thread.id` and emit
   `CodexProxyBindingEvent{method, threadId, requestId}`.
 
-**Lazy parse** (commit `edaf02b`, history/28 rule):
+**Lazy parse** (commit `edaf02b`; WHY: docs/decisions/proxy-lazy-observation-cost-model.md):
 - Client side: `frameMayContainBindingMethod` does `indexOf` substring
   filter on the binding method names; binary frames return `false`
   (`proxy.ts:196-206`). Only survivors get `JSON.parse`d.
 - Server side: early bail `if (pendingBindings.size === 0) return`
   (`proxy.ts:173-175`).
-- The 4 KB size cutoff proposed in history/28:126-136 is **not**
-  implemented — Implementation-only refinement.
+- A frame-size cutoff was considered but is **not** implemented; lazy parse
+  relies solely on the substring filter
+  (docs/decisions/proxy-lazy-observation-cost-model.md, Alternatives) —
+  Implementation-only refinement.
 
 The runtime subscribes to proxy binding events via `runtime.onProxyBinding`
 (`state.ts:641-643`); the daemon-side handler `handleCodexProxyBinding`
@@ -616,26 +621,26 @@ Three writer sources (in order):
 
 The earlier internal TUI `/resume` wrong-thread risk was resolved for MVP by
 same-connection proxy observation and covered by implementation smoke
-(history/41, history/42). This depends on Codex continuing to send
+(provenance: logs/2026-06-19-mvp-history-archive.md §3.2, §1). This depends on Codex continuing to send
 `thread/resume` responses for TUI `/resume` through the same proxied
 connection.
 
 Event types: `agent_thread_id_rebound` (3 emission sites);
 `codex_binding_uncertain_observed` is declared in the union but has **no
-production emitter** (`src/core/events.ts:15`; planned in history/34:435
-but did not land — Implementation-only).
+production emitter** (`src/core/events.ts:15`; declared but never emitted —
+planned at Step 10 but not landed at MVP closeout, Implementation-only).
 
 ### 7.6 Injection (`turn/start`)
 
 File `src/adapters/codex/injector.ts`. Ack semantic (Round 2 D4.4,
-history/34:287-308): success = same-client JSON-RPC response received
+docs/decisions/codex-per-agent-app-server.md §4): success = same-client JSON-RPC response received
 with the runtime's `activeThreadId` still equal to the requested
 `threadId`. Does **not** wait for `turn/started` or `turn/completed`.
 
 - Pre-request guard: thread mismatch → `codex_binding_uncertain`
   (`injector.ts:26-32`).
 - Request body: `{threadId, input:[{type:"text", text:<envelope>}]}` —
-  Codex 0.132.0 schema requires array form (history/34:310-327).
+  Codex 0.132.0 schema requires array form (upstream constraint).
 - Post-ack guard: re-checks mismatch (`injector.ts:52-58`).
 - Error mapping: typed codes pass through; unknown errors → generic
   `adapter_inject_failed`.
@@ -657,11 +662,12 @@ Entry: `dispatchToPairPeers` (`state.ts:1246`).
        `"proxy_active_thread"`.
      - Empty → `codex_no_loaded_thread`. (The previous `loadedThreadIds.at(-1)`
        fallback was disabled in Step 15 D1 to prevent wrong-thread injection
-       in same-vendor codex pairs — history/45).
+       in same-vendor codex pairs — docs/decisions/pair-slot-generalization.md).
 2. **No loaded thread**: emit `codex_delivery_target_unavailable` +
    `codex_delivery_queued_no_loaded_thread`. Delivery **stays queued**
    and returns `deferred` with reason `target_binding_unconfirmed` (no
-   FSM transition; no retry in MVP — history/40:506-518).
+   FSM transition; no retry in MVP; Step 14 provenance:
+   `logs/2026-06-19-mvp-history-archive.md` §2.3).
 3. **Live target**: emit `codex_delivery_target_selected`, transition
    `queued → delivering`, call `injectReplyIntoCodexRuntime` with
    `formatCodexAioxChannelEnvelope(message, sourceAgent?.kind ?? "unknown")`:
@@ -676,8 +682,9 @@ Entry: `dispatchToPairPeers` (`state.ts:1246`).
 
 ### 7.8 Codex MCP Ingress (Codex → daemon)
 
-File `src/adapters/codex/mcp-server.ts`. History/39 records the Step 13
-ingress.
+File `src/adapters/codex/mcp-server.ts`. The Step 13 ingress provenance is
+preserved in `logs/2026-06-19-mvp-history-archive.md` §2.4; current behavior is
+owned here.
 
 **Tools**:
 - `aiox_send_message({content})` → daemon `receiveCodexMessage`.
@@ -687,9 +694,10 @@ ingress.
 `-c mcp_servers.aiox = { command=<process.execPath>, args=[<aioxBin>,
 "mcp-codex"], env={AIOX_CODEX_AGENT_NAME, AIOX_CODEX_AGENT_TOKEN,
 AIOX_SOCKET_PATH} }`. Injected into the **daemon-owned app-server**, not
-into the foreground TUI (Step 14 follow-up history/40:288-310 — earlier
-Step 13 injected into the TUI which in `--remote` mode is not the MCP
-host, so the aiox MCP never registered).
+into the foreground TUI. The Step 14 correction is preserved in
+`logs/2026-06-19-mvp-history-archive.md` §2.3: earlier Step 13 injected into
+the TUI, which in `--remote` mode is not the MCP host, so the aiox MCP never
+registered.
 
 **Token handshake**:
 1. Daemon pre-issues `codexChannelToken = randomUUID()` and stores it in
@@ -697,10 +705,12 @@ host, so the aiox MCP never registered).
 2. Token + agent name + socket path are env-passed through to the MCP
    child.
 3. MCP child does `mcp.connect()` first, then `registerCodexChannel`
-   (history/40:280-310 — protocol contract honored before failure paths).
+   (Step 14 correction provenance: `logs/2026-06-19-mvp-history-archive.md`
+   §2.3).
 4. Daemon consumes the pending token, stores `tokenHash =
    sha256(token)` in `codexChannelRuntimes` (full SHA-256, not 12-char
-   prefix — history/39:225-232), appends `codex_channel_registered`.
+   prefix — Step 13 ingress provenance: `logs/2026-06-19-mvp-history-archive.md`
+   §2.4), appends `codex_channel_registered`.
 5. Every subsequent tool call calls `authorizeCodexIngress` (state.ts:1711-1759)
    which checks token presence, agent registration, connection status, and
    token hash equality. Reasons: `codex_ingress_unauthorized` with `detail
@@ -709,7 +719,7 @@ host, so the aiox MCP never registered).
 
 ### 7.9 Lifecycle and Ownership
 
-**Ownership model** (Critical Issue 4-1 Option A, history/34:745-817, memory
+**Ownership model** (WHY: docs/decisions/codex-per-agent-app-server.md §5; memory
 `aiox-codex-attach-ownership`): `attachAgent` is the Codex runtime
 lifecycle owner. The daemon is the only owner of the app-server child; the
 daemon owns same-client JSON-RPC authority; the CLI is the sole parent of
@@ -727,8 +737,8 @@ the TUI child. Claude attach is DB-only.
 - `appServer.child.exit` → `recordRuntimeFailure({type:"app_server_process_exited"})`
 - `webSocket.onClose` → `recordRuntimeFailure({type:"ws_dropped"})`
 - `webSocket.onNotification` for `remoteControl/status/changed` →
-  stored as `latestDiagnosticNotification` (D7 authority disclaimer in
-  history/34:570-595 — diagnostic context only, not binding authority).
+  stored as `latestDiagnosticNotification` (D7 — diagnostic context only, not
+  binding authority; provenance logs/2026-06-19-mvp-history-archive.md §2.2).
 
 **Current gap (P2-3):** Runtime-failure callback flows up to
 `recordCodexRuntimeFailed` (`state.ts:884-924`), appending
@@ -798,20 +808,21 @@ sequenceDiagram
 
 1. `agents.findByName(sourceName)` → `source_agent_not_found`.
 2. `routes.list().filter(sourceId)` → empty → `no_active_routes` (β-1
-   atomic reject — history/20 §3:107-152). **No** message/delivery/event
+   atomic reject). **No** message/delivery/event
    rows are written on this path.
 3. Idempotency preflight: `deliveries.findByIdempotencyKey` per route. Hit
    → throw `sendMessageRollbackSentinel` carrying
-   `{reason:"delivery_idempotency_key_exists", existing}` (history/25 D4
-   moved preflight inside the tx).
+   `{reason:"delivery_idempotency_key_exists", existing}` (preflight runs
+   inside the tx; rollback via the sentinel pattern —
+   docs/decisions/pair-attach-atomicity-and-sentinel.md).
 4. `createMessageOrRollback` and `deliveries.createQueuedForRoutes` —
    `SQLITE_CONSTRAINT_UNIQUE` is caught and reclassified through the same
-   sentinel (history/25 D4 dual gate).
+   sentinel (dual gate).
 5. Append `message_created` event + one `delivery_queued` per delivery.
 6. Outer catch unwraps the sentinel via `isSendMessageRollback`; anything
    else rethrows.
 
-The CLI `send` surface (OA1) is **deferred Post-MVP** (history/20:171-183).
+The CLI `send` surface (OA1) is **deferred Post-MVP** (provenance: logs/2026-06-19-mvp-history-archive.md §4.1).
 Confirmed by absence of any `send` subcommand in `src/cli/parse.ts`.
 Messages enter only via the four daemon-internal RPCs
 (`receiveClaudeChannelMessage`, `receiveClaudeChannelReply`,
@@ -824,8 +835,9 @@ Messages enter only via the four daemon-internal RPCs
 2. Snapshot `api.status()` to look up target agents by id.
 3. **Sequential** `for (const delivery of fanout.deliveries)`. Sequential
    chosen for MVP because inject waits only for `turn/start` acceptance
-   (history/33 D4.5:192-194). Per-target ack-timeout absolute value is
-   deferred (history/33:499).
+   (WHY: docs/decisions/codex-per-agent-app-server.md §4 — inject waits only for
+   `turn/start` acceptance). Per-target ack-timeout absolute value is deferred
+   (Post-MVP).
 4. Per-target partial-failure isolation:
    - `target_agent_not_found` → delivery `failed`, continue.
    - Missing target adapter (`target_adapter_not_registered`) → returned as `deferred` and delivery remains `queued`, continue (`src/adapters/router.ts:87-97`, verified by `tests/unit/adapters/fake-integration.test.ts:437`).
@@ -834,7 +846,7 @@ Messages enter only via the four daemon-internal RPCs
 
 Note: routing inside `dispatchToPairPeers` does **not** go through this
 router — it directly calls the per-adapter inject path and manages delivery
-transitions inline. Production dispatch remains `dispatchToPairPeers`, with target-kind branching; adapter registry/router refactor is Deferred. The router lives parallel for now and is exercised mainly by adapter integration tests (history/24 Step 8).
+transitions inline. Production dispatch remains `dispatchToPairPeers`, with target-kind branching; adapter registry/router refactor is Deferred (D6 registry — docs/decisions/pair-slot-generalization.md). The router lives parallel for now and is exercised mainly by adapter integration tests (`tests/unit/adapters/fake-integration.test.ts`).
 
 ### 8.4 Delivery State Machine
 
@@ -872,15 +884,16 @@ Wired on both sides:
   (`src/daemon/state.ts:1132-1138`, MCP handler parameter mapping in
   `src/adapters/codex/mcp-server.ts:223` and `L243`).
 
-History/24 Step 8 D3 deferred the **fake-adapter test correlation** —
-actual cross-agent semantics were finalized in history/35 (Step 11) and
-history/39 (Step 13). The router/FSM do not consume `parentMessageId` —
+Cross-agent reply correlation (`parent_message_id`) semantics were finalized at
+Step 13; the provenance is preserved in
+`logs/2026-06-19-mvp-history-archive.md` §2.4.
+The router/FSM do not consume `parentMessageId` —
 it is purely correlative data on the persisted message and the
 `<aiox-channel message_id="...">` envelope.
 
 ### 8.6 Pair Reservation + Routes
 
-Pair attach is X-strict (history/22 §D1): `agents.attach` accepts no
+Pair attach is X-strict (WHY: docs/decisions/pair-attach-atomicity-and-sentinel.md): `agents.attach` accepts no
 `pairId`; pair association happens separately via `pairs.attachAgent`
 which enforces three checks in its own `db.transaction`: agent exists,
 kind matches, slot not occupied by another agent. Failures
@@ -890,8 +903,7 @@ of the outer `withTransaction` via `attachRollbackSentinel`.
 and `pair_full` are now the canonical reason codes — `src/core/pairs.ts:39,44`.)
 
 When the pair becomes `ready`, `createBidirectionalPairRoutes`
-(`state.ts:2099-2135`) creates bidirectional routes between `slotA` and `slotB`, supporting both same-vendor and mixed-vendor configurations dynamically. Each is skipped if already present (history/22 §D4 — bidirectional + R-1
-silent idempotent + no audit event).
+(`state.ts:2099-2135`) creates bidirectional routes between `slotA` and `slotB`, supporting both same-vendor and mixed-vendor configurations dynamically. Each is skipped if already present (bidirectional, silent idempotent, no audit event).
 
 Directed routes via `aiox connect <source> <target>...` go through
 `state.connect` (`state.ts:723-763`). Duplicates land in `alreadyExisted`.
@@ -920,8 +932,10 @@ Directed routes via `aiox connect <source> <target>...` go through
 | `aiox mcp-codex` *(hidden)* | no | `cli/parse.ts:347-352`; `cli/invocation.ts:295-299` |
 | `aiox _run-daemon --socket <path>` *(hidden)* | n/a | `cli/parse.ts:354-360`; `cli/invocation.ts:302-306` |
 
-Auto-start is wired only on `agent-attach` (`cli/invocation.ts:166`).
-PRD: "Auto-start daemon if needed" (history/40:27).
+Auto-start is wired only on `agent-attach` (`cli/invocation.ts:166`). The
+legacy PRD auto-start requirement is absorbed here as current architecture
+behavior; Step 14 provenance is preserved in
+`logs/2026-06-19-mvp-history-archive.md` §2.3.
 
 ### 9.2 Invocation Layer
 
@@ -934,7 +948,7 @@ PRD: "Auto-start daemon if needed" (history/40:27).
 - Parse errors use `CliParseError` (cli/parse.ts:71-81) with codes
   `aiox.<commander-code>`, `aiox.missingCommand`, `aiox.invalidName`,
   `aiox.missingTargets`. Commander's exit code is propagated as-is
-  (history/20 §1 Option A).
+  (provenance: logs/2026-06-19-mvp-history-archive.md §4.1).
 
 `agent-attach` exit code is the TUI child's exit code:
 `tuiExit.exitCode ?? (tuiExit.signal ? 1 : 0)` (cli/invocation.ts:198,
@@ -949,13 +963,13 @@ node, codex (`which codex`), claude (`which claude`), sqlite-native
 Exit code 1 if any check is `error`, else 0 (cli/invocation.ts:609-614).
 
 **`aiox status`** renders DAEMON → AGENTS → PAIRS → ROUTES → DELIVERIES
-in fixed order (`src/cli/format.ts:30-75`, history/36 D1). DELIVERIES line
+in fixed order (`src/cli/format.ts:30-75`; doctor/status output decisions in logs/2026-06-19-mvp-history-archive.md §4.2). DELIVERIES line
 always prints all five statuses (`messages=N queued=N delivering=N
-delivered=N completed=N failed=N`) — history/36 D2.
+delivered=N completed=N failed=N`).
 
 `StatusResponse.status()` (state.ts:1162-1174) aggregates via repository
-`COUNT(*)` (history/36 D2). Tmux check and pnpm check were intentionally
-removed post-history/36 (closeout commits).
+`COUNT(*)`. Tmux check and pnpm check were intentionally removed at closeout
+(logs/2026-06-19-mvp-history-archive.md §4.2).
 
 ---
 
@@ -991,7 +1005,7 @@ message, jsonRpcCode?}` (`contract.ts:37-51`).
 | Reason | When | Cite |
 |---|---|---|
 | `adapter_inject_failed` | Unrecognized error from `injectTurnStart` | `codex/injector.ts:81` |
-| `codex_binding_uncertain` | pre-request or post-ack thread mismatch (Round 4 D7 swap) | `codex/injector.ts:29, 55`; history/34:833 |
+| `codex_binding_uncertain` | pre-request or post-ack thread mismatch (Round 4 D7 swap) | `codex/injector.ts:29, 55` |
 | `codex_app_server_unavailable` | declared in union, **no emission found** | `contract.ts:21` — Implementation-only |
 | `codex_app_server_ws_connect_failed` | WS connect timeout/error | `codex/websocket.ts:322-327` |
 | `codex_app_server_ws_initialize_failed` | initialize JSON-RPC failed | `codex/websocket.ts:217-221` |
@@ -1076,14 +1090,14 @@ through `events.append`.
 **Declared but not emitted in current `src/`** (Implementation-only):
 `agent_registered`, `agent_reconnected`, `agent_disconnected`,
 `pair_created`, `pair_ready`, `route_connected`, `route_disconnected`,
-`codex_binding_uncertain_observed`, `late_reply`. Planned in history/34
-but did not land at MVP closeout.
+`codex_binding_uncertain_observed`, `late_reply`. Planned at Step 10 but did
+not land at MVP closeout.
 
 ---
 
 ## 12. Implementation Smoke Matrix
 
-History/42 records the closeout smoke. Run from build output because
+The closeout smoke (logs/2026-06-19-mvp-history-archive.md §1) ran from build output because
 `daemon start` forks a detached child — `pnpm tsx` makes the child run
 plain `node` against the TS entrypoint, which is not supported.
 
@@ -1109,8 +1123,9 @@ The validation suite maps into the following automated (Vitest) vs. manual verif
 | `/resume → /new` | next delivery in new visible thread | ✅ | Manual smoke test scenario (Relies on proxied JSON-RPC observation tested in `codex-proxy.test.ts`) |
 | `/resume → /fork` | next delivery in forked visible thread | ✅ | Manual smoke test scenario (Relies on proxied JSON-RPC observation tested in `codex-proxy.test.ts`) |
 
-Verification baseline (history/42:101-105): 48 files / 360 tests / typecheck
-/ build PASS. (Vitest test suite has grown to 52 test files / 483 tests as of W7 reset).
+Verification baseline (`logs/2026-06-19-mvp-history-archive.md` §1): 48 files
+/ 360 tests / typecheck / build PASS. (Vitest test suite has grown to 52 test
+files / 483 tests as of W7 reset).
 
 ---
 
@@ -1124,7 +1139,7 @@ The system architecture distinguishes between current, as-built gaps in the loca
 - **Stale Agent Transition Policy** — The `stale` state is defined in `AgentInstanceStatus` (`src/core/agents.ts:9`), but the daemon has no active logic to transition agents to this status.
 - **Unauthenticated Channel Ingress** — The Claude channel-server HTTP `/send` endpoint operates without authentication checks (P1-1).
 - **Experimental Websocket Transport** — Codex active-thread synchronization uses an experimental Websocket transport unsupported upstream (P2-12).
-- **Codex queued delivery retry/drain** — when `codex_no_loaded_thread` keeps a delivery queued, no later rebind/poll re-tries it (history/40:569).
+- **Codex queued delivery retry/drain** — when `codex_no_loaded_thread` keeps a delivery queued, no later rebind/poll re-tries it (Step 14 provenance: `logs/2026-06-19-mvp-history-archive.md` §2.3).
 - **Codex MCP queued-message pull/read/ack** — no surface to inspect or acknowledge stale queued deliveries from the Codex side.
 - **`claude_channel_disconnected` event** — Claude side has no equivalent to Codex's `codex_channel_disconnected`.
 
@@ -1146,11 +1161,14 @@ The system architecture distinguishes between current, as-built gaps in the loca
 - **Legacy MVP PRD**: absorbed into `docs/product/product.md`,
   `docs/specs/aiox-a2a.md` and this document during workspace reset; it is not
   primary authority for this document.
-- **Legacy execution checklist**: `plan/mvp-implementation-checklist.md` is a
-  migration input; old `plan/` paths are being migrated and are not primary
-  authority for this document.
-- **History (per-step rationale)**: `history/13` (rewrite) → `history/42`
-  (closeout). Index in `history/README.md`.
+- **Legacy execution checklist**:
+  `logs/2026-06-20-mvp-plan-carryover-archive.md` preserves the useful digest
+  from the old MVP checklist; legacy `plan/` paths are not primary authority for
+  this document.
+- **Migrated history rationale**: decision-worthy rationale lives in
+  `docs/decisions/`; MVP implementation and QA trace provenance lives in
+  `logs/2026-06-19-mvp-history-archive.md`. Remaining `history/` sources are
+  workspace-reset migration inputs, not architecture authority.
 - **Pre-validation**: `prd/pre-validation/*` is W5 evidence candidate material,
   not current architecture authority.
 - **Learning records**: `docs/aiox/*.md` (proxy cost model, app-server vs

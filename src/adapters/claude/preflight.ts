@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
-// Spike: Claude channel-as-plugin preflight (R3 strategy D, history/50 item 1d)
+// Spike: Claude channel-as-plugin preflight (R3 strategy D; rationale in
+// docs/decisions/claude-channel-plugin-default.md)
 //
 // Runs BEFORE spawning `claude` so a missing/misconfigured channel plugin
 // surfaces as a clear non-zero CLI error rather than the documented
@@ -7,13 +8,13 @@
 // function: all I/O (plugin list, settings, fs, env) is injected so the
 // failure contract is testable without a live Claude install.
 //
-// SCHEMA (history/51): confirmed against real `claude plugin list --json`.
+// SCHEMA: confirmed against real `claude plugin list --json`.
 // Each entry uses a single `id` = "<name>@<marketplace>" (NOT separate fields),
 // carries `installPath` (the installed cache dir reported by `plugin list` — NOT
-// always the runtime ${CLAUDE_PLUGIN_ROOT}; see the field comment + history/52 E),
+// always the runtime ${CLAUDE_PLUGIN_ROOT}; see the field comment),
 // and `projectPath` on project/local-scope entries.
 //
-// EFFECTIVENESS (history/52, MEASURED — supersedes the earlier projectPath
+// EFFECTIVENESS (measured — supersedes the earlier projectPath
 // re-derivation): `list` reports ALL scopes/projects flat, BUT each entry's
 // `enabled` field is NOT a raw per-scope flag — it is the **cwd-resolved
 // effective** value, computed relative to the directory where `claude plugin
@@ -35,15 +36,15 @@ export interface ClaudePluginListEntry {
   /** "<name>@<marketplace>", e.g. "aiox-channel-ingress@aiox" */
   id: string;
   /**
-   * cwd-RESOLVED effective state (history/52), NOT the raw per-scope flag.
+   * cwd-RESOLVED effective state, NOT the raw per-scope flag.
    * Reflects scope precedence for the directory where `claude plugin list
    * --json` was run; identical across all entries of the same id.
    */
   enabled: boolean;
   /**
    * Known scopes are listed in ClaudePluginScope, but `plugin list --json` could
-   * emit a future/unknown scope. Kept honestly string-widened (Codex review,
-   * history/53) — effectiveness comes from `enabled`, not scope, and scope is
+   * emit a future/unknown scope. Kept honestly string-widened (Codex review) —
+   * effectiveness comes from `enabled`, not scope, and scope is
    * only used for diagnostic messages, so an unknown value must not break here.
    */
   scope: ClaudePluginScope | (string & {});
@@ -51,7 +52,7 @@ export interface ClaudePluginListEntry {
   /**
    * installed plugin cache dir as reported by `plugin list --json`. NOTE: this
    * is NOT always the runtime ${CLAUDE_PLUGIN_ROOT} — directory-source (dev)
-   * marketplaces resolve it to the source dir instead (history/52 E). Used here
+   * marketplaces resolve it to the source dir instead. Used here
    * only as a best-effort location for the bundled channel server.
    */
   installPath?: string;
@@ -84,7 +85,7 @@ export interface PreflightClaudePluginInput {
   /**
    * parsed `claude plugin list --json` (ALL scopes/projects, flat). CONTRACT:
    * MUST be produced by running the command in the user's cwd, so each entry's
-   * `enabled` is resolved for THIS directory (history/52).
+   * `enabled` is resolved for THIS directory.
    */
   plugins: ClaudePluginListEntry[];
   /** bundled channel server filename inside the installed plugin root (default channel-server.js) */
@@ -94,7 +95,7 @@ export interface PreflightClaudePluginInput {
    * the effective entry's `installPath` (not the marketplace source), resolving
    * Codex review finding 3: `claude plugin install` copies source → cache, so a
    * source-path check could false-pass while the installed copy is stale/missing.
-   * NOTE (history/52 E): for directory-source (dev) marketplaces the runtime
+   * NOTE: for directory-source (dev) marketplaces the runtime
    * ${CLAUDE_PLUGIN_ROOT} can resolve to the source dir, not installPath — so
    * this stays a best-effort check; release packaging re-measures generality.
    */
@@ -165,7 +166,7 @@ export function preflightClaudePlugin(
   }
 
   // 4. effective in THIS cwd. `enabled` is already the cwd-resolved value
-  // (history/52), so we trust it directly instead of re-deriving from
+  // so we trust it directly instead of re-deriving from
   // scope/projectPath. The caller's CONTRACT (list run in the user's cwd)
   // makes this correct, and because Claude resolves scope precedence before
   // stamping `enabled`, a project/local *disabled* override of a user-scope
@@ -184,10 +185,10 @@ export function preflightClaudePlugin(
   }
 
   // 5. resolve the installed bundle path. Normally all effective entries of an
-  // id share one installPath (history/52 measured), but version/scope skew (e.g.
+  // id share one installPath, but version/scope skew (e.g.
   // a stale user-scope copy + a newer project-scope copy) could report divergent
   // paths; picking effective[0] blindly would then validate the wrong artifact
-  // (Codex review, history/52). Guard: if effective entries disagree on
+  // (Codex review). Guard: if effective entries disagree on
   // installPath, stop with a clear skew error rather than silently choosing one.
   const serverFile = input.channelServerFile ?? DEFAULT_CHANNEL_SERVER_FILE;
   const installPaths = [

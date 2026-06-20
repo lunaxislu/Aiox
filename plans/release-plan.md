@@ -6,7 +6,8 @@
 > ⚠️ 상기 트리거: "build하고 npm 배포" 이야기가 나오면 이 파일을 먼저 연다. 사용자가 명시 요청 —
 > 배포 시점에 다시 상기시킬 것. (2026-05-28, R3 작업 중 발견)
 
-연관: `package.json`, `history/49-claude-mcp-config-injection-feasibility.history.md`, `plan/qa-tracker.md` R3.
+연관: `package.json`, `docs/decisions/claude-channel-plugin-default.md`,
+`logs/2026-06-20-mvp-plan-carryover-archive.md` R3.
 
 ---
 

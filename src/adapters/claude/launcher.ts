@@ -15,7 +15,7 @@ export function buildLaunchClaudeChannelArgs(channelName: string): string[] {
 // resolves the plugin's own bundled `.mcp.json`, so it does NOT emit the
 // `no MCP server configured with that name` warning that `server:` does, and
 // it is the prerequisite shape for a future `--channels` allowlist. See
-// history/50 §Decision.
+// docs/decisions/claude-channel-plugin-default.md.
 export function buildLaunchClaudePluginArgs(
   pluginName: string,
   marketplaceName: string,
@@ -53,7 +53,7 @@ export interface ResolveInlineChannelServerDeps {
   tsxCommand?: string;
 }
 
-// R3 step 3b delta (history/56): the inline (A) strategy is an EXPLICIT dev/debug
+// R3 step 3b delta: the inline (A) strategy is an EXPLICIT dev/debug
 // path, so its bundled channel server must run under whichever layout `aiox` is
 // itself running from. Claude spawns this MCP server from the `--mcp-config`
 // command/args, so a fixed `node channel-server.js` breaks under `pnpm dev`
@@ -173,7 +173,7 @@ export interface LaunchClaudePluginChannelOptions {
   daemonSocketPath: string;
   /**
    * cwd for the spawned `claude`. MUST match the cwd the preflight read its
-   * plugin inventory from (history/52): plugin scope is resolved per-cwd, so a
+   * plugin inventory from: plugin scope is resolved per-cwd, so a
    * mismatch could pass preflight in one dir yet resolve a different (disabled)
    * scope at launch — re-opening the silent-drop the preflight exists to close.
    * Omitted → spawn inherits the parent process cwd.
@@ -185,7 +185,7 @@ export interface LaunchClaudePluginChannelOptions {
 // Activate the channel plugin and pass identity through the spawned claude's
 // environment. The plugin's static `.mcp.json` carries only `${VAR}` +
 // `${CLAUDE_PLUGIN_ROOT}` placeholders, which Claude expands from this env
-// (history/50 facts 2/4) — no per-launch `--mcp-config` JSON, no warning.
+// no per-launch `--mcp-config` JSON, no warning.
 export function launchClaudePluginChannel(
   options: LaunchClaudePluginChannelOptions,
 ): ChildProcess {

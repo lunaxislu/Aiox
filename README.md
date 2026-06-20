@@ -71,7 +71,8 @@ state. When a file-backed DB lands it rides the same profile mechanism
 (`~/.aiox/<profile>/state.db`).
 
 Supported transport is a Unix domain socket (macOS / Linux). Windows support
-(named pipe / TCP) is deferred — see `history/57`.
+(named pipe / TCP) is deferred — see
+`docs/decisions/runtime-profile-namespace-isolation.md`.
 
 ### External agent config
 

@@ -20,7 +20,7 @@ import {
 // read, marketplace add, plugin install, fs existence) is injected so the
 // command flow is unit-testable without a live `claude`.
 //
-// Provisioning policy (history/52):
+// Provisioning policy:
 //   - marketplace add only if the marketplace isn't registered yet (idempotent).
 //   - `claude plugin install --scope <scope>` writes raw enabledPlugins:{ref:true}
 //     at that scope, so install also (re-)enables; no separate enable step.
