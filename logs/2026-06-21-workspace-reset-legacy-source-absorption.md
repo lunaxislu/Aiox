@@ -31,8 +31,8 @@ status: open
 | `prd/post-mvp/archive/gemini-opinion.md` | 설계 초기 의견 | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
 | `prd/pre-validation/claude-codex-pre-validation.md` | MVP arch 사전검증 spike (PASS, 2026-05-14) | architecture (evidence) | W8 | ? | TBD | archive→delete? |
 | `prd/pre-validation/sqlite-restart-recovery-pre-validation.md` | SQLite restart recovery 사전검증 (PASS, 2026-05-16) | architecture (evidence) | W8 | ? | TBD | archive→delete? |
-| `plan/mvp-implementation-checklist.md` | MVP TDD 11단계 체크리스트 (closed) | plans (execution trace) | W8 / W10 | ? | TBD | archive→delete? (history/42 중복확인) |
-| `plan/qa-tracker.md` | MVP QA 상태판 (QA-001~003) | plans (execution trace) | W8 / W10 | ? | TBD | archive→delete? |
+| `plan/mvp-implementation-checklist.md` | MVP TDD 11단계 체크리스트 (closed) | logs archive + architecture provenance | W5 완료; W8/W10는 docs/aiox 잔여 참조만 | Yes → `logs/2026-06-20-mvp-plan-carryover-archive.md` | archive self-contained; live owner refs repointed; docs/aiox refs = deletion-gate dependency | archive→delete (docs/aiox 흡수 후 physical gate) |
+| `plan/qa-tracker.md` | MVP QA 상태판 (QA-001~003) | logs archive + decision provenance | W5 완료; W8/W10는 docs/aiox 잔여 참조만 | Yes → `logs/2026-06-20-mvp-plan-carryover-archive.md` | archive self-contained; live owner/plans refs repointed; docs/aiox refs = deletion-gate dependency | archive→delete (docs/aiox 흡수 후 physical gate) |
 | `docs/aiox/agent-runtime-container-model.md` | runtime container 학습기록 (권위 history/31) | architecture | W8 / W10 | No | TBD | absorb→delete? |
 | `docs/aiox/claude-channel-registration-and-trust-model.md` | channel 등록+trust 내부구조 | architecture | W8 | No | TBD | absorb→delete? |
 | `docs/aiox/codex-thread-focus-and-loaded-list.md` | thread focus 학습기록 | architecture | W8 / W10 | No | TBD | absorb→delete? |
@@ -150,5 +150,18 @@ codex(구조/규칙 정합성 축)와 gemini(disk 검증 4건) 독립 리뷰를 
 | -------------- | ------ | ------ | ------------ |
 | `docs/decisions/` (신규 ~5) | decision 승격 5건 | gemini가 부재/미흡 확인 | 승격 전 disk 재확인(W6 기준) |
 
-**남은 판단:** archive 5개·pre-validation·checklist의 최종 `archive vs absorb`는 W8~W10 흡수 시
+**남은 판단:** archive 5개·pre-validation의 최종 `archive vs absorb`는 W8~W10 흡수 시
 Archive Gate 개별 적용으로 확정한다. disposition은 여전히 candidate다.
+
+## 2026-06-21 · plan/ carryover archive 반영 (source map 정정)
+
+codex 확인 + disk 검증: `plan/mvp-implementation-checklist.md`·`plan/qa-tracker.md`는 W5 B5에서
+이미 `logs/2026-06-20-mvp-plan-carryover-archive.md`로 archive digest가 생성됐고(successor 선언
+carryover-archive:13-17), 원본은 delete candidate로 판정됐다(W5 log:1017-1021). live owner inbound
+(`local-agent-runtime.md` / `runtime-profile-namespace-isolation.md` / `envelope-metadata.plan.md` /
+`release-plan.md`)는 repoint 완료. 남은 blocker는 `docs/aiox` 잔여 참조뿐.
+
+→ source map 2행 정정: archive 필요 `Yes (carryover-archive)`, self-suffic `archive self-contained +
+owner repointed`, disposition `archive→delete (docs/aiox 흡수 후 physical gate)`. **W8/W10은 이 두
+원본의 핵심 팩트를 재흡수할 필요 없고**, docs/aiox 잔여 참조만 삭제 게이트에서 처리한다. 이로써
+이전 `history/42 중복확인` 메모는 해소된다(successor는 history/42가 아니라 carryover-archive).
