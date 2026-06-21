@@ -31,13 +31,13 @@ status: open
   - [x] W7-1 Step 15 pair/dispatch/stale drift 반영 여부 확인 및 정리
   - [x] W7-2 history/src/tests/spike/spikes/legacy evidence를 확인하고 Evidence Ledger를 남긴다
   - [x] W7-3 작업 중 spec/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
-- [>] W8 Complete child package log `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`, then consume result and resume W9 — A2A spec authority assimilation. primary entry point `docs/specs/aiox-a2a.md`. W5 history migration의 source map·disposition 제약·target self-sufficiency·delete guard와 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` spec gap을 입력으로 받고, legacy 원본 disposition은 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map에 append한다
+- [x] W8 Complete child package log `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`, then consume result and resume W9 — A2A spec authority assimilation. primary entry point `docs/specs/aiox-a2a.md`. W5 history migration의 source map·disposition 제약·target self-sufficiency·delete guard와 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` spec gap을 입력으로 받고, legacy 원본 disposition은 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map에 append한다. **완료(2026-06-21): W8 child W1-W8 PASS, §4 lifecycle decision 승격, source map W8 2 row 수용. W9 closeout에서 parent 소비안과 Legacy/Historical Source Handoff를 draft한다.**
   - [x] W8-0 agent 의견 수렴 완료 (claude 종합 + @user + @codex). 확정: A0/A1 분리, Falsifiability gate(Current Contract=src+test cite 필수), Ledger-먼저-본문-나중 6-phase, repo 정확한 상태 라벨, §13 선별 decision 승격. 결과는 child package log 첫 블록에 기록
   - [x] W8-1 Transferred: contract/status/cross-reference 정합성 → child package log W2~W7 (batch A0/A1/B/C + cite spot-check·본문 반영)
   - [x] W8-2 Transferred: history/src/tests/architecture/roadmap/release evidence + Evidence Ledger → child package log W2~W6
   - [x] W8-3 Transferred: architecture/roadmap/release-plan/decision cross-owner 변경 → child package log W6 Sweep + Cross-Owner Effects/Decision Candidates
   - [x] W8-4 Transferred: workflow retrospective → child package log W9 Closeout
-- [ ] W9 release/roadmap authority assimilation package를 수행한다 — primary entry point는 `docs/product/roadmap.md`와 `plans/release-plan.md`. W9 task brief/package 진입 시 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map을 required-read로 두고, 특히 `prd/post-mvp/aiox-a2a-spec.md`, `plans/post-mvp.plan.md`, `plans/post-mvp/*.plan.md` rows를 roadmap/release 흡수 입력으로 확인한다. W7 wording Open Issue 4(`deliveryId` namespace)·5(correlated reply authorization)는 `docs/product/roadmap.md` G1-A/B/D gate에서 확인하고, 현재 G6 packaging checklist 성격인 `plans/release-plan.md`에는 중복 반영하지 않는다. 흡수 후 해당 rows의 disposition·self-sufficiency를 같은 source map에 append/update한다.
+- [>] W9 release/roadmap authority assimilation package를 수행한다 — primary entry point는 `docs/product/roadmap.md`와 `plans/release-plan.md`. W9 task brief/package 진입 시 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map을 required-read로 두고, 특히 `prd/post-mvp/aiox-a2a-spec.md`, `plans/post-mvp.plan.md`, `plans/post-mvp/*.plan.md` rows를 roadmap/release 흡수 입력으로 확인한다. W7 wording Open Issue 4(`deliveryId` namespace)·5(correlated reply authorization)는 `docs/product/roadmap.md` G1-A/B/D gate에서 확인하고, 현재 G6 packaging checklist 성격인 `plans/release-plan.md`에는 중복 반영하지 않는다. 흡수 후 해당 rows의 disposition·self-sufficiency를 같은 source map에 append/update한다. **W9 closeout에는 `history/58` 부분 승격/잔여, `prd/post-mvp/archive/*`, `docs/aiox/*`, `prd/pre-validation/*`, `plans/post-mvp*`, `history/59`를 W9/W10/물리삭제게이트로 나누는 Legacy/Historical Source Handoff를 포함한다.**
   - [ ] W9-1 사용자의 배포 우선순위 기준으로 roadmap/release-plan 정합성을 갱신한다
   - [ ] W9-2 작업 중 spec/architecture/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
   - [ ] W9-2a 생성할 W9 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
@@ -626,3 +626,28 @@ W8-0 agent 의견 수렴(claude 종합 + @user + @codex)을 마치고 W8 package
 
 **현재 next pointer:** W8 — child package log
 `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`의 W1(batch task brief 작성).
+
+## 2026-06-21 · W8 package 소비 확정 — child closeout PASS, W9로 전이
+
+child package log `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`의 W1~W9가
+완료됐다. W9 closeout draft(Codex 저작) → Claude checker review 전건 PASS, child status
+`decided` 전이. parent W8 `[x]`는 이 review PASS로 정당화된다(이전 선반영을 confirming).
+
+**W8에서 확정된 결과 (parent 소비):**
+
+- spec 본문: W7 cite review로 `docs/specs/aiox-a2a.md` §3.1·§4.2·§4.5·§5·§6·§7·§8·§9·intro
+  §10-§13 wording PASS(W7 PASS분은 commit `9434578`). §4.3는 target-framed라 caveat 불필요.
+- decision: `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md` 신규 확정
+  (§4 lifecycle/envelope/correlation WHY). correlated reply 인가·public `deliveryId` namespace는
+  Open 유지.
+- source map: `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` canonical 2 row 갱신
+  (`prd/post-mvp/aiox-a2a-spec.md`, `docs/aiox/mcp-scope-and-daemon-namespace.md`).
+- W10 입력: child closeout에 spec split map과 Legacy/Historical Source Handoff(`history/58`·
+  archive·`docs/aiox/*`·`plans/post-mvp*`·`history/59`의 W9/W10/물리삭제게이트 행선지) draft됨.
+- portable: W8 closeout 회고 F46~F50을 `logs/2026-06-18-package-workflow-portable-pattern.md`에
+  수집(W11 라인). 그 로그 W1-2 완료 판단은 별도.
+
+**현재 next pointer:** W9 — release/roadmap authority assimilation package. primary entry =
+`docs/product/roadmap.md`·`plans/release-plan.md`. child closeout의 Legacy/Historical Source
+Handoff와 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map을
+required-read로 소비하고, `plans/post-mvp*` rows의 disposition/self-sufficiency를 append/update한다.

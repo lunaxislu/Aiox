@@ -23,7 +23,7 @@ status: open
 | file | 주장 성격 | 흡수 owner | 소비 package | archive 필요? | self-sufficiency 검증 | disposition |
 | ---- | -------- | --------- | ----------- | ------------ | -------------------- | ----------- |
 | `prd/mvp/aiox-mvp-spec.md` | MVP product scope+UX+non-goal+원칙 | spec + architecture | W8 | No | TBD | absorb→delete? |
-| `prd/post-mvp/aiox-a2a-spec.md` | product·protocol·arch·roadmap 통합 monolith (분리 예고 self-declared) | spec + architecture + roadmap + decision | W8 + W9 + W10 | §12만 ? | TBD | absorb→delete (W10 split 후) |
+| `prd/post-mvp/aiox-a2a-spec.md` | product·protocol·arch·roadmap 통합 monolith (분리 예고 self-declared) | spec + architecture + roadmap + decision | W8 + W9 + W10 | §12만 ? | W8: §2-§9 protocol contract self-contained (W7 PASS); 전체 파일 삭제 self-suffic는 W9 roadmap/release + W10 split 후 판정 | absorb→delete (W9/W10 후) |
 | `prd/post-mvp/archive/claude-codex-validation.md` | 설계 cross-validation transcript | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
 | `prd/post-mvp/archive/claude-opinion.md` | 설계 초기 의견 | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
 | `prd/post-mvp/archive/codex-claude-validation.md` | cross-validation transcript | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
@@ -37,7 +37,7 @@ status: open
 | `docs/aiox/claude-channel-registration-and-trust-model.md` | channel 등록+trust 내부구조 | architecture | W8 | No | TBD | absorb→delete? |
 | `docs/aiox/codex-thread-focus-and-loaded-list.md` | thread focus 학습기록 | architecture | W8 / W10 | No | TBD | absorb→delete? |
 | `docs/aiox/industry-precedents-and-observability-models.md` | 외부 벤치마크+Opaque Worker 설계레슨 | architecture + decision? | W8 / W10 | ? | TBD | absorb→delete? (decision 발굴) |
-| `docs/aiox/mcp-scope-and-daemon-namespace.md` | MCP scope 2분류 | spec + architecture | W8 | No | TBD | absorb→delete? |
+| `docs/aiox/mcp-scope-and-daemon-namespace.md` | MCP scope 2분류 | spec + architecture | W8 | No | W8: runtime MCP/channel projection + profile/socket namespace contract가 spec §3.1/§5/§7에 흡수(W7 PASS); 헤더의 `docs/architecture/mvp-architecture.md` rename-drift는 W10 cleanup | absorb→delete (W10 stale ref cleanup 후) |
 | `docs/aiox/mvp-architecture.md` | **stale** 구버전 as-built 스냅샷 (고정 pair 통신; `local-agent-runtime.md`로 승격됨) | architecture (stale) | W8 | No | TBD | delete-only? (stale; 고유내용 있으면 absorb) ⚠️rename drift — `docs/architecture/mvp-architecture.md` 부재 |
 | `docs/aiox/observation-asymmetry-and-d7-pivot.md` | D7 위반+pivot 경위 | architecture + decision? | W8 / W10 | ? | TBD | archive→delete? (decision 검토) |
 | `docs/aiox/pair-attach-kind-mismatch.md` | pair attach 버그 학습 (권위 history/16) | architecture | W8 / W10 | No | TBD | absorb→delete? |
@@ -165,3 +165,32 @@ carryover-archive:13-17), 원본은 delete candidate로 판정됐다(W5 log:1017
 owner repointed`, disposition `archive→delete (docs/aiox 흡수 후 physical gate)`. **W8/W10은 이 두
 원본의 핵심 팩트를 재흡수할 필요 없고**, docs/aiox 잔여 참조만 삭제 게이트에서 처리한다. 이로써
 이전 `history/42 중복확인` 메모는 해소된다(successor는 history/42가 아니라 carryover-archive).
+
+## 2026-06-21 · W8 Codex source-map update draft — Claude checker review 대기
+
+이 블록은 W8 A2A spec authority package의 **Codex draft**다. 아래 disposition/self-sufficiency는
+아직 source map 확정 표를 갱신한 값이 아니다. Claude checker가 legacy source, successor owner
+문서, W7/W9/W10 handoff와 대조해 PASS한 row만 상단 source map 표에 수용한다.
+
+### W8 draft update candidates
+
+| file | 주장 성격 | W8 draft owner 흡수 판정 | archive 필요? | self-sufficiency 검증 draft | disposition draft |
+| ---- | -------- | ------------------------ | ------------ | --------------------------- | ----------------- |
+| `prd/post-mvp/aiox-a2a-spec.md` | product·protocol·architecture·roadmap·decision monolith | W8은 §2-§9 protocol contract와 §0/§1 중 protocol/runtime-config에 필요한 current/target claim을 `docs/specs/aiox-a2a.md`에 흡수했다. W7 PASS로 §3.1, §4.2, §4.5, §5, §6, §7, §8, §9, intro §10-§13 owner-boundary가 review 통과했다. §11/§12 roadmap/release pressure와 §13의 product/architecture rationale은 W9/W10/decision handoff로 남는다. | §12 dated audit 중 보존가치 있는 trace만 W9/W10에서 재판정 | W8 spec successor는 §2-§9 protocol contract를 self-contained하게 읽을 수 있다. 단 전체 파일 삭제 self-sufficiency는 W9 roadmap/release 흡수와 W10 architecture/decision split 후에만 판정 가능. | `absorb→delete (W9/W10 후)` 유지; W8 protocol portion만 PASS 후보 |
+| `history/58-post-mvp-a2a-architecture-decisions.history.md` | post-MVP A2A architecture/product lock history | source map 경계상 `history/`는 W5 history migration owner라 표 대상은 아니다. W8은 §4 lifecycle WHY decision의 근거로만 사용했고, 신규 decision draft `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`에 source로 기록했다. | source map 대상 아님 | history 원본 처리/삭제는 W5 history migration 규칙을 따른다. W8은 중복 source-map row를 만들지 않는다. | source map row 추가 없음 |
+| `prd/post-mvp/archive/claude-codex-validation.md` | archived cross-validation transcript | W8 §4 lifecycle decision draft의 보조 WHY source로만 사용했다. fan-out, reply routing, delivery-vs-message, vendor-neutral envelope, daemon authority rationale는 decision draft에 증류됐다. | No, W8 §4 decision 범위에 한정하면 archive digest 불필요 | W8 decision draft + `docs/specs/aiox-a2a.md` §4 + `history/58`로 §4 lifecycle WHY는 self-contained. 다만 archive 파일 전체의 Docker/compose/adapter/capability 브레인스토밍은 W9/W10 대조 전 삭제 확정 불가. | row는 `absorb→delete? (보류)` 유지; W8 §4 decision portion만 흡수 후보 |
+| `prd/post-mvp/archive/codex-claude-validation.md` | archived cross-validation transcript / product-definition refinement | W8 §4 decision에는 직접 흡수하지 않았다. product definition·remote expansion·compose sequencing 성격이 커서 W9/W10 대상이다. | ? | W8만으로 self-contained 판정 불가. `docs/product/product.md`, `docs/product/roadmap.md`, architecture/decision split과 대조 필요. | `absorb→delete? (보류)` 유지 |
+| `prd/post-mvp/archive/claude-opinion.md` | 설계 초기 의견 | W8에서 직접 흡수 완료로 판정하지 않는다. W8 source로는 검증하지 않았고, source map 기존 보류 판단을 유지한다. | ? | self-sufficiency 미검증. W9/W10에서 Docker/compose/capability/adapter 브레인스토밍 잔여를 대조해야 한다. | `absorb→delete? (보류)` 유지 |
+| `prd/post-mvp/archive/codex-opinion.md` | 설계 초기 의견 | W8에서 직접 흡수 완료로 판정하지 않는다. capability tier와 adapter model 일부는 spec §5/§7에 반영됐지만, archive 파일 전체 self-sufficiency는 미검증이다. | ? | self-sufficiency 미검증. W10 architecture/decision 후보 대조 필요. | `absorb→delete? (보류)` 유지 |
+| `prd/post-mvp/archive/gemini-opinion.md` | 설계 초기 의견 | W8에서 직접 흡수 완료로 판정하지 않는다. | ? | self-sufficiency 미검증. W9/W10 대조 필요. | `absorb→delete? (보류)` 유지 |
+| `prd/mvp/aiox-mvp-spec.md` | MVP product scope+UX+non-goal+원칙 | W8은 directed route, fan-out, daemon authority, namespace 같은 A2A protocol과 겹치는 claim만 현재 spec/architecture와 대조했다. MVP pair capacity 등 일부는 현재 code와 decision에 의해 stale 또는 superseded다. | No로 보이나 W8 단독 확정 금지 | W8 protocol contract만으로 MVP PRD 전체 삭제 self-sufficiency는 부족하다. `docs/architecture/local-agent-runtime.md`, carryover archive, W5/W10과 대조해야 한다. | `absorb→delete?` 유지; W8 단독 PASS 금지 |
+| `docs/aiox/mcp-scope-and-daemon-namespace.md` | MCP scope 2분류 + daemon namespace | W8은 agent-level runtime MCP/channel, launch-scoped projection, global config non-mutation, socket namespace/`AIOX_SOCKET_PATH`, optional control MCP boundary를 `docs/specs/aiox-a2a.md` §3.1, §5, §7에 부분 흡수했다. Current code cite는 W7 PASS 범위에 포함됐다. | No | W8 spec successor는 runtime MCP/channel projection과 profile/socket namespace contract를 self-contained하게 읽을 수 있다. 다만 문서 헤더의 `docs/architecture/mvp-architecture.md`는 rename drift라 W10에서 inbound/stale reference cleanup 필요. | `absorb→delete` 후보; W10 stale reference cleanup 후 physical gate |
+| `docs/aiox/mvp-architecture.md` | stale 구버전 as-built snapshot | W8은 이 파일을 protocol source로 확정 흡수하지 않았다. 현재 architecture authority는 `docs/architecture/local-agent-runtime.md`이고, source map 기존 rename-drift/stale 판단을 유지한다. | No | W8 기준 self-sufficiency 판정 불가. W10이 stale 고유내용 유무를 확인해야 한다. | `delete-only?` 유지; W10 확인 필요 |
+| `prd/pre-validation/claude-codex-pre-validation.md` | MVP architecture pre-validation spike | W8 spec current contract의 직접 source로 확정하지 않았다. | ? | W8로 self-sufficiency 판정 불가. Archive Gate는 W3/W10에서 개별 적용. | `archive→delete?` 유지 |
+| `prd/pre-validation/sqlite-restart-recovery-pre-validation.md` | SQLite restart recovery pre-validation spike | W8은 DB path scaffold/current `:memory:` gap을 code cite로 검증했지만, 이 pre-validation 원문을 successor로 흡수했다고 판정하지 않는다. | ? | W8 spec §3.1/§4.5/§7.2는 current DB gap을 self-contained하게 설명한다. restart-recovery spike trace 보존가치는 Archive Gate에서 별도 판정. | `archive→delete?` 유지 |
+
+### W8 draft notes
+
+- W8에서 확정적으로 말할 수 있는 것은 `docs/specs/aiox-a2a.md`의 protocol contract 흡수 범위다. roadmap/release/architecture split까지 포함한 legacy file 전체 disposition은 W9/W10 전에는 확정하지 않는다.
+- 새 decision draft: `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`. 이 파일은 §4 lifecycle WHY만 소유하고, correlated reply authorization과 public `deliveryId` namespace는 Open으로 남긴다.
+- `history/`는 W5 owner라 source map row를 만들지 않는다. W8 decision Sources에만 기록했다.

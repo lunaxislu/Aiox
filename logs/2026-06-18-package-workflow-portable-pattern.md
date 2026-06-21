@@ -720,3 +720,62 @@ W8/W10에 source map 사용을 언급한다. 그러나 W9 Work Item은 W10보다
   gate), F39(shared source map)를 연결해, package closeout checklist에 **shared artifact
   consumer read binding** 항목을 추가한다. "최신 블록만 읽어도 다음 package가 놓치지 않는가"를
   closeout 질문으로 삼는다.
+
+## 2026-06-21 · W8 closeout draft 회고 — F46~F50 추가
+
+`logs/W8-closeout-task.md`에 따라 W8(A2A spec authority assimilation) closeout draft를 저작하며
+확인한 workflow 후보를 기록한다. 이 기록은 draft 수집이다. W8 child closeout이 Claude checker
+review PASS되기 전까지 W1-2는 완료 처리하지 않는다.
+
+**F46 — Falsifiability gate는 "current" 흡수 차단 장치로 실제 효과가 있었다.**
+- 맥락: W8은 legacy target spec, current spec, implementation gap, bug fix, improvement, stale
+  rationale가 섞인 package였다. `Current Contract`를 `src/file:line`(+가능하면 test cite) 없이는
+  금지하고, 근거가 없으면 Target/Open/Implementation Gap으로 낮추는 규칙이 §4.5 persistence,
+  §7 trust boundary, §8 federation, §9 Codex ingress 부분에서 current overclaim을 막았다.
+- 분류: **Portable candidate**.
+- 패턴: authority assimilation에서 현재성 라벨을 붙이는 순간을 별도 gate로 취급한다. 현재성
+  claim은 "source가 그렇게 말한다"가 아니라 현재 source of truth로 반증 가능해야 한다.
+- Repo-specific note: 이 repo의 label 이름은 `Current Contract`/`Implementation Gap` 등이다. 다른
+  repo에서는 artifact별 label vocabulary로 치환한다.
+
+**F47 — Ledger-first / artifact-later는 효과적이지만, apply 단계의 저작자와 reviewer 경계까지 기록해야 한다.**
+- 맥락: W8 batch는 Evidence Ledger-only로 시작했고, 본문 반영은 W7 cite spot-check 뒤에만
+  수용했다. 이 방식은 잘못된 추론이 `docs/specs/aiox-a2a.md`에 바로 박히는 위험을 줄였다.
+  다만 실제 흐름에는 Codex 저작 draft, Claude checker review, 일부 parent checkbox 선반영처럼
+  단계 사이의 경계가 복잡했다.
+- 분류: **Portable candidate**.
+- 패턴: 2단계 게이트는 "Ledger 작성"과 "artifact patch"만 분리하면 부족하다. closeout에는
+  `producer`, `apply author`, `checker`, `accepted artifact`, `pending draft`를 구분해 남긴다.
+- 조치 후보: package closeout template에 "accepted vs draft artifacts" 항목을 추가한다.
+
+**F48 — Cross-model 검증 의도는 producer identity까지 감사해야 한다.**
+- 맥락: W8은 producer/checker 독립성을 위해 Codex producer + Claude checker를 의도했다. 그러나
+  package 진행 중에는 "controlling agent subagent"와 "Codex producer" 결정이 바뀌었고, 실제 산출물이
+  어떤 모델/세션에서 나왔는지 불명확하면 cross-model 검증 가치가 약화된다.
+- 분류: **Portable candidate / repo integration candidate**.
+- 패턴: multi-agent 검증을 closeout에 쓸 때는 "다른 agent가 봤다"가 아니라, 산출물별 저작자와
+  checker, checker가 직접 source를 재확인했는지, 의존한 보고가 무엇인지 기록한다.
+- Rejected / too heavy: 작은 단일 파일 변경에 매번 모델 정체를 감사하는 것은 과하다. authority
+  update, deletion, decision promotion처럼 irreversible한 gate에서만 적용한다.
+
+**F49 — Parent completion checkbox는 child closeout review와 원자적으로 맞춰야 한다.**
+- 맥락: W8 parent Work Item은 child closeout review 전 이미 `[x]`로 표시되어 있었다. 상단 요약만
+  보면 W8이 끝난 듯 보이지만, child W9 closeout은 아직 draft였다. 이는 F27(parent-child 원자적 복귀
+  계약)과 F14(disk 산출물 증명)의 재발 사례다.
+- 분류: **Portable candidate**.
+- 패턴: parent가 child package 완료를 표시하려면 child closeout PASS 또는 그에 준하는 accepted
+  evidence가 있어야 한다. 불가피하게 선반영했다면 closeout draft가 "conditional parent
+  consumption"으로 명시하고, review PASS 후 parent 최신 블록으로 정합화한다.
+- 조치 후보: parent/child closeout checklist에 "parent checkbox와 child closeout status가 같은
+  accepted evidence를 가리키는가"를 추가한다.
+
+**F50 — Split map과 historical handoff는 closeout 산출물이어야 하며, 실제 split/delete와 분리해야 한다.**
+- 맥락: W8이 끝나도 spec split, architecture split, legacy source deletion은 남아 있다. closeout에서
+  split map과 Legacy/Historical Source Handoff를 남기지 않으면 W10/physical deletion gate가 같은
+  source를 다시 발굴해야 한다. 반대로 closeout에서 split/delete를 실행하면 W8 scope를 넘는다.
+- 분류: **Portable candidate**.
+- 패턴: 큰 assimilation package closeout은 `what is accepted`, `what moves next`, `what must not be
+  deleted yet`를 분리한 handoff map을 남긴다. 실제 split/delete는 downstream owner가 수행한다.
+- Repo-specific note: 여기서는 `history/58`, `prd/post-mvp/*`, `docs/aiox/*`, `plans/post-mvp*`,
+  `history/59`가 대상이다. portable 추출은 "source group -> consumed / downstream check /
+  deletion gate" 형태만 가져간다.

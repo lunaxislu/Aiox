@@ -1,7 +1,7 @@
 ---
 topic: workspace reset W8 A2A spec authority assimilation
 description: workspace reset W8 — docs/specs/aiox-a2a.md를 protocol contract owner로 자립시키는 authority assimilation package. legacy source(prd post-mvp/mvp a2a-spec, docs/aiox, pre-validation, history/58)를 owner별로 분류 흡수하고 §11-§13은 roadmap/decision/architecture로 handoff한다
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -13,8 +13,8 @@ status: open
 - [x] W5 Batch C — capability/federation/deferred: §7 Capability·sandbox, §8 Federation/remote, §9 Open/deferred. Evidence Ledger만 작성.
 - [x] W6 Sweep — §10–§13 owner 분류: spec 본문에 복사하지 않고 §11 roadmap·§12 blocker → roadmap/release(W9), §13 decision 후보 → spec contract 고정 rationale만 docs/decisions/ 승격·나머지는 architecture/W10 handoff. 분류 결과를 Evidence Ledger와 Cross-Owner Effects에 남긴다.
 - [x] W7 Cite spot-check & 본문 반영 **(Codex 저작 → Claude checker review)**: Codex가 batch별 spec 본문 변경을 draft하고 `src/file:line`+test cite를 제시한다. Claude(checker)가 각 row를 `src/`로 full cite 재검증하고 리뷰 pass분만 수용한다. Claude review PASS 전까지 draft는 확정 spec 사실로 보지 않는다. **완료(2026-06-21): pending queue 3개(Batch C §7-§9, §4.5+intro §10-§13, §4 decision 후보) 전부 Claude review. 본문 단위(§3.1·§4.2·§4.5·§5·§6·§7·§8·§9·intro §10-§13) 모두 PASS 확정, §4.3는 target-framed로 caveat 불필요. §4 decision 승격은 W8로 이관. 상세=최하단 "W7 Claude review — pending queue 전체 PASS" 블록.**
-- [>] W8 Disposition append **(Codex 저작 → Claude checker review)**: Codex가 흡수한 source 파일의 disposition·self-sufficiency 검증을 batch별로 draft하고 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map append/update안을 제시한다. Claude(checker)가 각 row를 legacy source, successor owner 문서, W7/W9/W10 handoff와 대조해 full cite 재검증하고 리뷰 pass분만 source map에 수용한다. PASS 전까지 source map disposition은 확정하지 않는다. **W8에는 W7 리뷰에서 이관된 §4 lifecycle/correlation decision 저작도 포함된다(구속 조건 2건: correlated reply 인가 Open 유지, public deliveryId Target/Open 유지).**
-- [ ] W9 Closeout & parent 반영 **(Codex 저작 closeout → Claude checker review)**: Codex가 split map(W10 입력), workflow retrospective, parent `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` W8 소비 반영안을 draft한다. Claude review PASS 전까지 parent W8 소비와 package closeout은 확정하지 않는다.
+- [x] W8 Disposition append **(Codex 저작 → Claude checker review)**: Codex가 흡수한 source 파일의 disposition·self-sufficiency 검증을 batch별로 draft하고 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map append/update안을 제시한다. Claude(checker)가 각 row를 legacy source, successor owner 문서, W7/W9/W10 handoff와 대조해 full cite 재검증하고 리뷰 pass분만 source map에 수용한다. PASS 전까지 source map disposition은 확정하지 않는다. **W8에는 W7 리뷰에서 이관된 §4 lifecycle/correlation decision 저작도 포함된다(구속 조건 2건: correlated reply 인가 Open 유지, public deliveryId Target/Open 유지).** **완료(2026-06-21): Codex draft 2건(decision + source-map update) → Claude checker review 전건 PASS. §4 lifecycle decision 확정, source map canonical 표에 W8 흡수분 2 row 수용. 상세=최하단 "W8 Claude checker review" 블록.**
+- [x] W9 Closeout & parent 반영 **(Codex 저작 closeout → Claude checker review)**: Codex가 split map(W10 입력), workflow retrospective, parent `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` W8 소비 반영안을 draft한다. Claude review PASS 전까지 parent W8 소비와 package closeout은 확정하지 않는다. **W9 closeout에는 Legacy/Historical Source Handoff를 반드시 포함한다: `history/58` 부분 승격/잔여, `prd/post-mvp/archive/*`, `docs/aiox/*`, `prd/pre-validation/*`, `plans/post-mvp*`의 W9/W10/물리삭제게이트 행선지를 분리 기록한다.** 저작 지시서: `logs/W8-closeout-task.md`. **완료(2026-06-21): closeout draft(Codex 저작) → Claude checker review 전건 PASS. child status `decided` 전이, parent W8 소비 확정.**
 - [x] W11 Codex task brief 리뷰 확인 및 반영 — 5개 batch task brief(W8-A0/A1/B/C/Sweep) + package log를 Codex가 리뷰. 결과 반영 후 W2부터 Phase 3 batch dispatch(내 subagent) 착수. 실행은 다음 세션.
 
 ### Scope
@@ -57,11 +57,31 @@ status: open
 
 ### Closeout
 
-- Updated owner documents:
-- Validation result:
-- Remaining gaps:
-- Workflow retrospective:
-- Next owner/log:
+- Updated owner documents: **Draft, pending Claude checker review.** W7 apply
+  phase accepted `docs/specs/aiox-a2a.md` wording changes for this package. W8
+  proper accepted the new
+  `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md` and
+  `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` canonical
+  source-map updates for `prd/post-mvp/aiox-a2a-spec.md` and
+  `docs/aiox/mcp-scope-and-daemon-namespace.md`. No additional owner body
+  changes are made by this closeout draft.
+- Validation result: W7 cite spot-check PASS for spec wording (`docs/specs/aiox-a2a.md`
+  §3.1, §4.2, §4.5, §5, §6, §7, §8, §9, intro §10-§13) and W8 checker PASS for
+  the lifecycle decision + 2 source-map rows are recorded in the latest W7/W8
+  review blocks below. Closeout itself is draft until Claude checker review.
+- Remaining gaps: W9 must consume roadmap/release-plan inputs and append/update
+  source-map rows for `prd/post-mvp/aiox-a2a-spec.md`, `plans/post-mvp.plan.md`,
+  and `plans/post-mvp/*`. W10 must consume the split map, `docs/aiox/*`,
+  archive/decision candidates, and `history/59`. Physical deletion remains gated
+  by inbound repoint + successor self-sufficiency + user confirmation.
+- Workflow retrospective: W8 validated Falsifiability gate + Ledger-first /
+  artifact-later flow; it also exposed producer/checker identity drift and the
+  need for shared-source-map consumer binding. Full draft retrospective is in
+  `logs/2026-06-18-package-workflow-portable-pattern.md` F46-F50.
+- Next owner/log: after Claude review PASS, parent
+  `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` consumes W8 and resumes
+  W9 roadmap/release authority assimilation. W10 split readiness consumes the
+  split map and legacy/historical handoff below.
 
 ## 2026-06-21 · package log 생성과 W8-0 의견 수렴 결과
 
@@ -1058,3 +1078,298 @@ spec 본문 변경이 아니라 decision 후보이며 현재 `docs/decisions/` �
 - 이번 PASS로 W7 "Cite spot-check & 본문 반영"의 spec 본문 단위(§3.1·§4.2·§4.5·§5·§6·§7·§8·§9·intro §10-§13)가 모두 Codex 저작 → Claude 리뷰 PASS로 확정됐다. §4.3는 target-framed로 추가 caveat 불필요. Work Item W7 = [x].
 - working tree `M docs/specs/aiox-a2a.md`는 review-PASS 상태이나 **uncommitted**. commit은 @user 요청 시에만(harness 규칙: 요청 없이 commit 금지).
 - **다음 (W8, active):** Codex가 (a) source-map disposition draft(`logs/2026-06-21-workspace-reset-legacy-source-absorption.md` append/update), (b) §4 lifecycle decision 파일을 위 2 구속 조건으로 저작 → Claude 리뷰. W9 closeout/parent 반영은 그 뒤.
+
+## 2026-06-21 · W8 Codex draft — source-map update안 + §4 lifecycle decision 저작
+
+@user 지시로 W8 active 작업 중 Codex 저작분을 수행했다. 이 블록과 변경 파일은 **Claude checker
+review 전 draft**다. PASS 전까지 source map disposition과 decision 승격은 확정하지 않는다.
+
+### 작성한 산출물
+
+- 신규 decision draft: `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`
+  - 범위: §4 lifecycle/envelope/correlation WHY.
+  - Decision owner 규칙에 맞춰 outcome body를 복사하지 않고 `docs/specs/aiox-a2a.md` §4를 owner
+    outcome으로 참조했다.
+  - 구속 조건 반영: correlated reply authorization은 Open 유지, public `deliveryId` namespace는
+    Target/Open 유지. stored `message_deliveries.id`와 동일시하지 않았다.
+- source map update draft append:
+  - `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` 하단에
+    "W8 Codex source-map update draft — Claude checker review 대기" 블록을 추가했다.
+  - 상단 canonical source map 표는 직접 확정 수정하지 않았다. Claude PASS row만 나중에 표에
+    수용한다.
+
+### 확인한 사실
+
+- `docs/decisions/`의 현재 파일 목록에는 §4 lifecycle/envelope/correlation WHY를 단일로 소유하는
+  decision이 없다. 인접 decision은 runtime/profile/socket/channel/pair/proxy 성격이다.
+- `docs/decisions/AGENTS.md`는 decision 문서가 WHY만 소유하고 outcome은 owner 문서에 반영/참조해야
+  한다고 규정한다.
+- `docs/specs/aiox-a2a.md` §4는 W7 PASS된 owner outcome으로, `type`/`intent`/`replyExpected`,
+  vendor-neutral envelope, fan-out delivery correlation, current caveats, correlated reply Open
+  decision과 `deliveryId` Open/Implementation Gap을 이미 포함한다.
+- source map package의 W2는 W8/W9/W10 흡수 진행 추적이며, `history/`는 W5 history migration owner라
+  source map row 대상이 아니다.
+
+### 추론과 판정
+
+- `prd/post-mvp/aiox-a2a-spec.md`는 W8이 §2-§9 protocol contract를 self-contained하게 흡수한 것으로
+  볼 수 있으나, 파일 전체 삭제 disposition은 W9 roadmap/release와 W10 architecture/decision split
+  이후에만 확정 가능하다.
+- `prd/post-mvp/archive/claude-codex-validation.md`는 §4 lifecycle WHY 일부가 새 decision draft에
+  증류됐지만, archive 파일 전체는 Docker/compose/adapter/capability 브레인스토밍을 포함하므로 W9/W10
+  전 삭제 확정 금지다.
+- `docs/aiox/mcp-scope-and-daemon-namespace.md`는 W8에서 runtime MCP/channel projection과
+  profile/socket namespace contract가 spec에 부분 흡수됐으나, stale architecture reference cleanup은
+  W10 확인이 필요하다.
+
+### Claude checker review 요청
+
+1. 새 decision draft가 `docs/decisions/AGENTS.md`의 WHY-only 규칙을 지키는지 확인.
+2. decision이 source-only reply routing을 확정한 것처럼 읽히지 않는지 확인.
+3. public `deliveryId`를 current/stored id로 고정하지 않았는지 확인.
+4. source map draft row별 disposition/self-sufficiency가 W8 흡수 범위를 넘겨 확정하지 않았는지 확인.
+5. PASS한 row만 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` 상단 canonical 표에
+   반영할 것.
+
+**다음:** Claude checker review. PASS 전까지 W8은 active `[>]` 유지, W9 closeout/parent 반영은 시작하지 않는다.
+
+## 2026-06-21 · W8 Claude checker review — Codex draft 2건 전건 PASS
+
+@user가 Codex 저작분(decision draft + source-map update draft)을 working tree에 남기고 review를
+요청했다. @claude(checker)가 cross-model full cite spot-check로 리뷰했다. cross-model 독립성은
+저작자 Codex ≠ 리뷰어 Claude로 충족(W7 선례), review는 owner 수용(spec/decision/source-map)
+게이트의 판단 단계라 controller가 직접 수행(AGENTS.md Evidence/Reporting: 타 에이전트 분석 무비판
+수용 금지).
+
+### 산출물 1 — `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md` — PASS
+
+- **WHY-only 규칙(`docs/decisions/AGENTS.md` §1):** outcome을 복사하지 않고 `docs/specs/aiox-a2a.md`
+  §4를 owner outcome으로 참조. Context/Decision/Alternatives/Rationale/Trade-offs/Re-evaluation/
+  Sources 템플릿 정합. load-bearing rationale만 기록(Trade-offs에 "current implementation can
+  claim conformance 전 cutover 필요" 명시 — current 주장 아님).
+- **구속 ① correlated reply authorization Open 유지:** Decision 섹션에 source-only reply routing
+  없음. Re-evaluation "target direction은 `inReplyToDeliveryId` correlation이나, correlated reply가
+  reverse directed route를 요구하는지 vs original delivery obligation이 narrow reply right를 주는지는
+  G1 미결"로 Open 명시. → source-only를 결정사항으로 단정하지 않음.
+- **구속 ② public `deliveryId` Target/Open 유지:** Re-evaluation "does not decide that public v1
+  `deliveryId` is identical to current stored `message_deliveries.id`". Rationale은 "target-specific
+  delivery correlation id 필요"까지만 말하고 stored id와 동일시하지 않음.
+- **cite spot-check (cross-model, source 직접 재검증):**
+  - `history/58:61-100` P3 Message Lifecycle Decisions — `type`/`intent`/`reply_expected` 분리,
+    intent 단독 reply 추론 금지, type 단독 협업의미 금지, vendor-neutral(`aiox_reply`는 adapter
+    render), 1 message=N deliveries, `deliveryId`=target-specific correlation, envelope text는
+    display·daemon store+token+policy가 authority — decision Alternatives/Rationale과 전건 일치.
+    (history는 source-only를 default로 적으나 decision은 구속①대로 Open으로 강등 — 의도적 정합.)
+  - `prd/post-mvp/archive/claude-codex-validation.md:35-82` — separated axes(b), vendor 누수
+    교정(c), fan-out delivery-단위 렌더(blind1), reply routing **미정의 지적**(blind2, 확정 아님),
+    daemon authority(blind5) — decision rationale 뒷받침, 구속① 정합.
+  - `docs/specs/aiox-a2a.md` §4 — line 398-402 "Open decision — correlated reply authorization",
+    214·388 `deliveryId` namespace open, 201·332-333 `deliveryId`≠stored id/v1 cutover — decision
+    Re-evaluation Open 2건과 정확히 정합(W7 PASS owner outcome).
+
+### 산출물 2 — source-map update draft (`logs/...-legacy-source-absorption.md`) — PASS
+
+- **row별 disposition이 W8 흡수 범위를 넘겨 확정하지 않음 확인:** archive 5개(claude-codex/
+  codex-claude validation, claude/codex/gemini opinion)·`prd/mvp/aiox-mvp-spec.md`·
+  `docs/aiox/mvp-architecture.md`·pre-validation 2개 전부 "보류/W9·W10 후/미검증" 유지 — W8 단독
+  삭제 확정 없음. `history/58`은 source map row 미생성(W5 history migration owner 경계, decision
+  Sources에만 기록). 상단 canonical 표 draft 단계에서 직접 미수정.
+- **canonical 표 수용(checker가 PASS row만 반영):** disposition 변화 없는 row는 그대로 두고, W8
+  protocol 흡수로 self-sufficiency가 진전된 2 row만 갱신:
+  - `prd/post-mvp/aiox-a2a-spec.md` — self-suffic `TBD`→"§2-§9 protocol contract self-contained
+    (W7 PASS); 전체 삭제는 W9/W10 후", disposition `absorb→delete (W9/W10 후)`.
+  - `docs/aiox/mcp-scope-and-daemon-namespace.md` — self-suffic `TBD`→"spec §3.1/§5/§7 흡수
+    (W7 PASS); 헤더 `mvp-architecture` rename-drift는 W10 cleanup", disposition `absorb→delete
+    (W10 stale ref cleanup 후)`.
+
+### 수용 범위 / 상태
+
+- W8 두 산출물 전건 PASS. §4 lifecycle/envelope/correlation decision 확정(draft→정식). source map
+  W8 흡수분 canonical 표 2 row 수용 완료. Work Item W8 = [x]. W7→W8로 이관됐던 §4 decision 승격은
+  이로써 완료.
+- working tree(uncommitted): 신규 `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`,
+  수정 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`(canonical 2 row + W8 draft
+  블록), 수정 이 W8 로그. commit은 @user 요청 시(harness: 요청 없이 commit 금지).
+- **다음 (W9, active):** Codex가 split map(W10 입력)·workflow retrospective·parent
+  `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` W8 소비 반영안을 draft → Claude
+  checker review. PASS 전 parent W8 소비/package closeout 미확정.
+
+## 2026-06-21 · W9 handoff 보강 — legacy/historical source 누락 방지
+
+@user 확인 요청으로 W9 closeout에서 반드시 남길 legacy/historical source handoff 범위를 disk와 source
+map 기준으로 점검했다. 이 블록은 다음 세션 W9 착수 입력이다. 새 owner 수정이나 삭제는 하지 않는다.
+
+### W9 closeout에 반드시 남길 섹션
+
+`### Legacy/Historical Source Handoff To W10 / Physical Delete Gate`
+
+이 섹션은 W8 결과를 parent/W10/물리삭제게이트가 소비할 수 있게 하는 장부다. W9에서 삭제를 실행하지
+말고, 아래 source group별로 `W8 consumed`, `W9 must check`, `W10 must check`, `physical delete gate
+only after inbound repoint + self-sufficiency`를 분리해 기록한다.
+
+| Source group | W9에 남길 상태 |
+| ------------ | --------------- |
+| `history/58-post-mvp-a2a-architecture-decisions.history.md` | §4 lifecycle WHY(`history/58:61-100`)는 `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`로 승격 완료. 나머지 compose/capability/federation/product/architecture rationale과 live inbound refs는 남아 있으므로 삭제 불가. W10/W5 deletion gate handoff 필요. |
+| `prd/post-mvp/aiox-a2a-spec.md` | W8 protocol §2-§9는 `docs/specs/aiox-a2a.md`로 self-contained. §11/§12는 W9 roadmap/release 대조, §13은 W10/decision 후보. 전체 삭제는 W9/W10 후. |
+| `prd/post-mvp/archive/*` 5개 | W8은 `claude-codex-validation.md`의 §4 lifecycle WHY 일부만 decision에 증류. Docker/compose/adapter/capability brainstorm 잔여는 W9/W10에서 파일별 `absorb→delete` vs `archive→delete` 판정 필요. |
+| `docs/aiox/mcp-scope-and-daemon-namespace.md` | W8 흡수 PASS. W10에서 stale header/link cleanup 후 `absorb→delete` 후보. |
+| `docs/aiox/industry-precedents-and-observability-models.md` | Opaque Worker / delivery-vs-completion rationale. 외부 사실은 time-sensitive라 재검증 전 current owner text로 쓰지 않는다. W10/decision 후보. |
+| `docs/aiox/observation-asymmetry-and-d7-pivot.md` | D7/proxy authority rationale. 기존 architecture/decision이 일부만 커버하므로 W10 decision 후보로 확인. |
+| `docs/aiox/proxy-vs-app-server-tradeoff.md` | app-server + proxy hybrid WHY. 기존 decisions가 분리 커버하지만 통합 rationale 필요 여부를 W10에서 판정. |
+| `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md` | process-scoped MCP decision은 있으나 app-server-owned MCP injection nuance는 W10 확인. |
+| 나머지 `docs/aiox/*` | architecture learning/stale/test trace. W10에서 owner self-sufficiency 확인 후 `absorb→delete`, `delete-only`, 또는 조건부 `archive→delete` 판정. |
+| `prd/pre-validation/*` 2개 | W8은 DB/current gap을 code cite로 검증했지만 pre-validation 원문 자체를 successor로 흡수하지 않았다. Archive Gate 개별 적용. |
+| `plans/post-mvp.plan.md` + `plans/post-mvp/*.plan.md` | W9 roadmap/release/plans 재편 입력. W9가 disposition/self-sufficiency를 source map에 append/update한다. |
+| `history/59` | W10 split readiness 확인 문서. W9에서 건드리지 않는다. |
+
+### 다음 세션 재개 지점
+
+W9 active. 작업 전 이 W8 로그 최신 블록, `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`
+source map, parent `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` W9/W10 Work Items를
+읽고 W9 closeout draft를 시작한다.
+
+## 2026-06-21 · W9 closeout task brief 작성 — Codex 저작 dispatch 대기
+
+@user 결정(분업 패턴 유지): W9 closeout draft는 Codex가 저작하고 @claude가 checker review한다.
+
+- 저작 지시서 작성: `logs/W8-closeout-task.md`. 산출물 5종(split map[W10 입력]·workflow
+  retrospective·parent W4.5 W8 소비 반영안·Legacy/Historical Source Handoff·Closeout 5필드)을
+  draft로 명시하고, owner 본문 신규 수정·parent 추가 편집·status 전이·물리 삭제는 금지했다.
+- brief의 "0. 먼저 읽어라"에 controlling log·parent·source map·portable-pattern 로그·`logs/AGENTS.md`·
+  W7 closeout 형식 선례를 required-read로 박았다(F6/F25 thin pointer, F23/F24 entry-binding).
+- **다음:** @user가 `logs/W8-closeout-task.md`를 Codex에 dispatch → 산출물 회수 →
+  @claude checker review. review PASS 전 parent W8 소비·package closeout 미확정(불변).
+
+## 2026-06-21 · W9 closeout draft — Codex 저작, Claude checker review 대기
+
+@user 지시로 `logs/W8-closeout-task.md`에 따라 W8 package closeout draft를 작성했다. 이 블록은
+**draft**다. Claude checker review PASS 전까지 parent W8 소비, package closeout, status 전이는
+확정하지 않는다. owner 문서 본문, parent 로그, source map canonical 표, 물리 삭제는 이 closeout
+draft에서 추가 수정하지 않았다.
+
+### Work Items audit
+
+**확인한 사실:**
+
+- W1~W8은 모두 `[x]`다. W7은 spec 본문 단위 cite spot-check PASS, W8은 lifecycle decision과
+  source-map 2 row PASS를 기록한다.
+- W9만 `[>]` active다. W9 산출물은 split map, workflow retrospective, parent W8 소비 반영안,
+  Legacy/Historical Source Handoff, Closeout 5필드 draft다.
+- W11(Codex task brief 리뷰)은 완료됐고, W11은 package workflow portable-pattern 수집과 별개다.
+
+**판단:**
+
+- W9 closeout draft는 새 assimilation이 아니라 이미 PASS된 W7/W8 산출물의 장부화와 downstream
+  binding이다.
+- 이 draft가 PASS되면 W8 package는 parent W4.5가 소비 가능하다. 단 `status: decided` 전환과 parent
+  추가 편집은 review PASS 후 별도 단계가 소유한다.
+
+### Split map — W10 input draft
+
+실제 split은 W10이 소유한다. 아래 map은 W10이 section ID, anchor, inbound reference를 보존할 때
+검토할 입력이다.
+
+| Current section / claim group | Proposed W10 owner or slice | Preserve anchors / inbound notes | Rationale / status |
+| --- | --- | --- | --- |
+| `docs/specs/aiox-a2a.md` intro provenance and source-section disposition | Keep in root spec intro or split README/front door | Preserve legacy source-section disposition for §0/§1/§2-§9/§10-§13; avoid duplicating roadmap text | Current provenance/boundary note, not protocol body |
+| §2 Glossary | Root spec overview or `protocol-core` slice | Preserve `## 2. Glossary` anchor or stable alias | Shared terms used by all protocol slices |
+| §3 Layer model + §3.1 runtime config/profile namespace | `runtime-config-and-layering` spec slice; cross-link architecture and runtime profile decision | Preserve §3 and §3.1 anchors; keep current DB path Implementation Gap wording | External config/profile contract; architecture owns internal process details |
+| §4.1 canonical envelope, §4.2 routing/reply correlation, §4.3 delivery/ack/retry, §4.4 errors/defaults, §4.5 persistence minimum | `message-lifecycle` spec slice | Preserve §4.* anchors; cross-link `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`; keep Open decisions for correlated reply authorization and public `deliveryId` namespace | Core protocol contract; W8 decision owns WHY, spec owns outcome |
+| §5 Adapter contract and capability tier | `adapter-contract` spec slice | Preserve §5 anchor; keep adapter 4-slot vs pair 2-slot distinction | External adapter protocol/capability contract; implementation internals remain architecture |
+| §6 Compose | `composition` target/deferred slice or roadmap-linked section | Preserve §6 anchor; label target/deferred carefully | No current compose implementation found in W8; avoid Current Contract wording |
+| §7 Capability and sandbox, §7.1 feasibility, §7.2 trust/data handling | `capability-and-trust` spec slice | Preserve §7.* anchors; cross-link Claude channel trust decision where needed | Mix of current projection, target trust boundary, implementation gaps |
+| §8 Federation / remote | `federation-remote` deferred slice | Preserve §8 anchor | Deferred/target; current runtime remains local socket transport |
+| §9 Open / deferred | Open issue index or per-slice open sections | Preserve §9 anchor or map each open item to owning slice | W10 should decide whether open issues stay centralized or move near each slice |
+| Code cite density in §4/§5/§7/§8/§9 | W10 cleanup candidate, not semantic change | Keep enough `src/` cite to falsify Current claims; reduce only after stable anchors exist | W8 accepted dense cites as current/stale falsification evidence |
+| `docs/architecture/local-agent-runtime.md` references to spec lifecycle, adapter, routing, known gaps | Architecture split/readability candidate | Preserve architecture §0-§14 anchors until inbound refs are repointed | W10 may split architecture too, but current as-built owner remains this file until split is executed |
+
+### Parent W4.5 W8 consumption draft
+
+**Confirmed facts:**
+
+- Parent W4.5 Work Items already show W8 as `[x]` and W9 as `[>]`.
+- Child W8 closeout was not yet reviewed when that parent state was written, so parent completion is effectively
+  a pre-consumption summary rather than a reviewed closeout result.
+
+**Draft reconciliation proposal:**
+
+- Treat the existing parent W8 `[x]` as conditionally correct after Claude checker review PASS of this closeout.
+- Do not add more parent edits before review. If PASS, parent needs only a latest block confirming:
+  - W8 child W1-W9 closeout PASS.
+  - `docs/specs/aiox-a2a.md` protocol contract wording was accepted via W7 cite review.
+  - `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md` was created and reviewed.
+  - source map canonical rows updated for `prd/post-mvp/aiox-a2a-spec.md` and
+    `docs/aiox/mcp-scope-and-daemon-namespace.md`.
+  - W9 roadmap/release remains the next pointer, with source-map required-read and
+    `plans/post-mvp*` disposition update action.
+  - W11 portable collection consumed W8 closeout retrospective entries F46-F50.
+- If checker review rejects material parts of this closeout, parent W8 should not be considered finally consumed
+  even though the current checkbox is already `[x]`; add a corrective parent block rather than silently relying on
+  the checkbox.
+
+### Legacy/Historical Source Handoff To W10 / Physical Delete Gate
+
+Deletion is not executed here. Every deletion candidate still requires inbound repoint, successor
+self-sufficiency, and user confirmation at the physical deletion gate.
+
+| Source group | W8 consumed | W9 must check | W10 must check | Physical delete gate |
+| --- | --- | --- | --- | --- |
+| `history/58-post-mvp-a2a-architecture-decisions.history.md` | §4 lifecycle WHY (`history/58:61-100`) promoted into `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`. | No W9 edit expected unless roadmap/release gates cite remaining §11/§12-related rationale; `history/` row remains W5-owned. | Remaining compose/capability/federation/product/architecture rationale and live inbound refs. | W5 history migration owner decides deletion; no duplicate source-map row. |
+| `prd/post-mvp/aiox-a2a-spec.md` | §2-§9 protocol contract self-contained in `docs/specs/aiox-a2a.md`; source map row updated. | §11 roadmap, §12 pre-release/blocker pressure, and plan sequencing against `docs/product/roadmap.md` + `plans/release-plan.md`; append/update source map. | §13 product/architecture/decision rationale not absorbed by W8/W9. | Delete only after W9+W10 successor self-sufficiency. |
+| `prd/post-mvp/archive/*` 5 files | Only `claude-codex-validation.md` §4 lifecycle WHY partially used as decision support. | Product definition, remote expansion, compose sequencing, packaging/release pressure if present. | Docker/compose/adapter/capability brainstorm, architecture debt, decision candidates; apply Archive Gate file-by-file. | `absorb→delete` or `archive→delete` only after per-file self-sufficiency. |
+| `docs/aiox/mcp-scope-and-daemon-namespace.md` | Runtime MCP/channel projection + profile/socket namespace absorbed into spec §3.1/§5/§7; source map row updated. | None expected unless roadmap needs operational sequencing. | Stale header/link cleanup (`mvp-architecture` rename drift) and inbound refs. | Candidate `absorb→delete` after W10 cleanup. |
+| `docs/aiox/industry-precedents-and-observability-models.md` | Not consumed as current external fact; time-sensitive external facts were not promoted. | Usually none; only roadmap framing if user asks for market/external priority. | Opaque Worker / delivery-vs-completion rationale; reverify external claims before using as current evidence. | Decision/archive/delete after W10 and any needed web/current-source revalidation. |
+| `docs/aiox/observation-asymmetry-and-d7-pivot.md` | Not consumed by W8 except as known decision-candidate group. | None expected. | D7/proxy authority rationale and possible decision promotion. | W10 decides successor or archive. |
+| `docs/aiox/proxy-vs-app-server-tradeoff.md` | Not consumed by W8. | None expected. | Whether existing decisions cover app-server + proxy hybrid WHY or need integrated decision. | W10 decides. |
+| `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md` | Not consumed by W8. | None expected. | App-server-owned MCP injection nuance vs existing process-scoped MCP decision. | W10 decides. |
+| Other `docs/aiox/*` | Only rows explicitly noted above have W8 absorption. | Usually none unless roadmap/release uses them as sequencing evidence. | Architecture learning/stale/test traces; owner self-sufficiency, dead links, decision candidates. | W10 + physical gate. |
+| `prd/pre-validation/*` 2 files | W8 verified DB/current gap from code, not from pre-validation successor absorption. | Release risk/history only if roadmap needs it. | Apply Archive Gate; decide whether spike traces need digest. | No deletion before Archive Gate/self-sufficiency. |
+| `plans/post-mvp.plan.md` + `plans/post-mvp/*.plan.md` | Not consumed by W8 except as handoff inputs. | Primary W9 input: roadmap/release/plans consolidation, priority, next kickoff, and source-map disposition/self-sufficiency update. | Any plan rationale that belongs to split/architecture/decision after W9. | Delete only after W9/W10 replacement plan or roadmap is self-contained. |
+| `history/59` | Not consumed by W8. | Do not consume in W9 unless roadmap/release discovers direct dependency. | Required W10 split readiness input. | W5 history owner + W10 handoff. |
+
+### Closeout review request
+
+Claude checker should review:
+
+1. Whether the top `### Closeout` 5 fields accurately distinguish W7 owner-body changes, W8 decision/source-map
+   acceptance, and W9 closeout draft-only work.
+2. Whether the split map is useful for W10 without prematurely executing split or changing owner body text.
+3. Whether parent W4.5 W8 consumption draft resolves the pre-existing parent checkbox vs unreviewed child closeout
+   ordering without silently claiming review PASS.
+4. Whether the Legacy/Historical Source Handoff correctly separates W8 consumed, W9 must check, W10 must check,
+   and physical deletion gate; especially `history/58` W5 ownership and `plans/post-mvp*` W9 source-map action.
+5. Whether workflow retrospective F46-F50 in
+   `logs/2026-06-18-package-workflow-portable-pattern.md` is correctly scoped as draft collection and does not
+   overgeneralize repo-specific workspace reset details.
+
+**Next if PASS:** mark W9 closeout accepted, then perform the explicit parent W8 consumption/status transition step.
+**Next if changes requested:** keep W9 active and patch this draft before parent/status changes.
+
+## 2026-06-21 · W9 closeout draft — Claude checker review PASS
+
+@claude(checker)가 Codex W9 closeout draft를 cross-model로 review했다. 산출물과 제약을 보고가
+아니라 disk(`git status`/`git diff`)·source로 직접 재검증했다(AGENTS.md Evidence/Reporting).
+
+**판정: 5개 review 항목 전건 PASS.**
+
+1. [Fact] Closeout 5필드 — W7 owner-body 반영 / W8 decision·source-map 수용 / W9 draft-only를
+   정확히 구분. Validation result의 PASS 섹션 목록(§3.1·§4.2·§4.5·§5·§6·§7·§8·§9·intro §10-§13)이
+   W7 Work Item PASS 목록과 일치하고, §4.3는 target-framed라 caveat 불필요로 제외된 것도 정합.
+2. [Fact] Split map — 11 row가 §2-§9·§3.1·architecture를 W10 slice + anchor 보존 + inbound로
+   매핑. 실제 split이나 owner 본문 변경 없음. W10이 소비 가능한 입력.
+3. [Fact] Parent 반영안 — parent W8 `[x]` 선반영을 'conditional parent consumption'으로 다루고
+   review PASS를 silently 주장하지 않음. checker reject 시 corrective block 경로를 둠. F27/F14 정합.
+4. [Fact] Legacy/Historical Source Handoff — 12 row가 W8 consumed / W9 must check / W10 must check
+   / physical delete gate 4열로 분리되고 삭제 가드 명시. `history/58` W5 ownership·`plans/post-mvp*`
+   W9 source-map action 정확. `history/58:61-100` cite는 W8 decision review에서 이미 PASS된 것 재확인.
+5. [Fact] Retrospective F46~F50 — grep으로 직전 F45 확인, 연속 번호로 중복/누락 없음. repo-specific
+   /portable 분리. draft 수집이라 portable-pattern W1-2 미완료 유지. overgeneralize 없음.
+
+**제약 준수 (disk 검증):** parent W4.5 `git diff --stat` 4 lines = 이전 세션 W8`[x]`/W9`[>]` 분,
+Codex 추가 편집 없음. `docs/specs/`·`docs/decisions/` 본문 `git status` 미변경. source map canonical
+추가 변경 없음. child frontmatter `status: open` 유지. 물리 삭제 없음.
+
+**다음 (status 전이는 @user 확인 후):** W9 closeout accepted. 남은 것은 원자적 복귀 계약(F27)
+실행 — child W9 `[>]`→`[x]`, child `status: open`→`decided`, parent W4.5에 W8 소비 확정 블록 +
+W9 roadmap/release 전이 확인. 이 status 전이·parent 소비는 package를 닫고 W9로 넘기는 비가역
+milestone이라 실행 전 @user 확인을 받는다.
