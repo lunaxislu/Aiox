@@ -31,18 +31,18 @@ status: open
   - [x] W7-1 Step 15 pair/dispatch/stale drift 반영 여부 확인 및 정리
   - [x] W7-2 history/src/tests/spike/spikes/legacy evidence를 확인하고 Evidence Ledger를 남긴다
   - [x] W7-3 작업 중 spec/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
-- [>] W8 A2A spec authority assimilation package를 수행한다 — primary entry point는 `docs/specs/aiox-a2a.md`이며 W2의 질문 중심 owner 왕복 방식을 적용. W5 history migration의 B1 source map, history disposition 제약, target self-sufficiency/delete guard를 입력으로 받은 뒤 착수한다. W5 B2에서 확인된 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` absolute override contract spec gap도 W8 입력으로 검토한다. 또한 legacy 원본 disposition은 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`의 단일 source map에 append한다(별도 absorption package 소유, `logs/AGENTS.md`의 Legacy Source Absorption Map 규칙). W8 착수 전 그 package의 W1 legacy inventory로 source map을 초기화한다
-  - [ ] W8-0 W8 package log/task brief 작성 전에 Claude/Gemini/Codex 등 agent 의견을 수렴해 batch 분할, 상태 라벨, cross-owner scope, blocker/release gate 처리 기준을 확정한다. 생성할 W8 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
-  - [ ] W8-1 contract/status/cross-reference 정합성 확인 및 정리
-  - [ ] W8-2 history/src/tests/architecture/roadmap/release evidence를 확인하고 Evidence Ledger를 남긴다
-  - [ ] W8-3 작업 중 architecture/roadmap/release-plan/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
-  - [ ] W8-4 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
-- [ ] W9 release/roadmap authority assimilation package를 수행한다 — primary entry point는 `docs/product/roadmap.md`와 `plans/release-plan.md`
+- [>] W8 Complete child package log `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`, then consume result and resume W9 — A2A spec authority assimilation. primary entry point `docs/specs/aiox-a2a.md`. W5 history migration의 source map·disposition 제약·target self-sufficiency·delete guard와 `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` spec gap을 입력으로 받고, legacy 원본 disposition은 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map에 append한다
+  - [x] W8-0 agent 의견 수렴 완료 (claude 종합 + @user + @codex). 확정: A0/A1 분리, Falsifiability gate(Current Contract=src+test cite 필수), Ledger-먼저-본문-나중 6-phase, repo 정확한 상태 라벨, §13 선별 decision 승격. 결과는 child package log 첫 블록에 기록
+  - [x] W8-1 Transferred: contract/status/cross-reference 정합성 → child package log W2~W7 (batch A0/A1/B/C + cite spot-check·본문 반영)
+  - [x] W8-2 Transferred: history/src/tests/architecture/roadmap/release evidence + Evidence Ledger → child package log W2~W6
+  - [x] W8-3 Transferred: architecture/roadmap/release-plan/decision cross-owner 변경 → child package log W6 Sweep + Cross-Owner Effects/Decision Candidates
+  - [x] W8-4 Transferred: workflow retrospective → child package log W9 Closeout
+- [ ] W9 release/roadmap authority assimilation package를 수행한다 — primary entry point는 `docs/product/roadmap.md`와 `plans/release-plan.md`. W9 task brief/package 진입 시 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map을 required-read로 두고, 특히 `prd/post-mvp/aiox-a2a-spec.md`, `plans/post-mvp.plan.md`, `plans/post-mvp/*.plan.md` rows를 roadmap/release 흡수 입력으로 확인한다. W7 wording Open Issue 4(`deliveryId` namespace)·5(correlated reply authorization)는 `docs/product/roadmap.md` G1-A/B/D gate에서 확인하고, 현재 G6 packaging checklist 성격인 `plans/release-plan.md`에는 중복 반영하지 않는다. 흡수 후 해당 rows의 disposition·self-sufficiency를 같은 source map에 append/update한다.
   - [ ] W9-1 사용자의 배포 우선순위 기준으로 roadmap/release-plan 정합성을 갱신한다
   - [ ] W9-2 작업 중 spec/architecture/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
   - [ ] W9-2a 생성할 W9 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
   - [ ] W9-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
-- [ ] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다. W5 history migration의 source map과 target self-sufficiency/delete guard를 history/legacy rationale 입력으로 사용한다
+- [ ] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다. `logs/2026-06-19-workspace-reset-W5-history-migration.md`의 W5 history migration source map과 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map(`docs/aiox/*`, archive/decision-candidate rows 포함)을 둘 다 required-read로 두고, target self-sufficiency/delete guard를 history/legacy rationale 입력으로 사용한다. split/disposition 판단 후 legacy-source-absorption rows를 append/update한다.
   - 주의: W10은 단일 primary owner 문서가 없다. split 대상은 W7·W8에서 최신화된
     `docs/specs/aiox-a2a.md`와 `docs/architecture/local-agent-runtime.md`이며,
     Scope.Primary owner는 child log 진입 시 사용자와 확정한다.
@@ -594,3 +594,35 @@ log가 없으므로, 현재 W8을 소유하는 이 W4.5 child log의 Work Item�
   `plans/post-mvp/` 하위 sub-plan을 owner별 absorption matrix로 먼저 대조한다.
 - 원본 삭제는 owner 문서와 archive/evidence successor가 self-contained하다는 검증 후,
   사용자 확인을 받아 별도 physical deletion gate에서만 처리한다.
+
+## 2026-06-21 · W8 package log 생성과 의견 수렴 결과 확정
+
+W8-0 agent 의견 수렴(claude 종합 + @user + @codex)을 마치고 W8 package log를 생성했다.
+
+**처리:**
+
+- 새 child package log 생성: `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`
+  (Primary owner = `docs/specs/aiox-a2a.md`, Allowed cross-owner = `docs/decisions/`,
+  Cross-Owner Effects only = roadmap/release-plan).
+- parent W8을 child package log를 소비하는 pointer로 재배선했다. W8-0은 완료, W8-1~W8-4는
+  child package log Work Items로 이관했다.
+- child package log의 batch 구조: W2 A0(config/path gap) · W3 A1(§2–§4 protocol) ·
+  W4 B(§5 Adapter+§6 Compose) · W5 C(§7–§9) · W6 Sweep(§10–§13 owner 분류) ·
+  W7 cite spot-check·본문 반영 · W8 source map disposition append · W9 closeout.
+
+**확정된 W8-0 의견 수렴 결과 (3자 수렴):**
+
+- A0/A1 분리: `AIOX_SOCKET_PATH`/`AIOX_DB_PATH`는 runtime/config contract라 §4 protocol
+  검증과 분리(evidence 범위 폭증 방지).
+- Falsifiability gate: `Current Contract`는 `src/file:line`(+가능하면 test) cite 없으면
+  금지, 없으면 Target/Proposed/Open Issue/Implementation Gap으로 강등.
+- Ledger-먼저-본문-나중 6-phase: batch agent는 spec 본문 직접 수정 금지, Evidence Ledger만
+  먼저 작성하고 cite spot-check pass 후 별도 단계에서 본문 반영.
+- 상태 라벨은 repo 정확한 이름(spec contract 라벨 / legacy=Stale / roadmap=Release Gate·
+  Execution Plan), `Post-MVP`는 라벨 아님.
+- §13 decision은 선별 승격: spec 본문 변경의 이유가 되는 contract 고정 rationale만 W8에서
+  docs/decisions/ 승격, 나머지(architecture debt·DX·product boundary 등)는 W9/W10/
+  architecture로 handoff.
+
+**현재 next pointer:** W8 — child package log
+`logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`의 W1(batch task brief 작성).

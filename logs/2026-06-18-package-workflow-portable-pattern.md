@@ -541,3 +541,182 @@ documentation-system.md taxonomy에 없는 legacy 다중 폴더를 W8~W10에서 
   생성/append owner 분리, 삭제 게이트 단일 소비)를 추가한다.
 - v0 point 9(closeout map)에 **F40**(archive는 보존가치 + self-sufficiency 둘 다 만족할 때만,
   기본은 흡수 후 삭제)을 추가한다.
+
+## 2026-06-21 · W8 불안 요인과 evidence-first assimilation 후보 — F41~F42 추가
+
+@user 우려: W8(A2A spec authority assimilation)은 기억 속 spec 구현, 현재 spec, 버그 수정,
+개선 필요 사항, 앞으로 구현할 것, 이미 구현된 것, stale/drift reference가 여러 파일에 흩어져
+있다. agent가 이 자료를 읽으며 사실과 추론을 잘못 판별하거나, 높은 컨텍스트 비용 때문에
+요약으로 밀어붙이면 잘못된 주장이 `docs/specs/` owner 문서에 monolithic authority처럼 흡수될
+수 있다. W7-B* 때도 일부 검증이 "눈가리고 아웅"처럼 느껴졌으므로, package workflow의 핵심은
+단순 batch 분할이 아니라 **잘못된 승격을 막는 검증 절차**여야 한다.
+
+작성 전 subagent 검토 결과, 유사 내용은 이미 흩어져 있었다. v0 point 7은 fact/inference/opinion
+구분을 말하고, F3는 future/current/stale 혼동, F10은 ledger 신뢰가 검증 규율에 의존함, F37은
+authority update gate, F39는 scattered legacy source map을 다룬다. 하지만 "흩어진 source의
+미검증 추론이 owner artifact로 승격되는 위험" 자체를 직접 이름 붙인 portable 후보는 없었다.
+
+**F41 — Authority assimilation은 owner 승격 전에 claim provenance를 보존해야 한다.**
+- 맥락: legacy/current/planning source에는 확인된 사실, 추론, 의견/제안, 현재 구현, target
+  contract/structure, bug fix, improvement, stale/drift reference, 오래된 rationale이 섞일 수
+  있다. 이를 agent가 요약해 바로 primary artifact에 반영하면, 추론이나 stale claim이 권위
+  내용처럼 승격될 수 있다.
+- 분류: **Portable candidate**.
+- 패턴: owner artifact를 수정하기 전에 claim 단위로 provenance를 분류한다. 최소 분류 후보는
+  `verified fact`, `inference`, `opinion/proposal`, `current implementation`, `target
+  contract/structure`, `bug fix`, `improvement`, `stale/drift reference`다. 현재성 주장과
+  target 주장은 각각 source of truth와 검증 기준을 별도로 가진다.
+- 승격 규칙 후보: 검증된 claim 또는 사용자가 명시 승인한 claim만 owner artifact 본문으로
+  승격한다. 미검증 추론은 owner 본문에 쓰지 않고 Evidence Ledger, Decision Candidates,
+  owner-impact note, Open Issue로 남기며 필요한 재검증 조건을 적는다.
+  단 `current implementation`/`Current Contract`로 분류된 claim은 승격 전 F42
+  falsifiability gate(`src/` + 가능한 test cite)를 추가로 통과해야 한다. provenance 분류만으로
+  현재성 주장을 승격하지 않는다.
+- 조치 후보: v0 point 6/7과 F37 Authority update gate에 **claim provenance gate**를 추가한다.
+
+**F42 — Ledger-first / artifact-later 2단계 흡수 게이트가 필요하다.**
+- @claude/@codex 종합 의견: W8의 첫 산출물은 `docs/specs/aiox-a2a.md` patch가 아니라 batch별
+  Evidence Ledger여야 한다. 특히 `Current Contract` 같은 current 주장은 `src/` 근거와 가능한
+  test 근거로 반증 가능해야 하며, 근거가 없으면 `Target Contract`, `Proposed Contract`,
+  `Open Issue`, `Implementation Gap` 등으로 낮춘다.
+- 분류: **Portable candidate**.
+- 패턴: 큰 assimilation/refactor/migration package에서 batch agent는 기본적으로 investigator다.
+  1차 단계에서는 primary artifact를 직접 수정하지 않고 `claim -> evidence -> classification ->
+  owner impact -> action` Ledger를 만든다. 2차 단계에서 controlling agent 또는 reviewer가
+  cite spot-check와 pass/fail 검토를 수행한 뒤, 통과한 row만 owner artifact에 반영한다.
+- 비용 통제 후보: 모든 source를 controlling agent가 재독하지 않는다. batch agent가 비싼 통독과
+  cross-validation을 맡고, controlling agent는 Ledger의 핵심 cite와 high-risk row를 표적
+  검증한다. 단, "Current/As-built/Current Contract" 승격 row, 삭제·이동·owner 변경 row,
+  decision-worthy row는 spot-check 우선순위가 높다.
+  spot-check 대상 cite는 handoff에 적힌 line을 그대로 신뢰하지 않고 최종 source에서 재확인한다.
+  `logs/AGENTS.md`의 "진입 함수가 무엇을 호출하는지 끝까지 추적" 규칙과 Package Preparation의
+  "`file:line`은 출발점" 규칙을 assimilation 승격 게이트에 그대로 적용한다.
+- W8 적용 후보: A0/A1/B/C/Sweep batch는 먼저 Ledger-only로 실행한다. §11~§13은 spec 본문 복사
+  금지이며, spec contract를 직접 고정하는 rationale만 Decision Candidates로 승격 검토한다.
+  architecture/product/roadmap 성격은 Cross-Owner Effects 또는 W9/W10 handoff로 남긴다.
+
+**Portable Draft v0 보강 제안 추가(의견):**
+- v0 point 6/7 + F37 Authority update gate에 **F41**(owner artifact로 승격하기 전 claim
+  provenance gate: fact/inference/opinion/current/target/bugfix/improvement/stale를 분류하고,
+  미검증 추론은 owner 본문이 아니라 Ledger/Decision Candidates/owner-impact에 남김)을 추가한다.
+- v0 point 5/7에 **F42**(Ledger-first / artifact-later 2단계 흡수: batch agent는 먼저
+  Ledger-only 산출물을 만들고, controlling/reviewer cite spot-check 후 통과 row만 owner artifact에
+  반영)를 추가한다.
+
+## 2026-06-21 · W8 task brief 수립안 후보 — F43 추가
+
+@user 질문: portable pattern에는 task brief 작성 방법에 대한 사례가 흩어져 있고,
+`logs/AGENTS.md`에는 template이 있지만, W8에서 Claude 제안과 Codex 의견을 종합한 실제
+task brief 수립 방식을 기록해야 한다.
+
+**F43 — Evidence-first assimilation brief는 "읽을 것"보다 "승격 금지 조건"을 먼저 고정한다.**
+- 맥락: W8은 `docs/specs/aiox-a2a.md`를 primary owner로 삼지만, 입력 source에는 current spec,
+  post-MVP target, bug/improvement, roadmap/release gate, architecture rationale, stale snapshot이
+  섞여 있다. 따라서 task brief가 단순히 source 목록과 batch 범위만 주면 agent가 좋은 요약을
+  owner 문서 patch로 바로 만들 위험이 있다.
+- 분류: **Portable candidate**.
+- W8 수립안(이번 package 적용분; portable 추출은 아래 v0 보강 제안):
+  points 2~4는 각각 F42(Ledger-first), F41(provenance), F42(falsifiability)를 brief 문구로
+  구현한 것이다. 규칙 본체가 바뀌면 F41/F42를 source로 본다.
+  1. **Controlling log와 Scope를 먼저 고정한다.** task brief 상단에 `Controlling log:
+     <W8 package log>`를 명시하고, `Primary owner`, `Allowed direct updates`, `Owner-impact
+     only targets`, `Evidence inputs`를 package log와 맞춘다.
+  2. **Batch 목적을 patch가 아니라 Ledger로 둔다.** 각 batch 완료 조건의 첫 줄은
+     "`docs/specs/aiox-a2a.md`를 직접 수정하지 않고 Evidence Ledger를 작성한다"로 시작한다.
+     본문 반영은 별도 approved/apply 단계로 둔다.
+  3. **Claim provenance gate를 brief에 박는다.** 각 claim을 `verified fact`, `inference`,
+     `opinion/proposal`, `current implementation`, `target contract/structure`, `bug fix`,
+     `improvement`, `stale/drift reference` 중 하나 이상으로 분류하게 한다.
+  4. **Current 승격은 falsifiability gate를 통과해야 한다.** `Current Contract` 또는 현재 구현
+     주장으로 Ledger에 남기려면 `src/` cite와 가능한 test cite를 요구한다. 근거가 없으면
+     `Target Contract`, `Proposed Contract`, `Open Issue`, `Implementation Gap`,
+     `Pre-implementation Blocker` 등으로 downgrade한다. 라벨은 artifact 종류에 맞춘다
+     (예: spec은 contract 라벨, architecture는 Current/Target/gap 라벨).
+  5. **Cross-owner 내용을 spec에 복사하지 못하게 한다.** release gate, execution plan,
+     architecture debt, product rationale, deletion/archive disposition은 spec 본문 후보가 아니라
+     Cross-Owner Effects, Decision Candidates, source map row, W9/W10 handoff로 출력하게 한다.
+  6. **출력 schema를 review 가능하게 좁힌다.** batch output은 Evidence Ledger,
+     Decision Candidates, Cross-Owner Effects, Source Map updates, Open Questions로 제한한다.
+     각 row에는 `Action`과 "owner 본문 반영 가능/불가/추가 검증 필요"를 표시한다.
+  7. **Review depth와 spot-check 우선순위를 명시한다.** controlling/reviewer는 모든 source를
+     재독하지 않고, `Current` 승격 row, owner 변경 row, deletion/archive row, decision-worthy row,
+     "변경 없음" row를 우선 spot-check한다. handoff/legacy `file:line`은 출발점일 뿐이므로
+     최종 source에서 cite를 재도출한 뒤에만 Ledger 근거로 쓴다.
+  8. **Batch 경계는 source 성격과 검증 단위로 나눈다.** W8 후보는 A0(definition/current
+     snapshot/runtime config gap), A1(protocol core/lifecycle), B(adapter/compose),
+     C(capability/federation/deferred), Sweep(§10~§13 owner 분류)처럼 나눈다. A0/A1 분리는
+     runtime/config contract와 protocol lifecycle 검증 범위가 섞여 context가 폭증하는 것을 막기
+     위한 장치다.
+- Brief에 넣을 경고문 후보:
+
+```markdown
+This batch is Ledger-first. Do not patch the primary owner document unless the
+controlling log explicitly says this is the apply phase.
+
+Treat every legacy/planning source as an inspection target, not as current truth.
+Current Contract claims require src cite and, where possible, test cite. Without
+that evidence, downgrade the claim to Target/Proposed/Open Issue/Implementation
+Gap/Pre-implementation Blocker.
+```
+
+- 조치 후보: W8 package log와 batch task brief를 만들 때 F43을 직접 적용한다. W8 closeout에서
+  이 수립안이 context 비용과 잘못된 승격 위험을 실제로 줄였는지 retrospective로 검증한다.
+
+**Portable Draft v0 보강 제안 추가(의견):**
+- v0 point 5(task brief)에 **F43**(Evidence-first assimilation brief: controlling log/scope,
+  Ledger-only output, claim provenance gate, falsifiability gate, cross-owner no-copy rule,
+  review depth/spot-check priority를 brief에 명시)을 추가한다.
+
+## 2026-06-21 · W8 Sweep 회고 — F44 추가
+
+**F44 — Dated audit source는 current owner 요약과 code drift를 먼저 대조한 뒤 이관한다.**
+- 맥락: W8 Sweep에서 `prd/post-mvp/aiox-a2a-spec.md` §12는 2026-06-11 기준 결함 표였고,
+  `docs/product/roadmap.md`는 이미 이를 gate pressure로 요약해 소유하고 있었다. 원본 row를
+  그대로 roadmap/spec/architecture에 복사하면 이미 수정된 항목(예: Claude channel registration
+  token, rollback pending token cleanup)을 현재 결함으로 재승격할 위험이 있었다.
+- 분류: **Portable candidate**.
+- 패턴: dated audit/checklist/source-map row를 handoff할 때는 (1) current owner가 이미 소유한
+  요약을 먼저 확인하고, (2) raw row의 핵심 claim을 code/current owner로 spot-check해
+  `remaining gap` / `stale-drift` / `needs full audit`로 나눈다. release/roadmap owner에는
+  상세 파일 위치와 과거 severity를 무조건 복사하지 않고 gate pressure나 execution input으로
+  낮춘다.
+- 조치 후보: F41/F42/F43의 claim provenance gate에 "dated audit drift check"를 하위 규칙으로
+  추가한다. 특히 security/reliability audit은 일부 row가 수정됐더라도 같은 gate pressure는
+  남을 수 있으므로, "row stale"과 "gate pressure 해소"를 구분한다.
+
+## 2026-06-21 · W8→W9/W10 source-map read-path 회고 — F45 추가
+
+@user 질문: W9/W10 agent가 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`를
+종합적으로 읽어야 하는데, 실제 작업 진입 시 최신 로그 블록만 보고 source map을 놓칠 가능성이
+있는지 확인 요청. 로컬 확인 결과, `logs/AGENTS.md`에는 legacy 다중 폴더 흡수를 단일 source
+map으로 추적하고 W8/W9/W10이 append/update한다는 규칙이 있으며, parent W4.5 Work Items도
+W8/W10에 source map 사용을 언급한다. 그러나 W9 Work Item은 W10보다 source map required-read가
+덜 직접적이고, onramp는 보통 현재 로그의 Work Items/latest/next pointer 중심으로 재개하므로
+"source map이 존재한다"와 "후속 package agent가 반드시 읽는다"는 별도 보장이다.
+
+**F45 — Shared source map은 생성 규칙뿐 아니라 consumer read binding이 필요하다.**
+- 맥락: F39는 legacy 다중 폴더 흡수를 단일 source map으로 추적하는 패턴을 세웠다. 하지만
+  W8에서 W9/W10 handoff를 남길 때 최신 블록과 parent Work Item에 source map required-read를
+  명시하지 않으면, 후속 agent가 roadmap/release primary owner만 읽고 source map append/update
+  의무를 놓칠 수 있다.
+- 분류: **Portable candidate / repo integration candidate**.
+- 패턴: shared ledger/source map/checklist를 여러 package가 소비한다면, package closeout은
+  다음 네 가지를 함께 확인한다.
+  1. **Owner binding**: shared artifact의 owner log/path와 목적이 명시되어 있다.
+  2. **Consumer binding**: 어떤 downstream package가 어떤 row/section을 읽고 append/update해야
+     하는지 latest block, Cross-Owner Effects 또는 Closeout에 적혀 있다.
+  3. **Entry binding**: parent Work Item 또는 다음 package task brief의 `먼저 읽어라`에 shared
+     artifact가 required read로 들어가 있다.
+  4. **Action binding**: "읽기"만이 아니라 append/update/disposition/self-sufficiency 검증 같은
+     수행 동작이 Work Item 또는 Closeout action으로 잡혀 있다.
+- W8 적용 후보: W8 closeout/latest block에 W9 required reads로
+  `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`를 명시하고, 특히
+  `prd/post-mvp/aiox-a2a-spec.md`, `plans/post-mvp.plan.md`, `plans/post-mvp/*` rows를
+  W9 roadmap/release package 입력으로 박는다. W10 required reads에도 같은 source map의
+  `docs/aiox/*`, archive/decision candidate rows를 명시한다. `deliveryId` namespace와
+  correlated reply authorization 같은 G1 gate handoff는 roadmap에 바로 확정 contract로 쓰지
+  않고, W9 G1 gate update candidate로 연결한다.
+- 조치 후보: F23~F25(handoff entry binding), F29~F30(parent/downstream context), F38(closeout
+  gate), F39(shared source map)를 연결해, package closeout checklist에 **shared artifact
+  consumer read binding** 항목을 추가한다. "최신 블록만 읽어도 다음 package가 놓치지 않는가"를
+  closeout 질문으로 삼는다.

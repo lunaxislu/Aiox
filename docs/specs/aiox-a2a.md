@@ -12,6 +12,10 @@ gates, roadmap phase ordering, dated implementation audits, and market rationale
 are intentionally not copied here; use the product, architecture, roadmap, and
 evidence owners for those topics. Brief cross-references that remain inside the
 copied protocol text are preserved as source context.
+Source sections 10 through 13 are owner-split input, not hidden spec sections:
+misleading metaphors stay out of the contract body, release gates and dated
+audit pressure belong to `docs/product/roadmap.md` and `plans/`, and product or
+architecture rationale belongs to product, architecture or decision owners.
 
 Sentence status is read as follows:
 
@@ -74,6 +78,39 @@ when applicable.
    render/compile 차이를 흡수한다.
 4. **Composition layer**: compose/config가 agents/routes/capabilities/policies/instructions
    desired state를 선언한다.
+
+### 3.1 Runtime config / profile namespace
+
+**Status: Current for profile and socket path resolution; current scaffold plus
+Implementation Gap for state DB path wiring.** The reference runtime uses one
+profile namespace bundle for daemon socket and future state DB paths. Profile
+selection is `dev | build | release`; `AIOX_PROFILE` wins over binary-path
+detection, and invalid profile names fail fast. Current code evidence:
+`src/config/paths.ts:15-37`, `tests/unit/config/paths.test.ts:14-52`.
+
+`AIOX_SOCKET_PATH` is the top-priority daemon socket override. It MUST be an
+absolute path; a relative override is a configuration error because child
+agents can launch from different working directories. Without the override,
+`release` uses `~/.aiox/daemon.sock`, while `dev` and `build` use
+`~/.aiox/<profile>/daemon.sock`. Current code evidence:
+`src/config/paths.ts:88-102`, `tests/unit/config/paths.test.ts:55-84`.
+
+`AIOX_DB_PATH` follows the same absolute override and profile namespace
+resolver contract for the future file-backed state DB path. However, this is
+not an active durable-store guarantee: the production daemon currently opens
+`:memory:` and does not wire `getStatePath()` into daemon startup. Current
+resolver evidence: `src/config/paths.ts:105-120`,
+`tests/unit/config/paths.test.ts:87-123`. Current production gap evidence:
+`src/daemon/run.ts:24-26`.
+
+CLI and adapter-launched child agents inherit the resolved socket namespace.
+The CLI starts the daemon with one resolved socket path, and launch adapters
+receive that path through `AIOX_SOCKET_PATH`; canonical agent identity remains
+the logical `agent://local/<profile>/<agent-name>` address, not a filesystem
+socket path. Current evidence: `src/bin/aiox.ts:78-102`,
+`src/bin/aiox.ts:166-180`, `src/cli/invocation.ts:200-254`,
+`src/adapters/codex/launcher.ts:88-119`,
+`src/adapters/claude/launcher.ts:94-118`.
 
 ## 4. A2A protocol과 message lifecycle
 
@@ -163,6 +200,30 @@ logical address에 rebind할 수 있지만, 이름 변경은 v1에서 새 identi
 - 현재 Codex `parentMessageId`와 Claude `chat_id`는 logical message id를 가리키므로 이
   계약에 비준수다. v1 cutover에서 deliveryId로 바꾸며, migration 중에는 둘을 혼동하지
   않도록 별도 field로 읽는다.
+
+Current implementation caveats:
+
+- The current pre-v1 daemon/API reason for "source has no active directed
+  routes" is `no_active_routes`; v1 `route_not_allowed` is the canonical
+  protocol error name for the same condition and is not yet the public API
+  reason. Current evidence: `src/daemon/state.ts:323-338`,
+  `src/daemon/state.ts:1761-1783`,
+  `tests/unit/daemon/message-fanout-store.test.ts:198-222`,
+  `tests/unit/daemon/codex-ingress.test.ts:589-602`.
+- The current store has a `message_deliveries.id` primary key, but public v1
+  envelope `deliveryId` exposure and its external namespace are still an
+  Implementation Gap/Open Issue. Current schema evidence:
+  `src/store/schema.ts:58-67`, `tests/unit/store/schema.test.ts:174-195`.
+  The target contract is a stable target-specific delivery id; whether that
+  public id is identical to the stored row id or a separate external id must
+  be decided before G1 schema cutover.
+- Current reply ingress creates a `type: "reply"` message linked by
+  `parentMessageId`/`parent_message_id` and dispatches it through the replying
+  agent's active outbound routes. It does not yet authorize replies by
+  `inReplyToDeliveryId` or force source-only routing to the original source.
+  Current evidence: `src/daemon/state.ts:315-320`,
+  `src/daemon/state.ts:1800-1821`,
+  `tests/unit/daemon/codex-ingress.test.ts:633-710`.
 
 ### 4.3 Delivery, acknowledgement, retry
 
@@ -264,6 +325,26 @@ idempotencyKey까지만 저장한다. 따라서 v1 field를 prompt에만 렌더�
 conformant하지 않다. 공개 release가 계속 in-memory DB를 쓰더라도 process lifetime 안에서는
 위 상태와 전이를 일관되게 보존해야 한다.
 
+Current implementation caveats:
+
+- Current in-memory/domain messages carry `id`, `sourceAgentId`,
+  `parentMessageId`, `type` and text `content`; they do not carry protocol
+  version, canonical source/target address, `intent`, `replyExpected`, a
+  structured `content` object or public `deliveryId` fields. Current evidence:
+  `src/core/messages.ts:17-23`, `src/core/messages.ts:33-40`.
+- Current fan-out creates one logical message plus one queued delivery per
+  route. The stored delivery row has a generated `id`, shared `messageId`,
+  target agent id, route id, status and idempotency key, but it does not yet
+  persist retry attempt metadata, ack evidence, reply obligation state or
+  degradation code. Current evidence: `src/core/messages.ts:57-74`,
+  `src/core/deliveries.ts:13-19`, `src/core/deliveries.ts:26-35`,
+  `src/store/repositories/deliveries.ts:102-112`.
+- Current SQLite schema has `messages`, `message_deliveries` and `events`
+  tables with timestamps and correlation ids, but it is still below the G1
+  persistence minimum because canonical v1 envelope fields, ack records, retry
+  scheduling and reply obligations are absent. Current evidence:
+  `src/store/schema.ts:48-78`.
+
 Protocol invariants:
 
 - `type`, `intent`, `reply_expected`는 분리한다.
@@ -314,11 +395,13 @@ Implementation review notes (G1 착수 시 사용자와 재검토):
   없이 식별하거나 reply 처리와 함께 원 delivery의 ack evidence·obligation fulfillment를
   원자적으로 기록해야 한다. obligation 생성 시점과 state transition의 정확한 저장 모델은 G1
   schema 설계에서 확정한다.
-- **Recommended, not yet approved — correlated reply authorization:** 원 delivery가 원 target
-  identity에 해당 obligation을 이행하는 correlated reply 권한을 부여하고, 별도의 reverse
-  directed route는 요구하지 않는 방식을 우선 검토한다. 이 권한은 임의의 새 message 전송
-  권한이 아니며, daemon은 `inReplyToDeliveryId`, replying identity와 유효한 obligation을 모두
-  검증해야 한다. G1에서 reverse route 요구안과 보안·UX 영향을 비교해 사용자 승인을 받는다.
+- **Open decision — correlated reply authorization:** current implementation is
+  route-based fan-out for reply messages, while the v1 target candidate is
+  source-only delivery correlation by `inReplyToDeliveryId`. G1 must decide
+  whether a correlated reply requires a reverse directed route or whether the
+  original delivery obligation grants a narrow reply right to the original
+  source. Until that decision is approved, source-only correlation remains the
+  target direction but not an implemented current contract.
 - **Recommended, not yet approved — `type` authoring:** canonical `send`는 caller가
   `question | instruction`을 명시하고, canonical `reply`는 daemon이 `reply`로 고정하며,
   `status | event`는 인증된 daemon/system path만 생성하는 방식을 우선 검토한다. `type`은
@@ -378,15 +461,55 @@ Capability tier:
 4-slot은 adapter 구현 입력 모델이고, tier는 그 결과로 해당 runtime이 지원하는 A2A 수준을
 설명한다. 모든 runtime을 Tier 1로 취급하지 않는다.
 
+Current implementation caveats:
+
+- The shared adapter interface is not yet the full 4-slot runtime model. It is
+  currently `AgentAdapter { kind, inject(input) }`, and `AdapterInjectResult`
+  distinguishes `success`, `failed` and `deferred`. Current evidence:
+  `src/adapters/contract.ts:19-56`,
+  `src/adapters/router.ts:87-114`,
+  `src/adapters/router.ts:140-178`,
+  `tests/unit/adapters/fake-integration.test.ts:437-541`.
+- The daemon still contains a direct Codex/Claude dispatch branch in the
+  production message path. A general adapter dispatch registry is an
+  Implementation Gap / execution-plan item, not a Current Contract. Current
+  evidence: `src/daemon/state.ts:1274-1277`.
+- Adapter 4-slot and pair slots are different concepts. Current pair capacity
+  is a vendor-agnostic two-slot model, `PairSlot = "a" | "b"`; same-vendor
+  pairs can occupy both slots and become ready. Current evidence:
+  `src/core/pairs.ts:23-45`, `src/core/pairs.ts:76-130`,
+  `tests/unit/core/pairs.test.ts:110-159`.
+- Current code can surface typed adapter degradation and deferred injection,
+  but it does not expose a runtime tier evaluator or diagnostics API that
+  proves every wake-up, ack, correlation and dedupe guarantee. The tier matrix
+  below is therefore a compatibility/status classification, not proof that a
+  runtime has a complete Tier 1/2 guarantee.
+
 Current adapter matrix (2026-06-11):
 
 | Runtime         | Launch/attach                               | Ingress                                         | Egress                                             | Identity/correlation                                            | Effective tier                                                                                                                                                                                                                                                   |
 | --------------- | ------------------------------------------- | ----------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Codex CLI       | daemon-owned app-server + TUI launch/resume | app-server turn/prompt compatibility path       | launch-scoped MCP `aiox_send_message`/`aiox_reply` | agent token + thread/session; reply는 logical parent message id | **Tier 3**. 현재 CLI는 `ws://127.0.0.1:0`을 accepted listen value로 노출하지만 upstream 문서는 WebSocket transport를 experimental/unsupported로 명시하므로 version pin과 fallback 결정이 G0/G1 blocker다. `thread/inject_items`/`turn/steer`도 TUI spike 전이다. |
-| Claude Code CLI | plugin channel launch                       | local channel push/notification + text envelope | channel `send`/`reply`                             | agent name + `chat_id`; 현재 ingress/push auth gap 존재         | **Tier 3 preview**. 인증과 delivery ack가 완성되면 Tier 2 후보.                                                                                                                                                                                                  |
+| Codex CLI       | daemon-owned app-server + TUI launch/resume | app-server turn/prompt compatibility path       | launch-scoped MCP `aiox_send_message`/`aiox_reply` | agent token + thread/session; reply는 logical parent message id | **Tier 3**. Current local code launches an app-server, connects WebSocket, starts a per-agent proxy, injects fixed `mcp_servers.aiox`, and uses `turn/start` for ingress. Upstream support/stability and methods such as `thread/inject_items`/`turn/steer` must be revalidated before G0/G1 cutover. |
+| Claude Code CLI | dev-channel/plugin channel launch           | local channel push/notification + text envelope | channel `send`/`reply`                             | agent name + `chat_id`; 현재 daemon->channel push auth gap 존재 | **Tier 3 preview**. Current local code can launch inline/plugin channel paths and register/send/reply through the channel server, but daemon->channel `/send` push lacks request auth and delivery ack is not complete. Authentication and ack completion are prerequisites for any Tier 2 claim. |
 
 지원 표에 없는 runtime은 이름만 adapter enum에 추가해서 지원으로 주장하지 않는다. 4-slot,
 auth, ack, degradation test를 모두 기록한 뒤 tier를 부여한다.
+
+Current local evidence for the matrix: Codex app-server/TUI launch and fixed MCP
+projection are in `src/adapters/codex/launcher.ts:40-119`; Codex attach,
+WebSocket initialization, proxy startup and runtime failure detection are in
+`src/adapters/codex/runtime.ts:304-365`; proxy binding observes
+`thread/start|resume|fork` responses in `src/adapters/codex/proxy.ts:58-193`;
+Codex MCP send/reply descriptions and daemon client surface are in
+`src/adapters/codex/mcp-server.ts:140-165`. Claude inline/plugin launch and
+identity/socket injection are in `src/adapters/claude/launcher.ts:9-27`,
+`src/adapters/claude/launcher.ts:94-118` and
+`src/adapters/claude/launcher.ts:189-209`; channel send/reply tools and daemon
+registration are in `src/adapters/claude/channel-server.ts:258-304` and
+`src/adapters/claude/channel-server.ts:491-520`; daemon-to-channel push and the
+current unauthenticated `/send` boundary are in
+`src/adapters/claude/injector.ts:21-78` and
+`src/adapters/claude/channel-server.ts:432-456`.
 
 Claude TUI ingress는 하나의 표면을 완전한 보장처럼 취급하지 않고 다음 fallback map으로
 판독한다. 외부 CLI/hook 표면은 current adapter matrix와 함께 재검증한다.
@@ -410,7 +533,9 @@ Adapter status와 diagnostics는 현재 선택된 ingress path, fallback 발생 
 ## 6. Compose (declarative composition)
 
 **Status: Committed target, Phase 2. 현재 CLI/config에는 구현되어 있지 않다.** 아래 command와
-schema 이름은 v1 compose contract를 승인할 때까지 provisional이다.
+schema 이름은 v1 compose contract를 승인할 때까지 provisional이다. Current repository
+spot-check: `rg -n "compose|Compose|compose.yaml" src tests package.json README.md` finds no
+compose implementation or user-facing command outside this spec.
 
 Compose는 Docker clone이 아니다. Compose는 collaboration protocol/runtime 위에서 project
 collaboration topology와 runtime projection을 선언하는 config layer다.
@@ -478,8 +603,9 @@ Implementation review note (Compose 착수 시 사용자와 재검토):
 ## 7. Capability와 sandbox
 
 **Status: policy model은 Normative target, capability projection과 sandbox enforcement는
-미구현이다.** 현재 token/route enforcement 일부가 존재하지만 release-grade security
-boundary로 간주하지 않는다.
+미구현이다.** 현재 token/route enforcement와 fixed aiox MCP/channel projection 일부가
+존재하지만 release-grade security boundary나 arbitrary capability compiler로 간주하지
+않는다.
 
 Capability isolation의 중심 개념은 **Capability Projection Layer**다.
 
@@ -543,6 +669,30 @@ N개 grant로 일반화하는 작업에 가깝다. 그러나 현재 코드는 re
 conflict detection, projection cleanup과 arbitrary user capability compile을 구현하지 않았으므로
 "절반 구현"은 adapter compile primitive에만 해당한다.
 
+Current implementation caveats:
+
+- Current Codex projection is a fixed per-session `mcp_servers.aiox` injection
+  carrying agent identity, token and socket path; it is not a general
+  multi-server grant compiler. Current evidence:
+  `src/adapters/codex/launcher.ts:88-119`,
+  `tests/unit/adapters/codex-launcher.test.ts:133-170`.
+- Current Claude projection is either inline MCP config or plugin channel
+  activation for the fixed aiox channel/server, with agent identity, token and
+  socket path passed to the launched process. Current evidence:
+  `src/adapters/claude/launcher.ts:94-117`,
+  `src/adapters/claude/launcher.ts:189-206`,
+  `src/adapters/claude/channel-server.ts:491-507`,
+  `tests/unit/adapters/claude-channel.test.ts:673-739`.
+- Registration/ingress auth is implemented for channel registration and Codex
+  MCP egress, but Claude daemon-to-channel `/send` remains an Implementation
+  Gap: the channel HTTP ingress accepts loopback POSTs without a request auth
+  header. Current evidence:
+  `src/daemon/state.ts:926-953`,
+  `src/daemon/state.ts:1044-1073`,
+  `src/daemon/state.ts:1711-1758`,
+  `src/adapters/claude/channel-server.ts:432-456`,
+  `docs/decisions/claude-channel-trust-and-registration.md:25-34`.
+
 Host가 제공하면 client-visible MCP tool surface도 좁힐 수 있다. 예를 들어 Codex는
 server별 enabled/disabled tool을, Claude는 tool allow/deny와 strict MCP config를 제공한다.
 다만 이것은 외부 MCP server process 내부의 side effect, 동적 tool 변경이나 이미 skill에서
@@ -580,10 +730,20 @@ Reserved profiles:
 - 현재 DB는 process-lifetime이므로 retention/deletion guarantee가 없다. durable store를
   도입할 때 보존 기간, project/profile 삭제, transcript export/redaction, schema migration과
   crash recovery를 함께 정의한다. 이 항목 없이 "durable mailbox"를 release하지 않는다.
+  Current evidence: production daemon paths still open `:memory:`
+  (`src/daemon/run.ts:24-26`, `src/bin/aiox.ts:238-245`,
+  `src/bin/aiox.ts:361-363`), while file-backed state path resolution is scaffolded
+  but not wired (`src/config/paths.ts:105-120`).
 
 ## 8. Federation / remote
 
 aiox는 local-first로 시작하지만, protocol contract는 location-ready하게 둔다.
+
+**Status: Current for same-daemon local addressing and local socket control-plane
+transport; Deferred/Target for same-machine multi-daemon, remote and federation
+implementation.** No `src/` federation/remote implementation files are present as
+of this assimilation pass (`find src -iname '*federation*' -o -iname '*remote*'`
+returns no matches).
 
 이 protocol contract는 다음 범위로 커져도 깨지지 않아야 한다:
 
@@ -622,6 +782,11 @@ Principles:
   않는다. L1은 사내망 daemon federation, L3는 외부 vendor/Google A2A bridge이며 vendor
   표면 의존성이 더 크다. 전부 동시에 진행하지 않는다.
 
+Current implementation caveat: the local control plane is implemented with a
+Node `net` socket server/client around a resolved socket path
+(`src/daemon/socket-transport.ts:48-85`), but daemon-to-daemon WebSocket/token/mTLS,
+remote registration, signed envelopes and replay protection remain deferred.
+
 Deferred federation topics:
 
 - remote daemon registration
@@ -644,6 +809,19 @@ Deferred federation topics:
   `clientUserMessageId`는 public docs 계약으로 확인되지 않았으므로 deliveryId binding
   후보일 뿐이다. 남은 검증은 TUI 표시, active turn 충돌, wake-up 조합, correlation id
   보존과 실패 모드다. 검증 전에는 Tier 2로 올리지 않는다.
+  Current local partial: the Codex adapter can call `turn/start`, list loaded
+  threads, bind selected thread identity through the proxy, and detect
+  app-server/WS runtime failure (`src/adapters/codex/injector.ts:22-63`,
+  `src/adapters/codex/runtime.ts:180-190`,
+  `src/adapters/codex/runtime.ts:242-285`,
+  `src/adapters/codex/runtime.ts:330-365`,
+  `src/adapters/codex/proxy.ts:46-58`,
+  `src/adapters/codex/proxy.ts:151-194`,
+  `tests/unit/adapters/codex-proxy.test.ts:27-97`,
+  `src/daemon/state.ts:1418-1482`,
+  `src/daemon/state.ts:1684-1696`). This does not prove
+  `thread/inject_items`, `turn/steer`, canonical `deliveryId` binding, active
+  turn policy or Tier 2 delivery semantics.
 - OS/process/filesystem/network sandbox enforcement.
 - full external MCP internal tool allow/deny enforcement.
 - skill knowledge recall/revocation guarantee.

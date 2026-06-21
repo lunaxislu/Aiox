@@ -93,6 +93,9 @@ package(W8 specs, W9 roadmap/release, W10 split)가 나눠 흡수한다. 무엇�
   package log가 소유한다(`history/`를 다루는 W5 history migration과 형제 package). 흡수 package
   (W8 specs, W9 roadmap/release, W10 split)는 새 표를 만들지 않고 같은 표에 row를
   append/update하며 disposition을 채운다. 최종 물리 삭제 게이트(plan stage)는 이 표 하나만 소비한다.
+- **consumer read binding**: source map row를 소비하는 package의 task brief·Work Item·closeout
+  handoff에는 이 source map을 required-read로 명시하고, 읽기뿐 아니라 해당 rows의
+  disposition/self-sufficiency append/update action까지 적는다.
 - **표 컬럼**: `file | 주장 성격 | 흡수 owner(spec/architecture/roadmap/release/decision) |
   소비 package | archive 필요? | self-sufficiency 검증 | disposition`.
   - disposition 값: `absorb→delete`(흡수 후 archive 없이 삭제 후보), `archive→delete`(logs
