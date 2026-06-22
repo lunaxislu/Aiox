@@ -25,8 +25,8 @@ archive, delete 판정한다. 목표는 파일 수 축소가 아니라, 각 문�
 - [x] taxonomy 초안과 기존 topic log 판정 -> `logs/2026-06-12-workspace-reset-taxonomy-단계.md`
 - [x] taxonomy 책임 문서 확정 -> `logs/2026-06-16-workspace-reset-taxonomy-책임문서.md`
 - [x] 폴더별 inventory와 문서 판정 -> `logs/2026-06-16-workspace-reset-폴더별-inventory.md`
-- [>] 승인된 이관·통합·삭제 -> `logs/2026-06-16-workspace-reset-폴더별-inventory.md`
-- [ ] link·권위·세션 재개 가능성 검증
+- [x] 승인된 이관·통합·삭제 -> `logs/2026-06-16-workspace-reset-폴더별-inventory.md`
+- [>] link·권위·세션 재개 가능성 검증
 - [ ] history/ · docs/aiox · prd/ · plan/ 물리 삭제 게이트 — 삭제 전 관련 owner 문서·decision·archive의 history 출처를 평문 provenance로 전환한 뒤 삭제 -> `logs/2026-06-16-workspace-reset-폴더별-inventory.md`
   - history/58 = W8(A2A spec)에서 §4 lifecycle WHY 일부 소비·decision 승격 완료,
     잔여 rationale/live refs는 W10 및 이 물리 삭제 게이트에서 확인. history/59 =

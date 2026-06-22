@@ -1,7 +1,7 @@
 ---
 topic: workspace reset W4.5 owner 문서 정제와 질문 중심 탐색
 description: workspace reset W4.5 — W4 이관본 product/spec/architecture/roadmap owner 문서를 정제하고 사용자 질문 중심으로 spec·roadmap·architecture·plans 흐름을 탐색한다
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -17,8 +17,8 @@ status: open
   - 질문 하나를 중심으로 spec/roadmap/plans/architecture/code owner를 왕복한다
   - 답변마다 확인한 사실, 추론, 의견/제안을 구분하고 해당 owner를 표시한다
   - 현재 질문과 별도 수명인 꼬리질문은 parking lot으로 남긴다
-- [ ] W3 반복 설명과 합의된 작성 규칙을 정리해 guide 또는 `docs/guides/workflow.md` 반영 후보로 만든다 — 지금 하지 않음; 하위 AGENTS와 monolithic 최신화 이후 재검토
-- [ ] W4 Final closeout: W8-W11 완료 후 이 child 로그 결과를 parent inventory 로그에 반영하고 parent W4.5를 해소한다
+- [x] W3 반복 설명과 합의된 작성 규칙을 정리해 guide 또는 `docs/guides/workflow.md` 반영 후보로 만든다 — no-op 완료: @user 판단으로 guide 반영 후보 없음. package workflow는 guide 반영 대상이 아니고, 확인한 사실/추론/의견 구분은 root `AGENTS.md`가 이미 소유함
+- [x] W4 Final closeout: W8-W11 완료 후 이 child 로그 결과를 parent inventory 로그에 반영하고 parent W4.5를 해소한다
 - [x] W5 `docs/specs/AGENTS.md`와 `docs/architecture/AGENTS.md`를 작성하고 상위 문서 계약과 정합성을 확인한다
   - [x] W5-1 `docs/specs/AGENTS.md` 작성 — spec 작성 규칙, 상태 어휘, section ID 보존, harness/agent 확인 절차
   - [x] W5-2 `docs/architecture/AGENTS.md` 작성 — as-built/target 구분, code/test 근거, drift 처리, harness/agent validation 절차
@@ -42,18 +42,18 @@ status: open
   - [x] W9-2 작업 중 spec/architecture/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다 — 완료/no-op: child W9에서 spec/roadmap/release authority gap 없음·owner body apply 없음으로 PASS, architecture/decision 잔여는 W10 handoff로 분류
   - [x] W9-2a 생성할 W9 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다 — 완료: `logs/W9-R-task.md`, `logs/W9-L-task.md` 작성·사용
   - [x] W9-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다 — 완료: W9 closeout + portable pattern F51~F55 기록
-- [>] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다. `logs/2026-06-19-workspace-reset-W5-history-migration.md`의 W5 history migration source map과 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map(`docs/aiox/*`, archive/decision-candidate rows 포함)을 둘 다 required-read로 두고, target self-sufficiency/delete guard를 history/legacy rationale 입력으로 사용한다. split/disposition 판단 후 legacy-source-absorption rows를 append/update한다.
+- [x] W10 split readiness and map package를 수행한다 — **완료(2026-06-22): child package log `logs/2026-06-22-workspace-reset-W10-split-readiness-map.md` W1~W7 PASS, status `decided`. Scope.Primary owner @user 확정 = split map 통합 패키지; body split 미실행. 결과: spec/architecture split readiness map 산출, task brief `logs/W10-S/A/L-task.md` 작성, source map disposition append/update, decision 2건 승격, parent W10 소비 완료.** W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다. `logs/2026-06-19-workspace-reset-W5-history-migration.md`의 W5 history migration source map과 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map(`docs/aiox/*`, archive/decision-candidate rows 포함)을 둘 다 required-read로 두고, target self-sufficiency/delete guard를 history/legacy rationale 입력으로 사용한다. split/disposition 판단 후 legacy-source-absorption rows를 append/update한다.
   - 주의: W10은 단일 primary owner 문서가 없다. split 대상은 W7·W8에서 최신화된
     `docs/specs/aiox-a2a.md`와 `docs/architecture/local-agent-runtime.md`이며,
     Scope.Primary owner는 child log 진입 시 사용자와 확정한다.
-  - [ ] W10-1 split 중 history/legacy 자료에서 decision-worthy rationale이 발견되면 W6 기준에 따라 `docs/decisions/`로 승격한다
-  - [ ] W10-2 split map, anchor preservation, inbound reference, README 필요성을 검토한다
-  - [ ] W10-2a 생성할 W10 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
-  - [ ] W10-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
-- [ ] W11 W7~W10을 진행하는 동안 package workflow 시행착오를 계속 수집하고 portable log skill 후보로 정리한다 → `logs/2026-06-18-package-workflow-portable-pattern.md`. 수집은 각 W closeout 때 즉시 누적하고, W8~W10 package closeout 뒤 repo 전용/portable 분리와 승격 판단을 마무리한다
-  - [ ] W11-1 각 package closeout 때 package log/task brief/evidence ledger/agent 의견 수렴/Scope 운영에서 생긴 문제와 보완점을 child log에 기록한다
-  - [ ] W11-2 repo 전용 taxonomy와 portable pattern을 child log에서 분리한다
-  - [ ] W11-3 portable log skill로 옮길지, repo integration에 남길지 판단하고 필요하면 log skill maintenance 절차로 별도 개선 작업을 연다
+  - [x] W10-1 split 중 history/legacy 자료에서 decision-worthy rationale이 발견되면 W6 기준에 따라 `docs/decisions/`로 승격한다 — 완료: 5건 판정 중 2건 승격(`codex-d7-authoritative-binding-scope.md`, `codex-app-server-mcp-injection-and-isolation.md`), 3건 no-promotion, Claude checker PASS
+  - [x] W10-2 split map, anchor preservation, inbound reference, README 필요성을 검토한다 — 완료: spec §2~§9 map + architecture §0~§14 map 산출, anchor stub/index 유지 필요, README는 실제 split 시점 생성 권고
+  - [x] W10-2a 생성할 W10 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다 — 완료: `logs/W10-S-task.md`, `logs/W10-A-task.md`, `logs/W10-L-task.md`
+  - [x] W10-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다 — 완료: W10 child closeout + portable pattern F56~F60 기록
+- [x] W11 W7~W10을 진행하는 동안 package workflow 시행착오를 계속 수집하고 portable log skill 후보로 정리한다 → `logs/2026-06-18-package-workflow-portable-pattern.md`. 수집은 각 W closeout 때 즉시 누적하고, W8~W10 package closeout 뒤 repo 전용/portable 분리와 승격 판단을 마무리한다 — 완료: child log status `decided`, W11-2 taxonomy 분리, W11-3 maintenance follow-up 개설
+  - [x] W11-1 각 package closeout 때 package log/task brief/evidence ledger/agent 의견 수렴/Scope 운영에서 생긴 문제와 보완점을 child log에 기록한다 — 완료: W8 F46~F50, W9 F51~F55, W10 F56~F60 수집됨
+  - [x] W11-2 repo 전용 taxonomy와 portable pattern을 child log에서 분리한다 — 완료: child log W11-2 block에서 F1~F60을 portable pattern, repo-specific/repo integration, rejected/too-heavy, open question/W11-3 입력으로 분류함
+  - [x] W11-3 portable log skill로 옮길지, repo integration에 남길지 판단하고 필요하면 log skill maintenance 절차로 별도 개선 작업을 연다 — 완료: portable skill 즉시 수정은 보류하고 `logs/2026-06-22-log-skill-package-workflow-portableization.md`를 maintenance follow-up으로 개설함
 
 ## 2026-06-16 · workspace reset W4.5 owner 문서 정제와 질문 중심 탐색
 
@@ -739,3 +739,190 @@ W9-1/W9-2/W9-2a/W9-3가 `[ ]`로 남아 있어 구조적으로 불일치했다. 
 - W10 next pointer는 유지한다.
 - owner body, source map final disposition, legacy 원본, 물리 삭제, `plans/post-mvp*` post-Atlas 이관
   조건은 변경하지 않았다.
+
+## 2026-06-22 · W10 진입 — package log 생성, Scope 확정(@user)
+
+`logs/AGENTS.md` Package Preparation step 1에 따라 W10 child package log를 생성하고 parent W10을 이
+child package log 소비 pointer로 재배선했다.
+
+**@user Scope 결정:**
+
+- W10 entry 시 확정해야 하는 Scope.Primary owner를 @user와 정했다. 결정 = **split map 통합 패키지**.
+  body split을 실행하지 않고, split 대상 2종(`docs/specs/aiox-a2a.md`·`docs/architecture/local-agent-runtime.md`)의
+  split map·anchor 보존·inbound reference·README 필요성·legacy disposition을 함께 산출한다. Primary
+  owner는 단일 문서가 아니라 split readiness map 산출물 + source map disposition이며, 두 split 대상
+  본문은 anchor/stale reference 정합 최소 패치만 허용한다.
+
+**처리:**
+
+- 새 child package log 생성: `logs/2026-06-22-workspace-reset-W10-split-readiness-map.md`. child Work
+  Items W1~W7 = W1 task brief / W2 spec split map / W3 architecture split map / W4 legacy must-check
+  self-sufficiency + Archive Gate / W5 decision 승격 / W6 source map disposition / W7 closeout & parent 반영.
+- parent W10 Work Item 앞단에 child pointer를 삽입했다(`[>]` 유지). 현재 child next pointer = W1.
+- required-read 3종을 child Scope.Evidence inputs에 명시: W9 closeout Legacy/Historical Source
+  Handoff(`...W9-release-roadmap-authority.md:664-682`), legacy source absorption map, W5 history
+  migration source map.
+
+**경계 확인(무변경):**
+
+- 물리 삭제·`plans/post-mvp*` 재편/삭제·단일 A2A plan·roadmap repoint는 parent plan post-Atlas 단계
+  owner(Atlas-gated)이며 W10 scope 아님. W10은 split readiness와 disposition 판정만 산출한다.
+- `history/*`(58/59 포함)는 W5 history migration owner. W10은 history 잔여 rationale을 split/decision
+  입력으로만 확인하고 삭제·중복 source-map row를 만들지 않는다.
+
+**현재 next pointer:** W10 child package log
+`logs/2026-06-22-workspace-reset-W10-split-readiness-map.md`의 W1(batch task brief 작성).
+
+## 2026-06-22 · W10 package 소비 확정 — child closeout PASS, W11로 전이
+
+child package log `logs/2026-06-22-workspace-reset-W10-split-readiness-map.md`의 W1~W7이
+완료됐다. W7 closeout에서 child status를 `decided`로 전이했고, parent W10은 이 결과를
+소비해 `[x]` 처리했다.
+
+**W10에서 확정된 결과 (parent 소비):**
+
+- Scope: @user 결정대로 W10은 **split map 통합 패키지**였다. body split은 실행하지 않았다.
+- task brief: `logs/W10-S-task.md`, `logs/W10-A-task.md`, `logs/W10-L-task.md` 작성·사용 완료.
+- spec split map: `docs/specs/aiox-a2a.md` §2~§9를 split slice 후보로 매핑했다. future split은 원본
+  `aiox-a2a.md`를 compatibility index/stub holder로 남기고 기존 § heading anchor를 보존해야 한다.
+- architecture split map: `docs/architecture/local-agent-runtime.md` §0~§14를 index + durable slice 후보로
+  매핑했다. future split은 store/repository, daemon/API, Claude adapter, Codex adapter, routing/FSM,
+  CLI/status, errors/events/smoke, gaps/authority 경계를 참고한다.
+- README 판단: `docs/specs/README.md`와 architecture navigation README는 실제 split 시점에 생성 필요성을
+  재판단한다. W10에서는 README를 만들지 않았다.
+- decision: 5건 후보 중 2건을 승격했다.
+  - `docs/decisions/codex-d7-authoritative-binding-scope.md`
+  - `docs/decisions/codex-app-server-mcp-injection-and-isolation.md`
+  3건은 기존 owner가 커버한다고 판정했고 Claude checker PASS를 받았다.
+- source map: `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` 기존 row를 append/update했다.
+  새 표는 만들지 않았다. `plans/post-mvp*`와 `history/*` row는 수정하지 않았다.
+- portable: W10 회고 F56~F60을 `logs/2026-06-18-package-workflow-portable-pattern.md`에 수집했다.
+
+**이관/deferred (W10에서 확정 안 함):**
+
+- 실제 body split은 후속 split executor 소유다. W10 산출물은 split readiness/map이다.
+- `plans/post-mvp.plan.md:101`의 possible stale section pointer(§8 vs §4)는 W10에서 flag만 했다.
+  final action은 later plan/roadmap stage owner가 판단한다.
+- `industry-precedents` Opaque Worker coarse-state/semantic-timeout self-sufficiency 정밀 감사는 physical
+  deletion gate 소유다.
+- archive digest required 4건(`prd/pre-validation/*` 2개, `docs/aiox/round-4-tui-smoke-check.md`,
+  `docs/aiox/step-14-smoke-test-report.md`)은 source map에 남겼다. digest 생성은 W10 범위 밖이다.
+- 물리 삭제, `plans/post-mvp*` single execution successor, roadmap repoint/final disposition은 parent plan
+  post-Atlas physical deletion gate 소유다.
+
+**현재 next pointer:** W11 — W7~W10 package workflow 후보를 `logs/2026-06-18-package-workflow-portable-pattern.md`
+기준으로 repo 전용/portable로 분리하고, log skill 승격 여부를 판단한다.
+
+## 2026-06-22 · W11-2 완료 — portable/repo-specific taxonomy 분리
+
+`logs/2026-06-18-package-workflow-portable-pattern.md`에서 W7~W10 package 회고 수집분 `F1`~`F60`을
+분류했다.
+
+**확인한 사실:**
+
+- child 로그에는 W8 `F46`~`F50`, W9 `F51`~`F55`, W10 `F56`~`F60`까지 수집돼 있었다.
+- child 로그 Work Items의 W1-2~W1-4는 본문 수집 완료와 달리 미완으로 남아 있어 W1 전체를
+  완료로 정합화했다.
+- child 로그에 `2026-06-22 · W11-2 repo 전용 taxonomy와 portable pattern 분리` 블록을 추가했고,
+  W2를 완료, W3를 active next pointer로 전이했다.
+
+**분류 결과 요약:**
+
+- Portable 후보: package lifecycle/scope gate, task brief/controlling log, claim provenance와
+  falsifiability, Ledger-first/artifact-later, evidence·handoff·line reference 검증, review depth와
+  agent topology, source map/disposition/deletion guard, split readiness, decision promotion,
+  authority gap과 execution successor gap 분리.
+- Repo-specific/repo integration: 이 repo의 docs taxonomy, status label vocabulary, `history/`·`prd/`·
+  `plans/post-mvp/`·`docs/aiox/` absorption, workspace reset source map, `logs/AGENTS.md` package
+  template 구현.
+- Rejected/too-heavy: 답을 박는 task brief, 모든 작은 작업에 producer identity 감사 적용, 일반
+  작업 전체에 package task brief read path 강제, 작은 단일 작업에 package workflow 적용.
+- Open/W11-3 입력: portable log skill로 옮길 최소 단위, controlling log identity의 portable화 여부,
+  shared source map의 추상화 수준, split compatibility rule의 적용 범위.
+
+**다음:** W11-3 — child log W3에서 log skill maintenance 승격 후보와 repo integration 잔류 후보를
+판단한다.
+
+## 2026-06-22 · W11 완료 — portable workflow child decided, W3로 전이
+
+W11-3까지 처리했다.
+
+**확인한 사실:**
+
+- `logs/2026-06-18-package-workflow-portable-pattern.md`는 W1~W4 Work Items가 모두 해소됐고
+  `status: decided`로 전이됐다.
+- W11-2 taxonomy는 `F1`~`F60`을 portable pattern, repo-specific/repo integration,
+  rejected/too-heavy, open question/W11-3 입력으로 분리했다.
+- W11-3 판단 결과, portable log skill 파일을 즉시 수정하지 않고 별도 maintenance follow-up
+  `logs/2026-06-22-log-skill-package-workflow-portableization.md`를 열었다.
+
+**판단:**
+
+- package workflow 전체를 portable skill에 바로 반영하면 repo-specific workspace reset taxonomy와
+  일반 log skill read path가 섞일 위험이 있다.
+- 따라서 W11의 의도는 "수집·분리·승격 판단·필요한 개선 작업 개설"까지로 해소됐다.
+
+**Work Item 전이:**
+
+- W11과 하위 W11-1~W11-3을 완료 처리했다.
+- 다음 active pointer는 W3다. W3는 W7~W11 동안 반복된 설명과 합의된 작성 규칙 중
+  `docs/guides/workflow.md`나 guide 반영 후보가 있는지 재검토한다.
+- W4 Final closeout은 W3 재검토 뒤 parent inventory 반영까지 포함해 판단한다.
+
+## 2026-06-22 · W3 no-op 완료 — guide 반영 후보 없음
+
+@user가 W3에 대해 guide 반영 후보로 둘 내용이 없다고 확정했다.
+
+**확인된 판단:**
+
+- package workflow 관련 내용은 guide에 남길 대상이 아니다.
+- 현재 W3 후보로 남을 수 있던 것은 "확인한 사실/추론/의견 구분"뿐이다.
+- 이 구분은 root `AGENTS.md`의 Evidence And Reporting이 이미 소유하므로 `docs/guides/workflow.md`
+  또는 별도 guide에 중복 반영하지 않는다.
+
+**Work Item 전이:**
+
+- W3는 no-op 완료로 해소했다.
+- 다음 active pointer는 W4 Final closeout이다.
+
+## 2026-06-22 · W4 final closeout — parent W4.5 소비 완료
+
+W4.5 child 로그의 W1~W11 범위가 모두 해소됐다. 이 블록은 child 결과를 parent inventory
+로그 W4.5에 반영하고 이 child 로그를 닫기 위한 final closeout이다.
+
+**확인한 결과:**
+
+- W1: W4 이관본 owner 문서 정제 상태 확인과 잔여 범위 확정 완료.
+- W2: 질문 중심 탐색 방식은 독립 산출물이 아니라 W7/W8/W10 package 진행 방식으로 소비 완료.
+- W3: @user 판단으로 guide 반영 후보 없음. package workflow는 guide 대상이 아니며,
+  확인한 사실/추론/의견 구분은 root `AGENTS.md`가 이미 소유하므로 no-op 완료.
+- W5: `docs/specs/AGENTS.md`, `docs/architecture/AGENTS.md`, 상위 계약 정합성 확인 완료.
+- W6: decision 문서화 기준 child 로그 완료 및 소비 완료.
+- W7: local runtime authority assimilation package 완료 및 parent 반영 완료.
+- W8: A2A spec authority assimilation child package 완료, child status `decided`, §4 lifecycle
+  decision 승격, source map W8 rows 갱신 완료.
+- W9: release/roadmap authority assimilation child package 완료, child status `decided`. authority
+  gap 없음, owner body apply 없음. post-MVP execution과 final disposition은 plan post-Atlas 단계로 이관.
+- W10: split readiness/map package 완료, child status `decided`. body split은 실행하지 않았고,
+  split map/task brief/source map append/update/decision 2건 승격을 완료.
+- W11: portable workflow 수집·분리·승격 판단 완료. 즉시 portable log skill 수정은 보류하고
+  `logs/2026-06-22-log-skill-package-workflow-portableization.md` maintenance follow-up을 개설.
+
+**이관/deferred:**
+
+- 실제 spec/architecture body split은 future split executor가 소유한다.
+- physical deletion, source map final disposition, `plans/post-mvp*` single execution successor,
+  roadmap repoint는 parent plan `plans/workspace-reset/workspace-reset.md`의 후속 stage가 소유한다.
+- archive digest required rows와 deletion self-sufficiency 정밀 감사는 physical deletion gate가 소유한다.
+- portable log skill 수정은 `logs/2026-06-22-log-skill-package-workflow-portableization.md`가 소유한다.
+
+**Closeout check:**
+
+- W4.5 child 로그가 직접 수행해야 할 owner body 수정은 남아 있지 않다.
+- 남은 후속은 위 owner들로 분리됐고, 이 child 로그의 next pointer로 붙들지 않는다.
+- parent `logs/2026-06-16-workspace-reset-폴더별-inventory.md` W4.5에 이 결과를 반영했다.
+
+**결론:**
+
+- W4 Final closeout을 완료 처리했다.
+- 모든 Work Items가 해소됐으므로 이 child 로그를 `decided`로 닫는다.

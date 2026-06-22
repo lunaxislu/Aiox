@@ -1,19 +1,19 @@
 ---
 topic: package workflow portable pattern 후보
 description: W7~W10 authority assimilation package를 실제 적용하며 repo 전용 규칙과 portable package workflow 후보를 분리·수집한다
-status: open
+status: decided
 ---
 
 ## Work Items
 
-- [>] W1 W7~W10 각 package closeout에서 workflow 시행착오와 portable 후보를 수집한다
+- [x] W1 W7~W10 각 package closeout에서 workflow 시행착오와 portable 후보를 수집한다
   - [x] W1-1 W7 local runtime assimilation closeout에서 batch/task/ledger/scope 시행착오를 수집한다
-  - [ ] W1-2 W8 specs assimilation closeout에서 package 준비·agent 의견 수렴·blocker/release gate 분류 시행착오를 수집한다
-  - [ ] W1-3 W9 roadmap/release assimilation closeout에서 roadmap·plan package 운영 시행착오를 수집한다
-  - [ ] W1-4 W10 split readiness closeout에서 split map·cleanup map 운영 시행착오를 수집한다
-- [ ] W2 repo 전용 taxonomy와 portable pattern을 분리한다
-- [ ] W3 portable log skill 후보 초안을 정리하고, log skill maintenance 절차로 옮길지 판단한다
-- [ ] W4 parent W4.5 로그 W11에 결과를 반영한다
+  - [x] W1-2 W8 specs assimilation closeout에서 package 준비·agent 의견 수렴·blocker/release gate 분류 시행착오를 수집한다
+  - [x] W1-3 W9 roadmap/release assimilation closeout에서 roadmap·plan package 운영 시행착오를 수집한다
+  - [x] W1-4 W10 split readiness closeout에서 split map·cleanup map 운영 시행착오를 수집한다
+- [x] W2 repo 전용 taxonomy와 portable pattern을 분리한다
+- [x] W3 portable log skill 후보 초안을 정리하고, log skill maintenance 절차로 옮길지 판단한다
+- [x] W4 parent W4.5 로그 W11에 결과를 반영한다
 
 ## 2026-06-18 · portable package workflow 후보 로그 시작
 
@@ -835,3 +835,223 @@ workflow 후보를 기록한다. 이 기록은 draft 수집이다. W9 child clos
   `consumed`, `deferred`, `transferred`, `blocked-by`, `must not do yet`를 구분한다. parent checkbox 전이는
   child 전체 수명 종료가 아니라 parent가 소비해야 할 해당 Work Item의 의미가 해소됐는지로 판단한다.
 - 조치 후보: parent/child closeout checklist에 partial closeout vocabulary를 추가한다.
+
+## 2026-06-22 · W10 split-map draft 회고 — F56 추가
+
+W10 Batch S(`logs/W10-S-task.md`) spec split readiness map을 작성하며 확인한 workflow 후보를
+기록한다. 이 기록은 draft 수집이다. W10 child closeout 전까지 package 결과와 별도로 유지한다.
+
+**F56 — Split-map inbound grep은 live anchor refs와 legacy evidence refs를 분리해야 한다.**
+- 맥락: `docs/specs/aiox-a2a.md`의 §2~§9 split map을 만들 때 repo-wide grep 하나만 돌리면
+  `logs/`, `prd/`, `history/`의 legacy 증거와 `docs/`, `plans/`, `plan/`의 현재 inbound reference가
+  한 결과에 섞인다. 이 상태로 anchor preservation을 판단하면 "깨지면 안 되는 현재 링크"와
+  "Archive Gate/decision 판정에 쓰는 과거 근거"가 흐려진다.
+- 분류: **Portable candidate**.
+- 패턴: split readiness map은 inbound grep을 최소 두 tier로 수행한다. 1차는 live owner/plan
+  refs(`docs`, `plans`, `plan`, entry docs)로 anchor preservation을 판정하고, 2차는 legacy/evidence
+  refs(`logs`, `prd`, `history`)로 disposition·decision 후보와 provenance를 판정한다.
+- Repo-specific note: W10에서는 `plans/post-mvp.plan.md:101` 같은 live section pointer 후보는
+  Cross-Owner Effects로, `prd/post-mvp/aiox-a2a-spec.md`와 source-map rows는 W10-L Archive Gate
+  입력으로 분리했다.
+
+## 2026-06-22 · W10 closeout 회고 — F57~F60 추가
+
+`logs/2026-06-22-workspace-reset-W10-split-readiness-map.md` W7 closeout을 수행하며 확인한
+workflow 후보를 기록한다. W10 child는 status `decided`로 전이됐고, parent W4.5는 W10을 소비한 뒤
+W11로 전이했다.
+
+**F57 — Split readiness package는 compatibility index/stub holder를 명시해야 한다.**
+- 맥락: W10은 spec/architecture body split을 실행하지 않고 split map만 산출했다. 그러나 anchor
+  preservation을 "나중에 알아서 보존"으로 남기면 실제 split executor가 원본 monolith를 삭제하거나
+  heading ID를 잃을 수 있다.
+- 분류: **Portable candidate**.
+- 패턴: split map closeout에는 future split executor가 원본 파일을 `compatibility index/stub holder`로
+  남겨야 하는지, 어떤 section heading/deep link를 stub으로 보존해야 하는지, README/navigation은 언제
+  만들지 명시한다. "split 준비 완료"는 파일 분리 완료가 아니다.
+- Repo-specific note: W10에서는 `docs/specs/aiox-a2a.md` §2~§9와 `docs/architecture/local-agent-runtime.md`
+  §0~§14 heading 보존이 해당한다.
+
+**F58 — Decision promotion은 no-promotion도 owner coverage로 검증해야 한다.**
+- 맥락: W10 W5는 5개 decision 후보 중 2개를 승격하고 3개를 no-promotion으로 닫았다. no-promotion은
+  "중요하지 않다"가 아니라 기존 lifecycle decision, roadmap Phase 2/G3, architecture gap, app-server/proxy
+  decisions가 실제 owner 역할을 수행한다는 확인이 필요했다.
+- 분류: **Portable candidate**.
+- 패턴: decision 후보 판정 표는 promoted와 no-promotion을 같은 깊이로 다룬다. no-promotion row에는
+  어떤 existing owner가 어떤 load-bearing WHY를 커버하는지 `file:line` 또는 명시적 section 근거를 남긴다.
+  그렇지 않으면 deletion/source-map 소비자가 rationale loss를 판정할 수 없다.
+
+**F59 — Source map checker는 draft-time state marker를 PASS state로 flip해야 한다.**
+- 맥락: W10 W6 checker는 source map row에 남은 `Codex draft (checker pending)` 마커를
+  `Codex draft (W5/W6 checker PASS 2026-06-22)`로 갱신했다. 판정은 PASS됐지만 표의 문구가 pending이면
+  다음 physical gate 소비자가 상태를 오해할 수 있다.
+- 분류: **Portable candidate / repo integration candidate**.
+- 패턴: ledger/source-map row가 draft/checker 상태를 본문 문자열로 표현하면, checker closeout은 verdict만
+  append하지 말고 row 상태 마커도 현재 truth로 갱신한다. 이때 `git diff`로 changed rows와 untouched boundary
+  rows를 함께 검증한다.
+
+**F60 — Parent consumption block must separate accepted result, deferred owner, and forbidden action.**
+- 맥락: W10은 split map, decision 승격, source map disposition을 완료했지만 body split, archive digest,
+  physical deletion, post-MVP plan successor는 수행하지 않았다. parent에 단순 "W10 완료"만 남기면 후속
+  agent가 금지된 action을 완료로 오해하거나 반대로 W10을 미완료로 재개할 수 있다.
+- 분류: **Portable candidate**.
+- 패턴: child package를 parent가 소비할 때는 `accepted result`, `deferred/transferred owner`, `must not do
+  in this package`를 분리해 최신 parent block에 남긴다. parent checkbox는 child의 전체 산출물 수명 종료를
+  뜻하지만, downstream owner가 가져갈 작업은 별도 next pointer나 plan gate로 남긴다.
+
+## 2026-06-22 · W11-2 repo 전용 taxonomy와 portable pattern 분리
+
+W7~W10 package closeout 수집분 `F1`~`F60`을 재분류했다. 이 블록은 원문 사례를 대체하지
+않고, W11-3의 log skill 승격 판단 입력으로 쓰는 index다.
+
+**확인한 사실:**
+
+- `F1`~`F60`은 모두 이 로그 본문에 수집돼 있다.
+- W8 closeout은 `F46`~`F50`, W9 closeout은 `F51`~`F55`, W10 closeout은 `F56`~`F60`으로
+  추가 수집됐다.
+- W8~W10 child package는 parent W4.5 로그에서 모두 PASS/consumption 완료로 반영됐다.
+
+### Portable Pattern 후보
+
+아래 항목은 다른 repo의 큰 migration, authority assimilation, refactor, multi-agent 검증에도
+적용 가능한 후보다. 단, 이름과 label vocabulary는 repo마다 바꿔야 한다.
+
+1. **Package lifecycle와 scope gate**
+   - 관련: `F5`, `F7`, `F8`, `F20`, `F27`, `F28`, `F32`~`F38`, `F49`, `F55`, `F60`.
+   - 핵심: package activation/downgrade/split/closeout gate를 둔다. package log는 상태 owner,
+     task brief는 실행 지시서다. parent-child 복귀는 child closeout PASS, parent consumption,
+     next pointer 전이를 같은 근거로 맞춘다.
+2. **Task brief와 controlling log**
+   - 관련: `F1`, `F6`, `F23`~`F25`, `F30`, `F33`, `F43`.
+   - 핵심: brief는 답을 박지 않고 출발점, 범위, 금지 조건, 출력 schema, pass/fail 기준을 준다.
+     delegated/batch 작업에는 `Controlling log`를 명시하고 그 log의 Scope, Work Items, 최신 기록,
+     active pointer/handoff, 관련 Ledger row를 required-read로 둔다.
+3. **Claim provenance와 current claim falsifiability**
+   - 관련: `F2`, `F3`, `F10`, `F18`, `F19`, `F37`, `F41`, `F42`, `F44`, `F46`.
+   - 핵심: owner artifact에 반영하기 전 claim을 fact/inference/opinion/current/target/stale 등으로
+     분류한다. `current`/`as-built`/`current contract`류 주장은 source of truth와 가능한 test cite로
+     반증 가능해야 하며, 근거가 없으면 target/open/gap으로 낮춘다.
+4. **Ledger-first / artifact-later assimilation**
+   - 관련: `F18`, `F19`, `F37`, `F41`~`F43`, `F47`, `F54`.
+   - 핵심: 큰 흡수 작업의 1차 산출물은 owner patch가 아니라 Evidence Ledger다. apply 단계에서는
+     producer, apply author, checker, accepted artifact, pending draft를 구분하고, source-map/ledger
+     bookkeeping과 새 분석·final disposition을 분리한다.
+5. **Evidence, handoff, line reference 검증**
+   - 관련: `F9`, `F14`~`F16`, `F18`, `F21`, `F22`, `F26`, `F59`.
+   - 핵심: 완료 보고, closeout 주장, handoff line, ledger row는 disk/source 상태와 대조한다.
+     line range는 검증 가능한 claim이고, 미검증이면 confidence를 낮춘다. draft/checker marker는
+     PASS 뒤 현재 상태로 갱신한다.
+6. **Review depth와 agent topology**
+   - 관련: `F13`, `F17`, `F20`, `F36`, `F47`, `F48`.
+   - 핵심: review depth(format/schema/evidence/scope/final judgment)를 명시한다. 큰 authority
+     update에서는 코드·테스트 축과 문서·history 축을 분리한 독립 검증이 효과적이다. 산출물별
+     producer/checker identity는 irreversible gate에서만 감사한다.
+7. **Source map, disposition, deletion guard**
+   - 관련: `F28`, `F39`, `F40`, `F45`, `F50`, `F52`, `F54`, `F59`, `F60`.
+   - 핵심: 여러 source group을 여러 package가 나눠 소비하면 단일 shared source map을 두고,
+     downstream consumer read/action binding을 closeout과 task brief에 명시한다. deletion readiness와
+     successor pending은 구분한다. archive는 조건부 gate다.
+8. **Split readiness와 compatibility handoff**
+   - 관련: `F50`, `F56`, `F57`.
+   - 핵심: split map은 실제 split/delete와 분리한다. live inbound refs와 legacy evidence refs를
+     나눠 보고, future split executor가 원본 compatibility index/stub holder와 anchor preservation
+     필요성을 알 수 있게 한다.
+9. **Decision promotion 판정**
+   - 관련: `F4`, `F58`.
+   - 핵심: legacy/history에만 남은 WHY가 삭제 위험에 놓이면 decision 후보로 판정한다.
+     no-promotion도 existing owner coverage를 근거로 검증해야 rationale loss를 막을 수 있다.
+10. **Authority gap과 실행 successor gap 분리**
+    - 관련: `F51`, `F53`, `F55`.
+    - 핵심: owner 문서가 계약·gate·우선순위를 충분히 소유하는 문제와 실행자가 바로 쓸
+      checklist/successor가 있는 문제를 분리한다. optional traceability wording은 authority gap으로
+      자동 승격하지 않는다.
+
+### Repo-specific / repo integration 후보
+
+아래는 이 repo에 남겨야 하거나, portable pattern을 이 repo의 taxonomy로 구현하는 사례다.
+
+- `docs/specs/`, `docs/architecture/`, `docs/decisions/`, `docs/product/roadmap.md`,
+  `plans/release-plan.md`의 owner 경계와 상태 label vocabulary는 repo-specific이다.
+- `history/`, `prd/`, `plan/`, `plans/post-mvp/`, `docs/aiox/`의 absorption/disposition 처리와
+  `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map은 repo-specific 구현이다
+  (`F39`, `F40`, `F45`, `F52`, `F54`, `F59`).
+- `Step 15`, pair slot generalization, `deliveryId`, correlated reply authorization,
+  `AIOX_SOCKET_PATH`/`AIOX_DB_PATH`, `AdapterRouter`, `history/58`·`history/59`,
+  `plans/post-mvp.plan.md:101` 등은 사례 근거이지 portable 규칙이 아니다.
+- `logs/AGENTS.md`의 Workspace Reset Log Sections / Package Preparation / Task Brief Template은
+  현재 repo integration owner다. `F23`~`F25`, `F39`, `F45`, `F59`처럼 "portable일 수도 있지만
+  현 repo의 entry path·source map·workspace reset taxonomy에 강하게 결합된 항목"은 우선 이 파일
+  또는 repo guide에 남기는 편이 맞다.
+
+### Rejected / too-heavy
+
+- `F1`의 반례처럼 task brief에 검증자가 발견해야 할 답을 과하게 박는 방식은 rejected다.
+  brief는 탐색 출발점과 완료 기준을 주되 결론을 선결정하지 않는다.
+- `F48`의 producer identity 감사는 모든 작은 작업에 적용하면 과하다. authority update,
+  deletion, decision promotion, parent closeout처럼 되돌리기 어려운 gate에서만 쓴다.
+- 일반 작업 전체에 package task brief read path를 강제하는 것은 과하다(`F25`). 일반 작업은
+  onramp-selected current log를 controlling log로 삼고, package/delegated 작업에서만 task brief가
+  read path를 보강한다.
+- package workflow 자체도 작은 단일 파일 수정·단일 판단에는 과할 수 있다(`F34`). downgrade
+  gate를 유지한다.
+
+### Open Questions / W11-3 판단 입력
+
+- portable log skill로 바로 옮길 최소 단위가 "package workflow 전체"인지, 아니면
+  controlling log, Work Item/parent-child closeout, ledger-first gate 같은 일부 패턴인지 판단해야 한다.
+- `F23`~`F25`의 controlling log identity는 portable해 보이지만, 현재 repo는 `scripts/onramp`와
+  `logs/AGENTS.md` package template로 해결하고 있다. log skill maintenance로 옮길 때는 일반 로그
+  read path를 불필요하게 늘리지 않는 표현이 필요하다.
+- `F39`~`F45`의 shared source map은 portable한 사고방식이지만, 컬럼과 disposition vocabulary는
+  repo-specific이다. portable로 옮긴다면 "shared ledger/source map consumer binding" 수준으로만
+  추상화해야 한다.
+- `F57` split compatibility index/stub holder는 문서 split 작업에는 portable하지만 모든 package
+  closeout 기본 규칙은 아니다. split 작업용 subsection으로 둘지 판단해야 한다.
+
+**W11-2 결론:**
+
+- W1 수집 항목은 W8~W10 closeout까지 모두 채워졌으므로 완료로 전이한다.
+- W2 분리 작업은 위 taxonomy로 완료한다.
+- 다음은 W3: 이 taxonomy를 바탕으로 log skill maintenance로 승격할 후보와 repo integration에
+  남길 후보를 결정한다.
+
+## 2026-06-22 · W11-3 maintenance 판단과 parent 반영
+
+W11-2 taxonomy와 `.agents/skills/log/references/maintenance.md`를 대조해 portable log skill 승격
+방식을 판단했다.
+
+**확인한 사실:**
+
+- maintenance 기준은 portable skill 변경 전 문제 분류, 해결안 검증, 수정 owner와 범위 보고,
+  사용자 승인, 변경 후 검증을 요구한다.
+- W11-2 taxonomy에는 portable 후보와 repo-specific/source-map/workspace-reset 구현이 섞여 있다.
+- `logs/AGENTS.md`에는 이미 Workspace Reset Log Sections, Package Preparation, Task Brief Template이
+  있어 repo-specific package workflow 상당 부분을 소유한다.
+
+**판단:**
+
+- 지금 이 로그에서 portable log skill 파일을 바로 수정하지 않는다. package workflow 전체를
+  portable skill로 흡수하면 repo-specific taxonomy와 일반 로그 read path가 섞일 위험이 크다.
+- 대신 별도 maintenance 로그를 열어 최소 portable 변경 후보를 검토한다.
+- repo-specific vocabulary, source-map 컬럼, `history/`·`prd/`·`plans/post-mvp/` disposition,
+  workspace reset deletion gate는 현재 repo integration에 남긴다.
+
+**생성한 follow-up:**
+
+- `logs/2026-06-22-log-skill-package-workflow-portableization.md`
+  - W1: W11-2 taxonomy와 기존 log skill references를 대조해 portable 변경 후보와 repo integration
+    잔류 후보를 최소 단위로 확정한다.
+  - W2: 적용안을 작성한다.
+  - W3: 사용자 승인 후 승인된 범위만 반영하고 검증한다.
+
+**parent 반영:**
+
+- parent `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`의 W11-3을 완료로 반영했다.
+- parent W11 전체는 W7~W10 package 회고 수집, taxonomy 분리, maintenance follow-up 개설까지
+  완료됐으므로 `[x]`로 해소했다.
+- parent의 다음 active pointer는 W3이다. W3는 반복 설명과 합의된 작성 규칙을 guide 또는
+  `docs/guides/workflow.md` 반영 후보로 재검토하는 항목이며, W4 final closeout은 그 뒤에 판단한다.
+
+**결론:**
+
+- 이 portable pattern 후보 로그의 작업 수명은 끝났다. 남은 실행 작업은 별도 maintenance 로그와
+  parent W4.5 W3/W4가 소유한다.

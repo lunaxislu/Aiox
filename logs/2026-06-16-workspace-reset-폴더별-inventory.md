@@ -1,7 +1,7 @@
 ---
 topic: workspace reset 폴더별 inventory와 문서 판정
 description: workspace reset stage 3 — 현재 repo 문서를 폴더별로 inventory하고 각 파일을 keep/merge/migrate/split/archive/delete로 판정한다
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -24,7 +24,7 @@ status: open
   - [x] W4-4 `docs/product/roadmap.md` 최종 통합 — a2a §11 전체 + §12 **gate/phase 요약만** + plan-side draft + release-plan G6 연결. provisional 제거. §12 file:line·심각도·dated audit 상세는 roadmap 제외(W5 후보)
   - [x] W4-5 W5 이관 후보 등록(지금 이동 안 함) — a2a §12 상세 audit·a2a §13 rationale/evidence·`logs/2026-06-11-A2A-spec-…`·`logs/2026-06-11-aiox-제품-방향-…`·`prd/pre-validation/*` 2개·`prd/post-mvp/archive/*` 5개 → W5 evidence/history/decision 판정
   - [x] W4-6 inbound 갱신 후 원본 삭제 — `plans/` live 권위 참조와 `docs/aiox/` 포인터 갱신 → mvp-spec Open Issue #5(session expiry) 누락분을 새 specs §9에 흡수 → 기존 A2A PRD·MVP PRD·`prd/README.md` 삭제
-- [>] W4.5 `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` — owner 문서 정제와 질문 중심 탐색 child 로그로 재진입한다. 목적은 W8 A2A spec authority assimilation 재시작이다
+- [x] W4.5 `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md` — owner 문서 정제와 질문 중심 탐색 child 로그 완료 및 parent 반영 완료. W7~W11 package closeout 소비 완료; 남은 body split/physical deletion/source map final disposition/portable skill 수정은 각 owner로 분리됨
 - [x] W7 child W4.5 로그 및 W7 local runtime assimilation 패키지 완료 후 parent 반영 — `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`와 `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md`가 끝나면 결과를 이 로그에 반영하고 W5로 진행
 - [x] W5 history/ migration — 최종 삭제 전환을 위한 source/index 작성과 핵심 결정 파일 docs/decisions/ 승격
   - [x] W5-1 파일별 source/index 작성: ①docs/decisions/ 후보 ②decided 로그 이관 후보 ③후속 consumer(W8/W10 등) 필요 ④최종 삭제 후보를 구분한다
@@ -930,3 +930,38 @@ tree에서 `docs/claude/mcp-channel-mental-model.md`는 이미 삭제(미커밋)
   W4.5(`logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`) `[>]` 하나로 수렴.
 - W4.5 child의 active item = 2026-06-20 복구된 W8 A2A spec authority assimilation 재시작.
   다음 세션 진입점은 그 child 로그의 W8.
+
+## 2026-06-22 · W4.5 child final closeout 소비 — inventory decided
+
+W4.5 child 로그 `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`의 final closeout을
+소비했다. child W1~W11은 모두 완료·이관·no-op으로 해소됐고, child의 마지막 active item W4도
+parent 반영으로 완료됐다.
+
+**소비한 결과:**
+
+- owner 문서 정제와 하위 AGENTS/decision 기준 정리는 W1/W5/W6에서 완료됐다.
+- 질문 중심 탐색 방식은 W7/W8/W10 package 작업 방식으로 소비됐고 별도 guide 산출물은 만들지 않았다.
+- W7 local runtime, W8 A2A spec, W9 roadmap/release, W10 split readiness/map package는 각각 child
+  closeout PASS 또는 `status: decided`로 마감됐다.
+- W11 portable workflow 수집·분리·승격 판단은 완료됐고, portable skill 즉시 수정 대신
+  `logs/2026-06-22-log-skill-package-workflow-portableization.md`가 후속을 소유한다.
+
+**남은 후속 owner:**
+
+- 실제 body split: future split executor.
+- physical deletion, source map final disposition, `plans/post-mvp*` successor, roadmap repoint:
+  `plans/workspace-reset/workspace-reset.md`의 후속 stage.
+- archive digest required rows와 deletion self-sufficiency 정밀 감사: physical deletion gate.
+- portable log skill 반영 여부: `logs/2026-06-22-log-skill-package-workflow-portableization.md`.
+
+**Work Item 전이:**
+
+- W4.5를 완료 처리했다.
+- 이 inventory 로그의 Work Items는 모두 해소됐다.
+- `plans/workspace-reset/workspace-reset.md`는 `승인된 이관·통합·삭제` stage를 완료하고 다음
+  `link·권위·세션 재개 가능성 검증` stage로 전이했다.
+
+**결론:**
+
+- 폴더별 inventory와 승인된 이관·통합·삭제 단계 로그의 작업 수명은 끝났다.
+- 남은 작업은 workspace reset plan의 후속 stages가 소유하므로, 이 로그는 `decided`로 닫는다.
