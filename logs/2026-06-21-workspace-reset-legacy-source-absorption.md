@@ -23,14 +23,14 @@ status: open
 | file | 주장 성격 | 흡수 owner | 소비 package | archive 필요? | self-sufficiency 검증 | disposition |
 | ---- | -------- | --------- | ----------- | ------------ | -------------------- | ----------- |
 | `prd/mvp/aiox-mvp-spec.md` | MVP product scope+UX+non-goal+원칙 | spec + architecture | W8 | No | TBD | absorb→delete? |
-| `prd/post-mvp/aiox-a2a-spec.md` | product·protocol·arch·roadmap 통합 monolith (분리 예고 self-declared) | spec + architecture + roadmap + decision | W8 + W9 + W10 | §12만 ? | W8: §2-§9 protocol contract self-contained (W7 PASS); 전체 파일 삭제 self-suffic는 W9 roadmap/release + W10 split 후 판정 | absorb→delete (W9/W10 후) |
-| `prd/post-mvp/archive/claude-codex-validation.md` | 설계 cross-validation transcript | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
-| `prd/post-mvp/archive/claude-opinion.md` | 설계 초기 의견 | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
-| `prd/post-mvp/archive/codex-claude-validation.md` | cross-validation transcript | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
-| `prd/post-mvp/archive/codex-opinion.md` | 설계 초기 의견 | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
-| `prd/post-mvp/archive/gemini-opinion.md` | 설계 초기 의견 | (흡수완료 주장이나 헤더만으론 단정 금지) | — | ? | TBD | absorb→delete? (보류; 흡수+self-suffic 검증 전 삭제 금지) |
-| `prd/pre-validation/claude-codex-pre-validation.md` | MVP arch 사전검증 spike (PASS, 2026-05-14) | architecture (evidence) | W8 | ? | TBD | archive→delete? |
-| `prd/pre-validation/sqlite-restart-recovery-pre-validation.md` | SQLite restart recovery 사전검증 (PASS, 2026-05-16) | architecture (evidence) | W8 | ? | TBD | archive→delete? |
+| `prd/post-mvp/aiox-a2a-spec.md` | product·protocol·arch·roadmap 통합 monolith (분리 예고 self-declared) | spec + architecture + roadmap + decision | W8 + W9 + W10 | §12 digest 보류 | W8: §2-§9 protocol contract self-contained (W7 PASS). W9: §11 release gate/phase authority는 roadmap에 있고 현재 단일 plan successor pending, §12 release pressure는 roadmap Pre-Release Gap Summary+gates에 흡수(PASS). 전체 파일 삭제 self-suffic는 W10 §13 split + §12 Archive Gate 후 판정 | keep / W10 + execution successor pending; W9 §12 release portion absorbed, final disposition after W10/Archive Gate |
+| `prd/post-mvp/archive/claude-codex-validation.md` | 설계 cross-validation transcript | architecture + decision? | W9 + W10 | 보류 | W9 PASS: release pressure는 roadmap G1 및 Batch R candidates로 커버. envelope/adapter/compose WHY와 blind spots는 W10 architecture/decision successor self-sufficiency 확인 필요 | absorb→delete? (W10 확인 후; 삭제 전 keep) |
+| `prd/post-mvp/archive/claude-opinion.md` | 설계 초기 의견 | architecture + decision? | W9 + W10 | 보류; decision digest 가능 | W9 PASS: release/packaging body 대상 아님. services-vs-agents schema, non-mutation, adapter compile, sandbox-overclaim rationale는 W10 successor 확인 전 self-contained 아님 | archive→delete? or absorb→delete? (W10 Archive Gate 후; 삭제 전 keep) |
+| `prd/post-mvp/archive/codex-claude-validation.md` | cross-validation transcript | architecture + decision? | W9 + W10 | 보류 | W9 PASS: remote expansion은 roadmap Phase 2/3에 표현되고 추가 W9 body apply 없음. transport/identity/policy와 product definition rationale는 W10 확인 필요 | absorb→delete? (W10 확인 후; 삭제 전 keep) |
+| `prd/post-mvp/archive/codex-opinion.md` | 설계 초기 의견 | architecture + decision? | W9 + W10 | 보류; decision digest 가능 | W9 PASS: adapter compile·instruction layering은 Phase 2/architecture 성격. W10 architecture/decision coverage 확인 전 self-contained 아님 | archive→delete? or absorb→delete? (W10 Archive Gate 후; 삭제 전 keep) |
+| `prd/post-mvp/archive/gemini-opinion.md` | 설계 초기 의견 | architecture + decision? | W9 + W10 | 보류 | W9 PASS: agents/routes/capabilities와 remote/health deferral은 roadmap Phase 2/3와 정합. schema warnings 중 고유 decision rationale 여부는 W10 확인 필요 | absorb→delete? (W10 확인 후; 삭제 전 keep) |
+| `prd/pre-validation/claude-codex-pre-validation.md` | MVP arch 사전검증 spike (PASS, 2026-05-14) | architecture (evidence) | W8 + W9 + W10 | Yes? W10 Archive Gate final | W9 PASS: no new release body apply; G1 trust/reliability risk context는 roadmap에 표현. spike setup/results trace는 현 owner 문서만으로 self-contained하지 않아 삭제 전 logs digest 필요 방향 | archive→delete? (W10 Archive Gate 후; 최종 확정 전 keep) |
+| `prd/pre-validation/sqlite-restart-recovery-pre-validation.md` | SQLite restart recovery 사전검증 (PASS, 2026-05-16) | architecture (evidence) | W8 + W9 + W10 | Yes? W10 Archive Gate final | W9 PASS: durable-store release boundary는 roadmap Phase 2로 표현. spike commands/PASS counts/not-validated list는 현 owner 문서만으로 self-contained하지 않아 삭제 전 logs digest 필요 방향 | archive→delete? (W10 Archive Gate 후; 최종 확정 전 keep) |
 | `plan/mvp-implementation-checklist.md` | MVP TDD 11단계 체크리스트 (closed) | logs archive + architecture provenance | W5 완료; W8/W10는 docs/aiox 잔여 참조만 | Yes → `logs/2026-06-20-mvp-plan-carryover-archive.md` | archive self-contained; live owner refs repointed; docs/aiox refs = deletion-gate dependency | archive→delete (docs/aiox 흡수 후 physical gate) |
 | `plan/qa-tracker.md` | MVP QA 상태판 (QA-001~003) | logs archive + decision provenance | W5 완료; W8/W10는 docs/aiox 잔여 참조만 | Yes → `logs/2026-06-20-mvp-plan-carryover-archive.md` | archive self-contained; live owner/plans refs repointed; docs/aiox refs = deletion-gate dependency | archive→delete (docs/aiox 흡수 후 physical gate) |
 | `docs/aiox/agent-runtime-container-model.md` | runtime container 학습기록 (권위 history/31) | architecture | W8 / W10 | No | TBD | absorb→delete? |
@@ -52,11 +52,11 @@ status: open
 | `docs/aiox/step-14-codex-thread-mismatch-discovery.md` | Step14 thread 불일치 학습 | architecture | W8 / W10 | No | TBD | absorb→delete? |
 | `docs/aiox/step-14-smoke-test-report.md` | Step14 E2E smoke (2 blocking issue) | architecture (test) | W8 / W10 | ? | TBD | archive→delete? |
 | `docs/aiox/step-6-cli-decisions-walkthrough.md` | Step6 CLI 결정 walkthrough | architecture | W8 / W10 | No | TBD | absorb→delete? |
-| `plans/post-mvp.plan.md` | Post-MVP 실행 index + Session Re-entry (WS2 대기) | roadmap (우선순위/sequencing) + plans 재편 | W9 + W10 | No | TBD | absorb→delete (W9 재편 후) ⚠️사용자목표=삭제 |
-| `plans/post-mvp/adapter-dispatch-registry.plan.md` | dispatch→adapter registry sub-plan (deferred) | plans 재편 (single plan으로) | W9 | No | TBD | absorb→delete (재편 후) ⚠️사용자목표=삭제 |
-| `plans/post-mvp/channel-boot-surface.plan.md` | channel boot surface sub-plan (deferred) | plans 재편 | W9 | No | TBD | absorb→delete (재편 후) ⚠️사용자목표=삭제 |
-| `plans/post-mvp/codex-structured-metadata-spike.plan.md` | codex metadata spike sub-plan (deferred) | plans 재편 | W9 | No | TBD | absorb→delete (재편 후) ⚠️사용자목표=삭제 |
-| `plans/post-mvp/envelope-metadata.plan.md` | envelope metadata sub-plan (next kickoff) | plans 재편 | W9 | No | TBD | absorb→delete (재편 후) ⚠️사용자목표=삭제 |
+| `plans/post-mvp.plan.md` | Post-MVP 실행 index + Session Re-entry (obsolete scratch pointer 포함) | roadmap (우선순위/sequencing) + plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap은 Candidates/Sequenced 우선순위를 흡수했지만 단일 A2A execution plan 작성이 Obsidian/Atlas 이후로 deferred. 단일 plan 전에는 execution detail successor가 없어 self-contained 아님 | keep / execution successor pending (single plan 후 disposition 재판정) |
+| `plans/post-mvp/adapter-dispatch-registry.plan.md` | dispatch→adapter registry sub-plan (deferred) | plans 재편 (single plan으로) | W9 + future single-plan stage | No | W9 PASS: roadmap G1 adapter boundary + Phase 2 ingress prerequisite로 priority는 흡수. refactor options/checklist는 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
+| `plans/post-mvp/channel-boot-surface.plan.md` | channel boot surface sub-plan (deferred) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G3/G1 diagnosability pressure로 priority는 흡수. startup ack/fatal propagation checklist는 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
+| `plans/post-mvp/codex-structured-metadata-spike.plan.md` | codex metadata spike sub-plan (deferred) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G1-A evidence / Phase 1 Tier 2 uplift 후보로 priority는 흡수. investigation question/output/verification은 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
+| `plans/post-mvp/envelope-metadata.plan.md` | envelope metadata sub-plan (next kickoff) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G1-A/B/C next kickoff로 priority는 흡수. implementation increments/acceptance/kickoff checklist는 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
 
 ## 2026-06-21 · legacy source absorption package 시작
 
@@ -194,3 +194,37 @@ owner repointed`, disposition `archive→delete (docs/aiox 흡수 후 physical g
 - W8에서 확정적으로 말할 수 있는 것은 `docs/specs/aiox-a2a.md`의 protocol contract 흡수 범위다. roadmap/release/architecture split까지 포함한 legacy file 전체 disposition은 W9/W10 전에는 확정하지 않는다.
 - 새 decision draft: `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`. 이 파일은 §4 lifecycle WHY만 소유하고, correlated reply authorization과 public `deliveryId` namespace는 Open으로 남긴다.
 - `history/`는 W5 owner라 source map row를 만들지 않는다. W8 decision Sources에만 기록했다.
+
+## 2026-06-22 · W9 source-map draft disposition 반영
+
+W9 release/roadmap authority package의 두 checker PASS 결과를 source map 기존 row에 반영했다. 이 반영은
+최종 disposition 확정이 아니라 W9 소비 결과와 남은 owner 조건을 표에 드러내기 위한 draft/보류 업데이트다.
+
+반영한 사실:
+
+- `prd/post-mvp/aiox-a2a-spec.md`:
+  - W8 §2-§9 protocol contract successor는 PASS.
+  - W9 §12 release pressure는 `docs/product/roadmap.md` Pre-Release Gap Summary+gates에 흡수됨.
+  - §11/plan execution detail은 단일 A2A execution plan successor pending이며, 전체 파일 삭제 self-sufficiency는 W10 §13 split과 §12 Archive Gate 후 판정.
+- `plans/post-mvp.plan.md` + sub-plan 4:
+  - W9 PASS로 roadmap priority/mapping은 확인됨.
+  - 단일 A2A execution plan 작성이 Obsidian/Atlas stage 이후로 deferred라 execution successor가 아직 없다.
+  - disposition은 `keep / execution successor pending`; single plan 후 재판정.
+- `prd/post-mvp/archive/*` 5:
+  - W9 release/roadmap body apply 대상 아님.
+  - compose/schema/adapter/instruction/sandbox/remote rationale는 W10 architecture/decision successor self-sufficiency와 Archive Gate 후 확정.
+- `prd/pre-validation/*` 2:
+  - W9 release body apply 대상 아님.
+  - dated spike trace는 현 owner 문서만으로 self-contained하지 않아 W10 Archive Gate에서 logs digest 필요 방향.
+
+명시적 non-actions:
+
+- 새 source map 표를 만들지 않았다.
+- `history/` row를 만들지 않았다.
+- owner 문서, legacy 원본, roadmap link, 단일 plan, 물리 삭제는 수정하지 않았다.
+- `absorb→delete` final disposition은 확정하지 않았다.
+
+다음:
+
+- W2 흡수 진행 추적은 open 유지한다.
+- W10 split/decision/architecture package가 archive 5·pre-validation 2·`prd/post-mvp/aiox-a2a-spec.md` §13과 remaining self-sufficiency를 이어받아야 한다.

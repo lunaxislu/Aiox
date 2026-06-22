@@ -1087,3 +1087,44 @@ closeout 전에 추가 cleanup을 수행했다.
 - Parent inventory `logs/2026-06-16-workspace-reset-폴더별-inventory.md` W5-5가 이 결과를
   소비해야 한다.
 - 이 child package는 더 이상 open 작업을 소유하지 않으므로 `decided`로 전환한다.
+
+## 2026-06-21 · post-W8 sync — history/58 downstream state update
+
+이 블록은 W5 closeout 당시의 handoff를 W8 완료 이후 상태와 정합화하기 위한 사후 sync다.
+W5 history migration의 과거 판정표를 삭제하거나 재작성하지 않고, 현재 삭제 게이트가 소비해야 할
+최신 상태를 덧붙인다.
+
+**확인한 사실:**
+
+- W5 B6 closeout 당시 `history/58`은 "W8(A2A spec) 작업 시 확인할 문서"로 보존됐고,
+  `history/59`는 "W10(split readiness) 작업 시 확인할 문서"로 보존됐다.
+- 이후 W8 package closeout에서 `history/58-post-mvp-a2a-architecture-decisions.history.md`의
+  §4 lifecycle WHY(`history/58:61-100`)가
+  `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`로 승격됐다.
+- W8 closeout은 `history/58`의 남은 compose/capability/federation/product/architecture
+  rationale과 live inbound refs를 W10 확인 대상으로 넘겼다.
+- W8 closeout은 `history/58` row가 여전히 W5 history migration owner라고 명시했고,
+  source map에 duplicate row를 만들지 않는다고 기록했다.
+- `history/59`는 W8에서 소비되지 않았고, W10 split readiness input으로 남았다.
+- `docs/aiox/*`는 W5 history migration scope가 아니라
+  `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map과 W10/physical delete
+  gate가 추적한다.
+
+**현재 판정:**
+
+- `history/58`: 더 이상 단순한 "W8 확인 문서"가 아니다. W8에서 §4 lifecycle WHY는 일부 소비·승격
+  완료. 남은 rationale/live refs는 W10 확인 대상이며, 최종 삭제 여부는 W5 history owner와
+  `plans/workspace-reset/workspace-reset.md`의 통합 물리 삭제 게이트가 successor self-sufficiency,
+  inbound repoint, 사용자 확인 후 결정한다.
+- `history/59`: 기존 판정 유지. W10 split readiness/atlas 관련 확인 문서이며, W10 final
+  owner/disposition 확인 전 삭제 후보로 확정하지 않는다.
+- `docs/aiox/*`: W5에서 delete candidate로 확정하지 않는다. 필요분 owner 흡수 후
+  legacy-source-absorption source map과 통합 물리 삭제 게이트에서 처리한다.
+
+**삭제 게이트 handoff 갱신:**
+
+- Physical deletion gate는 `history/58`을 "W8 일부 소비 완료 + W10 잔여 확인 필요"로 읽어야 한다.
+- `history/58` 삭제 전에는 신규 decision
+  `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`의 self-sufficiency,
+  W10 잔여 rationale 처리, inbound repoint, decision/archive Sources 평문화가 모두 필요하다.
+- `history/59` 삭제 전에는 W10 closeout이 successor owner 또는 archive/delete-only 판단을 남겨야 한다.

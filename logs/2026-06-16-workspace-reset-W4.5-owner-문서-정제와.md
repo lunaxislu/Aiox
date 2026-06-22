@@ -37,12 +37,12 @@ status: open
   - [x] W8-2 Transferred: history/src/tests/architecture/roadmap/release evidence + Evidence Ledger → child package log W2~W6
   - [x] W8-3 Transferred: architecture/roadmap/release-plan/decision cross-owner 변경 → child package log W6 Sweep + Cross-Owner Effects/Decision Candidates
   - [x] W8-4 Transferred: workflow retrospective → child package log W9 Closeout
-- [>] W9 release/roadmap authority assimilation package를 수행한다 — primary entry point는 `docs/product/roadmap.md`와 `plans/release-plan.md`. W9 task brief/package 진입 시 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map을 required-read로 두고, 특히 `prd/post-mvp/aiox-a2a-spec.md`, `plans/post-mvp.plan.md`, `plans/post-mvp/*.plan.md` rows를 roadmap/release 흡수 입력으로 확인한다. W7 wording Open Issue 4(`deliveryId` namespace)·5(correlated reply authorization)는 `docs/product/roadmap.md` G1-A/B/D gate에서 확인하고, 현재 G6 packaging checklist 성격인 `plans/release-plan.md`에는 중복 반영하지 않는다. 흡수 후 해당 rows의 disposition·self-sufficiency를 같은 source map에 append/update한다. **W9 closeout에는 `history/58` 부분 승격/잔여, `prd/post-mvp/archive/*`, `docs/aiox/*`, `prd/pre-validation/*`, `plans/post-mvp*`, `history/59`를 W9/W10/물리삭제게이트로 나누는 Legacy/Historical Source Handoff를 포함한다.**
-  - [ ] W9-1 사용자의 배포 우선순위 기준으로 roadmap/release-plan 정합성을 갱신한다
-  - [ ] W9-2 작업 중 spec/architecture/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다
-  - [ ] W9-2a 생성할 W9 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다
-  - [ ] W9-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다
-- [ ] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다. `logs/2026-06-19-workspace-reset-W5-history-migration.md`의 W5 history migration source map과 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map(`docs/aiox/*`, archive/decision-candidate rows 포함)을 둘 다 required-read로 두고, target self-sufficiency/delete guard를 history/legacy rationale 입력으로 사용한다. split/disposition 판단 후 legacy-source-absorption rows를 append/update한다.
+- [x] W9 Complete child package log `logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md` — **완료(2026-06-22, 부분 소비): child W1~W7 PASS, status `decided`. authority 정합 gap 없음 / no owner body apply. post-mvp execution(단일 plan·repoint·삭제·final disposition)은 parent plan post-Atlas 단계로 이관(Atlas-gated). W10으로 전이.** — then consume result and resume W10 — release/roadmap authority assimilation package를 수행한다. primary entry point는 `docs/product/roadmap.md`와 `plans/release-plan.md`. W9 task brief/package 진입 시 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map을 required-read로 두고, 특히 `prd/post-mvp/aiox-a2a-spec.md`, `plans/post-mvp.plan.md`, `plans/post-mvp/*.plan.md` rows를 roadmap/release 흡수 입력으로 확인한다. W7 wording Open Issue 4(`deliveryId` namespace)·5(correlated reply authorization)는 `docs/product/roadmap.md` G1-A/B/D gate에서 확인하고, 현재 G6 packaging checklist 성격인 `plans/release-plan.md`에는 중복 반영하지 않는다. 흡수 후 해당 rows의 disposition·self-sufficiency를 같은 source map에 append/update한다. **W9 closeout에는 `history/58` 부분 승격/잔여, `prd/post-mvp/archive/*`, `docs/aiox/*`, `prd/pre-validation/*`, `plans/post-mvp*`, `history/59`를 W9/W10/물리삭제게이트로 나누는 Legacy/Historical Source Handoff를 포함한다.**
+  - [x] W9-1 사용자의 배포 우선순위 기준으로 roadmap/release-plan 정합성을 갱신한다 — 완료: @user가 현재 priority 유지(`G0->G1/G3->G2->G5/G6->G4`, npm 1차, macOS/Linux/WSL2)를 확정했고, child W9 authority checker PASS로 roadmap/release-plan owner body 변경 없음이 확인됨
+  - [x] W9-2 작업 중 spec/architecture/decision owner 변경이 필요하면 같은 package log에 Cross-Owner Effects와 Decision Candidates로 기록하고 반영한다 — 완료/no-op: child W9에서 spec/roadmap/release authority gap 없음·owner body apply 없음으로 PASS, architecture/decision 잔여는 W10 handoff로 분류
+  - [x] W9-2a 생성할 W9 task brief에는 workflow retrospective와 `logs/2026-06-18-package-workflow-portable-pattern.md` 기록 지시를 포함한다 — 완료: `logs/W9-R-task.md`, `logs/W9-L-task.md` 작성·사용
+  - [x] W9-3 Workflow retrospective: batch 분할, task brief, Evidence Ledger, Scope, agent 의견 수렴에서 생긴 시행착오와 portable 후보를 package closeout에 기록한다 — 완료: W9 closeout + portable pattern F51~F55 기록
+- [>] W10 split readiness and map package를 수행한다 — W2의 질문 중심 owner 왕복 방식을 적용하며, README는 지금 생성하지 않고 split 시점에 필요성을 재판단한다. `logs/2026-06-19-workspace-reset-W5-history-migration.md`의 W5 history migration source map과 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` Legacy Source Map(`docs/aiox/*`, archive/decision-candidate rows 포함)을 둘 다 required-read로 두고, target self-sufficiency/delete guard를 history/legacy rationale 입력으로 사용한다. split/disposition 판단 후 legacy-source-absorption rows를 append/update한다.
   - 주의: W10은 단일 primary owner 문서가 없다. split 대상은 W7·W8에서 최신화된
     `docs/specs/aiox-a2a.md`와 `docs/architecture/local-agent-runtime.md`이며,
     Scope.Primary owner는 child log 진입 시 사용자와 확정한다.
@@ -651,3 +651,91 @@ child package log `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`의 
 `docs/product/roadmap.md`·`plans/release-plan.md`. child closeout의 Legacy/Historical Source
 Handoff와 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map을
 required-read로 소비하고, `plans/post-mvp*` rows의 disposition/self-sufficiency를 append/update한다.
+
+## 2026-06-21 · W9 package log 생성 — child 파생, 배포 우선순위 의견 수렴 대기
+
+`logs/AGENTS.md` Package Preparation 순서에 따라 W9 child package log
+`logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md`를 생성했다. parent W9를 이 child
+package log를 소비하는 pointer로 재배선했다(W9 Work Item 앞단에 child pointer 삽입).
+
+**child package Scope (요약):**
+
+- Primary owner: `docs/product/roadmap.md`. Allowed cross-owner: `plans/release-plan.md`(G6 종속
+  checklist), `plans/post-mvp*`(재편, async 운영 라인 제외), `docs/decisions/`(선별), spec/architecture
+  최소 패치. source-map append는 별도 owner(legacy-source-absorption).
+- child Work Items W1~W7: W1 task brief / **W2 배포 우선순위 의견 수렴(active)** / W3 plans/post-mvp 흡수·재편 /
+  W4 W7 Open Issue 4·5 roadmap G1 gate 확인 / W5 archive·legacy W9 must-check / W6 source map disposition /
+  W7 closeout & parent 반영(Codex 저작 → Claude checker review).
+
+**판단:** roadmap은 W4에서 이미 증류돼 우선순위(`G0->G1/G3->G2->G5/G6->G4`, npm 1차, macOS/Linux/WSL2)를
+반영한다. 따라서 W9-1은 우선순위를 새로 정의하는 게 아니라 현재 roadmap 우선순위의 유지/갱신 여부를
+사용자에게 확인하는 의견 수렴(child W2)이 전제다. 이 결과를 받아 task brief를 확정하고 흡수를 실행한다.
+
+**2026-06-21 갱신:** child W2(배포 우선순위 의견 수렴)·W1(task brief 작성) 완료. @user 결정 = 현재
+roadmap 우선순위 유지(`G0->G1/G3->G2->G5/G6->G4`, npm 1차, macOS/Linux/WSL2) + 작업 분업 Codex 저작 →
+Claude checker. W9 batch 2개 분할: Batch R(`logs/W9-R-task.md`, plans/roadmap/release 정합·재편 + Open
+Issue gate) / Batch L(`logs/W9-L-task.md`, legacy must-check 흡수 판정). 관찰: `docs/product/AGENTS.md`
+부재(W9 scope 아님, 보고만).
+
+**현재 next pointer:** child W3 — Batch R Codex 저작 dispatch(다음 세션). Codex가 Evidence Ledger를
+producer로 저작(owner 본문 미수정) → Claude checker cite 재검증 PASS분만 owner 본문 반영·source map
+disposition append.
+
+## 2026-06-22 · W9 package 소비 확정 — child closeout PASS, W10으로 전이
+
+child package log `logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md`의 W1~W7이
+완료됐다. W7 closeout(Codex 저작) → Claude checker review PASS(5/5, git 검증), child status
+`decided` 전이. parent W9 `[x]`는 이 review PASS + @user 확인으로 정당화된다(부분 소비).
+
+**W9에서 확정된 결과 (parent 소비):**
+
+- authority 정합: `docs/specs/aiox-a2a.md`·`docs/product/roadmap.md`·`plans/release-plan.md`가
+  local stable A2A round trip authority를 충분히 소유. authority gap 없음, **owner body apply 없음**
+  (Batch R authority 정합 + Batch L legacy must-check 양 checker PASS). roadmap 우선순위 유지
+  (`G0->G1/G3->G2->G5/G6->G4`, npm 1차, macOS/Linux/WSL2).
+- source map: `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` 14 row draft disposition
+  갱신(W6). 새 표 없음. final disposition은 미확정.
+- portable: W9 closeout 회고 F51~F55 수집(W11 라인).
+- W10 입력: child closeout의 Legacy/Historical Source Handoff(W8 consumed / W9 consumed / W10 must
+  check / physical delete gate 4열) draft됨.
+
+**이관/deferred (W9에서 확정 안 함):**
+
+- W9 하위 "plans/post-mvp 흡수/재편"의 execution(단일 A2A plan 작성·roadmap 147-152 repoint·
+  `plans/post-mvp*` 물리 삭제·source map final disposition)은 완료가 아니라 **이관**: parent plan
+  `plans/workspace-reset/workspace-reset.md`의 post-Atlas `plans/post-mvp*` 삭제 disposition 단계가
+  소유(Obsidian/Atlas-gated). plans가 stage 순서 owner. async-petting-hoare 운영 라인 별도 보존.
+- `prd/post-mvp/aiox-a2a-spec.md` §13·archive 5·pre-validation 2 self-sufficiency + Archive Gate = W10.
+
+**현재 next pointer:** W10 — split readiness and map package. W10 entry 시 Scope.Primary owner를
+@user와 확정한다(W10 단일 primary owner 없음; split 대상은 `docs/specs/aiox-a2a.md`·
+`docs/architecture/local-agent-runtime.md`). required-read = W9 closeout Legacy/Historical Source
+Handoff + `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` source map + W5 history
+migration source map.
+
+## 2026-06-22 · W9 parent 하위 Work Items 정합화
+
+W9 parent 항목은 child W9 closeout PASS와 status `decided` 전이를 근거로 `[x]` 처리됐지만, 하위
+W9-1/W9-2/W9-2a/W9-3가 `[ ]`로 남아 있어 구조적으로 불일치했다. child W9 로그의 완료 근거를 parent
+하위 항목에 반영했다.
+
+확인한 사실:
+
+- W9-1: child W2에서 @user가 기존 roadmap 우선순위 유지(`G0->G1/G3->G2->G5/G6->G4`, npm 1차,
+  macOS/Linux/WSL2)를 확정했고, W3/W4 authority checker가 owner body 변경 없음으로 PASS했다.
+- W9-2: child W3/W4·W5 checker가 spec/roadmap/release authority gap 없음, roadmap/release/spec owner
+  body apply 없음으로 PASS했다. architecture/decision 성격 잔여는 반영이 아니라 W10 handoff로 분류됐다.
+- W9-2a: W9 task brief `logs/W9-R-task.md`, `logs/W9-L-task.md`가 작성·사용됐다.
+- W9-3: W9 closeout과 `logs/2026-06-18-package-workflow-portable-pattern.md` F51~F55에 retrospective가
+  기록됐다.
+
+수정:
+
+- parent W9 하위 W9-1/W9-2/W9-2a/W9-3를 `[x]`로 전이하고, 각 항목에 완료/no-op/이관 근거를 짧게
+  붙였다.
+
+무변경:
+
+- W10 next pointer는 유지한다.
+- owner body, source map final disposition, legacy 원본, 물리 삭제, `plans/post-mvp*` post-Atlas 이관
+  조건은 변경하지 않았다.

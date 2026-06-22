@@ -29,7 +29,7 @@ status: open
 - [x] W5 history/ migration — 최종 삭제 전환을 위한 source/index 작성과 핵심 결정 파일 docs/decisions/ 승격
   - [x] W5-1 파일별 source/index 작성: ①docs/decisions/ 후보 ②decided 로그 이관 후보 ③후속 consumer(W8/W10 등) 필요 ④최종 삭제 후보를 구분한다
   - [x] W5-2 판정 후보 docs/decisions/ 이동 실행 — `history/57` runtime profile namespace isolation WHY를 `docs/decisions/runtime-profile-namespace-isolation.md`로 승격
-  - [x] W5-3 B4 Delete Guard / Inbound Cleanup — child package `logs/2026-06-19-workspace-reset-W5-history-migration.md` active W4를 먼저 읽고, README·39·23·34·40 등 live refs를 map대로 repoint한다. repoint target은 history 원문 없이 필요한 현재 사실/WHY/경위를 복원할 수 있어야 한다. history/58 및 59는 각각 W8(A2A spec) 및 W10 작업 시 확인할 문서로 보존. history 물리 삭제 게이트는 plans/workspace-reset/workspace-reset.md의 게이트로 단일화.
+  - [x] W5-3 B4 Delete Guard / Inbound Cleanup — child package `logs/2026-06-19-workspace-reset-W5-history-migration.md` active W4를 먼저 읽고, README·39·23·34·40 등 live refs를 map대로 repoint한다. repoint target은 history 원문 없이 필요한 현재 사실/WHY/경위를 복원할 수 있어야 한다. history/58은 W8(A2A spec)에서 §4 lifecycle WHY 일부 소비·decision 승격 완료, 잔여는 W10/물리 삭제 게이트 확인 대상으로 보존. history/59는 W10 작업 시 확인할 문서로 보존. history 물리 삭제 게이트는 plans/workspace-reset/workspace-reset.md의 게이트로 단일화.
   - [x] W5-4 (W3-3 이관) plan/mvp-implementation-checklist.md·qa-tracker.md disposition 재판정 + 생존 inbound 참조 갱신 계획을 history source/index와 같은 배치로 작성. `plan/mvp-implementation-checklist.md`는 W7에서 Current as-built/load-bearing 보존으로 판정된 기록과 먼저 reconcile한다. child package W5가 G4 delete-only 7개(15·16·19·30·32·43·44)의 legacy `plan/`·`prd/` inbound cleanup도 함께 점검한다. docs/aiox 흡수/삭제는 plans/workspace-reset/workspace-reset.md의 통합 물리 삭제 게이트로 단일화. 모든 carryover/legacy target은 원본 없이 self-contained인지 검증한다.
   - [x] W5-5 W5 child package B6 closeout 소비 — `logs/2026-06-19-workspace-reset-W5-history-migration.md` W6 B6 결과를 parent에 반영하고 W5 완료 또는 남은 source/index·물리삭제-gate handoff를 확정한다
 - [x] W6 나머지 정리 — spike/, docs/claude/ split
@@ -819,8 +819,10 @@ W5 child package `logs/2026-06-19-workspace-reset-W5-history-migration.md`가 W6
 - current owner/code/plan 범위의 `history/15·16·19·30·32·43·44·45·46·47·50·51·52·53·54·55·56·57`
   잔여 참조는 decision 문서의 Sources/body provenance로만 남는다. 이 Sources 평문화는
   `plans/workspace-reset/workspace-reset.md`의 통합 물리 삭제 게이트가 소유한다.
-- `history/58`은 W8(A2A spec), `history/59`는 W10(split readiness) 작업 시 확인할 문서로
-  보존한다.
+- `history/58`은 W8(A2A spec)에서 §4 lifecycle WHY 일부가
+  `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`로 승격됐고, 남은
+  rationale/live refs는 W10(split readiness)와 통합 물리 삭제 게이트에서 확인한다.
+  `history/59`는 W10(split readiness) 작업 시 확인할 문서로 보존한다.
 - `docs/aiox/` 내부 legacy checklist/QA refs와 G4 history refs는 W5에서 수정하지 않았다.
   필요분 흡수 후 전체 삭제하거나, 보존하기로 바뀌는 파일만 통합 물리 삭제 게이트에서
   repoint한다.

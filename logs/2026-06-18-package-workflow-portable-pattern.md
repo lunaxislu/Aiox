@@ -779,3 +779,59 @@ review PASS되기 전까지 W1-2는 완료 처리하지 않는다.
 - Repo-specific note: 여기서는 `history/58`, `prd/post-mvp/*`, `docs/aiox/*`, `plans/post-mvp*`,
   `history/59`가 대상이다. portable 추출은 "source group -> consumed / downstream check /
   deletion gate" 형태만 가져간다.
+
+## 2026-06-22 · W9 closeout draft 회고 — F51~F55 추가
+
+`logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md` W7 closeout draft를 저작하며 확인한
+workflow 후보를 기록한다. 이 기록은 draft 수집이다. W9 child closeout이 Claude checker review PASS되기
+전까지 W11의 최종 정리 항목은 완료 처리하지 않는다.
+
+**F51 — Authority gap과 execution successor gap을 분리해야 한다.**
+- 맥락: W9 Batch R은 처음에는 roadmap/release/plans 재편과 단일 plan 작성까지 이어질 수 있었지만,
+  @user 결정으로 단일 A2A plan 작성은 Obsidian/Atlas stage 이후로 deferred됐다. 이후 authority 정합
+  producer/checker는 `docs/specs/aiox-a2a.md`·`docs/product/roadmap.md`·`plans/release-plan.md`가
+  owner authority 수준에서는 충분하다고 PASS했다. 남은 gap은 실행 checklist/detail successor 부재였다.
+- 분류: **Portable candidate**.
+- 패턴: owner artifact assimilation에서 "권위 문서가 계약/gate/우선순위를 충분히 소유하는가"와
+  "실행자가 바로 착수할 checklist가 한 문서에 모였는가"를 별도 질문으로 둔다. 전자는 owner body
+  apply 여부를 결정하고, 후자는 plan/successor pending으로 남길 수 있다.
+- 조치 후보: package closeout template에 `authority gap` / `execution successor gap` / `deletion gate gap`
+  구분을 추가한다.
+
+**F52 — Deferred successor는 삭제 후보가 아니라 keep/pending disposition으로 표현한다.**
+- 맥락: `plans/post-mvp*`는 사용자 목표상 언젠가 단일 plan으로 재편 후 삭제 후보지만, 단일 plan 작성이
+  Obsidian/Atlas 이후로 미뤄졌다. 이 상태에서 source map을 `absorb→delete after single plan`로 두면
+  현재 삭제 readiness처럼 읽힐 수 있다. W9는 `keep / execution successor pending`으로 표기했다.
+- 분류: **Portable candidate**.
+- 패턴: deletion/disposition map에서 successor가 아직 없으면 aspirational final state를 disposition으로
+  쓰지 않는다. 현재 실행 가능한 상태는 `keep`, 이유는 `successor pending`, 재판정 조건은 별도 문장으로
+  둔다.
+- Repo-specific note: 여기서는 `plans/post-mvp*`와 `prd/post-mvp/aiox-a2a-spec.md` §11이 해당한다.
+
+**F53 — Optional traceability wording은 authority apply와 구분해야 한다.**
+- 맥락: W7 Open Issue 4/5(public `deliveryId` namespace, correlated reply authorization)는 roadmap G1
+  gates와 spec Open Issue에 이미 표현되어 있었다. 이름을 roadmap에 명시하면 traceability가 좋아질 수
+  있지만, checker는 authority gap이 아니라고 PASS했다.
+- 분류: **Portable candidate**.
+- 패턴: reviewer가 "더 명시하면 좋음"을 발견했을 때 이를 owner body apply로 자동 승격하지 않는다.
+  `optional traceability improvement`를 `authority gap`과 구분하고, 적용은 사용자/owner 승인 뒤 별도
+  patch로 둔다.
+
+**F54 — PASS된 producer/checker 결과를 source map에 반영하는 작업은 새 분석과 다르게 취급한다.**
+- 맥락: W6 source map update는 새 claim 검증이 아니라 W3/W4와 W5의 checker PASS 결과를 canonical
+  source map 기존 row에 반영하는 장부 작업이었다. 그래서 subagent 없이 controlling agent가 직접
+  수행했고, 새 표를 만들지 않는 것을 핵심 검증으로 삼았다.
+- 분류: **Portable candidate / repo integration candidate**.
+- 패턴: source map/ledger 업데이트를 할 때 작업 성격을 `new analysis` / `accepted-result bookkeeping`
+  / `final disposition`으로 구분한다. accepted-result bookkeeping은 좁은 직접 수정이 가능하지만,
+  final disposition이나 deletion readiness는 별도 gate를 요구한다.
+
+**F55 — Partial parent closeout은 "무엇이 소비됐고 무엇이 남았는지"를 Work Item 단위로 말해야 한다.**
+- 맥락: W9는 roadmap/release authority assimilation을 완료했지만, 단일 plan 작성과 post-mvp 삭제는
+  deferred이고 W10 split/Archive Gate도 남아 있다. parent W4.5에 W9를 단순 `[x]`로 반영하면 남은
+  deferred 조건이 사라져 보일 수 있다.
+- 분류: **Portable candidate**.
+- 패턴: child package가 parent로 복귀할 때 일부 scope가 downstream/deferred라면 parent 반영안은
+  `consumed`, `deferred`, `transferred`, `blocked-by`, `must not do yet`를 구분한다. parent checkbox 전이는
+  child 전체 수명 종료가 아니라 parent가 소비해야 할 해당 Work Item의 의미가 해소됐는지로 판단한다.
+- 조치 후보: parent/child closeout checklist에 partial closeout vocabulary를 추가한다.
