@@ -7,10 +7,10 @@ status: open
 ## Work Items
 
 - [x] W1 legacy 폴더 inventory & source map 초기화 (완료 2026-06-21, sonnet subagent 1차 분류 + controlling agent 조정) — `prd/`·`plan/`·`docs/aiox/`·`plans/post-mvp/`의 모든 파일을 source map 표에 등록하고 잠정 흡수 owner·소비 package를 매핑한다.
-- [>] W2 흡수 진행 추적 — W8(specs)/W9(roadmap·release)/W10(split)이 owner 흡수를 수행할 때마다 같은 source map에 disposition과 self-sufficiency 검증을 append/update한다.
-- [ ] W3 archive 판정 — `logs/AGENTS.md`의 Archive Gate(보존가치 + self-sufficiency)를 개별 파일에 적용해 `logs/` digest 필요 여부를 확정한다.
+- [x] W2 흡수 진행 추적 (완료 2026-06-23) — W8(specs)/W9(roadmap·release)/W10(split)이 owner 흡수를 수행할 때마다 같은 source map에 disposition과 self-sufficiency 검증을 append/update한다. **흡수자 3 package 전부 `decided` 확인(W8/W9/W10 status decided), source map 전 row에 disposition 반영 완료 → 추가 흡수 없음.**
+- [x] W3 archive 판정 (완료 2026-06-23) — `logs/AGENTS.md`의 Archive Gate(보존가치 + self-sufficiency)를 개별 파일에 적용해 `logs/` digest 필요 여부를 확정한다. **digest 2파일 생성: pre-validation spike 2건 → `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md`, docs/aiox manual smoke/E2E 2건 → `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md`. industry-precedents self-sufficiency 확인으로 W10 checker 잔여 1건 해소(digest 불필요). 나머지 absorb→delete/delete-only rows는 owner 흡수만으로 self-contained.**
 - [x] W4 decision 승격 추적 — gemini가 docs/decisions/ 부재/미흡으로 확인한 5개 후보(industry-precedents=Opaque Worker / observation-asymmetry=D7 Scope Reduction / aiox-a2a §13=아키텍처 부채 3축+Structured Logger / step-14-mcp-bug=App Server 주입·격리 / proxy-vs-app-server=app-server+proxy 하이브리드)를 W8/W10 흡수 중 W6 기준으로 `docs/decisions/`에 승격한다. 승격 전 docs/decisions/ 현황을 disk에서 재확인하고, 완료를 source map disposition에 반영한다. — **완료(2026-06-22 W10 W5/W6 Claude checker PASS): 2건 승격(`codex-d7-authoritative-binding-scope.md`, `codex-app-server-mcp-injection-and-isolation.md`) + 3건 no-promotion accepted. 5건 모두 source map disposition에 반영됨. checker 잔여 1건(`industry-precedents` Opaque Worker coarse-state/semantic-timeout self-sufficiency)은 W3/물리 gate handoff.** decision 승격 추적 완결; 물리 삭제는 W5 handoff 소유.
-- [ ] W5 closeout & 물리 삭제 handoff — 전체 disposition이 확정되면 `plans/workspace-reset/workspace-reset.md`의 단일 물리 삭제 게이트로 handoff한다. 원본 삭제는 owner/archive successor self-contained 검증과 사용자 확인 후 그 게이트에서만 한다.
+- [>] W5 closeout & 물리 삭제 handoff — stage 6 target rows(`prd/`·`plan/`·`docs/aiox/`)는 disposition 확정(`absorb→delete` / `archive→delete` digest done / `delete-only`)으로 `plans/workspace-reset/workspace-reset.md` stage 6 물리 삭제 게이트에 handoff 준비됨(2026-06-23). 단 `plans/post-mvp*` rows는 `keep / execution successor pending`으로 plan **stage 9** 소유라, 이 source map은 stage 6 + stage 9 두 게이트가 소비할 때까지 `open` 유지. 원본 삭제는 owner/archive successor self-contained 검증과 사용자 확인 후 각 게이트에서만 한다.
 
 ### Scope
 
@@ -29,14 +29,14 @@ status: open
 | `prd/post-mvp/archive/codex-claude-validation.md` | cross-validation transcript | architecture + decision | W9 + W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): product definition, compose-before-envelope warning, adapter compile, identity/transport/policy/sandbox, app-server/runtime connector 브레인스토밍은 product/spec/architecture에 흡수. 고유 empirical trace 아님 | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `prd/post-mvp/archive/codex-opinion.md` | 설계 초기 의견 | architecture + decision | W9 + W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): native instruction replacement 금지, launch-scoped generated instruction, adapter asymmetry absorption, local agent control plane 모델은 현 spec/product에 흡수. digest 불필요 | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `prd/post-mvp/archive/gemini-opinion.md` | 설계 초기 의견 | architecture + decision | W9 + W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): agents/routes/capabilities/policies 스키마와 "Agent is not container" 경고는 현 spec §6/§7에 흡수. digest 불필요 | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
-| `prd/pre-validation/claude-codex-pre-validation.md` | MVP arch 사전검증 spike (PASS, 2026-05-14) | architecture (evidence) | W8 + W9 + W10 | Yes — logs digest required before deletion | W10 Codex draft (W5/W6 checker PASS 2026-06-22): 결론(Claude channel injection 가능, Codex app-server thread-targeted turn 가능, trust/metadata open issues)은 architecture/spec/roadmap에 흡수. setup/observed transcript/PASS trace는 owner 문서에 같은 밀도로 없음 | archive→delete candidate after digest + physical gate (W5/W6 checker PASS 2026-06-22) |
-| `prd/pre-validation/sqlite-restart-recovery-pre-validation.md` | SQLite restart recovery 사전검증 (PASS, 2026-05-16) | architecture (evidence) | W8 + W9 + W10 | Yes — logs digest required before deletion | W10 Codex draft (W5/W6 checker PASS 2026-06-22): durable store 결론/현재 gap은 spec/architecture/roadmap에 흡수. WAL, restart transition, late reply, verification commands/PASS counts/not-validated list는 owner 문서에 같은 밀도로 없음 | archive→delete candidate after digest + physical gate (W5/W6 checker PASS 2026-06-22) |
+| `prd/pre-validation/claude-codex-pre-validation.md` | MVP arch 사전검증 spike (PASS, 2026-05-14) | architecture (evidence) | W8 + W9 + W10 | Yes → `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md` (W3 digest done 2026-06-23) | W10 Codex draft (W5/W6 checker PASS 2026-06-22): 결론(Claude channel injection 가능, Codex app-server thread-targeted turn 가능, trust/metadata open issues)은 architecture/spec/roadmap에 흡수. setup/observed transcript/PASS trace는 owner 문서에 같은 밀도로 없음. **W3(2026-06-23): digest가 setup/명령/측정/PASS·PARTIAL trace 보존, owner 흡수와 합쳐 self-contained** | archive→delete (W3 digest done 2026-06-23; physical gate only) |
+| `prd/pre-validation/sqlite-restart-recovery-pre-validation.md` | SQLite restart recovery 사전검증 (PASS, 2026-05-16) | architecture (evidence) | W8 + W9 + W10 | Yes → `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md` (W3 digest done 2026-06-23) | W10 Codex draft (W5/W6 checker PASS 2026-06-22): durable store 결론/현재 gap은 spec/architecture/roadmap에 흡수. WAL, restart transition, late reply, verification commands/PASS counts/not-validated list는 owner 문서에 같은 밀도로 없음. **W3(2026-06-23): digest가 schema/restart policy/transition/late reply/verification(PASS 5+11+typecheck)/not-validated 보존, self-contained** | archive→delete (W3 digest done 2026-06-23; physical gate only) |
 | `plan/mvp-implementation-checklist.md` | MVP TDD 11단계 체크리스트 (closed) | logs archive + architecture provenance | W5 완료; W8/W10는 docs/aiox 잔여 참조만 | Yes → `logs/2026-06-20-mvp-plan-carryover-archive.md` | archive self-contained; live owner refs repointed; docs/aiox refs = deletion-gate dependency | archive→delete (docs/aiox 흡수 후 physical gate) |
 | `plan/qa-tracker.md` | MVP QA 상태판 (QA-001~003) | logs archive + decision provenance | W5 완료; W8/W10는 docs/aiox 잔여 참조만 | Yes → `logs/2026-06-20-mvp-plan-carryover-archive.md` | archive self-contained; live owner/plans refs repointed; docs/aiox refs = deletion-gate dependency | archive→delete (docs/aiox 흡수 후 physical gate) |
 | `docs/aiox/agent-runtime-container-model.md` | runtime container 학습기록 (권위 history/31) | architecture | W8 / W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): `CodexAgentRuntime` product model learning record; current runtime boundary는 `local-agent-runtime.md` §7.1과 `codex-per-agent-app-server` decision으로 self-contained | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `docs/aiox/claude-channel-registration-and-trust-model.md` | channel 등록+trust 내부구조 | architecture | W8 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): token/dynamic endpoint/endpoint hijack rationale는 `claude-channel-trust-and-registration` decision과 architecture §6으로 self-contained; stale spike detail은 보존하지 않음 | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `docs/aiox/codex-thread-focus-and-loaded-list.md` | thread focus 학습기록 | architecture | W8 / W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): current architecture §7.5~§7.7, pair-slot decision and proxy decision cover accepted outcome; stale `thread/loaded/list.at(-1)` path superseded. rename-drift exists but deletion resolves | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
-| `docs/aiox/industry-precedents-and-observability-models.md` | 외부 벤치마크+Opaque Worker 설계레슨 | architecture + decision | W8 / W10 | No | W10/W5 Codex draft (W5/W6 checker PASS 2026-06-22): delivery/completion 분리와 daemon authority는 `a2a-message-lifecycle-envelope-and-correlation` decision/spec §4가 소유. external precedent narrative는 explanatory, not load-bearing decision WHY | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
+| `docs/aiox/industry-precedents-and-observability-models.md` | 외부 벤치마크+Opaque Worker 설계레슨 | architecture + decision | W8 / W10 | No | W10/W5 Codex draft (W5/W6 checker PASS 2026-06-22): delivery/completion 분리와 daemon authority는 `a2a-message-lifecycle-envelope-and-correlation` decision/spec §4가 소유. external precedent narrative는 explanatory, not load-bearing decision WHY. **W3(2026-06-23) self-sufficiency 확인(W10 checker 잔여 1건 해소): Opaque Worker coarse-state `awaiting_agent_reply`(spec §4 `:844`,`:853`) + delivery≠reply 완료(`:277`) + semantic-timeout=pending visibility threshold(`:278`)가 spec §4 + lifecycle decision에 self-contained. digest 불필요** | absorb→delete candidate (physical gate only; W5/W6 checker PASS + W3 self-suff 확인 2026-06-23) |
 | `docs/aiox/mcp-scope-and-daemon-namespace.md` | MCP scope 2분류 | spec + architecture | W8 | No | W8: runtime MCP/channel projection + profile/socket namespace contract가 spec §3.1/§5/§7에 흡수(W7 PASS); 헤더의 `docs/architecture/mvp-architecture.md` rename-drift는 W10 cleanup | absorb→delete (W10 stale ref cleanup 후) |
 | `docs/aiox/mvp-architecture.md` | **stale** 구버전 as-built 스냅샷 (고정 pair 통신; `local-agent-runtime.md`로 승격됨) | architecture (stale) | W8 + W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): stale as-built snapshot; current `local-agent-runtime.md` and decisions are successor. Stale snapshot itself has low preservation value and risks authority confusion | delete-only candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `docs/aiox/observation-asymmetry-and-d7-pivot.md` | D7 위반+pivot 경위 | architecture + decision | W8 / W10 | No | W10/W5 Codex draft (W5/W6 checker PASS 2026-06-22): load-bearing D7 WHY promoted to `docs/decisions/codex-d7-authoritative-binding-scope.md`; current proxy outcome in architecture §7.4~§7.7 | absorb→delete candidate (decision promoted draft; physical gate only; W5/W6 checker PASS 2026-06-22) |
@@ -47,10 +47,10 @@ status: open
 | `docs/aiox/proxy-cost-model.md` | proxy 비용모델 학습 | architecture | W8 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): `proxy-lazy-observation-cost-model` decision and architecture §7.4 lazy parse note are self-contained | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `docs/aiox/proxy-vs-app-server-tradeoff.md` | proxy vs app-server 결정 | architecture + decision | W8 | No | W10/W5 Codex draft (W5/W6 checker PASS 2026-06-22): `codex-per-agent-app-server` preserves 1:1 app-server WHY and RSS trade-off; `proxy-lazy-observation-cost-model` preserves proxy WHY; current A+P outcome is architecture §7.4~§7.7 | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `docs/aiox/README.md` | docs/aiox 폴더 meta/taxonomy | architecture (meta) | W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): folder meta has no successor need once docs/aiox is absorbed/deleted | delete-only candidate (folder disposition; physical gate only; W5/W6 checker PASS 2026-06-22) |
-| `docs/aiox/round-4-tui-smoke-check.md` | Round4 manual smoke 학습 | architecture (test) | W8 / W10 | Yes — logs digest required before deletion | W10 Codex draft (W5/W6 checker PASS 2026-06-22): S1~S5 manual smoke procedures/results are not preserved in same density by architecture smoke matrix. Preservation value + digest self-sufficiency condition met | archive→delete candidate after digest + physical gate (W5/W6 checker PASS 2026-06-22) |
+| `docs/aiox/round-4-tui-smoke-check.md` | Round4 manual smoke 학습 | architecture (test) | W8 / W10 | Yes → `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` (W3 digest done 2026-06-23) | W10 Codex draft (W5/W6 checker PASS 2026-06-22): S1~S5 manual smoke procedures/results are not preserved in same density by architecture smoke matrix. Preservation value + digest self-sufficiency condition met. **W3(2026-06-23): digest가 S1~S5 명령/2026-05-21 manual 결과(S4-full PASS 포함) 보존, self-contained** | archive→delete (W3 digest done 2026-06-23; physical gate only) |
 | `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md` | Step14 MCP injection 버그 (empirical 증거) | architecture + decision | W8 / W10 | No | W10/W5 Codex draft (W5/W6 checker PASS 2026-06-22): load-bearing app-server MCP injection/isolation WHY promoted to `docs/decisions/codex-app-server-mcp-injection-and-isolation.md`; current behavior in architecture §7.2/§7.8; history/40 preserves main verification | absorb→delete candidate (decision promoted draft; physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `docs/aiox/step-14-codex-thread-mismatch-discovery.md` | Step14 thread 불일치 학습 | architecture | W8 / W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): current owner is architecture §7.5~§7.7 and pair-slot decision; stale `thread/loaded/list` fix path superseded. rename-drift exists but deletion resolves | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
-| `docs/aiox/step-14-smoke-test-report.md` | Step14 E2E smoke (2 blocking issue) | architecture (test) | W8 / W10 | Yes — logs digest required before deletion | W10 Codex draft (W5/W6 checker PASS 2026-06-22): blocker trace and verification list are not preserved in same density by owner body; digest needed before deletion | archive→delete candidate after digest + physical gate (W5/W6 checker PASS 2026-06-22) |
+| `docs/aiox/step-14-smoke-test-report.md` | Step14 E2E smoke (2 blocking issue) | architecture (test) | W8 / W10 | Yes → `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` (W3 digest done 2026-06-23) | W10 Codex draft (W5/W6 checker PASS 2026-06-22): blocker trace and verification list are not preserved in same density by owner body; digest needed before deletion. **W3(2026-06-23): digest가 procedure + Blocker 1/2 root-cause·solution + verified items 보존, self-contained** | archive→delete (W3 digest done 2026-06-23; physical gate only) |
 | `docs/aiox/step-6-cli-decisions-walkthrough.md` | Step6 CLI 결정 walkthrough | architecture | W8 / W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): architecture §8.2/§9.1 and current command table are self-contained; stale architecture ref exists but deletion resolves | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `plans/post-mvp.plan.md` | Post-MVP 실행 index + Session Re-entry (obsolete scratch pointer 포함) | roadmap (우선순위/sequencing) + plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap은 Candidates/Sequenced 우선순위를 흡수했지만 단일 A2A execution plan 작성이 Obsidian/Atlas 이후로 deferred. 단일 plan 전에는 execution detail successor가 없어 self-contained 아님 | keep / execution successor pending (single plan 후 disposition 재판정) |
 | `plans/post-mvp/adapter-dispatch-registry.plan.md` | dispatch→adapter registry sub-plan (deferred) | plans 재편 (single plan으로) | W9 + future single-plan stage | No | W9 PASS: roadmap G1 adapter boundary + Phase 2 ingress prerequisite로 priority는 흡수. refactor options/checklist는 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
@@ -303,3 +303,66 @@ checker 잔여 1건(blocking 아님, W3/물리 gate handoff):
 
 - W2 흡수 진행 추적·W3 archive 판정·W5 closeout & 물리 삭제 handoff는 이 source-map 패키지가 계속 소유한다.
 - W10 split package는 W7 closeout으로 진행한다.
+
+## 2026-06-23 · W2 완료 + W3 archive digest 생성 (stage 5 W5 재개)
+
+stage 5 검증 로그(`logs/2026-06-22-workspace-reset-stage5-link-권위-세션재개.md`) W5가
+이 source map 재개를 다음 작업으로 지목해 재개했다. provenance 평문화(decision 14파일
+`history/` 출처 → 평문)는 @user 결정(2026-06-23)으로 plan **stage 6 전용 실행 로그**가
+소유하므로 이 세션 범위에서 제외했다(stage 6 본문 `workspace-reset.md:30`이 소유 명시).
+
+**W2 흡수 진행 추적 완료 (확인한 사실):**
+
+- 흡수자 3 package 모두 `decided`: `logs/2026-06-21-...W8-A2A-spec-authority.md`,
+  `logs/2026-06-21-...W9-release-roadmap-authority.md`,
+  `logs/2026-06-22-...W10-split-readiness-map.md` (frontmatter status 직접 확인).
+- source map 전 row가 W8/W9/W10 disposition을 반영한 상태 → 더 append할 흡수 결과 없음.
+  남은 disposition 작업은 archive digest(W3)와 plans/post-mvp* stage 9 재판정뿐.
+
+**W3 archive 판정 완료 — Archive Gate 개별 적용:**
+
+- digest 필요 4건(W10 checker `archive→delete after digest`)을 성격별 2 digest 파일로 생성:
+  - `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md` —
+    `prd/pre-validation/claude-codex-pre-validation.md`(2026-05-14),
+    `prd/pre-validation/sqlite-restart-recovery-pre-validation.md`(2026-05-16).
+    spike setup/명령/측정/PASS·PARTIAL trace + verification(SQLite spike: PASS 5 + 11 +
+    typecheck) + not-validated 목록 보존.
+  - `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` —
+    `docs/aiox/round-4-tui-smoke-check.md`(S1~S5 명령 + 2026-05-21 manual 결과,
+    S4-full PASS=D3.6 spawn ENOENT rollback 포함),
+    `docs/aiox/step-14-smoke-test-report.md`(procedure + Blocker 1 daemon 즉시종료 /
+    Blocker 2 `.mcp.json` 채널키 불일치 root-cause·solution + verified items).
+  - 각 digest는 Disposition + "Current Owners After Absorption"으로 owner 흡수 위치를
+    명시해 self-contained하다(Archive Gate 보존가치 + self-sufficiency 충족).
+- industry-precedents self-sufficiency 확인(W10 checker 잔여 1건, blocking 아님) — **해소**:
+  - [Fact] Opaque Worker coarse-state `awaiting_agent_reply`는 spec §4(`docs/specs/aiox-a2a.md:844`,
+    `:853`)에 있다. delivery 완료 ≠ reply 완료는 `:277`, semantic-timeout = 기본 hard
+    failure 아닌 pending visibility threshold는 `:278`에 있다.
+  - [Fact] daemon authority(adapter-rendered text 비신뢰)와 progress visibility ≠ ack는
+    `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md` Rationale + spec §4
+    (`:281-288`)가 소유.
+  - [Fact] architecture grep(`docs/architecture/`)에서 coarse/opaque/semantic 무히트 →
+    이 원칙은 architecture가 아니라 spec contract + lifecycle decision이 owner(source map
+    분류와 일치). 따라서 `industry-precedents` 물리 삭제 후에도 load-bearing 원칙 self-contained.
+  - [Inference] external precedent 표(OpenHands/Agent Protocol/LangGraph/Cline)는 explanatory
+    narrative라 owner fact 아님 → digest 불필요, `absorb→delete` 유지(W10 no-promotion 판정과 정합).
+
+**source map 갱신:** 위 5 row(digest 4 + industry-precedents)의 archive·self-sufficiency·
+disposition 컬럼을 갱신했다. digest 4건은 `archive→delete (W3 digest done 2026-06-23;
+physical gate only)`, industry-precedents는 `absorb→delete (... W3 self-suff 확인 2026-06-23)`.
+
+**경계 / non-actions:**
+
+- owner 문서 본문·legacy 원본을 수정하지 않았다(검증·digest 생성·장부 갱신만).
+- `plans/post-mvp*` rows를 수정하지 않았다(`keep / execution successor pending` 유지, stage 9 소유).
+- `history/*` row를 만들지 않았다(W5 history migration 소유).
+- decision `history/` provenance 평문화·물리 삭제는 수행하지 않았다(stage 6 게이트 소유).
+
+**W5 상태:** stage 6 target rows(`prd/`·`plan/`·`docs/aiox/`)는 disposition 확정으로 stage 6
+물리 삭제 게이트 handoff 준비 완료. `plans/post-mvp*`는 stage 9 대기. 이 source map은 stage 6 +
+stage 9 두 게이트 소비 전까지 `open` 유지.
+
+**다음 (parent 복귀):** stage 5 검증 로그 W5로 복귀해 "stage 6 전제 중 legacy map 소유분(W3
+digest + industry-precedents self-suff)이 충족됐다"를 반영하고, stage 5→6 전이(stage 5 `[x]` +
+stage 6 전용 실행 로그 활성화·repoint) 진행 여부를 @user에게 보고·확인받는다. 물리 삭제는
+되돌릴 수 없고 plan Notes상 사용자 승인이 선행돼야 하므로 이 세션에서 자동 수행하지 않는다.

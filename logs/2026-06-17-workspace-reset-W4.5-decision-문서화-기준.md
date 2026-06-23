@@ -1,7 +1,7 @@
 ---
 topic: workspace reset W4.5 decision 문서화 기준
 description: workspace reset W4.5 W6 — history/legacy 자료에서 docs/decisions로 승격할 기준과 docs/decisions 작성 규칙 및 상위 계약 정합성을 정리한다
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -21,7 +21,7 @@ status: open
   - [x] W4-1 root `AGENTS.md`에 temporary workspace reset logging scope 반영 필요 여부를 확인하고 적용한다
   - [x] W4-2 owner assimilation 로그의 권장 섹션(Scope/Evidence Ledger/Decision Candidates/Cross-Owner Effects/Closeout)을 확정한다
   - [x] W4-3 W7/W8/W9/W10이 문서별 고정 작업이 아니라 primary entry point 작업 패키지임을 parent W4.5 Work Items에 반영한다
-- [ ] W5 이 child 로그 결과를 parent W4.5 로그 W6에 반영하고 W7로 복귀한다
+- [x] W5 이 child 로그 결과를 parent W4.5 로그 W6에 반영하고 W7로 복귀한다
 
 ## 2026-06-17 · workspace reset W4.5 decision 문서화 기준
 
@@ -120,3 +120,26 @@ child log는 W5 완료 후 닫히면 검색 경로가 끊긴다. W7/W8/W9 agents
 **남은 판단 없음.** W4 전체 완료.
 
 **현재 next pointer:** W5 — child log 결과를 parent W4.5 로그에 반영하고 W7로 복귀.
+
+## 2026-06-23 · child closeout — parent W4.5 소비 완료 확인 후 late close (stage5 W4 발견)
+
+이 child 로그는 status가 `open`으로 남아 있었으나 실제 작업 수명은 끝나 있었다. workspace
+reset stage 5의 W4(세션 재개 가능성 종합 검증)가 open 로그 5개를 분류하던 중 이 로그가
+parent는 이미 종료됐는데 child만 안 닫힌 stale 상태임을 발견했고, @user 승인(2026-06-23)으로
+late closeout 한다.
+
+**확인한 사실 (parent 소비 완료):**
+- parent `logs/2026-06-16-workspace-reset-W4.5-owner-문서-정제와.md`는 status `decided`
+  (Work Items 40 closed / 0 open / next 없음).
+- 그 parent의 W6 = `[x]` 완료 — "Complete child log `...W4.5-decision-문서화-기준.md`,
+  then consume decision/logging rules and resume W7". W6-1/2/3는 child W1/W2/W3으로
+  Transferred 처리됐고 parent가 child 결과를 소비한 뒤 W7로 진행해 전체가 decided로 종료됐다.
+
+**W5 처리:** W5 = "child 결과를 parent W4.5 W6에 반영하고 W7로 복귀"의 두 행동(반영·복귀)은
+parent 측에서 이미 수행됐다(parent W6 `[x]`, parent decided). 따라서 W5의 행동은 충족되어
+completed로 닫는다. child 결과(decision 승격 기준, `docs/decisions/AGENTS.md`, root
+`AGENTS.md` Workspace Reset 섹션, `logs/AGENTS.md` 권장 섹션 템플릿)는 W1~W4에서 이미
+권위 위치에 반영됐다.
+
+**남은 일 없음 근거:** 미완료 Work Item 0, parent/child 복귀 소비 완료, 권위 반영 완료.
+이 로그에서 재개할 작업이 없으므로 `decided`로 전환한다.
