@@ -8,8 +8,8 @@
 > invariants.
 > Product/spec intent lives in `docs/product/` and `docs/specs/`; the former
 > MVP PRD is absorbed/deleted during workspace reset and is not primary
-> authority. `prd/pre-validation/*` is W5 evidence candidate material, not
-> current architecture authority. Decision rationale lives in `docs/decisions/`;
+> authority. Legacy pre-validation spike material is archived as workspace-reset
+> evidence, not current architecture authority. Decision rationale lives in `docs/decisions/`;
 > MVP implementation and QA provenance lives in
 > `logs/2026-06-19-mvp-history-archive.md`. When this document
 > conflicts with code or authority docs, update this document.
@@ -1165,15 +1165,16 @@ The system architecture distinguishes between current, as-built gaps in the loca
   `logs/2026-06-20-mvp-plan-carryover-archive.md` preserves the useful digest
   from the old MVP checklist; legacy `plan/` paths are not primary authority for
   this document.
-- **Migrated history rationale**: decision-worthy rationale lives in
+- **Migrated step rationale**: decision-worthy rationale lives in
   `docs/decisions/`; MVP implementation and QA trace provenance lives in
-  `logs/2026-06-19-mvp-history-archive.md`. Remaining `history/` sources are
+  `logs/2026-06-19-mvp-history-archive.md`. Legacy step records are
   workspace-reset migration inputs, not architecture authority.
-- **Pre-validation**: `prd/pre-validation/*` is W5 evidence candidate material,
+- **Pre-validation**: legacy pre-validation spike records are archived in
+  `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md`; they are
   not current architecture authority.
-- **Learning records**: `docs/aiox/*.md` (proxy cost model, app-server vs
-  proxy trade-off, container model, round-4 TUI smoke check, step-14 MCP
-  remote architecture bug).
+- **Learning records**: legacy aiox learning records are absorbed into
+  decision, architecture or archive owners; they are not current architecture
+  authority.
 - **Memory index entry points**: `aiox-mvp-spec`, `aiox-history-doc`,
   `aiox-step-progress`, `aiox-codex-attach-ownership`,
   `aiox-authority-map`.

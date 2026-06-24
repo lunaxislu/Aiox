@@ -80,12 +80,6 @@ into the app-server rather than using a fully empty profile.
 
 ## Sources
 
-- `history/40-step-14-daemon-client-split.history.md:246-333` - Step 14 remote
-  MCP injection target correction, handshake fix, and verification.
-- `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md:18-26` - learning
-  record for injection target mismatch and headless global MCP startup risk.
-- `docs/aiox/step-14-codex-mcp-remote-architecture-bug.md:61-88` - app-server
-  injection experiment and isolation options.
 - `docs/architecture/local-agent-runtime.md` §7.2 and §7.8 - current outcome:
   app-server launch receives `mcp_servers.aiox`, TUI receives only remote args,
   and token/socket identity crosses the MCP child handshake.

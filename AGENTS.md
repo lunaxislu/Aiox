@@ -34,8 +34,8 @@ architecture.excalidraw는 사용자의 개인 자산임 신경쓸 필요가 없
 
 <!-- TEMPORARY: workspace reset 기간 한정. 종료 시 이 섹션 전체 삭제. 삭제 조건: plans/workspace-reset/workspace-reset.md -->
 
-현재 workspace reset 기간이다. agent는 legacy PRD, history, spike, archive,
-scattered plan 자료를 적절한 owner 문서에 assimilate한다.
+현재 workspace reset 기간이다. agent는 legacy PRD, surviving archive/source-map,
+spike, scattered plan 자료를 적절한 owner 문서에 assimilate한다.
 
 - 실행 순서는 active log의 next pointer가 소유한다. 이 파일에 W-step 순서를 쓰지 않는다.
 - owner 문서를 갱신한 task log에는 검증 ledger를 남긴다. 다른 agent가 그 로그만으로

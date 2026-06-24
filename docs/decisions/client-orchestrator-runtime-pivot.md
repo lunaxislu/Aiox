@@ -12,7 +12,7 @@ We decided to pivot to a TypeScript-based background daemon architecture and imp
 
 ## Alternatives
 - **Central HTTP Router only**: Rejected because MCP-only pulls cannot push turns or wake up target models without explicit polling triggers.
-- **Process-level terminal split injection (e.g., automated cmux/tmux layout spawning)**: Rejected because terminal multiplexers lack a standard cross-platform automation API. We decided to decouple terminal split layout management from `aiox` core, leaving terminal-specific layout recipes (cited in history/13 as a `cmux-pair.sh`-style recipe, not present on disk now) and manual layout instructions for portability.
+- **Process-level terminal split injection (e.g., automated cmux/tmux layout spawning)**: Rejected because terminal multiplexers lack a standard cross-platform automation API. We decided to decouple terminal split layout management from `aiox` core, leaving terminal-specific layout recipes (an earlier rewrite-decision iteration cited a `cmux-pair.sh`-style recipe, not present on disk now) and manual layout instructions for portability.
 
 ## Rationale
 - **Orchestrator and Registry**: Transitioning from a simple 1:1 bridge model to a central background orchestrator daemon enables managing agent identities dynamically via memory registries and supporting 1:N logical routes.
@@ -26,9 +26,6 @@ We decided to pivot to a TypeScript-based background daemon architecture and imp
 - This decision can be re-evaluated if MCP introduces standard push-based orchestration primitives or native agent-to-agent session routing APIs.
 
 ## Sources
-- `history/13-aiox-rewrite-decision.history.md` — original pivot rationale;
-  pending plaintext provenance conversion at the workspace-reset physical
-  deletion gate.
 - `legacy/bridge-relay-v1/bridge/README.md` — preserved predecessor bridge
   behavior and MCP-only routing shape.
 - `docs/architecture/local-agent-runtime.md` — current daemon/client runtime

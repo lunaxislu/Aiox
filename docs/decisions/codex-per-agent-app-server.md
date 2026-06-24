@@ -1,14 +1,14 @@
 # Codex Per-Agent App-Server (1:1)
 
 ## Context
-aiox MVP의 Codex 어댑터는 사용자 TUI와 daemon이 같은 Codex 대화 스레드를 공유해야 한다. 초기 설계는 "여러 Codex 에이전트가 하나의 app-server를 공유(1:N)"하는 구조를 검토했다. `history/5`에서 shared app-server + `codex --remote ws://...` TUI + 외부 WS client가 같은 thread/turn 스트림을 실시간으로 공유함을 직접 실험으로 확인했다. 이후 `history/27·28`에서 per-agent in-band WebSocket proxy + shared app-server 구조로 attribution 메커니즘을 설계했다.
+aiox MVP의 Codex 어댑터는 사용자 TUI와 daemon이 같은 Codex 대화 스레드를 공유해야 한다. 초기 설계는 "여러 Codex 에이전트가 하나의 app-server를 공유(1:N)"하는 구조를 검토했다. 초기 prototype 검증에서 shared app-server + `codex --remote ws://...` TUI + 외부 WS client가 같은 thread/turn 스트림을 실시간으로 공유함을 직접 실험으로 확인했다. 이후 proxy spike에서 per-agent in-band WebSocket proxy + shared app-server 구조로 attribution 메커니즘을 설계했다.
 
 ## Decision
 **Codex 에이전트 1개당 독립적인 app-server 자식 프로세스 1개를 띄운다 (1:1 per-agent app-server).** OS가 할당하는 포트(`--listen ws://127.0.0.1:0`)를 사용해 포트 충돌을 원천 차단한다.
 
 ## Alternatives
-- **Shared app-server (1:N)**: 여러 aiox Codex 에이전트가 하나의 app-server를 공유. 기술적으로 가능함이 `history/5`에서 검증되었다. 배제 이유: "어느 에이전트의 turn인가"를 판별하기 위한 attribution 로직이 별도로 필요하고, `/clear`·`/new`·`/fork` rebind 시 protocol-transparent relay + lazy parse + binding correlation이 Codex 릴리스마다 forward-compat 리스크를 안는다. 1:1은 attribution을 프로세스 경계로 환원해 이 위험을 제거한다.
-- **Per-agent proxy + shared app-server**: `history/27·28`의 spike 방향. per-agent proxy를 앞에 두어 attribution은 해결하지만 shared app-server의 forward-compat 리스크와 구조 복잡도가 그대로 남아 배제했다.
+- **Shared app-server (1:N)**: 여러 aiox Codex 에이전트가 하나의 app-server를 공유. 기술적으로 가능함이 초기 prototype 검증에서 확인되었다. 배제 이유: "어느 에이전트의 turn인가"를 판별하기 위한 attribution 로직이 별도로 필요하고, `/clear`·`/new`·`/fork` rebind 시 protocol-transparent relay + lazy parse + binding correlation이 Codex 릴리스마다 forward-compat 리스크를 안는다. 1:1은 attribution을 프로세스 경계로 환원해 이 위험을 제거한다.
+- **Per-agent proxy + shared app-server**: proxy spike에서 검토한 방향. per-agent proxy를 앞에 두어 attribution은 해결하지만 shared app-server의 forward-compat 리스크와 구조 복잡도가 그대로 남아 배제했다.
 
 ## Rationale
 
@@ -31,7 +31,7 @@ WS 핸드셰이크 성공만으로는 app-server의 HTTP 준비 상태를 합성
 daemon 재기동 시 세션을 자동 추정해 재개하면 잘못된 thread에 바인딩될 위험이 있다. 그래서 `--resume <session-id>` 플래그를 통한 명시적 바인딩만 신뢰하고, auto-resume는 배제한다. fresh attach는 `thread/start`를 건너뛰고 명시적 resume 또는 첫 loaded-thread 전달 전까지 session id를 null로 둔다.
 
 ## Trade-offs
-- 에이전트당 ~94 MB RSS 추가 (Node wrapper ~47 MB + Rust app-server ~47 MB, `history/29` codex 측정값 — 역사적 측정치).
+- 에이전트당 ~94 MB RSS 추가 (Node wrapper ~47 MB + Rust app-server ~47 MB, per-agent app-server pivot 당시 Codex 측정값 — 역사적 측정치).
 - app-server lifecycle 관리(launch, readyz polling, 종료 시퀀스, zombie 방어)를 daemon이 소유해야 한다.
 
 ## Re-evaluation
@@ -40,8 +40,10 @@ daemon 재기동 시 세션을 자동 추정해 재개하면 잘못된 thread에
 
 ## Sources
 - `docs/architecture/local-agent-runtime.md` — launch/lifecycle 계약 owner (`:109`, `:510-514`, `:546-547`, `:628-633`, `:723`, `:826`)
-- `history/5` — shared app-server(1:N) 기술적 가능성 검증 기록
-- `history/29` — per-agent app-server pivot 결정문 + RSS 측정값
-- `history/31` — production direction 확정 + banner stderr 검증
-- `history/33`, `history/34` — Phase A/B implementation contract 결정 (D2·D4·D5·D6 rationale 원본)
-- `docs/aiox/proxy-vs-app-server-tradeoff.md` — tradeoff 학습 기록 (docs/aiox/ 삭제 예정)
+- `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md` §1 — shared
+  Codex app-server feasibility spike provenance.
+- `logs/2026-06-19-mvp-history-archive.md` §2.2 and §3.1 — retained Step 10
+  Codex runtime and proxy/app-server pivot digest.
+- `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` §1 — retained
+  manual smoke provenance for app-server launch, readyz/listen, resume and
+  rollback behavior.

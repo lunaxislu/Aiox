@@ -9,7 +9,7 @@ status: deferred (post-MVP, unordered candidate)
 implements: docs/specs/aiox-a2a.md §4, §9
 decided_at: 2026-06-05
 owner: TBD (kickoff 시 지정)
-rationale: history/58-post-mvp-a2a-architecture-decisions.history.md
+rationale: docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md; legacy post-MVP A2A provenance retained in logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md
 ---
 
 > **권위 안내.** 본 문서는 비권위 investigation sub-plan이다. Codex 같은 prompt/text

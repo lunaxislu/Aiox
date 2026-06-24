@@ -75,13 +75,6 @@ connections can mutate the same runtime and require a richer ownership model.
 
 ## Sources
 
-- `history/34-step-10-phase-b-codex-runtime.history.md:34-151` - D7 blocker,
-  option analysis, Option D scope reduction, and open TUI-originated rebind
-  issue.
-- `history/34-step-10-phase-b-codex-runtime.history.md:153-216` - callback/hook
-  investigation and consequence.
-- `docs/aiox/observation-asymmetry-and-d7-pivot.md:20-77` - learning record for
-  observation asymmetry, callback absence, and scope reduction rationale.
 - `logs/2026-06-19-mvp-history-archive.md:45-53` - retained digest of the Step
   10 D7 finding.
 - `docs/architecture/local-agent-runtime.md` §7.4-§7.7 - current outcome:

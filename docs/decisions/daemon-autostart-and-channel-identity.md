@@ -23,7 +23,6 @@ We decided to enforce command-specific daemon auto-start policies (where only ag
 - Revisit this naming and startup contract if Claude Code supports dynamic tool list injections during shell session initialization without file system writes.
 
 ## Sources
-- [40-step-14-daemon-client-split.history.md](../../history/40-step-14-daemon-client-split.history.md)
 - Auto-start wiring: `src/cli/invocation.ts:166` (`agent-attach` calls `startDaemon()`); control/status commands (`status`, `connect`, `disconnect`, `pair-create`, `daemon-status`) call `getDaemonApi()` only (`invocation.ts:148-152, 262-289`).
 - Static channel identity `aiox-claude-ingress`: `src/cli/invocation.ts:213` (inline-A `mcpServers` key) and `:35` (`CLAUDE_CHANNEL_PLUGIN_NAME`); env injection `AIOX_SOCKET_PATH` + `AIOX_CLAUDE_CHANNEL_TOKEN` at `src/adapters/claude/launcher.ts:204-205` (plugin path) and `:112-113` (inline path); channel-server self-name `aiox-claude-${agentName}` at `src/adapters/claude/channel-server.ts:262`.
 - CLI-surface command behavior and auto-start (architecture authority): `docs/architecture/local-agent-runtime.md` §4.1 (auto-start wiring), §9.1 (Command Table).

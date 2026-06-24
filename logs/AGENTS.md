@@ -35,27 +35,29 @@ pointer·점검은 `references/work-items-rules.md`가 소유한다.
 
 ## Workspace Reset Log Sections
 
-workspace reset authority assimilation package의 핵심 규칙. legacy PRD, post-MVP plan,
-history, 기존 owner 문서에는 현재 사실, 목표 계약, 목표 구조, 실행 계획, bug/blocker,
-stale snapshot이 섞여 있을 수 있다. 각 섹션을 validation·drift check 할 때 모든 주장을
-owner별 상태로 분류하고 각 source로 검증한다.
+workspace reset authority assimilation package의 핵심 규칙. 삭제된 legacy source는
+직접 검색하지 않고 surviving archive, source map, owner 문서를 본다. legacy PRD,
+post-MVP plan, 기존 owner 문서에는 현재 사실, 목표 계약, 목표 구조, 실행 계획,
+bug/blocker, stale snapshot이 섞여 있을 수 있다. 각 섹션을 validation·drift check 할 때
+모든 주장을 owner별 상태로 분류하고 각 source로 검증한다.
 
 1. **`src/` 하위 코드 = 현재 구현의 1차 사실.** as-built/current 주장은 `src/`에서
    `file:line`으로 확인한다. 진입 함수(예: `applySchema`)가 *무엇을 호출하는지* 끝까지
    추적한다 — 미리 주어진 line ref를 사실로 믿고 멈추지 않는다.
-   1-1. **"왜 이렇게 구현됐나(WHY)"는 코드가 아니라 `history/`·`docs/aiox/`·
-        `plan(s)/...checklist`에 있다.** 같은 섹션을 볼 때 이쪽을 검색해 결정 맥락을
-        확인한다. 코드만으로 WHY가 복원되지 않으면 decision 후보다.
+   1-1. **"왜 이렇게 구현됐나(WHY)"는 코드가 아니라 surviving archive, source map,
+        owner 문서에 있다.** 같은 섹션을 볼 때 삭제된 legacy source 원본 대신 해당
+        successor를 확인한다. 코드만으로 WHY가 복원되지 않으면 decision 후보다.
    1-2. **그 WHY/사실은 owner 문서로 옮겨야 할 수 있다.** 외부 계약→`docs/specs/`,
         결정 근거→`docs/decisions/`, 내부 구조→`docs/architecture/`. 각 폴더
         `AGENTS.md`를 먼저 읽고 작성한다.
-2. **섹션 검증 시 `history/`·`plan/`·`plans/`·`prd/`를 반드시 교차 검색한다. 단 거기
-   적힌 내용은 현재가 아닐 수 있다:**
+2. **섹션 검증 시 surviving archive, source map, owner 문서와 남아 있는 `plans/`·`prd/`
+   자료를 반드시 교차 확인한다. 단 거기 적힌 내용은 현재가 아닐 수 있다:**
    - `prd/post-mvp/`·`plans/post-mvp/`·`plans/post-mvp.plan.md` = 미래·blocker·실행계획
      후보 출처 → 현재 구현으로 오인 금지.
    - 미래 문서의 "현재 스냅샷" 서술조차 **stale일 수 있다**(예: a2a-spec
      "pair slot a=codex/b=claude 고정" vs Step 15 이후 kind-agnostic 코드). 따라서
-     현재·미래 어느 문서든 최종 판정은 `src/` + 날짜·`history/`로 교차 확인한다.
+     현재·미래 어느 문서든 최종 판정은 `src/` + surviving archive/source-map provenance로
+     교차 확인한다.
    - **`Post-MVP`는 owner 상태 라벨이 아니다.** 출처나 시점 힌트일 뿐이다. 문서에
      반영할 때는 아래 owner별 라벨로 다시 분류한다.
 3. 확인한 증거가 `docs/specs/`·`docs/decisions/`로 가야 하면 보낸다. 보낼 때는 각
@@ -80,19 +82,19 @@ owner별 상태로 분류하고 각 source로 검증한다.
      - `Execution Plan`: 구현 순서나 task 계획. spec/architecture 본문으로 복사하지 않고
        `plans/` owner로 둔다.
    - Legacy source:
-     - `Stale`: 현재 코드, history closeout, owner 문서에 의해 대체된 과거 서술
+     - `Stale`: 현재 코드, archive/source-map closeout, owner 문서에 의해 대체된 과거 서술
 
 ### Legacy Source Absorption Map
 
-`prd/`·`plan/`·`docs/aiox/`·`plans/post-mvp/`처럼 documentation taxonomy
-(`docs/architecture/documentation-system.md`)에 owner가 없는 legacy 다중 폴더는 여러
-package(W8 specs, W9 roadmap/release, W10 split)가 나눠 흡수한다. 무엇이 흡수됐고 무엇이
-삭제 후보인지 흩어지지 않도록 `history/` migration과 같은 단일 source map으로 추적한다.
+`prd/`·`plan/`·`plans/post-mvp/`처럼 documentation taxonomy
+(`docs/architecture/documentation-system.md`)에 owner가 없거나 없었던 legacy 다중 폴더는
+여러 package(W8 specs, W9 roadmap/release, W10 split)가 나눠 흡수한다. 무엇이 흡수됐고
+무엇이 삭제 후보였는지 흩어지지 않도록 surviving source map으로 추적한다.
 
 - **단일 source map**: legacy 폴더 집합 전체를 하나의 표로 추적한다. 이 표는 별도 absorption
-  package log가 소유한다(`history/`를 다루는 W5 history migration과 형제 package). 흡수 package
-  (W8 specs, W9 roadmap/release, W10 split)는 새 표를 만들지 않고 같은 표에 row를
-  append/update하며 disposition을 채운다. 최종 물리 삭제 게이트(plan stage)는 이 표 하나만 소비한다.
+  package log가 소유한다. 흡수 package(W8 specs, W9 roadmap/release, W10 split)는 새 표를
+  만들지 않고 같은 표에 row를 append/update하며 disposition을 채운다. 최종 물리 삭제
+  게이트(plan stage)는 이 표 하나만 소비한다.
 - **consumer read binding**: source map row를 소비하는 package의 task brief·Work Item·closeout
   handoff에는 이 source map을 required-read로 명시하고, 읽기뿐 아니라 해당 rows의
   disposition/self-sufficiency append/update action까지 적는다.
@@ -102,8 +104,8 @@ package(W8 specs, W9 roadmap/release, W10 split)가 나눠 흡수한다. 무엇�
     digest로 통합 후 삭제 후보), `delete-only`(흡수·archive 불필요), `keep`(아직 필요).
   - 한 source가 여러 package에 걸치면 소비 package를 복수로 적는다.
     예: `prd/post-mvp/aiox-a2a-spec.md` = W8(spec) + W9(roadmap/release).
-- **경계**: `history/`는 W5 history migration이 owner이므로 이 표에 중복 기록하지 않는다.
-  `docs/aiox`는 W5에서 명시적 제외(dependency-only)였으므로 이 source map이 owner다.
+- **경계**: deleted legacy source의 현재 successor는 surviving archive, source map, owner
+  문서다. 작업경위 source map 로그의 historical inbound 링크는 historical record로 둔다.
 - **삭제 가드**: disposition이 삭제 후보여도, 원본 삭제는 owner/archive successor가
   self-contained하다는 검증과 사용자 확인을 받은 뒤 plan stage의 물리 삭제 게이트에서만 한다.
 
@@ -146,8 +148,9 @@ primary 문서가 크고 주변 owner 변경이 예상되는 작업은 이 준�
    - 의견 수렴 결과는 package log 또는 parent log에 기록하고, 그 결과를 반영한 뒤 task
      brief를 확정한다.
 4. **각 batch는 primary owner만 보지 않는다.**
-   - `src/`, `tests/`, `history/`, `plan/`, `plans/`, `prd/`, 관련 owner 문서를 교차 검색한다.
-   - `plan/`·`plans/` 검색 결과는 관련 없음이어도 Ledger에 남긴다.
+   - `src/`, `tests/`, surviving archive, source map, `plans/`, 남아 있는 `prd/`, 관련 owner
+     문서를 교차 검색한다.
+   - `plans/` 검색 결과는 관련 없음이어도 Ledger에 남긴다.
 5. **Cross-owner 수정은 package Scope 안에서만 수행한다.**
    - Scope 밖 owner 수정이 필요하면 먼저 사용자에게 확인한다.
    - 수정하지 않는 후속도 `Owner impact`와 `Action`에 남긴다.
@@ -241,13 +244,13 @@ handoff의 `file:line`은 출발점이다. owner 문서 수정 전에는 최종 
 
 ## 4. 반드시 교차 검색
 
-- `history/`
-- `plan/`
+- surviving archive
+- source map
+- owner 문서
 - `plans/`
-- `prd/`
-- 관련 owner 문서
+- 남아 있는 `prd/`
 
-각 source는 현재 사실로 믿지 말고 `src/` + 날짜/history closeout과 대조한다.
+각 source는 현재 사실로 믿지 말고 `src/` + surviving archive/source-map provenance와 대조한다.
 
 ## 5. Owner 분류 규칙
 
@@ -256,7 +259,7 @@ handoff의 `file:line`은 출발점이다. owner 문서 수정 전에는 최종 
 - release gate/priority/sequencing → `docs/product/roadmap.md` 또는 `plans/release-plan.md`
 - implementation checklist/task ordering → `plans/`
 - rationale/why → `docs/decisions/`
-- stale legacy source → history/legacy migration 후보
+- stale legacy source → surviving source map/archive successor 확인
 
 ## 6. Evidence Ledger 출력
 

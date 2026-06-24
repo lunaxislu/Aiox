@@ -112,8 +112,9 @@ pnpm tsx spikes/codex-app-server-multi-session-poc/event-recorder.ts \
 ```
 
 It records all JSON-RPC notifications and periodic `thread/loaded/list` results
-as JSONL. Summarize the relevant event sequence in `history/`; do not commit
-large raw runtime logs.
+as JSONL. Summarize the relevant event sequence in
+`logs/2026-06-23-workspace-reset-codex-proxy-attribution-archive.md`; do not
+commit large raw runtime logs.
 
 ## Run An In-Band Proxy Spike
 

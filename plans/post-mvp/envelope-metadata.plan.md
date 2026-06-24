@@ -8,7 +8,7 @@ status: next kickoff candidate (post-MVP Local single-daemon A2A)
 implements: docs/specs/aiox-a2a.md §4
 decided_at: 2026-05-27
 owner: TBD
-rationale: history/58-post-mvp-a2a-architecture-decisions.history.md
+rationale: docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md; legacy post-MVP A2A provenance retained in logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md
 ---
 
 > **권위 안내.** 본 문서는 비권위 execution sub-plan이다. `type`/`intent`/`reply_expected`
@@ -225,7 +225,9 @@ kickoff candidate로 승격됐으므로, 트리거 관찰 여부와 무관하게
 ## 10. Cross-link
 
 - 결정 권위: `docs/specs/aiox-a2a.md` §4 (A2A protocol & message lifecycle).
-- 근거·과정: `history/58-post-mvp-a2a-architecture-decisions.history.md`.
+- 근거·과정: `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`
+  (lifecycle WHY) and `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`
+  (legacy post-MVP A2A provenance).
 - plan index: `plans/post-mvp.plan.md` (본 sub-plan을 candidate로 등록).
 - Memory: `[[aiox-deferred-decisions]]` — pointer만 보존.
 - `logs/2026-06-20-mvp-plan-carryover-archive.md` — Phase 1.5 smoke PASS

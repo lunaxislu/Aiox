@@ -3,7 +3,7 @@
 Step 11 Phase A 결정 input 확보용 spike. Token 기반 registration handshake +
 fake daemon HTTP push + framing variant + lifecycle fail/timeout 시나리오 7종.
 
-권위는 `history/35-step-11-phase-a-claude-channel-decisions.history.md` (§Spike Plan).
+Surviving decision authority: `docs/decisions/claude-channel-trust-and-registration.md`.
 본 README는 시나리오별 명령 / env / 예상 stderr 시퀀스 / PASS 조건 / 관찰 포인트.
 
 > **본 spike는 production code 아니다.** `spikes/` 하위는 실험 코드.
@@ -384,7 +384,7 @@ curl -isX POST http://127.0.0.1:19000/push \
 - daemon stderr `push_forward_failed reason=channel_unavailable` 1회.
 
 **Negative observation (관찰 시 fact 기록)**
-- channel server process가 종료되지 않고 살아남으면 → cleanup이 작동 안 함. server.ts의 stdio EOF handling이 mcp.connect를 resolve시키지 않는 경우. 본 시나리오의 PASS가 흔들림 → history/35에 직접 박음.
+- channel server process가 종료되지 않고 살아남으면 → cleanup이 작동 안 함. server.ts의 stdio EOF handling이 mcp.connect를 resolve시키지 않는 경우. 본 시나리오의 PASS가 흔들림 → `docs/decisions/claude-channel-trust-and-registration.md`의 registration/trust rationale 또는 후속 검증 로그에 기록.
 
 #### S4-b — Channel server process 명시적 kill
 
@@ -580,7 +580,7 @@ content-type: application/json
 
 ## Same-terminal exit / leftover observation
 
-Codex Round 4 manual TUI smoke (`docs/aiox/round-4-tui-smoke-check.md`) 패턴 적용. 모든 시나리오에서:
+Codex Round 4 manual TUI smoke archive pattern (`logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md`) 적용. 모든 시나리오에서:
 
 ### Same-terminal exit
 - Claude CLI exit code는 **같은 terminal에서 `echo $?` 한 줄로 측정**.
@@ -639,6 +639,6 @@ curl -s http://127.0.0.1:19000/state | jq
 ## Spike 결과 흡수 경로
 
 사용자가 본 spike의 S1~S6를 직접 실행 → terminal log / stderr / 판정 paste →
-Claude(클로드 코드)이 `history/35-step-11-phase-a-claude-channel-decisions.history.md`
-§Observation에 박는다 (Session 3 commit). 어젠다 4건 결정 input fact는 별도
-sub-section ("Decision-input facts")으로 분리.
+`docs/decisions/claude-channel-trust-and-registration.md` 또는 후속 검증 로그에
+반영한다. 어젠다 4건 결정 input fact는 별도 sub-section ("Decision-input facts")으로
+분리한다.

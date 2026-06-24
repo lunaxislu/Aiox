@@ -17,6 +17,7 @@ We decided to adopt an inverted process tree topology where the Claude CLI spawn
   2. The daemon generates a single-use transient attach token.
   3. The CLI passes this token as an environment variable to the launched Claude process.
   4. The spawned channel-server presents this token to the daemon via the `registerClaudeChannel` API, establishing a trusted binding in the daemon's memory registry.
+  Without that token boundary, another local process could register an endpoint for the same agent name and receive daemon-sent messages for that agent; the data leakage is a consequence of identity theft.
 - **Stateless HTTP Push over WebSocket**: WHY chose loopback HTTP POST for daemon → channel delivery rather than a persistent WebSocket: it keeps the daemon decoupled from Claude's terminal process lifecycle and avoids per-session socket state. The delivery / acknowledgement contract itself (what counts as an ack, retry eligibility) is owned by the A2A spec, not this decision — see `docs/specs/aiox-a2a.md` §4.3.
 
 ## Trade-offs
@@ -28,7 +29,6 @@ We decided to adopt an inverted process tree topology where the Claude CLI spawn
 - This registration protocol can be re-evaluated if Claude Code introduces native client-to-daemon UDS sockets or dynamic runtime tool subscription APIs.
 
 ## Sources
-- [35-step-11-phase-a-claude-channel-decisions.history.md](../../history/35-step-11-phase-a-claude-channel-decisions.history.md)
 - Single-use attach-token registration (pending-token check, `unknown_token` reject, single-use delete) implemented at `src/daemon/state.ts:926-953` (`registerClaudeChannel`).
 - Delivery/ack contract owner and Claude channel ingress/push auth gap: `docs/specs/aiox-a2a.md` §4.3, §5 (Claude row, "ingress/push auth gap", Tier 3 preview).
 - Registration flow + loopback HTTP `/send` ingress (architecture authority): `docs/architecture/local-agent-runtime.md` §6.1–6.4.

@@ -1,7 +1,7 @@
 # Claude Channel Activation: Plugin Strategy as Default
 
 ## Context
-aiox MVP에서 Claude CLI에 channel-server를 연결하는 방법이 필요하다. 초기 구현(A strategy)은 `aiox claude` 실행 시 `--mcp-config` JSON을 Claude CLI 인수에 인라인으로 주입하는 방식이었다. R3(Round 3) 작업에서 Claude plugin 시스템을 통한 대안(D strategy)이 검토되었고, `history/49·50`에서 D를 primary로, A를 dev/debug-only fallback으로 방향을 정했다. `history/55`에서 plugin 설치 UX(`aiox claude-plugin setup`)가 완성되고 live smoke로 D 활성화 경로가 검증됐다.
+aiox MVP에서 Claude CLI에 channel-server를 연결하는 방법이 필요하다. 초기 구현(A strategy)은 `aiox claude` 실행 시 `--mcp-config` JSON을 Claude CLI 인수에 인라인으로 주입하는 방식이었다. R3(Round 3) 작업에서 Claude plugin 시스템을 통한 대안(D strategy)이 검토되었고, D를 primary로, A를 dev/debug-only fallback으로 방향을 정했다. 이후 plugin 설치 UX(`aiox claude-plugin setup`)가 완성되고 live smoke로 D 활성화 경로가 검증됐다.
 
 ## Decision
 **`AIOX_CLAUDE_CHANNEL_STRATEGY` 환경변수로 전략을 선택하되, 기본값은 D(plugin) strategy로 한다.**
@@ -42,10 +42,8 @@ no-fallback 계약을 선택한 이유만 기록한다.
 - 배포 환경에서 plugin 설치 없이 zero-config로 동작해야 하는 요구가 생길 때 (A strategy 재검토 또는 다른 방식).
 
 ## Sources
-- `history/49` — `--mcp-config` 주입 방식 feasibility 검토 시작
-- `history/50` — D strategy 검증 및 전략 결정 (D primary + A dev-only)
-- `history/53`~`history/55` — R3 Step 1·2·3a 구현 (plugin CLI adapter, preflight, 설치 UX)
-- `history/56` — R3 Step 3b: D default 승격, `AIOX_SPIKE_STRATEGY_D` 제거, no-fallback 계약, Codex 리뷰 + live smoke 4항목 PASS
+- `logs/2026-06-20-mvp-plan-carryover-archive.md` §2 — R3/R4 carryover
+  provenance for Claude plugin/channel activation and runtime namespace QA.
 - 전략 선택·no-fallback 구현: `src/cli/invocation.ts:161-163`
   (`resolveClaudeChannelStrategy` 호출), `:219` (strategy 분기), `:239-249`
   (plugin launch + cwd 고정), `:487-499` (`resolveClaudeChannelStrategy`: 기본값

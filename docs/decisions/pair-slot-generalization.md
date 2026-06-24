@@ -89,15 +89,6 @@ pair cardinality는 정확히 2로 유지한다.
 
 ## Sources
 
-- `history/45-step-15-pair-slot-generalization-design.history.md` — trigger, 두 plane
-  동위 분석, wrong-thread 위험, deferred semantics, self-loop 이중 가드, 2-slot 고정.
-- `history/46-step-15-phase-a-decisions.history.md` — D1~D9 LOCKED(fallback disable,
-  reason union 분리, slot DTO + 거절 reason 분리, migration preflight, getPairStatus,
-  dispatch generic화, self-loop, source notification).
-- `history/47-step-15-phase-b-closeout.history.md` — shipped 확정(single green commit,
-  386 tests), schema_version+Migration 1, `dispatchToPairPeers` 단일화·vendor-pair
-  hardcode 제거, deferred reason 3종, D6 registry post-MVP defer, 정합성 매트릭스.
-- `history/48-step-15-d8-surface-consistency.history.md` — D8 MCP surface 4면 일관화.
 - 코드 근거: `src/core/pairs.ts` (kind-agnostic slot, `getPairStatus`, self-loop),
   `src/store/repositories/pairs.ts:77-263` (slot 점유 검사, `pickFirstOpenSlot`,
   `isPairReady`), `src/store/schema.ts:84-135` (Migration 1, partial unique index),

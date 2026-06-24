@@ -732,7 +732,7 @@ describe("launchClaudePluginChannel", () => {
       "plugin:aiox-channel-ingress@aiox",
     ]);
     // identity flows through the spawned claude's env; plugin .mcp.json ${VAR}
-    // placeholders expand from it (history/50 facts 2/4). No --mcp-config.
+    // placeholders expand from it. No --mcp-config.
     expect(args).not.toContain("--mcp-config");
     const env = (options as { env: Record<string, string> }).env;
     expect(env.AIOX_CLAUDE_CHANNEL_AGENT_NAME).toBe("reviewer");

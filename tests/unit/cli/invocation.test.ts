@@ -323,7 +323,7 @@ describe("CLI invocation", () => {
       );
 
       await expect(invoked).resolves.toEqual({ exitCode: 0 });
-      // cwd contract (history/52): the inventory MUST be loaded from the user's cwd.
+      // cwd contract: the inventory MUST be loaded from the user's cwd.
       expect(calls).toContainEqual(["loadClaudePluginInventory", { cwd: "/repo" }]);
       expect(calls).toContainEqual([
         "launchClaudePluginChannel",

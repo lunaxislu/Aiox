@@ -105,12 +105,15 @@ status: decided
 ---
 
 ## 5. 승계 및 Sources
-- [20-step-6-phase-a-decisions.history.md](../../history/20-step-6-phase-a-decisions.history.md)
-- [23-step-7-phase-b-pair-daemon.history.md](../../history/23-step-7-phase-b-pair-daemon.history.md)
-- [27-step-10-codex-clear-new-rebind-spike.history.md](../../history/27-step-10-codex-clear-new-rebind-spike.history.md)
-- [34-step-10-phase-b-codex-runtime.history.md](../../history/34-step-10-phase-b-codex-runtime.history.md)
-- [36-step-12-phase-a-doctor-status-decisions.history.md](../../history/36-step-12-phase-a-doctor-status-decisions.history.md)
-- [39-step-13-codex-mcp-ingress.history.md](../../history/39-step-13-codex-mcp-ingress.history.md)
-- [40-step-14-daemon-client-split.history.md](../../history/40-step-14-daemon-client-split.history.md)
-- [41-codex-loaded-thread-binding-analysis.history.md](../../history/41-codex-loaded-thread-binding-analysis.history.md)
-- [42-mvp-implementation-closeout.history.md](../../history/42-mvp-implementation-closeout.history.md)
+
+This archive is the surviving provenance target for these legacy step records:
+
+- Legacy Step 6 Phase A CLI decision record.
+- Legacy Step 7 Phase B pair daemon record.
+- Legacy Step 10 clear/new/rebind proxy spike record.
+- Legacy Step 10 Phase B Codex runtime record.
+- Legacy Step 12 Phase A doctor/status decision record.
+- Legacy Step 13 Codex MCP ingress record.
+- Legacy Step 14 daemon/client split record.
+- Legacy Codex loaded-thread binding analysis record.
+- Legacy MVP implementation closeout record.

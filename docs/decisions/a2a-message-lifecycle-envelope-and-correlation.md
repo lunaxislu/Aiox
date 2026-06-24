@@ -109,11 +109,6 @@ Two items are explicitly not closed by this decision:
 - `docs/specs/aiox-a2a.md` §4 — owner outcome for canonical envelope, routing,
   reply correlation, delivery lifecycle, persistence minimum, current caveats,
   and open questions.
-- `history/58-post-mvp-a2a-architecture-decisions.history.md` — P3 message
-  lifecycle rationale and post-MVP A2A architecture lock.
-- `prd/post-mvp/archive/claude-codex-validation.md` — archived cross-validation
-  rationale for separated axes, vendor neutrality, fan-out, reply routing, and
-  daemon authority.
 - `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md` — W7 checker PASS
   and W8 constraints that keep correlated reply authorization and public
   `deliveryId` namespace open.

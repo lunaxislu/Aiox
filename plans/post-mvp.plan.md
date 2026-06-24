@@ -2,7 +2,7 @@
 
 Post-MVP 구현의 **index**다. 이 파일은 production spec이 아니며, 제품/아키텍처 권위는
 `docs/product/product.md`, `docs/specs/aiox-a2a.md`, `docs/product/roadmap.md`와
-관련 `history/`가 가진다.
+관련 decision/archive provenance가 가진다.
 
 각 구현 후보는 `plans/post-mvp/<deliverable>.plan.md` 상세 sub-plan을 가진다. 본 파일은
 candidate 등록 + sequencing만 담는다. 상세(Motivation/scope/cutover/checklist)는 각
@@ -19,7 +19,8 @@ Authority:
   - docs/product/product.md              (A2A product)
   - docs/specs/aiox-a2a.md               (A2A protocol/interface/state)
   - docs/product/roadmap.md              (release gates and phase)
-  - history/58-post-mvp-a2a-architecture-decisions.history.md
+  - docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md (A2A lifecycle WHY)
+  - logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md (legacy post-MVP A2A provenance)
 Execution:
   - plans/post-mvp.plan.md               (이 파일 — index)
   - ~/.claude/plans/async-petting-hoare.md (WS1~4 원본 상세, Claude scratch)
@@ -40,7 +41,9 @@ Open:
 1. `AGENTS.md` — repo 운영 규칙.
 2. `docs/product/product.md`, `docs/specs/aiox-a2a.md`,
    `docs/product/roadmap.md` — A2A product/protocol/release 설계 약속.
-3. `history/58-post-mvp-a2a-architecture-decisions.history.md` — 왜 이렇게 결정했는지.
+3. `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md` — A2A
+   lifecycle WHY. Legacy post-MVP A2A architecture-lock provenance is retained
+   in `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md`.
 4. 이 파일 — 현재 구현 위치와 다음 deliverable 후보.
 
 현재 위치:

@@ -8,12 +8,13 @@ import {
 } from "../../../src/adapters/claude/preflight.js";
 
 // ---------------------------------------------------------------------------
-// Spike: channel-as-plugin preflight failure contract (history/50 item 1d).
-// Schema confirmed against real `claude plugin list --json` (history/51):
+// Spike: channel-as-plugin preflight failure contract; surviving WHY lives in
+// docs/decisions/claude-channel-plugin-default.md.
+// Schema confirmed against real `claude plugin list --json`:
 // single `id` = "<name>@<marketplace>", `installPath` (installed cache dir),
 // `projectPath` on project/local entries, `list` reports all scopes flat.
 //
-// EFFECTIVENESS model (history/52, MEASURED): each entry's `enabled` is the
+// EFFECTIVENESS model (legacy R3 measured): each entry's `enabled` is the
 // cwd-RESOLVED effective value (relative to where `claude plugin list --json`
 // ran), NOT a raw per-scope flag. So these fixtures set `enabled` to what the
 // real command would already report for the user's cwd, and preflight trusts
@@ -75,7 +76,7 @@ describe("preflightClaudePlugin", () => {
 
   it("passes for a project-scope entry that resolves enabled in this cwd", () => {
     // `enabled` is already cwd-resolved, so a resolved-true project entry passes
-    // without preflight re-checking projectPath (history/52).
+    // without preflight re-checking projectPath.
     const result = preflightClaudePlugin(
       baseInput({ plugins: [projectEntry(true, PROJECT_ROOT)] }),
     );
@@ -112,7 +113,7 @@ describe("preflightClaudePlugin", () => {
 
   it("fails when the only entry resolves disabled in this cwd", () => {
     // e.g. a project-scope entry for another project: run from here, `list`
-    // resolves its `enabled` to false (history/52). projectPath is diagnostic.
+    // resolves its `enabled` to false. projectPath is diagnostic.
     const result = preflightClaudePlugin(
       baseInput({
         plugins: [projectEntry(false, "/Users/me/Documents/other-project")],
@@ -125,7 +126,7 @@ describe("preflightClaudePlugin", () => {
     }
   });
 
-  it("fails on the history/52 precedence-override case: project disable overrides user enable", () => {
+  it("fails on the measured precedence-override case: project disable overrides user enable", () => {
     // MEASURED regression guard. Raw settings = user:enabled + project:disabled,
     // but `list` run in the project cwd resolves BOTH entries to enabled=false
     // (project scope wins in-cwd). preflight must NOT false-pass off the
@@ -142,7 +143,7 @@ describe("preflightClaudePlugin", () => {
   });
 
   it("fails when effective entries disagree on installPath (version/scope skew)", () => {
-    // Codex review (history/52): two effective copies with divergent installPaths
+      // Codex review: two effective copies with divergent installPaths
     // (e.g. stale user-scope + newer project-scope) must not silently validate
     // effective[0]'s artifact — surface the skew explicitly.
     const STALE = "/Users/me/.claude/plugins/cache/aiox/aiox-channel-ingress/0.0.9";

@@ -20,4 +20,5 @@ If the message format changes slightly (e.g., whitespace variations inside the b
 This cost model can be re-evaluated if Codex provides first-class event hook callbacks directly via Unix Socket or HTTP, removing the need for a proxy.
 
 ## Sources
-- [28-step-10-proxy-lazy-observation.history.md](../../history/28-step-10-proxy-lazy-observation.history.md)
+- `logs/2026-06-23-workspace-reset-codex-proxy-attribution-archive.md` — retained
+  proxy attribution signal mapping and lazy-observation measurement digest.

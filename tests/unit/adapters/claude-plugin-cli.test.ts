@@ -13,7 +13,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // R3 step 1 adapter: read Claude plugin inventory from the CLI, cwd-required.
-// CONTRACT (history/52): both `plugin marketplace list --json` and
+// CONTRACT: both `plugin marketplace list --json` and
 // `plugin list --json` MUST run in the user's cwd; the latter's `enabled` is
 // already resolved for that directory. Tests pin the cwd plumbing + the
 // JSON/schema parse-failure contract.

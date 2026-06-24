@@ -85,8 +85,9 @@ Original source: legacy `docs/aiox/round-4-tui-smoke-check.md`.
   WHY: `docs/decisions/codex-per-agent-app-server.md`,
   `docs/decisions/codex-d7-authoritative-binding-scope.md`.
 - As-built launcher/runtime structure: `docs/architecture/local-agent-runtime.md`.
-- Original step provenance: `history/33-step-10-phase-a-decisions.history.md`,
-  `history/34-step-10-phase-b-codex-runtime.history.md`.
+- Original step provenance: legacy Step 10 Phase A decision record and legacy
+  Step 10 Phase B Codex runtime record. Surviving provenance is this digest plus
+  `logs/2026-06-19-mvp-history-archive.md` §2.2.
 
 ## 2. Step 14 Manual E2E Smoke Test
 
@@ -141,7 +142,8 @@ create/bind issues in a normal terminal (the earlier EPERM was sandbox-specific)
 - Codex app-server MCP injection/isolation (Step 14 empirical bug WHY):
   `docs/decisions/codex-app-server-mcp-injection-and-isolation.md`.
 - As-built daemon-client structure: `docs/architecture/local-agent-runtime.md`.
-- Original step provenance: `history/40-step-14-daemon-client-split.history.md`.
+- Original step provenance: legacy Step 14 daemon/client split record. Surviving
+  provenance is this digest plus `logs/2026-06-19-mvp-history-archive.md` §2.3.
 
 ## 3. Disposition
 
@@ -151,6 +153,6 @@ create/bind issues in a normal terminal (the earlier EPERM was sandbox-specific)
   procedures, executed commands, observed measurements, PASS/PARTIAL traces, and
   blocker root-cause/solution traces that those owners do not carry at the same
   density.
-- `history/` files (33/34/40) remain the authoritative step records and may be
-  referenced by their original provenance; they are handled by the W5 history
-  migration owner, not by this digest.
+- Legacy step records 33/34/40 are superseded by the surviving decision,
+  architecture and archive owners listed above; W5 history migration and the
+  workspace reset physical deletion gate own their final physical deletion.

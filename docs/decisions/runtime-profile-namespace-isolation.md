@@ -68,12 +68,6 @@ requires preserving the historical release socket location.
 
 ## Sources
 
-- `history/56-r3-step3b-claude-plugin-default-strategy.history.md:166-172` -
-  QA-003 discovery and R4 handoff.
-- `history/57-qa-round-4-runtime-namespace-isolation.history.md:12-36` -
-  round goal, selected B option, rejected alternatives, and rationale.
-- `history/57-qa-round-4-runtime-namespace-isolation.history.md:113-121` -
-  QA-003 closeout and deferred follow-ups.
 - `logs/2026-06-20-mvp-plan-carryover-archive.md` §2 - QA-003 verified summary
   and R4 runtime namespace isolation round outcome.
 - `README.md:36-81` - current user-facing runtime profile outcome.
