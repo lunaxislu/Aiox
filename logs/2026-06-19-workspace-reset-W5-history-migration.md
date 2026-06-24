@@ -1128,3 +1128,27 @@ W5 history migration의 과거 판정표를 삭제하거나 재작성하지 않�
   `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`의 self-sufficiency,
   W10 잔여 rationale 처리, inbound repoint, decision/archive Sources 평문화가 모두 필요하다.
 - `history/59` 삭제 전에는 W10 closeout이 successor owner 또는 archive/delete-only 판단을 남겨야 한다.
+
+## 2026-06-24 · stage 6 물리 삭제 반영 (최종 outcome, 이 B4 map 소비 완료)
+
+이 로그는 `decided`다. 본 기록은 재결정이 아니라, 위 "삭제 게이트 handoff 갱신"이 명시한
+삭제 전제조건이 stage 6 물리 삭제 게이트에서 모두 충족·실행됐음을 남기는 최종 outcome
+ledger다. inbound `file://`/markdown 링크는 W5 결정대로 "삭제 시점 스냅샷"인 historical
+record라 평문화·수정하지 않는다(stage6 로그 `:559-562`).
+
+**물리 삭제 완료 (stage 6, `logs/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md`):**
+
+- `history/1`~`history/57` (57) + `history/README.md` (1) — 2026-06-24 W3에서 물리 삭제.
+- `history/58-post-mvp-a2a-architecture-decisions.history.md` — 2026-06-24 W3에서 물리 삭제.
+  전제조건 충족 확인: §4 lifecycle WHY가 `docs/decisions/a2a-message-lifecycle-envelope-and-
+  correlation.md` + spec §4로 승격(self-suff PASS), 보존 `plans/post-mvp*`의 direct `history/58`
+  refs repoint 완료, decision/archive Sources 평문화·줄삭제 완료(stage6 로그 W2/W5).
+- `history/59-local-obsidian-vault-atlas-discussion.history.md` — 2026-06-24 W4에서 물리 삭제.
+  W10 split 입력 역할은 종료. successor 판단 = Atlas 논의 내용을 stage6 로그 "history/59 Atlas
+  digest" 섹션(`:426-455`)에 digest로 승계하고, plan stage 7(Atlas)이 그 digest를 required-read로
+  가리키도록 repoint(`plans/workspace-reset/workspace-reset.md` stage 7). 삭제는 repoint wire
+  직후 실행(유실 0창).
+
+**검증:** 삭제 후 owner 범위(`docs/decisions`·`architecture`·`specs`·`product`) + 보존
+`plans/post-mvp*`·`spikes`·`tests/unit`에 삭제된 `history/*` 파일 dead-ref 0(stage6 로그 W3·W4).
+`history/` 디렉터리 빈 상태 확인.

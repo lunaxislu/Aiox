@@ -10,7 +10,7 @@ status: open
 - [x] W2 흡수 진행 추적 (완료 2026-06-23) — W8(specs)/W9(roadmap·release)/W10(split)이 owner 흡수를 수행할 때마다 같은 source map에 disposition과 self-sufficiency 검증을 append/update한다. **흡수자 3 package 전부 `decided` 확인(W8/W9/W10 status decided), source map 전 row에 disposition 반영 완료 → 추가 흡수 없음.**
 - [x] W3 archive 판정 (완료 2026-06-23) — `logs/AGENTS.md`의 Archive Gate(보존가치 + self-sufficiency)를 개별 파일에 적용해 `logs/` digest 필요 여부를 확정한다. **digest 2파일 생성: pre-validation spike 2건 → `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md`, docs/aiox manual smoke/E2E 2건 → `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md`. industry-precedents self-sufficiency 확인으로 W10 checker 잔여 1건 해소(digest 불필요). 나머지 absorb→delete/delete-only rows는 owner 흡수만으로 self-contained.**
 - [x] W4 decision 승격 추적 — gemini가 docs/decisions/ 부재/미흡으로 확인한 5개 후보(industry-precedents=Opaque Worker / observation-asymmetry=D7 Scope Reduction / aiox-a2a §13=아키텍처 부채 3축+Structured Logger / step-14-mcp-bug=App Server 주입·격리 / proxy-vs-app-server=app-server+proxy 하이브리드)를 W8/W10 흡수 중 W6 기준으로 `docs/decisions/`에 승격한다. 승격 전 docs/decisions/ 현황을 disk에서 재확인하고, 완료를 source map disposition에 반영한다. — **완료(2026-06-22 W10 W5/W6 Claude checker PASS): 2건 승격(`codex-d7-authoritative-binding-scope.md`, `codex-app-server-mcp-injection-and-isolation.md`) + 3건 no-promotion accepted. 5건 모두 source map disposition에 반영됨. checker 잔여 1건(`industry-precedents` Opaque Worker coarse-state/semantic-timeout self-sufficiency)은 W3/물리 gate handoff.** decision 승격 추적 완결; 물리 삭제는 W5 handoff 소유.
-- [>] W5 closeout & 물리 삭제 handoff — stage 6 target rows(`prd/`·`plan/`·`docs/aiox/`)는 disposition 확정(`absorb→delete` / `archive→delete` digest done / `delete-only`)으로 `plans/workspace-reset/workspace-reset.md` stage 6 물리 삭제 게이트에 handoff 준비됨(2026-06-23). 단 `plans/post-mvp*` rows는 `keep / execution successor pending`으로 plan **stage 9** 소유라, 이 source map은 stage 6 + stage 9 두 게이트가 소비할 때까지 `open` 유지. 원본 삭제는 owner/archive successor self-contained 검증과 사용자 확인 후 각 게이트에서만 한다.
+- [>] W5 closeout & 물리 삭제 handoff — stage 6 target rows(`prd/`·`plan/`·`docs/aiox/`)는 disposition 확정(`absorb→delete` / `archive→delete` digest done / `delete-only`)으로 `plans/workspace-reset/workspace-reset.md` stage 6 물리 삭제 게이트에 handoff 준비됨(2026-06-23). 단 `plans/post-mvp*` rows는 `keep / execution successor pending`으로 plan **stage 9** 소유라, 이 source map은 stage 6 + stage 9 두 게이트가 소비할 때까지 `open` 유지. 원본 삭제는 owner/archive successor self-contained 검증과 사용자 확인 후 각 게이트에서만 한다. **[2026-06-24] stage 6 게이트 소비 완료** — handoff한 stage-6 target rows(`prd/mvp/aiox-mvp-spec.md`, `prd/post-mvp/archive/*` 5, `prd/pre-validation/*` 2, `plan/*` 2, `docs/aiox/*` 19) 전부 물리 삭제됨(`logs/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md` W3·W4). disposition column은 흡수 경위 historical ledger라 row별 재작성 없이 아래 "2026-06-24 · stage 6 물리 삭제 반영" 기록이 최종 상태를 owner한다. `plans/post-mvp*` + `prd/post-mvp/aiox-a2a-spec.md`는 stage 9 미소비라 이 로그 `open` 유지.
 
 ### Scope
 
@@ -366,3 +366,36 @@ stage 9 두 게이트 소비 전까지 `open` 유지.
 digest + industry-precedents self-suff)이 충족됐다"를 반영하고, stage 5→6 전이(stage 5 `[x]` +
 stage 6 전용 실행 로그 활성화·repoint) 진행 여부를 @user에게 보고·확인받는다. 물리 삭제는
 되돌릴 수 없고 plan Notes상 사용자 승인이 선행돼야 하므로 이 세션에서 자동 수행하지 않는다.
+
+## 2026-06-24 · stage 6 물리 삭제 반영 (최종 disposition, stage 6 분량)
+
+stage 6 물리 삭제 게이트(`logs/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md`)가
+이 source map의 stage-6 target rows를 소비해 물리 삭제했다. 그 결과를 이 장부의 최종
+disposition으로 기록한다. inbound markdown/`file://` 링크는 W5 결정대로 "삭제 시점 스냅샷"인
+historical record라 평문화·수정하지 않는다(stage6 로그 `:559-562`). disposition column도 흡수
+경위 ledger라 row별로 재작성하지 않고, 아래 outcome 기록이 최종 상태를 owner한다.
+
+**물리 삭제 완료 rows (stage 6, 2026-06-24 — `rm`, 되돌릴 수 없음):**
+
+- `prd/mvp/aiox-mvp-spec.md` (1) — `absorb→delete` 실행.
+- `prd/post-mvp/archive/*` (5: claude-codex-validation, claude-opinion, codex-claude-validation,
+  codex-opinion, gemini-opinion) — `absorb→delete` 실행.
+- `prd/pre-validation/*` (2: claude-codex-pre-validation, sqlite-restart-recovery-pre-validation)
+  — `archive→delete` 실행. successor = `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md`.
+- `plan/*` (2: mvp-implementation-checklist, qa-tracker) — `archive→delete` 실행.
+  successor = `logs/2026-06-20-mvp-plan-carryover-archive.md`.
+- `docs/aiox/*` (19, README 포함) — `absorb→delete` / `delete-only` 실행. archive 필요분(
+  round-4-tui-smoke-check, step-14-smoke-test-report)의 successor =
+  `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md`. proxy 신호 매핑 보존분(
+  proxy-attribution-signals, proxy-cost-model)의 successor =
+  `logs/2026-06-23-workspace-reset-codex-proxy-attribution-archive.md`.
+
+**stage 9 미소비로 보존된 rows (이 로그 `open` 유지 사유):**
+
+- `prd/post-mvp/aiox-a2a-spec.md` — `keep / execution successor pending`. 단일 A2A execution
+  plan successor 작성 후 stage 9에서 재판정.
+- `plans/post-mvp.plan.md` + `plans/post-mvp/*.plan.md` (4) — `keep / execution successor
+  pending`. plan stage 9 소유.
+
+**검증:** stage6 로그 W3(`:695-709`)·W4 — owner 범위 dead-ref 0, git deleted 88 + `history/59`
+1건(W4). 삭제 set와 이 장부의 stage-6 target rows 일치. stage 9 보존 rows 전부 잔존 확인.

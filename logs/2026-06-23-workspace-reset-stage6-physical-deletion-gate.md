@@ -1,7 +1,7 @@
 ---
 topic: workspace reset stage6 물리 삭제 게이트
 description: workspace reset plan stage 6 — legacy source map과 history migration map을 소비해 삭제 대상을 확정하고, 삭제 전 owner·decision·archive의 history 출처를 평문 provenance로 전환한 뒤 history/·docs/aiox·prd/·plan/을 물리 삭제하는 실행 게이트
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -10,7 +10,7 @@ status: open
 - [x] W2 provenance 평문화 — W1 확정 대상으로 들어오는 inbound 참조를 평문 provenance로 전환해, 물리 삭제 후에도 WHY·검증 출처가 self-contained하게 한다. 대상(stage 5 W2 flag + W1 inbound sweep): decision 다수가 `history/*` 인용(정식경로 31 + 줄임표기 16), decision 3개가 `docs/aiox/*`·`prd/post-mvp/archive/*` 인용, archive digest의 history/docs/aiox/prd/pre-validation/plan provenance, `history/58`을 가리키는 preserved `plans/post-mvp*` rationale refs, `history/59` Atlas 논의의 log/archive provenance 평문화. — 완료 2026-06-23: decision 14개 Sources/body provenance 평문화, weak provenance 2건 archive 참조 보강, `plans/post-mvp*` `history/58` direct refs repoint, archive digest dead-link Sources 평문화, architecture/spike/test provenance cleanup, `history/59` Atlas digest를 이 로그에 보존. 검증: current owner/decision/plan/spike/test 범위 삭제 예정 live refs 0(남은 match는 archive/log historical provenance 또는 AGENTS/guide 규칙).
 - [x] W5 W2 산출물 재검토 게이트 (수용기준 2026-06-23 재확정) — **축1(본문 self-contained)을 게이트**로, 삭제 예정 원문(`history/`·`docs/aiox/`) 없이 owner/decision 본문만으로 load-bearing WHY가 복원되는지 **원문 대조**로 확인한다. 통과 시 출처 줄을 평문 라벨로 바꾸지 않고 **삭제**한다(provenance 평문화 폐기). 본문이 얇으면 WHY를 본문에 흡수한 뒤 삭제한다(포인터로 때우지 않음, git 복원 포인터 금지). 보존내용은 3분류로 라우팅: (가) 현재권위/WHY→owner 본문 / (나) 다음단계 입력→plan stage가 required-read로 가리킴 / (다) 순수역사→버림. 축2(current owner 범위 dead link 0)는 W2에서 확인 완료. source map 로그(history-migration·legacy)는 작업경위라 historical link를 유지하되, self-suff 검증 컬럼이 주장하는 owner 흡수가 실제 owner 본문에 있는지·미보존 WHY flag(`history/57` 등)가 승격됐는지 원문 대조로 게이트한다. 통과 후에만 W3. **[2026-06-23 진행: 게이트 판정 완료 — decision 14개 전부 통과, `history/57` flag 해소, proxy 신호매핑 archive 보존 결정(@user). 남은 행동 = patch 실행(A proxy archive digest → B 출처줄 삭제·repoint → C 보강 → rg 재검증). 상세 scope는 동일자 'W5 게이트 판정 완료' 블록.]**
 - [x] W3 물리 삭제 실행 — W1/W2 완료 + W5 재검토 통과 + @user 확인 후 confirmed delete set을 물리 삭제했다. — 완료 2026-06-24: @user 확인(옵션 1, "말 그대로 delete")으로 88개 파일 `rm` 삭제(history/ 1~58+README, docs/aiox/ 19, plan/ 2, prd/mvp/aiox-mvp-spec.md, prd/post-mvp/archive/ 5, prd/pre-validation/ 2). 보류: `history/59`(W4 stage 7 repoint와 함께 삭제), `prd/post-mvp/aiox-a2a-spec.md`·`plans/post-mvp*`(stage 9). 검증: 보류 대상 전부 잔존·삭제 대상 폴더 전부 부재·git deleted 88·owner 범위 dead-ref 0.
-- [>] W4 closeout & handoff — 삭제 결과를 legacy source map·history map의 최종 disposition에 반영하고, plan stage 6를 `[x]`로 닫는다. **(나) 다음단계 입력(`history/59` Atlas digest 등)을 plan stage 7(Atlas)가 required-read로 가리키도록 포인터를 이전한다**(로그 유실 방지). **그 repoint 직후 `history/59`를 물리 삭제한다**(W3에서 보류한 잔여 1건). 후속 stage 7(Atlas 설계·구현)로 handoff.
+- [x] W4 closeout & handoff — 삭제 결과를 legacy source map·history map의 최종 disposition에 반영하고, plan stage 6를 `[x]`로 닫는다. **(나) 다음단계 입력(`history/59` Atlas digest 등)을 plan stage 7(Atlas)가 required-read로 가리키도록 포인터를 이전한다**(로그 유실 방지). **그 repoint 직후 `history/59`를 물리 삭제한다**(W3에서 보류한 잔여 1건). 후속 stage 7(Atlas 설계·구현)로 handoff. — 완료 2026-06-24: stage 7 required-read repoint → `history/59` 삭제(89번째) → 두 source map disposition 반영 → Closeout 섹션 작성 → plan stage 6 `[x]`. stage 7은 전용 로그 미생성으로 `[ ]` 유지(시작 시 활성화).
 
 ### Scope
 
@@ -51,10 +51,14 @@ status: open
 ### Closeout
 
 - Updated owner documents:
-- Validation result:
-- Remaining gaps:
-- Workflow retrospective:
-- Next owner/log:
+  - `plans/workspace-reset/workspace-reset.md` — stage 7에 `history/59` Atlas digest required-read 추가(W4-1), stage 6 `[>]→[x]` closeout. `plans/post-mvp*` 본문 `history/58` direct refs repoint(W2).
+  - `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`(open) — stage 6 물리 삭제 최종 disposition 반영(W4-3). stage 9 미소비로 open 유지.
+  - `logs/2026-06-19-workspace-reset-W5-history-migration.md`(decided) — history/1~57+README+58+59 삭제 최종 outcome ledger 반영(W4-3).
+  - decision 14개 + `docs/architecture/local-agent-runtime.md` + archive digest(`mvp-history-archive`, `aiox-smoke-test-archive`) Sources/본문 — 삭제 예정 경로 출처 줄삭제·repoint(W2/W5). proxy 신호 매핑 successor `logs/2026-06-23-workspace-reset-codex-proxy-attribution-archive.md` 신규(W5). `pair-attach-atomicity-and-sentinel.md` correction(W5). (이번 closeout 범위 아님 — W2/W5 수행분, 추적용 기록.)
+- Validation result: confirmed delete set 88(W3) + `history/59` 1(W4) = **89개 물리 삭제**. owner 범위(`docs/decisions`·`architecture`·`specs`·`product`) + 보존 `plans/post-mvp*`·`spikes`·`tests/unit` 삭제 경로 dead-ref **0**(`docs/decisions/AGENTS.md` 일반 규칙 1건 제외). `history/` 빈 디렉터리. git deleted = 88(W3 커밋 `0ac527b`) + `history/59` D(미커밋). stage 9 보류 대상 전부 잔존.
+- Remaining gaps: **stage 9** — `prd/post-mvp/aiox-a2a-spec.md` + `plans/post-mvp.plan.md` + `plans/post-mvp/*`(4) 물리 삭제는 단일 A2A execution plan successor(Atlas 후 작성) 선행 필요로 미수행. legacy source map은 stage 9 소비 위해 `open` 유지.
+- Workflow retrospective: (1) **삭제 전 required-read wire 순서** — (나) 다음단계 입력(`history/59` Atlas digest)을 next stage plan이 required-read로 가리키도록 먼저 wire한 뒤 원본을 삭제해 유실 0창 보장. 닫히는 task 로그에 digest가 묻혀 onramp에서 사라지는 문제를 plan stage pointer로 방어. (2) **source map = historical ledger** — 삭제 후 두 map의 inbound 링크/row disposition을 일괄 재작성하지 않고 dated 최종-outcome 기록 append로 처리(W5 결정). row별 churn 회피가 ledger 무결성에 부합. (3) 되돌릴 수 없는 삭제는 @user 확인 cadence(1·2 실행→보고→확인→3→확인→4)로 단계 게이트.
+- Next owner/log: **stage 7 — Atlas 설계와 local 구현**(`plans/workspace-reset/workspace-reset.md` stage 7, 현재 `[ ]`). 시작 시 전용 단계 로그 생성 + `[>]` 승격. required-read(`history/59` Atlas digest = 이 로그 `:426-455`)는 stage 7에 wire 완료.
 
 ## 2026-06-23 · stage 6 게이트 진입 — 전이로 활성화, 삭제 대상 확정 대기
 
@@ -718,3 +722,77 @@ Atlas 설계 착수에 필요한 WHY·검증 사례·합의 방향·설계 입�
 **다음:** W4 — plan stage 7가 `history/59` Atlas digest(이 로그 `:426-455`)를 required-read로
 가리키도록 포인터 이전, 그 뒤 `history/59` 삭제, 두 source map disposition 반영, plan
 stage 6 closeout.
+
+## 2026-06-24 · W4 진행 — repoint·history/59 삭제·source map 반영 (closeout 전 체크포인트)
+
+@user 지시 cadence(1·2 실행→보고→확인→나머지)에 따라 W4를 단계별로 수행했다. step 4
+(plan stage 6 closeout 전이)는 @user 확인 전까지 보류한다. W4는 `[>]` 유지.
+
+**step 1 — plan stage 7 required-read repoint (확인한 사실):**
+
+- `plans/workspace-reset/workspace-reset.md` stage 7(`Atlas 설계와 local 구현`) 아래에
+  sub-bullet 추가: `history/59` Atlas digest(이 로그 "history/59 Atlas digest" 섹션 `:426-455`)를
+  required-read로 명시. 섹션 이름을 함께 적어 줄 이동 시에도 locate 가능. → (나) 다음단계 입력이
+  stage 6 closeout(이 로그 `decided`) 후에도 stage 7 진입 시 읽히도록 wire 완료.
+
+**step 2 — `history/59` 물리 삭제 (되돌릴 수 없음, @user 확인 후 실행):**
+
+- @user가 "1·2번 실행 후 보고" 지시로 step 2까지 승인. `rm
+  history/59-local-obsidian-vault-atlas-discussion.history.md` 실행. `history/` 디렉터리 빈 상태
+  확인(파일 0). git `D history/59-...`. W3에서 보류했던 잔여 1건 해소.
+- 삭제 전·후 dead-ref sweep: owner 범위(`docs/decisions`·`architecture`·`specs`·`product`) +
+  보존 `plans/post-mvp*`·`spikes`·`tests/unit`에 삭제된 `history/59` 파일 가리키는 live link 0.
+  잔존 2 match는 dead link 아님 — `workspace-reset.md:32`(stage 6 게이트 자기 서술 문구),
+  `:38`(step 1이 추가한 required-read 포인터, 대상은 살아있는 digest 로그 섹션이지 삭제 파일 아님).
+
+**step 3 — 두 source map 최종 disposition 반영 (확인한 사실):**
+
+- 분량 산정: W5 결정(이 로그 `:559-562`)상 두 map은 작업경위+검증 ledger이고 inbound 링크는
+  "삭제 시점 스냅샷"이라 평문화·수정 금지. 따라서 row별 disposition 재작성이 아니라 dated
+  최종-outcome 기록 append가 맞는 작업이다(subagent 불필요 — 인라인 처리).
+- `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`(status `open`): W5 Work Item에
+  `[2026-06-24] stage 6 게이트 소비 완료` 주석 추가 + "2026-06-24 · stage 6 물리 삭제 반영"
+  기록 append(삭제 완료 target rows 29건 enumerate, stage 9 보존 rows 명시). `plans/post-mvp*` +
+  `prd/post-mvp/aiox-a2a-spec.md` 미소비라 `open` 유지.
+- `logs/2026-06-19-workspace-reset-W5-history-migration.md`(status `decided`): 재결정 아닌 최종
+  outcome ledger로 "2026-06-24 · stage 6 물리 삭제 반영" append — history/1~57+README+58(W3)+
+  59(W4) 삭제 완료, 58/59 삭제 전제조건 충족 경위 기록.
+
+**검증:** `history/` 빈 상태, git 추가 `D history/59` 1건 + `M`(plan, legacy map, history map,
+이 로그). owner 범위 dead-ref 0 유지.
+
+**남은 것(step 4, @user 확인 후):** plan stage 6 `[x]` closeout — 이 로그 Closeout 섹션 작성,
+W4 `[>]→[x]`, `workspace-reset.md` stage 6 `[>]→[x]`, stage 7(Atlas) handoff.
+
+**다음:** @user 확인 후 step 4(closeout) 실행. 또는 @user 지시에 따른다.
+
+## 2026-06-24 · W4 step 4 closeout — stage 6 종료, decided 전이
+
+@user 확인("Step 4 진행해")으로 closeout을 실행했다. log skill의 종료 절차(`log-writing-rules.md`
+Decided 5조건, `plans/AGENTS.md` stage maintenance)를 따랐다.
+
+**최종 결정·결과:** stage 6 물리 삭제 게이트 종료. W1(삭제 대상 확정)~W4(closeout) 전부 완료.
+누적 89개 물리 삭제(W3 88 + W4 `history/59`). owner/decision/archive/plan은 삭제된 legacy
+원본 없이 self-contained(W5 게이트 PASS, 원문 대조 검증). `history/`·`docs/aiox`·`plan/`·삭제
+대상 `prd/*` 부재.
+
+**반영 위치·검증:** `### Closeout` 섹션이 owner 문서 갱신 목록·검증·remaining gap·retrospective를
+소유한다. 핵심 검증 = 89개 삭제, owner 범위 dead-ref 0, stage 9 보류 대상 잔존, `history/` 빈
+디렉터리. 두 source map 최종 disposition 반영 완료(legacy=open 유지/stage 9 대기, history=decided
+outcome ledger).
+
+**parent pointer 소비:** 이 로그의 parent = `plans/workspace-reset/workspace-reset.md` stage 6
+Work Item. closeout으로 plan stage 6를 `[>]→[x]`로 닫아 소비했다. 다음 단계 stage 7(Atlas
+설계와 local 구현)은 전용 로그가 아직 없어 `[ ]`로 둔다(`plans/AGENTS.md`: 시작하지 않은 단계는
+포인터 생략 가능, 활성 `[>]` 0개 허용). stage 7 착수 = 전용 로그 생성 + `[>]` 승격 + 이미 wire된
+required-read(`history/59` Atlas digest = 이 로그 `:426-455`) 소비.
+
+**남은 일 없음 근거:** Decided 5조건 충족 — (1) 결과 본문 기록 완료, (2) 권위 반영(plan·source
+map) 완료, (3) 물리 삭제·검증 완료, (4) 미완료 Work Item·미결 질문 0, (5) parent(plan stage 6)
+복귀 처리 완료. stage 9(aiox-a2a-spec·plans/post-mvp* 삭제)는 이 stage의 범위가 아니라 plan
+stage 9 소유 — open 연장 사유 아님.
+
+**status:** `open` → `decided`.
+
+**다음 owner:** stage 7(Atlas 설계와 local 구현). onramp는 plan stage 6 `[x]` 이후 stage 7을
+다음 시작 단계로 surface한다.
