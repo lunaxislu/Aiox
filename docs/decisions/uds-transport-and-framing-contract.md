@@ -18,11 +18,11 @@ We adopted Unix Domain Sockets (UDS) as the primary IPC transport with Newline-D
 ## Rationale
 
 - **UDS over TCP**: UDS maps naturally to POSIX file ownership and permissions, so access is bounded by the filesystem rather than the network. It avoids port allocation/collision entirely and is not reachable off-host, which removes the firewall-exposure surface TCP loopback would add. The cost is Windows portability, which we accept as deferred.
-- **NDJSON over length-prefixed/MessagePack**: Orchestrator payloads are already JSON, so a line-delimited envelope keeps the wire format trivially readable during debugging and needs no separate length/binary decode step. JSON escaping preserves embedded newlines, so `\n`-delimited framing is unambiguous for our payloads. The framing contract itself is owned by `docs/architecture/local-agent-runtime.md:234`.
-- **Connection reuse (multiplexing)**: A single lazy-persistent socket with request-id correlation lets concurrent in-flight requests share one connection, avoiding per-request connect latency during rapid turns. The id-multiplex topology is owned by architecture (`docs/architecture/local-agent-runtime.md:237`).
-- **Timeout & close fallback**: Without a bounded request timeout and explicit close handling, a daemon crash or hang would leave the client waiting indefinitely. We therefore time out requests and fail pending requests on sudden socket close. The numeric default is owned by architecture (`docs/architecture/local-agent-runtime.md:238`).
-- **Stale-socket recovery**: A crashed daemon can leave a socket file that blocks the next `listen`. Rather than a separate lock/PID file, we let the daemon itself disambiguate: on `EADDRINUSE` it probes whether anything is actually listening; if alive it refuses to start, if dead it unlinks the stale path and retries once. This keeps recovery self-contained in the listen path. The probe/unlink/retry contract is owned by architecture (`docs/architecture/local-agent-runtime.md:239`).
-- **Best-effort fan-out**: When the daemon fans an inject out to multiple peer targets, one target failing should not abort delivery to the others. So a failed target transitions to `failed` with a typed reason while the remaining targets continue, maximizing throughput at the cost of all-or-nothing atomicity. The fan-out flow is owned by architecture (`docs/architecture/local-agent-runtime.md:820-833`).
+- **NDJSON over length-prefixed/MessagePack**: Orchestrator payloads are already JSON, so a line-delimited envelope keeps the wire format trivially readable during debugging and needs no separate length/binary decode step. JSON escaping preserves embedded newlines, so `\n`-delimited framing is unambiguous for our payloads. The framing contract itself is owned by [[local-runtime-daemon-transport-api]] §4.2.
+- **Connection reuse (multiplexing)**: A single lazy-persistent socket with request-id correlation lets concurrent in-flight requests share one connection, avoiding per-request connect latency during rapid turns. The id-multiplex topology is owned by architecture (`local-runtime-daemon-transport-api.md` §4.2).
+- **Timeout & close fallback**: Without a bounded request timeout and explicit close handling, a daemon crash or hang would leave the client waiting indefinitely. We therefore time out requests and fail pending requests on sudden socket close. The numeric default is owned by architecture (`local-runtime-daemon-transport-api.md` §4.2).
+- **Stale-socket recovery**: A crashed daemon can leave a socket file that blocks the next `listen`. Rather than a separate lock/PID file, we let the daemon itself disambiguate: on `EADDRINUSE` it probes whether anything is actually listening; if alive it refuses to start, if dead it unlinks the stale path and retries once. This keeps recovery self-contained in the listen path. The probe/unlink/retry contract is owned by architecture (`local-runtime-daemon-transport-api.md` §4.2).
+- **Best-effort fan-out**: When the daemon fans an inject out to multiple peer targets, one target failing should not abort delivery to the others. So a failed target transitions to `failed` with a typed reason while the remaining targets continue, maximizing throughput at the cost of all-or-nothing atomicity. The fan-out flow is owned by architecture ([[local-runtime-routing-and-delivery]] §8.3).
 
 ## Trade-offs
 
@@ -36,4 +36,6 @@ We adopted Unix Domain Sockets (UDS) as the primary IPC transport with Newline-D
 
 ## Sources
 
-- `docs/architecture/local-agent-runtime.md` — transport/framing/timeout/recovery contract owner (`:234`, `:237`, `:238`, `:239`, `:820-833`)
+- `docs/architecture/local-runtime-daemon-transport-api.md` §4.2 (framing/multiplex/timeout/recovery) +
+  `docs/architecture/local-runtime-routing-and-delivery.md` §8.3 (fan-out) —
+  transport contract owner (former `local-agent-runtime.md`에서 split).

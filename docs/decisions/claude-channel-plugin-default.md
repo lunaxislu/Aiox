@@ -52,4 +52,4 @@ no-fallback 계약을 선택한 이유만 기록한다.
   cwd-resolved `enabled`, flat scope, `ambiguous_install_path` 가드) 구현 근거:
   `src/adapters/claude/preflight.ts:11-62`, `src/adapters/claude/plugin-cli.ts`
 - 채널 활성화 전략·preflight 흐름(아키텍처 권위):
-  `docs/architecture/local-agent-runtime.md` §6.1–6.2
+  [[local-runtime-claude-adapter]] §6.1–6.2

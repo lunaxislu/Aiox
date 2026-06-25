@@ -31,4 +31,4 @@ We decided to adopt an inverted process tree topology where the Claude CLI spawn
 ## Sources
 - Single-use attach-token registration (pending-token check, `unknown_token` reject, single-use delete) implemented at `src/daemon/state.ts:926-953` (`registerClaudeChannel`).
 - Delivery/ack contract owner and Claude channel ingress/push auth gap: `docs/specs/aiox-a2a.md` §4.3, §5 (Claude row, "ingress/push auth gap", Tier 3 preview).
-- Registration flow + loopback HTTP `/send` ingress (architecture authority): `docs/architecture/local-agent-runtime.md` §6.1–6.4.
+- Registration flow + loopback HTTP `/send` ingress (architecture authority): [[local-runtime-claude-adapter]] §6.1–6.4.

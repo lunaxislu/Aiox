@@ -22,9 +22,9 @@ We decided to enforce a strict layer boundary for pair ownership (removing `pair
 - This decision can be re-evaluated if the underlying database driver supports programmatic transaction rollback without throwing exceptions.
 
 ## Sources
-- `docs/architecture/local-agent-runtime.md` §3 and §8.6 — current owner for
-  repository pre-validation, daemon attach orchestration, and rollback sentinel
-  placement.
+- [[local-runtime-store-and-repositories]] §3 and [[local-runtime-routing-and-delivery]] §8.6 —
+  current owner for repository pre-validation, daemon attach orchestration, and
+  rollback sentinel placement.
 - `src/daemon/state.ts` — current `attachRollbackSentinel` and daemon
   `attachAgent` outer transaction implementation.
 - `src/store/repositories/pairs.ts` — current `pairs.attachAgent` pre-validation

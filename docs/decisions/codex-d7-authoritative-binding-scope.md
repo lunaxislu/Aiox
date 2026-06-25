@@ -77,7 +77,7 @@ connections can mutate the same runtime and require a richer ownership model.
 
 - `logs/2026-06-19-mvp-history-archive.md:45-53` - retained digest of the Step
   10 D7 finding.
-- `docs/architecture/local-agent-runtime.md` §7.4-§7.7 - current outcome:
+- [[local-runtime-codex-adapter]] §7.4–§7.7 - current outcome:
   transparent proxy observation, active-thread binding authority, and fallback
   behavior.
 - `docs/decisions/proxy-lazy-observation-cost-model.md` - proxy cost model for

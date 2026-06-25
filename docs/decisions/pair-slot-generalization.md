@@ -93,5 +93,6 @@ pair cardinality는 정확히 2로 유지한다.
   `src/store/repositories/pairs.ts:77-263` (slot 점유 검사, `pickFirstOpenSlot`,
   `isPairReady`), `src/store/schema.ts:84-135` (Migration 1, partial unique index),
   `src/daemon/state.ts:2116-2125` (`createBidirectionalPairRoutes` same-vendor 분기).
-- Outcome 반영: `docs/architecture/local-agent-runtime.md` §0/§2/§3/§8 (as-built 슬롯
-  모델).
+- Outcome 반영: [[local-agent-runtime]] §0 (module overview) ·
+  [[local-runtime-store-and-repositories]] §2–§3 ·
+  [[local-runtime-routing-and-delivery]] §8 (as-built 슬롯 모델).

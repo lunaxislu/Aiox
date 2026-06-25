@@ -13,8 +13,10 @@ archive, delete 판정한다. 목표는 파일 수 축소가 아니라, 각 문�
 - 아래 10개 단계가 모두 끝난다.
 - 최종 문서 구조에 중복 권위, dead link, stale 상태, 역할 충돌이 없다.
 - repo 문서만으로 새 세션이 현재 단계와 다음 행동을 찾을 수 있음을 검증한다.
-- Atlas local navigation layer가 최종 owner 문서를 기준으로 생성되고, 권위 문서를
-  대체하지 않는 탐색 보조 계층으로 검증된다.
+- 기존 `docs/` owner 문서 자체를 Obsidian-friendly Atlas 본체로 전환한다(별도 `atlas/`
+  navigation layer 미생성). 큰 monolith는 W10 split map 기준으로 모듈 slice로 쪼개고,
+  문서 간 관계를 wikilink로 연결해 Obsidian Graph/Backlink가 권위 문서를 대체하지 않는
+  탐색 계층이 되는지 검증한다.
 - Atlas 도입 뒤 `AGENTS.md`, `docs/guides/workflow.md`와 관련 owner 문서가 새 탐색
   흐름을 반영해야 하는지, 또는 stale/drift가 생겼는지 재검토한다.
 - 임시 `AGENTS.md` 진입 계약을 정리·졸업한다. legacy `plan/workspace-reset/`의 임시
@@ -34,7 +36,11 @@ archive, delete 판정한다. 목표는 파일 수 축소가 아니라, 각 문�
   - prd/post-mvp/aiox-a2a-spec.md = W8(A2A spec)가 Target Contract Input으로 소모(권위 흡수 완료). 단 §11 execution detail은 단일 A2A execution plan successor 필요로 **이 게이트에서 삭제하지 않고 stage 9로 이연**(source map disposition = keep / execution successor pending)
   - docs/aiox, prd/하위, plan/하위는 흡수 완료 및 W8~W10 작업 완료 후 이 게이트로 수렴하여 일괄 물리 삭제
   - `plans/post-mvp*`는 이 게이트 대상이 아니다 — Atlas 후 단일 A2A plan successor 작성이 선행해야 삭제 가능(아래 `plans/post-mvp*` 삭제 disposition 단계가 소유)
-- [ ] Atlas 설계와 local 구현
+- [>] Atlas 설계와 local 구현 -> `logs/2026-06-24-workspace-reset-stage7-Atlas-설계와-local.md`
+  - **방향(2026-06-25 확정): docs-as-Obsidian-Atlas.** 별도 `atlas/` 폐기, 기존 `docs/`
+    owner 문서 자체를 Obsidian-friendly로 전환한다. 실행 순서 = `docs/AGENTS.md` base rule
+    → W10 split map 소비 body split(`aiox-a2a.md`·`local-agent-runtime.md`) → wikilink 연결
+    → Obsidian Graph 검증. 상세는 stage 7 로그 "W1 closeout" 블록.
   - required-read: `history/59` Atlas 논의 digest(사용자 문제·MCP name mismatch 검증 사례·합의된 방향 8개·후속 설계 입력) — `logs/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md` "history/59 Atlas digest" 섹션(`:426-455`). 원문 `history/59`는 stage 6 W4에서 이 digest로 대체 후 물리 삭제됨. Atlas 설계 착수 전 이 digest를 읽는다.
 - [ ] Atlas 반영·drift 재검토
 - [ ] `plans/post-mvp*` 삭제 disposition (Obsidian/Atlas stage 완료 후) — `plans/post-mvp*`의 실행 내용을 잇는 단일 A2A 실행 plan(별도 workstream, Atlas 후 작성)이 생긴 뒤에만: `docs/product/roadmap.md` 147-152 sub-plan 링크를 successor로 repoint → `plans/post-mvp*` 물리 삭제 → `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` 해당 row 최종 disposition 확정. async-petting-hoare 운영 라인은 별도 보존(W9 closeout handoff 참조). (근거: W9 결정 2026-06-22; W9 child log W3 이관)
