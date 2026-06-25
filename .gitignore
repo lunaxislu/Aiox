@@ -44,3 +44,7 @@ legacy/
 /dist/
 next-env.d.ts
 /bridge/dist/
+
+# Local Obsidian vault settings and Atlas code maps
+.obsidian/
+

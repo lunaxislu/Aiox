@@ -7,6 +7,8 @@ description: Rules for agents reading, writing, and splitting specification docu
 
 이 디렉토리(`docs/specs/`)의 문서는 시스템의 외부 동작, 인터페이스, 프로토콜, 데이터/상태 컨트랙트(Contract)를 정의합니다. 에이전트나 Harness가 이 디렉토리의 문서를 읽거나 수정할 때는 다음 규칙을 엄격히 따라야 합니다.
 
+`docs/` 공통 작성 규칙(링크 형식·중복 금지·staleness·split 일반 규칙)은 상위 [[docs/AGENTS]]가 소유합니다. 아래는 spec type 전용 규칙입니다.
+
 ## 1. Spec 작성 원칙 (Content Rules)
 - **외부 컨트랙트 중심**: Spec에는 외부 주체, 다른 모듈, 또는 연동 구현체가 호환성을 위해 지켜야 하는 **행동과 외부 계약**만 작성합니다. (제품의 기획/범위/우선순위는 `product`/`roadmap`이 소유하므로 포함하지 않습니다.)
 - **내부 구현 상세 금지**: 내부 아키텍처나 현재 구현 상세(HOW)를 길게 복사하여 붙여넣지 마십시오. 내부 구조와 책임 배치는 `docs/architecture/`의 역할입니다.
@@ -22,10 +24,10 @@ description: Rules for agents reading, writing, and splitting specification docu
 
 *Note: Existing `aiox-a2a.md` predates this status tag format and may use MUST/SHOULD language, section-level defaults, and inline Status notes. New split/slice files should use the `[Status: ...]` tags defined here while preserving the meaning of existing `aiox-a2a.md` sections.*
 
-## 3. 문서 분할 및 앵커 보존 (Section ID Preservation)
-거대한 통합 문서를 분리(Split)할 때 가장 주의해야 할 규칙입니다. 기존 `plans/`나 로그 등에서 스펙 문서의 특정 섹션을 가리키는 외부 참조(Inbound Reference)가 깨지지 않아야 합니다.
-- 문서를 새 파일로 쪼갤 때, 원본 파일에서 기존 Section ID(예: `#4-message-routing`)와 제목을 완전히 삭제하지 마십시오.
-- **Section Stub (호환 앵커) 방식**: 기존 참조를 보존하기 위해 섹션 제목은 그대로 유지하되, body를 "이 섹션은 분리되었습니다. 상세 스펙은 `[새 파일명.md](./새-파일명.md)`를 참고하세요"라는 리다이렉션 문구로 교체합니다.
+## 3. 문서 분할 (Section ID 보존)
+일반 split 규칙(inbound·anchor 확인, 원본 stub holder 유지, slice는 단일 owner, stub redirect는 wikilink)은 [[docs/AGENTS]]가 소유합니다. 아래는 spec 전용 주의사항입니다.
+- spec은 `plans/`·`logs/`의 외부 inbound 참조가 많습니다. 원본의 Section ID(예: `#4-message-routing`)와 제목을 보존해 inbound가 깨지지 않게 하십시오.
+- 기존 `aiox-a2a.md`의 MUST/SHOULD·section-level default 의미는 slice로 옮길 때 보존하십시오(§2 status 태그 참고).
 
 ## 4. Agent 및 Harness 확인 절차
 - **작성 전**: Before adding or changing contract text, check `docs/product/product.md` and `docs/product/roadmap.md` to ensure the spec does not expand product scope or imply roadmap priority that those owners have not approved.

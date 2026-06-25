@@ -7,6 +7,8 @@ description: Rules for agents reading, writing, and validating architecture docu
 
 이 디렉토리(`docs/architecture/`)의 문서는 시스템의 내부 구조, 책임 배치, 모듈/프로세스 경계, 데이터 플로우, 그리고 내부 상태 관리 원칙을 정의합니다. 에이전트나 Harness가 이 디렉토리의 문서를 다룰 때는 다음 규칙을 엄격히 따라야 합니다.
 
+`docs/` 공통 작성 규칙(링크 형식·중복 금지·staleness)은 상위 [[docs/AGENTS]]가 소유합니다. 아래는 architecture type 전용 규칙입니다.
+
 ## 1. Architecture 작성 원칙 (Content Rules)
 - **책임과 플로우 중심**: 내부 구조, 컴포넌트의 책임, 생명주기 불변성(Lifecycle invariant), 데이터 흐름을 명확히 설명합니다.
 - **Spec Contract 복사 금지**: Do not copy protocol or external contract text from `docs/specs/` into architecture documents. Reference the spec owner instead, and keep architecture focused on internal structure, responsibility boundaries, flows, lifecycle invariants, and implementation evidence.

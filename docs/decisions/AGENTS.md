@@ -9,6 +9,8 @@ description: Rules for agents reading, writing, and promoting decision documents
 load-bearing rationale, trade-off와 재검토 조건을 소유한다. 에이전트나 Harness가
 이 디렉토리의 문서를 읽거나 작성할 때는 다음 규칙을 엄격히 따라야 한다.
 
+`docs/` 공통 작성 규칙(링크 형식·중복 금지·staleness)은 상위 [[docs/AGENTS]]가 소유한다. 아래는 decision type 전용 규칙이다.
+
 ## 1. 작성 원칙 (Content Rules)
 
 - **WHY만 소유한다**: Decision 문서는 왜 이 선택을 했는가를 소유한다. 그 선택이
