@@ -1,7 +1,7 @@
 ---
 topic: workspace reset stage7 Atlas 설계와 local 구현
 description: workspace reset plan stage 7 — repo를 local Obsidian vault로 열어 모듈·계약·data flow·변경영향·코드위치·테스트·decision/spec link를 연결하는 구현 지도(Atlas)를 설계하고 local navigation layer로 구현한다. 권위 문서를 대체하지 않는 discovery 계층이며 enforcement는 상수·계약 테스트가 담당한다.
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -10,7 +10,7 @@ status: open
 - [x] W4 docs/AGENTS.md 신규 + docs-as-Obsidian base rule + 하위 AGENTS 보강/생성 — 2026-06-25 완료: 6파일(신규 3·보강 3), dedup으로 split 일반규칙은 docs/AGENTS 단독 owner
 - [x] W5 W10 split map(`logs/2026-06-22-workspace-reset-W10-split-readiness-map.md`) required-read → `docs/specs/aiox-a2a.md`·`docs/architecture/local-agent-runtime.md` body split, 원본은 compatibility index/stub holder 유지
 - [x] W6 wikilink 정리 — Phase 1(line-level inbound repoint)·Phase 2(section inbound repoint)·Phase 3(15 slice 내부 wikilink) 완료(2026-06-25). Phase 3는 Claude 세션 끊김 후 Codex takeover → Claude review로 검증·보정(inline-code 0·dead link 0·코드 중복 wikilink 0, 위반 3건 수정 + capability decision 1건 @user 보강). 첫 샘플 게이트·logs 전체·전역 .md sweep·evidence 전역 정규화 제외 유지.
-- [>] W3 Obsidian Graph/Backlink 검증 — navigation layer로 권위 비대체 + discovery 가치 확인 (실행 순서상 마지막; 기존 검증 항목 id 보존)
+- [x] W3 Obsidian Graph/Backlink 검증 — navigation layer로 권위 비대체 + discovery 가치 확인 (실행 순서상 마지막; 기존 검증 항목 id 보존)
 
 ## 2026-06-24 · stage 7 착수 — required-read 통독, 범위·미결 설계 질문 정리
 
@@ -1032,3 +1032,68 @@ stage 마지막). onramp는 이 로그 next pointer로 W3 재개.
    체감이 필요한 단계라 @user와 함께 진행.
 
 즉 즉시 다음 onramp는 W3 착수가 아니라 **커밋**이다.
+
+## 2026-06-26 · W3 완료 — Obsidian Graph/Backlink docs-as-Atlas 검증 PASS + stage 7 closeout
+
+W3(navigation layer로 권위 비대체 + discovery 가치 확인)을 @user GUI 실측(@gemini 협업)과
+@claude 독립 CLI 재검증으로 완료한다. W3는 stage 7 마지막 Work Item이라 이로써 stage 7
+전체를 closeout(`decided`)한다. drift 재검토는 stage 7이 아니라 plan stage 8 소유(별도 로그).
+
+**검증 분담·Evidence 규칙 적용(@gemini 분석 맹종 안 함):**
+
+- 시나리오 A~D(Obsidian GUI) = @user가 앱에서 직접 실측. GUI 체감 판정은 @user 권위 → 수용.
+  스크린샷 4종은 @user/@gemini 증거이며 @claude가 픽셀 단위로 재확인한 것은 아니다 — GUI
+  관찰의 권위는 @user 직접 실측에 둔다.
+- CLI link 무결성 = @gemini scratch script(`verify_links.py`) 출력. `AGENTS.md` Evidence
+  규칙에 따라 그대로 수용하지 않고 @claude가 별도 코드(`/tmp/w3_verify_links.mjs`)로 독립
+  재검증해 주장을 확증했다.
+
+**검증 결과:**
+
+- 시나리오 A(local graph): `local-runtime-claude-adapter`·`local-runtime-routing-and-delivery`
+  노드에서 index·sibling slice·decision·실제 `.ts` 코드파일이 1-hop에 누락 없이 연결(코드
+  첨부파일 옵션 ON). PASS.
+- 시나리오 B(backlink 변경영향): inbound 화살표/backlink 패널로 컴포넌트 수정 시 함께 볼
+  decision·sibling 영향범위가 역추적됨. PASS.
+- 시나리오 C(권위 비대체): Graph/link는 discovery 전용이며 code/test·decision 고유 권위를
+  침해·복제하지 않음. PASS.
+- 시나리오 D(전역 graph 건강성): `path:docs/`·`path:src/` 필터에서 specs·architecture
+  클러스터 + decisions 교량 구조가 정합 렌더. PASS.
+- @claude 독립 CLI 재검증: docs wikilink 237개 = @gemini 수치와 정확히 일치. 진짜 broken 0
+  — 스캔이 flag한 3건은 `docs/AGENTS.md`의 문법 예시(`[[wikilink]]`·`[[문서명#Heading]]`·
+  `[[문서명#^block-id]]`, backtick 설명용)라 실 link 아님. orphan slice 0(16 slice 전부
+  ≥1 docs inbound). `claude-adapter` inbound 5개(decision 3 + routing slice + index) =
+  시나리오 B 스크린샷 "5 inbound"와 교차 일치.
+
+**Stage 8로 handoff하는 입력(@gemini Trade-offs = drift 재검토 후보, stage 8 로그가 owner):**
+
+- 노드 라벨에 디렉터리 경로 생략·파일명만 표시 → hover 툴팁 + Groups 컬러코딩(폴더별 색)
+  보완 후보. workflow/AGENTS가 Graph 운영법을 안내해야 하는지 stage 8 판단.
+- Obsidian 파일트리에 `.ts` 미표시 → 코딩은 IDE 주도, Obsidian은 영향도분석·설계탐색
+  "navigation 보조 화면"으로 병행하는 dual-tool workflow 수렴. `docs/guides/workflow.md`가
+  이 흐름을 반영해야 하는지 stage 8 판단. (두 후보 모두 "반영 필요 여부 판단"이지 기정 반영 아님.)
+
+**반영 위치:** W3는 검증 단계라 owner 문서 변경 없음(docs-as-Atlas 본체는 W4/W5/W6 산출).
+새 탐색 흐름의 AGENTS/workflow 반영 여부는 plan stage 8 "Atlas 반영·drift 재검토"가 소유한다.
+
+**남은 일 없음 판단:** stage 7 Work Items W1·W2(cancelled)·W4·W5·W6 해소 완료, W3 완료. 미결
+질문 없음. Trade-offs는 stage 7 미결이 아니라 stage 8 입력으로 이관(아래 parent 소비).
+
+**parent pointer 소비(plan stage 7):** `plans/workspace-reset/workspace-reset.md` stage 7
+`[>]→[x]`, stage 8 `[ ]→[>]` + 새 controlling log
+`logs/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md` 배선 완료. stage 8 로그는
+stage 7 child가 아니라 plan이 소유하는 다음 단계(sibling). stage 8 W1 = drift 재검토 범위
+확정 + 후보 인벤토리(위 handoff 2건 포함).
+
+**검증 Ledger (다른 agent가 이 로그만으로 pass/fail 판정 가능):**
+
+| # | 검증 항목 | 방법 | 결과 |
+| - | --------- | ---- | ---- |
+| 1 | docs wikilink 총수 | @claude `/tmp/w3_verify_links.mjs` 독립 스캔 = 237 = @gemini 수치 | PASS (일치) |
+| 2 | 진짜 broken link 0 | flag 3건 전부 `docs/AGENTS.md` 문법 예시(backtick), 실 link 아님 | PASS |
+| 3 | orphan slice 0 | 16 slice(arch 8 + spec 7 + 추가 slice) 전부 ≥1 docs inbound | PASS |
+| 4 | claude-adapter inbound 5 | decision 3 + routing slice + index, 시나리오 B 스크린샷 교차 일치 | PASS |
+| 5 | 시나리오 A~D GUI | @user 직접 실측(@gemini 협업), 스크린샷 4종 | PASS (@user 권위) |
+| 6 | 권위 비대체 | Graph=discovery 전용, code/test·decision 권위 비침해·비복제 | PASS |
+
+**다음 행동:** stage 7 종료. onramp는 plan stage 8(`[>]`) → 새 stage 8 로그 W1로 재개한다.
