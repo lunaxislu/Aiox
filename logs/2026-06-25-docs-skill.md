@@ -1,7 +1,7 @@
 ---
 topic: docs-skill 도입 검토 및 설계
 description: 문서화 구조 및 품질 검토용 portable docs-skill의 역할, 범위, 기존 document-structure-review 스킬과의 관계 정의
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -117,6 +117,38 @@ status: open
 ```
 
 ## 2026-06-25 · Feedback — Code/test evidence 설명 문장은 규칙 중복이면 삭제
+
+## 2026-06-27 · document-structure-review 개선 리뷰 입력 검토
+
+@user가 `document-structure-review` skill 개선에 대한 @claude 리뷰를 전달했다. 리뷰의 핵심은 A-F 개선 후보를 모두 새 섹션으로 늘리기보다, 기존 섹션에 흡수·sharpening하는 것이 skill 자신의 단순화/read-path 원칙과 맞는다는 내용이었다.
+
+@codex 확인:
+
+- `.agents/skills/document-structure-review/SKILL.md`는 실제로 `Context Read Path`, `Structure Smells`, `Rule Shape`, `Guideline Structure Models`, `Output Checklist`를 이미 갖고 있다.
+- 예시 파일은 루트 `EXAMPLE.md`가 아니라 `.agents/skills/document-structure-review/references/EXAMPLE.md`에 있다.
+- `references/EXAMPLE.md`에는 8개 사례가 있으며, ancestor 자체를 후보로 비교하는 절차와 concrete authoring scenario 검증은 본문 규칙으로는 아직 직접 드러나지 않는다.
+
+@codex 판단:
+
+- @claude의 "Minimal patch 우선" 방향은 타당하다. 특히 skeleton minimality, over-provisioned section smell, negative rule을 classification으로 올리는 guard, checklist 보강은 기존 섹션에 흡수하는 편이 맞다.
+- ancestor를 검토 가능한 constraint로 보는 문제와 scenario 비교는 실제 신규 gap이지만, 바로 별도 대형 섹션 여러 개로 늘리면 skill의 단순화 원칙과 충돌한다.
+- 다음 반영 후보는 `Guideline Structure Models`, `Structure Smells`, `Rule Shape`, `Output Checklist` 중심의 minimal patch이며, 필요 시 별도 승인 후 `Change Candidates` 결합 절과 예시 추가를 검토한다.
+
+## 2026-06-27 · external repo 조사 입력에 따른 skill 개선 방향 재판정
+
+@user가 공개 GitHub repo 사례를 조사한 Gemini 결과를 전달했다. 조사 목적은 ancestor를 쉽게 무시하지 않는 gate와 scenario test를 조건부로만 적용하는 패턴을 다른 repo에서 확인하는 것이었다.
+
+@codex 확인:
+
+- Kepler `AGENTS.md`는 `AGENTS.md`, `CLAUDE.md`, `GOVERNANCE.md` 수정과 architecture change를 approval/proposal gate로 둔다.
+- Waza `skills/think/SKILL.md`는 hard rule과 plan이 충돌하면 contradiction을 드러내고 `Do not silently override the rule`, blocking이면 stop and ask하도록 한다. 또한 Lightweight/Evaluation/Triage처럼 작업 성격별 모드를 나눈다.
+- GSA-TTS `cdc-places-mcp-server/AGENTS.md`는 risk mode를 두고 broad/infrastructure 변경일수록 더 강한 approval을 요구한다.
+
+@codex 판단:
+
+- 외부 사례는 `ancestor는 constraint이지만 axiom은 아니다`와 `silent override 금지`를 함께 두는 방향을 뒷받침한다.
+- scenario 검증은 모든 문서 수정에 강제하지 않고 skeleton/template/owner boundary/ancestor contract처럼 구조적 영향이 큰 변경 후보에 한정하는 것이 적절하다.
+- 다만 Gemini의 `Boundary And Change Gates` 신규 섹션 제안은 `document-structure-review`의 흡수·단순화 원칙과 긴장한다. 반영은 새 섹션이 아니라 `Review Loop`, `Authoring Guideline Improvement`, `Structure Smells`, `Guideline Structure Models`, `Rule Shape`, `Output Checklist`에 흡수하는 방향이 더 맞다.
 
 ## 2026-06-25 · 원문 기록 — 문서 작성/구조 리뷰 스킬 일반화 논의
 
@@ -537,3 +569,323 @@ Evidence And Sources
 
 - 동일한 패턴으로 `.claude/skills/document-structure-review`를 추가했다.
 - 링크 대상은 `../../.agents/skills/document-structure-review`다.
+
+## 2026-06-26 · stage8 반영 결과 — document-structure-review skill 현행 상태
+
+workspace reset stage8 W5(`logs/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md`)에서
+`docs/specs/AGENTS.md` 작성·리뷰 과정의 portable 패턴을 `document-structure-review` skill에 반영했다.
+이 로그는 원래 docs-skill 설계 owner 성격의 open 로그이므로, stage8의 cross-owner effect를 여기에도 남긴다.
+
+**확인한 반영:**
+
+- `.agents/skills/document-structure-review/SKILL.md` description을 특정 실행 주체가 아닌 `an agent` 기준으로 중립화했다.
+- `Scope / Non-Goals`를 추가해 이 skill이 project-specific docs format, log lifecycle, Work Items, closeout,
+  owner handoff를 소유하지 않음을 명시했다.
+- `Context Read Path`를 추가하되 stop criteria를 포함했다: 직접 parent에서 시작해 위임된 ancestor 계약까지 따라가되,
+  root/scope boundary에 도달했거나 더 올라가도 현재 판단을 바꾸지 않으면 멈춘다. owner map, sibling, child/slice는
+  현재 판단을 바꿀 수 있을 때만 읽는다. 프로젝트가 문서 작성·수정 흐름을 따로 정의하면, 현재 변경이 그 흐름에서
+  언제·어떻게 수행되어야 하는지도 확인한다.
+- `Structure Smells`에 `hidden or implicit authority`, `orphan local rule` 등을 추가했다.
+- `Guideline Structure Models`와 `Comparative Guideline Review`를 추가했다. 단, 기존 owner guideline이 구조를
+  확정한 경우 이 모델 목록으로 override하지 않는 guard를 둔다.
+- `Feedback Capture` 섹션은 log skill·현재 작업 로그 owner와 경계가 흐려져 삭제했다.
+- Review Loop에서 시행착오·rejected alternative·상세 피드백의 기록 위치를 말하던 step도 log 작업 성격이라 삭제했다.
+- `feedback records`처럼 기록 owner로 읽힐 수 있는 description 표현을 `review feedback that affects document structure`로
+  좁혔다. `상위/parent`로 남아 있던 표현은 parent/ancestor 계약 체인 기준으로 정리했고, 일반 `workflow`는
+  `authoring workflow`로 좁혔다.
+- Output Checklist에 확인한 사실/추론/의견/제안 구분, 숨은 규칙 노출, skeleton fence 누출 방지를 추가했다.
+
+**검토 경위:**
+
+- @user 요청으로 subagent가 `logs/2026-06-25-docs-하위-지침서와-Obsidian-템플릿-논의.md`,
+  이 로그, stage8 로그, log skill과 maintenance reference, `logs/AGENTS.md`, root `AGENTS.md`,
+  `docs/AGENTS.md`, `docs/documentation-system.md`를 읽고 비판 리뷰했다.
+- 수용한 핵심 지적: feedback 기록 owner 모호성, SKILL.md 과확장 위험, docs-skill 로그 stale 위험,
+  Context Read Path stop criteria 부족, 구조 모델의 owner guideline override 위험, fact/inference/opinion/proposal
+  보고 구분 누락.
+
+**남은 결정:**
+
+- 현재는 `SKILL.md` 단일 파일에 유지한다. 향후 더 길어지거나 사례가 누적되면 reference 분리 여부를 다시 판단한다.
+- 이 로그의 종료 여부는 stage8 W5의 나머지 child AGENTS 완료 및 2026-06-25 docs 하위 지침서 논의 로그 closeout과 함께
+  재검토한다.
+
+## 2026-06-26 · document-structure-review examples reference 추가
+
+@user 요청으로 `.agents/skills/document-structure-review/references/EXAMPLE.md`를 추가했다. 이 reference는 현재
+프로젝트 원문 로그나 repo path를 보존하지 않고, `docs/decisions/documentation-system-location.md`와 2026-06-25/26
+문서 지침 논의에서 나온 판단을 portable 사례로 추상화한다.
+
+**반영:**
+
+- `SKILL.md` 도입부에 구조 문제의 종류나 적합한 rule shape가 애매하면 `references/EXAMPLE.md`를 읽는 routing 문장을
+  추가했다.
+- `EXAMPLE.md`에는 misfiled owner map, Evidence/Sources sibling 관계, tool guidance의 identity 흡수,
+  index/slice sub-kind, 문서 type별 drift 의미 차이, skeleton 예시의 hidden rule, 반복 작성 문제가 authoring guide
+  개선 후보가 되는 사례를 넣었다.
+
+**SKILL.md 추가 반영 검토:**
+
+- 사례들은 현재 `SKILL.md`의 `Context Read Path`, `Concept Placement`, `Structure Smells`, `Comparative Guideline Review`,
+  `Authoring Guideline Improvement`로 대부분 설명된다.
+- 다만 `Structure Smells`에 `hidden sub-kind`(index/slice처럼 한 문서군 안 구조적 sub-kind가 숨어 있는 문제)와
+  `copied section meaning`(sibling guideline의 같은 heading 의미를 문서 role 재판정 없이 복사하는 문제)을 추가할지
+  검토 후보로 남긴다. 현재는 `Comparative Guideline Review`와 `EXAMPLE.md`가 설명하므로 즉시 반영 필수는 아니다.
+
+**검증:**
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md .agents/skills/document-structure-review/references/EXAMPLE.md`
+  → exit 0 (PASS).
+- `python3 /Users/lunaxislu/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/document-structure-review`
+  → local Python에 `yaml` 모듈이 없어 `ModuleNotFoundError: No module named 'yaml'`로 중단. 기존과 같은 환경 문제이며
+  quick validation 통과로 보지 않는다.
+
+**기록 범위:**
+
+- @user 지시에 따라 이 변경은 이 docs-skill 로그에만 기록하고, stage8 작업 로그에는 기록하지 않는다.
+
+## 2026-06-26 · EXAMPLE.md 기반 Structure Smells 후속 반영
+
+@user 요청으로 `references/EXAMPLE.md` 사례에서 도출한 추가 smell 후보 2건을
+`.agents/skills/document-structure-review/SKILL.md`의 `Structure Smells`에 반영했다.
+
+**반영:**
+
+- `hidden sub-kind`: 같은 문서군 안에 index, slice, router, standalone처럼 서로 다른 구조 subtype이 있는데
+  skeleton이나 규칙이 단일 형태만 전제하는 문제.
+- `copied section meaning`: sibling guideline의 같은 heading이나 섹션 순서를 문서 role 재판정 없이 복사해,
+  문서 type마다 달라야 하는 의미가 흐려지는 문제.
+
+**기록 범위:**
+
+- @user 지시에 따라 docs-skill 로그에만 기록하고 stage8 작업 로그에는 기록하지 않는다.
+
+## 2026-06-26 · document-structure-review scenario harness 반영 배경
+
+**최근 추가한 내용:**
+
+- `Structure Smells`에 `abstract destructive gate`
+- `Rule Shape`에 `verification harness`
+- 새 섹션 `Scenario Harnesses`
+- `Output Checklist`에 고위험 변경 harness 점검 항목
+
+**추가 배경:**
+
+`docs/decisions/AGENTS.md`를 정리하면서 기존 decision 문서를 변경·삭제하는 규칙을 논의했다. 처음에는 아래처럼 단순한 문장이 있었다.
+
+```md
+- 더 이상 load-bearing rationale이 아니고 live reference도 없으면 삭제한다.
+```
+
+이 문장은 방향은 맞지만, agent가 `load-bearing rationale`과 `live reference`를 감으로 해석할 위험이 있었다. 특히:
+
+- `load-bearing rationale`이 어떤 owner 문서를 이해하거나 안전하게 수정하는 데 필요한 WHY인지 명확하지 않았다.
+- `live reference`가 현재 owner 문서, active plan, open log, README/AGENTS, code/test 주석, decided 로그 provenance 중 무엇을 포함하는지 불명확했다.
+- 경계 케이스에서 agent가 decision 삭제를 너무 쉽게 하거나, 반대로 decided 로그 provenance까지 live로 봐서 아무것도 삭제하지 못할 위험이 있었다.
+- Compatibility stub / Superseded note 같은 새 lifecycle mechanism을 도입할지 논의했지만, corpus에 그런 패턴이 없어 도입하지 않는 쪽으로 정리했다.
+
+그래서 `docs/decisions/AGENTS.md`에는 repo-specific `decision-change harness`를 넣었다. 구조는:
+
+- 대상 decision과 연결 owner 문서를 확인한다.
+- owner 경계나 현재 권위 판단이 흔들리면 `docs/AGENTS`와 `documentation-system`을 확인한다.
+- 보수 업데이트 / 새 decision / 삭제 후보로 먼저 분류한다.
+- 삭제 후보는 WHY 복원 가능성, live reference 부재, decided provenance 참조 제외를 확인한다.
+- 불확실하면 삭제하지 않고 decision 유지, owner 보강, 새 decision 작성, 사용자 확인으로 처리한다.
+
+이 사례에서 일반화한 패턴은 다음이다.
+
+> 삭제·대체·archive·status 전환처럼 되돌리기 어려운 durable knowledge 변경은 `obsolete`, `더 이상 중요하지 않음`, `참조 없음` 같은 추상 판정어만으로 허용하지 말고, read path + scenario classification + reference classification + fallback을 갖춘 harness로 표현해야 한다.
+
+이 portable 패턴을 `.agents/skills/document-structure-review/SKILL.md`에 추가했다. repo-specific decision 규칙 자체는 skill에 박지 않고, 고위험 문서 lifecycle 변경을 검토할 때 필요한 일반 구조로만 증류했다.
+
+**검증:**
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md docs/decisions/AGENTS.md` → exit 0 (PASS).
+
+## 2026-06-26 · document-structure-review destructive-change gate 리뷰 반영
+
+**이전 반영안(Claude 리뷰 전):**
+
+`docs/decisions/AGENTS.md`의 decision 삭제 규칙 검토에서 나온 portable 패턴을 처음에는 아래 4개 변경으로 `.agents/skills/document-structure-review/SKILL.md`에 반영했다.
+
+1. `Structure Smells`에 `abstract destructive gate` 추가.
+
+```md
+- `abstract destructive gate`: 삭제, 대체, archive, status 전환처럼 되돌리기 어려운 변경을
+  "더 이상 중요하지 않음", "참조 없음", "obsolete" 같은 추상어만으로 허용하고, 확인해야 할
+  문서군·참조 범위·불확실할 때의 fallback을 드러내지 않는다.
+```
+
+2. `Rule Shape`에 `verification harness` 추가.
+
+```md
+- `verification harness`: 삭제, 대체, archive, status 전환처럼 고위험 문서 변경에서 사용한다.
+  읽을 계약, 분기할 시나리오, 확인해야 할 참조 종류, 불확실할 때의 fallback을 함께 둔다.
+```
+
+3. 새 H2 `Scenario Harnesses` 추가.
+
+```md
+## Scenario Harnesses
+
+작성 지침이 삭제, 대체, archive, status 전환처럼 durable knowledge의 lifecycle을 바꾸는 행동을
+허용한다면, agent가 추상어를 감으로 해석하지 않도록 scenario harness를 둔다.
+
+- 먼저 ancestor 계약, owner map, target 문서, target이 링크하거나 링크받는 owner 문서처럼 판단을
+  바꿀 수 있는 read path를 적는다.
+- 가능한 결과를 분류한다. 예: 보수적 수정, 새 문서 작성, owner 문서 보강, 삭제/archival 후보,
+  사용자 확인 필요.
+- 각 결과가 성립하기 위한 확인 질문을 적는다. 질문은 "load-bearing인가?"처럼 추상어만 두지
+  말고, 어떤 현재 문서가 이해·검증·수정 가능하게 남는지, 어떤 trade-off나 rejected alternative가
+  사라지는지, 어떤 참조가 현재 작업이나 권위 판단에 영향을 주는지로 풀어 쓴다.
+- 참조 범위를 분류한다. 현재 owner 문서, active work, entry/contract 문서, code/test comment처럼
+  현재 판단에 영향을 주는 참조와, provenance-only history/log/archive 참조를 구분한다.
+- 하나라도 불확실하면 destructive path를 선택하지 않게 한다. fallback은 보류, 사용자 확인, owner
+  문서 보강, 새 문서 작성, 더 좁은 보수적 수정 중 하나로 둔다.
+- harness는 프로젝트별 로그, plan, 문서 taxonomy 이름을 직접 소유하지 않는다. 구체 경로와 상태
+  이름은 해당 프로젝트의 owner guideline이 채운다.
+```
+
+4. `Output Checklist`에 아래 항목 추가.
+
+```md
+- 삭제, 대체, archive, status 전환처럼 고위험 변경을 허용한다면 추상 판정어 대신 scenario
+  harness와 불확실할 때의 fallback이 있는가?
+```
+
+**Claude 리뷰 수령:**
+
+@user가 Claude 리뷰를 공유했다. 리뷰는 파일 수정 없이 `SKILL.md` 추가분 4개와 `references/EXAMPLE.md`를 확인한 구조 리뷰였다.
+
+확인된 주요 finding:
+
+- High: `Scenario Harnesses` H2가 skill 자기 원칙과 충돌한다. `Authoring Guideline Improvement`는 새 지침/read path 증가를 먼저 점검하라고 하는데, `Scenario Harnesses` 6개 bullet 중 상당수가 기존 섹션의 재진술이었다.
+  - read path bullet은 `Context Read Path`가 이미 소유한다.
+  - 가능한 결과 분류는 `Rule Shape`의 `decision table`과 겹친다.
+  - 추상어를 확인 질문으로 풀라는 내용은 `hidden or implicit authority`와 `abstract destructive gate` smell이 설명한다.
+  - 프로젝트별 이름을 직접 소유하지 말라는 내용은 `Scope / Non-Goals`와 `Owner And Scope`가 이미 소유한다.
+- Medium: `verification harness`는 다른 rule shape와 비대칭이다. 다른 shape는 1줄 항목인데 `verification harness`만 rule shape 항목과 별도 H2를 모두 가져 duplicated ownership 신호가 있다. 또한 harness는 rule shape라기보다 procedure에 가깝고, 이름도 test/tool-oriented한 메타포로 튄다.
+- Medium: `abstract destructive gate`는 `hidden or implicit authority`의 한 형태로 보일 수 있으므로, 별도 smell로 둘 거면 고유 속성인 비가역성·고위험성을 설명해야 한다.
+- Low: "삭제, 대체, archive, status 전환" 목록이 smell/rule shape/H2/checklist에 4회 반복된다.
+- Low: Output Checklist 항목이 `scenario harness`라는 섹션명에 결합되어, 섹션을 흡수·개명하면 함께 수정해야 한다.
+- Info: `references/EXAMPLE.md`에는 아직 destructive gate/harness 대응 사례가 없고, 사례 7의 rule shape 목록에도 새 shape가 없다. 이번 변경 scope에 반드시 포함할 필요는 없으나 drift 후보로 볼 수 있다.
+
+Claude가 유지 권장한 핵심:
+
+- 현재-영향 참조와 provenance-only 참조를 구분하는 규칙은 신규·고유하며, `docs/decisions/AGENTS.md`의 decision 삭제 판단에서 실제로 유용했다.
+- 불확실할 때 비파괴 fallback을 두는 규칙도 신규·고유하며 high-stakes guard의 핵심이다.
+- `고위험` 한정어가 있어 모든 문서 변경에 과적용될 위험은 낮다.
+
+Claude의 권고:
+
+- 별도 H2 `Scenario Harnesses`를 제거한다.
+- `verification harness` 대신 `reversible-change gate` 또는 유사한 이름으로 rule shape에 흡수한다.
+- `abstract destructive gate`에는 `hidden authority`와 다른 이유(비가역 변경이라 숨은 판정을 본문 절차로 끌어내는 우선순위가 높음)를 추가한다.
+- Output Checklist는 섹션명 `scenario harness`를 직접 가리키지 않고, 확인할 참조 범위와 불확실할 때의 비파괴 fallback이 있는지 묻도록 바꾼다.
+
+**@codex 판단:**
+
+- Claude 리뷰의 High/Medium finding은 타당하다고 판단했다.
+- 단, 이름은 `reversible-change gate`보다 `destructive-change gate`가 더 정확하다고 판단했다. 이유: 다루는 것은 되돌릴 수 있는 변경이 아니라 되돌리기 어려운 변경이며, 기존 smell `abstract destructive gate`와 문제/해법 쌍으로 읽히기 때문이다.
+- `Scenario Harnesses` H2는 제거하고, 핵심을 `loss 평가 + reference 평가 + 비파괴 fallback`으로 축약하는 방향을 채택했다.
+- `EXAMPLE.md` 사례 추가는 유용하지만 이번 요청의 필수 반영 범위에서는 제외했다. 후속 drift 후보로 남길 수 있다.
+
+**최종 수정(SKILL.md 반영):**
+
+1. `abstract destructive gate` 문안을 아래처럼 보강했다.
+
+```md
+- `abstract destructive gate`: 되돌리기 어려운 변경을 "더 이상 중요하지 않음", "참조 없음",
+  "obsolete" 같은 추상어만으로 허용하고, 확인할 문서군·참조 범위·fallback을 드러내지 않는다.
+  hidden authority와 달리 변경이 비가역이라, 숨은 판정을 본문 절차로 끌어내는 우선순위가 높다.
+```
+
+2. `verification harness`를 삭제하고 `destructive-change gate`로 교체했다.
+
+```md
+- `destructive-change gate`: 삭제·대체·archive·status 전환처럼 되돌리기 어려운 변경에 쓴다.
+  추상 판정어 대신 두 가지를 확인하게 한다: 이 문서로만 복원되는 knowledge가 다른 owner나
+  code에 남는가, 그 문서를 가리키는 참조가 현재 권위·작업·구현용인가 provenance-only인가.
+  하나라도 불확실하면 비파괴 fallback(보류, 보강, 새 문서, 사용자 확인)으로 보낸다.
+```
+
+3. H2 `Scenario Harnesses` 섹션 전체를 삭제했다. 삭제 이유는 해당 섹션의 대부분이 기존 `Context Read Path`, `Rule Shape`, `Scope / Non-Goals`, `Owner And Scope`를 재진술했고, skill 자신의 "새 섹션/read path 증가 점검" 원칙과 맞지 않았기 때문이다.
+
+4. Output Checklist 항목을 아래처럼 수정했다.
+
+```md
+- 삭제·대체·archive·status 전환 같은 고위험 변경을 허용한다면, 추상 판정어 대신 확인할
+  참조 범위와 불확실할 때의 비파괴 fallback이 본문에 있는가?
+```
+
+**검증:**
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+
+**남은 후보:**
+
+- `references/EXAMPLE.md`에 destructive-change gate 사례를 추가할지 여부는 아직 결정하지 않았다. Claude 리뷰상 미세 drift 후보지만, 이번 반영 범위에는 포함하지 않았다.
+
+## 2026-06-26 · document-structure-review EXAMPLE destructive-change gate 사례 추가
+
+**반영:**
+
+Claude 리뷰에서 `references/EXAMPLE.md`에 destructive-change gate 대응 사례가 없고, 사례 7의 rule shape 목록에도 새 shape가 빠져 있다는 Info finding이 있었다. @user 요청으로 `.agents/skills/document-structure-review/references/EXAMPLE.md`에 portable 사례를 추가했다.
+
+- 사례 7의 rule shape 목록에 `destructive-change gate`를 추가했다.
+- 새 사례 `8. Destructive Change Needs A Gate`를 추가했다.
+- 사례는 특정 repo path나 decision 문서 이름을 쓰지 않고, 오래된 owner 문서 삭제 조건이 "더 이상 중요하지 않음"과 "참조 없음" 같은 추상어에 머무는 상황으로 일반화했다.
+- Preferred response는 knowledge-loss 질문으로 바꾸기, active/current 영향 참조와 provenance-only 참조 구분, 필요 시 owner 보강·reference repoint, 불확실하면 비파괴 fallback으로 보내기를 다룬다.
+
+**검증:**
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md .agents/skills/document-structure-review/references/EXAMPLE.md` → exit 0 (PASS).
+
+## 2026-06-27 · document-structure-review broader-by-absorption 반영
+
+@user가 external repo 조사와 @claude/@codex 검토를 종합해 `document-structure-review` skill에 broader-by-absorption 방식으로 반영하라고 승인했다.
+
+**반영(SKILL.md):**
+
+- `Review Loop`에 변경 대상을 문제 문서로 단정하지 않고, 반복 smell이 parent/ancestor 경계에서 발생하면 `local-only` / `ancestor-only` / `both` / `no-change` 후보를 분리하는 절차를 추가했다.
+- 같은 문단에 parent/ancestor 계약은 기본 constraint이되 axiom은 아니며, ancestor 변경은 영향권·증거 기준이 높고 skill이 단독 override하지 않으며 해당 owner change 절차를 따른다는 gate를 추가했다.
+- `Structure Smells` 트리거에 "없어도 될 것 같다", "다른 owner가 소유해야 한다" 유형을 추가하고, `over-provisioned structure` smell을 추가했다.
+- `Rule Shape`의 `negative rule` 설명에 적용 대상 claim이 모호하면 claim type classification이나 decision table로 올린다는 guard를 추가했다.
+- `Guideline Structure Models`에 skeleton/default section은 비용이며, 각 default section은 delete/absorb/optional/invariant-only 후보를 먼저 통과해야 한다는 원칙과 모델 선택 질문을 추가했다.
+- `Authoring Guideline Improvement`에 skeleton/template/owner boundary/ancestor contract처럼 구조적 영향이 있는 변경 후보가 갈릴 때만 1-3개 concrete authoring scenario로 비교한다는 조건부 절차를 추가했다.
+- `Output Checklist`에 ancestor 자체가 stale/overbroad/misplaced일 가능성, 4후보 비교, negative instruction vs classification 확인 항목을 추가했다.
+
+**반영(EXAMPLE.md):**
+
+- 새 portable 사례 `9. Ancestor Contract May Be The Defect`를 추가했다.
+- 새 portable 사례 `10. Over-provisioned Skeleton Section`을 추가했다.
+- `references/EXAMPLE.md`는 현재 git 기준 untracked 파일이므로, 이후 커밋 시 새 파일 추가 대상으로 포함해야 한다.
+
+**검증:**
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md .agents/skills/document-structure-review/references/EXAMPLE.md` → exit 0 (PASS).
+
+## 2026-06-27 · broader-by-absorption 패치 @claude 리뷰 + Review Loop 트리거 보정
+
+@claude가 Codex의 broader-by-absorption 적용본(Review Loop step4·Structure Smells·Rule Shape·Guideline Structure
+Models·Authoring Guideline Improvement·Output Checklist 흡수 + EXAMPLE 9·10)을 파일 기준으로 리뷰했다. 판정: 흡수
+품질 높음·신규 섹션 0·product/AGENTS 리뷰와 정합(product=invariant-only는 over-provisioned 회피, roadmap=section
+contract는 실재·고위험이라 정당, taxonomy 불일치=no-change 후보). HIGH 없음.
+
+**반영(LOW-MEDIUM 1건):**
+
+- `SKILL.md` Review Loop step 4 트리거 확장 — "parent/ancestor 경계에서 반복되면" → "반복되거나 smell이 ancestor
+  계약 자체에 위치하면". 근거: ancestor 내부 `contradiction`(예: taxonomy 자기모순)은 단일발생이라 반복 게이트에 안
+  걸리던 under-trigger 해소 + Output Checklist의 "ancestor 자체가 결함일 가능성"(반복 조건 없음)과 정렬. 고신뢰
+  신호라 "parent 쉽게 흔들기" 가드(단독 override 금지·증거기준↑·owner 절차)는 유지.
+
+**LOW polish 2건(@user 지시로 반영):**
+
+- (b) `SKILL.md` Guideline Structure Models "비용" 줄에 `(over-provisioned structure smell)` 명시 → smell↔비용규칙
+  어휘 링크 선명화.
+- (c) `EXAMPLE.md` 사례 10 smell tag에서 `hidden sub-kind` 제거(over-provisioning은 다중 subtype 충돌이 아님) →
+  `over-provisioned structure` + `copied section meaning`만 유지.
+
+**검증:** `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md .agents/skills/document-structure-review/references/EXAMPLE.md` → exit 0 (PASS, b·c 반영 직후 + LOW-MEDIUM 트리거 보정 포함).
+
+**다음:** document-structure-review skill thread는 이 보정으로 마감. 다음 작업 = stage8 W5 마지막 child `guides/AGENTS.md`(다음 세션에 @user 초안 제공 시 검토 렌즈 ①–⑤로 진행).

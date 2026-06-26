@@ -1,7 +1,7 @@
 ---
 topic: docs 하위 지침서와 Obsidian 템플릿 논의
 description: docs/ 하위 지침서 작성과 docs/ 하위 Obsidian 템플릿 도입 여부·범위·형식에 대한 토론 로그
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -934,3 +934,25 @@ Sources:
 - 그래도 `docs/AGENTS.md`는 한 번 더 검토한다.
 - 그 다음 나머지 각 하위 `AGENTS.md`를 다듬고 리팩토링한다.
 - 이후 정리된 지침을 `docs/` 하위 문서들에 적용한다.
+
+## 2026-06-27 · Closeout — stage8 W5 owner handoff 완료
+
+이 로그는 docs 하위 지침서와 Obsidian skeleton/template 방향을 논의한 입력 로그다. 실행과
+owner 반영은 `logs/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md` W5가 이어받았다.
+
+**최종 결과:**
+
+- `docs/AGENTS.md`와 child `docs/**/AGENTS.md` 초안·합의는 stage8 W5에서 owner 지침서로 반영됐다.
+- 반영된 owner 문서: `docs/AGENTS.md`, `docs/architecture/AGENTS.md`, `docs/specs/AGENTS.md`,
+  `docs/decisions/AGENTS.md`, `docs/product/AGENTS.md`, `docs/guides/AGENTS.md`.
+- guide status 합의(`Current`/`Target`/`Deferred`, section/claim status 기본 미사용)는
+  `docs/guides/AGENTS.md`에 반영됐다.
+- portable document-structure-review skill 반영과 남은 skill 판단은
+  `logs/2026-06-25-docs-skill.md`가 별도 owner로 소유한다.
+
+**남은 일 판단:**
+
+- 이 논의 로그 자체에 남은 질문이나 Work Item은 없다.
+- 정리된 지침을 실제 `docs/` owner 문서에 적용하는 후속 실행은 이 로그가 아니라 stage8 W6
+  (`logs/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md`)가 소유한다.
+- 따라서 이 로그는 `decided`로 닫는다.
