@@ -43,7 +43,7 @@ module과 process 경계, data flow와 내부 state 관리 원칙을 소유한�
 `docs/decisions/`는 여러 대안 중 선택한 결과와 아직 유효한 load-bearing rationale,
 trade-off와 재검토 조건을 소유한다. 선택 결과가 만든 제품 범위, contract, 구조나
 추진 상태 자체는 각각의 owner 문서에 반영한다. Decision 문서의 작성 규칙, 승격
-기준과 history 원본 처리 원칙은 [`docs/decisions/AGENTS.md`](../decisions/AGENTS.md)가
+기준과 history 원본 처리 원칙은 [`docs/decisions/AGENTS.md`](decisions/AGENTS.md)가
 소유한다.
 
 ### Guides
@@ -60,7 +60,7 @@ override하지 않고 실제 작업에 적용하는 방법을 설명한다.
 
 - `plans/`는 독립된 여러 단계가 있는 큰 작업이나 workstream의 단계 순서, 진행 상태와
   단계 로그 포인터를 소유한다. Plan 파일의 구조, 단계 문법과 유지 규칙은
-  [`plans/AGENTS.md`](../../plans/AGENTS.md)가 소유한다.
+  [`plans/AGENTS.md`](plans/AGENTS.md)가 소유한다.
 - `research/`는 외부 링크, 아이디어, repository와 문서에 대한 미검증 조사 입력을
   소유한다.
 - `spikes/`는 research나 구현 중 발견한 가능성과 기술적 불확실성을 검증하는 실험을
@@ -77,16 +77,16 @@ Research와 spike 결과는 owner 문서, code 또는 tests에 반영되고 검�
 문서 전체에 적용되는 전역 우선순위는 두지 않는다. 질문의 종류에 따라 다음 owner를
 따른다.
 
-| 질문 | Owner |
-| --- | --- |
-| 제품 목적, 범위, 원칙 | `product` |
-| 외부 동작, interface, contract | `specs` |
-| 내부 구조, 책임, flow | `architecture` |
-| 여러 대안 중 내린 선택과 유효한 근거 | `decisions` |
-| 우선순위와 추진 순서 | `roadmap` |
-| 실제 구현의 현재 동작 | code and tests |
-| 현재 큰 작업이나 workstream의 단계와 진행 상태 | `plans` |
-| agent 작업 범위와 행동 규칙 | 해당 scope의 `AGENTS.md` |
+| 질문                                           | Owner                    |
+| ---------------------------------------------- | ------------------------ |
+| 제품 목적, 범위, 원칙                          | `product`                |
+| 외부 동작, interface, contract                 | `specs`                  |
+| 내부 구조, 책임, flow                          | `architecture`           |
+| 여러 대안 중 내린 선택과 유효한 근거           | `decisions`              |
+| 우선순위와 추진 순서                           | `roadmap`                |
+| 실제 구현의 현재 동작                          | code and tests           |
+| 현재 큰 작업이나 workstream의 단계와 진행 상태 | `plans`                  |
+| agent 작업 범위와 행동 규칙                    | 해당 scope의 `AGENTS.md` |
 
 `product`, `specs`, `architecture`, `decisions`, `roadmap`과 `plans`는 각 scope에서
 무엇이어야 하는지에 대한 intended owner다. Code와 tests는 무엇을 해야 하는지를

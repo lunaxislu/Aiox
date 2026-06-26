@@ -8,7 +8,7 @@ pointer·점검은 `references/work-items-rules.md`가 소유한다.
 ## Owner Handoff
 
 로그의 확정 결과로 현재 권위 내용을 바꿔야 한다면 프로젝트의
-[documentation taxonomy owner map](../docs/architecture/documentation-system.md)에
+[documentation taxonomy owner map](../docs/documentation-system.md)에
 따라 책임 문서, agent 계약, code 또는 test에 반영한다.
 
 - 책임 문서나 code의 현재 내용을 로그에 새로 복사하지 않는다.
@@ -87,7 +87,7 @@ bug/blocker, stale snapshot이 섞여 있을 수 있다. 각 섹션을 validatio
 ### Legacy Source Absorption Map
 
 `prd/`·`plan/`·`plans/post-mvp/`처럼 documentation taxonomy
-(`docs/architecture/documentation-system.md`)에 owner가 없거나 없었던 legacy 다중 폴더는
+(`docs/documentation-system.md`)에 owner가 없거나 없었던 legacy 다중 폴더는
 여러 package(W8 specs, W9 roadmap/release, W10 split)가 나눠 흡수한다. 무엇이 흡수됐고
 무엇이 삭제 후보였는지 흩어지지 않도록 surviving source map으로 추적한다.
 

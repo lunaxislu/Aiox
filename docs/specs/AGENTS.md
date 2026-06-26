@@ -31,6 +31,6 @@ description: Rules for agents reading, writing, and splitting specification docu
 
 ## 4. Agent 및 Harness 확인 절차
 - **작성 전**: Before adding or changing contract text, check `docs/product/product.md` and `docs/product/roadmap.md` to ensure the spec does not expand product scope or imply roadmap priority that those owners have not approved.
-- **작성 후**: `docs/architecture/documentation-system.md`의 권한 모델을 위반하지 않았는지 교차 검증하십시오.
+- **작성 후**: `docs/documentation-system.md`의 권한 모델을 위반하지 않았는지 교차 검증하십시오.
 - **Decision 참조**: 왜 이 contract가 생겼는지 문서만으로 복원되지 않는 경우에만 `Related decision: docs/decisions/<slug>.md`를 둔다.
 - **Roadmap 참조**: 우선순위·release timing을 암시하는 경우에만 `Roadmap: docs/product/roadmap.md` 형태로 선택적으로 둔다.

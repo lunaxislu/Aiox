@@ -21,7 +21,7 @@ Owner별 의미 규칙은 하위 `AGENTS.md`가 추가로 소유한다.
 - 같은 지식을 여러 문서에 복사하지 않는다.
 - 내용이 다른 owner에 속하면 해당 owner 문서로 옮기거나 링크한다.
 - 문서 간 충돌이 있으면 전체 우선순위가 아니라 질문 종류별 owner를 따른다.
-- owner 경계는 [[documentation-system]] (`docs/architecture/documentation-system.md`)를
+- owner 경계는 [[documentation-system]] (`docs/documentation-system.md`)를
   따른다.
 
 ## Obsidian Links

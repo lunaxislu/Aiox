@@ -3,7 +3,7 @@
 이 파일은 이 repo에서 `plans/`의 plan 문서를 작성하고 유지할 때 적용하는 계약이다.
 plan을 만들지 단일 로그로 둘지의 선택과 진입·재개 순서는 root `AGENTS.md`, `plans/`가
 소유하는 정보 경계(구현 작업의 단계·실행 순서·진행 상태)와 conflict 규칙은
-[documentation taxonomy owner map](../docs/architecture/documentation-system.md),
+[documentation taxonomy owner map](../docs/documentation-system.md),
 단계 로그의 작성·종료는 log skill이 소유한다. 이 파일은 그 위에서 plan 파일의 구조,
 단계 문법, 유효성과 유지 규칙만 정의한다.
 

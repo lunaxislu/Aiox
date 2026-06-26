@@ -7,7 +7,7 @@
 
 - 진입과 재개 순서, plan과 로그의 관계: `AGENTS.md`
 - plan 작성 형식, 단계 문법, 유효성과 유지: `plans/AGENTS.md`
-- 문서 taxonomy, 영역별 owner와 충돌 해결: `docs/architecture/documentation-system.md`
+- 문서 taxonomy, 영역별 owner와 충돌 해결: `docs/documentation-system.md`
 - 로그 생성·작성, Work Items, pointer, 상태 의미와 종료 조건: log skill
   (`.agents/skills/log/SKILL.md`와 `references/`)
 - 구조 검색·append·상태 guard 보조 도구: log skill의 `.agents/skills/log/scripts/log`
