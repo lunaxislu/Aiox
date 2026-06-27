@@ -46,8 +46,8 @@ Principles:
   모바일/원격 client가 지원하는 connector와 secure tunnel을 이용해 local aiox MCP
   surface에 도달하는 가설이다. 실제 mobile client 지원 범위, 인증, background lifecycle,
   user consent를 spike하기 전에는 "신규 프로토콜 없이 가능" 또는 제품 기능으로 약속하지
-  않는다. L1은 사내망 daemon federation, L3는 외부 vendor/Google A2A bridge이며 vendor
-  표면 의존성이 더 크다. 전부 동시에 진행하지 않는다.
+  않는다. L1은 사내망 daemon federation, L3는 외부 vendor 또는 A2A Protocol bridge이며 외부
+  integration surface 의존성이 더 크다. 전부 동시에 진행하지 않는다.
 
 Current implementation caveat: the local control plane is implemented with a
 Node `net` socket server/client around a resolved socket path

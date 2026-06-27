@@ -1,10 +1,16 @@
 # Product Roadmap
 
+Related:
+
+- [[docs/product/product]]
+
+Status: Current
+
 이 문서는 aiox의 공개 전 release gate, 공개 이후 phase, 우선순위와 gate 통과 기준을
 소유한다. 구현 checklist, 세부 task 상태와 cutover 절차는 `plans/`의 실행 plan과 code/test
 evidence가 소유한다.
 
-Roadmap의 제품 계약은 **로컬 Codex<->Claude 안정 왕복, terminal UX, daemon 안정화, 공개
+현재 승인된 추진 순서는 **로컬 Codex<->Claude 안정 왕복, terminal UX, daemon 안정화, 공개
 위생, npm packaging과 macOS/Linux/WSL2 최종 인증을 통과한 뒤 npm publish와 GitHub 공개를
 진행하고, 이후 채택기/확장기/원격기 phase를 계속 개발하는 것**이다.
 
@@ -125,7 +131,7 @@ Phase 2 (expansion)      ingress generalization, state.ts decomposition,
                          extra view drivers, durable store + mailbox replay,
                          native Windows community path
 Phase 3 (remote)         L2 mobile remote MCP exposure -> L1 internal federation
-                         -> L3 Google A2A bridge
+                         -> L3 A2A Protocol bridge
 ```
 
 Phase 1 focuses on adoption friction, diagnostics and human-controlled operation after public release.
@@ -137,12 +143,14 @@ generalization, `state.ts` decomposition, and pair-to-N-agent route generalizati
 support, durable replay and additional terminal drivers belong here, not in G2.
 
 Phase 3 starts after the envelope and daemon model are transport-independent enough to extend beyond the
-single-machine release path. Remote MCP, internal federation and Google A2A bridging remain ordered
+single-machine release path. Remote MCP, internal federation and A2A Protocol bridging remain ordered
 follow-ups, not Phase 0 promises.
 
 ## Current Execution Candidates
 
-The current plan-side candidates are retained only where they map to the final gates.
+> [!note] 임시 매핑
+> 아래 표는 기존 실행 plan과 release gate 사이의 임시 mapping이다. 장기 roadmap
+> 구조나 실행 진행 상태의 기준으로 사용하지 않는다.
 
 | Candidate | Plan | Roadmap mapping |
 | --- | --- | --- |
@@ -208,5 +216,10 @@ represented here only as gate/phase pressure:
 - Phase 2 carries durable-store hazards such as stable daemon identity and reply idempotency that become
   release blockers only when durable persistence is promoted.
 
-Detailed file locations, severity labels and the dated audit snapshot remain W5 evidence/decision/log
-candidates. They are intentionally excluded from this product roadmap.
+Detailed file locations, severity labels and the dated audit snapshot are intentionally excluded from
+this product roadmap. That snapshot was reconciled against the then-current implementation during
+release-roadmap validation; this roadmap retains only the resulting gate/phase pressure.
+
+Sources:
+
+- `logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md:500`

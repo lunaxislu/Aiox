@@ -43,7 +43,7 @@ archive, delete 판정한다. 목표는 파일 수 축소가 아니라, 각 문�
     → Obsidian Graph 검증. 상세는 stage 7 로그 "W1 closeout" 블록.
   - required-read: `history/59` Atlas 논의 digest(사용자 문제·MCP name mismatch 검증 사례·합의된 방향 8개·후속 설계 입력) — `logs/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md` "history/59 Atlas digest" 섹션(`:426-455`). 원문 `history/59`는 stage 6 W4에서 이 digest로 대체 후 물리 삭제됨. Atlas 설계 착수 전 이 digest를 읽는다.
 - [>] Atlas 반영·drift 재검토 -> `logs/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md`
-- [ ] `plans/post-mvp*` 삭제 disposition (Obsidian/Atlas stage 완료 후) — `plans/post-mvp*`의 실행 내용을 잇는 단일 A2A 실행 plan(별도 workstream, Atlas 후 작성)이 생긴 뒤에만: `docs/product/roadmap.md` 147-152 sub-plan 링크를 successor로 repoint → `plans/post-mvp*` 물리 삭제 → `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` 해당 row 최종 disposition 확정. async-petting-hoare 운영 라인은 별도 보존(W9 closeout handoff 참조). (근거: W9 결정 2026-06-22; W9 child log W3 이관)
+- [ ] `plans/post-mvp*` 삭제 disposition (Obsidian/Atlas stage 완료 후) — `plans/post-mvp*`의 실행 내용을 잇는 단일 A2A 실행 plan(별도 workstream, Atlas 후 작성)이 생긴 뒤에만: `docs/product/roadmap.md`의 `Current Execution Candidates` 표에 있는 sub-plan 링크를 successor로 repoint → `plans/post-mvp*` 물리 삭제 → `logs/2026-06-21-workspace-reset-legacy-source-absorption.md` 해당 row 최종 disposition 확정. async-petting-hoare 운영 라인은 별도 보존(W9 closeout handoff 참조). (근거: W9 결정 2026-06-22; W9 child log W3 이관)
 - [ ] 임시 AGENTS.md 진입 계약 졸업 (legacy `plan/workspace-reset/` 자료는 W3-4에서 삭제 완료)
 
 ## Notes

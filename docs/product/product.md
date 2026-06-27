@@ -1,75 +1,107 @@
 # aiox Product
 
-이 문서는 aiox의 **제품 목적, 사용자, 범위, 경계**를 소유하는 권위 문서다. 무엇을 위한
-제품이고 누구의 어떤 문제를 푸는지, 무엇을 의도적으로 하지 않는지, 어떤 시장 경계와
-채택 가설 위에 서 있는지를 이 문서만 읽고 이해할 수 있어야 한다.
+Related:
 
-owner 경계:
+- [[docs/specs/aiox-a2a]]
+- [[docs/architecture/local-agent-runtime]]
+- [[docs/product/roadmap]]
 
-- **protocol/interface/state contract** (envelope, routing, delivery, adapter, compose,
-  capability, federation): `docs/specs/aiox-a2a.md`
-- **current/as-built architecture** (내부 구조, flow, trust boundary): `docs/architecture/`
-- **release gate·phase·우선순위**: `docs/product/roadmap.md`
+Status: Current
 
-## 정의
+이 문서는 aiox의 제품 목적, 사용자, 범위와 제품 원칙을 소유한다. Protocol contract, 내부
+runtime 구조, release 순서와 실행 task는 각각 specs·architecture·roadmap·plans가 소유하며
+여기에 복사하지 않고 링크한다.
+
+## Product Definition
 
 **aiox는 agent 간 협업을 위한 versioned communication protocol을 정의하고, 그 reference
 implementation으로 cross-vendor local-first daemon/runtime을 제공한다.**
 
-- **정의하는 것 (protocol contract):** vendor·location 무관 agent communication model.
-  envelope·address·route·delivery/mailbox·reply correlation·capability·policy·visibility가
-  agent 간 협업의 공통 언어다. (상세 계약은 `docs/specs/aiox-a2a.md`.)
-- **제공하는 것 (reference runtime):** local-first daemon/runtime. daemon이 control plane /
-  mailbox / router / state authority이고, adapter가 non-native agent runtime 차이를 흡수한다.
+- **Protocol:** vendor와 실행 위치에 종속되지 않는 agent 협업 의미를 정의한다. 상세 contract는
+  [[docs/specs/aiox-a2a]]가 소유한다.
+- **Reference runtime:** protocol을 현재 사용 가능한 agent runtime에 연결한다. 현행 내부 구조는
+  [[docs/architecture/local-agent-runtime]]가 소유한다.
 
-현재 외부 채택자는 없으므로 본 제품은 public ecosystem standard가 아니라
-**draft/internal protocol contract + reference definition**으로 취급한다.
+aiox는 자체 protocol과 reference implementation이며, public interoperability standard로
+포지셔닝하지 않는다.
 
-**불변식 — authority는 control plane에 잔류한다.** agent runtime이 envelope/identity/
-delivery/reply/route/capability/policy를 native로 1급 지원하게 되더라도, state/policy
-authority는 daemon(control plane)에 남는다. native 지원이란 agent가 프로토콜을 1급으로
-*말한다*는 뜻이지 authority가 agent로 옮겨간다는 뜻이 아니다.
+## User Value
 
-## Primary user와 jobs-to-be-done
-
-Primary user는 한 workspace에서 Codex와 Claude 같은 장기 실행 CLI agent를 함께 쓰며,
-agent 사이의 위임·토론·결과 회신을 사람이 복사/붙여넣기하지 않고 연결하려는 개발자다.
+Primary user는 한 workspace에서 Codex와 Claude 같은 장기 실행 CLI agent를 함께 사용하며,
+agent 사이의 위임·토론·결과 회신을 사람이 복사하거나 중계하지 않고 연결하려는 개발자다.
 
 초기 제품이 해결하는 jobs-to-be-done:
 
-- 두 agent를 이름으로 등록하고 directed route 또는 pair로 연결한다.
-- 한 agent가 다른 agent에게 새 요청을 보내고, 받은 agent가 원 요청으로 정확히 회신한다.
-- target이 일시적으로 준비되지 않아도 delivery 상태와 실패 이유를 잃지 않고 드러낸다.
-- 사람이 daemon/agent/route/message/delivery 상태를 점검하고 개입할 수 있다.
-- vendor별 CLI·plugin·session 차이는 adapter에 가두고 protocol 의미는 유지한다.
+- agent를 이름으로 등록하고 directed route 또는 pair로 연결한다.
+- 다른 agent에게 요청을 보내고 원 요청에 연결된 회신을 받는다.
+- target이 준비되지 않아도 delivery 상태와 실패 이유를 확인한다.
+- daemon, agent, route, message와 delivery 상태를 점검하고 개입한다.
+- vendor별 CLI·plugin·session 차이를 격리하면서 protocol 의미를 유지한다.
 
-## Cross-vendor local collaboration framing
+## Scope
 
-현재 Codex/Claude 같은 **non-native CLI agent**는 adapter와 TUI prompt injection으로
-연결된다. 이것은 **호환 계층(compat layer)일 뿐 목표 프로토콜이 아니다.** 장기 목표는
-agent runtime이 envelope·identity·delivery·reply·route·capability·policy·presentation을
-native 1급으로 지원하는 것이다.
+aiox의 초기 제품 경계는 **cross-vendor local collaboration**이다. 사용자가 이미 사용하는 서로
+다른 vendor의 장기 실행 CLI/TUI agent를 하나의 local control plane 아래에서 연결하고,
+vendor별 session·ingress·egress 차이는 adapter가 흡수한다.
 
-aiox의 초기 차별점은 사용자가 이미 쓰는 서로 다른 vendor의 장기 실행 CLI/TUI agent를
-하나의 local control plane 아래에서 연결하면서, vendor별 session·ingress·egress 차이를
-adapter로 흡수하는 데 있다. single-vendor 내부 협업은 각 vendor의 1st-party 기능
-(예: 같은 vendor 안의 team/subagent)이 빠르게 흡수하므로, aiox의 생존 공간은
-**cross-vendor local 협업**으로 좁아지는 동시에 명확해진다.
+Single-vendor 내부 협업은 각 vendor의 1st-party 기능이 담당하므로 aiox의 핵심 차별점으로 삼지
+않는다. aiox는 서로 다른 vendor의 agent가 공통 협업 의미를 유지하며 함께 작동하는 범위에
+집중한다.
 
-따라서 compose의 중심은 범용 package manager가 아니라 route/topology와 per-agent
-capability projection이고, federation의 중심은 새 public standard 경쟁이 아니라
-local protocol 의미를 유지한 bridge/transport 확장이다.
+## Product Principles
 
-## Google A2A naming/positioning 주의
+### Control-plane Authority
 
-> **외부 공개(GitHub/README) 시 표현 주의 (last verified 2026-06-11):** "A2A"는 Google이
-> Linux Foundation에 기증한 Agent2Agent Protocol의 고유명사로 널리 쓰인다. 외부
-> 표면에서는 "A2A standard를 정의한다" 대신 **"cross-vendor local agent collaboration
-> runtime"**으로 자기소개하고, a2a는 소문자 일반명사로만 쓴다. protocol 이름도 공개 전
-> Google A2A와 혼동되지 않게 확정한다. package/repository 이름의 실제 가용성은 publish
-> 직전에 registry별로 다시 확인한다.
+**State와 policy authority는 control plane에 잔류한다.** Agent runtime이 protocol을 native로
+지원하더라도 canonical identity, routing, delivery와 policy authority는 daemon에 남는다.
+Native 지원은 agent가 protocol을 일급으로 사용한다는 뜻이며, authority가 agent로 이동한다는
+뜻이 아니다.
 
-aiox와 Google A2A는 실질 영역이 다르다. Google A2A는 HTTP 기반 opaque remote agent 간
-task 위임(enterprise)에 가깝고, aiox는 local-first에서 사용자가 이미 구독한 CLI/TUI
-agent를 잇는 control plane + compat layer다.
+### Adapter-first Adoption
 
+Vendor 협약이나 vendor-native 지원이 없어도 aiox는 adapter 기반 제품으로 성립한다. 제품 가치는
+vendor의 공식 surface를 aiox가 connector로 연결하는 데서 시작한다.
+
+- **aiox-owned:** aiox가 vendor의 공식 surface 위에 connector를 구현한다.
+- **upstream-enabled:** vendor가 안정적인 integration surface를 제공하면 aiox adapter가 이를
+  protocol에 연결한다.
+- **vendor-native:** vendor runtime이 protocol을 직접 지원한다.
+
+Upstream-enabled와 vendor-native는 선택 가능한 발전 경로이며 초기 제품의 필수 전제가 아니다.
+연결 방식, capability tier와 degradation contract는 [[docs/specs/aiox-adapter-model]]이 소유한다.
+
+### Terminal-first Interaction
+
+aiox는 사용자가 이미 사용하는 vendor-native CLI/TUI를 primary interaction surface로 유지한다.
+협업 기능을 제공하기 위해 기존 terminal experience를 aiox-owned terminal emulator로 대체하지
+않는다. Terminal session 배치와 비자동 환경 fallback의 contract 및 도입 순서는
+[[docs/specs/aiox-compose-contract]]와 [[docs/product/roadmap]]이 소유한다.
+
+## Product Direction
+
+[Status: Target] 아래는 현재 scope를 넘어서는 승인된 목표 방향이다. 구체 contract, 내부 설계와
+단계 순서는 각각 specs·architecture·roadmap이 소유한다.
+
+- **Declarative collaboration topology:** project의 agent 협업 topology를 선언으로 구성한다.
+  Docker Compose와 유사한 사용 모델을 참고하지만 container, service와 replica orchestration은
+  제품 범위가 아니다. Contract는 [[docs/specs/aiox-compose-contract]]가 소유한다.
+- **Local-first remote expansion:** local collaboration에서 시작해 remote와 federation으로 확장할
+  수 있는 방향을 보존한다. 확장 contract는 [[docs/specs/aiox-federation-remote]]가 소유한다.
+
+## External Positioning
+
+A2A는 외부 agent interoperability standard이고, aiox의 primary focus는 사용자가 이미 쓰는
+CLI/TUI agent를 연결하는 local-first runtime과 control plane이다. 외부에서는 aiox를
+**cross-vendor local agent collaboration runtime**으로 설명하고, Linux Foundation A2A와 경쟁하는
+새 standard로 표현하지 않는다. 외부 interoperability가 필요해지면 A2A는 bridge 대상이 될 수 있다.
+
+> [!warning] 외부 공개 표현 주의
+> "A2A"는 Google이 Linux Foundation에 기증해 vendor-neutral 거버넌스로 호스팅되는 Agent2Agent
+> Protocol의 확립된 명칭이다(last verified 2026-06-27). 외부 표면에서 "A2A standard를
+> 정의한다"고 하지 않고 위 자기소개를 사용한다. `a2a`를 일반명사로 쓸 때도 혼동 가능성을
+> 확인하고, protocol·package·repository 이름은 공개 직전에 다시 검증한다.
+
+Sources:
+
+- [Google Cloud donates A2A to Linux Foundation](https://developers.googleblog.com/en/google-cloud-donates-a2a-to-linux-foundation/)
+- [A2A Protocol adoption update, April 2026](https://www.linuxfoundation.org/press/a2a-protocol-surpasses-150-organizations-lands-in-major-cloud-platforms-and-sees-enterprise-production-use-in-first-year)

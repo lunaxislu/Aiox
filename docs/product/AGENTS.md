@@ -19,11 +19,14 @@ description: docs/product/ (제품 목적·범위·원칙·roadmap) 작성 규�
 ## Product 작성 규칙
 
 - product 문서는 외부 contract, 구현 상세, protocol field, internal architecture state를 소유하지 않는다.
-  외부 contract는 관련 spec 문서(예: [[docs/specs/aiox-a2a]]), 내부 구조는 관련 architecture 문서로 보내고
-  여기에 복사하지 않는다. 작성 규칙은 [[docs/specs/AGENTS]]와 [[docs/architecture/AGENTS]]를 따른다.
+  외부 contract는 관련 spec 문서(예: [[docs/specs/aiox-a2a]]), 내부 구조는 관련 architecture 문서가
+  소유한다. Product 문서에는 이를 복사하지 않고 관련 owner 문서로 링크한다. 작성 규칙은
+  [[docs/specs/AGENTS]]와 [[docs/architecture/AGENTS]]를 따른다.
 - product type은 별도 skeleton을 두지 않고, 아래 authoring invariants를 따른다.
 - product-scope 문서는 User Value(왜 필요한가)와 Scope(목적·사용자·포함 범위·핵심 경계)를 중심으로 쓴다.
-  나중에 할 target work나 phase는 roadmap/spec/architecture target으로 보낸다.
+- 제품의 target direction·positioning은 scope와 경계를 정의하는 데 필요한 만큼만 방향 문장으로 남긴다.
+  구체 contract·내부 설계·release phase·실행 task는 각각 specs·architecture·roadmap·plans가 소유한다.
+  Product 문서에는 상세를 복사하지 않고 관련 owner 문서로 링크한다.
 - 별도 Non-Goals/Boundaries/Deferred 섹션을 기본으로 만들지 않는다. 핵심 경계는 Scope 안에 적고, 보류된
   work는 해당 target owner가 소유한다.
 
