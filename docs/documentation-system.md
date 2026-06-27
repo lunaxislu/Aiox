@@ -20,9 +20,11 @@
 `docs/product/product.md`는 제품의 목적, 범위와 제품 원칙을 소유한다.
 기존 PRD 전체나 구현 계약, 우선순위 목록을 통째로 소유하지 않는다.
 
-`docs/product/roadmap.md`는 제품 scope 안에서 owner나 team이 추진할 방향, 우선순위와
-순서를 소유한다. 제품 scope를 확장하거나 현재 구현 작업의 checklist를 대신하지
-않는다.
+### Roadmap
+
+`docs/product/roadmap.md`는 `product.md`와 같은 `docs/product/` physical scope에 있지만
+별도 knowledge owner다. Product가 정한 scope 안에서 release gate, phase, 우선순위와
+순서를 소유하며, product scope를 확장하거나 현재 구현 checklist를 대신하지 않는다.
 
 ### Specs
 
@@ -42,8 +44,7 @@ module과 process 경계, data flow와 내부 state 관리 원칙을 소유한�
 
 `docs/decisions/`는 여러 대안 중 선택한 결과와 아직 유효한 load-bearing rationale,
 trade-off와 재검토 조건을 소유한다. 선택 결과가 만든 제품 범위, contract, 구조나
-추진 상태 자체는 각각의 owner 문서에 반영한다. Decision 문서의 작성 규칙, 승격
-기준과 history 원본 처리 원칙은 [`docs/decisions/AGENTS.md`](decisions/AGENTS.md)가
+추진 상태 자체는 각각의 owner 문서에 반영한다. Decision 문서의 작성 규칙과 승격 기준은 [`docs/decisions/AGENTS.md`](decisions/AGENTS.md)가
 소유한다.
 
 ### Guides
@@ -114,13 +115,3 @@ Research와 spike 결과는 owner 문서, code 또는 tests에 반영되고 검�
   override하지 않는다.
 - Cross-cutting 요구는 새 owner를 만들지 않는다. 외부 보장 동작, 내부 mechanism과
   추진 우선순위를 각각 specs, architecture와 roadmap에 둔다.
-
-## History
-
-새 taxonomy에는 standalone `history` 문서 type이나 `docs/history/`를 두지 않는다.
-작업 중 확정된 제품·계약·구조·결정·절차는 해당 owner 문서에 반영한다. 그 문서만으로
-복원하기 어려우며 잘못된 판단이나 반복 작업을 막는 데 필요한 완료된 경위는 decided
-로그에 남긴다.
-
-기존 `history/`의 실제 이동, 통합 또는 제거 기준과 절차는 workspace reset migration
-단계에서 파일별로 판정한다.
