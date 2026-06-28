@@ -271,7 +271,7 @@ Preferred response:
 - 실제 반복 생성되는 subtype이 있는지 확인한다.
 - skeleton이 없으면 agent가 필수 섹션을 빠뜨리는지, skeleton이 있으면 불필요 섹션을 채우는지
   비교한다.
-- 각 default section을 delete, absorb, optional, invariant-only 후보로 평가한다.
+- 각 default section을 delete, absorb, optional, subtype-only, invariant-only 후보로 평가한다.
 - 필요한 경계는 상위 `Scope` 같은 기존 섹션에 흡수하고, deferred work나 target detail은 owning
   document type으로 보낸다.
 - skeleton 전체보다 section contract, invariant, golden document가 더 작은 해결이면 그쪽을

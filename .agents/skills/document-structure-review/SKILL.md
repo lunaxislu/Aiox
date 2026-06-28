@@ -107,6 +107,9 @@ path에 넣어, 문서가 어떤 계약 아래 있고 어떤 문서와 역할을
 ## Owner And Scope
 
 - 문서가 무엇을 소유하는지 먼저 쓴다.
+- 물리적 nesting, 파일 경로나 공유 template만으로 ownership 또는 inheritance를 단정하지
+  않는다. 판단을 바꿀 수 있는 명시적 계약, 실제 적용 범위, authority, dependency, lifecycle과
+  change coupling만 확인한다.
 - 문서가 소유하지 않는 내용은 복사하지 말고 owner 문서로 링크하거나 위임한다.
 - 이미 다른 문서가 소유하는 원칙을 발견해도, 현재 문서에 경계 문장으로 필요한지 판단한다.
 - 현재 문서에 필요하다면 세부 절차를 반복하지 말고 "어디가 소유하는지"와 "이 문서에서는
@@ -152,7 +155,7 @@ path에 넣어, 문서가 어떤 계약 아래 있고 어떤 문서와 역할을
   않는다. 이 목록은 새 지침을 설계하거나 기존 지침의 구조 문제가 드러났을 때 쓰는 선택
   도구다.
 - skeleton이나 default section은 중립이 아니라 비용이다(`over-provisioned structure` smell). 각 default section은
-  delete, absorb, optional, invariant-only 후보를 먼저 통과해야 한다.
+  delete, absorb, optional, subtype-only, invariant-only 후보를 먼저 통과해야 한다.
 - 모델 선택 전에 묻는다: 실제 반복 생성되는 subtype이 있는가, skeleton이 없으면 필요한
   섹션을 빠뜨리는가, skeleton이 있으면 불필요 섹션을 채우는가, invariant-only가 더 작은
   해결인가.
