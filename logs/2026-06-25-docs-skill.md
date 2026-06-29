@@ -1330,3 +1330,165 @@ contract는 실재·고위험이라 정당, taxonomy 불일치=no-change 후보)
   - `git diff --check -- .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
 - [관찰/미반영] 파생 경로의 `Review Loop`↔`Context Read Path` 잔여 언급은 절차 시점과 read-범위 시점이 달라 허용 범위로 두었다. `references/EXAMPLE.md`는 이번 정리 대상이 아니라 무변경.
 - working tree: `SKILL.md` uncommitted(커밋은 @user 지시 시). 이 로그는 open 유지.
+
+## 2026-06-29 · Information Format + Skeleton/Example risk 반영
+
+@user가 Gemini 조사 보고서
+`/Users/lunaxislu/.gemini/antigravity-cli/brain/3ddfe919-0bc8-4ada-836e-7d16a29074fe/information_format_selection_research.md`와
+Claude 정리안을 전달했고, `document-structure-review` skill에 portable한 정보 표현 형식 기준을 추가하라고 지시했다.
+후속으로 skeleton/example이 문서 내용을 왜곡하는 risk도 함께 반영할 필요를 제기했다.
+
+### 확인한 사실
+
+- Gemini 보고서는 현재 repo `docs/AGENTS.md`의 표현 형태 선택 기준과 외부 docs style guide 공통 원칙을 구분해,
+  SKILL.md에는 portable 기준만 넣고 Obsidian callout 문법, wikilink, file:line, repo validation script 같은 환경 결합
+  규칙은 넣지 말라고 정리했다.
+- 현재 `.agents/skills/document-structure-review/SKILL.md`에는 `Rule Shape`와 `Guideline Structure Models`가 있었지만,
+  정보 단위가 table/list/prose/code/callout 중 어떤 표현 형태를 택해야 하는지, 잘못된 형식 선택이 만드는 문제,
+  LLM/agent format 오류 패턴은 별도 규칙으로 없었다.
+- 기존 `Guideline Structure Models`는 skeleton 비용과 golden document를 다루지만, skeleton/example이 불필요한 claim을
+  유도하는 content risk는 독립적으로 드러나 있지 않았다.
+
+### 반영
+
+- `## Information Format` 섹션을 `Rule Shape` 뒤, `Guideline Structure Models` 앞에 추가했다.
+  - table, bullet list, numbered list, prose paragraph, definition style, code block/fenced example, callout/highlighted note의
+    사용 기준과 피해야 할 경우를 portable하게 정리했다.
+  - code block은 command/output/example/template/evidence를 구분하되, evidence의 구체 형식은 프로젝트 규칙을 따른다고
+    낮췄다.
+  - Obsidian callout 문법, wikilink, file:line 같은 repo-specific 표기는 넣지 않았다.
+  - 잘못된 형태 선택이 만드는 문제와 LLM/agent가 자주 하는 format 오류를 추가했다.
+- `## Skeleton And Example Risk` 섹션을 `Guideline Structure Models` 뒤에 추가했다.
+  - skeleton은 누락 위험이 큰 반복 문서에만 쓰고, optional section 생략 조건을 함께 쓰도록 했다.
+  - skeleton heading이 미래 내용, 낮은 빈도 예외, 다른 owner 내용을 유도하지 않도록 했다.
+  - example은 규칙을 대신하지 않으며, incidental detail이 template처럼 복사될 위험을 막도록 했다.
+  - golden document는 기본 template이 아니라 어떤 품질을 보여주는 예시인지 설명할 수 있을 때만 쓰도록 했다.
+- `Output Checklist`에 information format과 skeleton/example risk 점검 항목을 추가했다.
+
+### 검증
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+- `git diff --check -- .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+- `/Users/lunaxislu/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/document-structure-review` 직접 실행 →
+  permission denied(실행 비트 없음).
+- `python3 /Users/lunaxislu/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/document-structure-review` →
+  `ModuleNotFoundError: No module named 'yaml'`. PyYAML 누락으로 skill validator는 완료하지 못했다.
+
+### 상태
+
+- `.agents/skills/document-structure-review/SKILL.md` 반영 완료, uncommitted.
+- 이 로그는 docs-skill/document-structure-review 설계·개선 흐름의 open 로그로 유지한다.
+
+## 2026-06-29 · docs/AGENTS.md 중복 허용 확인 + 대표 smell 보강
+
+@user가 `docs/AGENTS.md` 변경 사항을 확인하라고 요청했고, skill과 중복되는 내용은 사용자가 허락한 중복이라고 명시했다.
+
+### 확인한 사실
+
+- `docs/AGENTS.md`에는 SKILL.md와 겹치는 section placement, structure smell, writing style, information format 기준이
+  추가돼 있었다.
+- 겹치는 내용은 다음 성격으로 분리된다.
+  - SKILL.md: portable 판단 기준.
+  - `docs/AGENTS.md`: repo docs 작성 계약과 agent가 멈추고 보고해야 하는 local gate.
+- `docs/AGENTS.md`의 `Structure Smells` 목록은 SKILL.md 전체 taxonomy의 subset이라, 전체 smell 목록처럼 읽힐 수 있는
+  여지가 있었다.
+
+### 반영
+
+- `Composition Fit Check`의 "아래 신호"를 "아래 대표 신호"로 보강했다.
+- `Structure Smells`의 "아래 이름"을 "아래 대표 이름"으로 보강했다.
+
+### 검증
+
+- `scripts/check-markdown-inline-code docs/AGENTS.md` → exit 0 (PASS).
+- `git diff --check -- docs/AGENTS.md` → exit 0 (PASS).
+
+### 상태
+
+- `docs/AGENTS.md`와 SKILL.md의 중복은 허용된 중복으로 유지한다.
+- 이 보강은 smell subset을 exhaustive taxonomy로 오해하지 않게 하는 범위 표시이며, owner 구조나 규칙 의미를 바꾸지 않는다.
+
+## 2026-06-29 · Information Format/Skeleton risk 중복 리뷰 수용
+
+@user가 Claude 리뷰를 전달했고, 리뷰는 `Information Format` 내부 중복과 `Skeleton And Example Risk` 섹션의 기존
+섹션 중복을 지적했다. @user 지시로 리뷰를 반영했다.
+
+### 확인한 사실
+
+- `Skeleton And Example Risk`의 다수 항목은 이미 `Guideline Structure Models`, `Structure Smells`,
+  `Wording Rules`, `Comparative Guideline Review`가 소유하고 있었다.
+- 실제 신규에 가까운 기준은 skeleton/template/example을 본 agent가 불필요한 section이나 claim을 추가할 수 있으므로,
+  그 오해를 생략 조건이나 negative rule로 막아야 한다는 점이었다.
+- `Information Format`의 "잘못된 형태 선택이 만드는 문제"와 "LLM/agent가 자주 하는 format 오류"는 bullet/list,
+  callout, code block 항목에서 같은 내용을 관점만 바꿔 반복했다.
+
+### 반영
+
+- `## Skeleton And Example Risk` 섹션을 삭제했다.
+- 신규 risk 기준은 `Guideline Structure Models`에 한 bullet로 흡수했다:
+  skeleton, template이나 example을 본 agent가 어떤 불필요한 section이나 claim을 추가할지 예상하고,
+  optional 생략 조건이나 negative rule로 오해를 막는다.
+- `Information Format`의 중복 하위목록 2개를 `잘못된 형태 선택과 agent 오류` 하나로 병합했다.
+- 중복된 agent 오류 항목은 삭제하고, 별도 가치가 있는 `term — explanation` 반복과 단일 numbered list 오류만 남겼다.
+- `Output Checklist`의 skeleton/example 항목은 축약 유지하고, golden document 항목은 기존 checklist/본문과 중복이라 제거했다.
+
+### 검증
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+- `git diff --check -- .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+
+### 상태
+
+- Claude 리뷰의 핵심 finding A/B는 반영 완료.
+- `Information Format`은 유지하되 내부 반복을 줄였고, skeleton/example risk는 별도 섹션이 아니라 기존 구조 모델 기준으로 흡수했다.
+
+## 2026-06-29 · document-structure-review 후속 개선 — Information Format 1급 승격·cross-document 정합·근간 명시
+
+@user가 Codex의 Finding A/B 반영(직전 블록) 이후 @claude에게 추가 리뷰와 설계를 요청했고,
+여러 라운드 토론으로 아래를 확정·반영했다. 모든 반영 대상은 owner 문서
+`.agents/skills/document-structure-review/SKILL.md`와 `references/EXAMPLE.md`다.
+(`.claude/skills/document-structure-review`는 `.agents/...`로의 디렉토리 symlink라 한쪽 편집이 양쪽에 반영된다.)
+
+### 결정과 반영
+
+- Information Format 1급 승격(@user 확정): orphan이던 `Information Format`을 정체성 선언부에 연결.
+  description에 `information format selection` 추가, 도입부 목표·`Scope/Non-Goals`에 "표현 형태" 추가,
+  `Review Loop` step 2 개념역할 목록에 `information format` 추가, step 8을 "표현 형태 선택"으로 신설하고
+  기존 wording 단계를 step 9로 밀어 구조→표현→wording 순서를 명시.
+- Skeleton 처리 = Codex 흡수 유지(@claude 판단, @user 위임): 응집 전용 섹션·references 분리는 reject.
+  근거 — skeleton harness는 `Guideline Structure Models`가 이미 응집 소유, log skill 관례가 "한 주제 한 owner",
+  별도 `Skeleton And Example Risk` 섹션은 그 위 3중 중복이었다.
+- scope-outgrows 재구조화(@user 제기, 기존 부재): 새 내용이 문서 정체성/scope를 초과할 때
+  위임·scope 확장·분리·상위 승격을 새 내용·기존 내용의 관계와 재발 빈도로 가르는 결정을
+  `Owner And Scope`에 추가. `EXAMPLE.md` #11(New Content Outgrows Document Scope)과 Output Checklist 점검 동반.
+- 짧음 vs 응집 균형(@user 제기): `Wording Rules`에 "짧음은 복원가능성·응집(관계·흐름 보존)을 해치지 않는
+  선까지의 목표"를 추가해 `Information Format` 도입부의 복원가능성 상한과 짝지음.
+- golden document checklist(@user 재확인): 별도 줄 복원 대신 Output Checklist 항목을
+  "example이나 golden document"로 일반화. positive 점검("무엇을 보여주는 예시인지")은 본문
+  `Guideline Structure Models`가 이미 소유하므로 별도 복원 불필요로 판단.
+- 변경 전파/identity 정합(@user 제기): 한 문서 변경이 상위 owner map의 이 문서 identity, inbound 참조,
+  sibling cross-reference·대칭을 stale하게 만드는지 확인하고 함께 갱신/승격하는 규칙을 `Owner And Scope`에 추가.
+  scope-outgrows의 "inbound 참조" 문구는 이 규칙으로 위임해 중복 제거. Output Checklist 점검 동반.
+- content admission + 사용자 확인(@user 제기): content 포함 경계가 user prompt·계약·owner map·corpus로
+  복원되지 않으면 추측하지 말고 사용자에게 확인하는 규칙을 `Intended Role Recovery`에 추가.
+  @user 확인 — "단계마다 작업 확인"이 아니라 skill 규칙으로 명시하는 것이 맞다. Output Checklist 점검 동반.
+- 권위 게이트(@user 재지적, @claude 판단 정정): @claude의 이전 "Q1 안전장치 충분, 추가 안 함" 판단을 철회.
+  원칙(기본 constraint)은 있었으나 실행 게이트가 없었다. `Review Loop` step 4에 양방향 게이트 추가 —
+  상위·sibling이 참·권위로 확정된 경우 하위 변경의 정합을 검증하고, 충돌 시 하위 제안 수정·기각 또는
+  증거와 함께 상위 변경(`both`·`ancestor-only`) 승격. Output Checklist 점검 동반.
+- 근간 명시(@user 제기): skill의 근간 = 문서 identity(자신·상위·sibling이 정의하는 역할) 기준 +
+  lifecycle(생성·삭제·추가·갱신)마다 역할 정합 검토. 그동안 흩어져 채운 규칙들의 공통 "왜"가
+  본문에 없던 hidden authority였다. 도입부에 근간 선언을 추가하고 "아래 규칙들은 이 근간을 상황별로
+  실행하는 도구다"로 개별 규칙을 묶음.
+
+### 검증
+
+- 각 편집 후 `scripts/check-markdown-inline-code <대상>` → exit 0 (PASS), `git diff --check -- <대상>` → exit 0 (PASS).
+  대상은 SKILL.md와 EXAMPLE.md.
+- skill validator `quick_validate.py`는 PyYAML 누락(`ModuleNotFoundError: No module named 'yaml'`)으로 미실행.
+  환경 문제이며 SKILL 내용 문제가 아니다(직전 블록과 동일 상태).
+
+### 상태
+
+- SKILL.md와 EXAMPLE.md 반영 완료, uncommitted (커밋은 @user 지시 시).
+- 이 로그는 open 유지 — 설계 흐름이 이어질 수 있고 커밋이 남았다.

@@ -276,3 +276,29 @@ Preferred response:
   document type으로 보낸다.
 - skeleton 전체보다 section contract, invariant, golden document가 더 작은 해결이면 그쪽을
   택한다.
+
+## 11. New Content Outgrows Document Scope
+
+Situation:
+
+주제 A를 다루도록 좁게 선언된 문서를 작성하던 중, A와 별개인 주제 B의 내용이 필요해진다.
+문서 정체성이 A 전용이라 B가 어색하게 끼워진다.
+
+Structure smell:
+
+- `owner or altitude mismatch`
+- hidden sub-kind
+
+Review:
+
+B를 A 문서에 국소적으로 끼워넣기 전에, 상위 문서부터 A와 B의 관계와 흐름을 먼저 파악한다.
+문제는 한 문장의 위치가 아니라 문서 정체성이 새 내용을 담을 수 있느냐다. B가 다른 owner의
+소유면 위임이 맞고, A와 B가 공통 상위 주제의 sibling이면 문서를 상위 개념으로 재정의해 A·B를
+하위로 두거나 둘로 분리하며, B가 A의 자연스러운 확장이면 정체성 문장을 넓혀 포함한다.
+
+Preferred response:
+
+- 국소 수정 전에 새 내용과 기존 내용의 관계(같은 owner·sibling·하위·무관)를 판정한다.
+- 위임, scope 확장, 분리, 상위 개념 승격 중 무엇이 가장 작은 해결인지 비교한다.
+- 재발 빈도가 낮은 일회성 내용이면 본문 흡수나 제거로 끝낼 수 있는지 먼저 본다.
+- 정체성이나 scope를 바꾸면 inbound 참조와 하위 문서 영향을 확인하고 기존 anchor를 보존한다.
