@@ -1,7 +1,7 @@
 ---
 topic: docs-skill 도입 검토 및 설계
 description: 문서화 구조 및 품질 검토용 portable docs-skill의 역할, 범위, 기존 document-structure-review 스킬과의 관계 정의
-status: decided
+status: open
 ---
 
 ## Work Items
@@ -889,3 +889,444 @@ contract는 실재·고위험이라 정당, taxonomy 불일치=no-change 후보)
 **검증:** `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md .agents/skills/document-structure-review/references/EXAMPLE.md` → exit 0 (PASS, b·c 반영 직후 + LOW-MEDIUM 트리거 보정 포함).
 
 **다음:** document-structure-review skill thread는 이 보정으로 마감. 다음 작업 = stage8 W5 마지막 child `guides/AGENTS.md`(다음 세션에 @user 초안 제공 시 검토 렌즈 ①–⑤로 진행).
+
+## 2026-06-28 · document-structure-review 후속 개선 재개 — guideline 관계 일반화
+
+- @user가 새 portable 관계 규칙 검토와 skill 개선을 이어가기 위해 이 로그를 `decided`에서 `open`으로 재개하도록 지시했다. 기존 stage8 W10 로그에 임시로 남긴 관련 기록은 이 블록으로 증류한 뒤 제거한다.
+- 배경: architecture/spec child guideline의 단일 full skeleton이 dense catalog, sequence, invariant, mixed current/target 같은 실제 subtype에 부적합한 문제가 드러났다. 이 repo에서는 `docs/AGENTS.md`가 공통 construct 의미·placement·validation loop를, child AGENTS가 type identity·status vocabulary·subtype·section composition·type-specific validation을 소유하는 방향을 W10에서 검토 중이다.
+- [Fact] 현행 `document-structure-review` skill에는 parent/ancestor review, sibling 비교, owner map, hidden sub-kind, index/slice, skeleton/invariant/decision-table/composition-block 모델이 이미 있으나, guideline 관계와 ownership 배치를 한곳에서 직접 판정하는 규칙은 없다.
+- [Fact] 이 repo의 docs knowledge topology도 단일 parent/child 관계가 아니다. 질문별 sibling authority, spec↔architecture↔roadmap의 horizontal owner boundary, compatibility index→slice delegation, 같은 physical scope의 별도 sub-kind, decision snapshot→living owner 반영, intended docs↔actual code/test drift, compatibility pointer가 함께 존재한다.
+- [Initial candidate, withdrawn] “관계를 정해진 taxonomy로 먼저 분류하고, 중첩 guideline이면 parent가 공통 규칙을, child가 type/subtype 구조를 소유한다”는 문구를 검토했으나 portable 후보로 철회했다. 적용 조건 뒤의 ownership 결과를 하나로 고정하는 must rule이며, 현재 repo의 taxonomy를 다른 프로젝트에 과적용할 수 있기 때문이다.
+- [Current candidate: negative invariant] 물리적 nesting, 파일 경로, heading이나 같은 template만으로 conceptual ownership·inheritance를 추정하지 않는다.
+- [Current candidate: decision heuristic] 현재 판단에 실제로 영향을 주는 scope, authority, dependency, lifecycle과 change coupling을 확인한다. 여러 문서에 동일하게 적용되고 함께 변경되는 규칙이면 shared/ancestor owner를 후보로 보고, type·subtype·lifecycle에 따라 의미가 달라지거나 예외가 늘면 local owner, explicit delegation, decision table 또는 composition을 후보로 비교한다. 프로젝트가 이미 inheritance, override나 precedence를 정의했다면 그 계약을 검토하며 portable skill이 특정 계층 배치를 강제하지 않는다.
+- [Open question] 이 문제가 실제 skill gap인지, 기존 규칙의 조합으로 충분한지, 새 문구가 필요하다면 must invariant와 heuristic을 어떻게 나누고 어느 기존 section에 흡수할지 독립 검토가 필요하다. 닫힌 relation taxonomy 신설은 기본 후보가 아니다.
+- @user는 Claude의 독립 의견을 함께 받아 개선 작업을 진행하기로 했다. Claude에게는 기존 결론을 전제로 수용하지 말고 skill·portable examples·이 repo의 실제 guideline을 대조하여 `no-change | 최소 보정 | 구조적 보정`, exact patch candidate와 regression scenario를 제시하되 아직 파일을 수정하지 말도록 요청할 예정이다.
+- 다음 행동: Claude 리뷰를 이 로그에 append하고 Codex가 독립 재검토한다. 사용자 승인 뒤에만 `.agents/skills/document-structure-review/SKILL.md` 및 필요한 portable example을 수정·검증하고 결과를 기록한다.
+
+## 2026-06-28 · Claude 독립 리뷰 수령 + Codex 재검토
+
+- @user가 Claude의 독립 리뷰 전문을 공유했다. Claude는 파일을 수정하지 않고 `no-change | 최소 보정 | 구조적 보정`을 비교해 최소 보정을 권장했다.
+- [Claude fact finding] 현행 skill은 parent/ancestor, sibling, owner map, child/slice, concept hierarchy, owner/altitude mismatch, hidden sub-kind, copied section meaning, reverse dependency와 기존 owner contract 우선 검토를 이미 분산 소유한다. “parent=공통/child=구체” 강제 문구는 실제 skill에 들어간 적이 없고 철회된 candidate일 뿐이다.
+- [Claude gap finding] 물리적 nesting/path/shared template만으로 ownership·inheritance를 추정하지 말라는 통합 negative 원칙과 `change coupling` 신호는 직접 명시돼 있지 않다. 이 repo 논의에서 skill을 읽고도 nested→parent/common으로 과일반화한 사실은 discoverability gap의 실증으로 보았다.
+- [Claude recommendation] 새 taxonomy나 section을 만들지 않고 `Owner And Scope` 첫 bullet 뒤에 negative invariant 1개를 추가한다. Placement 결과(shared/local/delegation/composition)를 다시 설명하면 기존 `Guideline Structure Models`, `Rule Shape`, `Owner And Scope`와 중복되므로 추가하지 않고, 신규 신호인 change coupling만 포함한다. EXAMPLE 추가는 선택 사항으로 보았다.
+- [Codex agreement] gap을 discoverability 문제로 보고 최소 보정하는 판정, 닫힌 taxonomy·구조적 보정을 거부한 판정, `Owner And Scope` 배치, EXAMPLE no-change에 동의한다.
+- [Codex correction 1] Claude patch의 “actual scope, authority, dependency, lifecycle과 change coupling으로 판단한다”는 모든 신호를 매번 확인하는 체크리스트로 읽힐 수 있다. 현행 `Context Read Path`의 “판단을 바꿀 관계만 읽고 근거가 확보되면 멈춘다”와 맞추어, 판단을 바꿀 수 있는 신호만 확인하도록 좁히는 편이 낫다.
+- [Codex correction 2] Claude patch의 “프로젝트가 정의한 inheritance·override·precedence 계약이 있으면 그것을 우선한다”는 기존 `Review Loop`의 “parent/ancestor 계약은 기본 constraint이되 axiom은 아니다”와 긴장한다. 계약을 무조건 결론으로 따르기보다, 구조적 추정 대신 해당 명시 계약과 owner change 절차를 확인한다고 써야 한다.
+- [Codex exact wording candidate, unapplied]:
+  `- 물리적 nesting, 파일 경로나 공유 template만으로 ownership 또는 inheritance를 단정하지 않는다. 판단을 바꿀 수 있는 명시적 계약, 실제 적용 범위, authority, dependency, lifecycle과 change coupling만 확인한다.`
+- [Open] 위 문구는 negative invariant가 결과 ownership을 강제하지 않으면서 change coupling을 도입하는 최소안이다. 다만 `change coupling`을 그대로 둘지 “함께 변경되는 범위”로 풀어 쓸지는 사용자 승인 전 최종 wording에서 선택한다.
+- Claude가 언급한 stage8 W10의 관련 3개 블록은 이미 @user 지시에 따라 이 `docs-skill` 로그로 이동·증류됐고 원래 W10 로그에서는 삭제됐다. 이후 skill 개선 기록은 이 로그가 소유한다.
+- Skill과 EXAMPLE은 아직 수정하지 않았다. 다음 행동은 사용자 wording 승인 후 최소 patch 적용과 inline-code/diff 검증이다.
+
+## 2026-06-28 · 최소 보정 patch 적용 — ownership 추정 negative invariant
+
+- @user가 "오케이 반영" 승인 + docs-skill 로그에만 기록 지시(stage8 작업 로그 미기록).
+- [Fact] 적용 문구 = 직전 블록의 Codex exact wording candidate. Codex correction 1(매번 전체 신호 확인 체크리스트로 읽히는 것을 "판단을 바꿀 수 있는 신호만 확인"으로 축소)·2("…계약이 있으면 우선한다"의 과진술을 제거하고 명시 계약을 확인 대상으로 흡수)를 반영한 최소안이며, Claude 1차 초안 문구는 이 보정본으로 교체했다.
+- [Analysis] Claude도 두 보정에 독립 동의했다: 보정 1은 `Context Read Path`의 "판단을 바꿀 관계만 확인하고 멈춘다" 미니멀리즘과, 보정 2는 `Review Loop`의 "parent/ancestor 계약은 constraint이되 axiom 아님"과 정합을 높인다. regression #3(override cascade) 가드는 "판단을 바꿀 수 있는 명시적 계약"이 그대로 포함하므로 손실 없음. `change coupling` 용어는 그대로 유지([Open] 해소).
+- 반영 위치: `.agents/skills/document-structure-review/SKILL.md` `## Owner And Scope`, 첫 bullet("문서가 무엇을 소유하는지 먼저 쓴다") 바로 뒤. 새 section·닫힌 relation taxonomy 미신설(기존 섹션 흡수).
+- 적용된 bullet:
+
+```md
+- 물리적 nesting, 파일 경로나 공유 template만으로 ownership 또는 inheritance를 단정하지
+  않는다. 판단을 바꿀 수 있는 명시적 계약, 실제 적용 범위, authority, dependency, lifecycle과
+  change coupling만 확인한다.
+```
+
+- `references/EXAMPLE.md` 무변경(Claude 권고 + Codex 동의 — placement 결과 재설명은 기존 `Guideline Structure Models`/`Rule Shape`/`Owner And Scope`와 중복).
+- 검증: `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+- working tree: `.agents/skills/document-structure-review/SKILL.md` uncommitted(커밋은 @user 지시 시).
+- 다음: guideline-관계 일반화 thread는 이 patch로 마감 가능. closeout 여부는 @user 결정.
+
+## 2026-06-28 · subtype-only disposition 추가 — W10 composition/subtype 결론 반영
+
+- @user가 SKILL 전반 점검을 요청 → @claude가 현행 SKILL.md+EXAMPLE.md를 전수 점검(구조 결함·stale·overfit 없음 확인). 발견한 후보 3건 중 @user가 ①만 반영 지시(② composition blocks 모델 보강은 overfit 인접이라 보류, ③ ownership-inference/config-cascade example은 선택이라 미반영).
+- [Fact] gap: W10 결론은 default section을 `required | optional | absorb | subtype-only | delete`로 판정하는데(onramp stage8 로그 `1095`,`1131`,`1277-1278`; `docs/AGENTS.md:60-61` 적용본), 현행 skill `Guideline Structure Models`의 default-section 후보 목록은 `delete, absorb, optional, invariant-only`만 있어 `subtype-only`가 누락돼 있었다.
+- [Analysis] `subtype-only`(섹션을 특정 subtype에만 조건부 포함) ≠ `invariant-only`(섹션을 invariant로 접음). 전자는 `hidden sub-kind`·`composition blocks`와 직결되는 disposition으로, ownership을 강제하지 않는 disposition 추가라 overfit 위험 없이 W10 composition/subtype 결론을 portable하게 담는다. repo의 "상위=composition / 하위=subtype" 분담 자체를 portable 문구로 올리는 ②는 철회된 must-rule(`899`,`1440`) 프레이밍에 가까워 보류했다.
+- 반영:
+  - `SKILL.md` `Guideline Structure Models`: default section 후보 목록에 `subtype-only` 추가 → `delete, absorb, optional, subtype-only, invariant-only`.
+  - `references/EXAMPLE.md` 사례 10(Over-provisioned Skeleton Section): 평가 후보 목록을 동일하게 정합(`delete, absorb, optional, subtype-only, invariant-only`).
+- 검증: `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md .agents/skills/document-structure-review/references/EXAMPLE.md` → exit 0 (PASS).
+- working tree: `SKILL.md`·`references/EXAMPLE.md` uncommitted(커밋은 @user 지시 시).
+- 미반영 후보(향후): ② composition blocks 모델 nested-split 보강(보류), ③ EXAMPLE에 ownership-inference + config-cascade override 사례 추가(선택).
+
+## 2026-06-28 · Architecture AGENTS 사례화 우려에서 document-structure-review 기준 확장
+
+이 블록은 @user의 명시 요청에 따라, 아래 사용자 프롬프트부터 현재 지시까지의 논의를 축약하지 않고 보존한다. 일반 로그 작성 규칙은 대화 덤프를 피하지만, 이번 경우에는 `document-structure-review` skill의 판단 기준을 바꿀 수 있는 원문 피드백 자체가 검토 대상이므로 원문 보존을 우선한다.
+
+## 왜 이 프롬프트가 나왔는가
+
+직전 작업 흐름은 stage8 W10의 `docs/architecture/AGENTS.md` 정합이었다. 새 parent `docs/AGENTS.md`는 `Related:`, `Status:`, `Evidence:`, `Sources:`를 공통 skeleton이 아니라 조건부 composition block으로 정의했고, child AGENTS는 자기 type-specific identity, status vocabulary, subtype, section composition, validation만 소유해야 한다고 했다.
+
+그 기준으로 architecture AGENTS를 처음 수정하면서 `Architecture Slice Skeleton` 안의 hard-coded `Related`, `Status: Current`, `Implementation Evidence`, `Sources`를 제거하고, `Responsibility`, `Flow`, `Drift / Gaps` 중심의 최소 authoring default와 조건부 `Evidence:`/`Sources:` 규칙을 남겼다.
+
+그 뒤 @user는 architecture 문서 안에서 evidence 배치가 케이스마다 달라질 수 있음을 설명하기 위해 compact component, dense schema/catalog, end-to-end sequence, cross-cutting invariant, mixed current/target, index/hub, gap/absence, proposed architecture 같은 케이스를 제시했다. @codex는 이 제안을 “architecture document subtype 판정과 composition block 선택 규칙”으로 격상하는 방향으로 해석했고, `docs/architecture/AGENTS.md` §4를 `Architecture Subtypes And Composition`으로 바꾸는 패치를 적용했다.
+
+이 보정이 바로 @user가 우려한 문제를 만들었다. 케이스 표를 지침 본문에 두면 agent가 “이 문서는 이 케이스니까 해당 케이스의 형식만 채우면 된다”고 오해할 수 있고, architecture 문서가 상위 docs 계약을 소비해 architecture 역할과 개별 문서 역할을 수행해야 한다는 본래 목적이 약해진다. 그래서 @user는 “처음 수정한거로 되돌려놔”라고 지시했고, subtype/composition 보정은 철회됐다.
+
+이 배경 때문에 @user의 다음 프롬프트는 단순한 architecture AGENTS 문구 교정이 아니라, `document-structure-review` skill 자체가 문서를 볼 때 무엇을 기준으로 봐야 하는지에 대한 기준 확장으로 이어졌다. 핵심은 “사례/케이스를 나열하면 agent가 사례별 템플릿만 채우게 되므로, 먼저 사용자가 이 문서에 어떤 역할을 기대했는지, 그 근거가 무엇인지, root `AGENTS.md` → `docs/AGENTS.md` → 하위 `AGENTS.md` → 실제 문서 사례로 규칙이 어떻게 파생되는지 봐야 한다”는 것이다.
+
+## 원문 기록 1 — @user의 첫 문제 제기
+
+@user:
+
+> 내가 말하고 싶은건 해당 아키텍처 문서에대해서 케이스 사례별로 나두면 그 해당 사례 케이스별로만 작성할거 아니냐? 
+>
+> 결국 아키텍처 문서는 상위 문서의 내용을 상속받아서 아키텍처의 역할과 문서의 역할을 할 수 있게끔 하는 문서 작성을 하도록 해야 하는거 아니냐?
+
+@codex 응답:
+
+> 맞습니다. 사용자가 말한 핵심이 정확합니다.
+>
+> 제가 두 번째로 넣었던 “케이스별 subtype 표”는 방향이 틀어질 위험이 있습니다. 그걸 넣으면 agent가 이렇게 오해할 수 있습니다.
+>
+> - “이 문서는 catalog 케이스니까 catalog 표만 맞추면 된다”
+> - “sequence 케이스니까 sequence 근거만 채우면 된다”
+> - “target architecture니까 Sources만 있으면 된다”
+>
+> 즉, architecture 문서가 해야 하는 본래 역할보다 “사례별 양식 맞추기”로 좁아집니다.
+>
+> 더 맞는 구조는 이겁니다.
+>
+> - 상위 `docs/AGENTS.md`가 문서 일반 계약을 소유함:
+>   - owner boundary
+>   - 최소 read path
+>   - status 배치
+>   - evidence/source 배치
+>   - change/drift validation
+>   - 빈 섹션 생략
+>   - 가장 좁은 유효 범위 배치
+>
+> - `docs/architecture/AGENTS.md`는 그걸 “architecture 문서로 쓸 때 어떻게 해석하느냐”만 소유함:
+>   - architecture는 내부 구조, 책임 경계, flow, lifecycle invariant를 설명한다
+>   - spec/product/decision 내용을 복사하지 않는다
+>   - `As-built` claim은 code/test로 검증한다
+>   - `Target/Proposed`는 code가 다르다고 as-built로 낮추지 않는다
+>   - architecture 문서 안의 section은 역할에 맞게 선택하고, 강제 skeleton으로 채우지 않는다
+>
+> 그러니까 architecture AGENTS의 바람직한 중심은 “케이스 목록”이 아니라 “상위 문서 계약의 architecture-specific specialization”입니다.
+>
+> 제가 지금 유지해둔 첫 수정안도 완벽하진 않습니다. `Architecture Slice Skeleton`이라는 제목과 `Responsibility / Flow / Drift` 예시가 아직 “compact component형 skeleton”처럼 보일 수 있습니다. 더 정확히 하려면 다음처럼 바꾸는 게 맞습니다.
+>
+> - `Architecture Slice Skeleton` → `Architecture Writing Contract` 또는 `Architecture Composition Rules`
+> - fixed skeleton 예시는 줄이거나 제거
+> - 대신 다음 원칙만 둠:
+>   - architecture claim의 역할을 먼저 판정한다
+>   - 상위 docs composition block을 architecture claim에 맞게 사용한다
+>   - section은 문서 역할상 필요할 때만 둔다
+>   - 사례는 규칙이 아니라 예시일 뿐이라고 명시한다
+>
+> 즉, 네 말대로 “케이스별 작성법”이 아니라 “상위 docs 계약을 상속받아 architecture 역할을 수행하게 하는 작성 계약”이어야 합니다.
+
+## 원문 기록 2 — `Architecture Composition Rules` 명명 제안
+
+@user:
+
+> Architecture Composition Rules 이게 더 나을 거 같음 따라서 제안해봐
+
+@codex 응답:
+
+> 확인한 사실:
+>
+> - 상위 [docs/AGENTS.md](/Users/lunaxislu/Documents/ai-orchestration/docs/AGENTS.md)는 이미 `Related`, `Status`, `Evidence`, `Sources`를 “공통 skeleton”이 아니라 조건부 composition block으로 정의하고 있습니다.
+> - 현재 [docs/architecture/AGENTS.md](/Users/lunaxislu/Documents/ai-orchestration/docs/architecture/AGENTS.md)는 §4 제목이 `Architecture Slice Skeleton`이라서, 여전히 “아키텍처 문서는 이 형태를 따라야 한다”로 읽힐 수 있습니다.
+>
+> 추론:
+>
+> - 네가 말한 방향이 맞습니다. architecture AGENTS는 케이스별 템플릿 모음이 아니라, 상위 docs 계약을 architecture 역할에 맞게 해석하는 문서여야 합니다.
+> - 따라서 `Architecture Composition Rules`가 더 정확합니다. “skeleton”보다 덜 강제적이고, “상위 규칙을 architecture 문서에 어떻게 조합할지”를 설명합니다.
+>
+> 제안하는 §4 구조는 이렇습니다.
+>
+> ```md
+> ## 4. Architecture Composition Rules
+>
+> Architecture 문서는 단일 full skeleton을 상속하지 않는다. 상위 [[docs/AGENTS]]의 structure,
+> placement, status, evidence, sources 규칙을 따르되, architecture 문서가 소유하는 내부 구조,
+> 책임 경계, flow, lifecycle invariant와 gap을 복원하는 데 필요한 block만 조합한다.
+>
+> 새 architecture 문서나 slice를 작성할 때는 먼저 이 문서가 설명하려는 architecture claim의
+> 역할을 판정한다.
+>
+> - 내부 책임과 경계를 설명해야 하면 `Responsibility`나 이에 준하는 body section을 둔다.
+> - process, data, lifecycle 순서가 판단의 핵심이면 `Flow`를 둔다.
+> - 현재 구현 구조를 주장하면 `As-built` 또는 current behavior claim으로 보고 code/test evidence를
+>   claim 가까이에 둔다.
+> - 목표 구조나 제안 구조를 설명하면 `Target`/`Proposed`로 표시하고, code evidence를 붙이지 않는다.
+>   필요한 경우 product/spec/decision owner나 provenance를 링크한다.
+> - 문서와 code/tests 차이, known limitation, missing behavior를 설명해야 하면 `Drift / Gaps`를 둔다.
+> - 과거 로그나 이전 owner 문서가 현재 판단, 재검토, 삭제 안전성에 필요할 때만 `Sources:`를 둔다.
+>
+> `Related:`, document-level `Status:`, `Evidence:` block, `Sources:` block은 architecture 전용
+> 필드가 아니라 상위 [[docs/AGENTS]]의 조건부 composition block이다. 문서 전체에 적용될 때만
+> document-level로 두고, section이나 claim에만 적용되면 해당 본문 가까이에 둔다.
+>
+> 인덱스(`local-agent-runtime.md`)는 body architecture를 새로 소유하지 않는다. Slice map, status
+> vocabulary, module overview, authority links와 document map처럼 index가 직접 소유하는 claim만
+> 유지하고, slice body claim의 evidence나 상세 flow를 index로 복사하지 않는다.
+> ```
+>
+> 이게 지금 대화 기준으로 제일 맞습니다.
+>
+> - `Skeleton`이라는 오해를 제거함
+> - 케이스별 표로 agent를 가두지 않음
+> - 상위 `docs/AGENTS.md`를 상속/소비한다는 관계가 분명함
+> - architecture의 고유 역할만 남김
+> - `Evidence`뿐 아니라 `Flow`, `Status`, `Sources`, `Drift/Gaps`도 모두 조건부 composition으로 처리함
+>
+> 승인하면 이 방향으로 §4만 교체하는 게 좋습니다.
+
+## 원문 기록 3 — doc skill 자체의 판단 기준 질문
+
+@user:
+
+> 오케이 결국 doc skill도 어떤 기준으로 봐야 할거 같냐?
+
+@codex 응답:
+
+> doc skill은 “좋은 문장/좋은 템플릿”을 보는 게 아니라, agent가 문서를 잘못 상속·복사·채우지 않게 만드는 구조 기준을 봐야 합니다.
+>
+> 내 기준으로는 6개입니다.
+>
+> 1. 상속이 아니라 소비 관계인지
+>
+> 하위 AGENTS가 상위 문서를 “복사”하거나 “재정의”하는 게 아니라, 상위 계약을 자기 문서 타입에 맞게 소비하고 있는지 봐야 합니다.
+>
+> 예:
+>
+> - 나쁨: architecture도 `Related/Status/Evidence/Sources`를 다시 정의함
+> - 좋음: architecture에서는 상위 `docs/AGENTS`의 composition block을 architecture claim에 어떻게 적용하는지만 말함
+>
+> 2. 템플릿이 agent를 과잉 작성으로 몰고 가지 않는지
+>
+> skeleton/default section은 비용입니다. doc skill은 항상 물어야 합니다.
+>
+> - 이 section이 없으면 실제로 중요한 내용을 빠뜨리는가?
+> - 이 section이 있으면 agent가 빈 내용, 억지 Flow, 억지 Evidence를 채우게 되는가?
+> - skeleton보다 invariant나 composition rule이 더 작은 해결인가?
+>
+> 지금 architecture 건은 이 기준에 걸린 겁니다. `Architecture Slice Skeleton`은 agent에게 “이 모양으로 써라”는 압박을 줍니다. 그래서 `Architecture Composition Rules`가 더 낫습니다.
+>
+> 3. 문서 역할과 섹션 역할이 같은 층위인지
+>
+> doc skill은 heading이 만드는 개념 계층을 봐야 합니다.
+>
+> 예:
+>
+> - `Architecture Slice Skeleton`은 “slice에는 skeleton이 있다”는 구조를 만듦
+> - `Architecture Composition Rules`는 “architecture 문서는 상위 block을 역할에 맞게 조합한다”는 구조를 만듦
+>
+> 후자가 실제 의도와 맞습니다.
+>
+> 4. 사례가 규칙을 대체하고 있지 않은지
+>
+> 사례 표, 예시 skeleton, golden document는 유용하지만 위험합니다. agent가 사례를 규칙으로 오해할 수 있습니다.
+>
+> doc skill은 이렇게 판단해야 합니다.
+>
+> - 사례가 decision aid인가?
+> - 아니면 사실상 subtype template으로 굳어지는가?
+> - 사례 없이도 원칙을 적용할 수 있는가?
+> - 사례를 넣는다면 “예시일 뿐, 문서 역할을 먼저 판정한다”는 guard가 있는가?
+>
+> 5. owner boundary가 복원 가능한지
+>
+> 문서를 읽는 agent가 다음을 바로 알 수 있어야 합니다.
+>
+> - 이 문서가 소유하는 것
+> - 상위 문서가 소유하는 것
+> - sibling owner가 소유하는 것
+> - code/tests가 사실 owner인 것
+> - logs/plans가 provenance일 뿐인 것
+>
+> doc skill은 “이 문장이 어느 owner의 말인가?”를 계속 봐야 합니다.
+>
+> 6. 가장 작은 일반화인지
+>
+> 너무 구체적이면 사례별 템플릿이 되고, 너무 추상적이면 실행이 안 됩니다.
+>
+> 좋은 doc skill 판단은 이 중간입니다.
+>
+> - “architecture 문서는 Compact/Catalog/Sequence 중 하나다” → 너무 구체적
+> - “필요한 섹션을 적절히 쓴다” → 너무 추상적
+> - “상위 composition block을 architecture claim의 역할에 따라 가장 좁은 유효 범위에 둔다” → 적절함
+>
+> 정리하면 doc skill의 핵심 질문은 이겁니다.
+>
+> > 이 변경이 다음 agent에게 “무엇을 채워야 하는가”를 시키는가, 아니면 “어떤 역할을 판정해서 어디에 배치해야 하는가”를 복원하게 하는가?
+>
+> 이번 architecture 케이스에서는 후자가 맞고, 그래서 `Architecture Composition Rules`가 정확한 방향입니다.
+
+## 원문 기록 4 — 사용자 의도·근거·계약 파생·사례 corpus를 봐야 한다는 추가 의견
+
+@user:
+
+> 여기에 내가 의견을 추가하고 싶은 건  결국 사용자가 어떤 문서 어떤 역할을 하게 하고 싶은가 그 근거가 있는가 ?, 그리고 repo/AGENTS.md 문서부터 어떻게 이 docs/AGENTS.md 하위 AGENTS.md까지 작성 되는지 추론하고agent들의 사례별도 봐야 하는거고  
+>
+> 이 문서의 역할과 무엇을 작성하는지에 대한 역할에 따라 문서 지침, 내용들도 봐야 하는거라 생각하는데
+
+@codex 응답:
+
+> 맞습니다. doc skill 기준에 그 축이 빠지면 문서 구조 리뷰가 너무 “형식 비평”으로 흐릅니다.
+>
+> 확인한 사실:
+>
+> - root `AGENTS.md`는 사용자 지시도 무조건 수용하지 말고, 확인한 사실/추론/의견을 구분하라고 합니다.
+> - `docs/AGENTS.md`는 `docs/**/AGENTS.md`가 type-specific identity, status vocabulary, subtype, section composition, validation을 소유한다고 합니다.
+> - 현재 `document-structure-review` skill에는 parent/ancestor 계약, owner map, sibling guideline 확인은 있지만, “사용자가 이 문서에 기대한 역할과 그 근거”를 독립 기준으로 강하게 보라는 문장은 약합니다.
+>
+> 추론:
+>
+> doc skill은 문서를 볼 때 다음 4단계를 기준으로 삼아야 합니다.
+>
+> 1. 사용자 의도와 근거
+>
+> 먼저 봐야 할 것:
+>
+> - 사용자가 이 문서를 어떤 역할로 쓰려고 했는가?
+> - 그 의도가 어디에 남아 있는가? 대화, 로그, AGENTS, docs 계약, 실제 문서 corpus 중 어디인가?
+> - 그 의도는 현재 repo 계약과 충돌하는가, 아니면 보강하는가?
+>
+> 단, 사용자 의도는 권위 입력이지 자동 정답은 아닙니다. root `AGENTS.md` 기준상 근거와 충돌 여부를 검증해야 합니다.
+>
+> 2. 계약 파생 경로
+>
+> 문서를 고립해서 보면 안 되고, 위에서 아래로 파생을 봐야 합니다.
+>
+> ```text
+> repo/AGENTS.md
+> → docs/AGENTS.md
+> → docs/<owner>/AGENTS.md
+> → 실제 owner 문서들
+> ```
+>
+> 즉 doc skill은 “이 child AGENTS가 상위 계약을 어떻게 소비해서 자기 type의 역할로 특화하는가”를 봐야 합니다.
+>
+> 3. 실제 사례 corpus
+>
+> 규칙만 보면 추상적이고, 사례만 보면 템플릿화됩니다. 그래서 둘 다 봐야 합니다.
+>
+> - 실제 agent들이 어떻게 오해했는가?
+> - 기존 문서들은 어떤 형태로 작성돼 있는가?
+> - 어떤 section이 반복적으로 필요한가?
+> - 어떤 section이 있으면 agent가 억지로 채우는가?
+> - 어떤 예시는 규칙을 돕고, 어떤 예시는 규칙을 대체해버리는가?
+>
+> 4. 문서 역할과 작성 내용의 일치
+>
+> 마지막으로 봐야 하는 건 이겁니다.
+>
+> - 이 문서의 역할은 무엇인가?
+> - 이 문서가 작성하게 하려는 내용은 무엇인가?
+> - 현재 지침이 그 역할을 수행하게 하는가?
+> - 아니면 특정 사례/형식/섹션을 채우게 만드는가?
+>
+> 그래서 doc skill에 추가한다면 기준은 이렇게 정리할 수 있습니다.
+>
+> > Before changing a guideline or skeleton, recover the intended role of the document from user intent, project contracts, logs, and representative corpus. Then trace how the rule should derive from root/project contracts through parent and child AGENTS. Do not treat examples as templates unless the document role requires a template.
+>
+> 한국어로는:
+>
+> > 지침이나 skeleton을 바꾸기 전에, 사용자가 그 문서에 기대한 역할과 그 근거를 먼저 복원한다. 그 다음 root/project 계약에서 parent AGENTS, child AGENTS, 실제 문서 corpus로 규칙이 어떻게 파생되어야 하는지 추론한다. 사례는 규칙을 검증하는 입력이지, 문서 역할상 필요한 경우가 아니면 템플릿으로 고정하지 않는다.
+>
+> 이 기준이 들어가야 지금 architecture 건 같은 문제를 더 잘 잡습니다.  
+> 즉 “Architecture 문서에는 어떤 케이스들이 있는가?”보다 먼저 “사용자는 Architecture AGENTS가 상위 docs 계약을 받아서 어떤 역할을 하게 만들고 싶은가?”를 보게 됩니다.
+
+## 원문 기록 5 — 현재 기록 요청
+
+@user:
+
+> docs-skill log 를 open으로 열고 
+>
+>
+> › 내가 말하고 싶은건 해당 아키텍처 문서에대해서 케이스 사례별로 나두면 그 해당 사례 케이스별로만 작성할거 아니냐?
+>
+>   결국 아키텍처 문서는 상위 문서의 내용을 상속받아서 아키텍처의 역할과 문서의 역할을 할 수 있게끔 하는 문서 작성을 하도록 해야 하
+>   는거 아니냐?
+>
+> 라는 내 프롬프트 부터 해서 현재까지 내용을 로그로 축약하지 말고 기록해놔 
+>
+> 기록 할 때 왜 내 프롬프트에서 저런 말이 나왔는지도 작성해야 할것이야
+
+## 현재까지의 결정 후보 / skill 반영 후보
+
+이 대화는 `document-structure-review` skill의 기준 보강 후보를 만든다. 아직 skill 본문에는 반영하지 않았다.
+
+반영 후보:
+
+1. `Review Loop` 또는 `Context Read Path` 앞단에 “Intended Role Recovery”를 추가한다.
+   - 사용자가 어떤 문서를 어떤 역할로 쓰게 하려는지 먼저 복원한다.
+   - 그 근거가 user prompt, project/root AGENTS, parent/child AGENTS, logs, representative corpus 중 어디에 있는지 구분한다.
+   - 사용자 의도는 중요한 입력이지만 자동 정답이 아니며, repo 계약과 충돌하면 fact/inference/proposal로 나눠 보고한다.
+2. `Context Read Path`에 root/project contract → parent AGENTS → child AGENTS → actual corpus 파생 경로를 명시한다.
+   - 단 repo 전체 sweep이 기본값은 아니다. 현재 판단을 바꾸는 범위까지만 읽는다.
+3. `Guideline Structure Models` 또는 `Comparative Guideline Review`에 “examples are test cases, not templates by default” guard를 추가한다.
+   - 사례는 규칙을 검증하고 오해를 드러내는 입력이다.
+   - 문서 역할상 template이 필요한 경우에만 사례를 template으로 승격한다.
+4. Output Checklist에 다음 질문을 추가한다.
+   - “사용자가 이 문서에 기대한 역할과 그 근거를 확인했는가?”
+   - “규칙이 root/project → parent → child → corpus로 어떻게 파생되는지 설명 가능한가?”
+   - “사례를 template으로 고정하지 않고, 역할 판정과 composition 판단을 돕는 입력으로 사용했는가?”
+
+## 현재 상태
+
+- `logs/2026-06-25-docs-skill.md`는 이 블록 작성 전부터 `status: open`이었다.
+- 이 블록은 docs-skill/document-structure-review 기준 개선 논의의 입력으로 남긴다.
+- 실제 `.agents/skills/document-structure-review/SKILL.md` 수정은 아직 하지 않았다.
+
+## 2026-06-28 · document-structure-review intended-role 기준 반영
+
+- @user가 직전 블록의 docs-skill 반영 후보를 실제 skill에 반영하라고 지시했다.
+- 반영 대상: `.agents/skills/document-structure-review/SKILL.md`.
+
+### 반영
+
+- `## Intended Role Recovery` 섹션을 추가했다.
+  - 지침, skeleton, template, owner 문서를 바꾸기 전에 사용자가 그 문서에 기대한 역할과 그 근거를 먼저 복원하도록 했다.
+  - 근거 위치를 user prompt, project/root contract, parent/child guideline, log, 실제 문서 corpus로 구분하게 했다.
+  - 사용자 의도는 중요한 입력이지만 자동 정답이 아니며, project contract·owner boundary·actual corpus와 충돌하면 fact/inference/proposal로 나눠 보고하도록 했다.
+  - 사례와 corpus는 규칙 검증과 오해 탐지 입력이며, 문서 역할상 template이 필요한 경우가 아니면 template으로 고정하지 않도록 했다.
+- `Review Loop` 앞단을 조정했다.
+  - 문제 문장/섹션/규칙/예시 식별 후 intended role과 근거를 먼저 복원한다.
+  - project/root contract → parent guideline → child guideline → actual corpus 파생 관계를 확인한다.
+- `Context Read Path`를 보강했다.
+  - guideline 계층이 있으면 project/root contract → parent guideline → child guideline → actual corpus 순서로 따라가되, 판단을 바꿀 수 있는 범위까지만 읽도록 했다.
+  - representative corpus나 과거 agent 사례는 적용 가능성과 오해 가능성을 확인할 때만 읽고, 사례가 많다는 이유만으로 사례별 template을 만들지 않도록 했다.
+- `Guideline Structure Models`와 `Comparative Guideline Review`를 보강했다.
+  - 사례, subtype 표, golden document는 규칙을 검증하는 입력이지 기본 template이 아니라고 명시했다.
+  - 사례 비교 시 사례별 형식을 따라 쓰게 만드는지, 문서 역할을 판정해 필요한 block을 조합하게 만드는지 구분하도록 했다.
+- `Output Checklist`를 보강했다.
+  - 사용자가 문서에 기대한 역할과 근거 확인 여부.
+  - project/root contract → parent guideline → child guideline → actual corpus 파생 설명 가능 여부.
+  - 사례를 template으로 고정하지 않고 역할 판정과 composition 판단 입력으로 사용했는지 여부.
+
+### 검증
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+- `git diff --check -- .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+
+### 상태
+
+- 직전 블록의 반영 후보는 `.agents/skills/document-structure-review/SKILL.md`에 반영됐다.
+- 이 로그는 docs-skill/document-structure-review 설계·개선 흐름의 open 로그로 유지한다.
+
+## 2026-06-28 · intended-role 반영분 중복 정리 — single owner 확정 (최소 보정)
+
+- @user 지시: 직전 블록의 intended-role 반영을 @claude가 SKILL 자기 기준으로 재검토했고, 거기서 제기한 중복 분산 문제를 최소 보정으로 반영하고 반영 이유와 로그를 남겨라.
+- [Fact] ⑦ intended-role 반영은 세 메시지를 분산 주입했다.
+  - "사례≠template": `Intended Role Recovery`·`Context Read Path`·`Guideline Structure Models`·`Comparative Guideline Review` 본문 4곳 + `Output Checklist` 1곳 + 기존 `Wording Rules`의 예시 일반 원칙.
+  - "계약 파생 경로(project/root → parent → child → corpus)": `Review Loop`·`Context Read Path`·`Output Checklist` 3곳.
+  - "intended role 복원": `Intended Role Recovery`·`Review Loop`·`Output Checklist` 3곳.
+- [Analysis] SKILL이 가르치는 기준을 SKILL 자신이 위반한 사례다. `Structure Smells`의 `duplicated ownership`, `Authoring Guideline Improvement`의 "같은 규칙을 여러 문서에서 재정의하지 않는다", `Wording Rules`의 "이미 말한 내용을 별도 해설로 반복하지 않는다"에 걸린다. 단 `Output Checklist`의 재등장은 본문 규칙을 질문으로 되묻는 checklist 고유 역할이라 중복이 아니다(by-design, 유지).
+- [Decision] no-change / 최소 / 구조적 중 **최소 보정**. gap 자체는 ⑦이 이미 메웠고 남은 작업은 single owner 확정 + 중복 제거뿐이라 구조적 재편은 불필요.
+- 반영(`.agents/skills/document-structure-review/SKILL.md`):
+  - "사례≠template" single owner = `Guideline Structure Models`(template 승격 판단의 owner).
+    - `Intended Role Recovery` 마지막 bullet: 승격 조건문을 제거하고 "사례·corpus는 검증 입력이지 따라 쓸 template이 아니다" + owner 위임 pointer로 축소.
+    - `Context Read Path`: "사례가 많다고 사례별 template 만들지 마라" 문장 제거(corpus를 언제 읽는지만 남김).
+    - `Comparative Guideline Review`: "사례 비교 시 형식 복사 vs block 조합 구분" bullet 제거. 같은 섹션의 "heading 같다고 section meaning 복사 금지" + `Guideline Structure Models`의 composition blocks가 이미 owner.
+    - `Wording Rules`의 예시 일반 원칙과 `Output Checklist` 질문형은 역할이 달라 유지.
+  - `Review Loop` 1–2단계(intended role 복원 + 파생 경로)를 1단계로 합치고, 복원 방법은 `Intended Role Recovery`·`Context Read Path`를 따르도록 진입점 pointer로 대체 → 9단계에서 8단계로. 절차가 원칙 섹션을 호출하는 형태로 정리(`Owner And Scope`의 "세부 절차 반복 말고 어디가 소유하는지만 남긴다"와 정합).
+- [Fact] 검증 ledger:
+  - `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+  - `git diff --check -- .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+- [관찰/미반영] 파생 경로의 `Review Loop`↔`Context Read Path` 잔여 언급은 절차 시점과 read-범위 시점이 달라 허용 범위로 두었다. `references/EXAMPLE.md`는 이번 정리 대상이 아니라 무변경.
+- working tree: `SKILL.md` uncommitted(커밋은 @user 지시 시). 이 로그는 open 유지.

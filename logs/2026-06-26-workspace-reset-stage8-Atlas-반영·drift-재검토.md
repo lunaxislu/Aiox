@@ -8,12 +8,13 @@ status: open
 
 - [x] W1 stage 8 drift 재검토 범위 확정 + 후보 인벤토리 — AGENTS.md·docs/guides/workflow.md·관련 owner 문서 중 docs-as-Atlas 도입으로 반영/정정이 필요한 지점을 식별(추측 변경 금지, 후보 목록부터)
 - [x] W5 AGENTS.md 계층 skeleton 확정·적용 — @user 제공 docs/AGENTS.md·docs/\*\*/AGENTS.md 초안을 하나씩 2026-06-25 논의 로그 참조로 완성·적용 (적용 후 논의 로그 close)
-- [>] W6 skeleton 기준 owner 문서 정리 + drift 재검토 통합 — docs/ owner 문서를 확정 skeleton으로 정합하며 split·wikilink·stale drift 동시 판정
+- [>] W6 skeleton 기준 owner 문서 정리 + drift 재검토 통합 → `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md` — docs/ owner 문서를 확정 skeleton으로 정합하며 split·wikilink·stale drift 동시 판정
   - [x] product 계열·roadmap·documentation-system drift — product.md/AGENTS.md, roadmap.md sweep + Pre-Release Sources, federation-remote 명칭, documentation-system `## History` + roadmap 이중서술
-  - [ ] architecture retrofit — `local-agent-runtime.md` 인덱스 + slice 9개를 새 규칙(Related/Status, repo-path wikilink, Evidence 형식, `> 컨텍스트:` 대체)으로 검토·retrofit. §3 제약: 기존 §N 헤딩·inbound anchor는 migration 아니면 보존
-  - [ ] specs retrofit — `aiox-a2a.md` 인덱스 + slice 7개의 `> 컨텍스트:` 형식을 Related/Status·repo-path wikilink·evidence 형식으로 검토·retrofit
-  - [ ] decisions drift 검토 — 기존 decision 15개 **일괄 retrofit 금지**. stale 링크·owner drift만 검토해 변경 없음 또는 국소 수정만 판정(decisions/AGENTS §4 "기존 문서 retrofit 금지" 준수)
+  - [x] architecture retrofit — `local-agent-runtime.md` 인덱스 + slice 9개 완료 → `logs/2026-06-28-workspace-reset-stage8-W2-architecture-retrofit.md` (decided)
+  - [>] specs retrofit — `aiox-a2a.md` 인덱스 + slice 7개 → `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md`
+  - [ ] decisions drift 검토 — 기존 decision 15개 → `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`
 - [ ] W7 탐색 흐름 drift 판정 — workflow.md·AGENTS 계층의 Obsidian Graph navigation·IDE+Obsidian dual-tool 반영 필요 여부 판정·반영 또는 불필요 근거 기록
+- [x] W10 owner별 section contract 전수 재검토 → `logs/2026-06-28-workspace-reset-stage8-W10-docs-contract-overhaul.md` — docs/AGENTS 공통 의미와 architecture/specs/decisions/guides/product의 skeleton·invariant를 required/optional/absorb/subtype-only/delete로 판정·승인 반영한 뒤 W6 retrofit 재개
 
 ## 2026-06-26 · stage 8 착수 — 경위·범위·W3 handoff 입력
 
@@ -754,313 +755,39 @@ mixing risk가 있으므로 section-level ownership을 추가하는 것이다.
 **현재 상태:** W5 완료. 다음 재개 지점은 W6 — 확정된 AGENTS 계층 기준으로 `docs/` owner 문서를 정리하고
 split·wikilink·stale drift를 통합 판정한다.
 
-## 2026-06-27 · W6 product owner 문서 정합 + external positioning drift 반영
+## 2026-06-28 · stage8 log split — W6/W10 child logs
 
-### Scope
+- @user가 기존 stage8 로그가 너무 길어졌고, 흐름이 기존 stage8 control / W6 retrofit / W10 docs 전면 개선 3갈래로 나뉜다고 정리했다.
+- 반영: 이 파일은 stage8 parent/control log로 유지하고, W6와 W10 상세 실행 기록은 child log로 분리했다. 기존 W5 이전 기록은 이 파일에 보존한다.
+- Child pointer:
+  - W6 retrofit: `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md`
+  - W10 docs 전면 개선: `logs/2026-06-28-workspace-reset-stage8-W10-docs-contract-overhaul.md`
+- 의미 구분:
+  - W6 child는 owner 문서 정합과 architecture/specs/decisions retrofit을 소유한다.
+  - W10 child는 retrofit 중 드러난 docs 공통 계약·child AGENTS section contract 전면 개선을 소유한다.
+- 현재 next pointer는 W10 child다. W10 child closeout 뒤 parent W10을 완료 처리하고 W6 child로 복귀한다.
+- W7은 W6 완료 뒤 이 parent log에서 재개한다.
 
-- Primary owner: `docs/product/product.md`
-- Allowed cross-owner updates: `docs/product/AGENTS.md`
-- Evidence inputs: `docs/AGENTS.md`, `docs/product/AGENTS.md`, `docs/documentation-system.md`, 현행 `product.md`, `aiox-adapter-model.md`, `aiox-compose-contract.md`, `aiox-federation-remote.md`, `roadmap.md`, Google Developers Blog와 Linux Foundation 공식 발표
+## 2026-06-28 · W10 child closeout consumed — W6 child 복귀
 
-### Evidence Ledger
+- W10 child log `logs/2026-06-28-workspace-reset-stage8-W10-docs-contract-overhaul.md`가 closeout을 남기고 `decided`로 닫혔다.
+- W10은 one-by-one 검토 방식으로 완료됐다. 순서는 `docs/AGENTS.md` 공통 계약 → `architecture/specs/decisions/guides/product` AGENTS → `product.md`/`roadmap.md` product owner 문서 보정이었다.
+- W10 closeout에는 `decisions/AGENTS.md`, `guides/AGENTS.md`, `product/AGENTS.md`, `product.md`, `roadmap.md` 각 검토 기록을 개별 판정 단위로 읽어야 한다고 명시했다.
+- Parent Work Items 반영: W10을 완료 처리했고, next pointer를 W6 child log로 복귀시켰다.
+- 현재 재개 지점은 W6 child log `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md`다. W6 child의 active item은 architecture retrofit이며, W7은 W6 완료 뒤 이 parent log에서 재개한다.
 
-| Topic | Source | Lines | Finding | Owner impact | Action |
-| ----- | ------ | ----- | ------- | ------------ | ------ |
-| Product authoring boundary | `docs/product/AGENTS.md` | 19-28, 75-84 | [Fact] product는 목적·사용자·scope·원칙을 소유하고 Target claim을 허용하지만, 기존 "target work나 phase는 다른 owner" 문장은 product-level target direction과 실행 target의 경계를 충분히 복원하지 못했다. | product guideline | target direction은 scope·경계에 필요한 방향 문장만 허용하고 contract·내부 설계·phase·task는 각 owner로 보내는 invariant로 교체. |
-| Adapter-based product viability | @user decision + `docs/specs/aiox-adapter-model.md` | 29-51 | [Decision] vendor 협약이나 vendor-native 지원이 없어도 adapter 기반 aiox의 사용성과 제품 가치는 성립한다. Upstream-enabled와 vendor-native는 선택 가능한 발전 경로이며 필수 전제가 아니다. | product principle | `Adapter-first Adoption`에 actor responsibility axis만 반영하고 기술 연결 방식·tier·degradation은 spec으로 위임. |
-| Terminal boundary | `docs/specs/aiox-compose-contract.md`; `docs/product/roadmap.md` | compose 41-60; roadmap 50-58 | [Fact] terminal auto-layout은 core protocol이 아니며 manual/비자동 fallback과 view-driver 도입 순서는 spec·roadmap이 이미 소유한다. | product principle | vendor-native CLI/TUI를 primary surface로 유지하고 aiox-owned terminal emulator로 대체하지 않는 제품 경계만 반영. |
-| Compose/federation direction | `docs/specs/aiox-compose-contract.md`; `docs/specs/aiox-federation-remote.md`; `docs/product/roadmap.md` | compose 5-13; federation 5-25; roadmap 121-141 | [Fact] compose는 Committed target이고 remote/federation은 Deferred/Target이며 roadmap Phase 2/3이 순서를 소유한다. | product direction | product에는 thin Target 방향만 남기고 schema·확장 단계·phase 순서는 각 owner로 위임. |
-| A2A external drift | Google Developers Blog 2025-06-23; Linux Foundation 2026-04-09 | external | [Fact] A2A는 Google에서 Linux Foundation으로 이전되어 vendor-neutral governance 아래 있고 2026년에는 production adoption이 보고됐다. [Inference] 기존 "Google의 HTTP remote enterprise 위임" framing은 현재 범위를 과소서술해 stale하다. | external positioning | dated comparison을 제거하고 aiox의 stable primary focus(local-first CLI/TUI runtime/control plane), 비경쟁 positioning, future bridge 관계로 갱신. 공식 출처를 `Sources:`에 연결. |
+## 2026-06-28 · W10 지시서 범위 정정 — Claude review context
 
-### Decision Candidates
+- @user 정정: "W10에 대한 지시서 내용"은 Claude에게 리뷰·검토를 맡길 때의 지시 범위를 뜻한 것이며, W10 child closeout에 새 실행 항목을 추가하라는 뜻은 아니었다.
+- Parent 상태 변경 없음: W10은 완료 상태를 유지하고, next pointer는 W6 child log를 계속 가리킨다.
+- W10 child log에는 같은 정정을 추가했다. future reviewer는 W10의 `decisions/guides/product` AGENTS와 `product.md`/`roadmap.md` 기록을 one-by-one 검토 단위로 읽는다.
 
-| Source | Lines | Why decision-worthy | Proposed decision | Status |
-| ------ | ----- | ------------------- | ----------------- | ------ |
-| @user confirmation | current discussion | Vendor 지원 부재가 제품 성립을 무효화하는지 product posture 확정이 필요했다. | Adapter 기반 제품은 독립적으로 성립하며 upstream/vendor-native는 선택 경로다. | product owner에 반영 완료; 별도 decision 불필요(문서 자체로 intent 복원 가능). |
+## 2026-06-29 · W6 child log 분리 — W2 완료·W3·W4 child log 신규
 
-### Cross-Owner Effects
+W6 child log(`logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md`)에서 W2 architecture 기록을 이전하고 W3 specs·W4 decisions를 각각 별도 child log로 분리했다.
 
-| Owner document | Change | Reason | Verification |
-| -------------- | ------ | ------ | ------------ |
-| `docs/product/AGENTS.md` | target direction과 execution target 경계를 좁힌 invariant로 교체 | 향후 agent가 product 방향을 전부 제거하거나 spec/roadmap 상세를 product에 복사하는 양쪽 오판 방지 | inline-code check PASS; diff check PASS |
-| `docs/product/product.md` | Related/Status, Definition/User Value/Scope/Principles/Direction/External Positioning으로 재구성 | 선언↔섹션 drift, current/target 혼재, backtick owner 참조, stale A2A framing을 한 패스로 정합 | inline-code check PASS; wikilink target PASS; diff check PASS |
+- W2 architecture retrofit: `logs/2026-06-28-workspace-reset-stage8-W2-architecture-retrofit.md` — index + slice 9개 완료(decided). W6 sub-item [x] 처리.
+- W3 specs retrofit: `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md` — aiox-a2a 인덱스(S0) + slice 7개(S1~S7) step-by-step 작업 아이템 포함. W6 sub-item [>] active.
+- W4 decisions drift: `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md` — decision 15개(D01~D15) one-by-one drift 검토 아이템 포함. W6 sub-item [ ] open.
 
-### Closeout
-
-- Updated owner documents: `docs/product/AGENTS.md`, `docs/product/product.md`
-- Validation result:
-  - `scripts/check-markdown-inline-code docs/product/AGENTS.md docs/product/product.md` → exit 0 (PASS)
-  - `git diff --check` → exit 0 (PASS)
-  - product wikilink target 6개 존재 확인 → PASS
-- Remaining gaps: W6 전체는 계속 active. Product 계열 잔여인 `docs/product/roadmap.md` transitional marker·dated audit provenance와 `docs/documentation-system.md` roadmap/history drift를 후속 owner sweep에서 처리한다.
-- Workflow retrospective: @claude 독립 리뷰와 @codex 반박을 대조하면서 기술 연결 방식 축(spec)과 채택 책임 축(product)을 분리했다. 새 portable skill 변경은 필요하지 않다.
-- Next owner/log: 이 stage8 로그 W6 유지. 다음은 `roadmap.md`와 `documentation-system.md`의 큐잉된 drift를 실제 문서와 대조한다.
-
-## 2026-06-27 · W6 product authoring owner 문구 명확화
-
-@user가 `docs/product/AGENTS.md`의 "각 owner로 보낸다"는 표현이 실제 이동, 새 문서 작성,
-ownership 위임 중 무엇을 뜻하는지 모호하다고 지적했고 반영을 승인했다.
-
-**확인과 반영:**
-
-- [Fact] Product 작성 규칙의 owner 배치는 이미 spec·architecture·roadmap·plans로 확정돼 있었고,
-  이번 변경은 그 배치를 바꾸지 않는다.
-- 외부 contract와 내부 구조는 각각 관련 spec과 architecture 문서가 소유한다고 명시했다.
-- 구체 contract·내부 설계·release phase·실행 task는 각각
-  specs·architecture·roadmap·plans가 소유한다고 명시했다.
-- 두 규칙 모두 product 문서에는 상세를 복사하지 않고 관련 owner 문서로 링크한다는 작성 행동을
-  분리해 적었다.
-
-**검증:**
-
-- `scripts/check-markdown-inline-code docs/product/AGENTS.md` → exit 0 (PASS)
-- `git diff --check` → exit 0 (PASS)
-- 기존 모호 표현 재검색 → 일치 없음 (PASS)
-
-W6 상태와 next pointer는 변경하지 않는다. 다음 owner sweep은 `roadmap.md`와
-`documentation-system.md`다.
-
-## 2026-06-27 · W6 roadmap owner 작업 입력 순서 정정
-
-- @user가 `roadmap.md`는 사용자 초안을 먼저 보고 작업해야 한다고 정정했다.
-- [Fact] 현재 workspace에는 별도 `roadmap.md` 초안이나 해당 파일의 미커밋 변경이 없다.
-- 따라서 기존 `roadmap.md`를 바로 수정하지 않고, @user 초안을 받은 뒤 현행 owner 경계·내용 보존·stale/provenance 후보와 대조해 검토·합성한다.
-
-W6와 next pointer는 유지한다. 다음 행동은 @user의 `roadmap.md` 초안 제공을 기다린다.
-
-## 2026-06-27 · W6 roadmap owner 초안 제안
-
-@user가 agent가 `roadmap.md` 초안을 먼저 제시하도록 정정했다. @codex는 현행 roadmap·
-`docs/product/AGENTS.md`·`docs/AGENTS.md`·`docs/documentation-system.md`·W9 release roadmap 로그를 대조해
-아래 초안 범위를 제안했다. 아직 owner 파일에 반영하지 않았다.
-
-- 문서 상단에 `Related:`(`product.md`, `aiox-a2a.md`, `release-plan.md`) 및 `Status: Current` 추가.
-- "Roadmap의 제품 계약"을 "현재 승인된 공개 순서"로 바꿔 roadmap이 product/spec contract를 소유하는 듯한
-  owner 혼동을 줄임.
-- `Current Execution Candidates`에 transitional mapping callout을 추가하고, successor plan 생성·repoint·폐기는
-  `plans/workspace-reset/workspace-reset.md`가 소유함을 링크. 현재 sub-plan 경로는 repo-path wikilink로 전환.
-- `Google A2A bridge`는 현행 product owner의 external positioning과 맞춰 중립적인 `A2A Protocol bridge`로
-  바꾸는 후보. `docs/specs/aiox-federation-remote.md`에도 같은 기존 표현이 남아 별도 cross-owner drift 점검 필요.
-- `Pre-Release Gap Summary`의 stale "W5 candidates" 문구를 제거하고, 상세 audit는 roadmap에 복사하지 않는다는
-  경계와 검증 provenance `Sources:`로 `logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md`를 연결.
-
-제안은 local roadmap 수정과 cross-owner spec drift 후속을 분리한다. 다음 행동은 @user가 초안을 리뷰한 뒤
-승인·정정·거부 범위만 owner 파일에 반영하는 것이다.
-
-## 2026-06-27 · W6 roadmap 초안 owner 경계 재검토
-
-@user가 후속 논의에서 상태 신호(roadmap 독자용)와 실행 지시(plan stage 9 작업자용)를
-분리한 owner 경계와 @claude 이의 2건을 제공했다. @codex가 현행 파일과 대조한 판정은 다음과 같다.
-
-- [Fact] `plans/workspace-reset/workspace-reset.md:46`이 successor plan 생성 후 roadmap repoint →
-  `plans/post-mvp*` 삭제 → absorption log disposition 확정을 이미 실행 순서로 소유한다.
-- [Fact] 현재 `Current Execution Candidates` 4개 plan은 stage 9의 물리 삭제 대상이고, stage 7 W3는 docs
-  wikilink broken 0을 PASS했다.
-- [Judgment] @claude 이의 1·2에 동의. Roadmap marker에 stage 9의 실행 순서·owner pointer를 복사하지
-  않고 순수 상태 신호로 축소한다. 삭제 예정 plan 4개는 새 wikilink를 만들지 않고 backtick path를 유지한다.
-- 수정 marker 제안: "아래 표는 기존 실행 plan과 release gate 사이의 임시 mapping이다. 장기 roadmap
-  구조나 실행 상태의 권위로 해석하지 않는다." 실행 조치·소유 포인터는 포함하지 않는다.
-- [Judgment] `Related:`는 `[[docs/product/product]]`만 문서 전체의 load-bearing scope owner로 유지하는 안이
-  가장 엄격하다. `aiox-a2a`는 문서 전체 neighbor로 입증되지 않으므로 `Related:`에서 제외하고,
-  contract dependency가 필요한 G0/G1 문맥에서만 국소 body link로 두는 대안이 맞다.
-- [Judgment] `release-plan`은 G6의 국소 실행 checklist이므로 document-level `Related:`가 아니라 현행
-  도입부 body reference면 충분하다. 삭제 예정은 아니므로 body wikilink는 가능하지만 `Related:` 승격 근거는 없다.
-- [Judgment] "Roadmap의 제품 계약"은 transitional marker와 개념적으로 독립된 owner-altitude drift다.
-  그러나 W6가 같은 owner 문서의 drift를 한 패스로 정리하는 단계이므로 같은 patch에서 "현재 승인된
-  추진 순서"로 정정하되, marker 승인과 묶지 않는다.
-
-아직 `roadmap.md`에 반영하지 않았다. 다음 행동은 @user가 재정리된 초안 범위를 승인하거나 추가 정정하는 것이다.
-
-## 2026-06-27 · W6 roadmap owner 정합 적용 — transitional marker + Related/Status + 추진순서 + A2A 명칭
-
-직전 블록(@codex owner 경계 재검토)의 합의안을 @user 승인(marker = 미니멀 상태신호안)으로 `docs/product/roadmap.md`에
-반영했다. 상태신호(roadmap owner)와 실행지시(plan stage 9 owner) 분리는 직전 블록이 owner이며 여기 재서술하지 않는다.
-
-### Scope
-
-- Primary owner: `docs/product/roadmap.md`
-- Allowed cross-owner updates: 없음 (spec `aiox-federation-remote.md`의 "Google A2A" 잔존은 이번 scope 밖, 별도 확인)
-- Evidence inputs: `docs/product/AGENTS.md`, `docs/AGENTS.md`, `docs/product/product.md`,
-  `plans/workspace-reset/workspace-reset.md:46`(stage 9), `logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md`(존재만 확인)
-
-### Evidence Ledger
-
-| Topic | Source | Lines | Finding | Owner impact | Action |
-| ----- | ------ | ----- | ------- | ------------ | ------ |
-| Transitional marker | `roadmap.md`; `plans/workspace-reset/workspace-reset.md:46`; `product/AGENTS.md` Roadmap Change Rules | roadmap 143-145 | [Fact] Current Execution Candidates는 stage 9에서 repoint·삭제될 transitional 매핑인데 본문에 상태 신호가 없었다. 실행지시는 plan:46이 이미 소유. | roadmap | 미니멀 callout marker 부착(상태 신호만), 실행지시·소유 포인터 미포함. |
-| 삭제 예정 plan wikilink | `plans/post-mvp/*.plan.md`(4개); stage7 W3 broken-0 검증 | roadmap 147-152 | [Fact] 4개 plan은 stage 9 물리 삭제 대상. wikilink化 시 삭제 후 Obsidian broken link 발생(W3 broken 0 미래 훼손). | roadmap | 표 링크 backtick path 유지(wikilink化 거부). |
-| A2A external naming drift | `roadmap.md` vs `product.md` | roadmap 128,140 vs product 93-101 | [Fact] product.md가 "Google A2A" 소유격 framing 폐기(Agent2Agent Protocol/Linux Foundation A2A). roadmap 잔존 = owner 불일치 drift. | roadmap | "Google A2A bridge/bridging" → "A2A Protocol bridge/bridging". |
-| roadmap owner 표현 | `roadmap.md` | 7 | [Fact] "제품 계약"은 roadmap을 contract owner로 오해시킨다. roadmap은 우선순위·순서 owner. | roadmap | "제품 계약은" → "현재 승인된 추진 순서는"(공개 후 phase까지 포괄). |
-| Related/Status | `docs/AGENTS.md` Document Structure; sibling `product.md` | roadmap 1-9 | [Fact] sibling product.md는 Related/Status 보유, roadmap 미보유. | roadmap | Related=`[[docs/product/product]]` 하나(load-bearing) + Status: Current. aiox-a2a(본문 직접 의존 없음·broad-link)·release-plan(plans·본문 참조로 충분)은 제외. |
-
-### Cross-Owner Effects
-
-| Owner document | Change | Reason | Verification |
-| -------------- | ------ | ------ | ------------ |
-| `docs/product/roadmap.md` | Related/Status 추가, "제품 계약"→"추진 순서", transitional callout marker, Google A2A→A2A Protocol(2곳) | owner 경계 명료화 + product.md external positioning과 drift 정합 + transitional 상태 신호 | inline-code exit 0; `git diff --check` exit 0; `[[docs/product/product]]` target EXISTS; "Google A2A" 0건 |
-
-### Closeout
-
-- Updated owner documents: `docs/product/roadmap.md`
-- Validation result: `scripts/check-markdown-inline-code docs/product/roadmap.md` exit 0 · `git diff --check` exit 0 ·
-  `[[docs/product/product]]` 존재 · "Google A2A" 재검색 0건 · 표 4개 plan 링크 backtick 유지(diff 확인).
-- Remaining gaps (W6 계속 active):
-  1. `Pre-Release Gap Summary` Sources — 현재 `:211` "W5 candidates" 문구 ↔ @codex 제안 W9 로그가 불일치. W9 로그를 열어 dated audit 원본/검증인지 확인한 뒤에만 `Sources:` 연결(추측 경로 금지). 미적용.
-  2. `docs/specs/aiox-federation-remote.md:49` "Google A2A bridge" — spec cross-owner라 product scope 밖. 별도 확인 후 처리.
-  3. `docs/documentation-system.md` roadmap 이중서술(K-Owners↔Scoped-Authority)·`## History` 미래형 drift.
-- Workflow retrospective: @codex 초안을 무조건 수용하지 않고 owner 경계 충돌 2건을 `file:line` 근거로 이의 제기 →
-  @codex 합의로 수렴. 균형 질의(결론 강요 없이 반박 여지 제시)가 효과적이었다.
-- Next owner/log: 이 stage8 W6 유지. 다음 = `Pre-Release Gap Summary` Sources(W9 로그 locate·검증) → `documentation-system.md` drift.
-
-## 2026-06-27 · W6 roadmap 적용본 리뷰 + spec·plan cross-owner 정합
-
-### Scope
-
-- Primary review: `docs/product/roadmap.md` Claude 적용본
-- Allowed cross-owner updates(@user 승인): `docs/specs/aiox-federation-remote.md`,
-  `plans/workspace-reset/workspace-reset.md`
-- Evidence inputs: `docs/AGENTS.md`, `docs/product/AGENTS.md`, `docs/specs/AGENTS.md`, `plans/AGENTS.md`,
-  stage 7 W3 broken-link ledger, 직전 roadmap 적용 로그
-
-### Evidence Ledger
-
-| Topic | Source | Lines | Finding | Owner impact | Action |
-| ----- | ------ | ----- | ------- | ------------ | ------ |
-| Claude roadmap 적용본 | `docs/product/roadmap.md`; `docs/product/AGENTS.md` | roadmap 1-19, 133-160 | [Fact] Related=`product` 1개, Status=Current, 추진 순서 owner 문구, 중립 A2A 명칭, 순수 상태 marker, plan backtick 유지가 합의와 일치한다. | roadmap | blocking issue 없음. callout의 중복 영문 title과 `권위` 표현만 가독성 보정. |
-| Spec A2A naming drift | `docs/specs/aiox-federation-remote.md`; `docs/product/product.md`; roadmap | spec 45-50; product 93-101; roadmap 133-146 | [Fact] spec의 `Google A2A bridge`가 product owner와 roadmap의 중립 `A2A Protocol` framing과 어긋난다. 이는 외부 contract 변경이 아니라 외부 integration 대상의 명칭·분류 drift다. | spec | `외부 vendor 또는 A2A Protocol bridge`로 중립화하고 의존 대상을 `외부 integration surface`로 정확화. |
-| Stage 9 roadmap pointer | `plans/workspace-reset/workspace-reset.md` | 46 | [Fact] 기존 `roadmap.md 147-152`는 roadmap 상단 삽입으로 이미 stale해졌고 향후 편집에도 취약하다. | plan stage 9 | 줄 범위를 `Current Execution Candidates` 표의 sub-plan 링크라는 stable semantic pointer로 교체. |
-| 직전 ledger line 좌표 | 직전 로그 블록; 현행 roadmap | previous `roadmap 143-145`, `147-152`, `128,140`; current 151-153, 155-160, 134/146 | [Fact] 직전 적용 ledger가 상단 6줄 삽입 전 좌표를 남겨 현재 line과 어긋난다. 내용 판정은 유효하지만 검증 좌표는 정정이 필요하다. | task log | 이 후속 ledger에 현재 line을 기록하고 이전 블록을 역사로 보존. |
-
-### Cross-Owner Effects
-
-| Owner document | Change | Reason | Verification |
-| -------------- | ------ | ------ | ------------ |
-| `docs/product/roadmap.md` | callout title에서 `(transitional)` 제거; `실행 진행 상태의 기준`으로 표현 정제 | 한국어 title 통일 + 일반 독자가 이해하는 상태 신호 | inline-code PASS; diff check PASS |
-| `docs/specs/aiox-federation-remote.md` | `Google A2A bridge` → `A2A Protocol bridge`; vendor-only 의존 표현을 외부 integration surface로 일반화 | product·roadmap external positioning과 spec 명칭 drift 해소 | inline-code PASS; 세 파일 Google A2A 0건 |
-| `plans/workspace-reset/workspace-reset.md` | `147-152` 줄 포인터를 `Current Execution Candidates` 표 포인터로 교체 | stage 9 편집 뒤에도 roadmap repoint 대상 복원 | inline-code PASS; onramp active path PASS |
-
-### Closeout
-
-- Updated: `docs/product/roadmap.md`, `docs/specs/aiox-federation-remote.md`,
-  `plans/workspace-reset/workspace-reset.md`
-- Validation:
-  - `scripts/check-markdown-inline-code` three files → PASS
-  - `git diff --check` → PASS
-  - stale 문구(`Google A2A`, `147-152`, `임시 매핑(transitional)`, `실행 상태의 권위`) 재검색 → 0건
-  - `scripts/onramp` → stage 8 active path·W6 next pointer 유지(PASS)
-- Resolved: 직전 roadmap closeout의 cross-owner gap 2(spec naming drift).
-- Remaining: `Pre-Release Gap Summary` Sources 검증·반영, `docs/documentation-system.md` drift.
-- W6 active/next pointer는 유지한다.
-
-## 2026-06-27 · W6 Pre-Release Gap provenance 계보 진단
-
-@user가 roadmap의 "W5 evidence/decision/log candidates"와 W9 로그 `Sources:` 제안의 관계를 질문했다.
-이 블록은 계보 진단만 기록하며 roadmap은 아직 수정하지 않았다.
-
-- [Fact] dated audit 원본은 현재 존재하는 `prd/post-mvp/aiox-a2a-spec.md` §12
-  (`:1030-1064`)이다. 2026-06-11 기준 current gap snapshot·severity·file location·gate mapping을 담는다.
-- [Fact] roadmap의 "W5 candidates"는 inventory W4-4/W4-5에서 §12 상세를 후속 evidence/history/decision
-  판정으로 이관했던 과도기 라벨이다(`logs/2026-06-16-workspace-reset-폴더별-inventory.md:24-25`).
-- [Fact] `logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md`는 audit 원본이 아니라,
-  그 로그 안의 W5 Batch L이 원본 §12를 현재 code/spec/roadmap과 대조하고 Claude checker PASS를
-  남긴 검증 successor다(`:207-245`, `:500-535`, `:559-564`).
-- [Fact] surviving source map은 §12 release pressure가 roadmap에 흡수됐고 별도 archive digest가
-  필요 없다고 판정한다(`logs/2026-06-21-workspace-reset-legacy-source-absorption.md:26`).
-- [Judgment] 따라서 W9 로그를 "audit 원본"으로 설명하면 틀리다. Durable roadmap에서는
-  삭제 예정 legacy PRD를 새 진입 링크로 올리지 말고, W9를 "dated audit를 현재 구현과
-  대조한 검증 provenance"로만 `Sources:`에 연결하는 안이 정확하다.
-- [Proposed wording] "Detailed file locations, severity labels and the dated audit snapshot are intentionally
-  excluded from this roadmap. The W9 release-roadmap validation reconciled that snapshot against the
-  then-current implementation; this roadmap retains only gate/phase pressure." 뒤 `Sources:`에 W9 로그
-  path를 backtick으로 둔다.
-
-다음 행동은 @user가 이 provenance 분류·문구를 리뷰한 뒤 roadmap에 반영하는 것이다.
-
-## 2026-06-27 · W6 Pre-Release Gap Sources 반영 + documentation-system History drift 확인
-
-직전 블록(@codex provenance 계보 진단)을 @claude가 독립 검증한 뒤 roadmap에 반영했고, @user가 직접 수행한
-`documentation-system.md` History drift 삭제를 git diff로 확인했다.
-
-### Scope
-
-- Primary owner: `docs/product/roadmap.md` (1번 Pre-Release Gap Sources)
-- Reviewed (사용자 수행분): `docs/documentation-system.md` (3번 History drift)
-- Evidence inputs: `logs/2026-06-21-workspace-reset-W9-release-roadmap-authority.md:500`,
-  `prd/post-mvp/aiox-a2a-spec.md`(존재 확인), `docs/decisions/AGENTS.md`(§5 history 삭제 선례), git diff
-
-### Evidence Ledger
-
-| Topic | Source | Lines | Finding | Owner impact | Action |
-| ----- | ------ | ----- | ------- | ------------ | ------ |
-| W9 anchor 실재 | `logs/2026-06-21-...-W9-...md` | 498-500 | [Fact] `:500` = "W5 Batch L Claude checker — PASS" 블록 본문. §11-§13 audit을 `src/`와 대조해 PASS 남긴 검증 successor(원본 아님). @codex 진단과 일치. | roadmap Sources | W9 로그 `:500`을 `Sources:` backtick으로 연결. |
-| legacy 원본 링크 금지 | `prd/post-mvp/aiox-a2a-spec.md` | 존재(98KB) | [Fact] dated audit 원본은 존재하나 stage 9 삭제 대상. 새 진입 링크 만들면 미래 broken. | roadmap | 원본 미링크. provenance는 W9 검증 로그로만. |
-| "W5 candidates" stale | `roadmap.md` | 219(구) | [Fact] 검증 완료됐는데 "후속 판정 대기 candidate" 서술이 남음. | roadmap | 문구 제거 → then-current 검증 provenance + gate/phase pressure만 유지 서술로 교체. W9 jargon은 본문 배제, Sources backtick으로. |
-| History drift(사용자 수행) | `docs/documentation-system.md` git diff | — | [Fact] `## History`의 "history/ 이동은 migration 단계에서 파일별 판정" 미래형 = stage 6 물리삭제 완료로 stale. `### Decisions`의 "history 원본 처리" = decisions/AGENTS §5 삭제와 dead reference. 둘 다 삭제 정합. | taxonomy | 사용자 삭제 검증 PASS(재작업 없음). |
-
-### Cross-Owner Effects
-
-| Owner document | Change | Reason | Verification |
-| -------------- | ------ | ------ | ------------ |
-| `docs/product/roadmap.md` | Pre-Release Gap Summary 문구 교체 + `Sources:`(W9 로그) 추가 | stale "W5 candidates" 제거, 검증 provenance 명시 | inline exit 0; `git diff --check` exit 0; "W5 candidates" 0건 |
-| `plans/workspace-reset/workspace-reset.md` | stage 9 pointer "147-152" → "`Current Execution Candidates` 표"(사용자/codex) | 내 Related/marker 추가로 줄번호 이동 → 하드코딩 줄번호 stale 방지 | git diff 확인 |
-
-### Closeout
-
-- Updated owner documents: `docs/product/roadmap.md`
-- Validation result: inline-code exit 0 · `git diff --check` exit 0 · "W5 candidates" 0건 · W9 `:500` anchor 실재 확인 · 3번 사용자 변경 정합 PASS.
-- 관찰(미해결, @user 결정 대기): 삭제된 `## History`에는 stale migration 문장 외에 "standalone `history` type·`docs/history/`를 두지 않는다"는 현재 유효 규칙도 있었다. 지금은 owner map 부재로 함의되나 명시 문장이 사라짐 → 명시 보존 필요 여부 @user 판단. (되돌리지 않음)
-- Remaining gaps (W6 계속 active): `docs/documentation-system.md`의 roadmap 이중서술(Knowledge Owners ↔ Scoped Authority 문구 불일치) drift는 이번 diff에 없어 미해결.
-- Workflow retrospective: @codex provenance 진단을 무조건 수용하지 않고 W9 `:500` anchor·legacy 원본 존재를 직접 확인. 코덱스 [Proposed wording]의 정확성(then-current·gate/phase pressure)은 흡수하되 "W9" 본문 jargon은 Sources로 빼는 형태로 조정.
-- Next owner/log: 이 stage8 W6 유지. 남은 W6 = `documentation-system.md` roadmap 이중서술 drift. 그 외 stage8 잔여(W7 탐색 흐름 drift 판정)는 W6 종료 후.
-
-## 2026-06-27 · W6 documentation-system roadmap 이중서술 drift 해소 — semantic-type 축 통일(B)
-
-@claude 진단(이중서술 = 폴더 축↔질문 축 불일치, 추천 A=Product 헤딩을 폴더 grouping으로) → @codex 반박(B) →
-@claude 검증·B 수용 → 적용. W6의 마지막 명시 drift 큐를 닫는다.
-
-### Evidence Ledger
-
-| Topic | Source | Lines | Finding | Owner impact | Action |
-| ----- | ------ | ----- | ------- | ------------ | ------ |
-| Knowledge Owners 축 | `docs/documentation-system.md` | 16-57(구) | [Fact] `### Specs/Architecture/Decisions/Guides`는 모두 semantic type 헤딩(폴더명과 1:1). `### Product`만 그 아래 roadmap을 종속시켜 — Scoped Authority(`:86,:91`)의 roadmap peer 모델과 형태 불일치. | taxonomy | @claude A(Product를 폴더 축으로) 철회. roadmap을 `### Roadmap` semantic 헤딩으로 분리(B)해 전 헤딩을 type 축으로 통일. |
-| co-location 보존 | `docs/product/AGENTS.md` dual sub-kind 결정 | - | [Fact] product.md·roadmap.md는 같은 `docs/product/` physical scope, 다른 sub-kind. B로 분리해도 이 사실을 잃지 않아야 함. | taxonomy | `### Roadmap` 본문에 "`product.md`와 같은 `docs/product/` physical scope에 있지만 별도 knowledge owner" 한 문장으로 보존. |
-| Decisions 문장 어색(History 삭제 잔여) | `docs/documentation-system.md` | 45-46 | [Fact] @user의 `## History`/decisions-history 삭제 후 "작성 규칙, 승격 기준 원칙은"이 어색하게 남음. | taxonomy | "Decision 문서의 작성 규칙과 승격 기준은"으로 정리. |
-
-### Cross-Owner Effects
-
-| Owner document | Change | Reason | Verification |
-| -------------- | ------ | ------ | ------------ |
-| `docs/documentation-system.md` | `### Roadmap` semantic 헤딩 신설(roadmap을 `### Product`에서 분리, co-location 문장 보존) + Decisions 문장 정리 | 이중서술 drift 해소 — Knowledge Owners를 Scoped Authority의 peer 모델과 축 통일 | inline-code exit 0; `git diff --check` exit 0; roadmap 잔존 참조 5곳 모두 peer/관계 정합 확인 |
-
-### Closeout
-
-- Updated owner documents: `docs/documentation-system.md`
-- Validation result: inline-code exit 0 · `git diff --check` exit 0 · `### Product`/`### Roadmap` 분리 확인 · Scoped Authority(`:87,:92`)·Conflict Resolution(`:110`) peer/관계 정합.
-- Workflow retrospective: @claude 추천 A를 @codex가 "Knowledge Owners는 semantic type 축이라 Product만 폴더 축으로 보면 혼합 축 고착"으로 반박 → @claude가 다른 헤딩 4종의 축을 직접 확인하고 B로 전환. agent 간 상호 반박이 더 정합한 모델로 수렴.
-- **W6 상태**: 명시 drift 큐(product.md·roadmap.md·documentation-system.md) 모두 해소. architecture/specs slice 본문 retrofit은 별도 @user 다운스트림(W6 scope 아님). **W6 closeout 후보 — Work Items 체크박스 전환은 @user 확인 후.**
-- Next owner/log: W6 closeout 시 다음 = **W7 탐색 흐름 drift 판정**(workflow.md·AGENTS 계층의 Obsidian Graph navigation·IDE+Obsidian dual-tool 반영 여부).
-
-## 2026-06-27 · W6 scope 정정 — owner 문서 retrofit 3종이 W6 후속(다음 세션)
-
-@user가 직전 블록의 판정을 정정했다. "W6 closeout 후보 / architecture·specs slice retrofit은 W6 scope 아님"은
-**틀렸다.** architecture·specs slice retrofit과 decisions drift 검토는 W6 "owner 문서 정리"의 **잔여 작업**이다.
-따라서 W6는 계속 active이고, Work Items에 sub-item 3종을 추가했다. 실제 작업은 **다음 세션**에서 한다(이번 미착수).
-
-**W6 잔여 3종(다음 세션):**
-
-1. **architecture retrofit** — `docs/architecture/local-agent-runtime.md` 인덱스 + slice 9개(이전 실측 기준, 착수 시
-   재확인). 현재 slice는 `> 컨텍스트:` 콜아웃 형식·`Evidence:` 블록 0·repo-path wikilink 0. 새 규칙(Related/Status,
-   repo-path wikilink, Evidence 형식)으로 검토·retrofit. **§3 제약: 기존 §N 헤딩·inbound anchor는 inbound ref를
-   함께 갱신하는 migration이 아니면 보존.** (근거: `docs/architecture/AGENTS.md` §3/§4, 이 로그의
-   `2026-06-26 · W5 후속` 블록 미반영 retrofit handoff.)
-2. **specs retrofit** — `docs/specs/aiox-a2a.md` 인덱스 + slice 7개의 `> 컨텍스트:` 형식을 Related/Status·repo-path
-   wikilink·evidence 형식으로 검토·retrofit. (`docs/specs/AGENTS.md` §3/§4 기준.)
-3. **decisions drift 검토** — 기존 decision 15개 **일괄 retrofit 금지**(`docs/decisions/AGENTS.md` §4 "기존 문서
-   retrofit 금지"). stale 링크·owner drift만 검토해 변경 없음 또는 국소 수정만 판정. decision-change harness(§5)
-   준수.
-
-**진행 순서(권장):** architecture → specs(aiox-a2a는 architecture와 index/slice 짝) → decisions. 다음 세션 onramp는
-이 블록과 Work Items W6 sub-item을 재개 기준으로 본다.
-
-**다음 행동(다음 세션 재개):** W6 — architecture retrofit부터. `local-agent-runtime.md` 인덱스/slice 9개를 새 규칙으로
-검토·retrofit하되 §N 헤딩·inbound anchor 보존. 그 뒤 specs 7개, decisions 15개 검토 순.
+다음 행동: W3 child log에서 `docs/specs/aiox-a2a.md` 인덱스(S0)부터 one-by-one 검토·retrofit 착수.
