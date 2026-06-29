@@ -1,6 +1,19 @@
 # aiox Local Runtime — Codex Adapter (§7)
 
-> 컨텍스트: [[local-agent-runtime]] 인덱스. status 어휘·module overview·authority links는 인덱스가 소유한다.
+Related:
+
+- [[docs/architecture/local-agent-runtime]]
+- [[docs/decisions/codex-per-agent-app-server]]
+- [[docs/decisions/proxy-lazy-observation-cost-model]]
+- [[docs/architecture/local-runtime-routing-and-delivery]]
+- [[docs/decisions/pair-slot-generalization]]
+
+Status: Current
+
+This slice owns the current/as-built Codex adapter topology, attach/resume flow,
+proxy binding, turn injection, MCP ingress, and lifecycle ownership.
+[[docs/architecture/local-agent-runtime]] is the compatibility index and owns
+status vocabulary, the module overview, and authority links.
 
 ## 7. Codex Adapter
 
@@ -15,17 +28,24 @@ transparent proxy (in-process `WebSocketServer`) + 1 CLI-owned TUI child +
 
 Daemon JSON-RPC writes go **directly** to the app-server (bypassing the
 proxy) via the runtime's persistent WS client; the proxy URL is what the
-TUI consumes (`runtime.ts:142-148, 259`).
+TUI consumes ([[src/adapters/codex/runtime.ts]] — `src/adapters/codex/runtime.ts:136-148, 254-260`).
 
-Rationale: [[codex-per-agent-app-server]] (per-agent app-server pivot, production direction).
+Evidence:
+
+- Runtime endpoint and process ownership
+  - [[src/adapters/codex/runtime.ts]]
+    - `src/adapters/codex/runtime.ts:109-148`
+    - `src/adapters/codex/runtime.ts:254-260`
+
+Rationale: [[docs/decisions/codex-per-agent-app-server]] (per-agent app-server pivot, production direction).
 
 ### 7.2 Attach Flow (`aiox codex --name <n>`)
 
 1. CLI parser registers `--name`, `--pair`, and codex-only `--resume`
-   ([[src/cli/parse.ts]] — `src/cli/parse.ts:218-249`).
+   ([[src/cli/parse.ts]] — `src/cli/parse.ts:257-289`).
 2. `agent-attach` auto-starts daemon, calls `attachAgent` RPC
-   ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:108-121`).
-3. Daemon `attachAgent` ([[src/daemon/state.ts]] — `src/daemon/state.ts:532-745`) wraps DB attach + pair attach
+   ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:157-177`).
+3. Daemon `attachAgent` ([[src/daemon/state.ts]] — `src/daemon/state.ts:600-746`) wraps DB attach + pair attach
    + route creation in a single `withTransaction`. For Codex, it pre-issues
    `codexChannelToken = randomUUID()` and stores it in `codexPendingTokens`
    (`state.ts:625-630`). Token is used by the MCP child handshake.
@@ -58,14 +78,14 @@ Rationale: [[codex-per-agent-app-server]] (per-agent app-server pivot, productio
 6. Daemon returns `codexRuntime: { endpoint: proxy.url, activeThreadId: adapterSessionId }`
    (`state.ts:645-657`).
 7. CLI spawns TUI with `launchCodexTui({endpoint, resumeSessionId?})`
-   (`invocation.ts:122-129`, `launcher.ts:76-86`):
+   ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:178-185`; [[src/adapters/codex/launcher.ts]] — `src/adapters/codex/launcher.ts:76-86`):
    - Fresh: `codex --remote <proxy-url>`
    - Resume: `codex resume <session-id> --remote <proxy-url>`
-   - Stdio `"inherit"` (TUI is CLI-child — [[codex-per-agent-app-server]] §5).
+   - Stdio `"inherit"` (TUI is CLI-child — [[docs/decisions/codex-per-agent-app-server]] §5).
 8. CLI awaits TUI exit. On exit → `api.notifyTuiExited({agentName, exitCode, signal})`.
    On spawn error → `api.rollbackAgentAttach` then
    typed exit `aiox.invocation.tui_launch_failed`
-   (`invocation.ts:130-142, 230-237`).
+   ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:186-198`).
 
 **Attach-failure cleanup ordering**:
 WS connect / initialize failure unwinds in reverse — proxy → ws →
@@ -93,27 +113,29 @@ marks agent disconnected, returns the typed reason
 ### 7.4 Transparent Proxy
 
 File `src/adapters/codex/proxy.ts`. WHY authority:
-[[proxy-lazy-observation-cost-model]] (lazy observation cost
+[[docs/decisions/proxy-lazy-observation-cost-model]] (lazy observation cost
 model); transparent-relay spike and production reintroduction provenance in
 `logs/2026-06-19-mvp-history-archive.md` §3.1, §1.
 
-**Relay obligation**: every WebSocket frame, both directions, passes
-through unchanged. Binary frames preserved as-is; text frames normalized
-only for inspection (`proxy.ts:225-239`). Frames received before upstream
-`open` are queued (`proxy.ts:72, 78-81, 91`).
+**Relay obligation**: every WebSocket frame, both directions, is relayed through
+the proxy. Binary frames are preserved as-is; text frames are normalized to a
+string before observation and relay ([[src/adapters/codex/proxy.ts]] —
+`src/adapters/codex/proxy.ts:83-99, 225-239`). Frames received before upstream
+`open` are queued (`proxy.ts:72, 76-91`).
 
 **Observation rule** (binding methods: `thread/start`, `thread/resume`,
 `thread/fork` — `proxy.ts:46-50`):
 
-- Client→server: `observeClientFrame` records `{requestId → method}` in a
-  per-connection `pendingBindings` Map *after* the relay branch
-  (`proxy.ts:151-166`).
+- Client→server: the proxy normalizes the frame, calls `observeClientFrame`,
+  then sends or queues the frame according to upstream readiness. The observer
+  records `{requestId → method}` in a per-connection `pendingBindings` Map
+  before the relay branch (`proxy.ts:83-91, 151-166`).
 - Server→client: `observeUpstreamFrame` consumes the matching entry on the
   response with the same `id` (`proxy.ts:168-194`). If `error` is present,
   no event fires. Otherwise extract `result.thread.id` and emit
   `CodexProxyBindingEvent{method, threadId, requestId}`.
 
-**Lazy parse** (commit `edaf02b`; WHY: [[proxy-lazy-observation-cost-model]]):
+**Lazy parse** (commit `edaf02b`; WHY: [[docs/decisions/proxy-lazy-observation-cost-model]]):
 - Client side: `frameMayContainBindingMethod` does `indexOf` substring
   filter on the binding method names; binary frames return `false`
   (`proxy.ts:196-206`). Only survivors get `JSON.parse`d.
@@ -121,7 +143,7 @@ only for inspection (`proxy.ts:225-239`). Frames received before upstream
   (`proxy.ts:173-175`).
 - A frame-size cutoff was considered but is **not** implemented; lazy parse
   relies solely on the substring filter
-  ([[proxy-lazy-observation-cost-model]], Alternatives) —
+  ([[docs/decisions/proxy-lazy-observation-cost-model]], Alternatives) —
   Implementation-only refinement.
 
 The runtime subscribes to proxy binding events via `runtime.onProxyBinding`
@@ -141,7 +163,7 @@ Three writer sources (in order):
    `/clear`, `/new`, `/fork`, and `/resume` when their JSON-RPC responses
    transit the proxy. Empty-thread `/fork` returns a JSON-RPC error so no
    rebind fires.
-3. **Live `thread/loaded/list` fallback** at delivery time (see [[local-runtime-routing-and-delivery]] §8.5).
+3. **Live `thread/loaded/list` fallback** at delivery time (see [[docs/architecture/local-runtime-routing-and-delivery]] §8.5).
 
 The earlier internal TUI `/resume` wrong-thread risk was resolved for MVP by
 same-connection proxy observation and covered by implementation smoke
@@ -157,7 +179,7 @@ planned at Step 10 but not landed at MVP closeout, Implementation-only).
 ### 7.6 Injection (`turn/start`)
 
 File [[src/adapters/codex/injector.ts]]. Ack semantic (Round 2 D4.4,
-[[codex-per-agent-app-server]] §4): success = same-client JSON-RPC response received
+[[docs/decisions/codex-per-agent-app-server]] §4): success = same-client JSON-RPC response received
 with the runtime's `activeThreadId` still equal to the requested
 `threadId`. Does **not** wait for `turn/started` or `turn/completed`.
 
@@ -176,7 +198,7 @@ meaningful without mutating the runtime cache pre-success.
 
 ### 7.7 Daemon → Codex Delivery (live loaded-thread + queued fallback)
 
-Entry: `dispatchToPairPeers` (`state.ts:1246`; routing/FSM owner [[local-runtime-routing-and-delivery]]).
+Entry: `dispatchToPairPeers` (`state.ts:1246`; routing/FSM owner [[docs/architecture/local-runtime-routing-and-delivery]]).
 
 1. `resolveCodexReplyTarget` (`state.ts:1571-1627`):
    - Runtime absent / not ready → `codex_channel_unavailable`.
@@ -186,7 +208,7 @@ Entry: `dispatchToPairPeers` (`state.ts:1246`; routing/FSM owner [[local-runtime
        `"proxy_active_thread"`.
      - Empty → `codex_no_loaded_thread`. (The previous `loadedThreadIds.at(-1)`
        fallback was disabled in Step 15 D1 to prevent wrong-thread injection
-       in same-vendor codex pairs — [[pair-slot-generalization]]).
+       in same-vendor codex pairs — [[docs/decisions/pair-slot-generalization]]).
 2. **No loaded thread**: emit `codex_delivery_target_unavailable` +
    `codex_delivery_queued_no_loaded_thread`. Delivery **stays queued**
    and returns `deferred` with reason `target_binding_unconfirmed` (no
@@ -240,7 +262,7 @@ registered.
 
 ### 7.9 Lifecycle and Ownership
 
-**Ownership model** (WHY: [[codex-per-agent-app-server]] §5; memory
+**Ownership model** (WHY: [[docs/decisions/codex-per-agent-app-server]] §5; memory
 `aiox-codex-attach-ownership`): `attachAgent` is the Codex runtime
 lifecycle owner. The daemon is the only owner of the app-server child; the
 daemon owns same-client JSON-RPC authority; the CLI is the sole parent of
