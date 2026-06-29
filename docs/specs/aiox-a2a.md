@@ -54,13 +54,13 @@ when applicable.
 각 protocol slice는 자기 owner 책임만 소유한다. 상태 어휘와 아래 §2 glossary·§3 layer
 model overview는 이 인덱스가 소유한다.
 
-- §3.1 Runtime config / profile namespace → [[aiox-runtime-profile-namespace]]
-- §4 A2A protocol과 message lifecycle (§4.1~§4.5) → [[aiox-message-lifecycle]]
-- §5 Adapter (4-slot + capability tier) → [[aiox-adapter-model]]
-- §6 Compose (declarative composition) → [[aiox-compose-contract]]
-- §7 Capability와 sandbox (§7.1~§7.2) → [[aiox-capability-policy]]
-- §8 Federation / remote → [[aiox-federation-remote]]
-- §9 Open / deferred → [[aiox-open-deferred]]
+- §3.1 Runtime config / profile namespace → [[docs/specs/aiox-runtime-profile-namespace]]
+- §4 A2A protocol과 message lifecycle (§4.1~§4.5) → [[docs/specs/aiox-message-lifecycle]]
+- §5 Adapter (4-slot + capability tier) → [[docs/specs/aiox-adapter-model]]
+- §6 Compose (declarative composition) → [[docs/specs/aiox-compose-contract]]
+- §7 Capability와 sandbox (§7.1~§7.2) → [[docs/specs/aiox-capability-policy]]
+- §8 Federation / remote → [[docs/specs/aiox-federation-remote]]
+- §9 Open / deferred → [[docs/specs/aiox-open-deferred]]
 
 ## 2. Glossary
 
@@ -76,8 +76,13 @@ model overview는 이 인덱스가 소유한다.
 - **agent address**: logical agent의 canonical identity. runtime process/session id와 분리된다.
   v1 local 형식은 `agent://local/<profile>/<agent-name>`이며 authority/project/agent segment는
   URL percent-encoding 후 비교한다. 현재 DB의 agent id/name은 이 주소로 가는 local mapping이다.
+  Current mapping evidence: [[src/store/schema.ts]] — `src/store/schema.ts:16-28`;
+  [[src/store/repositories/agents.ts]] — `src/store/repositories/agents.ts:19-26`,
+  `src/store/repositories/agents.ts:112-154`.
 - **type**: 저장/시스템 분류 축. 기존 `messages.type`과 연결되며, 협업 의미나 reply
-  필요 여부를 단독으로 표현하지 않는다.
+  필요 여부를 단독으로 표현하지 않는다. Current evidence:
+  [[src/core/messages.ts]] — `src/core/messages.ts:7-23`; [[src/store/schema.ts]] —
+  `src/store/schema.ts:48-56`.
 - **intent**: 협업 의미 축. agent-authored 값은 delegation/discussion/clarification/
   result/conclusion이고, status/notification은 daemon-authored reserved 값이다.
 - **reply_expected**: target 행동 신호 축. "답해야 하는 메시지인가"를 명시한다.
@@ -102,56 +107,56 @@ model overview는 이 인덱스가 소유한다.
 
 ### 3.1 Runtime config / profile namespace
 
-이 섹션은 [[aiox-runtime-profile-namespace]]로 분리되었습니다.
+이 섹션은 [[docs/specs/aiox-runtime-profile-namespace]]로 분리되었습니다.
 
 ## 4. A2A protocol과 message lifecycle
 
-이 섹션은 [[aiox-message-lifecycle]]로 분리되었습니다. §4.1~§4.5는 같은 slice가 소유합니다.
+이 섹션은 [[docs/specs/aiox-message-lifecycle]]로 분리되었습니다. §4.1~§4.5는 같은 slice가 소유합니다.
 
 ### 4.1 Canonical envelope v1
 
-[[aiox-message-lifecycle]] 참조.
+[[docs/specs/aiox-message-lifecycle]] 참조.
 
 ### 4.2 Routing and reply correlation
 
-[[aiox-message-lifecycle]] 참조.
+[[docs/specs/aiox-message-lifecycle]] 참조.
 
 ### 4.3 Delivery, acknowledgement, retry
 
-[[aiox-message-lifecycle]] 참조.
+[[docs/specs/aiox-message-lifecycle]] 참조.
 
 ### 4.4 Baseline error model and defaults
 
-[[aiox-message-lifecycle]] 참조.
+[[docs/specs/aiox-message-lifecycle]] 참조.
 
 ### 4.5 Reference runtime persistence minimum
 
-[[aiox-message-lifecycle]] 참조.
+[[docs/specs/aiox-message-lifecycle]] 참조.
 
 ## 5. Adapter (4-slot + capability tier)
 
-이 섹션은 [[aiox-adapter-model]]로 분리되었습니다.
+이 섹션은 [[docs/specs/aiox-adapter-model]]로 분리되었습니다.
 
 ## 6. Compose (declarative composition)
 
-이 섹션은 [[aiox-compose-contract]]로 분리되었습니다.
+이 섹션은 [[docs/specs/aiox-compose-contract]]로 분리되었습니다.
 
 ## 7. Capability와 sandbox
 
-이 섹션은 [[aiox-capability-policy]]로 분리되었습니다. §7.1~§7.2는 같은 slice가 소유합니다.
+이 섹션은 [[docs/specs/aiox-capability-policy]]로 분리되었습니다. §7.1~§7.2는 같은 slice가 소유합니다.
 
 ### 7.1 Claude/Codex projection feasibility (2026-06-11)
 
-[[aiox-capability-policy]] 참조.
+[[docs/specs/aiox-capability-policy]] 참조.
 
 ### 7.2 Trust boundary and data handling
 
-[[aiox-capability-policy]] 참조.
+[[docs/specs/aiox-capability-policy]] 참조.
 
 ## 8. Federation / remote
 
-이 섹션은 [[aiox-federation-remote]]로 분리되었습니다.
+이 섹션은 [[docs/specs/aiox-federation-remote]]로 분리되었습니다.
 
 ## 9. Open / deferred
 
-이 섹션은 [[aiox-open-deferred]]로 분리되었습니다.
+이 섹션은 [[docs/specs/aiox-open-deferred]]로 분리되었습니다.

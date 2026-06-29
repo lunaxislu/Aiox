@@ -1,7 +1,7 @@
 # aiox A2A — Message Lifecycle (§4)
 
-> 컨텍스트: [[aiox-a2a]] 인덱스. 상태 어휘·layer model·glossary는 인덱스가 소유한다.
-> 이 slice는 §4와 §4.1~§4.5(envelope·routing·delivery·error·persistence)를 함께 소유한다.
+[[docs/specs/aiox-a2a]] 인덱스가 상태 어휘·layer model·glossary를 소유한다. 이 slice는 §4와
+§4.1~§4.5(envelope·routing·delivery·error·persistence)를 함께 소유한다.
 
 ## 4. A2A protocol과 message lifecycle
 
@@ -99,8 +99,8 @@ Current implementation caveats:
   protocol error name for the same condition and is not yet the public API
   reason. Current evidence: [[src/daemon/state.ts]] — `src/daemon/state.ts:323-338`,
   `src/daemon/state.ts:1761-1783`,
-  `tests/unit/daemon/message-fanout-store.test.ts:198-222`,
-  `tests/unit/daemon/codex-ingress.test.ts:589-602`.
+  [[tests/unit/daemon/message-fanout-store.test.ts]] — `tests/unit/daemon/message-fanout-store.test.ts:198-222`,
+  [[tests/unit/daemon/codex-ingress.test.ts]] — `tests/unit/daemon/codex-ingress.test.ts:589-602`.
 - The current store has a `message_deliveries.id` primary key, but public v1
   envelope `deliveryId` exposure and its external namespace are still an
   Implementation Gap/Open Issue. Current schema evidence:
@@ -114,7 +114,7 @@ Current implementation caveats:
   `inReplyToDeliveryId` or force source-only routing to the original source.
   Current evidence: `src/daemon/state.ts:315-320`,
   `src/daemon/state.ts:1800-1821`,
-  `tests/unit/daemon/codex-ingress.test.ts:633-710`.
+  [[tests/unit/daemon/codex-ingress.test.ts]] — `tests/unit/daemon/codex-ingress.test.ts:633-710`.
 
 ### 4.3 Delivery, acknowledgement, retry
 
@@ -229,13 +229,13 @@ Current implementation caveats:
   target agent id, route id, status and idempotency key, but it does not yet
   persist retry attempt metadata, ack evidence, reply obligation state or
   degradation code. Current evidence: `src/core/messages.ts:57-74`,
-  `src/core/deliveries.ts:13-19`, `src/core/deliveries.ts:26-35`,
-  `src/store/repositories/deliveries.ts:102-112`.
+  [[src/core/deliveries.ts]] — `src/core/deliveries.ts:13-19`, `src/core/deliveries.ts:26-35`,
+  [[src/store/repositories/deliveries.ts]] — `src/store/repositories/deliveries.ts:102-112`.
 - Current SQLite schema has `messages`, `message_deliveries` and `events`
   tables with timestamps and correlation ids, but it is still below the G1
   persistence minimum because canonical v1 envelope fields, ack records, retry
   scheduling and reply obligations are absent. Current evidence:
-  `src/store/schema.ts:48-78`.
+  [[src/store/schema.ts]] — `src/store/schema.ts:48-78`.
 
 Protocol invariants:
 

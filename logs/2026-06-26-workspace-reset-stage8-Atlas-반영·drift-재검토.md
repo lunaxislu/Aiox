@@ -11,8 +11,8 @@ status: open
 - [>] W6 skeleton 기준 owner 문서 정리 + drift 재검토 통합 → `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md` — docs/ owner 문서를 확정 skeleton으로 정합하며 split·wikilink·stale drift 동시 판정
   - [x] product 계열·roadmap·documentation-system drift — product.md/AGENTS.md, roadmap.md sweep + Pre-Release Sources, federation-remote 명칭, documentation-system `## History` + roadmap 이중서술
   - [x] architecture retrofit — `local-agent-runtime.md` 인덱스 + slice 9개 완료 → `logs/2026-06-28-workspace-reset-stage8-W2-architecture-retrofit.md` (decided)
-  - [>] specs retrofit — `aiox-a2a.md` 인덱스 + slice 7개 → `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md`
-  - [ ] decisions drift 검토 — 기존 decision 15개 → `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`
+  - [x] specs retrofit — `aiox-a2a.md` 인덱스 + slice 7개 → `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md` (decided)
+  - [>] decisions drift 검토 — 기존 decision 15개 → `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`
 - [ ] W7 탐색 흐름 drift 판정 — workflow.md·AGENTS 계층의 Obsidian Graph navigation·IDE+Obsidian dual-tool 반영 필요 여부 판정·반영 또는 불필요 근거 기록
 - [x] W10 owner별 section contract 전수 재검토 → `logs/2026-06-28-workspace-reset-stage8-W10-docs-contract-overhaul.md` — docs/AGENTS 공통 의미와 architecture/specs/decisions/guides/product의 skeleton·invariant를 required/optional/absorb/subtype-only/delete로 판정·승인 반영한 뒤 W6 retrofit 재개
 
@@ -791,3 +791,12 @@ W6 child log(`logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md`)�
 - W4 decisions drift: `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md` — decision 15개(D01~D15) one-by-one drift 검토 아이템 포함. W6 sub-item [ ] open.
 
 다음 행동: W3 child log에서 `docs/specs/aiox-a2a.md` 인덱스(S0)부터 one-by-one 검토·retrofit 착수.
+
+## 2026-06-29 · W3 specs child closeout consumed — W4 decisions drift로 진행
+
+W3 specs retrofit child log `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md`가 decided로 닫혀 parent W6 하위 pointer를 갱신했다.
+
+- W3 완료: `docs/specs/aiox-a2a.md` 인덱스 + slice 7개 전체 검토·retrofit 완료.
+- W3 closeout 확인: `> 컨텍스트:` 제거, repo-path wikilink 전환, 필요한 code/test evidence first mention wikilink 보정 완료. 각 파일별 검토에서 blocking spec/code drift는 확인되지 않았다.
+- Parent 반영: W6 nested sub-item `specs retrofit`을 완료 처리하고, `decisions drift 검토`를 active로 전환했다.
+- 다음 행동: W4 child log `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`에서 W1 `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`부터 one-by-one stale 링크·owner drift 검토를 진행한다.

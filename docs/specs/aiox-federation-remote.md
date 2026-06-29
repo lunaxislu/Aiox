@@ -1,6 +1,7 @@
 # aiox A2A — Federation / Remote (§8)
 
-> 컨텍스트: [[aiox-a2a]] 인덱스. 상태 어휘·layer model·glossary는 인덱스가 소유한다.
+[[docs/specs/aiox-a2a]] is the protocol index; it owns status vocabulary, the layer model and glossary. This slice
+owns the §8 federation/remote target contract and its local control-plane current caveat.
 
 ## 8. Federation / remote
 
@@ -8,7 +9,7 @@ aiox는 local-first로 시작하지만, protocol contract는 location-ready하�
 
 **Status: Current for same-daemon local addressing and local socket control-plane
 transport; Deferred/Target for same-machine multi-daemon, remote and federation
-implementation.** No `src/` federation/remote implementation files are present as
+implementation.** No dedicated `src/` federation/remote implementation files are present as
 of this assimilation pass (`find src -iname '*federation*' -o -iname '*remote*'`
 returns no matches).
 
@@ -51,7 +52,7 @@ Principles:
 
 Current implementation caveat: the local control plane is implemented with a
 Node `net` socket server/client around a resolved socket path
-(`src/daemon/socket-transport.ts:48-85`), but daemon-to-daemon WebSocket/token/mTLS,
+([[src/daemon/socket-transport.ts]]:48-85), but daemon-to-daemon WebSocket/token/mTLS,
 remote registration, signed envelopes and replay protection remain deferred.
 
 Deferred federation topics:

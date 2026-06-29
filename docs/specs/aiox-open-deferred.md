@@ -1,6 +1,8 @@
 # aiox A2A — Open / Deferred (§9)
 
-> 컨텍스트: [[aiox-a2a]] 인덱스. 상태 어휘·layer model·glossary는 인덱스가 소유한다.
+The [[docs/specs/aiox-a2a]] index owns the status vocabulary, layer model and
+glossary. This slice owns §9 open/deferred contract questions and current local
+partial caveats.
 
 ## 9. Open / deferred
 
@@ -16,13 +18,13 @@
   Current local partial: the Codex adapter can call `turn/start`, list loaded
   threads, bind selected thread identity through the proxy, and detect
   app-server/WS runtime failure ([[src/adapters/codex/injector.ts]] — `src/adapters/codex/injector.ts:22-63`,
-  `src/adapters/codex/runtime.ts:180-190`,
+  [[src/adapters/codex/runtime.ts]] — `src/adapters/codex/runtime.ts:180-190`,
   `src/adapters/codex/runtime.ts:242-285`,
   `src/adapters/codex/runtime.ts:330-365`,
-  `src/adapters/codex/proxy.ts:46-58`,
+  [[src/adapters/codex/proxy.ts]] — `src/adapters/codex/proxy.ts:46-58`,
   `src/adapters/codex/proxy.ts:151-194`,
-  `tests/unit/adapters/codex-proxy.test.ts:27-97`,
-  `src/daemon/state.ts:1418-1482`,
+  [[tests/unit/adapters/codex-proxy.test.ts]] — `tests/unit/adapters/codex-proxy.test.ts:27-97`,
+  [[src/daemon/state.ts]] — `src/daemon/state.ts:1418-1482`,
   `src/daemon/state.ts:1684-1696`). This does not prove
   `thread/inject_items`, `turn/steer`, canonical `deliveryId` binding, active
   turn policy or Tier 2 delivery semantics.

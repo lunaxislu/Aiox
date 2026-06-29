@@ -1,6 +1,6 @@
 # aiox A2A — Runtime Config / Profile Namespace (§3.1)
 
-> 컨텍스트: [[aiox-a2a]] 인덱스. 상태 어휘·layer model·glossary는 인덱스가 소유한다.
+[[docs/specs/aiox-a2a]] is the compatibility index for the split A2A spec and owns status vocabulary, layer model, and glossary. This slice owns the §3.1 runtime config/profile namespace contract and current implementation caveats.
 
 ### 3.1 Runtime config / profile namespace
 
@@ -32,6 +32,8 @@ The CLI starts the daemon with one resolved socket path, and launch adapters
 receive that path through `AIOX_SOCKET_PATH`; canonical agent identity remains
 the logical `agent://local/<profile>/<agent-name>` address, not a filesystem
 socket path. Current evidence: [[src/bin/aiox.ts]] — `src/bin/aiox.ts:78-102`,
-`src/bin/aiox.ts:166-180`, `src/cli/invocation.ts:200-254`,
+`src/bin/aiox.ts:166-180`, [[src/cli/invocation.ts]] —
+`src/cli/invocation.ts:200-254`, [[src/adapters/codex/launcher.ts]] —
 `src/adapters/codex/launcher.ts:88-119`,
+[[src/adapters/claude/launcher.ts]] —
 `src/adapters/claude/launcher.ts:94-118`.

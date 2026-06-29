@@ -1,6 +1,7 @@
 # aiox A2A — Adapter Model (4-slot + capability tier) (§5)
 
-> 컨텍스트: [[aiox-a2a]] 인덱스. 상태 어휘·layer model·glossary는 인덱스가 소유한다.
+This slice belongs to the [[docs/specs/aiox-a2a]] compatibility index. The index owns shared status vocabulary,
+layer model and glossary; this slice owns the adapter model contract and current implementation caveats.
 
 ## 5. Adapter (4-slot + capability tier)
 
@@ -56,9 +57,9 @@ Current implementation caveats:
   currently `AgentAdapter { kind, inject(input) }`, and `AdapterInjectResult`
   distinguishes `success`, `failed` and `deferred`. Current evidence:
   [[src/adapters/contract.ts]] — `src/adapters/contract.ts:19-56`,
-  `src/adapters/router.ts:87-114`,
+  [[src/adapters/router.ts]] — `src/adapters/router.ts:87-114`,
   `src/adapters/router.ts:140-178`,
-  `tests/unit/adapters/fake-integration.test.ts:437-541`.
+  [[tests/unit/adapters/fake-integration.test.ts]] — `tests/unit/adapters/fake-integration.test.ts:437-541`.
 - The daemon still contains a direct Codex/Claude dispatch branch in the
   production message path. A general adapter dispatch registry is an
   Implementation Gap / execution-plan item, not a Current Contract. Current
@@ -67,7 +68,7 @@ Current implementation caveats:
   is a vendor-agnostic two-slot model, `PairSlot = "a" | "b"`; same-vendor
   pairs can occupy both slots and become ready. Current evidence:
   [[src/core/pairs.ts]] — `src/core/pairs.ts:23-45`, `src/core/pairs.ts:76-130`,
-  `tests/unit/core/pairs.test.ts:110-159`.
+  [[tests/unit/core/pairs.test.ts]] — `tests/unit/core/pairs.test.ts:110-159`.
 - Current code can surface typed adapter degradation and deferred injection,
   but it does not expose a runtime tier evaluator or diagnostics API that
   proves every wake-up, ack, correlation and dedupe guarantee. The tier matrix
@@ -87,17 +88,17 @@ auth, ack, degradation test를 모두 기록한 뒤 tier를 부여한다.
 Current local evidence for the matrix: Codex app-server/TUI launch and fixed MCP
 projection are in [[src/adapters/codex/launcher.ts]] — `src/adapters/codex/launcher.ts:40-119`; Codex attach,
 WebSocket initialization, proxy startup and runtime failure detection are in
-`src/adapters/codex/runtime.ts:304-365`; proxy binding observes
-`thread/start|resume|fork` responses in `src/adapters/codex/proxy.ts:58-193`;
+[[src/adapters/codex/runtime.ts]] — `src/adapters/codex/runtime.ts:304-365`; proxy binding observes
+`thread/start|resume|fork` responses in [[src/adapters/codex/proxy.ts]] — `src/adapters/codex/proxy.ts:58-193`;
 Codex MCP send/reply descriptions and daemon client surface are in
-`src/adapters/codex/mcp-server.ts:140-165`. Claude inline/plugin launch and
+[[src/adapters/codex/mcp-server.ts]] — `src/adapters/codex/mcp-server.ts:140-165`. Claude inline/plugin launch and
 identity/socket injection are in [[src/adapters/claude/launcher.ts]] — `src/adapters/claude/launcher.ts:9-27`,
 `src/adapters/claude/launcher.ts:94-118` and
 `src/adapters/claude/launcher.ts:189-209`; channel send/reply tools and daemon
-registration are in `src/adapters/claude/channel-server.ts:258-304` and
+registration are in [[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:258-304` and
 `src/adapters/claude/channel-server.ts:491-520`; daemon-to-channel push and the
 current unauthenticated `/send` boundary are in
-`src/adapters/claude/injector.ts:21-78` and
+[[src/adapters/claude/injector.ts]] — `src/adapters/claude/injector.ts:21-78` and
 `src/adapters/claude/channel-server.ts:432-456`.
 
 Claude TUI ingress는 하나의 표면을 완전한 보장처럼 취급하지 않고 다음 fallback map으로

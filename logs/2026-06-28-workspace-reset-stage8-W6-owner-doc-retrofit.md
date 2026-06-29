@@ -8,8 +8,8 @@ status: open
 
 - [x] W1 product 계열·roadmap·documentation-system drift 정합 — product.md/AGENTS.md, roadmap.md, documentation-system roadmap/history drift 정리
 - [x] W2 architecture retrofit — `docs/architecture/local-agent-runtime.md` 인덱스 + slice 9개를 승인된 규칙으로 검토·retrofit. 기존 §N 헤딩·inbound anchor는 migration 아니면 보존
-- [>] W3 specs retrofit child 완료 소비 — `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md` 완료 뒤 W4 decisions drift child로 진행
-- [ ] W4 decisions drift child 완료 소비 — `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md` 완료 뒤 W6 closeout 및 stage8 parent W7 복귀
+- [x] W3 specs retrofit child 완료 소비 — `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md` 완료 뒤 W4 decisions drift child로 진행
+- [>] W4 decisions drift child 완료 소비 — `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md` 완료 뒤 W6 closeout 및 stage8 parent W7 복귀
 - [x] W11 W10 반영 5개 owner 문서(decisions/AGENTS · guides/AGENTS · product/AGENTS · product.md · roadmap.md) one-by-one 독립 검토 — 각 문서를 W10 child log 기록 블록 + 상위 docs/AGENTS·sibling 계약과 대조해 독립 판정. 완료 후 W2 architecture retrofit부터 재개
 
 ## 2026-06-27 · W6 product owner 문서 정합 + external positioning drift 반영
@@ -593,3 +593,27 @@ Work Items: W2 completed, W3 transferred → W3 child, W4 transferred → W4 chi
 
 - W3 child log `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md`에서 W1 인덱스부터 진행한다.
 - W3 child가 decided 되면 이 W6 log의 W3를 완료 처리하고 W4 child를 active로 전환한다.
+
+## 2026-06-29 · W3 specs child closeout 소비 — W4 decisions drift로 진행
+
+W3 child log `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md`가 decided로 종료되어 W6 parent pointer를 소비했다.
+
+**확인한 사실:**
+
+- W3 child Work Items W1~W8이 모두 완료됐다.
+- 대상은 `docs/specs/aiox-a2a.md` 인덱스와 slice 7개:
+  `aiox-adapter-model.md`, `aiox-capability-policy.md`, `aiox-compose-contract.md`, `aiox-federation-remote.md`,
+  `aiox-message-lifecycle.md`, `aiox-open-deferred.md`, `aiox-runtime-profile-namespace.md`.
+- W3 closeout에 따르면 모든 대상에서 `> 컨텍스트:` 제거, repo-path wikilink 전환, 필요한 code/test evidence first mention
+  wikilink 보정이 완료됐다.
+- 각 파일별 검토에서 blocking spec/code drift는 확인되지 않았다.
+
+**반영:**
+
+- W6 Work Item W3를 completed로 전환했다.
+- W4 decisions drift child 완료 소비 항목을 active next pointer로 전환했다.
+
+**다음 행동:**
+
+- W4 child log `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`에서 W1
+  `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`부터 one-by-one stale 링크·owner drift 검토를 진행한다.

@@ -1,7 +1,7 @@
 # aiox A2A — Capability와 Sandbox (§7)
 
-> 컨텍스트: [[aiox-a2a]] 인덱스. 상태 어휘·layer model·glossary는 인덱스가 소유한다.
-> 이 slice는 §7과 §7.1(projection feasibility)·§7.2(trust boundary)를 함께 소유한다.
+[[docs/specs/aiox-a2a]] 인덱스가 상태 어휘·layer model·glossary를 소유한다. 이 slice는 §7과
+§7.1(projection feasibility)·§7.2(trust boundary)를 함께 소유한다.
 
 ## 7. Capability와 sandbox
 
@@ -78,14 +78,14 @@ Current implementation caveats:
   carrying agent identity, token and socket path; it is not a general
   multi-server grant compiler. Current evidence:
   `src/adapters/codex/launcher.ts:88-119`,
-  `tests/unit/adapters/codex-launcher.test.ts:133-170`.
+  [[tests/unit/adapters/codex-launcher.test.ts]] — `tests/unit/adapters/codex-launcher.test.ts:133-170`.
 - Current Claude projection is either inline MCP config or plugin channel
   activation for the fixed aiox channel/server, with agent identity, token and
   socket path passed to the launched process. Current evidence:
   `src/adapters/claude/launcher.ts:94-117`,
   `src/adapters/claude/launcher.ts:189-206`,
-  `src/adapters/claude/channel-server.ts:491-507`,
-  `tests/unit/adapters/claude-channel.test.ts:673-739`.
+  [[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:491-507`,
+  [[tests/unit/adapters/claude-channel.test.ts]] — `tests/unit/adapters/claude-channel.test.ts:673-739`.
 - Registration/ingress auth is implemented for channel registration and Codex
   MCP egress, but Claude daemon-to-channel `/send` remains an Implementation
   Gap: the channel HTTP ingress accepts loopback POSTs without a request auth
@@ -94,7 +94,8 @@ Current implementation caveats:
   `src/daemon/state.ts:1044-1073`,
   `src/daemon/state.ts:1711-1758`,
   `src/adapters/claude/channel-server.ts:432-456`,
-  [[claude-channel-trust-and-registration]] — `docs/decisions/claude-channel-trust-and-registration.md:25-34`.
+  [[docs/decisions/claude-channel-trust-and-registration]] —
+  `docs/decisions/claude-channel-trust-and-registration.md:25-34`.
 
 Host가 제공하면 client-visible MCP tool surface도 좁힐 수 있다. 예를 들어 Codex는
 server별 enabled/disabled tool을, Claude는 tool allow/deny와 strict MCP config를 제공한다.
@@ -136,4 +137,4 @@ Reserved profiles:
   Current evidence: production daemon paths still open `:memory:`
   ([[src/daemon/run.ts]] — `src/daemon/run.ts:24-26`, [[src/bin/aiox.ts]] — `src/bin/aiox.ts:238-245`,
   `src/bin/aiox.ts:361-363`), while file-backed state path resolution is scaffolded
-  but not wired (`src/config/paths.ts:105-120`).
+  but not wired ([[src/config/paths.ts]] — `src/config/paths.ts:105-120`).

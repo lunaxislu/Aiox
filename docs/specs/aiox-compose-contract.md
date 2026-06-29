@@ -1,10 +1,11 @@
 # aiox A2A — Compose (declarative composition) (§6)
 
-> 컨텍스트: [[aiox-a2a]] 인덱스. 상태 어휘·layer model·glossary는 인덱스가 소유한다.
+[[docs/specs/aiox-a2a]] is the protocol index; it owns status vocabulary, the layer model and glossary. This slice
+owns the §6 compose target contract and its current non-implementation caveat.
 
 ## 6. Compose (declarative composition)
 
-**Status: Committed target, Phase 2. 현재 CLI/config에는 구현되어 있지 않다.** 아래 command와
+**Status: Committed target, Phase 2. 현재 CLI/config에는 구현되어 있지 않다.** 아래 target command와
 schema 이름은 v1 compose contract를 승인할 때까지 provisional이다. Current repository
 spot-check: `rg -n "compose|Compose|compose.yaml" src tests package.json README.md` finds no
 compose implementation or user-facing command outside this spec.
