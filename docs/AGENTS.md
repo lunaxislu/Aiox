@@ -60,6 +60,26 @@ headings.
 - 아래 context, state, traceability construct는 조건부 composition block이지 공통 skeleton의
   병렬 필드가 아니다. Child AGENTS는 적용 조건을 만족하는 block만 subtype 구조에 포함한다.
 - Do not copy another owner’s content into a document skeleton; link to the owner instead.
+- 독립 섹션인가, 상위 문맥에 흡수될 내용인가 먼저 판단한다.
+- 하위에 넣은 내용이 사실 sibling이면 상위 제목을 바꾸고 재배치한다.
+- 도구 사용법처럼 보여도 문서 정체성을 설명하는 흐름이면 도입부에 흡수한다.
+
+Composition 후 확인: 이 문서 하나를 읽으면 소유한 질문을 복원할 수 있는가.
+같은 정보를 여러 섹션에서 조합해야만 이해할 수 있으면 배치 문제다, 내용 부재가 아니다.
+섹션 제목만 보고 어느 섹션에서 어떤 판단을 복원할지 예측 가능해야 한다.
+
+### Composition Fit Check
+
+Composition blocks는 기본값이지 강제가 아니다. 아래 대표 신호가 나타나면
+현재 구조 모델이 문서 identity에 맞는지 먼저 판단한다.
+
+- `over-provisioned structure`: 블록을 채우면 내용 없이 heading만 남는다.
+- `hidden sub-kind`: 이 문서는 index/router인데 body composition을 강요받는다.
+- `excessive read path`: 같은 판단을 복원하려고 여러 블록을 조합해야 한다.
+
+Owner, scope, subtype 또는 문서 구조 모델을 바꿔야 하거나 판단이 불확실하면
+어떤 smell인지와 더 적합한 구조 모델 후보(`invariant-primary` / `decision-table` /
+`golden document` 중) 1-2개를 사용자에게 보고하고 승인된 방향으로만 수정한다.
 
 ## Context, State, And Traceability
 
@@ -173,6 +193,17 @@ type에 필요한 owner check, invariant와 상세 harness만 추가한다.
    meaningful inbound reference를 함께 확인한다. Type-specific deletion harness가 있으면 그것을
    추가로 따른다. 하나라도 불확실하면 삭제하지 않고 보강, 이동 또는 사용자 확인으로 보낸다.
 
+### Structure Smells
+
+변경·drift 판정 시 발견한 구조 문제는 아래 대표 이름으로 분류해 검증 로그에 남긴다.
+
+- `hidden or implicit authority`: 규칙이 예시·관례에만 숨어 복원 불가
+- `over-provisioned structure`: skeleton이 없는 내용을 채우라고 압박
+- `hidden sub-kind`: index/router 같은 subtype에 body composition을 강요
+- `excessive read path`: 판단 하나에 문서를 너무 많이 따라가야 함
+- `abstract destructive gate`: 추상어만으로 삭제·archive 허용
+- `orphan local rule`: parent 계약과 연결 안 된 국소 규칙
+
 Drift 판정과 처리는 [[docs/documentation-system]] Conflict Resolution과 각 owner AGENTS를 따른다.
 현재 code가 다르다는 이유만으로 product/spec/architecture intent를 조용히 바꾸지 않는다.
 Owner나 authority를 바꾸는 drift는 어느 owner가 stale한지와 근거를 사용자에게 보고하고 작업
@@ -198,3 +229,18 @@ Owner나 authority를 바꾸는 drift는 어느 owner가 stale한지와 근거�
 - 문서는 현재 읽는 사람이 바로 판단할 수 있게 짧고 명확하게 쓴다.
 - 설명을 위해 owner 문서 내용을 길게 복사하지 말고 링크한다.
 - status, current/target, fact/inference/opinion이 섞일 수 있으면 명시적으로 구분한다.
+- 규칙과 예시가 이미 말하는 내용을 별도 해설 문장으로 반복하지 않는다.
+- 예시가 규칙을 대신하거나 새 예외처럼 읽히면 줄이거나 뺀다.
+- 추상적 가능성만으로 예외·필드·안전 단계를 추가하지 않는다. 실제 사례와 재발 가능성을 근거로 둔다.
+
+### 표현 형태 선택
+
+독자가 정보를 조합하지 않고 복원할 수 있는 형태를 고른다. 여러 형태가 가능하면 가장 짧은 쪽을 택한다.
+
+- **Table**: 항목×속성 비교, 행·열 모두 의미가 있을 때
+- **Bullet list**: 순서 없는 열거, 각 항목이 독립적
+- **Numbered list**: 순서 있는 절차·단계
+- **Prose**: 근거·맥락처럼 흐름이 필요한 설명
+- **Definition-style** (`term — 설명`): 어휘, smell 이름, 옵션 설명
+- **Code block / fenced**: 명령, evidence, 예시, template
+- **Callout**: 경고, invariant, 중요 조건 (Obsidian callout)
