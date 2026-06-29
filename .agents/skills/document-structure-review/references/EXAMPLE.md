@@ -4,6 +4,21 @@
 특정 프로젝트 이름, repo path, 팀 이름, 원문 로그를 보존하지 않는다. 사례는 다음 작성자가
 같은 구조 판단을 복원할 수 있을 만큼만 추상화한다.
 
+## Contents
+
+1. [Misfiled Owner Map](#1-misfiled-owner-map)
+2. [Evidence And Sources Are Siblings](#2-evidence-and-sources-are-siblings)
+3. [Tool Guidance Belongs In Document Identity](#3-tool-guidance-belongs-in-document-identity)
+4. [Index And Slice Need Different Rules](#4-index-and-slice-need-different-rules)
+5. [Same Section Name, Different Drift Meaning](#5-same-section-name-different-drift-meaning)
+6. [Example Leaks A Hidden Rule](#6-example-leaks-a-hidden-rule)
+7. [Repeated Writing Problem Becomes Guideline Improvement](#7-repeated-writing-problem-becomes-guideline-improvement)
+8. [Destructive Change Needs A Gate](#8-destructive-change-needs-a-gate)
+9. [Ancestor Contract May Be The Defect](#9-ancestor-contract-may-be-the-defect)
+10. [Over-provisioned Skeleton Section](#10-over-provisioned-skeleton-section)
+11. [New Content Outgrows Document Scope](#11-new-content-outgrows-document-scope)
+12. [New Document Needs An Independent Identity](#12-new-document-needs-an-independent-identity)
+
 ## 1. Misfiled Owner Map
 
 Situation:
@@ -302,3 +317,31 @@ Preferred response:
 - 위임, scope 확장, 분리, 상위 개념 승격 중 무엇이 가장 작은 해결인지 비교한다.
 - 재발 빈도가 낮은 일회성 내용이면 본문 흡수나 제거로 끝낼 수 있는지 먼저 본다.
 - 정체성이나 scope를 바꾸면 inbound 참조와 하위 문서 영향을 확인하고 기존 anchor를 보존한다.
+
+## 12. New Document Needs An Independent Identity
+
+Situation:
+
+기존 owner 문서에 새 주제를 추가하려다 내용이 길어질 것으로 예상해 별도 문서를 만들려 한다.
+그러나 새 주제는 기존 문서와 같은 owner와 독자를 가지며 함께 변경되고, parent taxonomy에는
+별도 document type이나 sibling 역할이 정의돼 있지 않다.
+
+Structure smell:
+
+- `over-provisioned structure`
+- `duplicated ownership`
+
+Review:
+
+내용의 길이만으로 독립 identity가 생기지는 않는다. 기존 문맥에 흡수할 수 있는지 먼저 보고,
+owner, scope, reader, lifecycle이나 change coupling의 실제 차이가 독립 역할을 요구할 때만 새
+문서를 만든다. 새 문서가 필요하다면 자기 본문이 아직 없으므로 user intent, parent와 관련
+sibling에서 intended identity를 설계한다.
+
+Preferred response:
+
+- 같은 책임을 기존 owner나 section이 이미 소유하는지 확인한다.
+- 길이, 작성 편의나 미래 가능성만으로 새 문서를 만들지 않는다.
+- 독립 identity가 필요하면 owner·scope, parent·sibling 관계와 배치 위치를 먼저 정한다.
+- 생성 후 parent index나 taxonomy, inbound reference와 sibling 경계를 함께 갱신한다.
+- content 경계가 복원되지 않으면 생성하지 않고 사용자에게 확인한다.

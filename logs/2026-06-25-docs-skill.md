@@ -1492,3 +1492,326 @@ Claude 정리안을 전달했고, `document-structure-review` skill에 portable�
 
 - SKILL.md와 EXAMPLE.md 반영 완료, uncommitted (커밋은 @user 지시 시).
 - 이 로그는 open 유지 — 설계 흐름이 이어질 수 있고 커밋이 남았다.
+
+## 2026-06-29 · identity 근간 기준 구조 리뷰
+
+@user가 도입부의 "문서 identity를 근간으로 lifecycle 변경마다 관련 문서의 역할 의미를
+재검증한다"는 선언을 기준으로 현행 `document-structure-review` skill을 다시 검토해 달라고
+요청했다. 이번 턴은 리뷰만 수행했고 skill 본문은 수정하지 않았다.
+
+### 확인한 사실
+
+- identity 근간은 도입부뿐 아니라 `Intended Role Recovery`, `Review Loop`, `Context Read Path`,
+  `Owner And Scope`, `Output Checklist`에 실행 규칙으로 연결돼 있다.
+- portable 판단 절차라는 자기 정의와 log/Obsidian/JSON Canvas sibling skill의 역할 경계는
+  충돌하지 않는다. `Information Format`도 description·Scope·Review Loop에 연결돼 orphan
+  responsibility는 아니다.
+- 상위 skill 작성 지침은 core workflow를 간결하게 두고, 긴 세부 기준과 사례는 progressive
+  disclosure reference로 분리하라고 한다. 현행 SKILL.md는 361줄, Output Checklist는 45줄이며,
+  `references/EXAMPLE.md`는 304줄이다.
+
+### 리뷰 findings
+
+1. **Output Checklist가 상황별 도구라는 identity를 전수 compliance checklist로 바꿀 위험이 있다.**
+   `Context Read Path`는 판단을 바꿀 관계만 읽고 근거가 확보되면 멈추라고 하지만, checklist는
+   project/root → parent → child → corpus 파생과 sibling/child 상호작용, format별 세부 점검을
+   조건 없이 모두 묻는다. core identity invariants와 조건부 점검을 분리하거나, 세부 점검을
+   관련 섹션/reference로 위임하는 편이 자기 원칙과 맞다.
+2. **`Owner And Scope`의 "문서가 무엇을 소유하는지 먼저 쓴다"는 검토 행위와 본문 작성 명령이
+   섞여 있다.** 모든 문서가 ownership 선언을 본문에 가져야 한다는 뜻으로 읽히면 대상 문서의
+   identity와 무관한 boilerplate를 유도한다. "검토 시 먼저 판정한다"와 "본문에는 역할상 경계
+   선언이 필요할 때만 드러낸다"를 구분해야 한다.
+3. **근간 선언의 lifecycle 열거가 실제 identity 변경 표면보다 좁다.** 생성·삭제·내용
+   추가·갱신만 명시해 이동·rename·split·merge·status/role 변경이 도입부 기준에서 빠져 있다.
+   후속 섹션이 일부를 다루지만, 근간 문장은 존재·위치·경계·상태·내용을 바꾸는 변경 전체를
+   포괄하는 편이 안정적이다.
+4. **`Intended Role Recovery`의 적용 대상이 skill trigger보다 좁게 적혀 있다.** metadata와
+   도입부는 durable document 전반의 작성·검토를 포함하지만 이 절은 지침·skeleton·template·
+   owner 문서를 바꾸기 전으로 시작한다. 일반 진입문은 "검토 대상 문서를 바꾸기 전에"로 두고,
+   template/guideline 전용 판단은 뒤의 전용 섹션이 소유하는 편이 역할 정합성이 높다.
+5. **reference 탐색성은 비blocking gap이다.** 304줄의 `references/EXAMPLE.md`에 목차가 없어,
+   긴 reference에는 scope를 빠르게 볼 수 있는 목차를 두라는 상위 skill 작성 지침과 어긋난다.
+
+### 현재 판단
+
+- identity-first 방향 자체는 타당하고 이미 skill 전반에 실질적으로 반영돼 있다.
+- 우선순위는 새 identity 규칙 추가가 아니라, 그 근간과 충돌하는 절대형 문장과 전수 checklist를
+  줄이는 것이다.
+- 권장 변경 순서는 Output Checklist 조건부화/축약 → owner 판정과 본문 표기의 분리 → lifecycle
+  문장 일반화 → Intended Role Recovery 진입 범위 정합 → EXAMPLE 목차다.
+- 실제 SKILL.md/EXAMPLE.md 수정은 사용자 승인 뒤 수행한다.
+
+## 2026-06-29 · identity 기준 축약 risk 판단
+
+@user가 앞선 리뷰에서 권고한 축약의 위험을 질문했다. 이번 판단은 skill 본문을 수정하지 않고,
+축약 설계 시 보존해야 할 조건을 정리한 것이다.
+
+### 판단
+
+- 가장 큰 위험은 세부 규칙의 수가 줄어드는 것 자체가 아니라, identity를 실제 변경 판단으로
+  변환하는 gate까지 함께 사라지는 것이다.
+- 특히 변경 전파, 권위 충돌, 파괴적 변경의 비파괴 fallback, content 포함 경계의 사용자 확인은
+  낮은 빈도여도 실패 비용이 커서 core 또는 명시적 조건부 gate로 남겨야 한다.
+- 반대로 현행 Output Checklist를 그대로 두면 상황별 도구가 전수 compliance 절차로 읽혀
+  excessive read path와 불필요한 boilerplate를 유도할 수 있다.
+- 따라서 적절한 축약 형태는 항목 삭제 중심이 아니라 계층화다: identity·owner·영향 범위·근거를
+  core gate로 유지하고, destructive change, guideline/template, information format 같은 상세
+  검사는 해당 조건에서만 관련 본문 절로 라우팅한다.
+
+### 주요 risk
+
+- 낮은 빈도의 고위험 사례가 보이지 않아 삭제·대체·status 변경을 일반 편집처럼 처리할 수 있다.
+- `local-only` 수정으로 오판해 parent owner map, inbound reference, sibling 대칭을 stale하게 둘 수 있다.
+- owner/scope 판단과 본문 표기 조건을 너무 줄이면 경계 선언이 필요한 문서와 불필요한 boilerplate를
+  구분하지 못할 수 있다.
+- 사실·추론·제안 구분이나 사용자 확인 gate가 요약문에 암묵화되면 agent별 해석 편차가 커질 수 있다.
+- detail을 reference로 옮기면서 trigger 문장을 남기지 않으면 progressive disclosure가 아니라
+  사실상 규칙 유실이 된다.
+
+### 축약 안전 조건
+
+- core checklist에는 문서 identity, owner/scope, 관련 문서 영향, 근거와 불확실성, 가장 짧은 충분한
+  표현을 남긴다.
+- 고위험·특수 검사는 조건과 이동할 절을 한 줄로 명시한다.
+- 삭제 전후에 대표 시나리오로 누락 여부를 검증한다: 일반 내용 추가, scope 초과 내용,
+  parent/sibling 정합 변경, 삭제·status 전환.
+- 같은 판단을 본문과 checklist가 반복하면 checklist는 상세 규칙을 재서술하지 않고 해당 절로
+  라우팅한다.
+
+## 2026-06-29 · identity-first skill 작성 구조 제안
+
+@user가 축약 risk를 통제하면서 skill을 어떻게 작성할지 질문했다. 이번 블록은 구현 전 설계
+제안이며, owner 문서는 아직 수정하지 않았다.
+
+### 제안
+
+- `SKILL.md`는 identity 기반 판단 엔진을 소유한다. 도입부의 identity 근간, core invariants,
+  짧은 review workflow, 고위험 gate, output contract와 reference routing만 둔다.
+- core workflow는 role/evidence 복원 → 변경 표면 분류 → 판단을 바꿀 관계만 읽기 → owner와
+  변경 위치 결정(`local-only`, `ancestor-only`, `both`, `no-change`) → 최소 정합 변경과 관련
+  문서 전파 → 사실·추론·제안 구분 및 검증 순서로 구성한다.
+- 항상 적용할 core gate는 identity 유효성, owner/scope, 관련 문서 영향, 근거·불확실성,
+  최소 충분 표현이다. content 포함 경계를 복원할 수 없을 때의 사용자 확인과 파괴적 변경의
+  비파괴 fallback은 실패 비용이 높으므로 core에 유지한다.
+- 현행 Output Checklist는 5-6개 completion gate로 줄이고, 세부 규칙을 반복하지 않는다.
+- `Concept Placement`·`Structure Smells`의 상세 taxonomy는 구조 문제가 애매할 때 읽는
+  `references/review-patterns.md` 후보로, `Information Format`·`Rule Shape`·guideline/template
+  모델의 상세 기준은 해당 작업에서 읽는 `references/authoring-patterns.md` 후보로 분리한다.
+  `references/EXAMPLE.md`는 사례가 필요할 때만 읽고 100줄 이상 reference 지침에 따라 목차를 둔다.
+- 모든 reference는 `SKILL.md`에서 직접 연결하고, 조건과 읽을 목적을 한 줄로 명시한다. reference
+  간 중첩 routing은 만들지 않는다.
+
+### 권장 SKILL.md 상위 구조
+
+1. identity와 scope
+2. core invariants
+3. review workflow
+4. conditional gates
+5. reference routing
+6. output contract
+
+### 검증 기준
+
+- 일반 내용 추가, scope 초과 내용, parent/sibling 정합 변경, 삭제·status 전환의 네 시나리오에서
+  core만으로 최초 판단과 필요한 reference 선택이 가능한지 forward-test한다.
+- 축약 후에도 관련 문서 변경 누락, 과도한 read path, owner boilerplate, 고위험 변경의 무조건 실행이
+  발생하지 않아야 한다.
+
+## 2026-06-29 · 최소 충분 표현의 판정 기준 보완
+
+@user가 앞선 설계의 "가장 짧은 충분한 표현"은 충분성 기준 없이 쓸 수 없다고 지적했다.
+
+### 확인과 정정
+
+- 현행 `Wording Rules`에는 복원가능성, 관계·흐름 보존, 근거·맥락을 잃지 말라는 방향이 있지만,
+  무엇을 복원할 수 있어야 하는지 판정 항목이 명시되지 않아 독립 실행 기준으로는 약하다.
+- "가장 짧음"은 core completeness 기준이 아니라, completeness를 통과한 표현 후보 사이의
+  최적화 원칙으로 내려야 한다.
+
+### 제안 기준
+
+- 표현은 최소한 적용 대상·조건, 판단 기준, 요구 행동 또는 결과를 복원할 수 있어야 한다.
+- owner·authority 충돌이 판단을 바꾸는 경우에는 권위와 위임 관계를 남긴다.
+- 예외·불확실성·실패 비용이 판단을 바꾸는 경우에는 예외 조건과 fallback을 남긴다.
+- parent/sibling 관계가 문서 identity나 변경 범위를 바꾸는 경우에는 그 관계와 전파 범위를 남긴다.
+- 어떤 요소를 제거했을 때 합리적인 agent가 다른 대상, 판단, 행동 또는 변경 범위를 선택할 수
+  있다면 그 표현은 충분하지 않다. 제거해도 판정이 같다면 중복 후보로 본다.
+
+권장 문구는 "판정을 바꾸지 않는 범위에서 줄인다. 적용 대상과 조건, 판단 기준, 요구 행동을
+복원 가능하게 쓰고, 권위·예외·관계가 판정을 바꿀 때는 해당 정보도 남긴다"이다.
+
+## 2026-06-29 · 최소 충분 표현 판정 기준 반영
+
+@user 승인에 따라 `.agents/skills/document-structure-review/SKILL.md`에 직전 판정 기준을 반영했다.
+
+### 반영
+
+- `Review Loop` 마지막 단계를 "가장 짧은 문장" 제안에서 충분성 우선 절차로 변경했다. 적용
+  대상·조건, 판단 기준, 요구 행동이나 결과를 복원하고, 권위·예외·관계가 판정을 바꿀 때 이를
+  드러낸 뒤 판정을 바꾸지 않는 범위에서 줄이게 했다.
+- `Wording Rules`에 충분성의 필수 구성요소, 조건부로 남길 권위·fallback·관계 정보, 요소 제거 시
+  다른 판단이 가능한지를 보는 제거 테스트를 추가했다. 짧음은 충분성을 통과한 표현 사이의
+  최적화 기준으로 명시했다.
+- `Information Format`의 최단 형태 선택 조건을 "같은 판정을 복원하는" 경우로 한정했다.
+- `Output Checklist`의 추상적인 최단 문장 점검을 충분성 구성요소 점검으로 교체했다.
+
+### 검증
+
+- `scripts/check-markdown-inline-code .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+- `git diff --check -- .agents/skills/document-structure-review/SKILL.md` → exit 0 (PASS).
+- `quick_validate.py`는 환경의 PyYAML 부재(`ModuleNotFoundError: No module named 'yaml'`)로 실행되지
+  않았다. 이전 검증과 같은 환경 제약이며 validator 결과는 확보하지 못했다.
+
+## 2026-06-29 · 6영역 재구성안과 기반영 범위 정리
+
+@user가 앞서 제안된 `Identity And Scope` 등 6영역 재구성안이 후속 대화와 반영을 거쳐 어떤
+상태인지 확인했다.
+
+### 확인한 사실
+
+- 직전 반영은 최소 충분 표현의 판정 기준만 현행 `Review Loop`, `Wording Rules`,
+  `Information Format`, `Output Checklist`에 적용했다.
+- 6영역으로의 heading 재구성, 상세 기준 reference 분리, Output Checklist 전체 축약은 아직
+  수행하지 않았다.
+
+### 수정된 제안 상태
+
+- 6영역 상위 구조와 identity-first core workflow 방향은 유지한다.
+- `가장 짧으면서도 판단을 복원하기 충분한가?`는 폐기하고, 적용 대상·조건, 판단 기준, 요구
+  행동이나 결과의 복원 여부와 판정에 영향을 주는 권위·예외·관계의 보존 여부를 묻는 기준으로
+  교체한다. 짧음은 충분성 통과 후의 최적화다.
+- `최소 변경`도 단순 변경량 최소가 아니라 역할 정합과 필요한 전파를 모두 충족한 후보 중
+  가장 작은 변경이라는 뜻으로 제한한다.
+- owner/scope의 core 판정과 변경 전파 불변은 `SKILL.md`에 남긴다. reference로 옮길 수 있는 것은
+  structure smell taxonomy와 상세 비교·authoring pattern이며, identity 실행 gate까지 이동하지 않는다.
+- 따라서 다음 구조 반영은 기존 세부 내용을 기계적으로 이동하는 작업이 아니라, core gate 보존과
+  조건부 reference routing을 함께 설계하는 별도 변경이다.
+
+## 2026-06-29 · 새 문서 생성과 내용 추가 gate 보완
+
+@user가 6영역 재구성안에서 문서 추가·문서 생성이 어떻게 처리되는지 확인했다.
+
+### 판단
+
+- workflow의 변경 표면 중 `존재`가 새 문서 생성에 해당하지만, 분류만으로는 생성 허용 기준이
+  부족하다. 새 문서 생성은 `Conditional Gates`의 별도 gate로 명시해야 한다.
+- 새 문서는 아직 자기 identity가 없으므로 user intent, parent/owner map, 관련 sibling과 기존
+  corpus에서 intended identity를 설계한다. 기존 문서는 자기 identity를 기준으로 content 포함
+  여부를 판정한다.
+
+### 새 문서 생성 gate
+
+- 같은 책임을 기존 owner 문서나 섹션이 이미 소유하는지 먼저 확인한다.
+- 기존 문서 흡수로 해결되지 않고 owner·scope·reader·lifecycle·change coupling 중 실제 역할
+  차이가 독립 identity를 요구할 때만 새 문서를 만든다.
+- 생성 전 intended identity, owner/scope, parent·sibling 관계와 배치 위치를 정한다. 경계가
+  복원되지 않으면 사용자에게 확인한다.
+- 생성 후 parent taxonomy/index, inbound reference와 sibling 경계가 새 문서의 역할을 올바르게
+  설명하는지 확인하고 필요한 관련 문서를 함께 갱신한다.
+
+### 기존 문서 내용 추가 gate
+
+- 새 내용이 기존 identity와 같은 owner/scope이면 흡수하고, 하위 개념이면 기존 문맥이나 필요한
+  section에 배치한다.
+- identity를 초과하면 국소 추가하지 않고 owner 문서 위임, scope 확장, 문서 분리, 상위 승격을
+  비교한다.
+
+따라서 제안된 conditional gate에는 "새 문서 생성이면 기존 owner로의 흡수 가능성과 독립
+identity 필요성을 판정하고, 생성 후 parent·index·reference·sibling 역할을 정합화한다"를
+추가하는 것이 적절하다.
+
+## 2026-06-29 · identity-first 6영역 재구성 종합 반영
+
+@user가 앞선 리뷰와 토론을 종합해 반영하고, 남은 일이 없으면 없다고 보고하라고 요청했다.
+검토 결과 구조 개편과 reference 분리가 미반영 상태였으므로 owner skill에 반영했다.
+
+### 반영한 파일
+
+- `.agents/skills/document-structure-review/SKILL.md`
+- `.agents/skills/document-structure-review/references/review-patterns.md` (신규)
+- `.agents/skills/document-structure-review/references/authoring-patterns.md` (신규)
+- `.agents/skills/document-structure-review/references/EXAMPLE.md`
+
+### 구조와 역할
+
+- `SKILL.md`를 `Identity And Scope`, `Core Invariants`, `Review Workflow`, `Conditional Gates`,
+  `Reference Routing`, `Output Contract`의 6영역으로 재구성했다.
+- identity 근간을 존재·위치·경계·상태·내용 변경 전체로 일반화하고, owner 판정과 본문 경계
+  표기를 분리했다.
+- core에는 bounded read path, authority 충돌, cross-document 전파, content/authority 불확실성,
+  최소 충분 표현 기준을 유지했다.
+- 새 문서 생성, content/identity 변경, destructive change, guideline/template 변경을 조건부
+  gate로 분리했다. 새 문서 생성은 기존 owner 흡수 가능성과 독립 identity 필요성을 먼저
+  판정하고 생성 후 parent/index/reference/sibling 정합화를 요구한다.
+- 상세 context read path, concept placement, structure smell, owner와 변경 위치 판단은
+  `review-patterns.md`로 이동했다.
+- wording, rule shape, information format, guideline 구조 모델과 sibling 비교는
+  `authoring-patterns.md`로 이동했다.
+- Output Contract는 전수 checklist에서 6개 core completion gate로 축약하고, 관련 항목만
+  적용한다고 명시했다.
+- `EXAMPLE.md`에 12개 사례 목차와 `New Document Needs An Independent Identity` 사례를 추가했다.
+
+### 검증 ledger
+
+- `SKILL.md`: 361줄에서 117줄로 축약. core 판단과 조건부 routing은 본문에 유지했다.
+- 모든 대상 파일에 `scripts/check-markdown-inline-code` 실행 → exit 0 (PASS).
+- `git diff --check -- .agents/skills/document-structure-review` → exit 0 (PASS).
+- 대상 파일 trailing whitespace 검색 → 결과 없음 (PASS; `rg` exit 1은 no match).
+- 100줄을 넘는 `authoring-patterns.md`와 `EXAMPLE.md`에 목차가 있다.
+- read-only fresh Codex forward-test에서 네 시나리오를 실행했다:
+  새 문서 길이만 긴 경우 기존 owner 흡수, scope 초과 내용은 content/identity gate와
+  `review-patterns.md`, 혼합 참조 삭제는 destructive gate와 비파괴 fallback, 반복되는
+  child/parent 충돌은 guideline gate와 `authoring-patterns.md`로 판정했다 (PASS).
+- `quick_validate.py`는 PyYAML 부재(`ModuleNotFoundError: No module named 'yaml'`)로 실행되지
+  않았다. frontmatter는 `name`과 `description`만 유지했지만 validator 결과는 확보하지 못했다.
+
+### 남은 상태
+
+- 합의된 구조·내용 반영과 실행 검증은 완료했다.
+- 커밋은 사용자 요청이 없어 수행하지 않았다. 이 로그는 기존 설계 흐름과 커밋 대기 상태에
+  따라 open을 유지한다.
+
+## 2026-06-29 · identity 근간 강화와 내용 보존 점검
+
+@user가 (1) codex 축약의 내용 보존을 어떻게 다룰지, (2) 내부 모순 해소에서 checklist보다 나은
+방안이 있는지, (3) 근간 선언의 지위 강화를 요청했다. (1)(2)는 판단하고 (3)과 (1)의 누락분을
+반영했다.
+
+### 확인한 사실
+
+- 원본 `Output Checklist`(약 40항목)를 codex의 `SKILL.md`·`references/review-patterns.md`·
+  `references/authoring-patterns.md`와 대조했다. 항목 대부분은 reference 본문에 규칙으로
+  보존돼 있다: skeleton fence 누출 → `authoring-patterns.md` Comparative Guideline Review,
+  단일컬럼 table 대체 → Information Format, negative instruction vs decision table → Rule Shape,
+  hidden authority → `review-patterns.md` Structure Smells.
+- 직접 대응이 약해진 항목은 1개다: 원본의 "예시·근거·provenance·workflow·style이 한 섹션에서
+  섞이지 않는가". codex의 `Concept Placement`는 같은 수준 배치는 다루지만 한 섹션 내 역할
+  혼재 금지 smell은 빠져 있었다.
+
+### 판단
+
+- 내용 보존을 위해 checklist를 다시 키우는 것은 이 skill 자신의 중복 금지 원칙(`authoring-patterns`
+  Wording)과 codex가 해소한 전수 compliance 모순에 역행한다. 보존은 규칙을 owner 본문에 두고
+  누락분만 복원하는 방식이 맞다.
+- checklist보다 나은 형태는 codex가 이미 적용한 3층 구조다: `Core Invariants`(불변),
+  `Conditional Gates`(변경 유형별 분기), `Output Contract`(6 completion gate). 단일 checklist를
+  추가로 손보거나 별도 decision table을 끼울 필요는 없다.
+
+### 반영
+
+- `SKILL.md` `Identity And Scope` 첫 문단에 "이 skill의 모든 판단은 문서의 identity를 근간으로
+  한다"와 "Core Invariants·Review Workflow·Conditional Gates·reference는 이 근간을 실행하는
+  도구이며, 다른 규칙이 identity 판단과 충돌하면 identity 판단을 우선한다"를 명시해 근간의
+  지위를 강화했다. lifecycle 일반화(존재·위치·경계·상태·내용)는 유지했다.
+- `references/review-patterns.md` Structure Smells에 `mixed concept roles`를 복원했다.
+
+### 검증 ledger
+
+- `scripts/check-markdown-inline-code SKILL.md review-patterns.md` → exit 0 (PASS).
+- `git diff --check -- SKILL.md review-patterns.md` → exit 0 (PASS).
+- `quick_validate.py`는 직전 블록과 동일하게 PyYAML 부재로 미실행. frontmatter는 name·description만
+  유지했으나 validator 결과는 확보하지 못했다(미해결 gap).
+
+### 남은 상태(이번 블록)
+
+- 커밋은 @user 지시 없어 수행하지 않았다. 이 로그는 open 유지.
