@@ -1,7 +1,7 @@
 ---
 topic: workspace reset stage8 Atlas 반영·drift 재검토
 description: workspace reset plan stage 8 — docs-as-Obsidian-Atlas 도입 뒤 AGENTS.md·docs/guides/workflow.md·관련 owner 문서가 새 탐색 흐름(wikilink 작성 규칙·Obsidian Graph navigation·IDE+Obsidian dual-tool)을 반영해야 하는지, 또는 stale/drift가 생겼는지 재검토한다.
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -869,3 +869,27 @@ decision/spec/architecture 연결을 끝까지 추적하는 workflow 원칙으�
 
 - W7 완료. Stage8 Work Items는 모두 완료 상태다.
 - Stage8 전체 closeout과 plan stage pointer 전환은 별도 closeout 점검으로 수행한다.
+
+## 2026-06-29 · Stage8 closeout — Atlas 반영·drift 재검토 완료
+
+Closeout 점검 결과 stage8의 질문과 작업 수명은 종료됐다.
+
+**확인한 사실:**
+
+- Stage8 Work Items W1, W5, W6, W7, W10은 모두 완료 상태다.
+- `log check` 기준 이 parent log에는 미완료 Work Item과 next pointer가 없다.
+- W6/W10 및 W2/W3/W4 child logs는 모두 `decided` 상태이고 미완료 Work Item이나 next pointer가 없다.
+- W7 반영 내용은 root `AGENTS.md`와 `docs/guides/workflow.md`에 반영돼 있다.
+- `plans/workspace-reset/workspace-reset.md`의 stage8 항목은 이 closeout에서 완료 상태로 전환한다.
+
+**Owner handoff:**
+
+- docs-as-Obsidian-Atlas 도입 뒤 필요한 AGENTS 계층, owner 문서, workflow drift 반영은 W5/W6/W7/W10과 child logs에서 완료했다.
+- 새 owner 문서나 code/test 후속은 남기지 않는다.
+- `plans/post-mvp*` 삭제 disposition 단계 활성화는 @user 지시로 이번 closeout 범위에서 제외한다.
+
+**판정:**
+
+- Stage8은 `decided`로 닫는다.
+- Plan stage8은 완료 처리한다.
+- 다음 plan stage 활성화는 별도 사용자 지시 전까지 수행하지 않는다.
