@@ -13,7 +13,7 @@ status: open
   - [x] architecture retrofit — `local-agent-runtime.md` 인덱스 + slice 9개 완료 → `logs/2026-06-28-workspace-reset-stage8-W2-architecture-retrofit.md` (decided)
   - [x] specs retrofit — `aiox-a2a.md` 인덱스 + slice 7개 → `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md` (decided)
   - [x] decisions drift 검토 — 기존 decision 15개 → `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`
-- [>] W7 탐색 흐름 drift 판정 — workflow.md·AGENTS 계층의 Obsidian Graph navigation·IDE+Obsidian dual-tool 반영 필요 여부 판정·반영 또는 불필요 근거 기록
+- [x] W7 탐색 흐름 drift 판정 — workflow.md·AGENTS 계층의 Obsidian Graph navigation·IDE+Obsidian dual-tool 반영 필요 여부 판정·반영 또는 불필요 근거 기록
 - [x] W10 owner별 section contract 전수 재검토 → `logs/2026-06-28-workspace-reset-stage8-W10-docs-contract-overhaul.md` — docs/AGENTS 공통 의미와 architecture/specs/decisions/guides/product의 skeleton·invariant를 required/optional/absorb/subtype-only/delete로 판정·승인 반영한 뒤 W6 retrofit 재개
 
 ## 2026-06-26 · stage 8 착수 — 경위·범위·W3 handoff 입력
@@ -827,3 +827,45 @@ W6 child log `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md`�
 - 다음 재개 지점은 W7: `docs/guides/workflow.md`와 AGENTS 계층이 Obsidian Graph navigation,
   IDE+Obsidian dual-tool 흐름을 반영해야 하는지 판정하고, 반영이 필요하면 수정·검증하거나
   불필요하면 근거를 기록한다.
+
+## 2026-06-29 · W7 탐색 흐름 drift 반영 — 변경 영향 추적 원칙 추가
+
+@user 지적을 반영해 W7의 범위를 "Obsidian 탐색 팁"이 아니라 agent가 문서·코드를 읽고
+추가·수정·삭제·개편할 때 owner 문서, 링크, 호출 경로, producer/consumer, tests와
+decision/spec/architecture 연결을 끝까지 추적하는 workflow 원칙으로 재판정했다.
+
+**확인한 사실:**
+
+- `docs/AGENTS.md`는 이미 docs-as-Atlas 본체, Obsidian syntax, Canvas/Graph navigation 보조,
+  repo-path wikilink와 broad/decorative Graph link 금지를 소유한다.
+- `AGENTS.md`는 작업 진입과 현재 작업 권위, 작업 전 범위 보고를 소유하지만 문서·코드 변경 시
+  영향 추적 의무를 직접 말하지 않았다.
+- `docs/guides/workflow.md`는 작업 재개·owner handoff·충돌 흐름을 설명하지만, 문서/코드 변경
+  자체를 유기적으로 추적하는 실행 원칙과 IDE+Obsidian 병행 흐름은 없었다.
+
+**판정:**
+
+- `docs/AGENTS.md`는 중복 수정하지 않는다. 작성 규칙과 docs-as-Atlas link 계약은 이미 충분하다.
+- root `AGENTS.md`에는 구속 규칙으로 짧게 반영한다. agent가 문서나 코드를 읽거나
+  추가·수정·삭제·개편할 때 국소 파일만 보지 않고 영향 범위와 검증 경로를 추적해야 한다.
+- `docs/guides/workflow.md`는 상세 실행 흐름 owner로 반영한다. 문서 수정, 코드 읽기/수정,
+  코드 추가·삭제·개편, Obsidian Graph/Backlink 사용을 각각 구분해 설명한다.
+
+**반영:**
+
+- `AGENTS.md` Work Entry에 영향 범위·검증 경로 추적 의무와 `docs/guides/workflow.md` 포인터를
+  추가했다.
+- `docs/guides/workflow.md`에 `## 변경 영향 추적` 섹션을 추가했다. 핵심은 docs-as-Atlas를
+  discovery layer로 쓰되 최종 판단은 선택된 로그, owner 문서, code/tests 직접 근거로 확인한다는
+  점이다. IDE/shell은 코드 검색·수정·테스트 실행의 주 도구, Obsidian Graph/Backlink는 관련
+  문서·decision·spec·architecture·code/test 후보 탐색 보조로 정리했다.
+
+**검증 ledger:**
+
+- `scripts/check-markdown-inline-code AGENTS.md docs/guides/workflow.md logs/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md`
+  → exit 0 (PASS).
+
+**상태:**
+
+- W7 완료. Stage8 Work Items는 모두 완료 상태다.
+- Stage8 전체 closeout과 plan stage pointer 전환은 별도 closeout 점검으로 수행한다.

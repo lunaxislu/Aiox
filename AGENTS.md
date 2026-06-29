@@ -18,6 +18,10 @@ architecture.excalidraw는 사용자의 개인 자산임 신경쓸 필요가 없
 - onramp 출력이 복수 후보, 깨진 pointer, 순환, 복수 활성 단계처럼 하나로 정해지지
   않는 상태를 보고하면 추측하지 않고 사용자에게 선택을 요청한다.
 - 작업 전 현재 할 일, 읽을 범위와 진행 방식을 짧게 보고한다.
+- 문서나 코드를 읽거나 추가·수정·삭제·개편할 때는 국소 파일만 보고 멈추지 않는다.
+  관련 owner 문서, inbound/outbound 링크, 호출 경로, producer/consumer, tests와
+  decision/spec/architecture 연결을 끝까지 추적해 영향 범위와 검증 경로가 닫혔는지 반드시
+  확인한다. 실제 절차와 사례는 `docs/guides/workflow.md`를 따른다.
 
 ## References
 

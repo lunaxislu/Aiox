@@ -41,6 +41,29 @@
 - **문서 정리(workspace reset)** — 문서의 책임·권위·수명을 정해 owner 문서로
   통합한다. 큰 작업이므로 plan과 단계 로그로 진행한다.
 
+## 변경 영향 추적
+
+이 repo의 작업은 한 파일을 고치는 일이 아니라, 그 변경이 의존하거나 깨뜨릴 수 있는
+관계를 끝까지 추적해 owner와 검증 경로를 맞추는 일이다. 탐색 도구는 후보를 찾는 데
+쓰고, 최종 판단은 선택된 로그, owner 문서, code와 tests의 직접 근거로 확인한다.
+
+- **문서를 읽거나 수정할 때** — 대상 문서의 owner와 type-specific `AGENTS.md`를 확인하고,
+  body link, `Related:`, `Sources:`, inbound reference와 sibling 문서가 가리키는 관계를
+  함께 본다. 다른 owner의 내용을 복사하거나 조용히 바꾸지 않고, stale한 쪽을 판정한 뒤
+  승인된 owner에 반영한다.
+- **코드를 읽거나 수정할 때** — 국소 함수만 보지 않고 호출 경로, producer/consumer,
+  저장소·transport·adapter 같은 경계, 관련 tests와 docs의 current/as-built claim을
+  따라간다. code와 tests는 현재 구현 사실의 owner이고, product/spec/architecture/decision은
+  intended state와 이유를 소유하므로 서로 대체하지 않는다.
+- **코드를 추가·삭제하거나 전반적으로 개편할 때** — 새 경계가 어느 owner 문서의 contract,
+  architecture invariant, decision rationale, roadmap gate에 영향을 주는지 먼저 분류한다.
+  삭제나 이동은 그 파일이나 문서만으로 복원되는 knowledge, live reference, test coverage가
+  남는지 확인한 뒤 수행한다.
+- **Obsidian Graph/Backlink를 쓸 때** — docs-as-Atlas는 영향 후보와 설계 맥락을 찾는
+  navigation 보조다. IDE와 shell은 코드 검색·수정·테스트 실행의 주 도구로 두고, Graph와
+  Backlink는 관련 문서·decision·spec·architecture·code/test 후보를 찾는 데 병행한다. Graph
+  노드가 파일명만 보여 경로가 모호하면 hover나 folder grouping으로 실제 경로를 확인한다.
+
 ## 세션 시작과 재개
 
 Claude와 Codex의 `SessionStart`는 같은 `scripts/onramp`를 호출한다. onramp는 단일
