@@ -1,11 +1,5 @@
 # aiox Product
 
-Related:
-
-- [[docs/specs/aiox-a2a]]
-- [[docs/architecture/local-agent-runtime]]
-- [[docs/product/roadmap]]
-
 Status: Current
 
 이 문서는 aiox의 제품 목적, 사용자, 범위와 제품 원칙을 소유한다. Protocol contract, 내부
@@ -103,5 +97,6 @@ CLI/TUI agent를 연결하는 local-first runtime과 control plane이다. 외부
 
 Sources:
 
-- [Google Cloud donates A2A to Linux Foundation](https://developers.googleblog.com/en/google-cloud-donates-a2a-to-linux-foundation/)
-- [A2A Protocol adoption update, April 2026](https://www.linuxfoundation.org/press/a2a-protocol-surpasses-150-organizations-lands-in-major-cloud-platforms-and-sees-enterprise-production-use-in-first-year)
+- External positioning / A2A naming verification
+  - [Google Cloud donates A2A to Linux Foundation](https://developers.googleblog.com/en/google-cloud-donates-a2a-to-linux-foundation/)
+  - [A2A Protocol adoption update, April 2026](https://www.linuxfoundation.org/press/a2a-protocol-surpasses-150-organizations-lands-in-major-cloud-platforms-and-sees-enterprise-production-use-in-first-year)

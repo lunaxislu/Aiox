@@ -7,12 +7,12 @@ description: Rules for agents reading, writing, and promoting decision documents
 
 이 디렉토리(`docs/decisions/`)의 문서는 여러 대안 중 선택한 결과와 아직 유효한 load-bearing rationale, trade-off와 재검토 조건을 소유한다.
 
-`docs/` 공통 작성 규칙(링크 형식·중복 금지·evidence·sources·staleness)은 상위 [[docs/AGENTS]]가 소유한다. 아래는 decision type 전용 규칙이다.
+`docs/` 공통 작성 규칙(링크 형식·중복 금지·evidence·sources·change/drift validation)은 상위 [[docs/AGENTS]]가 소유한다. 아래는 decision type 전용 규칙이다.
 
 ## 1. 작성 원칙
 
 - **WHY만 소유한다**: Decision 문서는 왜 이 선택을 했는가를 소유한다. 선택이 만든 제품 범위, contract, 구조, 추진 상태는 각각 product/specs/architecture/roadmap에 반영하고 decision 문서에 복사하지 않는다.
-- **outcome은 참조한다**: 선택 결과가 반영된 owner 문서는 `Related:` 또는 본문 링크에서 참조한다. `Sources:`는 로그나 이전 문서처럼 provenance가 중요할 때만 쓴다.
+- **outcome은 참조한다**: 선택 결과가 반영된 owner 문서는 claim 가까이의 본문 링크로 참조한다. `Related:`는 상위 [[docs/AGENTS]]의 document-level prerequisite 조건을 만족할 때만 쓴다. `Sources:`는 로그나 이전 문서처럼 provenance가 중요할 때만 쓴다.
 - **load-bearing 부분만 기록한다**: 작업 경위 요약이 아니라, 지금도 유효한 이유와 다른 대안을 배제한 근거만 남긴다.
 - **결정 당시의 WHY 스냅샷이다**: Decision 문서는 계속 갱신하는 living document가 아니다. 결정 결과가 바뀌면 product/spec/architecture/roadmap을 갱신한다. 기존 decision을 현재 상태로 패치하지 않는다. 새 rationale이 필요하면 새 decision을 만든다.
 
@@ -23,9 +23,8 @@ Decision 문서는 기본 document-level `Status:`를 쓰지 않는다.
 `docs/decisions/`에 존재하는 decision 문서는 accepted load-bearing rationale snapshot이라는 전제를 가진다. `Accepted`를 status로 반복하지 않는다.
 
 - 보류된 질문은 decision 문서보다 open question, product/roadmap deferred item, spec open/deferred section, 또는 작업 로그가 더 적합한 owner인지 먼저 판단한다.
-- 기존 decision의 링크, provenance, 표현 명확화처럼 결정 당시 WHY를 바꾸지 않는 보수는 기존 문서에 적용한다.
-- 기존 decision의 선택이나 rationale을 대체하는 새 결론이 필요하면 기존 문서를 현재 상태로 패치하지 않고 새 decision을 만든다.
-- 기존 decision을 변경·삭제하기 전에는 §5의 decision-change harness로 보수 업데이트, 새 decision, 삭제 후보 중 어느 경우인지 먼저 분류한다.
+- WHY를 바꾸지 않는 보수는 기존 decision에 적용하고, 선택이나 rationale을 대체하는 결론은 기존 문서를 패치하지 않고 새 decision으로 만든다.
+- 기존 decision을 변경·삭제하기 전에는 §5 decision-change harness로 변경 유형(보수·새 decision·삭제 후보)을 분류한다. 각 유형의 정의는 §5가 소유한다.
 
 ## 3. Decision-worthy 기준
 
@@ -53,11 +52,6 @@ Use this as an authoring default, not required boilerplate. Omit empty sections.
 
 ```md
 # <Decision Title>
-
-Related:
-
-- [[docs/specs/relevant-spec]]
-- [[docs/architecture/relevant-slice]]
 
 ## Context
 
@@ -88,11 +82,13 @@ Related:
 - `logs/...`
 ```
 
+`Sources`는 결정 계보와 source↔claim 관계를 복원해야 할 때 사용한다.
+
 ## 5. Validation And Cross-Owner Checks
 
-- 작성 전: 이 결정의 outcome이 이미 product/spec/architecture/roadmap에 반영됐는지 확인한다. 반영됐다면 그 내용을 decision 문서에 복사하지 않고 참조한다.
+- 작성 전: 이 결정의 outcome owner(product/spec/architecture/roadmap 등)를 식별한다. 이미 반영됐다면 그 내용을 decision 문서에 복사하지 않고 참조한다.
 - 작성 중: outcome 자체와 현재 추진 상태를 decision 문서가 소유하지 않게 하고, 해당 owner 문서로 링크한다.
-- 작성 후: 결정이 만든 outcome이 각 owner 문서에 반영됐는지 확인한다.
+- 작성 후: 결정이 만든 outcome이 각 owner 문서에 반영됐는지 확인한다. 아직 반영 전이라면 decision만으로 owner 반영이 끝난 것처럼 두지 않는다.
 
 기존 decision을 변경·삭제하기 전에는 decision-change harness를 실행한다.
 

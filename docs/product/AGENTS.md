@@ -13,8 +13,8 @@ description: docs/product/ (제품 목적·범위·원칙·roadmap) 작성 규�
 - `roadmap.md`: product scope 안의 release gate, phase, 우선순위와 순서를 소유한다. product scope를
   확장하거나 현재 구현 checklist를 대신하지 않는다.
 
-`docs/` 공통 작성 규칙(링크 형식·중복 금지·status 배치·evidence·sources·staleness)은 상위
-[[docs/AGENTS]]가 소유한다. 아래는 product type 전용 규칙이다.
+`docs/` 공통 작성 규칙(링크 형식·중복 금지·status 배치·evidence·sources·change/drift
+validation)은 상위 [[docs/AGENTS]]가 소유한다. 아래는 product type 전용 규칙이다.
 
 ## Product 작성 규칙
 
@@ -88,14 +88,15 @@ roadmap phase, spec target, architecture target이 소유한다.
 
 ## Drift 처리
 
-`product.md`는 as-built code 주장을 거의 하지 않으므로 일반 drift 절차는 상위 [[docs/AGENTS]] Staleness
-And Drift와 [[docs/documentation-system]] Conflict Resolution이 소유한다. `roadmap.md`의 주장은 아래로
-분류한다.
+`product.md`는 현재 구현 동작 주장을 거의 소유하지 않으므로 일반 drift 절차는 상위
+[[docs/AGENTS]] Change And Drift Validation과 [[docs/documentation-system]] Conflict Resolution이
+소유한다. `roadmap.md`의 주장은 아래로 분류한다.
 
 - current/progress claim(gate 완료, current gap/status, plan 참조)이 plan·code·test와 어긋나면 stale 여부를 확인하고
   갱신한다.
 - gate/target criterion(통과 기준, target phase)은 code가 아직 못 한다는 이유만으로 낮추지 않는다.
-  바꾸려면 product/roadmap intent 변경으로 보고·승인한다(절차는 상위 [[docs/AGENTS]] Staleness And Drift).
+  바꾸려면 product/roadmap intent 변경으로 보고·승인한다(절차는 상위 [[docs/AGENTS]] Change And Drift
+  Validation).
 - current claim인지 target criterion인지 불명확하면 임의 판정하지 않고 사용자에게 확인한다.
 
 ## Validation And Cross-Owner Checks
