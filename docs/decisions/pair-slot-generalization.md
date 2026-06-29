@@ -18,11 +18,13 @@ half-state가 노출된다.
 
 ## Decision
 
-pair 슬롯을 **kind-agnostic 2-slot(a/b)**으로 일반화하고, same-vendor pair를 허용하며,
-dispatch를 target `agent.kind` 기반 generic 경로(`dispatchToPairPeers`)로 단일화한다.
-target binding 미확정 delivery는 `failed`가 아니라 `deferred`(non-terminal)로 두고
-normalized reason 3종을 surface한다. self-loop는 core+store 이중 가드로 차단한다.
-pair cardinality는 정확히 2로 유지한다.
+pair 슬롯을 **kind-agnostic 2-slot(a/b)**으로 일반화하고, same-vendor pair를 허용한다
+([[docs/architecture/local-runtime-store-and-repositories]] §2-§3). Dispatch는 target
+`agent.kind` 기반 generic 경로(`dispatchToPairPeers`)로 단일화한다
+([[docs/architecture/local-runtime-routing-and-delivery]] §8). Target binding 미확정 delivery는
+`failed`가 아니라 `deferred`(non-terminal)로 두고 normalized reason 3종을 surface한다
+([[docs/architecture/local-runtime-codex-adapter]] §7.7). Self-loop는 core+store 이중 가드로
+차단한다. Pair cardinality는 정확히 2로 유지한다.
 
 ## Alternatives
 
@@ -89,10 +91,9 @@ pair cardinality는 정확히 2로 유지한다.
 
 ## Sources
 
-- 코드 근거: `src/core/pairs.ts` (kind-agnostic slot, `getPairStatus`, self-loop),
-  `src/store/repositories/pairs.ts:77-263` (slot 점유 검사, `pickFirstOpenSlot`,
-  `isPairReady`), `src/store/schema.ts:84-135` (Migration 1, partial unique index),
-  `src/daemon/state.ts:2116-2125` (`createBidirectionalPairRoutes` same-vendor 분기).
-- Outcome 반영: [[local-agent-runtime]] §0 (module overview) ·
-  [[local-runtime-store-and-repositories]] §2–§3 ·
-  [[local-runtime-routing-and-delivery]] §8 (as-built 슬롯 모델).
+- `logs/2026-06-19-workspace-reset-W5-history-migration.md:654-657` — deleted
+  `history/45`-`history/48` Step 15 source-map rows; successor is this decision.
+- `logs/2026-06-19-mvp-history-archive.md` §2.1, §3.2 — preserved QA/TDD and
+  wrong-thread fallback provenance relevant to pair-slot generalization.
+- `logs/2026-06-20-mvp-plan-carryover-archive.md` §1, §2 — preserved Step 15 and
+  QA-002 closeout summary.

@@ -52,7 +52,8 @@ The scope reduction avoided a dangerous half-solution: it allowed the Codex
 runtime foundation to proceed while forbidding notification-derived binding
 updates. Later proxy work satisfies the same rule by observing the TUI
 connection's request and matching success response, rather than by trusting
-broadcast notifications.
+broadcast notifications ([[docs/architecture/local-runtime-codex-adapter]]
+§7.4–§7.7).
 
 ## Trade-offs
 
@@ -60,7 +61,7 @@ broadcast notifications.
   equivalent upstream API existed.
 - The later transparent proxy adds maintenance risk because it observes Codex
   JSON-RPC frames, but it preserves the attribution boundary that notification
-  observation lacked.
+  observation lacked ([[docs/decisions/proxy-lazy-observation-cost-model]]).
 - If a future Codex API exposes an authenticated active-thread read or callback,
   aiox can replace the proxy without changing the underlying D7 rule.
 
@@ -77,8 +78,3 @@ connections can mutate the same runtime and require a richer ownership model.
 
 - `logs/2026-06-19-mvp-history-archive.md:45-53` - retained digest of the Step
   10 D7 finding.
-- [[local-runtime-codex-adapter]] §7.4–§7.7 - current outcome:
-  transparent proxy observation, active-thread binding authority, and fallback
-  behavior.
-- `docs/decisions/proxy-lazy-observation-cost-model.md` - proxy cost model for
-  the later implementation path.

@@ -8,7 +8,7 @@ into its TUI transcript. A stateless central MCP router alone was therefore not
 enough for the product goal.
 
 ## Decision
-We decided to pivot to a TypeScript-based background daemon architecture and implement a dedicated client runtime containing custom transcript injection adapters (WebSocket proxy with `turn/start` for Codex, dynamic channel plugin with HTTP push for Claude) to support bidirectional local orchestration, preserving legacy implementations under `legacy/bridge-relay-v1/`.
+We decided to pivot to a TypeScript-based background daemon architecture with client launch/runtime surfaces and agent-specific transcript injection adapters to support bidirectional local orchestration, preserving legacy implementations under `legacy/bridge-relay-v1/`. The current process and adapter ownership is documented in [[docs/architecture/local-agent-runtime]].
 
 ## Alternatives
 - **Central HTTP Router only**: Rejected because MCP-only pulls cannot push turns or wake up target models without explicit polling triggers.
@@ -16,7 +16,7 @@ We decided to pivot to a TypeScript-based background daemon architecture and imp
 
 ## Rationale
 - **Orchestrator and Registry**: Transitioning from a simple 1:1 bridge model to a central background orchestrator daemon enables managing agent identities dynamically via memory registries and supporting 1:N logical routes.
-- **Structured Delivery Lifecycle**: Using TypeScript allows compiling unified schema domains. It replaces plain timeouts with a structured per-delivery status (`MessageDeliveryStatus`: `queued`, `delivering`, `delivered`, `completed`, `failed`), paving the way for a post-MVP `expired` transition (not yet in code).
+- **Structured Lifecycle**: The rewrite rejected synchronous timeout as the primary failure model for long-running work and instead required an explicit asynchronous lifecycle. The current delivery-state outcome is documented in [[docs/architecture/local-runtime-routing-and-delivery]] §8.1 and §8.4.
 - **Unified Ecosystem**: TypeScript allows runtime schemas to be shared directly with standard Node/TUI CLI environments, while UDS transport provides fast local IPC.
 
 ## Trade-offs
@@ -28,7 +28,3 @@ We decided to pivot to a TypeScript-based background daemon architecture and imp
 ## Sources
 - `legacy/bridge-relay-v1/bridge/README.md` — preserved predecessor bridge
   behavior and MCP-only routing shape.
-- `docs/architecture/local-agent-runtime.md` — current daemon/client runtime
-  architecture owner.
-- `src/core/deliveries.ts:3-11` — current delivery status union referenced by
-  the structured lifecycle rationale.

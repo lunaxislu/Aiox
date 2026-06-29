@@ -31,7 +31,7 @@ no-fallback 계약을 선택한 이유만 기록한다.
   폴더에서 preflight가 통과해도 launch 시 다른(disabled) scope가 해석되어 채널이
   침묵 실패(silent-drop)할 수 있다. preflight가 닫으려는 바로 그 결함이 다시 열린다.
   그래서 plugin launch는 preflight가 inventory를 읽은 cwd에 spawn cwd를 고정한다
-  (`src/cli/invocation.ts:239-249`).
+  ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:239-249`).
 
 ## Trade-offs
 - Claude plugin marketplace 등록과 plugin 설치가 선행되어야 한다 (`aiox claude-plugin setup` 또는 수동 설치).
@@ -44,12 +44,15 @@ no-fallback 계약을 선택한 이유만 기록한다.
 ## Sources
 - `logs/2026-06-20-mvp-plan-carryover-archive.md` §2 — R3/R4 carryover
   provenance for Claude plugin/channel activation and runtime namespace QA.
-- 전략 선택·no-fallback 구현: `src/cli/invocation.ts:161-163`
-  (`resolveClaudeChannelStrategy` 호출), `:219` (strategy 분기), `:239-249`
-  (plugin launch + cwd 고정), `:487-499` (`resolveClaudeChannelStrategy`: 기본값
-  `"plugin"`)
+- 전략 선택·no-fallback 구현: [[src/cli/invocation.ts]] —
+  `src/cli/invocation.ts:161-163` (`resolveClaudeChannelStrategy` 호출),
+  `src/cli/invocation.ts:219` (strategy 분기), `src/cli/invocation.ts:239-249`
+  (plugin launch + cwd 고정), `src/cli/invocation.ts:487-499`
+  (`resolveClaudeChannelStrategy`: 기본값 `"plugin"`)
 - `claude plugin list --json` 외부 CLI contract 스키마(id/installPath/projectPath,
   cwd-resolved `enabled`, flat scope, `ambiguous_install_path` 가드) 구현 근거:
-  `src/adapters/claude/preflight.ts:11-62`, `src/adapters/claude/plugin-cli.ts`
+  [[src/adapters/claude/preflight.ts]] — `src/adapters/claude/preflight.ts:11-62`,
+  `src/adapters/claude/preflight.ts:168-207`; [[src/adapters/claude/plugin-cli.ts]] —
+  `src/adapters/claude/plugin-cli.ts:63-103`, `src/adapters/claude/plugin-cli.ts:181-249`
 - 채널 활성화 전략·preflight 흐름(아키텍처 권위):
-  [[local-runtime-claude-adapter]] §6.1–6.2
+  [[docs/architecture/local-runtime-claude-adapter]] §6.1–6.2

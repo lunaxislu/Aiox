@@ -4,11 +4,9 @@ description: logs/AGENTS.md의 workspace reset package-log 규칙을 log skill�
 status: open
 ---
 
-## Work Items
-
-- [>] W1 logs/AGENTS.md package-log 규칙을 log skill core 통합 후보와 repo-specific integration 유지 후보로 분류한다.
-- [ ] W2 긴 로그가 발생할 때 transferred, child log, independent follow-up 중 무엇을 쓸지 실제 stage8 W6/W10 split 사례로 정리한다.
-- [ ] W3 반영이 필요하면 `.agents/skills/log/` 또는 `logs/AGENTS.md` 중 owner를 정해 사용자 승인 뒤 수정한다.
+> 이 로그는 Work Items 없이 토론·논의를 이어가는 **토론형 로그**다. 재개 신호는
+> 최신 블록의 열린 질문이며, 토론이 수렴해 구체적 반영 대상이 정해지면 그때 owner를
+> 정해 처리한다.
 
 ## 2026-06-28 · 초기 기록 — package-log 규칙과 긴 로그 분할 토의
 
@@ -48,7 +46,7 @@ status: open
 
 ### Next
 
-- W1: `logs/AGENTS.md`의 package-log 규칙을 portable 후보와 repo-specific 후보로 분류한다.
+- 다음 초점은 `logs/AGENTS.md`의 package-log 규칙을 portable 후보와 repo-specific 후보로 분류하는 것이다.
 - 이 로그는 W10 child의 child가 아니다. W10 결과를 소비해야 닫히는 작업이 아니라 log skill / repo integration 운영 방식에 대한 독립 follow-up이다.
 
 ## 2026-06-28 · 추가 토의 — package log read path와 source-map 누락 문제
@@ -85,8 +83,8 @@ status: open
 
 ### Next
 
-- W1에서는 `logs/AGENTS.md`의 package preparation 규칙을 portable invariant와 workspace-reset-specific template으로 나눠 본다.
-- W3 전에는 사용자 승인을 받아 `.agents/skills/log/references/work-items-rules.md` 또는 `logs/AGENTS.md` 중 실제 수정 owner를 정한다.
+- 분류 단계에서는 `logs/AGENTS.md`의 package preparation 규칙을 portable invariant와 workspace-reset-specific template으로 나눠 본다.
+- 실제 반영 전에는 사용자 승인을 받아 `.agents/skills/log/references/work-items-rules.md` 또는 `logs/AGENTS.md` 중 실제 수정 owner를 정한다.
 
 ## 2026-06-28 · 추가 토의 — 로그별 pair 파일 아이디어
 
@@ -112,7 +110,7 @@ status: open
 
 ### Next
 
-- W1/W3에서 pair 파일을 portable 기본 구조로 만들지, repo-specific package 예외로 둘지 검토한다.
+- pair 파일을 portable 기본 구조로 만들지, repo-specific package 예외로 둘지는 분류·반영 단계에서 검토한다.
 
 ## 2026-06-28 · 추가 토의 — Work Item stale 문제
 
@@ -143,8 +141,8 @@ status: open
 
 ### Next
 
-- W1에서 Work Item freshness invariant를 portable 후보로 포함한다.
-- W3에서 실제 반영 시 `work-items-rules.md`의 Work Item 수정/점검 절에 보강할지, `log-writing-rules.md`의 append/세션 종료 점검에 보강할지 owner를 정한다.
+- 분류 단계에서 Work Item freshness invariant를 portable 후보로 포함한다.
+- 실제 반영 시 `work-items-rules.md`의 Work Item 수정/점검 절에 보강할지, `log-writing-rules.md`의 append/세션 종료 점검에 보강할지 owner를 정한다.
 
 ## 2026-06-28 · 추가 토의 — Work Item별 상세 계약 필요성
 
@@ -174,7 +172,7 @@ status: open
 
 ### Next
 
-- W1에서 portable 후보에 "optional Work Item Details" 구조를 포함하되, 모든 로그에 강제하지 않는 방향으로 검토한다.
+- 분류 단계에서 portable 후보에 "optional Work Item Details" 구조를 포함하되, 모든 로그에 강제하지 않는 방향으로 검토한다.
 
 ## 2026-06-28 · skill 관점 검토 — 제안 구조 평가
 
@@ -208,4 +206,61 @@ status: open
 ### Next
 
 - 사용자 승인 전에는 skill/reference 파일을 수정하지 않는다.
-- W1 결론 후보: portable 반영은 Work Item freshness + relationship decision table + optional Work Item Details로 좁히고, pair file과 workspace reset package template은 portable 기본 구조에서 제외한다.
+- 분류 결론 후보: portable 반영은 Work Item freshness + relationship decision table + optional Work Item Details로 좁히고, pair file과 workspace reset package template은 portable 기본 구조에서 제외한다.
+
+## 2026-06-29 · 실제 사례 — stage8 W6 owner-doc-retrofit child log 분리
+
+### 발단
+
+@user가 `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md`가
+너무 길어졌다며 분리를 제안했다. 당시 W6 안에 남아 있던 작업은 세 갈래였다:
+
+- **architecture retrofit**: Codex가 작업 중이었고 마지막 검토 기록이 W6에 축적되고 있었다.
+- **specs retrofit**: 아직 미착수. W6의 Work Item으로만 존재.
+- **decisions drift 검토**: 아직 미착수. W6의 Work Item으로만 존재.
+
+### 사용자 결정과 진행 방식
+
+@user는 세 작업 각각에 대해 별도 로그 파일을 만들고, W6에 이미 쌓인 architecture
+검토 기록은 새 architecture child log로 마이그레이션하자고 결정했다. W6 parent log에는
+각 child를 가리키는 pointer 블록만 남기는 방식이다.
+
+이에 따라 세 파일을 생성했다:
+
+- `logs/2026-06-28-workspace-reset-stage8-W2-architecture-retrofit.md`
+  W6에 축적된 architecture slice #1~#9 검토 기록 전체를 이전. Codex가 이미 완료한
+  작업이므로 마이그레이션 즉시 `decided` 처리.
+
+- `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md`
+  specs retrofit 전용 child log. 대상 파일 8개(`aiox-a2a.md` 외 7개)를 Work Item으로
+  구성하고, 각 파일에 대한 step-by-step 검토·반영 형식으로 작성.
+
+- `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`
+  decisions drift 전용 child log. 대상 decision 파일 15개를 Work Item으로 구성하고,
+  동일하게 파일별 stale 링크·owner drift 검토 형식으로 작성.
+
+W6 parent log는 세 child pointer 블록만 소유하고 상세 기록은 child가 소유.
+
+### 진행 중 발생한 문제와 해결
+
+**Work Items ID 형식 제약**
+W3 초안에 `S0-S7`, W4 초안에 `D01-D15` 형식으로 Work Item을 작성했더니
+`log check`가 `work_items: active=0 open=0 closed=0 incomplete=0`으로 파싱 실패.
+→ `W숫자` 형식(`W1-W8`, `W1-W15`)으로 재작성해 해결.
+→ 교훈: log 도구 Work Item ID는 `W숫자` 전용. 커스텀 prefix(S, D 등) 사용 불가.
+
+**신규 파일 날짜 블록 누락**
+직접 Edit으로 생성한 child log에 날짜 블록이 없어 `WARN latest: 날짜 블록 없음` 발생.
+→ 파일 생성 직후 `log append`로 날짜 블록 추가해 해결.
+→ 교훈: `log new` 외의 방법으로 만든 파일은 즉시 `log append` 필수.
+
+### 확인된 패턴
+
+- **분리 기준**: "너무 길다"는 관찰이 분리 계기였고, 분리 대상이 된 세 작업이
+  각각 독립적으로 재개·closeout할 수 있는 수명을 가졌기 때문에 child log가 적합했다.
+- **child pointer vs transferred**: 세 child 모두 parent(W6)가 결과를 소비하고
+  decided로 닫혀야 하므로 `Transferred`가 아닌 child pointer로 처리.
+- **완료된 작업의 마이그레이션**: Codex가 완료한 architecture 기록은 새 child log로
+  이전 후 즉시 decided 처리 — parent log 부담 없이 history를 child가 소유.
+- **parent log 소유 범위**: child pointer, 소비 조건, stage-level next pointer만.
+  child 실행 상세는 child log가 소유. parent가 child 내용을 복사하지 않음.

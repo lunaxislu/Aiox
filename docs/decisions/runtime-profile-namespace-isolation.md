@@ -32,8 +32,9 @@ existing socket connect/listen decision points.
 
 The load-bearing choice was to treat profile as the single bundle-level decision:
 once `dev`, `build`, or `release` is selected, all runtime namespace paths derive
-from that profile. That makes a mixed state such as "dev command using the release
-daemon socket" structurally hard to produce.
+from that profile. The current runtime config/profile namespace contract is owned
+by [[docs/specs/aiox-runtime-profile-namespace]]. That makes a mixed state such as
+"dev command using the release daemon socket" structurally hard to produce.
 
 The hybrid profile resolver balances explicitness and safety. Controlled scripts
 can inject `AIOX_PROFILE`, while installed binaries and ad hoc execution still
@@ -41,8 +42,10 @@ fall back to path-based detection. Per-path environment overrides remain escape
 hatches, but they do not replace the profile bundle.
 
 Keeping Unix domain sockets avoided speculative transport design while preserving
-the future Windows path: the current code already has narrow socket connect and
-listen points where named pipe or loopback support can be introduced later.
+the future Windows path: the daemon socket transport architecture is owned by
+[[docs/architecture/local-runtime-daemon-transport-api]], including the narrow
+connect/listen points where named pipe or loopback support can be introduced
+later.
 
 The release socket path stayed backward compatible so the isolation fix would not
 break existing installed-release users. The database path was scaffolded under the
@@ -70,8 +73,3 @@ requires preserving the historical release socket location.
 
 - `logs/2026-06-20-mvp-plan-carryover-archive.md` §2 - QA-003 verified summary
   and R4 runtime namespace isolation round outcome.
-- `README.md:36-81` - current user-facing runtime profile outcome.
-- `src/config/paths.ts:5-120` - current profile/path resolver implementation.
-- `src/daemon/socket-transport.ts:281-284` and
-  `src/daemon/socket-transport.ts:429-432` - concentrated future transport swap
-  points.

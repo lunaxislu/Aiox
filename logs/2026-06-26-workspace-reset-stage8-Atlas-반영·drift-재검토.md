@@ -8,12 +8,12 @@ status: open
 
 - [x] W1 stage 8 drift 재검토 범위 확정 + 후보 인벤토리 — AGENTS.md·docs/guides/workflow.md·관련 owner 문서 중 docs-as-Atlas 도입으로 반영/정정이 필요한 지점을 식별(추측 변경 금지, 후보 목록부터)
 - [x] W5 AGENTS.md 계층 skeleton 확정·적용 — @user 제공 docs/AGENTS.md·docs/\*\*/AGENTS.md 초안을 하나씩 2026-06-25 논의 로그 참조로 완성·적용 (적용 후 논의 로그 close)
-- [>] W6 skeleton 기준 owner 문서 정리 + drift 재검토 통합 → `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md` — docs/ owner 문서를 확정 skeleton으로 정합하며 split·wikilink·stale drift 동시 판정
+- [x] W6 skeleton 기준 owner 문서 정리 + drift 재검토 통합 → `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md` — docs/ owner 문서를 확정 skeleton으로 정합하며 split·wikilink·stale drift 동시 판정
   - [x] product 계열·roadmap·documentation-system drift — product.md/AGENTS.md, roadmap.md sweep + Pre-Release Sources, federation-remote 명칭, documentation-system `## History` + roadmap 이중서술
   - [x] architecture retrofit — `local-agent-runtime.md` 인덱스 + slice 9개 완료 → `logs/2026-06-28-workspace-reset-stage8-W2-architecture-retrofit.md` (decided)
   - [x] specs retrofit — `aiox-a2a.md` 인덱스 + slice 7개 → `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md` (decided)
-  - [>] decisions drift 검토 — 기존 decision 15개 → `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`
-- [ ] W7 탐색 흐름 drift 판정 — workflow.md·AGENTS 계층의 Obsidian Graph navigation·IDE+Obsidian dual-tool 반영 필요 여부 판정·반영 또는 불필요 근거 기록
+  - [x] decisions drift 검토 — 기존 decision 15개 → `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`
+- [>] W7 탐색 흐름 drift 판정 — workflow.md·AGENTS 계층의 Obsidian Graph navigation·IDE+Obsidian dual-tool 반영 필요 여부 판정·반영 또는 불필요 근거 기록
 - [x] W10 owner별 section contract 전수 재검토 → `logs/2026-06-28-workspace-reset-stage8-W10-docs-contract-overhaul.md` — docs/AGENTS 공통 의미와 architecture/specs/decisions/guides/product의 skeleton·invariant를 required/optional/absorb/subtype-only/delete로 판정·승인 반영한 뒤 W6 retrofit 재개
 
 ## 2026-06-26 · stage 8 착수 — 경위·범위·W3 handoff 입력
@@ -800,3 +800,30 @@ W3 specs retrofit child log `logs/2026-06-28-workspace-reset-stage8-W3-specs-ret
 - W3 closeout 확인: `> 컨텍스트:` 제거, repo-path wikilink 전환, 필요한 code/test evidence first mention wikilink 보정 완료. 각 파일별 검토에서 blocking spec/code drift는 확인되지 않았다.
 - Parent 반영: W6 nested sub-item `specs retrofit`을 완료 처리하고, `decisions drift 검토`를 active로 전환했다.
 - 다음 행동: W4 child log `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`에서 W1 `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`부터 one-by-one stale 링크·owner drift 검토를 진행한다.
+
+## 2026-06-29 · W6 child closeout consumed — W7 탐색 흐름 drift로 진행
+
+W6 child log `logs/2026-06-28-workspace-reset-stage8-W6-owner-doc-retrofit.md`가 closeout을 남기고 `decided`로 닫혔다.
+
+**확인한 사실:**
+
+- W6 child Work Items가 모두 완료됐다.
+- W6 하위 결과:
+  - product 계열·roadmap·documentation-system drift 정합 완료.
+  - W10 반영 5개 owner 문서 one-by-one 독립 검토 완료.
+  - architecture retrofit child: `docs/architecture/local-agent-runtime.md` 인덱스 + slice 9개 완료.
+  - specs retrofit child: `docs/specs/aiox-a2a.md` 인덱스 + slice 7개 완료.
+  - decisions drift child: 기존 decision 15개 one-by-one 검토·보수 완료.
+- W6 closeout은 남은 open Work Item, unresolved approval, child pointer가 없다고 판정했다.
+
+**반영:**
+
+- Stage8 Work Item W6와 nested decisions drift sub-item을 completed로 전환했다.
+- Stage8 Work Item W7을 active next pointer로 전환했다.
+
+**판단:**
+
+- Stage8은 아직 종료 대상이 아니다. W7 `탐색 흐름 drift 판정`이 남아 있다.
+- 다음 재개 지점은 W7: `docs/guides/workflow.md`와 AGENTS 계층이 Obsidian Graph navigation,
+  IDE+Obsidian dual-tool 흐름을 반영해야 하는지 판정하고, 반영이 필요하면 수정·검증하거나
+  불필요하면 근거를 기록한다.

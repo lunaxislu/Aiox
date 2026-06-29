@@ -18,17 +18,18 @@ We decided to adopt an inverted process tree topology where the Claude CLI spawn
   3. The CLI passes this token as an environment variable to the launched Claude process.
   4. The spawned channel-server presents this token to the daemon via the `registerClaudeChannel` API, establishing a trusted binding in the daemon's memory registry.
   Without that token boundary, another local process could register an endpoint for the same agent name and receive daemon-sent messages for that agent; the data leakage is a consequence of identity theft.
-- **Stateless HTTP Push over WebSocket**: WHY chose loopback HTTP POST for daemon → channel delivery rather than a persistent WebSocket: it keeps the daemon decoupled from Claude's terminal process lifecycle and avoids per-session socket state. The delivery / acknowledgement contract itself (what counts as an ack, retry eligibility) is owned by the A2A spec, not this decision — see `docs/specs/aiox-a2a.md` §4.3.
+- **Stateless HTTP Push over WebSocket**: WHY chose loopback HTTP POST for daemon → channel delivery rather than a persistent WebSocket: it keeps the daemon decoupled from Claude's terminal process lifecycle and avoids per-session socket state. The delivery / acknowledgement contract itself (what counts as an ack, retry eligibility) is owned by the A2A spec, not this decision — see [[docs/specs/aiox-message-lifecycle]] §4.3.
 
 ## Trade-offs
-- A sudden closure of Claude Code CLI does not immediately tear down the daemon's registry; the daemon relies on on-demand connect timeouts to clean up the registration state.
+- A sudden closure of Claude Code CLI can leave a stale daemon registry entry. A delivery timeout or connection failure surfaces the failure but does not remove the entry; cleanup currently requires an explicit disconnect or daemon restart.
 - Dynamic registration keys and endpoints are kept in-memory; restarting the daemon invalidates active sessions, requiring a reconnect.
-- **Scope of the security guarantee — registration direction only.** The single-use attach token authenticates the **channel → daemon registration** call (`registerClaudeChannel`), so only the process holding the token minted for that agent can bind the endpoint; this is what closes registration-side endpoint hijacking. It does **not** secure the reverse **daemon → channel** loopback HTTP `/send` ingress, which is currently unauthenticated — a known gap recorded as the Claude channel ingress/push auth gap in `docs/specs/aiox-a2a.md` §5 (Tier 3 preview; auth + delivery ack incomplete until Tier 2). The channel is therefore not yet hardened end-to-end against a co-located process that can reach the loopback ingress port.
+- **Scope of the security guarantee — registration direction only.** The single-use attach token authenticates the **channel → daemon registration** call (`registerClaudeChannel`), so only the process holding the token minted for that agent can bind the endpoint; this is what closes registration-side endpoint hijacking. It does **not** secure the reverse **daemon → channel** loopback HTTP `/send` ingress, which is currently unauthenticated — a known gap recorded in [[docs/specs/aiox-adapter-model]] §5 (Claude row, Tier 3 preview; auth + delivery ack incomplete until Tier 2). The channel is therefore not yet hardened end-to-end against a co-located process that can reach the loopback ingress port.
 
 ## Re-evaluation
 - This registration protocol can be re-evaluated if Claude Code introduces native client-to-daemon UDS sockets or dynamic runtime tool subscription APIs.
 
 ## Sources
-- Single-use attach-token registration (pending-token check, `unknown_token` reject, single-use delete) implemented at `src/daemon/state.ts:926-953` (`registerClaudeChannel`).
-- Delivery/ack contract owner and Claude channel ingress/push auth gap: `docs/specs/aiox-a2a.md` §4.3, §5 (Claude row, "ingress/push auth gap", Tier 3 preview).
-- Registration flow + loopback HTTP `/send` ingress (architecture authority): [[local-runtime-claude-adapter]] §6.1–6.4.
+- Single-use attach-token registration (pending-token check, `unknown_token` reject, single-use delete): [[src/daemon/state.ts]] — `src/daemon/state.ts:926-953` (`registerClaudeChannel`).
+- Delivery/ack contract owner: [[docs/specs/aiox-message-lifecycle]] §4.3.
+- Claude channel ingress/push auth gap: [[docs/specs/aiox-adapter-model]] §5 (Claude row, Tier 3 preview).
+- Registration flow + loopback HTTP `/send` ingress (architecture authority): [[docs/architecture/local-runtime-claude-adapter]] §6.1–6.4.

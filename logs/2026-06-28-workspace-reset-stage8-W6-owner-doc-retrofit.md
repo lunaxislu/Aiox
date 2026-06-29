@@ -1,7 +1,7 @@
 ---
 topic: workspace reset stage8 W6 owner doc retrofit
 description: workspace reset stage 8 W6 — 확정된 docs AGENTS 계층 기준으로 product/roadmap/documentation-system 정합 기록을 보존하고 architecture/specs/decisions owner-doc retrofit을 이어간다.
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -9,7 +9,7 @@ status: open
 - [x] W1 product 계열·roadmap·documentation-system drift 정합 — product.md/AGENTS.md, roadmap.md, documentation-system roadmap/history drift 정리
 - [x] W2 architecture retrofit — `docs/architecture/local-agent-runtime.md` 인덱스 + slice 9개를 승인된 규칙으로 검토·retrofit. 기존 §N 헤딩·inbound anchor는 migration 아니면 보존
 - [x] W3 specs retrofit child 완료 소비 — `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md` 완료 뒤 W4 decisions drift child로 진행
-- [>] W4 decisions drift child 완료 소비 — `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md` 완료 뒤 W6 closeout 및 stage8 parent W7 복귀
+- [x] W4 decisions drift child 완료 소비 — `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md` 완료 뒤 W6 closeout 및 stage8 parent W7 복귀
 - [x] W11 W10 반영 5개 owner 문서(decisions/AGENTS · guides/AGENTS · product/AGENTS · product.md · roadmap.md) one-by-one 독립 검토 — 각 문서를 W10 child log 기록 블록 + 상위 docs/AGENTS·sibling 계약과 대조해 독립 판정. 완료 후 W2 architecture retrofit부터 재개
 
 ## 2026-06-27 · W6 product owner 문서 정합 + external positioning drift 반영
@@ -617,3 +617,38 @@ W3 child log `logs/2026-06-28-workspace-reset-stage8-W3-specs-retrofit.md`가 de
 
 - W4 child log `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`에서 W1
   `docs/decisions/a2a-message-lifecycle-envelope-and-correlation.md`부터 one-by-one stale 링크·owner drift 검토를 진행한다.
+
+## 2026-06-29 · W4 decisions child closeout 소비 + W6 closeout
+
+W4 child log `logs/2026-06-28-workspace-reset-stage8-W4-decisions-drift.md`가 closeout을 남기고 `decided`로 닫혔다.
+
+**확인한 사실:**
+
+- W4 child Work Items W1~W15가 모두 완료됐다.
+- 대상은 `docs/decisions/`의 기존 decision 15개 전부다.
+- W4 closeout에 따르면 검토 범위는 decision WHY·skeleton 일괄 재작성 없이, 상위 `docs/AGENTS.md`와
+  `docs/decisions/AGENTS.md` 계약에 따른 링크·provenance·표현·형식 보수 업데이트와 owner drift 판정으로
+  유지됐다.
+- 삭제 후보나 새 decision 필요 판정은 나오지 않았다.
+- 각 반영 파일별 inline-code check와 diff check가 통과했다.
+- W12~W15는 링크 target 존재뿐 아니라 target section/claim이 decision claim을 실제로 뒷받침하는지 확인했다.
+
+**W6 전체 결과:**
+
+- W1 product 계열·roadmap·documentation-system drift 정합 완료.
+- W2 architecture retrofit child 완료 소비: `docs/architecture/local-agent-runtime.md` 인덱스 + slice 9개 완료.
+- W3 specs retrofit child 완료 소비: `docs/specs/aiox-a2a.md` 인덱스 + slice 7개 완료.
+- W4 decisions drift child 완료 소비: 기존 decision 15개 one-by-one 검토·보수 완료.
+- W11 W10 반영 5개 owner 문서 one-by-one 독립 검토 완료.
+
+**Owner handoff 판단:**
+
+- W6 범위의 owner 문서 반영은 각 child log와 이 W6 로그의 기록에 따라 완료됐다.
+- W6 범위 안에 남은 open Work Item, unresolved approval, child pointer는 없다.
+- W7 탐색 흐름 drift 판정은 이 W6 child가 새로 소유하지 않고, stage8 parent log의 별도 Work Item W7이 계속 소유한다.
+
+**반영:**
+
+- W6 Work Item W4를 completed로 전환했다.
+- 이 W6 child log는 `decided`로 닫는다.
+- Stage8 parent `logs/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md`에서 W6를 완료 처리하고 W7을 active next pointer로 전환한다.

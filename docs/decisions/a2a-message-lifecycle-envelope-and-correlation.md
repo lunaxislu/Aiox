@@ -16,7 +16,7 @@ versioned protocol contract. In particular, text-rendered envelopes can guide a
 non-native CLI agent, but they cannot be protocol authority because the model can
 copy, edit, or forge displayed text.
 
-The outcome of this decision is reflected in [[aiox-message-lifecycle]] §4. This
+The outcome of this decision is reflected in [[docs/specs/aiox-message-lifecycle]] §4. This
 decision records only the load-bearing rationale.
 
 ## Decision
@@ -106,7 +106,7 @@ Two items are explicitly not closed by this decision:
 
 ## Sources
 
-- `aiox-message-lifecycle.md` §4 — owner outcome for canonical envelope, routing,
+- `docs/specs/aiox-message-lifecycle.md` §4 — owner outcome for canonical envelope, routing,
   reply correlation, delivery lifecycle, persistence minimum, current caveats,
   and open questions.
 - `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md` — W7 checker PASS

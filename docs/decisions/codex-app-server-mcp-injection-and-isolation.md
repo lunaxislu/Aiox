@@ -80,8 +80,8 @@ into the app-server rather than using a fully empty profile.
 
 ## Sources
 
-- [[local-runtime-codex-adapter]] §7.2 and §7.8 - current outcome:
+- [[docs/architecture/local-runtime-codex-adapter]] §7.2 and §7.8 - current outcome:
   app-server launch receives `mcp_servers.aiox`, TUI receives only remote args,
   and token/socket identity crosses the MCP child handshake.
-- `docs/decisions/agent-level-mcp-process-scoping.md` - broader global-config
+- [[docs/decisions/agent-level-mcp-process-scoping]] - broader global-config
   non-mutation and per-process MCP scoping policy refined by this decision.

@@ -22,7 +22,8 @@ This requires custom launcher scripts to orchestrate the correct per-process sta
 This can be re-evaluated if upstream agents support dynamic runtime tool registration/deregistration APIs without config file dependencies.
 
 ## Sources
-- [[local-runtime-claude-adapter]] §6 + [[local-runtime-codex-adapter]] §7 —
+- [[docs/architecture/local-runtime-claude-adapter]] §6 +
+  [[docs/architecture/local-runtime-codex-adapter]] §7 —
   current Claude/Codex per-process MCP injection and runtime boundary.
-- `docs/decisions/codex-app-server-mcp-injection-and-isolation.md` — Codex
+- [[docs/decisions/codex-app-server-mcp-injection-and-isolation]] — Codex
   remote-mode refinement of which agent process owns MCP startup.

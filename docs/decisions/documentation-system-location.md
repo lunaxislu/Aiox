@@ -2,7 +2,7 @@
 
 ## Context
 
-`docs/documentation-system.md`는 이 repo 문서 taxonomy의 owner-map(영역별 정보 owner·질문별 권위·conflict 규칙)을 소유한다. 이 문서는 원래 `docs/architecture/`에 있었고, 그 위치에서는 `docs/architecture/AGENTS.md`의 architecture type 전용 계약(spec 복사 금지·as-built/target·drift 등)의 지배를 받았다.
+[[docs/documentation-system]]는 이 repo 문서 taxonomy의 owner-map(영역별 정보 owner·질문별 권위·conflict 규칙)을 소유한다. 이 문서는 원래 `docs/architecture/`에 있었고, 그 위치에서는 [[docs/architecture/AGENTS]]의 architecture type 전용 계약(spec 복사 금지·as-built/target·drift 등)의 지배를 받았다.
 
 그런데 taxonomy 자신이 architecture를 "specs와 product intent를 만족시키기 위한 내부 구조"로 정의한다. 이 정의대로면 문서 거버넌스 지도인 taxonomy는 architecture type 콘텐츠가 아니다. 즉 owner-map 권위 문서가 자기 정의에 맞지 않는 owner(architecture) 밑에 misfiled돼 있었다.
 
@@ -10,7 +10,7 @@
 
 ## Decision
 
-`documentation-system.md`를 `docs/architecture/`에서 `docs/` 루트로 옮겨, leaf owner type 계약이 아니라 `docs/AGENTS.md` 공통 작성 규칙의 직접 지배만 받게 한다.
+[[docs/documentation-system]]를 `docs/architecture/`에서 `docs/` 루트로 옮겨, leaf owner type 계약이 아니라 [[docs/AGENTS]] 공통 작성 규칙의 직접 지배만 받게 한다.
 
 ## Alternatives
 
@@ -23,7 +23,7 @@
 
 ## Trade-offs
 
-active 권위 문서의 inbound 참조를 repoint해야 했다(`docs/AGENTS.md`·`docs/guides/workflow.md`·`docs/specs/AGENTS.md`·`plans/AGENTS.md`·`logs/AGENTS.md`). 과거 로그의 옛 경로 참조는 historical record로 둔다. `.agents/skills/document-structure-review/SKILL.md`의 예시 문자열에 옛 경로가 비기능적으로 1건 남아 있다.
+active 권위 문서의 inbound 참조를 repoint해야 했다([[docs/AGENTS]]·[[docs/guides/workflow]]·[[docs/specs/AGENTS]]·[[plans/AGENTS]]·[[logs/AGENTS]]). 과거 로그의 옛 경로 참조는 historical record로 둔다. 비권위 예시 문자열의 옛 경로는 별도 cleanup 대상이었으며, 현재 live authority inbound로 취급하지 않는다.
 
 ## Re-evaluation
 
