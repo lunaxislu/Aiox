@@ -28,9 +28,24 @@ description:
 - 프로젝트나 현재 작업이 지정한 로그/owner 규칙을 대체하지 않고, 그 규칙 아래에서 문서 구조를
   판단한다.
 
+## Intended Role Recovery
+
+지침, skeleton, template, owner 문서를 바꾸기 전에 사용자가 그 문서에 기대한 역할과 그 근거를
+먼저 복원한다. 문서 구조 검토는 예쁜 형식이나 사례 목록을 고르는 일이 아니라, 해당 문서가
+프로젝트 계약 안에서 어떤 역할을 수행해야 하는지 확인하는 일이다.
+
+- 사용자가 이 문서를 어떤 역할로 쓰게 하려는지 확인한다.
+- 그 의도의 근거가 user prompt, project/root contract, parent/child guideline, log, 실제 문서
+  corpus 중 어디에 있는지 구분한다.
+- 사용자 의도는 중요한 입력이지만 자동 정답은 아니다. project contract, owner boundary,
+  실제 corpus와 충돌하면 확인한 사실, 추론, 제안을 나눠 보고한다.
+- 사례와 corpus는 역할과 근거를 검증하고 오해를 드러내는 입력이지, 따라 쓸 template이 아니다.
+  template 승격 판단은 `Guideline Structure Models`가 소유한다.
+
 ## Review Loop
 
-1. 문제가 된 문장, 섹션, 규칙, 예시를 먼저 식별한다.
+1. 문제가 된 문장, 섹션, 규칙, 예시를 식별하고, 그 문서의 intended role과 근거, 계약 파생
+   관계를 먼저 복원한다. 복원 방법은 `Intended Role Recovery`와 `Context Read Path`를 따른다.
 2. 그 내용의 개념 역할을 판정한다: identity, scope, owner boundary, parent/child,
    sibling, evidence, provenance, authoring workflow, style, validation.
 3. 현재 문서를 고립된 파일로 보지 말고, parent/ancestor 계약, 문서 작성 흐름, sibling
@@ -54,6 +69,8 @@ path에 넣어, 문서가 어떤 계약 아래 있고 어떤 문서와 역할을
 
 - 직접 parent 계약에서 시작해, 그 계약이 다시 상위 계약을 위임하면 현재 판단에 영향을 주는
   ancestor 계약까지 따라간다.
+- guideline 계층이 있으면 project/root contract → parent guideline → child guideline → 실제
+  corpus 순서로 파생 관계를 확인한다. 단 이 경로는 판단을 바꿀 수 있는 범위까지만 따른다.
 - root나 scope boundary에 도달했거나, 더 올라가도 현재 문서의 owner·scope·작성 흐름 판단을
   바꾸지 않으면 멈춘다.
 - 프로젝트가 문서 작성·수정 흐름을 따로 정의하면, 현재 변경이 그 흐름에서 언제·어떻게
@@ -62,6 +79,8 @@ path에 넣어, 문서가 어떤 계약 아래 있고 어떤 문서와 역할을
 - 같은 계층의 sibling guideline이나 template은 대칭·차이 판단에 영향을 줄 때만 비교한다.
 - child나 slice 문서는 현재 문서가 skeleton, invariant, index, routing 중 무엇을 소유하는지
   판단해야 할 때만 확인한다.
+- representative corpus나 과거 agent 사례는 규칙의 적용 가능성과 오해 가능성을 확인할 때만
+  읽는다.
 - 판단 근거가 확보되면 멈춘다. 단순 불안 때문에 repo 전체 read path나 모든 sibling으로
   확장하지 않는다.
 
@@ -159,6 +178,8 @@ path에 넣어, 문서가 어떤 계약 아래 있고 어떤 문서와 역할을
 - 모델 선택 전에 묻는다: 실제 반복 생성되는 subtype이 있는가, skeleton이 없으면 필요한
   섹션을 빠뜨리는가, skeleton이 있으면 불필요 섹션을 채우는가, invariant-only가 더 작은
   해결인가.
+- 사례, subtype 표와 golden document는 규칙을 검증하는 입력이지 기본 template이 아니다.
+  문서 역할상 template이 필요하다는 근거가 있을 때만 template으로 승격한다.
 - `skeleton-primary`: 새 문서가 익숙한 형태를 따라야 하고 예상 섹션 누락이 주요 위험일 때
   쓴다. 빈 섹션 생략과 skeleton 적용 대상은 함께 명시한다.
 - `invariant-primary`: 문서 형태는 다양하지만 owner 경계나 의미 제약 몇 가지를 반드시
@@ -215,6 +236,9 @@ Sibling guideline이나 template을 검토할 때는 편집 전에 구조를 먼
 최종 제안이나 수정안을 내기 전에 확인한다.
 
 - 확인한 사실, 추론, 의견과 제안을 구분해 보고하는가?
+- 사용자가 이 문서에 기대한 역할과 그 근거를 확인했는가?
+- project/root contract → parent guideline → child guideline → actual corpus로 규칙이 어떻게
+  파생되는지 설명 가능한가?
 - 이 내용의 owner와 scope가 드러나는가?
 - parent/child와 sibling 관계가 뒤섞이지 않았는가?
 - parent/ancestor 계약, 문서 작성 흐름, owner map, 관련 sibling/child와의 상호작용을 확인했는가?
@@ -233,5 +257,6 @@ Sibling guideline이나 template을 검토할 때는 편집 전에 구조를 먼
 - 예시, 근거, provenance, authoring workflow, style이 한 섹션에서 섞여 의미를 흐리지 않는가?
 - skeleton이나 template 예시가 fence로 제대로 감싸져 예시 heading이 실제 문서 heading으로
   누출되지 않는가?
+- 사례를 template으로 고정하지 않고, 역할 판정과 composition 판단을 돕는 입력으로 사용했는가?
 - 문서 작성 중 발견한 반복 문제를 개별 문서 수정으로 끝낼지, authoring guide나 template
   개선 후보로 볼지 판단했는가?
