@@ -34,6 +34,30 @@ repo만으로 작업 상태를 재개 가능하게 만들고 싶어 할 때 아�
 특정 hook 구현을 기본값으로 요구하지 않는다. 위 요소는 모두 프로젝트 integration이
 선택적으로 정하는 부분이고, 이 문서의 예시는 형태를 보여줄 뿐 강제하지 않는다.
 
+## 긴 로그 split guard (선택)
+
+로그가 길어지면 분리를 검토해야 할 수 있다. 단 로그 길이는 분리를 검토하라는 신호일 뿐,
+분리 결정 기준은 아니다. 분리 결정 기준은 별도 수명, 독립 재개 가능성, 독립 closeout 가능성,
+결과 소비자의 명확성이며 `loop-rules.md`의 Detach 절이 소유한다. 길이 기반 guard는 portable 규칙에
+두지 않고, 프로젝트가 둘지 여부와 임계값을 정한다.
+
+사용자에게 이렇게 제안할 수 있다.
+
+- 긴 로그 split guard를 둘까요?
+  - soft threshold: 이 줄 수를 넘으면 분리 검토를 권고한다.
+  - hard threshold: 이 줄 수를 넘으면 분리하거나, 분리하지 않는 이유를 로그에 남긴다.
+- 기본값이 필요하면 soft 600 / hard 1000을 권장한다.
+
+규칙 의미:
+
+- soft: "분리 검토" 신호. 이 줄 수에서 별도 수명·독립 재개·독립 closeout·소비자가 있는지 본다.
+- hard: "분리 또는 미분리 사유 기록". 이 줄 수에서도 단일 수명이면 그 판단 근거를 로그에 남긴다.
+- soft·hard 모두 자동 분리 기준이 아니다. 분리·미분리 판단은 agent와 사용자가 한다.
+
+승인된 값은 portable 규칙이 아니라 프로젝트 integration(root 지침, `logs/AGENTS.md`,
+current-work 도구 등)이나 선택적 `log check` line-metric 출력 기준으로 둔다. 도구는 줄 수만
+제시하고 분리 판단을 대신하지 않는다.
+
 ## current-work integration 최소 계약
 
 프로젝트가 current-work 선택 도구(command)나 session start hook을 두기로 했다면, 그 구현은
@@ -43,11 +67,13 @@ repo만으로 작업 상태를 재개 가능하게 만들고 싶어 할 때 아�
 - `open` status만으로 현재 작업을 추측하지 않는다.
 - 사용자가 지정한 로그나 주제를 최우선으로 둔다.
 - 프로젝트에 활성 plan 단계가 있으면 그 단계가 가리키는 로그를 anchor로 삼는다. anchor
-  로그의 `[>] Wn`이 다른 `open` 로그를 직접 가리키면 leaf 로그까지 따라간다.
+  로그에 local `[>]`가 있으면 anchor를 선택한다. local `[>]`가 없고 unresolved `[↓]`가 하나면
+  명시된 분리 작업 로그를 따라가며, 각 source에서도 같은 기준을 적용한다.
+- anchor에 local `[>]`가 없고 unresolved `[↓]`가 여러 개거나 target이 깨졌으면 현재 작업을
+  추측하지 않고 후보와 pointer를 보여 사용자에게 선택을 요청한다.
 - 활성 plan 단계가 없으면, `open` 로그가 하나일 때만 그 로그를 자동 선택한다.
-- `open` 로그가 여러 개면, next pointer 참조 그래프에서 다른 로그가 가리키고 자신은 더
-  가리키지 않는 유일한 leaf처럼 하나로 분명히 정해질 때만 선택한다. 그렇지 않으면 후보와 각
-  next pointer를 보여주고 멈춰 사용자가 고르게 한다.
+- `open` 로그가 여러 개면 후보와 각 local `[>]`, unresolved `[↓]` pointer를 보여주고 멈춰
+  사용자가 고르게 한다.
 - 선택한 로그는 agent가 `log check <파일>`(또는 동등한 구조 점검)으로 최신 날짜 블록,
   Work Items, next pointer를 확인한 뒤 재개한다.
 - hook이나 current-work command는 의미 판단, Work Item 완료·취소·이관, status 전환을 자동
@@ -65,9 +91,11 @@ repo만으로 작업 상태를 재개 가능하게 만들고 싶어 할 때 아�
 # logs/2026-01-10-checkout-bug.md
 
 ---
+
 topic: Checkout 결제 실패 수정
 description: Fixes the intermittent checkout failure on the payment step.
 status: open
+
 ---
 
 ## Work Items
@@ -75,6 +103,8 @@ status: open
 - [>] W1 실패 재현 케이스를 만들고 원인을 좁힌다
 - [ ] W2 수정안을 적용한다
 - [ ] W3 회귀 테스트를 추가한다
+
+## Required Context
 
 ## 2026-01-10 · 조사 시작
 
@@ -86,7 +116,7 @@ status: open
 최신 날짜 블록·Work Items·next pointer를 확인하고, `[>] W1`이 가리키는 재개 지점부터 이어
 작업한다. 로그가 하나뿐이므로 plan이나 선택 도구는 필요 없다.
 
-### 예시 B — 큰 작업: plan이 anchor 로그를, anchor가 child 로그를 가리킴
+### 예시 B — 큰 작업: plan anchor에서 분리 작업 로그로 이동
 
 가벼운 plan 문서로 단계 순서를 관리한다. 아래 `<project-plan-location>`은 프로젝트가 정하는
 plan 위치를 가리키는 placeholder이고, plan 형식도 강제가 아니다.
@@ -95,42 +125,58 @@ plan 위치를 가리키는 placeholder이고, plan 형식도 강제가 아니�
 # <project-plan-location>/payment-hardening.md
 
 ## Stages
+
 - [>] 결제 경로 안정화 -> `logs/2026-01-10-checkout-bug.md`
 - [ ] 정산 리포트 정합성
 ```
 
-활성 단계가 anchor 로그를 가리키고, anchor 로그의 `[>] Wn`이 child 로그를 가리킨다.
+활성 단계가 anchor 로그를 가리키고, anchor에 local `[>]` 없이 unresolved `[↓]` 하나가 있으면
+그 target을 현재 분리 작업 로그로 따른다.
 
 ```markdown
 # logs/2026-01-10-checkout-bug.md (anchor)
 
 ## Work Items
 
-- [>] W1 Complete `logs/2026-01-12-token-race.md`, then patch the checkout flow
+- [↓] W1 Apply the token-race result to the checkout flow. — detached: logs/2026-01-12-token-race.md
 ```
 
 ```markdown
 # logs/2026-01-12-token-race.md (child)
 
 ---
+
 topic: 토큰 만료 경쟁 조사
 description: Investigates the token expiry race behind checkout failures.
 status: open
+
 ---
+
+## 복귀 대상
+
+- Log: `logs/2026-01-10-checkout-bug.md`
+- Work Item: W1
+- Context snapshot: checkout failure의 token expiry race 원인을 확정하고 source W1이 결과를 소비한다.
 
 ## Work Items
 
 - [>] W1 경쟁 구간을 로그로 좁힌다
 
+## Required Context
+
+### {Global}
+
+- checkout failure 중 token expiry race 범위만 조사한다.
+
 ## 2026-01-12 · 분리 조사 시작
 
-- Parent pointer: `logs/2026-01-10-checkout-bug.md` W1
-- 이 로그에서 원인을 확정하면 anchor의 W1로 돌아가 수정한다.
+- Source W1의 완료 판정에 이 조사 결과가 필요해 분리 작업 로그로 시작했다.
+- 원인을 확정하면 복귀 대상 W1이 결과를 소비해 checkout flow 수정을 이어간다.
 ```
 
-current-work 선택은 활성 plan 단계의 anchor 로그에서 시작해, anchor의 `[>] W1`이 가리키는
-child 로그까지 따라가 leaf인 `logs/2026-01-12-token-race.md`를 현재 작업으로 정한다. agent는
-그 로그를 `log check`로 확인하고 재개한다.
+current-work 선택은 활성 plan 단계의 anchor 로그에서 시작한다. anchor에 local `[>]`가 없고
+unresolved `[↓]`가 하나이므로 `logs/2026-01-12-token-race.md`를 따라가 그 로그의 `[>] W1`을
+현재 재개 지점으로 정한다. agent는 그 로그를 `log check`로 확인하고 재개한다.
 
 ### 예시 C — session start hook 흐름
 

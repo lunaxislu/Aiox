@@ -1,69 +1,102 @@
 ---
 name: log
-description: 작업 로그를 생성·작성·기록·검색·점검하거나 기존 로그에서 작업을 재개·수정·완료·취소·이관·종료할 때 사용한다. Work Items, next pointer, parent/child pointer, handoff, cross-log 정합화, 로그 작성, 로그 남기기, 로그 점검, 이전 작업 재개, 로그 스킬 개선, 로그 스킬 문제 진단을 요청하면 사용한다.
+description: 작업 로그를 생성·작성·기록·검색·점검하거나 기존 로그에서 작업을 재개·수정·완료·취소·이관·종료할 때 사용한다. Work Items, Required Context, next pointer, 복귀 pointer, handoff, 로그 작성, 로그 남기기, 로그 점검, 이전 작업 재개, 로그 스킬 개선, 로그 스킬 문제 진단을 요청하면 사용한다.
 ---
 
 # 작업 로그
 
-작업의 질문, 판단, 결정과 진행을 프로젝트의 log 저장 위치에 주제별로 기록한다.
-로그는 한 문제나 작업 주제가 끝날 때까지 이어 쓰는 기록이며, 현재 문맥과 세션 간
-handoff를 로그 본문에서 제공한다.
+작업의 질문, 판단, 결정과 진행을 프로젝트의 로그 저장 위치에 주제별로 기록한다. 로그는
+한 문제나 작업 주제가 끝날 때까지 이어 쓰며, 현재 문맥과 세션 간 handoff를 로그 본문에서
+제공한다.
 
-## 용어
+로그는 두 표면으로 이루어진다.
 
-- 로그: 하나의 문제, 질문, 판단, 조사, 구현 흐름을 끝날 때까지 이어 쓰는 기록 파일.
-- 로그 블록: 로그 파일 안에 날짜 heading으로 추가되는 기록 단위. 토론, 질문과 답,
-  근거, 결정, 조사 결과, 작업 수행, 피드백, 상태 변화처럼 다음 agent가 이어받아야 할
-  checkpoint를 증류해 남긴다.
-- 작업: 로그 안에서 수행해야 하는 구체적인 행동이나 판단 단위.
-- Work Item: 작업을 스캔하고 재개하기 위해 구조화한 항목.
+- History surface: 날짜 블록. append-only narrative다. 무엇이 있었고 왜 그렇게 판단했는지를
+  남기며 과거 블록을 고치지 않는다.
+- Current surface: `## Work Items`, `[>]` next pointer, `## Required Context`,
+  복귀 pointer. 현재 재개 상태와 이 로그를 다룰 때 반드시 읽고 적용할 context를
+  제자리에서 갱신한다.
 
-## 프로젝트와 작업 로그의 관계
-
-로그는 작업 과정과 판단 경위를 기록한다. 프로젝트의 권위 있는 결과물, 장기 규칙,
-실제 구현 사실을 대신 소유하지 않는다.
-
-이 skill은 portable한 로그 작성·재개·종료 규칙을 다룬다. 프로젝트별 로그 workflow는
-프로젝트 integration에서 이 skill을 확장해 정의한다.
-
-## 참조
-
-프로젝트 진입 계약은 로그 저장 위치, 세션 시작, 현재 로그 선택을 정하는 프로젝트별
-integration 지침(root 지침, AGENTS.md, current-work command, hook 등)이다. 로그 저장
-위치나 로그 workflow가 지정되지 않은 새 프로젝트에서는 `references/project-setup.md`를
-읽고, 사용자 승인 후 로그 위치와 선택 가능한 starter workflow를 프로젝트 integration에
-반영한다.
-
-- 새 프로젝트에 로그 저장 위치나 로그 workflow가 없을 때는 `references/project-setup.md`를
-  읽는다. 이 문서는 `logs/` 기본 후보, starter workflow, current-work integration 최소 계약과
-  예시를 다룬다.
-- 로그 작성, 기록 블록, status 전환, Work Items, next pointer, parent/child pointer,
-  완료, 취소, 이관, 수정, cross-log 정합화 등 어떤 reference를 읽을지 정해야 하면
-  `references/work-log-rules.md`를 읽는다. reference 선택은 `work-log-rules.md`가
-  소유한다.
-- 사용자가 로그 스킬 개선, 로그 스킬 문제, 로그 workflow 문제, 개발을 말하거나 이
-  skill, reference, 도구 동작 변경을 검토할 때는 `references/maintenance.md`를 읽는다.
-
-`references/example.md`는 사용자 검토용 예시 문서다.
-
-## 도구
-
-`scripts/log`는 로그 구조 검색, 날짜 블록 append, Work Items 전이, status guard를 돕는
-보조 도구다. 도구는 형식과 원자적 변경을 처리하지만 완료, 취소, 이관, 종료 같은 의미
-판단은 agent와 사용자가 한다. 확정된 명령 표면은 `references/work-log-rules.md`가
-요약한다.
+이 skill은 portable한 로그 작성·재개·종료 규칙을 다룬다. 로그 저장 위치, 세션 시작, 현재
+로그 선택 같은 프로젝트별 workflow는 프로젝트 integration이 이 skill을 확장해 정의한다.
 
 ## 핵심 불변
 
 - `open` 상태만으로 현재 작업을 추측하지 않는다.
-- 완료, 취소, 이관, 종료 여부는 agent가 본문 맥락과 사용자 의도를 보고 판단한다.
+- 완료, 취소, 이관, 분리, 종료 여부는 agent가 본문 맥락과 사용자 의도를 보고 판단한다. 도구는
+  구조·형식·검색만 돕고 의미 판단을 대신하지 않는다.
+- History surface는 append-only이고 Current surface는 제자리 갱신이다. 현재 상태를 옛 날짜
+  블록에 묻어두지 않는다.
+- 기록이 결정, 범위, 조건, 읽어야 할 자료, 검증 기준을 바꾸면, 그 변경에 의존하는 Current
+  surface를 같은 동작에서 함께 갱신한다.
+- 프로젝트의 권위 있는 결과물, 장기 규칙, 구현 사실은 owner 문서가 소유한다. 로그가 대신
+  소유하지 않는다.
+- local actionable Work Item이 있으면 `[>]`는 로그당 하나의 재개 지점이다. Work Item은 `W1`, `W2`
+  같은 명시 W-id를 가지며, 완료·취소·이관됐거나 분리로 복귀 소비 대기 상태가 된 W-id도 보존하고
+  재사용하지 않는다.
 
-## 기본 흐름
+## 작업 루프
 
-1. 사용자가 지정한 로그, 주제, 작업 요청을 우선 확인한다.
-2. 프로젝트 진입 계약이 로그 저장 위치나 현재 로그를 제공하면 그 범위에서 시작한다.
-3. 작업 성격에 맞는 reference를 읽는다. 어떤 reference가 필요한지 애매하면
-   `references/work-log-rules.md`를 읽는다.
-4. 작업을 수행한 뒤 현재 로그의 Work Items, 알려진 pointer 관계, status 전환 후보를 점검한다.
+로그 작업은 다음 루프로 돈다. 모든 단계를 매번 거치는 ceremony가 아니라, 해당 obligation이
+생긴 단계만 발화한다.
 
-세부 로그 선택, next pointer 판단, cross-log 점검 절차는 references가 소유한다.
+### Enter
+
+사용자 지정 로그나 프로젝트 진입 계약이 있으면 그 범위에서 시작한다. 대상이 하나로
+정해지지 않으면 `open` 상태만으로 추측하지 않고 후보와 재개 지점을 보여 사용자 선택을 받는다.
+
+로그를 다룰 때는 먼저 다음 범위를 읽는다.
+
+- `## Work Items`
+- `## Required Context`의 `{Global}`
+- 선택한 Work Item이 있으면 `## Required Context` 중 대상 W id가 포함된 heading
+- 최신 날짜 블록
+
+이 범위는 출발점이다. 현재 질문, 판단, 남은 작업을 복원하기에 부족하면 관련 과거 날짜
+블록을 역추적한다. 파일 구조 규칙은 `references/loop-rules.md#log-file-shape`.
+
+### Act
+
+실제 조사, 수정, 토론, 구현을 수행한다. 로그 skill은 작업 수행 방법을 소유하지 않는다.
+
+### Record
+
+의미 있는 checkpoint를 날짜 블록 하나로 증류한다. 질문과 답마다 즉시 기록하지 않는다.
+기록할 내용, 생략 기준, 기록 품질, 외부 출처, 블록 구조는
+`references/loop-rules.md#record`.
+
+### Reconcile
+
+이번 기록이 Current surface가 의존하는 결정, 범위, 조건, 읽어야 할 자료, 검증 기준을
+바꿨는지 먼저 판정한다. 바뀌지 않았으면 표면을 건드리지 않고, 바뀌었으면 Work Items,
+`[>]`, Required Context와 관련 pointer를 같은 동작 안에서 함께 갱신한다. Reconcile gate와
+표면 갱신 규칙은 `references/loop-rules.md#reconcile`.
+
+### Cross-Log / Lifetime Transition
+
+다른 로그·owner와 연결되거나 로그 전체 수명이 바뀌면 순서 있는 판정 기준으로 나눈다. 로그
+전체를 다른 로그가 대체하면 `superseded`, source Work Item이 결과를 소비하면 detach, source가
+소비하지 않고 소유권을 넘기면 transfer, source Work Item이 없으면 independent follow-up이다.
+분리 작업 로그/transfer/independent follow-up 판정과 정합성 검사는
+`references/loop-rules.md#cross-log--lifetime-transitions`.
+
+### Closeout
+
+작업을 마치기 전 Reconcile과 cross-log/lifetime transition 누락을 확인하고,
+`decided`/`superseded` 가능 여부와 권위 결과의 owner 반영 누수를 확인한다. status 전이와 종료
+점검은 `references/loop-rules.md#closeout--status`.
+
+## 도구
+
+`scripts/log`는 로그 검색, 날짜 블록 append, Work Items 전이, status guard를 돕는 보조
+도구다. 도구는 형식과 원자적 변경만 처리하고 완료, 취소, 이관, 분리, 종료 같은 의미 판단은
+agent와 사용자가 한다.
+
+## 참조
+
+작업 루프의 각 단계가 가리키는 `references/loop-rules.md`가 핵심 규칙을 소유한다. 그 밖에:
+
+- 새 프로젝트에 로그 저장 위치나 workflow가 없거나, 로그 workflow 도입 시 긴 로그 split guard
+  임계값을 설정해야 할 때: `references/project-setup.md`
+- 이 skill, reference, 도구 동작 변경을 검토할 때: `references/maintenance.md`
+- 사용자 검토용 예시: `references/example.md`
