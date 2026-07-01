@@ -43,11 +43,16 @@
 - `orphan local rule` — parent 계약이나 owner map과 연결되지 않아 적용 범위와 우선순위를 복원할
   수 없는 국소 규칙이다.
 - `hidden sub-kind` — index, slice, router, standalone 같은 subtype 차이를 단일 구조가 가린다.
+- `under-scoped identity` — document identity 문장이나 section·scope 표기의 이름이 한 subtype에
+  묶여, 그 subtype이 없는 경우까지 담당해야 하는 개념을 담지 못한다. 흔히 altitude mismatch나 reader path 누락으로
+  드러나지만 원인은 identity의 과소표현이다.
 - `over-provisioned structure` — 낮은 빈도의 예외나 미래 내용을 전제한 section이 불필요한 작성을
   유도한다.
 - `copied section meaning` — sibling의 heading이나 순서를 role 재판정 없이 복사한다.
 - `reverse or circular dependency` — 하위 문서가 자신이 의존하는 상위 규칙을 정의하거나 지배한다.
 - `excessive read path` — 하나의 판단을 복원하려고 필요 이상의 문서를 따라가야 한다.
+- `misaligned reader path` — 문서의 heading, 순서나 loop가 실제 작업 단위와 어긋나, 독자가 한
+  작업을 끝내는 데 필요한 전이·정리·검증을 놓치게 만든다.
 - `contradiction` — 둘 이상의 owner가 양립할 수 없는 주장을 한다.
 - `abstract destructive gate` — 되돌리기 어려운 변경을 추상 판정어만으로 허용하고 knowledge-loss,
   참조 범위와 fallback을 드러내지 않는다.

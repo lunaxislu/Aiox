@@ -18,6 +18,7 @@
 10. [Over-provisioned Skeleton Section](#10-over-provisioned-skeleton-section)
 11. [New Content Outgrows Document Scope](#11-new-content-outgrows-document-scope)
 12. [New Document Needs An Independent Identity](#12-new-document-needs-an-independent-identity)
+13. [Reader Path And Loop Are Misaligned](#13-reader-path-and-loop-are-misaligned)
 
 ## 1. Misfiled Owner Map
 
@@ -302,6 +303,7 @@ Situation:
 Structure smell:
 
 - `owner or altitude mismatch`
+- `under-scoped identity`
 - hidden sub-kind
 
 Review:
@@ -345,3 +347,36 @@ Preferred response:
 - 독립 identity가 필요하면 owner·scope, parent·sibling 관계와 배치 위치를 먼저 정한다.
 - 생성 후 parent index나 taxonomy, inbound reference와 sibling 경계를 함께 갱신한다.
 - content 경계가 복원되지 않으면 생성하지 않고 사용자에게 확인한다.
+
+## 13. Reader Path And Loop Are Misaligned
+
+Situation:
+
+Entry 문서는 `Enter`, `Record`, `Reconcile`, `Closeout` 같은 작업 loop를 노출하지만, target
+reference는 다른 언어의 제목, 다른 순서, 더 좁은 heading으로 상세 규칙을 배치한다. 독자는 한
+phase를 끝내기 위해 여러 section을 오가거나, heading이 실제 포함 범위를 덮지 못해 이관·정리·검증
+같은 후속 동작을 놓친다.
+
+Structure smell:
+
+- `under-scoped identity`
+- `misaligned reader path`
+- `excessive read path`
+
+Review:
+
+문제는 특정 anchor를 하나 더 추가하지 않은 데 있지 않을 수 있다. Entry 문서가 작업 loop나
+reader path를 정한다면 target reference의 heading, 순서, section 범위도 그 작업 단위를 받을 수
+있어야 한다. 제목은 스타일이 아니라 독자가 다음 행동을 찾는 interface가 될 수 있다. 국소 rule을
+추가하기 전에 section rename, 순서 변경, loop map, routing surface 조정으로 문서 경계를 맞출 수
+있는지 본다.
+
+Preferred response:
+
+- Entry 문서가 노출하는 phase, step, command나 template 단위를 확인한다.
+- Target 문서의 heading과 순서가 같은 작업 단위와 scan path를 제공하는지 대조한다.
+- Section 이름이 실제 포함 범위를 덮지 못하면 내용을 줄이거나 이름을 넓힌다.
+- Phase가 아닌 파일 틀이나 공통 substrate는 억지로 phase로 만들지 말고 loop map이나 도입부에서
+  어떤 phase가 참조하는지 설명한다.
+- 새 cross-reference rule을 추가하기 전에 문서 경계, heading, 순서, routing surface 조정이 더
+  작은 해결인지 비교한다.

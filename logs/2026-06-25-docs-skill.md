@@ -1815,3 +1815,186 @@ identity 필요성을 판정하고, 생성 후 parent·index·reference·sibling
 ### 남은 상태(이번 블록)
 
 - 커밋은 @user 지시 없어 수행하지 않았다. 이 로그는 open 유지.
+
+## 2026-07-01 · 구조·루프 우선 검증 invariant 추가
+
+@user가 `document-structure-review` 적용 중 놓친 사례를 바탕으로, 새 규칙을 추가하기보다 문서
+개편, 구조 개편, 루프 조정으로 해결 가능한지 먼저 검증하는 원칙을 반영하고, 추가 이유·사례·
+반영 내용을 이 로그에 남기라고 지시했다.
+
+### 추가 이유
+
+- 이번 사례에서 Codex는 `SKILL.md`와 `loop-rules.md`의 owner/placement와 일부 누락 규칙은
+  검토했지만, 두 문서가 phase/section pair로 맞물리는지 충분히 보지 못했다.
+- `SKILL.md`가 `Enter`, `Record`, `Reconcile`, `Detach`, `Closeout` 같은 루프를 노출한다면
+  상세 문서도 같은 loop 단위와 heading으로 독자 경로를 받아야 한다. 이 문제는 개별
+  `heading/anchor` 검증 규칙을 추가하는 것보다 문서 경계, section 순서, reader path, loop
+  구조를 다시 맞추는 편이 더 일반적인 해결책이다.
+- 따라서 특정 프로젝트의 `SKILL.md`/`loop-rules.md` 사례에 묶인 rule이 아니라, durable 문서
+  전반에서 새 rule·section·template·field·reference를 늘리기 전에 기존 구조와 lifecycle/loop
+  재배치로 해결 가능한지 확인하는 invariant가 필요하다고 판단했다.
+
+### 사례
+
+- 로그 스킬 개편 초안에서 `SKILL.md`는 영어 phase loop를 갖고 있었지만 `loop-rules.md`는
+  일부 섹션이 한국어 heading이거나 `Detach`가 transfer와 independent follow-up까지 포함하는
+  넓은 내용을 담아 phase pair가 약했다.
+- 사용자 리뷰를 통해 `Detach`는 `Detach / Transfer`로 넓히고, `loop-rules.md` 주요 섹션도
+  `Record`, `Reconcile`, `Detach / Transfer`, `Closeout / Status`처럼 router phase와 맞추는
+  구조 개편이 더 적절하다고 정리됐다.
+- 이 사례는 "문서 간 참조는 interface다"라는 국소 규칙을 박기보다, 구조와 loop가 작업 단위와
+  어긋나 반복 홉이나 누락을 만드는지 먼저 보고 문서 경계·heading·순서·routing surface를
+  조정해야 한다는 일반 원칙을 보여준다.
+
+### 반영
+
+- `.agents/skills/document-structure-review/SKILL.md` `Core Invariants`에 다음 원칙을 추가했다:
+  새 rule, section, template, field, reference를 추가하기 전에 문제가 기존 문서의 identity,
+  owner 배치, section 구조, reader path, lifecycle/loop 순서, information format 재배치로
+  해결되는지 먼저 검증한다.
+- 같은 invariant에서 구조나 loop가 작업 단위와 어긋나 반복 홉이나 누락을 만들면 국소 규칙을
+  늘리기보다 문서 경계, heading, 순서, routing surface를 조정하라고 명시했다.
+
+### 검증
+
+- 반영 위치: `.agents/skills/document-structure-review/SKILL.md` `Core Invariants`.
+- 이번 변경은 portable 문서 리뷰 절차의 상위 판단 원칙 추가이며, 프로젝트별 로그 구조나 로그
+  스킬 초안 파일은 직접 수정하지 않았다.
+
+## 2026-07-01 · 구조·루프 우선 검증 reference 보강
+
+@user가 앞선 `Core Invariants` 추가를 기준으로, `references/` 하위 파일에도 넣을 문서가 있는지
+파악·검토한 뒤 전부 반영하라고 지시했다.
+
+### 확인한 사실
+
+- `references/review-patterns.md`에는 이미 `excessive read path`, `copied section meaning`,
+  `mixed concept roles`, `Change Location`이 있어 이번 문제를 수용할 구조 smell와 변경 위치
+  판단 자리가 있었다.
+- `references/authoring-patterns.md`에는 `Guideline Improvement`가 있고, router/summary 문서의
+  세부 절차 반복 금지와 authoring scenario 기반 read path 비교가 이미 있었다.
+- `references/EXAMPLE.md`에는 owner, skeleton, destructive gate, new document identity 사례는
+  있었지만, entry 문서의 loop와 target reference heading/order가 어긋나는 사례는 없었다.
+
+### 반영한 내용
+
+- `references/review-patterns.md` `Structure Smells`에 `misaligned reader path`를 추가했다.
+  heading, 순서, routing surface나 loop가 실제 작업 단위와 어긋나 반복 홉이나 누락을 만드는
+  smell로 정의했다.
+- 같은 파일 `Change Location`에 국소 rule 추가 전 section 재배치, heading rename, 순서 변경,
+  routing surface 조정으로 reader path와 작업 단위를 맞출 수 있는지 비교하라는 문장을 추가했다.
+- `references/authoring-patterns.md` `Guideline Improvement`에 router/summary 문서가 phase,
+  step, command, template 단위로 target 문서를 가리킬 때 target heading과 순서가 같은 작업
+  단위와 scan path를 제공하는지 보라는 문장을 추가했다.
+- `references/EXAMPLE.md`에 `Reader Path And Loop Are Misaligned` 사례를 추가했다. 특정 로그
+  스킬 사례를 보존하지 않고, entry 문서가 loop를 노출하지만 target reference의 heading/order가
+  맞지 않아 반복 홉이나 누락이 생기는 portable 사례로 추상화했다.
+
+### 추가 이유
+
+- `SKILL.md`의 invariant는 상위 원칙이고, reference에는 agent가 실제 검토 중 발견할 smell,
+  변경 위치 판단, authoring guide 개선 판단, forward-test 사례가 필요했다.
+- "문서 간 참조는 interface"라는 국소 규칙을 직접 박기보다, 구조와 loop가 작업 단위와 어긋나는
+  반복 문제를 smell와 사례로 포착하는 편이 portable하고 재사용 가능하다고 판단했다.
+
+## 2026-07-01 · bounded self-audit — 과인코딩 삭감·Output Contract mirror 복구
+
+@user와 타 agent(Gemini) 사이 토론에서, 앞선 두 블록(invariant 추가·reference 보강)이 같은
+신호를 5곳에 인코딩한 것 자체가 이 skill이 경계하는 "새 규칙으로 해결하려는 문제"의 실사례라는
+지적이 나왔다. 합의: skill을 자기 원칙(제거 테스트)으로 한 번 self-audit하고, 순 라인이 0 또는
+음수로 닫히도록 과인코딩을 삭감하며, Output Contract의 mirror 누락만 복구한다.
+
+### 확인한 사실
+
+- 앞선 변경이 같은 "misaligned reader path" 신호를 5곳에 넣었다: `SKILL.md` Core Invariant,
+  `review-patterns.md` smell, 같은 파일 Change Location 줄, `authoring-patterns.md` Guideline
+  Improvement 줄, `EXAMPLE.md` 사례 13.
+- `SKILL.md` Core Invariants 마지막 항목은 "…복원 가능하게 쓴다. …그 판정을 바꾸지 않는
+  범위에서만 줄인다"로 sufficiency와 trim(잉여 제거) 두 방향을 다 갖는다. 그러나 Output Contract
+  마지막 항목은 sufficiency 절반만 mirror하고 trim 방향을 떨어뜨렸다.
+- Output Contract 6항목을 제거 테스트로 재검하면 6개 모두 서로 다른 축(evidence/identity/
+  placement/propagation/negative-guard/sufficiency)이라 순수 잉여는 없다. 유일한 결함은 위
+  trim 방향 mirror 누락이다.
+
+### 판정(제거 테스트)
+
+| 대상 | 판정 | 근거 |
+| ---- | ---- | ---- |
+| Core Invariant "추가 전 재배치 검증" | 삭제 | 1문장=기존 Guideline/Template gate·Concept Placement·Guideline Improvement·Workflow step6 재서술 / 2문장=invariant 아닌 탐지 패턴(smell 자리) |
+| smell `misaligned reader path` | 유지+트림 | 유일한 net-new 신호. "반복 홉"은 `excessive read path`와 겹쳐 제거, 구조↔작업단위 어긋남으로 인한 전이·정리·검증 누락으로 좁힘 |
+| Change Location 추가 줄 | 삭제 | 기존 local/ancestor/both/no-change 비교 + Guideline Improvement 재서술 |
+| authoring Guideline Improvement 추가 줄 | 삭제 | 바로 위 router 복원성 줄 + smell의 근접 중복 |
+| EXAMPLE 13 | 유지+수정 | 고유 teaching 사례. smell 목록의 `copied section meaning`은 상황(발산)과 불일치라 제거 |
+
+### 반영
+
+- `SKILL.md` Core Invariants: "추가 전 재배치 검증" invariant 삭제(8→7항목).
+- `SKILL.md` Output Contract 마지막 항목에 "반대로, 제거해도 판정이 같은 줄은 없는가?" 추가 —
+  부모 Core Invariant의 trim 방향을 gate에 mirror(항목 수 6 유지).
+- `references/review-patterns.md`: smell `misaligned reader path` 트림, Change Location 추가 줄
+  삭제.
+- `references/authoring-patterns.md`: Guideline Improvement 추가 줄 삭제.
+- `references/EXAMPLE.md`: 사례 13 smell 목록에서 `copied section meaning` 제거(사례 본문·ToC
+  유지).
+
+### 검증
+
+- 순 diff: 삭제 3곳(invariant·change-location·authoring) + 트림 2곳(smell·example smell목록) +
+  추가 1곳(Output Contract 반쪽 문장). 앞선 두 블록 대비 순 라인 음수.
+- 커버 보존 확인(삭제 항목이 verdict를 잃지 않는지):
+  - "추가 전 재배치 우선" → `Conditional Gates` Guideline/Template(기존 문맥 흡수·invariant가
+    더 작은 해결인지), `review-patterns.md` Concept Placement(제목변경·흡수·이동·위임),
+    Guideline Improvement(재배치·축약·경계 명확화가 새 규칙보다 작은지), Review Workflow step6
+    (가장 작은 변경)에 그대로 존재.
+  - net-new 신호(구조/loop↔작업단위 어긋남으로 인한 후속 누락) → smell + EXAMPLE 13에 탐지·
+    사례 2곳으로 보존.
+- 반영 위치는 portable skill 파일에 한정. 프로젝트 로그 구조나 로그 스킬 초안 파일은 수정하지
+  않았다.
+- 커밋은 @user 지시 없어 수행하지 않았다. 이 로그는 open 유지.
+
+## 2026-07-01 · under-scoped identity smell 도입 — log skill 사례에서 촉발
+
+@user가 log skill 개선 검토 중 발견한 문제(토론형 로그처럼 Work Item이 없는 로그에도 미래
+세션이 따라야 할 standing rule 표면이 필요한데 `Work Item Requirements`라는 이름이 그 개념보다
+좁음)를 계기로, "document-structure-review가 이 class(section identity 과소명명)를 왜 못 잡았고
+어떻게 잡아야 하는가"를 검토했다. log skill 자체 해결(rename 등)은 log skill thread가 소유하고,
+이 로그는 document-structure-review 감지력만 다룬다.
+
+### 확인한 사실
+
+- 문제는 durable section/identity의 이름·scope가 담당 개념보다 좁은 구조 결함이다. primary는
+  identity/scope이고 `owner or altitude mismatch`(내용 배치)·`misaligned reader path`(증상)는
+  근사일 뿐 결함을 명명하지 못했다.
+- `references/EXAMPLE.md` #2·#3·#11·#13이 이미 이 현상을 다루고, #13은 해결 문장("Section 이름이
+  실제 포함 범위를 덮지 못하면 … 이름을 넓힌다")까지 갖고 있었으나 흩어진 태그 밑에 있고 named
+  smell이 없었다 → log 사례 과적합이 아니라 corpus가 4회 증명한 패턴의 명명.
+- EXAMPLE 13개 중 12개가 smell을 2개 이상 co-tag한다. 즉 "여러 smell 동시 발화"는 이미 corpus의
+  규범인데 Review Workflow 2("…중에서 판정한다")는 단일 선택처럼 읽혔다.
+- (Claude·Codex 수렴) 반영 위치: always-read gate가 필수이고 조건부 reference만 고치면 reach가
+  약하다. smell은 vocabulary 보조. `authoring-patterns.md` Wording("넓은 개념어를 고른다")이
+  naming 원칙을 이미 담아 gap은 wording이 아니라 detection이다.
+
+### 반영 (portable skill 파일 한정)
+
+- `SKILL.md` `Guideline Or Template Change` gate: 기존 section·scope 이름이 한 subtype에 묶여
+  다른/부재 subtype을 누락시키지 않는지 확인하고, 좁게 명명된 identity는 rename·일반화·scope
+  재정의로 맞추라는 bullet 추가.
+- `SKILL.md` Review Workflow 2: "여러 역할에 걸치면 하나로 못 박지 말고 모두 식별해 route" 절
+  추가(corpus co-tag 규범의 명시화).
+- `references/review-patterns.md` Structure Smells: `hidden sub-kind` 옆에 `under-scoped identity`
+  추가. `hidden sub-kind`(subtype을 가림)의 역방향(subtype에 묶임)이라 그 smell의 과부하 해소.
+- `references/EXAMPLE.md`: #13(필수)·#11(document identity altitude)의 smell 목록에
+  `under-scoped identity` 추가. #2는 sibling hierarchy가 primary라 제외.
+- Codex 정합 지적 반영: smell 정의를 "document identity 문장이나 section·scope 표기의 이름"으로
+  넓혀 #11(document altitude)과 coextensive하게 함. 단 gate는 section/scope altitude를 유지 —
+  document identity가 scope를 초과하는 유형은 `Content Or Identity Change` gate("scope 확장·상위
+  개념 승격")가 이미 소유하므로 gate 확장은 책임 중복이 된다.
+
+### 검증
+
+- `authoring-patterns.md` 미변경(Wording 규칙과 중복 회피). #2 태그 미변경.
+- gate·smell·example·workflow가 한 신호를 서로 다른 altitude·역할로 분담(중복 재인코딩 아님):
+  gate=탐지 trigger(always-read), smell=vocabulary, example=적용 사례, workflow=co-activation 원칙.
+- 이번 커밋에는 앞선 2026-07-01 두 블록(`misaligned reader path` 도입·bounded self-audit)의
+  미커밋 변경도 같은 thread 결과물로 함께 포함한다. @user 지시로 docs-skill 로그 +
+  document-structure-review 스킬을 커밋한다. 이 로그는 open 유지.

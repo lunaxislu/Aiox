@@ -49,6 +49,7 @@ template 구조, 정보 표현 형태를 판단하는 portable 절차를 제공�
    관련 sibling에서 intended identity를 설계한다.
 2. 변경 표면을 존재·위치·경계·상태·내용으로 분류하고, 문제의 개념 역할을 identity, scope,
    owner, hierarchy, evidence, provenance, workflow, style, information format, validation 중에서 판정한다.
+   한 결함이 여러 역할에 걸치면 하나로 못 박지 말고 관련 역할을 모두 식별해 판단을 route한다.
 3. 판단에 영향을 주는 parent/ancestor, owner map, sibling, child, entry 문서와 representative
    corpus만 확인한다.
 4. 책임 owner와 변경 위치를 정하고 `local-only`, `ancestor-only`, `both`, `no-change` 후보를
@@ -93,6 +94,9 @@ template 구조, 정보 표현 형태를 판단하는 portable 절차를 제공�
 
 - default section이나 template을 중립으로 보지 않는다. 실제 반복 subtype과 누락 위험이
   확인될 때만 추가하고, 기존 문맥 흡수나 invariant가 더 작은 해결인지 먼저 본다.
+- 문서군에 subtype이 있으면, 기존 section·scope 표기의 이름이 담당 개념 전체가 아니라 한
+  subtype에 묶여 다른 subtype이나 subtype이 없는 경우를 누락시키지 않는지 확인한다. 개념보다
+  좁게 명명된 identity는 새 section 추가 전에 rename, 일반화, scope 재정의로 개념과 맞춘다.
 - 사례와 corpus는 규칙을 검증하는 입력이지 자동 template이 아니다. guideline, skeleton,
   information format의 상세 판단은 `Reference Routing`에 따라 필요한 reference만 읽는다.
 
@@ -117,4 +121,4 @@ template 구조, 정보 표현 형태를 판단하는 portable 절차를 제공�
 - parent의 역할 정의, owner map, inbound reference와 sibling 경계가 계속 유효한가?
 - 불확실한 content 경계·authority나 파괴적 변경을 추측으로 통과시키지 않았는가?
 - 적용 대상과 조건, 판단 기준, 요구 행동이나 결과가 복원되는가? 권위·예외·관계가 판정을
-  바꾸면 필요한 정보도 남겼는가?
+  바꾸면 필요한 정보도 남겼는가? 반대로, 제거해도 판정이 같은 줄은 없는가?
