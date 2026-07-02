@@ -196,8 +196,8 @@ Preferred response:
 
 - 반복 문제인지 단발성 오적용인지 구분한다.
 - 지침을 바꾸기 전에 재배치, 축약, owner boundary 명확화로 해결 가능한지 본다.
-- 새 규칙이 필요하면 scope rule, identity rule, decision table, invariant, negative rule,
-  must rule, destructive-change gate 중 가장 작은 rule shape를 고른다.
+- 새 규칙이 필요하면 scope rule, identity rule, decision table, gate-driven flow, feedback loop,
+  invariant, negative rule, must rule, destructive-change gate 중 가장 작은 rule shape를 고른다.
 - 프로젝트별 기록 위치나 workflow는 해당 프로젝트 규칙에 맡긴다.
 
 ## 8. Destructive Change Needs A Gate

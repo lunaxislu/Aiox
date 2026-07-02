@@ -25,16 +25,29 @@
 
 ## Rule Shape
 
+이 형식들은 선택 도구이며 모든 개선에 강제하지 않는다. 새 규칙이 필요하면 아래 범주에서
+문제에 맞는 shape를 고른다.
+
+**적용 범위·정체성**
+
 - `scope rule` — 적용 범위가 흔들릴 때 쓴다.
 - `identity rule` — 문서나 구조의 정체성이 흔들릴 때 쓴다.
+
+**조건 분기와 순서·재진입**
+
 - `decision table` — 조건과 결과가 여러 갈래로 나뉠 때 쓴다.
+- `gate-driven flow` — 같은 대상을 순서 있는 gate로 판정하고 각 결과가 다음 행동이나 종료 경로를
+  바꿀 때 쓴다. 진입 조건, gate 순서, 분기 결과와 종료 조건을 명시한다.
+- `feedback loop` — 실행이나 검증 결과가 앞 단계의 판정을 다시 발화할 수 있을 때 쓴다. flow의
+  요소에 더해 재진입 조건과 돌아갈 단계를 명시한다. 되돌아가는 경로가 없으면 loop로 부르지 않는다.
+
+**제약·안전장치**
+
 - `invariant` 또는 `negative rule` — 금지할 해석이 반복될 때 쓴다. negative instruction만으로
   적용 대상을 특정하기 어렵다면 classification이나 decision table로 올린다.
 - `must rule` — 조건은 명확하지만 실행을 반복해서 빠뜨릴 때 쓴다.
 - `destructive-change gate` — 삭제·대체·archive·status 전환의 knowledge 보존, 참조 영향과
   비파괴 fallback을 명시할 때 쓴다.
-
-이 형식들은 선택 도구다. 모든 개선에 강제하지 않는다.
 
 ## Information Format
 

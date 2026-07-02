@@ -1998,3 +1998,104 @@ identity 필요성을 판정하고, 생성 후 parent·index·reference·sibling
 - 이번 커밋에는 앞선 2026-07-01 두 블록(`misaligned reader path` 도입·bounded self-audit)의
   미커밋 변경도 같은 thread 결과물로 함께 포함한다. @user 지시로 docs-skill 로그 +
   document-structure-review 스킬을 커밋한다. 이 로그는 open 유지.
+
+## 2026-07-02 · Rule Shape flow와 feedback loop 선택 기준
+
+@user가 log skill의 `Log Blocks`와 `Record`를 순서 있는 판정 구조로 재편한 경험을 바탕으로,
+document-structure-review에도 어떤 상황과 내용에서 loop 형태를 선택할지 판단하는 기준을
+추가하자고 제안하고 반영을 지시했다.
+
+### 확인한 사실
+
+- `references/authoring-patterns.md#Rule Shape`는 scope rule, identity rule, decision table,
+  invariant, must rule과 destructive-change gate를 선택지로 제공하지만, 순서 있는 gate와 재진입
+  구조를 구분하는 rule shape는 없었다.
+- 같은 파일의 `Information Format`은 순서가 결과에 영향을 주는 절차에 numbered list를 쓰도록
+  하지만, 한 방향 절차와 앞 단계로 돌아가는 loop의 의미 차이는 소유하지 않는다.
+- `references/EXAMPLE.md` 사례 7은 Rule Shape의 선택지를 직접 열거하므로 owner 목록이 늘면 함께
+  정합화해야 한다.
+- log skill 사례 중 latest-entry lookup과 record placement는 순서 있는 판정이지만 자체 재진입은
+  없고, Record 결과를 Reconcile한 뒤 새 의미 변화가 발견되어 Record로 돌아가는 경로는 실제
+  feedback loop다.
+
+### 판단
+
+- 순서가 있다는 이유만으로 모두 loop라고 부르면 one-way procedure와 반복 lifecycle의 차이가
+  사라진다. `gate-driven flow`는 순서 있는 gate의 분기·종료를, `feedback loop`는 그 flow에 더해
+  실행·검증 결과가 앞 단계 판단을 다시 발화하는 재진입을 소유하게 구분한다.
+- 두 형태 모두 Rule Shape 선택 문제이므로 상세 owner인 `authoring-patterns.md`에 둔다. `SKILL.md`
+  Core Invariants나 review smell에 반복하면 앞선 bounded self-audit에서 제거한 과인코딩을 다시
+  만든다.
+- 품질 기준처럼 순서와 무관하게 항상 적용되는 독립 항목은 loop 단계로 강제하지 않고 invariant나
+  verification checklist로 유지한다.
+
+### 반영
+
+- `.agents/skills/document-structure-review/references/authoring-patterns.md#Rule Shape`에
+  `gate-driven flow`와 `feedback loop`를 추가했다.
+- `gate-driven flow`에는 진입 조건, gate 순서, 분기 결과와 종료 조건을, `feedback loop`에는 추가로
+  재진입 조건과 돌아갈 단계를 명시하도록 했다. 되돌아가는 경로가 없으면 loop로 부르지 않는다.
+- `.agents/skills/document-structure-review/references/EXAMPLE.md` 사례 7의 rule-shape 열거를 새 owner
+  목록과 맞췄다. `SKILL.md`, `review-patterns.md`와 다른 사례는 변경하지 않았다.
+
+### 검증
+
+- 변경 파일 `authoring-patterns.md`, `EXAMPLE.md`, `logs/2026-06-25-docs-skill.md`에 `git diff --check`를
+  실행해 PASS.
+- `rg`로 `gate-driven flow`, `feedback loop`가 owner 정의, 직접 소비하는 사례 목록과 이 변경
+  기록에만 존재하고, 기존 `decision table`·numbered list의 책임을 재정의하지 않음을 확인했다.
+- `scripts/check-markdown-inline-code`를 변경한 skill reference 두 파일에 실행해 PASS했다.
+- skill-creator의 `quick_validate.py`는 환경에 `yaml` 모듈이 없어 `ModuleNotFoundError`로 미실행됐다.
+  frontmatter는 변경하지 않았으며 validator 결과는 확보하지 못했다.
+- 문서 구조와 rule-shape vocabulary만 바뀌어 script나 runtime 검증은 필요하지 않았다.
+
+## 2026-07-02 · Rule Shape 범주화와 gate 명명 정리
+
+@claude가 위 gate-driven flow / feedback loop 추가를 리뷰하며 두 관찰을 남겼다. @user가 두 가지
+반영을 지시했다.
+
+- ① Rule Shape bullet 수가 스킬 자신의 임계에 닿음.
+- ② `gate-driven flow`와 기존 `destructive-change gate`가 term 이름에 `gate`를 공유함.
+
+### 확인한 사실
+
+- `references/authoring-patterns.md#Rule Shape`는 gate-driven flow / feedback loop 추가로 평면 bullet
+  8개가 됐다. 같은 파일 `Information Format`은 bullet이 7-8개를 넘으면 범주화나 다른 형태를
+  검토하라고 규정한다 — 초과가 아니라 임계 경계다.
+- `gate-driven flow`와 `destructive-change gate` 두 term에 `gate` 단어가 함께 들어간다. 다만 각
+  정의는 서로 다른 영역(순서 있는 flow vs 삭제·대체·archive·status 전환 safeguard)을 이미 소유한다.
+- `references/EXAMPLE.md` 사례 7은 rule shape를 flat menu로 나열하는 scenario 예시이지 owner의 내부
+  범주를 미러링하지 않는다.
+
+### 판단
+
+- ①은 Information Format이 처방한 remedy 그대로 적용한다. 8개 평면 bullet을 `적용 범위·정체성`(2),
+  `조건 분기와 순서·재진입`(3), `제약·안전장치`(3) 3개 라벨 그룹으로 묶는다. 정의(term —
+  explanation) 형태와 term 이름은 그대로 두어 사례·소비자 정합을 유지한다. singleton 그룹이
+  생기지 않도록 destructive-change gate를 invariant·must와 같은 safeguard 성격으로 묶었다.
+- ②는 범주 배치로 반영한다. `gate-driven flow`를 `조건 분기와 순서·재진입` 그룹에,
+  `destructive-change gate`를 `제약·안전장치` 그룹에 두어 역할을 구조적으로 분리했다.
+  - rename은 채택하지 않았다. `gate-driven flow`는 2026-07-02 앞 블록에서 근거와 함께 방금 확정한
+    term이라, 이번 turn에 이름을 뒤집으면 승인된 결정을 되돌린다.
+  - 별도 disambiguation 문장 추가도 채택하지 않았다. 두 정의가 이미 각자 영역을 소유하므로 교차
+    참조 문장은 agent의 shape 선택 판정을 바꾸지 않는다 — 스킬 `Wording`의 "제거해도 판정이 같으면
+    중복" 기준에 걸린다.
+  - 잔여: term 문자열에는 `gate`가 여전히 둘 다 남는다. 그러나 각 정의가 담당 영역을 특정하고 범주
+    라벨이 역할을 분리하므로 오적용 위험은 없다고 본다.
+- 두 변경 모두 Rule Shape owner인 `authoring-patterns.md` 안에 둔다. `SKILL.md`는 rule shape를
+  열거하지 않고 라우팅 포인터만 두므로 미변경이 맞다.
+
+### 반영
+
+- `.agents/skills/document-structure-review/references/authoring-patterns.md#Rule Shape`를 3개 라벨
+  그룹으로 재구성했다. 상단에 선택 도구·강제 아님 문구를 lead-in으로 옮겼다.
+- `EXAMPLE.md` 사례 7, `SKILL.md`, `review-patterns.md`는 변경하지 않았다. 사례 7은 flat menu라
+  term 이름이 그대로면 유효하고, owner의 그룹화를 미러링할 필요가 없다.
+
+### 검증
+
+- `git diff --check -- .agents/skills/document-structure-review/references/authoring-patterns.md` PASS.
+- `scripts/check-markdown-inline-code`를 변경 파일에 실행해 exit 0.
+- `rg`로 `gate-driven flow`·`feedback loop`·`destructive-change gate`가 owner 정의와 사례 7 flat menu에만
+  존재함을 확인했다(다른 소비자 없음). 3개 그룹 라벨 존재도 확인했다.
+- skill-creator `quick_validate.py`는 앞 블록과 동일하게 `yaml` 모듈 부재로 미실행. frontmatter 미변경.
