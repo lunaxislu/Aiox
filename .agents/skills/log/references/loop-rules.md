@@ -113,14 +113,35 @@ status: open
 
 ### Date Blocks
 
-- 블록은 `## YYYY-MM-DD · <주제>` heading 아래 시간순으로 둔다.
-- 한 블록에는 서로 관련된 한 묶음의 질문·판단·작업만 둔다.
+- 블록 heading은 `## YYYY-MM-DD · <unit>`이고 날짜는 그 unit이 열린 날이다. `<unit>`은 블록이
+  소유하는 대상을 명명한다. Work Item slice는 W-id를, topic·질문·결정은 주제를 쓴다. 이후 기록이
+  owning block을 찾아 확장할 수 있게 명명은 구분되고 안정적이어야 한다. heading에 W-id가 없는 기존
+  로그·블록은 entry body의 W-id나 최신 entry로 owning block을 역추적하되, W-id 단순 언급이 아니라
+  그 W를 소유하는 block인지 확인한다.
+- 블록은 open date 순으로, 블록 안의 entry는 record date 순으로 둔다.
+- 한 블록은 서로 관련된 하나의 unit(topic, Work Item slice, 질문, 결정)만 소유한다.
 - 발언 주체를 구분해야 할 때 `@user`, `@agent`처럼 실제 화자를 표시한다. 수행 결과만
   기록하면 생략한다.
-- 결정이 바뀌면 이전 결정, 새 결정과 변경 이유를 반드시 기록한다.
+
+블록은 한 번 쓰고 끝나는 checkpoint가 아니라 같은 unit의 dated entry를 누적하는 owning block이다.
+
+- 블록의 `##` 직속 body가 그 블록의 첫 entry이며 record date는 heading 날짜다. 첫 기록에 `###`를
+  강제하지 않고, 단일 checkpoint 블록은 body만으로 완결된다. `최신 entry`는 `###`가 있으면 마지막
+  `###`, 없으면 `##` body를 가리킨다.
+- 뒤의 기록이 같은 unit을 이어가거나 정정·반론·대체·결론 변경하면, 날짜가 바뀌었다는 이유만으로
+  새 `##` 블록을 만들지 않고 owning block 아래에 `### YYYY-MM-DD · <entry>`로 append한다.
+- 기존 entry는 삭제하거나 고쳐 쓰지 않는다. 정정·반론·대체·결론 변경도 새 entry로 남긴다. 결정이
+  바뀌면 이전 결정, 새 결정과 변경 이유를 반드시 함께 남긴다.
+- 새 `##` 블록은 기록이 새 unit을 열거나, 여러 unit에 걸치거나, 주제·범위·목적·결정 수명이 바뀌어
+  owning block 아래에 두면 다음 독자가 오해할 때 만든다. 여러 unit에 걸친 cross-unit checkpoint는
+  누적하지 않는 일회성 블록이다.
+- 새 unit이 별도 수명·closeout·독립 재개나 복귀 조건을 가지면 블록 안에서 해결하지 않고
+  [Cross-Log / Lifetime Transitions](#cross-log--lifetime-transitions)의 detach/child log 규칙을 쓴다.
 
 질문과 답변마다 즉시 기록하지 않는다. 결정·제약 확정, 의미 있는 조사 결과, 작업·검증 완료,
-주제 전환처럼 의미 변화가 확정되는 checkpoint에서 한 블록으로 증류한다.
+주제 전환처럼 의미 변화가 확정되는 checkpoint에서 owning block의 entry 또는 새 블록으로 증류한다.
+누적된 최신 entry는 그 unit 경위의 최신 기록일 뿐이며, 계속 적용할 standing 기준은 Reconcile을
+거쳐 Required Context가 소유한다.
 
 ## Record
 
@@ -153,6 +174,9 @@ Record는 의미 변화의 경위와 판단 근거를 History surface에 보존�
 - 전달력: 다음 agent가 결정, 근거, 현재 상태, 남은 일을 빠르게 이해할 수 있게 쓴다.
 - 목적성: 재개·판단·검증에 필요한 내용만 남기고 대화 덤프나 설명용 반복을 피한다.
 - 접근성: 제목, bullet, 화자 표시, 경로, Work Item id를 사용해 필요한 정보를 쉽게 찾게 한다.
+- 구조 보존: 목적성 범위에서, 결론만 남기면 다음 agent가 적용 대상·조건·판정축·예외·요구
+  행동의 관계를 다시 추론해야 하는 경우 그 관계를 평탄화하지 않는다. 원문 형식을 복사하지 않고,
+  누락된 관계를 추론하지 않아도 같은 판단을 적용할 수 있는 가장 짧은 형식으로 남긴다.
 - 시간 안정성: 완료 사실, 취소 이유, 보류 조건, 다음 행동을 구분한다.
 
 ### 생략할 내용
@@ -284,10 +308,13 @@ independent follow-up은 source Work Item이 없고 어떤 known Work Item도 �
 
 ## Closeout / Status
 
-`Closeout`은 작업이나 세션을 마치기 전 Reconcile 누락, 처리되지 않은 cross-log/lifetime 전이,
-status 전환 후보를 확인하는 안전망이다. 새 전이를 재정의하지 않고 다음을 확인한다.
+`Closeout`은 작업이나 세션을 마치기 전 Current surface 불변, Reconcile 누락, 처리되지 않은
+cross-log/lifetime 전이, status 전환 후보를 확인하는 안전망이다. 새 전이를 재정의하지 않고,
+전이 발생 여부와 무관하게 다음 end-state를 확인한다.
 
 - 마지막 의미 변화에 Reconcile gate를 적용했는가?
+- local actionable Work Item이 있으면 `[>]`는 로그당 하나이며 실제 재개 지점을 가리키는가?
+- Required Context에 완료·취소·이관된 W만 남은 inert set이나 dangling Override가 있는가?
 - 처리되지 않은 cross-log/lifetime transition이 남아 있으면 해당 transition 섹션으로 돌려보냈는가?
 - 권위 있는 결과 반영이나 검증이 남았는가?
 - 로그 전체가 `decided` 또는 `superseded` 후보인가?

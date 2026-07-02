@@ -25,8 +25,9 @@ description: 작업 로그를 생성·작성·기록·검색·점검하거나 �
 - `open` 상태만으로 현재 작업을 추측하지 않는다.
 - 완료, 취소, 이관, 분리, 종료 여부는 agent가 본문 맥락과 사용자 의도를 보고 판단한다. 도구는
   구조·형식·검색만 돕고 의미 판단을 대신하지 않는다.
-- History surface는 append-only이고 Current surface는 제자리 갱신이다. 현재 상태를 옛 날짜
-  블록에 묻어두지 않는다.
+- History surface는 append-only이고 Current surface는 제자리 갱신이다. 계속 적용할 standing
+  상태는 Current surface에 두고 옛 블록에 묻어두지 않는다. 같은 unit의 dated entry를 owning
+  블록에 누적하는 것은 append-only 위반이 아니다.
 - 기록이 결정, 범위, 조건, 읽어야 할 자료, 검증 기준을 바꾸면, 그 변경에 의존하는 Current
   surface를 같은 동작에서 함께 갱신한다.
 - 프로젝트의 권위 있는 결과물, 장기 규칙, 구현 사실은 owner 문서가 소유한다. 로그가 대신
@@ -50,10 +51,12 @@ description: 작업 로그를 생성·작성·기록·검색·점검하거나 �
 - `## Work Items`
 - `## Required Context`의 `{Global}`
 - 선택한 Work Item이 있으면 `## Required Context` 중 대상 W id가 포함된 heading
-- 최신 날짜 블록
+- 재개 대상의 owning block과 그 최신 entry. `[>] Wn`이 있으면 그 W-id의 owning block을 찾고,
+  없으면 가장 최근 entry가 속한 block을 읽는다. lookup 규칙은 `references/loop-rules.md#date-blocks`.
 
-이 범위는 출발점이다. 현재 질문, 판단, 남은 작업을 복원하기에 부족하면 관련 과거 날짜
-블록을 역추적한다. 파일 구조 규칙은 `references/loop-rules.md#log-file-shape`.
+이 범위는 출발점이다. 블록은 open date 순이라 파일의 마지막 블록이 최신 활동이 아닐 수 있다.
+현재 질문, 판단, 남은 작업을 복원하기에 부족하면 관련 과거 블록과 entry를 역추적한다. 파일
+구조 규칙은 `references/loop-rules.md#log-file-shape`.
 
 ### Act
 
@@ -61,9 +64,9 @@ description: 작업 로그를 생성·작성·기록·검색·점검하거나 �
 
 ### Record
 
-의미 있는 checkpoint를 날짜 블록 하나로 증류한다. 질문과 답마다 즉시 기록하지 않는다.
-기록할 내용, 생략 기준, 기록 품질, 외부 출처, 블록 구조는
-`references/loop-rules.md#record`.
+의미 있는 checkpoint를 owning block의 entry 또는 새 블록으로 증류한다. 질문과 답마다 즉시
+기록하지 않는다. 블록/entry 확장과 새 블록 판정은 `references/loop-rules.md#date-blocks`,
+기록할 내용·생략 기준·기록 품질·외부 출처는 `references/loop-rules.md#record`.
 
 ### Reconcile
 
@@ -82,9 +85,10 @@ description: 작업 로그를 생성·작성·기록·검색·점검하거나 �
 
 ### Closeout
 
-작업을 마치기 전 Reconcile과 cross-log/lifetime transition 누락을 확인하고,
-`decided`/`superseded` 가능 여부와 권위 결과의 owner 반영 누수를 확인한다. status 전이와 종료
-점검은 `references/loop-rules.md#closeout--status`.
+작업을 마치기 전 Current surface 불변(`[>]` 단일성 등)과 Reconcile·cross-log/lifetime
+transition 누락을 전이 발생 여부와 무관하게 확인하고, `decided`/`superseded` 가능 여부와 권위
+결과의 owner 반영 누수를 확인한다. status 전이와 종료 점검은
+`references/loop-rules.md#closeout--status`.
 
 ## 도구
 

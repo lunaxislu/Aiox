@@ -20,10 +20,72 @@
 - [↓] W6 Specs assimilation. — detached: logs/specs-assimilation.md
 ```
 
+## Record — 판단 구조를 보존하는 증류
+
+결론만 남기면 다음 agent가 조건과 행동의 매핑을 다시 추론해야 하는 경우, 그 판단 관계를
+보존한다. 예를 들어 다음 기록은 정책이 있다는 사실만 남기고 응답별 조건과 행동을 복원하지
+못한다.
+
+```markdown
+- API 응답별 retry 정책을 결정했다.
+```
+
+판단에 필요한 매핑은 같은 판단을 재현할 수 있는 형태로 남긴다.
+
+```markdown
+| 응답 | 조건 | 행동 |
+| --- | --- | --- |
+| `401` | access token 만료 | token 갱신 후 한 번 재시도 |
+| `429` | `Retry-After` 있음 | 해당 시간 뒤 재시도 |
+| `5xx` | 멱등 요청 | backoff를 적용해 재시도 |
+```
+
+원래 표를 그대로 복사해야 한다는 뜻은 아니다. 같은 조건·판정축·행동 관계를 보존한다면 더 짧은
+목록이나 decision tree로 바꿀 수 있다.
+
+## Block extension — 같은 unit은 owning block에 entry로 누적
+
+블록은 일회성 checkpoint가 아니라 같은 unit(topic, Work Item slice, 질문, 결정)의 dated entry를
+누적하는 owning block이다. 첫 기록은 `##` body에 바로 쓰며 그 body가 그 블록의 첫 entry다. 같은
+unit을 나중에 이어가거나 정정·결론 변경하면, 날짜가 바뀌었다는 이유만으로 새 `##` 블록을 만들지
+않고 owning block 아래에 `### YYYY-MM-DD · <entry>`로 append한다. 기존 entry는 고쳐 쓰지 않는다.
+
+```markdown
+## Work Items
+
+- [x] W3 List error codes.
+- [>] W2 Decide retry policy.
+- [ ] W4 Document retry policy.
+
+## 2026-06-16 · W2 · retry policy 조사
+
+- 처음에는 5xx만 재시도 대상으로 검토했다. (첫 entry는 `##` body이고 `###`를 강제하지 않는다)
+
+### 2026-06-18 · 결론 변경
+
+- 429도 재시도 대상에 포함한다. 이전 5xx-only 판단을 대체한다.
+- 이유: rate limit은 backoff 후 성공할 수 있다.
+
+## 2026-06-17 · W3 · error code 목록 정리
+
+- W3은 별도 unit이므로 W2 owning block에 넣지 않고 자체 블록을 연다.
+
+## 2026-06-18 · retry 확정에 따른 W4 착수 조건
+
+- W2가 429 포함으로 확정돼 W4(문서화) 착수 조건이 갖춰졌다.
+- 여러 W에 걸친 cross-unit checkpoint라 특정 W-id로 키잉하지 않고 일회성 블록으로 둔다.
+```
+
+W2 owning block의 `최신 entry`는 `### 2026-06-18 · 결론 변경`이다. 블록은 open date 순이라 W2 owning block(06-16)이
+이후 06-17·06-18 블록보다 앞에 있어도, `[>] W2`로 재개하는 세션은 heading의 W2로 owning block을
+찾고 최신 entry에서 현재 결론(429 포함)을 복원한다. 5xx-only가 왜 바뀌었는지는 첫 entry와
+`결론 변경` entry가 함께 보존한다. 반대로 별도 unit(W3)이나 여러 unit에 걸친 checkpoint는 owning
+block에 누적하지 않고 새 `##` 블록으로 둔다.
+
 ## Required Context — 재개 기준을 표면으로
 
 이 로그를 다룰 때 반드시 읽고 적용해야 할 기준이 특정 날짜 블록에만 적혀 있으면, 다음 세션은
-최신 블록만 보고 그 기준을 놓친다. `## Required Context`는 그 기준의 **적용 대상 범위**를
+재개 대상 block과 최신 entry만 보고 그 기준을 놓친다. `## Required Context`는 그 기준의 **적용 대상 범위**를
 선언해 재개 시 읽기 계약으로 복원되게 한다. Work Item이 없는 판단·조사·토론형 로그도 standing
 context가 있으면 `{Global}`에 둔다.
 
@@ -46,24 +108,24 @@ W3 토론에서 "W1·W3·W4는 모두 기준 문서 `docs/X.md`를 따른다"가
 
 - 세 작업은 모두 기준 문서 `docs/X.md`를 공통 기준으로 본다.
 
-## 2026-06-15 · 공통 기준 결정
+## 2026-06-15 · W3 · 공통 기준 결정
 
 - W3에서 owner map과 관련 문서를 대조한 결과, W1·W3·W4는 같은 기준을 사용해야 문서 간
   판단이 어긋나지 않는다.
 - 세 작업의 공통 기준을 `docs/X.md`로 결정했다.
 
-## 2026-06-16 · Draft section B 착수
+## 2026-06-16 · W4 · Draft section B 착수
 
 - W4를 시작했다. (이 블록만으로는 docs/X.md 공통 기준이 보이지 않는다)
 ```
 
-W4를 재개하는 fresh 세션의 읽기 계약은 `## Work Items` + `{Global}` + W4가 든 `{W1,W3,W4}` +
-최신 블록이다. 최신 블록이 docs/X.md를 언급하지 않아도, W4가 포함된 set의 context에서 공통
-기준을 적용한다. 그 기준이 생긴 이유까지 필요하면 `공통 기준 결정` 블록에서 복원한다.
+W4를 재개하는 fresh 세션은 `## Work Items`, `{Global}`, W4가 든 `{W1,W3,W4}`, W4의 owning
+block과 최신 entry를 읽는다. 그 block이 docs/X.md를 언급하지 않아도, W4가 포함된 set의 context에서 공통
+기준을 적용한다. 그 기준이 생긴 이유까지 필요하면 `W3 · 공통 기준 결정` 블록에서 복원한다.
 날짜 블록은 결정의 경위와 근거를 보존하고, Required Context는 현재 적용할 기준과 scope를
 유지한다.
 
-### Reconcile — Record의 의미 변화를 Current surface에 반영
+## Reconcile — Record의 의미 변화를 Current surface에 반영
 
 순수 narrative 블록은 표면을 건드리지 않는다. 하지만 Record에 새 W와 그 W가 기존 기준을 따라야
 하는 이유를 남겼다면 Reconcile은 Work Items와 Required Context를 같은 동작에서 갱신한다. set
@@ -92,7 +154,7 @@ literal은 신규 W 누락을 자동으로 해결하지 않는다.
 - section C도 같은 기준을 따르므로 W5를 추가하며 set을 `{W1,W3,W4}`에서 `{W1,W3,W4,W5}`로 넓혔다.
 ```
 
-### Override — scope 정밀화가 우선, label은 최후수단
+## Override — scope 정밀화가 우선, label은 최후수단
 
 특정 W의 예외는 먼저 scope 정밀화로 푼다. 정밀화로 안 되는 진짜 예외만 label 기반 `Override`를
 쓴다.

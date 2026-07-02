@@ -74,8 +74,8 @@ current-work 도구 등)이나 선택적 `log check` line-metric 출력 기준�
 - 활성 plan 단계가 없으면, `open` 로그가 하나일 때만 그 로그를 자동 선택한다.
 - `open` 로그가 여러 개면 후보와 각 local `[>]`, unresolved `[↓]` pointer를 보여주고 멈춰
   사용자가 고르게 한다.
-- 선택한 로그는 agent가 `log check <파일>`(또는 동등한 구조 점검)으로 최신 날짜 블록,
-  Work Items, next pointer를 확인한 뒤 재개한다.
+- 선택한 로그는 agent가 `log check <파일>`(또는 동등한 구조 점검)으로 Work Items와 next pointer
+  구조를 확인하고, 최신 entry는 본문에서 확인한 뒤 재개한다.
 - hook이나 current-work command는 의미 판단, Work Item 완료·취소·이관, status 전환을 자동
   수행하지 않는다. 전체 `open` 로그를 자동으로 정합화하지도 않는다. 구조 신호만 제시하고,
   판단과 변경은 agent와 사용자가 한다.
@@ -106,15 +106,15 @@ status: open
 
 ## Required Context
 
-## 2026-01-10 · 조사 시작
+## 2026-01-10 · W1 · 조사 시작
 
 - 증상: 결제 단계에서 간헐적으로 500이 발생한다.
 - 현재 가설: 토큰 만료 타이밍 경쟁.
 ```
 
 사용자가 이 로그를 현재 작업으로 지정하면, agent는 `log check logs/2026-01-10-checkout-bug.md`로
-최신 날짜 블록·Work Items·next pointer를 확인하고, `[>] W1`이 가리키는 재개 지점부터 이어
-작업한다. 로그가 하나뿐이므로 plan이나 선택 도구는 필요 없다.
+Work Items·next pointer 구조를 확인하고 본문 최신 entry를 본 뒤, `[>] W1`이 가리키는 재개
+지점부터 이어 작업한다. 로그가 하나뿐이므로 plan이나 선택 도구는 필요 없다.
 
 ### 예시 B — 큰 작업: plan anchor에서 분리 작업 로그로 이동
 
