@@ -2099,3 +2099,65 @@ document-structure-review에도 어떤 상황과 내용에서 loop 형태를 선
 - `rg`로 `gate-driven flow`·`feedback loop`·`destructive-change gate`가 owner 정의와 사례 7 flat menu에만
   존재함을 확인했다(다른 소비자 없음). 3개 그룹 라벨 존재도 확인했다.
 - skill-creator `quick_validate.py`는 앞 블록과 동일하게 `yaml` 모듈 부재로 미실행. frontmatter 미변경.
+
+## 2026-07-03 · 역할→표현 형태 원칙과 `inferred action` smell
+
+`logs/2026-07-01-log-skill-overhaul-discussion.md`의 `2026-07-02 21:32 · Cross-Log action closure
+외부 리뷰 반영` 기록을 보고, @user가 이 skill에도 유사한 미흡점이 있다고 판단해 검토·반영을 지시했다.
+로그 skill이 Cross-Log discriminator 종결 분기를 "owner 절 적용" 지시로 축소한 것과 같은 결함이
+이 skill에도 잡히는지가 출발점이었다.
+
+### 확인한 사실
+
+- 로그 skill 2026-07-02 변경은 discriminator 1번(Yes)·3번(No)을 각각 `Superseded`·`Independent
+  Follow-Up` 절을 적용하는 지시로 축소하고 구체 mutation을 하위 절+Verify에 단일 소유시켰다.
+  `git diff`로 `loop-rules.md`·`SKILL.md` 실제 변경이 그 기록과 일치함을 확인했다.
+- 이 skill 현황:
+  - `SKILL.md` Core Invariant와 Output Contract는 "요구 행동이나 결과를 복원 가능하게"까지만
+    요구했다. "복원 가능"은 추론으로도 통과되는 bar다.
+  - `authoring-patterns.md#Rule Shape`의 `gate-driven flow`는 "분기 결과·종료 조건 명시"만 요구하고
+    분기 결과의 표현 형태(지시 vs 서술)는 규정하지 않았다.
+  - `authoring-patterns.md`의 `normative/descriptive/provenance` 역할 분류는 Comparative Guideline
+    Review scope에만 묶여 일반 표현 규칙이 아니었다.
+  - 제약 역할의 표현 기준은 이미 `negative rule`에 인라인으로 있다("대상 특정 어려우면
+    classification/decision table로 올린다").
+  - 행동 역할이 서술에 그치는 결함을 잡는 review smell은 없었다.
+
+### 판단
+
+- 상위 원칙은 "재서술 금지/drift"가 아니라 **역할→표현 형태**다. 각 문장·절은 실행 역할이 있고
+  그 역할마다 독자 응답을 추론 없이 복원시키는 형태가 있다. 지시 명시성은 그중 **행동 역할** 하나의
+  형태 기준일 뿐이다(판단·제약·정의·근거·provenance 역할은 각기 다른 형태를 요구한다).
+- 추론 비용은 지시 명시성에 종속되는 결과다. 별도 요구사항으로 두면 skill 자신의 "제거해도 판정
+  같으면 중복" 규칙에 걸린다. authoring에선 근거, review에선 탐지 신호로 표현한다.
+- 대부분 역할은 이미 커버돼 있고(정의=Wording·Owner&Scope, 제약=negative rule, provenance=destructive
+  gate), 실제 구멍은 **행동 역할** 하나다. 조직 원칙은 제약 역할이 `authoring-patterns.md`에서
+  이미 역할→형태를 적용해 암묵적으로 존재했으나 이름이 없었다.
+- 7개 역할 규칙을 병렬 추가하면 대부분 중복이다. 원칙을 SKILL invariant에 한 번, 행동 역할 실례를
+  authoring에, 탐지 smell을 review에 두는 3면 분산으로 재인코딩을 피한다.
+
+### 반영
+
+- `SKILL.md` Core Invariant: "복원 가능" bar를 "문장의 실행 역할에 맞는 형태로 복원"으로 올리고,
+  행동 역할(라우팅·gate 종결·step)은 요구 행동+owner를 지목하는 지시로 명시하도록 원칙을 서술.
+- `SKILL.md` Review Workflow step 6: 정보 형식 선택 앞에 "실행 역할에 맞는 표현 형태 요구"를 삽입.
+- `SKILL.md` Output Contract: 미러 점검 추가(행동 역할 문장이 지시로 명시됐는가).
+- `authoring-patterns.md#Rule Shape` `gate-driven flow`: 각 분기 결과를 owner 절 지목 지시로, 분기 간
+  평행 형태로, 상태·라벨만으로 두지 않도록 명시.
+- `review-patterns.md#Structure Smells`: `inferred action` smell 신설.
+
+### 미반영·후속
+
+- `must rule`은 정의 자체가 "실행 반복 누락 방지"라 지시 명시가 거의 tautology → 미변경(중복 회피).
+- `EXAMPLE.md`에 행동 역할 지시 사례(2026-07-02 로그 케이스 추상화) 추가는 후속 후보로 남긴다.
+- `SKILL.md` Review Workflow step 2의 개념 역할 분류(identity/scope/…)는 도메인 축이라 실행 역할
+  축과 구분해 미변경.
+
+### 검증
+
+- `git diff --check -- .agents/skills/document-structure-review/` PASS.
+- `scripts/check-markdown-inline-code`를 변경 3개 파일에 실행해 exit 0.
+- `rg`로 skill 파일에서 `inferred action`이 `review-patterns.md`에만, "실행 역할" 원칙이 `SKILL.md`
+  L43·62·126에만 존재함을 확인(다른 소비자 재인코딩 없음).
+- skill-creator `quick_validate.py`는 앞 블록들과 동일하게 `yaml` 모듈 부재로 미실행. frontmatter 미변경.
+- Work Items·Required Context가 없는 토론형 로그라 Reconcile 대상 없음. 이 로그는 open 유지.

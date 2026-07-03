@@ -58,6 +58,8 @@
   참조 범위와 fallback을 드러내지 않는다.
 - `mixed concept roles` — 한 섹션이 evidence, provenance, workflow, style처럼 다른 개념 역할을
   섞어 각 역할의 의미를 흐린다.
+- `inferred action` — 행동(라우팅·gate 종결·step) 역할 문장이 요구 행동과 owner를 지목하는
+  지시로 명시하지 않고 상태·라벨 서술에 그쳐, 독자가 수행할 행동을 추론해야 한다.
 
 ## Owner And Scope Decisions
 
