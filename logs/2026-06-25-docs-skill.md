@@ -2161,3 +2161,62 @@ document-structure-review에도 어떤 상황과 내용에서 loop 형태를 선
   L43·62·126에만 존재함을 확인(다른 소비자 재인코딩 없음).
 - skill-creator `quick_validate.py`는 앞 블록들과 동일하게 `yaml` 모듈 부재로 미실행. frontmatter 미변경.
 - Work Items·Required Context가 없는 토론형 로그라 Reconcile 대상 없음. 이 로그는 open 유지.
+
+## 2026-07-03 · skill 전체 검토 반영 — smell 범주화·owner 지목 조건화·EXAMPLE 14
+
+@user 지시로 직전 커밋(4210413) 리뷰와 skill 4개 파일 전체 검토를 수행하고, 발견 사항 중
+반영 가치가 있는 것만 계획해 적용했다. 여러 unit에 걸친 일회성 checkpoint 블록이다.
+
+### 확인한 사실
+
+- 커밋 4210413의 diff는 앞 블록 기록과 일치. rg 재확인: `inferred action`은 `review-patterns.md`
+  에만, "실행 역할"은 `SKILL.md` L43·62·126에만 존재(재인코딩 없음). `.claude/skills/` symlink
+  동기화 정상.
+- `review-patterns.md` Structure Smells가 15개 평면 definition bullet — Information Format의
+  7-8 임계와 2026-07-02 Rule Shape 범주화(8개 시점에 적용) 선례를 크게 초과.
+- 행동 역할 규칙 4개 표면(Core Invariant·Output Contract·`inferred action`·gate-driven flow)이
+  모두 "요구 행동과 owner 지목"을 무조건 이중 요구로 서술 — owner 절이 없는 self-contained
+  행동(종결 분기 "멈춘다", 행동이 문장 안에 완결된 step)에 문자적 false positive. skill 자신의
+  Review Workflow step들("…수행한다")조차 문자적으로는 위반.
+- `EXAMPLE.md` smell 태그 표기 불일치: #4·#5·#11이 어휘 smell을 backtick 없이 태그.
+  `inferred action`(앞 블록의 미반영 후속)과 `mixed concept roles`는 사례 커버 없음.
+
+### 판단
+
+- smell 범주화는 Rule Shape 선례 그대로 적용: 4개 라벨 그룹(소유·권위 / 정체성·역할 경계 /
+  구조 비용·독자 경로 / 표현 형태·안전장치), 정의·term 불변, lead-in 한 줄(범주=탐색 보조,
+  배타 분류 아님 — 그룹이 routing 분류로 오독되는 것 방지).
+- owner 지목은 "행동을 다른 절이 소유하면 그 owner 지목"으로 조건화 — 4개 표면 평행 수정.
+  방향 반전이 아니라 scope 조건화이고 skill 자기 본문에서 문자적 위반이 실증되므로, 직전
+  승인 결정 되돌리기("승인된 결정을 뒤집지 않는다" 기준)에 해당하지 않는다고 판단.
+- no-change 결정 4건:
+  - Review Workflow step 6 삽입구 — 제거 테스트 경계선(net-new는 "형태 요구가 정보 형식
+    선택보다 앞"이라는 순서 정보뿐). 직전 turn 승인 결정이라 유지하고 다음 self-audit 재평가
+    후보로 남긴다.
+  - "실행 역할"의 역할 목록 열거 — 다른 역할의 형태 기준은 각 owner 절(Wording·negative
+    rule·destructive gate)이 이미 소유(앞 블록 판단 유지). 열거 추가는 재인코딩.
+  - `mixed concept roles` 사례 — corpus 근거 없이 사례를 만들지 않는다(사례는 실제 사례의
+    추상화라는 EXAMPLE identity 유지).
+  - `SKILL.md` 크기(8,995 bytes) — repo 안에 skill 크기 캡 권위 없음(rg 무결과). 외부 이식성
+    캡(8KB) 적용 여부는 @user 판단 대기.
+
+### 반영
+
+- `references/review-patterns.md` Structure Smells: 4그룹 재구성 + lead-in. `inferred action`
+  정의는 owner 조건을 괄호로 흡수해 트림.
+- `SKILL.md` Core Invariant·Output Contract: owner 지목 조건화(같은 괄호형, 순 길이 유지).
+- `references/authoring-patterns.md` gate-driven flow: 동일 조건화.
+- `references/EXAMPLE.md`: 사례 14 "Gate Branch Ends In A Label" 신설(앞 블록 후속 종결 —
+  log skill 2026-07-02 Cross-Log 사례의 추상화, `inferred action`+`duplicated ownership`,
+  양방향 결함: 라벨 종결=추론 강요 / 분기별 절차 복사=이중 소유) + ToC 갱신 + #4·#5·#11
+  어휘 smell 태그 backtick 정합(비어휘 ad-hoc 태그는 plain 유지 — backtick=named smell 구분).
+
+### 검증
+
+- `git diff --check -- .agents/skills/document-structure-review/` PASS.
+- `scripts/check-markdown-inline-code` 변경 4개 파일 exit 0.
+- rg: 그룹 라벨 4개 존재. `inferred action`은 review-patterns 정의 1곳 + EXAMPLE 사례 14
+  소비 1곳에만(재인코딩 없음). "실행 역할"은 여전히 SKILL 3곳에만. ToC anchor
+  `#14-gate-branch-ends-in-a-label`와 heading 일치.
+- 커밋은 @user 지시 없어 수행하지 않았다. Work Items·Required Context가 없는 토론형 로그라
+  Reconcile 대상 없음. 이 로그는 open 유지.

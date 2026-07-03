@@ -19,6 +19,7 @@
 11. [New Content Outgrows Document Scope](#11-new-content-outgrows-document-scope)
 12. [New Document Needs An Independent Identity](#12-new-document-needs-an-independent-identity)
 13. [Reader Path And Loop Are Misaligned](#13-reader-path-and-loop-are-misaligned)
+14. [Gate Branch Ends In A Label](#14-gate-branch-ends-in-a-label)
 
 ## 1. Misfiled Owner Map
 
@@ -107,8 +108,8 @@ Situation:
 
 Structure smell:
 
-- hidden sub-kind
-- duplicated ownership
+- `hidden sub-kind`
+- `duplicated ownership`
 
 Review:
 
@@ -132,7 +133,7 @@ Sibling authoring guides가 모두 drift 처리를 다룬다. 한 문서 type은
 
 Structure smell:
 
-- copied section meaning
+- `copied section meaning`
 - document role mismatch
 
 Review:
@@ -304,7 +305,7 @@ Structure smell:
 
 - `owner or altitude mismatch`
 - `under-scoped identity`
-- hidden sub-kind
+- `hidden sub-kind`
 
 Review:
 
@@ -380,3 +381,30 @@ Preferred response:
   어떤 phase가 참조하는지 설명한다.
 - 새 cross-reference rule을 추가하기 전에 문서 경계, heading, 순서, routing surface 조정이 더
   작은 해결인지 비교한다.
+
+## 14. Gate Branch Ends In A Label
+
+Situation:
+
+Entry 문서가 순서 있는 gate로 케이스를 판정하는데, 일부 분기 결과가 "이 경우는 superseded다"
+같은 상태·라벨 서술로 끝난다. 실제 수행할 전환·기록·검증 동작은 다른 절이 소유하지만
+분기에서 지목되지 않아, 독자는 어떤 절을 적용할지 추론해야 한다. 반대로 다른 초안은 분기마다
+구체 절차를 반복 서술해 하위 절과 이중 소유를 만든다.
+
+Structure smell:
+
+- `inferred action`
+- `duplicated ownership`
+
+Review:
+
+분기 결과는 행동으로 넘기는 문장이다. 상태·라벨만 적으면 독자가 후속 행동을 추론해야 하고,
+구체 절차를 분기마다 복사하면 같은 지식의 owner가 둘이 된다. 각 분기는 요구 행동과 그것을
+소유한 절을 지목하는 지시로 쓰고, 구체 전환·검증 단계는 owner 절이 단일 소유한다.
+
+Preferred response:
+
+- 분기 결과 문장이 행동 지시인지 상태·라벨 서술인지 분류한다.
+- 각 분기를 요구 행동과 그 owner 절을 지목하는 지시로, 분기 간 평행한 형태로 다시 쓴다.
+- 구체 절차와 검증 단계는 owner 절에 단일 소유시키고 분기에는 반복하지 않는다.
+- 아무것도 하지 않는 종결 분기도 그 종료를 명시해 추론을 남기지 않는다.
