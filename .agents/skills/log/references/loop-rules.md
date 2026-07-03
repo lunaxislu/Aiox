@@ -17,15 +17,20 @@ frontmatter는 구조 소비자가 읽는 최소 index다. 다음 세 필드만 
 `description`에는 현재 단계, handoff, next pointer를 넣지 않는다. 현재 진행 상태는 본문의 최신
 기록과 Work Items가 소유한다.
 
-### Work Surface
+### Work State / Required Context
 
-Work Surface는 `## Work Items`의 marker/pointer, `[>]` next pointer,
-`## Required Context`, 복귀 pointer로 이루어지는 Current surface다.
+로그는 경위를 보존하는 History surface(로그 블록/entry) 외에 두 갱신 가능한 표면을 둔다.
+Work state surface는 `## Work Items`의 marker/pointer, `[>]` next pointer, 복귀 pointer로
+작업 선택·재개·handoff 상태를 소유한다. Required Context는 scope 기반 standing frame으로
+이 로그를 다룰 때 적용할 기준·제약·자료·검증 조건을 소유한다.
 
-- `## Work Items`는 항상 둔다. 실행 항목이 없는 판단·조사·토론형 로그도 섹션은 두되 비워 둘 수 있다.
-- `## Required Context`는 기본으로 비워 두고, 이 로그를 다룰 때 반드시 읽고 적용해야 할
-  standing context가 생기면 채운다. 읽어야 할 자료, scope/source 기준, 제약, 검증 기준,
-  handoff 조건처럼 날짜 블록에만 두면 다음 세션이 놓칠 내용을 둔다.
+`## Work Items`와 `## Required Context`는 로그의 기본 template surface다. 섹션은 항상 두되,
+해당 표면이 소유할 Work Item이나 standing context가 없으면 비워 둔다.
+
+- `## Work Items`는 실행 항목이 생기면 marker 규칙에 따라 채운다.
+- `## Required Context`는 owning block 밖의 다른 unit이나 로그 전체에도 적용되는 standing
+  context가 생기면 가장 작은 유효 scope heading 아래에 채운다. 읽어야 할 자료, scope/source
+  기준, 제약, 검증 기준과 handoff 조건을 둔다.
 
 Work Item line의 canonical form은 `- [marker] Wn <행동>`이다. `Wn:`처럼 id 뒤에 colon을 붙이지
 않는다. id는 완료·취소·이관됐거나 detach로 복귀 소비 대기 상태가 된 경우에도 보존하고
@@ -39,7 +44,7 @@ Work Item line의 canonical form은 `- [marker] Wn <행동>`이다. `Wn:`처럼 
 | `[>]`  | active. local actionable Work Item이 있을 때 재개 지점. 로그당 하나만 | —                                       |
 | `[x]`  | completed. 성공적으로 완료됨                                          | —                                       |
 | `[-]`  | cancelled. 더 이상 수행하지 않기로 함                                 | —                                       |
-| `[→]`  | transferred. 다른 로그·owner가 이어받음                               | 없음                                    |
+| `[→]`  | transferred. 다른 로그가 이어받음                                      | 없음                                    |
 | `[↓]`  | detached. 분리 작업 로그로 위임함                                     | 분리 작업 로그 완료 후 복귀 대상이 소비 |
 
 `[x]`는 성공 완료만 뜻한다. 취소·이관·detach는 각각 `[-]`, `[→]`, `[↓]`로 구분하고 줄 끝에
@@ -50,28 +55,33 @@ Work Item line의 canonical form은 `- [marker] Wn <행동>`이다. `Wn:`처럼 
 `## Required Context` heading은 `{...}` set literal로만 쓴다.
 
 - `{Global}` — 이 로그를 다룰 때 항상 적용
-- `{W1,W3}` — 나열한 W를 다룰 때 추가 적용 (range shorthand `W2-W4` 쓰지 않음)
+- `{W1,W3}` — 나열한 Work Item scope에 적용
 - `{Global}`은 단독 heading으로만 쓴다. W set과 섞지 않는다.
 
-Work Item entries가 없는 판단·조사·토론형 로그에서도 standing context가 있으면 `{Global}`에
-둔다. 완료·취소·이관된 W가 set에 남아 있어도 그 자체로 stale은 아니다. 실제 적용 판단에서는
-더 이상 수행하지 않는 W를 제외하고, closeout이나 정리 시점에 완료·취소·이관된 W만 남은 inert
-set을 점검한다.
+`## Work Items` 섹션이 비어 있는 판단·조사·토론형 로그에서도 standing context가 있으면
+`{Global}`에 둔다.
+
+완료·취소·이관된 W가 set에 남아 있어도 그 자체로 stale은 아니다. 실제 적용 판단에서는 더 이상
+수행하지 않는 W를 제외하고, closeout이나 정리 시점에 완료·취소·이관된 W만 남은 inert set을
+점검한다.
 
 **Required Context 품질 기준**
 
-Required Context는 다음 세션의 판단에 영향을 주는 Current surface다. 각 heading은 적용 범위를,
-각 항목은 그 범위에서 적용할 기준을 나타낸다.
+Required Context는 로그 파일 안에서 해당 로그를 다룰 때 적용할 scope 기반 standing frame을
+소유한다. `{Global}`은 로그 전체, `{W-set}`은 해당 Work Item scope에 적용된다. 각 heading은 적용
+scope를, 각 항목은 그 scope에서 현재 적용할 기준을 나타낸다.
 
-항목은 해당 scope에서 적용할 기준을 쓰며 단순 메모나 history 요약을 넣지 않는다. 다음 agent가
-적용 여부와 적용 방식을 판단할 수 있을 만큼 구체적으로 쓰고, 항목만으로 기준의 의미, 적용 범위,
-근거, 예외를 복원하기 부족하면 필요한 설명이나 확인 경로를 함께 남긴다.
+항목에는 단순 메모나 history 요약을 넣지 않는다. 근거·경위는 로그 블록이 소유하고, Required
+Context에는 적용 기준과 scope만 둔다. 항목만으로 적용 여부, 적용 방식, 예외를 판단하기 부족하면
+필요한 설명이나 확인 경로를 함께 남긴다.
 
-**Override**
+**Required Context Override**
 
-scope 정밀화로 풀리지 않는 진짜 예외일 때만 `Override [label]`을 쓴다. label은 Override 대상
-bullet에만 붙이는 참조 핸들이며 로그 내에서 유일해야 한다. 중복·dangling·상충 Override는
-Reconcile 대상이다.
+Required Context 항목이 일부 Work Item에만 다르게 적용되면 먼저 scope heading을 분리한다.
+scope heading 분리로도 표현할 수 없는 명확한 예외일 때만 `Override [label]`을 쓴다. 예외인지
+scope 변경인지 불명확하면 임의로 Override를 만들지 않고 사용자에게 확인하거나 미결 판단으로
+기록한다. label은 Override 대상 bullet에만 붙이는 참조 핸들이며 로그 내에서 유일해야 한다.
+중복·dangling·상충 Override는 Reconcile 대상이다.
 
 **전체 예시**
 
@@ -111,152 +121,197 @@ status: open
 - W2로 넘어가기 전 error code 목록 확인 필요.
 ```
 
-### Date Blocks
+### Log Lifetime Boundary
 
-- 블록 heading은 `## YYYY-MM-DD · <unit>`이고 날짜는 그 unit이 열린 날이다. `<unit>`은 블록이
-  소유하는 대상을 명명한다. Work Item slice는 W-id를, topic·질문·결정은 주제를 쓴다. 이후 기록이
-  owning block을 찾아 확장할 수 있게 명명은 구분되고 안정적이어야 한다. heading에 W-id가 없는 기존
-  로그·블록은 entry body의 W-id나 최신 entry로 owning block을 역추적하되, W-id 단순 언급이 아니라
-  그 W를 소유하는 block인지 확인한다.
-- 블록은 open date 순으로, 블록 안의 entry는 record date 순으로 둔다.
-- 한 블록은 서로 관련된 하나의 unit(topic, Work Item slice, 질문, 결정)만 소유한다.
-- 발언 주체를 구분해야 할 때 `@user`, `@agent`처럼 실제 화자를 표시한다. 수행 결과만
-  기록하면 생략한다.
+새 행동이나 unit을 배치할 때 다음을 모두 만족하면 현재 로그 수명 안에서 소유한다.
+
+- 현재 로그의 목적에 포함된다.
+- 현재 로그의 완료 조건과 함께 닫을 수 있다.
+- 현재 로그의 Work state와 Required Context로 재개할 수 있으며, 별도 로그의 독립 재개 지점이나
+  복귀 조건을 요구하지 않는다.
+
+하나라도 별도 작업 수명을 요구하면 현재 로그의 Work Item이나 로그 블록에 넣지 않고
+[Cross-Log / Lifetime Transitions](#cross-log--lifetime-transitions)에서 판정한다. 경계가 불명확하면
+이유와 후보를 제시해 사용자에게 확인한다. 이 판정은 새 행동·unit의 배치에 적용한다. 다른 로그가
+현재 로그 전체 수명을 대체하는 후보는 이 경계를 거치지 않고 Cross-Log discriminator의 첫 단계에서
+판정한다.
+
+### Log Blocks
 
 블록은 한 번 쓰고 끝나는 checkpoint가 아니라 같은 unit의 dated entry를 누적하는 owning block이다.
 
+#### Block Identity
+
+- 블록 heading은 `## YYYY-MM-DD · <unit>`이고 날짜는 그 unit이 열린 날이다. `<unit>`은 블록이
+  소유하는 대상을 명명한다. Work Item slice는 W-id를, topic·질문·결정은 주제를 쓴다.
+- 한 블록은 서로 관련된 하나의 unit(topic, Work Item slice, 질문, 결정)만 소유한다.
+- 이후 기록이 owning block을 찾아 확장할 수 있게 명명은 구분되고 안정적이어야 한다.
+  heading에 W-id가 없는 기존 로그·블록은 entry body의 W-id나 최신 entry로 owning block을
+  역추적하되, W-id 단순 언급이 아니라 그 W를 소유하는 block인지 확인한다.
+
+#### Entry Format and History
+
+- 블록은 open date 순으로, 블록 안의 entry는 record date 순으로 둔다.
 - 블록의 `##` 직속 body가 그 블록의 첫 entry이며 record date는 heading 날짜다. 첫 기록에 `###`를
-  강제하지 않고, 단일 checkpoint 블록은 body만으로 완결된다. `최신 entry`는 `###`가 있으면 마지막
-  `###`, 없으면 `##` body를 가리킨다.
-- 뒤의 기록이 같은 unit을 이어가거나 정정·반론·대체·결론 변경하면, 날짜가 바뀌었다는 이유만으로
-  새 `##` 블록을 만들지 않고 owning block 아래에 `### YYYY-MM-DD · <entry>`로 append한다.
+  강제하지 않고, 단일 checkpoint 블록은 body만으로 완결된다.
+- 이후 entry heading은 `### YYYY-MM-DD HH:MM · <entry>` 형식을 쓴다. `HH:MM`은 작성 환경의 로컬
+  시간 기준 timestamp다. 기존 date-only heading(`### YYYY-MM-DD · <entry>`)은 유효하지만 timestamp
+  없는 entry로 본다.
+- 발언 주체를 구분해야 할 때 `@user`, `@agent`처럼 실제 화자를 표시한다. 수행 결과만
+  기록하면 생략한다.
 - 기존 entry는 삭제하거나 고쳐 쓰지 않는다. 정정·반론·대체·결론 변경도 새 entry로 남긴다. 결정이
   바뀌면 이전 결정, 새 결정과 변경 이유를 반드시 함께 남긴다.
-- 새 `##` 블록은 기록이 새 unit을 열거나, 여러 unit에 걸치거나, 주제·범위·목적·결정 수명이 바뀌어
-  owning block 아래에 두면 다음 독자가 오해할 때 만든다. 여러 unit에 걸친 cross-unit checkpoint는
-  누적하지 않는 일회성 블록이다.
-- 새 unit이 별도 수명·closeout·독립 재개나 복귀 조건을 가지면 블록 안에서 해결하지 않고
-  [Cross-Log / Lifetime Transitions](#cross-log--lifetime-transitions)의 detach/child log 규칙을 쓴다.
 
-질문과 답변마다 즉시 기록하지 않는다. 결정·제약 확정, 의미 있는 조사 결과, 작업·검증 완료,
-주제 전환처럼 의미 변화가 확정되는 checkpoint에서 owning block의 entry 또는 새 블록으로 증류한다.
-누적된 최신 entry는 그 unit 경위의 최신 기록일 뿐이며, 계속 적용할 standing 기준은 Reconcile을
-거쳐 Required Context가 소유한다.
+각 entry는 turn 단위 기록이 아니라 [Record](#record)에서 증류한 checkpoint다.
+
+#### Record Placement Loop
+
+기록할 checkpoint가 생기면 다음 순서로 위치를 정한다.
+
+1. 같은 unit의 후속 판단, 정정, 반론, 대체나 결론 변경인가?
+   - Yes: 날짜가 바뀌었다는 이유만으로 새 `##` 블록을 만들지 않고 owning block 아래에 새 entry로
+     append한다.
+2. 새 unit인가?
+   - Yes: [Log Lifetime Boundary](#log-lifetime-boundary)를 적용한다. 현재 로그 수명 밖이면 그
+     절이 지시한 Cross-Log 판정으로 보내고, 안이면 3으로 간다.
+3. 새 unit을 열거나, 여러 unit에 걸치거나, 주제·범위·목적·결정 수명이 바뀌어 owning block 아래에
+   두면 다음 독자가 오해하는가?
+   - Yes: 새 `##` 블록을 만든다. 여러 unit에 걸친 cross-unit checkpoint는 누적하지 않는 일회성
+     블록이다.
+
+#### Latest Entry Lookup
+
+로그 전체의 `최신 기록 entry`는 다음 순서로 판단한다.
+
+1. 비교 대상 entry들이 모두 비교 가능한 timestamp를 가지는가?
+   - Yes: 가장 늦은 timestamp의 entry를 최신 기록 entry로 본다.
+2. timestamp가 없거나 timestamp만으로 비교할 수 없는 entry가 섞였는가?
+   - Yes: 파일 안의 entry 순서로 판단한다.
+
+한 블록 안의 `최신 entry`는 다음 순서로 판단한다.
+
+1. 블록 안에 `###` entry가 있는가?
+   - Yes: 마지막 `###` entry를 최신 entry로 본다.
+2. `###` entry가 없는가?
+   - Yes: `##` 직속 body를 최신 entry로 본다.
+
+#### Required Context Boundary
+
+누적된 최신 entry는 그 unit 경위의 최신 기록일 뿐이다. 적용 범위가 그 owning block 안에 닫힌
+기준은 entry로 두고, block 밖에도 적용될 standing 기준만 Reconcile을 거쳐 Required Context가 소유한다.
 
 ## Record
 
-기록은 형식보다 의미 복원을 우선한다. 다음 질문에 답할 수 있어야 한다.
+Record는 의미 변화의 경위와 판단 근거를 다음 agent가 복원할 수 있는 구조로 History surface에
+보존한다. 다음 순서로 기록 여부와 내용을 정한다.
 
-- 무엇이 결정, 변경, 완료, 취소, 이관됐는가?
-- 왜 그렇게 판단했는가?
-- 현재 유효한 다음 행동은 무엇인가? 없다면 왜 없는가?
-- 어떤 파일, 로그, owner 문서, 검증 결과나 외부 출처가 판단에 영향을 줬는가?
-- 이전 기록과 달라진 점이 있다면 무엇이 대체됐고 무엇이 아직 남았는가?
+### Record Loop
 
-기록 여부는 "이 내용을 빼면 다음 agent가 의도, 판단, 근거, 제약, 현재 상태 또는 남은 일을
-잘못 이해할 가능성이 있는가?"로 판단한다.
-
-Record는 의미 변화의 경위와 판단 근거를 History surface에 보존한다. 그중 다음 세션의 판단에
-계속 영향을 주는 dependency가 있는지는 Reconcile gate로 넘긴다.
-
-### 기록할 내용
-
-- 사용자의 의도, 질문, 제약, 피드백, 승인과 거부
-- agent의 제안, 선택지, 판단과 근거
-- 반대 근거, 동의되지 않은 의견과 보류 이유
-- 결정과 결정이 변경된 이유
-- 수행한 작업과 검증 결과
-- 남은 질문, Work Item·next pointer의 변경과 그 이유
-- 판단이나 후속 확인에 사용한 외부 출처와 확인한 사실
-
-### 기록 품질
-
-- 전달력: 다음 agent가 결정, 근거, 현재 상태, 남은 일을 빠르게 이해할 수 있게 쓴다.
-- 목적성: 재개·판단·검증에 필요한 내용만 남기고 대화 덤프나 설명용 반복을 피한다.
-- 접근성: 제목, bullet, 화자 표시, 경로, Work Item id를 사용해 필요한 정보를 쉽게 찾게 한다.
-- 구조 보존: 목적성 범위에서, 결론만 남기면 다음 agent가 적용 대상·조건·판정축·예외·요구
-  행동의 관계를 다시 추론해야 하는 경우 그 관계를 평탄화하지 않는다. 원문 형식을 복사하지 않고,
-  누락된 관계를 추론하지 않아도 같은 판단을 적용할 수 있는 가장 짧은 형식으로 남긴다.
-- 시간 안정성: 완료 사실, 취소 이유, 보류 조건, 다음 행동을 구분한다.
-
-### 생략할 내용
-
-- 반복 질문과 같은 의미의 답변
-- 단순 확인이나 진행 발언
-- 사용자 이해만을 위한 설명과 예시
-- 판단에 영향을 주지 않은 검색 과정과 실패한 검색어
-- 외부 자료의 긴 원문
-- 이미 기록된 배경의 반복
-
-### 외부 출처
-
-판단 근거로 사용한 경로·URL, 확인한 사실, 그 사실이 판단에 미친 영향을 함께 기록한다.
-판단에 사용하지 않은 검색 링크는 남기지 않고 원문을 길게 옮기지 않는다.
+1. 이 내용을 빼면 다음 agent가 의도, 판단, 근거, 제약, 현재 상태 또는 남은 일을 잘못 이해할
+   가능성이 있는가?
+   - No: 기록하지 않는다.
+   - Yes: 다음 단계로 간다.
+2. 무엇이 의미 있게 바뀌었는지 식별한다.
+   - 사용자의 의도, 질문, 제약, 피드백, 승인과 거부
+   - agent의 제안, 선택지, 판단과 근거, 반대 근거와 보류 이유
+   - 결정과 결정이 변경된 이유
+   - 수행한 작업과 검증 결과
+   - 남은 질문, Work Item·next pointer 변경과 그 이유
+   - 판단이나 후속 확인에 사용한 외부 출처와 확인한 사실
+3. 기록의 대상, 적용 범위와 관계를 복원한다.
+   - owning block의 문맥만으로 대상과 범위가 명확하지 않으면, 다음 agent가 이를 특정하는 데
+     필요한 안정적인 식별자와 관계를 함께 남긴다.
+   - 제안·비교·판정이 표, 단계, 조건 집합처럼 정보 구조에 의존하면 적용 대상·조건·판정축·예외·
+     요구 행동의 대응 관계를 보존한다. 원래 형식을 복사할 필요는 없지만, 다음 agent가 원래
+     제안과 같은 판단을 재구성할 수 있어야 한다.
+4. 재개·판단·검증에 필요한 내용만 증류한다.
+   - 반복 질문과 같은 의미의 답변, 단순 확인이나 진행 발언, 사용자 이해만을 위한 설명과 예시,
+     판단에 영향을 주지 않은 검색 과정, 외부 자료의 긴 원문, 이미 기록된 배경은 생략한다.
+   - 판단에 사용한 외부 출처는 경로·URL, 확인한 사실과 그 사실이 판단에 미친 영향을 남긴다.
+     판단에 사용하지 않은 검색 링크는 남기지 않는다.
+   - 제목, bullet, 화자 표시나 필요한 식별자를 사용해 필요한 정보를 찾게 하고, 3단계에서 식별한
+     대상·범위·관계를 보존하는 가장 짧은 구조로 쓴다.
+5. 기록만으로 다음을 복원할 수 있는지 확인한다.
+   - 무엇이 결정, 변경, 완료, 취소, 이관됐는가?
+   - 왜 그렇게 판단했는가?
+   - 현재 유효한 상태와 다음 행동은 무엇인가? 다음 행동이 없다면 왜 없는가?
+   - 어떤 근거와 검증 결과가 판단에 영향을 줬는가?
+   - 이전 기록 중 무엇이 대체됐고 무엇이 아직 남았는가?
+6. 정리한 내용을 History surface에 기록한 뒤 **Reconcile 진입 gate**를 적용한다. Work state가
+   의존하는 내용이 바뀌었거나, standing dependency가 owning block 밖에도 적용되거나, 기존
+   Required Context의 내용·scope가 바뀌었는가?
+   - No: Record를 끝낸다.
+   - Yes: Reconcile로 넘긴다.
 
 ## Reconcile
 
-`Reconcile`은 Record에서 확정된 의미 변화와 Current surface를 같은 판단 안에서 맞추는
-gate-driven 협응 루프다.
+`Reconcile`은 Reconcile 진입 gate를 통과한 의미 변화에 맞춰 Work state와 Required Context를
+재조정하고, 갱신 결과가 새로운 의미 변화를 드러내면 Reconcile 진입 gate를 다시 적용하는
+feedback loop다. 다음 순서로 돈다.
 
-**Gate** — 이번 기록이 Current surface가 의존하는 사실(결정, 범위, 조건, 읽을 자료, 검증
-기준)을 바꿨는가?
-
-- 아니오: 순수 narrative 블록이다. Work Items, `[>]`, Required Context, pointer를 건드리지 않는다.
-- 예: 바뀐 dependency에 걸린 표면을 같은 동작에서 함께 갱신한다. 하나만 고치고 후속 점검으로
-  미루지 않는다.
-
-**Co-fire arms** — 순서 있는 단계가 아니라 같은 의미 변화에서 함께 발화할 수 있는 표면이다.
-
-- **Work Item surface**: 행동, 범위, 완료 조건, marker, `[>]` next pointer가 바뀌면 Work Items를
-  갱신한다. 전이 방법은 아래 `Work Item 전이`가 소유한다.
-- **Required Context**: 다음 세션이 반드시 읽고 적용해야 할 기준, 제약, source 기준, 검증 조건이
-  생기거나 바뀌면 scope heading과 context bullet을 갱신하고 위 품질 기준을 적용한다.
-- **Cascade**: 위 표면 중 하나를 바꿔 다른 표면이 stale해졌으면 같은 동작에서 함께 갱신한다. 새
-  W가 생기면 기존 context 중 새 W에도 적용할 것이 있는지 보고, label 대상 bullet이 바뀌면
-  `Override` drift를 점검한다.
-
-**검증과 되돌림** — 갱신 후 현재 적용해야 할 기준이 날짜 블록에만 묻혀 있지 않은지, Required
-Context만으로 적용 여부와 적용 방식을 판단할 수 있는지 확인한다. 전자는 영향받는 Current
-surface를 갱신하고, 후자는 필요한 설명이나 확인 경로를 보강한다. 이 과정에서 새로운 의미
-변화가 확인되면 Record에 checkpoint를 남기고 Reconcile gate를 다시 적용한다.
-
-다른 로그·owner와 연결되거나 로그 전체 수명이 바뀌면 co-fire arm으로 처리하지 않고
-[Cross-Log / Lifetime Transitions](#cross-log--lifetime-transitions)로 판정한다.
+1. **영향받은 표면을 같은 동작에서 갱신한다.** 하나만 고치고 후속 점검으로 미루지 않는다.
+   - **Work state**: 행동, 범위, 완료 조건, marker나 `[>]` next pointer가 바뀌면 Work Items를
+     갱신한다. 전이 방법은 아래 `Work Item 전이`가 소유한다.
+   - **Required Context**: 기준, 제약, 읽을 자료나 검증 조건이 owning block 밖의 다른 unit이나
+     로그 전체에도 적용되면 해당 scope heading과 context bullet을 갱신하고 `Required Context 품질
+     기준`을 적용한다. 적용 범위가 owning block 안으로 좁아졌거나 다른 결정이 대체한 항목은 같은
+     동작에서 내리거나 제거한다.
+2. **cascade를 닫는다.** 한 표면의 변경으로 다른 표면이 stale해졌으면 1단계를 다시 적용한다. 새
+   W가 생기면 기존 context 중 새 W에도 적용할 것이 있는지 확인하고, label 대상 bullet이 바뀌면
+   `Override` drift를 점검한다. 더 이상 stale한 표면이 없을 때 다음 단계로 간다.
+3. **정합을 검증한다.** 변경된 행동·범위·완료 조건·재개 지점이 Work state에 반영됐는지, 각
+   standing 기준이 가장 작은 유효 scope에 놓였는지, Required Context만으로 적용 여부와 적용 방식을
+   판단할 수 있는지 확인한다.
+   - 2단계가 놓친 반영 누락이 있으면 1단계로 돌아가 보정하고 다시 검증한다.
+   - 새로운 결정, 범위 또는 조건 변화가 확인되면 Record에 checkpoint를 남기고 `Record Loop`의
+     Reconcile 진입 gate를 다시 적용한다. No면 Reconcile을 끝내고, Yes면 1단계로 돌아간다.
+   - 모두 통과하면 Reconcile을 끝낸다.
 
 ### Work Item 전이
 
-전이의 why·결과 narrative는 날짜 블록에 남긴다. 전이할 때 marker 변경과 날짜 블록 기록은 한
+전이의 why·결과 narrative는 로그 블록에 남긴다. 전이할 때 marker 변경과 로그 블록 기록은 한
 동작에서 같이 한다.
 
-- **추가** — 현재 로그 수명 안에서 새로 수행할 행동이 생겼을 때. 이미 있는 W가 그 범위를
-  소유하거나, 현재 답변에서 끝나거나, 로그 수명을 벗어난 독립 주제거나, 끝난 로그를 open으로
-  연장하려는 새 작업이면 추가하지 않는다. 모호하면 후보와 근거를 보여 사용자에게 묻는다. 새
-  항목이 즉시 재개 지점이면 `[>]`로 두고 기존 `[>]`는 `[ ]`로 내린다.
-- **수정** — 기존 id가 가리키는 행동의 identity가 유지될 때만 한다. 원래 행동과 별도로 완료
-  판단할 새 행동이 생기거나, 일부가 다른 owner로 이관되거나, 대체 행동이 생기면 새 id로 분리한다.
+- **추가** — 먼저 W 추가 후보인지 판정한다.
+  - 이미 있는 W가 그 범위를 소유하거나 현재 답변에서 끝나면 W를 추가하지 않고 이 전이를 끝낸다.
+  - 끝난 로그를 `open`으로 연장하려는 새 작업이면 W를 추가하지 않고
+    [Cross-Log / Lifetime Transitions](#cross-log--lifetime-transitions)로 보낸다.
+  - 그 밖에 지속할 새 행동이면 [Log Lifetime Boundary](#log-lifetime-boundary)를 적용한다. 현재 로그
+    수명 밖이면 W를 추가하지 않고 그 절이 지시한 Cross-Log 판정으로 보내고, 안이면 새 W를 추가한다.
+
+  추가 여부가 모호하면 후보와 근거를 보여 사용자에게 묻는다. 새 항목이 즉시 재개 지점이면
+  `[>]`로 두고 기존 `[>]`는 `[ ]`로 내린다.
+- **수정** — 기존 id가 가리키는 행동의 identity가 유지될 때만 그 W를 수정한다. 다음 중 하나로
+  identity가 갈라지면 수정하지 않고 새 id로 분리한다.
+  - 원래 행동과 별도로 완료 판단할 새 행동이 생긴다.
+  - 일부 행동이 다른 로그로 이어진다. 나가는 행동을 새 id로 분리한 뒤 해당 전이는
+    [Cross-Log / Lifetime Transitions](#cross-log--lifetime-transitions)에서 판정한다.
+  - 대체 행동이 생긴다.
 - **완료(`[x]`)** — 행동이 실제 수행됐고, 검증이 끝났고, 결과가 기록됐을 때. 완료해도 로그
   전체가 자동으로 `decided`가 되지는 않는다.
 - **취소(`[-]`)** — 더 이상 actionable하지 않을 때. 이유가 중요하다. 단순 보류면 `[ ]`로
   남길지 먼저 판단한다.
 
-이관(`[→]`)과 detach(`[↓]`)처럼 다른 로그·owner와 연결되는 전이는 다음 절에서 판정한다.
+이관(`[→]`)과 detach(`[↓]`)처럼 다른 로그와 연결되는 전이는 다음 절에서 판정한다.
 
 ## Cross-Log / Lifetime Transitions
 
-다른 로그·owner와 연결되거나 로그 전체 수명이 바뀌면 아래 discriminator로 먼저 판정한다.
+새 행동·unit의 배치는 [Log Lifetime Boundary](#log-lifetime-boundary)가 먼저 판정한다. 이 절은
+다른 로그와 연결되는 후보 또는 로그 전체 수명 대체 후보를 아래 ordered discriminator로 분류한 뒤,
+각 종결 분기가 가리키는 절차를 적용한다.
 
 1. 다른 로그가 이 로그 전체 수명을 대체하고, 이 로그에서 더 재개하지 않는가?
-   - 예: `superseded`. 상세 status 전환 조건은 [Closeout / Status](#closeout--status)가 소유한다.
-   - 아니오: 2로 간다.
-2. 다른 로그·owner와 연결되는 전이인가?
-   - 아니오: 같은 로그 안 전이이므로 Reconcile의 `Work Item 전이`가 소유한다.
-   - 예: 3으로 간다.
+   - Yes: [Superseded](#superseded)의 전환 조건과 절차를 적용한다.
+   - No: 2로 간다.
+2. 다른 로그를 새로 만들거나 기존 다른 로그와 연결하는 전이인가?
+   - No: 이 절을 끝내고 Reconcile의 [Work Item 전이](#work-item-전이)를 적용한다.
+   - Yes: 3으로 간다.
 3. 그 나가는 작업을 소유하거나 연결하는 source Work Item이 이 로그에 있는가?
-   - 아니오: independent follow-up. 복귀 pointer 없는 독립 open 로그로 둔다.
-   - 예: 4로 간다.
+   - No: [Independent Follow-Up](#independent-follow-up)을 적용한다.
+   - Yes: 4로 간다.
 4. source가 그 결과를 나중에 소비하거나 완료 판정에 사용해야 하는가?
-   - 예: detach(`[↓]`).
-   - 아니오: transfer(`[→]`).
+   - Yes: [Detach(`[↓]`)](#detach)를 적용한다.
+   - No: [Transfer(`[→]`)](#transfer)를 적용한다.
 
 ### Detach(`[↓]`)
 
@@ -264,10 +319,14 @@ detach는 source Work Item이 분리 작업 로그의 결과를 소비해야 할
 history를 새 로그로 옮겨 즉시 decided 처리하는 migration detach도 같은 기준을 따른다.
 
 - source Work Item line에 `— detached: <분리 작업 로그 경로>`를 남기고 marker는 `[↓]`로 둔다.
-- 분리 작업 로그에는 `## 복귀 대상`, 자체 `## Required Context`, 자체 Work Items와 `[>]`를 둔다.
+- 분리 작업 로그에는 `## 복귀 대상`, 자체 `## Required Context`와 자체 Work Items를 둔다. local
+  actionable Work Item이 있으면 `[>]` 하나를 둔다.
+- `## 복귀 대상`만으로 source 로그 경로, 결과를 소비할 source W-id와 소비 조건을 복원할 수 있게
+  쓴다.
 - snapshot은 effective result로 평탄화한다. source의 `Override`를 dangling reference로 옮기지 않는다.
 - source에 다른 local actionable W가 있으면 그중 하나를 `[>]`로 둔다. 없으면 source에 `[>]`를
-  억지로 남기지 않고 분리 작업 로그의 `[>]`를 따른다.
+  억지로 남기지 않는다. 분리 작업 로그에 local actionable W가 있으면 그 로그의 `[>]`가 재개
+  지점이며, 즉시 `decided` 처리하는 migration target에는 `[>]`를 만들지 않는다.
 - 분리 작업 로그가 끝나면 source는 결과를 소비해 해당 W를 완료, 취소, 이관 또는 남은 행동으로
   갱신한다.
 
@@ -286,7 +345,7 @@ knowledge를 보존할 수 있을 때만 해당 history를 분리 작업 로그�
 transfer는 source가 해당 작업의 소유권을 넘기고 결과를 기다리지 않을 때 쓴다.
 
 - source Work Item line에 `— transferred: <target>`과 이유를 남긴다.
-- target 로그·owner에 이어받을 Work Item이나 next pointer가 준비됐는지 확인한다. source의
+- target 로그에 이어받을 Work Item이나 next pointer가 준비됐는지 확인한다. source의
   `[→]` 줄만으로 target 준비를 가정하지 않는다.
 - source context 변경은 target에 자동 전파하지 않는다. 전파가 필요하면 이관 기록에 명시한다.
 
@@ -304,17 +363,21 @@ independent follow-up은 source Work Item이 없고 어떤 known Work Item도 �
   snapshot이 있는가?
 - `[→]`는 source가 결과를 소비하지 않는 경우에만 쓰였는가?
 - independent follow-up에 복귀 pointer를 만들지 않았는가?
-- `superseded` 후보는 Closeout / Status가 소유하는 status 전환 기준으로 넘겼는가?
+- 복귀 pointer가 실제 결과 소비 source W를 가리키며 unrelated ancestor로 건너뛰지 않는가?
+- 명시 pointer graph에 순환이 생기지 않았는가?
+- `superseded` 분기는 [Superseded](#superseded)의 선행 해소와 기록을 마치고 source frontmatter의
+  `status`를 `superseded`로 바꿨는가?
 
 ## Closeout / Status
 
-`Closeout`은 작업이나 세션을 마치기 전 Current surface 불변, Reconcile 누락, 처리되지 않은
-cross-log/lifetime 전이, status 전환 후보를 확인하는 안전망이다. 새 전이를 재정의하지 않고,
-전이 발생 여부와 무관하게 다음 end-state를 확인한다.
+`Closeout`은 작업이나 세션을 마치기 전 Work state 불변과 Required Context 정합, Reconcile 진입
+gate 누락, 처리되지 않은 cross-log/lifetime 전이, status 전환 후보를 확인하는 안전망이다. 새
+전이를 재정의하지 않고, 전이 발생 여부와 무관하게 다음 end-state를 확인한다.
 
-- 마지막 의미 변화에 Reconcile gate를 적용했는가?
+- 마지막 의미 변화에 Reconcile 진입 gate를 적용했는가?
 - local actionable Work Item이 있으면 `[>]`는 로그당 하나이며 실제 재개 지점을 가리키는가?
-- Required Context에 완료·취소·이관된 W만 남은 inert set이나 dangling Override가 있는가?
+- Required Context에 적용 범위가 owning block 안으로 좁아졌거나 대체되어 더 이상 선언 scope에
+  적용되지 않는 항목, 완료·취소·이관된 W만 남은 inert set, dangling Override가 있는가?
 - 처리되지 않은 cross-log/lifetime transition이 남아 있으면 해당 transition 섹션으로 돌려보냈는가?
 - 권위 있는 결과 반영이나 검증이 남았는가?
 - 로그 전체가 `decided` 또는 `superseded` 후보인가?
@@ -369,10 +432,10 @@ Work Item entries가 없는 판단·조사·토론형 로그는 다음을 모두
 
 ### Superseded
 
-새 로그가 기존 로그 전체를 대체할 때만 `superseded`로 바꾼다. 로그가 스스로 결론을 내 끝나는
-것은 `decided`다. `superseded`는 다른 로그가 이 로그의 범위를 통째로 이어받아 더 이상 이
-로그에서 재개하지 않을 때만 쓴다. 대체 후에도 결정 과정과 근거를 추적해야 하므로 로그를
-삭제하지 않는다.
+새 로그가 기존 로그 전체를 대체할 때만 기존 로그 frontmatter의 `status`를 `superseded`로
+바꾼다. 로그가 스스로 결론을 내 끝나는 것은 `decided`다. `superseded`는 다른 로그가 이 로그의
+범위를 통째로 이어받아 더 이상 이 로그에서 재개하지 않을 때만 쓴다. 대체 후에도 결정 과정과
+근거를 추적해야 하므로 로그를 삭제하지 않는다.
 
 `superseded`로 바꾸기 전에 기존 미완료 Work Items, unresolved `[↓]`, `[>]` next pointer를 모두
 해소한다. `superseded`로 바꿀 때는 마지막 기록 블록에 대체 로그 경로, 대체 이유, 미완료 Work

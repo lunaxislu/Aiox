@@ -5,9 +5,8 @@
 프로젝트 integration의 책임을 섞지 않으며, 단순한 규칙으로 해결 가능한 범위만 바꾸는
 것이다.
 
-일반 로그 작성, 재개, 수정, 완료, 취소, 이관, 로그 분리, 종료 규칙은
-`work-log-rules.md`가 안내하는 `log-writing-rules.md`와 `work-items-rules.md`가 소유한다.
-이 문서는 그 규칙 자체를 바꿀지 판단할 때만 사용한다.
+일반 로그 작성, 재개, 수정, 완료, 취소, 이관, 로그 분리와 종료의 실행 요약은 `../SKILL.md`가,
+세부 판정은 `loop-rules.md`가 소유한다. 이 문서는 그 규칙 자체를 바꿀지 판단할 때만 사용한다.
 
 ## 목차
 
@@ -125,9 +124,8 @@ owner와 파일 범위, 건드리지 않을 범위, 추가를 피한 이유 또�
   뒤에는 새 표현이 문제 사례를 포함하는지, 제외해야 할 사례까지 열지 않는지, owner 경계와
   충돌하지 않는지 스스로 다시 점검한다. 통과하지 못하면 범위가 복원되는 표현으로 다시
   다듬는다.
-- 일반화가 필요한 경우에도 핵심 판단은 `log-writing-rules.md`나 `work-items-rules.md`가
-  소유한다. `example.md`는 decision이나 rule을 대체하지 않고 fresh agent 검증이나 사용자
-  검토를 돕는 보조 사례로만 둔다.
+- 일반화가 필요한 경우에도 핵심 판단은 `loop-rules.md`가 소유한다. `example.md`는 decision이나
+  rule을 대체하지 않고 fresh agent 검증이나 사용자 검토를 돕는 보조 사례로만 둔다.
 
 ## Portable log skill 변경 기준
 
@@ -145,9 +143,9 @@ portable log skill이나 reference를 바꾸는 경우:
 - 기존 본문 기록으로 처리할 수 있는데 새 필드나 명령을 요구한다.
 - 새 규칙이 다른 reference의 책임을 중복한다.
 
-portable 문서를 바꿀 때는 `SKILL.md`를 entry/router로 유지한다. reference 선택은
-`work-log-rules.md`, 로그 작성 규칙은 `log-writing-rules.md`, 작업 기록 규칙은
-`work-items-rules.md`, 유지보수 판단은 이 문서, 사용자 검토용 사례는 `example.md`로 둔다.
+portable 문서를 바꿀 때는 `SKILL.md`를 entry/router로 유지한다. 파일 구조, 기록, Reconcile,
+cross-log/lifetime transition과 Closeout의 세부 판정은 `loop-rules.md`, 유지보수 판단은 이 문서,
+사용자 검토용 사례는 `example.md`로 둔다.
 
 ## Project integration 변경 기준
 
@@ -211,5 +209,5 @@ script를 바꾼다면 문서에는 확정된 도구 표면만 반영한다. pro
 승인, 변경 파일, 검증 결과, 남은 follow-up이다. 모든 토론 원문을 복사하지 않는다.
 
 유지보수 중 새 개선 주제나 후속 검토 입력이 생겨 나중에 재개해야 하면, 남은 follow-up으로만
-언급하고 끝내지 말고 `work-items-rules.md`의 Work Item 추가 점검을 적용해 Work Item으로
-등록할지, 아니면 현재 로그 수명을 벗어나 별도 로그가 맞는지 판단한다.
+언급하고 끝내지 말고 `loop-rules.md`의 Work Item 추가 점검과 Log Lifetime Boundary를 적용해
+Work Item으로 등록할지, 아니면 현재 로그 수명을 벗어나 별도 로그가 맞는지 판단한다.

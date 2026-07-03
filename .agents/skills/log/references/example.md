@@ -48,7 +48,8 @@
 블록은 일회성 checkpoint가 아니라 같은 unit(topic, Work Item slice, 질문, 결정)의 dated entry를
 누적하는 owning block이다. 첫 기록은 `##` body에 바로 쓰며 그 body가 그 블록의 첫 entry다. 같은
 unit을 나중에 이어가거나 정정·결론 변경하면, 날짜가 바뀌었다는 이유만으로 새 `##` 블록을 만들지
-않고 owning block 아래에 `### YYYY-MM-DD · <entry>`로 append한다. 기존 entry는 고쳐 쓰지 않는다.
+않고 owning block 아래에 `### YYYY-MM-DD HH:MM · <entry>`로 append한다. 기존 entry는 고쳐 쓰지
+않는다.
 
 ```markdown
 ## Work Items
@@ -61,7 +62,7 @@ unit을 나중에 이어가거나 정정·결론 변경하면, 날짜가 바뀌�
 
 - 처음에는 5xx만 재시도 대상으로 검토했다. (첫 entry는 `##` body이고 `###`를 강제하지 않는다)
 
-### 2026-06-18 · 결론 변경
+### 2026-06-18 09:30 · 결론 변경
 
 - 429도 재시도 대상에 포함한다. 이전 5xx-only 판단을 대체한다.
 - 이유: rate limit은 backoff 후 성공할 수 있다.
@@ -76,7 +77,7 @@ unit을 나중에 이어가거나 정정·결론 변경하면, 날짜가 바뀌�
 - 여러 W에 걸친 cross-unit checkpoint라 특정 W-id로 키잉하지 않고 일회성 블록으로 둔다.
 ```
 
-W2 owning block의 `최신 entry`는 `### 2026-06-18 · 결론 변경`이다. 블록은 open date 순이라 W2 owning block(06-16)이
+W2 owning block의 `최신 entry`는 `### 2026-06-18 09:30 · 결론 변경`이다. 블록은 open date 순이라 W2 owning block(06-16)이
 이후 06-17·06-18 블록보다 앞에 있어도, `[>] W2`로 재개하는 세션은 heading의 W2로 owning block을
 찾고 최신 entry에서 현재 결론(429 포함)을 복원한다. 5xx-only가 왜 바뀌었는지는 첫 entry와
 `결론 변경` entry가 함께 보존한다. 반대로 별도 unit(W3)이나 여러 unit에 걸친 checkpoint는 owning
@@ -84,8 +85,8 @@ block에 누적하지 않고 새 `##` 블록으로 둔다.
 
 ## Required Context — 재개 기준을 표면으로
 
-이 로그를 다룰 때 반드시 읽고 적용해야 할 기준이 특정 날짜 블록에만 적혀 있으면, 다음 세션은
-재개 대상 block과 최신 entry만 보고 그 기준을 놓친다. `## Required Context`는 그 기준의 **적용 대상 범위**를
+이 로그를 다룰 때 반드시 읽고 적용해야 할 기준이 특정 owning block에만 적혀 있으면, 다른 owning
+block을 재개하는 세션은 그 블록을 읽지 않아 기준을 놓친다. `## Required Context`는 그 기준의 **적용 대상 범위**를
 선언해 재개 시 읽기 계약으로 복원되게 한다. Work Item이 없는 판단·조사·토론형 로그도 standing
 context가 있으면 `{Global}`에 둔다.
 
@@ -122,14 +123,14 @@ W3 토론에서 "W1·W3·W4는 모두 기준 문서 `docs/X.md`를 따른다"가
 W4를 재개하는 fresh 세션은 `## Work Items`, `{Global}`, W4가 든 `{W1,W3,W4}`, W4의 owning
 block과 최신 entry를 읽는다. 그 block이 docs/X.md를 언급하지 않아도, W4가 포함된 set의 context에서 공통
 기준을 적용한다. 그 기준이 생긴 이유까지 필요하면 `W3 · 공통 기준 결정` 블록에서 복원한다.
-날짜 블록은 결정의 경위와 근거를 보존하고, Required Context는 현재 적용할 기준과 scope를
+로그 블록은 결정의 경위와 근거를 보존하고, Required Context는 현재 적용할 기준과 scope를
 유지한다.
 
-## Reconcile — Record의 의미 변화를 Current surface에 반영
+## Reconcile — Record의 의미 변화를 Work state·Required Context에 반영
 
-순수 narrative 블록은 표면을 건드리지 않는다. 하지만 Record에 새 W와 그 W가 기존 기준을 따라야
-하는 이유를 남겼다면 Reconcile은 Work Items와 Required Context를 같은 동작에서 갱신한다. set
-literal은 신규 W 누락을 자동으로 해결하지 않는다.
+Work state나 Required Context의 dependency를 바꾸지 않는 기록은 History surface에만 둔다. 하지만
+Record에 새 W와 그 W가 기존 기준을 따라야 하는 이유를 남겼다면 Reconcile은 Work Items와 Required
+Context를 같은 동작에서 갱신한다. set literal은 신규 W 누락을 자동으로 해결하지 않는다.
 
 ```markdown
 ## Work Items
@@ -171,11 +172,23 @@ literal은 신규 W 누락을 자동으로 해결하지 않는다.
 - Override [no-skill-edit]: 사용자 승인 범위에서 `loop-rules.md`를 수정한다.
 ```
 
-## Deferred follow-up surfaces in conversation
+## Work Item 추가와 Log Lifetime Boundary
 
-대화 중 사용자가 별도 입력 자료·리뷰·승인·patch처럼 지금 답변으로 끝나지 않고 나중에 재개되어야
-하는 후속을 꺼내면, 단순 발언으로 넘기지 말고 Work Item 후보인지 점검한다. "다음 세션에서
-~하고 싶다" 같은 미뤄진 의도도 재개·완료 판단이 필요하면 등록한다.
+새 행동은 먼저 W 추가 후보인지 판정한다. 이미 있는 W가 소유하거나 현재 답변에서 끝나면 W를
+추가하지 않는다. 그 밖에 지속할 행동은 현재 로그의 목적·완료 조건·재개 상태로 소유할 수 있는지
+Log Lifetime Boundary를 적용한다.
+
+| 상황 | 행동 |
+| --- | --- |
+| 기존 W가 소유하거나 현재 답변에서 끝남 | W를 추가하지 않고 끝낸다 |
+| 현재 로그 수명 안에서 지속함 | 새 W를 추가하고 필요하면 `[>]`로 둔다 |
+| 끝난 로그를 `open`으로 연장하려는 새 작업 | 현재 로그에 W를 추가하지 않고 Cross-Log로 보낸다 |
+| 별도 목적·closeout·재개 상태가 필요함 | 현재 로그에 W를 추가하지 않고 Cross-Log에서 판정한다 |
+| 수명 경계가 불명확함 | 이유와 후보를 제시하고 사용자에게 확인한다 |
+
+대화 중 사용자가 별도 입력 자료·리뷰·승인·patch처럼 나중에 재개해야 할 후속을 꺼내면 단순
+발언으로 넘기지 않는다. "다음 세션에서 ~하고 싶다" 같은 미뤄진 의도도 현재 로그 수명 안에서
+재개·완료할 행동이면 W로 등록한다.
 
 ```markdown
 ## Work Items
@@ -200,42 +213,62 @@ literal은 신규 W 누락을 자동으로 해결하지 않는다.
 - 이해용 예시 요청은 이 답변에서 끝나고 재개할 독립 행동이 없으므로 Work Item을 추가하지 않는다.
 ```
 
-## Cross-log / lifetime transition — source W와 소비 여부로 판정
+## Cross-Log / Lifetime Transitions — ordered discriminator
 
-다른 로그·owner와 연결될 때는 먼저 source Work Item이 있는지, 그 source가 결과를 소비하는지로
-나눈다. 아래 예시는 같은 "새 로그"라도 결과가 달라지는 대표 사례다.
+별도 로그 후보가 생기면 이유·근거와 예상 전이 관계를 먼저 짧게 보고한다. 수명 경계나 결과 소비
+관계가 불명확하거나, `superseded` 또는 history를 옮기는 migration detach이면 적용 전에 사용자
+확인을 받는다. 종류는 다음 순서로 판정한다.
+
+| 판정 | 결과 |
+| --- | --- |
+| 다른 로그가 현재 로그 전체를 대체함 | Superseded 절을 적용한다 |
+| 신규·기존 다른 로그를 수반하지 않음 | Cross-Log를 끝내고 same-log Work Item 전이를 적용한다 |
+| 다른 로그를 수반하지만 source W가 없음 | Independent Follow-Up을 적용한다 |
+| source W가 있고 그 결과를 소비함 | Detach를 적용한다 |
+| source W가 있지만 결과를 소비하지 않음 | Transfer를 적용한다 |
+
+소비 관계가 불명확하면 다음처럼 적용 전에 멈춘다.
 
 ```markdown
-# detach: source W가 있고, source가 child 결과를 소비한다.
+## 2026-06-16 · Cross-Log 소비 관계 확인
+
+- 이유·근거: compatibility 결과가 release decision과 후속 검증 양쪽에 영향을 줄 수 있다.
+- 후보 관계: A W2가 소비하면 Detach, 현재 로그가 결과를 기다리지 않으면 Transfer다.
+- 소비 owner가 현재 기록만으로 정해지지 않아 사용자 확인 전에는 전이를 적용하지 않는다.
+```
+
+Transfer는 source 표시만으로 끝내지 않고 target의 이어받을 재개 지점도 확인한다.
+
+```markdown
+# logs/A.md (source excerpt)
 
 ## Work Items
 
-- [↓] W2 Resume release decision. — detached: logs/release-compatibility.md
+- [→] W3 Rewrite migration checklist. — transferred: logs/migration-checklist.md — 현재 로그는 결과를 소비하지 않는다.
 
-## 2026-06-16 · Split compatibility check
-
-- W2의 완료 판정은 compatibility 조사 결과를 소비해야 하므로 분리 작업 로그로 나눴다.
-```
-
-```markdown
-# transfer: source W가 있지만, source는 결과를 기다리지 않고 target이 소유한다.
+# logs/migration-checklist.md (target excerpt)
 
 ## Work Items
 
-- [→] W3 Rewrite migration checklist. — transferred: logs/migration-checklist.md — migration checklist는 별도 로그가 소유하고 이 로그의 closeout은 그 결과에 의존하지 않는다.
-
-## 2026-06-16 · Transfer migration checklist
-
-- W3는 현재 로그의 결정 소비 항목이 아니라 별도 maintenance 작업이므로 target 로그로 이관했다.
+- [>] W1 Rewrite the migration checklist transferred from `logs/A.md` W3.
 ```
 
+Independent Follow-Up은 source W와 복귀 pointer 없이 별도 `open` 로그로 시작한다.
+
 ```markdown
-# independent follow-up: 넘길 source W가 없다.
+# logs/release-notes-cleanup.md (excerpt)
 
-## 2026-06-16 · Separate follow-up
+---
+topic: Release notes cleanup
+description: Cleans up release-note structure independently from the source discussion.
+status: open
+---
 
-- 논의 중 별도 개선 주제 `logs/release-notes-cleanup.md`가 생겼다.
-- 현재 로그의 어떤 Work Item도 그 결과를 기다리지 않으므로 복귀 pointer 없는 독립 follow-up이다.
+## Work Items
+
+- [>] W1 Review and simplify the release-note structure.
+
+## Required Context
 ```
 
 ## Detach — 분리 작업 로그를 만들 때 (`[↓]`)
@@ -274,7 +307,8 @@ status: open
 
 - Log: `logs/A.md`
 - Work Item: W2
-- Context snapshot: source `{Global}` on 2026-06-16.
+- Consume when: B가 naming option의 근거를 확정하면 A W2가 결과를 소비해 naming decision을 닫는다.
+- Context snapshot: owner map을 기준으로 현재 owner 문서들이 지지하는 naming option만 비교한다.
 
 ## Work Items
 
@@ -349,7 +383,8 @@ status: decided
 
 - Log: `logs/A.md`
 - Work Item: W2
-- Context snapshot: migrated from A on 2026-06-16.
+- Consume when: 보존한 slice #1-#9의 최종 결과를 A W2가 확인하면 architecture retrofit 소비를 닫는다.
+- Context snapshot: architecture retrofit slice #1-#9의 유효한 결론과 검증 결과를 보존한다.
 
 ## Work Items
 
@@ -364,57 +399,9 @@ status: decided
 ## 2026-06-16 · Migrated detail and final result
 
 - A에서 architecture retrofit slice #1-#9 상세 기록을 옮겨 왔다.
+- provenance: 2026-06-16에 `logs/A.md`에서 migration ledger를 남기고 이동했다.
 - 최종 결과: owner 문서 반영과 검증이 완료됐다.
 - 복귀 대상 `logs/A.md` W2가 이 결과를 소비해야 한다.
-```
-
-## 현재 작업 중 새 로그를 만들 때 (decision table 사례)
-
-새 로그 연결은 pointer chain 순서나 어디서 만들었는지가 아니라 source Work Item 존재 여부와
-그 source가 결과를 소비하는지로 정한다.
-
-```markdown
-# Case 1: 새 로그의 결과를 known 복귀 대상 A가 소비 → 복귀 대상을 재배선
-
-# logs/A.md (재배선 후)
-
-## Work Items
-
-- [↓] W2 Resume release decision. — detached: logs/C.md
-
-## 2026-06-16 · Rewire return target
-
-- B는 A의 질문에 직접 답하지 못했고 C의 compatibility result가 필요하다고 결론냈다.
-- A의 소비 Work Item W2가 기존 분리 작업 로그 B 대신 C를 기다리도록 갱신했다. W2가 local `[>]`였다면
-  `[↓]`로 바꾸고, A에 다른 local action이 없으면 C의 `[>]`를 따른다. 토론 전체는 복사하지 않고
-  판단 이유만 남긴다.
-```
-
-```markdown
-# Case 2: source Work Item이 없거나 어떤 Work Item도 안 기다림 → 독립 follow-up
-
-# logs/A.md (B 소비 후)
-
-## Work Items
-
-- [x] W2 Resume release decision. — detached: logs/B.md
-- [>] W3 Apply B's decision to release notes.
-
-## 2026-06-16 · Consume B without following C
-
-- B의 결정은 A에 반영됐다.
-- `logs/C.md`는 별도 개선 주제이고 A의 남은 작업은 C에 의존하지 않는다. C를 기다리는 source
-  Work Item이 없으므로 독립 follow-up이며 A의 next pointer가 아니다.
-```
-
-```markdown
-# Case 3: 소비 Work Item이 모호하면 사용자에게 묻는다
-
-## 2026-06-16 · Ambiguous consumer
-
-- C 결과를 A의 release decision이 소비할지 B의 후속 검증이 소비할지 현재 기록만으로 정해지지
-  않는다. 연결을 추측하지 않고 후보(A W2 재배선 vs B의 분리 작업 로그)와 근거를 사용자에게
-  제시한다.
 ```
 
 ## Work Item entries가 없는 판단·조사·토론형 로그
@@ -522,12 +509,6 @@ separated_logs:
 # Required Context scope를 잘못 쓴 형태
 
 ### {Global, W3} # {Global}은 단독 heading. W set과 섞지 않는다.
-
-### {W2-W4} # range shorthand 금지. {W2,W3,W4}로 명시 나열한다.
-
-### {W3}
-
-- Required-read: docs/X.md
 ```
 
 ```markdown

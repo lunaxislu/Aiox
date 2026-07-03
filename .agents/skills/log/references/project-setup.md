@@ -37,9 +37,10 @@ repo만으로 작업 상태를 재개 가능하게 만들고 싶어 할 때 아�
 ## 긴 로그 split guard (선택)
 
 로그가 길어지면 분리를 검토해야 할 수 있다. 단 로그 길이는 분리를 검토하라는 신호일 뿐,
-분리 결정 기준은 아니다. 분리 결정 기준은 별도 수명, 독립 재개 가능성, 독립 closeout 가능성,
-결과 소비자의 명확성이며 `loop-rules.md`의 Detach 절이 소유한다. 길이 기반 guard는 portable 규칙에
-두지 않고, 프로젝트가 둘지 여부와 임계값을 정한다.
+분리 결정 기준은 아니다. 실제 분리 필요성은 `loop-rules.md`의
+[Log Lifetime Boundary](loop-rules.md#log-lifetime-boundary)가, 다른 로그와의 전이 종류는
+[Cross-Log / Lifetime Transitions](loop-rules.md#cross-log--lifetime-transitions)가 소유한다.
+길이 기반 guard는 portable 규칙에 두지 않고, 프로젝트가 둘지 여부와 임계값을 정한다.
 
 사용자에게 이렇게 제안할 수 있다.
 
@@ -50,7 +51,7 @@ repo만으로 작업 상태를 재개 가능하게 만들고 싶어 할 때 아�
 
 규칙 의미:
 
-- soft: "분리 검토" 신호. 이 줄 수에서 별도 수명·독립 재개·독립 closeout·소비자가 있는지 본다.
+- soft: "분리 검토" 신호. 이 줄 수에서 `Log Lifetime Boundary`를 적용한다.
 - hard: "분리 또는 미분리 사유 기록". 이 줄 수에서도 단일 수명이면 그 판단 근거를 로그에 남긴다.
 - soft·hard 모두 자동 분리 기준이 아니다. 분리·미분리 판단은 agent와 사용자가 한다.
 
