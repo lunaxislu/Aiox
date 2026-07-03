@@ -2118,3 +2118,19 @@ log 모델의 portable skill 흡수` 블록에 추가하도록 직접 지시했�
 - 이 토론 로그가 소유하던 남은 후속은 두 독립 로그로 분리됐고, 자체 미결 질문·미완료 Work
   Item·복귀 pointer가 없다. stale한 package-next/script-deferred Required Context를 제거했으며
   이 로그의 작업 수명이 끝나 `status: decided`로 전환했다.
+
+### 2026-07-03 15:43 · 독립 리뷰 refinement 누락 반영
+
+- @user가 독립 리뷰에서 "바로 반영할 항목"으로 분류된 example/maintenance refinement가 아직
+  반영되지 않았음을 지적했다.
+- `.agents/skills/log/references/example.md`의 Work Item 추가 표를 owner gate 순서에 맞춰
+  `기존 W/현재 답변 종료 → 끝난 로그 연장 gate → Lifetime Boundary` 흐름으로 정렬하고, 표 위
+  문단에도 끝난 로그 연장 gate를 명시했다.
+- 같은 파일의 "단순 발언으로 넘기지 않는다 … W로 등록한다" 문단은 규칙 지시형이 아니라
+  deferred review 예시 설명형으로 완화했다.
+- 같은 파일의 detach 예시에는 source A의 W3이 W2의 결과 소비 뒤에야 actionable하므로 source
+  A에 `[>]`를 남기지 않는다는 설명을 추가했다.
+- `.agents/skills/log/references/maintenance.md`의 portable 문서 owner 열거에는
+  `project-setup.md`의 setup routing 소유를 추가했다.
+- 이 entry는 누락 refinement 반영 기록이며, 이 decided 로그의 status나 Work Items를 되살리지
+  않는다.

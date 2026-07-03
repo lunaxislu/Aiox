@@ -10,6 +10,12 @@ status: open
 - [ ] W2 적용안을 작성한다: 변경할 owner 파일, 바꾸지 않을 repo-specific 범위, 일반 작업 read path를 늘리지 않는 검증 방법을 포함한다
 - [ ] W3 사용자 승인 후 승인된 범위만 반영하고 검증한다. 승인 전에는 portable skill 파일을 수정하지 않는다
 
+## Required Context
+
+### {W1}
+
+- 이 로그의 W1을 직접 진행하기 전에 `logs/2026-07-03-log-skill-package-log-model-discussion.md` W1의 관계·처분 판정을 먼저 확인한다. 새 package 로그 W1이 결론나기 전에는 이 로그가 조용히 대체·흡수·종료된 것으로 보지 않고, portable skill owner도 수정하지 않는다.
+
 ## 2026-06-22 · package workflow portableization maintenance 시작
 
 Parent pointer: `logs/2026-06-18-package-workflow-portable-pattern.md` W3
@@ -39,3 +45,9 @@ W7~W10 package workflow 회고 `F1`~`F60`의 W11-2 taxonomy를 입력으로 별�
 
 - 사용자 승인 전 portable log skill 파일, references, scripts를 수정하지 않는다.
 - 일반 작업 전체에 package task brief read path를 강제하지 않는다.
+
+### 2026-07-03 15:39 · 새 package 로그 W1 선행 참조
+
+- 사용자 지시에 따라 F2 역참조 refinement를 반영했다.
+- 이 로그의 W1은 아직 `[>]`로 남아 있지만, 새 package 로그 `logs/2026-07-03-log-skill-package-log-model-discussion.md` W1이 기존 portableization 로그와 새 package-log 모델 토론 로그의 관계·처분·합성 방식을 먼저 판정한다.
+- 따라서 이 로그를 직접 지정해 재개하는 agent는 W1 실행 전에 새 package 로그 W1의 최신 결론을 확인해야 한다. 이 entry와 `Required Context`는 안내·선행 확인을 추가한 것이며, 이 로그의 Work Item marker나 status를 전환하지 않는다.

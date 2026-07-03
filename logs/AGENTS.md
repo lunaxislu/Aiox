@@ -33,6 +33,20 @@ pointer·점검은 `references/work-items-rules.md`가 소유한다.
 이 추가 점검은 일반 append마다 수행하지 않는다. 완료·취소·이관 여부가 불명확한
 항목은 자동으로 수정하지 않고 사용자에게 보고한다.
 
+## Long Log Split Guard
+
+로그 길이는 분리 검토 신호일 뿐 분리 결정 기준이 아니다. 실제 분리 필요성은 log skill의
+[Log Lifetime Boundary](../.agents/skills/log/references/loop-rules.md#log-lifetime-boundary)로
+판정하고, 다른 로그가 필요하면
+[Cross-Log / Lifetime Transitions](../.agents/skills/log/references/loop-rules.md#cross-log--lifetime-transitions)에서
+전이 종류를 판정·적용한다.
+
+- Soft threshold: 600 lines. 로그 분리 필요성을 검토한다.
+- Hard threshold: 1000 lines. 로그를 분리하거나, 단일 수명으로 유지하는 이유를
+  기록한다.
+- 두 threshold 모두 자동 분리 기준이 아니다. 분리·미분리 판단은 agent와 사용자가
+  로그 수명과 소비 관계를 보고 결정한다.
+
 ## Workspace Reset Log Sections
 
 workspace reset authority assimilation package의 핵심 규칙. 삭제된 legacy source는

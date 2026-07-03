@@ -175,20 +175,21 @@ Context를 같은 동작에서 갱신한다. set literal은 신규 W 누락을 �
 ## Work Item 추가와 Log Lifetime Boundary
 
 새 행동은 먼저 W 추가 후보인지 판정한다. 이미 있는 W가 소유하거나 현재 답변에서 끝나면 W를
-추가하지 않는다. 그 밖에 지속할 행동은 현재 로그의 목적·완료 조건·재개 상태로 소유할 수 있는지
-Log Lifetime Boundary를 적용한다.
+추가하지 않는다. 끝난 로그를 `open`으로 연장하려는 새 작업이면 현재 로그에 W를 추가하지 않고
+Cross-Log로 보낸다. 그 밖에 지속할 행동은 현재 로그의 목적·완료 조건·재개 상태로 소유할 수
+있는지 Log Lifetime Boundary를 적용한다.
 
 | 상황 | 행동 |
 | --- | --- |
 | 기존 W가 소유하거나 현재 답변에서 끝남 | W를 추가하지 않고 끝낸다 |
-| 현재 로그 수명 안에서 지속함 | 새 W를 추가하고 필요하면 `[>]`로 둔다 |
 | 끝난 로그를 `open`으로 연장하려는 새 작업 | 현재 로그에 W를 추가하지 않고 Cross-Log로 보낸다 |
+| 현재 로그 수명 안에서 지속함 | 새 W를 추가하고 필요하면 `[>]`로 둔다 |
 | 별도 목적·closeout·재개 상태가 필요함 | 현재 로그에 W를 추가하지 않고 Cross-Log에서 판정한다 |
 | 수명 경계가 불명확함 | 이유와 후보를 제시하고 사용자에게 확인한다 |
 
-대화 중 사용자가 별도 입력 자료·리뷰·승인·patch처럼 나중에 재개해야 할 후속을 꺼내면 단순
-발언으로 넘기지 않는다. "다음 세션에서 ~하고 싶다" 같은 미뤄진 의도도 현재 로그 수명 안에서
-재개·완료할 행동이면 W로 등록한다.
+아래 예시는 대화 중 사용자가 별도 입력 자료·리뷰·승인·patch처럼 나중에 재개해야 할 후속을
+꺼낸 경우다. "다음 세션에서 ~하고 싶다" 같은 미뤄진 의도가 현재 로그 수명 안에서 재개·완료할
+행동이라 W로 등록한 사례다.
 
 ```markdown
 ## Work Items
@@ -285,6 +286,9 @@ A의 W2가 별도 로그 B의 결과를 기다리게 분리하면, A의 W2는 `[
 - [x] W1 Collect existing naming options.
 - [↓] W2 Resume the naming decision with B's result. — detached: logs/B.md
 - [ ] W3 Apply the chosen naming rule to the owner document.
+
+W3은 W2가 B의 결과를 소비해 naming decision을 닫은 뒤에야 actionable하므로, source A에는
+`[>]`를 남기지 않는다.
 
 ## 2026-06-16 · Split naming question
 

@@ -145,7 +145,7 @@ portable log skill이나 reference를 바꾸는 경우:
 
 portable 문서를 바꿀 때는 `SKILL.md`를 entry/router로 유지한다. 파일 구조, 기록, Reconcile,
 cross-log/lifetime transition과 Closeout의 세부 판정은 `loop-rules.md`, 유지보수 판단은 이 문서,
-사용자 검토용 사례는 `example.md`로 둔다.
+프로젝트 setup routing은 `project-setup.md`, 사용자 검토용 사례는 `example.md`로 둔다.
 
 ## Project integration 변경 기준
 
