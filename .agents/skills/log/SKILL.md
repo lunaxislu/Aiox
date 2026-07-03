@@ -53,7 +53,7 @@ Record가 Work state나 Required Context를 바꾸면 Reconcile에서 같은 동
 로그를 다룰 때는 다음 순서로 읽는다.
 
 1. `## Work Items`를 읽어 local actionable Work Item과 `[>]` 재개 지점이 있는지 확인한다.
-2. `## Required Context`의 `{Global}`이 있으면 읽고 적용한다.
+2. `## Required Context`의 `Return Target`과 `{Global}`이 있으면 읽고 적용한다.
 3. 선택한 Work Item이나 `[>] Wn`이 있으면, `## Required Context`에서 그 W id가 포함된 heading이
    있는지 확인하고 있으면 읽는다.
 4. 재개 대상 로그 블록 전체를 읽는다.
@@ -120,15 +120,26 @@ status 전이와 종료 점검은 `references/loop-rules.md#closeout--status`를
 
 ## 도구
 
-`scripts/log`는 로그 검색, 로그 블록 append, Work Items 전이, status guard를 돕는 보조
-도구다. 도구는 형식과 원자적 변경만 처리하고 완료, 취소, 이관, 분리, 종료 같은 의미 판단은
-agent와 사용자가 한다.
+`scripts/log`는 로그 생성, frontmatter 수정, block/entry 추가, Work Items와 Required Context
+변환, 검색, 구조 점검과 status guard를 돕는 보조 도구다. 도구는 형식과 원자적 변경만 처리하고
+완료, 취소, 이관, 분리, 종료 같은 의미 판단은 agent와 사용자가 한다.
+
+`Return Target`은 `log new`와 `log detach` 생성 표면에서만 만든다. 이후 consume 조건이나 snapshot을
+바꿔야 하면 도구로 자동 전이하지 않고 사용자가 확인한 뒤 수동 편집한다.
+
+`[↓]` Work Item은 child 결과를 source가 소비한 뒤 `log item set --status completed`로 `[x]` 처리할
+수 있다. 이때 detached target과 reason tail은 보존한다. `[↓]`의 취소·이관·남은 행동 재구성은
+도구가 자동 판단하지 않으므로 사용자가 확인한 뒤 수동 편집한다.
 
 ## 참조
 
 작업 루프의 각 단계가 가리키는 `references/loop-rules.md`가 핵심 규칙을 소유한다. 그 밖에:
 
-- 새 프로젝트에 로그 저장 위치나 workflow가 없거나, 로그 workflow 도입 시 긴 로그 split guard
-  임계값을 설정해야 할 때: `references/project-setup.md`
+- 로그 모델의 목적, History surface / Work state / Required Context 분리, Work Items, Return
+  Target과 script boundary가 왜 필요한지 설명하거나 판단 원리를 빠르게 복원할 때:
+  `references/design-principles.md`
+- 상황별 로그 작성, Work Item 전이, detach/Return Target, 도구 명령 사용 예시를 빠르게 확인할 때:
+  `references/example.md`
+- 새 프로젝트에 로그 저장 위치나 workflow가 없거나, `LOG_DIR`, `.log-hints`, current-work, 긴 로그
+  split guard 같은 repo integration을 정할 때: `references/project-setup.md`
 - 이 skill, reference, 도구 동작 변경을 검토할 때: `references/maintenance.md`
-- 사용자 검토용 예시: `references/example.md`

@@ -1,12 +1,13 @@
 #!/bin/sh
 # 작업 로그 관리 도구.
 #
-# 이 도구는 로그의 구조 검증과 원자적 변환만 담당한다. 기록 의미, 완료/취소/이관
-# 판단과 owner 반영 판단은 agent가 수행한다.
-#
-# 서브커맨드: new / search / check / set-status / append / items
+# 이 도구는 로그의 구조 생성, 원자적 변환, 형식 guard와 요약만 담당한다.
+# 완료/취소/이관/detach/closeout 같은 의미 판단은 agent와 사용자가 수행한다.
 
 LOG_DIR="${LOG_DIR:-logs}"
+LOG_SOFT_LINES="${LOG_SOFT_LINES:-600}"
+LOG_HARD_LINES="${LOG_HARD_LINES:-1000}"
+LOG_HINT_DIR="${LOG_HINT_DIR:-$LOG_DIR/.log-hints}"
 
 today_date() {
     if [ -n "${LOG_TODAY:-}" ]; then
@@ -16,44 +17,37 @@ today_date() {
     fi
 }
 
-emit_heading() {
-    printf '## %s · %s\n' "$1" "$2"
+now_stamp() {
+    if [ -n "${LOG_NOW:-}" ]; then
+        printf '%s' "$LOG_NOW"
+    else
+        date '+%Y-%m-%d %H:%M'
+    fi
 }
-
-FENCE_FUNCS='
-function trim_leading(line) { sub(/^ {0,3}/, "", line); return line }
-function fence_run(line, ch,   i) { for (i = 1; substr(line, i, 1) == ch; i++) {} return i - 1 }
-function fence_skip(line,   candidate, run, rest, first) {
-    candidate = trim_leading(line)
-    if (in_fence) {
-        run = fence_run(candidate, fence_char)
-        rest = substr(candidate, run + 1)
-        if (run >= fence_len && rest ~ /^[[:space:]]*$/) { in_fence = 0; fence_char = ""; fence_len = 0 }
-        return 1
-    }
-    first = substr(candidate, 1, 1)
-    if (first == "`" || first == "~") {
-        run = fence_run(candidate, first)
-        if (run >= 3) { in_fence = 1; fence_char = first; fence_len = run; return 1 }
-    }
-    return 0
-}
-'
 
 usage() {
     cat <<'EOF'
 사용법:
-  log new "<주제>" [설명]                          새 로그를 만든다
-  log search [검색어] [--status <open|decided|superseded>]   로그를 찾는다
-  log check [--status <open|decided|superseded>] [파일...]   로그 구조와 요약을 점검한다(agent-facing summary)
-  log set-status <파일> <open|decided|superseded>   로그 상태를 바꾼다
-  log append <파일> "<주제>"                        새 날짜 블록 추가(본문은 stdin)
-  log items <파일> add "<행동>" [--status open|active]
-                                                        W-id Work Item을 추가한다
-  log items <파일> set --id Wn --status <상태> [--reason <이유>] [--target <대상>] [--expect <행동>]
-                                                        W-id Work Item을 전이한다
-      상태: open|active|completed|cancelled|transferred
-      규칙: active는 기존 active를 open으로 내린다. cancelled는 reason 필수, transferred는 target·reason 필수.
+  log new "<topic>" --description "<description>" --block "<unit block topic>"
+      [--context ReturnTarget <log> <Wn> <consume> <snapshot>]
+      [--context Global <content>] [--context W1,W3 <content>]
+      [--item active|open <action>]
+  log meta set <file> --topic <topic>|--description <description>|--status open|decided|superseded
+  log block add <file> "<unit block topic>"              # body는 stdin
+  log entry add <file> --after-line <line> "<entry topic>" # body는 stdin
+  log item add <file> active|open "<action>"
+  log item set <file> --id Wn --action "<new action>"
+  log item set <file> --id Wn --status active|open|completed
+  log item set <file> --id Wn --status cancelled --reason <reason>
+  log item set <file> --id Wn --status transferred --target <target> --reason <reason>
+  log context add <file> Global|W1,W3 "<content>"
+  log context set <file> --scope Global|W1,W3 --index <n> "<content>"
+  log context delete <file> --scope Global|W1,W3 --index <n>
+  log detach <source-log> --id Wn --target <new-child-log> --reason <reason>
+      --topic <topic> --description <description> --block <block topic>
+      --context ReturnTarget <consume> <snapshot> [--item active|open <action>] # body는 stdin
+  log search [query] [--status open|decided|superseded]
+  log check [--status open|decided|superseded] [file...]
 EOF
 }
 
@@ -69,6 +63,33 @@ is_blank() {
     case "$1" in
         *[![:blank:]]*) return 1 ;;
         *) return 0 ;;
+    esac
+}
+
+require_line() {
+    label=$1
+    value=$2
+    if contains_newline "$value" || is_blank "$value"; then
+        echo "$label 값은 공백이 아닌 한 줄이어야 합니다." >&2
+        return 1
+    fi
+}
+
+valid_wid() {
+    printf '%s\n' "$1" | grep -qE '^W[1-9][0-9]*(\.[0-9]+)?(-[0-9]+)?$'
+}
+
+valid_scope() {
+    case "$1" in
+        Global) return 0 ;;
+    esac
+    printf '%s\n' "$1" | grep -qE '^W[1-9][0-9]*(\.[0-9]+)?(-[0-9]+)?(,W[1-9][0-9]*(\.[0-9]+)?(-[0-9]+)?)*$'
+}
+
+scope_heading() {
+    case "$1" in
+        Global) printf '### {Global}\n' ;;
+        *) printf '### {%s}\n' "$1" ;;
     esac
 }
 
@@ -88,32 +109,6 @@ read_field() {
     ' "$1"
 }
 
-validate_frontmatter() {
-    awk '
-        function trim(s) { gsub(/^[[:space:]]+/, "", s); gsub(/[[:space:]]+$/, "", s); return s }
-        NR == 1 { start = ($0 == "---"); infm = start; next }
-        infm && $0 == "---" { closed = 1; exit }
-        infm {
-            c = index($0, ":")
-            if (c > 0) {
-                key = trim(substr($0, 1, c - 1))
-                val = trim(substr($0, c + 1))
-                if (key == "topic") { has_topic = 1; topic_val = val }
-                else if (key == "description") has_desc = 1
-                else if (key == "status") { has_status = 1; status_val = val }
-            }
-        }
-        END {
-            if (!start)      { print "시작 구분자(---)가 없습니다"; exit 2 }
-            if (!closed)     { print "종료 구분자(---)가 없습니다"; exit 2 }
-            if (!has_topic || topic_val == "") { print "topic이 없거나 비어 있습니다"; exit 2 }
-            if (!has_desc)   { print "description 키가 없습니다"; exit 2 }
-            if (!has_status) { print "status 키가 없습니다"; exit 2 }
-            if (status_val != "open") { print "status가 open이 아닙니다(" status_val ")"; exit 2 }
-        }
-    ' "$1"
-}
-
 validate_frontmatter_any_status() {
     awk '
         function trim(s) { gsub(/^[[:space:]]+/, "", s); gsub(/[[:space:]]+$/, "", s); return s }
@@ -125,21 +120,66 @@ validate_frontmatter_any_status() {
                 key = trim(substr($0, 1, c - 1))
                 val = trim(substr($0, c + 1))
                 if (key == "topic") { has_topic = 1; topic_val = val }
-                else if (key == "description") has_desc = 1
+                else if (key == "description") { has_desc = 1; desc_val = val }
                 else if (key == "status") { has_status = 1; status_val = val }
             }
         }
         END {
-            if (!start)      { print "시작 구분자(---)가 없습니다"; exit 2 }
-            if (!closed)     { print "종료 구분자(---)가 없습니다"; exit 2 }
+            if (!start) { print "시작 구분자(---)가 없습니다"; exit 2 }
+            if (!closed) { print "종료 구분자(---)가 없습니다"; exit 2 }
             if (!has_topic || topic_val == "") { print "topic이 없거나 비어 있습니다"; exit 2 }
-            if (!has_desc)   { print "description 키가 없습니다"; exit 2 }
+            if (!has_desc || desc_val == "") { print "description이 없거나 비어 있습니다"; exit 2 }
             if (!has_status) { print "status 키가 없습니다"; exit 2 }
             if (status_val != "open" && status_val != "decided" && status_val != "superseded") {
                 print "status가 open/decided/superseded가 아닙니다(" status_val ")"; exit 2
             }
         }
     ' "$1"
+}
+
+validate_open_log() {
+    err=$(validate_frontmatter_any_status "$1") || {
+        echo "frontmatter가 유효하지 않습니다: $1 (${err})" >&2
+        return 1
+    }
+    status=$(read_field "$1" status)
+    if [ "$status" != "open" ]; then
+        echo "open 로그가 아닙니다: $1 (status: $status)" >&2
+        return 1
+    fi
+}
+
+line_count() {
+    wc -l < "$1" | awk '{ print $1 }'
+}
+
+print_long_hint() {
+    file=$1
+    count=$(line_count "$file")
+    level=""
+    if [ "$count" -ge "$LOG_HARD_LINES" ]; then
+        level=hard
+    elif [ "$count" -ge "$LOG_SOFT_LINES" ]; then
+        level=soft
+    else
+        return 0
+    fi
+    key=$(printf '%s' "$file" | cksum | awk '{ print $1 }')
+    state="$LOG_HINT_DIR/$key"
+    previous=""
+    [ -f "$state" ] && previous=$(cat "$state" 2>/dev/null || true)
+    case "$level:$previous" in
+        soft:soft|soft:hard|hard:hard) return 0 ;;
+    esac
+    mkdir -p "$LOG_HINT_DIR" 2>/dev/null || true
+    if [ "$level" = "hard" ]; then
+        printf 'WARN long-log: %s lines >= hard threshold %s. 분리하거나 단일 수명 유지 이유를 기록하세요: %s\n' "$count" "$LOG_HARD_LINES" "$file"
+    else
+        printf 'HINT long-log: %s lines >= soft threshold %s. 분리 필요성을 검토하세요: %s\n' "$count" "$LOG_SOFT_LINES" "$file"
+    fi
+    if [ -d "$LOG_HINT_DIR" ]; then
+        printf '%s\n' "$level" > "$state" 2>/dev/null || true
+    fi
 }
 
 apply_result() {
@@ -162,25 +202,16 @@ with_atomic_output() {
     shift 2
 
     dir=$(dirname "$file")
-    if ! out_tmp=$(mktemp "$dir/.log-tmp.XXXXXX" 2>/dev/null); then
+    out_tmp=$(mktemp "$dir/.log-tmp.XXXXXX" 2>/dev/null) || {
         echo "대상 디렉터리에 결과 임시 파일을 만들지 못했습니다: $dir" >&2
         return 1
-    fi
-    if ! snapshot_tmp=$(mktemp 2>/dev/null); then
+    }
+    snapshot_tmp=$(mktemp 2>/dev/null) || {
         echo "원본 스냅샷 임시 파일 생성에 실패했습니다: $file" >&2
         rm -f "$out_tmp"
         return 1
-    fi
-    if ! cp "$file" "$snapshot_tmp"; then
-        echo "원본 스냅샷 생성에 실패했습니다: $file" >&2
-        rm -f "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
-    if ! cp -p "$file" "$out_tmp"; then
-        echo "결과 임시 파일 준비에 실패했습니다: $file" >&2
-        rm -f "$out_tmp" "$snapshot_tmp"
-        return 1
-    fi
+    }
+    cp "$file" "$snapshot_tmp" || { rm -f "$out_tmp" "$snapshot_tmp"; return 1; }
     if ! "$builder" "$file" "$@" > "$out_tmp"; then
         echo "결과 생성에 실패했습니다: $file" >&2
         rm -f "$out_tmp" "$snapshot_tmp"
@@ -205,13 +236,89 @@ with_atomic_output() {
     return 1
 }
 
+validate_generated_log() {
+    generated_log=$1
+    if ! err=$(validate_frontmatter_any_status "$generated_log"); then
+        echo "생성 결과 frontmatter가 유효하지 않습니다: ${err}" >&2
+        return 1
+    fi
+    if ! validate_work_item_ids "$generated_log"; then
+        echo "생성 결과 Work Items 구조가 유효하지 않습니다." >&2
+        return 1
+    fi
+    next_count=$(find_next_pointers "$generated_log" | awk 'NF { n++ } END { print n + 0 }') || next_count=0
+    if [ "$next_count" -gt 1 ]; then
+        echo "생성 결과에 next pointer가 ${next_count}개입니다." >&2
+        return 1
+    fi
+}
+
+FENCE_FUNCS='
+function trim_leading(line) { sub(/^ {0,3}/, "", line); return line }
+function fence_run(line, ch,   i) { for (i = 1; substr(line, i, 1) == ch; i++) {} return i - 1 }
+function fence_skip(line,   candidate, run, rest, first) {
+    candidate = trim_leading(line)
+    if (in_fence) {
+        run = fence_run(candidate, fence_char)
+        rest = substr(candidate, run + 1)
+        if (run >= fence_len && rest ~ /^[[:space:]]*$/) { in_fence = 0; fence_char = ""; fence_len = 0 }
+        return 1
+    }
+    first = substr(candidate, 1, 1)
+    if (first == "`" || first == "~") {
+        run = fence_run(candidate, first)
+        if (run >= 3) { in_fence = 1; fence_char = first; fence_len = run; return 1 }
+    }
+    return 0
+}
+'
+
+parse_item_awk='
+function parse_item(line,   rest, after) {
+    item_prefix = ""; item_marker = ""; item_id = ""; item_text = ""
+    if (!match(line, /^[[:space:]]*-[[:space:]]+/)) return 0
+    item_prefix = substr(line, 1, RLENGTH)
+    rest = substr(line, RLENGTH + 1)
+    if (rest ~ /^\[ \][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) item_marker = " "
+    else if (rest ~ /^\[>\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) item_marker = ">"
+    else if (rest ~ /^\[x\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) item_marker = "x"
+    else if (rest ~ /^\[X\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) item_marker = "X"
+    else if (rest ~ /^\[-\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) item_marker = "-"
+    else if (rest ~ /^\[→\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) item_marker = "→"
+    else if (rest ~ /^\[↓\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) item_marker = "↓"
+    else return 0
+    after = rest
+    sub(/^\[[^]]+\][[:space:]]+/, "", after)
+    item_id = after
+    sub(/[[:space:]].*$/, "", item_id)
+    item_text = after
+    sub(/^W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]*/, "", item_text)
+    sub(/[[:space:]]+—[[:space:]]+(cancelled|transferred|detached):.*$/, "", item_text)
+    return 1
+}
+function render_item(marker, text) { return item_prefix "[" marker "] " item_id " " text }
+'
+
 find_incomplete() {
-    awk "$FENCE_FUNCS"'
+    awk "$FENCE_FUNCS$parse_item_awk"'
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; heading = "(소속 ## 블록 없음)" }
         {
             if (fence_skip($0)) next
             if ($0 ~ /^##[[:space:]]+/) heading = $0
-            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[( |>)\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/) {
+            if (parse_item($0) && (item_marker == " " || item_marker == ">")) {
+                printf "%s:%d: %s\n  %s\n", FILENAME, FNR, heading, $0
+            }
+        }
+    ' "$@"
+}
+
+find_detached_items() {
+    awk "$FENCE_FUNCS$parse_item_awk"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; heading = "(소속 ## 블록 없음)" }
+        {
+            if (fence_skip($0)) next
+            if ($0 ~ /^##[[:space:]]+/) heading = $0
+            if (parse_item($0) && item_marker == "↓") {
                 printf "%s:%d: %s\n  %s\n", FILENAME, FNR, heading, $0
             }
         }
@@ -219,11 +326,11 @@ find_incomplete() {
 }
 
 find_next_pointers() {
-    awk "$FENCE_FUNCS"'
+    awk "$FENCE_FUNCS$parse_item_awk"'
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
         {
             if (fence_skip($0)) next
-            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/) {
+            if (parse_item($0) && item_marker == ">") {
                 printf "%d\t%s\n", FNR, $0
             }
         }
@@ -232,49 +339,68 @@ find_next_pointers() {
 
 latest_date_heading() {
     awk "$FENCE_FUNCS"'
-        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; heading = ""; lineno = 0 }
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; line = 0; heading = "" }
         {
             if (fence_skip($0)) next
-            if ($0 ~ /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) { heading = $0; lineno = NR }
+            if ($0 ~ /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] · /) { line = NR; heading = $0 }
         }
-        END { if (heading != "") printf "%d\t%s\n", lineno, heading }
+        END { if (line > 0) printf "%d\t%s\n", line, heading }
+    ' "$1"
+}
+
+latest_entry_heading() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; line = 0; heading = "" }
+        {
+            if (fence_skip($0)) next
+            if ($0 ~ /^### [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9] · /) { line = NR; heading = $0 }
+        }
+        END { if (line > 0) printf "%d\t%s\n", line, heading }
     ' "$1"
 }
 
 work_items_section_count() {
     awk "$FENCE_FUNCS"'
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; count = 0 }
-        {
-            if (fence_skip($0)) next
-            if ($0 ~ /^##[[:space:]]+Work Items[[:space:]]*$/) count++
-        }
+        { if (!fence_skip($0) && $0 ~ /^##[[:space:]]+Work Items[[:space:]]*$/) count++ }
+        END { print count + 0 }
+    ' "$1"
+}
+
+required_context_section_count() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; count = 0 }
+        { if (!fence_skip($0) && $0 ~ /^##[[:space:]]+Required Context[[:space:]]*$/) count++ }
         END { print count + 0 }
     ' "$1"
 }
 
 work_item_counts() {
-    awk "$FENCE_FUNCS"'
-        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; open = 0; active = 0; closed = 0 }
+    awk "$FENCE_FUNCS$parse_item_awk"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; open = 0; active = 0; resolved = 0; detached = 0 }
         {
             if (fence_skip($0)) next
-            if ($0 ~ /^[[:space:]]*-[[:space:]]+\[ \][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/) open++
-            else if ($0 ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/) active++
-            else if ($0 ~ /^[[:space:]]*-[[:space:]]+\[[xX]\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) closed++
+            if (!parse_item($0)) next
+            if (item_marker == " ") open++
+            else if (item_marker == ">") active++
+            else if (item_marker == "↓") detached++
+            else if (item_marker == "x" || item_marker == "X" || item_marker == "-" || item_marker == "→") resolved++
         }
-        END { printf "%d %d %d\n", open, active, closed }
+        END { printf "%d %d %d %d\n", open, active, resolved, detached }
     ' "$1"
 }
 
 next_work_item_id() {
-    awk "$FENCE_FUNCS"'
+    awk "$FENCE_FUNCS$parse_item_awk"'
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; max = 0 }
         {
             if (fence_skip($0)) next
-            line = $0
-            while (match(line, /W[0-9]+/)) {
-                id = substr(line, RSTART + 1, RLENGTH - 1) + 0
-                if (id > max) max = id
-                line = substr(line, RSTART + RLENGTH)
+            if (parse_item($0)) {
+                n = item_id
+                sub(/^W/, "", n)
+                sub(/[.-].*$/, "", n)
+                n += 0
+                if (n > max) max = n
             }
         }
         END { printf "W%d\n", max + 1 }
@@ -282,34 +408,23 @@ next_work_item_id() {
 }
 
 validate_work_item_ids() {
-    LOG_ITEM_TARGET_ID="${2:-}" LOG_ITEM_HAS_EXPECT="${3:-0}" LOG_ITEM_EXPECT="${4:-}" awk "$FENCE_FUNCS"'
+    LOG_ITEM_TARGET_ID="${2:-}" LOG_ITEM_ALLOWED="${3:-open-active}" awk "$FENCE_FUNCS$parse_item_awk"'
         function fail(msg) { print "ITEMS_ERROR: " msg > "/dev/stderr"; failed = 1; exit 1 }
-        function parse_item(line,   rest, after) {
-            item_id = ""; item_text = ""; item_marker = ""
-            if (!match(line, /^[[:space:]]*-[[:space:]]+/)) return 0
-            rest = substr(line, RLENGTH + 1)
-            if (rest !~ /^\[[ >xX]\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) return 0
-            item_marker = substr(rest, 2, 1)
-            after = rest
-            sub(/^\[[ >xX]\][[:space:]]+/, "", after)
-            item_id = after
-            sub(/[[:space:]].*$/, "", item_id)
-            item_text = after
-            sub(/^W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]*/, "", item_text)
-            return 1
-        }
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; found = 0 }
         {
             if (fence_skip($0)) next
             if (!parse_item($0)) next
+            if (item_text == "") fail("Work Item action이 비어 있습니다: " item_id)
             if (item_id in seen) fail("중복 Work Item id입니다: " item_id)
             seen[item_id] = 1
             if (item_id == ENVIRON["LOG_ITEM_TARGET_ID"]) {
                 found = 1
-                if (item_marker != " " && item_marker != ">")
-                    fail("완료된 Work Item은 다시 전이하지 않습니다: " item_id)
-                if (ENVIRON["LOG_ITEM_HAS_EXPECT"] == "1" && item_text != ENVIRON["LOG_ITEM_EXPECT"])
-                    fail("--expect가 현재 행동과 일치하지 않습니다: " item_id)
+                if (ENVIRON["LOG_ITEM_ALLOWED"] == "open-active-detached-complete") {
+                    if (item_marker != " " && item_marker != ">" && item_marker != "↓")
+                        fail("open, active 또는 detached Work Item만 완료할 수 있습니다: " item_id)
+                } else if (item_marker != " " && item_marker != ">") {
+                    fail("open 또는 active Work Item만 전이할 수 있습니다: " item_id)
+                }
             }
         }
         END {
@@ -322,27 +437,34 @@ validate_work_item_ids() {
     ' "$1"
 }
 
-print_closeout_hint_if_clean() {
-    remaining=$(find_incomplete "$1") || return 0
-    if [ -z "$remaining" ]; then
-        printf '힌트: 미완료 Work Items/next pointer가 없습니다. decided 후보인지 확인하세요: %s\n' "$1"
-    fi
+emit_body_file() {
+    awk '
+        {
+            if ($0 ~ /^[[:space:]]*$/) {
+                if (started) pending = pending "\n"
+            } else {
+                if (started) printf "%s", pending
+                pending = ""
+                print
+                started = 1
+            }
+        }
+    ' "$1"
 }
 
-cmd_new() {
-    topic=$1
-    description=$2
-    if [ -z "$topic" ]; then
-        echo "주제를 적어 주세요." >&2
-        usage >&2
+read_required_body() {
+    tmp=$(mktemp 2>/dev/null) || return 1
+    cat > "$tmp"
+    if ! grep -q '[^[:space:]]' "$tmp"; then
+        echo "본문(stdin)이 비어 있습니다." >&2
+        rm -f "$tmp"
         return 1
     fi
-    if [ -z "$description" ]; then
-        echo "경고: description이 비어 있어 검색 결과에서 로그를 판별하기 어렵습니다." >&2
-    fi
+    printf '%s' "$tmp"
+}
 
-    today=$(today_date)
-    slug=$(printf '%s' "$topic" | sed 's/[[:space:]]\{1,\}/-/g')
+slugify() {
+    slug=$(printf '%s' "$1" | sed 's/[[:space:]]\{1,\}/-/g')
     slug=$(printf '%s' "$slug" | sed 's/[/\\:*?"<>|]//g')
     slug=$(printf '%s' "$slug" | sed 's/-\{2,\}/-/g')
     slug=$(printf '%s' "$slug" | sed 's/^-*//; s/-*$//')
@@ -352,52 +474,699 @@ cmd_new() {
         print out
     }')
     [ -n "$slug" ] || slug=$(date +%s)
+    printf '%s' "$slug"
+}
 
-    mkdir -p "$LOG_DIR"
-    base="$LOG_DIR/$today-$slug"
+emit_new_log() {
+    topic=$1
+    description=$2
+    block=$3
+    return_file=$4
+    return_item=$5
+    return_consume=$6
+    return_snapshot=$7
+    context_file=$8
+    item_file=$9
+    body_file=${10:-}
+
+    printf '%s\n' "---"
+    printf 'topic: %s\n' "$topic"
+    printf 'description: %s\n' "$description"
+    printf 'status: open\n'
+    printf '%s\n' "---"
+    printf '\n'
+    printf '## Work Items\n'
+    printf '\n'
+    if [ -s "$item_file" ]; then
+        awk -F '\t' '
+            BEGIN { id = 1 }
+            {
+                marker = ($1 == "active" ? ">" : " ")
+                printf "- [%s] W%d %s\n", marker, id, $2
+                id++
+            }
+        ' "$item_file"
+        printf '\n'
+    fi
+    printf '## Required Context\n'
+    printf '\n'
+    printf '### Return Target\n'
+    printf '\n'
+    if [ -n "$return_file" ]; then
+        printf -- '- Log: `%s`\n' "$return_file"
+        printf -- '- Work Item: %s\n' "$return_item"
+        printf -- '- Consume when: %s\n' "$return_consume"
+        printf -- '- Context snapshot: %s\n' "$return_snapshot"
+    else
+        printf -- '- None: independent log.\n'
+    fi
+    if [ -s "$context_file" ]; then
+        awk -F '\t' '
+            function heading(scope) {
+                if (scope == "Global") return "### {Global}"
+                return "### {" scope "}"
+            }
+            {
+                if (!($1 in seen)) { order[++n] = $1; seen[$1] = 1 }
+                body[$1] = body[$1] "- " $2 "\n"
+            }
+            END {
+                for (i = 1; i <= n; i++) {
+                    s = order[i]
+                    print ""
+                    print heading(s)
+                    print ""
+                    printf "%s", body[s]
+                }
+            }
+        ' "$context_file"
+    fi
+    printf '\n'
+    printf '## %s · %s\n' "$(today_date)" "$block"
+    if [ -n "$body_file" ]; then
+        printf '\n'
+        emit_body_file "$body_file"
+    else
+        printf '\n'
+    fi
+}
+
+cmd_new() {
+    topic=$1
+    [ "$#" -gt 0 ] && shift
+    require_line "topic" "$topic" || { usage >&2; return 1; }
+    description=""
+    block=""
+    context_tmp=$(mktemp 2>/dev/null) || return 1
+    item_tmp=$(mktemp 2>/dev/null) || { rm -f "$context_tmp"; return 1; }
+    : > "$context_tmp"; : > "$item_tmp"
+    return_file=""; return_item=""; return_consume=""; return_snapshot=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --description)
+                shift; description=${1:-}; shift || true
+                ;;
+            --block)
+                shift; block=${1:-}; shift || true
+                ;;
+            --context)
+                shift
+                scope=${1:-}; shift || true
+                if [ "$scope" = "ReturnTarget" ]; then
+                    if [ "$#" -lt 4 ]; then echo "--context ReturnTarget에는 <log> <Wn> <consume> <snapshot>이 필요합니다." >&2; rm -f "$context_tmp" "$item_tmp"; return 1; fi
+                    return_file=$1; return_item=$2; return_consume=$3; return_snapshot=$4
+                    shift 4
+                    require_line "ReturnTarget log" "$return_file" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+                    valid_wid "$return_item" || { echo "ReturnTarget Work Item 형식이 잘못됐습니다: $return_item" >&2; rm -f "$context_tmp" "$item_tmp"; return 1; }
+                    require_line "ReturnTarget consume" "$return_consume" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+                    require_line "ReturnTarget snapshot" "$return_snapshot" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+                else
+                    content=${1:-}; shift || true
+                    valid_scope "$scope" || { echo "context scope가 유효하지 않습니다: $scope" >&2; rm -f "$context_tmp" "$item_tmp"; return 1; }
+                    require_line "context content" "$content" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+                    printf '%s\t%s\n' "$scope" "$content" >> "$context_tmp"
+                fi
+                ;;
+            --item)
+                shift
+                status=${1:-}; action=${2:-}
+                shift 2 || true
+                case "$status" in active|open) ;; *) echo "--item status는 active 또는 open이어야 합니다: $status" >&2; rm -f "$context_tmp" "$item_tmp"; return 1 ;; esac
+                require_line "item action" "$action" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+                printf '%s\t%s\n' "$status" "$action" >> "$item_tmp"
+                ;;
+            *) echo "알 수 없는 new 옵션입니다: $1" >&2; rm -f "$context_tmp" "$item_tmp"; return 1 ;;
+        esac
+    done
+    require_line "description" "$description" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+    require_line "block" "$block" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+    mkdir -p "$LOG_DIR" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+    base="$LOG_DIR/$(today_date)-$(slugify "$topic")"
     file="$base.md"
     n=2
-    while [ -e "$file" ]; do
-        file="$base-$n.md"
-        n=$((n + 1))
-    done
-
-    {
-        printf '%s\n' "---"
-        printf 'topic: %s\n' "$topic"
-        printf 'description: %s\n' "$description"
-        printf 'status: open\n'
-        printf '%s\n' "---"
-        printf '\n'
-        printf '## Work Items\n'
-        printf '\n'
-        emit_heading "$today" "$topic"
-        printf '\n'
-    } > "$file"
-
+    while [ -e "$file" ]; do file="$base-$n.md"; n=$((n + 1)); done
+    tmp_file=$(mktemp "$LOG_DIR/.log-new.XXXXXX" 2>/dev/null) || { rm -f "$context_tmp" "$item_tmp"; return 1; }
+    emit_new_log "$topic" "$description" "$block" "$return_file" "$return_item" "$return_consume" "$return_snapshot" "$context_tmp" "$item_tmp" > "$tmp_file"
+    if ! validate_generated_log "$tmp_file"; then
+        rm -f "$context_tmp" "$item_tmp" "$tmp_file"
+        return 1
+    fi
+    if ! mv "$tmp_file" "$file"; then
+        echo "로그 파일 생성에 실패했습니다: $file" >&2
+        rm -f "$context_tmp" "$item_tmp" "$tmp_file"
+        return 1
+    fi
+    rm -f "$context_tmp" "$item_tmp"
     printf '%s\n' "$file"
+    print_long_hint "$file"
+}
+
+build_meta_result() {
+    file=$1
+    key=$2
+    value=$3
+    awk -v key="$key" -v value="$value" '
+        BEGIN { infm = 0; done = 0 }
+        NR == 1 && $0 == "---" { infm = 1; print; next }
+        infm && $0 == "---" { infm = 0; print; next }
+        infm && done == 0 && ($0 == key ":" || substr($0, 1, length(key) + 2) == key ": ") {
+            print key ": " value
+            done = 1
+            next
+        }
+        { print }
+        END { if (!done) exit 1 }
+    ' "$file"
+}
+
+cmd_meta() {
+    op=$1
+    file=$2
+    shift 2 2>/dev/null || true
+    [ "$op" = "set" ] || { echo "meta 동작은 set만 허용합니다." >&2; return 1; }
+    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
+    validate_frontmatter_any_status "$file" >/dev/null || return 1
+    key=""; value=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --topic) shift; key=topic; value=${1:-} ;;
+            --description) shift; key=description; value=${1:-} ;;
+            --status) shift; key=status; value=${1:-} ;;
+            *) echo "알 수 없는 meta set 옵션입니다: $1" >&2; return 1 ;;
+        esac
+        shift
+        [ -z "$key_seen" ] || { echo "meta set은 한 번에 한 field만 수정합니다." >&2; return 1; }
+        key_seen=1
+    done
+    [ -n "$key" ] || { echo "수정할 meta field가 필요합니다." >&2; return 1; }
+    require_line "$key" "$value" || return 1
+    if [ "$key" = "status" ]; then
+        case "$value" in open|decided|superseded) ;; *) echo "status는 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;; esac
+        case "$value" in
+            decided|superseded)
+                incomplete=$(find_incomplete "$file")
+                if [ -n "$incomplete" ]; then
+                    echo "미완료 Work Items가 있어 '$value' 상태로 바꿀 수 없습니다:" >&2
+                    printf '%s\n' "$incomplete" >&2
+                    return 1
+                fi
+                detached=$(find_detached_items "$file")
+                if [ -n "$detached" ]; then
+                    echo "detached Work Items가 있어 '$value' 상태로 바꿀 수 없습니다. child 결과를 소비한 뒤 닫으세요:" >&2
+                    printf '%s\n' "$detached" >&2
+                    return 1
+                fi
+                ;;
+        esac
+    fi
+    if with_atomic_output "$file" build_meta_result "$key" "$value"; then
+        printf '적용했습니다: %s\n' "$file"
+        return 0
+    fi
+}
+
+build_block_add_result() {
+    file=$1
+    topic=$2
+    body=$3
+    awk '{ print }' "$file"
+    printf '\n'
+    printf '## %s · %s\n' "$(today_date)" "$topic"
+    printf '\n'
+    emit_body_file "$body"
+}
+
+cmd_block() {
+    op=$1; file=$2; topic=$3
+    shift 3 2>/dev/null || true
+    [ "$op" = "add" ] || { echo "block 동작은 add만 허용합니다." >&2; return 1; }
+    require_line "block topic" "$topic" || return 1
+    [ "$#" -eq 0 ] || { echo "block add는 추가 옵션을 받지 않습니다." >&2; return 1; }
+    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
+    validate_open_log "$file" || return 1
+    body=$(read_required_body) || return 1
+    if with_atomic_output "$file" build_block_add_result "$topic" "$body"; then
+        rm -f "$body"
+        printf '적용했습니다: %s\n' "$file"
+        print_long_hint "$file"
+        return 0
+    fi
+    rm -f "$body"
+    return 1
+}
+
+build_entry_add_result() {
+    file=$1
+    after_line=$2
+    topic=$3
+    body=$4
+    awk -v after="$after_line" -v stamp="$(now_stamp)" -v topic="$topic" -v body="$body" "$FENCE_FUNCS"'
+        function out(line) { print line; last_blank = (line ~ /^[[:space:]]*$/) }
+        function emit_entry(before_block) {
+            if (!inserted) {
+                if (!last_blank) out("")
+                out("### " stamp " · " topic)
+                out("")
+                while ((getline b < body) > 0) out(b)
+                close(body)
+                if (before_block) out("")
+                inserted = 1
+            }
+        }
+        {
+            skip = fence_skip($0)
+            if (NR > after && !inserted && !skip && $0 ~ /^##[[:space:]]+/) emit_entry(1)
+            out($0)
+        }
+        END { emit_entry(0) }
+    ' "$file"
+}
+
+cmd_entry() {
+    op=$1; file=$2
+    shift 2 2>/dev/null || true
+    [ "$op" = "add" ] || { echo "entry 동작은 add만 허용합니다." >&2; return 1; }
+    after_line=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --after-line) shift; after_line=${1:-}; shift ;;
+            --*) echo "알 수 없는 entry add 옵션입니다: $1" >&2; return 1 ;;
+            *) topic=$1; shift ;;
+        esac
+    done
+    require_line "entry topic" "${topic:-}" || return 1
+    printf '%s\n' "$after_line" | grep -qE '^[1-9][0-9]*$' || { echo "--after-line은 양의 정수여야 합니다." >&2; return 1; }
+    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
+    validate_open_log "$file" || return 1
+    if ! awk -v line="$after_line" "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
+        {
+            skip = fence_skip($0)
+            if (NR == line) ok = (!skip && $0 ~ /^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] · /)
+        }
+        END { exit ok ? 0 : 1 }
+    ' "$file"; then
+        echo "--after-line은 기존 날짜 unit block heading을 가리켜야 합니다." >&2
+        return 1
+    fi
+    body=$(read_required_body) || return 1
+    if with_atomic_output "$file" build_entry_add_result "$after_line" "$topic" "$body"; then
+        rm -f "$body"
+        printf '적용했습니다: %s\n' "$file"
+        print_long_hint "$file"
+        return 0
+    fi
+    rm -f "$body"
+    return 1
+}
+
+build_item_add_result() {
+    file=$1
+    status=$2
+    action=$3
+    id=$(next_work_item_id "$file")
+    marker=" "
+    demote=0
+    [ "$status" = "active" ] && { marker=">"; demote=1; }
+    LOG_ITEM_LINE="- [${marker}] ${id} ${action}" LOG_DEMOTE="$demote" awk "$FENCE_FUNCS"'
+        function maybe_demote(line) {
+            if (ENVIRON["LOG_DEMOTE"] == "1" && line ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+/) sub(/\[>\]/, "[ ]", line)
+            return line
+        }
+        function flush_blank() { if (pending_blank) { print ""; pending_blank = 0 } }
+        function insert_item() {
+            if (!inserted) {
+                if (pending_blank && !saw_content) print ""
+                pending_blank = 0
+                print ENVIRON["LOG_ITEM_LINE"]
+                inserted = 1
+            }
+        }
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; in_wi = 0; wi_seen = 0; inserted = 0; pending_blank = 0; saw_content = 0 }
+        {
+            skip = fence_skip($0)
+            line = skip ? $0 : maybe_demote($0)
+            if (!skip && $0 ~ /^##[[:space:]]+Work Items[[:space:]]*$/) { in_wi = 1; wi_seen = 1; print line; next }
+            if (!skip && in_wi && $0 ~ /^##[[:space:]]+/) {
+                insert_item()
+                print ""
+                inserted = 1
+                pending_blank = 0
+                in_wi = 0
+            }
+            if (!skip && in_wi && $0 ~ /^[[:space:]]*$/) {
+                pending_blank = 1
+                next
+            }
+            if (!skip && in_wi) {
+                flush_blank()
+                saw_content = 1
+            }
+            print line
+        }
+        END {
+            if (!wi_seen) {
+                exit 3
+            } else if (!inserted) {
+                insert_item()
+            }
+        }
+    ' "$file"
+}
+
+build_item_set_result() {
+    file=$1
+    id=$2
+    mode=$3
+    value=$4
+    reason=$5
+    target=$6
+    LOG_ITEM_ID="$id" LOG_MODE="$mode" LOG_VALUE="$value" LOG_REASON="$reason" LOG_TARGET="$target" awk "$FENCE_FUNCS$parse_item_awk"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
+        {
+            line = $0
+            if (!fence_skip($0) && parse_item($0)) {
+                if (item_id == ENVIRON["LOG_ITEM_ID"]) {
+                    mode = ENVIRON["LOG_MODE"]
+                    if (mode == "action") line = render_item(item_marker, ENVIRON["LOG_VALUE"])
+                    else if (mode == "active") line = render_item(">", item_text)
+                    else if (mode == "open") line = render_item(" ", item_text)
+                    else if (mode == "completed" && item_marker == "↓") sub(/\[↓\]/, "[x]", line)
+                    else if (mode == "completed") line = render_item("x", item_text)
+                    else if (mode == "cancelled") line = render_item("-", item_text " — cancelled: " ENVIRON["LOG_REASON"])
+                    else if (mode == "transferred") line = render_item("→", item_text " — transferred: " ENVIRON["LOG_TARGET"] " — " ENVIRON["LOG_REASON"])
+                } else if (ENVIRON["LOG_MODE"] == "active" && item_marker == ">") {
+                    line = render_item(" ", item_text)
+                }
+            }
+            print line
+        }
+    ' "$file"
+}
+
+cmd_item() {
+    op=$1; file=$2
+    shift 2 2>/dev/null || true
+    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
+    validate_open_log "$file" || return 1
+    validate_work_item_ids "$file" || return 1
+    case "$op" in
+        add)
+            status=$1; action=$2
+            shift 2 2>/dev/null || true
+            [ "$#" -eq 0 ] || { echo "item add는 추가 옵션을 받지 않습니다." >&2; return 1; }
+            case "$status" in active|open) ;; *) echo "item add status는 active 또는 open이어야 합니다." >&2; return 1 ;; esac
+            require_line "item action" "$action" || return 1
+            if with_atomic_output "$file" build_item_add_result "$status" "$action"; then
+                printf '적용했습니다: %s\n' "$file"
+                return 0
+            fi
+            ;;
+        set)
+            id=""; action=""; status=""; reason=""; target=""
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --id) shift; id=${1:-} ;;
+                    --action) shift; action=${1:-} ;;
+                    --status) shift; status=${1:-} ;;
+                    --reason) shift; reason=${1:-} ;;
+                    --target) shift; target=${1:-} ;;
+                    *) echo "알 수 없는 item set 옵션입니다: $1" >&2; return 1 ;;
+                esac
+                shift
+            done
+            valid_wid "$id" || { echo "--id는 Wn 형식이어야 합니다." >&2; return 1; }
+            has_action=0; [ -n "$action" ] && has_action=1
+            has_status=0; [ -n "$status" ] && has_status=1
+            [ "$has_action" -ne "$has_status" ] || { echo "item set은 --action 또는 --status 중 하나만 받습니다." >&2; return 1; }
+            if [ "$has_action" -eq 1 ]; then
+                require_line "item action" "$action" || return 1
+                mode=action; value=$action
+                allowed=open-active
+            else
+                case "$status" in
+                    active|open)
+                        [ -z "$reason" ] && [ -z "$target" ] || { echo "$status 상태에는 --reason/--target을 줄 수 없습니다." >&2; return 1; }
+                        mode=$status
+                        allowed=open-active
+                        ;;
+                    completed)
+                        [ -z "$reason" ] && [ -z "$target" ] || { echo "$status 상태에는 --reason/--target을 줄 수 없습니다." >&2; return 1; }
+                        mode=completed
+                        allowed=open-active-detached-complete
+                        ;;
+                    cancelled)
+                        require_line "reason" "$reason" || return 1
+                        [ -z "$target" ] || { echo "cancelled 상태에는 --target을 줄 수 없습니다." >&2; return 1; }
+                        mode=cancelled
+                        allowed=open-active
+                        ;;
+                    transferred)
+                        require_line "reason" "$reason" || return 1
+                        require_line "target" "$target" || return 1
+                        mode=transferred
+                        allowed=open-active
+                        ;;
+                    detached)
+                        echo "detached는 item set으로 제공하지 않습니다. log detach를 사용하세요." >&2
+                        return 1
+                        ;;
+                    *) echo "알 수 없는 item status입니다: $status" >&2; return 1 ;;
+                esac
+                value=""
+            fi
+            validate_work_item_ids "$file" "$id" "$allowed" || return 1
+            if with_atomic_output "$file" build_item_set_result "$id" "$mode" "$value" "$reason" "$target"; then
+                printf '적용했습니다: %s\n' "$file"
+                return 0
+            fi
+            ;;
+        *) echo "item 동작은 add 또는 set이어야 합니다." >&2; return 1 ;;
+    esac
+}
+
+build_context_add_result() {
+    file=$1
+    scope=$2
+    content=$3
+    heading=$(scope_heading "$scope")
+    LOG_SCOPE_HEADING="$heading" LOG_CONTENT="$content" awk "$FENCE_FUNCS"'
+        function flush_blank() { if (pending_blank) { print ""; pending_blank = 0 } }
+        function print_scope_with_content() {
+            if (!last_blank) print ""
+            print ENVIRON["LOG_SCOPE_HEADING"]
+            print ""
+            print "- " ENVIRON["LOG_CONTENT"]
+            inserted = 1
+            last_blank = 0
+        }
+        function close_target() {
+            if (!inserted) { print "- " ENVIRON["LOG_CONTENT"]; inserted = 1 }
+            flush_blank()
+            found = 0
+        }
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; in_rc = 0; found = 0; inserted = 0; saw_rc = 0; pending_blank = 0; last_blank = 0 }
+        {
+            skip = fence_skip($0)
+            if (!skip && found) {
+                if ($0 ~ /^###[[:space:]]+/ || $0 ~ /^##[[:space:]]+/) {
+                    close_target()
+                } else if ($0 ~ /^[[:space:]]*$/) {
+                    pending_blank = 1
+                    next
+                } else {
+                    flush_blank()
+                }
+            }
+            if (!skip && $0 ~ /^##[[:space:]]+Required Context[[:space:]]*$/) { saw_rc = 1; in_rc = 1; print; last_blank = 0; next }
+            if (!skip && in_rc && $0 ~ /^##[[:space:]]+/) {
+                if (!inserted && !found) {
+                    print_scope_with_content()
+                    print ""
+                    last_blank = 1
+                }
+                in_rc = 0
+            }
+            if (!skip && in_rc && $0 == ENVIRON["LOG_SCOPE_HEADING"]) { found = 1; print; last_blank = 0; next }
+            print
+            last_blank = ($0 ~ /^[[:space:]]*$/)
+        }
+        END {
+            if (found && !inserted) { print "- " ENVIRON["LOG_CONTENT"]; inserted = 1 }
+            else if (saw_rc && in_rc && !inserted) { print_scope_with_content() }
+            else if (!saw_rc) exit 4
+        }
+    ' "$file"
+}
+
+build_context_set_delete_result() {
+    file=$1
+    op=$2
+    scope=$3
+    index=$4
+    content=$5
+    heading=$(scope_heading "$scope")
+    LOG_OP="$op" LOG_SCOPE_HEADING="$heading" LOG_INDEX="$index" LOG_CONTENT="$content" awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; in_rc = 0; in_scope = 0; n = 0; changed = 0 }
+        {
+            skip = fence_skip($0)
+            if (!skip && $0 ~ /^##[[:space:]]+Required Context[[:space:]]*$/) { in_rc = 1; print; next }
+            if (!skip && in_rc && $0 ~ /^##[[:space:]]+/) { in_scope = 0; in_rc = 0 }
+            if (!skip && in_rc && $0 == ENVIRON["LOG_SCOPE_HEADING"]) { in_scope = 1; n = 0; print; next }
+            if (!skip && in_scope && $0 ~ /^###[[:space:]]+/) { in_scope = 0 }
+            if (!skip && in_scope && $0 ~ /^[[:space:]]*-[[:space:]]+/) {
+                n++
+                if (n == ENVIRON["LOG_INDEX"] + 0) {
+                    changed = 1
+                    if (ENVIRON["LOG_OP"] == "set") print "- " ENVIRON["LOG_CONTENT"]
+                    next
+                }
+            }
+            print
+        }
+        END { if (!changed) exit 4 }
+    ' "$file"
+}
+
+cmd_context() {
+    op=$1; file=$2
+    shift 2 2>/dev/null || true
+    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
+    validate_open_log "$file" || return 1
+    case "$op" in
+        add)
+            scope=$1; content=$2
+            [ "$scope" != "ReturnTarget" ] || { echo "ReturnTarget은 new/detach 생성 표면에서만 수정합니다." >&2; return 1; }
+            valid_scope "$scope" || { echo "context scope가 유효하지 않습니다: $scope" >&2; return 1; }
+            require_line "context content" "$content" || return 1
+            with_atomic_output "$file" build_context_add_result "$scope" "$content" && printf '적용했습니다: %s\n' "$file"
+            ;;
+        set|delete)
+            scope=""; index=""; content=""
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --scope) shift; scope=${1:-} ;;
+                    --index) shift; index=${1:-} ;;
+                    *) content=$1 ;;
+                esac
+                shift
+            done
+            [ "$scope" != "ReturnTarget" ] || { echo "ReturnTarget은 context set/delete로 수정하지 않습니다." >&2; return 1; }
+            valid_scope "$scope" || { echo "context scope가 유효하지 않습니다: $scope" >&2; return 1; }
+            printf '%s\n' "$index" | grep -qE '^[1-9][0-9]*$' || { echo "--index는 양의 정수여야 합니다." >&2; return 1; }
+            if [ "$op" = "set" ]; then require_line "context content" "$content" || return 1; else [ -z "$content" ] || { echo "context delete는 content를 받지 않습니다." >&2; return 1; }; fi
+            if with_atomic_output "$file" build_context_set_delete_result "$op" "$scope" "$index" "$content"; then
+                printf '적용했습니다: %s\n' "$file"
+            fi
+            ;;
+        *) echo "context 동작은 add, set, delete여야 합니다." >&2; return 1 ;;
+    esac
+}
+
+build_source_detach_result() {
+    file=$1
+    id=$2
+    target=$3
+    reason=$4
+    LOG_ITEM_ID="$id" LOG_TARGET="$target" LOG_REASON="$reason" awk "$FENCE_FUNCS$parse_item_awk"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
+        {
+            line = $0
+            if (!fence_skip($0) && parse_item($0) && item_id == ENVIRON["LOG_ITEM_ID"]) {
+                line = render_item("↓", item_text " — detached: " ENVIRON["LOG_TARGET"] " — reason: " ENVIRON["LOG_REASON"])
+            }
+            print line
+        }
+    ' "$file"
+}
+
+cmd_detach() {
+    source=$1
+    shift 2>/dev/null || true
+    [ -f "$source" ] || { echo "source 로그가 없습니다: $source" >&2; return 1; }
+    validate_open_log "$source" || return 1
+    id=""; target=""; reason=""; topic=""; description=""; block=""
+    consume=""; snapshot=""
+    item_tmp=$(mktemp 2>/dev/null) || return 1
+    context_tmp=$(mktemp 2>/dev/null) || { rm -f "$item_tmp"; return 1; }
+    : > "$item_tmp"; : > "$context_tmp"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --id) shift; id=${1:-}; shift || true ;;
+            --target) shift; target=${1:-}; shift || true ;;
+            --reason) shift; reason=${1:-}; shift || true ;;
+            --topic) shift; topic=${1:-}; shift || true ;;
+            --description) shift; description=${1:-}; shift || true ;;
+            --block) shift; block=${1:-}; shift || true ;;
+            --context)
+                shift
+                [ "${1:-}" = "ReturnTarget" ] || { echo "detach는 --context ReturnTarget만 허용합니다." >&2; rm -f "$item_tmp" "$context_tmp"; return 1; }
+                shift
+                consume=${1:-}; snapshot=${2:-}
+                shift 2 || true
+                ;;
+            --item)
+                shift
+                status=${1:-}; action=${2:-}
+                shift 2 || true
+                case "$status" in active|open) ;; *) echo "--item status는 active 또는 open이어야 합니다." >&2; rm -f "$item_tmp" "$context_tmp"; return 1 ;; esac
+                require_line "item action" "$action" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+                printf '%s\t%s\n' "$status" "$action" >> "$item_tmp"
+                ;;
+            *) echo "알 수 없는 detach 옵션입니다: $1" >&2; rm -f "$item_tmp" "$context_tmp"; return 1 ;;
+        esac
+    done
+    valid_wid "$id" || { echo "--id는 Wn 형식이어야 합니다." >&2; rm -f "$item_tmp" "$context_tmp"; return 1; }
+    require_line "target" "$target" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    require_line "reason" "$reason" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    require_line "topic" "$topic" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    require_line "description" "$description" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    require_line "block" "$block" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    require_line "consume condition" "$consume" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    require_line "context snapshot" "$snapshot" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    [ ! -e "$target" ] || { echo "target 로그가 이미 있습니다: $target" >&2; rm -f "$item_tmp" "$context_tmp"; return 1; }
+    target_dir=$(dirname "$target")
+    [ -d "$target_dir" ] || { echo "target directory가 없습니다: $target_dir" >&2; rm -f "$item_tmp" "$context_tmp"; return 1; }
+    validate_work_item_ids "$source" "$id" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    body=$(read_required_body) || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+
+    tmp_target=$(mktemp "$target_dir/.log-detach.XXXXXX" 2>/dev/null) || { rm -f "$item_tmp" "$context_tmp" "$body"; return 1; }
+    emit_new_log "$topic" "$description" "$block" "$source" "$id" "$consume" "$snapshot" "$context_tmp" "$item_tmp" "$body" > "$tmp_target"
+    if ! validate_generated_log "$tmp_target"; then
+        rm -f "$item_tmp" "$context_tmp" "$body" "$tmp_target"
+        return 1
+    fi
+    if ! mv "$tmp_target" "$target"; then
+        echo "target 로그 생성에 실패했습니다: $target" >&2
+        rm -f "$item_tmp" "$context_tmp" "$body" "$tmp_target"
+        return 1
+    fi
+    if ! with_atomic_output "$source" build_source_detach_result "$id" "$target" "$reason"; then
+        rm -f "$item_tmp" "$context_tmp" "$body" "$target"
+        return 1
+    fi
+    rm -f "$item_tmp" "$context_tmp" "$body"
+    printf '적용했습니다: %s\n' "$source"
+    printf '생성했습니다: %s\n' "$target"
+    if ! find_next_pointers "$source" | awk 'NF { found = 1 } END { exit found ? 0 : 1 }'; then
+        printf 'HINT next: source 로그에 active [>] Work Item이 없습니다. 다음 재개 지점이 필요한지 확인하세요: %s\n' "$source"
+    fi
+    print_long_hint "$source"
+    print_long_hint "$target"
 }
 
 cmd_search() {
     query=""
     status_filter=""
-    while [ $# -gt 0 ]; do
+    while [ "$#" -gt 0 ]; do
         case "$1" in
-            --status)
-                shift
-                status_filter=$1
-                ;;
-            *)
-                [ -z "$query" ] && query=$1
-                ;;
+            --status) shift; status_filter=${1:-} ;;
+            *) [ -z "$query" ] && query=$1 ;;
         esac
         shift
     done
     if [ -n "$status_filter" ]; then
-        case "$status_filter" in
-            open|decided|superseded) ;;
-            *) echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;;
-        esac
+        case "$status_filter" in open|decided|superseded) ;; *) echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;; esac
     fi
     query_lc=$(printf '%s' "$query" | tr '[:upper:]' '[:lower:]')
     found=0
@@ -418,42 +1187,46 @@ cmd_search() {
     [ "$found" -eq 1 ] || echo "맞는 로그 없음"
 }
 
+return_target_summary() {
+    awk "$FENCE_FUNCS"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; in_rc = 0; in_rt = 0; found = 0; none = 0; rlog = ""; wi = "" }
+        {
+            if (fence_skip($0)) next
+            if ($0 ~ /^##[[:space:]]+Required Context[[:space:]]*$/) { in_rc = 1; next }
+            if (in_rc && $0 ~ /^##[[:space:]]+/) { in_rc = 0; in_rt = 0 }
+            if (in_rc && $0 ~ /^###[[:space:]]+Return Target[[:space:]]*$/) { found = 1; in_rt = 1; next }
+            if (in_rt && $0 ~ /^###[[:space:]]+/) { in_rt = 0 }
+            if (in_rt) {
+                if ($0 ~ /^-[[:space:]]+None:/) none = 1
+                if ($0 ~ /^-[[:space:]]+Log:/) { rlog = $0; sub(/^- Log:[[:space:]]*/, "", rlog) }
+                if ($0 ~ /^-[[:space:]]+Work Item:/) { wi = $0; sub(/^- Work Item:[[:space:]]*/, "", wi) }
+            }
+        }
+        END {
+            if (!found) print "missing"
+            else if (none) print "independent"
+            else print "target " rlog " " wi
+        }
+    ' "$1"
+}
+
 cmd_check() {
     status_filter=""
     files=""
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            --status)
-                shift
-                if [ "$#" -eq 0 ]; then
-                    echo "check --status에는 상태 값이 필요합니다." >&2
-                    return 1
-                fi
-                status_filter=${1:-}
-                ;;
-            --*)
-                echo "알 수 없는 check 옵션입니다: $1" >&2
-                return 1
-                ;;
-            *)
-                files="$files
-$1"
-                ;;
+            --status) shift; status_filter=${1:-} ;;
+            --*) echo "알 수 없는 check 옵션입니다: $1" >&2; return 1 ;;
+            *) files="$files
+$1" ;;
         esac
         shift
     done
     if [ -n "$status_filter" ]; then
-        case "$status_filter" in
-            open|decided|superseded) ;;
-            *) echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;;
-        esac
+        case "$status_filter" in open|decided|superseded) ;; *) echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;; esac
     fi
     if [ -z "$(printf '%s\n' "$files" | awk 'NF { print; exit }')" ]; then
-        if [ -z "$status_filter" ]; then
-            echo "check에는 파일 또는 --status가 필요합니다." >&2
-            usage >&2
-            return 1
-        fi
+        [ -n "$status_filter" ] || { echo "check에는 파일 또는 --status가 필요합니다." >&2; return 1; }
         for f in "$LOG_DIR"/*.md; do
             [ -e "$f" ] || continue
             [ "$(read_field "$f" status)" = "$status_filter" ] || continue
@@ -462,418 +1235,87 @@ $f"
         done
     fi
 
-    list_tmp=$(mktemp 2>/dev/null) || { echo "check 대상 임시 파일 생성에 실패했습니다." >&2; return 1; }
+    list_tmp=$(mktemp 2>/dev/null) || return 1
     printf '%s\n' "$files" | awk 'NF' > "$list_tmp"
     rc=0
     checked=0
     while IFS= read -r file; do
         checked=$((checked + 1))
-        if [ ! -f "$file" ]; then
-            printf '%s\n' "ERROR $file: 파일이 없습니다"
-            rc=1
-            continue
-        fi
-
-        printf '%s\n' "== $file =="
+        if [ ! -f "$file" ]; then printf 'ERROR %s: 파일이 없습니다\n' "$file"; rc=1; continue; fi
+        printf '== %s ==\n' "$file"
         if fm_err=$(validate_frontmatter_any_status "$file"); then
-            topic=$(read_field "$file" topic)
-            description=$(read_field "$file" description)
             status=$(read_field "$file" status)
             printf 'status: %s\n' "$status"
-            printf 'topic: %s\n' "$topic"
-            printf 'description: %s\n' "$description"
+            printf 'topic: %s\n' "$(read_field "$file" topic)"
+            printf 'description: %s\n' "$(read_field "$file" description)"
         else
             printf 'ERROR frontmatter: %s\n' "$fm_err"
             rc=1
             status=""
         fi
-
-        heading_info=$(latest_date_heading "$file")
-        if [ -n "$heading_info" ]; then
-            lineno=$(printf '%s' "$heading_info" | cut -f1)
-            heading=$(printf '%s' "$heading_info" | cut -f2-)
+        latest=$(latest_date_heading "$file")
+        if [ -n "$latest" ]; then
+            lineno=$(printf '%s' "$latest" | cut -f1)
+            heading=$(printf '%s' "$latest" | cut -f2-)
             printf 'latest: line %s · %s\n' "$lineno" "${heading#\#\# }"
         else
             printf 'WARN latest: 날짜 블록 없음\n'
         fi
-
-        wi_count=$(work_items_section_count "$file") || wi_count=0
-        printf 'work_items_sections: %s\n' "$wi_count"
-        if [ "$wi_count" -gt 1 ]; then
-            printf 'ERROR work_items: ## Work Items 섹션이 여러 개입니다\n'
-            rc=1
+        latest_entry=$(latest_entry_heading "$file")
+        if [ -n "$latest_entry" ]; then
+            entry_lineno=$(printf '%s' "$latest_entry" | cut -f1)
+            entry_heading=$(printf '%s' "$latest_entry" | cut -f2-)
+            printf 'latest_entry: line %s · %s\n' "$entry_lineno" "${entry_heading#\#\#\# }"
         fi
-
+        wi_sections=$(work_items_section_count "$file")
+        rc_sections=$(required_context_section_count "$file")
+        printf 'work_items_sections: %s\n' "$wi_sections"
+        printf 'required_context_sections: %s\n' "$rc_sections"
+        [ "$wi_sections" -eq 1 ] || { printf 'ERROR work_items: ## Work Items 섹션은 정확히 하나여야 합니다\n'; rc=1; }
+        [ "$rc_sections" -eq 1 ] || { printf 'ERROR required_context: ## Required Context 섹션은 정확히 하나여야 합니다\n'; rc=1; }
         if ! id_err=$(validate_work_item_ids "$file" 2>&1); then
             printf 'ERROR work_items: %s\n' "$id_err"
             rc=1
         fi
-
         set -- $(work_item_counts "$file")
-        open_count=$1
-        active_count=$2
-        closed_count=$3
+        open_count=$1; active_count=$2; resolved_count=$3; detached_count=$4
         incomplete_count=$((open_count + active_count))
-        printf 'work_items: active=%s open=%s closed=%s incomplete=%s\n' "$active_count" "$open_count" "$closed_count" "$incomplete_count"
-
+        printf 'work_items: active=%s open=%s closed=%s detached=%s incomplete=%s\n' "$active_count" "$open_count" "$resolved_count" "$detached_count" "$incomplete_count"
         pointers=$(find_next_pointers "$file") || pointers=""
         next_count=$(printf '%s\n' "$pointers" | awk 'NF { n++ } END { print n + 0 }')
         case "$next_count" in
-            0)
-                printf 'next: 없음\n'
-                ;;
-            1)
-                printf '%s\n' "$pointers" | awk -F '\t' '{ print "next: line " $1 " " $2 }'
-                ;;
-            *)
-                printf 'ERROR next: next pointer가 %s개입니다\n' "$next_count"
-                printf '%s\n' "$pointers" | awk -F '\t' '{ print "  line " $1 " " $2 }'
-                rc=1
-                ;;
+            0) printf 'next: 없음\n' ;;
+            1) printf '%s\n' "$pointers" | awk -F '\t' '{ print "next: line " $1 " " $2 }' ;;
+            *) printf 'ERROR next: next pointer가 %s개입니다\n' "$next_count"; rc=1 ;;
         esac
-
+        return_target=$(return_target_summary "$file")
+        printf 'return_target: %s\n' "$return_target"
+        if [ "$return_target" = "missing" ]; then
+            printf 'ERROR required_context: ### Return Target 섹션이 없습니다\n'
+            rc=1
+        fi
+        lines=$(line_count "$file")
+        if [ "$lines" -ge "$LOG_HARD_LINES" ]; then printf 'long_log: hard (%s lines >= %s)\n' "$lines" "$LOG_HARD_LINES"
+        elif [ "$lines" -ge "$LOG_SOFT_LINES" ]; then printf 'long_log: soft (%s lines >= %s)\n' "$lines" "$LOG_SOFT_LINES"
+        else printf 'long_log: ok (%s lines)\n' "$lines"; fi
+        if [ "$detached_count" -gt 0 ]; then
+            printf 'HINT detached: unresolved [↓] items need Return Target consumption review\n'
+            find_detached_items "$file" | awk '{ print "  " $0 }'
+        fi
         case "$status" in
             open)
-                if [ "$incomplete_count" -eq 0 ]; then
-                    printf 'HINT closeout: 미완료 Work Items/next pointer가 없습니다. decided 후보인지 확인하세요\n'
-                fi
+                if [ "$incomplete_count" -eq 0 ] && [ "$detached_count" -eq 0 ]; then printf 'HINT closeout: 미완료 Work Items/next pointer가 없습니다. decided 후보인지 확인하세요\n'; fi
                 ;;
             decided|superseded)
-                if [ "$incomplete_count" -gt 0 ]; then
-                    printf 'ERROR status: %s 로그에 미완료 Work Items가 있습니다\n' "$status"
-                    rc=1
-                fi
+                if [ "$incomplete_count" -gt 0 ]; then printf 'ERROR status: %s 로그에 미완료 Work Items가 있습니다\n' "$status"; rc=1; fi
+                if [ "$detached_count" -gt 0 ]; then printf 'ERROR status: %s 로그에 child 결과 소비 대기 [↓] Work Items가 있습니다\n' "$status"; rc=1; fi
                 ;;
         esac
         printf '\n'
     done < "$list_tmp"
     rm -f "$list_tmp"
-
-    if [ "$checked" -eq 0 ]; then
-        if [ -n "$status_filter" ]; then
-            printf '맞는 로그 없음\n'
-            return 0
-        fi
-        echo "check할 로그 파일이 없습니다." >&2
-        return 1
-    fi
+    [ "$checked" -gt 0 ] || { echo "맞는 로그 없음"; return 0; }
     return "$rc"
-}
-
-cmd_set_status() {
-    file=$1
-    new_status=$2
-    case "$new_status" in open|decided|superseded) ;; *) echo "상태 값은 open, decided, superseded 중 하나여야 합니다." >&2; return 1 ;; esac
-    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
-    case "$new_status" in
-        decided|superseded)
-            incomplete_tmp=$(mktemp 2>/dev/null) || incomplete_tmp="$file.incomplete.tmp.$$"
-            if ! find_incomplete "$file" > "$incomplete_tmp"; then
-                rm -f "$incomplete_tmp"; echo "미완료 Work Items를 검사하지 못했습니다: $file" >&2; return 1
-            fi
-            if [ -s "$incomplete_tmp" ]; then
-                echo "미완료 Work Items가 있어 '$new_status' 상태로 바꿀 수 없습니다:" >&2
-                cat "$incomplete_tmp" >&2
-                rm -f "$incomplete_tmp"
-                return 1
-            fi
-            rm -f "$incomplete_tmp"
-            ;;
-    esac
-    tmp=$(mktemp 2>/dev/null) || tmp="$file.tmp.$$"
-    if awk -v newstatus="$new_status" '
-        BEGIN { infm = 0; done = 0 }
-        NR == 1 && $0 == "---" { infm = 1; print; next }
-        infm == 1 && $0 == "---" { infm = 0; print; next }
-        infm == 1 && done == 0 && substr($0, 1, 8) == "status: " { print "status: " newstatus; done = 1; next }
-        infm == 1 && done == 0 && $0 == "status:" { print "status: " newstatus; done = 1; next }
-        { print }
-        END { if (done == 0) exit 1 }
-    ' "$file" > "$tmp"; then
-        mv "$tmp" "$file"
-        echo "상태를 '$new_status'로 바꿨습니다: $file"
-    else
-        rm -f "$tmp"
-        echo "status 필드를 찾지 못해 상태를 바꾸지 못했습니다: $file" >&2
-        return 1
-    fi
-}
-
-emit_body() {
-    awk '
-        {
-            if ($0 ~ /^[[:space:]]*$/) {
-                if (started) pending = pending "\n"
-            } else {
-                if (started) printf "%s", pending
-                pending = ""
-                print
-                started = 1
-            }
-        }
-    ' "$1"
-}
-
-build_append_result() {
-    file=$1
-    topic=$2
-    body=$3
-    awk '
-        {
-            if ($0 ~ /^[[:space:]]*$/) pending = pending "\n"
-            else { if (started) printf "%s", pending; pending = ""; print; started = 1 }
-        }
-    ' "$file"
-    printf '\n'
-    emit_heading "$(today_date)" "$topic"
-    printf '\n'
-    emit_body "$body"
-}
-
-cmd_append() {
-    file=$1
-    topic=$2
-    shift 2 2>/dev/null || true
-    if [ -z "$file" ] || [ -z "$topic" ]; then
-        echo "append에는 파일과 블록 주제가 필요합니다." >&2
-        usage >&2
-        return 1
-    fi
-    if [ "$#" -gt 0 ]; then
-        echo "append는 추가 옵션을 받지 않습니다." >&2
-        return 1
-    fi
-    if contains_newline "$topic" || is_blank "$topic"; then
-        echo "블록 주제는 공백이 아닌 한 줄이어야 합니다." >&2
-        return 1
-    fi
-    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
-    if ! fm_err=$(validate_frontmatter "$file"); then
-        echo "frontmatter가 유효한 open 로그가 아닙니다: $file (${fm_err})" >&2
-        return 1
-    fi
-    body_tmp=$(mktemp 2>/dev/null) || { echo "본문 임시 파일 생성에 실패했습니다." >&2; return 1; }
-    cat > "$body_tmp"
-    if ! grep -q '[^[:space:]]' "$body_tmp"; then
-        echo "본문(stdin)이 비어 있습니다." >&2
-        rm -f "$body_tmp"
-        return 1
-    fi
-    body_next=$(find_next_pointers "$body_tmp") || { rm -f "$body_tmp"; return 1; }
-    if [ -n "$body_next" ]; then
-        echo "본문에 next pointer를 직접 쓸 수 없습니다. items 명령을 사용하세요." >&2
-        rm -f "$body_tmp"
-        return 1
-    fi
-    if with_atomic_output "$file" build_append_result "$topic" "$body_tmp"; then
-        rm -f "$body_tmp"
-        printf '적용했습니다: %s\n' "$file"
-        print_closeout_hint_if_clean "$file"
-        return 0
-    fi
-    rm -f "$body_tmp"
-    return 1
-}
-
-build_items_add_result() {
-    file=$1
-    id=$2
-    status=$3
-    action=$4
-    marker=" "
-    demote=0
-    if [ "$status" = "active" ]; then marker=">"; demote=1; fi
-    LOG_ITEM_LINE="- [${marker}] ${id} ${action}" LOG_ITEM_DEMOTE_ACTIVE="$demote" awk "$FENCE_FUNCS"'
-        function maybe_demote(line) {
-            if (ENVIRON["LOG_ITEM_DEMOTE_ACTIVE"] == "1" &&
-                line ~ /^[[:space:]]*-[[:space:]]+\[>\][[:space:]]+W[0-9]+[[:space:]]+/) {
-                sub(/\[>\]/, "[ ]", line)
-            }
-            return line
-        }
-        FNR == 1 {
-            in_fence = 0; fence_char = ""; fence_len = 0
-            wi_count = 0; wi_start = 0; wi_end = 0; in_wi = 0; fm = 0; fm_close = 0
-        }
-        {
-            skip = fence_skip($0)
-            out[NR] = (!skip ? maybe_demote($0) : $0)
-            if (NR == 1 && $0 == "---") fm = 1
-            else if (fm && $0 == "---" && fm_close == 0) fm_close = NR
-            if (!skip && $0 ~ /^##[[:space:]]+Work Items[[:space:]]*$/) {
-                wi_count++
-                if (wi_count == 1) { wi_start = NR; in_wi = 1 }
-            } else if (!skip && in_wi && $0 ~ /^##[[:space:]]+/) {
-                wi_end = NR - 1; in_wi = 0
-            }
-        }
-        END {
-            if (wi_count == 0) {
-                for (i = 1; i <= NR; i++) {
-                    print out[i]
-                    if (i == fm_close) { print ""; print "## Work Items"; print ENVIRON["LOG_ITEM_LINE"]; print "" }
-                }
-                exit
-            }
-            if (wi_end == 0) wi_end = NR
-            wi_insert_after = wi_start
-            for (i = wi_start + 1; i <= wi_end; i++) if (out[i] !~ /^[[:space:]]*$/) wi_insert_after = i
-            for (i = 1; i <= NR; i++) {
-                if (i > wi_insert_after && i <= wi_end && out[i] ~ /^[[:space:]]*$/) continue
-                print out[i]
-                if (i == wi_insert_after) { print ENVIRON["LOG_ITEM_LINE"]; print "" }
-            }
-        }
-    ' "$file"
-}
-
-build_items_set_result() {
-    file=$1
-    id=$2
-    status=$3
-    reason=$4
-    target=$5
-    LOG_ITEM_ID="$id" LOG_ITEM_STATUS="$status" LOG_ITEM_REASON="$reason" LOG_ITEM_TARGET="$target" awk "$FENCE_FUNCS"'
-        function parse_item(line,   rest, after) {
-            item_prefix = ""; item_marker = ""; item_id = ""; item_text = ""
-            if (!match(line, /^[[:space:]]*-[[:space:]]+/)) return 0
-            item_prefix = substr(line, 1, RLENGTH)
-            rest = substr(line, RLENGTH + 1)
-            if (rest !~ /^\[[ >xX]\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?([[:space:]]|$)/) return 0
-            item_marker = substr(rest, 2, 1)
-            after = rest
-            sub(/^\[[ >xX]\][[:space:]]+/, "", after)
-            item_id = after
-            sub(/[[:space:]].*$/, "", item_id)
-            item_text = after
-            sub(/^W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]*/, "", item_text)
-            return 1
-        }
-        function render(marker, text) { return item_prefix "[" marker "] " item_id " " text }
-        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
-        {
-            line = $0
-            if (!fence_skip($0) && parse_item($0)) {
-                if (item_id == ENVIRON["LOG_ITEM_ID"]) {
-                    st = ENVIRON["LOG_ITEM_STATUS"]
-                    if (st == "active") line = render(">", item_text)
-                    else if (st == "open") line = render(" ", item_text)
-                    else if (st == "completed") line = render("x", item_text)
-                    else if (st == "cancelled") line = render("x", "Cancelled: " item_text " — " ENVIRON["LOG_ITEM_REASON"])
-                    else if (st == "transferred") line = render("x", "Transferred: " item_text " → " ENVIRON["LOG_ITEM_TARGET"] " — " ENVIRON["LOG_ITEM_REASON"])
-                } else if (ENVIRON["LOG_ITEM_STATUS"] == "active" && item_marker == ">") {
-                    line = render(" ", item_text)
-                }
-            }
-            if (line ~ /^[[:space:]]*$/) {
-                pending = pending "\n"
-            } else {
-                if (started) printf "%s", pending
-                pending = ""
-                print line
-                started = 1
-            }
-        }
-    ' "$file"
-}
-
-cmd_items() {
-    file=$1
-    op=$2
-    [ "$#" -ge 1 ] && shift
-    [ "$#" -ge 1 ] && shift
-    if [ -z "$file" ] || [ -z "$op" ]; then
-        echo "items는 파일과 add/set 동작이 필요합니다." >&2
-        usage >&2
-        return 1
-    fi
-    [ -f "$file" ] || { echo "파일이 없습니다: $file" >&2; return 1; }
-    if ! fm_err=$(validate_frontmatter "$file"); then
-        echo "frontmatter가 유효한 open 로그가 아닙니다: $file (${fm_err})" >&2
-        return 1
-    fi
-    wi_count=$(work_items_section_count "$file") || return 1
-    if [ "$wi_count" -gt 1 ]; then
-        echo "## Work Items 섹션이 여러 개입니다: $file" >&2
-        return 1
-    fi
-    validate_work_item_ids "$file" || return 1
-
-    case "$op" in
-        add)
-            action=$1
-            [ "$#" -ge 1 ] && shift
-            status=open
-            while [ "$#" -gt 0 ]; do
-                case "$1" in
-                    --status) shift; status=$1 ;;
-                    --*) echo "알 수 없는 items add 옵션입니다: $1" >&2; return 1 ;;
-                    *) echo "items add 인자가 너무 많습니다: $1" >&2; return 1 ;;
-                esac
-                shift
-            done
-            if contains_newline "$action" || is_blank "$action"; then
-                echo "items add의 <행동>은 공백이 아닌 한 줄이어야 합니다." >&2
-                return 1
-            fi
-            case "$status" in open|active) ;; *) echo "items add --status는 open 또는 active만 허용합니다." >&2; return 1 ;; esac
-            id=$(next_work_item_id "$file") || return 1
-            if with_atomic_output "$file" build_items_add_result "$id" "$status" "$action"; then
-                printf '적용했습니다: %s\n' "$file"
-                printf '추가한 Work Item: %s\n' "$id"
-                return 0
-            fi
-            return 1
-            ;;
-        set)
-            id=""; status=""; reason=""; target=""; expect=""; has_expect=0
-            while [ "$#" -gt 0 ]; do
-                case "$1" in
-                    --id) shift; id=$1 ;;
-                    --status) shift; status=$1 ;;
-                    --reason) shift; reason=$1 ;;
-                    --target) shift; target=$1 ;;
-                    --expect) shift; expect=$1; has_expect=1 ;;
-                    --*) echo "알 수 없는 items set 옵션입니다: $1" >&2; return 1 ;;
-                    *) echo "items set 인자가 너무 많습니다: $1" >&2; return 1 ;;
-                esac
-                shift
-            done
-            if ! printf '%s\n' "$id" | grep -qE '^W[1-9][0-9]*(\.[0-9]+)?(-[0-9]+)?$'; then
-                echo "--id는 W1, W2, W4.5, W4.5-1, W5-1 같은 형식이어야 합니다." >&2
-                return 1
-            fi
-            case "$status" in open|active|completed|cancelled|transferred) ;; *) echo "--status는 open, active, completed, cancelled, transferred 중 하나여야 합니다." >&2; return 1 ;; esac
-            case "$status" in
-                open|active|completed)
-                    if [ -n "$reason" ] || [ -n "$target" ]; then echo "$status 상태에는 --reason/--target을 줄 수 없습니다." >&2; return 1; fi
-                    ;;
-                cancelled)
-                    if contains_newline "$reason" || is_blank "$reason"; then echo "cancelled 상태에는 공백이 아닌 --reason이 필요합니다." >&2; return 1; fi
-                    if [ -n "$target" ]; then echo "cancelled 상태에는 --target을 줄 수 없습니다." >&2; return 1; fi
-                    ;;
-                transferred)
-                    if contains_newline "$reason" || is_blank "$reason"; then echo "transferred 상태에는 공백이 아닌 --reason이 필요합니다." >&2; return 1; fi
-                    if contains_newline "$target" || is_blank "$target"; then echo "transferred 상태에는 공백이 아닌 --target이 필요합니다." >&2; return 1; fi
-                    ;;
-            esac
-            if [ "$has_expect" -eq 1 ] && { contains_newline "$expect" || is_blank "$expect"; }; then
-                echo "--expect는 공백이 아닌 한 줄이어야 합니다." >&2
-                return 1
-            fi
-            validate_work_item_ids "$file" "$id" "$has_expect" "$expect" || return 1
-            if with_atomic_output "$file" build_items_set_result "$id" "$status" "$reason" "$target"; then
-                printf '적용했습니다: %s\n' "$file"
-                print_closeout_hint_if_clean "$file"
-                return 0
-            fi
-            return 1
-            ;;
-        *)
-            echo "items 동작은 add 또는 set이어야 합니다: $op" >&2
-            return 1
-            ;;
-    esac
 }
 
 main() {
@@ -881,15 +1323,16 @@ main() {
     [ $# -gt 0 ] && shift
     case "$sub" in
         new) cmd_new "$@" ;;
+        meta) cmd_meta "$@" ;;
+        block) cmd_block "$@" ;;
+        entry) cmd_entry "$@" ;;
+        item) cmd_item "$@" ;;
+        context) cmd_context "$@" ;;
+        detach) cmd_detach "$@" ;;
         search) cmd_search "$@" ;;
         check) cmd_check "$@" ;;
-        set-status) cmd_set_status "$@" ;;
-        append) cmd_append "$@" ;;
-        items) cmd_items "$@" ;;
-        *) usage ;;
+        *) usage >&2; return 1 ;;
     esac
 }
 
-if [ -z "${LOG_LIB_ONLY:-}" ]; then
-    main "$@"
-fi
+main "$@"

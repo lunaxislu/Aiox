@@ -58,6 +58,12 @@ status: open
 | `plans/post-mvp/codex-structured-metadata-spike.plan.md` | codex metadata spike sub-plan (deferred) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G1-A evidence / Phase 1 Tier 2 uplift 후보로 priority는 흡수. investigation question/output/verification은 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
 | `plans/post-mvp/envelope-metadata.plan.md` | envelope metadata sub-plan (next kickoff) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G1-A/B/C next kickoff로 priority는 흡수. implementation increments/acceptance/kickoff checklist는 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
 
+## Required Context
+
+### Return Target
+
+- None: independent log.
+
 ## 2026-06-21 · legacy source absorption package 시작
 
 Parent pointer: `logs/2026-06-16-workspace-reset-폴더별-inventory.md` (물리 삭제 게이트는 `plans/workspace-reset/workspace-reset.md`가 단일 소유)

@@ -50,16 +50,44 @@ Work Item line의 canonical form은 `- [marker] Wn <행동>`이다. `Wn:`처럼 
 `[x]`는 성공 완료만 뜻한다. 취소·이관·detach는 각각 `[-]`, `[→]`, `[↓]`로 구분하고 줄 끝에
 `— cancelled:`, `— transferred:`, `— detached:`로 사유·경로를 남긴다.
 
+**Required Context section**
+
+`## Required Context`의 첫 section은 `### Return Target`이다. 이 section은 이 로그가 다른 source
+로그의 결과 소비 대상으로 돌아가야 하는지, 아니면 독립 수명인지 소유한다.
+
+독립 로그는 다음 형태를 쓴다.
+
+```markdown
+### Return Target
+
+- None: independent log.
+```
+
+분리 작업 로그는 다음 형태를 쓴다.
+
+```markdown
+### Return Target
+
+- Log: `logs/source.md`
+- Work Item: W2
+- Consume when: source W2가 이 로그의 결론을 소비할 조건.
+- Context snapshot: source 전체를 다시 읽지 않아도 되는 유효 조건.
+```
+
+`Return Target`은 로그 수명 관계를 소유하는 예약 section이다. 일반 standing context는 아래 scope
+표기를 따른다.
+
 **Scope 표기**
 
-`## Required Context` heading은 `{...}` set literal로만 쓴다.
+`## Required Context`의 일반 scope heading은 `{...}` set literal로만 쓴다. 예약 section인
+`### Return Target`에는 이 규칙을 적용하지 않는다.
 
 - `{Global}` — 이 로그를 다룰 때 항상 적용
 - `{W1,W3}` — 나열한 Work Item scope에 적용
 - `{Global}`은 단독 heading으로만 쓴다. W set과 섞지 않는다.
 
 `## Work Items` 섹션이 비어 있는 판단·조사·토론형 로그에서도 standing context가 있으면
-`{Global}`에 둔다.
+`{Global}`에 둔다. Return 대상이 없으면 `### Return Target`에는 독립 로그임을 명시한다.
 
 완료·취소·이관된 W가 set에 남아 있어도 그 자체로 stale은 아니다. 실제 적용 판단에서는 더 이상
 수행하지 않는 W를 제외하고, closeout이나 정리 시점에 완료·취소·이관된 W만 남은 inert set을
@@ -99,9 +127,13 @@ status: open
 - [x] W3 retry 동작 문서화
 - [-] W4 retry note 추가 — cancelled: retry 정책이 범위에서 제외됨
 - [→] W5 auth flow 문서화 — transferred: logs/auth-flow.md
-- [↓] W6 specs assimilation — detached: logs/specs-assimilation.md
+- [↓] W6 specs assimilation — detached: logs/specs-assimilation.md — reason: source W6 completion depends on the separated result
 
 ## Required Context
+
+### Return Target
+
+- None: independent log.
 
 ### {Global}
 
@@ -318,15 +350,18 @@ feedback loop다. 다음 순서로 돈다.
 detach는 source Work Item이 분리 작업 로그의 결과를 소비해야 할 때 쓴다. 이미 완료된 상세
 history를 새 로그로 옮겨 즉시 decided 처리하는 migration detach도 같은 기준을 따른다.
 
-- source Work Item line에 `— detached: <분리 작업 로그 경로>`를 남기고 marker는 `[↓]`로 둔다.
-- 분리 작업 로그에는 `## 복귀 대상`, 자체 `## Required Context`와 자체 Work Items를 둔다. local
-  actionable Work Item이 있으면 `[>]` 하나를 둔다.
-- `## 복귀 대상`만으로 source 로그 경로, 결과를 소비할 source W-id와 소비 조건을 복원할 수 있게
-  쓴다.
+- source Work Item line에 `— detached: <분리 작업 로그 경로> — reason: <reason>`을 남기고 marker는
+  `[↓]`로 둔다.
+- 분리 작업 로그에는 자체 `## Work Items`와 `## Required Context`를 두고, Required Context의
+  `### Return Target`만으로 source 로그 경로, 결과를 소비할 source W-id와 소비 조건을 복원할 수
+  있게 쓴다. local actionable Work Item이 있으면 `[>]` 하나를 둔다.
 - snapshot은 effective result로 평탄화한다. source의 `Override`를 dangling reference로 옮기지 않는다.
 - source에 다른 local actionable W가 있으면 그중 하나를 `[>]`로 둔다. 없으면 source에 `[>]`를
   억지로 남기지 않는다. 분리 작업 로그에 local actionable W가 있으면 그 로그의 `[>]`가 재개
   지점이며, 즉시 `decided` 처리하는 migration target에는 `[>]`를 만들지 않는다.
+- source에 `[↓]`가 남아 있는 동안 source 로그는 child 결과 소비 대기 상태이므로 `open`으로 둔다.
+  child 결과를 source가 소비해 해당 W를 완료·취소·이관 또는 남은 행동으로 갱신한 뒤에야 source
+  closeout을 판단한다.
 - 분리 작업 로그가 끝나면 source는 결과를 소비해 해당 W를 완료, 취소, 이관 또는 남은 행동으로
   갱신한다.
 
@@ -359,8 +394,8 @@ independent follow-up은 source Work Item이 없고 어떤 known Work Item도 �
 전이를 적용한 같은 동작에서 다음을 확인한다.
 
 - `[>]`는 로그당 하나 이하이며 실제 local 재개 지점을 가리키는가?
-- `[↓]`에는 target 경로와 소비할 source Work Item이 있고, 분리 작업 로그에는 복귀 대상과
-  snapshot이 있는가?
+- `[↓]`에는 target 경로와 reason이 있고, 분리 작업 로그의 `### Return Target`에는 소비할 source
+  Work Item, consume condition과 snapshot이 있는가?
 - `[→]`는 source가 결과를 소비하지 않는 경우에만 쓰였는가?
 - independent follow-up에 복귀 pointer를 만들지 않았는가?
 - 복귀 pointer가 실제 결과 소비 source W를 가리키며 unrelated ancestor로 건너뛰지 않는가?
@@ -412,6 +447,9 @@ open이면 그 로그의 next pointer를 따르고, 결과가 복귀 대상 범�
 다섯 조건이 충족됐으면 `decided`로 전환한다. Work Items가 있다는 이유만으로 완료된 로그를
 `open`에 남기지 않는다. 로그의 자체 작업 수명이 끝났으면 새 작업을 next pointer로 달아 open을
 연장하지 말고 독립 로그로 시작한다.
+
+`[↓]` Work Item이 남아 있으면 알려진 복귀 pointer 소비가 끝나지 않은 것이므로 `decided`로
+전환하지 않는다.
 
 `decided`로 바꿀 때는 마지막 기록 블록에 최소한 다음을 남긴다.
 

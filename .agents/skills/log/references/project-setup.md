@@ -59,6 +59,23 @@ repo만으로 작업 상태를 재개 가능하게 만들고 싶어 할 때 아�
 current-work 도구 등)이나 선택적 `log check` line-metric 출력 기준으로 둔다. 도구는 줄 수만
 제시하고 분리 판단을 대신하지 않는다.
 
+`scripts/log`의 append 계열 동작(`block add`, `entry add`, `detach`, `new`)은 threshold를 넘긴
+파일에 대해 soft/hard 알림을 각각 한 번만 출력한다. 반복 알림 상태는 해당 프로젝트의 로그
+저장 위치 아래 `$LOG_DIR/.log-hints/`에 둔다. 이 디렉터리는 사람이 읽는 로그 본문이 아니라
+도구 상태이므로 commit하지 않는다.
+
+프로젝트에 긴 로그 split guard를 도입하면 `.gitignore`에 선택한 로그 위치의 hint state를 추가한다.
+
+```gitignore
+logs/.log-hints/
+```
+
+기본 `logs/`가 아닌 위치를 쓰면 그 위치에 맞춘다.
+
+```gitignore
+worklogs/.log-hints/
+```
+
 ## current-work integration 최소 계약
 
 프로젝트가 current-work 선택 도구(command)나 session start hook을 두기로 했다면, 그 구현은
@@ -139,7 +156,7 @@ plan 위치를 가리키는 placeholder이고, plan 형식도 강제가 아니�
 
 ## Work Items
 
-- [↓] W1 Apply the token-race result to the checkout flow. — detached: logs/2026-01-12-token-race.md
+- [↓] W1 Apply the token-race result to the checkout flow. — detached: logs/2026-01-12-token-race.md — reason: checkout fix depends on token-race evidence
 ```
 
 ```markdown
@@ -153,17 +170,18 @@ status: open
 
 ---
 
-## 복귀 대상
-
-- Log: `logs/2026-01-10-checkout-bug.md`
-- Work Item: W1
-- Context snapshot: checkout failure의 token expiry race 원인을 확정하고 source W1이 결과를 소비한다.
-
 ## Work Items
 
 - [>] W1 경쟁 구간을 로그로 좁힌다
 
 ## Required Context
+
+### Return Target
+
+- Log: `logs/2026-01-10-checkout-bug.md`
+- Work Item: W1
+- Consume when: token expiry race 원인을 확정하면 source W1이 결과를 소비한다.
+- Context snapshot: checkout failure의 token expiry race 원인 범위만 조사한다.
 
 ### {Global}
 
