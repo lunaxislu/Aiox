@@ -67,20 +67,22 @@
 ## 세션 시작과 재개
 
 Claude와 Codex의 `SessionStart`는 같은 `scripts/onramp`를 호출한다. onramp는 단일
-활성 plan의 단계 로그에서 시작해 next pointer가 가리키는 open 로그를 따라가고,
-체인의 마지막 로그 하나를 현재 작업 로그로 보여준다. 포인터 체인, 최신 블록 제목과
-next pointer만 요약하며 로그 본문의 의미를 재구성하지 않는다. 활성 plan이 없을 때 open
-로그가 하나면 그 로그를 선택한다. open 로그가 여러 개면 next pointer 참조 그래프에서 다른
-open 로그가 실제로 가리키고 자신은 더 이상 다른 로그를 가리키지 않는 leaf가 정확히
-하나일 때만 그 로그를 선택한다. 복수 후보·복수 leaf·복수 활성 단계·깨진 포인터·
-순환은 자동 판단하지 않고 후보나 경고를 출력한다. 이 출력은 현재 작업의 권위가 아니다.
+활성 plan 단계가 명시적 `-> ` 마커로 가리키는 anchor 로그에서 시작한다. anchor에 local
+`[>]` 재개 지점이 있으면 그 로그를 현재 작업 로그로 보여주고, 없고 unresolved `[↓]` 분리
+작업 로그가 정확히 하나면 그 분리 로그를 따라가 같은 기준을 다시 적용한다. 최신 블록 제목과
+재개 지점만 요약하며 로그 본문의 의미나 복귀 소비 여부를 재구성하지 않는다. 활성 plan이
+없을 때 open 로그가 하나면 그 로그를 선택한다. open 로그가 여러 개면 `[↓]` 분리 작업 로그
+참조 그래프에서 다른 open 로그가 실제로 가리키고 자신은 더 이상 다른 로그를 가리키지 않는
+leaf가 정확히 하나일 때만 그 로그를 선택한다. 복수 후보·복수 leaf·복수 활성 단계·복수
+`[↓]`·깨진 포인터·순환은 자동 판단하지 않고 후보나 경고를 출력한다. 이 출력은 현재 작업의
+권위가 아니다.
 
 현재 작업을 정하고 재개하는 순서는 `AGENTS.md`가 소유한다. 요약하면 사용자 지정(주제만
-지정하면 `description` 검색) → 활성 plan 단계 anchor와 next pointer 체인 → 활성 plan이 없으면
-단일 open 로그 또는 next pointer 참조 그래프의 유일한 leaf 순으로 대상 로그를 정하고, 선택한
-로그 본문의 최신 기록·Work Items·next pointer에서 현재 단계와 재개 지점을 확인한다.
-여러 후보 중 하나로 정해지지 않으면 추측하지 않고 사용자에게 묻는다. 작업 전 현재 할
-일과 읽을 범위를 짧게 보고한다.
+지정하면 `description` 검색) → 활성 plan 단계 anchor에서 local `[>]` 또는 단일 unresolved
+`[↓]` 따라가기 → 활성 plan이 없으면 단일 open 로그 또는 `[↓]` 참조 그래프의 유일한 leaf
+순으로 대상 로그를 정하고, 선택한 로그 본문의 최신 기록·Work Items·재개 지점에서 현재
+단계와 재개 지점을 확인한다. 여러 후보 중 하나로 정해지지 않으면 추측하지 않고 사용자에게
+묻는다. 작업 전 현재 할 일과 읽을 범위를 짧게 보고한다.
 
 `description`은 현재 단계나 첫 행동이 아니라, 로그를 열기 전에 관련 로그인지
 판별하는 검색 index다.
@@ -94,10 +96,10 @@ open 로그가 실제로 가리키고 자신은 더 이상 다른 로그를 가�
 
 현재 작업을 다른 로그의 선행 작업으로 전환할 때는, 새 로그에 행동을 기록하는 것만으로
 현재 작업 포인터가 바뀌지 않는다. plan 단계가 작업을 소유하면 plan 단계 pointer를,
-parent 로그의 Work Item에서 child 로그가 생겼다면 parent Work Item과 child의 parent
-pointer를 함께 맞춰야 다음 세션이 올바른 작업을 재개한다. plan 단계 문법의 권위는
-`plans/AGENTS.md`의 Maintenance이고, parent/child pointer 기록 규칙은 log skill이
-소유한다.
+source 로그의 Work Item에서 분리 작업 로그(child)가 생겼다면 source의 `[↓]` detached Work
+Item(target·reason)과 child의 `### Return Target`을 함께 맞춰야 다음 세션이 올바른 작업을
+재개한다. plan 단계 문법의 권위는 `plans/AGENTS.md`의 Maintenance이고, detach와 Return
+Target 기록 규칙은 log skill이 소유한다.
 
 ## 큰 작업과 plan
 

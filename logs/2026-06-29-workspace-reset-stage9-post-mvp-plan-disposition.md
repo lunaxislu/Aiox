@@ -11,6 +11,12 @@ status: open
 - [ ] W3 roadmap/source map 정합 — `docs/product/roadmap.md`의 transitional `Current Execution Candidates`와 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`의 `keep / execution successor pending` rows를 successor 기준으로 repoint·재판정한다.
 - [ ] W4 삭제 disposition gate — successor와 source map self-sufficiency를 검증하고, 사용자 승인 뒤에만 `plans/post-mvp*`와 관련 pending legacy 원문 삭제 여부를 실행한다.
 
+## Required Context
+
+### Return Target
+
+- None: independent log.
+
 ## 2026-06-29 · stage9 착수 — post-mvp legacy plan disposition 로그 생성
 
 Parent pointer: `plans/workspace-reset/workspace-reset.md` stage 9 (`plans/post-mvp*` 삭제 disposition)

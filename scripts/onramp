@@ -1,6 +1,8 @@
 #!/bin/sh
-# 세션 시작 onramp. 활성 plan과 로그 next pointer 체인으로 현재 작업 로그 하나를 찾는다.
-# 의미를 추론하지 않고 구조 포인터만 따라가며, 모호하거나 깨진 구조에서는 후보를 보여준다.
+# 세션 시작 onramp. 활성 plan anchor에서 각 로그의 재개 지점을 보고 현재 작업 로그 하나를
+# 찾는다. local [>]가 있으면 그 로그에서 재개하고, 없고 unresolved [↓]가 하나면 그 분리 작업
+# 로그를 따라간다. 의미를 추론하지 않고 구조 포인터만 따라가며, 모호하거나 깨진 구조에서는
+# 후보를 보여준다.
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
 cd "$root" || exit 0
@@ -56,30 +58,34 @@ next_text() {
     ' "$rt_file"
 }
 
-log_path_from_text() {
+# plan 단계 pointer는 명시적 `-> ` 마커 뒤의 경로만 따른다. 단계명이나 서술에서
+# 다른 logs/ 경로(예: 앞쪽의 `→ logs/...` 언급)를 anchor로 오인하지 않는다.
+# 형식은 plans/AGENTS.md 단계 문법(`- [상태] 단계명 -> `logs/<로그>.md``)을 따른다.
+plan_pointer_path() {
     printf '%s\n' "$1" | awk '
         {
-            line = $0
-            if (match(line, /logs\/[^`[:space:]]+\.md/)) {
-                print substr(line, RSTART, RLENGTH)
-                exit
-            }
+            rest = $0; tail = ""
+            while (match(rest, /-> /)) { rest = substr(rest, RSTART + RLENGTH); tail = rest }
+            if (tail != "" && match(tail, /logs\/[^`[:space:]]+\.md/))
+                print substr(tail, RSTART, RLENGTH)
         }
     '
 }
 
-log_path_from_next() {
-    printf '%s\n' "$1" | awk '
-        {
-            line = $0
-            if (match(line, /logs\/[^`[:space:]]+\.md/)) {
-                # 분리 로그 포인터는 next pointer의 첫 행동에 둔다. 뒤쪽의 owner 문서나
-                # 검토 대상 경로는 작업 목록일 수 있으므로 따라가지 않는다.
-                if (RSTART <= 40) print substr(line, RSTART, RLENGTH)
-                exit
-            }
-        }
-    '
+# 로그가 구조적으로 유효한지(log check가 통과하는지) 확인한다.
+check_ok() {
+    $log_tool check "$1" >/dev/null 2>&1
+}
+
+# 로그에 local [>] 재개 지점(next pointer)이 있는가. 의미 판단 없이 check 출력만 본다.
+has_resume_pointer() {
+    $log_tool check "$1" 2>/dev/null | grep -q '^next: line '
+}
+
+# unresolved [↓] 분리 작업 로그 target을 한 줄에 하나씩 출력한다. 경로 추출과
+# fence 인식은 log 도구의 check 출력(detached: line N target <경로>)에 위임한다.
+detached_targets() {
+    $log_tool check "$1" 2>/dev/null | awk '/^detached: line [0-9]+ target / { print $5 }'
 }
 
 latest_heading() {
@@ -126,16 +132,13 @@ referenced_open_leaves() {
     edges=""
 
     for source in $paths; do
-        if ! $log_tool check "$source" >/dev/null 2>&1; then
-            continue
-        fi
-        next=$(next_text "$source")
-        target=$(log_path_from_next "$next")
-        [ -n "$target" ] || continue
-        [ -f "$target" ] || continue
-        [ "$(read_field "$target" status)" = "open" ] || continue
-        edges="$edges$source	$target
+        check_ok "$source" || continue
+        for target in $(detached_targets "$source"); do
+            [ -f "$target" ] || continue
+            [ "$(read_field "$target" status)" = "open" ] || continue
+            edges="$edges$source	$target
 "
+        done
     done
 
     printf '%b' "$edges" | awk -F '\t' '
@@ -167,7 +170,7 @@ if [ "$step_count" -eq 0 ]; then
         if [ "$leaf_count" -eq 1 ]; then
             current=$(printf '%s\n' "$leaves" | awk 'NR == 1 { print }')
             echo "현재 작업 경로:"
-            echo "- open 로그 next pointer 참조 그래프의 유일한 leaf"
+            echo "- open 로그 [↓] 분리 작업 로그 참조 그래프의 유일한 leaf"
             echo
             echo "현재 작업 로그:"
             print_log_summary "$current"
@@ -175,7 +178,7 @@ if [ "$step_count" -eq 0 ]; then
             echo "현재 작업 후보:"
             print_open_candidates
             echo
-            echo "→ 활성 plan이 없고 next pointer 참조 leaf가 하나로 정해지지 않아 자동 선택하지 않았습니다."
+            echo "→ 활성 plan이 없고 [↓] 분리 작업 로그 참조 leaf가 하나로 정해지지 않아 자동 선택하지 않았습니다."
         fi
     fi
     exit 0
@@ -191,7 +194,7 @@ fi
 
 plan=$(printf '%s\n' "$steps" | awk -F '\t' 'NR == 1 { print $1 }')
 step=$(printf '%s\n' "$steps" | awk -F '\t' 'NR == 1 { print $2 }')
-current=$(log_path_from_text "$step")
+current=$(plan_pointer_path "$step")
 
 if [ -z "$current" ] || [ ! -f "$current" ]; then
     echo "진행 중 plan 포인터 확인 필요:"
@@ -201,32 +204,46 @@ if [ -z "$current" ] || [ ! -f "$current" ]; then
     exit 0
 fi
 
+# anchor 로그에서 시작해 재개 지점을 정한다. local [>]가 있으면 그 로그에서 재개하고,
+# 없고 unresolved [↓]가 정확히 하나면 그 분리 작업 로그를 따라간다. [>]가 [↓]보다
+# 우선하며, 완료·복귀 소비 같은 의미 판단은 하지 않는다.
 chain=$current
 seen="|$current|"
 warning=""
+ambiguous=""
 depth=0
 
 while [ "$depth" -lt 16 ]; do
-    if ! $log_tool check "$current" >/dev/null 2>&1; then
-        warning="next pointer 구조가 유효하지 않습니다: $current"
+    if ! check_ok "$current"; then
+        warning="로그 구조가 유효하지 않습니다(log check 실패): $current"
         break
     fi
-
-    next_pointer=$(next_text "$current")
-    next=$(log_path_from_next "$next_pointer")
-    [ -n "$next" ] || break
+    if has_resume_pointer "$current"; then
+        break
+    fi
+    targets=$(detached_targets "$current")
+    target_count=$(printf '%s\n' "$targets" | awk 'NF { n++ } END { print n + 0 }')
+    if [ "$target_count" -eq 0 ]; then
+        break
+    fi
+    if [ "$target_count" -gt 1 ]; then
+        ambiguous=$targets
+        warning="local [>] 없이 unresolved [↓]가 여러 개라 현재 작업을 자동 선택하지 않았습니다: $current"
+        break
+    fi
+    next=$targets
 
     if [ ! -f "$next" ]; then
-        warning="next pointer 대상이 존재하지 않습니다: $next"
+        warning="[↓] 분리 작업 로그 대상이 존재하지 않습니다: $next"
         break
     fi
     if [ "$(read_field "$next" status)" != "open" ]; then
-        warning="next pointer 대상이 open 로그가 아닙니다: $next"
+        warning="[↓] 분리 작업 로그 대상이 open 로그가 아닙니다: $next"
         break
     fi
     case "$seen" in
         *"|$next|"*)
-            warning="next pointer 순환을 발견했습니다: $next"
+            warning="[↓] 분리 작업 로그 순환을 발견했습니다: $next"
             break
             ;;
     esac
@@ -239,7 +256,7 @@ $next"
 done
 
 if [ "$depth" -ge 16 ]; then
-    warning="next pointer 체인이 16단계를 초과했습니다."
+    warning="[↓] 분리 작업 로그 체인이 16단계를 초과했습니다."
 fi
 
 echo "현재 작업 경로:"
@@ -248,6 +265,12 @@ printf '%s\n' "$chain" | awk '{ print "- " $0 }'
 echo
 echo "현재 작업 로그:"
 print_log_summary "$current"
+
+if [ -n "$ambiguous" ]; then
+    echo
+    echo "unresolved [↓] 분리 작업 로그 후보:"
+    printf '%s\n' "$ambiguous" | sed 's/^/- /'
+fi
 
 if [ -n "$warning" ]; then
     echo

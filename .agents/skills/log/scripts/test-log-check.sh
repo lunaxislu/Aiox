@@ -101,6 +101,7 @@ detached="$WORK/detached.md"
 check_status "C6 decided detached fails" 1 "$LOG" check "$detached"
 check_contains "C6 detached status error" "$WORK/out" '^ERROR status: decided 로그에 child 결과 소비 대기 \[↓\] Work Items가 있습니다$'
 check_contains "C6 detached not closed count" "$WORK/out" '^work_items: active=0 open=0 closed=0 detached=1 incomplete=0$'
+check_contains "C6 detached structured pointer" "$WORK/out" '^detached: line 9 target logs/child.md$'
 
 missing_shape="$WORK/missing-shape.md"
 {

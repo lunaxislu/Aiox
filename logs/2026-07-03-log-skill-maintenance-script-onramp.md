@@ -7,8 +7,8 @@ status: open
 ## Work Items
 
 - [>] W1 log skill maintenance 기준과 현재 owner/reference drift를 검토하고 수정 범위를 확정한다
-- [ ] W2 `scripts/log` 명령 표면과 회귀 테스트를 현재 portable log 계약에 맞춰 검토·수정한다
-- [ ] W3 project onramp/current-work integration과 영향받는 repo 지침을 검토·수정한다
+- [x] W2 `scripts/log` 명령 표면과 회귀 테스트를 현재 portable log 계약에 맞춰 검토·수정한다
+- [x] W3 project onramp/current-work integration과 영향받는 repo 지침을 검토·수정한다
 - [ ] W4 전체 owner·호출·테스트 경로를 재검증하고 closeout 결과를 기록한다
 
 ## Required Context
@@ -463,3 +463,14 @@ log detach <source-log> \
 - 기존 legacy 전체 호환은 추가하지 않았다. 다만 실제 onramp 경고 대상인 `logs/2026-06-21-workspace-reset-legacy-source-absorption.md`에는 현재 계속 쓰는 open 로그로서 `### Return Target` / `- None: independent log.`만 보강했다.
 - 이 maintenance 로그 자체도 새 `check` 필수 구조에 맞게 `### Return Target` / `- None: independent log.`를 보강한 뒤 이 entry를 기록했다.
 - 검증: `sh -n .agents/skills/log/scripts/log`, `test-log-append.sh` 30 passed, `test-log-items.sh` 27 passed, `test-log-check.sh` 22 passed, `git diff --check` 통과. 보강한 active 로그는 `log check`에서 `return_target: independent`로 통과했다.
+
+### 2026-07-04 09:23 · W3 onramp 연동 정합화
+
+- W3 범위의 onramp ↔ log 연동 정합화를 반영했다. `scripts/onramp`는 plan 단계의 명시적 `-> ` 포인터만 anchor로 삼고, 로그 내부에서는 local `[>]`를 우선하며 local `[>]`가 없고 unresolved `[↓]` target이 정확히 하나일 때만 child 로그를 따라간다.
+- `.agents/skills/log/scripts/log check`는 unresolved `[↓]`에 대해 `detached: line N target <path>` 구조화 라인을 출력하게 했다. onramp는 이 출력만 소비하고 본문 grep으로 의미를 추론하지 않는다.
+- `scripts/test-onramp.sh`를 새 로그 shape와 `[↓]` 모델로 갱신하고, 단일 `[↓]` follow, `[>]` 우선, 복수 `[↓]` ambiguous, broken target, plan `->` marker-only anchor를 회귀로 고정했다.
+- `docs/guides/workflow.md`는 next pointer 체인 표현을 local `[>]` / unresolved `[↓]` / `Return Target` 모델로 갱신했다. `logs/AGENTS.md`의 삭제된 reference owner는 `references/loop-rules.md`로 정정했다.
+- 실제 live onramp 오anchor 원인이던 `plans/workspace-reset/workspace-reset.md` 활성 단계의 앞쪽 historical log 언급은 더 이상 anchor로 잡히지 않고, 끝의 `-> logs/2026-06-29-workspace-reset-stage9-post-mvp-plan-disposition.md`를 현재 작업 로그로 선택한다.
+- stage9 로그는 현재 계속 쓰는 open 로그라 새 `check` 필수 구조에 맞춰 `### Return Target` / `- None: independent log.`만 최소 보강했다. legacy 전체 자동 repair는 추가하지 않았다.
+- no-plan leaf 자동선택은 유지하기로 판단했다. 이 repo 확장 동작으로 두되, edge 기준은 구 `[>]` embedded path가 아니라 새 `[↓]` detached target으로 정렬했다.
+- 검증: `sh -n` log/onramp 통과, `test-log-append.sh` 30 passed, `test-log-items.sh` 27 passed, `test-log-check.sh` 23 passed, `scripts/test-onramp.sh` 13 passed, `scripts/onramp` live stage9 선택, `scripts/check-markdown-inline-code docs/guides/workflow.md`, `git diff --check` 통과.

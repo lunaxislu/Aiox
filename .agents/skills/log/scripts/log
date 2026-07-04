@@ -337,6 +337,25 @@ find_next_pointers() {
     ' "$1"
 }
 
+# unresolved [↓] Work Item마다 line 번호와 detached target 경로를 구조적으로 뽑는다.
+# onramp 같은 소비자가 본문 grep 없이 분리 작업 로그를 따라갈 수 있게 fence-aware로 뽑는다.
+find_detached_pointers() {
+    awk "$FENCE_FUNCS$parse_item_awk"'
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0 }
+        {
+            if (fence_skip($0)) next
+            if (parse_item($0) && item_marker == "↓") {
+                target = ""
+                if (match($0, /— detached:[[:space:]]*/)) {
+                    tail = substr($0, RSTART + RLENGTH)
+                    if (match(tail, /^[^[:space:]]+/)) target = substr(tail, RSTART, RLENGTH)
+                }
+                printf "%d\t%s\n", FNR, target
+            }
+        }
+    ' "$1"
+}
+
 latest_date_heading() {
     awk "$FENCE_FUNCS"'
         FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; line = 0; heading = "" }
@@ -1288,6 +1307,10 @@ $f"
             1) printf '%s\n' "$pointers" | awk -F '\t' '{ print "next: line " $1 " " $2 }' ;;
             *) printf 'ERROR next: next pointer가 %s개입니다\n' "$next_count"; rc=1 ;;
         esac
+        detached_pointers=$(find_detached_pointers "$file")
+        if [ -n "$detached_pointers" ]; then
+            printf '%s\n' "$detached_pointers" | awk -F '\t' 'NF { printf "detached: line %s target %s\n", $1, ($2 == "" ? "(없음)" : $2) }'
+        fi
         return_target=$(return_target_summary "$file")
         printf 'return_target: %s\n' "$return_target"
         if [ "$return_target" = "missing" ]; then
@@ -1299,8 +1322,7 @@ $f"
         elif [ "$lines" -ge "$LOG_SOFT_LINES" ]; then printf 'long_log: soft (%s lines >= %s)\n' "$lines" "$LOG_SOFT_LINES"
         else printf 'long_log: ok (%s lines)\n' "$lines"; fi
         if [ "$detached_count" -gt 0 ]; then
-            printf 'HINT detached: unresolved [↓] items need Return Target consumption review\n'
-            find_detached_items "$file" | awk '{ print "  " $0 }'
+            printf 'HINT detached: unresolved [↓] items need Return Target consumption review (targets는 위 detached: 라인 참조)\n'
         fi
         case "$status" in
             open)
