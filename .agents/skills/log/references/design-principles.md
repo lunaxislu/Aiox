@@ -13,6 +13,22 @@
 검증 결과와 남은 행동이다. 단순 진행 발언, 반복 설명, 판단에 쓰지 않은 검색 과정, 이미 다른
 owner 문서가 소유하는 결과물은 로그 본문에 누적하지 않는다.
 
+## 착안한 개념
+
+현재 로그 모델은 몇 가지 개념에서 원리를 빌렸지만, 그 용어를 사용자-facing 구조로 채택하지
+않는다. 은유는 설계 판단을 복원하는 보조 설명이고, section 이름·명령 이름·새 표면은 neutral
+log terms로 둔다.
+
+- Lifecycle cleanup: 기록이 Work state나 Required Context의 dependency를 바꾸면 영향받은 표면을
+  같은 동작에서 Reconcile한다.
+- Git history and refs: History surface는 append-only 경위이고, Work state와 Required Context는
+  mutable current-state 표면이다. 같은 unit의 후속 판단은 같은 block에 entry로 누적하고, 별도
+  수명이 생기면 source Work Item과 결과 소비 여부에 따라 transfer, detach, independent follow-up으로
+  분리한다. 현재 재개 상태나 standing 기준을 과거 history에 묻어 두지 않는다.
+- Coordinated movement: 의미 있는 변화는 여러 표면을 함께 움직이게 할 수 있다. Record,
+  Reconcile, Cross-Log transition과 Closeout은 별도 owner지만, 관련 갱신을 기억에 맡긴 후속
+  작업으로 미루지 않는다.
+
 ## 세 표면
 
 로그는 세 표면을 분리한다.

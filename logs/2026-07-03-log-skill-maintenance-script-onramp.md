@@ -1,15 +1,15 @@
 ---
 topic: Log skill maintenance, script, onramp 정합화
 description: Reviews log skill maintenance rules, scripts/log and tests, then project current-work/onramp integration and affected repo guidance.
-status: open
+status: decided
 ---
 
 ## Work Items
 
-- [>] W1 log skill maintenance 기준과 현재 owner/reference drift를 검토하고 수정 범위를 확정한다
+- [x] W1 log skill maintenance 기준과 현재 owner/reference drift를 검토하고 수정 범위를 확정한다
 - [x] W2 `scripts/log` 명령 표면과 회귀 테스트를 현재 portable log 계약에 맞춰 검토·수정한다
 - [x] W3 project onramp/current-work integration과 영향받는 repo 지침을 검토·수정한다
-- [ ] W4 전체 owner·호출·테스트 경로를 재검증하고 closeout 결과를 기록한다
+- [x] W4 전체 owner·호출·테스트 경로를 재검증하고 closeout 결과를 기록한다
 
 ## Required Context
 
@@ -474,3 +474,33 @@ log detach <source-log> \
 - stage9 로그는 현재 계속 쓰는 open 로그라 새 `check` 필수 구조에 맞춰 `### Return Target` / `- None: independent log.`만 최소 보강했다. legacy 전체 자동 repair는 추가하지 않았다.
 - no-plan leaf 자동선택은 유지하기로 판단했다. 이 repo 확장 동작으로 두되, edge 기준은 구 `[>]` embedded path가 아니라 새 `[↓]` detached target으로 정렬했다.
 - 검증: `sh -n` log/onramp 통과, `test-log-append.sh` 30 passed, `test-log-items.sh` 27 passed, `test-log-check.sh` 23 passed, `scripts/test-onramp.sh` 13 passed, `scripts/onramp` live stage9 선택, `scripts/check-markdown-inline-code docs/guides/workflow.md`, `git diff --check` 통과.
+
+### 2026-07-04 19:21 · W1 maintenance router and loop review
+
+- **확인한 사실:** @user는 `maintenance.md`가 나열·문장 중심이라 유지보수 판단 절차를 loop 형태로 재구성하는 안을 제안했고, `document-structure-review` 기준으로도 maintenance 전용 loop가 적절하다고 판단했다.
+- **확인한 사실:** `.agents/skills/log/SKILL.md`는 개요 직후 `scripts/log` 도구 사용 원칙을 추가하고 `## 참조`를 상단으로 이동했다. router 문구는 `design-principles.md`, `example.md`, `project-setup.md`, `maintenance.md`의 실제 identity에 맞춰 정밀화했다.
+- **확인한 사실:** `.agents/skills/log/references/maintenance.md`는 `유지보수 검토 루프`를 중심으로 `Intake → Classify → Trace Owners → Validate Fix Shape → Propose Scope → Apply After Approval → Verify And Record` 단계로 재구성했다. 일반 로그 실행 루프는 `../SKILL.md`와 `loop-rules.md`가 소유한다고 명시했다.
+- **확인한 사실:** Codex subagent 검토는 blocking issue가 없다고 보고했다. Claude 검토는 F1 의미판단 negative rule 삼중 서술과 F2 `기본 도구`/`보조 도구` 표현 충돌을 최소 수정 가치가 있는 항목으로 지적했다.
+- **판단:** F1/F2는 문서 thinning과 용어 정렬 문제이므로 반영했다. 새 도구 문단에서 의미판단 문장을 제거하고, `scripts/log`를 "기본 도구"가 아니라 "수행하는 도구"로 표현해 `## 도구`의 "보조 도구"와 형용사 충돌을 제거했다.
+- **판단:** `## 참조` 상단 배치, maintenance router의 Intake 일부 노출, `maintenance.md`의 script sequencing 위치와 승인 gate 중복은 현재 사용자 의도와 유지보수 loop identity를 해치지 않으므로 추가 변경하지 않았다.
+- **검증:** `git diff --check -- .agents/skills/log/SKILL.md .agents/skills/log/references/maintenance.md`를 통과했다. `.agents/skills/log/scripts/log check logs/2026-07-03-log-skill-maintenance-script-onramp.md` 결과 구조 오류는 없었고, 이 로그는 W1 active / W4 open 상태다.
+- **남은 일:** W1은 maintenance 기준과 owner/reference drift의 최소 적용안이 정리된 상태다. 사용자가 추가 섹션 리뷰나 후속 반영을 요청하면 해당 범위만 검토한다. 이후 W4에서 전체 owner·호출·테스트 경로 재검증과 closeout 기록을 수행한다.
+
+### 2026-07-04 20:18 · W1 conceptual identity review 반영
+
+- **확인한 사실:** @user는 log skill의 착안 개념(identity)을 `design-principles.md`와 `maintenance.md`에 반영해야 한다고 판단했고, `log/decision.md`와 `logs/2026-07-01-log-skill-overhaul-discussion.md`의 배경 확인은 subagent에게 위임하도록 지시했다.
+- **확인한 사실:** subagent는 React lifecycle/cleanup, git commit/refs/branching, coordinated movement가 현재 log skill의 착안 개념이며, durable conclusion은 은유 용어를 section/command 이름으로 채택하지 않고 neutral log terms로 번역하는 것이라고 보고했다.
+- **확인한 사실:** Claude 리뷰는 `design-principles.md`의 착안 개념 섹션 위치, lifecycle bullet의 Reconcile scope, git bullet의 transfer/detach/independent follow-up discriminator, `maintenance.md` guardrail 중복과 표면 용어 일관성을 지적했다.
+- **판단:** 착안 개념은 `design-principles.md`가 소유하고, 향후 유지보수 guardrail은 `maintenance.md`의 `수정 원칙`이 소유한다. `SKILL.md`와 `loop-rules.md`는 이미 neutral operational model을 소유하므로 이번 identity 보강으로는 수정하지 않는다.
+- **변경:** `design-principles.md`의 `## 착안한 개념`을 `## 로그의 목적` 뒤로 옮기고, lifecycle bullet은 Work state/Required Context dependency가 바뀔 때 Reconcile한다는 scope로 좁혔다. git bullet은 같은 unit은 같은 block entry로 누적하고, 별도 수명은 source Work Item과 결과 소비 여부에 따라 transfer/detach/independent follow-up으로 분리한다고 정밀화했다.
+- **변경:** `maintenance.md`의 guardrail은 착안 개념을 설계 원리 설명에는 쓸 수 있지만 section 이름, 명령 이름이나 새 required surface로 승격하지 않고 기존 History surface, Work state, Required Context와 lifetime transition owner로 표현한다고 압축했다.
+- **검증:** `git diff --check -- .agents/skills/log/references/design-principles.md .agents/skills/log/references/maintenance.md`를 통과했다.
+- **결론:** W1의 maintenance 기준, owner/reference drift 검토와 최소 반영 범위는 정리됐다. 남은 작업은 W4의 전체 owner·호출·테스트 경로 재검증과 closeout 기록이다.
+
+### 2026-07-04 20:27 · W4 closeout 재검증
+
+- **확인한 사실:** W4 검증은 파일 변경 없이 수행했다. `sh -n .agents/skills/log/scripts/log`, `sh -n scripts/onramp`, `test-log-append.sh` 30 passed, `test-log-items.sh` 27 passed, `test-log-check.sh` 23 passed, `scripts/test-onramp.sh` 13 passed, `scripts/check-markdown-inline-code docs/guides/workflow.md`, `git diff --check`, 이 로그의 `log check`가 모두 통과했다.
+- **확인한 사실:** `scripts/log`의 주요 subcommand surface(`new`, `meta`, `block`, `entry`, `item`, `context`, `detach`, `search`, `check`)는 dispatcher와 회귀 테스트 범위에서 확인됐다. `scripts/onramp`는 `log check`의 structured detached output을 소비하고, plan `->` anchor, local `[>]` 우선, 단일 unresolved `[↓]` follow, 복수·깨짐·순환 경고 경로를 테스트로 검증했다.
+- **확인한 사실:** `.agents/skills/log/SKILL.md`의 reference router가 가리키는 reference 파일들은 존재하고, W1에서 정리한 maintenance loop와 design-principles identity 변경은 현재 파일에 반영돼 있다. `logs/AGENTS.md`, `docs/guides/workflow.md`, `scripts/onramp`의 repo integration 검증도 통과했다.
+- **판단:** portable log skill과 repo integration의 owner 경계는 현재 변경 범위에서 유지됐다. package-log 모델은 이 로그에서 설계하거나 흡수하지 않았고, sibling 범위 침범도 확인되지 않았다.
+- **결론:** W1~W4의 maintenance 기준 정리, script/test 정합화, onramp integration 정합화와 전체 재검증이 완료됐다. 추가 수정 없이 W4를 완료 처리하고 이 로그를 `decided`로 닫는다.

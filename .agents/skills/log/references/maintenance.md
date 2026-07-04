@@ -10,16 +10,21 @@
 
 ## 목차
 
-- 시작 절차
-- 문제 분류
-- 해결안 검증
+- 유지보수 검토 루프
+- 문제 분류 기준
+- Owner별 변경 기준
 - 수정 원칙
-- Portable log skill 변경 기준
-- Project integration 변경 기준
-- Script 변경 기준
 - 검증과 기록
 
-## 시작 절차
+## 유지보수 검토 루프
+
+이 루프는 log skill, reference, script, project integration 변경 요청을 검토할 때만 적용한다.
+일반 로그 작성·재개·종료의 실행 루프는 `../SKILL.md`와 `loop-rules.md`가 소유한다.
+
+매번 모든 단계를 깊게 수행하지 않는다. 현재 입력과 위험도에 필요한 범위만 확인하되, 적용안을
+내기 전에는 분류, owner 경계, 해결안 검증을 생략하지 않는다.
+
+### 1. Intake
 
 사용자가 특정 로그, 로그 블록, 문서, script, 명령 출력, 사례를 지정했다면 그것을 먼저
 읽는다. 지정된 대상 없이 "로그 스킬이 문제다", "개선하자", "개발하자"처럼 말하면
@@ -38,23 +43,13 @@
 log skill `SKILL.md`와 reference를 확인한다. root 지침이나 로그 지침이 다른 문서나
 script를 참조하면, 그 참조가 문제 판단에 영향을 줄 때만 따라간다.
 
-## 문제 분류
+### 2. Classify
 
-먼저 원인을 다음 범주로 나눈다. 하나로 명확히 나뉘지 않으면 복수 원인으로 다룬다.
+먼저 원인을 [문제 분류 기준](#문제-분류-기준)에 따라 나눈다. 하나로 명확히 나뉘지 않으면 복수
+원인으로 다룬다.
 
-- 기록 규칙 문제: agent가 무엇을 기록, 생략, 완료, 취소, 이관, 종료해야 하는지
-  판단하기 어렵다.
-- 구조 문제: frontmatter, Work Items, next pointer, parent/child pointer 같은 구조가
-  불분명하거나 소비자가 읽기 어렵다.
-- 프로젝트 integration 문제: root 지침, 로그 저장 위치 지침, onramp, plan, owner 반영,
-  repo 전용 workflow가 log skill의 portable 규칙과 어긋난다.
-- script 문제: 도구가 구조 변환, 검색, 검증, status guard를 잘못 수행하거나 문서화된
-  표면과 다르게 동작한다.
-- 비-skill 문제: 한 사례에서만 생긴 오적용·오해이거나 기존 규칙으로 처리할 수 있는데
-  기록이 부족했다.
-
-분류할 때 프로젝트 root 지침서, 로그 저장 위치의 지침서, log skill `SKILL.md`, 관련
-reference, 관련 script를 필요한 만큼만 읽는다. 전체 문서 트리를 일괄 탐색하지 않는다.
+분류할 때 프로젝트 root 지침서, 로그 저장 위치의 지침서, log skill `SKILL.md`, 관련 reference,
+관련 script를 필요한 만큼만 읽는다. 전체 문서 트리를 일괄 탐색하지 않는다.
 
 수정 전에 먼저 사용자에게 진단을 짧게 보고한다.
 
@@ -66,11 +61,7 @@ reference, 관련 script를 필요한 만큼만 읽는다. 전체 문서 트리�
 다만 문제 분류, 수정 범위, 검증 방법이 이미 명확하면 추가 질문 없이 그 범위 안에서 진행할
 수 있다. 문서 이동, 통합, 삭제, repo workflow 변경처럼 비용이 큰 변경은 다시 확인받는다.
 
-## 해결안 검증
-
-문제를 분류한 뒤 바로 파일을 고치지 않는다. 먼저 해결 방향을 탐색하고 아래 기준을
-통과하는지 점검한다. 기준을 통과하지 못하면 사용자에게 적용안을 내기 전에 다시
-탐색한다.
+### 3. Trace Owners
 
 문제가 프로젝트 integration 쪽이면 root 지침, 로그 저장 위치 지침, hook, script, repo 전용
 workflow를 어떻게 고칠지 먼저 생각한다. portable log skill을 repo 문제의 우회 패치로
@@ -78,6 +69,16 @@ workflow를 어떻게 고칠지 먼저 생각한다. portable log skill을 repo 
 
 문제가 portable log skill이나 그 script 쪽이면 log skill의 `SKILL.md`, reference, script 중
 어느 owner가 문제를 소유하는지 먼저 정한다. repo 지침에 skill 문제를 복사해 덮지 않는다.
+
+[Owner별 변경 기준](#owner별-변경-기준)에 따라 portable log skill, project integration, script
+중 어디가 수정 owner인지 정한다. 복수 owner가 영향을 받으면 primary owner와 follow-up owner를
+구분한다.
+
+### 4. Validate Fix Shape
+
+문제를 분류한 뒤 바로 파일을 고치지 않는다. 먼저 해결 방향을 탐색하고 아래 기준을
+통과하는지 점검한다. 기준을 통과하지 못하면 사용자에게 적용안을 내기 전에 다시
+탐색한다. owner가 잘못 잡혔으면 [Trace Owners](#3-trace-owners)로 돌아간다.
 
 해결안은 다음을 통과해야 한다.
 
@@ -90,45 +91,46 @@ workflow를 어떻게 고칠지 먼저 생각한다. portable log skill을 repo 
 - 문서나 script를 새로 추가하는 것이 최선의 해결책이 아님을 확인했고, 그래도 필요한 이유가
   있음을 설명할 수 있다.
 
-이 기준을 통과한 뒤에만 사용자에게 적용안을 제안한다. 적용안에는 해결 방향, 수정해야 할
-owner와 파일 범위, 건드리지 않을 범위, 추가를 피한 이유 또는 추가가 필요한 이유, 검증 방법을
-포함한다. 사용자가 거부하거나 다른 방향을 주면 적용하지 말고 다시 탐색한다.
+### 5. Propose Scope
 
-## 수정 원칙
+Validate Fix Shape 기준을 통과한 뒤에만 사용자에게 적용안을 제안한다. 적용안에는 해결 방향,
+수정해야 할 owner와 파일 범위, 건드리지 않을 범위, 추가를 피한 이유 또는 추가가 필요한 이유,
+검증 방법을 포함한다.
 
-- 단순화가 우선이다. 문제나 개발 편의를 이유로 문서, 필드, 명령, 예외를 계속 늘리지
-  않는다.
-- 같은 규칙을 여러 reference에서 재정의하지 않는다.
-- router나 요약 문서를 축약할 때는 reference의 세부 절차를 반복하지 않는다. 다만 다음
-  agent가 무엇을 확인하고, 어디서 시작하며, 어떤 후속 점검을 해야 하는지 선명하게 복원할 수
-  있게 쓴다.
-- 도구 표면 문서는 현재 확정된 명령의 사용법과 경계만 짧게 쓴다. 제거한 대안이나 만들지
-  않기로 한 명령의 이유를 반복해 설명해야 한다면, 그 negative rule은 이 maintenance 기준이나
-  작업 로그에 남기고 일반 사용 경로의 도구 표면 설명에는 넣지 않는다.
-- portable log skill은 특정 repo의 plan, onramp, owner 문서, hook 구현을 전제하지 않는다.
-- 도구는 구조, 형식, 원자적 변환, 검색, 검증을 돕는다. 완료, 취소, 이관, 종료, 관련성,
-  owner 같은 의미 판단을 대신하지 않는다.
-- 추상적 가능성만으로 예외나 안전 단계를 추가하지 않는다. 실제 사례와 재발 가능성을
-  근거로 둔다.
-- 새 문서가 read path를 늘리는지 먼저 본다. 기존 문서의 재배치나 삭제로 해결할 수 있으면
-  새 문서를 만들지 않는다.
-- 끝난 로그에 새 작업을 붙여 open을 연장하지 않는다. 새 수명은 새 로그로 시작한다.
-- 특정 사례를 바로 예시나 예외로 박기 전에, 문제가 어떤 형식의 규칙을 요구하는지 고른다.
-  scope rule은 적용 범위가 흔들릴 때, identity rule은 구조의 정체성이 흔들릴 때, decision
-  table은 결과가 여러 갈래로 나뉠 때, invariant나 negative rule은 금지할 해석이 반복될 때,
-  must rule은 조건은 명확하지만 agent가 실행을 미룰 때 사용한다. 이 형식들은 선택 도구이며
-  모든 개선에 강제하지 않는다.
-- 사례, 예시, script 동작, 다른 owner reference 중 하나와 대조했을 때 기존 문구가 의도한
-  유효 사례를 제외하거나, 제외해야 할 사례를 허용하게 읽히면 owner reference의 scope 표현을
-  조정한다. 단순히 더 자연스럽거나 더 넓은 표현이라는 이유만으로 바꾸지 않는다. 조정한
-  뒤에는 새 표현이 문제 사례를 포함하는지, 제외해야 할 사례까지 열지 않는지, owner 경계와
-  충돌하지 않는지 스스로 다시 점검한다. 통과하지 못하면 범위가 복원되는 표현으로 다시
-  다듬는다.
-- 일반화가 필요한 경우에도 핵심 판단은 `loop-rules.md`가 소유한다. `design-principles.md`는
-  현재 구조의 판단 원리를 설명하는 보조 reference이고, `example.md`는 상황별 도구 사용과 worked
-  example을 빠르게 확인하는 보조 reference다. 둘 다 decision이나 rule을 대체하지 않는다.
+사용자가 거부하거나 다른 방향을 주면 적용하지 말고, 필요한 단계로 돌아가 다시 탐색한다.
 
-## Portable log skill 변경 기준
+### 6. Apply After Approval
+
+승인된 범위만 수정한다. 사용자 승인 없이 문서 이동, 통합, 삭제, agent memory 변경,
+repo workflow 변경을 하지 않는다.
+
+script는 문서 규칙이 먼저 확정된 뒤 평가한다. 도구 표면을 먼저 정하고 reference에 맞추지
+않는다.
+
+script를 바꾼다면 문서에는 확정된 도구 표면만 반영한다. provisional 명령, placeholder 이름,
+아직 구현하지 않은 delete/edit 명령을 reference에 박아두지 않는다.
+
+### 7. Verify And Record
+
+변경 후에는 [검증과 기록](#검증과-기록)을 적용한다. 검증 결과가 owner 경계나 해결안 형태의
+문제를 드러내면 해당 단계로 돌아가 수정 범위를 다시 좁힌다.
+
+## 문제 분류 기준
+
+- 기록 규칙 문제: agent가 무엇을 기록, 생략, 완료, 취소, 이관, 종료해야 하는지
+  판단하기 어렵다.
+- 구조 문제: frontmatter, Work Items, next pointer, parent/child pointer 같은 구조가
+  불분명하거나 소비자가 읽기 어렵다.
+- 프로젝트 integration 문제: root 지침, 로그 저장 위치 지침, onramp, plan, owner 반영,
+  repo 전용 workflow가 log skill의 portable 규칙과 어긋난다.
+- script 문제: 도구가 구조 변환, 검색, 검증, status guard를 잘못 수행하거나 문서화된
+  표면과 다르게 동작한다.
+- 비-skill 문제: 한 사례에서만 생긴 오적용·오해이거나 기존 규칙으로 처리할 수 있는데
+  기록이 부족했다.
+
+## Owner별 변경 기준
+
+### Portable log skill 변경 기준
 
 portable log skill이나 reference를 바꾸는 경우:
 
@@ -149,7 +151,7 @@ cross-log/lifetime transition과 Closeout의 세부 판정은 `loop-rules.md`, �
 프로젝트 setup routing은 `project-setup.md`, 개념 원리는 `design-principles.md`, 상황별 예시는
 `example.md`로 둔다.
 
-## Project integration 변경 기준
+### Project integration 변경 기준
 
 프로젝트 integration은 다음을 소유한다.
 
@@ -167,10 +169,7 @@ cross-log/lifetime transition과 Closeout의 세부 판정은 `loop-rules.md`, �
 portable skill이 integration 사례를 언급할 수는 있지만, 특정 repo의 onramp나 plan 구조를
 필수 전제로 만들지 않는다.
 
-## Script 변경 기준
-
-script는 문서 규칙이 먼저 확정된 뒤 평가한다. 도구 표면을 먼저 정하고 reference에 맞추지
-않는다.
+### Script 변경 기준
 
 script를 바꾸는 경우:
 
@@ -186,13 +185,46 @@ script를 바꾸지 않는 경우:
 - 본문 기록이나 일반 편집으로 충분하다.
 - 도구가 더 많은 상태기계를 만들고 agent mental model을 분리한다.
 
-script를 바꾼다면 문서에는 확정된 도구 표면만 반영한다. provisional 명령, placeholder
-이름, 아직 구현하지 않은 delete/edit 명령을 reference에 박아두지 않는다.
+## 수정 원칙
+
+- 단순화가 우선이다. 문제나 개발 편의를 이유로 문서, 필드, 명령, 예외를 계속 늘리지
+  않는다.
+- 같은 규칙을 여러 reference에서 재정의하지 않는다.
+- router나 요약 문서를 축약할 때는 reference의 세부 절차를 반복하지 않는다. 다만 다음
+  agent가 무엇을 확인하고, 어디서 시작하며, 어떤 후속 점검을 해야 하는지 선명하게 복원할 수
+  있게 쓴다.
+- 도구 표면 문서는 현재 확정된 명령의 사용법과 경계만 짧게 쓴다. 제거한 대안이나 만들지
+  않기로 한 명령의 이유를 반복해 설명해야 한다면, 그 negative rule은 이 maintenance 기준이나
+  작업 로그에 남기고 일반 사용 경로의 도구 표면 설명에는 넣지 않는다.
+- portable log skill은 특정 repo의 plan, onramp, owner 문서, hook 구현을 전제하지 않는다.
+- 도구는 구조, 형식, 원자적 변환, 검색, 검증을 돕는다. 완료, 취소, 이관, 종료, 관련성,
+  owner 같은 의미 판단을 대신하지 않는다.
+- React lifecycle, git history/refs, coordinated movement 같은 착안 개념은 설계 원리 설명에는 쓸
+  수 있지만 section 이름, 명령 이름이나 새 required surface로 승격하지 않고, 기존 History
+  surface, Work state, Required Context와 lifetime transition owner로 표현한다.
+- 추상적 가능성만으로 예외나 안전 단계를 추가하지 않는다. 실제 사례와 재발 가능성을
+  근거로 둔다.
+- 새 문서가 read path를 늘리는지 먼저 본다. 기존 문서의 재배치나 삭제로 해결할 수 있으면
+  새 문서를 만들지 않는다.
+- 끝난 로그에 새 작업을 붙여 open을 연장하지 않는다. 새 수명은 새 로그로 시작한다.
+- 특정 사례를 바로 예시나 예외로 박기 전에, 문제가 어떤 형식의 규칙을 요구하는지 고른다.
+  scope rule은 적용 범위가 흔들릴 때, identity rule은 구조의 정체성이 흔들릴 때, decision
+  table은 결과가 여러 갈래로 나뉠 때, invariant나 negative rule은 금지할 해석이 반복될 때,
+  must rule은 조건은 명확하지만 agent가 실행을 미룰 때 사용한다. 이 형식들은 선택 도구이며
+  모든 개선에 강제하지 않는다.
+- 사례, 예시, script 동작, 다른 owner reference 중 하나와 대조했을 때 기존 문구가 의도한
+  유효 사례를 제외하거나, 제외해야 할 사례를 허용하게 읽히면 owner reference의 scope 표현을
+  조정한다. 단순히 더 자연스럽거나 더 넓은 표현이라는 이유만으로 바꾸지 않는다. 조정한
+  뒤에는 새 표현이 문제 사례를 포함하는지, 제외해야 할 사례까지 열지 않는지, owner 경계와
+  충돌하지 않는지 스스로 다시 점검한다. 통과하지 못하면 범위가 복원되는 표현으로 다시
+  다듬는다.
+- 일반화가 필요한 경우에도 핵심 판단은 `loop-rules.md`가 소유한다. `design-principles.md`는
+  현재 구조의 판단 원리를 설명하는 보조 reference이고, `example.md`는 상황별 도구 사용과 worked
+  example을 빠르게 확인하는 보조 reference다. 둘 다 decision이나 rule을 대체하지 않는다.
 
 ## 검증과 기록
 
-실제 변경 전에는 적용안의 변경 파일과 이유가 사용자에게 보고·승인됐는지 확인한다. 사용자
-승인 없이 문서 이동, 통합, 삭제, agent memory 변경, repo workflow 변경을 하지 않는다.
+실제 변경 전에는 적용안의 변경 파일과 이유가 사용자에게 보고·승인됐는지 확인한다.
 
 변경 후에는 다음을 확인한다.
 

@@ -17,6 +17,29 @@ Record가 Work state나 Required Context를 바꾸면 Reconcile에서 같은 동
 이 skill은 portable한 로그 작성·재개·종료 규칙을 다룬다. 로그 저장 위치, 세션 시작, 현재
 로그 선택 같은 프로젝트별 workflow는 프로젝트 integration이 이 skill을 확장해 정의한다.
 
+`scripts/log`는 로그 구조 생성·수정·점검과 Required Context 하위 항목 내용 삭제를 수행하는
+도구다. 도구가 지원하는 로그 구조 변경은 도구로 수행한다. 도구가 지원하지 않는 변경에 대해
+사용자가 수동 편집을 지시하면 수동으로 편집한다. 사용자의 수동 편집 지시 없이 수동으로 편집한
+로그 구조 변경은 작업 후 사용자에게 변경 범위와 이유를 보고한다.
+
+## 참조
+
+작업 루프의 각 단계가 가리키는 `references/loop-rules.md`가 핵심 규칙을 소유한다. 그 밖에:
+
+- 로그 모델의 목적, History surface / Work state / Required Context 분리, Work Items, Return
+  Target과 script boundary의 판단 원리를 복원할 때:
+  `references/design-principles.md`
+- 상황별 로그 작성, Work Item 전이, detach/Return Target, 도구 명령의 worked example을 확인할
+  때. 실제 규칙 정본은 `loop-rules.md`에 둔다:
+  `references/example.md`
+- 프로젝트 진입 계약에 로그 저장 위치, workflow, current-work 선택 방식이 없거나, `LOG_DIR`,
+  `.log-hints`, current-work, 긴 로그 split guard 같은 repo integration을 정할 때:
+  `references/project-setup.md`
+- 이 skill, reference, 도구 동작 변경을 검토할 때. 사용자가 특정 로그, 문서, script, 명령 출력이나
+  사례를 지정했으면 그 입력을 먼저 확인하고, 지정 없이 개선·문제만 말하면 무엇을 문제로 보는지
+  확인한 뒤:
+  `references/maintenance.md`
+
 ## 핵심 불변
 
 - `open` 상태만으로 현재 작업을 추측하지 않는다.
@@ -130,16 +153,3 @@ status 전이와 종료 점검은 `references/loop-rules.md#closeout--status`를
 `[↓]` Work Item은 child 결과를 source가 소비한 뒤 `log item set --status completed`로 `[x]` 처리할
 수 있다. 이때 detached target과 reason tail은 보존한다. `[↓]`의 취소·이관·남은 행동 재구성은
 도구가 자동 판단하지 않으므로 사용자가 확인한 뒤 수동 편집한다.
-
-## 참조
-
-작업 루프의 각 단계가 가리키는 `references/loop-rules.md`가 핵심 규칙을 소유한다. 그 밖에:
-
-- 로그 모델의 목적, History surface / Work state / Required Context 분리, Work Items, Return
-  Target과 script boundary가 왜 필요한지 설명하거나 판단 원리를 빠르게 복원할 때:
-  `references/design-principles.md`
-- 상황별 로그 작성, Work Item 전이, detach/Return Target, 도구 명령 사용 예시를 빠르게 확인할 때:
-  `references/example.md`
-- 새 프로젝트에 로그 저장 위치나 workflow가 없거나, `LOG_DIR`, `.log-hints`, current-work, 긴 로그
-  split guard 같은 repo integration을 정할 때: `references/project-setup.md`
-- 이 skill, reference, 도구 동작 변경을 검토할 때: `references/maintenance.md`
