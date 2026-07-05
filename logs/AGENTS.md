@@ -47,6 +47,66 @@
 - 두 threshold 모두 자동 분리 기준이 아니다. 분리·미분리 판단은 agent와 사용자가
   로그 수명과 소비 관계를 보고 결정한다.
 
+## Package Log Repository Integration
+
+새로 생성하는 package의 portable 계약과 Compact/Full composition은
+[package-log.md](../.agents/skills/log/references/package-log.md)를 따른다. 이 절은 이 repo의
+물리 배치와 Registry Integrity 검사만 추가한다.
+
+### Hybrid Layout
+
+- Controlling package log는 `logs/YYYY-MM-DD-<package-topic>.md`에 둔다.
+- Compact task record는
+  `logs/packages/<stable-package-key>/tasks/W<id>.md`에 둔다.
+- Full child task-record log는
+  `logs/YYYY-MM-DD-<stable-package-key>-W<id>-<task-topic>.md`에 둔다.
+  Full child log 자체가 해당 W의 record이므로 같은 W의 Compact record를 만들지 않는다.
+- `<stable-package-key>`의 기본값은 controlling package log의 확장자를 제외한 filename
+  stem이다. 첫 task record를 만들기 전에 Task Index에 선언하고, 이후 controlling log의
+  이름이나 주제가 바뀌어도 canonical record path 안정을 위해 변경하지 않는다.
+- Task Index의 각 executable W entry는 profile과 repo root 기준 exact canonical record
+  path를 가진다. directory나 filename pattern만 적거나 경로를 추론하게 두지 않는다.
+
+### Manual Registry Integrity
+
+Executable W를 완료하거나 package를 closeout하기 전에 다음 집합과 pointer를 대조한다.
+
+1. Controlling log의 executable Work Item W-id 집합과 Task Index W-id 집합이 일치하는지
+   확인한다. 한 W에 entry가 없거나 둘 이상이면 실패다.
+2. 각 Task Index locator가 실제 파일 하나를 가리키며, profile과 물리 위치가 일치하는지
+   확인한다.
+3. Compact record는 다음 명령의 actual set과 Task Index의 Compact locator set을 대조한다.
+
+   ```sh
+   find logs/packages/<stable-package-key>/tasks -type f -name '*.md'
+   ```
+
+   actual set에만 있으면 orphan record, Task Index에만 있으면 dangling locator다.
+4. `logs/` top-level에서 Identity의 `Controlling log`가 현재 controlling package log를
+   가리키는 Full record actual set을 찾고 Task Index의 Full locator set과 대조한다.
+5. 각 record의 Identity에서 controlling log, package W-id와 profile이 해당 Task Index
+   entry와 정확히 일치하는지 확인한다.
+6. 각 canonical record path가 전체 controlling package log의 Task Index 중 정확히 한 곳에만
+   등록됐는지 확인한다. 여러 package에 등록됐거나 한 W에 Compact와 Full이 함께 있으면
+   membership mismatch다.
+7. 각 Full child에 다음 검사를 실행한다.
+
+   ```sh
+   .agents/skills/log/scripts/log check <full-child-path>
+   ```
+
+   이어 `Return Target`의 source log와 Work Item이 controlling log의 해당 W-id를
+   가리키는지 확인한다.
+
+orphan record, dangling locator, Identity·profile·Return Target 불일치, 중복 locator 또는
+Compact/Full 중복은 Registry Integrity 실패이며 closeout blocker다.
+
+### Prospective-Only Boundary
+
+이 integration은 반영 뒤 새로 생성하는 package에만 적용한다. 기존 workspace-reset/legacy
+controlling log, `logs/W*-task.md`, Task Brief와 Workspace Reset section을 이동·backfill·
+재분류하거나 새 schema로 in-place upgrade하지 않는다.
+
 ## Workspace Reset Log Sections
 
 workspace reset authority assimilation package의 핵심 규칙. 삭제된 legacy source는

@@ -35,6 +35,9 @@ Record가 Work state나 Required Context를 바꾸면 Reconcile에서 같은 동
 - 프로젝트 진입 계약에 로그 저장 위치, workflow, current-work 선택 방식이 없거나, `LOG_DIR`,
   `.log-hints`, current-work, 긴 로그 split guard 같은 repo integration을 정할 때:
   `references/project-setup.md`
+- 하나의 변경이 여러 related artifact의 동반 수정·재검증을 요구하거나, 큰 검증 claim 또는
+  여러 세션·owner의 결과를 공통 evidence·scope·handoff·closeout으로 묶어야 할 때:
+  `references/package-log.md`
 - 이 skill, reference, 도구 동작 변경을 검토할 때. 사용자가 특정 로그, 문서, script, 명령 출력이나
   사례를 지정했으면 그 입력을 먼저 확인하고, 지정 없이 개선·문제만 말하면 무엇을 문제로 보는지
   확인한 뒤:

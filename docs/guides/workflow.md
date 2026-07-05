@@ -87,21 +87,18 @@ leaf가 정확히 하나일 때만 그 로그를 선택한다. 복수 후보·�
 `description`은 현재 단계나 첫 행동이 아니라, 로그를 열기 전에 관련 로그인지
 판별하는 검색 index다.
 
-## 작은 작업
+## 작업 구성 판단
+
+현재 작업은 진행 단위, 로그 수명과 다른 로그로의 전이, package activation을 서로 다른 축으로
+판단한다. 세 축은 서로 독립이며 하나의 작업에 함께 적용될 수 있다. 진행 단위 축에서는 로그 하나로
+진행할지 plan으로 독립된 큰 단계들의 순서를 관리할지 선택한다.
+
+### 작은 작업
 
 로그 하나의 Work Items와 next pointer로 작업 범위와 재개 지점을 알 수 있으면 plan을
 만들지 않는다. W-id Work Items, `[>]` next pointer와 분리 절차는 log skill을 따른다.
 
-## 다른 로그로 작업 전환
-
-현재 작업을 다른 로그의 선행 작업으로 전환할 때는, 새 로그에 행동을 기록하는 것만으로
-현재 작업 포인터가 바뀌지 않는다. plan 단계가 작업을 소유하면 plan 단계 pointer를,
-source 로그의 Work Item에서 분리 작업 로그(child)가 생겼다면 source의 `[↓]` detached Work
-Item(target·reason)과 child의 `### Return Target`을 함께 맞춰야 다음 세션이 올바른 작업을
-재개한다. plan 단계 문법의 권위는 `plans/AGENTS.md`의 Maintenance이고, detach와 Return
-Target 기록 규칙은 log skill이 소유한다.
-
-## 큰 작업과 plan
+### 큰 작업과 plan
 
 독립된 큰 단계 여러 개의 순서를 별도로 관리해야 할 때만 얇은 plan을 만든다.
 
@@ -116,6 +113,61 @@ Target 기록 규칙은 log skill이 소유한다.
 
 위 예시는 비권위 요약이다. plan의 template, 단계 문법, 정보 경계와 검증 규칙은
 `plans/AGENTS.md`를 따른다.
+
+### 다른 로그로 작업 전환
+
+현재 작업을 다른 로그의 선행 작업으로 전환할 때는, 새 로그에 행동을 기록하는 것만으로
+현재 작업 포인터가 바뀌지 않는다. plan 단계가 작업을 소유하면 plan 단계 pointer를,
+source 로그의 Work Item에서 분리 작업 로그(child)가 생겼다면 source의 `[↓]` detached Work
+Item(target·reason)과 child의 `### Return Target`을 함께 맞춰야 다음 세션이 올바른 작업을
+재개한다. plan 단계 문법의 권위는 `plans/AGENTS.md`의 Maintenance이고, detach와 Return
+Target 기록 규칙은 log skill이 소유한다.
+
+### Package workflow
+
+Package workflow의 의미와 Compact/Full composition은
+`.agents/skills/log/references/package-log.md`, 실제 경로·stable key·locator와 수동 감사 절차는
+`logs/AGENTS.md`, base lifecycle은 `.agents/skills/log/references/loop-rules.md`를 따른다.
+이 절은 그 계약을 다시 정의하지 않고 실제 수행 순서만 연결한다.
+
+1. **Package activation을 판정한다.** 변경 영향 조사 결과에
+   `package-log.md`의 Activation 조건과 anti-signal을 적용한다. 조건이 성립하지 않으면
+   package 표면을 만들지 않고 일반 작업 흐름을 계속한다.
+2. **진입 관계를 정한다.** `package-log.md`의 Entry Routing에 따라 direct, detach 또는
+   transfer로 진입하고, pointer와 Return Target 같은 실제 전이는 `loop-rules.md`를 따른다.
+   Discovery 뒤 package 조건이 부정되면 `package-log.md`의 not-package 반환 절차를 적용한다.
+3. **Controlling package log를 준비한다.** `package-log.md`의 Bootstrap, Fixed Package
+   Skeleton과 첫 contract review를 적용한다. 물리 배치와 stable key 준비는
+   `logs/AGENTS.md`를 따른다.
+4. **Controlling log에서 task record까지 순서대로 읽는다.** 현재 Package Scope, 실행할
+   Work Item과 accepted package state를 확인하고, Task Index에서 해당 W의 profile, execution
+   mode와 exact locator를 찾은 뒤 그 task record를 연다. locator를 경로 규칙으로 추론하지 않는다.
+5. **Profile과 execution mode를 별도로 선택한다.** 독립 lifecycle이 필요하지 않으면 Compact,
+   자체 Work Items·next pointer·세션 간 독립 재개·Return Target이 필요하면 Full을 선택한다.
+   그와 별도로 `package-log.md`의 기준에 따라 inline 또는 delegated mode를 선택한다.
+   Compact도 독립 lifecycle이 필요 없는 delegated task에 사용할 수 있다.
+6. **Required-read binding을 확인한다.** Delegated 또는 독립 재개 task는 controlling log의
+   현재 Package Scope, 해당 Work Item, 관련 최신 History·next pointer/handoff와 accepted
+   Evidence/contract entry를 가장 작은 유효 scope로 가리켜야 한다. 실행 전에 Task Brief가
+   이 owner·대상 entry·후속 action을 복원하는지 확인한다.
+7. **Task를 실행하고 candidate 결과를 반환한다.** 유효한 Task Brief 범위에서 source와
+   artifact를 확인하고, 수행 trace와 Result / Verification을 task record에 남긴 뒤 controlling에
+   candidate result와 digest를 반환한다.
+8. **Controlling이 결과를 판정한다.** 두 번째 result review에서 해당 Brief revision과 Attempt,
+   실제 source·산출물·검증 결과를 다시 확인하고 `package-log.md`에 따라 전체 수용, 부분 수용 또는
+   기각한다. 필요한 artifact correction과 dependency 재검증도 이 disposition에 결합한다.
+9. **Package Reconcile을 수행한다.** disposition과 그로 인한 의미 변화를
+   `package-log.md`의 Package Reconcile map 및 base Reconcile에 따라 accepted package surface,
+   Work Items·pointer, dependency, verification과 closeout readiness에 같은 동작으로 반영한다.
+10. **Manual Registry Integrity를 검사한다.** Executable W 완료 또는 package closeout 전에
+    `logs/AGENTS.md`의 절차로 Work Item, Task Index, 실제 record와 역방향 pointer를 대조한다.
+11. **Result Consumption Gate를 적용한다.** Registry Integrity 통과 뒤
+    `package-log.md`의 Result Consumption Gate로 exact result disposition, correction·재검증과
+    accepted surface Reconcile 완료를 확인한다. 두 gate를 모두 통과하기 전에는 task 실행이
+    끝났다는 이유만으로 base Work Item marker를 완료로 바꾸지 않는다.
+12. **Package를 closeout한 뒤 base lifecycle을 적용한다.** `package-log.md`의 package-level
+    Closeout을 먼저 통과하고, 그 다음 `loop-rules.md`의 base Closeout/status 절차를 적용한다.
+    Child 결과의 parent 소비가 남아 있으면 parent Work Item이 별도로 처리한다.
 
 ## 충돌과 예외 흐름
 
