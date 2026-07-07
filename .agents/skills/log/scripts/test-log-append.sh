@@ -63,6 +63,15 @@ if awk '
     body && /^## 2026-07-03 ·/ { found = blank; exit }
     END { exit(found ? 0 : 1) }
 ' "$f"; then ok "A4 entry 다음 block separator"; else ng "A4 entry 다음 block separator"; cat "$f"; fi
+printf '%s\n' '- second entry body' | "$LOG" entry add "$f" --after-line "$line" "Second followup" >/dev/null
+if awk '
+    /^### 2026-07-03 18:45 · Followup$/ { first = NR }
+    /^- entry body$/ { first_body = NR }
+    /^### 2026-07-03 18:45 · Second followup$/ { second = NR }
+    /^- second entry body$/ { second_body = NR }
+    /^## 2026-07-03 · Third block$/ { third = NR }
+    END { exit(first < first_body && first_body < second && second < second_body && second_body < third ? 0 : 1) }
+' "$f"; then ok "A4 같은 block 순차 entry 순서 보존"; else ng "A4 같은 block 순차 entry 순서 보존"; cat "$f"; fi
 check_fail "A4 after-line guard" "$LOG" entry add "$f" --after-line 1 "Bad"
 
 fence_log=$("$LOG" new "Fence Entry" --description "Fence desc" --block "Start")

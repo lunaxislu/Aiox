@@ -148,8 +148,8 @@ portable log skill이나 reference를 바꾸는 경우:
 
 portable 문서를 바꿀 때는 `SKILL.md`를 entry/router로 유지한다. 파일 구조, 기록, Reconcile,
 cross-log/lifetime transition과 Closeout의 세부 판정은 `loop-rules.md`, 유지보수 판단은 이 문서,
-프로젝트 setup routing은 `project-setup.md`, 개념 원리는 `design-principles.md`, 상황별 예시는
-`example.md`로 둔다.
+프로젝트 setup routing은 `project-setup.md`, 개념 원리는 `design-principles.md`, 판단·운용 사례와
+핵심 도구 결과 예시는 `base-log-examples.md`로 둔다.
 
 ### Project integration 변경 기준
 
@@ -219,8 +219,9 @@ script를 바꾸지 않는 경우:
   충돌하지 않는지 스스로 다시 점검한다. 통과하지 못하면 범위가 복원되는 표현으로 다시
   다듬는다.
 - 일반화가 필요한 경우에도 핵심 판단은 `loop-rules.md`가 소유한다. `design-principles.md`는
-  현재 구조의 판단 원리를 설명하는 보조 reference이고, `example.md`는 상황별 도구 사용과 worked
-  example을 빠르게 확인하는 보조 reference다. 둘 다 decision이나 rule을 대체하지 않는다.
+  현재 구조의 판단 원리를 설명하는 보조 reference이고, `base-log-examples.md`는 판단·운용 사례와
+  핵심 도구 결과 예시를 빠르게 확인하는 보조 reference다. 둘 다 decision이나 rule을 대체하지
+  않는다.
 
 ## 검증과 기록
 

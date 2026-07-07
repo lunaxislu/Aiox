@@ -14,6 +14,9 @@ loop를 복제하지 않고 상속한 위에 package 전용 표면·계약·판�
 검색·감사 명령, vendor 기능·model 이름 같은 repo·harness 전용 mapping은 project integration이
 소유하며 여기 두지 않는다.
 
+package 구성·운용, Result consumption과 Compact/Full 선택 예시가 필요하면
+`package-log-examples.md`를 lookup 보조로 읽는다. 예시는 이 문서의 계약을 재정의하지 않는다.
+
 package workflow의 phase 순서는 아래와 같고, 이어지는 9개 section이 각 phase의 계약을 소유한다.
 
 `activation preflight → provisional bootstrap → discovery → controlling synthesis → review → execution → result promotion/Reconcile → closeout`
@@ -56,8 +59,11 @@ Target을 통해 소비되는 결과다. 처음부터 독립 package log로 시�
 
 ## Bootstrap and Integration Probe
 
-- **Probe**: project instruction, primary/related owner와 inbound/outbound·producer/consumer 관계,
-  manifest/dependency, CI, 검증 도구, 환경·권한·외부 service를 조사한다.
+- **Probe**: 확정된 project integration을 기준으로 이 package에 적용할 owner instruction,
+  primary/related owner와 inbound/outbound·producer/consumer 관계, package-specific dependency,
+  검증 command·tool·library, 환경·권한·외부 service 가용성을 조사한다. repo-wide instruction,
+  log location, current-work 또는 common verification capability가 이 package 실행에 부족하거나
+  stale하면 in-package로 고치지 않고 `project-setup.md` audit/update·repair로 보낸다.
 - **Seed**: 초기 Scope와 allowed write-set, Workflow / Agent Plan, Task Index, Evidence,
   Verification Contract, Closeout Contract를 만들고 첫 review anchor에서 실행 가능성을 검토한다.
 - **Discovery 위임**: discovery worker 위임은 optional이다. delegated scout는 별도 executable
@@ -87,6 +93,8 @@ Reconcile한다.
 
 ## State Ownership and Task Contract
 
+- 기존 package log를 재개할 때는 base Enter로 Work state를 복원한 뒤 이 절에서 Package surfaces와
+  Task Index를 복원한다.
 - Base Work Items와 next pointer만 package 진행·완료 상태를 소유한다. Task Index는 W-id,
   Compact/Full profile, inline/delegated execution mode와 canonical task-record file locator의
   mapping만 소유하고 진행·완료 상태를 복제하지 않는다.

@@ -1,8 +1,9 @@
 # 로그 작업 규칙
 
-이 문서는 `../SKILL.md`의 작업 루프가 가리키는 세부 규칙을 소유한다. 로그 선택과 최초 읽기
-계약은 `../SKILL.md` Enter가 소유하고, 파일 구조·기록·Reconcile·cross-log/lifetime
-transition·Closeout의 세부 판정은 아래 절이 소유한다.
+이 문서는 `../SKILL.md`의 작업 루프가 위임하는 상세 판정 규칙을 소유한다. 로그 선택과 최초
+읽기의 top-level 계약은 `../SKILL.md` Enter가 소유하고, 파일 구조·Work Items·Required
+Context·Record·Reconcile·lifetime transition·Closeout/status의 상세 판정은 아래 절이
+소유한다.
 
 ## Log File Shape
 

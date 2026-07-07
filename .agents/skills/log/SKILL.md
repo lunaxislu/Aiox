@@ -17,31 +17,17 @@ Record가 Work state나 Required Context를 바꾸면 Reconcile에서 같은 동
 이 skill은 portable한 로그 작성·재개·종료 규칙을 다룬다. 로그 저장 위치, 세션 시작, 현재
 로그 선택 같은 프로젝트별 workflow는 프로젝트 integration이 이 skill을 확장해 정의한다.
 
-`scripts/log`는 로그 구조 생성·수정·점검과 Required Context 하위 항목 내용 삭제를 수행하는
-도구다. 도구가 지원하는 로그 구조 변경은 도구로 수행한다. 도구가 지원하지 않는 변경에 대해
-사용자가 수동 편집을 지시하면 수동으로 편집한다. 사용자의 수동 편집 지시 없이 수동으로 편집한
-로그 구조 변경은 작업 후 사용자에게 변경 범위와 이유를 보고한다.
-
 ## 참조
 
-작업 루프의 각 단계가 가리키는 `references/loop-rules.md`가 핵심 규칙을 소유한다. 그 밖에:
+이 절은 `## 진입 라우팅`과 작업 루프가 직접 라우팅하지 않는 보조 reference만 나열한다.
+진입 흐름은 `## 진입 라우팅`, Base 상세 규칙은 `references/loop-rules.md`를 따른다.
 
 - 로그 모델의 목적, History surface / Work state / Required Context 분리, Work Items, Return
   Target과 script boundary의 판단 원리를 복원할 때:
   `references/design-principles.md`
-- 상황별 로그 작성, Work Item 전이, detach/Return Target, 도구 명령의 worked example을 확인할
-  때. 실제 규칙 정본은 `loop-rules.md`에 둔다:
-  `references/example.md`
-- 프로젝트 진입 계약에 로그 저장 위치, workflow, current-work 선택 방식이 없거나, `LOG_DIR`,
-  `.log-hints`, current-work, 긴 로그 split guard 같은 repo integration을 정할 때:
-  `references/project-setup.md`
-- 하나의 변경이 여러 related artifact의 동반 수정·재검증을 요구하거나, 큰 검증 claim 또는
-  여러 세션·owner의 결과를 공통 evidence·scope·handoff·closeout으로 묶어야 할 때:
-  `references/package-log.md`
-- 이 skill, reference, 도구 동작 변경을 검토할 때. 사용자가 특정 로그, 문서, script, 명령 출력이나
-  사례를 지정했으면 그 입력을 먼저 확인하고, 지정 없이 개선·문제만 말하면 무엇을 문제로 보는지
-  확인한 뒤:
-  `references/maintenance.md`
+- Base Log marker 읽기, Work Item 전이, block/entry 구분, Required Context Override와 핵심
+  `scripts/log` 사용 사례를 확인할 때. 실제 규칙 정본은 `loop-rules.md`에 둔다:
+  `references/base-log-examples.md`
 
 ## 핵심 불변
 
@@ -62,10 +48,49 @@ Record가 Work state나 Required Context를 바꾸면 Reconcile에서 같은 동
   같은 명시 W-id를 가지며, 완료·취소·이관됐거나 분리로 복귀 소비 대기 상태가 된 W-id도 보존하고
   재사용하지 않는다.
 
+## 진입 라우팅
+
+log skill이 trigger되면 아래 셋을 판정해 절차 owner로 이동한다. 이 절은 진입 시 어느 상태에서
+무엇을 먼저 여는지를 소유한다. 상태별 상세 read path와 확장 조건은 지목한 owner가 소유한다.
+
+- 작업 종류: 일반 작업·로그 lifecycle / project setup·audit / log skill maintenance
+- 로그 대상 상태: 새 로그 / 기존 로그
+- 기록 계약: Base / Base + Package Extension
+  (모든 로그는 Base를 쓰고, package 조건이 확정되면 Extension을 더한다. Base를 대체하지 않는다.)
+
+1. 작업 종류를 먼저 가른다.
+   - project setup·audit → `references/project-setup.md`
+   - log skill maintenance → `references/maintenance.md`
+   - 일반 작업·로그 lifecycle → 아래 로그 대상 상태 판정으로 간다.
+   setup·maintenance도 로그 대상 상태·기록 계약을 함께 판정한다(같은 상태 분기 적용).
+2. 로그 대상 상태로 진입점과 기록 계약을 확정한다. 기록 계약은 상태 뒤 별도 단계가 아니라 각
+   상태가 함께 확정하는 속성이다. 아래 필수 진입 읽기만 이 절이 소유하고, 이후 상세 read path는
+   지목 owner를 순서대로 읽는다.
+   - 새 · 일반 → Base log 생성 후 아래 `## 작업 루프`의 Enter로 진입한다. (Base 계약)
+   - 새 · package 조건이 처음부터 명확 → `references/package-log.md#activation-and-entry-routing`으로
+     판정하고, 확정되면 controlling package log를 직접 시작한다. not-package면 Base로 남는다.
+     (확정 시 Base + Package Extension)
+   - 기존 · 일반 Base log → Enter로 Work Items·Required Context·재개 block을 복원한다.
+     (Base 계약)
+   - 기존 · Base 진행 중 package 조건 발견 → `references/package-log.md#activation-and-entry-routing`으로
+     판정하고, in-place 전환 없이 detach(`[↓]`) 또는 transfer(`[→]`)한다. not-package면 기존 Base를
+     유지한다.
+   - 기존 · package log → Enter로 Base 상태를 복원하고
+     `references/package-log.md#state-ownership-and-task-contract`로 Package surfaces·Task Index를
+     복원한다. 이미 활성인 Base + Package Extension을 계속 적용한다.
+3. 확정한 상태와 계약으로 아래 `## 작업 루프`를 수행한다.
+
+**정본 주의:** 위 진입점 뒤의 상세 계약과 확장 조건은 owner가 소유한다. Base는
+`references/loop-rules.md`, Package는 `references/package-log.md`를 순서대로 읽는다. 이 절의
+진입점만 읽고 끝내지 않는다. 흐름 설명과 시나리오 예시는 `references/quick-flow.md`를 본다.
+
 ## 작업 루프
 
 로그 작업은 다음 루프로 돈다. 매번 모든 단계를 전부 이행하지 않고, 현재 작업에서 필요하다고
 판단되는 단계만 확인하고 수행한다.
+
+로그 구조, Work state나 Required Context를 생성·수정·점검해야 하면 먼저 `## 도구`의 도구 사용·수동
+편집 경계를 확인한다.
 
 ### Enter
 
@@ -147,8 +172,14 @@ status 전이와 종료 점검은 `references/loop-rules.md#closeout--status`를
 ## 도구
 
 `scripts/log`는 로그 생성, frontmatter 수정, block/entry 추가, Work Items와 Required Context
-변환, 검색, 구조 점검과 status guard를 돕는 보조 도구다. 도구는 형식과 원자적 변경만 처리하고
+변환·삭제, 검색, 구조 점검과 status guard를 돕는 보조 도구다. 도구는 형식과 원자적 변경만 처리하고
 완료, 취소, 이관, 분리, 종료 같은 의미 판단은 agent와 사용자가 한다.
+
+도구가 지원하는 로그 구조 변경은 도구로 수행한다. 지원하지 않는 변경은 사용자가 수동 편집을
+지시한 경우에만 수동으로 편집하고, 사용자 지시 없이 수동으로 편집한 구조 변경은 작업 후 변경
+범위와 이유를 보고한다.
+
+명령 syntax는 `scripts/log --help`로 확인한다.
 
 `Return Target`은 `log new`와 `log detach` 생성 표면에서만 만든다. 이후 consume 조건이나 snapshot을
 바꿔야 하면 도구로 자동 전이하지 않고 사용자가 확인한 뒤 수동 편집한다.

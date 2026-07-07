@@ -1,80 +1,186 @@
 # 프로젝트 로그 설정
 
-프로젝트 진입 계약에 로그 저장 위치, 로그 workflow 또는 현재 작업 선택 방식이 지정되지 않은
-경우 이 문서를 읽는다.
+프로젝트 진입 계약에 로그 저장 위치, 로그 workflow 또는 현재 작업 선택 방식이 지정되지
+않았거나, 기존 로그 integration을 점검·복구할 때 이 문서를 읽는다.
 
-## 위치 확인 순서
+이 문서의 핵심 목적은 portable log skill을 현재 repo/project의 실제 workflow와 연결하는
+integration이다. 이 문서는 project log integration의 framework를 소유한다. 즉 무엇을 탐색하고,
+어떤 상태로 판정하고, 무엇을 제안·승인·검증할지를 정의한다. 실제 파일명, 명령, hook, ignore
+방식과 프로젝트별 mapping은 각 project integration이 소유한다. 이 문서의 파일명과 명령명은
+예시이며, 특정 파일이나 도구가 없어도 절차는 정상적으로 축소된다.
 
-1. 프로젝트 root 지침(AGENTS.md, CLAUDE.md 등)에서 로그 저장 위치를 먼저 확인한다.
-2. 지정이 없으면 사용자에게 관례적 기본값 `logs/`를 제안한다.
-3. 사용자 승인 후 선택한 로그 위치를 프로젝트 root의 agent 지침에 기록한다.
-4. 기본값 `logs/`가 아닌 위치에서는 log 도구를 실행할 때 `LOG_DIR=<위치>`를 지정한다.
+package 작업에서 필요한 repo-wide instruction, 로그 위치, current-work, 공통 검증 capability의
+초기 설정과 감사는 이 문서가 소유한다. package별 검증 명령·권한·외부 service가 실제로 사용
+가능한지 재확인하는 per-package probe는 `package-log.md` Bootstrap이 소유한다.
 
-## 선택 가능한 starter workflow
+## 절차
 
-새 프로젝트에 아직 로그 workflow, 현재 작업 선택 방식, 세션 시작 자동화가 없고, 사용자가
-repo만으로 작업 상태를 재개 가능하게 만들고 싶어 할 때 아래 흐름을 starter pattern으로
-제안할 수 있다. 이 skill의 portable 규칙(로그 작성, Work Items, next pointer, status 전환)을
-그대로 쓰되, 프로젝트에 어떤 integration을 둘지는 사용자가 정한다.
+각 gate는 순서대로 수행하되, 비어 있거나 비해당인 capability 범주는 즉시 건너뛴다. 작은
+프로젝트에서는 대부분의 gate가 축소된다.
 
-- 사용자에게 흐름을 제안하고, 승인을 받은 뒤에만 프로젝트 integration(root 지침, 선택 도구,
-  hook 등)으로 둔다. 승인 없이 폴더나 도구를 만들지 않는다.
-- 로그 저장 위치는 `logs/`를 기본 후보로 제안한다. 사용자가 다른 위치를 원하면 그 위치를
-  쓰고, 도구 실행 시 `LOG_DIR=<위치>`를 지정한다.
-- 작은 작업은 로그 하나로 관리한다. 하나의 `open` 로그 안에서 `## Work Items`와 단일
-  `[>] Wn` next pointer로 재개 지점을 가리킨다. 별도 plan이나 선택 도구가 필요 없다.
-- 단계가 여러 개인 큰 작업은 프로젝트별 plan 문서나 current-work 선택 도구를 둘 수 있다.
-  plan은 활성 단계가 작업 로그를 anchor로 가리키게 하고, 선택 도구는 anchor에서
-  next pointer를 따라 현재 로그를 정한다.
-- 세션 시작 때 agent가 현재 작업을 자동으로 찾게 하려면, session start hook이 프로젝트의
-  current-work 선택 도구를 호출하게 할 수 있다. 자동 선택을 원치 않으면 hook 없이 사용자가
-  로그를 지정하는 방식으로 시작해도 된다. hook은 필수가 아니다.
+1. **Scope와 mode** — bootstrap / audit / update·repair, project boundary, write scope,
+   사용자 요구·금지사항을 확정한다.
+2. **Capability Probe와 inventory** — 아래 capability 범주를 있으면 조사해 실제 mapping과
+   evidence를 proposal evidence로 정리하고, 없거나 비해당이면 disposition에 따라 skip한다.
+   승인 전에는 project integration owner에 쓰지 않는다.
+3. **Disposition·optional feature 제안** — 각 concern을 상태별 disposition으로 판정하고,
+   선택 기능은 opt-in gate로 제시한다. 결과를 Proposal ledger로 한 번에 모은다.
+4. **승인 후 Apply** — 사용자가 일괄 승인하거나 예외를 지정한 최소 변경만 수행한다.
+   승인된 실제 mapping과 선택한 설정만 project integration owner에 기록한다.
+5. **Validate와 Report** — read path, current-work 모호성 처리, 활성화한 feature 동작,
+   docs owner 정합과 검증 명령을 확인하고, 적용·보존·보류·잔여 위험을 보고한다.
 
-이 skill 자체는 portable하다. 특정 plan 폴더명, 특정 plan 형식, 특정 선택 script,
-특정 hook 구현을 기본값으로 요구하지 않는다. 위 요소는 모두 프로젝트 integration이
-선택적으로 정하는 부분이고, 이 문서의 예시는 형태를 보여줄 뿐 강제하지 않는다.
+Setup 작업 자체의 mode, probe evidence, disposition, proposal, 승인, 적용, 검증과 보류 항목도
+log skill의 Base loop로 기록한다. 기존 project integration이 로그 위치와 current-work 선택 방식을
+제공하면 그 절차로 setup 작업 로그를 선택한다.
 
-## 긴 로그 split guard (선택)
+Bootstrap에서 setup 작업 기록 위치가 아직 없으면, durable setup 로그 기록은 기록 위치 승인 전까지 보류한다.
+이때 probe 결과는 transient proposal evidence로만 유지하고, 첫 Proposal ledger에 log location 또는
+setup 작업 기록 위치를 포함한다. 기록 위치가 승인되면 setup 작업용 Base log를 만들거나 사용자가
+지정한 기존 로그에 소급 기록한다.
 
-로그가 길어지면 분리를 검토해야 할 수 있다. 단 로그 길이는 분리를 검토하라는 신호일 뿐,
-분리 결정 기준은 아니다. 실제 분리 필요성은 `loop-rules.md`의
-[Log Lifetime Boundary](loop-rules.md#log-lifetime-boundary)가, 다른 로그와의 전이 종류는
-[Cross-Log / Lifetime Transitions](loop-rules.md#cross-log--lifetime-transitions)가 소유한다.
-길이 기반 guard는 portable 규칙에 두지 않고, 프로젝트가 둘지 여부와 임계값을 정한다.
+## Mode
 
-사용자에게 이렇게 제안할 수 있다.
+작업을 시작할 때 mode를 먼저 정한다.
 
-- 긴 로그 split guard를 둘까요?
-  - soft threshold: 이 줄 수를 넘으면 분리 검토를 권고한다.
-  - hard threshold: 이 줄 수를 넘으면 분리하거나, 분리하지 않는 이유를 로그에 남긴다.
-- 기본값이 필요하면 soft 600 / hard 1000을 권장한다.
+- **bootstrap**: 프로젝트에 log integration이 없거나 처음 정할 때. 없음은 정상이며 필요한
+  항목을 제안하고, 승인 후 적용할 수 있다.
+- **audit**: 기존 integration을 portable 계약과 프로젝트 의도에 대조한다. Read-only이며 변경은
+  proposal로만 올린다.
+- **update·repair**: 확인된 drift나 사용자가 승인한 변경을 기존 integration에 반영한다.
 
-규칙 의미:
+선택 기능이나 특정 integration이 없다는 사실은 어느 mode에서도 그 자체로 drift가 아니다.
+기존 계약이나 사용자 의도가 그것을 요구할 때만 drift다. Bootstrap과 update·repair는 사용자가
+승인한 변경만 gate 4에서 적용한다.
 
-- soft: "분리 검토" 신호. 이 줄 수에서 `Log Lifetime Boundary`를 적용한다.
-- hard: "분리 또는 미분리 사유 기록". 이 줄 수에서도 단일 수명이면 그 판단 근거를 로그에 남긴다.
-- soft·hard 모두 자동 분리 기준이 아니다. 분리·미분리 판단은 agent와 사용자가 한다.
+## Capability Probe
 
-승인된 값은 portable 규칙이 아니라 프로젝트 integration(root 지침, `logs/AGENTS.md`,
-current-work 도구 등)이나 선택적 `log check` line-metric 출력 기준으로 둔다. 도구는 줄 수만
-제시하고 분리 판단을 대신하지 않는다.
+프로젝트별 파일명이나 구조를 가정하지 않는다. 아래 범주는 있으면 조사해 proposal evidence로
+정리하고, 없거나 비해당이면 disposition에 따라 skip한다. 승인 전에는 project integration
+owner에 쓰지 않는다.
 
-`scripts/log`의 append 계열 동작(`block add`, `entry add`, `detach`, `new`)은 threshold를 넘긴
-파일에 대해 soft/hard 알림을 각각 한 번만 출력한다. 반복 알림 상태는 해당 프로젝트의 로그
-저장 위치 아래 `$LOG_DIR/.log-hints/`에 둔다. 이 디렉터리는 사람이 읽는 로그 본문이 아니라
-도구 상태이므로 commit하지 않는다.
+1. **Project boundary** — repo root, workspace, monorepo 범위, write scope, 사용자가 허용한
+   변경 범위.
+2. **Instruction·documentation authority** — root 지침(예: `AGENTS.md`, `CLAUDE.md`), scope별
+   agent 지침, 문서 index·taxonomy·owner map, 사람용 진입점(예: `README`, `CONTRIBUTING`).
+3. **Log location** — 로그 저장 위치, 기본 위치 사용 여부, 비기본 위치에서 `LOG_DIR`가 필요한지,
+   로그 디렉터리의 지역 지침 존재 여부.
+4. **Workflow·current-work topology** — workflow·runbook·development guide, plan/current-work
+   체계, current-work command, session start hook, pointer나 anchor의 선택 방식.
+5. **VCS·local-state** — VCS 유무, ignore 방식, local state 배치, commit하지 말아야 할 tool
+   state 위치.
+6. **Verification capability** — manifest, 기존 setup·검증 명령, CI·test·lint·docs validation.
+   manifest는 독립 설치 대상이 아니라 setup·검증 명령을 찾는 입력이다.
 
-프로젝트에 긴 로그 split guard를 도입하면 `.gitignore`에 선택한 로그 위치의 hint state를 추가한다.
+Probe 결과는 approval 전까지 proposal evidence로만 정리한다. 각 결과에는 확인한 evidence,
+현재 owner/path, 상태, 불확실성을 포함한다. 이 결과는 project integration 기록이 아니며, approval
+전에는 project integration owner에 쓰지 않는다. 파일명은 범주의 구현 예시일 뿐이며, 특정 파일
+부재만으로 integration 부재나 drift를 단정하지 않는다.
 
-```gitignore
-logs/.log-hints/
-```
+## Disposition
 
-기본 `logs/`가 아닌 위치를 쓰면 그 위치에 맞춘다.
+탐색 결과의 "없음"을 일률적으로 질문하지 않는다. 각 concern은 상태별로 처리한다.
 
-```gitignore
-worklogs/.log-hints/
-```
+| State | Action |
+| --- | --- |
+| exists and adequate | 보존한다. 필요하면 evidence만 기록한다. |
+| exists but conflicts with contract or intent | amend/repair proposal로 올린다. |
+| missing required integration | 사용자에게 확인하거나 최소 create proposal을 제시한다. |
+| missing optional feature | 기본으로 만들지 않는다. 필요하면 opt-in proposal로 제시한다. |
+| planned by user or project | 계획 방향을 먼저 확인하고 그에 맞춰 defer하거나 제안한다. |
+| not applicable | 질문하지 않고 skip한다. |
+| unknown or ambiguous | 근거, 불확실성, blocker와 후보를 보고하고 추측하지 않는다. |
+
+판정 값은 `preserve`, `amend`, `create`, `skip`, `defer` 중 하나로 남긴다. 로그 위치나 log
+workflow를 기록할 owner처럼 동작에 필요한 항목은 required integration일 수 있다. Split guard,
+session hook, 자동 current-work command 같은 편의 기능은 optional feature다.
+
+## Optional Features
+
+선택 기능은 필수 설치가 아니라 명시적 opt-in gate로 제시한다.
+
+- current-work 자동 선택 command
+- session start hook
+- 긴 로그 split guard
+- 추가 validation command 연결 또는 문서화
+
+CI 추가나 기존 workflow 의미 변경은 작은 편의 기능으로 취급하지 않는다. 필요한 경우 Proposal
+ledger에서 별도 승인 항목으로 올린다.
+
+### 긴 로그 split guard
+
+Base의 의미 기반 Log Lifetime Boundary(`loop-rules.md`)는 길이와 무관하게 항상 적용된다. 새
+행동·unit을 배치할 때마다 목적·완료 조건·재개 가능성으로 판정한다. 줄 수 threshold로 그 판정을
+다시 하도록 촉발하는 split guard와 `.log-hints` 상태 관리만 선택적 project integration이다.
+Guard를 끄는 것은 길이를 무시한다는 뜻이 아니라 길이 threshold 알림을 하지 않는다는 뜻이다.
+
+상태는 셋으로 구분한다.
+
+- **enabled** — soft/hard 값, `.log-hints` 상태 위치, VCS ignore 방식을 확정하고,
+  실제 적용값을 project owner에 기록한다.
+- **disabled** — split guard를 설치하지 않는다. `.log-hints/`나 ignore rule을 만들지 않는다.
+- **undecided** — 결정하지 않았음을 남기고 필요할 때 다시 제안한다.
+
+사용자가 판단을 위임하면 최소 integration에서는 disabled를 기본 제안한다. 활성화를 원하고 값을
+지정하지 않으면 soft 600 / hard 1000을 추천한다. 활성 시 `.log-hints/`는 도구 상태이므로
+commit하지 않고 프로젝트의 VCS·local-state 방식에 맞춰 제외한다. VCS가 없으면 ignore 처리는
+skip한다.
+
+## Proposal ledger
+
+변경이 필요하면 concern별 판정을 한 번에 모아 제시하고, 사용자가 전체를 승인하거나 예외를
+지정하게 한다. 항목마다 개별 대화를 만들지 않는다.
+
+| Concern | 현재 owner/state | 제안 action | Optional? | 영향 파일 |
+| --- | --- | --- | --- | --- |
+
+각 proposal은 다음을 포함한다.
+
+- 대상 capability
+- 현재 evidence와 불확실성
+- 제안 변경
+- 변경할 owner 파일이나 project integration 위치
+- optional 여부
+- 검증 방법
+- 보류하거나 되돌릴 조건
+
+다음은 반드시 별도 승인을 받는다.
+
+- 선택 기능 활성화
+- hook·script·CI 추가
+- 기존 workflow 의미 변경
+- 새 durable owner 파일 생성
+- 외부 도구 설치
+
+## Apply
+
+승인된 proposal만 적용한다. 실제 파일명, 명령, hook, ignore 방식과 문서 taxonomy는 승인 후에만
+프로젝트 integration에 기록한다. Portable skill 문서에는 특정 프로젝트의 mapping을 고정하지
+않는다.
+
+적용 중 승인 범위를 넘는 변경이 필요하면 중단하고 새 proposal로 올린다. 사용자 승인 없이 root
+지침, script 기본값, hook, CI, ignore rule, current-work selection 의미를 변경하지 않는다.
+
+## Validate and Report
+
+적용 후 승인된 범위에 맞춰 검증한다.
+
+- log location이 존재하거나 생성 가능하다.
+- 비기본 로그 위치에서 `LOG_DIR`가 필요한 경우 명령 예시가 맞다.
+- agent instruction에서 log workflow와 project integration을 찾을 수 있다.
+- current-work command나 hook이 있으면 후보를 하나로 좁히지 못하는 상태를 안전하게 보고한다.
+- split guard가 enabled이면 threshold, hint state, ignore 방식이 정합하다.
+- 검증 명령이 있으면 실행 가능하거나 실행 불가 이유를 보고한다.
+- docs/workflow owner나 navigation을 건드렸으면 참조가 stale하지 않다.
+
+보고에는 다음을 구분한다.
+
+- 적용한 변경
+- 보존한 기존 integration
+- skip한 optional 항목
+- 보류한 proposal
+- 미해결 ambiguity와 blocker
+- 사용자가 나중에 결정할 항목
 
 ## current-work integration 최소 계약
 
@@ -214,5 +320,6 @@ hook과 command는 위치를 가리키고 구조를 점검할 뿐, 완료·취�
 ## 제약
 
 - 사용자 승인 없이 root 지침이나 script 기본값을 변경하지 않는다.
-- starter workflow, 선택 도구, hook은 사용자 승인 후에만 프로젝트 integration으로 둔다. 이
-  skill의 portable 규칙과 프로젝트별 integration의 경계를 흐리지 않는다.
+- starter workflow, 선택 도구, hook, split guard, validation command 연결은 사용자 승인 후에만
+  프로젝트 integration으로 둔다.
+- 이 skill의 portable 규칙과 프로젝트별 integration의 경계를 흐리지 않는다.
