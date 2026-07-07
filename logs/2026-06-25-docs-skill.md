@@ -6,6 +6,16 @@ status: open
 
 ## Work Items
 
+- 열린 work item 없음. 이 로그의 docs-skill 설계·검토 작업 — spine 전면 개편(identity-first) · references 5축 migration · Review Loop dogfood 검증 — 은 모두 완료됐다. 세부 경위와 검증 ledger는 아래 날짜별 기록 블록이 소유한다.
+- 이 로그는 종료하지 않고 docs-skill 설계의 open owner 로그로 유지한다(@user 결정 2026-07-08). 추가 설계 변경·검토는 이 로그에 새 기록으로 append한다.
+
+## Required Context
+
+### {Global}
+
+- @user가 의견·검토를 요청하면 document-structure-review 스킬 파일을 승인 전 수정하지 않고 검토·보고·제안한다.
+- 이 로그의 대상 스킬은 `.agents/skills/document-structure-review/`(및 `.claude/skills/` symlink)이며, 스킬 본문·reference·EXAMPLE 내용을 로그에 복사하지 않고 경로 참조로 유지한다.
+
 ## 2026-06-25 · 작업 기록 — document-structure-review skill 초안 생성
 
 @user가 “log skill에서 가져올 내용에 대해서 있는지 판단해서, 문서 작성, 문서 검토를 위한 skill 초안”을 만들자고 요청했다.
@@ -2220,3 +2230,615 @@ document-structure-review에도 어떤 상황과 내용에서 loop 형태를 선
   `#14-gate-branch-ends-in-a-label`와 heading 일치.
 - 커밋은 @user 지시 없어 수행하지 않았다. Work Items·Required Context가 없는 토론형 로그라
   Reconcile 대상 없음. 이 로그는 open 유지.
+
+## 2026-07-07 · document skill review flow의 loop 설계 검토와 content·자가개선 gap
+
+@user가 document skill(`document-structure-review`)의 review 흐름을 "요즘 핫한 루프 설계 관점"에서 검토 요청했고, 이어 loop 형태·graph 전파·content-review gap·자가개선 루프까지 설계 토론으로 확장했다. 이 블록은 그 토론 전체를 증류한 handoff이며, 다음 세션에서 **합의된 loop 요소를 현재 Review Workflow 7-step 위에 얹은 통합 재구성 초안**을 만들기 위한 것이다. 이번 세션은 전부 진단·설계·보고 단계이고 **스킬 파일은 아직 수정하지 않았다**(제안까지만).
+
+### 1) loop 관점 진단 — 지금은 loop가 아니라 waterfall+lookup
+
+- 현재 흐름(확인한 사실): identity-anchored 7-step spine + on-demand Reference Routing + 단일 분기(Conditional Gate [5]). 상시 제약=Core Invariants, 종료 체크=Output Contract.
+- 강점(요즘 loop 설계와 정합): JIT/progressive reference routing(`Reference Routing`), bounded gathering·과수집 방지(Core Invariant "판단 바꾸는 관계만 읽고 근거 서면 멈춤"), 명시적 종료조건("더 읽어도 판단 안 바뀌면 멈춘다"), minimal step([6] "가장 작은 변경" + `no-change` 상시 후보).
+- 약점(의견): 재진입 arc가 명시돼 있지 않아 사실상 linear waterfall+lookup이지 feedback loop가 아니다. verifier([7]/Output Contract)가 terminal one-shot(fail→loop-back 없음).
+- 아이러니(확인한 사실+의견): 스킬은 `authoring-patterns.md`의 `feedback loop`("되돌아가는 경로 없으면 loop라 부르지 마라")를 rule shape로 *가르치는데* 자기 Review Workflow엔 미적용(self-application gap). 로그 스킬 v2는 반대로 "작업 중 전제 바뀌면 loop 밀지 말고 Route/Contract Gate로 돌아가라"를 spine에 박음.
+
+### 2) 합의된 loop 형태와 well-formed 조건
+
+- @user 제안: `trigger → (섹션/구조) 점검 → 제안 전 검토, 하나라도 fail이면 점검으로 back → 보고·제안`. = evaluator-optimizer loop. **back-edge가 loop의 정체**(나머지는 linear pipeline에도 있음).
+- well-formed 3조건(의견, 근거=`feedback loop` 정의 + 로그 스킬 Gate 교훈):
+  - (a) fail의 "돌아갈 곳"을 **실패 종류별로** 분기(정보 형식 fail→표현 단계, identity 오복원 fail→맨 앞). 로그 스킬 Route/Contract Gate의 "각 분기 착지점 명시"와 동형.
+  - (b) **종료·수렴 조건 + escalation**(무한 순환 방지). 스킬의 "불확실→사용자 확인"을 loop 종료조건으로 승격.
+  - (c) **identity 앵커를 점검 앞에**(어떤 잣대로 점검할지가 identity·owner에서 나옴).
+
+### 3) graph 전파로 확장 — blast radius·fail 2종·종료
+
+- node 연산 = **구조+내용 병렬 검토**(확인한 사실: Review Workflow [2]가 변경 표면과 개념 역할을 동시 판정 → 이전 세션의 "구조·내용 병렬" 회상과 정합).
+- 전파는 **전수 검토가 아니라 변경의 blast radius**만 따라간다: 그 변경이 깰 수 있는 관계(상위 역할 정의·owner map/taxonomy·inbound reference·sibling 경계·하위 skeleton/invariant)만 frontier에 올린다. 전수면 Core Invariant "판단 바꾸는 관계만" + smell `excessive read path` 위반.
+- cascade: frontier 문서가 또 바뀌면 그 문서의 blast radius도 추가.
+- fail 2종(의견): **local verify fail**(역할 정합 실패)→그 문서 변경 재도출로만 back / **identity-invalidation fail**(전파해보니 A의 원래 identity·owner 판정 자체가 틀림, 예: 진짜 owner가 sibling)→맨 앞(identity 복원)부터. = 로그 스킬 "전제 무너지면 Gate로".
+- 종료: frontier 빔 + 최종 verify pass, 미수렴/파괴적·불확실→사용자 확인.
+- 균형: 보통 frontier는 작아 1 pass 수렴. "매 리뷰=그래프 전수 순회"로 만들면 과설계.
+
+### 4) content-review 축 gap 실측 (확인한 사실 중심)
+
+- EXAMPLE.md 14개 사례 인벤토리: **13개가 구조/owner/identity/placement/safety 축**, 내용축에 걸치는 건 #5("Same Section Name, Different Drift Meaning") 하나뿐이며 그것도 "drift를 role로 *분류*"이지 content 충분성 *탐지*가 아니다.
+- @user가 기억한 "레퍼런스 참고하라"류는 **authoring(작성) rule로만** 존재: `review-patterns.md` Owner And Scope("다른 문서 소유 내용은 복사 말고 owner로 링크/위임"), `authoring-patterns.md` Guideline Improvement("router는 시작 위치·확인 대상을 복원 가능하게"). **detection(참조가 빠졌음을 결함으로 잡기)** 쪽은 전용 smell/case 없음(가장 근접=`inferred action`·`hidden or implicit authority` 부분 겹침).
+- Review Workflow [2]의 개념 역할 목록(identity·scope·owner·hierarchy·evidence·provenance·workflow·style·information format·validation)에 **content-completeness/참조 충분성 역할이 없음**. evidence·provenance는 "주장이 source에서 검증됐나"이지 "내용·참조가 빠졌나"가 아님.
+- 추론: Case 13/14·`gate-driven flow`는 로그 스킬 v2 작업(Enter→spine 재구성, R2 착지점 fix)과 개념이 1:1 대응 → **로그에서 터진 뒤 역수입(back-port)한 반응적 구조로 보임**(파일 날짜 EXAMPLE.md 7월 3 + 개념 일치; git blame으로 확증 가능). 이 로그 최신 직전 블록의 "사례 14 신설(log skill 2026-07-02 Cross-Log 추상화)" 기록이 이를 뒷받침.
+- 아직 미커버 2건: **content-completeness 계열** + **overlay/extension composition**(직전 세션에서 찾은 구조 gap). → "document skill이 로그 스킬 개선을 선제적으로 못 잡는다"는 @user 진단 성립.
+- loop 연결(의견): 우리가 그린 loop의 node 연산 중 *내용* 축 checklist가 사실상 비어 있어, loop를 아무리 잘 그려도 노드가 내용 결함을 통과시킨다.
+
+### 5) 자가 개선(self-improvement) 루프 제안
+
+- 씨앗 존재(확인한 사실): EXAMPLE Case 7("Repeated Writing Problem Becomes Guideline Improvement") + `authoring-patterns.md` Guideline Improvement(반복 문제→guideline 개선 후보). 단 **리뷰 대상의 owner guideline만** 대상이고 **reflexive(스킬 자신)가 아님**.
+- 최소 형태(의견): 새 subsystem 신설이 아니라 **Guideline Improvement/Case 7을 reflexive·loop 형태로 확장**(스킬 자기 규칙 "재정의 말고 재배치·경계 명확화가 새 규칙보다 작은지" 와 정합).
+- 3 altitude가 같은 feedback 기계: node(구조+내용, fail→재점검) / graph(blast-radius 전파, fail→처음) / **meta(이번 리뷰가 현재 smell·case·role로 이름 못 붙이는 재발 패턴을 노출했나 → 스킬 자신의 개선 후보)**.
+- meta 링 흐름: 결함 발견 → 재발성 판정(단발→park/폐기 back-edge) → 일반화 gate(domain 용어[repo·log·package명] 제거→portable, 실패시 스킬 아닌 프로젝트 규칙으로) → **dogfood**(제안된 스킬 변경을 스킬 자신의 Review Workflow+Conditional Gate로 검토) → 보고=스킬 개선 후보. **종료는 candidate 제안까지, auto-edit 금지**(owner 문서=스킬 변경은 사용자 승인).
+- guard 3: (i) portability+recurrence gate(포터블 오염 방지 — SKILL/EXAMPLE의 "repo·팀·log 이름 보존 금지"), (ii) dogfooding, (iii) 종료=사용자 승인. 조건화: meta 링은 "기존 렌즈로 이름 못 붙이는 재발 패턴"일 때만 발화(아니면 `over-provisioned structure`).
+
+### 6) 현재 상태 · 미결 · 열린 후보
+
+- 전부 설계·보고 단계, **스킬 파일 미수정**.
+- 직전 세션에서 이미 열려 있던 후보(반영 위치 미결, 관련 AskUserQuestion은 reject됨): **overlay/extension composition** 구조 gap → 반영 위치 A안(`authoring-patterns.md` Guideline Structure Models에 `overlay/extension` 한 줄) / C안(EXAMPLE Case 15) / A+C. 아직 사용자 미결정.
+- 이번에 추가된 후보: **content-review 렌즈**(개념 역할에 content-completeness 축 + smell 후보 `missing pointer/reference`·`insufficient content for action`·`stale referenced content` + EXAMPLE case) 와 **self-improvement 루프 reflexive화**.
+- 선택 검증: Case 13/14 back-port 여부 git blame 확증(선택).
+
+## 2026-07-07 · [원문 보존] SKILL identity 재정립 방향 — @user 의견과 @claude 답변 verbatim
+
+> @user 지시로 이 블록은 증류·요약 없이 원문 그대로 보존한다. 문구·의미는 손대지 않았고, @claude 답변 내부의 `##` 제목만 이 로그 블록 아래로 nesting되도록 heading 깊이를 `####`로 낮췄다(로그 목차 오염 방지, 내용 변경 아님).
+
+### @user 의견 (원문)
+
+결국
+SKILL부터 다시 definition과 identity를 만들고 기준에 대해 만들어야 한다고 판단이든다.
+방금 말했던, 문서란 정보, 지시, history 등을 담는 것이고 문서와 문서간의 상호작용, 결합등은 관심사의 분리일수도 있고 위임, 서로간 근육의 협응력 식으로 필요한 섹션에 대해 보완하는 성격 등일 수 있다.
+문서의 identity에 따라 문서의 내용과 구조 목차 지시,규율,제한등에 대해 전체 규율, 전체 알아야 할것, 국소적(섹션)마다 규율, 알아야할것, 제한 등이 있을 수 있고 하잖냐?
+내용은 명확해야 하는데 예를 들어
+밥먹었으면 보고해, 점심먹었으면 보고해, 점심 몇시에 먹었으면 보고해 이런식이면
+밥먹었으면 보고해는 점심이던 아침이던 저녁이던 새벽이던 밥을 먹는 행위 이후 보고하라는 거잖아?
+점심 먹었으면 보고해는 점심을 누구는 10시 누구는 12시 누구는 11시에 먹고 보고할 수도 있고
+점심 몇시에 먹었으면 보고해는 해당 시간에 먹고 보고하라는 거고
+
+각각에 대해 압축과 내용의 의미 판단이 서로 다른데 잘못된것들은 아니라는 것이 포인트임
+그리고
+
+누구는 나열로 하고 누구는 표로 나타내고 누구는 순서대로 하는 것은 해당 정보의 표현인데 표현에 관해서는 각각의 기준이 필요하다
+
+문서 > 섹션 > 문장 > 단어
+문서 <> 섹션 ,
+
+이런식으로 되거나 선형적일수도 비대칭일수도 반드시 모든것에 대한 정답은 없다 오로지  무엇을 나타내는 문서인가에 따라서인거 같은데
+너는 어떻게 생각하는가?
+
+### @claude 답변 (원문)
+
+좋은 방향입니다. 이건 앞의 두 턴(enumeration 비판 → overlay/extension re-dress)을 하나로 묶는 **뿌리**라서, 제 판단을 사실/추론/의견으로 나눠 정직하게 답하겠습니다.
+
+#### 핵심 진단 — 스킬이 자기 identity와 싸우고 있다
+
+(추론, 근거 있음) 스킬은 이미 "모든 판단은 문서 identity를 근간으로 한다"(`SKILL.md:14`)를 **선언**합니다. 그런데 몸통은 정반대로 짜여 있습니다 — `Structure Smells` 목록, `Guideline Structure Models` 목록, `Information Format` 목록, `EXAMPLE` 14 case. 즉 **"보편 template은 없다, identity에서 도출하라"를 가르치면서 몸은 template/카탈로그의 집합**입니다. 그래서 지난 턴의 overlay/extension 문제가 필연이었습니다: 카탈로그로 지어졌으니 변종마다 항목을 늘리는 게 자연스러워지고 → 무한대. **구조가 자기 identity 선언과 모순**입니다. 당신이 "SKILL부터 definition·identity·기준을 다시"라고 한 게 이 모순을 정확히 친 겁니다.
+
+#### 당신 모델은 맞다 (스킬 자신의 문장으로 확인)
+
+당신 뼈대 — 문서 = 정보/지시/history의 carrier, identity("무엇을 나타내는가")가 내용·표현·구조·관계를 결정 — 는 스킬의 선언된 근간과 **같은 것**입니다. 밥/점심 예시가 특히 정확합니다(확인한 사실로 대조):
+
+- "밥먹었으면 보고해" = 식사 행위 이후(끼니 추상화). 압축 높음.
+- "점심먹었으면 보고해" = 점심 event(시각은 사람마다). 압축 중간.
+- "점심 몇시에 먹었으면" = 시각까지. 압축 낮음.
+
+셋 다 **틀린 게 아니라 서로 다른 판정을 복원**합니다. 스킬의 `authoring-patterns.md:18-19`가 정확히 이걸 말합니다 — "어떤 요소를 제거했을 때 합리적 agent가 다른 대상/판단/행동을 고를 수 있으면 충분하지 않다." 즉 올바른 압축은 "가장 짧게"가 아니라 **"identity가 요구하는 판정을 복원하는 한도에서 가장 짧게"**입니다. 지금 스킬은 이걸 `Output Contract` 맨 끝줄에 묻어두고 top-level 프레임은 "가장 짧은 쪽"으로 내걸어서, 당신 예시가 드러낸 우선순위(판정 복원 → 그 다음 최단)가 뒤집혀 있습니다.
+
+#### 내가 한 곳 각을 세운다 — "정답 없음"의 경계
+
+(의견, 맹종 아님) "반드시 모든 것에 대한 정답은 없다"는 **form(형태)** 에 대해서는 맞습니다. 하지만 여기서 멈추면 스킬이 "상황따라 다름 = 알아서 생각해"로 무너져 **오류를 못 잡습니다.** 당신 밥 예시가 오히려 보편 기준을 증명합니다: "밥먹었으면 보고해"는 압축이 틀린 게 아니지만, **의도가 점심 시각이 필요한데 그걸 썼다면 틀립니다.** 즉:
+
+- 보편적인 건 **형태(압축률·표·나열)가 아니라 "그 형태가 identity가 요구하는 판정을 복원하는가"라는 테스트**입니다.
+- form은 identity-상대적, **derivation 불변식(판정 복원 테스트)은 보편.**
+
+이렇게 잡아야 스킬이 "identity에 맞으니 옳다"와 "그냥 틀렸다"를 구분할 이빨을 유지합니다. 당신 문장을 부정하는 게 아니라 완성하는 겁니다.
+
+#### 그래서 rebuild 골격 제안 (axes-primary, catalog는 instance로 강등)
+
+(제안 · 파일 미수정) 카탈로그가 아니라 **identity에서 도출하는 축(axis)** 을 몸통으로:
+
+1. **Definition** — 문서 = 정보/지시/history의 durable carrier. identity = "무엇을 나타내는 문서인가."
+2. **Master invariant** — 내용·표현·구조·관계의 모든 판단은 identity에서 도출한다. 규칙이 identity와 충돌하면 identity 우선. (지금은 서문 → **조직 축으로 승격**)
+3. **Derivation axes** (몸통, 카탈로그 대체):
+   - **내용/압축 축** — identity가 요구하는 판정을 복원하는 만큼만 담는다. 압축률은 identity가 정한다(밥 예시). 불변식: 빼도 판정 불변=과잉, 빼면 판정 변화=부족.
+   - **표현 축** — 형태(나열/표/순서/prose/정의)는 "그 정보가 무엇인가"로 고른다. 형태별 세부는 이 축의 instance.
+   - **구조 관계 축** — 문서>섹션>문장>단어(계층) vs 문서<>섹션(상호) vs linear vs 비대칭. "무엇을 나타내는가"가 정한다. 보편 형태 없음.
+   - **규율 고도 축** — 모든 규율/제한/알아야 할 것은 **전체(global)** 인지 **국소(섹션)** 인지 고도가 있고, 독자가 그 고도를 복원할 수 있어야 한다. (지금 스킬에 명시 안 된 새 축 — altitude-mismatch 렌즈를 문서 *내부*로 돌린 것)
+   - **문서-대-문서 관계 축** — 관심사 분리 / 위임 / 협응 보완(둘이 나눠 갖고 어느 쪽도 종속 아님). 이게 내용이 남을지·링크할지·공유할지를 정한다.
+4. **Catalog 강등** — Smells / Structure Models / Information Format / EXAMPLE은 위 축의 **예시(instance)** 로 내려가고, 추가는 지난 턴의 **recurrence gate**(실제 반복 + 기존 축으로 복원 불가)를 통과할 때만. → 무한대 차단.
+
+overlay/extension은 이 골격에서 자동 해소됩니다 — "문서-대-문서 관계 축"의 한 파라미터(비대칭 보완)일 뿐 새 model이 아니니까.
+
+#### 순서·위험 경고 (반드시 짚어야 함)
+
+(사실+의견) 이건 **identity-level 변경 = 스킬에서 가능한 최고 blast radius**입니다. 스킬 자신의 `Content Or Identity Change` gate(`SKILL.md:85`)가 "identity·scope 변경은 증거 기준을 높이고 inbound reference를 명시적 migration 없이 깨지 마라"고 요구합니다. 함의 두 가지:
+
+- **loop 재구성(node/graph/meta)은 이 아래 workflow 고도**입니다. 지난 세션들의 loop overlay는 사실 **뿌리보다 먼저 지붕을 손댄 것**이었습니다. 순서는 identity/definition 재정립 → 거기서 workflow(loop) 도출 → catalog는 instance. 지금 당신이 뿌리로 되돌린 게 맞습니다.
+- 재작성 시 `review-patterns.md`·`authoring-patterns.md`·`EXAMPLE.md`·frontmatter `description` 전부 migration 대상 — 새 축에 재배치되지 옛 카탈로그로 남으면 안 됩니다.
+
+#### 다음
+
+제 제안: 카탈로그 재배치는 나중이고, **먼저 rebuilt Definition + Identity + Master invariant + 5 derivation axes를 한 페이지 초안**으로 잡아 당신 검토를 받는 게 순서입니다(그게 정해져야 나머지가 거기서 derive됨). 스킬 파일은 승인 전까지 손대지 않고 초안만 보고하겠습니다.
+
+이 골격으로 identity 초안을 써 볼까요, 아니면 5개 축 중 이견 있는 축(특히 제가 세운 "정답 없음의 경계", 그리고 새로 넣은 "규율 고도 축")부터 합의하고 갈까요?
+
+## 2026-07-07 · 결정 — document-structure-review 전면 개편 확정(identity-first + Review Loop)
+
+@user가 부분 패치(loop overlay)를 폐기하고 **전면 개편**을 승인했다. 앞 `[원문 보존]` 블록의 진단 — 스킬이 "모든 판단은 identity에서 도출"을 선언하면서 몸통은 카탈로그(Structure Smells·Guideline Structure Models·Information Format·EXAMPLE)로 지어져 변종마다 항목이 늘어나는 무한 enumeration에 빠지고, 그래서 구조가 자기 identity 선언과 모순 — 이 개편의 근거다.
+
+### 결정 내용
+
+- **전면 개편**: SKILL.md를 identity-first로 재작성한다. loop 재구성(node/graph/meta)은 별도 overlay가 아니라 이 개편의 **workflow 고도**로 통합한다.
+- **실행 순서**: spine(Definition·Master invariant·5 derivation axes·Review Loop) 먼저 확정·반영(W1) → 승인 후 references 3파일 + frontmatter description을 5축 instance로 migration(W2). 뿌리가 틀리면 파생물이 낭비되므로 spine 우선.
+- **핵심 설계 확정**:
+  - Definition: 문서 = 정보·지시·history를 담는 durable carrier. identity = "이 문서가 무엇을 나타내는가".
+  - Master invariant: 압축률·표현 형태·구조 관계에 **보편 정답 없음(identity-상대)**. 보편은 형태가 아니라 **"판정 복원 테스트"**(선택 형태가 identity가 요구하는 판정을 독자가 복원하게 하는가). "가장 짧게"는 복원 테스트 통과 후 tiebreaker로 강등.
+  - 5 derivation axes: ① 내용·압축(요구 판정 복원 만큼만; 빼도 판정 불변=과잉, 빼면 판정 변화=부족; 행동 문장은 요구 행동·owner 지목) ② 표현(형태는 정보 성격으로 선택) ③ 구조 관계(계층/상호/선형/비대칭은 identity가 결정) ④ 규율 고도(global·local, 독자가 고도 복원 가능해야) ⑤ 문서-대-문서 관계(관심사 분리/위임/협응 보완).
+  - Review Loop: Node Operation(구조+내용 병렬 평가, N7 verify에서 pass / local-verify-fail→N4 / identity-invalidation-fail→N1 분기) · Propagation(blast-radius bounded, 전수 아님) · Termination(frontier 빔+verify pass=수렴, 미수렴·파괴적·불확실→사용자 확인) · Meta Ring(reflexive 자가개선, 기존 축으로 이름 못 붙이는 재발 패턴만 발화, portable 일반화→dogfood→후보 제안까지, auto-edit 금지).
+  - **overlay/extension 미결(A/C/A+C) 해소**: 문서-대-문서 관계 축의 "비대칭 보완" 파라미터로 흡수 → 별도 structure model이나 EXAMPLE case 불필요.
+- **보존(삭제 아님)**: 기존 Core Invariants의 규율(ancestor-not-axiom, 판단 바꾸는 관계만 읽기, inferred-action 금지, 불확실→확인), 4개 Change Gate, Reference Routing, Output Contract 항목은 축·loop·gate로 재배치. references 3파일은 아직 미수정.
+
+### 상태
+
+- **스킬 파일 미수정.** 아래 draft는 @user 승인 대기(W1). 승인 시 SKILL.md에 반영 후 W2(references migration) 착수.
+
+### Draft 개정 이력
+
+- rev1 (@claude): 초안 — identity-first spine + 5 derivation axes + Review Loop.
+- rev2 (@user 검토 5건): Scope 보고를 사실·추론·의견·제안 4분류로 정합; 문서-대-문서 관계·표현 축 목록을 open(`대표적으로 … 등`); 구조 관계 `baseline`→`초기 후보로 비교`; Output Contract에 content 경계·authority 불확실성 guard bullet 복원.
+- rev3 (codex 검토 2건): 본문·Output Contract의 `가장 짧은 쪽` 계열을 판정 복원 후 `독자 비용 최소`로 교체(짧음은 한 요소); 내용·압축 축에 `충분/과잉은 문맥·identity 판정 단위 기준이며 해결은 최대 압축이 아니라 필요한 판정을 잃지 않는 밀도`를 추가.
+
+### SKILL.md rebuild draft (승인 대기 · 미반영)
+
+````markdown
+---
+name: document-structure-review
+description:
+  Use when an agent needs to create, delete, structurally review, design, or refine durable documents,
+  documentation rules, authoring guides, templates, skeletons, or review feedback. Recovers the document's
+  identity — what it represents — from the document and its parent and sibling relationships, then derives
+  content, representation, structure, rule-altitude, and document-relation judgments from that identity
+  through a review loop that propagates only along a change's blast radius.
+---
+
+# Document Structure Review
+
+## Definition And Identity
+
+문서는 정보, 지시, history를 담는 durable carrier다. 이 skill의 모든 판단의 근간은 대상
+문서의 **identity — "이 문서가 무엇을 나타내는가"** 다. 문서 자체와 parent, 관련 sibling이
+정의하는 역할에서 identity를 복원하고, 그 identity에서 내용, 표현, 구조, 규율 고도,
+문서-대-문서 관계 판단을 도출한다. 존재·위치·경계·상태·내용을 바꾸는 변경마다 기존 identity가
+여전히 유효한지, 관련 문서의 역할 정의와 참조를 함께 바꿔야 하는지 확인한다. 아래 모든 축·loop·
+gate·reference는 이 근간을 상황별로 실행하는 도구이며, 다른 규칙이 identity 판단과 충돌하면
+identity 판단을 우선한다.
+
+parent와 sibling의 확정된 권위는 기본 constraint이지만 axiom은 아니다. 충돌하면 하위 제안을
+수정·기각하거나, 충분한 근거와 해당 owner의 change 절차를 갖춰 상위 변경 후보로 올린다.
+
+**Master invariant — 정답은 형태가 아니라 복원이다.** 같은 내용을 담는 압축률·표현 형태·구조
+관계에 보편 정답은 없다. 무엇이 옳은지는 identity가 정한다. 단 모든 형태에 걸치는 보편 기준이
+하나 있다: **선택한 형태가 identity가 요구하는 판정을 독자가 복원하게 하는가.** 이 테스트를
+통과하는 형태들 사이에서만 독자 비용이 가장 작은 쪽을 택한다. "가장 짧게"는 복원 테스트를
+통과한 다음의 tiebreaker이지 1차 기준이 아니다.
+
+Scope:
+
+- durable document의 생성·삭제·검토, owner·scope 배치, 개념 위치, 작성 지침·template 구조,
+  정보 표현 형태를 판단하는 portable 절차다.
+- 특정 프로젝트의 taxonomy, 문서 형식, current work, 기록 위치, closeout·owner handoff를
+  소유하지 않는다. 프로젝트가 지정한 계약·change 절차 아래에서 판단한다.
+- 사용자 의도는 중요한 근거지만 자동 정답은 아니다. 확인된 계약·corpus와 충돌하면 사실·추론·
+  의견·제안을 구분해 보고한다.
+
+## Derivation Axes
+
+identity에서 내려오는 다섯 축이다. 각 축은 형태의 정답을 미리 정하지 않고, 그 형태가 identity가
+요구하는 판정을 복원하는지로 판단한다. 각 축의 세부 사례·smell·형식 목록은 필요할 때만
+`Reference Routing`으로 읽고, 목록에 항목을 늘리기 전에 그 항목이 기존 축으로 복원 불가한 재발
+패턴인지 먼저 본다. 단순 변종은 추가하지 않는다.
+
+- **내용·압축** — identity가 요구하는 판정을 복원하는 만큼만 담는다. 압축률(행위 수준인지,
+  event 수준인지, 값까지인지)은 identity가 정하며 어느 하나가 보편 정답이 아니다. 불변식: 어떤
+  요소를 빼도 판정이 같으면 과잉이고, 빼면 합리적 agent가 다른 대상·판단·행동을 고를 수 있으면
+  부족이다. 문장은 독립적으로 충분하거나 과잉인 것이 아니다. 앞뒤 문맥과 문서 identity가 요구하는
+  판정 단위를 먼저 복원한 뒤, 그 문장이 그 판정을 만들 만큼 충분한지 본다. 해결은 항상 더 짧게
+  압축하는 것이 아니라, 필요한 판정을 잃지 않는 밀도를 맞추는 것이다. 행동으로 넘기는 문장(라우팅·
+  gate 종결·step)이 요구 행동을 지목하지 않고 상태·라벨에
+  그치면 독자가 행동을 추론해야 하므로 부족이다. 행동을 다른 절이 소유하면 그 owner까지 지목한다.
+- **표현** — 나열·표·순서·prose·정의·code·callout 등의 형태는 "그 정보가 무엇인가"로 고른다.
+  순서가 의미면 numbered, 독립 항목이면 bullet, 두 축 lookup이면 table, 서사·why면 prose,
+  term-정의 쌍이면 definition. 형태 선택 후 그 형태가 판정 복원을 방해하지 않는지 확인한다.
+- **구조 관계** — 문서>섹션>문장>단어의 계층인지, 문서<>섹션의 상호 참조인지, 선형인지
+  비대칭인지는 identity가 정한다. 보편 형태가 없으므로 대칭·계층을 초기 후보로 비교하되 identity가
+  요구하면 비대칭·상호 관계를 쓴다.
+- **규율 고도** — 규율·제한·"알아야 할 것"은 문서 전체(global)에 걸리는지 특정 섹션(local)에만
+  걸리는지 고도가 있다. 각 규율을 그 고도에 두고, 독자가 어느 고도의 규율인지 복원할 수 있게
+  한다. 국소 규율을 전체처럼, 전체 규율을 국소처럼 두지 않는다.
+- **문서-대-문서 관계** — 두 문서의 결합은 대표적으로 관심사 분리, 위임, 협응 보완(둘이 필요한
+  부분을 나눠 갖고 어느 쪽도 종속이 아님) 등을 포함한다. 이 관계가 내용을 현재 문서에 남길지, owner로
+  링크·위임할지, 공유 섹션으로 보완할지를 정한다. 물리적 nesting·경로·공유 template만으로
+  ownership이나 상속을 단정하지 않는다.
+
+## Review Loop
+
+문서 검토·작성은 identity 앵커에서 출발해, 변경의 blast radius를 따라 도는 loop다. frontier는
+처음에 대상 문서 하나다.
+
+### Node Operation (frontier의 각 문서)
+
+1. 대상 문서의 intended identity와 근거를 복원한다. 근거는 user prompt, project/root contract,
+   parent/child guideline, owner map, 관련 sibling, 실제 corpus에서 찾는다. 새 문서는 user
+   intent와 parent·owner map·sibling에서 identity를 설계한다.
+2. 변경 표면을 존재·위치·경계·상태·내용으로 분류하고, **구조와 내용을 병렬로** 다섯 축(내용·
+   압축 / 표현 / 구조 관계 / 규율 고도 / 문서-대-문서 관계) 위에서 판정한다. 한 결함이 여러
+   축에 걸치면 하나로 못 박지 말고 관련 축을 모두 route한다.
+3. 판단을 바꿀 수 있는 관계 문서만 읽는다. 단순 불안으로 모든 ancestor·sibling·child·corpus로
+   확장하지 않는다.
+4. 책임 owner와 변경 위치를 정하고 local-only, ancestor-only, both, no-change 후보를 비교한다.
+   문제 문서가 항상 변경 대상이라고 가정하지 않는다.
+5. 변경 유형에 해당하는 `Change Gates`를 적용한다.
+6. 역할 정합과 필요한 전파를 모두 충족하는 후보 중 가장 작은 변경을 수행한다. 내용 위치를 정한
+   뒤 표현 축으로 형태를 고르고, 복원 테스트를 통과한 후보들 사이에서 독자 비용이 가장 작은 쪽을
+   택한다. 짧음은 그 판단의 한 요소일 뿐이다.
+7. 이 문서와 직접 관련 문서의 identity·참조가 유효한지 검증하고 결과를 분기한다:
+   - **pass** → 이 문서 node를 닫고 `Propagation`으로 간다.
+   - **local verify fail**(역할 정합 실패) → 4로 돌아가 이 문서 변경만 재도출한다.
+   - **identity-invalidation fail**(전파 결과 이 문서의 원래 identity·owner 판정 자체가 틀림)
+     → 1로 돌아가 identity 복원부터 다시 한다.
+
+### Propagation
+
+- pass한 변경이 깰 수 있는 관계만 blast radius로 산출한다: 상위 역할 정의, owner map·taxonomy,
+  inbound reference, sibling 경계, 하위 skeleton·invariant. 전수 검토가 아니라 판정을 바꿀
+  관계만 올린다.
+- blast radius의 각 문서를 frontier에 추가하고 Node Operation을 재적용한다. frontier 문서가 또
+  바뀌면 그 문서의 blast radius도 추가한다.
+
+### Termination
+
+- frontier가 비고 최종 verify가 pass하면 수렴이다. 보통 blast radius가 작아 한 번에 수렴한다.
+- 미수렴(순환·발산), 파괴적 변경, 또는 identity·경계·authority가 불확실하면 추측하지 않고
+  사용자에게 확인한다.
+- "매 검토 = 전체 문서군 순회"로 만들지 않는다. 그 자체가 과설계다.
+
+### Meta Ring (스킬 자기 개선, 조건부·비차단)
+
+- 이번 검토가 현재 축·gate·smell·case로 이름 붙일 수 없는 재발 패턴을 노출했을 때만 발화한다.
+  아니면 발화하지 않는다.
+- 재발이 아니면 park하고, 재발이면 domain 용어(특정 repo·팀·log 이름)를 제거해 portable한지
+  본다. portable하지 않으면 스킬이 아니라 프로젝트 규칙 후보다.
+- 제안된 스킬 변경은 이 스킬의 Review Loop와 Change Gates로 자기 검토(dogfood)한다.
+- 종료는 스킬 개선 후보 제안까지다. 스킬은 owner 문서이므로 자동 편집하지 않고 사용자 승인을
+  받는다.
+
+## Change Gates
+
+변경 유형에 해당하는 gate만 Node Operation 5단계에서 적용한다. gate는 축을 특정 변경에 적용한
+instance다.
+
+### New Document
+
+- 같은 책임을 기존 owner 문서·섹션이 이미 소유하는지, 기존 문맥에 흡수 가능한지 먼저 확인한다.
+- owner, scope, reader, lifecycle, change coupling의 실제 차이가 독립 identity를 요구할 때만 새
+  문서를 만든다.
+- 생성 전 intended identity, owner·scope, parent·sibling 관계와 배치를 정하고, 생성 후 parent
+  taxonomy·index·inbound reference·sibling 경계가 새 역할을 옳게 설명하는지 확인한다.
+
+### Content Or Identity Change
+
+- 새 내용이 기존 identity와 같은 owner·scope이면 흡수하고, 하위 개념이면 필요한 섹션에 배치한다.
+- identity·scope를 초과하면 국소적으로 끼우지 않는다. owner 위임, scope 확장, 문서 분리, 상위
+  개념 승격을 비교한다.
+- 이동·rename·split·merge·identity/scope 변경은 증거 기준을 높이고, 기존 anchor·inbound
+  reference를 명시적 migration 없이 깨지 않는다.
+
+### Destructive Change
+
+- 삭제·대체·archive·status 전환 전에는 이 문서로만 복원되는 knowledge(rationale, trade-off,
+  rejected alternative, re-evaluation 조건)가 다른 owner나 code에 남는지 확인한다.
+- 참조가 current authority·active work·implementation용인지 provenance-only인지 분류한다. 보존
+  이나 참조 영향이 불확실하면 보류·보강·새 문서·사용자 확인 같은 비파괴 fallback을 택한다.
+
+### Guideline Or Template Change
+
+- default section·template을 중립으로 보지 않는다. 실제 반복 subtype과 누락 위험이 확인될 때만
+  추가하고, 기존 문맥 흡수나 invariant가 더 작은 해결인지 먼저 본다.
+- 개념보다 좁게 명명된 section·scope가 다른 subtype이나 subtype 없는 경우를 누락시키지 않는지
+  확인한다. 좁은 identity는 새 section 전에 rename·일반화·scope 재정의로 개념과 맞춘다.
+- 사례·corpus는 규칙을 검증하는 입력이지 자동 template이 아니다.
+
+## Reference Routing
+
+모든 reference는 선택 도구다. 현재 판단을 바꾸는 조건에 해당할 때만 읽는다. 각 reference의
+목록은 다섯 축의 instance이며, 항목 추가는 recurrence gate(실제 반복 + 기존 축으로 복원 불가)를
+통과할 때만 한다.
+
+- 구조 문제 분류, context read path, 개념 위치, owner·scope·변경 위치가 애매하면
+  `references/review-patterns.md`.
+- rule shape, wording, 표현 형태, guideline/template 구조나 sibling guide 비교가 필요하면
+  `references/authoring-patterns.md`.
+- 위 기준을 concrete scenario에 적용하는 방식이 애매하면 `references/EXAMPLE.md`의 관련 사례만.
+
+## Output Contract
+
+최종 제안·수정안에는 관련 항목만 적용한다.
+
+- 확인한 사실, 추론, 의견과 제안을 구분했는가?
+- 대상 문서의 identity와 그 근거를 복원했는가?
+- 내용·표현·구조·규율 고도·문서 관계 판단을 그 identity에서 도출했는가?
+- 선택한 형태가 identity가 요구하는 판정을 복원하며, 그 다음에야 독자 비용이 가장 작은가? (복원을 깨면서
+  줄이지 않았는가, 판정이 같은데 남기지 않았는가?)
+- owner·scope·변경 위치가 적절하며 필요한 gate를 적용했는가? parent 역할 정의, owner map,
+  inbound reference, sibling 경계가 계속 유효한가?
+- 불확실한 content 경계·authority나 파괴적 변경을 추측으로 통과시키지 않았는가?
+- loop가 수렴했거나, 미수렴을 추측으로 종결하지 않고 escalation했는가?
+````
+
+## 2026-07-07 · W1 완료 — SKILL.md 전면 개편 반영
+
+rev3 draft를 `.agents/skills/document-structure-review/SKILL.md`에 전면 재작성으로 반영했다. Review Loop(Node/Propagation/Termination/Meta)는 이 개편의 workflow 고도로 spine에 포함됐다. `.claude/skills/document-structure-review`는 `.agents/skills/`로의 symlink라 한 파일 반영으로 양쪽이 갱신된다.
+
+**검증 ledger** (다른 agent가 이 로그만으로 pass/fail 가능):
+
+- 새 섹션 존재(grep): Definition And Identity / Derivation Axes / Review Loop(Node Operation·Propagation·Termination·Meta Ring) / Change Gates(New Document·Content Or Identity Change·Destructive Change·Guideline Or Template Change) / Reference Routing / Output Contract.
+- 구 카탈로그 섹션명 제거: `Core Invariants`·`Structure Smells`·`Guideline Structure Models`·`Conditional Gates` = 0건.
+- frontmatter description identity-first로 갱신, 스킬 index에도 반영됨. 파일 182줄.
+- 구 규율 재배치 확인: ancestor-not-axiom → Definition And Identity 2단락; 판단 바꾸는 관계만 읽기 → Node 3·Propagation; inferred-action 금지 → 내용·압축 축; 불확실→사용자 확인 → Termination·Output Contract; 4 Change Gate 내용 → Change Gates 유지.
+
+**미반영(다음 W)**: references 3파일 + 표현 축 매핑 문장 relocate = W2. loop 운영 dogfood 검증 = W3.
+
+Next: W2 — references(review-patterns·authoring-patterns·EXAMPLE)와 description을 5축 instance로 migration. W1 결과에 대한 codex 검토 프롬프트는 이 세션에서 @user에게 전달했다.
+
+## 2026-07-07 · codex W1 리뷰 반영 — spine 3건 + W2 라우팅
+
+codex가 W1(SKILL.md 전면 개편) 결과를 검토해 finding 5건 + pass 판정을 냈다(회귀: ancestor-not-axiom·판단 바꾸는 관계만 읽기·destructive gate·불확실→사용자 확인 보존 확인). 각 finding을 근거로 평가해 **spine 차원 3건만 지금 반영**하고, **reference 차원 2건은 W2로 라우팅**했다. codex 원본 판정도 finding 1을 "W2에서 최우선"으로 시퀀싱했다.
+
+**spine 반영(SKILL.md, 지금):**
+
+- **Finding 2 [Low-Med] 회귀 복원** — 구 Output Contract의 inferred-action 직접 체크가 spine 이동 후 최종 checklist에서 누락됐다는 지적. Output Contract에 bullet 1개 복원: "행동으로 넘기는 문장이 요구 행동을, 다른 절이 owner면 그 owner까지 복원하게 하는가?". (신규 카탈로그 항목이 아니라 드롭된 체크 복원이므로 enumeration creep 아님.)
+- **Finding 3 [Low] 모호성 축소** — Node 6 "가장 작은 변경"이 diff/blast/identity-cost 중 무엇인지 모호. "blast radius가 가장 작은 변경"으로 metric 명시. 뒤 문장의 "독자 비용 최소"는 형태 선택(표현 축) 몫으로 분리 → change 선택=blast radius, form 선택=독자 비용으로 clean split.
+- **Finding 4 [Low] back-edge 경계 선명화** — N7 분기 괄호 보강. local verify fail = "복원한 identity·owner는 유지되나 변경 위치·형태·owner 후보가 검증 실패"; identity-invalidation fail = "새 근거·전파 결과가 이 문서의 원래 identity·owner 복원 자체를 뒤집음". 두 back-edge의 발화 조건을 실행 가능하게 구분.
+
+**W2 라우팅(지금 미반영):**
+
+- **Finding 1 [Medium] = W2 최우선** — `references/authoring-patterns.md:56` "가장 짧은 쪽을 택한다"가 새 Master invariant("복원 후 독자 비용 최소, 짧음은 한 요소")와 **직접 충돌**. spine이 이 reference로 라우팅하므로 W2 완료 전까지는 reference를 읽은 agent가 압축 우선으로 오해할 interim risk가 있다(확인된 사실). W2 migration의 첫 항목으로 처리한다.
+- **Finding 5 [Low] = W2 relocate** — 표현 축 매핑 문장(SKILL.md:56 "순서가 의미면 numbered…")이 spine에서 카탈로그처럼 읽힘. codex도 W1-breaker는 아니고 axis 실행 예시 역할은 인정하되 authoring-patterns Information Format instance로 내리는 데 동의. W2 relocate 대상(W1 ledger가 이미 표시).
+
+**검증 ledger**(다른 agent가 pass/fail 가능): SKILL.md에서 (a) Output Contract에 inferred-action bullet 1개 존재, (b) Node 6에 "blast radius가 가장 작은 변경" 존재, (c) N7 두 fail 괄호가 위 문구로 교체됨. reference 파일 2건은 이 블록 시점 무변경(W2 대상).
+
+Next: W2 — Finding 1(authoring-patterns Information Format 첫 문장 + table "짧은지" 표현을 새 기준으로) 최우선, Finding 5(표현 축 매핑 문장 relocate) 포함해 references 3파일 + description을 5축 instance로 migration.
+
+## 2026-07-07 · loop 구조 제안 능력 — 표현 축 배치 확정 (Claude+codex 2라운드 합의)
+
+**배경:** @user 요청 = "대상 문서 구조 개선안으로 loop를 제안할 수 있어야 한다". 이는 skill의 *수행* loop(spine `Review Loop`)와 다른 층위 = skill이 대상 문서에 내놓는 *출력(제안) 레퍼토리*다. Claude가 축/배치를 판정하고 codex가 2라운드 재검토해 전 쟁점 합의.
+
+**확정 사항:**
+
+- **축:** 표현 축 1차 + 구조 관계 축 교차. numbered vs flow vs loop는 같은 절차 정보의 표현 형태 선택이라 1차는 표현 축. 문서 전체 섹션 배열이 선형/재진입/순환일 때만 구조 관계 축 교차. (codex가 Claude 이의 수용, 처음엔 "구조 관계 축"으로 제안했다가 정정.)
+- **본문/reference 분해:** 본문 = "언제 flow/loop 후보인가 / 무엇이 아니면 loop가 아닌가" 판정 불변식만. 요소 spec(entry·state·operation·back-edge·termination·escalation)은 `references/authoring-patterns.md` `Rule Shape`가 소유. 요소 목록을 본문에 넣으면 W1이 진단한 enumeration 회귀.
+- **negative invariant 위치:** "종료 조건 없이 되돌아가는 경로만 있으면 well-formed loop가 아니다"는 본문에 짧게 1회 + 세부는 reference. codex: 중복이 아니라 라우팅 기준. 기존 `feedback loop` 정의는 `gate-driven flow`의 종료조건을 상속하므로 암묵적으론 존재 → 명시 negative invariant로 승격.
+- **문안:** codex "절차·규칙" → "절차·workflow·검토 흐름"(규칙 자체는 loop성 행동이 없을 수 있음) 수용.
+- **feedback loop 삭제 판정 철회** 재확인. spine `Review Loop`(수행)와 `Rule Shape` `feedback loop`(제안)는 층위가 달라 중복 아님.
+
+**확정 본문 문안 (표현 축에 추가):**
+
+> 절차·workflow·검토 흐름처럼 독자 행동이 반복·재진입·검증·종료를 요구하면 단순 나열 대신 gate/flow/loop 형태를 후보로 본다. 되돌아갈 경로와 종료 조건을 함께 복원하지 못하면 well-formed loop가 아니다. 구성요소별 판정은 `Rule Shape`가 소유한다.
+
+**W2 반영 항목:** (1) 위 문안을 표현 축에 추가(단, 표현 축은 W2에서 Finding 5 매핑 문장 relocate와 함께 통째로 정합하므로 그때 삽입). (2) `Rule Shape`의 `gate-driven flow`/`feedback loop` 정의 강화 — 요소 spec 정리 + "종료 없는 back-edge ≠ well-formed loop" 명시. (3) Node Operation 표현축 평가가 이 제안을 실제로 트리거하는지 연결 확인.
+
+**W3 이월:** progress signal · 반복 중 invariant는 대상 문서의 표현 형태 선택이 아니라 skill 자신 `Review Loop` 운영 검증 → W3(loop dogfood). codex 동의.
+
+Next: W2 착수 승인 시 표현 축(Finding 1·5 + 위 loop 문안) + `Rule Shape` loop shape 강화를 함께 반영. skill 파일은 승인 후 수정.
+
+## 2026-07-07 · W2 draft 확장 — restoration gap 도입 (검토 중, 미반영)
+
+@user가 codex "runtime/dry-run gap" 추가 논의를 전달 → Claude 검토 6판정 → fork(opus, 맥락 상속) 2차 draft 확장. skill 파일 미반영, draft 전문은 scratchpad `w2-draft-restoration-gap.md`. codex 교차 예정.
+
+**개념:** loop는 여러 구조 후보(state machine·routing map·decision table 등) 중 하나. 이들을 본문에 나열하면 W1이 비판한 enumeration 회귀. 대신 문서를 실제 실행/dry-run해 "독자가 다음 판정·행동을 복원하지 못하는 지점(restoration gap)"을 먼저 잡고, 반복 gap만 pattern으로 승격한다. restoration gap = Master invariant("독자가 판정을 복원하는가")의 *동적* 버전.
+
+**Claude 검토 6판정 (codex 논의, 사실/추론/의견):**
+1. [의견] W1 identity-first 정합 — smell 나열 대신 gap 먼저 = W1 anti-enumeration 정신.
+2. [추론] enumeration 방지 조건부 충분 — 복원 실패 예시(다음행동·착지점·재진입·종료·escalation·owner·근거)를 닫힌 목록으로 못박지 말 것. 핵심은 "dry-run해서 복원 안 되는가" 단일 테스트.
+3. [의견] 축: 5축이 아니다. Node Operation(gap 탐지) + Output Contract(체크). gap을 어떤 형태로 메우나가 표현·구조 관계 축.
+4. [의견] loop 외 구조 후보: `Rule Shape`에도 무한 나열 금지, recurrence+portable gate 통과분만.
+5. [의견] 이름: "runtime gap" 폐기(코드 느낌) → **restoration gap**(skill "복원" 어휘·Master invariant 정합). 방법=dry-run.
+6. [추론] log package-signal 재검토 착지점 사례: 1회라 EXAMPLE 미승격, Node Op 원칙 motivation 근거로만.
+
+**fork 2차 draft 변경 지점:** Node Op step2에 dry-run restoration gap 탐지 / Output Contract에 gap 체크 bullet / 표현 축 Master invariant 중복 문장 제거 / Rule Shape 6요소 inline prose→definition 전환 + recurrence gate 도입 문구 / Information Format 1차 유지. 보류: state machine·routing map·checklist·invariant set 등(기존 축·shape로 복원, recurrence 미충족).
+
+**Claude 개선 3점(codex 교차에 포함):** ① Node Op step2 "다섯 축 판정" 2회 서술 → 두 gap 소스를 한 번으로 통합. ② Output Contract 7개 예시가 Node Op와 반복 → "restoration gap이 남지 않았는가?"로 축약, 정의는 Node Op 소유. ③ Rule Shape 요소6 bullet/shape2 bullet 시각 계층 평평 → 구분 강화.
+
+Next: codex 교차 → 개선 3점 확정 → SKILL.md(Node Op·Output Contract·표현 축) + authoring-patterns(Rule Shape·Information Format) **일괄 반영**. (⚠️ 이 로그 2600줄+ = hard threshold 초과, split 검토 별도 필요.)
+
+## 2026-07-07 · W2 부분 반영 완료 — restoration gap + 표현 축·Rule Shape
+
+codex "반영 가" 판정 후 fork(opus)가 사양(scratchpad `w2-apply-spec.md`)대로 실제 편집, Claude 독립 grep 재검증 완료. skill 파일 반영됨(`.claude`는 `.agents` symlink, 양쪽 동기 확인). 개선 3점 + codex 조정 모두 반영.
+
+**검증 ledger (다른 agent가 이 로그만으로 pass/fail 가능):**
+
+- `SKILL.md`: `restoration gap` 2곳 — `:85`(Node Op step2 dry-run 탐지, 명시적 변경 표면과 함께 5축 route로 통합), `:187`(Output Contract 체크 1줄, 예시 정의는 Node Op 소유). 표현 축(`:56–59`) loop 후보 판정 3문안 + Master invariant 중복 문장 제거, 구 매핑 문장 "순서가 의미면 numbered" 0건. Node 6 blast radius·N7 back-edge·Master invariant 정합 유지.
+- `references/authoring-patterns.md`: Rule Shape recurrence gate 도입 문구(`:29`), 공통 요소 6 definition(`:44–49`) + 도입문 2개("두 shape는 아래 공통 요소로 복원한다"`:42` / "각 shape는 이 요소로 정의한다"`:51`)로 요소↔shape 계층 분리, gate-driven flow=단방향(`:56`), feedback loop 종료 invariant(`:60`). Information Format 첫 문장 압축우선→"정보 성격으로 고른다"(`:73`), 압축우선 잔존 0건.
+
+**개선 3점 반영 확인:** ① Node Op "5축 판정" 1회로 통합(두 입력=명시 변경+dry-run gap) ② Output Contract 예시 7개 반복 제거→1줄 ③ Rule Shape 요소/shape 계층 분리. codex 조정: dry-run은 "판단·행동" 유지(정보 문서 배제 안 함). fork minor: 편집 4·5를 전체 교체 대신 targeted sub-edit(미변경 항목 재작성 회피=minimal change, 결과 동일).
+
+**W2 잔여 (미완):** ① `references/review-patterns.md`(Context Read Path·Concept Placement·Structure Smells·Owner And Scope·Change Location)를 5축 instance로 재앵커 — 특히 Structure Smells 카탈로그를 축별 detector로 재그룹. ② `references/EXAMPLE.md` 14 cases 재태그 + recurrence gate 정리 + overlay/extension을 문서-대-문서 관계 비대칭 보완 case로 흡수. ③ frontmatter description 5축 정합 재확인(W1서 identity-first 갱신됨, likely no-op).
+
+Next: W2 잔여 3항목(review-patterns 우선). **로그 split 안 함(@user 결정 2026-07-07):** 단일 topic 연속 작업이고 W1↔W2가 강결합(loop 확정→반영이 잔여의 전제)이라 분리 시 read path가 끊긴다. hard threshold 초과에도 단일 수명 유지. 다음 세션은 warm-start 프롬프트로 재개(@user에게 전달함).
+
+## 2026-07-08 · W2 잔여 ① review-patterns 재앵커 반영 + ③ description no-op 확인
+
+warm-start 재개. Claude가 `references/review-patterns.md` 재앵커 draft를 만들어 제시 → codex 교차(@user 전달) = "반영 가, 단 문안 3곳 보정" → 세 보정 근거 평가·수용 후 실제 skill 파일 반영 → Claude 독립 grep 검증. draft 최종본 = scratchpad `w2-review-patterns-reanchor-draft.md`.
+
+**세 보정(codex → 수용):**
+
+- intro 첫 문장: "각 smell은 한 축의 복원 테스트 실패" → "identity anchor 또는 다섯 축의 복원 테스트 실패". (보정 1은 draft의 내적 모순을 짚음: intro가 "각 smell=한 축 실패"라면서 마지막 그룹은 "축이 아닌 identity 근간"이라 라벨 → 자기충돌. 보정이 해소.)
+- identity 근간 라벨: "identity 근간 복원 실패" → "…(축 이전 anchor)". 6번째 축 오독 방지.
+- `abstract destructive gate`에 cross-note "(내용·압축·Destructive Change gate도 함께 깬다)". 설명문이 이미 판단입력 누락을 서술하므로 일관.
+
+**반영 내용(references/review-patterns.md):** Structure Smells를 4개 임시 범주(소유·권위 / 정체성·역할 경계 / 구조비용·독자경로 / 표현·안전장치) → 5축 + identity 근간(축 이전 anchor)으로 재그룹. 각 smell을 "어느 축의 복원 테스트를 깨는가"로 재정의하고 restoration gap과 연결(smell = dry-run 없이 알아보는 정적 restoration gap; 동적 gap은 Node Operation이 모음). intro에 "각 절 = 5축·Review Loop의 concrete instance + recurrence gate" 연결문 1줄 추가. 다른 절(Context Read Path·Concept Placement·Owner And Scope·Change Location)은 이미 축 정합 → 실질 무변경.
+
+**smell 축 배치(14 잔존):** 내용·압축=over-provisioned structure / 표현=misaligned reader path·abstract destructive gate / 구조 관계=hidden sub-kind·mixed concept roles / 규율 고도=hidden or implicit authority·orphan local rule·owner or altitude mismatch / 문서-대-문서=duplicated ownership·reverse or circular dependency·contradiction·copied section meaning·excessive read path / identity 근간=under-scoped identity. 복합 smell은 primary 축 + cross-note.
+
+**`inferred action` 제거(축소):** spine 내용·압축 축(행위→상태·라벨 부족 규칙) + Output Contract가 verbatim 소유 → recurrence gate "기존 축으로 복원 불가" 실패. 무단 삭제 대신 내용·압축 그룹에 "구 `inferred action`은 축·Output Contract가 소유" 복원 흔적을 남겨 카탈로그 자체에 Destructive Change gate를 dogfood. 제거 blast radius = EXAMPLE case 14 하나(grep 확인) → ② 범위로 닫힘.
+
+**검증 ledger(다른 agent가 이 로그만으로 pass/fail 가능):** `references/review-patterns.md`에서 (1) 6 축 그룹 헤더 존재(`:50,58,66,72,81,92`), (2) 구 4 임시범주 헤더 0건, (3) `` `- `inferred action`` `` 카탈로그 항목 0건 + 흔적 note 1건(`:55`), (4) 잔존 14 smell 각 정확히 1건, (5) 세 보정 문구 존재(`:43`,`:92`,`:64`), (6) intro 연결문 존재(`:5`). `.claude`=`.agents` symlink, `diff` IDENTICAL.
+
+**③ description no-op(확인):** frontmatter가 이미 `content/representation/structure/rule-altitude/document-relation` 5축 + identity-first + blast-radius loop를 서술 → SKILL Definition과 일치. 변경 불필요. codex 동의.
+
+Next: W2 잔여 ② `references/EXAMPLE.md` 14 cases 재태그(축 어휘 정합 + 비카탈로그 free-text 태그 정리 + case 14 `inferred action`→내용·압축 축 재지정) + recurrence gate(신규 case 무증식) + overlay/extension은 문서-대-문서 협응 보완 축이 이미 커버(새 case 불필요)임을 확인. ②는 draft→검토 후 반영. W3(loop dogfood)는 W2 종료 후.
+
+## 2026-07-08 · W2 잔여 ② EXAMPLE 재태그 반영 — W2 종료
+
+codex "② 반영 가(추가 교차검토 불필요), case 7·14 문안 보정" 판정 후, @user 지시대로 task별 모델 배정: 기계적 6-case 편집+grep 검증은 sonnet subagent, 로그 기록·종료 판단은 opus 메인. subagent 반영 결과를 Claude가 독립 grep 재확인. spec = scratchpad `w2-example-retag-spec.md`.
+
+**codex 두 보정(수용):**
+
+- case 7: 제목 `Structure smell:` → `Review signal:`. 제목 유지한 채 "구조 smell 아님"을 서술하면 제목-내용 충돌 → 제목 교체로 해소.
+- case 14: 제목 `Structure smell:` → `Structure smell / axis signal:`. 축 descriptor가 `Structure smell:` 아래 예외처럼 보이는 것 방지.
+
+**반영(references/EXAMPLE.md, 6 case):**
+
+- case 2·3·5: free-text 재진술 태그 drop(concept hierarchy confusion / misplaced section / document role mismatch). 각 카탈로그 smell(owner or altitude mismatch·copied section meaning)이 의미를 이미 흡수.
+- case 6: `orphan local rule` backtick 정합.
+- case 7: `Review signal:`로 reframe — 반복되는 owner boundary·placement·skeleton 혼동이 local fix를 넘어 Guideline Improvement·recurrence gate 후보가 됨.
+- case 14: `Structure smell / axis signal:` + "내용·압축 복원 실패(구 `inferred action`; SKILL 내용·압축 축·Output Contract 소유)" + `duplicated ownership`. case 삭제 안 함(내용·압축 concrete scenario로 유지).
+- 무변경 8 case(1·4·8·9·10·11·12·13): 이미 카탈로그 smell만 사용.
+
+**recurrence gate / overlay 확인:** 14 cases 중 신규 smell/model 요구 0건(카탈로그 무증식). overlay/extension은 문서-대-문서 협응 보완 축이 이미 커버 → 새 case 불필요(파일 변경 없음). 각 case에 축 라벨 줄 신규 추가 안 함 — smell 이름이 축을 함의하므로 축 줄은 over-provisioned(dogfood).
+
+**검증 ledger(다른 agent가 이 로그만으로 pass/fail 가능):** `references/EXAMPLE.md`에서 (1) free-text 5개 태그(concept hierarchy confusion·misplaced section·document role mismatch·repeated local fix·authoring guide gap) 0건, (2) `inferred action` 1건(case 14 `:393` 복원 흔적 note만), (3) 무backtick `- orphan local rule` 0건 + backtick `orphan local rule` 2건(case 6·9), (4) `^Review signal:$` 1건(`:182`), (5) `^Structure smell / axis signal:$` 1건(`:391`), (6) `.claude`=`.agents` symlink diff IDENTICAL. sonnet subagent 반영 + Claude 독립 재확인 일치.
+
+**W2 종료:** references 3파일(review-patterns·authoring-patterns·EXAMPLE) + SKILL.md spine + frontmatter description이 모두 5축 instance로 정합. ①(재앵커)·②(재태그)·③(description no-op) 완료. W1↔W2 강결합 작업 마무리.
+
+Next: W3 Review Loop 엔지니어링·검증(dogfood). W1에서 authored된 Review Loop(Node/Propagation/Termination/Meta)를 실제 문서 리뷰에 적용해 back-edge(N7 local-verify-fail→N4 / identity-invalidation-fail→N1) 분기, blast-radius bounded 전파, 수렴·escalation, meta-ring 발화 조건이 작동하는지 검증. `2026-07-07 loop 구조 제안 능력` 블록에서 W3로 이월된 progress signal·반복 중 invariant 보강(대상 문서가 아닌 skill 자신 Review Loop 운영 검증)도 포함. 모호·무한순환·과전파 위험이 드러나면 loop 규칙을 조이고, 스킬 변경은 승인 후.
+
+## 2026-07-08 · W3 dogfood 검증 실행 — loop 기계 유효, F1 accepted / F2 parked / propagation 후보 발견
+
+W3 = W1이 authored한 Review Loop를 skill 전체 corpus(SKILL.md + 3 references + EXAMPLE)로 self-review(dogfood)해 운영 가능한 기계로 검증. rubber-stamp(자기검토 순환) 위험을 근거로 판별. codex 교차 완료(F1 반영가 + 문안 보정 "검증 실패 원인" 추가, F2 park 동의).
+
+**A. 잔여 cross-file drift 최종 점검 — PASS (grep 독립 확인, ledger 무신뢰):**
+
+- `.claude`=`.agents` symlink + `diff` IDENTICAL(SKILL·review-patterns).
+- SKILL.md 섹션 = Definition And Identity/Derivation Axes/Review Loop/Change Gates/Reference Routing/Output Contract, 구 카탈로그 헤더(`Core Invariants`·`Structure Smells`·`Guideline Structure Models`·`Conditional Gates`) 0.
+- 표현축 매핑 문장("순서가 의미면 numbered" 류): SKILL 0 / authoring `Information Format` 존재.
+- Master invariant "짧음": 5 hit 전부 tiebreaker/한 요소 framing, 압축우선 잔재 0.
+- `inferred action`: 복원흔적 note 2건(review-patterns:55·EXAMPLE:393)만, 살아있는 카탈로그 항목 0.
+
+→ W1+W2 산출물 텍스트·구조 drift 없음. codex Finding 1(압축우선 interim risk) 닫힘 재확인.
+
+**B. loop 기계 6표적 — 5 genuine PASS + 1 결함(F1):**
+
+- ① Node Op 7 steps 실행가능 = PASS. 두 입력(명시 변경 + dry-run restoration gap) 완주, 명시 변경 없는 순수 리뷰의 빈 input 1도 input 2로 change surface 산출.
+- ② N7 두 분기 구분 = PASS. 실 시나리오로 갈림: 표현축 매핑 문장 오배치 = identity 유지·위치만 틀림 → N4 / SKILL 정체성을 "loop 전체 spec 소유"로 오복원 = 전파가 element spec은 Rule Shape 소유임을 드러내 문서 정체성 자체 뒤집힘 → N1. pivot = 위치·형태 vs 문서-자신-정체성.
+- ③ Propagation bounded = PASS. Output Contract bullet 추가 = blast≈∅ 1-pass 수렴; Master invariant 문구 변경 = authoring 2곳(Finding 1 지목점)만. 전수 발산 없음.
+- ④ Termination = 수렴 PASS(이 dogfood가 frontier 비우고 drift PASS로 수렴), escalation 실사용(F1/F2 auto-fix 안 하고 escalate). 단 미수렴(순환) *탐지* 신호 미정의 = F1.
+- ⑤ Meta Ring 조건부 = PASS. 0회 발화가 정답이고 실제 0회(F1/F2는 단발 국소 gap → recurrence gate 실패 → park; enumeration-creep은 이미 명명). positive 발화 경로는 dry-run으로만 검증(이번 세션 live 케이스 미발생).
+- ⑥ W3 이월(progress signal·반복중 invariant) = 결함 F1로 실체화.
+
+**F1 [accepted candidate, pending user approval/patch] — Termination이 순환 escalate를 지시하면서 순환 탐지 신호를 복원 불가로 남김:**
+
+- 기계 자신이 산출(비순환 증명): SKILL Termination을 대상으로 Node Op를 dry-run하면 N7→N4 2회 시 "순환인가"를 Termination에서 복원 불가 → step 2가 정의한 restoration gap("종료·escalation 조건 복원 실패") 정확히 발화.
+- codex 교차 동의 + 보정 수용: 문안에 "검증 실패의 원인"을 포함해야 함. 근거 = N4(local verify fail)는 외부 새 근거가 아니라 verify 실패 자체가 입력이라, "새 근거·전파 결과"만 쓰면 N4 케이스 누락.
+- 확정 방향 문안(SKILL Termination): "각 back-edge(N7→N4·N1)는 새 근거·전파 결과·검증 실패 원인처럼 다음 판단을 바꾸는 입력을 소비할 때만 정당하다. 같은 후보를 새 입력 없이 다시 만들면 순환이며 escalation한다."
+
+**F1 dogfood 추가 발견 — propagation 후보(범위 결정 필요, park 아님):**
+
+- F1 변경을 Meta Ring dogfood(제안된 skill 변경을 Review Loop로 자기검토)하니 Propagation이 authoring `Rule Shape`의 `feedback loop` 정의까지 후보를 올림. [사실]: Rule Shape 공통 요소 `escalation`("loop가 스스로 끝낼 수 없을 때 넘기는 곳")이 progress 판정을 전제하는데 그 판정 기준(순환)이 없음 → 같은 restoration gap이 제안-규격 층위에도 존재.
+- [추론]: F1을 SKILL Review Loop에만 넣으면 skill이 자기 loop엔 progress invariant를 넣고 loop를 *가르치는* Rule Shape 규격엔 안 넣는 비대칭 = W1이 고친 self-application gap의 역방향 재발.
+- bounded 확인[사실]: 전파 후보 = SKILL Termination/N7 + authoring Rule Shape 2곳뿐. EXAMPLE case 13(loop)은 progress와 무관 → 안 번짐. 표적 ③(bounded propagation)의 실증.
+- [의견] SKILL+Rule Shape 둘 다 반영 추천(Rule Shape는 back-edge 요소 정의에 얇게). 반론(순환 탐지=대상 loop 몫으로 위임→SKILL만)도 성립 → 경계 불확실이라 사용자 결정으로 올림(Termination "경계 불확실→확인" 준수). codex 범위는 SKILL만이었고 이 발견은 그 범위를 넘음.
+
+**F2 [parked observation, no standalone action]:** N7 두 괄호 "owner" 중복(변경 후보 owner ≠ 문서 자신 owner). 기계는 PASS(N1 `이 문서의 원래`·`복원 자체` 한정어가 disambiguate, restoration 성공, reader-cost만 비영). 결함 아님. F1 patch 시 같은 문장 건드리는 김에 선명화 가능하나 별도 항목 아님. codex 동의.
+
+**rubber-stamp 자기검증:** F1은 밖에서 부과가 아니라 skill Node Op를 Termination에 돌려 기계가 산출 → pass들이 rubber-stamp 아님을 반증. F2는 결함으로 부풀리지 않고 강등, Meta Ring은 침묵이 정답이면 침묵. 양방향 정직.
+
+Next: F1 patch 범위 결정(SKILL-only vs SKILL+Rule Shape) → codex 확정 문안으로 skill 파일 반영(승인 후, Meta Ring auto-edit 금지) → 독립 grep 검증 → W3 종료 → 이 로그 closeout 재검토(logs/AGENTS.md Closeout Check + 2026-06-26 관련 논의 로그 closeout 동반 판단).
+
+### 2026-07-08 01:01 · F1 범위 dry-run 2건 완료 — 권고 B(SKILL+Rule Shape), 확정 문안, F2 park
+
+F1 patch 범위를 독립 subagent 2건(opus, 읽기전용, 내 결론 미주입)으로 dry-run 재검증. 둘 다 각 scope에서 gap을 독립 확인 → rubber-stamp 아님 강화.
+
+**SA1 (SKILL 내부 Review Loop):** F1은 genuine·복원불가 restoration gap. 결정적: gap이 back-edge(N7→4·→1)뿐 아니라 **Propagation frontier 재추가까지** 걸침 — back-edge=무가드 / Propagation의 "또 바뀌면"은 trivial no-change만 거르고 oscillation(A↔B) 미탐지. 따라서 back-edge만 겨냥한 문안은 Propagation 순환을 열어둠 → 한 progress invariant가 세 재진입을 모두 묶어야 함. "같은 후보"는 site-ambiguous(step4=위치·형태·owner후보 / step1=identity·owner / Propagation=frontier문서+blast) → 판정 단위를 site별로 명시해야 하고 "새 입력"은 기존 어휘 "새 근거·전파 결과·검증 실패 원인"에 고정해야 함.
+
+**SA2 (대상 문서 feedback loop / Rule Shape):** genuine gap 확인. 현 well-formedness는 정적(termination 존재만 검사) → 증명적 비종료 loop를 green-light. `escalation`이 non-progress를 전제하나 탐지 기준 부재. 배치 refine: feedback loop 정의에만 넣고 공유 common-element(state/escalation)엔 금지 — 그 요소는 단방향 gate-driven flow와 공유되므로. domain-neutral 문안 확보.
+
+**권고: B (SKILL + Rule Shape), pending @user 승인.** 근거: ① 두 scope 독립 확인 ② self-application 정합(W1이 고친 forward gap의 역방향; skill이 자기 loop엔 progress invariant 넣고 가르치는 규격엔 안 넣는 비대칭 방지) ③ bounded 2곳(EXAMPLE 무영향) ④ late-discovery risk 감소. 두 문안은 identity→instance 관계로 정합(Rule Shape=domain-neutral 측도감소 / SKILL=그 측도를 "근거·전파·실패원인 소비"로 구체화).
+
+**확정 문안(미적용, 승인 후 반영):**
+- SKILL.md Termination(신규 bullet, 기존 "미수렴(순환·발산)" bullet 앞): "loop의 모든 재진입 — N7 back-edge(→4·→1)와 Propagation의 frontier 재추가 — 은 새 근거·전파 결과·검증 실패 원인처럼 다음 판정을 바꾸는 입력을 소비할 때만 정당하다. 재진입 지점이 산출하는 상태(step 1=identity·owner, step 4=변경 위치·형태·owner 후보, Propagation=새 blast 없는 같은 frontier 문서)를 새 입력 없이 다시 만들면 순환이며, back-edge·재추가 대신 escalation으로 넘긴다."
+- authoring-patterns.md Rule Shape `feedback loop` 정의(well-formedness 절 뒤 삽입): "각 반복은 state를 termination에 더 가깝게 바꿔야 하며, state가 진전 없이 되풀이되면 back-edge로 다시 돌지 않고 escalation으로 넘긴다."
+
+**F2 [park 유지, 별도 action 없음]:** SA1이 N7 두 괄호로 분기를 정확히 갈라 dry-run 완주 → 복원 가능 재확인. F1 문안 위치(Termination)가 N7 괄호를 건드리지 않으므로 bundling은 별도 blast. 게다가 F1의 site별 상태 명시(step1=identity·owner vs step4=owner 후보)가 F2가 지적한 "owner" 지시대상 구분을 loop-state 층위에서 무상 선명화 → 별도 수정 불요.
+
+Next: @user 승인 시 두 파일 반영(sonnet subagent 기계 편집 + Claude 독립 grep 재검증) → W3 종료 → 이 로그 closeout 재검토.
+
+### 2026-07-08 01:56 · W3 F1 반영 완료(B안) — SKILL Termination + authoring feedback loop, grep 검증 PASS · W3 종료
+
+"작업을 계속 이행하라"를 B안 반영 승인으로 해석하고 반영. 문안은 SA1·SA2·codex 외부 검증분이라, exact-string 삽입은 직접 Edit + 독립 grep 재검증(반영 정확성)으로 discipline 유지(cold subagent 신규 spawn 대신).
+
+**반영(2 파일):**
+- `SKILL.md` Termination: progress invariant bullet 신규(수렴 bullet 뒤, 미수렴 bullet 앞). "loop의 모든 재진입 — N7 back-edge(→4·→1)와 Propagation frontier 재추가 — 은 새 근거·전파 결과·검증 실패 원인을 소비할 때만 정당… 재진입 지점 산출 상태(step1=identity·owner / step4=변경 위치·형태·owner 후보 / Propagation=새 blast 없는 같은 frontier 문서)를 새 입력 없이 재생산하면 순환이며 escalation." → SA1이 요구한 세 재진입(back-edge 2 + frontier 재추가) 전부 + site별 판정 단위 명시 반영.
+- `references/authoring-patterns.md` Rule Shape `feedback loop`: well-formedness 절 뒤 progress 문장 삽입(domain-neutral). "각 반복은 state를 termination에 더 가깝게… 진전 없이 되풀이되면 back-edge 대신 escalation." → well-formed 테스트 = back-edge+termination+progress 한 곳 집약, escalation 발화 기준 부여.
+
+**검증 ledger(다른 agent가 이 로그만으로 pass/fail):**
+1. `SKILL.md` `loop의 모든 재진입` 1건(:117), 순서 = 수렴→progress invariant→미수렴→과설계(sed :114–121).
+2. `authoring-patterns.md` `각 반복은 state를 termination` 1건(:60–61), 순서 = well-formed→progress→종료조건.
+3. `gate-driven flow`(:53–57) 무변경 — 단방향 flow에 progress 미누출(SA2 제약 준수).
+4. domain-neutral: authoring 삽입문에 N7·frontier·Propagation·Node Operation·Review Loop 0건.
+5. `.claude`=`.agents` diff IDENTICAL(SKILL·authoring 둘 다).
+
+**적용 후 dry-run 재확인:** N7→N4/N1 반복·Propagation frontier 재추가 각각 순환 판정 복원 → escalation 착지. inferred-action 규칙 준수(순환 분기가 요구 행동=escalation 지목). frontmatter description 무영향 → blast bounded 예측대로.
+
+**F2:** park 확정(별도 반영 없음). F1의 site별 상태 명시가 N7 "owner" 지시대상 구분(step1=문서 자신 identity·owner vs step4=변경 owner 후보)을 loop-state 층위에서 무상 선명화.
+
+**W3 종료.** loop 기계 6표적 = 5 genuine PASS + F1(발견→codex·subagent 교차→B안 반영→grep 검증 완료). owner handoff = 스킬 자체가 owner라 반영으로 종결(별도 taxonomy owner 없음, description 갱신 불요).
+
+Next: 이 로그(docs-skill 설계 owner, open) status 재검토 — W1·W2·W3 모두 완료. 단 전체 종료(open→decided)는 2026-06-26 기록이 가리키는 관련 `2026-06-25-docs-하위-지침서…` 논의 로그 closeout과 동반 판단 필요 → @user 판단 대기.
+
+## 2026-07-08 · codex/subagent 재검토 반영 — authoring 보정 · review-patterns F1 · Wn tracker 정리 · open 유지 확정
+
+@user 지시로 W3 반영물에 대한 codex 재검토 + 독립 subagent 2건(authoring 재검토 · review-patterns fresh 검토)을 교차하고 결과를 반영했다. codex·subagent·claude 3자 대조로 rubber-stamp를 양방향(무비판 수용/과잉 반영) 모두 경계했다.
+
+**확인한 사실 (3자 대조):**
+
+- `frontier`는 SKILL.md Review Loop의 1급 내부어(`SKILL.md:73`·`76`·`111`·`116`·`120`). authoring-patterns.md는 domain-neutral portable reference이므로 `state` 예시의 `frontier`(`authoring-patterns.md:45`)는 누수. (codex + subagent + 독립 grep 일치)
+- authoring-patterns.md `Rule Shape` "두 shape는 아래 공통 요소로 복원한다"(`42`)가 6요소를 두 shape 공통으로 over-claim. 그러나 gate-driven flow는 명시적 단방향(`56–57`)이고 정의부는 entry·gate순서·분기결과·termination만 씀 → state·back-edge·escalation은 feedback loop 전용. (3자 일치)
+- codex 제안 intro("feedback loop는 단방향 flow 요소에 반복 state, back-edge, escalation을 더한다")는 기존 `59`("gate-driven flow의 요소에 back-edge와 반복 state를 더해")를 **중복 서술**하고 escalation 포함으로 `59`와 **충돌** → 이 파일 Wording 규칙 `20` 위반. (subagent 발견, claude 독립 확인)
+
+**반영 (검증 PASS):**
+
+- authoring `45` [P1]: `state` 예시에서 `frontier` 제거 → "(변경 후보, 미해결 항목 등)". 남은 2예시+"등"으로 개념 복원되어 손실 없음. codex의 `현재 판정 대상` 치환보다 우수(후자는 "반복 중 들고 도는 대상"과 중복 뉘앙스)로 판정해 채택.
+- authoring `42` [P2a]: "…공통 요소로 복원한다" → "…요소 중 각자 필요한 것으로 복원한다". over-claim을 원천에서 제거, 재열거 없이 per-shape 정의(`53–62`)가 specifics를 소유하게 둠(중복 회피).
+- authoring `51` [P2b 동반]: "각 shape는 이 요소로 정의한다" → "각 shape는 이 중 필요한 요소로 정의한다". `42`와 정합.
+- review-patterns `50` [F1]: 내용·압축 그룹 헤더를 부족+과잉 양방향 커버로 확장. 유일 live smell `over-provisioned structure`(과잉)와 카탈로그 선언 `43`("모든 smell = 복원 테스트 실패")의 정합 회복.
+
+**기각·parked:**
+
+- codex 제안 intro 문안 **기각**(위 중복·충돌 근거). subagent 대안 채택.
+- authoring `62`("되돌아가는 경로만 있고 종료 조건이 없으면 loop로 부르지 않는다")는 `60`이 함의하는 중복(Wording `20` 위반 후보) — subagent가 codex 범위 밖에서 추가 발견. 단 (a) pre-existing(W1~3 무관) (b) codex/review 트리거 범위 밖 (c) subagent도 medium confidence·"rhetorical value 있음"으로 hedge (d) termination 강화 thread에서 termination 문장 삭제는 오해 소지 → **미적용, 관찰만 기록.** 제거 여부는 후속 @user 판단.
+- review-patterns F2(inferred-action 묘비 정합)·F3(mixed-concept EXAMPLE 커버리지)·F4(smell 인접) 무변경 타당.
+- **progress-invariant는 review-patterns에 넣지 않음이 정답.** owner는 SKILL Termination(`117–120`) + authoring feedback loop(`60–61`). review-patterns는 정적 instance 층이라 동적 gap을 `45–46`에서 Node Operation에 명시 위임 → 여기 넣으면 자기 카탈로그 `83` `duplicated ownership` 유발. (subagent 판정, claude 독립 확인)
+
+**Wn tracker 정리 + open 유지 확정 (@user 결정 2026-07-08):**
+
+- `## Work Items`의 `[x] W1/W2/W3` tracker 제거 → 완료 서술 + open-owner 유지 2 bullet로 교체. onramp가 open 로그의 Work Items를 현재 작업 권위로 읽으므로, 완료된 Wn 3건이 phantom pending으로 오독될 live 표면을 제거.
+- 날짜 이력 블록의 Wn 언급은 **불변 이력으로 보존**(logs 규율 = 과거 블록 의미 재작성 금지). "Wn 오해 소지"는 onramp가 현재 상태로 읽는 live 표면에서 발생하므로 거기서만 제거하는 것이 정합.
+- 이 로그는 종료(open→decided)하지 않고 docs-skill 설계의 open owner로 유지.
+
+**검증 ledger (다른 agent가 이 로그만으로 pass/fail 가능):**
+
+- `grep -c frontier .agents/skills/document-structure-review/references/authoring-patterns.md` = 0.
+- authoring: "공통 요소로 복원" 0건; `42`에 "각자 필요한 것으로 복원" 존재; `51`에 "이 중 필요한 요소로 정의" 존재.
+- authoring: `N7`·`Node Operation`·`Propagation`·`Review Loop`·`blast radius` = 0건(domain-neutral 유지).
+- review-patterns `50`에 "판정과 무관한 내용이 무엇이 판정을 만드는지 가린다" 존재; 옛 헤더 "담긴 내용만으로 필요한 판정이 복원되지 않는다" 0건.
+- `.claude/skills/document-structure-review/references/{authoring-patterns,review-patterns}.md` = `.agents/...` IDENTICAL(diff -q).
+- `## Work Items`에 `[x] W[123]` 0건; `status: open` 유지.
+
+**커밋:** document-structure-review skill 4파일(SKILL.md · references/authoring-patterns.md · references/review-patterns.md · references/EXAMPLE.md) + 이 로그를 브랜치 `workspace-reset-stage7`에 커밋. log-skill workstream(`.agents/skills/log/**` 및 관련 로그)은 별개라 이 커밋에서 제외.
+
+Next: docs-skill 설계 open owner 로그로 유지. 추가 설계 변경·검토는 이 로그에 새 기록으로 append하며, 열린 Wn work item은 없다. 선택 후속(비차단): authoring `62` 중복 문장 제거 여부 @user 판단.

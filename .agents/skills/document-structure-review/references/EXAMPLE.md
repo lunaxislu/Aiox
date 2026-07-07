@@ -58,7 +58,6 @@ Situation:
 Structure smell:
 
 - `owner or altitude mismatch`
-- concept hierarchy confusion
 
 Review:
 
@@ -84,7 +83,6 @@ Situation:
 Structure smell:
 
 - `owner or altitude mismatch`
-- misplaced section
 
 Review:
 
@@ -134,7 +132,6 @@ Sibling authoring guides가 모두 drift 처리를 다룬다. 한 문서 type은
 Structure smell:
 
 - `copied section meaning`
-- document role mismatch
 
 Review:
 
@@ -160,7 +157,7 @@ Situation:
 Structure smell:
 
 - `hidden or implicit authority`
-- orphan local rule
+- `orphan local rule`
 
 Review:
 
@@ -182,10 +179,10 @@ Situation:
 개별 문서를 작성할 때마다 같은 owner boundary 혼동, section placement 문제, skeleton 적용
 문제가 반복된다.
 
-Structure smell:
+Review signal:
 
-- repeated local fix
-- authoring guide gap
+- 반복되는 owner boundary·section placement·skeleton 적용 혼동이 local fix를 넘어 Guideline
+  Improvement·recurrence gate 후보가 된다.
 
 Review:
 
@@ -391,9 +388,10 @@ Entry 문서가 순서 있는 gate로 케이스를 판정하는데, 일부 분�
 분기에서 지목되지 않아, 독자는 어떤 절을 적용할지 추론해야 한다. 반대로 다른 초안은 분기마다
 구체 절차를 반복 서술해 하위 절과 이중 소유를 만든다.
 
-Structure smell:
+Structure smell / axis signal:
 
-- `inferred action`
+- 내용·압축 복원 실패 — 분기 결과가 요구 행동 대신 상태·라벨에 그침(구 `inferred action`; 현재
+  SKILL 내용·압축 축과 Output Contract가 소유)
 - `duplicated ownership`
 
 Review:

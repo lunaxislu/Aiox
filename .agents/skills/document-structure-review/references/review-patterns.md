@@ -1,6 +1,9 @@
 # Review Patterns
 
 구조 문제를 분류하거나 문서 관계의 read path, 개념 위치, owner와 변경 위치가 애매할 때 읽는다.
+각 절은 SKILL 본문의 다섯 축(내용·압축 / 표현 / 구조 관계 / 규율 고도 / 문서-대-문서 관계)과
+Review Loop를 concrete instance로 편 것이며, 항목 추가는 recurrence gate(실제 반복 + 기존
+축으로 복원 불가)를 통과할 때만 한다.
 
 ## Contents
 
@@ -37,43 +40,60 @@
 
 ## Structure Smells
 
-범주는 탐색 보조이며 배타 분류가 아니다. 한 결함이 여러 smell에 함께 걸릴 수 있다.
+각 smell은 identity anchor 또는 다섯 축의 복원 테스트가 실패하는 정적 표면이다. 자주 재발해
+이름이 붙은 restoration gap이며, "독자가 이 판정을 복원하는가"라는 같은 테스트를 공유하되
+dry-run 없이도 알아볼 수 있는 형태로 굳은 것이다. dry-run으로만 드러나는 동적 gap은 Node
+Operation이 함께 모은다. 축은 배타 분류가 아니라 탐색 보조이므로, 한 결함이 여러 축의 복원을
+동시에 깨면 관련 축을 모두 route한다. 카탈로그 항목은 recurrence gate(실제 반복 + 기존 축으로
+복원 불가)를 통과할 때만 유지하고, 축 원칙만으로 복원되는 항목은 축소 후보다.
 
-**소유·권위**
+**내용·압축 복원 실패** — 담긴 내용이 필요한 판정을 복원하지 못하거나, 판정과 무관한 내용이 무엇이 판정을 만드는지 가린다.
 
-- `duplicated ownership` — 같은 지식이 둘 이상의 owner에 있다.
-- `owner or altitude mismatch` — 내용이 잘못된 owner나 개념 계층에 놓였다.
-- `hidden or implicit authority` — 필요한 규칙·scope·예외가 예시, 제목이나 관례에만 숨어 있다.
-- `orphan local rule` — parent 계약이나 owner map과 연결되지 않아 적용 범위와 우선순위를 복원할
-  수 없는 국소 규칙이다.
-- `reverse or circular dependency` — 하위 문서가 자신이 의존하는 상위 규칙을 정의하거나 지배한다.
-- `contradiction` — 둘 이상의 owner가 양립할 수 없는 주장을 한다.
+- `over-provisioned structure` — 낮은 빈도의 예외나 미래 내용을 전제한 section이, 빼도 판정이
+  같은 내용을 채우도록 유도한다.
 
-**정체성·역할 경계**
+  행동으로 넘기는 문장이 요구 행동 대신 상태·라벨에 그치는 문제(구 `inferred action`)는 이 축의
+  SKILL 본문 규칙과 Output Contract가 직접 소유하므로 별도 smell로 두지 않는다.
+
+**표현 복원 실패** — 형태가 정보 성격과 어긋나 독자 행동(재진입·검증·종료)이 복원되지 않는다.
+
+- `misaligned reader path` — heading·순서·loop가 실제 작업 단위와 어긋나, 독자가 한 작업을
+  끝내는 데 필요한 전이·정리·검증을 놓친다. (구조 관계 복원도 함께 깬다.)
+- `abstract destructive gate` — 되돌리기 어려운 변경을 추상 판정어만으로 허용하고
+  knowledge-loss, 참조 범위, fallback을 드러내지 않아 독자가 판단 입력을 복원하지 못한다.
+  (내용·압축 복원과 Destructive Change gate도 함께 깬다.)
+
+**구조 관계 복원 실패** — 문서·섹션·개념의 계층·sibling·sub-kind 관계가 복원되지 않는다.
 
 - `hidden sub-kind` — index, slice, router, standalone 같은 subtype 차이를 단일 구조가 가린다.
+- `mixed concept roles` — 한 섹션이 evidence, provenance, workflow, style처럼 다른 개념 역할을
+  섞어 각 역할의 경계와 의미를 흐린다.
+
+**규율 고도 복원 실패** — 규율이 걸리는 고도(global/local)와 소속이 복원되지 않는다.
+
+- `hidden or implicit authority` — 필요한 규칙·scope·예외가 예시, 제목이나 관례에만 숨어,
+  독자가 그것이 어느 고도의 규칙인지는커녕 규칙인지조차 복원하지 못한다.
+- `orphan local rule` — parent 계약이나 owner map과 연결되지 않아 적용 범위와 우선순위를
+  복원할 수 없는 국소 규칙이다. (문서-대-문서 관계 복원도 함께 깬다.)
+- `owner or altitude mismatch` — 내용이 잘못된 owner나 개념 계층에 놓여, 어느 고도·소유의
+  규율인지 복원되지 않는다. (문서-대-문서 관계·구조 관계에 함께 걸린다.)
+
+**문서-대-문서 관계 복원 실패** — 두 문서의 결합(위임·보완·경계)이 복원되지 않는다.
+
+- `duplicated ownership` — 같은 지식이 둘 이상의 owner에 있어 어느 쪽이 소유이고 어느 쪽이
+  위임인지 복원되지 않는다.
+- `reverse or circular dependency` — 하위 문서가 자신이 의존하는 상위 규칙을 정의하거나
+  지배해 위임 방향이 복원되지 않는다.
+- `contradiction` — 둘 이상의 owner가 양립할 수 없는 주장을 한다.
+- `copied section meaning` — sibling의 heading이나 순서를 role 재판정 없이 복사해, 두 문서의
+  실제 역할 차이가 복원되지 않는다.
+- `excessive read path` — 하나의 판단을 복원하려고 필요 이상의 문서를 따라가야 한다.
+
+**identity 근간 복원 실패(축 이전 anchor)** — 축이 파생되는 identity 자체가 과소표현된다.
+
 - `under-scoped identity` — document identity 문장이나 section·scope 표기의 이름이 한 subtype에
   묶여, 그 subtype이 없는 경우까지 담당해야 하는 개념을 담지 못한다. 흔히 altitude mismatch나
   reader path 누락으로 드러나지만 원인은 identity의 과소표현이다.
-- `copied section meaning` — sibling의 heading이나 순서를 role 재판정 없이 복사한다.
-- `mixed concept roles` — 한 섹션이 evidence, provenance, workflow, style처럼 다른 개념 역할을
-  섞어 각 역할의 의미를 흐린다.
-
-**구조 비용·독자 경로**
-
-- `over-provisioned structure` — 낮은 빈도의 예외나 미래 내용을 전제한 section이 불필요한 작성을
-  유도한다.
-- `excessive read path` — 하나의 판단을 복원하려고 필요 이상의 문서를 따라가야 한다.
-- `misaligned reader path` — 문서의 heading, 순서나 loop가 실제 작업 단위와 어긋나, 독자가 한
-  작업을 끝내는 데 필요한 전이·정리·검증을 놓치게 만든다.
-
-**표현 형태·안전장치**
-
-- `abstract destructive gate` — 되돌리기 어려운 변경을 추상 판정어만으로 허용하고 knowledge-loss,
-  참조 범위와 fallback을 드러내지 않는다.
-- `inferred action` — 행동(라우팅·gate 종결·step) 역할 문장이 요구 행동(다른 절이 소유하면 그
-  owner 포함)을 지목하는 지시로 명시하지 않고 상태·라벨 서술에 그쳐, 독자가 수행할 행동을
-  추론해야 한다.
 
 ## Owner And Scope Decisions
 
