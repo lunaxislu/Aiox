@@ -164,6 +164,8 @@ EOF
 - Consume when: A W2 consumes B result
 - Context snapshot: A W2 before detach
 
+### {Global}
+
 ## 2026-07-03 · W1 · evidence check
 
 - A에서 분리된 evidence check를 시작한다.
@@ -171,7 +173,8 @@ EOF
 ```
 
 **주의점**: source가 child 결과를 기다리지 않으면 detach가 아니라 transfer다. 소비 관계가 불명확하면
-적용 전에 사용자에게 확인한다.
+적용 전에 사용자에게 확인한다. new·detach 결과에는 빈 `### {Global}`이 항상 생성되며, 전역 기준은
+이후 `context add`로 채운다.
 
 ### scope 정밀화와 Override
 

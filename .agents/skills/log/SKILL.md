@@ -104,7 +104,7 @@ log skill이 trigger되면 아래 셋을 판정해 절차 owner로 이동한다.
 로그를 다룰 때는 다음 순서로 읽는다.
 
 1. `## Work Items`를 읽어 local actionable Work Item과 `[>]` 재개 지점이 있는지 확인한다.
-2. `## Required Context`의 `Return Target`과 `{Global}`이 있으면 읽고 적용한다.
+2. `## Required Context`의 `Return Target`과 `{Global}`을 읽고 내용이 있으면 적용한다(`{Global}`은 항상 존재하며 비어 있을 수 있다).
 3. 선택한 Work Item이나 `[>] Wn`이 있으면, `## Required Context`에서 그 W id가 포함된 heading이
    있는지 확인하고 있으면 읽는다.
 4. 재개 대상 로그 블록 전체를 읽는다.

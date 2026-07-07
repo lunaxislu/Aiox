@@ -26,12 +26,15 @@ Work state surface는 `## Work Items`의 marker/pointer, `[>]` next pointer, 복
 이 로그를 다룰 때 적용할 기준·제약·자료·검증 조건을 소유한다.
 
 `## Work Items`와 `## Required Context`는 로그의 기본 template surface다. 섹션은 항상 두되,
-해당 표면이 소유할 Work Item이나 standing context가 없으면 비워 둔다.
+`## Work Items`는 소유할 항목이 없으면 비워 두고, `## Required Context`는 예약 slot을 유지한 채
+채울 내용만 비운다.
 
 - `## Work Items`는 실행 항목이 생기면 marker 규칙에 따라 채운다.
-- `## Required Context`는 owning block 밖의 다른 unit이나 로그 전체에도 적용되는 standing
-  context가 생기면 가장 작은 유효 scope heading 아래에 채운다. 읽어야 할 자료, scope/source
-  기준, 제약, 검증 기준과 handoff 조건을 둔다.
+- `## Required Context`는 `### Return Target`과 `### {Global}`을 항상 두는 예약 slot으로 갖는다.
+  `### {Global}`은 로그 전체에 적용할 standing context가 없으면 내용 없이 heading만 둔다. 그 밖의
+  standing context는 owning block 밖의 다른 unit이나 특정 Work Item scope에도 적용될 때만
+  `### {W-set}` scope heading을 만들어 가장 작은 유효 scope 아래에 채운다. 읽어야 할 자료,
+  scope/source 기준, 제약, 검증 기준과 handoff 조건을 둔다.
 
 Work Item line의 canonical form은 `- [marker] Wn <행동>`이다. `Wn:`처럼 id 뒤에 colon을 붙이지
 않는다. id는 완료·취소·이관됐거나 detach로 복귀 소비 대기 상태가 된 경우에도 보존하고
@@ -86,6 +89,8 @@ Work Item line의 canonical form은 `- [marker] Wn <행동>`이다. `Wn:`처럼 
 - `{Global}` — 이 로그를 다룰 때 항상 적용
 - `{W1,W3}` — 나열한 Work Item scope에 적용
 - `{Global}`은 단독 heading으로만 쓴다. W set과 섞지 않는다.
+- `### {Global}`은 내용이 없어도 template에 항상 존재하는 예약 slot이다. `### {W-set}`만 필요할 때
+  만들고 비면 만들지 않는다.
 
 `## Work Items` 섹션이 비어 있는 판단·조사·토론형 로그에서도 standing context가 있으면
 `{Global}`에 둔다. Return 대상이 없으면 `### Return Target`에는 독립 로그임을 명시한다.

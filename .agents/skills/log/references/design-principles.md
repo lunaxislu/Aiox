@@ -67,6 +67,10 @@ Required Context에는 history 요약이나 근거 서사를 넣지 않는다. �
 소유하고, Required Context는 지금 적용할 기준과 scope만 소유한다. 어떤 기준이 특정 W에만
 적용되면 `{Wn}` scope로 좁히고, 로그 전체에 적용되면 `{Global}`에 둔다.
 
+`### {Global}`은 `### Return Target`처럼 내용이 없어도 항상 존재하는 예약 slot이다. 빈 slot은
+로그를 다룰 때 전역 standing context가 있는지 매번 확인하게 하는 자리 표시이고, `### {Wn}`은 실제
+W-scope 기준이 생길 때만 on-demand로 만든다.
+
 이 분리는 "중요한 말을 과거 날짜 블록에 묻어 둔 채 다음 세션이 놓치는" 문제를 줄이기 위한
 것이다. 기준이 owning block 밖에서도 유효해지는 순간, Record만으로 끝내지 않고 Reconcile에서
 Required Context로 승격하거나 기존 context를 갱신한다.

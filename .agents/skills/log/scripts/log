@@ -539,27 +539,31 @@ emit_new_log() {
     else
         printf -- '- None: independent log.\n'
     fi
-    if [ -s "$context_file" ]; then
-        awk -F '\t' '
-            function heading(scope) {
-                if (scope == "Global") return "### {Global}"
-                return "### {" scope "}"
+    awk -F '\t' '
+        function heading(scope) {
+            if (scope == "Global") return "### {Global}"
+            return "### {" scope "}"
+        }
+        {
+            if (!($1 in seen)) { order[++n] = $1; seen[$1] = 1 }
+            body[$1] = body[$1] "- " $2 "\n"
+        }
+        END {
+            # {Global}은 내용이 없어도 항상 존재하는 예약 slot이다.
+            print ""
+            print "### {Global}"
+            if ("Global" in seen) { print ""; printf "%s", body["Global"] }
+            # 그 밖의 scope는 내용이 있을 때만 입력 순서대로 둔다.
+            for (i = 1; i <= n; i++) {
+                s = order[i]
+                if (s == "Global") continue
+                print ""
+                print heading(s)
+                print ""
+                printf "%s", body[s]
             }
-            {
-                if (!($1 in seen)) { order[++n] = $1; seen[$1] = 1 }
-                body[$1] = body[$1] "- " $2 "\n"
-            }
-            END {
-                for (i = 1; i <= n; i++) {
-                    s = order[i]
-                    print ""
-                    print heading(s)
-                    print ""
-                    printf "%s", body[s]
-                }
-            }
-        ' "$context_file"
-    fi
+        }
+    ' "$context_file"
     printf '\n'
     printf '## %s · %s\n' "$(today_date)" "$block"
     if [ -n "$body_file" ]; then
@@ -980,11 +984,14 @@ build_context_add_result() {
             last_blank = 0
         }
         function close_target() {
-            if (!inserted) { print "- " ENVIRON["LOG_CONTENT"]; inserted = 1 }
+            if (!inserted) {
+                if (!scope_content) print ""
+                print "- " ENVIRON["LOG_CONTENT"]; inserted = 1
+            }
             flush_blank()
             found = 0
         }
-        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; in_rc = 0; found = 0; inserted = 0; saw_rc = 0; pending_blank = 0; last_blank = 0 }
+        FNR == 1 { in_fence = 0; fence_char = ""; fence_len = 0; in_rc = 0; found = 0; inserted = 0; saw_rc = 0; pending_blank = 0; last_blank = 0; scope_content = 0 }
         {
             skip = fence_skip($0)
             if (!skip && found) {
@@ -994,6 +1001,7 @@ build_context_add_result() {
                     pending_blank = 1
                     next
                 } else {
+                    scope_content = 1
                     flush_blank()
                 }
             }
@@ -1006,12 +1014,12 @@ build_context_add_result() {
                 }
                 in_rc = 0
             }
-            if (!skip && in_rc && $0 == ENVIRON["LOG_SCOPE_HEADING"]) { found = 1; print; last_blank = 0; next }
+            if (!skip && in_rc && $0 == ENVIRON["LOG_SCOPE_HEADING"]) { found = 1; scope_content = 0; print; last_blank = 0; next }
             print
             last_blank = ($0 ~ /^[[:space:]]*$/)
         }
         END {
-            if (found && !inserted) { print "- " ENVIRON["LOG_CONTENT"]; inserted = 1 }
+            if (found && !inserted) { if (!scope_content) print ""; print "- " ENVIRON["LOG_CONTENT"]; inserted = 1 }
             else if (saw_rc && in_rc && !inserted) { print_scope_with_content() }
             else if (!saw_rc) exit 4
         }

@@ -10,6 +10,7 @@ status: decided
 - [x] W2 `scripts/log` 명령 표면과 회귀 테스트를 현재 portable log 계약에 맞춰 검토·수정한다
 - [x] W3 project onramp/current-work integration과 영향받는 repo 지침을 검토·수정한다
 - [x] W4 전체 owner·호출·테스트 경로를 재검증하고 closeout 결과를 기록한다
+- [x] W5 detach/new 로그 생성 시 Global/Wn 섹션 처리 개선: Global 빈 섹션 상시화, Wn on-demand, context add 빈 줄 보정, 문서 정합
 
 ## Required Context
 
@@ -504,3 +505,49 @@ log detach <source-log> \
 - **확인한 사실:** `.agents/skills/log/SKILL.md`의 reference router가 가리키는 reference 파일들은 존재하고, W1에서 정리한 maintenance loop와 design-principles identity 변경은 현재 파일에 반영돼 있다. `logs/AGENTS.md`, `docs/guides/workflow.md`, `scripts/onramp`의 repo integration 검증도 통과했다.
 - **판단:** portable log skill과 repo integration의 owner 경계는 현재 변경 범위에서 유지됐다. package-log 모델은 이 로그에서 설계하거나 흡수하지 않았고, sibling 범위 침범도 확인되지 않았다.
 - **결론:** W1~W4의 maintenance 기준 정리, script/test 정합화, onramp integration 정합화와 전체 재검증이 완료됐다. 추가 수정 없이 W4를 완료 처리하고 이 로그를 `decided`로 닫는다.
+
+## 2026-07-07 · W5 · Global 예약 slot 상시화와 detach/new 템플릿·context add 정합
+
+### 문제 사례와 분류
+
+- **확인한 사실:** codex가 `log detach`로 child 로그를 생성하면서 Required Context의 Global/Wn 섹션을 넣으려다 거부됐다고 보고했다. 근본 원인은 두 가지다. (a) `scripts/log`의 `cmd_detach`는 `--context`를 `ReturnTarget`만 허용하고 그 외 scope는 거부한다. (b) new·detach 공용 템플릿 `build_create_body`는 `### {Global}`·`### {Wn}`을 content가 있을 때만 emit(on-demand)했다.
+- **판단:** script 문제 + 문서/구조 문제. detach 거부 자체는 detach와 new의 `--context` 비대칭에서 온다.
+
+### 결정 방향 (사용자 선택)
+
+- **확인한 사실:** 후보 A(detach `--context` 대칭화), B(Global 빈 섹션 상시화 + Wn on-demand), A+B를 제시했고 @user가 **B**를 선택했다.
+- **판단:** B는 기존 `### Return Target`처럼 Required Context 아래 항상 존재하는 예약 `###` slot 패턴과 동형이다. detach 거부는 B 하에서 "Global 섹션 삽입이 애초에 불필요 + 내용은 이후 `context add`로 채움"으로 해소된다.
+
+### 변경
+
+- `scripts/log` `build_create_body`: new·detach 공용 템플릿이 `### {Global}`을 항상 emit한다(내용 없으면 heading만). Global content는 병합하고, `### {Wn}`은 content가 있을 때만 입력 순서대로 둔다.
+- `scripts/log` `build_context_add_result`: 인접 결함 보정. 기존 빈 섹션에 첫 bullet을 append할 때 heading과 bullet 사이 빈 줄이 누락되던 문제를 `scope_content` 추적으로 수정했다. 빈 Global을 이후 `context add`로 채우는 것이 이번 기능의 주 경로라 필수 보정이다.
+- `references/loop-rules.md`: template surface 규정에 `### Return Target`+`### {Global}` 예약 slot을 명시하고, Scope 표기에 "Global은 비어도 상시, `{W-set}`만 on-demand" bullet을 추가했다.
+- `references/design-principles.md`: Global이 Return Target 같은 예약 slot인 근거(빈 slot = 전역 standing context 확인 자리 표시)를 추가했다.
+- `references/base-log-examples.md`: detach 결과 예시에 빈 `### {Global}`을 반영하고 주의점을 보강했다.
+- `SKILL.md`: Enter 2단계 문구를 "`{Global}`을 읽고 내용이 있으면 적용(항상 존재, 비어 있을 수 있음)"으로 정확화했다.
+
+### 문서 정합 후속 (codex 리뷰 반영)
+
+- **확인한 사실:** codex가 `loop-rules.md`의 "섹션은 항상 두되 … 없으면 비워 둔다" 문장이 바로 아래 예약 slot 규정과 충돌해 `## Required Context` 전체가 비어도 된다는 뜻으로 오독될 수 있다고 지적했다.
+- **판단:** 코드 결함이 아니라 유효한 문서 정합 문제다. 현재 문구는 예약 slot을 지우는 잘못된 해석을 허용하므로 maintenance 원칙(scope 표현 조정)에 해당한다.
+- **변경(안 1):** 두 섹션의 empty 규칙을 한 문장에서 분리했다 — "`## Work Items`는 소유할 항목이 없으면 비워 두고, `## Required Context`는 예약 slot을 유지한 채 채울 내용만 비운다."
+
+### 검증 ledger
+
+- (a) `new`(Global content 없음) → 빈 `### {Global}` 생성, 단일 빈 줄로 다음 블록 연결 — PASS
+- (b) `new --context Global .. --context W1 ..` → `### Return Target` → `### {Global}`(내용) → `### {W1}`(내용) 순서 — PASS
+- (c) `detach` 산물 → Return Target + 빈 `### {Global}` — PASS
+- (d) 빈 Global에 `context add Global`(첫/둘째 bullet) + `context add W2` → 빈 줄 정합 `### {Global}` 다음 빈 줄→bullet 연속→빈 줄→`### {W2}` — PASS
+- (e) 회귀: `test-log-append.sh` 31, `test-log-check.sh` 23, `test-log-items.sh` 27 = 81 passed / 0 failed (I8 Global-heading 빈 줄 검증 포함)
+- skill 밖 문서 stale 없음(`project-setup.md`는 내용 있는 Global 예시로 새 규칙과 부합).
+
+### 자율 판단
+
+- `log check`에 Global 누락 guard를 추가하지 않았다. 템플릿이 생성 시 항상 emit해 신규 로그는 보장되고, 하드 체크는 Global이 없던 legacy 로그를 새로 ERROR 처리해 소음이 된다. 엄격 강제가 필요하면 `cmd_check`에 WARN 한 줄 추가는 간단하다.
+- detach `--context` 대칭화(방향 A)는 적용하지 않았다. B 선택에 따라 detach는 `ReturnTarget`만 유지하고 Global/Wn content는 생성 후 `context add`로 채운다.
+
+### owner 반영과 결론
+
+- 이번 작업의 owner는 log skill 파일 자체이며, 변경이 그 파일들에 반영됐다. 별도 owner 문서 반영은 없다.
+- **결론:** W5 완료. @user 지시로 `decided` 로그를 reopen해 이 단위를 append했다. skill 불변상 새 수명은 새 로그가 원칙이나, 사용자 판단으로 이 로그에 기록했다. 오늘 maintenance 단위는 완료·검증됐고 남은 open 작업이 없어 다시 `decided`로 닫는다.
