@@ -146,10 +146,13 @@ portable log skill이나 reference를 바꾸는 경우:
 - 기존 본문 기록으로 처리할 수 있는데 새 필드나 명령을 요구한다.
 - 새 규칙이 다른 reference의 책임을 중복한다.
 
-portable 문서를 바꿀 때는 `SKILL.md`를 entry/router로 유지한다. 파일 구조, 기록, Reconcile,
-cross-log/lifetime transition과 Closeout의 세부 판정은 `loop-rules.md`, 유지보수 판단은 이 문서,
-프로젝트 setup routing은 `project-setup.md`, 개념 원리는 `design-principles.md`, 판단·운용 사례와
-핵심 도구 결과 예시는 `base-log-examples.md`로 둔다.
+portable 문서를 바꿀 때는 owner map을 유지한다. `SKILL.md`는 entry/router, `loop-rules.md`는
+Base 파일 구조, Work Items, Required Context, Record, Reconcile, cross-log/lifetime,
+Closeout/status 상세, `package-log.md`는 Package activation, internal router, package-only
+structure/overlay 계약, `project-setup.md`는 project setup routing, `design-principles.md`는
+Base 설계 원리, `base-log-examples.md`는 Base 판단·운용 사례와 핵심 도구 결과 예시,
+`package-log-examples.md`는 Package 구성·운용 사례, `quick-flow.md`는 진입 흐름 그림 요약과
+scenario locator로 둔다.
 
 ### Project integration 변경 기준
 
@@ -218,9 +221,9 @@ script를 바꾸지 않는 경우:
   뒤에는 새 표현이 문제 사례를 포함하는지, 제외해야 할 사례까지 열지 않는지, owner 경계와
   충돌하지 않는지 스스로 다시 점검한다. 통과하지 못하면 범위가 복원되는 표현으로 다시
   다듬는다.
-- 일반화가 필요한 경우에도 핵심 판단은 `loop-rules.md`가 소유한다. `design-principles.md`는
-  현재 구조의 판단 원리를 설명하는 보조 reference이고, `base-log-examples.md`는 판단·운용 사례와
-  핵심 도구 결과 예시를 빠르게 확인하는 보조 reference다. 둘 다 decision이나 rule을 대체하지
+- 수정 범위를 일반화할 때에도 Base 핵심 판단은 `loop-rules.md`, package 조건 전용 portable 판단은
+  `package-log.md`가 소유한다. `design-principles.md`, `base-log-examples.md`,
+  `package-log-examples.md`, `quick-flow.md`는 보조 reference이며 decision이나 rule을 대체하지
   않는다.
 
 ## 검증과 기록

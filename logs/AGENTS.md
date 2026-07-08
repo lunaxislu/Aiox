@@ -64,6 +64,13 @@
 - `<stable-package-key>`의 기본값은 controlling package log의 확장자를 제외한 filename
   stem이다. 첫 task record를 만들기 전에 Task Index에 선언하고, 이후 controlling log의
   이름이나 주제가 바뀌어도 canonical record path 안정을 위해 변경하지 않는다.
+- Stable package key는 controlling log의 `## Task Index` 아래 table보다 앞에 다음
+  repo-extension line으로 둔다.
+
+  ```markdown
+  - Stable package key: <stable-package-key>
+  ```
+
 - Task Index의 각 executable W entry는 profile과 repo root 기준 exact canonical record
   path를 가진다. directory나 filename pattern만 적거나 경로를 추론하게 두지 않는다.
 

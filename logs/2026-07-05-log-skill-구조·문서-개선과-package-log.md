@@ -1,15 +1,16 @@
 ---
 topic: log skill 구조·문서 개선과 package-log 후속
 description: log skill 구조·문서와 확인된 작성 문제를 개선한 뒤 maintenance owner routing과 package-log 도구를 순서대로 정합화한다
-status: open
+status: decided
 ---
 
 ## Work Items
 
 - [x] W1 logs/2026-07-05-log-skill-발동·작성-기준-개선-후보.md의 W1-W3와 후보 A-D를 현재 owner에 대조해 미반영 문제를 개선하고 검증한다
-- [>] W2 log skill 문서군의 identity·owner·read path·중복을 검토해 구조 개편과 문서 내용 개선안을 수렴하고, 사용자 승인 후 적용·검증한다
-- [ ] W3 maintenance.md의 package-log owner routing과 유지보수 판단을 W1-W2 결과에 맞춰 갱신하고 검증한다
-- [ ] W4 확정된 manual package contract와 W1-W3 결과를 입력으로 scripts/package-log를 설계·구현·검증한다
+- [x] W2 log skill 문서군의 identity·owner·read path·중복을 검토해 구조 개편과 문서 내용 개선안을 수렴하고, 사용자 승인 후 적용·검증한다 — detached: logs/2026-07-07-log-skill-W2-문서군-구조-개선-계속.md — reason: W2의 남은 SKILL 질의 응답·구조 개선·통합 검증을 별도 일반 로그에서 이어가고 source W2가 결과를 소비해야 함
+- [x] W3 maintenance.md의 package-log owner routing과 유지보수 판단을 W1-W2 결과에 맞춰 갱신하고 검증한다
+- [x] W4 확정된 manual package contract와 W1-W3 결과를 입력으로 scripts/package-log를 설계·구현·검증한다
+- [x] W5 scripts/package-log 2차 계약 결정 gate: Task Index Task 열, portable/repo-integration 분류, --record 자동 추론 여부, detach/Full 흐름, minor hardening 범위를 수렴한다
 
 ## Required Context
 
@@ -31,7 +32,7 @@ status: open
 
 - package 계약 입력은 logs/2026-07-03-log-skill-package-log-model-discussion.md의 Required Context {Global}/{W4}, W2 정규 초안·후속 정정, W3 승인 결정, W4 Verification ledger다. 전체 history를 복사하지 않고 이 pointer로 현재 owner 계약을 복원한다.
 - 현재 package owner 경계는 package-log.md=portable 의미·Compact/Full composition, SKILL.md=on-demand router, logs/AGENTS.md=Hybrid path·stable key·locator·manual audit, workflow.md=실행 순서다. profile과 execution mode는 별개이며 Compact/delegated가 허용되고 Full은 독립 lifecycle이 필요할 때만 사용한다.
-- W4 manual contract·fixture·Registry Integrity 검증은 통과했다. 통합 Markdown 검사의 유일한 실패는 삭제 예정인 legacy Workspace Reset 영역 logs/AGENTS.md:175-176이고 사용자는 이를 무시하기로 했다. maintenance.md에는 package 조건 전용 portable owner가 package-log.md임을 두 owner-map 문맥에 반영하는 최소 변경 후보가 있다.
+- W4 manual contract·fixture·Registry Integrity 검증은 통과했다. 통합 Markdown 검사의 유일한 실패는 삭제 예정인 legacy Workspace Reset 영역 logs/AGENTS.md:175-176이고 사용자는 이를 무시하기로 했다. W3에서 maintenance.md는 package 조건 전용 portable owner 경계를 반영·검증 완료했다.
 
 ### {W4}
 
@@ -853,6 +854,14 @@ SKILL trigger
 - 이번 W2 후속 작업의 entry 범위는 `log SKILL 질의 응답과 개선 및 필요시 구조 내용 변경 작업`을 포함한다.
 - 직전 커밋 메시지에만 있던 작업 범위 표현을 로그 entry 본문에도 명시해, 다음 agent가 커밋 의도와 로그 기록을 함께 복원할 수 있게 했다.
 
+### 2026-07-07 20:05 · detached W2 결과 소비와 W3 착수 조건
+
+- 확인한 사실: detached child `logs/2026-07-07-log-skill-W2-문서군-구조-개선-계속.md`는 W2 통합 검증 ledger를 남겼다.
+- 확인한 사실: child ledger 기준 `scripts/check-markdown-inline-code` 통합 검사, `git diff --check`, `.agents/skills/log/scripts/log --help`, `test-log-check.sh` 25/25, `test-log-append.sh` 31/31, `test-log-items.sh` 27/27이 통과했다.
+- 확인한 사실: child ledger 기준 주요 reference/anchor target heading이 존재했고, `quick-flow.md` Scenario 1-7과 6A-6E가 v2 spine read path로 정리됐다.
+- 판단: source W2의 남은 완료 조건(reference/anchor, Scenario read-path, owner drift, stale reference 통합 검증과 Work Items/next pointer 정합 Reconcile)은 충족됐다.
+- Reconcile: source W2 detached 결과를 소비해 W2를 completed로 전환했고, 다음 재개 지점을 W3 `maintenance.md`의 package-log owner routing과 유지보수 판단 갱신·검증으로 이동했다.
+
 ## 2026-07-05 · W1/W2 작업 순서 재지정
 
 ### 2026-07-05 23:14 · @user 승인 rekey
@@ -864,3 +873,225 @@ SKILL trigger
 - Work Items, 두 owning block heading과 W2 블록 내부의 해당 W-id 참조를 같은 동작에서 맞춴다.
   수명 개설 시점의 기존 entry는 당시 지정을 보존하고, 현재 유효한 작업 순서는 이 rekey 기록과
   Work Items가 대체해 소유한다.
+
+### 2026-07-07 20:05 · W2 consumed 이후 현재 재개 지점
+
+- detached child `logs/2026-07-07-log-skill-W2-문서군-구조-개선-계속.md`의 통합 검증 결과를 source W2가 소비했다.
+- Work Items 기준 W2는 completed이며, 현재 재개 지점은 W3 `maintenance.md`의 package-log owner routing과 유지보수 판단 갱신·검증이다.
+
+## 2026-07-07 · W3 maintenance.md owner routing 정합화 완료
+
+- 확인한 사실: `maintenance.md` owner map에 `package-log.md`, `package-log-examples.md`, `quick-flow.md` 경계를 routing 수준으로 추가했다.
+- 확인한 사실: 수정 원칙의 일반화 문장을 Base 핵심 판단은 `loop-rules.md`, package 조건 전용 portable 판단은 `package-log.md`가 소유한다고 정리했다.
+- 확인한 사실: Claude 검토 결과 blocker는 없었고, non-blocking 문구 개선 제안만 있었다.
+- 반영: Claude 제안에 따라 `일반화가 필요한 경우에도`를 `수정 범위를 일반화할 때에도`로 좁혀 maintenance 판단 조건을 명확히 했다.
+- 검증: `git diff --check -- .agents/skills/log/references/maintenance.md` 통과.
+- 검증: `scripts/check-markdown-inline-code .agents/skills/log/references/maintenance.md` 통과.
+- 검증: `rg -n "진입-라우팅|Base Enter|profile router|Standard Log|Select Profile" .agents/skills/log/references/maintenance.md`는 매치 없음(exit 1)으로 기대값과 일치했다.
+- 판단: W3의 maintenance owner routing과 유지보수 판단 갱신·검증은 완료됐다.
+- Reconcile: W3를 completed로 전환하고 다음 재개 지점을 W4 `scripts/package-log` 설계·구현·검증으로 이동한다.
+
+## 2026-07-08 · W4 package-log 도구 설계 수렴
+
+- @user 지시에 따라 `scripts/package-log` 명령 후보 수렴 내용을 기록한다.
+- 확인한 사실: `package-log.md`는 package 의미 판단을 agent가 소유하고, 도구는 구조 생성·원자적 변환·형식 guard·요약만 담당해야 한다. `logs/AGENTS.md`는 이 repo의 Hybrid Layout, stable package key, Task Index exact locator와 Registry Integrity 검사를 소유한다.
+- 판단: 도구 설계 기준은 사람용 편의가 아니라 agent-friendly, 즉 agent가 package 계약을 어기기 어렵게 만드는 것이다. 그러므로 stdout template보다 파일 생성·원자 편집·검사 중심의 명령을 우선한다.
+- 수렴 MVP 명령 후보:
+  - `package-log controlling new --topic <topic> --description <description> --scope <primary-boundary> [--related <artifact>]... [--stable-key <key>] [--block <bootstrap-topic>]`: activation 판단을 하지 않고, 이미 package로 판정된 controlling log의 Base 구조와 8 package surface를 생성한다. 경로는 base `log new` 관례처럼 topic에서 자동 생성하고 stable key 기본값은 filename stem으로 둔다. Package Scope는 비어 있을 수 없으므로 `--scope`를 필수로 한다.
+  - `package-log task new <controlling-log> --id Wn --record <path> --mode inline|delegated --task <task>`: Compact 전용. record 경로는 추론하지 않고 `--record`를 필수로 받으며, record 생성과 Task Index row 추가를 한 동작으로 원자화한다. record가 이미 있거나 W-id row가 이미 있으면 실패한다.
+  - `package-log index add <controlling-log> --id Wn --record <path> --profile compact|full --mode inline|delegated --task <task>`: 외부에서 이미 만든 record 등록용이며 주된 1차 사용처는 Full child 등록이다. record 존재, Identity 역포인터와 profile/mode 일치를 검사한 뒤 Task Index row를 추가한다.
+  - `package-log check <controlling-log>`: Registry Integrity 7단계를 자동 대조한다. Compact actual set의 root는 env/config로 주입하고, stable key는 controlling log의 Task Index repo-extension 선언에서 읽는다. Full child는 내부에서 base `log check`와 Return Target 역방향 pointer를 확인한다.
+- 보류: `index set`, `task revise`, `task attempt`, `task result`, `status`, Full 생성, result 소비, closeout 전이는 2차다. detach 경유 controlling 생성은 base `log detach` 조합과 Return Target/local lifecycle 설계가 필요하므로 MVP에서 제외한다.
+- owner 경계: stable key를 Task Index 아래 선언하는 것은 portable `package-log.md`가 아니라 `logs/AGENTS.md` repo integration 확장 전제다. 구현 뒤 owner 문서 반영 필요 여부는 별도 검토한다.
+- 다음 행동: subagent에게 disjoint write-set으로 구현·테스트 초안을 맡기고, 최종적으로 Claude 검토 프롬프트를 제공한다.
+
+### 2026-07-08 12:19 · package-log MVP 구현·검증
+
+- 구현: `.agents/skills/log/scripts/package-log`를 추가했다. 명령은 `controlling new`, `task new`, `index add`, `check` 네 가지다.
+- 구현: `controlling new`는 topic 기반 path 자동 생성, `--scope` 필수, stable key 기본값(filename stem) 선언, Base 구조와 8 package surface 생성을 수행한다. help에 activation 판단을 하지 않는다고 명시했다.
+- 구현: `task new`는 Compact 전용이며 `--record`를 필수로 받는다. Work Item row, Compact task record, Task Index row를 같은 명령으로 생성하고, record 덮어쓰기·W-id 중복·canonical Compact path 불일치를 실패시킨다.
+- 구현: `index add`는 외부 record 등록용이다. record 존재, Identity 역포인터, profile/mode 일치, Work Item 존재, Compact canonical path 또는 Full child `log check`/Return Target 역포인터를 검사한 뒤 Task Index row를 추가한다.
+- 구현: `check`는 stable key 선언, Work Items와 Task Index W-id set, dangling/orphan compact record, Identity mismatch, Full Return Target mismatch, duplicate W-id를 검사한다.
+- owner 반영: `logs/AGENTS.md`의 Package Log Repository Integration에 Task Index 아래 `- Stable package key: <stable-package-key>` repo-extension line을 명시했다. 이는 portable `package-log.md`가 아니라 repo integration 소유 문법이다.
+- 테스트: `.agents/skills/log/scripts/test-package-log.sh`를 추가했다. controlling 생성, task new, index add, check 정상·실패 fixture를 포함한다.
+- 검증 통과: `sh -n .agents/skills/log/scripts/package-log`, `sh -n .agents/skills/log/scripts/test-package-log.sh`, `.agents/skills/log/scripts/test-package-log.sh` 52/52, `test-log-check.sh` 25/25, `test-log-append.sh` 31/31, `test-log-items.sh` 27/27, `git diff --check`.
+- 검증 제한: `scripts/check-markdown-inline-code logs/AGENTS.md logs/2026-07-05-log-skill-구조·문서-개선과-package-log.md`는 실패했다. 실패 위치는 `logs/AGENTS.md` Workspace Reset section의 기존 multiline inline-code debt(`표 컬럼` row)이며, 이번 package-log 변경부에서 새로 만든 실패로 보이지 않는다.
+- Subagent 검토 반영: stable key 선언 문법 부재와 Task Index canonical syntax blocker를 수용해 `logs/AGENTS.md`에 stable key 선언 문법을 추가했고, Task Index table column은 기존 package examples의 `W-id | Task | Profile | Mode | Task record` 순서를 구현 기준으로 사용했다.
+- 남은 검토: Claude에게 구현과 owner 경계, agent-friendly guard, portable/repo integration 경계, Full 등록 검증, `task new`가 Work Item까지 생성하는 선택이 타당한지 리뷰를 요청한다.
+
+### 2026-07-08 12:42 · package-log 리뷰 A그룹 정정 착수
+
+@user가 3개 agent 리뷰와 직접 코드 대조 결과를 전달했다.
+
+- 확인한 사실: 현재 package-log check는 Full child actual set 열거가 없어 orphan Full record를 검출하지 못하고, Compact Task Index row별 canonical path 재검증도 하지 않는다.
+- 확인한 사실: task new는 Work Item row 삽입 뒤 mkdir/mktemp 실패 시 control_snap rollback 없이 return하여 half-state를 남길 수 있다.
+- 확인한 사실: --task/--related free text는 Markdown table delimiter인 pipe와 awk -v escape 해석에 취약하다.
+- 처리 범위: 이번 정정은 A그룹 정확성/false-pass 및 silent corruption 차단에 한정한다. Task Index의 Task 열 제거와 portable/repo-integration 분류 확정은 계약 결정이 필요하므로 이번 패치에서 임의 변경하지 않는다.
+
+### 2026-07-08 12:45 · package-log 리뷰 A그룹 정정 완료
+
+- 구현: package-log A그룹 리뷰를 반영해 check의 Full actual set 대조를 추가했고, Compact Task Index row마다 canonical path를 재검증하게 했다.
+- 구현: task new의 mkdir/mktemp 실패 경로에서 controlling log rollback과 snapshot cleanup을 수행하게 했다.
+- 구현: Task Index/Work Item/record Objective에 들어가는 task text와 related artifact text에서 pipe, tab, backslash를 거부해 Markdown table/awk escape silent corruption을 차단했다.
+- 구현: Task Index W-id 중복 검사는 정규식 동적 매칭 대신 첫 column literal 비교로 바꿨다.
+- 테스트: non-canonical Compact filename, orphan Full child, mkdir rollback, task/index pipe rejection regression을 추가했다.
+- 검증 통과: sh -n package-log, sh -n test-package-log.sh, test-package-log.sh 57/57, test-log-check.sh 25/25, test-log-append.sh 31/31, test-log-items.sh 27/27, git diff --check.
+- 검증 제한: scripts/check-markdown-inline-code logs/AGENTS.md logs/2026-07-05-log-skill-구조·문서-개선과-package-log.md는 기존 logs/AGENTS.md Workspace Reset 영역 multiline inline-code debt(lines 182-183)로 실패했다. 이번 변경부 원인으로 보이지 않는다.
+- 남은 결정: Task Index의 Task 열 제거 여부와 package-log 도구의 repo-integration 분류/portability 확정은 계약 결정이 필요하므로 보류했다.
+
+### 2026-07-08 12:48 · package-log 2차 계약 결정 gate 정리
+
+@user가 판단 보류 항목이 2차 작업인지 확인했다.
+
+- 확인한 사실: 현재 보류된 항목은 Task Index의 Task 열 제거 여부와 package-log 도구의 portable/repo-integration 분류 확정이다.
+- 판단: 두 항목은 단순 구현 버그가 아니라 package-log.md, package-log-examples.md, logs/AGENTS.md, script/test fixture가 함께 움직일 수 있는 owner 계약 결정이다.
+- 결정: 이 항목들은 2차 구현으로 바로 진입하지 않고, 먼저 2차 계약 결정 gate에서 수렴한다.
+- 제안 순서: 현재 MVP와 A그룹 fix를 재리뷰로 안정화한 뒤, 실제 사용 또는 추가 리뷰에서 friction을 확인하고, Task 열·portability·detach controlling·Full 생성 범위를 결정한 다음 구현 항목(index set, task revise/attempt/result, status 등)을 진행한다.
+
+### 2026-07-08 13:02 · package-log A그룹 독립 검증 수신
+
+@user가 독립 검증 결과를 전달했다.
+
+- 확인한 사실: 독립 검증자는 A그룹 4개 finding(orphan Full 미검출, 비-canonical Compact 파일명 통과, task new rollback 결함, free-text table/awk 오염)이 모두 닫혔다고 판정했다.
+- 확인한 사실: 독립 검증자는 test-package-log.sh 57/57을 직접 실행했고, orphan Full, renamed Compact, mkdir rollback, pipe/tab/backslash 입력 거부를 fresh 재현으로 확인했다고 보고했다.
+- 확인한 사실: task_index_has_id가 literal 비교로 바뀌어 기존 finding 8(W1.2 vs W1-2 동적 정규식 오탐)도 함께 해소됐다고 보고했다.
+- 확인한 사실: B그룹 finding 5(Task Index Task 열)와 finding 6(portable vs repo-integration 분류)는 계약 결정 사항으로 보류 유지가 타당하다고 검토자가 판단했다.
+- 남은 저위험 항목: fence-aware parsing, 동시성 guard 강화, Closeout 기준 문구, 빈 Work Items blank line, slugify sed 구분자, -- 옵션 종결자, --record table guard 적용 여부.
+- 판단: W4 MVP의 blocker/major 정확성 리스크는 현재 닫힌 것으로 보고, 다음 선택지는 B그룹 계약 결정 수렴, minor hardening, 또는 W4 1차 closeout이다.
+
+### 2026-07-08 13:04 · package-log record path guard hardening 착수
+
+@user가 W4 closeout 전에 minor hardening으로 --record guard를 추가하라고 지시했다.
+
+- 범위: task new와 index add의 --record 값에도 pipe, tab, backslash guard를 적용해 Task Index table corruption 가능성을 닫는다.
+- 이후 흐름: 이 hardening과 검증을 로그에 남긴 뒤, 사용자가 Gemini와 script/package-log 흐름 예시를 확인·검토하고, 그 결과를 W4 후속 block으로 시작한다.
+
+### 2026-07-08 13:05 · package-log record path guard hardening 완료
+
+- 구현: task new와 index add의 --record 값에도 require_plain_table_text guard를 적용해 pipe, tab, backslash를 거부하게 했다.
+- 테스트: task new --record pipe rejection, index add --record pipe rejection regression을 추가했다.
+- 검증 통과: sh -n .agents/skills/log/scripts/package-log, sh -n .agents/skills/log/scripts/test-package-log.sh, test-package-log.sh 59/59, test-log-check.sh 25/25, test-log-append.sh 31/31, test-log-items.sh 27/27, git diff --check.
+- 다음 흐름: 사용자가 Gemini와 script/package-log 흐름 예시를 확인·검토한 뒤, 그 결과를 W4 후속 block으로 시작한다.
+
+### 2026-07-08 13:07 · Gemini 흐름 검토 수신과 즉시 반영 범위
+
+@user가 Gemini 흐름 검토 결과를 전달했다.
+
+- 확인한 사실: read_identity_value는 Identity 값의 surrounding backtick을 제거하지 않으므로, agent가 Identity의 Controlling log 등에 backtick을 쓰면 validate_identity와 check가 불일치할 수 있다.
+- 판단: Identity backtick 처리는 agent markdown 작성 습관과 충돌하는 실제 흐름 장애이므로 즉시 수정한다.
+- 판단: Closeout Contract 스켈레톤의 package-specific criterion 유도 문구는 의미 판단 자동화가 아니라 agent guidance 보강이므로 즉시 반영한다. 다만 check가 개별 closeout 의미를 판정해야 한다는 주장은 package-log 도구 경계상 수용하지 않는다.
+- 판단: fenced block 오인, 동시성 강화, slugify, -- 종결자는 저위험 hardening으로 후속 후보에 남긴다.
+- 판단: --record 자동 추론은 --record 필수와 locator 추론 금지라는 앞선 agent-friendly/portable 합의와 충돌하므로 이번 수정에서 수용하지 않고 2차 계약 결정 gate로 보낸다.
+
+### 2026-07-08 13:09 · Gemini 검토 즉시 반영 완료
+
+- 구현: read_identity_value가 Identity 값의 surrounding backtick을 제거하도록 바꿔, agent가 Identity 필드에 마크다운 백틱을 써도 index add/check가 같은 locator/id/profile/mode로 비교하게 했다.
+- 구현: controlling new의 Closeout Contract Criteria에 package-specific closeout criteria를 작성하라는 TBD 안내 line을 추가했다. 이는 의미 판단 자동화가 아니라 agent guidance 보강이다.
+- 테스트: Compact/Full record의 backticked Identity 값을 index add가 수용하는 regression과 Closeout Contract package-specific TBD 생성 검사를 추가했다.
+- 검증 통과: sh -n package-log, sh -n test-package-log.sh, test-package-log.sh 62/62, test-log-check.sh 25/25, test-log-append.sh 31/31, test-log-items.sh 27/27, git diff --check.
+- 보류 유지: --record 자동 추론은 locator 추론 금지 합의와 충돌하므로 2차 계약 결정 gate로 보냈다. fenced block 오인 등 나머지는 저위험 hardening 후보로 유지한다.
+
+### 2026-07-08 13:50 · W4 package-log MVP 1차 closeout
+
+- 확인한 사실: scripts/package-log MVP는 controlling new, task new, index add, check 네 명령으로 구현됐다.
+- 확인한 사실: A그룹 blocker/major는 수정 및 독립 검증으로 닫혔다. 이후 --record guard, backticked Identity 정규화, Closeout package-specific TBD 안내까지 반영했다.
+- 확인한 사실: 최종 검증은 sh -n package-log, sh -n test-package-log.sh, test-package-log.sh 62/62, test-log-check.sh 25/25, test-log-append.sh 31/31, test-log-items.sh 27/27, git diff --check가 통과했다.
+- 확인한 사실: scripts/check-markdown-inline-code의 알려진 실패는 logs/AGENTS.md Workspace Reset 영역 기존 multiline inline-code debt이며 이번 package-log 변경 원인은 아니다.
+- 판단: W4 1차 MVP의 구현·검증·리뷰 반영은 완료됐다.
+- 보류: Task Index Task 열 제거 여부, portable vs repo-integration 분류, --record 자동 추론 여부, detach controlling/Full 생성 흐름, fenced block parsing 등 minor hardening은 W5 2차 계약 결정 gate로 넘긴다.
+- Reconcile: W4를 completed로 닫고, 다음 active work item은 W5 package-log 2차 계약 결정 gate로 연다.
+
+## 2026-07-08 · W5 package-log 2차 계약 결정 gate handoff
+
+- 목적: W4 MVP 구현을 더 확장하기 전에, package-log 2차 항목 중 무엇을 계약으로 확정하고 무엇을 보류할지 결정한다.
+
+### 2026-07-08 13:51 · W5 long-log 유지 결정
+
+@user가 W5를 별도 로그로 분리하지 않고 이 로그에서 계속한다고 결정했다.
+
+- 결정: long-log hard warning은 인지하되, W5 package-log 2차 계약 결정 gate는 현재 로그 `logs/2026-07-05-log-skill-구조·문서-개선과-package-log.md`에서 계속한다.
+- 적용: 다음 세션은 새 로그 분리 판단을 반복하지 않고, 이 로그의 W5 active item과 W5 handoff를 기준으로 계약 결정 gate를 시작한다.
+
+### 2026-07-08 14:19 · W5 2차 계약 결정: detach controlling 포함
+
+- 확인한 사실: Task Index의 `Task` 열은 script 내부 5열 schema와 연결되어 있어 제거 시 script/test/example을 원자적으로 재색인해야 한다.
+- 결정: Task Index는 registry mapping만 소유하도록 `Task` 열을 제거한다. `task new --task`는 Work Item과 task record Objective 생성에 필요하므로 유지하고, `index add --task`는 소비처가 없어 제거한다.
+- 결정: `scripts/package-log`는 portable skill tool로 분류한다. repo-specific physical layout, stable key와 registry integrity 확장은 project integration이 소유한다.
+- 결정: `task new`는 기본적으로 `--record` 명시를 유지하되, opt-in `--auto-record`로 canonical Compact record path 자동 산출을 허용한다. `index add`는 계속 explicit `--record`를 요구한다.
+- 결정: detach 경유 controlling package log 생성을 W5 구현 범위에 포함한다. 단순 Return Target template 옵션이 아니라 source Work Item detach 전이와 package skeleton 생성을 결합한 `controlling detach` 명령으로 만든다.
+- 결정: Full child 생성 명령은 이번 W5에서 만들지 않고, 기존 base log 생성/작성 후 `index add --profile full` 검증·등록 흐름을 유지한다.
+- 결정: minor hardening은 slugify sed delimiter 안전화만 동반한다. fenced parsing hardening, Closeout 문구 추가, `--` option terminator, 동시성 guard 강화는 보류한다.
+- 적용 범위: `.agents/skills/log/scripts/package-log`, `.agents/skills/log/scripts/test-package-log.sh`, `.agents/skills/log/references/package-log-examples.md`, detach source marker 수동 점검이 필요하면 `logs/AGENTS.md`를 갱신한다.
+
+### 2026-07-08 14:29 · W5 package-log 2차 구현·검증
+
+- 구현: `.agents/skills/log/scripts/package-log`에서 Task Index schema를 `W-id | Profile | Mode | Task record` 4열로 바꾸고, row 삽입·중복 record guard·check 파싱을 4열 기준으로 재색인했다.
+- 구현: `index add --task`를 제거했다. `task new --task`는 Work Item과 task record Objective 생성 입력이므로 유지했다.
+- 구현: `task new --auto-record`를 추가했다. 기본은 기존처럼 explicit `--record`가 필요하고, opt-in일 때만 stable key 기반 canonical Compact record path를 산출한다. `--record`와 `--auto-record` 동시 사용은 거부한다.
+- 구현: `controlling detach <source-log>`를 추가했다. base `log detach`로 source Work Item `[↓]` 전이와 Return Target 관계를 만든 뒤, target을 package controlling skeleton으로 교체해 source pointer와 package surfaces를 한 동작으로 생성한다.
+- 구현: slugify의 sed delimiter를 `|`에서 `#`로 바꿔 character class 안의 pipe와 delimiter가 겹치지 않게 했다.
+- 문서: `.agents/skills/log/references/package-log-examples.md`의 Task Index 예시를 4열로 갱신하고, 기존 Base log에서 package 조건 발견 시 `package-log controlling detach`를 쓰는 예시를 추가했다.
+- 테스트: `.agents/skills/log/scripts/test-package-log.sh`를 4열 schema, `task new --auto-record`, `index add --task` 제거, `controlling detach` source marker/Return Target/package surface/stable key 검증에 맞춰 갱신했다.
+- 검증 통과: `sh -n .agents/skills/log/scripts/package-log`, `sh -n .agents/skills/log/scripts/test-package-log.sh`, `.agents/skills/log/scripts/test-package-log.sh` 79/79, `test-log-check.sh` 25/25, `test-log-append.sh` 31/31, `test-log-items.sh` 27/27, `git diff --check`.
+- 검증 제한: untracked 새 파일은 `git diff --check` 대상이 아니므로 `git diff --no-index --check /dev/null`로 `.agents/skills/log/scripts/package-log`와 `test-package-log.sh`를 별도 확인했다. 이 명령은 파일 차이 때문에 exit 1이지만 whitespace error output은 없었다.
+- 검증 제한: `scripts/check-markdown-inline-code .agents/skills/log/references/package-log-examples.md logs/AGENTS.md logs/2026-07-05-log-skill-구조·문서-개선과-package-log.md`는 기존 `logs/AGENTS.md` Workspace Reset 영역 multiline inline-code debt(lines 182-183)로 실패했다. 이번 변경부 원인으로 보이지 않는다.
+
+### 2026-07-08 14:44 · W5 리뷰 MINOR 반영
+
+- 입력: 독립 검증은 W5 변경에 BLOCKER·MAJOR가 없고, MINOR로 detach 실패·롤백 테스트 공백과 rollback 복원 실패를 silent하게 삼키는 문제를 보고했다. legacy 5열 package log와 Workspace Reset 관련 항목은 이번 판단에서 제외했다.
+- 판단: MINOR-2는 저빈도라도 source `[↓]` 전이 후 target 부재 half-state를 숨길 수 있으므로 반영이 필요하다. MINOR-1은 회귀 방지를 위해 detach edge와 `--record`/`--auto-record` 상호배제 테스트를 보강하는 것이 타당하다.
+- 구현: `controlling detach`의 package skeleton 교체 실패 경로에서 source snapshot 복원 실패를 `|| true`로 삼키지 않고 loud ERROR를 출력하게 했다. 복원 실패 시 target을 삭제하지 않아 source의 detached pointer가 완전한 dangling target을 가리키지 않도록 보존한다.
+- 테스트: `task new`의 `--record`와 `--auto-record` 상호배제, detach 비-open source 실패, 중복 detach 실패, existing target 보존, auto-target 생성, detach→task new→check lifecycle을 추가했다.
+- 보류: legacy 5열 schema mismatch 친절도 개선과 separator regex 완화는 W5 prospective path의 correctness 문제가 아니므로 이번 반영에서 제외했다.
+- 검증 통과: `sh -n .agents/skills/log/scripts/package-log`, `sh -n .agents/skills/log/scripts/test-package-log.sh`, `.agents/skills/log/scripts/test-package-log.sh` 92/92, `test-log-check.sh` 25/25, `test-log-append.sh` 31/31, `test-log-items.sh` 27/27, `git diff --check`.
+- 검증 제한: untracked 새 파일은 `git diff --check` 대상이 아니므로 `git diff --no-index --check /dev/null`로 `.agents/skills/log/scripts/package-log`와 `test-package-log.sh`를 별도 확인했다. 파일 차이 때문에 exit 1이지만 whitespace error output은 없었다.
+
+### 2026-07-08 14:47 · W5 closeout과 로그 종료
+
+- 확인한 사실: W5 2차 계약 결정 항목(Task Index Task 열 제거, portable tool 분류, `--auto-record`, detach controlling 생성, Full 생성 보류, minor hardening 범위)은 구현·문서·테스트에 반영됐다.
+- 확인한 사실: 독립 검증은 BLOCKER·MAJOR 없음으로 판정했고, 반영하기로 한 MINOR-1 테스트 보강과 MINOR-2 rollback failure signaling도 반영했다.
+- 확인한 사실: 최종 검증은 `package-log`/`test-package-log.sh` syntax check, `test-package-log.sh` 92/92, `test-log-check.sh` 25/25, `test-log-append.sh` 31/31, `test-log-items.sh` 27/27, `git diff --check`가 통과했다.
+- 검증 제한: `scripts/check-markdown-inline-code`의 알려진 실패는 기존 `logs/AGENTS.md` Workspace Reset 영역 multiline inline-code debt이며 이번 W5 변경 원인이 아니다.
+- 판단: W5의 계약 수렴·구현·검증·리뷰 반영은 완료됐다.
+- Reconcile: W5를 completed로 전환한다. W1-W5가 모두 완료됐고 남은 open Work Item이 없으므로 이 로그는 decided 전환 후보다.
+
+## 알아야 할 것
+
+- W4 1차 MVP는 완료됐다. 구현 파일은 `.agents/skills/log/scripts/package-log`, 테스트는 `.agents/skills/log/scripts/test-package-log.sh`다.
+- 현재 명령은 `controlling new`, `task new`, `index add`, `check` 네 가지다.
+- 최종 W4 검증 통과: `test-package-log.sh` 62/62, `test-log-check.sh` 25/25, `test-log-append.sh` 31/31, `test-log-items.sh` 27/27, `sh -n` 2개, `git diff --check`.
+- 알려진 Markdown inline-code 실패는 `logs/AGENTS.md` Workspace Reset 영역 기존 debt이며 package-log 변경 원인이 아니다.
+- package owner 경계: `package-log.md`는 portable 의미·Compact/Full composition, `logs/AGENTS.md`는 repo Hybrid path·stable key·locator·Registry Integrity, script는 구조 생성·원자 편집·guard·summary만 담당한다.
+- 도구는 activation, result accept/reject/consume, closeout 의미 판단을 하지 않는다.
+- W4에서 닫힌 주요 이슈: orphan Full, non-canonical Compact, task new rollback half-state, table corruption guard, --record guard, backticked Identity, Closeout package-specific TBD 안내.
+- 로그가 1000줄을 넘겨 `log entry add`가 hard long-log warning을 냈다. 다음 세션은 이 로그를 계속 쓸지, W5를 별도 detached/independent log로 분리할지 먼저 판단해야 한다.
+
+## 해야 할 것
+
+1. 현재 W5를 같은 로그에서 계속할지, long-log 때문에 새 child/independent log로 분리할지 판단한다.
+2. B그룹 계약 결정을 수렴한다.
+   - Task Index의 `Task` 열을 제거할지 유지할지 결정한다.
+   - `scripts/package-log`를 portable skill tool로 볼지, repo integration tool로 분류할지 결정한다.
+3. `--record` 자동 추론 제안을 재검토한다.
+   - 이전 합의는 `--record` 필수와 locator 추론 금지였다.
+   - Gemini 제안은 agent 편의성 때문에 생략 시 canonical path 자동 산출이다.
+   - 둘 중 무엇이 agent-friendly 원칙에 더 맞는지 근거로 결정한다.
+4. detach 경유 controlling 생성과 Full 생성 흐름을 2차에 포함할지 결정한다.
+   - Full 생성은 base child log + Return Target + local lifecycle 설계가 필요하다.
+   - detach controlling은 기존 Base log in-place upgrade 금지 원칙과 연결된다.
+5. minor hardening 범위를 정한다.
+   - fenced markdown block 오인 방지
+   - 동시성 guard 강화
+   - Closeout skeleton 문구 추가 보강
+   - 빈 Work Items 첫 항목 blank line
+   - slugify sed 구분자
+   - `--` 옵션 종결자
+6. 결정 후 owner 반영 범위를 확정한다.
+   - 영향을 받을 수 있는 파일: `.agents/skills/log/references/package-log.md`, `.agents/skills/log/references/package-log-examples.md`, `logs/AGENTS.md`, `.agents/skills/log/scripts/package-log`, `.agents/skills/log/scripts/test-package-log.sh`.
+7. 구현 전에는 계약 결정 entry를 먼저 남기고, 구현 후에는 W4와 같은 수준의 검증 ledger를 남긴다.
+
+## 다음 세션 첫 행동
+
+- `log check logs/2026-07-05-log-skill-구조·문서-개선과-package-log.md`로 현재 상태를 확인한다.
+- Work Items에서 W5 active 여부를 확인한다.
+- long-log 분리 여부를 먼저 보고하고 사용자 확인을 받은 뒤 W5 계약 결정 gate를 시작한다.

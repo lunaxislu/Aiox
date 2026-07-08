@@ -19,9 +19,9 @@ Task Index는 진행 상태를 복제하지 않고 executable W와 profile/mode/
 ```markdown
 ## Task Index
 
-| W-id | Task | Profile | Mode | Task record |
-| --- | --- | --- | --- | --- |
-| W1 | Retry source/effect discovery | Compact | inline | `<task-record:retry-policy/W1>` |
+| W-id | Profile | Mode | Task record |
+| --- | --- | --- | --- |
+| W1 | Compact | inline | `<task-record:retry-policy/W1>` |
 ```
 
 ## Worked Patterns
@@ -76,7 +76,7 @@ status: open
 
 ## Workflow / Agent Plan
 
-- Phase: activation preflight -> discovery -> controlling synthesis -> contract review -> execution -> result review -> result promotion/Reconcile -> closeout.
+- Phase: activation preflight -> provisional bootstrap -> discovery -> controlling synthesis -> contract review -> execution -> result review -> result promotion/Reconcile -> closeout.
 - Execution default: W1은 inline, W2는 Brief review 뒤 inline 또는 delegated.
 - Review anchors:
   - Contract review after W1 synthesis.
@@ -86,10 +86,10 @@ status: open
 
 ## Task Index
 
-| W-id | Task | Profile | Mode | Task record |
-| --- | --- | --- | --- | --- |
-| W1 | 현재 retry 동작과 related artifact 영향 확인 | Compact | inline | `<task-record:retry-policy/W1>` |
-| W2 | 승인된 retry policy 변경 구현 | Compact | inline | `<task-record:retry-policy/W2>` |
+| W-id | Profile | Mode | Task record |
+| --- | --- | --- | --- |
+| W1 | Compact | inline | `<task-record:retry-policy/W1>` |
+| W2 | Compact | inline | `<task-record:retry-policy/W2>` |
 
 ## Evidence
 
@@ -145,6 +145,13 @@ behavior, tests, release note의 동반 수정·검증 없이는 correct/done이
 **표면·분기**: source W4가 child package 결과를 소비해야 하면 `[↓]` detach를 쓴다. source가 더 이상
 결과를 기다리지 않고 ownership을 넘기면 `[→]` transfer를 쓴다. 기존 base log에 package 8표면을
 붙여 in-place upgrade하거나, package log에서 base log로 downgrade하지 않는다.
+
+Portable helper를 쓰는 경우 `controlling detach`는 source Work Item의 detach 전이와 child package
+controlling skeleton 생성을 한 동작으로 묶는다.
+
+```sh
+package-log controlling detach <source-log> --id W4 --topic "API retry policy package" --description "retry docs completion depends on behavior, tests, and release note consistency" --scope "API retry policy"
+```
 
 **결과 markdown 핵심**:
 
@@ -223,8 +230,9 @@ docs wording cleanup 하나였고 implementation/tests/release note가 공통 cl
 **상황**: 이미 열린 API retry package log를 이어받았다. 이전 세션이 W2 implementation task를 진행했고
 candidate Result를 남겼을 수 있다.
 
-**표면·분기**: 먼저 Base Enter를 수행한다. `## Work Items`, `## Required Context`의 Return Target과
-관련 scope, `[>]`의 owning block을 읽은 뒤 package surfaces와 Task Index를 복원한다. 이미 package인
+**표면·분기**: SKILL.md `재개 정보 복원 또는 Bootstrap`의 existing Base 절차로 Work state(`[>]`, Work Items)와
+Required Context를 먼저 복원한다. 이어 `package-log.md#state-ownership-and-task-contract`와
+Package Internal Router로 Package surfaces, Task Index와 task record pointer를 복원한다. 이미 package인
 로그를 다시 activation 판정하지 않는다.
 
 **결과 markdown 핵심**:
@@ -237,18 +245,20 @@ candidate Result를 남겼을 수 있다.
 
 ## Task Index
 
-| W-id | Task | Profile | Mode | Task record |
-| --- | --- | --- | --- | --- |
-| W2 | 승인된 retry policy 변경 구현 | Compact | inline | `<task-record:retry-policy/W2>` |
+| W-id | Profile | Mode | Task record |
+| --- | --- | --- | --- |
+| W2 | Compact | inline | `<task-record:retry-policy/W2>` |
 ```
 
 재개 시 읽기 순서 요약:
 
 ```markdown
-- Base Enter가 `[>] W2`를 선택했다.
-- Required Context `{Global}`과 `{W2}` scope가 있으면 적용했다.
-- W2 owning History block과 `<task-record:retry-policy/W2>`를 읽었다.
-- Current Package Scope, Evidence, Verification Contract, Closeout Contract revision을 복원했다.
+- (a) existing Base 절차: `## Work Items`에서 `[>] W2`를 확인했다. Required Context `{Global}`과
+  `{W2}` scope가 있으면 적용했다. W2 owning History block을 읽어 Work state와 Required Context를
+  복원했다.
+- (b) Package Internal Router(`package-log.md#state-ownership-and-task-contract`): Current Package
+  Scope, Evidence, Verification Contract, Closeout Contract revision과
+  `<task-record:retry-policy/W2>` Task Index locator를 복원했다.
 ```
 
 **주의점**: resume는 package status를 재선택하는 시간이 아니다. task record가 없거나 Task Index locator가
@@ -328,11 +338,11 @@ Full이 필요해지는 것은 아니다.
 ```markdown
 ## Task Index
 
-| W-id | Task | Profile | Mode | Task record |
-| --- | --- | --- | --- | --- |
-| W1 | 현재 retry 동작과 effect 확인 | Compact | inline | `<task-record:retry-policy/W1>` |
-| W2 | retry behavior와 artifact update 구현 | Compact | delegated | `<task-record:retry-policy/W2>` |
-| W5 | public API contract impact 독립 review | Full | delegated | `<child-log:retry-policy-review>` |
+| W-id | Profile | Mode | Task record |
+| --- | --- | --- | --- |
+| W1 | Compact | inline | `<task-record:retry-policy/W1>` |
+| W2 | Compact | delegated | `<task-record:retry-policy/W2>` |
+| W5 | Full | delegated | `<child-log:retry-policy-review>` |
 ```
 
 판정 메모:

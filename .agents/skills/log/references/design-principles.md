@@ -2,6 +2,8 @@
 
 이 문서는 log skill의 현재 구조가 어떤 문제를 풀기 위해 생겼는지 설명한다. 실행 규칙의 정본은
 `../SKILL.md`와 `loop-rules.md`가 소유하며, 이 문서는 그 규칙을 적용할 때의 판단 원리만 보조한다.
+이 문서는 모든 로그가 상속하는 Base log model의 설계 원리를 설명한다. Package-only surface와
+overlay 원리는 `package-log.md`가 소유한다.
 
 ## 로그의 목적
 
@@ -98,8 +100,8 @@ Work state나 Required Context의 dependency를 바꿨는지 확인하고, 영�
 standing 기준, return 관계를 바꿨다면 관련 표면을 함께 맞춘다. 하나만 고치고 나머지를 후속
 점검으로 미루면 다음 세션은 stale한 상태에서 시작한다.
 
-이 원리는 새 용어를 추가하려는 것이 아니다. `Record`, `Reconcile`, `Cross-Log / Lifetime
-Transitions`, `Closeout`의 기존 루프를 언제 호출해야 하는지 설명하는 판단 기준이다.
+이 원리는 새 용어를 추가하려는 것이 아니다. `Record`, `Reconcile`, `Cross-Log / Lifetime Transitions`,
+`Closeout`의 기존 루프를 언제 호출해야 하는지 설명하는 판단 기준이다.
 
 ## Script Boundary
 

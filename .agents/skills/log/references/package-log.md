@@ -4,11 +4,12 @@
 하는 related artifact를 하나의 correct/done 판단으로 다루는 **package workflow**의 portable 의미
 계약을 소유한다.
 
-`../SKILL.md`는 package 조건에서만 이 문서를 읽게 하는 on-demand router다. base 로그 loop는 log
-skill이 소유한다. 최초 선택·읽기와 loop 단계(Enter·Act·Record·Reconcile·Cross-Log·Closeout)의
-top-level 계약은 `../SKILL.md`가, 파일 구조·Work Items·Required Context·Record·Reconcile·
-cross-log/lifetime·Closeout/status의 세부 판정은 `loop-rules.md`가 소유한다. 이 문서는 그 base
-loop를 복제하지 않고 상속한 위에 package 전용 표면·계약·판정만 더한다.
+`../SKILL.md`는 package 조건에서만 이 문서를 읽게 하는 on-demand router다. Base 로그 loop는 log
+skill이 소유한다. 작업 종류 dispatch, 대상 후보 확정, Route / Contract Gate, 재개 정보 복원 또는
+Bootstrap과 작업 루프의 top-level 계약은 `../SKILL.md`가, 파일 구조·Work Items·Required Context·
+Record·Reconcile·cross-log/lifetime·Closeout/status의 세부 판정은 `loop-rules.md`가 소유한다.
+이 문서는 Base loop를 대체하거나 복제하지 않고 그 위에 package 전용 internal router, package-only
+구조와 package overlay owner 계약만 더한다.
 
 이 문서는 portable 의미 계약만 소유한다. 실제 파일 경로, directory 이름, stable key 생성·유지,
 검색·감사 명령, vendor 기능·model 이름 같은 repo·harness 전용 mapping은 project integration이
@@ -17,9 +18,47 @@ loop를 복제하지 않고 상속한 위에 package 전용 표면·계약·판�
 package 구성·운용, Result consumption과 Compact/Full 선택 예시가 필요하면
 `package-log-examples.md`를 lookup 보조로 읽는다. 예시는 이 문서의 계약을 재정의하지 않는다.
 
-package workflow의 phase 순서는 아래와 같고, 이어지는 9개 section이 각 phase의 계약을 소유한다.
+package workflow의 phase는 Base loop를 대체하는 별도 loop가 아니라 SKILL.md spine의 각 gate와
+작업 루프 위에 붙는 overlay다. 이어지는 section은 package-only 구조와 overlay 계약을 소유한다.
 
-`activation preflight → provisional bootstrap → discovery → controlling synthesis → review → execution → result promotion/Reconcile → closeout`
+## Package Internal Router
+
+이 문서는 SKILL.md가 package 조건을 확정한 뒤 읽는 package 내부 router다. SKILL.md는 모든
+package-only section을 직접 라우팅하지 않으므로, 아래 순서로 필요한 section에 도달한다.
+
+1. **Identity**: package workflow, controlling package log와 logical bundle의 기본 정의가 필요할 때
+   먼저 확인한다.
+2. **Activation and Entry Routing**: Route / Contract Gate에서 package signal을 판정하거나, 기존 Base
+   진행 중 package detach/transfer/not-package 후보를 판정할 때 읽는다.
+3. **Bootstrap and Integration Probe**: new package bootstrap 또는 existing package의 contract 갱신
+   필요성을 확인할 때 읽는다.
+4. **Artifact and Evidence Tests**: package Scope, related artifact, evidence provenance, effect/action
+   binding을 판정할 때 읽는다.
+5. **State Ownership and Task Contract / Task Record Contract**: existing package 재개, Task Index와
+   task record pointer 복원, executable W와 Compact/Full 계약, Package Record overlay의
+   controlling log/task record 기록 분담, candidate result 위치와 result disposition을 확인할 때
+   읽는다.
+6. **Agent Topology and Execution Modes**: inline/delegated, scouting/executing/reviewing 역할과
+   two-anchor review 실체화 여부를 정할 때 읽는다. Package Act overlay의 execution mode와 role
+   판단도 이 절에서 확인한다.
+7. **Fixed Package Skeleton**: controlling package log의 package-only surface를 만들거나 점검할 때
+   읽는다.
+8. **Package Reconcile**: candidate result 수용·기각·부분 수용, contract 변경, Work Item 전이,
+   not-package 반환처럼 package surface와 Base Work state를 함께 맞춰야 할 때 읽는다.
+9. **Package Closeout**: Base Closeout/status 전이 전에 package gate와 blocker를 점검할 때 읽는다.
+
+Phase와 SKILL.md spine의 매핑은 아래가 정본이다.
+
+- **activation preflight** → SKILL `Route / Contract Gate`
+- **provisional bootstrap** → SKILL `재개 정보 복원 또는 Bootstrap`
+- **discovery** → Bootstrap/contract 세팅 국면. delegated scout인 경우만 자기 task record 또는 Full
+  child lifecycle 안에서 독립 mini-loop를 돈다.
+- **controlling synthesis** → Bootstrap/contract 세팅 국면
+- **contract review anchor** → execution `Act` 진입 전 gate
+- **execution** → Package `Act` overlay
+- **result review anchor** → candidate result를 accepted state로 승격해 Reconcile하기 전 gate
+- **result promotion** → Package `Reconcile` overlay
+- **closeout** → Package Closeout gate 후 Base Closeout/Status
 
 ## Identity
 
@@ -65,7 +104,8 @@ Target을 통해 소비되는 결과다. 처음부터 독립 package log로 시�
   log location, current-work 또는 common verification capability가 이 package 실행에 부족하거나
   stale하면 in-package로 고치지 않고 `project-setup.md` audit/update·repair로 보낸다.
 - **Seed**: 초기 Scope와 allowed write-set, Workflow / Agent Plan, Task Index, Evidence,
-  Verification Contract, Closeout Contract를 만들고 첫 review anchor에서 실행 가능성을 검토한다.
+  Verification Contract, Closeout Contract를 만들고 contract review gate에서 execution Act 진입
+  가능성을 검토한다.
 - **Discovery 위임**: discovery worker 위임은 optional이다. delegated scout는 별도 executable
   W/record를 가지며, controlling은 scout 보고를 원문 source에서 재확인한 뒤 contract를 작성한다.
 - **도구 부재 계약**: 필요한 검증 도구·의존이 없거나 추가가 필요하면 임의로 설치·생략하지
@@ -93,8 +133,8 @@ Reconcile한다.
 
 ## State Ownership and Task Contract
 
-- 기존 package log를 재개할 때는 base Enter로 Work state를 복원한 뒤 이 절에서 Package surfaces와
-  Task Index를 복원한다.
+- 기존 package log를 재개할 때는 SKILL.md의 재개 정보 복원 단계에서 Base Work state를 복원한 뒤
+  이 절에서 Package surfaces와 Task Index를 복원한다.
 - Base Work Items와 next pointer만 package 진행·완료 상태를 소유한다. Task Index는 W-id,
   Compact/Full profile, inline/delegated execution mode와 canonical task-record file locator의
   mapping만 소유하고 진행·완료 상태를 복제하지 않는다.
@@ -195,8 +235,9 @@ Target에 결합한다. 실제 물리 위치와 stable key는 project integratio
 
 - `candidate`는 disk가 변경되지 않았다는 뜻이 아니라 보고된 evidence·effect·완료 주장과 변경의
   package-level 정당성이 아직 수용되지 않았다는 뜻이다.
-- controlling은 두 번째 review anchor에서 task record·실제 source·산출물·검증 결과를 재확인한 뒤
-  result 수용을 판정하고 artifact disposition을 같은 의미 동작으로 소유한다.
+- controlling은 result review gate에서 task record·실제 source·산출물·검증 결과를 재확인한 뒤
+  candidate result의 accepted state 승격 여부를 판정하고 artifact disposition을 같은 의미 동작으로
+  소유한다.
 - **전체 수용**: 변경을 유지하고 accepted evidence/effect/action과 package contract 변경으로
   승격한다.
 - **부분 수용**: 변경·claim·verification을 독립적으로 분리할 수 있을 때만 허용하며 수용·기각
@@ -244,9 +285,10 @@ candidate로 판정한다.
 이 문서의 owner·task/result·dependency/isolation invariant에 매핑한다.
 
 **Two-anchor review**: 모든 package는 synthesis 뒤 contract review와 result acceptance 전 result
-review를 항상 수행한다. contract review는 Scope, allowed write-set, Verification Contract, Closeout
-Contract와 관련 Task Brief를, result review는 task record·실제 source·산출물·검증 결과를 대상으로
-한다.
+review를 항상 수행한다. 이는 정적 문서 점검이 아니라 실행 gate다. contract review는 execution Act
+진입 전 Scope, allowed write-set, Verification Contract, Closeout Contract와 관련 Task Brief를
+검토하는 gate이고, result review는 candidate result를 accepted state로 승격해 Reconcile하기 전에
+task record·실제 source·산출물·검증 결과를 검토하는 gate다.
 
 - 낮은 위험은 controlling self-review로 충족한다. 최소 checklist는 Scope/write-set 정합, Verification
   실행 가능성, Closeout criteria 판정 가능성이다.
@@ -268,7 +310,8 @@ Base log의 Work Items, Required Context, History와 status/Closeout 절차는 �
 - **Package Scope** — primary artifact/change boundary와 allowed cross-artifact write-set. 비어 있을
   수 없다. write-set 밖 영향은 `out-of-scope effect`로 기록·확인·이관한다.
 - **Workflow / Agent Plan** — 이 package의 phase, 역할, execution mode, review anchor와 위험 gate
-  계획.
+  계획. 여기 적는 package phase는 [Package Internal Router](#package-internal-router)의 매핑에 따라
+  SKILL spine과 Base loop overlay로 접힌다.
 - **Task Index** — executable W ↔ (Compact/Full profile, inline/delegated mode, canonical task-record
   locator) mapping.
 - **Evidence** — current accepted evidence. Evidence Ledger는 이 surface의 format이다.

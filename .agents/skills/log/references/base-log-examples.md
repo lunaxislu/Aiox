@@ -36,7 +36,7 @@
 .agents/skills/log/scripts/log new "retry-policy" \
   --description "Decide API retry behavior." \
   --block "W1 · retry policy 조사" \
-  --context Global "owner map(docs/documentation-system.md)을 먼저 확인한다." \
+  --context Global "owner map(<owner-map-path>)을 먼저 확인한다." \
   --item active "Compare API responses and retry actions."
 ```
 
@@ -61,7 +61,7 @@ status: open
 
 ### {Global}
 
-- owner map(docs/documentation-system.md)을 먼저 확인한다.
+- owner map(<owner-map-path>)을 먼저 확인한다.
 
 ## 2026-07-03 · W1 · retry policy 조사
 ```

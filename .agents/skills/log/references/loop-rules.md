@@ -1,9 +1,11 @@
 # 로그 작업 규칙
 
-이 문서는 `../SKILL.md`의 작업 루프가 위임하는 상세 판정 규칙을 소유한다. 로그 선택과 최초
-읽기의 top-level 계약은 `../SKILL.md` Enter가 소유하고, 파일 구조·Work Items·Required
-Context·Record·Reconcile·lifetime transition·Closeout/status의 상세 판정은 아래 절이
-소유한다.
+이 문서는 Base log mechanics의 상세 판정 규칙을 소유한다. `../SKILL.md`의 `## 진입`은 작업
+종류 dispatch, 대상 후보 확정, Route / Contract Gate, 재개 정보 복원 또는 Bootstrap을 통해
+기록 계약과 시작 상태를 확정한다. 그 뒤 Base 파일 구조·Work Items·Required
+Context·Record·Reconcile·lifetime transition·Closeout/status의 상세 판정은 아래 절이 소유한다.
+Package 전용 구조와 phase는 `package-log.md`가 소유하며, 이 문서는 Base 규칙을 대체하지 않는
+공통 mechanics만 정의한다.
 
 ## Log File Shape
 
@@ -161,6 +163,10 @@ status: open
 
 ### Log Lifetime Boundary
 
+이 절은 `../SKILL.md`의 Route / Contract Gate에서 기존 후보가 같은 로그 수명인지 판정할 때
+호출되는 Base 판정 owner다. 또한 Base 작업 루프 중 새 행동·unit이 생겼을 때 현재 로그 수명에
+배치할 수 있는지 판정한다.
+
 새 행동이나 unit을 배치할 때 다음을 모두 만족하면 현재 로그 수명 안에서 소유한다.
 
 - 현재 로그의 목적에 포함된다.
@@ -205,6 +211,9 @@ status: open
 #### Record Placement Loop
 
 기록할 checkpoint가 생기면 다음 순서로 위치를 정한다.
+`../SKILL.md`의 Route / Contract Gate에서 이미 같은 로그 수명 안이라고 판정한 뒤 기존 block 재개와
+새 block 생성을 가르기 위해 이 loop를 호출했다면, 아래 2단계의 Log Lifetime Boundary 재적용은
+생략하고 1단계와 3단계만 적용한다.
 
 1. 기존 owning block이 소유하는 unit을 이어가는 기록인가?
    - 후속 판단, 순차 실행 단계, 수행 결과, 정정, 반론, 대체와 결론 변경을 포함한다.
@@ -294,8 +303,8 @@ feedback loop다. 다음 순서로 돈다.
    - **Work state**: 행동, 범위, 완료 조건, marker나 `[>]` next pointer가 바뀌면 Work Items를
      갱신한다. 전이 방법은 아래 `Work Item 전이`가 소유한다.
    - **Required Context**: 기준, 제약, 읽을 자료나 검증 조건이 owning block 밖의 다른 unit이나
-     로그 전체에도 적용되면 해당 scope heading과 context bullet을 갱신하고 `Required Context 품질
-     기준`을 적용한다. 적용 범위가 owning block 안으로 좁아졌거나 다른 결정이 대체한 항목은 같은
+     로그 전체에도 적용되면 해당 scope heading과 context bullet을 갱신하고
+     `Required Context 품질 기준`을 적용한다. 적용 범위가 owning block 안으로 좁아졌거나 다른 결정이 대체한 항목은 같은
      동작에서 내리거나 제거한다.
 2. **cascade를 닫는다.** 한 표면의 변경으로 다른 표면이 stale해졌으면 1단계를 다시 적용한다. 새
    W가 생기면 기존 context 중 새 W에도 적용할 것이 있는지 확인하고, label 대상 bullet이 바뀌면

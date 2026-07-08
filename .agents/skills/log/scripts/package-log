@@ -1,0 +1,1000 @@
+#!/bin/sh
+# Package log helper.
+#
+# This tool creates and checks package-log structure. It does not decide
+# activation, result disposition, or closeout.
+
+LOG_DIR="${LOG_DIR:-logs}"
+LOG_TODAY="${LOG_TODAY:-}"
+PACKAGE_LOG_TASKS_ROOT="${PACKAGE_LOG_TASKS_ROOT:-logs/packages}"
+BASE_LOG_SCRIPT="${BASE_LOG_SCRIPT:-$(CDPATH= cd "$(dirname "$0")" && pwd)/log}"
+
+today_date() {
+    if [ -n "$LOG_TODAY" ]; then
+        printf '%s' "$LOG_TODAY"
+    else
+        date +%Y-%m-%d
+    fi
+}
+
+usage() {
+    cat <<'EOF'
+사용법:
+  package-log controlling new --topic <topic> --description <description> --scope <primary-boundary>
+      [--related <artifact>]... [--stable-key <key>] [--block <bootstrap-topic>]
+  package-log controlling detach <source-log> --id Wn --topic <topic> --description <description>
+      --scope <primary-boundary> [--target <path>] [--reason <reason>]
+      [--consume <condition>] [--snapshot <snapshot>] [--related <artifact>]...
+      [--stable-key <key>] [--block <bootstrap-topic>]
+  package-log task new <controlling-log> --id Wn (--record <path>|--auto-record) --mode inline|delegated --task <task>
+  package-log index add <controlling-log> --id Wn --record <path> --profile compact|full --mode inline|delegated
+  package-log check <controlling-log>
+
+주의:
+  이 도구는 이미 package로 판정된 작업의 구조만 생성·검사합니다.
+  activation, result 수용/기각, closeout 의미 판단은 agent와 사용자가 수행합니다.
+EOF
+}
+
+contains_newline() {
+    case "$1" in
+        *"
+"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_blank() {
+    case "$1" in
+        *[![:blank:]]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+require_line() {
+    label=$1
+    value=$2
+    if contains_newline "$value" || is_blank "$value"; then
+        echo "$label 값은 공백이 아닌 한 줄이어야 합니다." >&2
+        return 1
+    fi
+}
+
+require_plain_table_text() {
+    label=$1
+    value=$2
+    require_line "$label" "$value" || return 1
+    tab=$(printf '\t')
+    case "$value" in
+        *"|"*|*"\\"*|*"$tab"*)
+            echo "$label 값에는 pipe(|), tab, backslash(\\)를 사용할 수 없습니다." >&2
+            return 1
+            ;;
+    esac
+}
+
+valid_wid() {
+    printf '%s\n' "$1" | grep -qE '^W[1-9][0-9]*(\.[0-9]+)?(-[0-9]+)?$'
+}
+
+valid_mode() {
+    case "$1" in inline|delegated) return 0 ;; *) return 1 ;; esac
+}
+
+valid_profile() {
+    case "$1" in compact|full|Compact|Full) return 0 ;; *) return 1 ;; esac
+}
+
+canonical_profile() {
+    case "$1" in
+        compact|Compact) printf 'Compact' ;;
+        full|Full) printf 'Full' ;;
+    esac
+}
+
+canonical_mode() {
+    case "$1" in
+        inline) printf 'inline' ;;
+        delegated) printf 'delegated' ;;
+    esac
+}
+
+slugify() {
+    slug=$(printf '%s' "$1" | sed 's/[[:space:]]\{1,\}/-/g')
+    slug=$(printf '%s' "$slug" | sed 's#[/\\:*?"<>|]##g')
+    slug=$(printf '%s' "$slug" | sed 's/-\{2,\}/-/g')
+    slug=$(printf '%s' "$slug" | sed 's/^-*//; s/-*$//')
+    slug=$(printf '%s' "$slug" | awk -F- '{
+        out = ""; n = (NF < 6 ? NF : 6)
+        for (i = 1; i <= n; i++) { if (out == "") out = $i; else out = out "-" $i }
+        print out
+    }')
+    [ -n "$slug" ] || slug=$(date +%s)
+    printf '%s' "$slug"
+}
+
+read_field() {
+    awk -v key="$2" '
+        BEGIN { infm = 0 }
+        NR == 1 && $0 == "---" { infm = 1; next }
+        infm == 1 && $0 == "---" { exit }
+        infm == 1 {
+            prefix = key ": "
+            if (substr($0, 1, length(prefix)) == prefix) {
+                print substr($0, length(prefix) + 1)
+                exit
+            }
+            if ($0 == key ":") { print ""; exit }
+        }
+    ' "$1"
+}
+
+emit_controlling_log() {
+    topic=$1
+    description=$2
+    scope=$3
+    stable_key=$4
+    block=$5
+    related_file=$6
+    return_log=${7:-}
+    return_id=${8:-}
+    return_consume=${9:-}
+    return_snapshot=${10:-}
+
+    printf '%s\n' "---"
+    printf 'topic: %s\n' "$topic"
+    printf 'description: %s\n' "$description"
+    printf 'status: open\n'
+    printf '%s\n' "---"
+    printf '\n'
+    printf '## Work Items\n'
+    printf '\n'
+    printf '## Required Context\n'
+    printf '\n'
+    printf '### Return Target\n'
+    printf '\n'
+    if [ -n "$return_log" ]; then
+        printf -- '- Log: `%s`\n' "$return_log"
+        printf -- '- Work Item: %s\n' "$return_id"
+        printf -- '- Consume when: %s\n' "$return_consume"
+        printf -- '- Context snapshot: %s\n' "$return_snapshot"
+    else
+        printf -- '- None: independent package log.\n'
+    fi
+    printf '\n'
+    printf '### {Global}\n'
+    printf '\n'
+    printf -- '- Package contract: `.agents/skills/log/references/package-log.md`.\n'
+    printf -- '- Base loop contract: `.agents/skills/log/references/loop-rules.md`.\n'
+    printf -- '- Repo integration: `logs/AGENTS.md#Package Log Repository Integration`.\n'
+    printf '\n'
+    printf '## Package Scope\n'
+    printf '\n'
+    printf -- '- Revision: 1; History pointer: `%s · %s`.\n' "$(today_date)" "$block"
+    printf -- '- Primary boundary: %s\n' "$scope"
+    printf -- '- Related artifacts in allowed write-set:\n'
+    if [ -s "$related_file" ]; then
+        sed 's/^/- /' "$related_file"
+    else
+        printf -- '- TBD: discovery must identify related artifacts before execution.\n'
+    fi
+    printf -- '- Excluded:\n'
+    printf -- '  - N/A.\n'
+    printf '\n'
+    printf '## Workflow / Agent Plan\n'
+    printf '\n'
+    printf -- '- Phase: activation preflight -> provisional bootstrap -> discovery -> controlling synthesis -> contract review -> execution -> result review -> result promotion/Reconcile -> closeout.\n'
+    printf -- '- Execution default: TBD.\n'
+    printf -- '- Review anchors:\n'
+    printf -- '  - Contract review: before execution Act.\n'
+    printf -- '  - Result review: before candidate result promotion/Reconcile.\n'
+    printf -- '- Risk gate / Independent reviewer:\n'
+    printf -- '  - N/A.\n'
+    printf -- '  - Activate when: large claim, public contract/security/data/release, irreversible external effect, multi-owner conflict, large blast radius, or low discovery confidence is present.\n'
+    printf '\n'
+    printf '## Task Index\n'
+    printf '\n'
+    printf -- '- Stable package key: %s\n' "$stable_key"
+    printf '\n'
+    printf '| W-id | Profile | Mode | Task record |\n'
+    printf '| --- | --- | --- | --- |\n'
+    printf '\n'
+    printf '## Evidence\n'
+    printf '\n'
+    printf -- '- Current accepted evidence:\n'
+    printf -- '  - None yet: discovery pending.\n'
+    printf -- '- Evidence gaps:\n'
+    printf -- '  - TBD.\n'
+    printf '\n'
+    printf '## Cross-Artifact Effects\n'
+    printf '\n'
+    printf -- '- N/A.\n'
+    printf -- '- Reason: no accepted cross-artifact effect recorded yet.\n'
+    printf -- '- Activate when: primary changes affect related artifacts or out-of-scope artifacts.\n'
+    printf '\n'
+    printf '## Decision Candidates\n'
+    printf '\n'
+    printf -- '- N/A.\n'
+    printf -- '- Reason: no decision candidate recorded yet.\n'
+    printf -- '- Activate when: decision-worthy rationale or competing options appear.\n'
+    printf '\n'
+    printf '## Verification Contract\n'
+    printf '\n'
+    printf -- '- Revision: 1; History pointer: `%s · %s`.\n' "$(today_date)" "$block"
+    printf -- '- Required:\n'
+    printf -- '  - TBD.\n'
+    printf -- '- Recommended:\n'
+    printf -- '  - N/A.\n'
+    printf -- '- Unavailable/waived:\n'
+    printf -- '  - None at bootstrap.\n'
+    printf '\n'
+    printf '## Closeout Contract\n'
+    printf '\n'
+    printf -- '- Revision: 1; History pointer: `%s · %s`.\n' "$(today_date)" "$block"
+    printf -- '- Criteria:\n'
+    printf -- '  - TBD: replace or extend this line with package-specific closeout criteria before execution closeout.\n'
+    printf -- '  - Registry Integrity Check passes.\n'
+    printf -- '  - Result Consumption Gate passes for every executable W.\n'
+    printf -- '  - Required verification passed or has an explicit waiver with residual risk.\n'
+    printf -- '  - Accepted package state matches actual artifact disposition.\n'
+    printf '\n'
+    printf '## %s · %s\n' "$(today_date)" "$block"
+    printf '\n'
+    printf -- '- Controlling package log skeleton created. Activation was already decided by the agent/user; this tool did not decide activation.\n'
+}
+
+cmd_controlling_new() {
+    topic=""
+    description=""
+    scope=""
+    stable_key=""
+    block="controlling bootstrap"
+    related_tmp=$(mktemp 2>/dev/null) || return 1
+    : > "$related_tmp"
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --topic) shift; topic=${1:-}; shift || true ;;
+            --description) shift; description=${1:-}; shift || true ;;
+            --scope) shift; scope=${1:-}; shift || true ;;
+            --related) shift; related=${1:-}; shift || true; require_plain_table_text "related" "$related" || { rm -f "$related_tmp"; return 1; }; printf '%s\n' "$related" >> "$related_tmp" ;;
+            --stable-key) shift; stable_key=${1:-}; shift || true ;;
+            --block) shift; block=${1:-}; shift || true ;;
+            *) echo "알 수 없는 controlling new 옵션입니다: $1" >&2; rm -f "$related_tmp"; return 1 ;;
+        esac
+    done
+
+    require_line "topic" "$topic" || { rm -f "$related_tmp"; return 1; }
+    require_line "description" "$description" || { rm -f "$related_tmp"; return 1; }
+    require_line "scope" "$scope" || { rm -f "$related_tmp"; return 1; }
+    require_line "block" "$block" || { rm -f "$related_tmp"; return 1; }
+
+    mkdir -p "$LOG_DIR" || { rm -f "$related_tmp"; return 1; }
+    base="$LOG_DIR/$(today_date)-$(slugify "$topic")"
+    file="$base.md"
+    n=2
+    while [ -e "$file" ]; do file="$base-$n.md"; n=$((n + 1)); done
+    stem=$(basename "$file" .md)
+    if [ -z "$stable_key" ]; then
+        stable_key=$stem
+    fi
+    require_line "stable-key" "$stable_key" || { rm -f "$related_tmp"; return 1; }
+
+    tmp_file=$(mktemp "$LOG_DIR/.package-log-new.XXXXXX" 2>/dev/null) || { rm -f "$related_tmp"; return 1; }
+    emit_controlling_log "$topic" "$description" "$scope" "$stable_key" "$block" "$related_tmp" > "$tmp_file"
+    if ! mv "$tmp_file" "$file"; then
+        echo "controlling package log 생성에 실패했습니다: $file" >&2
+        rm -f "$related_tmp" "$tmp_file"
+        return 1
+    fi
+    rm -f "$related_tmp"
+    printf '%s\n' "$file"
+}
+
+auto_controlling_path() {
+    topic=$1
+    mkdir -p "$LOG_DIR" || return 1
+    base="$LOG_DIR/$(today_date)-$(slugify "$topic")"
+    file="$base.md"
+    n=2
+    while [ -e "$file" ]; do file="$base-$n.md"; n=$((n + 1)); done
+    printf '%s\n' "$file"
+}
+
+restore_source_or_warn() {
+    snapshot=$1
+    source=$2
+    target=$3
+    if cp "$snapshot" "$source" 2>/dev/null; then
+        return 0
+    fi
+    echo "ERROR rollback: source 로그 복원에 실패했습니다: $source" >&2
+    echo "ERROR rollback: source Work Item이 detached 상태로 남았을 수 있습니다. target을 보존합니다: $target" >&2
+    return 1
+}
+
+cmd_controlling_detach() {
+    source=$1
+    shift || true
+    [ -f "$source" ] || { echo "source 로그가 없습니다: $source" >&2; return 1; }
+    id=""; topic=""; description=""; scope=""; target=""; reason=""
+    consume="package result consumed by source Work Item"
+    snapshot="source Work Item package detach context"
+    stable_key=""
+    block="controlling bootstrap"
+    related_tmp=$(mktemp 2>/dev/null) || return 1
+    : > "$related_tmp"
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --id) shift; id=${1:-}; shift || true ;;
+            --topic) shift; topic=${1:-}; shift || true ;;
+            --description) shift; description=${1:-}; shift || true ;;
+            --scope) shift; scope=${1:-}; shift || true ;;
+            --target) shift; target=${1:-}; shift || true ;;
+            --reason) shift; reason=${1:-}; shift || true ;;
+            --consume) shift; consume=${1:-}; shift || true ;;
+            --snapshot) shift; snapshot=${1:-}; shift || true ;;
+            --related) shift; related=${1:-}; shift || true; require_plain_table_text "related" "$related" || { rm -f "$related_tmp"; return 1; }; printf '%s\n' "$related" >> "$related_tmp" ;;
+            --stable-key) shift; stable_key=${1:-}; shift || true ;;
+            --block) shift; block=${1:-}; shift || true ;;
+            *) echo "알 수 없는 controlling detach 옵션입니다: $1" >&2; rm -f "$related_tmp"; return 1 ;;
+        esac
+    done
+
+    valid_wid "$id" || { echo "--id는 Wn 형식이어야 합니다." >&2; rm -f "$related_tmp"; return 1; }
+    require_line "topic" "$topic" || { rm -f "$related_tmp"; return 1; }
+    require_line "description" "$description" || { rm -f "$related_tmp"; return 1; }
+    require_line "scope" "$scope" || { rm -f "$related_tmp"; return 1; }
+    require_line "reason" "${reason:-package controlling log detach}" || { rm -f "$related_tmp"; return 1; }
+    require_line "consume" "$consume" || { rm -f "$related_tmp"; return 1; }
+    require_line "snapshot" "$snapshot" || { rm -f "$related_tmp"; return 1; }
+    require_line "block" "$block" || { rm -f "$related_tmp"; return 1; }
+    if [ -z "$reason" ]; then
+        reason="package controlling log detach"
+    fi
+    if [ -z "$target" ]; then
+        target=$(auto_controlling_path "$topic") || { rm -f "$related_tmp"; return 1; }
+    fi
+    require_line "target" "$target" || { rm -f "$related_tmp"; return 1; }
+    target_dir=$(dirname "$target")
+    [ -d "$target_dir" ] || { echo "target directory가 없습니다: $target_dir" >&2; rm -f "$related_tmp"; return 1; }
+    [ ! -e "$target" ] || { echo "target 로그가 이미 있습니다: $target" >&2; rm -f "$related_tmp"; return 1; }
+
+    stem=$(basename "$target" .md)
+    if [ -z "$stable_key" ]; then
+        stable_key=$stem
+    fi
+    require_line "stable-key" "$stable_key" || { rm -f "$related_tmp"; return 1; }
+
+    source_snap=$(mktemp 2>/dev/null) || { rm -f "$related_tmp"; return 1; }
+    cp "$source" "$source_snap" || { rm -f "$related_tmp" "$source_snap"; return 1; }
+    body_tmp=$(mktemp 2>/dev/null) || { rm -f "$related_tmp" "$source_snap"; return 1; }
+    printf -- '- Package controlling log skeleton will replace this temporary detach target.\n' > "$body_tmp"
+    if ! "$BASE_LOG_SCRIPT" detach "$source" --id "$id" --target "$target" --reason "$reason" \
+        --topic "$topic" --description "$description" --block "$block" \
+        --context ReturnTarget "$consume" "$snapshot" < "$body_tmp" >/dev/null; then
+        rm -f "$related_tmp" "$source_snap" "$body_tmp"
+        return 1
+    fi
+
+    tmp_target=$(mktemp "$target_dir/.package-log-detach.XXXXXX" 2>/dev/null) || {
+        if restore_source_or_warn "$source_snap" "$source" "$target"; then
+            rm -f "$target"
+        fi
+        rm -f "$related_tmp" "$source_snap" "$body_tmp"
+        return 1
+    }
+    emit_controlling_log "$topic" "$description" "$scope" "$stable_key" "$block" "$related_tmp" "$source" "$id" "$consume" "$snapshot" > "$tmp_target"
+    if ! mv "$tmp_target" "$target"; then
+        echo "controlling package log 생성에 실패했습니다: $target" >&2
+        if restore_source_or_warn "$source_snap" "$source" "$target"; then
+            rm -f "$target"
+        fi
+        rm -f "$tmp_target" "$related_tmp" "$source_snap" "$body_tmp"
+        return 1
+    fi
+    rm -f "$related_tmp" "$source_snap" "$body_tmp"
+    printf '%s\n' "$target"
+}
+
+stable_key_of() {
+    awk '
+        /^##[[:space:]]+Task Index[[:space:]]*$/ { in_ti = 1; next }
+        in_ti && /^##[[:space:]]+/ { in_ti = 0 }
+        in_ti && /^-[[:space:]]+Stable package key:[[:space:]]*/ {
+            value = $0
+            sub(/^-[[:space:]]+Stable package key:[[:space:]]*/, "", value)
+            print value
+            exit
+        }
+    ' "$1"
+}
+
+task_index_has_id() {
+    awk -v id="$2" '
+        /^##[[:space:]]+Task Index[[:space:]]*$/ { in_ti = 1; next }
+        in_ti && /^##[[:space:]]+/ { in_ti = 0 }
+        in_ti && /^\|[[:space:]]*W[0-9]/ {
+            value = $0
+            sub(/^\|[[:space:]]*/, "", value)
+            sub(/[[:space:]]*\|.*$/, "", value)
+            if (value == id) found = 1
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$1"
+}
+
+task_index_rows() {
+    awk '
+        /^##[[:space:]]+Task Index[[:space:]]*$/ { in_ti = 1; next }
+        in_ti && /^##[[:space:]]+/ { in_ti = 0 }
+        in_ti && /^\|[[:space:]]*W[0-9]/ { print }
+    ' "$1"
+}
+
+extract_work_item_ids() {
+    awk '
+        /^##[[:space:]]+Work Items[[:space:]]*$/ { in_wi = 1; next }
+        in_wi && /^##[[:space:]]+/ { in_wi = 0 }
+        in_wi && $0 ~ /^-[[:space:]]+\[[^]]+\][[:space:]]+W[0-9]+(\.[0-9]+)?(-[0-9]+)?[[:space:]]+/ {
+            line = $0
+            sub(/^-[[:space:]]+\[[^]]+\][[:space:]]+/, "", line)
+            sub(/[[:space:]].*$/, "", line)
+            print line
+        }
+    ' "$1"
+}
+
+work_item_has_id() {
+    extract_work_item_ids "$1" | grep -qx "$2"
+}
+
+task_index_has_record() {
+    awk -F'|' -v record="$2" '
+        /^##[[:space:]]+Task Index[[:space:]]*$/ { in_ti = 1; next }
+        in_ti && /^##[[:space:]]+/ { in_ti = 0 }
+        in_ti && /^\|[[:space:]]*W[0-9]/ {
+            value = $5
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            gsub(/^`|`$/, "", value)
+            if (value == record) found = 1
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$1"
+}
+
+task_index_insert_result() {
+    file=$1
+    id=$2
+    profile=$3
+    mode=$4
+    record=$5
+    awk -v id="$id" -v profile="$profile" -v mode="$mode" -v record="$record" '
+        BEGIN { in_ti = 0; inserted = 0; row = "| " id " | " profile " | " mode " | `" record "` |" }
+        /^##[[:space:]]+Task Index[[:space:]]*$/ { in_ti = 1; print; next }
+        in_ti && inserted == 0 && /^##[[:space:]]+/ {
+            if (saw_table) {
+                print row
+                print ""
+                inserted = 1
+            }
+            in_ti = 0
+            print
+            next
+        }
+        in_ti && /^\|[[:space:]]*W-id[[:space:]]*\|/ {
+            saw_table = 1
+            print
+            next
+        }
+        in_ti && /^\|[[:space:]]*---[[:space:]]*\|/ {
+            saw_table = 1
+            print
+            print row
+            inserted = 1
+            next
+        }
+        in_ti && inserted == 0 && saw_table && /^\|[[:space:]]*W[0-9]/ {
+            print row
+            inserted = 1
+            print
+            next
+        }
+        { print }
+        END {
+            if (inserted == 0) exit 2
+        }
+    ' "$file"
+}
+
+work_item_insert_result() {
+    file=$1
+    id=$2
+    task=$3
+    awk -v id="$id" -v task="$task" '
+        BEGIN { in_wi = 0; inserted = 0; row = "- [ ] " id " " task }
+        /^##[[:space:]]+Work Items[[:space:]]*$/ { in_wi = 1; print; next }
+        in_wi && inserted == 0 && /^##[[:space:]]+/ {
+            print row
+            print ""
+            inserted = 1
+            in_wi = 0
+            print
+            next
+        }
+        in_wi && inserted == 0 && /^$/ {
+            print row
+            print
+            inserted = 1
+            next
+        }
+        { print }
+        END {
+            if (inserted == 0) exit 2
+        }
+    ' "$file"
+}
+
+insert_work_item_row() {
+    file=$1
+    id=$2
+    task=$3
+    work_item_has_id "$file" "$id" && return 0
+    dir=$(dirname "$file")
+    out=$(mktemp "$dir/.package-log-item.XXXXXX" 2>/dev/null) || return 1
+    snap=$(mktemp 2>/dev/null) || { rm -f "$out"; return 1; }
+    cp "$file" "$snap" || { rm -f "$out" "$snap"; return 1; }
+    if ! work_item_insert_result "$file" "$id" "$task" > "$out"; then
+        echo "Work Item row 삽입에 실패했습니다: $file" >&2
+        rm -f "$out" "$snap"
+        return 1
+    fi
+    if atomic_replace_from "$file" "$out" "$snap"; then
+        rm -f "$snap"
+        return 0
+    fi
+    rm -f "$out" "$snap"
+    return 1
+}
+
+atomic_replace_from() {
+    file=$1
+    out=$2
+    snapshot=$3
+    if ! cmp -s "$file" "$snapshot"; then
+        echo "원본이 처리 중에 바뀌었습니다(동시 수정 감지). 적용하지 않습니다: $file" >&2
+        return 1
+    fi
+    mv "$out" "$file"
+}
+
+insert_task_index_row() {
+    file=$1
+    id=$2
+    profile=$3
+    mode=$4
+    record=$5
+    task_index_has_id "$file" "$id" && { echo "Task Index에 이미 등록된 W-id입니다: $id" >&2; return 1; }
+    task_index_has_record "$file" "$record" && { echo "Task Index에 이미 등록된 record입니다: $record" >&2; return 1; }
+    dir=$(dirname "$file")
+    out=$(mktemp "$dir/.package-log-index.XXXXXX" 2>/dev/null) || return 1
+    snap=$(mktemp 2>/dev/null) || { rm -f "$out"; return 1; }
+    cp "$file" "$snap" || { rm -f "$out" "$snap"; return 1; }
+    if ! task_index_insert_result "$file" "$id" "$profile" "$mode" "$record" > "$out"; then
+        echo "Task Index row 삽입에 실패했습니다: $file" >&2
+        rm -f "$out" "$snap"
+        return 1
+    fi
+    if atomic_replace_from "$file" "$out" "$snap"; then
+        rm -f "$snap"
+        return 0
+    fi
+    rm -f "$out" "$snap"
+    return 1
+}
+
+emit_task_record() {
+    controlling=$1
+    id=$2
+    profile=$3
+    mode=$4
+    task=$5
+    package_name=$(basename "$controlling" .md)
+    printf '# Task Record — %s %s\n' "$package_name" "$id"
+    printf '\n'
+    printf '## Identity\n'
+    printf '\n'
+    printf -- '- Controlling log: %s\n' "$controlling"
+    printf -- '- Package W-id: %s\n' "$id"
+    printf -- '- Profile: %s\n' "$profile"
+    printf -- '- Execution mode: %s\n' "$mode"
+    printf '\n'
+    printf '## Task Brief <!-- 현재 유효 계약. revision 1 -->\n'
+    printf '\n'
+    printf -- '- Revision: 1 (created by package-log task new/index source validation).\n'
+    printf -- '- Objective: %s\n' "$task"
+    printf -- '- Scope / Excluded / Allowed write-set:\n'
+    printf -- '- Required reads:\n'
+    printf -- '- Predecessor / candidate dependency, expected baseline·isolation:\n'
+    printf -- '- Completion / verification / review / escalation / result-consumer 계약:\n'
+    printf '\n'
+    printf '## Task History <!-- append-only -->\n'
+    printf '\n'
+    printf -- '- Brief revision 1 created.\n'
+    printf '\n'
+    printf '## Result / Verification\n'
+    printf '\n'
+    printf -- '- W-id · Brief revision · Attempt:\n'
+    printf -- '- Changed artifacts / 완료 조건별 결과:\n'
+    printf -- '- Verification:\n'
+    printf -- '- Candidate evidence / effect / decision:\n'
+    printf -- '- Actual candidate dependency:\n'
+    printf -- '- Residual risk / downstream dependency · revalidation:\n'
+    printf -- '- Digest + controlling disposition pointer:\n'
+}
+
+read_identity_value() {
+    file=$1
+    label=$2
+    raw=$(awk -v label="$label" '
+        /^##[[:space:]]+Identity[[:space:]]*$/ { in_id = 1; next }
+        in_id && /^##[[:space:]]+/ { exit }
+        in_id {
+            prefix = "- " label ": "
+            if (substr($0, 1, length(prefix)) == prefix) {
+                print substr($0, length(prefix) + 1)
+                exit
+            }
+        }
+    ' "$file")
+    unbacktick "$raw"
+}
+
+validate_identity() {
+    record=$1
+    controlling=$2
+    id=$3
+    profile=$4
+    mode=$5
+    v_rc=0
+    [ -f "$record" ] || { echo "record 파일이 없습니다: $record" >&2; return 1; }
+    actual_control=$(read_identity_value "$record" "Controlling log")
+    actual_id=$(read_identity_value "$record" "Package W-id")
+    actual_profile=$(read_identity_value "$record" "Profile")
+    actual_mode=$(read_identity_value "$record" "Execution mode")
+    [ "$actual_control" = "$controlling" ] || { echo "Identity controlling log 불일치: $record ($actual_control != $controlling)" >&2; v_rc=1; }
+    [ "$actual_id" = "$id" ] || { echo "Identity W-id 불일치: $record ($actual_id != $id)" >&2; v_rc=1; }
+    [ "$actual_profile" = "$profile" ] || { echo "Identity profile 불일치: $record ($actual_profile != $profile)" >&2; v_rc=1; }
+    [ "$actual_mode" = "$mode" ] || { echo "Identity mode 불일치: $record ($actual_mode != $mode)" >&2; v_rc=1; }
+    return "$v_rc"
+}
+
+cmd_task_new() {
+    controlling=$1
+    shift || true
+    [ -f "$controlling" ] || { echo "controlling log 파일이 없습니다: $controlling" >&2; return 1; }
+    id=""; record=""; auto_record=0; mode=""; task=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --id) shift; id=${1:-}; shift || true ;;
+            --record) shift; record=${1:-}; shift || true ;;
+            --auto-record) shift; auto_record=1 ;;
+            --mode) shift; mode=${1:-}; shift || true ;;
+            --task) shift; task=${1:-}; shift || true ;;
+            --profile) echo "task new는 Compact 전용입니다. --profile을 받지 않습니다." >&2; return 1 ;;
+            *) echo "알 수 없는 task new 옵션입니다: $1" >&2; return 1 ;;
+        esac
+    done
+    valid_wid "$id" || { echo "W-id 형식이 잘못됐습니다: $id" >&2; return 1; }
+    if [ "$auto_record" -eq 1 ] && [ -n "$record" ]; then
+        echo "--record와 --auto-record는 함께 사용할 수 없습니다." >&2
+        return 1
+    fi
+    if [ "$auto_record" -eq 1 ]; then
+        record=$(expected_compact_record "$controlling" "$id") || {
+            echo "Task Index에 Stable package key 선언이 없습니다." >&2
+            return 1
+        }
+    fi
+    require_plain_table_text "record" "$record" || return 1
+    valid_mode "$mode" || { echo "mode는 inline 또는 delegated여야 합니다: $mode" >&2; return 1; }
+    require_plain_table_text "task" "$task" || return 1
+    validate_compact_record_path "$controlling" "$id" "$record" || return 1
+    [ ! -e "$record" ] || { echo "record가 이미 존재합니다: $record" >&2; return 1; }
+    task_index_has_id "$controlling" "$id" && { echo "Task Index에 이미 등록된 W-id입니다: $id" >&2; return 1; }
+
+    control_snap=$(mktemp 2>/dev/null) || return 1
+    cp "$controlling" "$control_snap" || { rm -f "$control_snap"; return 1; }
+    if ! insert_work_item_row "$controlling" "$id" "$task"; then
+        cp "$control_snap" "$controlling" 2>/dev/null || true
+        rm -f "$control_snap"
+        return 1
+    fi
+    if ! mkdir -p "$(dirname "$record")"; then
+        cp "$control_snap" "$controlling" 2>/dev/null || true
+        rm -f "$control_snap"
+        return 1
+    fi
+    if ! tmp_record=$(mktemp "$(dirname "$record")/.package-task.XXXXXX" 2>/dev/null); then
+        cp "$control_snap" "$controlling" 2>/dev/null || true
+        rm -f "$control_snap"
+        return 1
+    fi
+    emit_task_record "$controlling" "$id" "Compact" "$mode" "$task" > "$tmp_record"
+    if ! mv "$tmp_record" "$record"; then
+        echo "task record 생성에 실패했습니다: $record" >&2
+        rm -f "$tmp_record"
+        cp "$control_snap" "$controlling" 2>/dev/null || true
+        rm -f "$control_snap"
+        return 1
+    fi
+    if ! insert_task_index_row "$controlling" "$id" "Compact" "$mode" "$record"; then
+        rm -f "$record"
+        cp "$control_snap" "$controlling" 2>/dev/null || true
+        rm -f "$control_snap"
+        return 1
+    fi
+    rm -f "$control_snap"
+    printf '%s\n' "$record"
+}
+
+cmd_index_add() {
+    controlling=$1
+    shift || true
+    [ -f "$controlling" ] || { echo "controlling log 파일이 없습니다: $controlling" >&2; return 1; }
+    id=""; record=""; profile=""; mode=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --id) shift; id=${1:-}; shift || true ;;
+            --record) shift; record=${1:-}; shift || true ;;
+            --profile) shift; profile=${1:-}; shift || true ;;
+            --mode) shift; mode=${1:-}; shift || true ;;
+            *) echo "알 수 없는 index add 옵션입니다: $1" >&2; return 1 ;;
+        esac
+    done
+    valid_wid "$id" || { echo "W-id 형식이 잘못됐습니다: $id" >&2; return 1; }
+    require_plain_table_text "record" "$record" || return 1
+    valid_profile "$profile" || { echo "profile은 compact 또는 full이어야 합니다: $profile" >&2; return 1; }
+    valid_mode "$mode" || { echo "mode는 inline 또는 delegated여야 합니다: $mode" >&2; return 1; }
+    profile=$(canonical_profile "$profile")
+    mode=$(canonical_mode "$mode")
+    work_item_has_id "$controlling" "$id" || { echo "Work Items에 없는 W-id입니다: $id" >&2; return 1; }
+    case "$profile" in
+        Compact) validate_compact_record_path "$controlling" "$id" "$record" || return 1 ;;
+    esac
+    validate_identity "$record" "$controlling" "$id" "$profile" "$mode" || return 1
+    case "$profile" in
+        Full) validate_full_record "$record" "$controlling" "$id" || return 1 ;;
+    esac
+    insert_task_index_row "$controlling" "$id" "$profile" "$mode" "$record"
+}
+
+unbacktick() {
+    value=$1
+    value=$(printf '%s' "$value" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^`//; s/`$//')
+    printf '%s' "$value"
+}
+
+locator_path() {
+    case "$1" in
+        "$PWD"/*) printf '%s\n' "${1#$PWD/}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
+expected_compact_record() {
+    controlling=$1
+    id=$2
+    stable_key=$(stable_key_of "$controlling")
+    [ -n "$stable_key" ] || return 1
+    printf '%s/%s/tasks/%s.md\n' "$PACKAGE_LOG_TASKS_ROOT" "$stable_key" "$id"
+}
+
+validate_compact_record_path() {
+    controlling=$1
+    id=$2
+    record=$3
+    expected=$(expected_compact_record "$controlling" "$id") || {
+        echo "Task Index에 Stable package key 선언이 없습니다." >&2
+        return 1
+    }
+    [ "$record" = "$expected" ] || {
+        echo "Compact record path가 canonical path와 다릅니다: $record (expected: $expected)" >&2
+        return 1
+    }
+}
+
+validate_full_record() {
+    record=$1
+    controlling=$2
+    id=$3
+    if ! "$BASE_LOG_SCRIPT" check "$record" >/dev/null 2>&1; then
+        echo "Full child log check 실패: $record" >&2
+        return 1
+    fi
+    awk -v control="$controlling" -v id="$id" '
+        /^###[[:space:]]+Return Target[[:space:]]*$/ { in_rt = 1; next }
+        in_rt && /^###/ { in_rt = 0 }
+        in_rt && /^-[[:space:]]+Log:[[:space:]]*/ {
+            v=$0; sub(/^- Log:[[:space:]]*/, "", v); gsub(/^`|`$/, "", v); got_log=v
+        }
+        in_rt && /^-[[:space:]]+Work Item:[[:space:]]*/ {
+            v=$0; sub(/^- Work Item:[[:space:]]*/, "", v); got_id=v
+        }
+        END { exit(got_log == control && got_id == id ? 0 : 1) }
+    ' "$record" || {
+        echo "Full child Return Target이 controlling log와 W-id를 가리키지 않습니다: $record" >&2
+        return 1
+    }
+}
+
+cmd_check() {
+    controlling=$1
+    [ -f "$controlling" ] || { echo "controlling log 파일이 없습니다: $controlling" >&2; return 1; }
+    stable_key=$(stable_key_of "$controlling")
+    rc=0
+    if [ -z "$stable_key" ]; then
+        echo "ERROR stable-key: Task Index에 Stable package key 선언이 없습니다"
+        rc=1
+    else
+        echo "OK stable-key: $stable_key"
+    fi
+
+    wi_tmp=$(mktemp 2>/dev/null) || return 1
+    idx_tmp=$(mktemp 2>/dev/null) || { rm -f "$wi_tmp"; return 1; }
+    extract_work_item_ids "$controlling" | sort > "$wi_tmp"
+    task_index_rows "$controlling" | awk -F'|' '
+        {
+            id=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", id)
+            profile=$3; gsub(/^[[:space:]]+|[[:space:]]+$/, "", profile)
+            mode=$4; gsub(/^[[:space:]]+|[[:space:]]+$/, "", mode)
+            record=$5; gsub(/^[[:space:]]+|[[:space:]]+$/, "", record); gsub(/^`|`$/, "", record)
+            print id "\t" profile "\t" mode "\t" record
+        }
+    ' | sort > "$idx_tmp"
+
+    cut -f1 "$idx_tmp" > "$idx_tmp.ids"
+    if diff_out=$(comm -23 "$wi_tmp" "$idx_tmp.ids"); [ -n "$diff_out" ]; then
+        printf '%s\n' "$diff_out" | while IFS= read -r id; do [ -n "$id" ] && echo "ERROR task-index: Work Item $id has no Task Index entry"; done
+        rc=1
+    fi
+    if extra_out=$(comm -13 "$wi_tmp" "$idx_tmp.ids"); [ -n "$extra_out" ]; then
+        printf '%s\n' "$extra_out" | while IFS= read -r id; do [ -n "$id" ] && echo "ERROR task-index: Task Index entry $id has no Work Item"; done
+        rc=1
+    fi
+    if dup_ids=$(sort "$idx_tmp.ids" | uniq -d); [ -n "$dup_ids" ]; then
+        printf '%s\n' "$dup_ids" | while IFS= read -r id; do [ -n "$id" ] && echo "ERROR task-index: duplicate Task Index entry for $id"; done
+        rc=1
+    fi
+
+    compact_expected=$(mktemp 2>/dev/null) || { rm -f "$wi_tmp" "$idx_tmp" "$idx_tmp.ids"; return 1; }
+    full_expected=$(mktemp 2>/dev/null) || { rm -f "$wi_tmp" "$idx_tmp" "$idx_tmp.ids" "$compact_expected"; return 1; }
+    while IFS="$(printf '\t')" read -r id profile mode record; do
+        [ -n "$id" ] || continue
+        if [ ! -f "$record" ]; then
+            echo "ERROR dangling: Task Index points to missing record: $record"
+            rc=1
+            continue
+        fi
+        err_tmp=$(mktemp 2>/dev/null) || { rm -f "$wi_tmp" "$idx_tmp" "$idx_tmp.ids" "$compact_expected"; return 1; }
+        if ! validate_identity "$record" "$controlling" "$id" "$profile" "$mode" >"$err_tmp" 2>&1; then
+            sed 's/^/ERROR identity: /' "$err_tmp"
+            rc=1
+        else
+            echo "OK identity: $id $record"
+        fi
+        rm -f "$err_tmp"
+        case "$profile" in
+            Compact)
+                path_err=$(mktemp 2>/dev/null) || { rm -f "$wi_tmp" "$idx_tmp" "$idx_tmp.ids" "$compact_expected" "$full_expected"; return 1; }
+                if ! validate_compact_record_path "$controlling" "$id" "$record" >"$path_err" 2>&1; then
+                    sed 's/^/ERROR compact-path: /' "$path_err"
+                    rc=1
+                fi
+                rm -f "$path_err"
+                printf '%s\n' "$record" >> "$compact_expected"
+                ;;
+            Full)
+                printf '%s\n' "$record" >> "$full_expected"
+                if ! validate_full_record "$record" "$controlling" "$id" >/dev/null 2>&1; then
+                    echo "ERROR full-return-target: $record does not pass log check or Return Target validation"
+                    rc=1
+                fi
+                ;;
+            *) echo "ERROR profile: $id has invalid profile $profile"; rc=1 ;;
+        esac
+    done < "$idx_tmp"
+
+    if [ -n "$stable_key" ]; then
+        tasks_dir="$PACKAGE_LOG_TASKS_ROOT/$stable_key/tasks"
+        actual=$(mktemp 2>/dev/null) || { rm -f "$wi_tmp" "$idx_tmp" "$idx_tmp.ids" "$compact_expected" "$full_expected"; return 1; }
+        if [ -d "$tasks_dir" ]; then
+            find "$tasks_dir" -type f -name '*.md' | sort > "$actual"
+        else
+            : > "$actual"
+        fi
+        sort "$compact_expected" > "$compact_expected.sorted"
+        if dangling=$(comm -23 "$compact_expected.sorted" "$actual"); [ -n "$dangling" ]; then
+            printf '%s\n' "$dangling" | while IFS= read -r f; do [ -n "$f" ] && echo "ERROR dangling-compact-set: $f"; done
+            rc=1
+        fi
+        if orphan=$(comm -13 "$compact_expected.sorted" "$actual"); [ -n "$orphan" ]; then
+            printf '%s\n' "$orphan" | while IFS= read -r f; do [ -n "$f" ] && echo "ERROR orphan: compact record not listed in Task Index: $f"; done
+            rc=1
+        fi
+        rm -f "$actual" "$compact_expected.sorted"
+    fi
+
+    full_actual=$(mktemp 2>/dev/null) || { rm -f "$wi_tmp" "$idx_tmp" "$idx_tmp.ids" "$compact_expected" "$full_expected"; return 1; }
+    for f in "$LOG_DIR"/*.md; do
+        [ -f "$f" ] || continue
+        [ "$f" = "$controlling" ] && continue
+        actual_control=$(read_identity_value "$f" "Controlling log")
+        actual_profile=$(read_identity_value "$f" "Profile")
+        if [ "$actual_control" = "$controlling" ] && [ "$actual_profile" = "Full" ]; then
+            locator_path "$f" >> "$full_actual"
+        fi
+    done
+    sort "$full_expected" > "$full_expected.sorted"
+    sort "$full_actual" > "$full_actual.sorted"
+    if dangling_full=$(comm -23 "$full_expected.sorted" "$full_actual.sorted"); [ -n "$dangling_full" ]; then
+        printf '%s\n' "$dangling_full" | while IFS= read -r f; do [ -n "$f" ] && echo "ERROR dangling-full-set: $f"; done
+        rc=1
+    fi
+    if orphan_full=$(comm -13 "$full_expected.sorted" "$full_actual.sorted"); [ -n "$orphan_full" ]; then
+        printf '%s\n' "$orphan_full" | while IFS= read -r f; do [ -n "$f" ] && echo "ERROR orphan-full: Full record not listed in Task Index: $f"; done
+        rc=1
+    fi
+    rm -f "$full_actual" "$full_actual.sorted" "$full_expected.sorted"
+
+    rm -f "$wi_tmp" "$idx_tmp" "$idx_tmp.ids" "$compact_expected" "$full_expected"
+    if [ "$rc" -eq 0 ]; then
+        echo "OK registry-integrity: $controlling"
+    else
+        echo "ERROR registry-integrity: closeout blocker(s) found"
+    fi
+    return "$rc"
+}
+
+main() {
+    [ "$#" -gt 0 ] || { usage >&2; return 1; }
+    case "$1" in
+        --help|-h|help) usage; return 0 ;;
+        controlling)
+            shift
+            action=${1:-}
+            shift
+            case "$action" in
+                new) cmd_controlling_new "$@" ;;
+                detach)
+                    [ "$#" -gt 0 ] || { echo "controlling detach에는 <source-log>가 필요합니다." >&2; return 1; }
+                    cmd_controlling_detach "$@"
+                    ;;
+                *) echo "controlling 동작은 new 또는 detach만 허용합니다." >&2; return 1 ;;
+            esac
+            ;;
+        task)
+            shift
+            [ "${1:-}" = "new" ] || { echo "task 동작은 new만 허용합니다." >&2; return 1; }
+            shift
+            [ "$#" -gt 0 ] || { echo "task new에는 <controlling-log>가 필요합니다." >&2; return 1; }
+            cmd_task_new "$@"
+            ;;
+        index)
+            shift
+            [ "${1:-}" = "add" ] || { echo "index 동작은 add만 허용합니다." >&2; return 1; }
+            shift
+            [ "$#" -gt 0 ] || { echo "index add에는 <controlling-log>가 필요합니다." >&2; return 1; }
+            cmd_index_add "$@"
+            ;;
+        check)
+            shift
+            [ "$#" -eq 1 ] || { echo "check에는 <controlling-log> 하나가 필요합니다." >&2; return 1; }
+            cmd_check "$@"
+            ;;
+        *) usage >&2; return 1 ;;
+    esac
+}
+
+main "$@"

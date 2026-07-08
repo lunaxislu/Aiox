@@ -1,73 +1,109 @@
 # Log Skill Quick Flow
 
-이 문서는 `../SKILL.md#진입-라우팅`의 그림 요약과 시나리오 예시를 제공한다. agent가 사용자에게
+이 문서는 `../SKILL.md#진입`의 그림 요약과 시나리오 예시를 제공한다. agent가 사용자에게
 "왜 이 절차로 가는지"를 설명할 때 사용할 수 있는 빠른 locator 역할을 한다.
 
-이 문서는 portable 계약을 독자적으로 재정의하지 않는다. 진입 라우팅 정본은 `../SKILL.md#진입-라우팅`,
+이 문서는 portable 계약을 독자적으로 재정의하지 않는다. 진입 정본은 `../SKILL.md#진입`,
 상세 판정은 `../SKILL.md`,
 `loop-rules.md`, `package-log.md`, `project-setup.md`와 `maintenance.md`가 소유한다.
 
 ## 판정 모델
 
-agent는 다음 두 결정을 독립적으로 내리고, 그 사이에서 로그 대상 상태를 확인한다.
+`../SKILL.md#진입`은 아래 순서로 내려오는 entry/router다. 각 단계는 위에서 아래로 실행하며,
+상세 판정과 표면 규칙은 각 owner가 소유한다.
 
-| 판정 | 선택 |
+| 단계 | 내용 |
 | --- | --- |
-| 수행할 작업 | 일반 작업·로그 lifecycle / project setup·audit / log skill maintenance |
-| 로그 대상 상태 | 새 로그 / 기존 로그 |
-| 적용할 기록 계약 | Base / Base + Package Extension |
+| 1. 작업 종류 dispatch | repo/project setup·audit → `project-setup.md` / log skill 유지보수 → `maintenance.md` / 그 밖: 아래 계속. setup·maintenance도 로그가 필요하면 dispatch 수행 후 이 spine으로 복귀 |
+| 2. 대상 후보 확정 | 사용자 지정 / 주제·범위·Work Item / current-work / 후보가 안 좁혀지면 사용자 선택. 후보 확정만 수행하고, 새 로그·재개·새 block 판정은 다음 gate에서 |
+| 3. Route / Contract Gate | ordered discriminator 5단계로 기록 계약 확정. 기존/신규 후보 판정, 수명 안/밖(`loop-rules.md#log-lifetime-boundary`), package signal(`package-log.md#activation-and-entry-routing`) |
+| 4. 재개 정보 복원 또는 Bootstrap | existing Base / existing log + new block / existing Package / new Base / new Package |
+| 5. 작업 루프 | Act → Record → Reconcile → Cross-Log / Lifetime Transitions → Closeout. Package는 Base loop를 대체하지 않고 overlay |
 
 작업 종류와 기록 계약은 서로 다른 축이다. setup이나 maintenance도 Base로 기록할 수 있고,
-package 조건을 만족하면 Base에 Package Extension을 추가할 수 있다. 새 로그와 기존 로그는 작업
-종류가 아니라 진입할 로그 대상의 상태다.
+package 조건을 만족하면 Base에 Package Extension을 추가할 수 있다. 새 로그와 기존 로그 판정은
+Route / Contract Gate에서 수행한다.
 
 ## Quick Flow
 
-아래 그림은 `../SKILL.md#진입-라우팅`의 요약이다. 정본은 `../SKILL.md`가 소유한다.
+아래 그림은 `../SKILL.md#진입`의 요약이다. 정본은 `../SKILL.md`가 소유한다.
 
 ```text
 SKILL trigger
    │
-   ├─ 작업 종류 판정  (setup·maintenance도 로그 대상 상태·기록 계약을 함께 판정 → Scenario 6·7)
-   │     ├─ project setup·audit ───→ project-setup.md
-   │     ├─ log skill maintenance ─→ maintenance.md
-   │     └─ 일반 작업·로그 lifecycle ─→ 로그 대상 상태 판정
+   ├─[1] 작업 종류 dispatch
+   │     ├─ project setup·audit ─────────────────→ project-setup.md
+   │     ├─ log skill 유지보수 ──────────────────→ maintenance.md
+   │     └─ 일반 작업·로그 lifecycle ────────────→ [2] 대상 후보 확정
+   │           (setup·maintenance도 로그가 필요하면
+   │            dispatch 수행 후 [2]로 복귀)
    │
-   └─ 로그 대상 상태 판정 (각 상태가 자신의 기록 계약을 함께 확정)
-         ├─ 새 · 일반
-         │     → Base log 생성 · Base 계약
-         ├─ 새 · package 조건 처음부터 명확
-         │     → package-log.md Activation 판정
-         │     → 확정 시 controlling package log 직접 생성 · Base + Package Extension
-         │     → not-package면 Base
-         ├─ 기존 · 일반 Base log
-         │     → Base Enter로 Work Items·Required Context·재개 block 복원 · Base 계약
-         ├─ 기존 · Base 진행 중 package 조건 발견
-         │     → package-log.md Activation 판정
-         │     → in-place 전환 금지 · detach(source 소비) 또는 transfer(권한 이양)
-         │     → 확정 시 별도 controlling package log · Base + Package Extension
-         │     → not-package면 기존 Base 유지
-         └─ 기존 · package log
-               → Base Enter로 상태 복원 + package-log.md로 Package surfaces·Task Index 복원
-               → 이미 활성인 Base + Package Extension 계속 적용
+   ├─[2] 대상 후보 확정
+   │     사용자 지정 / 주제·범위·Work Item / current-work
+   │     → 후보가 안 좁혀지면 사용자 선택
+   │     (후보 확정만; 새 로그·재개·새 block 판정은 다음 gate)
+   │
+   ├─[3] Route / Contract Gate (ordered discriminator)
+   │
+   │     ① 사용자가 새 로그·새 작업을 명시했거나 후보 없음?
+   │     │   Yes → 새 unit 후보로 두고 ④로
+   │     │   No  → 기존 후보를 대상으로 ②로
+   │     │
+   │     ② 기존 후보가 현재 작업과 같은 로그 수명인가?
+   │     │   (판정: loop-rules.md#log-lifetime-boundary)
+   │     │   수명 안  → loop-rules.md#record-placement-loop 로 기존 block 재개 / 새 block 판정 → ③으로
+   │     │   수명 밖  → loop-rules.md#cross-log--lifetime-transitions 로
+   │     │              independent/detach/transfer 판정 → ④으로
+   │     │
+   │     ③ 수명 안 기존 후보가 package skeleton을 가진 로그인가?
+   │     │   Yes → existing package (bootstrap 중복 안 함)
+   │     │   No  → existing Base로 두고 ⑤로
+   │     │         (package signal 있으면 ②의 수명 판정 재검토;
+   │     │          재검토 결과 수명 밖이면 ②의 수명 밖 분기로)
+   │     │
+   │     ④ 새 로그 / 새 block / 수명 밖 전이 후보에 package signal?
+   │     │   Yes → package-log.md#activation-and-entry-routing
+   │     │         (activation 부정이면 Base로 남음)
+   │     │   No  → Base log / Base block / cross-log 관계로 진행
+   │     │
+   │     ⑤ 기존 Base 재개 중 package signal 발견?
+   │         Yes → package-log.md#activation-and-entry-routing
+   │               (detach[↓] / transfer[→] / not-package 판정)
+   │               mechanics: loop-rules.md#cross-log--lifetime-transitions
+   │               대상이 바뀌면 [2] 대상 후보 확정으로 재진입
+   │         No  → 확정한 Base 또는 existing package 계약으로 계속
+   │
+   ├─[4] 재개 정보 복원 또는 Bootstrap
+   │     ├─ existing Base          → Work Items / Required Context / 재개 block 복원
+   │     ├─ existing log + new block → Work state·RC 확인 후 새 block 열기·Reconcile
+   │     ├─ existing Package       → existing Base 절차 후
+   │     │                            package-log.md#state-ownership-and-task-contract 로
+   │     │                            Package surfaces / Task Index 복원
+   │     ├─ new Base               → Base log 생성 (구조: loop-rules.md)
+   │     └─ new Package            → activation 통과 후 package bootstrap
+   │                                  (discovery·synthesis·contract review는
+   │                                   execution 전 bootstrap/contract 세팅 국면)
+   │
+   └─[5] 작업 루프
+         Act → Record → Reconcile → Cross-Log/Lifetime Transitions → Closeout
+         Package는 Base loop를 대체하지 않고 overlay
 ```
 
 기록 계약(Base / Base + Package Extension)은 상태 판정 뒤에 오는 별도 단계가 아니라, 각 상태가
-확정하는 속성이다. Base는 거쳐 가는 단계가 아니라 모든 상태의
-기반 계약이다. package 후보 상태는 activation이 확정돼야 Extension이 붙고, not-package면 Base로
-남는다. 신규 작업은 package signal이 처음부터 명확하면 entry에서 activation preflight로 계약을
-확정하고 controlling package log로 직접 시작한다. Base log를 먼저 만든 뒤 전환하지 않는다. 기존
-일반 로그에서 조건이 발견되면 in-place 전환하지 않고 detach/transfer로 별도 controlling package
-log를 연다.
+확정하는 속성이다. Base는 거쳐 가는 단계가 아니라 모든 상태의 기반 계약이다. package 후보 상태는
+activation이 확정돼야 Extension이 붙고, not-package면 Base로 남는다. 신규 작업은 package signal이
+처음부터 명확하면 entry에서 activation preflight로 계약을 확정하고 controlling package log로 직접
+시작한다. Base log를 먼저 만든 뒤 전환하지 않는다. 기존 일반 로그에서 조건이 발견되면 in-place
+전환하지 않고 detach/transfer로 별도 controlling package log를 연다.
 
 ## Owner Routing
 
 | 필요한 판단·행동 | Owner |
 | --- | --- |
-| log skill 정체성, 진입 라우팅, 공통 불변, 최초 선택·읽기와 top-level loop | `../SKILL.md` |
-| 파일 구조, Work Items, Required Context, Record, Reconcile, lifetime과 status 상세 | `loop-rules.md` |
-| Base Log 판단·운용 사례와 핵심 도구 결과 예시 | `base-log-examples.md` |
-| Package activation, entry routing과 Package Extension | `package-log.md` |
+| log skill 정체성, 진입(작업 종류 dispatch·대상 후보 확정·Route/Contract Gate·재개 정보 복원 또는 Bootstrap), 공통 불변, 작업 루프 | `../SKILL.md` |
+| 파일 구조, Work Items, Required Context, Record, Reconcile, lifetime(`#log-lifetime-boundary`·`#record-placement-loop`), cross-log 전이(`#cross-log--lifetime-transitions`), status 상세(`#closeout--status`) | `loop-rules.md` |
+| Base Log 판단·운용 사례와 도구 결과 예시 | `base-log-examples.md` |
+| Package activation·entry routing(`#activation-and-entry-routing`), Package Internal Router(`#package-internal-router`), phase→spine/overlay 매핑, two-anchor review gate, State Ownership·Task Contract(`#state-ownership-and-task-contract`), Package Reconcile(`#package-reconcile`), Package Closeout(`#package-closeout`) | `package-log.md` |
 | Package 구성·운용 사례, Result consumption과 Compact/Full 선택 예시 | `package-log-examples.md` |
 | project integration bootstrap·audit | `project-setup.md` |
 | log skill·reference·script·project integration 유지보수 판단 | `maintenance.md` |
@@ -77,15 +113,15 @@ log를 연다.
 
 ## Scenario 1 — 새 일반 로그
 
-사용자 요청: “결제 오류를 조사하고 작업 로그를 만들어라.”
+사용자 요청: "결제 오류를 조사하고 작업 로그를 만들어라."
 
 ```text
 SKILL trigger
-→ 작업 종류: 일반 작업
-→ 로그 대상: 새 로그
-→ Package signal: 없음
-→ Base 로그 생성
-→ Base loop 수행
+→ [1] 작업 종류: 일반 작업
+→ [2] 대상 후보: 새 로그 (사용자 명시 / 후보 없음 → 새 unit 후보)
+→ [3] Route / Contract Gate ①→④: package signal 없음 → Base
+→ [4] Bootstrap: new Base log 생성
+→ [5] Base loop 수행
 ```
 
 필요한 read path:
@@ -106,35 +142,38 @@ Base Log
 
 ## Scenario 2 — Package activation 판정
 
-사용자 요청: “API retry policy를 429와 5xx에 맞게 바꾸고, 코드·테스트·문서·release note까지
-correct/done인지 같이 확인해 줘.”
+사용자 요청: "API retry policy를 429와 5xx에 맞게 바꾸고, 코드·테스트·문서·release note까지
+correct/done인지 같이 확인해 줘."
 
 사용자 요청이 여러 artifact의 correct/done 판단을 함께 요구하는지 확인한다. Activation 기준과
-anti-signal은 `package-log.md`가 소유한다. 구체 worked example은 `package-log-examples.md`를 본다.
+anti-signal은 `package-log.md#activation-and-entry-routing`이 소유한다. 구체 worked example은
+`package-log-examples.md`를 본다.
 
 ```text
 SKILL trigger
-→ 작업 종류: 일반 작업
-→ 로그 대상: 새 로그 또는 기존 로그
-→ package-log.md Activation 판정
-   ├─ 조건 불성립 → Base log로 진행
-   ├─ 새 작업에서 조건 성립 → Scenario 2A
-   └─ 기존 Base log 진행 중 조건 성립 → Scenario 4
+→ [1] 작업 종류: 일반 작업
+→ [2] 대상 후보: 새 로그 또는 기존 로그
+→ [3] Route / Contract Gate
+   ├─ ①→④ 새 후보 + package signal
+   │   → package-log.md#activation-and-entry-routing
+   │   ├─ 조건 불성립 → Base log로 진행
+   │   └─ 조건 성립 → Scenario 2A
+   └─ ②→③ 기존 Base 재개 중 package signal → ⑤
+       → package-log.md#activation-and-entry-routing → Scenario 4
 ```
 
 ### Scenario 2A — 처음부터 Package 조건이 명확한 새 작업
 
-사용자 요청: “API 변경과 구현·문서·테스트·migration을 하나의 완료 판단으로 관리하라.”
+사용자 요청: "API 변경과 구현·문서·테스트·migration을 하나의 완료 판단으로 관리하라."
 
 ```text
 SKILL trigger
-→ 작업 종류: 일반 작업
-→ 로그 대상: 새 로그
-→ Package signal 확인
-→ package-log.md Activation 판정
-→ 조건 성립
-→ Controlling package log로 직접 생성
-→ Base loop + Package Extension 수행
+→ [1] 작업 종류: 일반 작업
+→ [2] 대상 후보: 새 로그
+→ [3] Route / Contract Gate ①→④: package signal 확인
+→ package-log.md#activation-and-entry-routing → 조건 성립
+→ [4] Bootstrap: new Package (controlling package log 직접 생성)
+→ [5] Base loop + Package Extension 수행
 ```
 
 결과:
@@ -150,21 +189,21 @@ Package log도 Base 계약을 사용하지만 처음부터 controlling package l
 
 ## Scenario 3 — 기존 일반 로그 재개
 
-사용자 요청: “`logs/payment-error.md`를 이어가라.”
+사용자 요청: "`logs/payment-error.md`를 이어가라."
 
 ```text
 SKILL trigger
-→ 작업 종류: 일반 작업
-→ 로그 대상: 기존 로그
-→ Base Enter
-   ├─ Work Items
-   ├─ Required Context
+→ [1] 작업 종류: 일반 작업
+→ [2] 대상 후보: 기존 로그 (사용자 지정)
+→ [3] Route / Contract Gate ②: 수명 안 → ③ package skeleton 없음 → existing Base
+→ [4] 재개 정보 복원 (existing Base)
+   ├─ Work Items / Required Context
    └─ 재개 대상 block
-→ 기존 package 상태 없음
-→ Base loop로 계속 작업
+→ [5] Base loop로 계속 작업
 ```
 
-Package activation을 매번 깊게 판정하지 않고 작업 중 signal이 발견될 때 검토한다.
+Package activation을 매번 깊게 판정하지 않고 작업 중 signal이 발견될 때
+Route / Contract Gate ⑤(`package-log.md#activation-and-entry-routing`)로 검토한다.
 
 ## Scenario 4 — 기존 일반 로그에서 Package 조건 발견
 
@@ -173,11 +212,13 @@ Package activation을 매번 깊게 판정하지 않고 작업 중 signal이 발
 하는 package signal이 발견된 경우다.
 
 ```text
-기존 Base Log 진입
-→ 작업 중 Package signal 발견
-→ package-log.md Activation 판정
+기존 Base Log 재개 (Scenario 3 진입)
+→ [5] 작업 루프 중 package signal 발견
+→ [3] Route / Contract Gate ⑤: package-log.md#activation-and-entry-routing
 → 조건 성립
 → 기존 로그를 in-place 변경하지 않음
+→ detach[↓] 또는 transfer[→] 판정
+   (mechanics: loop-rules.md#cross-log--lifetime-transitions)
 → 별도 Controlling Package Log 생성
 ```
 
@@ -194,23 +235,33 @@ source가 결과를 기다리지 않고 작업 권한을 넘기면 transfer한�
 
 ## Scenario 5 — 기존 Package Log 재개
 
-사용자 요청: “이 controlling package log를 이어가라.”
+사용자 요청: "이 controlling package log를 이어가라."
 
 ```text
 SKILL trigger
-→ 작업 종류: 일반 작업
-→ 로그 대상: 기존 로그
-→ Base Enter로 기본 상태 복원
-→ Package surfaces와 Task Index 확인
-→ 이미 활성화된 Package 계약 적용
-→ Base loop + Package gates 수행
+→ [1] 작업 종류: 일반 작업
+→ [2] 대상 후보: 기존 로그 (사용자 지정)
+→ [3] Route / Contract Gate ②: 수명 안 → ③ package skeleton 있음 → existing package
+→ [4] 재개 정보 복원 (existing Package)
+   ├─ existing Base 절차로 Work Items / Required Context 복원
+   └─ package-log.md#state-ownership-and-task-contract 로
+      Package surfaces / Task Index 복원
+→ [5] Base loop + Package Extension 수행
 ```
 
 Package 여부를 새로 결정하지 않고 기존 활성 상태를 복원한다.
 
 ## Scenario 6 — Project Setup
 
-사용자 요청: “이 repo에 로그 workflow를 도입하라.”
+사용자 요청: "이 repo에 로그 workflow를 도입하라."
+
+```text
+SKILL trigger
+→ [1] 작업 종류 dispatch: repo/project setup·audit
+→ project-setup.md로 라우팅
+   (setup 작업 자체를 로그로 기록해야 하면 project-setup.md 절차 후
+    이 spine으로 복귀해 [2]→[3]→[4] 확정)
+```
 
 Project setup은 portable log skill을 현재 repo/project workflow에 연결하는 integration 절차다.
 전체 흐름은 5-gate를 유지하되, setup 작업 자체의 기록 위치 원칙을 먼저 적용한다.
@@ -293,7 +344,7 @@ package 조건을 만족하면 Package Extension을 적용할 수 있다.
 가능하지만, 첫 proposal에서 기록 위치를 정하고 승인 후 setup log에 소급 기록한다.
 
 ```text
-사용자: “이 repo에 log workflow를 도입해라”
+사용자: "이 repo에 log workflow를 도입해라"
         │
         ▼
 mode = bootstrap
@@ -360,7 +411,7 @@ mode = bootstrap
 update·repair에서 수행한다.
 
 ```text
-사용자: “현재 로그 workflow가 맞는지 점검해라”
+사용자: "현재 로그 workflow가 맞는지 점검해라"
         │
         ▼
 mode = audit
@@ -404,7 +455,7 @@ Report only
 승인된 변경이나 drift 복구를 기존 integration에 반영한다.
 
 ```text
-사용자: “audit에서 나온 문제를 고쳐라”
+사용자: "audit에서 나온 문제를 고쳐라"
         │
         ▼
 mode = update·repair
@@ -478,13 +529,16 @@ setup/audit하고, 이후 `package-log.md`에서 per-package probe를 수행한�
 package 작업 trigger
         │
         ▼
-package-log.md activation 검토
+[1] 작업 종류 dispatch: 일반 작업
+[3] Route / Contract Gate: package signal 확인
+package-log.md#activation-and-entry-routing 검토
         │
         ▼
 repo-wide setup이 부족한가?
         │
         ├─ 부족함
-        │   └─ project-setup.md로 repo-wide integration setup/audit
+        │   └─ [1] 작업 종류 dispatch: project setup·audit
+        │       → project-setup.md로 repo-wide integration setup/audit
         │
         └─ 충분함
             └─ package-log.md에서 per-package probe
@@ -511,14 +565,17 @@ package-log.md:
 
 ## Scenario 7 — Log Skill Maintenance
 
-사용자 요청: “log `SKILL.md` 구조를 검토하고 개선하라.”
+사용자 요청: "log `SKILL.md` 구조를 검토하고 개선하라."
 
 ```text
 SKILL trigger
-→ 작업 종류: Log skill maintenance
+→ [1] 작업 종류 dispatch: Log skill 유지보수
 → maintenance.md 읽기
-→ 지정된 기존 작업 로그 확인
-→ Base Enter로 Work Item과 현재 판단 복원
+→ [2] 대상 후보 확정: 지정된 기존 작업 로그 확인
+→ [3] Route / Contract Gate: existing Base 확정
+→ [4] 재개 정보 복원 (existing Base)
+   ├─ Work Items / Required Context
+   └─ 재개 대상 block
 → maintenance 절차로 owner·영향 범위 검토
 → 필요하면 Package activation 별도 판정
 → 결정과 결과를 Base loop로 Record·Reconcile
@@ -535,5 +592,6 @@ SKILL trigger
 3. 각 Scenario에서 필요한 read path만으로 다음 행동과 owner를 복원할 수 있는지 확인한다.
 4. 신규 package 직접 시작, 기존 일반 로그의 detach/transfer와 기존 package 재개를 하나의
    in-place profile 전환으로 합치지 않는다.
-5. setup·maintenance 작업 종류, 새 로그·기존 로그 상태와 Base·Package 기록 계약을 같은 분류축으로
-   섞지 않는다.
+5. 작업 종류 dispatch(setup·maintenance), Route / Contract Gate(기존·신규·수명 판정), 재개 정보
+   복원 또는 Bootstrap(existing Base·Package·new Base·new Package), Base·Package 기록 계약을
+   같은 분류축으로 섞지 않는다.

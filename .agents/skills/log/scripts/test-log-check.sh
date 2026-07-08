@@ -31,6 +31,10 @@ check_status() {
 }
 
 LOG_DIR="$WORK/logs"; export LOG_DIR
+
+check_status "C0 help succeeds" 0 "$LOG" --help
+check_contains "C0 help output" "$WORK/out" '^사용법:$'
+
 f=$("$LOG" new "Check Test" --description "Check desc" --block "Start" --item active "First")
 "$LOG" check "$f" > "$WORK/check.out"
 check_contains "C1 status" "$WORK/check.out" '^status: open$'
