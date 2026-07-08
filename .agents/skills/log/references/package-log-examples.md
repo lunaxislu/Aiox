@@ -12,6 +12,8 @@ integration owner가 소유한다. repo-wide bootstrap/audit 절차는 `project-
 package surface 예시는 current accepted state의 모양을 보여준다. 변경 이유, 이전 기준, 정정은
 History surface가 소유하고, Package Scope·Verification Contract·Closeout Contract 같은 mutable
 contract surface는 current revision과 관련 History pointer만 둔다.
+helper command syntax는 예시가 아니라 `../scripts/package-log --help`가 소유하므로, 실제 실행 전
+해당 help를 먼저 확인한다.
 
 Task Index의 task-record locator는 project integration이 정한 안정 locator placeholder로 쓴다.
 Task Index는 진행 상태를 복제하지 않고 executable W와 profile/mode/record mapping만 보여준다.
@@ -36,7 +38,15 @@ correct/done인지 같이 확인해 줘"라고 요청했다. 한 artifact만 고
 closeout gate만 확인한다. repo-wide log 위치, current-work 선택, registry audit가 부재하거나 stale하면
 이 package 안에서 고치지 않고 `project-setup.md`로 route-out한다.
 
-**결과 markdown 핵심**:
+지원되는 direct-start skeleton 생성은 먼저 help로 helper surface를 확인한 뒤 `controlling new`로
+만든다.
+
+```sh
+package-log controlling new --topic "API retry policy package" --description "client 동작, tests, docs, release communication을 함께 검증하는 API retry policy 변경" --scope "API retry policy"
+```
+
+**결과 markdown 핵심**: 아래는 raw skeleton 출력이 아니라 bootstrap 내용을 채운 뒤의 accepted
+state 모양이다. 생략한 skeleton line(예: Stable package key)은 raw 출력의 placeholder를 유지한다.
 
 ```markdown
 ---

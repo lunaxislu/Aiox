@@ -58,14 +58,16 @@ log skill이 trigger되면 아래 순서대로 작업 종류, 대상 후보, 기
 
 ### 작업 종류 dispatch
 
-1. repo/project integration, 로그 위치, current-work, setup/audit 작업이면
+1. repo/project integration, 로그 위치, current-work, setup 또는 project integration audit 작업이면
    `references/project-setup.md`로 라우팅한다.
 2. log skill 자체, reference, `scripts/log`, 기록 규칙, log workflow 유지보수 작업이면
    `references/maintenance.md`로 라우팅한다.
-3. 그 밖의 일반 작업·로그 lifecycle 작업은 아래 단계로 계속 간다.
+3. 사용자가 로그 점검·log audit을 요청하면 대상 후보를 확정한 뒤
+   `references/loop-rules.md#audit`의 수정 금지 점검 절차로 라우팅한다.
+4. 그 밖의 일반 작업·로그 lifecycle 작업은 아래 단계로 계속 간다.
 
-setup/maintenance도 해당 작업을 로그로 기록해야 하면, 해당 owner의 분류·검토를 수행한 뒤 이
-spine으로 돌아와 대상 후보, 기록 계약과 작업 루프를 확정한다.
+setup/maintenance/audit도 해당 작업을 로그로 기록해야 하면, 해당 owner의 분류·검토를 수행한 뒤
+이 spine으로 돌아와 대상 후보, 기록 계약과 작업 루프를 확정한다.
 
 ### 대상 후보 확정
 
@@ -94,21 +96,23 @@ spine으로 돌아와 대상 후보, 기록 계약과 작업 루프를 확정한
    - 후보 수명 밖이면 `references/loop-rules.md#cross-log--lifetime-transitions`로 source 소비 관계와
      independent/detach/transfer 후보를 판정한 뒤 4로 간다.
 3. 수명 안의 기존 후보가 package skeleton을 가진 로그인가?
-   - Yes: existing package로 보고 bootstrap을 중복하지 않는다.
+   - Yes: existing package로 보고 bootstrap을 중복하지 않은 뒤,
+     `재개 정보 복원 또는 Bootstrap`의 existing Package 복원으로 간다.
    - No: existing Base로 두고 5로 간다. 단, package signal이 있으면 먼저 별도 재개점이 필요한지
      2의 수명 판정을 재검토한다. 재검토 결과 수명 밖이면 2의 수명 밖 분기로 돌아가 source 관계와
      detach/transfer 후보를 판정한다.
 4. 새 로그, 기존 로그의 새 block, 또는 수명 밖 전이 후보에 package signal이 있는가?
    - Yes: `references/package-log.md#activation-and-entry-routing`으로 activation을 판정한다.
      확정되면 앞에서 판정한 source 소비 관계에 맞춰 controlling package log를 직접 시작하거나
-     detach/transfer 관계로 연결한다. activation 부정이면 Base로 남는다.
-   - No: 앞에서 판정한 Base log, Base block 또는 cross-log 관계로 진행한다.
+     detach/transfer 관계로 연결한 뒤 `재개 정보 복원 또는 Bootstrap`의 new Package 또는 existing
+     Package 복원으로 간다. activation 부정이면 Base로 남아 해당 Base 복원·Bootstrap으로 간다.
+   - No: 앞에서 판정한 Base log, Base block 또는 cross-log 관계로 해당 Base 복원·Bootstrap으로 간다.
 5. 기존 Base를 재개했거나 진행 중 package signal을 발견했는가?
    - Yes: in-place upgrade하지 않는다. `references/package-log.md#activation-and-entry-routing`으로
      detach(`[↓]`) / transfer(`[→]`) / not-package를 판정한다. detach/transfer mechanics는
      `references/loop-rules.md#cross-log--lifetime-transitions`가 소유한다. 대상이 바뀌면
      `대상 후보 확정`으로 재진입한다. not-package가 진입 판정에서 확정되면 기존 Base로 남는다.
-   - No: 확정한 Base 또는 existing package 계약으로 계속한다.
+   - No: 확정한 Base 계약으로 해당 복원·Bootstrap으로 간다.
 
 이미 controlling package log가 생성된 뒤 discovery outcome이 not-package로 반환되는 경우는 진입
 판정의 Base 유지와 다르다. package 표면을 삭제하지 않고 task/result/artifact disposition과 parent
@@ -229,16 +233,24 @@ status 전이와 종료 점검은 `references/loop-rules.md#closeout--status`를
 ## 도구
 
 `scripts/log`는 로그 생성, frontmatter 수정, block/entry 추가, Work Items와 Required Context
-변환·삭제, 검색, 구조 점검과 status guard를 돕는 보조 도구다. 도구는 형식과 원자적 변경만 처리하고
-완료, 취소, 이관, 분리, 종료 같은 의미 판단은 agent와 사용자가 한다.
+변환·삭제, 검색, 구조 점검과 status guard를 돕는 보조 도구다. `scripts/package-log`는 이미
+package로 판정된 작업의 controlling package log 생성·detach, task record/Task Index 등록과 package
+구조 점검을 돕는다. 도구는 형식과 원자적 변경만 처리하고 완료, 취소, 이관, 분리, activation,
+result 수용·기각, closeout 같은 의미 판단은 agent와 사용자가 한다.
 
-도구가 지원하는 로그 구조 변경은 도구로 수행한다. 지원하지 않는 변경은 사용자가 수동 편집을
-지시한 경우에만 수동으로 편집하고, 사용자 지시 없이 수동으로 편집한 구조 변경은 작업 후 변경
-범위와 이유를 보고한다.
+도구가 지원하는 skeleton, status, pointer, Work state, Required Context 구조 변경은 도구로
+수행한다. 여기서 도구 대상 구조 변경은 로그의 state machine, 재개·복귀 관계나 section/block
+골격을 바꾸는 변경, 또는 `--help`에 명령이 있는 표면 갱신이다. package Evidence/Scope bullet처럼
+두 도구의 `--help`에 해당 명령이 없는 기존 표면 안의 내부 내용 갱신은 포함하지 않는다.
+도구가 지원하지 않는 구조 변경은 필요한 경우에만 수동 편집하고 작업 후 변경 범위와 이유를
+보고한다. 다만 Return Target consume/snapshot 변경, `[↓]` 취소·이관·남은 행동 재구성,
+파괴적·migration 이동은 수동 편집 전 사용자 확인을 받는다.
 
-명령 syntax는 `scripts/log --help`로 확인한다.
+명령 syntax는 `scripts/log --help`와 `scripts/package-log --help`로 확인한다.
 
-`Return Target`은 `log new`와 `log detach` 생성 표면에서만 만든다. 이후 consume 조건이나 snapshot을
+`Return Target` 예약 section은 Base 로그 구조에 항상 둔다. source 소비 관계를 채우는 생성 표면은
+`log new --context ReturnTarget`, `log detach`, `package-log controlling detach`다. 독립 로그나 직접
+시작하는 package log는 independent Return Target slot을 만든다. 이후 consume 조건이나 snapshot을
 바꿔야 하면 도구로 자동 전이하지 않고 사용자가 확인한 뒤 수동 편집한다.
 
 `[↓]` Work Item은 child 결과를 source가 소비한 뒤 `log item set --status completed`로 `[x]` 처리할

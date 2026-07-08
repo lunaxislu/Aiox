@@ -23,6 +23,11 @@ check_contains() {
     if grep -q "$pattern" "$file"; then ok "$name"; else ng "$name"; cat "$file"; fi
 }
 
+check_not_contains() {
+    name=$1 file=$2 pattern=$3
+    if grep -q "$pattern" "$file"; then ng "$name"; cat "$file"; else ok "$name"; fi
+}
+
 check_status() {
     name=$1 expected=$2
     shift 2
@@ -288,12 +293,18 @@ check_contains "P2 Closeout package-specific TBD" "$pkg_path" 'package-specific 
 check_contains "P2 primary scope" "$pkg_path" 'docs/primary\.md'
 check_contains "P2 related scope" "$pkg_path" 'docs/related\.md'
 check_contains "P2 stable key default" "$pkg_path" 'Stable package key: 2026-07-08-Package-Test'
+check_not_contains "P2 no repo integration default" "$pkg_path" 'logs/AGENTS.md#Package Log Repository Integration'
+check_not_contains "P2 no project integration default" "$pkg_path" '^- Project integration:'
 
-check_status "P3 controlling custom stable key" 0 "$PACKAGE_LOG" controlling new --topic "Custom Key" --description "Package desc" --scope "docs/primary.md" --stable-key "custom-key" --block "Bootstrap"
+check_status "P3 controlling custom stable key" 0 "$PACKAGE_LOG" controlling new --topic "Custom Key" --description "Package desc" --scope "docs/primary.md" --stable-key "custom-key" --block "Bootstrap" --integration "project-integration.md#package-log"
 custom_pkg=$(cat "$WORK/out")
 check_contains "P3 stable key explicit" "$custom_pkg" 'Stable package key: custom-key'
+check_contains "P3 project integration explicit" "$custom_pkg" '^- Project integration: `project-integration.md#package-log`\.$'
 check_status "P3 duplicate topic creates suffixed path" 0 "$PACKAGE_LOG" controlling new --topic "Custom Key" --description "Again" --scope "docs/primary.md" --block "Bootstrap"
 check_contains "P3 suffixed duplicate path" "$WORK/out" '/logs/2026-07-08-Custom-Key-2\.md$'
+check_status "P3 env integration succeeds" 0 env PACKAGE_LOG_INTEGRATION_REF="env-integration.md#package-log" "$PACKAGE_LOG" controlling new --topic "Env Integration" --description "Package desc" --scope "docs/primary.md" --block "Bootstrap"
+env_pkg=$(cat "$WORK/out")
+check_contains "P3 env integration emitted" "$env_pkg" '^- Project integration: `env-integration.md#package-log`\.$'
 
 task_record="logs/packages/2026-07-08-Package-Test/tasks/W1.md"
 check_status "P4 task new succeeds" 0 "$PACKAGE_LOG" task new "$pkg_path" --id W1 --record "$task_record" --mode inline --task "Implement package helper"
@@ -425,6 +436,7 @@ check_contains "P7 target package scope" "$WORK/$detach_target" '^## Package Sco
 check_contains "P7 target Task Index" "$WORK/$detach_target" '^## Task Index$'
 check_contains "P7 target Task Index header" "$WORK/$detach_target" '^| W-id | Profile | Mode | Task record |$'
 check_contains "P7 target stable key default" "$WORK/$detach_target" 'Stable package key: 2026-07-08-detached-package'
+check_not_contains "P7 no repo integration default" "$WORK/$detach_target" 'logs/AGENTS.md#Package Log Repository Integration'
 detach_task_record="logs/packages/2026-07-08-detached-package/tasks/W1.md"
 check_status "P7 detached package task new auto-record succeeds" 0 "$PACKAGE_LOG" task new "$detach_target" --id W1 --auto-record --mode inline --task "Detached package task"
 check_status_contains "P7 detached package lifecycle check succeeds" 0 'OK registry-integrity:' "$PACKAGE_LOG" check "$detach_target"

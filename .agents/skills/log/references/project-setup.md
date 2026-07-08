@@ -211,9 +211,9 @@ skip한다.
 
 ### 예시 A — 작은 작업: 로그 하나만 사용
 
-```markdown
-# logs/2026-01-10-checkout-bug.md
+파일: `logs/2026-01-10-checkout-bug.md`
 
+```markdown
 ---
 
 topic: Checkout 결제 실패 수정
@@ -230,6 +230,12 @@ status: open
 
 ## Required Context
 
+### Return Target
+
+- None: independent log.
+
+### {Global}
+
 ## 2026-01-10 · W1 · 조사 시작
 
 - 증상: 결제 단계에서 간헐적으로 500이 발생한다.
@@ -245,9 +251,9 @@ Work Items·next pointer 구조를 확인하고 본문 최신 entry를 본 뒤, 
 가벼운 plan 문서로 단계 순서를 관리한다. 아래 `<project-plan-location>`은 프로젝트가 정하는
 plan 위치를 가리키는 placeholder이고, plan 형식도 강제가 아니다.
 
-```markdown
-# <project-plan-location>/payment-hardening.md
+파일: `<project-plan-location>/payment-hardening.md`
 
+```markdown
 ## Stages
 
 - [>] 결제 경로 안정화 -> `logs/2026-01-10-checkout-bug.md`
@@ -257,17 +263,17 @@ plan 위치를 가리키는 placeholder이고, plan 형식도 강제가 아니�
 활성 단계가 anchor 로그를 가리키고, anchor에 local `[>]` 없이 unresolved `[↓]` 하나가 있으면
 그 target을 현재 분리 작업 로그로 따른다.
 
-```markdown
-# logs/2026-01-10-checkout-bug.md (anchor)
+파일: `logs/2026-01-10-checkout-bug.md` (anchor)
 
+```markdown
 ## Work Items
 
 - [↓] W1 Apply the token-race result to the checkout flow. — detached: logs/2026-01-12-token-race.md — reason: checkout fix depends on token-race evidence
 ```
 
-```markdown
-# logs/2026-01-12-token-race.md (child)
+파일: `logs/2026-01-12-token-race.md` (child)
 
+```markdown
 ---
 
 topic: 토큰 만료 경쟁 조사

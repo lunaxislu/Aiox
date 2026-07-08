@@ -14,6 +14,7 @@
 - 문제 분류 기준
 - Owner별 변경 기준
 - 수정 원칙
+- 개선 후보와 follow-up 처리
 - 검증과 기록
 
 ## 유지보수 검토 루프
@@ -23,6 +24,15 @@
 
 매번 모든 단계를 깊게 수행하지 않는다. 현재 입력과 위험도에 필요한 범위만 확인하되, 적용안을
 내기 전에는 분류, owner 경계, 해결안 검증을 생략하지 않는다.
+
+루프 재진입은 새 사례, 검증 실패 원인, 사용자 피드백, 승인 범위 변화처럼 다음 판정을 바꾸는
+입력을 소비할 때만 정당하다. 새 입력 없이 같은 상태를 다시 만들면 순환으로 보고 사용자에게
+확인한다.
+
+재진입할 때는 원인에 맞는 단계로 돌아간다. 문제 인식이 틀렸으면 Intake나 Classify로, owner
+경계가 틀렸으면 Trace Owners로, 해결 형태가 틀렸으면 Validate Fix Shape로, 제안이나 승인 범위가
+달라졌으면 Propose Scope나 Apply After Approval로 돌아간다. 루프는 적용·검증·기록이 닫히거나,
+follow-up으로 park되거나, 사용자가 기각할 때 종료한다.
 
 ### 1. Intake
 
@@ -97,7 +107,8 @@ Validate Fix Shape 기준을 통과한 뒤에만 사용자에게 적용안을 �
 수정해야 할 owner와 파일 범위, 건드리지 않을 범위, 추가를 피한 이유 또는 추가가 필요한 이유,
 검증 방법을 포함한다.
 
-사용자가 거부하거나 다른 방향을 주면 적용하지 말고, 필요한 단계로 돌아가 다시 탐색한다.
+사용자가 거부하거나 다른 방향을 주면 적용하지 말고, 루프 서두의 재진입·종료 기준에 따라 필요한
+단계로 돌아가거나 종료한다. 범위만 조정되면 적용안을 고쳐 다시 제안한다.
 
 ### 6. Apply After Approval
 
@@ -112,8 +123,9 @@ script를 바꾼다면 문서에는 확정된 도구 표면만 반영한다. pro
 
 ### 7. Verify And Record
 
-변경 후에는 [검증과 기록](#검증과-기록)을 적용한다. 검증 결과가 owner 경계나 해결안 형태의
-문제를 드러내면 해당 단계로 돌아가 수정 범위를 다시 좁힌다.
+변경 후에는 [검증과 기록](#검증과-기록)을 적용한다. 검증 결과가 문제 인식, owner 경계, 해결
+형태나 승인 범위의 문제를 드러내면 루프 서두의 재진입·종료 기준에 따라 해당 단계로 돌아가
+수정 범위를 다시 좁힌다.
 
 ## 문제 분류 기준
 
@@ -149,10 +161,10 @@ portable log skill이나 reference를 바꾸는 경우:
 portable 문서를 바꿀 때는 owner map을 유지한다. `SKILL.md`는 entry/router, `loop-rules.md`는
 Base 파일 구조, Work Items, Required Context, Record, Reconcile, cross-log/lifetime,
 Closeout/status 상세, `package-log.md`는 Package activation, internal router, package-only
-structure/overlay 계약, `project-setup.md`는 project setup routing, `design-principles.md`는
-Base 설계 원리, `base-log-examples.md`는 Base 판단·운용 사례와 핵심 도구 결과 예시,
-`package-log-examples.md`는 Package 구성·운용 사례, `quick-flow.md`는 진입 흐름 그림 요약과
-scenario locator로 둔다.
+structure/overlay 계약, `scripts/log`는 Base 구조 도구, `scripts/package-log`는 package 구조 도구,
+`project-setup.md`는 project setup routing, `design-principles.md`는 Base 설계 원리,
+`base-log-examples.md`는 Base 판단·운용 사례와 핵심 도구 결과 예시, `package-log-examples.md`는
+Package 구성·운용 사례, `quick-flow.md`는 진입 흐름 그림 요약과 scenario locator로 둔다.
 
 ### Project integration 변경 기준
 
@@ -202,8 +214,8 @@ script를 바꾸지 않는 경우:
 - portable log skill은 특정 repo의 plan, onramp, owner 문서, hook 구현을 전제하지 않는다.
 - 도구는 구조, 형식, 원자적 변환, 검색, 검증을 돕는다. 완료, 취소, 이관, 종료, 관련성,
   owner 같은 의미 판단을 대신하지 않는다.
-- React lifecycle, git history/refs, coordinated movement 같은 착안 개념은 설계 원리 설명에는 쓸
-  수 있지만 section 이름, 명령 이름이나 새 required surface로 승격하지 않고, 기존 History
+- Lifecycle cleanup, Git history and refs, Coordinated movement 같은 착안 개념은 설계 원리 설명에는
+  쓸 수 있지만 section 이름, 명령 이름이나 새 required surface로 승격하지 않고, 기존 History
   surface, Work state, Required Context와 lifetime transition owner로 표현한다.
 - 추상적 가능성만으로 예외나 안전 단계를 추가하지 않는다. 실제 사례와 재발 가능성을
   근거로 둔다.
@@ -226,6 +238,17 @@ script를 바꾸지 않는 경우:
   `package-log-examples.md`, `quick-flow.md`는 보조 reference이며 decision이나 rule을 대체하지
   않는다.
 
+## 개선 후보와 follow-up 처리
+
+유지보수 중 새 개선 주제나 후속 검토 입력이 생겨 나중에 재개해야 하면, 남은 follow-up으로만
+언급하고 끝내지 말고 `loop-rules.md`의 Work Item 추가 점검과 Log Lifetime Boundary를 적용해
+Work Item으로 등록할지, 아니면 현재 로그 수명을 벗어나 별도 로그가 맞는지 판단한다.
+
+유지보수 밖의 일반 작업 중 발견한 skill 개선 후보는 skill을 즉시 고치지 않고 현재 작업 로그의
+Work Item이나 follow-up으로 park한다. 재발이 확인되고 유지보수 요청으로 들어왔을 때만 이 루프로
+승격하며, 승격 여부는 [문제 분류 기준](#문제-분류-기준)과 [Owner별 변경 기준](#owner별-변경-기준)에
+따른다.
+
 ## 검증과 기록
 
 실제 변경 전에는 적용안의 변경 파일과 이유가 사용자에게 보고·승인됐는지 확인한다.
@@ -245,7 +268,3 @@ script를 바꾸지 않는 경우:
 
 유지보수 작업 자체도 로그에 기록한다. 기록할 내용은 문제 사례, 분류, 수정 범위, 사용자
 승인, 변경 파일, 검증 결과, 남은 follow-up이다. 모든 토론 원문을 복사하지 않는다.
-
-유지보수 중 새 개선 주제나 후속 검토 입력이 생겨 나중에 재개해야 하면, 남은 follow-up으로만
-언급하고 끝내지 말고 `loop-rules.md`의 Work Item 추가 점검과 Log Lifetime Boundary를 적용해
-Work Item으로 등록할지, 아니면 현재 로그 수명을 벗어나 별도 로그가 맞는지 판단한다.

@@ -7,6 +7,7 @@
 LOG_DIR="${LOG_DIR:-logs}"
 LOG_TODAY="${LOG_TODAY:-}"
 PACKAGE_LOG_TASKS_ROOT="${PACKAGE_LOG_TASKS_ROOT:-logs/packages}"
+PACKAGE_LOG_INTEGRATION_REF="${PACKAGE_LOG_INTEGRATION_REF:-}"
 BASE_LOG_SCRIPT="${BASE_LOG_SCRIPT:-$(CDPATH= cd "$(dirname "$0")" && pwd)/log}"
 
 today_date() {
@@ -22,10 +23,11 @@ usage() {
 사용법:
   package-log controlling new --topic <topic> --description <description> --scope <primary-boundary>
       [--related <artifact>]... [--stable-key <key>] [--block <bootstrap-topic>]
+      [--integration <project-integration-ref>]
   package-log controlling detach <source-log> --id Wn --topic <topic> --description <description>
       --scope <primary-boundary> [--target <path>] [--reason <reason>]
       [--consume <condition>] [--snapshot <snapshot>] [--related <artifact>]...
-      [--stable-key <key>] [--block <bootstrap-topic>]
+      [--stable-key <key>] [--block <bootstrap-topic>] [--integration <project-integration-ref>]
   package-log task new <controlling-log> --id Wn (--record <path>|--auto-record) --mode inline|delegated --task <task>
   package-log index add <controlling-log> --id Wn --record <path> --profile compact|full --mode inline|delegated
   package-log check <controlling-log>
@@ -136,10 +138,11 @@ emit_controlling_log() {
     stable_key=$4
     block=$5
     related_file=$6
-    return_log=${7:-}
-    return_id=${8:-}
-    return_consume=${9:-}
-    return_snapshot=${10:-}
+    integration_ref=$7
+    return_log=${8:-}
+    return_id=${9:-}
+    return_consume=${10:-}
+    return_snapshot=${11:-}
 
     printf '%s\n' "---"
     printf 'topic: %s\n' "$topic"
@@ -166,7 +169,9 @@ emit_controlling_log() {
     printf '\n'
     printf -- '- Package contract: `.agents/skills/log/references/package-log.md`.\n'
     printf -- '- Base loop contract: `.agents/skills/log/references/loop-rules.md`.\n'
-    printf -- '- Repo integration: `logs/AGENTS.md#Package Log Repository Integration`.\n'
+    if [ -n "$integration_ref" ]; then
+        printf -- '- Project integration: `%s`.\n' "$integration_ref"
+    fi
     printf '\n'
     printf '## Package Scope\n'
     printf '\n'
@@ -248,6 +253,7 @@ cmd_controlling_new() {
     description=""
     scope=""
     stable_key=""
+    integration_ref=$PACKAGE_LOG_INTEGRATION_REF
     block="controlling bootstrap"
     related_tmp=$(mktemp 2>/dev/null) || return 1
     : > "$related_tmp"
@@ -260,6 +266,7 @@ cmd_controlling_new() {
             --related) shift; related=${1:-}; shift || true; require_plain_table_text "related" "$related" || { rm -f "$related_tmp"; return 1; }; printf '%s\n' "$related" >> "$related_tmp" ;;
             --stable-key) shift; stable_key=${1:-}; shift || true ;;
             --block) shift; block=${1:-}; shift || true ;;
+            --integration) shift; integration_ref=${1:-}; shift || true ;;
             *) echo "알 수 없는 controlling new 옵션입니다: $1" >&2; rm -f "$related_tmp"; return 1 ;;
         esac
     done
@@ -268,6 +275,9 @@ cmd_controlling_new() {
     require_line "description" "$description" || { rm -f "$related_tmp"; return 1; }
     require_line "scope" "$scope" || { rm -f "$related_tmp"; return 1; }
     require_line "block" "$block" || { rm -f "$related_tmp"; return 1; }
+    if [ -n "$integration_ref" ]; then
+        require_line "integration" "$integration_ref" || { rm -f "$related_tmp"; return 1; }
+    fi
 
     mkdir -p "$LOG_DIR" || { rm -f "$related_tmp"; return 1; }
     base="$LOG_DIR/$(today_date)-$(slugify "$topic")"
@@ -281,7 +291,7 @@ cmd_controlling_new() {
     require_line "stable-key" "$stable_key" || { rm -f "$related_tmp"; return 1; }
 
     tmp_file=$(mktemp "$LOG_DIR/.package-log-new.XXXXXX" 2>/dev/null) || { rm -f "$related_tmp"; return 1; }
-    emit_controlling_log "$topic" "$description" "$scope" "$stable_key" "$block" "$related_tmp" > "$tmp_file"
+    emit_controlling_log "$topic" "$description" "$scope" "$stable_key" "$block" "$related_tmp" "$integration_ref" > "$tmp_file"
     if ! mv "$tmp_file" "$file"; then
         echo "controlling package log 생성에 실패했습니다: $file" >&2
         rm -f "$related_tmp" "$tmp_file"
@@ -321,6 +331,7 @@ cmd_controlling_detach() {
     consume="package result consumed by source Work Item"
     snapshot="source Work Item package detach context"
     stable_key=""
+    integration_ref=$PACKAGE_LOG_INTEGRATION_REF
     block="controlling bootstrap"
     related_tmp=$(mktemp 2>/dev/null) || return 1
     : > "$related_tmp"
@@ -338,6 +349,7 @@ cmd_controlling_detach() {
             --related) shift; related=${1:-}; shift || true; require_plain_table_text "related" "$related" || { rm -f "$related_tmp"; return 1; }; printf '%s\n' "$related" >> "$related_tmp" ;;
             --stable-key) shift; stable_key=${1:-}; shift || true ;;
             --block) shift; block=${1:-}; shift || true ;;
+            --integration) shift; integration_ref=${1:-}; shift || true ;;
             *) echo "알 수 없는 controlling detach 옵션입니다: $1" >&2; rm -f "$related_tmp"; return 1 ;;
         esac
     done
@@ -350,6 +362,9 @@ cmd_controlling_detach() {
     require_line "consume" "$consume" || { rm -f "$related_tmp"; return 1; }
     require_line "snapshot" "$snapshot" || { rm -f "$related_tmp"; return 1; }
     require_line "block" "$block" || { rm -f "$related_tmp"; return 1; }
+    if [ -n "$integration_ref" ]; then
+        require_line "integration" "$integration_ref" || { rm -f "$related_tmp"; return 1; }
+    fi
     if [ -z "$reason" ]; then
         reason="package controlling log detach"
     fi
@@ -385,7 +400,7 @@ cmd_controlling_detach() {
         rm -f "$related_tmp" "$source_snap" "$body_tmp"
         return 1
     }
-    emit_controlling_log "$topic" "$description" "$scope" "$stable_key" "$block" "$related_tmp" "$source" "$id" "$consume" "$snapshot" > "$tmp_target"
+    emit_controlling_log "$topic" "$description" "$scope" "$stable_key" "$block" "$related_tmp" "$integration_ref" "$source" "$id" "$consume" "$snapshot" > "$tmp_target"
     if ! mv "$tmp_target" "$target"; then
         echo "controlling package log 생성에 실패했습니다: $target" >&2
         if restore_source_or_warn "$source_snap" "$source" "$target"; then

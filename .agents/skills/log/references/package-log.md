@@ -138,6 +138,8 @@ Reconcile한다.
 - Base Work Items와 next pointer만 package 진행·완료 상태를 소유한다. Task Index는 W-id,
   Compact/Full profile, inline/delegated execution mode와 canonical task-record file locator의
   mapping만 소유하고 진행·완료 상태를 복제하지 않는다.
+- task record 생성과 Task Index 등록은 의미 계약을 이 절에서 확인한 뒤, 지원 여부와 명령 형태를
+  먼저 `../scripts/package-log --help`의 `task new` / `index add`에서 확인한다.
 - 모든 executable W는 별도 task record file 하나를 가진다. Executable W의 positive signal은 별도
   완료·검증·결과 소비 계약을 가지며 artifact 검토·수정·생성, 별도 agent 위임, 독립 재개, controlling이
   소비할 candidate evidence/result 생성 중 하나 이상을 하는 것이다.
@@ -305,7 +307,9 @@ task record·실제 source·산출물·검증 결과를 검토하는 gate다.
 ## Fixed Package Skeleton
 
 Base log의 Work Items, Required Context, History와 status/Closeout 절차는 상속하고 복제하지
-않는다. Package 전용으로 아래 8표면을 고정한다.
+않는다. Package 전용으로 아래 8표면을 고정한다. controlling package skeleton 생성을 적용할
+때는 의미·계약을 이 절에서 판정한 뒤 `../scripts/package-log --help`의 `controlling new` /
+`controlling detach` 지원을 확인한다.
 
 - **Package Scope** — primary artifact/change boundary와 allowed cross-artifact write-set. 비어 있을
   수 없다. write-set 밖 영향은 `out-of-scope effect`로 기록·확인·이관한다.
@@ -359,6 +363,8 @@ base Closeout/status 절차 앞에 package gate를 적용한다(base는
 
 1. **Registry Integrity Check**: Work Item ↔ Task Index ↔ 실제 task record가 일치하고, record
    Identity의 controlling/W-id 역방향 pointer가 맞으며, dangling locator나 orphan record가 없다.
+   기계적 registry 점검은 `../scripts/package-log --help`의 `package-log check` 지원을 확인해 사용할
+   수 있지만, 결과 의미와 closeout 판정은 agent/user가 이 절의 계약으로 소유한다.
 2. **Result Consumption Gate**: exact Brief revision/Attempt 결과, controlling 수용·부분 수용·기각
    disposition, artifact correction·재검증과 accepted package surface Reconcile이 끝났다.
 
