@@ -59,7 +59,7 @@
   gate-driven flow의 요소에 back-edge와 반복 state를 더해 재진입 조건과 돌아갈 단계를 명시한다.
   되돌아갈 경로와 termination을 함께 복원하지 못하면 well-formed loop가 아니다. 각 반복은 state를
   termination에 더 가깝게 바꿔야 하며, state가 진전 없이 되풀이되면 back-edge로 다시 돌지 않고
-  escalation으로 넘긴다. 되돌아가는 경로만 있고 종료 조건이 없으면 loop로 부르지 않는다.
+  escalation으로 넘긴다.
 
 **제약·안전장치**
 

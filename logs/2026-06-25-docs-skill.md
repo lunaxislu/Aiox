@@ -2842,3 +2842,64 @@ Next: 이 로그(docs-skill 설계 owner, open) status 재검토 — W1·W2·W3 
 **커밋:** document-structure-review skill 4파일(SKILL.md · references/authoring-patterns.md · references/review-patterns.md · references/EXAMPLE.md) + 이 로그를 브랜치 `workspace-reset-stage7`에 커밋. log-skill workstream(`.agents/skills/log/**` 및 관련 로그)은 별개라 이 커밋에서 제외.
 
 Next: docs-skill 설계 open owner 로그로 유지. 추가 설계 변경·검토는 이 로그에 새 기록으로 append하며, 열린 Wn work item은 없다. 선택 후속(비차단): authoring `62` 중복 문장 제거 여부 @user 판단.
+
+## 2026-07-08 · document-structure-review 3쟁점 검증 결과 반영 — authoring 중복 문장 제거, no-change 2건
+
+**사실:**
+
+- Rule Shape `feedback loop`의 line 62 중복 문장은 Wording 규칙 dogfood 결과 제거했다. 남긴 문장은 "state가 진전 없이 되풀이되면 back-edge로 다시 돌지 않고 escalation으로 넘긴다."까지다.
+- 파일 수정은 `.agents/skills/document-structure-review/references/authoring-patterns.md` 1건과 이 로그 append만 수행했다.
+
+**추론:**
+
+- `mixed concept roles`는 no-change가 맞다. case overlap은 multi-axis routing이 포용하므로, `EXAMPLE` 새 case나 태그 retrofit은 하지 않는다.
+- partial patch 기준 pointer도 no-change가 맞다. step 6 + Propagation + Change Gates가 이미 substance를 소유하므로 추가 pointer를 두면 duplicated ownership 위험이 있다.
+
+**결론:**
+
+- 3쟁점 중 Rule Shape 중복 문장만 반영하고, `mixed concept roles`와 partial patch 기준 pointer는 추가 수정 없이 현 상태를 유지한다.
+
+### 2026-07-08 · authoring line 62 제거 근거 보강 + 국소 패치 bias 쟁점 재검토 착수
+
+@user가 직전 반영에 대해 "변경한 것의 이유·근거를 로그로 기록한 다음 subagent들에게 document skill을 사용해 현재 논의를 검토시키라"고 지시했다.
+
+**확인한 사실:**
+
+- 변경 파일은 `.agents/skills/document-structure-review/references/authoring-patterns.md`와 이 로그뿐이다.
+- 제거된 문장은 Rule Shape `feedback loop` bullet 말미의 "되돌아가는 경로만 있고 종료 조건이 없으면 loop로 부르지 않는다."이다.
+- 같은 bullet에는 "되돌아갈 경로와 termination을 함께 복원하지 못하면 well-formed loop가 아니다"와 progress invariant("각 반복은 state를 termination에 더 가깝게... escalation으로 넘긴다")가 남아 있다.
+- 제거 대상 문장 검색은 0건이고, well-formedness/progress 문장은 남아 있음을 검증했다. `git diff --check`도 통과했다.
+
+**추론:**
+
+- 제거된 문장은 남은 well-formedness 문장의 한 인스턴스를 다시 말한다. 파일 자신의 Wording 규칙(제거해도 판정이 같으면 중복 후보, 이미 말하는 내용을 해설로 반복하지 않음)에 따라 중복 제거가 정당하다.
+- 삭제 후에도 "termination 없는 back-edge 구조는 well-formed loop가 아니다"라는 판정과 non-progress 시 escalation 행동은 복원된다.
+- 이 변경은 F1/progress invariant의 의미를 약화하지 않고, Rule Shape reference 내부의 reader-cost cleanup에 닫힌다.
+
+**현재 재검토 쟁점:**
+
+- @user는 "작은 변경, 국소 패치가 언제나 정답이지 않을 수도 있다"는 기준을 검토 기준으로 삼아야 한다고 문제 제기했다.
+- 직전 보고는 partial patch 기준 pointer를 no-change로 보았지만, 이 사용자 의도는 단순 명료성 선호가 아니라 local patch bias를 검토 단계에서 명시적으로 의심하게 하는 기준인지 재판정할 필요가 있다.
+- 다음 행동: subagent들에게 document-structure-review skill 기준으로 이 논의의 owner·고도·중복 위험·restoration gap을 독립 검토하게 하고, 결과를 본 뒤 반영 여부를 재판정한다. 파일 추가 수정은 그 검토 전에는 하지 않는다.
+
+### 2026-07-08 · 국소 패치 bias 쟁점 재검토 종결 — no-change
+
+@user가 "어떤 문제를 국소 패치로 닫을지, 기존 섹션 보강으로 닫을지, 새 섹션/구조 변경으로 올릴지 판단하는 기준"이 필요한 것이라고 쟁점을 재정의했고, Claude 독립 검토를 통해 재판정했다.
+
+**확인한 사실:**
+
+- `SKILL.md` Node Operation step 4는 `local-only`, `ancestor-only`, `both`, `no-change` 후보 비교와 "문제 문서가 항상 변경 대상이라고 가정하지 않는다"를 소유한다.
+- `SKILL.md` Change Gates > Content Or Identity Change는 같은 owner·scope이면 흡수/필요 섹션 배치, identity·scope를 초과하면 국소적으로 끼우지 않고 owner 위임·scope 확장·문서 분리·상위 개념 승격을 비교하라고 한다.
+- `review-patterns.md` Owner And Scope Decisions도 새 내용과 기존 내용의 관계를 같은 owner, sibling, 하위, 무관으로 분류하고 범위를 벗어나면 위임·scope 확장·분리·상위 개념 승격을 비교하라고 한다.
+- 이번 논의의 직접 반영 사례인 authoring line 62 제거는 국소 패치가 실제로 옳았던 중복 제거 사례다.
+
+**추론:**
+
+- 사용자가 지목한 "국소 패치 vs 기존 섹션 보강 vs 새 섹션/구조 변경" 기준은 새 spine 문장으로 비어 있는 것이 아니라 Content Or Identity Change gate가 이미 직접 소유한다.
+- faithful dry-run에서는 step 2의 다축 라우팅, step 5의 Change Gates, step 6의 role-fit·blast-radius 선택을 통해 scale 비교가 복원된다. under-routing agent의 오판은 step 4에 후보 문장을 추가해도 고쳐지지 않고, 원인은 step 2 다축 라우팅 위반에 가깝다.
+- step 4에 tentative 문안을 추가하면 Change Gates, Owner And Scope Decisions, Change Location과 중복 소유를 만들 위험이 크고, "판정 경계", "판단 표면" 같은 비확립 어휘를 도입한다.
+
+**결론:**
+
+- 국소 패치 bias 쟁점은 현재 no-change로 종결한다. `SKILL.md` step 4·6, Change Gates, review-patterns, EXAMPLE에는 추가 수정하지 않는다.
+- 향후 실제로 국소 패치 편향이 반복 오판을 낳은 사례가 관측되면, step 4 문장 추가보다 먼저 step 2 다축 라우팅 강화, Content Or Identity Change gate 보강, 또는 실제 사례를 추상화한 EXAMPLE 추가 중 무엇이 owner에 맞는지 다시 비교한다.
