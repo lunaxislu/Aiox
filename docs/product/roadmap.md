@@ -149,15 +149,16 @@ follow-ups, not Phase 0 promises.
 ## Current Execution Candidates
 
 > [!note] 임시 매핑
-> 아래 표는 기존 실행 plan과 release gate 사이의 임시 mapping이다. 장기 roadmap
-> 구조나 실행 진행 상태의 기준으로 사용하지 않는다.
+> 아래 표는 실행 candidate와 release gate 사이의 임시 mapping이다. 장기 roadmap
+> 구조나 실행 진행 상태의 기준으로 사용하지 않는다. 실행 detail과 slice별
+> acceptance/verification은 각 successor slice 착수 stage 로그가 owner docs를 대조해 소유한다.
 
-| Candidate | Plan | Roadmap mapping |
+| Candidate | Successor slice | Roadmap mapping |
 | --- | --- | --- |
-| A2A envelope/lifecycle migration | `plans/post-mvp/envelope-metadata.plan.md` | G1-B/G1-C kickoff for Local stable A2A |
-| Codex structured metadata spike | `plans/post-mvp/codex-structured-metadata-spike.plan.md` | G1-A evidence for Codex ingress/render path and possible Phase 1 Tier 2 uplift |
-| Adapter dispatch registry refactor | `plans/post-mvp/adapter-dispatch-registry.plan.md` | G1 adapter boundary work and Phase 2 ingress generalization prerequisite |
-| Channel server boot failure surface | `plans/post-mvp/channel-boot-surface.plan.md` | G3/G1 boundary: attach failure must surface as diagnosable daemon behavior |
+| A2A envelope/lifecycle migration | `plans/a2a-execution.plan.md` S1 → S2 → S3 | G1-A contract/ingress freeze → G1-B envelope cutover → G1-C reliability for Local stable A2A |
+| Codex structured metadata spike | `plans/a2a-execution.plan.md` S1 | G1-A evidence for Codex ingress/render path and possible Phase 1 Tier 2 uplift |
+| Adapter dispatch registry refactor | `plans/a2a-execution.plan.md` S6 | Deferred adapter boundary cleanup after G1 and Phase 2 ingress generalization prerequisite; not release-blocking |
+| Channel server boot failure surface | `plans/a2a-execution.plan.md` S5 | G3/G1 boundary: Claude channel boot failure must surface as diagnosable daemon behavior |
 
 The older plan-side sequence maps into the final roadmap as follows:
 

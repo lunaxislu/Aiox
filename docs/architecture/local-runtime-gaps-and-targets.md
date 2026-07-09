@@ -20,8 +20,14 @@ The system architecture distinguishes between current, as-built gaps in the loca
   state in production.
 - **Stale Agent Transition Policy** — The `stale` agent state is defined, but current daemon code has no active
   transition path that marks agents stale.
-- **Unauthenticated Channel Ingress** — The Claude channel-server HTTP `/send` endpoint accepts loopback POSTs without
-  request authentication checks (P1-1).
+- **Local trust-boundary gaps** — The Claude channel-server HTTP `/send` endpoint accepts loopback POSTs without
+  request authentication checks, and daemon pushes to that endpoint do not present channel credentials. Codex MCP launch
+  passes the Codex agent token through app-server argv inline TOML instead of a safer secret-delivery channel. Claude channel
+  message/reply ingress requests sent back to the daemon carry no per-message token, and the daemon receive path accepts
+  them by agent name plus current stored state rather than request authorization. Runtime profile directories and daemon
+  sockets are created/listened without explicitly fixing directory or socket permissions. Token checks use ordinary
+  string inequality rather than constant-time comparison. Claude attach rollback also leaves `claudePendingTokens`
+  uncleared; the Codex rollback path does clear its pending token state, so this cleanup gap is Claude-specific.
 - **Experimental WebSocket Transport** — Codex active-thread synchronization uses the Codex app-server WebSocket path.
   The unsupported/experimental upstream status is a recorded current gap, not a fact inferable from local code alone.
 - **Codex queued delivery retry/drain** — when `codex_no_loaded_thread` keeps a delivery queued, no later rebind/poll
@@ -30,6 +36,13 @@ The system architecture distinguishes between current, as-built gaps in the loca
   read, acknowledge, or drain stale queued deliveries from the Codex side.
 - **`claude_channel_disconnected` event** — Codex has a disconnect event type and daemon emission, while the Claude
   channel side has no equivalent event type or emission.
+- **Claude channel boot-failure diagnosability** — a Claude agent attach returns success with a channel token before
+  the channel-server is confirmed listening, so a channel-boot fatal (for example `claude_channel_port_in_use` when an
+  explicit `AIOX_CLAUDE_CHANNEL_PORT` collides) is written only to the channel-server subprocess stderr and is not
+  surfaced in the attach response or daemon state. It re-appears later at inject time as the generic deferred
+  `target_runtime_unavailable`, which does not carry the original boot-fatal reason. This is an S5/G3 diagnosability
+  gap for the Claude channel specifically, not a general child-process boot contract. See
+  [[docs/architecture/local-runtime-claude-adapter]] §6.2 Launch Flow.
 
 Evidence:
 
@@ -50,12 +63,33 @@ Evidence:
 - Stale agent transition gap
   - [[src/core/agents.ts]]
     - `src/core/agents.ts:5-12`
-- Claude channel ingress auth gap
+- Local trust-boundary gaps
   - [[src/adapters/claude/channel-server.ts]]
     - `src/adapters/claude/channel-server.ts:77-88`
+    - `src/adapters/claude/channel-server.ts:320-324`
+    - `src/adapters/claude/channel-server.ts:365-369`
     - `src/adapters/claude/channel-server.ts:432-463`
-  - [[docs/specs/aiox-adapter-model]]
-    - `docs/specs/aiox-adapter-model.md:97-101`
+  - [[src/adapters/claude/injector.ts]]
+    - `src/adapters/claude/injector.ts:43-48`
+  - [[src/adapters/codex/launcher.ts]]
+    - `src/adapters/codex/launcher.ts:96-103`
+    - `src/adapters/codex/launcher.ts:115-119`
+  - [[tests/unit/adapters/codex-launcher.test.ts]]
+    - `tests/unit/adapters/codex-launcher.test.ts:161-169`
+  - [[src/daemon/state.ts]]
+    - `src/daemon/state.ts:74-88`
+    - `src/daemon/state.ts:974-1005`
+    - `src/daemon/state.ts:1008-1035`
+    - `src/daemon/state.ts:1761-1783`
+    - `src/daemon/state.ts:928`
+    - `src/daemon/state.ts:1046`
+    - `src/daemon/state.ts:1748`
+    - `src/daemon/state.ts:610-617`
+    - `src/daemon/state.ts:832-849`
+  - [[src/config/paths.ts]]
+    - `src/config/paths.ts:100-102`
+  - [[src/daemon/socket-transport.ts]]
+    - `src/daemon/socket-transport.ts:434-440`
 - Codex WebSocket transport gap
   - [[src/adapters/codex/runtime.ts]]
     - `src/adapters/codex/runtime.ts:25-30`
@@ -77,6 +111,15 @@ Evidence:
     - `src/core/events.ts:1-27`
   - [[src/daemon/state.ts]]
     - `src/daemon/state.ts:1076-1090`
+- Claude channel boot-failure diagnosability gap
+  - [[src/daemon/state.ts]]
+    - `src/daemon/state.ts:610-617`
+    - `src/daemon/state.ts:1346-1352`
+  - [[src/adapters/claude/channel-server.ts]]
+    - `src/adapters/claude/channel-server.ts:566-598`
+    - `src/adapters/claude/channel-server.ts:667-690`
+  - [[docs/architecture/local-runtime-claude-adapter]]
+    - `docs/architecture/local-runtime-claude-adapter.md:56-107`
 
 Sources:
 

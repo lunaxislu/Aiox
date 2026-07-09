@@ -1,7 +1,7 @@
 ---
 topic: workspace reset legacy source absorption map
 description: documentation taxonomy에 owner가 없는 legacy 다중 폴더(prd/·plan/·docs/aiox/·plans/post-mvp/)의 owner 흡수·archive·삭제 disposition을 단일 source map으로 추적한다. W8/W9/W10이 흡수하며 append하고 물리 삭제 게이트가 단일 소비한다
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -10,7 +10,7 @@ status: open
 - [x] W2 흡수 진행 추적 (완료 2026-06-23) — W8(specs)/W9(roadmap·release)/W10(split)이 owner 흡수를 수행할 때마다 같은 source map에 disposition과 self-sufficiency 검증을 append/update한다. **흡수자 3 package 전부 `decided` 확인(W8/W9/W10 status decided), source map 전 row에 disposition 반영 완료 → 추가 흡수 없음.**
 - [x] W3 archive 판정 (완료 2026-06-23) — `logs/AGENTS.md`의 Archive Gate(보존가치 + self-sufficiency)를 개별 파일에 적용해 `logs/` digest 필요 여부를 확정한다. **digest 2파일 생성: pre-validation spike 2건 → `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md`, docs/aiox manual smoke/E2E 2건 → `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md`. industry-precedents self-sufficiency 확인으로 W10 checker 잔여 1건 해소(digest 불필요). 나머지 absorb→delete/delete-only rows는 owner 흡수만으로 self-contained.**
 - [x] W4 decision 승격 추적 — gemini가 docs/decisions/ 부재/미흡으로 확인한 5개 후보(industry-precedents=Opaque Worker / observation-asymmetry=D7 Scope Reduction / aiox-a2a §13=아키텍처 부채 3축+Structured Logger / step-14-mcp-bug=App Server 주입·격리 / proxy-vs-app-server=app-server+proxy 하이브리드)를 W8/W10 흡수 중 W6 기준으로 `docs/decisions/`에 승격한다. 승격 전 docs/decisions/ 현황을 disk에서 재확인하고, 완료를 source map disposition에 반영한다. — **완료(2026-06-22 W10 W5/W6 Claude checker PASS): 2건 승격(`codex-d7-authoritative-binding-scope.md`, `codex-app-server-mcp-injection-and-isolation.md`) + 3건 no-promotion accepted. 5건 모두 source map disposition에 반영됨. checker 잔여 1건(`industry-precedents` Opaque Worker coarse-state/semantic-timeout self-sufficiency)은 W3/물리 gate handoff.** decision 승격 추적 완결; 물리 삭제는 W5 handoff 소유.
-- [>] W5 closeout & 물리 삭제 handoff — stage 6 target rows(`prd/`·`plan/`·`docs/aiox/`)는 disposition 확정(`absorb→delete` / `archive→delete` digest done / `delete-only`)으로 `plans/workspace-reset/workspace-reset.md` stage 6 물리 삭제 게이트에 handoff 준비됨(2026-06-23). 단 `plans/post-mvp*` rows는 `keep / execution successor pending`으로 plan **stage 9** 소유라, 이 source map은 stage 6 + stage 9 두 게이트가 소비할 때까지 `open` 유지. 원본 삭제는 owner/archive successor self-contained 검증과 사용자 확인 후 각 게이트에서만 한다. **[2026-06-24] stage 6 게이트 소비 완료** — handoff한 stage-6 target rows(`prd/mvp/aiox-mvp-spec.md`, `prd/post-mvp/archive/*` 5, `prd/pre-validation/*` 2, `plan/*` 2, `docs/aiox/*` 19) 전부 물리 삭제됨(`logs/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md` W3·W4). disposition column은 흡수 경위 historical ledger라 row별 재작성 없이 아래 "2026-06-24 · stage 6 물리 삭제 반영" 기록이 최종 상태를 owner한다. `plans/post-mvp*` + `prd/post-mvp/aiox-a2a-spec.md`는 stage 9 미소비라 이 로그 `open` 유지.
+- [x] W5 closeout & 물리 삭제 handoff — stage 6 target rows(`prd/`·`plan/`·`docs/aiox/`)는 disposition 확정(`absorb→delete` / `archive→delete` digest done / `delete-only`)으로 `plans/workspace-reset/workspace-reset.md` stage 6 물리 삭제 게이트에 handoff 준비됨(2026-06-23). **[2026-06-24] stage 6 게이트 소비 완료** — handoff한 stage-6 target rows(`prd/mvp/aiox-mvp-spec.md`, `prd/post-mvp/archive/*` 5, `prd/pre-validation/*` 2, `plan/*` 2, `docs/aiox/*` 19) 전부 물리 삭제됨(`logs/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md` W3·W4). disposition column은 흡수 경위 historical ledger라 row별 재작성 없이 아래 "2026-06-24 · stage 6 물리 삭제 반영" 기록이 최종 상태를 owner한다. `plans/post-mvp*` + `prd/post-mvp/aiox-a2a-spec.md`는 **[2026-07-08 W4]** 사용자 승인 후 물리 삭제됨(6개 파일). stage 6 + stage 9 W4 두 게이트가 이 source map의 target rows를 모두 소비했고 남은 open 대상이 없어 W5 closeout 완료. 최종 상태는 아래 "2026-07-08 · stage 9 W4 물리 삭제 반영" 기록이 owner한다.
 
 ### Scope
 
@@ -23,7 +23,7 @@ status: open
 | file | 주장 성격 | 흡수 owner | 소비 package | archive 필요? | self-sufficiency 검증 | disposition |
 | ---- | -------- | --------- | ----------- | ------------ | -------------------- | ----------- |
 | `prd/mvp/aiox-mvp-spec.md` | MVP product scope+UX+non-goal+원칙 | spec + architecture | W8 | No | TBD | absorb→delete? |
-| `prd/post-mvp/aiox-a2a-spec.md` | product·protocol·arch·roadmap 통합 monolith (분리 예고 self-declared) | spec + architecture + roadmap + decision | W8 + W9 + W10 | No for §12/§13; no separate digest needed | W8: §2-§9 protocol contract self-contained (W7 PASS). W9: §11 release gate/phase authority는 roadmap에 있고 현재 단일 plan successor pending, §12 release pressure는 roadmap Pre-Release Gap Summary+gates에 흡수(PASS). W10: §13 architecture debt/Structured Logger는 roadmap Phase 2/G3 + architecture Known Gaps/Post-MVP로 self-contained; no decision promotion. 전체 파일 삭제는 single execution plan successor 후 재판정 | keep / execution successor pending; W10 §12/§13 absorbed, no archive digest |
+| `prd/post-mvp/aiox-a2a-spec.md` | product·protocol·arch·roadmap 통합 monolith (분리 예고 self-declared) | spec + architecture + roadmap + decision | W8 + W9 + W10 | No for §12/§13; no separate digest needed | W8: §2-§9 protocol contract self-contained (W7 PASS). W9: §11 release gate/phase authority는 roadmap에 있고 현재 단일 plan successor pending, §12 release pressure는 roadmap Pre-Release Gap Summary+gates에 흡수(PASS). W10: §13 architecture debt/Structured Logger는 roadmap Phase 2/G3 + architecture Known Gaps/Post-MVP로 self-contained; no decision promotion. 전체 파일 삭제는 single execution plan successor 후 재판정 | successor linked (2026-07-08 W3) — §11 gate/DoD detail은 `plans/a2a-execution.plan.md` slice의 gate 앵커로 참조되고 roadmap/spec이 권위 흡수; **deleted 2026-07-08 (stage 9 W4 physical deletion)** — traceability in `plans/a2a-execution.plan.md` Source Disposition Map |
 | `prd/post-mvp/archive/claude-codex-validation.md` | 설계 cross-validation transcript | architecture + decision | W9 + W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): archive header declares not authority+history/58; envelope/reply/tier/fan-out/blind spot rationale는 spec §4/§5와 `a2a-message-lifecycle...` decision에 흡수. conversational cross-validation 원문은 고유 empirical trace가 아님 | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `prd/post-mvp/archive/claude-opinion.md` | 설계 초기 의견 | architecture + decision | W9 + W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): local control plane, agents/routes/capabilities/policies, instruction layering, adapter compile, capability-vs-sandbox, federation/remote 방향은 product/spec/roadmap에 흡수. 외부 precedent/market claim은 dated 재검증 없이는 owner fact로 보존하지 않음 | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `prd/post-mvp/archive/codex-claude-validation.md` | cross-validation transcript | architecture + decision | W9 + W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): product definition, compose-before-envelope warning, adapter compile, identity/transport/policy/sandbox, app-server/runtime connector 브레인스토밍은 product/spec/architecture에 흡수. 고유 empirical trace 아님 | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
@@ -52,11 +52,11 @@ status: open
 | `docs/aiox/step-14-codex-thread-mismatch-discovery.md` | Step14 thread 불일치 학습 | architecture | W8 / W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): current owner is architecture §7.5~§7.7 and pair-slot decision; stale `thread/loaded/list` fix path superseded. rename-drift exists but deletion resolves | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
 | `docs/aiox/step-14-smoke-test-report.md` | Step14 E2E smoke (2 blocking issue) | architecture (test) | W8 / W10 | Yes → `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` (W3 digest done 2026-06-23) | W10 Codex draft (W5/W6 checker PASS 2026-06-22): blocker trace and verification list are not preserved in same density by owner body; digest needed before deletion. **W3(2026-06-23): digest가 procedure + Blocker 1/2 root-cause·solution + verified items 보존, self-contained** | archive→delete (W3 digest done 2026-06-23; physical gate only) |
 | `docs/aiox/step-6-cli-decisions-walkthrough.md` | Step6 CLI 결정 walkthrough | architecture | W8 / W10 | No | W10 Codex draft (W5/W6 checker PASS 2026-06-22): architecture §8.2/§9.1 and current command table are self-contained; stale architecture ref exists but deletion resolves | absorb→delete candidate (physical gate only; W5/W6 checker PASS 2026-06-22) |
-| `plans/post-mvp.plan.md` | Post-MVP 실행 index + Session Re-entry (obsolete scratch pointer 포함) | roadmap (우선순위/sequencing) + plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap은 Candidates/Sequenced 우선순위를 흡수했지만 단일 A2A execution plan 작성이 Obsidian/Atlas 이후로 deferred. 단일 plan 전에는 execution detail successor가 없어 self-contained 아님 | keep / execution successor pending (single plan 후 disposition 재판정) |
-| `plans/post-mvp/adapter-dispatch-registry.plan.md` | dispatch→adapter registry sub-plan (deferred) | plans 재편 (single plan으로) | W9 + future single-plan stage | No | W9 PASS: roadmap G1 adapter boundary + Phase 2 ingress prerequisite로 priority는 흡수. refactor options/checklist는 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
-| `plans/post-mvp/channel-boot-surface.plan.md` | channel boot surface sub-plan (deferred) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G3/G1 diagnosability pressure로 priority는 흡수. startup ack/fatal propagation checklist는 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
-| `plans/post-mvp/codex-structured-metadata-spike.plan.md` | codex metadata spike sub-plan (deferred) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G1-A evidence / Phase 1 Tier 2 uplift 후보로 priority는 흡수. investigation question/output/verification은 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
-| `plans/post-mvp/envelope-metadata.plan.md` | envelope metadata sub-plan (next kickoff) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G1-A/B/C next kickoff로 priority는 흡수. implementation increments/acceptance/kickoff checklist는 단일 plan successor 필요 | keep / execution successor pending (single plan 후 disposition 재판정) |
+| `plans/post-mvp.plan.md` | Post-MVP 실행 index + Session Re-entry (obsolete scratch pointer 포함) | roadmap (우선순위/sequencing) + plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap은 Candidates/Sequenced 우선순위를 흡수했지만 단일 A2A execution plan 작성이 Obsidian/Atlas 이후로 deferred. 단일 plan 전에는 execution detail successor가 없어 self-contained 아님 | successor linked (2026-07-08 W3) → `plans/a2a-execution.plan.md` (sequencing intent). async-petting-hoare 운영 라인은 successor 제외·repo 밖 scratch(`~/.claude/plans/async-petting-hoare.md`) 별도 보존; **deleted 2026-07-08 (stage 9 W4 physical deletion)** — traceability in `plans/a2a-execution.plan.md` Source Disposition Map |
+| `plans/post-mvp/adapter-dispatch-registry.plan.md` | dispatch→adapter registry sub-plan (deferred) | plans 재편 (single plan으로) | W9 + future single-plan stage | No | W9 PASS: roadmap G1 adapter boundary + Phase 2 ingress prerequisite로 priority는 흡수. refactor options/checklist는 단일 plan successor 필요 | successor linked (2026-07-08 W3) → `plans/a2a-execution.plan.md` S6 (deferred, Phase 2 prerequisite, release-blocking 아님); **deleted 2026-07-08 (stage 9 W4 physical deletion)** — traceability in `plans/a2a-execution.plan.md` Source Disposition Map |
+| `plans/post-mvp/channel-boot-surface.plan.md` | channel boot surface sub-plan (deferred) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G3/G1 diagnosability pressure로 priority는 흡수. startup ack/fatal propagation checklist는 단일 plan successor 필요 | successor linked (2026-07-08 W3) → `plans/a2a-execution.plan.md` S5 (Claude 한정 진단성, broad child-process boot contract 일반화 금지); **deleted 2026-07-08 (stage 9 W4 physical deletion)** — traceability in `plans/a2a-execution.plan.md` Source Disposition Map |
+| `plans/post-mvp/codex-structured-metadata-spike.plan.md` | codex metadata spike sub-plan (deferred) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G1-A evidence / Phase 1 Tier 2 uplift 후보로 priority는 흡수. investigation question/output/verification은 단일 plan successor 필요 | successor linked (2026-07-08 W3) → `plans/a2a-execution.plan.md` S1 (G1-A evidence spike); **deleted 2026-07-08 (stage 9 W4 physical deletion)** — traceability in `plans/a2a-execution.plan.md` Source Disposition Map |
+| `plans/post-mvp/envelope-metadata.plan.md` | envelope metadata sub-plan (next kickoff) | plans 재편 | W9 + future single-plan stage | No | W9 PASS: roadmap G1-A/B/C next kickoff로 priority는 흡수. implementation increments/acceptance/kickoff checklist는 단일 plan successor 필요 | successor linked (2026-07-08 W3) → `plans/a2a-execution.plan.md` S1→S2→S3 (G1-A/B/C); **deleted 2026-07-08 (stage 9 W4 physical deletion)** — traceability in `plans/a2a-execution.plan.md` Source Disposition Map |
 
 ## Required Context
 
@@ -405,3 +405,79 @@ historical record라 평문화·수정하지 않는다(stage6 로그 `:559-562`)
 
 **검증:** stage6 로그 W3(`:695-709`)·W4 — owner 범위 dead-ref 0, git deleted 88 + `history/59`
 1건(W4). 삭제 set와 이 장부의 stage-6 target rows 일치. stage 9 보존 rows 전부 잔존 확인.
+
+## 2026-07-08 · stage 9 W3 — successor linked 중간 재판정 (물리 삭제 아님)
+
+stage 9 로그(`logs/2026-06-29-workspace-reset-stage9-post-mvp-plan-disposition.md`) W3가 이 장부의
+stage 9 미소비 rows를 소비했다. `plans/a2a-execution.plan.md` successor(W2 작성)가 존재하게 됐으므로
+6개 row의 disposition을 `keep / execution successor pending`에서 중간 상태
+`successor linked; deletion pending W4 gate`로 재판정했다. 이 재판정은 successor 연결 상태를 드러내는
+것이지 final deletion disposition이 아니다. 물리 삭제는 W4 사용자 승인 게이트가 소유한다.
+
+**재판정 대상 rows와 legacy source → successor slice mapping (이 장부가 소유):**
+
+| Legacy source | Successor slice (in `plans/a2a-execution.plan.md`) | 성격 유지 |
+| --- | --- | --- |
+| `prd/post-mvp/aiox-a2a-spec.md` | §11 gate/DoD detail → 각 slice의 gate 앵커로 참조 | 권위는 roadmap/spec이 이미 흡수, §11 본문 복제 안 함 |
+| `plans/post-mvp.plan.md` | sequencing intent → successor 전체 | async-petting-hoare 운영 라인은 successor 제외·별도 보존 |
+| `plans/post-mvp/envelope-metadata.plan.md` | S1 → S2 → S3 (G1-A/B/C) | envelope/lifecycle migration의 G1-B/G1-C kickoff 의미 유지 |
+| `plans/post-mvp/codex-structured-metadata-spike.plan.md` | S1 (G1-A evidence spike) | Tier 2 승격 근거 아님, G1-A evidence |
+| `plans/post-mvp/adapter-dispatch-registry.plan.md` | S6 (deferred) | Phase 2 prerequisite, release-blocking 아님 |
+| `plans/post-mvp/channel-boot-surface.plan.md` | S5 (G3/G1 boundary) | Claude 한정 진단성, broad boot contract 일반화 금지 |
+
+**async-petting-hoare 경계(명시):** `plans/post-mvp.plan.md`의 Session Re-entry에 있는
+async-petting-hoare 운영환경 셋업 라인은 A2A execution successor에 흡수하지 않는다. 원문 상세는 repo
+밖 개인 scratch `~/.claude/plans/async-petting-hoare.md`(Claude scratch)이며 별도 보존 대상이다. 이
+row(`plans/post-mvp.plan.md`)의 successor 링크는 sequencing intent에 한정되고, async-petting-hoare
+scratch는 링크 대상이 아니다.
+
+**경계 / non-actions:**
+
+- 물리 삭제·final deletion disposition을 하지 않았다. disposition column은
+  `successor linked; deletion pending W4 gate` 중간 상태이며, W4 게이트 소비 후 별도 dated 기록이 최종
+  상태를 owner한다.
+- roadmap `Current Execution Candidates` repoint는 W3에서 수행됐다(4 row → successor slice, 4 row
+  유지). 그 owner 수정 기록은 stage 9 로그 W3가 owner다.
+- `history/*` row·새 표를 만들지 않았고, owner 문서 본문(spec/architecture/decision)을 수정하지 않았다.
+- 이 source map은 stage 9 W4(물리 삭제 게이트)가 소비할 때까지 `open` 유지한다. W5(closeout & 물리
+  삭제 handoff)는 이 W3로 닫히지 않는다.
+
+## 2026-07-08 · stage 9 W4 물리 삭제 반영 (최종 disposition, source map closeout)
+
+stage 9 로그(`logs/2026-06-29-workspace-reset-stage9-post-mvp-plan-disposition.md`) W4가 사용자 승인
+후 이 장부의 stage 9 미소비 6 row를 소비해 물리 삭제했다. W3 중간 상태
+(`successor linked; deletion pending W4 gate`)를 최종 deletion disposition으로 확정한다.
+
+**W4 physical deletion consumed these rows (2026-07-08 — `rm`, 되돌릴 수 없음):**
+
+- `prd/post-mvp/aiox-a2a-spec.md` — product·protocol·arch·roadmap monolith
+- `plans/post-mvp.plan.md` — Post-MVP 실행 index (async-petting-hoare 운영 라인은 successor 제외·repo 밖 scratch로 별도 보존)
+- `plans/post-mvp/envelope-metadata.plan.md` — successor S1 → S2 → S3
+- `plans/post-mvp/codex-structured-metadata-spike.plan.md` — successor S1
+- `plans/post-mvp/adapter-dispatch-registry.plan.md` — successor S6
+- `plans/post-mvp/channel-boot-surface.plan.md` — successor S5
+
+빈 디렉토리 `plans/post-mvp/`·`prd/post-mvp/`·`prd/`도 함께 제거됐다.
+
+**disposition column 갱신:** 위 6 row disposition을 `deletion pending W4 gate` →
+`deleted 2026-07-08 (stage 9 W4 physical deletion)`로 확정했다. legacy→successor slice traceability는
+`plans/a2a-execution.plan.md` Source Disposition Map이 삭제 후에도 historical mapping으로 소유한다.
+
+**self-sufficiency / dead-ref (삭제 전 controlling agent 직접 grep + 2 subagent 독립 재검증):**
+
+- durable/active surface(`docs/`·`src/`·`scripts/`·root README/AGENTS/CLAUDE·active plans)에 6개 후보로의
+  load-bearing authority/code 참조 0건. roadmap `Current Execution Candidates`는 W3에서 이미
+  successor slice로 repoint(legacy path 0건, 직접 재확인).
+- 남은 참조는 전부 historical: workspace-reset 로그 ledger, 이 source map, `plans/a2a-execution.plan.md`
+  Source Disposition Map(traceability record, 삭제 후 유지). active plan 쪽 dangling citation은 stage 9
+  W4에서 `(deleted after W4)` 주석으로 중립화했다.
+
+**사전 보정(stage 9 로그 W4가 owner):** A = channel-boot diagnosability gap을
+`docs/architecture/local-runtime-gaps-and-targets.md` §13 Current Gaps에 흡수(owner self-contained,
+code evidence 포함). B = §13.7 open-core/commercial 가설·§13.4/§13.5 Microsoft APM 검토 지침을
+exploratory digest로만 보존(decision/owner 승격 아님). C = dangling path 처리 방침 적용.
+
+**W5 closeout:** stage 6(2026-06-24) + stage 9 W4(2026-07-08) 두 게이트가 이 source map의 모든 target
+rows(legacy `prd/`·`plan/`·`docs/aiox/`·`plans/post-mvp*` + `aiox-a2a-spec.md`)를 소비했다. 남은 open
+대상이 없어 W5를 `[x]`로 전이하고 이 source map을 `decided`로 닫는다. historical inbound 링크는 삭제
+시점 스냅샷으로 유지한다(평문화·수정하지 않음).
