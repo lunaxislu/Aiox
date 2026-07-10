@@ -159,8 +159,8 @@ Evidence:
 
 Sources:
 
-- Codex queued delivery retry/drain provenance: `logs/2026-06-19-mvp-history-archive.md` §2.3.
-- Codex WebSocket upstream-support provenance: `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md` W7 C/D
+- Codex queued delivery retry/drain provenance: `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.3.
+- Codex WebSocket upstream-support provenance: `logs/workspace-reset/packages/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md` W7 C/D
   entries and [[docs/architecture/local-runtime-codex-adapter]] §7.2.
 
 ### Target / Proposed / Deferred (Post-MVP Checklist) [Status: Target]

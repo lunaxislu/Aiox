@@ -109,6 +109,6 @@ Two items are explicitly not closed by this decision:
 - `docs/specs/aiox-message-lifecycle.md` §4 — owner outcome for canonical envelope, routing,
   reply correlation, delivery lifecycle, persistence minimum, current caveats,
   and open questions.
-- `logs/2026-06-21-workspace-reset-W8-A2A-spec-authority.md` — W7 checker PASS
+- `logs/workspace-reset/packages/2026-06-21-workspace-reset-W8-A2A-spec-authority.md` — W7 checker PASS
   and W8 constraints that keep correlated reply authorization and public
   `deliveryId` namespace open.

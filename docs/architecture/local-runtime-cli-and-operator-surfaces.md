@@ -32,7 +32,7 @@ vocabulary, module overview, and authority links.
 
 Auto-start is wired only on `agent-attach`. The legacy PRD auto-start
 requirement is absorbed here as current architecture behavior; Step 14
-provenance is preserved in `logs/2026-06-19-mvp-history-archive.md` §2.3.
+provenance is preserved in `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.3.
 
 Evidence:
 
@@ -51,7 +51,7 @@ Evidence:
 - Parse errors use `CliParseError` with codes
   `aiox.<commander-code>`, `aiox.missingCommand`, `aiox.invalidName`,
   `aiox.missingTargets`. Commander's exit code is propagated as-is
-  (provenance: logs/2026-06-19-mvp-history-archive.md §4.1).
+  (provenance: logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §4.1).
 
 Evidence:
 
@@ -90,7 +90,7 @@ always prints all five statuses: `messages=N queued=N delivering=N`,
 
 `StatusResponse.status()` aggregates via repository `COUNT(*)`. Tmux check and
 pnpm check were intentionally removed at closeout
-(`logs/2026-06-19-mvp-history-archive.md` §4.2).
+(`logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §4.2).
 
 Evidence:
 

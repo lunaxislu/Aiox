@@ -76,5 +76,5 @@ connections can mutate the same runtime and require a richer ownership model.
 
 ## Sources
 
-- `logs/2026-06-19-mvp-history-archive.md:45-53` - retained digest of the Step
+- `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md:45-53` - retained digest of the Step
   10 D7 finding.

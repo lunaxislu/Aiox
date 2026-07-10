@@ -1,0 +1,553 @@
+---
+topic: Log skill maintenance, script, onramp 정합화
+description: Reviews log skill maintenance rules, scripts/log and tests, then project current-work/onramp integration and affected repo guidance.
+status: decided
+---
+
+## Work Items
+
+- [x] W1 log skill maintenance 기준과 현재 owner/reference drift를 검토하고 수정 범위를 확정한다
+- [x] W2 `scripts/log` 명령 표면과 회귀 테스트를 현재 portable log 계약에 맞춰 검토·수정한다
+- [x] W3 project onramp/current-work integration과 영향받는 repo 지침을 검토·수정한다
+- [x] W4 전체 owner·호출·테스트 경로를 재검증하고 closeout 결과를 기록한다
+- [x] W5 detach/new 로그 생성 시 Global/Wn 섹션 처리 개선: Global 빈 섹션 상시화, Wn on-demand, context add 빈 줄 보정, 문서 정합
+
+## Required Context
+
+### Return Target
+
+- None: independent log.
+
+### {Global}
+
+- 이 로그를 재개하거나 토의하기 전에 `log/decision.md`를 읽는다. 그 파일의 기존
+  "`scripts/onramp`와 `docs/guides/workflow.md`를 overhaul 완료 전 다루지 않는다"는 제약은
+  사용자의 2026-07-03 직접 지시로 이 로그의 maintenance→script/tests→project integration
+  작업 수명에 한해 다시 열렸다. 다른 작업에 대한 포괄적 폐기로 해석하지 않는다.
+- portable log 규칙과 project integration을 분리한다. 일반 로그 의미·수명·도구 경계는
+  `.agents/skills/log/`이, 이 repo의 현재 작업 선택·onramp·owner handoff는 root `AGENTS.md`,
+  `logs/AGENTS.md`, `docs/guides/workflow.md`, `scripts/onramp`가 소유한다.
+- 문서나 script를 바꾸기 전에 live owner, inbound/outbound reference, producer/consumer,
+  tests를 끝까지 추적한다. 확인한 사실, 추론, 의견을 구분하고 의미 판단을 script에 넘기지 않는다.
+- package-log 모델의 portable화와 설계 토론은 sibling
+  `logs/log-system/2026-07-03-log-skill-package-log-model-discussion.md`가 소유한다. 이 로그는 package
+  activation, package surface, source map, agent topology를 설계하거나 흡수하지 않는다.
+- 기존 사용자·다른 agent의 변경을 덮어쓰지 않는다. 문서 이동·통합·삭제나 repo workflow의
+  비용 큰 변경은 적용안, owner 범위와 검증 방법을 먼저 제시하고 사용자 승인을 확인한다.
+
+## 2026-07-03 · Maintenance, script, onramp 정합화 착수
+
+### 분리와 목적
+
+- 사용자 판단에 따라 2,000줄을 넘긴 log-skill overhaul 토론에서 후속 수명을 분리했다.
+- 이 작업은 완료 조건과 재개 상태가 package-log 모델 토론과 독립적이다. source Work Item의
+  결과 소비 관계도 없으므로 Independent Follow-Up으로 시작하며 `## 복귀 대상`을 두지 않는다.
+- 목적은 먼저 maintenance 규칙과 owner map을 정리하고, 그 확정 계약을 기준으로 log script와
+  tests를 평가한 뒤, 마지막으로 이 repo의 onramp/current-work integration과 지침을 맞추는 것이다.
+
+### 시작 근거
+
+- **확인한 사실:** `.agents/skills/log/references/maintenance.md`는 portable skill,
+  project integration, script 문제를 분류하고 문서 규칙을 script보다 먼저 확정하도록 요구한다.
+- **확인한 사실:** `logs/AGENTS.md` 서두는 삭제된 `log-writing-rules.md`와
+  `work-items-rules.md`를 아직 owner로 가리킨다. 현재 세부 owner는 `loop-rules.md`다.
+- **확인한 사실:** `loop-rules.md`는 `## Work Items`와 `## Required Context`를 기본 template
+  surface로 요구하지만, 현재 `scripts/log new`는 `## Required Context`를 생성하지 않는다.
+- **확인한 사실:** 현재 marker 계약은 취소 `[-]`, 이관 `[→]`, detach `[↓]`를 구분하지만
+  `scripts/log items set`은 cancelled/transferred를 `[x]` 텍스트로 렌더링하고 detach 전이를
+  제공하지 않는다. 현재 세 test 파일도 이 구현을 기대한다.
+- **확인한 사실:** `project-setup.md`의 current-work 최소 계약, root `AGENTS.md`,
+  `docs/guides/workflow.md`, `scripts/onramp`는 현재 작업 선택을 함께 소비한다. live onramp는
+  활성 plan이 없고 open 로그가 여러 개일 때 next-pointer graph의 유일한 leaf를 자동 선택한다.
+- **확인한 사실:** `log/decision.md` 첫머리의 과거 제약은 overhaul 중 script/onramp/workflow를
+  보지 말라고 했지만, 사용자가 이번 후속 로그에서 그 검토와 수정을 직접 지시했다.
+- **추론:** 위 차이들은 실제 drift 후보이지만, 각각 portable owner 수정인지 repo integration
+  수정인지와 호환성 영향은 W1~W3에서 호출·테스트 경로를 대조한 뒤 확정해야 한다.
+
+### Scope와 owner 경계
+
+- Primary scope: `.agents/skills/log/references/maintenance.md`, `.agents/skills/log/scripts/log`,
+  `.agents/skills/log/scripts/test-log-*.sh`, `scripts/onramp`.
+- 영향 검토 대상: `.agents/skills/log/SKILL.md`, `loop-rules.md`, `project-setup.md`,
+  `example.md`, root `AGENTS.md`, `logs/AGENTS.md`, `docs/guides/workflow.md`, 관련 hook·tests.
+- package-log modeling은 sibling 로그가 소유하므로 제외한다. workspace-reset package template의
+  내용 개편도 package 결과가 오기 전 이 로그에서 선점하지 않는다.
+- 로그 의미 판단 자동화, 새 상태기계·명령의 편의상 추가, 현재 사례만 막는 repo 전용 규칙을
+  portable skill에 복사하는 변경은 제외한다.
+
+### Ordered work
+
+1. W1에서 maintenance identity, owner reference, 승인 gate와 stale 문구를 live 파일 기준으로
+   분류하고 최소 적용안을 확정한다.
+2. W2에서 확정된 portable 계약을 `scripts/log`의 `new/search/check/set-status/append/items`와
+   세 회귀 test suite에 대조한다. 구조·원자성·format guard만 script에 남기고 의미 판정은
+   agent에게 둔다.
+3. W3에서 `project-setup.md` 최소 계약을 root 지침, `logs/AGENTS.md`, workflow guide,
+   `scripts/onramp`와 대조한다. 사용자 지정→plan anchor/pointer→no-plan 선택 경로와 모호성
+   정지 조건의 단일 owner·소비 관계를 정리한다.
+4. W4에서 수정 파일의 inbound/outbound link, command output, tests와 문서 예시를 다시 확인하고
+   결정·변경·검증·남은 후속을 이 로그에 기록한 뒤 status를 판정한다.
+
+### 검증 계획
+
+- 구조: `.agents/skills/log/scripts/log check <이 로그>`와 관련 open/fixture 로그 구조 점검.
+- script: `test-log-check.sh`, `test-log-items.sh`, `test-log-append.sh` 전체 실행 및 새 계약의
+  positive/negative 회귀 사례 추가 여부 확인.
+- integration: `scripts/onramp`의 plan 없음/단일 open/복수 open/유일 leaf/복수 leaf/깨진
+  pointer/순환/복수 활성 plan 경로를 fixture 또는 기존 test owner에서 검증한다.
+- 문서: owner reference와 anchor를 `rg`로 교차 확인하고 `git diff --check`를 실행한다.
+- closeout: portable rule과 repo integration의 책임이 섞이지 않았는지, script 문서와 실제
+  동작이 일치하는지, sibling package-log 범위를 침범하지 않았는지 검토한다.
+
+### 2026-07-03 17:17 · W2 `log new` 기본 형태 합의
+
+@user와 `scripts/log new`의 개선된 기본 형태를 먼저 토론했다.
+
+- **확인한 사실:** 현재 portable log 계약은 frontmatter field를 `topic`, `description`,
+  `status`로 둔다. 사용자와 agent는 field명을 `topic`으로 유지하고 frontmatter 수정은 별도
+  명령으로 분리하기로 합의했다.
+- **합의:** `log new`는 status를 기본 `open`으로 생성한다. 생성 시 `decided` 또는
+  `superseded`를 직접 만들지 않는다.
+- **합의:** `log new`는 `## Work Items`와 `## Required Context`를 항상 생성한다. 두 섹션은
+  인자가 없으면 비어 있을 수 있다.
+- **합의:** Work Item 초기 생성은 optional이다. 인자가 있으면 `active` 또는 `open` item을
+  여러 개 추가할 수 있게 한다.
+- **합의:** Required Context 초기 생성도 optional이다. 인자가 있으면 `{Global}` 또는
+  `{W1,W3}` 같은 scope heading 아래 bullet로 렌더링한다. script는 형식 렌더링만 담당하고,
+  해당 scope가 의미상 맞는지는 agent와 사용자가 판단한다.
+- **합의:** 첫 unit block topic은 반드시 받아야 한다. `--block` 같은 필수 인자로 명시하고,
+  `topic`을 암묵 상속하지 않는다.
+- **합의된 기본 명령 형태 후보:**
+
+```sh
+log new "<topic>" \
+  --description "<description>" \
+  --block "<unit block topic>" \
+  [--context Global:"..."] \
+  [--context W1,W3:"..."] \
+  [--item active:"첫 작업"] \
+  [--item open:"둘째 작업"]
+```
+
+- **합의된 생성 결과 골격:**
+
+```markdown
+---
+topic: <topic>
+description: <description>
+status: open
+---
+
+## Work Items
+
+## Required Context
+
+## YYYY-MM-DD · <unit block topic>
+```
+
+- **추가 합의:** `description`은 생성 시 필수로 한다.
+- **추가 합의:** 기존 positional `log new "<주제>" [설명]` 형태와의 호환성은 고려하지 않는다.
+  사용자가 각 세션에서 legacy 호환성 무시를 직접 지시할 예정이다.
+- **남은 논의:** `--context`와 `--item`의 shell parsing 형식을 정확히 어떻게 제한할지, long-log
+  hint, `block add`, `entry add`, item 수정, Required Context 수정 명령 표면을 결정해야 한다.
+
+### 2026-07-03 17:17 · W2 명령 표면 추가 합의
+
+@user와 `log new` 이후의 명령 표면을 이어서 토론했다.
+
+- **합의:** legacy compatibility는 더 이상 고려하지 않는다. 기존 `set-status` 명령은 alias로
+  남기지 않고 `meta set --status`로 통합한다.
+- **합의:** frontmatter 수정은 `meta set`이 소유한다.
+
+```sh
+log meta set <file> --topic "<topic>"
+log meta set <file> --description "<description>"
+log meta set <file> --status open|decided|superseded
+```
+
+- **합의:** `meta set --status decided|superseded`는 구조 guard를 포함한다. 미완료 `[ ]` 또는
+  `[>]` Work Item이 있으면 거부한다.
+- **합의:** `--item`과 `--context`는 colon 결합형을 쓰지 않고 다음처럼 두 인자 형태로 받는다.
+
+```sh
+--item active "첫 작업"
+--context W1,W3 "공통 기준"
+```
+
+- **합의:** `block add`는 새 `## YYYY-MM-DD · <unit block topic>`을 만들고 stdin body를 그
+  block의 첫 기록으로 둔다. 따라서 새 block을 만들 때 `block add`와 `entry add`를 모두 실행할
+  필요는 없다.
+- **합의:** `entry add`는 기존 unit block heading line을 `--after-line`으로 지정하고, 그 block
+  아래에 `### YYYY-MM-DD HH:MM · <entry topic>` entry와 stdin body를 추가한다.
+- **합의:** `block add`와 `entry add`는 적용된 heading line을 매번 출력하지 않는다. 파일 길이가
+  long-log threshold를 넘을 때만 hint를 출력한다.
+- **합의:** `item add`는 해당 로그의 다음 W-id를 자동 발급한다. 사용자가 Wn을 직접 지정할 필요가
+  없다.
+- **합의:** item 전이에는 reason을 필수로 둔다. `transferred`는 target도 필수다.
+- **남은 논의:** `detached` 전이를 script가 생성 명령으로 제공할지, 제공한다면 source item 변경과
+  target 로그의 복귀 대상 검증을 어느 수준까지 수행할지 결정해야 한다.
+
+### 2026-07-03 17:59 · W2 detach와 Return Target 구조 합의
+
+@user와 현재 skill의 detach guidance를 확인한 뒤, 개선된 script/log 계약에서 detach와 return
+관계를 어떻게 구조화할지 토론했다.
+
+- **확인한 사실:** 현재 `loop-rules.md`는 detach를 source Work Item이 분리 작업 로그의 결과를
+  나중에 소비해야 할 때 쓰는 전이로 정의한다. 현재 문서는 child 로그에 별도 `## 복귀 대상`
+  section을 두라고 하지만, 개선 계약에서는 `## Required Context` 하위 구조로 흡수하기로 했다.
+- **확인한 사실:** 현재 marker 공통 문장은 detached에 사유·경로를 남긴다고 표현하지만, 현재
+  Detach 세부 절과 예시는 `— detached: <target>`만 사용한다. 이 drift는 detached에도 reason을
+  명시하는 방향으로 문서와 예시를 갱신하기로 했다.
+- **합의:** `## Required Context` 아래에 `### Return Target` section을 둔다. return할 대상이 없는
+  독립 로그도 이 section을 두고 독립 로그임을 명시한다.
+- **합의된 independent 형태 후보:**
+
+```markdown
+## Required Context
+
+### Return Target
+
+- None: independent log.
+```
+
+- **합의된 detached child 형태 후보:**
+
+```markdown
+## Required Context
+
+### Return Target
+
+- Log: `logs/A.md`
+- Work Item: W2
+- Consume when: child가 결론을 내면 parent W2가 결과를 소비한다.
+- Context snapshot: parent W2 판단에 필요한 기준만 가져온다.
+```
+
+- **합의:** `Return Target` 값은 Required Context 하위 구조이므로 `log new`와 `log detach` 모두
+  `--context ReturnTarget ...` 계열 인자로 받는다. 별도 top-level `--return-when`이나
+  `--return-snapshot`은 두지 않는다.
+- **합의된 `log new` ReturnTarget 인자 후보:**
+
+```sh
+log new "<topic>" \
+  --description "<description>" \
+  --block "<unit block topic>" \
+  --context ReturnTarget logs/A.md W2 "소비 조건" "context snapshot"
+```
+
+- **합의된 `log detach` 기본 형태 후보:** 첫 인자는 기존 source 로그이고 `--target`은 새로 생성할
+  child 로그다. `log detach`는 target child 로그 생성을 반드시 동반하며, source item만 `[↓]`로
+  바꾸는 단독 전이는 제공하지 않는다.
+
+```sh
+log detach <source-log> \
+  --id W2 \
+  --target logs/B.md \
+  --reason "W2 완료 판단에 별도 조사가 필요함" \
+  --topic "Child investigation" \
+  --description "Investigates evidence needed by parent W2." \
+  --block "Start child investigation" \
+  --context ReturnTarget "소비 조건" "context snapshot" \
+  [--item active "조사 수행"]
+```
+
+- **합의:** `log detach`에서는 source log와 source W-id가 이미 입력되므로 `ReturnTarget`의 Log와
+  Work Item은 script가 자동으로 채운다. 사용자는 consume condition과 snapshot만 제공한다.
+- **합의:** source Work Item line에는 detached target과 reason을 모두 남긴다.
+
+```markdown
+- [↓] W2 Resume the naming decision with B's result. — detached: logs/B.md — reason: W2 완료 판단에 별도 조사가 필요함
+```
+
+- **합의:** source item line의 reason은 routing surface에서 분리 이유를 audit 가능하게 하기 위한
+  최소 정보이고, child가 source 결과를 언제/어떻게 소비할지는 child의 `### Return Target`이
+  소유한다.
+- **남은 논의:** `log detach`가 source history block까지 자동 작성할지, target body를 stdin으로
+  필수 받을지, source next pointer가 비게 될 때 hint만 줄지 또는 다른 guard를 둘지 결정해야 한다.
+
+### 2026-07-03 18:19 · W2 `scripts/log` 명령 표면 초안
+
+이 entry는 사용자와 토론한 개선된 `scripts/log` 명령 표면의 초안이다. 아직 구현 전 설계
+checkpoint이며, legacy command compatibility는 고려하지 않는다.
+
+#### 공통 원칙
+
+- script는 구조 생성, 원자적 변경, 형식 guard, lint/hint만 담당한다. detach/transfer/closeout 같은
+  의미 판단은 agent와 사용자가 한다.
+- frontmatter field는 `topic`, `description`, `status`를 유지한다.
+- status 값은 `open`, `decided`, `superseded`만 허용한다.
+- 생성되는 날짜와 timestamp는 로컬 기준을 사용한다.
+- long-log hint는 파일 길이가 threshold를 넘을 때만 출력한다. 매번 추가 line을 출력하지 않는다.
+  기본 threshold 후보는 soft 600 lines, hard 1000 lines이며 env override 후보는 후속 구현에서
+  확정한다.
+
+#### `log new`
+
+```sh
+log new "<topic>" \
+  --description "<description>" \
+  --block "<unit block topic>" \
+  [--context ReturnTarget logs/A.md W2 "소비 조건" "context snapshot"] \
+  [--context Global "전체 기준"] \
+  [--context W1,W3 "W1/W3 기준"] \
+  [--item active "첫 작업"] \
+  [--item open "둘째 작업"]
+```
+
+- `description`은 필수다.
+- status는 항상 `open`으로 생성한다.
+- `--block`은 필수다. 첫 unit block topic은 `topic`을 암묵 상속하지 않는다.
+- `## Work Items`와 `## Required Context`는 항상 생성한다.
+- Work Item 초기 생성은 optional이다. 인자가 있으면 다음 W-id를 자동 발급한다.
+- Required Context 초기 생성은 optional이다.
+- `### Return Target`은 `## Required Context` 하위에 항상 둔다. Return target이 없으면 독립 로그로
+  명시한다.
+
+```markdown
+### Return Target
+
+- None: independent log.
+```
+
+Return target이 있으면:
+
+```markdown
+### Return Target
+
+- Log: `logs/A.md`
+- Work Item: W2
+- Consume when: 소비 조건
+- Context snapshot: context snapshot
+```
+
+#### `log meta set`
+
+```sh
+log meta set <file> --topic "<topic>"
+log meta set <file> --description "<description>"
+log meta set <file> --status open|decided|superseded
+```
+
+- 기존 `set-status` 명령은 유지하지 않는다.
+- `--status decided|superseded`는 구조 guard를 포함한다. 미완료 `[ ]` 또는 `[>]` Work Item이 있으면
+  거부한다.
+
+#### `log block add`
+
+```sh
+log block add <file> "<unit block topic>" < body.md
+```
+
+- 새 `## YYYY-MM-DD · <unit block topic>` block을 추가한다.
+- stdin body는 필수이며, 해당 block의 첫 기록이 된다.
+- 적용 성공 시 매번 line 번호를 출력하지 않는다. long-log threshold를 넘으면 hint만 출력한다.
+
+#### `log entry add`
+
+```sh
+log entry add <file> --after-line <line> "<entry topic>" < body.md
+```
+
+- `--after-line`은 기존 `## YYYY-MM-DD · ...` unit block heading line을 가리켜야 한다.
+- 해당 block 아래에 `### YYYY-MM-DD HH:MM · <entry topic>` entry를 추가한다.
+- stdin body는 필수다.
+- 적용 성공 시 매번 line 번호를 출력하지 않는다. long-log threshold를 넘으면 hint만 출력한다.
+
+#### `log item add` / `log item set`
+
+```sh
+log item add <file> active|open "<action>"
+log item set <file> --id Wn --action "<new action>"
+log item set <file> --id Wn --status active|open|completed
+log item set <file> --id Wn --status cancelled --reason "<reason>"
+log item set <file> --id Wn --status transferred --target <target> --reason "<reason>"
+```
+
+- `item add`는 해당 로그의 다음 W-id를 자동 발급한다.
+- `active` 전이는 기존 `[>]`를 `[ ]`로 내릴 수 있다.
+- `cancelled`와 `transferred`는 reason 필수다. `transferred`는 target도 필수다.
+- `detached`는 단순 `item set` 전이로 제공하지 않는다. detach는 child 로그 생성과 묶인
+  `log detach`가 소유한다.
+
+#### `log context add/set/delete`
+
+```sh
+log context add <file> Global "<content>"
+log context add <file> W1,W3 "<content>"
+log context set <file> --scope Global --index 1 "<content>"
+log context delete <file> --scope W1,W3 --index 2
+```
+
+- context scope는 `Global`, `Wn` set, reserved `ReturnTarget`만 허용한다.
+- 일반 context는 `{Global}` 또는 `{W1,W3}` heading 아래 bullet로 렌더링한다.
+- 수정/삭제는 해당 scope 하위 bullet index로 지정한다. 문장 매칭으로 수정/삭제하지 않는다.
+- `ReturnTarget` 수정 표면은 일반 bullet index 수정과 분리할지 후속 구현에서 확정한다.
+
+#### `log detach`
+
+```sh
+log detach <source-log> \
+  --id W2 \
+  --target logs/B.md \
+  --reason "W2 완료 판단에 별도 조사가 필요함" \
+  --topic "Child investigation" \
+  --description "Investigates evidence needed by parent W2." \
+  --block "Start child investigation" \
+  --context ReturnTarget "소비 조건" "context snapshot" \
+  [--item active "조사 수행"] \
+  < body.md
+```
+
+- 첫 인자는 기존 source 로그다. `--target`은 새로 생성할 child 로그다.
+- `log detach`는 target child 로그 생성을 반드시 동반한다. source item만 `[↓]`로 바꾸는 단독 전이는
+  제공하지 않는다.
+- source W-id는 open 또는 active 상태여야 한다.
+- target 파일이 이미 있으면 거부한다.
+- `--reason`, `--topic`, `--description`, `--block`, `--context ReturnTarget ...`은 필수다.
+- `--context ReturnTarget`의 Log와 Work Item은 source log와 `--id`로 자동 채운다. 사용자는 consume
+  condition과 snapshot만 제공한다.
+- stdin body는 필수이며, child 로그 첫 unit block의 body가 된다.
+- source Work Item line은 target과 reason을 모두 남긴다.
+
+```markdown
+- [↓] W2 Resume the naming decision with B's result. — detached: logs/B.md — reason: W2 완료 판단에 별도 조사가 필요함
+```
+
+- source history block은 자동 작성하지 않는다. 분리 판단과 이유의 자세한 narrative는 agent가 별도
+  `block add` 또는 `entry add`로 기록한다.
+- source의 `[>]`가 없어져도 다른 Work Item을 자동 active로 올리지 않는다. 필요한 경우 hint만
+  출력한다.
+- migration detach는 이 명령 표면에서 제외한다.
+
+#### `log search` / `log check`
+
+- `search`는 frontmatter `topic`, `description`, `status` 기반 후보 검색으로 제한한다. 본문
+  full-text 검색은 `rg` 같은 일반 검색 도구를 쓴다.
+- `check`는 구조 lint와 재개 표면 요약을 담당한다. frontmatter, Work Items count, `[>]`,
+  unresolved `[↓]`, `Return Target`, latest block/entry, status guard 후보, long-log 상태를 요약하는
+  방향으로 확장한다.
+
+#### 문서 갱신 필요
+
+- `loop-rules.md`: `## Required Context` 하위 `### Return Target` 구조, detached reason 필수,
+  `## 복귀 대상` 제거 또는 대체 규칙 반영.
+- `example.md`: detached/independent 예시를 `### Return Target` 구조와 detached reason 포함 형태로
+  갱신.
+- `project-setup.md`: current-work/onramp 예시에서 unresolved `[↓]`와 child return target 구조를
+  새 형태로 갱신.
+- `scripts/log` tests: new/meta/block/entry/item/context/detach/check positive·negative 사례 추가.
+
+### 2026-07-03 19:32 · Claude review follow-up 반영
+
+- Claude 재리뷰에서 확인된 script 결함을 반영했다.
+- `entry add`는 fenced code block 내부 heading을 삽입 기준으로 보지 않도록 fence-aware 처리하고, `--after-line` 검증도 fence-aware로 맞췄다.
+- Work Item 판정은 `parse_item` 기반으로 통일하고 빈 action을 `check` error로 잡게 했다. Unicode marker(`[↓]`, `[→]`)는 literal branch로 파싱해 멀티바이트 substr 의존을 제거했다.
+- `item add` 빈 Work Items 섹션 렌더링과 `context add` 새 scope blank 중복을 canonical 형태로 정리했다.
+- `[↓]` source item은 child 결과 소비 뒤 `log item set --status completed`로 `[x]` 처리할 수 있게 했고, detached target/reason tail은 보존한다. 취소·이관·남은 행동 재구성은 수동 판단 범위로 유지했다.
+- dead code 성격의 `latest_heading`, `--expect` 잔재, `LOG_LIB_ONLY`, 도달 불가 ReturnTarget context branch를 제거했다.
+- `logs/.log-hints/`를 `.gitignore`에 추가해 long-log 1회 알림 상태 파일이 git status를 오염시키지 않게 했다.
+- 검증: `sh -n .agents/skills/log/scripts/log`, `test-log-append.sh` 28 passed, `test-log-items.sh` 26 passed, `test-log-check.sh` 21 passed, `git diff --check` 통과.
+
+### 2026-07-03 19:42 · long-log hint state 문서화
+
+- `$LOG_DIR/.log-hints/`는 로그 저장 위치별 long-log 1회 알림 상태로 유지하기로 정리했다.
+- `project-setup.md`의 긴 로그 split guard 안내에 soft/hard 알림은 append 계열 동작에서 파일별 1회만 출력되고, 반복 알림 상태는 `$LOG_DIR/.log-hints/`에 저장된다고 명시했다.
+- 다른 repo에 log skill을 도입할 때 선택한 로그 위치의 `.log-hints/`를 `.gitignore`에 추가하도록 예시를 넣었다.
+- 검증: `git diff --check`, `sh -n .agents/skills/log/scripts/log` 통과.
+
+### 2026-07-04 08:36 · Claude review 1~6 반영
+
+- Claude 재리뷰의 1~6번을 반영했다. example.md의 `entry add --after-line` 설명을 날짜 unit block heading 기준으로 고치고, `[↓]` 소비 예시의 detached reason tail을 원문 그대로 보존하도록 수정했다.
+- `scripts/log check`의 Work Item count에서 `[↓]`를 `closed`에 합산하지 않게 바꿨다. 이제 child 결과 소비 대기는 `detached`로만 집계되고, 완료/취소/이관된 item만 `closed`에 들어간다.
+- `context add/set/delete ReturnTarget`은 generic invalid-scope 오류가 아니라 생성 표면에서만 수정한다는 전용 안내를 출력하도록 검사 순서를 조정했다.
+- long-log hint 테스트에 soft 알림 이후 hard threshold 도달 시 `WARN` 1회 출력과 반복 억제 케이스를 추가했다. ReturnTarget 안내와 `[↓]` count도 회귀 테스트로 고정했다.
+- 기존 legacy 전체 호환은 추가하지 않았다. 다만 실제 onramp 경고 대상인 `logs/workspace-reset/packages/2026-06-21-workspace-reset-legacy-source-absorption.md`에는 현재 계속 쓰는 open 로그로서 `### Return Target` / `- None: independent log.`만 보강했다.
+- 이 maintenance 로그 자체도 새 `check` 필수 구조에 맞게 `### Return Target` / `- None: independent log.`를 보강한 뒤 이 entry를 기록했다.
+- 검증: `sh -n .agents/skills/log/scripts/log`, `test-log-append.sh` 30 passed, `test-log-items.sh` 27 passed, `test-log-check.sh` 22 passed, `git diff --check` 통과. 보강한 active 로그는 `log check`에서 `return_target: independent`로 통과했다.
+
+### 2026-07-04 09:23 · W3 onramp 연동 정합화
+
+- W3 범위의 onramp ↔ log 연동 정합화를 반영했다. `scripts/onramp`는 plan 단계의 명시적 `-> ` 포인터만 anchor로 삼고, 로그 내부에서는 local `[>]`를 우선하며 local `[>]`가 없고 unresolved `[↓]` target이 정확히 하나일 때만 child 로그를 따라간다.
+- `.agents/skills/log/scripts/log check`는 unresolved `[↓]`에 대해 `detached: line N target <path>` 구조화 라인을 출력하게 했다. onramp는 이 출력만 소비하고 본문 grep으로 의미를 추론하지 않는다.
+- `scripts/test-onramp.sh`를 새 로그 shape와 `[↓]` 모델로 갱신하고, 단일 `[↓]` follow, `[>]` 우선, 복수 `[↓]` ambiguous, broken target, plan `->` marker-only anchor를 회귀로 고정했다.
+- `docs/guides/workflow.md`는 next pointer 체인 표현을 local `[>]` / unresolved `[↓]` / `Return Target` 모델로 갱신했다. `logs/AGENTS.md`의 삭제된 reference owner는 `references/loop-rules.md`로 정정했다.
+- 실제 live onramp 오anchor 원인이던 `plans/workspace-reset/workspace-reset.md` 활성 단계의 앞쪽 historical log 언급은 더 이상 anchor로 잡히지 않고, 끝의 `-> logs/workspace-reset/plan-stages/2026-06-29-workspace-reset-stage9-post-mvp-plan-disposition.md`를 현재 작업 로그로 선택한다.
+- stage9 로그는 현재 계속 쓰는 open 로그라 새 `check` 필수 구조에 맞춰 `### Return Target` / `- None: independent log.`만 최소 보강했다. legacy 전체 자동 repair는 추가하지 않았다.
+- no-plan leaf 자동선택은 유지하기로 판단했다. 이 repo 확장 동작으로 두되, edge 기준은 구 `[>]` embedded path가 아니라 새 `[↓]` detached target으로 정렬했다.
+- 검증: `sh -n` log/onramp 통과, `test-log-append.sh` 30 passed, `test-log-items.sh` 27 passed, `test-log-check.sh` 23 passed, `scripts/test-onramp.sh` 13 passed, `scripts/onramp` live stage9 선택, `scripts/check-markdown-inline-code docs/guides/workflow.md`, `git diff --check` 통과.
+
+### 2026-07-04 19:21 · W1 maintenance router and loop review
+
+- **확인한 사실:** @user는 `maintenance.md`가 나열·문장 중심이라 유지보수 판단 절차를 loop 형태로 재구성하는 안을 제안했고, `document-structure-review` 기준으로도 maintenance 전용 loop가 적절하다고 판단했다.
+- **확인한 사실:** `.agents/skills/log/SKILL.md`는 개요 직후 `scripts/log` 도구 사용 원칙을 추가하고 `## 참조`를 상단으로 이동했다. router 문구는 `design-principles.md`, `example.md`, `project-setup.md`, `maintenance.md`의 실제 identity에 맞춰 정밀화했다.
+- **확인한 사실:** `.agents/skills/log/references/maintenance.md`는 `유지보수 검토 루프`를 중심으로 `Intake → Classify → Trace Owners → Validate Fix Shape → Propose Scope → Apply After Approval → Verify And Record` 단계로 재구성했다. 일반 로그 실행 루프는 `../SKILL.md`와 `loop-rules.md`가 소유한다고 명시했다.
+- **확인한 사실:** Codex subagent 검토는 blocking issue가 없다고 보고했다. Claude 검토는 F1 의미판단 negative rule 삼중 서술과 F2 `기본 도구`/`보조 도구` 표현 충돌을 최소 수정 가치가 있는 항목으로 지적했다.
+- **판단:** F1/F2는 문서 thinning과 용어 정렬 문제이므로 반영했다. 새 도구 문단에서 의미판단 문장을 제거하고, `scripts/log`를 "기본 도구"가 아니라 "수행하는 도구"로 표현해 `## 도구`의 "보조 도구"와 형용사 충돌을 제거했다.
+- **판단:** `## 참조` 상단 배치, maintenance router의 Intake 일부 노출, `maintenance.md`의 script sequencing 위치와 승인 gate 중복은 현재 사용자 의도와 유지보수 loop identity를 해치지 않으므로 추가 변경하지 않았다.
+- **검증:** `git diff --check -- .agents/skills/log/SKILL.md .agents/skills/log/references/maintenance.md`를 통과했다. `.agents/skills/log/scripts/log check logs/log-system/2026-07-03-log-skill-maintenance-script-onramp.md` 결과 구조 오류는 없었고, 이 로그는 W1 active / W4 open 상태다.
+- **남은 일:** W1은 maintenance 기준과 owner/reference drift의 최소 적용안이 정리된 상태다. 사용자가 추가 섹션 리뷰나 후속 반영을 요청하면 해당 범위만 검토한다. 이후 W4에서 전체 owner·호출·테스트 경로 재검증과 closeout 기록을 수행한다.
+
+### 2026-07-04 20:18 · W1 conceptual identity review 반영
+
+- **확인한 사실:** @user는 log skill의 착안 개념(identity)을 `design-principles.md`와 `maintenance.md`에 반영해야 한다고 판단했고, `log/decision.md`와 `logs/log-system/2026-07-01-log-skill-overhaul-discussion.md`의 배경 확인은 subagent에게 위임하도록 지시했다.
+- **확인한 사실:** subagent는 React lifecycle/cleanup, git commit/refs/branching, coordinated movement가 현재 log skill의 착안 개념이며, durable conclusion은 은유 용어를 section/command 이름으로 채택하지 않고 neutral log terms로 번역하는 것이라고 보고했다.
+- **확인한 사실:** Claude 리뷰는 `design-principles.md`의 착안 개념 섹션 위치, lifecycle bullet의 Reconcile scope, git bullet의 transfer/detach/independent follow-up discriminator, `maintenance.md` guardrail 중복과 표면 용어 일관성을 지적했다.
+- **판단:** 착안 개념은 `design-principles.md`가 소유하고, 향후 유지보수 guardrail은 `maintenance.md`의 `수정 원칙`이 소유한다. `SKILL.md`와 `loop-rules.md`는 이미 neutral operational model을 소유하므로 이번 identity 보강으로는 수정하지 않는다.
+- **변경:** `design-principles.md`의 `## 착안한 개념`을 `## 로그의 목적` 뒤로 옮기고, lifecycle bullet은 Work state/Required Context dependency가 바뀔 때 Reconcile한다는 scope로 좁혔다. git bullet은 같은 unit은 같은 block entry로 누적하고, 별도 수명은 source Work Item과 결과 소비 여부에 따라 transfer/detach/independent follow-up으로 분리한다고 정밀화했다.
+- **변경:** `maintenance.md`의 guardrail은 착안 개념을 설계 원리 설명에는 쓸 수 있지만 section 이름, 명령 이름이나 새 required surface로 승격하지 않고 기존 History surface, Work state, Required Context와 lifetime transition owner로 표현한다고 압축했다.
+- **검증:** `git diff --check -- .agents/skills/log/references/design-principles.md .agents/skills/log/references/maintenance.md`를 통과했다.
+- **결론:** W1의 maintenance 기준, owner/reference drift 검토와 최소 반영 범위는 정리됐다. 남은 작업은 W4의 전체 owner·호출·테스트 경로 재검증과 closeout 기록이다.
+
+### 2026-07-04 20:27 · W4 closeout 재검증
+
+- **확인한 사실:** W4 검증은 파일 변경 없이 수행했다. `sh -n .agents/skills/log/scripts/log`, `sh -n scripts/onramp`, `test-log-append.sh` 30 passed, `test-log-items.sh` 27 passed, `test-log-check.sh` 23 passed, `scripts/test-onramp.sh` 13 passed, `scripts/check-markdown-inline-code docs/guides/workflow.md`, `git diff --check`, 이 로그의 `log check`가 모두 통과했다.
+- **확인한 사실:** `scripts/log`의 주요 subcommand surface(`new`, `meta`, `block`, `entry`, `item`, `context`, `detach`, `search`, `check`)는 dispatcher와 회귀 테스트 범위에서 확인됐다. `scripts/onramp`는 `log check`의 structured detached output을 소비하고, plan `->` anchor, local `[>]` 우선, 단일 unresolved `[↓]` follow, 복수·깨짐·순환 경고 경로를 테스트로 검증했다.
+- **확인한 사실:** `.agents/skills/log/SKILL.md`의 reference router가 가리키는 reference 파일들은 존재하고, W1에서 정리한 maintenance loop와 design-principles identity 변경은 현재 파일에 반영돼 있다. `logs/AGENTS.md`, `docs/guides/workflow.md`, `scripts/onramp`의 repo integration 검증도 통과했다.
+- **판단:** portable log skill과 repo integration의 owner 경계는 현재 변경 범위에서 유지됐다. package-log 모델은 이 로그에서 설계하거나 흡수하지 않았고, sibling 범위 침범도 확인되지 않았다.
+- **결론:** W1~W4의 maintenance 기준 정리, script/test 정합화, onramp integration 정합화와 전체 재검증이 완료됐다. 추가 수정 없이 W4를 완료 처리하고 이 로그를 `decided`로 닫는다.
+
+## 2026-07-07 · W5 · Global 예약 slot 상시화와 detach/new 템플릿·context add 정합
+
+### 문제 사례와 분류
+
+- **확인한 사실:** codex가 `log detach`로 child 로그를 생성하면서 Required Context의 Global/Wn 섹션을 넣으려다 거부됐다고 보고했다. 근본 원인은 두 가지다. (a) `scripts/log`의 `cmd_detach`는 `--context`를 `ReturnTarget`만 허용하고 그 외 scope는 거부한다. (b) new·detach 공용 템플릿 `build_create_body`는 `### {Global}`·`### {Wn}`을 content가 있을 때만 emit(on-demand)했다.
+- **판단:** script 문제 + 문서/구조 문제. detach 거부 자체는 detach와 new의 `--context` 비대칭에서 온다.
+
+### 결정 방향 (사용자 선택)
+
+- **확인한 사실:** 후보 A(detach `--context` 대칭화), B(Global 빈 섹션 상시화 + Wn on-demand), A+B를 제시했고 @user가 **B**를 선택했다.
+- **판단:** B는 기존 `### Return Target`처럼 Required Context 아래 항상 존재하는 예약 `###` slot 패턴과 동형이다. detach 거부는 B 하에서 "Global 섹션 삽입이 애초에 불필요 + 내용은 이후 `context add`로 채움"으로 해소된다.
+
+### 변경
+
+- `scripts/log` `build_create_body`: new·detach 공용 템플릿이 `### {Global}`을 항상 emit한다(내용 없으면 heading만). Global content는 병합하고, `### {Wn}`은 content가 있을 때만 입력 순서대로 둔다.
+- `scripts/log` `build_context_add_result`: 인접 결함 보정. 기존 빈 섹션에 첫 bullet을 append할 때 heading과 bullet 사이 빈 줄이 누락되던 문제를 `scope_content` 추적으로 수정했다. 빈 Global을 이후 `context add`로 채우는 것이 이번 기능의 주 경로라 필수 보정이다.
+- `references/loop-rules.md`: template surface 규정에 `### Return Target`+`### {Global}` 예약 slot을 명시하고, Scope 표기에 "Global은 비어도 상시, `{W-set}`만 on-demand" bullet을 추가했다.
+- `references/design-principles.md`: Global이 Return Target 같은 예약 slot인 근거(빈 slot = 전역 standing context 확인 자리 표시)를 추가했다.
+- `references/base-log-examples.md`: detach 결과 예시에 빈 `### {Global}`을 반영하고 주의점을 보강했다.
+- `SKILL.md`: Enter 2단계 문구를 "`{Global}`을 읽고 내용이 있으면 적용(항상 존재, 비어 있을 수 있음)"으로 정확화했다.
+
+### 문서 정합 후속 (codex 리뷰 반영)
+
+- **확인한 사실:** codex가 `loop-rules.md`의 "섹션은 항상 두되 … 없으면 비워 둔다" 문장이 바로 아래 예약 slot 규정과 충돌해 `## Required Context` 전체가 비어도 된다는 뜻으로 오독될 수 있다고 지적했다.
+- **판단:** 코드 결함이 아니라 유효한 문서 정합 문제다. 현재 문구는 예약 slot을 지우는 잘못된 해석을 허용하므로 maintenance 원칙(scope 표현 조정)에 해당한다.
+- **변경(안 1):** 두 섹션의 empty 규칙을 한 문장에서 분리했다 — "`## Work Items`는 소유할 항목이 없으면 비워 두고, `## Required Context`는 예약 slot을 유지한 채 채울 내용만 비운다."
+
+### 검증 ledger
+
+- (a) `new`(Global content 없음) → 빈 `### {Global}` 생성, 단일 빈 줄로 다음 블록 연결 — PASS
+- (b) `new --context Global .. --context W1 ..` → `### Return Target` → `### {Global}`(내용) → `### {W1}`(내용) 순서 — PASS
+- (c) `detach` 산물 → Return Target + 빈 `### {Global}` — PASS
+- (d) 빈 Global에 `context add Global`(첫/둘째 bullet) + `context add W2` → 빈 줄 정합 `### {Global}` 다음 빈 줄→bullet 연속→빈 줄→`### {W2}` — PASS
+- (e) 회귀: `test-log-append.sh` 31, `test-log-check.sh` 23, `test-log-items.sh` 27 = 81 passed / 0 failed (I8 Global-heading 빈 줄 검증 포함)
+- skill 밖 문서 stale 없음(`project-setup.md`는 내용 있는 Global 예시로 새 규칙과 부합).
+
+### 자율 판단
+
+- `log check`에 Global 누락 guard를 추가하지 않았다. 템플릿이 생성 시 항상 emit해 신규 로그는 보장되고, 하드 체크는 Global이 없던 legacy 로그를 새로 ERROR 처리해 소음이 된다. 엄격 강제가 필요하면 `cmd_check`에 WARN 한 줄 추가는 간단하다.
+- detach `--context` 대칭화(방향 A)는 적용하지 않았다. B 선택에 따라 detach는 `ReturnTarget`만 유지하고 Global/Wn content는 생성 후 `context add`로 채운다.
+
+### owner 반영과 결론
+
+- 이번 작업의 owner는 log skill 파일 자체이며, 변경이 그 파일들에 반영됐다. 별도 owner 문서 반영은 없다.
+- **결론:** W5 완료. @user 지시로 `decided` 로그를 reopen해 이 단위를 append했다. skill 불변상 새 수명은 새 로그가 원칙이나, 사용자 판단으로 이 로그에 기록했다. 오늘 maintenance 단위는 완료·검증됐고 남은 open 작업이 없어 다시 `decided`로 닫는다.

@@ -1,7 +1,7 @@
 # aiox MVP — As-Built Architecture
 
 > Date: 2026-05-26
-> Status: MVP implementation closed (closeout baseline: logs/2026-06-19-mvp-history-archive.md §1); promoted to as-built
+> Status: MVP implementation closed (closeout baseline: logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §1); promoted to as-built
 > architecture authority on 2026-06-16.
 > Role: this is the `docs/architecture` authority for the current aiox MVP
 > internal structure, responsibility boundaries, data flow, and lifecycle
@@ -11,7 +11,7 @@
 > authority. Legacy pre-validation spike material is archived as workspace-reset
 > evidence, not current architecture authority. Decision rationale lives in `docs/decisions/`;
 > MVP implementation and QA provenance lives in
-> `logs/2026-06-19-mvp-history-archive.md`. When this document
+> `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md`. When this document
 > conflicts with code or authority docs, update this document.
 >
 > Every concrete claim cites current `file:line` evidence or a migrated
@@ -308,15 +308,15 @@ status 어휘는 이 인덱스가 소유한다.
   [[docs/specs/aiox-a2a]] and this document during workspace reset; it is not
   primary authority for this document.
 - **Legacy execution checklist**:
-  `logs/2026-06-20-mvp-plan-carryover-archive.md` preserves the useful digest
+  `logs/workspace-reset/retained-provenance/2026-06-20-mvp-plan-carryover-archive.md` preserves the useful digest
   from the old MVP checklist; legacy `plan/` paths are not primary authority for
   this document.
 - **Migrated step rationale**: decision-worthy rationale lives in
   `docs/decisions/`; MVP implementation and QA trace provenance lives in
-  `logs/2026-06-19-mvp-history-archive.md`. Legacy step records are
+  `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md`. Legacy step records are
   workspace-reset migration inputs, not architecture authority.
 - **Pre-validation**: legacy pre-validation spike records are archived in
-  `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md`; they are
+  `logs/workspace-reset/retained-provenance/2026-06-23-workspace-reset-pre-validation-spike-archive.md`; they are
   not current architecture authority.
 - **Learning records**: legacy aiox learning records are absorbed into
   decision, architecture or archive owners; they are not current architecture

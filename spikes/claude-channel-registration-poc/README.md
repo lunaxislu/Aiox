@@ -580,7 +580,7 @@ content-type: application/json
 
 ## Same-terminal exit / leftover observation
 
-Codex Round 4 manual TUI smoke archive pattern (`logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md`) 적용. 모든 시나리오에서:
+Codex Round 4 manual TUI smoke archive pattern (`logs/workspace-reset/retained-provenance/2026-06-23-workspace-reset-aiox-smoke-test-archive.md`) 적용. 모든 시나리오에서:
 
 ### Same-terminal exit
 - Claude CLI exit code는 **같은 terminal에서 `echo $?` 한 줄로 측정**.

@@ -171,7 +171,7 @@ local A2A 경로를 canonical envelope과 correlation 모델로 전환해, 이�
 - [[docs/specs/aiox-message-lifecycle]] — canonical envelope, delivery lifecycle, send-boundary contract owner.
 - [[docs/architecture/local-runtime-routing-and-delivery]] — internal routing, delivery, reply-resumption structure owner.
 - [[docs/decisions/a2a-message-lifecycle-envelope-and-correlation]] — envelope/correlation rationale와 open decision owner.
-- [[logs/2026-06-10-A2A-응답-대기-polling-원인]] — async send-boundary 검토의 root-cause context.
+- [[logs/workspace-reset/product-a2a/2026-06-10-A2A-응답-대기-polling-원인]] — async send-boundary 검토의 root-cause context.
 
 ##### G1-C — Delivery Reliability
 

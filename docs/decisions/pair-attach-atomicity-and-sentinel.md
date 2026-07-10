@@ -22,6 +22,6 @@ We decided to enforce a strict layer boundary for pair ownership (removing `pair
 - This decision can be re-evaluated if the underlying database driver supports programmatic transaction rollback without throwing exceptions.
 
 ## Sources
-- `logs/2026-06-19-mvp-history-archive.md` §2.1 — Step 7 TDD provenance for the X-strict attach boundary, rollback sentinel pattern, and historical reason-name lineage.
-- `logs/2026-06-19-workspace-reset-W5-history-migration.md:448-545` — decision creation from history/22 context and subsequent stale reason-name correction.
-- `logs/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md:651-657` — later drift recheck confirming daemon-level sentinel placement.
+- `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.1 — Step 7 TDD provenance for the X-strict attach boundary, rollback sentinel pattern, and historical reason-name lineage.
+- `logs/workspace-reset/packages/2026-06-19-workspace-reset-W5-history-migration.md:448-545` — decision creation from history/22 context and subsequent stale reason-name correction.
+- `logs/workspace-reset/plan-stages/2026-06-23-workspace-reset-stage6-physical-deletion-gate.md:651-657` — later drift recheck confirming daemon-level sentinel placement.

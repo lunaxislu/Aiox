@@ -39,10 +39,10 @@ daemon 재기동 시 세션을 자동 추정해 재개하면 잘못된 thread에
 - Codex app-server가 Experimental 딱지를 벗고 multi-client multiplexing을 공식 지원하는 API를 제공할 때.
 
 ## Sources
-- `logs/2026-06-23-workspace-reset-pre-validation-spike-archive.md` §1 — shared
+- `logs/workspace-reset/retained-provenance/2026-06-23-workspace-reset-pre-validation-spike-archive.md` §1 — shared
   Codex app-server feasibility spike provenance.
-- `logs/2026-06-19-mvp-history-archive.md` §2.2 and §3.1 — retained Step 10
+- `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.2 and §3.1 — retained Step 10
   Codex runtime and proxy/app-server pivot digest.
-- `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` §1 — retained
+- `logs/workspace-reset/retained-provenance/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` §1 — retained
   manual smoke provenance for app-server launch, readyz/listen, resume and
   rollback behavior.

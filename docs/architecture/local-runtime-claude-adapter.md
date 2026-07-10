@@ -121,7 +121,7 @@ fresh `createDaemonSocketClient` per call and `close()` it `finally`.
   `runSendMessageTransaction({type:"reply", parentMessageId: chatId})`.
   **`chat_id` is persisted as `parent_message_id`** ([[src/daemon/state.ts]] —
   `src/daemon/state.ts:1008-1041`, `src/daemon/state.ts:1761-1856`;
-  Step 14 provenance: `logs/2026-06-19-mvp-history-archive.md` §2.3).
+  Step 14 provenance: `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.3).
 - Tool errors map to MCP `isError:true` results with `daemon_call_failed`
   or the propagated daemon `reason` string
   ([[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:307-393`).
@@ -137,7 +137,7 @@ ingress paths. For each delivery whose target is a Claude agent:
    ([[src/adapters/claude/injector.ts]] — `src/adapters/claude/injector.ts:21-78`).
    `chat_id` is the **aiox message id**, `origin` is the **source agent
    name** ([[src/daemon/state.ts]] — `src/daemon/state.ts:1359-1366`; Step 14 provenance:
-   `logs/2026-06-19-mvp-history-archive.md` §2.3).
+   `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.3).
 3. Injector resolves the runtime; absent → `claude_channel_unavailable`.
    `fetch(endpoint, POST, body)` with `AbortController` 5 s timeout.
    Non-2xx or timeout → `claude_channel_push_failed`. Other fetch error →

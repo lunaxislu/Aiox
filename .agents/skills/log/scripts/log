@@ -153,6 +153,10 @@ line_count() {
     wc -l < "$1" | awk '{ print $1 }'
 }
 
+list_log_files() {
+    find "$LOG_DIR" -type f -name '*.md' ! -path "$LOG_DIR/.log-hints/*" 2>/dev/null | sort
+}
+
 print_long_hint() {
     file=$1
     count=$(line_count "$file")
@@ -1197,8 +1201,7 @@ cmd_search() {
     fi
     query_lc=$(printf '%s' "$query" | tr '[:upper:]' '[:lower:]')
     found=0
-    for f in "$LOG_DIR"/*.md; do
-        [ -e "$f" ] || continue
+    while IFS= read -r f; do
         topic=$(read_field "$f" topic)
         description=$(read_field "$f" description)
         status=$(read_field "$f" status)
@@ -1210,7 +1213,9 @@ cmd_search() {
         fi
         printf '%s  [%s]  %s — %s\n' "$f" "$status" "$topic" "$description"
         found=1
-    done
+    done <<EOF
+$(list_log_files)
+EOF
     [ "$found" -eq 1 ] || echo "맞는 로그 없음"
 }
 
@@ -1254,12 +1259,13 @@ $1" ;;
     fi
     if [ -z "$(printf '%s\n' "$files" | awk 'NF { print; exit }')" ]; then
         [ -n "$status_filter" ] || { echo "check에는 파일 또는 --status가 필요합니다." >&2; return 1; }
-        for f in "$LOG_DIR"/*.md; do
-            [ -e "$f" ] || continue
+        while IFS= read -r f; do
             [ "$(read_field "$f" status)" = "$status_filter" ] || continue
             files="$files
 $f"
-        done
+        done <<EOF
+$(list_log_files)
+EOF
     fi
 
     list_tmp=$(mktemp 2>/dev/null) || return 1

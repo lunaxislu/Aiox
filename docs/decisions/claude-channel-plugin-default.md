@@ -42,7 +42,7 @@ no-fallback 계약을 선택한 이유만 기록한다.
 - 배포 환경에서 plugin 설치 없이 zero-config로 동작해야 하는 요구가 생길 때 (A strategy 재검토 또는 다른 방식).
 
 ## Sources
-- `logs/2026-06-20-mvp-plan-carryover-archive.md` §2 — R3/R4 carryover
+- `logs/workspace-reset/retained-provenance/2026-06-20-mvp-plan-carryover-archive.md` §2 — R3/R4 carryover
   provenance for Claude plugin/channel activation and runtime namespace QA.
 - 전략 선택·no-fallback 구현: [[src/cli/invocation.ts]] —
   `src/cli/invocation.ts:161-163` (`resolveClaudeChannelStrategy` 호출),

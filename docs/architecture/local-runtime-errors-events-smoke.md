@@ -132,7 +132,7 @@ not land at MVP closeout.
 
 ## 12. Implementation Smoke Matrix
 
-The closeout smoke (logs/2026-06-19-mvp-history-archive.md §1) ran from build output because
+The closeout smoke (logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §1) ran from build output because
 `daemon start` forks a detached child — `pnpm tsx` makes the child run
 plain `node` against the TS entrypoint, which is not supported.
 
@@ -160,8 +160,8 @@ The validation suite maps into the following automated (Vitest) vs. manual verif
 
 Sources:
 
-- MVP closeout smoke baseline: `logs/2026-06-19-mvp-history-archive.md` §1 recorded 48 files / 360 tests /
+- MVP closeout smoke baseline: `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §1 recorded 48 files / 360 tests /
   typecheck / build PASS.
-- W7 reset verification: `logs/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md` records a dated
+- W7 reset verification: `logs/workspace-reset/packages/2026-06-18-workspace-reset-W7-local-runtime-assimilation.md` records a dated
   `pnpm typecheck && pnpm test` pass with 52 files / 483 tests. Do not treat that dated count as the current
   test-suite size; W2 retrofit review on 2026-06-28 observed 49 files under `tests/`.

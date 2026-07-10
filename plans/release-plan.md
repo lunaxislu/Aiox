@@ -7,7 +7,7 @@
 > 배포 시점에 다시 상기시킬 것. (2026-05-28, R3 작업 중 발견)
 
 연관: `package.json`, `docs/decisions/claude-channel-plugin-default.md`,
-`logs/2026-06-20-mvp-plan-carryover-archive.md` R3.
+`logs/workspace-reset/retained-provenance/2026-06-20-mvp-plan-carryover-archive.md` R3.
 
 ---
 

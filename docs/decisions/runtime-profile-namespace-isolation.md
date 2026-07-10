@@ -71,5 +71,5 @@ requires preserving the historical release socket location.
 
 ## Sources
 
-- `logs/2026-06-20-mvp-plan-carryover-archive.md` §2 - QA-003 verified summary
+- `logs/workspace-reset/retained-provenance/2026-06-20-mvp-plan-carryover-archive.md` §2 - QA-003 verified summary
   and R4 runtime namespace isolation round outcome.

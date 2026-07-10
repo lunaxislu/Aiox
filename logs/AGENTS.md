@@ -73,6 +73,9 @@
 
 - Task Index의 각 executable W entry는 profile과 repo root 기준 exact canonical record
   path를 가진다. directory나 filename pattern만 적거나 경로를 추론하게 두지 않는다.
+- 기존 완료·legacy 로그는 주제별 하위 폴더로 정리되어 있을 수 있다. 새 package 기본
+  layout을 소급 적용하지 말고, 이미 존재하는 로그나 task brief를 참조할 때는 현재 실제
+  경로를 canonical path로 쓴다.
 
 ### Manual Registry Integrity
 
@@ -89,7 +92,7 @@ Executable W를 완료하거나 package를 closeout하기 전에 다음 집합�
    ```
 
    actual set에만 있으면 orphan record, Task Index에만 있으면 dangling locator다.
-4. `logs/` top-level에서 Identity의 `Controlling log`가 현재 controlling package log를
+4. `logs/` tree에서 Identity의 `Controlling log`가 현재 controlling package log를
    가리키는 Full record actual set을 찾고 Task Index의 Full locator set과 대조한다.
 5. 각 record의 Identity에서 controlling log, package W-id와 profile이 해당 Task Index
    entry와 정확히 일치하는지 확인한다.
@@ -111,5 +114,6 @@ Compact/Full 중복은 Registry Integrity 실패이며 closeout blocker다.
 ### Prospective-Only Boundary
 
 이 integration은 반영 뒤 새로 생성하는 package에만 적용한다. 기존 workspace-reset/legacy
-controlling log, `logs/W*-task.md`, Task Brief와 Workspace Reset section을 이동·backfill·
-재분류하거나 새 schema로 in-place upgrade하지 않는다.
+controlling log, task brief와 Workspace Reset section을 새 package schema로 backfill하거나
+in-place upgrade하지 않는다. 물리 경로 정리는 별도 repoint 감사와 사용자 승인으로 수행할 수
+있지만, 그 경우에도 기존 자료의 schema나 package membership을 소급 변경하지 않는다.

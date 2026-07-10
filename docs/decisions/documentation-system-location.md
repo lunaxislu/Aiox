@@ -31,5 +31,5 @@ active 권위 문서의 inbound 참조를 repoint해야 했다([[docs/AGENTS]]·
 
 ## Sources
 
-- `logs/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md`
-- `logs/2026-06-25-docs-하위-지침서와-Obsidian-템플릿-논의.md`
+- `logs/workspace-reset/plan-stages/2026-06-26-workspace-reset-stage8-Atlas-반영·drift-재검토.md`
+- `logs/docs-system/2026-06-25-docs-하위-지침서와-Obsidian-템플릿-논의.md`

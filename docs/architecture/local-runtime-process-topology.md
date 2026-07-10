@@ -118,4 +118,4 @@ Evidence:
 Sources:
 
 - [[docs/decisions/codex-per-agent-app-server]] — per-agent app-server pivot and production direction.
-- `logs/2026-06-19-mvp-history-archive.md` §2.2, §1 — Round 3 implementation and closeout provenance.
+- `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.2, §1 — Round 3 implementation and closeout provenance.

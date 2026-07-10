@@ -57,7 +57,7 @@ Evidence:
     - `src/daemon/state.ts:1988-2012`
 
 The CLI `send` surface (OA1) is **deferred Post-MVP** (provenance:
-`logs/2026-06-19-mvp-history-archive.md` §4.1). Confirmed by absence of any
+`logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §4.1). Confirmed by absence of any
 `send` subcommand in [[src/cli/parse.ts]].
 Messages enter only via the four daemon-internal RPCs
 (`receiveClaudeChannelMessage`, `receiveClaudeChannelReply`,
@@ -162,7 +162,7 @@ Wired on both sides:
 
 Cross-agent reply correlation (`parent_message_id`) semantics were finalized at
 Step 13; the provenance is preserved in
-`logs/2026-06-19-mvp-history-archive.md` §2.4.
+`logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.4.
 The router/FSM do not consume `parentMessageId` —
 it is purely correlative data on the persisted message and the
 `<aiox-channel message_id="...">` envelope.

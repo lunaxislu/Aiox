@@ -91,9 +91,9 @@ pair 슬롯을 **kind-agnostic 2-slot(a/b)**으로 일반화하고, same-vendor 
 
 ## Sources
 
-- `logs/2026-06-19-workspace-reset-W5-history-migration.md:654-657` — deleted
+- `logs/workspace-reset/packages/2026-06-19-workspace-reset-W5-history-migration.md:654-657` — deleted
   `history/45`-`history/48` Step 15 source-map rows; successor is this decision.
-- `logs/2026-06-19-mvp-history-archive.md` §2.1, §3.2 — preserved QA/TDD and
+- `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.1, §3.2 — preserved QA/TDD and
   wrong-thread fallback provenance relevant to pair-slot generalization.
-- `logs/2026-06-20-mvp-plan-carryover-archive.md` §1, §2 — preserved Step 15 and
+- `logs/workspace-reset/retained-provenance/2026-06-20-mvp-plan-carryover-archive.md` §1, §2 — preserved Step 15 and
   QA-002 closeout summary.

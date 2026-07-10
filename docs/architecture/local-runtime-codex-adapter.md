@@ -73,7 +73,7 @@ Rationale: [[docs/decisions/codex-per-agent-app-server]] (per-agent app-server p
       `127.0.0.1:0` whose upstream is the app-server endpoint
       ([[src/adapters/codex/proxy.ts]] — `src/adapters/codex/proxy.ts:58-149`, `runtime.ts:337-343`).
 5. **Fresh attach skips daemon-side `thread/start`** (Step 14 follow-up,
-   provenance logs/2026-06-19-mvp-history-archive.md §3.2). `adapter_session_id` stays null until explicit
+   provenance logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §3.2). `adapter_session_id` stays null until explicit
    `--resume` or first live loaded-thread delivery.
 6. Daemon returns `codexRuntime: { endpoint: proxy.url, activeThreadId: adapterSessionId }`
    (`state.ts:645-657`).
@@ -115,7 +115,7 @@ marks agent disconnected, returns the typed reason
 File `src/adapters/codex/proxy.ts`. WHY authority:
 [[docs/decisions/proxy-lazy-observation-cost-model]] (lazy observation cost
 model); transparent-relay spike and production reintroduction provenance in
-`logs/2026-06-19-mvp-history-archive.md` §3.1, §1.
+`logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §3.1, §1.
 
 **Relay obligation**: every WebSocket frame, both directions, is relayed through
 the proxy. Binary frames are preserved as-is; text frames are normalized to a
@@ -167,7 +167,7 @@ Three writer sources (in order):
 
 The earlier internal TUI `/resume` wrong-thread risk was resolved for MVP by
 same-connection proxy observation and covered by implementation smoke
-(provenance: logs/2026-06-19-mvp-history-archive.md §3.2, §1). This depends on Codex continuing to send
+(provenance: logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §3.2, §1). This depends on Codex continuing to send
 `thread/resume` responses for TUI `/resume` through the same proxied
 connection.
 
@@ -213,7 +213,7 @@ Entry: `dispatchToPairPeers` (`state.ts:1246`; routing/FSM owner [[docs/architec
    `codex_delivery_queued_no_loaded_thread`. Delivery **stays queued**
    and returns `deferred` with reason `target_binding_unconfirmed` (no
    FSM transition; no retry in MVP; Step 14 provenance:
-   `logs/2026-06-19-mvp-history-archive.md` §2.3).
+   `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.3).
 3. **Live target**: emit `codex_delivery_target_selected`, transition
    `queued → delivering`, call `injectReplyIntoCodexRuntime` with
    `formatCodexAioxChannelEnvelope(message, sourceAgent?.kind ?? "unknown")`:
@@ -229,7 +229,7 @@ Entry: `dispatchToPairPeers` (`state.ts:1246`; routing/FSM owner [[docs/architec
 ### 7.8 Codex MCP Ingress (Codex → daemon)
 
 File [[src/adapters/codex/mcp-server.ts]]. The Step 13 ingress provenance is
-preserved in `logs/2026-06-19-mvp-history-archive.md` §2.4; current behavior is
+preserved in `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.4; current behavior is
 owned here.
 
 **Tools**:
@@ -239,7 +239,7 @@ owned here.
 **Launcher injection** (`launcher.ts:88-120`):
 `-c mcp_servers.aiox = { command=<process.execPath>, args=[<aioxBin>, "mcp-codex"], env={AIOX_CODEX_AGENT_NAME, AIOX_CODEX_AGENT_TOKEN, AIOX_SOCKET_PATH} }`. Injected into the **daemon-owned app-server**, not
 into the foreground TUI. The Step 14 correction is preserved in
-`logs/2026-06-19-mvp-history-archive.md` §2.3: earlier Step 13 injected into
+`logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.3: earlier Step 13 injected into
 the TUI, which in `--remote` mode is not the MCP host, so the aiox MCP never
 registered.
 
@@ -249,11 +249,11 @@ registered.
 2. Token + agent name + socket path are env-passed through to the MCP
    child.
 3. MCP child does `mcp.connect()` first, then `registerCodexChannel`
-   (Step 14 correction provenance: `logs/2026-06-19-mvp-history-archive.md`
+   (Step 14 correction provenance: `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md`
    §2.3).
 4. Daemon consumes the pending token, stores `tokenHash = sha256(token)`
    in `codexChannelRuntimes` (full SHA-256, not 12-char
-   prefix — Step 13 ingress provenance: `logs/2026-06-19-mvp-history-archive.md`
+   prefix — Step 13 ingress provenance: `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md`
    §2.4), appends `codex_channel_registered`.
 5. Every subsequent tool call calls `authorizeCodexIngress` (state.ts:1711-1759)
    which checks token presence, agent registration, connection status, and
@@ -281,7 +281,7 @@ the TUI child. Claude attach is DB-only.
 - `webSocket.onClose` → `recordRuntimeFailure({type:"ws_dropped"})`
 - `webSocket.onNotification` for `remoteControl/status/changed` →
   stored as `latestDiagnosticNotification` (D7 — diagnostic context only, not
-  binding authority; provenance logs/2026-06-19-mvp-history-archive.md §2.2).
+  binding authority; provenance logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §2.2).
 
 **Current gap (P2-3):** Runtime-failure callback flows up to
 `recordCodexRuntimeFailed` (`state.ts:884-924`), appending

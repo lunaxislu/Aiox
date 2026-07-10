@@ -21,4 +21,4 @@ We decided to enforce command-specific daemon auto-start policies (where only ag
 - Revisit this naming and startup contract if Claude Code supports dynamic tool list injections during shell session initialization without file system writes.
 
 ## Sources
-- Step 14 daemon/client split smoke provenance and Claude `.mcp.json` mismatch: `logs/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` §2.
+- Step 14 daemon/client split smoke provenance and Claude `.mcp.json` mismatch: `logs/workspace-reset/retained-provenance/2026-06-23-workspace-reset-aiox-smoke-test-archive.md` §2.
