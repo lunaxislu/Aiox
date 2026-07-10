@@ -35,7 +35,8 @@
 - `"main": "index.js"` — 존재하지 않는 파일을 가리킴. CLI 패키지라 치명적이진 않지만 부정확.
   제거하거나 실제 entry로 교정.
 - `name: "ai-orchestration"` / `version: "1.0.0"` / `description` / `author` / `license` — 배포 식별자
-  최종 확정 (스코프 패키지 여부, 초기 버전 정책 등).
+  최종 확정 (스코프 패키지 여부, 초기 버전 정책 등). 현재 `package.json`은 `ISC`를 선언하지만 root
+  `LICENSE` 파일은 없으므로, G0/G5 license 결정과 패키지 metadata를 publish 전에 일치시킨다.
 
 ## 양호 (배포 시 재확인만)
 
@@ -51,6 +52,9 @@
 1. B1·B2 적용 후 `pnpm build`.
 2. `npm pack` → 생성된 tarball 내용물 확인 (`tar tzf *.tgz`): `dist/src/bin/aiox.js`,
    `dist/src/adapters/claude/channel-server.js` 포함 여부 검증.
-3. 임시 디렉터리에 `npm i -g ./<tarball>` 또는 `npx ./<tarball>`로 설치 → repo 밖에서
+3. 설치/제거 안내나 reset/purge CLI 표면을 이번 release scope에 포함했다면, package uninstall과
+   `~/.aiox` 같은 runtime/user-data purge가 분리되어 있고 destructive reset/purge 표면의
+   confirmation과 scope가 명시됐는지 확인.
+4. 임시 디렉터리에 `npm i -g ./<tarball>` 또는 `npx ./<tarball>`로 설치 → repo 밖에서
    `aiox claude` 실행 → R3 수동 smoke (dev-channel ↔ `--mcp-config` resolve)까지 함께 확인.
-4. 통과 후 `npm publish`.
+5. 통과 후 `npm publish`.

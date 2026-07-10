@@ -14,7 +14,9 @@ partial caveats.
   `thread/tokenUsage/updated` 존재는 확인했다. version-generated schema에서 본
   `clientUserMessageId`는 public docs 계약으로 확인되지 않았으므로 deliveryId binding
   후보일 뿐이다. 남은 검증은 TUI 표시, active turn 충돌, wake-up 조합, correlation id
-  보존과 실패 모드다. 검증 전에는 Tier 2로 올리지 않는다.
+  보존과 실패 모드다. 검증 전에는 Tier 2로 올리지 않는다. G1-A Codex
+  structured ingress spike는 이 named app-server surface를 직접 검증해야 하며,
+  generic `turn/start` compatibility path로 간소화해 대체 승인하지 않는다.
   Current local partial: the Codex adapter can call `turn/start`, list loaded
   threads, bind selected thread identity through the proxy, and detect
   app-server/WS runtime failure ([[src/adapters/codex/injector.ts]] — `src/adapters/codex/injector.ts:22-63`,
@@ -27,7 +29,9 @@ partial caveats.
   [[src/daemon/state.ts]] — `src/daemon/state.ts:1418-1482`,
   `src/daemon/state.ts:1684-1696`). This does not prove
   `thread/inject_items`, `turn/steer`, canonical `deliveryId` binding, active
-  turn policy or Tier 2 delivery semantics.
+  turn policy, `turn/started|completed` lifecycle observation,
+  `thread/tokenUsage/updated` usage visibility, `outputSchema` behavior or
+  Tier 2 delivery semantics.
 - OS/process/filesystem/network sandbox enforcement.
 - full external MCP internal tool allow/deny enforcement.
 - skill knowledge recall/revocation guarantee.
@@ -47,7 +51,7 @@ Lifecycle policy open questions:
   - Whether reset time should auto-resume a pair or only downgrade the agent to
     `availability_unknown` until explicit user report.
   - How blocked-pair status is surfaced to the source agent.
-- Duplicate outbound while `awaiting_agent_reply` is unresolved: 같은 logical request의
+- Duplicate outbound while `awaiting_reply` is unresolved: 같은 logical request의
   coalescing/confirmation UX와 opposite-direction lane serialization.
 - Fan-out partial completion:
   - v1 authority는 individual delivery다. source에게 partial completion을 어떤 summary로
@@ -56,7 +60,7 @@ Lifecycle policy open questions:
   - When the adapter has no structured signal, whether to use user report, cancel command,
     or keep pending.
   - Interrupted message terminal state: `cancelled_by_user`, `failed`, `superseded`, or
-    remain `awaiting_agent_reply`.
+    remain `awaiting_reply`.
 - Retry 기본 횟수/간격과 passive ack timeout의 release 값. §4.3 범위 안에서 G1
   failure-injection으로 고정한다.
 - AI agent session expiry handling (absorbed from the legacy MVP PRD Open Product Issue #5):

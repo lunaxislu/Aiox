@@ -67,9 +67,10 @@ G1 cutover 뒤 canonical send/reply tool은 free-form `Intent:` label parsing을
 않는다. send는 최소 `intent`, `replyExpected`, `content`를, reply는
 `inReplyToDeliveryId`, `intent`, `replyExpected`, `content`를 typed input으로 받는다. 현재
 Claude/Codex의 text-only tool과 5종 label instruction은 pre-release compatibility surface이므로
-schema validator, MCP instruction, tool description, example과 test fixture를 한 변경으로
-교체한다. negative test는 agent-authored reserved intent, unknown intent, label과 typed field가
-충돌하는 legacy input을 포함한다.
+schema validator, MCP instruction, tool description, example과 test fixture는 같은 public
+contract revision으로 교체한다. 이 public surface cutover는 repository migration을 한 deploy
+step으로 압축하라는 뜻이 아니다. negative test는 agent-authored reserved intent, unknown intent,
+label과 typed field가 충돌하는 legacy input을 포함한다.
 
 Canonical address는 logical agent를 나타낸다. v1 local reference runtime은
 `agent://local/<profile>/<agent-name>`을 사용하고, daemon은 canonical address, DB agent id,
@@ -169,6 +170,16 @@ post-acceptance no-auto-retry를 각각 검증한다. Tier 3에서 LLM action ex
 reply timeout은 기본 hard failure가 아니라 pending visibility threshold이며, hard deadline과
 cancellation은 explicit policy가 있을 때만 terminal state를 만든다.
 
+Source-visible send completion is a committed target boundary event, not a remote
+answer. [Status: Committed target] A successful `send`/`reply` call means the daemon
+accepted the source request and can identify the target delivery or rejection; it
+MUST NOT be presented as target reply completion. When `replyExpected` is true, the
+source observes completion only through a correlated reply or reply-obligation state
+transition. Agent instructions and tool descriptions must not ask the source agent
+to sleep, poll, or infer completion from transport success. The current runtime does
+not yet satisfy this boundary; see [[docs/architecture/local-runtime-gaps-and-targets]]
+§13 A2A send-boundary / inbound reply resumption.
+
 Adapter가 target runtime의 실행 lifecycle을 관측할 수 있으면 `target_started`,
 `target_progress`, `target_finished`, `target_failed` 같은 progress evidence를 event로 surface할
 수 있다. 이는 source에게 "전달 후 처리 중인가"를 보여주는 visibility signal이지 delivery
@@ -236,6 +247,15 @@ Current implementation caveats:
   persistence minimum because canonical v1 envelope fields, ack records, retry
   scheduling and reply obligations are absent. Current evidence:
   [[src/store/schema.ts]] — `src/store/schema.ts:48-78`.
+- G1 persistence cutover requires a rollback-aware schema migration plan. The
+  current migration pattern is versioned and transactional, but the v1 fields
+  listed above require additive/pre-step schema expansion, backfill or
+  compatibility reads where needed, and an explicit point where write/read
+  authority moves from the pre-v1 fields to canonical `deliveryId`,
+  `inReplyToDeliveryId` and reply-obligation state. Current migration evidence:
+  [[src/store/schema.ts]] — `src/store/schema.ts:84-134`;
+  [[tests/unit/store/repositories/pairs.test.ts]] —
+  `tests/unit/store/repositories/pairs.test.ts:401-457`.
 
 Protocol invariants:
 

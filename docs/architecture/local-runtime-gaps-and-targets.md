@@ -20,6 +20,12 @@ The system architecture distinguishes between current, as-built gaps in the loca
   state in production.
 - **Stale Agent Transition Policy** — The `stale` agent state is defined, but current daemon code has no active
   transition path that marks agents stale.
+- **Daemon structured logging / retained diagnostics surface** — The daemon entrypoint and socket transport do not
+  own a retained structured log sink or daemon-level diagnostics surface. Adapter helper processes write JSONL events
+  to stderr, but daemon lifecycle, socket dispatch, fatal process boundary, and cross-adapter failure context are not
+  captured in a daemon-owned artifact that `doctor`/logs/status style tooling can inspect. This is a G3 daemon
+  diagnosability gap; the concrete CLI/file surface is still a G3 design choice rather than an already committed
+  command contract.
 - **Local trust-boundary gaps** — The Claude channel-server HTTP `/send` endpoint accepts loopback POSTs without
   request authentication checks, and daemon pushes to that endpoint do not present channel credentials. Codex MCP launch
   passes the Codex agent token through app-server argv inline TOML instead of a safer secret-delivery channel. Claude channel
@@ -34,6 +40,10 @@ The system architecture distinguishes between current, as-built gaps in the loca
   path re-tries it.
 - **Codex MCP queued-message pull/read/ack** — the Codex MCP server exposes send/reply tools, but no surface to inspect,
   read, acknowledge, or drain stale queued deliveries from the Codex side.
+- **A2A send-boundary / inbound reply resumption** — current adapter success is treated as immediate delivery
+  completion, and the runtime has no completed G1 path that exposes a source-visible pending reply obligation and
+  resumes the source turn from a correlated inbound reply without source-side sleep/poll behavior. This is the
+  architecture side of the §4.3 send-boundary contract in [[docs/specs/aiox-message-lifecycle]].
 - **`claude_channel_disconnected` event** — Codex has a disconnect event type and daemon emission, while the Claude
   channel side has no equivalent event type or emission.
 - **Claude channel boot-failure diagnosability** — a Claude agent attach returns success with a channel token before
@@ -43,6 +53,9 @@ The system architecture distinguishes between current, as-built gaps in the loca
   `target_runtime_unavailable`, which does not carry the original boot-fatal reason. This is an S5/G3 diagnosability
   gap for the Claude channel specifically, not a general child-process boot contract. See
   [[docs/architecture/local-runtime-claude-adapter]] §6.2 Launch Flow.
+- **Daemon socket method dispatch hardening** — the socket transport accepts any string `method`, looks it up through
+  the daemon API object's prototype chain, and calls it when the result is a function. Unknown or inherited method
+  names should be rejected by an own-property/known-method guard before dispatch.
 
 Evidence:
 
@@ -63,6 +76,15 @@ Evidence:
 - Stale agent transition gap
   - [[src/core/agents.ts]]
     - `src/core/agents.ts:5-12`
+- Daemon structured logging / retained diagnostics surface gap
+  - [[src/daemon/run.ts]]
+    - `src/daemon/run.ts:24-84`
+  - [[src/daemon/socket-transport.ts]]
+    - `src/daemon/socket-transport.ts:48-84`
+  - [[src/adapters/claude/channel-server.ts]]
+    - `src/adapters/claude/channel-server.ts:615-617`
+  - [[src/adapters/codex/mcp-server.ts]]
+    - `src/adapters/codex/mcp-server.ts:478-480`
 - Local trust-boundary gaps
   - [[src/adapters/claude/channel-server.ts]]
     - `src/adapters/claude/channel-server.ts:77-88`
@@ -106,6 +128,12 @@ Evidence:
     - `src/adapters/codex/mcp-server.ts:184-220`
     - `src/adapters/codex/mcp-server.ts:223-267`
     - `src/adapters/codex/mcp-server.ts:287-334`
+- A2A send-boundary / inbound reply resumption gap
+  - [[src/daemon/state.ts]]
+    - `src/daemon/state.ts:1279-1288`
+  - [[src/adapters/router.ts]]
+    - `src/adapters/router.ts:110-112`
+    - `src/adapters/router.ts:125-131`
 - Channel disconnect event gap
   - [[src/core/events.ts]]
     - `src/core/events.ts:1-27`
@@ -120,6 +148,14 @@ Evidence:
     - `src/adapters/claude/channel-server.ts:667-690`
   - [[docs/architecture/local-runtime-claude-adapter]]
     - `docs/architecture/local-runtime-claude-adapter.md:56-107`
+- Daemon socket method dispatch hardening gap
+  - [[src/daemon/socket-transport.ts]]
+    - `src/daemon/socket-transport.ts:183-194`
+    - `src/daemon/socket-transport.ts:245-253`
+  - [[src/daemon/api.ts]]
+    - `src/daemon/api.ts:299-300`
+  - [[src/daemon/run.ts]]
+    - `src/daemon/run.ts:66-73`
 
 Sources:
 
