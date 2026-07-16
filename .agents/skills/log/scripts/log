@@ -28,7 +28,7 @@ now_stamp() {
 usage() {
     cat <<'EOF'
 사용법:
-  log new "<topic>" --description "<description>" --block "<unit block topic>"
+  log new "<topic>" --description "<description>"
       [--context ReturnTarget <log> <Wn> <consume> <snapshot>]
       [--context Global <content>] [--context W1,W3 <content>]
       [--item active|open <action>]
@@ -44,8 +44,10 @@ usage() {
   log context set <file> --scope Global|W1,W3 --index <n> "<content>"
   log context delete <file> --scope Global|W1,W3 --index <n>
   log detach <source-log> --id Wn --target <new-child-log> --reason <reason>
-      --topic <topic> --description <description> --block <block topic>
-      --context ReturnTarget <consume> <snapshot> [--item active|open <action>] # body는 stdin
+      --topic <topic> --description <description>
+      --context ReturnTarget <consume> <snapshot>
+      [--context Global <content>] [--context W1,W3 <content>]
+      [--item active|open <action>]
   log search [query] [--status open|decided|superseded]
   log check [--status open|decided|superseded] [file...]
 EOF
@@ -503,14 +505,12 @@ slugify() {
 emit_new_log() {
     topic=$1
     description=$2
-    block=$3
-    return_file=$4
-    return_item=$5
-    return_consume=$6
-    return_snapshot=$7
-    context_file=$8
-    item_file=$9
-    body_file=${10:-}
+    return_file=$3
+    return_item=$4
+    return_consume=$5
+    return_snapshot=$6
+    context_file=$7
+    item_file=$8
 
     printf '%s\n' "---"
     printf 'topic: %s\n' "$topic"
@@ -569,13 +569,6 @@ emit_new_log() {
         }
     ' "$context_file"
     printf '\n'
-    printf '## %s · %s\n' "$(today_date)" "$block"
-    if [ -n "$body_file" ]; then
-        printf '\n'
-        emit_body_file "$body_file"
-    else
-        printf '\n'
-    fi
 }
 
 cmd_new() {
@@ -583,7 +576,6 @@ cmd_new() {
     [ "$#" -gt 0 ] && shift
     require_line "topic" "$topic" || { usage >&2; return 1; }
     description=""
-    block=""
     context_tmp=$(mktemp 2>/dev/null) || return 1
     item_tmp=$(mktemp 2>/dev/null) || { rm -f "$context_tmp"; return 1; }
     : > "$context_tmp"; : > "$item_tmp"
@@ -592,9 +584,6 @@ cmd_new() {
         case "$1" in
             --description)
                 shift; description=${1:-}; shift || true
-                ;;
-            --block)
-                shift; block=${1:-}; shift || true
                 ;;
             --context)
                 shift
@@ -626,14 +615,13 @@ cmd_new() {
         esac
     done
     require_line "description" "$description" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
-    require_line "block" "$block" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
     mkdir -p "$LOG_DIR" || { rm -f "$context_tmp" "$item_tmp"; return 1; }
     base="$LOG_DIR/$(today_date)-$(slugify "$topic")"
     file="$base.md"
     n=2
     while [ -e "$file" ]; do file="$base-$n.md"; n=$((n + 1)); done
     tmp_file=$(mktemp "$LOG_DIR/.log-new.XXXXXX" 2>/dev/null) || { rm -f "$context_tmp" "$item_tmp"; return 1; }
-    emit_new_log "$topic" "$description" "$block" "$return_file" "$return_item" "$return_consume" "$return_snapshot" "$context_tmp" "$item_tmp" > "$tmp_file"
+    emit_new_log "$topic" "$description" "$return_file" "$return_item" "$return_consume" "$return_snapshot" "$context_tmp" "$item_tmp" > "$tmp_file"
     if ! validate_generated_log "$tmp_file"; then
         rm -f "$context_tmp" "$item_tmp" "$tmp_file"
         return 1
@@ -1116,7 +1104,7 @@ cmd_detach() {
     shift 2>/dev/null || true
     [ -f "$source" ] || { echo "source 로그가 없습니다: $source" >&2; return 1; }
     validate_open_log "$source" || return 1
-    id=""; target=""; reason=""; topic=""; description=""; block=""
+    id=""; target=""; reason=""; topic=""; description=""
     consume=""; snapshot=""
     item_tmp=$(mktemp 2>/dev/null) || return 1
     context_tmp=$(mktemp 2>/dev/null) || { rm -f "$item_tmp"; return 1; }
@@ -1128,13 +1116,20 @@ cmd_detach() {
             --reason) shift; reason=${1:-}; shift || true ;;
             --topic) shift; topic=${1:-}; shift || true ;;
             --description) shift; description=${1:-}; shift || true ;;
-            --block) shift; block=${1:-}; shift || true ;;
             --context)
                 shift
-                [ "${1:-}" = "ReturnTarget" ] || { echo "detach는 --context ReturnTarget만 허용합니다." >&2; rm -f "$item_tmp" "$context_tmp"; return 1; }
-                shift
-                consume=${1:-}; snapshot=${2:-}
-                shift 2 || true
+                scope=${1:-}; shift || true
+                if [ "$scope" = "ReturnTarget" ]; then
+                    consume=${1:-}; snapshot=${2:-}
+                    shift 2 || true
+                    require_line "consume condition" "$consume" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+                    require_line "context snapshot" "$snapshot" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+                else
+                    content=${1:-}; shift || true
+                    valid_scope "$scope" || { echo "context scope가 유효하지 않습니다: $scope" >&2; rm -f "$item_tmp" "$context_tmp"; return 1; }
+                    require_line "context content" "$content" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+                    printf '%s\t%s\n' "$scope" "$content" >> "$context_tmp"
+                fi
                 ;;
             --item)
                 shift
@@ -1152,31 +1147,28 @@ cmd_detach() {
     require_line "reason" "$reason" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
     require_line "topic" "$topic" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
     require_line "description" "$description" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
-    require_line "block" "$block" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
     require_line "consume condition" "$consume" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
     require_line "context snapshot" "$snapshot" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
     [ ! -e "$target" ] || { echo "target 로그가 이미 있습니다: $target" >&2; rm -f "$item_tmp" "$context_tmp"; return 1; }
     target_dir=$(dirname "$target")
     [ -d "$target_dir" ] || { echo "target directory가 없습니다: $target_dir" >&2; rm -f "$item_tmp" "$context_tmp"; return 1; }
     validate_work_item_ids "$source" "$id" || { rm -f "$item_tmp" "$context_tmp"; return 1; }
-    body=$(read_required_body) || { rm -f "$item_tmp" "$context_tmp"; return 1; }
-
-    tmp_target=$(mktemp "$target_dir/.log-detach.XXXXXX" 2>/dev/null) || { rm -f "$item_tmp" "$context_tmp" "$body"; return 1; }
-    emit_new_log "$topic" "$description" "$block" "$source" "$id" "$consume" "$snapshot" "$context_tmp" "$item_tmp" "$body" > "$tmp_target"
+    tmp_target=$(mktemp "$target_dir/.log-detach.XXXXXX" 2>/dev/null) || { rm -f "$item_tmp" "$context_tmp"; return 1; }
+    emit_new_log "$topic" "$description" "$source" "$id" "$consume" "$snapshot" "$context_tmp" "$item_tmp" > "$tmp_target"
     if ! validate_generated_log "$tmp_target"; then
-        rm -f "$item_tmp" "$context_tmp" "$body" "$tmp_target"
+        rm -f "$item_tmp" "$context_tmp" "$tmp_target"
         return 1
     fi
     if ! mv "$tmp_target" "$target"; then
         echo "target 로그 생성에 실패했습니다: $target" >&2
-        rm -f "$item_tmp" "$context_tmp" "$body" "$tmp_target"
+        rm -f "$item_tmp" "$context_tmp" "$tmp_target"
         return 1
     fi
     if ! with_atomic_output "$source" build_source_detach_result "$id" "$target" "$reason"; then
-        rm -f "$item_tmp" "$context_tmp" "$body" "$target"
+        rm -f "$item_tmp" "$context_tmp" "$target"
         return 1
     fi
-    rm -f "$item_tmp" "$context_tmp" "$body"
+    rm -f "$item_tmp" "$context_tmp"
     printf '적용했습니다: %s\n' "$source"
     printf '생성했습니다: %s\n' "$target"
     if ! find_next_pointers "$source" | awk 'NF { found = 1 } END { exit found ? 0 : 1 }'; then

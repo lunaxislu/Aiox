@@ -35,7 +35,8 @@ LOG_DIR="$WORK/logs"; export LOG_DIR
 check_status "C0 help succeeds" 0 "$LOG" --help
 check_contains "C0 help output" "$WORK/out" '^사용법:$'
 
-f=$("$LOG" new "Check Test" --description "Check desc" --block "Start" --item active "First")
+f=$("$LOG" new "Check Test" --description "Check desc" --item active "First")
+printf '%s\n' '- check baseline' | "$LOG" block add "$f" "Start" >/dev/null
 "$LOG" check "$f" > "$WORK/check.out"
 check_contains "C1 status" "$WORK/check.out" '^status: open$'
 check_contains "C1 latest" "$WORK/check.out" '^latest: line [0-9][0-9]* · 2026-07-03 · Start$'
@@ -43,7 +44,7 @@ check_contains "C1 counts" "$WORK/check.out" '^work_items: active=1 open=0 close
 check_contains "C1 next" "$WORK/check.out" '^next: line .*W1 First$'
 check_contains "C1 return independent" "$WORK/check.out" '^return_target: independent$'
 
-f2=$("$LOG" new "Searchable" --description "Unique needle" --block "Start")
+f2=$("$LOG" new "Searchable" --description "Unique needle")
 "$LOG" search needle > "$WORK/search.out"
 check_contains "C2 search finds description" "$WORK/search.out" 'Searchable — Unique needle'
 

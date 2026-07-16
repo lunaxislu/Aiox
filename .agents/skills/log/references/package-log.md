@@ -29,7 +29,9 @@ package-only section을 직접 라우팅하지 않으므로, 아래 순서로 �
 1. **Identity**: package workflow, controlling package log와 logical bundle의 기본 정의가 필요할 때
    먼저 확인한다.
 2. **Activation and Entry Routing**: Route / Contract Gate에서 package signal을 판정하거나, 기존 Base
-   진행 중 package detach/transfer/not-package 후보를 판정할 때 읽는다.
+   진행 중 package detach/transfer/not-package 후보를 판정할 때 읽는다. 기존 후보가 이미 controlling
+   package surface를 가진 로그인지 인지하는 형상 판정은 SKILL.md의 Candidate Shape Check가 소유하고,
+   이 절의 activation은 package workflow 조건에 대한 의미 판정이다.
 3. **Bootstrap and Integration Probe**: new package bootstrap 또는 existing package의 contract 갱신
    필요성을 확인할 때 읽는다.
 4. **Artifact and Evidence Tests**: package Scope, related artifact, evidence provenance, effect/action

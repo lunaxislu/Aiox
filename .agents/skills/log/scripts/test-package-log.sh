@@ -293,6 +293,9 @@ check_contains "P2 Closeout package-specific TBD" "$pkg_path" 'package-specific 
 check_contains "P2 primary scope" "$pkg_path" 'docs/primary\.md'
 check_contains "P2 related scope" "$pkg_path" 'docs/related\.md'
 check_contains "P2 stable key default" "$pkg_path" 'Stable package key: 2026-07-08-Package-Test'
+check_contains "P2 package contract uses agent-neutral locator" "$pkg_path" '^- Package contract: `log skill/references/package-log\.md`\.$'
+check_contains "P2 Base loop contract uses agent-neutral locator" "$pkg_path" '^- Base loop contract: `log skill/references/loop-rules\.md`\.$'
+check_not_contains "P2 contracts omit local install path" "$pkg_path" '\.agents/skills/log/'
 check_not_contains "P2 no repo integration default" "$pkg_path" 'logs/AGENTS.md#Package Log Repository Integration'
 check_not_contains "P2 no project integration default" "$pkg_path" '^- Project integration:'
 

@@ -217,6 +217,8 @@ status: open
 
 1. 기존 owning block이 소유하는 unit을 이어가는 기록인가?
    - 후속 판단, 순차 실행 단계, 수행 결과, 정정, 반론, 대체와 결론 변경을 포함한다.
+   - 이 기록이 특정 Work Item(W-id)의 진행·완료를 다루면 그 W를 소유하는 block을 찾아 append한다.
+     다른 W를 소유하는 block에 넣지 않는다.
    - Yes: 날짜가 바뀌거나 새 섹션에 진입했다는 이유만으로 새 `##` 블록을 만들지 않고 owning
      block 아래에 새 entry로 append한다.
 2. 새 unit인가?
@@ -367,6 +369,11 @@ feedback loop다. 다음 순서로 돈다.
 
 detach는 source Work Item이 분리 작업 로그의 결과를 소비해야 할 때 쓴다. 이미 완료된 상세
 history를 새 로그로 옮겨 즉시 decided 처리하는 migration detach도 같은 기준을 따른다.
+
+`[↓]`는 결과를 소비할 source Work Item에 붙는다. 분리되는 하위조사 자체를 새 Work Item으로
+만들어 거기에 `[↓]`를 붙이지 않는다. 소비 source가 될 기존 Work Item이 없으면
+[Cross-Log / Lifetime Transitions](#cross-log--lifetime-transitions)의 discriminator 3단계로 돌아가
+Independent Follow-Up인지 재판정한다.
 
 - source Work Item line에 `— detached: <분리 작업 로그 경로> — reason: <reason>`을 남기고 marker는
   `[↓]`로 둔다.

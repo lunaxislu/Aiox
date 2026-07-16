@@ -167,8 +167,8 @@ emit_controlling_log() {
     printf '\n'
     printf '### {Global}\n'
     printf '\n'
-    printf -- '- Package contract: `.agents/skills/log/references/package-log.md`.\n'
-    printf -- '- Base loop contract: `.agents/skills/log/references/loop-rules.md`.\n'
+    printf -- '- Package contract: `log skill/references/package-log.md`.\n'
+    printf -- '- Base loop contract: `log skill/references/loop-rules.md`.\n'
     if [ -n "$integration_ref" ]; then
         printf -- '- Project integration: `%s`.\n' "$integration_ref"
     fi
@@ -384,12 +384,10 @@ cmd_controlling_detach() {
 
     source_snap=$(mktemp 2>/dev/null) || { rm -f "$related_tmp"; return 1; }
     cp "$source" "$source_snap" || { rm -f "$related_tmp" "$source_snap"; return 1; }
-    body_tmp=$(mktemp 2>/dev/null) || { rm -f "$related_tmp" "$source_snap"; return 1; }
-    printf -- '- Package controlling log skeleton will replace this temporary detach target.\n' > "$body_tmp"
     if ! "$BASE_LOG_SCRIPT" detach "$source" --id "$id" --target "$target" --reason "$reason" \
-        --topic "$topic" --description "$description" --block "$block" \
-        --context ReturnTarget "$consume" "$snapshot" < "$body_tmp" >/dev/null; then
-        rm -f "$related_tmp" "$source_snap" "$body_tmp"
+        --topic "$topic" --description "$description" \
+        --context ReturnTarget "$consume" "$snapshot" >/dev/null; then
+        rm -f "$related_tmp" "$source_snap"
         return 1
     fi
 
@@ -397,7 +395,7 @@ cmd_controlling_detach() {
         if restore_source_or_warn "$source_snap" "$source" "$target"; then
             rm -f "$target"
         fi
-        rm -f "$related_tmp" "$source_snap" "$body_tmp"
+        rm -f "$related_tmp" "$source_snap"
         return 1
     }
     emit_controlling_log "$topic" "$description" "$scope" "$stable_key" "$block" "$related_tmp" "$integration_ref" "$source" "$id" "$consume" "$snapshot" > "$tmp_target"
@@ -406,10 +404,10 @@ cmd_controlling_detach() {
         if restore_source_or_warn "$source_snap" "$source" "$target"; then
             rm -f "$target"
         fi
-        rm -f "$tmp_target" "$related_tmp" "$source_snap" "$body_tmp"
+        rm -f "$tmp_target" "$related_tmp" "$source_snap"
         return 1
     fi
-    rm -f "$related_tmp" "$source_snap" "$body_tmp"
+    rm -f "$related_tmp" "$source_snap"
     printf '%s\n' "$target"
 }
 

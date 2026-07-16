@@ -162,7 +162,7 @@ portable 문서를 바꿀 때는 owner map을 유지한다. `SKILL.md`는 entry/
 Base 파일 구조, Work Items, Required Context, Record, Reconcile, cross-log/lifetime,
 Closeout/status 상세, `package-log.md`는 Package activation, internal router, package-only
 structure/overlay 계약, `scripts/log`는 Base 구조 도구, `scripts/package-log`는 package 구조 도구,
-`project-setup.md`는 project setup routing, `design-principles.md`는 Base 설계 원리,
+`project-setup.md`는 project setup routing, `design-principles.md`는 로그 목적과 착안 개념,
 `base-log-examples.md`는 Base 판단·운용 사례와 핵심 도구 결과 예시, `package-log-examples.md`는
 Package 구성·운용 사례, `quick-flow.md`는 진입 흐름 그림 요약과 scenario locator로 둔다.
 

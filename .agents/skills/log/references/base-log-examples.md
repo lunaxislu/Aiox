@@ -28,16 +28,20 @@
 
 ### 새 로그 skeleton 생성
 
-**상황**: 새 주제의 open 로그가 필요하고, 첫 block 골격과 재개할 Work Item을 함께 만든다.
+**상황**: 새 주제의 open 로그가 필요하고, 재개할 Work Item과 첫 History block을 함께 준비한다.
 
 **명령**:
 
 ```sh
-.agents/skills/log/scripts/log new "retry-policy" \
+log_file=$(../scripts/log new "retry-policy" \
   --description "Decide API retry behavior." \
-  --block "W1 · retry policy 조사" \
   --context Global "owner map(<owner-map-path>)을 먼저 확인한다." \
-  --item active "Compare API responses and retry actions."
+  --item active "Compare API responses and retry actions.")
+printf '%s\n' "$log_file"
+
+../scripts/log block add "$log_file" "W1 · retry policy 조사" <<'EOF'
+- retry policy 조사를 시작한다.
+EOF
 ```
 
 **결과 markdown 핵심**:
@@ -66,8 +70,11 @@ status: open
 ## 2026-07-03 · W1 · retry policy 조사
 ```
 
-**주의점**: 첫 block body가 필요하면 이어서 `entry add`나 수동 편집으로 기록한다. 새 로그 이름과
-위치는 project workflow가 정한 로그 저장 위치를 따른다.
+**주의점**: `new`는 Work Items와 Required Context 골격만 만든다. History가 필요하면 바로 뒤에
+`block add`로 첫 block과 body를 추가한다. 새 로그 이름과 위치는 project workflow가 정한 로그 저장
+위치를 따른다. `log_file`은 `new`가 출력한 실제 생성 경로이므로, 아래 retry-policy 사례도 같은
+shell에서 이 값을 계속 사용한다. 별도 세션에서 사례를 실행하면 대상 로그의 실제 경로를 먼저
+`log_file`에 넣는다.
 
 ### 판단 구조를 보존하는 증류
 
@@ -76,8 +83,14 @@ status: open
 **명령**:
 
 ```sh
-.agents/skills/log/scripts/log entry add logs/retry-policy.md \
-  --after-line 24 "retry response matrix" <<'EOF'
+owning_block_line=$(awk '/^## .*W1 · retry policy 조사$/ { print NR; exit }' "$log_file")
+[ -n "$owning_block_line" ] || {
+  echo "W1 owning block heading을 찾지 못했습니다." >&2
+  exit 1
+}
+
+../scripts/log entry add "$log_file" \
+  --after-line "$owning_block_line" "retry response matrix" <<'EOF'
 | 응답 | 조건 | 행동 |
 | --- | --- | --- |
 | `401` | access token 만료 | token 갱신 후 한 번 재시도 |
@@ -88,25 +101,33 @@ EOF
 
 **결과 markdown 핵심**: 판단 축인 response, condition, action이 함께 남는다.
 
-**주의점**: 원래 표를 그대로 복사해야 한다는 뜻은 아니다. 같은 조건·판정축·행동 관계가 복원되면 짧은
-목록이나 decision tree도 가능하다.
+**주의점**: `--after-line`에는 entry를 소유할 날짜 `##` block heading의 **현재 행 번호**만 넘긴다.
+heading은 block의 topic으로 찾고, 파일의 날짜·본문·앞선 entry 변화에 따라 달라지는 행 번호는
+고정하지 않는다. 원래 표를 그대로 복사해야 한다는 뜻은 아니다. 같은 조건·판정축·행동 관계가
+복원되면 짧은 목록이나 decision tree도 가능하다.
 
 ### same-unit entry와 cross-unit block 구분
 
-**상황**: W2 결론 변경, W3 별도 목록 정리, 여러 W에 걸친 checkpoint가 함께 생겼다.
+**상황**: W2 owning block이 이미 존재하는 로그에서 W2 결론 변경, W3 별도 목록 정리, 여러 W에 걸친 checkpoint가 함께 생겼다.
 
 **명령**:
 
 ```sh
-.agents/skills/log/scripts/log entry add logs/retry-policy.md --after-line 18 "결론 변경" <<'EOF'
+owning_block_line=$(awk '/^## .*W2 · / { print NR; exit }' "$log_file")
+[ -n "$owning_block_line" ] || {
+  echo "W2 owning block heading을 찾지 못했습니다." >&2
+  exit 1
+}
+
+../scripts/log entry add "$log_file" --after-line "$owning_block_line" "결론 변경" <<'EOF'
 - W2 결론을 5xx-only에서 429 포함으로 바꿨다.
 EOF
 
-.agents/skills/log/scripts/log block add logs/retry-policy.md "W3 · error code 목록 정리" <<'EOF'
+../scripts/log block add "$log_file" "W3 · error code 목록 정리" <<'EOF'
 - W3은 별도 unit이므로 W2 owning block에 넣지 않는다.
 EOF
 
-.agents/skills/log/scripts/log block add logs/retry-policy.md "retry 확정에 따른 W4 착수 조건" <<'EOF'
+../scripts/log block add "$log_file" "retry 확정에 따른 W4 착수 조건" <<'EOF'
 - W2가 확정돼 W4 착수 조건이 갖춰졌다.
 - 여러 W에 걸친 cross-unit checkpoint라 특정 W-id로 키잉하지 않는다.
 EOF
@@ -126,15 +147,16 @@ EOF
 **명령**:
 
 ```sh
-.agents/skills/log/scripts/log detach logs/A.md \
+../scripts/log detach logs/A.md \
   --id W2 \
   --target logs/B.md \
   --reason "source W2 completion depends on B evidence" \
   --topic "B evidence check" \
   --description "Check evidence before A consumes the result." \
-  --block "W1 · evidence check" \
   --context ReturnTarget "A W2 consumes B result" "A W2 before detach" \
-  --item active "Check evidence and report result for A W2." <<'EOF'
+  --item active "Check evidence and report result for A W2."
+
+../scripts/log block add logs/B.md "W1 · evidence check" <<'EOF'
 - A에서 분리된 evidence check를 시작한다.
 - 완료 후 A W2가 결과를 소비해야 한다.
 EOF
@@ -183,10 +205,10 @@ EOF
 **명령**:
 
 ```sh
-.agents/skills/log/scripts/log context add logs/log-skill.md Global \
-  "[no-skill-edit] 실제 .agents/skills/log/* 파일은 사용자 지시 전 수정하지 않는다."
+../scripts/log context add "$log_file" Global \
+  "[no-skill-edit] 실제 skill 파일은 사용자 지시 전 수정하지 않는다."
 
-.agents/skills/log/scripts/log context add logs/log-skill.md W3 \
+../scripts/log context add "$log_file" W3 \
   "Override [no-skill-edit]: 사용자 승인 범위에서 loop-rules.md를 수정한다."
 ```
 
@@ -197,7 +219,7 @@ EOF
 
 ### {Global}
 
-- [no-skill-edit] 실제 .agents/skills/log/* 파일은 사용자 지시 전 수정하지 않는다.
+- [no-skill-edit] 실제 skill 파일은 사용자 지시 전 수정하지 않는다.
 
 ### {W3}
 

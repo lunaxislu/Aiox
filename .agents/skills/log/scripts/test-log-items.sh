@@ -39,7 +39,7 @@ check_fail_unchanged() {
 
 new_log() {
     dir=$1
-    LOG_DIR="$dir" "$LOG" new "Item Test" --description "Item desc" --block "Start" --item active "첫 작업" > "$WORK/log-test-new.out"
+    LOG_DIR="$dir" "$LOG" new "Item Test" --description "Item desc" --item active "첫 작업" > "$WORK/log-test-new.out"
     cat "$WORK/log-test-new.out"
 }
 
@@ -69,11 +69,11 @@ check_fail_unchanged "I4 closed item 재전이 거부" "$f" "$LOG" item set "$f"
 "$LOG" item set "$f" --id W1 --status cancelled --reason "범위 제외" >/dev/null
 check_contains "I5 cancelled marker" "$f" '^- \[-\] W1 첫 작업 — cancelled: 범위 제외$'
 
-f2=$(LOG_DIR="$WORK/logs" "$LOG" new "Transfer Test" --description "Transfer desc" --block "Start" --item active "이관 작업")
+f2=$(LOG_DIR="$WORK/logs" "$LOG" new "Transfer Test" --description "Transfer desc" --item active "이관 작업")
 "$LOG" item set "$f2" --id W1 --status transferred --target logs/other.md --reason "다른 로그가 소유" >/dev/null
 check_contains "I6 transferred marker" "$f2" '^- \[→\] W1 이관 작업 — transferred: logs/other.md — 다른 로그가 소유$'
 
-f3=$(LOG_DIR="$WORK/logs" "$LOG" new "Required Test" --description "Required desc" --block "Start" --item active "필수 작업")
+f3=$(LOG_DIR="$WORK/logs" "$LOG" new "Required Test" --description "Required desc" --item active "필수 작업")
 check_fail_unchanged "I7 cancelled reason 필수" "$f3" "$LOG" item set "$f3" --id W1 --status cancelled
 check_fail_unchanged "I7 transferred target 필수" "$f3" "$LOG" item set "$f3" --id W1 --status transferred --reason "이관"
 check_fail_unchanged "I7 detached item set 거부" "$f3" "$LOG" item set "$f3" --id W1 --status detached
@@ -141,9 +141,9 @@ check_fail_unchanged "I11 meta decided guard" "$f3" "$LOG" meta set "$f3" --stat
 "$LOG" meta set "$f3" --status decided >/dev/null
 check_contains "I11 meta status decided" "$f3" '^status: decided$'
 
-parent=$("$LOG" new "Detached Guard" --description "Detached desc" --block "Start" --item active "Parent task")
+parent=$("$LOG" new "Detached Guard" --description "Detached desc" --item active "Parent task")
 child="$WORK/logs/detached-child.md"
-printf '%s\n' '- child body' | "$LOG" detach "$parent" --id W1 --target "$child" --reason "분리" --topic "Detached Child" --description "Child desc" --block "Start" --context ReturnTarget "consume" "snapshot" --item active "Child task" >/dev/null
+"$LOG" detach "$parent" --id W1 --target "$child" --reason "분리" --topic "Detached Child" --description "Child desc" --context ReturnTarget "consume" "snapshot" --item active "Child task" >/dev/null
 check_fail_unchanged "I12 detached 남은 로그 decided 거부" "$parent" "$LOG" meta set "$parent" --status decided
 check_fail_unchanged "I12 detached 남은 로그 superseded 거부" "$parent" "$LOG" meta set "$parent" --status superseded
 "$LOG" item set "$parent" --id W1 --status completed >/dev/null

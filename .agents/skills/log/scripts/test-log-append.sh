@@ -31,10 +31,10 @@ check_fail() {
 
 LOG_DIR="$WORK/logs"; export LOG_DIR
 
-check_fail "A1 description 필수" "$LOG" new "No Desc" --block "Start"
-check_fail "A1 block 필수" "$LOG" new "No Block" --description "Desc"
+check_fail "A1 description 필수" "$LOG" new "No Desc"
+check_fail "A1 new --block 제거" "$LOG" new "Old Block" --description "Desc" --block "Start"
 
-f=$("$LOG" new "New Test" --description "Desc" --block "Initial" --context Global "전역" --context W1,W3 "범위" --item active "첫 작업" --item open "둘째 작업")
+f=$("$LOG" new "New Test" --description "Desc" --context Global "전역" --context W1,W3 "범위" --item active "첫 작업" --item open "둘째 작업")
 check_contains "A2 Return Target 기본" "$f" '^- None: independent log\.$'
 check_contains "A2 Required Context 생성" "$f" '^## Required Context$'
 check_contains "A2 Global context" "$f" '^- 전역$'
@@ -44,8 +44,9 @@ check_contains "A2 open item" "$f" '^- \[ \] W2 둘째 작업$'
 if awk '
     /^## Work Items$/ { getline; exit ($0 == "" ? 0 : 1) }
 ' "$f"; then ok "A2 Work Items heading blank"; else ng "A2 Work Items heading blank"; cat "$f"; fi
+if grep -q '^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] · ' "$f"; then ng "A2 새 로그 History 없음"; cat "$f"; else ok "A2 새 로그 History 없음"; fi
 
-check_fail "A2 active item 단일성 guard" "$LOG" new "Bad Active" --description "Desc" --block "Start" --item active "a" --item active "b"
+check_fail "A2 active item 단일성 guard" "$LOG" new "Bad Active" --description "Desc" --item active "a" --item active "b"
 
 printf '%s\n' '- block body' | "$LOG" block add "$f" "Second block" >/dev/null
 check_contains "A3 block add" "$f" '^## 2026-07-03 · Second block$'
@@ -74,7 +75,7 @@ if awk '
 ' "$f"; then ok "A4 같은 block 순차 entry 순서 보존"; else ng "A4 같은 block 순차 entry 순서 보존"; cat "$f"; fi
 check_fail "A4 after-line guard" "$LOG" entry add "$f" --after-line 1 "Bad"
 
-fence_log=$("$LOG" new "Fence Entry" --description "Fence desc" --block "Start")
+fence_log=$("$LOG" new "Fence Entry" --description "Fence desc")
 printf '%s\n' 'before fence' '```markdown' '## fake heading in fence' '```' | "$LOG" block add "$fence_log" "Fence block" >/dev/null
 printf '%s\n' '- real next' | "$LOG" block add "$fence_log" "Real next" >/dev/null
 fence_line=$(grep -n '^## 2026-07-03 · Fence block$' "$fence_log" | cut -d: -f1)
@@ -90,19 +91,29 @@ if awk '
 fake_line=$(grep -n '^## fake heading in fence$' "$fence_log" | cut -d: -f1)
 check_fail "A4 after-line fence guard" "$LOG" entry add "$fence_log" --after-line "$fake_line" "Bad fence"
 
-parent=$("$LOG" new "Detach Parent" --description "Parent desc" --block "Start" --item active "Parent task")
+parent=$("$LOG" new "Detach Parent" --description "Parent desc" --item active "Parent task")
 child="$WORK/logs/child.md"
-printf '%s\n' '- child body' | "$LOG" detach "$parent" --id W1 --target "$child" --reason "별도 조사 필요" --topic "Child" --description "Child desc" --block "Child start" --context ReturnTarget "child 결론을 parent W1이 소비" "parent W1 판단 기준" --item active "Child task" >/dev/null
+"$LOG" detach "$parent" --id W1 --target "$child" --reason "별도 조사 필요" --topic "Child" --description "Child desc" --context ReturnTarget "child 결론을 parent W1이 소비" "parent W1 판단 기준" --context Global "child 전체 제약" --context W1,W3 "child 선택 범위" --item active "Child task" >/dev/null
 check_contains "A5 source detached" "$parent" '^- \[↓\] W1 Parent task — detached: .*/child.md — reason: 별도 조사 필요$'
 check_contains "A5 child created" "$child" '^topic: Child$'
 check_contains "A5 child return log" "$child" "^- Log: \`$parent\`$"
 check_contains "A5 child return item" "$child" '^- Work Item: W1$'
 check_contains "A5 child consume" "$child" '^- Consume when: child 결론을 parent W1이 소비$'
 check_contains "A5 child snapshot" "$child" '^- Context snapshot: parent W1 판단 기준$'
-check_contains "A5 child body" "$child" '^- child body$'
+check_contains "A5 child Global context" "$child" '^### {Global}$'
+check_contains "A5 child Global content" "$child" '^- child 전체 제약$'
+check_contains "A5 child scoped context" "$child" '^### {W1,W3}$'
+check_contains "A5 child scoped content" "$child" '^- child 선택 범위$'
+if grep -q '^## [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] · ' "$child"; then ng "A5 child History 없음"; cat "$child"; else ok "A5 child History 없음"; fi
 
-parent2=$("$LOG" new "Detach Negative" --description "Parent desc" --block "Start" --item active "Parent task")
-check_fail "A6 detach body 필수" "$LOG" detach "$parent2" --id W1 --target "$WORK/logs/no-body.md" --reason "r" --topic "C" --description "D" --block "B" --context ReturnTarget "c" "s" < /dev/null
+parent2=$("$LOG" new "Detach No Stdin" --description "Parent desc" --item active "Parent task")
+if "$LOG" detach "$parent2" --id W1 --target "$WORK/logs/no-body.md" --reason "r" --topic "C" --description "D" --context ReturnTarget "c" "s" < /dev/null > "$WORK/out" 2>&1; then ok "A6 detach stdin body 불필요"; else ng "A6 detach stdin body 불필요"; cat "$WORK/out"; fi
+parent3=$("$LOG" new "Detach Old Block" --description "Parent desc" --item active "Parent task")
+check_fail "A6 detach --block 제거" "$LOG" detach "$parent3" --id W1 --target "$WORK/logs/old-block.md" --reason "r" --topic "C" --description "D" --block "B" --context ReturnTarget "c" "s"
+parent4=$("$LOG" new "Detach Invalid Context" --description "Parent desc" --item active "Parent task")
+invalid_child="$WORK/logs/invalid-context.md"
+check_fail "A6 detach invalid context scope 거부" "$LOG" detach "$parent4" --id W1 --target "$invalid_child" --reason "r" --topic "C" --description "D" --context ReturnTarget "c" "s" --context Invalid "content"
+if grep -q '^- \[>\] W1 Parent task$' "$parent4" && [ ! -e "$invalid_child" ]; then ok "A6 invalid context source/target 원자성"; else ng "A6 invalid context source/target 원자성"; fi
 
 small="$WORK/logs/small.md"
 {

@@ -42,7 +42,7 @@ closeout gate만 확인한다. repo-wide log 위치, current-work 선택, regist
 만든다.
 
 ```sh
-package-log controlling new --topic "API retry policy package" --description "client 동작, tests, docs, release communication을 함께 검증하는 API retry policy 변경" --scope "API retry policy"
+../scripts/package-log controlling new --topic "API retry policy package" --description "client 동작, tests, docs, release communication을 함께 검증하는 API retry policy 변경" --scope "API retry policy"
 ```
 
 **결과 markdown 핵심**: 아래는 raw skeleton 출력이 아니라 bootstrap 내용을 채운 뒤의 accepted
@@ -68,7 +68,8 @@ status: open
 
 ### {Global}
 
-- Package contract: `package-log.md`; base loop contract: `loop-rules.md`.
+- Package contract: `log skill/references/package-log.md`.
+- Base loop contract: `log skill/references/loop-rules.md`.
 - Project integration placeholder: 실제 경로, stable key, registry integrity command, model ID는 여기서 정의하지 않는다.
 
 ## Package Scope
@@ -160,7 +161,7 @@ Portable helper를 쓰는 경우 `controlling detach`는 source Work Item의 det
 controlling skeleton 생성을 한 동작으로 묶는다.
 
 ```sh
-package-log controlling detach <source-log> --id W4 --topic "API retry policy package" --description "retry docs completion depends on behavior, tests, and release note consistency" --scope "API retry policy"
+../scripts/package-log controlling detach <source-log> --id W4 --topic "API retry policy package" --description "retry docs completion depends on behavior, tests, and release note consistency" --scope "API retry policy"
 ```
 
 **결과 markdown 핵심**:
