@@ -11,7 +11,7 @@ Status: Current
 evidence가 소유한다.
 
 현재 승인된 추진 순서는 **로컬 Codex<->Claude 안정 왕복, terminal UX, daemon 안정화, 공개
-위생, npm packaging과 macOS/Linux/WSL2 최종 인증을 통과한 뒤 npm publish와 GitHub 공개를
+위생, npm packaging과 macOS/Linux 최종 인증을 통과한 뒤 npm publish와 GitHub 공개를
 진행하고, 이후 채택기/확장기/원격기 phase를 계속 개발하는 것**이다.
 
 `plans/release-plan.md`는 별도 roadmap 항목이 아니라 G6 npm packaging gate의 배포 시점
@@ -74,15 +74,15 @@ After public release:
 **착수 검토 / 열린 결정**
 
 - canonical CLI 이름, command surface, 구현/미구현 표면, config precedence를 결정한다.
-- 지원 Node 버전, agent CLI 버전, macOS/Linux/WSL2 matrix를 고정한다.
 - npm package name, 초기 0.x version 정책, license를 결정한다.
-- upstream에서 experimental 또는 unsupported인 Codex attach/app-server surface의 version pin, preflight, supported fallback 여부를 G0/G1 경계에서 명시한다.
 
 **통과 조건**
 
 - versioned schema/example validation 경로, CLI/config/package decision record, support matrix가 owner 문서로 연결되어 있다.
 - release identity 결정이 G1-A contract/ingress freeze의 입력으로 사용할 수 있을 만큼 모호하지 않다.
-- unsupported/experimental transport 의존성의 release posture가 pin/preflight/fallback 중 무엇인지 기록되어 있다.
+- 공식 지원 OS는 macOS와 Linux이며 WSL2는 공식 지원·release 인증 대상이 아니다. WSL2를 포함하려면 별도 범위 변경 승인이 필요하다.
+- 지원 Node 범위는 `20.19.x`, `22.12.x 이상인 22.x`, `24.x`다. `package.json`의 `engines`와 개발·CI 검증은 같은 범위를 사용한다.
+- Codex CLI와 Claude CLI는 장기 고정 버전으로 지원을 약속하지 않는다. G0는 매월 검증 기준 버전·검증일·OS·Node·결과를 evidence에 기록하고, version/capability preflight와 supported fallback 또는 명시적 실패 posture를 구현·검증해야 한다.
 
 **Owner refs**
 
@@ -91,6 +91,7 @@ After public release:
 - [[docs/specs/aiox-a2a]] — G1에서 고정할 protocol contract index.
 - [[docs/architecture/local-runtime-codex-adapter]] — Codex app-server/WS 의존성과 unsupported surface caveat owner.
 - [[docs/decisions/codex-per-agent-app-server]] — per-agent app-server topology와 지원 posture 재검토 근거 owner.
+- [[docs/decisions/runtime-support-and-agent-cli-validation-policy]] — 지원 OS·Node 범위와 agent CLI 월별 검증 정책의 rationale owner.
 
 ### G1/G3 Parallel Stabilization
 
@@ -105,15 +106,12 @@ Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, ins
 **진입 조건**
 
 - G0의 release identity와 지원 matrix가 G1-A 검증 범위를 제한할 만큼 결정되어 있다.
-- message lifecycle owner의 canonical envelope, delivery correlation, reply obligation target이 착수 기준으로 확인되어 있다.
+- message lifecycle owner의 canonical envelope, delivery correlation, one-reply permission target이 착수 기준으로 확인되어 있다.
 - Codex structured ingress spike의 미검증 항목을 열린 결정으로 받아들인다.
 - Codex ingress/egress 구조와 capability tier caveat를 현재 사실로 둔다.
 
 **착수 검토 / 열린 결정**
 
-- public `deliveryId` namespace와 repository id의 관계를 G1-A schema freeze 전에 결정한다.
-- typed send/reply input의 validation boundary를 확정한다.
-- explicit ack surface를 message envelope이 아닌 control-plane operation으로 둘지 검토한다.
 - Codex structured ingress spike는 `aiox-open-deferred`의 named app-server
   surface 제약을 따른다. generic `turn/start` compatibility path로 대체하지
   않고 TUI 표시, idle wake-up, active-turn 충돌, delivery id 보존,
@@ -123,7 +121,10 @@ Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, ins
 **통과 조건**
 
 - canonical schema, typed tool contract, MCP instruction/tool description/example/test fixture가 같은 contract를 가리킨다.
-- public `deliveryId` namespace 결정이 schema freeze와 repository schema에 반영되어 있다.
+- public `deliveryId` binding, typed validation, automatic control-plane ack의 accepted
+  direction이 owner contract와 schema/tool cutover handoff에 반영되어 있다.
+- send/reply acceptance가 daemon validation과 route-derived delivery creation일 뿐 target
+  receipt·work completion이 아님을 tool surface가 구분한다.
 - Codex ingress path의 지원 수준이 evidence로 분류되고, 보장하지 못하는 wake-up/ack/correlation/dedupe는 degradation으로 남는다.
 - G1-B로 넘길 envelope cutover owner path와 G1-C로 넘길 reliability/open-policy path가 분리되어 있다.
 
@@ -147,8 +148,7 @@ local A2A 경로를 canonical envelope과 correlation 모델로 전환해, 이�
 
 - G1-A contract/ingress 결정이 충분히 안정되어 envelope shape를 더 이상 exploratory 대상으로 취급하지 않아도 된다.
 - typed send/reply surface와 canonical schema 방향이 message lifecycle owner와 정렬되어 있다.
-- correlated reply authorization 모델을 확정했다. 원 delivery obligation이 좁은 reply right를 부여하는지,
-  별도 reverse route를 요구하는지 결정되어 있어야 canonical envelope cutover가 같은 routing/auth model로 진행된다.
+- correlated reply authorization은 확정된 입력이다. 원 delivery가 원 target에게만 원 source로 향하는 1회 reply permission을 부여하며, 별도 reverse route는 필요 없다.
 - persistence migration은 public surface cutover와 분리해 rollback-aware pre-step을 설계해야 한다는
   점이 message lifecycle owner에 반영되어 있다.
 
@@ -157,20 +157,30 @@ local A2A 경로를 canonical envelope과 correlation 모델로 전환해, 이�
 - 구현 착수 전에 async send-boundary가 message lifecycle spec과 정렬되어 있는지 확인한다.
 - roadmap을 migration checklist로 만들지 않는 선에서 additive schema expansion, backfill/compatibility
   read, write/read authority switch, rollback 또는 downgrade posture의 기대치를 결정한다.
-- `thread_status`를 routing/state-transition authority로 만들지 않고, conclusion은 `intent`,
-  reply 대기는 reply-obligation state로 표현하는지 확인한다.
+- `thread_status`를 routing/state-transition authority로 만들지 않고, reply permission의
+  consumption과 reply creation이 원자적으로 기록되는지 확인한다.
+- public `messageId`와 `deliveryId`의 opaque issuance cutover가 canonical envelope와
+  acceptance result에 함께 적용되고, tool/example/fixture가 ID 문자열 형식을 의미 있게
+  가정하지 않는지 확인한다.
 - reliability 작업을 막는 남은 envelope/correlation 결정을 닫거나 명시적으로 이연한다.
 
 **통과 조건**
 
 - G1-C reliability와 G1-D trust-boundary 검증이 같은 delivery/correlation 모델을 사용할 수 있을 만큼 canonical envelope cutover가 완료되어 있다.
+- route-derived fan-out acceptance와 original-delivery source-only reply creation이 각각
+  all-or-nothing으로 검증된다.
+- public `messageId`와 `deliveryId`가 owner contract의 collision-resistant opaque/immutable
+  규율로 발급되며,
+  delivery row primary-key binding은 유지된다.
 - 남은 lifecycle 질문은 owner 문서에서 닫혔거나, 이후 gate decision으로 명시적으로 이월되어 있다.
 
 **Owner refs**
 
 - [[docs/specs/aiox-message-lifecycle]] — canonical envelope, delivery lifecycle, send-boundary contract owner.
+- [[docs/decisions/public-message-and-delivery-ids-use-opaque-issuance]] — public-ID scope와 internal-ID exclusion rationale owner.
 - [[docs/architecture/local-runtime-routing-and-delivery]] — internal routing, delivery, reply-resumption structure owner.
-- [[docs/decisions/a2a-message-lifecycle-envelope-and-correlation]] — envelope/correlation rationale와 open decision owner.
+- [[docs/decisions/reply-permission-rather-than-obligation-fsm]] — one-reply permission rationale owner.
+- [[docs/decisions/original-delivery-narrow-reply-right]] — source-only correlated reply rationale owner.
 - [[logs/workspace-reset/product-a2a/2026-06-10-A2A-응답-대기-polling-원인]] — async send-boundary 검토의 root-cause context.
 
 ##### G1-C — Delivery Reliability
@@ -181,7 +191,7 @@ canonical delivery/correlation 모델 위에서 local A2A 전달을 신뢰 가�
 
 **진입 조건**
 
-- G1-B envelope cutover가 reliability 검증에 필요한 delivery correlation, reply obligation, source-visible send-boundary를 충분히 고정했다.
+- G1-B envelope cutover가 reliability 검증에 필요한 delivery correlation, consumed one-reply permission, source-visible acceptance boundary를 충분히 고정했다.
 - adapter별 capability tier와 degradation이 확인되어 자동 retry와 manual retry의 경계를 target runtime별로 판단할 수 있다.
 - runtime failure, stale session, queued delivery drain gap이 architecture owner에 남아 있다.
 
@@ -196,18 +206,19 @@ canonical delivery/correlation 모델 위에서 local A2A 전달을 신뢰 가�
 
 **통과 조건**
 
-- local A2A 왕복에서 delivery completion, reply obligation, retry/idempotency, queued flush, stale/runtime failure 처리가 같은 delivery correlation 기준으로 검증된다.
+- local A2A 왕복에서 adapter/runtime automatic ack, consumed one-reply permission, same-invocation accepted-result recovery, retry/idempotency, queued flush, stale/runtime failure 처리가 같은 delivery correlation 기준으로 검증된다. 재전송은 원 `messageId`와 `deliveryId`를 유지한다.
 - retry/failure-injection 중에도 inbound reply와 MCP fallback이 delivery correlation 기준으로 유실 없이 동작한다.
 - adapter가 보장하지 못하는 ack/dedupe/wake-up 의미는 completed로 과장하지 않고 degradation 또는 explicit manual action으로 드러난다.
 - durable store와 mailbox replay는 Phase 2 owner로 남아 있다.
 
 **Owner refs**
 
-- [[docs/specs/aiox-message-lifecycle]] — delivery state, ack/retry/idempotency, reply obligation, persistence minimum owner.
+- [[docs/specs/aiox-message-lifecycle]] — delivery state, ack/retry/idempotency, one-reply permission, persistence minimum owner.
+- [[docs/decisions/public-message-and-delivery-ids-use-opaque-issuance]] — public-ID issuance boundary rationale owner.
 - [[docs/specs/aiox-open-deferred]] — retry/passive ack timeout, session expiry, pending/blocked policy의 열린 결정 owner.
 - [[docs/architecture/local-runtime-routing-and-delivery]] — current routing/FSM, queued/deferred delivery behavior, production dispatch path owner.
 - [[docs/architecture/local-runtime-gaps-and-targets]] — runtime failure wiring, stale transition, queued delivery retry/drain gap owner.
-- [[docs/decisions/a2a-message-lifecycle-envelope-and-correlation]] — target-specific delivery correlation과 daemon authority rationale owner.
+- [[docs/decisions/reply-permission-rather-than-obligation-fsm]] — permission-consumption rationale owner.
 
 ##### G1-D — Trust Boundary
 
@@ -233,7 +244,7 @@ Local stable A2A가 같은 machine 안의 편의적 loopback 통신이 아니라
 **통과 조건**
 
 - Claude와 Codex 경로 모두에서 unauthenticated ingress/push, forged source, invalid token,
-  wrong/forged correlated reply, route bypass가 negative evidence로 거부된다.
+  wrong/forged correlated reply, `replyExpected:false` reply, consumed-right duplicate reply, route bypass가 negative evidence로 거부된다.
 - secret/token/raw credential이 argv, log, event, error, rollback residue에 release-blocking 방식으로 남지 않는다.
 - runtime directory와 daemon/channel socket surface가 owner-only local boundary로 취급되며, 실패/rollback 후에도 stale credential이나 pending token이 남지 않는다.
 
@@ -241,7 +252,7 @@ Local stable A2A가 같은 machine 안의 편의적 loopback 통신이 아니라
 
 - [[docs/architecture/local-runtime-gaps-and-targets]] — local trust-boundary current gaps와 release pressure owner.
 - [[docs/decisions/claude-channel-trust-and-registration]] — Claude channel registration token 결정과 reverse push-auth gap owner.
-- [[docs/decisions/a2a-message-lifecycle-envelope-and-correlation]] — daemon authority와 correlated reply authorization open decision owner.
+- [[docs/decisions/original-delivery-narrow-reply-right]] — correlated reply authorization rationale owner.
 - [[docs/specs/aiox-message-lifecycle]] — source identity, route authorization, reply correlation, typed error boundary owner.
 - [[docs/specs/aiox-capability-policy]] — identity/auth, authorization/policy, capability isolation, runtime data handling boundary owner.
 
@@ -393,17 +404,16 @@ G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable
 
 - G0, G1, G2, G3, G5, G6가 통과했고, 인증 대상 candidate가 더 이상 바뀌지 않는다.
 - npm packaging 검증은 `plans/release-plan.md`의 배포 직전 실행 checklist로 닫혀 있어야 한다.
-- macOS/Linux/WSL2 지원 matrix와 runtime version이 확정되어 있다.
+- macOS/Linux 지원 matrix와 runtime version이 확정되어 있다.
 
 **착수 검토 / 열린 결정**
 
-- WSL2 검증을 공개 전 gate로 유지할지, 일정/검증 비용 때문에 명시 승인된 범위 변경을 할지 재검토한다.
 - 수동 smoke만으로 통과시키지 않으며, CI suite 또는 clean-host run evidence 중 어떤 형태로 retained diagnostics를 남길지 정한다.
 - G4는 새 기능을 추가하는 gate가 아니라 동일 candidate 인증 gate이므로 post-release scope를 끌어오지 않는다.
 
 **통과 조건**
 
-- 동일 immutable candidate가 macOS/Linux/WSL2에서 G1-G3 smoke를 통과한다.
+- 동일 immutable candidate가 macOS/Linux에서 G1-G3 smoke를 통과한다.
 - 각 evidence는 setup command, supported runtime version, timeout, expected state transition, failure artifact location을 남긴다.
 - diagnostics가 보존되어 재현 가능한 실패 분석이 가능하다.
 
@@ -425,7 +435,7 @@ G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable
 
 - npm publish와 GitHub 공개 이후 시작한다.
 - Phase 1은 adoption friction과 human-controlled operation에 집중하며, compose, durable replay, third vendor, federation은 Phase 2/3로 둔다.
-- G1-D에서 release scope 밖으로 둔 full Tier 2 delivery-ack 완성은 Phase 1의 주요 uplift target이다. Phase 0 G1-D는 auth/trust-boundary gate이고, Phase 1은 ack completion과 operational polish를 다룬다.
+- Phase 0 G1-C의 baseline adapter automatic ack와 idempotency 위에서, Phase 1은 stronger Tier 2 wake-up, structured ingress, and operational guarantees를 uplift한다.
 - 이 카드는 gate가 아니므로 통과 조건 슬롯을 강제하지 않는다.
 
 **주요 범위**
@@ -436,7 +446,7 @@ G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable
 - approved artifact distillation.
 - retry/backoff/dead-letter 조정.
 - deferred delivery 자동 retry와 source push notification.
-- G1 Codex ingress/reliability evidence가 충분할 때 full Tier 2 delivery-ack uplift.
+- G1 Codex ingress/reliability evidence가 충분할 때 stronger Tier 2 delivery-ack/wake-up uplift.
 
 **Owner refs**
 
@@ -457,7 +467,7 @@ vendor 확장과 더 큰 topology를 가능하게 하는 구조적 전제 조건
 - 공개 release path가 안정화된 뒤 시작한다.
 - ingress generalization, `state.ts` decomposition, pair-to-N-agent route generalization이 우선 전제다.
 - compose, third vendor, durable store/mailbox replay, 추가 view driver는 G2가 아니라 Phase 2 범위다.
-- durable persistence를 공개 release blocker로 승격할 때는 stable daemon identity와 reply idempotency를 함께 닫아야 한다. 이 둘이 불명확하면 restart/replay가 중복 reply, 잘못된 reply 귀속, stale daemon state 복원을 만들 수 있으므로 durable store 자체보다 먼저 blocker framing을 확정한다.
+- durable persistence를 공개 release blocker로 승격할 때는 stable daemon identity와 restart-safe reply idempotency, 이미 발급된 messageId/deliveryId 및 consumed reply-right history 보존을 함께 닫아야 한다. 이들이 불명확하면 restart/replay가 중복 reply, 잘못된 reply 귀속, stale daemon state 복원을 만들 수 있으므로 durable store 자체보다 먼저 blocker framing을 확정한다.
 - G3가 `claude_channel_disconnected` event 또는 runtime diagnostics/tier-evaluator API를 Phase 0에서
   닫지 않고 명시 이연했다면, 이 phase가 adapter/events boundary cleanup으로 최종 disposition을 소유한다.
 - 이 카드는 phase pointer이므로 gate식 착수 검토/통과 조건 슬롯을 강제하지 않는다.
@@ -467,6 +477,7 @@ vendor 확장과 더 큰 topology를 가능하게 하는 구조적 전제 조건
 - ingress generalization과 adapter boundary 정리.
 - runtime events surface와 diagnostics/tier-evaluator API의 adapter boundary 정리.
 - pair-to-N-agent route generalization.
+- pair CLI가 reservation만 만들지, agent launch·attach orchestration까지 맡을지와 그 실패·재시작 lifecycle 재논의.
 - app-server MCP config isolation hardening and capability projection boundary.
 - group recipient visibility / shared group context prerequisite design.
 - third vendor support.
@@ -523,7 +534,7 @@ Gate completion requires reproducible evidence, not only a status label. 각 gat
 | G3   | client crash isolation, fatal handler exit, SIGTERM child cleanup, bounded body/queue, log redaction, doctor diagnosis tests                                                              |
 | G5   | secret/PII/path scan, tracked-vs-local file review, dead/scaffold code disposition, LICENSE/README/SECURITY/CONTRIBUTING/issue template presence and link check                           |
 | G6   | npm pack, tarball content assertion, clean temp install, executable/version/help/start-stop smoke                                                                                         |
-| G4   | same immutable G0-G6 candidate verified on macOS/Linux/WSL2 CI or recorded clean-host runs with retained diagnostics                                                                      |
+| G4   | same immutable G0-G6 candidate verified on macOS/Linux CI or recorded clean-host runs with retained diagnostics                                                                           |
 
 Each evidence item records setup command, supported runtime version, timeout, expected state transition and failure artifact location. Demo GIFs and manual recordings are adoption assets, not gate evidence.
 

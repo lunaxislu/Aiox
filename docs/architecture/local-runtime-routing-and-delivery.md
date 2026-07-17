@@ -146,6 +146,10 @@ Evidence:
 
 ### 8.5 `parent_message_id`
 
+This is the pre-G1 current correlation mechanism, not the committed v1 public contract. The G1 target uses
+`inReplyToDeliveryId`, source-only reply creation, and a daemon-owned consumed reply right; see
+[[docs/specs/aiox-message-lifecycle]] §4.2. The current facts below remain as-built until that cutover.
+
 **Implemented.** Persisted column ([[src/store/repositories/messages.ts]] —
 `src/store/repositories/messages.ts:24-32`, `:53-73`, `:94-103`), created by
 `messages.create({...,parentMessageId})` (`src/store/repositories/messages.ts:42-75`),

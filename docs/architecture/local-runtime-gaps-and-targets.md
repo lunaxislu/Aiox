@@ -41,9 +41,10 @@ The system architecture distinguishes between current, as-built gaps in the loca
 - **Codex MCP queued-message pull/read/ack** — the Codex MCP server exposes send/reply tools, but no surface to inspect,
   read, acknowledge, or drain stale queued deliveries from the Codex side.
 - **A2A send-boundary / inbound reply resumption** — current adapter success is treated as immediate delivery
-  completion, and the runtime has no completed G1 path that exposes a source-visible pending reply obligation and
-  resumes the source turn from a correlated inbound reply without source-side sleep/poll behavior. This is the
-  architecture side of the §4.3 send-boundary contract in [[docs/specs/aiox-message-lifecycle]].
+  completion, and the runtime has no completed G1 path that persists and atomically consumes a delivery-scoped
+  one-reply permission, distinguishes daemon acceptance from target receipt, or resumes the source turn from a
+  correlated inbound reply without source-side sleep/poll behavior. This is the architecture side of the §4.3
+  send-boundary contract in [[docs/specs/aiox-message-lifecycle]].
 - **`claude_channel_disconnected` event** — Codex has a disconnect event type and daemon emission, while the Claude
   channel side has no equivalent event type or emission.
 - **Claude channel boot-failure diagnosability** — a Claude agent attach returns success with a channel token before
@@ -167,7 +168,9 @@ Sources:
 
 - **Durable Persistence & Durable Queue** — Transitioning from in-memory SQLite to actual durable files on disk with restart recovery.
 - **Adapter Registry** — Abstracting daemon dispatch logic via `AdapterRouter` (currently only tested in `fake-integration.test.ts` but deferred in production).
-- **Reliability Features** — Canonical envelope wrapping, ack/retry policies, remote federation, and session expiry limits.
+- **G1 reliability target** — Canonical envelope cutover, adapter/runtime automatic target ack, invocation
+  idempotency, and source-result classification. Retry policy, remote federation, and session expiry limits retain
+  their separately deferred owner paths.
 - **TUI Protocol Drift** — Future updates to Codex protocol schemas crossing transparent proxy layers will require active maintenance of binding parsers.
 - **Declared-only Events** — Activating `agent_registered`, `agent_reconnected`, `agent_disconnected`, `pair_created`, `pair_ready`, `route_connected`, `route_disconnected`, `codex_binding_uncertain_observed`, and `late_reply` events.
 

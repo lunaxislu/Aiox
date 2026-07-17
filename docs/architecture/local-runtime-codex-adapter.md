@@ -222,7 +222,8 @@ Entry: `dispatchToPairPeers` (`state.ts:1246`; routing/FSM owner [[docs/architec
 4. On success: `runtime.rebindActiveThread(targetThreadId)`. If chosen
    thread ≠ `agent.adapter_session_id`, persist and emit
    `agent_thread_id_rebound` with `operation:"thread/loaded/list", source:"loaded_list"`.
-   Transition `delivered → completed`.
+   Transition `delivered → completed`. This is pre-G1 current behavior, not the
+   committed adapter/runtime automatic-ack target in [[docs/specs/aiox-message-lifecycle]] §4.3.
 5. On failure: emit `codex_delivery_target_injection_failed`; delivery
    `failed`.
 
@@ -235,6 +236,10 @@ owned here.
 **Tools**:
 - `aiox_send_message({content})` → daemon `receiveCodexMessage`.
 - `aiox_reply({parent_message_id, content})` → daemon `receiveCodexReply`.
+
+These are pre-G1 compatibility tools. At cutover, this adapter projects the typed lifecycle request and maps its
+logical result; the daemon contract is owned by [[docs/specs/aiox-message-lifecycle]] §4.1–§4.4. The adapter does
+not author an acknowledgment identity; its target runtime sends control-plane ack automatically.
 
 **Launcher injection** (`launcher.ts:88-120`):
 `-c mcp_servers.aiox = { command=<process.execPath>, args=[<aioxBin>, "mcp-codex"], env={AIOX_CODEX_AGENT_NAME, AIOX_CODEX_AGENT_TOKEN, AIOX_SOCKET_PATH} }`. Injected into the **daemon-owned app-server**, not

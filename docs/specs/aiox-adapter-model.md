@@ -38,7 +38,7 @@ Attach 방식은 runtime별로 다를 수 있다:
 Capability tier:
 
 - **Tier 1 `full_duplex_structured`**: structured envelope ingress/egress, deliveryId 보존,
-  authenticated identity, explicit ack와 idempotent duplicate 처리를 모두 제공한다.
+  authenticated identity, adapter/runtime automatic control-plane ack와 idempotent duplicate 처리를 모두 제공한다.
 - **Tier 2 `side_channel`**: structured metadata와 authenticated egress는 제공하지만 message
   presentation 또는 wake-up이 runtime-specific secondary channel을 사용한다. 누락 guarantee를
   adapter가 개별 flag로 보고한다.
@@ -79,8 +79,8 @@ Current adapter matrix (2026-06-11):
 
 | Runtime         | Launch/attach                               | Ingress                                         | Egress                                             | Identity/correlation                                            | Effective tier                                                                                                                                                                                                                                                   |
 | --------------- | ------------------------------------------- | ----------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Codex CLI       | daemon-owned app-server + TUI launch/resume | app-server turn/prompt compatibility path       | launch-scoped MCP `aiox_send_message`/`aiox_reply` | agent token + thread/session; reply는 logical parent message id | **Tier 3**. Current local code launches an app-server, connects WebSocket, starts a per-agent proxy, injects fixed `mcp_servers.aiox`, and uses `turn/start` for ingress. Upstream support/stability and methods such as `thread/inject_items`/`turn/steer` must be revalidated before G0/G1 cutover. |
-| Claude Code CLI | dev-channel/plugin channel launch           | local channel push/notification + text envelope | channel `send`/`reply`                             | agent name + `chat_id`; 현재 daemon->channel push auth gap 존재 | **Tier 3 preview**. Current local code can launch inline/plugin channel paths and register/send/reply through the channel server, but daemon->channel `/send` push lacks request auth and delivery ack is not complete. Authentication and ack completion are prerequisites for any Tier 2 claim. |
+| Codex CLI       | daemon-owned app-server + TUI launch/resume | app-server turn/prompt compatibility path       | launch-scoped MCP `aiox_send_message`/`aiox_reply` | agent token + thread/session; current reply uses legacy parent message id | **Tier 3**. Current local code launches an app-server, connects WebSocket, starts a per-agent proxy, injects fixed `mcp_servers.aiox`, and uses `turn/start` for ingress. Upstream support/stability and methods such as `thread/inject_items`/`turn/steer` must be revalidated before G0/G1 cutover. |
+| Claude Code CLI | dev-channel/plugin channel launch           | local channel push/notification + text envelope | channel `send`/`reply`                             | agent name + legacy `chat_id`; 현재 daemon->channel push auth gap 존재 | **Tier 3 preview**. Current local code can launch inline/plugin channel paths and register/send/reply through the channel server, but daemon->channel `/send` push lacks request auth and delivery ack is not complete. Authentication and ack completion are prerequisites for any Tier 2 claim. |
 
 지원 표에 없는 runtime은 이름만 adapter enum에 추가해서 지원으로 주장하지 않는다. 4-slot,
 auth, ack, degradation test를 모두 기록한 뒤 tier를 부여한다.

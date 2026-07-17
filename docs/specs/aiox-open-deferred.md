@@ -7,8 +7,16 @@ partial caveats.
 ## 9. Open / deferred
 
 - group recipient visibility / shared group context.
-- hard reply expiration default.
-- remote/federated delivery implementation.
+- Reply-chain operational policy: Phase 0에서는 `replyExpected:true` chain의 길이·expiry를
+  제한하지 않는다. rate limit, abuse control, operator-visible stale 기준, explicit close/cancel
+  policy가 필요해지면 one-reply permission (§4)과 별개인 운영 policy로 재검토한다.
+- remote/federated delivery implementation and durable replay. Phase 0 in-memory process
+  lifetime 밖의 기존 delivery 재참조는 보장하지 않으며, public `deliveryId`를 보존하는
+  migration/namespace policy가 필요해지면 Phase 2/3에서 함께 재검토한다.
+- attachments, binary, and ordered multimodal content parts. v1 canonical envelope은 text only다.
+  미래 확장은 part별 media type와 attachment reference/id·digest·size만 envelope에 두고 raw
+  local path나 bytes를 넣지 않는다. transfer/storage plane, access capability, integrity,
+  streaming/resume, retention/cleanup, target adapter capability를 함께 결정한다.
 - Codex structured ingress spike. 2026-06-11 official app-server surface에서
   `thread/inject_items`, `turn/steer`, `turn/started|completed`, `outputSchema`,
   `thread/tokenUsage/updated` 존재는 확인했다. version-generated schema에서 본
@@ -51,16 +59,17 @@ Lifecycle policy open questions:
   - Whether reset time should auto-resume a pair or only downgrade the agent to
     `availability_unknown` until explicit user report.
   - How blocked-pair status is surfaced to the source agent.
-- Duplicate outbound while `awaiting_reply` is unresolved: 같은 logical request의
-  coalescing/confirmation UX와 opposite-direction lane serialization.
+- Duplicate outbound and reply-chain operational UX: 같은 logical request의
+  coalescing/confirmation UX, opposite-direction lane serialization, 그리고 long-running
+  progress를 새로운 send 또는 explicitly opened turn으로 어떻게 surface할지.
 - Fan-out partial completion:
   - v1 authority는 individual delivery다. source에게 partial completion을 어떤 summary로
     보여줄지만 open이다.
 - User-interrupted pending turns:
   - When the adapter has no structured signal, whether to use user report, cancel command,
     or keep pending.
-  - Interrupted message terminal state: `cancelled_by_user`, `failed`, `superseded`, or
-    remain `awaiting_reply`.
+  - Interrupted delivery state: `cancelled_by_user`, `failed`, `superseded`, or remain
+    transport-unconfirmed; interruption does not consume a reply right.
 - Retry 기본 횟수/간격과 passive ack timeout의 release 값. §4.3 범위 안에서 G1
   failure-injection으로 고정한다.
 - AI agent session expiry handling (absorbed from the legacy MVP PRD Open Product Issue #5):

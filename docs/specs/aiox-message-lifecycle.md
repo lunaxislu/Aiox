@@ -8,7 +8,37 @@
 A2A v1의 핵심은 prompt envelope 개선이 아니라 canonical envelope과 delivery lifecycle을
 정의하는 것이다.
 
-### 4.1 Canonical envelope v1
+### 4.1 Typed request and canonical envelope v1
+
+Agent-facing request and target-facing canonical envelope are different contracts.
+The caller never supplies source, target, IDs, timestamp, or canonical media type.
+All required fields have no default.
+
+```json
+// send
+{
+  "type": "question",
+  "intent": "delegation",
+  "replyExpected": true,
+  "content": { "text": "Review the authentication boundary." }
+}
+```
+
+```json
+// reply
+{
+  "inReplyToDeliveryId": "delivery_example",
+  "intent": "result",
+  "replyExpected": false,
+  "content": { "text": "The boundary is the API ingress." }
+}
+```
+
+`send.type` MUST be `question` or `instruction`. `reply` does not accept a
+`type`: the daemon fixes it to `reply`. Both calls accept only the agent-authored
+intent subset and `content.text`; the daemon fixes canonical
+`content.mediaType` to `text/plain`. A missing, unknown, reserved, or legacy
+label-conflicting input is rejected as a typed request error (§4.4).
 
 다음 JSON object가 complete normative v1 envelope다. wire key는 camelCase를 사용하고,
 DB column이나 vendor API의 snake_case는 adapter/repository boundary에서 변환한다.
@@ -16,8 +46,8 @@ DB column이나 vendor API의 snake_case는 adapter/repository boundary에서 �
 ```json
 {
   "protocol": "aiox.message.v1",
-  "messageId": "msg_01J...",
-  "deliveryId": "dlv_01J...",
+  "messageId": "message_example",
+  "deliveryId": "delivery_example",
   "source": {
     "kind": "agent",
     "address": "agent://local/release/claude-review"
@@ -39,17 +69,40 @@ DB column이나 vendor API의 snake_case는 adapter/repository boundary에서 �
 | Field                 | Requirement                                                                                                         |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `protocol`            | MUST equal `aiox.message.v1`. 지원하지 않는 major/version은 `unsupported_protocol_version`으로 거부한다.            |
-| `messageId`           | source scope에서 logical message를 식별하는 non-empty opaque id. fan-out delivery들이 공유한다.                     |
+| `messageId`           | source scope에서 logical message를 식별하는 non-empty opaque id. fan-out delivery들이 공유한다. 발급 뒤 immutable이다. |
 | `deliveryId`          | target별 non-empty opaque id. 재전송에서도 바꾸지 않으며 reply correlation과 idempotency의 기준이다.                |
 | `source.kind`         | `agent`, `human`, `daemon` 중 하나. v1 reference runtime은 `agent`만 완전 지원한다.                                 |
 | `source.address`      | canonical logical source address. runtime session id를 넣지 않는다.                                                 |
 | `target.address`      | 이 delivery의 단일 target. fan-out envelope 하나에 여러 target을 넣지 않는다.                                       |
 | `type`                | `question`, `instruction`, `status`, `event`, `reply` 중 하나. 저장/표시 분류다.                                    |
 | `intent`              | `delegation`, `discussion`, `clarification`, `result`, `conclusion`, `status`, `notification` 중 하나. 행동 의미다. |
-| `replyExpected`       | boolean. delivery 완료와 별개인 reply obligation 생성 여부다.                                                       |
+| `replyExpected`       | boolean. 이 delivery의 원 target에게 한 번의 correlated reply를 허용하는 flag다.                                |
 | `inReplyToDeliveryId` | 기존 delivery에 대한 응답이면 REQUIRED, 새 thread면 MUST be absent.                                                 |
 | `content`             | v1은 `text/plain` UTF-8 text만 표준화한다. 빈 text는 `invalid_envelope`이다.                                        |
 | `createdAt`           | UTC RFC 3339 timestamp. ordering authority가 아니며 관측/감사용이다.                                                |
+
+Public identifier issuance [Status: Committed target]: daemon은 새로운 logical message와
+delivery마다 각각의 `messageId`와 `deliveryId`를 발급한다. Issuer는 서로 다른 public
+message나 delivery에 같은 값을 재사용하면 안 되며, restart 뒤 우연한 재사용을 피하는
+collision-resistant method를 사용한다. 발급 뒤 값은 immutable이고, delivery 재전송은 기존
+`messageId`와 `deliveryId`를 유지한다. Consumer와 intermediary는 이 값을 저장·전달·동일성
+비교만 해야 하며 prefix, encoding, random source, 정렬 순서 또는 domain 의미를 파싱하거나
+추론하면 안 된다. `message_`나 `delivery_` 같은 prefix 및 UUID 같은 표현은 non-normative
+implementation example일 뿐이다. 이 규율의 rationale은
+[[docs/decisions/public-message-and-delivery-ids-use-opaque-issuance]]가 소유한다.
+
+Public identifier lifetime [Status: Committed target]: Phase 0 in-memory reference
+runtime은 `messageId`와 `deliveryId`를 발급한 daemon process lifetime 안에서만
+correlation에 사용한다. Daemon restart 뒤 두 public ID의 replay, lookup 또는 기존 ID의
+재참조를 약속하지 않는다. Collision-resistant issuance은 새 process가 같은 문자열을
+우연히 발급할 위험을 낮추지만, durable history를 제공하지 않는다.
+
+`deliveryId` storage binding [Status: Committed target]: v1 local reference
+runtime에서 protocol `deliveryId`는 `message_deliveries.id`와 같은 immutable value다.
+별도 public `delivery_id` column을 만들지 않는다. Phase 2 durable replay 또는 federation이
+더 넓은 namespace를 요구하면, 기존 public value를 보존하는 migration을 전제로 이 scope를
+재검토한다. 선택의 rationale은
+[[docs/decisions/public-delivery-id-is-delivery-primary-key]]가 소유한다.
 
 v1 receiver는 모르는 optional field를 무시해야 하고, intermediary는 가능한 한 그대로
 보존해야 한다. 기존 field의 의미 변경이나 required field 추가는 새 protocol version이
@@ -64,13 +117,12 @@ reserved intent를 제출하면 `reserved_intent_not_allowed`로 거부한다. a
 authority를 위임받은 system event 변환에서만 이를 만들며 vendor text만 보고 승격하지 않는다.
 
 G1 cutover 뒤 canonical send/reply tool은 free-form `Intent:` label parsing을 authority로 쓰지
-않는다. send는 최소 `intent`, `replyExpected`, `content`를, reply는
-`inReplyToDeliveryId`, `intent`, `replyExpected`, `content`를 typed input으로 받는다. 현재
-Claude/Codex의 text-only tool과 5종 label instruction은 pre-release compatibility surface이므로
-schema validator, MCP instruction, tool description, example과 test fixture는 같은 public
-contract revision으로 교체한다. 이 public surface cutover는 repository migration을 한 deploy
+않는다. 현재 Claude/Codex의 text-only tool과 5종 label instruction은 pre-release compatibility
+surface이므로 schema validator, MCP instruction, tool description, example과 test fixture는 같은
+public contract revision으로 교체한다. 이 public surface cutover는 repository migration을 한 deploy
 step으로 압축하라는 뜻이 아니다. negative test는 agent-authored reserved intent, unknown intent,
-label과 typed field가 충돌하는 legacy input을 포함한다.
+missing required field, forbidden reply `type`, caller-supplied `content.mediaType`, 그리고 label과 typed
+field가 충돌하는 legacy input을 포함한다.
 
 Canonical address는 logical agent를 나타낸다. v1 local reference runtime은
 `agent://local/<profile>/<agent-name>`을 사용하고, daemon은 canonical address, DB agent id,
@@ -84,11 +136,16 @@ logical address에 rebind할 수 있지만, 이름 변경은 v1에서 새 identi
 - fan-out은 logical message 하나와 target별 envelope/delivery N개를 만든다. 각 delivery는
   같은 `messageId`, 서로 다른 `deliveryId`와 `target.address`를 가진다.
 - reply는 `inReplyToDeliveryId`로 원 delivery를 해석하고, **원 source만** 단일 target으로
-  삼는 새 logical message를 만든다. replying agent의 현재 outbound route fan-out을 사용하지
-  않는다.
-- unknown delivery, 원 target과 다른 replying identity, 이미 terminal reply로 닫힌
-  obligation의 중복 reply는 각각 `unknown_delivery`, `correlation_mismatch`,
-  `duplicate_terminal_reply`로 거부한다.
+  삼는 새 logical message를 만든다. replying agent의 현재 outbound route fan-out이나 reverse
+  directed route를 사용하지 않는다. 원 delivery가 부여한 narrow reply right가 이 단일 reply의
+  authorization이다. 그 rationale은
+  [[docs/decisions/original-delivery-narrow-reply-right]]가 소유한다.
+- daemon은 원 delivery 존재, authenticated caller가 원 target임, `replyExpected:true`, 그리고
+  아직 reply right가 소비되지 않았음을 확인한다. false delivery는 `reply_not_expected`, 원
+  target이 아닌 caller는 `correlation_mismatch`, 이미 소비된 right의 두 번째 reply는
+  `duplicate_reply`, 없는 delivery는 `unknown_delivery`로 거부한다.
+- `replyExpected:true`인 reply delivery는 다음 recipient에게 새 한 번의 right를 부여한다.
+  따라서 chain은 각 새 delivery의 flag로 이어지며, `false`가 해당 chain branch를 닫는다.
 - 현재 Codex `parentMessageId`와 Claude `chat_id`는 logical message id를 가리키므로 이
   계약에 비준수다. v1 cutover에서 deliveryId로 바꾸며, migration 중에는 둘을 혼동하지
   않도록 별도 field로 읽는다.
@@ -102,13 +159,11 @@ Current implementation caveats:
   `src/daemon/state.ts:1761-1783`,
   [[tests/unit/daemon/message-fanout-store.test.ts]] — `tests/unit/daemon/message-fanout-store.test.ts:198-222`,
   [[tests/unit/daemon/codex-ingress.test.ts]] — `tests/unit/daemon/codex-ingress.test.ts:589-602`.
-- The current store has a `message_deliveries.id` primary key, but public v1
-  envelope `deliveryId` exposure and its external namespace are still an
-  Implementation Gap/Open Issue. Current schema evidence:
+- The current store has a `message_deliveries.id` primary key. The approved v1
+  target binds this same value to public envelope `deliveryId`, but current
+  code does not expose that field yet. This remains an Implementation Gap.
+  Current schema evidence:
   [[src/store/schema.ts]] — `src/store/schema.ts:58-67`, [[tests/unit/store/schema.test.ts]] — `tests/unit/store/schema.test.ts:174-195`.
-  The target contract is a stable target-specific delivery id; whether that
-  public id is identical to the stored row id or a separate external id must
-  be decided before G1 schema cutover.
 - Current reply ingress creates a `type: "reply"` message linked by
   `parentMessageId`/`parent_message_id` and dispatches it through the replying
   agent's active outbound routes. It does not yet authorize replies by
@@ -119,7 +174,7 @@ Current implementation caveats:
 
 ### 4.3 Delivery, acknowledgement, retry
 
-Delivery transport state와 reply obligation은 독립이다.
+Delivery transport state와 correlated-reply permission은 독립이다.
 
 ```text
 queued -> delivering -> delivered -> completed
@@ -136,13 +191,22 @@ queued | delivering | delivered -> failed
 - `failed`: bounded retry가 소진됐거나 재시도 불가능한 terminal failure다. dead-letter는
   별도 상태가 아니라 failed delivery를 운영 표면에서 분류하는 정책으로 시작한다.
 
-Ack는 `deliveryId`, acknowledging identity, evidence kind(`explicit | passive`), timestamp를
-기록해야 한다. explicit ack가 기본이다. Stop hook 같은 passive signal은 해당 delivery와
-target session을 상관할 수 있을 때만 ack다. 단순 HTTP/JSON-RPC 성공, process 생존,
-사용자 interrupt는 ack가 아니다.
+Target adapter/runtime은 입력을 수신·수용한 뒤 `deliveryId`로 automatic control-plane ack를
+보낸다. Daemon은 authenticated target identity와 `deliveryId`로 이를 deduplicate하고,
+evidence kind와 timestamp를 기록해야 한다. LLM이 ack tool을 직접 호출하지 않는다. Stop hook
+같은 passive signal은 해당 delivery와 target session을 상관할 수 있을 때만 ack evidence다.
+단순 HTTP/JSON-RPC 성공, process 생존, 사용자 interrupt는 ack가 아니다.
+
+`send`/`reply` request schema에는 idempotency key를 넣지 않는다. Adapter/MCP transport가
+invocation별 opaque key를 만들고 같은 invocation retry에 재사용한다. Daemon은 route-derived
+deliveries의 생성·저장을 all-or-nothing으로 처리한다; 일부 delivery만 생성된 success를 반환할 수
+없다. Daemon은 authenticated source scope와 invocation key로 accepted operation을 식별한다. 같은
+key의 재시도에는 저장된 accepted result를 반환하며 새 message/delivery를 만들거나 reply right를
+다시 소비하지 않는다. 이 invocation idempotency와 target ack dedupe를 혼동하지 않는다. Target
+ack의 dedupe key는 `deliveryId`와 authenticated target identity다.
 
 재전송은 같은 `messageId`, `deliveryId`, canonical content를 유지하고 attempt만 증가시킨다.
-수신 adapter/agent는 이미 ack한 `deliveryId`를 다시 받아도 LLM action이나 reply obligation을
+수신 adapter/runtime은 이미 ack한 `deliveryId`를 다시 받아도 LLM action이나 reply right를
 중복 생성하면 안 된다. `messageId`가 같지만 canonical content 또는 target set이 다르면
 `message_id_conflict`로 거부한다. 한 target의 실패는 다른 fan-out delivery를 막지 않는다.
 
@@ -164,27 +228,29 @@ failure-injection 결과로 고정하되 무한 retry는 금지한다. G1 idempo
 post-acceptance no-auto-retry를 각각 검증한다. Tier 3에서 LLM action exactly-once를 주장하지
 않는다.
 
-`replyExpected: true`인 completed delivery는 별도 `awaiting_reply` obligation을 만든다.
-유효한 correlated reply가 이를 fulfilled로 바꾼다. reply가 ack보다 먼저 도착하면 그 reply는
-해당 delivery의 explicit ack evidence도 겸한다. delivery 완료는 reply 완료가 아니다.
-reply timeout은 기본 hard failure가 아니라 pending visibility threshold이며, hard deadline과
-cancellation은 explicit policy가 있을 때만 terminal state를 만든다.
+`replyExpected:true`는 transport completion 또는 source-side waiting state를 만들지 않는다.
+대신 originating delivery에 one-reply right를 기록한다. 유효한 correlated reply가 그 right를
+소비하며, reply가 ack보다 먼저 도착하면 ack evidence도 겸할 수 있다. ack·retry reconciliation은
+reply permission과 별개로 G1-C가 소유한다. FSM을 두지 않는 rationale은
+[[docs/decisions/reply-permission-rather-than-obligation-fsm]]가 소유한다.
 
 Source-visible send completion is a committed target boundary event, not a remote
 answer. [Status: Committed target] A successful `send`/`reply` call means the daemon
-accepted the source request and can identify the target delivery or rejection; it
-MUST NOT be presented as target reply completion. When `replyExpected` is true, the
-source observes completion only through a correlated reply or reply-obligation state
-transition. Agent instructions and tool descriptions must not ask the source agent
-to sleep, poll, or infer completion from transport success. The current runtime does
-not yet satisfy this boundary; see [[docs/architecture/local-runtime-gaps-and-targets]]
-§13 A2A send-boundary / inbound reply resumption.
+atomically validated the request, authenticated and authorized its source/correlation,
+and created and stored all route-derived deliveries. It returns `accepted` with send's
+`messageId` and delivery IDs/targets, or reply's new `messageId`, delivery ID/target
+and `inReplyToDeliveryId`. Otherwise it returns `rejected` (§4.4). This is not target
+read, runtime acceptance, work completion, or a remote reply. Agent instructions and
+tool descriptions must not ask the source agent to sleep, poll, or infer any of those
+states from acceptance. The current runtime does not yet satisfy this boundary; see
+[[docs/architecture/local-runtime-gaps-and-targets]] §13 A2A send-boundary / inbound
+reply resumption.
 
 Adapter가 target runtime의 실행 lifecycle을 관측할 수 있으면 `target_started`,
 `target_progress`, `target_finished`, `target_failed` 같은 progress evidence를 event로 surface할
 수 있다. 이는 source에게 "전달 후 처리 중인가"를 보여주는 visibility signal이지 delivery
 ack나 correlated reply가 아니다. `target_started`나 `target_progress`는 delivery를 completed로
-만들지 않고, `target_finished`도 reply obligation을 fulfilled로 만들지 않는다. 다만 event가 특정
+만들지 않고, `target_finished`도 reply right를 소비하지 않는다. 다만 event가 특정
 `deliveryId`와 target session에 상관되고 adapter가 그 의미를 보장할 때에는 별도의 passive ack
 evidence를 함께 생성할 수 있다. adapter는 progress visibility 지원 여부를 capability/degradation
 surface에 보고하고, vendor lifecycle event를 지원하지 않으면 progress를 추정해 만들지 않는다.
@@ -193,17 +259,25 @@ surface에 보고하고, vendor lifecycle event를 지원하지 않으면 progre
 
 v1 typed errors는 최소한 `invalid_envelope`, `unsupported_protocol_version`,
 `unauthorized_source`, `route_not_allowed`, `unknown_target`, `message_id_conflict`,
-`unknown_delivery`, `correlation_mismatch`, `duplicate_terminal_reply`, `backpressure`,
+`unknown_delivery`, `correlation_mismatch`, `reply_not_expected`, `duplicate_reply`, `backpressure`,
 `reserved_intent_not_allowed`, `adapter_unavailable`, `delivery_failed`를 구분한다. error는
 stable code와 human-readable message를 함께 제공하며 secret/token/raw credential을
 포함하지 않는다.
+
+The logical result is transport-independent. An accepted send returns
+`{status:"accepted", messageId, deliveries:[{deliveryId,target}]}`; an accepted reply returns
+`{status:"accepted", messageId, delivery:{deliveryId,target,inReplyToDeliveryId}}`. Every rejection returns
+`{status:"rejected", error:{code,message}}`. MCP, CLI, and daemon API may add an
+outer transport wrapper but MUST preserve these logical result meanings and error
+code. Lifecycle is the public code/meaning owner; G1-B canonical cutover creates the
+shared daemon/MCP/CLI registry source, and G1-C adds reliability-specific entries.
 
 - target availability를 모르면 기본은 queue다. 명시적 policy만 reject로 바꿀 수 있다.
 - fan-out aggregate terminal state는 v1에 만들지 않고 target별 delivery를 authoritative하게
   유지한다.
 - backpressure 한도를 넘으면 무제한 메모리 적재 대신 typed reject 또는 bounded queue를 쓴다.
-- user cancellation은 ack/reply를 추론하지 않는다. 원 obligation에 별도 cancellation
-  evidence를 기록한다.
+- user cancellation은 ack 또는 reply-right consumption을 추론하지 않는다. delivery policy가
+  cancellation을 지원하면 별도 evidence를 기록한다.
 - v1은 global total ordering을 약속하지 않는다. 같은 target에 대한 live injection attempt는
   adapter/session별로 serialize해 interleaving을 막고, 관측 순서는 `createdAt`이 아니라 daemon
   sequence/event order로 표현한다.
@@ -215,12 +289,13 @@ G1 schema/cutover가 완료되면 repository는 최소한 다음 정보를 잃�
 
 - message: protocol, messageId, source kind/address, type, intent, replyExpected, canonical
   content, createdAt.
-- delivery: deliveryId, messageId, target address, route id, status, idempotency key, attempt,
+- delivery: deliveryId, messageId, target address, route id, status, delivery-level dedupe key, attempt,
   retry eligibility, nextAttemptAt, ack deadline, degradation code, last failure code.
+- accepted operation: authenticated source scope, invocation idempotency key, and the previously returned
+  accepted send/reply result. The record survives the reference runtime process lifetime.
 - ack: deliveryId, acknowledging identity, evidence kind, timestamp.
-- reply obligation: originating deliveryId, state
-  (`awaiting_reply | fulfilled | cancelled | expired`), fulfilling reply
-  message/delivery id.
+- reply right: originating deliveryId, permission granted/consumed state, and consuming
+  reply message/delivery id when present.
 - event: state transition, actor, correlation ids와 redacted diagnostic data.
 
 현재 schema는 message의 sourceAgentId/parentMessageId/type/content와 delivery status/
@@ -238,21 +313,21 @@ Current implementation caveats:
 - Current fan-out creates one logical message plus one queued delivery per
   route. The stored delivery row has a generated `id`, shared `messageId`,
   target agent id, route id, status and idempotency key, but it does not yet
-  persist retry attempt metadata, ack evidence, reply obligation state or
+  persist retry attempt metadata, ack evidence, reply-right consumption or
   degradation code. Current evidence: `src/core/messages.ts:57-74`,
   [[src/core/deliveries.ts]] — `src/core/deliveries.ts:13-19`, `src/core/deliveries.ts:26-35`,
   [[src/store/repositories/deliveries.ts]] — `src/store/repositories/deliveries.ts:102-112`.
 - Current SQLite schema has `messages`, `message_deliveries` and `events`
   tables with timestamps and correlation ids, but it is still below the G1
   persistence minimum because canonical v1 envelope fields, ack records, retry
-  scheduling and reply obligations are absent. Current evidence:
+  scheduling and reply-right records are absent. Current evidence:
   [[src/store/schema.ts]] — `src/store/schema.ts:48-78`.
 - G1 persistence cutover requires a rollback-aware schema migration plan. The
   current migration pattern is versioned and transactional, but the v1 fields
   listed above require additive/pre-step schema expansion, backfill or
   compatibility reads where needed, and an explicit point where write/read
   authority moves from the pre-v1 fields to canonical `deliveryId`,
-  `inReplyToDeliveryId` and reply-obligation state. Current migration evidence:
+  `inReplyToDeliveryId` and reply-right consumption. Current migration evidence:
   [[src/store/schema.ts]] — `src/store/schema.ts:84-134`;
   [[tests/unit/store/repositories/pairs.test.ts]] —
   `tests/unit/store/repositories/pairs.test.ts:401-457`.
@@ -279,8 +354,7 @@ Protocol invariants:
 - prompt text, TUI-injected envelope, `additionalContext["aiox.envelope"]`은
   display/correlation aid일 수 있지만 authority가 아니다.
 - 진짜 authority는 daemon store + token + policy다.
-- reply timeout은 기본 hard failure cutoff가 아니라 pending visibility threshold다.
-  hard deadline은 explicit policy로만 둔다.
+- `replyExpected` is a one-reply permission, not a pending/timeout/expiry FSM.
 - delivery lifecycle은 push 후 **ack로 완결**되며, 미확인 delivery는 §4.3 정책에 따른다.
 
 Current non-native caveat:
@@ -293,34 +367,13 @@ Current non-native caveat:
 
 Implementation review notes (G1 착수 시 사용자와 재검토):
 
-- §4.1의 complete normative object 예시는 새 thread용이다. `inReplyToDeliveryId`는 reply에서만
-  required인 조건부 field이므로 현재 예시에서 빠진 것이 계약 위반은 아니다. 다만 schema,
-  fixture와 문서 구현 시 새 thread와 reply 예시를 각각 두어 reply 구현이 이 field를 누락하지
-  않게 한다.
-- `messageId`는 현재 source scope의 opaque id로 정의돼 있다. `deliveryId`의 생성 namespace와
-  uniqueness scope, repository unique constraint, daemon 간 federation 시 충돌 처리까지 어느
-  범위에서 보장할지는 G1 schema를 고정할 때 명시한다.
+- `messageId`는 현재 source scope의 opaque id로 정의돼 있다. `deliveryId`는
+  `message_deliveries.id`를 public으로 사용한다. G1 schema cutover는 Phase 0 daemon
+  process-lifetime 안에서의 generator/unique constraint를 검증해야 하며, daemon 간
+  federation collision 처리는 Phase 2/3 재검토 항목으로 남는다.
 - Tier 3에서 acceptance 뒤 ack를 끝내 얻지 못한 `delivered + unconfirmed` delivery의 retention,
-  operator-visible stale 기준, 수동 retry·cancel·archive 처리와 reply obligation 정리 정책은 G1
+  operator-visible stale 기준, 수동 retry·cancel·archive 처리와 reply-right record 정리 정책은 G1
   failure-injection 결과를 보고 결정한다. 자동 재주입 금지 원칙은 유지한다.
-- reply가 ack보다 먼저 도착할 수 있으므로 구현은 reply obligation을 `completed` 전에도 유실
-  없이 식별하거나 reply 처리와 함께 원 delivery의 ack evidence·obligation fulfillment를
-  원자적으로 기록해야 한다. obligation 생성 시점과 state transition의 정확한 저장 모델은 G1
-  schema 설계에서 확정한다.
-- **Open decision — correlated reply authorization:** current implementation is
-  route-based fan-out for reply messages, while the v1 target candidate is
-  source-only delivery correlation by `inReplyToDeliveryId`. G1 must decide
-  whether a correlated reply requires a reverse directed route or whether the
-  original delivery obligation grants a narrow reply right to the original
-  source. Until that decision is approved, source-only correlation remains the
-  target direction but not an implemented current contract.
-- **Recommended, not yet approved — `type` authoring:** canonical `send`는 caller가
-  `question | instruction`을 명시하고, canonical `reply`는 daemon이 `reply`로 고정하며,
-  `status | event`는 인증된 daemon/system path만 생성하는 방식을 우선 검토한다. `type`은
-  `intent`에서 암묵적으로 추론하지 않는다. 정확한 typed input과 validation 규칙은 G1에서
-  사용자 승인을 받아 확정한다.
-- **Recommended, not yet approved — explicit ack surface:** explicit ack는 일반 message
-  envelope이 아니라 인증된 control-plane operation으로 두는 방식을 우선 검토한다. caller는
-  `deliveryId`를 제출하고 acknowledging identity는 caller 입력을 신뢰하지 않고 token/session
-  binding에서 daemon이 결정한다. operation/tool/RPC 이름과 adapter별 호출 시점은 G1에서
-  사용자 승인을 받아 확정한다.
+- reply가 ack보다 먼저 도착할 수 있으므로 구현은 reply right를 `completed` 전에도 유실 없이
+  식별하거나 reply 처리와 함께 원 delivery의 ack evidence·right consumption을 원자적으로 기록해야
+  한다. 정확한 저장 모델은 G1 schema 설계에서 확정한다.

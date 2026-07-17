@@ -104,6 +104,14 @@ Two items are explicitly not closed by this decision:
   target-specific delivery correlation, but it does not decide that the public
   v1 `deliveryId` is identical to the current stored `message_deliveries.id`.
 
+The obligation-FSM premise and correlated-reply-authorization alternative were
+subsequently decided without rewriting this decision's original rationale:
+[[docs/decisions/reply-permission-rather-than-obligation-fsm]] supersedes the
+former, and [[docs/decisions/original-delivery-narrow-reply-right]] supersedes
+the latter. The `deliveryId` namespace item is superseded by
+[[docs/decisions/public-delivery-id-is-delivery-primary-key]]. The text above
+remains the historical record of what this decision deliberately left open.
+
 ## Sources
 
 - `docs/specs/aiox-message-lifecycle.md` §4 — owner outcome for canonical envelope, routing,
