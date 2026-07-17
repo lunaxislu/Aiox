@@ -62,15 +62,16 @@ override하지 않고 실제 작업에 적용하는 방법을 설명한다.
 - `plans/`는 독립된 여러 단계가 있는 큰 작업이나 workstream의 단계 순서, 진행 상태와
   단계 로그 포인터를 소유한다. Plan 파일의 구조, 단계 문법과 유지 규칙은
   [`plans/AGENTS.md`](plans/AGENTS.md)가 소유한다.
-- `research/`는 외부 링크, 아이디어, repository와 문서에 대한 미검증 조사 입력을
-  소유한다.
-- `spikes/`는 research나 구현 중 발견한 가능성과 기술적 불확실성을 검증하는 실험을
+- `research-idea/`는 사용자가 프로젝트에 필요한 아이디어, 외부 링크와 repository·문서에
+  대한 미검증 조사 자료를 모아 두는 영역이다. 이 자료는 필요할 때 참고하며, owner 문서나
+  구현 commitment를 대신하지 않는다.
+- `spikes/`는 `research-idea/`나 구현 중 발견한 가능성과 기술적 불확실성을 검증하는 실험을
   소유한다.
 - `logs/`는 주제별 작업 과정과 경위를 소유한다. 확정된 제품·기술 계약이나 현재
   구현 사실 자체의 owner는 아니다.
 - code와 tests는 실제 구현이 현재 무엇을 하는지에 대한 fact owner다.
 
-Research와 spike 결과는 owner 문서, code 또는 tests에 반영되고 검증되기 전에는
+`research-idea/`와 spike 결과는 owner 문서, code 또는 tests에 반영되고 검증되기 전에는
 제품 사실이나 구현 commitment가 되지 않는다.
 
 ## Scoped Authority
