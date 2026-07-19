@@ -36,6 +36,14 @@ import { attachCodexAgentRuntime } from "../adapters/codex/runtime.js";
 const attachRollbackSentinel = Symbol("aiox.attach.rollback");
 const sendMessageRollbackSentinel = Symbol("aiox.sendMessage.rollback");
 
+function typedText(
+  content: string | { text: string } | undefined,
+  legacyText?: string,
+): string {
+  if (typeof content === "string") return content;
+  return content?.text ?? legacyText ?? "";
+}
+
 export interface ClaudeChannelRuntime {
   agentName: string;
   endpoint: string;
@@ -74,15 +82,26 @@ export interface DisconnectClaudeChannelResult {
 export interface ReceiveClaudeChannelMessageRequest {
   agentName: string;
   messageId: string;
-  text: string;
+  type?: "question" | "instruction";
+  intent?: AgentAuthoredIntent;
+  replyExpected?: boolean;
+  content?: string | { text: string };
+  text?: string;
 }
 
 export type ReceiveClaudeChannelMessageResult = SendMessageResult;
 
 export interface ReceiveClaudeChannelReplyRequest {
   agentName: string;
-  chatId: string;
-  text: string;
+  inReplyToDeliveryId?: string;
+  // Pre-v1 callers still pass a logical message id. G1-A projects the typed
+  // delivery correlation into this field until G1-B installs canonical delivery
+  // authorization and routing.
+  chatId?: string;
+  intent?: AgentAuthoredIntent;
+  replyExpected?: boolean;
+  content?: string | { text: string };
+  text?: string;
 }
 
 export type ReceiveClaudeChannelReplyResult = SendMessageResult;
@@ -122,8 +141,18 @@ export interface ReceiveCodexMessageRequest {
   agentName: string;
   token: string;
   messageId: string;
-  content: string;
+  type?: "question" | "instruction";
+  intent?: AgentAuthoredIntent;
+  replyExpected?: boolean;
+  content: string | { text: string };
 }
+
+export type AgentAuthoredIntent =
+  | "delegation"
+  | "discussion"
+  | "clarification"
+  | "result"
+  | "conclusion";
 
 export type ReceiveCodexMessageResult =
   | {
@@ -145,8 +174,11 @@ export interface ReceiveCodexReplyRequest {
   agentName: string;
   token: string;
   messageId: string;
-  parentMessageId: string;
-  content: string;
+  inReplyToDeliveryId?: string;
+  parentMessageId?: string;
+  intent?: AgentAuthoredIntent;
+  replyExpected?: boolean;
+  content: string | { text: string };
 }
 
 export type ReceiveCodexReplyResult = ReceiveCodexMessageResult;
@@ -976,15 +1008,15 @@ export function createDaemonState(
       const result = runSendMessageTransaction({
         sourceName: request.agentName,
         messageId: request.messageId,
-        type: "question",
-        content: request.text,
+        type: request.type ?? "question",
+        content: typedText(request.content, request.text),
       });
 
       events.append({
         id: options.createId(),
         type: "claude_channel_message_received",
         data: {
-          text: request.text,
+          text: typedText(request.content, request.text),
           ...(result.ok ? { messageId: result.message.id } : {}),
         },
         createdAt: options.now(),
@@ -1010,17 +1042,17 @@ export function createDaemonState(
       const result = runSendMessageTransaction({
         sourceName: request.agentName,
         messageId: options.createId(),
-        parentMessageId: request.chatId,
+        parentMessageId: request.inReplyToDeliveryId ?? request.chatId,
         type: "reply",
-        content: request.text,
+        content: typedText(request.content, request.text),
       });
 
       events.append({
         id: options.createId(),
         type: "claude_channel_reply_received",
         data: {
-          chatId: request.chatId,
-          text: request.text,
+          chatId: request.inReplyToDeliveryId ?? request.chatId,
+          text: typedText(request.content, request.text),
           ...(result.ok ? { messageId: result.message.id } : {}),
         },
         createdAt: options.now(),
@@ -1101,8 +1133,8 @@ export function createDaemonState(
       const result = runSendMessageTransaction({
         sourceName: request.agentName,
         messageId: request.messageId,
-        type: "question",
-        content: request.content,
+        type: request.type ?? "question",
+        content: typedText(request.content),
       });
       if (result.ok) {
         events.append({
@@ -1132,9 +1164,12 @@ export function createDaemonState(
       const result = runSendMessageTransaction({
         sourceName: request.agentName,
         messageId: request.messageId,
-        parentMessageId: request.parentMessageId,
+        // G1-A carries the delivery-scoped public field to this boundary. The
+        // pre-v1 store still has only parentMessageId; G1-B replaces this
+        // compatibility projection with actual delivery correlation.
+        parentMessageId: request.inReplyToDeliveryId ?? request.parentMessageId,
         type: "reply",
-        content: request.content,
+        content: typedText(request.content),
       });
       if (result.ok) {
         events.append({
@@ -1142,7 +1177,7 @@ export function createDaemonState(
           type: "codex_ingress_reply_received",
           data: {
             messageId: result.message.id,
-            parentMessageId: request.parentMessageId,
+            parentMessageId: request.inReplyToDeliveryId ?? request.parentMessageId,
           },
           createdAt: options.now(),
           agentId: result.message.sourceAgentId,

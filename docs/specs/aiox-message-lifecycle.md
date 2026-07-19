@@ -37,8 +37,8 @@ All required fields have no default.
 `send.type` MUST be `question` or `instruction`. `reply` does not accept a
 `type`: the daemon fixes it to `reply`. Both calls accept only the agent-authored
 intent subset and `content.text`; the daemon fixes canonical
-`content.mediaType` to `text/plain`. A missing, unknown, reserved, or legacy
-label-conflicting input is rejected as a typed request error (§4.4).
+`content.mediaType` to `text/plain`. A missing, unknown, or reserved `intent`
+is rejected as a typed request error (§4.4).
 
 다음 JSON object가 complete normative v1 envelope다. wire key는 camelCase를 사용하고,
 DB column이나 vendor API의 snake_case는 adapter/repository boundary에서 변환한다.
@@ -115,14 +115,6 @@ Intent authoring surface는 전체 wire enum보다 좁다. agent가 `send`/`repl
 reserved intent이며 authenticated `source.kind=daemon`만 만들 수 있다. agent/human source가
 reserved intent를 제출하면 `reserved_intent_not_allowed`로 거부한다. adapter는 daemon
 authority를 위임받은 system event 변환에서만 이를 만들며 vendor text만 보고 승격하지 않는다.
-
-G1 cutover 뒤 canonical send/reply tool은 free-form `Intent:` label parsing을 authority로 쓰지
-않는다. 현재 Claude/Codex의 text-only tool과 5종 label instruction은 pre-release compatibility
-surface이므로 schema validator, MCP instruction, tool description, example과 test fixture는 같은
-public contract revision으로 교체한다. 이 public surface cutover는 repository migration을 한 deploy
-step으로 압축하라는 뜻이 아니다. negative test는 agent-authored reserved intent, unknown intent,
-missing required field, forbidden reply `type`, caller-supplied `content.mediaType`, 그리고 label과 typed
-field가 충돌하는 legacy input을 포함한다.
 
 Canonical address는 logical agent를 나타낸다. v1 local reference runtime은
 `agent://local/<profile>/<agent-name>`을 사용하고, daemon은 canonical address, DB agent id,

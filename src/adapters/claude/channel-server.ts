@@ -15,6 +15,7 @@ import type {
 import { createDaemonSocketClient } from "../../daemon/socket-transport.js";
 import type {
   DispatchSummary,
+  AgentAuthoredIntent,
   ReceiveClaudeChannelMessageRequest,
   ReceiveClaudeChannelReplyRequest,
 } from "../../daemon/state.js";
@@ -118,22 +119,17 @@ Treat these user intents as permission and instruction to use aiox:
 - Korean examples: "물어봐", "토론해봐", "검토시켜", "위임해", "확인받아"
 
 When the user requests collaboration:
-- use send(text) to start the request
-- MUST include an Intent label
+- use send(type, intent, replyExpected, content) to start the request
+- set intent explicitly
 - MUST include a clear goal
 - MUST include expected output
 - MUST include relevant context and constraints
 - do not use greetings or social filler
 
-## Message Intent
+## Typed Message Intent
 
-When using send(text) or reply(chat_id, text), begin the text with exactly one intent label:
-
-Intent: delegation
-Intent: discussion
-Intent: clarification
-Intent: result
-Intent: conclusion
+When using send or reply, provide intent explicitly as one of:
+delegation, discussion, clarification, result, or conclusion.
 
 Use:
 - delegation: assigning work, giving instructions, requesting review, validation, or investigation
@@ -155,14 +151,14 @@ Do NOT call any aiox tool for:
 - confirming receipt without adding concrete task progress
 - continuing a conversation only because another agent spoke
 
-Use reply(chat_id, text) only when responding to an existing aiox thread with one of:
+Use reply(inReplyToDeliveryId, intent, replyExpected, content) only when responding to an existing aiox delivery with one of:
 - a concrete task result
 - a direct answer to a direct question
 - a substantive review, objection, option, or decision input
 - a clarification request that blocks progress
 - a valid multi-round discussion turn
 
-Use send(text) only when starting a new aiox thread with one of:
+Use send(type, intent, replyExpected, content) only when starting a new aiox thread with one of:
 - a delegated task
 - a new topic that needs another agent's work
 - a request for review, validation, or investigation
@@ -183,20 +179,14 @@ In that case, do not call any aiox tool.
 
 ## Ending a Thread
 
-To end a discussion, send one final reply with:
+To end a discussion, send one final reply with intent: "conclusion".
 
-Intent: conclusion
-[[CONCLUDE]]
-
-After sending a conclusion, do not call any aiox tool again for that thread.
-
-If you receive a message containing [[CONCLUDE]], do not reply with any aiox tool.
+After sending a conclusion, do not call any aiox tool again for that delivery.
 If the human user says to stop, wrap up, conclude, "마무리해", or "이제 됐어", conclude the active aiox thread.
 
 ## Examples
 
 Good:
-Intent: delegation
 Goal: review the diff in src/router.ts for race conditions.
 Expected output: list of findings with file:line and severity.
 Context: this is part of aiox Step 14.
@@ -211,20 +201,21 @@ Reason: simple acknowledgment.
 
 ## Tool Usage
 
-- reply(chat_id, text): continue an existing aiox task or discussion thread.
-- send(text): start a new aiox task or discussion thread.
+- reply(inReplyToDeliveryId, intent, replyExpected, content): respond to an existing delivery. Reply type is fixed by the daemon.
+- send(type, intent, replyExpected, content): start a new aiox thread. type is question or instruction.
 `;
 
 export const CLAUDE_SEND_DESCRIPTION =
   "Start a new aiox thread for user-requested collaboration, delegation, review, validation, investigation, or discussion. " +
-  "CRITICAL: Start text with exactly one Intent: label and include a clear goal, expected output, relevant context, and constraints. " +
+  "Provide type (question or instruction), intent, replyExpected, and content.text. " +
+  "Content is text only; do not supply content.mediaType. " +
   "Do not use for greetings, thanks, acknowledgments, or social follow-ups. " +
   "Routes through the daemon.";
 
 export const CLAUDE_REPLY_DESCRIPTION =
   "Reply to an existing aiox thread. " +
-  "CRITICAL: Start text with exactly one Intent: label. " +
-  "Do not reply to messages containing [[CONCLUDE]]. " +
+  "Provide inReplyToDeliveryId, intent, replyExpected, and content.text; the daemon fixes reply type. " +
+  "Content is text only; do not supply content.mediaType. " +
   "Use only for concrete task results, direct answers, clarification questions, or substantive discussion turns. " +
   "Routes through the daemon.";
 
@@ -255,6 +246,44 @@ export interface ClaudeChannelToolResult {
   isError?: boolean;
 }
 
+export interface TypedClaudeSendInput {
+  type: "question" | "instruction";
+  intent: AgentAuthoredIntent;
+  replyExpected: boolean;
+  content: { text: string };
+}
+
+export interface TypedClaudeReplyInput {
+  inReplyToDeliveryId: string;
+  intent: AgentAuthoredIntent;
+  replyExpected: boolean;
+  content: { text: string };
+}
+
+const agentIntentSchema = z.enum([
+  "delegation",
+  "discussion",
+  "clarification",
+  "result",
+  "conclusion",
+]);
+
+const typedContentSchema = z.object({ text: z.string().min(1) }).strict();
+
+export const typedClaudeSendInputSchema = z.object({
+  type: z.enum(["question", "instruction"]),
+  intent: agentIntentSchema,
+  replyExpected: z.boolean(),
+  content: typedContentSchema,
+}).strict();
+
+export const typedClaudeReplyInputSchema = z.object({
+  inReplyToDeliveryId: z.string().min(1),
+  intent: agentIntentSchema,
+  replyExpected: z.boolean(),
+  content: typedContentSchema,
+}).strict();
+
 export function createClaudeChannelMcpServer(
   options: ClaudeChannelMcpServerOptions,
 ): McpServer {
@@ -273,9 +302,7 @@ export function createClaudeChannelMcpServer(
     "send",
     {
       description: CLAUDE_SEND_DESCRIPTION,
-      inputSchema: z.object({
-        text: z.string().min(1),
-      }),
+      inputSchema: typedClaudeSendInputSchema,
       outputSchema: z.object({
         ok: z.literal(true),
         message_id: z.string(),
@@ -289,10 +316,7 @@ export function createClaudeChannelMcpServer(
     "reply",
     {
       description: CLAUDE_REPLY_DESCRIPTION,
-      inputSchema: z.object({
-        chat_id: z.string().min(1),
-        text: z.string().min(1),
-      }),
+      inputSchema: typedClaudeReplyInputSchema,
       outputSchema: z.object({
         ok: z.literal(true),
         dispatch: dispatchSummaryOutputSchema.optional(),
@@ -306,10 +330,10 @@ export function createClaudeChannelMcpServer(
 
 export function createSendHandler(
   options: ClaudeChannelMcpServerOptions,
-): (input: { text: string }) => Promise<ClaudeChannelToolResult> {
+): (input: TypedClaudeSendInput) => Promise<ClaudeChannelToolResult> {
   const createDaemonClient = resolveDaemonClient(options);
   const createMessageId = options.createMessageId ?? (() => `claude-msg-${randomUUID()}`);
-  return async ({ text }) => {
+  return async ({ type, intent, replyExpected, content }) => {
     const messageId = createMessageId();
     logEvent("send_tool_called", {
       agentName: options.agentName,
@@ -320,7 +344,10 @@ export function createSendHandler(
       const result = await client.receiveClaudeChannelMessage({
         agentName: options.agentName,
         messageId,
-        text,
+        type,
+        intent,
+        replyExpected,
+        content,
       });
       if (!result.ok) {
         return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
@@ -353,26 +380,28 @@ export function createSendHandler(
 
 export function createReplyHandler(
   options: ClaudeChannelMcpServerOptions,
-): (input: { chat_id: string; text: string }) => Promise<ClaudeChannelToolResult> {
+): (input: TypedClaudeReplyInput) => Promise<ClaudeChannelToolResult> {
   const createDaemonClient = resolveDaemonClient(options);
-  return async ({ chat_id, text }) => {
+  return async ({ inReplyToDeliveryId, intent, replyExpected, content }) => {
     logEvent("reply_tool_called", {
       agentName: options.agentName,
-      chat_id,
+      inReplyToDeliveryId,
     });
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
     try {
       const result = await client.receiveClaudeChannelReply({
         agentName: options.agentName,
-        chatId: chat_id,
-        text,
+        inReplyToDeliveryId,
+        intent,
+        replyExpected,
+        content,
       });
       if (!result.ok) {
         return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
       }
       logEvent("reply_sent_to_daemon", {
         agentName: options.agentName,
-        chat_id,
+        inReplyToDeliveryId,
       });
       return {
         content: [{ type: "text" as const, text: "reply sent" }],
@@ -382,7 +411,7 @@ export function createReplyHandler(
       const message = error instanceof Error ? error.message : String(error);
       logEvent("reply_daemon_callback_failed", {
         agentName: options.agentName,
-        chat_id,
+        inReplyToDeliveryId,
         error: message,
       });
       return errorResult("daemon_call_failed", message);

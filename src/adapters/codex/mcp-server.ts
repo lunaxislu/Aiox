@@ -8,6 +8,7 @@ import type {
 import { createDaemonSocketClient } from "../../daemon/socket-transport.js";
 import type {
   DispatchSummary,
+  AgentAuthoredIntent,
   ReceiveCodexMessageRequest,
   ReceiveCodexReplyRequest,
   RegisterCodexChannelRequest,
@@ -40,22 +41,18 @@ Treat these user intents as permission and instruction to use aiox:
 - Korean examples: "물어봐", "토론해봐", "검토시켜", "위임해", "확인받아"
 
 When the user requests collaboration:
-- use aiox_send_message(content) to start the request
-- MUST include an Intent label
+- use aiox_send_message with typed type, intent, replyExpected, and content.text fields
 - MUST include a clear goal
 - MUST include expected output
 - MUST include relevant context and constraints
 - do not use greetings or social filler
 
-## Message Intent
+## Typed Message Fields
 
-When using aiox_send_message(content) or aiox_reply(parent_message_id, content), begin the content with exactly one intent label:
-
-Intent: delegation
-Intent: discussion
-Intent: clarification
-Intent: result
-Intent: conclusion
+Use intent as one of delegation, discussion, clarification, result, or
+conclusion. send also requires type (question or instruction). Both tools
+require replyExpected and content.text. reply requires inReplyToDeliveryId and
+has no type field.
 
 Use:
 - delegation: assigning work, giving instructions, requesting review, validation, or investigation
@@ -77,14 +74,14 @@ Do NOT call any aiox tool for:
 - confirming receipt without adding concrete task progress
 - continuing a conversation only because another agent spoke
 
-Use aiox_reply(parent_message_id, content) only when responding to an existing aiox thread with one of:
+Use aiox_reply(inReplyToDeliveryId, intent, replyExpected, content) only when responding to an existing aiox delivery with one of:
 - a concrete task result
 - a direct answer to a direct question
 - a substantive review, objection, option, or decision input
 - a clarification request that blocks progress
 - a valid multi-round discussion turn
 
-Use aiox_send_message(content) only when starting a new aiox thread with one of:
+Use aiox_send_message(type, intent, replyExpected, content) only when starting a new aiox thread with one of:
 - a delegated task
 - a new topic that needs another agent's work
 - a request for review, validation, or investigation
@@ -105,10 +102,8 @@ In that case, do not call any aiox tool.
 
 ## Ending a Thread
 
-To end a discussion, send one final reply with:
-
-Intent: conclusion
-[[CONCLUDE]]
+To end a discussion, send one final reply with intent: "conclusion" and
+content.text containing [[CONCLUDE]].
 
 After sending a conclusion, do not call any aiox tool again for that thread.
 
@@ -118,8 +113,8 @@ If the human user says to stop, wrap up, conclude, "마무리해", or "이제 �
 ## Examples
 
 Good:
-Intent: delegation
-Goal: review the diff in src/router.ts for race conditions.
+intent: delegation
+content.text: Goal: review the diff in src/router.ts for race conditions.
 Expected output: list of findings with file:line and severity.
 Context: this is part of aiox Step 14.
 
@@ -133,22 +128,21 @@ Reason: simple acknowledgment.
 
 ## Tool Usage
 
-- aiox_reply(parent_message_id, content): continue an existing aiox task or discussion thread. Use the envelope message_id as parent_message_id.
-- aiox_send_message(content): start a new aiox task or discussion thread.
+- aiox_reply(inReplyToDeliveryId, intent, replyExpected, content): continue an existing aiox task or discussion thread.
+- aiox_send_message(type, intent, replyExpected, content): start a new aiox task or discussion thread.
 `;
 
 export const AIOX_REPLY_DESCRIPTION =
-  "Reply to an existing aiox thread using a parent message id received earlier from another aiox agent. " +
-  "CRITICAL: Start content with exactly one Intent: label. " +
+  "Reply to an existing aiox thread using its delivery ID. " +
+  "Requires inReplyToDeliveryId, an agent-authored intent, replyExpected, and content.text; type is daemon-fixed to reply. " +
   "Do not reply to messages containing [[CONCLUDE]]. " +
   "Use only for concrete task results, direct answers, clarification questions, or substantive discussion turns. " +
-  'When the current prompt contains an <aiox-channel ... message_id="..."> envelope, ' +
-  "use that message_id as parent_message_id. " +
+  "Use only a delivery ID provided by an aiox envelope as inReplyToDeliveryId. " +
   "Routes through the daemon.";
 
 export const AIOX_SEND_MESSAGE_DESCRIPTION =
   "Start a new aiox thread for user-requested collaboration, delegation, review, validation, investigation, or discussion. " +
-  "CRITICAL: Start content with exactly one Intent: label and include a clear goal, expected output, relevant context, and constraints. " +
+  "Requires type (question or instruction), an agent-authored intent, replyExpected, and content.text containing a clear goal, expected output, relevant context, and constraints. " +
   "Do not use for greetings, thanks, acknowledgments, or social follow-ups. " +
   "Routes through the daemon.";
 
@@ -181,12 +175,50 @@ export interface CodexIngressToolResult {
   isError?: boolean;
 }
 
+export interface TypedSendInput {
+  type: "question" | "instruction";
+  intent: AgentAuthoredIntent;
+  replyExpected: boolean;
+  content: { text: string };
+}
+
+export interface TypedReplyInput {
+  inReplyToDeliveryId: string;
+  intent: AgentAuthoredIntent;
+  replyExpected: boolean;
+  content: { text: string };
+}
+
+const agentIntentSchema = z.enum([
+  "delegation",
+  "discussion",
+  "clarification",
+  "result",
+  "conclusion",
+]);
+
+const typedContentSchema = z.object({ text: z.string().min(1) }).strict();
+
+export const typedSendInputSchema = z.object({
+  type: z.enum(["question", "instruction"]),
+  intent: agentIntentSchema,
+  replyExpected: z.boolean(),
+  content: typedContentSchema,
+}).strict();
+
+export const typedReplyInputSchema = z.object({
+  inReplyToDeliveryId: z.string().min(1),
+  intent: agentIntentSchema,
+  replyExpected: z.boolean(),
+  content: typedContentSchema,
+}).strict();
+
 export function createSendMessageHandler(
   options: CodexIngressMcpServerOptions,
-): (input: { content: string }) => Promise<CodexIngressToolResult> {
+): (input: TypedSendInput) => Promise<CodexIngressToolResult> {
   const createDaemonClient = resolveDaemonClient(options);
   const createMessageId = resolveMessageIdFactory(options);
-  return async ({ content }) => {
+  return async ({ type, intent, replyExpected, content }) => {
     logEvent("send_message_tool_called", { agentName: options.agentName });
     const messageId = createMessageId();
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
@@ -195,6 +227,9 @@ export function createSendMessageHandler(
         agentName: options.agentName,
         token: options.agentToken,
         messageId,
+        type,
+        intent,
+        replyExpected,
         content,
       });
       if (!result.ok) {
@@ -222,16 +257,13 @@ export function createSendMessageHandler(
 
 export function createReplyHandler(
   options: CodexIngressMcpServerOptions,
-): (input: {
-  parent_message_id: string;
-  content: string;
-}) => Promise<CodexIngressToolResult> {
+): (input: TypedReplyInput) => Promise<CodexIngressToolResult> {
   const createDaemonClient = resolveDaemonClient(options);
   const createMessageId = resolveMessageIdFactory(options);
-  return async ({ parent_message_id, content }) => {
+  return async ({ inReplyToDeliveryId, intent, replyExpected, content }) => {
     logEvent("reply_tool_called", {
       agentName: options.agentName,
-      parent_message_id,
+      inReplyToDeliveryId,
     });
     const messageId = createMessageId();
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
@@ -240,7 +272,9 @@ export function createReplyHandler(
         agentName: options.agentName,
         token: options.agentToken,
         messageId,
-        parentMessageId: parent_message_id,
+        inReplyToDeliveryId,
+        intent,
+        replyExpected,
         content,
       });
       if (!result.ok) {
@@ -302,9 +336,7 @@ export function createCodexIngressMcpServer(
     "aiox_send_message",
     {
       description: AIOX_SEND_MESSAGE_DESCRIPTION,
-      inputSchema: z.object({
-        content: z.string().min(1),
-      }),
+      inputSchema: typedSendInputSchema,
       outputSchema: z.object({
         ok: z.literal(true),
         message_id: z.string(),
@@ -318,10 +350,7 @@ export function createCodexIngressMcpServer(
     "aiox_reply",
     {
       description: AIOX_REPLY_DESCRIPTION,
-      inputSchema: z.object({
-        parent_message_id: z.string().min(1),
-        content: z.string().min(1),
-      }),
+      inputSchema: typedReplyInputSchema,
       outputSchema: z.object({
         ok: z.literal(true),
         message_id: z.string(),

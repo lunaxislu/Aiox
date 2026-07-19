@@ -10,37 +10,87 @@ import {
   createSendMessageHandler,
   parseCodexIngressEnv,
   runCodexIngressMcpServerWithDependencies,
+  typedReplyInputSchema,
+  typedSendInputSchema,
 } from "../../../src/adapters/codex/mcp-server.js";
 import type { DispatchSummary } from "../../../src/daemon/state.js";
+import {
+  typedReplyErrorFixtures,
+  typedInvalidInputFixtures,
+  typedSendAcceptedFixture,
+} from "../../fixtures/aiox-message-lifecycle-contract.js";
 
 describe("codex MCP server — handlers", () => {
-  it("instructs Codex to reply to aiox envelopes with the envelope message_id", () => {
+  it("rejects a typed send missing replyExpected before daemon mapping", () => {
+    const result = typedSendInputSchema.safeParse({
+      type: "question",
+      intent: "delegation",
+      content: { text: "hello" },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects caller-supplied content.mediaType", () => {
+    const result = typedSendInputSchema.safeParse({
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { mediaType: "text/plain", text: "hello" },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("keeps accepted and reply-error contract fixtures in the typed revision", () => {
+    expect(typedSendInputSchema.safeParse(typedSendAcceptedFixture.input).success).toBe(true);
+    expect(typedSendAcceptedFixture.result).toMatchObject({ status: "accepted" });
+    expect(typedReplyErrorFixtures.map((fixture) => fixture.result.error.code)).toEqual([
+      "reply_not_expected",
+      "correlation_mismatch",
+      "duplicate_reply",
+      "unknown_delivery",
+    ]);
+  });
+
+  it("rejects invalid typed contract fixtures", () => {
+    expect(
+      typedInvalidInputFixtures.every((fixture) => {
+        const schema = fixture.kind === "send" ? typedSendInputSchema : typedReplyInputSchema;
+        return !schema.safeParse(fixture.input).success;
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps Codex collaboration instructions on the typed tool revision", () => {
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("<aiox-channel");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("message_id");
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("parent_message_id");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain(
+      "aiox_reply(inReplyToDeliveryId, intent, replyExpected, content)",
+    );
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain(
+      "aiox_send_message(type, intent, replyExpected, content)",
+    );
+    expect(CODEX_INGRESS_INSTRUCTIONS).not.toContain("parent_message_id");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Language Policy");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("User-Requested Collaboration");
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: delegation");
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: discussion");
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: clarification");
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: result");
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Intent: conclusion");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("intent");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("replyExpected");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("inReplyToDeliveryId");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Multi-round Discussion");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("[[CONCLUDE]]");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Bad, do not send");
     expect(CODEX_INGRESS_INSTRUCTIONS).not.toContain("- an instruction");
-    expect(AIOX_REPLY_DESCRIPTION).toContain("<aiox-channel");
-    expect(AIOX_REPLY_DESCRIPTION).toContain("message_id");
-    expect(AIOX_REPLY_DESCRIPTION).toContain("parent_message_id");
-    expect(AIOX_REPLY_DESCRIPTION).toContain("Intent:");
+    expect(AIOX_REPLY_DESCRIPTION).toContain("delivery ID");
+    expect(AIOX_REPLY_DESCRIPTION).toContain("inReplyToDeliveryId");
     expect(AIOX_REPLY_DESCRIPTION).toContain("[[CONCLUDE]]");
     expect(AIOX_REPLY_DESCRIPTION).toContain("concrete");
-    expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("Intent:");
+    expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("replyExpected");
     expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("new aiox thread");
     expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("expected output");
   });
 
-  it("aiox_send_message routes through receiveCodexMessage with token", async () => {
+  it("aiox_send_message maps a typed send request through receiveCodexMessage", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createSendMessageHandler({
       agentName: "impl",
@@ -56,7 +106,12 @@ describe("codex MCP server — handlers", () => {
         }),
     });
 
-    const result = await handler({ content: "hello" });
+    const result = await handler({
+      type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "hello" },
+    });
 
     expect(result.structuredContent).toMatchObject({ ok: true, message_id: "msg-fixed" });
     expect(calls).toEqual([
@@ -66,7 +121,10 @@ describe("codex MCP server — handlers", () => {
           agentName: "impl",
           token: "token-1",
           messageId: "msg-fixed",
-          content: "hello",
+          type: "instruction",
+          intent: "delegation",
+          replyExpected: true,
+          content: { text: "hello" },
         },
       },
     ]);
@@ -86,7 +144,7 @@ describe("codex MCP server — handlers", () => {
         }),
     });
 
-    const result = await handler({ content: "hello" });
+    const result = await handler(typedSend("hello"));
 
     expect(result.structuredContent).toEqual({
       ok: true,
@@ -109,7 +167,7 @@ describe("codex MCP server — handlers", () => {
         }),
     });
 
-    const result = await handler({ content: "hello" });
+    const result = await handler(typedSend("hello"));
 
     expect(result.structuredContent).toEqual({
       ok: true,
@@ -118,7 +176,7 @@ describe("codex MCP server — handlers", () => {
     });
   });
 
-  it("aiox_reply routes through receiveCodexReply with parent_message_id", async () => {
+  it("aiox_reply maps a typed reply request through receiveCodexReply", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createReplyHandler({
       agentName: "impl",
@@ -135,8 +193,10 @@ describe("codex MCP server — handlers", () => {
     });
 
     const result = await handler({
-      parent_message_id: "parent-1",
-      content: "ack",
+      inReplyToDeliveryId: "delivery-1",
+      intent: "result",
+      replyExpected: false,
+      content: { text: "ack" },
     });
 
     expect(result.structuredContent).toMatchObject({ ok: true, message_id: "reply-fixed" });
@@ -147,8 +207,10 @@ describe("codex MCP server — handlers", () => {
           agentName: "impl",
           token: "token-1",
           messageId: "reply-fixed",
-          parentMessageId: "parent-1",
-          content: "ack",
+          inReplyToDeliveryId: "delivery-1",
+          intent: "result",
+          replyExpected: false,
+          content: { text: "ack" },
         },
       },
     ]);
@@ -168,10 +230,7 @@ describe("codex MCP server — handlers", () => {
         }),
     });
 
-    const result = await handler({
-      parent_message_id: "parent-1",
-      content: "ack",
-    });
+    const result = await handler(typedReply("ack"));
 
     expect(result.structuredContent).toEqual({
       ok: true,
@@ -194,10 +253,7 @@ describe("codex MCP server — handlers", () => {
         }),
     });
 
-    const result = await handler({
-      parent_message_id: "parent-1",
-      content: "ack",
-    });
+    const result = await handler(typedReply("ack"));
 
     expect(result.structuredContent).toEqual({
       ok: true,
@@ -222,7 +278,7 @@ describe("codex MCP server — handlers", () => {
         }),
     });
 
-    const result = await handler({ content: "hello" });
+    const result = await handler(typedSend("hello"));
 
     expect(result.isError).toBe(true);
     const text = (result.content?.[0] as { text?: string } | undefined)?.text ?? "";
@@ -243,7 +299,7 @@ describe("codex MCP server — handlers", () => {
         }),
     });
 
-    const result = await handler({ content: "hi" });
+    const result = await handler(typedSend("hi"));
 
     expect(result.isError).toBe(true);
     const text = (result.content?.[0] as { text?: string } | undefined)?.text ?? "";
@@ -265,12 +321,30 @@ describe("codex MCP server — handlers", () => {
       }),
     });
 
-    await handler({ content: "hi" });
-    await handler({ content: "again" });
+    await handler(typedSend("hi"));
+    await handler(typedSend("again"));
 
     expect(closed).toBe(2);
   });
 });
+
+function typedSend(text: string) {
+  return {
+    type: "question" as const,
+    intent: "discussion" as const,
+    replyExpected: false,
+    content: { text },
+  };
+}
+
+function typedReply(text: string) {
+  return {
+    inReplyToDeliveryId: "delivery-1",
+    intent: "result" as const,
+    replyExpected: false,
+    content: { text },
+  };
+}
 
 describe("codex MCP server — factory", () => {
   it("constructs a McpServer instance with the expected name", () => {

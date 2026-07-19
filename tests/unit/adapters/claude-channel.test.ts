@@ -20,6 +20,8 @@ import {
   createReplyHandler,
   createSendHandler,
   startClaudeChannelHttpIngress,
+  typedClaudeReplyInputSchema,
+  typedClaudeSendInputSchema,
 } from "../../../src/adapters/claude/channel-server.js";
 import {
   buildClaudeChannelMcpConfig,
@@ -393,28 +395,61 @@ describe("daemon receiveClaudeChannelReply", () => {
 // ---------------------------------------------------------------------------
 
 describe("Claude channel MCP handlers", () => {
+  it("accepts only the typed send and reply public contracts", () => {
+    expect(
+      typedClaudeSendInputSchema.safeParse({
+        type: "instruction",
+        intent: "delegation",
+        replyExpected: true,
+        content: { text: "review this" },
+      }).success,
+    ).toBe(true);
+    expect(
+      typedClaudeReplyInputSchema.safeParse({
+        inReplyToDeliveryId: "delivery-1",
+        intent: "result",
+        replyExpected: false,
+        content: { text: "completed" },
+      }).success,
+    ).toBe(true);
+
+    for (const input of [
+      { intent: "delegation", replyExpected: true, content: { text: "missing type" } },
+      { type: "question", intent: "status", replyExpected: true, content: { text: "reserved" } },
+      { type: "question", intent: "delegation", replyExpected: true, content: { text: "media", mediaType: "text/plain" } },
+    ]) {
+      expect(typedClaudeSendInputSchema.safeParse(input).success).toBe(false);
+    }
+    expect(
+      typedClaudeReplyInputSchema.safeParse({
+        inReplyToDeliveryId: "delivery-1",
+        type: "reply",
+        intent: "result",
+        replyExpected: false,
+        content: { text: "forbidden type" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("instructs Claude to use aiox tools only for intentional collaboration", () => {
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("<channel");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Language Policy");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("User-Requested Collaboration");
-    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: delegation");
-    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: discussion");
-    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: clarification");
-    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: result");
-    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Intent: conclusion");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Typed Message Intent");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("inReplyToDeliveryId");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("replyExpected");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Multi-round Discussion");
-    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("[[CONCLUDE]]");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain('intent: "conclusion"');
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Bad, do not send");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).not.toContain("- an instruction");
-    expect(CLAUDE_REPLY_DESCRIPTION).toContain("Intent:");
-    expect(CLAUDE_REPLY_DESCRIPTION).toContain("[[CONCLUDE]]");
+    expect(CLAUDE_REPLY_DESCRIPTION).toContain("inReplyToDeliveryId");
+    expect(CLAUDE_REPLY_DESCRIPTION).toContain("replyExpected");
     expect(CLAUDE_REPLY_DESCRIPTION).toContain("concrete");
-    expect(CLAUDE_SEND_DESCRIPTION).toContain("Intent:");
-    expect(CLAUDE_SEND_DESCRIPTION).toContain("new aiox thread");
-    expect(CLAUDE_SEND_DESCRIPTION).toContain("expected output");
+    expect(CLAUDE_SEND_DESCRIPTION).toContain("question or instruction");
+    expect(CLAUDE_SEND_DESCRIPTION).toContain("content.text");
   });
 
-  it("send routes a chat_id-free message through receiveClaudeChannelMessage", async () => {
+  it("send routes a typed request through receiveClaudeChannelMessage", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createSendHandler({
       agentName: "reviewer",
@@ -429,7 +464,12 @@ describe("Claude channel MCP handlers", () => {
         }),
     });
 
-    const result = await handler({ text: "hello codex" });
+    const result = await handler({
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "hello codex" },
+    } as never);
 
     expect(result.structuredContent).toMatchObject({
       ok: true,
@@ -441,7 +481,10 @@ describe("Claude channel MCP handlers", () => {
         args: {
           agentName: "reviewer",
           messageId: "claude-msg-fixed",
-          text: "hello codex",
+          type: "question",
+          intent: "delegation",
+          replyExpected: true,
+          content: { text: "hello codex" },
         },
       },
     ]);
@@ -460,7 +503,12 @@ describe("Claude channel MCP handlers", () => {
         }),
     });
 
-    const result = await handler({ text: "hello codex" });
+    const result = await handler({
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "hello codex" },
+    });
 
     expect(result.structuredContent).toEqual({
       ok: true,
@@ -482,7 +530,12 @@ describe("Claude channel MCP handlers", () => {
         }),
     });
 
-    const result = await handler({ text: "hello codex" });
+    const result = await handler({
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "hello codex" },
+    });
 
     expect(result.structuredContent).toEqual({
       ok: true,
@@ -491,7 +544,7 @@ describe("Claude channel MCP handlers", () => {
     });
   });
 
-  it("reply still requires chat_id and routes through receiveClaudeChannelReply", async () => {
+  it("reply routes a typed request through receiveClaudeChannelReply", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createReplyHandler({
       agentName: "reviewer",
@@ -505,7 +558,12 @@ describe("Claude channel MCP handlers", () => {
         }),
     });
 
-    const result = await handler({ chat_id: "parent-1", text: "ack" });
+    const result = await handler({
+      inReplyToDeliveryId: "delivery-1",
+      intent: "result",
+      replyExpected: false,
+      content: { text: "ack" },
+    } as never);
 
     expect(result.structuredContent).toMatchObject({ ok: true });
     expect(calls).toEqual([
@@ -513,8 +571,10 @@ describe("Claude channel MCP handlers", () => {
         method: "receiveClaudeChannelReply",
         args: {
           agentName: "reviewer",
-          chatId: "parent-1",
-          text: "ack",
+          inReplyToDeliveryId: "delivery-1",
+          intent: "result",
+          replyExpected: false,
+          content: { text: "ack" },
         },
       },
     ]);
@@ -552,7 +612,12 @@ describe("Claude channel MCP handlers", () => {
         }),
     });
 
-    const result = await handler({ chat_id: "parent-1", text: "ack" });
+    const result = await handler({
+      inReplyToDeliveryId: "delivery-1",
+      intent: "result",
+      replyExpected: false,
+      content: { text: "ack" },
+    });
 
     expect(result.structuredContent).toEqual({
       ok: true,

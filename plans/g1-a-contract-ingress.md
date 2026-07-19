@@ -25,8 +25,8 @@ handoff 경계가 명확해진다.
 
 - [x] Kickoff owner/prerequisite audit -> `logs/2026-07-10-G1-A-contractingress-freeze.md`
 - [x] Contract decision closure -> `logs/2026-07-10-G1-A-contractingress-freeze.md`
-- [>] Schema, typed tool and fixture sync -> `logs/2026-07-18-G1-A-schema-typed-tool-fixture.md`
-- [ ] Codex structured ingress evidence -> `logs/2026-07-18-G1-A-Codex-structured-ingress-evidence.md`
+- [x] Schema, typed tool and fixture sync -> `logs/2026-07-18-G1-A-schema-typed-tool-fixture.md`
+- [>] Codex structured ingress evidence -> `logs/2026-07-18-G1-A-Codex-structured-ingress-evidence.md`
 - [ ] G1-A closeout and G1-B/G1-C handoff -> `logs/2026-07-18-G1-A-closeout-and-G1-B.md`
 
 ## Notes
