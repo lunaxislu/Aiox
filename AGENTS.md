@@ -24,6 +24,14 @@ architecture.excalidraw는 사용자의 개인 자산임 신경쓸 필요가 없
   decision/spec/architecture 연결을 끝까지 추적해 영향 범위와 검증 경로가 닫혔는지 반드시
   확인한다. 실제 절차와 사례는 `docs/guides/workflow.md`를 따른다.
 
+## Legacy And Compatibility Code
+
+- 하위호환·이행 코드(parser, fallback, alias, dual-read-write)는 명시적 요청 없이 추가하지 않는다.
+- 필요하다고 판단되면 조용히 넣지 말고, 근거와 대안을 함께 보고하고 결정을 요청한다.
+- 판단의 전제는 이 프로젝트의 default다: pre-v1이고, 외부 consumer가 없으며, 불필요한
+  코드는 유지가 아니라 삭제가 기본이다.
+- 이 규칙은 legacy·호환 코드에 한정하며, 일반적인 YAGNI·단순화 판단으로 확장하지 않는다.
+
 ## References
 
 - 작업 흐름과 사례: `docs/guides/workflow.md`

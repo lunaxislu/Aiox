@@ -1,0 +1,4 @@
+interface:
+  display_name: "TDD"
+  short_description: "Guide incremental test-driven development."
+  default_prompt: "Use $tdd to implement this change with a small red-green-refactor cycle."
