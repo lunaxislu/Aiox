@@ -89,3 +89,9 @@ F2(content string/text fallback)는 state.ts의 기존 G1-B migration compatibil
 사용자가 현재 미운영 상태와 G1-A 목표를 명확히 했다: 이 stage는 typed surface의 owner 반영과 legacy 잔존 검토를 완료해 pass하는 것이며, 실제 deliveryId issuance·envelope 노출·reply authorization은 G1-B handoff다. 따라서 Claude review의 reply correlation gap은 G1-A blocker가 아니라 분리된 G1-B scope로 분류한다.
 
 owner surface(docs/specs, src, typed fixture, adapter unit tests)를 다시 검사해 과거 `Intent:` 표기, Intent label, legacy/conflict label 참조가 남지 않게 했다. Codex/Claude의 negative string assertion도 과거 형식을 이름으로 보장하는 잔존물로 제거했다. 과거 형식을 언급하는 work log history는 작업 경위이므로 보존한다. 검증: 관련 adapter 범위 Vitest 8 passed (47 skipped), `pnpm typecheck`, `git diff --check` 통과; owner surface 검색 결과 legacy 참조 없음.
+
+### 2026-07-19 16:02 · conclusion marker removal and G1-B handoff
+
+사용자 승인에 따라 Codex의 `[[CONCLUDE]]` 송신·수신 instruction, reply description, unit assertions를 제거했다. Claude도 marker를 사용하지 않으므로 현재 typed surface는 대칭이다. 운영 전 단계이므로 recipient가 conclusion을 구조적으로 인식하지 못하는 현재 공백은 허용하며, canonical inbound envelope의 intent 노출은 G1-B handoff로 기록했다.
+
+G1-B handoff에는 content dual-shape shim(`content: string | { text }`, `text?`, `typedText()` fallback) 제거·daemon tests `{ text }` 이관과 inbound `intent` 노출을 append-only entry로 추가했다. 검증: Codex MCP unit 19/19, `pnpm typecheck`, `git diff --check` 통과, adapter source/unit test 범위의 `[[CONCLUDE]]` 검색 결과 없음. 이 기록은 별도 corrective log에 둘 필요가 없다는 사용자 판단에 따라 이 stage log에 직접 append한다.

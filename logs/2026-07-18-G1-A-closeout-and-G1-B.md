@@ -35,7 +35,7 @@ status: open
 
 | Work Item | 대상 | handoff 필요 여부 | history 기록 위치 | 상태 |
 | --- | --- | --- | --- | --- |
-| W2-1 | G1-B | 필요 | `2026-07-19 · Pre-registered G1-B handoff` | 사전 등록됨 — closeout W1 재검증 대기 |
+| W2-1 | G1-B | 필요 | `2026-07-19 · Pre-registered G1-B handoff`; `2026-07-19 16:01 · G1-B handoff correction: content shape and inbound intent`; `2026-07-19 16:14 · G1-B handoff correction references` | 사전 등록됨 — closeout W1 재검증 대기 |
 | W2-2 | G1-C | 필요 | `2026-07-19 · Pre-registered G1-C handoff` | 사전 등록됨 — closeout W1 재검증 대기 |
 | W2-3 | G1-D | 필요 | `2026-07-19 · Pre-registered G1-D handoff` | 사전 등록됨 — closeout W1 재검증 대기 |
 
@@ -66,3 +66,23 @@ G1-A contract/fixture stage에서 확정된 G1-D handoff를 사전 등록한다.
 | 대상 | 이후에 할 일 | G1-A에서 넘기는 이유 | 참고할 입력 | 완료 조건 |
 | --- | --- | --- | --- | --- |
 | G1-D | authenticated source와 route authorization을 runtime guard로 구현하고, forged/wrong correlated reply, `replyExpected:false` reply, consumed-right duplicate reply, route bypass를 negative test로 거절한다. | G1-A는 typed request·narrow reply right·stable error 경계를 확정했지만, 실제 source authentication·route authorization·secret/socket boundary enforcement은 구현하지 않았다. | `docs/specs/aiox-message-lifecycle.md` §4.2·§4.4, `docs/product/roadmap.md` G1-D, `docs/specs/aiox-capability-policy.md`, `docs/decisions/original-delivery-narrow-reply-right.md` | Claude·Codex 경로 모두에서 unauthenticated/forged ingress와 invalid correlation·route bypass가 거절되고, runtime secret·token·socket boundary의 잔여 위험이 검증된다. |
+
+### 2026-07-19 16:01 · G1-B handoff correction: content shape and inbound intent
+
+G1-A corrective follow-up에서 current pre-v1 daemon의 typed ingress compatibility surface를 재검토했다. G1-B handoff에 기존 reply correlation projection 외에 다음 두 항목을 추가한다. 이는 closeout을 활성화하거나 W2-1을 완료하지 않으며, Codex ingress evidence 완료 뒤 W1에서 다시 대조한다.
+
+| 대상 | 이후에 할 일 | G1-A에서 넘기는 이유 | 완료 조건 |
+| --- | --- | --- | --- |
+| G1-B | daemon request의 `content: string | { text }`, 별도 `text?`, `typedText()` fallback을 제거하고 daemon tests를 `{ text }` 입력으로 이관한다. | typed adapter tool은 이미 `{ text }`만 전송하지만 pre-v1 daemon은 두 content shape를 계속 수용한다. | daemon ingress와 tests가 typed content shape 하나만 사용한다. |
+| G1-B | canonical inbound envelope에 `intent`를 노출해 recipient가 `conclusion`을 구조적으로 인식하게 한다. | G1-A에서는 Codex/Claude의 본문 `[[CONCLUDE]]` marker를 제거했다. 현재 inbound envelope는 intent를 노출하지 않는다. | recipient가 canonical envelope의 `intent: conclusion`으로 종료를 인식하며 본문 marker가 필요 없다. |
+
+### 2026-07-19 16:14 · G1-B handoff correction references
+
+Claude review의 low finding을 반영해 G1-B handoff correction의 참고 입력을 보강한다. 이 entry는 기존 handoff 표를 고치지 않는다.
+
+| 대상 | 참고할 입력 |
+| --- | --- |
+| content dual-shape shim 제거 | `src/daemon/state.ts`의 request interfaces와 `typedText()`, `tests/unit/daemon/codex-ingress.test.ts`, `tests/unit/daemon/claude-channel.test.ts`의 legacy content/text caller |
+| inbound envelope intent 노출 | `docs/specs/aiox-message-lifecycle.md` §4.1–§4.2, `src/adapters/codex/mcp-server.ts`의 envelope instruction, `src/adapters/claude/channel-server.ts`의 `buildChannelNotification` |
+
+closeout W1에서 위 source와 G1-B canonical envelope implementation 결과를 다시 대조한다.

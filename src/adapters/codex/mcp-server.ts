@@ -102,12 +102,10 @@ In that case, do not call any aiox tool.
 
 ## Ending a Thread
 
-To end a discussion, send one final reply with intent: "conclusion" and
-content.text containing [[CONCLUDE]].
+To end a discussion, send one final reply with intent: "conclusion".
 
 After sending a conclusion, do not call any aiox tool again for that thread.
 
-If you receive a message containing [[CONCLUDE]], do not reply with any aiox tool.
 If the human user says to stop, wrap up, conclude, "마무리해", or "이제 됐어", conclude the active aiox thread.
 
 ## Examples
@@ -135,7 +133,6 @@ Reason: simple acknowledgment.
 export const AIOX_REPLY_DESCRIPTION =
   "Reply to an existing aiox thread using its delivery ID. " +
   "Requires inReplyToDeliveryId, an agent-authored intent, replyExpected, and content.text; type is daemon-fixed to reply. " +
-  "Do not reply to messages containing [[CONCLUDE]]. " +
   "Use only for concrete task results, direct answers, clarification questions, or substantive discussion turns. " +
   "Use only a delivery ID provided by an aiox envelope as inReplyToDeliveryId. " +
   "Routes through the daemon.";

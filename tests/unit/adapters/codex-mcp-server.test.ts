@@ -78,12 +78,10 @@ describe("codex MCP server — handlers", () => {
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("replyExpected");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("inReplyToDeliveryId");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Multi-round Discussion");
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("[[CONCLUDE]]");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Bad, do not send");
     expect(CODEX_INGRESS_INSTRUCTIONS).not.toContain("- an instruction");
     expect(AIOX_REPLY_DESCRIPTION).toContain("delivery ID");
     expect(AIOX_REPLY_DESCRIPTION).toContain("inReplyToDeliveryId");
-    expect(AIOX_REPLY_DESCRIPTION).toContain("[[CONCLUDE]]");
     expect(AIOX_REPLY_DESCRIPTION).toContain("concrete");
     expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("replyExpected");
     expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("new aiox thread");
