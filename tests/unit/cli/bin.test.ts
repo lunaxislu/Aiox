@@ -3,7 +3,12 @@ import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../../src/core/public-ids.js", () => ({
+  createPublicMessageId: vi.fn(() => "opaque CLI default message"),
+  createPublicDeliveryId: vi.fn(() => "opaque CLI default delivery"),
+}));
 
 import {
   createSocketRuntime,
@@ -11,6 +16,7 @@ import {
   runAioxCli,
 } from "../../../src/bin/aiox.js";
 import type { InvocationRuntime } from "../../../src/cli/invocation.js";
+import { createPublicDeliveryId } from "../../../src/core/public-ids.js";
 import type { DaemonApi } from "../../../src/daemon/api.js";
 
 describe("aiox CLI bin", () => {
@@ -116,6 +122,33 @@ describe("aiox CLI bin", () => {
           pairId: null,
         },
       ]);
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("uses the core public delivery default through the CLI in-process runtime", async () => {
+    vi.mocked(createPublicDeliveryId).mockReset();
+    vi.mocked(createPublicDeliveryId).mockReturnValue("opaque CLI default delivery");
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-bin-"), "daemon.sock");
+    const runtime = createSocketRuntime({ socketPath });
+
+    try {
+      const api = await runtime.getDaemonApi();
+      await api.attachAgent({ kind: "claude", name: "source", cwd: "/repo" });
+      await api.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+      await api.connect({ sourceName: "source", targetNames: ["target"] });
+      const result = await api.sendMessage({
+        sourceName: "source",
+        messageId: "source-issued",
+        type: "question",
+        content: "hello",
+      });
+
+      if (!result.ok) throw new Error("expected accepted message");
+      expect(createPublicDeliveryId).toHaveBeenCalledOnce();
+      expect(result.deliveries).toHaveLength(1);
+      expect(result.deliveries[0]?.id).toBe("opaque CLI default delivery");
     } finally {
       await runtime.close();
     }

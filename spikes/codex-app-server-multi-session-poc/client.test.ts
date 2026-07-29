@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildInitializeRequest,
+  buildInjectItemsRequest,
   buildLoadedThreadsRequest,
+  buildMcpServerToolCallRequest,
+  buildThreadReadRequest,
+  buildThreadStartRequest,
   buildTurnStartRequest,
   extractLoadedThreadIds,
   extractTurnId,
@@ -31,6 +35,24 @@ describe("Codex app-server JSON-RPC helpers", () => {
     });
   });
 
+  it("builds a request to create a thread", () => {
+    expect(buildThreadStartRequest(3)).toEqual({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "thread/start",
+      params: {},
+    });
+  });
+
+  it("builds a request to read a thread with its turns", () => {
+    expect(buildThreadReadRequest(4, "thread-a")).toEqual({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "thread/read",
+      params: { threadId: "thread-a", includeTurns: true },
+    });
+  });
+
   it("extracts loaded thread ids from app-server responses", () => {
     expect(extractLoadedThreadIds({ data: ["thread-a", "thread-b"] })).toEqual([
       "thread-a",
@@ -46,6 +68,42 @@ describe("Codex app-server JSON-RPC helpers", () => {
       params: {
         threadId: "thread-a",
         input: [{ type: "text", text: "hello" }],
+      },
+    });
+  });
+
+  it("builds a raw developer input-text injection for a loaded thread", () => {
+    expect(buildInjectItemsRequest(4, "thread-a", '{"protocol":"aiox.message.v1"}')).toEqual({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "thread/inject_items",
+      params: {
+        threadId: "thread-a",
+        items: [
+          {
+            type: "message",
+            role: "developer",
+            content: [{ type: "input_text", text: '{"protocol":"aiox.message.v1"}' }],
+          },
+        ],
+      },
+    });
+  });
+
+  it("builds a configured MCP tool call for a target thread", () => {
+    expect(
+      buildMcpServerToolCallRequest(5, "thread-a", "aiox-inbound", "deliver_message", {
+        deliveryId: "delivery-1",
+      }),
+    ).toEqual({
+      jsonrpc: "2.0",
+      id: 5,
+      method: "mcpServer/tool/call",
+      params: {
+        threadId: "thread-a",
+        server: "aiox-inbound",
+        tool: "deliver_message",
+        arguments: { deliveryId: "delivery-1" },
       },
     });
   });

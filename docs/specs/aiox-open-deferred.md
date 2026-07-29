@@ -17,29 +17,20 @@ partial caveats.
   미래 확장은 part별 media type와 attachment reference/id·digest·size만 envelope에 두고 raw
   local path나 bytes를 넣지 않는다. transfer/storage plane, access capability, integrity,
   streaming/resume, retention/cleanup, target adapter capability를 함께 결정한다.
-- Codex structured ingress spike. 2026-06-11 official app-server surface에서
+- Codex structured ingress and presentation. G1-A observed the official
   `thread/inject_items`, `turn/steer`, `turn/started|completed`, `outputSchema`,
-  `thread/tokenUsage/updated` 존재는 확인했다. version-generated schema에서 본
-  `clientUserMessageId`는 public docs 계약으로 확인되지 않았으므로 deliveryId binding
-  후보일 뿐이다. 남은 검증은 TUI 표시, active turn 충돌, wake-up 조합, correlation id
-  보존과 실패 모드다. 검증 전에는 Tier 2로 올리지 않는다. G1-A Codex
-  structured ingress spike는 이 named app-server surface를 직접 검증해야 하며,
-  generic `turn/start` compatibility path로 간소화해 대체 승인하지 않는다.
-  Current local partial: the Codex adapter can call `turn/start`, list loaded
-  threads, bind selected thread identity through the proxy, and detect
-  app-server/WS runtime failure ([[src/adapters/codex/injector.ts]] — `src/adapters/codex/injector.ts:22-63`,
-  [[src/adapters/codex/runtime.ts]] — `src/adapters/codex/runtime.ts:180-190`,
-  `src/adapters/codex/runtime.ts:242-285`,
-  `src/adapters/codex/runtime.ts:330-365`,
-  [[src/adapters/codex/proxy.ts]] — `src/adapters/codex/proxy.ts:46-58`,
-  `src/adapters/codex/proxy.ts:151-194`,
-  [[tests/unit/adapters/codex-proxy.test.ts]] — `tests/unit/adapters/codex-proxy.test.ts:27-97`,
-  [[src/daemon/state.ts]] — `src/daemon/state.ts:1418-1482`,
-  `src/daemon/state.ts:1684-1696`). This does not prove
-  `thread/inject_items`, `turn/steer`, canonical `deliveryId` binding, active
-  turn policy, `turn/started|completed` lifecycle observation,
-  `thread/tokenUsage/updated` usage visibility, `outputSchema` behavior or
-  Tier 2 delivery semantics.
+  and `thread/tokenUsage/updated` surfaces, but `thread/inject_items` only proved
+  model-visible history, not TUI presentation or wake-up. G1-B/G1-C now preserve
+  the public `deliveryId` in the canonical envelope and use correlated
+  `turn/start` success as delivery acceptance; that is neither target receipt nor
+  work completion. The current Codex TUI renders the canonical envelope as raw
+  JSON, not native tool/activity UI. Native activity semantics, active-turn
+  policy, `turn/steer` behavior, `outputSchema` behavior, delivery observability,
+  and a Tier 2 uplift remain open. The current bounded late-response observer and
+  `unconfirmed` path prevent automatic reinjection after post-write ambiguity;
+  they do not create a durable replay or target-receipt guarantee. See
+  [[docs/specs/aiox-message-lifecycle]] §4.3 and
+  [[docs/architecture/local-runtime-codex-adapter]] §7.6–§7.7.
 - OS/process/filesystem/network sandbox enforcement.
 - full external MCP internal tool allow/deny enforcement.
 - skill knowledge recall/revocation guarantee.
@@ -70,8 +61,18 @@ Lifecycle policy open questions:
     or keep pending.
   - Interrupted delivery state: `cancelled_by_user`, `failed`, `superseded`, or remain
     transport-unconfirmed; interruption does not consume a reply right.
-- Retry 기본 횟수/간격과 passive ack timeout의 release 값. §4.3 범위 안에서 G1
-  failure-injection으로 고정한다.
+- Tier 3 unconfirmed operator policy beyond direct manual retransmit: current runtime requires
+  `confirmDuplicateRisk:true`, ready runtime, and bound thread for a non-queued manual attempt. Local archive,
+  explicit remote cancellation, stale classification, retention, and reply-right cleanup remain deferred.
+- Current Tier 3 pre-write retry is bounded at 250 ms / 1 s / 4 s (maximum
+  three retries), with target queue capacity 32, TTL 5 minutes, and queued
+  flush when attach, resume/rebind, or proxy binding makes a target usable.
+  Durable restart replay/mailbox and passive/automatic target ack remain
+  deferred; so do remote cancellation and heartbeat/time-based stale policy.
+- **Phase 1 owner — stale/disconnected operation policy:** heartbeat, elapsed-time,
+  and external-session-disconnect signals, and the resulting queued-delivery
+  retry/hold/failed disposition, are decided and implemented in Phase 1. This
+  deferred entry fixes no threshold, automatic action, or public field.
 - AI agent session expiry handling (absorbed from the legacy MVP PRD Open Product Issue #5):
   - adapter 외부 세션은 Claude development channel/MCP server 연결 idle timeout, Codex
     `app-server` WebSocket idle disconnect, Codex thread unload/disappearance, 또는

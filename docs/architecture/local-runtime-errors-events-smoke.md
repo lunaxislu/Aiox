@@ -14,22 +14,26 @@ events, and implementation smoke provenance.
 | Reason | Surface | When | Cite |
 |---|---|---|---|
 | `agent_name_already_connected` | `AttachAgentResponse` | reattach attempt while connected | [[src/core/agents.ts]] `src/core/agents.ts:34`, `:47`; [[src/daemon/api.ts]] `src/daemon/api.ts:143`; [[src/store/repositories/agents.ts]] `src/store/repositories/agents.ts:35`, `:74` |
-| `agent_already_attached` | `AttachAgentResponse` | agent is already attached to this pair | [[src/core/pairs.ts]] `src/core/pairs.ts:39`, `:71`; [[src/store/repositories/pairs.ts]] `src/store/repositories/pairs.ts:118`; [[src/daemon/state.ts]] `src/daemon/state.ts:573` |
-| `pair_not_found` | `AttachAgentResponse` | `--pair` unknown | [[src/daemon/api.ts]] `src/daemon/api.ts:148`; [[src/daemon/state.ts]] `src/daemon/state.ts:232`, `:539` |
-| `pair_slot_occupied` | `AttachAgentResponse` | target slot already taken by another agent | [[src/core/pairs.ts]] `src/core/pairs.ts:39`, `:93`; [[src/store/repositories/pairs.ts]] `src/store/repositories/pairs.ts:48`, `:150`; [[src/daemon/state.ts]] `src/daemon/state.ts:573-576` |
-| `pair_full` | `AttachAgentResponse` | both slots already filled | [[src/core/pairs.ts]] `src/core/pairs.ts:44`, `:81`; [[src/store/repositories/pairs.ts]] `src/store/repositories/pairs.ts:53`, `:128`; [[src/daemon/state.ts]] `src/daemon/state.ts:242`, `:573-576` |
-| `agent_kind_mismatch` | `AttachAgentResponse` | reconnect with different kind | [[src/store/repositories/pairs.ts]] `src/store/repositories/pairs.ts:41`, `:94`; [[src/daemon/state.ts]] `src/daemon/state.ts:246`, `:573-576` |
-| `codex_resume_failed` | `AttachAgentResponse` / adapter | resume returned mismatched/no id | [[src/daemon/api.ts]] `src/daemon/api.ts:169`; [[src/daemon/state.ts]] `src/daemon/state.ts:253`, `:674`; [[src/adapters/codex/runtime.ts]] `src/adapters/codex/runtime.ts:234`, `:295` |
-| `codex_runtime_attach_failed` | `AttachAgentResponse` | codex runtime attach error | [[src/daemon/api.ts]] `src/daemon/api.ts:169`; [[src/daemon/state.ts]] `src/daemon/state.ts:253`, `:664`, `:688` |
-| `pair_name_already_exists` | `CreatePairResponse` | duplicate `pair --name` | [[src/daemon/api.ts]] `src/daemon/api.ts:180`; [[src/daemon/state.ts]] `src/daemon/state.ts:268`, `:751` |
-| `source_agent_not_found` | many | source name unresolved | [[src/daemon/api.ts]] `src/daemon/api.ts:192`, `:208`, `:229`; [[src/daemon/state.ts]] `src/daemon/state.ts:285`, `:306`, `:332`, `:1769`, `:2190` |
-| `target_agent_not_found` | connect / disconnect / state dispatch | target name unresolved | [[src/daemon/api.ts]] `src/daemon/api.ts:197`, `:213`; [[src/daemon/state.ts]] `src/daemon/state.ts:290`, `:311`, `:1263`, `:2206` |
-| `no_active_routes` | sendMessage / receiveCodexMessage | source has zero outgoing routes (β-1) | [[src/daemon/api.ts]] `src/daemon/api.ts:234`, `:291`; [[src/daemon/state.ts]] `src/daemon/state.ts:337`, `:1781` |
-| `delivery_idempotency_key_exists` | sendMessage / receiveCodex* | duplicate `${messageId}:${targetAgentId}` | [[src/daemon/api.ts]] `src/daemon/api.ts:238`, `:295`; [[src/daemon/state.ts]] `src/daemon/state.ts:341`, `:1794`, `:2004`; [[src/store/repositories/deliveries.ts]] `src/store/repositories/deliveries.ts:45`, `:129` |
-| `delivery_not_found` | `updateDeliveryStatus` | unknown id | [[src/daemon/api.ts]] `src/daemon/api.ts:249`; [[src/daemon/state.ts]] `src/daemon/state.ts:392`, `:1201`, `:1216` |
-| `claude_channel_registration_failed` (`detail: unknown_token | invalid_endpoint`) | `registerClaudeChannel` | token mismatch / non-loopback endpoint | [[src/daemon/state.ts]] `src/daemon/state.ts:60`, `:931`, `:940` |
-| `codex_channel_registration_failed` (`detail: unknown_token`) | `registerCodexChannel` | token mismatch | [[src/daemon/state.ts]] `src/daemon/state.ts:109`, `:1044-1051` |
-| `codex_ingress_unauthorized` (`detail: missing_token | agent_not_registered | agent_disconnected | token_mismatch`) | `receiveCodex*` | per `authorizeCodexIngress` check | [[src/daemon/api.ts]] `src/daemon/api.ts:290`; [[src/daemon/state.ts]] `src/daemon/state.ts:1718-1756` |
+| `agent_already_attached` | `AttachAgentResponse` | agent is already attached to this pair | [[src/core/pairs.ts]] `src/core/pairs.ts:39`, `:71`; [[src/store/repositories/pairs.ts]] `src/store/repositories/pairs.ts:118`; [[src/daemon/state.ts]] `attachAgent` |
+| `pair_not_found` | `AttachAgentResponse` | `--pair` unknown | [[src/daemon/api.ts]] `src/daemon/api.ts:148`; [[src/daemon/state.ts]] `attachAgent` |
+| `pair_slot_occupied` | `AttachAgentResponse` | target slot already taken by another agent | [[src/core/pairs.ts]] `src/core/pairs.ts:39`, `:93`; [[src/store/repositories/pairs.ts]] `src/store/repositories/pairs.ts:48`, `:150`; [[src/daemon/state.ts]] `attachAgent` |
+| `pair_full` | `AttachAgentResponse` | both slots already filled | [[src/core/pairs.ts]] `src/core/pairs.ts:44`, `:81`; [[src/store/repositories/pairs.ts]] `src/store/repositories/pairs.ts:53`, `:128`; [[src/daemon/state.ts]] `attachAgent` |
+| `agent_kind_mismatch` | `AttachAgentResponse` | reconnect with different kind | [[src/store/repositories/pairs.ts]] `src/store/repositories/pairs.ts:41`, `:94`; [[src/daemon/state.ts]] `attachAgent` |
+| `codex_resume_failed` | `AttachAgentResponse` / adapter | resume returned mismatched/no id | [[src/daemon/api.ts]] `src/daemon/api.ts:169`; [[src/daemon/state.ts]] `attachAgent`; [[src/adapters/codex/runtime.ts]] `src/adapters/codex/runtime.ts:234`, `:295` |
+| `codex_runtime_attach_failed` | `AttachAgentResponse` | codex runtime attach error | [[src/daemon/api.ts]] `src/daemon/api.ts:169`; [[src/daemon/state.ts]] `attachAgent` |
+| `pair_name_already_exists` | `CreatePairResponse` | duplicate `pair --name` | [[src/daemon/api.ts]] `src/daemon/api.ts:180`; [[src/daemon/state.ts]] `createPair` |
+| `source_agent_not_found` | many | source name unresolved | [[src/daemon/api.ts]] `src/daemon/api.ts:192`, `:208`, `:229`; [[src/daemon/state.ts]] `runSendMessageTransaction`, `runReplyTransaction`, and ingress methods |
+| `target_agent_not_found` | connect / disconnect / state dispatch | target name unresolved | [[src/daemon/api.ts]] `src/daemon/api.ts:197`, `:213`; [[src/daemon/state.ts]] `connect`, `disconnect`, and `dispatchToPairPeersNow` |
+| `no_active_routes` | sendMessage / receiveCodexMessage | source has zero outgoing routes (β-1) | [[src/daemon/api.ts]] `src/daemon/api.ts:234`, `:291`; [[src/daemon/state.ts]] `runSendMessageTransaction` |
+| `delivery_idempotency_key_exists` | sendMessage / receiveCodex* | duplicate `${messageId}:${targetAgentId}` | [[src/daemon/api.ts]] `src/daemon/api.ts:238`, `:295`; [[src/daemon/state.ts]] `runSendMessageTransaction` and `runReplyTransaction`; [[src/store/repositories/deliveries.ts]] `src/store/repositories/deliveries.ts:45`, `:129` |
+| `delivery_queue_full` | send/reply ingress | atomic fan-out would exceed one target's queue capacity | [[src/daemon/api.ts]] `src/daemon/api.ts:231-244`; [[src/daemon/state.ts]] `runSendMessageTransaction` |
+| `delivery_not_found` | `updateDeliveryStatus` | unknown id | [[src/daemon/api.ts]] `src/daemon/api.ts:249`; [[src/daemon/state.ts]] `updateDeliveryStatusInTransaction`, `receiveClaudeChannelMessage`, and `receiveClaudeChannelReply` |
+| `delivery_not_unconfirmed` | `retransmitUnconfirmedDelivery` | requested delivery is not `unconfirmed` | [[src/daemon/api.ts]] `src/daemon/api.ts:239-247`; [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery` |
+| `duplicate_risk_confirmation_required` | `retransmitUnconfirmedDelivery` | operator omitted `confirmDuplicateRisk:true` | [[src/daemon/api.ts]] `src/daemon/api.ts:239-247`; [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery` |
+| `manual_retransmit_unconfirmed` / `manual_retransmit_rejected` / `manual_retransmit_failed` | `retransmitUnconfirmedDelivery` | post-write unknown, correlated reject, or no-attempt precondition failure | [[src/daemon/api.ts]] `src/daemon/api.ts:239-247`; [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery` |
+| `claude_channel_registration_failed` (`detail: unknown_token | invalid_endpoint`) | `registerClaudeChannel` | token mismatch / non-loopback endpoint | [[src/daemon/state.ts]] `registerClaudeChannel` |
+| `codex_channel_registration_failed` (`detail: unknown_token`) | `registerCodexChannel` | token mismatch | [[src/daemon/state.ts]] `registerCodexChannel` |
+| `codex_ingress_unauthorized` (`detail: missing_token | agent_not_registered | agent_disconnected | token_mismatch`) | `receiveCodex*` | per `authorizeCodexIngress` check | [[src/daemon/api.ts]] `src/daemon/api.ts:290`; [[src/daemon/state.ts]] `authorizeCodexIngress` |
 
 ### 10.2 Adapter — Codex (`AdapterInjectFailureReason`)
 
@@ -41,15 +45,15 @@ Returned as `{kind:"failed", reason, message, jsonRpcCode?}`
 |---|---|---|
 | `adapter_inject_failed` | Unrecognized error from `injectTurnStart` | [[src/adapters/codex/injector.ts]] `src/adapters/codex/injector.ts:81` |
 | `codex_binding_uncertain` | pre-request or post-ack thread mismatch (Round 4 D7 swap) | [[src/adapters/codex/injector.ts]] `src/adapters/codex/injector.ts:29`, `:55`; [[src/adapters/codex/runtime.ts]] `src/adapters/codex/runtime.ts:295` |
-| `codex_app_server_unavailable` | declared in union and state dispatch type, **no emission found** | [[src/adapters/contract.ts]] `src/adapters/contract.ts:21`; [[src/daemon/state.ts]] `src/daemon/state.ts:347` — Implementation-only |
+| `codex_app_server_unavailable` | declared in union and state dispatch type, **no emission found** | [[src/adapters/contract.ts]] `src/adapters/contract.ts:21`; [[src/daemon/state.ts]] `dispatchToPairPeersNow` — Implementation-only |
 | `codex_app_server_ws_connect_failed` | WS connect timeout/error | [[src/adapters/codex/websocket.ts]] `src/adapters/codex/websocket.ts:322-327` |
 | `codex_app_server_ws_initialize_failed` | initialize JSON-RPC failed | [[src/adapters/codex/websocket.ts]] `src/adapters/codex/websocket.ts:217-221` |
 | `codex_app_server_ws_dropped` | socket close mid-request | [[src/adapters/codex/websocket.ts]] `src/adapters/codex/websocket.ts:149-163` |
 | `codex_turn_start_timeout` | configured request timeout | [[src/adapters/codex/injector.ts]] `src/adapters/codex/injector.ts:46-48`; [[src/adapters/codex/websocket.ts]] `src/adapters/codex/websocket.ts:247` |
 | `codex_jsonrpc_error` | app-server returned JSON-RPC error | [[src/adapters/codex/websocket.ts]] `src/adapters/codex/websocket.ts:174-183` |
 | `codex_resume_failed` | adapter-level resume failure | [[src/adapters/contract.ts]] `src/adapters/contract.ts:27`; [[src/adapters/codex/runtime.ts]] `src/adapters/codex/runtime.ts:228-236` |
-| `codex_channel_unavailable` (state-internal) | runtime missing / not ready (deferred to `target_runtime_unavailable` in delivery) | Emitted at [[src/daemon/state.ts]] `src/daemon/state.ts:1593`, `:1601`; handled at `src/daemon/state.ts:1459-1465` |
-| `codex_no_loaded_thread` (state-internal) | `thread/loaded/list` empty -> kept queued (deferred to `target_binding_unconfirmed` in delivery) | Emitted at [[src/daemon/state.ts]] `src/daemon/state.ts:1622`; handled at `src/daemon/state.ts:1418-1456` |
+| `codex_channel_unavailable` (state-internal) | runtime missing / not ready (deferred to `target_runtime_unavailable` in delivery) | Emitted by [[src/daemon/state.ts]] `resolveCodexReplyTarget`; handled by `dispatchToPairPeersNow` |
+| `codex_no_loaded_thread` (state-internal) | `thread/loaded/list` empty -> kept queued (deferred to `target_binding_unconfirmed` in delivery) | Emitted by [[src/daemon/state.ts]] `resolveCodexReplyTarget`; handled by `dispatchToPairPeersNow` |
 
 ### 10.3 Adapter — Claude
 
@@ -100,27 +104,31 @@ Returned as `{kind:"failed", reason, message, jsonRpcCode?}`
 
 ## 11. Consolidated Events Catalog
 
-Declaration: [[src/core/events.ts]] — `src/core/events.ts:1-27` (25 entries). All emissions go through
+Declaration: [[src/core/events.ts]] — `src/core/events.ts:1-34` (31 entries). All emissions go through
 `events.append`.
 
 | Event type | Payload | Emission site | When |
 |---|---|---|---|
-| `message_created` | `{}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1829-1836` | inside sendMessage tx |
-| `delivery_queued` | `{}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1840-1848` | per queued delivery |
-| `delivery_status_changed` | `{status, error?}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1223-1238` | each `updateDeliveryStatus` |
-| `agent_runtime_failed` | `{reason, latestDiagnosticNotification?}` | [[src/daemon/state.ts]] `src/daemon/state.ts:902-918` | Codex runtime exit / WS drop |
-| `agent_graceful_detach` | `{trigger}` or `{trigger:"tui_exit", exitCode, signal}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1895-1911` | `detachCodexAgent` |
-| `agent_thread_id_rebound` | `{previousId, nextId, operation, source, requestId?}` | [[src/daemon/state.ts]] `src/daemon/state.ts:696-710` (attach_resume), `:1552-1566` (loaded_list), `:1657-1672` (proxy_binding) | Codex active-thread rebinds |
-| `codex_delivery_queued_no_loaded_thread` | `{reason, message}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1441-1451` | dispatch found no loaded thread |
-| `codex_delivery_target_selected` | `{operation, loadedThreadIds, chosenThreadId, previousAdapterSessionId, runtimeActiveThreadId, selectionPolicy, deliveryMessageType, sourceAgentId, sourceAgentName, targetAgentName}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1476-1494` | live target resolved |
-| `codex_delivery_target_unavailable` | `{...same shape with reason}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1421-1438` | paired with `queued_no_loaded_thread` |
-| `codex_delivery_target_injection_failed` | `{chosenThreadId, loadedThreadIds, reason, message, source/target names}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1518-1533` | `injectReplyIntoCodexRuntime` failed |
-| `claude_channel_message_received` | `{text, messageId?}` | [[src/daemon/state.ts]] `src/daemon/state.ts:985-995` | `receiveClaudeChannelMessage` |
-| `claude_channel_reply_received` | `{chatId, text, messageId?}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1020-1031` | `receiveClaudeChannelReply` |
-| `codex_channel_registered` | `{tokenHash}` (short hash) | [[src/daemon/state.ts]] `src/daemon/state.ts:1063-1072` | `registerCodexChannel` |
-| `codex_channel_disconnected` | `{}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1076-1091` | `disconnectCodexChannel` (only if had runtime) |
-| `codex_ingress_message_received` | `{messageId}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1108-1117` | `receiveCodexMessage` ok |
-| `codex_ingress_reply_received` | `{messageId, parentMessageId}` | [[src/daemon/state.ts]] `src/daemon/state.ts:1140-1152` | `receiveCodexReply` ok |
+| `message_created` | `{}` | [[src/daemon/state.ts]] `runSendMessageTransaction` | inside sendMessage tx |
+| `delivery_queued` | `{}` | [[src/daemon/state.ts]] `runSendMessageTransaction` | per queued delivery |
+| `delivery_expired` | `{reason:"delivery_expired"}` | [[src/daemon/state.ts]] `scheduleQueuedDeliveryExpiry` | queued delivery reaches the 5-minute TTL |
+| `delivery_status_changed` | `{status, error?}` | [[src/daemon/state.ts]] `updateDeliveryStatusInTransaction` | each `updateDeliveryStatus` |
+| `delivery_manual_retransmit` | `{actor, attempt, confirmDuplicateRisk}` | [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery` | an operator direct attempt begins |
+| `delivery_manual_retransmit_unconfirmed` / `_delivered` / `_rejected` | attempt-local correlation data | [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery`, `injectMessageIntoCodexTarget` | `_unconfirmed` records non-terminal timeout/drop observation; only immediate/late `_delivered` or `_rejected` is terminal. A reject preserves the original `unconfirmed`. |
+| `agent_runtime_failed` | `{reason, latestDiagnosticNotification?}` | [[src/daemon/state.ts]] `recordCodexRuntimeFailed` | Codex runtime exit / WS drop |
+| `agent_graceful_detach` | `{trigger}` or `{trigger:"tui_exit", exitCode, signal}` | [[src/daemon/state.ts]] `detachCodexAgent` | `detachCodexAgent` |
+| `agent_thread_id_rebound` | `{previousId, nextId, operation, source, requestId?}` | [[src/daemon/state.ts]] `attachAgent`, `injectMessageIntoCodexTarget`, `handleCodexProxyBinding` | Codex active-thread rebinds |
+| `codex_delivery_queued_no_loaded_thread` | `{reason, message}` | [[src/daemon/state.ts]] `injectMessageIntoCodexTarget` | dispatch found no loaded thread |
+| `codex_delivery_target_selected` | `{operation, loadedThreadIds, chosenThreadId, previousAdapterSessionId, runtimeActiveThreadId, selectionPolicy, deliveryMessageType, sourceAgentId, sourceAgentName, targetAgentName}` | [[src/daemon/state.ts]] `injectMessageIntoCodexTarget` | live target resolved |
+| `codex_delivery_target_unavailable` | `{...same shape with reason}` | [[src/daemon/state.ts]] `injectMessageIntoCodexTarget` | paired with `queued_no_loaded_thread` |
+| `codex_delivery_target_injection_failed` | `{chosenThreadId, loadedThreadIds, reason, message, source/target names}` | [[src/daemon/state.ts]] `injectMessageIntoCodexTarget` | `injectReplyIntoCodexRuntime` failed |
+| `delivery_target_rejected` | `{adapter, target, jsonRpc, attempt}` | [[src/daemon/state.ts]] `recordCodexTargetRejectOutcome` | primary correlated Codex JSON-RPC reject; creates the source outcome relation |
+| `claude_channel_message_received` | `{text, messageId?}` | [[src/daemon/state.ts]] `receiveClaudeChannelMessage` | `receiveClaudeChannelMessage` |
+| `claude_channel_reply_received` | `{messageId, inReplyToDeliveryId, text}` | [[src/daemon/state.ts]] `receiveClaudeChannelReply` | typed `receiveClaudeChannelReply` |
+| `codex_channel_registered` | `{tokenHash}` (short hash) | [[src/daemon/state.ts]] `registerCodexChannel` | `registerCodexChannel` |
+| `codex_channel_disconnected` | `{}` | [[src/daemon/state.ts]] `disconnectCodexChannel` | `disconnectCodexChannel` (only if had runtime) |
+| `codex_ingress_message_received` | `{messageId}` | [[src/daemon/state.ts]] `receiveCodexMessage` | `receiveCodexMessage` ok |
+| `codex_ingress_reply_received` | `{messageId, inReplyToDeliveryId, text}` | [[src/daemon/state.ts]] `receiveCodexReply` | typed `receiveCodexReply` ok |
 
 **Declared but not emitted in current `src/`** (Implementation-only):
 `agent_registered`, `agent_reconnected`, `agent_disconnected`,

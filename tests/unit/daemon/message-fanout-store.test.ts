@@ -57,8 +57,6 @@ describe("daemon message fan-out store persistence", () => {
       "agent-three",
       "route-one",
       "route-two",
-      "delivery-one",
-      "delivery-two",
       "event-1-message",
       "event-2-delivery-one",
       "event-3-delivery-two",
@@ -74,6 +72,10 @@ describe("daemon message fan-out store persistence", () => {
 
         return id;
       },
+      createPublicDeliveryId: createOpaqueIdFactory([
+        "opaque delivery id: one",
+        "opaque delivery id: two",
+      ]),
       now: () => "2026-05-18T00:00:00.000Z",
     });
     const client = createInProcessClient(createDaemonApi(state));
@@ -92,6 +94,8 @@ describe("daemon message fan-out store persistence", () => {
         sourceName: "impl",
         messageId: "message-1",
         type: "instruction",
+        intent: "delegation",
+        replyExpected: true,
         content: "please review this change",
       }),
     ).toEqual({
@@ -102,11 +106,13 @@ describe("daemon message fan-out store persistence", () => {
         sourceAgentId: "agent-source",
         parentMessageId: null,
         type: "instruction",
+        intent: "delegation",
+        replyExpected: true,
         content: "please review this change",
       },
       deliveries: [
         {
-          id: "delivery-one",
+          id: "opaque delivery id: one",
           messageId: "message-1",
           targetAgentId: "agent-one",
           routeId: "route-one",
@@ -114,7 +120,7 @@ describe("daemon message fan-out store persistence", () => {
           idempotencyKey: "message-1:agent-one",
         },
         {
-          id: "delivery-two",
+          id: "opaque delivery id: two",
           messageId: "message-1",
           targetAgentId: "agent-two",
           routeId: "route-two",
@@ -132,8 +138,12 @@ describe("daemon message fan-out store persistence", () => {
       {
         id: "message-1",
         source_agent_id: "agent-source",
+        origin_kind: "agent",
         parent_message_id: null,
         type: "instruction",
+        intent: "delegation",
+        reply_expected: 1,
+        outcome_for_delivery_id: null,
         content: "please review this change",
         created_at: "2026-05-18T00:00:00.000Z",
         updated_at: "2026-05-18T00:00:00.000Z",
@@ -141,7 +151,7 @@ describe("daemon message fan-out store persistence", () => {
     ]);
     expect(readDeliveries(db)).toEqual([
       {
-        id: "delivery-one",
+        id: "opaque delivery id: one",
         message_id: "message-1",
         target_agent_id: "agent-one",
         route_id: "route-one",
@@ -151,7 +161,7 @@ describe("daemon message fan-out store persistence", () => {
         updated_at: "2026-05-18T00:00:00.000Z",
       },
       {
-        id: "delivery-two",
+        id: "opaque delivery id: two",
         message_id: "message-1",
         target_agent_id: "agent-two",
         route_id: "route-two",
@@ -176,7 +186,7 @@ describe("daemon message fan-out store persistence", () => {
         id: "event-2-delivery-one",
         agent_id: null,
         message_id: "message-1",
-        delivery_id: "delivery-one",
+        delivery_id: "opaque delivery id: one",
         route_id: "route-one",
         type: "delivery_queued",
         data_json: "{}",
@@ -186,7 +196,7 @@ describe("daemon message fan-out store persistence", () => {
         id: "event-3-delivery-two",
         agent_id: null,
         message_id: "message-1",
-        delivery_id: "delivery-two",
+        delivery_id: "opaque delivery id: two",
         route_id: "route-two",
         type: "delivery_queued",
         data_json: "{}",
@@ -234,6 +244,14 @@ function readDeliveries(db: Database): DeliveryRow[] {
 
 function readEvents(db: Database): EventRow[] {
   return db.prepare("select * from events order by created_at, id").all() as EventRow[];
+}
+
+function createOpaqueIdFactory(ids: string[]): () => string {
+  return () => {
+    const id = ids.shift();
+    if (!id) throw new Error("unexpected public delivery id request");
+    return id;
+  };
 }
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {

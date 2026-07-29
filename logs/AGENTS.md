@@ -92,6 +92,7 @@ Executable W를 완료하거나 package를 closeout하기 전에 다음 집합�
    ```
 
    actual set에만 있으면 orphan record, Task Index에만 있으면 dangling locator다.
+
 4. `logs/` tree에서 Identity의 `Controlling log`가 현재 controlling package log를
    가리키는 Full record actual set을 찾고 Task Index의 Full locator set과 대조한다.
 5. 각 record의 Identity에서 controlling log, package W-id와 profile이 해당 Task Index

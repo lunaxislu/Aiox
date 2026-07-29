@@ -28,7 +28,7 @@ export interface CodexMcpInjection {
   agentName: string;
   agentToken: string;
   daemonSocketPath: string;
-  /** node binary or compatible runtime. Defaults to process.execPath. */
+  /** Runtime override. Defaults to tsx for a TypeScript entry, otherwise Node. */
   runtimeBinary?: string;
   /** path to the aiox bin entry that launches `mcp-codex`. Defaults to process.argv[1]. */
   aioxBin?: string;
@@ -91,8 +91,9 @@ export function buildCodexMcpArgs(
   if (!mcp) {
     return [];
   }
-  const runtimeBinary = mcp.runtimeBinary ?? process.execPath;
   const aioxBin = mcp.aioxBin ?? process.argv[1] ?? "aiox";
+  const runtimeBinary =
+    mcp.runtimeBinary ?? (aioxBin.endsWith(".ts") ? "tsx" : process.execPath);
   const inline = buildMcpServersAioxInlineToml({
     runtimeBinary,
     aioxBin,

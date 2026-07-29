@@ -128,7 +128,6 @@ function completeDelivery(
   targetAgent: AgentDto,
 ): AdapterDeliveryDispatchResult {
   api.updateDeliveryStatus({ deliveryId: delivery.id, status: "delivered" });
-  api.updateDeliveryStatus({ deliveryId: delivery.id, status: "completed" });
 
   return {
     deliveryId: delivery.id,

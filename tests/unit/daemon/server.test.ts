@@ -1,6 +1,16 @@
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../../src/core/public-ids.js", () => ({
+  createPublicMessageId: vi.fn(() => "opaque core default message"),
+  createPublicDeliveryId: vi.fn(() => "opaque core default delivery"),
+}));
+
+import { CodexAppServerWebSocketError } from "../../../src/adapters/codex/websocket.js";
+import {
+  createPublicDeliveryId,
+  createPublicMessageId,
+} from "../../../src/core/public-ids.js";
 import { createDaemonServer } from "../../../src/daemon/server.js";
 import type { Supervisor } from "../../../src/daemon/supervisor.js";
 import { applySchema } from "../../../src/store/schema.js";
@@ -11,6 +21,10 @@ describe("daemon server lifecycle shell", () => {
   beforeEach(() => {
     db = new Database(":memory:");
     applySchema(db);
+    vi.mocked(createPublicMessageId).mockReset();
+    vi.mocked(createPublicMessageId).mockReturnValue("opaque core default message");
+    vi.mocked(createPublicDeliveryId).mockReset();
+    vi.mocked(createPublicDeliveryId).mockReturnValue("opaque core default delivery");
   });
 
   afterEach(() => {
@@ -38,6 +52,108 @@ describe("daemon server lifecycle shell", () => {
         cwd: "/repo",
         pairId: null,
       },
+    });
+  });
+
+  it("forwards public delivery seams while retaining createId for internal agents and events", async () => {
+    const internalIds = ["internal-agent-source", "internal-agent-target", "internal-route", "internal-event-message", "internal-event-delivery"];
+    const server = createDaemonServer({
+      db,
+      createId: () => internalIds.shift() ?? "unexpected-internal-id",
+      createPublicMessageId: () => "opaque daemon message seam",
+      createPublicDeliveryId: () => "opaque daemon delivery seam",
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const api = server.start().api;
+    await api.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+    await api.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    await api.connect({ sourceName: "source", targetNames: ["target"] });
+
+    const result = await api.sendMessage({ sourceName: "source", messageId: "source-issued", type: "question", content: "hello" });
+
+    expect(result).toMatchObject({
+      ok: true,
+      deliveries: [{ id: "opaque daemon delivery seam" }],
+    });
+    expect((await api.status()).agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "internal-agent-source" }),
+      expect.objectContaining({ id: "internal-agent-target" }),
+    ]));
+  });
+
+  it("uses the core public delivery default when no server seam is supplied", async () => {
+    const internalIds = ["internal-agent-source", "internal-agent-target", "internal-route", "internal-event-message", "internal-event-delivery"];
+    const server = createDaemonServer({
+      db,
+      createId: () => internalIds.shift() ?? "unexpected-internal-id",
+      now: () => "2026-05-18T00:00:00.000Z",
+    });
+    const api = server.start().api;
+    await api.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+    await api.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    await api.connect({ sourceName: "source", targetNames: ["target"] });
+
+    const result = await api.sendMessage({ sourceName: "source", messageId: "source-issued", type: "question", content: "hello" });
+
+    if (!result.ok) throw new Error("expected accepted message");
+    expect(createPublicDeliveryId).toHaveBeenCalledOnce();
+    expect(result.deliveries[0]?.id).toBe("opaque core default delivery");
+    expect(result.deliveries).toHaveLength(1);
+  });
+
+  it("uses the forwarded public message seam for the W12 daemon-originated outcome", async () => {
+    const deliveryIds = ["opaque W12 normal delivery seam", "opaque W12 outcome delivery seam"];
+    const server = createDaemonServer({
+      db,
+      createId: createIdSequence(),
+      createPublicMessageId: () => "opaque W12 message seam",
+      createPublicDeliveryId: () => deliveryIds.shift() ?? "unexpected delivery seam call",
+      now: () => "2026-05-18T00:00:00.000Z",
+      attachCodexRuntime: async () => rejectingCodexRuntime(),
+    });
+    const api = server.start().api;
+    const sourceToken = await connectRegisteredCodexPair(api);
+
+    const result = await api.receiveCodexMessage({ agentName: "source", token: sourceToken!, messageId: "source-issued", content: { text: "hello" } });
+    expect(result).toMatchObject({ ok: true, dispatch: { failed: [{ reason: "codex_jsonrpc_error" }], deferred: [] } });
+
+    expect(readOutcome(db)).toEqual({
+      original_delivery_id: expect.any(String),
+      notification_message_id: "opaque W12 message seam",
+      notification_delivery_id: "opaque W12 outcome delivery seam",
+    });
+    expect(readNotification(db, "opaque W12 message seam", "opaque W12 outcome delivery seam")).toEqual({
+      message_id: "opaque W12 message seam",
+      delivery_id: "opaque W12 outcome delivery seam",
+    });
+  });
+
+  it("uses the core public message default for the W12 daemon-originated outcome", async () => {
+    vi.mocked(createPublicDeliveryId)
+      .mockReturnValueOnce("opaque core default normal delivery")
+      .mockReturnValueOnce("opaque core default outcome delivery");
+    const server = createDaemonServer({
+      db,
+      createId: createIdSequence(),
+      now: () => "2026-05-18T00:00:00.000Z",
+      attachCodexRuntime: async () => rejectingCodexRuntime(),
+    });
+    const api = server.start().api;
+    const sourceToken = await connectRegisteredCodexPair(api);
+
+    const result = await api.receiveCodexMessage({ agentName: "source", token: sourceToken!, messageId: "source-issued", content: { text: "hello" } });
+    expect(result).toMatchObject({ ok: true, dispatch: { failed: [{ reason: "codex_jsonrpc_error" }], deferred: [] } });
+
+    expect(createPublicMessageId).toHaveBeenCalledOnce();
+    expect(createPublicDeliveryId).toHaveBeenCalledTimes(2);
+    expect(readOutcome(db)).toEqual({
+      original_delivery_id: expect.any(String),
+      notification_message_id: "opaque core default message",
+      notification_delivery_id: "opaque core default outcome delivery",
+    });
+    expect(readNotification(db, "opaque core default message", "opaque core default outcome delivery")).toEqual({
+      message_id: "opaque core default message",
+      delivery_id: "opaque core default outcome delivery",
     });
   });
 
@@ -196,4 +312,56 @@ function createRecordingSupervisor(): Supervisor & { stopCalls: number } {
       this.stopCalls += 1;
     },
   };
+}
+
+function createIdSequence(): () => string {
+  let next = 0;
+  return () => `internal-${++next}`;
+}
+
+function rejectingCodexRuntime() {
+  let rejected = false;
+  return {
+    state: "ready" as const,
+    endpoint: new URL("ws://127.0.0.1:54321/"),
+    activeThreadId: "thread-target",
+    async requestCodex(method: string) {
+      if (method === "thread/loaded/list") return { data: ["thread-target"] };
+      if (method === "turn/start" && !rejected) {
+        rejected = true;
+        throw new CodexAppServerWebSocketError("codex_jsonrpc_error", "rejected", { jsonRpcCode: -32042 });
+      }
+      return { turn: { id: "turn-1", status: "inProgress" } };
+    },
+    async startThread() { return "thread-target"; },
+    async resumeThread(threadId: string) { return threadId; },
+    async listLoadedThreadIds() { return ["thread-target"]; },
+    rebindActiveThread() {},
+    dispose() {},
+  };
+}
+
+async function connectRegisteredCodexPair(api: ReturnType<ReturnType<typeof createDaemonServer>["start"]>["api"]) {
+  const source = await api.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+  const target = await api.attachAgent({ kind: "codex", name: "target", cwd: "/repo" });
+  if (!source.ok || !target.ok) throw new Error("expected Codex agents");
+  if (!source.codexChannelToken || !target.codexChannelToken) {
+    throw new Error("expected Codex channel tokens");
+  }
+  await api.registerCodexChannel({ agentName: "source", token: source.codexChannelToken });
+  await api.registerCodexChannel({ agentName: "target", token: target.codexChannelToken });
+  await api.connect({ sourceName: "source", targetNames: ["target"] });
+  return source.codexChannelToken;
+}
+
+function readOutcome(database: Database) {
+  return database.prepare(
+    "select original_delivery_id, notification_message_id, notification_delivery_id from delivery_outcome_notifications",
+  ).get();
+}
+
+function readNotification(database: Database, messageId: string, deliveryId: string) {
+  return database.prepare(
+    "select message_id, id as delivery_id from message_deliveries where message_id = ? and id = ?",
+  ).get(messageId, deliveryId);
 }

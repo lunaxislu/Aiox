@@ -23,14 +23,20 @@ describe("Messages", () => {
       id: "message-1",
       sourceAgentId: "source-1",
       type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
       content: "please review this change",
     });
 
     expect(result).toEqual({
       id: "message-1",
       sourceAgentId: "source-1",
+      originKind: "agent",
       parentMessageId: null,
       type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
+      outcomeForDeliveryId: null,
       content: "please review this change",
     });
   });
@@ -53,6 +59,8 @@ describe("Messages", () => {
       messageId: "message-1",
       sourceAgentId: "source-1",
       type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
       content: "please review this change",
       routes,
     });
@@ -60,8 +68,12 @@ describe("Messages", () => {
     expect(result.message).toEqual({
       id: "message-1",
       sourceAgentId: "source-1",
+      originKind: "agent",
       parentMessageId: null,
       type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
+      outcomeForDeliveryId: null,
       content: "please review this change",
     });
     expect(result.deliveries).toHaveLength(2);

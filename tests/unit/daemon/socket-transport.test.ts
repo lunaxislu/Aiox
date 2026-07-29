@@ -88,6 +88,7 @@ describe("daemon socket transport", () => {
           delivered: 0,
           completed: 0,
           failed: 0,
+          unconfirmed: 0,
         },
       });
     } finally {
@@ -137,6 +138,7 @@ describe("daemon socket transport", () => {
           delivered: 0,
           completed: 0,
           failed: 0,
+          unconfirmed: 0,
         },
       });
     } finally {

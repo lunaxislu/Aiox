@@ -85,8 +85,8 @@ socket (`existsSync(socketPath)`). Exit code 1 if any check is `error`, else 0.
 
 **`aiox status`** renders DAEMON → AGENTS → PAIRS → ROUTES → DELIVERIES
 in fixed order. DELIVERIES line
-always prints all five statuses: `messages=N queued=N delivering=N`,
-`delivered=N completed=N failed=N`.
+always prints all six statuses: `messages=N queued=N delivering=N`,
+`delivered=N completed=N failed=N unconfirmed=N`.
 
 `StatusResponse.status()` aggregates via repository `COUNT(*)`. Tmux check and
 pnpm check were intentionally removed at closeout
@@ -105,4 +105,4 @@ Evidence:
   - [[src/core/deliveries.ts]]
     - `src/core/deliveries.ts:3-9`
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:1162-1174`
+    - `status`

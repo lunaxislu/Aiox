@@ -73,6 +73,61 @@ pnpm tsx spikes/codex-app-server-multi-session-poc/client.ts send \
 
 The addressed Codex UI should receive the turn.
 
+## MCP Presentation Spike
+
+This is an isolated test of one narrower hypothesis: an external
+`mcpServer/tool/call` with an inbound delivery envelope might create a native
+`Called …` activity in the target Codex TUI, make that result model-visible,
+and begin a grounded response. It does **not** claim those effects; observe
+and record each one separately.
+
+Start a fresh App Server with the controlled, successful fixture MCP tool:
+
+```bash
+codex app-server --listen ws://127.0.0.1:4501 \
+  -c 'mcp_servers.aiox_inbound = { command = "pnpm", args = ["tsx", "spikes/codex-app-server-multi-session-poc/inbound-fixture.ts"] }'
+```
+
+Attach one TUI and start or resume a thread, then obtain its id with:
+
+```bash
+pnpm tsx spikes/codex-app-server-multi-session-poc/client.ts \
+  inspect --url=ws://127.0.0.1:4501
+```
+
+In a second terminal, record notifications before making the call:
+
+```bash
+pnpm tsx spikes/codex-app-server-multi-session-poc/event-recorder.ts \
+  --url=ws://127.0.0.1:4501 \
+  --out=/private/tmp/aiox-mcp-presentation-events.jsonl \
+  --duration-ms=120000
+```
+
+Call the fixture with an otherwise undisclosed marker:
+
+```bash
+pnpm tsx spikes/codex-app-server-multi-session-poc/client.ts mcp-call \
+  --url=ws://127.0.0.1:4501 \
+  --thread-id=<thread-id> \
+  --server=aiox_inbound \
+  --tool=deliver_message \
+  --arguments='{"deliveryId":"delivery-1","marker":"AIOX_MCP_PRESENTATION_MARKER"}'
+```
+
+Record four independent observations:
+
+1. The tool RPC returned a successful fixture result.
+2. The target TUI showed `Called aiox_inbound.deliver_message(...)`; expand it
+   and record which argument/result fields are visible.
+3. `thread/read` and the JSONL trace contain a persisted tool item and marker.
+4. Without a user-authored `turn/start`, Codex begins a new turn and gives an
+   answer grounded in `AIOX_MCP_PRESENTATION_MARKER`.
+
+Failure at any one observation is not evidence for the others. Stop the
+temporary App Server and remove the JSONL file after recording the distilled
+result in the controlling work log.
+
 ## Decision Matrix
 
 Shared app-server looks viable if:

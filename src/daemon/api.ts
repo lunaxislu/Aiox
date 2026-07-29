@@ -23,6 +23,8 @@ import type {
   ReceiveCodexMessageRequest,
   ReceiveCodexMessageResult,
   ReceiveCodexReplyRequest,
+  RetransmitUnconfirmedDeliveryRequest,
+  RetransmitUnconfirmedDeliveryResult,
   RegisterClaudeChannelRequest,
   RegisterClaudeChannelResult,
   RegisterCodexChannelRequest,
@@ -53,6 +55,9 @@ export interface DaemonApi {
   disconnect(request: DisconnectRequest): DisconnectResponse;
   sendMessage(request: SendMessageRequest): SendMessageResponse;
   updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResponse;
+  retransmitUnconfirmedDelivery(
+    request: RetransmitUnconfirmedDeliveryRequest,
+  ): Promise<RetransmitUnconfirmedDeliveryResponse>;
   rollbackAgentAttach(
     request: RollbackAgentAttachRequest,
   ): Promise<RollbackAgentAttachResponse>;
@@ -115,6 +120,8 @@ export interface MessageDto {
   sourceAgentId: string;
   parentMessageId: string | null;
   type: MessageType;
+  intent?: StoredMessage["intent"];
+  replyExpected?: boolean | null;
   content: string;
 }
 
@@ -237,7 +244,9 @@ export type SendMessageResponse =
       ok: false;
       reason: "delivery_idempotency_key_exists";
       existing: DeliveryDto;
-    };
+    }
+  | { ok: false; reason: "delivery_queue_full"; targetAgentIds: string[] }
+  | { ok: false; reason: "unknown_delivery" | "correlation_mismatch" | "reply_not_expected" | "duplicate_reply" };
 
 export type UpdateDeliveryStatusResponse =
   | {
@@ -249,6 +258,15 @@ export type UpdateDeliveryStatusResponse =
       reason: "delivery_not_found";
       deliveryId: string;
     };
+
+export type RetransmitUnconfirmedDeliveryResponse =
+  | { ok: true; delivery: DeliveryDto }
+  | { ok: false; reason: "delivery_not_found"; deliveryId: string }
+  | { ok: false; reason: "delivery_not_unconfirmed"; delivery: DeliveryDto }
+  | { ok: false; reason: "duplicate_risk_confirmation_required" }
+  | { ok: false; reason: "manual_retransmit_unconfirmed"; delivery: DeliveryDto; message: string }
+  | { ok: false; reason: "manual_retransmit_rejected"; delivery: DeliveryDto; message: string }
+  | { ok: false; reason: "manual_retransmit_failed"; delivery: DeliveryDto; message: string };
 
 export type RollbackAgentAttachResponse = RollbackAgentAttachResult;
 
@@ -294,7 +312,9 @@ export type ReceiveCodexMessageResponse =
       ok: false;
       reason: "delivery_idempotency_key_exists";
       existing: DeliveryDto;
-    };
+    }
+  | { ok: false; reason: "delivery_queue_full"; targetAgentIds: string[] }
+  | { ok: false; reason: "unknown_delivery" | "correlation_mismatch" | "reply_not_expected" | "duplicate_reply" };
 
 export function createDaemonApi(state: DaemonState): DaemonApi {
   return {
@@ -315,6 +335,11 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     updateDeliveryStatus(request) {
       return mapUpdateDeliveryStatusResult(state.updateDeliveryStatus(request));
+    },
+    async retransmitUnconfirmedDelivery(request) {
+      return mapRetransmitUnconfirmedDeliveryResult(
+        await state.retransmitUnconfirmedDelivery(request),
+      );
     },
     async rollbackAgentAttach(request) {
       return state.rollbackAgentAttach(request);
@@ -481,6 +506,12 @@ function mapUpdateDeliveryStatusResult(
   return result;
 }
 
+function mapRetransmitUnconfirmedDeliveryResult(
+  result: RetransmitUnconfirmedDeliveryResult,
+): RetransmitUnconfirmedDeliveryResponse {
+  return "delivery" in result ? { ...result, delivery: mapDelivery(result.delivery) } : result;
+}
+
 function mapStatusResult(result: StatusResult): StatusResponse {
   return {
     daemon: result.daemon,
@@ -522,6 +553,8 @@ function mapMessage(message: StoredMessage): MessageDto {
     sourceAgentId: message.sourceAgentId,
     parentMessageId: message.parentMessageId,
     type: message.type,
+    intent: message.intent,
+    replyExpected: message.replyExpected,
     content: message.content,
   };
 }

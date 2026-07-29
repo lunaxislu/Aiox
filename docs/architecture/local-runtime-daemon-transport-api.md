@@ -57,7 +57,7 @@ daemon is absent. See command table in §9.1.
 `src/daemon/run.ts:66-73` and the fact that `recordCodexRuntimeFailed` exists on
 `DaemonState` but is omitted from `DaemonApi` (so it is not callable over
 the socket — only via in-process state references). Evidence:
-[[src/daemon/state.ts]] — `src/daemon/state.ts:479-507`, `src/daemon/state.ts:884-924`;
+[[src/daemon/state.ts]] — `recordCodexRuntimeFailed`;
 [[src/daemon/api.ts]] — `src/daemon/api.ts:49-87`, `src/daemon/api.ts:299-358`.
 
 ### 4.3 sendMessage end-to-end (sequence)
@@ -73,24 +73,33 @@ All RPCs are declared at [[src/daemon/api.ts]] — `src/daemon/api.ts:49-87`, an
 [[src/daemon/state.ts]] and cited per row. Daemon API typed errors never throw at the
 transport; they are returned as `{ ok:false, reason }` results.
 
+The daemon API's accepted send/reply response contains per-target
+`DeliveryDto` values (including public `id`/delivery ID and status). The
+agent-facing MCP projection is tool-specific rather than a shared
+`message_id`/`dispatch` contract: Codex send/reply and Claude send return
+`message_id` plus optional `dispatch`; Claude reply returns optional `dispatch`;
+Codex manual retransmit returns `message_id` without `dispatch`. None is a
+delivery-status observability API.
+
 | Method | Mutates | Emits | Typed errors | Cite ([[src/daemon/state.ts]]) |
 |---|---|---|---|---|
-| `attachAgent` | agents upsert; pairs.attachAgent; routes bidirectional if pair ready; in-memory `codexRuntimes` / pending tokens | `agent_thread_id_rebound` on resume | `agent_name_already_connected`, `pair_not_found`, `agent_already_attached`, `pair_slot_occupied`, `pair_full`, `agent_kind_mismatch`, `codex_resume_failed`, `codex_runtime_attach_failed` | `src/daemon/state.ts:532-745` |
-| `createPair` | pairs insert | — | `pair_name_already_exists` | `src/daemon/state.ts:747-764` |
-| `connect` | routes insert in tx | — | `source_agent_not_found`, `target_agent_not_found` | `src/daemon/state.ts:766-806` |
-| `disconnect` | routes delete in tx | — | `source_agent_not_found`, `target_agent_not_found` | `src/daemon/state.ts:808-823` |
-| `sendMessage` | messages + deliveries + events (single tx) | `message_created`, `delivery_queued` | `source_agent_not_found`, `no_active_routes`, `delivery_idempotency_key_exists` | `src/daemon/state.ts:824-826`, `src/daemon/state.ts:1761-1864` |
-| `updateDeliveryStatus` | deliveries.updateStatus + events | `delivery_status_changed` | `delivery_not_found` | `src/daemon/state.ts:828-830`, `src/daemon/state.ts:1192-1244` |
-| `rollbackAgentAttach` | disposes in-flight codex runtime; removes pending token; marks agent disconnected | — | none typed (`{ok:true,rolledBack}`) | `src/daemon/state.ts:832-866` |
-| `detachAgent` | dispose codex runtime + clear channel maps; mark disconnected | `agent_graceful_detach` (trigger=`explicit_detach`) | none | `src/daemon/state.ts:868-873`, `src/daemon/state.ts:1866-1919` |
-| `notifyTuiExited` | same as detachAgent cleanup | `agent_graceful_detach` (trigger=`tui_exit`) | none | `src/daemon/state.ts:875-882`, `src/daemon/state.ts:1866-1919` |
-| `registerClaudeChannel` | consumes pending token; inserts `claudeChannelRuntimes` | — | `claude_channel_registration_failed` (`unknown_token`/`invalid_endpoint`) | `src/daemon/state.ts:926-954` |
-| `disconnectClaudeChannel` | removes runtime | — | none | `src/daemon/state.ts:956-972` |
-| `receiveClaudeChannelMessage` | runSendMessageTransaction (type=`question`) + dispatch to codex | `claude_channel_message_received` + sendMessage events + dispatch events | sendMessage typed errors | `src/daemon/state.ts:974-1006`, `src/daemon/state.ts:1761-1864` |
-| `receiveClaudeChannelReply` | sendMessage (type=`reply`, parent=chatId) + dispatch | `claude_channel_reply_received` + downstream | sendMessage typed errors | `src/daemon/state.ts:1008-1042`, `src/daemon/state.ts:1761-1864` |
-| `registerCodexChannel` | consumes pending token; inserts `codexChannelRuntimes` | `codex_channel_registered` | `codex_channel_registration_failed` (`unknown_token`) | `src/daemon/state.ts:1044-1074` |
-| `disconnectCodexChannel` | removes runtime + pending token | `codex_channel_disconnected` (if had runtime) | none | `src/daemon/state.ts:1076-1094` |
-| `receiveCodexMessage` | authz + sendMessage(`question`) + dispatch to claude | `codex_ingress_message_received` + downstream | `codex_ingress_unauthorized` + sendMessage errors | `src/daemon/state.ts:1096-1125`, `src/daemon/state.ts:1711-1759`, `src/daemon/state.ts:1761-1864` |
-| `receiveCodexReply` | authz + sendMessage(`reply`, parent=`parentMessageId`) + dispatch | `codex_ingress_reply_received` + downstream | same as above | `src/daemon/state.ts:1127-1160`, `src/daemon/state.ts:1711-1759`, `src/daemon/state.ts:1761-1864` |
-| `status` | none | none | none | `src/daemon/state.ts:1162-1174` |
-| `stop` | `markAllConnectedDisconnected` unless `daemonOnly`; clears channel maps | — | none | `src/daemon/state.ts:1176-1190` |
+| `attachAgent` | agents upsert; pairs.attachAgent; routes bidirectional if pair ready; in-memory `codexRuntimes` / pending tokens | `agent_thread_id_rebound` on resume | `agent_name_already_connected`, `pair_not_found`, `agent_already_attached`, `pair_slot_occupied`, `pair_full`, `agent_kind_mismatch`, `codex_resume_failed`, `codex_runtime_attach_failed` | `attachAgent` |
+| `createPair` | pairs insert | — | `pair_name_already_exists` | `createPair` |
+| `connect` | routes insert in tx | — | `source_agent_not_found`, `target_agent_not_found` | `connect` |
+| `disconnect` | routes delete in tx | — | `source_agent_not_found`, `target_agent_not_found` | `disconnect` |
+| `sendMessage` | messages + deliveries + events (single tx) | `message_created`, `delivery_queued` | `source_agent_not_found`, `no_active_routes`, `delivery_idempotency_key_exists`, `delivery_queue_full` | `sendMessage` → `runSendMessageTransaction` |
+| `updateDeliveryStatus` | deliveries.updateStatus + events | `delivery_status_changed` | `delivery_not_found` | `updateDeliveryStatus` → `updateDeliveryStatusInTransaction` |
+| `rollbackAgentAttach` | disposes in-flight codex runtime; removes pending token; marks agent disconnected | — | none typed (`{ok:true,rolledBack}`) | `rollbackAgentAttach` |
+| `detachAgent` | dispose codex runtime + clear channel maps; mark disconnected | `agent_graceful_detach` (trigger=`explicit_detach`) | none | `detachAgent` → `detachCodexAgent` |
+| `notifyTuiExited` | same as detachAgent cleanup | `agent_graceful_detach` (trigger=`tui_exit`) | none | `notifyTuiExited` → `detachCodexAgent` |
+| `registerClaudeChannel` | consumes pending token; inserts `claudeChannelRuntimes` | — | `claude_channel_registration_failed` (`unknown_token`/`invalid_endpoint`) | `registerClaudeChannel` |
+| `disconnectClaudeChannel` | removes runtime | — | none | `disconnectClaudeChannel` |
+| `receiveClaudeChannelMessage` | runSendMessageTransaction (`request.type ?? "question"`, typed `question\|instruction`) + dispatch to codex | `claude_channel_message_received` + sendMessage events + dispatch events | sendMessage typed errors | `receiveClaudeChannelMessage` → `runSendMessageTransaction` |
+| `receiveClaudeChannelReply` | typed `inReplyToDeliveryId` reply authorization + source-only dispatch | `claude_channel_reply_received` + downstream | `unknown_delivery`, `correlation_mismatch`, `reply_not_expected`, `duplicate_reply`, plus send errors | `receiveClaudeChannelReply` → `runReplyTransaction` |
+| `registerCodexChannel` | consumes pending token; inserts `codexChannelRuntimes` | `codex_channel_registered` | `codex_channel_registration_failed` (`unknown_token`) | `registerCodexChannel` |
+| `disconnectCodexChannel` | removes runtime + pending token | `codex_channel_disconnected` (if had runtime) | none | `disconnectCodexChannel` |
+| `receiveCodexMessage` | authz + sendMessage(`request.type ?? "question"`, typed `question\|instruction`) + dispatch to claude | `codex_ingress_message_received` + downstream | `codex_ingress_unauthorized` + sendMessage errors | `receiveCodexMessage` → `authorizeCodexIngress` → `runSendMessageTransaction` |
+| `receiveCodexReply` | authz + typed `inReplyToDeliveryId` reply authorization + source-only dispatch | `codex_ingress_reply_received` + downstream | `codex_ingress_unauthorized`; `unknown_delivery`, `correlation_mismatch`, `reply_not_expected`, `duplicate_reply`; send errors | `receiveCodexReply` → `authorizeCodexIngress` → `runReplyTransaction` |
+| `retransmitUnconfirmedDelivery` | no queued write; direct operator attempt for one unconfirmed Codex delivery | `delivery_manual_retransmit`; immediate/late delivered or rejected event is terminal, while timeout/drop records non-terminal `_unconfirmed` | `delivery_not_found`, `delivery_not_unconfirmed`, `duplicate_risk_confirmation_required`, `manual_retransmit_unconfirmed`, `manual_retransmit_rejected`, `manual_retransmit_failed` | `retransmitUnconfirmedDelivery` |
+| `status` | none | none | none | `status` |
+| `stop` | `markAllConnectedDisconnected` unless `daemonOnly`; clears channel maps | — | none | `stop` |

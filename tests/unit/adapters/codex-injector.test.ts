@@ -45,6 +45,67 @@ describe("Codex turn/start injector", () => {
     });
   });
 
+  it("forwards a same-request late success to its delivery observer after timeout", async () => {
+    const runtime = fakeRuntime({
+      activeThreadId: "thread-1",
+      rejectWith: Object.assign(new Error("ack timed out"), {
+        code: "codex_turn_start_timeout",
+      }),
+    });
+    const lateResults: unknown[] = [];
+
+    await expect(
+      injectTurnStart(runtime, {
+        threadId: "thread-1",
+        input: "hello",
+        onLateResponse: (result) => lateResults.push(result),
+      }),
+    ).resolves.toMatchObject({ kind: "failed", reason: "codex_turn_start_timeout" });
+
+    const request = runtime.requests[0] as {
+      options: { onLateResponse(response: unknown): void };
+    };
+    request.options.onLateResponse({ id: 7, result: { accepted: true } });
+
+    expect(lateResults).toEqual([{ kind: "success" }]);
+  });
+
+  it("forwards a same-request late JSON-RPC rejection with its code to the delivery observer", async () => {
+    const runtime = fakeRuntime({
+      activeThreadId: "thread-1",
+      rejectWith: Object.assign(new Error("ack timed out"), {
+        code: "codex_turn_start_timeout",
+      }),
+    });
+    const lateResults: unknown[] = [];
+
+    await expect(
+      injectTurnStart(runtime, {
+        threadId: "thread-1",
+        input: "hello",
+        onLateResponse: (result) => lateResults.push(result),
+      }),
+    ).resolves.toMatchObject({ kind: "failed", reason: "codex_turn_start_timeout" });
+
+    const request = runtime.requests[0] as {
+      options: { onLateResponse(response: unknown): void };
+    };
+    request.options.onLateResponse({
+      id: 7,
+      error: { code: -32043, message: "application rejected turn" },
+    });
+
+    expect(lateResults).toEqual([
+      {
+        kind: "failed",
+        reason: "codex_jsonrpc_error",
+        message: "application rejected turn",
+        jsonRpcCode: -32043,
+        requestId: 7,
+      },
+    ]);
+  });
+
   it("returns a typed ws_dropped failure when the app-server socket drops", async () => {
     const runtime = fakeRuntime({
       activeThreadId: "thread-1",
@@ -136,6 +197,35 @@ describe("Codex turn/start injector", () => {
         options: {
           timeoutMs: undefined,
           timeoutErrorCode: "codex_turn_start_timeout",
+        },
+      },
+    ]);
+  });
+
+  it("starts a canonical envelope as turn/start user input", async () => {
+    const runtime = fakeRuntime({
+      activeThreadId: "thread-1",
+      resolveWith: {},
+    });
+
+    await expect(
+      injectTurnStart(runtime, {
+        threadId: "thread-1",
+        input: '{"protocol":"aiox.message.v1","deliveryId":"delivery-1"}',
+      }),
+    ).resolves.toEqual({ kind: "success" });
+
+    expect(runtime.requests).toMatchObject([
+      {
+        method: "turn/start",
+        params: {
+          threadId: "thread-1",
+          input: [
+            {
+              type: "text",
+              text: '{"protocol":"aiox.message.v1","deliveryId":"delivery-1"}',
+            },
+          ],
         },
       },
     ]);

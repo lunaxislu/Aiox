@@ -790,6 +790,6 @@ W2는 구현을 지금 시작했다는 상태가 아니라, W3에서 확정한 c
 - owner 문서·decision supersede 관계·plan·freeze 및 생성된 schema/Codex stage 로그를 다시 대조했다. schema/Codex Global의 Claude review 결과를 반영했고 `log check`와 `git diff --check`를 통과했다.
 
 ### downstream handoff와 closeout 판단
-- `logs/2026-07-18-G1-A-schema-typed-tool-fixture.md`는 typed public surface·instruction·example·contract fixture만 동기화한다. daemon canonical envelope/fan-out/reply-right/store migration, public-ID issuance, shared error registry는 G1-B로, accepted-result recovery·ack/retry/reliability는 G1-C로 넘긴다.
-- `logs/2026-07-18-G1-A-Codex-structured-ingress-evidence.md`는 named app-server behavior·TUI/wake-up/active-turn/canonical correlation/failure evidence를 Tier 3/degradation 기준으로 분류한다. G0 preflight 결과를 evidence로 소비하며 Tier 2를 선주장하지 않는다.
+- `logs/G1/2026-07-18-G1-A-schema-typed-tool-fixture.md`는 typed public surface·instruction·example·contract fixture만 동기화한다. daemon canonical envelope/fan-out/reply-right/store migration, public-ID issuance, shared error registry는 G1-B로, accepted-result recovery·ack/retry/reliability는 G1-C로 넘긴다.
+- `logs/G1/2026-07-18-G1-A-Codex-structured-ingress-evidence.md`는 named app-server behavior·TUI/wake-up/active-turn/canonical correlation/failure evidence를 Tier 3/degradation 기준으로 분류한다. G0 preflight 결과를 evidence로 소비하며 Tier 2를 선주장하지 않는다.
 - G0 preflight 구현과 Codex evidence는 아직 완료되지 않았지만 freeze의 결정·owner reflection 범위 밖에서 명시적으로 owner와 stage를 가진다. 이들은 G1-A 전체 closeout blocker이지 contract decision closure의 미결 질문이나 미완료 Work Item은 아니다. freeze에는 Return Target·detached item·next pointer가 없고 W1/W3은 완료, W2는 취소됐으므로 이 로그 수명에는 남은 일이 없다.

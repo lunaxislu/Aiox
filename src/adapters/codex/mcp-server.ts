@@ -1,8 +1,10 @@
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
+import { createPublicMessageId } from "../../core/public-ids.js";
 import type {
   ReceiveCodexMessageResponse,
+  RetransmitUnconfirmedDeliveryResponse,
   RegisterCodexChannelResponse,
 } from "../../daemon/api.js";
 import { createDaemonSocketClient } from "../../daemon/socket-transport.js";
@@ -46,6 +48,10 @@ When the user requests collaboration:
 - MUST include expected output
 - MUST include relevant context and constraints
 - do not use greetings or social filler
+
+## Unconfirmed Delivery Operations
+
+Use aiox_retransmit_unconfirmed_delivery only when an operator has explicitly confirmed the duplicate risk. It sends a new direct attempt for the same delivery and never queues it.
 
 ## Typed Message Fields
 
@@ -143,6 +149,10 @@ export const AIOX_SEND_MESSAGE_DESCRIPTION =
   "Do not use for greetings, thanks, acknowledgments, or social follow-ups. " +
   "Routes through the daemon.";
 
+export const AIOX_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION =
+  "Manually retransmit one unconfirmed delivery only after explicit duplicate-risk confirmation. " +
+  "The target must have a ready Codex runtime and bound thread; this action never queues and a failed/rejected manual attempt preserves unconfirmed state.";
+
 export interface CodexIngressDaemonClient {
   receiveCodexMessage(
     request: ReceiveCodexMessageRequest,
@@ -150,6 +160,9 @@ export interface CodexIngressDaemonClient {
   receiveCodexReply(
     request: ReceiveCodexReplyRequest,
   ): Promise<ReceiveCodexMessageResponse>;
+  retransmitUnconfirmedDelivery(
+    request: { deliveryId: string; confirmDuplicateRisk: boolean },
+  ): Promise<RetransmitUnconfirmedDeliveryResponse>;
   registerCodexChannel(
     request: RegisterCodexChannelRequest,
   ): Promise<RegisterCodexChannelResponse>;
@@ -160,7 +173,6 @@ export interface CodexIngressMcpServerOptions {
   agentName: string;
   agentToken: string;
   daemonSocketPath: string;
-  createMessageId?: () => string;
   createDaemonClient?: (options: {
     socketPath: string;
   }) => CodexIngressDaemonClient;
@@ -168,7 +180,13 @@ export interface CodexIngressMcpServerOptions {
 
 export interface CodexIngressToolResult {
   content: { type: "text"; text: string }[];
-  structuredContent?: { ok: true; message_id: string; dispatch?: DispatchSummary };
+  structuredContent?:
+    | { ok: true; message_id: string; dispatch?: DispatchSummary }
+    | {
+        ok: false;
+        reason: "manual_retransmit_unconfirmed";
+        message_id: string;
+      };
   isError?: boolean;
 }
 
@@ -184,6 +202,11 @@ export interface TypedReplyInput {
   intent: AgentAuthoredIntent;
   replyExpected: boolean;
   content: { text: string };
+}
+
+export interface RetransmitUnconfirmedDeliveryInput {
+  deliveryId: string;
+  confirmDuplicateRisk: true;
 }
 
 const agentIntentSchema = z.enum([
@@ -210,14 +233,18 @@ export const typedReplyInputSchema = z.object({
   content: typedContentSchema,
 }).strict();
 
+export const retransmitUnconfirmedDeliveryInputSchema = z.object({
+  deliveryId: z.string().min(1),
+  confirmDuplicateRisk: z.literal(true),
+}).strict();
+
 export function createSendMessageHandler(
   options: CodexIngressMcpServerOptions,
 ): (input: TypedSendInput) => Promise<CodexIngressToolResult> {
   const createDaemonClient = resolveDaemonClient(options);
-  const createMessageId = resolveMessageIdFactory(options);
   return async ({ type, intent, replyExpected, content }) => {
     logEvent("send_message_tool_called", { agentName: options.agentName });
-    const messageId = createMessageId();
+    const messageId = createPublicMessageId();
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
     try {
       const result = await client.receiveCodexMessage({
@@ -256,13 +283,12 @@ export function createReplyHandler(
   options: CodexIngressMcpServerOptions,
 ): (input: TypedReplyInput) => Promise<CodexIngressToolResult> {
   const createDaemonClient = resolveDaemonClient(options);
-  const createMessageId = resolveMessageIdFactory(options);
   return async ({ inReplyToDeliveryId, intent, replyExpected, content }) => {
     logEvent("reply_tool_called", {
       agentName: options.agentName,
       inReplyToDeliveryId,
     });
-    const messageId = createMessageId();
+    const messageId = createPublicMessageId();
     const client = createDaemonClient({ socketPath: options.daemonSocketPath });
     try {
       const result = await client.receiveCodexReply({
@@ -297,6 +323,47 @@ export function createReplyHandler(
   };
 }
 
+export function createRetransmitUnconfirmedDeliveryHandler(
+  options: CodexIngressMcpServerOptions,
+): (input: RetransmitUnconfirmedDeliveryInput) => Promise<CodexIngressToolResult> {
+  const createDaemonClient = resolveDaemonClient(options);
+  return async ({ deliveryId, confirmDuplicateRisk }) => {
+    const client = createDaemonClient({ socketPath: options.daemonSocketPath });
+    try {
+      const result = await client.retransmitUnconfirmedDelivery({
+        deliveryId,
+        confirmDuplicateRisk,
+      });
+      if (!result.ok) {
+        if (result.reason === "manual_retransmit_unconfirmed") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `manual retransmit sent for ${deliveryId}; target acceptance unknown (unconfirmed)`,
+              },
+            ],
+            structuredContent: {
+              ok: false,
+              reason: "manual_retransmit_unconfirmed",
+              message_id: result.delivery.messageId,
+            },
+          };
+        }
+        return errorResult(result.reason, JSON.stringify(result));
+      }
+      return {
+        content: [{ type: "text", text: `manual retransmit delivered for ${deliveryId}` }],
+        structuredContent: { ok: true, message_id: result.delivery.messageId },
+      };
+    } catch (error) {
+      return errorResult("daemon_call_failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      client.close();
+    }
+  };
+}
+
 function resolveDaemonClient(
   options: CodexIngressMcpServerOptions,
 ): (opts: { socketPath: string }) => CodexIngressDaemonClient {
@@ -307,12 +374,6 @@ function resolveDaemonClient(
         socketPath: opts.socketPath,
       }) as unknown as CodexIngressDaemonClient)
   );
-}
-
-function resolveMessageIdFactory(
-  options: CodexIngressMcpServerOptions,
-): () => string {
-  return options.createMessageId ?? (() => `codex-msg-${crypto.randomUUID()}`);
 }
 
 export function createCodexIngressMcpServer(
@@ -328,6 +389,7 @@ export function createCodexIngressMcpServer(
 
   const sendHandler = createSendMessageHandler(options);
   const replyHandler = createReplyHandler(options);
+  const retransmitHandler = createRetransmitUnconfirmedDeliveryHandler(options);
 
   mcp.registerTool(
     "aiox_send_message",
@@ -355,6 +417,23 @@ export function createCodexIngressMcpServer(
       }),
     },
     replyHandler as never,
+  );
+
+  mcp.registerTool(
+    "aiox_retransmit_unconfirmed_delivery",
+    {
+      description: AIOX_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION,
+      inputSchema: retransmitUnconfirmedDeliveryInputSchema,
+      outputSchema: z.discriminatedUnion("ok", [
+        z.object({ ok: z.literal(true), message_id: z.string() }),
+        z.object({
+          ok: z.literal(false),
+          reason: z.literal("manual_retransmit_unconfirmed"),
+          message_id: z.string(),
+        }),
+      ]),
+    },
+    retransmitHandler as never,
   );
 
   return mcp;

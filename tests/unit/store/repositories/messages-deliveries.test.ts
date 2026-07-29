@@ -32,6 +32,8 @@ describe("SQLite message and delivery repositories", () => {
       id: "message-1",
       sourceAgentId: "agent-source",
       type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
       content: "please review",
       now: "2026-05-16T00:00:00.000Z",
     });
@@ -52,6 +54,7 @@ describe("SQLite message and delivery repositories", () => {
     });
 
     expect(messages.list()).toEqual([message]);
+    expect(message).toMatchObject({ intent: "delegation", replyExpected: true });
     expect(queued).toEqual([
       {
         id: "delivery-agent-target-1",
@@ -188,6 +191,48 @@ describe("SQLite message and delivery repositories", () => {
       delivered: 0,
       completed: 1,
       failed: 1,
+      unconfirmed: 0,
     });
+  });
+
+  it("rejects a message that sets both parentMessageId and outcomeForDeliveryId", () => {
+    expect(() =>
+      messages.create({
+        id: "message-dual-field",
+        sourceAgentId: "agent-source",
+        type: "reply",
+        parentMessageId: "delivery-parent",
+        outcomeForDeliveryId: "delivery-outcome",
+        content: "dual",
+        now: "2026-05-16T00:00:00.000Z",
+      }),
+    ).toThrow();
+    expect(messages.count()).toBe(0);
+  });
+
+  it("persists a reply-only message and an outcome-only message", () => {
+    const reply = messages.create({
+      id: "message-reply-only",
+      sourceAgentId: "agent-source",
+      type: "reply",
+      parentMessageId: "delivery-parent",
+      content: "reply body",
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    const outcome = messages.create({
+      id: "message-outcome-only",
+      sourceAgentId: "agent-daemon",
+      originKind: "daemon",
+      type: "event",
+      intent: "notification",
+      outcomeForDeliveryId: "delivery-outcome",
+      content: JSON.stringify({ type: "delivery_target_rejected" }),
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    expect(reply.parentMessageId).toBe("delivery-parent");
+    expect(reply.outcomeForDeliveryId).toBeNull();
+    expect(outcome.outcomeForDeliveryId).toBe("delivery-outcome");
+    expect(outcome.parentMessageId).toBeNull();
+    expect(messages.count()).toBe(2);
   });
 });

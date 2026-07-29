@@ -45,11 +45,11 @@ Rationale: [[docs/decisions/codex-per-agent-app-server]] (per-agent app-server p
    ([[src/cli/parse.ts]] — `src/cli/parse.ts:257-289`).
 2. `agent-attach` auto-starts daemon, calls `attachAgent` RPC
    ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:157-177`).
-3. Daemon `attachAgent` ([[src/daemon/state.ts]] — `src/daemon/state.ts:600-746`) wraps DB attach + pair attach
+3. Daemon `attachAgent` ([[src/daemon/state.ts]] — `attachAgent`) wraps DB attach + pair attach
    + route creation in a single `withTransaction`. For Codex, it pre-issues
    `codexChannelToken = randomUUID()` and stores it in `codexPendingTokens`
-   (`state.ts:625-630`). Token is used by the MCP child handshake.
-4. Daemon calls `attachCodexRuntime` (`state.ts:631-638`) →
+   (`attachAgent`). Token is used by the MCP child handshake.
+4. Daemon calls `attachCodexRuntime` (`attachAgent`) →
    `attachCodexAgentRuntime` (`runtime.ts:304-366`):
    a. `launchCodexAppServer` spawns `codex app-server --listen ws://127.0.0.1:0`
       plus injected `-c mcp_servers.aiox = {...}` args
@@ -76,7 +76,7 @@ Rationale: [[docs/decisions/codex-per-agent-app-server]] (per-agent app-server p
    provenance logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §3.2). `adapter_session_id` stays null until explicit
    `--resume` or first live loaded-thread delivery.
 6. Daemon returns `codexRuntime: { endpoint: proxy.url, activeThreadId: adapterSessionId }`
-   (`state.ts:645-657`).
+   (`attachAgent`).
 7. CLI spawns TUI with `launchCodexTui({endpoint, resumeSessionId?})`
    ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:178-185`; [[src/adapters/codex/launcher.ts]] — `src/adapters/codex/launcher.ts:76-86`):
    - Fresh: `codex --remote <proxy-url>`
@@ -97,18 +97,18 @@ SIGKILL escalation, `app-server.ts:177-185`).
 Steps 1–4f are identical. Then:
 
 - Daemon calls `runtime.resumeThread(sessionId)`
-  (`state.ts:660`, `runtime.ts:224-240`) → JSON-RPC `thread/resume {threadId}`
+  (`attachAgent`, `runtime.ts:224-240`) → JSON-RPC `thread/resume {threadId}`
   and asserts returned id equals requested id. Mismatch or
   missing throws typed `codex_resume_failed`.
 - `agents.rebindAdapterSessionId({...})` persists the new id
-  (`state.ts:680-690`).
+  (`attachAgent`).
 - `agent_thread_id_rebound` event appended with `operation:"thread/resume", source:"attach_resume"`
-  (`state.ts:694-708`).
+  (`attachAgent`).
 - CLI launches `codex resume <session-id> --remote <proxy-url>`.
 
 Failure handling cleans up `startingCodexRuntime`, deletes pending token,
 marks agent disconnected, returns the typed reason
-(`state.ts:719-744, 2059-2069`).
+(`attachAgent`, `defaultAttachCodexRuntime`).
 
 ### 7.4 Transparent Proxy
 
@@ -147,8 +147,8 @@ string before observation and relay ([[src/adapters/codex/proxy.ts]] —
   Implementation-only refinement.
 
 The runtime subscribes to proxy binding events via `runtime.onProxyBinding`
-(`state.ts:641-643`); the daemon-side handler `handleCodexProxyBinding`
-(`state.ts:1629-1673`) rebinds `agents.adapterSessionId` in
+(`attachAgent`); the daemon-side handler `handleCodexProxyBinding`
+rebinds `agents.adapterSessionId` in
 `withTransaction` and appends `agent_thread_id_rebound` with
 `operation:event.method, source:"proxy_binding"`.
 
@@ -157,9 +157,9 @@ The runtime subscribes to proxy binding events via `runtime.onProxyBinding`
 Three writer sources (in order):
 
 1. **Daemon-originated `thread/resume`** during `--resume` attach
-   (state.ts:680-708).
+   (`attachAgent`).
 2. **Proxy-observed same-connection response** for
-   `thread/start|resume|fork` (state.ts:1655-1670). Covers TUI-originated
+   `thread/start|resume|fork` (`handleCodexProxyBinding`). Covers TUI-originated
    `/clear`, `/new`, `/fork`, and `/resume` when their JSON-RPC responses
    transit the proxy. Empty-thread `/fork` returns a JSON-RPC error so no
    rebind fires.
@@ -178,29 +178,35 @@ planned at Step 10 but not landed at MVP closeout, Implementation-only).
 
 ### 7.6 Injection (`turn/start`)
 
-File [[src/adapters/codex/injector.ts]]. Ack semantic (Round 2 D4.4,
-[[docs/decisions/codex-per-agent-app-server]] §4): success = same-client JSON-RPC response received
-with the runtime's `activeThreadId` still equal to the requested
-`threadId`. Does **not** wait for `turn/started` or `turn/completed`.
+File [[src/adapters/codex/injector.ts]]. A matching `turn/start` JSON-RPC
+success, while the runtime's `activeThreadId` still equals the requested
+`threadId`, is **delivery acceptance** only. It does **not** wait for
+`turn/started` or `turn/completed`, and is neither target receipt nor work
+completion. A timeout retains a same-socket request observer for five minutes;
+a matching late success is returned to the daemon for an idempotent
+`unconfirmed → delivered` resolution. Socket close or observer expiry only
+cleans correlation state.
 
 - Pre-request guard: thread mismatch → `codex_binding_uncertain`
   (`injector.ts:26-32`).
 - Request body: `{threadId, input:[{type:"text", text:<envelope>}]}` —
   Codex 0.132.0 schema requires array form (upstream constraint).
 - Post-ack guard: re-checks mismatch (`injector.ts:52-58`).
-- Error mapping: typed codes pass through; unknown errors → generic
-  `adapter_inject_failed`.
+- Error mapping: typed codes, JSON-RPC code, and request id pass through;
+  unknown errors become `adapter_inject_failed`. Post-write timeout/response
+  loss/WS drop is handled by the daemon as `unconfirmed`, never as automatic
+  retry.
 
 The daemon-side wrapper `injectReplyIntoCodexRuntime`
-(`state.ts:1675-1697`) constructs a fresh `CodexTurnStartRuntime` view
+(`injectReplyIntoCodexRuntime`) constructs a fresh `CodexTurnStartRuntime` view
 with the freshly-resolved live thread id so the mismatch guard remains
 meaningful without mutating the runtime cache pre-success.
 
 ### 7.7 Daemon → Codex Delivery (live loaded-thread + queued fallback)
 
-Entry: `dispatchToPairPeers` (`state.ts:1246`; routing/FSM owner [[docs/architecture/local-runtime-routing-and-delivery]]).
+Entry: `dispatchToPairPeers` (`src/daemon/state.ts` function `dispatchToPairPeers`; routing/FSM owner [[docs/architecture/local-runtime-routing-and-delivery]]).
 
-1. `resolveCodexReplyTarget` (`state.ts:1571-1627`):
+1. `resolveCodexReplyTarget` (`src/daemon/state.ts` function `resolveCodexReplyTarget`):
    - Runtime absent / not ready → `codex_channel_unavailable`.
    - `runtime.listLoadedThreadIds()` → `thread/loaded/list` JSON-RPC.
    - **Selection policy**:
@@ -212,20 +218,21 @@ Entry: `dispatchToPairPeers` (`state.ts:1246`; routing/FSM owner [[docs/architec
 2. **No loaded thread**: emit `codex_delivery_target_unavailable` +
    `codex_delivery_queued_no_loaded_thread`. Delivery **stays queued**
    and returns `deferred` with reason `target_binding_unconfirmed` (no
-   FSM transition; no retry in MVP; Step 14 provenance:
-   `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.3).
+   FSM transition). Conclusive pre-write failures use the bounded 250 ms / 1 s
+   / 4 s retry policy, and queued work flushes when attach, resume/rebind, or
+   proxy binding makes a target usable; neither is durable restart replay or
+   passive target acknowledgement.
 3. **Live target**: emit `codex_delivery_target_selected`, transition
-   `queued → delivering`, call `injectReplyIntoCodexRuntime` with
-   `formatCodexAioxChannelEnvelope(message, sourceAgent?.kind ?? "unknown")`:
-   `<aiox-channel source="<sender-agent-kind>" message_id="...">CONTENT</aiox-channel>`
-   (state.ts:1504).
-4. On success: `runtime.rebindActiveThread(targetThreadId)`. If chosen
-   thread ≠ `agent.adapter_session_id`, persist and emit
-   `agent_thread_id_rebound` with `operation:"thread/loaded/list", source:"loaded_list"`.
-   Transition `delivered → completed`. This is pre-G1 current behavior, not the
-   committed adapter/runtime automatic-ack target in [[docs/specs/aiox-message-lifecycle]] §4.3.
-5. On failure: emit `codex_delivery_target_injection_failed`; delivery
-   `failed`.
+   `queued → delivering`, and call `injectReplyIntoCodexRuntime` with the
+   per-delivery canonical envelope JSON.
+4. On matching JSON-RPC success: rebind the active thread when needed and
+   transition to `delivered`. Timeout, response loss, or WS drop after the
+   request write transitions to `unconfirmed`; a matching late success resolves
+   only that delivery to `delivered`. There is no automatic reinjection.
+5. On a matching explicit JSON-RPC reject: transition the original delivery to
+   `failed`, persist exactly one daemon-originated outcome notification for its
+   source, and dispatch it after the transaction commits. A manual retransmit
+   reject is attempt-local and preserves the original `unconfirmed` delivery.
 
 ### 7.8 Codex MCP Ingress (Codex → daemon)
 
@@ -234,12 +241,18 @@ preserved in `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-ar
 owned here.
 
 **Tools**:
-- `aiox_send_message({content})` → daemon `receiveCodexMessage`.
-- `aiox_reply({parent_message_id, content})` → daemon `receiveCodexReply`.
+- `aiox_send_message({type, intent, replyExpected, content})` → daemon
+  `receiveCodexMessage`.
+- `aiox_reply({inReplyToDeliveryId, intent, replyExpected, content})` → daemon
+  `receiveCodexReply`.
+- `aiox_retransmit_unconfirmed_delivery({deliveryId, confirmDuplicateRisk:true})`
+  is the operator-only direct attempt; it never queues.
 
-These are pre-G1 compatibility tools. At cutover, this adapter projects the typed lifecycle request and maps its
-logical result; the daemon contract is owned by [[docs/specs/aiox-message-lifecycle]] §4.1–§4.4. The adapter does
-not author an acknowledgment identity; its target runtime sends control-plane ack automatically.
+These are current typed tools, not pre-G1 compatibility signatures. They map
+the daemon lifecycle request/result defined by [[docs/specs/aiox-message-lifecycle]]
+§4.1–§4.4. Codex `requestId` is internal JSON-RPC late/duplicate-response
+correlation: it is not emitted in source-facing MCP results or canonical
+envelopes. Tier 3 has no automatic control-plane ack or completed producer.
 
 **Launcher injection** (`launcher.ts:88-120`):
 `-c mcp_servers.aiox = { command=<process.execPath>, args=[<aioxBin>, "mcp-codex"], env={AIOX_CODEX_AGENT_NAME, AIOX_CODEX_AGENT_TOKEN, AIOX_SOCKET_PATH} }`. Injected into the **daemon-owned app-server**, not
@@ -250,7 +263,7 @@ registered.
 
 **Token handshake**:
 1. Daemon pre-issues `codexChannelToken = randomUUID()` and stores it in
-   `codexPendingTokens` (state.ts:625-630).
+   `codexPendingTokens` (`attachAgent`).
 2. Token + agent name + socket path are env-passed through to the MCP
    child.
 3. MCP child does `mcp.connect()` first, then `registerCodexChannel`
@@ -260,7 +273,7 @@ registered.
    in `codexChannelRuntimes` (full SHA-256, not 12-char
    prefix — Step 13 ingress provenance: `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md`
    §2.4), appends `codex_channel_registered`.
-5. Every subsequent tool call calls `authorizeCodexIngress` (state.ts:1711-1759)
+5. Every subsequent tool call calls `authorizeCodexIngress`
    which checks token presence, agent registration, connection status, and
    token hash equality. Reasons: `codex_ingress_unauthorized` with
    `detail ∈ {missing_token, agent_not_registered, agent_disconnected, token_mismatch}`.
@@ -289,9 +302,9 @@ the TUI child. Claude attach is DB-only.
   binding authority; provenance logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §2.2).
 
 **Current gap (P2-3):** Runtime-failure callback flows up to
-`recordCodexRuntimeFailed` (`state.ts:884-924`), appending
+`recordCodexRuntimeFailed` (`createDaemonState`), appending
 `agent_runtime_failed`, but is **not wired** in production.
-`defaultAttachCodexRuntime` (`state.ts:2024-2042`) does not pass
+`defaultAttachCodexRuntime` does not pass
 `onRuntimeFailed`, meaning the app-server dying does not properly
 disconnect the agent in MVP.
 
@@ -318,9 +331,9 @@ sequenceDiagram
     D->>D: event codex_ingress_message_received / codex_ingress_reply_received
     D->>D: dispatchToPairPeers
     loop each Claude target
-      D->>ClChan: POST /send {content, chat_id=msgId, origin=src}
+      D->>ClChan: POST /send {content: canonical-envelope-JSON, chat_id: messageId, origin: sourceAgentName}
       alt 2xx
-        D->>D: delivery delivered → completed
+        D->>D: delivery → delivered (channel acceptance only)
       else
         D->>D: delivery failed (claude_channel_unavailable | claude_channel_push_failed)
       end

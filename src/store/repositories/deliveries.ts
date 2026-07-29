@@ -16,8 +16,15 @@ export interface StoredDelivery {
   updatedAt: string;
 }
 
+export interface StoredDeliveryOutcomeNotification {
+  originalDeliveryId: string;
+  notificationMessageId: string;
+  notificationDeliveryId: string;
+  createdAt: string;
+}
+
 export interface DeliveryRouteInput {
-  id: string;
+  id: string | null;
   targetAgentId: string;
 }
 
@@ -63,6 +70,10 @@ export interface DeliveryRepository {
   findByIdempotencyKey(idempotencyKey: string): StoredDelivery | null;
   recoverAfterRestart(input: RecoverDeliveriesAfterRestartInput): number;
   updateStatus(input: UpdateDeliveryStatusInput): StoredDelivery | null;
+  createOutcomeNotification(input: StoredDeliveryOutcomeNotification): StoredDeliveryOutcomeNotification;
+  findOutcomeNotificationByOriginalDeliveryId(
+    originalDeliveryId: string,
+  ): StoredDeliveryOutcomeNotification | null;
   countByStatus(): Record<MessageDeliveryStatus, number>;
   list(): StoredDelivery[];
 }
@@ -167,6 +178,48 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
       ).run(input);
 
       return findById(db, input.id);
+    },
+
+    createOutcomeNotification(input) {
+      db.prepare(
+        `
+          insert into delivery_outcome_notifications (
+            original_delivery_id,
+            notification_message_id,
+            notification_delivery_id,
+            created_at
+          ) values (
+            @originalDeliveryId,
+            @notificationMessageId,
+            @notificationDeliveryId,
+            @createdAt
+          )
+        `,
+      ).run(input);
+      return input;
+    },
+
+    findOutcomeNotificationByOriginalDeliveryId(originalDeliveryId) {
+      const row = db
+        .prepare(
+          "select * from delivery_outcome_notifications where original_delivery_id = ?",
+        )
+        .get(originalDeliveryId) as
+        | {
+            original_delivery_id: string;
+            notification_message_id: string;
+            notification_delivery_id: string;
+            created_at: string;
+          }
+        | undefined;
+      return row
+        ? {
+            originalDeliveryId: row.original_delivery_id,
+            notificationMessageId: row.notification_message_id,
+            notificationDeliveryId: row.notification_delivery_id,
+            createdAt: row.created_at,
+          }
+        : null;
     },
 
     countByStatus() {

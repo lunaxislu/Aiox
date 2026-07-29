@@ -50,6 +50,6 @@ federation이 다른 issuer namespace·정렬 성질·migration 체계를 요구
 
 ## Sources
 
-- `logs/2026-07-10-G1-A-contractingress-freeze.md` — W3 public-ID issuance 검토와
+- `logs/G1/2026-07-10-G1-A-contractingress-freeze.md` — W3 public-ID issuance 검토와
   사용자 승인 방향.
 - [[docs/product/roadmap]] — G1-B cutover와 Phase 2 durable replay 경계.

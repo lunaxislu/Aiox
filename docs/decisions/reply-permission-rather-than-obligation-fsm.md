@@ -65,7 +65,7 @@ preserving the one-reply authorization result.
 
 ## Sources
 
-- `logs/2026-07-10-G1-A-contractingress-freeze.md` — W3 approval of the
+- `logs/G1/2026-07-10-G1-A-contractingress-freeze.md` — W3 approval of the
   permission boundary, delivery-status independence, duplicate handling, and
   Phase 0 chain scope.
 - [[docs/decisions/a2a-message-lifecycle-envelope-and-correlation]] — the

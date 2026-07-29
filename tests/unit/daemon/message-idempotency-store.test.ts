@@ -55,7 +55,6 @@ describe("daemon message delivery idempotency store persistence", () => {
       "agent-one",
       "agent-two",
       "route-one",
-      "delivery-one",
       "event-1-message",
       "event-2-delivery-one",
       "route-two",
@@ -71,6 +70,7 @@ describe("daemon message delivery idempotency store persistence", () => {
 
         return id;
       },
+      createPublicDeliveryId: () => "opaque delivery id: existing",
       now: () => "2026-05-18T00:00:00.000Z",
     });
     const client = createInProcessClient(createDaemonApi(state));
@@ -108,7 +108,7 @@ describe("daemon message delivery idempotency store persistence", () => {
       ok: false,
       reason: "delivery_idempotency_key_exists",
       existing: {
-        id: "delivery-one",
+        id: "opaque delivery id: existing",
         messageId: "message-1",
         targetAgentId: "agent-one",
         routeId: "route-one",
@@ -129,7 +129,6 @@ describe("daemon message delivery idempotency store persistence", () => {
       "agent-one",
       "agent-two",
       "route-one",
-      "delivery-one",
       "event-1-message",
       "event-2-delivery-one",
       "route-two",
@@ -145,6 +144,7 @@ describe("daemon message delivery idempotency store persistence", () => {
 
         return id;
       },
+      createPublicDeliveryId: () => "opaque delivery id: existing",
       now: () => "2026-05-18T00:00:00.000Z",
     });
     const client = createInProcessClient(createDaemonApi(state));
@@ -186,7 +186,7 @@ describe("daemon message delivery idempotency store persistence", () => {
       ok: false,
       reason: "delivery_idempotency_key_exists",
       existing: {
-        id: "delivery-one",
+        id: "opaque delivery id: existing",
         messageId: "message-1",
         targetAgentId: "agent-one",
         routeId: "route-one",
@@ -200,7 +200,7 @@ describe("daemon message delivery idempotency store persistence", () => {
   });
 
   it("rolls back message rows when delivery idempotency fails inside the transaction", async () => {
-    const ids = ["agent-source", "agent-one", "route-one", "delivery-new"];
+    const ids = ["agent-source", "agent-one", "route-one"];
     const state = createDaemonState({
       db,
       createId: () => {
@@ -212,6 +212,7 @@ describe("daemon message delivery idempotency store persistence", () => {
 
         return id;
       },
+      createPublicDeliveryId: () => "opaque delivery id: new",
       now: () => "2026-05-18T00:00:00.000Z",
     });
     const client = createInProcessClient(createDaemonApi(state));

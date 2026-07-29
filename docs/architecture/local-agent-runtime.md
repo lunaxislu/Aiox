@@ -49,8 +49,9 @@ debugging, onboarding, and verifying behavior. It covers:
 - Claude adapter (channel-server / launcher / injector / ingress RPCs)
 - Codex adapter (per-agent app-server + per-agent transparent proxy + TUI +
   MCP ingress + injector + `--resume`)
-- Cross-cutting message routing (sendMessage idempotency, router, delivery
-  state machine, queued fallback, `parent_message_id`)
+- Cross-cutting message routing (daemon creation idempotency, public
+  delivery/reply correlation, Tier 3 delivery state machine, and queued
+  fallback)
 - CLI surface + invocation layer + doctor/status
 - Consolidated catalogs of typed errors and events
 - Lifecycle invariant

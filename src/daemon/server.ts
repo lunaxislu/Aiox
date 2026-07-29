@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 
+import type { AioxProfile } from "../config/paths.js";
 import { createDaemonApi, type DaemonApi, type StopResponse } from "./api.js";
 import {
   createDaemonState,
@@ -14,10 +15,13 @@ import {
 export interface CreateDaemonServerOptions {
   db: Database;
   createId: () => string;
+  createPublicMessageId?: () => string;
+  createPublicDeliveryId?: () => string;
   now: () => string;
   supervisor?: Supervisor;
   attachCodexRuntime?: AttachCodexRuntime;
   daemonSocketPath?: string;
+  profile?: AioxProfile;
 }
 
 export interface DaemonServer {
@@ -46,11 +50,14 @@ export function createDaemonServer(
       const state = createDaemonState({
         db: options.db,
         createId: options.createId,
+        createPublicMessageId: options.createPublicMessageId,
+        createPublicDeliveryId: options.createPublicDeliveryId,
         now: options.now,
         attachCodexRuntime: options.attachCodexRuntime,
         ...(options.daemonSocketPath === undefined
           ? {}
           : { daemonSocketPath: options.daemonSocketPath }),
+        ...(options.profile === undefined ? {} : { profile: options.profile }),
       });
       const api = createDaemonApi(state);
       let stoppedResponse: StopResponse | null = null;

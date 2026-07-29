@@ -79,3 +79,61 @@ Release candidate 는 5월 21일에 잠겼고 최종 스펙은 7월 28일에 나
 ```
 
 ![alt text](image.png)
+
+---
+
+## 검토 기록 — 우리 프로젝트(ai-orchestration) 영향 (2026-07-19, @claude)
+
+위 LinkedIn 글(2차 출처)이 우리 프로젝트에 영향을 미치는지, 코드베이스 대조와 공식
+스펙 대조 두 단계로 검토한 결과를 남긴다. **확인한 사실 / 추론 / 제안**을 구분한다.
+
+### 1. 글 신뢰도 — 공식 1차 소스로 검증 (확인한 사실)
+
+- 글의 8개 항목 + 부수 주장을 공식 소스로 대조: **확인 11 / 부분일치 1 / 틀림 0.** 날조·중대
+  오류 없음. 글은 2026-07-28 RC changelog를 기술적으로 정확하게 요약했다.
+- 시점: 글의 "7월 28일"은 **2026-07-28**(오늘 2026-07-19 기준 미래). RC lock은 2026-05-21.
+  글의 미래형 서술은 시점상 정확하다.
+- 유일한 부정확(경미): ⑥ "Tasks가 2025-11-25에 lifecycle 재설계"는 부정확 — 2025-11-25는
+  Tasks **도입** 시점이고, extension 재설계는 이번 RC(SEP-2663). 방향은 맞다.
+- 중요 스코프 조건(글이 가린 부분): 대형 변경(②세션·③handle·④MRTR/SSE·⑤헤더/캐싱·⑧OAuth)은
+  공식 changelog가 전부 **"Streamable HTTP transport 한정"**으로 명시한다. 프로토콜 전체가
+  stateless로 바뀌는 게 아니라 remote/HTTP transport 운영 표면의 변경이다.
+
+### 2. 우리 프로젝트 영향 — 사실상 없음 (확인한 사실)
+
+- 우리 MCP 표면은 **로컬 stdio 서버 전용**이다. MCP 서버 2개(`src/adapters/codex/mcp-server.ts`,
+  `src/adapters/claude/channel-server.ts`)가 모두 `StdioServerTransport`만 쓰고,
+  `StreamableHTTP`/`SSEServerTransport`는 src에 0건이다. capabilities는 tools만 선언
+  (sampling/roots/logging 미사용). MCP 로깅은 이미 stderr로 나간다.
+- 따라서 transport 층 변경(②③④⑤⑧)은 우리를 비껴가고, core 변경도 무해하다:
+  ①핸드셰이크는 SDK `McpServer`가 처리(우리 코드에 리터럴 의존 없음) → SDK 업그레이드로 흡수,
+  ⑦Roots/Sampling/Logging deprecated는 셋 다 미사용(logging은 이미 공식 권장 stderr와 일치),
+  에러코드 -32002→-32602는 우리 src가 리터럴 매칭하지 않음, ⑥MCP Apps/Tasks 미사용.
+- 참고(혼동 방지): `websocket.ts`의 `initialize()`/session id는 **Codex app-server 자체
+  JSON-RPC**이지 MCP가 아니며, `Mcp-Session-Id`와 무관하다.
+
+### 3. 잔여 리스크와 조건부 트리거 (추론)
+
+- 실질(작은) 리스크는 프로토콜 wire 변경이 아니라, 우리가 의존하는
+  `@modelcontextprotocol/*` **2.0.0-alpha.2 SDK를 RC/GA로 올릴 때의 breaking change**다.
+  이는 SDK 마이그레이션 이슈이고, Codex adapter가 이미 Tier 3 + app-server WS upstream
+  미지원이라 **G0/G1 cutover 전 재검증 posture**에 포함돼 있어 별도 긴급 트랙은 불필요하다.
+- 조건부 재소환 트리거: 만약 향후 `docs/specs/aiox-federation-remote.md` §8의 exploratory
+  L2(aiox MCP surface를 HTTP로 원격 노출)를 실제 착수하면, 그때 비로소 ②(세션)·⑤(헤더/캐싱)·
+  ⑧(OAuth/OIDC)이 관련된다. 현재는 코드 없는 Deferred 상태다.
+
+### 4. 제안 (의견)
+
+- **현재 조치 불필요.** 코드 변경·호환 코드·마이그레이션 모두 불필요하며, pre-v1·외부
+  consumer 없음·삭제 기본 원칙과 정합한다. legacy/compat 선제 추가는 하지 않는다.
+- owner 문서(spec/architecture/decision)는 바꾸지 않는다 — 이 검토는 no-impact 결론이라
+  권위 내용을 바꾸지 않는다. 이 기록은 재조사 방지와 조건부 트리거 보존 목적이다.
+
+### Sources
+
+- 공식 blog: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+- 공식 changelog(draft): https://modelcontextprotocol.io/specification/draft/changelog
+- 근거 SEP: `modelcontextprotocol/modelcontextprotocol` PR #2575·#2567·#2322·#2243·#2549·#414·#2663·#2577·#2596·#2468·#837
+- 코드 근거: `src/adapters/codex/mcp-server.ts`, `src/adapters/claude/channel-server.ts`,
+  `package.json`(SDK 2.0.0-alpha.2), `docs/architecture/local-runtime-codex-adapter.md` §7.8,
+  `docs/specs/aiox-adapter-model.md`(Tier 3), `docs/specs/aiox-federation-remote.md` §8

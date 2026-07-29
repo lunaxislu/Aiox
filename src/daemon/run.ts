@@ -12,6 +12,7 @@ import { createDaemonServer } from "./server.js";
 import { createDaemonSocketServer } from "./socket-transport.js";
 import { productionAttachCodexRuntime } from "./state.js";
 import { applySchema } from "../store/schema.js";
+import { resolveProfile } from "../config/paths.js";
 
 let runningId = 1;
 
@@ -31,6 +32,7 @@ export async function runDaemonProcess(socketPath: string): Promise<void> {
     now: () => new Date().toISOString(),
     attachCodexRuntime: productionAttachCodexRuntime,
     daemonSocketPath: socketPath,
+    profile: resolveProfile(),
   });
 
   const handle = server.start();

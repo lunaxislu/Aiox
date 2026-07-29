@@ -6,8 +6,14 @@ vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
 }));
 
+vi.mock("../../../src/core/public-ids.js", () => ({
+  createPublicMessageId: vi.fn(() => "message-test"),
+  createPublicDeliveryId: vi.fn(() => "delivery-test"),
+}));
+
 import { createDaemonApi } from "../../../src/daemon/api.js";
 import type { DispatchSummary } from "../../../src/daemon/state.js";
+import { createPublicMessageId } from "../../../src/core/public-ids.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
 import { createEventRepository } from "../../../src/store/repositories/events.js";
 import { applySchema } from "../../../src/store/schema.js";
@@ -313,8 +319,9 @@ describe("daemon receiveClaudeChannelReply", () => {
 
     const response = await client.receiveClaudeChannelReply({
       agentName: "alpha",
-      chatId: "t1",
-      text: "done",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: "delivery-1",
+      content: { text: "done" },
     });
 
     expect(response).toMatchObject({
@@ -324,7 +331,7 @@ describe("daemon receiveClaudeChannelReply", () => {
     });
   });
 
-  it("records claude_channel_reply_received event with chatId and text", async () => {
+  it("records claude_channel_reply_received event with delivery correlation and text", async () => {
     const ids = ["agent-1", "event-1"];
     const state = createDaemonState({
       db,
@@ -335,15 +342,16 @@ describe("daemon receiveClaudeChannelReply", () => {
 
     await client.receiveClaudeChannelReply({
       agentName: "alpha",
-      chatId: "t1",
-      text: "reply text",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: "delivery-1",
+      content: { text: "reply text" },
     });
 
     const events = createEventRepository(db).list();
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       type: "claude_channel_reply_received",
-      data: { chatId: "t1", text: "reply text" },
+      data: { inReplyToDeliveryId: "delivery-1", text: "reply text" },
       agentId: null,
     });
   });
@@ -375,15 +383,16 @@ describe("daemon receiveClaudeChannelReply", () => {
 
     await client.receiveClaudeChannelReply({
       agentName: "alpha",
-      chatId: "t2",
-      text: "orchestration complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: "delivery-2",
+      content: { text: "orchestration complete" },
     });
 
     const events = createEventRepository(db).list();
     const replyEvent = events.find((e) => e.type === "claude_channel_reply_received");
     expect(replyEvent).toMatchObject({
       type: "claude_channel_reply_received",
-      data: { chatId: "t2", text: "orchestration complete" },
+      data: { inReplyToDeliveryId: "delivery-2", text: "orchestration complete" },
       agentId: "agent-1",
     });
   });
@@ -449,17 +458,30 @@ describe("Claude channel MCP handlers", () => {
     expect(CLAUDE_SEND_DESCRIPTION).toContain("content.text");
   });
 
+  it("issues one source message ID per Claude send invocation and forwards each exact value", async () => {
+    const issue = vi.mocked(createPublicMessageId);
+    issue.mockReset();
+    issue.mockReturnValueOnce("opaque Claude send one").mockReturnValueOnce("opaque Claude send two");
+    const calls: unknown[] = [];
+    const handler = createSendHandler({ agentName: "reviewer", daemonSocketPath: "/tmp/aiox.sock", createDaemonClient: () => fakeClaudeDaemonClient({ receiveClaudeChannelMessage: async (request) => { calls.push(request); return successSendMessageResponse(request.messageId); } }) });
+    await handler({ type: "question", intent: "delegation", replyExpected: true, content: { text: "one" } });
+    await handler({ type: "question", intent: "delegation", replyExpected: true, content: { text: "two" } });
+    expect(issue).toHaveBeenCalledTimes(2);
+    expect(calls).toHaveLength(2);
+    expect(calls).toMatchObject([{ messageId: "opaque Claude send one" }, { messageId: "opaque Claude send two" }]);
+    issue.mockReturnValue("message-test");
+  });
+
   it("send routes a typed request through receiveClaudeChannelMessage", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createSendHandler({
       agentName: "reviewer",
       daemonSocketPath: "/tmp/aiox.sock",
-      createMessageId: () => "claude-msg-fixed",
       createDaemonClient: () =>
         fakeClaudeDaemonClient({
           receiveClaudeChannelMessage: async (args) => {
             calls.push({ method: "receiveClaudeChannelMessage", args });
-            return successSendMessageResponse("claude-msg-fixed");
+            return successSendMessageResponse("message-test");
           },
         }),
     });
@@ -473,14 +495,14 @@ describe("Claude channel MCP handlers", () => {
 
     expect(result.structuredContent).toMatchObject({
       ok: true,
-      message_id: "claude-msg-fixed",
+      message_id: "message-test",
     });
     expect(calls).toEqual([
       {
         method: "receiveClaudeChannelMessage",
         args: {
           agentName: "reviewer",
-          messageId: "claude-msg-fixed",
+          messageId: "message-test",
           type: "question",
           intent: "delegation",
           replyExpected: true,
@@ -495,11 +517,10 @@ describe("Claude channel MCP handlers", () => {
     const handler = createSendHandler({
       agentName: "reviewer",
       daemonSocketPath: "/tmp/aiox.sock",
-      createMessageId: () => "claude-msg-fixed",
       createDaemonClient: () =>
         fakeClaudeDaemonClient({
           receiveClaudeChannelMessage: async () =>
-            successSendMessageResponse("claude-msg-fixed", dispatch),
+            successSendMessageResponse("message-test", dispatch),
         }),
     });
 
@@ -512,7 +533,7 @@ describe("Claude channel MCP handlers", () => {
 
     expect(result.structuredContent).toEqual({
       ok: true,
-      message_id: "claude-msg-fixed",
+      message_id: "message-test",
       dispatch,
     });
   });
@@ -522,11 +543,10 @@ describe("Claude channel MCP handlers", () => {
     const handler = createSendHandler({
       agentName: "reviewer",
       daemonSocketPath: "/tmp/aiox.sock",
-      createMessageId: () => "claude-msg-fixed",
       createDaemonClient: () =>
         fakeClaudeDaemonClient({
           receiveClaudeChannelMessage: async () =>
-            successSendMessageResponse("claude-msg-fixed", dispatch),
+            successSendMessageResponse("message-test", dispatch),
         }),
     });
 
@@ -539,9 +559,23 @@ describe("Claude channel MCP handlers", () => {
 
     expect(result.structuredContent).toEqual({
       ok: true,
-      message_id: "claude-msg-fixed",
+      message_id: "message-test",
       dispatch,
     });
+  });
+
+  it("issues one source message ID per Claude reply invocation and forwards each exact value", async () => {
+    const issue = vi.mocked(createPublicMessageId);
+    issue.mockReset();
+    issue.mockReturnValueOnce("opaque Claude reply one").mockReturnValueOnce("opaque Claude reply two");
+    const calls: unknown[] = [];
+    const handler = createReplyHandler({ agentName: "reviewer", daemonSocketPath: "/tmp/aiox.sock", createDaemonClient: () => fakeClaudeDaemonClient({ receiveClaudeChannelReply: async (request) => { calls.push(request); return successSendMessageResponse(request.messageId); } }) });
+    await handler({ inReplyToDeliveryId: "delivery-one", intent: "result", replyExpected: false, content: { text: "one" } });
+    await handler({ inReplyToDeliveryId: "delivery-two", intent: "result", replyExpected: false, content: { text: "two" } });
+    expect(issue).toHaveBeenCalledTimes(2);
+    expect(calls).toHaveLength(2);
+    expect(calls).toMatchObject([{ messageId: "opaque Claude reply one" }, { messageId: "opaque Claude reply two" }]);
+    issue.mockReturnValue("message-test");
   });
 
   it("reply routes a typed request through receiveClaudeChannelReply", async () => {
@@ -553,7 +587,7 @@ describe("Claude channel MCP handlers", () => {
         fakeClaudeDaemonClient({
           receiveClaudeChannelReply: async (args) => {
             calls.push({ method: "receiveClaudeChannelReply", args });
-            return successSendMessageResponse("reply-fixed");
+            return successSendMessageResponse("message-test");
           },
         }),
     });
@@ -570,8 +604,9 @@ describe("Claude channel MCP handlers", () => {
       {
         method: "receiveClaudeChannelReply",
         args: {
-          agentName: "reviewer",
-          inReplyToDeliveryId: "delivery-1",
+        agentName: "reviewer",
+        messageId: "message-test",
+        inReplyToDeliveryId: "delivery-1",
           intent: "result",
           replyExpected: false,
           content: { text: "ack" },
@@ -588,9 +623,9 @@ describe("Claude channel MCP handlers", () => {
         fakeClaudeDaemonClient({
           receiveClaudeChannelReply: async () => ({
             ok: true,
-            messageId: "reply-fixed",
+            messageId: "message-test",
             message: {
-              id: "reply-fixed",
+              id: "message-test",
               sourceAgentId: "agent-source",
               parentMessageId: "parent-1",
               type: "reply",

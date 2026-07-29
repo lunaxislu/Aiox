@@ -1,6 +1,7 @@
 import type { AdapterInjectResult } from "../contract.js";
 import {
   CodexAppServerWebSocketError,
+  type CodexJsonRpcLateResponse,
   type CodexJsonRpcRequestOptions,
 } from "./websocket.js";
 
@@ -17,6 +18,7 @@ export interface InjectTurnStartOptions {
   threadId: string;
   input: string;
   timeoutMs?: number;
+  onLateResponse?: (result: AdapterInjectResult) => void;
 }
 
 export async function injectTurnStart(
@@ -46,6 +48,9 @@ export async function injectTurnStart(
       {
         timeoutMs: options.timeoutMs,
         timeoutErrorCode: "codex_turn_start_timeout",
+        onLateResponse: options.onLateResponse
+          ? (response) => options.onLateResponse?.(toLateInjectResult(runtime, options, response))
+          : undefined,
       },
     );
 
@@ -53,7 +58,7 @@ export async function injectTurnStart(
       return {
         kind: "failed",
         reason: "codex_binding_uncertain",
-        message: `Codex turn/start ack thread mismatch: requested=${options.threadId} active=${runtime.activeThreadId ?? "null"}`,
+        message: `Codex turn/start acknowledgement thread mismatch: requested=${options.threadId} active=${runtime.activeThreadId ?? "null"}`,
       };
     }
 
@@ -61,6 +66,32 @@ export async function injectTurnStart(
   } catch (error) {
     return toInjectFailure(error);
   }
+}
+
+function toLateInjectResult(
+  runtime: CodexTurnStartRuntime,
+  options: InjectTurnStartOptions,
+  response: CodexJsonRpcLateResponse,
+): AdapterInjectResult {
+  if ("error" in response) {
+    return toInjectFailure(
+      new CodexAppServerWebSocketError(
+        "codex_jsonrpc_error",
+        response.error.message,
+        { jsonRpcCode: response.error.code, requestId: response.id },
+      ),
+    );
+  }
+
+  if (options.threadId !== runtime.activeThreadId) {
+    return {
+      kind: "failed",
+      reason: "codex_binding_uncertain",
+      message: `Codex late turn/start acknowledgement thread mismatch: requested=${options.threadId} active=${runtime.activeThreadId ?? "null"}`,
+    };
+  }
+
+  return { kind: "success" };
 }
 
 function toInjectFailure(error: unknown): AdapterInjectResult {
@@ -73,6 +104,8 @@ function toInjectFailure(error: unknown): AdapterInjectResult {
       message,
       jsonRpcCode:
         error instanceof CodexAppServerWebSocketError ? error.jsonRpcCode : undefined,
+      requestId:
+        error instanceof CodexAppServerWebSocketError ? error.requestId : undefined,
     };
   }
 

@@ -50,6 +50,24 @@ export function buildLoadedThreadsRequest(id: JsonRpcId): JsonRpcRequest {
   };
 }
 
+export function buildThreadStartRequest(id: JsonRpcId): JsonRpcRequest {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "thread/start",
+    params: {},
+  };
+}
+
+export function buildThreadReadRequest(id: JsonRpcId, threadId: string): JsonRpcRequest {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "thread/read",
+    params: { threadId, includeTurns: true },
+  };
+}
+
 export function buildTurnStartRequest(
   id: JsonRpcId,
   threadId: string,
@@ -63,6 +81,43 @@ export function buildTurnStartRequest(
       threadId,
       input: [{ type: "text", text }],
     },
+  };
+}
+
+export function buildInjectItemsRequest(
+  id: JsonRpcId,
+  threadId: string,
+  text: string,
+): JsonRpcRequest {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "thread/inject_items",
+    params: {
+      threadId,
+      items: [
+        {
+          type: "message",
+          role: "developer",
+          content: [{ type: "input_text", text }],
+        },
+      ],
+    },
+  };
+}
+
+export function buildMcpServerToolCallRequest(
+  id: JsonRpcId,
+  threadId: string,
+  server: string,
+  tool: string,
+  arguments_: Record<string, unknown>,
+): JsonRpcRequest {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "mcpServer/tool/call",
+    params: { threadId, server, tool, arguments: arguments_ },
   };
 }
 
@@ -88,6 +143,12 @@ export function extractTurnId(result: unknown): string | null {
   }
 
   return null;
+}
+
+export function extractThreadId(result: unknown): string | null {
+  return isRecord(result) && isRecord(result.thread) && typeof result.thread.id === "string"
+    ? result.thread.id
+    : null;
 }
 
 class CodexAppServerProbeClient {
@@ -133,9 +194,32 @@ class CodexAppServerProbeClient {
     return extractLoadedThreadIds(result).map((threadId, index) => ({ index, threadId }));
   }
 
+  async startThread(): Promise<string | null> {
+    return extractThreadId(await this.request(buildThreadStartRequest(this.nextId++)));
+  }
+
+  async readThread(threadId: string): Promise<unknown> {
+    return this.request(buildThreadReadRequest(this.nextId++, threadId));
+  }
+
   async startTurn(threadId: string, text: string): Promise<{ turnId: string | null }> {
     const result = await this.request(buildTurnStartRequest(this.nextId++, threadId, text));
     return { turnId: extractTurnId(result) };
+  }
+
+  async injectItems(threadId: string, text: string): Promise<unknown> {
+    return this.request(buildInjectItemsRequest(this.nextId++, threadId, text));
+  }
+
+  async callMcpTool(
+    threadId: string,
+    server: string,
+    tool: string,
+    arguments_: Record<string, unknown>,
+  ): Promise<unknown> {
+    return this.request(
+      buildMcpServerToolCallRequest(this.nextId++, threadId, server, tool, arguments_),
+    );
   }
 
   close(): void {
@@ -219,6 +303,60 @@ async function main(): Promise<void> {
 
     const result = await client.startTurn(threadId, text!);
     console.log(JSON.stringify({ url, threadId, ...result }, null, 2));
+    client.close();
+    return;
+  }
+
+  if (command === "create") {
+    const threadId = await client.startThread();
+    console.log(JSON.stringify({ url, threadId }, null, 2));
+    client.close();
+    return;
+  }
+
+  if (command === "inject") {
+    const threadId = parseArg("thread-id");
+    const text = parseArg("text", '{"protocol":"aiox.message.v1"}');
+
+    if (!threadId) {
+      throw new Error("inject requires --thread-id=<thread id>");
+    }
+
+    const result = await client.injectItems(threadId, text!);
+    console.log(JSON.stringify({ url, threadId, result }, null, 2));
+    client.close();
+    return;
+  }
+
+  if (command === "read") {
+    const threadId = parseArg("thread-id");
+    if (!threadId) {
+      throw new Error("read requires --thread-id=<thread id>");
+    }
+
+    const result = await client.readThread(threadId);
+    console.log(JSON.stringify({ url, threadId, result }, null, 2));
+    client.close();
+    return;
+  }
+
+  if (command === "mcp-call") {
+    const threadId = parseArg("thread-id");
+    const server = parseArg("server");
+    const tool = parseArg("tool");
+    const rawArguments = parseArg("arguments", "{}");
+
+    if (!threadId || !server || !tool) {
+      throw new Error("mcp-call requires --thread-id=<id> --server=<name> --tool=<name>");
+    }
+
+    const arguments_ = JSON.parse(rawArguments!) as unknown;
+    if (!isRecord(arguments_)) {
+      throw new Error("mcp-call --arguments must be a JSON object");
+    }
+
+    const result = await client.callMcpTool(threadId, server, tool, arguments_);
+    console.log(JSON.stringify({ url, threadId, server, tool, result }, null, 2));
     client.close();
     return;
   }

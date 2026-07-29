@@ -85,10 +85,10 @@ Evidence:
     - `src/bin/aiox.ts:52-56`
     - `src/bin/aiox.ts:78-90`
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:519-526`
+    - `createDaemonState`
 - Codex process topology
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:631-647`
+    - `attachAgent`
   - [[src/adapters/codex/launcher.ts]]
     - `src/adapters/codex/launcher.ts:40-49`
     - `src/adapters/codex/launcher.ts:76-85`

@@ -1,9 +1,24 @@
 import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 
+import {
+  createPublicDeliveryId as defaultCreatePublicDeliveryId,
+  createPublicMessageId as defaultCreatePublicMessageId,
+} from "../core/public-ids.js";
+
 import type { AgentKind } from "../core/agents.js";
-import type { MessageDeliveryStatus } from "../core/deliveries.js";
-import type { MessageType } from "../core/messages.js";
+import type { AioxProfile } from "../config/paths.js";
+import {
+  canAcceptFanoutIntoTargetQueues,
+  deliveryQueueTtlMs,
+  retryDelayMs,
+  type MessageDeliveryStatus,
+} from "../core/deliveries.js";
+import type {
+  AgentAuthoredIntent,
+  MessageType,
+} from "../core/messages.js";
+export type { AgentAuthoredIntent } from "../core/messages.js";
 import type { PairSlot } from "../core/pairs.js";
 import {
   createAgentRepository,
@@ -19,6 +34,7 @@ import {
   createMessageRepository,
   type StoredMessage,
 } from "../store/repositories/messages.js";
+import { createReplyRightRepository } from "../store/repositories/reply-rights.js";
 import { createPairRepository } from "../store/repositories/pairs.js";
 import type { StoredPair } from "../store/repositories/pairs.js";
 import {
@@ -35,14 +51,7 @@ import { attachCodexAgentRuntime } from "../adapters/codex/runtime.js";
 
 const attachRollbackSentinel = Symbol("aiox.attach.rollback");
 const sendMessageRollbackSentinel = Symbol("aiox.sendMessage.rollback");
-
-function typedText(
-  content: string | { text: string } | undefined,
-  legacyText?: string,
-): string {
-  if (typeof content === "string") return content;
-  return content?.text ?? legacyText ?? "";
-}
+const daemonMessageSourceAgentId = "daemon";
 
 export interface ClaudeChannelRuntime {
   agentName: string;
@@ -85,23 +94,18 @@ export interface ReceiveClaudeChannelMessageRequest {
   type?: "question" | "instruction";
   intent?: AgentAuthoredIntent;
   replyExpected?: boolean;
-  content?: string | { text: string };
-  text?: string;
+  content: { text: string };
 }
 
 export type ReceiveClaudeChannelMessageResult = SendMessageResult;
 
 export interface ReceiveClaudeChannelReplyRequest {
   agentName: string;
+  messageId: string;
   inReplyToDeliveryId?: string;
-  // Pre-v1 callers still pass a logical message id. G1-A projects the typed
-  // delivery correlation into this field until G1-B installs canonical delivery
-  // authorization and routing.
-  chatId?: string;
   intent?: AgentAuthoredIntent;
   replyExpected?: boolean;
-  content?: string | { text: string };
-  text?: string;
+  content: { text: string };
 }
 
 export type ReceiveClaudeChannelReplyResult = SendMessageResult;
@@ -144,15 +148,8 @@ export interface ReceiveCodexMessageRequest {
   type?: "question" | "instruction";
   intent?: AgentAuthoredIntent;
   replyExpected?: boolean;
-  content: string | { text: string };
+  content: { text: string };
 }
-
-export type AgentAuthoredIntent =
-  | "delegation"
-  | "discussion"
-  | "clarification"
-  | "result"
-  | "conclusion";
 
 export type ReceiveCodexMessageResult =
   | {
@@ -168,17 +165,22 @@ export type ReceiveCodexMessageResult =
       ok: false;
       reason: "delivery_idempotency_key_exists";
       existing: StoredDelivery;
-    };
+    }
+  | {
+      ok: false;
+      reason: "delivery_queue_full";
+      targetAgentIds: string[];
+    }
+  | { ok: false; reason: "unknown_delivery" | "correlation_mismatch" | "reply_not_expected" | "duplicate_reply" };
 
 export interface ReceiveCodexReplyRequest {
   agentName: string;
   token: string;
   messageId: string;
   inReplyToDeliveryId?: string;
-  parentMessageId?: string;
   intent?: AgentAuthoredIntent;
   replyExpected?: boolean;
-  content: string | { text: string };
+  content: { text: string };
 }
 
 export type ReceiveCodexReplyResult = ReceiveCodexMessageResult;
@@ -186,6 +188,8 @@ export type ReceiveCodexReplyResult = ReceiveCodexMessageResult;
 export interface CreateDaemonStateOptions {
   db: Database;
   createId: () => string;
+  createPublicMessageId?: () => string;
+  createPublicDeliveryId?: () => string;
   now: () => string;
   codexRuntimes?: AgentRuntimeRegistry;
   attachCodexRuntime?: AttachCodexRuntime;
@@ -194,6 +198,9 @@ export interface CreateDaemonStateOptions {
   codexChannelRuntimes?: Map<string, CodexChannelRuntime>;
   codexPendingTokens?: Map<string, CodexPendingToken>;
   daemonSocketPath?: string;
+  profile?: AioxProfile;
+  scheduleTimeout?: (callback: () => void, delayMs: number) => unknown;
+  cancelTimeout?: (handle: unknown) => void;
 }
 
 export const productionAttachCodexRuntime: AttachCodexRuntime = defaultAttachCodexRuntime;
@@ -349,6 +356,8 @@ export interface SendMessageRequest {
   messageId: string;
   parentMessageId?: string | null;
   type: MessageType;
+  intent?: AgentAuthoredIntent;
+  replyExpected?: boolean;
   content: string;
 }
 
@@ -372,7 +381,13 @@ export type SendMessageResult =
       ok: false;
       reason: "delivery_idempotency_key_exists";
       existing: StoredDelivery;
-    };
+    }
+  | {
+      ok: false;
+      reason: "delivery_queue_full";
+      targetAgentIds: string[];
+    }
+  | { ok: false; reason: "unknown_delivery" | "correlation_mismatch" | "reply_not_expected" | "duplicate_reply" };
 
 export type AdapterInjectFailureReason =
   | "adapter_inject_failed"
@@ -413,6 +428,35 @@ export interface UpdateDeliveryStatusRequest {
     message: string;
   };
 }
+
+export interface RetransmitUnconfirmedDeliveryRequest {
+  deliveryId: string;
+  confirmDuplicateRisk: boolean;
+}
+
+export type RetransmitUnconfirmedDeliveryResult =
+  | { ok: true; delivery: StoredDelivery }
+  | { ok: false; reason: "delivery_not_found"; deliveryId: string }
+  | { ok: false; reason: "delivery_not_unconfirmed"; delivery: StoredDelivery }
+  | { ok: false; reason: "duplicate_risk_confirmation_required" }
+  | {
+      ok: false;
+      reason: "manual_retransmit_unconfirmed";
+      delivery: StoredDelivery;
+      message: string;
+    }
+  | {
+      ok: false;
+      reason: "manual_retransmit_rejected";
+      delivery: StoredDelivery;
+      message: string;
+    }
+  | {
+      ok: false;
+      reason: "manual_retransmit_failed";
+      delivery: StoredDelivery;
+      message: string;
+    };
 
 export type UpdateDeliveryStatusResult =
   | {
@@ -515,6 +559,9 @@ export interface DaemonState {
   disconnect(request: DisconnectRequest): DisconnectResult;
   sendMessage(request: SendMessageRequest): SendMessageResult;
   updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResult;
+  retransmitUnconfirmedDelivery(
+    request: RetransmitUnconfirmedDeliveryRequest,
+  ): Promise<RetransmitUnconfirmedDeliveryResult>;
   rollbackAgentAttach(
     request: RollbackAgentAttachRequest,
   ): Promise<RollbackAgentAttachResult>;
@@ -542,10 +589,14 @@ export interface DaemonState {
 export function createDaemonState(
   options: CreateDaemonStateOptions,
 ): DaemonState {
+  const createPublicMessageId = options.createPublicMessageId ?? defaultCreatePublicMessageId;
+  const createPublicDeliveryId = options.createPublicDeliveryId ?? defaultCreatePublicDeliveryId;
+  const profile = options.profile ?? "release";
   const agents = createAgentRepository(options.db);
   const deliveries = createDeliveryRepository(options.db);
   const events = createEventRepository(options.db);
   const messages = createMessageRepository(options.db);
+  const replyRights = createReplyRightRepository(options.db);
   const pairs = createPairRepository(options.db);
   const routes = createRouteRepository(options.db);
   const codexRuntimes = options.codexRuntimes ?? new Map<string, ManagedAgentRuntime>();
@@ -558,6 +609,12 @@ export function createDaemonState(
     options.codexChannelRuntimes ?? new Map<string, CodexChannelRuntime>();
   const codexPendingTokens =
     options.codexPendingTokens ?? new Map<string, CodexPendingToken>();
+  const scheduleTimeout = options.scheduleTimeout ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+  const cancelTimeout = options.cancelTimeout ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+  const queueExpiryTimers = new Map<string, unknown>();
+  const deliveryAttempts = new Map<string, number>();
+  const manualDeliveryAttempts = new Map<string, number>();
+  const targetFlushes = new Map<string, Promise<void>>();
   const startedAt = options.now();
 
   return {
@@ -677,6 +734,7 @@ export function createDaemonState(
         if (!request.resumeSessionId) {
           codexRuntimes.set(request.name, runtime);
           startingCodexRuntime = null;
+          await flushQueuedDeliveriesForTarget(storedAgent);
 
           return {
             ok: true,
@@ -723,6 +781,7 @@ export function createDaemonState(
 
         codexRuntimes.set(request.name, runtime);
         startingCodexRuntime = null;
+        await flushQueuedDeliveriesForTarget(reboundAgent);
         events.append({
           id: options.createId(),
           type: "agent_thread_id_rebound",
@@ -854,11 +913,123 @@ export function createDaemonState(
     },
 
     sendMessage(request) {
-      return runSendMessageTransaction(request);
+      const result = runSendMessageTransaction(request);
+      if (result.ok) scheduleQueuedDeliveryExpiry(result.deliveries);
+      return result;
     },
 
     updateDeliveryStatus(request) {
       return updateDeliveryStatusInTransaction(request);
+    },
+
+    async retransmitUnconfirmedDelivery(request) {
+      if (!request.confirmDuplicateRisk) {
+        return { ok: false, reason: "duplicate_risk_confirmation_required" };
+      }
+
+      const delivery = deliveries.findById(request.deliveryId);
+      if (!delivery) {
+        return { ok: false, reason: "delivery_not_found", deliveryId: request.deliveryId };
+      }
+      if (delivery.status !== "unconfirmed") {
+        return { ok: false, reason: "delivery_not_unconfirmed", delivery };
+      }
+
+      const message = messages.findById(delivery.messageId);
+      const targetAgent = agents.list().find((agent) => agent.id === delivery.targetAgentId);
+      if (!message || !targetAgent || targetAgent.kind !== "codex") {
+        return {
+          ok: false,
+          reason: "manual_retransmit_failed",
+          delivery,
+          message: "ready Codex runtime and bound thread are required for manual retransmit",
+        };
+      }
+
+      const resolvedTarget = await resolveCodexReplyTarget(codexRuntimes.get(targetAgent.name));
+      if (!resolvedTarget.ok) {
+        return {
+          ok: false,
+          reason: "manual_retransmit_failed",
+          delivery,
+          message: "ready Codex runtime and bound thread are required for manual retransmit",
+        };
+      }
+
+      const attempt = (manualDeliveryAttempts.get(delivery.id) ?? 0) + 1;
+      manualDeliveryAttempts.set(delivery.id, attempt);
+      events.append({
+        id: options.createId(),
+        type: "delivery_manual_retransmit",
+        data: { actor: "operator", attempt, confirmDuplicateRisk: true },
+        createdAt: options.now(),
+        agentId: targetAgent.id,
+        messageId: message.id,
+        deliveryId: delivery.id,
+        routeId: delivery.routeId,
+      });
+
+      const injectResult = await injectMessageIntoCodexTarget(message, delivery, targetAgent, {
+        transitionToDelivering: false,
+        manualAttempt: { attempt },
+        resolvedTarget,
+      });
+      if (injectResult.kind === "success") {
+        const result = updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "delivered",
+        });
+        events.append({
+          id: options.createId(),
+          type: "delivery_manual_retransmit_delivered",
+          data: { actor: "operator", attempt },
+          createdAt: options.now(),
+          agentId: targetAgent.id,
+          messageId: message.id,
+          deliveryId: delivery.id,
+          routeId: delivery.routeId,
+        });
+        return result.ok
+          ? result
+          : { ok: false, reason: "delivery_not_found", deliveryId: delivery.id };
+      }
+
+      if (injectResult.kind === "deferred") {
+        return {
+          ok: false,
+          reason: "manual_retransmit_failed",
+          delivery: deliveries.findById(delivery.id) ?? delivery,
+          message: "ready Codex runtime and bound thread are required for manual retransmit",
+        };
+      }
+
+      const rejected = injectResult.reason === "codex_jsonrpc_error";
+      events.append({
+        id: options.createId(),
+        type: rejected
+          ? "delivery_manual_retransmit_rejected"
+          : "delivery_manual_retransmit_unconfirmed",
+        data: {
+          actor: "operator",
+          attempt,
+          requestId: injectResult.requestId ?? null,
+          adapter: "codex",
+          code: injectResult.jsonRpcCode ?? null,
+          reason: injectResult.reason,
+          message: injectResult.message,
+        },
+        createdAt: options.now(),
+        agentId: targetAgent.id,
+        messageId: message.id,
+        deliveryId: delivery.id,
+        routeId: delivery.routeId,
+      });
+      return {
+        ok: false,
+        reason: rejected ? "manual_retransmit_rejected" : "manual_retransmit_unconfirmed",
+        delivery: deliveries.findById(delivery.id) ?? delivery,
+        message: injectResult.message,
+      };
     },
 
     async rollbackAgentAttach(request) {
@@ -1009,14 +1180,16 @@ export function createDaemonState(
         sourceName: request.agentName,
         messageId: request.messageId,
         type: request.type ?? "question",
-        content: typedText(request.content, request.text),
+        intent: request.intent,
+        replyExpected: request.replyExpected,
+        content: request.content.text,
       });
 
       events.append({
         id: options.createId(),
         type: "claude_channel_message_received",
         data: {
-          text: typedText(request.content, request.text),
+          text: request.content.text,
           ...(result.ok ? { messageId: result.message.id } : {}),
         },
         createdAt: options.now(),
@@ -1027,6 +1200,7 @@ export function createDaemonState(
       });
 
       if (result.ok) {
+        scheduleQueuedDeliveryExpiry(result.deliveries);
         result.dispatch = await dispatchToPairPeers({
           sourceName: request.agentName,
           message: result.message,
@@ -1039,20 +1213,21 @@ export function createDaemonState(
 
     async receiveClaudeChannelReply(request) {
       const agent = agents.findByName(request.agentName);
-      const result = runSendMessageTransaction({
+      const result = runReplyTransaction({
         sourceName: request.agentName,
-        messageId: options.createId(),
-        parentMessageId: request.inReplyToDeliveryId ?? request.chatId,
-        type: "reply",
-        content: typedText(request.content, request.text),
+        messageId: request.messageId,
+        inReplyToDeliveryId: request.inReplyToDeliveryId,
+        intent: request.intent,
+        replyExpected: request.replyExpected,
+        content: request.content.text,
       });
 
       events.append({
         id: options.createId(),
         type: "claude_channel_reply_received",
         data: {
-          chatId: request.inReplyToDeliveryId ?? request.chatId,
-          text: typedText(request.content, request.text),
+          inReplyToDeliveryId: request.inReplyToDeliveryId,
+          text: request.content.text,
           ...(result.ok ? { messageId: result.message.id } : {}),
         },
         createdAt: options.now(),
@@ -1130,13 +1305,16 @@ export function createDaemonState(
       if (!authz.ok) {
         return authz.error;
       }
-      const result = runSendMessageTransaction({
+        const result = runSendMessageTransaction({
         sourceName: request.agentName,
         messageId: request.messageId,
-        type: request.type ?? "question",
-        content: typedText(request.content),
+          type: request.type ?? "question",
+          intent: request.intent,
+          replyExpected: request.replyExpected,
+        content: request.content.text,
       });
       if (result.ok) {
+        scheduleQueuedDeliveryExpiry(result.deliveries);
         events.append({
           id: options.createId(),
           type: "codex_ingress_message_received",
@@ -1161,15 +1339,13 @@ export function createDaemonState(
       if (!authz.ok) {
         return authz.error;
       }
-      const result = runSendMessageTransaction({
+      const result = runReplyTransaction({
         sourceName: request.agentName,
         messageId: request.messageId,
-        // G1-A carries the delivery-scoped public field to this boundary. The
-        // pre-v1 store still has only parentMessageId; G1-B replaces this
-        // compatibility projection with actual delivery correlation.
-        parentMessageId: request.inReplyToDeliveryId ?? request.parentMessageId,
-        type: "reply",
-        content: typedText(request.content),
+        inReplyToDeliveryId: request.inReplyToDeliveryId,
+        intent: request.intent,
+        replyExpected: request.replyExpected,
+        content: request.content.text,
       });
       if (result.ok) {
         events.append({
@@ -1177,7 +1353,7 @@ export function createDaemonState(
           type: "codex_ingress_reply_received",
           data: {
             messageId: result.message.id,
-            parentMessageId: request.inReplyToDeliveryId ?? request.parentMessageId,
+            inReplyToDeliveryId: request.inReplyToDeliveryId,
           },
           createdAt: options.now(),
           agentId: result.message.sourceAgentId,
@@ -1224,6 +1400,87 @@ export function createDaemonState(
     },
   };
 
+  function scheduleQueuedDeliveryExpiry(deliveriesToWatch: readonly StoredDelivery[]): void {
+    for (const delivery of deliveriesToWatch) {
+      if (delivery.status !== "queued" || queueExpiryTimers.has(delivery.id)) continue;
+      const expiresAt = Date.parse(delivery.createdAt) + deliveryQueueTtlMs;
+      const nowMs = Date.parse(options.now());
+      if (!Number.isFinite(expiresAt) || !Number.isFinite(nowMs)) continue;
+      const delayMs = Math.max(0, expiresAt - nowMs);
+      const handle = scheduleTimeout(() => {
+        queueExpiryTimers.delete(delivery.id);
+        if (deliveries.findById(delivery.id)?.status !== "queued") return;
+        const result = updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "failed",
+          error: { reason: "delivery_expired", message: "delivery queue TTL expired" },
+        });
+        if (!result.ok) return;
+        events.append({
+          id: options.createId(),
+          type: "delivery_expired",
+          data: { reason: "delivery_expired" },
+          createdAt: options.now(),
+          agentId: delivery.targetAgentId,
+          messageId: delivery.messageId,
+          deliveryId: delivery.id,
+          routeId: delivery.routeId,
+        });
+      }, delayMs);
+      queueExpiryTimers.set(delivery.id, handle);
+    }
+  }
+
+  function schedulePreWriteRetry(input: {
+    sourceName: string;
+    message: StoredMessage;
+    delivery: StoredDelivery;
+  }): void {
+    const attempt = deliveryAttempts.get(input.delivery.id) ?? 1;
+    const delayMs = retryDelayMs(attempt);
+    if (delayMs === null) {
+      return;
+    }
+    deliveryAttempts.set(input.delivery.id, attempt + 1);
+    scheduleTimeout(() => {
+      const previous = targetFlushes.get(input.delivery.targetAgentId) ?? Promise.resolve();
+      const next = previous
+        .catch(() => undefined)
+        .then(async () => {
+          if (deliveries.findById(input.delivery.id)?.status !== "queued") return;
+          await dispatchToPairPeersNow({
+            sourceName: input.sourceName,
+            message: input.message,
+            deliveries: [input.delivery],
+          });
+        });
+      targetFlushes.set(input.delivery.targetAgentId, next);
+      void next.finally(() => {
+        if (targetFlushes.get(input.delivery.targetAgentId) === next) {
+          targetFlushes.delete(input.delivery.targetAgentId);
+        }
+      });
+    }, delayMs);
+  }
+
+  async function flushQueuedDeliveriesForTarget(targetAgent: StoredAgent): Promise<void> {
+    const queued = deliveries
+      .list()
+      .filter((delivery) => delivery.targetAgentId === targetAgent.id && delivery.status === "queued");
+    for (const delivery of queued) {
+      const message = messages.findById(delivery.messageId);
+      const source = message
+        ? agents.list().find((agent) => agent.id === message.sourceAgentId)
+        : undefined;
+      if (!message || !source) continue;
+      await dispatchToPairPeers({
+        sourceName: source.name,
+        message,
+        deliveries: [delivery],
+      });
+    }
+  }
+
   function updateDeliveryStatusInTransaction(
     request: UpdateDeliveryStatusRequest,
   ): UpdateDeliveryStatusResult {
@@ -1239,6 +1496,11 @@ export function createDaemonState(
       }
 
       const now = options.now();
+      if (request.status !== "queued") {
+        const handle = queueExpiryTimers.get(request.deliveryId);
+        if (handle !== undefined) cancelTimeout(handle);
+        queueExpiryTimers.delete(request.deliveryId);
+      }
       const delivery = deliveries.updateStatus({
         id: request.deliveryId,
         status: request.status,
@@ -1278,7 +1540,141 @@ export function createDaemonState(
     });
   }
 
+  function recordCodexTargetRejectOutcome(input: {
+    message: StoredMessage;
+    delivery: StoredDelivery;
+    target: { agentId: string; agentName: string; threadId: string };
+    expectedStatus: "delivering" | "unconfirmed";
+    code?: number;
+    messageText: string;
+  }): { message: StoredMessage; delivery: StoredDelivery } | null {
+    return withTransaction(options.db, () => {
+      const original = deliveries.findById(input.delivery.id);
+      if (!original || original.status !== input.expectedStatus) return null;
+      if (
+        input.message.intent !== "notification" &&
+        deliveries.findOutcomeNotificationByOriginalDeliveryId(original.id)
+      ) {
+        return null;
+      }
+
+      const now = options.now();
+      const failed = deliveries.updateStatus({
+        id: original.id,
+        status: "failed",
+        now,
+      });
+      if (!failed) return null;
+
+      events.append({
+        id: options.createId(),
+        type: "delivery_status_changed",
+        data: {
+          status: "failed",
+          error: { reason: "codex_jsonrpc_error", message: input.messageText },
+        },
+        createdAt: now,
+        agentId: original.targetAgentId,
+        messageId: original.messageId,
+        deliveryId: original.id,
+        routeId: original.routeId,
+      });
+      events.append({
+        id: options.createId(),
+        type: "delivery_target_rejected",
+        data: {
+          adapter: "codex",
+          target: input.target,
+          jsonRpc: { code: input.code ?? null, message: input.messageText },
+          attempt: 1,
+        },
+        createdAt: now,
+        agentId: input.target.agentId,
+        messageId: input.message.id,
+        deliveryId: original.id,
+        routeId: original.routeId,
+      });
+
+      if (input.message.intent === "notification") return null;
+
+      const notificationMessageId = createPublicMessageId();
+      const notificationDeliveryId = createPublicDeliveryId();
+      const notification = messages.create({
+        id: notificationMessageId,
+        sourceAgentId: daemonMessageSourceAgentId,
+        originKind: "daemon",
+        type: "event",
+        intent: "notification",
+        outcomeForDeliveryId: original.id,
+        content: JSON.stringify({
+          type: "delivery_target_rejected",
+          deliveryId: notificationDeliveryId,
+          outcomeForDeliveryId: original.id,
+          error: { reason: "codex_jsonrpc_error", message: input.messageText },
+        }),
+        now,
+      });
+      const queued = deliveries.createQueuedForRoutes({
+        messageId: notification.id,
+        routes: [{ id: null, targetAgentId: input.message.sourceAgentId }],
+        createDeliveryId: () => notificationDeliveryId,
+        now,
+      });
+      if (!Array.isArray(queued) || queued.length !== 1) {
+        throw new Error("failed to create outcome notification delivery");
+      }
+      deliveries.createOutcomeNotification({
+        originalDeliveryId: original.id,
+        notificationMessageId: notification.id,
+        notificationDeliveryId: queued[0].id,
+        createdAt: now,
+      });
+      return { message: notification, delivery: queued[0] };
+    });
+  }
+
+  async function dispatchOutcomeNotification(input: {
+    message: StoredMessage;
+    delivery: StoredDelivery;
+  }): Promise<void> {
+    await dispatchToPairPeers({
+      sourceName: "daemon",
+      message: input.message,
+      deliveries: [input.delivery],
+    });
+  }
+
   async function dispatchToPairPeers(input: {
+    sourceName: string;
+    message: StoredMessage;
+    deliveries: StoredDelivery[];
+  }): Promise<DispatchSummary> {
+    const summary = emptyDispatchSummary();
+    await Promise.all(
+      input.deliveries.map(async (delivery) => {
+        const previous = targetFlushes.get(delivery.targetAgentId) ?? Promise.resolve();
+        const next = previous.catch(() => undefined).then(() =>
+          dispatchToPairPeersNow({
+            sourceName: input.sourceName,
+            message: input.message,
+            deliveries: [delivery],
+          }),
+        );
+        const chain = next.then(() => undefined);
+        targetFlushes.set(delivery.targetAgentId, chain);
+        const targetSummary = await next;
+        summary.delivered += targetSummary.delivered;
+        summary.deferred.push(...targetSummary.deferred);
+        summary.failed.push(...targetSummary.failed);
+        if (targetFlushes.get(delivery.targetAgentId) === chain) {
+          targetFlushes.delete(delivery.targetAgentId);
+        }
+      }),
+    );
+    return summary;
+  }
+
+  async function dispatchToPairPeersNow(input: {
     sourceName: string;
     message: StoredMessage;
     deliveries: StoredDelivery[];
@@ -1316,10 +1712,6 @@ export function createDaemonState(
           deliveryId: delivery.id,
           status: "delivered",
         });
-        updateDeliveryStatusInTransaction({
-          deliveryId: delivery.id,
-          status: "completed",
-        });
         summary.delivered += 1;
         continue;
       }
@@ -1337,6 +1729,35 @@ export function createDaemonState(
           ...(injectResult.eligibility
             ? { eligibility: injectResult.eligibility }
             : {}),
+        });
+        schedulePreWriteRetry({
+          sourceName: input.sourceName,
+          message: input.message,
+          delivery,
+        });
+        continue;
+      }
+
+      if (
+        injectResult.reason === "codex_turn_start_timeout" ||
+        injectResult.reason === "codex_app_server_ws_dropped"
+      ) {
+        updateDeliveryStatusInTransaction({
+          deliveryId: delivery.id,
+          status: "unconfirmed",
+          error: { reason: injectResult.reason, message: injectResult.message },
+        });
+        summary.failed.push({
+          targetAgentId: targetAgent.id,
+          reason: injectResult.reason,
+        });
+        continue;
+      }
+
+      if ("outcomeRecorded" in injectResult && injectResult.outcomeRecorded) {
+        summary.failed.push({
+          targetAgentId: targetAgent.id,
+          reason: injectResult.reason,
         });
         continue;
       }
@@ -1395,7 +1816,14 @@ export function createDaemonState(
       { getRuntime: (agentName) => claudeChannelRuntimes.get(agentName) },
       {
         agentName: targetAgent.name,
-        content: input.message.content,
+        content: formatAioxChannelEnvelope({
+          message: input.message,
+          delivery,
+          sourceAgent: agents
+            .list()
+            .find((agent) => agent.id === input.message.sourceAgentId),
+          targetAgent,
+        }),
         chatId: input.message.id,
         origin: input.sourceName,
       },
@@ -1432,12 +1860,27 @@ export function createDaemonState(
     message: StoredMessage,
     delivery: StoredDelivery,
     targetAgent: StoredAgent,
+    injectionOptions: {
+      transitionToDelivering?: boolean;
+      manualAttempt?: { attempt: number };
+      resolvedTarget?: {
+        ok: true;
+        runtime: ResolvedCodexTurnStartRuntime;
+        threadId: string;
+        loadedThreadIds: string[];
+        runtimeActiveThreadId: string | null;
+        selectionPolicy: "proxy_active_thread";
+      };
+    } = {},
   ): Promise<
     | { kind: "success" }
     | {
         kind: "failed";
         reason: AdapterInjectFailureReason;
         message: string;
+        jsonRpcCode?: number;
+        requestId?: number;
+        outcomeRecorded?: boolean;
       }
     | {
         kind: "deferred";
@@ -1447,7 +1890,7 @@ export function createDaemonState(
   > {
     const sourceAgent = agents.list().find((agent) => agent.id === message.sourceAgentId);
     const runtime = codexRuntimes.get(targetAgent.name);
-    const target = await resolveCodexReplyTarget(runtime);
+    const target = injectionOptions.resolvedTarget ?? (await resolveCodexReplyTarget(runtime));
 
     if (!target.ok) {
       if (target.reason === "codex_no_loaded_thread") {
@@ -1528,15 +1971,107 @@ export function createDaemonState(
       routeId: delivery.routeId,
     });
 
-    updateDeliveryStatusInTransaction({
-      deliveryId: delivery.id,
-      status: "delivering",
-    });
+    if (injectionOptions.transitionToDelivering !== false) {
+      updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "delivering",
+      });
+    }
 
+    // A manual retransmit attempt reject is attempt-local: it must never mark the
+    // original delivery `failed` and must never emit `delivery_target_rejected`.
+    const appendManualRetransmitTerminal = (input: {
+      type: "delivery_manual_retransmit_delivered" | "delivery_manual_retransmit_rejected";
+      reason: string;
+      message: string;
+      code?: number;
+      requestId?: number;
+    }) => {
+      events.append({
+        id: options.createId(),
+        type: input.type,
+        data: {
+          actor: "operator",
+          attempt: injectionOptions.manualAttempt?.attempt ?? null,
+          requestId: input.requestId ?? null,
+          adapter: "codex",
+          code: input.code ?? null,
+          reason: input.reason,
+          message: input.message,
+        },
+        createdAt: options.now(),
+        agentId: targetAgent.id,
+        messageId: message.id,
+        deliveryId: delivery.id,
+        routeId: delivery.routeId,
+      });
+    };
+
+    let manualLateResolved = false;
     const injectResult = await injectReplyIntoCodexRuntime(
       target.runtime,
       target.threadId,
-      formatCodexAioxChannelEnvelope(message, sourceAgent?.kind ?? "unknown"),
+      formatAioxChannelEnvelope({
+        message,
+        delivery,
+        sourceAgent,
+        targetAgent,
+      }),
+      (lateResult) => {
+        if (injectionOptions.manualAttempt) {
+          if (manualLateResolved) return;
+          if (deliveries.findById(delivery.id)?.status !== "unconfirmed") {
+            manualLateResolved = true;
+            return;
+          }
+          if (lateResult.kind === "success") {
+            manualLateResolved = true;
+            updateDeliveryStatusInTransaction({ deliveryId: delivery.id, status: "delivered" });
+            appendManualRetransmitTerminal({
+              type: "delivery_manual_retransmit_delivered",
+              reason: "codex_turn_start_accepted",
+              message: "late turn/start accepted",
+            });
+            return;
+          }
+          if (lateResult.kind === "failed" && lateResult.reason === "codex_jsonrpc_error") {
+            manualLateResolved = true;
+            appendManualRetransmitTerminal({
+              type: "delivery_manual_retransmit_rejected",
+              reason: lateResult.reason,
+              message: lateResult.message,
+              code: lateResult.jsonRpcCode,
+              requestId: lateResult.requestId,
+            });
+          }
+          return;
+        }
+
+        if (deliveries.findById(delivery.id)?.status !== "unconfirmed") return;
+
+        if (lateResult.kind === "success") {
+          updateDeliveryStatusInTransaction({ deliveryId: delivery.id, status: "delivered" });
+          return;
+        }
+
+        if (lateResult.kind === "failed" && lateResult.reason === "codex_jsonrpc_error") {
+          const outcome = recordCodexTargetRejectOutcome({
+            message,
+            delivery,
+            target: {
+              agentId: targetAgent.id,
+              agentName: targetAgent.name,
+              threadId: target.threadId,
+            },
+            expectedStatus: "unconfirmed",
+            code: lateResult.jsonRpcCode,
+            messageText: lateResult.message,
+          });
+          if (outcome) {
+            void dispatchOutcomeNotification(outcome).catch(() => undefined);
+          }
+        }
+      },
     );
 
     if (injectResult.kind === "deferred") {
@@ -1566,10 +2101,35 @@ export function createDaemonState(
         deliveryId: delivery.id,
         routeId: delivery.routeId,
       });
+      if (!injectionOptions.manualAttempt && injectResult.reason === "codex_jsonrpc_error") {
+        const outcome = recordCodexTargetRejectOutcome({
+          message,
+          delivery,
+          target: {
+            agentId: targetAgent.id,
+            agentName: targetAgent.name,
+            threadId: target.threadId,
+          },
+          expectedStatus: "delivering",
+          code: injectResult.jsonRpcCode,
+          messageText: injectResult.message,
+        });
+        if (outcome) await dispatchOutcomeNotification(outcome);
+        return {
+          kind: "failed",
+          reason: injectResult.reason,
+          message: injectResult.message,
+          jsonRpcCode: injectResult.jsonRpcCode,
+          requestId: injectResult.requestId,
+          outcomeRecorded: true,
+        };
+      }
       return {
         kind: "failed",
         reason: injectResult.reason,
         message: injectResult.message,
+        jsonRpcCode: injectResult.jsonRpcCode,
+        requestId: injectResult.requestId,
       };
     }
 
@@ -1674,6 +2234,7 @@ export function createDaemonState(
     }
     if (targetAgent.adapterSessionId === event.threadId) {
       runtime.rebindActiveThread(event.threadId);
+      void flushQueuedDeliveriesForTarget(targetAgent).catch(() => undefined);
       return;
     }
 
@@ -1705,15 +2266,26 @@ export function createDaemonState(
       });
     });
     runtime.rebindActiveThread(event.threadId);
+    const reboundAgent = agents.findByName(agentName);
+    if (reboundAgent) {
+      void flushQueuedDeliveriesForTarget(reboundAgent).catch(() => undefined);
+    }
   }
 
   async function injectReplyIntoCodexRuntime(
     runtime: CodexTurnStartRuntime,
     threadId: string,
     content: string,
+    onLateResponse?: (result: Awaited<ReturnType<typeof injectTurnStart>>) => void,
   ): Promise<
     | { kind: "success" }
-    | { kind: "failed"; reason: AdapterInjectFailureReason; message: string }
+    | {
+        kind: "failed";
+        reason: AdapterInjectFailureReason;
+        message: string;
+        jsonRpcCode?: number;
+        requestId?: number;
+      }
     | { kind: "deferred"; reason: AdapterInjectDeferredReason; eligibility?: string }
   > {
     // The runtime cache may still point at the previous TUI thread here. The
@@ -1727,20 +2299,43 @@ export function createDaemonState(
       {
         threadId,
         input: content,
+        onLateResponse,
       },
     );
   }
 
-  function formatCodexAioxChannelEnvelope(message: StoredMessage, source: string): string {
-    return `<aiox-channel source="${escapeXmlAttr(source)}" message_id="${escapeXmlAttr(message.id)}">\n${escapeXmlContent(message.content)}\n</aiox-channel>`;
-  }
-
-  function escapeXmlAttr(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-  }
-
-  function escapeXmlContent(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function formatAioxChannelEnvelope(input: {
+    message: StoredMessage;
+    delivery: StoredDelivery;
+    sourceAgent: StoredAgent | undefined;
+    targetAgent: StoredAgent;
+  }): string {
+    return JSON.stringify({
+      protocol: "aiox.message.v1",
+      messageId: input.message.id,
+      deliveryId: input.delivery.id,
+      source: {
+        kind: input.message.originKind,
+        address:
+          input.message.originKind === "daemon"
+            ? `daemon://local/${profile}`
+            : `agent://local/${profile}/${input.sourceAgent?.name ?? "unknown"}`,
+      },
+      target: {
+        address: `agent://local/${profile}/${input.targetAgent.name}`,
+      },
+      type: input.message.type,
+      intent: input.message.intent,
+      replyExpected: input.message.replyExpected,
+      content: { mediaType: "text/plain", text: input.message.content },
+      createdAt: input.message.createdAt,
+      ...(input.message.type === "reply" && input.message.parentMessageId
+        ? { inReplyToDeliveryId: input.message.parentMessageId }
+        : {}),
+      ...(input.message.outcomeForDeliveryId
+        ? { outcomeForDeliveryId: input.message.outcomeForDeliveryId }
+        : {}),
+    });
   }
 
   function authorizeCodexIngress(
@@ -1817,6 +2412,27 @@ export function createDaemonState(
           };
         }
 
+        const queuedByTarget = new Map<string, number>();
+        for (const delivery of deliveries.list()) {
+          if (delivery.status !== "queued") continue;
+          queuedByTarget.set(
+            delivery.targetAgentId,
+            (queuedByTarget.get(delivery.targetAgentId) ?? 0) + 1,
+          );
+        }
+        if (
+          !canAcceptFanoutIntoTargetQueues({
+            queuedByTarget,
+            targetAgentIds: sourceRoutes.map((route) => route.targetAgentId),
+          })
+        ) {
+          return {
+            ok: false,
+            reason: "delivery_queue_full",
+            targetAgentIds: sourceRoutes.map((route) => route.targetAgentId),
+          };
+        }
+
         const existingDelivery = sourceRoutes
           .map((route) =>
             deliveries.findByIdempotencyKey(`${request.messageId}:${route.targetAgentId}`),
@@ -1841,6 +2457,8 @@ export function createDaemonState(
               sourceAgentId: source.id,
               parentMessageId: request.parentMessageId,
               type: request.type,
+              intent: request.intent,
+              replyExpected: request.replyExpected,
               content: request.content,
               now,
             }),
@@ -1851,12 +2469,18 @@ export function createDaemonState(
             id: route.id,
             targetAgentId: route.targetAgentId,
           })),
-          createDeliveryId: () => options.createId(),
+          createDeliveryId: createPublicDeliveryId,
           now,
         });
 
         if (!Array.isArray(queued)) {
           throw createSendMessageRollback(queued);
+        }
+
+        if (message.replyExpected === true) {
+          for (const delivery of queued) {
+            replyRights.grant({ originatingDeliveryId: delivery.id, now });
+          }
         }
 
         events.append({
@@ -1894,6 +2518,96 @@ export function createDaemonState(
         return error.response;
       }
 
+      throw error;
+    }
+  }
+
+  function runReplyTransaction(input: {
+    sourceName: string;
+    messageId: string;
+    inReplyToDeliveryId: string | undefined;
+    intent?: AgentAuthoredIntent;
+    replyExpected?: boolean;
+    content: string;
+  }): SendMessageResult {
+    try {
+      return withTransaction(options.db, () => {
+      const source = agents.findByName(input.sourceName);
+      if (!source) {
+        return { ok: false, reason: "source_agent_not_found", sourceName: input.sourceName };
+      }
+      const originatingDelivery = input.inReplyToDeliveryId
+        ? deliveries.findById(input.inReplyToDeliveryId)
+        : null;
+      if (!originatingDelivery) return { ok: false, reason: "unknown_delivery" };
+      if (originatingDelivery.targetAgentId !== source.id) {
+        return { ok: false, reason: "correlation_mismatch" };
+      }
+      const originatingMessage = messages.findById(originatingDelivery.messageId);
+      if (originatingMessage?.replyExpected !== true) {
+        return { ok: false, reason: "reply_not_expected" };
+      }
+      const replyRight = replyRights.findByOriginatingDeliveryId(originatingDelivery.id);
+      if (!replyRight) return { ok: false, reason: "duplicate_reply" };
+      if (replyRight.consumedReplyMessageId) {
+        return { ok: false, reason: "duplicate_reply" };
+      }
+      const originalSource = agents.list().find((agent) => agent.id === originatingMessage.sourceAgentId);
+      if (!originalSource) {
+        return { ok: false, reason: "correlation_mismatch" };
+      }
+      const now = options.now();
+      let message: StoredMessage;
+      try {
+        message = messages.create({
+          id: input.messageId,
+          sourceAgentId: source.id,
+          parentMessageId: originatingDelivery.id,
+          type: "reply",
+          intent: input.intent,
+          replyExpected: input.replyExpected,
+          content: input.content,
+          now,
+        });
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          throw createSendMessageRollback({ ok: false, reason: "duplicate_reply" });
+        }
+        throw error;
+      }
+      const queued = deliveries.createQueuedForRoutes({
+        messageId: message.id,
+        routes: [{ id: null, targetAgentId: originalSource.id }],
+        createDeliveryId: createPublicDeliveryId,
+        now,
+      });
+      if (!Array.isArray(queued)) {
+        throw createSendMessageRollback(queued);
+      }
+      const replyDelivery = queued[0];
+      if (!replyDelivery || !replyRights.consume({
+        originatingDeliveryId: originatingDelivery.id,
+        replyMessageId: message.id,
+        replyDeliveryId: replyDelivery.id,
+        now,
+      })) {
+        throw createSendMessageRollback({ ok: false, reason: "duplicate_reply" });
+      }
+      if (message.replyExpected === true) {
+        replyRights.grant({ originatingDeliveryId: replyDelivery.id, now });
+      }
+      events.append({
+        id: options.createId(), type: "message_created", data: {}, createdAt: now,
+        agentId: source.id, messageId: message.id, deliveryId: null, routeId: null,
+      });
+      events.append({
+        id: options.createId(), type: "delivery_queued", data: {}, createdAt: now,
+        agentId: null, messageId: message.id, deliveryId: replyDelivery.id, routeId: null,
+      });
+        return { ok: true, message, deliveries: queued, dispatch: emptyDispatchSummary() };
+      });
+    } catch (error) {
+      if (isSendMessageRollback(error)) return error.response;
       throw error;
     }
   }
@@ -1978,10 +2692,7 @@ interface AttachRollback {
   response: AttachRollbackResponse;
 }
 
-type SendMessageRollbackResponse = Extract<
-  SendMessageResult,
-  { ok: false; reason: "delivery_idempotency_key_exists" }
->;
+type SendMessageRollbackResponse = Extract<SendMessageResult, { ok: false }>;
 
 interface SendMessageRollback {
   [sendMessageRollbackSentinel]: true;

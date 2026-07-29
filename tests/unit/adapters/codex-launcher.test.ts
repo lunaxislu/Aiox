@@ -169,6 +169,33 @@ describe("Codex launcher", () => {
     expect(inline).toContain('AIOX_SOCKET_PATH = "/tmp/aiox.sock"');
   });
 
+  it("uses tsx for a dev TypeScript MCP entry while preserving Node for a built entry", async () => {
+    const { buildCodexMcpArgs } = await import(
+      "../../../src/adapters/codex/launcher.js"
+    );
+    const mcp = {
+      agentName: "impl",
+      agentToken: "tok-123",
+      daemonSocketPath: "/tmp/aiox.sock",
+    };
+
+    const [, devInline] = buildCodexMcpArgs({
+      ...mcp,
+      aioxBin: "/repo/src/bin/aiox.ts",
+    });
+    const [, buildInline] = buildCodexMcpArgs({
+      ...mcp,
+      aioxBin: "/repo/dist/src/bin/aiox.js",
+    });
+
+    expect(devInline).toContain('command = "tsx"');
+    expect(devInline).toContain('args = ["/repo/src/bin/aiox.ts", "mcp-codex"]');
+    expect(buildInline).toContain(`command = "${process.execPath}"`);
+    expect(buildInline).toContain(
+      'args = ["/repo/dist/src/bin/aiox.js", "mcp-codex"]',
+    );
+  });
+
   it("falls back to no mcp args when mcp option is absent", async () => {
     const child = fakeChild();
     spawnMock.mockReturnValue(child);

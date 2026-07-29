@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createAdapterRouter } from "../../../src/adapters/router.js";
+import { createAdapterRouter, type AdapterDispatchResult } from "../../../src/adapters/router.js";
 import { createDaemonApi } from "../../../src/daemon/api.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
 import { applySchema } from "../../../src/store/schema.js";
@@ -47,23 +47,23 @@ describe("fake adapter integration", () => {
       "agent-claude",
       "route-codex-claude",
       "route-claude-codex",
-      "delivery-claude",
       "event-message-1",
       "event-queued-1",
       "event-delivering-1",
       "event-delivered-1",
-      "event-completed-1",
-      "delivery-codex",
       "event-message-2",
       "event-queued-2",
       "event-delivering-2",
       "event-delivered-2",
-      "event-completed-2",
     ];
     const api = createDaemonApi(
       createDaemonState({
         db,
         createId: () => shiftId(ids),
+        createPublicDeliveryId: createOpaqueIdFactory([
+          "opaque delivery id: first",
+          "opaque delivery id: reply",
+        ]),
         now: () => "2026-05-19T00:00:00.000Z",
       }),
     );
@@ -80,14 +80,17 @@ describe("fake adapter integration", () => {
       sourceName: "impl",
       messageId: "message-1",
       type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
       content: "please review",
     });
 
-    expect(await router.dispatchOutgoing(firstOutgoing)).toEqual({
+    const firstDispatch = await router.dispatchOutgoing(firstOutgoing);
+    expect(firstDispatch).toEqual({
       ok: true,
       deliveries: [
         {
-          deliveryId: "delivery-claude",
+          deliveryId: "opaque delivery id: first",
           targetAgentName: "reviewer",
           ok: true,
         },
@@ -100,21 +103,27 @@ describe("fake adapter integration", () => {
       sourceAgentId: "agent-codex",
       parentMessageId: null,
       type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
       content: "please review",
     });
+    expect(successfulDeliveries(firstDispatch)[0]?.deliveryId).toBe(claude.injections[0]?.delivery.id);
 
     const replyOutgoing = claude.sendOutgoing({
       sourceName: "reviewer",
       messageId: "message-2",
       type: "reply",
+      intent: "result",
+      replyExpected: false,
       content: "review complete",
     });
 
-    expect(await router.dispatchOutgoing(replyOutgoing)).toEqual({
+    const replyDispatch = await router.dispatchOutgoing(replyOutgoing);
+    expect(replyDispatch).toEqual({
       ok: true,
       deliveries: [
         {
-          deliveryId: "delivery-codex",
+          deliveryId: "opaque delivery id: reply",
           targetAgentName: "impl",
           ok: true,
         },
@@ -127,30 +136,35 @@ describe("fake adapter integration", () => {
       sourceAgentId: "agent-claude",
       parentMessageId: null,
       type: "reply",
+      intent: "result",
+      replyExpected: false,
       content: "review complete",
     });
+    expect(successfulDeliveries(replyDispatch)[0]?.deliveryId).toBe(codex.injections[0]?.delivery.id);
     expect(readDeliveries(db)).toEqual([
       {
-        id: "delivery-claude",
+        id: "opaque delivery id: first",
         message_id: "message-1",
         target_agent_id: "agent-claude",
         route_id: "route-codex-claude",
-        status: "completed",
+        status: "delivered",
         idempotency_key: "message-1:agent-claude",
         created_at: "2026-05-19T00:00:00.000Z",
         updated_at: "2026-05-19T00:00:00.000Z",
       },
       {
-        id: "delivery-codex",
+        id: "opaque delivery id: reply",
         message_id: "message-2",
         target_agent_id: "agent-codex",
         route_id: "route-claude-codex",
-        status: "completed",
+        status: "delivered",
         idempotency_key: "message-2:agent-codex",
         created_at: "2026-05-19T00:00:00.000Z",
         updated_at: "2026-05-19T00:00:00.000Z",
       },
     ]);
+    expect(successfulDeliveries(firstDispatch)[0]?.deliveryId).toBe(readDeliveries(db)[0]?.id);
+    expect(successfulDeliveries(replyDispatch)[0]?.deliveryId).toBe(readDeliveries(db)[1]?.id);
   });
 
   it("marks only failed target deliveries failed while other targets complete", async () => {
@@ -160,14 +174,11 @@ describe("fake adapter integration", () => {
       "agent-blocked",
       "route-one",
       "route-two",
-      "delivery-one",
-      "delivery-two",
       "event-message",
       "event-queued-one",
       "event-queued-two",
       "event-delivering-one",
       "event-delivered-one",
-      "event-completed-one",
       "event-delivering-two",
       "event-failed-two",
     ];
@@ -175,6 +186,10 @@ describe("fake adapter integration", () => {
       createDaemonState({
         db,
         createId: () => shiftId(ids),
+        createPublicDeliveryId: createOpaqueIdFactory([
+          "opaque delivery id: succeeded",
+          "opaque delivery id: failed",
+        ]),
         now: () => "2026-05-19T00:00:00.000Z",
       }),
     );
@@ -196,16 +211,17 @@ describe("fake adapter integration", () => {
       content: "please review",
     });
 
-    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+    const dispatch = await router.dispatchOutgoing(outgoing);
+    expect(dispatch).toEqual({
       ok: true,
       deliveries: [
         {
-          deliveryId: "delivery-one",
+          deliveryId: "opaque delivery id: succeeded",
           targetAgentName: "reviewer",
           ok: true,
         },
         {
-          deliveryId: "delivery-two",
+          deliveryId: "opaque delivery id: failed",
           targetAgentName: "blocked",
           ok: false,
           reason: "adapter_inject_failed",
@@ -217,10 +233,16 @@ describe("fake adapter integration", () => {
       "reviewer",
       "blocked",
     ]);
+    expect(successfulDeliveries(dispatch).map((delivery) => delivery.deliveryId)).toEqual(
+      claude.injections.map((injection) => injection.delivery.id),
+    );
     expect(readDeliveries(db).map((delivery) => [delivery.id, delivery.status])).toEqual([
-      ["delivery-one", "completed"],
-      ["delivery-two", "failed"],
+      ["opaque delivery id: failed", "failed"],
+      ["opaque delivery id: succeeded", "delivered"],
     ]);
+    expect(new Set(successfulDeliveries(dispatch).map((delivery) => delivery.deliveryId))).toEqual(
+      new Set(readDeliveries(db).map((delivery) => delivery.id)),
+    );
     expect(readEvents(db)).toEqual([
       {
         id: "event-message",
@@ -236,7 +258,7 @@ describe("fake adapter integration", () => {
         id: "event-queued-one",
         agent_id: null,
         message_id: "message-1",
-        delivery_id: "delivery-one",
+        delivery_id: "opaque delivery id: succeeded",
         route_id: "route-one",
         type: "delivery_queued",
         data_json: "{}",
@@ -246,7 +268,7 @@ describe("fake adapter integration", () => {
         id: "event-queued-two",
         agent_id: null,
         message_id: "message-1",
-        delivery_id: "delivery-two",
+        delivery_id: "opaque delivery id: failed",
         route_id: "route-two",
         type: "delivery_queued",
         data_json: "{}",
@@ -256,7 +278,7 @@ describe("fake adapter integration", () => {
         id: "event-delivering-one",
         agent_id: "agent-reviewer",
         message_id: "message-1",
-        delivery_id: "delivery-one",
+        delivery_id: "opaque delivery id: succeeded",
         route_id: "route-one",
         type: "delivery_status_changed",
         data_json: "{\"status\":\"delivering\"}",
@@ -266,27 +288,17 @@ describe("fake adapter integration", () => {
         id: "event-delivered-one",
         agent_id: "agent-reviewer",
         message_id: "message-1",
-        delivery_id: "delivery-one",
+        delivery_id: "opaque delivery id: succeeded",
         route_id: "route-one",
         type: "delivery_status_changed",
         data_json: "{\"status\":\"delivered\"}",
         created_at: "2026-05-19T00:00:00.000Z",
       },
       {
-        id: "event-completed-one",
-        agent_id: "agent-reviewer",
-        message_id: "message-1",
-        delivery_id: "delivery-one",
-        route_id: "route-one",
-        type: "delivery_status_changed",
-        data_json: "{\"status\":\"completed\"}",
-        created_at: "2026-05-19T00:00:00.000Z",
-      },
-      {
         id: "event-delivering-two",
         agent_id: "agent-blocked",
         message_id: "message-1",
-        delivery_id: "delivery-two",
+        delivery_id: "opaque delivery id: failed",
         route_id: "route-two",
         type: "delivery_status_changed",
         data_json: "{\"status\":\"delivering\"}",
@@ -296,7 +308,7 @@ describe("fake adapter integration", () => {
         id: "event-failed-two",
         agent_id: "agent-blocked",
         message_id: "message-1",
-        delivery_id: "delivery-two",
+        delivery_id: "opaque delivery id: failed",
         route_id: "route-two",
         type: "delivery_status_changed",
         data_json:
@@ -313,7 +325,6 @@ describe("fake adapter integration", () => {
       "agent-codex-b",
       "route-codex-b-codex-a",
       "route-codex-a-codex-b",
-      "delivery-codex-b",
       "event-message",
       "event-queued",
       "event-delivering",
@@ -324,6 +335,7 @@ describe("fake adapter integration", () => {
       createDaemonState({
         db,
         createId: () => shiftId(ids),
+        createPublicDeliveryId: () => "opaque delivery id: codex pair",
         now: () => "2026-05-19T00:00:00.000Z",
       }),
     );
@@ -355,11 +367,12 @@ describe("fake adapter integration", () => {
       content: "please continue",
     });
 
-    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+    const dispatch = await router.dispatchOutgoing(outgoing);
+    expect(dispatch).toEqual({
       ok: true,
       deliveries: [
         {
-          deliveryId: "delivery-codex-b",
+          deliveryId: "opaque delivery id: codex pair",
           targetAgentName: "impl-b",
           ok: true,
         },
@@ -368,6 +381,8 @@ describe("fake adapter integration", () => {
     expect(codex.injections.map((input) => input.targetAgent.name)).toEqual([
       "impl-b",
     ]);
+    expect(successfulDeliveries(dispatch)[0]?.deliveryId).toBe(codex.injections[0]?.delivery.id);
+    expect(successfulDeliveries(dispatch)[0]?.deliveryId).toBe(readDeliveries(db)[0]?.id);
   });
 
   it("dispatches a Claude-Claude pair message to the receiver adapter injection", async () => {
@@ -377,7 +392,6 @@ describe("fake adapter integration", () => {
       "agent-claude-b",
       "route-claude-b-claude-a",
       "route-claude-a-claude-b",
-      "delivery-claude-b",
       "event-message",
       "event-queued",
       "event-delivering",
@@ -388,6 +402,7 @@ describe("fake adapter integration", () => {
       createDaemonState({
         db,
         createId: () => shiftId(ids),
+        createPublicDeliveryId: () => "opaque delivery id: claude pair",
         now: () => "2026-05-19T00:00:00.000Z",
       }),
     );
@@ -419,11 +434,12 @@ describe("fake adapter integration", () => {
       content: "please review",
     });
 
-    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+    const dispatch = await router.dispatchOutgoing(outgoing);
+    expect(dispatch).toEqual({
       ok: true,
       deliveries: [
         {
-          deliveryId: "delivery-claude-b",
+          deliveryId: "opaque delivery id: claude pair",
           targetAgentName: "review-b",
           ok: true,
         },
@@ -432,6 +448,8 @@ describe("fake adapter integration", () => {
     expect(claude.injections.map((input) => input.targetAgent.name)).toEqual([
       "review-b",
     ]);
+    expect(successfulDeliveries(dispatch)[0]?.deliveryId).toBe(claude.injections[0]?.delivery.id);
+    expect(successfulDeliveries(dispatch)[0]?.deliveryId).toBe(readDeliveries(db)[0]?.id);
   });
 
   it("normalizes a missing target adapter as a deferred adapter-not-registered dispatch result", async () => {
@@ -439,7 +457,6 @@ describe("fake adapter integration", () => {
       "agent-codex",
       "agent-claude",
       "route-codex-claude",
-      "delivery-claude",
       "event-message",
       "event-queued",
       "event-delivering",
@@ -449,6 +466,7 @@ describe("fake adapter integration", () => {
       createDaemonState({
         db,
         createId: () => shiftId(ids),
+        createPublicDeliveryId: () => "opaque delivery id: missing adapter",
         now: () => "2026-05-19T00:00:00.000Z",
       }),
     );
@@ -466,11 +484,12 @@ describe("fake adapter integration", () => {
       content: "please review",
     });
 
-    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+    const dispatch = await router.dispatchOutgoing(outgoing);
+    expect(dispatch).toEqual({
       ok: true,
       deliveries: [
         {
-          deliveryId: "delivery-claude",
+          deliveryId: "opaque delivery id: missing adapter",
           targetAgentName: "reviewer",
           kind: "deferred",
           reason: "target_adapter_not_registered",
@@ -479,10 +498,11 @@ describe("fake adapter integration", () => {
     });
     expect(readDeliveries(db)).toMatchObject([
       {
-        id: "delivery-claude",
+        id: "opaque delivery id: missing adapter",
         status: "queued",
       },
     ]);
+    expect(successfulDeliveries(dispatch)[0]?.deliveryId).toBe(readDeliveries(db)[0]?.id);
   });
 
   it("leaves delivery queued when a registered adapter defers injection", async () => {
@@ -490,7 +510,6 @@ describe("fake adapter integration", () => {
       "agent-codex",
       "agent-claude",
       "route-codex-claude",
-      "delivery-claude",
       "event-message",
       "event-queued",
       "event-delivering",
@@ -500,6 +519,7 @@ describe("fake adapter integration", () => {
       createDaemonState({
         db,
         createId: () => shiftId(ids),
+        createPublicDeliveryId: () => "opaque delivery id: deferred adapter",
         now: () => "2026-05-19T00:00:00.000Z",
       }),
     );
@@ -520,11 +540,12 @@ describe("fake adapter integration", () => {
       content: "please review",
     });
 
-    expect(await router.dispatchOutgoing(outgoing)).toEqual({
+    const dispatch = await router.dispatchOutgoing(outgoing);
+    expect(dispatch).toEqual({
       ok: true,
       deliveries: [
         {
-          deliveryId: "delivery-claude",
+          deliveryId: "opaque delivery id: deferred adapter",
           targetAgentName: "reviewer",
           kind: "deferred",
           reason: "target_runtime_unavailable",
@@ -534,10 +555,12 @@ describe("fake adapter integration", () => {
     });
     expect(readDeliveries(db)).toMatchObject([
       {
-        id: "delivery-claude",
+        id: "opaque delivery id: deferred adapter",
         status: "queued",
       },
     ]);
+    expect(successfulDeliveries(dispatch)[0]?.deliveryId).toBe(claude.injections[0]?.delivery.id);
+    expect(successfulDeliveries(dispatch)[0]?.deliveryId).toBe(readDeliveries(db)[0]?.id);
   });
 
   it("returns nested dispatch counts from sendMessage after storing the message", async () => {
@@ -588,6 +611,17 @@ function shiftId(ids: string[]): string {
   }
 
   return id;
+}
+
+function createOpaqueIdFactory(ids: string[]): () => string {
+  return () => shiftId(ids);
+}
+
+function successfulDeliveries(result: AdapterDispatchResult) {
+  if (!result.ok) {
+    throw new Error(`expected successful dispatch, received ${result.reason}`);
+  }
+  return result.deliveries;
 }
 
 function readDeliveries(db: Database): DeliveryRow[] {

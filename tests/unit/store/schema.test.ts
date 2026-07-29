@@ -24,12 +24,47 @@ describe("SQLite schema", () => {
 
     expect(rows.map((row) => row.name)).toEqual([
       "agents",
+      "delivery_outcome_notifications",
       "events",
       "message_deliveries",
       "messages",
       "pairs",
+      "reply_rights",
       "routes",
       "schema_version",
+    ]);
+  });
+
+  it("backfills an already-correlated reply right as consumed during migration 3", () => {
+    db = new Database(":memory:");
+    applySchema(db);
+    db.exec("drop table reply_rights");
+    db.prepare("delete from schema_version where version = 3").run();
+    db.prepare(
+      `insert into messages (id, source_agent_id, parent_message_id, type, intent, reply_expected, content, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run("original", "source", null, "question", "delegation", 1, "question", "2026-01-01", "2026-01-01");
+    db.prepare(
+      `insert into message_deliveries (id, message_id, target_agent_id, route_id, status, idempotency_key, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run("delivery-original", "original", "target", "route", "delivered", "original:target", "2026-01-01", "2026-01-01");
+    db.prepare(
+      `insert into messages (id, source_agent_id, parent_message_id, type, intent, reply_expected, content, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run("reply", "target", "delivery-original", "reply", "result", 0, "answer", "2026-01-02", "2026-01-02");
+    db.prepare(
+      `insert into message_deliveries (id, message_id, target_agent_id, route_id, status, idempotency_key, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run("delivery-reply-later", "reply", "source", null, "delivered", "reply:source:later", "2026-01-03", "2026-01-03");
+    db.prepare(
+      `insert into message_deliveries (id, message_id, target_agent_id, route_id, status, idempotency_key, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run("delivery-reply-earlier", "reply", "source", null, "delivered", "reply:source:earlier", "2026-01-02", "2026-01-02");
+
+    applySchema(db);
+
+    expect(db.prepare("select originating_delivery_id, consumed_reply_message_id, consumed_reply_delivery_id, consumed_at from reply_rights").all()).toEqual([
+      { originating_delivery_id: "delivery-original", consumed_reply_message_id: "reply", consumed_reply_delivery_id: "delivery-reply-earlier", consumed_at: "2026-01-02" },
     ]);
   });
 
@@ -160,8 +195,12 @@ describe("SQLite schema", () => {
     expect(columns.map((column) => column.name)).toEqual([
       "id",
       "source_agent_id",
+      "origin_kind",
       "parent_message_id",
       "type",
+      "intent",
+      "reply_expected",
+      "outcome_for_delivery_id",
       "content",
       "created_at",
       "updated_at",

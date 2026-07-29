@@ -17,9 +17,23 @@ but the sequence is routing/FSM-owned, so this slice owns it.
 
 - **Message**: [[src/core/messages.ts]] — `src/core/messages.ts:17-23`; type ∈
   `question|instruction|status|event|reply`.
-- **Delivery**: [[src/core/deliveries.ts]] — `src/core/deliveries.ts:13-19`. Idempotency key formatted
+- **Delivery**: [[src/core/deliveries.ts]] — `src/core/deliveries.ts:3-12`. Idempotency key formatted
   `${messageId}:${targetAgentId}` (`src/core/deliveries.ts:34`). Status ∈
-  `queued|delivering|delivered|completed|failed` (`src/core/deliveries.ts:3-9`).
+  `queued|delivering|delivered|completed|failed|unconfirmed`. `unconfirmed`
+  is post-write acceptance ambiguity, not a synonym for `delivered`.
+- **Identifier boundary**: `idempotencyKey` is the common daemon/store
+  delivery-creation guard (`messageId:targetAgentId`, DB UNIQUE) before either
+  adapter. `deliveryId` is the target-specific public ID. Codex `requestId`
+  is only internal JSON-RPC late/duplicate-response correlation. Claude does
+  not claim an equivalent receipt/requestId dedupe guarantee.
+- **Public-ID issuer boundary**: source adapters call the common public-ID
+  factory for agent-authored send/reply `messageId` values. The daemon calls
+  that factory for daemon-originated outcome `messageId` values and every
+  `deliveryId`; each `deliveryId` remains the immutable
+  `message_deliveries.id` row primary key. Shared internal `createId` issues
+  entity/event IDs only and is not a public-ID issuer. Consumers compare public
+  IDs for equality and do not parse their prefix, UUID/encoding, issuer, or
+  ordering. See [[docs/specs/aiox-message-lifecycle]] §4.1.
 - **Pair**: [[src/core/pairs.ts]]. Reaches `ready` when both slots (`a` and
   `b`) are filled (`attachments.length === 2 && slots.has("a") && slots.has("b")`
   — `src/core/pairs.ts:107-117`). Slot assignment is auto-selected at attach time; no
@@ -29,7 +43,7 @@ but the sequence is routing/FSM-owned, so this slice owns it.
 
 ### 8.2 sendMessage Atomicity + Idempotency
 
-`runSendMessageTransaction` ([[src/daemon/state.ts]] — `src/daemon/state.ts:1761-1864`) is wrapped in a single
+`runSendMessageTransaction` ([[src/daemon/state.ts]] — `runSendMessageTransaction`) is wrapped in a single
 `withTransaction`. Sequence:
 
 1. `agents.findByName(sourceName)` → `source_agent_not_found`.
@@ -52,9 +66,7 @@ Evidence:
 
 - Transaction and rollback paths
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:1761-1864`
-    - `src/daemon/state.ts:1951-1985`
-    - `src/daemon/state.ts:1988-2012`
+    - `runSendMessageTransaction`
 
 The CLI `send` surface (OA1) is **deferred Post-MVP** (provenance:
 `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §4.1). Confirmed by absence of any
@@ -70,8 +82,8 @@ Evidence:
     - `src/cli/parse.ts:214-220`
     - `src/cli/parse.ts:291-313`
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:974-1041`
-    - `src/daemon/state.ts:1096-1159`
+    - `receiveClaudeChannelMessage`, `receiveClaudeChannelReply`
+    - `receiveCodexMessage`, `receiveCodexReply`
 
 ### 8.3 Router and Fan-out
 
@@ -86,7 +98,7 @@ Evidence:
 4. Per-target partial-failure isolation:
    - `target_agent_not_found` → delivery `failed`, continue.
    - Missing target adapter (`target_adapter_not_registered`) → returned as `deferred` and delivery remains `queued`, continue (`src/adapters/router.ts:87-97`, verified by [[tests/unit/adapters/fake-integration.test.ts]] — `tests/unit/adapters/fake-integration.test.ts:437-485`).
-   - Successful inject → `delivering` → `delivered` → `completed`.
+   - Successful inject → `delivering` → `delivered` (target acceptance only).
    - Failed inject → `failed` carrying the typed reason.
 
 Note: routing inside `dispatchToPairPeers` does **not** go through this
@@ -103,9 +115,8 @@ Evidence:
     - `tests/unit/adapters/fake-integration.test.ts:488-540`
 - Production dispatch path
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:1246-1324`
-    - `src/daemon/state.ts:1346-1393`
-    - `src/daemon/state.ts:1396-1568`
+    - `dispatchToPairPeers`, `dispatchToPairPeersNow`
+    - `injectMessageIntoClaudeTarget`, `injectMessageIntoCodexTarget`
 
 ### 8.4 Delivery State Machine
 
@@ -115,61 +126,62 @@ stateDiagram-v2
     queued --> delivering: router pre-inject /\n dispatchToPairPeers (generic)
     queued --> queued: pre-inject deferred /\n target_binding_unconfirmed / target_runtime_unavailable /\n target_adapter_not_registered
     queued --> failed: target_agent_not_found
-    delivering --> delivered: adapter inject ok
-    delivered --> completed: immediate
-    delivering --> failed: adapter inject !ok (typed reason)
-    delivering --> queued: adapter deferred revert /\n daemon restart recoverAfterRestart
+    queued --> failed: TTL expiry / delivery_expired
+    delivering --> delivered: matching acceptance response
+    delivering --> unconfirmed: post-write timeout / response loss / WS drop
+    unconfirmed --> delivered: matching late success
+    delivering --> failed: matching explicit reject
+    unconfirmed --> failed: primary late explicit reject
+    unconfirmed --> unconfirmed: manual timeout/drop or late reject; original remains unconfirmed
+    delivering --> queued: conclusively pre-write retry / deferred
     failed --> [*]
-    completed --> [*]
 ```
 
 Each persisted status transition appends `delivery_status_changed` via helper
-`updateDeliveryStatusInTransaction` (`src/daemon/state.ts:1192-1244`). Some
-deferred paths remain `queued` without first writing `delivering`; other
-deferred paths revert an already-`delivering` delivery to `queued`.
+`updateDeliveryStatusInTransaction`. Some deferred paths remain `queued`
+without first writing `delivering`. Only conclusively pre-write failures enter
+bounded retry/queued flush; `unconfirmed` never re-enters queue or reconnect
+flush automatically.
+
+The as-built pre-write policy uses retry delays of 250 ms, 1 s, and 4 s
+(maximum three retries), target queue capacity 32, and queued TTL 5 minutes.
+Those timers are in-memory current Tier 3 behavior, not a durable
+process-restart promise. `completed` is retained in the enum for the committed
+Phase 1 Tier 2 automatic-ack uplift; it has no current producer.
 Transitions are driven by:
-- Daemon RPC `updateDeliveryStatus` (`src/daemon/state.ts:828-830`)
-- Daemon internal `dispatchToPairPeers` (`src/daemon/state.ts:1246-1324`)
-- Per-adapter internal `injectMessageIntoClaudeTarget` (`src/daemon/state.ts:1346-1393`; detail [[docs/architecture/local-runtime-claude-adapter]] §6.4) or `injectMessageIntoCodexTarget` (`src/daemon/state.ts:1396-1568`; detail [[docs/architecture/local-runtime-codex-adapter]] §7.7)
-- Restart recovery in the delivery repository (`src/store/repositories/deliveries.ts:148-158`)
+- Daemon RPC `updateDeliveryStatus`
+- Daemon internal `dispatchToPairPeers`
+- Per-adapter internal `injectMessageIntoClaudeTarget` (detail [[docs/architecture/local-runtime-claude-adapter]] §6.4) or `injectMessageIntoCodexTarget` (detail [[docs/architecture/local-runtime-codex-adapter]] §7.7)
+- Late-response and outcome handling in `injectMessageIntoCodexTarget`
+  (`injectMessageIntoCodexTarget`)
 
 Evidence:
 
 - Deferred queued behavior
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:1292-1307`
-    - `src/daemon/state.ts:1346-1393`
-    - `src/daemon/state.ts:1396-1513`
+    - `dispatchToPairPeers`, `dispatchToPairPeersNow`
+    - `injectMessageIntoClaudeTarget`, `injectMessageIntoCodexTarget`
   - [[tests/unit/daemon/codex-ingress.test.ts]]
     - `tests/unit/daemon/codex-ingress.test.ts:509-538`
     - `tests/unit/daemon/codex-ingress.test.ts:1229-1256`
 
-### 8.5 `parent_message_id`
+### 8.5 Delivery and reply correlation
 
-This is the pre-G1 current correlation mechanism, not the committed v1 public contract. The G1 target uses
-`inReplyToDeliveryId`, source-only reply creation, and a daemon-owned consumed reply right; see
-[[docs/specs/aiox-message-lifecycle]] §4.2. The current facts below remain as-built until that cutover.
+The public `deliveryId` is the target-specific `message_deliveries.id` and the
+canonical envelope is rendered per delivery. Correlated replies use
+`inReplyToDeliveryId`, a persisted one-reply right, authenticated source
+identity, and source-only reply creation; `parentMessageId` remains storage
+provenance, not the reply-authorization authority. Daemon-originated rejection
+notifications are distinct messages with `outcomeForDeliveryId`: they do not
+reuse `inReplyToDeliveryId`, grant no reply right, and have their own delivery.
+The state transaction makes an original explicit reject, its event, and its
+single notification relation atomic; dispatch follows commit.
 
-**Implemented.** Persisted column ([[src/store/repositories/messages.ts]] —
-`src/store/repositories/messages.ts:24-32`, `:53-73`, `:94-103`), created by
-`messages.create({...,parentMessageId})` (`src/store/repositories/messages.ts:42-75`),
-surfaced on `MessageDto.parentMessageId` ([[src/daemon/api.ts]] —
-`src/daemon/api.ts:113-119`, `:519-526`).
-
-Wired on both sides:
-- Claude reply path: MCP `reply.chat_id` → daemon `chatId` → message
-  `parentMessageId` via `receiveClaudeChannelReply` (`src/daemon/state.ts:1010-1016`).
-- Codex reply path: MCP `aiox_reply.parent_message_id` → daemon
-  `parentMessageId` → message `parentMessageId` via `receiveCodexReply`
-  (`src/daemon/state.ts:1132-1138`, MCP handler parameter mapping in
-  [[src/adapters/codex/mcp-server.ts]] — `src/adapters/codex/mcp-server.ts:226-243`).
-
-Cross-agent reply correlation (`parent_message_id`) semantics were finalized at
-Step 13; the provenance is preserved in
-`logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.4.
-The router/FSM do not consume `parentMessageId` —
-it is purely correlative data on the persisted message and the
-`<aiox-channel message_id="...">` envelope.
+Primary and manual late rejects are intentionally different. A primary
+correlated reject may change the original from `delivering` or `unconfirmed`
+to `failed` and emits `delivery_target_rejected` plus its source outcome.
+A manual-retransmit reject emits only attempt-local
+`delivery_manual_retransmit_rejected`; the original remains `unconfirmed`.
 
 ### 8.6 Pair Reservation + Routes
 
@@ -183,10 +195,10 @@ of the outer `withTransaction` via `attachRollbackSentinel`.
 and `pair_full` are now the canonical reason codes — `src/core/pairs.ts:39,44`.)
 
 When the pair becomes `ready`, `createBidirectionalPairRoutes`
-(`src/daemon/state.ts:2099-2135`) creates bidirectional routes between `slotA` and `slotB`, supporting both same-vendor and mixed-vendor configurations dynamically. Each is skipped if already present (bidirectional, silent idempotent, no audit event).
+(`createBidirectionalPairRoutes`) creates bidirectional routes between `slotA` and `slotB`, supporting both same-vendor and mixed-vendor configurations dynamically. Each is skipped if already present (bidirectional, silent idempotent, no audit event).
 
 Directed routes via `aiox connect <source> <target>...` go through
-`state.connect` (`src/daemon/state.ts:766-805`). Duplicates land in `alreadyExisted`.
+`state.connect` (`connect`). Duplicates land in `alreadyExisted`.
 
 Evidence:
 
@@ -194,16 +206,14 @@ Evidence:
   - [[src/store/repositories/pairs.ts]]
     - `src/store/repositories/pairs.ts:76-191`
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:563-593`
-    - `src/daemon/state.ts:766-805`
-    - `src/daemon/state.ts:2099-2156`
+    - `attachAgent`, `connect`, `createBidirectionalPairRoutes`
 
 ---
 
 ## 4.3 sendMessage end-to-end (sequence)
 
 원본에서 이 sequence는 §4 Daemon Lifecycle and Socket Transport 아래 있었으나, routing/FSM이
-실제 소유하는 흐름(`src/daemon/state.ts:1761-1864`)이라 이 routing slice가 가진다.
+실제 소유하는 흐름(`runSendMessageTransaction`)이라 이 routing slice가 가진다.
 
 ```mermaid
 sequenceDiagram

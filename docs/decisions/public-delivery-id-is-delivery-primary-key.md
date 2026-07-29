@@ -56,6 +56,6 @@ sharded row identity, 또는 이 값을 보존할 수 없는 external namespace�
 
 ## Sources
 
-- `logs/2026-07-10-G1-A-contractingress-freeze.md` — 사용자가 승인한 A안, Phase 0
+- `logs/G1/2026-07-10-G1-A-contractingress-freeze.md` — 사용자가 승인한 A안, Phase 0
   in-memory 범위, A/B trade-off 검토.
 - [[docs/product/roadmap]] — Phase 0 in-memory 제한과 Phase 2 durable replay 경계.

@@ -59,4 +59,4 @@ integration contract를 제공하면 월별 검증 정책과 fallback posture도
 ## Sources
 
 - `package.json`과 `pnpm-lock.yaml` — 현재 runtime·native dependency·test toolchain의 Node engines.
-- `logs/2026-07-10-G1-A-contractingress-freeze.md` — G0 지원 범위와 agent CLI 정책의 사용자 결정.
+- `logs/G1/2026-07-10-G1-A-contractingress-freeze.md` — G0 지원 범위와 agent CLI 정책의 사용자 결정.

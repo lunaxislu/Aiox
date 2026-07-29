@@ -25,8 +25,9 @@ Phase 0:
   G0
   -> G1/G3 병행
      -> G1-A
-     -> G1-B
-     -> G1-C + G1-D 병행 가능
+     -> G1-B (historical core accepted; canonical-presentation corrective pending)
+     -> G1-C (Codex Tier 3 evidence accepted; Codex·Claude 공통 요구 잔여)
+     -> G1-D (remaining release gate)
      -> G3 병행
   -> G2
   -> G5/G6
@@ -45,8 +46,8 @@ After public release:
 | ---------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | G0         | release identity, protocol/CLI/package/support matrix freeze | G1/G3가 임시 identity 위에서 진행되지 않게 한다.                                      |
 | G1-A       | contract/ingress freeze                                      | envelope cutover와 reliability가 소비할 contract boundary를 고정한다.                 |
-| G1-B       | canonical envelope cutover                                   | reliability/trust-boundary가 같은 delivery/correlation 모델을 쓰게 한다.              |
-| G1-C       | delivery reliability                                         | ack/retry/idempotency/queued/stale/runtime failure 경계를 닫는다.                     |
+| G1-B       | canonical envelope cutover (historical core accepted; canonical-presentation corrective pending) | accepted delivery/correlation 모델을 G1-C/G1-D가 입력으로 소비하며, Claude channel-notification wrapper와 공통 canonical presentation 정합을 별도 좁은 corrective로 닫는다. |
+| G1-C       | process-lifetime Tier 3 delivery reliability (Codex evidence accepted, 공통 요구 잔여) | accepted Codex Tier 3 결과와 남은 Codex·Claude 공통 요구를 구분하고, Tier 2 ack/completed·stale 등 후속 보장을 현재 완료로 주장하지 않는다. |
 | G1-D       | local trust boundary                                         | authenticated source, route authorization, runtime secret/socket boundary를 닫는다.   |
 | G3         | daemon stabilization                                         | daemon lifecycle, transport, diagnostics failure boundary를 release-grade로 고정한다. |
 | G2         | terminal minimum                                             | one-command demo의 최소 terminal UX를 Phase 0 범위로 닫는다.                          |
@@ -101,7 +102,7 @@ After public release:
 
 **목표**
 
-Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, instruction/description/example sync, Codex ingress evidence를 고정한다. G1-B envelope cutover와 G1-C reliability가 소비할 contract boundary를 연다.
+Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, instruction/description/example sync, Codex ingress evidence를 고정한다. 이 contract/ingress 결과는 accepted/completed G1-B의 canonical envelope/public-ID/reply-right와 G1-C의 accepted Codex Tier 3 결과에 이미 historical하게 소비됐다. 남은 Phase 0/release gate는 G1-C의 Codex·Claude 공통 요구와 G1-D trust boundary다. authenticated automatic ack/`completed` 등을 포함한 Tier 2 uplift는 공개 이후 Phase 1의 후속 책임이다.
 
 **진입 조건**
 
@@ -121,12 +122,11 @@ Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, ins
 **통과 조건**
 
 - canonical schema, typed tool contract, MCP instruction/tool description/example/test fixture가 같은 contract를 가리킨다.
-- public `deliveryId` binding, typed validation, automatic control-plane ack의 accepted
-  direction이 owner contract와 schema/tool cutover handoff에 반영되어 있다.
+- public `deliveryId` binding과 typed validation이 owner contract에 반영되어 있다. automatic control-plane ack은 current guarantee가 아니라 future Tier 2 direction이다.
 - send/reply acceptance가 daemon validation과 route-derived delivery creation일 뿐 target
   receipt·work completion이 아님을 tool surface가 구분한다.
 - Codex ingress path의 지원 수준이 evidence로 분류되고, 보장하지 못하는 wake-up/ack/correlation/dedupe는 degradation으로 남는다.
-- G1-B로 넘길 envelope cutover owner path와 G1-C로 넘길 reliability/open-policy path가 분리되어 있다.
+- accepted/completed G1-B canonical envelope/public-ID/reply-right와 accepted Codex Tier 3 결과의 historical consumption이 구분돼 있다. 남은 소비/후속 책임은 G1-C 공통 요구, G1-D trust boundary와 Phase 1 Tier 2 uplift로 분리돼 있다.
 
 **Owner refs**
 
@@ -142,43 +142,38 @@ Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, ins
 
 **목표**
 
-local A2A 경로를 canonical envelope과 correlation 모델로 전환해, 이후 reliability와 trust-boundary 작업이 하나의 안정된 message lifecycle 위에서 진행되게 한다.
+G1-B의 historical core 결과는 accepted/completed다. local A2A 경로의 canonical envelope과 correlation 모델, original-delivery source-only one-reply right, opaque public-ID issuance와 immutable delivery-row primary-key binding은 이후 G1-C/G1-D가 소비하는 안정된 message lifecycle 입력이다. 다만 Codex의 app-server `turn/start`와 Claude의 channel HTTP `/send` → notification은 transport가 다르므로, common target-facing canonical-envelope meaning과 field preservation을 다시 대조하는 하나의 좁은 canonical-presentation corrective가 남아 있다.
 
 **진입 조건**
 
-- G1-A contract/ingress 결정이 충분히 안정되어 envelope shape를 더 이상 exploratory 대상으로 취급하지 않아도 된다.
-- typed send/reply surface와 canonical schema 방향이 message lifecycle owner와 정렬되어 있다.
-- correlated reply authorization은 확정된 입력이다. 원 delivery가 원 target에게만 원 source로 향하는 1회 reply permission을 부여하며, 별도 reverse route는 필요 없다.
-- persistence migration은 public surface cutover와 분리해 rollback-aware pre-step을 설계해야 한다는
-  점이 message lifecycle owner에 반영되어 있다.
+- G1-A contract/ingress 경계와 typed send/reply surface를 소비해 canonical lifecycle 입력을 고정했다.
+- 원 delivery의 원 target만 원 source에 1회 reply할 수 있는 권한과 별도 reverse route 불필요성이 구현·검증됐다.
+- public `messageId`와 `deliveryId`는 opaque/immutable 규율로 발급되고, `deliveryId`는 immutable delivery-row primary key다.
 
 **착수 검토 / 열린 결정**
 
-- 구현 착수 전에 async send-boundary가 message lifecycle spec과 정렬되어 있는지 확인한다.
-- roadmap을 migration checklist로 만들지 않는 선에서 additive schema expansion, backfill/compatibility
-  read, write/read authority switch, rollback 또는 downgrade posture의 기대치를 결정한다.
-- `thread_status`를 routing/state-transition authority로 만들지 않고, reply permission의
-  consumption과 reply creation이 원자적으로 기록되는지 확인한다.
-- public `messageId`와 `deliveryId`의 opaque issuance cutover가 canonical envelope와
-  acceptance result에 함께 적용되고, tool/example/fixture가 ID 문자열 형식을 의미 있게
-  가정하지 않는지 확인한다.
-- reliability 작업을 막는 남은 envelope/correlation 결정을 닫거나 명시적으로 이연한다.
+- historical core의 decision 문서, accepted package 결과와 검증 로그는 provenance로 보존한다. 이는 되돌리거나 재구현하지 않는다.
+- bounded corrective는 현재 Claude target-facing channel-notification `<channel source="aiox">…</channel>` framing을 target으로 검토한다. wrapper-free canonical presentation은 아직 구현·host 지원·검증됐다고 주장하지 않으며, 직접 Claude TUI evidence가 있어야만 수용한다.
+- 이 corrective의 비교 대상은 host UI의 pixel/card parity가 아니라 canonical message meaning과 target-facing content다. Codex와 Claude의 transport 차이는 유지할 수 있지만, 별도 AIOX message format 또는 의미를 만들면 안 된다.
+- persistence/restart migration과 durable replay/mailbox는 G1-B residual이 아니라 Phase 2의 독립 책임이다.
+- ingress invocation idempotency는 현재 delivery-creation `idempotencyKey`와 별개다. 이는 별도 future decision이 아니라 G1-C가 소유하는 Codex·Claude 공통 요구이며, G1-B는 이를 완료하지 않는다.
 
 **통과 조건**
 
-- G1-C reliability와 G1-D trust-boundary 검증이 같은 delivery/correlation 모델을 사용할 수 있을 만큼 canonical envelope cutover가 완료되어 있다.
-- route-derived fan-out acceptance와 original-delivery source-only reply creation이 각각
-  all-or-nothing으로 검증된다.
-- public `messageId`와 `deliveryId`가 owner contract의 collision-resistant opaque/immutable
-  규율로 발급되며,
-  delivery row primary-key binding은 유지된다.
-- 남은 lifecycle 질문은 owner 문서에서 닫혔거나, 이후 gate decision으로 명시적으로 이월되어 있다.
+- canonical envelope/correlation, route-derived fan-out acceptance, original-delivery source-only one-reply creation이 accepted G1-B 결과로 검증됐다.
+- public `messageId`와 `deliveryId`의 collision-resistant opaque/immutable issuance 및 delivery-row primary-key binding이 accepted public-ID-factory-B 결과로 검증됐다.
+- canonical-presentation corrective는 Claude wrapper-free target-facing presentation을 직접 Claude TUI에서 검증하고, Codex와 Claude가 common canonical-envelope meaning과 field preservation을 유지함을 확인해야 한다. 이는 host UI parity 요구가 아니며, current wrapper를 이미 제거·지원한다고 뜻하지 않는다.
+- 이 완료 사실은 G1-C reliability와 G1-D trust-boundary의 입력이며, receipt/ack, persistence/restart, ingress re-invocation idempotency를 완료로 뜻하지 않는다.
+- ack/retry/`unconfirmed`/timeout 및 reply-right failure semantics는 이 corrective 범위가 아니라 G1-C delivery reliability owner에 남는다.
 
 **Owner refs**
 
 - [[docs/specs/aiox-message-lifecycle]] — canonical envelope, delivery lifecycle, send-boundary contract owner.
+- [[docs/specs/aiox-adapter-model]] — Codex/Claude current presentation capability와 target-facing canonical-envelope boundary owner.
 - [[docs/decisions/public-message-and-delivery-ids-use-opaque-issuance]] — public-ID scope와 internal-ID exclusion rationale owner.
+- [[docs/decisions/public-id-factory-issuer-responsibility]] — source/daemon public-ID issuer responsibility와 historical freeze supersession rationale owner.
 - [[docs/architecture/local-runtime-routing-and-delivery]] — internal routing, delivery, reply-resumption structure owner.
+- [[docs/architecture/local-runtime-claude-adapter]] — current Claude channel HTTP `/send` → notification framing과 direct-TUI evidence boundary owner.
 - [[docs/decisions/reply-permission-rather-than-obligation-fsm]] — one-reply permission rationale owner.
 - [[docs/decisions/original-delivery-narrow-reply-right]] — source-only correlated reply rationale owner.
 - [[logs/workspace-reset/product-a2a/2026-06-10-A2A-응답-대기-polling-원인]] — async send-boundary 검토의 root-cause context.
@@ -187,29 +182,43 @@ local A2A 경로를 canonical envelope과 correlation 모델로 전환해, 이�
 
 **목표**
 
-canonical delivery/correlation 모델 위에서 local A2A 전달을 신뢰 가능한 release gate로 고정한다. target별 delivery 상태, ack/retry/idempotency, queued delivery flush, target serialization, runtime failure/stale recovery가 같은 lifecycle owner를 따르게 한다.
+G1-C는 process-lifetime Tier 3 delivery reliability를 Codex와 Claude 양쪽에서 닫는 gate다. 현재 accepted된 것은 Codex target 증거로 검증된 canonical correlation과 delivery acceptance, bounded pre-write queue/retry/TTL, post-write `unconfirmed`, confirmation-gated manual retransmit, non-manual primary explicit-reject outcome notification이며, 이를 lifecycle owner 아래에 고정한다. 이는 target receipt/work completion 또는 Tier 2 보장이 아니고, Codex Tier 3 증거만으로 gate 전체가 completed/consumed임을 뜻하지도 않는다. 남은 통과 조건은 두 adapter에 공통으로 적용된다.
 
 **진입 조건**
 
-- G1-B envelope cutover가 reliability 검증에 필요한 delivery correlation, consumed one-reply permission, source-visible acceptance boundary를 충분히 고정했다.
-- adapter별 capability tier와 degradation이 확인되어 자동 retry와 manual retry의 경계를 target runtime별로 판단할 수 있다.
-- runtime failure, stale session, queued delivery drain gap이 architecture owner에 남아 있다.
+- accepted G1-B 결과가 delivery correlation, consumed one-reply permission, source-visible acceptance boundary를 제공한다.
+- accepted Codex Tier 3 evidence가 automatic/manual 경계와 target runtime degradation을 검증한다.
+- durable replay와 passive/automatic ack는 후속 owner에 남아 있다. stale/disconnected 운영 정책은 Phase 1, runtime failure wiring은 G3 owner에 남아 있다.
 
 **착수 검토 / 열린 결정**
 
-- G1 failure-injection으로 retry 기본값, passive ack timeout, post-acceptance retry 허용 범위를 고정한다.
-- Codex structured ingress와 active-turn 충돌 처리가 delivery reliability를 Tier 2로 올릴 수 있는지, degraded/manual path로 남길지 판단한다.
-- Codex user-facing queued delivery control surface(pull/read/ack 또는 inspect/ack/drain)를 Phase 0 Target에 포함할지 결정한다.
-- daemon 시간 기반 stale recovery와 adapter-active 세션 단절 감지의 release 경계를 결정한다.
-- stale 또는 disconnected runtime을 감지했을 때 queued delivery를 재시도, 보류, failed 처리 중 어디로 보낼지 owner 문서에서 닫는다.
-- durable store와 mailbox replay는 G1-C 통과 조건으로 끌어오지 않는다.
+- authenticated automatic ack/`completed`, wake-up, adapter-specific duplicate suppression은 Phase 1 Tier 2 uplift에서 판단한다.
+- stale/disconnected runtime의 detection·retry/hold/fail 운영 정책은 Phase 1에서 판단한다. runtime failure wiring은 G3가 현재 Codex·Claude에서 관측 가능한 failure/단절을 daemon diagnostics로 연결한다. 이는 delivery 상태 전이 policy나 `claude_channel_disconnected` event를 정하지 않는다.
+- native activity는 Phase 1 또는 후속 owner에 남는다. 이는 G1-B의 Claude canonical-presentation corrective와 별개다.
+- durable store와 mailbox replay는 G1-C 통과 조건이 아니라 Phase 2 책임이다.
+- Claude HTTP 4xx/5xx/timeout의 정확한 delivery 상태 매핑, Claude 쪽 수동 복구 수단, invocation
+  key의 실제 public field·retention·mismatch 규칙은 후속 구현 workstream에서 결정한다. 이
+  gate는 요구되는 관찰 가능한 결과만 고정하고 transport별 의미를 미리 규정하지 않는다.
 
 **통과 조건**
 
-- local A2A 왕복에서 adapter/runtime automatic ack, consumed one-reply permission, same-invocation accepted-result recovery, retry/idempotency, queued flush, stale/runtime failure 처리가 같은 delivery correlation 기준으로 검증된다. 재전송은 원 `messageId`와 `deliveryId`를 유지한다.
-- retry/failure-injection 중에도 inbound reply와 MCP fallback이 delivery correlation 기준으로 유실 없이 동작한다.
-- adapter가 보장하지 못하는 ack/dedupe/wake-up 의미는 completed로 과장하지 않고 degradation 또는 explicit manual action으로 드러난다.
-- durable store와 mailbox replay는 Phase 2 owner로 남아 있다.
+Accepted Codex Tier 3 evidence와 그 경계:
+
+- Codex App Server target의 retained JSON-RPC request correlation과 late-response의 idempotent resolution이 검증됐다. bounded pre-write FIFO queue/retry/TTL/backpressure와 usable-target flush, post-write timeout/drop의 `unconfirmed` 분류는 일반 lifecycle 경계로 검증됐다.
+- Codex target의 duplicate-risk confirmation이 필요한 direct manual retransmit과 correlated explicit JSON-RPC reject의 primary `failed` 전환이 검증됐다. daemon outcome notification의 canonical renderer는 exactly-once·non-recursive로 유지되며, Tier 3 composition 및 direct-TUI evidence가 검증됐다.
+- post-write automatic reinjection은 없다. automatic authenticated ack/`completed`, wake-up, adapter-specific duplicate suppression과 stale/disconnected 운영 정책은 current Tier 3 완료가 아니라 Phase 1 책임이다. native activity는 Phase 1 또는 후속 책임이며, durable store와 mailbox replay는 Phase 2 owner로 남아 있다.
+
+남은 Codex·Claude 공통 요구:
+
+- ingress invocation idempotency가 두 adapter에서 검증됐다. 같은 invocation key와 같은 요청의
+  재시도는 새 message, delivery 또는 reply-right를 만들지 않고 최초 accepted result를 반환한다.
+- 구현 수단이 달라도 delivery FSM 의미가 대칭이다. 확정적 전송 전 실패는 queue 또는 bounded
+  retry, target 수용 여부 불명은 `unconfirmed`이며 자동 재전송을 하지 않고, 확정 거절은 failed
+  또는 명시적 결과, 수용 응답은 `delivered`이며 `completed`가 아니다.
+- retry/failure 중 inbound reply, reply-right, MCP/channel source 결과 경로가 유실되거나 잘못
+  귀속되지 않음이 검증됐다.
+- Codex와 Claude 각각의 직접 통합 증거가 있다. 한 adapter의 증거를 다른 adapter의 coverage로
+  대체하지 않는다.
 
 **Owner refs**
 
@@ -275,7 +284,18 @@ daemon이 공개 전 release path에서 조용히 실패하거나 손상된 상�
   reason을 어느 수준까지 보존하고 doctor/logs/status 계열 tooling에 노출해야 gate 통과로 볼지 정한다.
 - Claude channel boot failure는 Claude-specific diagnosability gap으로 다룬다. 착수 시 startup ack 경로, attach success 반환 의미 축소, child fatal 관측 후 전파 중 어떤 방향으로 닫을지 재도출한다.
 - Daemon socket dispatch가 inherited/prototype-chain method name을 호출하지 않도록 own-property 또는 known-method guard를 hardening 범위에 포함한다.
-- `claude_channel_disconnected` event와 runtime tier evaluator/diagnostics API를 G3 Phase 0 diagnosability에 묶을지, Phase 2 adapter/events boundary로 명시 이연할지 결정한다.
+- G3는 Codex와 Claude에 대해 아래 사실을 read-only로 노출하는 최소 diagnostics를 구현한다.
+  - 현재 연결 상태
+  - acceptance와 receipt의 구분
+  - automatic ack / completed 지원 여부
+  - automatic retry 안전성
+  - 수동 복구 가능 여부와 경계
+
+  endpoint, DTO, CLI command, field 이름은 이 gate에서 정하지 않는다. 새 delivery policy나
+  보장을 만들지 않는다. `claude_channel_disconnected` event와 generic typed capability /
+  tier-evaluator / diagnostics model·API, registry/event boundary는 Phase 2 adapter/events
+  boundary로 명시 이연하며 G3 완료 주장에 섞이지 않는다.
+- G3는 Codex와 Claude 각각에서 이미 관측 가능한 runtime failure 또는 단절을 daemon diagnostics까지 연결한다. 이 범위는 delivery 상태 전이 policy를 정하지 않고, `claude_channel_disconnected` event나 generic capability/event model을 만들지 않는다.
 - durable store는 G3 통과 조건에서 제외하고, restart 시 in-memory state 소실은 공개 release의 명시된 제한으로 둔다.
 
 **통과 조건**
@@ -283,7 +303,8 @@ daemon이 공개 전 release path에서 조용히 실패하거나 손상된 상�
 - client crash isolation, fatal handler exit, SIGTERM/stop cleanup, bounded input/queue, log redaction, doctor diagnosis가 G4에서 같은 release candidate로 재검증될 수 있다.
 - Claude channel boot failure처럼 늦게 generic unavailable로 보이는 실패가 원인 진단 가능한 daemon behavior로 드러난다.
 - socket API dispatch는 unknown 또는 inherited method 이름을 실행하지 않고 typed error로 거부한다.
-- channel disconnect event와 runtime diagnostics/tier evaluation은 G3에서 검증됐거나, Phase 2 owner path로 명시 이연되어 G3 완료 주장에 섞이지 않는다.
+- 현재 Codex·Claude의 연결 상태와 알려진 delivery guarantee/limitation을 read-only로 보여 주는 최소 diagnostics가 검증된다. 이는 acceptance/receipt 구분, automatic ack/`completed` 지원 여부, automatic retry 안전성, 수동 복구 경계를 포함한다.
+- `claude_channel_disconnected` event와 generic typed capability/tier-evaluator/diagnostics model·API, registry/event boundary는 Phase 2 owner path로 명시 이연되었으며 G3 완료 주장에 섞이지 않는다.
 - durable persistence와 mailbox replay는 Phase 2 owner path로 남아 있으며 G3 완료 주장에 포함되지 않는다.
 
 **Owner refs**
@@ -435,7 +456,7 @@ G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable
 
 - npm publish와 GitHub 공개 이후 시작한다.
 - Phase 1은 adoption friction과 human-controlled operation에 집중하며, compose, durable replay, third vendor, federation은 Phase 2/3로 둔다.
-- Phase 0 G1-C의 baseline adapter automatic ack와 idempotency 위에서, Phase 1은 stronger Tier 2 wake-up, structured ingress, and operational guarantees를 uplift한다.
+- Phase 1은 current Tier 3의 delivery acceptance/`unconfirmed` 경계 위에서 authenticated automatic ack, `completed` evidence, wake-up, adapter-specific duplicate suppression 같은 Tier 2 운영 보장을 uplift한다.
 - 이 카드는 gate가 아니므로 통과 조건 슬롯을 강제하지 않는다.
 
 **주요 범위**
@@ -446,7 +467,8 @@ G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable
 - approved artifact distillation.
 - retry/backoff/dead-letter 조정.
 - deferred delivery 자동 retry와 source push notification.
-- G1 Codex ingress/reliability evidence가 충분할 때 stronger Tier 2 delivery-ack/wake-up uplift.
+- accepted G1-B/G1-C evidence를 전제로 stronger Tier 2 delivery-ack/wake-up uplift.
+- heartbeat, 시간 경과, 외부 세션 단절 중 어떤 신호로 stale/disconnected를 감지할지와, queued delivery를 retry/hold/failed 중 어떻게 처리할지의 운영 정책·구현. 세부 기준, 자동 동작, public field는 이 phase 시작 전까지 정하지 않는다.
 
 **Owner refs**
 
@@ -468,12 +490,18 @@ vendor 확장과 더 큰 topology를 가능하게 하는 구조적 전제 조건
 - ingress generalization, `state.ts` decomposition, pair-to-N-agent route generalization이 우선 전제다.
 - compose, third vendor, durable store/mailbox replay, 추가 view driver는 G2가 아니라 Phase 2 범위다.
 - durable persistence를 공개 release blocker로 승격할 때는 stable daemon identity와 restart-safe reply idempotency, 이미 발급된 messageId/deliveryId 및 consumed reply-right history 보존을 함께 닫아야 한다. 이들이 불명확하면 restart/replay가 중복 reply, 잘못된 reply 귀속, stale daemon state 복원을 만들 수 있으므로 durable store 자체보다 먼저 blocker framing을 확정한다.
-- G3가 `claude_channel_disconnected` event 또는 runtime diagnostics/tier-evaluator API를 Phase 0에서
-  닫지 않고 명시 이연했다면, 이 phase가 adapter/events boundary cleanup으로 최종 disposition을 소유한다.
+- G3가 `claude_channel_disconnected` event 또는 generic typed capability/tier-evaluator/diagnostics
+  model·API를 Phase 0에서 닫지 않고 명시 이연했다면, 이 phase가 adapter/events boundary cleanup으로
+  최종 disposition을 소유한다.
 - 이 카드는 phase pointer이므로 gate식 착수 검토/통과 조건 슬롯을 강제하지 않는다.
 
 **주요 범위**
 
+- G3 Codex·Claude 최소 diagnostics는 Phase 2가 제거하거나 대체하는 작업이 아니다. 그 뒤의
+  일반화/구조 개편이 이 phase의 시작점이다.
+- typed capability declaration과 generic adapter capability model.
+- adapter registry/event-boundary 통합.
+- daemon·CLI·TUI의 공통 capability 소비 구조.
 - ingress generalization과 adapter boundary 정리.
 - runtime events surface와 diagnostics/tier-evaluator API의 adapter boundary 정리.
 - pair-to-N-agent route generalization.
@@ -529,7 +557,7 @@ Gate completion requires reproducible evidence, not only a status label. 각 gat
 | Gate | Required evidence                                                                                                                                                                         |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | G0   | versioned schema/example validation, CLI/config/package decision record, support matrix                                                                                                   |
-| G1   | canonical schema and typed tool fixture sync, Codex ingress evidence, automated Codex<->Claude integration, retry/idempotency/offline queue/stale runtime/active-turn/auth negative tests |
+| G1   | completed/consumed G1-B/C evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence. Remaining G1 release evidence: G1-C ingress invocation idempotency, adapter-symmetric delivery-FSM semantics, retry/failure 중 inbound reply와 MCP/channel 결과 경로 무손실, Codex·Claude 각각의 직접 통합 evidence; G1-D auth/route/secret/runtime negative tests. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
 | G2   | tmux path and no-tmux fallback clean-user smoke, README command match                                                                                                                     |
 | G3   | client crash isolation, fatal handler exit, SIGTERM child cleanup, bounded body/queue, log redaction, doctor diagnosis tests                                                              |
 | G5   | secret/PII/path scan, tracked-vs-local file review, dead/scaffold code disposition, LICENSE/README/SECURITY/CONTRIBUTING/issue template presence and link check                           |

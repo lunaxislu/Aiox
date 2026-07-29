@@ -1,21 +1,26 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canAcceptFanoutIntoTargetQueues,
   createQueuedDeliveries,
+  deliveryQueueCapacity,
+  deliveryQueueTtlMs,
   messageDeliveryStatuses,
   recoverDeliveryStatusAfterRestart,
+  retryDelayMs,
   transitionDelivery,
 } from "../../../src/core/deliveries.js";
 import type { Route } from "../../../src/core/routes.js";
 
 describe("Message deliveries", () => {
-  it("defines the MVP delivery statuses", () => {
+  it("defines unconfirmed as an independent delivery status", () => {
     expect(messageDeliveryStatuses).toEqual([
       "queued",
       "delivering",
       "delivered",
       "completed",
       "failed",
+      "unconfirmed",
     ]);
   });
 
@@ -78,5 +83,23 @@ describe("Message deliveries", () => {
 
   it("recovers an in-flight delivery as queued after restart", () => {
     expect(recoverDeliveryStatusAfterRestart("delivering")).toBe("queued");
+  });
+
+  it("uses the accepted bounded pre-write retry schedule", () => {
+    expect([1, 2, 3, 4].map(retryDelayMs)).toEqual([250, 1_000, 4_000, null]);
+  });
+
+  it("rejects an entire fan-out before persistence when any target queue is full", () => {
+    expect(deliveryQueueCapacity).toBe(32);
+    expect(deliveryQueueTtlMs).toBe(5 * 60 * 1_000);
+    expect(
+      canAcceptFanoutIntoTargetQueues({
+        queuedByTarget: new Map([
+          ["target-a", 31],
+          ["target-b", 32],
+        ]),
+        targetAgentIds: ["target-a", "target-b"],
+      }),
+    ).toBe(false);
   });
 });

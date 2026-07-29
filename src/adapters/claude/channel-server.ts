@@ -8,6 +8,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
+import { createPublicMessageId } from "../../core/public-ids.js";
 import type {
   ReceiveClaudeChannelMessageResponse,
   ReceiveClaudeChannelReplyResponse,
@@ -232,7 +233,6 @@ export interface ClaudeChannelDaemonClient {
 export interface ClaudeChannelMcpServerOptions {
   agentName: string;
   daemonSocketPath: string;
-  createMessageId?: () => string;
   createDaemonClient?: (options: { socketPath: string }) => ClaudeChannelDaemonClient;
 }
 
@@ -332,9 +332,8 @@ export function createSendHandler(
   options: ClaudeChannelMcpServerOptions,
 ): (input: TypedClaudeSendInput) => Promise<ClaudeChannelToolResult> {
   const createDaemonClient = resolveDaemonClient(options);
-  const createMessageId = options.createMessageId ?? (() => `claude-msg-${randomUUID()}`);
   return async ({ type, intent, replyExpected, content }) => {
-    const messageId = createMessageId();
+    const messageId = createPublicMessageId();
     logEvent("send_tool_called", {
       agentName: options.agentName,
       message_id: messageId,
@@ -383,6 +382,7 @@ export function createReplyHandler(
 ): (input: TypedClaudeReplyInput) => Promise<ClaudeChannelToolResult> {
   const createDaemonClient = resolveDaemonClient(options);
   return async ({ inReplyToDeliveryId, intent, replyExpected, content }) => {
+    const messageId = createPublicMessageId();
     logEvent("reply_tool_called", {
       agentName: options.agentName,
       inReplyToDeliveryId,
@@ -391,6 +391,7 @@ export function createReplyHandler(
     try {
       const result = await client.receiveClaudeChannelReply({
         agentName: options.agentName,
+        messageId,
         inReplyToDeliveryId,
         intent,
         replyExpected,

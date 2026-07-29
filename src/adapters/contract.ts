@@ -1,5 +1,5 @@
 import type { AgentKind } from "../core/agents.js";
-import type { MessageType } from "../core/messages.js";
+import type { AgentAuthoredIntent, MessageType } from "../core/messages.js";
 import type { AgentDto, DeliveryDto, MessageDto } from "../daemon/api.js";
 
 export interface AdapterOutgoingMessage {
@@ -7,6 +7,8 @@ export interface AdapterOutgoingMessage {
   messageId: string;
   parentMessageId?: string | null;
   type: MessageType;
+  intent?: AgentAuthoredIntent;
+  replyExpected?: boolean;
   content: string;
 }
 
@@ -43,6 +45,7 @@ export type AdapterInjectResult =
       reason: AdapterInjectFailureReason;
       message: string;
       jsonRpcCode?: number;
+      requestId?: number;
     }
   | {
       kind: "deferred";

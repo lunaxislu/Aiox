@@ -92,6 +92,7 @@ describe("CLI output formatting", () => {
         delivered: 0,
         completed: 4,
         failed: 5,
+        unconfirmed: 0,
       },
     });
 
@@ -109,7 +110,7 @@ describe("CLI output formatting", () => {
     expect(output).toContain("<missing:missing-source> -> impl\n");
     expect(output).toContain("DELIVERIES\n");
     expect(output).toContain(
-      "messages=3 queued=1 delivering=2 delivered=0 completed=4 failed=5\n",
+      "messages=3 queued=1 delivering=2 delivered=0 completed=4 failed=5 unconfirmed=0\n",
     );
   });
 

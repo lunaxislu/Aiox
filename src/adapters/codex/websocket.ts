@@ -9,6 +9,7 @@ export type CodexAppServerWebSocketErrorCode =
 
 export interface CodexJsonRpcErrorDetails {
   jsonRpcCode?: number;
+  requestId?: number;
   closeCode?: number;
   closeReason?: string;
 }
@@ -16,6 +17,7 @@ export interface CodexJsonRpcErrorDetails {
 export class CodexAppServerWebSocketError extends Error {
   readonly code: CodexAppServerWebSocketErrorCode;
   readonly jsonRpcCode?: number;
+  readonly requestId?: number;
   readonly closeCode?: number;
   readonly closeReason?: string;
 
@@ -28,6 +30,7 @@ export class CodexAppServerWebSocketError extends Error {
     this.name = "CodexAppServerWebSocketError";
     this.code = code;
     this.jsonRpcCode = details.jsonRpcCode;
+    this.requestId = details.requestId;
     this.closeCode = details.closeCode;
     this.closeReason = details.closeReason;
   }
@@ -39,6 +42,13 @@ export interface ConnectCodexAppServerWebSocketOptions {
   clientVersion?: string;
   connectTimeoutMs?: number;
   requestTimeoutMs?: number;
+  /** @internal Injectable only to make adapter timeouts deterministic in tests. */
+  scheduler?: CodexWebSocketScheduler;
+}
+
+export interface CodexWebSocketScheduler {
+  setTimeout(callback: () => void, delayMs: number): NodeJS.Timeout;
+  clearTimeout(timeout: NodeJS.Timeout): void;
 }
 
 export interface CodexInitializeResponse {
@@ -56,7 +66,10 @@ export interface CodexJsonRpcNotification {
 export interface CodexJsonRpcRequestOptions {
   timeoutMs?: number;
   timeoutErrorCode?: CodexAppServerWebSocketErrorCode;
+  onLateResponse?(response: CodexJsonRpcLateResponse): void;
 }
+
+export type CodexJsonRpcLateResponse = JsonRpcResponse;
 
 export interface CodexAppServerWebSocketClient {
   readonly endpoint: URL;
@@ -97,10 +110,12 @@ interface PendingRequest {
   resolve(value: unknown): void;
   reject(error: Error): void;
   timeout?: NodeJS.Timeout;
+  onLateResponse?: (response: CodexJsonRpcLateResponse) => void;
 }
 
 const defaultConnectTimeoutMs = 5_000;
 const defaultRequestTimeoutMs = 30_000;
+const lateResponseObserverWindowMs = 5 * 60_000;
 
 export async function connectCodexAppServerWebSocket(
   options: ConnectCodexAppServerWebSocketOptions,
@@ -117,7 +132,16 @@ function createClient(
   const clientName = options.clientName ?? "aiox";
   const clientVersion = options.clientVersion ?? "1.0.0";
   const requestTimeoutMs = options.requestTimeoutMs ?? defaultRequestTimeoutMs;
+  const scheduler: CodexWebSocketScheduler = options.scheduler ?? {
+    setTimeout,
+    clearTimeout,
+  };
   const pending = new Map<number, PendingRequest>();
+  const lateResponseObservers = new Map<number, NodeJS.Timeout>();
+  const requestObservers = new Map<
+    number,
+    (response: CodexJsonRpcLateResponse) => void
+  >();
   const notificationListeners = new Set<(notification: CodexJsonRpcNotification) => void>();
   const closeListeners = new Set<(code: number, reason: string) => void>();
   let nextRequestId = 1;
@@ -165,6 +189,13 @@ function createClient(
   function settleResponse(response: JsonRpcResponse): void {
     const request = pending.get(response.id);
     if (!request) {
+      const expiry = lateResponseObservers.get(response.id);
+      if (expiry) {
+        scheduler.clearTimeout(expiry);
+        lateResponseObservers.delete(response.id);
+        requestObservers.get(response.id)?.(response);
+        requestObservers.delete(response.id);
+      }
       return;
     }
 
@@ -176,7 +207,7 @@ function createClient(
         new CodexAppServerWebSocketError(
           "codex_jsonrpc_error",
           response.error.message,
-          { jsonRpcCode: response.error.code },
+          { jsonRpcCode: response.error.code, requestId: response.id },
         ),
       );
       return;
@@ -192,11 +223,16 @@ function createClient(
     }
 
     pending.clear();
+    for (const expiry of lateResponseObservers.values()) {
+      scheduler.clearTimeout(expiry);
+    }
+    lateResponseObservers.clear();
+    requestObservers.clear();
   }
 
   function clearPendingTimeout(request: PendingRequest): void {
     if (request.timeout) {
-      clearTimeout(request.timeout);
+      scheduler.clearTimeout(request.timeout);
     }
   }
 
@@ -236,12 +272,26 @@ function createClient(
       }
 
       return new Promise<unknown>((resolve, reject) => {
-        const pendingRequest: PendingRequest = { resolve, reject };
+        const pendingRequest: PendingRequest = {
+          resolve,
+          reject,
+          onLateResponse: requestOptions.onLateResponse,
+        };
         const timeoutMs = requestOptions.timeoutMs ?? requestTimeoutMs;
 
         if (timeoutMs > 0) {
-          pendingRequest.timeout = setTimeout(() => {
+          pendingRequest.timeout = scheduler.setTimeout(() => {
             pending.delete(id);
+            if (pendingRequest.onLateResponse) {
+              requestObservers.set(id, pendingRequest.onLateResponse);
+              lateResponseObservers.set(
+                id,
+                scheduler.setTimeout(() => {
+                  lateResponseObservers.delete(id);
+                  requestObservers.delete(id);
+                }, lateResponseObserverWindowMs),
+              );
+            }
             reject(
               new CodexAppServerWebSocketError(
                 requestOptions.timeoutErrorCode ?? "codex_turn_start_timeout",

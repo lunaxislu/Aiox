@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDaemonApi } from "../../../src/daemon/api.js";
+import { CodexAppServerWebSocketError } from "../../../src/adapters/codex/websocket.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
 import { createEventRepository } from "../../../src/store/repositories/events.js";
 import { applySchema } from "../../../src/store/schema.js";
@@ -107,6 +108,122 @@ describe("daemon attachAgent issues codex channel token", () => {
     if (response.ok) {
       expect(response.codexChannelToken).toBeUndefined();
     }
+  });
+});
+
+describe("Codex pre-write queue admission", () => {
+  let db: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("rejects an entire fan-out before persistence when one target queue is full", async () => {
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+    await client.attachAgent({ kind: "claude", name: "first", cwd: "/repo" });
+    await client.attachAgent({ kind: "claude", name: "second", cwd: "/repo" });
+    await client.connect({ sourceName: "source", targetNames: ["first", "second"] });
+
+    for (let index = 0; index < 32; index += 1) {
+      await expect(
+        client.sendMessage({
+          sourceName: "source",
+          messageId: `queued-${index}`,
+          type: "instruction",
+          content: "hold",
+        }),
+      ).resolves.toMatchObject({ ok: true });
+    }
+
+    await expect(
+      client.sendMessage({
+        sourceName: "source",
+        messageId: "rejected-fanout",
+        type: "instruction",
+        content: "must not partially persist",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "delivery_queue_full",
+      targetAgentIds: expect.arrayContaining([expect.any(String)]),
+    });
+    expect(db.prepare("select count(*) as count from messages").get()).toEqual({ count: 32 });
+    expect(db.prepare("select count(*) as count from message_deliveries").get()).toEqual({ count: 64 });
+  });
+
+  it("expires a queued delivery after five minutes as failed with delivery_expired", async () => {
+    const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: () => "2026-07-20T00:00:00.000Z",
+      scheduleTimeout: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs });
+        return scheduled.length;
+      },
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+    await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    await client.connect({ sourceName: "source", targetNames: ["target"] });
+    await client.sendMessage({
+      sourceName: "source",
+      messageId: "expires",
+      type: "instruction",
+      content: "hold",
+    });
+
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]?.delayMs).toBe(5 * 60 * 1_000);
+    scheduled[0]?.callback();
+    expect(db.prepare("select status from message_deliveries").get()).toEqual({ status: "failed" });
+    expect(
+      db.prepare("select type, data_json from events where type = 'delivery_expired'").get(),
+    ).toEqual({ type: "delivery_expired", data_json: JSON.stringify({ reason: "delivery_expired" }) });
+  });
+
+  it("keeps a conclusively pre-write delivery queued after its three automatic retries", async () => {
+    const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
+    const setup = await setupPairedAgents(db, {
+      scheduleTimeout: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs });
+        return scheduled.length;
+      },
+    });
+
+    const result = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "retry-pre-write",
+      content: { text: "wait for unavailable target" },
+    });
+    expect(result).toMatchObject({ ok: true, deliveries: [{ status: "queued" }] });
+    expect(scheduled.map((entry) => entry.delayMs)).toContain(250);
+
+    scheduled.find((entry) => entry.delayMs === 250)?.callback();
+    await vi.waitFor(() => {
+      expect(scheduled.map((entry) => entry.delayMs)).toContain(1_000);
+    });
+    scheduled.find((entry) => entry.delayMs === 1_000)?.callback();
+    await vi.waitFor(() => {
+      expect(scheduled.map((entry) => entry.delayMs)).toContain(4_000);
+    });
+    scheduled.find((entry) => entry.delayMs === 4_000)?.callback();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(db.prepare("select status from message_deliveries").get()).toEqual({ status: "queued" });
   });
 });
 
@@ -316,7 +433,7 @@ describe("daemon receiveCodexMessage", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "hello from codex",
+      content: { text: "hello from codex" },
     });
 
     expect(response).toMatchObject({
@@ -359,15 +476,36 @@ describe("daemon receiveCodexMessage", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "hello from codex",
+      content: { text: "hello from codex" },
     });
 
     expect(response.ok).toBe(true);
+    const delivery = db
+      .prepare(
+        `
+          select d.id, m.created_at as createdAt
+          from message_deliveries d
+          join messages m on m.id = d.message_id
+          where m.id = ?
+        `,
+      )
+      .get("msg-1") as { id: string; createdAt: string };
     expect(requests).toEqual([
       {
         url: "http://127.0.0.1:18789/send",
         body: {
-          content: "hello from codex",
+          content: JSON.stringify({
+            protocol: "aiox.message.v1",
+            messageId: "msg-1",
+            deliveryId: delivery.id,
+            source: { kind: "agent", address: "agent://local/release/impl" },
+            target: { address: "agent://local/release/reviewer" },
+            type: "question",
+            intent: null,
+            replyExpected: null,
+            content: { mediaType: "text/plain", text: "hello from codex" },
+            createdAt: delivery.createdAt,
+          }),
           chat_id: "msg-1",
           origin: "impl",
         },
@@ -375,7 +513,7 @@ describe("daemon receiveCodexMessage", () => {
     ]);
     expect(deliveryStatusesAtFetch).toEqual(["delivering"]);
     expect(db.prepare("select status from message_deliveries").get()).toMatchObject({
-      status: "completed",
+      status: "delivered",
     });
     expect(
       db.prepare("select type from events where delivery_id is not null order by rowid").all(),
@@ -383,11 +521,10 @@ describe("daemon receiveCodexMessage", () => {
       { type: "delivery_queued" },
       { type: "delivery_status_changed" },
       { type: "delivery_status_changed" },
-      { type: "delivery_status_changed" },
     ]);
   });
 
-  it("labels Codex-to-Codex injected envelopes with the Codex source kind", async () => {
+  it("preserves the stored delivery ID in the Codex canonical envelope", async () => {
     const runtimeA = fakeCodexRuntime({
       endpoint: "ws://127.0.0.1:54321/",
       startedThreadId: "thread-impl-a",
@@ -437,10 +574,23 @@ describe("daemon receiveCodexMessage", () => {
       agentName: "impl-a",
       token: tokenA,
       messageId: "codex-msg-1",
-      content: "hello from codex",
+      type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "hello from codex" },
     });
 
     expect(response.ok).toBe(true);
+    const delivery = db
+      .prepare(
+        `
+          select d.id, m.created_at as createdAt
+          from message_deliveries d
+          join messages m on m.id = d.message_id
+          where m.id = ?
+        `,
+      )
+      .get("codex-msg-1") as { id: string; createdAt: string };
     expect(runtimeB.requests).toContainEqual({
       method: "turn/start",
       params: {
@@ -448,7 +598,21 @@ describe("daemon receiveCodexMessage", () => {
         input: [
           {
             type: "text",
-            text: '<aiox-channel source="codex" message_id="codex-msg-1">\nhello from codex\n</aiox-channel>',
+            text: JSON.stringify({
+              protocol: "aiox.message.v1",
+              messageId: "codex-msg-1",
+              deliveryId: delivery.id,
+              source: {
+                kind: "agent",
+                address: "agent://local/release/impl-a",
+              },
+              target: { address: "agent://local/release/impl-b" },
+              type: "instruction",
+              intent: "delegation",
+              replyExpected: true,
+              content: { mediaType: "text/plain", text: "hello from codex" },
+              createdAt: delivery.createdAt,
+            }),
           },
         ],
       },
@@ -510,7 +674,7 @@ describe("daemon receiveCodexMessage", () => {
       agentName: "impl-a",
       token: tokenA,
       messageId: "codex-msg-1",
-      content: "hello from codex",
+      content: { text: "hello from codex" },
     });
 
     expect(response).toMatchObject({
@@ -545,7 +709,7 @@ describe("daemon receiveCodexMessage", () => {
       agentName: "impl",
       token: "",
       messageId: "msg-1",
-      content: "hello",
+      content: { text: "hello" },
     });
 
     expect(response).toMatchObject({
@@ -561,7 +725,7 @@ describe("daemon receiveCodexMessage", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "hello",
+      content: { text: "hello" },
     });
 
     expect(response).toMatchObject({
@@ -577,7 +741,7 @@ describe("daemon receiveCodexMessage", () => {
       agentName: "reviewer", // a claude agent — not a codex source
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "hello",
+      content: { text: "hello" },
     });
 
     expect(response).toMatchObject({
@@ -593,7 +757,7 @@ describe("daemon receiveCodexMessage", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "hello",
+      content: { text: "hello" },
     });
 
     expect(response).toMatchObject({ ok: false, reason: "no_active_routes" });
@@ -630,6 +794,165 @@ describe("daemon receiveCodexReply", () => {
     db.close();
   });
 
+  it("rejects a reply to an unknown delivery ID", async () => {
+    const setup = await setupPairedAgents(db);
+
+    const response = await setup.client.receiveCodexReply({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "reply-unknown",
+      inReplyToDeliveryId: "delivery-missing",
+      intent: "result",
+      replyExpected: false,
+      content: { text: "ack" },
+    });
+
+    expect(response).toEqual({ ok: false, reason: "unknown_delivery" });
+    expect(db.prepare("select count(*) as n from messages").get()).toEqual({ n: 0 });
+  });
+
+  it("rejects a reply when the originating delivery does not allow replies", async () => {
+    const setup = await setupPairedAgents(db);
+    await setup.client.sendMessage({
+      sourceName: "reviewer", messageId: "no-reply", type: "question",
+      replyExpected: false, content: "no response requested",
+    });
+
+    const response = await setup.client.receiveCodexReply({
+      agentName: "impl", token: setup.codexToken, messageId: "reply-denied",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "no-reply"),
+      intent: "result", replyExpected: false, content: { text: "ack" },
+    });
+
+    expect(response).toEqual({ ok: false, reason: "reply_not_expected" });
+  });
+
+  it("rejects a reply from an authenticated agent that is not the original target", async () => {
+    const setup = await setupPairedAgents(db);
+    await setup.client.sendMessage({
+      sourceName: "reviewer", messageId: "wrong-target", type: "question",
+      replyExpected: true, content: "impl must answer",
+    });
+
+    const response = await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "wrong-target"),
+      intent: "result", replyExpected: false, content: { text: "forged reply" },
+    });
+
+    expect(response).toEqual({ ok: false, reason: "correlation_mismatch" });
+  });
+
+  it("consumes an originating delivery reply right exactly once", async () => {
+    const setup = await setupPairedAgents(db);
+    await setup.client.sendMessage({
+      sourceName: "reviewer", messageId: "one-reply", type: "question",
+      replyExpected: true, content: "respond once",
+    });
+    const inReplyToDeliveryId = deliveryIdForMessage(db, "one-reply");
+    const first = await setup.client.receiveCodexReply({
+      agentName: "impl", token: setup.codexToken, messageId: "reply-first",
+      inReplyToDeliveryId, intent: "result", replyExpected: false, content: { text: "first" },
+    });
+    const second = await setup.client.receiveCodexReply({
+      agentName: "impl", token: setup.codexToken, messageId: "reply-second",
+      inReplyToDeliveryId, intent: "result", replyExpected: false, content: { text: "second" },
+    });
+
+    expect(first.ok).toBe(true);
+    expect(second).toEqual({ ok: false, reason: "duplicate_reply" });
+    expect(db.prepare("select count(*) as n from messages where type = 'reply'").get()).toEqual({ n: 1 });
+  });
+
+  it("grants a reply right for reply-expected deliveries, including reply chains", async () => {
+    const setup = await setupPairedAgents(db);
+    await setup.client.sendMessage({
+      sourceName: "reviewer", messageId: "right-grant", type: "question",
+      replyExpected: true, content: "respond and continue",
+    });
+    const originatingDeliveryId = deliveryIdForMessage(db, "right-grant");
+
+    expect(
+      db.prepare("select consumed_reply_message_id from reply_rights where originating_delivery_id = ?")
+        .get(originatingDeliveryId),
+    ).toEqual({ consumed_reply_message_id: null });
+
+    const reply = await setup.client.receiveCodexReply({
+      agentName: "impl", token: setup.codexToken, messageId: "right-grant-reply",
+      inReplyToDeliveryId: originatingDeliveryId,
+      intent: "result", replyExpected: true, content: { text: "continue" },
+    });
+    expect(reply.ok).toBe(true);
+    if (!reply.ok) return;
+    const chainedDeliveryId = reply.deliveries[0]?.id;
+
+    expect(chainedDeliveryId).toEqual(expect.any(String));
+    expect(
+      db.prepare("select consumed_reply_message_id from reply_rights where originating_delivery_id = ?")
+        .get(chainedDeliveryId),
+    ).toEqual({ consumed_reply_message_id: null });
+  });
+
+  it("routes a reply only to the original source despite other responder routes", async () => {
+    const setup = await setupPairedAgents(db);
+    await setup.client.attachAgent({ kind: "claude", name: "observer", cwd: "/repo" });
+    await setup.client.connect({ sourceName: "impl", targetNames: ["observer"] });
+    await setup.client.sendMessage({
+      sourceName: "reviewer", messageId: "source-only", type: "question",
+      replyExpected: true, content: "reply to reviewer only",
+    });
+
+    const response = await setup.client.receiveCodexReply({
+      agentName: "impl", token: setup.codexToken, messageId: "source-only-reply",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "source-only"),
+      intent: "result", replyExpected: false, content: { text: "review complete" },
+    });
+
+    expect(response).toMatchObject({ ok: true, deliveries: [{ targetAgentId: expect.any(String), routeId: null }] });
+    expect(
+      db.prepare("select a.name from message_deliveries d join agents a on a.id = d.target_agent_id where d.message_id = ?")
+        .all("source-only-reply"),
+    ).toEqual([{ name: "reviewer" }]);
+  });
+
+  it("rejects an unavailable reply right without persisting an orphan reply", async () => {
+    const setup = await setupPairedAgents(db);
+    await setup.client.sendMessage({
+      sourceName: "reviewer", messageId: "backfilled-right", type: "question",
+      replyExpected: true, content: "reply once",
+    });
+    const inReplyToDeliveryId = deliveryIdForMessage(db, "backfilled-right");
+    db.prepare("delete from reply_rights where originating_delivery_id = ?").run(inReplyToDeliveryId);
+
+    const response = await setup.client.receiveCodexReply({
+      agentName: "impl", token: setup.codexToken, messageId: "orphan-reply",
+      inReplyToDeliveryId, intent: "result", replyExpected: false, content: { text: "no orphan" },
+    });
+
+    expect(response).toEqual({ ok: false, reason: "duplicate_reply" });
+    expect(db.prepare("select count(*) as n from messages").get()).toEqual({ n: 1 });
+    expect(db.prepare("select count(*) as n from message_deliveries").get()).toEqual({ n: 1 });
+  });
+
+  it("rejects a duplicate reply message id with a typed reply error", async () => {
+    const setup = await setupPairedAgents(db);
+    await setup.client.sendMessage({
+      sourceName: "reviewer", messageId: "reply-id-collision", type: "question",
+      replyExpected: true, content: "respond once",
+    });
+
+    const response = await setup.client.receiveCodexReply({
+      agentName: "impl", token: setup.codexToken, messageId: "reply-id-collision",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "reply-id-collision"),
+      intent: "result", replyExpected: false, content: { text: "collision" },
+    });
+
+    expect(response).toEqual({ ok: false, reason: "duplicate_reply" });
+    expect(db.prepare("select count(*) as n from messages").get()).toEqual({ n: 1 });
+    expect(db.prepare("select count(*) as n from message_deliveries").get()).toEqual({ n: 1 });
+  });
+
   it("creates a reply message linked to parent_message_id", async () => {
     const setup = await setupPairedAgents(db);
 
@@ -638,6 +961,7 @@ describe("daemon receiveCodexReply", () => {
       sourceName: "reviewer",
       messageId: "parent-1",
       type: "question",
+      replyExpected: true,
       content: "please reply",
     });
     expect(parent.ok).toBe(true);
@@ -646,8 +970,8 @@ describe("daemon receiveCodexReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "reply-1",
-      parentMessageId: "parent-1",
-      content: "ack",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "parent-1"),
+      content: { text: "ack" },
     });
 
     expect(response).toMatchObject({
@@ -662,7 +986,7 @@ describe("daemon receiveCodexReply", () => {
       .prepare("select parent_message_id, type from messages where id = ?")
       .get("reply-1") as { parent_message_id: string | null; type: string } | undefined;
     expect(replyRow).toMatchObject({
-      parent_message_id: "parent-1",
+      parent_message_id: deliveryIdForMessage(db, "parent-1"),
       type: "reply",
     });
   });
@@ -681,6 +1005,7 @@ describe("daemon receiveCodexReply", () => {
       sourceName: "reviewer",
       messageId: "parent-1",
       type: "question",
+      replyExpected: true,
       content: "please reply",
     });
     expect(parent.ok).toBe(true);
@@ -689,16 +1014,38 @@ describe("daemon receiveCodexReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "reply-1",
-      parentMessageId: "parent-1",
-      content: "ack",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "parent-1"),
+      content: { text: "ack" },
     });
 
     expect(response.ok).toBe(true);
+    const delivery = db
+      .prepare(
+        `
+          select d.id, m.created_at as createdAt
+          from message_deliveries d
+          join messages m on m.id = d.message_id
+          where m.id = ?
+        `,
+      )
+      .get("reply-1") as { id: string; createdAt: string };
     expect(requests).toEqual([
       {
         url: "http://127.0.0.1:18789/send",
         body: {
-          content: "ack",
+          content: JSON.stringify({
+            protocol: "aiox.message.v1",
+            messageId: "reply-1",
+            deliveryId: delivery.id,
+            source: { kind: "agent", address: "agent://local/release/impl" },
+            target: { address: "agent://local/release/reviewer" },
+            type: "reply",
+            intent: null,
+            replyExpected: null,
+            content: { mediaType: "text/plain", text: "ack" },
+            createdAt: delivery.createdAt,
+            inReplyToDeliveryId: deliveryIdForMessage(db, "parent-1"),
+          }),
           chat_id: "reply-1",
           origin: "impl",
         },
@@ -706,7 +1053,7 @@ describe("daemon receiveCodexReply", () => {
     ]);
     expect(
       db.prepare("select status from message_deliveries where message_id = ?").get("reply-1"),
-    ).toMatchObject({ status: "completed" });
+    ).toMatchObject({ status: "delivered" });
   });
 
   it("keeps Codex reply delivery queued when Claude channel is unregistered", async () => {
@@ -716,6 +1063,7 @@ describe("daemon receiveCodexReply", () => {
       sourceName: "reviewer",
       messageId: "parent-1",
       type: "question",
+      replyExpected: true,
       content: "please reply",
     });
     expect(parent.ok).toBe(true);
@@ -724,8 +1072,8 @@ describe("daemon receiveCodexReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "reply-unregistered",
-      parentMessageId: "parent-1",
-      content: "ack",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "parent-1"),
+      content: { text: "ack" },
     });
 
     expect(response.ok).toBe(true);
@@ -748,8 +1096,7 @@ describe("daemon receiveCodexReply", () => {
       agentName: "impl",
       token: "",
       messageId: "reply-1",
-      parentMessageId: "parent-1",
-      content: "ack",
+      content: { text: "ack" },
     });
 
     expect(response).toMatchObject({
@@ -772,34 +1119,47 @@ describe("daemon receiveClaudeChannelMessage", () => {
     db.close();
   });
 
-  it("routes a Claude initiated message to the live Codex thread without chat_id", async () => {
-    const setup = await setupPairedAgents(db);
+  it("renders a Claude initiated message as a complete canonical envelope in the live Codex thread", async () => {
+    const setup = await setupPairedAgents(db, { profile: "build" });
 
     const response = await setup.client.receiveClaudeChannelMessage({
       agentName: "reviewer",
       messageId: "claude-msg-1",
-      text: "hello from claude",
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "hello from claude" },
     });
 
     expect(response).toMatchObject({
       ok: true,
       message: { id: "claude-msg-1", type: "question", parentMessageId: null },
     });
-    expect(setup.runtime.requests).toContainEqual({
-      method: "turn/start",
-      params: {
-        threadId: "thread-impl",
-        input: [
-          {
-            type: "text",
-            text: '<aiox-channel source="claude" message_id="claude-msg-1">\nhello from claude\n</aiox-channel>',
-          },
-        ],
-      },
-      options: {
-        timeoutMs: undefined,
-        timeoutErrorCode: "codex_turn_start_timeout",
-      },
+    const delivery = db
+      .prepare(
+        `
+          select d.id, m.created_at as createdAt
+          from message_deliveries d
+          join messages m on m.id = d.message_id
+          where m.id = ?
+        `,
+      )
+      .get("claude-msg-1") as { id: string; createdAt: string };
+    const injection = setup.runtime.requests.find(
+      (request) => request.method === "turn/start",
+    ) as { params: { threadId: string; input: Array<{ text: string }> } } | undefined;
+    expect(injection?.params.threadId).toBe("thread-impl");
+    expect(JSON.parse(injection?.params.input[0]?.text ?? "")).toEqual({
+      protocol: "aiox.message.v1",
+      messageId: "claude-msg-1",
+      deliveryId: delivery.id,
+      source: { kind: "agent", address: "agent://local/build/reviewer" },
+      target: { address: "agent://local/build/impl" },
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { mediaType: "text/plain", text: "hello from claude" },
+      createdAt: delivery.createdAt,
     });
     expect(
       db
@@ -815,35 +1175,100 @@ describe("daemon receiveClaudeChannelMessage", () => {
     ).toMatchObject({ type: "claude_channel_message_received" });
   });
 
-  it("escapes XML-sensitive text in the Codex aiox envelope without changing stored content", async () => {
+  it("preserves JSON-sensitive text in the canonical Codex turn input", async () => {
     const setup = await setupPairedAgents(db);
 
     const response = await setup.client.receiveClaudeChannelMessage({
       agentName: "reviewer",
       messageId: 'claude-msg-<"&',
-      text: "5 < 6 & 7 > 3",
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "5 < 6 & 7 > 3" },
     });
 
     expect(response.ok).toBe(true);
-    expect(setup.runtime.requests).toContainEqual({
-      method: "turn/start",
-      params: {
-        threadId: "thread-impl",
-        input: [
-          {
-            type: "text",
-            text: '<aiox-channel source="claude" message_id="claude-msg-&lt;&quot;&amp;">\n5 &lt; 6 &amp; 7 &gt; 3\n</aiox-channel>',
-          },
-        ],
-      },
-      options: {
-        timeoutMs: undefined,
-        timeoutErrorCode: "codex_turn_start_timeout",
-      },
+    const injection = setup.runtime.requests.find(
+      (request) => request.method === "turn/start",
+    ) as { params: { threadId: string; input: Array<{ text: string }> } };
+    expect(injection.params.threadId).toBe("thread-impl");
+    expect(JSON.parse(injection.params.input[0]?.text ?? "")).toMatchObject({
+      protocol: "aiox.message.v1",
+      messageId: 'claude-msg-<"&',
+      source: { kind: "agent", address: "agent://local/release/reviewer" },
+      target: { address: "agent://local/release/impl" },
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { mediaType: "text/plain", text: "5 < 6 & 7 > 3" },
     });
     expect(
       db.prepare("select content from messages where id = ?").get('claude-msg-<"&'),
     ).toMatchObject({ content: "5 < 6 & 7 > 3" });
+  });
+
+  it("serializes a normal send byte-identically for Codex turn/start and Claude /send", async () => {
+    const claudeSends: { content: string }[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      claudeSends.push(JSON.parse(init.body as string));
+      return new Response("{}", { status: 202 });
+    });
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-target",
+    });
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      profile: "dev",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+    await client.attachAgent({ kind: "claude", name: "source-claude", cwd: "/repo" });
+    const codexAttach = await client.attachAgent({ kind: "codex", name: "target-codex", cwd: "/repo" });
+    const claudeAttach = await client.attachAgent({ kind: "claude", name: "target-claude", cwd: "/repo" });
+    const codexToken = (codexAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+    const claudeToken = (claudeAttach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
+    await client.registerCodexChannel({ agentName: "target-codex", token: codexToken });
+    await client.registerClaudeChannel({
+      agentName: "target-claude",
+      token: claudeToken,
+      endpoint: "http://127.0.0.1:18790/send",
+    });
+    await client.connect({ sourceName: "source-claude", targetNames: ["target-codex", "target-claude"] });
+
+    const response = await client.receiveClaudeChannelMessage({
+      agentName: "source-claude",
+      messageId: "fanout-1",
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "same to both transports" },
+    });
+    expect(response.ok).toBe(true);
+
+    const codexText = (
+      runtime.requests.find((request) => request.method === "turn/start")!.params as {
+        input: Array<{ text: string }>;
+      }
+    ).input[0]!.text;
+    const claudeText = claudeSends[0]!.content;
+
+    // deliveryId and target.address are the only per-delivery fields; everything
+    // else must be byte-identical because both transports share one serializer.
+    const normalize = (text: string): string => {
+      const parsed = JSON.parse(text);
+      parsed.deliveryId = "<delivery>";
+      parsed.target.address = "<target>";
+      return JSON.stringify(parsed);
+    };
+    expect(normalize(codexText)).toBe(normalize(claudeText));
+    for (const text of [codexText, claudeText]) {
+      expect(JSON.parse(text)).not.toHaveProperty("inReplyToDeliveryId");
+      expect(JSON.parse(text)).not.toHaveProperty("outcomeForDeliveryId");
+    }
   });
 
   it("defers Codex target injection when no authoritative active thread binding exists", async () => {
@@ -856,7 +1281,7 @@ describe("daemon receiveClaudeChannelMessage", () => {
     const response = await setup.client.receiveClaudeChannelMessage({
       agentName: "reviewer",
       messageId: "claude-msg-1",
-      text: "hello from claude",
+      content: { text: "hello from claude" },
     });
 
     expect(response).toMatchObject({
@@ -896,7 +1321,7 @@ describe("daemon receiveClaudeChannelMessage", () => {
     const response = await client.receiveClaudeChannelMessage({
       agentName: "review-a",
       messageId: "claude-msg-1",
-      text: "hello from claude",
+      content: { text: "hello from claude" },
     });
 
     expect(response).toMatchObject({
@@ -940,14 +1365,20 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "please review" },
     });
     expect(parent.ok).toBe(true);
 
     const response = await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      intent: "result",
+      replyExpected: false,
+      content: { text: "review complete" },
     });
 
     expect(response).toMatchObject({
@@ -958,28 +1389,26 @@ describe("daemon receiveClaudeChannelReply", () => {
         failed: [],
       },
     });
-    expect(setup.runtime.requests).toContainEqual({
-      method: "turn/start",
-      params: {
-        threadId: "thread-impl",
-        input: [
-          {
-            type: "text",
-            text: expect.stringContaining('message_id="'),
-          },
-        ],
-      },
-      options: {
-        timeoutMs: undefined,
-        timeoutErrorCode: "codex_turn_start_timeout",
-      },
-    });
-    const turnStart = setup.runtime.requests.find(
+    const delivery = db
+      .prepare(
+        "select id from message_deliveries order by rowid desc limit 1",
+      )
+      .get() as { id: string };
+    const injection = setup.runtime.requests.find(
       (request) => request.method === "turn/start",
-    ) as { params: { input: Array<{ text: string }> } } | undefined;
-    expect(turnStart?.params.input[0]?.text).toMatch(
-      /^<aiox-channel source="claude" message_id="[^"]+">\nreview complete\n<\/aiox-channel>$/,
-    );
+    ) as { params: { threadId: string; input: Array<{ text: string }> } };
+    expect(injection.params.threadId).toBe("thread-impl");
+    expect(JSON.parse(injection.params.input[0]?.text ?? "")).toMatchObject({
+      protocol: "aiox.message.v1",
+      deliveryId: delivery.id,
+      source: { kind: "agent", address: "agent://local/release/reviewer" },
+      target: { address: "agent://local/release/impl" },
+      type: "reply",
+      intent: "result",
+      replyExpected: false,
+      content: { mediaType: "text/plain", text: "review complete" },
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+    });
     expect(
       db
         .prepare(
@@ -995,12 +1424,12 @@ describe("daemon receiveClaudeChannelReply", () => {
         .get("reviewer"),
     ).toMatchObject({
       type: "reply",
-      parent_message_id: "msg-parent",
+      parent_message_id: deliveryIdForMessage(db, "msg-parent"),
       content: "review complete",
     });
     expect(
       db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
-    ).toMatchObject({ status: "completed" });
+    ).toMatchObject({ status: "delivered" });
   });
 
   it("routes Claude replies into the live loaded Codex thread instead of the cached active thread", async () => {
@@ -1014,14 +1443,20 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "please review" },
     });
     expect(parent.ok).toBe(true);
 
     const response = await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      intent: "result",
+      replyExpected: false,
+      content: { text: "review complete" },
     });
 
     expect(response).toMatchObject({
@@ -1037,23 +1472,14 @@ describe("daemon receiveClaudeChannelReply", () => {
       params: {},
       options: undefined,
     });
-    expect(setup.runtime.requests).toContainEqual({
-      method: "turn/start",
-      params: {
-        threadId: "thread-new",
-        input: [
-          {
-            type: "text",
-            text: expect.stringMatching(
-              /^<aiox-channel source="claude" message_id="[^"]+">\nreview complete\n<\/aiox-channel>$/,
-            ),
-          },
-        ],
-      },
-      options: {
-        timeoutMs: undefined,
-        timeoutErrorCode: "codex_turn_start_timeout",
-      },
+    const injection = setup.runtime.requests.find(
+      (request) => request.method === "turn/start",
+    ) as { params: { threadId: string; input: Array<{ text: string }> } };
+    expect(injection.params.threadId).toBe("thread-new");
+    expect(JSON.parse(injection.params.input[0]?.text ?? "")).toMatchObject({
+      protocol: "aiox.message.v1",
+      target: { address: "agent://local/release/impl" },
+      content: { mediaType: "text/plain", text: "review complete" },
     });
   });
 
@@ -1068,14 +1494,16 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message-two",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     const reviewer = db
@@ -1098,7 +1526,7 @@ describe("daemon receiveClaudeChannelReply", () => {
       type: "codex_delivery_target_selected",
       message_id: expect.any(String),
       delivery_id: expect.any(String),
-      route_id: expect.any(String),
+      route_id: null,
       agent_name: "impl",
     });
     expect(JSON.parse(event.data_json)).toMatchObject({
@@ -1131,20 +1559,22 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
-    const turnStart = setup.runtime.requests.find(
+    const injection = setup.runtime.requests.find(
       (request) => request.method === "turn/start",
     ) as { params: { threadId: string } } | undefined;
-    expect(turnStart?.params.threadId).toBe("thread-focused");
+    expect(injection?.params.threadId).toBe("thread-focused");
 
     const selected = db
       .prepare(
@@ -1168,14 +1598,16 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     const response = await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     expect(response).toMatchObject({
@@ -1225,11 +1657,21 @@ describe("daemon receiveClaudeChannelReply", () => {
       cwd: "/repo",
       pairName: "pair-1",
     });
+    await client.connect({ sourceName: "peer", targetNames: ["reviewer"] });
+    const parent = await client.sendMessage({
+      sourceName: "peer",
+      messageId: "msg-parent",
+      type: "question",
+      replyExpected: true,
+      content: "please review",
+    });
+    expect(parent.ok).toBe(true);
 
     const response = await client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     expect(response).toMatchObject({
@@ -1267,14 +1709,16 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     expect(
@@ -1301,14 +1745,16 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     const reviewer = db
@@ -1331,7 +1777,7 @@ describe("daemon receiveClaudeChannelReply", () => {
       type: "codex_delivery_target_unavailable",
       message_id: expect.any(String),
       delivery_id: expect.any(String),
-      route_id: expect.any(String),
+      route_id: null,
       agent_name: "impl",
     });
     expect(JSON.parse(event.data_json)).toMatchObject({
@@ -1353,14 +1799,16 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     expect(
@@ -1381,28 +1829,23 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     expect(setup.runtime.requests).toContainEqual({
       method: "turn/start",
       params: {
         threadId: "thread-visible",
-        input: [
-          {
-            type: "text",
-            text: expect.stringMatching(
-              /^<aiox-channel source="claude" message_id="[^"]+">\nreview complete\n<\/aiox-channel>$/,
-            ),
-          },
-        ],
+        input: [{ type: "text", text: expect.stringContaining("review complete") }],
       },
       options: {
         timeoutMs: undefined,
@@ -1422,45 +1865,42 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent-1",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(firstParent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent-1",
-      text: "first reply",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent-1"),
+      content: { text: "first reply" },
     });
 
     const secondParent = await setup.client.receiveCodexMessage({
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent-2",
-      content: "please review again",
+      content: { text: "please review again" },
+      replyExpected: true,
     });
     expect(secondParent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent-2",
-      text: "second reply",
+      messageId: "test-claude-reply-message-second",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent-2"),
+      content: { text: "second reply" },
     });
 
-    const turnStarts = setup.runtime.requests.filter(
+    const injections = setup.runtime.requests.filter(
       (request) => request.method === "turn/start",
     );
-    expect(turnStarts).toContainEqual({
+    expect(injections).toContainEqual({
       method: "turn/start",
       params: {
         threadId: "thread-visible",
-        input: [
-          {
-            type: "text",
-            text: expect.stringMatching(
-              /^<aiox-channel source="claude" message_id="[^"]+">\nsecond reply\n<\/aiox-channel>$/,
-            ),
-          },
-        ],
+        input: [{ type: "text", text: expect.stringContaining("second reply") }],
       },
       options: {
         timeoutMs: undefined,
@@ -1481,14 +1921,16 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     const reviewer = db
@@ -1511,7 +1953,7 @@ describe("daemon receiveClaudeChannelReply", () => {
       type: "codex_delivery_target_injection_failed",
       message_id: expect.any(String),
       delivery_id: expect.any(String),
-      route_id: expect.any(String),
+      route_id: null,
       agent_name: "impl",
     });
     expect(JSON.parse(event.data_json)).toMatchObject({
@@ -1537,14 +1979,16 @@ describe("daemon receiveClaudeChannelReply", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-parent",
-      content: "please review",
+      content: { text: "please review" },
+      replyExpected: true,
     });
     expect(parent.ok).toBe(true);
 
     await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
-      chatId: "msg-parent",
-      text: "review complete",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
     });
 
     expect(
@@ -1564,6 +2008,604 @@ describe("daemon receiveClaudeChannelReply", () => {
           message: "turn/start failed",
         },
       }),
+    });
+  });
+
+  it("resolves a timed-out Codex delivery through one matching late success", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        turnStartError: Object.assign(new Error("ack timed out"), {
+          code: "codex_turn_start_timeout",
+        }),
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: { text: "please review" },
+      replyExpected: true,
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
+    });
+
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toMatchObject({ status: "unconfirmed" });
+
+    setup.runtime.emitLateTurnStartSuccess();
+    setup.runtime.emitLateTurnStartSuccess();
+
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toMatchObject({ status: "delivered" });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from events where type = 'delivery_status_changed' and data_json = ?",
+        )
+        .get(JSON.stringify({ status: "delivered" })),
+    ).toMatchObject({ count: 1 });
+  });
+
+  it("keeps a post-write Codex socket drop unconfirmed without queueing or failing it", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        turnStartError: new CodexAppServerWebSocketError(
+          "codex_app_server_ws_dropped",
+          "socket closed after turn/start write",
+        ),
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: { text: "please review" },
+      replyExpected: true,
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
+    });
+
+    const deliveryId = (
+      db.prepare("select id from message_deliveries order by rowid desc limit 1").get() as {
+        id: string;
+      }
+    ).id;
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "unconfirmed",
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from events where delivery_id = ? and type = 'delivery_status_changed' and data_json = ?",
+        )
+        .get(
+          deliveryId,
+          JSON.stringify({
+            status: "unconfirmed",
+            error: {
+              reason: "codex_app_server_ws_dropped",
+              message: "socket closed after turn/start write",
+            },
+          }),
+        ),
+    ).toEqual({ count: 1 });
+  });
+
+  it("marks a first-attempt Codex JSON-RPC reject failed and emits delivery_target_rejected", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        turnStartError: new CodexAppServerWebSocketError(
+          "codex_jsonrpc_error",
+          "Codex rejected turn",
+          { jsonRpcCode: -32042 },
+        ),
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: { text: "please review" },
+      replyExpected: true,
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
+    });
+
+    const deliveryId = (
+      db.prepare("select id, status from message_deliveries where status = 'failed'").get() as {
+        id: string;
+        status: string;
+      }
+    ).id;
+    expect(
+      db.prepare("select status from message_deliveries where id = ?").get(deliveryId),
+    ).toEqual({ status: "failed" });
+    const rejection = db
+      .prepare(
+        "select agent_id, message_id, delivery_id, route_id, data_json from events where type = 'delivery_target_rejected'",
+      )
+      .get() as {
+      agent_id: string;
+      message_id: string;
+      delivery_id: string;
+      route_id: string | null;
+      data_json: string;
+    };
+    expect(rejection).toMatchObject({
+      agent_id: expect.any(String),
+      message_id: expect.any(String),
+      delivery_id: deliveryId,
+      route_id: null,
+    });
+    expect(JSON.parse(rejection.data_json)).toEqual({
+      adapter: "codex",
+      target: {
+        agentId: rejection.agent_id,
+        agentName: "impl",
+        threadId: "thread-new",
+      },
+      jsonRpc: { code: -32042, message: "Codex rejected turn" },
+      attempt: 1,
+    });
+  });
+
+  it("persists one daemon-originated outcome notification for a first-attempt Codex reject", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        turnStartError: new CodexAppServerWebSocketError(
+          "codex_jsonrpc_error",
+          "Codex rejected turn",
+          { jsonRpcCode: -32042 },
+        ),
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: { text: "please review" },
+      replyExpected: true,
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
+    });
+
+    const original = db
+      .prepare("select id, message_id, target_agent_id, route_id, status from message_deliveries where status = 'failed'")
+      .get() as {
+      id: string;
+      message_id: string;
+      target_agent_id: string;
+      route_id: string | null;
+      status: string;
+    };
+    expect(original.status).toBe("failed");
+
+    const outcome = db
+      .prepare(
+        "select original_delivery_id, notification_message_id, notification_delivery_id from delivery_outcome_notifications",
+      )
+      .get() as {
+      original_delivery_id: string;
+      notification_message_id: string;
+      notification_delivery_id: string;
+    };
+    expect(outcome.original_delivery_id).toBe(original.id);
+    const originalSource = db
+      .prepare("select source_agent_id from messages where id = ?")
+      .get(original.message_id) as { source_agent_id: string };
+    expect(
+      db
+        .prepare(
+          "select source_agent_id, origin_kind, parent_message_id, type, intent, reply_expected, outcome_for_delivery_id, content from messages where id = ?",
+        )
+        .get(outcome.notification_message_id),
+    ).toEqual({
+      source_agent_id: "daemon",
+      origin_kind: "daemon",
+      parent_message_id: null,
+      type: "event",
+      intent: "notification",
+      reply_expected: null,
+      outcome_for_delivery_id: original.id,
+      content: JSON.stringify({
+        type: "delivery_target_rejected",
+        deliveryId: outcome.notification_delivery_id,
+        outcomeForDeliveryId: original.id,
+        error: { reason: "codex_jsonrpc_error", message: "Codex rejected turn" },
+      }),
+    });
+    expect(
+      db
+        .prepare(
+          "select message_id, target_agent_id, route_id, status from message_deliveries where id = ?",
+        )
+        .get(outcome.notification_delivery_id),
+    ).toEqual({
+      message_id: outcome.notification_message_id,
+      target_agent_id: originalSource.source_agent_id,
+      route_id: null,
+      status: "queued",
+    });
+  });
+
+  it("dispatches the committed reject notification directly to its original Claude source", async () => {
+    const notificationStatusesAtFetch: Array<{ original: string; notification: string }> = [];
+    const requests: Array<{ content: string }> = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      const outcome = db
+        .prepare(
+          `
+            select original.status as original, notification.status as notification
+            from delivery_outcome_notifications outcomes
+            join message_deliveries original on original.id = outcomes.original_delivery_id
+            join message_deliveries notification on notification.id = outcomes.notification_delivery_id
+          `,
+        )
+        .get() as { original: string; notification: string } | undefined;
+      if (outcome) notificationStatusesAtFetch.push(outcome);
+      requests.push(JSON.parse(init.body as string) as { content: string });
+      return new Response("{}", { status: 202 });
+    });
+    const setup = await setupPairedAgents(db, {
+      claudeEndpoint: "http://127.0.0.1:18789/send",
+      profile: "dev",
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        turnStartError: new CodexAppServerWebSocketError(
+          "codex_jsonrpc_error",
+          "Codex rejected turn",
+          { jsonRpcCode: -32042 },
+        ),
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: { text: "please review" },
+      replyExpected: true,
+    });
+    expect(parent.ok).toBe(true);
+    requests.length = 0;
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
+    });
+
+    expect(notificationStatusesAtFetch).toEqual([
+      { original: "failed", notification: "delivering" },
+    ]);
+    expect(requests).toHaveLength(1);
+    const envelope = JSON.parse(requests[0]!.content);
+    expect(envelope).toMatchObject({
+      protocol: "aiox.message.v1",
+      source: { kind: "daemon", address: "daemon://local/dev" },
+      target: { address: "agent://local/dev/reviewer" },
+      type: "event",
+      intent: "notification",
+      replyExpected: null,
+      outcomeForDeliveryId: expect.any(String),
+    });
+    expect(envelope).not.toHaveProperty("inReplyToDeliveryId");
+    expect(db.prepare("select status from message_deliveries order by rowid desc limit 1").get()).toEqual({
+      status: "delivered",
+    });
+  });
+
+  it("dispatches one committed reject notification to the original Codex source without a reverse route", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-shared",
+      turnStartErrors: [
+        new CodexAppServerWebSocketError("codex_jsonrpc_error", "B rejected", {
+          jsonRpcCode: -32042,
+        }),
+      ],
+    });
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      profile: "dev",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+    const sourceAttach = await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+    const targetAttach = await client.attachAgent({ kind: "codex", name: "target", cwd: "/repo" });
+    const sourceToken = (sourceAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+    const targetToken = (targetAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+    await client.registerCodexChannel({ agentName: "source", token: sourceToken });
+    await client.registerCodexChannel({ agentName: "target", token: targetToken });
+    await client.connect({ sourceName: "source", targetNames: ["target"] });
+
+    await client.receiveCodexMessage({
+      agentName: "source",
+      token: sourceToken,
+      messageId: "source-message",
+      content: { text: "deliver to B" },
+    });
+
+    const turnStarts = runtime.requests.filter((request) => request.method === "turn/start");
+    expect(turnStarts).toHaveLength(2);
+    const notificationInput = (turnStarts[1]!.params as {
+      input: Array<{ text: string }>;
+    }).input[0]!.text;
+    expect(JSON.parse(notificationInput)).toMatchObject({
+      source: { kind: "daemon", address: "daemon://local/dev" },
+      target: { address: "agent://local/dev/source" },
+      intent: "notification",
+      outcomeForDeliveryId: expect.any(String),
+    });
+    expect(JSON.parse(notificationInput)).not.toHaveProperty("inReplyToDeliveryId");
+    expect(db.prepare("select count(*) as count from routes").get()).toEqual({ count: 1 });
+    expect(db.prepare("select status from message_deliveries order by rowid desc limit 1").get()).toEqual({
+      status: "delivered",
+    });
+  });
+
+  it("does not create a recursive outcome notification when the notification itself is rejected", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-shared",
+      turnStartErrors: [
+        new CodexAppServerWebSocketError("codex_jsonrpc_error", "B rejected", {
+          jsonRpcCode: -32042,
+        }),
+        new CodexAppServerWebSocketError("codex_jsonrpc_error", "notification rejected", {
+          jsonRpcCode: -32043,
+        }),
+      ],
+    });
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+    const sourceAttach = await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+    const targetAttach = await client.attachAgent({ kind: "codex", name: "target", cwd: "/repo" });
+    const sourceToken = (sourceAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+    const targetToken = (targetAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+    await client.registerCodexChannel({ agentName: "source", token: sourceToken });
+    await client.registerCodexChannel({ agentName: "target", token: targetToken });
+    await client.connect({ sourceName: "source", targetNames: ["target"] });
+
+    await client.receiveCodexMessage({
+      agentName: "source",
+      token: sourceToken,
+      messageId: "source-message",
+      content: { text: "deliver to B" },
+    });
+
+    expect(runtime.requests.filter((request) => request.method === "turn/start")).toHaveLength(2);
+    expect(db.prepare("select count(*) as count from delivery_outcome_notifications").get()).toEqual({
+      count: 1,
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from messages where origin_kind = 'daemon' and intent = 'notification'",
+        )
+        .get(),
+    ).toEqual({ count: 1 });
+    expect(
+      db.prepare("select status from message_deliveries where message_id = 'source-message'").get(),
+    ).toEqual({ status: "failed" });
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toEqual({ status: "failed" });
+  });
+
+  it("does not dispatch again for a duplicate late reject after its notification has been committed", async () => {
+    const setup = await setupTwoCodexAgents(db, [
+      Object.assign(new Error("turn/start timed out"), { code: "codex_turn_start_timeout" }),
+    ]);
+
+    await setup.client.receiveCodexMessage({
+      agentName: "source",
+      token: setup.sourceToken,
+      messageId: "source-message",
+      content: { text: "deliver to B" },
+    });
+    setup.runtime.emitLateTurnStartReject(-32042, "late reject");
+    setup.runtime.emitLateTurnStartReject(-32042, "late reject");
+    await vi.waitFor(() => {
+      expect(setup.runtime.requests.filter((request) => request.method === "turn/start")).toHaveLength(2);
+    });
+
+    expect(db.prepare("select count(*) as count from delivery_outcome_notifications").get()).toEqual({
+      count: 1,
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from messages where origin_kind = 'daemon' and intent = 'notification'",
+        )
+        .get(),
+    ).toEqual({ count: 1 });
+  });
+
+  it("leaves the original failed when its post-write notification dispatch times out", async () => {
+    const setup = await setupTwoCodexAgents(db, [
+      new CodexAppServerWebSocketError("codex_jsonrpc_error", "B rejected", {
+        jsonRpcCode: -32042,
+      }),
+      Object.assign(new Error("notification timed out"), { code: "codex_turn_start_timeout" }),
+    ]);
+
+    await setup.client.receiveCodexMessage({
+      agentName: "source",
+      token: setup.sourceToken,
+      messageId: "source-message",
+      content: { text: "deliver to B" },
+    });
+
+    expect(
+      db.prepare("select status from message_deliveries where message_id = 'source-message'").get(),
+    ).toEqual({ status: "failed" });
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toEqual({ status: "unconfirmed" });
+    expect(setup.runtime.requests.filter((request) => request.method === "turn/start")).toHaveLength(2);
+  });
+
+  it("does not create another outcome when a timed-out notification later rejects", async () => {
+    const setup = await setupTwoCodexAgents(db, [
+      new CodexAppServerWebSocketError("codex_jsonrpc_error", "B rejected", {
+        jsonRpcCode: -32042,
+      }),
+      Object.assign(new Error("notification timed out"), { code: "codex_turn_start_timeout" }),
+    ]);
+
+    await setup.client.receiveCodexMessage({
+      agentName: "source",
+      token: setup.sourceToken,
+      messageId: "source-message",
+      content: { text: "deliver to B" },
+    });
+    setup.runtime.emitLateTurnStartReject(-32043, "notification rejected late");
+
+    expect(db.prepare("select count(*) as count from delivery_outcome_notifications").get()).toEqual({
+      count: 1,
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from messages where origin_kind = 'daemon' and intent = 'notification'",
+        )
+        .get(),
+    ).toEqual({ count: 1 });
+    expect(
+      db.prepare("select status from message_deliveries where message_id = 'source-message'").get(),
+    ).toEqual({ status: "failed" });
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toEqual({ status: "failed" });
+    expect(setup.runtime.requests.filter((request) => request.method === "turn/start")).toHaveLength(2);
+  });
+
+  it("marks an unconfirmed Codex delivery failed once when its matching late response rejects", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        turnStartError: Object.assign(new Error("turn/start timed out"), {
+          code: "codex_turn_start_timeout",
+        }),
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: { text: "please review" },
+      replyExpected: true,
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
+    });
+    const deliveryId = (
+      db.prepare("select id from message_deliveries order by rowid desc limit 1").get() as {
+        id: string;
+      }
+    ).id;
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "unconfirmed",
+    });
+
+    setup.runtime.emitLateTurnStartReject(-32043, "late application reject");
+    setup.runtime.emitLateTurnStartReject(-32043, "late application reject");
+
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "failed",
+    });
+    expect(
+      db
+        .prepare("select count(*) as count from events where type = 'delivery_target_rejected'")
+        .get(),
+    ).toEqual({ count: 1 });
+    expect(
+      db.prepare("select count(*) as count from delivery_outcome_notifications").get(),
+    ).toEqual({ count: 1 });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from messages where origin_kind = 'daemon' and type = 'event' and intent = 'notification'",
+        )
+        .get(),
+    ).toEqual({ count: 1 });
+    const lateRejection = db
+      .prepare(
+        "select agent_id, message_id, delivery_id, route_id, data_json from events where type = 'delivery_target_rejected'",
+      )
+      .get() as {
+      agent_id: string;
+      message_id: string;
+      delivery_id: string;
+      route_id: string | null;
+      data_json: string;
+    };
+    expect(lateRejection).toMatchObject({
+      agent_id: expect.any(String),
+      message_id: expect.any(String),
+      delivery_id: deliveryId,
+      route_id: null,
+    });
+    expect(JSON.parse(lateRejection.data_json)).toEqual({
+      adapter: "codex",
+      target: {
+        agentId: lateRejection.agent_id,
+        agentName: "impl",
+        threadId: "thread-new",
+      },
+      jsonRpc: { code: -32043, message: "late application reject" },
+      attempt: 1,
     });
   });
 });
@@ -1593,7 +2635,7 @@ describe("Codex ingress authorization revocation", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "late message",
+      content: { text: "late message" },
     });
 
     expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
@@ -1608,7 +2650,7 @@ describe("Codex ingress authorization revocation", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "late message",
+      content: { text: "late message" },
     });
 
     expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
@@ -1623,7 +2665,7 @@ describe("Codex ingress authorization revocation", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "late message",
+      content: { text: "late message" },
     });
 
     expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
@@ -1647,7 +2689,7 @@ describe("Codex ingress authorization revocation", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "late message",
+      content: { text: "late message" },
     });
 
     expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
@@ -1674,7 +2716,7 @@ describe("Codex ingress authorization revocation", () => {
       agentName: "impl",
       token: setup.codexToken,
       messageId: "msg-1",
-      content: "old token after reattach",
+      content: { text: "old token after reattach" },
     });
 
     expect(response).toMatchObject({ ok: false, reason: "codex_ingress_unauthorized" });
@@ -1715,11 +2757,15 @@ async function setupPairedAgents(
   opts: {
     skipRegister?: boolean;
     claudeEndpoint?: string;
+    profile?: "dev" | "build" | "release";
+    scheduleTimeout?: (callback: () => void, delayMs: number) => unknown;
     codexRuntime?: {
       startedThreadId?: string;
       loadedThreadIds?: string[];
       activeThreadId?: string | null;
       failTurnStart?: boolean;
+      turnStartError?: Error;
+      turnStartErrors?: Error[];
     };
   } = {},
 ) {
@@ -1731,6 +2777,8 @@ async function setupPairedAgents(
     loadedThreadIds: opts.codexRuntime?.loadedThreadIds,
     activeThreadId: opts.codexRuntime?.activeThreadId,
     failTurnStart: opts.codexRuntime?.failTurnStart,
+    turnStartError: opts.codexRuntime?.turnStartError,
+    turnStartErrors: opts.codexRuntime?.turnStartErrors,
   });
   const state = createDaemonState({
     db,
@@ -1740,6 +2788,8 @@ async function setupPairedAgents(
     attachCodexRuntime: async () => runtime,
     codexChannelRuntimes,
     claudeChannelRuntimes,
+    profile: opts.profile,
+    scheduleTimeout: opts.scheduleTimeout,
   });
   const client = createInProcessClient(createDaemonApi(state));
   await client.createPair({ name: "pair-1" });
@@ -1774,6 +2824,14 @@ async function setupPairedAgents(
   return { client, codexToken, codexChannelRuntimes, claudeChannelRuntimes, runtime, state };
 }
 
+function deliveryIdForMessage(db: InstanceType<typeof Database>, messageId: string): string {
+  const row = db
+    .prepare("select id from message_deliveries where message_id = ?")
+    .get(messageId) as { id: string } | undefined;
+  if (!row) throw new Error(`missing delivery for ${messageId}`);
+  return row.id;
+}
+
 async function setupSoloCodexAgent(db: InstanceType<typeof Database>) {
   const runtime = fakeCodexRuntime({
     endpoint: "ws://127.0.0.1:54321/",
@@ -1795,6 +2853,30 @@ async function setupSoloCodexAgent(db: InstanceType<typeof Database>) {
   const codexToken = (codexAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
   await client.registerCodexChannel({ agentName: "impl", token: codexToken });
   return { client, codexToken };
+}
+
+async function setupTwoCodexAgents(db: InstanceType<typeof Database>, turnStartErrors: Error[]) {
+  const runtime = fakeCodexRuntime({
+    endpoint: "ws://127.0.0.1:54321/",
+    startedThreadId: "thread-shared",
+    turnStartErrors,
+  });
+  const state = createDaemonState({
+    db,
+    createId: monotonicIdSequence(),
+    now: monotonicNowSequence(),
+    codexRuntimes: new Map(),
+    attachCodexRuntime: async () => runtime,
+  });
+  const client = createInProcessClient(createDaemonApi(state));
+  const sourceAttach = await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+  const targetAttach = await client.attachAgent({ kind: "codex", name: "target", cwd: "/repo" });
+  const sourceToken = (sourceAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+  const targetToken = (targetAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+  await client.registerCodexChannel({ agentName: "source", token: sourceToken });
+  await client.registerCodexChannel({ agentName: "target", token: targetToken });
+  await client.connect({ sourceName: "source", targetNames: ["target"] });
+  return { client, runtime, sourceToken };
 }
 
 function monotonicIdSequence() {
@@ -1858,12 +2940,15 @@ function fakeCodexRuntime(options: {
   loadedThreadIds?: string[];
   activeThreadId?: string | null;
   failTurnStart?: boolean;
+  turnStartError?: Error;
+  turnStartErrors?: Error[];
 }) {
   const requests: Array<{
     method: string;
     params: unknown;
     options: unknown;
   }> = [];
+  let lateTurnStartResponse: ((response: unknown) => void) | undefined;
 
   return {
     state: "ready" as const,
@@ -1878,7 +2963,20 @@ function fakeCodexRuntime(options: {
     resumeThreadCalls: [] as string[],
     disposeCalls: 0,
     requestCodex(method: string, params?: unknown, requestOptions?: unknown) {
-      requests.push({ method, params, options: requestOptions });
+      if (
+        method === "turn/start" &&
+        typeof requestOptions === "object" &&
+        requestOptions !== null &&
+        "onLateResponse" in requestOptions
+      ) {
+        lateTurnStartResponse = requestOptions.onLateResponse as (response: unknown) => void;
+        const { onLateResponse: _ignored, ...visibleOptions } = requestOptions as {
+          onLateResponse?: unknown;
+        };
+        requests.push({ method, params, options: visibleOptions });
+      } else {
+        requests.push({ method, params, options: requestOptions });
+      }
       if (method === "thread/loaded/list") {
         return Promise.resolve({
           data:
@@ -1892,6 +2990,12 @@ function fakeCodexRuntime(options: {
       }
       if (method === "turn/start" && options.failTurnStart) {
         return Promise.reject(new Error("turn/start failed"));
+      }
+      if (method === "turn/start" && options.turnStartError) {
+        return Promise.reject(options.turnStartError);
+      }
+      if (method === "turn/start" && options.turnStartErrors?.length) {
+        return Promise.reject(options.turnStartErrors.shift());
       }
       return Promise.resolve({ turn: { id: "turn-1", status: "inProgress" } });
     },
@@ -1914,6 +3018,12 @@ function fakeCodexRuntime(options: {
     },
     rebindActiveThread(threadId: string) {
       this.activeThreadId = threadId;
+    },
+    emitLateTurnStartSuccess() {
+      lateTurnStartResponse?.({ id: 1, result: { accepted: true } });
+    },
+    emitLateTurnStartReject(code: number, message: string) {
+      lateTurnStartResponse?.({ id: 1, error: { code, message } });
     },
     proxyBindingListeners: new Set<(event: {
       method: "thread/start" | "thread/resume" | "thread/fork";

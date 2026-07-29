@@ -177,6 +177,101 @@ describe("Codex app-server WebSocket client", () => {
     client.close();
   });
 
+  it("observes a same-request late success after timeout without resolving the original request", async () => {
+    let requestId: number | undefined;
+    let appServer: WebSocket | undefined;
+    const endpoint = await listen((socket) => {
+      appServer = socket;
+      socket.on("message", (raw) => {
+        requestId = (JSON.parse(String(raw)) as JsonRpcRequest).id;
+      });
+    });
+    const client = await connectCodexAppServerWebSocket({
+      endpoint,
+      requestTimeoutMs: 5,
+    });
+    const lateResponses: unknown[] = [];
+
+    await expect(
+      client.request("turn/start", {}, {
+        timeoutErrorCode: "codex_turn_start_timeout",
+        onLateResponse: (response) => lateResponses.push(response),
+      }),
+    ).rejects.toMatchObject({ code: "codex_turn_start_timeout" });
+
+    appServer?.send(JSON.stringify({ id: requestId, result: { accepted: true } }));
+
+    await expect.poll(() => lateResponses).toEqual([
+      { id: requestId, result: { accepted: true } },
+    ]);
+    client.close();
+  });
+
+  it("expires a late-response observer deterministically before a same-request response arrives", async () => {
+    let requestId: number | undefined;
+    let appServer: WebSocket | undefined;
+    const scheduler = new ManualScheduler();
+    const endpoint = await listen((socket) => {
+      appServer = socket;
+      socket.on("message", (raw) => {
+        requestId = (JSON.parse(String(raw)) as JsonRpcRequest).id;
+      });
+    });
+    const client = await connectCodexAppServerWebSocket({ endpoint, scheduler });
+    const lateResponses: unknown[] = [];
+    const request = client.request("turn/start", {}, {
+      timeoutMs: 10,
+      timeoutErrorCode: "codex_turn_start_timeout",
+      onLateResponse: (response) => lateResponses.push(response),
+    });
+
+    await expect.poll(() => requestId).toBe(1);
+    scheduler.advanceBy(10);
+    await expect(request).rejects.toMatchObject({ code: "codex_turn_start_timeout" });
+    expect(scheduler.pendingCount).toBe(1);
+
+    scheduler.advanceBy(5 * 60_000);
+    expect(scheduler.pendingCount).toBe(0);
+    appServer?.send(JSON.stringify({ id: requestId, result: { accepted: true } }));
+
+    await expect.poll(() => lateResponses).toEqual([]);
+    client.close();
+  });
+
+  it("cleans a timed-out observer when its socket closes without invoking it", async () => {
+    let requestId: number | undefined;
+    let appServer: WebSocket | undefined;
+    const scheduler = new ManualScheduler();
+    const endpoint = await listen((socket) => {
+      appServer = socket;
+      socket.on("message", (raw) => {
+        requestId = (JSON.parse(String(raw)) as JsonRpcRequest).id;
+      });
+    });
+    const client = await connectCodexAppServerWebSocket({ endpoint, scheduler });
+    const lateResponses: unknown[] = [];
+    let closeObserved = false;
+    client.onClose(() => {
+      closeObserved = true;
+    });
+    const request = client.request("turn/start", {}, {
+      timeoutMs: 10,
+      timeoutErrorCode: "codex_turn_start_timeout",
+      onLateResponse: (response) => lateResponses.push(response),
+    });
+
+    await expect.poll(() => requestId).toBe(1);
+    scheduler.advanceBy(10);
+    await expect(request).rejects.toMatchObject({ code: "codex_turn_start_timeout" });
+    expect(scheduler.pendingCount).toBe(1);
+
+    appServer?.close(1000, "dropped");
+    await expect.poll(() => closeObserved).toBe(true);
+    expect(scheduler.pendingCount).toBe(0);
+    scheduler.advanceBy(5 * 60_000);
+    expect(lateResponses).toEqual([]);
+  });
+
   it("passes JSON-RPC error code and message through", async () => {
     const endpoint = await listen((socket) => {
       socket.on("message", (raw) => {
@@ -258,4 +353,42 @@ interface JsonRpcRequest {
   id: number;
   method: string;
   params?: unknown;
+}
+
+class ManualScheduler {
+  #now = 0;
+  #nextId = 1;
+  #tasks = new Map<NodeJS.Timeout, { dueAt: number; callback: () => void }>();
+
+  get pendingCount(): number {
+    return this.#tasks.size;
+  }
+
+  setTimeout(callback: () => void, delayMs: number): NodeJS.Timeout {
+    const id = this.#nextId++ as unknown as NodeJS.Timeout;
+    this.#tasks.set(id, { dueAt: this.#now + delayMs, callback });
+    return id;
+  }
+
+  clearTimeout(timeout: NodeJS.Timeout): void {
+    this.#tasks.delete(timeout);
+  }
+
+  advanceBy(delayMs: number): void {
+    const target = this.#now + delayMs;
+    while (true) {
+      const next = [...this.#tasks.entries()]
+        .filter(([, task]) => task.dueAt <= target)
+        .sort(([, left], [, right]) => left.dueAt - right.dueAt)[0];
+      if (!next) {
+        break;
+      }
+
+      const [id, task] = next;
+      this.#tasks.delete(id);
+      this.#now = task.dueAt;
+      task.callback();
+    }
+    this.#now = target;
+  }
 }

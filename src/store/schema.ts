@@ -48,8 +48,12 @@ export function applySchema(db: Database): void {
     create table if not exists messages (
       id text primary key,
       source_agent_id text not null,
+      origin_kind text not null default 'agent',
       parent_message_id text,
       type text not null,
+      intent text,
+      reply_expected integer,
+      outcome_for_delivery_id text,
       content text not null,
       created_at text not null,
       updated_at text not null
@@ -76,9 +80,108 @@ export function applySchema(db: Database): void {
       data_json text not null,
       created_at text not null
     );
+
+    create table if not exists delivery_outcome_notifications (
+      original_delivery_id text primary key,
+      notification_message_id text not null unique,
+      notification_delivery_id text not null unique,
+      created_at text not null
+    );
   `);
 
   applyMigration1(db);
+  applyMigration2(db);
+  applyMigration3(db);
+  applyMigration4(db);
+}
+
+function applyMigration4(db: Database): void {
+  if (isMigrationApplied(db, 4)) return;
+
+  withTransaction(db, () => {
+    if (!columnExists(db, "messages", "origin_kind")) {
+      db.exec("alter table messages add column origin_kind text not null default 'agent'");
+    }
+    if (!columnExists(db, "messages", "outcome_for_delivery_id")) {
+      db.exec("alter table messages add column outcome_for_delivery_id text");
+    }
+    db.exec(`
+      create table if not exists delivery_outcome_notifications (
+        original_delivery_id text primary key,
+        notification_message_id text not null unique,
+        notification_delivery_id text not null unique,
+        created_at text not null
+      )
+    `);
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(4, Date.now());
+  });
+}
+
+function applyMigration3(db: Database): void {
+  if (isMigrationApplied(db, 3)) return;
+
+  withTransaction(db, () => {
+    db.exec(`
+      create table if not exists reply_rights (
+        originating_delivery_id text primary key,
+        consumed_reply_message_id text,
+        consumed_reply_delivery_id text,
+        created_at text not null,
+        consumed_at text
+      )
+    `);
+    db.exec(`
+      insert or ignore into reply_rights
+        (originating_delivery_id, consumed_reply_message_id, consumed_reply_delivery_id, created_at, consumed_at)
+      select
+        d.id,
+        reply.id,
+        reply_delivery.id,
+        d.created_at,
+        reply.created_at
+      from message_deliveries d
+      join messages m on m.id = d.message_id
+      left join messages reply on reply.id = (
+        select candidate.id
+        from messages candidate
+        where candidate.type = 'reply'
+          and candidate.parent_message_id = d.id
+        order by candidate.created_at, candidate.id
+        limit 1
+      )
+      left join message_deliveries reply_delivery on reply_delivery.id = (
+        select candidate.id
+        from message_deliveries candidate
+        where candidate.message_id = reply.id
+        order by candidate.created_at, candidate.id
+        limit 1
+      )
+      where m.reply_expected = 1
+    `);
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(3, Date.now());
+  });
+}
+
+function applyMigration2(db: Database): void {
+  if (isMigrationApplied(db, 2)) {
+    return;
+  }
+
+  withTransaction(db, () => {
+    if (!columnExists(db, "messages", "intent")) {
+      db.exec("alter table messages add column intent text");
+    }
+    if (!columnExists(db, "messages", "reply_expected")) {
+      db.exec("alter table messages add column reply_expected integer");
+    }
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(2, Date.now());
+  });
 }
 
 function applyMigration1(db: Database): void {

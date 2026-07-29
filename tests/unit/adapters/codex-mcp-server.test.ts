@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../../src/core/public-ids.js", () => ({
+  createPublicMessageId: vi.fn(() => "message-test"),
+}));
 
 import {
   AIOX_REPLY_DESCRIPTION,
@@ -6,7 +10,9 @@ import {
   CODEX_INGRESS_INSTRUCTIONS,
   type CodexIngressDaemonClient,
   createCodexIngressMcpServer,
+  retransmitUnconfirmedDeliveryInputSchema,
   createReplyHandler,
+  createRetransmitUnconfirmedDeliveryHandler,
   createSendMessageHandler,
   parseCodexIngressEnv,
   runCodexIngressMcpServerWithDependencies,
@@ -14,6 +20,7 @@ import {
   typedSendInputSchema,
 } from "../../../src/adapters/codex/mcp-server.js";
 import type { DispatchSummary } from "../../../src/daemon/state.js";
+import { createPublicMessageId } from "../../../src/core/public-ids.js";
 import {
   typedReplyErrorFixtures,
   typedInvalidInputFixtures,
@@ -21,6 +28,20 @@ import {
 } from "../../fixtures/aiox-message-lifecycle-contract.js";
 
 describe("codex MCP server — handlers", () => {
+  it("requires an explicit duplicate-risk confirmation for manual retransmit", () => {
+    expect(
+      retransmitUnconfirmedDeliveryInputSchema.safeParse({
+        deliveryId: "delivery-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      retransmitUnconfirmedDeliveryInputSchema.safeParse({
+        deliveryId: "delivery-1",
+        confirmDuplicateRisk: true,
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects a typed send missing replyExpected before daemon mapping", () => {
     const result = typedSendInputSchema.safeParse({
       type: "question",
@@ -94,12 +115,11 @@ describe("codex MCP server — handlers", () => {
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "msg-fixed",
       createDaemonClient: () =>
         fakeDaemonClient({
           receiveCodexMessage: async (args) => {
             calls.push({ method: "receiveCodexMessage", args });
-            return successCodexMessageResponse("msg-fixed");
+            return successCodexMessageResponse("message-test");
           },
         }),
     });
@@ -111,14 +131,14 @@ describe("codex MCP server — handlers", () => {
       content: { text: "hello" },
     });
 
-    expect(result.structuredContent).toMatchObject({ ok: true, message_id: "msg-fixed" });
+    expect(result.structuredContent).toMatchObject({ ok: true, message_id: "message-test" });
     expect(calls).toEqual([
       {
         method: "receiveCodexMessage",
         args: {
           agentName: "impl",
           token: "token-1",
-          messageId: "msg-fixed",
+          messageId: "message-test",
           type: "instruction",
           intent: "delegation",
           replyExpected: true,
@@ -128,17 +148,30 @@ describe("codex MCP server — handlers", () => {
     ]);
   });
 
+  it("issues one source message ID per Codex send invocation and forwards each exact value", async () => {
+    const issue = vi.mocked(createPublicMessageId);
+    issue.mockReset();
+    issue.mockReturnValueOnce("opaque send id one").mockReturnValueOnce("opaque send id two");
+    const calls: unknown[] = [];
+    const handler = createSendMessageHandler({ agentName: "impl", agentToken: "token-1", daemonSocketPath: "/tmp/test.sock", createDaemonClient: () => fakeDaemonClient({ receiveCodexMessage: async (request) => { calls.push(request); return successCodexMessageResponse(request.messageId); } }) });
+    await handler(typedSend("first"));
+    await handler(typedSend("second"));
+    expect(issue).toHaveBeenCalledTimes(2);
+    expect(calls).toHaveLength(2);
+    expect(calls).toMatchObject([{ messageId: "opaque send id one" }, { messageId: "opaque send id two" }]);
+    issue.mockReturnValue("message-test");
+  });
+
   it("aiox_send_message exposes delivered daemon dispatch in structured content", async () => {
     const dispatch = deliveredDispatch();
     const handler = createSendMessageHandler({
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "msg-fixed",
       createDaemonClient: () =>
         fakeDaemonClient({
           receiveCodexMessage: async () =>
-            successCodexMessageResponse("msg-fixed", dispatch),
+            successCodexMessageResponse("message-test", dispatch),
         }),
     });
 
@@ -146,7 +179,7 @@ describe("codex MCP server — handlers", () => {
 
     expect(result.structuredContent).toEqual({
       ok: true,
-      message_id: "msg-fixed",
+      message_id: "message-test",
       dispatch,
     });
   });
@@ -157,11 +190,10 @@ describe("codex MCP server — handlers", () => {
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "msg-fixed",
       createDaemonClient: () =>
         fakeDaemonClient({
           receiveCodexMessage: async () =>
-            successCodexMessageResponse("msg-fixed", dispatch),
+            successCodexMessageResponse("message-test", dispatch),
         }),
     });
 
@@ -169,7 +201,7 @@ describe("codex MCP server — handlers", () => {
 
     expect(result.structuredContent).toEqual({
       ok: true,
-      message_id: "msg-fixed",
+      message_id: "message-test",
       dispatch,
     });
   });
@@ -180,12 +212,11 @@ describe("codex MCP server — handlers", () => {
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "reply-fixed",
       createDaemonClient: () =>
         fakeDaemonClient({
           receiveCodexReply: async (args) => {
             calls.push({ method: "receiveCodexReply", args });
-            return successCodexMessageResponse("reply-fixed");
+            return successCodexMessageResponse("message-test");
           },
         }),
     });
@@ -197,14 +228,14 @@ describe("codex MCP server — handlers", () => {
       content: { text: "ack" },
     });
 
-    expect(result.structuredContent).toMatchObject({ ok: true, message_id: "reply-fixed" });
+    expect(result.structuredContent).toMatchObject({ ok: true, message_id: "message-test" });
     expect(calls).toEqual([
       {
         method: "receiveCodexReply",
         args: {
           agentName: "impl",
           token: "token-1",
-          messageId: "reply-fixed",
+          messageId: "message-test",
           inReplyToDeliveryId: "delivery-1",
           intent: "result",
           replyExpected: false,
@@ -214,17 +245,30 @@ describe("codex MCP server — handlers", () => {
     ]);
   });
 
+  it("issues one source message ID per Codex reply invocation and forwards each exact value", async () => {
+    const issue = vi.mocked(createPublicMessageId);
+    issue.mockReset();
+    issue.mockReturnValueOnce("opaque reply id one").mockReturnValueOnce("opaque reply id two");
+    const calls: unknown[] = [];
+    const handler = createReplyHandler({ agentName: "impl", agentToken: "token-1", daemonSocketPath: "/tmp/test.sock", createDaemonClient: () => fakeDaemonClient({ receiveCodexReply: async (request) => { calls.push(request); return successCodexMessageResponse(request.messageId); } }) });
+    await handler(typedReply("first"));
+    await handler(typedReply("second"));
+    expect(issue).toHaveBeenCalledTimes(2);
+    expect(calls).toHaveLength(2);
+    expect(calls).toMatchObject([{ messageId: "opaque reply id one" }, { messageId: "opaque reply id two" }]);
+    issue.mockReturnValue("message-test");
+  });
+
   it("aiox_reply exposes delivered daemon dispatch in structured content", async () => {
     const dispatch = deliveredDispatch();
     const handler = createReplyHandler({
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "reply-fixed",
       createDaemonClient: () =>
         fakeDaemonClient({
           receiveCodexReply: async () =>
-            successCodexMessageResponse("reply-fixed", dispatch),
+            successCodexMessageResponse("message-test", dispatch),
         }),
     });
 
@@ -232,7 +276,7 @@ describe("codex MCP server — handlers", () => {
 
     expect(result.structuredContent).toEqual({
       ok: true,
-      message_id: "reply-fixed",
+      message_id: "message-test",
       dispatch,
     });
   });
@@ -243,11 +287,10 @@ describe("codex MCP server — handlers", () => {
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "reply-fixed",
       createDaemonClient: () =>
         fakeDaemonClient({
           receiveCodexReply: async () =>
-            successCodexMessageResponse("reply-fixed", dispatch),
+            successCodexMessageResponse("message-test", dispatch),
         }),
     });
 
@@ -255,7 +298,7 @@ describe("codex MCP server — handlers", () => {
 
     expect(result.structuredContent).toEqual({
       ok: true,
-      message_id: "reply-fixed",
+      message_id: "message-test",
       dispatch,
     });
   });
@@ -265,7 +308,6 @@ describe("codex MCP server — handlers", () => {
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "msg-fixed",
       createDaemonClient: () =>
         fakeDaemonClient({
           receiveCodexMessage: async () => ({
@@ -283,12 +325,33 @@ describe("codex MCP server — handlers", () => {
     expect(text).toContain("codex_ingress_unauthorized");
   });
 
+  it.each([
+    "unknown_delivery",
+    "correlation_mismatch",
+    "reply_not_expected",
+    "duplicate_reply",
+  ] as const)("aiox_reply relays %s as its MCP typed error", async (reason) => {
+    const handler = createReplyHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          receiveCodexReply: async () => ({ ok: false, reason }),
+        }),
+    });
+
+    const result = await handler(typedReply("reply"));
+
+    expect(result.isError).toBe(true);
+    expect((result.content?.[0] as { text?: string } | undefined)?.text).toContain(reason);
+  });
+
   it("daemon socket error maps to daemon_call_failed", async () => {
     const handler = createSendMessageHandler({
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "msg-fixed",
       createDaemonClient: () =>
         fakeDaemonClient({
           receiveCodexMessage: async () => {
@@ -310,7 +373,6 @@ describe("codex MCP server — handlers", () => {
       agentName: "impl",
       agentToken: "token-1",
       daemonSocketPath: "/tmp/test.sock",
-      createMessageId: () => "msg-fixed",
       createDaemonClient: () => ({
         ...fakeDaemonClient(),
         close: () => {
@@ -356,6 +418,44 @@ describe("codex MCP server — factory", () => {
     expect(mcp).toBeDefined();
     // server property is the underlying low-level Server instance
     expect((mcp as unknown as { server: unknown }).server).toBeDefined();
+  });
+
+  it("registers the retransmit tool but exposes no archive tool", () => {
+    const mcp = createCodexIngressMcpServer({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () => fakeDaemonClient(),
+    });
+
+    const toolNames = Object.keys(
+      (mcp as unknown as { _registeredTools: Record<string, unknown> })._registeredTools,
+    );
+
+    expect(toolNames).toContain("aiox_retransmit_unconfirmed_delivery");
+    expect(toolNames).not.toContain("aiox_archive_unconfirmed_delivery");
+  });
+
+  it("accepts the non-error unconfirmed retransmit structured result", () => {
+    const mcp = createCodexIngressMcpServer({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () => fakeDaemonClient(),
+    });
+    const registeredTool = (
+      mcp as unknown as {
+        _registeredTools: Record<string, { outputSchema: { safeParse(value: unknown): { success: boolean } } }>;
+      }
+    )._registeredTools.aiox_retransmit_unconfirmed_delivery!;
+
+    expect(
+      registeredTool.outputSchema.safeParse({
+        ok: false,
+        reason: "manual_retransmit_unconfirmed",
+        message_id: "message-1",
+      }).success,
+    ).toBe(true);
   });
 });
 
@@ -460,6 +560,98 @@ describe("codex MCP server — startup", () => {
   });
 });
 
+describe("codex MCP server — manual retransmit tool result", () => {
+  const options = {
+    agentName: "impl",
+    agentToken: "token-1",
+    daemonSocketPath: "/tmp/test.sock",
+  } as const;
+
+  function handlerFor(
+    result: Awaited<ReturnType<CodexIngressDaemonClient["retransmitUnconfirmedDelivery"]>>,
+  ) {
+    return createRetransmitUnconfirmedDeliveryHandler({
+      ...options,
+      createDaemonClient: () =>
+        fakeDaemonClient({ retransmitUnconfirmedDelivery: async () => result }),
+    });
+  }
+
+  it("renders an immediate success as a non-error delivered result", async () => {
+    const handler = handlerFor({ ok: true, delivery: retransmitDelivery({ status: "delivered" }) });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError ?? false).toBe(false);
+    expect(result.content[0]!.text).toContain("delivered for delivery-1");
+    expect(result.structuredContent).toMatchObject({ ok: true, message_id: "message-1" });
+  });
+
+  it("renders a post-write timeout as a non-error target-acceptance-unknown result", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "manual_retransmit_unconfirmed",
+      delivery: retransmitDelivery(),
+      message: "turn/start timed out",
+    });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError ?? false).toBe(false);
+    expect(result.content[0]!.text).toContain("acceptance unknown");
+    expect(result.content[0]!.text).toContain("unconfirmed");
+    expect(result.structuredContent).toEqual({
+      ok: false,
+      reason: "manual_retransmit_unconfirmed",
+      message_id: "message-1",
+    });
+  });
+
+  it("renders a post-write WebSocket drop as a non-error target-acceptance-unknown result", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "manual_retransmit_unconfirmed",
+      delivery: retransmitDelivery(),
+      message: "socket closed after turn/start write",
+    });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError ?? false).toBe(false);
+    expect(result.content[0]!.text).toContain("acceptance unknown");
+    expect(result.content[0]!.text).toContain("unconfirmed");
+  });
+
+  it("renders an explicit reject as an error result naming manual_retransmit_rejected", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "manual_retransmit_rejected",
+      delivery: retransmitDelivery(),
+      message: "immediate reject",
+    });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain("manual_retransmit_rejected");
+  });
+
+  it("renders a no-attempt failure as an error result naming manual_retransmit_failed", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "manual_retransmit_failed",
+      delivery: retransmitDelivery(),
+      message: "ready Codex runtime and bound thread are required for manual retransmit",
+    });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain("manual_retransmit_failed");
+  });
+
+  it("never surfaces requestId in the source-facing rejected result text", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "manual_retransmit_rejected",
+      delivery: retransmitDelivery(),
+      message: "immediate reject",
+    });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.content[0]!.text).not.toMatch(/requestId/i);
+  });
+});
+
 describe("codex MCP server — env parsing", () => {
   it("parses required env vars", () => {
     const env = parseCodexIngressEnv({
@@ -479,11 +671,26 @@ describe("codex MCP server — env parsing", () => {
 // helpers
 // ---------------------------------------------------------------------------
 
+function retransmitDelivery(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "delivery-1",
+    messageId: "message-1",
+    targetAgentId: "agent-target",
+    routeId: "route-1",
+    status: "unconfirmed" as const,
+    idempotencyKey: "key-1",
+    ...overrides,
+  };
+}
+
 function fakeDaemonClient(
   overrides: Partial<
     Pick<
       CodexIngressDaemonClient,
-      "receiveCodexMessage" | "receiveCodexReply" | "registerCodexChannel"
+      | "receiveCodexMessage"
+      | "receiveCodexReply"
+      | "retransmitUnconfirmedDelivery"
+      | "registerCodexChannel"
     >
   > = {},
 ): CodexIngressDaemonClient {
@@ -496,6 +703,9 @@ function fakeDaemonClient(
       (async () => successCodexMessageResponse("reply-default")),
     registerCodexChannel:
       overrides.registerCodexChannel ?? (async () => successRegisterCodexChannelResponse()),
+    retransmitUnconfirmedDelivery:
+      overrides.retransmitUnconfirmedDelivery ??
+      (async () => ({ ok: false as const, reason: "delivery_not_found" as const, deliveryId: "missing" })),
     close() {
       /* no-op */
     },

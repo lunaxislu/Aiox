@@ -66,7 +66,7 @@ right needs an additional independently authenticated constraint.
 
 ## Sources
 
-- `logs/2026-07-10-G1-A-contractingress-freeze.md` — W3 approval of
+- `logs/G1/2026-07-10-G1-A-contractingress-freeze.md` — W3 approval of
   source-only routing, reverse-route independence, identity validation, and
   Phase 0 scope.
 - [[docs/decisions/a2a-message-lifecycle-envelope-and-correlation]] — the
