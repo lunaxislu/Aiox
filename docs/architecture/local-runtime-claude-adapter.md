@@ -7,6 +7,8 @@ Related:
 - [[docs/architecture/local-runtime-codex-adapter]]
 - [[docs/decisions/claude-channel-local-static-mcp-only]]
 - [[docs/decisions/claude-channel-trust-and-registration]]
+- [[docs/decisions/claude-channel-effective-registration-scope]]
+- [[docs/decisions/claude-channel-session-reconnect-token]]
 
 Status: Current
 
@@ -23,22 +25,23 @@ Per Claude agent: 1 Claude CLI process + 1 channel-server stdio child
 
 **Channel activation** ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:148-216`):
 
-Local static MCP is the sole activation path:
+Static MCP is the sole activation path:
 `aiox claude setup --scope local|user|project` registers a static MCP
 definition once (`claude mcp add-json <name> ... -s <scope>`, non-overwriting
 — a name collision fails rather than being silently reused or replaced), then
 `aiox claude --name <n>` activates it via `server:<name>`. A launch-time gate
-(`requireClaudeMcpLocalRegistration`) checks Local-scope registration BEFORE
-any daemon/attach/token side effect and fails fast with a coded error if
-absent — never a silent fallback. This gate and activation always target the
-**Local** scope entry regardless of which scope `aiox claude setup` was run
-with; attaching via a registered user/project entry is not implemented.
+(`requireClaudeMcpRegistration`) checks whether Claude resolves an effective
+Local, User, or Project registration in the current cwd BEFORE any
+daemon/attach/token side effect and fails fast if absent — never a silent
+fallback. AIOX does not resolve scope precedence itself.
 Session identity (agent name, token, daemon
 socket path) flows only through the spawned `claude` process's env; the
 registered definition's `${AIOX_*}` placeholders expand from it.
 Related decision: [[docs/decisions/claude-channel-local-static-mcp-only]]
 (supersedes the earlier plugin-strategy-default choice,
 [[docs/decisions/claude-channel-plugin-default]], now historical).
+The effective-registration rule is owned by
+[[docs/decisions/claude-channel-effective-registration-scope]].
 
 Channel-server is **not** a daemon child. The daemon only stores an
 in-memory pointer (`claudeChannelRuntimes` Map at [[src/daemon/state.ts]]); no DB
@@ -50,7 +53,7 @@ Evidence:
   - [[src/cli/invocation.ts]]
     - `src/cli/invocation.ts:148-216`
     - `src/cli/invocation.ts:282-342`
-- Local static MCP definition and launch command shape
+- Static MCP definition and launch command shape
   - [[src/adapters/claude/launcher.ts]]
     - `src/adapters/claude/launcher.ts:10-12`
     - `src/adapters/claude/launcher.ts:30-48`
@@ -64,15 +67,20 @@ Evidence:
 1. Parser registers `--name` and `--pair`; the nested `claude setup` subcommand
    registers `--scope local|user|project` ([[src/cli/parse.ts]] —
    `src/cli/parse.ts:241-306`).
-2. CLI checks Local-scope MCP registration BEFORE any daemon/attach/token side
-   effect; a missing registration fails fast with a coded error pointing to
-   `aiox claude setup`
+2. CLI checks the cwd-resolved effective Local, User, or Project MCP
+   registration BEFORE any daemon/attach/token side effect; a missing
+   registration fails fast with a coded error pointing to
+   `aiox claude setup --scope <local|user|project>`
    ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:148-154`,
    `src/cli/invocation.ts:320-342`).
 3. CLI auto-starts daemon, calls `attachAgent({kind:"claude", name, ...})`.
-4. Daemon mints a `randomUUID()` claude channel token, stores it in
-   `claudePendingTokens[agentName]`, returns it as `claudeChannelToken`
-   ([[src/daemon/state.ts]] — `attachAgent`).
+4. Daemon mints a `randomUUID()` Claude channel token, stores it in
+   `claudePendingTokens[agentName]`, and returns it as `claudeChannelToken`.
+   The token remains valid for replacement channel-child registration until
+   the top-level Claude session disconnects
+   ([[src/daemon/state.ts]] — `attachAgent`, `registerClaudeChannel`,
+   `disconnectClaudeChannel`; rationale:
+   [[docs/decisions/claude-channel-session-reconnect-token]]).
 5. CLI calls `launchClaudeStaticMcpChannel(...)` with the channel name,
    agent name/token, and daemon socket path
    ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:191-217`). The launcher activates
@@ -97,7 +105,7 @@ Evidence:
      `AIOX_CLAUDE_CHANNEL_PORT`, `channel-server.ts:462-500`).
    - Calls `daemon.registerClaudeChannel({agentName, token, endpoint})`
      (`channel-server.ts:513-547`).
-8. Daemon validates the pending token and the endpoint
+8. Daemon validates the session token and the endpoint
    (`parseLoopbackHttpEndpoint`: must be `http:` on loopback, path `/send`,
    non-empty port). On failure → `claude_channel_registration_failed` with
    `detail: "unknown_token"` or `"invalid_endpoint"` ([[src/daemon/state.ts]] —
@@ -107,7 +115,8 @@ Evidence:
 9. CLI awaits Claude exit then calls
    `disconnectClaudeChannel({agentName})` ([[src/cli/invocation.ts]] —
    `src/cli/invocation.ts:217`; [[src/daemon/state.ts]] —
-   `disconnectClaudeChannel`). Unlike Codex, no
+   `disconnectClaudeChannel`), which removes both the runtime and the session
+   token. Unlike Codex, no
    `claude_channel_disconnected` event is appended — Implementation-only
    (no recorded rationale).
 

@@ -19,7 +19,7 @@ G1-C/G1-D가 G1-B 결과를 온전히 소비할 수 있다.
 
 ## Stages
 
-- [>] Kickoff — Codex·Claude canonical presentation corrective -> `logs/G1/2026-07-29-G1-B-canonical-presentation-corrective.md`
+- [x] Kickoff — Codex·Claude canonical presentation corrective -> `logs/G1/2026-07-29-G1-B-canonical-presentation-corrective.md`
 
 ## Notes
 

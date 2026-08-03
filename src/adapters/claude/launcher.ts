@@ -12,7 +12,7 @@ export function buildLaunchClaudeChannelArgs(channelName: string): string[] {
 }
 
 /**
- * Static Local-scope MCP definition for the Claude channel MCP.
+ * Static MCP definition for the Claude channel MCP.
  *
  * Emits the value accepted by `claude mcp add-json`: {command,args,env}.
  * Keeping Node as `command` and tsx as `args[0]` avoids the tsx executable's
@@ -52,7 +52,7 @@ function resolveTsxCliPath(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Claude CLI launcher — Local static MCP activation (the sole runtime path)
+// Claude CLI launcher — static MCP activation (the sole runtime path)
 // ---------------------------------------------------------------------------
 
 export interface LaunchClaudeStaticMcpChannelOptions {
@@ -64,9 +64,9 @@ export interface LaunchClaudeStaticMcpChannelOptions {
 }
 
 // Activates the server:<name> dev-channel form, relying on a pre-registered
-// Local-scope MCP definition (`claude mcp add-json <channelName> ... -s
-// local`, provisioned via `aiox claude setup`) whose env uses ${AIOX_*}
-// references. Session identity flows only through this spawn's env.
+// effective MCP definition, provisioned via `aiox claude setup` at Local,
+// User, or Project scope, whose env uses ${AIOX_*} references. Session
+// identity flows only through this spawn's env.
 export function launchClaudeStaticMcpChannel(
   options: LaunchClaudeStaticMcpChannelOptions,
 ): ChildProcess {

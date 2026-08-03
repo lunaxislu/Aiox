@@ -3,9 +3,9 @@ import { addClaudeMcpJson, ClaudeMcpCliError } from "./mcp-cli.js";
 
 // ---------------------------------------------------------------------------
 // `aiox claude setup` orchestration: non-overwriting provisioning of the static
-// Claude MCP definition at the selected scope (default: local — the scope
-// `aiox claude`'s default Local static MCP strategy relies on; user/project
+// Claude MCP definition at the selected scope (default: local; user/project
 // are explicit opt-ins, same contract as `claude mcp add-json -s <scope>`).
+// `aiox claude` accepts the effective Local, User, or Project registration.
 //
 // No auto-diff on collision (user decision 2026-08-03, recorded in
 // logs/G1/2026-07-29-G1-B-canonical-presentation-corrective.md): `claude mcp

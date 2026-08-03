@@ -1,7 +1,7 @@
 ---
 topic: G1-B adapter canonical-presentation corrective
 description: Codex·Claude target-facing transport에서 canonical envelope JSON이 adapter-owned wrapper·legacy metadata 없이 정확히 전달·해석·검증되는지 바로잡는 G1-B corrective.
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -14,9 +14,10 @@ status: open
 - [x] W2-5 Codex target-facing presentation의 stale `<aiox-channel>` instruction과 이를 pin한 test를 raw canonical envelope JSON 및 daemon notification correlation 기준으로 교체한다. Codex public tool schema는 변경하지 않는다.
 - [x] W3 Codex·Claude canonical presentation parity와 Claude `meta` 재도입 필요성의 선택지·영향 범위를 사용자에게 보고하고 결정을 받는다.
 - [x] W4 실제 Claude TUI에서 outer `<channel>` 한 겹, canonical JSON body, metadata 전달, 메시지 인식 및 reply 흐름을 검증한다.
-- [ ] W5 검증된 결과만 Codex·Claude owner 문서·roadmap에 반영하고, W6 전략 검증·결정 이후 G1-B corrective closeout을 판단한다.
-- [>] W6 plugin D와 모든 legacy Claude channel fallback을 production code·tests에서 제거하고, Local static MCP(`aiox claude setup` + `aiox mcp-claude`) 단일 경로만 남긴다. npm tarball 검증은 사용자 결정에 따라 release 단계로 이관한다. 제거 결과의 decision·owner docs 반영과 W5 closeout을 진행한다.
+- [x] W5 검증된 결과만 Codex·Claude owner 문서·roadmap에 반영하고, W6 전략 검증·결정 이후 G1-B corrective closeout을 판단한다.
+- [x] W6 plugin D와 모든 legacy Claude channel fallback을 production code·tests에서 제거하고, Local static MCP(`aiox claude setup` + `aiox mcp-claude`) 단일 경로만 남긴다. npm tarball 검증은 사용자 결정에 따라 release 단계로 이관한다. 제거 결과의 decision·owner docs 반영과 W5 closeout을 진행한다.
 - [-] W7 `aiox claude --scope`로 setup scope와 attach·pair runtime scope를 정합시키고, Local/User/Project 선택별 Claude·Codex 협업 검증 계약을 확정·구현한다. — cancelled: W7은 Claude MCP scope 선택만의 독립 작업이 아니다. Claude session의 cwd·workspace·pair agent terminal을 어디서 어떻게 시작할지 정하는 terminal UX(G2) 구현과 함께 설계해야 한다. 따라서 G1-B/W6에서 별도 구현하지 않고 취소한다.
+- [x] W8 사용자가 확인한 Claude User-scope cross-cwd MCP 가시성에 맞춰 aiox claude launch gate가 현재 cwd에서 해석된 Local·User·Project 등록을 모두 허용하도록 TDD로 구현·단위 검증한다. Project Pending approval·연결 실패의 gate 의미는 실제 Claude CLI 상태 계약으로 별도 판정해 기록한다.
 
 ## Required Context
 
@@ -543,3 +544,223 @@ W5 owner-doc 정합화를 반영했다. `local-runtime-claude-adapter.md` §6.4�
 `roadmap.md` G1-B는 corrective가 미구현·미검증이라는 서술을 W4/W6 TUI 검증 완료 결과로 갱신했다. CLI/operator surface와 process topology에 hidden `aiox mcp-claude`를 `mcp-codex`와 대칭으로 반영했다. `local-runtime-claude-adapter.md`, `local-runtime-cli-and-operator-surfaces.md`, `local-runtime-process-topology.md`, `local-runtime-errors-events-smoke.md`, `aiox-capability-policy.md`의 Claude 관련 evidence line도 현재 코드 위치로 맞췄다. historical plugin D decision, scope/G2 UX, 코드·테스트는 변경하지 않았다.
 
 검증: `scripts/check-markdown-inline-code` 대상 8개 문서 및 `git diff --check` 통과. W5/W6 상태·pointer는 이 기록에서 전환하지 않는다.
+
+### 2026-08-03 18:34 · W5 완료 · owner 문서 정합화 closeout
+
+W5 완료: canonical-presentation owner 문서 반영을 마쳤다. Claude·Codex adapter 문서, message lifecycle, G1-B roadmap, CLI/topology/error/capability evidence를 현재 canonical JSON body·host-owned outer wrapper·`aiox mcp-claude` 계약으로 정합화했고 Markdown inline-code/diff 검증을 통과했다. W6의 active pointer는 유지하며, 이후 사용자 지시까지 대기한다.
+
+### 2026-08-03 19:03 · W6 완료 · static MCP 단일 경로 전환 및 legacy 제거 closeout
+
+W6 완료: Local static MCP 단일 경로(`aiox claude setup` + `aiox mcp-claude`) 전환, plugin D·legacy inline 코드/테스트/marketplace 삭제, 실제 Claude TUI에서 MCP 도구·Codex→Claude 전달·Claude→Codex reply 재검증, decision·owner 문서 반영까지 완료했다. npm tarball 격리 설치 검증은 사용자 결정대로 이 Work Item의 미완료가 아니라 release 단계에서 수행할 별도 검증으로 남긴다. W5도 완료됐으므로 G1-B에는 active Work Item이 없다.
+
+## 2026-08-03 · W7 취소 후속 · W8 신설 — attach 등록-활성 상태 확인 gap 실측
+
+사용자가 W7을 취소 처리하고 새 Work Item W8을 개설하도록 지시했다. W8의 범위와 현재까지 확인한 문제를 실제 구현·문서 변경 전에 먼저 기록한다.
+
+W8 범위: `aiox claude`의 attach 게이트(`checkClaudeMcpLocalRegistration`, `src/adapters/claude/mcp-cli.ts:126-144`)가 등록 이름과 `Scope:` 텍스트만 확인하고 실제 활성(연결 가능) 상태는 보지 않는 현재 계약의 사실 관계를 조사·기록한다. Local/User/Project 중 어느 scope를 attach가 신뢰할지 정하는 설계·구현은 W7 취소 사유(Claude session cwd·workspace·pair terminal을 정하는 G2와 함께 설계해야 함)를 그대로 따르며, 이 W는 다루지 않는다.
+
+확인한 사실(격리 fake HOME + fake project cwd, 실 `claude` CLI v2.1.220 직접 실행, 쓰기도 scratch 안에서만 수행 — 실 사용자 `~/.claude.json`은 읽지도 쓰지도 않았다):
+
+1. `claude mcp get`/`claude mcp list`의 상태 표시는 scope마다 다르다. local·user scope는 등록 직후 바로 health check로 넘어가 `✘ Failed to connect` 등을 낸다. project scope(`.mcp.json`)만 `⏸ Pending approval (run \`claude\` to approve)` 상태를 거친다(`claude mcp --help`의 `get`/`list` 설명에도 "Unapproved .mcp.json servers are shown as ⏸ Pending approval" 명시).
+2. 이 "Pending approval"은 MCP 서버 단위 승인이 아니라 프로젝트 폴더 단위 신뢰 여부로 확인됐다. `~/.claude.json`의 `projects[<cwd>].enabledMcpjsonServers` 배열에 서버 이름을 직접 추가해도 상태가 바뀌지 않았지만, 같은 project entry의 `hasTrustDialogAccepted`를 `false`에서 `true`로 바꾸자 즉시 `✘ Failed to connect`(health check 상태)로 전환됐다.
+3. 현재 코드의 `LOCAL_SCOPE_PATTERN = /Scope:\s*Local config/`는 project scope 텍스트와 애초에 매칭되지 않으므로, 이번에 확인한 gap은 지금 shipped Local-only 게이트의 정확성에는 영향을 주지 않는다. project scope를 attach 신뢰 대상에 포함시키는 미래 설계가 생길 때만 실제 문제가 된다.
+
+미확인으로 남은 것: 실제 interactive `claude` TUI 세션이 Pending approval 상태의 project MCP 서버를 만났을 때 정확히 어떤 흐름을 보이는지(자동 프롬프트로 막고 대기하는지, 무시하고 진행하는지), `enabledMcpjsonServers` 배열이 실제로 어떤 경로에서 유효한지는 로그인된 실 계정 없이 이 세션에서 재현하지 못했다.
+
+이 기록에서는 코드·문서 변경을 하지 않았다. W8은 `[>]`로 활성 상태다.
+
+## 2026-08-03 · W8 확장 · Claude Channels가 research-preview·dev-only 플래그 의존이라는 근본 발견
+
+W8 진행 중 사용자가 "지금 gate가 등록 여부만 보는 게 일반적인 Claude MCP 사용 흐름처럼 느껴지지 않는다"는 의문을 제기했고, 이를 조사한 결과 원래 W8 범위(project scope Pending approval)보다 더 근본적인 사실을 확인했다. 사용자 지시로 별도 W를 만들지 않고 W8에 그대로 묶어 기록한다.
+
+확인한 사실 1 (실측, 실 HOME + 실 로그인 상태, `claude` v2.1.220): `~/Documents/ai-orchestration-w8-mcp-smoke-test`에 local scope로 더미 MCP(`aiox-autoload-test`, command:`true`)를 등록한 뒤 `--dangerously-load-development-channels` 같은 특수 플래그 없이 `claude -p "..." --debug-file`만 실행해도 디버그 로그에 `MCP server "aiox-autoload-test": Starting connection with timeout of 30000ms`가 찍혔다. 즉 등록된 MCP의 툴 연결 자체는 특수 플래그 없이 자동으로 시도된다.
+
+확인한 사실 2 (공식 문서, `https://code.claude.com/docs/en/channels.md` 직접 fetch): "Being in `.mcp.json` isn't enough to push messages: a server also has to be named in `--channels`."라고 명시한다. 즉 MCP 툴 연결과 daemon→Claude "push"(AIOX가 필요로 하는 채널 알림) 활성화는 서로 다른 두 게이트다.
+
+확인한 사실 3 (같은 문서): Channels는 "research preview" 기능이며 Anthropic 인증(claude.ai 또는 Console API key)이 필요하고 Bedrock/Vertex/Foundry에서는 쓸 수 없다. "During the preview, `--channels` only accepts plugins from an Anthropic-maintained allowlist, or from your organization's allowlist..."이고, AIOX의 커스텀 채널은 이 allowlist에 없다. "To test a channel you're building, use `--dangerously-load-development-channels`."이 공식 안내이며, "Neither `--channels` nor `--dangerously-load-development-channels` appears in `claude --help` while the feature is in preview. The flags work even though they aren't listed."도 명시한다 — 즉 이 플래그가 `--help`에 없는 것은 우연이 아니라 의도적인 preview 상태다.
+
+확인한 사실 4 (같은 문서, Enterprise controls 절): `channelsEnabled` 조직 설정이 꺼져 있으면 "Blocks all channels including the development flag when off"라고 명시한다. Team/Enterprise Claude 조직은 기본값이 꺼짐이고, "Pro and Max users without an organization skip these checks entirely"라고 한다.
+
+확인한 사실 5 (git history, `git log --all -- src/adapters/claude/launcher.ts`): 가장 최초 구현 커밋(`4f0fbc5`, "feat(r3): channel-as-plugin (strategy D) spike")부터 이미 `--dangerously-load-development-channels`를 썼다(`plugin:<name>@<marketplace>` 형태). 당시 코드 주석은 "it is the prerequisite shape for a future `--channels` allowlist"라고 스스로 밝히고 있었다. 즉 삭제된 plugin D와 현재 static MCP(`server:<name>` 형태) 모두 동일한 dev-only 플래그에 의존했고, 이는 W6에서 새로 생긴 문제가 아니라 R3 최초 구현부터 있던 조건이다.
+
+추론(문서·코드 근거로 뒷받침되지만 별도 실측 계정 비교는 안 함): 지금 이 사용자 계정(조직 없는 개인 Pro/Max로 추정)에서는 `channelsEnabled` 체크를 안 받아 정상 동작하는 것으로 보이지만, Team/Enterprise Claude 계정에서 AIOX를 쓰면 이 push 메커니즘 자체가 막힐 수 있다.
+
+미확인으로 남은 것: 사용자가 준비한 실제 interactive `claude` 세션에서의 승인 프롬프트 재현(앞선 W8 항목의 project scope Pending approval 실측)은 아직 결과를 받지 못했다. `--channels`/`--dangerously-load-development-channels`의 정확한 protocol이 향후 어떻게 바뀔지는 공식 문서도 "may change based on feedback"라고만 밝혀 예측할 수 없다.
+
+이 기록에서는 코드·문서 변경을 하지 않았다. W8은 계속 `[>]`로 활성 상태이며, scope 확장 설계·channels 프로덕션화 여부의 결정은 여전히 사용자 결정 대기다.
+
+## 2026-08-03 · 사용자 결정 · Channels research-preview 의존 리스크 인지 후 현행 유지
+
+사용자 결정: AIOX Claude push(channel) 메커니즘이 Anthropic research-preview·dev-only `--dangerously-load-development-channels` 플래그에 의존한다는 리스크(위 블록 참조)를 인지하고 수용한 뒤, 우선 현재 방식을 그대로 유지하기로 했다. 대안 메커니즘 탐색이나 코드·설계 변경은 지금 하지 않는다.
+
+이 결정으로 W8의 (2) channels 의존 리스크 항목은 "사실 확인 + 사용자 결정"까지 완료됐다. W8의 (1) project scope Pending approval 실측(사용자가 준비된 테스트 폴더에서 실제 `claude`를 실행해 승인 프롬프트를 관찰하는 건)은 아직 결과를 받지 못해 남아 있다. W8은 계속 `[>]`로 활성 상태다.
+
+### 2026-08-03 19:36 · 사용자 승인 · effective MCP scope gate 구현 완료
+
+사용자가 User-scope MCP를 다른 cwd에서 확인한 결과를 근거로, 기존 Local-only attach gate를 현재 cwd에서 Claude가 해석한 effective Local·User·Project 등록을 모두 허용하는 계약으로 변경했다. scope 등록 자체의 upstream 동작은 사용자가 수동으로 확인하며, 이 변경은 그 세 scope를 임의로 막지 않는다.
+
+구현은 checkClaudeMcpRegistration으로 이름을 정정하고 claude mcp get 출력의 Scope: Local|User|Project config만 명시적으로 판정한다. Status 텍스트는 의도적으로 해석하지 않는다. 따라서 Project Pending approval 또는 연결 실패는 등록 사실과 별개이며, 이 gate가 Connected를 보장한다고 주장하지 않는다.
+
+TDD: Local·User·Project 각각의 RED scope 사례를 먼저 추가한 뒤 구현했다. 검증은 focused Vitest 33 passed, pnpm typecheck 통과, git diff --check 통과다. 사용자 수동 검증은 실제 User/Project/Local 등록 각각에서 aiox claude를 실행해 MCP 및 channel flow가 실제로 시작되는지 확인하는 다음 단계로 남긴다.
+
+### 2026-08-03 19:50 · W8 수동 검증 · User scope 최초 attach 통과와 MCP 재연결 한계
+
+사용자가 다른 cwd에서 User-scope aiox-claude-ingress를 실행해 최초 도구 노출을 확인했다. 따라서 Local-only gate를 effective Local·User·Project scope로 확장한 변경의 User cross-cwd 최초 attach 가설은 수동으로도 지지된다.
+
+같은 Claude 세션에서 aiox-claude-ingress를 disable한 뒤 enable하면 Claude UI가 Reconnected라고 표시하지만 tools fetch는 Not connected로 실패했다. 이는 등록 scope를 찾는 launch gate 이후, Claude MCP manager의 disable-enable 재연결 경로에서 관찰된 별도 실패다. 현 구현은 최초 aiox claude launch의 attach token·daemon registration·channel startup만 검증하며 disable-enable을 독립 재초기화 계약으로 구현하거나 검증하지 않았다. 원인과 복구 계약은 별도 조사 없이는 단정하지 않으며, 이 검증에서는 Claude 세션을 종료한 뒤 새 aiox claude launch로만 최초 attach를 재현한다.
+
+### 2026-08-03 20:00 · W8 구현 · 등록 누락 gate 영어 진단 메시지
+
+사용자가 다른 cwd에서 aiox claude를 실행해 등록 누락 gate 메시지를 직접 확인하고 영어 표기로 변경해 달라고 요청했다. 최소 행동 변경으로, 등록 누락 메시지를 Claude AIOX MCP is not registered for this directory. Run aiox claude setup --scope local|user|project first.로 바꿨다. 오류 code와 fail-fast 위치는 유지했다.
+
+TDD: English message를 기대하도록 invocation unit test를 먼저 변경해 RED를 확인한 뒤 production string만 바꿨다. focused Vitest 33 passed, pnpm typecheck 및 git diff --check 통과.
+
+### 2026-08-03 20:15 · W8 수동 재현 · disable-enable 뒤 연결 표시는 복구되나 MCP 도구 registry 미복구
+
+사용자가 실제 Claude 세션에서 aiox-claude-ingress를 disable한 뒤 enable한 후의 대화를 재현했다. Claude는 서버가 다시 연결된 것 같다고 표시하지만 aiox-claude-ingress send 도구가 시스템에 등록되지 않았다고 두 번 연속 보고해 호출하지 못했다. 따라서 관찰 가능한 상태는 connection 표시와 tool registry가 불일치하는 상태다.
+
+확인한 사실: 최초 aiox claude launch에서는 도구 연결·호출이 됐고, disable-enable 뒤에는 tool discovery/fetch가 Not connected로 실패하며 Claude가 재시도해도 send가 등록되지 않는다. 추론: AIOX의 session-start registration과 Claude의 MCP disable-enable reconnection lifecycle 중 적어도 하나가 tool rediscovery를 복구하지 못한다. 현재 증거만으로 어느 쪽이 원인인지 단정하지 않는다. 이 로그의 scope gate 변경과는 별도 재연결 결함이며, 사용자는 현 시점에서 구현을 보류했다.
+
+## 2026-08-03 · 2026-08-03 · W8 원인 분석 검토 · Claude disable-enable 재등록 토큰 계약
+
+사용자가 수집한 코드 분석을 현재 소스와 대조했다.
+
+확인한 사실: `attachAgent(kind:"claude")`가 이름별 pending token을 발급하고, `registerClaudeChannel`은 올바른 token과 loopback endpoint를 검증한 뒤 현재 `claudePendingTokens.delete(...)`를 실행한다. 반면 `disconnectClaudeChannel`은 runtime과 pending token 모두를 삭제하고, CLI 호출 경로에서는 외부 Claude TUI 프로세스 종료 후에만 호출된다. 재등록 성공 시에는 `claudeChannelRuntimes.set(agentName, runtime)`이므로 같은 세션 credential을 허용하면 새 endpoint로 덮어쓴다. 현재 단위 테스트는 최초 성공 후 동일 token 재등록과 disconnect 뒤 재등록 거부를 명시하지 않는다.
+
+추론: Claude가 disable-enable에서 MCP 자식 프로세스를 재기동한다면, 새 프로세스가 고정 env의 이미 소비된 token으로 등록해 `unknown_token`을 받고 즉시 종료한다는 설명이 사용자가 관찰한 `Reconnected` 뒤 tool fetch 실패와 일치한다. Claude 내부 재기동 자체와 실제 실패 응답은 아직 stderr/PID로 직접 실측하지 않았으므로 원인 확정은 아니다.
+
+수정 판단: pending token을 external Claude session의 `disconnectClaudeChannel`까지 유지해 session-scoped re-registration credential으로 바꾸는 후보 A가 최소 수정이다. 구현 전에는 TDD로 (1) 같은 token 재등록이 새 endpoint를 갱신하는 성공, (2) disconnect 뒤 같은 token 등록은 `unknown_token` 실패를 추가해야 한다. 동시 구 프로세스/신 프로세스의 경합은 마지막 등록 endpoint가 승리하는 현재 Map 계약으로 남으므로, endpoint ownership/세대 검증은 별도 요구가 생길 때만 검토한다. 사용자는 아직 구현 지시를 하지 않았다.
+
+## 2026-08-03 · 2026-08-03 · W8 위임 준비 · Claude용 재등록 결함 수정 프롬프트
+
+사용자는 Codex를 검토자·작업 위임자로 두고, Claude에게 구현을 맡길 프롬프트를 요청했다. 위임 범위는 session-scoped Claude MCP 재등록 token 계약의 TDD 구현이며, 기존 scope gate 변경과 무관한 파일을 수정하지 않도록 한다. Claude 결과는 diff와 테스트 출력으로 받아 Codex가 별도 검토한다.
+
+### 2026-08-03 20:25 · W8 구현 · Claude MCP 재등록 pending token 유지 TDD 완료
+
+위임받은 구현자가 후보 A(pending token을 registerClaudeChannel 성공 시 삭제하지 않고 disconnectClaudeChannel까지 유지)를 TDD로 구현했다.
+
+변경 파일: `src/daemon/state.ts`(`registerClaudeChannel`에서 `claudePendingTokens.delete(request.agentName);` 한 줄 삭제 — 성공 시 pending token을 더 이상 소거하지 않는다), `tests/unit/adapters/claude-channel.test.ts`(신규 테스트 2개: "동일 token 재등록 성공 및 endpoint 갱신", "disconnectClaudeChannel 뒤 동일 token 재등록은 unknown_token 실패").
+
+RED 근거(사실): "with the same token twice" 테스트는 수정 전 `{ ok: false, reason: "claude_channel_registration_failed", detail: "unknown_token" }`로 실패했다 — 기존 코드가 최초 성공 즉시 pending token을 지워 두 번째 등록을 미등록 token으로 취급했기 때문이다. disconnect-후-재등록 테스트는 수정 전에도 이미 PASS였다(기존 코드가 최초 성공 시 token을 지우므로 우연히 같은 결과였음) — 이 테스트는 수정 후에도 동일 계약이 disconnect 경로로 보존되는지 지키는 회귀 assertion으로 유지한다.
+
+GREEN 검증(사실): `pnpm exec vitest run tests/unit/adapters/claude-channel.test.ts` 39/39 PASS, `pnpm exec vitest run tests/unit/daemon/codex-ingress.test.ts tests/unit/adapters/claude-injector.test.ts` 73/73 PASS(회귀 없음), `pnpm exec vitest run tests/unit` 전체 47 files/520 tests PASS, `pnpm typecheck` 0 errors, `git diff --check` PASS.
+
+범위: scope gate(`checkClaudeMcpRegistration`), Claude MCP setup(`mcp-cli.ts`/`mcp-setup.ts`), launcher, 기존 uncommitted 파일(`src/cli/invocation.ts`, `src/adapters/claude/mcp-cli.ts`, 관련 테스트)은 이번 구현에서 손대지 않았다(diff에 추가 변경 없음, 직접 확인).
+
+남는 추론·한계(미확정): Claude가 실제로 disable-enable 시 MCP 자식 프로세스를 재기동해 같은 env token으로 재등록을 시도한다는 것은 여전히 코드 대조에 근거한 추론이며, 이 세션에서 stderr/PID로 직접 재현하지 않았다. 동시 구/신 프로세스 경합 시 마지막 등록 endpoint가 승리하는 현재 `Map.set` 계약은 그대로 남아 있으며, endpoint ownership/세대 검증은 이번 최소 수정 범위 밖이다. 실제 Claude TUI에서 disable-enable 재현 검증은 사용자 확인이 필요하다.
+
+## 2026-08-03 · 2026-08-03 · W8 실측 반증 · token 재등록 수정 뒤에도 disable-enable 미복구
+
+사용자가 Claude가 구현한 session-scoped token 변경을 적용해 수동 재시험했으나, 최초 연결은 성공하고 disable-enable 뒤 연결은 여전히 실패한다고 보고했다. 현재 diff를 검토한 결과 token 삭제 제거와 동일 token 재등록·disconnect 뒤 거부 테스트는 요청 계약대로 구현되어 있다. 따라서 이전 unknown_token 가설만으로는 실제 결함을 설명할 수 없거나, 재연결 경로가 새 channel-server의 daemon 등록까지 도달하지 않는다.
+
+확인한 사실: 단위 테스트는 daemon state의 직접 API 재등록만 검증하며 Claude CLI MCP manager의 disable-enable lifecycle, static server resolution, child spawn, stdio handoff는 검증하지 않는다. channel-server는 등록 결과를 JSON stderr(`daemon_register_request`, `daemon_register_succeeded`, `daemon_register_failed`)로만 남긴다.
+
+다음 조치: 구현을 추가하지 않고 Claude debug file과 channel-server stderr, disable 전후 mcp-claude PID를 수집해 재등록 요청이 일어나는지와 실제 실패 지점을 먼저 판정한다. Codex는 해당 관측 결과와 diff를 재검토한다.
+
+## 2026-08-03 · 2026-08-03 · W8 비교 실험 계획 · Codex MCP enable-disable
+
+사용자는 Claude 재연결 결함의 원인 분리를 위해 Codex에서도 AIOX MCP enable-disable를 시험할 필요를 제기했다. 코드·architecture 문서상 Codex는 `aiox codex`가 daemon-owned app-server에 `mcp_servers.aiox`를 동적 주입하고, app-server가 `aiox mcp-codex` 자식을 소유하는 구조인 반면 Claude는 Claude CLI가 local static MCP 자식을 소유한다. 따라서 같은 toggle 결과가 나와도 동일 lifecycle이라고 단정할 수 없지만, AIOX ingress/daemon 재등록 계층이 공통 원인인지 판별하는 유효한 비교 실험이다.
+
+실험 조건: 반드시 `aiox codex --name <고유이름>`로 시작한 Codex 세션에서 aiox MCP만 disable-enable 하고, 최초 tool call·toggle 후 tool list·toggle 후 send call 결과와 Codex/app-server의 상태 메시지를 기록한다. 일반 `codex`로 시작한 세션은 AIOX MCP가 주입되지 않아 대조군으로도 부적절하다.
+
+## 2026-08-03 · 2026-08-03 · W8 재현 증거 · Claude MCP 자식 미재기동 및 token 가설 반증
+
+두 독립 세션(`claude-user`의 ~/Documents cwd, `claude-smoke`의 repo cwd)에서 OS 프로세스 관측으로, 최상위 Claude는 생존한 채 `mcp-claude` 자식만 최초 생성 후 4~7초 내 소멸하고 disable-enable 뒤에도 다시 생성되지 않는 패턴이 확인됐다. 이 관측은 session-scoped token 재사용 구현이 실제 재연결을 복구하지 못했다는 사용자 수동 시험과 일치한다.
+
+확인한 사실: 현재 `registerClaudeChannel`은 성공 시 pending token을 삭제하지 않으며, `disconnectClaudeChannel`은 최상위 Claude 종료 뒤에만 호출된다. 두 재현에서 enable 뒤 새 `mcp-claude` PID가 없었으므로, 재기동된 프로세스의 env 전달·daemon registration·tool discovery를 전제하는 token 가설은 이 증거만으로 원인이 될 수 없다. channel-server JSON stderr는 `stdio: inherit`으로 사용자 터미널에만 흐르고 이 재현에서는 포착하지 못했다. 기존 Claude `--debug-file`은 channel-server stderr를 포함하지 않는 것도 확인됐다.
+
+검토 판단: 지금의 token 유지 변경은 직접 API 재등록 단위계약만 만족하며 관측된 실패를 해결하지 못한다. pre-v1 default 및 불필요한 코드 삭제 원칙상, 종료 원인을 stderr로 확인하거나 일반 stdio MCP 대조를 하기 전 이 변경을 유지할 근거는 없다. 다음 최소 조사 대상은 최초 자식 종료의 stdout/stderr·exit reason이며, enable 동작은 그 자식을 재생성하지 않는 관측 결과를 별도 Claude dev-channel lifecycle 한계로 다룬다.
+
+## 2026-08-03 · 2026-08-03 · W8 위임 준비 · 효과 없는 token 재등록 변경 되돌리기
+
+사용자는 실제 disable-enable 재현을 고치지 못한 session-scoped token 재등록 변경을 되돌리는 작업만 Claude에게 위임할 프롬프트를 요청했다. 되돌림 범위는 `src/daemon/state.ts`의 pending token 삭제 제거와 `tests/unit/adapters/claude-channel.test.ts`의 전용 재등록 테스트 2개이며, 다른 기존 미커밋 변경은 보존한다.
+
+## 2026-08-03 · 2026-08-03 · W8 조사 범위 재정의 · Claude MCP toggle 원리와 AIOX lifecycle 합동 분석
+
+사용자는 stderr만 수집하는 진단보다 먼저 Claude가 MCP를 disable-enable할 때의 상태 전이 원리와 AIOX가 사용하는 static dev-channel/stdio MCP lifecycle을 함께 파악해야 한다고 지적했다. 이 판단을 채택한다.
+
+조사 범위는 (1) Claude CLI의 일반 등록 stdio MCP와 `--dangerously-load-development-channels server:<name>`에서 disable/enable이 각각 process spawn, transport close, server state, tool discovery를 어떻게 바꾸는지, (2) AIOX의 `launcher.ts` → static MCP config/env → `channel-server.ts` stdio·HTTP ingress·daemon register → daemon runtime map 흐름이 어느 상태에 기대는지를 한 관측 표로 대조하는 것이다. 목표는 단일 UI 증상에 맞춘 추측성 수정이 아니라, AIOX가 고칠 수 있는 lifecycle contract와 Claude preview 기능의 한계를 분리하는 것이다.
+
+## 2026-08-03 · 2026-08-03 · W8 독립 검토 · token 재등록 변경 되돌림 승인
+
+Codex subagent가 Claude의 되돌림 결과를 독립 검토했다.
+
+확인한 사실: `src/daemon/state.ts`와 `tests/unit/adapters/claude-channel.test.ts`는 HEAD와 동일하며 git status에도 없다. `registerClaudeChannel`의 성공 경로에는 `claudePendingTokens.delete(request.agentName)`가 복원됐고 disconnect 경로의 삭제도 유지된다. 남은 변경은 기존 log, mcp-cli/invocation 및 해당 unit test 4개뿐이며 되돌림이 이를 건드린 흔적은 없다. sandbox 내 loopback EPERM으로 ingress 4개가 실패했으나 승인된 환경의 focused 재실행에서 claude-channel 37/37, typecheck, diff check가 모두 통과해 Claude의 검증 주장이 재현됐다.
+
+검토 결론: 되돌림은 1회용 token 계약을 정확히 복구했고 범위가 깨끗하다. 이 되돌림 자체는 disable-enable 결함을 해결하지 않으며, 이후 원인 조사는 Claude toggle lifecycle과 AIOX lifecycle의 합동 실측으로 진행한다.
+
+## 2026-08-03 · 2026-08-03 · W8 합동 조사 검토 · Claude dev-channel 재연결 실패의 소유 경계
+
+세 조사 결과를 Codex가 검토했다.
+
+확인한 사실: Claude dev-channel 활성화 뒤 `mcp-claude` 자식은 idle에서 장시간 생존하며, disable은 약 1초 내 자식을 정상 종료한다. 엔트리 재선택에 의한 재연결은 새 PID·connected 성공과 새 PID 미생성·tools fetch failed 양쪽을 같은 절차에서 보였다. AIOX daemon의 pending token 재사용 여부는 새 자식이 없는 실패 경로에 관여할 수 없다. `launcher.ts` 이후 MCP 자식의 spawn/kill/respawn은 Claude가 소유하고, AIOX에는 disable-enable event 또는 child-exit 감지 경로가 없다. AIOX runtime map은 child 사멸만으로 자동 무효화되지 않는다.
+
+검토 정정: "AIOX 코드 결함이 아니다"는 backend token/registration 결함에는 현재 증거로 강하게 성립하지만, 전체 제품 책임을 사실로 면제할 수는 없다. AIOX는 research-preview dev-channel static MCP 경로를 선택·의존하며, 대체 launch architecture 또는 stale runtime 관측을 할 수 있는 설계 선택권은 남는다. 따라서 근본 실패의 직접 소유는 Claude의 dev-channel stdio reconnect lifecycle로 보되, dev-channel 고유성·일반 stdio 공통성, 그리고 AIOX가 UX 차원의 완화를 할지 여부는 미확정/사용자 결정으로 유지한다.
+
+현재 제안: token 변경은 되돌린 상태를 유지한다. 근본 수정은 하지 않고, (A) 재연결 실패 시 세션 재시작 안내, (B) stale runtime 감지/진단만 별도 workstream, (C) dev-channel 의존을 제거하는 대체 architecture 검토 중 사용자 선택 전까지 코드 변경을 추가하지 않는다.
+
+## 2026-08-03 · 2026-08-03 · W8 검토 보류 · 재연결 성공 관측과 1회용 token 계약의 모순
+
+Codex 검토에서 추가 확인이 필요한 모순을 발견했다. 현재 코드의 1회용 token 계약에서는 최초 child가 `registerClaudeChannel`에 성공한 순간 pending token이 삭제된다. 같은 최상위 Claude 세션에서 disable 뒤 새 `mcp-claude` child가 spawn하면, static definition의 고정 env token으로 다시 `registerWithDaemon`을 호출하는 한 `unknown_token` 실패 후 종료해야 한다.
+
+따라서 조사 보고의 run8 "새 PID 생성·connected 성공"은 (a) Claude UI의 transport/tool discovery 표시만 성공하고 AIOX daemon 등록·실제 send는 실패했는지, (b) 테스트 조건에서 새 token 또는 새 attach가 생겼는지, (c) env/등록 경로가 예상과 다른지를 분리해야 한다. run9처럼 child 자체가 없는 실패에서는 token이 직접 원인이 아니라는 점은 유지하지만, run8을 근거로 token 가설 전체를 폐기하거나 backend 결함이 아니라고 확정할 수는 없다. child stderr가 별도 socket으로 캡처되지 않은 현재 증거에서는 이 모순을 해결하지 못했다.
+
+다음 최소 확인: run8 조건에서 실제 `send` tool call 결과와 daemon `registerClaudeChannel` 응답(또는 child exit code/daemon event)을 확보하고, 동일 top-level Claude PID·agent name에서 attach가 1회였는지 확인한다. 이 확인 전에는 새 구현 결정을 보류한다.
+
+## 2026-08-03 · 2026-08-03 · W8 위임 준비 · run8 재연결 성공 표시와 token 계약 모순 검증
+
+사용자는 run8 재연결 성공 관측과 1회용 token 계약의 모순을 해소할 Claude subagent용 프롬프트를 요청했다. 조사 범위는 동일 top-level session의 attach 횟수, 재연결 뒤 실제 send tool call, daemon registration·child exit 증거를 분리해 확인하는 것이며 코드·설정 변경은 하지 않는다.
+
+## 2026-08-03 · 2026-08-03 · W8 재연결 결론 갱신 · spawn 실패와 token 거부의 두 경로
+
+run8 모순 검증의 새 독립 재현에서 동일 top-level Claude PID·단일 attach·동일 daemon 세션 중 disable-enable 뒤 새 `mcp-claude` child가 실제 spawn됐고, 곧 소멸했으며 `/mcp`는 `connected · tools fetch failed`, 도구 inventory에는 send/reply 없음, daemon delivery도 증가 없음으로 관측됐다. 이는 UI transport 연결 표시가 AIOX daemon registration 또는 usable tool discovery를 보장하지 않는다는 사실을 강화한다.
+
+결론 갱신: 재연결에는 두 경로가 있다. (A) Claude가 child를 spawn하지 않는 경우 — AIOX token 변경으로 해결할 수 없는 Claude dev-channel lifecycle 실패. (B) Claude가 child를 spawn하지만 tool fetch가 실패하는 경우 — 현재 1회용 token 계약에서 새 child가 같은 고정 env token으로 registration에 실패하는 흐름과 강하게 정합하며, token을 session-scoped로 유지하면 해결할 수 있는 AIOX 경로다. stderr/exit reason은 직접 포착하지 못해 B의 `unknown_token` 자체는 추론으로 남지만, token 재사용 구현을 단순히 무의미하다고 되돌린 직전 판단은 과도했다.
+
+검토 제안: Candidate A(session 종료까지 pending token 유지)를 동일 token 재등록·disconnect 뒤 거부 테스트와 함께 다시 적용할 근거가 생겼다. 단, 이는 B만 완화하며 A(새 child 미spawn)는 남는다. Claude dev-channel의 비결정적 spawn 실패는 별도 limitation으로 안내/재시작 fallback을 유지한다. 사용자 구현 결정 전에는 코드 변경을 추가하지 않는다.
+
+## 2026-08-03 · 2026-08-03 · W8 구현 위임 · session-scoped Claude token 재등록 복원
+
+사용자가 경로 B(Claude가 새 MCP child를 spawn하지만 기존 1회용 token 때문에 daemon 등록이 실패하는 경로)를 대상으로 Candidate A 구현을 subagent에게 위임하도록 지시했다. 구현은 TDD로 `registerClaudeChannel` 성공 뒤 token을 session 종료까지 유지하고, 동일 token 재등록 endpoint 갱신과 disconnect 뒤 재등록 거부를 테스트한다. Codex는 결과 diff와 검증을 독립 검토한다.
+
+## 2026-08-03 · 2026-08-03 · W8 공식 문서 검증 · 경로 A 보류와 B 구현 검토 통과
+
+공식 Anthropic 문서 조사 결과, Channels는 Claude가 subprocess를 spawn하고 stdio로 통신하는 research-preview MCP server이며 development channel은 `--dangerously-load-development-channels server:<name>`로 승인 뒤 spawn된다고만 설명한다. 일반 MCP 문서는 config에서 stdio subprocess를 Claude 시작 시 spawn하고 `/mcp`는 상태 확인이라고 설명한다. `/mcp` Disable/reconnect의 child 종료·재spawn 보장, connected의 의미, stdio retry 정책, dev-channel과 일반 stdio의 차이는 모두 미문서다.
+
+run8 최상위 Claude PID 7192가 원인 미확인으로 종료됐으므로, 그 세션의 child 없음은 parent 종료의 정상 결과와 구분되지 않는다. 따라서 경로 A(살아있는 parent가 spawn을 생략한다)는 독립된 실제 경로가 아니라 추가 검증 대상으로 보류한다. 경로 B(살아있는 동일 parent·daemon·단일 attach에서 새 child spawn, connected+tools fetch failed, child 종료)는 실제 재현된 AIOX-관여 경로로 유지한다.
+
+사용자 지시의 Candidate A 구현은 subagent가 TDD로 완료했고 Codex가 독립 검토했다. 변경은 `src/daemon/state.ts`의 성공 뒤 token 삭제 제거와 `tests/unit/adapters/claude-channel.test.ts`의 재등록 성공·disconnect 뒤 거부 테스트뿐이다. Codex의 focused run은 39/39 PASS, typecheck 및 diff check PASS였다. 이 구현은 확정된 B 경로만 완화하며, 보류된 A를 해결한다고 주장하지 않는다. 커밋은 하지 않았다.
+
+## 2026-08-03 · 2026-08-03 · W8 수동 검증 통과 · session-scoped token 재등록으로 B 경로 복구
+
+사용자가 새 daemon·새 Claude TUI에서 Candidate A 구현을 적용한 뒤 disable → reconnect를 수동 재시험했고 성공을 보고했다. 이는 새 MCP child가 spawn되는 확정 경로 B에서, 최초 등록 뒤 token을 삭제하지 않고 session 종료까지 유지하는 변경이 재등록·도구 복구를 실제로 가능하게 했다는 수동 검증이다.
+
+확인한 사실: 이전 1회용 token 구현에서는 동일 조작 뒤 `connected · tools fetch failed` 및 send/reply 부재가 관측됐고, 변경 후 사용자가 같은 class의 조작 성공을 확인했다. 추론: 원인 B는 pending token의 최초 성공 시 삭제로 인한 재등록 실패였다는 결론의 확신도가 높아졌다. child spawn이 일어나지 않는 미문서 Claude 상태(보류한 경로 A)는 이번 검증의 대상이 아니며, 이 구현으로 해결됐다고 주장하지 않는다. 커밋은 아직 하지 않았다.
+
+## 2026-08-03 · 2026-08-03 · W8 Tidy First 검토 · 핵심 구현 리팩터링 불필요, stale Local-only 용어 정리 후보
+
+TDD/Tidy First 기준의 독립 subagent 검토에서 현재 focused 3 files 72/72, typecheck, diff check가 통과한 것을 다시 확인했다. session-scoped token 재등록 변경은 state 한 줄과 lifecycle 경계 테스트 2개로 최소화돼 있으며 helper 추출·endpoint 로직 추출은 의도를 숨기거나 불필요한 구조 변경이라 하지 않기로 했다.
+
+확인된 구조 정리 후보는 scope gate가 effective Local/User/Project 등록을 허용하도록 바뀐 뒤에도 launcher, mcp-setup, parse, invocation 및 invocation test 일부가 "Local-only" static definition/launch 전략이라고 남긴 설명·테스트 이름이다. 이는 동작 변경 없이 "static MCP definition" 및 "effective registration" 용어로 맞출 수 있는 documentation cleanup이다. token TTL·generation, scope adapter 일반화는 새 행위/정책이므로 이번 범위에서 제외한다.
+
+사용자는 현재 리팩터링 후보 조사만 지시했으므로 파일은 수정하지 않았다. 적용할 경우 scope 용어 정리는 behavioral scope gate·token reconnect와 분리한 별도 structural commit으로 다룬다.
+
+## 2026-08-03 · 2026-08-03 · W8 owner 문서 drift 검토 · 새 decision 선행 필요
+
+Document Structure Review 기반의 read-only subagent 검토에서 현재 코드 계약(setup Local/User/Project, effective registration gate, session-scoped Claude token 재등록)을 owner 문서와 대조했다.
+
+확인한 사실: as-built architecture/spec 문서에는 Local-only gate·one-time token·기존 한국어 오류 표현이 남아 current code와 drift한다. 과거 WHY snapshot인 `claude-channel-local-static-mcp-only`는 user/project provisioning만·launch Local-only를 명시하고, `claude-channel-trust-and-registration`은 secure single-use attach token을 선택했다고 명시해 둘 다 current contract와 직접 충돌한다.
+
+문서 구조 판단: 과거 decision을 현재 코드에 맞춰 조용히 덮어쓰지 않는다. static definition은 유지하되 effective scope gate를 Local/User/Project로 확장한 결정과, token을 top-level Claude session 동안 재등록 가능하게 바꾼 결정을 새 decision 하나 또는 둘로 먼저 소유해야 한다. 이후 `local-runtime-claude-adapter`, process topology, CLI operator surface, daemon transport API, errors/smoke, adapter model/capability policy의 current as-built claims를 국소 갱신한다. `/mcp` child 미spawn은 독립 재현 미확정이므로 문서화하지 않는다. 사용자는 현재 검토만 지시했으므로 문서를 수정하지 않았다.
+
+## 2026-08-03 · 2026-08-03 · W8 owner 반영 위임 · scope/token decision 및 as-built 문서 정합화
+
+사용자가 확인된 owner 문서 drift를 실제 문서에 반영하도록 지시했다. 기존 decision snapshot은 보존하고 scope gate 확장과 session-scoped reconnect token의 load-bearing rationale을 새 decision 두 개로 작성한 뒤, 필요한 architecture/spec current claims에만 결과를 전파하도록 subagent에게 위임한다.
+
+## 2026-08-03 · 2026-08-03 · W8 owner 반영 완료 · 새 decision과 current architecture/spec 정합화
+
+사용자 승인 후 subagent가 owner 문서 drift를 반영했고 Codex가 독립 검토했다. 기존 historical decision은 수정하지 않고 `claude-channel-effective-registration-scope`와 `claude-channel-session-reconnect-token` 새 decision 두 개를 추가했다. scope decision은 explicit User/Project provisioning의 shared-definition trade-off와 per-process runtime identity 경계를 명시하고, token decision은 replacement child 재등록을 session 종료까지 허용하는 rationale·trade-off를 소유한다.
+
+current/as-built owner는 Claude adapter, process topology, CLI/operator surface, daemon transport API, error catalog, adapter model, capability policy만 갱신했다. 미확정 child 미spawn 경로는 문서화하지 않았다. capability policy의 기존 stale code evidence range와 Codex ingress/egress 용어도 current state lines로 정정했다.
+
+검증: 수정 문서 9개 inline-code check 통과, `git diff --check` 통과. Codex가 권한 환경에서 Claude 관련 focused unit 4 files 79/79, typecheck를 통과시켰다. 코드·문서 변경은 아직 커밋하지 않았다.

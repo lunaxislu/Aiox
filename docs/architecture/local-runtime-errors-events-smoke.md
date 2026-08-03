@@ -94,8 +94,8 @@ Returned as `{kind:"failed", reason, message, jsonRpcCode?}`
 | `aiox.invocation.missing_daemon_socket_path` | Claude attach without socket path | [[src/cli/invocation.ts]] `src/cli/invocation.ts:195-200` |
 | `aiox.invocation.claude_mcp_setup_failed` | `aiox claude setup` orchestrator threw | [[src/cli/invocation.ts]] `src/cli/invocation.ts:298-303` |
 | `aiox.invocation.claude_mcp_setup.<code>` | `aiox claude setup` returned a non-ok result (e.g. name collision) | [[src/cli/invocation.ts]] `src/cli/invocation.ts:305-310` |
-| `aiox.invocation.claude_mcp_registration_check_failed` | Local static MCP registration check threw | [[src/cli/invocation.ts]] `src/cli/invocation.ts:328-333` |
-| `aiox.invocation.claude_mcp_not_registered` | `aiox claude` attach: Local scope not registered (points back to `aiox claude setup`) | [[src/cli/invocation.ts]] `src/cli/invocation.ts:335-341` |
+| `aiox.invocation.claude_mcp_registration_check_failed` | effective Claude MCP registration check threw | [[src/cli/invocation.ts]] `src/cli/invocation.ts:328-333` |
+| `aiox.invocation.claude_mcp_not_registered` | `aiox claude` attach: no effective Local, User, or Project registration in the cwd (points to `aiox claude setup --scope <local|user|project>`) | [[src/cli/invocation.ts]] `src/cli/invocation.ts:335-341` |
 | `aiox.invocation.tui_launch_failed` | Codex TUI spawn error / wait-for-exit error | [[src/cli/invocation.ts]] `src/cli/invocation.ts:353-359`, `:382-388`, `:413-418` |
 | `aiox.invocation.unhandled_command` | `assertNever` fallback | [[src/cli/invocation.ts]] `src/cli/invocation.ts:464-467` |
 | `aiox.invocation.<reason>` | wrapped daemon `ok:false` | [[src/cli/invocation.ts]] `src/cli/invocation.ts:446-449` |

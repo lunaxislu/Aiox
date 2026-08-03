@@ -92,8 +92,8 @@ delivery-status observability API.
 | `rollbackAgentAttach` | disposes in-flight codex runtime; removes pending token; marks agent disconnected | — | none typed (`{ok:true,rolledBack}`) | `rollbackAgentAttach` |
 | `detachAgent` | dispose codex runtime + clear channel maps; mark disconnected | `agent_graceful_detach` (trigger=`explicit_detach`) | none | `detachAgent` → `detachCodexAgent` |
 | `notifyTuiExited` | same as detachAgent cleanup | `agent_graceful_detach` (trigger=`tui_exit`) | none | `notifyTuiExited` → `detachCodexAgent` |
-| `registerClaudeChannel` | consumes pending token; inserts `claudeChannelRuntimes` | — | `claude_channel_registration_failed` (`unknown_token`/`invalid_endpoint`) | `registerClaudeChannel` |
-| `disconnectClaudeChannel` | removes runtime | — | none | `disconnectClaudeChannel` |
+| `registerClaudeChannel` | validates session token; inserts or replaces `claudeChannelRuntimes` | — | `claude_channel_registration_failed` (`unknown_token`/`invalid_endpoint`) | `registerClaudeChannel`; [[docs/decisions/claude-channel-session-reconnect-token]] |
+| `disconnectClaudeChannel` | removes runtime and session token | — | none | `disconnectClaudeChannel` |
 | `receiveClaudeChannelMessage` | runSendMessageTransaction (`request.type ?? "question"`, typed `question\|instruction`) + dispatch to codex | `claude_channel_message_received` + sendMessage events + dispatch events | sendMessage typed errors | `receiveClaudeChannelMessage` → `runSendMessageTransaction` |
 | `receiveClaudeChannelReply` | typed `inReplyToDeliveryId` reply authorization + source-only dispatch | `claude_channel_reply_received` + downstream | `unknown_delivery`, `correlation_mismatch`, `reply_not_expected`, `duplicate_reply`, plus send errors | `receiveClaudeChannelReply` → `runReplyTransaction` |
 | `registerCodexChannel` | consumes pending token; inserts `codexChannelRuntimes` | `codex_channel_registered` | `codex_channel_registration_failed` (`unknown_token`) | `registerCodexChannel` |

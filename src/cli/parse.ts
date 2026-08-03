@@ -47,8 +47,9 @@ export type ParsedCommand = {
   kind: "mcp-claude";
 } | {
   // `aiox claude setup`: non-overwriting provisioning of the static Claude MCP
-  // definition (`server:aiox-claude-ingress`) at the given scope — the new
-  // default `aiox claude` runtime path relies on the Local scope entry.
+  // definition (`server:aiox-claude-ingress`) at the given scope. The
+  // `aiox claude` runtime path accepts its effective registration at Local,
+  // User, or Project scope.
   // Explicit-only — never auto-run by `aiox claude`, which fail-fasts before
   // any daemon/attach side effect and points here.
   kind: "claude-mcp-setup";

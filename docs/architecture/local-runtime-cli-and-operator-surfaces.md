@@ -54,6 +54,14 @@ Evidence:
   `aiox.missingTargets`. Commander's exit code is propagated as-is
   (provenance: logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md §4.1).
 
+For `aiox claude`, the launch preflight runs before daemon auto-start and
+agent attach. It asks `claude mcp get` whether the named static MCP resolves
+to an effective Local, User, or Project entry for the command cwd; it does
+not interpret the connection-status text. A missing entry reports
+`aiox.invocation.claude_mcp_not_registered` and directs the operator to
+`aiox claude setup --scope <local|user|project>`.
+The rationale is [[docs/decisions/claude-channel-effective-registration-scope]].
+
 Evidence:
 
 - Invocation switch and failure mapping

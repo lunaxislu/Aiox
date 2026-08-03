@@ -5,6 +5,8 @@ Related:
 - [[docs/architecture/local-agent-runtime]]
 - [[docs/decisions/codex-per-agent-app-server]]
 - [[docs/decisions/claude-channel-local-static-mcp-only]]
+- [[docs/decisions/claude-channel-effective-registration-scope]]
+- [[docs/decisions/claude-channel-session-reconnect-token]]
 
 Status: Current
 
@@ -50,7 +52,7 @@ Per running pair the OS sees the following processes:
 │          │  per Claude agent                                              │
 │          │  ┌──────────────────────────────────────────────────────┐       │
 │          │  │  claude CLI                                          │       │
-│          │  │   ↓ server:aiox-claude-ingress (Local static MCP,   │       │
+│          │  │   ↓ server:aiox-claude-ingress (effective static MCP,│       │
 │          │  │     pre-registered via `aiox claude setup`)          │       │
 │          │  │  aiox mcp-claude → channel-server (stdio)             │       │
 │          │  │  HTTP /send 127.0.0.1:0 │◀── daemon HTTP POST (inject)      │
@@ -67,8 +69,12 @@ Per running pair the OS sees the following processes:
 - Claude agent → 1 `claude` child (CLI-owned, foreground) + 1
   `aiox mcp-claude` stdio child (Claude-owned; it runs the channel-server,
   activated via `server:aiox-claude-ingress`,
-  resolving a Local static MCP definition pre-registered by `aiox claude setup`;
-  [[docs/decisions/claude-channel-local-static-mcp-only]]).
+  resolving the current cwd's effective Local, User, or Project static MCP
+  definition pre-registered by `aiox claude setup`;
+  [[docs/decisions/claude-channel-effective-registration-scope]]). The daemon
+  accepts a replacement child registration with the same session token until
+  the top-level Claude process exits
+  ([[docs/decisions/claude-channel-session-reconnect-token]]).
 
 **MVP invariant** (WHY: [[docs/decisions/codex-per-agent-app-server]] §5):
 
