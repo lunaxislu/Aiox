@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import type { ClaudeMcpScope } from "../../core/claude-mcp-scope.js";
 
 // ---------------------------------------------------------------------------
-// Adapter: `claude mcp` CLI wrapper for `aiox claude setup` (Local static MCP).
+// Adapter: `claude mcp` CLI wrapper for `aiox claude setup` (static MCP).
 //
 // CONTRACT (confirmed by direct `claude mcp --help` and live probing against an
 // isolated HOME, not assumed): `claude mcp add-json <name> <json> -s <scope>`
@@ -25,10 +25,11 @@ import type { ClaudeMcpScope } from "../../core/claude-mcp-scope.js";
 // comparison is attempted anywhere in this adapter.
 //
 // `claude mcp get <name>` DOES reliably report the cwd-resolved *effective*
-// scope ("Scope: Local config (private to you in this project)" vs "User
-// config" / not found at all), which is sufficient to answer the one question
-// `aiox claude`'s launch preflight actually needs: is our MCP registered under
-// Local scope for this cwd, yes or no.
+// scope ("Scope: Local config (private to you in this project)", "User
+// config", or "Project config" / not found at all), which is sufficient to
+// answer the one question `aiox claude`'s launch preflight actually needs: is
+// our MCP effectively registered for this cwd, yes or no. This is intentionally
+// an existence/scope check; Claude's status text is not interpreted here.
 // ---------------------------------------------------------------------------
 
 /** Runs a `claude <args>` invocation in a specific cwd and returns its stdout/stderr. */
@@ -102,7 +103,7 @@ export async function addClaudeMcpJson(options: AddClaudeMcpJsonOptions): Promis
   }
 }
 
-export interface CheckClaudeMcpLocalRegistrationOptions {
+export interface CheckClaudeMcpRegistrationOptions {
   name: string;
   /** user's cwd — `claude mcp get` resolves effective scope per-cwd */
   cwd: string;
@@ -110,12 +111,12 @@ export interface CheckClaudeMcpLocalRegistrationOptions {
   run?: ClaudeMcpCliRunner;
 }
 
-export interface ClaudeMcpLocalRegistrationCheck {
-  registeredAtLocalScope: boolean;
+export interface ClaudeMcpRegistrationCheck {
+  registered: boolean;
 }
 
 const NOT_REGISTERED_PATTERN = /No MCP server named/i;
-const LOCAL_SCOPE_PATTERN = /Scope:\s*Local config/;
+const EFFECTIVE_SCOPE_PATTERN = /Scope:\s*(?:Local|User|Project) config/;
 
 /**
  * `claude mcp get <name>` (no `-s`: `get` resolves scope precedence itself,
@@ -123,9 +124,9 @@ const LOCAL_SCOPE_PATTERN = /Scope:\s*Local config/;
  * module contract note above for why a definition-equality check is not
  * attempted.
  */
-export async function checkClaudeMcpLocalRegistration(
-  options: CheckClaudeMcpLocalRegistrationOptions,
-): Promise<ClaudeMcpLocalRegistrationCheck> {
+export async function checkClaudeMcpRegistration(
+  options: CheckClaudeMcpRegistrationOptions,
+): Promise<ClaudeMcpRegistrationCheck> {
   const run = options.run ?? createClaudeMcpCliRunner(options.command);
   let stdout: string;
   try {
@@ -133,14 +134,14 @@ export async function checkClaudeMcpLocalRegistration(
   } catch (error) {
     const stderr = extractStderr(error);
     if (NOT_REGISTERED_PATTERN.test(stderr)) {
-      return { registeredAtLocalScope: false };
+      return { registered: false };
     }
     throw new ClaudeMcpCliError(
       `failed to run \`claude mcp get ${options.name}\`: ${describeError(error)}`,
       "claude_mcp_cli_failed",
     );
   }
-  return { registeredAtLocalScope: LOCAL_SCOPE_PATTERN.test(stdout) };
+  return { registered: EFFECTIVE_SCOPE_PATTERN.test(stdout) };
 }
 
 function extractStderr(error: unknown): string {

@@ -13,8 +13,8 @@ import {
   type ClaudeStaticMcpConfigInput,
 } from "../adapters/claude/launcher.js";
 import {
-  checkClaudeMcpLocalRegistration,
-  type ClaudeMcpLocalRegistrationCheck,
+  checkClaudeMcpRegistration,
+  type ClaudeMcpRegistrationCheck,
 } from "../adapters/claude/mcp-cli.js";
 import {
   setupClaudeMcp,
@@ -24,7 +24,7 @@ import {
 import { runDaemonProcess } from "../daemon/run.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
 
-// Local static MCP identity (the sole `aiox claude` runtime path). One name
+// Static MCP identity (the sole `aiox claude` runtime path). One name
 // shared by `aiox claude setup` (registration), the launch-time registration
 // gate, and the launcher that activates `server:<name>` — so provisioning,
 // the gate, and activation never drift.
@@ -74,9 +74,9 @@ export interface InvocationOptions {
     endpoint: URL;
     resumeSessionId?: string;
   }) => ChildProcess;
-  // Local static MCP launcher (the sole `aiox claude` runtime path): activates
-  // `server:<name>` using a pre-registered Local-scope MCP definition
-  // (`aiox claude setup`). Gated by requireClaudeMcpLocalRegistration below,
+  // Static MCP launcher (the sole `aiox claude` runtime path): activates
+  // `server:<name>` using a pre-registered effective MCP definition
+  // (`aiox claude setup`). Gated by requireClaudeMcpRegistration below,
   // which runs before any daemon/attach side effect.
   launchClaudeStaticMcpChannel?: (options: {
     channelName: string;
@@ -84,15 +84,15 @@ export interface InvocationOptions {
     agentToken: string;
     daemonSocketPath: string;
   }) => ChildProcess;
-  // Local static MCP injection points: the launch-time registration gate
+  // Static MCP injection points: the launch-time registration gate
   // (`aiox claude`) and the `aiox claude setup` orchestrator + the JSON
   // definition it registers. All default to the real adapter; tests inject
   // them so neither command flow touches a live `claude` or the real
   // ~/.claude.json.
-  checkClaudeMcpLocalRegistration?: (options: {
+  checkClaudeMcpRegistration?: (options: {
     name: string;
     cwd: string;
-  }) => Promise<ClaudeMcpLocalRegistrationCheck>;
+  }) => Promise<ClaudeMcpRegistrationCheck>;
   buildClaudeStaticMcpConfig?: (
     input: ClaudeStaticMcpConfigInput,
   ) => string;
@@ -146,12 +146,12 @@ export async function invokeParsedCommand(
     case "version":
       return { exitCode: 0, stdout: `${command.value}\n` };
     case "agent-attach": {
-      // Local static MCP gate: registration is a prerequisite of the spawned
-      // `claude`'s own MCP resolution, not of the daemon/agent attach below,
-      // so it must fail BEFORE startDaemon/attachAgent/token issuance — never
-      // after, and never with a silent fallback.
+      // Static MCP gate: an effective registration is a prerequisite of the
+      // spawned `claude`'s own MCP resolution, not of the daemon/agent attach
+      // below, so it must fail BEFORE startDaemon/attachAgent/token issuance
+      // — never after, and never with a silent fallback.
       if (command.agentKind === "claude") {
-        await requireClaudeMcpLocalRegistration(options);
+        await requireClaudeMcpRegistration(options);
       }
       // PRD: "Auto-start daemon if needed" for agent attach commands.
       await options.runtime.startDaemon();
@@ -198,8 +198,8 @@ export async function invokeParsedCommand(
           });
         }
         // dev-channel server:<name> resolves the aiox channel MCP from the
-        // pre-registered Local-scope static definition. Same name shared by
-        // `aiox claude setup`, requireClaudeMcpLocalRegistration, and this
+        // pre-registered static definition. Same name shared by
+        // `aiox claude setup`, requireClaudeMcpRegistration, and this
         // launcher so registration, the gate, and activation never drift.
         const channelName = CLAUDE_CHANNEL_MCP_NAME;
         const child = launchChildOrRollback({
@@ -275,9 +275,8 @@ export async function invokeParsedCommand(
 }
 
 // `aiox claude setup`: non-overwriting provisioning of the static Claude MCP
-// definition at the requested scope (default local — the same scope
-// `requireClaudeMcpLocalRegistration` gates on before every `aiox claude`
-// launch; user/project are explicit opt-ins). Standalone provisioning (no
+// definition at the requested scope. `aiox claude` accepts any effective
+// Local, User, or Project registration. Standalone provisioning (no
 // daemon).
 async function claudeMcpSetupResult(
   scope: ClaudeMcpScope,
@@ -314,15 +313,15 @@ async function claudeMcpSetupResult(
   };
 }
 
-// Local static MCP launch-time gate. Runs BEFORE startDaemon/attachAgent/token
-// issuance (R3B product requirement): a missing Local-scope registration must
+// Static MCP launch-time gate. Runs BEFORE startDaemon/attachAgent/token
+// issuance (R3B product requirement): a missing effective registration must
 // never reach a daemon or token side effect.
-async function requireClaudeMcpLocalRegistration(
+async function requireClaudeMcpRegistration(
   options: InvocationOptions,
 ): Promise<void> {
-  const check = options.checkClaudeMcpLocalRegistration ?? checkClaudeMcpLocalRegistration;
+  const check = options.checkClaudeMcpRegistration ?? checkClaudeMcpRegistration;
 
-  let result: ClaudeMcpLocalRegistrationCheck;
+  let result: ClaudeMcpRegistrationCheck;
   try {
     result = await check({ name: CLAUDE_CHANNEL_MCP_NAME, cwd: options.cwd });
   } catch (error) {
@@ -332,10 +331,10 @@ async function requireClaudeMcpLocalRegistration(
     });
   }
 
-  if (!result.registeredAtLocalScope) {
+  if (!result.registered) {
     throw new InvocationError(
-      "Claude AIOX MCP가 Local scope에 등록되어 있지 않습니다.\n" +
-        "먼저 aiox claude setup 을 실행하세요.",
+      "Claude AIOX MCP is not registered for this directory.\n" +
+        "Run `aiox claude setup --scope <local|user|project>` first.",
       { code: "aiox.invocation.claude_mcp_not_registered", exitCode: 1 },
     );
   }

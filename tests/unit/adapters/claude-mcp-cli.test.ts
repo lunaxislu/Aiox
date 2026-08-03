@@ -6,13 +6,13 @@ import { execFile } from "node:child_process";
 
 import {
   addClaudeMcpJson,
-  checkClaudeMcpLocalRegistration,
+  checkClaudeMcpRegistration,
   type ClaudeMcpCliRunner,
 } from "../../../src/adapters/claude/mcp-cli.js";
 
 // ---------------------------------------------------------------------------
 // `aiox claude setup` CLI adapter: wraps `claude mcp add-json` (write) and
-// `claude mcp get` (read, used only to detect Local-scope registration — NOT
+// `claude mcp get` (read, used only to detect effective registration — NOT
 // to diff the stored definition; `claude mcp get`/`list` never expose the
 // stored command/args/env, confirmed by direct CLI probing, so no automatic
 // same/different comparison is attempted anywhere in this adapter).
@@ -129,32 +129,36 @@ describe("addClaudeMcpJson", () => {
   });
 });
 
-describe("checkClaudeMcpLocalRegistration", () => {
-  it("returns registeredAtLocalScope:true when `mcp get` reports Local config scope", async () => {
+describe("checkClaudeMcpRegistration", () => {
+  it.each([
+    ["Local", "Local config (private to you in this project)"],
+    ["User", "User config (available in all your projects)"],
+    ["Project", "Project config (shared via .mcp.json)"],
+  ])("returns registered:true when `mcp get` reports effective %s config scope", async (_scope, scopeDetail) => {
     const run: ClaudeMcpCliRunner = async () => ({
       stdout:
-        `${NAME}:\n  Scope: Local config (private to you in this project)\n  Status: ✓ Connected\n`,
+        `${NAME}:\n  Scope: ${scopeDetail}\n  Status: ✓ Connected\n`,
       stderr: "",
     });
 
     await expect(
-      checkClaudeMcpLocalRegistration({ name: NAME, cwd: CWD, run }),
-    ).resolves.toEqual({ registeredAtLocalScope: true });
+      checkClaudeMcpRegistration({ name: NAME, cwd: CWD, run }),
+    ).resolves.toEqual({ registered: true });
   });
 
-  it("returns registeredAtLocalScope:false when the effective scope is User, not Local", async () => {
+  it("returns registered:false when `mcp get` reports an unrecognized scope", async () => {
     const run: ClaudeMcpCliRunner = async () => ({
       stdout:
-        `${NAME}:\n  Scope: User config (available in all your projects)\n  Status: ✓ Connected\n`,
+        `${NAME}:\n  Scope: Workspace config\n  Status: ✓ Connected\n`,
       stderr: "",
     });
 
     await expect(
-      checkClaudeMcpLocalRegistration({ name: NAME, cwd: CWD, run }),
-    ).resolves.toEqual({ registeredAtLocalScope: false });
+      checkClaudeMcpRegistration({ name: NAME, cwd: CWD, run }),
+    ).resolves.toEqual({ registered: false });
   });
 
-  it("returns registeredAtLocalScope:false when nothing is registered under that name", async () => {
+  it("returns registered:false when nothing is registered under that name", async () => {
     const run: ClaudeMcpCliRunner = async () => {
       const error = new Error(`No MCP server named "${NAME}". Run \`claude mcp add\` to add one.`) as Error & {
         stderr?: string;
@@ -164,8 +168,8 @@ describe("checkClaudeMcpLocalRegistration", () => {
     };
 
     await expect(
-      checkClaudeMcpLocalRegistration({ name: NAME, cwd: CWD, run }),
-    ).resolves.toEqual({ registeredAtLocalScope: false });
+      checkClaudeMcpRegistration({ name: NAME, cwd: CWD, run }),
+    ).resolves.toEqual({ registered: false });
   });
 
   it("throws claude_mcp_cli_failed for any other CLI failure", async () => {
@@ -174,7 +178,7 @@ describe("checkClaudeMcpLocalRegistration", () => {
     };
 
     await expect(
-      checkClaudeMcpLocalRegistration({ name: NAME, cwd: CWD, run }),
+      checkClaudeMcpRegistration({ name: NAME, cwd: CWD, run }),
     ).rejects.toMatchObject({
       name: "ClaudeMcpCliError",
       code: "claude_mcp_cli_failed",
@@ -188,7 +192,7 @@ describe("checkClaudeMcpLocalRegistration", () => {
       return { stdout: `${NAME}:\n  Scope: Local config (private to you in this project)\n`, stderr: "" };
     };
 
-    await checkClaudeMcpLocalRegistration({ name: NAME, cwd: CWD, run });
+    await checkClaudeMcpRegistration({ name: NAME, cwd: CWD, run });
 
     expect(calls).toEqual([{ args: ["mcp", "get", NAME], cwd: CWD }]);
   });

@@ -1145,7 +1145,6 @@ export function createDaemonState(
         };
       }
 
-      claudePendingTokens.delete(request.agentName);
       const runtime: ClaudeChannelRuntime = {
         agentName: request.agentName,
         endpoint: parsedEndpoint,

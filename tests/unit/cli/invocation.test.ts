@@ -37,9 +37,9 @@ describe("CLI invocation", () => {
       {
         runtime,
         cwd: "/repo",
-        // the Local static MCP gate runs before startDaemon/attachAgent; this
+        // the static MCP gate runs before startDaemon/attachAgent; this
         // smoke test isn't exercising that gate.
-        checkClaudeMcpLocalRegistration: async () => ({ registeredAtLocalScope: true }),
+        checkClaudeMcpRegistration: async () => ({ registered: true }),
       },
     );
     await invokeParsedCommand(
@@ -284,9 +284,9 @@ describe("CLI invocation", () => {
       {
         runtime,
         cwd: "/repo",
-        checkClaudeMcpLocalRegistration: async (checkOptions) => {
-          calls.push(["checkClaudeMcpLocalRegistration", checkOptions]);
-          return { registeredAtLocalScope: true };
+        checkClaudeMcpRegistration: async (checkOptions) => {
+          calls.push(["checkClaudeMcpRegistration", checkOptions]);
+          return { registered: true };
         },
         launchClaudeStaticMcpChannel: (options) => {
           calls.push(["launchClaudeStaticMcpChannel", options]);
@@ -299,7 +299,7 @@ describe("CLI invocation", () => {
     await expect(invoked).resolves.toEqual({ exitCode: 0 });
     // the registration gate runs BEFORE any daemon/attach/token side effect.
     expect(calls).toEqual([
-      ["checkClaudeMcpLocalRegistration", { name: "aiox-claude-ingress", cwd: "/repo" }],
+      ["checkClaudeMcpRegistration", { name: "aiox-claude-ingress", cwd: "/repo" }],
       ["startDaemon"],
       ["attachAgent", { kind: "claude", name: "reviewer", cwd: "/repo", pairName: "pair-a" }],
       [
@@ -324,7 +324,7 @@ describe("CLI invocation", () => {
       {
         runtime,
         cwd: "/repo",
-        checkClaudeMcpLocalRegistration: async () => ({ registeredAtLocalScope: false }),
+        checkClaudeMcpRegistration: async () => ({ registered: false }),
       },
     );
 
@@ -333,12 +333,12 @@ describe("CLI invocation", () => {
       code: "aiox.invocation.claude_mcp_not_registered",
       exitCode: 1,
       message:
-        "Claude AIOX MCP가 Local scope에 등록되어 있지 않습니다.\n먼저 aiox claude setup 을 실행하세요.",
+        "Claude AIOX MCP is not registered for this directory.\nRun `aiox claude setup --scope <local|user|project>` first.",
     });
     expect(calls).toEqual([]);
   });
 
-  it("wraps a thrown Local MCP registration check failure into a coded error before any side effect", async () => {
+  it("wraps a thrown effective MCP registration check failure into a coded error before any side effect", async () => {
     const calls: unknown[] = [];
     const runtime = createRuntime(calls, claudeAttachOverride());
 
@@ -347,7 +347,7 @@ describe("CLI invocation", () => {
       {
         runtime,
         cwd: "/repo",
-        checkClaudeMcpLocalRegistration: async () => {
+        checkClaudeMcpRegistration: async () => {
           throw new Error("spawn claude ENOENT");
         },
       },
@@ -361,7 +361,7 @@ describe("CLI invocation", () => {
     expect(calls).toEqual([]);
   });
 
-  it("claude setup registers the Local static MCP and returns a summary", async () => {
+  it("claude setup registers the static MCP at the requested scope and returns a summary", async () => {
     const calls: unknown[] = [];
     const runtime = createRuntime(calls);
     const seen: unknown[] = [];

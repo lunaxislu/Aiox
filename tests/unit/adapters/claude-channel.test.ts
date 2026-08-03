@@ -101,6 +101,43 @@ describe("daemon registerClaudeChannel", () => {
     expect(claudeChannelRuntimes.has("alpha")).toBe(true);
   });
 
+  it("registerClaudeChannel with the same token twice updates the runtime endpoint", async () => {
+    const claudeChannelRuntimes = new Map();
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-05-22T00:00:00.000Z",
+      claudeChannelRuntimes,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    const firstEndpoint = "http://127.0.0.1:18789/send";
+    const secondEndpoint = "http://127.0.0.1:18790/send";
+
+    await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: firstEndpoint,
+    });
+    const reconnectResponse = await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: secondEndpoint,
+    });
+
+    expect(reconnectResponse).toMatchObject({ ok: true });
+    expect(claudeChannelRuntimes.get("alpha")).toMatchObject({
+      endpoint: secondEndpoint,
+    });
+  });
+
   it("registerClaudeChannel with wrong token returns claude_channel_registration_failed", async () => {
     const state = createDaemonState({
       db,
@@ -252,6 +289,41 @@ describe("daemon disconnectClaudeChannel", () => {
     expect((await client.status()).agents).toMatchObject([
       { name: "alpha", kind: "claude", status: "disconnected" },
     ]);
+  });
+
+  it("rejects a previously registered token after disconnectClaudeChannel", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-05-22T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    await client.disconnectClaudeChannel({ agentName: "alpha" });
+
+    const response = await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18790/send",
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      reason: "claude_channel_registration_failed",
+      detail: "unknown_token",
+    });
   });
 
   it("marks attached Claude agent disconnected even when channel never registered", async () => {
