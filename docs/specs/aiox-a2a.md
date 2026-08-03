@@ -84,7 +84,7 @@ model overview는 이 인덱스가 소유한다.
   [[src/core/messages.ts]] — `src/core/messages.ts:7-23`; [[src/store/schema.ts]] —
   `src/store/schema.ts:48-56`.
 - **intent**: 협업 의미 축. agent-authored 값은 delegation/discussion/clarification/
-  result/conclusion이고, status/notification은 daemon-authored reserved 값이다.
+  result/conclusion이고, notification은 daemon-authored reserved 값이다.
 - **reply_expected**: target 행동 신호 축. "답해야 하는 메시지인가"를 명시한다.
   `intent`만으로 reply 여부를 추론하지 않는다.
 - **source-only routing**: reply의 기본 routing. reply는 원 message의 source에게만 돌아간다.

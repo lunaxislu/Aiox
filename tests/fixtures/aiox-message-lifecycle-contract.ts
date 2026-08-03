@@ -42,7 +42,7 @@ export const typedInvalidInputFixtures = [
     kind: "send",
     input: {
       type: "question",
-      intent: "status",
+      intent: "notification",
       replyExpected: true,
       content: { text: "Reserved intent" },
     },

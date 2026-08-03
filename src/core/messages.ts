@@ -7,7 +7,6 @@ import type { Route } from "./routes.js";
 export const messageTypes = [
   "question",
   "instruction",
-  "status",
   "event",
   "reply",
 ] as const;

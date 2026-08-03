@@ -30,12 +30,9 @@ import {
   typedClaudeSendInputSchema,
 } from "../../../src/adapters/claude/channel-server.js";
 import {
-  buildClaudeChannelMcpConfig,
+  buildClaudeStaticMcpConfig,
   buildLaunchClaudeChannelArgs,
-  buildLaunchClaudePluginArgs,
-  resolveInlineChannelServerEntry,
-  launchClaudeWithChannel,
-  launchClaudePluginChannel,
+  launchClaudeStaticMcpChannel,
 } from "../../../src/adapters/claude/launcher.js";
 
 // ---------------------------------------------------------------------------
@@ -424,7 +421,7 @@ describe("Claude channel MCP handlers", () => {
 
     for (const input of [
       { intent: "delegation", replyExpected: true, content: { text: "missing type" } },
-      { type: "question", intent: "status", replyExpected: true, content: { text: "reserved" } },
+      { type: "question", intent: "notification", replyExpected: true, content: { text: "reserved" } },
       { type: "question", intent: "delegation", replyExpected: true, content: { text: "media", mediaType: "text/plain" } },
     ]) {
       expect(typedClaudeSendInputSchema.safeParse(input).success).toBe(false);
@@ -442,6 +439,24 @@ describe("Claude channel MCP handlers", () => {
 
   it("instructs Claude to use aiox tools only for intentional collaboration", () => {
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("<channel");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("host-owned outer <channel> wrapper");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("canonical AIOX envelope JSON");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain(
+      "intent: \"notification\" is a daemon-authored outcome event, not a reply",
+    );
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("outcomeForDeliveryId");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain(
+      "The outer <channel source=\"...\"> attribute identifies this channel server",
+    );
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toMatch(
+      /The envelope's own source\.address field is the actual\s+sender/,
+    );
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain(
+      "creates no reply right; do not use reply for a notification",
+    );
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain(
+      "Use outcomeForDeliveryId only to correlate the outcome it reports",
+    );
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Language Policy");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("User-Requested Collaboration");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Typed Message Intent");
@@ -449,6 +464,13 @@ describe("Claude channel MCP handlers", () => {
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("replyExpected");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Multi-round Discussion");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain('intent: "conclusion"');
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain(
+      "After sending a conclusion, do not call any aiox tool again for that thread.",
+    );
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("intent: delegation");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain(
+      "content.text: Goal: review the diff in src/router.ts for race conditions.",
+    );
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Bad, do not send");
     expect(CLAUDE_CHANNEL_INSTRUCTIONS).not.toContain("- an instruction");
     expect(CLAUDE_REPLY_DESCRIPTION).toContain("inReplyToDeliveryId");
@@ -669,6 +691,83 @@ describe("Claude channel MCP handlers", () => {
       },
     });
   });
+
+  it("maps a daemon send rejection to an MCP tool error", async () => {
+    const handler = createSendHandler({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          receiveClaudeChannelMessage: async () => ({
+            ok: false,
+            reason: "no_active_routes",
+          }),
+        }),
+    });
+
+    const result = await handler({
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "hello codex" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect((result.content?.[0] as { text?: string } | undefined)?.text).toContain(
+      "no_active_routes",
+    );
+  });
+
+  it.each([
+    "unknown_delivery",
+    "correlation_mismatch",
+    "reply_not_expected",
+    "duplicate_reply",
+  ] as const)("relays daemon reply rejection %s as an MCP tool error", async (reason) => {
+    const handler = createReplyHandler({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          receiveClaudeChannelReply: async () => ({ ok: false, reason }),
+        }),
+    });
+
+    const result = await handler({
+      inReplyToDeliveryId: "delivery-1",
+      intent: "result",
+      replyExpected: false,
+      content: { text: "ack" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect((result.content?.[0] as { text?: string } | undefined)?.text).toContain(reason);
+  });
+
+  it("maps a thrown daemon callback to daemon_call_failed", async () => {
+    const handler = createSendHandler({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          receiveClaudeChannelMessage: async () => {
+            throw new Error("ECONNREFUSED");
+          },
+        }),
+    });
+
+    const result = await handler({
+      type: "question",
+      intent: "delegation",
+      replyExpected: true,
+      content: { text: "hello codex" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect((result.content?.[0] as { text?: string } | undefined)?.text).toContain(
+      "daemon_call_failed",
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -676,27 +775,25 @@ describe("Claude channel MCP handlers", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildChannelNotification", () => {
-  it("wraps content in V1 trusted channel framing with chatId and origin", () => {
-    const notification = buildChannelNotification({
-      content: "do the thing",
-      chatId: "t1",
-      origin: "codex",
+  it("sends a canonical envelope unchanged without meta", () => {
+    const canonicalEnvelope = JSON.stringify({
+      protocol: "aiox.message.v1",
+      messageId: "message-1",
+      deliveryId: "delivery-1",
+      source: { kind: "agent", address: "agent://local/default/codex" },
+      target: { address: "agent://local/default/claude" },
+      type: "instruction",
+      intent: "delegation",
+      replyExpected: true,
+      content: { mediaType: "text/plain", text: "Review this task." },
     });
 
-    expect(notification.method).toBe("notifications/claude/channel");
-    expect(notification.params.content).toContain("do the thing");
-    expect(notification.params.content).toContain('chat_id="t1"');
-    expect(notification.params.content).toContain('source="aiox"');
-    expect(notification.params.meta).toMatchObject({ chat_id: "t1", origin: "codex" });
-  });
+    const notification = buildChannelNotification({ content: canonicalEnvelope });
 
-  it("omits meta when no optional fields", () => {
-    const notification = buildChannelNotification({ content: "ping" });
-
-    expect(notification.method).toBe("notifications/claude/channel");
-    expect(typeof notification.params.content).toBe("string");
-    expect(notification.params.content).toContain("ping");
-    expect(notification.params.meta).toBeUndefined();
+    expect(notification).toEqual({
+      method: "notifications/claude/channel",
+      params: { content: canonicalEnvelope },
+    });
   });
 });
 
@@ -746,6 +843,43 @@ describe("startClaudeChannelHttpIngress", () => {
       await closeServer(occupyingServer);
     }
   });
+
+  it("forwards a real HTTP POST body to mcp.server.notification as the exact canonical JSON, unmodified", async () => {
+    const notifications: unknown[] = [];
+    const ingress = await startClaudeChannelHttpIngress(
+      fakeMcpServer(notifications),
+    );
+
+    try {
+      const canonicalEnvelope = JSON.stringify({
+        protocol: "aiox.message.v1",
+        messageId: "message-1",
+        deliveryId: "delivery-1",
+        source: { kind: "agent", address: "agent://local/default/codex" },
+        target: { address: "agent://local/default/claude" },
+        type: "instruction",
+        intent: "delegation",
+        replyExpected: true,
+        content: { mediaType: "text/plain", text: "Review this task." },
+      });
+
+      const response = await fetch(ingress.endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: canonicalEnvelope }),
+      });
+
+      expect(response.status).toBe(202);
+      expect(await response.json()).toEqual({ ok: true });
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]).toEqual({
+        method: "notifications/claude/channel",
+        params: { content: canonicalEnvelope },
+      });
+    } finally {
+      await closeServer(ingress.server);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -759,66 +893,23 @@ describe("buildLaunchClaudeChannelArgs", () => {
     expect(args).toContain("--dangerously-load-development-channels");
     expect(args).toContain("server:aiox-claude-alpha");
   });
+});
 
-  it("injects the aiox channel MCP one-off via --mcp-config with identity env", async () => {
-    const child = { pid: 1234 };
+// ---------------------------------------------------------------------------
+// launcher — static MCP activation (the sole runtime path: server:
+// activation + a pre-registered Local-scope MCP definition)
+// ---------------------------------------------------------------------------
+
+describe("launchClaudeStaticMcpChannel", () => {
+  it("activates server: form and injects identity via spawn env", async () => {
+    const child = { pid: 5555 };
     const { spawn } = await import("node:child_process");
     vi.mocked(spawn).mockReturnValue(child as never);
 
     expect(
-      launchClaudeWithChannel({
+      launchClaudeStaticMcpChannel({
         command: "claude",
-        channelName: "aiox-claude-reviewer",
-        agentName: "reviewer",
-        agentToken: "token-1",
-        daemonSocketPath: "/tmp/aiox.sock",
-      }),
-    ).toBe(child);
-
-    const [, args] = vi.mocked(spawn).mock.calls.at(-1)!;
-    expect(args).toEqual([
-      "--dangerously-load-development-channels",
-      "server:aiox-claude-reviewer",
-      "--mcp-config",
-      expect.any(String),
-    ]);
-
-    const mcpConfig = JSON.parse((args as string[])[3]);
-    const server = mcpConfig.mcpServers["aiox-claude-reviewer"];
-    expect(server.env).toEqual({
-      AIOX_CLAUDE_CHANNEL_AGENT_NAME: "reviewer",
-      AIOX_CLAUDE_CHANNEL_TOKEN: "token-1",
-      AIOX_SOCKET_PATH: "/tmp/aiox.sock",
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// launcher — plugin: activation form (R3 strategy D spike)
-// ---------------------------------------------------------------------------
-
-describe("buildLaunchClaudePluginArgs", () => {
-  it("activates the channel via plugin:<name>@<marketplace> under the dev-channel flag", () => {
-    const args = buildLaunchClaudePluginArgs("aiox-channel-ingress", "aiox");
-
-    expect(args).toEqual([
-      "--dangerously-load-development-channels",
-      "plugin:aiox-channel-ingress@aiox",
-    ]);
-  });
-});
-
-describe("launchClaudePluginChannel", () => {
-  it("activates plugin form and injects identity via spawn env (not --mcp-config)", async () => {
-    const child = { pid: 4321 };
-    const { spawn } = await import("node:child_process");
-    vi.mocked(spawn).mockReturnValue(child as never);
-
-    expect(
-      launchClaudePluginChannel({
-        command: "claude",
-        pluginName: "aiox-channel-ingress",
-        marketplaceName: "aiox",
+        channelName: "aiox-claude-ingress",
         agentName: "reviewer",
         agentToken: "token-1",
         daemonSocketPath: "/tmp/aiox.sock",
@@ -827,146 +918,72 @@ describe("launchClaudePluginChannel", () => {
 
     const [command, args, options] = vi.mocked(spawn).mock.calls.at(-1)!;
     expect(command).toBe("claude");
+    // Full args equality is the sole positive contract: it proves the exact
+    // and only two elements sent to `claude`, e.g. no extra flag is injected.
     expect(args).toEqual([
       "--dangerously-load-development-channels",
-      "plugin:aiox-channel-ingress@aiox",
+      "server:aiox-claude-ingress",
     ]);
-    // identity flows through the spawned claude's env; plugin .mcp.json ${VAR}
-    // placeholders expand from it. No --mcp-config.
-    expect(args).not.toContain("--mcp-config");
     const env = (options as { env: Record<string, string> }).env;
     expect(env.AIOX_CLAUDE_CHANNEL_AGENT_NAME).toBe("reviewer");
     expect(env.AIOX_CLAUDE_CHANNEL_TOKEN).toBe("token-1");
     expect(env.AIOX_SOCKET_PATH).toBe("/tmp/aiox.sock");
   });
 
-  it("pins the spawn cwd so plugin scope resolves where preflight checked it", async () => {
-    const child = { pid: 4321 };
+  it("defaults the command to AIOX_CLAUDE_COMMAND or claude, and inherits parent env", async () => {
+    const child = { pid: 5556 };
     const { spawn } = await import("node:child_process");
     vi.mocked(spawn).mockReturnValue(child as never);
+    const prevPath = process.env.PATH;
 
-    launchClaudePluginChannel({
-      command: "claude",
-      pluginName: "aiox-channel-ingress",
-      marketplaceName: "aiox",
-      agentName: "reviewer",
-      agentToken: "token-1",
-      daemonSocketPath: "/tmp/aiox.sock",
-      cwd: "/repo",
-    });
-
-    const [, , options] = vi.mocked(spawn).mock.calls.at(-1)!;
-    expect((options as { cwd?: string }).cwd).toBe("/repo");
-  });
-
-  it("omits cwd from spawn options when not provided (inherits parent cwd)", async () => {
-    const child = { pid: 4321 };
-    const { spawn } = await import("node:child_process");
-    vi.mocked(spawn).mockReturnValue(child as never);
-
-    launchClaudePluginChannel({
-      command: "claude",
-      pluginName: "aiox-channel-ingress",
-      marketplaceName: "aiox",
-      agentName: "reviewer",
-      agentToken: "token-1",
-      daemonSocketPath: "/tmp/aiox.sock",
-    });
-
-    const [, , options] = vi.mocked(spawn).mock.calls.at(-1)!;
-    expect("cwd" in (options as object)).toBe(false);
-  });
-});
-
-describe("buildClaudeChannelMcpConfig", () => {
-  it("builds an inline mcpServers definition keyed by channelName", () => {
-    const json = buildClaudeChannelMcpConfig({
+    launchClaudeStaticMcpChannel({
       channelName: "aiox-claude-ingress",
-      agentName: "alpha",
-      agentToken: "tok-9",
+      agentName: "reviewer",
+      agentToken: "token-1",
       daemonSocketPath: "/tmp/aiox.sock",
-      runtimeBinary: "/usr/bin/node",
-      channelServerPath: "/abs/dist/src/adapters/claude/channel-server.js",
     });
-    const parsed = JSON.parse(json);
-    const server = parsed.mcpServers["aiox-claude-ingress"];
 
-    expect(server.command).toBe("/usr/bin/node");
-    expect(server.args).toEqual([
-      "/abs/dist/src/adapters/claude/channel-server.js",
-    ]);
-    expect(server.env).toEqual({
-      AIOX_CLAUDE_CHANNEL_AGENT_NAME: "alpha",
-      AIOX_CLAUDE_CHANNEL_TOKEN: "tok-9",
-      AIOX_SOCKET_PATH: "/tmp/aiox.sock",
-    });
-  });
-
-  it("resolves an absolute channel-server entry by execution-mode layout when no override is given", () => {
-    // This suite runs via vitest/tsx (src/TS layout), so the resolver picks the
-    // sibling channel-server.ts under tsx — exercising the dev path end-to-end.
-    const parsed = JSON.parse(
-      buildClaudeChannelMcpConfig({
-        channelName: "aiox-claude-ingress",
-        agentName: "alpha",
-        agentToken: "tok-9",
-        daemonSocketPath: "/tmp/aiox.sock",
-      }),
-    );
-    const server = parsed.mcpServers["aiox-claude-ingress"];
-
-    expect(server.command).toBe("tsx");
-    expect(server.args[0]).toMatch(/^\//);
-    expect(server.args[0].endsWith("channel-server.ts")).toBe(true);
-  });
-
-  it("honors a runtimeBinary-only override while still layout-resolving the script path", () => {
-    const server = JSON.parse(
-      buildClaudeChannelMcpConfig({
-        channelName: "aiox-claude-ingress",
-        agentName: "alpha",
-        agentToken: "tok-9",
-        daemonSocketPath: "/tmp/aiox.sock",
-        runtimeBinary: "/custom/runtime",
-      }),
-    ).mcpServers["aiox-claude-ingress"];
-
-    // command overridden independently; script path still resolved (src/TS here).
-    expect(server.command).toBe("/custom/runtime");
-    expect(server.args[0].endsWith("channel-server.ts")).toBe(true);
+    const [command, , options] = vi.mocked(spawn).mock.calls.at(-1)!;
+    expect(command).toBe("claude");
+    const env = (options as { env: Record<string, string> }).env;
+    expect(env.PATH).toBe(prevPath);
+    expect((options as { stdio?: string }).stdio).toBe("inherit");
   });
 });
 
-describe("resolveInlineChannelServerEntry (R3 step 3b execution-mode layout)", () => {
-  it("uses `tsx channel-server.ts` for the src/TS layout (pnpm dev)", () => {
-    const entry = resolveInlineChannelServerEntry({
-      moduleUrl: "file:///repo/src/adapters/claude/launcher.ts",
-      // dev layout: only the .ts sibling exists, no built .js.
-      fileExists: (p) => p.endsWith("channel-server.ts"),
+describe("buildClaudeStaticMcpConfig", () => {
+  it("uses an absolute Node + tsx CLI form with session env placeholders", () => {
+    const json = buildClaudeStaticMcpConfig({
+      runtimeBinary: "/usr/local/bin/node",
+      aioxBin: "/repo/src/bin/aiox.ts",
+      tsxCliPath: "/repo/node_modules/tsx/dist/cli.mjs",
     });
-    expect(entry.command).toBe("tsx");
-    expect(entry.scriptPath).toBe("/repo/src/adapters/claude/channel-server.ts");
+
+    expect(JSON.parse(json)).toEqual({
+      command: "/usr/local/bin/node",
+      args: [
+        "/repo/node_modules/tsx/dist/cli.mjs",
+        "/repo/src/bin/aiox.ts",
+        "mcp-claude",
+      ],
+      env: {
+        AIOX_CLAUDE_CHANNEL_AGENT_NAME: "${AIOX_CLAUDE_CHANNEL_AGENT_NAME}",
+        AIOX_CLAUDE_CHANNEL_TOKEN: "${AIOX_CLAUDE_CHANNEL_TOKEN}",
+        AIOX_SOCKET_PATH: "${AIOX_SOCKET_PATH}",
+      },
+    });
   });
 
-  it("uses `node channel-server.js` for the dist/JS layout (pnpm build; npm-installed package uses this same built-JS layout)", () => {
-    const entry = resolveInlineChannelServerEntry({
-      moduleUrl: "file:///repo/dist/src/adapters/claude/launcher.js",
-      fileExists: (p) => p.endsWith("channel-server.js"),
-      nodeCommand: "/usr/bin/node",
+  it("uses the built aiox CLI directly under the supplied Node runtime", () => {
+    const json = buildClaudeStaticMcpConfig({
+      runtimeBinary: "/usr/local/bin/node",
+      aioxBin: "/package/dist/src/bin/aiox.js",
     });
-    expect(entry.command).toBe("/usr/bin/node");
-    expect(entry.scriptPath).toBe(
-      "/repo/dist/src/adapters/claude/channel-server.js",
-    );
-  });
 
-  it("throws a clear error when neither a .ts nor a built .js sibling resolves", () => {
-    expect(() =>
-      resolveInlineChannelServerEntry({
-        moduleUrl: "file:///repo/dist/src/adapters/claude/launcher.js",
-        fileExists: () => false,
-      }),
-    ).toThrow(/Cannot resolve the inline Claude channel server entrypoint/);
+    expect(JSON.parse(json)).toMatchObject({
+      command: "/usr/local/bin/node",
+      args: ["/package/dist/src/bin/aiox.js", "mcp-claude"],
+    });
   });
 });
 
@@ -1043,10 +1060,12 @@ function deferredRuntimeDispatch(): DispatchSummary {
   };
 }
 
-function fakeMcpServer() {
+function fakeMcpServer(notifications: unknown[] = []) {
   return {
     server: {
-      notification: async () => {},
+      notification: async (notification: unknown) => {
+        notifications.push(notification);
+      },
     },
   } as never;
 }

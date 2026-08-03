@@ -49,11 +49,17 @@ export async function runAioxCli(
     const command = parseCli(argv, {
       version,
     });
-    const result = await invokeParsedCommand(command, {
-      runtime: options.runtime ?? createClientRuntime({ version }),
-      cwd: options.cwd ?? process.cwd(),
-      launchCodexTui: options.launchCodexTui ?? launchCodexTui,
-    });
+    const runtime = options.runtime ?? createClientRuntime({ version });
+    let result;
+    try {
+      result = await invokeParsedCommand(command, {
+        runtime,
+        cwd: options.cwd ?? process.cwd(),
+        launchCodexTui: options.launchCodexTui ?? launchCodexTui,
+      });
+    } finally {
+      await runtime.dispose?.();
+    }
 
     if (result.stdout) {
       stdout.write(result.stdout);
@@ -80,6 +86,7 @@ export function createClientRuntime(
 ): InvocationRuntime {
   const socketPath = options.socketPath ?? getSocketPath();
   const version = options.version ?? readPackageVersion();
+  const clients = new Set<ReturnType<typeof createDaemonSocketClient>>();
 
   return {
     async getDaemonApi() {
@@ -89,7 +96,16 @@ export function createClientRuntime(
         );
       }
 
-      return createDaemonSocketClient({ socketPath });
+      const client = createDaemonSocketClient({ socketPath });
+      clients.add(client);
+      return client;
+    },
+
+    dispose() {
+      for (const client of clients) {
+        client.close();
+      }
+      clients.clear();
     },
 
     async startDaemon() {
@@ -470,8 +486,26 @@ function createSequentialId(): string {
   return id;
 }
 
+export interface RunAioxCliMainOptions {
+  run?: () => Promise<number>;
+  exit?: (exitCode: number) => void;
+}
+
+/**
+ * Preserve successful long-lived subcommands (such as stdio MCP servers).
+ * Node exits naturally after ordinary successful commands once no handles remain.
+ */
+export async function runAioxCliMain(
+  options: RunAioxCliMainOptions = {},
+): Promise<void> {
+  const exitCode = await (options.run ?? runAioxCli)();
+  if (exitCode !== 0) {
+    (options.exit ?? process.exit)(exitCode);
+  }
+}
+
 async function main(): Promise<void> {
-  process.exit(await runAioxCli());
+  await runAioxCliMain();
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

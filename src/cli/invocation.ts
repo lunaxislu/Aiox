@@ -1,39 +1,34 @@
 import type { ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import type { ParsedCommand } from "./parse.js";
 import type { DaemonApi } from "../daemon/api.js";
 import type { StopRequest } from "../daemon/state.js";
+import type { ClaudeMcpScope } from "../core/claude-mcp-scope.js";
 import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { runCodexIngressMcpServer } from "../adapters/codex/mcp-server.js";
+import { runClaudeChannelMcpServer } from "../adapters/claude/channel-server.js";
 import {
-  launchClaudeWithChannel,
-  launchClaudePluginChannel,
+  launchClaudeStaticMcpChannel,
+  buildClaudeStaticMcpConfig,
+  type ClaudeStaticMcpConfigInput,
 } from "../adapters/claude/launcher.js";
 import {
-  ClaudePluginCliError,
-  loadClaudePluginInventory,
-  type ClaudePluginInventory,
-} from "../adapters/claude/plugin-cli.js";
+  checkClaudeMcpLocalRegistration,
+  type ClaudeMcpLocalRegistrationCheck,
+} from "../adapters/claude/mcp-cli.js";
 import {
-  preflightClaudePlugin,
-  type PreflightFailureCode,
-} from "../adapters/claude/preflight.js";
-import {
-  setupClaudePlugin,
-  type SetupActions,
-  type SetupClaudePluginInput,
-  type SetupClaudePluginResult,
-} from "../adapters/claude/setup.js";
+  setupClaudeMcp,
+  type SetupClaudeMcpInput,
+  type SetupClaudeMcpResult,
+} from "../adapters/claude/mcp-setup.js";
 import { runDaemonProcess } from "../daemon/run.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
 
-// R3 strategy D channel plugin identity. Shared by the preflight gate and the
-// plugin launcher so the inventory check and the activation arg never drift.
-const CLAUDE_CHANNEL_PLUGIN_NAME = "aiox-channel-ingress";
-const CLAUDE_CHANNEL_MARKETPLACE_NAME = "aiox";
+// Local static MCP identity (the sole `aiox claude` runtime path). One name
+// shared by `aiox claude setup` (registration), the launch-time registration
+// gate, and the launcher that activates `server:<name>` — so provisioning,
+// the gate, and activation never drift.
+const CLAUDE_CHANNEL_MCP_NAME = "aiox-claude-ingress";
 
 export type DaemonStatusInfo =
   | {
@@ -63,6 +58,7 @@ export interface DoctorResult {
 
 export interface InvocationRuntime {
   getDaemonApi(): DaemonApi | Promise<DaemonApi>;
+  dispose?(): void | Promise<void>;
   startDaemon(): unknown | Promise<unknown>;
   stopDaemon(request: StopRequest): unknown | Promise<unknown>;
   restartDaemon(): unknown | Promise<unknown>;
@@ -78,36 +74,31 @@ export interface InvocationOptions {
     endpoint: URL;
     resumeSessionId?: string;
   }) => ChildProcess;
-  launchClaudeWithChannel?: (options: {
+  // Local static MCP launcher (the sole `aiox claude` runtime path): activates
+  // `server:<name>` using a pre-registered Local-scope MCP definition
+  // (`aiox claude setup`). Gated by requireClaudeMcpLocalRegistration below,
+  // which runs before any daemon/attach side effect.
+  launchClaudeStaticMcpChannel?: (options: {
     channelName: string;
     agentName: string;
     agentToken: string;
     daemonSocketPath: string;
   }) => ChildProcess;
-  // R3 strategy D (now the DEFAULT, step 3b): launches the plugin-activation
-  // path. The legacy inline --mcp-config server: path (launchClaudeWithChannel)
-  // is used only as the dev/debug opt-out AIOX_CLAUDE_CHANNEL_STRATEGY=inline.
-  launchClaudePluginChannel?: (options: {
-    pluginName: string;
-    marketplaceName: string;
-    agentName: string;
-    agentToken: string;
-    daemonSocketPath: string;
+  // Local static MCP injection points: the launch-time registration gate
+  // (`aiox claude`) and the `aiox claude setup` orchestrator + the JSON
+  // definition it registers. All default to the real adapter; tests inject
+  // them so neither command flow touches a live `claude` or the real
+  // ~/.claude.json.
+  checkClaudeMcpLocalRegistration?: (options: {
+    name: string;
     cwd: string;
-  }) => ChildProcess;
-  // Strategy-D preflight injection points (default to the real adapter / fs).
-  loadClaudePluginInventory?: (options: {
-    cwd: string;
-  }) => Promise<ClaudePluginInventory>;
-  fileExists?: (path: string) => boolean;
-  // R3 step 3a (`aiox claude-plugin setup`): the orchestrator + the resolved
-  // local marketplace path. Both default to the real adapter / fs-resolved path;
-  // tests inject them so the command flow runs without a live `claude`.
-  setupClaudePlugin?: (
-    input: SetupClaudePluginInput,
-  ) => Promise<SetupClaudePluginResult>;
-  claudeChannelMarketplacePath?: string;
+  }) => Promise<ClaudeMcpLocalRegistrationCheck>;
+  buildClaudeStaticMcpConfig?: (
+    input: ClaudeStaticMcpConfigInput,
+  ) => string;
+  setupClaudeMcp?: (input: SetupClaudeMcpInput) => Promise<SetupClaudeMcpResult>;
   runCodexMcpServer?: () => Promise<void>;
+  runClaudeMcpServer?: () => Promise<void>;
   runDaemonProcessFn?: (socketPath: string) => Promise<void>;
 }
 
@@ -155,13 +146,13 @@ export async function invokeParsedCommand(
     case "version":
       return { exitCode: 0, stdout: `${command.value}\n` };
     case "agent-attach": {
-      // R3 step 3b: resolve the Claude channel strategy BEFORE any daemon/attach
-      // side effect, so an invalid AIOX_CLAUDE_CHANNEL_STRATEGY fails fast with a
-      // coded error and never starts the daemon or attaches the agent.
-      const claudeChannelStrategy =
-        command.agentKind === "claude"
-          ? resolveClaudeChannelStrategy(process.env.AIOX_CLAUDE_CHANNEL_STRATEGY)
-          : undefined;
+      // Local static MCP gate: registration is a prerequisite of the spawned
+      // `claude`'s own MCP resolution, not of the daemon/agent attach below,
+      // so it must fail BEFORE startDaemon/attachAgent/token issuance — never
+      // after, and never with a silent fallback.
+      if (command.agentKind === "claude") {
+        await requireClaudeMcpLocalRegistration(options);
+      }
       // PRD: "Auto-start daemon if needed" for agent attach commands.
       await options.runtime.startDaemon();
       const api = await options.runtime.getDaemonApi();
@@ -206,52 +197,21 @@ export async function invokeParsedCommand(
             exitCode: 1,
           });
         }
-        // Legacy inline (A) only: dev-channel server:<name> resolves the aiox
-        // channel MCP that the launcher injects one-off via --mcp-config (no
-        // permanent .mcp.json). The name must match the injected mcpServers key.
-        // See docs/decisions/claude-channel-plugin-default.md.
-        const channelName = "aiox-claude-ingress";
-        // R3 step 3b: D (channel-as-plugin) is the DEFAULT. The token
-        // flows into the spawned claude env, which the plugin .mcp.json expands via
-        // ${VAR}. The legacy inline (A) path stays only as the explicit dev/debug
-        // opt-out AIOX_CLAUDE_CHANNEL_STRATEGY=inline (resolved before attach). There
-        // is NO automatic fallback: a D preflight failure is a hard, coded error.
-        const useStrategyDPlugin = claudeChannelStrategy === "plugin";
-        if (useStrategyDPlugin) {
-          // Pre-spawn gate (R3 step 2): a missing/disabled
-          // channel plugin must surface as a clear non-zero CLI error here rather
-          // than the documented silent-drop (exit 0 + startup notice + no inbound
-          // push). Only on the D path; the legacy A path is untouched.
-          await preflightStrategyDPlugin({
-            api,
-            options,
-            cwd: options.cwd,
-            agentName: command.name,
-            agentToken,
-            socketPath,
-          });
-        }
+        // dev-channel server:<name> resolves the aiox channel MCP from the
+        // pre-registered Local-scope static definition. Same name shared by
+        // `aiox claude setup`, requireClaudeMcpLocalRegistration, and this
+        // launcher so registration, the gate, and activation never drift.
+        const channelName = CLAUDE_CHANNEL_MCP_NAME;
         const child = launchChildOrRollback({
           api,
           agentName: command.name,
           launch: () =>
-            useStrategyDPlugin
-              ? (options.launchClaudePluginChannel ?? launchClaudePluginChannel)({
-                  pluginName: CLAUDE_CHANNEL_PLUGIN_NAME,
-                  marketplaceName: CLAUDE_CHANNEL_MARKETPLACE_NAME,
-                  agentName: command.name,
-                  agentToken,
-                  daemonSocketPath: socketPath,
-                  // Pin the spawn cwd to the dir preflight read inventory from,
-                  // so plugin scope resolves identically (Finding 1).
-                  cwd: options.cwd,
-                })
-              : (options.launchClaudeWithChannel ?? launchClaudeWithChannel)({
-                  channelName,
-                  agentName: command.name,
-                  agentToken,
-                  daemonSocketPath: socketPath,
-                }),
+            (options.launchClaudeStaticMcpChannel ?? launchClaudeStaticMcpChannel)({
+              channelName,
+              agentName: command.name,
+              agentToken,
+              daemonSocketPath: socketPath,
+            }),
         });
         const tuiExit = await waitForTuiExit(child);
         await api.disconnectClaudeChannel({ agentName: command.name });
@@ -297,8 +257,13 @@ export async function invokeParsedCommand(
       await run();
       return success();
     }
-    case "claude-plugin-setup":
-      return claudePluginSetupResult(command.scope, options);
+    case "mcp-claude": {
+      const run = options.runClaudeMcpServer ?? runClaudeChannelMcpServer;
+      await run();
+      return success();
+    }
+    case "claude-mcp-setup":
+      return claudeMcpSetupResult(command.scope, options);
     case "_run-daemon": {
       const runFn = options.runDaemonProcessFn ?? runDaemonProcess;
       await runFn(command.socketPath);
@@ -309,211 +274,71 @@ export async function invokeParsedCommand(
   }
 }
 
-// R3 step 3a: `aiox claude-plugin setup`. Standalone provisioning (no daemon) —
-// register the marketplace + install/enable the channel plugin idempotently, then
-// validate. ClaudePluginCliError (a failed `claude plugin ...` call) and the
-// preflight verdict both map to a coded non-zero InvocationError so the user
-// always sees what to fix.
-async function claudePluginSetupResult(
-  scope: "user" | "project",
+// `aiox claude setup`: non-overwriting provisioning of the static Claude MCP
+// definition at the requested scope (default local — the same scope
+// `requireClaudeMcpLocalRegistration` gates on before every `aiox claude`
+// launch; user/project are explicit opt-ins). Standalone provisioning (no
+// daemon).
+async function claudeMcpSetupResult(
+  scope: ClaudeMcpScope,
   options: InvocationOptions,
 ): Promise<InvocationResult> {
-  const setup = options.setupClaudePlugin ?? setupClaudePlugin;
-  const marketplacePath =
-    options.claudeChannelMarketplacePath ?? resolveClaudeChannelMarketplacePath();
+  const setup = options.setupClaudeMcp ?? setupClaudeMcp;
+  const buildDefinition =
+    options.buildClaudeStaticMcpConfig ?? buildClaudeStaticMcpConfig;
 
-  let result: SetupClaudePluginResult;
+  let result: SetupClaudeMcpResult;
   try {
     result = await setup({
-      pluginName: CLAUDE_CHANNEL_PLUGIN_NAME,
-      marketplaceName: CLAUDE_CHANNEL_MARKETPLACE_NAME,
-      marketplacePath,
-      scope,
+      name: CLAUDE_CHANNEL_MCP_NAME,
+      json: buildDefinition({}),
       cwd: options.cwd,
+      scope,
     });
   } catch (error) {
-    const code =
-      error instanceof ClaudePluginCliError
-        ? error.code
-        : "claude_plugin_setup_failed";
-    throw new InvocationError(
-      error instanceof Error ? error.message : String(error),
-      { code: `aiox.invocation.${code}`, exitCode: 1 },
-    );
+    throw new InvocationError(error instanceof Error ? error.message : String(error), {
+      code: "aiox.invocation.claude_mcp_setup_failed",
+      exitCode: 1,
+    });
   }
 
   if (!result.ok) {
     throw new InvocationError(result.message, {
-      code: `aiox.invocation.claude_plugin_setup.${result.code}`,
+      code: `aiox.invocation.claude_mcp_setup.${result.code}`,
       exitCode: 1,
     });
   }
-  return { exitCode: 0, stdout: formatSetupSummary(scope, result.actions) };
+  return {
+    exitCode: 0,
+    stdout: `aiox Claude MCP registered (scope: ${scope}, name: ${CLAUDE_CHANNEL_MCP_NAME}).\n`,
+  };
 }
 
-function formatSetupSummary(
-  scope: "user" | "project",
-  actions: SetupActions,
-): string {
-  const marketplace = actions.marketplaceAdded
-    ? "registered"
-    : "already registered";
-  const plugin = actions.pluginInstalled
-    ? "installed/enabled"
-    : "already effective";
-  return (
-    `aiox channel plugin ready (scope: ${scope}).\n` +
-    `  marketplace: ${marketplace}\n` +
-    `  plugin: ${plugin}\n`
-  );
-}
+// Local static MCP launch-time gate. Runs BEFORE startDaemon/attachAgent/token
+// issuance (R3B product requirement): a missing Local-scope registration must
+// never reach a daemon or token side effect.
+async function requireClaudeMcpLocalRegistration(
+  options: InvocationOptions,
+): Promise<void> {
+  const check = options.checkClaudeMcpLocalRegistration ?? checkClaudeMcpLocalRegistration;
 
-// Resolve the local marketplace dir to register. Primary: the
-// AIOX_CLAUDE_CHANNEL_MARKETPLACE_PATH env override (mirrors AIOX_CLAUDE_COMMAND).
-// Default: walk up from this module to the repo dir that holds the spike
-// marketplace — works for both tsx (src/) and built (dist/) layouts in R3.
-// Post-MVP packaging relocates the bundled marketplace and finalizes this path.
-function resolveClaudeChannelMarketplacePath(): string {
-  const override = process.env.AIOX_CLAUDE_CHANNEL_MARKETPLACE_PATH;
-  if (override !== undefined && override.length > 0) {
-    return override;
-  }
-  const rel = join("spikes", "aiox-channel-marketplace");
-  let dir = fileURLToPath(new URL(".", import.meta.url));
-  for (let i = 0; i < 8; i++) {
-    const candidate = join(dir, rel);
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-  // Best-effort fallback (surfaced clearly by `marketplace add` if wrong).
-  return join(fileURLToPath(new URL(".", import.meta.url)), rel);
-}
-
-// R3 strategy D: load Claude's plugin inventory from the user's cwd and run the
-// pre-spawn preflight. On any failure (inventory load OR preflight verdict) the
-// already-attached agent is rolled back (mirroring the launch-failure path) and
-// a coded non-zero InvocationError is thrown — so the user never enters the
-// silent-drop launch path.
-async function preflightStrategyDPlugin(input: {
-  api: DaemonApi;
-  options: InvocationOptions;
-  cwd: string;
-  agentName: string;
-  agentToken: string;
-  socketPath: string;
-}): Promise<void> {
-  const loadInventory =
-    input.options.loadClaudePluginInventory ?? loadClaudePluginInventory;
-  const fileExists = input.options.fileExists ?? existsSync;
-
-  let inventory: ClaudePluginInventory;
+  let result: ClaudeMcpLocalRegistrationCheck;
   try {
-    inventory = await loadInventory({ cwd: input.cwd });
+    result = await check({ name: CLAUDE_CHANNEL_MCP_NAME, cwd: options.cwd });
   } catch (error) {
-    return failAfterRollback(
-      input.api,
-      input.agentName,
-      error instanceof Error ? error.message : String(error),
-      "aiox.invocation.claude_plugin_inventory_failed",
-    );
-  }
-
-  // env must mirror what launchClaudePluginChannel injects (launcher.ts), so the
-  // missing_env check guards the exact ${VAR} placeholders the plugin expands.
-  const result = preflightClaudePlugin({
-    pluginName: CLAUDE_CHANNEL_PLUGIN_NAME,
-    marketplaceName: CLAUDE_CHANNEL_MARKETPLACE_NAME,
-    marketplaces: inventory.marketplaces,
-    plugins: inventory.plugins,
-    fileExists,
-    env: {
-      AIOX_CLAUDE_CHANNEL_AGENT_NAME: input.agentName,
-      AIOX_CLAUDE_CHANNEL_TOKEN: input.agentToken,
-      AIOX_SOCKET_PATH: input.socketPath,
-    },
-  });
-  if (!result.ok) {
-    return failAfterRollback(
-      input.api,
-      input.agentName,
-      claudePreflightFailureMessage(result.code, result.message),
-      `aiox.invocation.claude_preflight.${result.code}`,
-    );
-  }
-}
-
-// R3 step 3b: only these (provisioning) codes are fixable by `aiox claude-plugin
-// setup`, so only they carry the dev/debug inline escape-hatch hint.
-const SETUP_FIXABLE_PREFLIGHT_CODES: ReadonlySet<PreflightFailureCode> = new Set([
-  "marketplace_not_registered",
-  "plugin_not_installed",
-  "plugin_not_enabled",
-  "channel_server_missing",
-  "ambiguous_install_path",
-]);
-
-/**
- * R3 step 3b: a D preflight failure NEVER auto-falls back to inline. For the
- * setup-fixable codes we append a dev/debug-only escape hatch so an operator can
- * still launch while diagnosing. channels_disabled / missing_env are deliberately
- * excluded — inline would not fix an org-policy block or a missing token, so
- * hinting it there would mislead. The hint uses a literal
- * `<agentName>` placeholder rather than the actual name: agent names may contain
- * spaces/shell metacharacters (the parser does not forbid them), so interpolating
- * them would yield a broken copy-paste command (Codex review).
- */
-export function claudePreflightFailureMessage(
-  code: PreflightFailureCode,
-  baseMessage: string,
-): string {
-  if (!SETUP_FIXABLE_PREFLIGHT_CODES.has(code)) return baseMessage;
-  return (
-    `${baseMessage}\n\nDeveloper/debug only:\n  ` +
-    `AIOX_CLAUDE_CHANNEL_STRATEGY=inline aiox claude --name <agentName>`
-  );
-}
-
-// R3 step 3b: D (channel-as-plugin) is the default Claude channel strategy; the
-// legacy inline --mcp-config path (A) is an explicit dev/debug opt-out. Resolved
-// before any daemon/attach side effect so an invalid value fails fast.
-export type ClaudeChannelStrategy = "plugin" | "inline";
-
-function resolveClaudeChannelStrategy(
-  raw: string | undefined,
-): ClaudeChannelStrategy {
-  if (raw === undefined || raw === "" || raw === "plugin") return "plugin";
-  if (raw === "inline") return "inline";
-  throw new InvocationError(
-    `Invalid AIOX_CLAUDE_CHANNEL_STRATEGY="${raw}". Expected "plugin" or "inline".`,
-    {
-      code: "aiox.invocation.invalid_claude_channel_strategy",
+    throw new InvocationError(error instanceof Error ? error.message : String(error), {
+      code: "aiox.invocation.claude_mcp_registration_check_failed",
       exitCode: 1,
-    },
-  );
-}
-
-async function failAfterRollback(
-  api: DaemonApi,
-  agentName: string,
-  message: string,
-  code: string,
-): Promise<never> {
-  // Best-effort cleanup. The coded preflight/inventory failure is the
-  // load-bearing UX, so a rollback failure must NOT mask it (Finding 2). We
-  // await (unlike the fire-and-forget rollback in launchChildOrRollback) only so
-  // call ordering stays deterministic for tests; its error is swallowed.
-  try {
-    await api.rollbackAgentAttach({ agentName });
-  } catch {
-    // ignore — surface the original failure below
+    });
   }
-  throw new InvocationError(message, { code, exitCode: 1 });
+
+  if (!result.registeredAtLocalScope) {
+    throw new InvocationError(
+      "Claude AIOX MCP가 Local scope에 등록되어 있지 않습니다.\n" +
+        "먼저 aiox claude setup 을 실행하세요.",
+      { code: "aiox.invocation.claude_mcp_not_registered", exitCode: 1 },
+    );
+  }
 }
 
 function launchChildOrRollback(input: {

@@ -24,9 +24,6 @@ node_modules
 .DS_Store
 *.pem
 
-# R3 channel-as-plugin spike generated bundle
-/spikes/aiox-channel-marketplace/plugins/aiox-channel-ingress/channel-server.js
-
 # debug
 npm-debug.log*
 yarn-debug.log*

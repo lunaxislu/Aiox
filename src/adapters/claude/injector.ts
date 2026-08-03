@@ -11,8 +11,6 @@ export interface ClaudeChannelEndpointLookup {
 export interface InjectClaudeChannelOptions {
   agentName: string;
   content: string;
-  chatId?: string;
-  origin?: string;
   timeoutMs?: number;
 }
 
@@ -35,15 +33,11 @@ export async function injectClaudeChannel(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  const body: Record<string, string> = { content: options.content };
-  if (options.chatId) body.chat_id = options.chatId;
-  if (options.origin) body.origin = options.origin;
-
   try {
     const response = await fetch(runtime.endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ content: options.content }),
       signal: controller.signal,
     });
 

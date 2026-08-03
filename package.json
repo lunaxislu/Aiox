@@ -21,8 +21,7 @@
     "connect": "AIOX_PROFILE=build node dist/src/bin/aiox.js connect",
     "disconnect": "AIOX_PROFILE=build node dist/src/bin/aiox.js disconnect",
     "pair": "AIOX_PROFILE=build node dist/src/bin/aiox.js pair",
-    "doctor": "AIOX_PROFILE=build node dist/src/bin/aiox.js doctor",
-    "claude-plugin": "AIOX_PROFILE=build node dist/src/bin/aiox.js claude-plugin"
+    "doctor": "AIOX_PROFILE=build node dist/src/bin/aiox.js doctor"
   },
   "keywords": [],
   "author": "",

@@ -331,7 +331,7 @@ sequenceDiagram
     D->>D: event codex_ingress_message_received / codex_ingress_reply_received
     D->>D: dispatchToPairPeers
     loop each Claude target
-      D->>ClChan: POST /send {content: canonical-envelope-JSON, chat_id: messageId, origin: sourceAgentName}
+      D->>ClChan: POST /send {content: canonical-envelope-JSON}
       alt 2xx
         D->>D: delivery → delivered (channel acceptance only)
       else

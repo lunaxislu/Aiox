@@ -59,11 +59,11 @@ Returned as `{kind:"failed", reason, message, jsonRpcCode?}`
 
 | Reason | When | Cite |
 |---|---|---|
-| `claude_channel_unavailable` | no registered runtime / fetch threw (non-abort) | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:29`, `:72` |
-| `claude_channel_push_failed` | non-2xx or timeout | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:53`, `:65` |
-| `claude_channel_port_in_use` | EADDRINUSE on channel-server listen (fatal boot) | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:422`, `:668-676`, `:687` |
-| `daemon_call_failed` (MCP isError) | tool socket call threw | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:347`, `:388`; [[src/adapters/codex/mcp-server.ts]] `src/adapters/codex/mcp-server.ts:216`, `:262` |
-| fatal `missing_env_*`, `invalid_env_AIOX_CLAUDE_CHANNEL_PORT` | channel-server boot | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:638-650`, `:652-665` — Implementation-only |
+| `claude_channel_unavailable` | no registered runtime / fetch threw (non-abort) | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:23-30`, `:53-71` |
+| `claude_channel_push_failed` | non-2xx or timeout | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:44-61` |
+| `claude_channel_port_in_use` | EADDRINUSE on channel-server listen (fatal boot) | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:451-454`, `:671-694` |
+| `daemon_call_failed` (MCP isError) | tool socket call threw | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:369`, `:417`; [[src/adapters/codex/mcp-server.ts]] `src/adapters/codex/mcp-server.ts:216`, `:262` |
+| fatal `missing_env_*`, `invalid_env_AIOX_CLAUDE_CHANNEL_PORT` | channel-server boot | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:642-654`, `:656-669` — Implementation-only |
 
 ### 10.4 Router
 
@@ -89,16 +89,16 @@ Returned as `{kind:"failed", reason, message, jsonRpcCode?}`
 | `aiox.missingCommand` | no subcommand | [[src/cli/parse.ts]] `src/cli/parse.ts:117-122`, `:127-131` |
 | `aiox.invalidName` | empty or control-char name | [[src/cli/parse.ts]] `src/cli/parse.ts:149-165` |
 | `aiox.missingTargets` | connect/disconnect with zero targets | [[src/cli/parse.ts]] `src/cli/parse.ts:300-305` |
-| `aiox.invalidScope` | setup with invalid scope value | [[src/cli/parse.ts]] `src/cli/parse.ts:245-255` |
+| `aiox.invalidScope` | setup with invalid scope value | [[src/cli/parse.ts]] `src/cli/parse.ts:229-238` |
 | `aiox.<commander-code>` | other commander error | [[src/cli/parse.ts]] `src/cli/parse.ts:108-111`, `:127-138` |
-| `aiox.invocation.missing_daemon_socket_path` | Claude attach without socket path | [[src/cli/invocation.ts]] `src/cli/invocation.ts:200-207` |
-| `aiox.invocation.claude_plugin_setup.<code_or_failed>` | CLI setup command failed/errored | [[src/cli/invocation.ts]] `src/cli/invocation.ts:335-342`, `:345-350` |
-| `aiox.invocation.claude_plugin_inventory_failed` | CLI attach inventory read error | [[src/cli/invocation.ts]] `src/cli/invocation.ts:415-424` |
-| `aiox.invocation.claude_preflight.<code_or_failed>` | CLI attach preflight checks failed | [[src/cli/invocation.ts]] `src/cli/invocation.ts:441-448` |
-| `aiox.invocation.invalid_claude_channel_strategy` | invalid strategy env var | [[src/cli/invocation.ts]] `src/cli/invocation.ts:487-498` |
-| `aiox.invocation.tui_launch_failed` | Codex TUI spawn error / wait-for-exit error | [[src/cli/invocation.ts]] `src/cli/invocation.ts:528-534`, `:557-563`, `:589-593` |
-| `aiox.invocation.unhandled_command` | `assertNever` fallback | [[src/cli/invocation.ts]] `src/cli/invocation.ts:638-642` |
-| `aiox.invocation.<reason>` | wrapped daemon `ok:false` | [[src/cli/invocation.ts]] `src/cli/invocation.ts:616-624` |
+| `aiox.invocation.missing_daemon_socket_path` | Claude attach without socket path | [[src/cli/invocation.ts]] `src/cli/invocation.ts:195-200` |
+| `aiox.invocation.claude_mcp_setup_failed` | `aiox claude setup` orchestrator threw | [[src/cli/invocation.ts]] `src/cli/invocation.ts:298-303` |
+| `aiox.invocation.claude_mcp_setup.<code>` | `aiox claude setup` returned a non-ok result (e.g. name collision) | [[src/cli/invocation.ts]] `src/cli/invocation.ts:305-310` |
+| `aiox.invocation.claude_mcp_registration_check_failed` | Local static MCP registration check threw | [[src/cli/invocation.ts]] `src/cli/invocation.ts:328-333` |
+| `aiox.invocation.claude_mcp_not_registered` | `aiox claude` attach: Local scope not registered (points back to `aiox claude setup`) | [[src/cli/invocation.ts]] `src/cli/invocation.ts:335-341` |
+| `aiox.invocation.tui_launch_failed` | Codex TUI spawn error / wait-for-exit error | [[src/cli/invocation.ts]] `src/cli/invocation.ts:353-359`, `:382-388`, `:413-418` |
+| `aiox.invocation.unhandled_command` | `assertNever` fallback | [[src/cli/invocation.ts]] `src/cli/invocation.ts:464-467` |
+| `aiox.invocation.<reason>` | wrapped daemon `ok:false` | [[src/cli/invocation.ts]] `src/cli/invocation.ts:446-449` |
 
 ---
 

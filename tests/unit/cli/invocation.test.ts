@@ -4,7 +4,6 @@ import type { ChildProcess } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 import {
-  claudePreflightFailureMessage,
   InvocationError,
   invokeParsedCommand,
   type InvocationRuntime,
@@ -35,7 +34,13 @@ describe("CLI invocation", () => {
     );
     await invokeParsedCommand(
       { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
-      { runtime, cwd: "/repo" },
+      {
+        runtime,
+        cwd: "/repo",
+        // the Local static MCP gate runs before startDaemon/attachAgent; this
+        // smoke test isn't exercising that gate.
+        checkClaudeMcpLocalRegistration: async () => ({ registeredAtLocalScope: true }),
+      },
     );
     await invokeParsedCommand(
       { kind: "connect", sourceName: "impl", targetNames: ["reviewer", "researcher"] },
@@ -133,6 +138,29 @@ describe("CLI invocation", () => {
       exitCode: 1,
       stdout: expect.stringContaining("codex      error (not found)"),
     });
+  });
+
+  it("dispatches mcp-claude to the injected runClaudeMcpServer without starting the daemon", async () => {
+    const daemonCalls: unknown[] = [];
+    const runtime = createRuntime(daemonCalls);
+    let ran = 0;
+
+    const result = await invokeParsedCommand(
+      { kind: "mcp-claude" },
+      {
+        runtime,
+        cwd: "/repo",
+        runClaudeMcpServer: async () => {
+          ran += 1;
+        },
+      },
+    );
+
+    expect(result).toEqual({ exitCode: 0 });
+    expect(ran).toBe(1);
+    // mcp-claude is a stdio server entry point spawned by Claude itself, not a
+    // daemon-attach flow — it must not trigger the auto-start-daemon side effect.
+    expect(daemonCalls).toEqual([]);
   });
 
   it("wraps failed daemon responses in an invocation error namespace", async () => {
@@ -237,8 +265,7 @@ describe("CLI invocation", () => {
     ]);
   });
 
-  it("launches the legacy inline (A) path with channel env and disconnects on exit when AIOX_CLAUDE_CHANNEL_STRATEGY=inline", async () => {
-    await withChannelStrategy("inline", async () => {
+  it("routes to the Local static launcher and disconnects on exit when the Local MCP is registered", async () => {
     const calls: unknown[] = [];
     const child = fakeChild();
     const runtime = createRuntime(calls, {
@@ -257,13 +284,12 @@ describe("CLI invocation", () => {
       {
         runtime,
         cwd: "/repo",
-        // inline path must NOT touch the plugin inventory/preflight at all.
-        loadClaudePluginInventory: async (options) => {
-          calls.push(["loadClaudePluginInventory", options]);
-          return passingInventory();
+        checkClaudeMcpLocalRegistration: async (checkOptions) => {
+          calls.push(["checkClaudeMcpLocalRegistration", checkOptions]);
+          return { registeredAtLocalScope: true };
         },
-        launchClaudeWithChannel: (options) => {
-          calls.push(["launchClaudeWithChannel", options]);
+        launchClaudeStaticMcpChannel: (options) => {
+          calls.push(["launchClaudeStaticMcpChannel", options]);
           setTimeout(() => child.emit("exit", 0, null), 0);
           return child;
         },
@@ -271,18 +297,14 @@ describe("CLI invocation", () => {
     );
 
     await expect(invoked).resolves.toEqual({ exitCode: 0 });
-    // The preflight gate is D-only: the inline path must not load inventory.
-    expect(calls.some((c) => Array.isArray(c) && c[0] === "loadClaudePluginInventory")).toBe(
-      false,
-    );
+    // the registration gate runs BEFORE any daemon/attach/token side effect.
     expect(calls).toEqual([
+      ["checkClaudeMcpLocalRegistration", { name: "aiox-claude-ingress", cwd: "/repo" }],
       ["startDaemon"],
       ["attachAgent", { kind: "claude", name: "reviewer", cwd: "/repo", pairName: "pair-a" }],
       [
-        "launchClaudeWithChannel",
+        "launchClaudeStaticMcpChannel",
         {
-          // dev-channel server:<name> resolves the MCP that the launcher injects
-          // one-off via --mcp-config; per-agent identity rides in that config's env.
           channelName: "aiox-claude-ingress",
           agentName: "reviewer",
           agentToken: "claude-token-1",
@@ -291,321 +313,41 @@ describe("CLI invocation", () => {
       ],
       ["disconnectClaudeChannel", { agentName: "reviewer" }],
     ]);
-    });
   });
 
-  it("routes to the plugin launcher (D) by default when AIOX_CLAUDE_CHANNEL_STRATEGY is unset and preflight passes", async () => {
-    await withChannelStrategy(undefined, async () => {
-      const calls: unknown[] = [];
-      const child = fakeChild();
-      const runtime = createRuntime(calls, claudeAttachOverride());
-
-      const invoked = invokeParsedCommand(
-        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
-        {
-          runtime,
-          cwd: "/repo",
-          loadClaudePluginInventory: async (options) => {
-            calls.push(["loadClaudePluginInventory", options]);
-            return passingInventory();
-          },
-          fileExists: () => true,
-          launchClaudeWithChannel: () => {
-            calls.push(["launchClaudeWithChannel"]);
-            return child;
-          },
-          launchClaudePluginChannel: (options) => {
-            calls.push(["launchClaudePluginChannel", options]);
-            setTimeout(() => child.emit("exit", 0, null), 0);
-            return child;
-          },
-        },
-      );
-
-      await expect(invoked).resolves.toEqual({ exitCode: 0 });
-      // cwd contract: the inventory MUST be loaded from the user's cwd.
-      expect(calls).toContainEqual(["loadClaudePluginInventory", { cwd: "/repo" }]);
-      expect(calls).toContainEqual([
-        "launchClaudePluginChannel",
-        {
-          pluginName: "aiox-channel-ingress",
-          marketplaceName: "aiox",
-          agentName: "reviewer",
-          agentToken: "claude-token-1",
-          daemonSocketPath: "/tmp/aiox/daemon.sock",
-          // launcher spawn cwd must equal the cwd preflight read inventory from
-          // (Finding 1) — so plugin scope resolves the same at activation.
-          cwd: "/repo",
-        },
-      ]);
-      expect(calls).not.toContainEqual(["launchClaudeWithChannel"]);
-    });
-  });
-
-  it("fails with a coded error and rolls back when the strategy-D preflight rejects the plugin", async () => {
-    await withChannelStrategy(undefined, async () => {
-      const calls: unknown[] = [];
-      const child = fakeChild();
-      const runtime = createRuntime(calls, claudeAttachOverride());
-
-      const invoked = invokeParsedCommand(
-        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
-        {
-          runtime,
-          cwd: "/repo",
-          // marketplace registered but no plugin installed → plugin_not_installed.
-          loadClaudePluginInventory: async () => ({ marketplaces: ["aiox"], plugins: [] }),
-          fileExists: () => true,
-          launchClaudePluginChannel: (options) => {
-            calls.push(["launchClaudePluginChannel", options]);
-            return child;
-          },
-        },
-      );
-
-      await expect(invoked).rejects.toMatchObject({
-        name: "InvocationError",
-        code: "aiox.invocation.claude_preflight.plugin_not_installed",
-        exitCode: 1,
-      });
-      expect(calls).toContainEqual(["rollbackAgentAttach", { agentName: "reviewer" }]);
-      expect(calls.some((c) => Array.isArray(c) && c[0] === "launchClaudePluginChannel")).toBe(
-        false,
-      );
-    });
-  });
-
-  it("fails with a coded error and rolls back when strategy-D inventory load throws", async () => {
-    await withChannelStrategy(undefined, async () => {
-      const calls: unknown[] = [];
-      const runtime = createRuntime(calls, claudeAttachOverride());
-
-      const invoked = invokeParsedCommand(
-        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
-        {
-          runtime,
-          cwd: "/repo",
-          loadClaudePluginInventory: async () => {
-            throw new Error("claude plugin list --json did not return valid JSON");
-          },
-          fileExists: () => true,
-          launchClaudePluginChannel: () => {
-            calls.push(["launchClaudePluginChannel"]);
-            return fakeChild();
-          },
-        },
-      );
-
-      await expect(invoked).rejects.toMatchObject({
-        name: "InvocationError",
-        code: "aiox.invocation.claude_plugin_inventory_failed",
-        exitCode: 1,
-      });
-      expect(calls).toContainEqual(["rollbackAgentAttach", { agentName: "reviewer" }]);
-      expect(calls).not.toContainEqual(["launchClaudePluginChannel"]);
-    });
-  });
-
-  it("preserves the preflight failure code even when rollback itself throws", async () => {
-    await withChannelStrategy(undefined, async () => {
-      const calls: unknown[] = [];
-      const runtime = createRuntime(calls, {
-        ...claudeAttachOverride(),
-        rollbackAgentAttach: async () => {
-          calls.push(["rollbackAgentAttach"]);
-          throw new Error("rollback exploded");
-        },
-      });
-
-      const invoked = invokeParsedCommand(
-        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
-        {
-          runtime,
-          cwd: "/repo",
-          loadClaudePluginInventory: async () => ({ marketplaces: ["aiox"], plugins: [] }),
-          fileExists: () => true,
-          launchClaudePluginChannel: () => fakeChild(),
-        },
-      );
-
-      // The coded preflight error survives; the rollback error is swallowed.
-      await expect(invoked).rejects.toMatchObject({
-        name: "InvocationError",
-        code: "aiox.invocation.claude_preflight.plugin_not_installed",
-        exitCode: 1,
-      });
-      expect(calls).toContainEqual(["rollbackAgentAttach"]);
-    });
-  });
-
-  it("routes to the plugin launcher (D) when AIOX_CLAUDE_CHANNEL_STRATEGY=plugin is set explicitly", async () => {
-    await withChannelStrategy("plugin", async () => {
-      const calls: unknown[] = [];
-      const child = fakeChild();
-      const runtime = createRuntime(calls, claudeAttachOverride());
-
-      const invoked = invokeParsedCommand(
-        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
-        {
-          runtime,
-          cwd: "/repo",
-          loadClaudePluginInventory: async (options) => {
-            calls.push(["loadClaudePluginInventory", options]);
-            return passingInventory();
-          },
-          fileExists: () => true,
-          launchClaudeWithChannel: () => {
-            calls.push(["launchClaudeWithChannel"]);
-            return child;
-          },
-          launchClaudePluginChannel: (options) => {
-            calls.push(["launchClaudePluginChannel", options]);
-            setTimeout(() => child.emit("exit", 0, null), 0);
-            return child;
-          },
-        },
-      );
-
-      await expect(invoked).resolves.toEqual({ exitCode: 0 });
-      expect(calls.some((c) => Array.isArray(c) && c[0] === "launchClaudePluginChannel")).toBe(
-        true,
-      );
-      expect(calls).not.toContainEqual(["launchClaudeWithChannel"]);
-    });
-  });
-
-  it("fails fast with a coded error for an invalid AIOX_CLAUDE_CHANNEL_STRATEGY and never starts the daemon or attaches", async () => {
-    await withChannelStrategy("bogus", async () => {
-      const calls: unknown[] = [];
-      const child = fakeChild();
-      const runtime = createRuntime(calls, claudeAttachOverride());
-
-      const invoked = invokeParsedCommand(
-        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
-        {
-          runtime,
-          cwd: "/repo",
-          loadClaudePluginInventory: async () => {
-            calls.push(["loadClaudePluginInventory"]);
-            return passingInventory();
-          },
-          launchClaudePluginChannel: () => {
-            calls.push(["launchClaudePluginChannel"]);
-            return child;
-          },
-          launchClaudeWithChannel: () => {
-            calls.push(["launchClaudeWithChannel"]);
-            return child;
-          },
-        },
-      );
-
-      await expect(invoked).rejects.toMatchObject({
-        name: "InvocationError",
-        code: "aiox.invocation.invalid_claude_channel_strategy",
-        exitCode: 1,
-        message: 'Invalid AIOX_CLAUDE_CHANNEL_STRATEGY="bogus". Expected "plugin" or "inline".',
-      });
-      // Strategy is resolved BEFORE any side effect: no daemon/attach/launch.
-      expect(calls).toEqual([]);
-    });
-  });
-
-  it("appends a dev/debug inline hint to a setup-fixable D preflight failure", async () => {
-    await withChannelStrategy(undefined, async () => {
-      const runtime = createRuntime([], claudeAttachOverride());
-
-      const invoked = invokeParsedCommand(
-        { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
-        {
-          runtime,
-          cwd: "/repo",
-          // marketplace registered but plugin absent → plugin_not_installed (setup-fixable).
-          loadClaudePluginInventory: async () => ({ marketplaces: ["aiox"], plugins: [] }),
-          fileExists: () => true,
-          launchClaudePluginChannel: () => fakeChild(),
-        },
-      );
-
-      await expect(invoked).rejects.toMatchObject({
-        name: "InvocationError",
-        code: "aiox.invocation.claude_preflight.plugin_not_installed",
-        exitCode: 1,
-        message: expect.stringContaining(
-          "AIOX_CLAUDE_CHANNEL_STRATEGY=inline aiox claude --name <agentName>",
-        ),
-      });
-    });
-  });
-
-  it("claude-plugin setup passes scope/cwd/marketplace path through and returns a summary", async () => {
+  it("fails fast with the required error before any daemon/attach/token side effect when the Local MCP is not registered", async () => {
     const calls: unknown[] = [];
-    const runtime = createRuntime([]);
-    const seen: unknown[] = [];
-
-    const result = await invokeParsedCommand(
-      { kind: "claude-plugin-setup", scope: "project" },
-      {
-        runtime,
-        cwd: "/work/proj",
-        claudeChannelMarketplacePath: "/repo/spike/aiox-channel-marketplace",
-        setupClaudePlugin: async (input) => {
-          seen.push(input);
-          return { ok: true, actions: { marketplaceAdded: true, pluginInstalled: true } };
-        },
-      },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("scope: project");
-    expect(seen).toEqual([
-      {
-        pluginName: "aiox-channel-ingress",
-        marketplaceName: "aiox",
-        marketplacePath: "/repo/spike/aiox-channel-marketplace",
-        scope: "project",
-        cwd: "/work/proj",
-      },
-    ]);
-    // provisioning is daemon-independent — must not auto-start the daemon
-    expect(calls).toEqual([]);
-  });
-
-  it("claude-plugin setup surfaces the preflight verdict as a coded non-zero error", async () => {
-    const runtime = createRuntime([]);
+    const runtime = createRuntime(calls, claudeAttachOverride());
 
     const invoked = invokeParsedCommand(
-      { kind: "claude-plugin-setup", scope: "user" },
+      { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
       {
         runtime,
         cwd: "/repo",
-        claudeChannelMarketplacePath: "/repo/spike/aiox-channel-marketplace",
-        setupClaudePlugin: async () => ({
-          ok: false,
-          code: "plugin_not_enabled",
-          message: "installed but not effective in this directory",
-          actions: { marketplaceAdded: false, pluginInstalled: true },
-        }),
+        checkClaudeMcpLocalRegistration: async () => ({ registeredAtLocalScope: false }),
       },
     );
 
     await expect(invoked).rejects.toMatchObject({
       name: "InvocationError",
-      code: "aiox.invocation.claude_plugin_setup.plugin_not_enabled",
+      code: "aiox.invocation.claude_mcp_not_registered",
       exitCode: 1,
+      message:
+        "Claude AIOX MCP가 Local scope에 등록되어 있지 않습니다.\n먼저 aiox claude setup 을 실행하세요.",
     });
+    expect(calls).toEqual([]);
   });
 
-  it("claude-plugin setup wraps a thrown CLI failure into a coded error", async () => {
-    const runtime = createRuntime([]);
+  it("wraps a thrown Local MCP registration check failure into a coded error before any side effect", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime(calls, claudeAttachOverride());
 
     const invoked = invokeParsedCommand(
-      { kind: "claude-plugin-setup", scope: "user" },
+      { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
       {
         runtime,
         cwd: "/repo",
-        claudeChannelMarketplacePath: "/repo/spike/aiox-channel-marketplace",
-        setupClaudePlugin: async () => {
+        checkClaudeMcpLocalRegistration: async () => {
           throw new Error("spawn claude ENOENT");
         },
       },
@@ -613,54 +355,112 @@ describe("CLI invocation", () => {
 
     await expect(invoked).rejects.toMatchObject({
       name: "InvocationError",
-      code: "aiox.invocation.claude_plugin_setup_failed",
+      code: "aiox.invocation.claude_mcp_registration_check_failed",
+      exitCode: 1,
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("claude setup registers the Local static MCP and returns a summary", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime(calls);
+    const seen: unknown[] = [];
+
+    const result = await invokeParsedCommand(
+      { kind: "claude-mcp-setup", scope: "local" },
+      {
+        runtime,
+        cwd: "/work/proj",
+        buildClaudeStaticMcpConfig: () => "STATIC_JSON_DEF",
+        setupClaudeMcp: async (input) => {
+          seen.push(input);
+          return { ok: true };
+        },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("aiox-claude-ingress");
+    expect(result.stdout).toContain("scope: local");
+    expect(seen).toEqual([
+      { name: "aiox-claude-ingress", json: "STATIC_JSON_DEF", cwd: "/work/proj", scope: "local" },
+    ]);
+    // provisioning is daemon-independent — must not auto-start the daemon
+    expect(calls).toEqual([]);
+  });
+
+  it.each(["local", "user", "project"] as const)(
+    "claude setup passes the %s scope through and reflects it in the success summary",
+    async (scope) => {
+      const runtime = createRuntime([]);
+      const seen: unknown[] = [];
+
+      const result = await invokeParsedCommand(
+        { kind: "claude-mcp-setup", scope },
+        {
+          runtime,
+          cwd: "/work/proj",
+          buildClaudeStaticMcpConfig: () => "STATIC_JSON_DEF",
+          setupClaudeMcp: async (input) => {
+            seen.push(input);
+            return { ok: true };
+          },
+        },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`scope: ${scope}`);
+      expect(seen).toEqual([
+        { name: "aiox-claude-ingress", json: "STATIC_JSON_DEF", cwd: "/work/proj", scope },
+      ]);
+    },
+  );
+
+  it("claude setup surfaces a collision as a coded non-zero error without overwriting", async () => {
+    const runtime = createRuntime([]);
+
+    const invoked = invokeParsedCommand(
+      { kind: "claude-mcp-setup", scope: "local" },
+      {
+        runtime,
+        cwd: "/repo",
+        setupClaudeMcp: async () => ({
+          ok: false,
+          code: "claude_mcp_cli_failed",
+          message: "claude mcp add-json aiox-claude-ingress -s local failed: MCP server aiox-claude-ingress already exists in local config",
+        }),
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      name: "InvocationError",
+      code: "aiox.invocation.claude_mcp_setup.claude_mcp_cli_failed",
+      exitCode: 1,
+      message: expect.stringContaining("already exists in local config"),
+    });
+  });
+
+  it("claude setup wraps a thrown CLI failure into a coded error", async () => {
+    const runtime = createRuntime([]);
+
+    const invoked = invokeParsedCommand(
+      { kind: "claude-mcp-setup", scope: "local" },
+      {
+        runtime,
+        cwd: "/repo",
+        setupClaudeMcp: async () => {
+          throw new Error("spawn claude ENOENT");
+        },
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      name: "InvocationError",
+      code: "aiox.invocation.claude_mcp_setup_failed",
       exitCode: 1,
     });
   });
 });
-
-describe("claudePreflightFailureMessage (R3 step 3b inline hint policy)", () => {
-  // Literal placeholder, NOT the real agent name — names may contain spaces/shell
-  // metacharacters, so interpolating them would break the copy-paste command.
-  const HINT = "AIOX_CLAUDE_CHANNEL_STRATEGY=inline aiox claude --name <agentName>";
-
-  it.each([
-    "marketplace_not_registered",
-    "plugin_not_installed",
-    "plugin_not_enabled",
-    "channel_server_missing",
-    "ambiguous_install_path",
-  ] as const)("appends the dev/debug inline hint for setup-fixable code %s", (code) => {
-    const message = claudePreflightFailureMessage(code, "base reason");
-    expect(message).toContain("base reason");
-    expect(message).toContain("Developer/debug only:");
-    expect(message).toContain(HINT);
-  });
-
-  it.each(["channels_disabled", "missing_env"] as const)(
-    "does NOT hint inline for non-fixable code %s (inline would mislead)",
-    (code) => {
-      const message = claudePreflightFailureMessage(code, "base reason");
-      expect(message).toBe("base reason");
-      expect(message).not.toContain("AIOX_CLAUDE_CHANNEL_STRATEGY=inline");
-    },
-  );
-});
-
-async function withChannelStrategy(
-  value: string | undefined,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const prev = process.env.AIOX_CLAUDE_CHANNEL_STRATEGY;
-  if (value === undefined) delete process.env.AIOX_CLAUDE_CHANNEL_STRATEGY;
-  else process.env.AIOX_CLAUDE_CHANNEL_STRATEGY = value;
-  try {
-    await fn();
-  } finally {
-    if (prev === undefined) delete process.env.AIOX_CLAUDE_CHANNEL_STRATEGY;
-    else process.env.AIOX_CLAUDE_CHANNEL_STRATEGY = prev;
-  }
-}
 
 function claudeAttachOverride() {
   return {
@@ -669,20 +469,6 @@ function claudeAttachOverride() {
       agent: { ...fakeAgentDto(), name: "reviewer", kind: "claude" as const },
       claudeChannelToken: "claude-token-1",
     }),
-  };
-}
-
-function passingInventory() {
-  return {
-    marketplaces: ["aiox"],
-    plugins: [
-      {
-        id: "aiox-channel-ingress@aiox",
-        enabled: true,
-        scope: "user",
-        installPath: "/plugins/aiox-channel-ingress",
-      },
-    ],
   };
 }
 

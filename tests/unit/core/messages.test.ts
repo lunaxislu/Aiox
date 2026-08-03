@@ -12,7 +12,6 @@ describe("Messages", () => {
     expect(messageTypes).toEqual([
       "question",
       "instruction",
-      "status",
       "event",
       "reply",
     ]);

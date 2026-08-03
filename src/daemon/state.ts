@@ -1605,6 +1605,7 @@ export function createDaemonState(
         originKind: "daemon",
         type: "event",
         intent: "notification",
+        replyExpected: false,
         outcomeForDeliveryId: original.id,
         content: JSON.stringify({
           type: "delivery_target_rejected",
@@ -1824,8 +1825,6 @@ export function createDaemonState(
             .find((agent) => agent.id === input.message.sourceAgentId),
           targetAgent,
         }),
-        chatId: input.message.id,
-        origin: input.sourceName,
       },
     );
 

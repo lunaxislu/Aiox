@@ -62,7 +62,7 @@ version matrix로 다시 고정한다.
 | Projection                                 | Current evidence                                                                                                                                                                                                                                                               | Feasibility judgment                                                                                                                                                                                      |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Codex per-session MCP                      | 현재 launcher가 `-c mcp_servers.aiox=...`로 aiox send/reply MCP와 agent identity env를 주입한다([[src/adapters/codex/launcher.ts]]). unit test도 inline config 생성을 검증한다.                                                                                                  | **Proven for one fixed aiox server.** compose 선언의 N개 server와 tool grant로 일반화하는 것은 낮은 위험의 compiler 작업이지만 아직 구현되지 않았다.                                                      |
-| Claude per-session MCP/instruction         | inline 경로는 `--mcp-config`, 기본 경로는 channel plugin activation으로 aiox tool과 MCP server instructions를 세션에 연결한다([[src/adapters/claude/launcher.ts]], `channel-server.ts`).                                                                                         | **Proven for one fixed aiox plugin/server.** `--strict-mcp-config`, settings precedence와 여러 plugin 충돌을 포함한 일반화는 구현·통합 시험이 필요하다.                                                   |
+| Claude per-session MCP/instruction         | 단일 경로: `aiox claude setup`으로 등록한 Local-scope static MCP 항목을 `server:<name>` activation으로 세션에 연결해 aiox tool과 MCP server instructions를 제공한다([[src/adapters/claude/launcher.ts]], [[src/adapters/claude/channel-server.ts]]).                             | **Proven for one fixed aiox MCP entry.** settings precedence와 여러 MCP 충돌을 포함한 일반화는 구현·통합 시험이 필요하다.                                                                                 |
 | Claude user-declared skill/MCP/instruction | 공식 CLI는 session-only `--plugin-dir`, `--mcp-config`, `--settings`, `--append-system-prompt(-file)`을 제공하고 plugin은 skill과 MCP server를 함께 묶을 수 있다.                                                                                                              | **Official surface exists.** plugin으로 패키징된 skill은 symlink/copy 없이 per-agent 부여할 수 있다. raw skill directory 조합과 Windows path 처리는 별도 compiler fallback이다.                           |
 | Codex user-declared MCP/instruction        | 공식 CLI의 `-c/--config`는 arbitrary key override를 지원하고 `mcp_servers`, `developer_instructions`/`model_instructions_file`, MCP tool allow/deny를 config로 표현한다.                                                                                                       | **Official surface exists.** current one-off aiox injection을 일반화할 수 있으나 quoting, secret 전달과 managed-policy 충돌 test가 필요하다.                                                              |
 | Codex per-agent skill/plugin set           | Codex는 repo/user/admin skill discovery, symlinked skill folder와 plugin bundle을 제공하고, 공식 config 문서는 installed plugin의 `enabled` 값을 정의한다. 현재 `codex plugin` CLI는 add/list/remove만 노출하고 session-only `--plugin-dir`에 해당하는 flag는 확인되지 않았다. | **Spike required.** preinstalled plugin의 one-off `-c` toggle, generated `--profile`, agent별 worktree/projection directory 중 어떤 방식이 동일 repo 동시 session에서 실제 격리되는지 검증한 뒤 계약한다. |
@@ -79,13 +79,14 @@ Current implementation caveats:
   multi-server grant compiler. Current evidence:
   `src/adapters/codex/launcher.ts:88-119`,
   [[tests/unit/adapters/codex-launcher.test.ts]] — `tests/unit/adapters/codex-launcher.test.ts:133-170`.
-- Current Claude projection is either inline MCP config or plugin channel
-  activation for the fixed aiox channel/server, with agent identity, token and
-  socket path passed to the launched process. Current evidence:
-  `src/adapters/claude/launcher.ts:94-117`,
-  `src/adapters/claude/launcher.ts:189-206`,
-  [[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:491-507`,
-  [[tests/unit/adapters/claude-channel.test.ts]] — `tests/unit/adapters/claude-channel.test.ts:673-739`.
+- Current Claude projection is a single pre-registered Local-scope static MCP
+  entry (`aiox claude setup`, activated via `server:<name>`), with agent
+  identity, token and socket path passed only through the spawned process's
+  env. Current evidence:
+  `src/adapters/claude/launcher.ts:30-48` (`buildClaudeStaticMcpConfig`),
+  `src/adapters/claude/launcher.ts:70-86` (`launchClaudeStaticMcpChannel`),
+  [[tests/unit/adapters/claude-channel.test.ts]] —
+  `tests/unit/adapters/claude-channel.test.ts:903-988`.
 - Registration/ingress auth is implemented for channel registration and Codex
   MCP egress, but Claude daemon-to-channel `/send` remains an Implementation
   Gap: the channel HTTP ingress accepts loopback POSTs without a request auth
@@ -93,7 +94,7 @@ Current implementation caveats:
   [[src/daemon/state.ts]] — `src/daemon/state.ts:926-953`,
   `src/daemon/state.ts:1044-1073`,
   `src/daemon/state.ts:1711-1758`,
-  `src/adapters/claude/channel-server.ts:432-456`,
+  `src/adapters/claude/channel-server.ts:462-500`,
   [[docs/decisions/claude-channel-trust-and-registration]] —
   `docs/decisions/claude-channel-trust-and-registration.md:25-34`.
 

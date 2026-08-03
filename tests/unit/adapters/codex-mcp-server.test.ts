@@ -84,8 +84,17 @@ describe("codex MCP server — handlers", () => {
   });
 
   it("keeps Codex collaboration instructions on the typed tool revision", () => {
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("<aiox-channel");
-    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("message_id");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("raw canonical AIOX envelope JSON document");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain(
+      "intent: \"notification\" is a daemon-authored outcome event, not a reply",
+    );
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain("outcomeForDeliveryId");
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain(
+      "creates no reply right; do not use reply for a notification",
+    );
+    expect(CODEX_INGRESS_INSTRUCTIONS).toContain(
+      "Use outcomeForDeliveryId only to correlate the outcome it reports",
+    );
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain(
       "aiox_reply(inReplyToDeliveryId, intent, replyExpected, content)",
     );

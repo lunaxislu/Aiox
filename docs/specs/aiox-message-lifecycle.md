@@ -74,8 +74,8 @@ DB column이나 vendor API의 snake_case는 adapter/repository boundary에서 �
 | `source.kind`          | `agent`, `human`, `daemon` 중 하나. current runtime은 agent-authored send/reply와 daemon-originated outcome notification을 지원하며, human ingress는 제공하지 않는다.                              |
 | `source.address`       | canonical logical source address. runtime session id를 넣지 않는다.                                                                                                                    |
 | `target.address`       | 이 delivery의 단일 target. fan-out envelope 하나에 여러 target을 넣지 않는다.                                                                                                                   |
-| `type`                 | `question`, `instruction`, `status`, `event`, `reply` 중 하나. 저장/표시 분류다.                                                                                                           |
-| `intent`               | `delegation`, `discussion`, `clarification`, `result`, `conclusion`, `status`, `notification` 중 하나. 행동 의미다.                                                                      |
+| `type`                 | `question`, `instruction`, `event`, `reply` 중 하나. 저장/표시 분류다.                                                                                                                     |
+| `intent`               | `delegation`, `discussion`, `clarification`, `result`, `conclusion`, `notification` 중 하나. 행동 의미다.                                                                                |
 | `replyExpected`        | boolean. 이 delivery의 원 target에게 한 번의 correlated reply를 허용하는 flag다.                                                                                                               |
 | `inReplyToDeliveryId`  | 기존 delivery에 대한 응답이면 REQUIRED, 새 thread면 MUST be absent.                                                                                                                         |
 | `outcomeForDeliveryId` | `source.kind=daemon`이 만든 outcome notification에만 존재하는 optional field로, notification이 보고하는 기존 delivery의 id를 담는다. reply가 아니므로 `inReplyToDeliveryId`와 상호배타이며 다른 경우에는 MUST be absent. |
@@ -140,10 +140,11 @@ v1 receiver는 모르는 optional field를 무시해야 하고, intermediary는 
 
 Intent authoring surface는 전체 wire enum보다 좁다. agent가 `send`/`reply`로 직접 만드는
 메시지는 `delegation | discussion | clarification | result | conclusion`만 사용한다.
-`status`와 `notification`은 daemon/adapter가 lifecycle·presentation event를 만들 때 쓰는
-reserved intent이며 authenticated `source.kind=daemon`만 만들 수 있다. agent/human source가
-reserved intent를 제출하면 `reserved_intent_not_allowed`로 거부한다. adapter는 daemon
-authority를 위임받은 system event 변환에서만 이를 만들며 vendor text만 보고 승격하지 않는다.
+`notification`은 daemon/adapter가 lifecycle·presentation event를 만들 때 쓰는 reserved
+intent이며 authenticated `source.kind=daemon`만 만들 수 있다. public agent `send`/`reply`
+input schema는 `notification`을 허용하지 않아 daemon message 생성 전에 거부한다. adapter는
+daemon authority를 위임받은 system event 변환에서만 이를 만들며 vendor text만 보고 승격하지
+않는다.
 
 Canonical address는 logical agent를 나타낸다. v1 local reference runtime은
 `agent://local/<profile>/<agent-name>`을 사용하고, daemon은 canonical address, DB agent id,
@@ -167,9 +168,11 @@ logical address에 rebind할 수 있지만, 이름 변경은 v1에서 새 identi
   `duplicate_reply`, 없는 delivery는 `unknown_delivery`로 거부한다.
 - `replyExpected:true`인 reply delivery는 다음 recipient에게 새 한 번의 right를 부여한다.
   따라서 chain은 각 새 delivery의 flag로 이어지며, `false`가 해당 chain branch를 닫는다.
-- `parentMessageId`, Claude `chat_id`, and `origin` are storage or transport
-  metadata, not the canonical reply-correlation input. A reply's persisted
-  `parentMessageId` records the already-authorized originating `deliveryId`.
+- A reply's persisted `parentMessageId` records the already-authorized
+  originating `deliveryId`; it is not the canonical reply-correlation input.
+  The Claude target path adds neither `chat_id` nor `origin` metadata: its
+  body is the canonical envelope JSON, whose `source.address` identifies the
+  sender.
 
 Current implementation caveats:
 
@@ -189,8 +192,8 @@ Current implementation caveats:
   implemented independently of the intentionally smaller agent-facing
   observability projection.
 - Daemon-originated rejection outcomes are `type:"event"` notifications with
-  `outcomeForDeliveryId`; they are not replies and neither consume nor create a
-  reply right.
+  `outcomeForDeliveryId` and `replyExpected:false`; they are not replies and
+  neither consume nor create a reply right.
 
 Evidence: [[src/daemon/state.ts]] — `src/daemon/state.ts:2297-2328`,
 `src/daemon/state.ts:2516-2599`; [[src/daemon/api.ts]] —
@@ -330,7 +333,7 @@ surface에 보고하고, vendor lifecycle event를 지원하지 않으면 progre
 v1 typed errors는 최소한 `invalid_envelope`, `unsupported_protocol_version`,
 `unauthorized_source`, `route_not_allowed`, `unknown_target`, `message_id_conflict`,
 `unknown_delivery`, `correlation_mismatch`, `reply_not_expected`, `duplicate_reply`, `backpressure`,
-`reserved_intent_not_allowed`, `adapter_unavailable`, `delivery_failed`를 구분한다. error는
+`adapter_unavailable`, `delivery_failed`를 구분한다. error는
 stable code와 human-readable message를 함께 제공하며 secret/token/raw credential을
 포함하지 않는다.
 

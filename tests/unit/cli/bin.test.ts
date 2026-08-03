@@ -11,7 +11,9 @@ vi.mock("../../../src/core/public-ids.js", () => ({
 }));
 
 import {
+  createClientRuntime,
   createSocketRuntime,
+  runAioxCliMain,
   resolveDaemonForkCommand,
   runAioxCli,
 } from "../../../src/bin/aiox.js";
@@ -20,6 +22,61 @@ import { createPublicDeliveryId } from "../../../src/core/public-ids.js";
 import type { DaemonApi } from "../../../src/daemon/api.js";
 
 describe("aiox CLI bin", () => {
+  it("does not force-exit a successful long-running MCP command", async () => {
+    const exit = vi.fn();
+
+    await runAioxCliMain({
+      run: async () => 0,
+      exit,
+    });
+
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it("force-exits a failed command with its error status", async () => {
+    const exit = vi.fn();
+
+    await runAioxCliMain({
+      run: async () => 1,
+      exit,
+    });
+
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("disposes its client runtime after a successful ordinary command", async () => {
+    const dispose = vi.fn();
+
+    const code = await runAioxCli(["status"], {
+      runtime: {
+        ...createRuntime(),
+        dispose,
+      },
+      cwd: "/repo",
+    });
+
+    expect(code).toBe(0);
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("closes daemon socket clients when a production runtime is disposed", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-bin-"), "daemon.sock");
+    const owner = createSocketRuntime({ socketPath });
+    const runtime = createClientRuntime({ socketPath });
+
+    try {
+      await owner.startDaemon();
+      const api = await runtime.getDaemonApi();
+      await api.status();
+
+      await runtime.dispose?.();
+
+      await expect(api.status()).rejects.toThrow("daemon socket client is closed");
+    } finally {
+      await owner.close();
+    }
+  });
+
   it("prints parser-captured help and exits successfully", async () => {
     const written = createWritableBuffers();
 

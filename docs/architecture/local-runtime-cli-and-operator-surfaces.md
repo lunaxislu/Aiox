@@ -19,16 +19,17 @@ vocabulary, module overview, and authority links.
 | `aiox daemon restart` | yes (after stop) | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:200-205`; invoke [[src/bin/aiox.ts]] — `src/bin/aiox.ts:122-126` |
 | `aiox daemon status` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:207-212`; invoke [[src/bin/aiox.ts]] — `src/bin/aiox.ts:128-147` |
 | `aiox codex --name <n> [--pair <p>] [--resume <id>]` | **yes** | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:214,257-289`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:157-199` |
-| `aiox claude --name <n> [--pair <p>]` | **yes** | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:215,257-289`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:157-164,200-259` |
+| `aiox claude --name <n> [--pair <p>]` | **yes** | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:280-291`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:149-217` |
+| `aiox claude setup [--scope <scope>]` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:288-304`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:266-267,283-313` |
 | `aiox connect <source> <target...>` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:216,291-313`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:262-270` |
 | `aiox disconnect <source> <target...>` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:217,291-313`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:271-279` |
 | `aiox pair --name <pair-name>` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:218,315-323`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:280-285` |
 | `aiox status` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:327-331`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:286-289` |
 | `aiox stop` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:333-338`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:290-292` |
 | `aiox doctor` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:340-345`; checks [[src/cli/doctor.ts]] — `src/cli/doctor.ts:17-43`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:293-294,609-614` |
-| `aiox claude-plugin setup [--scope <scope>]` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:219,225-243`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:300-301,317-352` |
-| `aiox mcp-codex` *(hidden)* | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:347-352`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:295-299` |
-| `aiox _run-daemon --socket <path>` *(hidden)* | n/a | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:354-360`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:302-306` |
+| `aiox mcp-codex` *(hidden)* | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:365-369`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:255-259` |
+| `aiox mcp-claude` *(hidden)* | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:371-375`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:260-264` |
+| `aiox _run-daemon --socket <path>` *(hidden)* | n/a | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:378-384`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:268-272` |
 
 Auto-start is wired only on `agent-attach`. The legacy PRD auto-start
 requirement is absorbed here as current architecture behavior; Step 14

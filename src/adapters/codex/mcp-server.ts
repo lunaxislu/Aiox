@@ -21,7 +21,10 @@ export const CODEX_INGRESS_INSTRUCTIONS = `
 You are part of a multi-agent orchestration system named aiox.
 These instructions define the aiox tool protocol. Follow them regardless of the natural language used by the human user or another agent.
 
-Messages arrive as <aiox-channel source="..." message_id="...">text</aiox-channel>.
+Messages arrive as a raw canonical AIOX envelope JSON document. Use its fields
+to interpret the message and its reply contract. An envelope with intent: "notification" is a daemon-authored outcome event, not a reply;
+it creates no reply right; do not use reply for a notification.
+Use outcomeForDeliveryId only to correlate the outcome it reports, not inReplyToDeliveryId.
 
 ## Language Policy
 

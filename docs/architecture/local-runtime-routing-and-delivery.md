@@ -16,7 +16,7 @@ but the sequence is routing/FSM-owned, so this slice owns it.
 ### 8.1 Domain Model
 
 - **Message**: [[src/core/messages.ts]] — `src/core/messages.ts:17-23`; type ∈
-  `question|instruction|status|event|reply`.
+  `question|instruction|event|reply`.
 - **Delivery**: [[src/core/deliveries.ts]] — `src/core/deliveries.ts:3-12`. Idempotency key formatted
   `${messageId}:${targetAgentId}` (`src/core/deliveries.ts:34`). Status ∈
   `queued|delivering|delivered|completed|failed|unconfirmed`. `unconfirmed`

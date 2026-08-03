@@ -23,49 +23,27 @@ import type {
 import { dispatchSummaryOutputSchema } from "../shared/dispatch-schema.js";
 
 // ---------------------------------------------------------------------------
-// V1 trusted channel framing (D1)
+// V1 Claude Channel notification
 // ---------------------------------------------------------------------------
 
 export interface ChannelNotificationInput {
   content: string;
-  chatId?: string;
-  origin?: string;
 }
 
 export interface ChannelNotification {
   method: "notifications/claude/channel";
   params: {
     content: string;
-    meta?: Record<string, string>;
   };
-}
-
-function escapeXmlAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-}
-
-function escapeXmlContent(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export function buildChannelNotification(
   input: ChannelNotificationInput,
 ): ChannelNotification {
-  const attrs: string[] = [`source="aiox"`];
-  if (input.chatId) attrs.push(`chat_id="${escapeXmlAttr(input.chatId)}"`);
-  if (input.origin) attrs.push(`origin="${escapeXmlAttr(input.origin)}"`);
-
-  const framedContent = `<channel ${attrs.join(" ")}>${escapeXmlContent(input.content)}</channel>`;
-
-  const meta: Record<string, string> = {};
-  if (input.chatId) meta.chat_id = input.chatId;
-  if (input.origin) meta.origin = input.origin;
-
   return {
     method: "notifications/claude/channel",
     params: {
-      content: framedContent,
-      ...(Object.keys(meta).length > 0 ? { meta } : {}),
+      content: input.content,
     },
   };
 }
@@ -98,7 +76,15 @@ export const CLAUDE_CHANNEL_INSTRUCTIONS = `
 You are part of a multi-agent orchestration system named aiox.
 These instructions define the aiox tool protocol. Follow them regardless of the natural language used by the human user or another agent.
 
-Messages arrive as <channel source="aiox" chat_id="..." origin="...">text</channel>.
+Claude Code provides the host-owned outer <channel> wrapper for each message.
+The outer <channel source="..."> attribute identifies this channel server,
+not the message sender. The envelope's own source.address field is the actual
+sender; always read sender identity from the JSON body, never from the outer tag.
+Its body is a canonical AIOX envelope JSON document; use that envelope's fields
+to interpret the message and its reply contract.
+An envelope with intent: "notification" is a daemon-authored outcome event, not a reply;
+it creates no reply right; do not use reply for a notification.
+Use outcomeForDeliveryId only to correlate the outcome it reports, not inReplyToDeliveryId.
 
 ## Language Policy
 
@@ -182,13 +168,14 @@ In that case, do not call any aiox tool.
 
 To end a discussion, send one final reply with intent: "conclusion".
 
-After sending a conclusion, do not call any aiox tool again for that delivery.
+After sending a conclusion, do not call any aiox tool again for that thread.
 If the human user says to stop, wrap up, conclude, "마무리해", or "이제 됐어", conclude the active aiox thread.
 
 ## Examples
 
 Good:
-Goal: review the diff in src/router.ts for race conditions.
+intent: delegation
+content.text: Goal: review the diff in src/router.ts for race conditions.
 Expected output: list of findings with file:line and severity.
 Context: this is part of aiox Step 14.
 
@@ -233,7 +220,9 @@ export interface ClaudeChannelDaemonClient {
 export interface ClaudeChannelMcpServerOptions {
   agentName: string;
   daemonSocketPath: string;
-  createDaemonClient?: (options: { socketPath: string }) => ClaudeChannelDaemonClient;
+  createDaemonClient?: (options: {
+    socketPath: string;
+  }) => ClaudeChannelDaemonClient;
 }
 
 export interface ClaudeChannelToolResult {
@@ -270,19 +259,23 @@ const agentIntentSchema = z.enum([
 
 const typedContentSchema = z.object({ text: z.string().min(1) }).strict();
 
-export const typedClaudeSendInputSchema = z.object({
-  type: z.enum(["question", "instruction"]),
-  intent: agentIntentSchema,
-  replyExpected: z.boolean(),
-  content: typedContentSchema,
-}).strict();
+export const typedClaudeSendInputSchema = z
+  .object({
+    type: z.enum(["question", "instruction"]),
+    intent: agentIntentSchema,
+    replyExpected: z.boolean(),
+    content: typedContentSchema,
+  })
+  .strict();
 
-export const typedClaudeReplyInputSchema = z.object({
-  inReplyToDeliveryId: z.string().min(1),
-  intent: agentIntentSchema,
-  replyExpected: z.boolean(),
-  content: typedContentSchema,
-}).strict();
+export const typedClaudeReplyInputSchema = z
+  .object({
+    inReplyToDeliveryId: z.string().min(1),
+    intent: agentIntentSchema,
+    replyExpected: z.boolean(),
+    content: typedContentSchema,
+  })
+  .strict();
 
 export function createClaudeChannelMcpServer(
   options: ClaudeChannelMcpServerOptions,
@@ -349,7 +342,10 @@ export function createSendHandler(
         content,
       });
       if (!result.ok) {
-        return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
+        return errorResult(
+          result.reason ?? "unknown_error",
+          JSON.stringify(result),
+        );
       }
       logEvent("message_sent_to_daemon", {
         agentName: options.agentName,
@@ -398,7 +394,10 @@ export function createReplyHandler(
         content,
       });
       if (!result.ok) {
-        return errorResult(result.reason ?? "unknown_error", JSON.stringify(result));
+        return errorResult(
+          result.reason ?? "unknown_error",
+          JSON.stringify(result),
+        );
       }
       logEvent("reply_sent_to_daemon", {
         agentName: options.agentName,
@@ -428,8 +427,9 @@ function resolveDaemonClient(
   return (
     options.createDaemonClient ??
     ((opts) =>
-      createDaemonSocketClient({ socketPath: opts.socketPath }) as unknown as
-        ClaudeChannelDaemonClient)
+      createDaemonSocketClient({
+        socketPath: opts.socketPath,
+      }) as unknown as ClaudeChannelDaemonClient)
   );
 }
 
@@ -472,21 +472,13 @@ export function startClaudeChannelHttpIngress(
       try {
         const raw = await readJson(req);
         const parsed = InboundMessage.parse(raw);
-        const notification = buildChannelNotification({
-          content: parsed.content,
-          chatId: parsed.chat_id,
-          origin: parsed.origin,
-        });
-        logEvent("ingress_send_received", {
-          chat_id: parsed.chat_id,
-          origin: parsed.origin,
-        });
+        const notification = buildChannelNotification({ content: parsed.content });
+        logEvent("ingress_send_received", {});
         await mcp.server.notification(notification);
-        logEvent("ingress_send_notified", { chat_id: parsed.chat_id });
+        logEvent("ingress_send_notified", {});
         sendJson(res, 202, { ok: true });
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error);
+        const message = error instanceof Error ? error.message : String(error);
         logEvent("ingress_send_failed", { error: message });
         sendJson(res, 400, { error: message });
       }
@@ -576,7 +568,9 @@ export function parseChannelServerEnv(
   return { agentName, token, daemonSocketPath, port };
 }
 
-async function main(): Promise<void> {
+// Entry point invoked by the `aiox mcp-claude` hidden CLI subcommand
+// dispatch (src/cli/invocation.ts).
+export async function runClaudeChannelMcpServer(): Promise<void> {
   const config = parseChannelServerEnv();
   logEvent("channel_server_starting", {
     agentName: config.agentName,
@@ -610,32 +604,12 @@ async function main(): Promise<void> {
   void ingress.server;
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
-  main().catch((error) => {
-    process.stderr.write(
-      JSON.stringify({
-        event: "fatal",
-        ...(isClaudeChannelPortInUseError(error)
-          ? {
-              reason: error.reason,
-              port: error.port,
-            }
-          : {}),
-        error: error instanceof Error ? error.message : String(error),
-      }) + "\n",
-    );
-    process.exit(1);
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
 const InboundMessage = z.object({
   content: z.string().min(1),
-  chat_id: z.string().min(1).optional(),
-  origin: z.string().min(1).optional(),
 });
 
 function tokenFingerprint(token: string): string {
@@ -717,14 +691,4 @@ function createClaudeChannelPortInUseError(
   error.reason = "claude_channel_port_in_use";
   error.port = port;
   return error;
-}
-
-function isClaudeChannelPortInUseError(
-  error: unknown,
-): error is ClaudeChannelPortInUseError {
-  return (
-    error instanceof Error &&
-    "reason" in error &&
-    (error as { reason: unknown }).reason === "claude_channel_port_in_use"
-  );
 }

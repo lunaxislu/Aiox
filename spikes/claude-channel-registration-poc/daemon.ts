@@ -277,7 +277,12 @@ export function createDaemonHandler(
         sendJson(res, 400, { error: "invalid_endpoint" });
         return;
       }
-      const result = registerChannel(state, o.agentName, o.token, parsedEndpoint);
+      const result = registerChannel(
+        state,
+        o.agentName,
+        o.token,
+        parsedEndpoint,
+      );
       if (!result.ok) {
         logEvent("register_rejected", {
           agentName: o.agentName,
@@ -359,9 +364,7 @@ export function createDaemonHandler(
           ...(forward.status !== undefined
             ? { upstreamStatus: forward.status }
             : {}),
-          ...(forward.body !== undefined
-            ? { upstreamBody: forward.body }
-            : {}),
+          ...(forward.body !== undefined ? { upstreamBody: forward.body } : {}),
         });
         return;
       }

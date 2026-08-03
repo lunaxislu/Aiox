@@ -4,7 +4,7 @@ Related:
 
 - [[docs/architecture/local-agent-runtime]]
 - [[docs/decisions/codex-per-agent-app-server]]
-- [[docs/decisions/claude-channel-plugin-default]]
+- [[docs/decisions/claude-channel-local-static-mcp-only]]
 
 Status: Current
 
@@ -50,9 +50,9 @@ Per running pair the OS sees the following processes:
 │          │  per Claude agent                                              │
 │          │  ┌──────────────────────────────────────────────────────┐       │
 │          │  │  claude CLI                                          │       │
-│          │  │   ↓ default: plugin:aiox-channel-ingress@aiox (D)   │       │
-│          │  │     legacy:  --mcp-config inline (A, explicit only) │       │
-│          │  │  channel-server (stdio)                              │       │
+│          │  │   ↓ server:aiox-claude-ingress (Local static MCP,   │       │
+│          │  │     pre-registered via `aiox claude setup`)          │       │
+│          │  │  aiox mcp-claude → channel-server (stdio)             │       │
 │          │  │  HTTP /send 127.0.0.1:0 │◀── daemon HTTP POST (inject)      │
 │          │  └──────────────────────────────────────────────────────┘       │
 │          │                                                                │
@@ -64,10 +64,11 @@ Per running pair the OS sees the following processes:
 - Codex agent → 1 app-server child (daemon-owned) + 1 proxy WS server
   (in-process in daemon) + 1 TUI child (CLI-owned, `stdio:"inherit"`) + 1
   `aiox mcp-codex` stdio child (app-server-owned via Codex MCP host).
-- Claude agent → 1 `claude` child (CLI-owned, foreground) + 1 channel-server
-  stdio child (Claude-owned; default: activated via `plugin:aiox-channel-ingress@aiox`
-  (D strategy; [[docs/decisions/claude-channel-plugin-default]]); legacy: launcher-injected `--mcp-config` inline
-  (`AIOX_CLAUDE_CHANNEL_STRATEGY=inline`, dev/debug only)).
+- Claude agent → 1 `claude` child (CLI-owned, foreground) + 1
+  `aiox mcp-claude` stdio child (Claude-owned; it runs the channel-server,
+  activated via `server:aiox-claude-ingress`,
+  resolving a Local static MCP definition pre-registered by `aiox claude setup`;
+  [[docs/decisions/claude-channel-local-static-mcp-only]]).
 
 **MVP invariant** (WHY: [[docs/decisions/codex-per-agent-app-server]] §5):
 
@@ -100,14 +101,15 @@ Evidence:
     - `src/cli/invocation.ts:295-299`
 - Claude process topology
   - [[src/cli/invocation.ts]]
-    - `src/cli/invocation.ts:87-90`
-    - `src/cli/invocation.ts:214-219`
-    - `src/cli/invocation.ts:482-490`
+    - `src/cli/invocation.ts:186-222`
+    - `src/cli/invocation.ts:260-264`
   - [[src/adapters/claude/launcher.ts]]
-    - `src/adapters/claude/launcher.ts:189-208`
+    - `src/adapters/claude/launcher.ts:10-12`
+    - `src/adapters/claude/launcher.ts:30-48`
+    - `src/adapters/claude/launcher.ts:70-86`
   - [[src/adapters/claude/channel-server.ts]]
-    - `src/adapters/claude/channel-server.ts:465-475`
-    - `src/adapters/claude/channel-server.ts:562-580`
+    - `src/adapters/claude/channel-server.ts:462-500`
+    - `src/adapters/claude/channel-server.ts:560-605`
 - Codex cleanup invariant
   - [[src/adapters/codex/runtime.ts]]
     - `src/adapters/codex/runtime.ts:193-208`

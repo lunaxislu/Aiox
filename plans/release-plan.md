@@ -6,7 +6,7 @@
 > ⚠️ 상기 트리거: "build하고 npm 배포" 이야기가 나오면 이 파일을 먼저 연다. 사용자가 명시 요청 —
 > 배포 시점에 다시 상기시킬 것. (2026-05-28, R3 작업 중 발견)
 
-연관: `package.json`, `docs/decisions/claude-channel-plugin-default.md`,
+연관: `package.json`, `docs/decisions/claude-channel-local-static-mcp-only.md`,
 `logs/workspace-reset/retained-provenance/2026-06-20-mvp-plan-carryover-archive.md` R3.
 
 ---
@@ -17,9 +17,9 @@
 
 - 현상: `.gitignore`에 `/dist/`가 있고, `package.json`에 `files` 필드도 `.npmignore`도 없음.
   npm 패킹 규칙상 둘 다 없으면 `.gitignore`를 fallback으로 써서 **`dist/` 전체가 빠진다.**
-- 영향: `bin` → `./dist/src/bin/aiox.js` 누락 → `aiox` 명령 자체가 동작 안 함.
-  channel-server.js도 누락 → R3에서 `import.meta.url`로 절대경로를 올바르게 resolve해도
-  **가리킬 파일이 패키지에 없음.** (경로 로직은 정상, 파일이 안 실리는 게 문제.)
+- 영향: `bin` → `./dist/src/bin/aiox.js` 누락 → `aiox` 명령 자체가 동작 안 함. 이 하나의
+  bin entry가 `aiox mcp-claude`/`aiox claude`/`aiox claude setup`을 포함한 모든 서브커맨드를
+  dispatch하므로, dist 전체가 tarball에서 빠지면 전부 함께 깨진다.
 - 조치: `package.json`에 allowlist 추가 (allowlist는 `.gitignore`를 덮어씀):
   ```json
   "files": ["dist"]
@@ -44,17 +44,21 @@
 - 런타임 의존성(`@modelcontextprotocol/*`, `better-sqlite3`, `commander`, `ws`, `zod`)이
   `dependencies`에 정상 배치. `better-sqlite3`는 native — 설치 환경 빌드 가능성 재확인
   (`pnpm.onlyBuiltDependencies`에 등록돼 있음).
-- R3 경로 도출(`import.meta.url` → dist sibling)은 전역/로컬/npx 설치 어디서나 cwd-독립적으로 정확.
-  B1만 해결되면 npm 환경에서 그대로 동작.
+- Local static MCP 등록(`aiox claude setup`)이 만드는 command/args는 `process.argv[1]`(호출된
+  aiox bin의 절대경로)을 그대로 쓴다(`buildClaudeStaticMcpConfig`,
+  [[src/adapters/claude/launcher.ts]]). npm artifact의 포함·clean-install 동작은 아래 release
+  smoke에서 확인한다.
 
 ## 배포 전 점검 순서 (제안)
 
 1. B1·B2 적용 후 `pnpm build`.
-2. `npm pack` → 생성된 tarball 내용물 확인 (`tar tzf *.tgz`): `dist/src/bin/aiox.js`,
-   `dist/src/adapters/claude/channel-server.js` 포함 여부 검증.
+2. `npm pack` → 생성된 tarball 내용물 확인 (`tar tzf *.tgz`): CLI entry와 MCP runtime이 import하는
+   dist 모듈을 실제 목록으로 확인한다. bin entry 하나의 존재만으로 나머지 dist 포함을 추론하지
+   않는다.
 3. 설치/제거 안내나 reset/purge CLI 표면을 이번 release scope에 포함했다면, package uninstall과
    `~/.aiox` 같은 runtime/user-data purge가 분리되어 있고 destructive reset/purge 표면의
    confirmation과 scope가 명시됐는지 확인.
-4. 임시 디렉터리에 `npm i -g ./<tarball>` 또는 `npx ./<tarball>`로 설치 → repo 밖에서
-   `aiox claude` 실행 → R3 수동 smoke (dev-channel ↔ `--mcp-config` resolve)까지 함께 확인.
+4. 실제 release 단계에서 임시 디렉터리에 `npm i -g ./<tarball>` 또는 `npx ./<tarball>`로 설치 →
+   repo 밖에서 `aiox claude setup` → `aiox claude`/`aiox codex` 양방향 send/reply까지 Local
+   static MCP smoke로 확인.
 5. 통과 후 `npm publish`.

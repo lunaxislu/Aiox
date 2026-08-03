@@ -140,6 +140,51 @@ describe("CLI parser", () => {
     expectCliParseError(["codex", "--name"], "aiox.optionMissingArgument");
   });
 
+  it("rejects claude attach without a name option", () => {
+    expectCliParseError(["claude"], "aiox.missingRequiredOption");
+  });
+
+  it("parses claude setup with the default local scope", () => {
+    expect(parseCli(["claude", "setup"])).toEqual({
+      kind: "claude-mcp-setup",
+      scope: "local",
+    });
+  });
+
+  it("parses claude setup --scope local", () => {
+    expect(parseCli(["claude", "setup", "--scope", "local"])).toEqual({
+      kind: "claude-mcp-setup",
+      scope: "local",
+    });
+  });
+
+  it("parses claude setup --scope user", () => {
+    expect(parseCli(["claude", "setup", "--scope", "user"])).toEqual({
+      kind: "claude-mcp-setup",
+      scope: "user",
+    });
+  });
+
+  it("parses claude setup --scope project", () => {
+    expect(parseCli(["claude", "setup", "--scope", "project"])).toEqual({
+      kind: "claude-mcp-setup",
+      scope: "project",
+    });
+  });
+
+  it("rejects claude setup with an unsupported scope", () => {
+    expectCliParseError(["claude", "setup", "--scope", "bogus"], "aiox.invalidScope");
+    expectCliParseError(["claude", "setup", "--scope", "all"], "aiox.invalidScope");
+  });
+
+  it("rejects claude setup with an unknown option", () => {
+    expectCliParseError(["claude", "setup", "--bogus"], "aiox.unknownOption");
+  });
+
+  it("rejects claude setup with excess positional arguments", () => {
+    expectCliParseError(["claude", "setup", "extra"], "aiox.excessArguments");
+  });
+
   it("rejects claude attach without a pair value", () => {
     expectCliParseError(["claude", "--name", "impl", "--pair"], "aiox.optionMissingArgument");
   });
@@ -211,25 +256,6 @@ describe("CLI parser", () => {
     expectCliParseError(["pair", "--name", ""], "aiox.invalidName");
   });
 
-  it("parses claude-plugin setup with the default user scope", () => {
-    expect(parseCli(["claude-plugin", "setup"])).toEqual({
-      kind: "claude-plugin-setup",
-      scope: "user",
-    });
-  });
-
-  it("parses claude-plugin setup --scope project", () => {
-    expect(parseCli(["claude-plugin", "setup", "--scope", "project"])).toEqual({
-      kind: "claude-plugin-setup",
-      scope: "project",
-    });
-  });
-
-  it("rejects an unsupported claude-plugin setup scope", () => {
-    expectCliParseError(["claude-plugin", "setup", "--scope", "local"], "aiox.invalidScope");
-    expectCliParseError(["claude-plugin", "setup", "--scope", "bogus"], "aiox.invalidScope");
-  });
-
   it("parses global status", () => {
     expect(parseCli(["status"])).toEqual({
       kind: "status",
@@ -245,6 +271,12 @@ describe("CLI parser", () => {
   it("parses doctor", () => {
     expect(parseCli(["doctor"])).toEqual({
       kind: "doctor",
+    });
+  });
+
+  it("parses the hidden mcp-claude command", () => {
+    expect(parseCli(["mcp-claude"])).toEqual({
+      kind: "mcp-claude",
     });
   });
 

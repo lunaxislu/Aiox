@@ -1,5 +1,9 @@
 # Claude Channel Activation: Plugin Strategy as Default
 
+> Superseded by [[docs/decisions/claude-channel-local-static-mcp-only]]: the D(plugin)
+> strategy and legacy A were removed from code. Kept here as the historical WHY snapshot
+> for the original D-as-default choice; not current architecture authority.
+
 ## Context
 aiox MVP에서 Claude CLI에 channel-server를 연결하는 방법이 필요하다. 초기 구현(A strategy)은 `aiox claude` 실행 시 `--mcp-config` JSON을 Claude CLI 인수에 인라인으로 주입하는 방식이었다. R3(Round 3) 작업에서 Claude plugin 시스템을 통한 대안(D strategy)이 검토되었고, D를 primary로, A를 dev/debug-only fallback으로 방향을 정했다. 이후 plugin 설치 UX(`aiox claude-plugin setup`)가 완성되고 live smoke로 D 활성화 경로가 검증됐다.
 
@@ -30,8 +34,8 @@ no-fallback 계약을 선택한 이유만 기록한다.
 - **WHY**: preflight가 inventory를 읽은 cwd와 launch가 spawn하는 cwd가 다르면, 한
   폴더에서 preflight가 통과해도 launch 시 다른(disabled) scope가 해석되어 채널이
   침묵 실패(silent-drop)할 수 있다. preflight가 닫으려는 바로 그 결함이 다시 열린다.
-  그래서 plugin launch는 preflight가 inventory를 읽은 cwd에 spawn cwd를 고정한다
-  ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:239-249`).
+  그래서 plugin launch는 preflight가 inventory를 읽은 cwd에 spawn cwd를 고정했다
+  (당시 구현, D strategy와 함께 삭제됨 — 아래 Sources는 provenance만 남는다).
 
 ## Trade-offs
 - Claude plugin marketplace 등록과 plugin 설치가 선행되어야 한다 (`aiox claude-plugin setup` 또는 수동 설치).
@@ -44,15 +48,12 @@ no-fallback 계약을 선택한 이유만 기록한다.
 ## Sources
 - `logs/workspace-reset/retained-provenance/2026-06-20-mvp-plan-carryover-archive.md` §2 — R3/R4 carryover
   provenance for Claude plugin/channel activation and runtime namespace QA.
-- 전략 선택·no-fallback 구현: [[src/cli/invocation.ts]] —
-  `src/cli/invocation.ts:161-163` (`resolveClaudeChannelStrategy` 호출),
-  `src/cli/invocation.ts:219` (strategy 분기), `src/cli/invocation.ts:239-249`
-  (plugin launch + cwd 고정), `src/cli/invocation.ts:487-499`
-  (`resolveClaudeChannelStrategy`: 기본값 `"plugin"`)
-- `claude plugin list --json` 외부 CLI contract 스키마(id/installPath/projectPath,
-  cwd-resolved `enabled`, flat scope, `ambiguous_install_path` 가드) 구현 근거:
-  [[src/adapters/claude/preflight.ts]] — `src/adapters/claude/preflight.ts:11-62`,
-  `src/adapters/claude/preflight.ts:168-207`; [[src/adapters/claude/plugin-cli.ts]] —
-  `src/adapters/claude/plugin-cli.ts:63-103`, `src/adapters/claude/plugin-cli.ts:181-249`
-- 채널 활성화 전략·preflight 흐름(아키텍처 권위):
-  [[docs/architecture/local-runtime-claude-adapter]] §6.1–6.2
+- Historical implementation (provenance only — removed together with the D strategy;
+  none of these files exist in current `src/`, so this is not a live evidence pointer):
+  strategy selection and no-fallback dispatch (`resolveClaudeChannelStrategy`, default
+  `"plugin"`, plugin launch + cwd pin) lived in `src/cli/invocation.ts`; the
+  `claude plugin list --json` contract parsing (id/installPath/projectPath,
+  cwd-resolved `enabled`, flat scope, `ambiguous_install_path` guard) lived in
+  `src/adapters/claude/preflight.ts` and `src/adapters/claude/plugin-cli.ts`.
+- 현재 architecture authority: [[docs/architecture/local-runtime-claude-adapter]] §6.1은
+  이 문서의 plugin/preflight 흐름 대신 현재 Local static MCP 단일 경로를 서술한다.

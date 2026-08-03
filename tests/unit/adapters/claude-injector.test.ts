@@ -32,14 +32,12 @@ describe("injectClaudeChannel", () => {
     const result = await injectClaudeChannel(lookup, {
       agentName: "alpha",
       content: "do the thing",
-      chatId: "t1",
-      origin: "codex",
     });
 
     expect(result).toEqual({ kind: "success" });
   });
 
-  it("sends correct JSON body to the registered endpoint", async () => {
+  it("sends only the canonical envelope to the registered endpoint", async () => {
     const lookup = fakeLookup({ alpha: "http://127.0.0.1:18789/send" });
     const requests: { url: string; body: unknown }[] = [];
 
@@ -51,34 +49,11 @@ describe("injectClaudeChannel", () => {
     await injectClaudeChannel(lookup, {
       agentName: "alpha",
       content: "hello",
-      chatId: "chat-1",
-      origin: "codex",
     });
 
     expect(requests).toHaveLength(1);
     expect(requests[0].url).toBe("http://127.0.0.1:18789/send");
-    expect(requests[0].body).toEqual({
-      content: "hello",
-      chat_id: "chat-1",
-      origin: "codex",
-    });
-  });
-
-  it("omits chat_id and origin when not provided", async () => {
-    const lookup = fakeLookup({ alpha: "http://127.0.0.1:18789/send" });
-    const requests: { body: unknown }[] = [];
-
-    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
-      requests.push({ body: JSON.parse(init.body as string) });
-      return new Response("{}", { status: 202 });
-    });
-
-    await injectClaudeChannel(lookup, {
-      agentName: "alpha",
-      content: "ping",
-    });
-
-    expect(requests[0].body).toEqual({ content: "ping" });
+    expect(requests[0].body).toEqual({ content: "hello" });
   });
 
   it("returns claude_channel_push_failed when endpoint returns non-2xx", async () => {

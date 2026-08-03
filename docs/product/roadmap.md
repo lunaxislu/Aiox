@@ -25,7 +25,7 @@ Phase 0:
   G0
   -> G1/G3 병행
      -> G1-A
-     -> G1-B (historical core accepted; canonical-presentation corrective pending)
+     -> G1-B (historical core accepted; canonical-presentation corrective verified)
      -> G1-C (Codex Tier 3 evidence accepted; Codex·Claude 공통 요구 잔여)
      -> G1-D (remaining release gate)
      -> G3 병행
@@ -46,7 +46,7 @@ After public release:
 | ---------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | G0         | release identity, protocol/CLI/package/support matrix freeze | G1/G3가 임시 identity 위에서 진행되지 않게 한다.                                      |
 | G1-A       | contract/ingress freeze                                      | envelope cutover와 reliability가 소비할 contract boundary를 고정한다.                 |
-| G1-B       | canonical envelope cutover (historical core accepted; canonical-presentation corrective pending) | accepted delivery/correlation 모델을 G1-C/G1-D가 입력으로 소비하며, Claude channel-notification wrapper와 공통 canonical presentation 정합을 별도 좁은 corrective로 닫는다. |
+| G1-B       | canonical envelope cutover (historical core accepted; canonical-presentation corrective verified) | accepted delivery/correlation 모델과 검증된 Claude canonical presentation을 G1-C/G1-D가 입력으로 소비한다. |
 | G1-C       | process-lifetime Tier 3 delivery reliability (Codex evidence accepted, 공통 요구 잔여) | accepted Codex Tier 3 결과와 남은 Codex·Claude 공통 요구를 구분하고, Tier 2 ack/completed·stale 등 후속 보장을 현재 완료로 주장하지 않는다. |
 | G1-D       | local trust boundary                                         | authenticated source, route authorization, runtime secret/socket boundary를 닫는다.   |
 | G3         | daemon stabilization                                         | daemon lifecycle, transport, diagnostics failure boundary를 release-grade로 고정한다. |
@@ -142,7 +142,7 @@ Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, ins
 
 **목표**
 
-G1-B의 historical core 결과는 accepted/completed다. local A2A 경로의 canonical envelope과 correlation 모델, original-delivery source-only one-reply right, opaque public-ID issuance와 immutable delivery-row primary-key binding은 이후 G1-C/G1-D가 소비하는 안정된 message lifecycle 입력이다. 다만 Codex의 app-server `turn/start`와 Claude의 channel HTTP `/send` → notification은 transport가 다르므로, common target-facing canonical-envelope meaning과 field preservation을 다시 대조하는 하나의 좁은 canonical-presentation corrective가 남아 있다.
+G1-B의 historical core 결과는 accepted/completed다. local A2A 경로의 canonical envelope과 correlation 모델, original-delivery source-only one-reply right, opaque public-ID issuance와 immutable delivery-row primary-key binding은 이후 G1-C/G1-D가 소비하는 안정된 message lifecycle 입력이다. Codex의 app-server `turn/start`와 Claude의 channel HTTP `/send` → notification은 transport가 다르지만, canonical-presentation corrective는 Claude TUI에서 common target-facing canonical-envelope meaning과 field preservation을 확인했다.
 
 **진입 조건**
 
@@ -153,7 +153,7 @@ G1-B의 historical core 결과는 accepted/completed다. local A2A 경로의 can
 **착수 검토 / 열린 결정**
 
 - historical core의 decision 문서, accepted package 결과와 검증 로그는 provenance로 보존한다. 이는 되돌리거나 재구현하지 않는다.
-- bounded corrective는 현재 Claude target-facing channel-notification `<channel source="aiox">…</channel>` framing을 target으로 검토한다. wrapper-free canonical presentation은 아직 구현·host 지원·검증됐다고 주장하지 않으며, 직접 Claude TUI evidence가 있어야만 수용한다.
+- bounded corrective는 Claude host가 소유한 단일 outer `<channel source="…">` wrapper와 그 안의 canonical envelope JSON body를 직접 Claude TUI에서 검증했다. AIOX는 inner wrapper나 `chat_id`/`origin` metadata를 만들지 않으며, sender identity는 body의 `source.address`에서 읽는다.
 - 이 corrective의 비교 대상은 host UI의 pixel/card parity가 아니라 canonical message meaning과 target-facing content다. Codex와 Claude의 transport 차이는 유지할 수 있지만, 별도 AIOX message format 또는 의미를 만들면 안 된다.
 - persistence/restart migration과 durable replay/mailbox는 G1-B residual이 아니라 Phase 2의 독립 책임이다.
 - ingress invocation idempotency는 현재 delivery-creation `idempotencyKey`와 별개다. 이는 별도 future decision이 아니라 G1-C가 소유하는 Codex·Claude 공통 요구이며, G1-B는 이를 완료하지 않는다.
@@ -162,7 +162,7 @@ G1-B의 historical core 결과는 accepted/completed다. local A2A 경로의 can
 
 - canonical envelope/correlation, route-derived fan-out acceptance, original-delivery source-only one-reply creation이 accepted G1-B 결과로 검증됐다.
 - public `messageId`와 `deliveryId`의 collision-resistant opaque/immutable issuance 및 delivery-row primary-key binding이 accepted public-ID-factory-B 결과로 검증됐다.
-- canonical-presentation corrective는 Claude wrapper-free target-facing presentation을 직접 Claude TUI에서 검증하고, Codex와 Claude가 common canonical-envelope meaning과 field preservation을 유지함을 확인해야 한다. 이는 host UI parity 요구가 아니며, current wrapper를 이미 제거·지원한다고 뜻하지 않는다.
+- canonical-presentation corrective는 Claude TUI에서 단일 host-owned outer wrapper, canonical JSON body, body의 `source.address` sender identity, 그리고 reply 흐름을 확인했다. 이는 host UI parity 요구가 아니며, Claude host wrapper를 AIOX가 소유하거나 제거한다는 뜻이 아니다.
 - 이 완료 사실은 G1-C reliability와 G1-D trust-boundary의 입력이며, receipt/ack, persistence/restart, ingress re-invocation idempotency를 완료로 뜻하지 않는다.
 - ack/retry/`unconfirmed`/timeout 및 reply-right failure semantics는 이 corrective 범위가 아니라 G1-C delivery reliability owner에 남는다.
 
@@ -248,18 +248,21 @@ Local stable A2A가 같은 machine 안의 편의적 loopback 통신이 아니라
 - G1-D auth는 API 요청 권한/route 검증 gate이고, full Tier 2 delivery-ack 완성은 Phase 1 uplift임을 착수 scope에서 분리한다.
 - Claude daemon-to-channel push와 channel-to-daemon ingress 각각에서 어떤 token/header 검증이 필요한지 구분한다.
 - Claude channel-server `/send`가 request auth 없이 loopback POST를 수용하는 현재 ingress gap을 release-gating auth 취약점으로 다룬다.
+- daemon socket/API의 raw caller를 typed agent ingress와 trusted internal boundary 중 어느 것으로 분류할지 결정한다. 선택한 경계에서 agent ingress가 daemon-only lifecycle event를 위조하지 못하도록 negative evidence와 runtime guard 범위를 정한다.
 - Codex secret 전달 방식, runtime directory/socket 권한, token comparison, rollback cleanup의 release-grade 최소선을 정한다.
 
 **통과 조건**
 
 - Claude와 Codex 경로 모두에서 unauthenticated ingress/push, forged source, invalid token,
   wrong/forged correlated reply, `replyExpected:false` reply, consumed-right duplicate reply, route bypass가 negative evidence로 거부된다.
+- daemon socket/API raw caller의 선택된 trust classification이 검증되고, agent ingress를 통한 daemon-only lifecycle event authoring이 허용되지 않는다.
 - secret/token/raw credential이 argv, log, event, error, rollback residue에 release-blocking 방식으로 남지 않는다.
 - runtime directory와 daemon/channel socket surface가 owner-only local boundary로 취급되며, 실패/rollback 후에도 stale credential이나 pending token이 남지 않는다.
 
 **Owner refs**
 
 - [[docs/architecture/local-runtime-gaps-and-targets]] — local trust-boundary current gaps와 release pressure owner.
+- [[docs/architecture/local-runtime-daemon-transport-api]] — daemon socket/API raw caller와 dispatch boundary의 current architecture owner.
 - [[docs/decisions/claude-channel-trust-and-registration]] — Claude channel registration token 결정과 reverse push-auth gap owner.
 - [[docs/decisions/original-delivery-narrow-reply-right]] — correlated reply authorization rationale owner.
 - [[docs/specs/aiox-message-lifecycle]] — source identity, route authorization, reply correlation, typed error boundary owner.
@@ -330,6 +333,9 @@ terminal automation이나 compose를 Phase 0 protocol requirement로 만들지 �
 **착수 검토 / 열린 결정**
 
 - 최소 terminal driver와 fallback story가 product boundary 및 compose boundary와 맞는지 확인한다.
+- tmux driver와 no-tmux fallback이 Codex·Claude pair를 어떤 workspace/cwd에서 시작하고,
+  pair name·daemon profile·resume·종료를 어떻게 연결할지 정한다. Codex의 runtime MCP
+  주입과 Claude의 해당 경로 static MCP 해석이 같은 pair launch UX에서 함께 성립해야 한다.
 - README Quick Start가 실제 command surface와 일치하는지 확인한다.
 
 **통과 조건**

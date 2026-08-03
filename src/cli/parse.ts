@@ -1,6 +1,7 @@
 import { Command, CommanderError } from "commander";
 
 import type { AgentKind } from "../core/agent-kind.js";
+import { claudeMcpScopes, type ClaudeMcpScope } from "../core/claude-mcp-scope.js";
 
 export type ParsedCommand = {
   kind: "daemon-start";
@@ -43,11 +44,15 @@ export type ParsedCommand = {
 } | {
   kind: "mcp-codex";
 } | {
-  // R3 step 3a: idempotent provisioning of the strategy-D channel plugin
-  // (marketplace add + plugin install/enable). Explicit-only — never auto-run
-  // by `aiox claude`, which fail-fasts and points here.
-  kind: "claude-plugin-setup";
-  scope: "user" | "project";
+  kind: "mcp-claude";
+} | {
+  // `aiox claude setup`: non-overwriting provisioning of the static Claude MCP
+  // definition (`server:aiox-claude-ingress`) at the given scope — the new
+  // default `aiox claude` runtime path relies on the Local scope entry.
+  // Explicit-only — never auto-run by `aiox claude`, which fail-fasts before
+  // any daemon/attach side effect and points here.
+  kind: "claude-mcp-setup";
+  scope: ClaudeMcpScope;
 } | {
   // Hidden command: long-running daemon process entry point.
   // Spawned by `aiox daemon start` as a detached child; not shown in help.
@@ -216,40 +221,19 @@ function createProgram({ version, output, setParsed }: CreateProgramOptions): Co
   addRoutingCommand(program, "connect", setParsed);
   addRoutingCommand(program, "disconnect", setParsed);
   addPairCommand(program, setParsed);
-  addClaudePluginCommand(program, setParsed);
   addGlobalCommands(program, setParsed);
 
   return program;
 }
 
-function addClaudePluginCommand(
-  program: Command,
-  setParsed: (command: ParsedCommand) => void,
-): void {
-  const claudePlugin = program
-    .command("claude-plugin")
-    .description("Manage the aiox Claude channel plugin: claude-plugin setup");
-
-  claudePlugin
-    .command("setup")
-    .description(
-      "Install/enable the aiox channel plugin (marketplace add + plugin install). " +
-        "--scope user (default) | project",
-    )
-    .option("--scope <scope>", "install scope: user | project", "user")
-    .action((options: { scope: string }) => {
-      setParsed({ kind: "claude-plugin-setup", scope: requireSetupScope(options.scope) });
-    });
-}
-
-// Only user|project are supported. local/managed/all/* are out of
-// scope — `*` in particular is rejected to avoid shell-glob surprises.
-function requireSetupScope(value: string): "user" | "project" {
-  if (value === "user" || value === "project") {
-    return value;
+// `aiox claude setup --scope` mirrors the Claude CLI's own `claude mcp
+// add-json -s <scope>` contract exactly: local | user | project.
+function requireClaudeMcpScope(value: string): ClaudeMcpScope {
+  if ((claudeMcpScopes as readonly string[]).includes(value)) {
+    return value as ClaudeMcpScope;
   }
   throw new CliParseError(
-    `Invalid --scope "${value}"; expected "user" or "project"`,
+    `Invalid --scope "${value}"; expected "local", "user", or "project"`,
     { code: "aiox.invalidScope", exitCode: parseErrorExitCode },
   );
 }
@@ -261,16 +245,34 @@ function addAgentAttachCommand(
 ): void {
   const command = program
     .command(agentKind)
-    .description(`Attach ${agentKind} --name <name> [--pair <pair-name>]`)
-    .requiredOption("--name <name>")
-    .option("--pair <pair-name>");
+    .description(`Attach ${agentKind} --name <name> [--pair <pair-name>]`);
+
+  // claude only: --name must be a plain (non-mandatory-at-the-commander-level)
+  // option so that `claude setup` below can dispatch to its nested subcommand
+  // instead of tripping commander's mandatory-option check for claude's own
+  // attach action (commander resolves requiredOption before subcommand
+  // routing, which would otherwise turn `claude setup` into a bogus
+  // "--name not specified" attach error). --name is still required in
+  // practice: the action below validates it manually.
+  if (agentKind === "claude") {
+    command.option("--name <name>");
+  } else {
+    command.requiredOption("--name <name>");
+  }
+  command.option("--pair <pair-name>");
 
   if (agentKind === "codex") {
     command.option("--resume <session-id>");
   }
 
   command
-    .action((options: { name: string; pair?: string; resume?: string }) => {
+    .action((options: { name?: string; pair?: string; resume?: string }) => {
+      if (options.name === undefined) {
+        throw new CliParseError(`required option '--name <name>' not specified`, {
+          code: "aiox.missingRequiredOption",
+          exitCode: parseErrorExitCode,
+        });
+      }
       const name = requireNonEmptyName(options.name);
       const pairName = options.pair === undefined ? undefined : requireNonEmptyName(options.pair);
       const resumeSessionId =
@@ -286,6 +288,21 @@ function addAgentAttachCommand(
         },
       );
     });
+
+  if (agentKind === "claude") {
+    command
+      .command("setup")
+      .description(
+        "Register the aiox Claude MCP with the Claude CLI (static definition). " +
+          "--scope local (default) | user | project. Never overwrites an existing " +
+          "entry under that name — a conflict fails with Claude's own error message. " +
+          "Run once before `aiox claude`.",
+      )
+      .option("--scope <scope>", "registration scope: local | user | project", "local")
+      .action((options: { scope: string }) => {
+        setParsed({ kind: "claude-mcp-setup", scope: requireClaudeMcpScope(options.scope) });
+      });
+  }
 }
 
 function addRoutingCommand(
@@ -349,6 +366,13 @@ function addGlobalCommands(program: Command, setParsed: (command: ParsedCommand)
     .description("(internal) Run the launch-scoped Codex MCP server over stdio")
     .action(() => {
       setParsed({ kind: "mcp-codex" });
+    });
+
+  program
+    .command("mcp-claude", { hidden: true })
+    .description("(internal) Run the launch-scoped Claude channel MCP server over stdio")
+    .action(() => {
+      setParsed({ kind: "mcp-claude" });
     });
 
   program

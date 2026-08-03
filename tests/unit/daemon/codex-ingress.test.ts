@@ -506,8 +506,6 @@ describe("daemon receiveCodexMessage", () => {
             content: { mediaType: "text/plain", text: "hello from codex" },
             createdAt: delivery.createdAt,
           }),
-          chat_id: "msg-1",
-          origin: "impl",
         },
       },
     ]);
@@ -1046,8 +1044,6 @@ describe("daemon receiveCodexReply", () => {
             createdAt: delivery.createdAt,
             inReplyToDeliveryId: deliveryIdForMessage(db, "parent-1"),
           }),
-          chat_id: "reply-1",
-          origin: "impl",
         },
       },
     ]);
@@ -2239,7 +2235,7 @@ describe("daemon receiveClaudeChannelReply", () => {
       parent_message_id: null,
       type: "event",
       intent: "notification",
-      reply_expected: null,
+      reply_expected: 0,
       outcome_for_delivery_id: original.id,
       content: JSON.stringify({
         type: "delivery_target_rejected",
@@ -2260,6 +2256,11 @@ describe("daemon receiveClaudeChannelReply", () => {
       route_id: null,
       status: "queued",
     });
+    expect(
+      db
+        .prepare("select count(*) as count from reply_rights where originating_delivery_id = ?")
+        .get(outcome.notification_delivery_id),
+    ).toEqual({ count: 0 });
   });
 
   it("dispatches the committed reject notification directly to its original Claude source", async () => {
@@ -2321,7 +2322,7 @@ describe("daemon receiveClaudeChannelReply", () => {
       target: { address: "agent://local/dev/reviewer" },
       type: "event",
       intent: "notification",
-      replyExpected: null,
+      replyExpected: false,
       outcomeForDeliveryId: expect.any(String),
     });
     expect(envelope).not.toHaveProperty("inReplyToDeliveryId");

@@ -7,6 +7,7 @@ Local multi-agent orchestration for Codex and Claude.
 Run the TypeScript entrypoint directly:
 
 ```bash
+pnpm dev claude setup   # register the Claude static MCP entry once (Local scope)
 pnpm dev daemon stop    # clear any existing dev daemon
 pnpm dev daemon start   # start the dev-profile daemon
 pnpm dev daemon status  # confirm the daemon is reachable
@@ -23,6 +24,7 @@ Build first, then use the package scripts that call the built `dist` entrypoint:
 
 ```bash
 pnpm build          # compile the dist entrypoint
+pnpm claude setup   # register the Claude static MCP entry once (Local scope)
 pnpm stop           # clear any existing build daemon
 pnpm start          # start the build-profile daemon
 pnpm status         # confirm the daemon is reachable
@@ -77,75 +79,49 @@ Supported transport is a Unix domain socket (macOS / Linux). Windows support
 ### External agent config
 
 Socket isolation flows into the spawned agents: the Codex MCP inline config
-(`-c`) and the Claude channel plugin both receive the resolved daemon socket as an
-explicit `AIOX_SOCKET_PATH` env, so the child never depends on its own cwd or
-profile detection.
+(`-c`) and the Claude channel's registered Local static MCP both receive the
+resolved daemon socket as an explicit `AIOX_SOCKET_PATH` env, so the child
+never depends on its own cwd or profile detection.
 
-Two external states are **not** auto-split by profile — verify manually before
+One external state is **not** auto-split by profile — verify manually before
 release smoke:
-
-- Claude marketplace/plugin install is global Claude state. Confirm the active
-  marketplace points at the intended source (dev source vs packaged) so a dev
-  source marketplace is not mistaken for release behavior:
-
-  ```bash
-  claude plugin marketplace list --json
-  claude plugin list --json
-  ```
 
 - Codex inline MCP (`-c`) is per-launch, not persistent, so there is no
   `CODEX_HOME` to isolate today. If persistent Codex config is later introduced,
   isolate `CODEX_HOME` per profile.
 
-## Claude Plugin Setup
+## Claude Channel Setup
 
-Claude channel-as-plugin is the default Claude channel strategy. Before running
-`aiox claude`, provision the local Claude plugin once:
-
-```bash
-pnpm dev claude-plugin setup
-```
-
-Default scope is `user`. Project-local setup is also supported:
+`aiox claude` activates its channel via a static MCP entry that must be
+registered once, before the first attach:
 
 ```bash
-pnpm dev claude-plugin setup --scope project
+pnpm dev claude setup                    # scope: local (default)
+pnpm dev claude setup --scope user
+pnpm dev claude setup --scope project
 ```
 
 After build:
 
 ```bash
-pnpm claude-plugin setup
+pnpm claude setup
 ```
 
-## Claude Channel Strategy
+Registration never overwrites an existing entry under that name — a name
+collision in the selected scope fails with Claude's own error message.
 
-Default:
+`--scope user` and `--scope project` only register the static MCP entry at
+that scope; `aiox claude` attach always checks and activates the **Local**
+scope entry regardless of which scope you registered. Attaching via a
+registered user/project entry is not implemented yet. Then attach normally:
 
 ```bash
-pnpm dev claude --name claude-smoke  # attach Claude through the plugin channel
+pnpm dev claude --name claude-smoke
 ```
 
-This uses the Claude plugin channel:
-
-```text
-plugin:aiox-channel-ingress@aiox
-```
-
-For explicit legacy inline debugging only:
-
-```bash
-AIOX_CLAUDE_CHANNEL_STRATEGY=inline pnpm dev claude --name claude-inline
-```
-
-Allowed values:
-
-```text
-unset/plugin -> plugin strategy
-inline       -> legacy inline strategy
-```
-
-Invalid values fail fast. There is no automatic fallback from plugin to inline.
+If the Local scope is not registered, `aiox claude` fails fast (before
+starting the daemon or attaching the agent) with a pointer back to
+`aiox claude setup`.
 
 ## Manual Routes
 
@@ -154,9 +130,10 @@ Use this path when you want to attach agents first and connect routes manually.
 Control terminal:
 
 ```bash
-pnpm build   # compile the dist entrypoint
-pnpm stop    # clear any existing build daemon
-pnpm start   # start the build-profile daemon
+pnpm build          # compile the dist entrypoint
+pnpm claude setup   # register the Claude static MCP entry once (Local scope)
+pnpm stop           # clear any existing build daemon
+pnpm start          # start the build-profile daemon
 ```
 
 Terminal A:
@@ -189,6 +166,7 @@ Control terminal:
 
 ```bash
 pnpm build                  # compile the dist entrypoint
+pnpm claude setup           # register the Claude static MCP entry once (Local scope)
 pnpm stop                   # clear any existing build daemon
 pnpm start                  # start the build-profile daemon
 pnpm pair --name smoke-pair # reserve bidirectional routes
