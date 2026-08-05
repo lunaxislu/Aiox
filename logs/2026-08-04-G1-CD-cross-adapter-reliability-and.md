@@ -7,8 +7,8 @@ status: open
 ## Work Items
 
 - [x] W1 G1-C common MCP/reliability contract and G1-D credential-boundary decision/spike
-- [>] W2 implement and verify the common `send`/`reply` MCP contract
-- [ ] W5 implement Claude delivery reliability symmetry and manual recovery after W2 review
+- [x] W2 implement and verify the common `send`/`reply` MCP contract
+- [>] W5 implement Claude delivery reliability symmetry and manual recovery after W2 review
 - [ ] W3 implement and verify the accepted G1-D local trust boundary
 - [ ] W4 perform cross-adapter direct evidence, owner reconciliation, and package closeout review
 
@@ -24,8 +24,8 @@ status: open
 - Base loop contract: `log skill/references/loop-rules.md`.
 - G1-C는 historical Codex Tier 3 package를 재개하지 않는다. 그 accepted result와 W8 Claude
   reconnect/scope result를 current inputs로 소비한다.
-- G1-C의 common `send`/`reply` contract와 Codex-only manual recovery tool은 같은 것으로
-  취급하지 않는다.
+- G1-C의 common messaging MCP contract는 `send`/`reply`다. 별도 recovery MCP tool
+  `aiox_retransmit_unconfirmed_delivery`는 W5에서 Codex·Claude 양쪽에 제공한다.
 
 ## Package Scope
 
@@ -209,3 +209,35 @@ status: open
   their prior G1-D and closeout responsibilities.
 - **Owner reconciliation:** roadmap and lifecycle spec now defer source-operation invocation idempotency to a later
   SQLite-backed durable-state decision. This package does not define that future contract.
+
+### 2026-08-05 · W5 transport review and action-gated execution
+
+- **Confirmed code boundary:** Codex carries a JSON-RPC request ID and retains a late-response observer after timeout;
+  the Claude channel is a one-way HTTP POST and has no equivalent late-response correlation. The two transports
+  therefore cannot share the same recovery mechanism.
+- **User-directed W5 gate:** after W2 is independently accepted, Claude must first inspect the concrete
+  Claude/Codex transport differences and return a staged action proposal: (1) failure classification and state
+  transitions, (2) confirmation-gated manual retransmit API/channel changes, and (3) focused tests and observability.
+  No production implementation begins until that proposal is reviewed and an explicit agreement is recorded.
+- **Bounded target after agreement:** align observable delivery semantics only — daemon-created message/delivery; 2xx
+  `delivered`; timeout or response-loss ambiguity `unconfirmed`; explicit rejection `failed`; operator-confirmed
+  direct retransmit. Claude does not promise Codex-style late-response reconciliation unless a separate Claude
+  protocol capability is designed and accepted.
+
+### 2026-08-05 · common messaging contract and symmetric recovery tool
+
+- **User decision:** `send` and `reply` are the two common messaging MCP tools. The separately named recovery MCP
+  tool `aiox_retransmit_unconfirmed_delivery` is not merged into either operation and is no longer Codex-only: W5
+  must provide the same confirmation-gated tool on Claude as part of delivery-symmetry implementation.
+- **Scope consequence:** W2 retains Codex's existing recovery tool while completing common messaging naming/schema
+  work. W5 owns the Claude registration, schema/handler, daemon target support, instructions, and focused tests for
+  the shared recovery tool; its action-review/explicit-agreement gate remains in force.
+
+### 2026-08-05 · W2 accepted; W5 proposal phase opened
+
+- **W2 acceptance:** independent review verified the common `send`/`reply` contract, including real registered MCP
+  input/output schema parity; focused tests and type/diff checks passed. The user accepted W2 completion. Direct
+  CLI/TUI evidence remains a W4 package-closeout obligation.
+- **Next active work:** W5 begins only with a Claude read-only action proposal. It must divide the agreed Claude
+  delivery/recovery work into reviewable slices before any production edit; after W5, review whether a separate
+  structural common-schema extraction is warranted.

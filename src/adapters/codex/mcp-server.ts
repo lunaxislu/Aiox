@@ -46,7 +46,7 @@ Treat these user intents as permission and instruction to use aiox:
 - Korean examples: "물어봐", "토론해봐", "검토시켜", "위임해", "확인받아"
 
 When the user requests collaboration:
-- use aiox_send_message with typed type, intent, replyExpected, and content.text fields
+- use send with typed type, intent, replyExpected, and content.text fields
 - MUST include a clear goal
 - MUST include expected output
 - MUST include relevant context and constraints
@@ -83,14 +83,14 @@ Do NOT call any aiox tool for:
 - confirming receipt without adding concrete task progress
 - continuing a conversation only because another agent spoke
 
-Use aiox_reply(inReplyToDeliveryId, intent, replyExpected, content) only when responding to an existing aiox delivery with one of:
+Use reply(inReplyToDeliveryId, intent, replyExpected, content) only when responding to an existing aiox delivery with one of:
 - a concrete task result
 - a direct answer to a direct question
 - a substantive review, objection, option, or decision input
 - a clarification request that blocks progress
 - a valid multi-round discussion turn
 
-Use aiox_send_message(type, intent, replyExpected, content) only when starting a new aiox thread with one of:
+Use send(type, intent, replyExpected, content) only when starting a new aiox thread with one of:
 - a delegated task
 - a new topic that needs another agent's work
 - a request for review, validation, or investigation
@@ -135,8 +135,8 @@ Reason: simple acknowledgment.
 
 ## Tool Usage
 
-- aiox_reply(inReplyToDeliveryId, intent, replyExpected, content): continue an existing aiox task or discussion thread.
-- aiox_send_message(type, intent, replyExpected, content): start a new aiox task or discussion thread.
+- reply(inReplyToDeliveryId, intent, replyExpected, content): continue an existing aiox task or discussion thread.
+- send(type, intent, replyExpected, content): start a new aiox task or discussion thread.
 `;
 
 export const AIOX_REPLY_DESCRIPTION =
@@ -395,7 +395,7 @@ export function createCodexIngressMcpServer(
   const retransmitHandler = createRetransmitUnconfirmedDeliveryHandler(options);
 
   mcp.registerTool(
-    "aiox_send_message",
+    "send",
     {
       description: AIOX_SEND_MESSAGE_DESCRIPTION,
       inputSchema: typedSendInputSchema,
@@ -409,7 +409,7 @@ export function createCodexIngressMcpServer(
   );
 
   mcp.registerTool(
-    "aiox_reply",
+    "reply",
     {
       description: AIOX_REPLY_DESCRIPTION,
       inputSchema: typedReplyInputSchema,

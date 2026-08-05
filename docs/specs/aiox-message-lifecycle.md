@@ -178,12 +178,12 @@ Current implementation caveats:
 
 - Every target-facing canonical envelope renders its own public
   `deliveryId` from `message_deliveries.id`. The daemon API returns a
-  per-target `DeliveryDto` for accepted sends and replies. Agent-facing MCP
-  results are tool-specific projections: Codex `aiox_send_message` and
-  `aiox_reply`, and Claude `send`, return `message_id` plus optional `dispatch`;
-  Claude `reply` returns optional `dispatch` only; Codex manual retransmit
-  returns `message_id` and no `dispatch`. None exposes per-target delivery IDs
-  or delivery status.
+  per-target `DeliveryDto` for accepted sends and replies. Both Codex and
+  Claude expose only `send` and `reply` as their public messaging MCP tools,
+  with uniform `{ ok: true, message_id, dispatch? }` success results; Codex
+  additionally exposes its own manual retransmit tool, which returns
+  `message_id` and no `dispatch`. None exposes per-target delivery IDs or
+  delivery status.
 - Reply ingress accepts `inReplyToDeliveryId`, checks original-target identity
   and the one-time reply right, consumes that right, and creates one
   source-only reply delivery. The persisted reply's `parentMessageId` is the
@@ -250,6 +250,12 @@ Manual retransmit is an operator-only direct attempt for an `unconfirmed`
 Codex delivery, requiring `confirmDuplicateRisk:true`, a ready runtime, and a
 bound thread. Immediate or late success makes the original `delivered`.
 Timeout/drop leaves it `unconfirmed` and records the attempt as unconfirmed.
+
+The committed G1-C target extends that same separately named recovery MCP tool,
+`aiox_retransmit_unconfirmed_delivery`, to Claude. It remains outside the
+common messaging `send`/`reply` pair and retains duplicate-risk confirmation;
+the Claude implementation must not claim Codex's JSON-RPC late-response
+reconciliation. [Status: Committed target]
 Immediate or late reject records an attempt-local rejected event while the
 original remains `unconfirmed`; it does not make the primary reject outcome or
 create a notification/reply right. Thus timeout/drop is a non-terminal
@@ -312,10 +318,10 @@ not current Tier 3 behavior.
 Source-visible daemon acceptance is not a remote answer. [Status: Current] A
 successful daemon API call atomically validates/authenticates/authorizes and
 stores the message plus all route-derived deliveries. The daemon API returns
-the per-target deliveries. MCP results remain tool-specific: Codex send/reply
-and Claude send can return `message_id` plus `dispatch`, while Claude reply
-returns `ok` plus `dispatch` without a `message_id`. Neither surface implies
-target read, runtime acceptance, work completion, or a remote reply.
+the per-target deliveries. The agent-facing MCP projection is narrower than
+the daemon API but uniform across `send`/`reply` on both adapters: each
+returns `ok` plus `message_id` plus optional `dispatch`. Neither surface
+implies target read, runtime acceptance, work completion, or a remote reply.
 
 Adapter가 target runtime의 실행 lifecycle을 관측할 수 있으면 `target_started`,
 `target_progress`, `target_finished`, `target_failed` 같은 progress evidence를 event로 surface할
@@ -339,13 +345,13 @@ The daemon API current result is transport-independent at its boundary: an
 accepted send returns its `messageId` and per-target deliveries, and an
 accepted reply returns its new `messageId` and one reply delivery. Rejections
 return typed `reason` values. The agent-facing MCP projection is intentionally
-narrower and tool-specific: Codex send/reply and Claude send return
-`message_id` plus optional `dispatch`; Claude reply returns optional `dispatch`;
-Codex manual retransmit returns `message_id` without `dispatch`. None exposes
-per-target delivery ID/status observability. It does not change the canonical
-envelope or authorization contract. Lifecycle is the public code/meaning owner;
-G1-B canonical cutover creates the shared daemon/MCP/CLI registry source, and
-G1-C adds reliability-specific entries.
+narrower than the daemon API but uniform across adapters: Codex and Claude
+`send`/`reply` all return `message_id` plus optional `dispatch`. Codex manual
+retransmit returns `message_id` without `dispatch`. None exposes per-target
+delivery ID/status observability. It does not change the canonical envelope or
+authorization contract. Lifecycle is the public code/meaning owner; G1-B
+canonical cutover creates the shared daemon/MCP/CLI registry source, and G1-C
+adds reliability-specific entries.
 
 - target availability를 모르면 기본은 queue다. 명시적 policy만 reject로 바꿀 수 있다.
 - fan-out aggregate terminal state는 v1에 만들지 않고 target별 delivery를 authoritative하게

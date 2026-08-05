@@ -693,7 +693,10 @@ describe("Claude channel MCP handlers", () => {
       content: { text: "ack" },
     } as never);
 
-    expect(result.structuredContent).toMatchObject({ ok: true });
+    expect(result.structuredContent).toMatchObject({
+      ok: true,
+      message_id: "message-test",
+    });
     expect(calls).toEqual([
       {
         method: "receiveClaudeChannelReply",
@@ -750,6 +753,7 @@ describe("Claude channel MCP handlers", () => {
 
     expect(result.structuredContent).toEqual({
       ok: true,
+      message_id: "message-test",
       dispatch: {
         delivered: 0,
         deferred: [

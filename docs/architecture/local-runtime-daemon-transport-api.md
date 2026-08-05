@@ -75,11 +75,10 @@ transport; they are returned as `{ ok:false, reason }` results.
 
 The daemon API's accepted send/reply response contains per-target
 `DeliveryDto` values (including public `id`/delivery ID and status). The
-agent-facing MCP projection is tool-specific rather than a shared
-`message_id`/`dispatch` contract: Codex send/reply and Claude send return
-`message_id` plus optional `dispatch`; Claude reply returns optional `dispatch`;
-Codex manual retransmit returns `message_id` without `dispatch`. None is a
-delivery-status observability API.
+agent-facing MCP projection is narrower but uniform across adapters: Codex
+and Claude `send`/`reply` all return `message_id` plus optional `dispatch`.
+Codex's separate manual retransmit tool returns `message_id` without
+`dispatch`. None is a delivery-status observability API.
 
 | Method | Mutates | Emits | Typed errors | Cite ([[src/daemon/state.ts]]) |
 |---|---|---|---|---|

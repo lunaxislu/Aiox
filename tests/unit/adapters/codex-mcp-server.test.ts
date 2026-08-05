@@ -96,11 +96,13 @@ describe("codex MCP server — handlers", () => {
       "Use outcomeForDeliveryId only to correlate the outcome it reports",
     );
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain(
-      "aiox_reply(inReplyToDeliveryId, intent, replyExpected, content)",
+      "reply(inReplyToDeliveryId, intent, replyExpected, content)",
     );
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain(
-      "aiox_send_message(type, intent, replyExpected, content)",
+      "send(type, intent, replyExpected, content)",
     );
+    expect(CODEX_INGRESS_INSTRUCTIONS).not.toContain("aiox_send_message");
+    expect(CODEX_INGRESS_INSTRUCTIONS).not.toContain("aiox_reply(");
     expect(CODEX_INGRESS_INSTRUCTIONS).not.toContain("parent_message_id");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("Language Policy");
     expect(CODEX_INGRESS_INSTRUCTIONS).toContain("User-Requested Collaboration");
@@ -443,6 +445,28 @@ describe("codex MCP server — factory", () => {
 
     expect(toolNames).toContain("aiox_retransmit_unconfirmed_delivery");
     expect(toolNames).not.toContain("aiox_archive_unconfirmed_delivery");
+  });
+
+  it("registers the common send/reply tool names, no legacy alias, retransmit retained", () => {
+    const mcp = createCodexIngressMcpServer({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () => fakeDaemonClient(),
+    });
+
+    const toolNames = Object.keys(
+      (mcp as unknown as { _registeredTools: Record<string, unknown> })._registeredTools,
+    );
+
+    expect(toolNames).toContain("send");
+    expect(toolNames).toContain("reply");
+    expect(toolNames).toContain("aiox_retransmit_unconfirmed_delivery");
+    expect(toolNames).not.toContain("aiox_send_message");
+    expect(toolNames).not.toContain("aiox_reply");
+    expect(toolNames.sort()).toEqual(
+      ["aiox_retransmit_unconfirmed_delivery", "reply", "send"].sort(),
+    );
   });
 
   it("accepts the non-error unconfirmed retransmit structured result", () => {

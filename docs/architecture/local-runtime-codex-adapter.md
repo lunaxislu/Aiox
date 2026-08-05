@@ -240,13 +240,13 @@ File [[src/adapters/codex/mcp-server.ts]]. The Step 13 ingress provenance is
 preserved in `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.4; current behavior is
 owned here.
 
-**Tools**:
-- `aiox_send_message({type, intent, replyExpected, content})` → daemon
-  `receiveCodexMessage`.
-- `aiox_reply({inReplyToDeliveryId, intent, replyExpected, content})` → daemon
+**Tools**: Codex and Claude expose the same public messaging tool names.
+- `send({type, intent, replyExpected, content})` → daemon `receiveCodexMessage`.
+- `reply({inReplyToDeliveryId, intent, replyExpected, content})` → daemon
   `receiveCodexReply`.
 - `aiox_retransmit_unconfirmed_delivery({deliveryId, confirmDuplicateRisk:true})`
-  is the operator-only direct attempt; it never queues.
+  is a Codex-only operator direct attempt outside the common `send`/`reply`
+  contract; it never queues.
 
 These are current typed tools, not pre-G1 compatibility signatures. They map
 the daemon lifecycle request/result defined by [[docs/specs/aiox-message-lifecycle]]
@@ -319,7 +319,7 @@ sequenceDiagram
   participant D as daemon.state
   participant ClChan as Claude channel HTTP /send
 
-  Codex->>TUI: tool call aiox_send_message / aiox_reply
+  Codex->>TUI: tool call send / reply
   TUI->>AppSrv: MCP tools/call forward
   AppSrv->>MCP: stdio MCP tools/call
   MCP->>D: receiveCodexMessage / receiveCodexReply (unix socket)
