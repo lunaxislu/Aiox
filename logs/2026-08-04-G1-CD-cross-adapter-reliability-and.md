@@ -1,13 +1,14 @@
 ---
 topic: G1-C/D cross-adapter reliability and local trust boundary
-description: G1-C의 공통 MCP·invocation idempotency·Claude reliability 대칭과 G1-D의 local credential trust boundary를 계약·구현·검증한다.
+description: G1-C의 공통 MCP·Claude reliability 대칭과 G1-D의 local credential trust boundary를 계약·구현·검증한다.
 status: open
 ---
 
 ## Work Items
 
-- [>] W1 G1-C common MCP/reliability contract and G1-D credential-boundary decision/spike
-- [ ] W2 implement and verify the accepted G1-C cross-adapter contract
+- [x] W1 G1-C common MCP/reliability contract and G1-D credential-boundary decision/spike
+- [>] W2 implement and verify the common `send`/`reply` MCP contract
+- [ ] W5 implement Claude delivery reliability symmetry and manual recovery after W2 review
 - [ ] W3 implement and verify the accepted G1-D local trust boundary
 - [ ] W4 perform cross-adapter direct evidence, owner reconciliation, and package closeout review
 
@@ -46,13 +47,13 @@ status: open
 ## Workflow / Agent Plan
 
 - Phase: activation preflight -> provisional bootstrap -> discovery -> controlling synthesis -> contract review -> execution -> result review -> result promotion/Reconcile -> closeout.
-- Execution default: contract-first, then TDD implementation; W2 and W3 write scopes are fixed only after
-  W1 contract review.
+- Execution order: W2 common `send`/`reply` implementation -> independent result review -> W5 Claude delivery
+  symmetry/manual recovery -> W3 trust boundary -> W4 closeout.
 - Review anchors:
   - Contract review: before execution Act.
   - Result review: before candidate result promotion/Reconcile.
 - Risk gate / Independent reviewer:
-  - Required before accepting W2/W3 because the work changes public MCP contracts and a release trust boundary.
+  - Required before accepting W2, W5, or W3 because the work changes public MCP contracts or a release trust boundary.
 
 ## Task Index
 
@@ -60,6 +61,7 @@ status: open
 
 | W-id | Profile | Mode | Task record |
 | --- | --- | --- | --- |
+| W5 | Compact | inline | `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W5.md` |
 | W4 | Compact | inline | `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W4.md` |
 | W3 | Compact | inline | `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W3.md` |
 | W2 | Compact | inline | `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W2.md` |
@@ -74,7 +76,7 @@ status: open
   - W8 Claude scope/reconnect result is committed: effective Local/User/Project registration and
     session-scoped replacement-child registration work in direct TUI evidence.
 - Evidence gaps:
-  - Common `send`/`reply` tool names and invocation-key replay are not implemented on either adapter.
+  - Common `send`/`reply` tool names and uniform reply results are not implemented on both adapters.
   - Claude timeout/response-loss currently resolves as `failed`, not `unconfirmed`; Claude manual recovery
     and end-to-end failure evidence are absent.
   - Claude push and channel-to-daemon message/reply auth, Codex argv secret exposure, explicit runtime
@@ -84,15 +86,13 @@ status: open
 
 - Common MCP tool rename affects Codex and Claude MCP servers, tool instructions, schemas, fixtures, and
   agent-facing documentation together; no compatibility alias is allowed without explicit approval.
-- Invocation idempotency affects MCP input/output schemas, daemon API/state transaction boundaries,
-  persistence/retention, and message/reply-right creation tests.
 - G1-D credential changes affect launcher environment/config, channel HTTP headers, daemon socket requests,
   runtime paths, redaction/logging, and negative integration tests.
 
 ## Decision Candidates
 
-- G1-C: common `send`/`reply` naming and schema; invocation-key field, replay retention and mismatch error;
-  Claude HTTP failure classifier; Claude `unconfirmed` manual-recovery surface.
+- G1-C: common `send`/`reply` naming/schema and uniform reply result; Claude HTTP failure classifier and
+  `unconfirmed` manual-recovery surface.
 - G1-D: whether the Claude session credential is reused or purpose-separated for registration, daemon ingress,
   and `/send` push; a Codex argv-safe secret-delivery mechanism subject to verified CLI support.
 
@@ -102,8 +102,8 @@ status: open
 - Required:
   - RED/GREEN tests for each public contract and negative authorization path; `pnpm typecheck`; focused
     adapter/daemon suites; `git diff --check`.
-  - Direct Codex and Claude TUI evidence for accepted delivery, same-key replay, conflict, and the selected
-    Claude failure/recovery behavior.
+  - Direct Codex and Claude TUI evidence for common `send`/`reply` availability and the selected Claude
+    failure/recovery behavior.
   - Credential scan proving raw secrets are absent from argv, logs, events, errors, and rollback residue;
     permission checks for runtime directories and daemon sockets.
 - Recommended:
@@ -141,3 +141,71 @@ status: open
   selected trust model and negative evidence. W4 consumes both results for direct evidence and closeout.
 - **Next:** W1 only. Do not begin production code or tool-name removal until the contract review records the
   public fields, conflict behavior, Claude failure classifier, recovery posture, and credential directions.
+
+### 2026-08-04 · W1 contract review and acceptance
+
+- **Confirmed facts:** Codex currently exposes `aiox_send_message`/`aiox_reply`, while Claude exposes `send`/`reply`;
+  Claude reply also omits the `message_id` returned by both Codex operations and Claude send. Neither path accepts an
+  invocation key or replays an accepted source operation. Claude maps timeout/response loss to terminal `failed`,
+  although the lifecycle target requires post-write ambiguity to remain `unconfirmed`. Claude registration is
+  session-scoped and must remain reusable for a replacement child; its source ingress and `/send` push are currently
+  unauthenticated. Codex currently puts its raw agent token in app-server argv, but the documented stdio MCP
+  `env_vars` configuration can forward a named environment variable without placing its value in `-c` argv.
+- **Accepted G1-C contract:** Both adapters will expose only `send` and `reply`; no legacy tool alias. Both operations
+  require `invocationKey`, an opaque non-empty string, and return `{ ok: true, message_id, dispatch? }`. The key is
+  scoped to the authenticated source across both operations. The daemon persists an immutable fingerprint of operation,
+  source identity, typed payload, and reply correlation (when present): same key plus same fingerprint replays the
+  original accepted projection with no new message, delivery, event, or reply right; a changed fingerprint returns
+  stable `invocation_key_mismatch` with no side effect. Retention is process-lifetime only: clear the ledger at daemon
+  start rather than imply restart/durable replay.
+- **Accepted Claude reliability contract:** 2xx is `delivered`; a provable pre-write failure may enter the existing
+  bounded queue/retry path; an explicit non-accepting HTTP response is `failed`; timeout, abort, or any failure whose
+  pre-write nature cannot be proven is `unconfirmed` with no automatic retry. Claude receives the same operator-only,
+  confirmation-gated direct retransmit surface as Codex; an ambiguous retransmit remains `unconfirmed`. This does not
+  claim HTTP late-response reconciliation or automatic ack/completed behavior.
+- **Accepted G1-D contract:** Keep the existing session-scoped Claude registration credential for replacement-child
+  rebind, and purpose-separate it from a Claude-to-daemon ingress credential and daemon-to-Claude push credential.
+  Each is verified at its boundary with constant-time comparison; ingress also binds the registered, connected agent.
+  Treat the UDS as untrusted: expose only an explicit authenticated method allowlist, keeping lifecycle/event authoring
+  daemon-only. Mint credentials atomically at attach; revoke all on detach, rollback, and stop; redact all values; set
+  owner-only runtime-directory/socket permissions. Codex app-server receives secret values through its spawned process
+  environment and forwards only named variables via MCP `env_vars`; inline config contains no raw secret.
+- **Inference / residual risk:** environment forwarding removes argv exposure but does not protect secrets from a
+  same-UID process able to inspect another process environment. W3 must state and test that local threat boundary.
+- **Result disposition:** W1 Attempt 1 accepted by controlling review. W2 is now the next Work Item, but has not begun
+  because this user turn is limited to W1. W3 remains dependent on this accepted credential boundary.
+
+### 2026-08-05 · invocation-key issuer clarification
+
+- **Accepted clarification:** `invocationKey` is created by the source agent (or a source-side MCP client wrapper acting
+  for that agent) once per logical `send` or `reply` operation. The caller reuses exactly that value for a retry caused
+  by a timeout, transport retry, or lost tool result; it creates a new value only for a new intended operation. The
+  daemon never generates or substitutes the key because it cannot distinguish a retry from a new request after the
+  caller has lost the result. This is an API field, not a target-generated ID or the daemon's delivery
+  `idempotencyKey`.
+
+### 2026-08-05 · user objection: invocation idempotency versus delivery recovery
+
+- **User position:** invocation-key input may be unnecessary; Claude should instead gain the Codex-like fallback for
+  timeout and related delivery failures.
+- **Confirmed distinction:** Codex's current bounded retry, `unconfirmed`, late-response correlation and
+  confirmation-gated manual retransmit act after the daemon has created a message/delivery and is attempting target
+  delivery. Invocation idempotency instead governs a source-to-daemon `send`/`reply` re-call after the caller loses
+  the accepted result; without it, that re-call creates a new message, delivery and possibly reply right. Adding the
+  former to Claude therefore does not itself implement the latter.
+- **Status:** no contract change made. The roadmap and lifecycle spec currently require both cross-adapter observable
+  delivery semantics and ingress invocation idempotency. Removing the latter would be a roadmap/spec/plan scope
+  decision requiring explicit user approval and owner reconciliation, not an implementation simplification.
+
+### 2026-08-05 · W1 contract correction and W2/W5 sequencing
+
+- **User decision:** remove `invocationKey`, replay, fingerprint, mismatch and ledger requirements from this package.
+  The accepted G1-C work is (1) make Codex and Claude public MCP tools uniformly `send` and `reply`, then review that
+  candidate independently; (2) only after acceptance, implement Claude delivery behavior symmetric to the accepted
+  Codex Tier 3 path: daemon-created message/delivery, `unconfirmed` for timeout/drop ambiguity, and
+  confirmation-gated manual retransmit. No automatic reinjection, ack, or `completed` claim is added.
+- **Work decomposition:** W2 owns only public MCP naming/schema/result uniformity. W5 owns Claude injector/state/API
+  reliability and manual recovery, and cannot begin before W2 result review accepts its candidate. W3 and W4 retain
+  their prior G1-D and closeout responsibilities.
+- **Owner reconciliation:** roadmap and lifecycle spec now defer source-operation invocation idempotency to a later
+  SQLite-backed durable-state decision. This package does not define that future contract.

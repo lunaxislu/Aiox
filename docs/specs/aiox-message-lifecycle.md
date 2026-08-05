@@ -91,9 +91,9 @@ public messages or deliveries. Each source handler calls the module exactly
 once per invocation and passes the resulting `messageId` unchanged to one
 daemon call. A user MCP tool re-invocation is a new invocation and gets a new
 logical message ID. Handler-to-daemon automatic retry and tool re-invocation
-dedupe are not governed by this `messageId` rule; invocation-level idempotency
-is a separate contract owned by the G1-C common workstream in §4.3. This
-`messageId` rule is
+dedupe are not governed by this `messageId` rule. Source-operation replay is
+deferred until the durable SQLite-state decision; it is not a current G1-C
+contract. This `messageId` rule is
 not the daemon delivery `idempotencyKey`; the daemon continues to
 derive and persist each delivery `idempotencyKey` as
 `${messageId}:${targetAgentId}`.
@@ -272,17 +272,15 @@ Claude HTTP 4xx/5xx/timeout의 정확한 상태 매핑과 Claude 쪽 수동 복�
 만족하는 범위 안에서 G1-C implementation decision으로 남는다. 이 문서는 특정 HTTP status의
 의미를 미리 규정하지 않는다.
 
-**Committed target — G1-C invocation idempotency.** 같은 invocation key를 가진 같은 요청의
-재시도는 새 message, 새 delivery 또는 새 reply right를 만들지 않고 최초 accepted result를
-반환해야 한다. 이는 Codex와 Claude 공통 요구이며, 아래 delivery-creation `idempotencyKey`나
-Codex 내부 `requestId`와 같은 것이 아니다. 현재는 두 adapter의 source handler가 invocation
-마다 새 `messageId`를 발급하므로 invocation key 자체가 없고, 재사용된 delivery key는 최초
-결과 재생이 아니라 typed rejection으로 거절된다. request의 실제 field 이름, key retention
-범위, 같은 key에 다른 요청이 온 경우의 mismatch 처리는 G1-C implementation decision이다.
+**Open/deferred — source-operation invocation idempotency.** 현재 MCP tool 재호출은 새 logical
+message를 만든다. 동일 source operation의 accepted result를 replay해야 하는지, 필요하다면 public
+field·retention·mismatch 규칙을 어떻게 둘지는 SQLite-backed durable state와 restart behavior를
+검토할 때 결정한다. 이것은 delivery-creation `idempotencyKey`나 Codex 내부 `requestId`와 같은
+것이 아니다.
 
 Evidence:
 
-- invocation마다 새 public message ID 발급
+- tool invocation마다 새 public message ID 발급
   - [[src/adapters/codex/mcp-server.ts]]
     - `src/adapters/codex/mcp-server.ts:247`
     - `src/adapters/codex/mcp-server.ts:291`

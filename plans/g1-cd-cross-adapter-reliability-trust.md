@@ -2,14 +2,13 @@
 
 ## Objective
 
-G1-C의 Codex·Claude 공통 MCP 표면, invocation idempotency 및 delivery reliability를 닫고,
+G1-C의 Codex·Claude 공통 MCP 표면 및 delivery reliability를 닫고,
 G1-D의 local credential·route authorization·runtime permission trust boundary를 release-grade
 negative evidence로 검증한다.
 
 ## Completion condition
 
-- Codex와 Claude가 공통 `send`/`reply` MCP contract, invocation replay/conflict, 그리고
-  관찰 가능한 delivery 상태 의미를 제공한다.
+- Codex와 Claude가 공통 `send`/`reply` MCP contract와 관찰 가능한 delivery 상태 의미를 제공한다.
 - Claude의 pre-write failure, acceptance ambiguity, explicit rejection이 G1-C 계약에 따라
   분류되고 직접 통합 증거가 있다.
 - Codex·Claude 모든 ingress/push와 runtime socket/secret surface가 G1-D의 선택된 trust model과
@@ -19,8 +18,8 @@ negative evidence로 검증한다.
 
 ## Stages
 
-- [>] Contract and credential-boundary decision/spike -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [ ] G1-C cross-adapter reliability implementation and evidence
+- [x] Contract and credential-boundary decision/spike -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [>] G1-C cross-adapter reliability implementation and evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
 - [ ] G1-D local trust-boundary implementation and negative evidence
 - [ ] Owner reconciliation and release-gate closeout
 
