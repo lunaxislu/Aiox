@@ -120,7 +120,7 @@ describe("codex MCP server — handlers", () => {
     expect(AIOX_SEND_MESSAGE_DESCRIPTION).toContain("expected output");
   });
 
-  it("aiox_send_message maps a typed send request through receiveCodexMessage", async () => {
+  it("send maps a typed send request through receiveCodexMessage", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createSendMessageHandler({
       agentName: "impl",
@@ -173,7 +173,7 @@ describe("codex MCP server — handlers", () => {
     issue.mockReturnValue("message-test");
   });
 
-  it("aiox_send_message exposes delivered daemon dispatch in structured content", async () => {
+  it("send exposes delivered daemon dispatch in structured content", async () => {
     const dispatch = deliveredDispatch();
     const handler = createSendMessageHandler({
       agentName: "impl",
@@ -195,7 +195,7 @@ describe("codex MCP server — handlers", () => {
     });
   });
 
-  it("aiox_send_message exposes deferred daemon dispatch in structured content", async () => {
+  it("send exposes deferred daemon dispatch in structured content", async () => {
     const dispatch = deferredBindingDispatch();
     const handler = createSendMessageHandler({
       agentName: "impl",
@@ -217,7 +217,7 @@ describe("codex MCP server — handlers", () => {
     });
   });
 
-  it("aiox_reply maps a typed reply request through receiveCodexReply", async () => {
+  it("reply maps a typed reply request through receiveCodexReply", async () => {
     const calls: { method: string; args: unknown }[] = [];
     const handler = createReplyHandler({
       agentName: "impl",
@@ -270,7 +270,7 @@ describe("codex MCP server — handlers", () => {
     issue.mockReturnValue("message-test");
   });
 
-  it("aiox_reply exposes delivered daemon dispatch in structured content", async () => {
+  it("reply exposes delivered daemon dispatch in structured content", async () => {
     const dispatch = deliveredDispatch();
     const handler = createReplyHandler({
       agentName: "impl",
@@ -292,7 +292,7 @@ describe("codex MCP server — handlers", () => {
     });
   });
 
-  it("aiox_reply exposes deferred daemon dispatch in structured content", async () => {
+  it("reply exposes deferred daemon dispatch in structured content", async () => {
     const dispatch = deferredBindingDispatch();
     const handler = createReplyHandler({
       agentName: "impl",
@@ -341,7 +341,7 @@ describe("codex MCP server — handlers", () => {
     "correlation_mismatch",
     "reply_not_expected",
     "duplicate_reply",
-  ] as const)("aiox_reply relays %s as its MCP typed error", async (reason) => {
+  ] as const)("reply relays %s as its MCP typed error", async (reason) => {
     const handler = createReplyHandler({
       agentName: "impl",
       agentToken: "token-1",
