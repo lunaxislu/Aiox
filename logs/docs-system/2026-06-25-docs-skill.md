@@ -1,7 +1,7 @@
 ---
 topic: docs-skill 도입 검토 및 설계
 description: 문서화 구조 및 품질 검토용 portable docs-skill의 역할, 범위, 기존 document-structure-review 스킬과의 관계 정의
-status: open
+status: superseded
 ---
 
 ## Work Items
@@ -2907,3 +2907,12 @@ Next: docs-skill 설계 open owner 로그로 유지. 추가 설계 변경·검�
 
 - 국소 패치 bias 쟁점은 현재 no-change로 종결한다. `SKILL.md` step 4·6, Change Gates, review-patterns, EXAMPLE에는 추가 수정하지 않는다.
 - 향후 실제로 국소 패치 편향이 반복 오판을 낳은 사례가 관측되면, step 4 문장 추가보다 먼저 step 2 다축 라우팅 강화, Content Or Identity Change gate 보강, 또는 실제 사례를 추상화한 EXAMPLE 추가 중 무엇이 owner에 맞는지 다시 비교한다.
+
+## 2026-08-10 · 별도 프로젝트로 이관 — superseded
+
+사용자 지시에 따라 이 로그의 후속 작업은 별도 프로젝트로 분리해 진행한다. 이 저장소에서는 더 이상 재개하지 않는다.
+
+- 대체 대상: 별도 프로젝트(이 저장소 밖; 경로 미지정).
+- 대체 이유: 이 로그 전체의 설계·검토 수명을 별도 프로젝트가 이어받는다.
+- 미완료 Work Items: 없음. 이 로그에는 local actionable Work Item과 next pointer가 없었다.
+- 상태 전환: `status: superseded`.

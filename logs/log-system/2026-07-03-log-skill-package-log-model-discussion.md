@@ -1,7 +1,7 @@
 ---
 topic: portable package-log model discussion
 description: portable package-log 모델의 정체성·activation·상태 표면·agent topology와 base log workflow specialization을 수렴하고 승인된 후속 반영을 검증한다
-status: open
+status: superseded
 ---
 
 ## Work Items
@@ -9,7 +9,7 @@ status: open
 - [x] W1 기존 open portableization 로그와 이 로그의 관계·처분·합성 방식을 결정하고, 중복 없이 이어갈 단일 실행 경계를 확정한다
 - [x] W2 portable package-log 최종 통합 초안 전체와 physical folder/file layout 경계를 Claude 독립 검토에 부쳐 gap·conflict·prompt 누락을 판정하고 사용자 질의응답으로 최종 수렴한다
 - [x] W3 수렴안의 owner 파일, repo integration 잔류 범위, 변경하지 않을 범위와 검증 방법을 제시해 사용자 승인을 받는다
-- [>] W4 승인된 범위만 반영하고 owner·inbound/outbound reference·예시·검증 경로를 확인한다
+- [→] W4 승인된 범위만 반영하고 owner·inbound/outbound reference·예시·검증 경로를 확인한다 — transferred: 별도 프로젝트 (이 저장소 밖; 경로 미지정) — 사용자 지시에 따라 이 로그 전체 수명을 별도 프로젝트가 이어받음
 
 ## Required Context
 
@@ -1385,3 +1385,13 @@ logs/
 - W4 marker 완료와 로그 `decided` 전환은 **현재 불가**: 통합 Markdown 검사 실패의 disposition과 사용자 승인이 남아 있다. W4 `[>]`와 frontmatter `status: open`은 유지했다.
 - 이번 검증 세션에서 repo에 새로 수정한 파일은 이 active 로그 하나이며, 이 entry만 append했다. 세션 시작부터 dirty였던 네 owner 변경, 다른 수정 로그와 untracked 로그를 되돌리거나 덮어쓰지 않았다.
 - 수정하지 않은 범위: W4 네 owner 본문, 모든 금지 파일, 기존 Workspace Reset/legacy 자료, `maintenance.md`, scripts/tool/onramp, W4 marker와 status.
+
+## 2026-08-10 · 별도 프로젝트로 이관 — superseded
+
+사용자 지시에 따라 이 로그의 후속 작업은 별도 프로젝트로 분리해 진행한다. 이 저장소에서는 더 이상 재개하지 않는다.
+
+- 대체 대상: 별도 프로젝트(이 저장소 밖; 경로 미지정).
+- 대체 이유: 이 로그 전체의 portable package-log 모델 작업 수명을 별도 프로젝트가 이어받는다.
+- 미완료 Work Items: W4는 별도 프로젝트로 이관했다.
+- next pointer: W4의 `[>]`를 `[→]`로 해소했다.
+- 상태 전환: `status: superseded`.
