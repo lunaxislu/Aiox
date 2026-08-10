@@ -29,7 +29,8 @@ export type AdapterInjectFailureReason =
   | "codex_resume_failed"
   | "codex_binding_uncertain"
   | "claude_channel_unavailable"
-  | "claude_channel_push_failed";
+  | "claude_channel_push_failed"
+  | "claude_channel_push_unconfirmed";
 
 export type AdapterInjectDeferredReason =
   | "target_adapter_not_registered"

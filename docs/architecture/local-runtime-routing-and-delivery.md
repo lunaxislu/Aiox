@@ -127,7 +127,7 @@ stateDiagram-v2
     queued --> queued: pre-inject deferred /\n target_binding_unconfirmed / target_runtime_unavailable /\n target_adapter_not_registered
     queued --> failed: target_agent_not_found
     queued --> failed: TTL expiry / delivery_expired
-    delivering --> delivered: matching acceptance response
+    delivering --> delivered: adapter-specific acceptance
     delivering --> unconfirmed: post-write timeout / response loss / WS drop
     unconfirmed --> delivered: matching late success
     delivering --> failed: matching explicit reject
@@ -142,6 +142,13 @@ Each persisted status transition appends `delivery_status_changed` via helper
 without first writing `delivering`. Only conclusively pre-write failures enter
 bounded retry/queued flush; `unconfirmed` never re-enters queue or reconnect
 flush automatically.
+
+`delivered` has one cross-adapter meaning: adapter/transport acceptance, never
+target receipt, model read, acknowledgement, or work completion. The evidence
+is transport-specific: Codex has a matching `turn/start` JSON-RPC success;
+Claude has the channel-server notification transport write, whose downstream
+channel delivery can be silently dropped by Claude Code. See
+[[docs/specs/aiox-message-lifecycle]] §4.3 for the external lifecycle contract.
 
 The as-built pre-write policy uses retry delays of 250 ms, 1 s, and 4 s
 (maximum three retries), target queue capacity 32, and queued TTL 5 minutes.
@@ -171,17 +178,70 @@ The public `deliveryId` is the target-specific `message_deliveries.id` and the
 canonical envelope is rendered per delivery. Correlated replies use
 `inReplyToDeliveryId`, a persisted one-reply right, authenticated source
 identity, and source-only reply creation; `parentMessageId` remains storage
-provenance, not the reply-authorization authority. Daemon-originated rejection
-notifications are distinct messages with `outcomeForDeliveryId`: they do not
-reuse `inReplyToDeliveryId`, grant no reply right, and have their own delivery.
-The state transaction makes an original explicit reject, its event, and its
-single notification relation atomic; dispatch follows commit.
+provenance, not the reply-authorization authority. Daemon-originated outcome
+notifications (`delivery_unconfirmed`, `delivery_target_rejected`) are
+distinct messages with `outcomeForDeliveryId`: they do not reuse
+`inReplyToDeliveryId`, grant no reply right, and have their own delivery.
+
+The original delivery's status transition and its outcome-notification
+dedupe are independently gated. The reject path (`recordPrimaryTargetRejectOutcome`)
+commits the transition — and its `delivery_status_changed`/`delivery_target_rejected`
+events — unconditionally in a first transaction, then independently attempts
+the outcome notification in a separate, second transaction; the transition is
+never conditioned on the notification attempt's outcome. The unconfirmed
+producer (`recordPrimaryUnconfirmedOutcome`) is called after its caller has
+already committed the `unconfirmed` transition separately, so its own
+transaction only ever wraps the notification attempt, never a status
+mutation. In both cases the outcome-notification attempt itself is gated only
+by `(original delivery, outcome type)` dedupe: a dedupe-suppressed attempt
+(already-recorded for that type, or the failing delivery being a notification
+itself) returns without creating a notification — a normal early return, not
+a thrown error — and never touches the already-committed transition.
+
+A DB exception thrown while persisting the notification (e.g. the
+`delivery_outcome_notifications` insert) rolls back only that second
+transaction's own writes; the reject core catches it and returns the same
+`null` used for dedupe suppression, so neither the primary dispatch path nor
+the synchronous Codex late-response WebSocket observer that calls it (no
+promise wrapper to catch a throw) ever sees the exception. This isolation is
+currently silent: no diagnostic log or event records a notification-persistence
+failure, so the source agent simply never receives that one outcome
+notification. The original delivery's transition, its events, and ordinary
+delivery/event observability are unaffected either way. This does not claim
+retry, durable queuing, or eventual notification delivery.
+
+`delivery_outcome_notifications` keys on that composite pair — not on the
+original delivery alone — so the same original delivery can independently
+receive one `delivery_unconfirmed` notification and, later, one distinct
+`delivery_target_rejected` notification; neither suppresses the other, and
+notification-delivery failure surfaces only through the ordinary
+delivery/event path, never as another outcome. WHY: [[docs/decisions/delivery-outcome-notification-dedupe-by-type]].
 
 Primary and manual late rejects are intentionally different. A primary
 correlated reject may change the original from `delivering` or `unconfirmed`
-to `failed` and emits `delivery_target_rejected` plus its source outcome.
-A manual-retransmit reject emits only attempt-local
-`delivery_manual_retransmit_rejected`; the original remains `unconfirmed`.
+to `failed` and emits `delivery_target_rejected` plus its source outcome; a
+primary post-write ambiguity leaves the original `unconfirmed` and emits its
+own `delivery_unconfirmed` source outcome. Both outcome kinds are produced
+symmetrically for Codex and Claude targets. A manual-retransmit reject emits
+only attempt-local `delivery_manual_retransmit_rejected`; the original
+remains `unconfirmed` and no outcome notification is created for a manual
+attempt.
+
+Evidence:
+
+- Composite dedupe schema and repository
+  - [[src/store/schema.ts]]
+    - `applyMigration5`
+  - [[src/store/repositories/deliveries.ts]]
+    - `findOutcomeNotificationByOriginalDeliveryIdAndType`, `createOutcomeNotification`
+- Transition/notification independence and Codex/Claude producer symmetry
+  - [[src/daemon/state.ts]]
+    - `recordPrimaryOutcomeNotification`, `recordPrimaryTargetRejectOutcome`,
+      `recordPrimaryUnconfirmedOutcome`
+  - [[tests/unit/daemon/codex-ingress.test.ts]]
+    - `tests/unit/daemon/codex-ingress.test.ts:2687-2792`
+  - [[tests/unit/daemon/api.test.ts]]
+    - `describe("primary delivery source outcome notifications — cross-adapter symmetry")`
 
 ### 8.6 Pair Reservation + Routes
 

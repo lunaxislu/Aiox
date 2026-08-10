@@ -77,8 +77,8 @@ The daemon API's accepted send/reply response contains per-target
 `DeliveryDto` values (including public `id`/delivery ID and status). The
 agent-facing MCP projection is narrower but uniform across adapters: Codex
 and Claude `send`/`reply` all return `message_id` plus optional `dispatch`.
-Codex's separate manual retransmit tool returns `message_id` without
-`dispatch`. None is a delivery-status observability API.
+Both adapters' separate manual retransmit tool, `aiox_retransmit_unconfirmed_delivery`,
+returns `message_id` without `dispatch`. None is a delivery-status observability API.
 
 | Method | Mutates | Emits | Typed errors | Cite ([[src/daemon/state.ts]]) |
 |---|---|---|---|---|
@@ -99,6 +99,6 @@ Codex's separate manual retransmit tool returns `message_id` without
 | `disconnectCodexChannel` | removes runtime + pending token | `codex_channel_disconnected` (if had runtime) | none | `disconnectCodexChannel` |
 | `receiveCodexMessage` | authz + sendMessage(`request.type ?? "question"`, typed `question\|instruction`) + dispatch to claude | `codex_ingress_message_received` + downstream | `codex_ingress_unauthorized` + sendMessage errors | `receiveCodexMessage` → `authorizeCodexIngress` → `runSendMessageTransaction` |
 | `receiveCodexReply` | authz + typed `inReplyToDeliveryId` reply authorization + source-only dispatch | `codex_ingress_reply_received` + downstream | `codex_ingress_unauthorized`; `unknown_delivery`, `correlation_mismatch`, `reply_not_expected`, `duplicate_reply`; send errors | `receiveCodexReply` → `authorizeCodexIngress` → `runReplyTransaction` |
-| `retransmitUnconfirmedDelivery` | no queued write; direct operator attempt for one unconfirmed Codex delivery | `delivery_manual_retransmit`; immediate/late delivered or rejected event is terminal, while timeout/drop records non-terminal `_unconfirmed` | `delivery_not_found`, `delivery_not_unconfirmed`, `duplicate_risk_confirmation_required`, `manual_retransmit_unconfirmed`, `manual_retransmit_rejected`, `manual_retransmit_failed` | `retransmitUnconfirmedDelivery` |
+| `retransmitUnconfirmedDelivery` | no queued write; direct operator attempt for one unconfirmed Codex or Claude delivery | `delivery_manual_retransmit`; immediate delivered or rejected event is terminal (Codex additionally resolves a late delivered/rejected via its retained JSON-RPC `requestId` correlation; Claude has no late path and resolves immediately only), while timeout/drop records non-terminal `_unconfirmed` | `delivery_not_found`, `delivery_not_unconfirmed`, `duplicate_risk_confirmation_required`, `manual_retransmit_unconfirmed`, `manual_retransmit_rejected`, `manual_retransmit_failed` | `retransmitUnconfirmedDelivery` |
 | `status` | none | none | none | `status` |
 | `stop` | `markAllConnectedDisconnected` unless `daemonOnly`; clears channel maps | — | none | `stop` |

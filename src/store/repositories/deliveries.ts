@@ -4,6 +4,7 @@ import {
   messageDeliveryStatuses,
   type MessageDeliveryStatus,
 } from "../../core/deliveries.js";
+import type { DeliveryOutcomeType } from "../../core/outcomes.js";
 
 export interface StoredDelivery {
   id: string;
@@ -18,6 +19,7 @@ export interface StoredDelivery {
 
 export interface StoredDeliveryOutcomeNotification {
   originalDeliveryId: string;
+  outcomeType: DeliveryOutcomeType;
   notificationMessageId: string;
   notificationDeliveryId: string;
   createdAt: string;
@@ -71,8 +73,9 @@ export interface DeliveryRepository {
   recoverAfterRestart(input: RecoverDeliveriesAfterRestartInput): number;
   updateStatus(input: UpdateDeliveryStatusInput): StoredDelivery | null;
   createOutcomeNotification(input: StoredDeliveryOutcomeNotification): StoredDeliveryOutcomeNotification;
-  findOutcomeNotificationByOriginalDeliveryId(
+  findOutcomeNotificationByOriginalDeliveryIdAndType(
     originalDeliveryId: string,
+    outcomeType: DeliveryOutcomeType,
   ): StoredDeliveryOutcomeNotification | null;
   countByStatus(): Record<MessageDeliveryStatus, number>;
   list(): StoredDelivery[];
@@ -185,11 +188,13 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
         `
           insert into delivery_outcome_notifications (
             original_delivery_id,
+            outcome_type,
             notification_message_id,
             notification_delivery_id,
             created_at
           ) values (
             @originalDeliveryId,
+            @outcomeType,
             @notificationMessageId,
             @notificationDeliveryId,
             @createdAt
@@ -199,14 +204,15 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
       return input;
     },
 
-    findOutcomeNotificationByOriginalDeliveryId(originalDeliveryId) {
+    findOutcomeNotificationByOriginalDeliveryIdAndType(originalDeliveryId, outcomeType) {
       const row = db
         .prepare(
-          "select * from delivery_outcome_notifications where original_delivery_id = ?",
+          "select * from delivery_outcome_notifications where original_delivery_id = ? and outcome_type = ?",
         )
-        .get(originalDeliveryId) as
+        .get(originalDeliveryId, outcomeType) as
         | {
             original_delivery_id: string;
+            outcome_type: DeliveryOutcomeType;
             notification_message_id: string;
             notification_delivery_id: string;
             created_at: string;
@@ -215,6 +221,7 @@ export function createDeliveryRepository(db: Database): DeliveryRepository {
       return row
         ? {
             originalDeliveryId: row.original_delivery_id,
+            outcomeType: row.outcome_type,
             notificationMessageId: row.notification_message_id,
             notificationDeliveryId: row.notification_delivery_id,
             createdAt: row.created_at,

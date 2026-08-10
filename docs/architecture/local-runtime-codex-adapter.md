@@ -245,8 +245,9 @@ owned here.
 - `reply({inReplyToDeliveryId, intent, replyExpected, content})` → daemon
   `receiveCodexReply`.
 - `aiox_retransmit_unconfirmed_delivery({deliveryId, confirmDuplicateRisk:true})`
-  is a Codex-only operator direct attempt outside the common `send`/`reply`
-  contract; it never queues.
+  is a separate operator direct attempt outside the common `send`/`reply`
+  contract. Claude provides the same named recovery tool and schema; neither
+  adapter queues a manual retransmit.
 
 These are current typed tools, not pre-G1 compatibility signatures. They map
 the daemon lifecycle request/result defined by [[docs/specs/aiox-message-lifecycle]]

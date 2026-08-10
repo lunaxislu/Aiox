@@ -92,26 +92,28 @@ Evidence:
    from that env.
 6. Claude spawns the channel-server stdio child by resolving the registered
    static MCP entry.
-7. channel-server ([[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:560-605`):
+7. channel-server ([[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:655-700`):
    - `parseChannelServerEnv` fatal-exits if any required env is missing
      (`missing_env_*`, `channel-server.ts:560-569, 642-653`).
    - Creates an `McpServer` with capability `experimental: {"claude/channel":{}}`
      and `instructions: CLAUDE_CHANNEL_INSTRUCTIONS`
      (`channel-server.ts:280-321`).
-   - Registers typed MCP tools `send(type, intent, replyExpected, content)`
-     and `reply(inReplyToDeliveryId, intent, replyExpected, content)`
-     (`channel-server.ts:294-319`).
+   - Registers typed MCP tools `send(type, intent, replyExpected, content)`,
+     `reply(inReplyToDeliveryId, intent, replyExpected, content)`, and the
+     shared recovery tool
+     `aiox_retransmit_unconfirmed_delivery(deliveryId, confirmDuplicateRisk)`
+     (`channel-server.ts:323-366`).
    - Starts HTTP ingress on 127.0.0.1:0 (or
-     `AIOX_CLAUDE_CHANNEL_PORT`, `channel-server.ts:462-500`).
+     `AIOX_CLAUDE_CHANNEL_PORT`, `channel-server.ts:557-595`).
    - Calls `daemon.registerClaudeChannel({agentName, token, endpoint})`
-     (`channel-server.ts:513-547`).
+     (`channel-server.ts:608-642`).
 8. Daemon validates the session token and the endpoint
    (`parseLoopbackHttpEndpoint`: must be `http:` on loopback, path `/send`,
    non-empty port). On failure → `claude_channel_registration_failed` with
    `detail: "unknown_token"` or `"invalid_endpoint"` ([[src/daemon/state.ts]] —
    `registerClaudeChannel`). Channel-server
    `process.exit(1)` on registration failure ([[src/adapters/claude/channel-server.ts]] —
-   `src/adapters/claude/channel-server.ts:513-547`).
+   `src/adapters/claude/channel-server.ts:608-642`).
 9. CLI awaits Claude exit then calls
    `disconnectClaudeChannel({agentName})` ([[src/cli/invocation.ts]] —
    `src/cli/invocation.ts:217`; [[src/daemon/state.ts]] —
@@ -122,7 +124,7 @@ Evidence:
 
 ### 6.3 Claude → daemon Ingress (tool calls)
 
-Both `send` and `reply` tool handlers (`channel-server.ts:307-393`) create a
+All three tool handlers (`channel-server.ts:371-473`, `:475-517`) create a
 fresh `createDaemonSocketClient` per call and `close()` it `finally`.
 
 - `send(type, intent, replyExpected, content)` →
@@ -136,9 +138,22 @@ fresh `createDaemonSocketClient` per call and `close()` it `finally`.
   one-time right, and creates a source-only reply. The stored
   `parentMessageId` is the originating delivery ID; it is not a separate
   authoring or authorization correlation contract.
+- `aiox_retransmit_unconfirmed_delivery(deliveryId, confirmDuplicateRisk:true)` →
+  `daemon.retransmitUnconfirmedDelivery({deliveryId, confirmDuplicateRisk})`
+  (`channel-server.ts:475-517`). This is a separate operator-only recovery
+  tool outside the `send`/`reply` pair, shared by name and schema with Codex
+  ([[docs/architecture/local-runtime-codex-adapter]] §7.8); it requires an
+  explicit `confirmDuplicateRisk:true` because a retransmit risks delivering a
+  duplicate message. Unlike Codex's JSON-RPC-correlated retransmit, Claude's
+  attempt resolves immediately from the same `injectClaudeChannel` fetch
+  outcome used for a primary push: `delivered` on 2xx, a non-error
+  `manual_retransmit_unconfirmed` structured result on ambiguous failure, or
+  an MCP error result naming `manual_retransmit_rejected` /
+  `manual_retransmit_failed`. There is no late-response resolution
+  ([[src/daemon/state.ts]] — `src/daemon/state.ts:1867-1956`).
 - Tool errors map to MCP `isError:true` results with `daemon_call_failed`
   or the propagated daemon `reason` string
-  ([[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:307-393`).
+  ([[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:371-517`).
 
 ### 6.4 daemon → Claude Injection
 
@@ -154,24 +169,41 @@ ingress paths. For each delivery whose target is a Claude agent:
    the same bytes for a delivery. The Claude injector sends no AIOX-owned
    presentation metadata beside `content`.
 3. Injector resolves the runtime; absent → `claude_channel_unavailable`.
-   `fetch(endpoint, POST, body)` with `AbortController` 5 s timeout.
-   Non-2xx or timeout → `claude_channel_push_failed`. Other fetch error →
-   `claude_channel_unavailable`.
+   `fetch(endpoint, POST, body)` with `AbortController` 5 s timeout. Non-2xx →
+   `claude_channel_push_failed`. AbortError/timeout and any other fetch error
+   whose pre-write nature is not provable → `claude_channel_push_unconfirmed`,
+   with no automatic retry. Only a positively identified `ECONNREFUSED`
+   ([[src/adapters/claude/injector.ts]] — `src/adapters/claude/injector.ts:87-97`)
+   → `claude_channel_unavailable`.
 4. HTTP ingress validates the non-empty string `content`, passes it unchanged
    as `notifications/claude/channel.params.content`, and responds `202` ok /
    `400` parse error / `404` wrong method or path
    ([[src/adapters/claude/channel-server.ts]] —
-   `src/adapters/claude/channel-server.ts:462-500`, `src/adapters/claude/channel-server.ts:611-629`).
+   `src/adapters/claude/channel-server.ts:557-595`, `src/adapters/claude/channel-server.ts:706-708`).
    Claude Code, not AIOX, supplies the single outer `<channel source="…">`
    wrapper displayed in the TUI. That source identifies the channel server;
    the canonical JSON body's `source.address` identifies the sender.
    **Implementation-only (gap)**: The loopback HTTP
    `/send` endpoint is currently unauthenticated. This is a current factual limitation,
    not a security boundary (deferred to post-MVP).
-5. On HTTP acceptance: the dispatcher records `delivered`. This is channel
-   acceptance only, not target receipt or work completion. On failure it records
-   the typed failure; an unavailable runtime is deferred/queued for the bounded
-   pre-write policy.
+5. On HTTP acceptance: the dispatcher records `delivered`. This is the same
+   adapter/transport-acceptance boundary used by Codex, not target receipt or
+   work completion: Codex observes a matching `turn/start` JSON-RPC success,
+   while Claude observes the channel-server notification transport write. Claude
+   Code does not acknowledge that notification; if the server was not loaded as
+   a channel or policy blocks it, the downstream event can be silently dropped.
+   On failure the dispatcher records the typed failure; an unavailable runtime
+   is deferred/queued for the bounded pre-write policy. A primary
+   `claude_channel_push_failed` transitions the original to `failed` and a
+   primary `claude_channel_push_unconfirmed` leaves it `unconfirmed`; each
+   independently authors a daemon-originated source outcome notification
+   (`delivery_target_rejected` / `delivery_unconfirmed`) back to the original
+   source, symmetric with the Codex-target producer
+   ([[docs/architecture/local-runtime-codex-adapter]]) and governed by the
+   same `(original delivery, outcome type)` dedupe
+   ([[docs/specs/aiox-message-lifecycle]] §4.3;
+   [[src/daemon/state.ts]] — `recordClaudeTargetRejectOutcome`,
+   `recordPrimaryUnconfirmedOutcome`).
 
 The channel server owns only the JSON-RPC notification shape; its
 `buildChannelNotification` function creates `{method, params:{content}}`.

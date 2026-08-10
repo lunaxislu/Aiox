@@ -8,12 +8,14 @@ import { createCodexIngressMcpServer } from "../../../src/adapters/codex/mcp-ser
 import { createClaudeChannelMcpServer } from "../../../src/adapters/claude/channel-server.js";
 
 // ---------------------------------------------------------------------------
-// G1-C W2 — cross-adapter public MCP contract parity
+// G1-C W2/W5 — cross-adapter public MCP contract parity
 //
 // Codex and Claude must expose the same public messaging tool names (`send`,
 // `reply`) and the same success result shape (`{ ok: true, message_id,
-// dispatch? }`). Codex additionally retains its own manual retransmit tool;
-// that tool is not part of the common contract and is asserted separately.
+// dispatch? }`). `aiox_retransmit_unconfirmed_delivery` is not part of that
+// send/reply common messaging pair — it is a separate, confirmation-gated
+// recovery tool — but it is provided symmetrically on both adapters with the
+// same input/output schema, and its parity is asserted separately below.
 // ---------------------------------------------------------------------------
 
 interface StandardSchemaLike {
@@ -68,23 +70,22 @@ function fakeClaudeServer() {
       receiveClaudeChannelReply: async () => {
         throw new Error("unused in schema-only tests");
       },
+      retransmitUnconfirmedDelivery: async () => {
+        throw new Error("unused in schema-only tests");
+      },
       close() {},
     }),
   });
 }
 
 describe("cross-adapter public MCP tool contract parity", () => {
-  it("Codex and Claude register only send/reply as the common messaging tools", () => {
-    const codexTools = Object.keys(registeredTools(fakeCodexServer()));
-    const claudeTools = Object.keys(registeredTools(fakeClaudeServer()));
+  it("Codex and Claude register exactly send, reply, aiox_retransmit_unconfirmed_delivery", () => {
+    const expectedTools = ["send", "reply", "aiox_retransmit_unconfirmed_delivery"].sort();
+    const codexTools = Object.keys(registeredTools(fakeCodexServer())).sort();
+    const claudeTools = Object.keys(registeredTools(fakeClaudeServer())).sort();
 
-    expect(codexTools).toEqual(
-      expect.arrayContaining(["send", "reply", "aiox_retransmit_unconfirmed_delivery"]),
-    );
-    expect(codexTools).not.toContain("aiox_send_message");
-    expect(codexTools).not.toContain("aiox_reply");
-
-    expect(claudeTools.sort()).toEqual(["reply", "send"]);
+    expect(codexTools).toEqual(expectedTools);
+    expect(claudeTools).toEqual(expectedTools);
   });
 
   it("Codex and Claude send return the same accepted result shape", () => {
@@ -201,5 +202,83 @@ describe("cross-adapter public MCP tool input-schema parity", () => {
 
     expect(codexSchema.safeParse(wrongType).success).toBe(false);
     expect(claudeSchema.safeParse(wrongType).success).toBe(false);
+  });
+});
+
+describe("cross-adapter aiox_retransmit_unconfirmed_delivery input-schema parity", () => {
+  const validRetransmitInput = {
+    deliveryId: "delivery-1",
+    confirmDuplicateRisk: true as const,
+  };
+
+  function retransmitInputSchemas() {
+    return {
+      codexSchema: registeredTools(fakeCodexServer()).aiox_retransmit_unconfirmed_delivery!
+        .inputSchema,
+      claudeSchema: registeredTools(fakeClaudeServer()).aiox_retransmit_unconfirmed_delivery!
+        .inputSchema,
+    };
+  }
+
+  it("Codex and Claude retransmit accept the same valid input", () => {
+    const { codexSchema, claudeSchema } = retransmitInputSchemas();
+
+    expect(codexSchema.parse(validRetransmitInput)).toEqual(validRetransmitInput);
+    expect(claudeSchema.parse(validRetransmitInput)).toEqual(validRetransmitInput);
+  });
+
+  it("Codex and Claude retransmit reject confirmDuplicateRisk: false", () => {
+    const input = { ...validRetransmitInput, confirmDuplicateRisk: false };
+    const { codexSchema, claudeSchema } = retransmitInputSchemas();
+
+    expect(codexSchema.safeParse(input).success).toBe(false);
+    expect(claudeSchema.safeParse(input).success).toBe(false);
+  });
+
+  it("Codex and Claude retransmit reject a missing confirmDuplicateRisk", () => {
+    const { confirmDuplicateRisk: _confirmDuplicateRisk, ...missingConfirm } = validRetransmitInput;
+    const { codexSchema, claudeSchema } = retransmitInputSchemas();
+
+    expect(codexSchema.safeParse(missingConfirm).success).toBe(false);
+    expect(claudeSchema.safeParse(missingConfirm).success).toBe(false);
+  });
+
+  it("Codex and Claude retransmit reject an extra top-level field", () => {
+    const withExtraField = { ...validRetransmitInput, extra: "not part of the contract" };
+    const { codexSchema, claudeSchema } = retransmitInputSchemas();
+
+    expect(codexSchema.safeParse(withExtraField).success).toBe(false);
+    expect(claudeSchema.safeParse(withExtraField).success).toBe(false);
+  });
+});
+
+describe("cross-adapter aiox_retransmit_unconfirmed_delivery output-schema parity", () => {
+  function retransmitOutputSchemas() {
+    return {
+      codexSchema: registeredTools(fakeCodexServer()).aiox_retransmit_unconfirmed_delivery!
+        .outputSchema,
+      claudeSchema: registeredTools(fakeClaudeServer()).aiox_retransmit_unconfirmed_delivery!
+        .outputSchema,
+    };
+  }
+
+  it("Codex and Claude retransmit accept the same delivered result shape", () => {
+    const example = { ok: true as const, message_id: "message-1" };
+    const { codexSchema, claudeSchema } = retransmitOutputSchemas();
+
+    expect(codexSchema.parse(example)).toEqual(example);
+    expect(claudeSchema.parse(example)).toEqual(example);
+  });
+
+  it("Codex and Claude retransmit accept the same unconfirmed result shape", () => {
+    const example = {
+      ok: false as const,
+      reason: "manual_retransmit_unconfirmed" as const,
+      message_id: "message-1",
+    };
+    const { codexSchema, claudeSchema } = retransmitOutputSchemas();
+
+    expect(codexSchema.parse(example)).toEqual(example);
+    expect(claudeSchema.parse(example)).toEqual(example);
   });
 });

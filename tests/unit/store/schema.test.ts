@@ -68,6 +68,77 @@ describe("SQLite schema", () => {
     ]);
   });
 
+  it("backfills an existing single-key outcome notification as delivery_target_rejected during migration 5", () => {
+    db = new Database(":memory:");
+    applySchema(db);
+    db.exec("drop table delivery_outcome_notifications");
+    db.prepare("delete from schema_version where version = 5").run();
+    db.exec(`
+      create table delivery_outcome_notifications (
+        original_delivery_id text primary key,
+        notification_message_id text not null unique,
+        notification_delivery_id text not null unique,
+        created_at text not null
+      )
+    `);
+    db.prepare(
+      `insert into delivery_outcome_notifications
+        (original_delivery_id, notification_message_id, notification_delivery_id, created_at)
+       values (?, ?, ?, ?)`,
+    ).run("delivery-original", "message-notice", "delivery-notice", "2026-01-01");
+
+    applySchema(db);
+
+    const columns = db
+      .prepare("pragma table_info(delivery_outcome_notifications)")
+      .all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).toEqual([
+      "original_delivery_id",
+      "outcome_type",
+      "notification_message_id",
+      "notification_delivery_id",
+      "created_at",
+    ]);
+    expect(
+      db
+        .prepare(
+          "select original_delivery_id, outcome_type, notification_message_id, notification_delivery_id, created_at from delivery_outcome_notifications",
+        )
+        .all(),
+    ).toEqual([
+      {
+        original_delivery_id: "delivery-original",
+        outcome_type: "delivery_target_rejected",
+        notification_message_id: "message-notice",
+        notification_delivery_id: "delivery-notice",
+        created_at: "2026-01-01",
+      },
+    ]);
+
+    db.prepare(
+      `insert into delivery_outcome_notifications
+        (original_delivery_id, outcome_type, notification_message_id, notification_delivery_id, created_at)
+       values (?, ?, ?, ?, ?)`,
+    ).run("delivery-original", "delivery_unconfirmed", "message-notice-2", "delivery-notice-2", "2026-01-02");
+    expect(
+      db.prepare("select count(*) as count from delivery_outcome_notifications").get(),
+    ).toEqual({ count: 2 });
+    const insertDuplicateType = db.prepare(
+      `insert into delivery_outcome_notifications
+        (original_delivery_id, outcome_type, notification_message_id, notification_delivery_id, created_at)
+       values (?, ?, ?, ?, ?)`,
+    );
+    expect(() =>
+      insertDuplicateType.run(
+        "delivery-original",
+        "delivery_target_rejected",
+        "message-notice-3",
+        "delivery-notice-3",
+        "2026-01-03",
+      ),
+    ).toThrow();
+  });
+
   it("creates the agents table with MVP columns", () => {
     db = new Database(":memory:");
 

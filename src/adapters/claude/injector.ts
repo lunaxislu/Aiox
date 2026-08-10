@@ -56,16 +56,22 @@ export async function injectClaudeChannel(
     if (isAbortError(error)) {
       return {
         kind: "failed",
-        reason: "claude_channel_push_failed",
+        reason: "claude_channel_push_unconfirmed",
         message: `Claude channel push timed out after ${timeoutMs}ms: ${message}`,
       };
     }
 
-    return {
-      kind: "failed",
-      reason: "claude_channel_unavailable",
-      message: `Claude channel endpoint unreachable: ${message}`,
-    };
+    return isConnectionRefused(error)
+      ? {
+          kind: "failed",
+          reason: "claude_channel_unavailable",
+          message: `Claude channel endpoint unreachable: ${message}`,
+        }
+      : {
+          kind: "failed",
+          reason: "claude_channel_push_unconfirmed",
+          message: `Claude channel push response was lost: ${message}`,
+        };
   } finally {
     clearTimeout(timer);
   }
@@ -76,4 +82,16 @@ function isAbortError(error: unknown): boolean {
     error instanceof Error &&
     (error.name === "AbortError" || error.name === "TimeoutError")
   );
+}
+
+function isConnectionRefused(error: unknown): boolean {
+  return getErrorCode(error) === "ECONNREFUSED";
+}
+
+function getErrorCode(error: unknown): unknown {
+  if (!(error instanceof Error)) return undefined;
+  if ("code" in error) return error.code;
+  return error.cause instanceof Error && "code" in error.cause
+    ? error.cause.code
+    : undefined;
 }

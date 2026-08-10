@@ -59,11 +59,12 @@ Returned as `{kind:"failed", reason, message, jsonRpcCode?}`
 
 | Reason | When | Cite |
 |---|---|---|
-| `claude_channel_unavailable` | no registered runtime / fetch threw (non-abort) | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:23-30`, `:53-71` |
-| `claude_channel_push_failed` | non-2xx or timeout | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:44-61` |
-| `claude_channel_port_in_use` | EADDRINUSE on channel-server listen (fatal boot) | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:451-454`, `:671-694` |
-| `daemon_call_failed` (MCP isError) | tool socket call threw | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:369`, `:417`; [[src/adapters/codex/mcp-server.ts]] `src/adapters/codex/mcp-server.ts:216`, `:262` |
-| fatal `missing_env_*`, `invalid_env_AIOX_CLAUDE_CHANNEL_PORT` | channel-server boot | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:642-654`, `:656-669` — Implementation-only |
+| `claude_channel_unavailable` | no registered runtime, or positively identified `ECONNREFUSED` | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:23-30`, `:64-69`, `:87-96` |
+| `claude_channel_push_failed` | explicit non-2xx response | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:44-50` |
+| `claude_channel_push_unconfirmed` | AbortError/timeout or other fetch error whose pre-write status is not provable | [[src/adapters/claude/injector.ts]] `src/adapters/claude/injector.ts:56-74` |
+| `claude_channel_port_in_use` | EADDRINUSE on channel-server listen (fatal boot) | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:582-585`, `:766-787` |
+| `daemon_call_failed` (MCP isError) | a send, reply, or retransmit tool socket call threw | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:409-416`, `:461-468`, `:508-512`; [[src/adapters/codex/mcp-server.ts]] `src/adapters/codex/mcp-server.ts:320-323`, `:362-363` |
+| fatal `missing_env_*`, `invalid_env_AIOX_CLAUDE_CHANNEL_PORT` | channel-server boot | [[src/adapters/claude/channel-server.ts]] `src/adapters/claude/channel-server.ts:655-663`, `:737-763` — Implementation-only |
 
 ### 10.4 Router
 
@@ -113,8 +114,8 @@ Declaration: [[src/core/events.ts]] — `src/core/events.ts:1-34` (31 entries). 
 | `delivery_queued` | `{}` | [[src/daemon/state.ts]] `runSendMessageTransaction` | per queued delivery |
 | `delivery_expired` | `{reason:"delivery_expired"}` | [[src/daemon/state.ts]] `scheduleQueuedDeliveryExpiry` | queued delivery reaches the 5-minute TTL |
 | `delivery_status_changed` | `{status, error?}` | [[src/daemon/state.ts]] `updateDeliveryStatusInTransaction` | each `updateDeliveryStatus` |
-| `delivery_manual_retransmit` | `{actor, attempt, confirmDuplicateRisk}` | [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery` | an operator direct attempt begins |
-| `delivery_manual_retransmit_unconfirmed` / `_delivered` / `_rejected` | attempt-local correlation data | [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery`, `injectMessageIntoCodexTarget` | `_unconfirmed` records non-terminal timeout/drop observation; only immediate/late `_delivered` or `_rejected` is terminal. A reject preserves the original `unconfirmed`. |
+| `delivery_manual_retransmit` | `{actor, attempt, confirmDuplicateRisk}` | [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery`, `retransmitClaudeUnconfirmedDelivery` | an operator direct attempt begins after a direct write can start |
+| `delivery_manual_retransmit_unconfirmed` / `_delivered` / `_rejected` | attempt-local correlation data | [[src/daemon/state.ts]] `retransmitUnconfirmedDelivery`, `retransmitClaudeUnconfirmedDelivery` | `_unconfirmed` preserves the original `unconfirmed`; `_delivered` transitions it to `delivered`; `_rejected` also preserves it. Codex may reconcile a late response; Claude has no late-response resolution. |
 | `agent_runtime_failed` | `{reason, latestDiagnosticNotification?}` | [[src/daemon/state.ts]] `recordCodexRuntimeFailed` | Codex runtime exit / WS drop |
 | `agent_graceful_detach` | `{trigger}` or `{trigger:"tui_exit", exitCode, signal}` | [[src/daemon/state.ts]] `detachCodexAgent` | `detachCodexAgent` |
 | `agent_thread_id_rebound` | `{previousId, nextId, operation, source, requestId?}` | [[src/daemon/state.ts]] `attachAgent`, `injectMessageIntoCodexTarget`, `handleCodexProxyBinding` | Codex active-thread rebinds |

@@ -72,7 +72,7 @@ describe("injectClaudeChannel", () => {
     });
   });
 
-  it("returns claude_channel_push_failed on AbortError (timeout)", async () => {
+  it("returns claude_channel_push_unconfirmed on AbortError (timeout)", async () => {
     const lookup = fakeLookup({ alpha: "http://127.0.0.1:18789/send" });
 
     vi.stubGlobal("fetch", async () => {
@@ -90,17 +90,18 @@ describe("injectClaudeChannel", () => {
 
     expect(result).toMatchObject({
       kind: "failed",
-      reason: "claude_channel_push_failed",
+      reason: "claude_channel_push_unconfirmed",
       message: expect.stringContaining("fetch aborted"),
     });
   });
 
-  it("returns claude_channel_unavailable on connection refused (non-abort fetch error)", async () => {
+  it("returns claude_channel_unavailable on a positively identified connection refusal", async () => {
     const lookup = fakeLookup({ alpha: "http://127.0.0.1:18789/send" });
 
     vi.stubGlobal("fetch", async () => {
       throw Object.assign(new Error("connect ECONNREFUSED"), {
         name: "Error",
+        code: "ECONNREFUSED",
       });
     });
 
@@ -113,6 +114,25 @@ describe("injectClaudeChannel", () => {
       kind: "failed",
       reason: "claude_channel_unavailable",
       message: expect.stringContaining("ECONNREFUSED"),
+    });
+  });
+
+  it("returns claude_channel_push_unconfirmed on an ambiguous non-abort fetch error", async () => {
+    const lookup = fakeLookup({ alpha: "http://127.0.0.1:18789/send" });
+
+    vi.stubGlobal("fetch", async () => {
+      throw Object.assign(new Error("socket closed"), { name: "Error" });
+    });
+
+    const result = await injectClaudeChannel(lookup, {
+      agentName: "alpha",
+      content: "hello",
+    });
+
+    expect(result).toMatchObject({
+      kind: "failed",
+      reason: "claude_channel_push_unconfirmed",
+      message: expect.stringContaining("socket closed"),
     });
   });
 });

@@ -14,8 +14,8 @@ In-memory only — `runDaemonProcess` opens `new Database(":memory:")`
 ([[src/daemon/run.ts]] — `src/daemon/run.ts:25`). The file-mode helper `openSqliteDatabase`
 ([[src/store/sqlite.ts]] — `src/store/sqlite.ts:5-12`) is unused. `applySchema`
 ([[src/store/schema.ts]] — `src/store/schema.ts:14-82`) first runs the idempotent
-`create table if not exists` block, then applies migrations 1 through 4.
-Migration 1 owns the slot model; migrations 2, 3 and 4 add the current
+`create table if not exists` block, then applies migrations 1 through 5.
+Migration 1 owns the slot model; migrations 2, 3, 4 and 5 add the current
 message, reply-right and outcome surfaces below.
 
 | Table | Key columns | Notes |
@@ -26,7 +26,7 @@ message, reply-right and outcome surfaces below.
 | `messages` | `id PK`, `source_agent_id`, `origin_kind`, `parent_message_id` (nullable), `type`, `intent`, `reply_expected`, `outcome_for_delivery_id`, `content`, timestamps | Type ∈ `question|instruction|event|reply`; a reply parent stores its originating delivery ID. |
 | `message_deliveries` | `id PK`, `message_id`, `target_agent_id`, `route_id`, `status`, `idempotency_key UNIQUE NOT NULL` | UNIQUE constraint is load-bearing for the rollback-sentinel reclassify pattern. |
 | `reply_rights` | `originating_delivery_id PK`, consumed reply message/delivery IDs, timestamps | one-time reply authorization/consume state |
-| `delivery_outcome_notifications` | `original_delivery_id PK`, notification message/delivery IDs, timestamp | one primary rejection outcome notification per original delivery |
+| `delivery_outcome_notifications` | `(original_delivery_id, outcome_type) PK`, notification message/delivery IDs, timestamp | one notification per original delivery and outcome kind (`delivery_unconfirmed` or `delivery_target_rejected`) |
 | `schema_version` | `version PK`, `applied_at` | Migration ledger created by `applyMigration1` (`src/store/schema.ts:125-133`). `isMigrationApplied` gates re-runs (`src/store/schema.ts:137-147`). |
 | `events` | `id PK`, `agent_id`/`message_id`/`delivery_id`/`route_id` (all nullable), `type`, `data_json`, `created_at` | Append-only. |
 
@@ -54,10 +54,11 @@ transaction rolls back, aborting daemon boot.
 `delivering → queued`, but has **no production caller** in `src/`. It is not
 durable replay recovery.
 
-**Migrations 2–4 [Status: As-built].** Migration 2 adds `intent` and
+**Migrations 2–5 [Status: As-built].** Migration 2 adds `intent` and
 `reply_expected`; migration 3 creates/backfills `reply_rights`; migration 4
 adds `origin_kind`, `outcome_for_delivery_id`, and
-`delivery_outcome_notifications` ([[src/store/schema.ts]] —
+`delivery_outcome_notifications`; migration 5 changes that relation to the
+composite outcome key and backfills the prior rejection kind ([[src/store/schema.ts]] —
 `src/store/schema.ts:70-115`).
 
 ---

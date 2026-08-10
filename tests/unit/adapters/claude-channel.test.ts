@@ -20,11 +20,15 @@ import { applySchema } from "../../../src/store/schema.js";
 import {
   buildChannelNotification,
   CLAUDE_CHANNEL_INSTRUCTIONS,
+  CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION,
   CLAUDE_REPLY_DESCRIPTION,
   CLAUDE_SEND_DESCRIPTION,
   type ClaudeChannelDaemonClient,
+  createClaudeChannelMcpServer,
   createReplyHandler,
+  createRetransmitUnconfirmedDeliveryHandler,
   createSendHandler,
+  retransmitUnconfirmedDeliveryInputSchema,
   startClaudeChannelHttpIngress,
   typedClaudeReplyInputSchema,
   typedClaudeSendInputSchema,
@@ -552,6 +556,24 @@ describe("Claude channel MCP handlers", () => {
     expect(CLAUDE_SEND_DESCRIPTION).toContain("content.text");
   });
 
+  it("instructs Claude that manual retransmit is unconfirmed-only, confirmation-gated, and duplicate-risking", () => {
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("Unconfirmed Delivery Operations");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("aiox_retransmit_unconfirmed_delivery");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("unconfirmed");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("confirmDuplicateRisk: true");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("duplicate");
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toMatch(/channel transport accept/);
+    expect(CLAUDE_CHANNEL_INSTRUCTIONS).toContain("received, read, or completed");
+    expect(CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION).toContain("confirmDuplicateRisk: true");
+    expect(CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION).toContain("duplicate");
+    expect(CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION).toMatch(
+      /channel transport accept/,
+    );
+    expect(CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION).toContain(
+      "received, read, or completed",
+    );
+  });
+
   it("issues one source message ID per Claude send invocation and forwards each exact value", async () => {
     const issue = vi.mocked(createPublicMessageId);
     issue.mockReset();
@@ -847,6 +869,199 @@ describe("Claude channel MCP handlers", () => {
 });
 
 // ---------------------------------------------------------------------------
+// channel-server — manual retransmit tool
+// ---------------------------------------------------------------------------
+
+describe("Claude channel MCP factory — manual retransmit tool", () => {
+  it("registers send, reply, and aiox_retransmit_unconfirmed_delivery, no more", () => {
+    const mcp = createClaudeChannelMcpServer({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createDaemonClient: () => fakeClaudeDaemonClient({}),
+    });
+
+    const toolNames = Object.keys(
+      (mcp as unknown as { _registeredTools: Record<string, unknown> })._registeredTools,
+    );
+
+    expect(toolNames.sort()).toEqual(
+      ["aiox_retransmit_unconfirmed_delivery", "reply", "send"].sort(),
+    );
+  });
+
+  it("accepts the non-error unconfirmed retransmit structured result", () => {
+    const mcp = createClaudeChannelMcpServer({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createDaemonClient: () => fakeClaudeDaemonClient({}),
+    });
+    const registeredTool = (
+      mcp as unknown as {
+        _registeredTools: Record<
+          string,
+          { outputSchema: { safeParse(value: unknown): { success: boolean } } }
+        >;
+      }
+    )._registeredTools.aiox_retransmit_unconfirmed_delivery!;
+
+    expect(
+      registeredTool.outputSchema.safeParse({
+        ok: false,
+        reason: "manual_retransmit_unconfirmed",
+        message_id: "message-1",
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("retransmitUnconfirmedDeliveryInputSchema", () => {
+  it("requires an explicit duplicate-risk confirmation for manual retransmit", () => {
+    expect(
+      retransmitUnconfirmedDeliveryInputSchema.safeParse({
+        deliveryId: "delivery-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      retransmitUnconfirmedDeliveryInputSchema.safeParse({
+        deliveryId: "delivery-1",
+        confirmDuplicateRisk: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      retransmitUnconfirmedDeliveryInputSchema.safeParse({
+        deliveryId: "delivery-1",
+        confirmDuplicateRisk: true,
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("Claude channel MCP handlers — manual retransmit tool result", () => {
+  const options = {
+    agentName: "reviewer",
+    daemonSocketPath: "/tmp/aiox.sock",
+  } as const;
+
+  function handlerFor(
+    result: Awaited<ReturnType<ClaudeChannelDaemonClient["retransmitUnconfirmedDelivery"]>>,
+  ) {
+    return createRetransmitUnconfirmedDeliveryHandler({
+      ...options,
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({ retransmitUnconfirmedDelivery: async () => result }),
+    });
+  }
+
+  it("renders an immediate success as a non-error delivered result", async () => {
+    const handler = handlerFor({ ok: true, delivery: retransmitDelivery({ status: "delivered" }) });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError ?? false).toBe(false);
+    expect(result.content[0]!.text).toContain("delivered for delivery-1");
+    expect(result.structuredContent).toMatchObject({ ok: true, message_id: "message-1" });
+  });
+
+  it("renders a post-write ambiguous push as a non-error target-acceptance-unknown result", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "manual_retransmit_unconfirmed",
+      delivery: retransmitDelivery(),
+      message: "fetch aborted or response lost",
+    });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError ?? false).toBe(false);
+    expect(result.content[0]!.text).toContain("acceptance unknown");
+    expect(result.content[0]!.text).toContain("unconfirmed");
+    expect(result.structuredContent).toEqual({
+      ok: false,
+      reason: "manual_retransmit_unconfirmed",
+      message_id: "message-1",
+    });
+  });
+
+  it("renders an explicit reject as an error result naming manual_retransmit_rejected", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "manual_retransmit_rejected",
+      delivery: retransmitDelivery(),
+      message: "non-2xx response",
+    });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain("manual_retransmit_rejected");
+  });
+
+  it("renders a no-attempt failure as an error result naming manual_retransmit_failed", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "manual_retransmit_failed",
+      delivery: retransmitDelivery(),
+      message: "no registered Claude channel runtime for target",
+    });
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain("manual_retransmit_failed");
+  });
+
+  it("renders delivery_not_found as an error result", async () => {
+    const handler = handlerFor({
+      ok: false,
+      reason: "delivery_not_found",
+      deliveryId: "delivery-missing",
+    });
+    const result = await handler({ deliveryId: "delivery-missing", confirmDuplicateRisk: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain("delivery_not_found");
+  });
+
+  it("maps a thrown daemon callback to daemon_call_failed", async () => {
+    const handler = createRetransmitUnconfirmedDeliveryHandler({
+      ...options,
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          retransmitUnconfirmedDelivery: async () => {
+            throw new Error("ECONNREFUSED");
+          },
+        }),
+    });
+
+    const result = await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain("daemon_call_failed");
+  });
+
+  it("closes the daemon client after every tool call", async () => {
+    let closed = 0;
+    const handler = createRetransmitUnconfirmedDeliveryHandler({
+      ...options,
+      createDaemonClient: () => ({
+        ...fakeClaudeDaemonClient({}),
+        close: () => {
+          closed += 1;
+        },
+      }),
+    });
+
+    await handler({ deliveryId: "delivery-1", confirmDuplicateRisk: true });
+    await handler({ deliveryId: "delivery-2", confirmDuplicateRisk: true });
+
+    expect(closed).toBe(2);
+  });
+});
+
+function retransmitDelivery(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "delivery-1",
+    messageId: "message-1",
+    targetAgentId: "agent-target",
+    routeId: "route-1",
+    status: "unconfirmed" as const,
+    idempotencyKey: "key-1",
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // channel-server — notification framing
 // ---------------------------------------------------------------------------
 
@@ -1072,7 +1287,9 @@ function fakeClaudeDaemonClient(
   overrides: Partial<
     Pick<
       ClaudeChannelDaemonClient,
-      "receiveClaudeChannelMessage" | "receiveClaudeChannelReply"
+      | "receiveClaudeChannelMessage"
+      | "receiveClaudeChannelReply"
+      | "retransmitUnconfirmedDelivery"
     >
   >,
 ): ClaudeChannelDaemonClient {
@@ -1083,6 +1300,13 @@ function fakeClaudeDaemonClient(
     receiveClaudeChannelReply:
       overrides.receiveClaudeChannelReply ??
       (async () => successSendMessageResponse("reply-default")),
+    retransmitUnconfirmedDelivery:
+      overrides.retransmitUnconfirmedDelivery ??
+      (async () => ({
+        ok: false as const,
+        reason: "delivery_not_found" as const,
+        deliveryId: "missing",
+      })),
     close() {},
   };
 }

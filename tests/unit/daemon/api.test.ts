@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDaemonApi } from "../../../src/daemon/api.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
@@ -1113,6 +1113,744 @@ describe("daemon API with fake in-process transport", () => {
   });
 });
 
+describe("daemon API manual retransmit for Claude targets", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    db.close();
+  });
+
+  it("requires duplicate-risk confirmation, delivers on immediate manual retransmit success, and emits one terminal delivered event", async () => {
+    const { client, deliveryId } = await setupUnconfirmedManualRetransmitClaude(db);
+    const requests: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      requests.push({ url, body: JSON.parse(init.body as string) });
+      return new Response("{}", { status: 202 });
+    });
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: false }),
+    ).resolves.toEqual({ ok: false, reason: "duplicate_risk_confirmation_required" });
+    expect(requests).toHaveLength(0);
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: true, delivery: { id: deliveryId, status: "delivered" } });
+    expect(requests).toHaveLength(1);
+    expect(deliveryStatus(db, deliveryId)).toEqual({ status: "delivered" });
+    expect(manualEventData(db, "delivery_manual_retransmit")).toEqual({
+      actor: "operator",
+      attempt: 1,
+      confirmDuplicateRisk: true,
+    });
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(1);
+    expect(manualEventCount(db, "delivery_manual_retransmit_unconfirmed")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_rejected")).toBe(0);
+    expect(manualEventData(db, "delivery_manual_retransmit_delivered")).toEqual({
+      actor: "operator",
+      attempt: 1,
+    });
+  });
+
+  it("keeps manual_retransmit_failed with no new event and does not queue when the Claude channel runtime is not registered", async () => {
+    const { client, deliveryId } = await setupUnconfirmedManualRetransmitClaude(db, {
+      register: false,
+    });
+    const requests: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      requests.push({ url, body: JSON.parse(init.body as string) });
+      return new Response("{}", { status: 202 });
+    });
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_failed" });
+
+    expect(requests).toHaveLength(0);
+    expect(deliveryStatus(db, deliveryId)).toEqual({ status: "unconfirmed" });
+    expect(
+      db.prepare("select count(*) as count from message_deliveries where status = 'queued'").get(),
+    ).toEqual({ count: 0 });
+    expect(manualEventCount(db, "delivery_manual_retransmit")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_unconfirmed")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_rejected")).toBe(0);
+  });
+
+  it("emits one terminal rejected event and preserves unconfirmed on an explicit non-2xx manual retransmit reject", async () => {
+    const { client, deliveryId } = await setupUnconfirmedManualRetransmitClaude(db);
+    vi.stubGlobal("fetch", async () => new Response("rejected", { status: 500 }));
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_rejected" });
+
+    expect(deliveryStatus(db, deliveryId)).toEqual({ status: "unconfirmed" });
+    expect(
+      db.prepare("select count(*) as count from message_deliveries where status = 'queued'").get(),
+    ).toEqual({ count: 0 });
+    expect(manualEventCount(db, "delivery_manual_retransmit_rejected")).toBe(1);
+    expect(manualEventCount(db, "delivery_manual_retransmit_unconfirmed")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(0);
+    expect(manualEventData(db, "delivery_manual_retransmit_rejected")).toEqual({
+      actor: "operator",
+      attempt: 1,
+      adapter: "claude",
+      reason: "claude_channel_push_failed",
+      message: "Claude channel push rejected: HTTP 500",
+    });
+  });
+
+  it("surfaces a timeout/AbortError manual retransmit as unconfirmed with one non-terminal event and no retry", async () => {
+    const { client, deliveryId } = await setupUnconfirmedManualRetransmitClaude(db);
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Promise((_resolve, reject) => {
+          reject(Object.assign(new Error("The operation was aborted"), { name: "AbortError" }));
+        }),
+    );
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_unconfirmed" });
+
+    expect(deliveryStatus(db, deliveryId)).toEqual({ status: "unconfirmed" });
+    expect(
+      db.prepare("select count(*) as count from message_deliveries where status = 'queued'").get(),
+    ).toEqual({ count: 0 });
+    expect(manualEventCount(db, "delivery_manual_retransmit_unconfirmed")).toBe(1);
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_rejected")).toBe(0);
+    expect(manualEventData(db, "delivery_manual_retransmit_unconfirmed")).toMatchObject({
+      actor: "operator",
+      attempt: 1,
+      adapter: "claude",
+      reason: "claude_channel_push_unconfirmed",
+    });
+  });
+
+  it("surfaces an ambiguous fetch error as unconfirmed with no retry", async () => {
+    const { client, deliveryId } = await setupUnconfirmedManualRetransmitClaude(db);
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("socket closed after request start");
+    });
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_unconfirmed" });
+
+    expect(deliveryStatus(db, deliveryId)).toEqual({ status: "unconfirmed" });
+    expect(manualEventCount(db, "delivery_manual_retransmit_unconfirmed")).toBe(1);
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_rejected")).toBe(0);
+    expect(manualEventData(db, "delivery_manual_retransmit_unconfirmed")).toMatchObject({
+      reason: "claude_channel_push_unconfirmed",
+      message: "Claude channel push response was lost: socket closed after request start",
+    });
+  });
+
+  it("never transitions the original delivery to delivering during a manual retransmit attempt", async () => {
+    const { client, deliveryId } = await setupUnconfirmedManualRetransmitClaude(db);
+    const statusesAtFetch: string[] = [];
+    vi.stubGlobal("fetch", async () => {
+      const row = db.prepare("select status from message_deliveries where id = ?").get(
+        deliveryId,
+      ) as { status: string };
+      statusesAtFetch.push(row.status);
+      return new Response("{}", { status: 202 });
+    });
+
+    await client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true });
+
+    expect(statusesAtFetch).toEqual(["unconfirmed"]);
+  });
+
+  it("keeps manual_retransmit_failed with no new event, no queue, and a distinct message when a registered Claude channel refuses the connection (ECONNREFUSED)", async () => {
+    const { client, deliveryId } = await setupUnconfirmedManualRetransmitClaude(db);
+    vi.stubGlobal("fetch", async () => {
+      throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+    });
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "manual_retransmit_failed",
+      message: "Claude direct write could not be started",
+    });
+
+    expect(deliveryStatus(db, deliveryId)).toEqual({ status: "unconfirmed" });
+    expect(
+      db.prepare("select count(*) as count from message_deliveries where status = 'queued'").get(),
+    ).toEqual({ count: 0 });
+    expect(manualEventCount(db, "delivery_manual_retransmit")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_unconfirmed")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_rejected")).toBe(0);
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(0);
+
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 202 }));
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: true, delivery: { id: deliveryId, status: "delivered" } });
+    expect(manualEventData(db, "delivery_manual_retransmit")).toEqual({
+      actor: "operator",
+      attempt: 1,
+      confirmDuplicateRisk: true,
+    });
+  });
+
+  it("never creates a W12 outcome notification, relation, or reply-right on a manual retransmit reject", async () => {
+    const { client, deliveryId } = await setupUnconfirmedManualRetransmitClaude(db);
+    vi.stubGlobal("fetch", async () => new Response("rejected", { status: 500 }));
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_rejected" });
+
+    expect(manualEventCount(db, "delivery_target_rejected")).toBe(0);
+    expect(outcomeNotificationCount(db)).toBe(0);
+    expect(outcomeRelationCount(db, deliveryId)).toBe(0);
+    expect(replyRightCount(db, deliveryId)).toBe(0);
+  });
+});
+
+describe("daemon API manual retransmit — cross-adapter symmetry", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    db.close();
+  });
+
+  it("delivers a retransmit on each adapter from the same daemon with the same ok:true/delivered shape, without touching the other adapter's delivery or events", async () => {
+    const codexRuntime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-codex-target",
+    });
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 202 }));
+    const { client, codexDeliveryId, claudeDeliveryId } =
+      await setupCrossAdapterUnconfirmedManualRetransmit(db, codexRuntime);
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId: codexDeliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: true, delivery: { id: codexDeliveryId, status: "delivered" } });
+    expect(deliveryStatus(db, claudeDeliveryId)).toEqual({ status: "unconfirmed" });
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(1);
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", codexDeliveryId)).toBe(1);
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", claudeDeliveryId)).toBe(0);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_delivered", codexDeliveryId),
+    ).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_delivered", claudeDeliveryId),
+    ).toBe(0);
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId: claudeDeliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: true, delivery: { id: claudeDeliveryId, status: "delivered" } });
+    expect(deliveryStatus(db, codexDeliveryId)).toEqual({ status: "delivered" });
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(2);
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", claudeDeliveryId)).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_delivered", claudeDeliveryId),
+    ).toBe(1);
+    // The Codex call's attribution from earlier stays exactly as it was — not
+    // overwritten or duplicated by the subsequent Claude retransmit.
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", codexDeliveryId)).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_delivered", codexDeliveryId),
+    ).toBe(1);
+  });
+
+  it("rejects a retransmit on each adapter with the same ok:false/manual_retransmit_rejected shape, each preserving only its own delivery as unconfirmed", async () => {
+    const codexRuntime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-codex-target",
+      turnStartError: new CodexAppServerWebSocketError("codex_jsonrpc_error", "immediate reject", {
+        jsonRpcCode: -32001,
+        requestId: 7,
+      }),
+    });
+    vi.stubGlobal("fetch", async () => new Response("rejected", { status: 500 }));
+    const { client, codexDeliveryId, claudeDeliveryId } =
+      await setupCrossAdapterUnconfirmedManualRetransmit(db, codexRuntime);
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId: codexDeliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_rejected" });
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", codexDeliveryId)).toBe(1);
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", claudeDeliveryId)).toBe(0);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_rejected", codexDeliveryId),
+    ).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_rejected", claudeDeliveryId),
+    ).toBe(0);
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId: claudeDeliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_rejected" });
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", claudeDeliveryId)).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_rejected", claudeDeliveryId),
+    ).toBe(1);
+    // The Codex call's attribution from earlier stays exactly as it was — not
+    // overwritten or duplicated by the subsequent Claude retransmit.
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", codexDeliveryId)).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_rejected", codexDeliveryId),
+    ).toBe(1);
+
+    expect(deliveryStatus(db, codexDeliveryId)).toEqual({ status: "unconfirmed" });
+    expect(deliveryStatus(db, claudeDeliveryId)).toEqual({ status: "unconfirmed" });
+    expect(manualEventCount(db, "delivery_manual_retransmit_rejected")).toBe(2);
+    expect(manualEventCount(db, "delivery_manual_retransmit_delivered")).toBe(0);
+  });
+
+  it("leaves a retransmit unconfirmed on each adapter with the same ok:false/manual_retransmit_unconfirmed shape and no automatic retry", async () => {
+    const codexRuntime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-codex-target",
+      turnStartTimeout: true,
+    });
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("socket closed after request start");
+    });
+    const { client, codexDeliveryId, claudeDeliveryId } =
+      await setupCrossAdapterUnconfirmedManualRetransmit(db, codexRuntime);
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId: codexDeliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_unconfirmed" });
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", codexDeliveryId)).toBe(1);
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", claudeDeliveryId)).toBe(0);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_unconfirmed", codexDeliveryId),
+    ).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_unconfirmed", claudeDeliveryId),
+    ).toBe(0);
+
+    await expect(
+      client.retransmitUnconfirmedDelivery({ deliveryId: claudeDeliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_unconfirmed" });
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", claudeDeliveryId)).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_unconfirmed", claudeDeliveryId),
+    ).toBe(1);
+    // The Codex call's attribution from earlier stays exactly as it was — not
+    // overwritten or duplicated by the subsequent Claude retransmit.
+    expect(manualEventCountForDelivery(db, "delivery_manual_retransmit", codexDeliveryId)).toBe(1);
+    expect(
+      manualEventCountForDelivery(db, "delivery_manual_retransmit_unconfirmed", codexDeliveryId),
+    ).toBe(1);
+
+    expect(deliveryStatus(db, codexDeliveryId)).toEqual({ status: "unconfirmed" });
+    expect(deliveryStatus(db, claudeDeliveryId)).toEqual({ status: "unconfirmed" });
+    expect(
+      db.prepare("select count(*) as count from message_deliveries where status = 'queued'").get(),
+    ).toEqual({ count: 0 });
+    expect(manualEventCount(db, "delivery_manual_retransmit_unconfirmed")).toBe(2);
+  });
+});
+
+describe("primary delivery source outcome notifications — cross-adapter symmetry", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    db.close();
+  });
+
+  it("records a delivery_unconfirmed source outcome for a primary Claude push that is ambiguous, and delivers it to the Codex source", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("socket closed");
+    });
+    const { client, deliveryId } = await setupCodexSourceToClaudeTarget(db);
+
+    expect(deliveryStatus(db, deliveryId)).toEqual({ status: "unconfirmed" });
+
+    const relation = db
+      .prepare(
+        "select outcome_type, notification_message_id, notification_delivery_id from delivery_outcome_notifications where original_delivery_id = ?",
+      )
+      .get(deliveryId) as {
+      outcome_type: string;
+      notification_message_id: string;
+      notification_delivery_id: string;
+    };
+    expect(relation.outcome_type).toBe("delivery_unconfirmed");
+
+    const notification = db
+      .prepare("select content from messages where id = ?")
+      .get(relation.notification_message_id) as { content: string };
+    expect(JSON.parse(notification.content)).toMatchObject({
+      type: "delivery_unconfirmed",
+      deliveryId: relation.notification_delivery_id,
+      outcomeForDeliveryId: deliveryId,
+      message:
+        "Ask the user to confirm target activity and duplicate-risk acceptance before deciding whether to retransmit.",
+      error: { reason: "claude_channel_push_unconfirmed" },
+    });
+    // The notification's own delivery is dispatched back to the Codex source through the
+    // same canonical envelope pipeline Codex-target outcomes already use — proving the
+    // renderer is adapter-neutral in the reverse direction (Claude-target failure -> Codex source).
+    expect(deliveryStatus(db, relation.notification_delivery_id)).toEqual({ status: "delivered" });
+  });
+
+  it("records a delivery_target_rejected source outcome for a primary Claude push that is explicitly rejected, and delivers it to the Codex source", async () => {
+    vi.stubGlobal("fetch", async () => new Response("nope", { status: 500 }));
+    const { client, deliveryId } = await setupCodexSourceToClaudeTarget(db);
+
+    expect(deliveryStatus(db, deliveryId)).toEqual({ status: "failed" });
+
+    const rejection = db
+      .prepare("select data_json from events where type = 'delivery_target_rejected'")
+      .get() as { data_json: string };
+    expect(JSON.parse(rejection.data_json)).toMatchObject({
+      adapter: "claude",
+      reason: "claude_channel_push_failed",
+    });
+
+    const relation = db
+      .prepare(
+        "select outcome_type, notification_message_id, notification_delivery_id from delivery_outcome_notifications where original_delivery_id = ?",
+      )
+      .get(deliveryId) as {
+      outcome_type: string;
+      notification_message_id: string;
+      notification_delivery_id: string;
+    };
+    expect(relation.outcome_type).toBe("delivery_target_rejected");
+
+    const notification = db
+      .prepare("select content from messages where id = ?")
+      .get(relation.notification_message_id) as { content: string };
+    expect(JSON.parse(notification.content)).toMatchObject({
+      type: "delivery_target_rejected",
+      deliveryId: relation.notification_delivery_id,
+      outcomeForDeliveryId: deliveryId,
+      message:
+        "Do not retransmit. Ask the user how to resolve the rejection and whether sending a new message is appropriate.",
+      error: { reason: "claude_channel_push_failed" },
+    });
+    expect(deliveryStatus(db, relation.notification_delivery_id)).toEqual({ status: "delivered" });
+    void client;
+  });
+
+  it("does not create a recursive outcome when the notification's own delivery to a Claude source is itself ambiguous", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-target",
+      turnStartError: new CodexAppServerWebSocketError("codex_jsonrpc_error", "rejected", {
+        jsonRpcCode: -32042,
+      }),
+    });
+    let id = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${++id}`,
+      now: () => "2026-08-09T00:00:00.000Z",
+      claudeChannelRuntimes: new Map(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      scheduleTimeout: () => 0,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const sourceAttach = await client.attachAgent({ kind: "claude", name: "source", cwd: "/repo" });
+    const claudeToken = (sourceAttach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
+    // A notification back to this same Claude source will also fail (ambiguous, non-abort),
+    // proving the failure is observable through the normal delivery/event path only and
+    // never authors a second, recursive outcome notification.
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("socket closed");
+    });
+    await client.registerClaudeChannel({
+      agentName: "source",
+      token: claudeToken,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    await client.attachAgent({
+      kind: "codex",
+      name: "target",
+      cwd: "/repo",
+      resumeSessionId: "thread-target",
+    });
+    await client.connect({ sourceName: "source", targetNames: ["target"] });
+
+    const sent = await client.receiveClaudeChannelMessage({
+      agentName: "source",
+      messageId: "message-claude-source-recursion",
+      content: { text: "please act" },
+    });
+    if (!sent.ok) throw new Error("expected a delivery");
+    const originalDeliveryId = sent.deliveries[0]!.id;
+
+    expect(deliveryStatus(db, originalDeliveryId)).toEqual({ status: "failed" });
+    expect(
+      db.prepare("select count(*) as count from delivery_outcome_notifications").get(),
+    ).toEqual({ count: 1 });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from messages where origin_kind = 'daemon' and intent = 'notification'",
+        )
+        .get(),
+    ).toEqual({ count: 1 });
+    const relation = db
+      .prepare(
+        "select notification_delivery_id from delivery_outcome_notifications where original_delivery_id = ?",
+      )
+      .get(originalDeliveryId) as { notification_delivery_id: string };
+    // The notification's own delivery still surfaces its ambiguous failure through the
+    // ordinary delivery-status path (unconfirmed) -- it is simply never itself an
+    // outcome-notification source.
+    expect(deliveryStatus(db, relation.notification_delivery_id)).toEqual({ status: "unconfirmed" });
+  });
+
+  it("records exactly one delivery_status_changed(failed) event when the notification's own delivery to a Claude source is itself explicitly rejected", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-target",
+      turnStartError: new CodexAppServerWebSocketError("codex_jsonrpc_error", "rejected", {
+        jsonRpcCode: -32042,
+      }),
+    });
+    let id = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${++id}`,
+      now: () => "2026-08-09T00:00:00.000Z",
+      claudeChannelRuntimes: new Map(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      scheduleTimeout: () => 0,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const sourceAttach = await client.attachAgent({ kind: "claude", name: "source", cwd: "/repo" });
+    const claudeToken = (sourceAttach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
+    // A notification back to this same Claude source is itself explicitly rejected
+    // (non-2xx, not merely ambiguous). The reject core still commits this delivery's
+    // own status transition before the non-recursion guard suppresses a further
+    // outcome notification; the outer dispatch loop must not redundantly re-run that
+    // transition and duplicate its delivery_status_changed event.
+    vi.stubGlobal("fetch", async () => new Response("nope", { status: 500 }));
+    await client.registerClaudeChannel({
+      agentName: "source",
+      token: claudeToken,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    await client.attachAgent({
+      kind: "codex",
+      name: "target",
+      cwd: "/repo",
+      resumeSessionId: "thread-target",
+    });
+    await client.connect({ sourceName: "source", targetNames: ["target"] });
+
+    const sent = await client.receiveClaudeChannelMessage({
+      agentName: "source",
+      messageId: "message-claude-source-reject-recursion",
+      content: { text: "please act" },
+    });
+    if (!sent.ok) throw new Error("expected a delivery");
+    const originalDeliveryId = sent.deliveries[0]!.id;
+
+    expect(deliveryStatus(db, originalDeliveryId)).toEqual({ status: "failed" });
+    // Only the original delivery's own outcome notification exists -- the notification's
+    // own rejected delivery does not author a second, recursive one.
+    expect(
+      db.prepare("select count(*) as count from delivery_outcome_notifications").get(),
+    ).toEqual({ count: 1 });
+    const relation = db
+      .prepare(
+        "select notification_delivery_id from delivery_outcome_notifications where original_delivery_id = ?",
+      )
+      .get(originalDeliveryId) as { notification_delivery_id: string };
+    expect(deliveryStatus(db, relation.notification_delivery_id)).toEqual({ status: "failed" });
+    // One `delivering` transition plus exactly one `failed` transition -- not a second,
+    // redundant `failed` transition/event from the outer dispatch loop's generic fallback.
+    const notificationStatusEvents = db
+      .prepare("select data_json from events where type = 'delivery_status_changed' and delivery_id = ?")
+      .all(relation.notification_delivery_id) as Array<{ data_json: string }>;
+    expect(
+      notificationStatusEvents.map((row) => (JSON.parse(row.data_json) as { status: string }).status),
+    ).toEqual(["delivering", "failed"]);
+  });
+
+});
+
+async function setupCodexSourceToClaudeTarget(
+  db: Database,
+): Promise<{ client: ReturnType<typeof createDaemonApi>; deliveryId: string }> {
+  const runtime = fakeCodexRuntime({
+    endpoint: "ws://127.0.0.1:54321/",
+    startedThreadId: "thread-codex-source",
+  });
+  let id = 0;
+  const state = createDaemonState({
+    db,
+    createId: () => `id-${++id}`,
+    now: () => "2026-08-09T00:00:00.000Z",
+    claudeChannelRuntimes: new Map(),
+    codexRuntimes: new Map(),
+    attachCodexRuntime: async () => runtime,
+    scheduleTimeout: () => 0,
+  });
+  const client = createInProcessClient(createDaemonApi(state));
+
+  const sourceAttach = await client.attachAgent({
+    kind: "codex",
+    name: "source",
+    cwd: "/repo",
+    resumeSessionId: "thread-codex-source",
+  });
+  const sourceToken = (sourceAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+  await client.registerCodexChannel({ agentName: "source", token: sourceToken });
+  const targetAttach = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+  const claudeToken = (targetAttach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
+  await client.registerClaudeChannel({
+    agentName: "target",
+    token: claudeToken,
+    endpoint: "http://127.0.0.1:18789/send",
+  });
+  await client.connect({ sourceName: "source", targetNames: ["target"] });
+
+  const sent = await client.receiveCodexMessage({
+    agentName: "source",
+    token: sourceToken,
+    messageId: "message-claude-primary-outcome",
+    content: { text: "please act" },
+  });
+  if (!sent.ok) throw new Error("expected a delivery");
+  return { client, deliveryId: sent.deliveries[0]!.id };
+}
+
+async function setupCrossAdapterUnconfirmedManualRetransmit(
+  db: Database,
+  codexRuntime: ReturnType<typeof fakeCodexRuntime>,
+): Promise<{
+  client: ReturnType<typeof createDaemonApi>;
+  codexDeliveryId: string;
+  claudeDeliveryId: string;
+}> {
+  let id = 0;
+  const claudeChannelRuntimes = new Map();
+  const state = createDaemonState({
+    db,
+    createId: () => `id-${++id}`,
+    now: () => "2026-08-06T00:00:00.000Z",
+    claudeChannelRuntimes,
+    codexRuntimes: new Map(),
+    attachCodexRuntime: async () => codexRuntime,
+    scheduleTimeout: () => 0,
+  });
+  const client = createInProcessClient(createDaemonApi(state));
+
+  await client.attachAgent({ kind: "claude", name: "source", cwd: "/repo" });
+  const codexTargetAttach = await client.attachAgent({
+    kind: "codex",
+    name: "codex-target",
+    cwd: "/repo",
+    resumeSessionId: "thread-codex-target",
+  });
+  const claudeTargetAttach = await client.attachAgent({
+    kind: "claude",
+    name: "claude-target",
+    cwd: "/repo",
+  });
+  const codexTargetId = (codexTargetAttach as { ok: true; agent: { id: string } }).agent.id;
+  const claudeTargetId = (claudeTargetAttach as { ok: true; agent: { id: string } }).agent.id;
+  const claudeToken = (claudeTargetAttach as { ok: true; claudeChannelToken: string })
+    .claudeChannelToken;
+  await client.registerClaudeChannel({
+    agentName: "claude-target",
+    token: claudeToken,
+    endpoint: "http://127.0.0.1:18789/send",
+  });
+
+  await client.connect({ sourceName: "source", targetNames: ["codex-target", "claude-target"] });
+  const sent = await client.sendMessage({
+    sourceName: "source",
+    messageId: "message-cross-adapter",
+    type: "instruction",
+    content: "duplicate risk",
+  });
+  if (!sent.ok) throw new Error("expected fan-out deliveries");
+  const codexDeliveryId = sent.deliveries.find(
+    (delivery) => delivery.targetAgentId === codexTargetId,
+  )!.id;
+  const claudeDeliveryId = sent.deliveries.find(
+    (delivery) => delivery.targetAgentId === claudeTargetId,
+  )!.id;
+  await client.updateDeliveryStatus({ deliveryId: codexDeliveryId, status: "unconfirmed" });
+  await client.updateDeliveryStatus({ deliveryId: claudeDeliveryId, status: "unconfirmed" });
+
+  return { client, codexDeliveryId, claudeDeliveryId };
+}
+
+async function setupUnconfirmedManualRetransmitClaude(
+  db: Database,
+  options: { register?: boolean } = {},
+): Promise<{ client: ReturnType<typeof createDaemonApi>; deliveryId: string }> {
+  const register = options.register ?? true;
+  let id = 0;
+  const claudeChannelRuntimes = new Map();
+  const state = createDaemonState({
+    db,
+    createId: () => `id-${++id}`,
+    now: () => "2026-07-20T00:00:00.000Z",
+    claudeChannelRuntimes,
+    scheduleTimeout: () => 0,
+  });
+  const client = createInProcessClient(createDaemonApi(state));
+  await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+  const targetAttach = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+  if (register) {
+    const claudeToken = (targetAttach as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 202 }));
+    await client.registerClaudeChannel({
+      agentName: "target",
+      token: claudeToken,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+  }
+  await client.connect({ sourceName: "source", targetNames: ["target"] });
+  const sent = await client.sendMessage({
+    sourceName: "source",
+    messageId: "message-manual-claude",
+    type: "instruction",
+    content: "duplicate risk",
+  });
+  if (!sent.ok) throw new Error("expected delivery");
+  const deliveryId = sent.deliveries[0]!.id;
+  await client.updateDeliveryStatus({ deliveryId, status: "unconfirmed" });
+  return { client, deliveryId };
+}
+
 function createInProcessClient<TApi extends object>(api: TApi): TApi {
   return new Proxy(api, {
     get(target, property) {
@@ -1273,6 +2011,16 @@ function deliveryStatus(db: Database, deliveryId: string) {
 function manualEventCount(db: Database, type: string): number {
   return (
     db.prepare("select count(*) as count from events where type = ?").get(type) as {
+      count: number;
+    }
+  ).count;
+}
+
+function manualEventCountForDelivery(db: Database, type: string, deliveryId: string): number {
+  return (
+    db
+      .prepare("select count(*) as count from events where type = ? and delivery_id = ?")
+      .get(type, deliveryId) as {
       count: number;
     }
   ).count;

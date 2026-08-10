@@ -12,6 +12,7 @@ import { createPublicMessageId } from "../../core/public-ids.js";
 import type {
   ReceiveClaudeChannelMessageResponse,
   ReceiveClaudeChannelReplyResponse,
+  RetransmitUnconfirmedDeliveryResponse,
 } from "../../daemon/api.js";
 import { createDaemonSocketClient } from "../../daemon/socket-transport.js";
 import type {
@@ -113,6 +114,10 @@ When the user requests collaboration:
 - MUST include relevant context and constraints
 - do not use greetings or social filler
 
+## Unconfirmed Delivery Operations
+
+Use aiox_retransmit_unconfirmed_delivery only for a delivery that is unconfirmed, and only after an operator has explicitly confirmed the duplicate-delivery risk; confirmDuplicateRisk: true is required. Retransmitting sends a new direct attempt for the same delivery and risks delivering a duplicate message. A delivered result here only means the channel transport accepted the push — it does not mean the Claude session received, read, or completed it.
+
 ## Typed Message Intent
 
 When using send or reply, provide intent explicitly as one of:
@@ -191,6 +196,7 @@ Reason: simple acknowledgment.
 
 - reply(inReplyToDeliveryId, intent, replyExpected, content): respond to an existing delivery. Reply type is fixed by the daemon.
 - send(type, intent, replyExpected, content): start a new aiox thread. type is question or instruction.
+- aiox_retransmit_unconfirmed_delivery(deliveryId, confirmDuplicateRisk): manually retransmit one unconfirmed delivery after explicit operator duplicate-risk confirmation.
 `;
 
 export const CLAUDE_SEND_DESCRIPTION =
@@ -207,6 +213,12 @@ export const CLAUDE_REPLY_DESCRIPTION =
   "Use only for concrete task results, direct answers, clarification questions, or substantive discussion turns. " +
   "Routes through the daemon.";
 
+export const CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION =
+  "Manually retransmit one unconfirmed delivery only after explicit operator duplicate-risk confirmation. " +
+  "Requires confirmDuplicateRisk: true. Retransmitting sends a new direct attempt for the same delivery " +
+  "and risks delivering a duplicate message. A delivered result here means only that the channel transport " +
+  "accepted the push, not that the Claude session received, read, or completed the delivery.";
+
 export interface ClaudeChannelDaemonClient {
   receiveClaudeChannelMessage(
     request: ReceiveClaudeChannelMessageRequest,
@@ -214,6 +226,9 @@ export interface ClaudeChannelDaemonClient {
   receiveClaudeChannelReply(
     request: ReceiveClaudeChannelReplyRequest,
   ): Promise<ReceiveClaudeChannelReplyResponse>;
+  retransmitUnconfirmedDelivery(
+    request: { deliveryId: string; confirmDuplicateRisk: boolean },
+  ): Promise<RetransmitUnconfirmedDeliveryResponse>;
   close(): void;
 }
 
@@ -227,11 +242,13 @@ export interface ClaudeChannelMcpServerOptions {
 
 export interface ClaudeChannelToolResult {
   content: { type: "text"; text: string }[];
-  structuredContent?: {
-    ok: true;
-    message_id?: string;
-    dispatch?: DispatchSummary;
-  };
+  structuredContent?:
+    | { ok: true; message_id: string; dispatch?: DispatchSummary }
+    | {
+        ok: false;
+        reason: "manual_retransmit_unconfirmed";
+        message_id: string;
+      };
   isError?: boolean;
 }
 
@@ -247,6 +264,11 @@ export interface TypedClaudeReplyInput {
   intent: AgentAuthoredIntent;
   replyExpected: boolean;
   content: { text: string };
+}
+
+export interface RetransmitUnconfirmedDeliveryInput {
+  deliveryId: string;
+  confirmDuplicateRisk: true;
 }
 
 const agentIntentSchema = z.enum([
@@ -274,6 +296,13 @@ export const typedClaudeReplyInputSchema = z
     intent: agentIntentSchema,
     replyExpected: z.boolean(),
     content: typedContentSchema,
+  })
+  .strict();
+
+export const retransmitUnconfirmedDeliveryInputSchema = z
+  .object({
+    deliveryId: z.string().min(1),
+    confirmDuplicateRisk: z.literal(true),
   })
   .strict();
 
@@ -317,6 +346,23 @@ export function createClaudeChannelMcpServer(
       }),
     },
     createReplyHandler(options) as never,
+  );
+
+  mcp.registerTool(
+    "aiox_retransmit_unconfirmed_delivery",
+    {
+      description: CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION,
+      inputSchema: retransmitUnconfirmedDeliveryInputSchema,
+      outputSchema: z.discriminatedUnion("ok", [
+        z.object({ ok: z.literal(true), message_id: z.string() }),
+        z.object({
+          ok: z.literal(false),
+          reason: z.literal("manual_retransmit_unconfirmed"),
+          message_id: z.string(),
+        }),
+      ]),
+    },
+    createRetransmitUnconfirmedDeliveryHandler(options) as never,
   );
 
   return mcp;
@@ -420,6 +466,50 @@ export function createReplyHandler(
         error: message,
       });
       return errorResult("daemon_call_failed", message);
+    } finally {
+      client.close();
+    }
+  };
+}
+
+export function createRetransmitUnconfirmedDeliveryHandler(
+  options: ClaudeChannelMcpServerOptions,
+): (input: RetransmitUnconfirmedDeliveryInput) => Promise<ClaudeChannelToolResult> {
+  const createDaemonClient = resolveDaemonClient(options);
+  return async ({ deliveryId, confirmDuplicateRisk }) => {
+    const client = createDaemonClient({ socketPath: options.daemonSocketPath });
+    try {
+      const result = await client.retransmitUnconfirmedDelivery({
+        deliveryId,
+        confirmDuplicateRisk,
+      });
+      if (!result.ok) {
+        if (result.reason === "manual_retransmit_unconfirmed") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `manual retransmit sent for ${deliveryId}; target acceptance unknown (unconfirmed)`,
+              },
+            ],
+            structuredContent: {
+              ok: false,
+              reason: "manual_retransmit_unconfirmed",
+              message_id: result.delivery.messageId,
+            },
+          };
+        }
+        return errorResult(result.reason, JSON.stringify(result));
+      }
+      return {
+        content: [{ type: "text", text: `manual retransmit delivered for ${deliveryId}` }],
+        structuredContent: { ok: true, message_id: result.delivery.messageId },
+      };
+    } catch (error) {
+      return errorResult(
+        "daemon_call_failed",
+        error instanceof Error ? error.message : String(error),
+      );
     } finally {
       client.close();
     }

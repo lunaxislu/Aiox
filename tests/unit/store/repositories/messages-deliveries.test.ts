@@ -235,4 +235,73 @@ describe("SQLite message and delivery repositories", () => {
     expect(outcome.parentMessageId).toBeNull();
     expect(messages.count()).toBe(2);
   });
+
+  describe("outcome notification composite dedupe", () => {
+    it("records a distinct outcome notification per (original delivery, outcome type)", () => {
+      deliveries.createOutcomeNotification({
+        originalDeliveryId: "delivery-original",
+        outcomeType: "delivery_unconfirmed",
+        notificationMessageId: "message-unconfirmed-notice",
+        notificationDeliveryId: "delivery-unconfirmed-notice",
+        createdAt: "2026-08-09T00:00:00.000Z",
+      });
+      deliveries.createOutcomeNotification({
+        originalDeliveryId: "delivery-original",
+        outcomeType: "delivery_target_rejected",
+        notificationMessageId: "message-rejected-notice",
+        notificationDeliveryId: "delivery-rejected-notice",
+        createdAt: "2026-08-09T00:01:00.000Z",
+      });
+
+      expect(
+        deliveries.findOutcomeNotificationByOriginalDeliveryIdAndType(
+          "delivery-original",
+          "delivery_unconfirmed",
+        ),
+      ).toMatchObject({ notificationMessageId: "message-unconfirmed-notice" });
+      expect(
+        deliveries.findOutcomeNotificationByOriginalDeliveryIdAndType(
+          "delivery-original",
+          "delivery_target_rejected",
+        ),
+      ).toMatchObject({ notificationMessageId: "message-rejected-notice" });
+    });
+
+    it("returns null for an outcome type that was never recorded for that original delivery", () => {
+      deliveries.createOutcomeNotification({
+        originalDeliveryId: "delivery-original",
+        outcomeType: "delivery_unconfirmed",
+        notificationMessageId: "message-unconfirmed-notice",
+        notificationDeliveryId: "delivery-unconfirmed-notice",
+        createdAt: "2026-08-09T00:00:00.000Z",
+      });
+
+      expect(
+        deliveries.findOutcomeNotificationByOriginalDeliveryIdAndType(
+          "delivery-original",
+          "delivery_target_rejected",
+        ),
+      ).toBeNull();
+    });
+
+    it("rejects a second outcome notification for the same original delivery and outcome type", () => {
+      deliveries.createOutcomeNotification({
+        originalDeliveryId: "delivery-original",
+        outcomeType: "delivery_target_rejected",
+        notificationMessageId: "message-rejected-notice-1",
+        notificationDeliveryId: "delivery-rejected-notice-1",
+        createdAt: "2026-08-09T00:00:00.000Z",
+      });
+
+      expect(() =>
+        deliveries.createOutcomeNotification({
+          originalDeliveryId: "delivery-original",
+          outcomeType: "delivery_target_rejected",
+          notificationMessageId: "message-rejected-notice-2",
+          notificationDeliveryId: "delivery-rejected-notice-2",
+          createdAt: "2026-08-09T00:01:00.000Z",
+        }),
+      ).toThrow();
+    });
+  });
 });

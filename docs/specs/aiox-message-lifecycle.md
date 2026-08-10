@@ -180,10 +180,10 @@ Current implementation caveats:
   `deliveryId` from `message_deliveries.id`. The daemon API returns a
   per-target `DeliveryDto` for accepted sends and replies. Both Codex and
   Claude expose only `send` and `reply` as their public messaging MCP tools,
-  with uniform `{ ok: true, message_id, dispatch? }` success results; Codex
-  additionally exposes its own manual retransmit tool, which returns
-  `message_id` and no `dispatch`. None exposes per-target delivery IDs or
-  delivery status.
+  with uniform `{ ok: true, message_id, dispatch? }` success results; both
+  additionally expose the same separately named `aiox_retransmit_unconfirmed_delivery`
+  manual retransmit tool, which returns `message_id` and no `dispatch`. None
+  exposes per-target delivery IDs or delivery status.
 - Reply ingress accepts `inReplyToDeliveryId`, checks original-target identity
   and the one-time reply right, consumes that right, and creates one
   source-only reply delivery. The persisted reply's `parentMessageId` is the
@@ -191,9 +191,11 @@ Current implementation caveats:
   `inReplyToDeliveryId`. This authorization/routing/wire correlation is
   implemented independently of the intentionally smaller agent-facing
   observability projection.
-- Daemon-originated rejection outcomes are `type:"event"` notifications with
+- Daemon-originated outcome notifications (`delivery_unconfirmed`,
+  `delivery_target_rejected`) are `type:"event"` notifications with
   `outcomeForDeliveryId` and `replyExpected:false`; they are not replies and
-  neither consume nor create a reply right.
+  neither consume nor create a reply right. See §4.3 for their content shape
+  and dedupe contract.
 
 Evidence: [[src/daemon/state.ts]] — `src/daemon/state.ts:2297-2328`,
 `src/daemon/state.ts:2516-2599`; [[src/daemon/api.ts]] —
@@ -206,28 +208,70 @@ Delivery transport state와 correlated-reply permission은 독립이다.
 
 **Current as-built — Tier 3, Codex means.** Codex의 retained JSON-RPC `requestId`와
 같은 `turn/start` success는 `delivered`다. Write 뒤 timeout, response loss 또는
-WebSocket drop은 `unconfirmed`; 같은 `requestId`의 늦은 success만 idempotently
-`delivered`로 바꾼다. 명시적으로 상관된 JSON-RPC reject는 primary attempt에서
-`failed`이며 source에 한 번의 outcome notification을 만든다. 이 수용은 target이
-업무를 읽거나 완료했다는 뜻이 아니며, automatic reinjection도 completed producer도 없다.
+WebSocket drop은 `unconfirmed`이고 source에 하나의 `delivery_unconfirmed` outcome
+notification을 만든다; 같은 `requestId`의 늦은 success만 idempotently `delivered`로
+바꾼다. 명시적으로 상관된 JSON-RPC reject는 primary attempt(즉시 또는 늦은 응답 모두)에서
+`failed`이며 source에 하나의 `delivery_target_rejected` outcome notification을 만든다.
+같은 원 delivery가 먼저 `unconfirmed` notification을, 나중에(late reject로) 별도의
+`delivery_target_rejected` notification을 받을 수 있다 — 둘은 서로 다른 kind이므로 하나가
+다른 하나를 억제하지 않는다. 이 수용은 target이 업무를 읽거나 완료했다는 뜻이 아니며,
+automatic reinjection도 completed producer도 없다.
 
 **Current as-built — Tier 3, Claude means.** [Status: Current] Claude channel push의 2xx
-응답은 `delivered`다. 연결 실패와 미등록 runtime은 deferred로 분류돼 `queued`로 돌아가고
-아래 pre-write retry에 참여한다. 그 밖의 non-2xx 응답과 push timeout은 모두 `failed`이며,
-Claude 경로는 `unconfirmed`를 만들지 않는다. 따라서 수용 여부가 불명한 timeout이 확정
-거절과 같은 상태로 접힌다. 이는 아래 adapter-symmetric 요구를 아직 만족하지 않는 current
-gap이다.
+응답은 `delivered`다. 명시적으로 식별된 connection refusal(`ECONNREFUSED`)과 미등록
+runtime만 deferred로 분류돼 `queued`로 돌아가고 아래 pre-write retry에 참여한다. 그 밖의
+명시적 non-2xx 응답은 `failed`이며 source에 하나의 `delivery_target_rejected` outcome
+notification을 만든다. AbortError/timeout과, pre-write 실패임이 증명되지 않은 나머지 fetch
+오류는 `unconfirmed`이며 source에 하나의 `delivery_unconfirmed` outcome notification을
+만들고 자동 재시도가 없다. 이 2xx는 channel-server가 Claude Code transport에 notification을
+쓴 수용일 뿐 target session receipt, model read, work completion의 증거가 아니다. Claude
+Code가 channel을 load하지 않았거나 조직 정책이 막은 경우에는 그 뒤 event가 silent drop될 수
+있다.
+
+`delivered`의 공통 의미는 adapter/transport acceptance이며 adapter별 증거만 다르다:
+Codex는 matching `turn/start` JSON-RPC success, Claude는 channel-server의 notification
+transport write다. 어느 쪽도 target receipt, acknowledgement 또는 `completed`를 뜻하지 않는다.
+
+**Current as-built — primary source outcome notifications, both adapters.** [Status: Current]
+두 adapter 모두, primary delivery가 `unconfirmed`가 되거나 명시적으로 거절될 때 daemon이
+원 source에게 하나의 canonical outcome notification을 만든다. Notification content는
+`{type, deliveryId, outcomeForDeliveryId, message, error:{reason, message}}` 형태이며,
+`type`은 `delivery_unconfirmed` 또는 `delivery_target_rejected`이고 adapter별 raw
+`error.reason`/`error.message`를 보존한다. 최상위 `message`는 machine-action `recovery`
+object가 아니라 agent-facing 안내 텍스트다: `delivery_unconfirmed`는 재전송 여부를
+결정하기 전에 target activity와 중복 위험을 사용자에게 확인하라고 안내하고,
+`delivery_target_rejected`는 재전송하지 말고 거절 해결 방법과 새 메시지 필요 여부를
+사용자에게 물으라고 안내한다. Dedupe key는 `(원 delivery, outcome type)` 조합이라, 같은 원
+delivery가 서로 다른 kind의 outcome을 각각 최대 한 번 받을 수 있다(예: 먼저
+`delivery_unconfirmed`, 나중에 late reject로 `delivery_target_rejected`). 이 notification
+생성은 원 delivery의 상태 전이와 독립이다: 상태 전이는 notification 성공 여부와 무관하게
+먼저 확정되고, notification 자신의 delivery가 실패해도 그 실패는 일반 delivery/event 경로로만
+관측되며 또 다른 outcome을 만들지 않는다(non-recursive). 이 결정의 rationale은
+[[docs/decisions/delivery-outcome-notification-dedupe-by-type]]가 소유한다.
 
 Evidence:
 
-- Claude push timeout과 결과 분류
+- Claude push 실패 분류(ECONNREFUSED/timeout/기타 fetch 오류)
   - [[src/adapters/claude/injector.ts]]
     - `src/adapters/claude/injector.ts:34-36`
     - `src/adapters/claude/injector.ts:50-74`
+    - `src/adapters/claude/injector.ts:87-97`
 - delivery 상태 매핑과 `unconfirmed` 부여 조건
   - [[src/daemon/state.ts]]
-    - `src/daemon/state.ts:1711-1772`
-    - `src/daemon/state.ts:1782-1852`
+    - `dispatchToPairPeersNow` (`src/daemon/state.ts:1789-1900`)
+    - `injectMessageIntoClaudeTarget` (`src/daemon/state.ts:1902-2006`)
+- primary outcome notification producers(Codex/Claude reject, 양쪽 unconfirmed)와 composite
+  dedupe
+  - [[src/daemon/state.ts]]
+    - `recordPrimaryOutcomeNotification`, `recordPrimaryTargetRejectOutcome`,
+      `recordCodexTargetRejectOutcome`, `recordClaudeTargetRejectOutcome`,
+      `recordPrimaryUnconfirmedOutcome`
+  - [[src/store/repositories/deliveries.ts]]
+    - `findOutcomeNotificationByOriginalDeliveryIdAndType`, `createOutcomeNotification`
+  - [[tests/unit/daemon/codex-ingress.test.ts]]
+    - `tests/unit/daemon/codex-ingress.test.ts:2687-2792`
+  - [[tests/unit/daemon/api.test.ts]]
+    - `describe("primary delivery source outcome notifications — cross-adapter symmetry")`
 
 ```text
 queued -> delivering -> delivered
@@ -246,22 +290,42 @@ fan-out admission is atomic at target queue capacity 32; queued work expires aft
 (maximum three retries). Post-write ambiguity never joins that automatic retry
 path. `recoverAfterRestart` is an unused repository helper, not replay recovery.
 
-Manual retransmit is an operator-only direct attempt for an `unconfirmed`
-Codex delivery, requiring `confirmDuplicateRisk:true`, a ready runtime, and a
-bound thread. Immediate or late success makes the original `delivered`.
-Timeout/drop leaves it `unconfirmed` and records the attempt as unconfirmed.
+**Manual retransmit — common contract.** [Status: Current] Manual retransmit is
+an operator-only direct attempt for an `unconfirmed` delivery through the same
+separately named `aiox_retransmit_unconfirmed_delivery` MCP tool on both
+adapters, requiring `confirmDuplicateRisk:true`. It remains outside the common
+messaging `send`/`reply` pair. Immediate or late reject records an
+attempt-local rejected event while the original remains `unconfirmed`; it does
+not make the primary reject outcome or create a notification/reply right.
+Thus timeout/drop is a non-terminal observation: only a delivered or rejected
+resolution resolves the attempt, and no response leaves no terminal attempt
+outcome. Duplicate late responses are no-ops.
 
-The committed G1-C target extends that same separately named recovery MCP tool,
-`aiox_retransmit_unconfirmed_delivery`, to Claude. It remains outside the
-common messaging `send`/`reply` pair and retains duplicate-risk confirmation;
-the Claude implementation must not claim Codex's JSON-RPC late-response
-reconciliation. [Status: Committed target]
-Immediate or late reject records an attempt-local rejected event while the
-original remains `unconfirmed`; it does not make the primary reject outcome or
-create a notification/reply right. Thus timeout/drop is a non-terminal
-observation: only immediate/late delivered or rejected resolves the attempt,
-and no response leaves no terminal attempt outcome. Duplicate late responses
-are no-ops.
+**Codex means.** Requires a ready runtime and a bound thread. Immediate or
+late success (via the retained JSON-RPC `requestId` correlation) makes the
+original `delivered`. Timeout/drop leaves it `unconfirmed` and records the
+attempt as unconfirmed; a late same-`requestId` reject or success may still
+resolve the attempt afterward.
+
+**Claude means.** Requires a ready channel runtime. The attempt reuses the
+same fetch-based classification as a primary push (2xx `delivered`, explicit
+non-2xx `manual_retransmit_rejected`, `AbortError`/timeout/other ambiguous
+fetch failure `manual_retransmit_unconfirmed`) and resolves immediately only —
+Claude has no Codex-style late-response reconciliation, so an unconfirmed
+manual retransmit attempt does not later resolve on its own.
+
+Evidence:
+
+- Claude manual retransmit registration, schema, handler, and daemon-side
+  immediate resolution
+  - [[src/adapters/claude/channel-server.ts]]
+    - `src/adapters/claude/channel-server.ts:351-366`
+    - `src/adapters/claude/channel-server.ts:475-517`
+  - [[src/daemon/state.ts]]
+    - `src/daemon/state.ts:1867-1956`
+- cross-adapter behavior symmetry and isolation in one daemon
+  - [[tests/unit/daemon/api.test.ts]]
+    - `tests/unit/daemon/api.test.ts:1325-1413`
 
 **Committed target — G1-C adapter-symmetric delivery semantics.** 두 adapter가 같은
 transport나 같은 관측 수단을 가질 필요는 없지만, 외부에서 관찰되는 delivery 상태 의미는
@@ -271,12 +335,17 @@ transport나 같은 관측 수단을 가질 필요는 없지만, 외부에서 �
 - target 수용 여부가 불명이면 `unconfirmed`로 두고 자동 재전송하지 않는다.
 - 확정 거절은 `failed`와 명시적 결과로 드러낸다.
 - 수용 응답은 `delivered`이며 `completed`가 아니다.
+- `delivered`는 adapter/transport acceptance까지만 뜻한다. Codex의 JSON-RPC success와
+  Claude의 channel notification transport write는 서로 다른 증거이지만, 어느 쪽도 target
+  receipt, model read 또는 work completion을 보장하지 않는다.
 - retry와 failure 처리 중 inbound reply, §4.2의 one-time reply right, source에게 돌아가는
   결과 경로를 유실하거나 다른 delivery에 잘못 귀속시키지 않는다.
 
-Claude HTTP 4xx/5xx/timeout의 정확한 상태 매핑과 Claude 쪽 수동 복구 수단은 이 의미를
-만족하는 범위 안에서 G1-C implementation decision으로 남는다. 이 문서는 특정 HTTP status의
-의미를 미리 규정하지 않는다.
+Claude의 non-2xx/timeout/fetch-오류 상태 매핑과 수동 복구 수단
+(`aiox_retransmit_unconfirmed_delivery`)은 위 Claude as-built 문단과 Manual retransmit
+문단(Claude means)에 기술된 대로 구현되어 이 committed target을 만족한다. 남은 것은 실제
+`claude` CLI 프로세스를 통한 direct end-to-end evidence이며, 이는 G1-C package closeout의
+책임이다.
 
 **Open/deferred — source-operation invocation idempotency.** 현재 MCP tool 재호출은 새 logical
 message를 만든다. 동일 source operation의 accepted result를 replay해야 하는지, 필요하다면 public
@@ -305,10 +374,14 @@ Identifier boundary [Status: Current]:
 | `deliveryId` | target-specific public correlation ID (`message_deliveries.id`) |
 | Codex `requestId` | internal JSON-RPC late/duplicate-response correlation only; never a source-facing API, MCP, or envelope value |
 
-Claude does not use the Codex `requestId` late-response correlation mechanism.
-The adapter-symmetric requirement above asks for the same observable state
-meaning, not the same mechanism; the Claude means of producing it is not yet
-implemented or evidenced.
+Claude does not use the Codex `requestId` late-response correlation
+mechanism. The adapter-symmetric requirement above asks for the same
+observable state meaning, not the same mechanism. Claude's `delivered`/
+`unconfirmed`/`failed` state-transition means and its manual retransmit
+surface are both implemented and evidenced (see the Claude as-built and
+Manual retransmit paragraphs above). Claude has no Codex-style late-response
+reconciliation, and none is required or claimed without a separately accepted
+protocol capability.
 
 **Committed target — Phase 1 Tier 2 uplift.** An authenticated, correlated
 automatic ack and completed transition/evidence may be added only with
@@ -346,9 +419,9 @@ accepted send returns its `messageId` and per-target deliveries, and an
 accepted reply returns its new `messageId` and one reply delivery. Rejections
 return typed `reason` values. The agent-facing MCP projection is intentionally
 narrower than the daemon API but uniform across adapters: Codex and Claude
-`send`/`reply` all return `message_id` plus optional `dispatch`. Codex manual
-retransmit returns `message_id` without `dispatch`. None exposes per-target
-delivery ID/status observability. It does not change the canonical envelope or
+`send`/`reply` all return `message_id` plus optional `dispatch`. The shared
+manual retransmit tool on both adapters returns `message_id` without
+`dispatch`. None exposes per-target delivery ID/status observability. It does not change the canonical envelope or
 authorization contract. Lifecycle is the public code/meaning owner; G1-B
 canonical cutover creates the shared daemon/MCP/CLI registry source, and G1-C
 adds reliability-specific entries.
@@ -373,8 +446,8 @@ state; it does not thereby promise durable restart/replay behavior.
 | messages | `origin_kind`, `intent`, `reply_expected`, `outcome_for_delivery_id`, plus source, parent, type, content and timestamps |
 | deliveries | public `id`/`deliveryId`, message/target/route, status, and common internal `idempotency_key` |
 | reply authorization | `reply_rights`, including the originating delivery and one-time consuming reply message/delivery |
-| primary rejection outcome | `delivery_outcome_notifications`, keyed by original delivery |
-| schema evolution | migrations 2 (`intent`/`reply_expected`), 3 (`reply_rights`), and 4 (`origin_kind`/outcome notification surface) |
+| primary delivery outcome | `delivery_outcome_notifications`, keyed by `(original_delivery_id, outcome_type)` for `delivery_unconfirmed` and `delivery_target_rejected` |
+| schema evolution | migrations 2 (`intent`/`reply_expected`), 3 (`reply_rights`), 4 (`origin_kind`/outcome notification surface), and 5 (`outcome_type` column plus composite `(original_delivery_id, outcome_type)` primary key; backfills any pre-existing single-key row as `delivery_target_rejected`) |
 
 The following are not persisted or guaranteed: attempt/retry/`nextAttemptAt`,
 ack deadline/evidence, accepted-operation replay durability, durable
@@ -383,7 +456,8 @@ and automatic post-write retry. The `recoverAfterRestart` helper only rewrites
 `delivering` to `queued` and has no production caller; it is not replay
 recovery.
 
-Evidence: [[src/store/schema.ts]] — `src/store/schema.ts:38-115`;
+Evidence: [[src/store/schema.ts]] — `src/store/schema.ts:38-99`,
+`src/store/schema.ts:101-141`;
 [[src/store/repositories/messages.ts]] — `src/store/repositories/messages.ts:5-145`;
 [[src/store/repositories/deliveries.ts]] — `src/store/repositories/deliveries.ts:5-238`;
 and [[src/store/repositories/reply-rights.ts]] —

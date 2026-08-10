@@ -128,6 +128,7 @@ describe("Codex pre-write queue admission", () => {
       db,
       createId: monotonicIdSequence(),
       now: monotonicNowSequence(),
+      scheduleTimeout: discardScheduledTimeout,
     });
     const client = createInProcessClient(createDaemonApi(state));
 
@@ -441,6 +442,7 @@ describe("daemon receiveCodexMessage", () => {
       message: { id: "msg-1", content: "hello from codex", type: "question" },
     });
     expect((response as { ok: true; deliveries: unknown[] }).deliveries).toHaveLength(1);
+    expect(setup.scheduledTimeouts.map(({ delayMs }) => delayMs)).toContain(250);
 
     const messageRow = db
       .prepare("select id, content, type, parent_message_id from messages where id = ?")
@@ -520,6 +522,158 @@ describe("daemon receiveCodexMessage", () => {
       { type: "delivery_status_changed" },
       { type: "delivery_status_changed" },
     ]);
+  });
+
+  it("leaves an ambiguous Claude push unconfirmed without a pre-write retry", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("socket closed after request start");
+    });
+    const scheduled: Array<{ delayMs: number }> = [];
+    const setup = await setupPairedAgents(db, {
+      claudeEndpoint: "http://127.0.0.1:18789/send",
+      scheduleTimeout: (_callback, delayMs) => {
+        scheduled.push({ delayMs });
+        return scheduled.length;
+      },
+    });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-ambiguous-claude-push",
+      content: { text: "hello from codex" },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [],
+        failed: [{ reason: "claude_channel_push_unconfirmed" }],
+      },
+    });
+    expect(
+      db.prepare("select status from message_deliveries where message_id = ?").get(
+        "msg-ambiguous-claude-push",
+      ),
+    ).toEqual({ status: "unconfirmed" });
+    expect(scheduled.map(({ delayMs }) => delayMs)).not.toContain(250);
+  });
+
+  it("defers a positively identified Claude connection refusal to the pre-write retry queue", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw Object.assign(new Error("connect ECONNREFUSED"), {
+        code: "ECONNREFUSED",
+      });
+    });
+    const scheduled: Array<{ delayMs: number }> = [];
+    const setup = await setupPairedAgents(db, {
+      claudeEndpoint: "http://127.0.0.1:18789/send",
+      scheduleTimeout: (_callback, delayMs) => {
+        scheduled.push({ delayMs });
+        return scheduled.length;
+      },
+    });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-econnrefused-claude-push",
+      content: { text: "hello from codex" },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [{ reason: "target_runtime_unavailable" }],
+        failed: [],
+      },
+    });
+    expect(
+      db.prepare("select status from message_deliveries where message_id = ?").get(
+        "msg-econnrefused-claude-push",
+      ),
+    ).toEqual({ status: "queued" });
+    expect(scheduled.map(({ delayMs }) => delayMs)).toContain(250);
+  });
+
+  it("defers a Claude connection refusal exposed via error.cause.code to the pre-write retry queue", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("fetch failed", {
+        cause: Object.assign(new Error("connect ECONNREFUSED"), {
+          code: "ECONNREFUSED",
+        }),
+      });
+    });
+    const scheduled: Array<{ delayMs: number }> = [];
+    const setup = await setupPairedAgents(db, {
+      claudeEndpoint: "http://127.0.0.1:18789/send",
+      scheduleTimeout: (_callback, delayMs) => {
+        scheduled.push({ delayMs });
+        return scheduled.length;
+      },
+    });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-econnrefused-cause-claude-push",
+      content: { text: "hello from codex" },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [{ reason: "target_runtime_unavailable" }],
+        failed: [],
+      },
+    });
+    expect(
+      db.prepare("select status from message_deliveries where message_id = ?").get(
+        "msg-econnrefused-cause-claude-push",
+      ),
+    ).toEqual({ status: "queued" });
+    expect(scheduled.map(({ delayMs }) => delayMs)).toContain(250);
+  });
+
+  it("leaves a Claude push with a non-refusal error code (ECONNRESET) unconfirmed without a pre-write retry", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw Object.assign(new Error("socket hang up"), {
+        code: "ECONNRESET",
+      });
+    });
+    const scheduled: Array<{ delayMs: number }> = [];
+    const setup = await setupPairedAgents(db, {
+      claudeEndpoint: "http://127.0.0.1:18789/send",
+      scheduleTimeout: (_callback, delayMs) => {
+        scheduled.push({ delayMs });
+        return scheduled.length;
+      },
+    });
+
+    const response = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-econnreset-claude-push",
+      content: { text: "hello from codex" },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [],
+        failed: [{ reason: "claude_channel_push_unconfirmed" }],
+      },
+    });
+    expect(
+      db.prepare("select status from message_deliveries where message_id = ?").get(
+        "msg-econnreset-claude-push",
+      ),
+    ).toEqual({ status: "unconfirmed" });
+    expect(scheduled.map(({ delayMs }) => delayMs)).not.toContain(250);
   });
 
   it("preserves the stored delivery ID in the Codex canonical envelope", async () => {
@@ -639,6 +793,7 @@ describe("daemon receiveCodexMessage", () => {
       db,
       createId: monotonicIdSequence(),
       now: monotonicNowSequence(),
+      scheduleTimeout: discardScheduledTimeout,
       codexRuntimes: new Map(),
       attachCodexRuntime: async ({ agentName }) => {
         const runtime = codexRuntimeByName.get(agentName);
@@ -1307,6 +1462,7 @@ describe("daemon receiveClaudeChannelMessage", () => {
       db,
       createId: monotonicIdSequence(),
       now: monotonicNowSequence(),
+      scheduleTimeout: discardScheduledTimeout,
     });
     const client = createInProcessClient(createDaemonApi(state));
 
@@ -1637,6 +1793,7 @@ describe("daemon receiveClaudeChannelReply", () => {
       db,
       createId: monotonicIdSequence(),
       now: monotonicNowSequence(),
+      scheduleTimeout: discardScheduledTimeout,
     });
     const client = createInProcessClient(createDaemonApi(state));
 
@@ -2032,23 +2189,24 @@ describe("daemon receiveClaudeChannelReply", () => {
       inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
       content: { text: "review complete" },
     });
+    const replyDeliveryId = deliveryIdForMessage(db, "test-claude-reply-message");
 
     expect(
-      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+      db.prepare("select status from message_deliveries where id = ?").get(replyDeliveryId),
     ).toMatchObject({ status: "unconfirmed" });
 
     setup.runtime.emitLateTurnStartSuccess();
     setup.runtime.emitLateTurnStartSuccess();
 
     expect(
-      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+      db.prepare("select status from message_deliveries where id = ?").get(replyDeliveryId),
     ).toMatchObject({ status: "delivered" });
     expect(
       db
         .prepare(
-          "select count(*) as count from events where type = 'delivery_status_changed' and data_json = ?",
+          "select count(*) as count from events where delivery_id = ? and type = 'delivery_status_changed' and data_json = ?",
         )
-        .get(JSON.stringify({ status: "delivered" })),
+        .get(replyDeliveryId, JSON.stringify({ status: "delivered" })),
     ).toMatchObject({ count: 1 });
   });
 
@@ -2079,11 +2237,7 @@ describe("daemon receiveClaudeChannelReply", () => {
       content: { text: "review complete" },
     });
 
-    const deliveryId = (
-      db.prepare("select id from message_deliveries order by rowid desc limit 1").get() as {
-        id: string;
-      }
-    ).id;
+    const deliveryId = deliveryIdForMessage(db, "test-claude-reply-message");
     expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
       status: "unconfirmed",
     });
@@ -2241,6 +2395,8 @@ describe("daemon receiveClaudeChannelReply", () => {
         type: "delivery_target_rejected",
         deliveryId: outcome.notification_delivery_id,
         outcomeForDeliveryId: original.id,
+        message:
+          "Do not retransmit. Ask the user how to resolve the rejection and whether sending a new message is appropriate.",
         error: { reason: "codex_jsonrpc_error", message: "Codex rejected turn" },
       }),
     });
@@ -2465,6 +2621,8 @@ describe("daemon receiveClaudeChannelReply", () => {
         )
         .get(),
     ).toEqual({ count: 1 });
+    expect(setup.scheduledTimeouts).toHaveLength(1);
+    expect(setup.scheduledTimeouts[0]).toMatchObject({ delayMs: 299_000 });
   });
 
   it("leaves the original failed when its post-write notification dispatch times out", async () => {
@@ -2551,13 +2709,32 @@ describe("daemon receiveClaudeChannelReply", () => {
       inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
       content: { text: "review complete" },
     });
-    const deliveryId = (
-      db.prepare("select id from message_deliveries order by rowid desc limit 1").get() as {
-        id: string;
-      }
-    ).id;
+    const deliveryId = deliveryIdForMessage(db, "test-claude-reply-message");
     expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
       status: "unconfirmed",
+    });
+
+    // The unconfirmed transition independently authors its own `delivery_unconfirmed`
+    // source outcome notification; this must not be suppressed by, or suppress, the
+    // distinct `delivery_target_rejected` outcome the later late reject produces below.
+    expect(
+      db
+        .prepare(
+          "select outcome_type from delivery_outcome_notifications where original_delivery_id = ?",
+        )
+        .all(deliveryId),
+    ).toEqual([{ outcome_type: "delivery_unconfirmed" }]);
+    const unconfirmedNotification = db
+      .prepare(
+        "select content from messages where outcome_for_delivery_id = ? and origin_kind = 'daemon'",
+      )
+      .get(deliveryId) as { content: string };
+    expect(JSON.parse(unconfirmedNotification.content)).toMatchObject({
+      type: "delivery_unconfirmed",
+      outcomeForDeliveryId: deliveryId,
+      message:
+        "Ask the user to confirm target activity and duplicate-risk acceptance before deciding whether to retransmit.",
+      error: { reason: "codex_turn_start_timeout", message: "turn/start timed out" },
     });
 
     setup.runtime.emitLateTurnStartReject(-32043, "late application reject");
@@ -2572,15 +2749,19 @@ describe("daemon receiveClaudeChannelReply", () => {
         .get(),
     ).toEqual({ count: 1 });
     expect(
-      db.prepare("select count(*) as count from delivery_outcome_notifications").get(),
-    ).toEqual({ count: 1 });
+      db
+        .prepare(
+          "select outcome_type from delivery_outcome_notifications where original_delivery_id = ? order by outcome_type",
+        )
+        .all(deliveryId),
+    ).toEqual([{ outcome_type: "delivery_target_rejected" }, { outcome_type: "delivery_unconfirmed" }]);
     expect(
       db
         .prepare(
           "select count(*) as count from messages where origin_kind = 'daemon' and type = 'event' and intent = 'notification'",
         )
         .get(),
-    ).toEqual({ count: 1 });
+    ).toEqual({ count: 2 });
     const lateRejection = db
       .prepare(
         "select agent_id, message_id, delivery_id, route_id, data_json from events where type = 'delivery_target_rejected'",
@@ -2608,6 +2789,81 @@ describe("daemon receiveClaudeChannelReply", () => {
       jsonRpc: { code: -32043, message: "late application reject" },
       attempt: 1,
     });
+  });
+
+  it("isolates a DB exception in the late reject's own notification persistence without throwing, while preserving the original delivery's failed transition and events", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        turnStartError: Object.assign(new Error("turn/start timed out"), {
+          code: "codex_turn_start_timeout",
+        }),
+      },
+    });
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent-notification-persist-throws",
+      content: { text: "please review" },
+      replyExpected: true,
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "reply-notification-persist-throws",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent-notification-persist-throws"),
+      content: { text: "review complete" },
+    });
+    const deliveryId = deliveryIdForMessage(db, "reply-notification-persist-throws");
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "unconfirmed",
+    });
+
+    // Simulate a DB exception while persisting only the late reject's own outcome
+    // notification; every other statement passes through to the real prepare unchanged.
+    const originalPrepare = db.prepare.bind(db);
+    vi.spyOn(db, "prepare").mockImplementation(((sql: string, ...rest: unknown[]) => {
+      if (typeof sql === "string" && sql.includes("insert into delivery_outcome_notifications")) {
+        throw new Error("simulated notification persistence failure");
+      }
+      return originalPrepare(sql, ...(rest as []));
+    }) as typeof db.prepare);
+
+    expect(() =>
+      setup.runtime.emitLateTurnStartReject(-32043, "late application reject"),
+    ).not.toThrow();
+    vi.mocked(db.prepare).mockRestore();
+
+    // The original delivery's transition to `failed` and its two events must already have
+    // committed in their own transaction before the notification-persistence transaction
+    // threw -- the exception must not roll either of them back.
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "failed",
+    });
+    const statusEvents = db
+      .prepare(
+        "select data_json from events where type = 'delivery_status_changed' and delivery_id = ?",
+      )
+      .all(deliveryId) as Array<{ data_json: string }>;
+    expect(
+      statusEvents.map((row) => (JSON.parse(row.data_json) as { status: string }).status),
+    ).toEqual(["delivering", "unconfirmed", "failed"]);
+    expect(
+      db.prepare("select count(*) as count from events where type = 'delivery_target_rejected'").get(),
+    ).toEqual({ count: 1 });
+
+    // The late reject's own `delivery_target_rejected` outcome never persisted (the
+    // notification-creation transaction rolled back cleanly): only the earlier
+    // `delivery_unconfirmed` relation from the timeout still exists.
+    expect(
+      db
+        .prepare(
+          "select outcome_type from delivery_outcome_notifications where original_delivery_id = ?",
+        )
+        .all(deliveryId),
+    ).toEqual([{ outcome_type: "delivery_unconfirmed" }]);
   });
 });
 
@@ -2770,6 +3026,7 @@ async function setupPairedAgents(
     };
   } = {},
 ) {
+  const scheduledTimeouts: Array<{ callback: () => void; delayMs: number }> = [];
   const codexChannelRuntimes = new Map();
   const claudeChannelRuntimes = new Map();
   const runtime = fakeCodexRuntime({
@@ -2790,7 +3047,12 @@ async function setupPairedAgents(
     codexChannelRuntimes,
     claudeChannelRuntimes,
     profile: opts.profile,
-    scheduleTimeout: opts.scheduleTimeout,
+    scheduleTimeout:
+      opts.scheduleTimeout ??
+      ((callback, delayMs) => {
+        scheduledTimeouts.push({ callback, delayMs });
+        return scheduledTimeouts.length;
+      }),
   });
   const client = createInProcessClient(createDaemonApi(state));
   await client.createPair({ name: "pair-1" });
@@ -2822,7 +3084,15 @@ async function setupPairedAgents(
       throw new Error(`failed register: ${JSON.stringify(reg)}`);
     }
   }
-  return { client, codexToken, codexChannelRuntimes, claudeChannelRuntimes, runtime, state };
+  return {
+    client,
+    codexToken,
+    codexChannelRuntimes,
+    claudeChannelRuntimes,
+    runtime,
+    state,
+    scheduledTimeouts,
+  };
 }
 
 function deliveryIdForMessage(db: InstanceType<typeof Database>, messageId: string): string {
@@ -2857,6 +3127,7 @@ async function setupSoloCodexAgent(db: InstanceType<typeof Database>) {
 }
 
 async function setupTwoCodexAgents(db: InstanceType<typeof Database>, turnStartErrors: Error[]) {
+  const scheduledTimeouts: Array<{ callback: () => void; delayMs: number }> = [];
   const runtime = fakeCodexRuntime({
     endpoint: "ws://127.0.0.1:54321/",
     startedThreadId: "thread-shared",
@@ -2868,6 +3139,10 @@ async function setupTwoCodexAgents(db: InstanceType<typeof Database>, turnStartE
     now: monotonicNowSequence(),
     codexRuntimes: new Map(),
     attachCodexRuntime: async () => runtime,
+    scheduleTimeout: (callback, delayMs) => {
+      scheduledTimeouts.push({ callback, delayMs });
+      return scheduledTimeouts.length;
+    },
   });
   const client = createInProcessClient(createDaemonApi(state));
   const sourceAttach = await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
@@ -2877,7 +3152,7 @@ async function setupTwoCodexAgents(db: InstanceType<typeof Database>, turnStartE
   await client.registerCodexChannel({ agentName: "source", token: sourceToken });
   await client.registerCodexChannel({ agentName: "target", token: targetToken });
   await client.connect({ sourceName: "source", targetNames: ["target"] });
-  return { client, runtime, sourceToken };
+  return { client, runtime, sourceToken, scheduledTimeouts };
 }
 
 function monotonicIdSequence() {
@@ -2892,6 +3167,10 @@ function monotonicNowSequence() {
     const seconds = String(n).padStart(2, "0");
     return `2026-05-23T00:00:${seconds}.000Z`;
   };
+}
+
+function discardScheduledTimeout(_callback: () => void, _delayMs: number): number {
+  return 0;
 }
 
 function createInProcessClient<TApi extends object>(api: TApi): TApi {

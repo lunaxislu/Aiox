@@ -84,14 +84,36 @@ Current adapter matrix (2026-07-21):
 
 | Runtime         | Launch/attach                               | Ingress                                         | Egress                                             | Identity/correlation                                            | Effective tier                                                                                                                                                                                                                                                   |
 | --------------- | ------------------------------------------- | ----------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Codex CLI       | daemon-owned app-server + TUI launch/resume | canonical envelope JSON through `turn/start` | launch-scoped MCP `send`/`reply`, plus a Codex-only manual retransmit tool | authenticated agent token, bound thread, and public deliveryId correlation | **Tier 3**. Correlated `turn/start` success establishes delivery acceptance, not target receipt or work completion. Post-write ambiguity becomes `unconfirmed` without automatic reinjection; a late matching success may resolve it. The TUI presents raw envelope JSON rather than native activity UI, and native activity, delivery observability, active-turn semantics, target receipt, and target/LLM-action dedupe remain unavailable. Daemon handling still makes a late or duplicate response for the same internal `requestId` a no-op after resolution. |
-| Claude Code CLI | effective Local/User/Project static MCP dev-channel launch (`aiox claude setup --scope …` + `server:<name>`) | canonical envelope JSON through `/send.content`, delivered unmodified as the host-owned outer `<channel>` body | typed channel `send`/`reply` | channel registration uses a session token verified at daemon registration; `/send` HTTP ingress has no per-request auth in the current code. `inReplyToDeliveryId` is typed by the egress tool. | **Tier 3**. Channel HTTP acceptance is delivery acceptance, not target receipt/work completion. Claude uses a different observation means. The current injector reports a timeout as `claude_channel_push_failed` and has no late-response observer; this matrix does not determine that timeout's delivery-state interpretation. |
+| Codex CLI       | daemon-owned app-server + TUI launch/resume | canonical envelope JSON through `turn/start` | launch-scoped MCP `send`/`reply`, plus the shared `aiox_retransmit_unconfirmed_delivery` manual retransmit tool | authenticated agent token, bound thread, and public deliveryId correlation | **Tier 3**. Correlated `turn/start` success establishes delivery acceptance, not target receipt or work completion. Post-write ambiguity becomes `unconfirmed` without automatic reinjection; a late matching success may resolve it. The TUI presents raw envelope JSON rather than native activity UI, and native activity, delivery observability, active-turn semantics, target receipt, and target/LLM-action dedupe remain unavailable. Daemon handling still makes a late or duplicate response for the same internal `requestId` a no-op after resolution. |
+| Claude Code CLI | effective Local/User/Project static MCP dev-channel launch (`aiox claude setup --scope …` + `server:<name>`) | canonical envelope JSON through `/send.content`, delivered unmodified as the host-owned outer `<channel>` body | typed channel `send`/`reply`, plus the shared `aiox_retransmit_unconfirmed_delivery` manual retransmit tool | channel registration uses a session token verified at daemon registration; `/send` HTTP ingress has no per-request auth in the current code. `inReplyToDeliveryId` is typed by the egress tool. | **Tier 3**. Channel HTTP acceptance is delivery acceptance, not target receipt/work completion. Claude uses a different observation means: 2xx is `delivered`; an explicit non-2xx is `failed`; a positively identified `ECONNREFUSED` defers to the bounded pre-write queue; `AbortError`/timeout and any other fetch failure whose pre-write nature is not provable is `unconfirmed` with no automatic retry. Claude has no late-response observer, so both a primary push and a manual retransmit resolve immediately only. |
 
-G1-C's committed target gives Claude the same separately named
-`aiox_retransmit_unconfirmed_delivery` recovery MCP tool as Codex. This is not
-part of the common messaging `send`/`reply` pair; it requires explicit
-duplicate-risk confirmation and does not imply Codex-style late-response
-observation. [Status: Committed target]
+Claude registers the same separately named `aiox_retransmit_unconfirmed_delivery`
+recovery MCP tool as Codex. [Status: Current] This is not part of the common
+messaging `send`/`reply` pair; it requires explicit duplicate-risk confirmation
+and does not imply Codex-style late-response observation — a Claude retransmit
+resolves immediately from the same fetch-based classification the injector uses
+for a primary push, with no late correlation.
+
+Both Codex and Claude targets symmetrically produce a daemon-originated source
+outcome notification (`delivery_unconfirmed` or `delivery_target_rejected`)
+for a primary delivery, distinct from the manual retransmit tool above.
+[Status: Current] The canonical envelope, `(original delivery, outcome type)`
+dedupe, and transition/notification independence are adapter-neutral; see
+[[docs/specs/aiox-message-lifecycle]] §4.3 for the contract and
+[[docs/decisions/delivery-outcome-notification-dedupe-by-type]] for the WHY.
+
+Evidence:
+
+- Claude retransmit tool registration, schema, and handler
+  - [[src/adapters/claude/channel-server.ts]]
+    - `src/adapters/claude/channel-server.ts:351-366`
+    - `src/adapters/claude/channel-server.ts:475-517`
+- Daemon-side Claude manual retransmit, immediate-only resolution
+  - [[src/daemon/state.ts]]
+    - `src/daemon/state.ts:1867-1956`
+- Cross-adapter schema/behavior parity
+  - [[tests/unit/adapters/mcp-tool-contract-parity.test.ts]]
+  - [[tests/unit/daemon/api.test.ts]]
 
 지원 표에 없는 runtime은 이름만 adapter enum에 추가해서 지원으로 주장하지 않는다. 4-slot,
 auth, ack, degradation test를 모두 기록한 뒤 tier를 부여한다.
@@ -105,33 +127,46 @@ Codex MCP send/reply descriptions and daemon client surface are in
 [[src/adapters/codex/mcp-server.ts]] — `src/adapters/codex/mcp-server.ts:140-165`. Claude's static MCP definition and
 identity/socket injection are in [[src/adapters/claude/launcher.ts]] — `src/adapters/claude/launcher.ts:30-48`
 (`buildClaudeStaticMcpConfig`) and `src/adapters/claude/launcher.ts:70-86`
-(`launchClaudeStaticMcpChannel`); channel send/reply tools and daemon
-registration are in [[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:258-304` and
-`src/adapters/claude/channel-server.ts:521-555`; daemon-to-channel push and the
+(`launchClaudeStaticMcpChannel`); channel send/reply/retransmit tool
+registration and daemon registration are in [[src/adapters/claude/channel-server.ts]] —
+`src/adapters/claude/channel-server.ts:323-366` and
+`src/adapters/claude/channel-server.ts:608-642`; daemon-to-channel push and the
 current unauthenticated `/send` boundary are in
-[[src/adapters/claude/injector.ts]] — `src/adapters/claude/injector.ts:21-78` and
-`src/adapters/claude/channel-server.ts:462-492`.
+[[src/adapters/claude/injector.ts]] — `src/adapters/claude/injector.ts:19-78` and
+`src/adapters/claude/channel-server.ts:557-595`.
 
-Claude 경로의 통합 증거에는 현재 공백이 있다. shared queue/TTL/backpressure와 Claude push
-결과의 unit-level 분류는 검증돼 있지만, channel push 실패가 어떤 delivery 상태로 귀결되는지,
-daemon-level terminal failure와 late ambiguity를 어떻게 다루는지는 현재 test suite로 확립되지
-않았다. `/send` ingress handler는 port binding과, 실제 HTTP POST가 `mcp.server.notification`으로
-정확한 canonical JSON을 그대로 전달하는지는 검증하지만, 그 이후 실제 Claude target HTTP `/send` POST가
-daemon delivery state, reply-right, fallback까지
-이어지는 end-to-end 증거는 없다. 이는 현재 사실이며, 이 공백을 메우는 방식은 아직 결정되지
-않았다.
+Claude 경로의 daemon-level 통합 증거 공백은 닫혔다. [Status: Current] channel push 실패가
+어떤 delivery 상태로 귀결되는지 — ECONNREFUSED(직접·`error.cause.code` 경유 모두)의 bounded
+pre-write queue 편입, AbortError/timeout/기타 ambiguous fetch 오류의 `unconfirmed` 귀결과
+자동 재시도 부재 — 는 real daemon state 위에서 stubbed `fetch`로 검증됐다. 같은 unconfirmed
+delivery에 대한 confirmation-gated manual retransmit도 Codex와 동일한 real-daemon 패턴으로
+검증됐고, 한 daemon 인스턴스 안에 Codex·Claude target을 함께 붙여 두 adapter의 ok/reason 결과
+shape가 대칭이며 서로의 delivery·event를 건드리지 않음을 확인하는 cross-adapter 증거도 있다.
+`/send` ingress handler의 port binding과 POST→notification 정확한 canonical JSON 전달은
+별도로 검증돼 있다. 남은 공백은 실제 `claude` CLI 프로세스와 실제 channel-server 자식
+프로세스를 띄운 live end-to-end 증거뿐이며, 이는 W4 package-closeout의 direct TUI/CLI evidence
+책임이다.
 
 Evidence:
 
-- unit-level push 결과 분류만 존재
+- unit-level push 결과 분류(2xx/명시적 non-2xx/ECONNREFUSED/기타 ambiguous fetch 오류)
   - [[tests/unit/adapters/claude-injector.test.ts]]
-    - `tests/unit/adapters/claude-injector.test.ts:13-143`
-- ingress HTTP는 port binding과 POST→notification 전달을 검증
-  - [[tests/unit/adapters/claude-channel.test.ts]]
-    - `tests/unit/adapters/claude-channel.test.ts:804-883`
-- stubbed `fetch` 기반 envelope 동등성 확인
+    - `tests/unit/adapters/claude-injector.test.ts:12-138`
+- daemon-level delivery 상태 귀결과 pre-write fallback (real daemon state, stubbed `fetch`)
   - [[tests/unit/daemon/codex-ingress.test.ts]]
-    - `tests/unit/daemon/codex-ingress.test.ts:1210-1271`
+    - `tests/unit/daemon/codex-ingress.test.ts:525-675`
+- daemon-level confirmation-gated manual retransmit (Claude 단독)
+  - [[tests/unit/daemon/api.test.ts]]
+    - `tests/unit/daemon/api.test.ts:1116-1323`
+- cross-adapter manual retransmit 대칭성과 상호 격리 (같은 daemon 안의 Codex·Claude target)
+  - `tests/unit/daemon/api.test.ts:1325-1413`
+- MCP handler 레벨 retransmit 결과 렌더링
+  - [[tests/unit/adapters/claude-channel.test.ts]]
+    - `tests/unit/adapters/claude-channel.test.ts:939-1066`
+- ingress HTTP는 port binding과 POST→notification 전달을 검증
+  - `tests/unit/adapters/claude-channel.test.ts:1095-1179`
+- cross-adapter MCP tool 이름/스키마 parity
+  - [[tests/unit/adapters/mcp-tool-contract-parity.test.ts]]
 - fake adapter 기반 Claude 경로 dispatch
   - [[tests/unit/adapters/fake-integration.test.ts]]
     - `tests/unit/adapters/fake-integration.test.ts:388-451`

@@ -19,6 +19,7 @@ import type {
   MessageType,
 } from "../core/messages.js";
 export type { AgentAuthoredIntent } from "../core/messages.js";
+import type { DeliveryOutcomeType } from "../core/outcomes.js";
 import type { PairSlot } from "../core/pairs.js";
 import {
   createAgentRepository,
@@ -400,7 +401,8 @@ export type AdapterInjectFailureReason =
   | "codex_resume_failed"
   | "codex_binding_uncertain"
   | "claude_channel_unavailable"
-  | "claude_channel_push_failed";
+  | "claude_channel_push_failed"
+  | "claude_channel_push_unconfirmed";
 
 export type AdapterInjectDeferredReason =
   | "target_adapter_not_registered"
@@ -585,6 +587,13 @@ export interface DaemonState {
   status(): StatusResult;
   stop(request: StopRequest): StopResult;
 }
+
+const outcomeGuidance: Record<DeliveryOutcomeType, string> = {
+  delivery_unconfirmed:
+    "Ask the user to confirm target activity and duplicate-risk acceptance before deciding whether to retransmit.",
+  delivery_target_rejected:
+    "Do not retransmit. Ask the user how to resolve the rejection and whether sending a new message is appropriate.",
+};
 
 export function createDaemonState(
   options: CreateDaemonStateOptions,
@@ -937,6 +946,11 @@ export function createDaemonState(
 
       const message = messages.findById(delivery.messageId);
       const targetAgent = agents.list().find((agent) => agent.id === delivery.targetAgentId);
+
+      if (message && targetAgent?.kind === "claude") {
+        return retransmitClaudeUnconfirmedDelivery(message, delivery, targetAgent);
+      }
+
       if (!message || !targetAgent || targetAgent.kind !== "codex") {
         return {
           ok: false,
@@ -1539,23 +1553,102 @@ export function createDaemonState(
     });
   }
 
-  function recordCodexTargetRejectOutcome(input: {
+  // Records the daemon-authored source outcome notification for a primary delivery.
+  // State transition and notification dedupe are separate concerns: the caller performs
+  // the original delivery's status transition (and its own delivery_status_changed event)
+  // before calling this; this function only decides, independently, whether a new
+  // notification is warranted for (original delivery, outcome type). A rejected notification
+  // attempt must never suppress the original transition, which has already committed by
+  // the time this runs.
+  function recordPrimaryOutcomeNotification(input: {
+    message: StoredMessage;
+    original: StoredDelivery;
+    outcomeType: DeliveryOutcomeType;
+    error: { reason: string; message: string };
+    now: string;
+  }): { message: StoredMessage; delivery: StoredDelivery } | null {
+    // Non-recursion: a failure of the notification's own delivery must never author another outcome.
+    if (input.message.intent === "notification") return null;
+    if (
+      deliveries.findOutcomeNotificationByOriginalDeliveryIdAndType(
+        input.original.id,
+        input.outcomeType,
+      )
+    ) {
+      return null;
+    }
+
+    const notificationMessageId = createPublicMessageId();
+    const notificationDeliveryId = createPublicDeliveryId();
+    const notification = messages.create({
+      id: notificationMessageId,
+      sourceAgentId: daemonMessageSourceAgentId,
+      originKind: "daemon",
+      type: "event",
+      intent: "notification",
+      replyExpected: false,
+      outcomeForDeliveryId: input.original.id,
+      content: JSON.stringify({
+        type: input.outcomeType,
+        deliveryId: notificationDeliveryId,
+        outcomeForDeliveryId: input.original.id,
+        message: outcomeGuidance[input.outcomeType],
+        error: input.error,
+      }),
+      now: input.now,
+    });
+    const queued = deliveries.createQueuedForRoutes({
+      messageId: notification.id,
+      routes: [{ id: null, targetAgentId: input.message.sourceAgentId }],
+      createDeliveryId: () => notificationDeliveryId,
+      now: input.now,
+    });
+    if (!Array.isArray(queued) || queued.length !== 1) {
+      throw new Error("failed to create outcome notification delivery");
+    }
+    deliveries.createOutcomeNotification({
+      originalDeliveryId: input.original.id,
+      outcomeType: input.outcomeType,
+      notificationMessageId: notification.id,
+      notificationDeliveryId: queued[0].id,
+      createdAt: input.now,
+    });
+    return { message: notification, delivery: queued[0] };
+  }
+
+  // Shared primary-reject core for both target adapters: atomically transitions the
+  // original delivery to `failed` and emits its status-changed and delivery_target_rejected
+  // events in one transaction, then independently attempts the `delivery_target_rejected`
+  // outcome notification in a second transaction. The two are kept in separate transactions
+  // so a thrown DB exception while persisting the notification can never roll back the
+  // already-committed original-delivery transition; see
+  // docs/decisions/delivery-outcome-notification-dedupe-by-type.md's rejected
+  // single-transaction alternative.
+  //
+  // The second transaction's exceptions are additionally caught here and treated as "no
+  // notification produced" (same `null` the caller already tolerates for dedupe/non-recursion
+  // suppression). This function is invoked synchronously from the Codex late-response
+  // WebSocket observer (src/adapters/codex/websocket.ts's `settleResponse`, called directly
+  // from the `message` event handler), which has no promise wrapper to catch a throw; an
+  // uncaught exception there would escape the WebSocket handler itself, not just this
+  // function's caller. The codebase has no logging/diagnostic infrastructure (no
+  // console/logger calls, no process-level error handlers) and no event type for an internal
+  // persistence failure; this mirrors the existing silent-isolation precedent used for other
+  // background-path failures in this file (e.g. `dispatchOutcomeNotification(...).catch(() =>
+  // undefined)`). The original delivery's `failed` transition and its two events are
+  // unaffected either way, since they already committed in the first transaction.
+  function recordPrimaryTargetRejectOutcome(input: {
     message: StoredMessage;
     delivery: StoredDelivery;
-    target: { agentId: string; agentName: string; threadId: string };
     expectedStatus: "delivering" | "unconfirmed";
-    code?: number;
-    messageText: string;
+    reason: string;
+    errorMessage: string;
+    rejectEventData: Record<string, unknown>;
+    rejectEventAgentId: string;
   }): { message: StoredMessage; delivery: StoredDelivery } | null {
-    return withTransaction(options.db, () => {
+    const transitioned = withTransaction(options.db, () => {
       const original = deliveries.findById(input.delivery.id);
       if (!original || original.status !== input.expectedStatus) return null;
-      if (
-        input.message.intent !== "notification" &&
-        deliveries.findOutcomeNotificationByOriginalDeliveryId(original.id)
-      ) {
-        return null;
-      }
 
       const now = options.now();
       const failed = deliveries.updateStatus({
@@ -1570,7 +1663,7 @@ export function createDaemonState(
         type: "delivery_status_changed",
         data: {
           status: "failed",
-          error: { reason: "codex_jsonrpc_error", message: input.messageText },
+          error: { reason: input.reason, message: input.errorMessage },
         },
         createdAt: now,
         agentId: original.targetAgentId,
@@ -1581,55 +1674,102 @@ export function createDaemonState(
       events.append({
         id: options.createId(),
         type: "delivery_target_rejected",
-        data: {
-          adapter: "codex",
-          target: input.target,
-          jsonRpc: { code: input.code ?? null, message: input.messageText },
-          attempt: 1,
-        },
+        data: input.rejectEventData,
         createdAt: now,
-        agentId: input.target.agentId,
+        agentId: input.rejectEventAgentId,
         messageId: input.message.id,
         deliveryId: original.id,
         routeId: original.routeId,
       });
 
-      if (input.message.intent === "notification") return null;
+      return { original: failed, now };
+    });
 
-      const notificationMessageId = createPublicMessageId();
-      const notificationDeliveryId = createPublicDeliveryId();
-      const notification = messages.create({
-        id: notificationMessageId,
-        sourceAgentId: daemonMessageSourceAgentId,
-        originKind: "daemon",
-        type: "event",
-        intent: "notification",
-        replyExpected: false,
-        outcomeForDeliveryId: original.id,
-        content: JSON.stringify({
-          type: "delivery_target_rejected",
-          deliveryId: notificationDeliveryId,
-          outcomeForDeliveryId: original.id,
-          error: { reason: "codex_jsonrpc_error", message: input.messageText },
+    if (!transitioned) return null;
+
+    try {
+      return withTransaction(options.db, () =>
+        recordPrimaryOutcomeNotification({
+          message: input.message,
+          original: transitioned.original,
+          outcomeType: "delivery_target_rejected",
+          error: { reason: input.reason, message: input.errorMessage },
+          now: transitioned.now,
         }),
-        now,
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  function recordCodexTargetRejectOutcome(input: {
+    message: StoredMessage;
+    delivery: StoredDelivery;
+    target: { agentId: string; agentName: string; threadId: string };
+    expectedStatus: "delivering" | "unconfirmed";
+    code?: number;
+    messageText: string;
+  }): { message: StoredMessage; delivery: StoredDelivery } | null {
+    return recordPrimaryTargetRejectOutcome({
+      message: input.message,
+      delivery: input.delivery,
+      expectedStatus: input.expectedStatus,
+      reason: "codex_jsonrpc_error",
+      errorMessage: input.messageText,
+      rejectEventAgentId: input.target.agentId,
+      rejectEventData: {
+        adapter: "codex",
+        target: input.target,
+        jsonRpc: { code: input.code ?? null, message: input.messageText },
+        attempt: 1,
+      },
+    });
+  }
+
+  function recordClaudeTargetRejectOutcome(input: {
+    message: StoredMessage;
+    delivery: StoredDelivery;
+    target: { agentId: string; agentName: string };
+    expectedStatus: "delivering";
+    messageText: string;
+  }): { message: StoredMessage; delivery: StoredDelivery } | null {
+    return recordPrimaryTargetRejectOutcome({
+      message: input.message,
+      delivery: input.delivery,
+      expectedStatus: input.expectedStatus,
+      reason: "claude_channel_push_failed",
+      errorMessage: input.messageText,
+      rejectEventAgentId: input.target.agentId,
+      rejectEventData: {
+        adapter: "claude",
+        target: input.target,
+        reason: "claude_channel_push_failed",
+        message: input.messageText,
+        attempt: 1,
+      },
+    });
+  }
+
+  // Independent, adapter-neutral producer for the `delivery_unconfirmed` outcome. Called
+  // after the original delivery has already transitioned to `unconfirmed` (its own
+  // status-changed event already recorded by the caller); only attempts the notification.
+  function recordPrimaryUnconfirmedOutcome(input: {
+    message: StoredMessage;
+    deliveryId: string;
+    reason: string;
+    errorMessage: string;
+  }): { message: StoredMessage; delivery: StoredDelivery } | null {
+    return withTransaction(options.db, () => {
+      const original = deliveries.findById(input.deliveryId);
+      if (!original || original.status !== "unconfirmed") return null;
+
+      return recordPrimaryOutcomeNotification({
+        message: input.message,
+        original,
+        outcomeType: "delivery_unconfirmed",
+        error: { reason: input.reason, message: input.errorMessage },
+        now: options.now(),
       });
-      const queued = deliveries.createQueuedForRoutes({
-        messageId: notification.id,
-        routes: [{ id: null, targetAgentId: input.message.sourceAgentId }],
-        createDeliveryId: () => notificationDeliveryId,
-        now,
-      });
-      if (!Array.isArray(queued) || queued.length !== 1) {
-        throw new Error("failed to create outcome notification delivery");
-      }
-      deliveries.createOutcomeNotification({
-        originalDeliveryId: original.id,
-        notificationMessageId: notification.id,
-        notificationDeliveryId: queued[0].id,
-        createdAt: now,
-      });
-      return { message: notification, delivery: queued[0] };
     });
   }
 
@@ -1740,13 +1880,21 @@ export function createDaemonState(
 
       if (
         injectResult.reason === "codex_turn_start_timeout" ||
-        injectResult.reason === "codex_app_server_ws_dropped"
+        injectResult.reason === "codex_app_server_ws_dropped" ||
+        injectResult.reason === "claude_channel_push_unconfirmed"
       ) {
         updateDeliveryStatusInTransaction({
           deliveryId: delivery.id,
           status: "unconfirmed",
           error: { reason: injectResult.reason, message: injectResult.message },
         });
+        const outcome = recordPrimaryUnconfirmedOutcome({
+          message: input.message,
+          deliveryId: delivery.id,
+          reason: injectResult.reason,
+          errorMessage: injectResult.message,
+        });
+        if (outcome) await dispatchOutcomeNotification(outcome);
         summary.failed.push({
           targetAgentId: targetAgent.id,
           reason: injectResult.reason,
@@ -1786,12 +1934,14 @@ export function createDaemonState(
     },
     delivery: StoredDelivery,
     targetAgent: StoredAgent,
+    injectionOptions: { transitionToDelivering?: boolean } = {},
   ): Promise<
     | { kind: "success" }
     | {
         kind: "failed";
         reason: AdapterInjectFailureReason;
         message: string;
+        outcomeRecorded?: boolean;
       }
     | {
         kind: "deferred";
@@ -1807,10 +1957,12 @@ export function createDaemonState(
       };
     }
 
-    updateDeliveryStatusInTransaction({
-      deliveryId: delivery.id,
-      status: "delivering",
-    });
+    if (injectionOptions.transitionToDelivering !== false) {
+      updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "delivering",
+      });
+    }
 
     const injectResult = await injectClaudeChannel(
       { getRuntime: (agentName) => claudeChannelRuntimes.get(agentName) },
@@ -1847,9 +1999,127 @@ export function createDaemonState(
       };
     }
 
+    if (
+      injectionOptions.transitionToDelivering !== false &&
+      injectResult.reason === "claude_channel_push_failed"
+    ) {
+      const outcome = recordClaudeTargetRejectOutcome({
+        message: input.message,
+        delivery,
+        target: { agentId: targetAgent.id, agentName: targetAgent.name },
+        expectedStatus: "delivering",
+        messageText: injectResult.message,
+      });
+      if (outcome) await dispatchOutcomeNotification(outcome);
+      // `outcomeRecorded` marks that the reject core already performed the original
+      // delivery's status transition and its events, mirroring recordCodexTargetRejectOutcome's
+      // caller. It must be set regardless of whether `outcome` itself is non-null: a null
+      // `outcome` here means the notification was independently suppressed (dedupe or
+      // non-recursion), not that the transition didn't happen. Otherwise dispatchToPairPeersNow's
+      // generic failed-branch fallback would redundantly re-run the status transition and append
+      // a duplicate delivery_status_changed event for the same delivery.
+      return {
+        kind: "failed",
+        reason: injectResult.reason,
+        message: injectResult.message,
+        outcomeRecorded: true,
+      };
+    }
+
     return {
       kind: "failed",
       reason: injectResult.reason,
+      message: injectResult.message,
+    };
+  }
+
+  async function retransmitClaudeUnconfirmedDelivery(
+    message: StoredMessage,
+    delivery: StoredDelivery,
+    targetAgent: StoredAgent,
+  ): Promise<RetransmitUnconfirmedDeliveryResult> {
+    if (!claudeChannelRuntimes.has(targetAgent.name)) {
+      return {
+        ok: false,
+        reason: "manual_retransmit_failed",
+        delivery,
+        message: "ready Claude channel runtime is required for manual retransmit",
+      };
+    }
+
+    const sourceAgent = agents.list().find((agent) => agent.id === message.sourceAgentId);
+    const injectResult = await injectMessageIntoClaudeTarget(
+      { sourceName: sourceAgent?.name ?? "unknown", message },
+      delivery,
+      targetAgent,
+      { transitionToDelivering: false },
+    );
+
+    if (injectResult.kind === "deferred") {
+      return {
+        ok: false,
+        reason: "manual_retransmit_failed",
+        delivery: deliveries.findById(delivery.id) ?? delivery,
+        message: "Claude direct write could not be started",
+      };
+    }
+
+    const attempt = (manualDeliveryAttempts.get(delivery.id) ?? 0) + 1;
+    manualDeliveryAttempts.set(delivery.id, attempt);
+    events.append({
+      id: options.createId(),
+      type: "delivery_manual_retransmit",
+      data: { actor: "operator", attempt, confirmDuplicateRisk: true },
+      createdAt: options.now(),
+      agentId: targetAgent.id,
+      messageId: message.id,
+      deliveryId: delivery.id,
+      routeId: delivery.routeId,
+    });
+
+    if (injectResult.kind === "success") {
+      const result = updateDeliveryStatusInTransaction({
+        deliveryId: delivery.id,
+        status: "delivered",
+      });
+      events.append({
+        id: options.createId(),
+        type: "delivery_manual_retransmit_delivered",
+        data: { actor: "operator", attempt },
+        createdAt: options.now(),
+        agentId: targetAgent.id,
+        messageId: message.id,
+        deliveryId: delivery.id,
+        routeId: delivery.routeId,
+      });
+      return result.ok
+        ? result
+        : { ok: false, reason: "delivery_not_found", deliveryId: delivery.id };
+    }
+
+    const rejected = injectResult.reason === "claude_channel_push_failed";
+    events.append({
+      id: options.createId(),
+      type: rejected
+        ? "delivery_manual_retransmit_rejected"
+        : "delivery_manual_retransmit_unconfirmed",
+      data: {
+        actor: "operator",
+        attempt,
+        adapter: "claude",
+        reason: injectResult.reason,
+        message: injectResult.message,
+      },
+      createdAt: options.now(),
+      agentId: targetAgent.id,
+      messageId: message.id,
+      deliveryId: delivery.id,
+      routeId: delivery.routeId,
+    });
+    return {
+      ok: false,
+      reason: rejected ? "manual_retransmit_rejected" : "manual_retransmit_unconfirmed",
+      delivery: deliveries.findById(delivery.id) ?? delivery,
       message: injectResult.message,
     };
   }

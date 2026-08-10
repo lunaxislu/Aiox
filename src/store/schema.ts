@@ -82,10 +82,12 @@ export function applySchema(db: Database): void {
     );
 
     create table if not exists delivery_outcome_notifications (
-      original_delivery_id text primary key,
+      original_delivery_id text not null,
+      outcome_type text not null,
       notification_message_id text not null unique,
       notification_delivery_id text not null unique,
-      created_at text not null
+      created_at text not null,
+      primary key (original_delivery_id, outcome_type)
     );
   `);
 
@@ -93,6 +95,49 @@ export function applySchema(db: Database): void {
   applyMigration2(db);
   applyMigration3(db);
   applyMigration4(db);
+  applyMigration5(db);
+}
+
+function applyMigration5(db: Database): void {
+  if (isMigrationApplied(db, 5)) return;
+
+  withTransaction(db, () => {
+    if (!columnExists(db, "delivery_outcome_notifications", "outcome_type")) {
+      db.exec(`
+        create table delivery_outcome_notifications_next (
+          original_delivery_id text not null,
+          outcome_type text not null,
+          notification_message_id text not null unique,
+          notification_delivery_id text not null unique,
+          created_at text not null,
+          primary key (original_delivery_id, outcome_type)
+        )
+      `);
+      db.exec(`
+        insert into delivery_outcome_notifications_next (
+          original_delivery_id,
+          outcome_type,
+          notification_message_id,
+          notification_delivery_id,
+          created_at
+        )
+        select
+          original_delivery_id,
+          'delivery_target_rejected',
+          notification_message_id,
+          notification_delivery_id,
+          created_at
+        from delivery_outcome_notifications
+      `);
+      db.exec("drop table delivery_outcome_notifications");
+      db.exec(
+        "alter table delivery_outcome_notifications_next rename to delivery_outcome_notifications",
+      );
+    }
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(5, Date.now());
+  });
 }
 
 function applyMigration4(db: Database): void {
