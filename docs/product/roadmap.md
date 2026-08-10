@@ -200,10 +200,18 @@ G1-C는 process-lifetime Tier 3 delivery reliability를 Codex와 Claude 양쪽�
 - stale/disconnected runtime의 detection·retry/hold/fail 운영 정책은 Phase 1에서 판단한다. runtime failure wiring은 G3가 현재 Codex·Claude에서 관측 가능한 failure/단절을 daemon diagnostics로 연결한다. 이는 delivery 상태 전이 policy나 `claude_channel_disconnected` event를 정하지 않는다.
 - native activity는 Phase 1 또는 후속 owner에 남는다. 이는 G1-B의 Claude canonical-presentation corrective와 별개다.
 - durable store와 mailbox replay는 G1-C 통과 조건이 아니라 Phase 2 책임이다.
-- Claude HTTP 4xx/5xx/timeout의 정확한 delivery 상태 매핑과 Claude 쪽 수동 복구 수단은 후속 구현
-  workstream에서 결정한다. ingress invocation idempotency의 필요성·public field·retention·mismatch
-  규칙은 SQLite-backed durable state 검토로 이연한다. 이 gate는 요구되는 관찰 가능한 delivery 결과만
-  고정하고 transport별 의미를 미리 규정하지 않는다.
+- Claude HTTP 4xx/5xx/timeout의 delivery 상태 매핑은 daemon-level 통합 테스트로 검증됐다.
+  Claude 수동 복구는 Codex와 같은 별도 `aiox_retransmit_unconfirmed_delivery` MCP tool로 고정하며,
+  이는 common messaging `send`/`reply` pair에 합치지 않는다. ingress invocation idempotency의
+  필요성·public field·retention·mismatch 규칙은 SQLite-backed durable state 검토로 이연한다. 이 gate는
+  요구되는 관찰 가능한 delivery 결과만 고정하고 transport별 의미를 미리 규정하지 않는다.
+- Codex와 Claude 양쪽 target의 primary `delivery_unconfirmed`/`delivery_target_rejected` source
+  outcome notification과 `(원 delivery, outcome type)` composite dedupe는 daemon-level 통합
+  테스트로 검증됐다([[docs/specs/aiox-message-lifecycle]] §4.3,
+  [[docs/decisions/delivery-outcome-notification-dedupe-by-type]]). 실제 `codex`/`claude` CLI에서도
+  각 target의 post-write ambiguity, correlated source outcome, 사용자 확인형 1회 recovery와
+  duplicate target display를 검증했다. 이는 transport-level evidence이며 receipt/work completion을
+  뜻하지 않는다.
 
 **통과 조건**
 
@@ -213,6 +221,12 @@ Accepted Codex Tier 3 evidence와 그 경계:
 - Codex target의 duplicate-risk confirmation이 필요한 direct manual retransmit과 correlated explicit JSON-RPC reject의 primary `failed` 전환이 검증됐다. daemon outcome notification의 canonical renderer는 exactly-once·non-recursive로 유지되며, Tier 3 composition 및 direct-TUI evidence가 검증됐다.
 - post-write automatic reinjection은 없다. automatic authenticated ack/`completed`, wake-up, adapter-specific duplicate suppression과 stale/disconnected 운영 정책은 current Tier 3 완료가 아니라 Phase 1 책임이다. native activity는 Phase 1 또는 후속 책임이며, durable store와 mailbox replay는 Phase 2 owner로 남아 있다.
 
+검증된 Codex·Claude 공통 증거:
+
+- Codex와 Claude 각각의 직접 통합 증거가 검증됐다. 한 adapter의 증거를 다른 adapter의 coverage로
+  대체하지 않았으며, 이 증거는 transport-level delivery/recovery 및 target display에 한정되고
+  target receipt/read/work completion을 뜻하지 않는다.
+
 남은 Codex·Claude 공통 요구:
 
 - 구현 수단이 달라도 delivery FSM 의미가 대칭이다. 확정적 전송 전 실패는 queue 또는 bounded
@@ -220,8 +234,6 @@ Accepted Codex Tier 3 evidence와 그 경계:
   또는 명시적 결과, 수용 응답은 `delivered`이며 `completed`가 아니다.
 - retry/failure 중 inbound reply, reply-right, MCP/channel source 결과 경로가 유실되거나 잘못
   귀속되지 않음이 검증됐다.
-- Codex와 Claude 각각의 직접 통합 증거가 있다. 한 adapter의 증거를 다른 adapter의 coverage로
-  대체하지 않는다.
 
 **Owner refs**
 
@@ -570,7 +582,7 @@ Gate completion requires reproducible evidence, not only a status label. 각 gat
 | Gate | Required evidence                                                                                                                                                                         |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | G0   | versioned schema/example validation, CLI/config/package decision record, support matrix                                                                                                   |
-| G1   | completed/consumed G1-B/C evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence. Remaining G1 release evidence: adapter-symmetric delivery-FSM semantics, retry/failure 중 inbound reply와 MCP/channel 결과 경로 무손실, Codex·Claude 각각의 직접 통합 evidence; G1-D auth/route/secret/runtime negative tests. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
+| G1   | completed/consumed G1-B/C evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence, and separate Codex·Claude direct CLI/TUI transport-level ambiguity/outcome/confirmed-recovery/duplicate-display evidence. Remaining G1 release evidence: adapter-symmetric delivery-FSM semantics, retry/failure 중 inbound reply와 MCP/channel 결과 경로 무손실; G1-D auth/route/secret/runtime negative tests. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
 | G2   | tmux path and no-tmux fallback clean-user smoke, README command match                                                                                                                     |
 | G3   | client crash isolation, fatal handler exit, SIGTERM child cleanup, bounded body/queue, log redaction, doctor diagnosis tests                                                              |
 | G5   | secret/PII/path scan, tracked-vs-local file review, dead/scaffold code disposition, LICENSE/README/SECURITY/CONTRIBUTING/issue template presence and link check                           |

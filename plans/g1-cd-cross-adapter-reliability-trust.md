@@ -19,14 +19,16 @@ negative evidence로 검증한다.
 ## Stages
 
 - [x] Contract and credential-boundary decision/spike -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [>] G1-C cross-adapter reliability implementation and evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [ ] G1-D local trust-boundary implementation and negative evidence
-- [ ] Owner reconciliation and release-gate closeout
+- [x] G1-C cross-adapter reliability implementation -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-C source-visible delivery-outcome implementation and negative evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-C direct Codex/Claude CLI/TUI evidence and owner reconciliation -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [>] G1-D local trust-boundary implementation and negative evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [ ] G1-D owner reconciliation and release-gate closeout -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
 
 ## Notes
 
 - 완료된 historical Codex Tier 3 package와 G1-B/W8 Claude reconnect corrective를 재개하거나
   재구현하지 않는다. 이 plan은 그 결과를 입력으로 소비한다.
-- `send`/`reply` common contract와 Codex-only manual retransmit recovery surface는 구분한다.
-  Claude가 `unconfirmed`를 만들면 recovery surface의 대칭 여부도 contract 단계에서 결정한다.
+- 공통 메시징 MCP contract는 `send`/`reply`다. `aiox_retransmit_unconfirmed_delivery`는 별도 recovery
+  tool이며, W5에서 Claude에도 같은 이름과 duplicate-risk confirmation contract로 대칭화한다.
 - G1-D의 credential 형태와 Codex secret delivery 방식은 구현 전에 decision/spike로 확인한다.
