@@ -1,14 +1,35 @@
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
 
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDaemonApi } from "../../../src/daemon/api.js";
-import { createDaemonSocketClient, createDaemonSocketServer } from "../../../src/daemon/socket-transport.js";
+import {
+  canConnect,
+  createDaemonSocketClient,
+  createDaemonSocketServer,
+} from "../../../src/daemon/socket-transport.js";
 import { createDaemonState } from "../../../src/daemon/state.js";
 import { applySchema } from "../../../src/store/schema.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    chmodSync: vi.fn(actual.chmodSync),
+  };
+});
+
+const mockedChmodSync = vi.mocked(chmodSync);
 
 describe("daemon socket transport", () => {
   let db: Database;
@@ -97,6 +118,114 @@ describe("daemon socket transport", () => {
     }
 
     expect(existsSync(socketPath)).toBe(false);
+  });
+
+  it("sets the daemon socket file to owner-only (0600) permissions after listen", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-socket-"), "daemon.sock");
+    const server = createDaemonSocketServer({
+      api: createDaemonApi(
+        createDaemonState({
+          db,
+          createId: () => "agent-1",
+          now: () => "2026-05-19T00:00:00.000Z",
+        }),
+      ),
+      socketPath,
+    });
+    const handle = await server.start();
+
+    try {
+      expect(statSync(socketPath).mode & 0o777).toBe(0o600);
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it("closes the server and removes the socket file when the post-listen chmod fails", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-socket-"), "daemon.sock");
+    const server = createDaemonSocketServer({
+      api: createDaemonApi(
+        createDaemonState({
+          db,
+          createId: () => "agent-1",
+          now: () => "2026-05-19T00:00:00.000Z",
+        }),
+      ),
+      socketPath,
+    });
+
+    const chmodError = new Error("simulated chmod failure");
+    mockedChmodSync.mockImplementationOnce(() => {
+      throw chmodError;
+    });
+
+    await expect(server.start()).rejects.toThrow(chmodError);
+
+    expect(existsSync(socketPath)).toBe(false);
+    await expect(canConnect(socketPath)).resolves.toBe(false);
+  });
+
+  it("preserves the original chmod error, and leaves the listener/socket file behind, when the close() rollback step also fails", async () => {
+    // net.Server#close() on a Unix domain socket removes the socket file itself as
+    // part of a successful close (confirmed empirically on this platform: fs.existsSync
+    // is already false inside the close() callback). The rollback's own existsSync/
+    // unlinkSync fallback in closeServerAndSocketFile is therefore only reachable if
+    // close() itself does not complete normally — that is the scenario this test
+    // injects, and it is the one that can actually leave a stale socket file (and a
+    // still-bound listener) behind.
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-socket-"), "daemon.sock");
+    const server = createDaemonSocketServer({
+      api: createDaemonApi(
+        createDaemonState({
+          db,
+          createId: () => "agent-1",
+          now: () => "2026-05-19T00:00:00.000Z",
+        }),
+      ),
+      socketPath,
+    });
+
+    const chmodError = new Error("simulated chmod failure");
+    mockedChmodSync.mockImplementationOnce(() => {
+      throw chmodError;
+    });
+
+    const closeError = new Error("simulated server.close failure during rollback");
+    let leakedServer: net.Server | undefined;
+    const closeSpy = vi
+      .spyOn(net.Server.prototype, "close")
+      .mockImplementationOnce(function (
+        this: net.Server,
+        callback?: (error?: Error) => void,
+      ) {
+        // Do not perform the real close: this models an OS/libuv close() call that
+        // fails outright, leaving the listener bound and the socket file in place.
+        leakedServer = this;
+        callback?.(closeError);
+        return this;
+      });
+
+    try {
+      await expect(server.start()).rejects.toBe(chmodError);
+
+      expect(existsSync(socketPath)).toBe(true);
+      await expect(canConnect(socketPath)).resolves.toBe(true);
+    } finally {
+      // The mockImplementationOnce above is already consumed, so this second,
+      // real close() call releases the listener this test intentionally left
+      // bound, instead of leaking it for the rest of the test run.
+      if (leakedServer) {
+        await new Promise<void>((resolve) => {
+          leakedServer?.close(() => resolve());
+        });
+      }
+      closeSpy.mockRestore();
+      if (existsSync(socketPath)) {
+        // Real close() above should have removed it; this is a defensive
+        // backstop so a failed assertion above cannot leak a stale file path.
+        unlinkSync(socketPath);
+      }
+    }
   });
 
   it("maps invalid JSON to a transport error envelope and keeps the daemon alive", async () => {
@@ -298,6 +427,31 @@ describe("daemon socket transport", () => {
     } finally {
       await handle.close();
     }
+  });
+
+  it("applies the same chmod-failure rollback after a stale-socket retry", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-socket-"), "daemon.sock");
+    writeFileSync(socketPath, "");
+    const server = createDaemonSocketServer({
+      api: createDaemonApi(
+        createDaemonState({
+          db,
+          createId: () => "agent-1",
+          now: () => "2026-05-19T00:00:00.000Z",
+        }),
+      ),
+      socketPath,
+    });
+
+    const chmodError = new Error("simulated chmod failure after stale-socket retry");
+    mockedChmodSync.mockImplementationOnce(() => {
+      throw chmodError;
+    });
+
+    await expect(server.start()).rejects.toThrow(chmodError);
+
+    expect(existsSync(socketPath)).toBe(false);
+    await expect(canConnect(socketPath)).resolves.toBe(false);
   });
 });
 

@@ -1,7 +1,8 @@
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   getSocketPath,
@@ -120,5 +121,42 @@ describe("getStatePath (scaffold)", () => {
       getStatePath(opts).lastIndexOf(sep),
     );
     expect(stateDir).toBe(socketDir);
+  });
+});
+
+describe("runtime directory permissions (POSIX owner-only)", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "aiox-paths-perm-"));
+  });
+
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("creates a new runtime directory with owner-only (0700) permissions", () => {
+    const socketPath = getSocketPath({ profile: "dev", env: {}, homeDir: home });
+    const dir = socketPath.slice(0, socketPath.lastIndexOf(sep));
+
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it("corrects an existing loosely-permissioned runtime directory to 0700", () => {
+    const dir = join(home, ".aiox", "dev");
+    mkdirSync(dir, { recursive: true });
+    chmodSync(dir, 0o755);
+    expect(statSync(dir).mode & 0o777).toBe(0o755);
+
+    getSocketPath({ profile: "dev", env: {}, homeDir: home });
+
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it("hardens the release-profile root (~/.aiox) the same way", () => {
+    const socketPath = getSocketPath({ profile: "release", env: {}, homeDir: home });
+    const dir = socketPath.slice(0, socketPath.lastIndexOf(sep));
+
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
   });
 });

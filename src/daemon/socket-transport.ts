@@ -1,7 +1,10 @@
-import { existsSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import net from "node:net";
 
 import type { DaemonApi } from "./api.js";
+
+/** POSIX owner-only mode for the daemon Unix domain socket file. */
+const SOCKET_FILE_MODE = 0o600;
 
 export interface CreateDaemonSocketServerOptions {
   api: DaemonApi;
@@ -82,30 +85,23 @@ export function createDaemonSocketServer(
       });
 
       await listenWithStaleSocketRetry(server, options.socketPath);
+      // The socket file exists only once listen() resolves; chmod before that would
+      // either throw ENOENT or race the file's creation.
+      try {
+        chmodSync(options.socketPath, SOCKET_FILE_MODE);
+      } catch (chmodError) {
+        try {
+          await closeServerAndSocketFile(server, sockets, options.socketPath);
+        } catch {
+          // Cleanup failure must not mask the original chmod error below.
+        }
+        throw chmodError;
+      }
 
       handle = {
         socketPath: options.socketPath,
         async close() {
-          for (const socket of sockets) {
-            socket.end();
-            socket.destroy();
-          }
-
-          await new Promise<void>((resolve, reject) => {
-            server.close((error) => {
-              if (error) {
-                reject(error);
-                return;
-              }
-
-              resolve();
-            });
-          });
-
-          if (existsSync(options.socketPath)) {
-            unlinkSync(options.socketPath);
-          }
-
+          await closeServerAndSocketFile(server, sockets, options.socketPath);
           handle = null;
         },
       };
@@ -113,6 +109,32 @@ export function createDaemonSocketServer(
       return handle;
     },
   };
+}
+
+async function closeServerAndSocketFile(
+  server: net.Server,
+  sockets: Set<net.Socket>,
+  socketPath: string,
+): Promise<void> {
+  for (const socket of sockets) {
+    socket.end();
+    socket.destroy();
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+
+  if (existsSync(socketPath)) {
+    unlinkSync(socketPath);
+  }
 }
 
 export function createDaemonSocketClient(

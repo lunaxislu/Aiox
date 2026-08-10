@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, sep } from "node:path";
 
@@ -15,6 +15,9 @@ import { isAbsolute, join, sep } from "node:path";
 export type AioxProfile = "dev" | "build" | "release";
 
 const VALID_PROFILES: readonly AioxProfile[] = ["dev", "build", "release"];
+
+/** POSIX owner-only mode for the profile runtime directory (socket + future state file). */
+const RUNTIME_DIR_MODE = 0o700;
 
 /**
  * Resolves the active runtime profile. `AIOX_PROFILE` (injected by pnpm dev/build
@@ -86,9 +89,23 @@ export interface PathResolveOptions {
 }
 
 /**
+ * Ensures the profile runtime directory exists and is owner-only (`0700`). Corrects
+ * a pre-existing directory created with looser permissions by an older build, since
+ * `mkdirSync`'s `mode` option does not retroactively apply to an already-existing
+ * directory. Does not touch `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` override locations —
+ * those are caller-supplied paths whose containing directory this resolver has never
+ * created and is not the owner of.
+ */
+function ensureOwnerOnlyRuntimeDir(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  chmodSync(dir, RUNTIME_DIR_MODE);
+}
+
+/**
  * Daemon socket path for the active profile. `AIOX_SOCKET_PATH` (absolute) is the
  * top-priority escape hatch; release stays at `~/.aiox/daemon.sock`. Creates the
- * profile dir as a side effect (the socket file itself is created by the listener).
+ * profile dir as a side effect (the socket file itself is created by the listener)
+ * and hardens it to owner-only permissions.
  */
 export function getSocketPath(opts: PathResolveOptions = {}): string {
   const env = opts.env ?? process.env;
@@ -98,7 +115,7 @@ export function getSocketPath(opts: PathResolveOptions = {}): string {
   const home = opts.homeDir ?? homedir();
   const profile = opts.profile ?? resolveProfile(env);
   const dir = profileBaseDir(profile, home);
-  mkdirSync(dir, { recursive: true });
+  ensureOwnerOnlyRuntimeDir(dir);
   return join(dir, "daemon.sock");
 }
 
