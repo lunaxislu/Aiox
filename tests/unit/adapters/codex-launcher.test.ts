@@ -152,7 +152,11 @@ describe("Codex launcher", () => {
     emitAppServerBanner(child);
     await launched;
 
-    const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+    const [, args, spawnOptions] = spawnMock.mock.calls[0] as [
+      string,
+      string[],
+      { stdio: unknown; env?: NodeJS.ProcessEnv },
+    ];
     expect(args.slice(0, 3)).toEqual([
       "app-server",
       "--listen",
@@ -164,9 +168,25 @@ describe("Codex launcher", () => {
     expect(inline).toContain('command = "/usr/bin/node"');
     expect(inline).toContain('"/abs/aiox.js"');
     expect(inline).toContain('"mcp-codex"');
-    expect(inline).toContain('AIOX_CODEX_AGENT_NAME = "impl"');
-    expect(inline).toContain('AIOX_CODEX_AGENT_TOKEN = "tok-123"');
-    expect(inline).toContain('AIOX_SOCKET_PATH = "/tmp/aiox.sock"');
+
+    // The inline TOML must declare only the env var *names* to whitelist for
+    // forwarding, never the secret values.
+    expect(inline).toContain("env_vars = [");
+    expect(inline).toContain('"AIOX_CODEX_AGENT_NAME"');
+    expect(inline).toContain('"AIOX_CODEX_AGENT_TOKEN"');
+    expect(inline).toContain('"AIOX_SOCKET_PATH"');
+
+    // The raw token must never appear anywhere in spawn argv.
+    expect(args.some((arg) => arg.includes("tok-123"))).toBe(false);
+
+    // The actual values are delivered only through the child process
+    // environment, so Codex can forward them by name via `env_vars`.
+    expect(spawnOptions.stdio).toEqual(["ignore", "pipe", "pipe"]);
+    expect(spawnOptions.env).toMatchObject({
+      AIOX_CODEX_AGENT_NAME: "impl",
+      AIOX_CODEX_AGENT_TOKEN: "tok-123",
+      AIOX_SOCKET_PATH: "/tmp/aiox.sock",
+    });
   });
 
   it("uses tsx for a dev TypeScript MCP entry while preserving Node for a built entry", async () => {

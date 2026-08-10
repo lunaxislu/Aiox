@@ -47,6 +47,7 @@ export async function launchCodexAppServer(
   const output = createCodexAppServerOutputBuffer();
   const child = spawn(command, args, {
     stdio: ["ignore", "pipe", "pipe"],
+    ...(options.mcp ? { env: buildCodexMcpEnv(options.mcp) } : {}),
   });
 
   child.stdout?.on("data", (chunk: Buffer) => {
@@ -85,6 +86,17 @@ export function launchCodexTui(options: LaunchCodexTuiOptions): ChildProcess {
   });
 }
 
+/**
+ * Names of the env vars the spawned `mcp-codex` process needs. Declared once so
+ * the inline TOML whitelist (names only) and the app-server spawn env (actual
+ * values) cannot drift apart.
+ */
+const CODEX_MCP_ENV_VAR_NAMES = [
+  "AIOX_CODEX_AGENT_NAME",
+  "AIOX_CODEX_AGENT_TOKEN",
+  "AIOX_SOCKET_PATH",
+] as const;
+
 export function buildCodexMcpArgs(
   mcp: CodexMcpInjection | undefined,
 ): string[] {
@@ -94,30 +106,33 @@ export function buildCodexMcpArgs(
   const aioxBin = mcp.aioxBin ?? process.argv[1] ?? "aiox";
   const runtimeBinary =
     mcp.runtimeBinary ?? (aioxBin.endsWith(".ts") ? "tsx" : process.execPath);
-  const inline = buildMcpServersAioxInlineToml({
-    runtimeBinary,
-    aioxBin,
-    agentName: mcp.agentName,
-    agentToken: mcp.agentToken,
-    daemonSocketPath: mcp.daemonSocketPath,
-  });
+  const inline = buildMcpServersAioxInlineToml({ runtimeBinary, aioxBin });
   return ["-c", inline];
+}
+
+/**
+ * Builds the child process environment for the Codex app-server. The inline
+ * TOML only whitelists these var *names* via `env_vars`; Codex resolves the
+ * values from this process's own environment when it spawns `mcp-codex`, so
+ * the raw token never appears in argv or the on-disk/inline TOML.
+ */
+function buildCodexMcpEnv(mcp: CodexMcpInjection): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    AIOX_CODEX_AGENT_NAME: mcp.agentName,
+    AIOX_CODEX_AGENT_TOKEN: mcp.agentToken,
+    AIOX_SOCKET_PATH: mcp.daemonSocketPath,
+  };
 }
 
 function buildMcpServersAioxInlineToml(input: {
   runtimeBinary: string;
   aioxBin: string;
-  agentName: string;
-  agentToken: string;
-  daemonSocketPath: string;
 }): string {
   const command = tomlString(input.runtimeBinary);
   const args = `[${tomlString(input.aioxBin)}, ${tomlString("mcp-codex")}]`;
-  const env =
-    `{ AIOX_CODEX_AGENT_NAME = ${tomlString(input.agentName)}, ` +
-    `AIOX_CODEX_AGENT_TOKEN = ${tomlString(input.agentToken)}, ` +
-    `AIOX_SOCKET_PATH = ${tomlString(input.daemonSocketPath)} }`;
-  return `mcp_servers.aiox = { command = ${command}, args = ${args}, env = ${env} }`;
+  const envVars = `[${CODEX_MCP_ENV_VAR_NAMES.map(tomlString).join(", ")}]`;
+  return `mcp_servers.aiox = { command = ${command}, args = ${args}, env_vars = ${envVars} }`;
 }
 
 function tomlString(value: string): string {
