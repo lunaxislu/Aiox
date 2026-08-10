@@ -367,6 +367,330 @@ describe("daemon disconnectClaudeChannel", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Daemon state — Claude credential cleanup on attach rollback, detach, and
+// daemon stop. Codex has an equivalent suite ("Codex ingress authorization
+// revocation" in tests/unit/daemon/codex-ingress.test.ts); Claude has no
+// ingress token check to re-exercise (out of Phase 0 scope), so the negative
+// coverage here is registration-reuse (claudePendingTokens) and dispatch
+// deferral to a stale target runtime (claudeChannelRuntimes) instead.
+// ---------------------------------------------------------------------------
+
+describe("Claude credential cleanup — attach rollback, detach, and stop", () => {
+  let db: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("rejects the issued pending token for registration after rollbackAgentAttach", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+
+    const rollback = await client.rollbackAgentAttach({ agentName: "alpha" });
+    expect(rollback).toMatchObject({ ok: true, rolledBack: true });
+
+    const response = await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      reason: "claude_channel_registration_failed",
+      detail: "unknown_token",
+    });
+  });
+
+  it("clears an already-registered runtime and marks the agent disconnected after rollbackAgentAttach", async () => {
+    const claudeChannelRuntimes = new Map();
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-08-10T00:00:00.000Z",
+      claudeChannelRuntimes,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    expect(claudeChannelRuntimes.has("alpha")).toBe(true);
+
+    await client.rollbackAgentAttach({ agentName: "alpha" });
+
+    expect(claudeChannelRuntimes.has("alpha")).toBe(false);
+    expect((await client.status()).agents).toMatchObject([
+      { name: "alpha", kind: "claude", status: "disconnected" },
+    ]);
+  });
+
+  it("rejects the issued pending token for registration after detachAgent", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+
+    await client.detachAgent({ agentName: "alpha" });
+
+    const response = await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18790/send",
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      reason: "claude_channel_registration_failed",
+      detail: "unknown_token",
+    });
+  });
+
+  it("rejects the issued pending token for registration after notifyTuiExited", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+
+    await client.notifyTuiExited({ agentName: "alpha", exitCode: 0, signal: null });
+
+    const response = await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18790/send",
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      reason: "claude_channel_registration_failed",
+      detail: "unknown_token",
+    });
+  });
+
+  it("defers dispatch to a Claude target's stale registered runtime instead of pushing to it after detachAgent", async () => {
+    const claudeChannelRuntimes = new Map();
+    let idCounter = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${(idCounter += 1)}`,
+      now: () => "2026-08-10T00:00:00.000Z",
+      claudeChannelRuntimes,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "claude", name: "review-a", cwd: "/repo" });
+    const targetAttach = await client.attachAgent({
+      kind: "claude",
+      name: "review-b",
+      cwd: "/repo",
+    });
+    const targetToken = (targetAttach as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "review-b",
+      token: targetToken,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    await client.connect({ sourceName: "review-a", targetNames: ["review-b"] });
+    expect(claudeChannelRuntimes.has("review-b")).toBe(true);
+
+    await client.detachAgent({ agentName: "review-b" });
+    expect(claudeChannelRuntimes.has("review-b")).toBe(false);
+
+    const response = await client.receiveClaudeChannelMessage({
+      agentName: "review-a",
+      messageId: "claude-msg-1",
+      content: { text: "hello after target detach" },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [{ reason: "target_runtime_unavailable" }],
+        failed: [],
+      },
+    });
+  });
+
+  it("rejects the issued pending token for registration after daemon stop", async () => {
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+
+    await client.stop({ daemonOnly: false });
+
+    const response = await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18790/send",
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      reason: "claude_channel_registration_failed",
+      detail: "unknown_token",
+    });
+  });
+
+  it("defers dispatch to a Claude target's stale registered runtime instead of pushing to it after daemon stop", async () => {
+    const claudeChannelRuntimes = new Map();
+    let idCounter = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${(idCounter += 1)}`,
+      now: () => "2026-08-10T00:00:00.000Z",
+      claudeChannelRuntimes,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "claude", name: "review-a", cwd: "/repo" });
+    const targetAttach = await client.attachAgent({
+      kind: "claude",
+      name: "review-b",
+      cwd: "/repo",
+    });
+    const targetToken = (targetAttach as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "review-b",
+      token: targetToken,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    await client.connect({ sourceName: "review-a", targetNames: ["review-b"] });
+
+    await client.stop({ daemonOnly: false });
+    expect(claudeChannelRuntimes.has("review-b")).toBe(false);
+
+    // Ingress authentication is out of Phase 0 scope (see the describe-block
+    // comment above), so a disconnected source can still call this; the
+    // property under test is that a disconnected TARGET's stale runtime is
+    // never used to push, regardless of the source's own state.
+    const response = await client.receiveClaudeChannelMessage({
+      agentName: "review-a",
+      messageId: "claude-msg-1",
+      content: { text: "hello after stop" },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [{ reason: "target_runtime_unavailable" }],
+        failed: [],
+      },
+    });
+  });
+
+  it("still allows a live rebind: registerClaudeChannel with the same token still works before any rollback/detach/stop", async () => {
+    const claudeChannelRuntimes = new Map();
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-08-10T00:00:00.000Z",
+      claudeChannelRuntimes,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const attachResponse = await client.attachAgent({
+      kind: "claude",
+      name: "alpha",
+      cwd: "/repo",
+    });
+    const token = (attachResponse as { ok: true; claudeChannelToken: string })
+      .claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+
+    const rebind = await client.registerClaudeChannel({
+      agentName: "alpha",
+      token,
+      endpoint: "http://127.0.0.1:18790/send",
+    });
+
+    expect(rebind).toMatchObject({ ok: true });
+    expect(claudeChannelRuntimes.get("alpha")).toMatchObject({
+      endpoint: "http://127.0.0.1:18790/send",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Daemon state — receive reply
 // ---------------------------------------------------------------------------
 

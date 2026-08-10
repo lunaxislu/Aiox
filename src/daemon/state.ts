@@ -1064,6 +1064,8 @@ export function createDaemonState(
 
       codexPendingTokens.delete(request.agentName);
       codexChannelRuntimes.delete(request.agentName);
+      claudePendingTokens.delete(request.agentName);
+      claudeChannelRuntimes.delete(request.agentName);
 
       const agent = agents.findByName(request.agentName);
       if (agent?.status === "connected") {
@@ -1406,6 +1408,8 @@ export function createDaemonState(
           for (const agent of stoppedAgents) {
             codexChannelRuntimes.delete(agent.name);
             codexPendingTokens.delete(agent.name);
+            claudeChannelRuntimes.delete(agent.name);
+            claudePendingTokens.delete(agent.name);
           }
         }
         return { ok: true, stoppedAgents };
@@ -2904,6 +2908,8 @@ export function createDaemonState(
 
     codexChannelRuntimes.delete(input.agentName);
     codexPendingTokens.delete(input.agentName);
+    claudeChannelRuntimes.delete(input.agentName);
+    claudePendingTokens.delete(input.agentName);
 
     const now = options.now();
     agents.markByNameDisconnected(input.agentName, now);
