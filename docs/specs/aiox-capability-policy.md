@@ -103,8 +103,10 @@ Current implementation caveats:
   `src/daemon/state.ts:1302-1348` and `src/daemon/state.ts:2339-2387`
   (Codex MCP ingress authorization),
   `src/adapters/claude/channel-server.ts:462-500`,
+  [[docs/decisions/claude-channel-session-reconnect-token]] — current
+  session-scoped Claude registration credential lifecycle,
   [[docs/decisions/claude-channel-trust-and-registration]] —
-  `docs/decisions/claude-channel-trust-and-registration.md:25-34`.
+  dynamic-registration rationale and reverse `/send` push-auth gap.
 
 Host가 제공하면 client-visible MCP tool surface도 좁힐 수 있다. 예를 들어 Codex는
 server별 enabled/disabled tool을, Claude는 tool allow/deny와 strict MCP config를 제공한다.
@@ -132,8 +134,9 @@ Reserved profiles:
 ### 7.2 Trust boundary and data handling
 
 - daemon socket, Claude channel endpoint, adapter credentials와 per-agent token은 trust
-  boundary다. release 전에 runtime directory는 owner-only, socket/token file은 최소 권한으로
-  생성하고 모든 ingress/push path에서 identity를 검증한다.
+  boundary다. Phase 0 release hygiene는 runtime directory/socket을 owner-only로 만들고 raw credential이
+  argv·log·event·error·rollback residue에 남지 않게 한다. 모든 ingress/push path의 identity 검증,
+  route authorization, credential purpose separation은 Phase 1 trust-boundary hardening의 deferred contract다.
 - 예상 가능한 client socket 오류는 request/connection boundary에서 처리한다. 최상위
   `unhandledRejection`/`uncaughtException`은 secret을 제거한 structured fatal log를 남기고
   process를 종료해야 하며, 손상 가능 상태에서 계속 실행하는 복구 수단으로 쓰지 않는다.

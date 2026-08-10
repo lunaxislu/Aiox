@@ -8,6 +8,11 @@ session remains alive. The original single-use registration token had already
 been consumed, so the replacement child could not register its new loopback
 endpoint and Claude could not restore its tools.
 
+[[docs/decisions/claude-channel-trust-and-registration]] remains the rationale
+owner for dynamic endpoint registration and rejecting tokenless registration.
+This decision supersedes only that document's single-use credential-lifetime
+conclusion.
+
 ## Decision
 
 Keep a Claude channel registration token valid until the top-level Claude

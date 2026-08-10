@@ -255,8 +255,8 @@ the daemon lifecycle request/result defined by [[docs/specs/aiox-message-lifecyc
 correlation: it is not emitted in source-facing MCP results or canonical
 envelopes. Tier 3 has no automatic control-plane ack or completed producer.
 
-**Launcher injection** (`launcher.ts:88-120`):
-`-c mcp_servers.aiox = { command=<process.execPath>, args=[<aioxBin>, "mcp-codex"], env={AIOX_CODEX_AGENT_NAME, AIOX_CODEX_AGENT_TOKEN, AIOX_SOCKET_PATH} }`. Injected into the **daemon-owned app-server**, not
+**Launcher injection** (`launcher.ts`):
+`-c mcp_servers.aiox = { command=<process.execPath>, args=[<aioxBin>, "mcp-codex"], env_vars=["AIOX_CODEX_AGENT_NAME", "AIOX_CODEX_AGENT_TOKEN", "AIOX_SOCKET_PATH"] }`. The launcher passes the three actual values only in the daemon-owned app-server's process environment; the inline configuration and argv contain names, not credential values. This is injected into the **daemon-owned app-server**, not
 into the foreground TUI. The Step 14 correction is preserved in
 `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §2.3: earlier Step 13 injected into
 the TUI, which in `--remote` mode is not the MCP host, so the aiox MCP never

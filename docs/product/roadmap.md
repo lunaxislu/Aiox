@@ -27,7 +27,6 @@ Phase 0:
      -> G1-A
      -> G1-B (historical core accepted; canonical-presentation corrective verified)
      -> G1-C (Codex Tier 3 evidence accepted; Codex·Claude 공통 요구 잔여)
-     -> G1-D (remaining release gate)
      -> G3 병행
   -> G2
   -> G5/G6
@@ -48,7 +47,7 @@ After public release:
 | G1-A       | contract/ingress freeze                                      | envelope cutover와 reliability가 소비할 contract boundary를 고정한다.                 |
 | G1-B       | canonical envelope cutover (historical core accepted; canonical-presentation corrective verified) | accepted delivery/correlation 모델과 검증된 Claude canonical presentation을 G1-C/G1-D가 입력으로 소비한다. |
 | G1-C       | process-lifetime Tier 3 delivery reliability (Codex evidence accepted, 공통 요구 잔여) | accepted Codex Tier 3 결과와 남은 Codex·Claude 공통 요구를 구분하고, Tier 2 ack/completed·stale 등 후속 보장을 현재 완료로 주장하지 않는다. |
-| G1-D       | local trust boundary                                         | authenticated source, route authorization, runtime secret/socket boundary를 닫는다.   |
+| G1-D       | minimal local secret/runtime hygiene (Phase 0 hygiene accepted, Phase 1 trust-boundary hardening으로 이관) | Phase 0 hygiene(Codex argv-safe delivery, runtime dir/socket permission, Claude credential cleanup) 완료를 Phase 1 ingress/push authentication·route authorization·purpose separation·constant-time comparison의 완료로 확대 해석하지 않는다. |
 | G3         | daemon stabilization                                         | daemon lifecycle, transport, diagnostics failure boundary를 release-grade로 고정한다. |
 | G2         | terminal minimum                                             | one-command demo의 최소 terminal UX를 Phase 0 범위로 닫는다.                          |
 | G5         | public hygiene                                               | 공개 repo로 나갈 shared/local/sensitive/public surface 경계를 닫는다.                 |
@@ -102,7 +101,7 @@ After public release:
 
 **목표**
 
-Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, instruction/description/example sync, Codex ingress evidence를 고정한다. 이 contract/ingress 결과는 accepted/completed G1-B의 canonical envelope/public-ID/reply-right와 G1-C의 accepted Codex Tier 3 결과에 이미 historical하게 소비됐다. 남은 Phase 0/release gate는 G1-C의 Codex·Claude 공통 요구와 G1-D trust boundary다. authenticated automatic ack/`completed` 등을 포함한 Tier 2 uplift는 공개 이후 Phase 1의 후속 책임이다.
+Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, instruction/description/example sync, Codex ingress evidence를 고정한다. 이 contract/ingress 결과는 accepted/completed G1-B의 canonical envelope/public-ID/reply-right와 G1-C의 accepted Codex Tier 3 결과에 이미 historical하게 소비됐다. Phase 0에는 G1-C의 Codex·Claude 공통 요구와 최소 local secret/runtime hygiene만 남긴다. ingress/push authentication·route authorization과 authenticated automatic ack/`completed`은 공개 이후 Phase 1의 후속 책임이다.
 
 **진입 조건**
 
@@ -244,11 +243,11 @@ Accepted Codex Tier 3 evidence와 그 경계:
 - [[docs/architecture/local-runtime-gaps-and-targets]] — runtime failure wiring, stale transition, queued delivery retry/drain gap owner.
 - [[docs/decisions/reply-permission-rather-than-obligation-fsm]] — permission-consumption rationale owner.
 
-##### G1-D — Trust Boundary
+##### G1-D — Minimal Local Secret/Runtime Hygiene
 
 **목표**
 
-Local stable A2A가 같은 machine 안의 편의적 loopback 통신이 아니라 authenticated source, authorized route, protected runtime secret, owner-only local runtime surface 위에서 동작하게 한다.
+Phase 0에서 raw secret 노출, permissive runtime surface, stale credential 잔재를 줄인다. authenticated source와 route authorization을 포함한 완전한 local trust boundary는 Phase 1로 이관한다.
 
 **진입 조건**
 
@@ -260,17 +259,17 @@ Local stable A2A가 같은 machine 안의 편의적 loopback 통신이 아니라
 
 - G1-B에서 확정한 correlated reply authorization 모델이 trust-boundary 검증에 필요한 negative test와
   runtime guard로 연결되어 있는지 확인한다.
-- G1-D auth는 API 요청 권한/route 검증 gate이고, full Tier 2 delivery-ack 완성은 Phase 1 uplift임을 착수 scope에서 분리한다.
-- Claude daemon-to-channel push와 channel-to-daemon ingress 각각에서 어떤 token/header 검증이 필요한지 구분한다.
-- Claude channel-server `/send`가 request auth 없이 loopback POST를 수용하는 현재 ingress gap을 release-gating auth 취약점으로 다룬다.
-- daemon socket/API의 raw caller를 typed agent ingress와 trusted internal boundary 중 어느 것으로 분류할지 결정한다. 선택한 경계에서 agent ingress가 daemon-only lifecycle event를 위조하지 못하도록 negative evidence와 runtime guard 범위를 정한다.
-- Codex secret 전달 방식, runtime directory/socket 권한, token comparison, rollback cleanup의 release-grade 최소선을 정한다.
+- G1-D의 Phase 0 착수 scope는 Codex argv-safe secret delivery, runtime directory/socket permission,
+  Claude attach rollback/detach/stop credential cleanup으로 한정된다.
+- API 요청 인증, route 검증(daemon socket/API raw caller를 typed agent ingress와 trusted internal
+  boundary 중 어느 것으로 분류할지 포함), Claude daemon-to-channel push와 channel-to-daemon ingress
+  각각의 token/header 검증, credential purpose separation과 constant-time comparison은 Phase 1
+  trust-boundary hardening으로 이관되어 있으며 현재 G1-D 통과 조건이 아니다.
+- Claude channel-server `/send`가 request auth 없이 loopback POST를 수용하는 현재 ingress gap은
+  문서화된 현재 gap이며, Phase 1 trust-boundary hardening 범위다.
 
 **통과 조건**
 
-- Claude와 Codex 경로 모두에서 unauthenticated ingress/push, forged source, invalid token,
-  wrong/forged correlated reply, `replyExpected:false` reply, consumed-right duplicate reply, route bypass가 negative evidence로 거부된다.
-- daemon socket/API raw caller의 선택된 trust classification이 검증되고, agent ingress를 통한 daemon-only lifecycle event authoring이 허용되지 않는다.
 - secret/token/raw credential이 argv, log, event, error, rollback residue에 release-blocking 방식으로 남지 않는다.
 - runtime directory와 daemon/channel socket surface가 owner-only local boundary로 취급되며, 실패/rollback 후에도 stale credential이나 pending token이 남지 않는다.
 
@@ -278,7 +277,8 @@ Local stable A2A가 같은 machine 안의 편의적 loopback 통신이 아니라
 
 - [[docs/architecture/local-runtime-gaps-and-targets]] — local trust-boundary current gaps와 release pressure owner.
 - [[docs/architecture/local-runtime-daemon-transport-api]] — daemon socket/API raw caller와 dispatch boundary의 current architecture owner.
-- [[docs/decisions/claude-channel-trust-and-registration]] — Claude channel registration token 결정과 reverse push-auth gap owner.
+- [[docs/decisions/claude-channel-session-reconnect-token]] — current Claude session credential and replacement-child rebind decision owner.
+- [[docs/decisions/claude-channel-trust-and-registration]] — dynamic-registration rationale and reverse push-auth gap owner.
 - [[docs/decisions/original-delivery-narrow-reply-right]] — correlated reply authorization rationale owner.
 - [[docs/specs/aiox-message-lifecycle]] — source identity, route authorization, reply correlation, typed error boundary owner.
 - [[docs/specs/aiox-capability-policy]] — identity/auth, authorization/policy, capability isolation, runtime data handling boundary owner.
@@ -478,6 +478,7 @@ G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable
 - npm publish와 GitHub 공개 이후 시작한다.
 - Phase 1은 adoption friction과 human-controlled operation에 집중하며, compose, durable replay, third vendor, federation은 Phase 2/3로 둔다.
 - Phase 1은 current Tier 3의 delivery acceptance/`unconfirmed` 경계 위에서 authenticated automatic ack, `completed` evidence, wake-up, adapter-specific duplicate suppression 같은 Tier 2 운영 보장을 uplift한다.
+- Phase 0 hygiene 이후 Claude/Codex ingress·push authentication, UDS route authorization, credential purpose separation과 constant-time comparison을 local trust-boundary hardening으로 결정·구현한다.
 - 이 카드는 gate가 아니므로 통과 조건 슬롯을 강제하지 않는다.
 
 **주요 범위**
@@ -582,7 +583,7 @@ Gate completion requires reproducible evidence, not only a status label. 각 gat
 | Gate | Required evidence                                                                                                                                                                         |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | G0   | versioned schema/example validation, CLI/config/package decision record, support matrix                                                                                                   |
-| G1   | completed/consumed G1-B/C evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence, and separate Codex·Claude direct CLI/TUI transport-level ambiguity/outcome/confirmed-recovery/duplicate-display evidence. Remaining G1 release evidence: adapter-symmetric delivery-FSM semantics, retry/failure 중 inbound reply와 MCP/channel 결과 경로 무손실; G1-D auth/route/secret/runtime negative tests. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
+| G1   | completed/consumed G1-B/C/D evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence, separate Codex·Claude direct CLI/TUI transport-level ambiguity/outcome/confirmed-recovery/duplicate-display evidence, and G1-D Phase 0 hygiene evidence (Codex argv-safe secret delivery, owner-only runtime directory/socket permission with chmod-failure rollback, Claude attach rollback/detach/stop credential cleanup). Remaining G1 release evidence: adapter-symmetric delivery-FSM semantics, retry/failure 중 inbound reply와 MCP/channel 결과 경로 무손실. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Ingress/push authentication, route authorization, and credential purpose separation are Phase 1 trust-boundary hardening, not G1 release evidence. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
 | G2   | tmux path and no-tmux fallback clean-user smoke, README command match                                                                                                                     |
 | G3   | client crash isolation, fatal handler exit, SIGTERM child cleanup, bounded body/queue, log redaction, doctor diagnosis tests                                                              |
 | G5   | secret/PII/path scan, tracked-vs-local file review, dead/scaffold code disposition, LICENSE/README/SECURITY/CONTRIBUTING/issue template presence and link check                           |

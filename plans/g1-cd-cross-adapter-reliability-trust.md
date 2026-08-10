@@ -3,16 +3,16 @@
 ## Objective
 
 G1-C의 Codex·Claude 공통 MCP 표면 및 delivery reliability를 닫고,
-G1-D의 local credential·route authorization·runtime permission trust boundary를 release-grade
-negative evidence로 검증한다.
+G1-D의 Phase 0 local secret/runtime hygiene를 release-grade negative evidence로 검증하고,
+ingress/push authentication과 route authorization은 Phase 1 trust-boundary hardening으로 이관한다.
 
 ## Completion condition
 
 - Codex와 Claude가 공통 `send`/`reply` MCP contract와 관찰 가능한 delivery 상태 의미를 제공한다.
 - Claude의 pre-write failure, acceptance ambiguity, explicit rejection이 G1-C 계약에 따라
   분류되고 직접 통합 증거가 있다.
-- Codex·Claude 모든 ingress/push와 runtime socket/secret surface가 G1-D의 선택된 trust model과
-  negative tests를 통과한다.
+- Codex secret 전달, runtime directory/socket permissions, credential cleanup이 Phase 0 hygiene
+  기준과 negative tests를 통과한다. ingress/push authentication과 route authorization은 Phase 1로 이관한다.
 - owner spec/architecture/decision과 tests가 accepted implementation을 반영하며 package closeout
   검증이 통과한다.
 
@@ -22,8 +22,8 @@ negative evidence로 검증한다.
 - [x] G1-C cross-adapter reliability implementation -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
 - [x] G1-C source-visible delivery-outcome implementation and negative evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
 - [x] G1-C direct Codex/Claude CLI/TUI evidence and owner reconciliation -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [>] G1-D local trust-boundary implementation and negative evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [ ] G1-D owner reconciliation and release-gate closeout -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-D minimal local secret/runtime hygiene implementation and negative evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-D hygiene owner reconciliation and package closeout -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
 
 ## Notes
 

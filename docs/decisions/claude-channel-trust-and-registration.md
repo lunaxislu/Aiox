@@ -1,5 +1,13 @@
 # Claude Channel Trust and Dynamic Registration
 
+**Current-authority note.** This is the historical decision snapshot for the
+dynamic-registration topology and the rejection of tokenless registration.
+Its single-use credential-lifetime conclusion, including the cited
+single-use-delete implementation evidence, is superseded by
+[[docs/decisions/claude-channel-session-reconnect-token]]. Read that decision
+for the current session-scoped credential and replacement-child rebind
+conclusion.
+
 ## Context
 Unlike Codex where the daemon spawns the app-server, Claude Code CLI spawns its own MCP servers as stdio child processes. Since the daemon is not a parent of the Claude process tree, it cannot directly control or access the Claude transport streams. To route messages to Claude Code, the daemon must send HTTP POST requests to an ingress server managed by the Claude channel-server adapter. The channel-server must therefore tell the daemon where its transient endpoint lives, and the daemon must trust that registration. This decision concerns that **channel → daemon registration** direction: who is allowed to claim a registered agent's identity and bind an endpoint. (The reverse **daemon → channel HTTP ingress** push-auth question is a separate, still-open gap; see Trade-offs.)
 

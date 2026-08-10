@@ -1,7 +1,7 @@
 ---
 topic: G1-C/D cross-adapter reliability and local trust boundary
 description: G1-C의 공통 MCP·Claude reliability 대칭과 G1-D의 local credential trust boundary를 계약·구현·검증한다.
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -11,8 +11,8 @@ status: open
 - [x] W5 implement Claude delivery reliability symmetry and manual recovery after W2 review
 - [x] W7 implement and verify adapter-neutral source-visible delivery outcomes after W5
 - [x] W4 perform G1-C Codex/Claude direct CLI/TUI evidence and owner reconciliation after W7 review
-- [>] W3 implement and verify the accepted G1-D local trust boundary after W4
-- [ ] W6 perform G1-D owner reconciliation and package closeout after W3 review
+- [x] W3 implement and verify G1-D minimal local secret/runtime hygiene after W4
+- [x] W6 perform G1-D hygiene owner reconciliation and package closeout after W3 review
 
 ## Required Context
 
@@ -31,8 +31,12 @@ status: open
 
 ## Package Scope
 
-- Revision: 3; History pointer: `2026-08-09 · source-visible outcome implementation before W4 correction`.
-- Primary boundary: Phase 0 G1-C/D: cross-adapter delivery reliability and local trust-boundary hardening
+- Revision: 5; History pointer: `2026-08-10 · W6 closeout-review remediation — authority, write-set, and provenance correction`.
+- Primary boundary: Phase 0 G1-C/D: cross-adapter delivery reliability and G1-D minimal local
+  secret/runtime hygiene (Codex argv-safe secret delivery, runtime directory/socket permission, Claude
+  attach rollback/detach/stop credential cleanup). Full local trust-boundary hardening — ingress/push
+  authentication, UDS route authorization, credential purpose separation, constant-time comparison — is
+  Phase 1 and out of this package's current boundary.
 - Related artifacts in allowed write-set:
 - docs/product/roadmap.md
 - docs/specs/aiox-message-lifecycle.md
@@ -40,11 +44,14 @@ status: open
 - docs/specs/aiox-capability-policy.md
 - docs/architecture/local-runtime-routing-and-delivery.md
 - docs/architecture/local-runtime-claude-adapter.md
+- docs/architecture/local-runtime-codex-adapter.md
 - docs/architecture/local-runtime-daemon-transport-api.md
 - docs/architecture/local-runtime-gaps-and-targets.md
 - Excluded:
-  - G0 release identity, Phase 1 automatic ack/completed, Phase 2 durable replay/federation, G3 generic
-    diagnostics/event model, and a compatibility alias for superseded MCP tool names.
+  - G0 release identity, Phase 1 automatic ack/completed, Phase 1 G1-D full trust-boundary hardening
+    (ingress/push authentication, UDS route authorization, credential purpose separation, constant-time
+    comparison), Phase 2 durable replay/federation, G3 generic diagnostics/event model, and a
+    compatibility alias for superseded MCP tool names.
 
 ## Workflow / Agent Plan
 
@@ -89,9 +96,17 @@ status: open
   - W4 is accepted: separate real Codex and Claude CLI/TUI runs demonstrate post-write ambiguity, correlated
     source outcomes, user-confirmed one-time recovery, and duplicate target display. This is transport-level
     delivery/recovery evidence only, not target receipt, read, or work completion.
+  - W3 is accepted (2026-08-10): Codex argv-safe secret delivery (`env_vars` name-only whitelist plus
+    spawn-env value injection), owner-only runtime directory (`0700`)/daemon socket (`0600`) permissions with
+    chmod-failure rollback, and Claude attach rollback/detach/notifyTuiExited/stop credential cleanup
+    (`claudePendingTokens`/`claudeChannelRuntimes`) all have accepted RED/GREEN test evidence and satisfy the
+    Verification Contract's Phase 0 credential-residue/permission requirement.
 - Evidence gaps:
-  - Claude push and channel-to-daemon message/reply auth, Codex argv secret exposure, explicit runtime
-    permissions, constant-time token comparison, and Claude rollback cleanup remain unresolved for W3.
+  - None for Phase 0 G1-D hygiene: all three named items (Codex argv, runtime directory/socket permissions,
+    Claude credential cleanup) are accepted per W3 above.
+  - Claude push and channel-to-daemon message/reply ingress authentication and constant-time token comparison
+    are Phase 1, deferred out of this package's current scope by Task Brief revision 4 (2026-08-10); they are
+    not a current evidence gap for this package. See the 2026-08-10 Phase 1 sequencing correction entry below.
 
 ## Cross-Artifact Effects
 
@@ -104,8 +119,12 @@ status: open
 
 - G1-C: common `send`/`reply` naming/schema and uniform reply result; Claude HTTP failure classifier and
   `unconfirmed` manual-recovery surface.
-- G1-D: whether the Claude session credential is reused or purpose-separated for registration, daemon ingress,
-  and `/send` push; a Codex argv-safe secret-delivery mechanism subject to verified CLI support.
+- G1-D: the Claude session credential purpose-separation model (existing session-scoped registration
+  credential reused for replacement-child rebind; separate daemon-ingress and `/send`-push credentials,
+  each constant-time-verified at its boundary) was decided 2026-08-04 (see the W1 contract review and
+  acceptance entry below); its implementation is Phase 1, not an open candidate for this package's current
+  scope. The Codex argv-safe secret-delivery mechanism (`env_vars` name whitelist plus spawn-env value
+  injection) is verified, implemented, and accepted as part of W3 (2026-08-10) — not an open candidate.
 
 ## Verification Contract
 
@@ -127,12 +146,17 @@ status: open
 
 ## Closeout Contract
 
-- Revision: 2; History pointer: `2026-08-09 · G1-C evidence / G1-D closeout sequencing correction`.
+- Revision: 3; History pointer: `2026-08-10 · Phase 0/Phase 1 boundary correction — P2 remediation`.
 - Criteria:
   - G1-C common contract and Claude reliability outcomes meet roadmap G1-C requirements without claiming
     automatic ack/completed or durable replay.
-  - G1-D selected trust model rejects unauthenticated/forged ingress and push, invalid tokens, forged or
-    duplicate replies, route bypass, and daemon-only lifecycle-event authoring.
+  - G1-D Phase 0 minimal local secret/runtime hygiene is implemented and verified: Codex argv-safe secret
+    delivery, owner-only runtime directory/socket permissions, and Claude attach rollback/detach/stop
+    credential cleanup leave no raw secret in argv, logs, events, errors, or rollback residue. Full local
+    trust-boundary hardening — rejecting unauthenticated/forged ingress and push, invalid tokens, forged or
+    duplicate replies, and route bypass, plus daemon-only lifecycle-event authoring — is the selected Phase 1
+    target model (see the W1 contract review and acceptance entry below) and is not this package's closeout
+    criterion.
   - Relevant spec, architecture, decision and roadmap owner records agree with accepted code and evidence.
   - Registry Integrity Check passes.
   - Result Consumption Gate passes for every executable W.
@@ -847,3 +871,483 @@ status: open
 - **Reconcile / next:** W4 is `[x]`, and its accepted evidence is recorded above. W3 is now the sole `[>]` Work
   Item for the accepted G1-D local trust-boundary implementation; W6 remains pending for its later owner
   reconciliation and package closeout.
+
+## 2026-08-10 · W3 trust-boundary execution framing
+
+- **User question:** the prior W3 next-step sentence listed components but did not make their responsibilities or relationships clear.
+- **Clarification basis:** current gap/spec/architecture sources identify four connected boundaries: credential issuance and delivery, Claude HTTP ingress/push, daemon UDS method dispatch, and local filesystem permissions/cleanup.
+- **Next framing:** describe and implement W3 by boundary and attack path, then verify each boundary with a corresponding negative test and residue/permission check; do not treat launcher, channel, socket, and tests as unrelated file groups.
+
+### 2026-08-10 15:10 · 2026-08-10 15:00 · W3 threat-model reassessment
+
+- **Threat-model reassessment requested:** the user correctly noted that accepted contracts may be revised and asked whether token-theft scenarios are realistically reachable vulnerabilities.
+- **Confirmed current reachability:** the Claude `/send` listener accepts any loopback POST without a credential; Claude send/reply calls carry only `agentName` across the daemon UDS and the daemon does no Claude ingress authorization; the socket dispatcher dynamically invokes any DaemonApi method; current `~/.aiox` is mode `drwxr-xr-x`, and the current code has no explicit mode setting for either directory or socket. Codex currently embeds its raw token in `-c` inline TOML argv.
+- **Boundary implication:** a local process that can reach the socket requires no token to forge Claude ingress or invoke daemon methods; a local process that discovers the loopback Claude port can inject channel content. Token purpose separation can reduce cross-boundary replay after a secret leak, but it cannot protect against a hostile same-UID process able to read the relevant child environment or operate the owner-accessible UDS. The accepted three-token model therefore needs a user review against this concrete threat model before implementation.
+
+### 2026-08-10 15:15 · 2026-08-10 15:15 · G1-D prioritization review
+
+- **User prioritization input:** this project is expected to be used only by the user and a few collaborators; the user considers G1-D security/trust hardening a likely lower-priority concern.
+- **Assessment:** that deployment assumption materially lowers the value of treating same-host adversarial-process resistance as a current release blocker. It does not make the existing unauthenticated UDS and loopback paths safe; rather, it accepts their residual risk and prioritizes reliability/product work. Because W3/W6 and the plan completion condition currently make G1-D release-blocking, deferral requires explicit scope/release-gate reconciliation rather than silently leaving an unmet condition.
+- **Decision options prepared:** (1) defer all of W3/W6 to a later trust-boundary package, accepting raw argv and unauthenticated local ingress/UDS risk; (2) retain a narrowly scoped hygiene pass for raw argv, owner permissions, and cleanup while deferring purpose separation/route authorization; or (3) retain the accepted W3 boundary as release-blocking.
+
+### 2026-08-10 · W3 candidate — Codex argv-safe secret delivery slice
+
+- **Scope:** the user directed execution of only the Codex argv-token-exposure piece of W3's already-accepted
+  scope (revision 4 Task Brief already lists "Codex argv-safe secret delivery" as in-scope, separate from
+  runtime directory/socket permissions and Claude attach rollback/detach/stop cleanup). This does not resolve
+  the broader defer/narrow/full-boundary question from the prior entry; it executes one slice explicitly
+  named by the user while leaving that question open for the rest of W3.
+- **Confirmed schema before implementing:** the prior W1 log summary claimed Codex's stdio `env_vars`
+  configuration could forward a named environment variable without an argv value; this was independently
+  re-verified rather than trusted as-is, from two sources: the installed local Codex binary
+  (`codex-cli 0.147.0`, `@openai/codex-darwin-arm64`) contains `RawMcpServerConfig`'s `env` field plus
+  separate `env_vars`-entry error strings (`"env_vars entry \`...\` uses source \`remote\`..."`,
+  `"unsupported env_vars source \`...\`; expected \`local\` or \`remote\`"`), and the official config
+  reference (`https://learn.chatgpt.com/docs/config-file/config-reference`) documents
+  `mcp_servers.<id>.env_vars` as "Additional environment variables to whitelist for an MCP stdio server.
+  String entries default to `source = "local"`." A plain string array of names with the default `local`
+  source is the verified syntax.
+- **Implementation:** `src/adapters/codex/launcher.ts`'s `buildMcpServersAioxInlineToml` now emits
+  `env_vars = ["AIOX_CODEX_AGENT_NAME", "AIOX_CODEX_AGENT_TOKEN", "AIOX_SOCKET_PATH"]` (names only) instead
+  of `env = { ... }` with raw values; new `buildCodexMcpEnv` supplies those three real values through
+  `spawn`'s `env` option on the app-server child process (merged with `...process.env`), only when `mcp` is
+  provided. `mcp-server.ts`'s consumer side (`requireEnv(env, "AIOX_CODEX_AGENT_TOKEN")` etc.) needed no
+  change — it already read these three names from its own process environment regardless of how Codex
+  populates them.
+- **TDD evidence:** `tests/unit/adapters/codex-launcher.test.ts`'s existing "injects aiox MCP config..." test
+  asserted the old, now-incorrect contract (raw token embedded in inline TOML); rewritten to assert the new
+  one. RED confirmed against pre-fix code (inline TOML still contained the raw token; `env_vars` assertion
+  failed). GREEN after the fix, no other test file needed changes.
+- **Verification:** focused `tests/unit/adapters/codex-launcher.test.ts` → 9/9; `tests/unit/adapters` →
+  205/205; full `pnpm vitest run` → 606/606; `pnpm typecheck` clean; `git diff --check` clean;
+  `scripts/check-markdown-inline-code` clean on the touched doc. `rg` sweep confirmed `agentToken` in
+  `launcher.ts` now flows only into the `spawn` env object, never into the TOML string builder, and no
+  Codex-adapter error/log path dumps argv or the raw token.
+- **Owner reconciliation (within W3's write-set only):** `docs/architecture/local-runtime-gaps-and-targets.md`
+  §13 Current Gaps — split the Codex-argv clause out of the combined "Local trust-boundary gaps" bullet
+  (still-open Claude ingress/push auth, permissions, constant-time comparison, and Claude rollback cleanup
+  clauses were left untouched) and added an evidence-linked sentence stating the argv exposure is resolved.
+- **Result disposition:** candidate result for independent review, not self-accepted, per W3's Risk gate /
+  Independent reviewer requirement. Full record:
+  `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W3.md`. W3 stays `[>]` active — runtime
+  directory/socket permissions, Claude attach rollback/detach/stop cleanup, and the broader W3/W6
+  defer/narrow/full-boundary decision from the prior entry remain open.
+
+## 2026-08-10 · 2026-08-10 W3 Codex argv review remediation
+
+### 2026-08-10 · W3 independent-review remediation — Codex argv documentation drift
+
+- **Independent review:** a separate reviewer found no implementation, test, or scope-boundary defect in the Codex argv-safe slice. It found one P2 architecture-document drift: `docs/architecture/local-runtime-codex-adapter.md` still described inline `env={...}`.
+- **Remediation:** updated that adapter-owner document to state `env_vars` name-only configuration plus daemon-owned app-server environment injection; raw credential values are not in inline configuration or argv.
+- **Recheck:** `git diff --check` and the repository Markdown inline-code checker pass after the documentation correction. The candidate remains pending the package acceptance flow.
+
+## 2026-08-10 · W3 candidate — runtime directory/socket owner-only permissions slice
+
+- **Scope:** the user directed execution of the second named W3 slice (runtime directory/socket owner-only
+  permissions), per Task Brief revision 4's already-accepted scope, on top of the still-pending-review Codex
+  argv-safe secret delivery slice. Excludes Claude attach rollback/detach/stop credential cleanup and the
+  broader defer/narrow/full-boundary W3/W6 decision from the 2026-08-10 15:15 entry, both of which remain open.
+- **Confirmed call chain before implementing:** `getSocketPath()` in `src/config/paths.ts` is the sole creator
+  of the profile runtime directory (`profileBaseDir()` + `mkdirSync`) when no `AIOX_SOCKET_PATH` override is
+  set; that directory also backs the not-yet-wired `state.db`. `createDaemonSocketServer().start()` in
+  `src/daemon/socket-transport.ts` is the sole place the actual Unix domain socket file is created, via
+  `net.Server.listen()` inside `listenWithStaleSocketRetry`. Both `src/bin/aiox.ts` (production client path
+  and `forkDaemonProcess`) and `src/daemon/run.ts` (daemon process entry) route through these two functions
+  only; no other call site creates the runtime directory or listens on the socket.
+- **Implementation:** `getSocketPath()` now calls a new `ensureOwnerOnlyRuntimeDir(dir)` —
+  `mkdirSync(dir, { recursive: true })` followed by an unconditional `chmodSync(dir, 0o700)` — so a
+  pre-existing, loosely-permissioned directory is corrected on every call, not only at first creation.
+  `createDaemonSocketServer().start()` calls `chmodSync(options.socketPath, 0o600)` immediately after
+  `listenWithStaleSocketRetry` resolves, the first point at which the socket file is guaranteed to exist.
+- **Scope judgment on `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` overrides (reported per explicit instruction, not
+  silently decided):** `getSocketPath()` has never created or owned the directory for an `AIOX_SOCKET_PATH`
+  override — it returns the override value immediately without calling `profileBaseDir`/`mkdirSync`. This
+  task preserves that boundary: only the resolver-owned default profile directory is hardened; an override's
+  containing directory is left untouched because the existing contract already treats it as caller-supplied,
+  and forcibly chmod'ing an arbitrary user-chosen directory would be a new, unrequested responsibility. The
+  socket *file* permission fix is different in kind: it runs inside `socket-transport.ts` uniformly regardless
+  of how `socketPath` was obtained, since correcting the listen target's mode after `listen()` succeeds
+  protects the socket file itself, not the directory that happens to contain it. `getStatePath()` is
+  intentionally untouched — it remains "SCAFFOLD ONLY" (production daemon still runs `:memory:`) and creates
+  no directory today, so it is out of this filesystem-permission-hygiene scope.
+- **TDD evidence:** `tests/unit/config/paths.test.ts` gained a new "runtime directory permissions (POSIX
+  owner-only)" describe block (new-directory creation, correction of a pre-existing `0o755` directory,
+  release-profile root); `tests/unit/daemon/socket-transport.test.ts` gained one new test asserting the
+  socket file's mode is `0o600` after listen. RED confirmed first for all four (existing code produced
+  umask-default directory/file modes, not `0o700`/`0o600`). GREEN after implementation; no other test file
+  needed changes.
+- **Verification:** focused `pnpm vitest run tests/unit/config/paths.test.ts tests/unit/daemon/socket-transport.test.ts`
+  → 27/27; `pnpm vitest run tests/unit/config tests/unit/daemon` → 179/179; full `pnpm vitest run` → 610/610;
+  `pnpm typecheck` clean; `git diff --check` clean.
+- **Owner reconciliation (within W3's declared write-set only):** `docs/architecture/local-runtime-gaps-and-targets.md`
+  §13 Current Gaps — removed the now-resolved "Runtime profile directories and daemon sockets are
+  created/listened without explicitly fixing directory or socket permissions" sentence from the still-open
+  "Local trust-boundary gaps" bullet, and added an evidence-linked sentence stating the default profile
+  directory and daemon socket now receive owner-only permissions, explicitly scoped to exclude the
+  `AIOX_SOCKET_PATH`/`AIOX_DB_PATH` override case. `docs/product/roadmap.md` and
+  `docs/specs/aiox-capability-policy.md` were reviewed and left unchanged: the roadmap's G1-D gate card
+  states its 진입 조건/통과 조건 at whole-gate granularity, not per-sub-item, and capability-policy's Phase 0
+  hygiene sentence is a normative target statement rather than a completed-status claim — neither needed a
+  change for one resolved sub-item. Full G1-D gate-level roadmap reconciliation remains W6's package-closeout
+  responsibility.
+- **Result disposition:** candidate result for independent review, not self-accepted, per W3's Risk gate /
+  Independent reviewer requirement. Full record:
+  `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W3.md`. W3 stays `[>]` active — Claude attach
+  rollback/detach/stop credential cleanup and the broader W3/W6 defer/narrow/full-boundary decision remain
+  open.
+
+## 2026-08-10 · W3 runtime-permission slice independent-review remediation
+
+### 2026-08-10 · W3 independent-review remediation — chmod rollback, call-path correction, Phase 1 sequencing
+
+- **Scope:** candidate remediation of three independent-review findings on the runtime directory/socket
+  owner-only permissions slice above, not self-accepted: (P1) socket `chmod` failure had no rollback, (P2) a
+  call-chain overclaim in that slice's own entry and its W3 task record, and (P2) stale Phase 1
+  sequencing/evidence-gap wording left over from before Task Brief revision 4. Ingress authentication, UDS
+  route authorization, credential purpose separation, and constant-time comparison (Phase 1) were not touched.
+- **P1 fixed — socket `chmod` failure now rolls back the listening server and socket file.**
+  `createDaemonSocketServer().start()` in `src/daemon/socket-transport.ts` previously let a `chmodSync` failure
+  after `listenWithStaleSocketRetry` propagate to the caller (correct) but left the server listening and the
+  socket file on disk (not cleaned up). It now wraps that `chmodSync` call in try/catch: on failure it runs a
+  new shared `closeServerAndSocketFile(server, sockets, socketPath)` helper — the same close-then-unlink shape
+  `handle.close()` already used — inside its own try/catch so a cleanup failure (e.g. `server.close()` erroring)
+  cannot replace or mask the original `chmod` error, then rethrows that original error unchanged. Because the
+  single `chmodSync` call site runs immediately after `listenWithStaleSocketRetry` resolves regardless of which
+  internal branch it took, this applies identically whether the socket bound on the first attempt or only after
+  the stale-socket-retry path removed a pre-existing file and retried.
+  - **TDD evidence:** two new tests in `tests/unit/daemon/socket-transport.test.ts`. Both mock `chmodSync` via
+    `vi.mock("node:fs", ...)` with `importOriginal` passthrough (`vi.mock` under this project's Vitest/ESM setup
+    rejects a bare `vi.spyOn` on the `node:fs` namespace with "Module namespace is not configurable in ESM";
+    confirmed this failure mode directly before switching approach) and `mockImplementationOnce` to throw only on
+    the next `chmodSync` call, leaving every other call — including the pre-existing `0600`-mode assertion test
+    in the same file — on the real implementation. (1) direct-listen case: RED confirmed first (`server.start()`
+    already rejected with the injected error, but `existsSync(socketPath)` was still `true` — no rollback); GREEN
+    after the fix, and additionally asserts `canConnect(socketPath)` resolves `false` (no listener survives).
+    (2) stale-socket-retry case: pre-creates a stale file at `socketPath` so `listenWithStaleSocketRetry` takes
+    its EADDRINUSE→unlink→retry branch before the same `chmodSync` call fails; RED was confirmed by temporarily
+    reverting only the new try/catch (keeping the pre-existing bare `chmodSync` line) and rerunning this exact
+    test — same failure shape (reject propagates, `existsSync` stays `true`); GREEN after restoring the fix.
+  - **Verification:** focused `tests/unit/daemon/socket-transport.test.ts` → 10/10; focused
+    `tests/unit/daemon` plus `tests/unit/config` → 181/181; full `pnpm vitest run` → 612/612; `pnpm typecheck`
+    clean; `git diff --check` clean.
+- **P2 fixed — call-chain overclaim corrected.** The prior slice's entry above and its W3 task record both
+  stated `getSocketPath()` is the sole creator of the runtime directory and that "no other call site creates the
+  runtime directory or listens on the socket." This is corrected, not rewritten in place (past History is
+  append-only): `getSocketPath()` is the sole creator of the *profile* runtime directory used by the production
+  paths (`createClientRuntime`, `forkDaemonProcess`, `src/daemon/run.ts`). It is not the only runtime-directory
+  creator in this codebase. `src/bin/aiox.ts`'s `createSocketRuntime()` — its own header comment already labels
+  it "legacy in-process runtime, used in tests," and `rg createSocketRuntime src tests` confirms the only
+  reference outside its own definition is `tests/unit/cli/bin.test.ts`; production dispatch (`main()` at
+  `src/bin/aiox.ts:52`) always uses `createClientRuntime` instead — falls back to `createDefaultSocketPath()`
+  when no explicit `socketPath` is given, which calls `mkdtempSync(join(tmpdir(), "aiox-"))`, creating its own
+  temporary directory outside the `~/.aiox` profile tree, independent of `getSocketPath()`.
+  - **Scope explicitly not decided (reported, not silently judged):** whether that legacy/test-only temp
+    directory needs any further hardening is not decided by this remediation. Separated fact from open scope:
+    (a) confirmed by direct empirical check on this platform (`node -e` invoking `fs.mkdtempSync` and `statSync`)
+    — `mkdtempSync` already creates its directory at mode `0700`, a POSIX `mkdtemp()` guarantee this slice's
+    `ensureOwnerOnlyRuntimeDir` neither added nor touched; (b) the socket *file* `createDefaultSocketPath()`
+    produces still receives the same unconditional `chmodSync(..., 0o600)` from this same P1 fix, since that call
+    runs regardless of how `socketPath` was obtained; (c) whether `createSocketRuntime`/`createDefaultSocketPath`
+    warrants further hardening, consolidation, or remains test-only by design is not decided here.
+- **P2 fixed — Phase 1 sequencing corrected in the controlling log's Evidence surface.** The package-level
+  `## Evidence` → `Evidence gaps` bullet (a current-state surface, not append-only History, per
+  `package-log.md`'s Artifact and Evidence Tests) previously listed Claude push/ingress authentication and
+  constant-time token comparison — both Phase 1 per the user's already-recorded contract (Phase 0: Codex argv
+  secret removal, runtime directory/socket permissions, Claude credential cleanup; Phase 1: Claude/Codex
+  ingress/push authentication, UDS route authorization, credential purpose separation, constant-time comparison)
+  and per Task Brief revision 4's own Task History entry ("Full ingress/push authentication and route
+  authorization move to Phase 1; this W retains only local secret/runtime hygiene") — as still "unresolved for
+  W3," without noting they had already been descoped to a deferred Phase 1. Edited in place to separate the
+  genuinely open Phase 0 item (Claude attach rollback/detach/stop cleanup) and the two already-candidate Phase 0
+  items (Codex argv, runtime permissions) from the Phase 1 items, which are no longer a W3 evidence gap.
+  - **Stale "still open" framing also found, not rewritten:** the Result-disposition footers of three prior
+    entries — the two 2026-08-10 "W3 candidate" entries above (Codex argv-safe secret delivery slice, and
+    runtime directory/socket owner-only permissions slice) and W3.md's matching Attempt records — each state
+    "the broader W3/W6 defer/narrow/full-boundary decision from the 2026-08-10 15:15 entry remain[s] open,"
+    even though both of those same entries executed against Task Brief revision 4 — which had already resolved
+    that three-way choice as option (2), a narrowly scoped Phase 0 hygiene pass, deferring purpose
+    separation/route authorization (Phase 1). This entry corrects the record going forward rather than editing
+    the four prior occurrences: the defer/narrow/full choice is resolved (narrow); the only genuinely open item
+    within current W3 scope is Claude attach rollback/detach/stop credential cleanup.
+- **Out-of-explicit-scope drift found, not fixed (flagging for W6, not silently expanding this remediation's
+  write-set):** the package-level `## Closeout Contract` (revision 2) still states G1-D's full trust model —
+  "rejects unauthenticated/forged ingress and push, invalid tokens, forged or duplicate replies, route bypass"
+  — as this package's closeout criteria, and `## Decision Candidates` still frames Claude credential
+  purpose-separation as an open decision for this package. Neither literally matches the two stale patterns this
+  remediation was scoped to fix ("W3's current unresolved evidence gap" / "defer/narrow/full 중 결정 대기"), and
+  package-level Closeout Contract reconciliation after the Phase 0/1 split is W6's explicit responsibility
+  ("perform G1-D hygiene owner reconciliation and package closeout after W3 review" — see Work Items). Left
+  unedited rather than reconciling it here.
+- **Not touched, confirmed by scope:** ingress authentication (Claude HTTP `/send`, Claude/Codex daemon UDS
+  message/reply), UDS route authorization, credential purpose separation, and constant-time comparison — all
+  Phase 1 — received no code, test, or contract changes in this remediation.
+- **Result disposition:** candidate remediation for independent review, not self-accepted. W3 stays `[>]`
+  active — Claude attach rollback/detach/stop credential cleanup remains the sole open Phase 0 item; Phase 1 is
+  out of this package's current scope, not an open decision.
+
+## 2026-08-10 · W3 socket-transport rollback P2 remediation — test evidence and Phase 0/Phase 1 contract alignment
+
+### 2026-08-10 · P2 #1 — chmod-rollback failure-path test evidence
+
+- **Trigger:** a fresh independent review of the runtime-permission remediation candidate above found no P0/P1
+  code defect, but flagged two P2s: (1) no test proved the chmod-rollback swallow-catch actually preserves the
+  original `chmod` error when the cleanup step itself also fails, and (2) Phase 0/Phase 1 contract drift in
+  `docs/product/roadmap.md` and this controlling log's current-state sections. This entry addresses both,
+  candidate-only, not self-accepted.
+- **Test design and a corrected assumption:** the first attempt mocked `unlinkSync` to fail and asserted the
+  rollback still surfaces the original `chmod` error. Confirming RED against a deliberately broken variant of
+  the code showed the mocked `unlinkSync` was never invoked at all — direct empirical check
+  (`node -e` calling `net.createServer().listen(path)` then `.close()`) proved `server.close()` on a Unix
+  domain socket already removes the socket file as part of a successful close, synchronously by the time its
+  callback fires, on this platform/Node version. `closeServerAndSocketFile`'s own `existsSync`/`unlinkSync`
+  fallback is therefore dead code on the normal close-succeeds path; it cannot be exercised by an `unlinkSync`
+  failure alone, since `existsSync` is already `false` by the time that branch is reached. The test was
+  redesigned around the path that is actually reachable and actually produces residue: `server.close()` itself
+  failing (via `vi.spyOn(net.Server.prototype, "close")`), which leaves both the listener bound and the socket
+  file in place, since neither libuv's auto-unlink nor the fallback `unlinkSync` ever run in that case.
+- **TDD evidence:** new test in `tests/unit/daemon/socket-transport.test.ts` ("preserves the original chmod
+  error, and leaves the listener/socket file behind, when the close() rollback step also fails"). RED confirmed
+  first by temporarily removing the outer `try { await closeServerAndSocketFile(...) } catch {}` swallow in
+  `src/daemon/socket-transport.ts` (restoring a bare `await closeServerAndSocketFile(...)` before the
+  `throw chmodError`) and rerunning the new test standalone: it failed with the injected `close` error
+  (`"simulated server.close failure during rollback"`) surfacing instead of the `chmod` error — proving the test
+  is meaningful. The swallow-catch was restored immediately after (no other production line changed), and the
+  test went GREEN with no production diff from this remediation's starting state. The test captures the real
+  `net.Server` instance via the `close()` spy's `this` and performs a genuine second `close()` call in a
+  `finally` block so the intentionally-leaked listener does not survive past the test.
+- **Direct-listen vs. stale-socket-retry choice (task item 4):** the new test uses the direct-listen path only.
+  Both paths converge on the identical `chmodSync` call site and swallow-catch immediately after
+  `listenWithStaleSocketRetry` resolves, already proven by the two prior (accepted) chmod-only-failure tests —
+  one per path, both passing. Re-running the cleanup-failure scenario a second time via the stale-retry path
+  would exercise the same shared catch block a second time without new coverage; the direct-listen path was
+  chosen because it has one fewer moving part (no pre-existing stale file / prior `unlinkSync` call to
+  interleave with the injected failure).
+- **Residual risk — fact vs. judgment:**
+  - Fact, empirically confirmed: on this platform/Node version, a *successful* `server.close()` on a bound Unix
+    domain socket removes the socket file itself; the application's own `existsSync`/`unlinkSync` fallback in
+    `closeServerAndSocketFile` is not reached in that case.
+  - Fact, per Node's documented `server.close([callback])` contract: the callback receives an `Error` only when
+    the server was not open/listening — a case that, per that same documentation, has nothing bound to clean up
+    in the first place.
+  - Judgment: given the two facts above, a `close()` failure that both reports an error *and* leaves a real,
+    previously-bound listener/socket-file behind is not a documented, empirically-reachable Node/libuv failure
+    mode on this platform today; the new test reaches it only via `vi.spyOn` fault injection, not a naturally
+    occurring code path in this codebase. This does not make the swallow-catch pointless — it is still the
+    correct defense-in-depth if Node/libuv behavior differs on another OS, in a future version, or under
+    resource exhaustion — but the currently-provable residual risk of "a stale socket file survives a
+    chmod-failure rollback" is low-probability/undemonstrated-in-production rather than a known live gap.
+  - Separately, unrelated to this remediation: `createSocketRuntime`'s legacy/test-only `mkdtempSync`-based
+    temp socket path (flagged in the prior remediation entry) is not affected by this fix or this residual-risk
+    assessment one way or the other; this entry does not revisit that flagged, still-undecided item.
+- **Verification:** `pnpm vitest run tests/unit/daemon/socket-transport.test.ts` → 11/11 (10 pre-existing + 1
+  new). Broader/full-suite and typecheck/diff verification for this entire remediation (test evidence plus the
+  Phase 0/Phase 1 doc corrections below) is recorded once, together, at the end of this entry.
+
+### 2026-08-10 · P2 #2 — Phase 0/Phase 1 contract alignment across owner documents
+
+- **Scope:** read `docs/product/roadmap.md`, this controlling log, `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W3.md`, `plans/g1-cd-cross-adapter-reliability-trust.md`, and
+  `docs/specs/aiox-capability-policy.md` looking for sentences that state or imply full local trust-boundary
+  hardening, or unauthenticated ingress/push/route-bypass rejection, as a Phase 0/W3 closeout condition, or that
+  re-open the already-decided minimal-hygiene scope as if it were still undecided. `plans/g1-cd-cross-adapter-reliability-trust.md`,
+  `docs/specs/aiox-capability-policy.md`, and `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W3.md`
+  were already correctly scoped (plan's Completion condition and capability-policy §7.2 already state the
+  Phase 0 hygiene / Phase 1 deferral boundary correctly; W3.md's Task Brief revision 4 already states the
+  narrowed scope correctly) — left unedited. Two files needed correction:
+  - `docs/product/roadmap.md`'s G1-D "착수 검토 / 열린 결정" list (the gate's "목표" and "통과 조건" sections
+    were already correctly scoped) still posed API request authentication, route verification/classification,
+    Claude push/ingress token verification, and the `/send` unauthenticated-ingress gap as open decisions for
+    G1-D's current scope — one bullet explicitly said to treat the `/send` gap "as a release-gating auth
+    vulnerability." This directly conflicts with the decided Phase 1 deferral (`Phase 1` phase card, lines
+    ~465-476, already states the correct forward contract). Replaced the four stale bullets with a scope
+    statement (Phase 0 = Codex argv delivery, runtime dir/socket permission, Claude rollback cleanup) plus an
+    explicit Phase 1 deferral bullet naming every deferred item, and reworded the `/send` bullet to state it is
+    a documented current gap in Phase 1 scope rather than release-gating. No Phase 1 item was deleted — all are
+    still named, just correctly classified.
+  - This controlling log's `## Package Scope`, `## Decision Candidates`, and `## Closeout Contract` (all
+    current-state surfaces per `package-log.md`'s Artifact/Evidence Tests, not append-only History) had been
+    explicitly flagged as out-of-scope drift in the prior remediation entry above ("flagging for W6, not
+    silently expanding this remediation's write-set... Left unedited rather than reconciling it here"). This
+    task's explicit user instruction directs fixing these now, without preempting W6's later full owner
+    reconciliation — a narrower fix than W6's eventual pass. Corrected: `Package Scope`'s primary boundary from
+    unqualified "local trust-boundary hardening" to the Phase 0 hygiene subset, with Phase 1 items added to the
+    `Excluded` list (previously listed only "Phase 1 automatic ack/completed," a G1-C item — G1-D's Phase 1
+    items were entirely absent from `Excluded`). `Decision Candidates`' G1-D bullet, which posed
+    purpose-separation as an open "whether" question and Codex argv delivery as still "subject to verified CLI
+    support," corrected to state both are already decided/implemented (with dates and pointers), not open
+    candidates. `Closeout Contract`'s G1-D criterion, which required this package's own closeout to reject
+    unauthenticated/forged ingress and push and route bypass — full Phase 1 criteria — narrowed to the Phase 0
+    hygiene subset, with the full trust model re-labeled as the selected Phase 1 target (not deleted, not this
+    package's closeout gate). All three sections' `Revision` counters were bumped with a history pointer to
+    this entry, consistent with how prior revisions in this same log were tracked.
+- **Not fixed, explicitly out of this task's scope (reported, not silently left):** the flagged
+  `createSocketRuntime`/`mkdtempSync` legacy temp-path hardening question and the out-of-write-set doc drift in
+  `docs/architecture/local-runtime-codex-adapter.md` / `local-runtime-errors-events-smoke.md` /
+  `local-runtime-store-and-repositories.md` (all previously flagged for W4/W6) remain unresolved by this entry;
+  none of them are Phase 0/Phase 1 boundary conflicts, and none were named in this task's remediation targets.
+- **Verification:** `scripts/check-markdown-inline-code docs/product/roadmap.md` clean. This same command
+  against this controlling log reports four pre-existing inline-code issues at lines 345/347/360/361 — all
+  inside the unrelated 2026-08-05 "W5 Unit C" entry, predating and untouched by this remediation; left as-is
+  per scope discipline (fix only what this edit touched). `git diff --check` and the full verification run are
+  recorded together below.
+
+### 2026-08-10 · Combined verification for this remediation
+
+- `pnpm vitest run tests/unit/daemon/socket-transport.test.ts` → 11/11.
+- `pnpm vitest run tests/unit/daemon tests/unit/config` → 182/182 (181 pre-existing + 1 new; no regression).
+- Full `pnpm vitest run` → 613/613 (612 pre-existing + 1 new).
+- `pnpm typecheck` clean.
+- `git diff --check` clean.
+- `scripts/check-markdown-inline-code docs/product/roadmap.md` clean.
+- `.agents/skills/log/scripts/package-log check logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md` →
+  all `OK` (stable-key, all seven W-id identities, registry-integrity); nothing actionable.
+- **Result disposition:** candidate remediation for independent review, not self-accepted by the executing
+  agent. W3 stays `[>]` active — Claude attach rollback/detach/stop credential cleanup remains the sole open
+  Phase 0 item. This entry does not itself change W3's completion status; it only hardens W3's existing
+  runtime-permission rollback test evidence and corrects Phase 0/Phase 1 contract drift the independent
+  reviewer found.
+
+## 2026-08-10 · W3 candidate — Claude attach rollback/detach/stop credential cleanup
+
+- **Scope:** the user directed TDD implementation of W3's last remaining Phase 0 item — Claude attach
+  rollback/detach/stop credential cleanup — explicitly as a candidate, not self-accepted. Excludes Codex lifecycle,
+  ingress/push authentication, UDS route authorization, credential purpose separation, and constant-time comparison
+  (Phase 1), all untouched.
+- **Confirmed gap, traced before implementing:** `registerClaudeChannel`/`disconnectClaudeChannel` were already
+  correct (the accepted W1 rebind contract keeps `claudePendingTokens` alive across same-token re-registration while
+  attached, and `disconnectClaudeChannel` already clears both `claudePendingTokens` and `claudeChannelRuntimes` on
+  explicit disconnect). Three other Claude credential-bearing exit paths did not: `rollbackAgentAttach`
+  (`src/daemon/state.ts:1049`) cleared only `codexPendingTokens`/`codexChannelRuntimes`/`codexRuntimes`, never
+  touching the two Claude maps even for a Claude agent name; the shared `detachCodexAgent` helper
+  (`src/daemon/state.ts:2887`, used by both the generic `detachAgent` and `notifyTuiExited` DaemonApi methods, which
+  the socket transport dispatches by method name only — confirmed via `src/daemon/socket-transport.ts:205`'s
+  `api[request.method]` dynamic dispatch, not gated by agent kind) had the identical gap; and `stop()`
+  (`src/daemon/state.ts:1402`) only deleted the two Codex maps for agents it marked disconnected, never the Claude
+  ones, regardless of `daemonOnly`. Separately confirmed Claude ingress (`receiveClaudeChannelMessage`/`Reply`) has
+  no token or connection-status check at all (`ReceiveClaudeChannelMessageRequest` carries no `token` field, unlike
+  Codex's `authorizeCodexIngress`) — this is the already-documented Phase 1 gap and was not touched. The
+  residue-relevant runtime state actually consumed by later dispatch is `claudeChannelRuntimes`, gated only by
+  `claudeChannelRuntimes.has(targetAgent.name)` in `injectMessageIntoClaudeTarget`/`retransmitClaudeUnconfirmedDelivery`
+  (`src/daemon/state.ts:1930`/`2036`), with no `agent.status` check — so a stale entry surviving detach/rollback/stop
+  would let the daemon keep pushing to a since-torn-down HTTP endpoint.
+- **TDD:** wrote 8 tests first in `tests/unit/adapters/claude-channel.test.ts:378-691` (new describe block
+  "Claude credential cleanup — attach rollback, detach, and stop"): registration with the issued pending token
+  rejected (`unknown_token`) after `rollbackAgentAttach`, `detachAgent`, `notifyTuiExited`, and a full `stop` (not
+  `daemonOnly`) respectively; a registered runtime cleared and the agent marked disconnected after `rollbackAgentAttach`;
+  a paired second Claude agent's message to a since-detached/since-stopped Claude target deferring
+  (`target_runtime_unavailable`) instead of using its stale runtime; and one confirmatory test proving same-token
+  re-registration while still attached — the accepted rebind contract — keeps working. RED confirmed first: 6 of 7
+  negative tests failed against pre-fix code (the live-rebind test and the eventual 8th test were unaffected by the
+  gap and passed immediately, correctly not exercising these paths).
+- **Implementation:** three call sites in `src/daemon/state.ts` each gained two lines — `claudePendingTokens.delete`
+  and `claudeChannelRuntimes.delete` for the affected agent name — alongside their existing Codex-map deletes, with
+  no other logic changed: `rollbackAgentAttach` (:1067-1068), the shared `detachCodexAgent` (:2911-2912), and `stop`'s
+  per-stopped-agent loop (:1411-1412, still gated by the pre-existing `!request.daemonOnly` condition, unchanged).
+  `registerClaudeChannel`, `disconnectClaudeChannel`, Codex lifecycle, and all Phase 1 surfaces are untouched.
+- **Verification:** the focused new describe block → 8/8. Full `tests/unit/adapters/claude-channel.test.ts` →
+  58/58. `tests/unit/daemon` → 163/163 (no regression). Full `pnpm vitest run` → 621/621, run three times
+  consecutively with no flake. `pnpm typecheck`
+  clean. `git diff --check` clean. `rg` sweep found no new path where a raw Claude token reaches a log/event/error;
+  the only production reference pattern remains the existing hashed `claudeTokenFingerprint`/`tokenHash` bookkeeping
+  already in place before this change.
+- **Owner reconciliation (within W3's declared write-set only):** `docs/architecture/local-runtime-gaps-and-targets.md`
+  §13 Current Gaps — replaced the stale "Claude attach rollback also leaves `claudePendingTokens` uncleared... this
+  cleanup gap is Claude-specific" sentence (now false) with an evidence-linked sentence covering all three fixed exit
+  paths, and added a new Evidence sub-entry citing the changed function ranges and the new test block.
+  `scripts/check-markdown-inline-code` clean on the touched doc.
+- **Not changed, confirmed by scope:** Codex lifecycle (`recordCodexRuntimeFailed`, `codexRuntimes` disposal),
+  Claude/Codex ingress or push authentication, UDS route authorization, credential purpose separation, and
+  constant-time comparison — all received no code, test, or contract changes.
+- **Result disposition:** candidate result for independent review, not self-accepted, per W3's Risk gate /
+  Independent reviewer requirement. Full record: `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W3.md`.
+  W3 stays `[>]` active — this closes the last named Phase 0 item (Claude attach rollback/detach/stop credential
+  cleanup); the broader W3/W6 defer/narrow/full-boundary decision was already resolved as narrow (Phase 0 only) per
+  the 2026-08-10 remediation entry above, so no scope decision remains open for W3 itself. This log is now past the
+  hard split threshold (1200+ lines); not split in this turn — flagging per the Long Log Split Guard rather than
+  deciding unilaterally.
+
+## 2026-08-10 · 2026-08-10 W3 acceptance and W6 owner reconciliation
+
+### 2026-08-10 · W3 accepted; W6 owner reconciliation started
+
+- **W3 result consumption:** independent review found no P0/P1 defect in the three Phase 0 hygiene slices (Codex argv-safe secret delivery, runtime directory/socket permissions including chmod-failure rollback, and Claude credential cleanup). The controlling review accepts W3 revision 4; its Phase 1 exclusions remain deferred and are not W3 gaps.
+- **Work transition:** W3 is `[x]`; W6 is now the single active `[>]` Work Item for owner reconciliation and package closeout.
+- **User-directed decision ownership:** retain `docs/decisions/claude-channel-trust-and-registration.md` as the historical rationale owner for dynamic endpoint registration and rejecting tokenless registration. Retain `docs/decisions/claude-channel-session-reconnect-token.md` as the current session-scoped credential and replacement-child rebind decision; current owner documents must prefer it for credential-lifetime claims. Do not create or delete a decision document in this reconciliation.
+- **Long-log lifetime decision:** the controlling log remains a single lifetime because W1 through W6 share the same G1-C/D package contract, evidence chain, and closeout consumer. Its 1000-line threshold is therefore recorded as reviewed rather than triggering a split.
+- **Immediate owner edits:** W6 corrected the plan Objective to the Phase 0 hygiene / Phase 1 auth-route boundary, made the reconnect decision state its narrow supersession explicitly, and changed roadmap/spec/Claude architecture references so the current credential conclusion appears before the historical topology rationale.
+
+### 2026-08-10 · W6 candidate — G1-D hygiene owner reconciliation audit and package closeout readiness
+
+- **Scope:** continuation of W6 (still `[>]`, not self-accepted). Four parallel read-only subagents audited (a)
+  W1–W7 task-record disposition/dependency consistency and Registry Integrity, (b) W3's `src`/test diffs against
+  this log's narrative, (c) roadmap/capability-policy/architecture Phase 0/1 boundary and decision-reference
+  correctness, (d) whether the three doc-drift items W5 Unit D and W7 had flagged as out-of-write-set "for W4"
+  were actually resolved. Findings consumed below; full detail in
+  `logs/packages/g1-cd-cross-adapter-reliability-trust/tasks/W6.md`.
+- **This log's own Evidence/Decision Candidates sections were stale and corrected above:** the `## Evidence` →
+  `Evidence gaps` bullet still said Claude credential cleanup "remains unresolved for W3" and Codex
+  argv/runtime-permission work was "pending independent result-review acceptance," even though this log's own
+  2026-08-10 "W3 accepted; W6 owner reconciliation started" entry had already accepted all three.
+  `## Decision Candidates`'s Codex argv sentence had the same staleness ("pending independent review"). Both
+  are edited in place (current-state surfaces, not append-only History) to state W3's accepted disposition;
+  no History entry was rewritten.
+- **W3.md (Compact task record) was stale relative to this log:** independent audit found W3.md was the only
+  one of W1/W2/W4/W5/W7/W3 whose Compact record never received a final acceptance digest — its last entry
+  still read "W3 stays `[>]` active" although this log accepted W3 on 2026-08-10. Appended a closing entry to
+  W3.md mirroring this log's already-recorded acceptance; no prior W3.md entry was rewritten.
+- **Roadmap drift found and corrected:** `docs/product/roadmap.md`'s Gate Overview table listed G1-A/B/C but
+  had no `G1-D` row despite G1-D having its own full gate card. The Gate Evidence table's `G1` row still listed
+  "raw-secret residue checks, runtime permission, and rollback-cleanup evidence" under "Remaining G1 release
+  evidence" after W3's acceptance. Both corrected: added the missing Gate Overview row; moved the now-accepted
+  G1-D Phase 0 hygiene evidence into the completed/consumed clause.
+- **Architecture-doc completeness gap found and corrected:** `docs/architecture/local-runtime-claude-adapter.md`
+  (in this package's declared write-set) described only the normal `disconnectClaudeChannel` exit path; it did
+  not mention the three other Claude-credential-bearing exit paths W3 added
+  (`rollbackAgentAttach`/shared `detachCodexAgent`/`stop`), even though `local-runtime-gaps-and-targets.md` §13
+  already covered them and the sibling Codex argv fix had updated both the gaps doc and the Codex adapter doc.
+  Added a new §6.2 step 10 with evidence citations.
+- **Confirmed already correctly reconciled, not touched:** `docs/specs/aiox-capability-policy.md` §7.1/§7.2 (best
+  aligned of the five docs audited), `docs/architecture/local-runtime-gaps-and-targets.md` §13 (all three Phase 0
+  items evidence-linked and independently re-verified against source line ranges), `plans/g1-cd-cross-adapter-reliability-trust.md`
+  Objective/Completion condition, both Claude decision documents (neither deleted, merged, or rewritten as
+  current fact; `claude-channel-session-reconnect-token` is cited before `claude-channel-trust-and-registration`
+  everywhere credential lifetime is the claim), and `docs/specs/aiox-message-lifecycle.md`/`aiox-adapter-model.md`
+  (no G1-D-specific content to reconcile).
+- **Residual risk — Package Scope write-set vs. accepted practice mismatch (not resolved here):** Package
+  Scope's declared "Related artifacts in allowed write-set" omits `docs/architecture/local-runtime-codex-adapter.md`,
+  yet this log's own 2026-08-10 "W3 Codex argv review remediation" entry records an independent-review-directed
+  edit to exactly that file, and the edit is present as verified, correct, uncommitted content in the current
+  working tree. This is reported, not silently fixed or reverted — expanding or narrowing a declared write-set
+  is a governance call this candidate pass does not decide unilaterally.
+- **Residual — minor provenance gap (not resolved here):** the already-correct composite-key wording in
+  `docs/architecture/local-runtime-store-and-repositories.md` (fixed in commit `75d762f`) has no explicit
+  W-attribution in either W4.md's or W7.md's Changed-artifacts list. Content is correct; only the provenance
+  record is thin. Not corrected because doing so would mean editing another W's append-only Result record.
+- **Verification:** `pnpm vitest run` → 621/621; `pnpm typecheck` clean; `git diff --check` clean across the
+  full working tree; `scripts/check-markdown-inline-code` clean on every doc touched this pass (`roadmap.md`,
+  `local-runtime-claude-adapter.md`, `W3.md`, `W6.md`, and this log); this log's own 4 pre-existing inline-code
+  flags at lines 345/347/360/361 (inside the unrelated 2026-08-05 "W5 Unit C" entry) are unchanged and remain
+  out of scope per this log's own 2026-08-10 remediation entry. `.agents/skills/log/scripts/package-log check`
+  → all `OK` (stable-key, all 7 W-id identities, registry-integrity). Raw-secret residue scan
+  (`rg agentToken src/adapters/codex/launcher.ts`, `rg "console\.|logger\." src/`) found no exposure path.
+- **Result disposition:** candidate reconciliation pass, not self-accepted, and package closeout is not
+  declared. W6 stays `[>]` active pending independent review of this pass. Phase 1 (Claude/Codex ingress/push
+  authentication, UDS route authorization, credential purpose separation, constant-time comparison, Tier 2
+  ack/`completed`) remains untouched and unimplemented — pointers: `docs/product/roadmap.md` Phase 1 section
+  (~line 481), `docs/specs/aiox-capability-policy.md` §7.2, `docs/architecture/local-runtime-gaps-and-targets.md`
+  §13's remaining "Local trust-boundary gaps" clause.
+
+### 2026-08-10 22:45 · 2026-08-10 · W6 closeout-review remediation — authority, write-set, and provenance correction
+
+- **Independent-review remediation:** direct source inspection confirmed that `process.stderr.write` output paths exist in `src/bin/aiox.ts`, `src/adapters/claude/channel-server.ts`, and `src/adapters/codex/mcp-server.ts`. The prior W6 raw-secret wording is corrected: the reviewed source shows no raw W3 token value passed to those inspected output calls (Claude registration uses `tokenHash`), rather than claiming no logging path exists.
+- **Decision provenance:** `docs/decisions/claude-channel-trust-and-registration.md` now carries a conservative current-authority note. It preserves the historical dynamic-registration/tokenless-rejection WHY while directing only the superseded single-use credential conclusion and its source evidence to `docs/decisions/claude-channel-session-reconnect-token.md`.
+- **Write-set and provenance correction:** Package Scope revision 5 explicitly names `docs/architecture/local-runtime-codex-adapter.md`, which W3 changed to reconcile Codex argv-safe delivery. W3.md now records that accepted affected-owner artifact. W4.md now records the composite-key owner-document correction from `75d762f`; W7 had explicitly routed that drift to W4. These corrections do not expand Phase 0 or revive Phase 1 work.
+- **Disposition:** this remediation is a W6 candidate only. W6 remains `[>]`; package closeout remains undeclared pending independent review.
+
+## 2026-08-10 · 2026-08-10 W6 acceptance and package closeout
+
+### 2026-08-10 · W6 independent-review acceptance and package closeout
+
+- **Independent-review disposition:** a fresh re-review found no P0/P1/P2 blocker in W6 Attempt 2. It confirmed the historical Claude decision preserves topology/tokenless-rejection WHY while current credential lifetime points to the reconnect decision; write-set, raw-secret scan, and W4 provenance remediations are coherent.
+- **Result consumption:** W1, W2, W3, W4, W5, and W7 are accepted, W6 reconciliation is accepted, and current package Scope/Evidence/Verification/Closeout surfaces agree with the Phase 0 hygiene result. The Result Consumption Gate passes.
+- **Required verification:** `pnpm typecheck`, package registry integrity, and `git diff --check` pass. One initial full Vitest closeout run showed broad socket/HTTP test failures; its cause was not established. The focused socket suite then passed 11/11, and two subsequent full default runs passed 621/621. No production change occurred between the runs. This is recorded as a non-reproduced test-stability observation, not evidence of a Phase 0 regression.
+- **Closeout:** all package criteria are met for the explicitly narrowed Phase 0 scope. W6 and this package are closed. Phase 1 ingress/push authentication, UDS route authorization, credential purpose separation, constant-time comparison, and Tier 2 ack/completed remain deferred in roadmap/capability/architecture owners and are not implied complete by this closeout.

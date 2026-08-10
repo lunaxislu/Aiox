@@ -6,9 +6,9 @@ Related:
 - [[docs/architecture/local-runtime-routing-and-delivery]]
 - [[docs/architecture/local-runtime-codex-adapter]]
 - [[docs/decisions/claude-channel-local-static-mcp-only]]
-- [[docs/decisions/claude-channel-trust-and-registration]]
 - [[docs/decisions/claude-channel-effective-registration-scope]]
 - [[docs/decisions/claude-channel-session-reconnect-token]]
+- [[docs/decisions/claude-channel-trust-and-registration]]
 
 Status: Current
 
@@ -46,6 +46,8 @@ The effective-registration rule is owned by
 Channel-server is **not** a daemon child. The daemon only stores an
 in-memory pointer (`claudeChannelRuntimes` Map at [[src/daemon/state.ts]]); no DB
 row. Rationale: [[docs/decisions/claude-channel-trust-and-registration]] (DB-only + daemon memory registry).
+The current session credential lifetime and replacement-child rebind rule are
+owned by [[docs/decisions/claude-channel-session-reconnect-token]].
 
 Evidence:
 
@@ -121,6 +123,18 @@ Evidence:
    token. Unlike Codex, no
    `claude_channel_disconnected` event is appended — Implementation-only
    (no recorded rationale).
+10. Three other Claude-credential-bearing exit paths also clear
+    `claudePendingTokens` and `claudeChannelRuntimes` for the agent, alongside
+    their existing Codex-map cleanup: attach-failure `rollbackAgentAttach`,
+    the shared `detachCodexAgent` helper (used by both the `detachAgent` and
+    `notifyTuiExited` daemon API methods, dispatched by method name only —
+    not gated by agent kind), and `stop()`'s per-agent loop
+    ([[src/daemon/state.ts]] — `rollbackAgentAttach`, `detachCodexAgent`,
+    `stop`). `claudeChannelRuntimes` is the sole gate
+    `injectMessageIntoClaudeTarget`/`retransmitClaudeUnconfirmedDelivery`
+    check before pushing to a target's recorded HTTP endpoint (no
+    `agent.status` check), so a stale entry surviving one of these paths
+    would otherwise let the daemon keep pushing to a torn-down endpoint.
 
 ### 6.3 Claude → daemon Ingress (tool calls)
 
