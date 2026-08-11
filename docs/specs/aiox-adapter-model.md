@@ -143,9 +143,18 @@ delivery에 대한 confirmation-gated manual retransmit도 Codex와 동일한 re
 검증됐고, 한 daemon 인스턴스 안에 Codex·Claude target을 함께 붙여 두 adapter의 ok/reason 결과
 shape가 대칭이며 서로의 delivery·event를 건드리지 않음을 확인하는 cross-adapter 증거도 있다.
 `/send` ingress handler의 port binding과 POST→notification 정확한 canonical JSON 전달은
-별도로 검증돼 있다. 남은 공백은 실제 `claude` CLI 프로세스와 실제 channel-server 자식
-프로세스를 띄운 live end-to-end 증거뿐이며, 이는 W4 package-closeout의 direct TUI/CLI evidence
-책임이다.
+별도로 검증돼 있다. 실제 `claude` CLI 프로세스와 실제 channel-server 자식 프로세스를 띄운
+live end-to-end 증거는 격리된 harness에서 확보됐다: channel push acknowledgement만 보류된
+상태로 daemon-authored `delivery_unconfirmed` notification을 source TUI가 받고, 사용자가
+duplicate risk를 명시적으로 수락한 뒤 공유 recovery tool을 정확히 한 번 호출해 원 delivery가
+`delivered`로 전이하고 target TUI가 같은 envelope을 두 번째로 표시하는 흐름이 실제 Claude
+CLI로 검증됐다. 이는 transport-level delivery/recovery 증거이며 target receipt, read 또는
+work completion을 뜻하지 않는다.
+
+Sources:
+
+- `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md` W4 — accepted direct Claude
+  CLI/TUI transport-level evidence and its receipt/read/completion boundary.
 
 Evidence:
 

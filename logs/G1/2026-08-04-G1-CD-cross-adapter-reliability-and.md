@@ -1198,7 +1198,7 @@ status: decided
 - `pnpm typecheck` clean.
 - `git diff --check` clean.
 - `scripts/check-markdown-inline-code docs/product/roadmap.md` clean.
-- `.agents/skills/log/scripts/package-log check logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md` →
+- `.agents/skills/log/scripts/package-log check logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md` →
   all `OK` (stable-key, all seven W-id identities, registry-integrity); nothing actionable.
 - **Result disposition:** candidate remediation for independent review, not self-accepted by the executing
   agent. W3 stays `[>]` active — Claude attach rollback/detach/stop credential cleanup remains the sole open

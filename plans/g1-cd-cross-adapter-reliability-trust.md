@@ -18,12 +18,12 @@ ingress/push authentication과 route authorization은 Phase 1 trust-boundary har
 
 ## Stages
 
-- [x] Contract and credential-boundary decision/spike -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [x] G1-C cross-adapter reliability implementation -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [x] G1-C source-visible delivery-outcome implementation and negative evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [x] G1-C direct Codex/Claude CLI/TUI evidence and owner reconciliation -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [x] G1-D minimal local secret/runtime hygiene implementation and negative evidence -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
-- [x] G1-D hygiene owner reconciliation and package closeout -> `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] Contract and credential-boundary decision/spike -> `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-C cross-adapter reliability implementation -> `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-C source-visible delivery-outcome implementation and negative evidence -> `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-C direct Codex/Claude CLI/TUI evidence and owner reconciliation -> `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-D minimal local secret/runtime hygiene implementation and negative evidence -> `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
+- [x] G1-D hygiene owner reconciliation and package closeout -> `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md`
 
 ## Notes
 

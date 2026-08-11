@@ -26,7 +26,7 @@ Phase 0:
   -> G1/G3 병행
      -> G1-A
      -> G1-B (historical core accepted; canonical-presentation corrective verified)
-     -> G1-C (Codex Tier 3 evidence accepted; Codex·Claude 공통 요구 잔여)
+     -> G1-C (Codex Tier 3 evidence 및 공통 요구 evidence accepted)
      -> G3 병행
   -> G2
   -> G5/G6
@@ -46,7 +46,7 @@ After public release:
 | G0         | release identity, protocol/CLI/package/support matrix freeze | G1/G3가 임시 identity 위에서 진행되지 않게 한다.                                      |
 | G1-A       | contract/ingress freeze                                      | envelope cutover와 reliability가 소비할 contract boundary를 고정한다.                 |
 | G1-B       | canonical envelope cutover (historical core accepted; canonical-presentation corrective verified) | accepted delivery/correlation 모델과 검증된 Claude canonical presentation을 G1-C/G1-D가 입력으로 소비한다. |
-| G1-C       | process-lifetime Tier 3 delivery reliability (Codex evidence accepted, 공통 요구 잔여) | accepted Codex Tier 3 결과와 남은 Codex·Claude 공통 요구를 구분하고, Tier 2 ack/completed·stale 등 후속 보장을 현재 완료로 주장하지 않는다. |
+| G1-C       | process-lifetime Tier 3 delivery reliability (Codex Tier 3 evidence 및 공통 요구 evidence accepted) | accepted Codex Tier 3 결과와 accepted daemon-level 공통 요구 evidence를 구분하고, Tier 2 ack/completed·stale 등 후속 보장을 현재 완료로 주장하지 않는다. |
 | G1-D       | minimal local secret/runtime hygiene (Phase 0 hygiene accepted, Phase 1 trust-boundary hardening으로 이관) | Phase 0 hygiene(Codex argv-safe delivery, runtime dir/socket permission, Claude credential cleanup) 완료를 Phase 1 ingress/push authentication·route authorization·purpose separation·constant-time comparison의 완료로 확대 해석하지 않는다. |
 | G3         | daemon stabilization                                         | daemon lifecycle, transport, diagnostics failure boundary를 release-grade로 고정한다. |
 | G2         | terminal minimum                                             | one-command demo의 최소 terminal UX를 Phase 0 범위로 닫는다.                          |
@@ -185,7 +185,7 @@ G1-B의 historical core 결과는 accepted/completed다. local A2A 경로의 can
 
 **목표**
 
-G1-C는 process-lifetime Tier 3 delivery reliability를 Codex와 Claude 양쪽에서 닫는 gate다. 현재 accepted된 것은 Codex target 증거로 검증된 canonical correlation과 delivery acceptance, bounded pre-write queue/retry/TTL, post-write `unconfirmed`, confirmation-gated manual retransmit, non-manual primary explicit-reject outcome notification이며, 이를 lifecycle owner 아래에 고정한다. 이는 target receipt/work completion 또는 Tier 2 보장이 아니고, Codex Tier 3 증거만으로 gate 전체가 completed/consumed임을 뜻하지도 않는다. 남은 통과 조건은 두 adapter에 공통으로 적용된다.
+G1-C는 process-lifetime Tier 3 delivery reliability를 Codex와 Claude 양쪽에서 닫는 gate다. 현재 accepted된 것은 Codex target 증거로 검증된 canonical correlation과 delivery acceptance, bounded pre-write queue/retry/TTL, post-write `unconfirmed`, confirmation-gated manual retransmit, non-manual primary explicit-reject outcome notification이며, 이를 lifecycle owner 아래에 고정한다. 이는 target receipt/work completion 또는 Tier 2 보장이 아니며, Codex Tier 3 증거와 아래의 accepted daemon-level 공통 요구 evidence가 gate 전체가 completed/consumed임을 뜻하지도 않는다.
 
 **진입 조건**
 
@@ -226,13 +226,17 @@ Accepted Codex Tier 3 evidence와 그 경계:
   대체하지 않았으며, 이 증거는 transport-level delivery/recovery 및 target display에 한정되고
   target receipt/read/work completion을 뜻하지 않는다.
 
-남은 Codex·Claude 공통 요구:
+검증되어 닫힌 Codex·Claude 공통 요구(accepted daemon-level evidence 한정):
 
-- 구현 수단이 달라도 delivery FSM 의미가 대칭이다. 확정적 전송 전 실패는 queue 또는 bounded
-  retry, target 수용 여부 불명은 `unconfirmed`이며 자동 재전송을 하지 않고, 확정 거절은 failed
-  또는 명시적 결과, 수용 응답은 `delivered`이며 `completed`가 아니다.
-- retry/failure 중 inbound reply, reply-right, MCP/channel source 결과 경로가 유실되거나 잘못
-  귀속되지 않음이 검증됐다.
+- Stage 3의 4×2 matrix(각 adapter의 pre-write failure, acceptance ambiguity, explicit rejection,
+  accepted delivery; Codex runtime-unavailable subbranch 포함)는 구현 수단이 달라도 같은 delivery FSM
+  의미를 검증했다. 확정적 전송 전 실패는 queue 또는 bounded retry, target 수용 여부 불명은
+  `unconfirmed`이며 자동 재전송을 하지 않고, 확정 거절은 failed 또는 명시적 결과, 수용 응답은
+  `delivered`이며 `completed`가 아니다. 이는 target receipt/read/work completion을 뜻하지 않는다.
+- Stage 2의 세 interleaving은 retry/failure 중 inbound reply, reply-right, MCP/channel source 결과와
+  original/manual late-resolution attribution이 유실되거나 잘못 귀속되지 않음을 검증했다. 이는 daemon
+  callback-closure evidence이며 adapter-level WebSocket observer routing 또는 real two-plane
+  ordering/race composition을 뜻하지 않는다.
 
 **Owner refs**
 
@@ -583,7 +587,7 @@ Gate completion requires reproducible evidence, not only a status label. 각 gat
 | Gate | Required evidence                                                                                                                                                                         |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | G0   | versioned schema/example validation, CLI/config/package decision record, support matrix                                                                                                   |
-| G1   | completed/consumed G1-B/C/D evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence, separate Codex·Claude direct CLI/TUI transport-level ambiguity/outcome/confirmed-recovery/duplicate-display evidence, and G1-D Phase 0 hygiene evidence (Codex argv-safe secret delivery, owner-only runtime directory/socket permission with chmod-failure rollback, Claude attach rollback/detach/stop credential cleanup). Remaining G1 release evidence: adapter-symmetric delivery-FSM semantics, retry/failure 중 inbound reply와 MCP/channel 결과 경로 무손실. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Ingress/push authentication, route authorization, and credential purpose separation are Phase 1 trust-boundary hardening, not G1 release evidence. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
+| G1   | completed/consumed G1-B/C/D evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence, separate Codex·Claude direct CLI/TUI transport-level ambiguity/outcome/confirmed-recovery/duplicate-display evidence, accepted daemon-level evidence for adapter-symmetric delivery-FSM semantics and retry/failure 중 inbound reply·MCP/channel 결과 경로의 무손실·정확 귀속 및 original/manual late-resolution attribution, and G1-D Phase 0 hygiene evidence (Codex argv-safe secret delivery, owner-only runtime directory/socket permission with chmod-failure rollback, Claude attach rollback/detach/stop credential cleanup). The accepted daemon-level common evidence does not establish target receipt/read/work completion, adapter-level WebSocket observer routing, or real two-plane ordering/race composition. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Ingress/push authentication, route authorization, and credential purpose separation are Phase 1 trust-boundary hardening, not G1 release evidence. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
 | G2   | tmux path and no-tmux fallback clean-user smoke, README command match                                                                                                                     |
 | G3   | client crash isolation, fatal handler exit, SIGTERM child cleanup, bounded body/queue, log redaction, doctor diagnosis tests                                                              |
 | G5   | secret/PII/path scan, tracked-vs-local file review, dead/scaffold code disposition, LICENSE/README/SECURITY/CONTRIBUTING/issue template presence and link check                           |

@@ -1851,6 +1851,53 @@ describe("daemon receiveClaudeChannelReply", () => {
     ).toBe(false);
   });
 
+  it("surfaces deferred dispatch when a Codex reply target runtime is unavailable", async () => {
+    const setup = await setupPairedAgents(db);
+    const parent = await setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-parent",
+      content: { text: "please review" },
+      replyExpected: true,
+    });
+    expect(parent.ok).toBe(true);
+
+    await setup.client.detachAgent({ agentName: "impl" });
+
+    const response = await setup.client.receiveClaudeChannelReply({
+      agentName: "reviewer",
+      messageId: "test-claude-reply-message",
+      inReplyToDeliveryId: deliveryIdForMessage(db, "msg-parent"),
+      content: { text: "review complete" },
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      dispatch: {
+        delivered: 0,
+        deferred: [
+          {
+            reason: "target_runtime_unavailable",
+            eligibility: "requires target codex runtime",
+          },
+        ],
+        failed: [],
+      },
+    });
+    expect(
+      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
+    ).toMatchObject({ status: "queued" });
+    expect(
+      setup.runtime.requests.some((request) => request.method === "turn/start"),
+    ).toBe(false);
+    const replyStatusEvents = db
+      .prepare("select data_json from events where type = 'delivery_status_changed'")
+      .all() as { data_json: string }[];
+    expect(
+      replyStatusEvents.some((event) => JSON.parse(event.data_json).status === "delivering"),
+    ).toBe(false);
+  });
+
   it("records a no-loaded-thread queued event when Codex has no live loaded thread", async () => {
     const setup = await setupPairedAgents(db, {
       codexRuntime: {
@@ -3006,6 +3053,480 @@ describe("Codex ingress authorization revocation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// G1 residual delivery reliability — cross-delivery/reply/outcome interleavings
+//
+// docs/specs/aiox-message-lifecycle.md:341-342 requires that retry and failure
+// handling never lose or misattribute inbound replies, the one-time reply right,
+// or the source outcome-notification path across concurrent deliveries. These
+// three tests directly reproduce the residual orderings that
+// logs/G1/2026-08-10-G1-residual-delivery-reliability.md's W1/W2 disposition found
+// unevidenced: an unconfirmed original crossed with an inbound reply, two
+// same-target deliveries whose retry and own-dispatch attempts serialize on one
+// target-flush queue while their resulting outcome notifications separately
+// serialize on a different target-flush queue, and an original attempt crossed
+// with a manual retransmit attempt's late resolution.
+// ---------------------------------------------------------------------------
+
+describe("G1 residual delivery reliability — cross-delivery interleavings", () => {
+  let db: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    applySchema(db);
+  });
+
+  afterEach(() => {
+    db.close();
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves the original delivery's unconfirmed status and correlation, and consumes its reply right exactly once, when an inbound reply arrives before the original's late resolution", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-old",
+        loadedThreadIds: ["thread-new"],
+        turnStartError: Object.assign(new Error("turn/start timed out"), {
+          code: "codex_turn_start_timeout",
+        }),
+      },
+    });
+
+    const original = await setup.client.receiveClaudeChannelMessage({
+      agentName: "reviewer",
+      messageId: "msg-original",
+      type: "instruction",
+      replyExpected: true,
+      content: { text: "please handle this while unconfirmed" },
+    });
+    expect(original.ok).toBe(true);
+    const originalDeliveryId = deliveryIdForMessage(db, "msg-original");
+    expect(
+      db.prepare("select status from message_deliveries where id = ?").get(originalDeliveryId),
+    ).toEqual({ status: "unconfirmed" });
+    expect(
+      db
+        .prepare(
+          "select consumed_reply_message_id, consumed_reply_delivery_id from reply_rights where originating_delivery_id = ?",
+        )
+        .get(originalDeliveryId),
+    ).toEqual({ consumed_reply_message_id: null, consumed_reply_delivery_id: null });
+
+    // An inbound reply arrives from the original's target while the original is
+    // still unconfirmed -- reply consumption has no dependency on the original
+    // delivery's own status.
+    const reply = await setup.client.receiveCodexReply({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-reply-while-unconfirmed",
+      inReplyToDeliveryId: originalDeliveryId,
+      intent: "result",
+      replyExpected: false,
+      content: { text: "handled" },
+    });
+    expect(reply.ok).toBe(true);
+    if (!reply.ok) throw new Error("expected reply to succeed");
+    const replyDeliveryId = reply.deliveries[0]!.id;
+
+    // The original's own status and correlation are untouched by the reply.
+    expect(
+      db.prepare("select status from message_deliveries where id = ?").get(originalDeliveryId),
+    ).toEqual({ status: "unconfirmed" });
+    expect(
+      db.prepare("select parent_message_id from messages where id = ?").get(reply.message.id),
+    ).toEqual({ parent_message_id: originalDeliveryId });
+
+    // The reply right is consumed exactly once, correlated to the original delivery.
+    expect(
+      db
+        .prepare(
+          "select consumed_reply_message_id, consumed_reply_delivery_id from reply_rights where originating_delivery_id = ?",
+        )
+        .get(originalDeliveryId),
+    ).toEqual({
+      consumed_reply_message_id: reply.message.id,
+      consumed_reply_delivery_id: replyDeliveryId,
+    });
+
+    // A second reply against the same original delivery is rejected -- the right
+    // was already consumed exactly once.
+    const duplicateReply = await setup.client.receiveCodexReply({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "msg-reply-duplicate",
+      inReplyToDeliveryId: originalDeliveryId,
+      intent: "result",
+      replyExpected: false,
+      content: { text: "handled again" },
+    });
+    expect(duplicateReply).toMatchObject({ ok: false, reason: "duplicate_reply" });
+
+    // The original's late resolution now arrives, independent of the already
+    // consumed reply.
+    setup.runtime.emitLateTurnStartSuccess();
+    setup.runtime.emitLateTurnStartSuccess();
+
+    expect(
+      db.prepare("select status from message_deliveries where id = ?").get(originalDeliveryId),
+    ).toEqual({ status: "delivered" });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from events where delivery_id = ? and type = 'delivery_status_changed' and data_json = ?",
+        )
+        .get(originalDeliveryId, JSON.stringify({ status: "delivered" })),
+    ).toEqual({ count: 1 });
+
+    // The reply right still correctly correlates to the original delivery after the
+    // original's late resolution -- no re-attribution or duplication occurred.
+    expect(
+      db
+        .prepare(
+          "select consumed_reply_message_id, consumed_reply_delivery_id from reply_rights where originating_delivery_id = ?",
+        )
+        .get(originalDeliveryId),
+    ).toEqual({
+      consumed_reply_message_id: reply.message.id,
+      consumed_reply_delivery_id: replyDeliveryId,
+    });
+  });
+
+  it("keeps outcome-relation and notification-envelope attribution separated across the two distinct target-flush queues when delivery 1's retry and delivery 2's own dispatch serialize on the shared \"impl\" queue and their outcome notifications separately serialize on the shared \"reviewer\" queue", async () => {
+    const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
+    const timeoutError = Object.assign(new Error("turn/start timed out"), {
+      code: "codex_turn_start_timeout",
+    });
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      activeThreadId: null,
+      turnStartError: timeoutError,
+    });
+    const state = createDaemonState({
+      db,
+      createId: monotonicIdSequence(),
+      now: monotonicNowSequence(),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      scheduleTimeout: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs });
+        return scheduled.length;
+      },
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const reviewerAttach = await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
+    const claudeToken = (reviewerAttach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
+    // A recording spy, not a blind stub -- its call order is the only
+    // test-observable evidence of the "reviewer" target-flush queue's actual
+    // dispatch order (asserted below).
+    const claudeSends: Array<{ content: string }> = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      claudeSends.push(JSON.parse(init.body as string));
+      return new Response("ok", { status: 200 });
+    });
+    await client.registerClaudeChannel({
+      agentName: "reviewer",
+      token: claudeToken,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    await client.connect({ sourceName: "reviewer", targetNames: ["impl"] });
+
+    const implAgentId = (
+      db.prepare("select id from agents where name = ?").get("impl") as { id: string }
+    ).id;
+    const reviewerAgentId = (
+      db.prepare("select id from agents where name = ?").get("reviewer") as { id: string }
+    ).id;
+
+    // Delivery 1: no bound thread yet -> deferred -> queued -> pre-write retry scheduled.
+    const first = await client.receiveClaudeChannelMessage({
+      agentName: "reviewer",
+      messageId: "msg-first",
+      type: "instruction",
+      content: { text: "first, waiting for a thread" },
+    });
+    expect(first.ok).toBe(true);
+    const firstDeliveryId = deliveryIdForMessage(db, "msg-first");
+    expect(
+      db
+        .prepare("select status, target_agent_id from message_deliveries where id = ?")
+        .get(firstDeliveryId),
+    ).toEqual({ status: "queued", target_agent_id: implAgentId });
+    // Delivery creation also schedules delivery 1's own 5-minute queued-expiry
+    // timer alongside the 250ms pre-write retry; locate the retry specifically.
+    const firstRetry = scheduled.find((entry) => entry.delayMs === 250);
+    expect(firstRetry).toBeDefined();
+
+    // The target now has a bound thread, but turn/start itself keeps timing out.
+    runtime.activeThreadId = "thread-impl";
+
+    // Delivery 2: same target ("impl") as delivery 1. schedulePreWriteRetry
+    // (src/daemon/state.ts:1463) and dispatchToPairPeers (src/daemon/state.ts:1799)
+    // both key targetFlushes by `delivery.targetAgentId`, so delivery 1's retry
+    // and delivery 2's own initial-dispatch attempt share this ONE "impl" queue --
+    // this is the actual shared queue, not a queue shared with either delivery's
+    // outcome-notification dispatch (which is keyed by "reviewer", asserted
+    // separately below). Calling (not awaiting) this client method runs
+    // synchronously through targetFlushes.set in dispatchToPairPeers before this
+    // statement returns control -- so delivery 2 already holds the "impl" queue
+    // by the time the next statement runs.
+    const secondPromise = client.receiveClaudeChannelMessage({
+      agentName: "reviewer",
+      messageId: "msg-second",
+      type: "instruction",
+      content: { text: "second, times out immediately" },
+    });
+
+    // Firing delivery 1's retry callback now chains it onto the "impl" queue
+    // BEHIND delivery 2's already-registered dispatch (schedulePreWriteRetry's
+    // scheduleTimeout callback is itself synchronous through its own
+    // targetFlushes.set, src/daemon/state.ts:1462-1474): it is serialized after
+    // delivery 2's attempt, never concurrent with it -- targetFlushes guarantees
+    // at most one in-flight dispatch per target.
+    firstRetry?.callback();
+
+    const second = await secondPromise;
+    expect(second.ok).toBe(true);
+    const secondDeliveryId = deliveryIdForMessage(db, "msg-second");
+    expect(firstDeliveryId).not.toBe(secondDeliveryId);
+    expect(
+      db.prepare("select target_agent_id from message_deliveries where id = ?").get(secondDeliveryId),
+    ).toEqual({ target_agent_id: implAgentId });
+
+    await vi.waitFor(() => {
+      expect(
+        db.prepare("select status from message_deliveries where id = ?").get(firstDeliveryId),
+      ).toEqual({ status: "unconfirmed" });
+    });
+    expect(
+      db.prepare("select status from message_deliveries where id = ?").get(secondDeliveryId),
+    ).toEqual({ status: "unconfirmed" });
+
+    await vi.waitFor(() => {
+      expect(claudeSends).toHaveLength(2);
+    });
+
+    // --- (a) "impl" queue: assert the ACTUAL dispatch order directly, not an
+    // assumed one. Each turn/start call's own envelope carries its delivery's id
+    // (formatAioxChannelEnvelope, src/daemon/state.ts:2588), so `requests`' call
+    // order directly identifies which delivery each attempt belongs to.
+    // dispatchToPairPeersNow awaits the unconfirmed outcome's notification
+    // dispatch before returning (src/daemon/state.ts:1901), so delivery 2's own
+    // "impl"-queue entry -- including its nested "reviewer"-queue notification --
+    // must fully resolve before delivery 1's retry, chained behind it, can start.
+    const implTurnStarts = runtime.requests.filter((entry) => entry.method === "turn/start");
+    expect(implTurnStarts).toHaveLength(2);
+    const implDispatchOrder = implTurnStarts.map((entry) => {
+      const params = entry.params as { input: [{ text: string }] };
+      return (JSON.parse(params.input[0].text) as { deliveryId: string }).deliveryId;
+    });
+    expect(implDispatchOrder).toEqual([secondDeliveryId, firstDeliveryId]);
+
+    // --- (b) "reviewer" queue: a SEPARATE pair sharing a DIFFERENT target key.
+    // Both outcome notifications target "reviewer" (recordPrimaryOutcomeNotification
+    // routes them to the original message's own source, src/daemon/state.ts:1606),
+    // so they share one "reviewer" queue with EACH OTHER -- not with the "impl"
+    // retry/dispatch pair in (a). Their fetch-call order mirrors (a)'s order
+    // because each notification dispatch is nested inside, and awaited by, its
+    // own delivery's "impl"-queue entry.
+    const claudeDispatchOrder = claudeSends.map(
+      (entry) => (JSON.parse(entry.content) as { outcomeForDeliveryId: string }).outcomeForDeliveryId,
+    );
+    expect(claudeDispatchOrder).toEqual([secondDeliveryId, firstDeliveryId]);
+
+    const relations = db
+      .prepare(
+        "select original_delivery_id, outcome_type, notification_message_id, notification_delivery_id from delivery_outcome_notifications order by notification_delivery_id",
+      )
+      .all() as Array<{
+      original_delivery_id: string;
+      outcome_type: string;
+      notification_message_id: string;
+      notification_delivery_id: string;
+    }>;
+    expect(relations).toHaveLength(2);
+    expect(new Set(relations.map((relation) => relation.original_delivery_id))).toEqual(
+      new Set([firstDeliveryId, secondDeliveryId]),
+    );
+    // Each relation's own notification delivery id is distinct -- no identifier is
+    // shared or reused between the two deliveries' notifications.
+    expect(new Set(relations.map((relation) => relation.notification_delivery_id)).size).toBe(2);
+
+    for (const relation of relations) {
+      expect(relation.outcome_type).toBe("delivery_unconfirmed");
+      // Both notifications' own deliveries actually share the SAME "reviewer"
+      // target id -- confirming (b) is a real shared queue -- and that id is
+      // DIFFERENT from the "impl" target id asserted in (a), confirming (a) and
+      // (b) are genuinely two distinct target-flush queues, not one.
+      expect(
+        db
+          .prepare("select target_agent_id from message_deliveries where id = ?")
+          .get(relation.notification_delivery_id),
+      ).toEqual({ target_agent_id: reviewerAgentId });
+      const content = db
+        .prepare("select content from messages where id = ?")
+        .get(relation.notification_message_id) as { content: string };
+      const envelope = JSON.parse(content.content) as {
+        outcomeForDeliveryId: string;
+        deliveryId: string;
+      };
+      // The envelope's own attribution field matches the SAME original delivery this
+      // relation row is for -- not the other delivery that was concurrently in flight.
+      expect(envelope.outcomeForDeliveryId).toBe(relation.original_delivery_id);
+      expect(envelope.deliveryId).toBe(relation.notification_delivery_id);
+    }
+    expect(implAgentId).not.toBe(reviewerAgentId);
+  });
+
+  it("keeps a manual retransmit attempt's late success terminal when the original attempt's late reject arrives after it, on its own distinct request-id", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-impl",
+        turnStartError: Object.assign(new Error("turn/start timed out"), {
+          code: "codex_turn_start_timeout",
+        }),
+      },
+    });
+    const original = await setup.client.receiveClaudeChannelMessage({
+      agentName: "reviewer",
+      messageId: "msg-original-a",
+      type: "instruction",
+      content: { text: "please handle this" },
+    });
+    expect(original.ok).toBe(true);
+    const deliveryId = deliveryIdForMessage(db, "msg-original-a");
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "unconfirmed",
+    });
+
+    await expect(
+      setup.client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_unconfirmed" });
+    expect(setup.runtime.lateTurnStartResponses).toHaveLength(2);
+    const [originalLateResponse, manualLateResponse] = setup.runtime.lateTurnStartResponses;
+
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from delivery_outcome_notifications where original_delivery_id = ?",
+        )
+        .get(deliveryId),
+    ).toEqual({ count: 1 });
+
+    // The manual retransmit attempt's own request-id resolves late first, with success.
+    manualLateResponse?.({ id: 201, result: {} });
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "delivered",
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from events where type = 'delivery_manual_retransmit_delivered' and delivery_id = ?",
+        )
+        .get(deliveryId),
+    ).toEqual({ count: 1 });
+
+    // The ORIGINAL attempt's own request-id then resolves late with a reject. It must
+    // not flip the delivery back, must not author delivery_target_rejected, and must
+    // not attribute a second outcome relation to this delivery.
+    originalLateResponse?.({ id: 200, error: { code: -32099, message: "late original reject" } });
+
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "delivered",
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from events where type = 'delivery_target_rejected' and delivery_id = ?",
+        )
+        .get(deliveryId),
+    ).toEqual({ count: 0 });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from events where type = 'delivery_manual_retransmit_rejected' and delivery_id = ?",
+        )
+        .get(deliveryId),
+    ).toEqual({ count: 0 });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from delivery_outcome_notifications where original_delivery_id = ?",
+        )
+        .get(deliveryId),
+    ).toEqual({ count: 1 });
+  });
+
+  it("keeps the original attempt's late reject terminal when a manual retransmit attempt's late success arrives after it, on its own distinct request-id", async () => {
+    const setup = await setupPairedAgents(db, {
+      codexRuntime: {
+        startedThreadId: "thread-impl",
+        turnStartError: Object.assign(new Error("turn/start timed out"), {
+          code: "codex_turn_start_timeout",
+        }),
+      },
+    });
+    const original = await setup.client.receiveClaudeChannelMessage({
+      agentName: "reviewer",
+      messageId: "msg-original-b",
+      type: "instruction",
+      content: { text: "please handle this" },
+    });
+    expect(original.ok).toBe(true);
+    const deliveryId = deliveryIdForMessage(db, "msg-original-b");
+
+    await expect(
+      setup.client.retransmitUnconfirmedDelivery({ deliveryId, confirmDuplicateRisk: true }),
+    ).resolves.toMatchObject({ ok: false, reason: "manual_retransmit_unconfirmed" });
+    expect(setup.runtime.lateTurnStartResponses).toHaveLength(2);
+    const [originalLateResponse, manualLateResponse] = setup.runtime.lateTurnStartResponses;
+
+    // The ORIGINAL attempt's own request-id resolves late first, with a reject.
+    originalLateResponse?.({ id: 200, error: { code: -32099, message: "late original reject" } });
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "failed",
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from events where type = 'delivery_target_rejected' and delivery_id = ?",
+        )
+        .get(deliveryId),
+    ).toEqual({ count: 1 });
+    expect(
+      db
+        .prepare(
+          "select outcome_type from delivery_outcome_notifications where original_delivery_id = ? order by outcome_type",
+        )
+        .all(deliveryId),
+    ).toEqual([{ outcome_type: "delivery_target_rejected" }, { outcome_type: "delivery_unconfirmed" }]);
+
+    // A manual retransmit attempt's own request-id then resolves late with success.
+    // It must not revive the delivery to delivered and must not author a manual
+    // terminal event for an attempt whose delivery is no longer unconfirmed.
+    manualLateResponse?.({ id: 201, result: {} });
+
+    expect(db.prepare("select status from message_deliveries where id = ?").get(deliveryId)).toEqual({
+      status: "failed",
+    });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from events where type = 'delivery_manual_retransmit_delivered' and delivery_id = ?",
+        )
+        .get(deliveryId),
+    ).toEqual({ count: 0 });
+    expect(
+      db
+        .prepare(
+          "select count(*) as count from delivery_outcome_notifications where original_delivery_id = ?",
+        )
+        .get(deliveryId),
+    ).toEqual({ count: 2 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
@@ -3229,6 +3750,13 @@ function fakeCodexRuntime(options: {
     options: unknown;
   }> = [];
   let lateTurnStartResponse: ((response: unknown) => void) | undefined;
+  // Each distinct turn/start call (the original attempt, a later manual retransmit
+  // attempt, ...) registers its own late-response listener here in call order. This
+  // models the websocket layer's per-requestId late-response correlation
+  // (src/adapters/codex/websocket.ts requestObservers, keyed by numeric request id)
+  // closely enough for tests to resolve two in-flight attempts independently and out
+  // of order, which the single most-recent `lateTurnStartResponse` slot cannot do.
+  const lateTurnStartResponses: Array<(response: unknown) => void> = [];
 
   return {
     state: "ready" as const,
@@ -3242,6 +3770,7 @@ function fakeCodexRuntime(options: {
     startThreadCalls: 0,
     resumeThreadCalls: [] as string[],
     disposeCalls: 0,
+    lateTurnStartResponses,
     requestCodex(method: string, params?: unknown, requestOptions?: unknown) {
       if (
         method === "turn/start" &&
@@ -3250,6 +3779,7 @@ function fakeCodexRuntime(options: {
         "onLateResponse" in requestOptions
       ) {
         lateTurnStartResponse = requestOptions.onLateResponse as (response: unknown) => void;
+        lateTurnStartResponses.push(lateTurnStartResponse);
         const { onLateResponse: _ignored, ...visibleOptions } = requestOptions as {
           onLateResponse?: unknown;
         };

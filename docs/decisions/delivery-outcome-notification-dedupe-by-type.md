@@ -71,7 +71,7 @@ ingress/API, manual-attempt outcome처럼 이번 slice에서 의도적으로 제
 
 ## Sources
 
-- `logs/2026-08-04-G1-CD-cross-adapter-reliability-and.md` — 2026-08-09 항목들
+- `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md` — 2026-08-09 항목들
   (`source-visible unconfirmed outcome — decision candidate`,
   `independent review — source-visible outcome candidate`,
   `source-visible outcome implementation activated before W4`).

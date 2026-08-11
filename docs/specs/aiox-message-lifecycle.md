@@ -343,9 +343,20 @@ transport나 같은 관측 수단을 가질 필요는 없지만, 외부에서 �
 
 Claude의 non-2xx/timeout/fetch-오류 상태 매핑과 수동 복구 수단
 (`aiox_retransmit_unconfirmed_delivery`)은 위 Claude as-built 문단과 Manual retransmit
-문단(Claude means)에 기술된 대로 구현되어 이 committed target을 만족한다. 남은 것은 실제
-`claude` CLI 프로세스를 통한 direct end-to-end evidence이며, 이는 G1-C package closeout의
-책임이다.
+문단(Claude means)에 기술된 대로 구현되어 이 committed target을 만족한다. 실제 Codex·Claude
+CLI/TUI를 통한 direct end-to-end evidence는 격리된 harness에서 확보됐다: 두 target이
+canonical envelope을 받은 뒤 acknowledgement만 보류된 상태로 각각
+`codex_turn_start_timeout`/`claude_channel_push_unconfirmed`를 만들었고, source TUI가
+상관된 `delivery_unconfirmed` notification을 받아 사용자가 duplicate risk를 명시적으로
+수락한 뒤 공유 recovery tool을 정확히 한 번 호출했으며, 각 원 delivery가 `delivered`로
+전이하고 target TUI가 같은 envelope을 두 번째로 표시했다. 이 증거는 duplicate-risking
+transport-level recovery까지만 증명하며 target receipt, read 또는 work completion은
+증명하지 않는다.
+
+Sources:
+
+- `logs/G1/2026-08-04-G1-CD-cross-adapter-reliability-and.md` W4 — accepted direct Codex/Claude
+  CLI/TUI transport-level evidence and its receipt/read/completion boundary.
 
 **Open/deferred — source-operation invocation idempotency.** 현재 MCP tool 재호출은 새 logical
 message를 만든다. 동일 source operation의 accepted result를 replay해야 하는지, 필요하다면 public
