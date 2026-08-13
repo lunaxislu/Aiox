@@ -30,8 +30,8 @@ Phase 0 범위에서 모두 closed되어 G3의 진입 조건("G1의 local A2A �
 
 ## Stages
 
-- [>] Kickoff — G3 gap audit and diagnostics/logging design contract -> `logs/2026-08-11-G3-daemon-stabilization.md`
-- [ ] Fatal boundary, structured retained diagnostics/log sink(redaction 포함), SIGTERM/stop cleanup 구현과 evidence
+- [x] Kickoff — G3 gap audit and diagnostics/logging design contract -> `logs/2026-08-11-G3-daemon-stabilization.md`
+- [x] Fatal/expected-error boundary, redacted fatal diagnosability, SIGTERM/stop cleanup 구현·검증 -> `logs/2026-08-11-G3-daemon-stabilization.md`
 - [ ] Socket method dispatch hardening 및 Claude channel boot-failure diagnosability 구현과 evidence
 - [ ] Codex·Claude 최소 read-only diagnostics 표면과 runtime failure/disconnect wiring 구현과 evidence
 - [ ] G3 gate evidence 정합화, owner 문서 반영과 closeout
@@ -46,8 +46,6 @@ Phase 0 범위에서 모두 closed되어 G3의 진입 조건("G1의 local A2A �
   `docs/architecture/local-runtime-gaps-and-targets.md` §13,
   `docs/architecture/local-runtime-claude-adapter.md` §6.2/6.4,
   `docs/specs/aiox-capability-policy.md` §7.2, `docs/specs/aiox-adapter-model.md`.
-- roadmap의 "bounded input/queue" 요구는 §13 현재 gap 목록에 정확히 대응하는 항목이 없어 범위가
-  불명확하다. Kickoff stage에서 code 근거로 먼저 확정한다.
 - 이 plan의 각 Stage는 release-gate급 multi-owner 변경이므로 controlling package log 구조(package
   contract, Task Index, Verification/Closeout Contract, independent review gate)를 쓴다. 기본 방향은
   Stage 2 이후도 새 로그를 만들지 않고 같은 controlling log(`logs/2026-08-11-G3-daemon-stabilization.md`)에

@@ -585,7 +585,7 @@ export interface DaemonState {
   receiveCodexMessage(request: ReceiveCodexMessageRequest): Promise<ReceiveCodexMessageResult>;
   receiveCodexReply(request: ReceiveCodexReplyRequest): Promise<ReceiveCodexReplyResult>;
   status(): StatusResult;
-  stop(request: StopRequest): StopResult;
+  stop(request: StopRequest): Promise<StopResult>;
 }
 
 const outcomeGuidance: Record<DeliveryOutcomeType, string> = {
@@ -621,6 +621,7 @@ export function createDaemonState(
   const scheduleTimeout = options.scheduleTimeout ?? ((callback, delayMs) => setTimeout(callback, delayMs));
   const cancelTimeout = options.cancelTimeout ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   const queueExpiryTimers = new Map<string, unknown>();
+  const preWriteRetryTimers = new Map<string, unknown>();
   const deliveryAttempts = new Map<string, number>();
   const manualDeliveryAttempts = new Map<string, number>();
   const targetFlushes = new Map<string, Promise<void>>();
@@ -1399,8 +1400,22 @@ export function createDaemonState(
       };
     },
 
-    stop(request) {
-      return withTransaction(options.db, () => {
+    async stop(request) {
+      const inFlightTargetFlushes = [...targetFlushes.values()];
+      for (const handle of queueExpiryTimers.values()) {
+        cancelTimeout(handle);
+      }
+      queueExpiryTimers.clear();
+      for (const handle of preWriteRetryTimers.values()) {
+        cancelTimeout(handle);
+      }
+      preWriteRetryTimers.clear();
+
+      if (inFlightTargetFlushes.length > 0) {
+        await Promise.allSettled(inFlightTargetFlushes);
+      }
+
+      const result = withTransaction(options.db, () => {
         const stoppedAgents = request.daemonOnly
           ? []
           : agents.markAllConnectedDisconnected(options.now());
@@ -1412,8 +1427,19 @@ export function createDaemonState(
             claudePendingTokens.delete(agent.name);
           }
         }
-        return { ok: true, stoppedAgents };
+        return { ok: true as const, stoppedAgents };
       });
+
+      await Promise.all(
+        result.stoppedAgents.map(async (agent) => {
+          const runtime = codexRuntimes.get(agent.name);
+          if (!runtime) return;
+          await disposeRuntime(runtime);
+          codexRuntimes.delete(agent.name);
+        }),
+      );
+
+      return result;
     },
   };
 
@@ -1459,7 +1485,8 @@ export function createDaemonState(
       return;
     }
     deliveryAttempts.set(input.delivery.id, attempt + 1);
-    scheduleTimeout(() => {
+    const handle = scheduleTimeout(() => {
+      preWriteRetryTimers.delete(input.delivery.id);
       const previous = targetFlushes.get(input.delivery.targetAgentId) ?? Promise.resolve();
       const next = previous
         .catch(() => undefined)
@@ -1478,6 +1505,7 @@ export function createDaemonState(
         }
       });
     }, delayMs);
+    preWriteRetryTimers.set(input.delivery.id, handle);
   }
 
   async function flushQueuedDeliveriesForTarget(targetAgent: StoredAgent): Promise<void> {

@@ -63,6 +63,9 @@ export function createDaemonSocketServer(
       const server = net.createServer((socket) => {
         sockets.add(socket);
         socket.setEncoding("utf8");
+        socket.on("error", () => {
+          socket.destroy();
+        });
 
         let buffer = "";
         socket.on("data", (chunk) => {

@@ -894,6 +894,110 @@ describe("daemon API with fake in-process transport", () => {
     ]);
   });
 
+  it("waits for async Codex runtime disposal before normal stop resolves", async () => {
+    let resolveDisposal!: () => void;
+    const disposal = new Promise<void>((resolve) => {
+      resolveDisposal = resolve;
+    });
+    const runtime = {
+      state: "ready" as const,
+      dispose: vi.fn(() => disposal),
+    };
+    const state = createDaemonState({
+      db,
+      createId: () => "agent-1",
+      now: () => "2026-05-18T00:00:00.000Z",
+      codexRuntimes: new Map([["impl", runtime]]),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+
+    let stopResolved = false;
+    const stopPromise = Promise.resolve(client.stop({})).then((response) => {
+      stopResolved = true;
+      return response;
+    });
+
+    try {
+      expect(runtime.dispose).toHaveBeenCalledOnce();
+      await Promise.resolve();
+      expect(stopResolved).toBe(false);
+    } finally {
+      resolveDisposal();
+    }
+
+    await expect(stopPromise).resolves.toMatchObject({ ok: true });
+  });
+
+  it("finishes an in-flight Codex dispatch before disposing its runtime during normal stop", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      resumedThreadId: "thread-target",
+    });
+    type CodexResponse = Awaited<ReturnType<typeof runtime.requestCodex>>;
+    let resolveTurnStart!: (result: CodexResponse) => void;
+    const turnStart = new Promise<CodexResponse>((resolve) => {
+      resolveTurnStart = resolve;
+    });
+    const originalRequestCodex = runtime.requestCodex.bind(runtime);
+    const requestCodex = vi.fn(originalRequestCodex);
+    requestCodex.mockImplementation((method, params, requestOptions) => {
+      if (method === "turn/start") return turnStart;
+      return originalRequestCodex(method, params, requestOptions);
+    });
+    runtime.requestCodex = requestCodex;
+
+    let id = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${++id}`,
+      now: () => "2026-08-12T00:00:00.000Z",
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      scheduleTimeout: () => 0,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+    await client.attachAgent({ kind: "claude", name: "source", cwd: "/repo" });
+    await client.attachAgent({
+      kind: "codex",
+      name: "target",
+      cwd: "/repo",
+      resumeSessionId: "thread-target",
+    });
+    await client.connect({ sourceName: "source", targetNames: ["target"] });
+
+    const dispatchPromise = client.receiveClaudeChannelMessage({
+      agentName: "source",
+      messageId: "message-in-flight-codex-stop",
+      content: { text: "finish before runtime disposal" },
+    });
+    await vi.waitFor(() => {
+      expect(requestCodex.mock.calls.some(([method]) => method === "turn/start")).toBe(true);
+    });
+
+    let stopResolved = false;
+    const stopPromise = client.stop({}).then((response) => {
+      stopResolved = true;
+      return response;
+    });
+
+    try {
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(runtime.disposeCalls).toBe(0);
+      expect(stopResolved).toBe(false);
+    } finally {
+      resolveTurnStart({ turn: { id: "turn-1", status: "inProgress" } });
+    }
+
+    await expect(dispatchPromise).resolves.toMatchObject({
+      ok: true,
+      dispatch: { delivered: 1 },
+    });
+    await expect(stopPromise).resolves.toMatchObject({ ok: true });
+    expect(runtime.disposeCalls).toBe(1);
+    expect(stopResolved).toBe(true);
+  });
+
   it("stops only the daemon shell without disconnecting agents", async () => {
     const state = createDaemonState({
       db,

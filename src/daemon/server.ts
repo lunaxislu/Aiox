@@ -30,7 +30,7 @@ export interface DaemonServer {
 
 export interface DaemonServerHandle {
   api: DaemonApi;
-  stop(options?: StopRequest): StopResponse;
+  stop(options?: StopRequest): Promise<StopResponse>;
 }
 
 export function createDaemonServer(
@@ -60,7 +60,7 @@ export function createDaemonServer(
         ...(options.profile === undefined ? {} : { profile: options.profile }),
       });
       const api = createDaemonApi(state);
-      let stoppedResponse: StopResponse | null = null;
+      let stoppedResponse: Promise<StopResponse> | null = null;
 
       handle = {
         api,
@@ -69,11 +69,12 @@ export function createDaemonServer(
             return stoppedResponse;
           }
 
-          const response = api.stop(stopOptions ?? {});
-          supervisor.stop();
-          handle = null;
-          stoppedResponse = response;
-          return response;
+          stoppedResponse = api.stop(stopOptions ?? {}).then((response) => {
+            supervisor.stop();
+            handle = null;
+            return response;
+          });
+          return stoppedResponse;
         },
       };
 

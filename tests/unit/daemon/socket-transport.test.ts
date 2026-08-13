@@ -276,6 +276,72 @@ describe("daemon socket transport", () => {
     }
   });
 
+  it("cleans up an accepted socket error and keeps serving later requests", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-socket-"), "daemon.sock");
+    let resolveAcceptedSocket!: (socket: net.Socket) => void;
+    const acceptedSocketPromise = new Promise<net.Socket>((resolve) => {
+      resolveAcceptedSocket = resolve;
+    });
+    const createServer = net.createServer.bind(net);
+    const createServerSpy = vi
+      .spyOn(net, "createServer")
+      .mockImplementationOnce((options, connectionListener) => {
+        const listener = (
+          typeof options === "function" ? options : connectionListener
+        ) as ((socket: net.Socket) => void) | undefined;
+
+        return createServer((socket) => {
+          resolveAcceptedSocket(socket);
+          listener?.(socket);
+        });
+      });
+    const server = createDaemonSocketServer({
+      api: createDaemonApi(
+        createDaemonState({
+          db,
+          createId: () => "agent-1",
+          now: () => "2026-05-19T00:00:00.000Z",
+        }),
+      ),
+      socketPath,
+    });
+    const handle = await server.start();
+    createServerSpy.mockRestore();
+    const faultedClient = createDaemonSocketClient({ socketPath });
+    const laterClient = createDaemonSocketClient({ socketPath });
+
+    try {
+      await expect(faultedClient.status()).resolves.toMatchObject({
+        daemon: { pid: process.pid },
+      });
+      const acceptedSocket = await acceptedSocketPromise;
+      const closed = new Promise<boolean>((resolve) => {
+        acceptedSocket.once("close", () => resolve(true));
+      });
+      const expectedError = new Error("simulated accepted socket failure");
+      let escapedError: unknown;
+
+      try {
+        acceptedSocket.emit("error", expectedError);
+      } catch (error) {
+        escapedError = error;
+      }
+
+      const socketWasClosed = await withDeadline(closed, 100).catch(() => false);
+
+      expect.soft(escapedError).toBeUndefined();
+      expect.soft(socketWasClosed).toBe(true);
+      await expect(laterClient.status()).resolves.toMatchObject({
+        daemon: { pid: process.pid },
+      });
+    } finally {
+      createServerSpy.mockRestore();
+      faultedClient.close();
+      laterClient.close();
+      await handle.close();
+    }
+  });
+
   it("reuses one client connection and matches concurrent responses by id", async () => {
     const socketPath = join(mkdtempSync("/private/tmp/aiox-socket-"), "daemon.sock");
     let connectionCount = 0;

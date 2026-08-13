@@ -196,6 +196,115 @@ describe("Codex pre-write queue admission", () => {
     ).toEqual({ type: "delivery_expired", data_json: JSON.stringify({ reason: "delivery_expired" }) });
   });
 
+  it("cancels an outstanding queued-delivery expiry timer when state stops", async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createDaemonState({
+        db,
+        createId: monotonicIdSequence(),
+        now: () => "2026-07-20T00:00:00.000Z",
+      });
+      const client = createInProcessClient(createDaemonApi(state));
+
+      await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo" });
+      await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+      await client.connect({ sourceName: "source", targetNames: ["target"] });
+      await client.sendMessage({
+        sourceName: "source",
+        messageId: "expires-after-stop",
+        type: "instruction",
+        content: "hold",
+      });
+
+      expect(vi.getTimerCount()).toBe(1);
+
+      state.stop({});
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels an outstanding pre-write retry timer when state stops", async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduledDelays: number[] = [];
+      const setup = await setupPairedAgents(db, {
+        scheduleTimeout: (callback, delayMs) => {
+          scheduledDelays.push(delayMs);
+          return setTimeout(callback, delayMs);
+        },
+      });
+
+      await setup.client.receiveCodexMessage({
+        agentName: "impl",
+        token: setup.codexToken,
+        messageId: "retry-after-stop",
+        content: { text: "wait for unavailable target" },
+      });
+
+      expect(scheduledDelays).toContain(250);
+      expect(scheduledDelays.some((delayMs) => delayMs > 250)).toBe(true);
+      expect(vi.getTimerCount()).toBe(2);
+
+      await setup.state.stop({});
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for an in-flight target dispatch before normal stop resolves", async () => {
+    let resolvePush!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvePush = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const setup = await setupPairedAgents(db, {
+      claudeEndpoint: "http://127.0.0.1:18789/send",
+    });
+
+    const ingressPromise = setup.client.receiveCodexMessage({
+      agentName: "impl",
+      token: setup.codexToken,
+      messageId: "in-flight-during-stop",
+      content: { text: "finish before shutdown" },
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const deliveryId = deliveryIdForMessage(db, "in-flight-during-stop");
+
+    const stopPromise = setup.client.stop({});
+    const stopOutcome = await Promise.race([
+      stopPromise.then(() => "resolved" as const),
+      new Promise<"pending">((resolve) => setImmediate(() => resolve("pending"))),
+    ]);
+    const statusWhenObserved = db
+      .prepare("select status from message_deliveries where id = ?")
+      .get(deliveryId);
+
+    let statusAfterDispatch: unknown;
+    try {
+      resolvePush(new Response("{}", { status: 202 }));
+      await Promise.all([ingressPromise, stopPromise]);
+      statusAfterDispatch = db
+        .prepare("select status from message_deliveries where id = ?")
+        .get(deliveryId);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect({ stopOutcome, statusWhenObserved, statusAfterDispatch }).toEqual({
+      stopOutcome: "pending",
+      statusWhenObserved: { status: "delivering" },
+      statusAfterDispatch: { status: "delivered" },
+    });
+  });
+
   it("keeps a conclusively pre-write delivery queued after its three automatic retries", async () => {
     const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
     const setup = await setupPairedAgents(db, {

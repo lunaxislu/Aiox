@@ -88,7 +88,7 @@ export interface DaemonApi {
     request: ReceiveCodexReplyRequest,
   ): Promise<ReceiveCodexMessageResponse>;
   status(): StatusResponse;
-  stop(request: StopRequest): StopResponse;
+  stop(request: StopRequest): Promise<StopResponse>;
 }
 
 export interface AgentDto {
@@ -377,8 +377,8 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     status() {
       return mapStatusResult(state.status());
     },
-    stop(request) {
-      return mapStopResult(state.stop(request));
+    async stop(request) {
+      return mapStopResult(await state.stop(request));
     },
   };
 }

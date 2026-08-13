@@ -6,6 +6,8 @@
  */
 
 import Database from "better-sqlite3";
+import { chmodSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import { createDaemonApi, type DaemonApi } from "./api.js";
 import { createDaemonServer } from "./server.js";
@@ -20,6 +22,27 @@ function createSequentialId(): string {
   const id = `daemon-${runningId}`;
   runningId += 1;
   return id;
+}
+
+function installFatalDiagnostics(socketPath: string): () => void {
+  const fatalPath = join(dirname(socketPath), "latest-fatal.json");
+  const observeFatal = (
+    _error: Error,
+    origin: NodeJS.UncaughtExceptionOrigin,
+  ): void => {
+    try {
+      writeFileSync(fatalPath, `${JSON.stringify({ origin })}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      chmodSync(fatalPath, 0o600);
+    } catch {
+      // Diagnostics must not replace Node's default fatal termination behavior.
+    }
+  };
+
+  process.on("uncaughtExceptionMonitor", observeFatal);
+  return () => process.removeListener("uncaughtExceptionMonitor", observeFatal);
 }
 
 export async function runDaemonProcess(socketPath: string): Promise<void> {
@@ -53,11 +76,16 @@ export async function runDaemonProcess(socketPath: string): Promise<void> {
     shutdownScheduled = true;
 
     if (socketHandle) {
-      await socketHandle.close();
+      try {
+        await socketHandle.close();
+      } catch {
+        // A socket-close failure must not prevent the remaining owned resources
+        // from being released or leave the daemon shutdown pending.
+      }
       socketHandle = null;
     }
 
-    handle.stop({});
+    await handle.stop({});
     db.close();
     resolveShutdown();
   }
@@ -67,8 +95,8 @@ export async function runDaemonProcess(socketPath: string): Promise<void> {
   // the daemon's PID or to send SIGTERM explicitly.
   const wrappedApi: DaemonApi = {
     ...handle.api,
-    stop(request) {
-      const response = handle.stop(request);
+    async stop(request) {
+      const response = await handle.stop(request);
       setImmediate(() => void shutdown());
       return response;
     },
@@ -77,13 +105,19 @@ export async function runDaemonProcess(socketPath: string): Promise<void> {
   try {
     socketHandle = await createDaemonSocketServer({ api: wrappedApi, socketPath }).start();
   } catch (error) {
-    handle.stop({});
+    await handle.stop({});
     db.close();
     throw error;
   }
 
+  const removeFatalDiagnostics = installFatalDiagnostics(socketPath);
+
   process.once("SIGTERM", () => void shutdown());
   process.once("SIGINT", () => void shutdown());
 
-  return shutdownPromise;
+  try {
+    return await shutdownPromise;
+  } finally {
+    removeFatalDiagnostics();
+  }
 }
