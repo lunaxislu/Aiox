@@ -260,6 +260,20 @@ describe("daemon server lifecycle shell", () => {
       status: "connected",
       cwd: "/repo",
       pairId: null,
+      deliveryDiagnostics: {
+        acceptanceEvidence: "claude_http_2xx",
+        targetReceiptEvidence: "unavailable",
+        automaticTargetAck: false,
+        automaticCompletion: false,
+        automaticRetry: "conclusive_pre_write_failure_only",
+        manualRetransmit: {
+          eligibleStatus: "unconfirmed",
+          requiresDuplicateRiskConfirmation: true,
+          requiredReadiness: "ready_claude_channel_runtime",
+          dispatch: "direct_never_queued",
+          lateTransportOutcomeResolution: "none",
+        },
+      },
     });
   });
 

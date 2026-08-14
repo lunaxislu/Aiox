@@ -137,9 +137,13 @@ Reserved profiles:
   boundary다. Phase 0 release hygiene는 runtime directory/socket을 owner-only로 만들고 raw credential이
   argv·log·event·error·rollback residue에 남지 않게 한다. 모든 ingress/push path의 identity 검증,
   route authorization, credential purpose separation은 Phase 1 trust-boundary hardening의 deferred contract다.
-- 예상 가능한 client socket 오류는 request/connection boundary에서 처리한다. 최상위
-  `unhandledRejection`/`uncaughtException`은 secret을 제거한 structured fatal log를 남기고
-  process를 종료해야 하며, 손상 가능 상태에서 계속 실행하는 복구 수단으로 쓰지 않는다.
+- 예상 가능한 client socket 오류는 request/connection boundary에서 처리한다. 현재 daemon은 accepted
+  socket 오류를 해당 connection에서 격리하고, 최상위 `unhandledRejection`/`uncaughtException`에서는
+  raw error 대신 origin만 담은 owner-only `latest-fatal.json`을 쓴 뒤 Node 기본 종료를 유지한다.
+  이는 retained rolling log나 복구 handler가 아니다. Current evidence:
+  [[src/daemon/socket-transport.ts]] — `src/daemon/socket-transport.ts:62-68`,
+  [[src/daemon/run.ts]] — `src/daemon/run.ts:27-45`,
+  [[tests/unit/daemon/run.test.ts]] — `tests/unit/daemon/run.test.ts:25-101`.
 - message/transcript/log는 source code나 credential을 포함할 수 있는 local sensitive data다.
   기본 저장 위치는 profile namespace 아래여야 하고, public telemetry 전송은 opt-in 전에는
   금지한다. token/raw credential은 log/event/error에 남기지 않는다.

@@ -23,6 +23,8 @@ import type {
   ReceiveCodexMessageRequest,
   ReceiveCodexMessageResult,
   ReceiveCodexReplyRequest,
+  ReportClaudeChannelBootFailureRequest,
+  ReportClaudeChannelBootFailureResult,
   RetransmitUnconfirmedDeliveryRequest,
   RetransmitUnconfirmedDeliveryResult,
   RegisterClaudeChannelRequest,
@@ -66,6 +68,9 @@ export interface DaemonApi {
   registerClaudeChannel(
     request: RegisterClaudeChannelRequest,
   ): Promise<RegisterClaudeChannelResponse>;
+  reportClaudeChannelBootFailure(
+    request: ReportClaudeChannelBootFailureRequest,
+  ): Promise<ReportClaudeChannelBootFailureResult>;
   disconnectClaudeChannel(
     request: DisconnectClaudeChannelRequest,
   ): Promise<DisconnectClaudeChannelResponse>;
@@ -100,6 +105,27 @@ export interface AgentDto {
   pairId: string | null;
   pairSlot?: PairSlot | null;
   adapterSessionId?: string;
+}
+
+export interface StatusDeliveryDiagnosticsDto {
+  acceptanceEvidence: "codex_turn_start" | "claude_http_2xx";
+  targetReceiptEvidence: "unavailable";
+  automaticTargetAck: false;
+  automaticCompletion: false;
+  automaticRetry: "conclusive_pre_write_failure_only";
+  manualRetransmit: {
+    eligibleStatus: "unconfirmed";
+    requiresDuplicateRiskConfirmation: true;
+    requiredReadiness:
+      | "ready_codex_runtime_and_bound_thread"
+      | "ready_claude_channel_runtime";
+    dispatch: "direct_never_queued";
+    lateTransportOutcomeResolution: "correlated_response" | "none";
+  };
+}
+
+export interface StatusAgentDto extends AgentDto {
+  deliveryDiagnostics: StatusDeliveryDiagnosticsDto;
 }
 
 export interface PairDto {
@@ -279,7 +305,7 @@ export interface StatusResponse {
     pid: number;
     startedAt: string;
   };
-  agents: AgentDto[];
+  agents: StatusAgentDto[];
   pairs: PairDto[];
   routes: RouteDto[];
   messageCount: number;
@@ -352,6 +378,9 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     async registerClaudeChannel(request) {
       return state.registerClaudeChannel(request);
+    },
+    async reportClaudeChannelBootFailure(request) {
+      return state.reportClaudeChannelBootFailure(request);
     },
     async disconnectClaudeChannel(request) {
       return state.disconnectClaudeChannel(request);
@@ -515,11 +544,36 @@ function mapRetransmitUnconfirmedDeliveryResult(
 function mapStatusResult(result: StatusResult): StatusResponse {
   return {
     daemon: result.daemon,
-    agents: result.agents.map(mapAgent),
+    agents: result.agents.map(mapStatusAgent),
     pairs: result.pairs.map(mapPair),
     routes: result.routes.map(mapRoute),
     messageCount: result.messageCount,
     deliveryCounts: result.deliveryCounts,
+  };
+}
+
+function mapStatusAgent(agent: StoredAgent): StatusAgentDto {
+  return {
+    ...mapAgent(agent),
+    deliveryDiagnostics: {
+      acceptanceEvidence:
+        agent.kind === "codex" ? "codex_turn_start" : "claude_http_2xx",
+      targetReceiptEvidence: "unavailable",
+      automaticTargetAck: false,
+      automaticCompletion: false,
+      automaticRetry: "conclusive_pre_write_failure_only",
+      manualRetransmit: {
+        eligibleStatus: "unconfirmed",
+        requiresDuplicateRiskConfirmation: true,
+        requiredReadiness:
+          agent.kind === "codex"
+            ? "ready_codex_runtime_and_bound_thread"
+            : "ready_claude_channel_runtime",
+        dispatch: "direct_never_queued",
+        lateTransportOutcomeResolution:
+          agent.kind === "codex" ? "correlated_response" : "none",
+      },
+    },
   };
 }
 

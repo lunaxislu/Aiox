@@ -177,6 +177,20 @@ describe("aiox CLI bin", () => {
           status: "disconnected",
           cwd: "/repo",
           pairId: null,
+          deliveryDiagnostics: {
+            acceptanceEvidence: "codex_turn_start",
+            targetReceiptEvidence: "unavailable",
+            automaticTargetAck: false,
+            automaticCompletion: false,
+            automaticRetry: "conclusive_pre_write_failure_only",
+            manualRetransmit: {
+              eligibleStatus: "unconfirmed",
+              requiresDuplicateRiskConfirmation: true,
+              requiredReadiness: "ready_codex_runtime_and_bound_thread",
+              dispatch: "direct_never_queued",
+              lateTransportOutcomeResolution: "correlated_response",
+            },
+          },
         },
       ]);
     } finally {

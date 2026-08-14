@@ -74,11 +74,18 @@ Current implementation caveats:
   pairs can occupy both slots and become ready. Current evidence:
   [[src/core/pairs.ts]] — `src/core/pairs.ts:23-45`, `src/core/pairs.ts:76-130`,
   [[tests/unit/core/pairs.test.ts]] — `tests/unit/core/pairs.test.ts:110-159`.
-- Current code surfaces typed injection `failed`/`deferred` results, but does
-  not expose a runtime tier evaluator or diagnostics API that proves every
-  wake-up, ack, correlation and dedupe guarantee. The tier matrix below is
-  therefore a compatibility/status classification, not proof that a runtime has
-  a complete Tier 1/2 guarantee.
+- Current code surfaces typed injection `failed`/`deferred` results and the
+  existing daemon `status`/`aiox status` snapshot adds a fixed, status-only
+  per-kind delivery-guarantee projection for Codex and Claude. It distinguishes
+  acceptance evidence, unavailable target-receipt evidence, automatic target
+  ack/completion absence, conclusive-pre-write-only retry and manual-retransmit
+  boundaries. This static projection is not a runtime tier evaluator or a
+  generic diagnostics API that proves dynamic wake-up, ack, correlation and
+  dedupe guarantees. The tier matrix below remains a compatibility/status
+  classification, not proof that a runtime has a complete Tier 1/2 guarantee.
+  Current evidence: [[src/daemon/api.ts]] — `src/daemon/api.ts:110-129`,
+  `src/daemon/api.ts:544-578`; [[src/cli/format.ts]] —
+  `src/cli/format.ts:30-109`.
 
 Current adapter matrix (2026-07-21):
 
@@ -196,5 +203,7 @@ Claude TUI ingress는 하나의 표면을 완전한 보장처럼 취급하지 �
 - **Tier 3 last resort:** prompt injection이나 terminal key injection은 명시적
   `prompt_only` degradation으로만 허용한다.
 
-Adapter status와 diagnostics는 현재 선택된 ingress path, fallback 발생 이유, wake-up·ack·dedupe
-보장 여부를 각각 노출해야 한다. fallback이 성공했다는 이유만으로 effective tier를 올리지 않는다.
+현재 status-only projection은 Codex/Claude의 고정 ingress acceptance와 delivery/recovery 경계만
+노출한다. 선택된 ingress path, fallback 발생 이유와 동적 wake-up·ack·dedupe를 일반화해 평가하는
+runtime diagnostics/tier-evaluator API는 아직 없다. 후속 일반화도 fallback 성공만으로 effective
+tier를 올려서는 안 된다.

@@ -77,6 +77,22 @@ export type RegisterClaudeChannelResult =
   | { ok: true; runtime: ClaudeChannelRuntime }
   | { ok: false; reason: "claude_channel_registration_failed"; detail: string };
 
+export type ClaudeChannelBootFailureCause = "claude_channel_port_in_use";
+
+export interface ReportClaudeChannelBootFailureRequest {
+  agentName: string;
+  token: string;
+  reason: ClaudeChannelBootFailureCause;
+}
+
+export type ReportClaudeChannelBootFailureResult =
+  | { ok: true; agentName: string; recorded: boolean }
+  | {
+      ok: false;
+      reason: "claude_channel_boot_failure_report_rejected";
+      detail: "unknown_token" | "unsupported_reason";
+    };
+
 export interface DisconnectClaudeChannelRequest {
   agentName: string;
 }
@@ -238,6 +254,7 @@ export type AttachCodexRuntime = (request: {
   activeThreadId: string | null;
   codexChannelToken?: string;
   daemonSocketPath?: string;
+  onRuntimeFailed?: (failure: RecordCodexRuntimeFailedRequest) => void;
 }) => Promise<ManagedCodexAgentRuntime>;
 
 export interface AgentRuntimeRegistry {
@@ -414,6 +431,7 @@ export interface DispatchSummary {
   deferred: Array<{
     targetAgentId: string;
     reason: AdapterInjectDeferredReason;
+    cause?: ClaudeChannelBootFailureCause;
     eligibility?: string;
   }>;
   failed: Array<{
@@ -573,6 +591,9 @@ export interface DaemonState {
     request: RecordCodexRuntimeFailedRequest,
   ): RecordCodexRuntimeFailedResult;
   registerClaudeChannel(request: RegisterClaudeChannelRequest): RegisterClaudeChannelResult;
+  reportClaudeChannelBootFailure(
+    request: ReportClaudeChannelBootFailureRequest,
+  ): ReportClaudeChannelBootFailureResult;
   disconnectClaudeChannel(request: DisconnectClaudeChannelRequest): DisconnectClaudeChannelResult;
   receiveClaudeChannelMessage(
     request: ReceiveClaudeChannelMessageRequest,
@@ -614,6 +635,7 @@ export function createDaemonState(
     options.claudeChannelRuntimes ?? new Map<string, ClaudeChannelRuntime>();
   const claudePendingTokens =
     options.claudePendingTokens ?? new Map<string, ClaudePendingToken>();
+  const claudeChannelBootFailures = new Map<string, ClaudeChannelBootFailureCause>();
   const codexChannelRuntimes =
     options.codexChannelRuntimes ?? new Map<string, CodexChannelRuntime>();
   const codexPendingTokens =
@@ -707,6 +729,7 @@ export function createDaemonState(
         }
 
         if (request.kind === "claude") {
+          claudeChannelBootFailures.delete(request.name);
           const token = randomUUID();
           claudePendingTokens.set(request.name, {
             agentName: request.name,
@@ -731,6 +754,9 @@ export function createDaemonState(
           agentName: request.name,
           activeThreadId: storedAgent.adapterSessionId,
           codexChannelToken,
+          onRuntimeFailed: (failure) => {
+            performRecordCodexRuntimeFailed(failure);
+          },
           ...(options.daemonSocketPath === undefined
             ? {}
             : { daemonSocketPath: options.daemonSocketPath }),
@@ -1067,6 +1093,7 @@ export function createDaemonState(
       codexChannelRuntimes.delete(request.agentName);
       claudePendingTokens.delete(request.agentName);
       claudeChannelRuntimes.delete(request.agentName);
+      claudeChannelBootFailures.delete(request.agentName);
 
       const agent = agents.findByName(request.agentName);
       if (agent?.status === "connected") {
@@ -1102,45 +1129,7 @@ export function createDaemonState(
     },
 
     recordCodexRuntimeFailed(request) {
-      const agent = agents.findByName(request.agentName);
-
-      if (!agent || agent.status === "disconnected") {
-        return {
-          ok: true,
-          agentName: request.agentName,
-          recorded: false,
-        };
-      }
-
-      const now = options.now();
-      codexRuntimes?.delete(request.agentName);
-      codexChannelRuntimes.delete(request.agentName);
-      codexPendingTokens.delete(request.agentName);
-      agents.markByNameDisconnected(request.agentName, now);
-      events.append({
-        id: options.createId(),
-        type: "agent_runtime_failed",
-        data: {
-          reason: request.reason,
-          ...(request.latestDiagnosticNotification
-            ? {
-                latestDiagnosticNotification:
-                  request.latestDiagnosticNotification,
-              }
-            : {}),
-        },
-        createdAt: now,
-        agentId: agent.id,
-        messageId: null,
-        deliveryId: null,
-        routeId: null,
-      });
-
-      return {
-        ok: true,
-        agentName: request.agentName,
-        recorded: true,
-      };
+      return performRecordCodexRuntimeFailed(request);
     },
 
     registerClaudeChannel(request) {
@@ -1169,25 +1158,35 @@ export function createDaemonState(
         tokenHash: claudeTokenFingerprint(request.token),
       };
       claudeChannelRuntimes.set(request.agentName, runtime);
+      claudeChannelBootFailures.delete(request.agentName);
       return { ok: true, runtime };
     },
 
-    disconnectClaudeChannel(request) {
-      const had = claudeChannelRuntimes.has(request.agentName);
-      claudeChannelRuntimes.delete(request.agentName);
-      claudePendingTokens.delete(request.agentName);
-
-      const agent = agents.findByName(request.agentName);
-      const wasConnected = agent?.status === "connected";
-      if (wasConnected) {
-        agents.markByNameDisconnected(request.agentName, options.now());
+    reportClaudeChannelBootFailure(request) {
+      const pending = claudePendingTokens.get(request.agentName);
+      if (!pending || pending.token !== request.token) {
+        return {
+          ok: false,
+          reason: "claude_channel_boot_failure_report_rejected",
+          detail: "unknown_token",
+        };
       }
+      if (request.reason !== "claude_channel_port_in_use") {
+        return {
+          ok: false,
+          reason: "claude_channel_boot_failure_report_rejected",
+          detail: "unsupported_reason",
+        };
+      }
+      if (claudeChannelRuntimes.has(request.agentName)) {
+        return { ok: true, agentName: request.agentName, recorded: false };
+      }
+      claudeChannelBootFailures.set(request.agentName, request.reason);
+      return { ok: true, agentName: request.agentName, recorded: true };
+    },
 
-      return {
-        ok: true,
-        agentName: request.agentName,
-        disconnected: had || wasConnected,
-      };
+    disconnectClaudeChannel(request) {
+      return performDisconnectClaudeChannel(request.agentName);
     },
 
     async receiveClaudeChannelMessage(request) {
@@ -1425,6 +1424,7 @@ export function createDaemonState(
             codexPendingTokens.delete(agent.name);
             claudeChannelRuntimes.delete(agent.name);
             claudePendingTokens.delete(agent.name);
+            claudeChannelBootFailures.delete(agent.name);
           }
         }
         return { ok: true as const, stoppedAgents };
@@ -1524,6 +1524,79 @@ export function createDaemonState(
         deliveries: [delivery],
       });
     }
+  }
+
+  // Shared by the public `recordCodexRuntimeFailed` method and the
+  // `onRuntimeFailed` callback wired into the production Codex attach factory
+  // (see `attachCodexRuntime` call in `attachAgent`), so a managed Codex
+  // runtime's own child-exit/WS-close detection reaches the same effect as an
+  // explicit report.
+  function performRecordCodexRuntimeFailed(
+    request: RecordCodexRuntimeFailedRequest,
+  ): RecordCodexRuntimeFailedResult {
+    const agent = agents.findByName(request.agentName);
+
+    if (!agent || agent.status === "disconnected") {
+      return {
+        ok: true,
+        agentName: request.agentName,
+        recorded: false,
+      };
+    }
+
+    const now = options.now();
+    codexRuntimes?.delete(request.agentName);
+    codexChannelRuntimes.delete(request.agentName);
+    codexPendingTokens.delete(request.agentName);
+    agents.markByNameDisconnected(request.agentName, now);
+    events.append({
+      id: options.createId(),
+      type: "agent_runtime_failed",
+      data: {
+        reason: request.reason,
+        ...(request.latestDiagnosticNotification
+          ? {
+              latestDiagnosticNotification: request.latestDiagnosticNotification,
+            }
+          : {}),
+      },
+      createdAt: now,
+      agentId: agent.id,
+      messageId: null,
+      deliveryId: null,
+      routeId: null,
+    });
+
+    return {
+      ok: true,
+      agentName: request.agentName,
+      recorded: true,
+    };
+  }
+
+  // Shared by the public `disconnectClaudeChannel` method and
+  // `injectMessageIntoClaudeTarget`'s confirmed-refusal branch (a registered
+  // Claude channel endpoint that ECONNREFUSEs is treated the same as an
+  // explicit disconnect request).
+  function performDisconnectClaudeChannel(
+    agentName: string,
+  ): DisconnectClaudeChannelResult {
+    const had = claudeChannelRuntimes.has(agentName);
+    claudeChannelRuntimes.delete(agentName);
+    claudePendingTokens.delete(agentName);
+    claudeChannelBootFailures.delete(agentName);
+
+    const agent = agents.findByName(agentName);
+    const wasConnected = agent?.status === "connected";
+    if (wasConnected) {
+      agents.markByNameDisconnected(agentName, options.now());
+    }
+
+    return {
+      ok: true,
+      agentName,
+      disconnected: had || wasConnected,
+    };
   }
 
   function updateDeliveryStatusInTransaction(
@@ -1898,6 +1971,10 @@ export function createDaemonState(
         summary.deferred.push({
           targetAgentId: targetAgent.id,
           reason: injectResult.reason,
+          ...("cause" in injectResult &&
+          injectResult.cause === "claude_channel_port_in_use"
+            ? { cause: injectResult.cause }
+            : {}),
           ...(injectResult.eligibility
             ? { eligibility: injectResult.eligibility }
             : {}),
@@ -1978,16 +2055,26 @@ export function createDaemonState(
     | {
         kind: "deferred";
         reason: AdapterInjectDeferredReason;
+        cause?: ClaudeChannelBootFailureCause;
         eligibility: string;
       }
   > {
     if (!claudeChannelRuntimes.has(targetAgent.name)) {
+      const cause = claudeChannelBootFailures.get(targetAgent.name);
       return {
         kind: "deferred",
         reason: "target_runtime_unavailable",
+        ...(cause ? { cause } : {}),
         eligibility: "requires target claude channel runtime",
       };
     }
+
+    // Captured before the async push so a confirmed-refusal result (below) can be
+    // checked for identity against whatever is registered by the time the push
+    // settles. Push is async: a same-name `registerClaudeChannel` can replace this
+    // entry while the fetch is in flight, and that replacement must not be
+    // clobbered by a disconnect meant for the runtime instance we actually pushed to.
+    const runtimeAtDispatch = claudeChannelRuntimes.get(targetAgent.name);
 
     if (injectionOptions.transitionToDelivering !== false) {
       updateDeliveryStatusInTransaction({
@@ -2024,6 +2111,26 @@ export function createDaemonState(
     }
 
     if (injectResult.reason === "claude_channel_unavailable") {
+      // ECONNREFUSED against a runtime this function already confirmed was
+      // registered (the `.has()` guard above) means the registered endpoint is
+      // confirmed dead, not merely unregistered -- unlike the deferred branch
+      // above, which fires before any registration is known to exist. Mirror
+      // `disconnectClaudeChannel`'s effect for it, but only when: (a) this is the
+      // daemon's own dispatch judgment about a target's live status, not an
+      // operator-triggered manual retransmit probe, which is deliberately
+      // attempt-local and must not mutate global registration/connection state
+      // (see the sibling `claude_channel_push_failed` branch below, gated the
+      // same way); and (b) the runtime instance we pushed to is still the one
+      // registered now -- if a same-name `registerClaudeChannel` replaced it
+      // while this push was in flight, leave that replacement alone.
+      if (
+        injectionOptions.transitionToDelivering !== false &&
+        runtimeAtDispatch !== undefined &&
+        claudeChannelRuntimes.get(targetAgent.name) === runtimeAtDispatch
+      ) {
+        performDisconnectClaudeChannel(targetAgent.name);
+      }
+
       return {
         kind: "deferred",
         reason: "target_runtime_unavailable",
@@ -2938,6 +3045,7 @@ export function createDaemonState(
     codexPendingTokens.delete(input.agentName);
     claudeChannelRuntimes.delete(input.agentName);
     claudePendingTokens.delete(input.agentName);
+    claudeChannelBootFailures.delete(input.agentName);
 
     const now = options.now();
     agents.markByNameDisconnected(input.agentName, now);
@@ -3074,10 +3182,12 @@ async function defaultAttachCodexRuntime(request: {
   activeThreadId: string | null;
   codexChannelToken?: string;
   daemonSocketPath?: string;
+  onRuntimeFailed?: (failure: RecordCodexRuntimeFailedRequest) => void;
 }): Promise<ManagedCodexAgentRuntime> {
   return attachCodexAgentRuntime({
     agentName: request.agentName,
     activeThreadId: request.activeThreadId,
+    onRuntimeFailed: request.onRuntimeFailed,
     ...(request.codexChannelToken && request.daemonSocketPath
       ? {
           mcp: {

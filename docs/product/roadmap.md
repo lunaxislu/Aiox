@@ -48,7 +48,7 @@ After public release:
 | G1-B       | canonical envelope cutover (historical core accepted; canonical-presentation corrective verified) | accepted delivery/correlation 모델과 검증된 Claude canonical presentation을 G1-C/G1-D가 입력으로 소비한다. |
 | G1-C       | process-lifetime Tier 3 delivery reliability (Codex Tier 3 evidence 및 공통 요구 evidence accepted) | accepted Codex Tier 3 결과와 accepted daemon-level 공통 요구 evidence를 구분하고, Tier 2 ack/completed·stale 등 후속 보장을 현재 완료로 주장하지 않는다. |
 | G1-D       | minimal local secret/runtime hygiene (Phase 0 hygiene accepted, Phase 1 trust-boundary hardening으로 이관) | Phase 0 hygiene(Codex argv-safe delivery, runtime dir/socket permission, Claude credential cleanup) 완료를 Phase 1 ingress/push authentication·route authorization·purpose separation·constant-time comparison의 완료로 확대 해석하지 않는다. |
-| G3         | daemon stabilization                                         | daemon lifecycle, transport, diagnostics failure boundary를 release-grade로 고정한다. |
+| G3         | daemon stabilization (Phase 0 evidence accepted)             | accepted lifecycle, transport, diagnostics 경계를 G4의 동일 release candidate에서 재검증한다. |
 | G2         | terminal minimum                                             | one-command demo의 최소 terminal UX를 Phase 0 범위로 닫는다.                          |
 | G5         | public hygiene                                               | 공개 repo로 나갈 shared/local/sensitive/public surface 경계를 닫는다.                 |
 | G6         | npm packaging                                                | npm artifact가 clean install과 daemon smoke를 통과하게 한다.                          |
@@ -134,7 +134,7 @@ Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, ins
 - [[docs/specs/aiox-open-deferred]] — Codex structured ingress spike, named
   app-server surface 직접 검증 제약, lifecycle open questions owner.
 - [[docs/specs/aiox-adapter-model]] — adapter slots, capability tier, Codex/Claude degradation classification owner.
-- [[docs/architecture/local-runtime-codex-adapter]] — current Codex app-server, proxy, `turn/start`, MCP ingress, runtime failure gap owner.
+- [[docs/architecture/local-runtime-codex-adapter]] — current Codex app-server, proxy, `turn/start`, MCP ingress and runtime failure-detection boundary owner.
 - [[docs/decisions/codex-per-agent-app-server]] — Codex app-server topology와 ack/lifecycle rationale owner.
 
 ##### G1-B — Envelope Cutover
@@ -191,12 +191,12 @@ G1-C는 process-lifetime Tier 3 delivery reliability를 Codex와 Claude 양쪽�
 
 - accepted G1-B 결과가 delivery correlation, consumed one-reply permission, source-visible acceptance boundary를 제공한다.
 - accepted Codex Tier 3 evidence가 automatic/manual 경계와 target runtime degradation을 검증한다.
-- durable replay와 passive/automatic ack는 후속 owner에 남아 있다. stale/disconnected 운영 정책은 Phase 1, runtime failure wiring은 G3 owner에 남아 있다.
+- durable replay와 passive/automatic ack는 후속 owner에 남아 있다. stale/disconnected 운영 정책은 Phase 1에 남고, observed runtime failure/disconnect의 production wiring은 G3 evidence로 accepted됐다.
 
 **착수 검토 / 열린 결정**
 
 - authenticated automatic ack/`completed`, wake-up, adapter-specific duplicate suppression은 Phase 1 Tier 2 uplift에서 판단한다.
-- stale/disconnected runtime의 detection·retry/hold/fail 운영 정책은 Phase 1에서 판단한다. runtime failure wiring은 G3가 현재 Codex·Claude에서 관측 가능한 failure/단절을 daemon diagnostics로 연결한다. 이는 delivery 상태 전이 policy나 `claude_channel_disconnected` event를 정하지 않는다.
+- stale/disconnected runtime의 detection·retry/hold/fail 운영 정책은 Phase 1에서 판단한다. G3의 accepted runtime-failure wiring은 현재 Codex·Claude에서 관측 가능한 failure/단절을 existing disconnected state에 연결하지만, delivery 상태 전이 policy나 `claude_channel_disconnected` event를 정하지 않는다.
 - native activity는 Phase 1 또는 후속 owner에 남는다. 이는 G1-B의 Claude canonical-presentation corrective와 별개다.
 - durable store와 mailbox replay는 G1-C 통과 조건이 아니라 Phase 2 책임이다.
 - Claude HTTP 4xx/5xx/timeout의 delivery 상태 매핑은 daemon-level 통합 테스트로 검증됐다.
@@ -244,7 +244,7 @@ Accepted Codex Tier 3 evidence와 그 경계:
 - [[docs/decisions/public-message-and-delivery-ids-use-opaque-issuance]] — public-ID issuance boundary rationale owner.
 - [[docs/specs/aiox-open-deferred]] — retry/passive ack timeout, session expiry, pending/blocked policy의 열린 결정 owner.
 - [[docs/architecture/local-runtime-routing-and-delivery]] — current routing/FSM, queued/deferred delivery behavior, production dispatch path owner.
-- [[docs/architecture/local-runtime-gaps-and-targets]] — runtime failure wiring, stale transition, queued delivery retry/drain gap owner.
+- [[docs/architecture/local-runtime-gaps-and-targets]] — stale transition, queued delivery retry/drain과 retained diagnostics residual owner.
 - [[docs/decisions/reply-permission-rather-than-obligation-fsm]] — permission-consumption rationale owner.
 
 ##### G1-D — Minimal Local Secret/Runtime Hygiene
@@ -300,24 +300,28 @@ daemon이 공개 전 release path에서 조용히 실패하거나 손상된 상�
 
 **착수 검토 / 열린 결정**
 
-- expected client/socket error와 fatal process error의 경계를 구분하고, fatal path의 structured log/exit 방향을 닫는다.
-- `stop`/SIGTERM이 daemon-owned runtime과 child/process resource를 어디까지 정리해야 하는지 owner별로 확인한다.
-- daemon-owned retained diagnostics/log surface가 daemon 생존, socket 응답, channel 등록/부재, boot failure
-  reason을 어느 수준까지 보존하고 doctor/logs/status 계열 tooling에 노출해야 gate 통과로 볼지 정한다.
-- Claude channel boot failure는 Claude-specific diagnosability gap으로 다룬다. 착수 시 startup ack 경로, attach success 반환 의미 축소, child fatal 관측 후 전파 중 어떤 방향으로 닫을지 재도출한다.
-- Daemon socket dispatch가 inherited/prototype-chain method name을 호출하지 않도록 own-property 또는 known-method guard를 hardening 범위에 포함한다.
-- G3는 Codex와 Claude에 대해 아래 사실을 read-only로 노출하는 최소 diagnostics를 구현한다.
+- expected accepted-socket error는 해당 connection에서 격리하고, fatal process error는 raw error를 보존하지 않는
+  owner-only `latest-fatal.json` artifact를 쓴 뒤 Node 기본 종료를 유지하는 경계로 닫혔다. 일반 retained log
+  history는 G3 완료 근거가 아니다.
+- `stop`/SIGTERM은 socket ingress를 닫고, 등록된 retry/expiry timer와 stop 진입 시점의 target flush를 정리한 뒤
+  agent/runtime cleanup settlement를 기다리고 DB를 닫는 경계로 검증됐다.
+- Claude channel boot failure는 authenticated best-effort child report가 `claude_channel_port_in_use` 원인을 daemon
+  dispatch 결과에 투영하는 좁은 경계로 닫혔다. attach success를 startup acknowledgement로 확대하지 않는다.
+- Daemon socket dispatch는 own-property method만 호출하고 unknown/inherited method를 기존 typed transport error로
+  거부한다.
+- Codex와 Claude에 대해 아래 사실을 기존 `status` snapshot과 `aiox status`에서 read-only로 노출한다.
   - 현재 연결 상태
   - acceptance와 receipt의 구분
   - automatic ack / completed 지원 여부
   - automatic retry 안전성
   - 수동 복구 가능 여부와 경계
 
-  endpoint, DTO, CLI command, field 이름은 이 gate에서 정하지 않는다. 새 delivery policy나
-  보장을 만들지 않는다. `claude_channel_disconnected` event와 generic typed capability /
+  이 projection은 새 delivery policy나 보장을 만들지 않는다. `claude_channel_disconnected` event와 generic typed capability /
   tier-evaluator / diagnostics model·API, registry/event boundary는 Phase 2 adapter/events
   boundary로 명시 이연하며 G3 완료 주장에 섞이지 않는다.
-- G3는 Codex와 Claude 각각에서 이미 관측 가능한 runtime failure 또는 단절을 daemon diagnostics까지 연결한다. 이 범위는 delivery 상태 전이 policy를 정하지 않고, `claude_channel_disconnected` event나 generic capability/event model을 만들지 않는다.
+- Codex managed runtime의 child-exit/WebSocket failure callback과 Claude primary push의 confirmed endpoint refusal은
+  daemon의 existing disconnected state에 연결됐다. 이 범위는 delivery 상태 전이 policy,
+  `claude_channel_disconnected` event나 generic capability/event model을 만들지 않는다.
 - durable store는 G3 통과 조건에서 제외하고, restart 시 in-memory state 소실은 공개 release의 명시된 제한으로 둔다.
 
 **통과 조건**
@@ -333,7 +337,8 @@ daemon이 공개 전 release path에서 조용히 실패하거나 손상된 상�
 
 - [[docs/product/roadmap]] — G3 gate intent, evidence level, durable-store 제외 범위 owner.
 - [[docs/architecture/local-runtime-daemon-transport-api]] — daemon lifecycle, socket transport, API surface owner.
-- [[docs/architecture/local-runtime-gaps-and-targets]] — G3 robustness/diagnostics, channel disconnect event, boot-failure diagnosability, socket dispatch hardening gap owner.
+- [[docs/architecture/local-runtime-cli-and-operator-surfaces]] — `doctor` check set과 `aiox status` operator rendering owner.
+- [[docs/architecture/local-runtime-gaps-and-targets]] — G3 뒤에도 남는 retained diagnostics, channel disconnect event와 deferred runtime gap owner.
 - [[docs/architecture/local-runtime-claude-adapter]] — Claude channel launch/registration/boot-failure 진단 경계 owner.
 - [[docs/specs/aiox-capability-policy]] — daemon trust boundary, sensitive log/data handling, log redaction direction owner.
 - [[docs/specs/aiox-adapter-model]] — OS launch/path/signal 차이를 adapter가 흡수해야 한다는 runtime boundary와 runtime diagnostics/tier evaluator gap owner.
@@ -500,7 +505,7 @@ G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable
 
 - [[docs/product/roadmap]] — Phase 1 adoption 범위와 Phase 2/3 경계 owner.
 - [[docs/specs/aiox-open-deferred]] — pending, blocked, retry, Codex structured ingress 같은 열린 운영 정책 owner.
-- [[docs/architecture/local-runtime-gaps-and-targets]] — diagnostics, queued delivery, runtime failure, events gap의 후속 pressure owner.
+- [[docs/architecture/local-runtime-gaps-and-targets]] — retained diagnostics, queued delivery, stale transition과 events gap의 후속 pressure owner.
 - [[docs/specs/aiox-adapter-model]] — Tier 2 ack/auth/dedupe 보장 조건과 현재 runtime tier classification owner.
 - [[docs/decisions/pair-slot-generalization]] — deferred delivery 자동 retry와 source push notification의 post-MVP 재평가 지점 owner.
 
@@ -589,7 +594,7 @@ Gate completion requires reproducible evidence, not only a status label. 각 gat
 | G0   | versioned schema/example validation, CLI/config/package decision record, support matrix                                                                                                   |
 | G1   | completed/consumed G1-B/C/D evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence, separate Codex·Claude direct CLI/TUI transport-level ambiguity/outcome/confirmed-recovery/duplicate-display evidence, accepted daemon-level evidence for adapter-symmetric delivery-FSM semantics and retry/failure 중 inbound reply·MCP/channel 결과 경로의 무손실·정확 귀속 및 original/manual late-resolution attribution, and G1-D Phase 0 hygiene evidence (Codex argv-safe secret delivery, owner-only runtime directory/socket permission with chmod-failure rollback, Claude attach rollback/detach/stop credential cleanup). The accepted daemon-level common evidence does not establish target receipt/read/work completion, adapter-level WebSocket observer routing, or real two-plane ordering/race composition. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Ingress/push authentication, route authorization, and credential purpose separation are Phase 1 trust-boundary hardening, not G1 release evidence. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
 | G2   | tmux path and no-tmux fallback clean-user smoke, README command match                                                                                                                     |
-| G3   | client crash isolation, fatal handler exit, SIGTERM child cleanup, bounded body/queue, log redaction, doctor diagnosis tests                                                              |
+| G3   | accepted-socket client-error isolation; redacted owner-only fatal artifact followed by default fatal exit; SIGTERM/RPC-stop socket, registered timer, stop-entry target-flush and managed-runtime cleanup; own-method socket dispatch rejection; authenticated Claude boot-failure cause projection; Codex runtime-failure and Claude confirmed-endpoint-death disconnect wiring; existing `status`/`aiox status` connection and fixed delivery-guarantee diagnostics; deterministic doctor checks for Node, Codex, Claude, sqlite-native and daemon-socket success/failure; common bounded pre-write queue/retry/TTL regression. These queue bounds do not establish a socket request-line or Claude HTTP body byte limit. |
 | G5   | secret/PII/path scan, tracked-vs-local file review, dead/scaffold code disposition, LICENSE/README/SECURITY/CONTRIBUTING/issue template presence and link check                           |
 | G6   | npm pack, tarball content assertion, clean temp install, executable/version/help/start-stop smoke                                                                                         |
 | G4   | same immutable G0-G6 candidate verified on macOS/Linux CI or recorded clean-host runs with retained diagnostics                                                                           |

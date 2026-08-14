@@ -32,9 +32,9 @@ Phase 0 범위에서 모두 closed되어 G3의 진입 조건("G1의 local A2A �
 
 - [x] Kickoff — G3 gap audit and diagnostics/logging design contract -> `logs/2026-08-11-G3-daemon-stabilization.md`
 - [x] Fatal/expected-error boundary, redacted fatal diagnosability, SIGTERM/stop cleanup 구현·검증 -> `logs/2026-08-11-G3-daemon-stabilization.md`
-- [ ] Socket method dispatch hardening 및 Claude channel boot-failure diagnosability 구현과 evidence
-- [ ] Codex·Claude 최소 read-only diagnostics 표면과 runtime failure/disconnect wiring 구현과 evidence
-- [ ] G3 gate evidence 정합화, owner 문서 반영과 closeout
+- [x] Socket method dispatch hardening 및 Claude channel boot-failure diagnosability 구현과 evidence -> `logs/2026-08-11-G3-daemon-stabilization.md`
+- [x] Codex·Claude 최소 read-only diagnostics 표면과 runtime failure/disconnect wiring 구현과 evidence -> `logs/2026-08-11-G3-daemon-stabilization.md`
+- [x] G3 gate evidence 정합화, owner 문서 반영과 closeout -> `logs/2026-08-11-G3-daemon-stabilization.md`
 
 ## Notes
 

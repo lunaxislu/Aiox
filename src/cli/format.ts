@@ -42,6 +42,29 @@ export function formatStatus(response: StatusResponse): string {
       agent.kind,
       agent.status,
     ]))],
+    [
+      "DELIVERY GUARANTEES",
+      formatTable(
+        [
+          "AGENT",
+          "ACCEPTANCE",
+          "RECEIPT EVIDENCE",
+          "AUTO TARGET ACK",
+          "AUTO COMPLETION",
+          "AUTO RETRY",
+          "MANUAL RETRANSMIT",
+        ],
+        response.agents.map((agent) => [
+          agent.name,
+          agent.deliveryDiagnostics.acceptanceEvidence,
+          agent.deliveryDiagnostics.targetReceiptEvidence,
+          agent.deliveryDiagnostics.automaticTargetAck ? "automatic" : "none",
+          agent.deliveryDiagnostics.automaticCompletion ? "automatic" : "none",
+          agent.deliveryDiagnostics.automaticRetry,
+          formatManualRetransmit(agent.deliveryDiagnostics.manualRetransmit),
+        ]),
+      ),
+    ],
     ["PAIRS", formatTable(["NAME", "STATUS"], response.pairs.map((pair) => [
       pair.name,
       pair.status,
@@ -72,6 +95,18 @@ export function formatStatus(response: StatusResponse): string {
   return `${sections
     .map(([heading, body]) => `${heading}\n${body}`)
     .join("\n\n")}\n`;
+}
+
+function formatManualRetransmit(
+  diagnostics: StatusResponse["agents"][number]["deliveryDiagnostics"]["manualRetransmit"],
+): string {
+  return [
+    diagnostics.eligibleStatus,
+    "confirm_duplicate_risk",
+    diagnostics.requiredReadiness,
+    diagnostics.dispatch,
+    `late_transport=${diagnostics.lateTransportOutcomeResolution}`,
+  ].join("; ");
 }
 
 export function formatDoctor(result: DoctorResult): string {

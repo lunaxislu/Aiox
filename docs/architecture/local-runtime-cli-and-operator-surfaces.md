@@ -92,13 +92,16 @@ Evidence:
 claude (`which claude`), sqlite-native (`require("better-sqlite3")`), daemon
 socket (`existsSync(socketPath)`). Exit code 1 if any check is `error`, else 0.
 
-**`aiox status`** renders DAEMON → AGENTS → PAIRS → ROUTES → DELIVERIES
-in fixed order. DELIVERIES line
+**`aiox status`** renders DAEMON → AGENTS → DELIVERY GUARANTEES → PAIRS →
+ROUTES → DELIVERIES in fixed order. The delivery-guarantees table renders the
+daemon-owned, status-only per-agent projection; its delivery semantics and
+non-generic boundary are owned by
+[[docs/architecture/local-runtime-daemon-transport-api]]. DELIVERIES line
 always prints all six statuses: `messages=N queued=N delivering=N`,
 `delivered=N completed=N failed=N unconfirmed=N`.
 
-`StatusResponse.status()` aggregates via repository `COUNT(*)`. Tmux check and
-pnpm check were intentionally removed at closeout
+`status()` aggregates delivery counts via repository `COUNT(*)`. Tmux check
+and pnpm check were intentionally removed at closeout
 (`logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md` §4.2).
 
 Evidence:
@@ -108,9 +111,13 @@ Evidence:
     - `src/cli/doctor.ts:17-43`
   - [[src/cli/invocation.ts]]
     - `src/cli/invocation.ts:609-614`
+  - [[tests/unit/cli/doctor.test.ts]]
+    - `tests/unit/cli/doctor.test.ts:5-63`
 - Status output and delivery statuses
   - [[src/cli/format.ts]]
-    - `src/cli/format.ts:30-75`
+    - `src/cli/format.ts:30-109`
+  - [[tests/unit/cli/format.test.ts]]
+    - `tests/unit/cli/format.test.ts:106-180`
   - [[src/core/deliveries.ts]]
     - `src/core/deliveries.ts:3-9`
   - [[src/daemon/state.ts]]

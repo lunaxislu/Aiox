@@ -102,6 +102,31 @@ describe("cross-adapter public MCP tool contract parity", () => {
     expect(claudeSchema.parse(example)).toEqual(example);
   });
 
+  it("Codex and Claude preserve the optional Claude boot-failure cause in dispatch output", () => {
+    const example = {
+      ok: true as const,
+      message_id: "message-1",
+      dispatch: {
+        delivered: 0,
+        deferred: [
+          {
+            targetAgentId: "agent-target",
+            reason: "target_runtime_unavailable",
+            cause: "claude_channel_port_in_use",
+          },
+        ],
+        failed: [],
+      },
+    };
+
+    expect(
+      registeredTools(fakeCodexServer()).send!.outputSchema.parse(example),
+    ).toEqual(example);
+    expect(
+      registeredTools(fakeClaudeServer()).send!.outputSchema.parse(example),
+    ).toEqual(example);
+  });
+
   it("Codex and Claude reply return the same accepted result shape, including message_id", () => {
     const example = {
       ok: true as const,

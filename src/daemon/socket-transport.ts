@@ -205,7 +205,7 @@ async function dispatchRequest(
     };
   }
 
-  const method = api[request.method];
+  const method = Object.hasOwn(api, request.method) ? api[request.method] : undefined;
 
   if (typeof method !== "function") {
     return {

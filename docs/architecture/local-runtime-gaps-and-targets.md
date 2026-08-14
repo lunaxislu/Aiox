@@ -15,19 +15,13 @@ The system architecture distinguishes between current, as-built gaps in the loca
 - **Daemon Database Durability & Recovery** — The production daemon still opens an in-memory SQLite database. The
   durable database helper and restart-recovery repository method exist, but current production startup does not call
   them.
-- **Runtime Failure Wiring** — The production Codex runtime attach path does not pass the runtime failure callback into
-  `attachCodexAgentRuntime`, so post-attach app-server or WebSocket runtime failures are not wired back through daemon
-  state in production. G3 owns wiring observable Codex and Claude runtime failures/disconnects into daemon diagnostics;
-  this current-gap pointer does not prescribe delivery-state policy, a Claude disconnect event, or a generic capability/event model.
 - **Stale Agent Transition Policy** — The `stale` agent state is defined, but current daemon code has no active
   transition path that marks agents stale. Phase 1 owns the future stale/disconnected operation policy; this current-gap
   claim does not select a signal, threshold, automatic action, or delivery disposition.
-- **Daemon structured logging / retained diagnostics surface** — The daemon entrypoint and socket transport do not
-  own a retained structured log sink or daemon-level diagnostics surface. Adapter helper processes write JSONL events
-  to stderr, but daemon lifecycle, socket dispatch, fatal process boundary, and cross-adapter failure context are not
-  captured in a daemon-owned artifact that `doctor`/logs/status style tooling can inspect. This is a G3 daemon
-  diagnosability gap; the concrete CLI/file surface is still a G3 design choice rather than an already committed
-  command contract.
+- **Historical/rolling diagnostics beyond the G3 minimum** — The accepted fatal artifact and current status snapshot
+  are owned by [[docs/architecture/local-runtime-daemon-transport-api]]. The remaining gap is a retained rolling
+  structured-log sink or historical cross-adapter failure timeline. That broader operational history is post-release
+  diagnostics work, not a missing part of the accepted G3 fatal/status boundary.
 - **Local trust-boundary gaps** — The Claude channel-server HTTP `/send` endpoint accepts loopback POSTs without
   request authentication checks, and daemon pushes to that endpoint do not present channel credentials. Claude channel
   message/reply ingress requests sent back to the daemon carry no per-message token, and the daemon receive path accepts
@@ -83,16 +77,6 @@ The system architecture distinguishes between current, as-built gaps in the loca
   side of [[docs/specs/aiox-message-lifecycle]] §4.3.
 - **`claude_channel_disconnected` event** — Codex has a disconnect event type and daemon emission, while the Claude
   channel side has no equivalent event type or emission.
-- **Claude channel boot-failure diagnosability** — a Claude agent attach returns success with a channel token before
-  the channel-server is confirmed listening, so a channel-boot fatal (for example `claude_channel_port_in_use` when an
-  explicit `AIOX_CLAUDE_CHANNEL_PORT` collides) is written only to the channel-server subprocess stderr and is not
-  surfaced in the attach response or daemon state. It re-appears later at inject time as the generic deferred
-  `target_runtime_unavailable`, which does not carry the original boot-fatal reason. This is an S5/G3 diagnosability
-  gap for the Claude channel specifically, not a general child-process boot contract. See
-  [[docs/architecture/local-runtime-claude-adapter]] §6.2 Launch Flow.
-- **Daemon socket method dispatch hardening** — the socket transport accepts any string `method`, looks it up through
-  the daemon API object's prototype chain, and calls it when the result is a function. Unknown or inherited method
-  names should be rejected by an own-property/known-method guard before dispatch.
 
 Evidence:
 
@@ -103,23 +87,14 @@ Evidence:
     - `src/store/sqlite.ts:5-11`
   - [[src/store/repositories/deliveries.ts]]
     - `src/store/repositories/deliveries.ts:148-158`
-- Runtime failure wiring gap
-  - [[src/daemon/state.ts]]
-    - `defaultAttachCodexRuntime`
-  - [[src/adapters/codex/runtime.ts]]
-    - `src/adapters/codex/runtime.ts:54-61`
-    - `src/adapters/codex/runtime.ts:87-107`
-    - `src/adapters/codex/runtime.ts:355-362`
 - Stale agent transition gap
   - [[src/core/agents.ts]]
     - `src/core/agents.ts:5-12`
-- Daemon structured logging / retained diagnostics surface gap
+- Historical/rolling diagnostics beyond the G3 minimum
   - [[src/daemon/run.ts]]
-    - `src/daemon/run.ts:24-84`
-  - [[src/daemon/socket-transport.ts]]
-    - `src/daemon/socket-transport.ts:48-84`
+    - `src/daemon/run.ts:27-122`
   - [[src/adapters/claude/channel-server.ts]]
-    - `src/adapters/claude/channel-server.ts:615-617`
+    - `src/adapters/claude/channel-server.ts:741-742`
   - [[src/adapters/codex/mcp-server.ts]]
     - `src/adapters/codex/mcp-server.ts:478-480`
 - Local trust-boundary gaps
@@ -171,22 +146,6 @@ Evidence:
     - `src/core/events.ts:1-27`
   - [[src/daemon/state.ts]]
     - `disconnectCodexChannel`
-- Claude channel boot-failure diagnosability gap
-  - [[src/daemon/state.ts]]
-    - `attachAgent` and `injectMessageIntoClaudeTarget`
-  - [[src/adapters/claude/channel-server.ts]]
-    - `src/adapters/claude/channel-server.ts:566-598`
-    - `src/adapters/claude/channel-server.ts:667-690`
-  - [[docs/architecture/local-runtime-claude-adapter]]
-    - `docs/architecture/local-runtime-claude-adapter.md:56-107`
-- Daemon socket method dispatch hardening gap
-  - [[src/daemon/socket-transport.ts]]
-    - `src/daemon/socket-transport.ts:183-194`
-    - `src/daemon/socket-transport.ts:245-253`
-  - [[src/daemon/api.ts]]
-    - `src/daemon/api.ts:299-300`
-  - [[src/daemon/run.ts]]
-    - `src/daemon/run.ts:66-73`
 
 Sources:
 

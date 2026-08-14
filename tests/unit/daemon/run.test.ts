@@ -51,7 +51,17 @@ describe("runDaemonProcess", () => {
       {
         cwd: process.cwd(),
         encoding: "utf8",
-        env: { ...process.env, AIOX_PROFILE: "dev", HOME: testHome },
+        env: {
+          ...process.env,
+          AIOX_PROFILE: "dev",
+          HOME: testHome,
+          // `getSocketPath()` treats `AIOX_SOCKET_PATH` as a higher-priority
+          // override than `HOME`/profile. An ambient aiox-connected shell (e.g.
+          // this repo's own `aiox claude` session) exports it, which would make
+          // the spawned child collide with the real running daemon instead of
+          // using the isolated `testHome` profile dir.
+          AIOX_SOCKET_PATH: undefined,
+        },
       },
     );
 

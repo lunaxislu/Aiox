@@ -541,6 +541,9 @@ function errorResult(reason: string, detail: string): ClaudeChannelToolResult {
 
 export interface ClaudeChannelHttpIngressOptions {
   port?: number;
+  reportBootFailure?: (failure: {
+    reason: "claude_channel_port_in_use";
+  }) => Promise<void>;
 }
 
 export interface ClaudeChannelPortInUseError extends Error {
@@ -580,8 +583,18 @@ export function startClaudeChannelHttpIngress(
     });
 
     const listenPort = options.port ?? 0;
-    server.once("error", (error) => {
-      reject(toListenError(error, listenPort));
+    server.once("error", async (error) => {
+      const listenError = toListenError(error, listenPort);
+      if (
+        options.reportBootFailure &&
+        "reason" in listenError &&
+        listenError.reason === "claude_channel_port_in_use"
+      ) {
+        void options
+          .reportBootFailure({ reason: listenError.reason })
+          .catch(() => undefined);
+      }
+      reject(listenError);
     });
     server.listen(listenPort, "127.0.0.1", () => {
       const addr = server.address();
@@ -684,6 +697,20 @@ export async function runClaudeChannelMcpServer(): Promise<void> {
 
   const ingress = await startClaudeChannelHttpIngress(mcp, {
     port: config.port,
+    reportBootFailure: async ({ reason }) => {
+      const socketClient = createDaemonSocketClient({
+        socketPath: config.daemonSocketPath,
+      });
+      try {
+        await socketClient.reportClaudeChannelBootFailure({
+          agentName: config.agentName,
+          token: config.token,
+          reason,
+        });
+      } finally {
+        socketClient.close();
+      }
+    },
   });
 
   await registerWithDaemon({

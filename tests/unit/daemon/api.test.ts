@@ -607,6 +607,235 @@ describe("daemon API with fake in-process transport", () => {
     });
   });
 
+  it("reports an authenticated Claude channel port conflict and projects it as the unavailable runtime cause", async () => {
+    let id = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${++id}`,
+      now: () => "2026-08-13T00:00:00.000Z",
+    });
+    const client = createInProcessClient(createDaemonApi(state)) as ReturnType<
+      typeof createDaemonApi
+    > & {
+      reportClaudeChannelBootFailure(request: {
+        agentName: string;
+        token: string;
+        reason: "claude_channel_port_in_use";
+      }): Promise<{ ok: true; agentName: string; recorded: boolean }>;
+    };
+
+    await client.createPair({ name: "feature" });
+    await client.attachAgent({
+      kind: "codex",
+      name: "source",
+      cwd: "/repo",
+      pairName: "feature",
+      slot: "a",
+    });
+    const targetAttach = await client.attachAgent({
+      kind: "claude",
+      name: "target",
+      cwd: "/repo",
+      pairName: "feature",
+      slot: "b",
+    });
+    if (!targetAttach.ok || !targetAttach.claudeChannelToken) {
+      throw new Error("expected Claude channel token");
+    }
+    await expect(
+      client.reportClaudeChannelBootFailure({
+        agentName: "target",
+        token: targetAttach.claudeChannelToken,
+        reason: "claude_channel_port_in_use",
+      }),
+    ).resolves.toEqual({ ok: true, agentName: "target", recorded: true });
+
+    await expect(
+      client.receiveClaudeChannelMessage({
+        agentName: "source",
+        messageId: "message-after-claude-boot-failure",
+        type: "instruction",
+        content: { text: "review this" },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      dispatch: {
+        deferred: [
+          {
+            reason: "target_runtime_unavailable",
+            cause: "claude_channel_port_in_use",
+          },
+        ],
+      },
+    });
+  });
+
+  it("rejects wrong tokens and unsupported Claude boot-failure reasons without recording a cause", async () => {
+    let id = 0;
+    const client = createInProcessClient(
+      createDaemonApi(
+        createDaemonState({
+          db,
+          createId: () => `reject-id-${++id}`,
+          now: () => "2026-08-13T00:00:00.000Z",
+        }),
+      ),
+    );
+    await client.createPair({ name: "reject-pair" });
+    await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo", pairName: "reject-pair", slot: "a" });
+    const target = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo", pairName: "reject-pair", slot: "b" });
+    if (!target.ok || !target.claudeChannelToken) throw new Error("expected token");
+
+    await expect(client.reportClaudeChannelBootFailure({ agentName: "target", token: "wrong", reason: "claude_channel_port_in_use" })).resolves.toEqual({ ok: false, reason: "claude_channel_boot_failure_report_rejected", detail: "unknown_token" });
+    await expect(
+      client.reportClaudeChannelBootFailure({
+        agentName: "target",
+        token: target.claudeChannelToken,
+        reason: "some_other_failure",
+      } as unknown as Parameters<
+        typeof client.reportClaudeChannelBootFailure
+      >[0]),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "claude_channel_boot_failure_report_rejected",
+      detail: "unsupported_reason",
+    });
+    await expect(client.receiveClaudeChannelMessage({ agentName: "source", messageId: "rejected-report-message", content: { text: "review" } })).resolves.toMatchObject({ ok: true, dispatch: { deferred: [{ reason: "target_runtime_unavailable" }] } });
+    const response = await client.receiveClaudeChannelMessage({ agentName: "source", messageId: "rejected-report-message-2", content: { text: "review again" } });
+    if (!response.ok) throw new Error("expected dispatch");
+    expect(response.dispatch.deferred[0]).not.toHaveProperty("cause");
+  });
+
+  it("ignores a Claude boot-failure report when a channel runtime is already registered", async () => {
+    let id = 0;
+    const client = createInProcessClient(createDaemonApi(createDaemonState({ db, createId: () => `runtime-id-${++id}`, now: () => "2026-08-13T00:00:00.000Z" }))) as ReturnType<typeof createDaemonApi> & { reportClaudeChannelBootFailure(request: { agentName: string; token: string; reason: "claude_channel_port_in_use" }): Promise<unknown> };
+    const attach = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    if (!attach.ok || !attach.claudeChannelToken) throw new Error("expected token");
+    await client.registerClaudeChannel({ agentName: "target", token: attach.claudeChannelToken, endpoint: "http://127.0.0.1:18789/send" });
+
+    await expect(
+      client.reportClaudeChannelBootFailure({
+        agentName: "target",
+        token: attach.claudeChannelToken,
+        reason: "some_other_failure",
+      } as unknown as Parameters<
+        typeof client.reportClaudeChannelBootFailure
+      >[0]),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "claude_channel_boot_failure_report_rejected",
+      detail: "unsupported_reason",
+    });
+    await expect(client.reportClaudeChannelBootFailure({ agentName: "target", token: attach.claudeChannelToken, reason: "claude_channel_port_in_use" })).resolves.toEqual({ ok: true, agentName: "target", recorded: false });
+  });
+
+  it("keeps Claude runtime and boot cause mutually exclusive across report/register orderings", async () => {
+    let id = 0;
+    const runtimes = new Map();
+    const client = createInProcessClient(createDaemonApi(createDaemonState({ db, createId: () => `ordering-id-${++id}`, now: () => "2026-08-13T00:00:00.000Z", claudeChannelRuntimes: runtimes }))) as ReturnType<typeof createDaemonApi> & { reportClaudeChannelBootFailure(request: { agentName: string; token: string; reason: "claude_channel_port_in_use" }): Promise<{ ok: true; agentName: string; recorded: boolean }> };
+    await client.createPair({ name: "ordering-pair" });
+    await client.attachAgent({ kind: "codex", name: "source", cwd: "/repo", pairName: "ordering-pair", slot: "a" });
+    const target = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo", pairName: "ordering-pair", slot: "b" });
+    if (!target.ok || !target.claudeChannelToken) throw new Error("expected token");
+
+    await expect(client.reportClaudeChannelBootFailure({ agentName: "target", token: target.claudeChannelToken, reason: "claude_channel_port_in_use" })).resolves.toMatchObject({ recorded: true });
+    await client.registerClaudeChannel({ agentName: "target", token: target.claudeChannelToken, endpoint: "http://127.0.0.1:18789/send" });
+    await expect(client.reportClaudeChannelBootFailure({ agentName: "target", token: target.claudeChannelToken, reason: "claude_channel_port_in_use" })).resolves.toMatchObject({ recorded: false });
+
+    runtimes.delete("target");
+    const response = await client.receiveClaudeChannelMessage({ agentName: "source", messageId: "ordering-message", content: { text: "review" } });
+    if (!response.ok) throw new Error("expected dispatch");
+    expect(response.dispatch.deferred[0]).not.toHaveProperty("cause");
+  });
+
+  it("clears Claude boot causes with session cleanup while daemon-only stop preserves them", async () => {
+    let id = 0;
+    const client = createInProcessClient(createDaemonApi(createDaemonState({ db, createId: () => `lifecycle-id-${++id}`, now: () => "2026-08-13T00:00:00.000Z" }))) as ReturnType<typeof createDaemonApi> & { reportClaudeChannelBootFailure(request: { agentName: string; token: string; reason: "claude_channel_port_in_use" }): Promise<unknown> };
+    await client.attachAgent({ kind: "claude", name: "source", cwd: "/repo" });
+
+    const targets = new Map<string, { id: string; token: string }>();
+    for (const name of ["rollback", "disconnect", "detach", "tui", "reattach", "preserve", "normal-stop"]) {
+      const attach = await client.attachAgent({ kind: "claude", name, cwd: "/repo" });
+      if (!attach.ok || !attach.claudeChannelToken) throw new Error("expected token");
+      targets.set(name, { id: attach.agent.id, token: attach.claudeChannelToken });
+      await client.connect({ sourceName: "source", targetNames: [name] });
+      await client.reportClaudeChannelBootFailure({ agentName: name, token: attach.claudeChannelToken, reason: "claude_channel_port_in_use" });
+    }
+
+    await client.rollbackAgentAttach({ agentName: "rollback" });
+    await client.disconnectClaudeChannel({ agentName: "disconnect" });
+    await expect(
+      client.reportClaudeChannelBootFailure({
+        agentName: "disconnect",
+        token: targets.get("disconnect")!.token,
+        reason: "claude_channel_port_in_use",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "claude_channel_boot_failure_report_rejected",
+      detail: "unknown_token",
+    });
+    await client.detachAgent({ agentName: "detach" });
+    await client.notifyTuiExited({ agentName: "tui", exitCode: 0 });
+    db.prepare("update agents set status = 'disconnected' where name = ?").run("reattach");
+    const replacement = await client.attachAgent({
+      kind: "claude",
+      name: "reattach",
+      cwd: "/repo",
+    });
+    if (!replacement.ok || !replacement.claudeChannelToken) {
+      throw new Error("expected replacement token");
+    }
+    expect(replacement.claudeChannelToken).not.toBe(targets.get("reattach")!.token);
+    await expect(
+      client.reportClaudeChannelBootFailure({
+        agentName: "reattach",
+        token: targets.get("reattach")!.token,
+        reason: "claude_channel_port_in_use",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "claude_channel_boot_failure_report_rejected",
+      detail: "unknown_token",
+    });
+    await client.stop({ daemonOnly: true });
+
+    const beforeNormalStop = await client.receiveClaudeChannelMessage({ agentName: "source", messageId: "lifecycle-before-stop", content: { text: "review" } });
+    if (!beforeNormalStop.ok) throw new Error("expected dispatch");
+    for (const name of ["rollback", "disconnect", "detach", "tui", "reattach"]) {
+      const targetAgentId = targets.get(name)!.id;
+      const deferred = beforeNormalStop.dispatch.deferred.find(
+        (entry) => entry.targetAgentId === targetAgentId,
+      );
+      expect(deferred).toMatchObject({
+        targetAgentId,
+        reason: "target_runtime_unavailable",
+      });
+      expect(deferred).not.toHaveProperty("cause");
+    }
+    expect(
+      beforeNormalStop.dispatch.deferred.find(
+        ({ targetAgentId }) => targetAgentId === targets.get("preserve")!.id,
+      ),
+    ).toMatchObject({
+      reason: "target_runtime_unavailable",
+      cause: "claude_channel_port_in_use",
+    });
+
+    await client.stop({ daemonOnly: false });
+    const afterNormalStop = await client.receiveClaudeChannelMessage({ agentName: "source", messageId: "lifecycle-after-stop", content: { text: "review again" } });
+    if (!afterNormalStop.ok) throw new Error("expected dispatch");
+    const normalStopTargetId = targets.get("normal-stop")!.id;
+    const normalStopDeferred = afterNormalStop.dispatch.deferred.find(
+      ({ targetAgentId }) => targetAgentId === normalStopTargetId,
+    );
+    expect(normalStopDeferred).toMatchObject({
+      targetAgentId: normalStopTargetId,
+      reason: "target_runtime_unavailable",
+    });
+    expect(normalStopDeferred).not.toHaveProperty("cause");
+  });
+
   it("rejects connect when the source agent does not exist without creating routes", async () => {
     const state = createDaemonState({
       db,
@@ -810,6 +1039,20 @@ describe("daemon API with fake in-process transport", () => {
           status: "connected",
           cwd: "/repo",
           pairId: "pair-1",
+          deliveryDiagnostics: {
+            acceptanceEvidence: "codex_turn_start",
+            targetReceiptEvidence: "unavailable",
+            automaticTargetAck: false,
+            automaticCompletion: false,
+            automaticRetry: "conclusive_pre_write_failure_only",
+            manualRetransmit: {
+              eligibleStatus: "unconfirmed",
+              requiresDuplicateRiskConfirmation: true,
+              requiredReadiness: "ready_codex_runtime_and_bound_thread",
+              dispatch: "direct_never_queued",
+              lateTransportOutcomeResolution: "correlated_response",
+            },
+          },
         },
         {
           id: "agent-target",
@@ -818,6 +1061,20 @@ describe("daemon API with fake in-process transport", () => {
           status: "connected",
           cwd: "/repo",
           pairId: null,
+          deliveryDiagnostics: {
+            acceptanceEvidence: "claude_http_2xx",
+            targetReceiptEvidence: "unavailable",
+            automaticTargetAck: false,
+            automaticCompletion: false,
+            automaticRetry: "conclusive_pre_write_failure_only",
+            manualRetransmit: {
+              eligibleStatus: "unconfirmed",
+              requiresDuplicateRiskConfirmation: true,
+              requiredReadiness: "ready_claude_channel_runtime",
+              dispatch: "direct_never_queued",
+              lateTransportOutcomeResolution: "none",
+            },
+          },
         },
       ],
       pairs: [
@@ -1020,6 +1277,20 @@ describe("daemon API with fake in-process transport", () => {
         status: "connected",
         cwd: "/repo",
         pairId: null,
+        deliveryDiagnostics: {
+          acceptanceEvidence: "codex_turn_start",
+          targetReceiptEvidence: "unavailable",
+          automaticTargetAck: false,
+          automaticCompletion: false,
+          automaticRetry: "conclusive_pre_write_failure_only",
+          manualRetransmit: {
+            eligibleStatus: "unconfirmed",
+            requiresDuplicateRiskConfirmation: true,
+            requiredReadiness: "ready_codex_runtime_and_bound_thread",
+            dispatch: "direct_never_queued",
+            lateTransportOutcomeResolution: "correlated_response",
+          },
+        },
       },
     ]);
   });
@@ -1802,6 +2073,141 @@ describe("primary delivery source outcome notifications — cross-adapter symmet
     expect(
       notificationStatusEvents.map((row) => (JSON.parse(row.data_json) as { status: string }).status),
     ).toEqual(["delivering", "failed"]);
+  });
+
+  it("disconnects a registered Claude channel and marks its agent disconnected when the daemon's own dispatch gets a confirmed ECONNREFUSED", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+    });
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-codex-source",
+    });
+    let id = 0;
+    const claudeChannelRuntimes = new Map();
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${++id}`,
+      now: () => "2026-08-13T00:00:00.000Z",
+      claudeChannelRuntimes,
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      scheduleTimeout: () => 0,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const sourceAttach = await client.attachAgent({
+      kind: "codex",
+      name: "source",
+      cwd: "/repo",
+      resumeSessionId: "thread-codex-source",
+    });
+    const sourceToken = (sourceAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+    await client.registerCodexChannel({ agentName: "source", token: sourceToken });
+    const targetAttach = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    const claudeToken = (targetAttach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "target",
+      token: claudeToken,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    expect(claudeChannelRuntimes.has("target")).toBe(true);
+    await client.connect({ sourceName: "source", targetNames: ["target"] });
+
+    const sent = await client.receiveCodexMessage({
+      agentName: "source",
+      token: sourceToken,
+      messageId: "message-confirmed-refusal",
+      content: { text: "please act" },
+    });
+    if (!sent.ok) throw new Error("expected a delivery");
+
+    // The registered runtime this dispatch actually pushed to must be gone, and
+    // its agent must be marked disconnected -- the same effect `disconnectClaudeChannel`
+    // produces -- because ECONNREFUSED against a runtime this function already
+    // confirmed was registered means the endpoint is confirmed dead, not merely
+    // unregistered.
+    expect(claudeChannelRuntimes.has("target")).toBe(false);
+    const agentRow = db
+      .prepare("select status from agents where name = 'target'")
+      .get() as { status: string };
+    expect(agentRow.status).toBe("disconnected");
+  });
+
+  it("leaves a same-name Claude channel that re-registered mid-flight untouched by a stale confirmed ECONNREFUSED", async () => {
+    let resolveFetch: (() => void) | undefined;
+    const fetchGate = new Promise<void>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.stubGlobal("fetch", async () => {
+      await fetchGate;
+      throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+    });
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startedThreadId: "thread-codex-source",
+    });
+    let id = 0;
+    const claudeChannelRuntimes = new Map();
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${++id}`,
+      now: () => "2026-08-13T00:00:00.000Z",
+      claudeChannelRuntimes,
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+      scheduleTimeout: () => 0,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    const sourceAttach = await client.attachAgent({
+      kind: "codex",
+      name: "source",
+      cwd: "/repo",
+      resumeSessionId: "thread-codex-source",
+    });
+    const sourceToken = (sourceAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
+    await client.registerCodexChannel({ agentName: "source", token: sourceToken });
+    const targetAttach = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    const claudeToken = (targetAttach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "target",
+      token: claudeToken,
+      endpoint: "http://127.0.0.1:18789/send",
+    });
+    await client.connect({ sourceName: "source", targetNames: ["target"] });
+
+    const dispatched = client.receiveCodexMessage({
+      agentName: "source",
+      token: sourceToken,
+      messageId: "message-race-guard",
+      content: { text: "please act" },
+    });
+
+    // While the push above is still awaiting the gated fetch, the same-named agent
+    // detaches and reattaches with a fresh Claude channel registration -- modeling a
+    // reconnect that lands before the stale push's ECONNREFUSED resolves.
+    await client.detachAgent({ agentName: "target" });
+    const reattach = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    const freshToken = (reattach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
+    await client.registerClaudeChannel({
+      agentName: "target",
+      token: freshToken,
+      endpoint: "http://127.0.0.1:18790/send",
+    });
+    const freshRuntime = claudeChannelRuntimes.get("target");
+    expect(freshRuntime?.endpoint).toBe("http://127.0.0.1:18790/send");
+
+    resolveFetch?.();
+    const sent = await dispatched;
+    if (!sent.ok) throw new Error("expected a delivery");
+
+    // The stale push's confirmed refusal must not clobber the fresh registration.
+    expect(claudeChannelRuntimes.get("target")).toBe(freshRuntime);
+    const agentRow = db
+      .prepare("select status from agents where name = 'target'")
+      .get() as { status: string };
+    expect(agentRow.status).toBe("connected");
   });
 
 });

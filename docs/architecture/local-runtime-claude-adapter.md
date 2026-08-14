@@ -94,33 +94,46 @@ Evidence:
    from that env.
 6. Claude spawns the channel-server stdio child by resolving the registered
    static MCP entry.
-7. channel-server ([[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:655-700`):
+7. channel-server ([[src/adapters/claude/channel-server.ts]]):
    - `parseChannelServerEnv` fatal-exits if any required env is missing
-     (`missing_env_*`, `channel-server.ts:560-569, 642-653`).
+     (`missing_env_*`, `channel-server.ts:668-676, 764-790`).
    - Creates an `McpServer` with capability `experimental: {"claude/channel":{}}`
      and `instructions: CLAUDE_CHANNEL_INSTRUCTIONS`
-     (`channel-server.ts:280-321`).
+     (`channel-server.ts:309-321`).
    - Registers typed MCP tools `send(type, intent, replyExpected, content)`,
      `reply(inReplyToDeliveryId, intent, replyExpected, content)`, and the
      shared recovery tool
      `aiox_retransmit_unconfirmed_delivery(deliveryId, confirmDuplicateRisk)`
      (`channel-server.ts:323-366`).
    - Starts HTTP ingress on 127.0.0.1:0 (or
-     `AIOX_CLAUDE_CHANNEL_PORT`, `channel-server.ts:557-595`).
+     `AIOX_CLAUDE_CHANNEL_PORT`, `channel-server.ts:560-607`). If an explicit
+     port is already in use, it preserves the original typed
+     `claude_channel_port_in_use` rejection while making a non-blocking,
+     authenticated `reportClaudeChannelBootFailure` attempt with the session
+     token (`channel-server.ts:585-597`, `:698-714`). Report failure does not
+     replace or delay the original boot failure.
    - Calls `daemon.registerClaudeChannel({agentName, token, endpoint})`
-     (`channel-server.ts:608-642`).
+     (`channel-server.ts:621-655`).
 8. Daemon validates the session token and the endpoint
    (`parseLoopbackHttpEndpoint`: must be `http:` on loopback, path `/send`,
    non-empty port). On failure → `claude_channel_registration_failed` with
    `detail: "unknown_token"` or `"invalid_endpoint"` ([[src/daemon/state.ts]] —
    `registerClaudeChannel`). Channel-server
    `process.exit(1)` on registration failure ([[src/adapters/claude/channel-server.ts]] —
-   `src/adapters/claude/channel-server.ts:608-642`).
+   `src/adapters/claude/channel-server.ts:621-655`).
+   The boot-failure report uses the same pending session token, accepts only
+   `claude_channel_port_in_use`, and records it only while no runtime is
+   registered. A later successful registration clears the cause. Until then,
+   a primary dispatch still returns the normalized deferred
+   `target_runtime_unavailable` reason plus optional
+   `cause: claude_channel_port_in_use`; raw port, error, message and stack are
+   not retained ([[src/daemon/state.ts]] — `src/daemon/state.ts:1165-1185`,
+   `src/daemon/state.ts:2062-2069`).
 9. CLI awaits Claude exit then calls
    `disconnectClaudeChannel({agentName})` ([[src/cli/invocation.ts]] —
    `src/cli/invocation.ts:217`; [[src/daemon/state.ts]] —
-   `disconnectClaudeChannel`), which removes both the runtime and the session
-   token. Unlike Codex, no
+   `disconnectClaudeChannel`), which removes the runtime, session token and
+   boot cause and marks a connected agent disconnected. Unlike Codex, no
    `claude_channel_disconnected` event is appended — Implementation-only
    (no recorded rationale).
 10. Three other Claude-credential-bearing exit paths also clear
@@ -135,6 +148,15 @@ Evidence:
     check before pushing to a target's recorded HTTP endpoint (no
     `agent.status` check), so a stale entry surviving one of these paths
     would otherwise let the daemon keep pushing to a torn-down endpoint.
+
+Evidence for the boot-failure boundary:
+
+- Authenticated record/reject, runtime-ordering and cleanup behavior
+  - [[tests/unit/daemon/api.test.ts]]
+    - `tests/unit/daemon/api.test.ts:600-837`
+- Real occupied-port report attempt preserves the original fatal
+  - [[tests/unit/adapters/claude-channel.test.ts]]
+    - `tests/unit/adapters/claude-channel.test.ts:1440-1510`
 
 ### 6.3 Claude → daemon Ingress (tool calls)
 
@@ -163,8 +185,8 @@ fresh `createDaemonSocketClient` per call and `close()` it `finally`.
   outcome used for a primary push: `delivered` on 2xx, a non-error
   `manual_retransmit_unconfirmed` structured result on ambiguous failure, or
   an MCP error result naming `manual_retransmit_rejected` /
-  `manual_retransmit_failed`. There is no late-response resolution
-  ([[src/daemon/state.ts]] — `src/daemon/state.ts:1867-1956`).
+   `manual_retransmit_failed`. There is no late-response resolution
+  ([[src/daemon/state.ts]] — `src/daemon/state.ts:2175-2264`).
 - Tool errors map to MCP `isError:true` results with `daemon_call_failed`
   or the propagated daemon `reason` string
   ([[src/adapters/claude/channel-server.ts]] — `src/adapters/claude/channel-server.ts:371-517`).
@@ -189,11 +211,19 @@ ingress paths. For each delivery whose target is a Claude agent:
    with no automatic retry. Only a positively identified `ECONNREFUSED`
    ([[src/adapters/claude/injector.ts]] — `src/adapters/claude/injector.ts:87-97`)
    → `claude_channel_unavailable`.
+   When a primary daemon dispatch gets that confirmed refusal from the exact
+   runtime instance it pushed to, daemon state applies the existing Claude
+   disconnect effect and marks the agent disconnected. It compares runtime
+   identity after the asynchronous fetch so a same-name channel registered
+   mid-flight is not cleared. Operator-triggered manual retransmit remains an
+   attempt-local probe and does not mutate global connection state
+   ([[src/daemon/state.ts]] — `src/daemon/state.ts:2072-2138`;
+   [[tests/unit/daemon/api.test.ts]] — `tests/unit/daemon/api.test.ts:2080-2225`).
 4. HTTP ingress validates the non-empty string `content`, passes it unchanged
    as `notifications/claude/channel.params.content`, and responds `202` ok /
    `400` parse error / `404` wrong method or path
    ([[src/adapters/claude/channel-server.ts]] —
-   `src/adapters/claude/channel-server.ts:557-595`, `src/adapters/claude/channel-server.ts:706-708`).
+   `src/adapters/claude/channel-server.ts:560-607`, `src/adapters/claude/channel-server.ts:733-751`).
    Claude Code, not AIOX, supplies the single outer `<channel source="…">`
    wrapper displayed in the TUI. That source identifies the channel server;
    the canonical JSON body's `source.address` identifies the sender.

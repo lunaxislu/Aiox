@@ -98,6 +98,20 @@ describe("daemon socket transport", () => {
             status: "connected",
             cwd: "/repo",
             pairId: null,
+            deliveryDiagnostics: {
+              acceptanceEvidence: "codex_turn_start",
+              targetReceiptEvidence: "unavailable",
+              automaticTargetAck: false,
+              automaticCompletion: false,
+              automaticRetry: "conclusive_pre_write_failure_only",
+              manualRetransmit: {
+                eligibleStatus: "unconfirmed",
+                requiresDuplicateRiskConfirmation: true,
+                requiredReadiness: "ready_codex_runtime_and_bound_thread",
+                dispatch: "direct_never_queued",
+                lateTransportOutcomeResolution: "correlated_response",
+              },
+            },
           },
         ],
         pairs: [],
@@ -269,6 +283,47 @@ describe("daemon socket transport", () => {
           failed: 0,
           unconfirmed: 0,
         },
+      });
+    } finally {
+      client.close();
+      await handle.close();
+    }
+  });
+
+  it("rejects unknown and inherited method names and keeps serving valid requests", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-socket-"), "daemon.sock");
+    const server = createDaemonSocketServer({
+      api: createDaemonApi(
+        createDaemonState({
+          db,
+          createId: () => "agent-1",
+          now: () => "2026-05-19T00:00:00.000Z",
+        }),
+      ),
+      socketPath,
+    });
+    const handle = await server.start();
+    const client = createDaemonSocketClient({ socketPath });
+
+    try {
+      for (const method of ["missing", "constructor", "toString"]) {
+        await expect(
+          sendRawLine(
+            socketPath,
+            JSON.stringify({ id: `request-${method}`, method }),
+          ),
+        ).resolves.toEqual({
+          id: `request-${method}`,
+          ok: false,
+          error: {
+            reason: "unknown_method",
+            message: `Unknown daemon socket method: ${method}`,
+          },
+        });
+      }
+
+      await expect(client.status()).resolves.toMatchObject({
+        daemon: { pid: process.pid },
       });
     } finally {
       client.close();

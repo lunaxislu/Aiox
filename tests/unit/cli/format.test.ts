@@ -60,6 +60,20 @@ describe("CLI output formatting", () => {
           status: "connected",
           cwd: "/repo",
           pairId: "pair-1",
+          deliveryDiagnostics: {
+            acceptanceEvidence: "codex_turn_start",
+            targetReceiptEvidence: "unavailable",
+            automaticTargetAck: false,
+            automaticCompletion: false,
+            automaticRetry: "conclusive_pre_write_failure_only",
+            manualRetransmit: {
+              eligibleStatus: "unconfirmed",
+              requiresDuplicateRiskConfirmation: true,
+              requiredReadiness: "ready_codex_runtime_and_bound_thread",
+              dispatch: "direct_never_queued",
+              lateTransportOutcomeResolution: "correlated_response",
+            },
+          },
         },
         {
           id: "agent-2",
@@ -68,6 +82,20 @@ describe("CLI output formatting", () => {
           status: "disconnected",
           cwd: "/repo",
           pairId: "pair-1",
+          deliveryDiagnostics: {
+            acceptanceEvidence: "claude_http_2xx",
+            targetReceiptEvidence: "unavailable",
+            automaticTargetAck: false,
+            automaticCompletion: false,
+            automaticRetry: "conclusive_pre_write_failure_only",
+            manualRetransmit: {
+              eligibleStatus: "unconfirmed",
+              requiresDuplicateRiskConfirmation: true,
+              requiredReadiness: "ready_claude_channel_runtime",
+              dispatch: "direct_never_queued",
+              lateTransportOutcomeResolution: "none",
+            },
+          },
         },
       ],
       pairs: [{ id: "pair-1", name: "feature-x", status: "ready" }],
@@ -103,6 +131,14 @@ describe("CLI output formatting", () => {
     expect(output).toContain("NAME      KIND    STATUS\n");
     expect(output).toContain("impl      codex   connected\n");
     expect(output).toContain("reviewer  claude  disconnected\n");
+    expect(output.replace(/ +/g, " ")).toContain(
+      [
+        "DELIVERY GUARANTEES",
+        "AGENT ACCEPTANCE RECEIPT EVIDENCE AUTO TARGET ACK AUTO COMPLETION AUTO RETRY MANUAL RETRANSMIT",
+        "impl codex_turn_start unavailable none none conclusive_pre_write_failure_only unconfirmed; confirm_duplicate_risk; ready_codex_runtime_and_bound_thread; direct_never_queued; late_transport=correlated_response",
+        "reviewer claude_http_2xx unavailable none none conclusive_pre_write_failure_only unconfirmed; confirm_duplicate_risk; ready_claude_channel_runtime; direct_never_queued; late_transport=none",
+      ].join("\n"),
+    );
     expect(output).toContain("PAIRS\n");
     expect(output).toContain("feature-x  ready\n");
     expect(output).toContain("ROUTES\n");
@@ -111,6 +147,37 @@ describe("CLI output formatting", () => {
     expect(output).toContain("DELIVERIES\n");
     expect(output).toContain(
       "messages=3 queued=1 delivering=2 delivered=0 completed=4 failed=5 unconfirmed=0\n",
+    );
+  });
+
+  it("formats an empty delivery-guarantees table without inventing agent rows", () => {
+    const output = formatStatus({
+      daemon: {
+        pid: 1234,
+        startedAt: "not-a-date",
+      },
+      agents: [],
+      pairs: [],
+      routes: [],
+      messageCount: 0,
+      deliveryCounts: {
+        queued: 0,
+        delivering: 0,
+        delivered: 0,
+        completed: 0,
+        failed: 0,
+        unconfirmed: 0,
+      },
+    });
+
+    expect(output).toContain(
+      [
+        "DELIVERY GUARANTEES",
+        "AGENT  ACCEPTANCE  RECEIPT EVIDENCE  AUTO TARGET ACK  AUTO COMPLETION  AUTO RETRY  MANUAL RETRANSMIT",
+        "",
+        "",
+        "PAIRS",
+      ].join("\n"),
     );
   });
 

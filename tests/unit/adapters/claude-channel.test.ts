@@ -1459,6 +1459,46 @@ describe("startClaudeChannelHttpIngress", () => {
     }
   });
 
+  it("best-effort reports a real occupied-port boot failure without replacing the original fatal", async () => {
+    const occupyingServer = createServer();
+    await listenOnLoopback(occupyingServer, 0);
+    const address = occupyingServer.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+    const reportBootFailure = vi.fn(
+      (_failure: { reason: "claude_channel_port_in_use" }) =>
+        new Promise<void>(() => undefined),
+    );
+
+    try {
+      const rejection = startClaudeChannelHttpIngress(fakeMcpServer(), {
+        port,
+        reportBootFailure,
+      }).then(
+        () => ({ kind: "resolved" as const }),
+        (error: unknown) => ({ kind: "rejected" as const, error }),
+      );
+      const settled = await Promise.race([
+        rejection,
+        new Promise<{ kind: "next_turn" }>((resolve) => {
+          setImmediate(() => resolve({ kind: "next_turn" }));
+        }),
+      ]);
+
+      expect(settled).toMatchObject({
+        kind: "rejected",
+        error: {
+          reason: "claude_channel_port_in_use",
+          port,
+        },
+      });
+      expect(reportBootFailure).toHaveBeenCalledWith({
+        reason: "claude_channel_port_in_use",
+      });
+    } finally {
+      await closeServer(occupyingServer);
+    }
+  });
+
   it("forwards a real HTTP POST body to mcp.server.notification as the exact canonical JSON, unmodified", async () => {
     const notifications: unknown[] = [];
     const ingress = await startClaudeChannelHttpIngress(
