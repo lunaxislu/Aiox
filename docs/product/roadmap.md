@@ -49,12 +49,12 @@ After public release:
 | G1-C       | process-lifetime Tier 3 delivery reliability (Codex Tier 3 evidence 및 공통 요구 evidence accepted) | accepted Codex Tier 3 결과와 accepted daemon-level 공통 요구 evidence를 구분하고, Tier 2 ack/completed·stale 등 후속 보장을 현재 완료로 주장하지 않는다. |
 | G1-D       | minimal local secret/runtime hygiene (Phase 0 hygiene accepted, Phase 1 trust-boundary hardening으로 이관) | Phase 0 hygiene(Codex argv-safe delivery, runtime dir/socket permission, Claude credential cleanup) 완료를 Phase 1 ingress/push authentication·route authorization·purpose separation·constant-time comparison의 완료로 확대 해석하지 않는다. |
 | G3         | daemon stabilization (Phase 0 evidence accepted)             | accepted lifecycle, transport, diagnostics 경계를 G4의 동일 release candidate에서 재검증한다. |
-| G2         | terminal minimum                                             | one-command demo의 최소 terminal UX를 Phase 0 범위로 닫는다.                          |
+| G2         | terminal/compose minimum                                     | compose.yaml 기반 `aiox compose up`과 view driver 일반화로 one-command demo의 최소 terminal/compose 표면을 Phase 0 범위로 닫는다. |
 | G5         | public hygiene                                               | 공개 repo로 나갈 shared/local/sensitive/public surface 경계를 닫는다.                 |
 | G6         | npm packaging                                                | npm artifact가 clean install과 daemon smoke를 통과하게 한다.                          |
 | G4         | final RC certification                                       | 동일 immutable candidate로 G0-G3/G5/G6 변경을 인증한다.                               |
 | Phase 1    | adoption/operation polish                                    | 공개 이후 진단, 가시성, 승인 흐름, demo assets를 다듬는다.                            |
-| Phase 2    | expansion prerequisites                                      | vendor expansion, compose, durable replay, extra drivers의 구조 전제를 닫는다.        |
+| Phase 2    | expansion prerequisites                                      | vendor expansion, durable replay, adapter/capability 구조 일반화의 전제를 닫는다.       |
 | Phase 3    | remote/federation                                            | remote MCP, internal federation, A2A Protocol bridge를 순서 있게 확장한다.            |
 
 ## Phase 0 Release Gates
@@ -343,35 +343,72 @@ daemon이 공개 전 release path에서 조용히 실패하거나 손상된 상�
 - [[docs/specs/aiox-capability-policy]] — daemon trust boundary, sensitive log/data handling, log redaction direction owner.
 - [[docs/specs/aiox-adapter-model]] — OS launch/path/signal 차이를 adapter가 흡수해야 한다는 runtime boundary와 runtime diagnostics/tier evaluator gap owner.
 
-### G2 — Terminal Minimum
+### G2 — Terminal/Compose Minimum
 
 **목표**
 
-terminal automation이나 compose를 Phase 0 protocol requirement로 만들지 않으면서, 공개 가능한 one-command demo의 최소 terminal experience를 제공한다.
+compose.yaml로 여러 pair 인스턴스를 선언하고 `aiox compose up`으로 한번에 실행하는 compose 핵심,
+단일 driver에 고정하지 않는 view driver 일반화, Codex+Claude 2-slot 고정을 넘어서는
+pair-to-N-agent route generalization으로 공개 가능한 one-command demo의 최소 terminal/compose
+experience를 제공한다. compose는 여전히 protocol 위의 config layer이며, 이 gate가 compose나
+terminal automation을 A2A protocol requirement로 만들지는 않는다. 이 섹션의 `compose.yaml`/
+`aiox compose up` 표기는 착수 검토에서 재확정하는 provisional 이름이다 — 현재 이름이 Docker
+`compose`/`up` 용어를 그대로 차용해 [[docs/specs/aiox-compose-contract]]의 Docker 은유 회피
+원칙과 불일치한다는 지적이 있었다.
 
 **진입 조건**
 
-- G1/G3 stabilization이 충분히 진행되어 terminal demo path가 protocol 또는 daemon instability를 가리는 대신 release path를 검증할 수 있다.
-- G2 surface는 승인된 Phase 0 범위 안에 머문다: tmux driver 1개와 no-tmux fallback.
+- G1/G3 stabilization이 충분히 진행되어 terminal/compose demo path가 protocol 또는 daemon
+  instability를 가리는 대신 release path를 검증할 수 있다.
+- G2 surface는 승인된 Phase 0 범위 안에 머문다: compose.yaml v1 핵심(다중 pair 선언 +
+  `aiox compose up`), view driver 일반화, pair-to-N-agent route generalization.
+- native Windows community path는 조건부·잠정 포함이다: 위 세 항목 구현이 끝난 뒤 재논의해서
+  Phase 2로 다시 내릴 수 있으며, 지금 이 목록에 있다는 사실이 확정 commitment를 뜻하지 않는다.
 
 **착수 검토 / 열린 결정**
 
-- 최소 terminal driver와 fallback story가 product boundary 및 compose boundary와 맞는지 확인한다.
-- tmux driver와 no-tmux fallback이 Codex·Claude pair를 어떤 workspace/cwd에서 시작하고,
-  pair name·daemon profile·resume·종료를 어떻게 연결할지 정한다. Codex의 runtime MCP
-  주입과 Claude의 해당 경로 static MCP 해석이 같은 pair launch UX에서 함께 성립해야 한다.
+- compose.yaml v1 핵심 스키마와 `aiox compose up` 동작 범위가 [[docs/specs/aiox-compose-contract]]
+  §6 target과 맞는지 확인한다. 같은 Phase 2 bullet에 묶여 있던 `config/onboarding split`은 이
+  gate 범위가 아니라 Phase 2에 남는다.
+- config 파일명(`compose.yaml` 유지 여부, `aiox.yaml` 등 대안 포함)과 명령어 이름(`aiox compose`
+  유지 여부)을 재검토한다 — Docker `compose`/`up`을 그대로 차용한 현재 이름이 은유 회피 원칙과
+  불일치한다는 지적을 반영해, yaml 스키마 내용과 CLI가 이 파일을 읽는 방식과 함께 결정한다.
+- view driver 일반화가 최소로 포함할 driver 집합을 정한다(사용자 실제 환경인 cmux, ghostty
+  포함, tmux 하나로 고정하지 않는다).
+- pair-to-N-agent route generalization의 착수 전제를 정한다: Phase 2 진입 조건은 이 항목을
+  `state.ts` decomposition과 함께 "우선 전제"로 묶어 두고 있었다. 이 전제를 G2로 같이 끌어올릴지,
+  다른 방식으로 순서를 잡을지는 미결정이며 착수 전 사용자 확인이 필요하다.
+- pair CLI가 reservation만 만들지, agent launch·attach orchestration까지 맡을지와 그 실패·재시작
+  lifecycle을 정한다(Phase 2에서 G2로 이관 — pair-to-N-agent route generalization과 같은 pair
+  launch 책임 경계 문제라 별도로 떼어두지 않는다).
+- compose.yaml v1, view driver 일반화, N-agent route generalization이 같은 pair/compose launch
+  UX에서 함께 성립하는지 정한다: 어떤 workspace/cwd에서 시작하고 pair name·daemon
+  profile·resume·종료를 어떻게 연결할지, Codex의 runtime MCP 주입과 Claude의 해당 경로 static MCP
+  해석이 이 UX에서 함께 성립하는지 포함한다.
+- native Windows community path를 이번 gate에 유지할지 Phase 2로 다시 내릴지는 위 세 항목 구현
+  진행 후 재논의한다.
 - README Quick Start가 실제 command surface와 일치하는지 확인한다.
 
 **통과 조건**
 
-- clean user가 tmux driver 또는 문서화된 no-tmux fallback으로 최소 demo path를 실행할 수 있다.
-- compose, extra view driver, user-config persistence는 명시적으로 승격하지 않는 한 Phase 2에 남는다.
+- clean user가 compose.yaml로 선언한 다중 pair 인스턴스를 `aiox compose up`으로 foreground
+  실행할 수 있다.
+- `aiox compose up`으로 foreground 실행 중인 다중 pair를 최소 하나 이상의 view driver 또는
+  문서화된 fallback(`--ui none`)으로 한 화면에서 동시에 볼 수 있는 최소 demo path를 실행할 수
+  있다. driver는 tmux 하나로 고정되지 않는다.
+- pair가 Codex+Claude 2-slot 고정을 넘어 N-agent route로 동작함을 보여준다.
+- native Windows community path는 이 gate의 확정 통과 조건이 아니다 — 포함 여부와 범위는 착수
+  검토에서 재논의한 뒤 결정한다.
+- config/onboarding split, third vendor, durable store/mailbox replay는 명시적으로 승격하지 않는
+  한 Phase 2에 남는다.
 
 **Owner refs**
 
 - [[docs/product/roadmap]] — current G2 gate와 evidence owner.
-- [[docs/product/product]] — terminal experience boundary와 product scope owner.
+- [[docs/product/product]] — terminal/compose experience boundary와 product scope owner.
 - [[docs/specs/aiox-compose-contract]] — compose와 view-driver boundary owner.
+- [[docs/decisions/pair-slot-generalization]] — 현재 2-slot 결정과 pair-to-N-agent 재평가 지점
+  owner.
 - [[README]] — G2 command path와 일치해야 하는 public Quick Start surface.
 
 ### G5/G6 Release Preparation
@@ -485,7 +522,7 @@ G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable
 **진입 조건 / 경계**
 
 - npm publish와 GitHub 공개 이후 시작한다.
-- Phase 1은 adoption friction과 human-controlled operation에 집중하며, compose, durable replay, third vendor, federation은 Phase 2/3로 둔다.
+- Phase 1은 adoption friction과 human-controlled operation에 집중하며, durable replay, third vendor, federation은 Phase 2/3로 둔다(compose.yaml v1 핵심과 view driver 일반화는 G2로 이관됐다).
 - Phase 1은 current Tier 3의 delivery acceptance/`unconfirmed` 경계 위에서 authenticated automatic ack, `completed` evidence, wake-up, adapter-specific duplicate suppression 같은 Tier 2 운영 보장을 uplift한다.
 - Phase 0 hygiene 이후 Claude/Codex ingress·push authentication, UDS route authorization, credential purpose separation과 constant-time comparison을 local trust-boundary hardening으로 결정·구현한다.
 - 이 카드는 gate가 아니므로 통과 조건 슬롯을 강제하지 않는다.
@@ -518,8 +555,14 @@ vendor 확장과 더 큰 topology를 가능하게 하는 구조적 전제 조건
 **진입 조건 / 경계**
 
 - 공개 release path가 안정화된 뒤 시작한다.
-- ingress generalization, `state.ts` decomposition, pair-to-N-agent route generalization이 우선 전제다.
-- compose, third vendor, durable store/mailbox replay, 추가 view driver는 G2가 아니라 Phase 2 범위다.
+- ingress generalization과 `state.ts` decomposition이 우선 전제다. pair-to-N-agent route
+  generalization과, 그와 묶여 있던 "pair CLI가 reservation만 할지 launch·attach orchestration까지
+  맡을지" lifecycle 재논의는 G2로 이관됐다 — `state.ts` decomposition이 그 항목의 선행 전제였는지는
+  G2 착수 검토에서 재확인한다.
+- compose.yaml v1 핵심(다중 pair 선언 + `aiox compose up`)과 view driver 일반화는 G2로 이관됐다.
+  native Windows community path도 G2에 조건부·잠정 포함됐으며, 위 세 항목 구현 후 재논의해 다시 이
+  phase로 내릴 수 있다. config/onboarding split, third vendor, durable store/mailbox replay는
+  여전히 Phase 2 범위다.
 - durable SQLite persistence를 공개 release blocker로 승격할 때는 stable daemon identity와 restart-safe
   reply idempotency, 이미 발급된 messageId/deliveryId 및 consumed reply-right history 보존을 함께 닫아야
   한다. 이때 source-operation invocation idempotency가 필요한지와 public field·retention·mismatch
@@ -539,15 +582,11 @@ vendor 확장과 더 큰 topology를 가능하게 하는 구조적 전제 조건
 - daemon·CLI·TUI의 공통 capability 소비 구조.
 - ingress generalization과 adapter boundary 정리.
 - runtime events surface와 diagnostics/tier-evaluator API의 adapter boundary 정리.
-- pair-to-N-agent route generalization.
-- pair CLI가 reservation만 만들지, agent launch·attach orchestration까지 맡을지와 그 실패·재시작 lifecycle 재논의.
 - app-server MCP config isolation hardening and capability projection boundary.
 - group recipient visibility / shared group context prerequisite design.
 - third vendor support.
-- compose.yaml v1, config/onboarding split.
-- extra view drivers.
+- config/onboarding split.
 - durable store와 mailbox replay.
-- native Windows community path.
 
 **Owner refs**
 
@@ -593,7 +632,7 @@ Gate completion requires reproducible evidence, not only a status label. 각 gat
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | G0   | versioned schema/example validation, CLI/config/package decision record, support matrix                                                                                                   |
 | G1   | completed/consumed G1-B/C/D evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence, separate Codex·Claude direct CLI/TUI transport-level ambiguity/outcome/confirmed-recovery/duplicate-display evidence, accepted daemon-level evidence for adapter-symmetric delivery-FSM semantics and retry/failure 중 inbound reply·MCP/channel 결과 경로의 무손실·정확 귀속 및 original/manual late-resolution attribution, and G1-D Phase 0 hygiene evidence (Codex argv-safe secret delivery, owner-only runtime directory/socket permission with chmod-failure rollback, Claude attach rollback/detach/stop credential cleanup). The accepted daemon-level common evidence does not establish target receipt/read/work completion, adapter-level WebSocket observer routing, or real two-plane ordering/race composition. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Ingress/push authentication, route authorization, and credential purpose separation are Phase 1 trust-boundary hardening, not G1 release evidence. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
-| G2   | tmux path and no-tmux fallback clean-user smoke, README command match                                                                                                                     |
+| G2   | compose.yaml v1 multi-pair `aiox compose up` foreground clean-user smoke, non-tmux-fixed view-driver simultaneous-display smoke, pair-to-N-agent route smoke, README command match. Native Windows community path evidence is conditional on G2's provisional-inclusion decision. |
 | G3   | accepted-socket client-error isolation; redacted owner-only fatal artifact followed by default fatal exit; SIGTERM/RPC-stop socket, registered timer, stop-entry target-flush and managed-runtime cleanup; own-method socket dispatch rejection; authenticated Claude boot-failure cause projection; Codex runtime-failure and Claude confirmed-endpoint-death disconnect wiring; existing `status`/`aiox status` connection and fixed delivery-guarantee diagnostics; deterministic doctor checks for Node, Codex, Claude, sqlite-native and daemon-socket success/failure; common bounded pre-write queue/retry/TTL regression. These queue bounds do not establish a socket request-line or Claude HTTP body byte limit. |
 | G5   | secret/PII/path scan, tracked-vs-local file review, dead/scaffold code disposition, LICENSE/README/SECURITY/CONTRIBUTING/issue template presence and link check                           |
 | G6   | npm pack, tarball content assertion, clean temp install, executable/version/help/start-stop smoke                                                                                         |
@@ -607,7 +646,7 @@ Cross-platform support is not a late separate phase. It constrains Phase 0 gates
 
 - G1 keeps protocol and envelope decisions transport-neutral.
 - G1/G3 absorb OS launch, shell, path, permission and signal differences in adapters and daemon lifecycle.
-- G2 provides tmux as the minimum driver and a no-tmux fallback, without making terminal automation core protocol.
+- G2 provides compose.yaml v1 (`aiox compose up`) and a view-driver generalization not fixed to a single tmux driver, without making terminal automation or compose part of the core protocol.
 - G5/G6 verify public repo and npm packaging behavior against the supported matrix.
-- Phase 2 compose/config work uses OS-neutral declarations and leaves OS-specific command/path/env handling to compiler, recipe or plugin layers.
+- G2's compose.yaml v1 and Phase 2's config/onboarding split use OS-neutral declarations and leave OS-specific command/path/env handling to compiler, recipe or plugin layers.
 - G4 certifies the supported matrix before public release.
