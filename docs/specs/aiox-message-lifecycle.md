@@ -202,6 +202,34 @@ Evidence: [[src/daemon/state.ts]] — `src/daemon/state.ts:2297-2328`,
 `src/daemon/api.ts:101-124`, `src/daemon/api.ts:218-263`; and
 [[src/adapters/codex/mcp-server.ts]] — `src/adapters/codex/mcp-server.ts:300-444`.
 
+**Committed target, G2** [Status: Committed target]: once a source agent can have more than one
+active route (declared via [[docs/specs/aiox-compose-contract]] §6 `routes[]` or manual `connect`),
+`send`'s request schema adds a required `target` field, `string | string[] | "*"`, where `"*"` is
+an explicit broadcast sentinel
+over the caller's active routes (single/subset targets filter the route list by name, rejecting an
+unmatched name with the already-reserved `unknown_target`/`route_not_allowed`; unrecognized names
+never fall back to `"*"`). A new no-input `agents_list()` tool is added alongside `send`/`reply` on
+both adapters, returning the caller's currently reachable peers:
+
+```json
+{
+  "peers": [
+    { "name": "claude-frontend", "type": "claude-code", "role": "frontend", "description": "..." },
+    { "name": "qa-bot", "type": "codex", "role": null, "description": null }
+  ]
+}
+```
+
+`peers` is scoped to outbound-sendable targets only — who the calling agent can actually
+`send(target:...)` to, following the routing membership `routes[]` declares (or the equivalent
+manually `connect`-ed routes). A directed edge's inbound-only side does not appear in the sender's
+own `agents_list()` result. Missing `role`/`description` render as `null`, not an omitted field.
+Neither `target` nor `agents_list()` is implemented; the single-tool, no-target surface described
+above (this section and the adapter matrix in [[docs/specs/aiox-adapter-model]]) remains the
+current contract. The `agents[].name: "*"` reserved-word check that keeps this sentinel unambiguous
+is a designed-but-not-implemented compose validator detail — see [[docs/specs/aiox-compose-contract]]
+§6 Validator Rules.
+
 ### 4.3 Delivery, acknowledgement, retry
 
 Delivery transport state와 correlated-reply permission은 독립이다.

@@ -84,8 +84,6 @@ pair 슬롯을 **kind-agnostic 2-slot(a/b)**으로 일반화하고, same-vendor 
 
 - 3-way / N-agent pair, dynamic slot이 product 요구로 올라올 때 — 별도 product decision
   으로 cardinality 2 가정을 다시 연다.
-- pair CLI가 reservation만 만들지, agent launch·attach orchestration까지 맡을지와 그 실패·재시작
-  lifecycle을 Phase 2 topology 재논의와 함께 결정할 때.
 - deferred delivery 자동 retry / source push notification을 도입할 때.
 - D6 registry refactor를 채택할 때(adapter interface에 `dispatchToTarget` + event 발행
   책임 이관). post-MVP 항목으로 등록돼 있다.
