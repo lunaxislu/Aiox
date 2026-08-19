@@ -25,8 +25,8 @@ G1(A/B/C/D)과 G3가 모두 Phase 0 범위에서 closed되어 G2의 진입 조�
 
 ## Stages
 
-- [>] Kickoff — 착수 전제와 설계 결정(state.ts decomposition 순서, pair CLI 책임 경계, config 파일명·명령어 naming과 Docker 은유 재검토, yaml 스키마 내용과 CLI read 방식, 터미널 split/view driver 레퍼런스 조사와 UI 설계) -> `logs/2026-08-17-G2-Kickoff-착수-전제와-설계-결정.md`
-- [ ] config 파일 v1 스키마(파일명·명령어는 Kickoff 결정 따름)와 foreground 실행 구현
+- [x] Kickoff — 착수 전제와 설계 결정(state.ts decomposition 순서, pair CLI 책임 경계, config 파일명·명령어 naming과 Docker 은유 재검토, yaml 스키마 내용과 CLI read 방식, 터미널 split/view driver 레퍼런스 조사와 UI 설계) -> `logs/2026-08-17-G2-Kickoff-착수-전제와-설계-결정.md`
+- [>] config 파일 v1 스키마(파일명·명령어는 Kickoff 결정 따름)와 foreground 실행 구현 -> `logs/2026-08-19-G2-Config-CLI-MCP-Foreground-구현.md`
 - [ ] view driver 일반화 구현
 - [ ] pair-to-N-agent route generalization 구현
 - [ ] G2 gate evidence 정합화, owner 문서 반영과 closeout(native Windows 재논의 포함)
