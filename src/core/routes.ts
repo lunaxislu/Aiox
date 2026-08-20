@@ -22,16 +22,3 @@ export function createDirectedRoutes(
     status: "active",
   }));
 }
-
-export function disconnectDirectedRoutes(
-  routes: readonly Route[],
-  request: CreateDirectedRoutesRequest,
-): Route[] {
-  const targetAgentIds = new Set(request.targetAgentIds);
-
-  return routes.filter(
-    (route) =>
-      route.sourceAgentId !== request.sourceAgentId ||
-      !targetAgentIds.has(route.targetAgentId),
-  );
-}

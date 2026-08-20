@@ -19,7 +19,6 @@
     "claude": "AIOX_PROFILE=build node dist/src/bin/aiox.js claude",
     "codex": "AIOX_PROFILE=build node dist/src/bin/aiox.js codex",
     "connect": "AIOX_PROFILE=build node dist/src/bin/aiox.js connect",
-    "disconnect": "AIOX_PROFILE=build node dist/src/bin/aiox.js disconnect",
     "pair": "AIOX_PROFILE=build node dist/src/bin/aiox.js pair",
     "doctor": "AIOX_PROFILE=build node dist/src/bin/aiox.js doctor"
   },

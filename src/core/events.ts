@@ -1,11 +1,9 @@
 export const eventTypes = [
   "agent_registered",
   "agent_reconnected",
-  "agent_disconnected",
   "pair_created",
   "pair_ready",
   "route_connected",
-  "route_disconnected",
   "message_created",
   "delivery_queued",
   "delivery_expired",
