@@ -68,8 +68,8 @@ Lifecycle policy open questions:
   three retries), with target queue capacity 32, TTL 5 minutes, and queued
   flush when attach, resume/rebind, or proxy binding makes a target usable.
   Durable restart replay/mailbox and passive/automatic target ack remain
-  deferred; so do remote cancellation and heartbeat/time-based stale policy.
-- **Phase 1 owner — stale/disconnected operation policy:** heartbeat, elapsed-time,
+  deferred; so do remote cancellation and heartbeat/time-based session-expiry policy.
+- **Phase 1 owner — session-expiry operation policy:** heartbeat, elapsed-time,
   and external-session-disconnect signals, and the resulting queued-delivery
   retry/hold/failed disposition, are decided and implemented in Phase 1. This
   deferred entry fixes no threshold, automatic action, or public field.
@@ -79,12 +79,12 @@ Lifecycle policy open questions:
     Claude/Codex 사용자 auth token/session 만료로 끊길 수 있다.
   - 결정 필요: adapter가 만료를 어떻게 감지하는가(heartbeat, WS close,
     `thread/loaded/list` polling, API error 감지 등).
-  - 결정 필요: 감지 후 agent를 자동으로 `stale`로 전환할 것인가, `disconnected`로
-    둘 것인가.
+  - 결정 필요: 감지 후 현재 이탈 경로처럼 agent row와 관련 route를 즉시 물리 삭제할지,
+    아니면 명시적 별도 유예 상태(soft state)를 도입할지.
   - 결정 필요: in-flight delivery를 재시도할지, 즉시 failed 처리할지, 사용자 알림 후
     대기시킬지.
   - 결정 필요: reconnect 시도 정책을 automatic backoff, 사용자 수동, 새 attach 명령 중
     어디에 둘 것인가.
   - 결정 필요: source agent에게 session expiry 사실을 어떻게 surface할 것인가.
-  - 이 정책은 daemon 관점의 시간 기반 stale 판정과 별개이며, adapter가 외부 세션 단절을
-    능동 감지하는 시나리오다.
+  - 이 정책은 daemon 관점의 시간 기반 session-expiry 감지·유예 처리와 별개이며,
+    adapter가 외부 세션 단절을 능동 감지하는 시나리오다.

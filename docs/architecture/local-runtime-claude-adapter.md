@@ -133,7 +133,9 @@ Evidence:
    `disconnectClaudeChannel({agentName})` ([[src/cli/invocation.ts]] —
    `src/cli/invocation.ts:217`; [[src/daemon/state.ts]] —
    `disconnectClaudeChannel`), which removes the runtime, session token and
-   boot cause and marks a connected agent disconnected. Unlike Codex, no
+   boot cause and deletes the agent's row and its routes
+   ([[docs/architecture/local-runtime-store-and-repositories]] —
+   `agents.removeByName`/`routes.removeAllForAgent`). Unlike Codex, no
    `claude_channel_disconnected` event is appended — Implementation-only
    (no recorded rationale).
 10. Three other Claude-credential-bearing exit paths also clear
@@ -213,9 +215,9 @@ ingress paths. For each delivery whose target is a Claude agent:
    → `claude_channel_unavailable`.
    When a primary daemon dispatch gets that confirmed refusal from the exact
    runtime instance it pushed to, daemon state applies the existing Claude
-   disconnect effect and marks the agent disconnected. It compares runtime
-   identity after the asynchronous fetch so a same-name channel registered
-   mid-flight is not cleared. Operator-triggered manual retransmit remains an
+   disconnect effect, deleting the agent's row and its routes. It compares
+   runtime identity after the asynchronous fetch so a same-name channel
+   registered mid-flight is not cleared. Operator-triggered manual retransmit remains an
    attempt-local probe and does not mutate global connection state
    ([[src/daemon/state.ts]] — `src/daemon/state.ts:2072-2138`;
    [[tests/unit/daemon/api.test.ts]] — `tests/unit/daemon/api.test.ts:2080-2225`).

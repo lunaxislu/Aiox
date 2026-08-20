@@ -107,7 +107,7 @@ Steps 1–4f are identical. Then:
 - CLI launches `codex resume <session-id> --remote <proxy-url>`.
 
 Failure handling cleans up `startingCodexRuntime`, deletes pending token,
-marks agent disconnected, returns the typed reason
+deletes the agent's row and its routes, returns the typed reason
 (`attachAgent`, `defaultAttachCodexRuntime`).
 
 ### 7.4 Transparent Proxy
@@ -248,6 +248,9 @@ owned here.
   is a separate operator direct attempt outside the common `send`/`reply`
   contract. Claude provides the same named recovery tool and schema; neither
   adapter queues a manual retransmit.
+- `agents_list()` takes no input and returns only the calling agent's current
+  outbound-sendable peers. It is a read-only peer-catalog tool, not a messaging
+  tool.
 
 These are current typed tools, not pre-G1 compatibility signatures. They map
 the daemon lifecycle request/result defined by [[docs/specs/aiox-message-lifecycle]]
@@ -274,10 +277,13 @@ registered.
    in `codexChannelRuntimes` (full SHA-256, not 12-char
    prefix — Step 13 ingress provenance: `logs/workspace-reset/retained-provenance/2026-06-19-mvp-history-archive.md`
    §2.4), appends `codex_channel_registered`.
-5. Every subsequent tool call calls `authorizeCodexIngress`
-   which checks token presence, agent registration, connection status, and
-   token hash equality. Reasons: `codex_ingress_unauthorized` with
+5. `send` and `reply` call `authorizeCodexIngress`, which checks token
+   presence, agent registration, connection status, and token hash equality.
+   Reasons: `codex_ingress_unauthorized` with
    `detail ∈ {missing_token, agent_not_registered, agent_disconnected, token_mismatch}`.
+   `agents_list` is the accepted exception: it is read-only, derives its caller
+   name from launcher-injected process state rather than tool input, and makes
+   the local daemon-socket peer-catalog read without a token.
 
 ### 7.9 Lifecycle and Ownership
 

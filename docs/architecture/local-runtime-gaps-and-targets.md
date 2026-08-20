@@ -15,9 +15,6 @@ The system architecture distinguishes between current, as-built gaps in the loca
 - **Daemon Database Durability & Recovery** — The production daemon still opens an in-memory SQLite database. The
   durable database helper and restart-recovery repository method exist, but current production startup does not call
   them.
-- **Stale Agent Transition Policy** — The `stale` agent state is defined, but current daemon code has no active
-  transition path that marks agents stale. Phase 1 owns the future stale/disconnected operation policy; this current-gap
-  claim does not select a signal, threshold, automatic action, or delivery disposition.
 - **Historical/rolling diagnostics beyond the G3 minimum** — The accepted fatal artifact and current status snapshot
   are owned by [[docs/architecture/local-runtime-daemon-transport-api]]. The remaining gap is a retained rolling
   structured-log sink or historical cross-adapter failure timeline. That broader operational history is post-release
@@ -87,9 +84,6 @@ Evidence:
     - `src/store/sqlite.ts:5-11`
   - [[src/store/repositories/deliveries.ts]]
     - `src/store/repositories/deliveries.ts:148-158`
-- Stale agent transition gap
-  - [[src/core/agents.ts]]
-    - `src/core/agents.ts:5-12`
 - Historical/rolling diagnostics beyond the G3 minimum
   - [[src/daemon/run.ts]]
     - `src/daemon/run.ts:27-122`
@@ -162,7 +156,7 @@ Sources:
   delivery-creation idempotency, typed replies, and Tier 3 source-result classification are current as-built;
   durable replay, remote federation, and session-expiry limits retain their deferred owners.
 - **TUI Protocol Drift** — Future updates to Codex protocol schemas crossing transparent proxy layers will require active maintenance of binding parsers.
-- **Declared-only Events** — Activating `agent_registered`, `agent_reconnected`, `agent_disconnected`, `pair_created`, `pair_ready`, `route_connected`, `route_disconnected`, `codex_binding_uncertain_observed`, and `late_reply` events.
+- **Declared-only Events** — Activating `agent_registered`, `agent_reconnected`, `pair_created`, `pair_ready`, `route_connected`, `codex_binding_uncertain_observed`, and `late_reply` events.
 
 Evidence:
 

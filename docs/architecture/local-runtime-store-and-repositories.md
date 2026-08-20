@@ -13,14 +13,14 @@ Status: Current
 In-memory only — `runDaemonProcess` opens `new Database(":memory:")`
 ([[src/daemon/run.ts]] — `src/daemon/run.ts:25`). The file-mode helper `openSqliteDatabase`
 ([[src/store/sqlite.ts]] — `src/store/sqlite.ts:5-12`) is unused. `applySchema`
-([[src/store/schema.ts]] — `src/store/schema.ts:14-82`) first runs the idempotent
-`create table if not exists` block, then applies migrations 1 through 5.
+([[src/store/schema.ts]] — `applySchema`) first runs the idempotent
+`create table if not exists` block, then applies migrations 1 through 7.
 Migration 1 owns the slot model; migrations 2, 3, 4 and 5 add the current
 message, reply-right and outcome surfaces below.
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `agents` | `id PK`, `name UNIQUE NOT NULL`, `kind`, `status`, `cwd`, `pair_id`, `pair_slot`, `adapter_session_id`, `last_seen_at`, timestamps | `adapter_session_id` holds Codex active thread id (nullable). `pair_id` no FK. `pair_slot ∈ {a,b}` (nullable; set on pair attach). |
+| `agents` | `id PK`, `name UNIQUE NOT NULL`, `kind`, `status`, `cwd`, `pair_id`, `pair_slot`, `adapter_session_id`, `role`, `description`, `instructions`, `last_seen_at`, timestamps | `adapter_session_id` holds Codex active thread id (nullable). `role`/`description` are nullable peer-catalog metadata; `instructions` is nullable private agent metadata. `pair_id` has no FK. `pair_slot ∈ {a,b}` (nullable; set on pair attach). |
 | `pairs` | `id PK`, `name UNIQUE NOT NULL`, `status` (`pending`/`ready`/`stale`) | `stale` exists in the `PairStatus` type ([[src/core/pairs.ts]] — `src/core/pairs.ts:3`) but no code path writes it — type-only; transition policy unimplemented (gap). |
 | `routes` | `id PK`, `source_agent_id`, `target_agent_id`, `status`, `UNIQUE(source_agent_id,target_agent_id)` | Directed. No FK. |
 | `messages` | `id PK`, `source_agent_id`, `origin_kind`, `parent_message_id` (nullable), `type`, `intent`, `reply_expected`, `outcome_for_delivery_id`, `content`, timestamps | Type ∈ `question|instruction|event|reply`; a reply parent stores its originating delivery ID. |
@@ -54,12 +54,15 @@ transaction rolls back, aborting daemon boot.
 `delivering → queued`, but has **no production caller** in `src/`. It is not
 durable replay recovery.
 
-**Migrations 2–5 [Status: As-built].** Migration 2 adds `intent` and
+**Migrations 2–7 [Status: As-built].** Migration 2 adds `intent` and
 `reply_expected`; migration 3 creates/backfills `reply_rights`; migration 4
 adds `origin_kind`, `outcome_for_delivery_id`, and
 `delivery_outcome_notifications`; migration 5 changes that relation to the
-composite outcome key and backfills the prior rejection kind ([[src/store/schema.ts]] —
-`src/store/schema.ts:70-115`).
+composite outcome key and backfills the prior rejection kind. Migration 6 adds
+the nullable agent `role`, `description`, and `instructions` columns. Migration
+7 atomically removes non-`connected` legacy agent rows and their related routes,
+which the physical-departure model no longer retains ([[src/store/schema.ts]] —
+`applyMigration2` through `applyMigration7`).
 
 ---
 
@@ -72,9 +75,9 @@ domain objects. Transactional boundaries are owned by callers in
 
 | Repo | Key methods | Key transactional logic |
 |---|---|---|
-| `agents` | `attach`, `findByName`, `list`, `markByNameDisconnected`, `markAllConnectedDisconnected`, `rebindAdapterSessionId` | `attach` upserts disconnected rows and inserts new rows ([[src/store/repositories/agents.ts]] — `src/store/repositories/agents.ts:80-150`); rejects with `agent_name_already_connected` if an existing row is `connected` (`src/store/repositories/agents.ts:70-78`). No internal tx. |
+| `agents` | `attach`, `findByName`, `list`, `removeByName`, `removeAllConnected`, `rebindAdapterSessionId` | `attach` always inserts a fresh row — a found-by-name row is always connected (departure deletes the row, it is never status-flipped), so there is no disconnected row to reuse ([[src/store/repositories/agents.ts]] — `src/store/repositories/agents.ts:75-149`); rejects with `agent_name_already_connected` if a row with that name exists at all (`src/store/repositories/agents.ts:82-90`). `removeByName`/`removeAllConnected` physically delete row(s) and return the pre-deletion snapshot. Daemon lifecycle callers pair them with `routes.removeAllForAgent` in an outer transaction because there is no FK cascade. No internal tx. |
 | `pairs` | `createReservation`, `attachAgent` | `attachAgent` runs in own `db.transaction` ([[src/store/repositories/pairs.ts]] — `src/store/repositories/pairs.ts:77-192`): verifies agent exists; confirms input `kind` equals the stored agent `kind` (consistency check, **not** a vendor-pairing constraint — `src/store/repositories/pairs.ts:91-99`); self-loop guard via `agent_already_attached` (`src/store/repositories/pairs.ts:101-121`); picks the first open slot a→b kind-agnostically when no explicit slot given (`pickFirstOpenSlot`, `src/store/repositories/pairs.ts:246-258`); rejects if the chosen slot is occupied by another agent (`pair_slot` query, `src/store/repositories/pairs.ts:132-153`); writes `pair_id`+`pair_slot` (`src/store/repositories/pairs.ts:155-166`); recomputes `status = "ready"` only when both slots a·b are filled, kind-agnostic (`isPairReady`, `src/store/repositories/pairs.ts:260-263`). Same-vendor pairs (codex↔codex, claude↔claude) are supported. |
-| `routes` | `create`, `disconnect`, `findBySourceAndTarget`, `list` | `create` returns typed `route_already_exists` ([[src/store/repositories/routes.ts]] — `src/store/repositories/routes.ts:103-150`); `disconnect` collects rows then deletes in a tx (`src/store/repositories/routes.ts:83-100`). |
+| `routes` | `create`, `removeAllForAgent`, `findBySourceAndTarget`, `list` | `create` returns typed `route_already_exists` ([[src/store/repositories/routes.ts]] — `src/store/repositories/routes.ts:103-150`); `removeAllForAgent` collects the agent's source-or-target rows then deletes them in a tx (`src/store/repositories/routes.ts:70-95`) — the only way a route is removed is the agent itself leaving; there is no route-level disconnect. |
 | `messages` | `create`, `count`, `findById`, `list` | Persists origin, intent, reply expectation, reply parent and outcome correlation; no internal tx ([[src/store/repositories/messages.ts]] — `src/store/repositories/messages.ts:5-145`). |
 | `deliveries` | `createQueuedForRoutes`, `updateStatus`, `findById`, `findByIdempotencyKey`, outcome-notification relation, `countByStatus`, `recoverAfterRestart` | `createQueuedForRoutes` inserts all rows in one `db.transaction` ([[src/store/repositories/deliveries.ts]] — `src/store/repositories/deliveries.ts:75-238`). UNIQUE collision on the common internal `idempotency_key` is reclassified to typed `delivery_idempotency_key_exists`. |
 | `reply_rights` | `grant`, `findByOriginatingDeliveryId`, `consume` | conditional update consumes one originating delivery right exactly once ([[src/store/repositories/reply-rights.ts]] — `src/store/repositories/reply-rights.ts:1-83`). |

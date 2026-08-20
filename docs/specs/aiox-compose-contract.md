@@ -110,7 +110,7 @@ routing group끼리 member가 겹쳐도 절대 자동(전이적)으로 병합하
 group과 `[C,D]`인 group이 있어도 A↔D, B↔D 관계는 생성되지 않는다. 각 group은 독립된 통신
 도메인이다. 하나의 agent는 여러 routing group에 동시에 속할 수 있다.
 
-### Runtime MCP Contract (Committed target)
+### Runtime MCP Contract
 
 `routes[]` membership과 `directed` override는 config 자체가 아니라, attach된 agent에게 노출되는
 MCP tool 표면의 런타임 효과로 이어진다. tool contract 본문(`send`의 `target` 파라미터,

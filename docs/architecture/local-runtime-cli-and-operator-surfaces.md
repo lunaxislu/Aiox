@@ -18,11 +18,10 @@ vocabulary, module overview, and authority links.
 | `aiox daemon stop [--daemon-only]` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:192-198`; invoke [[src/bin/aiox.ts]] — `src/bin/aiox.ts:104-120` |
 | `aiox daemon restart` | yes (after stop) | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:200-205`; invoke [[src/bin/aiox.ts]] — `src/bin/aiox.ts:122-126` |
 | `aiox daemon status` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:207-212`; invoke [[src/bin/aiox.ts]] — `src/bin/aiox.ts:128-147` |
-| `aiox codex --name <n> [--pair <p>] [--resume <id>]` | **yes** | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:214,257-289`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:157-199` |
-| `aiox claude --name <n> [--pair <p>]` | **yes** | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:280-291`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:149-217` |
+| `aiox codex --name <n> [--pair <p>] [--resume <id>] [--role <role>] [--description <description>] [--instructions <instructions>]` | **yes** | parse [[src/cli/parse.ts]] — `addAgentAttachCommand`; invoke [[src/cli/invocation.ts]] — `agent-attach` |
+| `aiox claude --name <n> [--pair <p>] [--role <role>] [--description <description>] [--instructions <instructions>]` | **yes** | parse [[src/cli/parse.ts]] — `addAgentAttachCommand`; invoke [[src/cli/invocation.ts]] — `agent-attach` |
 | `aiox claude setup [--scope <scope>]` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:288-304`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:266-267,283-313` |
 | `aiox connect <source> <target...>` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:216,291-313`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:262-270` |
-| `aiox disconnect <source> <target...>` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:217,291-313`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:271-279` |
 | `aiox pair --name <pair-name>` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:218,315-323`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:280-285` |
 | `aiox status` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:327-331`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:286-289` |
 | `aiox stop` | no | parse [[src/cli/parse.ts]] — `src/cli/parse.ts:333-338`; invoke [[src/cli/invocation.ts]] — `src/cli/invocation.ts:290-292` |

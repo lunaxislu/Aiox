@@ -208,8 +208,10 @@ active route (declared via [[docs/specs/aiox-compose-contract]] §6 `routes[]` o
 an explicit broadcast sentinel
 over the caller's active routes (single/subset targets filter the route list by name, rejecting an
 unmatched name with the already-reserved `unknown_target`/`route_not_allowed`; unrecognized names
-never fall back to `"*"`). A new no-input `agents_list()` tool is added alongside `send`/`reply` on
-both adapters, returning the caller's currently reachable peers:
+never fall back to `"*"`).
+
+**Current, G2 — `agents_list()`** [Status: Current]: a no-input `agents_list()` tool is available
+alongside `send`/`reply` on both adapters and returns the caller's currently reachable peers:
 
 ```json
 {
@@ -224,11 +226,10 @@ both adapters, returning the caller's currently reachable peers:
 `send(target:...)` to, following the routing membership `routes[]` declares (or the equivalent
 manually `connect`-ed routes). A directed edge's inbound-only side does not appear in the sender's
 own `agents_list()` result. Missing `role`/`description` render as `null`, not an omitted field.
-Neither `target` nor `agents_list()` is implemented; the single-tool, no-target surface described
-above (this section and the adapter matrix in [[docs/specs/aiox-adapter-model]]) remains the
-current contract. The `agents[].name: "*"` reserved-word check that keeps this sentinel unambiguous
-is a designed-but-not-implemented compose validator detail — see [[docs/specs/aiox-compose-contract]]
-§6 Validator Rules.
+`instructions` is never included in a peer record. The existing single-tool,
+no-target `send` surface remains current; its future `target` parameter and the
+`agents[].name: "*"` validator that keeps the broadcast sentinel unambiguous
+remain committed compose work — see [[docs/specs/aiox-compose-contract]] §6 Validator Rules.
 
 ### 4.3 Delivery, acknowledgement, retry
 

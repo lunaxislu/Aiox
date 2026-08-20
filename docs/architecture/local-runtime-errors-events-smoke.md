@@ -23,7 +23,7 @@ events, and implementation smoke provenance.
 | `codex_runtime_attach_failed` | `AttachAgentResponse` | codex runtime attach error | [[src/daemon/api.ts]] `src/daemon/api.ts:169`; [[src/daemon/state.ts]] `attachAgent` |
 | `pair_name_already_exists` | `CreatePairResponse` | duplicate `pair --name` | [[src/daemon/api.ts]] `src/daemon/api.ts:180`; [[src/daemon/state.ts]] `createPair` |
 | `source_agent_not_found` | many | source name unresolved | [[src/daemon/api.ts]] `src/daemon/api.ts:192`, `:208`, `:229`; [[src/daemon/state.ts]] `runSendMessageTransaction`, `runReplyTransaction`, and ingress methods |
-| `target_agent_not_found` | connect / disconnect / state dispatch | target name unresolved | [[src/daemon/api.ts]] `src/daemon/api.ts:197`, `:213`; [[src/daemon/state.ts]] `connect`, `disconnect`, and `dispatchToPairPeersNow` |
+| `target_agent_not_found` | connect / state dispatch | target name unresolved | [[src/daemon/api.ts]] `src/daemon/api.ts:197`; [[src/daemon/state.ts]] `connect` and `dispatchToPairPeersNow` |
 | `no_active_routes` | sendMessage / receiveCodexMessage | source has zero outgoing routes (β-1) | [[src/daemon/api.ts]] `src/daemon/api.ts:234`, `:291`; [[src/daemon/state.ts]] `runSendMessageTransaction` |
 | `delivery_idempotency_key_exists` | sendMessage / receiveCodex* | duplicate `${messageId}:${targetAgentId}` | [[src/daemon/api.ts]] `src/daemon/api.ts:238`, `:295`; [[src/daemon/state.ts]] `runSendMessageTransaction` and `runReplyTransaction`; [[src/store/repositories/deliveries.ts]] `src/store/repositories/deliveries.ts:45`, `:129` |
 | `delivery_queue_full` | send/reply ingress | atomic fan-out would exceed one target's queue capacity | [[src/daemon/api.ts]] `src/daemon/api.ts:231-244`; [[src/daemon/state.ts]] `runSendMessageTransaction` |
@@ -89,7 +89,7 @@ Returned as `{kind:"failed", reason, message, jsonRpcCode?}`
 |---|---|---|
 | `aiox.missingCommand` | no subcommand | [[src/cli/parse.ts]] `src/cli/parse.ts:117-122`, `:127-131` |
 | `aiox.invalidName` | empty or control-char name | [[src/cli/parse.ts]] `src/cli/parse.ts:149-165` |
-| `aiox.missingTargets` | connect/disconnect with zero targets | [[src/cli/parse.ts]] `src/cli/parse.ts:300-305` |
+| `aiox.missingTargets` | connect with zero targets | [[src/cli/parse.ts]] `src/cli/parse.ts:300-305` |
 | `aiox.invalidScope` | setup with invalid scope value | [[src/cli/parse.ts]] `src/cli/parse.ts:229-238` |
 | `aiox.<commander-code>` | other commander error | [[src/cli/parse.ts]] `src/cli/parse.ts:108-111`, `:127-138` |
 | `aiox.invocation.missing_daemon_socket_path` | Claude attach without socket path | [[src/cli/invocation.ts]] `src/cli/invocation.ts:195-200` |
@@ -105,7 +105,7 @@ Returned as `{kind:"failed", reason, message, jsonRpcCode?}`
 
 ## 11. Consolidated Events Catalog
 
-Declaration: [[src/core/events.ts]] — `src/core/events.ts:1-34` (31 entries). All emissions go through
+Declaration: [[src/core/events.ts]] — `src/core/events.ts:1-32` (29 entries). All emissions go through
 `events.append`.
 
 | Event type | Payload | Emission site | When |
@@ -132,9 +132,8 @@ Declaration: [[src/core/events.ts]] — `src/core/events.ts:1-34` (31 entries). 
 | `codex_ingress_reply_received` | `{messageId, inReplyToDeliveryId, text}` | [[src/daemon/state.ts]] `receiveCodexReply` | typed `receiveCodexReply` ok |
 
 **Declared but not emitted in current `src/`** (Implementation-only):
-`agent_registered`, `agent_reconnected`, `agent_disconnected`,
-`pair_created`, `pair_ready`, `route_connected`, `route_disconnected`,
-`codex_binding_uncertain_observed`, `late_reply`. Planned at Step 10 but did
+`agent_registered`, `agent_reconnected`, `pair_created`, `pair_ready`,
+`route_connected`, `codex_binding_uncertain_observed`, `late_reply`. Planned at Step 10 but did
 not land at MVP closeout.
 
 ---
