@@ -72,7 +72,7 @@ describe("SQLite route repository", () => {
     expect(routes.list()).toEqual([first.route]);
   });
 
-  it("disconnects only the specified directed routes", () => {
+  it("removeAllForAgent removes every route where the agent is source or target, leaving unrelated routes", () => {
     const sourceToFirst = routes.create({
       id: "route-1",
       sourceAgentId: "agent-source",
@@ -95,12 +95,17 @@ describe("SQLite route repository", () => {
       throw new Error("expected route create to succeed");
     }
 
-    const removed = routes.disconnect({
-      sourceAgentId: "agent-source",
-      targetAgentIds: ["agent-target-1"],
-    });
+    // "agent-target-1" is target of route-1 and source of route-3 -- both
+    // must go; route-2 (unrelated to agent-target-1) must survive. There is
+    // no selective route-level disconnect: the only way a route disappears
+    // is one of its two agents leaving entirely.
+    const removed = routes.removeAllForAgent("agent-target-1");
 
-    expect(removed).toEqual([sourceToFirst.route]);
-    expect(routes.list()).toEqual([sourceToSecond.route, reverse.route]);
+    expect(removed).toEqual([sourceToFirst.route, reverse.route]);
+    expect(routes.list()).toEqual([sourceToSecond.route]);
+  });
+
+  it("removeAllForAgent returns an empty array when the agent has no routes", () => {
+    expect(routes.removeAllForAgent("ghost")).toEqual([]);
   });
 });

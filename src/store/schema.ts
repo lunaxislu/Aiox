@@ -22,6 +22,9 @@ export function applySchema(db: Database): void {
       pair_id text,
       pair_slot text,
       adapter_session_id text,
+      role text,
+      description text,
+      instructions text,
       last_seen_at text,
       created_at text not null,
       updated_at text not null
@@ -96,6 +99,51 @@ export function applySchema(db: Database): void {
   applyMigration3(db);
   applyMigration4(db);
   applyMigration5(db);
+  applyMigration6(db);
+  applyMigration7(db);
+}
+
+// Data cleanup (DML, not DDL): the physical-delete redesign removed the
+// "disconnected" agent state -- an agent row now only ever exists while
+// connected, and departure deletes the row (and its routes) instead of
+// flipping `status`. Any row already sitting at a non-"connected" status in
+// an existing local DB predates that redesign and is now permanently stale
+// (nothing will ever reconnect it or clean it up), so this migration removes
+// it once, along with any route referencing it -- otherwise those rows would
+// keep showing up as stale peers in `agents_list()` even after upgrading.
+function applyMigration7(db: Database): void {
+  if (isMigrationApplied(db, 7)) return;
+
+  withTransaction(db, () => {
+    db.exec(`
+      delete from routes
+      where source_agent_id in (select id from agents where status <> 'connected')
+         or target_agent_id in (select id from agents where status <> 'connected')
+    `);
+    db.exec("delete from agents where status <> 'connected'");
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(7, Date.now());
+  });
+}
+
+function applyMigration6(db: Database): void {
+  if (isMigrationApplied(db, 6)) return;
+
+  withTransaction(db, () => {
+    if (!columnExists(db, "agents", "role")) {
+      db.exec("alter table agents add column role text");
+    }
+    if (!columnExists(db, "agents", "description")) {
+      db.exec("alter table agents add column description text");
+    }
+    if (!columnExists(db, "agents", "instructions")) {
+      db.exec("alter table agents add column instructions text");
+    }
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(6, Date.now());
+  });
 }
 
 function applyMigration5(db: Database): void {

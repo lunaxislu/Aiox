@@ -432,7 +432,9 @@ describe("daemon API with fake in-process transport", () => {
       message: expect.stringContaining("thread-other"),
     });
     expect(runtime.disposeCalls).toBe(1);
-    expect((await client.status()).agents[0].status).toBe("disconnected");
+    // Rollback on atomic-resume failure now physically removes the just-created
+    // row (and its routes) instead of status-flipping it.
+    expect((await client.status()).agents).toEqual([]);
     expect(db.prepare("select type from events").all()).toEqual([]);
   });
 
@@ -777,7 +779,10 @@ describe("daemon API with fake in-process transport", () => {
     });
     await client.detachAgent({ agentName: "detach" });
     await client.notifyTuiExited({ agentName: "tui", exitCode: 0 });
-    db.prepare("update agents set status = 'disconnected' where name = ?").run("reattach");
+    // Simulate departure through the real production path (detachAgent)
+    // rather than a raw status flip: physical delete means there is no
+    // "disconnected" row state left to fabricate via SQL.
+    await client.detachAgent({ agentName: "reattach" });
     const replacement = await client.attachAgent({
       kind: "claude",
       name: "reattach",
@@ -798,6 +803,10 @@ describe("daemon API with fake in-process transport", () => {
       reason: "claude_channel_boot_failure_report_rejected",
       detail: "unknown_token",
     });
+    // Reattach is a fresh insert (new id) under the physical-delete redesign,
+    // not a reuse of the departed row -- rebase the id used below to the
+    // agent that now actually exists under this name.
+    targets.set("reattach", { id: replacement.agent.id, token: replacement.claudeChannelToken });
     await client.stop({ daemonOnly: true });
 
     const beforeNormalStop = await client.receiveClaudeChannelMessage({ agentName: "source", messageId: "lifecycle-before-stop", content: { text: "review" } });
@@ -807,11 +816,13 @@ describe("daemon API with fake in-process transport", () => {
       const deferred = beforeNormalStop.dispatch.deferred.find(
         (entry) => entry.targetAgentId === targetAgentId,
       );
-      expect(deferred).toMatchObject({
-        targetAgentId,
-        reason: "target_runtime_unavailable",
-      });
-      expect(deferred).not.toHaveProperty("cause");
+      // Departure now physically removes the agent's row *and* its routes
+      // (routes.removeAllForAgent), so "source" no longer has an active
+      // route to any of these names -- dispatch does not attempt delivery to
+      // them at all, rather than attempting and reporting them unavailable.
+      // ("reattach" was re-inserted under the same name but with a fresh id
+      // and no route was re-`connect()`ed to it, so it is equally absent.)
+      expect(deferred).toBeUndefined();
     }
     expect(
       beforeNormalStop.dispatch.deferred.find(
@@ -822,18 +833,14 @@ describe("daemon API with fake in-process transport", () => {
       cause: "claude_channel_port_in_use",
     });
 
+    // A non-daemonOnly stop now removes *every* connected agent's row
+    // (`removeAllConnected`), "source" included -- unlike daemonOnly stop,
+    // there is no longer a way to probe post-stop dispatch behavior for
+    // "normal-stop" via a live send, because the sender itself is gone too.
+    // Assert the stronger, directly-observable property instead: nothing
+    // survives a non-daemonOnly stop.
     await client.stop({ daemonOnly: false });
-    const afterNormalStop = await client.receiveClaudeChannelMessage({ agentName: "source", messageId: "lifecycle-after-stop", content: { text: "review again" } });
-    if (!afterNormalStop.ok) throw new Error("expected dispatch");
-    const normalStopTargetId = targets.get("normal-stop")!.id;
-    const normalStopDeferred = afterNormalStop.dispatch.deferred.find(
-      ({ targetAgentId }) => targetAgentId === normalStopTargetId,
-    );
-    expect(normalStopDeferred).toMatchObject({
-      targetAgentId: normalStopTargetId,
-      reason: "target_runtime_unavailable",
-    });
-    expect(normalStopDeferred).not.toHaveProperty("cause");
+    expect((await client.status()).agents).toEqual([]);
   });
 
   it("rejects connect when the source agent does not exist without creating routes", async () => {
@@ -892,8 +899,8 @@ describe("daemon API with fake in-process transport", () => {
     expect(db.prepare("select id from routes").all()).toEqual([]);
   });
 
-  it("disconnects existing routes and ignores absent routes between existing agents", async () => {
-    const ids = ["agent-source", "agent-one", "agent-two", "route-one"];
+  it("removes both directions of an agent's routes when it detaches (route-level disconnect no longer exists)", async () => {
+    const ids = ["agent-source", "agent-one", "agent-two", "route-one", "route-two", "route-reverse", "event-1"];
     const state = createDaemonState({
       db,
       createId: () => {
@@ -912,60 +919,18 @@ describe("daemon API with fake in-process transport", () => {
     await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
     await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
     await client.attachAgent({ kind: "claude", name: "researcher", cwd: "/repo" });
-    await client.connect({
-      sourceName: "impl",
-      targetNames: ["reviewer"],
-    });
+    await client.connect({ sourceName: "impl", targetNames: ["reviewer", "researcher"] });
+    await client.connect({ sourceName: "reviewer", targetNames: ["impl"] });
 
-    const response = await client.disconnect({
-      sourceName: "impl",
-      targetNames: ["reviewer", "researcher"],
-    });
+    await client.detachAgent({ agentName: "reviewer" });
 
-    expect(response).toEqual({
-      ok: true,
-      removed: [
-        {
-          id: "route-one",
-          sourceAgentId: "agent-source",
-          targetAgentId: "agent-one",
-          status: "active",
-        },
-      ],
-    });
-    expect(db.prepare("select id from routes").all()).toEqual([]);
-  });
-
-  it("rejects disconnect when the source or any target agent does not exist", async () => {
-    const state = createDaemonState({
-      db,
-      createId: () => "agent-one",
-      now: () => "2026-05-18T00:00:00.000Z",
-    });
-    const client = createInProcessClient(createDaemonApi(state));
-
-    await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
-
+    // Only "reviewer"'s two routes (as source and as target) are gone;
+    // "impl"'s unrelated route to "researcher" is untouched. There is no
+    // selective route-level disconnect any more -- the only way a route
+    // disappears is its agent leaving entirely.
     expect(
-      await client.disconnect({
-        sourceName: "impl",
-        targetNames: ["reviewer"],
-      }),
-    ).toEqual({
-      ok: false,
-      reason: "source_agent_not_found",
-      sourceName: "impl",
-    });
-    expect(
-      await client.disconnect({
-        sourceName: "reviewer",
-        targetNames: ["missing"],
-      }),
-    ).toEqual({
-      ok: false,
-      reason: "target_agent_not_found",
-      missing: ["missing"],
-    });
+      db.prepare("select source_agent_id, target_agent_id from routes order by id").all(),
+    ).toEqual([{ source_agent_id: "agent-source", target_agent_id: "agent-two" }]);
   });
 
   it("returns empty daemon status through a round-trip request", async () => {
@@ -1124,6 +1089,10 @@ describe("daemon API with fake in-process transport", () => {
     await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
     await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
 
+    // stoppedAgents is the pre-deletion snapshot returned by
+    // `removeAllConnected` -- status is still "connected" (the only value
+    // the narrowed type has) because the row is physically deleted, not
+    // status-flipped.
     expect(await client.stop({})).toEqual({
       ok: true,
       stoppedAgents: [
@@ -1131,7 +1100,7 @@ describe("daemon API with fake in-process transport", () => {
           id: "agent-source",
           name: "impl",
           kind: "codex",
-          status: "disconnected",
+          status: "connected",
           cwd: "/repo",
           pairId: null,
         },
@@ -1139,16 +1108,13 @@ describe("daemon API with fake in-process transport", () => {
           id: "agent-target",
           name: "reviewer",
           kind: "claude",
-          status: "disconnected",
+          status: "connected",
           cwd: "/repo",
           pairId: null,
         },
       ],
     });
-    expect((await client.status()).agents.map((agent) => agent.status)).toEqual([
-      "disconnected",
-      "disconnected",
-    ]);
+    expect((await client.status()).agents).toEqual([]);
   });
 
   it("waits for async Codex runtime disposal before normal stop resolves", async () => {
@@ -1313,7 +1279,7 @@ describe("daemon API with fake in-process transport", () => {
       rolledBack: true,
     });
     expect(runtime.disposeCalls).toBe(1);
-    expect((await client.status()).agents[0].status).toBe("disconnected");
+    expect((await client.status()).agents).toEqual([]);
   });
 
   it("does not roll back a ready runtime by agent name", async () => {
@@ -1337,7 +1303,7 @@ describe("daemon API with fake in-process transport", () => {
     expect((await client.status()).agents[0].status).toBe("connected");
   });
 
-  it("detaches a ready agent by disposing runtime, preserving adapter session id, and emitting a graceful event", async () => {
+  it("detaches a ready agent by disposing runtime, removing its row, and emitting a graceful event", async () => {
     const runtime = fakeRuntime("ready");
     const state = createDaemonState({
       db,
@@ -1360,14 +1326,13 @@ describe("daemon API with fake in-process transport", () => {
     });
 
     expect(runtime.disposeCalls).toBe(1);
+    // Physical delete means the row (and whatever adapter_session_id it
+    // carried) is gone, not preserved under a "disconnected" status.
     expect(
       db.prepare("select status, adapter_session_id from agents where name = ?").get(
         "impl",
       ),
-    ).toEqual({
-      status: "disconnected",
-      adapter_session_id: "thread-1",
-    });
+    ).toBeUndefined();
     expect(db.prepare("select type, data_json from events").all()).toEqual([
       {
         type: "agent_graceful_detach",
@@ -1468,7 +1433,7 @@ describe("daemon API with fake in-process transport", () => {
       agentName: "impl",
       recorded: true,
     });
-    expect((await client.status()).agents[0].status).toBe("disconnected");
+    expect((await client.status()).agents).toEqual([]);
     expect(db.prepare("select type, data_json from events").all()).toEqual([
       {
         type: "agent_runtime_failed",
@@ -2123,15 +2088,15 @@ describe("primary delivery source outcome notifications — cross-adapter symmet
     if (!sent.ok) throw new Error("expected a delivery");
 
     // The registered runtime this dispatch actually pushed to must be gone, and
-    // its agent must be marked disconnected -- the same effect `disconnectClaudeChannel`
-    // produces -- because ECONNREFUSED against a runtime this function already
-    // confirmed was registered means the endpoint is confirmed dead, not merely
-    // unregistered.
+    // its agent's row (and routes) must be removed -- the same effect
+    // `disconnectClaudeChannel` produces -- because ECONNREFUSED against a
+    // runtime this function already confirmed was registered means the
+    // endpoint is confirmed dead, not merely unregistered.
     expect(claudeChannelRuntimes.has("target")).toBe(false);
     const agentRow = db
       .prepare("select status from agents where name = 'target'")
-      .get() as { status: string };
-    expect(agentRow.status).toBe("disconnected");
+      .get();
+    expect(agentRow).toBeUndefined();
   });
 
   it("leaves a same-name Claude channel that re-registered mid-flight untouched by a stale confirmed ECONNREFUSED", async () => {

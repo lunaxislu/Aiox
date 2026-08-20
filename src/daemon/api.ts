@@ -12,9 +12,9 @@ import type {
   DisconnectClaudeChannelResult,
   DisconnectCodexChannelRequest,
   DisconnectCodexChannelResult,
-  DisconnectRequest,
-  DisconnectResult,
   DispatchSummary,
+  ListReachablePeersRequest,
+  ListReachablePeersResult,
   NotifyTuiExitedRequest,
   NotifyTuiExitedResult,
   ReceiveClaudeChannelMessageRequest,
@@ -54,7 +54,6 @@ export interface DaemonApi {
   attachAgent(request: AttachAgentRequest): Promise<AttachAgentResponse>;
   createPair(request: CreatePairRequest): CreatePairResponse;
   connect(request: ConnectRequest): ConnectResponse;
-  disconnect(request: DisconnectRequest): DisconnectResponse;
   sendMessage(request: SendMessageRequest): SendMessageResponse;
   updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResponse;
   retransmitUnconfirmedDelivery(
@@ -93,6 +92,7 @@ export interface DaemonApi {
     request: ReceiveCodexReplyRequest,
   ): Promise<ReceiveCodexMessageResponse>;
   status(): StatusResponse;
+  listReachablePeers(request: ListReachablePeersRequest): ListReachablePeersResponse;
   stop(request: StopRequest): Promise<StopResponse>;
 }
 
@@ -231,22 +231,6 @@ export type ConnectResponse =
       missing: string[];
     };
 
-export type DisconnectResponse =
-  | {
-      ok: true;
-      removed: RouteDto[];
-    }
-  | {
-      ok: false;
-      reason: "source_agent_not_found";
-      sourceName: string;
-    }
-  | {
-      ok: false;
-      reason: "target_agent_not_found";
-      missing: string[];
-    };
-
 export type ReceiveClaudeChannelMessageResponse = SendMessageResponse;
 
 export type SendMessageResponse =
@@ -317,6 +301,32 @@ export interface StopResponse {
   stoppedAgents: AgentDto[];
 }
 
+/**
+ * Wire `type` values for [[docs/specs/aiox-message-lifecycle]] §4.2's
+ * `agents_list` peer catalog. This intentionally does not reuse `AgentKind`
+ * (`"codex" | "claude"`): the spec's documented wire value for the Claude
+ * adapter is `"claude-code"`, not `"claude"`. See `mapPeerType` below.
+ */
+export type PeerType = "codex" | "claude-code";
+
+export interface PeerDto {
+  name: string;
+  type: PeerType;
+  role: string | null;
+  description: string | null;
+}
+
+export type ListReachablePeersResponse =
+  | {
+      ok: true;
+      peers: PeerDto[];
+    }
+  | {
+      ok: false;
+      reason: "source_agent_not_found";
+      sourceName: string;
+    };
+
 export type RegisterClaudeChannelResponse = RegisterClaudeChannelResult;
 export type DisconnectClaudeChannelResponse = DisconnectClaudeChannelResult;
 export type ReceiveClaudeChannelReplyResponse = SendMessageResponse;
@@ -352,9 +362,6 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     connect(request) {
       return mapConnectResult(state.connect(request));
-    },
-    disconnect(request) {
-      return mapDisconnectResult(state.disconnect(request));
     },
     sendMessage(request) {
       return mapSendMessageResult(state.sendMessage(request));
@@ -405,6 +412,9 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     status() {
       return mapStatusResult(state.status());
+    },
+    listReachablePeers(request) {
+      return mapListReachablePeersResult(state.listReachablePeers(request));
     },
     async stop(request) {
       return mapStopResult(await state.stop(request));
@@ -459,17 +469,6 @@ function mapConnectResult(result: ConnectResult): ConnectResponse {
       ok: true,
       created: result.created.map(mapRoute),
       alreadyExisted: result.alreadyExisted.map(mapRoute),
-    };
-  }
-
-  return result;
-}
-
-function mapDisconnectResult(result: DisconnectResult): DisconnectResponse {
-  if (result.ok) {
-    return {
-      ok: true,
-      removed: result.removed.map(mapRoute),
     };
   }
 
@@ -575,6 +574,41 @@ function mapStatusAgent(agent: StoredAgent): StatusAgentDto {
       },
     },
   };
+}
+
+function mapListReachablePeersResult(
+  result: ListReachablePeersResult,
+): ListReachablePeersResponse {
+  if (result.ok) {
+    return {
+      ok: true,
+      peers: result.peers.map(mapPeer),
+    };
+  }
+
+  return result;
+}
+
+function mapPeer(agent: StoredAgent): PeerDto {
+  return {
+    name: agent.name,
+    type: mapPeerType(agent.kind),
+    role: agent.role,
+    description: agent.description,
+  };
+}
+
+function mapPeerType(kind: AgentKind): PeerType {
+  switch (kind) {
+    case "codex":
+      return "codex";
+    case "claude":
+      return "claude-code";
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`unsupported agent kind: ${exhaustive as string}`);
+    }
+  }
 }
 
 function mapStopResult(result: StopResult): StopResponse {

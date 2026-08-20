@@ -169,6 +169,9 @@ describe("daemon server lifecycle shell", () => {
 
     await handle.api.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
 
+    // stoppedAgents is the pre-deletion snapshot returned by
+    // `removeAllConnected` -- status is still "connected" because the row
+    // is physically deleted, not status-flipped.
     expect(await handle.stop()).toEqual({
       ok: true,
       stoppedAgents: [
@@ -176,14 +179,14 @@ describe("daemon server lifecycle shell", () => {
           id: "agent-1",
           name: "impl",
           kind: "codex",
-          status: "disconnected",
+          status: "connected",
           cwd: "/repo",
           pairId: null,
         },
       ],
     });
     expect(supervisor.stopCalls).toBe(1);
-    expect((await handle.api.status()).agents[0]?.status).toBe("disconnected");
+    expect((await handle.api.status()).agents).toEqual([]);
   });
 
   it("propagates daemonOnly stop without disconnecting connected agents", async () => {
@@ -277,8 +280,8 @@ describe("daemon server lifecycle shell", () => {
     });
   });
 
-  it("reconnects an agent by name after restart", async () => {
-    const ids = ["agent-1", "unused-new-agent-id"];
+  it("reattaches an agent by name after restart under a fresh id (stop physically removed the old row)", async () => {
+    const ids = ["agent-1", "agent-2"];
     const server = createDaemonServer({
       db,
       createId: () => {
@@ -304,10 +307,13 @@ describe("daemon server lifecycle shell", () => {
       cwd: "/repo",
     });
 
+    // stop() removed the original "agent-1" row entirely (removeAllConnected),
+    // so this is a fresh insert consuming the second id, not a reuse of the
+    // first.
     expect(reattached).toEqual({
       ok: true,
       agent: {
-        id: "agent-1",
+        id: "agent-2",
         name: "impl",
         kind: "codex",
         status: "connected",

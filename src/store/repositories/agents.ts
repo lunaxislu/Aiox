@@ -11,6 +11,9 @@ export interface StoredAgent {
   pairId: string | null;
   pairSlot: "a" | "b" | null;
   adapterSessionId: string | null;
+  role: string | null;
+  description: string | null;
+  instructions: string | null;
   lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -22,6 +25,9 @@ export interface AttachStoredAgentRequest {
   kind: AgentKind;
   cwd: string;
   adapterSessionId?: string | null;
+  role?: string | null;
+  description?: string | null;
+  instructions?: string | null;
   now: string;
 }
 
@@ -45,6 +51,9 @@ interface AgentRow {
   pair_id: string | null;
   pair_slot: "a" | "b" | null;
   adapter_session_id: string | null;
+  role: string | null;
+  description: string | null;
+  instructions: string | null;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
@@ -54,8 +63,8 @@ export interface AgentRepository {
   attach(request: AttachStoredAgentRequest): AttachStoredAgentResult;
   findByName(name: string): StoredAgent | null;
   list(): StoredAgent[];
-  markByNameDisconnected(name: string, now: string): StoredAgent | null;
-  markAllConnectedDisconnected(now: string): StoredAgent[];
+  removeByName(name: string): StoredAgent | null;
+  removeAllConnected(): StoredAgent[];
   rebindAdapterSessionId(request: {
     name: string;
     adapterSessionId: string;
@@ -66,46 +75,17 @@ export interface AgentRepository {
 export function createAgentRepository(db: Database): AgentRepository {
   return {
     attach(request) {
+      // A found-by-name row is always connected: departure now means the row
+      // is physically deleted (see removeByName/removeAllConnected below),
+      // not status-flipped, so there is no "existing but disconnected" row
+      // left to reuse. Every successful attach is therefore a fresh insert.
       const existing = this.findByName(request.name);
 
-      if (existing?.status === "connected") {
+      if (existing) {
         return {
           ok: false,
           reason: "agent_name_already_connected",
           existing,
-        };
-      }
-
-      if (existing) {
-        const agent: StoredAgent = {
-          ...existing,
-          status: "connected",
-          cwd: request.cwd,
-          pairId: existing.pairId,
-          pairSlot: existing.pairSlot,
-          adapterSessionId: request.adapterSessionId ?? null,
-          lastSeenAt: request.now,
-          updatedAt: request.now,
-        };
-
-        db.prepare(
-          `
-            update agents
-            set
-              status = @status,
-              cwd = @cwd,
-              pair_id = @pairId,
-              pair_slot = @pairSlot,
-              adapter_session_id = @adapterSessionId,
-              last_seen_at = @lastSeenAt,
-              updated_at = @updatedAt
-            where id = @id
-          `,
-        ).run(agent);
-
-        return {
-          ok: true,
-          agent,
         };
       }
 
@@ -118,6 +98,9 @@ export function createAgentRepository(db: Database): AgentRepository {
         pairId: null,
         pairSlot: null,
         adapterSessionId: request.adapterSessionId ?? null,
+        role: request.role ?? null,
+        description: request.description ?? null,
+        instructions: request.instructions ?? null,
         lastSeenAt: request.now,
         createdAt: request.now,
         updatedAt: request.now,
@@ -134,6 +117,9 @@ export function createAgentRepository(db: Database): AgentRepository {
             pair_id,
             pair_slot,
             adapter_session_id,
+            role,
+            description,
+            instructions,
             last_seen_at,
             created_at,
             updated_at
@@ -146,6 +132,9 @@ export function createAgentRepository(db: Database): AgentRepository {
             @pairId,
             @pairSlot,
             @adapterSessionId,
+            @role,
+            @description,
+            @instructions,
             @lastSeenAt,
             @createdAt,
             @updatedAt
@@ -174,51 +163,27 @@ export function createAgentRepository(db: Database): AgentRepository {
         .map((row) => mapAgentRow(row as AgentRow));
     },
 
-    markByNameDisconnected(name, now) {
+    removeByName(name) {
       const existing = this.findByName(name);
 
       if (!existing) {
         return null;
       }
 
-      db.prepare(
-        `
-          update agents
-          set
-            status = 'disconnected',
-            updated_at = @now
-          where name = @name
-        `,
-      ).run({ name, now });
+      db.prepare("delete from agents where name = ?").run(name);
 
-      return {
-        ...existing,
-        status: "disconnected",
-        updatedAt: now,
-      };
+      return existing;
     },
 
-    markAllConnectedDisconnected(now) {
+    removeAllConnected() {
       const connected = db
         .prepare("select * from agents where status = 'connected' order by id")
         .all()
         .map((row) => mapAgentRow(row as AgentRow));
 
-      db.prepare(
-        `
-          update agents
-          set
-            status = 'disconnected',
-            updated_at = @now
-          where status = 'connected'
-        `,
-      ).run({ now });
+      db.exec("delete from agents where status = 'connected'");
 
-      return connected.map((agent) => ({
-        ...agent,
-        status: "disconnected",
-        updatedAt: now,
-      }));
+      return connected;
     },
 
     rebindAdapterSessionId(request) {
@@ -257,6 +222,9 @@ function mapAgentRow(row: AgentRow): StoredAgent {
     pairId: row.pair_id,
     pairSlot: row.pair_slot,
     adapterSessionId: row.adapter_session_id,
+    role: row.role,
+    description: row.description,
+    instructions: row.instructions,
     lastSeenAt: row.last_seen_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

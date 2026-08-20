@@ -92,10 +92,11 @@ describe("Codex managed runtime failure — production attach wiring", () => {
       reason: { type: "ws_dropped", closeCode: 1006, closeReason: "network dropped" },
     });
 
+    // Physical delete: the row is removed, not status-flipped.
     const agentRow = db
       .prepare("select status from agents where name = 'impl'")
-      .get() as { status: string } | undefined;
-    expect(agentRow?.status).toBe("disconnected");
+      .get();
+    expect(agentRow).toBeUndefined();
     expect(
       db.prepare("select type from events where type = 'agent_runtime_failed'").all(),
     ).toHaveLength(1);

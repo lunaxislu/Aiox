@@ -488,7 +488,7 @@ describe("daemon disconnectCodexChannel", () => {
     db.close();
   });
 
-  it("removes runtime from registry after disconnect", async () => {
+  it("treats channel disconnect as agent departure and removes its routes", async () => {
     const codexChannelRuntimes = new Map();
     const runtime = fakeCodexRuntime({
       endpoint: "ws://127.0.0.1:54321/",
@@ -511,11 +511,19 @@ describe("daemon disconnectCodexChannel", () => {
     });
     const token = (attach as { ok: true; codexChannelToken: string }).codexChannelToken;
     await client.registerCodexChannel({ agentName: "impl", token });
+    await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
+    await client.connect({ sourceName: "reviewer", targetNames: ["impl"] });
 
     const response = await client.disconnectCodexChannel({ agentName: "impl" });
 
     expect(response).toMatchObject({ ok: true, disconnected: true });
     expect(codexChannelRuntimes.has("impl")).toBe(false);
+    expect((await client.status()).agents.map((agent) => agent.name)).toEqual(["reviewer"]);
+    expect((await client.status()).routes).toEqual([]);
+    expect(await client.listReachablePeers({ agentName: "reviewer" })).toEqual({
+      ok: true,
+      peers: [],
+    });
   });
 });
 
@@ -1960,7 +1968,7 @@ describe("daemon receiveClaudeChannelReply", () => {
     ).toBe(false);
   });
 
-  it("surfaces deferred dispatch when a Codex reply target runtime is unavailable", async () => {
+  it("rejects a reply as correlation_mismatch once the original Codex sender's row is gone (physical delete, not just its runtime)", async () => {
     const setup = await setupPairedAgents(db);
     const parent = await setup.client.receiveCodexMessage({
       agentName: "impl",
@@ -1973,6 +1981,13 @@ describe("daemon receiveClaudeChannelReply", () => {
 
     await setup.client.detachAgent({ agentName: "impl" });
 
+    // Previously "impl" survived as a status-flipped row, so runReplyTransaction
+    // still found it via agents.list() and reached the
+    // target_runtime_unavailable-deferred branch. detachAgent now physically
+    // removes the row, so that same lookup
+    // (agents.list().find(agent => agent.id === originatingMessage.sourceAgentId))
+    // finds nothing at all -- correlation_mismatch fires before any reply
+    // message/delivery/event is created.
     const response = await setup.client.receiveClaudeChannelReply({
       agentName: "reviewer",
       messageId: "test-claude-reply-message",
@@ -1980,30 +1995,12 @@ describe("daemon receiveClaudeChannelReply", () => {
       content: { text: "review complete" },
     });
 
-    expect(response).toMatchObject({
-      ok: true,
-      dispatch: {
-        delivered: 0,
-        deferred: [
-          {
-            reason: "target_runtime_unavailable",
-            eligibility: "requires target codex runtime",
-          },
-        ],
-        failed: [],
-      },
-    });
+    expect(response).toEqual({ ok: false, reason: "correlation_mismatch" });
     expect(
-      db.prepare("select status from message_deliveries order by rowid desc limit 1").get(),
-    ).toMatchObject({ status: "queued" });
+      db.prepare("select id from messages where id = ?").get("test-claude-reply-message"),
+    ).toBeUndefined();
     expect(
       setup.runtime.requests.some((request) => request.method === "turn/start"),
-    ).toBe(false);
-    const replyStatusEvents = db
-      .prepare("select data_json from events where type = 'delivery_status_changed'")
-      .all() as { data_json: string }[];
-    expect(
-      replyStatusEvents.some((event) => JSON.parse(event.data_json).status === "delivering"),
     ).toBe(false);
   });
 

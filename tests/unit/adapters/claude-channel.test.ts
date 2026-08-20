@@ -19,11 +19,15 @@ import { createEventRepository } from "../../../src/store/repositories/events.js
 import { applySchema } from "../../../src/store/schema.js";
 import {
   buildChannelNotification,
+  CLAUDE_AGENTS_LIST_DESCRIPTION,
   CLAUDE_CHANNEL_INSTRUCTIONS,
   CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION,
   CLAUDE_REPLY_DESCRIPTION,
   CLAUDE_SEND_DESCRIPTION,
+  agentsListInputSchema,
+  agentsListOutputSchema,
   type ClaudeChannelDaemonClient,
+  createAgentsListHandler,
   createClaudeChannelMcpServer,
   createReplyHandler,
   createRetransmitUnconfirmedDeliveryHandler,
@@ -290,9 +294,8 @@ describe("daemon disconnectClaudeChannel", () => {
 
     expect(response).toMatchObject({ ok: true, disconnected: true });
     expect(claudeChannelRuntimes.has("alpha")).toBe(false);
-    expect((await client.status()).agents).toMatchObject([
-      { name: "alpha", kind: "claude", status: "disconnected" },
-    ]);
+    // Physical delete: the agent's row is removed, not status-flipped.
+    expect((await client.status()).agents).toEqual([]);
   });
 
   it("rejects a previously registered token after disconnectClaudeChannel", async () => {
@@ -347,9 +350,7 @@ describe("daemon disconnectClaudeChannel", () => {
     const response = await client.disconnectClaudeChannel({ agentName: "alpha" });
 
     expect(response).toMatchObject({ ok: true, disconnected: true });
-    expect((await client.status()).agents).toMatchObject([
-      { name: "alpha", kind: "claude", status: "disconnected" },
-    ]);
+    expect((await client.status()).agents).toEqual([]);
   });
 
   it("disconnect when not registered returns disconnected: false", async () => {
@@ -446,9 +447,7 @@ describe("Claude credential cleanup — attach rollback, detach, and stop", () =
     await client.rollbackAgentAttach({ agentName: "alpha" });
 
     expect(claudeChannelRuntimes.has("alpha")).toBe(false);
-    expect((await client.status()).agents).toMatchObject([
-      { name: "alpha", kind: "claude", status: "disconnected" },
-    ]);
+    expect((await client.status()).agents).toEqual([]);
   });
 
   it("rejects the issued pending token for registration after detachAgent", async () => {
@@ -523,7 +522,7 @@ describe("Claude credential cleanup — attach rollback, detach, and stop", () =
     });
   });
 
-  it("defers dispatch to a Claude target's stale registered runtime instead of pushing to it after detachAgent", async () => {
+  it("never pushes to a Claude target's stale registered runtime after detachAgent -- the route is gone too", async () => {
     const claudeChannelRuntimes = new Map();
     let idCounter = 0;
     const state = createDaemonState({
@@ -553,20 +552,20 @@ describe("Claude credential cleanup — attach rollback, detach, and stop", () =
     await client.detachAgent({ agentName: "review-b" });
     expect(claudeChannelRuntimes.has("review-b")).toBe(false);
 
+    // detachAgent now removes review-b's row *and* its route
+    // (routes.removeAllForAgent) rather than just clearing its channel
+    // runtime, so review-a has no active route left at all -- there is no
+    // longer a "route survives, target unavailable" deferred state to
+    // reach; sending fails outright with no_active_routes, which is a
+    // stronger guarantee that a departed target's stale runtime can never
+    // be pushed to.
     const response = await client.receiveClaudeChannelMessage({
       agentName: "review-a",
       messageId: "claude-msg-1",
       content: { text: "hello after target detach" },
     });
 
-    expect(response).toMatchObject({
-      ok: true,
-      dispatch: {
-        delivered: 0,
-        deferred: [{ reason: "target_runtime_unavailable" }],
-        failed: [],
-      },
-    });
+    expect(response).toEqual({ ok: false, reason: "no_active_routes" });
   });
 
   it("rejects the issued pending token for registration after daemon stop", async () => {
@@ -634,23 +633,23 @@ describe("Claude credential cleanup — attach rollback, detach, and stop", () =
     await client.stop({ daemonOnly: false });
     expect(claudeChannelRuntimes.has("review-b")).toBe(false);
 
-    // Ingress authentication is out of Phase 0 scope (see the describe-block
-    // comment above), so a disconnected source can still call this; the
-    // property under test is that a disconnected TARGET's stale runtime is
-    // never used to push, regardless of the source's own state.
-    const response = await client.receiveClaudeChannelMessage({
-      agentName: "review-a",
-      messageId: "claude-msg-1",
-      content: { text: "hello after stop" },
-    });
-
-    expect(response).toMatchObject({
-      ok: true,
-      dispatch: {
-        delivered: 0,
-        deferred: [{ reason: "target_runtime_unavailable" }],
-        failed: [],
-      },
+    // A non-daemonOnly stop now physically removes *every* connected agent's
+    // row (removeAllConnected), source included -- there is no longer a
+    // "disconnected source can still call this" scenario to probe via a live
+    // send (the sibling detachAgent-based test above already covers "a
+    // stale target runtime is never pushed to while the source stays live").
+    // Assert the stronger, directly observable post-stop state instead.
+    expect((await client.status()).agents).toEqual([]);
+    await expect(
+      client.receiveClaudeChannelMessage({
+        agentName: "review-a",
+        messageId: "claude-msg-1",
+        content: { text: "hello after stop" },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "source_agent_not_found",
+      sourceName: "review-a",
     });
   });
 
@@ -1197,7 +1196,7 @@ describe("Claude channel MCP handlers", () => {
 // ---------------------------------------------------------------------------
 
 describe("Claude channel MCP factory — manual retransmit tool", () => {
-  it("registers send, reply, and aiox_retransmit_unconfirmed_delivery, no more", () => {
+  it("registers send, reply, aiox_retransmit_unconfirmed_delivery, and agents_list, no more", () => {
     const mcp = createClaudeChannelMcpServer({
       agentName: "reviewer",
       daemonSocketPath: "/tmp/aiox.sock",
@@ -1209,7 +1208,7 @@ describe("Claude channel MCP factory — manual retransmit tool", () => {
     );
 
     expect(toolNames.sort()).toEqual(
-      ["aiox_retransmit_unconfirmed_delivery", "reply", "send"].sort(),
+      ["aiox_retransmit_unconfirmed_delivery", "agents_list", "reply", "send"].sort(),
     );
   });
 
@@ -1235,6 +1234,159 @@ describe("Claude channel MCP factory — manual retransmit tool", () => {
         message_id: "message-1",
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("Claude channel MCP factory — agents_list tool", () => {
+  it("registers agents_list with its description, empty input schema, and peers output schema", () => {
+    const mcp = createClaudeChannelMcpServer({
+      agentName: "reviewer",
+      daemonSocketPath: "/tmp/aiox.sock",
+      createDaemonClient: () => fakeClaudeDaemonClient({}),
+    });
+
+    const registeredTool = (
+      mcp as unknown as {
+        _registeredTools: Record<
+          string,
+          {
+            description: string;
+            inputSchema: { safeParse(value: unknown): { success: boolean } };
+            outputSchema: { safeParse(value: unknown): { success: boolean } };
+          }
+        >;
+      }
+    )._registeredTools.agents_list!;
+
+    expect(registeredTool.description).toBe(CLAUDE_AGENTS_LIST_DESCRIPTION);
+    expect(registeredTool.inputSchema.safeParse({}).success).toBe(true);
+    expect(registeredTool.inputSchema.safeParse({ extra: "nope" }).success).toBe(false);
+    expect(registeredTool.outputSchema.safeParse({ peers: [] }).success).toBe(true);
+  });
+});
+
+describe("agentsListInputSchema / agentsListOutputSchema", () => {
+  it("accepts only an empty object as input", () => {
+    expect(agentsListInputSchema.safeParse({}).success).toBe(true);
+    expect(agentsListInputSchema.safeParse({ extra: "nope" }).success).toBe(false);
+  });
+
+  it("accepts a peers array with role/description present or null", () => {
+    expect(
+      agentsListOutputSchema.safeParse({
+        peers: [
+          { name: "claude-frontend", type: "claude-code", role: "frontend", description: "renders the UI" },
+          { name: "qa-bot", type: "codex", role: null, description: null },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("Claude channel MCP handlers — agents_list tool", () => {
+  const options = {
+    agentName: "reviewer",
+    daemonSocketPath: "/tmp/aiox.sock",
+  } as const;
+
+  it("forwards the calling agent's name and returns its sendable peers", async () => {
+    let requestedAgentName: string | undefined;
+    const handler = createAgentsListHandler({
+      ...options,
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          listReachablePeers: async (request) => {
+            requestedAgentName = request.agentName;
+            return {
+              ok: true,
+              peers: [
+                { name: "claude-architect", type: "claude-code", role: "architect", description: null },
+              ],
+            };
+          },
+        }),
+    });
+
+    const result = await handler({});
+
+    expect(requestedAgentName).toBe("reviewer");
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toEqual({
+      peers: [
+        { name: "claude-architect", type: "claude-code", role: "architect", description: null },
+      ],
+    });
+  });
+
+  it("returns an empty peers array (not an error) when the caller has no active route", async () => {
+    const handler = createAgentsListHandler({
+      ...options,
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          listReachablePeers: async () => ({ ok: true, peers: [] }),
+        }),
+    });
+
+    const result = await handler({});
+
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toEqual({ peers: [] });
+  });
+
+  it("maps a daemon-reported source_agent_not_found to an MCP tool execution error", async () => {
+    const handler = createAgentsListHandler({
+      ...options,
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          listReachablePeers: async () => ({
+            ok: false,
+            reason: "source_agent_not_found",
+            sourceName: "reviewer",
+          }),
+        }),
+    });
+
+    const result = await handler({});
+
+    expect(result.isError).toBe(true);
+    const text = (result.content?.[0] as { text?: string } | undefined)?.text ?? "";
+    expect(text).toContain("source_agent_not_found");
+  });
+
+  it("maps a daemon socket error to daemon_call_failed", async () => {
+    const handler = createAgentsListHandler({
+      ...options,
+      createDaemonClient: () =>
+        fakeClaudeDaemonClient({
+          listReachablePeers: async () => {
+            throw new Error("ECONNREFUSED");
+          },
+        }),
+    });
+
+    const result = await handler({});
+
+    expect(result.isError).toBe(true);
+    const text = (result.content?.[0] as { text?: string } | undefined)?.text ?? "";
+    expect(text).toContain("daemon_call_failed");
+  });
+
+  it("closes the daemon client after every tool call", async () => {
+    let closed = 0;
+    const handler = createAgentsListHandler({
+      ...options,
+      createDaemonClient: () => ({
+        ...fakeClaudeDaemonClient({}),
+        close: () => {
+          closed += 1;
+        },
+      }),
+    });
+
+    await handler({});
+    await handler({});
+
+    expect(closed).toBe(2);
   });
 });
 
@@ -1654,6 +1806,7 @@ function fakeClaudeDaemonClient(
       | "receiveClaudeChannelMessage"
       | "receiveClaudeChannelReply"
       | "retransmitUnconfirmedDelivery"
+      | "listReachablePeers"
     >
   >,
 ): ClaudeChannelDaemonClient {
@@ -1671,6 +1824,8 @@ function fakeClaudeDaemonClient(
         reason: "delivery_not_found" as const,
         deliveryId: "missing",
       })),
+    listReachablePeers:
+      overrides.listReachablePeers ?? (async () => ({ ok: true as const, peers: [] })),
     close() {},
   };
 }

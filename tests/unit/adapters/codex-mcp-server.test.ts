@@ -5,10 +5,14 @@ vi.mock("../../../src/core/public-ids.js", () => ({
 }));
 
 import {
+  AIOX_AGENTS_LIST_DESCRIPTION,
   AIOX_REPLY_DESCRIPTION,
   AIOX_SEND_MESSAGE_DESCRIPTION,
   CODEX_INGRESS_INSTRUCTIONS,
+  agentsListInputSchema,
+  agentsListOutputSchema,
   type CodexIngressDaemonClient,
+  createAgentsListHandler,
   createCodexIngressMcpServer,
   retransmitUnconfirmedDeliveryInputSchema,
   createReplyHandler,
@@ -399,6 +403,154 @@ describe("codex MCP server — handlers", () => {
   });
 });
 
+describe("codex MCP server — agents_list handler", () => {
+  it("has an empty input schema", () => {
+    expect(agentsListInputSchema.safeParse({}).success).toBe(true);
+    expect(agentsListInputSchema.safeParse({ extra: "nope" }).success).toBe(false);
+  });
+
+  it("forwards the calling agent's name and returns its sendable peers", async () => {
+    let requestedAgentName: string | undefined;
+    const handler = createAgentsListHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          listReachablePeers: async (request) => {
+            requestedAgentName = request.agentName;
+            return {
+              ok: true,
+              peers: [
+                { name: "claude-frontend", type: "claude-code", role: "frontend", description: "renders the UI" },
+                { name: "qa-bot", type: "codex", role: null, description: null },
+              ],
+            };
+          },
+        }),
+    });
+
+    const result = await handler({});
+
+    expect(requestedAgentName).toBe("impl");
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toEqual({
+      peers: [
+        { name: "claude-frontend", type: "claude-code", role: "frontend", description: "renders the UI" },
+        { name: "qa-bot", type: "codex", role: null, description: null },
+      ],
+    });
+    expect(agentsListOutputSchema.safeParse(result.structuredContent).success).toBe(true);
+  });
+
+  it("returns an empty peers array (not an error) when the caller has no active route", async () => {
+    const handler = createAgentsListHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          listReachablePeers: async () => ({ ok: true, peers: [] }),
+        }),
+    });
+
+    const result = await handler({});
+
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toEqual({ peers: [] });
+  });
+
+  it("maps a daemon-reported source_agent_not_found to an MCP tool execution error", async () => {
+    const handler = createAgentsListHandler({
+      agentName: "ghost",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          listReachablePeers: async () => ({
+            ok: false,
+            reason: "source_agent_not_found",
+            sourceName: "ghost",
+          }),
+        }),
+    });
+
+    const result = await handler({});
+
+    expect(result.isError).toBe(true);
+    const text = (result.content?.[0] as { text?: string } | undefined)?.text ?? "";
+    expect(text).toContain("source_agent_not_found");
+  });
+
+  it("maps a daemon socket error to daemon_call_failed", async () => {
+    const handler = createAgentsListHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () =>
+        fakeDaemonClient({
+          listReachablePeers: async () => {
+            throw new Error("ECONNREFUSED");
+          },
+        }),
+    });
+
+    const result = await handler({});
+
+    expect(result.isError).toBe(true);
+    const text = (result.content?.[0] as { text?: string } | undefined)?.text ?? "";
+    expect(text).toContain("daemon_call_failed");
+  });
+
+  it("closes the daemon client after every tool call", async () => {
+    let closed = 0;
+    const handler = createAgentsListHandler({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () => ({
+        ...fakeDaemonClient(),
+        close: () => {
+          closed += 1;
+        },
+      }),
+    });
+
+    await handler({});
+    await handler({});
+
+    expect(closed).toBe(2);
+  });
+});
+
+describe("codex MCP server — agents_list registration", () => {
+  it("registers agents_list with its description, empty input schema, and peers output schema", () => {
+    const mcp = createCodexIngressMcpServer({
+      agentName: "impl",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/test.sock",
+      createDaemonClient: () => fakeDaemonClient(),
+    });
+
+    const registeredTool = (
+      mcp as unknown as {
+        _registeredTools: Record<
+          string,
+          {
+            description: string;
+            inputSchema: { safeParse(value: unknown): { success: boolean } };
+            outputSchema: { safeParse(value: unknown): { success: boolean } };
+          }
+        >;
+      }
+    )._registeredTools.agents_list!;
+
+    expect(registeredTool.description).toBe(AIOX_AGENTS_LIST_DESCRIPTION);
+    expect(registeredTool.inputSchema.safeParse({}).success).toBe(true);
+    expect(registeredTool.outputSchema.safeParse({ peers: [] }).success).toBe(true);
+  });
+});
+
 function typedSend(text: string) {
   return {
     type: "question" as const,
@@ -465,7 +617,7 @@ describe("codex MCP server — factory", () => {
     expect(toolNames).not.toContain("aiox_send_message");
     expect(toolNames).not.toContain("aiox_reply");
     expect(toolNames.sort()).toEqual(
-      ["aiox_retransmit_unconfirmed_delivery", "reply", "send"].sort(),
+      ["aiox_retransmit_unconfirmed_delivery", "agents_list", "reply", "send"].sort(),
     );
   });
 
@@ -724,6 +876,7 @@ function fakeDaemonClient(
       | "receiveCodexReply"
       | "retransmitUnconfirmedDelivery"
       | "registerCodexChannel"
+      | "listReachablePeers"
     >
   > = {},
 ): CodexIngressDaemonClient {
@@ -739,6 +892,8 @@ function fakeDaemonClient(
     retransmitUnconfirmedDelivery:
       overrides.retransmitUnconfirmedDelivery ??
       (async () => ({ ok: false as const, reason: "delivery_not_found" as const, deliveryId: "missing" })),
+    listReachablePeers:
+      overrides.listReachablePeers ?? (async () => ({ ok: true as const, peers: [] })),
     close() {
       /* no-op */
     },

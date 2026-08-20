@@ -24,12 +24,11 @@ export type ParsedCommand = {
   name: string;
   pairName?: string;
   resumeSessionId?: string;
+  role?: string;
+  description?: string;
+  instructions?: string;
 } | {
   kind: "connect";
-  sourceName: string;
-  targetNames: string[];
-} | {
-  kind: "disconnect";
   sourceName: string;
   targetNames: string[];
 } | {
@@ -152,6 +151,17 @@ function includesVersionFlag(argv: readonly string[]): boolean {
   return argv.includes("--version") || argv.includes("-V");
 }
 
+function requireNonEmptyText(value: string, fieldLabel: string): string {
+  if (value.trim().length === 0) {
+    throw new CliParseError(`${fieldLabel} must not be empty`, {
+      code: "aiox.invalidOptionValue",
+      exitCode: parseErrorExitCode,
+    });
+  }
+
+  return value;
+}
+
 function requireNonEmptyName(value: string): string {
   if (value.trim().length === 0) {
     throw new CliParseError("Name must not be empty", {
@@ -219,8 +229,7 @@ function createProgram({ version, output, setParsed }: CreateProgramOptions): Co
 
   addAgentAttachCommand(program, "codex", setParsed);
   addAgentAttachCommand(program, "claude", setParsed);
-  addRoutingCommand(program, "connect", setParsed);
-  addRoutingCommand(program, "disconnect", setParsed);
+  addConnectCommand(program, setParsed);
   addPairCommand(program, setParsed);
   addGlobalCommands(program, setParsed);
 
@@ -246,7 +255,10 @@ function addAgentAttachCommand(
 ): void {
   const command = program
     .command(agentKind)
-    .description(`Attach ${agentKind} --name <name> [--pair <pair-name>]`);
+    .description(
+      `Attach ${agentKind} --name <name> [--pair <pair-name>] ` +
+        "[--role <role>] [--description <description>] [--instructions <instructions>]",
+    );
 
   // claude only: --name must be a plain (non-mandatory-at-the-commander-level)
   // option so that `claude setup` below can dispatch to its nested subcommand
@@ -266,29 +278,56 @@ function addAgentAttachCommand(
     command.option("--resume <session-id>");
   }
 
-  command
-    .action((options: { name?: string; pair?: string; resume?: string }) => {
-      if (options.name === undefined) {
-        throw new CliParseError(`required option '--name <name>' not specified`, {
-          code: "aiox.missingRequiredOption",
-          exitCode: parseErrorExitCode,
-        });
-      }
-      const name = requireNonEmptyName(options.name);
-      const pairName = options.pair === undefined ? undefined : requireNonEmptyName(options.pair);
-      const resumeSessionId =
-        options.resume === undefined ? undefined : requireNonEmptyName(options.resume);
+  command.option("--role <role>");
+  command.option("--description <description>");
+  command.option("--instructions <instructions>");
 
-      setParsed(
-        {
-          kind: "agent-attach",
-          agentKind,
-          name,
-          ...(pairName === undefined ? {} : { pairName }),
-          ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
-        },
-      );
-    });
+  command
+    .action(
+      (options: {
+        name?: string;
+        pair?: string;
+        resume?: string;
+        role?: string;
+        description?: string;
+        instructions?: string;
+      }) => {
+        if (options.name === undefined) {
+          throw new CliParseError(`required option '--name <name>' not specified`, {
+            code: "aiox.missingRequiredOption",
+            exitCode: parseErrorExitCode,
+          });
+        }
+        const name = requireNonEmptyName(options.name);
+        const pairName =
+          options.pair === undefined ? undefined : requireNonEmptyName(options.pair);
+        const resumeSessionId =
+          options.resume === undefined ? undefined : requireNonEmptyName(options.resume);
+        const role =
+          options.role === undefined ? undefined : requireNonEmptyText(options.role, "--role");
+        const description =
+          options.description === undefined
+            ? undefined
+            : requireNonEmptyText(options.description, "--description");
+        const instructions =
+          options.instructions === undefined
+            ? undefined
+            : requireNonEmptyText(options.instructions, "--instructions");
+
+        setParsed(
+          {
+            kind: "agent-attach",
+            agentKind,
+            name,
+            ...(pairName === undefined ? {} : { pairName }),
+            ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
+            ...(role === undefined ? {} : { role }),
+            ...(description === undefined ? {} : { description }),
+            ...(instructions === undefined ? {} : { instructions }),
+          },
+        );
+      },
+    );
 
   if (agentKind === "claude") {
     command
@@ -306,14 +345,13 @@ function addAgentAttachCommand(
   }
 }
 
-function addRoutingCommand(
+function addConnectCommand(
   program: Command,
-  kind: "connect" | "disconnect",
   setParsed: (command: ParsedCommand) => void,
 ): void {
   program
-    .command(`${kind} <source> [target...]`)
-    .description(`${kind} <source> <target...> directed routes`)
+    .command("connect <source> [target...]")
+    .description("connect <source> <target...> directed routes")
     .action((source: string, targets: string[]) => {
       if (targets.length === 0) {
         throw new CliParseError("At least one target is required", {
@@ -323,7 +361,7 @@ function addRoutingCommand(
       }
 
       setParsed({
-        kind,
+        kind: "connect",
         sourceName: requireNonEmptyName(source),
         targetNames: targets.map(requireNonEmptyName),
       });

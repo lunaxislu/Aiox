@@ -1,69 +1,8 @@
-import type { AgentKind } from "./agent-kind.js";
-
 export { agentKinds, type AgentKind } from "./agent-kind.js";
 
-export const agentInstanceStatuses = [
-  "pending_attach",
-  "connected",
-  "disconnected",
-  "stale",
-] as const;
+// An agent row exists only while connected. Departure deletes the agent and
+// its routes rather than status-flipping it. The status field is retained for
+// the `aiox status` AGENTS table shape.
+export const agentInstanceStatuses = ["connected"] as const;
 
 export type AgentInstanceStatus = (typeof agentInstanceStatuses)[number];
-
-export interface AgentInstance {
-  id: string;
-  name: string;
-  kind: AgentKind;
-  status: AgentInstanceStatus;
-}
-
-export interface AttachAgentRequest {
-  id: string;
-  name: string;
-  kind: AgentKind;
-}
-
-export type AttachAgentResult =
-  | {
-      ok: true;
-      agent: AgentInstance;
-    }
-  | {
-      ok: false;
-      reason: "agent_name_already_connected";
-      existing: AgentInstance;
-    };
-
-export function attachAgent(
-  agents: readonly AgentInstance[],
-  request: AttachAgentRequest,
-): AttachAgentResult {
-  const existing = agents.find((agent) => agent.name === request.name);
-
-  if (existing?.status === "connected") {
-    return {
-      ok: false,
-      reason: "agent_name_already_connected",
-      existing,
-    };
-  }
-
-  if (existing) {
-    return {
-      ok: true,
-      agent: {
-        ...existing,
-        status: "connected",
-      },
-    };
-  }
-
-  return {
-    ok: true,
-    agent: {
-      ...request,
-      status: "connected",
-    },
-  };
-}

@@ -54,6 +54,9 @@ function fakeCodexServer() {
       registerCodexChannel: async () => {
         throw new Error("unused in schema-only tests");
       },
+      listReachablePeers: async () => {
+        throw new Error("unused in schema-only tests");
+      },
       close() {},
     }),
   });
@@ -73,14 +76,22 @@ function fakeClaudeServer() {
       retransmitUnconfirmedDelivery: async () => {
         throw new Error("unused in schema-only tests");
       },
+      listReachablePeers: async () => {
+        throw new Error("unused in schema-only tests");
+      },
       close() {},
     }),
   });
 }
 
 describe("cross-adapter public MCP tool contract parity", () => {
-  it("Codex and Claude register exactly send, reply, aiox_retransmit_unconfirmed_delivery", () => {
-    const expectedTools = ["send", "reply", "aiox_retransmit_unconfirmed_delivery"].sort();
+  it("Codex and Claude register exactly send, reply, aiox_retransmit_unconfirmed_delivery, agents_list", () => {
+    const expectedTools = [
+      "send",
+      "reply",
+      "aiox_retransmit_unconfirmed_delivery",
+      "agents_list",
+    ].sort();
     const codexTools = Object.keys(registeredTools(fakeCodexServer())).sort();
     const claudeTools = Object.keys(registeredTools(fakeClaudeServer())).sort();
 
@@ -302,6 +313,47 @@ describe("cross-adapter aiox_retransmit_unconfirmed_delivery output-schema parit
       message_id: "message-1",
     };
     const { codexSchema, claudeSchema } = retransmitOutputSchemas();
+
+    expect(codexSchema.parse(example)).toEqual(example);
+    expect(claudeSchema.parse(example)).toEqual(example);
+  });
+});
+
+describe("cross-adapter agents_list schema parity", () => {
+  it("Codex and Claude agents_list accept the same empty input", () => {
+    const codexSchema = registeredTools(fakeCodexServer()).agents_list!.inputSchema;
+    const claudeSchema = registeredTools(fakeClaudeServer()).agents_list!.inputSchema;
+
+    expect(codexSchema.parse({})).toEqual({});
+    expect(claudeSchema.parse({})).toEqual({});
+  });
+
+  it("Codex and Claude agents_list reject an extra top-level field", () => {
+    const codexSchema = registeredTools(fakeCodexServer()).agents_list!.inputSchema;
+    const claudeSchema = registeredTools(fakeClaudeServer()).agents_list!.inputSchema;
+
+    expect(codexSchema.safeParse({ extra: "nope" }).success).toBe(false);
+    expect(claudeSchema.safeParse({ extra: "nope" }).success).toBe(false);
+  });
+
+  it("Codex and Claude agents_list accept the same peers-populated result shape", () => {
+    const example = {
+      peers: [
+        { name: "claude-frontend", type: "claude-code", role: "frontend", description: "renders the UI" },
+        { name: "qa-bot", type: "codex", role: null, description: null },
+      ],
+    };
+    const codexSchema = registeredTools(fakeCodexServer()).agents_list!.outputSchema;
+    const claudeSchema = registeredTools(fakeClaudeServer()).agents_list!.outputSchema;
+
+    expect(codexSchema.parse(example)).toEqual(example);
+    expect(claudeSchema.parse(example)).toEqual(example);
+  });
+
+  it("Codex and Claude agents_list accept the same empty-peers result shape", () => {
+    const example = { peers: [] };
+    const codexSchema = registeredTools(fakeCodexServer()).agents_list!.outputSchema;
+    const claudeSchema = registeredTools(fakeClaudeServer()).agents_list!.outputSchema;
 
     expect(codexSchema.parse(example)).toEqual(example);
     expect(claudeSchema.parse(example)).toEqual(example);

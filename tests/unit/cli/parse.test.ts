@@ -132,6 +132,52 @@ describe("CLI parser", () => {
     });
   });
 
+  it("parses codex attach with role, description, and instructions", () => {
+    expect(
+      parseCli([
+        "codex",
+        "--name",
+        "impl",
+        "--role",
+        "backend",
+        "--description",
+        "implements the API",
+        "--instructions",
+        "always run tests before replying",
+      ]),
+    ).toEqual({
+      kind: "agent-attach",
+      agentKind: "codex",
+      name: "impl",
+      role: "backend",
+      description: "implements the API",
+      instructions: "always run tests before replying",
+    });
+  });
+
+  it("parses claude attach with role, description, and instructions", () => {
+    expect(
+      parseCli([
+        "claude",
+        "--name",
+        "review",
+        "--role",
+        "frontend",
+        "--description",
+        "reviews UI changes",
+        "--instructions",
+        "flag accessibility issues",
+      ]),
+    ).toEqual({
+      kind: "agent-attach",
+      agentKind: "claude",
+      name: "review",
+      role: "frontend",
+      description: "reviews UI changes",
+      instructions: "flag accessibility issues",
+    });
+  });
+
   it("rejects codex attach without a name option", () => {
     expectCliParseError(["codex"], "aiox.missingMandatoryOptionValue");
   });
@@ -193,6 +239,27 @@ describe("CLI parser", () => {
     expectCliParseError(["codex", "--name", ""], "aiox.invalidName");
   });
 
+  it("rejects an empty --role value", () => {
+    expectCliParseError(
+      ["codex", "--name", "impl", "--role", ""],
+      "aiox.invalidOptionValue",
+    );
+  });
+
+  it("rejects an empty --description value", () => {
+    expectCliParseError(
+      ["codex", "--name", "impl", "--description", ""],
+      "aiox.invalidOptionValue",
+    );
+  });
+
+  it("rejects an empty --instructions value", () => {
+    expectCliParseError(
+      ["codex", "--name", "impl", "--instructions", ""],
+      "aiox.invalidOptionValue",
+    );
+  });
+
   it("parses connect with multiple targets", () => {
     expect(parseCli(["connect", "a", "b", "c"])).toEqual({
       kind: "connect",
@@ -209,24 +276,12 @@ describe("CLI parser", () => {
     });
   });
 
-  it("parses disconnect with multiple targets", () => {
-    expect(parseCli(["disconnect", "a", "b", "c"])).toEqual({
-      kind: "disconnect",
-      sourceName: "a",
-      targetNames: ["b", "c"],
-    });
-  });
-
   it("rejects connect without positionals", () => {
     expectCliParseError(["connect"], "aiox.missingArgument");
   });
 
   it("rejects connect without targets", () => {
     expectCliParseError(["connect", "a"], "aiox.missingTargets");
-  });
-
-  it("rejects disconnect without targets", () => {
-    expectCliParseError(["disconnect", "a"], "aiox.missingTargets");
   });
 
   it("rejects an empty routing source name", () => {
@@ -282,6 +337,10 @@ describe("CLI parser", () => {
 
   it("rejects an unknown global status flag", () => {
     expectCliParseError(["status", "--bogus"], "aiox.unknownOption");
+  });
+
+  it("rejects the removed disconnect command rather than retaining a compatibility alias", () => {
+    expectCliParseError(["disconnect", "source", "target"], "aiox.unknownCommand");
   });
 
   it("rejects global stop with an extra positional", () => {

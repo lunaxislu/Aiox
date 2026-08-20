@@ -159,6 +159,9 @@ describe("SQLite schema", () => {
       "pair_id",
       "pair_slot",
       "adapter_session_id",
+      "role",
+      "description",
+      "instructions",
       "last_seen_at",
       "created_at",
       "updated_at",
@@ -331,5 +334,40 @@ describe("SQLite schema", () => {
     expect(columns.find((column) => column.name === "id")).toMatchObject({
       pk: 1,
     });
+  });
+
+  it("removes non-connected agent rows and any route referencing them during migration 7", () => {
+    db = new Database(":memory:");
+    applySchema(db);
+    db.prepare("delete from schema_version where version = 7").run();
+
+    const insertAgent = db.prepare(`
+      insert into agents (id, name, kind, status, cwd, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertAgent.run("agent-connected-1", "impl", "codex", "connected", "/repo", "2026-01-01", "2026-01-01");
+    insertAgent.run("agent-connected-2", "reviewer", "claude", "connected", "/repo", "2026-01-01", "2026-01-01");
+    // Predates the physical-delete redesign: a row left over from the old
+    // status-flip disconnect model, which the new code never produces or
+    // reads but which would otherwise keep showing up as a stale peer.
+    insertAgent.run("agent-stale", "old-researcher", "claude", "disconnected", "/repo", "2026-01-01", "2026-01-01");
+
+    const insertRoute = db.prepare(`
+      insert into routes (id, source_agent_id, target_agent_id, status, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?)
+    `);
+    insertRoute.run("route-live", "agent-connected-1", "agent-connected-2", "active", "2026-01-01", "2026-01-01");
+    insertRoute.run("route-stale-target", "agent-connected-1", "agent-stale", "active", "2026-01-01", "2026-01-01");
+    insertRoute.run("route-stale-source", "agent-stale", "agent-connected-2", "active", "2026-01-01", "2026-01-01");
+
+    applySchema(db);
+
+    expect(db.prepare("select id from agents order by id").all()).toEqual([
+      { id: "agent-connected-1" },
+      { id: "agent-connected-2" },
+    ]);
+    expect(db.prepare("select id from routes order by id").all()).toEqual([
+      { id: "route-live" },
+    ]);
   });
 });

@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { createPublicMessageId } from "../../core/public-ids.js";
 import type {
+  ListReachablePeersResponse,
+  PeerDto,
   ReceiveCodexMessageResponse,
   RetransmitUnconfirmedDeliveryResponse,
   RegisterCodexChannelResponse,
@@ -156,6 +158,11 @@ export const AIOX_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION =
   "Manually retransmit one unconfirmed delivery only after explicit duplicate-risk confirmation. " +
   "The target must have a ready Codex runtime and bound thread; this action never queues and a failed/rejected manual attempt preserves unconfirmed state.";
 
+export const AIOX_AGENTS_LIST_DESCRIPTION =
+  "List the peer agents this agent can currently send to (its outbound-sendable targets). " +
+  "Takes no input. Returns { peers: [] } when there is no active route to send through, which is not an error. " +
+  "Routes through the daemon.";
+
 export interface CodexIngressDaemonClient {
   receiveCodexMessage(
     request: ReceiveCodexMessageRequest,
@@ -169,6 +176,9 @@ export interface CodexIngressDaemonClient {
   registerCodexChannel(
     request: RegisterCodexChannelRequest,
   ): Promise<RegisterCodexChannelResponse>;
+  listReachablePeers(request: {
+    agentName: string;
+  }): Promise<ListReachablePeersResponse>;
   close(): void;
 }
 
@@ -212,6 +222,12 @@ export interface RetransmitUnconfirmedDeliveryInput {
   confirmDuplicateRisk: true;
 }
 
+export interface AgentsListToolResult {
+  content: { type: "text"; text: string }[];
+  structuredContent?: { peers: PeerDto[] };
+  isError?: boolean;
+}
+
 const agentIntentSchema = z.enum([
   "delegation",
   "discussion",
@@ -240,6 +256,19 @@ export const retransmitUnconfirmedDeliveryInputSchema = z.object({
   deliveryId: z.string().min(1),
   confirmDuplicateRisk: z.literal(true),
 }).strict();
+
+export const agentsListInputSchema = z.object({}).strict();
+
+const peerOutputSchema = z.object({
+  name: z.string(),
+  type: z.enum(["codex", "claude-code"]),
+  role: z.string().nullable(),
+  description: z.string().nullable(),
+});
+
+export const agentsListOutputSchema = z.object({
+  peers: z.array(peerOutputSchema),
+});
 
 export function createSendMessageHandler(
   options: CodexIngressMcpServerOptions,
@@ -367,6 +396,39 @@ export function createRetransmitUnconfirmedDeliveryHandler(
   };
 }
 
+export function createAgentsListHandler(
+  options: CodexIngressMcpServerOptions,
+): (input: Record<string, never>) => Promise<AgentsListToolResult> {
+  const createDaemonClient = resolveDaemonClient(options);
+  return async () => {
+    logEvent("agents_list_tool_called", { agentName: options.agentName });
+    const client = createDaemonClient({ socketPath: options.daemonSocketPath });
+    try {
+      const result = await client.listReachablePeers({
+        agentName: options.agentName,
+      });
+      if (!result.ok) {
+        return errorResult(result.reason, JSON.stringify(result));
+      }
+      return {
+        content: [{ type: "text" as const, text: summarizePeers(result.peers) }],
+        structuredContent: { peers: result.peers },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return errorResult("daemon_call_failed", message);
+    } finally {
+      client.close();
+    }
+  };
+}
+
+function summarizePeers(peers: readonly PeerDto[]): string {
+  return peers.length === 0
+    ? "no reachable peers: no active outbound route from this agent"
+    : `peers: ${peers.map((peer) => peer.name).join(", ")}`;
+}
+
 function resolveDaemonClient(
   options: CodexIngressMcpServerOptions,
 ): (opts: { socketPath: string }) => CodexIngressDaemonClient {
@@ -393,6 +455,7 @@ export function createCodexIngressMcpServer(
   const sendHandler = createSendMessageHandler(options);
   const replyHandler = createReplyHandler(options);
   const retransmitHandler = createRetransmitUnconfirmedDeliveryHandler(options);
+  const agentsListHandler = createAgentsListHandler(options);
 
   mcp.registerTool(
     "send",
@@ -437,6 +500,16 @@ export function createCodexIngressMcpServer(
       ]),
     },
     retransmitHandler as never,
+  );
+
+  mcp.registerTool(
+    "agents_list",
+    {
+      description: AIOX_AGENTS_LIST_DESCRIPTION,
+      inputSchema: agentsListInputSchema,
+      outputSchema: agentsListOutputSchema,
+    },
+    agentsListHandler as never,
   );
 
   return mcp;

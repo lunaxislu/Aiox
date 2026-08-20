@@ -79,7 +79,7 @@ describe("CLI output formatting", () => {
           id: "agent-2",
           name: "reviewer",
           kind: "claude",
-          status: "disconnected",
+          status: "connected",
           cwd: "/repo",
           pairId: "pair-1",
           deliveryDiagnostics: {
@@ -130,7 +130,7 @@ describe("CLI output formatting", () => {
     expect(output).toContain("AGENTS\n");
     expect(output).toContain("NAME      KIND    STATUS\n");
     expect(output).toContain("impl      codex   connected\n");
-    expect(output).toContain("reviewer  claude  disconnected\n");
+    expect(output).toContain("reviewer  claude  connected\n");
     expect(output.replace(/ +/g, " ")).toContain(
       [
         "DELIVERY GUARANTEES",

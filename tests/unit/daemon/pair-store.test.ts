@@ -116,6 +116,9 @@ describe("daemon pair store persistence", () => {
         pair_id: "pair-1",
         pair_slot: "a",
         adapter_session_id: null,
+        role: null,
+        description: null,
+        instructions: null,
         last_seen_at: "2026-05-18T00:00:00.000Z",
         created_at: "2026-05-18T00:00:00.000Z",
         updated_at: "2026-05-18T00:00:00.000Z",
@@ -228,42 +231,17 @@ describe("daemon pair store persistence", () => {
     expect(readRouteRows()).toHaveLength(2);
   });
 
-  it("rejects a kind mismatch during pair reconnect without changing agent, pair, route, or event rows", async () => {
-    const client = createClient(["pair-1", "agent-codex", "agent-reused"]);
-
-    await client.createPair({ name: "feature-x" });
-    await client.attachAgent({
-      kind: "codex",
-      name: "impl",
-      cwd: "/repo",
-    });
-    db.prepare("update agents set status = 'disconnected' where id = ?").run(
-      "agent-codex",
-    );
-    const agentsBefore = readAgentRows();
-    const pairsBefore = readPairRows();
-    const routesBefore = readRouteRows();
-    const eventsBefore = readEventRows();
-
-    expect(
-      await client.attachAgent({
-        kind: "claude",
-        name: "impl",
-        cwd: "/repo/reconnect",
-        pairName: "feature-x",
-      }),
-    ).toEqual({
-      ok: false,
-      reason: "agent_kind_mismatch",
-      agentId: "agent-codex",
-      expectedKind: "claude",
-      actualKind: "codex",
-    });
-    expect(readAgentRows()).toEqual(agentsBefore);
-    expect(readPairRows()).toEqual(pairsBefore);
-    expect(readRouteRows()).toEqual(routesBefore);
-    expect(readEventRows()).toEqual(eventsBefore);
-  });
+  // "rejects a kind mismatch during pair reconnect..." and "surfaces
+  // agent_already_attached when a reconnect tries to occupy the same pair
+  // twice" (formerly here) tested pairs.attachAgent()'s agent_kind_mismatch /
+  // agent_already_attached branches by simulating a "disconnected" agent row
+  // that still occupied a pair slot via a raw status-flip SQL update. Under
+  // the physical-delete redesign that precondition no longer exists -- a
+  // departed agent's row (and pair slot) is deleted, not status-flipped
+  // (agents.attach() always fresh-inserts with the request's own kind), so
+  // both scenarios are now unreachable through attachAgent(). See the
+  // controlling package log's "W2 재오픈" entry and tasks/W2.md Task History
+  // for the full reachability analysis.
 
   it("marks a Codex-Codex pair ready and creates bidirectional routes by slot", async () => {
     const client = createClient([
@@ -368,8 +346,8 @@ describe("daemon pair store persistence", () => {
     expect(readRouteRows()).toHaveLength(2);
   });
 
-  it("surfaces agent_already_attached when a reconnect tries to occupy the same pair twice", async () => {
-    const client = createClient(["pair-1", "agent-codex", "agent-codex-reconnect"]);
+  it("frees a departed agent's pair slot immediately -- a different-kind agent can occupy it right away", async () => {
+    const client = createClient(["pair-1", "agent-first", "event-1", "agent-second"]);
 
     await client.createPair({ name: "feature-x" });
     await client.attachAgent({
@@ -377,24 +355,38 @@ describe("daemon pair store persistence", () => {
       name: "impl",
       cwd: "/repo",
       pairName: "feature-x",
+      slot: "a",
     });
-    db.prepare("update agents set status = 'disconnected' where id = ?").run(
-      "agent-codex",
-    );
 
+    await client.detachAgent({ agentName: "impl" });
+
+    // Physical delete means "impl"'s row -- and with it, slot "a" -- is gone
+    // immediately. Under the old status-flip model this same attach would
+    // have failed with pair_slot_occupied (or agent_kind_mismatch, if the
+    // stale row's kind was ever reused), because the departed row's
+    // pair_id/pair_slot lingered forever.
     expect(
       await client.attachAgent({
-        kind: "codex",
-        name: "impl",
+        kind: "claude",
+        name: "reviewer",
         cwd: "/repo",
         pairName: "feature-x",
-        slot: "b",
-      } as Parameters<typeof client.attachAgent>[0] & { slot: "b" }),
-    ).toEqual({
-      ok: false,
-      reason: "agent_already_attached",
-      existingAgentId: "agent-codex",
+        slot: "a",
+      }),
+    ).toMatchObject({
+      ok: true,
+      agent: {
+        id: "agent-second",
+        name: "reviewer",
+        kind: "claude",
+        pairId: "pair-1",
+      },
     });
+    // AgentDto never surfaces pairSlot (pre-existing, unrelated to this W),
+    // so confirm the slot directly against the row.
+    expect(readAgentRows()).toContainEqual(
+      expect.objectContaining({ id: "agent-second", pair_id: "pair-1", pair_slot: "a" }),
+    );
   });
 
   function createClient(ids: string[]) {

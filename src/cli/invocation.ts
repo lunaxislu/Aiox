@@ -164,6 +164,9 @@ export async function invokeParsedCommand(
         ...(command.resumeSessionId === undefined
           ? {}
           : { resumeSessionId: command.resumeSessionId }),
+        ...(command.role === undefined ? {} : { role: command.role }),
+        ...(command.description === undefined ? {} : { description: command.description }),
+        ...(command.instructions === undefined ? {} : { instructions: command.instructions }),
       });
       ensureOk(response);
       if (command.agentKind === "codex" && response.ok && response.codexRuntime) {
@@ -222,15 +225,6 @@ export async function invokeParsedCommand(
     case "connect": {
       const api = await options.runtime.getDaemonApi();
       const response = await api.connect({
-        sourceName: command.sourceName,
-        targetNames: command.targetNames,
-      });
-      ensureOk(response);
-      return success();
-    }
-    case "disconnect": {
-      const api = await options.runtime.getDaemonApi();
-      const response = await api.disconnect({
         sourceName: command.sourceName,
         targetNames: command.targetNames,
       });

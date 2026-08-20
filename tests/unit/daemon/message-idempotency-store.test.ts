@@ -162,10 +162,11 @@ describe("daemon message delivery idempotency store persistence", () => {
       type: "instruction",
       content: "please review this change",
     });
-    await client.disconnect({
-      sourceName: "impl",
-      targetNames: ["reviewer"],
-    });
+    // Route-level disconnect no longer exists (the only way a route
+    // disappears is its agent leaving entirely), so the route set is now
+    // changed by adding a second target rather than swapping one out.
+    // idempotency still must key off the *first* colliding target
+    // ("reviewer"/agent-one) even though "researcher" is also now active.
     await client.connect({
       sourceName: "impl",
       targetNames: ["researcher"],

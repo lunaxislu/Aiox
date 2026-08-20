@@ -10,6 +10,8 @@ import { z } from "zod";
 
 import { createPublicMessageId } from "../../core/public-ids.js";
 import type {
+  ListReachablePeersResponse,
+  PeerDto,
   ReceiveClaudeChannelMessageResponse,
   ReceiveClaudeChannelReplyResponse,
   RetransmitUnconfirmedDeliveryResponse,
@@ -219,6 +221,11 @@ export const CLAUDE_RETRANSMIT_UNCONFIRMED_DELIVERY_DESCRIPTION =
   "and risks delivering a duplicate message. A delivered result here means only that the channel transport " +
   "accepted the push, not that the Claude session received, read, or completed the delivery.";
 
+export const CLAUDE_AGENTS_LIST_DESCRIPTION =
+  "List the peer agents this agent can currently send to (its outbound-sendable targets). " +
+  "Takes no input. Returns { peers: [] } when there is no active route to send through, which is not an error. " +
+  "Routes through the daemon.";
+
 export interface ClaudeChannelDaemonClient {
   receiveClaudeChannelMessage(
     request: ReceiveClaudeChannelMessageRequest,
@@ -229,6 +236,9 @@ export interface ClaudeChannelDaemonClient {
   retransmitUnconfirmedDelivery(
     request: { deliveryId: string; confirmDuplicateRisk: boolean },
   ): Promise<RetransmitUnconfirmedDeliveryResponse>;
+  listReachablePeers(request: {
+    agentName: string;
+  }): Promise<ListReachablePeersResponse>;
   close(): void;
 }
 
@@ -271,6 +281,12 @@ export interface RetransmitUnconfirmedDeliveryInput {
   confirmDuplicateRisk: true;
 }
 
+export interface AgentsListToolResult {
+  content: { type: "text"; text: string }[];
+  structuredContent?: { peers: PeerDto[] };
+  isError?: boolean;
+}
+
 const agentIntentSchema = z.enum([
   "delegation",
   "discussion",
@@ -305,6 +321,19 @@ export const retransmitUnconfirmedDeliveryInputSchema = z
     confirmDuplicateRisk: z.literal(true),
   })
   .strict();
+
+export const agentsListInputSchema = z.object({}).strict();
+
+const peerOutputSchema = z.object({
+  name: z.string(),
+  type: z.enum(["codex", "claude-code"]),
+  role: z.string().nullable(),
+  description: z.string().nullable(),
+});
+
+export const agentsListOutputSchema = z.object({
+  peers: z.array(peerOutputSchema),
+});
 
 export function createClaudeChannelMcpServer(
   options: ClaudeChannelMcpServerOptions,
@@ -363,6 +392,16 @@ export function createClaudeChannelMcpServer(
       ]),
     },
     createRetransmitUnconfirmedDeliveryHandler(options) as never,
+  );
+
+  mcp.registerTool(
+    "agents_list",
+    {
+      description: CLAUDE_AGENTS_LIST_DESCRIPTION,
+      inputSchema: agentsListInputSchema,
+      outputSchema: agentsListOutputSchema,
+    },
+    createAgentsListHandler(options) as never,
   );
 
   return mcp;
@@ -514,6 +553,54 @@ export function createRetransmitUnconfirmedDeliveryHandler(
       client.close();
     }
   };
+}
+
+export function createAgentsListHandler(
+  options: ClaudeChannelMcpServerOptions,
+): (input: Record<string, never>) => Promise<AgentsListToolResult> {
+  const createDaemonClient = resolveDaemonClient(options);
+  return async () => {
+    logEvent("agents_list_tool_called", { agentName: options.agentName });
+    const client = createDaemonClient({ socketPath: options.daemonSocketPath });
+    try {
+      const result = await client.listReachablePeers({
+        agentName: options.agentName,
+      });
+      if (!result.ok) {
+        return agentsListErrorResult(result.reason, JSON.stringify(result));
+      }
+      return {
+        content: [{ type: "text" as const, text: summarizePeers(result.peers) }],
+        structuredContent: { peers: result.peers },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return agentsListErrorResult("daemon_call_failed", message);
+    } finally {
+      client.close();
+    }
+  };
+}
+
+// AgentsListToolResult's structuredContent shape (`{ peers }`) is not part of
+// the `{ ok, message_id, dispatch? }` messaging-tool contract that
+// ClaudeChannelToolResult/errorResult model, so this tool gets its own error
+// builder rather than reusing errorResult's ClaudeChannelToolResult-typed
+// return.
+function agentsListErrorResult(
+  reason: string,
+  detail: string,
+): AgentsListToolResult {
+  return {
+    isError: true,
+    content: [{ type: "text", text: `${reason}: ${detail}` }],
+  };
+}
+
+function summarizePeers(peers: readonly PeerDto[]): string {
+  return peers.length === 0
+    ? "no reachable peers: no active outbound route from this agent"
+    : `peers: ${peers.map((peer) => peer.name).join(", ")}`;
 }
 
 function resolveDaemonClient(

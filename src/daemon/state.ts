@@ -100,8 +100,8 @@ export interface DisconnectClaudeChannelRequest {
 export interface DisconnectClaudeChannelResult {
   ok: true;
   agentName: string;
-  // True when this call removed a registered channel runtime or transitioned
-  // an attached Claude agent to disconnected.
+  // True when this call removed a registered channel runtime or removed an
+  // attached Claude agent's row (and its routes).
   disconnected: boolean;
 }
 
@@ -270,6 +270,9 @@ export interface AttachAgentRequest {
   pairName?: string;
   slot?: PairSlot;
   resumeSessionId?: string;
+  role?: string;
+  description?: string;
+  instructions?: string;
 }
 
 export type AttachAgentResult =
@@ -336,27 +339,6 @@ export type ConnectResult =
       ok: true;
       created: StoredRoute[];
       alreadyExisted: StoredRoute[];
-    }
-  | {
-      ok: false;
-      reason: "source_agent_not_found";
-      sourceName: string;
-    }
-  | {
-      ok: false;
-      reason: "target_agent_not_found";
-      missing: string[];
-    };
-
-export interface DisconnectRequest {
-  sourceName: string;
-  targetNames: readonly string[];
-}
-
-export type DisconnectResult =
-  | {
-      ok: true;
-      removed: StoredRoute[];
     }
   | {
       ok: false;
@@ -561,6 +543,21 @@ export interface StatusResult {
   deliveryCounts: Record<MessageDeliveryStatus, number>;
 }
 
+export interface ListReachablePeersRequest {
+  agentName: string;
+}
+
+export type ListReachablePeersResult =
+  | {
+      ok: true;
+      peers: StoredAgent[];
+    }
+  | {
+      ok: false;
+      reason: "source_agent_not_found";
+      sourceName: string;
+    };
+
 export interface StopRequest {
   daemonOnly?: boolean;
 }
@@ -568,7 +565,7 @@ export interface StopRequest {
 export interface StopResult {
   ok: true;
   stoppedAgents: ReturnType<
-    ReturnType<typeof createAgentRepository>["markAllConnectedDisconnected"]
+    ReturnType<typeof createAgentRepository>["removeAllConnected"]
   >;
 }
 
@@ -576,7 +573,6 @@ export interface DaemonState {
   attachAgent(request: AttachAgentRequest): Promise<AttachAgentResult>;
   createPair(request: CreatePairRequest): CreatePairResult;
   connect(request: ConnectRequest): ConnectResult;
-  disconnect(request: DisconnectRequest): DisconnectResult;
   sendMessage(request: SendMessageRequest): SendMessageResult;
   updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResult;
   retransmitUnconfirmedDelivery(
@@ -606,6 +602,7 @@ export interface DaemonState {
   receiveCodexMessage(request: ReceiveCodexMessageRequest): Promise<ReceiveCodexMessageResult>;
   receiveCodexReply(request: ReceiveCodexReplyRequest): Promise<ReceiveCodexReplyResult>;
   status(): StatusResult;
+  listReachablePeers(request: ListReachablePeersRequest): ListReachablePeersResult;
   stop(request: StopRequest): Promise<StopResult>;
 }
 
@@ -674,6 +671,11 @@ export function createDaemonState(
             name: request.name,
             kind: request.kind,
             cwd: request.cwd,
+            ...(request.role === undefined ? {} : { role: request.role }),
+            ...(request.description === undefined ? {} : { description: request.description }),
+            ...(request.instructions === undefined
+              ? {}
+              : { instructions: request.instructions }),
             now,
           });
 
@@ -856,7 +858,7 @@ export function createDaemonState(
           if (startingCodexRuntime) {
             await disposeRuntime(startingCodexRuntime);
           }
-          agents.markByNameDisconnected(request.name, options.now());
+          removeDepartedAgent(storedAgent);
         }
 
         if (isCodexAttachError(error)) {
@@ -930,22 +932,6 @@ export function createDaemonState(
           alreadyExisted,
         };
       });
-    },
-
-    disconnect(request) {
-      const resolved = resolveRouteAgents(agents, request);
-
-      if (!resolved.ok) {
-        return resolved;
-      }
-
-      return {
-        ok: true,
-        removed: routes.disconnect({
-          sourceAgentId: resolved.source.id,
-          targetAgentIds: resolved.targets.map((target) => target.id),
-        }),
-      };
     },
 
     sendMessage(request) {
@@ -1096,8 +1082,8 @@ export function createDaemonState(
       claudeChannelBootFailures.delete(request.agentName);
 
       const agent = agents.findByName(request.agentName);
-      if (agent?.status === "connected") {
-        agents.markByNameDisconnected(request.agentName, options.now());
+      if (agent) {
+        removeDepartedAgent(agent);
         return {
           ok: true,
           agentName: request.agentName,
@@ -1299,8 +1285,8 @@ export function createDaemonState(
       const had = codexChannelRuntimes.has(request.agentName);
       codexChannelRuntimes.delete(request.agentName);
       codexPendingTokens.delete(request.agentName);
+      const agent = agents.findByName(request.agentName);
       if (had) {
-        const agent = agents.findByName(request.agentName);
         events.append({
           id: options.createId(),
           type: "codex_channel_disconnected",
@@ -1312,7 +1298,10 @@ export function createDaemonState(
           routeId: null,
         });
       }
-      return { ok: true, agentName: request.agentName, disconnected: had };
+      if (agent) {
+        removeDepartedAgent(agent);
+      }
+      return { ok: true, agentName: request.agentName, disconnected: had || agent !== null };
     },
 
     async receiveCodexMessage(request) {
@@ -1399,6 +1388,30 @@ export function createDaemonState(
       };
     },
 
+    listReachablePeers(request) {
+      const source = agents.findByName(request.agentName);
+
+      if (!source) {
+        return {
+          ok: false,
+          reason: "source_agent_not_found",
+          sourceName: request.agentName,
+        };
+      }
+
+      const sourceRoutes = routes
+        .list()
+        .filter((route) => route.sourceAgentId === source.id);
+      const targetAgentIds = new Set(
+        sourceRoutes.map((route) => route.targetAgentId),
+      );
+
+      return {
+        ok: true,
+        peers: agents.list().filter((agent) => targetAgentIds.has(agent.id)),
+      };
+    },
+
     async stop(request) {
       const inFlightTargetFlushes = [...targetFlushes.values()];
       for (const handle of queueExpiryTimers.values()) {
@@ -1417,9 +1430,10 @@ export function createDaemonState(
       const result = withTransaction(options.db, () => {
         const stoppedAgents = request.daemonOnly
           ? []
-          : agents.markAllConnectedDisconnected(options.now());
+          : agents.removeAllConnected();
         if (!request.daemonOnly) {
           for (const agent of stoppedAgents) {
+            routes.removeAllForAgent(agent.id);
             codexChannelRuntimes.delete(agent.name);
             codexPendingTokens.delete(agent.name);
             claudeChannelRuntimes.delete(agent.name);
@@ -1526,6 +1540,18 @@ export function createDaemonState(
     }
   }
 
+  // `routes` deliberately has no foreign-key cascade, so every departure
+  // must remove the live agent row and every incident route as one state
+  // transition.
+  // Keeping the two writes in one outer transaction prevents a failed route
+  // cleanup from committing a deleted agent with orphaned routes.
+  function removeDepartedAgent(agent: StoredAgent): void {
+    withTransaction(options.db, () => {
+      routes.removeAllForAgent(agent.id);
+      agents.removeByName(agent.name);
+    });
+  }
+
   // Shared by the public `recordCodexRuntimeFailed` method and the
   // `onRuntimeFailed` callback wired into the production Codex attach factory
   // (see `attachCodexRuntime` call in `attachAgent`), so a managed Codex
@@ -1536,7 +1562,7 @@ export function createDaemonState(
   ): RecordCodexRuntimeFailedResult {
     const agent = agents.findByName(request.agentName);
 
-    if (!agent || agent.status === "disconnected") {
+    if (!agent) {
       return {
         ok: true,
         agentName: request.agentName,
@@ -1548,7 +1574,7 @@ export function createDaemonState(
     codexRuntimes?.delete(request.agentName);
     codexChannelRuntimes.delete(request.agentName);
     codexPendingTokens.delete(request.agentName);
-    agents.markByNameDisconnected(request.agentName, now);
+    removeDepartedAgent(agent);
     events.append({
       id: options.createId(),
       type: "agent_runtime_failed",
@@ -1587,9 +1613,9 @@ export function createDaemonState(
     claudeChannelBootFailures.delete(agentName);
 
     const agent = agents.findByName(agentName);
-    const wasConnected = agent?.status === "connected";
-    if (wasConnected) {
-      agents.markByNameDisconnected(agentName, options.now());
+    const wasConnected = agent !== null;
+    if (agent) {
+      removeDepartedAgent(agent);
     }
 
     return {
@@ -2772,7 +2798,7 @@ export function createDaemonState(
       };
     }
     const agent = agents.findByName(agentName);
-    if (!agent || agent.status !== "connected") {
+    if (!agent) {
       return {
         ok: false,
         error: {
@@ -3027,7 +3053,7 @@ export function createDaemonState(
   }): Promise<DetachAgentResult> {
     const agent = agents.findByName(input.agentName);
 
-    if (!agent || agent.status === "disconnected") {
+    if (!agent) {
       return {
         ok: true,
         agentName: input.agentName,
@@ -3048,7 +3074,7 @@ export function createDaemonState(
     claudeChannelBootFailures.delete(input.agentName);
 
     const now = options.now();
-    agents.markByNameDisconnected(input.agentName, now);
+    removeDepartedAgent(agent);
     events.append({
       id: options.createId(),
       type: "agent_graceful_detach",
@@ -3323,7 +3349,7 @@ function emptyDispatchSummary(): DispatchSummary {
 
 function resolveRouteAgents(
   agents: ReturnType<typeof createAgentRepository>,
-  request: ConnectRequest | DisconnectRequest,
+  request: ConnectRequest,
 ):
   | {
       ok: true;

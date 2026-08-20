@@ -169,30 +169,9 @@ describe("aiox CLI bin", () => {
 
       expect(code).toBe(0);
       expect(written.stderrText()).toBe("");
-      expect((await api.status()).agents).toEqual([
-        {
-          id: "cli-1",
-          name: "impl",
-          kind: "codex",
-          status: "disconnected",
-          cwd: "/repo",
-          pairId: null,
-          deliveryDiagnostics: {
-            acceptanceEvidence: "codex_turn_start",
-            targetReceiptEvidence: "unavailable",
-            automaticTargetAck: false,
-            automaticCompletion: false,
-            automaticRetry: "conclusive_pre_write_failure_only",
-            manualRetransmit: {
-              eligibleStatus: "unconfirmed",
-              requiresDuplicateRiskConfirmation: true,
-              requiredReadiness: "ready_codex_runtime_and_bound_thread",
-              dispatch: "direct_never_queued",
-              lateTransportOutcomeResolution: "correlated_response",
-            },
-          },
-        },
-      ]);
+      // TUI exit -> notifyTuiExited -> detachCodexAgent physically removes the
+      // agent's row (and its routes) rather than status-flipping it.
+      expect((await api.status()).agents).toEqual([]);
     } finally {
       await runtime.close();
     }
@@ -405,7 +384,6 @@ function createRuntime(daemonApiOverrides: Partial<DaemonApi> = {}): InvocationR
     attachAgent: () => ({ ok: true, agent: {} }),
     createPair: () => ({ ok: true, pair: {} }),
     connect: () => ({ ok: true, created: [], alreadyExisted: [] }),
-    disconnect: () => ({ ok: true, removed: [] }),
     sendMessage: () => ({ ok: true, message: {}, deliveries: [] }),
     status: () => ({
       daemon: { startedAt: "2026-05-19T00:00:00.000Z" },

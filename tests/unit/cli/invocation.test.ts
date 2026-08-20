@@ -33,6 +33,17 @@ describe("CLI invocation", () => {
       { runtime, cwd: "/repo" },
     );
     await invokeParsedCommand(
+      {
+        kind: "agent-attach",
+        agentKind: "codex",
+        name: "described-impl",
+        role: "backend",
+        description: "implements the API",
+        instructions: "always run tests before replying",
+      },
+      { runtime, cwd: "/repo" },
+    );
+    await invokeParsedCommand(
       { kind: "agent-attach", agentKind: "claude", name: "reviewer", pairName: "pair-a" },
       {
         runtime,
@@ -44,10 +55,6 @@ describe("CLI invocation", () => {
     );
     await invokeParsedCommand(
       { kind: "connect", sourceName: "impl", targetNames: ["reviewer", "researcher"] },
-      { runtime, cwd: "/repo" },
-    );
-    await invokeParsedCommand(
-      { kind: "disconnect", sourceName: "impl", targetNames: ["reviewer"] },
       { runtime, cwd: "/repo" },
     );
     await invokeParsedCommand({ kind: "pair-create", name: "pair-a" }, { runtime, cwd: "/repo" });
@@ -75,9 +82,20 @@ describe("CLI invocation", () => {
         },
       ],
       ["startDaemon"],
+      [
+        "attachAgent",
+        {
+          kind: "codex",
+          name: "described-impl",
+          cwd: "/repo",
+          role: "backend",
+          description: "implements the API",
+          instructions: "always run tests before replying",
+        },
+      ],
+      ["startDaemon"],
       ["attachAgent", { kind: "claude", name: "reviewer", cwd: "/repo", pairName: "pair-a" }],
       ["connect", { sourceName: "impl", targetNames: ["reviewer", "researcher"] }],
-      ["disconnect", { sourceName: "impl", targetNames: ["reviewer"] }],
       ["createPair", { name: "pair-a" }],
       ["status"],
       ["stopDaemon", { daemonOnly: false }],
@@ -488,10 +506,6 @@ function createRuntime(
     connect(request: unknown) {
       calls.push(["connect", request]);
       return { ok: true, created: [], alreadyExisted: [] };
-    },
-    disconnect(request: unknown) {
-      calls.push(["disconnect", request]);
-      return { ok: true, removed: [] };
     },
     sendMessage(request: unknown) {
       calls.push(["sendMessage", request]);

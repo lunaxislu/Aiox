@@ -18,11 +18,6 @@ export interface CreateRouteInput {
   now: string;
 }
 
-export interface DisconnectRoutesInput {
-  sourceAgentId: string;
-  targetAgentIds: readonly string[];
-}
-
 export type CreateRouteResult =
   | {
       ok: true;
@@ -45,7 +40,7 @@ interface RouteRow {
 
 export interface RouteRepository {
   create(input: CreateRouteInput): CreateRouteResult;
-  disconnect(input: DisconnectRoutesInput): StoredRoute[];
+  removeAllForAgent(agentId: string): StoredRoute[];
   findBySourceAndTarget(
     sourceAgentId: string,
     targetAgentId: string,
@@ -72,28 +67,28 @@ export function createRouteRepository(db: Database): RouteRepository {
     return row ? mapRouteRow(row) : null;
   };
 
-  const removeRouteStmt = db.prepare(
-    `
-      delete from routes
-      where source_agent_id = @sourceAgentId
-        and target_agent_id = @targetAgentId
-    `,
-  );
-
-  const disconnectTxn = db.transaction(
-    (input: DisconnectRoutesInput): StoredRoute[] => {
-      const removed = input.targetAgentIds
-        .map((targetAgentId) =>
-          findBySourceAndTarget(input.sourceAgentId, targetAgentId),
+  const removeAllForAgentTxn = db.transaction(
+    (agentId: string): StoredRoute[] => {
+      const removed = db
+        .prepare(
+          `
+            select *
+            from routes
+            where source_agent_id = @agentId
+              or target_agent_id = @agentId
+            order by id
+          `,
         )
-        .filter((route): route is StoredRoute => route !== null);
+        .all({ agentId })
+        .map((row) => mapRouteRow(row as RouteRow));
 
-      for (const targetAgentId of input.targetAgentIds) {
-        removeRouteStmt.run({
-          sourceAgentId: input.sourceAgentId,
-          targetAgentId,
-        });
-      }
+      db.prepare(
+        `
+          delete from routes
+          where source_agent_id = @agentId
+            or target_agent_id = @agentId
+        `,
+      ).run({ agentId });
 
       return removed;
     },
@@ -149,8 +144,8 @@ export function createRouteRepository(db: Database): RouteRepository {
       };
     },
 
-    disconnect(input) {
-      return disconnectTxn(input);
+    removeAllForAgent(agentId) {
+      return removeAllForAgentTxn(agentId);
     },
 
     findBySourceAndTarget,
