@@ -8,7 +8,7 @@ status: open
 - [x] W1 aiox claude/codex --name에 --role/--description/--instructions 추가, aiox.yaml agents[] 필드와 매칭
 - [x] W2 agents_list() MCP tool 구현(spec §4.2 계약: peers[]에 name/type/role/description, outbound-sendable만 scoped, 대상 없으면 빈 값/안내 반환) + stale-peer 재설계(agent 이탈 시 row 물리 삭제) — revision 5 Accept, 이 로그 최신 entry와 tasks/W2.md 참고
 - [x] W3 TUI 검증(claude·codex 둘 다) — peer 등록 시 목록에 뜨는지 먼저 확인 후 혼자일 때 빈 값 케이스 확인
-- [ ] W4 aiox.yaml v1 schema+parser 구현(zod, project/instructions.global/agents[]/routes[])
+- [>] W4 aiox.yaml v1 schema+parser 구현(zod, project/instructions.global/agents[]/routes[])
 - [ ] W5 Validator Rules 구현(namespace uniqueness, dangling reference, directed 중복 쌍, 별표 reserved word — 전부 parse-time error)
 - [ ] W6 aiox host 구현 — 전체 agent foreground 실행, routes[] mesh+directed override wiring, agent-attach 재사용
 - [ ] W7 aiox quit 구현
@@ -566,3 +566,8 @@ stale/disconnected 열린 질문 처리 방향은 여전히 사용자 결정 대
 - User authorized committing the accepted W1/W2/W10 work despite the documented default-parallel Vitest isolation residual risk. The code/test dependency graph required one compiled feature commit rather than retroactively splitting inseparable historical hunks.
 - Created commits: `f5bda37 feat(daemon): add agent metadata and physical peer lifecycle`; `ce58191 chore(core): remove obsolete disconnect surfaces`; `a72d302 docs(runtime): align agent lifecycle contracts`; `827088d docs(logs): record G2 lifecycle implementation evidence`.
 - Deliberately excluded untracked `logs/2026-08-18-Codex-Claude-구조화-에러-알림-daemon-relay-gap.md`, which is outside the G2 package boundary.
+
+## 2026-08-20 · 2026-08-20 · W4 selected as current implementation pointer
+
+- W1/W2/W10 commits and final serialized verification are complete. User directed the package pointer to W4.
+- W4 is now the sole active Work Item: implement the aiox.yaml v1 schema and parser. No W4 code/discovery has started; its Task Brief must be completed before execution.
