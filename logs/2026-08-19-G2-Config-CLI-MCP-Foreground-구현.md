@@ -560,3 +560,9 @@ stale/disconnected 열린 질문 처리 방향은 여전히 사용자 결정 대
 - User selected option 2 for `docs/specs/aiox-open-deferred.md` §9. The agent-session expiry open question no longer assumes existing `stale`/`disconnected` agent states.
 - The deferred policy now asks whether future heartbeat/session-expiry detection should use the current immediate physical-departure path or introduce an explicit soft/grace state. Pair-level or delivery-level uses of `stale` were not changed.
 - Validation: `scripts/check-markdown-inline-code docs/specs/aiox-open-deferred.md` and `git diff --check` passed.
+
+## 2026-08-20 · 2026-08-20 · W1/W2/W10 commits created
+
+- User authorized committing the accepted W1/W2/W10 work despite the documented default-parallel Vitest isolation residual risk. The code/test dependency graph required one compiled feature commit rather than retroactively splitting inseparable historical hunks.
+- Created commits: `f5bda37 feat(daemon): add agent metadata and physical peer lifecycle`; `ce58191 chore(core): remove obsolete disconnect surfaces`; `a72d302 docs(runtime): align agent lifecycle contracts`; `827088d docs(logs): record G2 lifecycle implementation evidence`.
+- Deliberately excluded untracked `logs/2026-08-18-Codex-Claude-구조화-에러-알림-daemon-relay-gap.md`, which is outside the G2 package boundary.
