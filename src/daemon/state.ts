@@ -236,8 +236,12 @@ export interface ManagedCodexProxyBindingEvent {
 export interface ManagedCodexAgentRuntime extends ManagedAgentRuntime {
   readonly endpoint: URL;
   readonly activeThreadId: string | null;
-  startThread(): Promise<string | null>;
-  resumeThread(threadId: string): Promise<string | null>;
+  startThread(cwd?: string, developerInstructions?: string): Promise<string | null>;
+  resumeThread(
+    threadId: string,
+    cwd?: string,
+    developerInstructions?: string,
+  ): Promise<string | null>;
   listLoadedThreadIds(): Promise<string[]>;
   rebindActiveThread(threadId: string): void;
   onProxyBinding?(
@@ -312,6 +316,14 @@ export type AttachAgentResult =
       ok: false;
       reason: "codex_resume_failed" | "codex_runtime_attach_failed";
       message: string;
+      /**
+       * Present only when this failure's own cleanup — disposing the
+       * eager-started (no-resume) or resumed runtime before the row was
+       * removed — itself rejected. The row and routes are removed either
+       * way; this surfaces the dispose failure instead of discarding it, the
+       * same contract `DetachAgentResult.runtimeDisposeError` has.
+       */
+      runtimeDisposeError?: string;
     };
 
 export interface CreatePairRequest {
@@ -471,17 +483,6 @@ export type UpdateDeliveryStatusResult =
       deliveryId: string;
     };
 
-export interface RollbackAgentAttachRequest {
-  agentName: string;
-  token?: string;
-}
-
-export interface RollbackAgentAttachResult {
-  ok: true;
-  agentName: string;
-  rolledBack: boolean;
-}
-
 export interface DetachAgentRequest {
   agentName: string;
 }
@@ -490,6 +491,14 @@ export interface DetachAgentResult {
   ok: true;
   agentName: string;
   detached: boolean;
+  /**
+   * Present only when the agent's runtime rejected on `dispose()`. Detach still
+   * removes the row, routes, and registry entries — a runtime that will not shut
+   * down cleanly must not strand daemon state — but the failure is reported so
+   * callers (`aiox host`'s cleanup exit code, the single-agent CLI's TUI-failure
+   * diagnostic) can observe it instead of it being silently swallowed.
+   */
+  runtimeDisposeError?: string;
 }
 
 export interface NotifyTuiExitedRequest {
@@ -578,9 +587,6 @@ export interface DaemonState {
   retransmitUnconfirmedDelivery(
     request: RetransmitUnconfirmedDeliveryRequest,
   ): Promise<RetransmitUnconfirmedDeliveryResult>;
-  rollbackAgentAttach(
-    request: RollbackAgentAttachRequest,
-  ): Promise<RollbackAgentAttachResult>;
   detachAgent(request: DetachAgentRequest): Promise<DetachAgentResult>;
   notifyTuiExited(request: NotifyTuiExitedRequest): Promise<NotifyTuiExitedResult>;
   recordCodexRuntimeFailed(
@@ -770,22 +776,62 @@ export function createDaemonState(
         });
 
         if (!request.resumeSessionId) {
+          const startedThreadId = await runtime.startThread(request.cwd, request.instructions);
+
+          if (!startedThreadId) {
+            throw Object.assign(new Error("Codex did not return a thread id"), {
+              code: "codex_runtime_attach_failed",
+            });
+          }
+
+          const startNow = options.now();
+          const startedAgent = agents.rebindAdapterSessionId({
+            name: request.name,
+            adapterSessionId: startedThreadId,
+            now: startNow,
+          });
+
+          if (!startedAgent) {
+            throw Object.assign(new Error(`Codex agent not found after attach: ${request.name}`), {
+              code: "codex_runtime_attach_failed",
+            });
+          }
+
           codexRuntimes.set(request.name, runtime);
           startingCodexRuntime = null;
-          await flushQueuedDeliveriesForTarget(storedAgent);
+          await flushQueuedDeliveriesForTarget(startedAgent);
+          events.append({
+            id: options.createId(),
+            type: "agent_thread_id_rebound",
+            data: {
+              previousId: storedAgent.adapterSessionId,
+              nextId: startedThreadId,
+              operation: "thread/start",
+              source: "attach_start",
+            },
+            createdAt: startNow,
+            agentId: startedAgent.id,
+            messageId: null,
+            deliveryId: null,
+            routeId: null,
+          });
 
           return {
             ok: true,
-            agent: storedAgent,
+            agent: startedAgent,
             codexRuntime: {
               endpoint: runtime.endpoint.toString(),
-              activeThreadId: runtime.activeThreadId,
+              activeThreadId: startedThreadId,
             },
             codexChannelToken,
           };
         }
 
-        const nextThreadId = await runtime.resumeThread(request.resumeSessionId);
+        const nextThreadId = await runtime.resumeThread(
+          request.resumeSessionId,
+          request.cwd,
+          request.instructions,
+        );
 
         if (!nextThreadId) {
           throw Object.assign(new Error("Codex did not return a thread id"), {
@@ -854,9 +900,10 @@ export function createDaemonState(
           codexPendingTokens.delete(request.name);
         }
 
+        let runtimeDisposeError: string | undefined;
         if (storedAgent) {
           if (startingCodexRuntime) {
-            await disposeRuntime(startingCodexRuntime);
+            runtimeDisposeError = await disposeRuntime(startingCodexRuntime);
           }
           removeDepartedAgent(storedAgent);
         }
@@ -866,7 +913,24 @@ export function createDaemonState(
             ok: false,
             reason: error.code,
             message: error.message,
+            ...(runtimeDisposeError === undefined ? {} : { runtimeDisposeError }),
           };
+        }
+
+        // An untyped rejection from startThread()/resumeThread() themselves
+        // (not one of the typed codex_*_failed cases above) still propagates
+        // as the attach failure — that identity is not replaced. But when
+        // runtime dispose ALSO failed, that cleanup failure must not be
+        // dropped just because this error has no `.code`: fold it into the
+        // message (same "(...also failed: ...)" shape `cleanUpAfterTuiFailure`
+        // already uses in src/cli/invocation.ts) and keep the original error
+        // reachable via `cause` instead of silently discarding it.
+        if (runtimeDisposeError !== undefined) {
+          const originalMessage = error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `${originalMessage} (runtime cleanup also failed: ${runtimeDisposeError})`,
+            { cause: error },
+          );
         }
 
         throw error;
@@ -1056,45 +1120,6 @@ export function createDaemonState(
         reason: rejected ? "manual_retransmit_rejected" : "manual_retransmit_unconfirmed",
         delivery: deliveries.findById(delivery.id) ?? delivery,
         message: injectResult.message,
-      };
-    },
-
-    async rollbackAgentAttach(request) {
-      const runtime = codexRuntimes?.get(request.agentName);
-
-      if (runtime?.state === "ready") {
-        return {
-          ok: true,
-          agentName: request.agentName,
-          rolledBack: false,
-        };
-      }
-
-      if (runtime) {
-        await disposeRuntime(runtime);
-        codexRuntimes?.delete(request.agentName);
-      }
-
-      codexPendingTokens.delete(request.agentName);
-      codexChannelRuntimes.delete(request.agentName);
-      claudePendingTokens.delete(request.agentName);
-      claudeChannelRuntimes.delete(request.agentName);
-      claudeChannelBootFailures.delete(request.agentName);
-
-      const agent = agents.findByName(request.agentName);
-      if (agent) {
-        removeDepartedAgent(agent);
-        return {
-          ok: true,
-          agentName: request.agentName,
-          rolledBack: true,
-        };
-      }
-
-      return {
-        ok: true,
-        agentName: request.agentName,
-        rolledBack: runtime !== undefined,
       };
     },
 
@@ -3061,9 +3086,10 @@ export function createDaemonState(
       };
     }
 
+    let runtimeDisposeError: string | undefined;
     const runtime = codexRuntimes?.get(input.agentName);
     if (runtime) {
-      await disposeRuntime(runtime);
+      runtimeDisposeError = await disposeRuntime(runtime);
       codexRuntimes?.delete(input.agentName);
     }
 
@@ -3099,15 +3125,24 @@ export function createDaemonState(
       ok: true,
       agentName: input.agentName,
       detached: true,
+      ...(runtimeDisposeError === undefined ? {} : { runtimeDisposeError }),
     };
   }
 }
 
-async function disposeRuntime(runtime: ManagedAgentRuntime): Promise<void> {
+/**
+ * Disposes a runtime without letting its failure abort the surrounding cleanup,
+ * and returns the failure instead of discarding it. Callers that can report the
+ * failure to their own caller (detach, and the eager/resume attach failure
+ * path) do so; callers on an error path that is already reporting something
+ * else (the global `stop()` sweep) ignore the return.
+ */
+async function disposeRuntime(runtime: ManagedAgentRuntime): Promise<string | undefined> {
   try {
     await runtime.dispose();
-  } catch {
-    // Lifecycle cleanup is best-effort.
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 }
 

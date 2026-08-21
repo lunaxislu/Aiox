@@ -114,7 +114,6 @@ returns `message_id` without `dispatch`. None is a delivery-status observability
 | `connect` | routes insert in tx | — | `source_agent_not_found`, `target_agent_not_found` | `connect` |
 | `sendMessage` | messages + deliveries + events (single tx) | `message_created`, `delivery_queued` | `source_agent_not_found`, `no_active_routes`, `delivery_idempotency_key_exists`, `delivery_queue_full` | `sendMessage` → `runSendMessageTransaction` |
 | `updateDeliveryStatus` | deliveries.updateStatus + events | `delivery_status_changed` | `delivery_not_found` | `updateDeliveryStatus` → `updateDeliveryStatusInTransaction` |
-| `rollbackAgentAttach` | disposes in-flight codex runtime; removes pending token; removes the agent's row and its routes | — | none typed (`{ok:true,rolledBack}`) | `rollbackAgentAttach` |
 | `detachAgent` | dispose codex runtime + clear channel maps; removes the agent's row and its routes | `agent_graceful_detach` (trigger=`explicit_detach`) | none | `detachAgent` → `detachCodexAgent` |
 | `notifyTuiExited` | same as detachAgent cleanup | `agent_graceful_detach` (trigger=`tui_exit`) | none | `notifyTuiExited` → `detachCodexAgent` |
 | `registerClaudeChannel` | validates session token; inserts or replaces `claudeChannelRuntimes` | — | `claude_channel_registration_failed` (`unknown_token`/`invalid_endpoint`) | `registerClaudeChannel`; [[docs/decisions/claude-channel-session-reconnect-token]] |

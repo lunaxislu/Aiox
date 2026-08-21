@@ -218,6 +218,31 @@ describe("Codex agent runtime", () => {
     expect(events).toContain("request:thread/start:{}");
   });
 
+  it("passes cwd and developerInstructions to thread/start when given, and omits them when not", async () => {
+    const events: string[] = [];
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: null,
+      launchAppServer: async () => fakeAppServer(fakeChild()),
+      connectWebSocket: async () =>
+        fakeWebSocket(events, {
+          requestResults: {
+            "thread/start": {
+              thread: {
+                id: "thread-new",
+              },
+            },
+          },
+        }),
+    startProxy: startFakeProxy});
+
+    await expect(runtime.startThread("/repo", "be terse")).resolves.toBe("thread-new");
+
+    expect(events).toContain(
+      'request:thread/start:{"cwd":"/repo","developerInstructions":"be terse"}',
+    );
+  });
+
   it("resumes a daemon-owned Codex thread only when Codex returns the requested id", async () => {
     const events: string[] = [];
     const runtime = await attachCodexAgentRuntime({
@@ -240,6 +265,33 @@ describe("Codex agent runtime", () => {
 
     expect(runtime.activeThreadId).toBe("thread-resume");
     expect(events).toContain('request:thread/resume:{"threadId":"thread-resume"}');
+  });
+
+  it("passes cwd and developerInstructions to thread/resume when given, and omits them when not", async () => {
+    const events: string[] = [];
+    const runtime = await attachCodexAgentRuntime({
+      agentName: "codex-one",
+      activeThreadId: null,
+      launchAppServer: async () => fakeAppServer(fakeChild()),
+      connectWebSocket: async () =>
+        fakeWebSocket(events, {
+          requestResults: {
+            "thread/resume": {
+              thread: {
+                id: "thread-resume",
+              },
+            },
+          },
+        }),
+    startProxy: startFakeProxy});
+
+    await expect(
+      runtime.resumeThread("thread-resume", "/repo", "be terse"),
+    ).resolves.toBe("thread-resume");
+
+    expect(events).toContain(
+      'request:thread/resume:{"threadId":"thread-resume","cwd":"/repo","developerInstructions":"be terse"}',
+    );
   });
 
   it("fails explicit Codex resume when the returned thread id differs", async () => {

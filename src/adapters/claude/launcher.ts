@@ -7,8 +7,37 @@ const require = createRequire(import.meta.url);
 // Command builder (pure, testable)
 // ---------------------------------------------------------------------------
 
-export function buildLaunchClaudeChannelArgs(channelName: string): string[] {
-  return ["--dangerously-load-development-channels", `server:${channelName}`];
+export function buildLaunchClaudeChannelArgs(
+  channelName: string,
+  instructions?: string,
+): string[] {
+  return [
+    ...(instructions !== undefined ? ["--append-system-prompt", instructions] : []),
+    "--dangerously-load-development-channels",
+    `server:${channelName}`,
+  ];
+}
+
+/**
+ * The env the spawned `claude` needs so the statically registered channel MCP
+ * (whose definition references `${AIOX_*}`) resolves this session's identity.
+ * Extracted as a pure function so `aiox host`'s per-agent view launch request
+ * and the single-agent `aiox claude` spawn below cannot drift apart.
+ */
+export function buildClaudeChannelEnv(input: {
+  agentName: string;
+  agentToken: string;
+  daemonSocketPath: string;
+}): Record<string, string> {
+  return {
+    AIOX_CLAUDE_CHANNEL_AGENT_NAME: input.agentName,
+    AIOX_CLAUDE_CHANNEL_TOKEN: input.agentToken,
+    AIOX_SOCKET_PATH: input.daemonSocketPath,
+  };
+}
+
+export function resolveClaudeCommand(command?: string): string {
+  return command ?? process.env.AIOX_CLAUDE_COMMAND ?? "claude";
 }
 
 /**
@@ -61,6 +90,7 @@ export interface LaunchClaudeStaticMcpChannelOptions {
   agentToken: string;
   daemonSocketPath: string;
   command?: string;
+  instructions?: string;
 }
 
 // Activates the server:<name> dev-channel form, relying on a pre-registered
@@ -70,16 +100,13 @@ export interface LaunchClaudeStaticMcpChannelOptions {
 export function launchClaudeStaticMcpChannel(
   options: LaunchClaudeStaticMcpChannelOptions,
 ): ChildProcess {
-  const command =
-    options.command ?? process.env.AIOX_CLAUDE_COMMAND ?? "claude";
-  const args = buildLaunchClaudeChannelArgs(options.channelName);
+  const command = resolveClaudeCommand(options.command);
+  const args = buildLaunchClaudeChannelArgs(options.channelName, options.instructions);
 
   return spawn(command, args, {
     env: {
       ...process.env,
-      AIOX_CLAUDE_CHANNEL_AGENT_NAME: options.agentName,
-      AIOX_CLAUDE_CHANNEL_TOKEN: options.agentToken,
-      AIOX_SOCKET_PATH: options.daemonSocketPath,
+      ...buildClaudeChannelEnv(options),
     },
     stdio: "inherit",
   });

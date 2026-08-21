@@ -74,16 +74,32 @@ Evidence:
     - `src/cli/parse.ts:291-313`
 
 `agent-attach` exit code is the TUI child's exit code:
-`tuiExit.exitCode ?? (tuiExit.signal ? 1 : 0)`. Codex attach on TUI spawn
-error calls `rollbackAgentAttach` first.
+`tuiExit.exitCode ?? (tuiExit.signal ? 1 : 0)`. Codex attach on TUI spawn or
+exit-wait failure awaits `detachAgent` (disposes the runtime and removes the
+agent's row/routes unconditionally) before reporting the launch failure —
+`rollbackAgentAttach` no longer exists (it no-op'd once a runtime reached
+`ready`, which `detachAgent` does not).
 
 Evidence:
 
-- Attach child exit and rollback handling
+- Attach child exit code (`tuiExit.exitCode ?? (tuiExit.signal ? 1 : 0)`)
   - [[src/cli/invocation.ts]]
-    - `src/cli/invocation.ts:186-198`
-    - `src/cli/invocation.ts:256-258`
-    - `src/cli/invocation.ts:538-565`
+    - `src/cli/invocation.ts:230`
+    - `src/cli/invocation.ts:268`
+- Codex/Claude attach TUI-failure call sites and awaited cleanup diagnostics
+  - [[src/cli/invocation.ts]]
+    - `src/cli/invocation.ts:208-223`
+    - `src/cli/invocation.ts:246-265`
+    - `src/cli/invocation.ts:533-558`
+- Daemon-owned runtime disposal and unconditional agent row/incident-route removal
+  - [[src/daemon/state.ts]]
+    - `src/daemon/state.ts:1568-1577`
+    - `src/daemon/state.ts:3073-3130`
+  - [[tests/unit/cli/invocation.test.ts]]
+    - `tests/unit/cli/invocation.test.ts:1177-1242`
+  - [[tests/unit/daemon/api.test.ts]]
+    - `tests/unit/daemon/api.test.ts:1097-1129`
+    - `tests/unit/daemon/api.test.ts:1459-1532`
 
 ### 9.3 Doctor + Status
 

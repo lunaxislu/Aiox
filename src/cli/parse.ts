@@ -35,6 +35,8 @@ export type ParsedCommand = {
   kind: "pair-create";
   name: string;
 } | {
+  kind: "host";
+} | {
   kind: "status";
 } | {
   kind: "global-stop";
@@ -231,6 +233,7 @@ function createProgram({ version, output, setParsed }: CreateProgramOptions): Co
   addAgentAttachCommand(program, "claude", setParsed);
   addConnectCommand(program, setParsed);
   addPairCommand(program, setParsed);
+  addHostCommand(program, setParsed);
   addGlobalCommands(program, setParsed);
 
   return program;
@@ -375,6 +378,18 @@ function addPairCommand(program: Command, setParsed: (command: ParsedCommand) =>
     .requiredOption("--name <pair-name>")
     .action((options: { name: string }) => {
       setParsed({ kind: "pair-create", name: requireNonEmptyName(options.name) });
+    });
+}
+
+function addHostCommand(program: Command, setParsed: (command: ParsedCommand) => void): void {
+  program
+    .command("host")
+    .description(
+      "Run every agent declared in aiox.yaml (cwd-fixed, no --file) in its own vendor TUI, " +
+        "wire routes[] between the ones that came up, and hold foreground until SIGINT/SIGTERM",
+    )
+    .action(() => {
+      setParsed({ kind: "host" });
     });
 }
 

@@ -376,7 +376,7 @@ describe("daemon disconnectClaudeChannel", () => {
 // deferral to a stale target runtime (claudeChannelRuntimes) instead.
 // ---------------------------------------------------------------------------
 
-describe("Claude credential cleanup — attach rollback, detach, and stop", () => {
+describe("Claude credential cleanup — detach and stop", () => {
   let db: InstanceType<typeof Database>;
 
   beforeEach(() => {
@@ -386,68 +386,6 @@ describe("Claude credential cleanup — attach rollback, detach, and stop", () =
 
   afterEach(() => {
     db.close();
-  });
-
-  it("rejects the issued pending token for registration after rollbackAgentAttach", async () => {
-    const state = createDaemonState({
-      db,
-      createId: () => "agent-1",
-      now: () => "2026-08-10T00:00:00.000Z",
-    });
-    const client = createInProcessClient(createDaemonApi(state));
-
-    const attachResponse = await client.attachAgent({
-      kind: "claude",
-      name: "alpha",
-      cwd: "/repo",
-    });
-    const token = (attachResponse as { ok: true; claudeChannelToken: string })
-      .claudeChannelToken;
-
-    const rollback = await client.rollbackAgentAttach({ agentName: "alpha" });
-    expect(rollback).toMatchObject({ ok: true, rolledBack: true });
-
-    const response = await client.registerClaudeChannel({
-      agentName: "alpha",
-      token,
-      endpoint: "http://127.0.0.1:18789/send",
-    });
-
-    expect(response).toMatchObject({
-      ok: false,
-      reason: "claude_channel_registration_failed",
-      detail: "unknown_token",
-    });
-  });
-
-  it("clears an already-registered runtime and marks the agent disconnected after rollbackAgentAttach", async () => {
-    const claudeChannelRuntimes = new Map();
-    const state = createDaemonState({
-      db,
-      createId: () => "agent-1",
-      now: () => "2026-08-10T00:00:00.000Z",
-      claudeChannelRuntimes,
-    });
-    const client = createInProcessClient(createDaemonApi(state));
-
-    const attachResponse = await client.attachAgent({
-      kind: "claude",
-      name: "alpha",
-      cwd: "/repo",
-    });
-    const token = (attachResponse as { ok: true; claudeChannelToken: string })
-      .claudeChannelToken;
-    await client.registerClaudeChannel({
-      agentName: "alpha",
-      token,
-      endpoint: "http://127.0.0.1:18789/send",
-    });
-    expect(claudeChannelRuntimes.has("alpha")).toBe(true);
-
-    await client.rollbackAgentAttach({ agentName: "alpha" });
-
-    expect(claudeChannelRuntimes.has("alpha")).toBe(false);
-    expect((await client.status()).agents).toEqual([]);
   });
 
   it("rejects the issued pending token for registration after detachAgent", async () => {
@@ -1700,6 +1638,28 @@ describe("buildLaunchClaudeChannelArgs", () => {
     expect(args).toContain("--dangerously-load-development-channels");
     expect(args).toContain("server:aiox-claude-alpha");
   });
+
+  it("omits --append-system-prompt entirely when no instructions are given", () => {
+    const args = buildLaunchClaudeChannelArgs("aiox-claude-alpha");
+
+    expect(args).not.toContain("--append-system-prompt");
+    expect(args).toEqual([
+      "--dangerously-load-development-channels",
+      "server:aiox-claude-alpha",
+    ]);
+  });
+
+  it("carries instructions text as a single argv element ahead of the channel flags, preserving multiline/quotes/special chars", () => {
+    const instructions = 'line one\nline "two"\n$pecial `chars`';
+    const args = buildLaunchClaudeChannelArgs("aiox-claude-alpha", instructions);
+
+    expect(args).toEqual([
+      "--append-system-prompt",
+      instructions,
+      "--dangerously-load-development-channels",
+      "server:aiox-claude-alpha",
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1755,6 +1715,53 @@ describe("launchClaudeStaticMcpChannel", () => {
     const env = (options as { env: Record<string, string> }).env;
     expect(env.PATH).toBe(prevPath);
     expect((options as { stdio?: string }).stdio).toBe("inherit");
+  });
+
+  it("injects --append-system-prompt <text> as its own argv element ahead of the channel flags when instructions are given", async () => {
+    const child = { pid: 5557 };
+    const { spawn } = await import("node:child_process");
+    vi.mocked(spawn).mockReturnValue(child as never);
+    const instructions = 'multi\nline "quoted" $var `backtick`';
+
+    launchClaudeStaticMcpChannel({
+      command: "claude",
+      channelName: "aiox-claude-ingress",
+      agentName: "reviewer",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/aiox.sock",
+      instructions,
+    });
+
+    const [, args] = vi.mocked(spawn).mock.calls.at(-1)!;
+    // Full args equality proves the exact argv, including that the instructions
+    // text arrives as ONE array element (no shell join) and coexists with the
+    // existing dev-channel flags.
+    expect(args).toEqual([
+      "--append-system-prompt",
+      instructions,
+      "--dangerously-load-development-channels",
+      "server:aiox-claude-ingress",
+    ]);
+  });
+
+  it("omits --append-system-prompt when instructions is undefined, unchanged from the no-instructions contract", async () => {
+    const child = { pid: 5558 };
+    const { spawn } = await import("node:child_process");
+    vi.mocked(spawn).mockReturnValue(child as never);
+
+    launchClaudeStaticMcpChannel({
+      command: "claude",
+      channelName: "aiox-claude-ingress",
+      agentName: "reviewer",
+      agentToken: "token-1",
+      daemonSocketPath: "/tmp/aiox.sock",
+    });
+
+    const [, args] = vi.mocked(spawn).mock.calls.at(-1)!;
+    expect(args).toEqual([
+      "--dangerously-load-development-channels",
+      "server:aiox-claude-ingress",
+    ]);
   });
 });
 

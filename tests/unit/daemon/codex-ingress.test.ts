@@ -939,6 +939,10 @@ describe("daemon receiveCodexMessage", () => {
     const tokenB = (attachB as { ok: true; codexChannelToken: string }).codexChannelToken;
     await client.registerCodexChannel({ agentName: "impl-a", token: tokenA });
     await client.registerCodexChannel({ agentName: "impl-b", token: tokenB });
+    // Eager attach always binds an active thread (attach fails otherwise), so
+    // "no live loaded thread" can no longer be produced at attach time —
+    // simulate the thread becoming unavailable afterward instead.
+    runtimeB.activeThreadId = null;
 
     const response = await client.receiveCodexMessage({
       agentName: "impl-a",
@@ -1545,6 +1549,10 @@ describe("daemon receiveClaudeChannelMessage", () => {
         loadedThreadIds: [],
       },
     });
+    // Eager attach always binds an active thread (attach fails otherwise), so
+    // "no live loaded thread" can no longer be produced at attach time —
+    // simulate the thread becoming unavailable afterward instead.
+    setup.runtime.activeThreadId = null;
 
     const response = await setup.client.receiveClaudeChannelMessage({
       agentName: "reviewer",
@@ -1802,7 +1810,11 @@ describe("daemon receiveClaudeChannelReply", () => {
       operation: "thread/loaded/list",
       loadedThreadIds: ["thread-old", "thread-new"],
       chosenThreadId: "thread-new",
-      previousAdapterSessionId: null,
+      // Eager attach now binds adapter_session_id to the resolved active
+      // thread ("thread-new", per fixture: loadedThreadIds takes precedence
+      // over startedThreadId) immediately, so it is no longer null by the
+      // time this reply's target-selection event captures the "before" id.
+      previousAdapterSessionId: "thread-new",
       runtimeActiveThreadId: "thread-new",
       selectionPolicy: "proxy_active_thread",
       deliveryMessageType: "reply",
@@ -1863,6 +1875,10 @@ describe("daemon receiveClaudeChannelReply", () => {
         loadedThreadIds: [],
       },
     });
+    // Eager attach always binds an active thread (attach fails otherwise), so
+    // "no live loaded thread" can no longer be produced at attach time —
+    // simulate the thread becoming unavailable afterward instead.
+    setup.runtime.activeThreadId = null;
     const parent = await setup.client.receiveCodexMessage({
       agentName: "impl",
       token: setup.codexToken,
@@ -2011,6 +2027,10 @@ describe("daemon receiveClaudeChannelReply", () => {
         loadedThreadIds: [],
       },
     });
+    // Eager attach always binds an active thread (attach fails otherwise), so
+    // "no live loaded thread" can no longer be produced at attach time —
+    // simulate the thread becoming unavailable afterward instead.
+    setup.runtime.activeThreadId = null;
     const parent = await setup.client.receiveCodexMessage({
       agentName: "impl",
       token: setup.codexToken,
@@ -2047,6 +2067,10 @@ describe("daemon receiveClaudeChannelReply", () => {
         loadedThreadIds: [],
       },
     });
+    // Eager attach always binds an active thread (attach fails otherwise), so
+    // "no live loaded thread" can no longer be produced at attach time —
+    // simulate the thread becoming unavailable afterward instead.
+    setup.runtime.activeThreadId = null;
     const parent = await setup.client.receiveCodexMessage({
       agentName: "impl",
       token: setup.codexToken,
@@ -2089,7 +2113,10 @@ describe("daemon receiveClaudeChannelReply", () => {
     expect(JSON.parse(event.data_json)).toMatchObject({
       operation: "thread/loaded/list",
       loadedThreadIds: [],
-      previousAdapterSessionId: null,
+      // Eager attach bound adapter_session_id to "thread-old" at attach time;
+      // resetting the in-memory runtime's activeThreadId afterward (to
+      // reconstruct "no live thread now") doesn't change that DB column.
+      previousAdapterSessionId: "thread-old",
       runtimeActiveThreadId: null,
       reason: "codex_no_loaded_thread",
       deliveryMessageType: "reply",
@@ -3303,7 +3330,11 @@ describe("G1 residual delivery reliability — cross-delivery interleavings", ()
     });
     const runtime = fakeCodexRuntime({
       endpoint: "ws://127.0.0.1:54321/",
-      activeThreadId: null,
+      // Eager attach always binds an active thread (attach fails otherwise);
+      // give it a placeholder here and reset to null right after attach below
+      // to reconstruct the "attached but genuinely unbound yet" scenario this
+      // test deliberately relies on for delivery 1.
+      startedThreadId: "thread-impl-initial",
       turnStartError: timeoutError,
     });
     const state = createDaemonState({
@@ -3336,6 +3367,9 @@ describe("G1 residual delivery reliability — cross-delivery interleavings", ()
     });
     await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
     await client.connect({ sourceName: "reviewer", targetNames: ["impl"] });
+    // Reconstruct "attached but genuinely unbound yet" for delivery 1 below —
+    // see the fakeCodexRuntime() comment above.
+    runtime.activeThreadId = null;
 
     const implAgentId = (
       db.prepare("select id from agents where name = ?").get("impl") as { id: string }
@@ -3917,7 +3951,11 @@ function fakeCodexRuntime(options: {
     },
     async startThread() {
       this.startThreadCalls += 1;
-      this.activeThreadId = options.startedThreadId ?? null;
+      // Eager attach now always calls startThread(). Preserve whatever the
+      // fixture already resolved as "live" (activeThreadId/loadedThreadIds
+      // take precedence over startedThreadId, matching the constructor's own
+      // precedence below) instead of clobbering it with startedThreadId alone.
+      this.activeThreadId = this.activeThreadId ?? (options.startedThreadId ?? null);
       return this.activeThreadId;
     },
     async resumeThread(threadId: string) {

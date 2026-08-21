@@ -23,10 +23,10 @@ The system architecture distinguishes between current, as-built gaps in the loca
   request authentication checks, and daemon pushes to that endpoint do not present channel credentials. Claude channel
   message/reply ingress requests sent back to the daemon carry no per-message token, and the daemon receive path accepts
   them by agent name plus current stored state rather than request authorization. Token checks use ordinary
-  string inequality rather than constant-time comparison. Claude attach rollback, explicit detach/TUI-exit, and daemon
-  stop now clear `claudePendingTokens` and `claudeChannelRuntimes` for the affected agent name, matching the Codex
-  rollback/detach path's existing pending-token and channel-runtime cleanup; a message/reply dispatch to a
-  since-rolled-back/detached/stopped Claude agent defers instead of using its stale registered runtime, and its old
+  string inequality rather than constant-time comparison. Explicit detach/TUI-exit and daemon stop clear
+  `claudePendingTokens` and `claudeChannelRuntimes` for the affected agent name, matching the Codex
+  detach path's existing pending-token and channel-runtime cleanup; a message/reply dispatch to a
+  since-detached/stopped Claude agent defers instead of using its stale registered runtime, and its old
   pending token can no longer register a new channel.
   Codex MCP launch no longer passes the raw agent token through app-server argv/inline TOML: the token is delivered
   only through the app-server child's own process environment, and the inline config whitelists just the env var
@@ -51,11 +51,10 @@ The system architecture distinguishes between current, as-built gaps in the loca
       - `tests/unit/config/paths.test.ts:127-162`
     - [[tests/unit/daemon/socket-transport.test.ts]]
       - `tests/unit/daemon/socket-transport.test.ts:102-121`
-  - Claude attach rollback/detach/stop credential cleanup
+  - Claude detach/stop credential cleanup
     - [[src/daemon/state.ts]]
-      - `src/daemon/state.ts:1049-1085` (`rollbackAgentAttach`)
-      - `src/daemon/state.ts:2887-2941` (`detachCodexAgent`, shared by `detachAgent`/`notifyTuiExited`)
-      - `src/daemon/state.ts:1402-1417` (`stop`)
+      - `src/daemon/state.ts:3073-3130` (`detachCodexAgent`, shared by `detachAgent`/`notifyTuiExited`)
+      - `src/daemon/state.ts:1440-1482` (`stop`)
     - [[tests/unit/adapters/claude-channel.test.ts]]
       - `tests/unit/adapters/claude-channel.test.ts:378-691`
 - **Experimental WebSocket Transport** — Codex active-thread synchronization uses the Codex app-server WebSocket path.

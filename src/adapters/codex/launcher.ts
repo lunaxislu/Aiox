@@ -74,16 +74,34 @@ export async function launchCodexAppServer(
   };
 }
 
-export function launchCodexTui(options: LaunchCodexTuiOptions): ChildProcess {
-  const command =
-    options.command ?? process.env.AIOX_CODEX_TUI_COMMAND ?? "codex";
-  const baseArgs = options.resumeSessionId
+/**
+ * The Codex TUI argv, as a pure function. Extracted so `aiox host`'s
+ * per-agent view launch request carries the exact same structured argv the
+ * single-agent `aiox codex` path spawns — the two must not drift, and the
+ * host path hands argv to a terminal-view driver instead of spawning with an
+ * inherited stdio itself.
+ */
+export function buildLaunchCodexTuiArgs(options: {
+  endpoint: URL;
+  resumeSessionId?: string;
+}): string[] {
+  return options.resumeSessionId
     ? ["resume", options.resumeSessionId, "--remote", options.endpoint.toString()]
     : ["--remote", options.endpoint.toString()];
+}
 
-  return spawn(command, baseArgs, {
-    stdio: "inherit",
-  });
+export function resolveCodexTuiCommand(command?: string): string {
+  return command ?? process.env.AIOX_CODEX_TUI_COMMAND ?? "codex";
+}
+
+export function launchCodexTui(options: LaunchCodexTuiOptions): ChildProcess {
+  return spawn(
+    resolveCodexTuiCommand(options.command),
+    buildLaunchCodexTuiArgs(options),
+    {
+      stdio: "inherit",
+    },
+  );
 }
 
 /**

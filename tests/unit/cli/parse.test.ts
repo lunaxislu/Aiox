@@ -292,6 +292,16 @@ describe("CLI parser", () => {
     expectCliParseError(["connect", "a", ""], "aiox.invalidName");
   });
 
+  it("parses host with no options (cwd-fixed, no --file)", () => {
+    expect(parseCli(["host"])).toEqual({
+      kind: "host",
+    });
+  });
+
+  it("rejects host with an unknown option", () => {
+    expectCliParseError(["host", "--file", "other.yaml"], "aiox.unknownOption");
+  });
+
   it("parses pair create with a name", () => {
     expect(parseCli(["pair", "--name", "feature-x"])).toEqual({
       kind: "pair-create",

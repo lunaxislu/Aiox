@@ -91,9 +91,14 @@ describe("G1-C Tier 3 reliability composition", () => {
     const db = new Database(":memory:");
     applySchema(db);
     const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
-    const runtimes = new Map([["target", new ControlledCodexRuntime("")]]);
+    // Attach with a real thread id (eager-start now requires one, W6) then clear
+    // it to model binding becoming absent again — this test's actual point is
+    // the retry-serialization gate while unbound, not the attach step itself.
+    const targetRuntime = new ControlledCodexRuntime("thread-target");
+    const runtimes = new Map([["target", targetRuntime]]);
     const api = apiFor(db, runtimes, scheduled);
     const sourceToken = await twoCodex(api);
+    targetRuntime.activeThreadId = "";
 
     await sendFromCodex(api, sourceToken, "retry");
     expect(delivery(db, "retry").status).toBe("queued");

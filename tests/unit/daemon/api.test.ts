@@ -297,7 +297,7 @@ describe("daemon API with fake in-process transport", () => {
     });
   });
 
-  it("attaches a no-resume Codex runtime without creating a daemon-owned thread", async () => {
+  it("eagerly starts a daemon-owned Codex thread on no-resume attach and rebinds the session id", async () => {
     const runtime = fakeCodexRuntime({
       endpoint: "ws://127.0.0.1:54321/",
       startedThreadId: "thread-new",
@@ -305,7 +305,7 @@ describe("daemon API with fake in-process transport", () => {
     const runtimes = new Map();
     const state = createDaemonState({
       db,
-      createId: createIdSequence(["agent-1"]),
+      createId: createIdSequence(["agent-1", "event-1"]),
       now: createNowSequence([
         "2026-05-18T00:00:00.000Z",
         "2026-05-18T00:00:00.000Z",
@@ -325,6 +325,7 @@ describe("daemon API with fake in-process transport", () => {
       kind: "codex",
       name: "impl",
       cwd: "/repo",
+      instructions: "be terse",
     });
 
     expect(response).toEqual({
@@ -336,19 +337,214 @@ describe("daemon API with fake in-process transport", () => {
         status: "connected",
         cwd: "/repo",
         pairId: null,
+        adapterSessionId: "thread-new",
       },
       codexRuntime: {
         endpoint: "ws://127.0.0.1:54321/",
-        activeThreadId: null,
+        activeThreadId: "thread-new",
       },
       codexChannelToken: expect.any(String),
     });
     expect(runtimes.get("impl")).toBe(runtime);
-    expect(runtime.startThreadCalls).toBe(0);
+    expect(runtime.startThreadCalls).toBe(1);
     expect(db.prepare("select adapter_session_id from agents where name = ?").get("impl")).toEqual({
-      adapter_session_id: null,
+      adapter_session_id: "thread-new",
     });
-    expect(db.prepare("select type, data_json from events").all()).toEqual([]);
+    expect(db.prepare("select type, data_json from events").all()).toEqual([
+      {
+        type: "agent_thread_id_rebound",
+        data_json: JSON.stringify({
+          previousId: null,
+          nextId: "thread-new",
+          operation: "thread/start",
+          source: "attach_start",
+        }),
+      },
+    ]);
+  });
+
+  it("fails no-resume Codex attach atomically when thread/start returns no thread id", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      // no startedThreadId configured: fakeCodexRuntime.startThread() resolves null.
+    });
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1"]),
+      now: createNowSequence([
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
+        "2026-05-18T00:00:01.000Z",
+      ]),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await expect(
+      client.attachAgent({
+        kind: "codex",
+        name: "impl",
+        cwd: "/repo",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "codex_runtime_attach_failed",
+      message: expect.stringContaining("did not return a thread id"),
+    });
+    expect(runtime.disposeCalls).toBe(1);
+    // Same atomic rollback shape as the resume-mismatch failure below: the
+    // just-created row (and its routes) is physically removed, not status-flipped.
+    expect((await client.status()).agents).toEqual([]);
+    expect(db.prepare("select type from events").all()).toEqual([]);
+  });
+
+  it("surfaces a runtime dispose failure alongside the original error when a no-resume attach fails and its own cleanup also fails", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      // no startedThreadId configured: startThread() resolves null, which
+      // triggers the eager-attach failure catch below — that catch now also
+      // tries to dispose the runtime it just started, and that dispose fails.
+      disposeError: new Error("codex app-server did not shut down"),
+    });
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1"]),
+      now: createNowSequence([
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
+        "2026-05-18T00:00:01.000Z",
+      ]),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await expect(
+      client.attachAgent({
+        kind: "codex",
+        name: "impl",
+        cwd: "/repo",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "codex_runtime_attach_failed",
+      message: expect.stringContaining("did not return a thread id"),
+      runtimeDisposeError: "codex app-server did not shut down",
+    });
+    expect(runtime.disposeCalls).toBe(1);
+    // The row is still removed even though its runtime would not dispose
+    // cleanly — a runtime that will not shut down cleanly must not strand
+    // daemon state, the same contract `detachAgent()` has.
+    expect((await client.status()).agents).toEqual([]);
+  });
+
+  it("preserves an untyped no-resume startThread() rejection as the attach failure and still surfaces a runtime dispose failure", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      // startThread() itself rejects with a plain Error (no `.code`), not the
+      // typed "no thread id returned" failure the other tests use —
+      // isCodexAttachError() is false for this, so the pre-fix catch used to
+      // rethrow only this error and drop the dispose failure below.
+      startThreadError: new Error("codex app-server crashed mid thread/start"),
+      disposeError: new Error("codex app-server did not shut down"),
+    });
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1"]),
+      now: createNowSequence([
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
+        "2026-05-18T00:00:01.000Z",
+      ]),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    let caught: unknown;
+    try {
+      await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    const message = (caught as Error).message;
+    expect(message).toEqual(expect.stringContaining("codex app-server crashed mid thread/start"));
+    expect(message).toEqual(expect.stringContaining("codex app-server did not shut down"));
+    expect(runtime.disposeCalls).toBe(1);
+    // Cleanup (row/routes/pending token) completes regardless of the dispose
+    // outcome, same as the typed-error path above.
+    expect((await client.status()).agents).toEqual([]);
+  });
+
+  it("does not add cleanup-error text to an untyped no-resume startThread() rejection when dispose succeeds", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      startThreadError: new Error("codex app-server crashed mid thread/start"),
+    });
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1"]),
+      now: createNowSequence([
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
+        "2026-05-18T00:00:01.000Z",
+      ]),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await expect(
+      client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" }),
+    ).rejects.toMatchObject({ message: "codex app-server crashed mid thread/start" });
+    expect(runtime.disposeCalls).toBe(1);
+  });
+
+  it("preserves an untyped resumeThread() rejection as the attach failure and still surfaces a runtime dispose failure", async () => {
+    const runtime = fakeCodexRuntime({
+      endpoint: "ws://127.0.0.1:54321/",
+      resumeThreadError: new Error("codex app-server crashed mid thread/resume"),
+      disposeError: new Error("codex app-server did not shut down"),
+    });
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1"]),
+      now: createNowSequence([
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:00.000Z",
+        "2026-05-18T00:00:01.000Z",
+        "2026-05-18T00:00:01.000Z",
+      ]),
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => runtime,
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    let caught: unknown;
+    try {
+      await client.attachAgent({
+        kind: "codex",
+        name: "impl",
+        cwd: "/repo",
+        resumeSessionId: "thread-resume",
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    const message = (caught as Error).message;
+    expect(message).toEqual(expect.stringContaining("codex app-server crashed mid thread/resume"));
+    expect(message).toEqual(expect.stringContaining("codex app-server did not shut down"));
+    expect(runtime.disposeCalls).toBe(1);
+    expect((await client.status()).agents).toEqual([]);
   });
 
   it("resumes an explicit Codex session during attach and records a resume rebind", async () => {
@@ -756,7 +952,7 @@ describe("daemon API with fake in-process transport", () => {
     await client.attachAgent({ kind: "claude", name: "source", cwd: "/repo" });
 
     const targets = new Map<string, { id: string; token: string }>();
-    for (const name of ["rollback", "disconnect", "detach", "tui", "reattach", "preserve", "normal-stop"]) {
+    for (const name of ["disconnect", "detach", "tui", "reattach", "preserve", "normal-stop"]) {
       const attach = await client.attachAgent({ kind: "claude", name, cwd: "/repo" });
       if (!attach.ok || !attach.claudeChannelToken) throw new Error("expected token");
       targets.set(name, { id: attach.agent.id, token: attach.claudeChannelToken });
@@ -764,7 +960,6 @@ describe("daemon API with fake in-process transport", () => {
       await client.reportClaudeChannelBootFailure({ agentName: name, token: attach.claudeChannelToken, reason: "claude_channel_port_in_use" });
     }
 
-    await client.rollbackAgentAttach({ agentName: "rollback" });
     await client.disconnectClaudeChannel({ agentName: "disconnect" });
     await expect(
       client.reportClaudeChannelBootFailure({
@@ -811,7 +1006,7 @@ describe("daemon API with fake in-process transport", () => {
 
     const beforeNormalStop = await client.receiveClaudeChannelMessage({ agentName: "source", messageId: "lifecycle-before-stop", content: { text: "review" } });
     if (!beforeNormalStop.ok) throw new Error("expected dispatch");
-    for (const name of ["rollback", "disconnect", "detach", "tui", "reattach"]) {
+    for (const name of ["disconnect", "detach", "tui", "reattach"]) {
       const targetAgentId = targets.get(name)!.id;
       const deferred = beforeNormalStop.dispatch.deferred.find(
         (entry) => entry.targetAgentId === targetAgentId,
@@ -1261,48 +1456,6 @@ describe("daemon API with fake in-process transport", () => {
     ]);
   });
 
-  it("rolls back a pre-ready agent attach by disposing runtime and disconnecting the agent", async () => {
-    const runtime = fakeRuntime("starting");
-    const state = createDaemonState({
-      db,
-      createId: createIdSequence(["agent-1"]),
-      now: () => "2026-05-18T00:00:00.000Z",
-      codexRuntimes: new Map([["impl", runtime]]),
-    });
-    const client = createInProcessClient(createDaemonApi(state));
-
-    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
-
-    await expect(client.rollbackAgentAttach({ agentName: "impl" })).resolves.toEqual({
-      ok: true,
-      agentName: "impl",
-      rolledBack: true,
-    });
-    expect(runtime.disposeCalls).toBe(1);
-    expect((await client.status()).agents).toEqual([]);
-  });
-
-  it("does not roll back a ready runtime by agent name", async () => {
-    const runtime = fakeRuntime("ready");
-    const state = createDaemonState({
-      db,
-      createId: createIdSequence(["agent-1"]),
-      now: () => "2026-05-18T00:00:00.000Z",
-      codexRuntimes: new Map([["impl", runtime]]),
-    });
-    const client = createInProcessClient(createDaemonApi(state));
-
-    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
-
-    await expect(client.rollbackAgentAttach({ agentName: "impl" })).resolves.toEqual({
-      ok: true,
-      agentName: "impl",
-      rolledBack: false,
-    });
-    expect(runtime.disposeCalls).toBe(0);
-    expect((await client.status()).agents[0].status).toBe("connected");
-  });
-
   it("detaches a ready agent by disposing runtime, removing its row, and emitting a graceful event", async () => {
     const runtime = fakeRuntime("ready");
     const state = createDaemonState({
@@ -1339,6 +1492,43 @@ describe("daemon API with fake in-process transport", () => {
         data_json: JSON.stringify({ trigger: "explicit_detach" }),
       },
     ]);
+  });
+
+  it("reports a runtime dispose failure on detach while still removing the row and routes", async () => {
+    const runtime = {
+      state: "ready" as const,
+      disposeCalls: 0,
+      async dispose() {
+        this.disposeCalls += 1;
+        throw new Error("codex app-server did not shut down");
+      },
+    };
+    const state = createDaemonState({
+      db,
+      createId: createIdSequence(["agent-1", "agent-2", "route-1", "event-1"]),
+      now: () => "2026-05-18T00:00:00.000Z",
+      codexRuntimes: new Map([["impl", runtime]]),
+    });
+    const client = createInProcessClient(createDaemonApi(state));
+
+    await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    await client.attachAgent({ kind: "codex", name: "peer", cwd: "/repo" });
+    client.connect({ sourceName: "impl", targetNames: ["peer"] });
+
+    // The failure must reach the caller — swallowing it hid real cleanup
+    // failures from `aiox host`'s exit code and from the single-agent CLI's
+    // TUI-failure diagnostics.
+    await expect(client.detachAgent({ agentName: "impl" })).resolves.toEqual({
+      ok: true,
+      agentName: "impl",
+      detached: true,
+      runtimeDisposeError: "codex app-server did not shut down",
+    });
+
+    expect(runtime.disposeCalls).toBe(1);
+    // Reporting the dispose failure must not stop the rest of the cleanup.
+    expect(db.prepare("select name from agents where name = ?").get("impl")).toBeUndefined();
+    expect(db.prepare("select count(*) as count from routes").get()).toEqual({ count: 0 });
   });
 
   it("records TUI exit by reusing the graceful detach cleanup path", async () => {
@@ -2388,6 +2578,9 @@ function fakeCodexRuntime(options: {
   resumedThreadId?: string;
   turnStartError?: Error;
   turnStartTimeout?: boolean;
+  disposeError?: Error;
+  startThreadError?: Error;
+  resumeThreadError?: Error;
 }) {
   const requests: Array<{ method: string; params: unknown; options: unknown }> = [];
   let capturedLateResponse: ((response: unknown) => void) | undefined;
@@ -2425,11 +2618,17 @@ function fakeCodexRuntime(options: {
     },
     async startThread() {
       this.startThreadCalls += 1;
+      if (options.startThreadError) {
+        throw options.startThreadError;
+      }
       this.activeThreadId = options.startedThreadId ?? null;
       return this.activeThreadId;
     },
     async resumeThread(threadId: string) {
       this.resumeThreadCalls.push(threadId);
+      if (options.resumeThreadError) {
+        throw options.resumeThreadError;
+      }
       this.activeThreadId = options.resumedThreadId ?? threadId;
       return this.activeThreadId;
     },
@@ -2441,6 +2640,9 @@ function fakeCodexRuntime(options: {
     },
     async dispose() {
       this.disposeCalls += 1;
+      if (options.disposeError) {
+        throw options.disposeError;
+      }
       this.state = "disposed" as typeof this.state;
     },
   };

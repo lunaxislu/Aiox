@@ -83,9 +83,25 @@ Rationale: [[docs/decisions/codex-per-agent-app-server]] (per-agent app-server p
    - Resume: `codex resume <session-id> --remote <proxy-url>`
    - Stdio `"inherit"` (TUI is CLI-child — [[docs/decisions/codex-per-agent-app-server]] §5).
 8. CLI awaits TUI exit. On exit → `api.notifyTuiExited({agentName, exitCode, signal})`.
-   On spawn error → `api.rollbackAgentAttach` then
-   typed exit `aiox.invocation.tui_launch_failed`
-   ([[src/cli/invocation.ts]] — `src/cli/invocation.ts:186-198`).
+   On spawn or exit-wait error → `api.detachAgent` (disposes the runtime and
+   removes the agent's row/routes unconditionally) then
+   typed exit `aiox.invocation.tui_launch_failed`.
+
+   Evidence:
+
+   - TUI failure call sites and awaited cleanup diagnostics
+     - [[src/cli/invocation.ts]]
+       - `src/cli/invocation.ts:208-223`
+       - `src/cli/invocation.ts:533-558`
+   - Daemon-owned runtime disposal and unconditional agent row/incident-route removal
+     - [[src/daemon/state.ts]]
+       - `src/daemon/state.ts:1568-1577`
+       - `src/daemon/state.ts:3073-3130`
+     - [[tests/unit/cli/invocation.test.ts]]
+       - `tests/unit/cli/invocation.test.ts:1177-1242`
+     - [[tests/unit/daemon/api.test.ts]]
+       - `tests/unit/daemon/api.test.ts:1097-1129`
+       - `tests/unit/daemon/api.test.ts:1459-1532`
 
 **Attach-failure cleanup ordering**:
 WS connect / initialize failure unwinds in reverse — proxy → ws →

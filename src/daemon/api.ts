@@ -31,8 +31,6 @@ import type {
   RegisterClaudeChannelResult,
   RegisterCodexChannelRequest,
   RegisterCodexChannelResult,
-  RollbackAgentAttachRequest,
-  RollbackAgentAttachResult,
   SendMessageRequest,
   SendMessageResult,
   StatusResult,
@@ -59,9 +57,6 @@ export interface DaemonApi {
   retransmitUnconfirmedDelivery(
     request: RetransmitUnconfirmedDeliveryRequest,
   ): Promise<RetransmitUnconfirmedDeliveryResponse>;
-  rollbackAgentAttach(
-    request: RollbackAgentAttachRequest,
-  ): Promise<RollbackAgentAttachResponse>;
   detachAgent(request: DetachAgentRequest): Promise<DetachAgentResponse>;
   notifyTuiExited(request: NotifyTuiExitedRequest): Promise<NotifyTuiExitedResponse>;
   registerClaudeChannel(
@@ -201,6 +196,7 @@ export type AttachAgentResponse =
       ok: false;
       reason: "codex_resume_failed" | "codex_runtime_attach_failed";
       message: string;
+      runtimeDisposeError?: string;
     };
 
 export type CreatePairResponse =
@@ -277,8 +273,6 @@ export type RetransmitUnconfirmedDeliveryResponse =
   | { ok: false; reason: "manual_retransmit_unconfirmed"; delivery: DeliveryDto; message: string }
   | { ok: false; reason: "manual_retransmit_rejected"; delivery: DeliveryDto; message: string }
   | { ok: false; reason: "manual_retransmit_failed"; delivery: DeliveryDto; message: string };
-
-export type RollbackAgentAttachResponse = RollbackAgentAttachResult;
 
 export type DetachAgentResponse = DetachAgentResult;
 
@@ -373,9 +367,6 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
       return mapRetransmitUnconfirmedDeliveryResult(
         await state.retransmitUnconfirmedDelivery(request),
       );
-    },
-    async rollbackAgentAttach(request) {
-      return state.rollbackAgentAttach(request);
     },
     async detachAgent(request) {
       return state.detachAgent(request);

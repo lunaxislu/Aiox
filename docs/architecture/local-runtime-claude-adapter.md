@@ -138,14 +138,14 @@ Evidence:
    `agents.removeByName`/`routes.removeAllForAgent`). Unlike Codex, no
    `claude_channel_disconnected` event is appended — Implementation-only
    (no recorded rationale).
-10. Three other Claude-credential-bearing exit paths also clear
+10. Two other Claude-credential-bearing exit paths also clear
     `claudePendingTokens` and `claudeChannelRuntimes` for the agent, alongside
-    their existing Codex-map cleanup: attach-failure `rollbackAgentAttach`,
-    the shared `detachCodexAgent` helper (used by both the `detachAgent` and
-    `notifyTuiExited` daemon API methods, dispatched by method name only —
-    not gated by agent kind), and `stop()`'s per-agent loop
-    ([[src/daemon/state.ts]] — `rollbackAgentAttach`, `detachCodexAgent`,
-    `stop`). `claudeChannelRuntimes` is the sole gate
+    their existing Codex-map cleanup: the shared `detachCodexAgent` helper
+    (used by both the `detachAgent` and `notifyTuiExited` daemon API methods,
+    dispatched by method name only — not gated by agent kind), and `stop()`'s
+    per-agent loop ([[src/daemon/state.ts]] — `src/daemon/state.ts:3073-3130`
+    (`detachCodexAgent`), `src/daemon/state.ts:1440-1482` (`stop`)).
+    `claudeChannelRuntimes` is the sole gate
     `injectMessageIntoClaudeTarget`/`retransmitClaudeUnconfirmedDelivery`
     check before pushing to a target's recorded HTTP endpoint (no
     `agent.status` check), so a stale entry surviving one of these paths

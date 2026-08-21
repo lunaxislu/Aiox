@@ -216,13 +216,24 @@ export class CodexAgentRuntime {
     return this.webSocket.request(method, params, options);
   }
 
-  async startThread(): Promise<string | null> {
-    const result = await this.requestCodex("thread/start", {});
+  async startThread(cwd?: string, developerInstructions?: string): Promise<string | null> {
+    const result = await this.requestCodex("thread/start", {
+      ...(cwd === undefined ? {} : { cwd }),
+      ...(developerInstructions === undefined ? {} : { developerInstructions }),
+    });
     return this.rebindFromThreadOperation(result, "thread/start");
   }
 
-  async resumeThread(threadId: string): Promise<string | null> {
-    const result = await this.requestCodex("thread/resume", { threadId });
+  async resumeThread(
+    threadId: string,
+    cwd?: string,
+    developerInstructions?: string,
+  ): Promise<string | null> {
+    const result = await this.requestCodex("thread/resume", {
+      threadId,
+      ...(cwd === undefined ? {} : { cwd }),
+      ...(developerInstructions === undefined ? {} : { developerInstructions }),
+    });
     const returnedThreadId = extractThreadId(result);
 
     if (returnedThreadId !== threadId) {
