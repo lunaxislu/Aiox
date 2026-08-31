@@ -10,13 +10,11 @@ status: open
 - [x] W3 TUI 검증(claude·codex 둘 다) — peer 등록 시 목록에 뜨는지 먼저 확인 후 혼자일 때 빈 값 케이스 확인
 - [x] W4 aiox.yaml v1 schema+parser 구현(zod, project/instructions.global/agents[]/routes[])
 - [x] W5 Validator Rules 구현(namespace uniqueness, dangling reference, directed 중복 쌍, 별표 reserved word — 전부 parse-time error)
-- [>] W6 aiox host 구현 — 전체 agent foreground 실행, routes[] mesh+directed override wiring, agent-attach 재사용
+- [>] W6 aiox host 구현 — Stage 1–4 accepted; 현재 Stage 5 CLI-only E2E + running mutations를 구현하고, Stage 3의 host-qualified routable identity gate를 먼저 해결한 뒤 확정된 10단계 순서를 따른다
 - [ ] W7 aiox quit 구현
 - [ ] W8 yaml 필드(W4) CLI 인자(W1) 매칭 정합 확인
 - [ ] W9 이 stage 범위 문서 stale/gap 정합(owner 문서 반영)
 - [x] W10 W1/W2 independent review correction — Codex agent departure, atomic lifecycle cleanup, removed-surface cleanup, and W1/W2 document/test alignment
-- [x] W11 W6 revision 5 Attempt 3 코드·테스트·삭제 범위 독립 result review(live evidence 제외)
-- [x] W12 W6 architecture evidence corrective — TUI-failure call site와 daemon dispose/row/routes state-effect 근거 보강
 
 ## Required Context
 
@@ -38,10 +36,38 @@ status: open
   [[docs/specs/aiox-compose-contract]] §6 Validator Rules, [[docs/specs/aiox-message-lifecycle]]
   §4.2.
 
+### {W6}
+
+- Current owner/read order: `logs/artifacts/w6-aiox-host-agreed-architecture.md` →
+  `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W6.md` →
+  `logs/artifacts/w6-adapter-source-ledger.md`(제품 adapter stage만). 과거 W6 설계 history는
+  사용자 승인 destructive diet로 제거됐다.
+- Current accepted contract: runtime-only host; name+canonicalPath+internal hostId; host-scoped agent;
+  기존 daemon control path; HostController + HostAdapter/AdapterRegistry; 기존 `aiox claude/codex`
+  CLI 재사용; `starting→ready→detach`; named groups → ready subset effective edges; surface 비소유;
+  category fallback 없음; W6 terminate-all/W7 `aiox quit` 경계.
+- CLI: cwd/path/name+path YAML start, `host --list`, runtime-only `host new`, repeated `--agent`/
+  `--route`, running `add/remove/route`, name lookup 0/1/N과 `--path` disambiguation. Exact grammar는
+  W6 Task Brief revision 8이 소유한다.
+- Category A=Terminal.app new windows, B=cmux·Ghostty macOS 1.3+ split/pane, C=VS Code+Cursor shared extension integrated terminals. Native Windows/WSL2와 나머지 제품은 최초 범위에서 제외한다.
+- Failure order: validation → static detect → daemon ensure → dynamic preflight → host register → agent surface/CLI. Static failure는 no side effect, dynamic failure는 daemon만 남을 수 있음, N번째 실패는 agent-local, all-agent failure는 runtime을 삭제하고 daemon/surface에 비관여한다.
+- 명시적 제외: AIOX-owned PTY/`node-pty`/byte relay, `aiox view run`, runner/ticket/LaunchSpec,
+  별도 socket/coordinator, zsh hook, persistent HostDefinition, stopped relaunch, category fallback.
+- Implementation order: Task Brief/red tests → CLI source → daemon/DB → common controller/adapter →
+  CLI-only E2E → YAML → Category B(cmux then Ghostty, 각 user live gate) → Category A(Terminal.app
+  live gate) → Category C(사전 사용자 Q&A 후 VS Code/Cursor + live gate) → full
+  verification/W7 handoff. 각 단계 전·후 책임/성공/실패/side effect/source/tests와 실제
+  verification을 ASCII로 보고한다. Revision 8 Stage 1–4(Task Brief/red tests, Host CLI
+  source/normalization, daemon/DB running-host runtime + 기존 daemon control relay, HostController +
+  HostAdapter/AdapterRegistry + FakeHostAdapter)는 accepted됐다. Current next는 Stage 5 CLI-only
+  E2E + running mutations이며, 연결 전에 Stage 3 residual인 host-qualified routable identity를
+  구현·검증하는 것이 필수 gate다.
+
 ## Package Scope
 
-- Revision: 3; History pointer: `2026-08-19 22:54 · W2 Task Brief revision 5 확정` 및
-  `2026-08-19 · W2 revision 5 Accept — stale-peer 재설계 result review`.
+- Revision: 6; History pointer: `2026-08-19 22:54 · W2 Task Brief revision 5 확정`,
+  `2026-08-19 · W2 revision 5 Accept — stale-peer 재설계 result review`,
+  `2026-08-27 · W6 current accepted contract and Stage 2 handoff`.
 - Primary boundary: aiox.yaml v1 config 파일 지원 표면 전체 — CLI attach 인자 확장, agents_list MCP tool, yaml schema/parser/validator, aiox host/quit foreground 실행 명령어
 - Related artifacts in allowed write-set:
 - src/cli/parse.ts — agent-attach 인자 확장(W1), aiox host/quit 명령어(W6, W7), disconnect 커맨드 제거(W2)
@@ -60,6 +86,8 @@ status: open
 - docs/specs/aiox-compose-contract.md §6 Validator Rules — Committed target에서 Current로 status 반영(W9)
 - docs/specs/aiox-message-lifecycle.md §4.2 agents_list — Committed target에서 Current로 status 반영(W9)
 - plans/g2-terminal-compose-minimum.md — Stage 2 완료 마킹(closeout)
+- logs/artifacts/w6-aiox-host-agreed-architecture.md — W6 현재 observable contract·사용자 명령·10단계 순서 snapshot
+- logs/artifacts/w6-adapter-source-ledger.md — 최초 지원 제품 HostAdapter의 API input/output·공식 source·live gate
 - Excluded:
   - N/A.
 
@@ -67,7 +95,8 @@ status: open
 
 - Phase: activation preflight -> provisional bootstrap -> discovery -> controlling synthesis -> contract review -> execution -> result review -> result promotion/Reconcile -> closeout.
 - Execution default: inline(package Agent Topology 기본값). W별 delegated 전환 필요성은 각 W의
-  contract review에서 개별 판단하고 Task Brief revision으로 반영한다.
+  contract review에서 개별 판단하고 Task Brief revision으로 반영한다. W6는 2026-08-27
+  사용자 지시로 Claude delegated execution, Codex controlling contract/result review로 전환했다.
 - Review anchors:
   - Contract review: before execution Act.
   - Result review: before candidate result promotion/Reconcile.
@@ -78,21 +107,21 @@ status: open
 ## Task Index
 
 - Stable package key: 2026-08-19-G2-Config-CLI-MCP-Foreground-구현
+- Retired IDs: W11–W15; 사용자 승인 W6 history diet으로 records/registry를 제거했으며
+  재사용하지 않는다.
 
-| W-id | Profile | Mode | Task record |
-| --- | --- | --- | --- |
-| W12 | Compact | delegated | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W12.md` |
-| W11 | Compact | delegated | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W11.md` |
-| W10 | Compact | delegated | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W10.md` |
-| W1 | Compact | inline | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W1.md` |
-| W2 | Compact | delegated | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W2.md` |
-| W3 | Compact | inline | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W3.md` |
-| W4 | Compact | inline | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W4.md` |
-| W5 | Compact | inline | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W5.md` |
-| W6 | Compact | inline | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W6.md` |
-| W7 | Compact | inline | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W7.md` |
-| W8 | Compact | inline | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W8.md` |
-| W9 | Compact | inline | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W9.md` |
+| W-id | Profile | Mode      | Task record                                                               |
+| ---- | ------- | --------- | ------------------------------------------------------------------------- |
+| W10  | Compact | delegated | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W10.md` |
+| W1   | Compact | inline    | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W1.md`  |
+| W2   | Compact | delegated | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W2.md`  |
+| W3   | Compact | inline    | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W3.md`  |
+| W4   | Compact | inline    | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W4.md`  |
+| W5   | Compact | inline    | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W5.md`  |
+| W6   | Compact | delegated | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W6.md`  |
+| W7   | Compact | inline    | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W7.md`  |
+| W8   | Compact | inline    | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W8.md`  |
+| W9   | Compact | delegated | `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W9.md`  |
 
 ## Evidence
 
@@ -100,19 +129,28 @@ status: open
   - W5 corrective Attempt 2 Accept: `directed[].from`/단일·배열 `to`는 global agent 존재와
     route-local membership을 구분해 검증하며, unknown-agent와 non-member issue가 field path와
     message에서 구분된다. route별 set과 aggregate issue 수집도 유지된다.
-  - W6 corrective 부분 Accept: Claude 단일 attach instruction argv wiring과 Claude
-    stop/detach cleanup 단계 독립성은 source/tests 독립 review를 통과했다. W6 전체는 signal,
-    Codex dispose 진단, live Claude registration blocker 때문에 accepted가 아니다.
-  - W6 instruction discovery: 현재 W1 `--instructions`는 parse·attach·SQLite 저장에서
-    끝나고 Codex/Claude runtime consumer가 없다. Codex 0.148.0 app-server는
-    `thread/start`/`thread/resume`의 `cwd`/`developerInstructions`를, Claude Code 2.1.237은
-    `--append-system-prompt <text>`를 지원한다. 세부 trace·문법·증거 등급은
-    `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W6.md` Brief revision 3/
-    Result를 본다.
+  - W6 revision 8 Stage 1 accepted: current architecture·CLI grammar·mixed `host add`·W6/W7
+    boundary가 self-contained Task Brief로 고정됐다. Focused parser의 existing 67 tests와 full
+    suite의 existing 801 tests는 PASS, target grammar 25건은 현 parser 미구현으로 intentional RED,
+    typecheck PASS, Stage 1 production `src/` 변경 없음을 확인했다.
+  - W6 revision 8 Stage 2 accepted: exact host grammar가 structured `ParsedCommand`로 parse되고,
+    CLI-only create는 기존 config structural/semantic validator를 재사용한 `AioxConfig`로,
+    running mutation은 snapshot 불필요 구조 검증 경계로 normalize된다. Named/path YAML host는
+    Stage 3+ 연결 전 잘못된 cwd 실행 대신 side effect 전 fail-fast한다. Correction 4건과
+    신규 regression test 6건을 포함해 typecheck, focused 148 tests, full 847 tests,
+    diff/Markdown, controlling log/package registry 검사가 PASS했다.
+  - W6 revision 8 Stage 3 accepted: runtime-only running host/agent/control request storage,
+    name+canonicalPath lookup, hostId 격리, starting/ready/detach, 기존 daemon socket relay와
+    unregister/stale purge를 수용했다. Typecheck, focused 51 tests, full 898 tests와 diff를
+    controlling review에서 재검증했다.
+  - W6 revision 8 Stage 4 accepted: AdapterRegistry 선택, static→dynamic→register→surface 순서,
+    daemon 상태 기반 observation seam, launch failure cleanup, surface 비소유, direct/relay
+    terminate-all을 수용했다. Typecheck, host 44 tests, Stage 3 regression 46 tests, full
+    942 tests와 diff/log/package integrity를 controlling review에서 재검증했다.
 - Evidence gaps:
-  - native/compose 충돌 precedence는 version-bound model behavior이며 protocol guarantee가 아니다.
-    미실행 matrix cell, resume, multiline/long text, TUI 노출, cwd·cleanup 경로는 W6
-    implementation verification으로 닫아야 한다.
+  - Stage 5–10 E2E/runtime mutation/YAML/product behavior와 Terminal.app/cmux/Ghostty/VS Code/Cursor
+    live gate는 아직 미구현·미검증이다. Stage 5 연결 전 host-qualified routable
+    identity를 구현·검증해야 한다. 계획을 현재 실행 사실로 읽지 않는다.
 
 ## Cross-Artifact Effects
 
@@ -264,6 +302,7 @@ W1 구현 완료 뒤 sonnet subagent에게 code-review(high 레벨)를 위임해
 이는 package Agent Topology(references/package-log.md "Agent Topology and Execution Modes")의 delegated execution mode 전환에 해당한다 — Execution default는 inline(bootstrap 시점 기본값)이지만, "W별 delegated 전환 필요성은 각 W의 contract review에서 개별 판단"하도록 Workflow / Agent Plan에 이미 열려 있던 경로다.
 
 반영:
+
 - `logs/packages/.../tasks/W2.md` Identity의 Execution mode를 inline → delegated로 변경, Task Brief revision 2로 올려 Agent Topology 항목 신설(controlling은 Task Brief 확정+result review만 수행, codex/claude 두 adapter 표면 구현은 subagent에게 위임).
 - controlling log Task Index(이 로그 73행 표)의 W2 Mode 컬럼을 inline → delegated로 동기화.
 
@@ -451,6 +490,7 @@ Allowed write-set/Required reads/Completion 전면 갱신, Task History에 결�
 (로그에 재복사하지 않음).
 
 추가로 확인한 사실 2건(Task Brief Excluded/Required reads에 반영):
+
 - `src/core/agents.ts`의 `attachAgent()` pure 함수(38-69행)는 repository의 `attach()`와 별개
   구현이며 production code 어디서도 호출되지 않는 dead code로 보인다(grep 확인 — 자기 테스트만
   참조). 이번 W와 무관해 손대지 않고 발견 사실만 남긴다.
@@ -543,6 +583,7 @@ W2 revision 5 Accept 직후 사용자가 실제 TUI로 재검증하다가 `aiox 
 
 **실사용 재검증(사용자 직접 수행, PASS)**: 이후 사용자가 실제로 `connect`까지 마친 뒤 두
 조합을 직접 재검증했다.
+
 - claude reviewer ↔ claude impl: 양쪽 `agents_list()`에 서로 role/description과 함께 정상
   노출. impl 종료 후 reviewer 쪽이 빈 배열로 복귀(stale-peer 재설계 목적대로 동작).
 - claude reviewer ↔ codex impl: 양쪽 노출 정상, role/description 정상. reviewer 종료 후 codex
@@ -693,692 +734,124 @@ Next: W6(`aiox host` 구현 — 전체 agent foreground 실행, `routes[]` mesh+
 wiring, agent-attach 재사용). 착수 시 `loadAioxConfig()` → `validateAioxConfigSemantics()`
 호출 연결을 빠뜨리지 않아야 한다(W5가 남긴 잔여 위험).
 
-## 2026-08-20 · W6 instruction 주입 선행 조사와 다음 세션 handoff
-
-- 사용자 지시: W6는 곧바로 `aiox host`를 구현하지 않고 Codex/Claude 각각의 compose instruction 주입 surface부터 확인·설계한다.
-- `instructions.global`과 `agents[].instructions`는 모두 optional이다. project root에 `AGENTS.md`/`CLAUDE.md`가 있는 경우와 없는 경우를 나눠 native project instruction과 compose instruction이 extension/stack/override 중 어떻게 동작하고 충돌하는지 실제 adapter·launcher 경로와 테스트/재현으로 확인해야 한다.
-- 사용자 제안의 현재 가정: 충돌 없이 stack 형태로 지시서가 누적될 수 있다면 YAML `instructions.global`은 pair/host 전체의 공통 CLI instruction에, `agents[].instructions`는 `aiox claude|codex --pair <pair> --instructions <text>` 같은 agent attach 옵션에 대응시킨다. 이는 아직 확인된 계약이 아니며 조사 결과 후 결정한다.
-- `--instructions`는 반복 입력하기 길다는 naming 문제도 함께 검토한다. `--prompt`/`--guide`/`--context` 등은 예시 후보일 뿐 확정하지 않았다.
-- W6 task record를 Brief revision 2로 갱신해 다음 세션의 첫 범위를 read-only discovery와 후속 implementation Brief 확정으로 제한했다. W6를 active pointer로 전환했으며 production 구현은 시작하지 않았다.
-
-Next: W6 discovery — Codex/Claude × native instruction 파일 있음/없음 × global/per-agent instruction 있음/없음 matrix를 복원하고, 관찰된 precedence·충돌 behavior에 근거해 CLI mapping과 option 이름을 설계한 뒤 사용자에게 보고한다.
-
-### 2026-08-20 16:29 · W6 instruction discovery 수용과 text 주입 설계 결정
-
-- Claude delegated discovery와 controlling 독립 대조 결과를 W6 task record revision 3에 수용했다. production 코드는 아직 수정하지 않았다.
-- 사용자 결정: `instructions.global` 다음에 agent별 `agents[].instructions`를 text 하나로 합성해 각 runtime에 주입한다. 파일형 surface는 지원 문법으로만 기록하고 구현 선택안에서는 제외한다. 기존 `--instructions` 이름을 유지한다.
-- 선택 surface: Codex는 `thread/start`/`thread/resume`의 `cwd`+`developerInstructions`; Claude는 명시적 project cwd에서 `--append-system-prompt <text>`. Codex `baseInstructions`/`model_instructions_file`, Claude `--system-prompt` 계열과 `--append-system-prompt-file`은 선택하지 않았다.
-- 현재 aiox가 instruction을 DB에 저장만 하고 runtime에는 전달하지 않는 dead-end, Codex cwd 누락, 두 CLI의 전체 지원 문법과 실증/공식 문서 대조는 `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W6.md`가 소유한다.
-- 증거 보정: native+global+per-agent가 함께 인식된 실증은 수용하지만, 충돌 시 native가 항상 이긴다는 model self-report는 protocol guarantee로 수용하지 않는다. 특히 Claude 공식 문서상 `CLAUDE.md`는 user-message context이고 `--append-system-prompt`는 system-prompt level이라 기존 spec의 native > compose 원칙을 기계적으로 보장하지 못한다.
-- Next: W6 production Act 전 전체 host write-set·rollback·foreground cleanup·verification 계약과 이 precedence degradation의 owner 처리 방식을 contract review에서 닫는다.
-
-### 2026-08-20 16:33 · Claude 후속 CLI·file surface 재검증 기록
-
-- 사용자가 전달한 Claude 후속 검증 보고 원문을 W6 task record Task History에 candidate evidence로 보존했다.
-- 보강 evidence: Codex `developer_instructions`/`model_instructions_file`, Claude `--append-system-prompt-file`/`--system-prompt-file`는 실제 marker 주입과 native project instruction 동시 인식이 보고됐다.
-- 정정: `model_instructions_file`은 현재 실증상 Codex built-in model instruction을 바꾸더라도 `AGENTS.md` auto-discovery를 억제하지 않는다. 기존 기록이 `AGENTS.md`까지 대체한다고 읽히는 부분은 폐기한다.
-- 증거 한계: Claude prompt 조립 순서와 native 충돌 승자 규칙은 여전히 model self-report 및 version-bound 관찰이다. protocol guarantee로 승격하지 않는다.
-- 선택된 구현 계약은 유지한다: global→per-agent text 합성, Codex `developerInstructions`, Claude `--append-system-prompt <text>`.
-- Next: W6 production Act 전 contract review에서 exact host write-set, rollback/cleanup, 테스트 matrix와 native>compose precedence degradation 처리를 닫는다.
-
-### 2026-08-20 16:42 · W6 production Act 전 contract review — 아키텍처 재추적으로 신규 gap 3건 발견, Task Brief revision 3 유지(추가 사용자 결정 대기)
-
-production 코드/테스트 변경 없이 W6 contract review를 계속했다. 지시대로 `aiox host` 책임 전체
-(CLI parse → config load/validate → instruction 합성 → agent-attach 재사용 → Codex/Claude launch →
-routes wiring → foreground wait → cleanup/rollback)를 코드로 끝까지 추적한 결과, Task Brief
-revision 3(instruction 주입 surface)이 다루지 않은 신규 gap 3건을 발견했다. Task Brief는 revision
-3에 유지하고, 아래 미결 사용자 결정을 먼저 보고한다(대화 응답 참고, 여기서는 근거만 보존).
-
-**확인한 사실(코드 직접 추적)**
-
-- Codex `thread/start`는 daemon이 발신하지 않는다. `ManagedCodexAgentRuntime.startThread()`
-  (`src/adapters/codex/runtime.ts:219-221`, `requestCodex("thread/start", {})`)는 production
-  경로 어디서도 호출되지 않는다(`tests/unit/daemon/api.test.ts:347`
-  `expect(runtime.startThreadCalls).toBe(0)`로 확정 검증됨). 최초 thread는 `launchCodexTui`가
-  `--remote <endpoint>`로 띄운 codex TUI 자식 프로세스가 app-server에 직접 발신하는 자기
-  발신 요청이고, aiox `proxy.ts`(`startCodexAgentProxy`)는 그 프레임을 순수 relay+관찰
-  (`observeUpstreamFrame`→`onBinding`)만 한다 — payload를 만들거나 고치지 않는다. daemon이 직접
-  발신하는 유일한 thread 호출은 `--resume` 플래그가 있을 때의 `resumeThread()`
-  (`state.ts:788`, `requestCodex("thread/resume", { threadId })`, `runtime.ts:224-225`)뿐이고
-  이마저 현재 `developerInstructions`/`cwd`를 안 보낸다.
-- Claude launcher(`src/adapters/claude/launcher.ts:70-86`)의
-  `spawn(command, args, { env, stdio: "inherit" })`에 `cwd` 옵션이 없다 — Node 기본값대로 부모
-  aiox CLI 프로세스의 cwd를 그대로 물려받는다. `--append-system-prompt` argv 주입 코드도 없다.
-- `src/bin/aiox.ts`에 `SIGINT`/`SIGTERM` 핸들러가 없다(grep 0건). daemon 프로세스
-  (`src/daemon/run.ts:115-116`)는 자체 핸들러가 있으나 별도 프로세스다. 현재 단일 agent
-  `agent-attach` 흐름(`invocation.ts:172-222`)은 자식에 `stdio:"inherit"`만 주고
-  `waitForTuiExit`로 기다릴 뿐, 부모 프로세스 자체의 Ctrl-C 처리는 Node 기본 동작(핸들러 없으면
-  즉시 종료)에 맡겨져 있다 — 이 경로에서 `rollbackAgentAttach`/`notifyTuiExited`/
-  `disconnectClaudeChannel` 같은 비동기 cleanup이 완주한다는 보장이 코드로 확인되지 않는다.
-- `plans/g2-terminal-compose-minimum.md`는 "config 파일 v1 스키마와 foreground 실행 구현"
-  (현재 Stage, 이 package)과 "view driver 일반화 구현"(Stage 3, `[ ]` 미착수)을 명시적으로
-  분리한다. Kickoff W4가 정한 `--ui none` fallback(옵션 A: 전체 background 실행+포커스 전환)은
-  "구현 미착수, 조건부 1차 시도"이고 `--ui` flag 자체가 `src/cli/parse.ts`에 없다(grep 확인).
-- 재사용 가능 확인: `connect()`(`state.ts:895`, `ConnectRequest{sourceName, targetNames}`)는
-  이름 기반 단방향 route 생성 primitive로 routes[] mesh/directed wiring에 재사용 가능하다(mesh는
-  각 member가 나머지 member 전원을 targetNames로 보내는 형태, directed override는 그 특정 pair의
-  반대 방향 connect만 생략하는 형태로 표현 가능). `rollbackAgentAttach`(`state.ts:1062`)는 이미
-  단일 agent 단위로 runtime dispose+`removeDepartedAgent`(row+route 물리 삭제)를 수행해 재사용
-  가능하다.
-- Package Scope(이 로그) allowed write-set에 `src/adapters/codex/*`,
-  `src/adapters/claude/launcher.ts`, `src/bin/aiox.ts`가 없다 — 위 발견 3건 모두 이 파일들을
-  건드려야 한다.
-
-**추론**
-
-- Task Brief revision 3의 "Codex는 thread/start에 developerInstructions를 전달"은 daemon이 그
-  RPC를 직접 만든다는 전제로 읽히기 쉬우나, 실제 발신 주체는 TUI 자식 프로세스다. 같은 목표를
-  이루려면 (a) daemon이 TUI 실행 전에 먼저 `runtime.startThread()`로 developerInstructions가
-  담긴 thread를 만들고 TUI를 `codex resume <생성된 threadId> --remote <endpoint>`로 실행(모든
-  최초 attach를 "daemon이 만든 thread의 resume"으로 바꾸는 행동 변화), 또는 (b) `proxy.ts`가
-  client→upstream `thread/start` 프레임을 relay 전에 in-flight로 rewrite하는 신규 메커니즘(현재
-  proxy는 순수 관찰자)이 필요하다 — 서로 다른 코드 범위와 행동 변화라 사용자 선택이 필요하다.
-- SIGINT 미처리와 view driver(Stage 3) 미착수로 인해, N-agent `aiox host`의 foreground/신호/
-  rollback 계약은 기존 단일 agent `agent-attach` 흐름의 단순 재사용으로 닫히지 않는다 — CLI
-  entrypoint 신규 SIGINT 핸들러가 필요하고, view driver 없이 N>1 TUI가 동시에 `stdio:"inherit"`를
-  놓고 경쟁할 수 없다는 제약이 그대로 남는다.
-
-**정정한 기존 주장**
-
-- Task Brief revision 3의 "Codex는 app-server thread/start 및 thread/resume 둘 다에 cwd+
-  developerInstructions를 전달하는 테스트가 필요하다"는 daemon이 두 호출을 대칭적으로 만든다고
-  전제하는데, thread/start는 daemon이 만들지 않는다는 사실이 이번 재추적으로 새로 확인됐다 —
-  이 부분은 정정 대상이다.
-
-Next: 위 발견을 근거로 사용자에게 (1) Codex thread/start developerInstructions 주입 방식(pre-create
-+resume vs proxy rewrite), (2) W6 범위에서 N-agent foreground의 최소 계약(Stage 3 view driver
-전에 무엇을 지원할지), (3) allowed write-set 확장(adapters/codex/*, adapters/claude/launcher.ts,
-bin/aiox.ts) 승인을 받는다. 결정 전까지 Task Brief revision 4로 올리지 않는다.
-
-### 2026-08-20 16:48 · Claude contract review controlling 대조와 결정 후보 보정
-
-- Claude가 확인한 Codex no-resume `thread/start` 발신 주체, Claude launcher의 cwd/instruction 누락, CLI signal cleanup 부재는 source/test 대조로 수용했다.
-- 다만 Codex 대안은 pre-create+resume/proxy rewrite 두 개로 닫히지 않는다. app-server launch의 `-c developer_instructions=...`도 후보이나 TUI 발신 start에 대한 정확한 조합 probe가 더 필요하다. 기존 `--ui none` headless 실행 계약까지 고려하면 daemon pre-create는 instruction 외 lifecycle 목적도 갖는다.
-- “여러 TUI가 같은 inherited TTY를 가질 수 없다”는 물리적 불가능 주장은 정정했다. 상속은 가능하지만 입력·화면 경쟁 때문에 usable interactive UX가 아니다.
-- N-agent fallback은 Kickoff W4/spec에서 이미 전체 headless 실행+순차 포커스로 결정됐고 focus/view 구현은 Stage 3 소유다. 첫 agent TTY+나머지 pipe log 안은 이 기결정을 바꾸는 신규안이므로 W6에서 채택하지 않는다.
-- adapter/launcher/bin write-set 추가는 기확정 W6 outcome 수행을 위한 package contract Reconcile이며 그 자체는 별도 product decision이 아니다.
-- 실제 사용자 결정 후보는 Codex initial attach를 daemon pre-create+TUI resume로 통일할지, native>compose를 version-bound 관찰/설계 의도로 낮추고 protocol guarantee가 아님을 수용할지 두 건으로 축소했다. production 변경과 Brief revision 4 승격은 아직 하지 않았다.
-
-### 2026-08-20 17:01 · W6 Task Brief revision 4 확정 — 사용자 승인 2건 반영, 실제 CLI 재검증으로 contract review 종료
-
-사용자가 지난 entry가 보고한 미결 사용자 결정 2건을 승인했다: (1) Codex initial attach는 daemon
-pre-create+resume(`thread/start {cwd, developerInstructions}` 후 TUI는
-`codex resume <threadId> --remote <endpoint>`)를 채택하고 proxy in-flight rewrite와 app-server
-launch config `-c developer_instructions`는 채택하지 않는다. (2) native>compose precedence는 version-bound
-관찰/설계 의도로 문구를 낮추고 별도 강제 메커니즘은 구현하지 않는다. 추가로 Kickoff `--ui none`
-계약 재론 금지, "첫 agent만 TTY" 안 폐기, SIGINT 전체 cleanup 계약을 W6에 포함, write-set 확장을
-별도 승인 게이트로 만들지 말 것을 지시받았다.
-
-이 승인을 실행 계약으로 옮기기 전에, 이전 candidate 대조가 model self-report 의존으로 남겨뒀던
-두 핵심 항목을 이번 세션에서 로컬 설치된 CLI로 직접 재검증했다(production 코드는 여전히 변경
-안 함).
-
-**Codex(직접 재검증)**: `codex app-server generate-json-schema --out <dir> --experimental`를
-로컬 `codex-cli 0.148.0`에서 실행해 스키마 원문을 재생성했다. `ThreadStartParams`는 `required`가
-없어 전 필드 optional이고 `cwd: string|null`, `developerInstructions: string|null`,
-`baseInstructions: string|null`을 갖는다. `ThreadResumeParams`는 `threadId`만 required이고
-동일하게 `cwd`/`developerInstructions`/`baseInstructions`가 optional이다. `turn/start`의 실제
-params(`src/adapters/codex/injector.ts:37-47`)에는 이 필드들이 없어 `developerInstructions`가
-thread-scoped이고 매 turn user message가 아님을 코드로 확인했다.
-
-**Claude(직접 재검증)**: 로컬 `Claude Code 2.1.237`에 실제 spawn spike를 실행했다
-(`spawn("claude", ["--bg","--name","aiox-w6-spike-test","<prompt>"], {cwd, stdio:"inherit"})`,
-스크래치 디렉터리에서 실행). 확인한 사실:
-- child pid가 "return immediately" 도움말 문구와 달리 실제로 세션을 계속 들고 살아있는
-  프로세스임을 `ps aux`로 재확인했다(4초 후에도 `exited=false`, 실제 `claude --bg ...` 프로세스가
-  ps에 존재).
-- stdout에 `backgrounded · <id> · <name>`과 `claude stop <id> stop this session` 안내가 실제로
-  출력됐다 — `claude stop`은 top-level `--help`에는 나오지 않는 undocumented 명령이지만 실제로
-  동작한다.
-- `claude stop <id>` 실행 후 그 프로세스가 실제로 종료됨을 `ps -p <pid>`(exit 1)로 재확인했다 —
-  이것이 host의 Claude cleanup 1차 메커니즘이다.
-- `claude agents --json`은 `kind:"background"` 세션에 `pid` 필드를 노출하지 않는다(직접 확인,
-  `kind:"interactive"` 항목에만 `pid`가 있음) — 세션id는 spawn stdout 파싱으로만 얻을 수 있다.
-- `--session-id <uuid>`를 `--bg`와 함께 주면 "ignoring --session-id" 경고와 함께 무시된다(직접
-  확인) — 세션id 사전 지정은 불가능하고 `--name`으로만 사후 식별 가능하다.
-- spike 세션은 `claude stop`으로 정리했다(잔존 프로세스 없음, 재확인함).
-- **미검증으로 남긴 것(test matrix 최우선 항목, blocking 아님)**: prompt 없이 `--bg --name X`만
-  으로 idle 세션이 생성되는지, `--bg`+`--append-system-prompt`+
-  `--dangerously-load-development-channels` 세 플래그 동시 조합, `claude stop`의 idempotency.
-  이번 세션에서는 실제 API 호출 비용을 고려해 이 세 조합까지는 추가로 spike하지 않았다 —
-  구현 착수 시 첫 focused test로 닫는다.
-
-**이전 candidate 대조 정정 2건(코드 직접 확인)**:
-- `src/bin/aiox.ts`는 `invokeParsedCommand()`의 반환 Promise를 이미 await한 뒤에만
-  `process.exit()`한다(`src/bin/aiox.ts:55,503,507`, 직접 확인) — `aiox host`의 SIGINT 핸들러는
-  `src/cli/invocation.ts`의 `case "host"` 지역 범위에 두면 충분하고 `bin/aiox.ts` 자체는
-  write-set에 불필요하다.
-- `rollbackAgentAttach`(`src/daemon/state.ts:1062`)는 `runtime.state === "ready"`면 조기
-  반환하며 row/route를 건드리지 않는다(TUI 스폰 실패라는 좁은 race 전용 설계, 직접 확인) —
-  이미 성공적으로 attach된 agent들의 rollback/정상 cleanup에는 `daemon.detachAgent()`
-  (`state.ts:3048` `detachCodexAgent`, 이름과 달리 kind 무관 동작)가 맞는 primitive다.
-
-이 근거로 `tasks/W6.md` Task Brief를 revision 4로 갱신했다 — producer/consumer 전체 경로,
-정확한 write-set(신규 `src/cli/host.ts`/`src/adapters/codex/runtime.ts`/
-`src/adapters/claude/launcher.ts`만 추가, `bin/aiox.ts`·`proxy.ts`·codex `launcher.ts`는
-불필요로 확정), instruction 합성 규칙(4가지 조합·빈 문자열·separator·필드 생략), Claude spawn
-argv/cwd 계약, rollback/cleanup 계약, 11항목 focused test matrix, native>compose 문구 확정본을
-Task Brief 본문이 소유한다(로그에 재복사하지 않음).
-
-**contract review 종료 — 추가 사용자 결정 없음.** Task Brief revision 4는 production Act 진입
-가능한 실행 계약이다. 남은 것은 test matrix 최우선 3항목(위 미검증 3건)뿐이며 구현 중 spike로
-닫는다.
-
-Next: production Act — Task Brief revision 4의 write-set·실행 순서대로 구현하고, 위 3개 spike를
-가장 먼저 닫은 뒤 나머지 test matrix와 typecheck/직렬 전체 테스트로 검증한다.
-
-### 2026-08-20 17:04 · 새 Claude production executor handoff와 revision 4 보정
-
-- 새 Claude production executor에게 W6 revision 4 구현을 위임하기 전 실제 task record와 API를 대조했고 contract를 production Act 진입 가능으로 수용했다.
-- 보정 1: compose spec 본문 편집은 W9 소유다. W6은 확정 문구와 cross-artifact handoff만 남기고 W9 범위를 선점하지 않는다.
-- 보정 2: host는 signal만 기다리지 말고 자신이 소유한 Claude background session의 unexpected exit도 감지해 전체 cleanup+비정상 종료로 연결한다.
-- 보정 3: 최우선 Claude spike는 process 생존뿐 아니라 session-id 파싱, dev-channel 등록, `--bg`+`--append-system-prompt`+channel 동시 조합, `claude stop` cleanup/idempotency까지 검증한다.
-- 사용자는 새로운 Claude 세션에서 즉시 구현하기로 했다. executor는 TDD로 production 변경·focused/full verification·result review·W6 로그 Reconcile까지 계속하며, 이미 닫힌 설계 결정을 다시 열지 않는다.
-
-### 2026-08-20 18:33 · W6 production 구현 완료 — candidate result와 독립 result review, Accept
-
-새 Claude production executor(coi, 이 세션)가 W6 Task Brief revision 4를 TDD로 구현했다. fork
-2개(Claude headless launcher+spike, Codex eager thread/start+state.ts 배선)를 격리 없이 병렬
-위임하고 controlling이 host.ts 오케스트레이션(신규 `src/cli/host.ts`)과 `parse.ts`/
-`invocation.ts` 배선을 직접 구현했다. fork 중 하나(Codex 쪽)가 월간 spend limit로 중단됐고,
-controlling이 남은 2개 테스트 파일을 직접 마무리했다. 상세 구현 근거·spike 결과·발견한 버그·
-diff 요약 전문은 `tasks/W6.md` Task History Attempt 1 entry와 Result/Verification 섹션이
-소유한다(재복사하지 않음).
-
-**candidate result 핵심**: write-set은 Task Brief revision 4와 정확히 일치(`bin/aiox.ts`/
-`proxy.ts`/codex `launcher.ts`/`daemon/api.ts` 무변경, git diff stat로 확인). Claude fork의
-spike가 revision 4의 "spawn된 child가 세션을 계속 소유한다"는 가정을 기각해, `child.exit`
-기반 Claude 세션 예기치 않은 종료 감지 설계를 구현 전에 `claude agents --json` 폴링 기반으로
-대체했다(Codex의 `api.status()` 폴링과 대칭). `npm run typecheck` PASS,
-직렬(`--maxWorkers=1`) 61 files/767 tests PASS, 기본 병렬 `npm test`도 이번 세션 2회 연속
-전부 PASS(과거 기록된 test-isolation residual risk가 이번엔 재현 안 됨 — 해소 단정 아님,
-관찰만).
-
-**독립 result review(controlling, 코드 fresh read)**: 전체 diff를 처음부터 다시 읽어
-write-set 확장 없음, compatibility/fallback 추가 없음, K번째 agent 실패·route wiring 실패·
-SIGINT 중복·부분 cleanup 실패 지속·owned runtime/session 소실의 5개 cleanup 경로 전부가
-관찰 가능한 결과(실제 daemon API 호출 payload, exit code, stderr 문구)로 테스트됨을
-확인했다. 이 review 중 `watchOwnedCodexAgents`/`watchOwnedClaudeSessions`의 폴링이
-`.catch()` 없이 fire-and-forget이라 unhandled promise rejection으로 host 프로세스 자체를
-죽일 수 있는 버그를 직접 발견해, 같은 세션에서 즉시 수정하고 `vi.useFakeTimers()` +
-`process.on("unhandledRejection")` 기반 회귀 테스트로 닫았다(수정 전 실제 red 확인 →
-원복해 최종 green 재확인).
-
-**판정: W6 Accept**(revision 4). Work Items의 W6을 `[x]`로 전이했다(위 참고). 남은
-residual risk(cmux wrapper의 `claude stop` argv 오염 가능 환경, 폴링 간격 2000ms 기본값,
-aiox.yaml 빈 문자열 role/description/instructions 미검증 — W8 소관, 실제 E2E 미실행)는
-`tasks/W6.md` Result/Verification이 소유한다. W9가 소비할 cross-artifact handoff(native>compose
-문구 유지, Codex eager thread/start·Claude 3-flag 공존 확정 사실)도 같은 곳에 기록했다 —
-`docs/specs/aiox-compose-contract.md` §6 본문은 이 entry에서 편집하지 않는다(W9 범위).
-
-Next: W7(`aiox quit` 구현)로 전환했다(Work Items 참고).
-
-### 2026-08-20 20:45 · W6 independent result review — Accept 철회, corrective Attempt 2 재개
-
-독립 review에서 이전 Accept를 유지할 수 없는 production lifecycle 결함 4건과
-evidence gap 1건을 확인했다. 코드 변경은 하지 않았고 W6을 같은 outcome의 corrective
-Attempt 2 대상으로 재개했으며 W7은 open으로 되돌렸다.
-
-**확인한 사실**
-
-- Claude 단일 attach의 `--instructions`는 여전히 runtime에 주입되지 않는다.
-  `invocation.ts`는 text를 `attachAgent()`/DB에만 보내고, 기존
-  `launchClaudeStaticMcpChannel()` 호출과 argv에는 이를 전달하지 않는다. W6 discovery가
-  기록한 W1 dead-end가 host 전용 `launchClaudeHeadlessSession()`에서만 닫혔고
-  `aiox claude --instructions`에는 남았다. Codex는 generic daemon eager `thread/start`
-  변경으로 단일 attach도 닫혔다.
-- Codex 단일 attach에서 eager start 뒤 TUI spawn 또는 wait가 실패하면
-  `invocation.ts`가 `rollbackAgentAttach()`를 호출하지만, 이 API는 runtime이 `ready`이면
-  `rolledBack:false`로 조기 반환한다(`state.ts:1106-1115`). W6가 no-resume attach를
-  항상 ready runtime으로 바꾼 뒤 기존 rollback test는 API 호출만 확인해 실제
-  agent/runtime leak을 놓쳤다.
-- `runHost()`는 모든 attach와 route wiring이 끝난 뒤에야 signal handler를 등록한다
-  (`host.ts:265-345`). launch 중 SIGINT/SIGTERM은 Node 기본 종료로 빠져 이미 attach된
-  agent cleanup을 보장하지 않는다. 또한 foreground gate가 풀리자 handler를 cleanup 전에
-  제거한다(`host.ts:372-377`). cleanup 중 두 번째 signal은 기본 종료로 비동기 cleanup을
-  중단할 수 있다. 기존 중복-signal test는 두 signal을 같은 microtask window에서 동기
-  발화해 후자 경로를 검증하지 않는다.
-- Claude cleanup은 같은 agent 안에서 `stopClaudeSession()` 뒤 `detachAgent()`를 직렬
-  실행한다(`host.ts:237-252`). stop 실패가 throw되면 그 agent의 detach가 실행되지
-  않는다. `Promise.allSettled`는 agent 사이만 격리하므로 Task Brief의 “개별 cleanup
-  실패가 나머지를 막지 않는다” 및 전체 daemon-side detach 계약을 만족하지 않는다.
-- production executor handoff는 live spike 성공 기준에 dev-channel registration 확인을
-  포함했지만, Result에는 3-flag 조합이 “파싱 충돌 없이 정상 동작”했다고만 기록돼
-  있고 실제 aiox daemon channel registration evidence가 없다. 따라서 이 verification claim은
-  미완료다.
-
-**독립 검증**
-
-- `npm run typecheck` PASS.
-- W6 focused 5 files 147 tests PASS, `git diff --check` PASS.
-- 직렬 전체 suite 첫 실행은 `tests/unit/daemon/run.test.ts` 2건 실패, 해당 파일 단독은
-  5/5 PASS, 직렬 전체 재실행은 61 files/767 tests PASS였다. 기존 test-isolation
-  residual risk가 재현된 관찰이며 위 4개 source-level 결함의 반증은 아니다.
-
-**판정**
-
-- 이전 W6 Accept를 철회하고 artifact disposition을 corrective pending으로 바꾼다. 현재
-  변경은 blind revert하지 않고 유지한다.
-- Attempt 2는 위 4개 lifecycle/injection 결함을 regression test로 먼저 재현해 수정하고,
-  실제 daemon registration을 포함한 Claude 3-flag E2E evidence를 닫은 뒤 focused/typecheck/
-  직렬 전체 검증과 새 result review를 통과해야 한다.
-- W9 handoff와 version-bound native>compose 판단은 이번 finding으로 변경되지 않는다.
-
-Next: W6 corrective Attempt 2 — tests-first로 위 4개 결함을 수정하고 live Claude
-channel registration evidence를 확보한 뒤 Accept를 재판정한다.
-
-### 2026-08-20 20:52 · W6 review owner trace — W5 route-member validation 누락 발견
-
-W6의 `routes[]` producer를 소유한 W5 validator와 Kickoff 사용자 결정으로 역추적한
-결과, 선행 accepted baseline에 계약 누락이 있어 W5를 corrective active로 재개했고
-W6 Attempt 2는 open dependency로 전환했다.
-
-- 확인한 사실: Kickoff `2026-08-19 · W3 후속` entry는 `directed[].from`/`to`가
-  해당 group의 `members` 안에 있어야 한다는 선행 결정을 명시적으로 재확인한다.
-- 확인한 사실: `validateDirected()`는 `agentNames`만 받아 전체 `agents[]` 존재 여부만
-  검사하고 해당 route `members` membership은 검사하지 않는다
-  (`src/config/aiox-config-validator.ts:105-156`). 해당 regression test도 없다.
-- 관찰 결과: `agents: [a,b,c]`, `members:[a,b]`, `directed:[{from:a,to:c}]` 형상이
-  validator를 통과하고 W6 `buildRouteConnections()`에서 group 밖 `a -> c` route를 실제
-  생성할 수 있다. `directed`가 member pair의 mesh를 좁히는 override라는 계약과 다르다.
-
-Next: W5 corrective — route-local member set으로 `directed.from/to` membership을 검증하는
-red test와 수정을 먼저 닫고, W6 Attempt 2로 복귀한다.
-
-### 2026-08-20 21:03 · W5→W6 executor / 후속 independent Codex reviewer handoff 준비
-
-- 사용자는 새 Claude가 W5 corrective와 W6 Attempt 2를 순서대로 실행하고, 그 뒤
-  새 Codex가 전체 결과와 context/log Reconcile을 독립 검토하는 2-session handoff를
-  요청했다.
-- Claude executor의 완료 gate는 W5 route-local membership correction 선행, W6 결함 4건의
-  red→green, 실제 daemon dev-channel registration live evidence, focused/typecheck/직렬 전체
-  검증과 candidate result 기록이다. 자체 Accept/W7 전환은 금지하고 Codex review를
-  기다린다.
-- Codex reviewer는 Claude 보고를 권위로 취급하지 않고 actual diff·owner call path·test·
-  live process/session cleanup·log/package state를 재검증한 뒤 전체/부분 수용 또는 기각을
-  판정한다. Accept가 타당할 때만 W5/W6 marker와 next pointer를 W7로 Reconcile한다.
-
-Next: 새 Claude executor에게 corrective implementation prompt를 전달한다.
-
-### 2026-08-20 21:29 · W5 corrective candidate + W6 corrective Attempt 2 candidate 제출 — 후속 Codex independent review 대기
-
-이 세션(Claude executor)이 W5 corrective와 W6 corrective Attempt 2를 순서대로 구현했다.
-**두 결과 모두 candidate다 — 이 세션은 스스로 Accept 판정하지 않았고 W5/W6 marker와 next
-pointer를 W7로 넘기지 않았다.** 상세 trace·red/green 증거·검증 결과 전문은 각 task record가
-소유한다(재복사하지 않음): `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W5.md`
-"corrective Attempt 2" entry, `tasks/W6.md` "corrective Attempt 2" entry.
-
-**W5 candidate 요약**: `validateDirected()`가 `directed[].from`/`.to`를 전체 `agents[]`
-존재 여부만 검사하고 그 route의 `members` 안에 있는지는 검사하지 않던 결함(Kickoff
-`2026-08-17` 로그의 route-local membership 결정 위반)을 route-local `memberNames` set을
-추가로 전달하는 최소 수정으로 닫았다. red 회귀 테스트 5개(선언된 agent지만 members 밖인
-`from`/단일 `to`/배열 `to` 각각, unknown-agent와 route-member 에러 구분, 다른 route의
-membership이 서로 영향받지 않음) → 전부 확인 후 green. `npx vitest run tests/unit/config/`
-3 files/58 tests PASS(기존 53+신규 5), `npm run typecheck` PASS.
-
-**W6 candidate 요약(Attempt 2)**: 독립 review가 확인한 4개 결함을 TDD로 수정했다.
-(1) Claude 단일 attach `--instructions`가 `launchClaudeStaticMcpChannel()`에 주입되지 않던
-문제 — `buildLaunchClaudeChannelArgs`/`launchClaudeStaticMcpChannel`/invocation.ts에
-instructions passthrough 추가. (2) Codex TUI 실패 시 `rollbackAgentAttach()`가 W6 eager-start
-이후 `ready` runtime에 no-op하던 leak — `detachAgent()`로 교체하고 항상 await, 실패 시 원래
-에러와 병합 보고. (3) host signal handler가 attach/route 이후에만 등록되고 cleanup 전에
-해제되던 문제 — 최상단 등록 + `finally`에서만 해제 + 매 loop 상단 `shuttingDown` 확인으로
-재작성. (4) Claude stop 실패 시 같은 agent의 detach가 skip되던 문제 — `cleanupAgent()`로
-stop/detach를 독립적으로 시도하고 둘 다 에러를 보고하도록 수정. 4개 전부 red 회귀
-테스트(host.test.ts 신규 10개, invocation.test.ts 신규 6개+갱신 1개, claude-channel.test.ts
-신규 5개)로 결함을 먼저 재현한 뒤 최소 수정으로 green 전환했다.
-
-**live Claude dev-channel registration evidence(이번 세션에서 새로 확보, 격리 환경/순정
-바이너리)**: 격리된 project/socket/daemon과 cmux wrapper를 우회한 순정 Claude CLI
-(`/Users/lunaxislu/.local/bin/claude`)로 실제 daemon registration을 직접 관찰했다. 핵심
-발견 — **`aiox host`가 띄우는 idle `--bg` Claude agent는 daemon dev-channel에 실제로
-등록되지 않는다.** `receiveClaudeChannelMessage()`(agent MCP tool `send`의 실제 daemon
-진입점)로 production dispatch 경로를 직접 실행해 확인한 사실이다(`dispatch.deferred`에
-`target_runtime_unavailable` 사유 포함, mock이 아닌 실제 daemon 응답). 대조군으로 같은
-flag 조합에 실제 model turn이 있는 `claude -p`를 실행하면 `mcp-claude` 프로세스가 즉시
-spawn되고 실제 daemon dispatch가 `delivered:1`로 성공함을 확인했다 — registration 메커니즘
-자체는 정상이며, 원인은 idle 세션이 첫 turn을 아직 시작하지 않아 MCP 서버 자체가 아직
-spawn되지 않는다는 것이다. marker instruction(`--append-system-prompt`) 전달과 `claude stop`
-cleanup(실제 `aiox host` SIGINT로 재현)은 정상 확인됐다. `claude stop` idempotency는 Attempt
-1의 "완전히 idempotent" 서술과 달리 시간 경계가 있음을 추가로 확인해 정정했다(즉시
-재호출은 idempotent, 수십 초~분 뒤 재호출은 "No job matching"). 사용한 임시 daemon·소켓·
-session·process는 전부 정리했고 잔존이 없음을 재확인했다(상세 근거는 `tasks/W6.md`가
-소유).
-
-**신규 발견(내 4개 결함 범위 밖, W6 Accept 여부에 직결)**: 위 idle-세션 registration
-미도달은 `aiox host`의 핵심 가치(Claude agent를 aiox 메시징으로 도달 가능하게 하는 것)를
-무력화하는 구조적 gap이다. 조용히 수정하지 않았다 — 설계 결정(예: attach 직후 합성
-instruction을 실제 첫 prompt로도 보낼지, 다른 활성화 메커니즘을 도입할지)이 필요한 사안으로
-그대로 보고한다.
-
-**전체 검증(이번 세션에서 직접 실행)**: `npm run typecheck` PASS(에러 0). 전체 직렬
-(`npx vitest run --maxWorkers=1`) 61 files/791 tests 전부 PASS. 기본 병렬 `npm test`도
-61 files/791 tests 전부 PASS(이번 실행에서는 과거 기록된 test-isolation residual risk
-재현 없음 — 해소 단정 아님). `git diff --check` PASS. 변경한 Markdown(`tasks/W5.md`,
-`tasks/W6.md`)에 `scripts/check-markdown-inline-code` 실행해 multi-line inline code
-위반 5건을 발견·수정 후 재실행 PASS. 이 entry 작성 후 controlling log에 대해서도
-동일 스크립트를 실행할 예정(Reconcile 단계).
-
-**남은 불확실성 / residual risk**:
-1. 위 idle-세션 registration 미도달 blocker — W6 Accept를 막을 수 있는 발견이며 사용자/후속
-   reviewer 판단이 필요하다.
-2. 결함 2(Codex TUI 실패 cleanup)의 route 물리 삭제 효과는 이 시나리오 자체가 route를
-   아직 가질 수 없어 별도 검증하지 않았다(W2 기존 커버리지로 충분하다고 판단, `tasks/W6.md`
-   근거 참고).
-3. `claude stop` idempotency의 시간 경계는 정확한 window를 측정하지 않았다(수십 초 내
-   idempotent, 1분+ 후 not-found만 확인) — 현재 소비 코드는 이 사실에 의존하지 않으므로
-   추가 조치는 하지 않았다.
-4. Attempt 1이 남긴 기존 residual risk(native>compose version-bound, cmux wrapper 환경,
-   폴링 간격 2000ms, aiox.yaml 빈 문자열 미검증(W8 소관))는 이번 세션에서 변경하지 않았다.
-
-**후속 Codex independent reviewer에게**: Claude 보고를 권위로 취급하지 말고 실제 diff·
-owner call path·test·(가능하면) live process/session cleanup·log/package state를 직접
-재검증한 뒤 전체/부분 수용 또는 기각을 판정해 달라. 특히 위 idle-세션 registration
-미도달 발견이 W6 Accept를 막아야 하는지, 아니면 별도 Work Item으로 분리해도 되는지
-판단이 필요하다. Accept가 타당할 때만 W5/W6 marker와 next pointer를 W7로 Reconcile한다.
-
-Next: 후속 Codex independent reviewer의 재검증.
-
-### 2026-08-20 22:39 · W5/W6 corrective 독립 result review — 부분 수용
-
-Disposition: **부분 수용**. W5 corrective Attempt 2는 Accept한다. W6 corrective 중 Claude 단일 attach instruction 주입과 Claude stop/detach 단계 독립성은 Accept하지만, host signal lifecycle과 Codex TUI failure cleanup은 추가 defect로 Reject하며 W6 전체도 live registration blocker 때문에 완료하지 않는다.
-
-확인한 사실:
-- W5는 route별 `memberNames`로 `from`/단일·배열 `to`를 검증하고 unknown agent와 known-but-non-member를 같은 field path의 상호 배타적 issue로 구분한다. 복수 route 격리, aggregate 수집과 기존 validator behavior도 유지됐다.
-- Claude 단일 attach는 parse → daemon attach/DB → static launcher → spawn argv까지 instruction 원문을 전달한다. undefined omit, multiline/특수문자 보존, development-channel flags 공존을 source와 tests로 확인했다.
-- Claude cleanup은 stop 실패 뒤에도 detach를 시도하고 두 실패를 함께 보고하며 다른 agent cleanup을 막지 않는다.
-
-Completion blockers와 corrective 범위:
-1. promptless `claude --bg` host session의 daemon channel registration 성공 evidence가 없다. executor 보고는 실제 dispatch가 `target_runtime_unavailable`이었다고 하며, 보존 raw scripts에는 probe code만 있고 dispatch JSON raw output은 없다. marker raw probe도 dev-channel flag와 결합되지 않았다. idle activation/first-turn mechanism을 사용자와 결정하고 production parser+marker+dev-channel+daemon registration을 한 live scenario에서 다시 입증해야 한다.
-2. pending Claude attach 중 signal을 보낸 read-only probe에서 attach 완료 뒤 새 headless spawn이 1회 시작됐다(`spawnCalls:1`). `src/cli/host.ts`는 attach 성공 직후 Claude spawn 전에 `shuttingDown`을 재검사해야 하며 deterministic regression test가 필요하다.
-3. Codex cleanup은 `api.detachAgent()` transport failure는 병합하지만 production `disposeRuntime()`이 runtime dispose rejection을 삼켜 실제 cleanup failure가 진단/exit code에 반영되지 않는다. 다른 cleanup을 계속하면서 dispose failure를 observable result로 전달하는 contract와 test가 필요하다.
-4. real-state TUI failure test는 wait rejection의 row 삭제/dispose 호출만 확인한다. `pairName` attach는 TUI launch 전 incident route를 만들 수 있으므로 sync throw와 incident-route removal을 failure-path real-state tests로 보강한다.
-
-독립 검증: focused 9 files/339 tests PASS, `npm run typecheck` PASS, 직렬 전체 61 files/791 tests PASS. 기본 `npm test` 최초 run은 sandbox TCP/Unix socket `listen EPERM`으로 62 tests 실패했고, sandbox 밖 재실행은 61/791 PASS했다. `git diff --check` PASS. live cleanup audit에서 short socket과 recorded host pid는 없고 current Claude session 목록/프로세스에 probe 이름은 없었다; scratch scripts/logs는 남아 있다.
-
-Context Reconcile: W5는 `[x]`, W6은 corrective active `[>]`, W7은 open 유지한다. Attempt 1 Accept와 candidate entries는 append-only history로 보존하고 current disposition으로 사용하지 않는다. W9 spec body는 변경되지 않았으며 version-bound native>compose handoff도 유지된다.
-
-Next: W6 corrective Attempt 3 — 위 1~4를 닫고 combined live evidence와 전체 검증을 다시 제출한다. W7로 전환하지 않는다.
-
-### 2026-08-20 22:48 · W6 계약 재판정 — headless fallback의 기본 경로 선점 철회
-
-- 사용자 계약 정정: `aiox host`의 Claude 기본 실행은 background session/resume이
-  아니라 기존 foreground TUI launcher의
-  `claude --dangerously-load-development-channels server:<channel>` 직접 실행이다.
-- 확인한 원인: W6 revision 4 Task Brief가 전체 agent headless/TTY 미부착을 목표로
-  고정하고 view/TUI를 후속 stage로 미룬다. 구현은 그 전제를 따라 fallback용
-  headless 기반을 기본 host 경로로 만들었다.
-- Disposition: W6 Reject와 `[>]`를 유지한다. idle `--bg` registration을 보강하는
-  기존 Attempt 3 pointer는 폐기하고 W6 Task Brief revision 5 contract review로 되돌린다.
-- 삭제 후보: Claude headless argv/parser/stop/list, host의 session-id·background
-  spawn/watcher/stop lifecycle, invocation headless wiring과 전용 tests. pre-v1이므로
-  compatibility/fallback alias로 존치하지 않는다.
-- 유지 후보: host entry, config load+semantic validation, instruction composition, attach/detach,
-  route wiring, signal/cleanup 골격, foreground `launchClaudeStaticMcpChannel()` instruction 전달.
-  Codex eager thread pre-create+resume는 TUI/instruction binding 관점에서 재검토한다.
-
-Next: W6 revision 5 contract review — foreground Claude/Codex TUI가 실제 observable result가
-되도록 control plane과 view launch 책임을 다시 연결하고 정확한 삭제·유지 write-set을
-닫는다. W7로 전환하지 않는다.
-
-### 2026-08-20 22:52 · W6 기본 observable contract 확정 — YAML의 모든 agent TUI 실행
-
-- 사용자 확정: `aiox host`를 실행하면 cwd의 `aiox.yaml`에 선언된 각 agent가
-  전부 실행되고, Codex agent는 각각 Codex TUI로, Claude agent는 각각 Claude
-  TUI로 실행된다.
-- 이 결과가 `aiox host`의 기본 contract이며 headless runtime/session 생성은 이를 대체할
-  수 없다. 여러 TUI를 보여 주는 view launch는 후속 편의 기능이 아니라 host
-  실행 계약의 필수 consumer다.
-- Next: 이 contract를 기준으로 W6 revision 5의 process/view composition, 실행 순서,
-  실패·signal·cleanup 경계와 삭제·유지 write-set을 확정한다.
-
-### 2026-08-20 22:56 · W6 failure isolation 계약 확정 — agent-local failure, 성공 agent 계속
-
-- 사용자 확정: 일부 TUI 실행 실패는 compose 전체 rollback 조건이 아니다. 실패한
-  agent만 daemon의 유효한 등록·route에 남지 않게 정리하고 다른 agent TUI는 계속
-  실행한다.
-- route는 실제로 TUI/runtime readiness와 daemon 등록을 성공한 agent들 사이에서만
-  연결한다. 실패 agent가 포함된 연결은 그 연결만 생성하지 않고 나머지
-  연결은 계속한다.
-- 현재 revision 4의 fail-fast 전체 `cleanupAll()` 계약은 폐기한다. revision 5는
-  agent별 prepare/launch/readiness/commit 경계와 agent-local cleanup을 닫아야 한다.
-- Next: Claude token과 Codex runtime/endpoint가 TUI launch 전에 필요한 현 API 결합을
-  추적해 provisional registration→commit이 필요한지, 기존 attach→실패 시 즉시 detach로
-  외부 observable contract을 충족할 수 있는지 재판정한다.
-
-### 2026-08-20 23:04 · W6 Task Brief revision 5 확정 — Claude executor handoff 준비
-
-- W6 현재 계약을 revision 5로 교체했다. `aiox.yaml` agent별 vendor-native TUI,
-  agent-local launch/readiness failure, 성공 agent subset route wiring, agent-local unexpected-loss
-  cleanup, signal에서만 active set 전체 cleanup이 권위다.
-- revision 4의 Claude headless/background session/parser/stop/list/watcher와 fail-fast
-  `cleanupAll()`은 삭제·재작성 대상으로 명시했다. compatibility/fallback으로 존치하지
-  않는다.
-- 기존 단일 CLI의 `launchClaudeStaticMcpChannel()`/
-  `launchCodexTui()`를 direct TUI primitive로 재사용하고, W6은 distinct-terminal view
-  consumer 계약을 생산한다. concrete view driver가 없는 현 repo 상태에서 N개 inherited
-  stdio나 headless fallback으로 성공을 위장하지 않는다.
-- Next: Claude executor가 revision 5의 red tests→최소 production 수정→focused/full
-  verification→candidate result까지 수행한다. 자체 Accept, W6 `[x]`, W7 전환,
-  W9 spec 본문 편집은 금지한다.
-
-### 2026-08-20 23:07 · W6 live gate 보정 — interactive TUI는 사용자 개입
-
-- executor 자동 범위: isolated config/socket/daemon, production command/argv/env, daemon state/raw
-  log, process/socket cleanup, 비용 없는 deterministic 검증.
-- 사용자 live gate: 각 Codex/Claude TUI의 실제 표시, 입력·포커스, 한 TUI 종료
-  후 나머지 유지, host signal 후 view cleanup을 사용자가 직접 확인한다.
-- Claude executor는 live 직전에 command·예상 view·사용자 action·판정 기준·cleanup을
-  제시하고 멈춘다. 사용자 확인 없이 live/UX PASS를 선언하지 않는다.
-
-Next: Claude executor implementation→자동 검증→사용자-assisted live gate→candidate
-result. 후속 controlling Codex가 독립 review한다.
-
-### 2026-08-20 23:09 · W6 live matrix 확정 — cmux와 VS Code terminal
-
-- user-assisted live gate를 cmux와 VS Code integrated terminal에서 각각 1회 수행한다.
-  동일 YAML·production host 경로에서 agent별 Codex/Claude TUI 표시·입력, 한 TUI
-  부분 종료 격리, signal 후 view cleanup을 사용자가 확인한다.
-- executor는 각 환경의 daemon registration·route delivery·agent-local cleanup·process/socket
-  cleanup raw evidence를 수집한다. VS Code에 production distinct-TUI primitive가 없다면
-  수동 별도 attach로 대체하지 말고 blocker로 보고한다.
-
-Next: Claude executor가 두 view 환경의 capability·production call path를 discovery에 포함한
-뒤 implementation과 자동 검증을 수행하고, 두 live run 직전에 사용자 개입을 요청한다.
-
-### 2026-08-20 23:36 · W6 revision 5 Attempt 3 candidate — 재구현 완료, view driver blocker로 live gate 미수행
-
-Claude executor가 revision 5를 tests-first로 재구현해 candidate를 제출했다. 자체 Accept·
-W6 `[x]`·W7 전환은 하지 않았다. 상세 trace와 Result/Verification은 W6 task record의
-`2026-08-20 23:45` entry가 소유한다(여기 재복사하지 않음).
-
-**핵심 결과 요약**
-
-- `aiox host`가 agent별 vendor-native TUI launch **request**(structured argv/env/cwd)를
-  만들어 주입된 view driver에 넘기는 consumer 계약으로 재작성됐다. agent-local
-  attach/launch/readiness 실패, 성공 subset 기준 route filtering, agent-local loss,
-  signal 소유와 exactly-once cleanup이 전부 red→green으로 구현됐다.
-- headless 표면(`--bg` argv/parser, `claude stop`, background session 목록, host의
-  `claudeSessionId`/background watcher, invocation wiring, 전용 test 파일)은 전부
-  삭제했고 alias/fallback으로 존치하지 않았다.
-- 이전 독립 review의 production defect 2건도 닫았다. (a) signal 이후 새 view spawn 금지를
-  attach 직후 gate로 구현, (b) `runtime.dispose()` rejection을 daemon이 더 이상 삼키지
-  않고 `DetachAgentResult.runtimeDisposeError`로 노출 — host cleanup exit code와 단일 CLI
-  TUI 실패 진단 양쪽에서 관찰된다.
-- Codex eager thread pre-create+resume는 **유지**로 판정했다. Codex TUI argv에
-  instruction surface가 없어 composed instruction이 daemon의
-  `thread/start{developerInstructions}` 외 경로로 도달할 수 없고, eager start가 없으면
-  TUI를 daemon 추적 thread에 결정적으로 바인딩할 수 없다(둘 다 call path로 확인).
-- 검증: `npm run typecheck` PASS, `npx vitest run --maxWorkers=1` 61 files/786 tests 최초
-  실행부터 PASS, 병렬 `npm test` 동일, `git diff --check` PASS.
-
-**Live gate: 두 환경 모두 미수행 — view driver implementation blocker**
-
-설치된 환경에 structured-argv distinct-TTY primitive가 없다는 것을 직접 확인했다.
-
-- cmux `1.3.0-HEAD+bc9be90`: `new-pane`/`new-surface`/`new-split`은 command/argv/cwd 인자를
-  아예 받지 않고 기본 shell만 띄운다. command를 받는 표면은 `new-workspace --command`,
-  `send`, `respawn-pane --command` 셋뿐이고 셋 다 help 원문이 "shell에 텍스트를 보낸다"로
-  명시된 단일 문자열이다. socket capability 목록에도 argv를 싣는 method가 없다.
-- VS Code `1.128.1`: `code --help` 전체에 integrated terminal 생성/명령 실행 옵션이 없다.
-- `tmux` 미설치, `node-pty` 미설치.
-
-따라서 production `aiox host`가 agent별 TUI를 띄울 수 없고, 사용자가 확인해야 할
-TUI 표시·입력/포커스·부분 종료 격리·signal 후 view cleanup을 이번 세션에서 관찰할 수
-없다. 수동으로 별도 `aiox claude`/`codex`를 띄워 host PASS로 대체하지 않았다. 대신
-production `aiox host`는 daemon side effect 이전에 `aiox.invocation.no_agent_view_driver`로
-거절하며(실제 실행으로 확인, `~/.aiox/dev/` 여전히 빈 디렉터리) 조용한 headless 강등이나
-한 stdio에 N개 TUI를 얹는 동작은 없다.
-
-**사용자 결정이 필요한 선택지(executor가 임의 채택하지 않음)**
-
-- 옵션 A — cmux spec-file 간접층: host가 agent별 launch spec을 0600 파일로 쓰고, 새
-  pane을 만든 뒤 고정 문자열(`aiox` 내부 view-runner 실행)만 shell에 타이핑한다.
-  instruction·token은 shell을 거치지 않는다. 단, 타이핑되는 문자열에 경로가 들어가면
-  shell quoting이 필요하고 사용자 기본 shell(zsh/fish 등)에 따라 규칙이 갈린다 —
-  경로마저 없애려면 daemon 측 claim protocol이 추가로 필요하다. 새 internal command와
-  프로토콜을 만드는 설계 결정이다.
-- 옵션 B — aiox가 PTY를 직접 소유(`node-pty` 등 신규 dependency + 자체 view 렌더링).
-  plan의 view-driver 일반화 stage가 소유하는 범위와 정합적이다.
-- 옵션 C — macOS `osascript`/`open -a Terminal`: 다시 shell 문자열이라 채택하지 않았다.
-
-**후속 independent reviewer가 확인할 것**
-
-W6 task record의 Residual risk 6항목, 특히 (1) live evidence 0건이 Accept를 막는지,
-(2) Claude readiness를 view handle resolution으로 정의하고 daemon channel registration을
-gate로 쓰지 않은 판단, (3) active agent 0일 때 foreground 대기 없이 종료하는 executor
-판단, (4) 이번 변경으로 `src/`에서 미사용이 된 `rollbackAgentAttach`의 처리.
-
-Next: view driver 옵션 A/B에 대한 사용자 결정. 결정 후 driver 구현 → cmux live gate →
-VS Code live gate 순으로 진행한다. W6은 계속 `[>]`이고 W7로 전환하지 않는다.
-
-### 2026-08-21 12:49 · W11 delegated result review 시작 — live 제외 코드·삭제·테스트 범위
-
-- 사용자 지시에 따라 W6 revision 5 Attempt 3의 live matrix를 별도 논의로 남기고, 코드 삭제·추가 수정·deterministic tests만 독립 검토하는 W11을 등록했다.
-- W6은 candidate/open으로 내리고 W11을 active next pointer로 전환했다. W11 reviewer는 read-only이며 Accept, W6 `[x]`, W7 전환 권한이 없다.
-- Task record: `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W11.md`.
-- Next: delegated reviewer 결과를 controlling이 실제 source·diff·tests와 대조해 소비한다. Live 1/2는 소비하지 않고 사용자와 별도 논의한다.
-
-### 2026-08-21 12:59 · W11 result review 소비 — W6 code candidate 부분 수용, correction 재개
-
-- Disposition: W11 reviewer result를 controlling이 source와 대조해 수용했다. W6 revision 5 Attempt 3의 structured argv, headless production 표면 삭제, 직렬 agent-local failure isolation, successful subset route, 기본 real-state tests는 부분 수용한다. W6 전체 completion은 수용하지 않는다.
-- Completion blockers: production `process.once` 반복 signal 결함, loss cleanup과 global shutdown 경합, view listener/watcher setup·stop 예외의 active 누수, production entry의 daemon-before-config/signal 순서, eager Codex attach cleanup 오류 은닉. `rollbackAgentAttach`는 근거 없는 obsolete 표면 후보다.
-- Owner decision / live 분리: Claude daemon registration readiness와 timeout/first-turn 정책, active agent 0 종료, concrete view driver 및 Live 1/2는 코드 correction과 분리해 사용자와 논의한다. Live는 이번 review에서 not-run이다.
-- Verification: focused 8 files/305 PASS, typecheck PASS, serial 61/787 PASS. 기본 `npm test`는 sandbox에서 socket/HTTP 계열 최초/재실행 실패, 단독 socket 13/13 PASS, sandbox 밖 61/787 PASS. diff/Markdown/log/package checks PASS.
-- Context Reconcile: W11은 Result Consumption Gate를 통과해 완료하고, W6을 code correction active로 복귀한다. W7은 open 유지하며 W9 spec 본문은 변경하지 않는다.
-- Next: W6 revision 5 code correction — 위 lifecycle blockers를 tests-first로 닫고 독립 result review를 다시 수행한다. Live 1/2와 Claude readiness 정책은 구현 전 사용자 논의가 필요하다.
-
-### 2026-08-21 13:38 · W6 revision 5 correction candidate 제출 — W11 completion blocker 6건 tests-first 수정, `rollbackAgentAttach` 삭제, 자체 Accept 아님
-
-- 새 executor(Claude)가 W11이 확인한 completion blocker(반복 signal `process.once`, loss/global
-  shutdown 경합, watcher/onLost 예외의 active 누수, invocation의 daemon-before-config 순서, eager
-  Codex attach cleanup 오류 은닉)를 tests-first(red→green, 각 fix mutation check로 재확인)로
-  수정했다. Production consumer 0건을 확인한 `rollbackAgentAttach`(API/state/types/tests)도
-  삭제했고, 그로 인해 stale해진 architecture 문서 5개의 관련 서술을 정합화했다.
-- Claude readiness(view handle resolution = launch 성공, daemon channel registration은 readiness
-  gate 아님)와 active agent 0 종료 정책은 이미 Attempt 3가 구현한 대로 변경 없이 재확인만 했다.
-  concrete view driver, Live 1(cmux)/Live 2(VS Code)는 이번 범위에서 제외했다 —
-  `not-run — user deferred`.
-- 검증: `npm run typecheck` PASS, `npx vitest run --maxWorkers=1` 61 files/792 tests PASS(이전
-  787 대비 +5 net), 기본 병렬 `npm test` 2회 연속 61/792 PASS, `git diff --check` PASS, 변경
-  Markdown 5개 inline-code PASS, `log check`/`package-log check` PASS.
-- 상세 finding별 red→green 근거, mutation check 결과, write-set과 residual risk 전문은
-  `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W6.md`의
-  `2026-08-21 13:38 · W6 revision 5 correction` entry와 그 Result/Verification 섹션이 소유한다
-  (재복사하지 않음).
-- **이 executor는 자체 Accept, W6 `[x]`, W7 전환을 선언하지 않는다.** W6은 계속 `[>]`이다.
-
-Next: controlling(사용자 또는 독립 reviewer)의 candidate result 재검증 — 위 W6.md entry가 지목한
-residual risk(architecture 문서의 사전 존재 evidence citation drift, Claude readiness 정책
-재확인 필요성)를 포함해 실제 diff·tests·docs를 재확인한 뒤 수용 여부를 판정한다.
-
-### 2026-08-21 13:48 · W6 revision 5 correction 독립 result review — Reject, lifecycle blocker 4건 잔존
-
-Disposition: **기각**. W6 revision 5 correction candidate의 일부 수정은 확인했지만 completion blocker가 남아 W6 `[>]`, W7 `[ ]`을 유지한다. Live 1/2는 사용자 지시대로 실행하지 않았다.
-
-확인한 blocker:
-- production 호출은 `src/cli/invocation.ts:276-313`에서 config 검증 후 daemon start/API를 수행하고, 그 뒤 `src/cli/host.ts:351-359`에서 signal handler를 등록한다. config→handler→daemon/API 계약이 여전히 닫히지 않았고 daemon pending signal을 놓친다. view driver resolution도 config보다 앞이라 driver 없는 build에서는 invalid YAML보다 `no_agent_view_driver`가 먼저 나온다.
-- `view.onLost()` 등록 throw가 per-agent catch가 아닌 outer catch로 가 attach loop를 중단하고 기존 성공 agent까지 cleanup한다. agent-local failure isolation 위반이며 기존 test는 agent 1개라 이를 가린다.
-- `cleanUpAll()`의 pending cleanup 1회 snapshot 뒤 signal→loss가 들어오면 loss agent가 active에서도 빠져 host가 detach 완료 전 unregister/return한다. production `runHost` microtask probe로 `unregister` 뒤 `detach-end:b`를 재현했다.
-- eager Codex `startThread`/`resumeThread`가 generic error를 던지고 dispose도 실패하면 `runtimeDisposeError`를 계산한 뒤 원 오류만 rethrow하여 cleanup 오류가 사라진다. 신규 test는 coded error만 검증한다.
-
-문서/result evidence finding:
-- 이번에 수정한 architecture current/as-built claim 중 3개 문서가 required exact `file:line` range를 제거해 `docs/AGENTS.md` Evidence 계약을 위반했다. 이는 pre-existing unrelated drift가 아니라 이번 write-set 결함이다.
-- `rollbackAgentAttach` production/API/type surface 삭제는 확인했지만 `.ts` 전체 grep 0건 주장은 test 주석 4건 때문에 재현되지 않는다.
-
-독립 검증: focused 5 files/216 tests PASS; typecheck PASS; 직렬 전체 61 files/792 tests PASS. 기본 `npm test` 최초 실행은 792 assertion PASS 후 closed SQLite의 unhandled rejection 4건으로 exit 1, 즉시 재실행은 61/792 PASS였다. 최초 실패를 PASS로 축약하지 않는다. diff check, 변경 Markdown inline-code, controlling log check, package-log check는 PASS이며 long-log hard 경고는 유지된다.
-
-상세 exact path/repro/corrective 범위는 `tasks/W6.md`의 `2026-08-21 13:46 · correction candidate 독립 result review` entry가 소유한다.
-
-Next: W6 revision 5 corrective — production config→persistent signal handler→daemon/API 순서, `onLost` agent-local 격리, signal↔loss 양방향 cleanup await, generic Codex 원 오류+dispose 오류 병합, 변경 architecture evidence range를 tests-first로 닫고 다시 독립 review한다. W7로 전환하지 않는다.
-
-### 2026-08-21 · W6 revision 5 corrective round 2 candidate 제출 — 5개 completion blocker(A-E) + F 잔존 검색 정정, 자체 Accept 아님
-
-새 executor(Claude)가 `2026-08-21 13:46` 독립 result review Reject entry가 확인한 5개 blocker를
-tests-first로 수정했다: (A) `src/cli/invocation.ts`의 `case "host":`를 config load/validate →
-view-driver resolve → persistent signal handler 등록 → `startDaemon()`(pending 중 signal 체크) →
-`getDaemonApi()`(pending 중 signal 체크) → `runHostFn`(신규 `RunHostOptions.signal` controller로
-전달, unregister는 `runHostFn` 완료 후 finally) 순서로 재작성. (B) `src/cli/host.ts`의
-`view.onLost()` 등록을 자체 try/catch로 감싸 `active.set()`보다 먼저 실행 — 등록 실패는 그 agent만
-close/detach하고 나머지 YAML agent와 route wiring은 계속됨(agents `[a,b,c]`, b만 실패하는 신규
-테스트로 검증). (C) `cleanUpAll()`의 단일 `pendingLossCleanups` snapshot을 `for(;;)` drain
-loop로 교체 — signal→loss 역순에서 이전에 놓치던 cleanup을 결정론적 microtask-timing 테스트로
-재현·검증. (D) `src/daemon/state.ts`의 eager Codex attach catch에서 generic(untyped)
-`startThread()`/`resumeThread()` rejection과 dispose 실패가 함께 발생하면 원 오류를 보존한 채
-`(runtime cleanup also failed: ...)`로 병합해 `{cause}`로 원 오류도 유지(기존 typed-error 분기와
-dispose-success 케이스는 무변경). (E) 독립 reviewer가 지목한 architecture 문서 3개 + diff 대조로
-추가 발견한 4번째 문서(`local-runtime-claude-adapter.md`)의 함수명-only evidence를 정확한
-`file:line`으로 복구, `local-runtime-daemon-transport-api.md`는 표 전역의 기존 method-name 관례라
-판단해 손대지 않음. (F) `rollbackAgentAttach` 잔존 검색을 재실행해 production/API/type 0건,
-`tests/unit/cli/invocation.test.ts` historical rationale 주석 4건, `docs/` 정확한 과거-대비 서술
-1건으로 정확히 분해해 보고(이전 candidate의 "0건" 주장은 재현되지 않음을 확인).
-
-**검증**: 신규 red→green 9개 테스트(A 4, B 1, C 1, D 3) + 기존 테스트 1개(A, config mock 보강) 전부 최초 실패 확인 후 green. Focused
-10 files/267 tests PASS. `npm run typecheck` PASS. `npx vitest run --maxWorkers=1` 61 files/801
-tests PASS. 기본 병렬 `npm test` 4회 연속 61/801 PASS(이번 세션은 최초 실행 포함 실패 0건 —
-과거 attempt가 기록한 sandbox socket/HTTP 병렬 test-isolation 문제가 재현되지 않았으나 해소로
-단정하지 않는다). `git diff --check` PASS. 변경 Markdown 4개 architecture 문서
-`scripts/check-markdown-inline-code` 전부 exit 0.
-
-**Live 1(cmux)/Live 2(VS Code)**: not-run — user deferred(사용자 지시, 이번 corrective 범위 밖).
-
-상세 finding별 red→green 근거, 정확한 write-set, mutation check 결과, residual risk 전문은
-`logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W6.md`의
-`### 2026-08-21 · W6 revision 5 corrective(round 2)` entry와
-`### Result / Verification (Corrective round 2 — blocker A-F)` 섹션이 소유한다(재복사하지 않음).
-
-**이 executor는 자체 Accept, W6 `[x]`, W7 전환, W9 spec 본문 편집을 하지 않았다.** W6은 계속
-`[>]`, W7은 계속 `[ ]`이다.
-
-Next: controlling(사용자 또는 독립 reviewer)의 candidate result 재검증 — 위 W6.md entry가 지목한
-residual risk(blocker C 테스트의 정확한 microtask-timing 의존성, daemon-transport-api.md 표
-관례 판단, Claude readiness/active-agent-0/concrete view driver/Live 1·2는 여전히 분리)를 포함해
-실제 diff·tests·docs를 재확인한 뒤 수용 여부를 판정한다.
-
-### 2026-08-21 14:33 · W6 corrective round 2 독립 result review — 부분 수용, architecture evidence 보강 필요
-
-Disposition: **부분 수용**. W6 corrective round 2의 production/code findings A-D와 rollbackAgentAttach 검색 정정 F는 독립 source/test/probe로 수용한다. Architecture evidence E는 claim↔evidence sufficiency가 닫히지 않아 Reject하며 W6 `[>]`, W7 `[ ]`을 유지한다. Live 1/2는 user deferred로 미실행이다.
-
-수용 근거: production entry는 config→view prerequisite→persistent signal handler→daemon/API→runHost 순서로 바뀌었고 pending signal과 handler lifetime tests가 실제 invocation 경로를 검증한다. `onLost` 등록 실패는 해당 agent만 awaited cleanup하고 후속 agent와 성공 subset routes를 유지한다. cleanup drain loop는 signal→loss 독립 probe에서 detach gate 전 host pending, gate 후 detach 완료→unregister 순서를 보였다. Generic Codex attach error와 dispose error도 원 cause를 보존해 함께 관찰 가능하며 typed/success 경로 회귀가 없다. F의 production/API/type 0, test historical comments 4, docs historical statement 1 분해도 검색과 일치한다.
-
-미수용 finding: `docs/architecture/local-runtime-cli-and-operator-surfaces.md:76-91`과 `local-runtime-codex-adapter.md:85-89`는 detach가 runtime dispose와 row/routes 삭제를 수행한다고 주장하지만 evidence가 CLI helper `src/cli/invocation.ts:533-558`만 가리켜 daemon-side state effect를 증명하지 않는다. TUI failure call sites와 owner 구현 `src/daemon/state.ts:3073-3130` 또는 동등한 state-effect test range를 claim별로 함께 매핑해야 한다. Exact range가 존재한다는 것만으로 Evidence 계약이 충족되지는 않는다.
-
-독립 검증: focused 10 files/267 PASS, typecheck PASS, serial 61/801 PASS, 기본 npm test 61/801 최초 PASS, signal→loss production probe PASS, diff/Markdown/log/package checks PASS. 상세 exact path와 accepted/rejected scope는 W6 task record의 `2026-08-21 14:32 · corrective round 2 독립 result review` entry가 소유한다.
-
-Next: W6 architecture evidence corrective — 위 두 문서만 claim별 call-site+daemon state-effect exact range로 보강하고 재검증한다. Production code/tests는 수정하지 않고 W7로 전환하지 않는다.
-
-### 2026-08-21 14:43 · W12 architecture evidence corrective 위임 시작
-
-- 사용자 지시로 W6 architecture evidence gap만 W12 delegated task로 분리했다. W6 code A-D/F accepted state는 유지하며 production code/tests와 W9 spec 본문은 write-set에서 제외한다.
-- W12 revision 2는 `local-runtime-cli-and-operator-surfaces.md`와 `local-runtime-codex-adapter.md`의 TUI-failure claim에 CLI call site와 daemon dispose/row/routes state-effect exact range를 함께 매핑하는 최소 correction만 허용한다.
-- Context Reconcile: W6은 open으로 대기시키고 W12를 active `[>]`로 전환했다. Subagent candidate가 돌아오면 controlling이 실제 diff/source/evidence를 검토한 뒤 W12 소비와 W6 복귀를 판정한다.
-
-Next: W12 delegated executor가 두 architecture 문서와 W12 task record만 수정하고 candidate를 반환한다.
-
-### 2026-08-21 14:47 · W12 architecture evidence corrective result review — Accept, W6 복귀
-
-- W12 revision 2 Attempt 1 candidate를 controlling이 실제 source/test와 대조해 **Accept**했다. 두 architecture 문서는 TUI failure call sites, awaited helper, daemon cleanup owner와 runtime dispose/row/incident-route state-effect tests를 claim-local exact range로 복구했다.
-- Verification: 관련 2 files/94 tests PASS, 변경 Markdown 및 W12/controlling log inline-code PASS, `git diff --check`, log check, package-log check PASS.
-- Context Reconcile: W12를 `[x]`로 완료하고 W6을 `[>]`로 복귀했다. W6 A-D/F와 architecture E까지 code/document corrective evidence는 수용됐지만 production `aiox host`의 concrete view driver와 user-deferred Live 1/2가 남아 W6 overall Accept 및 W7 전환은 하지 않는다.
-
-Next: W6 — concrete distinct-terminal view driver의 owner decision/implementation 범위를 확정한다. Live 1/2는 사용자 지시 전까지 보류하며 W7로 전환하지 않는다.
+## 2026-08-25 · W9 PTY owner 문서 정합화 delegated Attempt 1
+
+- 사용자 지시로 W9의 한정된 drift slice를 delegated execution으로 시작한다. 대상은 current uncommitted durable owner/plan에서 최신 W6 합의와 충돌하는 AIOX-owned PTY/node-pty/fixed-attach target 문구와 삭제된 decision 참조다.
+- W9 Task Brief revision 2가 allowed write-set, dirty-worktree 보존, owner별 identity, 검증과 controlling result-consumer 계약을 소유한다.
+- W6은 논의 재개 대기로 [ ], W9를 실행 중 [>]로 전환했다. 이 Attempt는 W9 전체 문서 closeout이 아니라 PTY drift slice의 candidate result만 만든다.
+
+Next: delegated subagent의 candidate diff/result를 controlling이 실제 owner 문서와 검증 출력에 대조해 수용·보정한 뒤 W6 논의로 복귀한다.
+
+### 2026-08-25 18:23 · W9 Attempt 1 controlling result review — PTY drift slice 수용
+
+- Result disposition: W9 revision 2 Attempt 1 candidate를 현재 한정된 PTY drift slice에 대해 전체 수용한다.
+- 실제 diff review: architecture는 현재 구현된 AgentViewLaunchRequest/launcher injection/fail-fast seam만 As-built와 Current gap으로 남겼다. Spec은 config/validator/fail-fast를 Current로 근거화하고 multi-surface/quit 세부를 Open/deferred로 남겼다. Roadmap과 plan은 특정 PTY mechanism 대신 native terminal/IDE surface라는 사용자-visible gate만 소유한다. 미결 HostDefinition/HostAdapter 세부를 Current 또는 Target으로 승격하지 않았다.
+- controlling verification: 변경 문서 4개 inline-code 검사, stale PTY/fixed-attach 및 삭제 decision live-reference 검색, git diff --check, scripts/onramp, log check, package-log check를 재실행해 모두 통과했다. as-built seam과 fail-fast는 src/cli/host.ts 및 src/cli/invocation.ts에서 직접 재확인했다.
+- W9 전체 objective에는 이후 W6/W7 확정 뒤의 나머지 owner 정합이 남으므로 W9는 완료하지 않고 대기로 돌린다. W6을 다시 active로 복귀해 사용자 Q&A를 이어간다.
+
+Next: W6 aiox host — 현재까지 논의된 내용을 바탕으로 사용자와 논의를 이어간다.
+
+## 2026-08-27 · W6 current accepted contract and Stage 2 handoff
+
+이 block은 W6의 현재 accepted disposition과 재개 지점만 소유한다. 사용자 승인 destructive diet로
+W6 과거 revision 1–7, Attempt/Q&A/폐기 candidate, W11–W15 리뷰·조사·artifact/migration
+task 기록과 별도 설계 archive를 제거했다. W11–W15 id는 재사용하지 않는다.
+
+### Current contract
+
+- 사용자 시나리오: install → YAML 또는 CLI-only host → native surface N개 → 각 surface에서 기존
+  `aiox claude/codex` CLI 자동 실행 → ready subset routes → 개별 exit 또는 W7 `aiox quit` →
+  runtime state 정리, surface 비관여.
+- Runtime identity: name은 서로 다른 canonical path에서 중복 가능, canonicalPath는 running host
+  사이 unique, internal hostId로 host/agent를 격리한다. 지속 owner는 `aiox.yaml`뿐이고 CLI-only
+  선언·DB host/agent/routes는 runtime-only다.
+- 책임: HostController는 host lifecycle·starting/ready/detach·named groups·effective edge
+  reconcile·terminate-all을, daemon/DB는 identity/runtime/effective edges/control relay를,
+  HostAdapter/Registry는 detect/preflight/native surface/existing agent CLI start를 소유한다.
+- Existing-daemon path: 다른 shell의 add/remove/route와 W7 quit, Category C extension request/result는
+  새 socket/process/coordinator 없이 기존 daemon API로 원래 foreground controller/workspace에
+  중계한다.
+- Category: A=Terminal.app new windows, B=cmux 후 Ghostty macOS 1.3+ split/pane,
+  C=사전 사용자 Q&A 후 VS Code/Cursor shared extension integrated terminals. Category fallback과
+  최초 범위 밖 제품/native Windows/WSL2 지원은 없다.
+- Failure: validation/static failure는 side effect 없음, dynamic preflight failure는 daemon만 남을
+  수 있음, N번째 실패는 agent-local, all-agent failure는 runtime을 삭제하고 daemon/생성 surface에
+  관여하지 않는다.
+- 명시적 제외: AIOX-owned PTY/`node-pty`/byte relay, `aiox view run`, runner/ticket/LaunchSpec,
+  별도 coordinator/socket, zsh hook, persistent HostDefinition/stopped relaunch, surface lifecycle
+  소유, category fallback.
+- W6/W7: W6는 host-scoped terminate-all primitive까지, W7는 `aiox quit` parsing/current-path
+  lookup/request/wait/user-facing result를 소유한다. Ctrl+C/SIGINT/SIGTERM은 정상 종료 UX가 아니다.
+
+### Accepted revision 8 disposition
+
+- Task record: `logs/packages/2026-08-19-G2-Config-CLI-MCP-Foreground-구현/tasks/W6.md`.
+- Architecture/user scenarios: `logs/artifacts/w6-aiox-host-agreed-architecture.md`.
+- Selected product API inputs/sources: `logs/artifacts/w6-adapter-source-ledger.md`.
+- Revision 8은 controlling review에서 accepted됐다. `tests/unit/cli/parse.test.ts`는 focused existing
+  67 PASS + intentional red 25 FAIL, full suite existing 801 PASS + red 25 FAIL, typecheck PASS,
+  Stage 1 production `src/` 변경 없음이다. Red 25건은 target host grammar 미구현 때문에 예상대로
+  실패한다.
+
+### Fixed implementation workflow
+
+```text
+1. Task Brief + red tests                         완료
+→ 2. Host CLI source + normalized declaration     현재 next
+→ 3. daemon/DB running-host + control path
+→ 4. HostController + HostAdapter/Registry + FakeAdapter
+→ 5. CLI-only E2E + running mutations
+→ 6. YAML aiox host → same pipeline
+→ 7. cmux code/test/live gate → Ghostty code/test/live gate
+→ 8. Terminal.app code/test/live gate
+→ 9. 사용자 Q&A → VS Code/Cursor code/test/live gate
+→ 10. full lifecycle/failure/terminate-all verification → W7 handoff
+```
+
+모든 단계는 시작 전에 user command/event, producer/consumer/owner, 성공·실패·side effect,
+수정 source/tests와 verification을 ASCII로 보고한다. 완료 후에는 실제 변경, success state,
+rollback/residual state, automated/live verification, 남은 불확실성과 next를 같은 축으로 보고한다.
+계획을 실제 결과처럼 보고하지 않는다.
+
+**Next:** Stage 2 Host CLI production implementation. 현재 25 red tests를 TDD driver로 사용하고,
+daemon/DB/HostAdapter/product adapter는 이 단계에서 구현하지 않는다.
+
+### 2026-08-27 23:39 · 2026-08-27 · W6 Stage 2 controlling result review — accepted
+
+- Result disposition: W6 revision 8 Stage 2 candidate와 correction 4건을 실제 source/test에 대조해 전체 수용한다.
+- Accepted behavior: host CLI grammar/normalization이 side-effect 없는 structured 경계를 제공하고, named/path YAML host는 Stage 3+ 연결 전 잘못된 cwd 실행 대신 config/daemon 호출 전에 fail-fast한다. `host --list` trailing token은 거부하며, repeated same-name route add는 Stage 3로 보존되고 directed pair key는 collision-safe tuple encoding을 사용한다.
+- Controlling verification: `npm run typecheck`, focused 148 tests, full 62 files/847 tests, `git diff --check`, Markdown inline-code, controlling `log check`, `package-log check` registry integrity를 재실행해 모두 PASS했다.
+- Non-blocking: parser test의 Stage 1 RED 설명 주석은 현재 구현 전 상태를 서술하므로 후속 정리 후보지만 behavior나 Stage 3 진입 blocker는 아니다.
+
+Next: Stage 3 daemon/DB running-host runtime + 기존 daemon control path. 시작 전에 user command/event, producer/consumer/owner, 성공·실패·side effect, source/tests와 ASCII flow를 보고한다.
+
+### 2026-08-31 11:43 · W6 Stage 3 controlling result review — accepted
+
+- Result disposition: revision 8 Stage 3 candidate를 accepted한다. 사용자가 수용한
+  repository characterization test 5건의 non-RED-first 작성은 코드 변경 없이 기록한다.
+- Accepted behavior: runtime-only `running_hosts`/`host_agents`/`host_control_requests`,
+  name+canonicalPath 0/1/N lookup, internal hostId 격리, `starting→ready→detach`,
+  기존 daemon socket의 claim/complete/result relay, unregister transaction cleanup과 daemon-start
+  stale runtime purge를 수용한다. Stage 4+ surface/controller orchestration은 미착수다.
+- Controlling verification: schema/repository/host-runtime/API/socket caller를 직접 대조했고,
+  `npm run typecheck`, focused 3 files/51 tests, full 65 files/898 tests,
+  `git diff --check`를 재실행해 전부 PASS했다.
+- Required downstream boundary: `host_agents`는 현재 host runtime/status registry이며 실제
+  messaging/route path는 여전히 전역 `agents.name`과 name-keyed runtime map을 사용한다.
+  Stage 5 E2E 연결 전에 host-qualified routable identity를 구현·검증하는 것을
+  필수 gate로 남긴다. 이 residual을 Stage 3가 이미 해결한 것으로 보고하지 않는다.
+- Non-blocking residual: lexical canonical path alias, polling 주기, untaken terminal request
+  row의 daemon-lifetime 잔존은 후속 연결 단계에서 재검토한다.
+
+Next: Stage 4 HostController + HostAdapter/AdapterRegistry + FakeHostAdapter. 시작 전에
+user event, producer/consumer/owner, success/failure/side effect, source/tests와 ASCII flow를
+보고하고 Stage 5+에는 착수하지 않는다.
+
+### 2026-08-31 13:15 · W6 Stage 4 controlling result review — accepted
+
+- Result disposition: revision 8 Stage 4 candidate와 두 차례 correction을 실제 source/test에 대조해 accepted한다.
+- Accepted behavior: AdapterRegistry 선택과 static→dynamic→register→surface 순서, native surface에서 기존 AIOX agent CLI 시작, daemon 상태 기반 starting/ready/detach observation seam, agent-local/all-agent launch failure, surface 비소유, direct/relay terminate-all을 수용한다. terminate()의 resolved 실패와 Promise rejection은 모두 구조화된 failure로 닫히며 실패 agent/host는 유지되고 성공 agent만 detach된다.
+- Controlling verification: 실제 daemon socket 경계와 direct/relay rejection 경로를 재현·검토했고, npm run typecheck, host 5 files/44 tests, Stage 3 regression 2 files/46 tests, full 70 files/942 tests, git diff --check, Markdown inline-code, controlling log check와 package-log registry integrity를 재실행해 모두 PASS했다.
+- Required Stage 5 boundary: CLI-only E2E와 running mutation을 연결하기 전에 Stage 3가 남긴 host-qualified routable identity를 구현·검증한다. 실제 agent CLI ready/detach wiring, reconcile 호출 정책, runtime terminator production 연결, named route/effective edge reconciliation도 Stage 5가 소유한다.
+
+Next: Stage 5 CLI-only E2E + running mutations. 시작 전에 user command/event, producer/consumer/owner, success/failure/side effect, source/tests와 ASCII flow를 보고하고 product adapter나 YAML Stage 6에는 착수하지 않는다.
