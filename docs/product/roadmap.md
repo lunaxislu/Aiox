@@ -375,8 +375,9 @@ gate가 compose나 terminal automation을 A2A protocol requirement로 만들지�
   이전 이름(`compose.yaml`/`aiox compose`)이 Docker `compose`/`up`을 그대로 차용해 은유 회피
   원칙과 불일치한다는 지적을 반영했다. yaml 스키마 내용과 CLI read 방식(cwd 고정, `--file` flag
   없음)도 Kickoff에서 함께 확정됐다([[docs/specs/aiox-compose-contract]] §6).
-- view driver 일반화가 최소로 포함할 driver 집합을 정한다(사용자 실제 환경인 cmux, ghostty
-  포함, tmux 하나로 고정하지 않는다).
+- W6 foreground orchestration과 agent view integration을 같은 현재 stage에서 함께 닫는다.
+  G2 gate는 특정 terminal 하나를 core에 고정하지 않으며, 최초 지원 제품 집합과 제품별 배치
+  계약은 W6에서 확정한다.
 - pair-to-N-agent route generalization의 착수 전제는 Kickoff에서 결정됐다: `state.ts` 전체
   decomposition은 이 항목의 선행 전제가 아니다. 2-slot 하드코딩이 있는 국소 파일의 slot 판정
   로직만 제자리에서 N-slot 순회로 확장하며, `state.ts` 전체 decomposition은 Phase 2 항목으로
@@ -397,9 +398,9 @@ gate가 compose나 terminal automation을 A2A protocol requirement로 만들지�
 
 - clean user가 aiox.yaml로 선언한 다중 pair 인스턴스를 `aiox host`로 foreground
   실행할 수 있다.
-- `aiox host`로 foreground 실행 중인 다중 pair를 최소 하나 이상의 view driver 또는
-  문서화된 fallback(`--ui none`)으로 한 화면에서 동시에 볼 수 있는 최소 demo path를 실행할 수
-  있다. driver는 tmux 하나로 고정되지 않는다.
+- `aiox host`로 foreground 실행 중인 agent별 interactive TUI를 지원되는 terminal/IDE
+  integration의 native surface에 자동 배치해 다중 agent를 함께 볼 수 있는 최소 demo path를
+  실행할 수 있다.
 - pair가 Codex+Claude 2-slot 고정을 넘어 N-agent route로 동작함을 보여준다.
 - native Windows community path는 이 gate의 확정 통과 조건이 아니다 — 포함 여부와 범위는 착수
   검토에서 재논의한 뒤 결정한다.

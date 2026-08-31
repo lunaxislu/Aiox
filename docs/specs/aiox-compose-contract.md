@@ -1,17 +1,26 @@
 # aiox A2A — Compose (declarative composition) (§6)
 
 [[docs/specs/aiox-a2a]] is the protocol index; it owns status vocabulary, the layer model and glossary. This slice
-owns the §6 compose target contract and its current non-implementation caveat.
+owns the §6 compose contract and its current implementation boundary.
 
 ## 6. Compose (declarative composition)
 
-**Status: Committed target, G2. 현재 CLI/config에는 구현되어 있지 않다.** config 파일명
-(`aiox.yaml`), 명령어 이름(`aiox host`/`aiox quit`)과 아래 v1 schema field(name uniqueness,
-dangling reference, duplicate `directed` pair 처리 규칙 포함)는 G2 Kickoff 설계 결정으로
-확정됐으나 validator는 구현되어 있지 않다(문서 끝 Validator Rules 참고). Current repository
-spot-check:
-`rg -n "aiox\.yaml|aiox host|aiox quit|compose" src tests package.json README.md` finds no compose
-implementation or user-facing command outside this spec.
+Config load/validation과 `aiox host` orchestration은 구현되어 있다. [Status: Current] 다만 production
+entry point에는 concrete view launcher가 아직 연결되지 않아, config validation 뒤 daemon/agent side
+effect 전에 `aiox.invocation.no_agent_view_driver`로 거부한다. Concrete multi-surface launch와
+`aiox quit`의 세부 lifecycle contract는 아직 G2에서 논의 중이다. [Status: Open/deferred]
+
+Evidence:
+
+- Config schema/load and semantic validation
+  - [[src/config/aiox-config.ts]]
+    - `src/config/aiox-config.ts:20-168`
+  - [[src/config/aiox-config-validator.ts]]
+    - `src/config/aiox-config-validator.ts:36-170`
+- Host production boundary
+  - [[src/cli/invocation.ts]]
+    - `src/cli/invocation.ts:287-372`
+    - `src/cli/invocation.ts:471-488`
 
 Compose는 Docker clone이 아니다. Compose는 collaboration protocol/runtime 위에서 project
 collaboration topology와 runtime projection을 선언하는 config layer다.
@@ -133,9 +142,9 @@ Principles:
 - compose config는 OS-neutral하게 둔다. OS별 command/path/env 차이는 adapter compiler나
   recipe/plugin이 처리한다.
 - native docs replacement나 global native config mutation을 기본값으로 두지 않는다.
-- terminal/editor auto-layout은 core protocol이 아니다. `aiox host`의 foreground 실행
-  자체가 baseline이며, tmux/VS Code tasks/Windows Terminal 같은 자동 배치(view driver)는 그 위의
-  recipe/plugin layer로 둔다.
+- terminal/editor auto-layout은 core protocol이 아니다. 어떤 terminal/IDE integration이 agent별
+  surface를 만들고 command를 실행할지는 host integration 경계가 소유하며, `aiox.yaml` schema나
+  A2A protocol에 특정 terminal 제품을 고정하지 않는다.
 - `pair`, `connect`, `pending_attach`는 future compose desired state의 seed로 볼 수 있다.
 - **user-level preference와 project-level compose를 분리한다.**
   터미널 종류/view driver/기본 profile 같은 사람 취향은 user config
@@ -145,16 +154,10 @@ Principles:
   (shadcn `components.json`이 "프로젝트 계약만 담아서" 작동하는 것과 같은 이유).
   설치(postinstall) 시 interactive 질문은 안티패턴(CI·비대화형 설치에서 실패) —
   묻는 시점은 첫 실행이다.
-- 위의 "tmux/VS Code tasks/Windows Terminal 같은 자동 배치"
-  recipe/plugin layer를 **view driver**(`--ui tmux|wt|iterm2|none`)로 명명한다.
-  `aiox host`는 `docker compose up`(플래그 없이 실행했을 때의 기본값)처럼 항상 foreground다:
-  실행한 자리에서 바로 보이고 스트리밍되며, 사용자가 나가면(Ctrl+C 등) 그걸로 끝난다. `-d`/detached
-  opt-in flag는 두지 않으며, 터미널을 닫거나 떠난 뒤 나중에 돌아와 이미 돌고 있는 pair를 다시 보는
-  재접속(reattach) 시나리오는 이 모델에 없다.
-  view driver는 세션을 지속시키는 backend가 아니라, foreground로 이미 뜬 상태에서 agent가 여러 개
-  (복수 pair 또는 한 pair 안의 N-agent)일 때 한 화면에 동시에 나눠 보여주는 순수 레이아웃 편의
-  기능이다. `--ui none`이어도 `aiox host`의 core 동작(agent 실행)은 정상 작동하며, 다만 여러
-  agent를 자동으로 pane 분할해서 동시에 보여주는 편의만 없다.
+- production launcher가 없는 현재 빌드는 interactive agent surface를 묵시적으로 생략하지 않고
+  daemon/agent side effect 전에 명시적으로 실패한다. [Status: Current] 최초 지원 제품, surface
+  placement, 종료와 실행 중 reconciliation의 정확한 외부 계약은 아직 열려 있으며, 현재 as-built
+  내부 seam은 [[docs/architecture/local-runtime-cli-and-operator-surfaces]] §9.4가 소유한다.
 
 `aiox attach <agent>`라는 리터럴 명령어는 없다 — 실제로는 `aiox claude --name X` /
 `aiox codex --name X`이며 `kind: "agent-attach"`로 분류된다(`src/cli/parse.ts:220-221,284`). 이
@@ -163,16 +166,6 @@ primitive는 foreground-only 모델에서도 core 표면으로 남는다: `pair`
 orchestration을 전담하며 agent마다 이 `agent-attach` 경로를 내부적으로 재사용한다. compose
 프로세스 전체의 reattach 시나리오는 없어졌지만, agent 단위 attach/launch 표면 자체는 사라지지
 않는다.
-
-tmux 등 view driver가 없는 환경의 `--ui none` fallback은 옵션 A로 설계가 확정됐다(구현
-미착수, 조건부 1차 시도): N개 agent를 전부 화면 없이(백그라운드로) 실행해 두고, 사람은 한
-번에 하나의 agent에만 화면을 붙여서 보다가 다른 agent로 포커스를 전환한다. Claude는
-`--bg`+`-r`/`--resume`(attach)을, Codex는 app-server+TUI의 재접속 기능(`codex resume`에
-thread ID와 `--remote` endpoint를 넘기는 형태)을 재사용한다. 이는 하나의 살아있는
-`aiox host` foreground 프로세스 내부에서 사람의 화면 포커스만 전환하는 것이라, 위 문단의
-foreground-only/no-reattach 결정(compose 전체의 재접속 시나리오 없음)과 충돌하지 않는다.
-구현 후 실제 UI/포커스 전환 경험을 검토해 문제가 있으면 embedded PTY 등 다른 방식으로
-재검토할 수 있다 — 최종 확정은 아니다.
 
 User config도 현재 미구현 target이다. [Status: Committed target, Phase 2] 도입 시 precedence는
 `CLI flag > environment > profile-scoped user config > built-in default`로 고정하고,
@@ -190,10 +183,9 @@ Implementation review note (Compose 착수 시 사용자와 재검토):
   가정하지 않는다. Compose 구현 전에 adapter별 주입 surface와 충돌 동작을 검증하고, 원칙을
   보존할 수 없는 경우 degradation 또는 runtime별 계약과 함께 사용자 승인을 받아 갱신한다.
 
-### Validator Rules [Status: Committed target]
+### Validator Rules [Status: Current]
 
-v1 schema field 구조와 아래 validator 규칙은 확정됐으나, validator 자체는 아직 구현되지
-않았다(compose 구현 착수 시 구현).
+v1 schema field 구조와 아래 validator 규칙은 현재 구현되어 있다.
 
 - `agents[].name`과 `routes[].name`은 각각 독립된 namespace다. 각 namespace 안에서 전역
   유일해야 한다(parse-time 에러) — agent 이름과 route 이름 사이의 충돌은 허용된다.
@@ -201,5 +193,11 @@ v1 schema field 구조와 아래 validator 규칙은 확정됐으나, validator 
   parse-time 에러로 거부한다.
 - `routes[].directed[]`에 같은 `{from, to}` pair가 중복 선언되면 parse-time 에러로 거부한다.
   `to`가 배열인 경우 펼쳐서 비교해야 한다(단순 문자열 비교로는 못 잡는 case가 있다).
-- `agents[].name`에 예약어 `"*"`를 등록하지 못하게 막는 parse-time 검증. 설계는 확정됐으나(`send`의
-  broadcast sentinel과 충돌 방지) 구현되지 않았다.
+- `agents[].name`에 예약어 `"*"`를 등록하지 못하게 막는 parse-time 검증(`send`의 broadcast
+  sentinel과 충돌 방지).
+
+Evidence:
+
+- Validator rules
+  - [[tests/unit/config/aiox-config-validator.test.ts]]
+    - `tests/unit/config/aiox-config-validator.test.ts:1-482`

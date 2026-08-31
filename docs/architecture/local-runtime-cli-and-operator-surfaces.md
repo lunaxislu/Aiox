@@ -137,3 +137,26 @@ Evidence:
     - `src/core/deliveries.ts:3-9`
   - [[src/daemon/state.ts]]
     - `status`
+
+### 9.4 Host / View Launch Boundary
+
+`aiox host`의 orchestration과 view launch seam은 구현되어 있지만 concrete production launcher는 아직 없다.
+[Status: As-built] Host는 agent별로 vendor command, structured argv, cwd와 env를
+`AgentViewLaunchRequest`로 만들며, injected `launchAgentView`가 독립 surface를 준비했다고 resolve한
+뒤에만 그 agent를 active로 본다. Production invocation은 launcher가 없으면 daemon 시작 전에
+`aiox.invocation.no_agent_view_driver`로 실패한다.
+
+Evidence:
+
+- Structured launch request와 view handle seam
+  - [[src/cli/host.ts]]
+    - `src/cli/host.ts:111-164`
+    - `src/cli/host.ts:522-570`
+- Production fail-fast boundary
+  - [[src/cli/invocation.ts]]
+    - `src/cli/invocation.ts:287-310`
+    - `src/cli/invocation.ts:471-488`
+
+Concrete launcher의 제품별 surface 생성 방식과 runtime lifecycle 책임은 아직 current architecture로
+확정되지 않았다. [Status: Current gap] 이 section은 현재 code의 seam과 production fail-fast만
+소유하며, 특정 session/broker/attach 구조를 target으로 정의하지 않는다.
