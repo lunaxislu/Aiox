@@ -39,12 +39,39 @@ import type {
   UpdateDeliveryStatusRequest,
   UpdateDeliveryStatusResult,
 } from "./state.js";
+import type {
+  ClaimHostControlRequestRequest,
+  ClaimHostControlRequestResult,
+  CompleteHostControlRequestRequest,
+  CompleteHostControlRequestResult,
+  HostAgentSelector,
+  HostAgentTransitionResult,
+  LookupRunningHostRequest,
+  LookupRunningHostResult,
+  RegisterHostAgentRequest,
+  RegisterHostAgentResult,
+  RegisterRunningHostRequest,
+  RegisterRunningHostResult,
+  SubmitHostControlRequest,
+  SubmitHostControlRequestResult,
+  TakeHostControlRequestResultResult,
+  UnregisterRunningHostRequest,
+  UnregisterRunningHostResult,
+} from "./host-runtime.js";
 import type { AgentInstanceStatus, AgentKind } from "../core/agents.js";
 import type { MessageDeliveryStatus } from "../core/deliveries.js";
+import type {
+  HostAgentStatus,
+  HostControlRequestKind,
+  HostControlRequestStatus,
+} from "../core/hosts.js";
 import type { MessageType } from "../core/messages.js";
 import type { PairSlot, PairStatus } from "../core/pairs.js";
 import type { StoredAgent } from "../store/repositories/agents.js";
 import type { StoredDelivery } from "../store/repositories/deliveries.js";
+import type { StoredHostAgent } from "../store/repositories/host-agents.js";
+import type { StoredHostControlRequest } from "../store/repositories/host-control-requests.js";
+import type { StoredRunningHost } from "../store/repositories/running-hosts.js";
 import type { StoredMessage } from "../store/repositories/messages.js";
 import type { StoredRoute } from "../store/repositories/routes.js";
 
@@ -89,7 +116,121 @@ export interface DaemonApi {
   status(): StatusResponse;
   listReachablePeers(request: ListReachablePeersRequest): ListReachablePeersResponse;
   stop(request: StopRequest): Promise<StopResponse>;
+  // Running-host runtime. Every method is reachable through the existing daemon
+  // socket, which is what lets another shell's CLI find a running host and relay
+  // a host command to its foreground controller without a second transport.
+  registerRunningHost(request: RegisterRunningHostRequest): RegisterRunningHostResponse;
+  lookupRunningHost(request: LookupRunningHostRequest): LookupRunningHostResponse;
+  listRunningHosts(): ListRunningHostsResponse;
+  unregisterRunningHost(
+    request: UnregisterRunningHostRequest,
+  ): UnregisterRunningHostResponse;
+  registerHostAgent(request: RegisterHostAgentRequest): RegisterHostAgentResponse;
+  markHostAgentReady(request: HostAgentSelector): HostAgentTransitionResponse;
+  detachHostAgent(request: HostAgentSelector): HostAgentTransitionResponse;
+  listHostAgents(request: { hostId: string }): ListHostAgentsResponse;
+  submitHostControlRequest(
+    request: SubmitHostControlRequest,
+  ): SubmitHostControlRequestResponse;
+  claimHostControlRequest(
+    request: ClaimHostControlRequestRequest,
+  ): ClaimHostControlRequestResponse;
+  completeHostControlRequest(
+    request: CompleteHostControlRequestRequest,
+  ): CompleteHostControlRequestResponse;
+  takeHostControlRequestResult(request: {
+    requestId: string;
+  }): TakeHostControlRequestResultResult;
 }
+
+export interface RunningHostDto {
+  id: string;
+  name: string;
+  canonicalPath: string;
+  controllerId: string;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+/**
+ * Host-scoped agent runtime as seen by callers. Row timestamps stay internal:
+ * `status` is the only lifecycle signal a caller may act on, and a row's mere
+ * existence never means the vendor TUI is up.
+ */
+export interface HostAgentDto {
+  id: string;
+  hostId: string;
+  name: string;
+  kind: AgentKind;
+  status: HostAgentStatus;
+  role: string | null;
+  description: string | null;
+  instructions: string | null;
+}
+
+export interface HostControlRequestDto {
+  id: string;
+  hostId: string;
+  kind: HostControlRequestKind;
+  payload: Record<string, unknown> | null;
+  status: HostControlRequestStatus;
+  claimedBy: string | null;
+}
+
+export type RegisterRunningHostResponse =
+  | { ok: true; host: RunningHostDto; agents: HostAgentDto[] }
+  | Extract<RegisterRunningHostResult, { ok: false; reason: "host_path_not_absolute" }>
+  | { ok: false; reason: "host_already_running"; host: RunningHostDto }
+  | Extract<
+      RegisterRunningHostResult,
+      { ok: false; reason: "host_agent_name_already_registered" }
+    >;
+
+export type LookupRunningHostResponse =
+  | { ok: true; host: RunningHostDto }
+  | Extract<LookupRunningHostResult, { ok: false }>;
+
+export interface ListRunningHostsResponse {
+  ok: true;
+  hosts: RunningHostDto[];
+}
+
+export type UnregisterRunningHostResponse =
+  | {
+      ok: true;
+      host: RunningHostDto;
+      removedAgents: HostAgentDto[];
+      cancelledRequestIds: string[];
+    }
+  | Extract<UnregisterRunningHostResult, { ok: false }>;
+
+export type RegisterHostAgentResponse =
+  | { ok: true; agent: HostAgentDto }
+  | Extract<RegisterHostAgentResult, { ok: false; reason: "host_not_running" }>
+  | {
+      ok: false;
+      reason: "host_agent_name_already_registered";
+      existing: HostAgentDto;
+    };
+
+export type HostAgentTransitionResponse =
+  | { ok: true; agent: HostAgentDto }
+  | Extract<HostAgentTransitionResult, { ok: false }>;
+
+export interface ListHostAgentsResponse {
+  ok: true;
+  agents: HostAgentDto[];
+}
+
+export type SubmitHostControlRequestResponse = SubmitHostControlRequestResult;
+
+export type ClaimHostControlRequestResponse =
+  | { ok: true; request: HostControlRequestDto | null }
+  | Extract<ClaimHostControlRequestResult, { ok: false }>;
+
+export type CompleteHostControlRequestResponse =
+  | { ok: true; request: HostControlRequestDto }
+  | Extract<CompleteHostControlRequestResult, { ok: false }>;
 
 export interface AgentDto {
   id: string;
@@ -410,6 +551,131 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     async stop(request) {
       return mapStopResult(await state.stop(request));
     },
+    registerRunningHost(request) {
+      const result = state.registerRunningHost(request);
+
+      if (result.ok) {
+        return {
+          ok: true,
+          host: mapRunningHost(result.host),
+          agents: result.agents.map(mapHostAgent),
+        };
+      }
+
+      if (result.reason === "host_already_running") {
+        return { ok: false, reason: result.reason, host: mapRunningHost(result.host) };
+      }
+
+      return result;
+    },
+    lookupRunningHost(request) {
+      const result = state.lookupRunningHost(request);
+
+      return result.ok ? { ok: true, host: mapRunningHost(result.host) } : result;
+    },
+    listRunningHosts() {
+      return { ok: true, hosts: state.listRunningHosts().map(mapRunningHost) };
+    },
+    unregisterRunningHost(request) {
+      const result = state.unregisterRunningHost(request);
+
+      return result.ok
+        ? {
+            ok: true,
+            host: mapRunningHost(result.host),
+            removedAgents: result.removedAgents.map(mapHostAgent),
+            cancelledRequestIds: result.cancelledRequestIds,
+          }
+        : result;
+    },
+    registerHostAgent(request) {
+      const result = state.registerHostAgent(request);
+
+      if (result.ok) {
+        return { ok: true, agent: mapHostAgent(result.agent) };
+      }
+
+      if (result.reason === "host_agent_name_already_registered") {
+        return { ok: false, reason: result.reason, existing: mapHostAgent(result.existing) };
+      }
+
+      return result;
+    },
+    markHostAgentReady(request) {
+      return mapHostAgentTransition(state.markHostAgentReady(request));
+    },
+    detachHostAgent(request) {
+      return mapHostAgentTransition(state.detachHostAgent(request));
+    },
+    listHostAgents(request) {
+      return { ok: true, agents: state.listHostAgents(request).map(mapHostAgent) };
+    },
+    submitHostControlRequest(request) {
+      return state.submitHostControlRequest(request);
+    },
+    claimHostControlRequest(request) {
+      const result = state.claimHostControlRequest(request);
+
+      return result.ok
+        ? {
+            ok: true,
+            request: result.request === null ? null : mapHostControlRequest(result.request),
+          }
+        : result;
+    },
+    completeHostControlRequest(request) {
+      const result = state.completeHostControlRequest(request);
+
+      return result.ok
+        ? { ok: true, request: mapHostControlRequest(result.request) }
+        : result;
+    },
+    takeHostControlRequestResult(request) {
+      return state.takeHostControlRequestResult(request);
+    },
+  };
+}
+
+function mapRunningHost(host: StoredRunningHost): RunningHostDto {
+  return {
+    id: host.id,
+    name: host.name,
+    canonicalPath: host.canonicalPath,
+    controllerId: host.controllerId,
+    createdAt: host.createdAt,
+    lastSeenAt: host.lastSeenAt,
+  };
+}
+
+function mapHostAgent(agent: StoredHostAgent): HostAgentDto {
+  return {
+    id: agent.id,
+    hostId: agent.hostId,
+    name: agent.name,
+    kind: agent.kind,
+    status: agent.status,
+    role: agent.role,
+    description: agent.description,
+    instructions: agent.instructions,
+  };
+}
+
+function mapHostAgentTransition(
+  result: HostAgentTransitionResult,
+): HostAgentTransitionResponse {
+  return result.ok ? { ok: true, agent: mapHostAgent(result.agent) } : result;
+}
+
+function mapHostControlRequest(
+  request: StoredHostControlRequest,
+): HostControlRequestDto {
+  return {
+    id: request.id,
+    hostId: request.hostId,
+    kind: request.kind,
+    payload: request.payload,
+    status: request.status,
+    claimedBy: request.claimedBy,
   };
 }
 

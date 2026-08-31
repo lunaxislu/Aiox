@@ -101,6 +101,74 @@ export function applySchema(db: Database): void {
   applyMigration5(db);
   applyMigration6(db);
   applyMigration7(db);
+  applyMigration8(db);
+}
+
+// Running-host runtime tables. These hold runtime-only state: a host row exists
+// only while its foreground controller runs, host-scoped agents live inside a
+// host's own namespace (so the same agent name may run under several hosts and
+// alongside a standalone `agents` row), and control requests are the relay
+// buffer between another shell's CLI and the owning foreground controller.
+// Nothing here is a persistent HostDefinition; `purgeRunningHostRuntime` below
+// drops whatever a previous daemon left behind.
+function applyMigration8(db: Database): void {
+  if (isMigrationApplied(db, 8)) return;
+
+  withTransaction(db, () => {
+    db.exec(`
+      create table if not exists running_hosts (
+        id text primary key,
+        name text not null,
+        canonical_path text not null unique,
+        controller_id text not null,
+        created_at text not null,
+        last_seen_at text not null
+      );
+
+      create table if not exists host_agents (
+        id text primary key,
+        host_id text not null,
+        name text not null,
+        kind text not null,
+        status text not null,
+        role text,
+        description text,
+        instructions text,
+        created_at text not null,
+        updated_at text not null,
+        unique (host_id, name)
+      );
+
+      create table if not exists host_control_requests (
+        id text primary key,
+        host_id text not null,
+        kind text not null,
+        payload_json text,
+        status text not null,
+        claimed_by text,
+        result_json text,
+        failure_reason text,
+        created_at text not null,
+        updated_at text not null
+      );
+    `);
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(8, Date.now());
+  });
+}
+
+/**
+ * Drops every running-host runtime row. Called once per daemon start so a
+ * restart never resurrects a previous run's hosts, host-scoped agents, or
+ * in-flight control requests.
+ */
+export function purgeRunningHostRuntime(db: Database): void {
+  withTransaction(db, () => {
+    db.exec("delete from host_control_requests");
+    db.exec("delete from host_agents");
+    db.exec("delete from running_hosts");
+  });
 }
 
 // Data cleanup (DML, not DDL): the physical-delete redesign removed the

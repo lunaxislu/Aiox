@@ -26,11 +26,14 @@ describe("SQLite schema", () => {
       "agents",
       "delivery_outcome_notifications",
       "events",
+      "host_agents",
+      "host_control_requests",
       "message_deliveries",
       "messages",
       "pairs",
       "reply_rights",
       "routes",
+      "running_hosts",
       "schema_version",
     ]);
   });

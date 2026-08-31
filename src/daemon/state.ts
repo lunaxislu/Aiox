@@ -43,6 +43,7 @@ import {
   type StoredRoute,
 } from "../store/repositories/routes.js";
 import { withTransaction } from "../store/transaction.js";
+import { createHostRuntime, type HostRuntime } from "./host-runtime.js";
 import { injectClaudeChannel } from "../adapters/claude/injector.js";
 import {
   injectTurnStart,
@@ -578,7 +579,13 @@ export interface StopResult {
   >;
 }
 
-export interface DaemonState {
+/**
+ * `HostRuntime` contributes the running-host registry, the host-scoped agent
+ * namespace and the control relay. They are composed in rather than restated
+ * here: the daemon state owns standalone agent/message/delivery behavior, and
+ * `src/daemon/host-runtime.ts` owns host runtime state end to end.
+ */
+export interface DaemonState extends HostRuntime {
   attachAgent(request: AttachAgentRequest): Promise<AttachAgentResult>;
   createPair(request: CreatePairRequest): CreatePairResult;
   connect(request: ConnectRequest): ConnectResult;
@@ -651,8 +658,15 @@ export function createDaemonState(
   const manualDeliveryAttempts = new Map<string, number>();
   const targetFlushes = new Map<string, Promise<void>>();
   const startedAt = options.now();
+  const hostRuntime = createHostRuntime({
+    db: options.db,
+    createId: options.createId,
+    now: options.now,
+  });
 
   return {
+    ...hostRuntime,
+
     async attachAgent(request) {
       const pair = request.pairName ? pairs.findByName(request.pairName) : null;
 
