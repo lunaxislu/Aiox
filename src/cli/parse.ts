@@ -2,6 +2,16 @@ import { Command, CommanderError } from "commander";
 
 import type { AgentKind } from "../core/agent-kind.js";
 import { claudeMcpScopes, type ClaudeMcpScope } from "../core/claude-mcp-scope.js";
+import {
+  CliParseError,
+  CLI_PARSE_ERROR_EXIT_CODE,
+  requireNonEmptyName,
+  requireNonEmptyText,
+} from "./cli-errors.js";
+import { registerHostCommand, type HostAgentBlock, type HostRouteOp } from "./host-command.js";
+
+export { CliParseError } from "./cli-errors.js";
+export type { HostAgentBlock, HostRouteOp } from "./host-command.js";
 
 export type ParsedCommand = {
   kind: "daemon-start";
@@ -36,6 +46,31 @@ export type ParsedCommand = {
   name: string;
 } | {
   kind: "host";
+  path?: string;
+  name?: string;
+} | {
+  kind: "host-list";
+} | {
+  kind: "host-new";
+  name: string;
+  agents: HostAgentBlock[];
+  routes?: HostRouteOp[];
+} | {
+  kind: "host-add";
+  name: string;
+  path?: string;
+  agents: HostAgentBlock[];
+  routes?: HostRouteOp[];
+} | {
+  kind: "host-remove";
+  name: string;
+  path?: string;
+  agentNames: string[];
+} | {
+  kind: "host-route";
+  name: string;
+  path?: string;
+  routes: HostRouteOp[];
 } | {
   kind: "status";
 } | {
@@ -63,7 +98,7 @@ export type ParsedCommand = {
 };
 
 const defaultCliVersion = "1.0.0";
-const parseErrorExitCode = 1;
+const parseErrorExitCode = CLI_PARSE_ERROR_EXIT_CODE;
 
 export interface ParseCliOptions {
   version?: string;
@@ -73,18 +108,6 @@ interface CreateProgramOptions {
   version: string;
   output: string[];
   setParsed: (command: ParsedCommand) => void;
-}
-
-export class CliParseError extends Error {
-  readonly code: string;
-  readonly exitCode: number;
-
-  constructor(message: string, options: { code: string; exitCode: number }) {
-    super(message);
-    this.name = "CliParseError";
-    this.code = options.code;
-    this.exitCode = options.exitCode;
-  }
 }
 
 export function parseCli(argv: string[], options: ParseCliOptions = {}): ParsedCommand {
@@ -153,35 +176,6 @@ function includesVersionFlag(argv: readonly string[]): boolean {
   return argv.includes("--version") || argv.includes("-V");
 }
 
-function requireNonEmptyText(value: string, fieldLabel: string): string {
-  if (value.trim().length === 0) {
-    throw new CliParseError(`${fieldLabel} must not be empty`, {
-      code: "aiox.invalidOptionValue",
-      exitCode: parseErrorExitCode,
-    });
-  }
-
-  return value;
-}
-
-function requireNonEmptyName(value: string): string {
-  if (value.trim().length === 0) {
-    throw new CliParseError("Name must not be empty", {
-      code: "aiox.invalidName",
-      exitCode: parseErrorExitCode,
-    });
-  }
-
-  if (/[\x00-\x1F\x7F]/.test(value)) {
-    throw new CliParseError("Name must not contain control characters", {
-      code: "aiox.invalidName",
-      exitCode: parseErrorExitCode,
-    });
-  }
-
-  return value;
-}
-
 function createProgram({ version, output, setParsed }: CreateProgramOptions): Command {
   const program = new Command();
 
@@ -233,7 +227,7 @@ function createProgram({ version, output, setParsed }: CreateProgramOptions): Co
   addAgentAttachCommand(program, "claude", setParsed);
   addConnectCommand(program, setParsed);
   addPairCommand(program, setParsed);
-  addHostCommand(program, setParsed);
+  registerHostCommand(program, setParsed);
   addGlobalCommands(program, setParsed);
 
   return program;
@@ -378,18 +372,6 @@ function addPairCommand(program: Command, setParsed: (command: ParsedCommand) =>
     .requiredOption("--name <pair-name>")
     .action((options: { name: string }) => {
       setParsed({ kind: "pair-create", name: requireNonEmptyName(options.name) });
-    });
-}
-
-function addHostCommand(program: Command, setParsed: (command: ParsedCommand) => void): void {
-  program
-    .command("host")
-    .description(
-      "Run every agent declared in aiox.yaml (cwd-fixed, no --file) in its own vendor TUI, " +
-        "wire routes[] between the ones that came up, and hold foreground until SIGINT/SIGTERM",
-    )
-    .action(() => {
-      setParsed({ kind: "host" });
     });
 }
 

@@ -285,6 +285,17 @@ export async function invokeParsedCommand(
       return success();
     }
     case "host": {
+      // Stage 3-4 provide the running-host runtime and orchestration seams, but
+      // named/path YAML execution is not connected to them until Stage 6. Fail
+      // explicitly before any config load or daemon side effect instead of
+      // silently falling back to the cwd host — a named/path invocation must
+      // never be observably indistinguishable from plain `aiox host`.
+      if (command.path !== undefined || command.name !== undefined) {
+        throw new InvocationError(
+          "aiox host <name>/--path is not implemented yet (Stage 6 YAML host connection); only plain `aiox host` runs in this build.",
+          { code: "aiox.invocation.host_command_not_implemented", exitCode: 1 },
+        );
+      }
       // Config load + semantic validation is the first prerequisite check —
       // it must fail before view-driver resolution, before the daemon is
       // started, and before the daemon API is acquired. None of those later
@@ -371,6 +382,19 @@ export async function invokeParsedCommand(
         unregisterSignals();
       }
     }
+    // W6 Stage 2 parses and normalizes these (see src/cli/host-command.ts), and
+    // Stage 3-4 provide the runtime/controller seams. Stage 5 still needs to
+    // connect management invocation end to end, so fail honestly instead of a
+    // placeholder success that would imply daemon/DB/surface side effects.
+    case "host-list":
+    case "host-new":
+    case "host-add":
+    case "host-remove":
+    case "host-route":
+      throw new InvocationError(
+        `aiox host ${command.kind === "host-list" ? "--list" : "management"} is not implemented yet (Stage 5 CLI-only E2E + running mutations).`,
+        { code: "aiox.invocation.host_command_not_implemented", exitCode: 1 },
+      );
     case "status": {
       const api = await options.runtime.getDaemonApi();
       return { exitCode: 0, stdout: formatStatus(await api.status()) };

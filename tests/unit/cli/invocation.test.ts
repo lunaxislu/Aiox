@@ -937,6 +937,83 @@ describe("CLI invocation", () => {
     expect(calls).toEqual([]);
   });
 
+  it("fails fast on a `host --path` invocation before any config load or daemon side effect (Stage 6 YAML host connection not implemented)", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime(calls);
+
+    const invoked = invokeParsedCommand(
+      { kind: "host", path: "/tmp/project-b" },
+      {
+        runtime,
+        cwd: "/repo",
+        loadAioxConfig: () => {
+          calls.push(["loadAioxConfig"]);
+          return { project: "demo", agents: [] } as unknown as AioxConfig;
+        },
+        validateAioxConfigSemantics: () => {},
+        runHostFn: async () => ({ exitCode: 0 }),
+        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      name: "InvocationError",
+      code: "aiox.invocation.host_command_not_implemented",
+      exitCode: 1,
+      message:
+        "aiox host <name>/--path is not implemented yet (Stage 6 YAML host connection); only plain `aiox host` runs in this build.",
+    });
+    // No config load and no daemon side effect for a host this build cannot run yet.
+    expect(calls).toEqual([]);
+  });
+
+  it("fails fast on a `host <name> --path` invocation before any config load or daemon side effect", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime(calls);
+
+    const invoked = invokeParsedCommand(
+      { kind: "host", name: "demo", path: "/tmp/project-b" },
+      {
+        runtime,
+        cwd: "/repo",
+        loadAioxConfig: () => {
+          calls.push(["loadAioxConfig"]);
+          return { project: "demo", agents: [] } as unknown as AioxConfig;
+        },
+        validateAioxConfigSemantics: () => {},
+        runHostFn: async () => ({ exitCode: 0 }),
+        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      name: "InvocationError",
+      code: "aiox.invocation.host_command_not_implemented",
+      exitCode: 1,
+      message:
+        "aiox host <name>/--path is not implemented yet (Stage 6 YAML host connection); only plain `aiox host` runs in this build.",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("fails fast on host management invocation until Stage 5 connects it", async () => {
+    const calls: unknown[] = [];
+
+    const invoked = invokeParsedCommand(
+      { kind: "host-list" },
+      { runtime: createRuntime(calls), cwd: "/repo" },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      name: "InvocationError",
+      code: "aiox.invocation.host_command_not_implemented",
+      exitCode: 1,
+      message:
+        "aiox host --list is not implemented yet (Stage 5 CLI-only E2E + running mutations).",
+    });
+    expect(calls).toEqual([]);
+  });
+
   it("refuses `host` before any daemon side effect when no terminal view driver is available", async () => {
     const calls: unknown[] = [];
     const runtime = createRuntime(calls);
