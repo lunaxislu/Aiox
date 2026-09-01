@@ -106,7 +106,7 @@ describe("daemon registerClaudeChannel", () => {
     });
 
     expect(registerResponse).toMatchObject({ ok: true });
-    expect(claudeChannelRuntimes.has("alpha")).toBe(true);
+    expect(claudeChannelRuntimes.has("agent-1")).toBe(true);
   });
 
   it("registerClaudeChannel with the same token twice updates the runtime endpoint", async () => {
@@ -141,7 +141,7 @@ describe("daemon registerClaudeChannel", () => {
     });
 
     expect(reconnectResponse).toMatchObject({ ok: true });
-    expect(claudeChannelRuntimes.get("alpha")).toMatchObject({
+    expect(claudeChannelRuntimes.get("agent-1")).toMatchObject({
       endpoint: secondEndpoint,
     });
   });
@@ -240,8 +240,9 @@ describe("daemon registerClaudeChannel", () => {
       endpoint: "http://127.0.0.1:18789/send",
     });
 
-    const runtime = claudeChannelRuntimes.get("alpha");
+    const runtime = claudeChannelRuntimes.get("agent-1");
     expect(runtime).toMatchObject({
+      agentId: "agent-1",
       agentName: "alpha",
       endpoint: "http://127.0.0.1:18789/send",
       registeredAt: expect.any(String),
@@ -477,6 +478,7 @@ describe("Claude credential cleanup — detach and stop", () => {
       name: "review-b",
       cwd: "/repo",
     });
+    const targetAgentId = (targetAttach as { ok: true; agent: { id: string } }).agent.id;
     const targetToken = (targetAttach as { ok: true; claudeChannelToken: string })
       .claudeChannelToken;
     await client.registerClaudeChannel({
@@ -485,10 +487,10 @@ describe("Claude credential cleanup — detach and stop", () => {
       endpoint: "http://127.0.0.1:18789/send",
     });
     await client.connect({ sourceName: "review-a", targetNames: ["review-b"] });
-    expect(claudeChannelRuntimes.has("review-b")).toBe(true);
+    expect(claudeChannelRuntimes.has(targetAgentId)).toBe(true);
 
     await client.detachAgent({ agentName: "review-b" });
-    expect(claudeChannelRuntimes.has("review-b")).toBe(false);
+    expect(claudeChannelRuntimes.has(targetAgentId)).toBe(false);
 
     // detachAgent now removes review-b's row *and* its route
     // (routes.removeAllForAgent) rather than just clearing its channel
@@ -621,7 +623,7 @@ describe("Claude credential cleanup — detach and stop", () => {
     });
 
     expect(rebind).toMatchObject({ ok: true });
-    expect(claudeChannelRuntimes.get("alpha")).toMatchObject({
+    expect(claudeChannelRuntimes.get("agent-1")).toMatchObject({
       endpoint: "http://127.0.0.1:18790/send",
     });
   });
@@ -1782,6 +1784,7 @@ describe("buildClaudeStaticMcpConfig", () => {
       ],
       env: {
         AIOX_CLAUDE_CHANNEL_AGENT_NAME: "${AIOX_CLAUDE_CHANNEL_AGENT_NAME}",
+        AIOX_CLAUDE_CHANNEL_HOST_ID: "${AIOX_CLAUDE_CHANNEL_HOST_ID}",
         AIOX_CLAUDE_CHANNEL_TOKEN: "${AIOX_CLAUDE_CHANNEL_TOKEN}",
         AIOX_SOCKET_PATH: "${AIOX_SOCKET_PATH}",
       },

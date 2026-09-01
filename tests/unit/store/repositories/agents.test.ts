@@ -36,6 +36,7 @@ describe("SQLite agent repository", () => {
       agent: {
         id: "agent-1",
         name: "impl",
+        hostId: null,
         kind: "codex",
         status: "connected",
         cwd: "/repo",
@@ -118,7 +119,7 @@ describe("SQLite agent repository", () => {
     if (!first.ok) {
       throw new Error("expected first attach to succeed");
     }
-    expect(agents.removeByName("impl")).toEqual(first.agent);
+    expect(agents.removeById("existing-1")).toEqual(first.agent);
     expect(agents.findByName("impl")).toBeNull();
 
     // After departure, reattaching the same name creates a new identity with
@@ -137,6 +138,7 @@ describe("SQLite agent repository", () => {
       agent: {
         id: "new-1",
         name: "impl",
+        hostId: null,
         kind: "claude",
         status: "connected",
         cwd: "/repo/new",
@@ -158,8 +160,8 @@ describe("SQLite agent repository", () => {
     expect(agents.findByName("impl")).toEqual(reattach.agent);
   });
 
-  it("removeByName returns null and deletes nothing when the name does not exist", () => {
-    expect(agents.removeByName("ghost")).toBeNull();
+  it("removeById returns null and deletes nothing when the id does not exist", () => {
+    expect(agents.removeById("ghost")).toBeNull();
   });
 
   it("removeAllConnected deletes every row and returns the pre-deletion snapshot", () => {
@@ -200,7 +202,7 @@ describe("SQLite agent repository", () => {
 
     expect(
       agents.rebindAdapterSessionId({
-        name: "impl",
+        id: "agent-1",
         adapterSessionId: "thread-new",
         now: "2026-05-16T00:00:01.000Z",
       }),
@@ -210,5 +212,113 @@ describe("SQLite agent repository", () => {
       updatedAt: "2026-05-16T00:00:01.000Z",
     });
     expect(agents.findByName("impl")?.adapterSessionId).toBe("thread-new");
+  });
+
+  describe("host-scoped identity", () => {
+    it("attaches the same display name under two different hosts and standalone without collision", () => {
+      const standalone = agents.attach({
+        id: "agent-standalone",
+        name: "reviewer",
+        kind: "claude",
+        cwd: "/repo",
+        now: "2026-08-31T00:00:00.000Z",
+      });
+      const hostA = agents.attach({
+        id: "agent-host-a",
+        name: "reviewer",
+        hostId: "host-a",
+        kind: "claude",
+        cwd: "/repo",
+        now: "2026-08-31T00:00:00.000Z",
+      });
+      const hostB = agents.attach({
+        id: "agent-host-b",
+        name: "reviewer",
+        hostId: "host-b",
+        kind: "claude",
+        cwd: "/repo",
+        now: "2026-08-31T00:00:00.000Z",
+      });
+
+      expect(standalone.ok && hostA.ok && hostB.ok).toBe(true);
+      if (!standalone.ok || !hostA.ok || !hostB.ok) {
+        throw new Error("expected all three attaches to succeed");
+      }
+      expect(standalone.agent.hostId).toBeNull();
+      expect(hostA.agent.hostId).toBe("host-a");
+      expect(hostB.agent.hostId).toBe("host-b");
+      expect(
+        new Set([standalone.agent.id, hostA.agent.id, hostB.agent.id]).size,
+      ).toBe(3);
+
+      expect(agents.findByName("reviewer")).toEqual(standalone.agent);
+      expect(agents.findByHostAndName("host-a", "reviewer")).toEqual(hostA.agent);
+      expect(agents.findByHostAndName("host-b", "reviewer")).toEqual(hostB.agent);
+      expect(agents.findById(hostA.agent.id)).toEqual(hostA.agent);
+    });
+
+    it("rejects a duplicate name within the same host scope while a different host or standalone with that name may coexist", () => {
+      const hostA = agents.attach({
+        id: "agent-host-a",
+        name: "reviewer",
+        hostId: "host-a",
+        kind: "claude",
+        cwd: "/repo",
+        now: "2026-08-31T00:00:00.000Z",
+      });
+      if (!hostA.ok) {
+        throw new Error("expected first host-a attach to succeed");
+      }
+
+      const dup = agents.attach({
+        id: "agent-host-a-dup",
+        name: "reviewer",
+        hostId: "host-a",
+        kind: "codex",
+        cwd: "/repo",
+        now: "2026-08-31T00:00:01.000Z",
+      });
+
+      expect(dup).toEqual({
+        ok: false,
+        reason: "agent_name_already_connected",
+        existing: hostA.agent,
+      });
+    });
+
+    it("removeById on a host-scoped agent does not affect a same-named agent in another host or standalone", () => {
+      const standalone = agents.attach({
+        id: "agent-standalone",
+        name: "reviewer",
+        kind: "claude",
+        cwd: "/repo",
+        now: "2026-08-31T00:00:00.000Z",
+      });
+      const hostA = agents.attach({
+        id: "agent-host-a",
+        name: "reviewer",
+        hostId: "host-a",
+        kind: "claude",
+        cwd: "/repo",
+        now: "2026-08-31T00:00:00.000Z",
+      });
+      const hostB = agents.attach({
+        id: "agent-host-b",
+        name: "reviewer",
+        hostId: "host-b",
+        kind: "claude",
+        cwd: "/repo",
+        now: "2026-08-31T00:00:00.000Z",
+      });
+      if (!standalone.ok || !hostA.ok || !hostB.ok) {
+        throw new Error("expected all three attaches to succeed");
+      }
+
+      expect(agents.removeById(hostA.agent.id)).toEqual(hostA.agent);
+
+      expect(agents.findByHostAndName("host-a", "reviewer")).toBeNull();
+      expect(agents.findByHostAndName("host-b", "reviewer")).toEqual(hostB.agent);
+      expect(agents.findByName("reviewer")).toEqual(standalone.agent);
+    });
   });
 });

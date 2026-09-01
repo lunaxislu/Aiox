@@ -65,10 +65,12 @@ describe("daemon attachAgent issues codex channel token", () => {
       daemonSocketPath: "/tmp/aiox.sock",
       attachCodexRuntime: async (request) => {
         seenAttachRequests.push(request);
-        expect(codexPendingTokens.get("impl")).toMatchObject({
-          agentName: "impl",
-          token: request.codexChannelToken,
-        });
+        expect([...codexPendingTokens.values()]).toContainEqual(
+          expect.objectContaining({
+            agentName: "impl",
+            token: request.codexChannelToken,
+          }),
+        );
         return runtime;
       },
     });
@@ -375,6 +377,7 @@ describe("daemon registerCodexChannel", () => {
       cwd: "/repo",
     });
     expect(attach.ok).toBe(true);
+    const agentId = (attach as { ok: true; agent: { id: string } }).agent.id;
     const token = (attach as { ok: true; codexChannelToken: string }).codexChannelToken;
 
     const response = await client.registerCodexChannel({
@@ -383,7 +386,7 @@ describe("daemon registerCodexChannel", () => {
     });
 
     expect(response).toMatchObject({ ok: true });
-    expect(codexChannelRuntimes.has("impl")).toBe(true);
+    expect(codexChannelRuntimes.has(agentId)).toBe(true);
   });
 
   it("wrong token returns codex_channel_registration_failed", async () => {
@@ -509,15 +512,17 @@ describe("daemon disconnectCodexChannel", () => {
       name: "impl",
       cwd: "/repo",
     });
+    const agentId = (attach as { ok: true; agent: { id: string } }).agent.id;
     const token = (attach as { ok: true; codexChannelToken: string }).codexChannelToken;
     await client.registerCodexChannel({ agentName: "impl", token });
     await client.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo" });
     await client.connect({ sourceName: "reviewer", targetNames: ["impl"] });
 
+    expect(codexChannelRuntimes.has(agentId)).toBe(true);
     const response = await client.disconnectCodexChannel({ agentName: "impl" });
 
     expect(response).toMatchObject({ ok: true, disconnected: true });
-    expect(codexChannelRuntimes.has("impl")).toBe(false);
+    expect(codexChannelRuntimes.has(agentId)).toBe(false);
     expect((await client.status()).agents.map((agent) => agent.name)).toEqual(["reviewer"]);
     expect((await client.status()).routes).toEqual([]);
     expect(await client.listReachablePeers({ agentName: "reviewer" })).toEqual({
@@ -3176,10 +3181,11 @@ describe("Codex ingress authorization revocation", () => {
     const client = createInProcessClient(createDaemonApi(state));
 
     const attach = await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
+    const agentId = (attach as { ok: true; agent: { id: string } }).agent.id;
     const token = (attach as { ok: true; codexChannelToken: string }).codexChannelToken;
     await client.registerCodexChannel({ agentName: "impl", token });
 
-    const stored = codexChannelRuntimes.get("impl");
+    const stored = codexChannelRuntimes.get(agentId);
     expect(stored).toBeDefined();
     expect(stored.tokenHash).toHaveLength(64);
   });

@@ -238,12 +238,15 @@ export interface ClaudeChannelDaemonClient {
   ): Promise<RetransmitUnconfirmedDeliveryResponse>;
   listReachablePeers(request: {
     agentName: string;
+    hostId?: string;
   }): Promise<ListReachablePeersResponse>;
   close(): void;
 }
 
 export interface ClaudeChannelMcpServerOptions {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   daemonSocketPath: string;
   createDaemonClient?: (options: {
     socketPath: string;
@@ -421,6 +424,7 @@ export function createSendHandler(
     try {
       const result = await client.receiveClaudeChannelMessage({
         agentName: options.agentName,
+        ...(options.hostId === undefined ? {} : { hostId: options.hostId }),
         messageId,
         type,
         intent,
@@ -473,6 +477,7 @@ export function createReplyHandler(
     try {
       const result = await client.receiveClaudeChannelReply({
         agentName: options.agentName,
+        ...(options.hostId === undefined ? {} : { hostId: options.hostId }),
         messageId,
         inReplyToDeliveryId,
         intent,
@@ -565,6 +570,7 @@ export function createAgentsListHandler(
     try {
       const result = await client.listReachablePeers({
         agentName: options.agentName,
+        ...(options.hostId === undefined ? {} : { hostId: options.hostId }),
       });
       if (!result.ok) {
         return agentsListErrorResult(result.reason, JSON.stringify(result));
@@ -701,6 +707,8 @@ export function startClaudeChannelHttpIngress(
 export interface RegisterWithDaemonOptions {
   daemonSocketPath: string;
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   token: string;
   endpoint: string;
 }
@@ -719,6 +727,7 @@ export async function registerWithDaemon(
   try {
     const result = await socketClient.registerClaudeChannel({
       agentName: options.agentName,
+      ...(options.hostId === undefined ? {} : { hostId: options.hostId }),
       token: options.token,
       endpoint: options.endpoint,
     });
@@ -747,6 +756,8 @@ export async function registerWithDaemon(
 
 interface ChannelServerEnv {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Undefined resolves standalone. */
+  hostId?: string;
   token: string;
   daemonSocketPath: string;
   port?: number;
@@ -756,11 +767,15 @@ export function parseChannelServerEnv(
   env: Record<string, string | undefined> = process.env,
 ): ChannelServerEnv {
   const agentName = requireEnv(env, "AIOX_CLAUDE_CHANNEL_AGENT_NAME");
+  // Encoded as "" for standalone by buildClaudeChannelEnv -- see its comment
+  // for why this env var is always set rather than sometimes absent.
+  const rawHostId = env["AIOX_CLAUDE_CHANNEL_HOST_ID"];
+  const hostId = rawHostId === undefined || rawHostId.length === 0 ? undefined : rawHostId;
   const token = requireEnv(env, "AIOX_CLAUDE_CHANNEL_TOKEN");
   const daemonSocketPath = requireEnv(env, "AIOX_SOCKET_PATH");
   const rawPort = env["AIOX_CLAUDE_CHANNEL_PORT"];
   const port = rawPort !== undefined ? parsePortEnv(rawPort) : undefined;
-  return { agentName, token, daemonSocketPath, port };
+  return { agentName, ...(hostId === undefined ? {} : { hostId }), token, daemonSocketPath, port };
 }
 
 // Entry point invoked by the `aiox mcp-claude` hidden CLI subcommand
@@ -775,6 +790,7 @@ export async function runClaudeChannelMcpServer(): Promise<void> {
 
   const mcp = createClaudeChannelMcpServer({
     agentName: config.agentName,
+    ...(config.hostId === undefined ? {} : { hostId: config.hostId }),
     daemonSocketPath: config.daemonSocketPath,
   });
 
@@ -791,6 +807,7 @@ export async function runClaudeChannelMcpServer(): Promise<void> {
       try {
         await socketClient.reportClaudeChannelBootFailure({
           agentName: config.agentName,
+          ...(config.hostId === undefined ? {} : { hostId: config.hostId }),
           token: config.token,
           reason,
         });
@@ -803,6 +820,7 @@ export async function runClaudeChannelMcpServer(): Promise<void> {
   await registerWithDaemon({
     daemonSocketPath: config.daemonSocketPath,
     agentName: config.agentName,
+    ...(config.hostId === undefined ? {} : { hostId: config.hostId }),
     token: config.token,
     endpoint: ingress.endpoint,
   });

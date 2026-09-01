@@ -17,6 +17,12 @@ export interface StoredHostAgent {
   role: string | null;
   description: string | null;
   instructions: string | null;
+  /** Set by `requestTermination()`; the hosted CLI that owns the live process applies it. */
+  pendingSignal: NodeJS.Signals | null;
+  /** Increments on every `requestTermination()` call so a repeated signal name is still a *new* intent. */
+  pendingSignalSeq: number;
+  /** Highest intent sequence truthfully accepted by the owning wrapper's live ChildProcess. */
+  deliveredSignalSeq: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -41,6 +47,9 @@ interface HostAgentRow {
   role: string | null;
   description: string | null;
   instructions: string | null;
+  pending_signal: string | null;
+  pending_signal_seq: number;
+  delivered_signal_seq: number;
   created_at: string;
   updated_at: string;
 }
@@ -55,6 +64,25 @@ export interface HostAgentRepository {
     status: HostAgentStatus;
     now: string;
   }): StoredHostAgent | null;
+  /** Records a termination intent (W6 Stage 5D Blocker 4): the hosted CLI that owns the live process observes and applies it. */
+  requestTermination(request: {
+    hostId: string;
+    name: string;
+    signal: NodeJS.Signals;
+    now: string;
+  }):
+    | { ok: true; agent: StoredHostAgent }
+    | { ok: false; reason: "signal_delivery_pending"; agent: StoredHostAgent }
+    | null;
+  acknowledgeSignalDelivery(request: {
+    hostId: string;
+    name: string;
+    signalSeq: number;
+    now: string;
+  }):
+    | { ok: true; agent: StoredHostAgent }
+    | { ok: false; reason: "signal_sequence_mismatch"; agent: StoredHostAgent }
+    | null;
   remove(request: { hostId: string; name: string }): StoredHostAgent | null;
   removeAllForHost(hostId: string): StoredHostAgent[];
 }
@@ -71,6 +99,9 @@ export function createHostAgentRepository(db: Database): HostAgentRepository {
         role: request.role ?? null,
         description: request.description ?? null,
         instructions: request.instructions ?? null,
+        pendingSignal: null,
+        pendingSignalSeq: 0,
+        deliveredSignalSeq: 0,
         createdAt: request.now,
         updatedAt: request.now,
       };
@@ -86,6 +117,9 @@ export function createHostAgentRepository(db: Database): HostAgentRepository {
             role,
             description,
             instructions,
+            pending_signal,
+            pending_signal_seq,
+            delivered_signal_seq,
             created_at,
             updated_at
           ) values (
@@ -97,6 +131,9 @@ export function createHostAgentRepository(db: Database): HostAgentRepository {
             @role,
             @description,
             @instructions,
+            @pendingSignal,
+            @pendingSignalSeq,
+            @deliveredSignalSeq,
             @createdAt,
             @updatedAt
           )
@@ -135,6 +172,66 @@ export function createHostAgentRepository(db: Database): HostAgentRepository {
       return { ...existing, status: request.status, updatedAt: request.now };
     },
 
+    requestTermination(request) {
+      const existing = this.find({ hostId: request.hostId, name: request.name });
+
+      if (!existing) {
+        return null;
+      }
+
+      if (existing.pendingSignalSeq > existing.deliveredSignalSeq) {
+        return { ok: false, reason: "signal_delivery_pending", agent: existing };
+      }
+
+      const pendingSignalSeq = existing.pendingSignalSeq + 1;
+
+      db.prepare(
+        `
+          update host_agents
+          set pending_signal = ?, pending_signal_seq = ?, updated_at = ?
+          where host_id = ? and name = ?
+        `,
+      ).run(request.signal, pendingSignalSeq, request.now, request.hostId, request.name);
+
+      return {
+        ok: true,
+        agent: {
+          ...existing,
+          pendingSignal: request.signal,
+          pendingSignalSeq,
+          updatedAt: request.now,
+        },
+      };
+    },
+
+    acknowledgeSignalDelivery(request) {
+      const existing = this.find({ hostId: request.hostId, name: request.name });
+
+      if (!existing) {
+        return null;
+      }
+      if (request.signalSeq !== existing.pendingSignalSeq) {
+        return { ok: false, reason: "signal_sequence_mismatch", agent: existing };
+      }
+
+      db.prepare(
+        `
+          update host_agents
+          set delivered_signal_seq = ?, updated_at = ?
+          where host_id = ? and name = ?
+        `,
+      ).run(request.signalSeq, request.now, request.hostId, request.name);
+
+      return {
+        ok: true,
+        agent: {
+          ...existing,
+          deliveredSignalSeq: request.signalSeq,
+          updatedAt: request.now,
+        },
+      };
+    },
+
     remove(request) {
       const existing = this.find({ hostId: request.hostId, name: request.name });
 
@@ -170,6 +267,9 @@ function mapHostAgentRow(row: HostAgentRow): StoredHostAgent {
     role: row.role,
     description: row.description,
     instructions: row.instructions,
+    pendingSignal: row.pending_signal as NodeJS.Signals | null,
+    pendingSignalSeq: row.pending_signal_seq,
+    deliveredSignalSeq: row.delivered_signal_seq,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -5,6 +5,13 @@ import type { AgentInstanceStatus, AgentKind } from "../../core/agents.js";
 export interface StoredAgent {
   id: string;
   name: string;
+  /**
+   * Owning running host's id, or `null` for a standalone agent. `agents.name`
+   * is unique only within this scope (see `src/store/schema.ts` migration 9)
+   * -- a host-scoped and a standalone agent, or two different hosts' agents,
+   * may share a display name without colliding.
+   */
+  hostId: string | null;
   kind: AgentKind;
   status: AgentInstanceStatus;
   cwd: string;
@@ -22,6 +29,8 @@ export interface StoredAgent {
 export interface AttachStoredAgentRequest {
   id: string;
   name: string;
+  /** Omitted (or undefined) attaches a standalone agent. */
+  hostId?: string;
   kind: AgentKind;
   cwd: string;
   adapterSessionId?: string | null;
@@ -42,9 +51,18 @@ export type AttachStoredAgentResult =
       existing: StoredAgent;
     };
 
+/**
+ * Standalone agents are stored with this non-null sentinel `host_id` rather
+ * than `NULL` so the single `unique (host_id, name)` DB index keeps enforcing
+ * global uniqueness among standalone agents by itself -- see
+ * `src/store/schema.ts` migration 9 for why `NULL` cannot do this in SQLite.
+ */
+const standaloneHostIdColumnValue = "";
+
 interface AgentRow {
   id: string;
   name: string;
+  host_id: string;
   kind: AgentKind;
   status: AgentInstanceStatus;
   cwd: string;
@@ -61,25 +79,40 @@ interface AgentRow {
 
 export interface AgentRepository {
   attach(request: AttachStoredAgentRequest): AttachStoredAgentResult;
+  /** Standalone-scope lookup (`hostId` is the sentinel, never a real host). */
   findByName(name: string): StoredAgent | null;
+  findByHostAndName(hostId: string, name: string): StoredAgent | null;
+  findById(id: string): StoredAgent | null;
   list(): StoredAgent[];
-  removeByName(name: string): StoredAgent | null;
+  removeById(id: string): StoredAgent | null;
   removeAllConnected(): StoredAgent[];
   rebindAdapterSessionId(request: {
-    name: string;
+    id: string;
     adapterSessionId: string;
     now: string;
   }): StoredAgent | null;
 }
 
 export function createAgentRepository(db: Database): AgentRepository {
+  function findByHostColumnAndName(
+    hostIdColumnValue: string,
+    name: string,
+  ): StoredAgent | null {
+    const row = db
+      .prepare("select * from agents where host_id = ? and name = ?")
+      .get(hostIdColumnValue, name) as AgentRow | undefined;
+
+    return row ? mapAgentRow(row) : null;
+  }
+
   return {
     attach(request) {
-      // A found-by-name row is always connected: departure now means the row
-      // is physically deleted (see removeByName/removeAllConnected below),
-      // not status-flipped, so there is no "existing but disconnected" row
-      // left to reuse. Every successful attach is therefore a fresh insert.
-      const existing = this.findByName(request.name);
+      // A found row is always connected: departure now means the row is
+      // physically deleted (see removeById/removeAllConnected below), not
+      // status-flipped, so there is no "existing but disconnected" row left
+      // to reuse. Every successful attach is therefore a fresh insert.
+      const hostIdColumnValue = request.hostId ?? standaloneHostIdColumnValue;
+      const existing = findByHostColumnAndName(hostIdColumnValue, request.name);
 
       if (existing) {
         return {
@@ -92,6 +125,7 @@ export function createAgentRepository(db: Database): AgentRepository {
       const agent: StoredAgent = {
         id: request.id,
         name: request.name,
+        hostId: request.hostId ?? null,
         kind: request.kind,
         status: "connected",
         cwd: request.cwd,
@@ -111,6 +145,7 @@ export function createAgentRepository(db: Database): AgentRepository {
           insert into agents (
             id,
             name,
+            host_id,
             kind,
             status,
             cwd,
@@ -126,6 +161,7 @@ export function createAgentRepository(db: Database): AgentRepository {
           ) values (
             @id,
             @name,
+            @hostId,
             @kind,
             @status,
             @cwd,
@@ -140,7 +176,7 @@ export function createAgentRepository(db: Database): AgentRepository {
             @updatedAt
           )
         `,
-      ).run(agent);
+      ).run({ ...agent, hostId: hostIdColumnValue });
 
       return {
         ok: true,
@@ -149,9 +185,17 @@ export function createAgentRepository(db: Database): AgentRepository {
     },
 
     findByName(name) {
+      return findByHostColumnAndName(standaloneHostIdColumnValue, name);
+    },
+
+    findByHostAndName(hostId, name) {
+      return findByHostColumnAndName(hostId, name);
+    },
+
+    findById(id) {
       const row = db
-        .prepare("select * from agents where name = ?")
-        .get(name) as AgentRow | undefined;
+        .prepare("select * from agents where id = ?")
+        .get(id) as AgentRow | undefined;
 
       return row ? mapAgentRow(row) : null;
     },
@@ -163,14 +207,14 @@ export function createAgentRepository(db: Database): AgentRepository {
         .map((row) => mapAgentRow(row as AgentRow));
     },
 
-    removeByName(name) {
-      const existing = this.findByName(name);
+    removeById(id) {
+      const existing = this.findById(id);
 
       if (!existing) {
         return null;
       }
 
-      db.prepare("delete from agents where name = ?").run(name);
+      db.prepare("delete from agents where id = ?").run(id);
 
       return existing;
     },
@@ -187,7 +231,7 @@ export function createAgentRepository(db: Database): AgentRepository {
     },
 
     rebindAdapterSessionId(request) {
-      const existing = this.findByName(request.name);
+      const existing = this.findById(request.id);
 
       if (!existing) {
         return null;
@@ -199,7 +243,7 @@ export function createAgentRepository(db: Database): AgentRepository {
           set
             adapter_session_id = @adapterSessionId,
             updated_at = @now
-          where name = @name
+          where id = @id
         `,
       ).run(request);
 
@@ -216,6 +260,7 @@ function mapAgentRow(row: AgentRow): StoredAgent {
   return {
     id: row.id,
     name: row.name,
+    hostId: row.host_id === standaloneHostIdColumnValue ? null : row.host_id,
     kind: row.kind,
     status: row.status,
     cwd: row.cwd,

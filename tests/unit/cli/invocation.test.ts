@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   InvocationError,
@@ -14,6 +14,10 @@ import { createDaemonApi } from "../../../src/daemon/api.js";
 import { createDaemonState, type ManagedCodexAgentRuntime } from "../../../src/daemon/state.js";
 import { applySchema } from "../../../src/store/schema.js";
 import type { AioxConfig } from "../../../src/config/aiox-config.js";
+import { createAdapterRegistry } from "../../../src/host/adapter-registry.js";
+import { createFakeAgentRuntimeTerminator } from "../../../src/host/fake-agent-runtime-terminator.js";
+import { createFakeHostAdapter } from "../../../src/host/fake-host-adapter.js";
+import { createProductionAgentRuntimeTerminator } from "../../../src/host/production-agent-runtime-terminator.js";
 
 describe("CLI invocation", () => {
   it("dispatches parsed commands to daemon/runtime actions and preserves shortcut normalization in invocation", async () => {
@@ -26,6 +30,10 @@ describe("CLI invocation", () => {
     await invokeParsedCommand({ kind: "daemon-status" }, { runtime, cwd: "/repo" });
     await invokeParsedCommand(
       { kind: "agent-attach", agentKind: "codex", name: "impl" },
+      { runtime, cwd: "/repo" },
+    );
+    await invokeParsedCommand(
+      { kind: "agent-attach", agentKind: "codex", name: "hosted-impl", hostId: "host-1" },
       { runtime, cwd: "/repo" },
     );
     await invokeParsedCommand(
@@ -76,6 +84,11 @@ describe("CLI invocation", () => {
       // agent-attach: auto-starts daemon first (PRD: "Auto-start daemon if needed")
       ["startDaemon"],
       ["attachAgent", { kind: "codex", name: "impl", cwd: "/repo" }],
+      ["startDaemon"],
+      [
+        "attachAgent",
+        { kind: "codex", name: "hosted-impl", cwd: "/repo", hostId: "host-1" },
+      ],
       ["startDaemon"],
       [
         "attachAgent",
@@ -253,6 +266,92 @@ describe("CLI invocation", () => {
       ],
       ["notifyTuiExited", { agentName: "impl", exitCode: 7, signal: null }],
     ]);
+  });
+
+  it("marks a hosted Codex agent ready only after the vendor child emits spawn", async () => {
+    const calls: unknown[] = [];
+    const child = fakeChild();
+    const runtime = createRuntime(calls, {
+      attachAgent: async (request: unknown) => {
+        calls.push(["attachAgent", request]);
+        return {
+          ok: true,
+          agent: fakeAgentDto(),
+          codexRuntime: {
+            endpoint: "ws://127.0.0.1:54321/",
+            activeThreadId: "thread-1",
+          },
+        };
+      },
+      markHostAgentReady: (request: Parameters<DaemonApi["markHostAgentReady"]>[0]) => {
+        calls.push(["markHostAgentReady", request]);
+        return { ok: true, agent: fakeHostAgentDto(request.hostId, request.agentName, "codex") };
+      },
+    });
+
+    const invoked = invokeParsedCommand(
+      { kind: "agent-attach", agentKind: "codex", name: "impl", hostId: "host-a" },
+      {
+        runtime,
+        cwd: "/repo",
+        launchCodexTui: () => {
+          setTimeout(() => {
+            child.emit("spawn");
+            child.emit("exit", 0, null);
+          }, 0);
+          return child;
+        },
+      },
+    );
+
+    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    expect(calls).toContainEqual([
+      "markHostAgentReady",
+      { hostId: "host-a", agentName: "impl" },
+    ]);
+    expect(calls.findIndex((call) => Array.isArray(call) && call[0] === "markHostAgentReady")).toBeLessThan(
+      calls.findIndex((call) => Array.isArray(call) && call[0] === "notifyTuiExited"),
+    );
+  });
+
+  it("terminates and detaches a hosted Codex child when the ready report is rejected", async () => {
+    const calls: unknown[] = [];
+    const child = fakeChild();
+    child.kill = vi.fn(() => true);
+    const runtime = createRuntime(calls, {
+      attachAgent: async () => ({
+        ok: true,
+        agent: fakeAgentDto(),
+        codexRuntime: {
+          endpoint: "ws://127.0.0.1:54321/",
+          activeThreadId: "thread-1",
+        },
+      }),
+      markHostAgentReady: () => ({
+        ok: false,
+        reason: "host_not_running",
+        hostId: "host-a",
+      }),
+    });
+
+    const invoked = invokeParsedCommand(
+      { kind: "agent-attach", agentKind: "codex", name: "impl", hostId: "host-a" },
+      {
+        runtime,
+        cwd: "/repo",
+        launchCodexTui: () => {
+          setTimeout(() => child.emit("spawn"), 0);
+          return child;
+        },
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      code: "aiox.invocation.tui_launch_failed",
+      message: expect.stringContaining("host_not_running"),
+    });
+    expect(child.kill).toHaveBeenCalledOnce();
+    expect(calls).toContainEqual(["detachAgent", { hostId: "host-a", agentName: "impl" }]);
   });
 
   it("still resumes the explicitly requested session id when one was given, ignoring the eager-started thread", async () => {
@@ -601,6 +700,86 @@ describe("CLI invocation", () => {
     ]);
   });
 
+  it("marks a hosted Claude agent ready only after the vendor child emits spawn", async () => {
+    const calls: unknown[] = [];
+    const child = fakeChild();
+    const runtime = createRuntime(calls, {
+      attachAgent: async (request: unknown) => {
+        calls.push(["attachAgent", request]);
+        return {
+          ok: true,
+          agent: { ...fakeAgentDto(), name: "reviewer", kind: "claude" },
+          claudeChannelToken: "claude-token-1",
+        };
+      },
+      markHostAgentReady: (request: Parameters<DaemonApi["markHostAgentReady"]>[0]) => {
+        calls.push(["markHostAgentReady", request]);
+        return { ok: true, agent: fakeHostAgentDto(request.hostId, request.agentName, "claude") };
+      },
+    });
+
+    const invoked = invokeParsedCommand(
+      {
+        kind: "agent-attach",
+        agentKind: "claude",
+        name: "reviewer",
+        hostId: "host-a",
+      },
+      {
+        runtime,
+        cwd: "/repo",
+        checkClaudeMcpRegistration: async () => ({ registered: true }),
+        launchClaudeStaticMcpChannel: () => {
+          setTimeout(() => {
+            child.emit("spawn");
+            child.emit("exit", 0, null);
+          }, 0);
+          return child;
+        },
+      },
+    );
+
+    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    expect(calls).toContainEqual([
+      "markHostAgentReady",
+      { hostId: "host-a", agentName: "reviewer" },
+    ]);
+    expect(calls).toContainEqual([
+      "disconnectClaudeChannel",
+      { hostId: "host-a", agentName: "reviewer" },
+    ]);
+  });
+
+  it("detaches a hosted Claude agent when channel boot cannot resolve the daemon socket", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime(calls, {
+      ...claudeAttachOverride(),
+      daemonSocketPath: undefined,
+    });
+
+    const invoked = invokeParsedCommand(
+      {
+        kind: "agent-attach",
+        agentKind: "claude",
+        name: "reviewer",
+        hostId: "host-a",
+      },
+      {
+        runtime,
+        cwd: "/repo",
+        checkClaudeMcpRegistration: async () => ({ registered: true }),
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({
+      code: "aiox.invocation.missing_daemon_socket_path",
+    });
+    expect(calls).toContainEqual([
+      "detachAgent",
+      { hostId: "host-a", agentName: "reviewer" },
+    ]);
+  });
+
   it("passes --instructions text through to the static Claude launcher as its own field, preserving multiline/quotes/special chars", async () => {
     const calls: unknown[] = [];
     const child = fakeChild();
@@ -830,407 +1009,798 @@ describe("CLI invocation", () => {
     });
   });
 
-  it("starts the daemon then delegates `host` to runHostFn with the daemon api, cwd, socket path, config, and view driver", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRuntime(calls);
-    const launchAgentView = async () => ({
-      close: async () => {},
-      onLost: () => {},
-    });
-    const fakeConfig = { project: "demo", agents: [] } as unknown as AioxConfig;
-    const runHostFn = async (hostOptions: unknown) => {
-      calls.push(["runHostFn", hostOptions]);
-      return { exitCode: 0 };
-    };
+  describe("aiox host (Stage 6 YAML host connection)", () => {
+    function makeControllerRuntime(api: DaemonApi): InvocationRuntime {
+      return {
+        getDaemonApi: () => api,
+        startDaemon: async () => ({ ok: true }),
+        stopDaemon: async () => ({ ok: true, stoppedAgents: [] }),
+        restartDaemon: async () => ({ ok: true }),
+        daemonStatus: () => ({
+          running: true,
+          pid: 1,
+          socketPath: "/tmp/aiox/daemon.sock",
+          dbPath: ":memory:",
+          startedAt: "2026-08-31T00:00:00.000Z",
+          version: "test-version",
+        }),
+        doctor: () => ({ checks: [] }),
+      };
+    }
 
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        runHostFn,
-        launchAgentView,
-        loadAioxConfig: () => fakeConfig,
-        validateAioxConfigSemantics: () => {},
+    it("plain `aiox host` loads aiox.yaml from cwd and drives the same HostController pipeline as host-new", async () => {
+      const db = new Database(":memory:");
+      applySchema(db);
+      let nextId = 0;
+      const state = createDaemonState({
+        db,
+        createId: () => `id-${(nextId += 1)}`,
+        now: () => "2026-08-31T00:00:00.000Z",
+      });
+      const api = createDaemonApi(state);
+      const adapter = createFakeHostAdapter();
+      const terminator = createFakeAgentRuntimeTerminator();
+      const loadCalls: string[] = [];
+      const config = {
+        project: "demo",
+        agents: [{ name: "reviewer", type: "codex" }],
+      } as unknown as AioxConfig;
+
+      const invoked = invokeParsedCommand(
+        { kind: "host" },
+        {
+          runtime: makeControllerRuntime(api),
+          cwd: "/repo/demo",
+          loadAioxConfig: (cwd) => {
+            loadCalls.push(cwd);
+            return config;
+          },
+          validateAioxConfigSemantics: () => {},
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+          createAgentRuntimeTerminator: () => terminator,
+          hostForegroundLoopIntervalMs: 5,
+        },
+      );
+
+      const hostId = await vi.waitFor(() => {
+        const hosts = api.listRunningHosts().hosts;
+        expect(hosts).toHaveLength(1);
+        return hosts[0]!.id;
+      });
+
+      expect(loadCalls).toEqual(["/repo/demo"]);
+      expect(adapter.calls).toHaveLength(1);
+      expect(adapter.calls[0]!.request.args).toEqual([
+        "codex",
+        "--name",
+        "reviewer",
+        "--host-id",
+        hostId,
+      ]);
+
+      const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+
+      db.close();
+    });
+
+    it("`aiox host --path <p>` loads aiox.yaml from that path instead of cwd", async () => {
+      const db = new Database(":memory:");
+      applySchema(db);
+      let nextId = 0;
+      const state = createDaemonState({
+        db,
+        createId: () => `id-${(nextId += 1)}`,
+        now: () => "2026-08-31T00:00:00.000Z",
+      });
+      const api = createDaemonApi(state);
+      const adapter = createFakeHostAdapter();
+      const terminator = createFakeAgentRuntimeTerminator();
+      const loadCalls: string[] = [];
+      const config = {
+        project: "demo",
+        agents: [{ name: "reviewer", type: "codex" }],
+      } as unknown as AioxConfig;
+
+      const invoked = invokeParsedCommand(
+        { kind: "host", path: "/tmp/project-b" },
+        {
+          runtime: makeControllerRuntime(api),
+          cwd: "/repo/somewhere-else",
+          loadAioxConfig: (cwd) => {
+            loadCalls.push(cwd);
+            return config;
+          },
+          validateAioxConfigSemantics: () => {},
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+          createAgentRuntimeTerminator: () => terminator,
+          hostForegroundLoopIntervalMs: 5,
+        },
+      );
+
+      const hosts = await vi.waitFor(() => {
+        const hosts = api.listRunningHosts().hosts;
+        expect(hosts).toHaveLength(1);
+        return hosts;
+      });
+
+      // `--path`, not `cwd`, is the config-load and controller path used
+      // everywhere -- never resolved to an absolute path (no `path.resolve`).
+      expect(loadCalls).toEqual(["/tmp/project-b"]);
+      expect(hosts[0]!.canonicalPath).toBe("/tmp/project-b");
+
+      const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+
+      db.close();
+    });
+
+    it("`aiox host <name> --path <p>` succeeds when name matches aiox.yaml project", async () => {
+      const db = new Database(":memory:");
+      applySchema(db);
+      let nextId = 0;
+      const state = createDaemonState({
+        db,
+        createId: () => `id-${(nextId += 1)}`,
+        now: () => "2026-08-31T00:00:00.000Z",
+      });
+      const api = createDaemonApi(state);
+      const adapter = createFakeHostAdapter();
+      const terminator = createFakeAgentRuntimeTerminator();
+      const config = {
+        project: "demo",
+        agents: [{ name: "reviewer", type: "codex" }],
+      } as unknown as AioxConfig;
+
+      const invoked = invokeParsedCommand(
+        { kind: "host", name: "demo", path: "/tmp/project-b" },
+        {
+          runtime: makeControllerRuntime(api),
+          cwd: "/repo",
+          loadAioxConfig: () => config,
+          validateAioxConfigSemantics: () => {},
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+          createAgentRuntimeTerminator: () => terminator,
+          hostForegroundLoopIntervalMs: 5,
+        },
+      );
+
+      await vi.waitFor(() => {
+        expect(api.listRunningHosts().hosts).toHaveLength(1);
+      });
+
+      const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+
+      db.close();
+    });
+
+    it("fails before any daemon call when `aiox host <name> --path <p>` name does not match aiox.yaml project", async () => {
+      const calls: unknown[] = [];
+      const runtime = createRuntime(calls);
+
+      const invoked = invokeParsedCommand(
+        { kind: "host", name: "other-name", path: "/repo/demo" },
+        {
+          runtime,
+          cwd: "/repo",
+          loadAioxConfig: (cwd) => {
+            calls.push(["loadAioxConfig", cwd]);
+            return {
+              project: "demo",
+              agents: [{ name: "reviewer", type: "codex" }],
+            } as unknown as AioxConfig;
+          },
+          validateAioxConfigSemantics: () => {},
+        },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.host_name_mismatch",
+        exitCode: 1,
+        message: expect.stringContaining('"other-name"'),
+      });
+      // The prerequisite is a pure local comparison against the config
+      // already loaded, so no daemon/adapter side effect must have
+      // happened -- only the config load itself.
+      expect(calls).toEqual([["loadAioxConfig", "/repo/demo"]]);
+    });
+
+    it("composes `instructions.global` + per-agent `instructions` into the HostAgentDeclaration the controller launches", async () => {
+      const db = new Database(":memory:");
+      applySchema(db);
+      let nextId = 0;
+      const state = createDaemonState({
+        db,
+        createId: () => `id-${(nextId += 1)}`,
+        now: () => "2026-08-31T00:00:00.000Z",
+      });
+      const api = createDaemonApi(state);
+      const adapter = createFakeHostAdapter();
+      const terminator = createFakeAgentRuntimeTerminator();
+      const config = {
+        project: "demo",
+        instructions: { global: "Follow safety rules." },
+        agents: [{ name: "reviewer", type: "codex", instructions: "Focus on tests." }],
+      } as unknown as AioxConfig;
+
+      const invoked = invokeParsedCommand(
+        { kind: "host" },
+        {
+          runtime: makeControllerRuntime(api),
+          cwd: "/repo/demo",
+          loadAioxConfig: () => config,
+          validateAioxConfigSemantics: () => {},
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+          createAgentRuntimeTerminator: () => terminator,
+          hostForegroundLoopIntervalMs: 5,
+        },
+      );
+
+      const hostId = await vi.waitFor(() => {
+        const hosts = api.listRunningHosts().hosts;
+        expect(hosts).toHaveLength(1);
+        return hosts[0]!.id;
+      });
+      expect(adapter.calls).toHaveLength(1);
+      expect(adapter.calls[0]!.request.args).toEqual([
+        "codex",
+        "--name",
+        "reviewer",
+        "--host-id",
+        hostId,
+        "--instructions",
+        "Follow safety rules.\n\nFocus on tests.",
+      ]);
+
+      const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+
+      db.close();
+    });
+
+    it("converts aiox.yaml routes[] (mesh + directed, string and array `to`) into HostRouteOperation[] and reconciles effective edges the same way host-new does", async () => {
+      const db = new Database(":memory:");
+      applySchema(db);
+      let nextId = 0;
+      const state = createDaemonState({
+        db,
+        createId: () => `id-${(nextId += 1)}`,
+        now: () => "2026-08-31T00:00:00.000Z",
+      });
+      const api = createDaemonApi(state);
+      const adapter = createFakeHostAdapter();
+      const terminator = createFakeAgentRuntimeTerminator();
+      const config = {
+        project: "demo",
+        agents: [
+          { name: "reviewer", type: "codex" },
+          { name: "implementer", type: "claude-code" },
+          { name: "watcher", type: "codex" },
+        ],
+        routes: [
+          {
+            name: "development",
+            members: ["reviewer", "implementer", "watcher"],
+            directed: [
+              { from: "watcher", to: "reviewer" },
+              { from: "reviewer", to: ["implementer", "watcher"] },
+            ],
+          },
+        ],
+      } as unknown as AioxConfig;
+
+      const invoked = invokeParsedCommand(
+        { kind: "host" },
+        {
+          runtime: makeControllerRuntime(api),
+          cwd: "/repo/demo",
+          loadAioxConfig: () => config,
+          validateAioxConfigSemantics: () => {},
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+          createAgentRuntimeTerminator: () => terminator,
+          hostForegroundLoopIntervalMs: 5,
+        },
+      );
+
+      const hostId = await vi.waitFor(() => {
+        const hosts = api.listRunningHosts().hosts;
+        expect(hosts).toHaveLength(1);
+        return hosts[0]!.id;
+      });
+
+      // Declared topology exists, but effective edges are the ready-subset
+      // only -- none of that until reconcile observes ready agents.
+      expect(api.status().routes).toEqual([]);
+
+      await api.attachAgent({ hostId, kind: "codex", name: "reviewer", cwd: "/repo/demo" });
+      await api.attachAgent({ hostId, kind: "claude", name: "implementer", cwd: "/repo/demo" });
+      await api.attachAgent({ hostId, kind: "codex", name: "watcher", cwd: "/repo/demo" });
+      await api.markHostAgentReady({ hostId, agentName: "reviewer" });
+      await api.markHostAgentReady({ hostId, agentName: "implementer" });
+      await api.markHostAgentReady({ hostId, agentName: "watcher" });
+
+      // aiox-compose-contract.md §"Mesh와 directed override의 관계": `directed`
+      // narrows only the pair it names, to exactly the declared direction(s);
+      // every pair `directed` never mentions keeps the mesh default.
+      // - {reviewer, watcher}: both directions are declared explicitly
+      //   (watcher->reviewer, and reviewer->watcher via the array `to`) -- both
+      //   survive.
+      // - {reviewer, implementer}: only reviewer->implementer is declared --
+      //   the pair narrows to that single direction, so implementer->reviewer
+      //   is gone.
+      // - {implementer, watcher}: not named in `directed` at all -- stays mesh.
+      // Total: 2 + 1 + 2 = 5 edges (not the additive-only 6).
+      await vi.waitFor(() => {
+        expect(api.status().routes).toHaveLength(5);
+      });
+
+      const hostAgents = api.listHostAgents({ hostId }).agents;
+      const idOf = (name: string) => hostAgents.find((agent) => agent.name === name)!.id;
+      const pairs = api.status().routes.map((route) => [route.sourceAgentId, route.targetAgentId]);
+      expect(pairs).not.toContainEqual([idOf("implementer"), idOf("reviewer")]);
+      expect(pairs).toContainEqual([idOf("reviewer"), idOf("implementer")]);
+      expect(pairs).toContainEqual([idOf("reviewer"), idOf("watcher")]);
+      expect(pairs).toContainEqual([idOf("watcher"), idOf("reviewer")]);
+      expect(pairs).toContainEqual([idOf("implementer"), idOf("watcher")]);
+      expect(pairs).toContainEqual([idOf("watcher"), idOf("implementer")]);
+
+      const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+
+      db.close();
+    });
+
+    it("fails on invalid aiox.yaml (load or semantic validation) before any daemon call", async () => {
+      const calls: unknown[] = [];
+      const runtime = createRuntime(calls);
+
+      const invoked = invokeParsedCommand(
+        { kind: "host" },
+        {
+          runtime,
+          cwd: "/repo",
+          loadAioxConfig: () => {
+            throw new Error("aiox.yaml not found at /repo/aiox.yaml");
+          },
+        },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.host_config_invalid",
+        exitCode: 1,
+        message: expect.stringContaining("aiox.yaml not found"),
+      });
+      expect(calls).toEqual([]);
+    });
+
+    it("fails when validateAioxConfigSemantics throws on an otherwise-loadable aiox.yaml, before any daemon call", async () => {
+      const calls: unknown[] = [];
+      const runtime = createRuntime(calls);
+
+      const invoked = invokeParsedCommand(
+        { kind: "host" },
+        {
+          runtime,
+          cwd: "/repo/demo",
+          loadAioxConfig: () =>
+            ({
+              project: "demo",
+              agents: [{ name: "reviewer", type: "codex" }],
+            }) as unknown as AioxConfig,
+          validateAioxConfigSemantics: () => {
+            throw new Error("route \"development\" references unknown agent \"ghost\"");
+          },
+        },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.host_config_invalid",
+        exitCode: 1,
+        message: expect.stringContaining("references unknown agent"),
+      });
+      // Same zero-side-effect boundary as a loader throw: adapter selection,
+      // startDaemon, and host registration must not run once the semantic
+      // validator itself is what failed.
+      expect(calls).toEqual([]);
+    });
+
+    it("fails honestly at static preflight for plain `aiox host` when no host adapter is registered, before any daemon side effect", async () => {
+      const calls: unknown[] = [];
+      const runtime = createRuntime(calls, {
+        registerRunningHost(request: unknown) {
+          calls.push(["registerRunningHost", request]);
+          throw new Error("must not be called before adapter selection succeeds");
+        },
+      });
+
+      const invoked = invokeParsedCommand(
+        { kind: "host" },
+        {
+          runtime,
+          cwd: "/repo/demo",
+          loadAioxConfig: () =>
+            ({
+              project: "demo",
+              agents: [{ name: "reviewer", type: "codex" }],
+            }) as unknown as AioxConfig,
+          validateAioxConfigSemantics: () => {},
+        },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.host_static_preflight_failed",
+        exitCode: 1,
+        message: expect.stringContaining("no host adapter matches the current environment"),
+      });
+      // Same failure contract as host-new (Blocker 2 correction): adapter
+      // selection + static preflight resolves fully BEFORE the daemon is
+      // even started -- zero daemon/host/agent/surface side effect.
+      expect(calls).toEqual([]);
+    });
+  });
+
+  it("aiox host --list formats the daemon's running-host registry", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime(calls, {
+      listRunningHosts() {
+        calls.push(["listRunningHosts"]);
+        return {
+          ok: true,
+          hosts: [
+            {
+              id: "host-1",
+              name: "demo",
+              canonicalPath: "/repo/demo",
+              controllerId: "controller-1",
+              createdAt: "2026-08-31T00:00:00.000Z",
+              lastSeenAt: "2026-08-31T00:00:00.000Z",
+            },
+          ],
+        };
       },
+    });
+
+    const result = await invokeParsedCommand({ kind: "host-list" }, { runtime, cwd: "/repo" });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout ?? "")).toEqual({
+      ok: true,
+      hosts: [
+        {
+          id: "host-1",
+          name: "demo",
+          canonicalPath: "/repo/demo",
+          controllerId: "controller-1",
+          createdAt: "2026-08-31T00:00:00.000Z",
+          lastSeenAt: "2026-08-31T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(calls).toEqual([["startDaemon"], ["listRunningHosts"]]);
+  });
+
+  describe("aiox host new (W6 Stage 5D)", () => {
+    it("fails honestly at static_preflight when no host adapter is registered -- real production composition, not a placeholder", async () => {
+      const calls: unknown[] = [];
+      const runtime = createRuntime(calls, {
+        registerRunningHost(request: unknown) {
+          calls.push(["registerRunningHost", request]);
+          throw new Error("must not be called before adapter selection succeeds");
+        },
+      });
+
+      const invoked = invokeParsedCommand(
+        {
+          kind: "host-new",
+          name: "demo",
+          agents: [{ agentKind: "codex", name: "reviewer" }],
+        },
+        { runtime, cwd: "/repo/demo" },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        name: "InvocationError",
+        code: "aiox.invocation.host_new_static_preflight_failed",
+        exitCode: 1,
+        message: expect.stringContaining("no host adapter matches the current environment"),
+      });
+      // Blocker 2 correction: adapter selection + static preflight now
+      // resolves fully BEFORE the daemon is even started -- zero
+      // daemon/host/agent/surface side effect on a static failure.
+      expect(calls).toEqual([]);
+    });
+
+    it("carries the real cause, a help pointer, and the literal 'No agents were started.' sentence on a static preflight failure", async () => {
+      const runtime = createRuntime([]);
+
+      const invoked = invokeParsedCommand(
+        {
+          kind: "host-new",
+          name: "demo",
+          agents: [{ agentKind: "codex", name: "reviewer" }],
+        },
+        { runtime, cwd: "/repo/demo" },
+      );
+
+      await expect(invoked).rejects.toMatchObject({
+        message: expect.stringContaining("No agents were started."),
+      });
+      await expect(invoked).rejects.toMatchObject({
+        message: expect.stringContaining("README.md"),
+      });
+      await expect(invoked).rejects.toMatchObject({
+        message: expect.stringContaining("currently supported AIOX workflows"),
+      });
+      await expect(invoked).rejects.not.toMatchObject({
+        message: expect.stringContaining("supported terminal/IDE integrations and setup steps"),
+      });
+    });
+
+    it("declares an initial route topology from --route blocks and reconciles it into effective edges once agents become ready (Blocker 1)", async () => {
+      const db = new Database(":memory:");
+      applySchema(db);
+      let nextId = 0;
+      const state = createDaemonState({
+        db,
+        createId: () => `id-${(nextId += 1)}`,
+        now: () => "2026-08-31T00:00:00.000Z",
+      });
+      const api = createDaemonApi(state);
+      const adapter = createFakeHostAdapter();
+      const terminator = createFakeAgentRuntimeTerminator();
+
+      const runtime: InvocationRuntime = {
+        getDaemonApi: () => api,
+        startDaemon: async () => ({ ok: true }),
+        stopDaemon: async () => ({ ok: true, stoppedAgents: [] }),
+        restartDaemon: async () => ({ ok: true }),
+        daemonStatus: () => ({
+          running: true,
+          pid: 1,
+          socketPath: "/tmp/aiox/daemon.sock",
+          dbPath: ":memory:",
+          startedAt: "2026-08-31T00:00:00.000Z",
+          version: "test-version",
+        }),
+        doctor: () => ({ checks: [] }),
+      };
+
+      const invoked = invokeParsedCommand(
+        {
+          kind: "host-new",
+          name: "demo",
+          agents: [
+            { agentKind: "codex", name: "reviewer" },
+            { agentKind: "claude", name: "implementer" },
+          ],
+          routes: [{ op: "add", name: "development", members: ["reviewer", "implementer"] }],
+        },
+        {
+          runtime,
+          cwd: "/repo/demo",
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+          createAgentRuntimeTerminator: () => terminator,
+          hostForegroundLoopIntervalMs: 5,
+        },
+      );
+
+      const hostId = await vi.waitFor(() => {
+        const hosts = api.listRunningHosts().hosts;
+        expect(hosts).toHaveLength(1);
+        return hosts[0]!.id;
+      });
+
+      // No agent is ready yet: the declared topology exists, but the
+      // ready-subset effective edges do not until reconcile observes ready.
+      expect(api.status().routes).toEqual([]);
+
+      // The real hosted `aiox claude/codex --host-id` CLI resolves a routable
+      // agent ID via `attachAgent()` before it ever reports ready (Stage 5A);
+      // simulate that same sequence directly against the daemon API.
+      await api.attachAgent({ hostId, kind: "codex", name: "reviewer", cwd: "/repo/demo" });
+      await api.attachAgent({ hostId, kind: "claude", name: "implementer", cwd: "/repo/demo" });
+      await api.markHostAgentReady({ hostId, agentName: "reviewer" });
+      await api.markHostAgentReady({ hostId, agentName: "implementer" });
+
+      await vi.waitFor(() => {
+        expect(api.status().routes).toHaveLength(2);
+      });
+
+      const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+
+      db.close();
+    });
+
+    it("wires a real HostController through the foreground loop end to end: starts, claims a relayed terminate_all, and exits", async () => {
+      const db = new Database(":memory:");
+      applySchema(db);
+      let nextId = 0;
+      const state = createDaemonState({
+        db,
+        createId: () => `id-${(nextId += 1)}`,
+        now: () => "2026-08-31T00:00:00.000Z",
+      });
+      const api = createDaemonApi(state);
+      const adapter = createFakeHostAdapter();
+      const terminator = createFakeAgentRuntimeTerminator();
+
+      const runtime: InvocationRuntime = {
+        getDaemonApi: () => api,
+        startDaemon: async () => ({ ok: true }),
+        stopDaemon: async () => ({ ok: true, stoppedAgents: [] }),
+        restartDaemon: async () => ({ ok: true }),
+        daemonStatus: () => ({
+          running: true,
+          pid: 1,
+          socketPath: "/tmp/aiox/daemon.sock",
+          dbPath: ":memory:",
+          startedAt: "2026-08-31T00:00:00.000Z",
+          version: "test-version",
+        }),
+        doctor: () => ({ checks: [] }),
+      };
+
+      const invoked = invokeParsedCommand(
+        {
+          kind: "host-new",
+          name: "demo",
+          agents: [{ agentKind: "codex", name: "reviewer" }],
+        },
+        {
+          runtime,
+          cwd: "/repo/demo",
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+          createAgentRuntimeTerminator: () => terminator,
+          hostForegroundLoopIntervalMs: 5,
+        },
+      );
+
+      // Another shell relaying `terminate_all` through the existing daemon
+      // control relay (Stage 5C, accepted) -- the foreground loop must claim
+      // and complete this on its own, without any direct method call.
+      await vi.waitFor(() => {
+        expect(api.listRunningHosts().hosts).toHaveLength(1);
+      });
+      const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+      expect(adapter.calls).toHaveLength(1);
+      expect(terminator.calls).toEqual([{ hostId: submitted.hostId, agentName: "reviewer" }]);
+      expect(api.listRunningHosts().hosts).toHaveLength(0);
+
+      const taken = await api.takeHostControlRequestResult({ requestId: submitted.requestId });
+      expect(taken).toEqual({ ok: true, status: "completed", result: { ok: true } });
+
+      db.close();
+    });
+  });
+
+  it("relays a normalized running-host mutation and returns its structured controller result", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRuntime(calls, {
+      submitHostControlRequest(request) {
+        calls.push(["submitHostControlRequest", request]);
+        return { ok: true, requestId: "request-1", hostId: "host-1" };
+      },
+      takeHostControlRequestResult(request) {
+        calls.push(["takeHostControlRequestResult", request]);
+        return {
+          ok: true,
+          status: "completed",
+          result: { ok: true, routes: [{ name: "audit" }], effectiveEdgeCount: 2 },
+        };
+      },
+    });
+
+    const result = await invokeParsedCommand(
+      {
+        kind: "host-route",
+        name: "demo",
+        path: "/repo/demo",
+        routes: [{ op: "add", name: "audit", members: ["reviewer", "implementer"] }],
+      },
+      { runtime, cwd: "/repo" },
     );
 
-    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: '{"ok":true,"routes":[{"name":"audit"}],"effectiveEdgeCount":2}\n',
+    });
     expect(calls).toEqual([
-      ["startDaemon"],
       [
-        "runHostFn",
-        expect.objectContaining({
-          cwd: "/repo",
-          daemonSocketPath: "/tmp/aiox/daemon.sock",
-          launchAgentView,
-          config: fakeConfig,
-        }),
+        "submitHostControlRequest",
+        {
+          name: "demo",
+          path: "/repo/demo",
+          kind: "host_route",
+          payload: {
+            routes: [{ op: "add", name: "audit", members: ["reviewer", "implementer"] }],
+          },
+        },
       ],
+      ["takeHostControlRequestResult", { requestId: "request-1" }],
     ]);
   });
 
-  it("surfaces runHostFn's exit code as its own without wrapping it in an error", async () => {
-    const runtime = createRuntime([]);
-
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        runHostFn: async () => ({ exitCode: 1 }),
-        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
-        loadAioxConfig: () => ({ project: "demo", agents: [] }) as unknown as AioxConfig,
-        validateAioxConfigSemantics: () => {},
-      },
-    );
-
-    await expect(invoked).resolves.toEqual({ exitCode: 1 });
-  });
-
-  it("fails fast on `host` when the runtime cannot report a daemon socket path", async () => {
-    const runtime = createRuntime([], { daemonSocketPath: undefined });
-
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        runHostFn: async () => ({ exitCode: 0 }),
-        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
-        loadAioxConfig: () => ({ project: "demo", agents: [] }) as unknown as AioxConfig,
-        validateAioxConfigSemantics: () => {},
-      },
-    );
-
-    await expect(invoked).rejects.toMatchObject({
-      name: "InvocationError",
-      code: "aiox.invocation.missing_daemon_socket_path",
-      exitCode: 1,
-    });
-  });
-
-  it("validates the config before starting the daemon, so an invalid config never starts it", async () => {
+  it("keeps waiting for the existing relay result without imposing a Stage 5C timeout policy", async () => {
     const calls: unknown[] = [];
-    const runtime = createRuntime(calls);
-
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        runHostFn: async () => ({ exitCode: 0 }),
-        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
-        loadAioxConfig: () => {
-          throw new Error("aiox.yaml not found at /repo/aiox.yaml");
-        },
-      },
-    );
-
-    await expect(invoked).rejects.toMatchObject({
-      name: "InvocationError",
-      code: "aiox.invocation.host_config_invalid",
-      exitCode: 1,
-      message: expect.stringContaining("aiox.yaml not found"),
-    });
-    // The prerequisite failed, so no daemon side effect must have happened.
-    expect(calls).toEqual([]);
-  });
-
-  it("fails fast on a `host --path` invocation before any config load or daemon side effect (Stage 6 YAML host connection not implemented)", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRuntime(calls);
-
-    const invoked = invokeParsedCommand(
-      { kind: "host", path: "/tmp/project-b" },
-      {
-        runtime,
-        cwd: "/repo",
-        loadAioxConfig: () => {
-          calls.push(["loadAioxConfig"]);
-          return { project: "demo", agents: [] } as unknown as AioxConfig;
-        },
-        validateAioxConfigSemantics: () => {},
-        runHostFn: async () => ({ exitCode: 0 }),
-        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
-      },
-    );
-
-    await expect(invoked).rejects.toMatchObject({
-      name: "InvocationError",
-      code: "aiox.invocation.host_command_not_implemented",
-      exitCode: 1,
-      message:
-        "aiox host <name>/--path is not implemented yet (Stage 6 YAML host connection); only plain `aiox host` runs in this build.",
-    });
-    // No config load and no daemon side effect for a host this build cannot run yet.
-    expect(calls).toEqual([]);
-  });
-
-  it("fails fast on a `host <name> --path` invocation before any config load or daemon side effect", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRuntime(calls);
-
-    const invoked = invokeParsedCommand(
-      { kind: "host", name: "demo", path: "/tmp/project-b" },
-      {
-        runtime,
-        cwd: "/repo",
-        loadAioxConfig: () => {
-          calls.push(["loadAioxConfig"]);
-          return { project: "demo", agents: [] } as unknown as AioxConfig;
-        },
-        validateAioxConfigSemantics: () => {},
-        runHostFn: async () => ({ exitCode: 0 }),
-        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
-      },
-    );
-
-    await expect(invoked).rejects.toMatchObject({
-      name: "InvocationError",
-      code: "aiox.invocation.host_command_not_implemented",
-      exitCode: 1,
-      message:
-        "aiox host <name>/--path is not implemented yet (Stage 6 YAML host connection); only plain `aiox host` runs in this build.",
-    });
-    expect(calls).toEqual([]);
-  });
-
-  it("fails fast on host management invocation until Stage 5 connects it", async () => {
-    const calls: unknown[] = [];
-
-    const invoked = invokeParsedCommand(
-      { kind: "host-list" },
-      { runtime: createRuntime(calls), cwd: "/repo" },
-    );
-
-    await expect(invoked).rejects.toMatchObject({
-      name: "InvocationError",
-      code: "aiox.invocation.host_command_not_implemented",
-      exitCode: 1,
-      message:
-        "aiox host --list is not implemented yet (Stage 5 CLI-only E2E + running mutations).",
-    });
-    expect(calls).toEqual([]);
-  });
-
-  it("refuses `host` before any daemon side effect when no terminal view driver is available", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRuntime(calls);
-    const runHostFn = async () => {
-      calls.push(["runHostFn"]);
-      return { exitCode: 0 };
-    };
-
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        runHostFn,
-        // Config is valid so this test isolates the view-driver gate — the
-        // "invalid config" case is covered separately below and must win
-        // over this one when both are absent.
-        loadAioxConfig: () => ({ project: "demo", agents: [] }) as unknown as AioxConfig,
-        validateAioxConfigSemantics: () => {},
-      },
-    );
-
-    await expect(invoked).rejects.toMatchObject({
-      name: "InvocationError",
-      code: "aiox.invocation.no_agent_view_driver",
-      exitCode: 1,
-    });
-    // No daemon was started and runHost was never entered: N interactive TUIs
-    // must not fall back to one shared stdio or to headless sessions.
-    expect(calls).toEqual([]);
-  });
-
-  it("fails on an invalid config before checking for a view driver, even when neither is available", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRuntime(calls);
-
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        // No launchAgentView either — if view-driver resolution ran first,
-        // this would fail with no_agent_view_driver instead.
-        loadAioxConfig: () => {
-          throw new Error("aiox.yaml not found at /repo/aiox.yaml");
-        },
-      },
-    );
-
-    await expect(invoked).rejects.toMatchObject({
-      name: "InvocationError",
-      code: "aiox.invocation.host_config_invalid",
-      exitCode: 1,
-      message: expect.stringContaining("aiox.yaml not found"),
-    });
-    expect(calls).toEqual([]);
-  });
-
-  it("observes a SIGINT that arrives while startDaemon() is pending, never calls getDaemonApi() afterward, and still unregisters exactly once", async () => {
-    const calls: unknown[] = [];
-    let resolveStartDaemon: (() => void) | undefined;
-    const startDaemonGate = new Promise<void>((resolve) => {
-      resolveStartDaemon = resolve;
-    });
+    let takeCount = 0;
     const runtime = createRuntime(calls, {
-      startDaemon: async () => {
-        calls.push(["startDaemon"]);
-        await startDaemonGate;
-        return { ok: true };
+      submitHostControlRequest() {
+        return { ok: true, requestId: "request-1", hostId: "host-1" };
       },
-      getDaemonApi: async () => {
-        calls.push(["getDaemonApi"]);
-        throw new Error("getDaemonApi must not be called after a pending signal");
+      takeHostControlRequestResult() {
+        takeCount += 1;
+        return takeCount < 3
+          ? { ok: true as const, status: "pending" as const }
+          : { ok: true as const, status: "completed" as const, result: { ok: true } };
       },
     });
-    let signalHandler: ((signal: NodeJS.Signals) => void) | undefined;
-    let unregisterCalls = 0;
+    const poll = vi.fn(async () => {
+      vi.setSystemTime(new Date("2026-08-31T00:01:00.000Z"));
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T00:00:00.000Z"));
 
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        loadAioxConfig: () => ({ project: "demo", agents: [] }) as unknown as AioxConfig,
-        validateAioxConfigSemantics: () => {},
-        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
-        runHostFn: async () => {
-          calls.push(["runHostFn"]);
-          return { exitCode: 0 };
+    try {
+      const result = await invokeParsedCommand(
+        {
+          kind: "host-remove",
+          name: "demo",
+          agentNames: ["reviewer"],
         },
-        registerSignalHandlers: (onSignal) => {
-          signalHandler = onSignal;
-          return () => {
-            unregisterCalls += 1;
-          };
-        },
-      },
-    );
+        { runtime, cwd: "/repo", pollHostControlResult: poll },
+      );
 
-    // Let startDaemon() actually start (reach its own await) before firing.
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(calls).toEqual([["startDaemon"]]);
-    expect(unregisterCalls).toBe(0);
-
-    signalHandler?.("SIGINT");
-    resolveStartDaemon?.();
-
-    const result = await invoked;
-
-    expect(result.exitCode).toBe(0);
-    // getDaemonApi/attach/view-launch/connect never started.
-    expect(calls).toEqual([["startDaemon"]]);
-    expect(unregisterCalls).toBe(1);
+      expect(result).toEqual({ exitCode: 0, stdout: '{"ok":true}\n' });
+      expect(takeCount).toBe(3);
+      expect(poll).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("observes a SIGINT that arrives while getDaemonApi() is pending and never enters runHostFn afterward", async () => {
-    const calls: unknown[] = [];
-    let resolveGetApi: (() => void) | undefined;
-    const getApiGate = new Promise<void>((resolve) => {
-      resolveGetApi = resolve;
-    });
-    const runtime = createRuntime(calls, {
-      getDaemonApi: async () => {
-        calls.push(["getDaemonApi"]);
-        await getApiGate;
-        return {} as DaemonApi;
-      },
-    });
-    let signalHandler: ((signal: NodeJS.Signals) => void) | undefined;
-    let unregisterCalls = 0;
-    let runHostFnCalls = 0;
-
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        loadAioxConfig: () => ({ project: "demo", agents: [] }) as unknown as AioxConfig,
-        validateAioxConfigSemantics: () => {},
-        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
-        runHostFn: async () => {
-          runHostFnCalls += 1;
-          return { exitCode: 0 };
-        },
-        registerSignalHandlers: (onSignal) => {
-          signalHandler = onSignal;
-          return () => {
-            unregisterCalls += 1;
-          };
-        },
-      },
-    );
-
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(calls).toEqual([["startDaemon"], ["getDaemonApi"]]);
-
-    signalHandler?.("SIGINT");
-    resolveGetApi?.();
-
-    const result = await invoked;
-
-    expect(result.exitCode).toBe(0);
-    expect(runHostFnCalls).toBe(0);
-    expect(unregisterCalls).toBe(1);
-  });
-
-  it("keeps the signal handler registered until runHostFn's own cleanup has actually finished", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRuntime(calls);
-    let resolveRunHost: ((value: { exitCode: number }) => void) | undefined;
-    const runHostGate = new Promise<{ exitCode: number }>((resolve) => {
-      resolveRunHost = resolve;
-    });
-    let signalHandler: ((signal: NodeJS.Signals) => void) | undefined;
-    let unregisterCalls = 0;
-
-    const invoked = invokeParsedCommand(
-      { kind: "host" },
-      {
-        runtime,
-        cwd: "/repo",
-        loadAioxConfig: () => ({ project: "demo", agents: [] }) as unknown as AioxConfig,
-        validateAioxConfigSemantics: () => {},
-        launchAgentView: async () => ({ close: async () => {}, onLost: () => {} }),
-        runHostFn: async () => runHostGate,
-        registerSignalHandlers: (onSignal) => {
-          signalHandler = onSignal;
-          return () => {
-            unregisterCalls += 1;
-          };
-        },
-      },
-    );
-
-    await Promise.resolve();
-    await Promise.resolve();
-    signalHandler?.("SIGINT");
-    // Repeated and cross signals while runHostFn's own cleanup is still in
-    // flight must not fall through to Node's default exit behavior, and
-    // must not unregister or resolve early.
-    signalHandler?.("SIGINT");
-    signalHandler?.("SIGTERM");
-
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(unregisterCalls).toBe(0);
-
-    resolveRunHost?.({ exitCode: 1 });
-    const result = await invoked;
-
-    expect(result.exitCode).toBe(1);
-    // Registered/unregistered exactly once, no matter how many signals
-    // arrived in between.
-    expect(unregisterCalls).toBe(1);
-  });
 });
 
 describe("CLI invocation — Codex TUI failure cleanup against real daemon state", () => {
@@ -1317,7 +1887,468 @@ describe("CLI invocation — Codex TUI failure cleanup against real daemon state
     // — `rollbackAgentAttach()` would have left this at 0.
     expect(disposeCalls).toBe(1);
   });
+
+  it("removes both routable and host-agent state when a hosted Codex vendor spawn fails", async () => {
+    let nextId = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${(nextId += 1)}`,
+      now: () => "2026-08-31T00:00:00.000Z",
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => ({
+        state: "ready",
+        endpoint: new URL("ws://127.0.0.1:54321/"),
+        activeThreadId: null,
+        dispose: async () => {},
+        startThread: async () => "thread-1",
+        resumeThread: async () => null,
+        listLoadedThreadIds: async () => [],
+        rebindActiveThread: () => undefined,
+      }),
+    });
+    const api = createDaemonApi(state);
+    const registered = await api.registerRunningHost({
+      name: "demo",
+      path: "/repo/demo",
+      controllerId: "controller-1",
+      agents: [{ name: "impl", kind: "codex" }],
+    });
+    if (!registered.ok) throw new Error("expected host registration");
+    const child = fakeChild();
+    const runtime = createInvocationRuntimeForApi(api);
+
+    const invoked = invokeParsedCommand(
+      {
+        kind: "agent-attach",
+        agentKind: "codex",
+        name: "impl",
+        hostId: registered.host.id,
+      },
+      {
+        runtime,
+        cwd: "/repo/demo",
+        launchCodexTui: () => {
+          setTimeout(() => child.emit("error", new Error("spawn codex ENOENT")), 0);
+          return child;
+        },
+      },
+    );
+
+    await expect(invoked).rejects.toMatchObject({ code: "aiox.invocation.tui_launch_failed" });
+    expect(api.listHostAgents({ hostId: registered.host.id }).agents).toEqual([]);
+    expect(db.prepare("select id from agents where host_id = ?").all(registered.host.id)).toEqual([]);
+    expect(api.listRunningHosts().hosts).toHaveLength(1);
+  });
+
+  it("keeps the running host and same-named peers in other scopes when hosted Codex exits naturally", async () => {
+    let nextId = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${(nextId += 1)}`,
+      now: () => "2026-08-31T00:00:00.000Z",
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => createManagedCodexRuntime(),
+    });
+    const api = createDaemonApi(state);
+    const hostA = await api.registerRunningHost({
+      name: "host-a",
+      path: "/repo/a",
+      controllerId: "controller-a",
+      agents: [{ name: "reviewer", kind: "codex" }],
+    });
+    const hostB = await api.registerRunningHost({
+      name: "host-b",
+      path: "/repo/b",
+      controllerId: "controller-b",
+      agents: [{ name: "reviewer", kind: "codex" }],
+    });
+    if (!hostA.ok || !hostB.ok) throw new Error("expected host registration");
+    await api.attachAgent({
+      kind: "codex",
+      name: "reviewer",
+      cwd: "/repo/b",
+      hostId: hostB.host.id,
+    });
+    await api.attachAgent({ kind: "codex", name: "reviewer", cwd: "/repo/standalone" });
+    const child = fakeChild();
+
+    const invoked = invokeParsedCommand(
+      {
+        kind: "agent-attach",
+        agentKind: "codex",
+        name: "reviewer",
+        hostId: hostA.host.id,
+      },
+      {
+        runtime: createInvocationRuntimeForApi(api),
+        cwd: "/repo/a",
+        launchCodexTui: () => {
+          setTimeout(() => {
+            child.emit("spawn");
+            child.emit("exit", 0, null);
+          }, 0);
+          return child;
+        },
+      },
+    );
+
+    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    expect(api.listHostAgents({ hostId: hostA.host.id }).agents).toEqual([]);
+    expect(api.listHostAgents({ hostId: hostB.host.id }).agents).toHaveLength(1);
+    expect(api.listRunningHosts().hosts).toHaveLength(2);
+    expect(
+      db.prepare("select host_id from agents where name = ? order by host_id").all("reviewer"),
+    ).toEqual([{ host_id: "" }, { host_id: hostB.host.id }]);
+  });
+
+  it("hosted Codex: the termination-intent watch loop signals the live child once a new intent is observed after spawn (Blocker 4)", async () => {
+    let nextId = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${(nextId += 1)}`,
+      now: () => "2026-08-31T00:00:00.000Z",
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => createManagedCodexRuntime(),
+    });
+    const api = createDaemonApi(state);
+    const registered = await api.registerRunningHost({
+      name: "demo",
+      path: "/repo/demo",
+      controllerId: "controller-1",
+      agents: [{ name: "impl", kind: "codex" }],
+    });
+    if (!registered.ok) throw new Error("expected host registration");
+
+    const child = fakeChild();
+    const killCalls: Array<NodeJS.Signals | undefined> = [];
+    child.kill = ((signal?: NodeJS.Signals) => {
+      killCalls.push(signal);
+      // Models the real vendor process actually reacting to the signal --
+      // the watch loop's own `child.kill()` never simulates exit itself.
+      child.emit("exit", 0, signal ?? null);
+      return true;
+    }) as ChildProcess["kill"];
+
+    const invoked = invokeParsedCommand(
+      { kind: "agent-attach", agentKind: "codex", name: "impl", hostId: registered.host.id },
+      {
+        runtime: createInvocationRuntimeForApi(api),
+        cwd: "/repo/demo",
+        hostedTerminationWatchIntervalMs: 2,
+        launchCodexTui: () => {
+          setTimeout(() => child.emit("spawn"), 0);
+          return child;
+        },
+      },
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        api.listHostAgents({ hostId: registered.host.id }).agents.find((a) => a.name === "impl")
+          ?.status,
+      ).toBe("ready");
+    });
+
+    // The production `AgentRuntimeTerminator` (Blocker 4) records this same
+    // intent through the existing daemon API; this hosted CLI never sees a
+    // raw PID at all, only the row it polls.
+    await api.requestHostAgentTermination({
+      hostId: registered.host.id,
+      agentName: "impl",
+      signal: "SIGINT",
+    });
+
+    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    expect(killCalls).toEqual(["SIGINT"]);
+    // Detached through the normal natural-exit path once the watch loop's
+    // `child.kill()` actually ended the process -- no separate confirmation
+    // channel was invented.
+    expect(api.listHostAgents({ hostId: registered.host.id }).agents).toEqual([]);
+  });
+
+  it("hosted Codex: acknowledges only a truthful child.kill delivery and retries false/throw without consuming the intent", async () => {
+    let nextId = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${(nextId += 1)}`,
+      now: () => "2026-08-31T00:00:00.000Z",
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => createManagedCodexRuntime(),
+    });
+    const api = createDaemonApi(state);
+    const registered = await api.registerRunningHost({
+      name: "demo",
+      path: "/repo/demo",
+      controllerId: "controller-1",
+      agents: [{ name: "impl", kind: "codex" }],
+    });
+    if (!registered.ok) throw new Error("expected host registration");
+
+    const child = fakeChild();
+    const killCalls: NodeJS.Signals[] = [];
+    child.kill = ((signal?: NodeJS.Signals) => {
+      killCalls.push(signal!);
+      if (killCalls.length === 1) return false;
+      if (killCalls.length === 2) throw new Error("synthetic child.kill failure");
+      queueMicrotask(() => child.emit("exit", 0, signal ?? null));
+      return true;
+    }) as ChildProcess["kill"];
+
+    const invoked = invokeParsedCommand(
+      { kind: "agent-attach", agentKind: "codex", name: "impl", hostId: registered.host.id },
+      {
+        runtime: createInvocationRuntimeForApi(api),
+        cwd: "/repo/demo",
+        hostedTerminationWatchIntervalMs: 1,
+        launchCodexTui: () => {
+          setTimeout(() => child.emit("spawn"), 0);
+          return child;
+        },
+      },
+    );
+    await vi.waitFor(() => {
+      expect(api.listHostAgents({ hostId: registered.host.id }).agents[0]?.status).toBe("ready");
+    });
+    const intent = await api.requestHostAgentTermination({
+      hostId: registered.host.id,
+      agentName: "impl",
+      signal: "SIGINT",
+    });
+    if (!intent.ok) throw new Error("expected termination intent");
+
+    await vi.waitFor(() => expect(killCalls).toHaveLength(3));
+    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    expect(killCalls).toEqual(["SIGINT", "SIGINT", "SIGINT"]);
+  });
+
+  it.each([
+    { kind: "codex" as const, expected: ["SIGINT", "SIGKILL"] as NodeJS.Signals[] },
+    {
+      kind: "claude" as const,
+      expected: ["SIGINT", "SIGINT", "SIGKILL"] as NodeJS.Signals[],
+    },
+  ])(
+    "hosted $kind: terminator timers follow wrapper acknowledgements and preserve actual child delivery order",
+    async ({ kind, expected }) => {
+      let nextId = 0;
+      const state = createDaemonState({
+        db,
+        createId: () => `id-${(nextId += 1)}`,
+        now: () => "2026-08-31T00:00:00.000Z",
+        codexRuntimes: new Map(),
+        attachCodexRuntime: async () => createManagedCodexRuntime(),
+      });
+      const api = createDaemonApi(state);
+      const registered = await api.registerRunningHost({
+        name: "demo",
+        path: "/repo/demo",
+        controllerId: "controller-1",
+        agents: [{ name: "impl", kind }],
+      });
+      if (!registered.ok) throw new Error("expected host registration");
+
+      const child = fakeChild();
+      const killCalls: NodeJS.Signals[] = [];
+      child.kill = ((signal?: NodeJS.Signals) => {
+        killCalls.push(signal!);
+        if (signal === "SIGKILL") {
+          queueMicrotask(() => child.emit("exit", 0, signal));
+        }
+        return true;
+      }) as ChildProcess["kill"];
+
+      const invoked = invokeParsedCommand(
+        { kind: "agent-attach", agentKind: kind, name: "impl", hostId: registered.host.id },
+        {
+          runtime: createInvocationRuntimeForApi(api),
+          cwd: "/repo/demo",
+          hostedTerminationWatchIntervalMs: 1,
+          checkClaudeMcpRegistration: async () => ({ registered: true }),
+          launchCodexTui: () => {
+            setTimeout(() => child.emit("spawn"), 0);
+            return child;
+          },
+          launchClaudeStaticMcpChannel: () => {
+            setTimeout(() => child.emit("spawn"), 0);
+            return child;
+          },
+        },
+      );
+      await vi.waitFor(() => {
+        expect(api.listHostAgents({ hostId: registered.host.id }).agents[0]?.status).toBe("ready");
+      });
+
+      const terminator = createProductionAgentRuntimeTerminator({
+        api,
+        pollIntervalMs: 1,
+        signalDeliveryConfirmMs: 50,
+        doublePressWindowMs: 5,
+        hookGraceMs: 5,
+        forceKillConfirmMs: 50,
+      });
+      await expect(
+        terminator.terminate({ hostId: registered.host.id, agentName: "impl" }),
+      ).resolves.toEqual({ ok: true });
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+      expect(killCalls).toEqual(expected);
+    },
+  );
+
+  it("hosted Codex: never signals the child before it has actually spawned, even if a termination intent is already pending (Blocker 4)", async () => {
+    let nextId = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${(nextId += 1)}`,
+      now: () => "2026-08-31T00:00:00.000Z",
+      codexRuntimes: new Map(),
+      attachCodexRuntime: async () => createManagedCodexRuntime(),
+    });
+    const api = createDaemonApi(state);
+    const registered = await api.registerRunningHost({
+      name: "demo",
+      path: "/repo/demo",
+      controllerId: "controller-1",
+      agents: [{ name: "impl", kind: "codex" }],
+    });
+    if (!registered.ok) throw new Error("expected host registration");
+
+    // Recorded BEFORE the surface/CLI even starts (the row already exists in
+    // `starting` from `registerRunningHost`) -- a starting agent has no live
+    // handle to signal yet.
+    await api.requestHostAgentTermination({
+      hostId: registered.host.id,
+      agentName: "impl",
+      signal: "SIGINT",
+    });
+
+    const child = fakeChild();
+    const killCalls: Array<NodeJS.Signals | undefined> = [];
+    child.kill = ((signal?: NodeJS.Signals) => {
+      killCalls.push(signal);
+      child.emit("exit", 0, signal ?? null);
+      return true;
+    }) as ChildProcess["kill"];
+    let spawnCalled = false;
+
+    const invoked = invokeParsedCommand(
+      { kind: "agent-attach", agentKind: "codex", name: "impl", hostId: registered.host.id },
+      {
+        runtime: createInvocationRuntimeForApi(api),
+        cwd: "/repo/demo",
+        hostedTerminationWatchIntervalMs: 2,
+        launchCodexTui: () => {
+          setTimeout(() => {
+            spawnCalled = true;
+            child.emit("spawn");
+          }, 20);
+          return child;
+        },
+      },
+    );
+
+    // A poll tick or two happen before spawn -- the pre-existing pending
+    // intent must not be applied to a child that has not spawned yet.
+    await new Promise((resolve) => setTimeout(resolve, 8));
+    expect(spawnCalled).toBe(false);
+    expect(killCalls).toEqual([]);
+
+    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    // Applied exactly once, only after spawn.
+    expect(killCalls).toEqual(["SIGINT"]);
+  });
+
+  it("keeps the running host and same-named peers in other scopes when hosted Claude exits naturally", async () => {
+    let nextId = 0;
+    const state = createDaemonState({
+      db,
+      createId: () => `id-${(nextId += 1)}`,
+      now: () => "2026-08-31T00:00:00.000Z",
+    });
+    const api = createDaemonApi(state);
+    const hostA = await api.registerRunningHost({
+      name: "host-a",
+      path: "/repo/a",
+      controllerId: "controller-a",
+      agents: [{ name: "reviewer", kind: "claude" }],
+    });
+    const hostB = await api.registerRunningHost({
+      name: "host-b",
+      path: "/repo/b",
+      controllerId: "controller-b",
+      agents: [{ name: "reviewer", kind: "claude" }],
+    });
+    if (!hostA.ok || !hostB.ok) throw new Error("expected host registration");
+    await api.attachAgent({
+      kind: "claude",
+      name: "reviewer",
+      cwd: "/repo/b",
+      hostId: hostB.host.id,
+    });
+    await api.attachAgent({ kind: "claude", name: "reviewer", cwd: "/repo/standalone" });
+    const child = fakeChild();
+
+    const invoked = invokeParsedCommand(
+      {
+        kind: "agent-attach",
+        agentKind: "claude",
+        name: "reviewer",
+        hostId: hostA.host.id,
+      },
+      {
+        runtime: createInvocationRuntimeForApi(api),
+        cwd: "/repo/a",
+        checkClaudeMcpRegistration: async () => ({ registered: true }),
+        launchClaudeStaticMcpChannel: () => {
+          setTimeout(() => {
+            child.emit("spawn");
+            child.emit("exit", 0, null);
+          }, 0);
+          return child;
+        },
+      },
+    );
+
+    await expect(invoked).resolves.toEqual({ exitCode: 0 });
+    expect(api.listHostAgents({ hostId: hostA.host.id }).agents).toEqual([]);
+    expect(api.listHostAgents({ hostId: hostB.host.id }).agents).toHaveLength(1);
+    expect(api.listRunningHosts().hosts).toHaveLength(2);
+    expect(
+      db.prepare("select host_id from agents where name = ? order by host_id").all("reviewer"),
+    ).toEqual([{ host_id: "" }, { host_id: hostB.host.id }]);
+  });
 });
+
+function createInvocationRuntimeForApi(api: DaemonApi): InvocationRuntime {
+  return {
+    getDaemonApi: () => api,
+    startDaemon: async () => ({ ok: true }),
+    stopDaemon: async () => ({ ok: true, stoppedAgents: [] }),
+    restartDaemon: async () => ({ ok: true }),
+    daemonStatus: () => ({
+      running: true,
+      pid: 1,
+      socketPath: "/tmp/aiox-real-state.sock",
+      dbPath: ":memory:",
+      startedAt: "2026-08-31T00:00:00.000Z",
+      version: "test-version",
+    }),
+    daemonSocketPath: () => "/tmp/aiox-real-state.sock",
+    doctor: () => ({ checks: [] }),
+  };
+}
+
+function createManagedCodexRuntime(): ManagedCodexAgentRuntime {
+  return {
+    state: "ready",
+    endpoint: new URL("ws://127.0.0.1:54321/"),
+    activeThreadId: null,
+    dispose: async () => {},
+    startThread: async () => "thread-1",
+    resumeThread: async () => null,
+    listLoadedThreadIds: async () => [],
+    rebindActiveThread: () => undefined,
+  };
+}
 
 function claudeAttachOverride() {
   return {
@@ -1424,8 +2455,8 @@ function createRuntime(
   };
 }
 
-function fakeChild(): ChildProcess {
-  return new EventEmitter() as ChildProcess;
+function fakeChild(pid = 4242): ChildProcess {
+  return Object.assign(new EventEmitter(), { pid }) as ChildProcess;
 }
 
 function fakeAgentDto() {
@@ -1436,5 +2467,21 @@ function fakeAgentDto() {
     status: "connected" as const,
     cwd: "/repo",
     pairId: null,
+  };
+}
+
+function fakeHostAgentDto(hostId: string, name: string, kind: "claude" | "codex") {
+  return {
+    id: `host-agent-${name}`,
+    hostId,
+    name,
+    kind,
+    status: "ready" as const,
+    role: null,
+    description: null,
+    instructions: null,
+    pendingSignal: null,
+    pendingSignalSeq: 0,
+    deliveredSignalSeq: 0,
   };
 }

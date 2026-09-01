@@ -262,6 +262,9 @@ describe("daemon running-host runtime", () => {
           role: "review",
           description: "reviews the implementation",
           instructions: "separate observation from inference",
+          pendingSignal: null,
+          pendingSignalSeq: 0,
+          deliveredSignalSeq: 0,
           createdAt: "2026-08-27T00:00:00.000Z",
           updatedAt: "2026-08-27T00:00:00.000Z",
         },
@@ -322,11 +325,88 @@ describe("daemon running-host runtime", () => {
       state.registerHostAgent({ hostId, name: "reviewer", kind: "claude" });
 
       expect(state.listHostAgents({ hostId })[0]?.status).toBe("starting");
-      expect(state.markHostAgentReady({ hostId, agentName: "reviewer" })).toMatchObject({
+      expect(
+        state.markHostAgentReady({ hostId, agentName: "reviewer" }),
+      ).toMatchObject({
         ok: true,
         agent: { name: "reviewer", status: "ready" },
       });
       expect(state.listHostAgents({ hostId })[0]?.status).toBe("ready");
+    });
+
+    it("records a termination intent with an incrementing sequence, isolated per (hostId, agentName)", () => {
+      const hostId = registerHost("demo", "/a");
+      state.registerHostAgent({ hostId, name: "reviewer", kind: "claude" });
+      state.registerHostAgent({ hostId, name: "implementer", kind: "codex" });
+
+      expect(state.listHostAgents({ hostId })[0]).toMatchObject({
+        pendingSignal: null,
+        pendingSignalSeq: 0,
+      });
+
+      expect(
+        state.requestHostAgentTermination({ hostId, agentName: "reviewer", signal: "SIGINT" }),
+      ).toMatchObject({ ok: true, agent: { name: "reviewer", pendingSignal: "SIGINT", pendingSignalSeq: 1 } });
+      expect(
+        state.requestHostAgentTermination({ hostId, agentName: "reviewer", signal: "SIGKILL" }),
+      ).toEqual({
+        ok: false,
+        reason: "host_agent_signal_delivery_pending",
+        hostId,
+        agentName: "reviewer",
+        pendingSignalSeq: 1,
+      });
+      expect(
+        state.acknowledgeHostAgentSignalDelivery({
+          hostId,
+          agentName: "reviewer",
+          signalSeq: 1,
+        }),
+      ).toMatchObject({ ok: true, agent: { deliveredSignalSeq: 1 } });
+      expect(
+        state.requestHostAgentTermination({ hostId, agentName: "reviewer", signal: "SIGINT" }),
+      ).toMatchObject({ ok: true, agent: { name: "reviewer", pendingSignal: "SIGINT", pendingSignalSeq: 2 } });
+      expect(
+        state.acknowledgeHostAgentSignalDelivery({
+          hostId,
+          agentName: "reviewer",
+          signalSeq: 1,
+        }),
+      ).toEqual({
+        ok: false,
+        reason: "host_agent_signal_sequence_mismatch",
+        hostId,
+        agentName: "reviewer",
+        pendingSignalSeq: 2,
+        signalSeq: 1,
+      });
+      expect(
+        state.acknowledgeHostAgentSignalDelivery({
+          hostId,
+          agentName: "reviewer",
+          signalSeq: 2,
+        }),
+      ).toMatchObject({ ok: true, agent: { deliveredSignalSeq: 2 } });
+      expect(
+        state.requestHostAgentTermination({ hostId, agentName: "reviewer", signal: "SIGKILL" }),
+      ).toMatchObject({ ok: true, agent: { name: "reviewer", pendingSignal: "SIGKILL", pendingSignalSeq: 3 } });
+
+      // A different agent on the same host is untouched.
+      expect(state.listHostAgents({ hostId }).find((a) => a.name === "implementer")).toMatchObject({
+        pendingSignal: null,
+        pendingSignalSeq: 0,
+      });
+    });
+
+    it("reports an unknown agent/host for a termination-intent request", () => {
+      const hostId = registerHost("demo", "/a");
+
+      expect(
+        state.requestHostAgentTermination({ hostId, agentName: "ghost", signal: "SIGINT" }),
+      ).toEqual({ ok: false, reason: "host_agent_not_found", hostId, agentName: "ghost" });
+      expect(
+        state.requestHostAgentTermination({ hostId: "missing", agentName: "reviewer", signal: "SIGINT" }),
+      ).toEqual({ ok: false, reason: "host_not_running", hostId: "missing" });
     });
 
     it("reports an unknown agent name on ready and detach", () => {
@@ -739,6 +819,59 @@ describe("daemon running-host runtime", () => {
       ).toMatchObject({
         ok: true,
         request: { kind: "terminate_all", payload: null },
+      });
+    });
+
+    it("does not complete a terminate_all request or remove another host when hostId does not match the claimed request", () => {
+      const hostA = registerHost("a", "/a", "ctl-a");
+      const hostB = registerHost("b", "/b", "ctl-b");
+      const submitted = submit("a", { kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      state.claimHostControlRequest({ hostId: hostA, controllerId: "ctl-a" });
+
+      expect(
+        state.completeTerminateAllAndUnregisterHost({
+          hostId: hostB,
+          requestId: submitted.requestId,
+          controllerId: "ctl-a",
+          successResult: { ok: true },
+        }),
+      ).toEqual({
+        ok: false,
+        reason: "host_control_request_host_mismatch",
+        requestId: submitted.requestId,
+        hostId: hostB,
+      });
+      expect(state.listRunningHosts().map((host) => host.id)).toEqual([hostA, hostB]);
+      expect(state.takeHostControlRequestResult({ requestId: submitted.requestId })).toEqual({
+        ok: true,
+        status: "claimed",
+      });
+    });
+
+    it("does not complete or unregister for a claimed request that is not terminate_all", () => {
+      const hostId = registerHost("demo", "/a", "ctl-1");
+      const submitted = submit("demo", { kind: "host_add" });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      state.claimHostControlRequest({ hostId, controllerId: "ctl-1" });
+
+      expect(
+        state.completeTerminateAllAndUnregisterHost({
+          hostId,
+          requestId: submitted.requestId,
+          controllerId: "ctl-1",
+          successResult: { ok: true },
+        }),
+      ).toEqual({
+        ok: false,
+        reason: "host_control_request_kind_mismatch",
+        requestId: submitted.requestId,
+        kind: "host_add",
+      });
+      expect(state.listRunningHosts().map((host) => host.id)).toEqual([hostId]);
+      expect(state.takeHostControlRequestResult({ requestId: submitted.requestId })).toEqual({
+        ok: true,
+        status: "claimed",
       });
     });
   });

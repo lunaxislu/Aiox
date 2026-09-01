@@ -1,4 +1,4 @@
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
 
 import type { AgentKind } from "../core/agent-kind.js";
 import { claudeMcpScopes, type ClaudeMcpScope } from "../core/claude-mcp-scope.js";
@@ -32,6 +32,11 @@ export type ParsedCommand = {
   kind: "agent-attach";
   agentKind: AgentKind;
   name: string;
+  /**
+   * Host-qualified selector (W6 Stage 5A). Hidden: set only by
+   * `HostController`'s surface argv, never documented for direct user entry.
+   */
+  hostId?: string;
   pairName?: string;
   resumeSessionId?: string;
   role?: string;
@@ -278,6 +283,10 @@ function addAgentAttachCommand(
   command.option("--role <role>");
   command.option("--description <description>");
   command.option("--instructions <instructions>");
+  // Hidden host-qualified selector (W6 Stage 5A): not mentioned in the
+  // command's own .description() above. Only `HostController`'s surface argv
+  // sets this; it is not meant for direct interactive use.
+  command.addOption(new Option("--host-id <hostId>").hideHelp());
 
   command
     .action(
@@ -288,6 +297,7 @@ function addAgentAttachCommand(
         role?: string;
         description?: string;
         instructions?: string;
+        hostId?: string;
       }) => {
         if (options.name === undefined) {
           throw new CliParseError(`required option '--name <name>' not specified`, {
@@ -310,12 +320,15 @@ function addAgentAttachCommand(
           options.instructions === undefined
             ? undefined
             : requireNonEmptyText(options.instructions, "--instructions");
+        const hostId =
+          options.hostId === undefined ? undefined : requireNonEmptyName(options.hostId);
 
         setParsed(
           {
             kind: "agent-attach",
             agentKind,
             name,
+            ...(hostId === undefined ? {} : { hostId }),
             ...(pairName === undefined ? {} : { pairName }),
             ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
             ...(role === undefined ? {} : { role }),

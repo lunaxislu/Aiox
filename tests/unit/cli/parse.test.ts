@@ -83,6 +83,15 @@ describe("CLI parser", () => {
     });
   });
 
+  it("parses the internal host-qualified selector without exposing it in help", () => {
+    expect(parseCli(["codex", "--name", "impl", "--host-id", "host-1"])).toEqual({
+      kind: "agent-attach",
+      agentKind: "codex",
+      name: "impl",
+      hostId: "host-1",
+    });
+  });
+
   it("parses codex attach with a pair name", () => {
     expect(parseCli(["codex", "--name", "impl", "--pair", "feature-x"])).toEqual({
       kind: "agent-attach",
@@ -113,6 +122,15 @@ describe("CLI parser", () => {
     const text = parsed.kind === "help" ? parsed.text : "";
 
     expect(text).toContain("--resume <session-id>");
+  });
+
+  it("does not expose the internal host selector in agent command help", () => {
+    for (const agentKind of ["codex", "claude"] as const) {
+      const parsed = parseCli([agentKind, "--help"]);
+      const text = parsed.kind === "help" ? parsed.text : "";
+
+      expect(text).not.toContain("--host-id");
+    }
   });
 
   it("parses claude attach with a name", () => {

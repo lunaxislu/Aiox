@@ -15,7 +15,8 @@ export function applySchema(db: Database): void {
   db.exec(`
     create table if not exists agents (
       id text primary key,
-      name text not null unique,
+      name text not null,
+      host_id text not null default '',
       kind text not null,
       status text not null,
       cwd text not null,
@@ -27,7 +28,8 @@ export function applySchema(db: Database): void {
       instructions text,
       last_seen_at text,
       created_at text not null,
-      updated_at text not null
+      updated_at text not null,
+      unique (host_id, name)
     );
 
     create table if not exists pairs (
@@ -102,6 +104,67 @@ export function applySchema(db: Database): void {
   applyMigration6(db);
   applyMigration7(db);
   applyMigration8(db);
+  applyMigration9(db);
+  applyMigration10(db);
+}
+
+// Host-qualified routable identity (W6 Stage 5A): `agents.name` was globally
+// unique, which collides once a host-scoped agent and a standalone agent (or
+// two different hosts) may share a display name. This widens the uniqueness
+// scope to `(host_id, name)`. Standalone rows use the non-null sentinel `''`
+// rather than `NULL` for `host_id` specifically so the single DB-level unique
+// index keeps enforcing global uniqueness among standalone agents by itself
+// (SQLite's unique index treats NULL as distinct from NULL, which would
+// silently stop enforcing that invariant) -- no separate app-level duplicate
+// check is layered on top for the standalone case. SQLite cannot ALTER a
+// table's unique constraint in place, so this rebuilds the table the same way
+// migration 5 rebuilt delivery_outcome_notifications.
+function applyMigration9(db: Database): void {
+  if (isMigrationApplied(db, 9)) return;
+
+  withTransaction(db, () => {
+    db.exec(`
+      create table agents_next (
+        id text primary key,
+        name text not null,
+        host_id text not null default '',
+        kind text not null,
+        status text not null,
+        cwd text not null,
+        pair_id text,
+        pair_slot text,
+        adapter_session_id text,
+        role text,
+        description text,
+        instructions text,
+        last_seen_at text,
+        created_at text not null,
+        updated_at text not null,
+        unique (host_id, name)
+      );
+
+      insert into agents_next (
+        id, name, host_id, kind, status, cwd, pair_id, pair_slot,
+        adapter_session_id, role, description, instructions,
+        last_seen_at, created_at, updated_at
+      )
+      select
+        id, name, '', kind, status, cwd, pair_id, pair_slot,
+        adapter_session_id, role, description, instructions,
+        last_seen_at, created_at, updated_at
+      from agents;
+
+      drop table agents;
+      alter table agents_next rename to agents;
+
+      create unique index if not exists agents_pair_slot_unique
+      on agents(pair_id, pair_slot)
+      where pair_id is not null;
+    `);
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(9, Date.now());
+  });
 }
 
 // Running-host runtime tables. These hold runtime-only state: a host row exists
@@ -422,6 +485,37 @@ function columnExists(db: Database, tableName: string, columnName: string): bool
   return db
     .prepare(`select name from pragma_table_info('${tableName}') where name = ?`)
     .get(columnName) !== undefined;
+}
+
+// Production termination (W6 Stage 5D, Blocker 4 correction): the daemon
+// never spawns a host-scoped agent's vendor process itself (the surface's
+// own `aiox claude/codex --host-id` CLI does, via a `ChildProcess` handle
+// only that process owns). A raw recorded PID can go stale -- the vendor
+// exiting while the row lags, or an abnormally-terminated wrapper -- and the
+// OS can hand a stale PID to an unrelated process, so `AgentRuntimeTerminator`
+// never signals a PID directly. Instead it records a termination intent
+// here; the hosted CLI polls its own row and signals the live handle it
+// actually owns. `pending_signal_seq` identifies each intent and
+// `delivered_signal_seq` is advanced only after `child.kill()` truthfully
+// accepted that exact intent. The daemon refuses to overwrite an unacknowledged
+// intent, so repeated signals cannot collapse into the final value.
+function applyMigration10(db: Database): void {
+  if (isMigrationApplied(db, 10)) return;
+
+  withTransaction(db, () => {
+    if (!columnExists(db, "host_agents", "pending_signal")) {
+      db.exec("alter table host_agents add column pending_signal text");
+    }
+    if (!columnExists(db, "host_agents", "pending_signal_seq")) {
+      db.exec("alter table host_agents add column pending_signal_seq integer not null default 0");
+    }
+    if (!columnExists(db, "host_agents", "delivered_signal_seq")) {
+      db.exec("alter table host_agents add column delivered_signal_seq integer not null default 0");
+    }
+    db.prepare(
+      "insert or ignore into schema_version (version, applied_at) values (?, ?)",
+    ).run(10, Date.now());
+  });
 }
 
 function createSchemaMigrationError(

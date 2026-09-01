@@ -5,10 +5,13 @@ export interface ClaudeChannelRuntime {
 }
 
 export interface ClaudeChannelEndpointLookup {
-  getRuntime(agentName: string): ClaudeChannelRuntime | undefined;
+  getRuntime(agentId: string): ClaudeChannelRuntime | undefined;
 }
 
 export interface InjectClaudeChannelOptions {
+  /** Routable agent id -- the runtime registry lookup key (W6 Stage 5A). */
+  agentId: string;
+  /** Display name only, used in diagnostic messages. */
   agentName: string;
   content: string;
   timeoutMs?: number;
@@ -20,7 +23,7 @@ export async function injectClaudeChannel(
   lookup: ClaudeChannelEndpointLookup,
   options: InjectClaudeChannelOptions,
 ): Promise<AdapterInjectResult> {
-  const runtime = lookup.getRuntime(options.agentName);
+  const runtime = lookup.getRuntime(options.agentId);
   if (!runtime) {
     return {
       kind: "failed",

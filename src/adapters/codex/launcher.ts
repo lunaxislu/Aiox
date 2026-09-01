@@ -26,6 +26,8 @@ export interface LaunchCodexTuiOptions {
 
 export interface CodexMcpInjection {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   agentToken: string;
   daemonSocketPath: string;
   /** Runtime override. Defaults to tsx for a TypeScript entry, otherwise Node. */
@@ -111,6 +113,7 @@ export function launchCodexTui(options: LaunchCodexTuiOptions): ChildProcess {
  */
 const CODEX_MCP_ENV_VAR_NAMES = [
   "AIOX_CODEX_AGENT_NAME",
+  "AIOX_CODEX_HOST_ID",
   "AIOX_CODEX_AGENT_TOKEN",
   "AIOX_SOCKET_PATH",
 ] as const;
@@ -138,6 +141,10 @@ function buildCodexMcpEnv(mcp: CodexMcpInjection): NodeJS.ProcessEnv {
   return {
     ...process.env,
     AIOX_CODEX_AGENT_NAME: mcp.agentName,
+    // Always set (never an absent env var), matching the whitelisted-name
+    // TOML mechanism above -- empty string means standalone;
+    // `parseCodexIngressEnv` undoes this encoding.
+    AIOX_CODEX_HOST_ID: mcp.hostId ?? "",
     AIOX_CODEX_AGENT_TOKEN: mcp.agentToken,
     AIOX_SOCKET_PATH: mcp.daemonSocketPath,
   };

@@ -33,6 +33,8 @@ import type {
   RegisterCodexChannelResult,
   SendMessageRequest,
   SendMessageResult,
+  SyncHostEffectiveRoutesRequest,
+  SyncHostEffectiveRoutesResult,
   StatusResult,
   StopRequest,
   StopResult,
@@ -40,18 +42,25 @@ import type {
   UpdateDeliveryStatusResult,
 } from "./state.js";
 import type {
+  AcknowledgeHostAgentSignalDeliveryRequest,
+  AcknowledgeHostAgentSignalDeliveryResult,
   ClaimHostControlRequestRequest,
   ClaimHostControlRequestResult,
   CompleteHostControlRequestRequest,
   CompleteHostControlRequestResult,
+  CompleteTerminateAllAndUnregisterHostRequest,
+  CompleteTerminateAllAndUnregisterHostResult,
   HostAgentSelector,
   HostAgentTransitionResult,
   LookupRunningHostRequest,
+  MarkHostAgentReadyRequest,
   LookupRunningHostResult,
   RegisterHostAgentRequest,
   RegisterHostAgentResult,
   RegisterRunningHostRequest,
   RegisterRunningHostResult,
+  RequestHostAgentTerminationRequest,
+  RequestHostAgentTerminationResult,
   SubmitHostControlRequest,
   SubmitHostControlRequestResult,
   TakeHostControlRequestResultResult,
@@ -79,6 +88,9 @@ export interface DaemonApi {
   attachAgent(request: AttachAgentRequest): Promise<AttachAgentResponse>;
   createPair(request: CreatePairRequest): CreatePairResponse;
   connect(request: ConnectRequest): ConnectResponse;
+  syncHostEffectiveRoutes(
+    request: SyncHostEffectiveRoutesRequest,
+  ): SyncHostEffectiveRoutesResponse;
   sendMessage(request: SendMessageRequest): SendMessageResponse;
   updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResponse;
   retransmitUnconfirmedDelivery(
@@ -125,8 +137,17 @@ export interface DaemonApi {
   unregisterRunningHost(
     request: UnregisterRunningHostRequest,
   ): UnregisterRunningHostResponse;
+  completeTerminateAllAndUnregisterHost(
+    request: CompleteTerminateAllAndUnregisterHostRequest,
+  ): CompleteTerminateAllAndUnregisterHostResponse;
   registerHostAgent(request: RegisterHostAgentRequest): RegisterHostAgentResponse;
-  markHostAgentReady(request: HostAgentSelector): HostAgentTransitionResponse;
+  markHostAgentReady(request: MarkHostAgentReadyRequest): HostAgentTransitionResponse;
+  requestHostAgentTermination(
+    request: RequestHostAgentTerminationRequest,
+  ): RequestHostAgentTerminationResponse;
+  acknowledgeHostAgentSignalDelivery(
+    request: AcknowledgeHostAgentSignalDeliveryRequest,
+  ): AcknowledgeHostAgentSignalDeliveryResponse;
   detachHostAgent(request: HostAgentSelector): HostAgentTransitionResponse;
   listHostAgents(request: { hostId: string }): ListHostAgentsResponse;
   submitHostControlRequest(
@@ -166,6 +187,12 @@ export interface HostAgentDto {
   role: string | null;
   description: string | null;
   instructions: string | null;
+  /** Set by `requestHostAgentTermination`; the hosted CLI that owns the live process applies it. */
+  pendingSignal: NodeJS.Signals | null;
+  /** Increments on every termination request so a repeated signal name is still a *new* intent. */
+  pendingSignalSeq: number;
+  /** Highest intent sequence accepted by the owning wrapper's live ChildProcess. */
+  deliveredSignalSeq: number;
 }
 
 export interface HostControlRequestDto {
@@ -204,6 +231,11 @@ export type UnregisterRunningHostResponse =
     }
   | Extract<UnregisterRunningHostResult, { ok: false }>;
 
+export type CompleteTerminateAllAndUnregisterHostResponse =
+  | { ok: true; unregistered: true; host: RunningHostDto; removedAgents: HostAgentDto[] }
+  | Extract<CompleteTerminateAllAndUnregisterHostResult, { ok: true; unregistered: false }>
+  | Extract<CompleteTerminateAllAndUnregisterHostResult, { ok: false }>;
+
 export type RegisterHostAgentResponse =
   | { ok: true; agent: HostAgentDto }
   | Extract<RegisterHostAgentResult, { ok: false; reason: "host_not_running" }>
@@ -216,6 +248,14 @@ export type RegisterHostAgentResponse =
 export type HostAgentTransitionResponse =
   | { ok: true; agent: HostAgentDto }
   | Extract<HostAgentTransitionResult, { ok: false }>;
+
+export type RequestHostAgentTerminationResponse =
+  | { ok: true; agent: HostAgentDto }
+  | Extract<RequestHostAgentTerminationResult, { ok: false }>;
+
+export type AcknowledgeHostAgentSignalDeliveryResponse =
+  | { ok: true; agent: HostAgentDto }
+  | Extract<AcknowledgeHostAgentSignalDeliveryResult, { ok: false }>;
 
 export interface ListHostAgentsResponse {
   ok: true;
@@ -314,6 +354,17 @@ export type AttachAgentResponse =
     }
   | {
       ok: false;
+      reason: "host_not_running";
+      hostId: string;
+    }
+  | {
+      ok: false;
+      reason: "host_agent_not_found";
+      hostId: string;
+      agentName: string;
+    }
+  | {
+      ok: false;
       reason: "pair_not_found";
       pairName: string;
     }
@@ -367,6 +418,10 @@ export type ConnectResponse =
       reason: "target_agent_not_found";
       missing: string[];
     };
+
+export type SyncHostEffectiveRoutesResponse =
+  | { ok: true; routes: RouteDto[] }
+  | Extract<SyncHostEffectiveRoutesResult, { ok: false }>;
 
 export type ReceiveClaudeChannelMessageResponse = SendMessageResponse;
 
@@ -498,6 +553,10 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     connect(request) {
       return mapConnectResult(state.connect(request));
     },
+    syncHostEffectiveRoutes(request) {
+      const result = state.syncHostEffectiveRoutes(request);
+      return result.ok ? { ok: true, routes: result.routes.map(mapRoute) } : result;
+    },
     sendMessage(request) {
       return mapSendMessageResult(state.sendMessage(request));
     },
@@ -588,6 +647,21 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
           }
         : result;
     },
+    completeTerminateAllAndUnregisterHost(request) {
+      const result = state.completeTerminateAllAndUnregisterHost(request);
+
+      if (result.ok && result.unregistered) {
+        return {
+          ok: true,
+          unregistered: true,
+          host: mapRunningHost(result.host),
+          removedAgents: result.removedAgents.map(mapHostAgent),
+        };
+      }
+
+      return result;
+    },
+
     registerHostAgent(request) {
       const result = state.registerHostAgent(request);
 
@@ -603,6 +677,14 @@ export function createDaemonApi(state: DaemonState): DaemonApi {
     },
     markHostAgentReady(request) {
       return mapHostAgentTransition(state.markHostAgentReady(request));
+    },
+    requestHostAgentTermination(request) {
+      const result = state.requestHostAgentTermination(request);
+      return result.ok ? { ok: true, agent: mapHostAgent(result.agent) } : result;
+    },
+    acknowledgeHostAgentSignalDelivery(request) {
+      const result = state.acknowledgeHostAgentSignalDelivery(request);
+      return result.ok ? { ok: true, agent: mapHostAgent(result.agent) } : result;
     },
     detachHostAgent(request) {
       return mapHostAgentTransition(state.detachHostAgent(request));
@@ -657,6 +739,9 @@ function mapHostAgent(agent: StoredHostAgent): HostAgentDto {
     role: agent.role,
     description: agent.description,
     instructions: agent.instructions,
+    pendingSignal: agent.pendingSignal,
+    pendingSignalSeq: agent.pendingSignalSeq,
+    deliveredSignalSeq: agent.deliveredSignalSeq,
   };
 }
 

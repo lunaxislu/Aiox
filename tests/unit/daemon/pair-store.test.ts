@@ -110,6 +110,7 @@ describe("daemon pair store persistence", () => {
       {
         id: "agent-codex",
         name: "impl",
+        host_id: "",
         kind: "codex",
         status: "connected",
         cwd: "/repo",

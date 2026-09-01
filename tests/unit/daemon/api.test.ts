@@ -345,7 +345,7 @@ describe("daemon API with fake in-process transport", () => {
       },
       codexChannelToken: expect.any(String),
     });
-    expect(runtimes.get("impl")).toBe(runtime);
+    expect(runtimes.get("agent-1")).toBe(runtime);
     expect(runtime.startThreadCalls).toBe(1);
     expect(db.prepare("select adapter_session_id from agents where name = ?").get("impl")).toEqual({
       adapter_session_id: "thread-new",
@@ -1325,7 +1325,7 @@ describe("daemon API with fake in-process transport", () => {
       db,
       createId: () => "agent-1",
       now: () => "2026-05-18T00:00:00.000Z",
-      codexRuntimes: new Map([["impl", runtime]]),
+      codexRuntimes: new Map([["agent-1", runtime]]),
     });
     const client = createInProcessClient(createDaemonApi(state));
     await client.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
@@ -1462,7 +1462,7 @@ describe("daemon API with fake in-process transport", () => {
       db,
       createId: createIdSequence(["agent-1", "event-1"]),
       now: () => "2026-05-18T00:00:00.000Z",
-      codexRuntimes: new Map([["impl", runtime]]),
+      codexRuntimes: new Map([["agent-1", runtime]]),
     });
     const client = createInProcessClient(createDaemonApi(state));
 
@@ -1507,7 +1507,7 @@ describe("daemon API with fake in-process transport", () => {
       db,
       createId: createIdSequence(["agent-1", "agent-2", "route-1", "event-1"]),
       now: () => "2026-05-18T00:00:00.000Z",
-      codexRuntimes: new Map([["impl", runtime]]),
+      codexRuntimes: new Map([["agent-1", runtime]]),
     });
     const client = createInProcessClient(createDaemonApi(state));
 
@@ -1537,7 +1537,7 @@ describe("daemon API with fake in-process transport", () => {
       db,
       createId: createIdSequence(["agent-1", "event-1"]),
       now: () => "2026-05-18T00:00:00.000Z",
-      codexRuntimes: new Map([["impl", runtime]]),
+      codexRuntimes: new Map([["agent-1", runtime]]),
     });
     const client = createInProcessClient(createDaemonApi(state));
 
@@ -1570,7 +1570,7 @@ describe("daemon API with fake in-process transport", () => {
       db,
       createId: createIdSequence(["agent-1", "event-1"]),
       now: () => "2026-05-18T00:00:00.000Z",
-      codexRuntimes: new Map([["impl", runtime]]),
+      codexRuntimes: new Map([["agent-1", runtime]]),
     });
     const client = createInProcessClient(createDaemonApi(state));
 
@@ -2260,13 +2260,14 @@ describe("primary delivery source outcome notifications — cross-adapter symmet
     const sourceToken = (sourceAttach as { ok: true; codexChannelToken: string }).codexChannelToken;
     await client.registerCodexChannel({ agentName: "source", token: sourceToken });
     const targetAttach = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    const targetAgentId = (targetAttach as { ok: true; agent: { id: string } }).agent.id;
     const claudeToken = (targetAttach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
     await client.registerClaudeChannel({
       agentName: "target",
       token: claudeToken,
       endpoint: "http://127.0.0.1:18789/send",
     });
-    expect(claudeChannelRuntimes.has("target")).toBe(true);
+    expect(claudeChannelRuntimes.has(targetAgentId)).toBe(true);
     await client.connect({ sourceName: "source", targetNames: ["target"] });
 
     const sent = await client.receiveCodexMessage({
@@ -2282,7 +2283,7 @@ describe("primary delivery source outcome notifications — cross-adapter symmet
     // `disconnectClaudeChannel` produces -- because ECONNREFUSED against a
     // runtime this function already confirmed was registered means the
     // endpoint is confirmed dead, not merely unregistered.
-    expect(claudeChannelRuntimes.has("target")).toBe(false);
+    expect(claudeChannelRuntimes.has(targetAgentId)).toBe(false);
     const agentRow = db
       .prepare("select status from agents where name = 'target'")
       .get();
@@ -2344,21 +2345,24 @@ describe("primary delivery source outcome notifications — cross-adapter symmet
     // reconnect that lands before the stale push's ECONNREFUSED resolves.
     await client.detachAgent({ agentName: "target" });
     const reattach = await client.attachAgent({ kind: "claude", name: "target", cwd: "/repo" });
+    const freshAgentId = (reattach as { ok: true; agent: { id: string } }).agent.id;
     const freshToken = (reattach as { ok: true; claudeChannelToken: string }).claudeChannelToken;
     await client.registerClaudeChannel({
       agentName: "target",
       token: freshToken,
       endpoint: "http://127.0.0.1:18790/send",
     });
-    const freshRuntime = claudeChannelRuntimes.get("target");
+    const freshRuntime = claudeChannelRuntimes.get(freshAgentId);
     expect(freshRuntime?.endpoint).toBe("http://127.0.0.1:18790/send");
 
     resolveFetch?.();
     const sent = await dispatched;
     if (!sent.ok) throw new Error("expected a delivery");
 
-    // The stale push's confirmed refusal must not clobber the fresh registration.
-    expect(claudeChannelRuntimes.get("target")).toBe(freshRuntime);
+    // The stale push's confirmed refusal must not clobber the fresh registration
+    // -- it targets the old (now-detached) agent id's map slot, which the
+    // fresh registration never shares.
+    expect(claudeChannelRuntimes.get(freshAgentId)).toBe(freshRuntime);
     const agentRow = db
       .prepare("select status from agents where name = 'target'")
       .get() as { status: string };

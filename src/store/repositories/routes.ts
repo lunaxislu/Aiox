@@ -40,6 +40,7 @@ interface RouteRow {
 
 export interface RouteRepository {
   create(input: CreateRouteInput): CreateRouteResult;
+  remove(id: string): StoredRoute | null;
   removeAllForAgent(agentId: string): StoredRoute[];
   findBySourceAndTarget(
     sourceAgentId: string,
@@ -142,6 +143,15 @@ export function createRouteRepository(db: Database): RouteRepository {
         ok: true,
         route,
       };
+    },
+
+    remove(id) {
+      const row = db.prepare("select * from routes where id = ?").get(id) as RouteRow | undefined;
+      if (!row) {
+        return null;
+      }
+      db.prepare("delete from routes where id = ?").run(id);
+      return mapRouteRow(row);
     },
 
     removeAllForAgent(agentId) {

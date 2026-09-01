@@ -26,11 +26,18 @@ export function buildLaunchClaudeChannelArgs(
  */
 export function buildClaudeChannelEnv(input: {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   agentToken: string;
   daemonSocketPath: string;
 }): Record<string, string> {
   return {
     AIOX_CLAUDE_CHANNEL_AGENT_NAME: input.agentName,
+    // Always set (never an absent env var) so the static MCP definition's
+    // "${AIOX_CLAUDE_CHANNEL_HOST_ID}" substitution never depends on the
+    // vendor CLI's handling of an unset variable. Empty string means
+    // standalone; `parseChannelServerEnv` below undoes this encoding.
+    AIOX_CLAUDE_CHANNEL_HOST_ID: input.hostId ?? "",
     AIOX_CLAUDE_CHANNEL_TOKEN: input.agentToken,
     AIOX_SOCKET_PATH: input.daemonSocketPath,
   };
@@ -70,6 +77,7 @@ export function buildClaudeStaticMcpConfig(
     args,
     env: {
       AIOX_CLAUDE_CHANNEL_AGENT_NAME: "${AIOX_CLAUDE_CHANNEL_AGENT_NAME}",
+      AIOX_CLAUDE_CHANNEL_HOST_ID: "${AIOX_CLAUDE_CHANNEL_HOST_ID}",
       AIOX_CLAUDE_CHANNEL_TOKEN: "${AIOX_CLAUDE_CHANNEL_TOKEN}",
       AIOX_SOCKET_PATH: "${AIOX_SOCKET_PATH}",
     },
@@ -87,6 +95,8 @@ function resolveTsxCliPath(): string {
 export interface LaunchClaudeStaticMcpChannelOptions {
   channelName: string;
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   agentToken: string;
   daemonSocketPath: string;
   command?: string;

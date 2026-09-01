@@ -14,6 +14,7 @@ describe("injectClaudeChannel", () => {
     const lookup = fakeLookup({});
 
     const result = await injectClaudeChannel(lookup, {
+      agentId: "alpha",
       agentName: "alpha",
       content: "hello",
     });
@@ -30,6 +31,7 @@ describe("injectClaudeChannel", () => {
     vi.stubGlobal("fetch", async () => new Response("{}", { status: 202 }));
 
     const result = await injectClaudeChannel(lookup, {
+      agentId: "alpha",
       agentName: "alpha",
       content: "do the thing",
     });
@@ -47,6 +49,7 @@ describe("injectClaudeChannel", () => {
     });
 
     await injectClaudeChannel(lookup, {
+      agentId: "alpha",
       agentName: "alpha",
       content: "hello",
     });
@@ -61,6 +64,7 @@ describe("injectClaudeChannel", () => {
     vi.stubGlobal("fetch", async () => new Response("{}", { status: 500 }));
 
     const result = await injectClaudeChannel(lookup, {
+      agentId: "alpha",
       agentName: "alpha",
       content: "hello",
     });
@@ -83,6 +87,7 @@ describe("injectClaudeChannel", () => {
     });
 
     const result = await injectClaudeChannel(lookup, {
+      agentId: "alpha",
       agentName: "alpha",
       content: "hello",
       timeoutMs: 50,
@@ -106,6 +111,7 @@ describe("injectClaudeChannel", () => {
     });
 
     const result = await injectClaudeChannel(lookup, {
+      agentId: "alpha",
       agentName: "alpha",
       content: "hello",
     });
@@ -125,6 +131,7 @@ describe("injectClaudeChannel", () => {
     });
 
     const result = await injectClaudeChannel(lookup, {
+      agentId: "alpha",
       agentName: "alpha",
       content: "hello",
     });
@@ -145,8 +152,8 @@ function fakeLookup(
   registry: Record<string, string>,
 ): ClaudeChannelEndpointLookup {
   return {
-    getRuntime(agentName) {
-      const endpoint = registry[agentName];
+    getRuntime(agentId) {
+      const endpoint = registry[agentId];
       return endpoint ? { endpoint } : undefined;
     },
   };

@@ -67,6 +67,9 @@ describe("running-host runtime over the daemon API", () => {
           role: "review",
           description: null,
           instructions: null,
+          pendingSignal: null,
+          pendingSignalSeq: 0,
+          deliveredSignalSeq: 0,
         },
       ],
     });
@@ -79,7 +82,9 @@ describe("running-host runtime over the daemon API", () => {
       ok: true,
       hosts: [registered.ok ? registered.host : null],
     });
-    expect(await api.markHostAgentReady({ hostId: "id-1", agentName: "reviewer" })).toMatchObject({
+    expect(
+      await api.markHostAgentReady({ hostId: "id-1", agentName: "reviewer" }),
+    ).toMatchObject({
       ok: true,
       agent: { name: "reviewer", status: "ready" },
     });
@@ -179,6 +184,167 @@ describe("running-host runtime over the daemon API", () => {
     } finally {
       controller.close();
       requester.close();
+      await handle.close();
+    }
+  });
+
+  it("completes a terminate_all request and unregisters the host atomically over the socket (Blocker 3)", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-host-relay-"), "daemon.sock");
+    const server = createDaemonSocketServer({ api: createApi(), socketPath });
+    const handle = await server.start();
+    const controller = createDaemonSocketClient({ socketPath });
+    const requester = createDaemonSocketClient({ socketPath });
+
+    try {
+      const registered = await controller.registerRunningHost({
+        name: "demo",
+        path: "/repo/demo",
+        controllerId: "controller-1",
+        agents: [{ name: "reviewer", kind: "claude" }],
+      });
+      if (!registered.ok) throw new Error("expected the host to register");
+
+      const submitted = await requester.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
+      if (!submitted.ok) throw new Error("expected the request to be accepted");
+      const claimed = await controller.claimHostControlRequest({
+        hostId: registered.host.id,
+        controllerId: "controller-1",
+      });
+      if (!claimed.ok || !claimed.request) throw new Error("expected the request to be claimed");
+
+      const atomic = await controller.completeTerminateAllAndUnregisterHost({
+        hostId: registered.host.id,
+        requestId: claimed.request.id,
+        controllerId: "controller-1",
+        successResult: { ok: true },
+      });
+      expect(atomic).toMatchObject({ ok: true, unregistered: true });
+
+      // The requester observes success and the host is actually gone in the
+      // same breath -- never one without the other.
+      expect(
+        await requester.takeHostControlRequestResult({ requestId: submitted.requestId }),
+      ).toEqual({ ok: true, status: "completed", result: { ok: true } });
+      expect(await controller.listRunningHosts()).toEqual({ ok: true, hosts: [] });
+    } finally {
+      controller.close();
+      requester.close();
+      await handle.close();
+    }
+  });
+
+  it("rejects a cross-host atomic terminate completion over the socket without completing the request or removing either host", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-host-relay-"), "daemon.sock");
+    const server = createDaemonSocketServer({ api: createApi(), socketPath });
+    const handle = await server.start();
+    const controller = createDaemonSocketClient({ socketPath });
+
+    try {
+      const hostA = await controller.registerRunningHost({
+        name: "a",
+        path: "/a",
+        controllerId: "ctl-a",
+        agents: [],
+      });
+      const hostB = await controller.registerRunningHost({
+        name: "b",
+        path: "/b",
+        controllerId: "ctl-b",
+        agents: [],
+      });
+      if (!hostA.ok || !hostB.ok) throw new Error("expected both hosts to register");
+      const submitted = await controller.submitHostControlRequest({
+        name: "a",
+        kind: "terminate_all",
+      });
+      if (!submitted.ok) throw new Error("expected request submission to succeed");
+      const claimed = await controller.claimHostControlRequest({
+        hostId: hostA.host.id,
+        controllerId: "ctl-a",
+      });
+      if (!claimed.ok || !claimed.request) throw new Error("expected request claim to succeed");
+
+      expect(
+        await controller.completeTerminateAllAndUnregisterHost({
+          hostId: hostB.host.id,
+          requestId: claimed.request.id,
+          controllerId: "ctl-a",
+          successResult: { ok: true },
+        }),
+      ).toEqual({
+        ok: false,
+        reason: "host_control_request_host_mismatch",
+        requestId: claimed.request.id,
+        hostId: hostB.host.id,
+      });
+      expect(await controller.listRunningHosts()).toMatchObject({
+        ok: true,
+        hosts: [{ id: hostA.host.id }, { id: hostB.host.id }],
+      });
+      expect(
+        await controller.takeHostControlRequestResult({ requestId: submitted.requestId }),
+      ).toEqual({ ok: true, status: "claimed" });
+    } finally {
+      controller.close();
+      await handle.close();
+    }
+  });
+
+  it("records and observes a termination intent over the socket, isolated by hostId (Blocker 4)", async () => {
+    const socketPath = join(mkdtempSync("/private/tmp/aiox-host-relay-"), "daemon.sock");
+    const server = createDaemonSocketServer({ api: createApi(), socketPath });
+    const handle = await server.start();
+    const client = createDaemonSocketClient({ socketPath });
+
+    try {
+      const hostA = await client.registerRunningHost({
+        name: "a",
+        path: "/a",
+        controllerId: "ctl-a",
+        agents: [{ name: "reviewer", kind: "claude" }],
+      });
+      const hostB = await client.registerRunningHost({
+        name: "b",
+        path: "/b",
+        controllerId: "ctl-b",
+        agents: [{ name: "reviewer", kind: "claude" }],
+      });
+      if (!hostA.ok || !hostB.ok) throw new Error("expected both hosts to register");
+
+      const result = await client.requestHostAgentTermination({
+        hostId: hostA.host.id,
+        agentName: "reviewer",
+        signal: "SIGINT",
+      });
+      expect(result).toMatchObject({
+        ok: true,
+        agent: { name: "reviewer", pendingSignal: "SIGINT", pendingSignalSeq: 1 },
+      });
+
+      expect(await client.listHostAgents({ hostId: hostA.host.id })).toMatchObject({
+        ok: true,
+        agents: [{ pendingSignal: "SIGINT", pendingSignalSeq: 1, deliveredSignalSeq: 0 }],
+      });
+      await expect(
+        client.requestHostAgentTermination({
+          hostId: hostA.host.id,
+          agentName: "reviewer",
+          signal: "SIGKILL",
+        }),
+      ).resolves.toMatchObject({ ok: false, reason: "host_agent_signal_delivery_pending" });
+      await expect(
+        client.acknowledgeHostAgentSignalDelivery({
+          hostId: hostA.host.id,
+          agentName: "reviewer",
+          signalSeq: 1,
+        }),
+      ).resolves.toMatchObject({ ok: true, agent: { deliveredSignalSeq: 1 } });
+      expect(await client.listHostAgents({ hostId: hostB.host.id })).toMatchObject({
+        ok: true,
+        agents: [{ pendingSignal: null, pendingSignalSeq: 0 }],
+      });
+    } finally {
+      client.close();
       await handle.close();
     }
   });

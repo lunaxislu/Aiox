@@ -178,12 +178,15 @@ export interface CodexIngressDaemonClient {
   ): Promise<RegisterCodexChannelResponse>;
   listReachablePeers(request: {
     agentName: string;
+    hostId?: string;
   }): Promise<ListReachablePeersResponse>;
   close(): void;
 }
 
 export interface CodexIngressMcpServerOptions {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   agentToken: string;
   daemonSocketPath: string;
   createDaemonClient?: (options: {
@@ -281,6 +284,7 @@ export function createSendMessageHandler(
     try {
       const result = await client.receiveCodexMessage({
         agentName: options.agentName,
+        ...(options.hostId === undefined ? {} : { hostId: options.hostId }),
         token: options.agentToken,
         messageId,
         type,
@@ -325,6 +329,7 @@ export function createReplyHandler(
     try {
       const result = await client.receiveCodexReply({
         agentName: options.agentName,
+        ...(options.hostId === undefined ? {} : { hostId: options.hostId }),
         token: options.agentToken,
         messageId,
         inReplyToDeliveryId,
@@ -406,6 +411,7 @@ export function createAgentsListHandler(
     try {
       const result = await client.listReachablePeers({
         agentName: options.agentName,
+        ...(options.hostId === undefined ? {} : { hostId: options.hostId }),
       });
       if (!result.ok) {
         return errorResult(result.reason, JSON.stringify(result));
@@ -517,6 +523,8 @@ export function createCodexIngressMcpServer(
 
 export interface CodexIngressMcpServerEnv {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Undefined resolves standalone. */
+  hostId?: string;
   agentToken: string;
   daemonSocketPath: string;
 }
@@ -525,9 +533,13 @@ export function parseCodexIngressEnv(
   env: Record<string, string | undefined> = process.env,
 ): CodexIngressMcpServerEnv {
   const agentName = requireEnv(env, "AIOX_CODEX_AGENT_NAME");
+  // Encoded as "" for standalone by buildCodexMcpEnv -- see its comment for
+  // why this env var is always set rather than sometimes absent.
+  const rawHostId = env["AIOX_CODEX_HOST_ID"];
+  const hostId = rawHostId === undefined || rawHostId.length === 0 ? undefined : rawHostId;
   const agentToken = requireEnv(env, "AIOX_CODEX_AGENT_TOKEN");
   const daemonSocketPath = requireEnv(env, "AIOX_SOCKET_PATH");
-  return { agentName, agentToken, daemonSocketPath };
+  return { agentName, ...(hostId === undefined ? {} : { hostId }), agentToken, daemonSocketPath };
 }
 
 export interface RunCodexIngressMcpServerDependencies {
@@ -568,6 +580,7 @@ export async function runCodexIngressMcpServerWithDependencies(
 
   const mcp = createMcpServer({
     agentName: env.agentName,
+    ...(env.hostId === undefined ? {} : { hostId: env.hostId }),
     agentToken: env.agentToken,
     daemonSocketPath: env.daemonSocketPath,
     createDaemonClient,
@@ -627,6 +640,7 @@ async function registerCodexChannel(options: {
   try {
     const reg = (await client.registerCodexChannel({
       agentName: options.env.agentName,
+      ...(options.env.hostId === undefined ? {} : { hostId: options.env.hostId }),
       token: options.env.agentToken,
     })) as { ok: boolean; reason?: string };
     if (!reg.ok) {

@@ -86,6 +86,8 @@ export interface CodexAgentRuntimeWebSocketClient {
 
 export interface AttachCodexAgentRuntimeOptions {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   activeThreadId: string | null;
   mcp?: {
     agentToken: string;
@@ -320,6 +322,7 @@ export async function attachCodexAgentRuntime(
     ? {
         mcp: {
           agentName: options.agentName,
+          ...(options.hostId === undefined ? {} : { hostId: options.hostId }),
           agentToken: options.mcp.agentToken,
           daemonSocketPath: options.mcp.daemonSocketPath,
           ...(options.mcp.runtimeBinary === undefined

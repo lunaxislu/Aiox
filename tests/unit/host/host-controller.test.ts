@@ -11,7 +11,23 @@ import {
 } from "../../../src/host/fake-agent-runtime-terminator.js";
 import { createFakeHostAdapter, type FakeHostAdapter } from "../../../src/host/fake-host-adapter.js";
 import type { HostAdapter } from "../../../src/host/host-adapter.js";
-import { createHostController, type HostController } from "../../../src/host/host-controller.js";
+import {
+  createHostController,
+  selectAndStaticPreflightAdapter,
+  type HostController,
+  type StartHostControllerRequest,
+  type StartHostControllerResult,
+} from "../../../src/host/host-controller.js";
+import type { HostRouteOperation } from "../../../src/host/host-route-topology.js";
+
+type TestHostController = Omit<HostController, "start"> & {
+  start(
+    request: Omit<StartHostControllerRequest, "preparedAdapter">,
+  ): Promise<
+    | StartHostControllerResult
+    | { ok: false; stage: "static_preflight"; reason: string }
+  >;
+};
 
 describe("HostController", () => {
   let db: InstanceType<typeof Database>;
@@ -26,13 +42,23 @@ describe("HostController", () => {
     return `id-${nextId}`;
   }
 
-  function createController(overrideRegistry?: AdapterRegistry): HostController {
-    return createHostController({
+  function createController(overrideRegistry?: AdapterRegistry): TestHostController {
+    const selectedRegistry = overrideRegistry ?? registry;
+    const controller = createHostController({
       api,
-      registry: overrideRegistry ?? registry,
       terminator,
       createId,
     });
+    return {
+      ...controller,
+      async start(request) {
+        const prepared = await selectAndStaticPreflightAdapter(selectedRegistry, {
+          cwd: request.path,
+        });
+        if (!prepared.ok) return prepared;
+        return controller.start({ ...request, preparedAdapter: prepared.preparedAdapter });
+      },
+    };
   }
 
   beforeEach(() => {
@@ -119,6 +145,21 @@ describe("HostController", () => {
       expect(request.args).toContain("--instructions");
       expect(request.args).toContain("be terse");
       expect(request.env).toEqual({});
+    });
+
+    it("passes the running host's id as a --host-id selector in each agent's surface argv (W6 Stage 5A)", async () => {
+      const controller = createController();
+
+      const result = await controller.start({ name: "demo", path: "/repo/demo", agents: twoAgents });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected start to succeed");
+      expect(fake.calls).toHaveLength(2);
+      for (const call of fake.calls) {
+        const hostIdIndex = call.request.args.indexOf("--host-id");
+        expect(hostIdIndex).toBeGreaterThanOrEqual(0);
+        expect(call.request.args[hostIdIndex + 1]).toBe(result.hostId);
+      }
     });
 
     it("transitions an agent to ready only after reconcile observes the daemon's host-agent state", async () => {
@@ -311,7 +352,7 @@ describe("HostController", () => {
       const otherFake = createFakeHostAdapter({ id: "fake-b" });
       const registryB = createAdapterRegistry();
       registryB.register(otherFake);
-      const controllerB = createHostController({ api, registry: registryB, terminator, createId });
+      const controllerB = createController(registryB);
 
       fake.failAtCalls([{ atCall: 2, stage: "surface" }]);
       const resultA = await controllerA.start({
@@ -330,6 +371,65 @@ describe("HostController", () => {
       expect(controllerB.listAgents().map((a) => a.name)).toEqual(["reviewer"]);
       expect(api.listHostAgents({ hostId: resultB.hostId }).agents).toHaveLength(1);
       expect(api.listRunningHosts().hosts).toHaveLength(2);
+    });
+  });
+
+  describe("route topology (W6 Stage 6 revision 14 correction)", () => {
+    it("keeps the ready-agent subset intersection while a directed pair is narrowed, without dropping edges an unmentioned pair still needs", async () => {
+      const controller = createController();
+      const routes: HostRouteOperation[] = [
+        { op: "add", name: "group", members: ["reviewer", "implementer", "qa"] },
+        { op: "direct", name: "group", from: "reviewer", to: ["implementer"] },
+      ];
+
+      const result = await controller.start({
+        name: "demo",
+        path: "/repo/demo",
+        agents: [
+          { name: "reviewer", kind: "claude" as const },
+          { name: "implementer", kind: "codex" as const },
+          { name: "qa", kind: "codex" as const },
+        ],
+        routes,
+      });
+      if (!result.ok) throw new Error("expected start to succeed");
+
+      // The real hosted CLI resolves a routable id and reports ready
+      // (Stage 5A/5B); simulate that for reviewer/implementer only -- "qa"
+      // never becomes ready, so none of its mesh edges may appear even
+      // though the route declares it a member.
+      await api.attachAgent({
+        hostId: result.hostId,
+        kind: "claude",
+        name: "reviewer",
+        cwd: "/repo/demo",
+      });
+      await api.attachAgent({
+        hostId: result.hostId,
+        kind: "codex",
+        name: "implementer",
+        cwd: "/repo/demo",
+      });
+      await api.markHostAgentReady({ hostId: result.hostId, agentName: "reviewer" });
+      await api.markHostAgentReady({ hostId: result.hostId, agentName: "implementer" });
+      await controller.reconcile();
+
+      const hostAgents = api.listHostAgents({ hostId: result.hostId }).agents;
+      const reviewerId = hostAgents.find((a) => a.name === "reviewer")!.id;
+      const implementerId = hostAgents.find((a) => a.name === "implementer")!.id;
+
+      // Only reviewer->implementer survives: the pair is narrowed by
+      // `directed` (implementer->reviewer must be gone), and both of qa's
+      // mesh edges are excluded by the ready-agent subset -- even though qa
+      // is an undirected (mesh) member of the same route.
+      expect(api.status().routes).toEqual([
+        {
+          id: expect.any(String),
+          sourceAgentId: reviewerId,
+          targetAgentId: implementerId,
+          status: "active",
+        },
+      ]);
     });
   });
 

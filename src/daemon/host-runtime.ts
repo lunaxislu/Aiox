@@ -93,6 +93,55 @@ export type UnregisterRunningHostResult =
     }
   | { ok: false; reason: "host_not_running"; hostId: string };
 
+export interface CompleteTerminateAllAndUnregisterHostRequest {
+  hostId: string;
+  requestId: string;
+  controllerId: string;
+  /** Recorded as the control request's result ONLY if the host actually unregisters. */
+  successResult: Record<string, unknown>;
+}
+
+/**
+ * Atomic terminate-all completion + unregister (W6 Stage 5D Blocker 3
+ * correction). A requester must never observe `{ ok: true }` before the host
+ * is actually gone, but completing the target request and unregistering the
+ * host as two separate calls reintroduces the accepted Stage 4 ordering bug:
+ * `unregisterRunningHost`'s own in-flight-request cleanup would fail this
+ * SAME still-`claimed` request out from under itself if unregister ran
+ * first. Doing both in one transaction — completing the target request
+ * first (so the in-flight cleanup below it can no longer touch it), then
+ * removing the host — closes that gap without two round trips or a new
+ * transport.
+ */
+export type CompleteTerminateAllAndUnregisterHostResult =
+  | { ok: true; unregistered: true; host: StoredRunningHost; removedAgents: StoredHostAgent[] }
+  | { ok: true; unregistered: false; reason: "host_not_running" }
+  | { ok: false; reason: "host_control_request_not_found"; requestId: string }
+  | {
+      ok: false;
+      reason: "host_control_request_not_claimed";
+      requestId: string;
+      status: StoredHostControlRequest["status"];
+    }
+  | {
+      ok: false;
+      reason: "host_controller_mismatch";
+      requestId: string;
+      controllerId: string;
+    }
+  | {
+      ok: false;
+      reason: "host_control_request_host_mismatch";
+      requestId: string;
+      hostId: string;
+    }
+  | {
+      ok: false;
+      reason: "host_control_request_kind_mismatch";
+      requestId: string;
+      kind: HostControlRequestKind;
+    };
+
 export interface RegisterHostAgentRequest extends HostAgentDeclaration {
   hostId: string;
 }
@@ -110,6 +159,51 @@ export interface HostAgentSelector {
   hostId: string;
   agentName: string;
 }
+
+export type MarkHostAgentReadyRequest = HostAgentSelector;
+
+/**
+ * Termination-intent record (W6 Stage 5D Blocker 4 correction). The daemon
+ * never spawns a host-scoped agent's vendor process itself — the surface's
+ * own `aiox claude/codex --host-id` CLI does, via a `ChildProcess` handle
+ * only that process owns — so a raw recorded PID can go stale (the vendor
+ * exiting while the row lags, or an abnormally-terminated wrapper) and the
+ * OS can hand a stale PID to an unrelated process. `AgentRuntimeTerminator`
+ * therefore never signals a PID directly: it records an intent here, scoped
+ * to exactly (hostId, agentName), and the hosted CLI that actually owns the
+ * live `ChildProcess` observes it and signals its own handle.
+ * `pendingSignalSeq` increments on every request so the hosted CLI can tell
+ * a *new* intent apart from one it already acted on, even when the signal
+ * name repeats (Claude's second SIGINT).
+ */
+export interface RequestHostAgentTerminationRequest extends HostAgentSelector {
+  signal: NodeJS.Signals;
+}
+
+export interface AcknowledgeHostAgentSignalDeliveryRequest extends HostAgentSelector {
+  signalSeq: number;
+}
+
+export type RequestHostAgentTerminationResult =
+  | HostAgentTransitionResult
+  | {
+      ok: false;
+      reason: "host_agent_signal_delivery_pending";
+      hostId: string;
+      agentName: string;
+      pendingSignalSeq: number;
+    };
+
+export type AcknowledgeHostAgentSignalDeliveryResult =
+  | HostAgentTransitionResult
+  | {
+      ok: false;
+      reason: "host_agent_signal_sequence_mismatch";
+      hostId: string;
+      agentName: string;
+      signalSeq: number;
+      pendingSignalSeq: number;
+    };
 
 export type HostAgentTransitionResult =
   | { ok: true; agent: StoredHostAgent }
@@ -183,8 +277,17 @@ export interface HostRuntime {
   lookupRunningHost(request: LookupRunningHostRequest): LookupRunningHostResult;
   listRunningHosts(): StoredRunningHost[];
   unregisterRunningHost(request: UnregisterRunningHostRequest): UnregisterRunningHostResult;
+  completeTerminateAllAndUnregisterHost(
+    request: CompleteTerminateAllAndUnregisterHostRequest,
+  ): CompleteTerminateAllAndUnregisterHostResult;
   registerHostAgent(request: RegisterHostAgentRequest): RegisterHostAgentResult;
-  markHostAgentReady(request: HostAgentSelector): HostAgentTransitionResult;
+  markHostAgentReady(request: MarkHostAgentReadyRequest): HostAgentTransitionResult;
+  requestHostAgentTermination(
+    request: RequestHostAgentTerminationRequest,
+  ): RequestHostAgentTerminationResult;
+  acknowledgeHostAgentSignalDelivery(
+    request: AcknowledgeHostAgentSignalDeliveryRequest,
+  ): AcknowledgeHostAgentSignalDeliveryResult;
   detachHostAgent(request: HostAgentSelector): HostAgentTransitionResult;
   listHostAgents(request: { hostId: string }): StoredHostAgent[];
   submitHostControlRequest(
@@ -363,6 +466,96 @@ export function createHostRuntime(options: CreateHostRuntimeOptions): HostRuntim
       });
     },
 
+    completeTerminateAllAndUnregisterHost(request) {
+      return withTransaction(options.db, () => {
+        const existingRequest = controlRequests.findById(request.requestId);
+        if (!existingRequest) {
+          return {
+            ok: false as const,
+            reason: "host_control_request_not_found" as const,
+            requestId: request.requestId,
+          };
+        }
+        if (existingRequest.status !== "claimed") {
+          return {
+            ok: false as const,
+            reason: "host_control_request_not_claimed" as const,
+            requestId: request.requestId,
+            status: existingRequest.status,
+          };
+        }
+        if (existingRequest.claimedBy !== request.controllerId) {
+          return {
+            ok: false as const,
+            reason: "host_controller_mismatch" as const,
+            requestId: request.requestId,
+            controllerId: request.controllerId,
+          };
+        }
+        if (existingRequest.hostId !== request.hostId) {
+          return {
+            ok: false as const,
+            reason: "host_control_request_host_mismatch" as const,
+            requestId: request.requestId,
+            hostId: request.hostId,
+          };
+        }
+        if (existingRequest.kind !== "terminate_all") {
+          return {
+            ok: false as const,
+            reason: "host_control_request_kind_mismatch" as const,
+            requestId: request.requestId,
+            kind: existingRequest.kind,
+          };
+        }
+
+        const now = options.now();
+        const host = hosts.remove(request.hostId);
+
+        if (!host) {
+          const completed = controlRequests.complete({
+            requestId: request.requestId,
+            result: { ok: false, reason: "host_not_running" },
+            now,
+          });
+          if (!completed) {
+            throw new Error(
+              `terminate-all completion race: request ${request.requestId} is no longer claimed`,
+            );
+          }
+          return { ok: true as const, unregistered: false as const, reason: "host_not_running" as const };
+        }
+
+        // Completing the target request BEFORE the in-flight sweep below
+        // means that sweep's `status in ('pending','claimed')` filter can no
+        // longer touch it -- the self-clobbering ordering bug this method
+        // exists to close.
+        const completed = controlRequests.complete({
+          requestId: request.requestId,
+          result: request.successResult,
+          now,
+        });
+        if (!completed) {
+          throw new Error(
+            `terminate-all completion race: request ${request.requestId} is no longer claimed`,
+          );
+        }
+
+        controlRequests.failAllInFlightForHost({
+          hostId: host.id,
+          failureReason: "host_unregistered",
+          now,
+        });
+
+        return {
+          ok: true as const,
+          unregistered: true as const,
+          host,
+          removedAgents: hostAgents.removeAllForHost(host.id),
+        };
+      });
+    },
+
     registerHostAgent(request) {
       if (!hosts.findById(request.hostId)) {
         return { ok: false, reason: "host_not_running", hostId: request.hostId };
@@ -399,6 +592,72 @@ export function createHostRuntime(options: CreateHostRuntimeOptions): HostRuntim
       }
 
       return { ok: true, agent };
+    },
+
+    requestHostAgentTermination(request) {
+      if (!hosts.findById(request.hostId)) {
+        return { ok: false, reason: "host_not_running", hostId: request.hostId };
+      }
+
+      const recorded = hostAgents.requestTermination({
+        hostId: request.hostId,
+        name: request.agentName,
+        signal: request.signal,
+        now: options.now(),
+      });
+
+      if (!recorded) {
+        return {
+          ok: false,
+          reason: "host_agent_not_found",
+          hostId: request.hostId,
+          agentName: request.agentName,
+        };
+      }
+
+      if (!recorded.ok) {
+        return {
+          ok: false,
+          reason: "host_agent_signal_delivery_pending",
+          hostId: request.hostId,
+          agentName: request.agentName,
+          pendingSignalSeq: recorded.agent.pendingSignalSeq,
+        };
+      }
+
+      return { ok: true, agent: recorded.agent };
+    },
+
+    acknowledgeHostAgentSignalDelivery(request) {
+      if (!hosts.findById(request.hostId)) {
+        return { ok: false, reason: "host_not_running", hostId: request.hostId };
+      }
+
+      const acknowledged = hostAgents.acknowledgeSignalDelivery({
+        hostId: request.hostId,
+        name: request.agentName,
+        signalSeq: request.signalSeq,
+        now: options.now(),
+      });
+      if (!acknowledged) {
+        return {
+          ok: false,
+          reason: "host_agent_not_found",
+          hostId: request.hostId,
+          agentName: request.agentName,
+        };
+      }
+      if (!acknowledged.ok) {
+        return {
+          ok: false,
+          reason: "host_agent_signal_sequence_mismatch",
+          hostId: request.hostId,
+          agentName: request.agentName,
+          signalSeq: request.signalSeq,
+          pendingSignalSeq: acknowledged.agent.pendingSignalSeq,
+        };
+      }
+      return { ok: true, agent: acknowledged.agent };
     },
 
     detachHostAgent(request) {

@@ -156,6 +156,7 @@ describe("SQLite schema", () => {
     expect(columns.map((column) => column.name)).toEqual([
       "id",
       "name",
+      "host_id",
       "kind",
       "status",
       "cwd",
@@ -212,6 +213,155 @@ describe("SQLite schema", () => {
         "2026-05-16T00:00:01.000Z",
       ]);
     }).toThrow();
+  });
+
+  it("allows the same agent name under different host_id scopes but not within the same scope", () => {
+    db = new Database(":memory:");
+
+    applySchema(db);
+
+    const insert = db.prepare(`
+      insert into agents (
+        id,
+        name,
+        host_id,
+        kind,
+        status,
+        cwd,
+        created_at,
+        updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insert.run([
+      "agent-standalone",
+      "reviewer",
+      "",
+      "claude",
+      "connected",
+      "/repo",
+      "2026-08-31T00:00:00.000Z",
+      "2026-08-31T00:00:00.000Z",
+    ]);
+    insert.run([
+      "agent-host-a",
+      "reviewer",
+      "host-a",
+      "claude",
+      "connected",
+      "/repo",
+      "2026-08-31T00:00:00.000Z",
+      "2026-08-31T00:00:00.000Z",
+    ]);
+    insert.run([
+      "agent-host-b",
+      "reviewer",
+      "host-b",
+      "claude",
+      "connected",
+      "/repo",
+      "2026-08-31T00:00:00.000Z",
+      "2026-08-31T00:00:00.000Z",
+    ]);
+
+    expect(
+      db.prepare("select id from agents order by id").all(),
+    ).toEqual([
+      { id: "agent-host-a" },
+      { id: "agent-host-b" },
+      { id: "agent-standalone" },
+    ]);
+
+    expect(() => {
+      insert.run([
+        "agent-host-a-dup",
+        "reviewer",
+        "host-a",
+        "claude",
+        "connected",
+        "/repo",
+        "2026-08-31T00:00:01.000Z",
+        "2026-08-31T00:00:01.000Z",
+      ]);
+    }).toThrow();
+  });
+
+  it("migrates a pre-Stage-5A agents table (global unique name, no host_id) to the (host_id, name) scoped shape during migration 9", () => {
+    db = new Database(":memory:");
+    applySchema(db);
+    db.prepare("delete from schema_version where version = 9").run();
+    db.exec("drop table agents");
+    db.exec(`
+      create table agents (
+        id text primary key,
+        name text not null unique,
+        kind text not null,
+        status text not null,
+        cwd text not null,
+        pair_id text,
+        pair_slot text,
+        adapter_session_id text,
+        role text,
+        description text,
+        instructions text,
+        last_seen_at text,
+        created_at text not null,
+        updated_at text not null
+      )
+    `);
+    db.prepare(
+      `insert into agents (id, name, kind, status, cwd, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?)`,
+    ).run("agent-1", "impl", "codex", "connected", "/repo", "2026-01-01", "2026-01-01");
+
+    applySchema(db);
+
+    const columns = db.prepare("pragma table_info(agents)").all() as Array<{
+      name: string;
+    }>;
+    expect(columns.map((column) => column.name)).toContain("host_id");
+
+    expect(
+      db.prepare("select id, name, host_id from agents").all(),
+    ).toEqual([{ id: "agent-1", name: "impl", host_id: "" }]);
+
+    // The rebuilt table still enforces the standalone-scope uniqueness the
+    // pre-migration `unique(name)` constraint provided.
+    const insertDuplicate = db.prepare(
+      `insert into agents (id, name, host_id, kind, status, cwd, created_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    expect(() => {
+      insertDuplicate.run("agent-2", "impl", "", "codex", "connected", "/repo", "2026-01-02", "2026-01-02");
+    }).toThrow();
+
+    // The pair-slot unique index survives the table rebuild.
+    const indexes = db
+      .prepare("select name from sqlite_master where type = 'index' and tbl_name = 'agents'")
+      .all() as Array<{ name: string }>;
+    expect(indexes.map((index) => index.name)).toContain("agents_pair_slot_unique");
+  });
+
+  it("adds the host-agent termination intent and delivery acknowledgement columns during migration 10, idempotently", () => {
+    db = new Database(":memory:");
+    applySchema(db);
+
+    const columns = db.prepare("pragma table_info(host_agents)").all() as Array<{
+      name: string;
+    }>;
+    expect(columns.map((column) => column.name)).toContain("pending_signal");
+    expect(columns.map((column) => column.name)).toContain("pending_signal_seq");
+    expect(columns.map((column) => column.name)).toContain("delivered_signal_seq");
+
+    // Re-running the migration against an already-migrated DB (and one that
+    // was migrated before these columns existed) must not fail or duplicate work.
+    db.prepare("delete from schema_version where version = 10").run();
+    applySchema(db);
+
+    const columnsAfterRerun = db.prepare("pragma table_info(host_agents)").all() as Array<{
+      name: string;
+    }>;
+    expect(columnsAfterRerun.map((column) => column.name)).toEqual(columns.map((column) => column.name));
   });
 
   it("creates the pairs table with MVP columns", () => {

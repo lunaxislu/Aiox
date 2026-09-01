@@ -7,7 +7,10 @@ import { applySchema } from "../../../src/store/schema.js";
 import { createAdapterRegistry } from "../../../src/host/adapter-registry.js";
 import { createFakeAgentRuntimeTerminator } from "../../../src/host/fake-agent-runtime-terminator.js";
 import { createFakeHostAdapter } from "../../../src/host/fake-host-adapter.js";
-import { createHostController } from "../../../src/host/host-controller.js";
+import {
+  createHostController,
+  selectAndStaticPreflightAdapter,
+} from "../../../src/host/host-controller.js";
 
 /**
  * Increment 5: registry + controller + FakeHostAdapter + the real Stage 3
@@ -45,18 +48,7 @@ describe("HostController end-to-end lifecycle (Increment 5)", () => {
     const registry = createAdapterRegistry();
     const fake = createFakeHostAdapter({ staticPreflight: { ok: false, reason: "not installed" } });
     registry.register(fake);
-    const controller = createHostController({
-      api,
-      registry,
-      terminator: createFakeAgentRuntimeTerminator(),
-      createId,
-    });
-
-    const result = await controller.start({
-      name: "demo",
-      path: "/repo/demo",
-      agents: [{ name: "reviewer", kind: "claude" }],
-    });
+    const result = await selectAndStaticPreflightAdapter(registry, { cwd: "/repo/demo" });
 
     expect(result).toEqual({ ok: false, stage: "static_preflight", reason: "not installed" });
     expect(api.listRunningHosts().hosts).toEqual([]);
@@ -67,9 +59,10 @@ describe("HostController end-to-end lifecycle (Increment 5)", () => {
     const registry = createAdapterRegistry();
     const fake = createFakeHostAdapter({ dynamicPreflight: { ok: false, reason: "no workspace" } });
     registry.register(fake);
+    const prepared = await selectAndStaticPreflightAdapter(registry, { cwd: "/repo/demo" });
+    if (!prepared.ok) throw new Error("expected adapter preparation to succeed");
     const controller = createHostController({
       api,
-      registry,
       terminator: createFakeAgentRuntimeTerminator(),
       createId,
     });
@@ -77,6 +70,7 @@ describe("HostController end-to-end lifecycle (Increment 5)", () => {
     const result = await controller.start({
       name: "demo",
       path: "/repo/demo",
+      preparedAdapter: prepared.preparedAdapter,
       agents: [{ name: "reviewer", kind: "claude" }],
     });
 
@@ -92,11 +86,12 @@ describe("HostController end-to-end lifecycle (Increment 5)", () => {
     const registry = createAdapterRegistry();
     const fake = createFakeHostAdapter();
     registry.register(fake);
+    const prepared = await selectAndStaticPreflightAdapter(registry, { cwd: "/repo/demo" });
+    if (!prepared.ok) throw new Error("expected adapter preparation to succeed");
     fake.failAtCalls([{ atCall: 2, stage: "surface" }]);
     const terminator = createFakeAgentRuntimeTerminator();
     const controller = createHostController({
       api,
-      registry,
       terminator,
       createId,
     });
@@ -105,6 +100,7 @@ describe("HostController end-to-end lifecycle (Increment 5)", () => {
     const started = await controller.start({
       name: "demo",
       path: "/repo/demo",
+      preparedAdapter: prepared.preparedAdapter,
       agents: [
         { name: "reviewer", kind: "claude" },
         { name: "implementer", kind: "codex" },
@@ -159,9 +155,10 @@ describe("HostController end-to-end lifecycle (Increment 5)", () => {
     const registryA = createAdapterRegistry();
     const fakeA = createFakeHostAdapter({ id: "fake-a" });
     registryA.register(fakeA);
+    const preparedA = await selectAndStaticPreflightAdapter(registryA, { cwd: "/repo/a" });
+    if (!preparedA.ok) throw new Error("expected adapter A preparation to succeed");
     const controllerA = createHostController({
       api,
-      registry: registryA,
       terminator: createFakeAgentRuntimeTerminator(),
       createId,
     });
@@ -170,10 +167,11 @@ describe("HostController end-to-end lifecycle (Increment 5)", () => {
     const fakeB = createFakeHostAdapter({ id: "fake-b" });
     registryB.register(fakeB);
     fakeB.failAtCalls([{ atCall: 1, stage: "cli-start" }]);
+    const preparedB = await selectAndStaticPreflightAdapter(registryB, { cwd: "/repo/b" });
+    if (!preparedB.ok) throw new Error("expected adapter B preparation to succeed");
     const terminatorB = createFakeAgentRuntimeTerminator();
     const controllerB = createHostController({
       api,
-      registry: registryB,
       terminator: terminatorB,
       createId,
     });
@@ -181,11 +179,13 @@ describe("HostController end-to-end lifecycle (Increment 5)", () => {
     const resultA = await controllerA.start({
       name: "host-a",
       path: "/repo/a",
+      preparedAdapter: preparedA.preparedAdapter,
       agents: [{ name: "reviewer", kind: "claude" }],
     });
     const resultB = await controllerB.start({
       name: "host-b",
       path: "/repo/b",
+      preparedAdapter: preparedB.preparedAdapter,
       agents: [{ name: "solo", kind: "codex" }],
     });
 

@@ -432,7 +432,7 @@ describe("SQLite pair repository", () => {
       throw new Error("expected corrupt legacy pair migration to fail");
     });
 
-    it("records schema versions 1 through 8 and creates the pair-slot unique index after a legacy migration", () => {
+    it("records schema versions 1 through 10 and creates the pair-slot unique index after a legacy migration", () => {
       db.close();
       db = new Database(":memory:");
       createLegacyPairSchema(db);
@@ -455,6 +455,8 @@ describe("SQLite pair repository", () => {
         { version: 6 },
         { version: 7 },
         { version: 8 },
+        { version: 9 },
+        { version: 10 },
       ]);
       expect(
         db

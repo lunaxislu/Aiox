@@ -182,7 +182,7 @@ describe("G1-C Tier 3 reliability composition", () => {
       claudeBodies.push(String(init.body));
       return new Response(null, { status: 204 });
     });
-    await injectClaudeChannel({ getRuntime: () => ({ endpoint: "http://channel.test/send" }) }, { agentName: "claude", content: codexText! });
+    await injectClaudeChannel({ getRuntime: () => ({ endpoint: "http://channel.test/send" }) }, { agentId: "claude", agentName: "claude", content: codexText! });
     const pushed = JSON.parse(claudeBodies[0] ?? "{}") as { content?: string };
     expect(pushed.content).toBe(codexText);
 

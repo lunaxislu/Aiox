@@ -904,6 +904,7 @@ function successRegisterCodexChannelResponse() {
   return {
     ok: true as const,
     runtime: {
+      agentId: "agent-1",
       agentName: "impl",
       registeredAt: "2026-05-23T00:00:00.000Z",
       tokenHash: "token-hash",

@@ -1,16 +1,11 @@
 import type { ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
 import type { ParsedCommand } from "./parse.js";
-import {
-  runHost,
-  defaultRegisterSignalHandlers,
-  type LaunchAgentView,
-  type RunHostOptions,
-  type RunHostResult,
-} from "./host.js";
+import { composeInstructions, mapAgentTypeToKind } from "./host.js";
 import type { DaemonApi } from "../daemon/api.js";
 import type { StopRequest } from "../daemon/state.js";
-import { loadAioxConfig, type AioxConfig } from "../config/aiox-config.js";
+import { loadAioxConfig, type AioxConfig, type AioxRouteConfig } from "../config/aiox-config.js";
 import { validateAioxConfigSemantics } from "../config/aiox-config-validator.js";
 import type { ClaudeMcpScope } from "../core/claude-mcp-scope.js";
 import { launchCodexTui } from "../adapters/codex/launcher.js";
@@ -32,6 +27,26 @@ import {
 } from "../adapters/claude/mcp-setup.js";
 import { runDaemonProcess } from "../daemon/run.js";
 import { formatDaemonStatus, formatDoctor, formatStatus } from "./format.js";
+import { normalizeHostDeclaration, normalizeHostMutation } from "./host-command.js";
+import type { HostAgentDeclaration } from "../daemon/host-runtime.js";
+import type { HostRouteOperation } from "../host/host-route-topology.js";
+import {
+  createAdapterRegistry,
+  type AdapterRegistry,
+} from "../host/adapter-registry.js";
+import {
+  createHostController,
+  selectAndStaticPreflightAdapter,
+  type HostController,
+  type StartHostControllerResult,
+} from "../host/host-controller.js";
+import type { AgentRuntimeTerminator } from "../host/agent-runtime-terminator.js";
+import { createProductionAgentRuntimeTerminator } from "../host/production-agent-runtime-terminator.js";
+import { formatHostIntegrationFailureMessage } from "../host/host-integration-diagnostics.js";
+import {
+  defaultStartHostForegroundLoop,
+  type StartHostForegroundLoop,
+} from "../host/host-foreground-loop.js";
 
 // Static MCP identity (the sole `aiox claude` runtime path). One name
 // shared by `aiox claude setup` (registration), the launch-time registration
@@ -117,24 +132,28 @@ export interface InvocationOptions {
   // never touches the real filesystem.
   loadAioxConfig?: (cwd: string) => AioxConfig;
   validateAioxConfigSemantics?: (config: AioxConfig) => void;
-  // `aiox host`: defaults to the real runHost(). Overridable so tests never
-  // spawn a live `claude`/`codex` or poll a real daemon.
-  runHostFn?: (options: RunHostOptions) => Promise<RunHostResult>;
-  /**
-   * The terminal-view driver `aiox host` hands each agent's TUI launch request
-   * to. There is no built-in default — see `resolveAgentViewLauncher` below.
-   */
-  launchAgentView?: LaunchAgentView;
-  /**
-   * `aiox host`: registers the persistent SIGINT/SIGTERM handler that must
-   * already be observing before startDaemon()/getDaemonApi() even begin, so
-   * a signal arriving while either is pending is not lost to Node's default
-   * immediate-exit behavior. Defaults to the real OS-level
-   * `defaultRegisterSignalHandlers` from host.ts; tests inject a fake so
-   * they can fire a synthetic signal without touching real `process`
-   * listeners.
-   */
-  registerSignalHandlers?: (onSignal: (signal: NodeJS.Signals) => void) => () => void;
+  /** Test seam for advancing one existing relay-result poll without real time. */
+  pollHostControlResult?: () => void | Promise<void>;
+  // Hosted agent CLI (W6 Stage 5D Blocker 4): the poll interval/sleep for the
+  // termination-intent watch loop `waitForHostedTuiExit` runs alongside
+  // waiting for the vendor's own exit. Defaults are the real interval/timer;
+  // tests inject small/fake values so they never depend on real elapsed time.
+  hostedTerminationWatchIntervalMs?: number;
+  hostedTerminationWatchSleep?: (ms: number) => Promise<void>;
+  // `aiox host new`: production composition seams (W6 Stage 5D). Defaults are
+  // the real implementations -- an `AdapterRegistry` with nothing registered
+  // (Category A/B/C are Stage 7-9, so real production has no adapter yet, and
+  // `start()` must fail honestly at `static_preflight` rather than a
+  // placeholder success) and the real intent/ack-based `AgentRuntimeTerminator`.
+  // Tests inject a registry pre-loaded with a `FakeHostAdapter` and/or a fake
+  // terminator so the foreground loop's own machinery can be exercised
+  // without a live vendor process.
+  createAdapterRegistry?: () => AdapterRegistry;
+  createAgentRuntimeTerminator?: (api: DaemonApi) => AgentRuntimeTerminator;
+  createHostControllerId?: () => string;
+  /** `aiox host new`'s foreground reconcile/control-request loop driver. */
+  startHostForegroundLoop?: StartHostForegroundLoop;
+  hostForegroundLoopIntervalMs?: number;
 }
 
 export interface InvocationResult {
@@ -195,6 +214,7 @@ export async function invokeParsedCommand(
         kind: command.agentKind,
         name: command.name,
         cwd: options.cwd,
+        ...(command.hostId === undefined ? {} : { hostId: command.hostId }),
         ...(command.pairName === undefined ? {} : { pairName: command.pairName }),
         ...(command.resumeSessionId === undefined
           ? {}
@@ -208,6 +228,7 @@ export async function invokeParsedCommand(
         const child = await launchTuiOrCleanUp({
           api,
           agentName: command.name,
+          hostId: command.hostId,
           endpoint: new URL(response.codexRuntime.endpoint),
           // Daemon now eager-creates a thread on every no-resume attach (W6): the
           // TUI must resume that same thread, or the daemon's tracked threadId
@@ -217,13 +238,41 @@ export async function invokeParsedCommand(
         });
         let tuiExit: { exitCode: number | null; signal: string | null };
         try {
-          tuiExit = await waitForTuiExit(child);
+          tuiExit =
+            command.hostId === undefined
+              ? await waitForTuiExit(child)
+              : await waitForHostedTuiExit(
+                  child,
+                  async () => {
+                    ensureOk(
+                      await api.markHostAgentReady({
+                        hostId: command.hostId!,
+                        agentName: command.name,
+                      }),
+                    );
+                  },
+                  {
+                    api,
+                    hostId: command.hostId,
+                    agentName: command.name,
+                    ...(options.hostedTerminationWatchIntervalMs === undefined
+                      ? {}
+                      : { pollIntervalMs: options.hostedTerminationWatchIntervalMs }),
+                    ...(options.hostedTerminationWatchSleep === undefined
+                      ? {}
+                      : { sleep: options.hostedTerminationWatchSleep }),
+                  },
+                );
         } catch (error) {
-          await cleanUpAfterTuiFailure(api, command.name, error);
+          if (command.hostId !== undefined) {
+            stopHostedTuiAfterLifecycleFailure(child);
+          }
+          await cleanUpAfterTuiFailure(api, command.name, command.hostId, error);
           throw error;
         }
         await api.notifyTuiExited({
           agentName: command.name,
+          ...(command.hostId === undefined ? {} : { hostId: command.hostId }),
           exitCode: tuiExit.exitCode,
           signal: tuiExit.signal,
         });
@@ -233,10 +282,25 @@ export async function invokeParsedCommand(
         const socketPath = options.runtime.daemonSocketPath?.();
         const agentToken = response.claudeChannelToken;
         if (!socketPath) {
-          throw new InvocationError("Claude channel requires a daemon socket path", {
-            code: "aiox.invocation.missing_daemon_socket_path",
-            exitCode: 1,
-          });
+          const missingSocketError = new InvocationError(
+            "Claude channel requires a daemon socket path",
+            {
+              code: "aiox.invocation.missing_daemon_socket_path",
+              exitCode: 1,
+            },
+          );
+          const cleanupFailure = await cleanUpAttachedAgent(
+            api,
+            command.name,
+            command.hostId,
+          );
+          if (cleanupFailure !== undefined) {
+            throw new InvocationError(
+              `${missingSocketError.message} (cleanup also failed: ${cleanupFailure})`,
+              { code: missingSocketError.code, exitCode: missingSocketError.exitCode },
+            );
+          }
+          throw missingSocketError;
         }
         // dev-channel server:<name> resolves the aiox channel MCP from the
         // pre-registered static definition. Same name shared by
@@ -246,12 +310,14 @@ export async function invokeParsedCommand(
         const child = await launchChildOrCleanUp({
           api,
           agentName: command.name,
+          hostId: command.hostId,
           launch: () =>
             (options.launchClaudeStaticMcpChannel ?? launchClaudeStaticMcpChannel)({
               channelName,
               agentName: command.name,
               agentToken,
               daemonSocketPath: socketPath,
+              ...(command.hostId === undefined ? {} : { hostId: command.hostId }),
               ...(command.instructions === undefined
                 ? {}
                 : { instructions: command.instructions }),
@@ -259,12 +325,42 @@ export async function invokeParsedCommand(
         });
         let tuiExit: { exitCode: number | null; signal: string | null };
         try {
-          tuiExit = await waitForTuiExit(child);
+          tuiExit =
+            command.hostId === undefined
+              ? await waitForTuiExit(child)
+              : await waitForHostedTuiExit(
+                  child,
+                  async () => {
+                    ensureOk(
+                      await api.markHostAgentReady({
+                        hostId: command.hostId!,
+                        agentName: command.name,
+                      }),
+                    );
+                  },
+                  {
+                    api,
+                    hostId: command.hostId,
+                    agentName: command.name,
+                    ...(options.hostedTerminationWatchIntervalMs === undefined
+                      ? {}
+                      : { pollIntervalMs: options.hostedTerminationWatchIntervalMs }),
+                    ...(options.hostedTerminationWatchSleep === undefined
+                      ? {}
+                      : { sleep: options.hostedTerminationWatchSleep }),
+                  },
+                );
         } catch (error) {
-          await cleanUpAfterTuiFailure(api, command.name, error);
+          if (command.hostId !== undefined) {
+            stopHostedTuiAfterLifecycleFailure(child);
+          }
+          await cleanUpAfterTuiFailure(api, command.name, command.hostId, error);
           throw error;
         }
-        await api.disconnectClaudeChannel({ agentName: command.name });
+        await api.disconnectClaudeChannel({
+          agentName: command.name,
+          ...(command.hostId === undefined ? {} : { hostId: command.hostId }),
+        });
         return { exitCode: tuiExit.exitCode ?? (tuiExit.signal ? 1 : 0) };
       }
       return success();
@@ -285,26 +381,20 @@ export async function invokeParsedCommand(
       return success();
     }
     case "host": {
-      // Stage 3-4 provide the running-host runtime and orchestration seams, but
-      // named/path YAML execution is not connected to them until Stage 6. Fail
-      // explicitly before any config load or daemon side effect instead of
-      // silently falling back to the cwd host — a named/path invocation must
-      // never be observably indistinguishable from plain `aiox host`.
-      if (command.path !== undefined || command.name !== undefined) {
-        throw new InvocationError(
-          "aiox host <name>/--path is not implemented yet (Stage 6 YAML host connection); only plain `aiox host` runs in this build.",
-          { code: "aiox.invocation.host_command_not_implemented", exitCode: 1 },
-        );
-      }
+      // `--path`, when given, is the config-load/adapter-cwd/controller path
+      // used consistently everywhere below -- same as host-add/host-remove/
+      // host-route, this is passed through as-is (no relative-path resolve).
+      const path = command.path ?? options.cwd;
+
       // Config load + semantic validation is the first prerequisite check —
-      // it must fail before view-driver resolution, before the daemon is
-      // started, and before the daemon API is acquired. None of those later
-      // steps have run yet, so nothing needs cleaning up on failure here.
+      // it must fail before the daemon is started or the adapter is selected.
+      // None of those later steps have run yet, so nothing needs cleaning up
+      // on failure here.
       const loadConfig = options.loadAioxConfig ?? loadAioxConfig;
       const validateConfig = options.validateAioxConfigSemantics ?? validateAioxConfigSemantics;
       let config: AioxConfig;
       try {
-        config = loadConfig(options.cwd);
+        config = loadConfig(path);
         validateConfig(config);
       } catch (error) {
         throw new InvocationError(error instanceof Error ? error.message : String(error), {
@@ -312,89 +402,254 @@ export async function invokeParsedCommand(
           exitCode: 1,
         });
       }
-      // View-driver resolution is synchronous and has no side effect of its
-      // own, but — same ordering rule as the Claude MCP gate above — a
-      // prerequisite the host cannot satisfy must still fail before any
-      // daemon/attach side effect, so it runs here, after config validation
-      // and before the daemon starts.
-      const launchAgentView = resolveAgentViewLauncher(options);
 
-      // Registered before the daemon starts — the daemon start and daemon
-      // API acquisition just below are each a real pending await, and a
-      // signal arriving during either must still be observed instead of
-      // falling through to Node's default immediate-exit behavior, and must
-      // stop every later lifecycle side effect (API acquisition, agent
-      // attach, view launch, route connect) from starting. Unregistered only
-      // in the `finally` below, after runHost()'s own cleanup — which is
-      // handed this same controller instead of registering its own separate
-      // handler (see `signal` on RunHostOptions) — has actually finished, so
-      // there is never a gap between this handler being removed and
-      // runHost's own handling taking over, and a second (or cross) signal
-      // arriving at any point is still observed exactly once each.
-      const registerSignalHandlers = options.registerSignalHandlers ?? defaultRegisterSignalHandlers;
-      let shuttingDown = false;
-      const shutdownListeners: Array<() => void> = [];
-      const unregisterSignals = registerSignalHandlers(() => {
-        if (shuttingDown) {
-          return;
-        }
-        shuttingDown = true;
-        for (const listener of shutdownListeners.splice(0)) {
-          listener();
-        }
+      // `aiox host <name> --path <p>` names the host it expects to run. This
+      // is a pure local comparison against the config already loaded above —
+      // no daemon/adapter side effect has happened yet, so a mismatch fails
+      // here, before any of that starts.
+      if (command.name !== undefined && command.name !== config.project) {
+        throw new InvocationError(
+          `aiox host "${command.name}" does not match aiox.yaml project "${config.project}" at "${path}"`,
+          { code: "aiox.invocation.host_name_mismatch", exitCode: 1 },
+        );
+      }
+
+      const agents: HostAgentDeclaration[] = config.agents.map((agent) => {
+        const instructions = composeInstructions(config.instructions?.global, agent.instructions);
+        return {
+          name: agent.name,
+          kind: mapAgentTypeToKind(agent.type),
+          ...(agent.role === undefined ? {} : { role: agent.role }),
+          ...(agent.description === undefined ? {} : { description: agent.description }),
+          ...(instructions === undefined ? {} : { instructions }),
+        };
       });
+      const routes: HostRouteOperation[] = buildHostRouteOperationsFromConfig(config.routes ?? []);
 
-      try {
-        // PRD: "Auto-start daemon if needed", same as agent-attach.
-        await options.runtime.startDaemon();
-        if (shuttingDown) {
-          return { exitCode: 0 };
-        }
-
-        const api = await options.runtime.getDaemonApi();
-        if (shuttingDown) {
-          return { exitCode: 0 };
-        }
-
-        const socketPath = options.runtime.daemonSocketPath?.();
-        if (!socketPath) {
-          throw new InvocationError("aiox host requires a daemon socket path", {
-            code: "aiox.invocation.missing_daemon_socket_path",
-            exitCode: 1,
-          });
-        }
-        const run = options.runHostFn ?? runHost;
-        const result = await run({
-          cwd: options.cwd,
-          api,
-          daemonSocketPath: socketPath,
-          launchAgentView,
-          config,
-          signal: {
-            isShuttingDown: () => shuttingDown,
-            onShutdown: (listener) => {
-              shutdownListeners.push(listener);
+      // Same failure contract as `host-new` (Blocker 2 correction): adapter
+      // selection + static preflight must run — and fully resolve — BEFORE
+      // any daemon side effect (`startDaemon()` can fork a real OS process).
+      const registry = (options.createAdapterRegistry ?? createAdapterRegistry)();
+      const adapterSelection = await selectAndStaticPreflightAdapter(registry, { cwd: path });
+      if (!adapterSelection.ok) {
+        throw new InvocationError(
+          formatHostIntegrationFailureMessage(
+            {
+              stage: adapterSelection.stage,
+              reason: adapterSelection.reason,
             },
+            "aiox host",
+          ),
+          { code: "aiox.invocation.host_static_preflight_failed", exitCode: 1 },
+        );
+      }
+
+      await options.runtime.startDaemon();
+      const api = await options.runtime.getDaemonApi();
+
+      const terminator = (
+        options.createAgentRuntimeTerminator ??
+        ((daemonApi: DaemonApi) => createProductionAgentRuntimeTerminator({ api: daemonApi }))
+      )(api);
+      const createId = options.createHostControllerId ?? (() => randomUUID());
+      const controller: HostController = createHostController({ api, terminator, createId });
+
+      const startResult = await controller.start({
+        name: config.project,
+        path,
+        agents,
+        ...(routes.length > 0 ? { routes } : {}),
+        preparedAdapter: adapterSelection.preparedAdapter,
+      });
+      if (!startResult.ok) {
+        throw new InvocationError(describeHostStartFailure(startResult, "aiox host"), {
+          code: "aiox.invocation.host_failed",
+          exitCode: 1,
+        });
+      }
+
+      const startLoop = options.startHostForegroundLoop ?? defaultStartHostForegroundLoop;
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const stop = startLoop({
+          controller,
+          ...(options.hostForegroundLoopIntervalMs === undefined
+            ? {}
+            : { intervalMs: options.hostForegroundLoopIntervalMs }),
+          onTerminated: () => {
+            if (settled) return;
+            settled = true;
+            stop();
+            resolve();
+          },
+          onFatalError: (error) => {
+            if (settled) return;
+            settled = true;
+            stop();
+            reject(
+              new InvocationError(
+                `aiox host foreground loop failed: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+                { code: "aiox.invocation.host_foreground_loop_failed", exitCode: 1 },
+              ),
+            );
           },
         });
-        return { exitCode: result.exitCode };
-      } finally {
-        unregisterSignals();
-      }
+      });
+
+      return { exitCode: 0 };
     }
     // W6 Stage 2 parses and normalizes these (see src/cli/host-command.ts), and
     // Stage 3-4 provide the runtime/controller seams. Stage 5 still needs to
     // connect management invocation end to end, so fail honestly instead of a
     // placeholder success that would imply daemon/DB/surface side effects.
-    case "host-list":
-    case "host-new":
     case "host-add":
     case "host-remove":
-    case "host-route":
-      throw new InvocationError(
-        `aiox host ${command.kind === "host-list" ? "--list" : "management"} is not implemented yet (Stage 5 CLI-only E2E + running mutations).`,
-        { code: "aiox.invocation.host_command_not_implemented", exitCode: 1 },
+    case "host-route": {
+      const mutation = normalizeHostMutation(command);
+      const api = await options.runtime.getDaemonApi();
+      const payload =
+        mutation.kind === "host-add"
+          ? {
+              agents: mutation.agents,
+              ...(mutation.routes === undefined ? {} : { routes: mutation.routes }),
+            }
+          : mutation.kind === "host-remove"
+            ? { agentNames: mutation.agentNames }
+            : { routes: mutation.routes };
+      const submitted = await api.submitHostControlRequest({
+        name: mutation.name,
+        ...(mutation.path === undefined ? {} : { path: mutation.path }),
+        kind:
+          mutation.kind === "host-add"
+            ? "host_add"
+            : mutation.kind === "host-remove"
+              ? "host_remove"
+              : "host_route",
+        payload,
+      });
+      if (!submitted.ok) {
+        return structuredHostResult(submitted);
+      }
+      const result = await waitForHostControlResult(
+        api,
+        submitted.requestId,
+        options.pollHostControlResult,
       );
+      return structuredHostResult(result);
+    }
+    case "host-list": {
+      await options.runtime.startDaemon();
+      const api = await options.runtime.getDaemonApi();
+      const result = await api.listRunningHosts();
+      return structuredHostResult(result as unknown as Record<string, unknown>);
+    }
+    case "host-new": {
+      // Reuses the existing YAML structural/semantic validators as-is (§7 of
+      // the accepted grammar contract) -- must fail before any daemon/host
+      // side effect, same ordering rule as the plain `host` case's config gate.
+      normalizeHostDeclaration(command);
+
+      // Blocker 2 correction: the accepted failure contract requires adapter
+      // selection + static preflight to run -- and fully resolve -- BEFORE
+      // any daemon side effect (`startDaemon()` can fork a real OS process).
+      // `HostController` cannot be constructed without a live `DaemonApi`,
+      // so this registry/adapter resolution happens standalone, ahead of
+      // `startDaemon()`, and the resolved adapter is handed to `start()` so
+      // static preflight is never run a second time.
+      const registry = (options.createAdapterRegistry ?? createAdapterRegistry)();
+      const adapterSelection = await selectAndStaticPreflightAdapter(registry, {
+        cwd: options.cwd,
+      });
+      if (!adapterSelection.ok) {
+        throw new InvocationError(
+          formatHostIntegrationFailureMessage(
+            {
+              stage: adapterSelection.stage,
+              reason: adapterSelection.reason,
+            },
+            "aiox host new",
+          ),
+          { code: "aiox.invocation.host_new_static_preflight_failed", exitCode: 1 },
+        );
+      }
+
+      await options.runtime.startDaemon();
+      const api = await options.runtime.getDaemonApi();
+
+      const terminator = (
+        options.createAgentRuntimeTerminator ??
+        ((daemonApi: DaemonApi) => createProductionAgentRuntimeTerminator({ api: daemonApi }))
+      )(api);
+      const createId = options.createHostControllerId ?? (() => randomUUID());
+      const controller: HostController = createHostController({
+        api,
+        terminator,
+        createId,
+      });
+
+      const agents: HostAgentDeclaration[] = command.agents.map((agent) => ({
+        name: agent.name,
+        kind: agent.agentKind,
+        ...(agent.role === undefined ? {} : { role: agent.role }),
+        ...(agent.description === undefined ? {} : { description: agent.description }),
+        ...(agent.instructions === undefined ? {} : { instructions: agent.instructions }),
+      }));
+      // Blocker 1 correction: `command.routes` is already the exact
+      // `HostRouteOperation[]` shape (validated above, as part of the same
+      // `AioxConfig` reshape `normalizeHostDeclaration` just validated) --
+      // `HostController.start()` now owns applying it as the running host's
+      // initial declared topology directly, instead of this Stage rejecting
+      // `--route` outright.
+      const routes: HostRouteOperation[] = command.routes ?? [];
+
+      const startResult = await controller.start({
+        name: command.name,
+        path: options.cwd,
+        agents,
+        ...(routes.length > 0 ? { routes } : {}),
+        preparedAdapter: adapterSelection.preparedAdapter,
+      });
+      if (!startResult.ok) {
+        throw new InvocationError(describeHostStartFailure(startResult, "aiox host new"), {
+          code: "aiox.invocation.host_new_failed",
+          exitCode: 1,
+        });
+      }
+
+      const startLoop = options.startHostForegroundLoop ?? defaultStartHostForegroundLoop;
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const stop = startLoop({
+          controller,
+          ...(options.hostForegroundLoopIntervalMs === undefined
+            ? {}
+            : { intervalMs: options.hostForegroundLoopIntervalMs }),
+          onTerminated: () => {
+            if (settled) return;
+            settled = true;
+            stop();
+            resolve();
+          },
+          onFatalError: (error) => {
+            if (settled) return;
+            settled = true;
+            stop();
+            reject(
+              new InvocationError(
+                `aiox host new foreground loop failed: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+                { code: "aiox.invocation.host_foreground_loop_failed", exitCode: 1 },
+              ),
+            );
+          },
+        });
+      });
+
+      return { exitCode: 0 };
+    }
     case "status": {
       const api = await options.runtime.getDaemonApi();
       return { exitCode: 0, stdout: formatStatus(await api.status()) };
@@ -424,6 +679,89 @@ export async function invokeParsedCommand(
     default:
       return assertNever(command);
   }
+}
+
+async function waitForHostControlResult(
+  api: DaemonApi,
+  requestId: string,
+  poll: () => void | Promise<void> = () =>
+    new Promise<void>((resolve) => setTimeout(resolve, 25)),
+): Promise<Record<string, unknown>> {
+  while (true) {
+    const taken = await api.takeHostControlRequestResult({ requestId });
+    if (!taken.ok) {
+      return taken;
+    }
+    if (taken.status === "completed") {
+      return taken.result;
+    }
+    if (taken.status === "failed") {
+      return { ok: false, reason: taken.failureReason };
+    }
+    await poll();
+  }
+}
+
+function describeHostStartFailure(
+  result: Extract<StartHostControllerResult, { ok: false }>,
+  commandLabel: string,
+): string {
+  switch (result.stage) {
+    case "dynamic_preflight":
+      return formatHostIntegrationFailureMessage(
+        { stage: result.stage, reason: result.reason },
+        commandLabel,
+      );
+    case "invalid_routes":
+      return `${commandLabel} cannot start: invalid route declaration (${result.issues
+        .map((issue) => issue.message)
+        .join("; ")})`;
+    case "register":
+      return `${commandLabel} cannot start: ${result.reason}`;
+    case "all_agents_failed":
+      return `${commandLabel} started but every declared agent failed to launch: ${result.agents
+        .map((agent) => `${agent.name} (${agent.reason ?? "unknown reason"})`)
+        .join(", ")}`;
+    default: {
+      const exhaustive: never = result;
+      return `${commandLabel} failed for an unknown reason: ${JSON.stringify(exhaustive)}`;
+    }
+  }
+}
+
+/**
+ * `aiox.yaml` `routes[]` -> `HostRouteOperation[]`: one `"add"` op carrying the
+ * route's whole `members` mesh, plus one `"direct"` op per `directed[]` entry
+ * (its `to` flattened from `string | string[]` to `string[]`). This is a
+ * structural translation only — `HostController`'s route topology engine
+ * (`src/host/host-route-topology.ts`, out of scope here) is what resolves
+ * `direct` into the pair-local mesh/directed-override semantics
+ * (`docs/specs/aiox-compose-contract.md` §"Mesh와 directed override의 관계"),
+ * same as CLI-only `host-new`/`host route`.
+ */
+function buildHostRouteOperationsFromConfig(
+  routes: readonly AioxRouteConfig[],
+): HostRouteOperation[] {
+  const operations: HostRouteOperation[] = [];
+  for (const route of routes) {
+    operations.push({ op: "add", name: route.name, members: [...route.members] });
+    for (const entry of route.directed ?? []) {
+      operations.push({
+        op: "direct",
+        name: route.name,
+        from: entry.from,
+        to: Array.isArray(entry.to) ? [...entry.to] : [entry.to],
+      });
+    }
+  }
+  return operations;
+}
+
+function structuredHostResult(result: Record<string, unknown>): InvocationResult {
+  return {
+    exitCode: result.ok === true ? 0 : 1,
+    stdout: `${JSON.stringify(result)}\n`,
+  };
 }
 
 // `aiox claude setup`: non-overwriting provisioning of the static Claude MCP
@@ -492,40 +830,23 @@ async function requireClaudeMcpRegistration(
   }
 }
 
-/**
- * `aiox host` runs N interactive TUIs at once, so each one needs its own
- * terminal surface/PTY. No installed, structured-argv terminal-view driver is
- * wired in yet (view-driver generalization is a later plan stage), so this
- * refuses the command outright instead of crowding N TUIs onto one inherited
- * stdio or silently degrading to headless sessions. Tests and the future
- * driver inject `launchAgentView`.
- */
-function resolveAgentViewLauncher(options: InvocationOptions): LaunchAgentView {
-  if (options.launchAgentView) {
-    return options.launchAgentView;
-  }
-  throw new InvocationError(
-    "aiox host cannot start: no terminal view driver is available.\n" +
-      "Each agent needs its own terminal surface to run its vendor TUI, and this build has no driver wired in.",
-    { code: "aiox.invocation.no_agent_view_driver", exitCode: 1 },
-  );
-}
-
 async function launchChildOrCleanUp(input: {
   api: DaemonApi;
   agentName: string;
+  hostId?: string;
   launch: () => ChildProcess;
 }): Promise<ChildProcess> {
   try {
     return input.launch();
   } catch (error) {
-    return cleanUpAfterTuiFailure(input.api, input.agentName, error);
+    return cleanUpAfterTuiFailure(input.api, input.agentName, input.hostId, error);
   }
 }
 
 async function launchTuiOrCleanUp(input: {
   api: DaemonApi;
   agentName: string;
+  hostId?: string;
   endpoint: URL;
   resumeSessionId?: string;
   launch: (options: {
@@ -541,7 +862,7 @@ async function launchTuiOrCleanUp(input: {
         : { resumeSessionId: input.resumeSessionId }),
     });
   } catch (error) {
-    return cleanUpAfterTuiFailure(input.api, input.agentName, error);
+    return cleanUpAfterTuiFailure(input.api, input.agentName, input.hostId, error);
   }
 }
 
@@ -557,17 +878,10 @@ async function launchTuiOrCleanUp(input: {
 async function cleanUpAfterTuiFailure(
   api: DaemonApi,
   agentName: string,
+  hostId: string | undefined,
   launchError: unknown,
 ): Promise<never> {
-  let cleanupFailure: string | undefined;
-  try {
-    const response = await api.detachAgent({ agentName });
-    if (response.ok && response.runtimeDisposeError !== undefined) {
-      cleanupFailure = response.runtimeDisposeError;
-    }
-  } catch (error) {
-    cleanupFailure = error instanceof Error ? error.message : String(error);
-  }
+  const cleanupFailure = await cleanUpAttachedAgent(api, agentName, hostId);
 
   const launchMessage = launchError instanceof Error ? launchError.message : String(launchError);
   const message =
@@ -579,6 +893,25 @@ async function cleanUpAfterTuiFailure(
     code: "aiox.invocation.tui_launch_failed",
     exitCode: 1,
   });
+}
+
+async function cleanUpAttachedAgent(
+  api: DaemonApi,
+  agentName: string,
+  hostId: string | undefined,
+): Promise<string | undefined> {
+  try {
+    const response = await api.detachAgent({
+      agentName,
+      ...(hostId === undefined ? {} : { hostId }),
+    });
+    if (response.ok && response.runtimeDisposeError !== undefined) {
+      return response.runtimeDisposeError;
+    }
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return undefined;
 }
 
 async function waitForTuiExit(
@@ -617,6 +950,199 @@ async function waitForTuiExit(
     child.once("error", onError);
     child.once("exit", onExit);
   });
+}
+
+const DEFAULT_HOSTED_TERMINATION_WATCH_INTERVAL_MS = 250;
+
+export interface HostedTerminationWatch {
+  api: DaemonApi;
+  hostId: string;
+  agentName: string;
+  pollIntervalMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * A hosted agent is not ready when its terminal surface or CLI process merely
+ * exists. Node's child `spawn` event is the first positive signal that the
+ * vendor executable was created successfully; an `error` before that means
+ * spawn failed. Keep the exit listener installed while the asynchronous ready
+ * report is in flight so a very short-lived vendor cannot exit unnoticed.
+ *
+ * This hosted CLI process is the sole OS-level owner of `child`'s live
+ * process handle (W6 Stage 5D Blocker 4 correction): a same-machine
+ * `AgentRuntimeTerminator` cannot safely `process.kill(pid, ...)` a PID it
+ * only knows secondhand, because that PID can go stale and the OS can hand
+ * it to an unrelated process. Instead the terminator only records a
+ * termination intent for `(hostId, agentName)`; the poll loop below races
+ * that intent against the vendor's own natural exit and, when it observes a
+ * NEW intent (`pendingSignalSeq` advancing) after the child has actually
+ * spawned, signals the live handle directly with `child.kill()` -- a safe
+ * no-op if the child has already exited (Node never resends to a stale pid).
+ */
+async function waitForHostedTuiExit(
+  child: ChildProcess,
+  reportReady: () => Promise<void>,
+  terminationWatch: HostedTerminationWatch,
+): Promise<{ exitCode: number | null; signal: string | null }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let readyState: "waiting" | "reporting" | "reported" = "waiting";
+    let pendingExit: { exitCode: number | null; signal: string | null } | null = null;
+    let spawned = false;
+    let lastDeliveredSignalSeq = 0;
+    let lastAcknowledgedSignalSeq = 0;
+    let watchStopped = false;
+
+    function cleanUpListeners(): void {
+      child.off("spawn", onSpawn);
+      child.off("error", onError);
+      child.off("exit", onExit);
+    }
+
+    function finish(result: { exitCode: number | null; signal: string | null }): void {
+      if (settled) return;
+      settled = true;
+      watchStopped = true;
+      cleanUpListeners();
+      resolve(result);
+    }
+
+    function fail(error: unknown): void {
+      if (settled) return;
+      settled = true;
+      watchStopped = true;
+      cleanUpListeners();
+      reject(error);
+    }
+
+    function onSpawn(): void {
+      spawned = true;
+      if (settled || readyState !== "waiting") return;
+      readyState = "reporting";
+      void reportReady().then(
+        () => {
+          if (settled) return;
+          readyState = "reported";
+          if (pendingExit) finish(pendingExit);
+        },
+        (error) => fail(error),
+      );
+    }
+
+    function onError(error: Error): void {
+      fail(
+        new InvocationError(error.message, {
+          code: "aiox.invocation.tui_launch_failed",
+          exitCode: 1,
+        }),
+      );
+    }
+
+    function onExit(exitCode: number | null, signal: string | null): void {
+      const result = { exitCode, signal };
+      if (readyState === "reported") {
+        finish(result);
+        return;
+      }
+      if (readyState === "reporting") {
+        pendingExit = result;
+        return;
+      }
+      fail(
+        new InvocationError("vendor TUI exited before reporting a successful spawn", {
+          code: "aiox.invocation.tui_launch_failed",
+          exitCode: 1,
+        }),
+      );
+    }
+
+    child.once("spawn", onSpawn);
+    child.once("error", onError);
+    child.once("exit", onExit);
+
+    const pollIntervalMs =
+      terminationWatch.pollIntervalMs ?? DEFAULT_HOSTED_TERMINATION_WATCH_INTERVAL_MS;
+    const sleep =
+      terminationWatch.sleep ??
+      ((ms: number) =>
+        new Promise<void>((resolveSleep) => {
+          // `unref()` so this watch loop's own timer never keeps the hosted
+          // CLI process alive a poll tick longer than its real work already
+          // would -- once the vendor exits and the process has nothing else
+          // to do, it should exit immediately, not linger up to
+          // `pollIntervalMs` waiting on this loop to notice.
+          setTimeout(resolveSleep, ms).unref();
+        }));
+
+    void (async () => {
+      while (!watchStopped) {
+        await sleep(pollIntervalMs);
+        if (watchStopped) continue;
+
+        let listed;
+        try {
+          listed = await terminationWatch.api.listHostAgents({ hostId: terminationWatch.hostId });
+        } catch {
+          // A transient daemon read failure here does not own this agent's
+          // outcome -- the exit listeners above remain authoritative. Keep
+          // watching rather than failing the whole hosted invocation.
+          continue;
+        }
+        if (watchStopped) continue;
+
+        const mine = listed.ok
+          ? listed.agents.find((agent) => agent.name === terminationWatch.agentName)
+          : undefined;
+        if (!mine || mine.pendingSignal === null) {
+          continue;
+        }
+        // Deferred until the child has actually spawned: an intent recorded
+        // while still `starting` stays pending (never marked applied) so the
+        // very next tick after spawn picks up the same sequence number.
+        if (spawned && mine.pendingSignalSeq > lastAcknowledgedSignalSeq) {
+          if (mine.pendingSignalSeq > lastDeliveredSignalSeq) {
+            let delivered = false;
+            try {
+              delivered = child.kill(mine.pendingSignal);
+            } catch {
+              // A failed delivery is not an acknowledgement. Retry the same
+              // intent on the next poll unless the authoritative exit event
+              // ends this invocation first.
+            }
+            if (!delivered) continue;
+            lastDeliveredSignalSeq = mine.pendingSignalSeq;
+          }
+
+          try {
+            const acknowledged =
+              await terminationWatch.api.acknowledgeHostAgentSignalDelivery({
+                hostId: terminationWatch.hostId,
+                agentName: terminationWatch.agentName,
+                signalSeq: mine.pendingSignalSeq,
+              });
+            if (acknowledged.ok) {
+              lastAcknowledgedSignalSeq = mine.pendingSignalSeq;
+            }
+          } catch {
+            // Delivery already happened, so retry only the acknowledgement;
+            // never send the same signal again because an RPC response was
+            // lost after the daemon committed it.
+          }
+        }
+      }
+    })();
+  });
+}
+
+function stopHostedTuiAfterLifecycleFailure(child: ChildProcess): void {
+  try {
+    child.kill();
+  } catch {
+    // The lifecycle/cleanup error remains authoritative. A process that
+    // already exited can reject or report false from kill without changing
+    // the daemon state transition that follows.
+  }
 }
 
 function success(): InvocationResult {

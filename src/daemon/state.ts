@@ -56,6 +56,7 @@ const sendMessageRollbackSentinel = Symbol("aiox.sendMessage.rollback");
 const daemonMessageSourceAgentId = "daemon";
 
 export interface ClaudeChannelRuntime {
+  agentId: string;
   agentName: string;
   endpoint: string;
   registeredAt: string;
@@ -63,6 +64,7 @@ export interface ClaudeChannelRuntime {
 }
 
 interface ClaudePendingToken {
+  agentId: string;
   agentName: string;
   token: string;
   createdAt: string;
@@ -70,6 +72,8 @@ interface ClaudePendingToken {
 
 export interface RegisterClaudeChannelRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   token: string;
   endpoint: string;
 }
@@ -82,6 +86,8 @@ export type ClaudeChannelBootFailureCause = "claude_channel_port_in_use";
 
 export interface ReportClaudeChannelBootFailureRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   token: string;
   reason: ClaudeChannelBootFailureCause;
 }
@@ -96,6 +102,8 @@ export type ReportClaudeChannelBootFailureResult =
 
 export interface DisconnectClaudeChannelRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
 }
 
 export interface DisconnectClaudeChannelResult {
@@ -108,6 +116,8 @@ export interface DisconnectClaudeChannelResult {
 
 export interface ReceiveClaudeChannelMessageRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   messageId: string;
   type?: "question" | "instruction";
   intent?: AgentAuthoredIntent;
@@ -119,6 +129,8 @@ export type ReceiveClaudeChannelMessageResult = SendMessageResult;
 
 export interface ReceiveClaudeChannelReplyRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   messageId: string;
   inReplyToDeliveryId?: string;
   intent?: AgentAuthoredIntent;
@@ -129,12 +141,14 @@ export interface ReceiveClaudeChannelReplyRequest {
 export type ReceiveClaudeChannelReplyResult = SendMessageResult;
 
 export interface CodexChannelRuntime {
+  agentId: string;
   agentName: string;
   registeredAt: string;
   tokenHash: string;
 }
 
 interface CodexPendingToken {
+  agentId: string;
   agentName: string;
   token: string;
   createdAt: string;
@@ -142,6 +156,8 @@ interface CodexPendingToken {
 
 export interface RegisterCodexChannelRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   token: string;
 }
 
@@ -151,6 +167,8 @@ export type RegisterCodexChannelResult =
 
 export interface DisconnectCodexChannelRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
 }
 
 export interface DisconnectCodexChannelResult {
@@ -161,6 +179,8 @@ export interface DisconnectCodexChannelResult {
 
 export interface ReceiveCodexMessageRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   token: string;
   messageId: string;
   type?: "question" | "instruction";
@@ -193,6 +213,8 @@ export type ReceiveCodexMessageResult =
 
 export interface ReceiveCodexReplyRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   token: string;
   messageId: string;
   inReplyToDeliveryId?: string;
@@ -256,6 +278,8 @@ type ResolvedCodexTurnStartRuntime = ManagedAgentRuntime &
 
 export type AttachCodexRuntime = (request: {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   activeThreadId: string | null;
   codexChannelToken?: string;
   daemonSocketPath?: string;
@@ -272,6 +296,13 @@ export interface AttachAgentRequest {
   kind: AgentKind;
   name: string;
   cwd: string;
+  /**
+   * Host-qualified selector (W6 Stage 5A): when present, this attach is
+   * scoped to that running host instead of the standalone namespace, and
+   * `name` only needs to be unique within that host. Omitted attaches a
+   * standalone agent (unchanged behavior).
+   */
+  hostId?: string;
   pairName?: string;
   slot?: PairSlot;
   resumeSessionId?: string;
@@ -292,6 +323,17 @@ export type AttachAgentResult =
       codexChannelToken?: string;
     }
   | Extract<AttachStoredAgentResult, { ok: false }>
+  | {
+      ok: false;
+      reason: "host_not_running";
+      hostId: string;
+    }
+  | {
+      ok: false;
+      reason: "host_agent_not_found";
+      hostId: string;
+      agentName: string;
+    }
   | {
       ok: false;
       reason: "pair_not_found";
@@ -366,6 +408,8 @@ export type ConnectResult =
 
 export interface SendMessageRequest {
   sourceName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  sourceHostId?: string;
   messageId: string;
   parentMessageId?: string | null;
   type: MessageType;
@@ -486,6 +530,8 @@ export type UpdateDeliveryStatusResult =
 
 export interface DetachAgentRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
 }
 
 export interface DetachAgentResult {
@@ -504,6 +550,8 @@ export interface DetachAgentResult {
 
 export interface NotifyTuiExitedRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   exitCode: number | null;
   signal?: string | null;
 }
@@ -528,6 +576,8 @@ export type CodexRuntimeFailureReason =
 
 export interface RecordCodexRuntimeFailedRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
   reason: CodexRuntimeFailureReason;
   latestDiagnosticNotification?: {
     method: string;
@@ -555,6 +605,8 @@ export interface StatusResult {
 
 export interface ListReachablePeersRequest {
   agentName: string;
+  /** Host-qualified selector (W6 Stage 5A). Omitted resolves standalone. */
+  hostId?: string;
 }
 
 export type ListReachablePeersResult =
@@ -589,6 +641,7 @@ export interface DaemonState extends HostRuntime {
   attachAgent(request: AttachAgentRequest): Promise<AttachAgentResult>;
   createPair(request: CreatePairRequest): CreatePairResult;
   connect(request: ConnectRequest): ConnectResult;
+  syncHostEffectiveRoutes(request: SyncHostEffectiveRoutesRequest): SyncHostEffectiveRoutesResult;
   sendMessage(request: SendMessageRequest): SendMessageResult;
   updateDeliveryStatus(request: UpdateDeliveryStatusRequest): UpdateDeliveryStatusResult;
   retransmitUnconfirmedDelivery(
@@ -618,6 +671,26 @@ export interface DaemonState extends HostRuntime {
   listReachablePeers(request: ListReachablePeersRequest): ListReachablePeersResult;
   stop(request: StopRequest): Promise<StopResult>;
 }
+
+export interface HostEffectiveRouteEdge {
+  sourceName: string;
+  targetName: string;
+}
+
+export interface SyncHostEffectiveRoutesRequest {
+  hostId: string;
+  edges: readonly HostEffectiveRouteEdge[];
+}
+
+export type SyncHostEffectiveRoutesResult =
+  | { ok: true; routes: StoredRoute[] }
+  | { ok: false; reason: "host_not_running"; hostId: string }
+  | {
+      ok: false;
+      reason: "host_agent_not_routable";
+      hostId: string;
+      agentName: string;
+    };
 
 const outcomeGuidance: Record<DeliveryOutcomeType, string> = {
   delivery_unconfirmed:
@@ -664,10 +737,54 @@ export function createDaemonState(
     now: options.now,
   });
 
+  // Host-qualified routable identity (W6 Stage 5A): every ingress entry point
+  // that identifies "the calling agent" by a (hostId?, name) selector goes
+  // through this single resolver instead of a bare `agents.findByName`, so a
+  // host-scoped and a standalone (or differently-hosted) agent sharing a
+  // display name never resolve to the wrong row.
+  function resolveAgentSelector(selector: {
+    hostId?: string;
+    name: string;
+  }): StoredAgent | null {
+    return selector.hostId === undefined
+      ? agents.findByName(selector.name)
+      : agents.findByHostAndName(selector.hostId, selector.name);
+  }
+
   return {
     ...hostRuntime,
 
     async attachAgent(request) {
+      let declaredHostAgent: ReturnType<typeof hostRuntime.listHostAgents>[number] | undefined;
+      if (request.hostId !== undefined) {
+        if (!hostRuntime.listRunningHosts().some((host) => host.id === request.hostId)) {
+          return { ok: false, reason: "host_not_running", hostId: request.hostId };
+        }
+        declaredHostAgent = hostRuntime
+          .listHostAgents({ hostId: request.hostId })
+          .find((agent) => agent.name === request.name);
+        if (!declaredHostAgent) {
+          return {
+            ok: false,
+            reason: "host_agent_not_found",
+            hostId: request.hostId,
+            agentName: request.name,
+          };
+        }
+        if (
+          !agents.findByHostAndName(request.hostId, request.name) &&
+          declaredHostAgent.kind !== request.kind
+        ) {
+          return {
+            ok: false,
+            reason: "agent_kind_mismatch",
+            agentId: declaredHostAgent.id,
+            expectedKind: declaredHostAgent.kind,
+            actualKind: request.kind,
+          };
+        }
+      }
+
       const pair = request.pairName ? pairs.findByName(request.pairName) : null;
 
       if (request.pairName) {
@@ -687,8 +804,11 @@ export function createDaemonState(
         const attachResult = withTransaction(options.db, () => {
           const now = options.now();
           const attachResult = agents.attach({
-            id: options.createId(),
+            // A hosted selector resolves to its pre-registered host-agent id;
+            // standalone attaches still allocate a fresh routable id here.
+            id: declaredHostAgent?.id ?? options.createId(),
             name: request.name,
+            ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
             kind: request.kind,
             cwd: request.cwd,
             ...(request.role === undefined ? {} : { role: request.role }),
@@ -751,9 +871,10 @@ export function createDaemonState(
         }
 
         if (request.kind === "claude") {
-          claudeChannelBootFailures.delete(request.name);
+          claudeChannelBootFailures.delete(attachResult.agent.id);
           const token = randomUUID();
-          claudePendingTokens.set(request.name, {
+          claudePendingTokens.set(attachResult.agent.id, {
+            agentId: attachResult.agent.id,
             agentName: request.name,
             token,
             createdAt: options.now(),
@@ -767,17 +888,29 @@ export function createDaemonState(
 
         storedAgent = attachResult.agent;
         codexChannelToken = randomUUID();
-        codexPendingTokens.set(request.name, {
+        codexPendingTokens.set(attachResult.agent.id, {
+          agentId: attachResult.agent.id,
           agentName: request.name,
           token: codexChannelToken,
           createdAt: options.now(),
         });
         const runtime = await attachCodexRuntime({
           agentName: request.name,
+          ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
           activeThreadId: storedAgent.adapterSessionId,
           codexChannelToken,
           onRuntimeFailed: (failure) => {
-            performRecordCodexRuntimeFailed(failure);
+            // The attaching agent's id is already known from this closure --
+            // no need to re-resolve `failure.agentName` through a selector
+            // that `runtime.ts`'s failure event does not carry a hostId for.
+            const failedAgent = agents.findById(attachResult.agent.id);
+            if (failedAgent) {
+              performRecordCodexRuntimeFailedForAgent(
+                failedAgent,
+                failure.reason,
+                failure.latestDiagnosticNotification,
+              );
+            }
           },
           ...(options.daemonSocketPath === undefined
             ? {}
@@ -786,7 +919,7 @@ export function createDaemonState(
         startingCodexRuntime = runtime;
 
         runtime.onProxyBinding?.((event) => {
-          handleCodexProxyBinding(request.name, runtime, event);
+          handleCodexProxyBinding(attachResult.agent.id, runtime, event);
         });
 
         if (!request.resumeSessionId) {
@@ -800,7 +933,7 @@ export function createDaemonState(
 
           const startNow = options.now();
           const startedAgent = agents.rebindAdapterSessionId({
-            name: request.name,
+            id: attachResult.agent.id,
             adapterSessionId: startedThreadId,
             now: startNow,
           });
@@ -811,7 +944,7 @@ export function createDaemonState(
             });
           }
 
-          codexRuntimes.set(request.name, runtime);
+          codexRuntimes.set(attachResult.agent.id, runtime);
           startingCodexRuntime = null;
           await flushQueuedDeliveriesForTarget(startedAgent);
           events.append({
@@ -866,7 +999,7 @@ export function createDaemonState(
 
         const now = options.now();
         const reboundAgent = agents.rebindAdapterSessionId({
-          name: request.name,
+          id: attachResult.agent.id,
           adapterSessionId: nextThreadId,
           now,
         });
@@ -877,7 +1010,7 @@ export function createDaemonState(
           });
         }
 
-        codexRuntimes.set(request.name, runtime);
+        codexRuntimes.set(attachResult.agent.id, runtime);
         startingCodexRuntime = null;
         await flushQueuedDeliveriesForTarget(reboundAgent);
         events.append({
@@ -910,8 +1043,8 @@ export function createDaemonState(
           return error.response;
         }
 
-        if (codexChannelToken) {
-          codexPendingTokens.delete(request.name);
+        if (codexChannelToken && storedAgent) {
+          codexPendingTokens.delete(storedAgent.id);
         }
 
         let runtimeDisposeError: string | undefined;
@@ -1012,6 +1145,96 @@ export function createDaemonState(
       });
     },
 
+    syncHostEffectiveRoutes(request) {
+      if (!hostRuntime.listRunningHosts().some((host) => host.id === request.hostId)) {
+        return { ok: false, reason: "host_not_running", hostId: request.hostId };
+      }
+
+      const hostAgentRows = hostRuntime.listHostAgents({ hostId: request.hostId });
+      // A successful explicit termination can remove `host_agents` before the
+      // hosted CLI's final detach removes its routable `agents` row. Scope the
+      // old effective edges from the routable identity owner, so that window
+      // still removes incident routes instead of losing the endpoint from the
+      // cleanup query.
+      const hostAgentIds = new Set(
+        agents
+          .list()
+          .filter((agent) => agent.hostId === request.hostId)
+          .map((agent) => agent.id),
+      );
+      const readyNames = new Set(
+        hostAgentRows.filter((agent) => agent.status === "ready").map((agent) => agent.name),
+      );
+      const desiredByKey = new Map<
+        string,
+        { sourceAgentId: string; targetAgentId: string }
+      >();
+
+      for (const edge of request.edges) {
+        if (!readyNames.has(edge.sourceName) || !readyNames.has(edge.targetName)) {
+          continue;
+        }
+        const source = agents.findByHostAndName(request.hostId, edge.sourceName);
+        if (!source) {
+          return {
+            ok: false,
+            reason: "host_agent_not_routable",
+            hostId: request.hostId,
+            agentName: edge.sourceName,
+          };
+        }
+        const target = agents.findByHostAndName(request.hostId, edge.targetName);
+        if (!target) {
+          return {
+            ok: false,
+            reason: "host_agent_not_routable",
+            hostId: request.hostId,
+            agentName: edge.targetName,
+          };
+        }
+        desiredByKey.set(JSON.stringify([source.id, target.id]), {
+          sourceAgentId: source.id,
+          targetAgentId: target.id,
+        });
+      }
+
+      return withTransaction(options.db, () => {
+        const current = routes
+          .list()
+          .filter(
+            (route) =>
+              hostAgentIds.has(route.sourceAgentId) && hostAgentIds.has(route.targetAgentId),
+          );
+        const currentByKey = new Map(
+          current.map((route) => [
+            JSON.stringify([route.sourceAgentId, route.targetAgentId]),
+            route,
+          ]),
+        );
+
+        for (const [key, route] of currentByKey) {
+          if (!desiredByKey.has(key)) {
+            routes.remove(route.id);
+          }
+        }
+        for (const [key, edge] of desiredByKey) {
+          if (!currentByKey.has(key)) {
+            routes.create({ id: options.createId(), ...edge, now: options.now() });
+          }
+        }
+
+        return {
+          ok: true,
+          routes: routes
+            .list()
+            .filter(
+              (route) =>
+                hostAgentIds.has(route.sourceAgentId) && hostAgentIds.has(route.targetAgentId),
+            ),
+        };
+      });
+    },
+
     sendMessage(request) {
       const result = runSendMessageTransaction(request);
       if (result.ok) scheduleQueuedDeliveryExpiry(result.deliveries);
@@ -1051,7 +1274,7 @@ export function createDaemonState(
         };
       }
 
-      const resolvedTarget = await resolveCodexReplyTarget(codexRuntimes.get(targetAgent.name));
+      const resolvedTarget = await resolveCodexReplyTarget(codexRuntimes.get(targetAgent.id));
       if (!resolvedTarget.ok) {
         return {
           ok: false,
@@ -1140,6 +1363,7 @@ export function createDaemonState(
     async detachAgent(request) {
       return detachCodexAgent({
         agentName: request.agentName,
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
         trigger: "explicit_detach",
       });
     },
@@ -1147,6 +1371,7 @@ export function createDaemonState(
     async notifyTuiExited(request) {
       return detachCodexAgent({
         agentName: request.agentName,
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
         trigger: "tui_exit",
         exitCode: request.exitCode,
         signal: request.signal ?? null,
@@ -1158,8 +1383,12 @@ export function createDaemonState(
     },
 
     registerClaudeChannel(request) {
-      const pending = claudePendingTokens.get(request.agentName);
-      if (!pending || pending.token !== request.token) {
+      const agent = resolveAgentSelector({
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        name: request.agentName,
+      });
+      const pending = agent ? claudePendingTokens.get(agent.id) : undefined;
+      if (!agent || !pending || pending.token !== request.token) {
         return {
           ok: false,
           reason: "claude_channel_registration_failed" as const,
@@ -1177,19 +1406,24 @@ export function createDaemonState(
       }
 
       const runtime: ClaudeChannelRuntime = {
+        agentId: agent.id,
         agentName: request.agentName,
         endpoint: parsedEndpoint,
         registeredAt: options.now(),
         tokenHash: claudeTokenFingerprint(request.token),
       };
-      claudeChannelRuntimes.set(request.agentName, runtime);
-      claudeChannelBootFailures.delete(request.agentName);
+      claudeChannelRuntimes.set(agent.id, runtime);
+      claudeChannelBootFailures.delete(agent.id);
       return { ok: true, runtime };
     },
 
     reportClaudeChannelBootFailure(request) {
-      const pending = claudePendingTokens.get(request.agentName);
-      if (!pending || pending.token !== request.token) {
+      const agent = resolveAgentSelector({
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        name: request.agentName,
+      });
+      const pending = agent ? claudePendingTokens.get(agent.id) : undefined;
+      if (!agent || !pending || pending.token !== request.token) {
         return {
           ok: false,
           reason: "claude_channel_boot_failure_report_rejected",
@@ -1203,21 +1437,36 @@ export function createDaemonState(
           detail: "unsupported_reason",
         };
       }
-      if (claudeChannelRuntimes.has(request.agentName)) {
+      if (claudeChannelRuntimes.has(agent.id)) {
         return { ok: true, agentName: request.agentName, recorded: false };
       }
-      claudeChannelBootFailures.set(request.agentName, request.reason);
+      if (request.hostId !== undefined) {
+        // A hosted agent whose channel cannot boot cannot participate in the
+        // host's ready subset. Treat the accepted failure report as the same
+        // agent-local departure as a vendor spawn failure; standalone Claude
+        // retains the existing deferred-diagnostic behavior below.
+        performDisconnectClaudeChannelForAgent(agent);
+        return { ok: true, agentName: request.agentName, recorded: true };
+      }
+      claudeChannelBootFailures.set(agent.id, request.reason);
       return { ok: true, agentName: request.agentName, recorded: true };
     },
 
     disconnectClaudeChannel(request) {
-      return performDisconnectClaudeChannel(request.agentName);
+      return performDisconnectClaudeChannel({
+        agentName: request.agentName,
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+      });
     },
 
     async receiveClaudeChannelMessage(request) {
-      const agent = agents.findByName(request.agentName);
+      const agent = resolveAgentSelector({
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        name: request.agentName,
+      });
       const result = runSendMessageTransaction({
         sourceName: request.agentName,
+        ...(request.hostId === undefined ? {} : { sourceHostId: request.hostId }),
         messageId: request.messageId,
         type: request.type ?? "question",
         intent: request.intent,
@@ -1252,9 +1501,13 @@ export function createDaemonState(
     },
 
     async receiveClaudeChannelReply(request) {
-      const agent = agents.findByName(request.agentName);
+      const agent = resolveAgentSelector({
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        name: request.agentName,
+      });
       const result = runReplyTransaction({
         sourceName: request.agentName,
+        ...(request.hostId === undefined ? {} : { sourceHostId: request.hostId }),
         messageId: request.messageId,
         inReplyToDeliveryId: request.inReplyToDeliveryId,
         intent: request.intent,
@@ -1289,8 +1542,12 @@ export function createDaemonState(
     },
 
     registerCodexChannel(request) {
-      const pending = codexPendingTokens.get(request.agentName);
-      if (!pending || pending.token !== request.token) {
+      const agent = resolveAgentSelector({
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        name: request.agentName,
+      });
+      const pending = agent ? codexPendingTokens.get(agent.id) : undefined;
+      if (!agent || !pending || pending.token !== request.token) {
         return {
           ok: false,
           reason: "codex_channel_registration_failed" as const,
@@ -1298,21 +1555,21 @@ export function createDaemonState(
         };
       }
 
-      codexPendingTokens.delete(request.agentName);
+      codexPendingTokens.delete(agent.id);
       const now = options.now();
       const runtime: CodexChannelRuntime = {
+        agentId: agent.id,
         agentName: request.agentName,
         registeredAt: now,
         tokenHash: codexTokenFingerprint(request.token),
       };
-      codexChannelRuntimes.set(request.agentName, runtime);
-      const agent = agents.findByName(request.agentName);
+      codexChannelRuntimes.set(agent.id, runtime);
       events.append({
         id: options.createId(),
         type: "codex_channel_registered",
         data: { tokenHash: codexTokenShortHash(request.token) },
         createdAt: now,
-        agentId: agent?.id ?? null,
+        agentId: agent.id,
         messageId: null,
         deliveryId: null,
         routeId: null,
@@ -1321,10 +1578,15 @@ export function createDaemonState(
     },
 
     disconnectCodexChannel(request) {
-      const had = codexChannelRuntimes.has(request.agentName);
-      codexChannelRuntimes.delete(request.agentName);
-      codexPendingTokens.delete(request.agentName);
-      const agent = agents.findByName(request.agentName);
+      const agent = resolveAgentSelector({
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        name: request.agentName,
+      });
+      const had = agent ? codexChannelRuntimes.has(agent.id) : false;
+      if (agent) {
+        codexChannelRuntimes.delete(agent.id);
+        codexPendingTokens.delete(agent.id);
+      }
       if (had) {
         events.append({
           id: options.createId(),
@@ -1344,12 +1606,17 @@ export function createDaemonState(
     },
 
     async receiveCodexMessage(request) {
-      const authz = authorizeCodexIngress(request.agentName, request.token);
+      const authz = authorizeCodexIngress({
+        agentName: request.agentName,
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        token: request.token,
+      });
       if (!authz.ok) {
         return authz.error;
       }
         const result = runSendMessageTransaction({
         sourceName: request.agentName,
+        ...(request.hostId === undefined ? {} : { sourceHostId: request.hostId }),
         messageId: request.messageId,
           type: request.type ?? "question",
           intent: request.intent,
@@ -1378,12 +1645,17 @@ export function createDaemonState(
     },
 
     async receiveCodexReply(request) {
-      const authz = authorizeCodexIngress(request.agentName, request.token);
+      const authz = authorizeCodexIngress({
+        agentName: request.agentName,
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        token: request.token,
+      });
       if (!authz.ok) {
         return authz.error;
       }
       const result = runReplyTransaction({
         sourceName: request.agentName,
+        ...(request.hostId === undefined ? {} : { sourceHostId: request.hostId }),
         messageId: request.messageId,
         inReplyToDeliveryId: request.inReplyToDeliveryId,
         intent: request.intent,
@@ -1428,7 +1700,10 @@ export function createDaemonState(
     },
 
     listReachablePeers(request) {
-      const source = agents.findByName(request.agentName);
+      const source = resolveAgentSelector({
+        ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+        name: request.agentName,
+      });
 
       if (!source) {
         return {
@@ -1473,11 +1748,11 @@ export function createDaemonState(
         if (!request.daemonOnly) {
           for (const agent of stoppedAgents) {
             routes.removeAllForAgent(agent.id);
-            codexChannelRuntimes.delete(agent.name);
-            codexPendingTokens.delete(agent.name);
-            claudeChannelRuntimes.delete(agent.name);
-            claudePendingTokens.delete(agent.name);
-            claudeChannelBootFailures.delete(agent.name);
+            codexChannelRuntimes.delete(agent.id);
+            codexPendingTokens.delete(agent.id);
+            claudeChannelRuntimes.delete(agent.id);
+            claudePendingTokens.delete(agent.id);
+            claudeChannelBootFailures.delete(agent.id);
           }
         }
         return { ok: true as const, stoppedAgents };
@@ -1485,10 +1760,10 @@ export function createDaemonState(
 
       await Promise.all(
         result.stoppedAgents.map(async (agent) => {
-          const runtime = codexRuntimes.get(agent.name);
+          const runtime = codexRuntimes.get(agent.id);
           if (!runtime) return;
           await disposeRuntime(runtime);
-          codexRuntimes.delete(agent.name);
+          codexRuntimes.delete(agent.id);
         }),
       );
 
@@ -1587,19 +1862,54 @@ export function createDaemonState(
   function removeDepartedAgent(agent: StoredAgent): void {
     withTransaction(options.db, () => {
       routes.removeAllForAgent(agent.id);
-      agents.removeByName(agent.name);
+      agents.removeById(agent.id);
+      if (agent.hostId !== null) {
+        // A hosted CLI's routable `agents` row and its `host_agents` lifecycle
+        // row represent one live agent. Remove them in the same departure
+        // transaction so spawn failure, natural exit and runtime failure cannot
+        // leave the foreground controller observing a phantom agent.
+        hostRuntime.detachHostAgent({ hostId: agent.hostId, agentName: agent.name });
+      }
     });
   }
 
-  // Shared by the public `recordCodexRuntimeFailed` method and the
+  // Core mutation, keyed by an already-resolved agent -- shared by the public
+  // `recordCodexRuntimeFailed` method (resolves its selector first) and the
   // `onRuntimeFailed` callback wired into the production Codex attach factory
-  // (see `attachCodexRuntime` call in `attachAgent`), so a managed Codex
-  // runtime's own child-exit/WS-close detection reaches the same effect as an
-  // explicit report.
+  // (see `attachCodexRuntime` call in `attachAgent`, which already knows its
+  // own attach's resolved agent id and does not need to re-resolve by name).
+  function performRecordCodexRuntimeFailedForAgent(
+    agent: StoredAgent,
+    reason: CodexRuntimeFailureReason,
+    latestDiagnosticNotification?: RecordCodexRuntimeFailedRequest["latestDiagnosticNotification"],
+  ): void {
+    const now = options.now();
+    codexRuntimes?.delete(agent.id);
+    codexChannelRuntimes.delete(agent.id);
+    codexPendingTokens.delete(agent.id);
+    removeDepartedAgent(agent);
+    events.append({
+      id: options.createId(),
+      type: "agent_runtime_failed",
+      data: {
+        reason,
+        ...(latestDiagnosticNotification ? { latestDiagnosticNotification } : {}),
+      },
+      createdAt: now,
+      agentId: agent.id,
+      messageId: null,
+      deliveryId: null,
+      routeId: null,
+    });
+  }
+
   function performRecordCodexRuntimeFailed(
     request: RecordCodexRuntimeFailedRequest,
   ): RecordCodexRuntimeFailedResult {
-    const agent = agents.findByName(request.agentName);
+    const agent = resolveAgentSelector({
+      ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+      name: request.agentName,
+    });
 
     if (!agent) {
       return {
@@ -1609,28 +1919,11 @@ export function createDaemonState(
       };
     }
 
-    const now = options.now();
-    codexRuntimes?.delete(request.agentName);
-    codexChannelRuntimes.delete(request.agentName);
-    codexPendingTokens.delete(request.agentName);
-    removeDepartedAgent(agent);
-    events.append({
-      id: options.createId(),
-      type: "agent_runtime_failed",
-      data: {
-        reason: request.reason,
-        ...(request.latestDiagnosticNotification
-          ? {
-              latestDiagnosticNotification: request.latestDiagnosticNotification,
-            }
-          : {}),
-      },
-      createdAt: now,
-      agentId: agent.id,
-      messageId: null,
-      deliveryId: null,
-      routeId: null,
-    });
+    performRecordCodexRuntimeFailedForAgent(
+      agent,
+      request.reason,
+      request.latestDiagnosticNotification,
+    );
 
     return {
       ok: true,
@@ -1639,28 +1932,46 @@ export function createDaemonState(
     };
   }
 
-  // Shared by the public `disconnectClaudeChannel` method and
-  // `injectMessageIntoClaudeTarget`'s confirmed-refusal branch (a registered
-  // Claude channel endpoint that ECONNREFUSEs is treated the same as an
-  // explicit disconnect request).
-  function performDisconnectClaudeChannel(
-    agentName: string,
+  // Shared by the public `disconnectClaudeChannel` method (resolves its
+  // selector first) and `injectMessageIntoClaudeTarget`'s confirmed-refusal
+  // branch (a registered Claude channel endpoint that ECONNREFUSEs is treated
+  // the same as an explicit disconnect request, and already holds the
+  // resolved target agent -- no need to re-resolve by name).
+  function performDisconnectClaudeChannelForAgent(
+    agent: StoredAgent,
   ): DisconnectClaudeChannelResult {
-    const had = claudeChannelRuntimes.has(agentName);
-    claudeChannelRuntimes.delete(agentName);
-    claudePendingTokens.delete(agentName);
-    claudeChannelBootFailures.delete(agentName);
+    claudeChannelRuntimes.delete(agent.id);
+    claudePendingTokens.delete(agent.id);
+    claudeChannelBootFailures.delete(agent.id);
+    removeDepartedAgent(agent);
 
-    const agent = agents.findByName(agentName);
-    const wasConnected = agent !== null;
+    // The agent row itself was resolved and is being removed here, so this
+    // call always disconnected something regardless of whether a channel
+    // runtime happened to be registered yet.
+    return {
+      ok: true,
+      agentName: agent.name,
+      disconnected: true,
+    };
+  }
+
+  function performDisconnectClaudeChannel(selector: {
+    agentName: string;
+    hostId?: string;
+  }): DisconnectClaudeChannelResult {
+    const agent = resolveAgentSelector({
+      ...(selector.hostId === undefined ? {} : { hostId: selector.hostId }),
+      name: selector.agentName,
+    });
+
     if (agent) {
-      removeDepartedAgent(agent);
+      return performDisconnectClaudeChannelForAgent(agent);
     }
 
     return {
       ok: true,
-      agentName,
-      disconnected: had || wasConnected,
+      agentName: selector.agentName,
+      disconnected: false,
     };
   }
 
@@ -2124,8 +2435,8 @@ export function createDaemonState(
         eligibility: string;
       }
   > {
-    if (!claudeChannelRuntimes.has(targetAgent.name)) {
-      const cause = claudeChannelBootFailures.get(targetAgent.name);
+    if (!claudeChannelRuntimes.has(targetAgent.id)) {
+      const cause = claudeChannelBootFailures.get(targetAgent.id);
       return {
         kind: "deferred",
         reason: "target_runtime_unavailable",
@@ -2136,10 +2447,10 @@ export function createDaemonState(
 
     // Captured before the async push so a confirmed-refusal result (below) can be
     // checked for identity against whatever is registered by the time the push
-    // settles. Push is async: a same-name `registerClaudeChannel` can replace this
+    // settles. Push is async: a same-agent `registerClaudeChannel` can replace this
     // entry while the fetch is in flight, and that replacement must not be
     // clobbered by a disconnect meant for the runtime instance we actually pushed to.
-    const runtimeAtDispatch = claudeChannelRuntimes.get(targetAgent.name);
+    const runtimeAtDispatch = claudeChannelRuntimes.get(targetAgent.id);
 
     if (injectionOptions.transitionToDelivering !== false) {
       updateDeliveryStatusInTransaction({
@@ -2149,8 +2460,9 @@ export function createDaemonState(
     }
 
     const injectResult = await injectClaudeChannel(
-      { getRuntime: (agentName) => claudeChannelRuntimes.get(agentName) },
+      { getRuntime: (agentId) => claudeChannelRuntimes.get(agentId) },
       {
+        agentId: targetAgent.id,
         agentName: targetAgent.name,
         content: formatAioxChannelEnvelope({
           message: input.message,
@@ -2191,9 +2503,9 @@ export function createDaemonState(
       if (
         injectionOptions.transitionToDelivering !== false &&
         runtimeAtDispatch !== undefined &&
-        claudeChannelRuntimes.get(targetAgent.name) === runtimeAtDispatch
+        claudeChannelRuntimes.get(targetAgent.id) === runtimeAtDispatch
       ) {
-        performDisconnectClaudeChannel(targetAgent.name);
+        performDisconnectClaudeChannelForAgent(targetAgent);
       }
 
       return {
@@ -2242,7 +2554,7 @@ export function createDaemonState(
     delivery: StoredDelivery,
     targetAgent: StoredAgent,
   ): Promise<RetransmitUnconfirmedDeliveryResult> {
-    if (!claudeChannelRuntimes.has(targetAgent.name)) {
+    if (!claudeChannelRuntimes.has(targetAgent.id)) {
       return {
         ok: false,
         reason: "manual_retransmit_failed",
@@ -2361,7 +2673,7 @@ export function createDaemonState(
       }
   > {
     const sourceAgent = agents.list().find((agent) => agent.id === message.sourceAgentId);
-    const runtime = codexRuntimes.get(targetAgent.name);
+    const runtime = codexRuntimes.get(targetAgent.id);
     const target = injectionOptions.resolvedTarget ?? (await resolveCodexReplyTarget(runtime));
 
     if (!target.ok) {
@@ -2609,7 +2921,7 @@ export function createDaemonState(
     if (target.threadId !== targetAgent.adapterSessionId) {
       const now = options.now();
       const reboundAgent = agents.rebindAdapterSessionId({
-        name: targetAgent.name,
+        id: targetAgent.id,
         adapterSessionId: target.threadId,
         now,
       });
@@ -2694,13 +3006,11 @@ export function createDaemonState(
   }
 
   function handleCodexProxyBinding(
-    agentName: string,
+    agentId: string,
     runtime: ManagedCodexAgentRuntime,
     event: ManagedCodexProxyBindingEvent,
   ): void {
-    const targetAgent = agents
-      .list()
-      .find((agent) => agent.name === agentName);
+    const targetAgent = agents.findById(agentId);
     if (!targetAgent) {
       return;
     }
@@ -2713,7 +3023,7 @@ export function createDaemonState(
     const now = options.now();
     withTransaction(options.db, () => {
       const reboundAgent = agents.rebindAdapterSessionId({
-        name: agentName,
+        id: targetAgent.id,
         adapterSessionId: event.threadId,
         now,
       });
@@ -2738,7 +3048,7 @@ export function createDaemonState(
       });
     });
     runtime.rebindActiveThread(event.threadId);
-    const reboundAgent = agents.findByName(agentName);
+    const reboundAgent = agents.findById(agentId);
     if (reboundAgent) {
       void flushQueuedDeliveriesForTarget(reboundAgent).catch(() => undefined);
     }
@@ -2810,33 +3120,26 @@ export function createDaemonState(
     });
   }
 
-  function authorizeCodexIngress(
-    agentName: string,
-    token: string,
-  ):
+  function authorizeCodexIngress(request: {
+    agentName: string;
+    hostId?: string;
+    token: string;
+  }):
     | { ok: true }
     | {
         ok: false;
         error: { ok: false; reason: "codex_ingress_unauthorized"; detail: string };
       } {
-    if (!token) {
+    if (!request.token) {
       return {
         ok: false,
         error: { ok: false, reason: "codex_ingress_unauthorized", detail: "missing_token" },
       };
     }
-    const runtime = codexChannelRuntimes.get(agentName);
-    if (!runtime) {
-      return {
-        ok: false,
-        error: {
-          ok: false,
-          reason: "codex_ingress_unauthorized",
-          detail: "agent_not_registered",
-        },
-      };
-    }
-    const agent = agents.findByName(agentName);
+    const agent = resolveAgentSelector({
+      ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
+      name: request.agentName,
+    });
     if (!agent) {
       return {
         ok: false,
@@ -2847,7 +3150,18 @@ export function createDaemonState(
         },
       };
     }
-    if (runtime.tokenHash !== codexTokenFingerprint(token)) {
+    const runtime = codexChannelRuntimes.get(agent.id);
+    if (!runtime) {
+      return {
+        ok: false,
+        error: {
+          ok: false,
+          reason: "codex_ingress_unauthorized",
+          detail: "agent_not_registered",
+        },
+      };
+    }
+    if (runtime.tokenHash !== codexTokenFingerprint(request.token)) {
       return {
         ok: false,
         error: {
@@ -2863,7 +3177,10 @@ export function createDaemonState(
   function runSendMessageTransaction(request: SendMessageRequest): SendMessageResult {
     try {
       return withTransaction(options.db, () => {
-        const source = agents.findByName(request.sourceName);
+        const source = resolveAgentSelector({
+          ...(request.sourceHostId === undefined ? {} : { hostId: request.sourceHostId }),
+          name: request.sourceName,
+        });
 
         if (!source) {
           return {
@@ -2996,6 +3313,7 @@ export function createDaemonState(
 
   function runReplyTransaction(input: {
     sourceName: string;
+    sourceHostId?: string;
     messageId: string;
     inReplyToDeliveryId: string | undefined;
     intent?: AgentAuthoredIntent;
@@ -3004,7 +3322,10 @@ export function createDaemonState(
   }): SendMessageResult {
     try {
       return withTransaction(options.db, () => {
-      const source = agents.findByName(input.sourceName);
+      const source = resolveAgentSelector({
+        ...(input.sourceHostId === undefined ? {} : { hostId: input.sourceHostId }),
+        name: input.sourceName,
+      });
       if (!source) {
         return { ok: false, reason: "source_agent_not_found", sourceName: input.sourceName };
       }
@@ -3086,11 +3407,15 @@ export function createDaemonState(
 
   async function detachCodexAgent(input: {
     agentName: string;
+    hostId?: string;
     trigger: "explicit_detach" | "tui_exit";
     exitCode?: number | null;
     signal?: string | null;
   }): Promise<DetachAgentResult> {
-    const agent = agents.findByName(input.agentName);
+    const agent = resolveAgentSelector({
+      ...(input.hostId === undefined ? {} : { hostId: input.hostId }),
+      name: input.agentName,
+    });
 
     if (!agent) {
       return {
@@ -3101,17 +3426,17 @@ export function createDaemonState(
     }
 
     let runtimeDisposeError: string | undefined;
-    const runtime = codexRuntimes?.get(input.agentName);
+    const runtime = codexRuntimes?.get(agent.id);
     if (runtime) {
       runtimeDisposeError = await disposeRuntime(runtime);
-      codexRuntimes?.delete(input.agentName);
+      codexRuntimes?.delete(agent.id);
     }
 
-    codexChannelRuntimes.delete(input.agentName);
-    codexPendingTokens.delete(input.agentName);
-    claudeChannelRuntimes.delete(input.agentName);
-    claudePendingTokens.delete(input.agentName);
-    claudeChannelBootFailures.delete(input.agentName);
+    codexChannelRuntimes.delete(agent.id);
+    codexPendingTokens.delete(agent.id);
+    claudeChannelRuntimes.delete(agent.id);
+    claudePendingTokens.delete(agent.id);
+    claudeChannelBootFailures.delete(agent.id);
 
     const now = options.now();
     removeDepartedAgent(agent);
@@ -3254,6 +3579,7 @@ function isUniqueConstraintError(error: unknown): boolean {
 
 async function defaultAttachCodexRuntime(request: {
   agentName: string;
+  hostId?: string;
   activeThreadId: string | null;
   codexChannelToken?: string;
   daemonSocketPath?: string;
@@ -3261,6 +3587,7 @@ async function defaultAttachCodexRuntime(request: {
 }): Promise<ManagedCodexAgentRuntime> {
   return attachCodexAgentRuntime({
     agentName: request.agentName,
+    ...(request.hostId === undefined ? {} : { hostId: request.hostId }),
     activeThreadId: request.activeThreadId,
     onRuntimeFailed: request.onRuntimeFailed,
     ...(request.codexChannelToken && request.daemonSocketPath
