@@ -375,6 +375,44 @@ describe("HostController", () => {
   });
 
   describe("route topology (W6 Stage 6 revision 14 correction)", () => {
+    it("connects all declared agents as a bidirectional full mesh when routes are omitted", async () => {
+      const controller = createController();
+      const result = await controller.start({
+        name: "demo",
+        path: "/repo/demo",
+        agents: twoAgents,
+      });
+      if (!result.ok) throw new Error("expected start to succeed");
+
+      await api.attachAgent({
+        hostId: result.hostId,
+        kind: "claude",
+        name: "reviewer",
+        cwd: "/repo/demo",
+      });
+      await api.attachAgent({
+        hostId: result.hostId,
+        kind: "codex",
+        name: "implementer",
+        cwd: "/repo/demo",
+      });
+      await api.markHostAgentReady({ hostId: result.hostId, agentName: "reviewer" });
+      await api.markHostAgentReady({ hostId: result.hostId, agentName: "implementer" });
+      await controller.reconcile();
+
+      const hostAgents = api.listHostAgents({ hostId: result.hostId }).agents;
+      const reviewerId = hostAgents.find((agent) => agent.name === "reviewer")!.id;
+      const implementerId = hostAgents.find((agent) => agent.name === "implementer")!.id;
+      expect(
+        api.status().routes.map((route) => [route.sourceAgentId, route.targetAgentId]).sort(),
+      ).toEqual(
+        [
+          [reviewerId, implementerId],
+          [implementerId, reviewerId],
+        ].sort(),
+      );
+    });
+
     it("keeps the ready-agent subset intersection while a directed pair is narrowed, without dropping edges an unmentioned pair still needs", async () => {
       const controller = createController();
       const routes: HostRouteOperation[] = [

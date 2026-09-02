@@ -7,6 +7,7 @@ import type { HostAdapter, HostAdapterAgentSurfaceRequest } from "./host-adapter
 import type { AgentRuntimeTerminator } from "./agent-runtime-terminator.js";
 import {
   applyHostRouteOperations,
+  createImplicitDefaultHostRouteTopology,
   emptyHostRouteTopology,
   listDeclaredHostRouteEdges,
   listHostRouteSnapshots,
@@ -49,11 +50,10 @@ export interface StartHostControllerRequest {
   path: string;
   agents: readonly HostAgentDeclaration[];
   /**
-   * Initial named-group/directed-override declaration (Blocker 1 correction):
-   * validated and set as the running host's declared topology before any
-   * agent launches. Effective edges still only ever include the `ready`
-   * subset — `reconcile()` picks those up the same way it does for
-   * `host_route` mutations, so no separate initial sync is needed here.
+   * Initial named-group/directed-override declaration. Omitted/empty means
+   * the current declared agents form an implicit full mesh; any explicit
+   * operation switches to named topology without unioning that default.
+   * Effective edges still only ever include the `ready` subset.
    */
   routes?: readonly HostRouteOperation[];
   /** Minted via the injected `createId()` when omitted. */
@@ -319,9 +319,12 @@ export function createHostController(options: CreateHostControllerOptions): Host
       // runs, exactly like the CLI-only declaration's own upstream
       // `normalizeHostDeclaration()` validation gate.
       const declaredAgentNames = new Set(request.agents.map((declaration) => declaration.name));
+      const initialOperations = request.routes ?? [];
       const initialRouteResult = applyHostRouteOperations(
-        emptyHostRouteTopology(),
-        request.routes ?? [],
+        initialOperations.length === 0
+          ? createImplicitDefaultHostRouteTopology([...declaredAgentNames])
+          : emptyHostRouteTopology(),
+        initialOperations,
         declaredAgentNames,
       );
       if (!initialRouteResult.ok) {

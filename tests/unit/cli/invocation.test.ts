@@ -18,6 +18,15 @@ import { createAdapterRegistry } from "../../../src/host/adapter-registry.js";
 import { createFakeAgentRuntimeTerminator } from "../../../src/host/fake-agent-runtime-terminator.js";
 import { createFakeHostAdapter } from "../../../src/host/fake-host-adapter.js";
 import { createProductionAgentRuntimeTerminator } from "../../../src/host/production-agent-runtime-terminator.js";
+import { defaultStartHostForegroundLoop } from "../../../src/host/host-foreground-loop.js";
+
+function restoreEnvironment(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
 
 describe("CLI invocation", () => {
   it("dispatches parsed commands to daemon/runtime actions and preserves shortcut normalization in invocation", async () => {
@@ -221,7 +230,7 @@ describe("CLI invocation", () => {
     });
   });
 
-  it("launches Codex TUI after daemon attach and notifies daemon once on TUI exit", async () => {
+  it("launches a fresh Codex TUI without implicitly resuming a daemon-reported thread", async () => {
     const calls: unknown[] = [];
     const child = fakeChild();
     const runtime = createRuntime(calls, {
@@ -256,14 +265,7 @@ describe("CLI invocation", () => {
     expect(calls).toEqual([
       ["startDaemon"],
       ["attachAgent", { kind: "codex", name: "impl", cwd: "/repo" }],
-      // No explicit --resume, but the daemon now eager-creates a thread on every
-      // no-resume attach (W6): the TUI must resume that same thread rather than
-      // opening a fresh one, or the daemon's tracked threadId and the TUI's actual
-      // thread would diverge.
-      [
-        "launchCodexTui",
-        { endpoint: new URL("ws://127.0.0.1:54321/"), resumeSessionId: "thread-1" },
-      ],
+      ["launchCodexTui", { endpoint: new URL("ws://127.0.0.1:54321/") }],
       ["notifyTuiExited", { agentName: "impl", exitCode: 7, signal: null }],
     ]);
   });
@@ -354,7 +356,7 @@ describe("CLI invocation", () => {
     expect(calls).toContainEqual(["detachAgent", { hostId: "host-a", agentName: "impl" }]);
   });
 
-  it("still resumes the explicitly requested session id when one was given, ignoring the eager-started thread", async () => {
+  it("resumes only the explicitly requested session id when one was given", async () => {
     const calls: unknown[] = [];
     const child = fakeChild();
     const runtime = createRuntime(calls, {
@@ -391,10 +393,10 @@ describe("CLI invocation", () => {
     ]);
   });
 
-  it("detaches (not rolls back) the Codex agent when TUI wait rejects, since W6 eager-start already left the runtime ready", async () => {
-    // `rollbackAgentAttach()` no-ops (`rolledBack:false`) once the daemon's W6
-    // eager `thread/start` has left the runtime `ready` — the earlier
-    // `rollbackAgentAttach` call here was a silent leak. `detachAgent()`
+  it("detaches the Codex agent when TUI wait rejects after its runtime was registered", async () => {
+    // `rollbackAgentAttach()` no-ops (`rolledBack:false`) once the initialized
+    // runtime is registered as `ready`, even while a fresh thread binding is
+    // still null. `detachAgent()`
     // unconditionally disposes the runtime and removes the agent row/routes
     // regardless of runtime state, so it is the correct cleanup primitive for
     // this failure path (see the real-daemon-state regression test below for
@@ -1028,6 +1030,27 @@ describe("CLI invocation", () => {
       };
     }
 
+    it("delegates YAML host ownership through the same worker handoff without local startup", async () => {
+      const calls: unknown[] = [];
+      const startHostWorker = vi.fn(async () => ({ exitCode: 0 as const }));
+
+      await expect(
+        invokeParsedCommand(
+          { kind: "host", name: "demo", path: "/repo/from-flag" },
+          {
+            runtime: createRuntime(calls),
+            cwd: "/repo/cwd",
+            startHostWorker,
+          },
+        ),
+      ).resolves.toEqual({ exitCode: 0 });
+      expect(startHostWorker).toHaveBeenCalledWith({
+        command: { kind: "host", name: "demo", path: "/repo/from-flag" },
+        cwd: "/repo/from-flag",
+      });
+      expect(calls).toEqual([]);
+    });
+
     it("plain `aiox host` loads aiox.yaml from cwd and drives the same HostController pipeline as host-new", async () => {
       const db = new Database(":memory:");
       applySchema(db);
@@ -1043,7 +1066,10 @@ describe("CLI invocation", () => {
       const loadCalls: string[] = [];
       const config = {
         project: "demo",
-        agents: [{ name: "reviewer", type: "codex" }],
+        agents: [
+          { name: "reviewer", type: "codex" },
+          { name: "implementer", type: "claude-code" },
+        ],
       } as unknown as AioxConfig;
 
       const invoked = invokeParsedCommand(
@@ -1073,7 +1099,7 @@ describe("CLI invocation", () => {
       });
 
       expect(loadCalls).toEqual(["/repo/demo"]);
-      expect(adapter.calls).toHaveLength(1);
+      expect(adapter.calls).toHaveLength(2);
       expect(adapter.calls[0]!.request.args).toEqual([
         "codex",
         "--name",
@@ -1081,6 +1107,12 @@ describe("CLI invocation", () => {
         "--host-id",
         hostId,
       ]);
+
+      await api.attachAgent({ hostId, kind: "codex", name: "reviewer", cwd: "/repo/demo" });
+      await api.attachAgent({ hostId, kind: "claude", name: "implementer", cwd: "/repo/demo" });
+      await api.markHostAgentReady({ hostId, agentName: "reviewer" });
+      await api.markHostAgentReady({ hostId, agentName: "implementer" });
+      await vi.waitFor(() => expect(api.status().routes).toHaveLength(2));
 
       const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
       if (!submitted.ok) throw new Error("expected submit to succeed");
@@ -1453,6 +1485,7 @@ describe("CLI invocation", () => {
               agents: [{ name: "reviewer", type: "codex" }],
             }) as unknown as AioxConfig,
           validateAioxConfigSemantics: () => {},
+          createAdapterRegistry: () => createAdapterRegistry(),
         },
       );
 
@@ -1510,7 +1543,93 @@ describe("CLI invocation", () => {
   });
 
   describe("aiox host new (W6 Stage 5D)", () => {
-    it("fails honestly at static_preflight when no host adapter is registered -- real production composition, not a placeholder", async () => {
+    it("returns the detached worker startup result without starting a local controller owner", async () => {
+      const calls: unknown[] = [];
+      const startHostWorker = vi.fn(async () => ({ exitCode: 0 as const }));
+
+      await expect(
+        invokeParsedCommand(
+          {
+            kind: "host-new",
+            name: "demo",
+            agents: [{ agentKind: "codex", name: "reviewer" }],
+          },
+          {
+            runtime: createRuntime(calls),
+            cwd: "/repo/demo",
+            startHostWorker,
+          },
+        ),
+      ).resolves.toEqual({ exitCode: 0 });
+      expect(startHostWorker).toHaveBeenCalledWith({
+        command: {
+          kind: "host-new",
+          name: "demo",
+          agents: [{ agentKind: "codex", name: "reviewer" }],
+        },
+        cwd: "/repo/demo",
+      });
+      expect(calls).toEqual([]);
+    });
+
+    it("keeps one controller owner after parent handoff loss until relay termination", async () => {
+      const db = new Database(":memory:");
+      applySchema(db);
+      let nextId = 0;
+      const api = createDaemonApi(
+        createDaemonState({
+          db,
+          createId: () => `id-${(nextId += 1)}`,
+          now: () => "2026-08-31T00:00:00.000Z",
+        }),
+      );
+      const adapter = createFakeHostAdapter();
+      const terminator = createFakeAgentRuntimeTerminator();
+
+      const invoked = invokeParsedCommand(
+        {
+          kind: "host-new",
+          name: "demo",
+          agents: [
+            { agentKind: "codex", name: "reviewer" },
+            { agentKind: "claude", name: "implementer" },
+          ],
+        },
+        {
+          runtime: createInvocationRuntimeForApi(api),
+          cwd: "/repo/demo",
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+          createAgentRuntimeTerminator: () => terminator,
+          onHostControllerStarted: async () => {
+            throw new Error("startup IPC disconnected");
+          },
+          hostForegroundLoopIntervalMs: 5,
+        },
+      );
+
+      const hostId = await vi.waitFor(() => {
+        const hosts = api.listRunningHosts().hosts;
+        expect(hosts).toHaveLength(1);
+        return hosts[0]!.id;
+      });
+      const submitted = api.submitHostControlRequest({
+        name: "demo",
+        kind: "terminate_all",
+      });
+      if (!submitted.ok) throw new Error("expected terminate submit to succeed");
+
+      await expect(invoked).resolves.toEqual({ exitCode: 0 });
+      expect(api.listRunningHosts().hosts).toEqual([]);
+      expect(terminator.calls).toHaveLength(2);
+      expect(terminator.calls.every((call) => call.hostId === hostId)).toBe(true);
+      db.close();
+    });
+
+    it("fails honestly at static_preflight when an explicitly empty test registry is supplied", async () => {
       const calls: unknown[] = [];
       const runtime = createRuntime(calls, {
         registerRunningHost(request: unknown) {
@@ -1525,7 +1644,7 @@ describe("CLI invocation", () => {
           name: "demo",
           agents: [{ agentKind: "codex", name: "reviewer" }],
         },
-        { runtime, cwd: "/repo/demo" },
+        { runtime, cwd: "/repo/demo", createAdapterRegistry: () => createAdapterRegistry() },
       );
 
       await expect(invoked).rejects.toMatchObject({
@@ -1540,8 +1659,45 @@ describe("CLI invocation", () => {
       expect(calls).toEqual([]);
     });
 
+    it("uses the production cmux registry by default and keeps executable failure before daemon side effects", async () => {
+      const calls: unknown[] = [];
+      const runtime = createRuntime(calls);
+      const previous = {
+        workspace: process.env.CMUX_WORKSPACE_ID,
+        socket: process.env.CMUX_SOCKET_PATH,
+        path: process.env.PATH,
+      };
+      process.env.CMUX_WORKSPACE_ID = "workspace-id";
+      delete process.env.CMUX_SOCKET_PATH;
+      process.env.PATH = "";
+
+      try {
+        const invoked = invokeParsedCommand(
+          {
+            kind: "host-new",
+            name: "demo",
+            agents: [{ agentKind: "codex", name: "reviewer" }],
+          },
+          { runtime, cwd: "/repo/demo" },
+        );
+
+        await expect(invoked).rejects.toMatchObject({
+          code: "aiox.invocation.host_new_static_preflight_failed",
+          message: expect.stringContaining("cmux executable is unavailable"),
+        });
+        expect(calls).toEqual([]);
+      } finally {
+        restoreEnvironment("CMUX_WORKSPACE_ID", previous.workspace);
+        restoreEnvironment("CMUX_SOCKET_PATH", previous.socket);
+        restoreEnvironment("PATH", previous.path);
+      }
+    });
+
     it("carries the real cause, a help pointer, and the literal 'No agents were started.' sentence on a static preflight failure", async () => {
       const runtime = createRuntime([]);
+      const adapter = createFakeHostAdapter({
+        staticPreflight: { ok: false, reason: "cmux executable is unavailable" },
+      });
 
       const invoked = invokeParsedCommand(
         {
@@ -1549,7 +1705,15 @@ describe("CLI invocation", () => {
           name: "demo",
           agents: [{ agentKind: "codex", name: "reviewer" }],
         },
-        { runtime, cwd: "/repo/demo" },
+        {
+          runtime,
+          cwd: "/repo/demo",
+          createAdapterRegistry: () => {
+            const registry = createAdapterRegistry();
+            registry.register(adapter);
+            return registry;
+          },
+        },
       );
 
       await expect(invoked).rejects.toMatchObject({
@@ -1559,10 +1723,10 @@ describe("CLI invocation", () => {
         message: expect.stringContaining("README.md"),
       });
       await expect(invoked).rejects.toMatchObject({
-        message: expect.stringContaining("currently supported AIOX workflows"),
+        message: expect.stringContaining("README.md#cmux-host-integration"),
       });
       await expect(invoked).rejects.not.toMatchObject({
-        message: expect.stringContaining("supported terminal/IDE integrations and setup steps"),
+        message: expect.stringContaining("currently supported AIOX workflows"),
       });
     });
 
@@ -1647,7 +1811,7 @@ describe("CLI invocation", () => {
       db.close();
     });
 
-    it("wires a real HostController through the foreground loop end to end: starts, claims a relayed terminate_all, and exits", async () => {
+    it("uses the shared default full-mesh HostController contract and then handles terminate_all", async () => {
       const db = new Database(":memory:");
       applySchema(db);
       let nextId = 0;
@@ -1659,6 +1823,10 @@ describe("CLI invocation", () => {
       const api = createDaemonApi(state);
       const adapter = createFakeHostAdapter();
       const terminator = createFakeAgentRuntimeTerminator();
+      let loopArmed = false;
+      const ownershipReady = vi.fn(() => {
+        expect(loopArmed).toBe(true);
+      });
 
       const runtime: InvocationRuntime = {
         getDaemonApi: () => api,
@@ -1680,7 +1848,10 @@ describe("CLI invocation", () => {
         {
           kind: "host-new",
           name: "demo",
-          agents: [{ agentKind: "codex", name: "reviewer" }],
+          agents: [
+            { agentKind: "codex", name: "reviewer" },
+            { agentKind: "claude", name: "implementer" },
+          ],
         },
         {
           runtime,
@@ -1691,6 +1862,11 @@ describe("CLI invocation", () => {
             return registry;
           },
           createAgentRuntimeTerminator: () => terminator,
+          startHostForegroundLoop: (input) => {
+            loopArmed = true;
+            return defaultStartHostForegroundLoop(input);
+          },
+          onHostControllerStarted: ownershipReady,
           hostForegroundLoopIntervalMs: 5,
         },
       );
@@ -1698,15 +1874,27 @@ describe("CLI invocation", () => {
       // Another shell relaying `terminate_all` through the existing daemon
       // control relay (Stage 5C, accepted) -- the foreground loop must claim
       // and complete this on its own, without any direct method call.
-      await vi.waitFor(() => {
-        expect(api.listRunningHosts().hosts).toHaveLength(1);
+      const hostId = await vi.waitFor(() => {
+        const hosts = api.listRunningHosts().hosts;
+        expect(hosts).toHaveLength(1);
+        return hosts[0]!.id;
       });
+      expect(ownershipReady).toHaveBeenCalledOnce();
+      await api.attachAgent({ hostId, kind: "codex", name: "reviewer", cwd: "/repo/demo" });
+      await api.attachAgent({ hostId, kind: "claude", name: "implementer", cwd: "/repo/demo" });
+      await api.markHostAgentReady({ hostId, agentName: "reviewer" });
+      await api.markHostAgentReady({ hostId, agentName: "implementer" });
+      await vi.waitFor(() => expect(api.status().routes).toHaveLength(2));
+
       const submitted = api.submitHostControlRequest({ name: "demo", kind: "terminate_all" });
       if (!submitted.ok) throw new Error("expected submit to succeed");
 
       await expect(invoked).resolves.toEqual({ exitCode: 0 });
-      expect(adapter.calls).toHaveLength(1);
-      expect(terminator.calls).toEqual([{ hostId: submitted.hostId, agentName: "reviewer" }]);
+      expect(adapter.calls).toHaveLength(2);
+      expect(terminator.calls).toEqual([
+        { hostId: submitted.hostId, agentName: "reviewer" },
+        { hostId: submitted.hostId, agentName: "implementer" },
+      ]);
       expect(api.listRunningHosts().hosts).toHaveLength(0);
 
       const taken = await api.takeHostControlRequestResult({ requestId: submitted.requestId });
@@ -1821,7 +2009,7 @@ describe("CLI invocation — Codex TUI failure cleanup against real daemon state
     db.close();
   });
 
-  it("physically removes the agent row and disposes the runtime when the TUI wait fails after W6's eager thread/start left it ready", async () => {
+  it("physically removes the agent row and disposes the unbound runtime when the TUI wait fails", async () => {
     let nextId = 0;
     let disposeCalls = 0;
     const codexRuntime: ManagedCodexAgentRuntime = {
@@ -1831,10 +2019,9 @@ describe("CLI invocation — Codex TUI failure cleanup against real daemon state
       dispose: async () => {
         disposeCalls += 1;
       },
-      // Models W6's eager `thread/start` on attach: the runtime is already
-      // `ready` with an active thread by the time the TUI spawn/wait fails,
-      // which is exactly the state `rollbackAgentAttach()` no-ops on.
-      startThread: async () => "thread-1",
+      // App-server initialization makes the runtime ready before the fresh TUI
+      // creates a thread. `rollbackAgentAttach()` still no-ops in this state.
+      startThread: async () => null,
       resumeThread: async () => null,
       listLoadedThreadIds: async () => [],
       rebindActiveThread: () => undefined,
@@ -1883,8 +2070,8 @@ describe("CLI invocation — Codex TUI failure cleanup against real daemon state
     // Physical delete (W2 physical-departure model), not a status flip.
     const agentRow = db.prepare("select id from agents where name = 'impl'").get();
     expect(agentRow).toBeUndefined();
-    // The runtime W6's eager thread/start left `ready` was actually disposed
-    // — `rollbackAgentAttach()` would have left this at 0.
+    // The ready-but-unbound runtime was actually disposed —
+    // `rollbackAgentAttach()` would have left this at 0.
     expect(disposeCalls).toBe(1);
   });
 

@@ -1,7 +1,7 @@
 /**
  * Running-host runtime vocabularies.
  *
- * A running host exists only while its foreground controller runs. There is no
+ * A running host exists only while its detached controller worker runs. There is no
  * persistent HostDefinition: unregistering a host deletes its runtime rows and
  * leaves nothing that could be relaunched later.
  */
@@ -17,7 +17,7 @@ export type HostAgentStatus = (typeof hostAgentStatuses)[number];
 
 /**
  * The closed set of host control commands another shell's CLI can relay to a
- * running host's foreground controller. This is deliberately not a generic
+ * running host's owning controller worker. This is deliberately not a generic
  * event/command bus: only W6's accepted host commands are expressible.
  */
 export const hostControlRequestKinds = [

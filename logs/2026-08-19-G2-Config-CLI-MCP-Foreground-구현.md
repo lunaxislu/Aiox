@@ -86,10 +86,13 @@ status: open
 
 ## Package Scope
 
-- Revision: 6; History pointer: `2026-08-19 22:54 · W2 Task Brief revision 5 확정`,
+- Revision: 9; History pointer: `2026-08-19 22:54 · W2 Task Brief revision 5 확정`,
   `2026-08-19 · W2 revision 5 Accept — stale-peer 재설계 result review`,
-  `2026-08-27 · W6 current accepted contract and Stage 2 handoff`.
-- Primary boundary: aiox.yaml v1 config 파일 지원 표면 전체 — CLI attach 인자 확장, agents_list MCP tool, yaml schema/parser/validator, aiox host/quit foreground 실행 명령어
+  `2026-08-27 · W6 current accepted contract and Stage 2 handoff`,
+  `2026-09-01 14:43 · W6 Stage 7 cmux source correction·contract review — delegated execution handoff`,
+  `2026-09-01 15:13 · W6 cmux live gate FAIL — global symlink entrypoint correction contract`,
+  `2026-09-01 16:40 · host new foreground lifetime 관찰과 background 계약 승인`.
+- Primary boundary: aiox.yaml v1 config 파일 지원 표면 전체 — CLI attach 인자 확장, agents_list MCP tool, yaml schema/parser/validator, aiox host/quit lifecycle 실행 명령어
 - Related artifacts in allowed write-set:
 - src/cli/parse.ts — agent-attach 인자 확장(W1), aiox host/quit 명령어(W6, W7), disconnect 커맨드 제거(W2)
 - src/cli/invocation.ts — agent-attach 인자를 attachAgent 호출에 실어보내는 wiring(W1), disconnect case 제거(W2)
@@ -103,6 +106,14 @@ status: open
 - src/adapters/claude/channel-server.ts — claude agents_list tool(W2)
 - docs/architecture/local-runtime-cli-and-operator-surfaces.md, local-runtime-daemon-transport-api.md, local-runtime-store-and-repositories.md, local-runtime-errors-events-smoke.md, local-runtime-claude-adapter.md, local-runtime-codex-adapter.md, local-runtime-gaps-and-targets.md — route-level disconnect·agent status flip 서술을 물리 삭제 재설계에 맞게 정합(W2)
 - 신규 aiox.yaml schema/parser 모듈 — 경로 미정, W4 실행 시 확정(zod 기반)
+- src/host/cmux-host-adapter.ts, src/host/adapter-registry.ts,
+  src/host/host-integration-diagnostics.ts — cmux product adapter, production registry와 진단(W6)
+- src/bin/aiox.ts, src/cli/invocation.ts — npm global symlink main-module 정합과 detached host-worker
+  startup handoff/HostController loop ownership(W6 live correction)
+- src/core/hosts.ts, src/daemon/api.ts, src/daemon/host-runtime.ts,
+  src/store/repositories/host-control-requests.ts, src/store/schema.ts — controller-worker runtime
+  ownership 주석 정합(W6 revision 19)
+- README.md — cmux setup과 사용자 live gate 진입 안내(W6)
 - tests/ — 각 W에 대응하는 vitest 테스트(경로는 실행 시 확정)
 - docs/specs/aiox-compose-contract.md §6 Validator Rules — Committed target에서 Current로 status 반영(W9)
 - docs/specs/aiox-message-lifecycle.md §4.2 agents_list — Committed target에서 Current로 status 반영(W9)
@@ -184,9 +195,53 @@ status: open
     preflight는 daemon 전 단일 `PreparedHostAdapter` 경계로 정리됐다. Controlling과 independent
     review에서 focused 8 files/178 tests, typecheck, full 74 files/1023 tests, socket/diff/Markdown/
     log/package integrity를 재검증했다.
+  - W6 Stage 6 revision 14 correction accepted: plain/path/name+path YAML `aiox host`가 CLI-only와
+    동일한 HostController pipeline을 사용하고 pair-local directed override, semantic-validator
+    side-effect 0, host helper regression coverage를 충족한다. Controlling과 independent review에서
+    focused 5 files/112 tests, typecheck, full 74 files/976 tests, diff/Markdown/log/package integrity를
+    재검증했다.
+  - W6 Stage 7 cmux HostAdapter automated result accepted: production registry가 cmux를 등록하고,
+    workspace-specific detect, executable/capability static preflight, socket/current-workspace dynamic
+    preflight, explicit returned-surface `send`/`send-key enter`, surface 비소유와 safe command-text
+    encoding을 제공한다. Controlling이 source/diff, local read-only cmux preflight, focused 6 files/97
+    tests, typecheck, full 75 files/988 tests, diff/Markdown/log/package integrity를 재검증했다.
+  - W6 revision 16 global-bin correction accepted: npm global symlink를 거친 `aiox`도 compiled
+    entrypoint와 같은 main module로 canonicalize해 CLI dispatch를 실행한다. Symlink RED→GREEN,
+    실제 built-symlink `--help`, focused 4 files/92 tests, typecheck/build, final full 75 files/989 tests,
+    diff/Markdown/log/package integrity를 controlling이 재검증했다.
+  - W6 cmux live partial evidence: `/Users/lunaxislu/Desktop`에서 2개 pane이 생성되고
+    반환 surface로 encoded command가 전달되었으며 Claude TUI는 시작했다. Codex TUI는
+    daemon eager-start thread id의 `resume` 중 `no rollout found`(-32600)로 실패했다.
+    이 결과는 cmux create/send/key와 cwd targeting은 수용하지만 Codex TUI-ready gate는 거부한다.
+  - W6 revision 17 Codex fresh-attach correction accepted: no-resume attach은 initialized
+    app-server/proxy runtime만 등록하고 null binding을 반환하며 CLI는 explicit `--resume`에서만
+    `codex resume`를 사용한다. First TUI proxy binding이 DB/runtime binding과 queued flush를
+    소유한다. Focused 7 files/203 tests, launcher 9 tests, typecheck/build, final full 75 files/985
+    tests를 controlling이 재검증했다.
+  - W6 default full-mesh correction accepted: omitted/empty routes는 current declared agents의 hidden
+    bidirectional mesh를 생성하고, route-less host add/remove는 implicit membership을 갱신하며
+    첫 successful explicit mutation은 named topology로 전환한다. Focused 6 files/114 tests,
+    typecheck/build, exact full 75 files/990 tests를 controlling이 재검증했다.
+  - W6 cmux live gate accepted evidence: 사용자가 보정 build/global install 후 N=2 pane,
+    Claude/Codex 실행과 message flow가 정상임을 직접 확인했다. Controlling의 후속 read에서도
+    daemon에 message 1/delivered 1이 남았다. 다만 신규 pane shell이 encoded launch input을
+    echo하는 visual defect가 관찰돼 revision 18 correction으로 이어졌다.
+  - W6 revision 18 visual-hygiene correction accepted (automated): accepted octal encoding을 유지하고
+    TTY에서만 vendor invocation 직전 `clear` best-effort guard를 실행한다. Focused 3 files/
+    75 tests, typecheck/build, exact full 75 files/991 tests와 diff/log/package integrity를 controlling이
+    재검증했다.
+  - W6 revision 19 background lifetime correction accepted (automated): public YAML/CLI-only host는
+    same-entrypoint detached worker의 private IPC startup handoff 뒤
+    `AIOX host started in background.`를 출력하고 종료한다. Worker만 HostController/loop를 소유해
+    full-mesh reconcile, running mutation과 terminate-all을 계속 처리한다. Controlling이 실제
+    source/diff, focused 7 files/140 tests, typecheck/build, exact full 75 files/1000 tests,
+    compiled static-failure process probe와 diff/Markdown/log/package integrity를 재검증했다.
 - Evidence gaps:
-  - Stage 6–10 YAML/product behavior와 Terminal.app/cmux/Ghostty/VS Code/Cursor live gate는 아직
-    미구현·미검증이다. 계획을 현재 실행 사실로 읽지 않는다.
+  - Revision 18의 TTY clear와 revision 19의 prompt-return/background control은 automated 계약만
+    통과했다. Actual cmux pane에서 encoded line 제거, prompt 복귀, message/mutation/termination
+    지속은 사용자 live retry가 필요하다. Ghostty와 Stage 8–10
+    Terminal.app/VS Code/Cursor product behavior·live gate도 미구현·미검증이다. 계획이나
+    자동화 결과를 live 실행 사실로 읽지 않는다.
   - Signal-delivery confirm/poll 값은 실측값이 아니며, vendor external SIGINT와 hook semantics는
     AIOX가 보장하지 않는다. Atomic RPC commit 뒤 response-loss recovery와 기존 all-agent-failure
     unregister 결과 확인은 별도 residual로 남는다.
@@ -198,6 +253,17 @@ status: open
   `--append-system-prompt`는 system-prompt level)에서 이 precedence를 기계적으로 보장할 수
   있다는 근거는 없다. W6 구현 전 degradation 계약으로 수용할지 또는 owner
   principle을 변경할지 판정해야 하며, 확정되면 W9 문서 정합 범위가 소비한다.
+- `docs/specs/aiox-compose-contract.md`와
+  `docs/architecture/local-runtime-cli-and-operator-surfaces.md`의 구 view-driver/no-launcher
+  current claim은 Stage 6 accepted code와 stale하다. W9가 cmux live gate 뒤 실제 product adapter
+  evidence와 함께 owner status/evidence를 정합한다.
+- W6 current architecture snapshot과 runtime ownership code comments는 revision 19의 detached
+  controller worker 계약으로 정합했다. 더 넓은 spec/architecture current-status drift는 기존 W9가
+  cmux live retry evidence와 함께 소비한다.
+- `docs/decisions/client-orchestrator-runtime-pivot.md`의 automated cmux split rejection은 현재 W6의
+  explicit product-native HostAdapter 방향보다 앞선 rationale snapshot이다. 기존 decision을
+  패치하지 않고, W9에서 decision-change harness로 후속 decision 필요 여부와 inbound link를
+  판정한다.
 
 ## Decision Candidates
 
@@ -207,10 +273,17 @@ status: open
 
 ## Verification Contract
 
-- Revision: 1; History pointer: `2026-08-19 · controlling bootstrap — Work Items 9개와 Task Index 초기화`.
+- Revision: 3; History pointer: `2026-08-19 · controlling bootstrap — Work Items 9개와 Task Index 초기화`,
+  `2026-09-01 14:43 · W6 Stage 7 cmux source correction·contract review — delegated execution handoff`,
+  `2026-09-01 16:40 · host new foreground lifetime 관찰과 background 계약 승인`.
 - Required:
   - 코드 구현 W(W1, W2, W4, W5, W6, W7, W8): `npm run typecheck`(`tsc --noEmit`), `npm test`
     (`vitest run`).
+  - W6 product adapter stage: product CLI/API read-only preflight + focused adapter/registry/invocation tests
+    + 해당 제품의 native surface와 agent TUI를 사람이 직접 확인하는 live gate.
+  - W6 background lifetime correction: bin/invocation/foreground-loop/controller/socket focused tests,
+    public-command startup success/failure handoff, background reconcile/mutation/termination ownership,
+    typecheck/build/exact full suite와 사용자 cmux prompt-return live gate.
   - W3: 사람이 codex·claude 어댑터 둘 다에서 TUI로 직접 확인. 자동화 도구 없음 — pass/fail은
     사람 관찰이 evidence다.
   - W9: `scripts/check-markdown-inline-code <file>` + 대상 owner 문서(`docs/specs/aiox-compose-contract.md`,
@@ -225,7 +298,8 @@ status: open
 - Revision: 1; History pointer: `2026-08-19 · controlling bootstrap — Work Items 9개와 Task Index 초기화`.
 - Criteria:
   - plan Stage 2 completion condition 충족: clean user가 `aiox.yaml`로 선언한 다중 pair
-    인스턴스를 `aiox host`로 foreground 실행할 수 있고 `aiox quit`으로 종료할 수 있다.
+    인스턴스를 `aiox host`로 시작하고 prompt를 돌려받으며 background controller가 유지한 host를
+    `aiox quit`으로 종료할 수 있다.
   - W1-W9 전부 Result Consumption Gate(package-log.md Package Closeout) 통과.
   - `docs/specs/aiox-compose-contract.md` §6 Validator Rules, `docs/specs/aiox-message-lifecycle.md`
     §4.2 agents_list의 spec status가 `Committed target` → `Current`로 W9에서 flip됨.
@@ -1084,3 +1158,106 @@ Next: Stage 7 — Category B(cmux) HostAdapter 구현과 사용자 live gate. �
 - YAML E2E는 3-agent 예시의 5 edges와 reverse edge 부재를 직접 assert하고, focused topology/controller tests는 양방향 명시·미언급 mesh·overlapping route union·ready subset을 검증한다. semantic-validator throw side-effect 0와 helper 11 tests도 확인했다.
 - 독립 재실행: `npm run typecheck` PASS, focused 5 files/112 tests PASS, exact `npm test` 74 files/976 tests PASS, `git diff --check`, W6 Markdown, `log check`, `package-log check` PASS.
 - Disposition: Stage 6 revision 14 correction accepted를 확인한다. 추가 blocker 없음. 현 next pointer는 Stage 7 cmux HostAdapter contract review·구현·사용자 live gate로 유지한다.
+
+### 2026-09-01 14:43 · W6 Stage 7 cmux source correction·contract review — delegated execution handoff
+
+- Reconcile: Stage 6 accepted result를 Required Context {W6}, package Evidence/Evidence gaps, W6 architecture snapshot의 current gate에 반영했다. Work Item과 next pointer는 Stage 7 유지다.
+- Source correction: 현지 cmux CLI는 `0.62.2 (77) [6c203b514]`이고 기존 ledger의 `1.3.0-HEAD+bc9be90`은 embedded Ghostty version이었다. Local `--help`/`ping`/`capabilities`/`current-workspace`와 공식 cmux commands/CLI contract를 대조해 ledger를 교정했다. 실제 pane 생성은 아직 수행하지 않았다.
+- Contract review: W6 Task Brief revision 15를 cmux-only delegated TDD contract로 확정했다. Production registry wiring, cmux detect/static+dynamic preflight, explicit workspace pane creation, returned surface 대상 command text+Enter, failure propagation/surface 비소유와 사용자 live gate를 범위로 둔다. Ghostty 이후 제품과 W7은 제외한다.
+- Cross-artifact effect: durable spec/architecture의 구 view-driver claim과 과거 automated cmux rejection decision은 W9 decision/owner harness로 명시 이관했다. 이번 execution은 후속 사용자 지시와 현재 W6 accepted contract의 product-specific adapter 경계를 따른다.
+
+Next: revision 15를 근거로 subagent에게 cmux adapter 구현을 위임한다. Candidate가 실제 pane을 만들거나 accepted surface를 수정하지 않게 하고, controlling이 source/diff/tests를 직접 검토한 뒤 사용자 live gate 준비 여부를 보고한다.
+
+### 2026-09-01 15:08 · W6 Stage 7 cmux controlling result review — implementation accepted, 사용자 live gate 대기
+
+- Result disposition: revision 15 Attempt 1과 socket-detect correction의 automated implementation을 accepted한다. W6/Stage 7 전체는 사용자 live gate 전이라 완료하지 않는다.
+- Accepted behavior: production registry가 cmux를 선택하고 daemon 전 executable/capability preflight, daemon 뒤 socket/current-workspace preflight, explicit workspace pane 생성, returned surface command delivery와 surface 비소유를 적용한다. Command text는 cmux escape-sensitive raw text를 피하는 UTF-8 octal/quoted-word encoding을 쓴다.
+- Controlling verification: source/diff/tests를 직접 대조했다. `npm run typecheck`, independently selected focused 6 files/97 tests, exact `npm test` 75 files/988 tests, `git diff --check`, Markdown, `log check`, `package-log check`가 PASS했다. Local read-only `cmux version`, required command help, `ping`, `current-workspace`도 모두 exit 0이었다.
+- Reconcile: Package Scope/Evidence/Evidence gaps/Verification Contract, Required Context {W6}, W6 task disposition과 architecture current gate를 구현 accepted·live pending 상태로 맞췄다. Work Item W6는 active 유지하고 action을 사용자 live gate로 좁혔다.
+- Residual: 실제 `new-pane`/`send`/`send-key`, N개 pane, returned-surface targeting과 agent TUI ready는 실행하지 않았다. Candidate 검증 중 기존 daemon/API DB-close async lookup flake가 간헐 재현됐으나 관련 단독 및 candidate/controlling 최종 full run에서는 재현되지 않았다.
+
+Next: 사용자가 README의 cmux host 절차로 실제 N-pane/TUI live gate를 수행한다. PASS면 cmux gate를 소비하고 Ghostty contract review로 진행하며, FAIL이면 관찰 결과를 근거로 cmux correction만 재개한다.
+
+### 2026-09-01 15:13 · W6 cmux live gate FAIL — global symlink entrypoint correction contract
+
+- User evidence: `pnpm build`, `npm install -g .` 후 `aiox host new ...`와 `aiox status`를
+  두 번 실행했으나 pane·stdout·stderr가 없이 shell prompt로 즉시 복귀했다.
+- Controlling reproduction: installed `aiox --help`/`aiox host --help`도 output 없이 exit 0했고,
+  symlink target인 `node dist/src/bin/aiox.js --help`는 `main()`에 진입해 runtime path를 초기화했다.
+  `command -v`/`ls -l`/source 대조로 npm global bin이 compiled entrypoint의 symlink임을 확인했다.
+- Root cause: `src/bin/aiox.ts`의 direct-execution guard가 module URL과 `process.argv[1]`의
+  문자열 URL을 비교해 symlink를 같은 파일로 인식하지 못한다. cmux adapter/daemon은
+  호출되지 않았으므로 이 관찰은 cmux product behavior의 실패 근거가 아니다.
+- Contract review: W6 Task Brief revision 16으로 `src/bin/aiox.ts`와 focused bin test만
+  추가한다. Symlink canonicalization RED→GREEN 후 built symlink `--help`와 기존 cmux/invocation/full
+  regression을 검증하며, correction 검증에서 실제 pane은 만들지 않는다.
+
+Next: revision 16을 inline TDD로 수행·controlling review한 뒤, 사용자에게 재설치·live gate 재실행을 요청한다.
+
+### 2026-09-01 15:17 · revision 16 controlling result — accepted, live gate retry pending
+
+- Result disposition: W6 revision 16 global symlink entrypoint correction을 accepted한다. Work Item은 cmux live gate 재시행 대기 상태로 유지한다.
+- Confirmed fix: npm global bin의 symlink argv와 compiled module URL을 filesystem realpath로 대조해 main을 실행한다. cmux adapter, HostController, daemon, config와 W7 계약은 변경하지 않았다.
+- Verification: RED 1 failed/17 passed → GREEN bin 18/18; built temporary symlink `aiox --help` actual process PASS; focused 4 files/92 tests, build, typecheck, final exact full 75 files/989 tests, diff/Markdown/log/package integrity PASS.
+- Residual: 첫 full 병렬 run의 다수 socket/HTTP 동시 실패·hang은 socket transport 단독 13/13 및 즉시 final full PASS에서 재현되지 않았다. 실제 cmux pane/TUI는 이 correction에서 실행하지 않았다.
+
+Next: 사용자가 global package를 다시 설치한 뒤 `aiox --help`와 동일한 cmux host live gate를 재실행한다.
+
+### 2026-09-01 15:24 · cmux live partial FAIL — Codex fresh-attach correction contract
+
+- User live evidence: `/Users/lunaxislu/Desktop`에서 cmux pane 2개와 encoded command delivery가 성공했고 Claude TUI가 시작했다. Codex는 TUI 실행 후 daemon-created thread를 resume하다 `no rollout found`(-32600)로 실패했다.
+- Responsibility finding: cmux create/send/key와 cwd targeting은 통과했다. 실패 분기 owner는 Codex fresh attach다. `src/daemon/state.ts`의 eager `thread/start`와 `src/cli/invocation.ts`의 implicit resume가 decision/architecture의 fresh-skip·explicit-resume-only 계약과 충돌한다.
+- Foreground clarification: 원래 `aiox host new`가 계속 대기한 것은 reconcile/control lifecycle을 소유하는 정상 동작이다. 사용자의 Ctrl+C는 W7 이전 임시 종료 방식이며 이번 correction에서 foreground semantics를 바꾸지 않는다.
+- Contract review: W6 Task Brief revision 17을 inline TDD correction으로 확정했다. Fresh attach는 runtime/proxy만 준비하고 TUI `--remote`가 thread를 만든 뒤 proxy success binding을 저장한다. Explicit resume, host ready/detach, cmux, W7은 보존·제외한다.
+
+Next: revision 17 RED→GREEN과 focused/full controlling review 후 사용자에게 cmux live gate 재시행을 요청한다.
+
+### 2026-09-01 15:37 · revision 17 Codex fresh-attach controlling result — accepted, live retry pending
+
+- Result disposition: W6 revision 17 correction을 accepted한다. Fresh Codex attach의 eager `thread/start`/implicit resume를 제거해 owner decision·architecture와 production code/tests를 다시 일치시켰다.
+- Verification: two RED→GREEN increments, focused 7 files/203 tests, launcher 9/9, typecheck/build, final exact full 75 files/985 tests PASS. Explicit resume, proxy binding/order/idempotence, hosted ready/detach를 재검증했다.
+- Live residue: 사용자 Ctrl+C 뒤 daemon은 running·agent 0이고 `aiox host --list`에는 stale `cmux-live` host가 남았다. 이는 Codex correction과 분리된 foreground lifetime/cleanup UX decision candidate로 기록했으며 사용자 결정 전 바꾸지 않았다.
+- Reconcile: Evidence/Evidence gap/Decision Candidates와 W6 action을 correction accepted·전체 live retry pending 상태로 맞췄다.
+
+Next: 기존 daemon stop → 새 build/global install → cmux Claude+Codex live retry. Foreground lifetime은 composition map과 A/B 결과를 사용자에게 설명하고 선택을 받는다.
+
+### 2026-09-01 16:14 · default full-mesh live defect — controlling review accepted
+
+- Confirmed live evidence: aiox status showed reviewer/implementer connected while ROUTES was empty; aiox host --list showed the active cmux-live host. Source review traced omitted routes through both YAML host and CLI host-new into HostController.start empty topology, so no_active_routes was a default-topology contract defect.
+- Result disposition: accepted the subagent candidate after direct review of the topology/controller/spec/architecture changes. Omitted or empty routes now create a hidden implicit bidirectional mesh over current declared agents; route-less host add expands it, agent removal shrinks it, and the first successful explicit route mutation replaces it so directed narrowing remains effective. No internal route name or route snapshot is exposed.
+- Independent verification: focused 6 files/114 tests PASS; pnpm typecheck PASS; pnpm build PASS; exact pnpm test 75 files/990 tests PASS; git diff --check PASS.
+- Remaining live gate: stop the currently running old daemon/controller, rebuild and reinstall the package, then rerun the same cmux host command and verify agents_list plus send in both directions. Update-triggered vendor restart remains a separate pending lifecycle decision; no restart behavior was added in this correction.
+
+### 2026-09-01 16:31 · cmux live PASS + revision 18 visual correction accepted
+
+- User live result: corrected cmux host now works; user supplied a screenshot of the generated pane and reported successful testing. A follow-up daemon status read showed one delivered message, while only implementer remained connected at that later instant, so the exact two-way sequence is accepted from the user report rather than independently replayed.
+- Visual cause: cmux new-pane has no command/cwd option. The adapter must inject command text with cmux send, and the target interactive shell echoes that input before Enter. The long octal form is the accepted interpolation-safe representation, not debug logging.
+- Revision 18 disposition: accepted the subagent candidate after direct source/test review. The generated shell command keeps octal decoding and runs a best-effort TTY-only clear immediately before vendor invocation; non-TTY output and send-to-returned-surface ordering stay unchanged.
+- Independent verification: focused 3 files/75 tests PASS; pnpm typecheck PASS; pnpm build PASS; exact pnpm test 75 files/991 tests PASS; git diff --check PASS.
+- Separate foreground finding: the screenshot ENOENT happened because aiox stop removed the daemon socket while the still-running host foreground loop was polling it. The loop and invocation wrapper both rendered the same failure, producing two lines. This is not a cmux or agent failure and remains under the pending foreground/W7 shutdown decision.
+
+### 2026-09-01 16:40 · 2026-09-01 live observation · host new foreground lifetime remains visible
+
+- 확인된 사실: cmux pane/TUI 시각 정리 후에도 호출 터미널은 `aiox host new`가 점유한다. 스크린샷은 cmux pane 생성 실패가 아니라 foreground host controller의 대기 상태다.
+- 현재 책임: foreground process가 agent readiness reconcile, effective-route 동기화, 실행 중 host mutation 요청과 종료 제어를 소유한다.
+- 영향: pane 생성 직후 loop만 종료하면 위 책임이 고아가 되어 `no_active_routes` 재발 또는 `host add/remove/route`와 종료 제어 불능이 생길 수 있다.
+- 제안 계약(사용자 확인 대기): `aiox host new`는 ready/부분 실패 결과까지 기다리고 요약 출력 후 성공 종료하며, 별도 background controller가 reconcile/mutation/termination을 계속 소유한다.
+- 대안: foreground controller를 유지하되 running 상태와 graceful Ctrl-C를 명시한다. 이 대안은 프롬프트 복귀 요구를 충족하지 않는다.
+- Next: controller 책임 이동 전 사용자에게 관찰 가능한 수명 계약을 확인한다.
+
+### 2026-09-01 16:45 · 2026-09-01 16:49 · W6 revision 19 background lifetime contract approved — delegated execution handoff
+
+- User decision: public `aiox host`/`aiox host new`는 background owner startup handoff 뒤 종료해 prompt를 돌려주고, host-scoped detached controller가 reconcile/mutation/termination을 계속 소유하는 계약을 승인했다.
+- Contract review: W6 Task Brief revision 19로 material lifetime 변경, allowed write-set, preserved failure/route/adapter contracts, TDD/verification과 escalation gate를 고정했다.
+- Reconcile: W6 active action, Required Context exclusion, Package Scope revision 9, Decision Candidate, Verification Contract revision 3와 Closeout observable criterion을 같은 승인에 맞췄다.
+- Execution: 기존 W6 delegated subagent에게 revision 19 candidate 구현을 위임한다. Controlling은 source/diff/tests와 task Result를 독립 재검토하기 전 accepted로 승격하지 않는다.
+- Next: subagent candidate 수신 후 startup handoff, no-double-owner, background reconcile/control/terminate와 full regression을 controlling review한다.
+
+### 2026-09-01 17:10 · W6 revision 19 controlling result review — automated accepted, cmux live retry pending
+
+- Result disposition: W6 revision 19 Attempt 1과 public success-output correction을 실제 source/diff/tests에 대조해 automated 범위에서 전체 수용한다.
+- Accepted behavior: public YAML/CLI-only host는 same-entrypoint detached worker의 loop-armed startup handoff 뒤 `AIOX host started in background.`를 출력하고 종료한다. Parent는 local daemon/controller side effect가 없고 worker만 reconcile, running mutation, terminate-all을 소유한다.
+- Controlling verification: focused 7 files/140 tests, typecheck, build, exact full 75 files/1000 tests, compiled static-preflight child-process probe, diff/Markdown/log/package integrity가 PASS했다. Probe는 exit 1 진단을 0.067초에 parent로 반환했고 daemon socket을 만들지 않았다.
+- Owner reconcile: W6 architecture snapshot과 직접 runtime ownership comments를 detached controller-worker fact로 정합했다. Broader owner-doc status drift는 기존 W9가 live evidence와 함께 소비한다.
+- Residual: post-handoff loop fatal의 caller diagnostic/restart transport는 없다. 실제 cmux visual clear, prompt return과 post-return message/mutation/termination은 사용자 live retry 전에는 확인하지 않았다.
+- Next: 새 build를 global install한 뒤 사용자가 cmux live retry를 수행한다. PASS면 revision 18/19 live gate를 소비한다.

@@ -294,6 +294,43 @@ describe("HostController control relay and terminate-all", () => {
       ]);
     });
 
+    it("extends the implicit full mesh when host-add declares an agent without route operations", async () => {
+      const identity = controller.getIdentity();
+      if (!identity) throw new Error("expected the controller to have started a host");
+      for (const [name, kind] of [
+        ["reviewer", "claude"],
+        ["implementer", "codex"],
+      ] as const) {
+        await api.attachAgent({ hostId: identity.hostId, name, kind, cwd: "/repo/demo" });
+        await api.markHostAgentReady({ hostId: identity.hostId, agentName: name });
+      }
+      await controller.reconcile();
+      expect(api.status().routes).toHaveLength(2);
+
+      const submitted = api.submitHostControlRequest({
+        name: "demo",
+        kind: "host_add",
+        payload: { agents: [{ agentKind: "codex", name: "qa" }] },
+      });
+      if (!submitted.ok) throw new Error("expected submit to succeed");
+      const outcome = await controller.handleNextControlRequest();
+      expect(outcome).toMatchObject({
+        claimed: true,
+        kind: "host_add",
+        result: { ok: true, routes: [] },
+      });
+
+      await api.attachAgent({
+        hostId: identity.hostId,
+        name: "qa",
+        kind: "codex",
+        cwd: "/repo/demo",
+      });
+      await api.markHostAgentReady({ hostId: identity.hostId, agentName: "qa" });
+      await controller.reconcile();
+      expect(api.status().routes).toHaveLength(6);
+    });
+
     it("removes only successfully terminated agents and cleans their route membership in a partial result", async () => {
       const identity = controller.getIdentity();
       if (!identity) throw new Error("expected the controller to have started a host");

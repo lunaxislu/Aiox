@@ -233,10 +233,9 @@ describe("runDaemonProcess", () => {
       state: "ready" as const,
       endpoint: new URL("ws://127.0.0.1:4501"),
       activeThreadId: null,
-      // Eager-started on this no-resume attach (W6); must return a thread id for
-      // attach to succeed — this test's point is SIGTERM-driven disposal ordering,
-      // not eager-start itself.
-      startThread: vi.fn(async () => "thread-1"),
+      // Retained interface stub; fresh attach does not call daemon-side
+      // thread/start. This test owns SIGTERM-driven disposal ordering.
+      startThread: vi.fn(async () => null),
       resumeThread: vi.fn(async (threadId: string) => threadId),
       listLoadedThreadIds: vi.fn(async () => []),
       rebindActiveThread: vi.fn(),

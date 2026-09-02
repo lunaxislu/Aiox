@@ -35,6 +35,33 @@ pnpm status         # inspect agents, pairs, and routes
 pnpm stop           # stop the build daemon
 ```
 
+## cmux Host Integration
+
+The cmux host adapter targets one terminal pane per declared agent for
+`aiox host` and `aiox host new` when run from a cmux terminal. Stage 7 support
+remains provisional until the user live gate confirms the panes and agent
+TUIs. The caller must have `CMUX_WORKSPACE_ID`, which cmux sets in its
+terminals. `CMUX_SOCKET_PATH` is an optional socket override; without it, the
+cmux CLI uses its default socket and auto-discovers tagged or debug sockets.
+AIOX checks the executable before starting its daemon, then uses `ping` and
+`current-workspace` to check socket and workspace access before registering
+the host.
+
+Build AIOX, open a cmux terminal in the project, and run either the YAML or
+CLI-only host command:
+
+```bash
+pnpm build
+npm install -g .
+aiox host
+```
+
+The live gate is N new panes in the current workspace, each running the
+existing `aiox claude` or `aiox codex` CLI. AIOX does not close panes after a
+launch failure or agent exit. If preflight fails, confirm `cmux version`,
+`cmux ping`, and `cmux current-workspace` in the same terminal. No other
+terminal product is used as a fallback.
+
 ## Runtime Profiles & Namespace Isolation
 
 `aiox` separates its daemon socket (and future state DB) by _runtime profile_ so

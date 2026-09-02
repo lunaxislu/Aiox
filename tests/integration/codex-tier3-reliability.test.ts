@@ -91,9 +91,9 @@ describe("G1-C Tier 3 reliability composition", () => {
     const db = new Database(":memory:");
     applySchema(db);
     const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
-    // Attach with a real thread id (eager-start now requires one, W6) then clear
-    // it to model binding becoming absent again — this test's actual point is
-    // the retry-serialization gate while unbound, not the attach step itself.
+    // The controlled runtime begins with a live thread, then the test clears it
+    // to model binding becoming absent again. The assertion owns retry
+    // serialization while unbound, not fresh attach.
     const targetRuntime = new ControlledCodexRuntime("thread-target");
     const runtimes = new Map([["target", targetRuntime]]);
     const api = apiFor(db, runtimes, scheduled);

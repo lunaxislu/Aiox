@@ -3,12 +3,10 @@
  * `aiox host`) static/dynamic integration failures (W6 accepted failure
  * contract, Blocker 2 correction): every such failure must carry the real
  * cause, a help pointer, and the literal sentence "No agents were started."
- * No product `HostAdapter` (Category A/B/C, Stage 7-9) is implemented yet,
- * so today's only real static failure is "no adapter registered" -- a
- * build-capability gap, not a per-product integration problem, so a
- * fabricated per-product README/GitHub anchor would be dishonest.
- * `README.md` documents the AIOX workflows that this build actually
- * supports, without claiming it contains host-adapter setup.
+ * cmux is the first production `HostAdapter`; its setup and live-check
+ * boundary are documented at the stable README anchor below. Other products
+ * still report their concrete adapter reason through the same formatter as
+ * they are added, without category fallback.
  */
 
 export interface HostIntegrationFailure {
@@ -22,7 +20,7 @@ export function formatHostIntegrationFailureMessage(
 ): string {
   return [
     `${commandLabel} cannot start (${failure.stage}): ${failure.reason}`,
-    "See README.md for currently supported AIOX workflows.",
+    "See README.md#cmux-host-integration for setup and live-check guidance.",
     "No agents were started.",
   ].join("\n");
 }

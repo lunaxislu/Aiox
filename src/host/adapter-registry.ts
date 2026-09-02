@@ -1,4 +1,8 @@
 import type { HostAdapter } from "./host-adapter.js";
+import {
+  createCmuxHostAdapter,
+  type CreateCmuxHostAdapterOptions,
+} from "./cmux-host-adapter.js";
 
 export interface AdapterSelectionContext {
   cwd: string;
@@ -66,4 +70,13 @@ export function createAdapterRegistry(): AdapterRegistry {
       return [...adapters];
     },
   };
+}
+
+/** Production composition. Generic/test registries remain empty until explicitly registered. */
+export function createProductionAdapterRegistry(
+  cmuxOptions: CreateCmuxHostAdapterOptions = {},
+): AdapterRegistry {
+  const registry = createAdapterRegistry();
+  registry.register(createCmuxHostAdapter(cmuxOptions));
+  return registry;
 }

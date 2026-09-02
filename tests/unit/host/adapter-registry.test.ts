@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createAdapterRegistry } from "../../../src/host/adapter-registry.js";
+import {
+  createAdapterRegistry,
+  createProductionAdapterRegistry,
+} from "../../../src/host/adapter-registry.js";
 import type { HostAdapter } from "../../../src/host/host-adapter.js";
 
 function makeAdapter(id: string, detectValue: boolean): HostAdapter {
@@ -99,5 +102,19 @@ describe("AdapterRegistry", () => {
     registry.register(b);
 
     expect(registry.list()).toEqual([a, b]);
+  });
+
+  it("registers cmux in the production registry while preserving non-cmux no-match", () => {
+    const cmuxRegistry = createProductionAdapterRegistry({
+      env: { CMUX_WORKSPACE_ID: "workspace-id" },
+    });
+    const plainRegistry = createProductionAdapterRegistry({ env: { TERM_PROGRAM: "ghostty" } });
+
+    const selected = cmuxRegistry.select({ cwd: "/repo" });
+    expect(selected.ok && selected.adapter.id).toBe("cmux");
+    expect(plainRegistry.select({ cwd: "/repo" })).toEqual({
+      ok: false,
+      reason: "no_matching_adapter",
+    });
   });
 });

@@ -168,10 +168,10 @@ function applyMigration9(db: Database): void {
 }
 
 // Running-host runtime tables. These hold runtime-only state: a host row exists
-// only while its foreground controller runs, host-scoped agents live inside a
+// only while its detached controller worker runs, host-scoped agents live inside a
 // host's own namespace (so the same agent name may run under several hosts and
 // alongside a standalone `agents` row), and control requests are the relay
-// buffer between another shell's CLI and the owning foreground controller.
+// buffer between another shell's CLI and the owning controller worker.
 // Nothing here is a persistent HostDefinition; `purgeRunningHostRuntime` below
 // drops whatever a previous daemon left behind.
 function applyMigration8(db: Database): void {

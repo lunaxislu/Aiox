@@ -360,9 +360,9 @@ export type AttachAgentResult =
       reason: "codex_resume_failed" | "codex_runtime_attach_failed";
       message: string;
       /**
-       * Present only when this failure's own cleanup — disposing the
-       * eager-started (no-resume) or resumed runtime before the row was
-       * removed — itself rejected. The row and routes are removed either
+       * Present only when this failure's own cleanup — disposing an attached
+       * or explicitly resumed runtime before the row was removed — itself
+       * rejected. The row and routes are removed either
        * way; this surfaces the dispose failure instead of discarding it, the
        * same contract `DetachAgentResult.runtimeDisposeError` has.
        */
@@ -923,52 +923,15 @@ export function createDaemonState(
         });
 
         if (!request.resumeSessionId) {
-          const startedThreadId = await runtime.startThread(request.cwd, request.instructions);
-
-          if (!startedThreadId) {
-            throw Object.assign(new Error("Codex did not return a thread id"), {
-              code: "codex_runtime_attach_failed",
-            });
-          }
-
-          const startNow = options.now();
-          const startedAgent = agents.rebindAdapterSessionId({
-            id: attachResult.agent.id,
-            adapterSessionId: startedThreadId,
-            now: startNow,
-          });
-
-          if (!startedAgent) {
-            throw Object.assign(new Error(`Codex agent not found after attach: ${request.name}`), {
-              code: "codex_runtime_attach_failed",
-            });
-          }
-
           codexRuntimes.set(attachResult.agent.id, runtime);
           startingCodexRuntime = null;
-          await flushQueuedDeliveriesForTarget(startedAgent);
-          events.append({
-            id: options.createId(),
-            type: "agent_thread_id_rebound",
-            data: {
-              previousId: storedAgent.adapterSessionId,
-              nextId: startedThreadId,
-              operation: "thread/start",
-              source: "attach_start",
-            },
-            createdAt: startNow,
-            agentId: startedAgent.id,
-            messageId: null,
-            deliveryId: null,
-            routeId: null,
-          });
 
           return {
             ok: true,
-            agent: startedAgent,
+            agent: storedAgent,
             codexRuntime: {
               endpoint: runtime.endpoint.toString(),
-              activeThreadId: startedThreadId,
+              activeThreadId: storedAgent.adapterSessionId,
             },
             codexChannelToken,
           };
@@ -1064,8 +1027,8 @@ export function createDaemonState(
           };
         }
 
-        // An untyped rejection from startThread()/resumeThread() themselves
-        // (not one of the typed codex_*_failed cases above) still propagates
+        // An untyped rejection from resumeThread() itself (not one of the
+        // typed codex_*_failed cases above) still propagates
         // as the attach failure — that identity is not replaced. But when
         // runtime dispose ALSO failed, that cleanup failure must not be
         // dropped just because this error has no `.code`: fold it into the
@@ -3472,7 +3435,7 @@ export function createDaemonState(
 /**
  * Disposes a runtime without letting its failure abort the surrounding cleanup,
  * and returns the failure instead of discarding it. Callers that can report the
- * failure to their own caller (detach, and the eager/resume attach failure
+ * failure to their own caller (detach and explicit-resume attach failure
  * path) do so; callers on an error path that is already reporting something
  * else (the global `stop()` sweep) ignore the return.
  */

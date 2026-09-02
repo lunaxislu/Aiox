@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyHostRouteOperations,
+  createImplicitDefaultHostRouteTopology,
   emptyHostRouteTopology,
   listDeclaredHostRouteEdges,
+  listHostRouteSnapshots,
+  removeAgentsFromHostRouteTopology,
   type HostRouteOperation,
 } from "../../../src/host/host-route-topology.js";
 
@@ -32,6 +35,54 @@ function sortEdges(edges: Array<{ sourceName: string; targetName: string }>) {
 }
 
 describe("listDeclaredHostRouteEdges (pair-local directed override)", () => {
+  it("uses every declared agent as an implicit full mesh when no route block exists", () => {
+    const topology = createImplicitDefaultHostRouteTopology(["A", "B", "C"]);
+
+    expect(sortEdges(listDeclaredHostRouteEdges(topology))).toEqual(
+      sortEdges([
+        { sourceName: "A", targetName: "B" },
+        { sourceName: "B", targetName: "A" },
+        { sourceName: "A", targetName: "C" },
+        { sourceName: "C", targetName: "A" },
+        { sourceName: "B", targetName: "C" },
+        { sourceName: "C", targetName: "B" },
+      ]),
+    );
+    expect(listHostRouteSnapshots(topology)).toEqual([]);
+  });
+
+  it("replaces the implicit mesh when the first explicit route is applied", () => {
+    const declared = new Set(["A", "B"]);
+    const explicit = applyHostRouteOperations(
+      createImplicitDefaultHostRouteTopology(["A", "B"]),
+      [
+        { op: "add", name: "narrow", members: ["A", "B"] },
+        { op: "direct", name: "narrow", from: "A", to: ["B"] },
+      ],
+      declared,
+    );
+    if (!explicit.ok) throw new Error("expected explicit route to apply cleanly");
+
+    expect(listDeclaredHostRouteEdges(explicit.topology)).toEqual([
+      { sourceName: "A", targetName: "B" },
+    ]);
+  });
+
+  it("removes a declaration from the implicit mesh without exposing a named route", () => {
+    const topology = removeAgentsFromHostRouteTopology(
+      createImplicitDefaultHostRouteTopology(["A", "B", "C"]),
+      new Set(["B"]),
+    );
+
+    expect(sortEdges(listDeclaredHostRouteEdges(topology))).toEqual(
+      sortEdges([
+        { sourceName: "A", targetName: "C" },
+        { sourceName: "C", targetName: "A" },
+      ]),
+    );
+    expect(listHostRouteSnapshots(topology)).toEqual([]);
+  });
+
   it("removes the reverse edge when only one direction of a pair is declared", () => {
     const edges = edgesOf(
       ["A", "B"],

@@ -1815,11 +1815,9 @@ describe("daemon receiveClaudeChannelReply", () => {
       operation: "thread/loaded/list",
       loadedThreadIds: ["thread-old", "thread-new"],
       chosenThreadId: "thread-new",
-      // Eager attach now binds adapter_session_id to the resolved active
-      // thread ("thread-new", per fixture: loadedThreadIds takes precedence
-      // over startedThreadId) immediately, so it is no longer null by the
-      // time this reply's target-selection event captures the "before" id.
-      previousAdapterSessionId: "thread-new",
+      // Fresh attach stays unbound until authoritative live-thread evidence
+      // is consumed, so this selection records the null DB baseline.
+      previousAdapterSessionId: null,
       runtimeActiveThreadId: "thread-new",
       selectionPolicy: "proxy_active_thread",
       deliveryMessageType: "reply",
@@ -2118,10 +2116,9 @@ describe("daemon receiveClaudeChannelReply", () => {
     expect(JSON.parse(event.data_json)).toMatchObject({
       operation: "thread/loaded/list",
       loadedThreadIds: [],
-      // Eager attach bound adapter_session_id to "thread-old" at attach time;
-      // resetting the in-memory runtime's activeThreadId afterward (to
-      // reconstruct "no live thread now") doesn't change that DB column.
-      previousAdapterSessionId: "thread-old",
+      // Fresh attach never persisted the fixture's non-authoritative initial
+      // runtime value, and there is still no live binding to replace it.
+      previousAdapterSessionId: null,
       runtimeActiveThreadId: null,
       reason: "codex_no_loaded_thread",
       deliveryMessageType: "reply",
@@ -3957,10 +3954,8 @@ function fakeCodexRuntime(options: {
     },
     async startThread() {
       this.startThreadCalls += 1;
-      // Eager attach now always calls startThread(). Preserve whatever the
-      // fixture already resolved as "live" (activeThreadId/loadedThreadIds
-      // take precedence over startedThreadId, matching the constructor's own
-      // precedence below) instead of clobbering it with startedThreadId alone.
+      // Retained interface stub. Fresh production attach does not call it;
+      // explicit tests may still invoke it when modeling app-server behavior.
       this.activeThreadId = this.activeThreadId ?? (options.startedThreadId ?? null);
       return this.activeThreadId;
     },

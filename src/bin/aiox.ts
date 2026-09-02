@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 import type { ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import Database from "better-sqlite3";
 
 import { launchCodexTui } from "../adapters/codex/launcher.js";
 import { createDoctorResult } from "../cli/doctor.js";
-import { invokeParsedCommand, type InvocationRuntime } from "../cli/invocation.js";
+import {
+  InvocationError,
+  invokeParsedCommand,
+  type HostWorkerStartRequest,
+  type InvocationResult,
+  type InvocationRuntime,
+} from "../cli/invocation.js";
 import { parseCli } from "../cli/parse.js";
 import { getSocketPath } from "../config/paths.js";
 import { createDaemonServer, type DaemonServerHandle } from "../daemon/server.js";
@@ -35,7 +41,14 @@ export interface RunAioxCliOptions {
     endpoint: URL;
     resumeSessionId?: string;
   }) => ChildProcess;
+  /** Test/embedding seam; production defaults to the detached entrypoint worker. */
+  startHostWorker?: (request: HostWorkerStartRequest) => Promise<InvocationResult>;
+  /** Internal worker marker override used by tests; production reads its private env marker. */
+  hostWorkerMode?: boolean;
 }
+
+const HOST_WORKER_ENV = "AIOX_INTERNAL_HOST_WORKER";
+const HOST_STARTED_STDOUT = "AIOX host started in background.\n";
 
 export async function runAioxCli(
   argv: string[] = process.argv.slice(2),
@@ -43,6 +56,14 @@ export async function runAioxCli(
 ): Promise<number> {
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
+  const hostWorkerMode = options.hostWorkerMode ?? process.env[HOST_WORKER_ENV] === "1";
+  let startupReported = false;
+  let startupChannelLost = hostWorkerMode && !process.connected;
+  if (hostWorkerMode) {
+    process.once("disconnect", () => {
+      if (!startupReported) startupChannelLost = true;
+    });
+  }
 
   try {
     const version = options.version ?? readPackageVersion();
@@ -56,6 +77,26 @@ export async function runAioxCli(
         runtime,
         cwd: options.cwd ?? process.cwd(),
         launchCodexTui: options.launchCodexTui ?? launchCodexTui,
+        ...(hostWorkerMode
+          ? {
+              onHostControllerStarted: async () => {
+                if (startupChannelLost || !process.connected) {
+                  throw new Error("parent disconnected before host startup handoff");
+                }
+                await sendHostWorkerStartupMessage({ type: "aiox-host-startup", ok: true });
+                startupReported = true;
+              },
+            }
+          : {
+              startHostWorker:
+                options.startHostWorker ??
+                ((request) =>
+                  forkHostWorkerProcess({
+                    binPath: process.argv[1]!,
+                    argv,
+                    cwd: request.cwd,
+                  })),
+            }),
       });
     } finally {
       await runtime.dispose?.();
@@ -67,6 +108,21 @@ export async function runAioxCli(
 
     return result.exitCode;
   } catch (error) {
+    if (hostWorkerMode && !startupReported && !startupChannelLost && process.connected) {
+      try {
+        await sendHostWorkerStartupMessage({
+          type: "aiox-host-startup",
+          ok: false,
+          code:
+            error instanceof InvocationError ? error.code : "aiox.invocation.host_worker_failed",
+          exitCode: getExitCode(error),
+          message: formatErrorMessage(error),
+        });
+        startupReported = true;
+      } catch {
+        startupChannelLost = true;
+      }
+    }
     stderr.write(`${formatErrorMessage(error)}\n`);
     return getExitCode(error);
   }
@@ -179,6 +235,134 @@ export interface DaemonForkCommand {
   args: string[];
 }
 
+export function resolveHostWorkerForkCommand(input: {
+  binPath: string;
+  argv: readonly string[];
+  nodeCommand?: string;
+  tsxCommand?: string;
+}): DaemonForkCommand {
+  const args = [input.binPath, ...input.argv];
+  if (input.binPath.endsWith(".ts")) {
+    return { command: input.tsxCommand ?? "tsx", args };
+  }
+  return { command: input.nodeCommand ?? process.execPath, args };
+}
+
+interface HostWorkerStartupSuccess {
+  type: "aiox-host-startup";
+  ok: true;
+}
+
+interface HostWorkerStartupFailure {
+  type: "aiox-host-startup";
+  ok: false;
+  code: string;
+  exitCode: number;
+  message: string;
+}
+
+type HostWorkerStartupMessage = HostWorkerStartupSuccess | HostWorkerStartupFailure;
+
+export function waitForHostWorkerStartup(child: ChildProcess): Promise<InvocationResult> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const release = () => {
+      child.off("message", onMessage);
+      child.off("error", onError);
+      child.off("exit", onExit);
+      if (child.connected) child.disconnect();
+      child.unref();
+    };
+    const finish = (result: InvocationResult | Error) => {
+      if (settled) return;
+      settled = true;
+      release();
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    };
+    const onMessage = (value: unknown) => {
+      if (!isHostWorkerStartupMessage(value)) {
+        child.kill();
+        finish(new Error("detached host worker sent an invalid startup result"));
+        return;
+      }
+      if (value.ok) {
+        finish({ exitCode: 0, stdout: HOST_STARTED_STDOUT });
+        return;
+      }
+      finish(
+        new InvocationError(value.message, {
+          code: value.code,
+          exitCode: value.exitCode,
+        }),
+      );
+    };
+    const onError = (error: Error) => finish(error);
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
+      finish(
+        new Error(
+          `detached host worker exited before startup handoff (code=${code ?? "null"}, signal=${signal ?? "null"})`,
+        ),
+      );
+
+    child.on("message", onMessage);
+    child.once("error", onError);
+    child.once("exit", onExit);
+  });
+}
+
+export async function forkHostWorkerProcess(input: {
+  binPath: string;
+  argv: readonly string[];
+  cwd: string;
+  spawnProcess?: (
+    command: string,
+    args: readonly string[],
+    options: {
+      cwd: string;
+      detached: true;
+      env: NodeJS.ProcessEnv;
+      stdio: ["ignore", "ignore", "ignore", "ipc"];
+    },
+  ) => ChildProcess;
+}): Promise<InvocationResult> {
+  const spawnProcess = input.spawnProcess ?? (await import("node:child_process")).spawn;
+  const fork = resolveHostWorkerForkCommand({ binPath: input.binPath, argv: input.argv });
+  const child = spawnProcess(fork.command, fork.args, {
+    cwd: input.cwd,
+    detached: true,
+    env: { ...process.env, [HOST_WORKER_ENV]: "1" },
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
+  return waitForHostWorkerStartup(child);
+}
+
+function sendHostWorkerStartupMessage(message: HostWorkerStartupMessage): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!process.send || !process.connected) {
+      reject(new Error("host worker startup IPC channel is unavailable"));
+      return;
+    }
+    process.send(message, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function isHostWorkerStartupMessage(value: unknown): value is HostWorkerStartupMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const message = value as Record<string, unknown>;
+  if (message.type !== "aiox-host-startup" || typeof message.ok !== "boolean") return false;
+  if (message.ok) return true;
+  return (
+    typeof message.code === "string" &&
+    typeof message.exitCode === "number" &&
+    typeof message.message === "string"
+  );
+}
+
 export function resolveDaemonForkCommand(input: {
   binPath: string;
   socketPath: string;
@@ -199,9 +383,12 @@ async function forkDaemonProcess(socketPath: string): Promise<void> {
   const { spawn } = await import("node:child_process");
   const binPath = process.argv[1];
   const fork = resolveDaemonForkCommand({ binPath, socketPath });
+  const daemonEnv = { ...process.env };
+  delete daemonEnv[HOST_WORKER_ENV];
 
   const child = spawn(fork.command, fork.args, {
     detached: true,
+    env: daemonEnv,
     stdio: "ignore",
   });
   child.unref();
@@ -508,6 +695,14 @@ async function main(): Promise<void> {
   await runAioxCliMain();
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+export function isMainModule(moduleUrl: string, argvPath: string | undefined): boolean {
+  if (!argvPath) {
+    return false;
+  }
+
+  return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(argvPath);
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
   void main();
 }

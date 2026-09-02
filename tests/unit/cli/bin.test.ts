@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, symlinkSync } from "node:fs";
 import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
@@ -13,15 +13,29 @@ vi.mock("../../../src/core/public-ids.js", () => ({
 import {
   createClientRuntime,
   createSocketRuntime,
+  forkHostWorkerProcess,
+  isMainModule,
+  resolveHostWorkerForkCommand,
   runAioxCliMain,
   resolveDaemonForkCommand,
   runAioxCli,
+  waitForHostWorkerStartup,
 } from "../../../src/bin/aiox.js";
-import type { InvocationRuntime } from "../../../src/cli/invocation.js";
+import { InvocationError, type InvocationRuntime } from "../../../src/cli/invocation.js";
 import { createPublicDeliveryId } from "../../../src/core/public-ids.js";
 import type { DaemonApi } from "../../../src/daemon/api.js";
 
 describe("aiox CLI bin", () => {
+  it("recognizes an npm-style symlink as the main module", () => {
+    const dir = mkdtempSync("/private/tmp/aiox-bin-entry-");
+    const entrypoint = join(dir, "aiox.js");
+    const binLink = join(dir, "aiox");
+    symlinkSync(new URL(import.meta.url), entrypoint);
+    symlinkSync(entrypoint, binLink);
+
+    expect(isMainModule(new URL(import.meta.url).href, binLink)).toBe(true);
+  });
+
   it("does not force-exit a successful long-running MCP command", async () => {
     const exit = vi.fn();
 
@@ -122,6 +136,68 @@ describe("aiox CLI bin", () => {
     expect(code).toBe(1);
     expect(written.stdoutText()).toBe("");
     expect(written.stderrText()).toContain("At least one target is required");
+  });
+
+  it("returns the same public startup success for YAML and CLI-only host", async () => {
+    for (const argv of [
+      ["host"],
+      ["host", "new", "--name", "demo", "--agent", "codex", "--name", "reviewer"],
+    ]) {
+      const written = createWritableBuffers();
+      const child = new EventEmitter() as EventEmitter & {
+        connected: boolean;
+        disconnect: ReturnType<typeof vi.fn>;
+        unref: ReturnType<typeof vi.fn>;
+      };
+      child.connected = true;
+      child.disconnect = vi.fn(() => {
+        child.connected = false;
+      });
+      child.unref = vi.fn();
+      const startHostWorker = vi.fn(async () => {
+        const startup = waitForHostWorkerStartup(child as unknown as ChildProcess);
+        queueMicrotask(() => child.emit("message", { type: "aiox-host-startup", ok: true }));
+        return startup;
+      });
+
+      const code = await runAioxCli(argv, {
+        stdout: written.stdout,
+        stderr: written.stderr,
+        runtime: createRuntime(),
+        cwd: "/repo/demo",
+        startHostWorker,
+      });
+
+      expect(code).toBe(0);
+      expect(startHostWorker).toHaveBeenCalledOnce();
+      expect(written.stdoutText()).toBe("AIOX host started in background.\n");
+      expect(written.stderrText()).toBe("");
+    }
+  });
+
+  it("preserves a detached worker startup diagnostic and failure exit code", async () => {
+    const written = createWritableBuffers();
+
+    const code = await runAioxCli(
+      ["host", "new", "--name", "demo", "--agent", "codex", "--name", "reviewer"],
+      {
+        stdout: written.stdout,
+        stderr: written.stderr,
+        runtime: createRuntime(),
+        cwd: "/repo/demo",
+        startHostWorker: async () => {
+          throw new InvocationError("cmux current workspace is unavailable: socket refused", {
+            code: "aiox.invocation.host_new_failed",
+            exitCode: 1,
+          });
+        },
+      },
+    );
+
+    expect(code).toBe(1);
+    expect(written.stderrText()).toBe(
+      "cmux current workspace is unavailable: socket refused\n",
+    );
   });
 
   it("returns invocation error exit codes and messages", async () => {
@@ -325,6 +401,131 @@ describe("aiox CLI bin", () => {
     ).toEqual({
       command: "/usr/bin/node",
       args: ["/repo/dist/src/bin/aiox.js", "_run-daemon", "--socket", "/tmp/aiox.sock"],
+    });
+  });
+
+  it("resolves a detached host worker through the same source/build entrypoint layouts", () => {
+    expect(
+      resolveHostWorkerForkCommand({
+        binPath: "/repo/src/bin/aiox.ts",
+        argv: ["host", "new", "demo", "--agent", "codex:reviewer"],
+      }),
+    ).toEqual({
+      command: "tsx",
+      args: [
+        "/repo/src/bin/aiox.ts",
+        "host",
+        "new",
+        "demo",
+        "--agent",
+        "codex:reviewer",
+      ],
+    });
+    expect(
+      resolveHostWorkerForkCommand({
+        binPath: "/repo/dist/src/bin/aiox.js",
+        argv: ["host"],
+        nodeCommand: "/usr/bin/node",
+      }),
+    ).toEqual({
+      command: "/usr/bin/node",
+      args: ["/repo/dist/src/bin/aiox.js", "host"],
+    });
+  });
+
+  it("accepts one worker startup handoff and releases the IPC child reference", async () => {
+    const child = new EventEmitter() as EventEmitter & {
+      connected: boolean;
+      disconnect: ReturnType<typeof vi.fn>;
+      unref: ReturnType<typeof vi.fn>;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.connected = true;
+    child.disconnect = vi.fn(() => {
+      child.connected = false;
+    });
+    child.unref = vi.fn();
+    child.kill = vi.fn();
+
+    const started = waitForHostWorkerStartup(child as unknown as ChildProcess);
+    child.emit("message", { type: "aiox-host-startup", ok: true });
+
+    await expect(started).resolves.toEqual({
+      exitCode: 0,
+      stdout: "AIOX host started in background.\n",
+    });
+    expect(child.disconnect).toHaveBeenCalledOnce();
+    expect(child.unref).toHaveBeenCalledOnce();
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+
+  it("returns the worker's startup diagnostic and exit code instead of reporting false success", async () => {
+    const child = new EventEmitter() as EventEmitter & {
+      connected: boolean;
+      disconnect: ReturnType<typeof vi.fn>;
+      unref: ReturnType<typeof vi.fn>;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.connected = true;
+    child.disconnect = vi.fn(() => {
+      child.connected = false;
+    });
+    child.unref = vi.fn();
+    child.kill = vi.fn();
+
+    const started = waitForHostWorkerStartup(child as unknown as ChildProcess);
+    child.emit("message", {
+      type: "aiox-host-startup",
+      ok: false,
+      code: "aiox.invocation.host_new_failed",
+      exitCode: 1,
+      message: "aiox host new failed during dynamic_preflight: socket refused",
+    });
+
+    await expect(started).rejects.toMatchObject({
+      code: "aiox.invocation.host_new_failed",
+      exitCode: 1,
+      message: "aiox host new failed during dynamic_preflight: socket refused",
+    });
+    expect(child.disconnect).toHaveBeenCalledOnce();
+    expect(child.unref).toHaveBeenCalledOnce();
+  });
+
+  it("spawns one detached IPC owner in the requested project cwd", async () => {
+    const child = new EventEmitter() as EventEmitter & {
+      connected: boolean;
+      disconnect: ReturnType<typeof vi.fn>;
+      unref: ReturnType<typeof vi.fn>;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.connected = true;
+    child.disconnect = vi.fn(() => {
+      child.connected = false;
+    });
+    child.unref = vi.fn();
+    child.kill = vi.fn();
+    const spawnProcess = vi.fn((_command: string, _args: readonly string[], _options: object) => {
+      queueMicrotask(() => child.emit("message", { type: "aiox-host-startup", ok: true }));
+      return child as unknown as ChildProcess;
+    });
+
+    await expect(
+      forkHostWorkerProcess({
+        binPath: "/repo/dist/src/bin/aiox.js",
+        argv: ["host", "new", "--name", "demo"],
+        cwd: "/repo/demo",
+        spawnProcess,
+      }),
+    ).resolves.toEqual({
+      exitCode: 0,
+      stdout: "AIOX host started in background.\n",
+    });
+    expect(spawnProcess).toHaveBeenCalledOnce();
+    expect(spawnProcess.mock.calls[0]![2]).toMatchObject({
+      cwd: "/repo/demo",
+      detached: true,
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      env: expect.objectContaining({ AIOX_INTERNAL_HOST_WORKER: "1" }),
     });
   });
 });

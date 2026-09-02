@@ -103,6 +103,11 @@ routes:
 
 각 `routes[]` 항목은 독립된 named routing group이다. `agents[]`가 카탈로그(무엇이 실행되는가)를
 정의하는 것과 분리해, communication topology(누가 누구와 통신 가능한가)는 `routes[]`가 소유한다.
+단, `routes`를 생략하거나 빈 배열로 선언하면 host의 현재 declared agents 전체가 기본 양방향
+full mesh를 이룬다. 이 implicit default는 named route로 노출되지 않으며, route block이 하나라도
+있으면 생성되지 않는다. 기본 상태에서 `host add`로 agent를 추가하면 그 agent도 full mesh에
+참여하고, 첫 explicit route mutation이 성공하면 implicit default는 explicit named topology로
+전환되어 함께 union되지 않는다.
 
 | 필드 | required/optional | 비고 |
 |---|---|---|

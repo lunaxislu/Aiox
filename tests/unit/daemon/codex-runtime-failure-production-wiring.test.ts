@@ -57,10 +57,9 @@ describe("Codex managed runtime failure — production attach wiring", () => {
           endpoint: new URL("ws://127.0.0.1:54321/"),
           activeThreadId: null,
           dispose: async () => undefined,
-          // Eager-started on this no-resume attach (W6); must return a thread id
-          // for attach to succeed, since this test's actual point is proving
-          // onRuntimeFailed wiring, not eager-start itself.
-          startThread: async () => "thread-1",
+          // Retained interface stub; fresh attach does not call daemon-side
+          // thread/start. This test owns onRuntimeFailed wiring.
+          startThread: async () => null,
           resumeThread: async () => null,
           listLoadedThreadIds: async () => [],
           rebindActiveThread: () => undefined,

@@ -23,11 +23,11 @@ import { withTransaction } from "../store/transaction.js";
 
 /**
  * Running-host runtime: identity, host-scoped agent runtime and the control
- * relay that lets another shell's CLI reach a running host's foreground
- * controller through the existing daemon socket/API.
+ * relay that lets another shell's CLI reach a running host's detached
+ * controller worker through the existing daemon socket/API.
  *
- * Everything here is runtime-only. A host exists while its foreground
- * controller runs; unregistering deletes the host, its scoped agents and the
+ * Everything here is runtime-only. A host exists while its detached
+ * controller worker runs; unregistering deletes the host, its scoped agents and the
  * requests routed to it, and a daemon restart starts from an empty registry.
  */
 
@@ -221,7 +221,7 @@ export interface SubmitHostControlRequest {
   kind: HostControlRequestKind;
   /**
    * The normalized mutation for `kind`. The daemon stores and relays it without
-   * interpreting it — applying the mutation is the foreground controller's job.
+   * interpreting it — applying the mutation is the owning controller worker's job.
    */
   payload?: Record<string, unknown>;
 }
@@ -305,8 +305,8 @@ export interface HostRuntime {
 }
 
 export function createHostRuntime(options: CreateHostRuntimeOptions): HostRuntime {
-  // A previous daemon's rows are stale by definition: their foreground
-  // controllers died with that daemon and nothing can complete their requests.
+  // A previous daemon's rows are stale by definition: their detached
+  // controller workers died with that daemon and nothing can complete their requests.
   purgeRunningHostRuntime(options.db);
 
   const hosts = createRunningHostRepository(options.db);

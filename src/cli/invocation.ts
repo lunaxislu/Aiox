@@ -31,7 +31,7 @@ import { normalizeHostDeclaration, normalizeHostMutation } from "./host-command.
 import type { HostAgentDeclaration } from "../daemon/host-runtime.js";
 import type { HostRouteOperation } from "../host/host-route-topology.js";
 import {
-  createAdapterRegistry,
+  createProductionAdapterRegistry,
   type AdapterRegistry,
 } from "../host/adapter-registry.js";
 import {
@@ -91,6 +91,13 @@ export interface InvocationRuntime {
   daemonSocketPath?(): string;
 }
 
+export type HostStartCommand = Extract<ParsedCommand, { kind: "host" | "host-new" }>;
+
+export interface HostWorkerStartRequest {
+  command: HostStartCommand;
+  cwd: string;
+}
+
 export interface InvocationOptions {
   runtime: InvocationRuntime;
   cwd: string;
@@ -125,6 +132,11 @@ export interface InvocationOptions {
   runCodexMcpServer?: () => Promise<void>;
   runClaudeMcpServer?: () => Promise<void>;
   runDaemonProcessFn?: (socketPath: string) => Promise<void>;
+  /**
+   * Public CLI composition delegates host ownership here. Omitted inside the
+   * detached worker, where this invocation owns HostController + loop.
+   */
+  startHostWorker?: (request: HostWorkerStartRequest) => Promise<InvocationResult>;
   // `aiox host`: config load + semantic validation gate, run before the daemon
   // is started (W6 revision 5 Execution order step 1 — starting the daemon is
   // itself a lifecycle side effect and must not happen on an invalid config).
@@ -141,10 +153,9 @@ export interface InvocationOptions {
   hostedTerminationWatchIntervalMs?: number;
   hostedTerminationWatchSleep?: (ms: number) => Promise<void>;
   // `aiox host new`: production composition seams (W6 Stage 5D). Defaults are
-  // the real implementations -- an `AdapterRegistry` with nothing registered
-  // (Category A/B/C are Stage 7-9, so real production has no adapter yet, and
-  // `start()` must fail honestly at `static_preflight` rather than a
-  // placeholder success) and the real intent/ack-based `AgentRuntimeTerminator`.
+  // the real implementations -- a production `AdapterRegistry` containing
+  // the currently supported product adapters and the real intent/ack-based
+  // `AgentRuntimeTerminator`.
   // Tests inject a registry pre-loaded with a `FakeHostAdapter` and/or a fake
   // terminator so the foreground loop's own machinery can be exercised
   // without a live vendor process.
@@ -154,6 +165,8 @@ export interface InvocationOptions {
   /** `aiox host new`'s foreground reconcile/control-request loop driver. */
   startHostForegroundLoop?: StartHostForegroundLoop;
   hostForegroundLoopIntervalMs?: number;
+  /** Worker-only startup handoff, called after the controller loop is armed. */
+  onHostControllerStarted?: () => void | Promise<void>;
 }
 
 export interface InvocationResult {
@@ -230,10 +243,9 @@ export async function invokeParsedCommand(
           agentName: command.name,
           hostId: command.hostId,
           endpoint: new URL(response.codexRuntime.endpoint),
-          // Daemon now eager-creates a thread on every no-resume attach (W6): the
-          // TUI must resume that same thread, or the daemon's tracked threadId
-          // and the TUI's actual thread diverge.
-          resumeSessionId: command.resumeSessionId ?? response.codexRuntime.activeThreadId ?? undefined,
+          // Fresh attach lets the TUI create its own thread through the proxy;
+          // only an explicit --resume authorizes opening an existing rollout.
+          resumeSessionId: command.resumeSessionId,
           launch: options.launchCodexTui ?? launchCodexTui,
         });
         let tuiExit: { exitCode: number | null; signal: string | null };
@@ -385,6 +397,9 @@ export async function invokeParsedCommand(
       // used consistently everywhere below -- same as host-add/host-remove/
       // host-route, this is passed through as-is (no relative-path resolve).
       const path = command.path ?? options.cwd;
+      if (options.startHostWorker) {
+        return options.startHostWorker({ command, cwd: path });
+      }
 
       // Config load + semantic validation is the first prerequisite check —
       // it must fail before the daemon is started or the adapter is selected.
@@ -429,7 +444,7 @@ export async function invokeParsedCommand(
       // Same failure contract as `host-new` (Blocker 2 correction): adapter
       // selection + static preflight must run — and fully resolve — BEFORE
       // any daemon side effect (`startDaemon()` can fork a real OS process).
-      const registry = (options.createAdapterRegistry ?? createAdapterRegistry)();
+      const registry = (options.createAdapterRegistry ?? createProductionAdapterRegistry)();
       const adapterSelection = await selectAndStaticPreflightAdapter(registry, { cwd: path });
       if (!adapterSelection.ok) {
         throw new InvocationError(
@@ -468,35 +483,7 @@ export async function invokeParsedCommand(
         });
       }
 
-      const startLoop = options.startHostForegroundLoop ?? defaultStartHostForegroundLoop;
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const stop = startLoop({
-          controller,
-          ...(options.hostForegroundLoopIntervalMs === undefined
-            ? {}
-            : { intervalMs: options.hostForegroundLoopIntervalMs }),
-          onTerminated: () => {
-            if (settled) return;
-            settled = true;
-            stop();
-            resolve();
-          },
-          onFatalError: (error) => {
-            if (settled) return;
-            settled = true;
-            stop();
-            reject(
-              new InvocationError(
-                `aiox host foreground loop failed: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-                { code: "aiox.invocation.host_foreground_loop_failed", exitCode: 1 },
-              ),
-            );
-          },
-        });
-      });
+      await runHostControllerOwnershipLoop(controller, "aiox host", options);
 
       return { exitCode: 0 };
     }
@@ -546,6 +533,9 @@ export async function invokeParsedCommand(
       return structuredHostResult(result as unknown as Record<string, unknown>);
     }
     case "host-new": {
+      if (options.startHostWorker) {
+        return options.startHostWorker({ command, cwd: options.cwd });
+      }
       // Reuses the existing YAML structural/semantic validators as-is (§7 of
       // the accepted grammar contract) -- must fail before any daemon/host
       // side effect, same ordering rule as the plain `host` case's config gate.
@@ -558,7 +548,7 @@ export async function invokeParsedCommand(
       // so this registry/adapter resolution happens standalone, ahead of
       // `startDaemon()`, and the resolved adapter is handed to `start()` so
       // static preflight is never run a second time.
-      const registry = (options.createAdapterRegistry ?? createAdapterRegistry)();
+      const registry = (options.createAdapterRegistry ?? createProductionAdapterRegistry)();
       const adapterSelection = await selectAndStaticPreflightAdapter(registry, {
         cwd: options.cwd,
       });
@@ -618,35 +608,7 @@ export async function invokeParsedCommand(
         });
       }
 
-      const startLoop = options.startHostForegroundLoop ?? defaultStartHostForegroundLoop;
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const stop = startLoop({
-          controller,
-          ...(options.hostForegroundLoopIntervalMs === undefined
-            ? {}
-            : { intervalMs: options.hostForegroundLoopIntervalMs }),
-          onTerminated: () => {
-            if (settled) return;
-            settled = true;
-            stop();
-            resolve();
-          },
-          onFatalError: (error) => {
-            if (settled) return;
-            settled = true;
-            stop();
-            reject(
-              new InvocationError(
-                `aiox host new foreground loop failed: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-                { code: "aiox.invocation.host_foreground_loop_failed", exitCode: 1 },
-              ),
-            );
-          },
-        });
-      });
+      await runHostControllerOwnershipLoop(controller, "aiox host new", options);
 
       return { exitCode: 0 };
     }
@@ -679,6 +641,60 @@ export async function invokeParsedCommand(
     default:
       return assertNever(command);
   }
+}
+
+async function runHostControllerOwnershipLoop(
+  controller: HostController,
+  commandLabel: "aiox host" | "aiox host new",
+  options: InvocationOptions,
+): Promise<void> {
+  const startLoop = options.startHostForegroundLoop ?? defaultStartHostForegroundLoop;
+  let stopLoop: (() => void) | null = null;
+  let stopRequested = false;
+  const requestStop = () => {
+    if (stopLoop) stopLoop();
+    else stopRequested = true;
+  };
+  const completion = new Promise<void>((resolve, reject) => {
+    let settled = false;
+    stopLoop = startLoop({
+      controller,
+      ...(options.hostForegroundLoopIntervalMs === undefined
+        ? {}
+        : { intervalMs: options.hostForegroundLoopIntervalMs }),
+      onTerminated: () => {
+        if (settled) return;
+        settled = true;
+        requestStop();
+        resolve();
+      },
+      onFatalError: (error) => {
+        if (settled) return;
+        settled = true;
+        requestStop();
+        reject(
+          new InvocationError(
+            `${commandLabel} foreground loop failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            { code: "aiox.invocation.host_foreground_loop_failed", exitCode: 1 },
+          ),
+        );
+      },
+    });
+    if (stopRequested) stopLoop();
+  });
+
+  try {
+    await options.onHostControllerStarted?.();
+  } catch {
+    // The only production callback is the private parent IPC handoff. If that
+    // channel disappears, exiting here would strand a registered host with no
+    // controller. Keep this detached process as the sole owner until an
+    // existing relay terminate request ends the host.
+  }
+
+  await completion;
 }
 
 async function waitForHostControlResult(
@@ -866,9 +882,10 @@ async function launchTuiOrCleanUp(input: {
   }
 }
 
-// The daemon eager-creates the Codex runtime as part of attach (no-resume), so
-// by the time the TUI spawn or exit-wait fails, that runtime is already
-// `ready`. `detachAgent()` disposes the runtime and removes the agent/routes
+// The daemon registers the initialized Codex runtime as part of attach, so by
+// the time the TUI spawn or exit-wait fails that runtime is already `ready`,
+// even though a fresh attach has no thread binding yet. `detachAgent()`
+// disposes the runtime and removes the agent/routes
 // unconditionally regardless of runtime state, so it is the primitive this
 // failure path needs — for the Claude path too, where a fire-and-forget
 // rollback would leave the caller unable to see whether cleanup happened at

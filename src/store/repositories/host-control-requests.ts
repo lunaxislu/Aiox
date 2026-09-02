@@ -8,7 +8,7 @@ import type {
 
 /**
  * One host control command in flight between the CLI that submitted it and the
- * foreground controller that owns the target running host. The payload and the
+ * controller worker that owns the target running host. The payload and the
  * result are opaque JSON here: the daemon relays them, and only the controller
  * interprets them.
  */

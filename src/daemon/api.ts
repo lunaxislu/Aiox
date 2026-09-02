@@ -130,7 +130,7 @@ export interface DaemonApi {
   stop(request: StopRequest): Promise<StopResponse>;
   // Running-host runtime. Every method is reachable through the existing daemon
   // socket, which is what lets another shell's CLI find a running host and relay
-  // a host command to its foreground controller without a second transport.
+  // a host command to its owning controller worker without a second transport.
   registerRunningHost(request: RegisterRunningHostRequest): RegisterRunningHostResponse;
   lookupRunningHost(request: LookupRunningHostRequest): LookupRunningHostResponse;
   listRunningHosts(): ListRunningHostsResponse;

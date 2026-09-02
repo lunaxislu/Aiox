@@ -16,6 +16,8 @@ export interface HostRouteSnapshot {
 
 export interface HostRouteTopology {
   readonly routes: ReadonlyMap<string, HostRouteSnapshot>;
+  /** Hidden full-mesh declaration used only until the first explicit route mutation. */
+  readonly implicitDefaultMembers: readonly string[] | null;
 }
 
 export type ApplyHostRouteOperationsResult =
@@ -23,7 +25,16 @@ export type ApplyHostRouteOperationsResult =
   | { ok: false; issues: HostRouteIssue[] };
 
 export function emptyHostRouteTopology(): HostRouteTopology {
-  return { routes: new Map() };
+  return { routes: new Map(), implicitDefaultMembers: null };
+}
+
+export function createImplicitDefaultHostRouteTopology(
+  declaredAgentNames: readonly string[],
+): HostRouteTopology {
+  return {
+    routes: new Map(),
+    implicitDefaultMembers: [...new Set(declaredAgentNames)],
+  };
 }
 
 export function parseHostRouteOperations(
@@ -178,7 +189,16 @@ export function applyHostRouteOperations(
   for (const operation of operations) {
     if (operation.op === "remove") routes.delete(operation.name);
   }
-  return { ok: true, topology: { routes } };
+  return {
+    ok: true,
+    topology: {
+      routes,
+      implicitDefaultMembers:
+        operations.length === 0 && current.implicitDefaultMembers !== null
+          ? [...declaredAgentNames]
+          : null,
+    },
+  };
 }
 
 export function removeAgentsFromHostRouteTopology(
@@ -196,7 +216,11 @@ export function removeAgentsFromHostRouteTopology(
       ),
     });
   }
-  return { routes };
+  return {
+    routes,
+    implicitDefaultMembers:
+      current.implicitDefaultMembers?.filter((member) => !removedAgentNames.has(member)) ?? null,
+  };
 }
 
 export function listHostRouteSnapshots(topology: HostRouteTopology): HostRouteSnapshot[] {
@@ -217,6 +241,15 @@ export function listDeclaredHostRouteEdges(
   // unioned across routes here -- one route's narrowing can never delete an
   // edge a different (overlapping) route still requires.
   const edges = new Map<string, { sourceName: string; targetName: string }>();
+  if (topology.implicitDefaultMembers !== null) {
+    for (const edge of routeEffectiveEdges({
+      name: "",
+      members: [...topology.implicitDefaultMembers],
+      directed: [],
+    })) {
+      edges.set(JSON.stringify([edge.sourceName, edge.targetName]), edge);
+    }
+  }
   for (const route of topology.routes.values()) {
     for (const edge of routeEffectiveEdges(route)) {
       edges.set(JSON.stringify([edge.sourceName, edge.targetName]), edge);

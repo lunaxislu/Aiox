@@ -25,13 +25,11 @@ describe("daemon Codex proxy binding listener", () => {
     const { runtime, fireBinding } = fakeCodexRuntime();
     const ids = idSequence([
       "agent-1",
-      "event-attach-start",
       "event-rebind",
     ]);
     const nows = nowSequence([
       "2026-05-26T00:00:00.000Z", // attach now
       "2026-05-26T00:00:00.000Z", // pending token timestamp
-      "2026-05-26T00:00:00.500Z", // eager thread/start now
       "2026-05-26T00:00:01.000Z", // proxy binding now
     ]);
     const state = createDaemonState({
@@ -43,8 +41,8 @@ describe("daemon Codex proxy binding listener", () => {
     });
     const api = createDaemonApi(state);
 
-    // Attach itself eagerly starts a thread ("thread-initial"), so the proxy
-    // binding below rebinds from that, not from a null baseline.
+    // Fresh attach stays unbound. The TUI-originated same-connection response
+    // observed by the proxy is the first authoritative binding.
     await api.attachAgent({ kind: "codex", name: "impl", cwd: "/repo" });
 
     fireBinding({
@@ -63,7 +61,7 @@ describe("daemon Codex proxy binding listener", () => {
       {
         type: "agent_thread_id_rebound",
         data_json: JSON.stringify({
-          previousId: "thread-initial",
+          previousId: null,
           nextId: "thread-resumed",
           operation: "thread/resume",
           source: "proxy_binding",
@@ -83,11 +81,10 @@ describe("daemon Codex proxy binding listener", () => {
     const { runtime, fireBinding } = fakeCodexRuntime();
     const state = createDaemonState({
       db,
-      createId: idSequence(["agent-1", "event-attach-start", "event-1", "event-2"]),
+      createId: idSequence(["agent-1", "event-1", "event-2"]),
       now: nowSequence([
         "2026-05-26T00:00:00.000Z",
         "2026-05-26T00:00:00.000Z",
-        "2026-05-26T00:00:00.500Z",
         "2026-05-26T00:00:01.000Z",
         "2026-05-26T00:00:02.000Z",
       ]),
@@ -123,13 +120,11 @@ describe("daemon Codex proxy binding listener", () => {
     const { runtime, fireBinding } = fakeCodexRuntime();
     const state = createDaemonState({
       db,
-      createId: idSequence(["agent-1", "event-attach-start", "event-1"]),
+      createId: idSequence(["agent-1", "event-1"]),
       now: nowSequence([
         "2026-05-26T00:00:00.000Z",
         "2026-05-26T00:00:00.000Z",
-        "2026-05-26T00:00:00.500Z",
         "2026-05-26T00:00:01.000Z",
-        "2026-05-26T00:00:02.000Z",
       ]),
       codexRuntimes: new Map(),
       attachCodexRuntime: async () => runtime,
