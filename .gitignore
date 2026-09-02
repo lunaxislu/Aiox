@@ -38,7 +38,7 @@ yarn-error.log*
 legacy/
 # typescript
 *.tsbuildinfo
-/dist/
+**/dist/
 next-env.d.ts
 /bridge/dist/
 

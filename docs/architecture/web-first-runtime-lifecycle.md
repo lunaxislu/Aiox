@@ -4,6 +4,7 @@ Related:
 
 - [[docs/specs/aiox-runtime-control]]
 - [[docs/architecture/local-agent-runtime]]
+- [[docs/architecture/web-first-workspace-boundaries]]
 
 Status: Target
 

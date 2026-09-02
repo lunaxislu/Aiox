@@ -1,0 +1,28 @@
+{
+  "name": "@aiox/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "aiox-server": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "lint": "node ../../scripts/check-workspace-boundaries.mjs --package apps/server",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aiox/adapter-sdk": "workspace:*",
+    "@aiox/config": "workspace:*",
+    "@aiox/database": "workspace:*",
+    "@aiox/domain": "workspace:*",
+    "@aiox/protocol": "workspace:*"
+  }
+}

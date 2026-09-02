@@ -1,5 +1,6 @@
 {
   "name": "ai-orchestration",
+  "private": true,
   "type": "module",
   "bin": {
     "aiox": "./dist/src/bin/aiox.js"
@@ -8,11 +9,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest run",
+    "lint": "node scripts/check-workspace-boundaries.mjs && pnpm --recursive --sort lint",
+    "typecheck": "pnpm run typecheck:legacy && pnpm --recursive --sort typecheck",
+    "typecheck:legacy": "tsc --noEmit",
+    "build": "pnpm run build:legacy && pnpm --recursive --sort build",
+    "build:legacy": "tsc",
+    "test": "pnpm run test:root && pnpm --recursive --sort test",
+    "test:root": "vitest run",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
     "dev": "AIOX_PROFILE=dev tsx src/bin/aiox.ts",
-    "build": "tsc",
     "start": "AIOX_PROFILE=build node dist/src/bin/aiox.js daemon start",
     "stop": "AIOX_PROFILE=build node dist/src/bin/aiox.js stop",
     "status": "AIOX_PROFILE=build node dist/src/bin/aiox.js status",
