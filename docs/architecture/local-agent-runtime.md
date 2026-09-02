@@ -302,6 +302,8 @@ status 어휘는 이 인덱스가 소유한다.
 ## 14. Authority Links
 
 - **As-built architecture**: [[docs/architecture/local-agent-runtime]] (this document)
+- **Web-first target runtime lifecycle**: [[docs/architecture/web-first-runtime-lifecycle]].
+  This target successor does not change the as-built claims in this compatibility index.
 - **Product and roadmap authority**: [[docs/product/product]],
   [[docs/product/roadmap]]
 - **Specs authority**: [[docs/specs/aiox-a2a]] and sibling spec documents where external contracts are migrated.
