@@ -24,6 +24,159 @@ the current UDS/NDJSON implementation.
 - Server lifecycle and Agent/Host lifecycle are independent. Server stop does not imply
   Agent or Host stop.
 
+## Gateway wire frames and bootstrap snapshot [Status: Current]
+
+The shared protocol package validates every JSON frame strictly. Unknown object fields
+are rejected, request and response IDs are non-empty strings, and event sequence values
+are non-negative integers.
+
+```ts
+type RequestFrame = {
+  type: "req";
+  id: string;
+  method: string;
+  params?: unknown;
+};
+
+type ResponseFrame =
+  | { type: "res"; id: string; ok: true; payload: unknown }
+  | {
+      type: "res";
+      id: string;
+      ok: false;
+      error: { code: string; message: string; retryable?: boolean };
+    };
+
+type EventFrame = {
+  type: "event";
+  event: string;
+  payload: unknown;
+  seq: number;
+  stateVersion?: number;
+};
+```
+
+The Stage 2 bootstrap snapshot is the smallest authoritative server projection:
+
+```ts
+type GatewaySnapshot = {
+  server: {
+    epoch: string;
+    lifecycle:
+      | "starting"
+      | "running"
+      | "quiescing"
+      | "stopping"
+      | "stopped"
+      | "failed";
+  };
+  stateVersion: number;
+  nextEventSeq: number;
+};
+```
+
+The connected client core operates over an already connected text transport. It validates
+outbound requests and inbound frames, correlates each response to one pending request,
+validates successful payloads with the caller's schema, rejects remote failures as typed
+Gateway errors, and reports malformed frames or unknown response IDs as protocol errors.
+Platform-specific WebSocket construction remains outside that core.
+
+The current bootstrap binds only to IPv4 loopback and exposes the canonical Control
+WebSocket at `/ws/control`. Its non-secret discovery file is a strict
+`{ origin, pid, serverEpoch }` document, is atomically renamed into place with owner-only
+permissions, and is removed only by the matching server epoch. HTTP is limited to
+`GET`/`HEAD` static files; `/api` and `/api/*` do not define a second domain API.
+Discovery publication completes readiness, so a publication failure closes the listener
+and removes its temporary file. Accepted server stop performs one best-effort cleanup of
+connected Control WebSockets, the listener, and only its own discovery and credential
+records; it does not remove a newer owner's files.
+
+The authenticated session credential is a separate 32-byte base64url secret, atomically
+published in an owner-only file and never copied into endpoint discovery. A Control
+upgrade requires the exact current `127.0.0.1:<port>` Host; a supplied browser Origin
+must equal the current HTTP origin. Origin-less non-browser clients are permitted to
+upgrade but receive no authority without the same credential. An unauthenticated socket
+has a bounded authentication timeout.
+
+`gateway.subscribe` is the first authenticated request. The server validates the
+credential, captures the snapshot cursor, and registers the subscriber in one
+synchronous authority operation. Events occurring before the snapshot response has been
+written are buffered and delivered afterward. Every current server projection event
+carries its epoch inside a strict payload envelope, the exact next `seq`, and the next
+`stateVersion`. The shared reconnect client replaces local projection from each
+subscription snapshot, applies only matching epoch/sequence/version events, and discards
+the connection on a gap or mismatch before resubscribing. It obtains endpoint transport,
+credential, and delay policy from the platform client; no browser or Node ambient API is
+embedded in the protocol package.
+
+The current React/Vite shell consumes the CLI fragment credential into memory and calls
+`history.replaceState` before validating or connecting, so valid and invalid credentials
+are both removed from the visible URL immediately. It does not write credentials to
+local/session storage. Its browser WebSocket adapter uses same-origin `/ws/control` and
+the shared reconnect client. GatewayStore replaces the complete minimal projection on
+each snapshot, reduces only the validated `server.lifecycle.changed` event, and keeps
+connection state, stop-request pending, operation result, and authoritative lifecycle as
+separate values. A stop click therefore cannot optimistically change lifecycle. The shell
+renders connected/reconnecting/stopped signal, the actual server epoch/version/cursor,
+normal/force stop controls, blockers, and connection errors; no deferred Agent, Host,
+Network, Terminal, or approval projection is fabricated.
+
+Evidence:
+
+- Strict frames and bootstrap snapshot
+  - [[packages/protocol/src/frames.ts]]
+    - `packages/protocol/src/frames.ts:3-53`
+  - [[packages/protocol/src/snapshot.ts]]
+    - `packages/protocol/src/snapshot.ts:3-22`
+- Shared client correlation and failure behavior
+  - [[packages/protocol/src/client.ts]]
+    - `packages/protocol/src/client.ts:15-180`
+  - [[packages/protocol/src/errors.ts]]
+    - `packages/protocol/src/errors.ts:3-30`
+  - [[tests/contract/gateway-protocol.test.ts]]
+    - `tests/contract/gateway-protocol.test.ts:45-451`
+- Loopback endpoint and Local Server bootstrap
+  - [[packages/protocol/src/endpoint-discovery.ts]]
+    - `packages/protocol/src/endpoint-discovery.ts:3-12`
+  - [[apps/server/src/bootstrap/local-server.ts]]
+    - `apps/server/src/bootstrap/local-server.ts:23-112`
+  - [[apps/server/src/gateway/control/websocket-server.ts]]
+    - `apps/server/src/gateway/control/websocket-server.ts:4-45`
+  - [[apps/server/src/http/static-files.ts]]
+    - `apps/server/src/http/static-files.ts:13-72`
+  - [[apps/server/src/runtime-files/endpoint-discovery.ts]]
+    - `apps/server/src/runtime-files/endpoint-discovery.ts:10-46`
+  - [[tests/integration/local-server-bootstrap.test.ts]]
+    - `tests/integration/local-server-bootstrap.test.ts:17-274`
+- Authenticated subscription and reconnect
+  - [[packages/protocol/src/subscription.ts]]
+    - `packages/protocol/src/subscription.ts:3-21`
+  - [[packages/protocol/src/reconnecting-client.ts]]
+    - `packages/protocol/src/reconnecting-client.ts:16-217`
+  - [[apps/server/src/gateway/control/authenticated-session.ts]]
+    - `apps/server/src/gateway/control/authenticated-session.ts:13-137`
+  - [[apps/server/src/gateway/state/gateway-state.ts]]
+    - `apps/server/src/gateway/state/gateway-state.ts:10-85`
+  - [[apps/server/src/runtime-files/session-credential.ts]]
+    - `apps/server/src/runtime-files/session-credential.ts:7-50`
+  - [[tests/contract/gateway-subscription.test.ts]]
+    - `tests/contract/gateway-subscription.test.ts:67-224`
+  - [[tests/integration/gateway-session.test.ts]]
+    - `tests/integration/gateway-session.test.ts:47-179`
+- Browser credential, store, and shell
+  - [[apps/web/src/credential.ts]]
+    - `apps/web/src/credential.ts:3-22`
+  - [[apps/web/src/browser-transport.ts]]
+    - `apps/web/src/browser-transport.ts:6-64`
+  - [[apps/web/src/gateway-store.ts]]
+    - `apps/web/src/gateway-store.ts:12-147`
+  - [[apps/web/src/app.tsx]]
+    - `apps/web/src/app.tsx:5-126`
+  - [[tests/browser/gateway-store.test.tsx]]
+    - `tests/browser/gateway-store.test.tsx:91-216`
+  - [[tests/workspace/web-build-output.test.ts]]
+    - `tests/workspace/web-build-output.test.ts:5-23`
+
 ## AgentRuntime identity and state
 
 Each materialization has a unique immutable AgentRuntime ID. Reusing a display name or a
@@ -255,6 +408,49 @@ retain attachments for later reconnect.
 The externally observable Local Server lifecycle is `starting`, `running`, `quiescing`,
 `stopping`, `stopped`, or `failed`. Its epoch changes on each successful bootstrap. Server
 lifecycle is independent of every AgentRuntime and HostRuntime lifecycle.
+
+### Current Stage 2 lifecycle surface [Status: Current]
+
+The workspace CLI now exposes `start [--no-open] [--port]`, `open`,
+`status [--json]`, `stop [--force]`, and `doctor [--json]`. `start` probes an
+authenticated running snapshot before spawning the detached server bin, waits for
+endpoint/session/Gateway readiness, and avoids duplicate healthy starts. Concurrent
+process starts are serialized by an owner-checked profile lock; endpoint discovery
+remains the readiness authority. `open` passes the session credential in a URL fragment,
+never the query or discovery file; the current Web client consumes that credential into
+memory and erases the fragment before validation or connection.
+
+The current `server.stop` implementation owns an atomic admission gate and normalized
+`agent | host | terminal | operation` blocker projection. It waits for operations admitted
+before the barrier, includes dependencies those operations register, rejects later
+admission, restores `running` after a normal blocker rejection, and preserves the original
+mode of one in-flight stop. Force bypasses only the blocker decision and reports residual
+risk; neither path owns Agent/Host stop or process-kill callbacks. On accepted stop the
+server attempts to flush the response first, but response delivery is not a shutdown
+precondition: the send callback, connection close, or synchronous send failure starts the
+same one-shot cleanup. The server then removes only its endpoint/credential/lock,
+publishes its final minimal lifecycle, and closes its HTTP/Control resources. Production Agent/Host/Terminal registries,
+persistent-state flush, and database cleanup are not present yet, so the broader target
+cleanup list below remains a downstream integration contract rather than a current
+claim.
+
+Stage 2 `doctor` checks exactly endpoint discovery, the session credential boundary, an
+authenticated Gateway snapshot, and static HTML readiness. Adapter, AgentRuntime,
+HostRuntime, Network, Terminal, and database providers remain deferred to Stage 8.
+
+Evidence:
+
+- [[packages/protocol/src/server-lifecycle.ts]] — `packages/protocol/src/server-lifecycle.ts:3-25`
+- [[apps/server/src/gateway/state/shutdown-coordinator.ts]] — `apps/server/src/gateway/state/shutdown-coordinator.ts:10-139`
+- [[apps/server/src/bootstrap/local-server.ts]] — `apps/server/src/bootstrap/local-server.ts:42-251`
+- [[apps/server/src/process/run-server.ts]] — `apps/server/src/process/run-server.ts:9-66`
+- [[apps/cli/src/operations.ts]] — `apps/cli/src/operations.ts:17-283`
+- [[apps/cli/src/node-platform.ts]] — `apps/cli/src/node-platform.ts:15-169`
+- [[apps/cli/src/parse.ts]] — `apps/cli/src/parse.ts:1-55`
+- [[tests/contract/server-shutdown.test.ts]] — `tests/contract/server-shutdown.test.ts:12-117`
+- [[tests/contract/web-first-cli.test.ts]] — `tests/contract/web-first-cli.test.ts:96-198`
+- [[tests/integration/cli-server-lifecycle.test.ts]] — `tests/integration/cli-server-lifecycle.test.ts:13-92`
+- [[tests/integration/web-first-cli-bin.test.ts]] — `tests/integration/web-first-cli-bin.test.ts:44-160`
 
 ### Admission barrier and normal stop
 

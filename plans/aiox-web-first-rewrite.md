@@ -24,8 +24,8 @@ server-owned runtime/PTY, Runtime-ID Network routing을 사용하는 Web-first m
 
 - [x] Stage 0 — AgentRuntime·HostRuntime·TerminalSession·Local Server shutdown lifecycle contract와 authority/capability matrix 확정 -> `logs/2026-09-01-AIOX-Web-first-Stage0-Runtime-Contracts.md`
 - [x] Stage 1 — pnpm workspace와 apps/packages/adapters skeleton 및 shared tooling 구축 -> `logs/2026-09-02-AIOX-Web-first-Stage1-Monorepo-Foundation.md`
-- [>] Stage 2 — protocol, Local Server bootstrap, React shell과 start/open/status/stop vertical slice -> `logs/2026-09-02-AIOX-Web-first-Stage2-Gateway-Bootstrap.md`
-- [ ] Stage 3 — TerminalSession, node-pty와 xterm.js plain shell 기술 milestone
+- [x] Stage 2 — protocol, Local Server bootstrap, React shell과 start/open/status/stop vertical slice -> `logs/2026-09-02-AIOX-Web-first-Stage2-Gateway-Bootstrap.md`
+- [>] Stage 3 — TerminalSession, node-pty와 xterm.js plain shell 기술 milestone -> `logs/2026-09-02-AIOX-Web-first-Stage3-Terminal-Milestone.md`
 - [ ] Stage 4 — Claude standalone runtime lifecycle, reconnect와 explicit stop product slice
 - [ ] Stage 5 — Codex second adapter로 Runtime Binding과 Adapter SDK 수렴
 - [ ] Stage 6 — Host Manifest N-Agent materialization, compensating cleanup과 degraded health

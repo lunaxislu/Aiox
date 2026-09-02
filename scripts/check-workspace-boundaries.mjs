@@ -124,7 +124,10 @@ async function checkPackage(directory) {
   );
   report(
     manifest.exports?.["."]?.import === "./dist/index.js" &&
-      manifest.exports?.["."]?.types === "./dist/index.d.ts",
+      manifest.exports?.["."]?.types ===
+        (directory === "packages/protocol"
+          ? "./src/index.ts"
+          : "./dist/index.d.ts"),
     `${directory}: public export boundary mismatch`,
   );
   for (const script of ["lint", "typecheck", "build", "test"]) {

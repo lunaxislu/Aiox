@@ -211,10 +211,6 @@ describe("Stage 1 dependency and export smoke", () => {
   });
 
   it("imports every built package through its public package name", async () => {
-    execFileSync("pnpm", ["--recursive", "--sort", "build"], {
-      stdio: "pipe",
-    });
-
     for (const directory of workspaceDirectories) {
       const manifest = JSON.parse(
         await readFile(path.join(directory, "package.json"), "utf8"),

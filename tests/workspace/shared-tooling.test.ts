@@ -45,7 +45,10 @@ describe("Stage 1 shared tooling", () => {
       expect(scripts, directory).toMatchObject({
         lint: `node ../../scripts/check-workspace-boundaries.mjs --package ${directory}`,
         typecheck: "tsc -p tsconfig.json --noEmit",
-        build: "tsc -p tsconfig.json",
+        build:
+          directory === "apps/web"
+            ? "vite build && tsc -p tsconfig.json"
+            : "tsc -p tsconfig.json",
         test: "node --test",
       });
     }

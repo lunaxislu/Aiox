@@ -25,7 +25,10 @@ describe("Stage 1 app entry boundaries", () => {
         },
       });
       expect(manifest.scripts, app).toMatchObject({
-        build: "tsc -p tsconfig.json",
+        build:
+          app === "web"
+            ? "vite build && tsc -p tsconfig.json"
+            : "tsc -p tsconfig.json",
         typecheck: "tsc -p tsconfig.json --noEmit",
       });
     }

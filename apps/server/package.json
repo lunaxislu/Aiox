@@ -23,6 +23,10 @@
     "@aiox/config": "workspace:*",
     "@aiox/database": "workspace:*",
     "@aiox/domain": "workspace:*",
-    "@aiox/protocol": "workspace:*"
+    "@aiox/protocol": "workspace:*",
+    "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
   }
 }

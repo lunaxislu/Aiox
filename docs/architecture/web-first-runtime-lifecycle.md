@@ -65,6 +65,53 @@ The pre-rewrite implementation does not already satisfy this target:
 
 These are current facts only. They do not constrain the target state model below.
 
+The Stage 2 bootstrap now establishes a narrower current boundary beside that legacy
+runtime: it preflights the static index, binds an IPv4-loopback HTTP server, installs the
+single `/ws/control` upgrade lane, and atomically publishes endpoint discovery only after
+those resources are ready. Startup publication failure closes the listener; accepted
+stop best-effort cleans Control sockets, the listener, and only the matching epoch's
+discovery and credential records. The Control boundary now also validates exact loopback Host/Origin, requires a
+separate session credential for atomic `gateway.subscribe`, and projects the minimal
+server lifecycle through a single GatewayState-owned version/sequence cursor. The shared
+client replaces its projection on connect/reconnect and resubscribes instead of applying
+an epoch, sequence, or version mismatch. The Local Server now also owns the generic
+admission/shutdown coordinator described below: barrier acquisition is synchronous,
+pre-barrier operations settle before one normalized blocker snapshot, normal rejection
+reopens admission, and force changes only that blocker decision. The CLI consumes this
+authority through `server.stop`; it never writes lifecycle locally. Current dependency
+producers are test/composition seams only—Agent, Host, Terminal, Network, and database
+production integration remains deferred.
+
+The React GatewayStore is now the browser-side copy boundary for this minimal projection.
+It receives snapshots and validated events from the shared reconnect client, never calls
+GatewayState or a lifecycle setter, and preserves the last projection as visibly stale
+while connection state is `reconnecting`. A replacement snapshot supersedes that copy.
+Stop-request pending and blocker results remain UI/operation state rather than invented
+server lifecycle transitions.
+
+An accepted `server.stop` response is flushed before cleanup when possible, but response
+delivery is not a shutdown precondition. The response callback, connection close, or
+synchronous send failure converges on one idempotent after-response action so a client
+disconnect cannot leave the Local Server permanently `stopping` with admission closed.
+
+Evidence:
+
+- [[apps/server/src/bootstrap/local-server.ts]] — `apps/server/src/bootstrap/local-server.ts:69-147`
+- [[apps/server/src/gateway/control/websocket-server.ts]] — `apps/server/src/gateway/control/websocket-server.ts:14-59`
+- [[apps/server/src/gateway/control/authenticated-session.ts]] — `apps/server/src/gateway/control/authenticated-session.ts:50-137`
+- [[apps/server/src/gateway/state/gateway-state.ts]] — `apps/server/src/gateway/state/gateway-state.ts:21-85`
+- [[apps/server/src/runtime-files/endpoint-discovery.ts]] — `apps/server/src/runtime-files/endpoint-discovery.ts:10-46`
+- [[tests/contract/gateway-subscription.test.ts]] — `tests/contract/gateway-subscription.test.ts:67-224`
+- [[tests/integration/gateway-session.test.ts]] — `tests/integration/gateway-session.test.ts:47-179`
+- [[apps/server/src/gateway/state/shutdown-coordinator.ts]] — `apps/server/src/gateway/state/shutdown-coordinator.ts:10-139`
+- [[apps/cli/src/operations.ts]] — `apps/cli/src/operations.ts:40-283`
+- [[tests/contract/server-shutdown.test.ts]] — `tests/contract/server-shutdown.test.ts:12-117`
+- [[tests/integration/server-stop-gateway.test.ts]] — `tests/integration/server-stop-gateway.test.ts:37-126`
+- [[apps/web/src/gateway-store.ts]] — `apps/web/src/gateway-store.ts:12-147`
+- [[apps/web/src/app.tsx]] — `apps/web/src/app.tsx:5-126`
+- [[tests/browser/gateway-store.test.tsx]] — `tests/browser/gateway-store.test.tsx:91-216`
+- [[tests/integration/web-first-cli-bin.test.ts]] — `tests/integration/web-first-cli-bin.test.ts:44-160`
+
 ## AgentRuntime axes and invariants
 
 Every materialization attempt receives a new immutable AgentRuntime ID. A Host Manifest

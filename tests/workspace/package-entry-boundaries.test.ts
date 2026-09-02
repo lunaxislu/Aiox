@@ -31,7 +31,10 @@ describe("Stage 1 package and adapter entry boundaries", () => {
 
       expect(manifest.exports, directory).toEqual({
         ".": {
-          types: "./dist/index.d.ts",
+          types:
+            directory === "packages/protocol"
+              ? "./src/index.ts"
+              : "./dist/index.d.ts",
           import: "./dist/index.js",
         },
       });
@@ -39,8 +42,22 @@ describe("Stage 1 package and adapter entry boundaries", () => {
         build: "tsc -p tsconfig.json",
         typecheck: "tsc -p tsconfig.json --noEmit",
       });
+      const expectedSource =
+        directory === "packages/protocol"
+          ? [
+              'export * from "./client.js";',
+              'export * from "./endpoint-discovery.js";',
+              'export * from "./errors.js";',
+              'export * from "./frames.js";',
+              'export * from "./reconnecting-client.js";',
+              'export * from "./server-lifecycle.js";',
+              'export * from "./snapshot.js";',
+              'export * from "./subscription.js";',
+              "",
+            ].join("\n")
+          : "export {};\n";
       expect(await readFile(`${directory}/src/index.ts`, "utf8"), directory).toBe(
-        "export {};\n",
+        expectedSource,
       );
     }
   });
