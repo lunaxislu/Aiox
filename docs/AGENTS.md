@@ -100,7 +100,7 @@ text를 쓴다.
 For section hints, prefer stable document links plus readable labels:
 
 ```md
-See [[docs/specs/aiox-message-lifecycle]] §4 Message Routing.
+See [[docs/specs/aiox-collaboration]]의 Message Routing 계약.
 ```
 
 Constraints:

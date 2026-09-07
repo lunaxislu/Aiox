@@ -2,60 +2,15 @@
   "name": "ai-orchestration",
   "private": true,
   "type": "module",
-  "bin": {
-    "aiox": "./dist/src/bin/aiox.js"
-  },
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "lint": "node scripts/check-workspace-boundaries.mjs && pnpm --recursive --sort lint",
-    "typecheck": "pnpm run typecheck:legacy && pnpm --recursive --sort typecheck",
-    "typecheck:legacy": "tsc --noEmit",
-    "build": "pnpm run build:legacy && pnpm --recursive --sort build",
-    "build:legacy": "tsc",
-    "test": "pnpm run test:root && pnpm --recursive --sort test",
-    "test:root": "vitest run",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test",
-    "test:watch": "vitest",
-    "dev": "AIOX_PROFILE=dev tsx src/bin/aiox.ts",
-    "start": "AIOX_PROFILE=build node dist/src/bin/aiox.js daemon start",
-    "stop": "AIOX_PROFILE=build node dist/src/bin/aiox.js stop",
-    "status": "AIOX_PROFILE=build node dist/src/bin/aiox.js status",
-    "claude": "AIOX_PROFILE=build node dist/src/bin/aiox.js claude",
-    "codex": "AIOX_PROFILE=build node dist/src/bin/aiox.js codex",
-    "connect": "AIOX_PROFILE=build node dist/src/bin/aiox.js connect",
-    "pair": "AIOX_PROFILE=build node dist/src/bin/aiox.js pair",
-    "doctor": "AIOX_PROFILE=build node dist/src/bin/aiox.js doctor"
-  },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "engines": {
     "node": "^20.19.0 || ^22.12.0 || ^24.0.0"
   },
   "packageManager": "pnpm@10.33.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3"
-    ]
-  },
-  "dependencies": {
-    "@cfworker/json-schema": "^4.1.1",
-    "@modelcontextprotocol/node": "2.0.0-alpha.2",
-    "@modelcontextprotocol/server": "2.0.0-alpha.2",
-    "better-sqlite3": "^12.10.0",
-    "commander": "^14.0.3",
-    "ws": "^8.20.1",
-    "yaml": "^2.4.2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@types/node": "^25.7.0",
-    "@types/ws": "^8.18.1",
-    "esbuild": "^0.27.7",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+  "description": "AIOX TUI product rebuild",
+  "scripts": {
+    "onramp": "scripts/onramp",
+    "test:workflow": "scripts/test-onramp.sh"
   }
 }

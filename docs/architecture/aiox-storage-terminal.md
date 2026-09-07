@@ -1,0 +1,153 @@
+# AIOX Storage, Terminal and Web State
+
+Status: Target
+
+이 문서는 daemon의 지속 데이터, 설정 적용, 터미널 화면·attachment와 Web 알림 projection을
+소유한다. 실행 소유권은 [[docs/architecture/aiox-system]], vendor 관측은
+[[docs/architecture/aiox-vendor-bindings]], 사용자 동작 계약은
+[[docs/specs/aiox-configuration-web]]와 [[docs/specs/aiox-runtime]]가 소유한다.
+아래 목표는 현재 DB migration이나 OS별 통합이 완료됐다는 뜻이 아니다.
+
+## 데이터 소유권
+
+| 저장 책임 | 대상 | 경계 |
+| --- | --- | --- |
+| 실행 환경 사용자 홈의 `.aiox/config.<확장명>` | 터미널·keyboard·daemon/운영 Web 포트 | 모든 프로젝트·Host·standalone 공통, 형식 미결 |
+| SQLite | persistent Network/Route, Message/reply 관계, 실행 이력, 알림/읽음, workspace 배치 | 메시지 본문 포함 여부·retention·schema 미결 |
+| daemon memory | live process/PTY/binding/credential/activity | DB의 과거 running을 현재 생존으로 간주하지 않음 |
+| browser localStorage | Web dark/light theme | terminal 전역 theme과 다름 |
+| Host YAML | Host-managed 정의 | DB persistent 정의와 이중 권위 금지 |
+
+언어·소리 on/off/volume의 localStorage 저장, system theme 선택은 제안이다. 실제 Runtime
+credential을 영속화된 설정·메시지에 넣지 않는다. vendor transcript/reasoning 전체 복제나 SQLite
+저장을 근거로 동일 delivery 재전송·자동 재시작을 추가하지 않는다.
+
+## SQLite와 플랫폼
+
+`packages/persistence`가 schema·migration·repository를 구현하고 daemon이 DB 연결을 소유한다.
+domain은 DB를 모르고 application은 port를 통해 작업한다. CLI·Web·vendor binding이 직접 DB 파일을
+열어 authoritative 상태를 변경하지 않는다. 필요한 상태 변경은 transaction 경계로 처리한다.
+
+DB 기본 후보는 실행 환경 사용자 홈 아래 `.aiox/aiox.db`다. [Status: Proposed]
+Node homedir/path로 구성하며 `~` 문자열·특정 사용자 경로·npm 설치 경로·프로젝트/Worktree 경로를
+하드코딩하지 않는다. 첫 daemon 시작에서 디렉터리/DB/migration을 준비하고 실패하면 정상 기동으로
+표시하지 않는다. 기존 파일 삭제나 빈 DB 대체로 오류를 숨기지 않는다.
+
+```text
+실행 환경의 사용자 홈 결정
+ → 로컬 DB 준비·migration
+ → 단일 daemon 연결 소유
+ → repositories를 통한 저장·조회
+ → 관리 실행 종료 / DB 작업 정리·close
+ → 다음 시작에서 저장 데이터 읽기
+```
+
+Windows native, Linux, macOS에서 domain/schema/migration은 공유한다. OS별 DB 모델은 만들지
+않는다. Windows native와 WSL은 홈·실행 환경이 다르므로 별도 DB를 사용하는 방향이며 Windows
+마운트의 같은 DB를 두 daemon이 공유하는 운영은 도입하지 않는다. 파일 지속과 프로세스 재부착은
+다르다. 실행 중 포트 설정 변경이 같은 DB를 소유하는 두 번째 daemon을 만들게 하지 않는다.
+
+지원 목표는 Windows/Linux/macOS다. 초기 구성은 daemon·Node/Git·vendor CLI를 같은 실행
+환경에 두는 것을 추천한다. [Status: Proposed] Windows daemon + WSL vendor 혼합 제어는
+path/socket/token/MCP/종료 경계를 별도로 해결해야 하므로 지원 확정이 아니다. Windows 브라우저가
+WSL Web에 접속하는 것은 이 혼합 실행과 다르며 네트워크 접근은 별도로 검증한다.
+
+기존 better-sqlite3는 재사용 후보다. OS 이름만으로 npm 전역 설치 성공을 약속하지 않고 채택
+버전의 Node·CPU·OS에 맞는 prebuilt/native 로딩을 검증한다. PTY native 의존도 함께 확인한다.
+지원 Node 범위와 배포 artifact를 함께 결정한다. WAL 채택은 미결이며 채택 시 같은 디렉터리의
+`-wal`/`-shm` 접근과 로컬 파일시스템 조건을 지킨다. 살아 있는 sidecar를 삭제하지 않는다.
+[better-sqlite3](https://github.com/WiseLibs/better-sqlite3), [SQLite WAL](https://sqlite.org/wal.html).
+
+검증 경로는 설치→DB 생성/migration→저장→정상/force 종료→재시작 후 데이터 확인이다.
+Windows native/Linux/macOS를 구분하고 WSL 실행·Windows 브라우저 연결은 별도 확인한다.
+Linux Docker 결과를 native Windows 검증으로 보고하지 않는다.
+
+## 전역 설정 적용
+
+설정 scope는 사용자 전역 하나이며 프로젝트 override는 없다. Host 실행 정의 `aiox.yaml`과도
+별개다. JSON은 Web 편집과 저장에 단순한 후보이지 확정 형식이 아니다. 사용자 홈에 첫 실행/저장
+때 준비하는 방식이 제안됐으며 npm 설치 디렉터리에 사용자 설정을 저장하지 않는다.
+
+```text
+Web 수정·미리보기 → 저장 요청 → daemon 검증 → 전역 파일 저장 → 유효 설정 배포
+파일 직접 편집  → daemon 변경 감지·검증              → 유효 설정 배포
+```
+
+같은 검증·적용 경로를 쓰고 파일 변경 이벤트를 짧게 묶는다. 별도 config apply 명령은 없다.
+잘못된 설정은 마지막 유효 값을 유지하고 오류를 표시한다. daemon이 꺼져 있으면 다음 시작에서
+읽고 검증한다. 동시 편집 충돌 해결 방식·파일 감지 수단과 debounce 수치는 미결이다.
+
+폰트·터미널 색상·AIOX 단축키는 연결된 Web에 즉시 배포한다. font/size 변경 후 fit/resize를
+계산한다. daemon/운영 Web 포트는 다음 시작에 적용하고 Web에 저장됨·재시작 후 적용으로 표시한다.
+설정 저장이 daemon 자동 재시작이나 Agent 종료를 일으키지 않는다.
+
+Web terminal theme은 외부 cmux/VS Code/일반 터미널의 appearance까지 바꾸는 설정이 아니다.
+vendor가 명시적으로 그리는 모든 요소의 색상 변경을 보장하지 않는다. AIOX pane/탭 keybinding과
+vendor Ctrl+O 등 입력·브라우저 예약 키를 구분한다.
+
+## PTY와 Web 복귀
+
+```text
+Vendor TUI ↔ 서버 소유 PTY / 현재 화면
+                         ↕ attachment
+                     Web xterm renderer
+
+Web close → attachment 해제 → 같은 Runtime/PTY 실행 지속
+재방문    → 살아 있는 daemon 자동 연결 → snapshot / 기존 terminal 현재 화면
+          → pane 배치·미확인 알림 복원
+```
+
+탭 close/unmount/WS disconnect를 agent.stop이나 terminal.stop으로 연결하지 않는다.
+작업 중·완료·승인 대기·idle 모두 같은 터미널의 계속 갱신된 현재 화면으로 돌아온다.
+재방문 때 로그인·token 수동 입력을 추가하지 않는다. 내부 연결 보호 수단은 이 UX를 충족하도록
+정하며 기존 메모리 credential 제약을 사용자 인증 절차 요구로 바꾸지 않는다.
+
+단순 WS reconnect만으로 현재 화면이 복원되지는 않는다. server-side screen 유지·xterm headless/
+serialize 또는 output 유지 방식을 구현에서 평가한다. terminal headless renderer는 제외한 LLM
+headless와 다르다. 특정 package, 무제한 raw output 저장, 저장 크기를 미리 확정하지 않는다.
+화면 snapshot과 후속 stream 연결이 일관되도록 구현하며 pane 이동은 routing을 바꾸지 않는다.
+범위는 서버가 살아 있는 동안의 복귀다. daemon 재시작 뒤 외부 프로세스 자동 재attach/실행이나
+durable message replay까지 약속하지 않는다.
+
+## 관측에서 알림까지
+
+```text
+Binding / hooks / process 관측
+ → daemon Runtime projection / 연결 가능한 입력 관측
+ → Gateway 알림 후보
+ → 사용자 실제 focus 판정
+ → 미확인 목록·읽음 저장 / Web 표시·소리
+```
+
+승인·질문·리밋·중단은 Runtime/Web 알림 대상이며 사용자 직접 작업에서도 발생한다. 특정
+delivery 실패로 귀속하려면 입력 연결 근거가 있어야 한다. 일반 vendor 도구 오류를 모두 AIOX
+오류로 만들지 않는다. 입력 수락·응답 종료·MCP reply·작업 성공은 서로 다르다.
+
+알림 클릭은 해당 terminal 이동+읽음 처리다. 전체 확인은 현재 미확인 항목을 읽음 처리한다.
+읽음은 승인이나 실제 문제 해결이 아니므로 요청이 살아 있으면 Runtime 대기 표시도 유지한다.
+
+| 실제 사용자 상태 | 처리 |
+| --- | --- |
+| 활성 창·활성 tab에서 같은 terminal focus | 추가 팝업·소리·미확인 항목 억제, TUI/상태는 표시 |
+| 다른 terminal focus | 대상 알림을 미확인 목록에 추가 |
+| background tab/window | 선택된 pane만으로 읽음 판정하지 않음 |
+| Web 닫힘 | daemon이 미확인 알림 유지, 재방문에 표시 |
+
+짧은 시간의 여러 알림은 항목을 남기고 소리를 묶는 방향이다. 묶음 시간, 같은 요청의 반복
+알림 갱신, multi-tab 단일 재생 주체는 구현 제안이며 정확한 수단은 미결이다. Web Audio는
+후보이고 autoplay를 위한 사용자 활성화 UX를 고려한다. Web이 닫힌 상태의 native OS 알림음을
+추가 요구로 만들지 않는다.
+
+## Web 상태와 라이브러리
+
+운영 Web은 Tailwind·shadcn/ui와 다국어를 제공한다. React/Vite는 재사용 후보이며 use-intl,
+한국어/영어 시작은 제안이다. 공개 site의 Next.js/next-intl 선택과 운영 Web은 독립적이다.
+agent 출력과 vendor 오류 원문을 무조건 번역하지 않는다.
+
+Gateway snapshot/event의 projection을 하나로 유지한다. Zustand는 실제 pane/설정/알림 공유
+필요가 있을 때, TanStack Query는 history pagination/search 같은 조회 필요가 있을 때 평가한다.
+같은 live authority를 여러 store/cache가 독립적으로 수정하게 하지 않는다. Node 기본 모듈과
+기존 ws/MCP SDK/node-pty/better-sqlite3/zod/yaml은 후보이며 존재만으로 버전 채택을 확정하지
+않는다. ORM·별도 event bus·HTTP framework·오디오 library를 선행 전부 도입하지 않는다.
+
+Sources: `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §19–§24.

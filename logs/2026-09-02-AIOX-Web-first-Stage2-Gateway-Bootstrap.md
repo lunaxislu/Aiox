@@ -4,6 +4,8 @@ description: Web-first rewrite Stage 2에서 protocol Local Server React shell�
 status: decided
 ---
 
+> 이 문서는 이전 Web-first 작업의 완료 증거다. 아래 scope·required reads·plan 상태는 당시 기록이며 현재 실행 지시가 아니다. 당시 구현·테스트는 새 제품에서 재사용되거나 검증됐다는 근거로 자동 승계하지 않는다. 현재 작업은 `plans/aiox-tui-product-rebuild.md`에서 시작한다.
+
 ## Work Items
 - [x] W1 Gateway request response event error snapshot schema와 protocol client를 구현한다
 - [x] W2 loopback Local Server Control WebSocket HTTP static serving과 endpoint discovery를 구현한다
@@ -23,8 +25,7 @@ status: decided
 - Package contract: `log skill/references/package-log.md`.
 - Base loop contract: `log skill/references/loop-rules.md`.
 - Project integration: `AGENTS.md, plans/AGENTS.md, logs/AGENTS.md, docs/documentation-system.md`.
-- Accepted target artifact: `logs/artifacts/aiox-web-first-accepted-target-baseline.md`를 전체 읽고 current fact, accepted target과 open decision을 구분한다.
-- Stage 0 contract: `logs/2026-09-01-AIOX-Web-first-Stage0-Runtime-Contracts.md`가 `decided`일 때 accepted lifecycle·authority 결과와 owner handoff를 읽는다.
+- 이전 참조 정리: 해당 선행 target·계약·활성화 지시는 폐기됐다. 이 완료 기록을 재개하지 않으며 현재 구현은 `plans/aiox-tui-product-rebuild.md`를 따른다.
 - Immediate predecessor: `logs/2026-09-02-AIOX-Web-first-Stage1-Monorepo-Foundation.md`가 `decided`이고 plan에서 Stage 2이 활성화된 뒤에만 이 package를 활성화한다.
 - Current implementation claim은 code와 tests에서 직접 재확인하고 predecessor candidate 변경을 accepted evidence처럼 사용하지 않는다.
 
@@ -70,7 +71,7 @@ status: decided
 ## Evidence
 
 - Current accepted evidence:
-  - Accepted target와 open-decision boundary는 `logs/artifacts/aiox-web-first-accepted-target-baseline.md`가 제공한다.
+  - Accepted target와 open-decision boundary는 당시 Web-first accepted-target snapshot(폐기됨)가 제공한다.
   - Stage 0 accepted lifecycle·authority 계약과 predecessor의 decided result만 실행 baseline으로 사용한다.
   - W1 accepted: `@aiox/protocol`의 strict req/res/event/error/snapshot schemas와 connected text-transport client core가 response correlation, typed failure, validated event delivery와 disposal contract를 제공하며 focused/full verification을 통과했다.
   - W2-W3 accepted: loopback static/Control bootstrap, owner-only endpoint/session publication, exact Host/supplied-Origin gate, atomic authenticated snapshot/event subscription과 mismatch resnapshot이 direct/full verification을 통과했다.
@@ -133,7 +134,7 @@ status: decided
 ## 2026-09-02 · Stage 1 predecessor 수용과 Stage 2 활성화
 
 - Activation evidence: `logs/2026-09-02-AIOX-Web-first-Stage1-Monorepo-Foundation.md`가 W1-W5, Registry Integrity, Result Consumption, isolated frozen install과 owner handoff를 완료하고 `decided`다.
-- Plan state: `plans/aiox-web-first-rewrite.md`에서 Stage 1은 `[x]`, Stage 2는 유일한 `[>]`다.
+- Plan state: 당시 Web-first plan(폐기됨)에서 Stage 1은 `[x]`, Stage 2는 유일한 `[>]`다.
 - Current next: W1 Gateway request/response/event/error/snapshot schema와 protocol client. Stage 1의 empty protocol boundary와 Stage 0 accepted lifecycle/authority를 producer baseline으로 다시 확인한 뒤 contract review를 시작한다.
 
 ## 2026-09-02 · W1 protocol contract review

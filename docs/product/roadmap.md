@@ -1,658 +1,86 @@
 # Product Roadmap
 
-Related:
-
-- [[docs/product/product]]
-
 Status: Current
 
-이 문서는 aiox의 공개 전 release gate, 공개 이후 phase, 우선순위와 gate 통과 기준을
-소유한다. 구현 checklist, 세부 task 상태와 cutover 절차는 `plans/`의 실행 plan과 code/test
-evidence가 소유한다.
-
-현재 승인된 추진 순서는 **로컬 Codex<->Claude 안정 왕복, terminal UX, daemon 안정화, 공개
-위생, npm packaging과 macOS/Linux 최종 인증을 통과한 뒤 npm publish와 GitHub 공개를
-진행하고, 이후 채택기/확장기/원격기 phase를 계속 개발하는 것**이다.
-
-`plans/release-plan.md`는 별도 roadmap 항목이 아니라 G6 npm packaging gate의 배포 시점
-실행 checklist다. Roadmap은 G6의 통과 조건과 release 순서만 소유하고, tarball 내용물 확인,
-clean install, CLI smoke 같은 구체 절차는 release plan과 CI evidence가 소유한다.
+제품 범위는 [[docs/product/product]], 현재 설계 진입점은 [[docs/aiox-tui-product]]다.
+이 문서는 공개 기준을 소유하며 단계별 실행 상태는 `plans/aiox-tui-product-rebuild.md`에 둔다.
+이전 G0–G6의 완료 기록을 이번 TUI 제품의 공개 완료 증거로 사용하지 않는다.
 
 ## Release Path
 
-```text
-Phase 0:
-  G0
-  -> G1/G3 병행
-     -> G1-A
-     -> G1-B (historical core accepted; canonical-presentation corrective verified)
-     -> G1-C (Codex Tier 3 evidence 및 공통 요구 evidence accepted)
-     -> G3 병행
-  -> G2
-  -> G5/G6
-  -> G4 final RC
-  -> npm publish + GitHub 공개
-
-After public release:
-  Phase 1
-  -> Phase 2
-  -> Phase 3
-```
+실행·통신 기반 → Claude/Codex 실제 TUI 협업 → Host·Worktree·운영 Web
+→ OS별 배포 검증 → 실제 제품에 맞는 공개 사이트 순서로 준비한다.
+과거 headless·Channel·canonical envelope·retry 전제의 gate는 현재 공개 요구가 아니다.
 
 ## Gate Overview
 
-| Gate/Phase | 역할                                                         | 다음 판단                                                                             |
-| ---------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| G0         | release identity, protocol/CLI/package/support matrix freeze | G1/G3가 임시 identity 위에서 진행되지 않게 한다.                                      |
-| G1-A       | contract/ingress freeze                                      | envelope cutover와 reliability가 소비할 contract boundary를 고정한다.                 |
-| G1-B       | canonical envelope cutover (historical core accepted; canonical-presentation corrective verified) | accepted delivery/correlation 모델과 검증된 Claude canonical presentation을 G1-C/G1-D가 입력으로 소비한다. |
-| G1-C       | process-lifetime Tier 3 delivery reliability (Codex Tier 3 evidence 및 공통 요구 evidence accepted) | accepted Codex Tier 3 결과와 accepted daemon-level 공통 요구 evidence를 구분하고, Tier 2 ack/completed·stale 등 후속 보장을 현재 완료로 주장하지 않는다. |
-| G1-D       | minimal local secret/runtime hygiene (Phase 0 hygiene accepted, Phase 1 trust-boundary hardening으로 이관) | Phase 0 hygiene(Codex argv-safe delivery, runtime dir/socket permission, Claude credential cleanup) 완료를 Phase 1 ingress/push authentication·route authorization·purpose separation·constant-time comparison의 완료로 확대 해석하지 않는다. |
-| G3         | daemon stabilization (Phase 0 evidence accepted)             | accepted lifecycle, transport, diagnostics 경계를 G4의 동일 release candidate에서 재검증한다. |
-| G2         | terminal/compose minimum                                     | aiox.yaml 기반 `aiox host`/`aiox quit`과 view driver 일반화로 one-command demo의 최소 terminal/compose 표면을 Phase 0 범위로 닫는다. |
-| G5         | public hygiene                                               | 공개 repo로 나갈 shared/local/sensitive/public surface 경계를 닫는다.                 |
-| G6         | npm packaging                                                | npm artifact가 clean install과 daemon smoke를 통과하게 한다.                          |
-| G4         | final RC certification                                       | 동일 immutable candidate로 G0-G3/G5/G6 변경을 인증한다.                               |
-| Phase 1    | adoption/operation polish                                    | 공개 이후 진단, 가시성, 승인 흐름, demo assets를 다듬는다.                            |
-| Phase 2    | expansion prerequisites                                      | vendor expansion, durable replay, adapter/capability 구조 일반화의 전제를 닫는다.       |
-| Phase 3    | remote/federation                                            | remote MCP, internal federation, A2A Protocol bridge를 순서 있게 확장한다.            |
+| Gate | 목적 |
+| --- | --- |
+| 실행·통신 | 실제 두 vendor TUI에서 권한에 맞는 메시지·회신·상태 관측 |
+| 운영 | Host·Worktree·브라우저 복귀·설정·알림이 실행 수명과 일치 |
+| 배포 | 지원 OS에서 npm 산출물 설치·실행·종료 및 저장 검증 |
+| 공개 사이트 | 구현한 기능·지원 범위와 일치하는 다국어 안내 |
 
 ## Phase 0 Release Gates
 
-### G0 — Contract And Release Identity
-
-**목표**
-
-공개 전 release candidate의 protocol identity, CLI/config surface, 지원 matrix, package/release identity를 먼저 고정한다. G1 이후 작업이 임시 이름, 임시 schema, 불명확한 upstream 의존성 위에서 진행되지 않게 한다.
-
-**진입 조건**
-
-- G0가 G1/G3보다 앞선 선행 gate임을 유지한다.
-- 제품 포지셔닝을 전제로 삼고, 외부 표면에서 aiox를 별도 A2A standard처럼 표현하지 않는다.
-- G1에서 소비할 protocol/schema owner가 식별되어 있다.
-
-**착수 검토 / 열린 결정**
-
-- canonical CLI 이름, command surface, 구현/미구현 표면, config precedence를 결정한다.
-- npm package name, 초기 0.x version 정책, license를 결정한다.
-
-**통과 조건**
-
-- versioned schema/example validation 경로, CLI/config/package decision record, support matrix가 owner 문서로 연결되어 있다.
-- release identity 결정이 G1-A contract/ingress freeze의 입력으로 사용할 수 있을 만큼 모호하지 않다.
-- 공식 지원 OS는 macOS와 Linux이며 WSL2는 공식 지원·release 인증 대상이 아니다. WSL2를 포함하려면 별도 범위 변경 승인이 필요하다.
-- 지원 Node 범위는 `20.19.x`, `22.12.x 이상인 22.x`, `24.x`다. `package.json`의 `engines`와 개발·CI 검증은 같은 범위를 사용한다.
-- Codex CLI와 Claude CLI는 장기 고정 버전으로 지원을 약속하지 않는다. G0는 매월 검증 기준 버전·검증일·OS·Node·결과를 evidence에 기록하고, version/capability preflight와 supported fallback 또는 명시적 실패 posture를 구현·검증해야 한다.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — G0 gate intent, release 순서, evidence 요구 owner.
-- [[docs/product/product]] — 제품 범위와 외부 포지셔닝 owner.
-- [[docs/specs/aiox-a2a]] — G1에서 고정할 protocol contract index.
-- [[docs/architecture/local-runtime-codex-adapter]] — Codex app-server/WS 의존성과 unsupported surface caveat owner.
-- [[docs/decisions/codex-per-agent-app-server]] — per-agent app-server topology와 지원 posture 재검토 근거 owner.
-- [[docs/decisions/runtime-support-and-agent-cli-validation-policy]] — 지원 OS·Node 범위와 agent CLI 월별 검증 정책의 rationale owner.
-
-### G1/G3 Parallel Stabilization
-
-#### G1 — Local Stable A2A Round Trip
-
-##### G1-A — Contract And Ingress
-
-**목표**
-
-Local stable A2A의 첫 sub-gate로 canonical schema, typed send/reply tool, instruction/description/example sync, Codex ingress evidence를 고정한다. 이 contract/ingress 결과는 accepted/completed G1-B의 canonical envelope/public-ID/reply-right와 G1-C의 accepted Codex Tier 3 결과에 이미 historical하게 소비됐다. Phase 0에는 G1-C의 Codex·Claude 공통 요구와 최소 local secret/runtime hygiene만 남긴다. ingress/push authentication·route authorization과 authenticated automatic ack/`completed`은 공개 이후 Phase 1의 후속 책임이다.
-
-**진입 조건**
-
-- G0의 release identity와 지원 matrix가 G1-A 검증 범위를 제한할 만큼 결정되어 있다.
-- message lifecycle owner의 canonical envelope, delivery correlation, one-reply permission target이 착수 기준으로 확인되어 있다.
-- Codex structured ingress spike의 미검증 항목을 열린 결정으로 받아들인다.
-- Codex ingress/egress 구조와 capability tier caveat를 현재 사실로 둔다.
-
-**착수 검토 / 열린 결정**
-
-- Codex structured ingress spike는 `aiox-open-deferred`의 named app-server
-  surface 제약을 따른다. generic `turn/start` compatibility path로 대체하지
-  않고 TUI 표시, idle wake-up, active-turn 충돌, delivery id 보존,
-  timeout/process-exit/unsupported-method 실패 모드를 검증한다.
-- Tier 2 uplift는 검증 전에는 주장하지 않는다.
-
-**통과 조건**
-
-- canonical schema, typed tool contract, MCP instruction/tool description/example/test fixture가 같은 contract를 가리킨다.
-- public `deliveryId` binding과 typed validation이 owner contract에 반영되어 있다. automatic control-plane ack은 current guarantee가 아니라 future Tier 2 direction이다.
-- send/reply acceptance가 daemon validation과 route-derived delivery creation일 뿐 target
-  receipt·work completion이 아님을 tool surface가 구분한다.
-- Codex ingress path의 지원 수준이 evidence로 분류되고, 보장하지 못하는 wake-up/ack/correlation/dedupe는 degradation으로 남는다.
-- accepted/completed G1-B canonical envelope/public-ID/reply-right와 accepted Codex Tier 3 결과의 historical consumption이 구분돼 있다. 남은 소비/후속 책임은 G1-C 공통 요구, G1-D trust boundary와 Phase 1 Tier 2 uplift로 분리돼 있다.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — G1-A gate intent와 G1 전체 완료 조건 owner.
-- [[docs/specs/aiox-message-lifecycle]] — canonical envelope, typed send/reply, delivery/reply correlation target owner.
-- [[docs/specs/aiox-open-deferred]] — Codex structured ingress spike, named
-  app-server surface 직접 검증 제약, lifecycle open questions owner.
-- [[docs/specs/aiox-adapter-model]] — adapter slots, capability tier, Codex/Claude degradation classification owner.
-- [[docs/architecture/local-runtime-codex-adapter]] — current Codex app-server, proxy, `turn/start`, MCP ingress and runtime failure-detection boundary owner.
-- [[docs/decisions/codex-per-agent-app-server]] — Codex app-server topology와 ack/lifecycle rationale owner.
-
-##### G1-B — Envelope Cutover
-
-**목표**
-
-G1-B의 historical core 결과는 accepted/completed다. local A2A 경로의 canonical envelope과 correlation 모델, original-delivery source-only one-reply right, opaque public-ID issuance와 immutable delivery-row primary-key binding은 이후 G1-C/G1-D가 소비하는 안정된 message lifecycle 입력이다. Codex의 app-server `turn/start`와 Claude의 channel HTTP `/send` → notification은 transport가 다르지만, canonical-presentation corrective는 Claude TUI에서 common target-facing canonical-envelope meaning과 field preservation을 확인했다.
-
-**진입 조건**
-
-- G1-A contract/ingress 경계와 typed send/reply surface를 소비해 canonical lifecycle 입력을 고정했다.
-- 원 delivery의 원 target만 원 source에 1회 reply할 수 있는 권한과 별도 reverse route 불필요성이 구현·검증됐다.
-- public `messageId`와 `deliveryId`는 opaque/immutable 규율로 발급되고, `deliveryId`는 immutable delivery-row primary key다.
-
-**착수 검토 / 열린 결정**
-
-- historical core의 decision 문서, accepted package 결과와 검증 로그는 provenance로 보존한다. 이는 되돌리거나 재구현하지 않는다.
-- bounded corrective는 Claude host가 소유한 단일 outer `<channel source="…">` wrapper와 그 안의 canonical envelope JSON body를 직접 Claude TUI에서 검증했다. AIOX는 inner wrapper나 `chat_id`/`origin` metadata를 만들지 않으며, sender identity는 body의 `source.address`에서 읽는다.
-- 이 corrective의 비교 대상은 host UI의 pixel/card parity가 아니라 canonical message meaning과 target-facing content다. Codex와 Claude의 transport 차이는 유지할 수 있지만, 별도 AIOX message format 또는 의미를 만들면 안 된다.
-- persistence/restart migration과 durable replay/mailbox는 G1-B residual이 아니라 Phase 2의 독립 책임이다.
-- ingress invocation idempotency는 현재 delivery-creation `idempotencyKey`와 별개다. G1-B는 이를
-  완료하지 않으며, source-operation replay의 필요성·public field·retention·mismatch 규칙은
-  SQLite-backed durable state를 검토할 때 다시 결정한다.
-
-**통과 조건**
-
-- canonical envelope/correlation, route-derived fan-out acceptance, original-delivery source-only one-reply creation이 accepted G1-B 결과로 검증됐다.
-- public `messageId`와 `deliveryId`의 collision-resistant opaque/immutable issuance 및 delivery-row primary-key binding이 accepted public-ID-factory-B 결과로 검증됐다.
-- canonical-presentation corrective는 Claude TUI에서 단일 host-owned outer wrapper, canonical JSON body, body의 `source.address` sender identity, 그리고 reply 흐름을 확인했다. 이는 host UI parity 요구가 아니며, Claude host wrapper를 AIOX가 소유하거나 제거한다는 뜻이 아니다.
-- 이 완료 사실은 G1-C reliability와 G1-D trust-boundary의 입력이며, receipt/ack와 persistence/restart를
-  완료로 뜻하지 않는다. ingress re-invocation idempotency는 SQLite-backed durable state 검토 시의 열린
-  결정이다.
-- ack/retry/`unconfirmed`/timeout 및 reply-right failure semantics는 이 corrective 범위가 아니라 G1-C delivery reliability owner에 남는다.
-
-**Owner refs**
-
-- [[docs/specs/aiox-message-lifecycle]] — canonical envelope, delivery lifecycle, send-boundary contract owner.
-- [[docs/specs/aiox-adapter-model]] — Codex/Claude current presentation capability와 target-facing canonical-envelope boundary owner.
-- [[docs/decisions/public-message-and-delivery-ids-use-opaque-issuance]] — public-ID scope와 internal-ID exclusion rationale owner.
-- [[docs/decisions/public-id-factory-issuer-responsibility]] — source/daemon public-ID issuer responsibility와 historical freeze supersession rationale owner.
-- [[docs/architecture/local-runtime-routing-and-delivery]] — internal routing, delivery, reply-resumption structure owner.
-- [[docs/architecture/local-runtime-claude-adapter]] — current Claude channel HTTP `/send` → notification framing과 direct-TUI evidence boundary owner.
-- [[docs/decisions/reply-permission-rather-than-obligation-fsm]] — one-reply permission rationale owner.
-- [[docs/decisions/original-delivery-narrow-reply-right]] — source-only correlated reply rationale owner.
-- [[logs/workspace-reset/product-a2a/2026-06-10-A2A-응답-대기-polling-원인]] — async send-boundary 검토의 root-cause context.
-
-##### G1-C — Delivery Reliability
-
-**목표**
-
-G1-C는 process-lifetime Tier 3 delivery reliability를 Codex와 Claude 양쪽에서 닫는 gate다. 현재 accepted된 것은 Codex target 증거로 검증된 canonical correlation과 delivery acceptance, bounded pre-write queue/retry/TTL, post-write `unconfirmed`, confirmation-gated manual retransmit, non-manual primary explicit-reject outcome notification이며, 이를 lifecycle owner 아래에 고정한다. 이는 target receipt/work completion 또는 Tier 2 보장이 아니며, Codex Tier 3 증거와 아래의 accepted daemon-level 공통 요구 evidence가 gate 전체가 completed/consumed임을 뜻하지도 않는다.
-
-**진입 조건**
-
-- accepted G1-B 결과가 delivery correlation, consumed one-reply permission, source-visible acceptance boundary를 제공한다.
-- accepted Codex Tier 3 evidence가 automatic/manual 경계와 target runtime degradation을 검증한다.
-- durable replay와 passive/automatic ack는 후속 owner에 남아 있다. stale/disconnected 운영 정책은 Phase 1에 남고, observed runtime failure/disconnect의 production wiring은 G3 evidence로 accepted됐다.
-
-**착수 검토 / 열린 결정**
-
-- authenticated automatic ack/`completed`, wake-up, adapter-specific duplicate suppression은 Phase 1 Tier 2 uplift에서 판단한다.
-- stale/disconnected runtime의 detection·retry/hold/fail 운영 정책은 Phase 1에서 판단한다. G3의 accepted runtime-failure wiring은 현재 Codex·Claude에서 관측 가능한 failure/단절을 existing disconnected state에 연결하지만, delivery 상태 전이 policy나 `claude_channel_disconnected` event를 정하지 않는다.
-- native activity는 Phase 1 또는 후속 owner에 남는다. 이는 G1-B의 Claude canonical-presentation corrective와 별개다.
-- durable store와 mailbox replay는 G1-C 통과 조건이 아니라 Phase 2 책임이다.
-- Claude HTTP 4xx/5xx/timeout의 delivery 상태 매핑은 daemon-level 통합 테스트로 검증됐다.
-  Claude 수동 복구는 Codex와 같은 별도 `aiox_retransmit_unconfirmed_delivery` MCP tool로 고정하며,
-  이는 common messaging `send`/`reply` pair에 합치지 않는다. ingress invocation idempotency의
-  필요성·public field·retention·mismatch 규칙은 SQLite-backed durable state 검토로 이연한다. 이 gate는
-  요구되는 관찰 가능한 delivery 결과만 고정하고 transport별 의미를 미리 규정하지 않는다.
-- Codex와 Claude 양쪽 target의 primary `delivery_unconfirmed`/`delivery_target_rejected` source
-  outcome notification과 `(원 delivery, outcome type)` composite dedupe는 daemon-level 통합
-  테스트로 검증됐다([[docs/specs/aiox-message-lifecycle]] §4.3,
-  [[docs/decisions/delivery-outcome-notification-dedupe-by-type]]). 실제 `codex`/`claude` CLI에서도
-  각 target의 post-write ambiguity, correlated source outcome, 사용자 확인형 1회 recovery와
-  duplicate target display를 검증했다. 이는 transport-level evidence이며 receipt/work completion을
-  뜻하지 않는다.
-
-**통과 조건**
-
-Accepted Codex Tier 3 evidence와 그 경계:
-
-- Codex App Server target의 retained JSON-RPC request correlation과 late-response의 idempotent resolution이 검증됐다. bounded pre-write FIFO queue/retry/TTL/backpressure와 usable-target flush, post-write timeout/drop의 `unconfirmed` 분류는 일반 lifecycle 경계로 검증됐다.
-- Codex target의 duplicate-risk confirmation이 필요한 direct manual retransmit과 correlated explicit JSON-RPC reject의 primary `failed` 전환이 검증됐다. daemon outcome notification의 canonical renderer는 exactly-once·non-recursive로 유지되며, Tier 3 composition 및 direct-TUI evidence가 검증됐다.
-- post-write automatic reinjection은 없다. automatic authenticated ack/`completed`, wake-up, adapter-specific duplicate suppression과 stale/disconnected 운영 정책은 current Tier 3 완료가 아니라 Phase 1 책임이다. native activity는 Phase 1 또는 후속 책임이며, durable store와 mailbox replay는 Phase 2 owner로 남아 있다.
-
-검증된 Codex·Claude 공통 증거:
-
-- Codex와 Claude 각각의 직접 통합 증거가 검증됐다. 한 adapter의 증거를 다른 adapter의 coverage로
-  대체하지 않았으며, 이 증거는 transport-level delivery/recovery 및 target display에 한정되고
-  target receipt/read/work completion을 뜻하지 않는다.
-
-검증되어 닫힌 Codex·Claude 공통 요구(accepted daemon-level evidence 한정):
-
-- Stage 3의 4×2 matrix(각 adapter의 pre-write failure, acceptance ambiguity, explicit rejection,
-  accepted delivery; Codex runtime-unavailable subbranch 포함)는 구현 수단이 달라도 같은 delivery FSM
-  의미를 검증했다. 확정적 전송 전 실패는 queue 또는 bounded retry, target 수용 여부 불명은
-  `unconfirmed`이며 자동 재전송을 하지 않고, 확정 거절은 failed 또는 명시적 결과, 수용 응답은
-  `delivered`이며 `completed`가 아니다. 이는 target receipt/read/work completion을 뜻하지 않는다.
-- Stage 2의 세 interleaving은 retry/failure 중 inbound reply, reply-right, MCP/channel source 결과와
-  original/manual late-resolution attribution이 유실되거나 잘못 귀속되지 않음을 검증했다. 이는 daemon
-  callback-closure evidence이며 adapter-level WebSocket observer routing 또는 real two-plane
-  ordering/race composition을 뜻하지 않는다.
-
-**Owner refs**
-
-- [[docs/specs/aiox-message-lifecycle]] — delivery state, ack/retry/idempotency, one-reply permission, persistence minimum owner.
-- [[docs/decisions/public-message-and-delivery-ids-use-opaque-issuance]] — public-ID issuance boundary rationale owner.
-- [[docs/specs/aiox-open-deferred]] — retry/passive ack timeout, session expiry, pending/blocked policy의 열린 결정 owner.
-- [[docs/architecture/local-runtime-routing-and-delivery]] — current routing/FSM, queued/deferred delivery behavior, production dispatch path owner.
-- [[docs/architecture/local-runtime-gaps-and-targets]] — stale transition, queued delivery retry/drain과 retained diagnostics residual owner.
-- [[docs/decisions/reply-permission-rather-than-obligation-fsm]] — permission-consumption rationale owner.
-
-##### G1-D — Minimal Local Secret/Runtime Hygiene
-
-**목표**
-
-Phase 0에서 raw secret 노출, permissive runtime surface, stale credential 잔재를 줄인다. authenticated source와 route authorization을 포함한 완전한 local trust boundary는 Phase 1로 이관한다.
-
-**진입 조건**
-
-- G1-A/G1-B가 source identity, route authorization, typed send/reply, delivery correlation의 authority boundary를 canonical model로 고정했다.
-- Claude channel registration token 결정과 남은 reverse push/ingress auth gap이 분리되어 있다.
-- runtime directory/socket permission, token comparison, secret delivery, rollback cleanup gap이 architecture owner에 남아 있다.
-
-**착수 검토 / 열린 결정**
-
-- G1-B에서 확정한 correlated reply authorization 모델이 trust-boundary 검증에 필요한 negative test와
-  runtime guard로 연결되어 있는지 확인한다.
-- G1-D의 Phase 0 착수 scope는 Codex argv-safe secret delivery, runtime directory/socket permission,
-  Claude attach rollback/detach/stop credential cleanup으로 한정된다.
-- API 요청 인증, route 검증(daemon socket/API raw caller를 typed agent ingress와 trusted internal
-  boundary 중 어느 것으로 분류할지 포함), Claude daemon-to-channel push와 channel-to-daemon ingress
-  각각의 token/header 검증, credential purpose separation과 constant-time comparison은 Phase 1
-  trust-boundary hardening으로 이관되어 있으며 현재 G1-D 통과 조건이 아니다.
-- Claude channel-server `/send`가 request auth 없이 loopback POST를 수용하는 현재 ingress gap은
-  문서화된 현재 gap이며, Phase 1 trust-boundary hardening 범위다.
-
-**통과 조건**
-
-- secret/token/raw credential이 argv, log, event, error, rollback residue에 release-blocking 방식으로 남지 않는다.
-- runtime directory와 daemon/channel socket surface가 owner-only local boundary로 취급되며, 실패/rollback 후에도 stale credential이나 pending token이 남지 않는다.
-
-**Owner refs**
-
-- [[docs/architecture/local-runtime-gaps-and-targets]] — local trust-boundary current gaps와 release pressure owner.
-- [[docs/architecture/local-runtime-daemon-transport-api]] — daemon socket/API raw caller와 dispatch boundary의 current architecture owner.
-- [[docs/decisions/claude-channel-session-reconnect-token]] — current Claude session credential and replacement-child rebind decision owner.
-- [[docs/decisions/claude-channel-trust-and-registration]] — dynamic-registration rationale and reverse push-auth gap owner.
-- [[docs/decisions/original-delivery-narrow-reply-right]] — correlated reply authorization rationale owner.
-- [[docs/specs/aiox-message-lifecycle]] — source identity, route authorization, reply correlation, typed error boundary owner.
-- [[docs/specs/aiox-capability-policy]] — identity/auth, authorization/policy, capability isolation, runtime data handling boundary owner.
-
-#### G3 — Daemon Stabilization
-
-**목표**
-
-daemon이 공개 전 release path에서 조용히 실패하거나 손상된 상태로 계속 실행되지 않도록 lifecycle, transport, diagnostics의 실패 경계를 release-grade로 고정한다.
-
-**진입 조건**
-
-- G1의 local A2A 경로가 daemon 안정화 검증에 사용할 만큼 충분히 재현 가능하다.
-- daemon lifecycle, socket transport, adapter launch/ingress 경계의 current gap이 owner 문서에서 확인되어 있다.
-
-**착수 검토 / 열린 결정**
-
-- expected accepted-socket error는 해당 connection에서 격리하고, fatal process error는 raw error를 보존하지 않는
-  owner-only `latest-fatal.json` artifact를 쓴 뒤 Node 기본 종료를 유지하는 경계로 닫혔다. 일반 retained log
-  history는 G3 완료 근거가 아니다.
-- `stop`/SIGTERM은 socket ingress를 닫고, 등록된 retry/expiry timer와 stop 진입 시점의 target flush를 정리한 뒤
-  agent/runtime cleanup settlement를 기다리고 DB를 닫는 경계로 검증됐다.
-- Claude channel boot failure는 authenticated best-effort child report가 `claude_channel_port_in_use` 원인을 daemon
-  dispatch 결과에 투영하는 좁은 경계로 닫혔다. attach success를 startup acknowledgement로 확대하지 않는다.
-- Daemon socket dispatch는 own-property method만 호출하고 unknown/inherited method를 기존 typed transport error로
-  거부한다.
-- Codex와 Claude에 대해 아래 사실을 기존 `status` snapshot과 `aiox status`에서 read-only로 노출한다.
-  - 현재 연결 상태
-  - acceptance와 receipt의 구분
-  - automatic ack / completed 지원 여부
-  - automatic retry 안전성
-  - 수동 복구 가능 여부와 경계
-
-  이 projection은 새 delivery policy나 보장을 만들지 않는다. `claude_channel_disconnected` event와 generic typed capability /
-  tier-evaluator / diagnostics model·API, registry/event boundary는 Phase 2 adapter/events
-  boundary로 명시 이연하며 G3 완료 주장에 섞이지 않는다.
-- Codex managed runtime의 child-exit/WebSocket failure callback과 Claude primary push의 confirmed endpoint refusal은
-  daemon의 existing disconnected state에 연결됐다. 이 범위는 delivery 상태 전이 policy,
-  `claude_channel_disconnected` event나 generic capability/event model을 만들지 않는다.
-- durable store는 G3 통과 조건에서 제외하고, restart 시 in-memory state 소실은 공개 release의 명시된 제한으로 둔다.
-
-**통과 조건**
-
-- client crash isolation, fatal handler exit, SIGTERM/stop cleanup, bounded input/queue, log redaction, doctor diagnosis가 G4에서 같은 release candidate로 재검증될 수 있다.
-- Claude channel boot failure처럼 늦게 generic unavailable로 보이는 실패가 원인 진단 가능한 daemon behavior로 드러난다.
-- socket API dispatch는 unknown 또는 inherited method 이름을 실행하지 않고 typed error로 거부한다.
-- 현재 Codex·Claude의 연결 상태와 알려진 delivery guarantee/limitation을 read-only로 보여 주는 최소 diagnostics가 검증된다. 이는 acceptance/receipt 구분, automatic ack/`completed` 지원 여부, automatic retry 안전성, 수동 복구 경계를 포함한다.
-- `claude_channel_disconnected` event와 generic typed capability/tier-evaluator/diagnostics model·API, registry/event boundary는 Phase 2 owner path로 명시 이연되었으며 G3 완료 주장에 섞이지 않는다.
-- durable persistence와 mailbox replay는 Phase 2 owner path로 남아 있으며 G3 완료 주장에 포함되지 않는다.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — G3 gate intent, evidence level, durable-store 제외 범위 owner.
-- [[docs/architecture/local-runtime-daemon-transport-api]] — daemon lifecycle, socket transport, API surface owner.
-- [[docs/architecture/local-runtime-cli-and-operator-surfaces]] — `doctor` check set과 `aiox status` operator rendering owner.
-- [[docs/architecture/local-runtime-gaps-and-targets]] — G3 뒤에도 남는 retained diagnostics, channel disconnect event와 deferred runtime gap owner.
-- [[docs/architecture/local-runtime-claude-adapter]] — Claude channel launch/registration/boot-failure 진단 경계 owner.
-- [[docs/specs/aiox-capability-policy]] — daemon trust boundary, sensitive log/data handling, log redaction direction owner.
-- [[docs/specs/aiox-adapter-model]] — OS launch/path/signal 차이를 adapter가 흡수해야 한다는 runtime boundary와 runtime diagnostics/tier evaluator gap owner.
-
-### G2 — Terminal/Compose Minimum
-
-**목표**
-
-aiox.yaml로 여러 pair 인스턴스를 선언하고 `aiox host`로 한번에 foreground 실행하는(종료는
-`aiox quit`) compose 핵심, 단일 driver에 고정하지 않는 view driver 일반화, Codex+Claude 2-slot
-고정을 넘어서는 pair-to-N-agent route generalization으로 공개 가능한 one-command demo의 최소
-terminal/compose experience를 제공한다. compose는 여전히 protocol 위의 config layer이며, 이
-gate가 compose나 terminal automation을 A2A protocol requirement로 만들지는 않는다. 파일명
-(`aiox.yaml`)과 명령어 이름(`aiox host`/`aiox quit`)은 Kickoff 착수 검토에서 확정됐다 — 이전
-이름(`compose.yaml`/`aiox compose up`)이 Docker `compose`/`up` 용어를 그대로 차용해
-[[docs/specs/aiox-compose-contract]]의 Docker 은유 회피 원칙과 불일치한다는 지적을 반영한
-결과다.
-
-**진입 조건**
-
-- G1/G3 stabilization이 충분히 진행되어 terminal/compose demo path가 protocol 또는 daemon
-  instability를 가리는 대신 release path를 검증할 수 있다.
-- G2 surface는 승인된 Phase 0 범위 안에 머문다: aiox.yaml v1 핵심(다중 pair 선언 +
-  `aiox host`), view driver 일반화, pair-to-N-agent route generalization.
-- native Windows community path는 조건부·잠정 포함이다: 위 세 항목 구현이 끝난 뒤 재논의해서
-  Phase 2로 다시 내릴 수 있으며, 지금 이 목록에 있다는 사실이 확정 commitment를 뜻하지 않는다.
-
-**착수 검토 / 열린 결정**
-
-- aiox.yaml v1 핵심 스키마와 `aiox host` 동작 범위가 [[docs/specs/aiox-compose-contract]]
-  §6 target과 맞는지 확인한다. 같은 Phase 2 bullet에 묶여 있던 `config/onboarding split`은 이
-  gate 범위가 아니라 Phase 2에 남는다.
-- config 파일명과 명령어 이름은 Kickoff에서 확정됐다(`aiox.yaml`, `aiox host`/`aiox quit`) —
-  이전 이름(`compose.yaml`/`aiox compose`)이 Docker `compose`/`up`을 그대로 차용해 은유 회피
-  원칙과 불일치한다는 지적을 반영했다. yaml 스키마 내용과 CLI read 방식(cwd 고정, `--file` flag
-  없음)도 Kickoff에서 함께 확정됐다([[docs/specs/aiox-compose-contract]] §6).
-- W6 foreground orchestration과 agent view integration을 같은 현재 stage에서 함께 닫는다.
-  G2 gate는 특정 terminal 하나를 core에 고정하지 않으며, 최초 지원 제품 집합과 제품별 배치
-  계약은 W6에서 확정한다.
-- pair-to-N-agent route generalization의 착수 전제는 Kickoff에서 결정됐다: `state.ts` 전체
-  decomposition은 이 항목의 선행 전제가 아니다. 2-slot 하드코딩이 있는 국소 파일의 slot 판정
-  로직만 제자리에서 N-slot 순회로 확장하며, `state.ts` 전체 decomposition은 Phase 2 항목으로
-  남는다.
-- pair CLI 책임 경계도 Kickoff에서 결정됐다: `pair` CLI는 reservation 전용으로 유지하고 agent
-  launch·attach orchestration은 맡지 않는다. `aiox host`가 다중 agent 동시 launch orchestration을
-  전담하며 agent마다 기존 `attach` 경로를 내부적으로 재사용한다. 수동 2-agent pair도 지금처럼
-  `attach`를 pair마다 두 번 실행하는 방식을 유지한다.
-- aiox.yaml v1, view driver 일반화, N-agent route generalization이 같은 pair/compose launch
-  UX에서 함께 성립하는지 정한다: 어떤 workspace/cwd에서 시작하고 pair name·daemon
-  profile·resume·종료를 어떻게 연결할지, Codex의 runtime MCP 주입과 Claude의 해당 경로 static MCP
-  해석이 이 UX에서 함께 성립하는지 포함한다.
-- native Windows community path를 이번 gate에 유지할지 Phase 2로 다시 내릴지는 위 세 항목 구현
-  진행 후 재논의한다.
-- README Quick Start가 실제 command surface와 일치하는지 확인한다.
-
-**통과 조건**
-
-- clean user가 aiox.yaml로 선언한 다중 pair 인스턴스를 `aiox host`로 foreground
-  실행할 수 있다.
-- `aiox host`로 foreground 실행 중인 agent별 interactive TUI를 지원되는 terminal/IDE
-  integration의 native surface에 자동 배치해 다중 agent를 함께 볼 수 있는 최소 demo path를
-  실행할 수 있다.
-- pair가 Codex+Claude 2-slot 고정을 넘어 N-agent route로 동작함을 보여준다.
-- native Windows community path는 이 gate의 확정 통과 조건이 아니다 — 포함 여부와 범위는 착수
-  검토에서 재논의한 뒤 결정한다.
-- config/onboarding split, third vendor, durable store/mailbox replay는 명시적으로 승격하지 않는
-  한 Phase 2에 남는다.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — current G2 gate와 evidence owner.
-- [[docs/product/product]] — terminal/compose experience boundary와 product scope owner.
-- [[docs/specs/aiox-compose-contract]] — compose와 view-driver boundary owner.
-- [[docs/decisions/pair-slot-generalization]] — 현재 2-slot 결정과 pair-to-N-agent 재평가 지점
-  owner.
-- [[README]] — G2 command path와 일치해야 하는 public Quick Start surface.
-
-### G5/G6 Release Preparation
-
-#### G5 — Public Hygiene
-
-**목표**
-
-repository를 공개 가능한 형태로 내보낼 수 있도록 shared asset, local/sensitive artifact, public-facing 문서와 project metadata의 경계를 정리한다.
-
-**진입 조건**
-
-- 공개 전 release path에서 G0 package/license identity와 G2/G3 public-facing surfaces가 대략 고정되어 있다.
-- repository에 남길 shared 작업 자산과 제외할 local/sensitive artifact의 구분 원칙을 owner 문서 기준으로 적용할 수 있다.
-
-**착수 검토 / 열린 결정**
-
-- ignore 정책은 실제 local/sensitive artifact에만 적용하고, shared `.agents/`, scripts, guides, 공개하기로 한 log/report를 blanket 제외하지 않는다.
-- 한국어 작업 문서 공개 범위, commit author/path 노출, README 영문화, product messaging, LICENSE와 package metadata 정합성을 결정한다.
-- G5 license datum은 축약하지 않는다: deleted legacy는 Apache-2.0 검토를 후보로 두었고, 현재 `package.json`은 `ISC`를 선언하며 root `LICENSE` 파일은 없다. G0/G5/G6 release identity 확정 전 이 불일치를 명시적으로 닫는다.
-- GitHub public hygiene surface의 최소 묶음을 정한다.
-- 공개 repo에 남는 dead/scaffold code의 허용 범위와 처리 정책을 정한다. 남길 경우 의도와 public-facing 상태가 설명 가능해야 하고, 제거할 경우 release candidate의 동작·문서·테스트 참조가 함께 정리되어야 한다.
-- history rewrite가 필요하면 내부 commit-hash reference 갱신을 같은 gate batch로 묶을지 결정한다.
-
-**통과 조건**
-
-- secret/PII/path scan과 tracked-vs-local file review가 통과하고, 공개 repo에 남는 문서와 제외되는 artifact의 의도가 설명 가능하다.
-- LICENSE 파일과 package metadata의 license 값이 승인된 license 결정과 일치하고, README, SECURITY, CONTRIBUTING, issue template, CI/link surface가 공개 전 release candidate에 포함된다.
-- package metadata와 public repository messaging이 G0/G6의 release identity와 충돌하지 않는다.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — G5 gate intent와 required evidence owner.
-- [[docs/specs/aiox-capability-policy]] — credential, transcript, local sensitive data, telemetry opt-in boundary owner.
-- [[docs/specs/aiox-runtime-profile-namespace]] — profile/state path scaffold의 current contract와 공개 전 노출 상태 owner.
-- [[docs/decisions/runtime-profile-namespace-isolation]] — file-backed database path scaffold의 rationale와 durable-store 전환 시 재평가 지점 owner.
-- [[plans/release-plan]] — LICENSE/package metadata가 publish 직전 정합성을 가져야 하는 배포 실행 owner.
-- [[docs/product/product]] — public messaging과 product positioning owner.
-
-#### G6 — Npm Packaging
-
-**목표**
-
-공개 release의 1차 배포 형태인 npm artifact가 repo 밖 clean install 환경에서 실제 CLI와 daemon smoke를 통과하도록 packaging gate를 고정한다.
-
-**진입 조건**
-
-- G0에서 package name, version policy, supported Node/OS matrix, license 방향이 충분히 확정되어 있다.
-- G5에서 public repo hygiene와 package metadata가 공개 가능한 수준으로 정리되어 있다.
-- G3의 daemon start/stop behavior가 npm-installed artifact에서 smoke 대상으로 삼을 수 있을 만큼 안정화되어 있다.
-
-**착수 검토 / 열린 결정**
-
-- roadmap은 packaging gate의 통과 기준만 소유하고, tarball inspection과 clean install 절차는 release plan이 소유한다.
-- package name은 publish 직전에 다시 확인하며, 선점 시 승인된 scoped 대안으로 갈지 결정한다.
-- install/uninstall guidance는 release scope에 포함될 때만 G6 표면으로 다룬다. 포함한다면 package removal과 runtime/user-data purge를 분리하고, `~/.aiox` 같은 user data directory는 package uninstall 경로에서 자동 삭제하지 않는다.
-- destructive reset/purge 표면을 제공한다면 사용자의 명확한 confirmation과 영향 범위(scope) 한정을 요구한다. CLI reset/purge 표면이 실제로 생기면 G6만으로 닫지 않고 spec 소섹션 필요성을 재검토한다.
-- native dependency는 지원 matrix에서 prebuilt 또는 fallback build prerequisite를 clean-host 기준으로 검증한다.
-
-**통과 조건**
-
-- npm tarball이 설치 가능한 CLI artifact를 포함하고, publish 전 build 보장과 tarball content assertion이 gate evidence로 남는다.
-- repo 밖 clean temp install에서 executable, version/help, daemon start/stop smoke가 통과한다.
-- release scope에 install/uninstall 또는 reset/purge guidance가 포함된 경우 package removal이 user data purge를 수행하지 않고, destructive purge/reset에는 confirmation과 scope 제한이 문서화되어 있다.
-- npm publish가 Phase 0의 1차 배포 형태이며, curl/standalone binary는 Phase 2 이후 후보로 남는다.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — G6 gate intent, npm-first release order, G4로 넘길 evidence level owner.
-- [[plans/release-plan]] — publish 직전 packaging checklist와 tarball/clean-install 실행 owner.
-- [[docs/architecture/local-runtime-daemon-transport-api]] — installed CLI의 daemon start/stop smoke가 기대하는 lifecycle/API owner.
-- [[docs/specs/aiox-capability-policy]] — destructive purge/reset guidance가 release scope에 포함될 때 적용할 data-handling boundary owner.
-
-### G4 — Final Release Candidate Certification
-
-**목표**
-
-G0-G3/G5/G6의 code, config, package 변경을 모두 포함한 동일 immutable release candidate를 공개 전 최종 인증한다.
-
-**진입 조건**
-
-- G0, G1, G2, G3, G5, G6가 통과했고, 인증 대상 candidate가 더 이상 바뀌지 않는다.
-- npm packaging 검증은 `plans/release-plan.md`의 배포 직전 실행 checklist로 닫혀 있어야 한다.
-- macOS/Linux 지원 matrix와 runtime version이 확정되어 있다.
-
-**착수 검토 / 열린 결정**
-
-- 수동 smoke만으로 통과시키지 않으며, CI suite 또는 clean-host run evidence 중 어떤 형태로 retained diagnostics를 남길지 정한다.
-- G4는 새 기능을 추가하는 gate가 아니라 동일 candidate 인증 gate이므로 post-release scope를 끌어오지 않는다.
-
-**통과 조건**
-
-- 동일 immutable candidate가 macOS/Linux에서 G1-G3 smoke를 통과한다.
-- 각 evidence는 setup command, supported runtime version, timeout, expected state transition, failure artifact location을 남긴다.
-- diagnostics가 보존되어 재현 가능한 실패 분석이 가능하다.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — G4 gate 순서, matrix 요구, evidence 기준 owner.
-- [[plans/release-plan]] — G6/npm publish 직전 packaging 실행 checklist owner.
-- [[docs/architecture/local-runtime-gaps-and-targets]] — release candidate가 닫아야 할 local runtime gap pressure owner.
+### 실행·통신
+
+- 목표: TUI 상호작용을 유지한 두 vendor 협업.
+- 진입 조건: 새 외부 계약과 provider binding 경계가 구현에 사용 가능하다.
+- 착수 검토 / 열린 결정: 내부 wire의 지원 조건, 필요한 상태 매핑 및 입력 presentation.
+- 통과 조건: 실제 송신·수신·회신을 연결하고 불확실한 관측을 성공으로 표시하지 않는다.
+  HTTP MCP credential과 현재 Network·route 검사 및 관리 실행 전체 종료가 동작한다.
+- Owner refs: [[docs/specs/aiox-collaboration]]에서 메시지·route·회신 의미,
+  [[docs/architecture/aiox-vendor-bindings]]에서 실행과 관측 경계를 확인한다.
+
+### 운영
+
+- 목표: 작업 공간·실행·터미널·알림을 일관되게 운영한다.
+- 진입 조건: 두 vendor runtime과 기반 PTY가 실제 동작한다.
+- 착수 검토 / 열린 결정: Worktree 세부, 화면 복원 방식, DB 본문 저장·retention.
+- 통과 조건: Host·단일 Network·Worktree·종료와 자동 브라우저 복귀가 동작한다.
+  전역 설정 자동 적용·포트 다음 시작 적용·알림 읽음과 포커스 억제를 확인한다.
+- Owner refs: [[docs/specs/aiox-host]]에서 실행 구성과 route,
+  [[docs/specs/aiox-configuration-web]]에서 Web·설정·저장 경험을 확인한다.
+
+### 배포
+
+- 목표: 개발 머신의 소스 실행과 실제 배포 산출물의 동작 차이를 닫는다.
+- 진입 조건: 공개할 계약이 구현되고 관련 검증이 통과한다.
+- 착수 검토 / 열린 결정: 지원 Node·CPU 조합, npm package metadata와 플랫폼별 설치 조건.
+- 통과 조건: 동일 배포 산출물의 clean install, CLI·DB·PTY·vendor 연동·관리 실행 종료를
+  지원 OS에서 확인하고 native Windows와 WSL 결과를 구분한다.
+- Owner refs: [[docs/specs/aiox-runtime]]에서 실행·종료 의미,
+  [[docs/architecture/aiox-storage-terminal]]에서 DB·PTY 플랫폼 경계를 확인한다.
+
+### 공개 사이트
+
+- 목표: 실제 제품과 지원 범위에 맞는 다국어 소개·설치·사용 안내.
+- 진입 조건: 앞선 제품·배포 검증이 완료된다.
+- 착수 검토 / 열린 결정: 사이트 framework와 공유 UI의 실제 필요.
+- 통과 조건: 운영 Web과 별도 배포하고 vendor 기능·AIOX 관측 보장을 과장하지 않는다.
+- Owner refs: [[docs/product/product]]의 scope 및 [[docs/specs/aiox-configuration-web]]의 UI 경계를 따른다.
 
 ## Post-Release Phases
 
-### Phase 1 — Adoption And Operation Polish
-
-**목표**
-
-공개 이후 사용자가 실제로 채택하고 운영할 때 막히는 진단, 가시성, 승인 흐름, 데모 자산을 다듬는다.
-
-**진입 조건 / 경계**
-
-- npm publish와 GitHub 공개 이후 시작한다.
-- Phase 1은 adoption friction과 human-controlled operation에 집중하며, durable replay, third vendor, federation은 Phase 2/3로 둔다(aiox.yaml v1 핵심과 view driver 일반화는 G2로 이관됐다).
-- Phase 1은 current Tier 3의 delivery acceptance/`unconfirmed` 경계 위에서 authenticated automatic ack, `completed` evidence, wake-up, adapter-specific duplicate suppression 같은 Tier 2 운영 보장을 uplift한다.
-- Phase 0 hygiene 이후 Claude/Codex ingress·push authentication, UDS route authorization, credential purpose separation과 constant-time comparison을 local trust-boundary hardening으로 결정·구현한다.
-- 이 카드는 gate가 아니므로 통과 조건 슬롯을 강제하지 않는다.
-
-**주요 범위**
-
-- demo assets와 doctor attachment guide.
-- transcript surface와 vendor-provided token/cost visibility.
-- pending/blocked delivery에 대한 human approval surface.
-- approved artifact distillation.
-- retry/backoff/dead-letter 조정.
-- deferred delivery 자동 retry와 source push notification.
-- accepted G1-B/G1-C evidence를 전제로 stronger Tier 2 delivery-ack/wake-up uplift.
-- heartbeat, 시간 경과, 외부 세션 단절 중 어떤 신호로 stale/disconnected를 감지할지와, queued delivery를 retry/hold/failed 중 어떻게 처리할지의 운영 정책·구현. 세부 기준, 자동 동작, public field는 이 phase 시작 전까지 정하지 않는다.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — Phase 1 adoption 범위와 Phase 2/3 경계 owner.
-- [[docs/specs/aiox-open-deferred]] — pending, blocked, retry, Codex structured ingress 같은 열린 운영 정책 owner.
-- [[docs/architecture/local-runtime-gaps-and-targets]] — retained diagnostics, queued delivery, stale transition과 events gap의 후속 pressure owner.
-- [[docs/specs/aiox-adapter-model]] — Tier 2 ack/auth/dedupe 보장 조건과 현재 runtime tier classification owner.
-- [[docs/decisions/pair-slot-generalization]] — deferred delivery 자동 retry와 source push notification의 post-MVP 재평가 지점 owner.
-
-### Phase 2 — Expansion Prerequisites
-
-**목표**
-
-vendor 확장과 더 큰 topology를 가능하게 하는 구조적 전제 조건을 닫는다.
-
-**진입 조건 / 경계**
-
-- 공개 release path가 안정화된 뒤 시작한다.
-- ingress generalization과 `state.ts` decomposition이 Phase 2(vendor 확장 등 더 큰 구조 개편)의
-  우선 전제다. pair-to-N-agent route generalization과, 그와 묶여 있던 "pair CLI가 reservation만
-  할지 launch·attach orchestration까지 맡을지" lifecycle 재논의는 G2로 이관됐다 — G2 Kickoff에서
-  `state.ts` decomposition은 이관된 두 항목의 선행 전제가 아니라고 결정됐다. `state.ts` 전체
-  decomposition은 Phase 2 항목으로 그대로 남는다.
-- aiox.yaml v1 핵심(다중 pair 선언 + `aiox host`)과 view driver 일반화는 G2로 이관됐다.
-  native Windows community path도 G2에 조건부·잠정 포함됐으며, 위 세 항목 구현 후 재논의해 다시 이
-  phase로 내릴 수 있다. config/onboarding split, third vendor, durable store/mailbox replay는
-  여전히 Phase 2 범위다.
-- durable SQLite persistence를 공개 release blocker로 승격할 때는 stable daemon identity와 restart-safe
-  reply idempotency, 이미 발급된 messageId/deliveryId 및 consumed reply-right history 보존을 함께 닫아야
-  한다. 이때 source-operation invocation idempotency가 필요한지와 public field·retention·mismatch
-  규칙을 다시 결정한다. 이들이 불명확하면 restart/replay가 중복 reply, 잘못된 reply 귀속, stale daemon
-  state 복원을 만들 수 있으므로 durable store 자체보다 먼저 blocker framing을 확정한다.
-- G3가 `claude_channel_disconnected` event 또는 generic typed capability/tier-evaluator/diagnostics
-  model·API를 Phase 0에서 닫지 않고 명시 이연했다면, 이 phase가 adapter/events boundary cleanup으로
-  최종 disposition을 소유한다.
-- 이 카드는 phase pointer이므로 gate식 착수 검토/통과 조건 슬롯을 강제하지 않는다.
-
-**주요 범위**
-
-- G3 Codex·Claude 최소 diagnostics는 Phase 2가 제거하거나 대체하는 작업이 아니다. 그 뒤의
-  일반화/구조 개편이 이 phase의 시작점이다.
-- typed capability declaration과 generic adapter capability model.
-- adapter registry/event-boundary 통합.
-- daemon·CLI·TUI의 공통 capability 소비 구조.
-- ingress generalization과 adapter boundary 정리.
-- runtime events surface와 diagnostics/tier-evaluator API의 adapter boundary 정리.
-- app-server MCP config isolation hardening and capability projection boundary.
-- group recipient visibility / shared group context prerequisite design.
-- third vendor support.
-- config/onboarding split.
-- durable store와 mailbox replay.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — Phase 2 구조 전제와 포함/제외 경계 owner.
-- [[docs/specs/aiox-compose-contract]] — compose, user config, view driver target 계약과 미구현 caveat owner.
-- [[docs/specs/aiox-adapter-model]] — adapter registry implementation gap과 runtime diagnostics/tier-evaluator API caveat owner.
-- [[docs/specs/aiox-open-deferred]] — group recipient visibility/shared group context와 deferred runtime/session policy owner.
-- [[docs/decisions/codex-app-server-mcp-injection-and-isolation]] — app-server MCP config isolation hardening과 capability projection 재평가 owner.
-- [[docs/decisions/pair-slot-generalization]] — 현재 2-slot 결정과 future N-agent 재평가 지점 owner.
-- [[docs/architecture/local-runtime-gaps-and-targets]] — channel disconnect event, durable persistence, adapter registry, reliability target의 architecture pressure owner.
-
-### Phase 3 — Remote And Federation
-
-**목표**
-
-single-machine release path를 넘어 remote MCP exposure, internal federation, A2A Protocol bridge를 순서 있게 확장한다.
-
-**진입 조건 / 경계**
-
-- envelope와 daemon model이 transport-independent하게 유지되고, Phase 2의 local expansion 전제가 충분히 닫힌 뒤 시작한다.
-- Phase 3 순서는 L2 mobile remote MCP exposure, L1 internal federation, L3 A2A Protocol bridge로 둔다.
-- remote/federation은 Phase 0 약속이 아니며, lower scope protocol contract를 깨지 않는 additive extension이어야 한다.
-- exploratory phase이므로 세부 구현 checklist와 federation contract 본문은 이 카드에 복사하지 않는다.
-
-**주요 범위**
-
-- mobile/remote client가 local aiox MCP surface에 안전하게 도달할 수 있는 L2 가설 검증.
-- daemon-to-daemon WebSocket over HTTPS와 token/mTLS 방향의 L1 internal federation.
-- 외부 vendor 또는 A2A Protocol bridge인 L3 검토.
-- remote registration, daemon auth, signed envelope, replay protection, partial failure policy 같은 deferred federation topics의 단계별 승격.
-
-**Owner refs**
-
-- [[docs/product/roadmap]] — Phase 3 post-release 순서와 Phase 0 제외 경계 owner.
-- [[docs/specs/aiox-federation-remote]] — location-ready protocol 원칙, transport 방향, L2/L1/L3 sequencing owner.
-- [[docs/specs/aiox-open-deferred]] — remote/federated delivery deferred state owner.
+추가 vendor·원격·federation·durable replay는 이번 구현 범위가 아니다.
+공개 이후 실제 요구가 확인될 때 별도 scope와 검증 기준을 정한다. 이전 phase 계획을 자동 재개하지 않는다.
 
 ## Gate Evidence
 
-Gate completion requires reproducible evidence, not only a status label. 각 gate card의 `통과 조건`은 의미를 설명하고, 이 섹션은 증거 종류를 요약한다.
-
-| Gate | Required evidence                                                                                                                                                                         |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G0   | versioned schema/example validation, CLI/config/package decision record, support matrix                                                                                                   |
-| G1   | completed/consumed G1-B/C/D evidence: canonical schema/tool fixture sync, opaque public-ID and delivery-row-PK binding, source-only one-reply, accepted Codex Tier 3 correlation/`unconfirmed`·bounded pre-write queue/retry/TTL·manual retransmit·primary-reject outcome integration evidence, separate Codex·Claude direct CLI/TUI transport-level ambiguity/outcome/confirmed-recovery/duplicate-display evidence, accepted daemon-level evidence for adapter-symmetric delivery-FSM semantics and retry/failure 중 inbound reply·MCP/channel 결과 경로의 무손실·정확 귀속 및 original/manual late-resolution attribution, and G1-D Phase 0 hygiene evidence (Codex argv-safe secret delivery, owner-only runtime directory/socket permission with chmod-failure rollback, Claude attach rollback/detach/stop credential cleanup). The accepted daemon-level common evidence does not establish target receipt/read/work completion, adapter-level WebSocket observer routing, or real two-plane ordering/race composition. Source-operation invocation idempotency is deferred to the durable SQLite-state decision. Ingress/push authentication, route authorization, and credential purpose separation are Phase 1 trust-boundary hardening, not G1 release evidence. Tier 2 automatic ack/`completed`·wake-up/duplicate suppression and stale/native-activity policy are Phase 1 or later evidence, not completed G1-B/C evidence. |
-| G2   | aiox.yaml v1 multi-pair `aiox host` foreground clean-user smoke, non-tmux-fixed view-driver simultaneous-display smoke, pair-to-N-agent route smoke, README command match. Native Windows community path evidence is conditional on G2's provisional-inclusion decision. |
-| G3   | accepted-socket client-error isolation; redacted owner-only fatal artifact followed by default fatal exit; SIGTERM/RPC-stop socket, registered timer, stop-entry target-flush and managed-runtime cleanup; own-method socket dispatch rejection; authenticated Claude boot-failure cause projection; Codex runtime-failure and Claude confirmed-endpoint-death disconnect wiring; existing `status`/`aiox status` connection and fixed delivery-guarantee diagnostics; deterministic doctor checks for Node, Codex, Claude, sqlite-native and daemon-socket success/failure; common bounded pre-write queue/retry/TTL regression. These queue bounds do not establish a socket request-line or Claude HTTP body byte limit. |
-| G5   | secret/PII/path scan, tracked-vs-local file review, dead/scaffold code disposition, LICENSE/README/SECURITY/CONTRIBUTING/issue template presence and link check                           |
-| G6   | npm pack, tarball content assertion, clean temp install, executable/version/help/start-stop smoke                                                                                         |
-| G4   | same immutable G0-G6 candidate verified on macOS/Linux CI or recorded clean-host runs with retained diagnostics                                                                           |
-
-Each evidence item records setup command, supported runtime version, timeout, expected state transition and failure artifact location. Demo GIFs and manual recordings are adoption assets, not gate evidence.
+- 송수신·회신은 실제 provider 출력과 daemon 관측을 연결해 확인한다.
+- UI는 실제 터미널 표시·입력·브라우저 복귀로 검증한다.
+- 종료는 프로세스와 자원 정리로, 저장은 재시작 후 읽기로 확인한다.
+- 기존 성공 실측의 provenance는 사용할 수 있지만 새 플랫폼·새 통합 경로의 성공으로 확대하지 않는다.
+- 검증되지 않은 조합은 명시하며 Docker Linux 실행을 Windows 결과로 표시하지 않는다.
 
 ## Cross-Platform Requirement
 
-Cross-platform support is not a late separate phase. It constrains Phase 0 gates and Phase 2 design.
+Windows 네이티브·Linux·macOS는 지원 목표다. native dependency 설치, 경로·권한,
+PTY·IPC·프로세스 종료와 vendor 연결을 해당 OS에서 검증한다.
+WSL은 Linux 실행 환경과 Windows 브라우저 연결을 구분하고, Windows daemon과 Linux vendor의
+혼합 제어는 현재 확정된 지원으로 주장하지 않는다.
 
-- G1 keeps protocol and envelope decisions transport-neutral.
-- G1/G3 absorb OS launch, shell, path, permission and signal differences in adapters and daemon lifecycle.
-- G2 provides aiox.yaml v1 (`aiox host`) and a view-driver generalization not fixed to a single tmux driver, without making terminal automation or compose part of the core protocol.
-- G5/G6 verify public repo and npm packaging behavior against the supported matrix.
-- G2's aiox.yaml v1 and Phase 2's config/onboarding split use OS-neutral declarations and leave OS-specific command/path/env handling to compiler, recipe or plugin layers.
-- G4 certifies the supported matrix before public release.
+Sources:
+
+- 제품 전환·3 OS 범위·사이트 마지막 결정: `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md`.

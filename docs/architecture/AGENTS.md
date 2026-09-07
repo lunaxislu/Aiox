@@ -48,25 +48,16 @@ Allowed section/claim statuses:
 The daemon persists queued deliveries in the message store.
 ```
 
-## 3. local-agent-runtime Index And Slice Ownership
+## 3. Architecture Ownership
 
-`docs/architecture/local-agent-runtime.md` is the compatibility index and navigation hub for the split local runtime
-architecture.
-
-- Do not add new full architecture body text to `local-agent-runtime.md` when the relevant architecture slice already
-  exists.
-- Add or update architecture content in the owning slice document instead.
-- Keep `local-agent-runtime.md` stubs, status vocabulary, module overview, authority links, and document map consistent
-  with the slices.
-- When adding a new architecture area, decide whether it belongs in an existing slice or needs a new slice, then update
-  `local-agent-runtime.md` only as the index/navigation entry.
-- Preserve existing §N / §N.x headings and inbound anchors unless an explicit migration updates inbound references.
+현재 TUI 제품의 설계 진입점은 [[docs/aiox-tui-product]]다. architecture 문서는 시스템·패키지,
+vendor bindings, 저장·터미널 책임을 소유한다. 새 slice를 나누면 설계 진입점의 문서 지도를
+함께 갱신한다. 이전 local-agent-runtime index와 §N anchor는 새 설계의 호환 요구가 아니다.
 
 ## 4. Architecture Slice Composition
 
 새 architecture slice는 고정 skeleton이나 subtype 목록을 채우는 문서가 아니다. 그 slice가 답해야 하는 architecture 질문과
-상위 [[docs/AGENTS]]의 가장 좁은 유효 범위 원칙에 따라 필요한 section만 구성한다. 인덱스(`local-agent-runtime.md`)는 이
-composition 규칙이 아니라 §3을 따른다.
+상위 [[docs/AGENTS]]의 가장 좁은 유효 범위 원칙에 따라 필요한 section만 구성한다. 문서 간 소유 경계는 §3을 따른다.
 
 Architecture slice가 복원해야 하는 내용은 내부 책임과 경계, data/process flow, lifecycle/state invariant, current gap,
 target/proposed 구조, schema/catalog나 cross-cutting invariant처럼 문서 질문에 따라 달라진다. 이 목록은 닫힌 subtype

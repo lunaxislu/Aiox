@@ -19,7 +19,7 @@ validation)은 상위 [[docs/AGENTS]]가 소유한다. 아래는 product type �
 ## Product 작성 규칙
 
 - product 문서는 외부 contract, 구현 상세, protocol field, internal architecture state를 소유하지 않는다.
-  외부 contract는 관련 spec 문서(예: [[docs/specs/aiox-a2a]]), 내부 구조는 관련 architecture 문서가
+  외부 contract는 관련 spec 문서(예: [[docs/specs/aiox-collaboration]]), 내부 구조는 관련 architecture 문서가
   소유한다. Product 문서에는 이를 복사하지 않고 관련 owner 문서로 링크한다. 작성 규칙은
   [[docs/specs/AGENTS]]와 [[docs/architecture/AGENTS]]를 따른다.
 - product type은 별도 skeleton을 두지 않고, 아래 authoring invariants를 따른다.
@@ -36,7 +36,7 @@ validation)은 상위 [[docs/AGENTS]]가 소유한다. 아래는 product type �
 - product가 정한 scope 안에서 우선순위·순서만 정하고, product scope를 확장하지 않는다.
 - 개별 task 실행 절차·할당·진행 상태·cutover checklist는 `plans/`가 owner다. roadmap에 plan checklist나
   plan 진행 상태를 대신 넣지 않는다.
-- contract 본문은 spec owner가 소유한다. roadmap은 관련 spec 문서(예: [[docs/specs/aiox-a2a]])로 링크만
+- contract 본문은 spec owner가 소유한다. roadmap은 관련 spec 문서(예: [[docs/specs/aiox-collaboration]])로 링크만
   하고 contract text를 복사하지 않는다. gate는 contract를 정의하지 않고 통과 조건으로만 참조한다.
 - `roadmap.md`는 Release Path / Gate Overview / Phase 0 Release Gates / Post-Release Phases /
   Gate Evidence / Cross-Platform Requirement 구조를 따른다.

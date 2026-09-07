@@ -41,26 +41,17 @@ Allowed section/claim statuses:
 Implementations MUST preserve source-only reply routing unless an explicit route override is defined.
 ```
 
-기존 `aiox-a2a.md`와 이미 분리된 slice는 이 status tag 형식보다 먼저 작성되었으므로 MUST/SHOULD language,
-section-level defaults, inline status notes를 유지할 수 있다. 새 slice를 작성하거나 기존 slice를 retrofit할 때는 위 status
-어휘를 사용하되 기존 section 의미를 보존한다.
+## 3. Spec Ownership
 
-## 3. aiox-a2a Index And Slice Ownership
-
-`docs/specs/aiox-a2a.md` is the compatibility index and navigation hub for the split A2A protocol.
-
-- Do not add new full contract text to `aiox-a2a.md` when the relevant protocol slice already exists.
-- Add or update contract text in the owning slice document instead.
-- Keep `aiox-a2a.md` stubs, status vocabulary, glossary, layer model, and document map consistent with the slices.
-- When adding a new protocol area, decide whether it belongs in an existing slice or needs a new slice, then update
-  `aiox-a2a.md` only as the index/navigation entry.
-- Preserve existing §N / §N.x headings and inbound anchors unless an explicit migration updates inbound references.
-- Existing MUST/SHOULD and section-level default meaning must be preserved when moving or editing slice text.
+현재 TUI 제품의 설계 진입점은 [[docs/aiox-tui-product]]다. 각 spec은 runtime, collaboration,
+host, configuration/Web의 외부 계약을 소유한다. 다른 spec의 계약을 복제하지 않고 owning
+문서로 연결한다. 새 영역을 분리할 때에는 설계 진입점의 문서 지도도 함께 갱신한다.
+이전 A2A index와 §N anchor를 새 문서에 호환 요구로 유지하지 않는다.
 
 ## 4. Spec Slice Composition
 
 새 spec slice는 고정 skeleton을 채우는 문서가 아니다. 그 slice가 답해야 하는 external contract 질문과 상위 [[docs/AGENTS]]의
-가장 좁은 유효 범위 원칙에 따라 필요한 section만 구성한다. 인덱스(`aiox-a2a.md`)는 이 composition 규칙이 아니라 §3을 따른다.
+가장 좁은 유효 범위 원칙에 따라 필요한 section만 구성한다. 문서 간 소유 경계는 §3을 따른다.
 
 Spec slice가 복원해야 하는 내용은 scope, normative contract, field/state table, protocol behavior, compatibility rule,
 externally observable lifecycle/state transition, current implementation caveat, open/deferred contract question처럼 문서 질문에

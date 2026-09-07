@@ -4,6 +4,8 @@ description: Web-first rewrite Stage 1에서 pnpm workspace와 apps packages ada
 status: decided
 ---
 
+> 이 문서는 이전 Web-first 작업의 완료 증거다. 아래 scope·required reads·plan 상태는 당시 기록이며 현재 실행 지시가 아니다. 당시 구현·테스트는 새 제품에서 재사용되거나 검증됐다는 근거로 자동 승계하지 않는다. 현재 작업은 `plans/aiox-tui-product-rebuild.md`에서 시작한다.
+
 ## Work Items
 - [x] W1 workspace boundary dependency graph와 root pnpm configuration을 구축한다
 - [x] W2 apps cli server web executable skeleton과 entry build boundary를 구축한다
@@ -24,9 +26,7 @@ status: decided
 - Package contract: `log skill/references/package-log.md`.
 - Base loop contract: `log skill/references/loop-rules.md`.
 - Project integration: `AGENTS.md, plans/AGENTS.md, logs/AGENTS.md, docs/documentation-system.md`.
-- Accepted target artifact: `logs/artifacts/aiox-web-first-accepted-target-baseline.md`를 전체 읽고 current fact, accepted target과 open decision을 구분한다.
-- Stage 0 contract: `logs/2026-09-01-AIOX-Web-first-Stage0-Runtime-Contracts.md`가 `decided`일 때 accepted lifecycle·authority 결과와 owner handoff를 읽는다.
-- Immediate predecessor: `logs/2026-09-01-AIOX-Web-first-Stage0-Runtime-Contracts.md`가 `decided`이고 plan에서 Stage 1이 활성화된 뒤에만 이 package를 활성화한다.
+- 이전 참조 정리: 해당 선행 target·계약·활성화 지시는 폐기됐다. 이 완료 기록을 재개하지 않으며 현재 구현은 `plans/aiox-tui-product-rebuild.md`를 따른다.
 - Current implementation claim은 code와 tests에서 직접 재확인하고 predecessor candidate 변경을 accepted evidence처럼 사용하지 않는다.
 
 ## Package Scope
@@ -38,7 +38,7 @@ status: decided
   - Workspace artifacts: `apps/{cli,server,web}/**`, `packages/{protocol,domain,config,database,adapter-sdk}/**`, `adapters/{claude-cli,codex-cli}/**`.
   - Verification: `scripts/check-workspace-boundaries.mjs`, `tests/workspace/**`.
   - Architecture handoff: `docs/architecture/web-first-workspace-boundaries.md`, and only the necessary navigation links in `docs/architecture/local-agent-runtime.md` and `docs/architecture/web-first-runtime-lifecycle.md`.
-  - Work state: this controlling log, its W1-W7 task records, `plans/aiox-web-first-rewrite.md`, and Stage 2 controlling/task state only when Stage 1 closeout activates Stage 2 W1.
+  - Work state: this controlling log, its W1-W7 task records, 당시 Web-first plan(폐기됨), and Stage 2 controlling/task state only when Stage 1 closeout activates Stage 2 W1.
 - Excluded:
   - Gateway production RPC, React/Vite runtime projection과 product UI.
   - PTY, WebSocket, SQLite schema 또는 vendor runtime 실행.
@@ -73,7 +73,7 @@ status: decided
 ## Evidence
 
 - Current accepted evidence:
-  - Accepted target와 open-decision boundary는 `logs/artifacts/aiox-web-first-accepted-target-baseline.md`가 제공한다.
+  - Accepted target와 open-decision boundary는 당시 Web-first accepted-target snapshot(폐기됨)가 제공한다.
   - Stage 0 accepted lifecycle·authority 계약과 predecessor의 decided result만 실행 baseline으로 사용한다.
   - W1 discovery에서 legacy root importer를 Stage 9까지 보존하며 새 workspace를 병존시키고, target package로 legacy source를 복사하지 않는 경계를 확인했다.
   - W1 accepted: root와 10개 private workspace project, manifest dependency graph, lockfile importers와 platform-neutral `tsconfig.base.json`이 focused test/install/list 검증을 통과했다.
@@ -130,8 +130,8 @@ status: decided
 
 ## 2026-09-02 · Stage 0 predecessor 수용과 Stage 1 활성화
 
-- Activation evidence: `logs/2026-09-01-AIOX-Web-first-Stage0-Runtime-Contracts.md`가 W1–W5 owner contract와 required verification을 완료하고 `decided`로 전환됐다.
-- Plan state: `plans/aiox-web-first-rewrite.md`에서 Stage 0은 `[x]`, Stage 1은 유일한 `[>]`다.
+- Activation evidence: 당시 Stage 0 계약 기록(폐기됨)가 W1–W5 owner contract와 required verification을 완료하고 `decided`로 전환됐다.
+- Plan state: 당시 Web-first plan(폐기됨)에서 Stage 0은 `[x]`, Stage 1은 유일한 `[>]`다.
 - Current next: W1 workspace boundary dependency graph와 root pnpm configuration. Production 작업은 새 turn에서 W1 discovery/contract review 후 시작한다.
 
 ## 2026-09-02 · W1 workspace foundation
