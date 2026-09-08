@@ -15,7 +15,7 @@
         "lint:fix": "oxlint --fix apps packages tsup.config.ts vitest.config.ts",
         "format": "oxfmt --write apps packages package.json tsconfig.base.json tsup.config.ts vitest.config.ts pnpm-workspace.yaml .oxfmtrc.json .oxlintrc.json .vscode/settings.json",
         "format:check": "oxfmt --check apps packages package.json tsconfig.base.json tsup.config.ts vitest.config.ts pnpm-workspace.yaml .oxfmtrc.json .oxlintrc.json .vscode/settings.json",
-        "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test"
+        "check": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test"
     },
     "devDependencies": {
         "@types/node": "20.19.43",

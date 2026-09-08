@@ -25,7 +25,8 @@ parser/doctor를 구현했습니다. daemon·vendor 실행·운영 Web은 아직
 scripts/onramp
 ```
 
-`pnpm check`는 oxlint·oxfmt·타입 검사·tsup 빌드·Vitest를 실행합니다.
+`pnpm check`는 oxlint·oxfmt·tsup 빌드·타입 검사·Vitest 순으로 실행합니다.
+패키지 공개 entry가 `dist`를 참조하므로 깨끗한 checkout에서는 빌드가 타입 검사보다 먼저 필요합니다.
 `pnpm format`은 현재 앱·패키지와 개발 설정을 포맷합니다. 테스트는 production 파일 옆에 둡니다.
 빌드 후 `node apps/cli/dist/main.js doctor --json`으로 로컬 환경을 진단할 수 있습니다.
 나머지 명령의 daemon 연결은 후속 단계이며 아직 실행 성공으로 보고하지 않습니다.
