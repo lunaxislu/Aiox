@@ -19,6 +19,9 @@ parser/doctor를 구현했습니다. daemon·vendor 실행·운영 Web은 아직
 
 ## 개발
 
+Node.js 22.12.0 이상과 루트 `packageManager`에 지정된 pnpm을 사용합니다.
+CI 검증 대상은 Node 22·24이며, 버전 하한 선언이 이후 모든 버전의 검증을 의미하지는 않습니다.
+
 현재 작업은 다음 명령으로 확인합니다.
 
 ```sh
@@ -32,7 +35,7 @@ scripts/onramp
 나머지 명령의 daemon 연결은 후속 단계이며 아직 실행 성공으로 보고하지 않습니다.
 
 GitHub Actions의 [Stage 1 CI](.github/workflows/ci.yml)는 push·PR·수동 실행 시
-Windows·Linux·macOS 각각에서 Node 20·22·24로 의존성을 설치하고 같은 검사와 CLI 진단을
+Windows·Linux·macOS 각각에서 Node 22·24로 의존성을 설치하고 같은 검사와 CLI 진단을
 실행합니다. pnpm 버전은 루트 `packageManager`를 따릅니다. 이 검사는 현재 foundation
 범위이며 아직 vendor TUI·PTY·WSL 통합의 지원을 증명하지 않습니다.
 

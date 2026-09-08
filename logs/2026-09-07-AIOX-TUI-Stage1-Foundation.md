@@ -135,14 +135,12 @@ tsconfig.json 중복과 `apps/cli/src/cli.ts`의 미구현 command tree는 이�
 
 앞 entry의 types: [] 설명 정정: 자동 포함되는 ambient type package 범위를 제한하는 옵션이며 명시적 node:* import 금지까지 독립적으로 보장하는 정책으로 취급하지 않는다. Domain의 플랫폼 의존 금지는 별도 의존성 리뷰 대상이다.
 
-### 2026-09-08 13:45 · 상위 계획·Stage1/2 인계의 기존 합의 대조 리뷰
+### 2026-09-08 14:03 · Node 하한 확정과 3 OS CI 재실행
 
-사용자 요청으로 상위 plan, Stage1/Stage2 일반 로그, 새 spec/architecture와 현재 domain/config/persistence/CLI 및 CI 정의를 읽어 대조했다. 하위 별도 plan은 없고 상위 plan의 Stage1/2 로그가 세부 인계를 소유한다. 제품 코드나 계획은 수정하지 않았고 이번에 테스트·GitHub Actions 결과 조회는 실행하지 않았다.
+사용자가 Node 20 지원을 필수로 두지 않기로 결정하고 Node >=22.12.0 선언과 CI Node22/24 검증에 동의했다. 루트와 apps/cli package.json의 engines를 >=22.12.0으로 통일하고 CI에서 Node20을 제외했다. README는 설치 하한과 실제 검증 범위(3 OS × Node22/24)를 구분한다. 이후 모든 Node 버전의 동작 보장은 아니다. better-sqlite3 12.11.1과 lockfile은 유지했다.
 
-판정: TUI만 사용, Claude inbox/hooks·Codex App Server, 공통 HTTP MCP, 단일 Network·route 기반 agents_list/fan-out, 재전송 제외, replyExpected=false, force 전체 관리 실행 종료, 브라우저 attachment와 실행 분리, Host/Worktree·Web·알림·사이트 순서는 기존 합의와 정합하다. Stage2 plain-shell을 제품 terminal.create 계약으로 고정하지 않는 문장도 이전 반복을 방지한다. package/task 로그는 새로 만들지 않았다.
+확인 근거: 첫 CI 34188197685는 빌드 전 typecheck 때문에 dist 타입 선언을 찾지 못했고, bfdcb07에서 build→typecheck로 수정했다. 다음 CI 34188446784는 Node22/24의 Windows/Linux/macOS 6개 모두 성공했고 Node20 3개만 install에서 실패했다. Node20.20.2용 better-sqlite3 prebuild가 없고 node-gyp도 없었다. 공식 v12.10.0 release는 Node20/23 prebuild 제거를 명시한다: https://github.com/WiseLibs/better-sqlite3/releases/tag/v12.10.0 . SQLite 자체의 OS 미지원이 아니라 드라이버 배포 조건이다.
 
-문서 정합 보완: configuration-web spec14/37–43은 JSON·4500/4501·CLI>file>default·better-sqlite3 선택/구현을 명시하지만19/31/75–76과 상위plan Stage1 Notes는 같은 항목을 미결/후보로 남긴다. 구현 선택과 아직 미통합인 listener/CLI옵션/DB기본경로/Windows 검증을 분리해야 한다. 상위plan 마지막 Notes의 '설계 정리이며 구현은 다음'도 Stage1 구현 후 현황과 다르다.
+현재 변경에 대한 커밋 전략: 이미 staged된 design-grounded-changes skill 삭제 3건, 기존 research-idea 자료 4개, Node/CI/README 및 현재 로그 갱신을 각각 분리한다. 사용자 기존 로그 entry 삭제는 유지하고 개인 architecture.excalidraw는 건드리지 않는다. 조사 자료는 기존 내용을 보존하며 현행 제품 spec으로 승격하지 않는다.
 
-단계 경계: CLI의 실제 execute는 doctor만 구현됐고 나머지는 unavailable이며 기존 합의 위반은 아니지만 Stage1의 'CLI 기반'을 전체 명령 실행 완료로 읽지 않게 해야 한다. port override는 config parser에만 있고 CLI옵션/daemon연결은 미구현이다. Stage2에서 start 옵션→파일/기본값→고정 listener→설정reload의 흐름을 연결하고 CLI override와 저장 port를 구분해야 한다.
-
-CI 파일은 ubuntu/windows/macos × Node20/22/24에서 pnpm check와 built CLI doctor를 실행하도록 되어 있으나 로컬 workflow 파일은 untracked다. 정의 존재와 원격 성공은 구분한다. 이번은 plan/owner정합 리뷰이며 CI실행결과는 미확인이다. 이 CI가 통과해도 Stage1기반 검증이지 vendor TUI·PTY·WSL·글로벌npm배포 전체 증거가 아니다.
+로컬 확인: CI=true pnpm install --frozen-lockfile, pnpm check(lint/format/build/typecheck/Vitest 26개), built CLI doctor 모두 macOS arm64 Node24.14.0에서 통과. 새 6개 조합 CI는 push 후 결과 확인 예정이다. Stage1 전체 종료와 owner 정합성 검토는 아직 완료 처리하지 않는다.
