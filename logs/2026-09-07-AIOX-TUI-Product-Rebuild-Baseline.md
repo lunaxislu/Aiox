@@ -323,6 +323,7 @@ Host 실행 H2 → Network N2
 - D: Host-managed NetworkSpec의 authority는 aiox.yaml이며 Host 실행 범위의 임시 자원이다. Persistent NetworkSpec의 authority는 daemon DB이며 명시적 network delete까지 유지된다. daemon은 두 종류의 NetworkRuntime에서 같은 routing engine으로 membership/discovery/delivery를 실행한다. YAML 선언을 persistent global Network로 동시에 저장·소유하는 모델은 사용하지 않는다.
 - D: Host-managed Network는 Host 종료 시 membership과 함께 정리한다. 비정상 종료도 Host 등록의 유효성 상실을 감지한 정리 경로에서 처리해야 한다. 감지 수단으로 lease를 새로 강제하지는 않는다. Persistent Network 정의는 daemon 재시작 후에도 유지하지만 과거 Runtime membership을 살아 있는 프로세스로 간주하지 않는다.
 - D: Network 이름은 Host runtime scope와 persistent global scope를 구분한다. 표시 예시는 feature-host/feature-a와 feature-a이고, 내부 식별은 Host runtime ID 또는 독립 Network ID를 사용한다. 서로 다른 scope를 이름만으로 merge/replace하지 않는다. Host YAML의 persistent Network external 참조는 현재 범위에서 제외한다.
+- D: Network에 속하는 Agent 수와 Host가 실행하는 Agent 수에 AIOX의 고정 숫자 상한을 두지 않는다. 사용자는 100개·1,000개 이상도 계속 추가할 수 있으며 숫자만으로 등록을 거절하지 않는다. 실제 실행의 자원 부족·vendor 제한은 해당 실패로 보고한다. 이는 Agent당 Network 최대 1개·Host당 Network 1개 계약과 별개다.
 - D: `agent run --network`와 `host agent add --network`는 단일 값만 받는다. 반복 지정은 거절한다. 사용자는 실행 중 소속 변경용 join/leave 명령을 제거하기로 했다. Network는 실행 시 옵션 또는 Host YAML로 정하며 실행 중 소속 전환 기능은 제공하지 않는다. Network 소속과 Agent 프로세스 실행 소유권은 별개다.
 - D: 일반 `network list --all`/`show`에서 host-managed Network도 조회할 수 있지만, 그 runtime route 변경은 `host network route`를 사용한다. 일반 network delete/route는 persistent Network에 적용한다. YAML의 networks.<name>.agents는 초기 소속 선언이므로 유지하며 동적 가입·탈퇴 명령과 혼동하지 않는다.
 - R: 기존 `docs/specs/aiox-runtime-control.md`의 HostRuntime은 Host Manifest materialization이다. `hostId: local`로 standalone을 가짜 Host에 넣어 실행 머신과 Host 실행을 혼동하는 제안은 채택하지 않았다.
@@ -905,6 +906,19 @@ aiox host stop <host>
 - R: 기존 terminator의 findAgent는 listHostAgents의 실패 결과도 undefined로 반환하고 isAgentGone은 이를 부재로 판정한다. 이 경로는 관측 실패가 종료 성공으로 해석될 수 있으므로 새 구현에 그대로 가져오지 않는다. 실제 exit 관측과 조회 실패를 구분해야 한다.
 - D: 사용자 설명의 `aiox quit`는 과거 종료 구상이며 현재 진입점은 `aiox host stop <host>`다. root quit alias나 Claude 영구 setup을 되살리지 않는다. 이 기록은 계약 갱신이며 종료 키 실험·제품 코드 변경을 수행한 것이 아니다.
 
+D: YAML의 Agent별 실행 인자는 `agents.<name>.args: string[]`로 선언한다. `execute`/`excute` 필드나 호환 alias는 사용하지 않는다.
+
+```yaml
+args: ["--model", "sonnet", "--permission-mode", "plan"]
+```
+
+- block 배열과 inline 배열은 같은 `string[]`로 처리한다. `args` 생략은 빈 배열과 같다. 문자열이 아닌 요소는 입력 검증에서 거절한다.
+- 배열 요소 하나는 argv 하나다. 공백을 기준으로 재분리하거나 shell 명령으로 실행하지 않는다. 공백이 포함된 값도 하나의 요소로 전달할 수 있다.
+- `"--model sonnet"`을 자동으로 두 인자로 나누지 않는다. 한 인자로 전달하며 옵션의 유효성은 adapter/vendor가 판단한다.
+- CLI의 `--` 이후 인자와 YAML의 `args`는 같은 adapter 실행 인자 계약으로 연결한다. YAML 배열에 구분자 `--`를 자동으로 덧붙이지 않는다.
+- 실행 대상은 `adapter`가 정한다. 특히 Codex의 TUI와 App Server 중 어느 프로세스에 인자를 적용할지는 adapter가 담당한다.
+- AIOX가 관리하는 MCP·credential·binding 설정과 사용자 인자의 충돌 처리는 adapter 구현 단계에서 구체화한다. 이 계약 추가는 YAML parser·launcher 구현 완료를 뜻하지 않는다.
+
 `aiox.yaml` 구성 예시(사용자가 제공한 원래 구조에 단일 Network·instruction·Claude/Codex 범위를 적용한 목표 예시이며 현재 parser의 지원 완료를 뜻하지 않음):
 
 ```yaml
@@ -917,6 +931,11 @@ agents:
   reviewer:
     adapter: claude-code
     role: review
+    args:
+      - --model
+      - sonnet
+      - --permission-mode
+      - plan
     instruction: |
       구현을 검토하고 발견한 문제를 implementer에게 전달한다.
 
