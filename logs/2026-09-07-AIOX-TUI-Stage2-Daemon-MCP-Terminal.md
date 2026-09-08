@@ -6,7 +6,7 @@ status: open
 
 ## Work Items
 
-- [>] W1 현재 Git 구현을 기준으로 Stage 2 전체 완료에 남은 실제 브라우저·플랫폼별 설치/PTY 검증과 다음 단계 인계를 확인한다
+- [>] W1 CI에서 검증한 설치·PTY 범위와 남은 실제 브라우저 검증을 구분하고 Stage 2의 다음 단계 인계를 확인한다
 - [x] W2 리뷰 1–4·6–8의 결함을 합의한 시나리오대로 수정하고 회귀·통합 검증한다
 
 ## Required Context
@@ -20,6 +20,7 @@ status: open
 - 현재 활성 단계는 Stage 2이며 Git에 제품 구현·의존성이 존재한다. W2 리뷰 1–4·6–8 수정과 158 tests·빌드 Node smoke 검증은 완료했고 현재 재개점은 W1의 전체 완료 근거·인계 확인이다. 최신 W2 블록의 사용자 합의(일반 작업 자식 종료 제외, TUI exit 후 daemon 유지, 전체 API/WS 보호, 새 A′ 비전달)를 적용한다. 실제 vendor·브라우저 UI·다른 OS 완료로 확대하지 않는다. 과거 구현 미시작·reply/fan-out·라이브러리 미결 문구는 당시 기록이다. 기존 일반 로그에서 작업하며 package/task 파일과 미래 scaffold를 선생성하지 않는다.
 - 현재 설계 진입점 docs/aiox-tui-product.md. 읽을 계약: docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md, docs/specs/aiox-host.md, docs/specs/aiox-configuration-web.md. 구조: docs/architecture/aiox-system.md, docs/architecture/aiox-storage-terminal.md. Vendor 연결 경계가 필요할 때 docs/architecture/aiox-vendor-bindings.md를 읽는다. 선행 결과는 logs/2026-09-07-AIOX-TUI-Stage1-Foundation.md에서 확인한다.
 - W2 후속 리뷰 보완 완료: standalone 종료 endpoint route 정리·삭제된 Network·저장 실패 재시도 회귀와 pnpm check 162 tests 및 built Node 실제 PTY/HTTP/DB 재개방 검증을 통과했다. 최소 Web은 plain TypeScript/Vite/xterm 검증 페이지로 구현했고 Stage 6 운영 Web 방향과 구분한다. 최신 W2 후속 entry의 인계·검증 한계를 따른다.
+- ef624d8 push 후 CI 34258443461 최종 success: Windows/Linux/macOS × Node22/24. Windows 출력 타입·비동기 PID 결함 수정, Linux/macOS164 tests·Windows153 passed/11 POSIX skips. Linux Node22 버퍼 테스트 일회 timeout은 동일 commit failed-job 재실행 통과이며 원인 미확정. 실제 브라우저·vendor·WSL·npm 배포는 미검증. 최신 CI 결과 entry와 storage-terminal owner를 따른다.
 
 ## 2026-09-07 · Stage 2 대기 인계와 라이브러리 설치 방향
 
@@ -233,3 +234,11 @@ root pnpm check 통과: lint·format·build·typecheck·164 tests(domain28/confi
 c95eef3의 CI 34257659132에서 Linux/macOS는 성공했고 Windows는 JSON 예외가 사라졌지만 I/O 출력 줄·resize·PID 종료 검사 세 항목이 timeout으로 남았다. subagent의 read-only 분석을 root가 설치된 node-pty 소스와 대조했다. Windows PID는 최초 0에서 비동기로 갱신되는데 반환 객체가 최초 값을 복사하고 있었다. PID 변경 대역에서 RED를 확인한 뒤 native handle의 현재 pid를 읽는 getter로 수정했다. 실제 종료 테스트도 양수 PID를 확인한 후 그 PID의 부재를 검증한다.
 
 Node getWindowSize는 기존 stream의 columns/rows 캐시를 반환하므로 resize 전후 shell 안에서 새 Node TTY stream의 크기를 읽도록 수정했다. I/O는 ConPTY의 cursor 이동을 줄바꿈으로 가정하지 않고 입력 산술식에 없는 계산 결과가 출력되는지 확인한다. 실패 진단은 Vitest 5초 제한 전에 실제 출력 내용을 보고하도록 보강했다. Windows 통과 여부는 다음 CI에서 판정한다. root의 로컬 전체 pnpm check와 문서·diff 검증 후 수정 커밋을 push한다.
+
+### 2026-09-09 02:47 · push 후 6개 CI 조합 성공과 검증 범위
+
+작업 코드와 owner 갱신은 3b466df, Windows 출력 정규화는 c95eef3, 비동기 PID·native TTY 관측 수정은 ef624d8로 origin/main에 push했다. GitHub Actions https://github.com/lunaxislu/aiox-prototype/actions/runs/34258443461 의 head SHA ef624d808b347ba9f7b597cc482229b0c51de551과 최종 conclusion=success, Windows/Linux/macOS × Node22/24 여섯 job 성공을 gh로 직접 확인했다.
+
+검증 범위: frozen-lockfile 설치·lint·format·build·typecheck·테스트 및 built CLI doctor. Linux/macOS는 164 tests, Windows는 153 passed / 기존 POSIX 전용 11 skipped이며 Windows daemon의 75 tests(실제 PTY attachment 12 포함)는 통과했다. 브라우저 UI·실제 Claude/Codex·WSL·npm 배포 검증은 포함하지 않는다. 두 초기 CI 실패에서 발견한 Windows 출력 타입·비동기 PID 문제를 수정했다. ef624d8의 최초 Linux Node22 실행에서 기존 64 KiB 버퍼 테스트가 5초 timeout을 한 번 보였고, 코드 변경 없는 failed-job 재실행으로 성공했다. 일회성 timeout 원인은 확정하지 않았으며 재발 시 별도 재현·원인 확인이 필요하다.
+
+storage-terminal owner에 현재 플랫폼 CI 근거와 제외 범위를 반영했다. owner Markdown·링크와 log check·onramp·git diff --check를 점검한다. 사용자의 후속 지시대로 이 성공 결과를 별도 문서 커밋으로 남긴다. Stage 2 전체 완료나 vendor 단계 완료로 표시하지 않고 W1의 브라우저 검증·인계 확인은 유지한다. 별도 조사 prompt와 research-idea 사용자 변경 세 파일은 계속 제외한다.

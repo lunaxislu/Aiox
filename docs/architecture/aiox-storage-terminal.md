@@ -67,9 +67,11 @@ WSL Web에 접속하는 것은 이 혼합 실행과 다르며 네트워크 접�
 Stage 1은 better-sqlite3 12.11.1을 사용한다. Node >=22.12.0을 요구하며 Windows/Linux/macOS의
 Node22/24 CI에서 DB 설치·저장·재개방 테스트를 통과했다. OS 이름만으로 npm 전역 설치 성공을 약속하지 않고 채택
 버전의 Node·CPU·OS에 맞는 prebuilt/native 로딩을 검증한다. PTY native 의존도 함께 확인한다.
-npm 배포 artifact와 PTY·vendor 실행은 후속 단계에서 검증한다. WAL 채택은 미결이며 채택 시 같은 디렉터리의
+npm 배포 artifact와 vendor 실행은 후속 검증 대상이다. PTY의 현재 CI 범위는 아래 Stage 2 근거를 따른다. WAL 채택은 미결이며 채택 시 같은 디렉터리의
 `-wal`/`-shm` 접근과 로컬 파일시스템 조건을 지킨다. 살아 있는 sidecar를 삭제하지 않는다.
 [better-sqlite3](https://github.com/WiseLibs/better-sqlite3), [SQLite WAL](https://sqlite.org/wal.html).
+
+Stage 2의 `ef624d8`은 [CI 실행 34258443461](https://github.com/lunaxislu/aiox-prototype/actions/runs/34258443461)에서 Windows/Linux/macOS × Node22/24의 locked install·lint·build·typecheck·테스트·built CLI 진단을 통과했다. Linux/macOS는 164 tests, Windows는 153 tests와 기존 POSIX 전용 11 skips다. Windows에서도 daemon의 실제 PTY 입출력·resize·detach·종료 테스트는 실행했다. Linux Node22의 출력 버퍼 테스트 timeout 한 번은 같은 commit의 실패 job 재실행에서 통과했으며 원인은 확정하지 않았다. 실제 브라우저·vendor·WSL·npm 배포 artifact 검증은 이 CI에 포함되지 않는다. [Status: As-built]
 
 검증 경로는 설치→DB 생성/migration→저장→정상/force 종료→재시작 후 데이터 확인이다.
 Windows native/Linux/macOS를 구분하고 WSL 실행·Windows 브라우저 연결은 별도 확인한다.
