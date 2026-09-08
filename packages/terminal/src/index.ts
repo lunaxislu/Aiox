@@ -182,7 +182,9 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
 
     return {
         id: options.id,
-        pid: pty.pid,
+        get pid() {
+            return pty.pid;
+        },
         get alive() {
             return exited === undefined;
         },

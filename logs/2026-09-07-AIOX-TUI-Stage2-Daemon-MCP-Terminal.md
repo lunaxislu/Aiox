@@ -227,3 +227,9 @@ root 최종 검증: pnpm check 통과(lint·format·build·typecheck·162 tests:
 root가 ponytail·TDD로 string/Buffer 출력을 live viewer와 replay에서 바이트로 보존하는 테스트를 추가했다. string 케이스의 Uint8Array assertion RED 후 PTY 공통 경계에서 문자열만 UTF-8 Buffer로 바꿔 GREEN을 확인했다. POSIX의 비 UTF-8 원본 바이트는 유지한다. terminal_web_review subagent는 terminals.test.ts만 맡아 stty 대신 실제 Node TTY 크기를 관측하고, shell 명령 echo가 아닌 출력 줄 검증 및 force 종료 후 제한 시간 내 ESRCH 확인으로 바꿨다. root는 diff와 호출 경로를 직접 대조했다. Windows 테스트 전체 skip이나 오류 무시는 추가하지 않았다.
 
 root pnpm check 통과: lint·format·build·typecheck·164 tests(domain28/config9/protocol5/terminal15/cli18/persistence14/daemon75). 최초 로컬 재검사의 새 테스트 포맷 오류는 oxfmt로 수정 후 전체 재검사를 통과했다. storage-terminal owner에 Windows 문자열 정규화 경계를 반영했다. Windows native 성공은 후속 CI 결과로 확인하며 이 로컬 성공을 대신 사용하지 않는다.
+
+### 2026-09-09 02:39 · Windows 비동기 PID와 native TTY 관측 보완
+
+c95eef3의 CI 34257659132에서 Linux/macOS는 성공했고 Windows는 JSON 예외가 사라졌지만 I/O 출력 줄·resize·PID 종료 검사 세 항목이 timeout으로 남았다. subagent의 read-only 분석을 root가 설치된 node-pty 소스와 대조했다. Windows PID는 최초 0에서 비동기로 갱신되는데 반환 객체가 최초 값을 복사하고 있었다. PID 변경 대역에서 RED를 확인한 뒤 native handle의 현재 pid를 읽는 getter로 수정했다. 실제 종료 테스트도 양수 PID를 확인한 후 그 PID의 부재를 검증한다.
+
+Node getWindowSize는 기존 stream의 columns/rows 캐시를 반환하므로 resize 전후 shell 안에서 새 Node TTY stream의 크기를 읽도록 수정했다. I/O는 ConPTY의 cursor 이동을 줄바꿈으로 가정하지 않고 입력 산술식에 없는 계산 결과가 출력되는지 확인한다. 실패 진단은 Vitest 5초 제한 전에 실제 출력 내용을 보고하도록 보강했다. Windows 통과 여부는 다음 CI에서 판정한다. root의 로컬 전체 pnpm check와 문서·diff 검증 후 수정 커밋을 push한다.

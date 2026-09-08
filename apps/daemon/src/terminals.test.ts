@@ -60,15 +60,17 @@ function attach(terminalId: string) {
 
 async function waitFor(
     predicate: () => boolean,
-    label: string,
-    timeout = 8000,
+    label: string | (() => string),
+    timeout = 4000,
 ): Promise<void> {
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
         if (predicate()) return;
         await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    throw new Error(`timed out waiting for ${label}`);
+    throw new Error(
+        `timed out waiting for ${typeof label === "function" ? label() : label}`,
+    );
 }
 
 describe("terminal attachment", () => {
@@ -223,35 +225,36 @@ describe("terminal attachment", () => {
         const viewer = attach(terminal.id);
         await viewer.open;
 
-        viewer.type("echo attach-works\r");
+        viewer.type(
+            process.platform === "win32"
+                ? "set /a 12345*6789\r"
+                : "echo $((12345*6789))\r",
+        );
         await waitFor(
-            () => viewer.text().includes("\nattach-works\n"),
-            "shell output",
+            () => viewer.text().includes("83810205"),
+            () => `shell output: ${JSON.stringify(viewer.text())}`,
         );
         await viewer.close();
     });
 
     it("resizes the pty observed by its native TTY child", async () => {
-        const terminal = harness.daemon.createTerminal({
-            file: process.execPath,
-            args: [
-                "-e",
-                "setInterval(() => console.log('SIZE=' + process.stdout.getWindowSize().join('x')), 50)",
-            ],
-            cols: 80,
-            rows: 24,
-        });
+        const terminal = openShell();
         const viewer = attach(terminal.id);
         await viewer.open;
 
+        // A fresh TTY stream reads the native size; getWindowSize on an existing
+        // Node stream returns cached columns/rows until a resize event arrives.
+        const readSize = `"${process.execPath}" -p "process.stdout.getWindowSize().join('x')"\r`;
+        viewer.type(readSize);
         await waitFor(
-            () => viewer.text().includes("SIZE=80x24"),
-            "initial pty size",
+            () => viewer.text().includes("80x24"),
+            () => `initial pty size: ${JSON.stringify(viewer.text())}`,
         );
         viewer.resize(120, 40);
+        viewer.type(readSize);
         await waitFor(
-            () => viewer.text().includes("SIZE=120x40"),
-            "new pty size",
+            () => viewer.text().includes("120x40"),
+            () => `new pty size: ${JSON.stringify(viewer.text())}`,
         );
         await viewer.close();
     });
@@ -352,6 +355,7 @@ describe("terminal attachment", () => {
     it("stops every managed terminal on a forced daemon stop", async () => {
         const terminal = openShell();
         const session = harness.daemon.services.terminals.get(terminal.id)!;
+        await waitFor(() => session.pid > 0, "PTY child pid");
         const { pid } = session;
 
         const result = await harness.daemon.stop(true);

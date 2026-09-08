@@ -89,16 +89,23 @@ it.each(["한글\u001b[31m", Buffer.from([0xff, 0x1b, 0x5b, 0x6d])])(
     "delivers PTY output as bytes to live viewers and replay: %s",
     (chunk) => {
         let reportData!: (data: string) => void;
-        const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue({
-            pid: 123,
+        const pty = {
+            pid: 0,
             onData: (listener: typeof reportData) => {
                 reportData = listener;
                 return { dispose() {} };
             },
             onExit: () => ({ dispose() {} }),
-        } as unknown as ReturnType<typeof nodePty.spawn>);
+        };
+        const spawn = vi
+            .spyOn(nodePty, "spawn")
+            .mockReturnValue(
+                pty as unknown as ReturnType<typeof nodePty.spawn>,
+            );
         try {
             const session = createTerminal({ id: "bytes" });
+            pty.pid = 123;
+            expect(session.pid).toBe(123);
             const received: Uint8Array[] = [];
             session.subscribe({
                 data: (data) => received.push(data),
