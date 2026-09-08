@@ -79,9 +79,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
     const shell = defaultShell();
     const replayCeiling = options.replayBytes ?? DEFAULT_REPLAY_BYTES;
 
-    // encoding: null makes node-pty deliver Buffers instead of decoded strings.
-    // A pty carries bytes that are not always valid UTF-8, and a decode round
-    // trip would replace them with U+FFFD before they reach the browser.
+    // POSIX encoding: null preserves raw bytes; Windows still emits strings.
     const ptyOptions: IPtyForkOptions = {
         encoding: null,
         cols: options.cols ?? 80,
@@ -106,8 +104,12 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
     });
 
     pty.onData((chunk) => {
-        // Typed as string by node-pty even under `encoding: null`; it is a Buffer.
-        const bytes = chunk as unknown as Uint8Array;
+        // Normalize Windows text at the PTY boundary so WS output stays binary.
+        // Keep POSIX bytes intact, including output that is not valid UTF-8.
+        const bytes =
+            typeof chunk === "string"
+                ? Buffer.from(chunk, "utf8")
+                : (chunk as Uint8Array);
         replay.push(bytes);
         replayBytes += bytes.byteLength;
         while (replayBytes > replayCeiling) {

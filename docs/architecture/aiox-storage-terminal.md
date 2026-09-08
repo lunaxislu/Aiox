@@ -102,7 +102,9 @@ vendor Ctrl+O 등 입력·브라우저 예약 키를 구분한다.
 
 Stage 2는 서버 소유 node-pty의 입출력·resize·exit와 WebSocket attachment를 연결한다. 재부착에는 기본 64 KiB의 최근 출력 바이트를 사용한다. 이는 정확한 현재 화면 snapshot이 아니며 잘린 escape sequence나 과거 resize 뒤의 화면을 온전히 복원하지 못할 수 있다. 아래의 정확한 화면·배치 복귀는 운영 Web의 목표로 남는다. [Status: As-built]
 
-근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:18-73`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:37-127`; 실제 shell의 I/O·resize·detach 후 생존 검증은 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:219-273`.
+PTY 경계는 POSIX raw byte와 Windows 문자열 출력을 공통 바이트로 정규화해 WebSocket binary 출력과 JSON 제어 프레임을 구분한다. Windows 드라이버가 이미 문자열로 디코딩한 원본 바이트까지 복원한다고 보장하지 않는다.
+
+근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:18-73`, `packages/terminal/src/index.ts:106-137`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:37-127`; 실제 PTY의 I/O·resize·detach 후 생존 검증은 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:221-287`.
 
 ```text
 Vendor TUI ↔ 서버 소유 PTY / 현재 화면

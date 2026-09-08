@@ -219,3 +219,11 @@ root 최종 검증: pnpm check 통과(lint·format·build·typecheck·162 tests:
 사용자가 작업 파일 커밋 전에 관련 owner 갱신, 이후 push·CI 확인과 성공 결과의 추가 커밋을 지시했다. system architecture에는 현재 daemon 조립·공통 Runtime 정리와 미구현 vendor/Host 경계를, storage-terminal에는 TypeORM 인계·DB 직렬화·홈 DB 연결·최소 Web 선택 이유와 64 KiB raw tail의 화면 복원 한계를 반영했다. configuration-web과 제품 진입점의 stale한 미구현 설명을 정합화했다. 현재 동작은 code/test evidence로 연결했고 운영 Web·실제 vendor 목표는 유지했다.
 
 제품 코드는 직전 pnpm check 162 tests 및 built PTY/HTTP/DB smoke 이후 변경하지 않았다. 이번에는 owner 링크·evidence 범위·Markdown inline-code와 git diff --check를 점검한다. Stage 2 전체 완료·로그 종료는 선언하지 않는다. 기존 별도 CLI 조사 prompt 변경과 research-idea 파일은 커밋에서 제외하며 architecture.excalidraw는 건드리지 않는다. 원격 main보다 앞선 기존 문서 커밋 2개도 이번 일반 push에 포함된다. CI 결과는 실행 후 별도 entry에 기록한다.
+
+### 2026-09-09 02:31 · Windows CI 실패 재현과 PTY 경계 수정
+
+3b466df를 origin/main에 push했다. GitHub Actions 34256887662는 Linux/macOS × Node22/24 네 작업이 성공했으나 Windows 두 작업은 daemon PTY 테스트에서 실패했다. Windows Node24 job 102164841645 로그에서 터미널 escape 출력이 text WS 프레임으로 전송되어 JSON parse 예외를 만든 것을 직접 확인했다. 설치된 node-pty의 Windows 출력 socket은 UTF-8 문자열을 사용하지만 AIOX는 encoding:null이면 항상 Buffer라고 가정했다.
+
+root가 ponytail·TDD로 string/Buffer 출력을 live viewer와 replay에서 바이트로 보존하는 테스트를 추가했다. string 케이스의 Uint8Array assertion RED 후 PTY 공통 경계에서 문자열만 UTF-8 Buffer로 바꿔 GREEN을 확인했다. POSIX의 비 UTF-8 원본 바이트는 유지한다. terminal_web_review subagent는 terminals.test.ts만 맡아 stty 대신 실제 Node TTY 크기를 관측하고, shell 명령 echo가 아닌 출력 줄 검증 및 force 종료 후 제한 시간 내 ESRCH 확인으로 바꿨다. root는 diff와 호출 경로를 직접 대조했다. Windows 테스트 전체 skip이나 오류 무시는 추가하지 않았다.
+
+root pnpm check 통과: lint·format·build·typecheck·164 tests(domain28/config9/protocol5/terminal15/cli18/persistence14/daemon75). 최초 로컬 재검사의 새 테스트 포맷 오류는 oxfmt로 수정 후 전체 재검사를 통과했다. storage-terminal owner에 Windows 문자열 정규화 경계를 반영했다. Windows native 성공은 후속 CI 결과로 확인하며 이 로컬 성공을 대신 사용하지 않는다.

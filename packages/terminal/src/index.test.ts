@@ -85,6 +85,35 @@ describe("defaultShell", () => {
     });
 });
 
+it.each(["한글\u001b[31m", Buffer.from([0xff, 0x1b, 0x5b, 0x6d])])(
+    "delivers PTY output as bytes to live viewers and replay: %s",
+    (chunk) => {
+        let reportData!: (data: string) => void;
+        const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue({
+            pid: 123,
+            onData: (listener: typeof reportData) => {
+                reportData = listener;
+                return { dispose() {} };
+            },
+            onExit: () => ({ dispose() {} }),
+        } as unknown as ReturnType<typeof nodePty.spawn>);
+        try {
+            const session = createTerminal({ id: "bytes" });
+            const received: Uint8Array[] = [];
+            session.subscribe({
+                data: (data) => received.push(data),
+                exit() {},
+            });
+            reportData(chunk as string);
+            expect(received[0]).toBeInstanceOf(Uint8Array);
+            expect(Buffer.from(received[0]!)).toEqual(Buffer.from(chunk));
+            expect(Buffer.from(session.snapshot())).toEqual(Buffer.from(chunk));
+        } finally {
+            spawn.mockRestore();
+        }
+    },
+);
+
 it("retries an unconfirmed termination while sharing each concurrent attempt", async () => {
     vi.useFakeTimers();
     let reportExit!: (event: { exitCode: number; signal?: number }) => void;

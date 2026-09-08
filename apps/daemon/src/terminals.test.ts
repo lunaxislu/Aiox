@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { defaultShell } from "@aiox/terminal";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -44,7 +46,7 @@ function attach(terminalId: string) {
         socket,
         control,
         open,
-        text: () => output,
+        text: () => stripVTControlCharacters(output).replaceAll("\r", ""),
         type: (line: string) => socket.send(Buffer.from(line, "utf8")),
         resize: (cols: number, rows: number) =>
             socket.send(JSON.stringify({ type: "resize", cols, rows })),
@@ -223,22 +225,34 @@ describe("terminal attachment", () => {
 
         viewer.type("echo attach-works\r");
         await waitFor(
-            () => viewer.text().includes("attach-works"),
+            () => viewer.text().includes("\nattach-works\n"),
             "shell output",
         );
         await viewer.close();
     });
 
-    it("resizes the pty the shell is running in", async () => {
-        const terminal = openShell();
+    it("resizes the pty observed by its native TTY child", async () => {
+        const terminal = harness.daemon.createTerminal({
+            file: process.execPath,
+            args: [
+                "-e",
+                "setInterval(() => console.log('SIZE=' + process.stdout.getWindowSize().join('x')), 50)",
+            ],
+            cols: 80,
+            rows: 24,
+        });
         const viewer = attach(terminal.id);
         await viewer.open;
 
+        await waitFor(
+            () => viewer.text().includes("SIZE=80x24"),
+            "initial pty size",
+        );
         viewer.resize(120, 40);
-        // Give the resize a moment to land before the shell reads it.
-        await new Promise((resolve) => setTimeout(resolve, 150));
-        viewer.type("stty size\r");
-        await waitFor(() => viewer.text().includes("40 120"), "new pty size");
+        await waitFor(
+            () => viewer.text().includes("SIZE=120x40"),
+            "new pty size",
+        );
         await viewer.close();
     });
 
@@ -344,6 +358,14 @@ describe("terminal attachment", () => {
         expect(result.stopped).toBe(true);
         expect(result.warnings).toEqual([]);
         expect(session.alive).toBe(false);
-        expect(() => process.kill(pid, 0)).toThrow(/ESRCH/);
+        // ConPTY's close event can precede the OS process handle becoming dead.
+        await waitFor(() => {
+            try {
+                process.kill(pid, 0);
+                return false;
+            } catch (error) {
+                return (error as NodeJS.ErrnoException).code === "ESRCH";
+            }
+        }, "stopped terminal process exit");
     });
 });
