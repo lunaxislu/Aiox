@@ -51,6 +51,12 @@ function adapterBoundary(argv: readonly string[], command: Command): number {
     return -1;
 }
 
+function portNumber(value: string): number {
+    if (!/^\d+$/.test(value))
+        throw new InvalidArgumentError("Port must be an integer");
+    return Number(value);
+}
+
 function singleNetwork(value: string, previous: string | undefined): string {
     if (previous !== undefined)
         throw new InvalidArgumentError("--network may only be supplied once");
@@ -165,7 +171,21 @@ export function createCli(
         return command;
     };
     const daemon = cli.command("daemon").description("Manage daemon lifecycle");
-    bind(daemon.command("start"), "daemon.start");
+    bind(
+        daemon
+            .command("start")
+            .addOption(
+                new Option("--port <port>", "Daemon port").argParser(
+                    portNumber,
+                ),
+            )
+            .addOption(
+                new Option("--web-port <port>", "Web port").argParser(
+                    portNumber,
+                ),
+            ),
+        "daemon.start",
+    );
     bind(
         daemon
             .command("stop")
@@ -243,17 +263,8 @@ export function createCli(
     bind(host.command("status <host>").option("--json"), "host.status");
     bind(host.command("stop <host>"), "host.stop");
     const hostAgent = host.command("agent");
-    bind(
-        metadata(
-            hostAgent
-                .command("add <host> [adapterArgs...]")
-                .requiredOption("--adapter <adapter>"),
-        ),
-        "host.agent.add",
-        true,
-    );
+    bind(hostAgent.command("start <host> <agents...>"), "host.agent.start");
     bind(hostAgent.command("stop <host> <agents...>"), "host.agent.stop");
-    bind(hostAgent.command("remove <host> <agents...>"), "host.agent.remove");
     const hostNetwork = host.command("network");
     bind(
         hostNetwork.command("list <host>").option("--json"),

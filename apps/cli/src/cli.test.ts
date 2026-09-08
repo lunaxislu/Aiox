@@ -60,6 +60,54 @@ test("rejects duplicate network and removed plural instruction and join", async 
         await assert.rejects(parse(args));
 });
 
+test("host agent membership commands are start and stop only", async () => {
+    for (const args of [
+        ["host", "agent", "add", "review", "--adapter", "codex"],
+        ["host", "agent", "remove", "review", "reviewer"],
+        ["host", "agent", "start", "review"],
+        ["host", "agent", "stop", "review"],
+    ])
+        await assert.rejects(parse(args));
+    for (const verb of ["start", "stop"]) {
+        assert.deepEqual(
+            (await parse(["host", "agent", verb, "review", "one"]))[0],
+            {
+                command: `host.agent.${verb}`,
+                args: ["review", ["one"]],
+                options: {},
+            },
+        );
+        assert.deepEqual(
+            (await parse(["host", "agent", verb, "review", "one", "two"]))[0]
+                ?.args,
+            ["review", ["one", "two"]],
+        );
+    }
+});
+
+test("daemon start takes integer port overrides", async () => {
+    assert.deepEqual(
+        (
+            await parse([
+                "daemon",
+                "start",
+                "--port",
+                "5000",
+                "--web-port",
+                "5001",
+            ])
+        )[0]?.options,
+        { port: 5000, webPort: 5001 },
+    );
+    for (const args of [
+        ["--port", "abc"],
+        ["--port", "45.5"],
+        ["--port", "-1"],
+        ["--web-port", ""],
+    ])
+        await assert.rejects(parse(["daemon", "start", ...args]));
+});
+
 test("route validates exclusive operations and directed operands before dispatch", async () => {
     for (const args of [
         [],
@@ -100,26 +148,6 @@ test("host worktree, single network, instruction and force reach application bou
     assert.equal(
         (await parse(["daemon", "stop", "--force"]))[0]?.options.force,
         true,
-    );
-    assert.deepEqual(
-        (
-            await parse([
-                "host",
-                "agent",
-                "add",
-                "review",
-                "--adapter",
-                "codex",
-                "--network",
-                "one",
-                "--instruction",
-                "work",
-                "--",
-                "--model",
-                "x",
-            ])
-        )[0]?.adapterArgs,
-        ["--model", "x"],
     );
     assert.equal(
         (

@@ -1,7 +1,12 @@
-import { assert, test } from "vitest";
+import { assert, describe, expect, it, test } from "vitest";
 
 import type { Network } from "@/network/network";
-import { canSend, outboundTargets } from "@/network/route";
+import {
+    applyRouteOperation,
+    canSend,
+    outboundTargets,
+    RouteOperationError,
+} from "@/network/route";
 
 test("discovery and fan-out select only same-network outbound recipients", () => {
     const source = { id: "a", networkId: "review" };
@@ -88,4 +93,159 @@ test("fan-out returns all permitted direct recipients and preserves their metada
         ],
     };
     assert.deepEqual(outboundTargets(network, a, [b, c]), [b, c]);
+});
+
+const denyAll: Pick<Network, "defaultPolicy" | "routes"> = {
+    defaultPolicy: "deny",
+    routes: [],
+};
+
+const sorted = (routes: { from: string; to: string; policy: string }[]) =>
+    [...routes].sort((a, b) =>
+        `${a.from}${a.to}`.localeCompare(`${b.from}${b.to}`),
+    );
+
+describe("applyRouteOperation", () => {
+    it("expands between into a mutual clique without self edges", () => {
+        const result = applyRouteOperation(denyAll, {
+            kind: "between",
+            policy: "allow",
+            agents: ["a", "b", "c"],
+        });
+        expect(sorted(result.routes)).toEqual(
+            sorted([
+                { from: "a", to: "b", policy: "allow" },
+                { from: "a", to: "c", policy: "allow" },
+                { from: "b", to: "a", policy: "allow" },
+                { from: "b", to: "c", policy: "allow" },
+                { from: "c", to: "a", policy: "allow" },
+                { from: "c", to: "b", policy: "allow" },
+            ]),
+        );
+    });
+
+    it("keeps a directed operation one-way", () => {
+        const result = applyRouteOperation(denyAll, {
+            kind: "directed",
+            policy: "allow",
+            from: "researcher",
+            to: ["reviewer"],
+        });
+        expect(result.routes).toEqual([
+            { from: "researcher", to: "reviewer", policy: "allow" },
+        ]);
+    });
+
+    it("replaces the existing policy on an edge instead of stacking a second one", () => {
+        const allowed = applyRouteOperation(denyAll, {
+            kind: "directed",
+            policy: "allow",
+            from: "a",
+            to: ["b"],
+        });
+        const denied = applyRouteOperation(allowed, {
+            kind: "directed",
+            policy: "deny",
+            from: "a",
+            to: ["b"],
+        });
+        expect(denied.routes).toEqual([{ from: "a", to: "b", policy: "deny" }]);
+    });
+
+    it("resets an edge back to the network default rather than writing deny", () => {
+        const allowed = applyRouteOperation(denyAll, {
+            kind: "between",
+            policy: "allow",
+            agents: ["a", "b"],
+        });
+        const reset = applyRouteOperation(allowed, {
+            kind: "directed",
+            policy: "reset",
+            from: "a",
+            to: ["b"],
+        });
+        expect(reset.routes).toEqual([{ from: "b", to: "a", policy: "allow" }]);
+        expect(reset.defaultPolicy).toBe("deny");
+    });
+
+    it("leaves unrelated edges alone", () => {
+        const seeded = {
+            defaultPolicy: "deny" as const,
+            routes: [{ from: "x", to: "y", policy: "allow" as const }],
+        };
+        const result = applyRouteOperation(seeded, {
+            kind: "directed",
+            policy: "allow",
+            from: "a",
+            to: ["b"],
+        });
+        expect(result.routes).toContainEqual({
+            from: "x",
+            to: "y",
+            policy: "allow",
+        });
+    });
+
+    it("changing the default does not remove explicit edges", () => {
+        const allowed = applyRouteOperation(denyAll, {
+            kind: "directed",
+            policy: "allow",
+            from: "a",
+            to: ["b"],
+        });
+        const result = applyRouteOperation(allowed, {
+            kind: "default",
+            policy: "deny",
+        });
+        expect(result.defaultPolicy).toBe("deny");
+        expect(result.routes).toEqual([
+            { from: "a", to: "b", policy: "allow" },
+        ]);
+    });
+
+    it("rejects operations that cannot describe a directed edge", () => {
+        expect(() =>
+            applyRouteOperation(denyAll, {
+                kind: "between",
+                policy: "allow",
+                agents: ["a", "a"],
+            }),
+        ).toThrow(RouteOperationError);
+        expect(() =>
+            applyRouteOperation(denyAll, {
+                kind: "directed",
+                policy: "allow",
+                from: "a",
+                to: [],
+            }),
+        ).toThrow(RouteOperationError);
+        expect(() =>
+            applyRouteOperation(denyAll, {
+                kind: "directed",
+                policy: "allow",
+                from: "a",
+                to: ["a"],
+            }),
+        ).toThrow(RouteOperationError);
+    });
+
+    it("refuses reset-default on a persistent network, which has no override layer", () => {
+        expect(() =>
+            applyRouteOperation(denyAll, { kind: "reset-default" }),
+        ).toThrow(RouteOperationError);
+    });
+
+    it("does not mutate the snapshot it was given", () => {
+        const seeded = {
+            defaultPolicy: "deny" as const,
+            routes: [{ from: "a", to: "b", policy: "allow" as const }],
+        };
+        applyRouteOperation(seeded, {
+            kind: "directed",
+            policy: "reset",
+            from: "a",
+            to: ["b"],
+        });
+        expect(seeded.routes).toHaveLength(1);
+    });
 });

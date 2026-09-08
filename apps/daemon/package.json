@@ -1,0 +1,37 @@
+{
+    "name": "@aiox/daemon",
+    "version": "0.0.0",
+    "private": true,
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "tsup --config ../../tsup.config.ts",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run --config ../../vitest.config.ts",
+        "harness": "node dist/dev-harness.js"
+    },
+    "dependencies": {
+        "@aiox/config": "workspace:*",
+        "@aiox/domain": "workspace:*",
+        "@aiox/persistence": "workspace:*",
+        "@aiox/protocol": "workspace:*",
+        "@aiox/terminal": "workspace:*",
+        "@modelcontextprotocol/sdk": "1.30.0",
+        "ws": "8.21.3",
+        "zod": "4.5.4"
+    },
+    "devDependencies": {
+        "@types/ws": "8.18.1"
+    },
+    "engines": {
+        "node": "^22.13.0 || >=24.11.0"
+    }
+}

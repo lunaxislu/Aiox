@@ -1,13 +1,349 @@
-import { expect, test } from "vitest";
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { createServer, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { saveConfig } from "@aiox/config";
+import { test } from "vitest";
 
 import { createFoundationPort } from "./bootstrap";
+import type { CliOptions, CliPort, CommandName } from "./requests";
 
-test("foundation commands cannot report a daemon operation as successful", async () => {
-    await expect(
-        createFoundationPort().execute({
-            command: "daemon.start",
-            args: [],
-            options: {},
+type Call = { method: string; url: string; body: string };
+type Stub = {
+    calls: Call[];
+    routes: string[];
+    cli: CliPort;
+    httpPort: number;
+    close: () => Promise<void>;
+};
+
+/** A real HTTP server stands in for the daemon; the CLI reaches it through its config file. */
+async function daemonStub(
+    handler: (call: Call, response: ServerResponse, port: number) => void,
+): Promise<Stub> {
+    const calls: Call[] = [];
+    const server = createServer((request, response) => {
+        let body = "";
+        request.on("data", (chunk: Buffer) => {
+            body += chunk.toString();
+        });
+        request.on("end", () => {
+            const call = {
+                method: request.method ?? "",
+                url: request.url ?? "",
+                body,
+            };
+            calls.push(call);
+            handler(call, response, (server.address() as AddressInfo).port);
+            if (!response.writableEnded) {
+                response.writeHead(404, { "content-type": "application/json" });
+                response.end(
+                    JSON.stringify({
+                        code: "not_found",
+                        message: `No stub route for ${call.method} ${call.url}`,
+                    }),
+                );
+            }
+        });
+    });
+    await new Promise<void>((resolve) => {
+        server.listen(0, "127.0.0.1", resolve);
+    });
+    const httpPort = (server.address() as AddressInfo).port;
+    const home = await mkdtemp(join(tmpdir(), "aiox-cli-"));
+    // Ephemeral ports are always above 1024, so the neighbour below is a valid web port.
+    await saveConfig(
+        { ports: { daemon: httpPort, web: httpPort - 1 } },
+        { home },
+    );
+    return {
+        calls,
+        get routes() {
+            return calls.map((call) => `${call.method} ${call.url}`);
+        },
+        cli: createFoundationPort({ home }),
+        httpPort,
+        close: async () => {
+            server.closeAllConnections();
+            await new Promise<void>((resolve) => {
+                server.close(() => resolve());
+            });
+        },
+    };
+}
+
+function send(response: ServerResponse, status: number, body: unknown): void {
+    response.writeHead(status, { "content-type": "application/json" });
+    response.end(JSON.stringify(body));
+}
+
+const running = (port: number) => ({
+    status: "running",
+    pid: process.pid,
+    ports: { daemon: port, web: port - 1 },
+    startedAt: 1_700_000_000_000,
+    runtimes: 2,
+    networks: 1,
+});
+
+const refusal = {
+    code: "active_runtimes",
+    message: "Active AIOX runtimes block a plain stop",
+    runtimes: ["reviewer", "builder"],
+};
+
+const run = (
+    cli: CliPort,
+    command: CommandName,
+    options: CliOptions = {},
+    args: string[] = [],
+) => cli.execute({ command, args, options });
+
+test("daemon status reports an unanswered probe without claiming absence", async () => {
+    const stub = await daemonStub(() => {});
+    await stub.close();
+    const report = (await run(stub.cli, "daemon.status", { json: true })) as {
+        state: string;
+        detail: string;
+    };
+    assert.equal(report.state, "no-state-file");
+    assert.match(report.detail, /not proof/i);
+    assert.match(report.detail, new RegExp(String(stub.httpPort)));
+});
+
+test("a refused stop surfaces the blocking runtimes and never retries with force", async () => {
+    const stub = await daemonStub((call, response) => {
+        if (call.url === "/api/daemon/stop") send(response, 409, refusal);
+    });
+    try {
+        await assert.rejects(run(stub.cli, "daemon.stop"), (error: Error) => {
+            assert.match(error.message, /active_runtimes/);
+            assert.match(error.message, /reviewer/);
+            assert.match(error.message, /builder/);
+            return true;
+        });
+        assert.deepEqual(stub.routes, ["POST /api/daemon/stop"]);
+        assert.deepEqual(JSON.parse(stub.calls[0]?.body ?? "null"), {
+            force: false,
+        });
+    } finally {
+        await stub.close();
+    }
+});
+
+test("restart keeps the running daemon when the stop is refused", async () => {
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+        if (call.url === "/api/daemon/stop") send(response, 409, refusal);
+    });
+    try {
+        await assert.rejects(
+            run(stub.cli, "daemon.restart"),
+            (error: Error) => {
+                assert.match(error.message, /reviewer/);
+                return true;
+            },
+        );
+        // A second daemon would need another probe and a spawn; the sequence stops at the refusal.
+        assert.deepEqual(stub.routes, [
+            "GET /api/status",
+            "POST /api/daemon/stop",
+        ]);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("an incomplete force stop reports remaining resources and allows a user retry", async () => {
+    let attempts = 0;
+    const stub = await daemonStub((call, response) => {
+        if (call.url !== "/api/daemon/stop") return;
+        if (++attempts === 1)
+            send(response, 409, {
+                code: "stop_incomplete",
+                message:
+                    "Shutdown is incomplete; the daemon remains available for cleanup.",
+                runtimes: ["B"],
+                warnings: ["runtime B: exit unconfirmed"],
+            });
+        else send(response, 200, { stopped: true, forced: true });
+    });
+    try {
+        await assert.rejects(
+            run(stub.cli, "daemon.stop", { force: true }),
+            (error: Error) => {
+                assert.match(error.message, /stop_incomplete/);
+                assert.match(error.message, /runtime B: exit unconfirmed/);
+                return true;
+            },
+        );
+        assert.equal(attempts, 1);
+        assert.match(
+            String(await run(stub.cli, "daemon.stop", { force: true })),
+            /daemon stopped/,
+        );
+        assert.equal(attempts, 2);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("daemon start refuses to start a second daemon on a live port", async () => {
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+    });
+    try {
+        const message = await run(stub.cli, "daemon.start");
+        assert.match(String(message), /already running/);
+        assert.deepEqual(stub.routes, ["GET /api/status"]);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("route flags become exactly one route operation", async () => {
+    const view = {
+        id: "n1",
+        name: "review",
+        scope: "persistent",
+        defaultPolicy: "allow",
+        routes: [],
+    };
+    const stub = await daemonStub((call, response) => {
+        if (call.url === "/api/networks/review/route")
+            send(response, 200, view);
+    });
+    try {
+        const cases: [CliOptions, unknown][] = [
+            [{ default: "deny" }, { kind: "default", policy: "deny" }],
+            [{ resetDefault: true }, { kind: "reset-default" }],
+            [
+                { denyBetween: ["a", "b"] },
+                { kind: "between", policy: "deny", agents: ["a", "b"] },
+            ],
+            [
+                { resetBetween: ["a", "b"] },
+                { kind: "between", policy: "reset", agents: ["a", "b"] },
+            ],
+            [
+                { allowFrom: "a", to: ["b", "c"] },
+                {
+                    kind: "directed",
+                    policy: "allow",
+                    from: "a",
+                    to: ["b", "c"],
+                },
+            ],
+        ];
+        for (const [options, operation] of cases) {
+            await run(stub.cli, "network.route", options, ["review"]);
+            assert.deepEqual(JSON.parse(stub.calls.at(-1)?.body ?? "null"), {
+                operation,
+            });
+        }
+        assert.equal(stub.calls.length, cases.length);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("network and agent reads reach their endpoints and summarise without --json", async () => {
+    const agent = {
+        agentId: "a1",
+        name: "reviewer",
+        role: "review",
+        description: null,
+        activity: "idle",
+        networkId: "n1",
+        hostId: null,
+        terminalId: null,
+    };
+    const stub = await daemonStub((call, response) => {
+        if (call.url.startsWith("/api/agents")) send(response, 200, [agent]);
+    });
+    try {
+        assert.match(
+            String(await run(stub.cli, "agent.list", { all: true })),
+            /reviewer/,
+        );
+        assert.deepEqual(
+            await run(stub.cli, "agent.list", { json: true, network: "n1" }),
+            [agent],
+        );
+        assert.deepEqual(stub.routes, [
+            "GET /api/agents?all=1",
+            "GET /api/agents?network=n1",
+        ]);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("commands that stage 2 does not deliver name the stage that will", async () => {
+    const stub = await daemonStub(() => {});
+    try {
+        await assert.rejects(
+            run(stub.cli, "agent.run", {}, ["claude"]),
+            /Stage 3/,
+        );
+        await assert.rejects(
+            run(stub.cli, "host.agent.start", {}, ["review"]),
+            /Stage 5/,
+        );
+        assert.deepEqual(stub.routes, []);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("doctor keeps its stage 1 diagnosis and adds daemon reachability", async () => {
+    const stub = await daemonStub(() => {});
+    await stub.close();
+    const report = (await run(stub.cli, "doctor")) as Record<string, unknown>;
+    assert.equal(report.node, process.version);
+    assert.equal(report.platform, process.platform);
+    assert.equal(report.arch, process.arch);
+    assert.ok(["native", "wsl"].includes(String(report.environment)));
+    assert.equal(report.vendorIntegration, "not implemented");
+    assert.deepEqual((report.config as { ports: unknown }).ports, {
+        daemon: stub.httpPort,
+        web: stub.httpPort - 1,
+    });
+    assert.equal(
+        typeof (report.git as { available: boolean }).available,
+        "boolean",
+    );
+    assert.deepEqual(report.daemon, {
+        reachable: false,
+        port: stub.httpPort,
+    });
+});
+
+test("commands follow the port a running daemon recorded, not the configured default", async () => {
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/agents") send(response, 200, []);
+        if (call.url === "/api/status") send(response, 200, running(port));
+    });
+    // A daemon started with --port bound somewhere other than the configured
+    // default and recorded it. Without following that record, every later
+    // command would talk to a port nothing is listening on.
+    const home = await mkdtemp(join(tmpdir(), "aiox-cli-"));
+    await saveConfig({ ports: { daemon: 4500, web: 4501 } }, { home });
+    await mkdir(join(home, ".aiox"), { recursive: true });
+    await writeFile(
+        join(home, ".aiox", "daemon.json"),
+        JSON.stringify({
+            pid: process.pid,
+            ports: { daemon: stub.httpPort, web: stub.httpPort - 1 },
+            startedAt: 1_700_000_000_000,
         }),
-    ).rejects.toThrow("not available");
+    );
+
+    const cli = createFoundationPort({ home });
+    assert.deepEqual(await run(cli, "agent.list", { json: true }), []);
+    assert.deepEqual(stub.routes, ["GET /api/agents"]);
+    await stub.close();
 });

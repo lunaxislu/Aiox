@@ -39,7 +39,7 @@ AIOX daemon
 | 문서 | 소유하는 내용 |
 | --- | --- |
 | [[docs/specs/aiox-runtime]] | 전체 CLI, 실행·종료·조회·Runtime 상태의 외부 의미 |
-| [[docs/specs/aiox-collaboration]] | HTTP MCP, 단일 Network·route 기반 통신, replyExpected, 수신·회신 |
+| [[docs/specs/aiox-collaboration]] | HTTP MCP, 단일 Network·route 기반 통신, 대상 지정 send, 수신·요청 결과·daemon 알림 |
 | [[docs/specs/aiox-host]] | Host·Worktree, manifest 예시, membership·routing 선언·override |
 | [[docs/specs/aiox-configuration-web]] | 전역 설정·포트·저장·자동 브라우저 복귀·알림·운영 UI |
 | [[docs/architecture/aiox-system]] | apps/packages·domain 책임, 프로세스 구성과 내부 흐름 |
@@ -49,8 +49,7 @@ AIOX daemon
 
 ## 기준과 근거
 
-승인된 계약과 제안은 각 문서에서 구분한다. JSON 형식·DB 파일명·기본 포트·정확한 status enum,
-메시지 본문 보존 기간처럼 선택되지 않은 세부를 이미 확정된 값으로 사용하지 않는다.
+승인된 계약과 구현 완료는 구분한다. Stage 2의 daemon·공통 HTTP MCP·저장·PTY 및 최소 Web 구현 범위와 근거는 system·storage-terminal architecture를 따른다. 최소 Web은 검증용 plain TypeScript이며 위 React 운영 Web은 후속 목표다. 실제 vendor 입력 연결·브라우저 UI·OS별 통합 검증까지 완료됐다는 뜻은 아니다.
 
 Claude 단일 idle inbox 입력과 Stop 연결, native preview 실험 및 Codex active-thread relay는
 기존 실측 근거가 있다. 이 근거를 Windows 전체 연동, 모든 메시지의 정확히 한 번 실행,

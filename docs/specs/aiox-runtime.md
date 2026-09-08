@@ -49,9 +49,11 @@ Daemon이 materialized Runtime·Network·route의 권위를 갖고 Controller가
   모호성 오류와 후보를 제공한다. `/`는 qualified 이름 구분자이므로 Host/Agent/Network
   사용자 이름에 허용하지 않는다.
 
-정확한 status enum과 vendor 신호 매핑은 Open/deferred다. `waiting_for_user` 같은 예시는
-확정 enum이 아니다. 세션 리밋·실행 중단은 상태와 Web 알림에 반영하되 특정 delivery 실패로
-귀속하려면 그 입력과의 연결 근거가 있어야 한다.
+`agents_list()`의 현재 상태는 `idle`, `working`, `failed`만 공개한다. reasoning·도구 실행·사용자 질문·승인 대기는 모두 working으로 요약한다. 실행·연결 준비를 뜻하는 starting은 send 성공 상태가 아니며 MCP 공개 enum에 추가하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
+
+Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승인 대기, 실패 원인, Host stopped를 구분한다. 알림 읽음이나 다른 요청의 완료로 미해결 사용자 요청 표시를 지우지 않는다.
+
+개별 요청의 completed/failed/interrupted와 자동 알림은 [[docs/specs/aiox-collaboration]]이 소유한다. 현재 상태와 요청 결과는 별개이며 상세 Web 표시는 [[docs/specs/aiox-configuration-web]]을 따른다.
 
 ## 종료와 daemon 수명
 
@@ -66,19 +68,26 @@ daemon stop --force
 → 신규 등록·실행·메시지 전달 차단
 → 모든 AIOX 관리 Host·standalone 및 PTY·binding·Relay·App Server 강제 종료
 → 실제 종료 확인, credential·membership·Host Network 정리
-→ DB 등 daemon 자원 정리
-→ daemon 종료
+→ 모두 정리됐으면 DB 등 daemon 자원 정리 → daemon 종료
+→ 미완료가 있으면 실패·남은 자원 보고 → daemon·Web 유지 → 종료 재시도
 ```
 
-- 실행 중 작업도 force 종료 대상이다. 정상 TUI 종료 입력 성공을 전제하지 않는다.
+- 작업 중인 TUI도 force 종료 대상이다. 정상 TUI 종료 입력 성공을 전제하지 않는다.
 - 관리 실행 handle과 소유 관계를 기준으로 종료한다. AIOX 밖의 vendor 프로세스나 터미널
   앱 전체를 이름으로 검색해 종료하지 않는다.
 - 종료 입력·신호 전달 성공은 실제 종료 성공이 아니다. 조회 실패는 프로세스 부재의 증거가
   아니다. 일부 자원이 남거나 관측할 수 없으면 전체 종료 성공으로 보고하지 않는다.
-- daemon 자체를 먼저 죽인 뒤 자식 정리가 됐다고 간주하지 않는다. OS별 후손 프로세스 범위,
-  강제 종료 수단과 부분 실패 보고 방식은 구현에서 구체화한다.
+- AIOX가 직접 관리하는 TUI·PTY·binding·Relay·App Server를 종료·확인한다. Agent가 실행한
+  개발 서버·테스트·스크립트 등 일반 작업 자식 전체를 일괄 종료하거나 그 생존만으로 종료 실패를
+  판정하지 않는다. daemon 자체를 먼저 죽인 뒤 관리 자원 정리가 됐다고 간주하지 않는다.
+- 일부 관리 자원 정리가 실패하면 daemon·Web과 남은 자원의 정리 경로를 유지한다. 같은
+  `aiox daemon stop --force`를 다시 실행해 미완료 자원 정리를 재시도할 수 있어야 한다.
 - persistent Network 정의, Worktree와 이미 저장한 작업 파일은 삭제하지 않는다.
-- Host의 정상 종료·Declared/Ephemeral Agent 처리 규칙은 [[docs/specs/aiox-host]]를 따른다.
+- Host의 정상 종료·Agent stopped/start 규칙은 [[docs/specs/aiox-host]]를 따른다.
+
+사용자가 남은 TUI에서 `/exit` 등으로 실제 실행을 끝내면 해당 Runtime의 자원·등록·credential·
+membership만 정리한다. 다른 실행과 daemon·Web은 유지하며 마지막 TUI 종료도 daemon 자동 종료를
+뜻하지 않는다. daemon 종료는 사용자가 별도로 `daemon stop` 또는 `daemon stop --force`를 요청한다.
 
 ## CLI 표면
 
@@ -132,16 +141,8 @@ aiox
 │  ├─ status <host> [--json]
 │  ├─ stop <host>
 │  ├─ agent
-│  │  ├─ add <host>
-│  │  │  ├─ --adapter <adapter>
-│  │  │  ├─ --name <name>
-│  │  │  ├─ --network <host-network>         # Host의 단일 Network
-│  │  │  ├─ --role <role>
-│  │  │  ├─ --description <description>
-│  │  │  ├─ --instruction <instruction>
-│  │  │  └─ -- <adapter-options>
-│  │  ├─ stop <host> <agents...>
-│  │  └─ remove <host> <agents...>
+│  │  ├─ start <host> <agent-names...>
+│  │  └─ stop <host> <agent-names...>
 │  └─ network
 │     ├─ list <host> [--json]
 │     ├─ show <host> <network> [--json]
@@ -158,6 +159,8 @@ aiox
 ├─ status [--json]
 └─ doctor [--json]
 ```
+
+`host agent start/stop`은 해당 Host의 Agent 이름을 하나 이상 받는다. 이미 실행 중인 항목을 중복 시작하지 않고 이름별 결과를 보고한다. stopped 항목 보존·새 실행·route 재연결과 전체 Host 종료는 [[docs/specs/aiox-host]]를 따른다. 이전 vendor 대화를 자동 resume하지 않는다.
 
 Adapter install/uninstall/setup/list/show/doctor 표면을 유지하되 Claude 실행을 위한 사전 영구
 MCP setup을 다시 요구하지 않는다. provider별 설치/setup 구현은 이 명령 트리만으로 완료됐다고
@@ -184,3 +187,4 @@ Sources:
 
 - `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §§2–4, 10–15, 18, 24 — 승인 범위,
   실행 의미, CLI 및 검증 한계의 provenance.
+- `logs/2026-09-07-AIOX-TUI-Stage2-Daemon-MCP-Terminal.md` W2 — 종료 미완료 재시도·TUI 종료 후 daemon 유지·직접 관리 자원 범위.

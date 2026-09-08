@@ -2,13 +2,13 @@
 
 Status: Committed target
 
-이 문서는 공통 HTTP MCP의 send/reply/agents_list, 신원·routing·메시지 관측과 표시 의미를
+이 문서는 공통 HTTP MCP의 send/agents_list, 신원·routing·메시지 관측과 표시 의미를
 소유한다. Network 구성은 [[docs/specs/aiox-host]], 실행 상태는 [[docs/specs/aiox-runtime]],
 사용자 알림은 [[docs/specs/aiox-configuration-web]]과 연결된다.
 
 ## 공통 MCP와 실행 신원
 
-Claude와 Codex는 공통 HTTP MCP의 `send`, `reply`, `agents_list`를 사용한다. schema·handler·
+Claude와 Codex는 공통 HTTP MCP의 `send`, `agents_list`를 사용한다. schema·handler·
 통신 지침의 원본은 공통화하고 vendor 입력 framing은 adapter에 둔다. vendor마다 별도의 AIOX
 stdio MCP child나 /send listener를 만들지 않는다.
 
@@ -35,56 +35,40 @@ Claude는 실행 시 MCP JSON 문자열을 추가하며 사전 영구 등록이�
 실행 config와 child env를 사용한다. 정확한 실행 인자와 hidden inbox wire는 architecture의
 vendor binding 책임이다.
 
-## Send와 discovery
+## Send·discovery·수신 표시와 자동 알림
 
-Daemon은 실제 send 시점의 인증·소속·effective directed route로 대상을 판정한다. 과거
-`agents_list` 결과나 프롬프트에 적힌 이름은 현재 전송 권한이 아니다. 같은 Network라도 outbound
-허용이 없으면 send를 거절한다. `A→B`가 있다고 `B→A` 또는 전이적 route를 만들지 않는다.
+공통 HTTP MCP 도구는 `agents_list`와 `send`로 분리한다. `reply`, `replyExpected`, 재전송 도구를 제공하지 않으며 legacy envelope의 type/intent를 필수 입력으로 가져오지 않는다.
 
-일반 send는 현재 outbound route가 허용하는 대상에 fan-out한다. `A→B`, `A→C`이면
-A의 send는 B와 C에 전달한다. 원 요청자에게 보내는 reply는 이 fan-out과 구분한다.
+- `agents_list()`는 현재 발신자가 outbound route로 보낼 수 있는 실행만 배열로 반환한다. 각 항목은 `agentId`, `name`, `role`, `description`, `status`다. 이름 미지정 시 daemon의 `agentId`를 name으로 사용한다. role·description 미지정은 목록에서 null, 수신 표시에서는 생략한다.
+- `send({ targets: [agentId, ...], content })`는 하나 또는 여러 대상 ID와 본문을 받는다. name·role·description은 대상 선택을 돕는 표시 정보이며 실제 전송 식별자는 agentId다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
+- daemon은 인증된 실행에서 source를 결정하고 전송 시점에 각 대상의 실행·membership·effective route를 검증한다. 오래된 목록은 권한이 아니며 대상별 접수·전송 시도 결과와 오류를 반환한다. 일부 실패를 전체 성공으로 표시하지 않는다.
+- A→B만 허용되면 A의 목록에는 B가 보이고 B의 목록에는 A가 보이지 않는다. 양방향·전이적 route를 추론하지 않는다. 대화상 회신도 `send`를 사용하며 역방향 route가 필요하다.
+- 수신 정보는 발신자의 name·role·description, daemon 접수 시각 `createdAt`, 본문 `content`다. daemon이 인증된 발신자 메타데이터를 채운다. deliveryId 등을 모델의 회신 도구 인자로 노출할 필요는 없지만 내부 메시지·대상별 delivery·vendor prompt/turn 상관관계는 유지한다.
 
-`agents_list`는 인증된 source의 단일 Network에서 **source→target이 허용되는 Agent만**
-`status`와 함께 반환한다. Web은 Network 전체 Agent와 route를 표시한다. 일반 CLI 목록과
-MCP 목록의 범위를 혼동하지 않는다. status 값과 실제 관측 매핑은 runtime 계약의 미결이다.
+Web은 Network 전체 Agent·route를 표시한다. 일반 CLI 조회·필터와 MCP discovery의 범위는 구분한다.
 
-send 호출은 정상 접수·전송 시도 결과 또는 거절을 도구 반환으로 알려 준다. 응답을 기다리지
-않는 메시지라도 send 오류를 무시하지 않는다. message type/intent의 세부 schema·enum은
-아직 확정하지 않는다. 기존 거대한 envelope를 줄인다고 내부 식별자·
-권한 검사·상관관계까지 삭제하지 않는다.
-
-## 내부 데이터와 모델 표시
+단방향 대상에게는 원문 뒤에 줄바꿈 두 번과 아래 영어 안내를 붙인다. 원문 저장값과 daemon이 생성한 안내는 구분한다.
 
 ```text
-Daemon 내부
-  Runtime/source/target, Network/route, message/delivery ID,
-  전송 결과, reply 연결, vendor prompt/turn 연결
-
-모델 입력 / TUI
-  발신자 표시 + 본문 + 필요한 연결 ID + reply 필요 여부와 방법
+[AIOX Notice] No outbound route to the sender is available. Carry out the request. AIOX will automatically notify the sender when processing completes or fails. Do not attempt to send a reply or acknowledgment.
 ```
 
-protocol/version·createdAt·mediaType·전체 주소 등 관리 메타데이터를 매 메시지마다 JSON으로
-화면과 모델 입력에 노출하지 않는다. 모델에게 필요한 정보만 projection한다. 회신 불필요
-메시지도 hook 상관관계를 위해 연결 ID가 필요할 수 있으므로 false이면 ID를 무조건 제거하는
-계약을 만들지 않는다.
+대상별로 **전송 시점의 역방향 route 유무**를 요청에 보존하여 이후 route 변경과 무관하게 자동 알림 정책을 적용한다.
 
-Codex 입력 presentation의 최종 방식은 Open/deferred다. IDE delimiter/Cyan, toolOutput,
-additionalContext 후보를 조사했지만 하나를 채택했다고 간주하지 않는다. 고정
-“Sent by Codex” 문구가 Claude를 올바르게 표시한다고 주장하지 않는다. UI 표시는 모델 입력,
-실제 transport 수신, 인증된 발신자를 대신하지 않는다.
+| 전송 시점 관계 | completed | failed | interrupted |
+| --- | --- | --- | --- |
+| A→B 단방향 | daemon이 A에 통지 | daemon이 A에 통지 | 자동 통지 없음 |
+| A↔B 양방향 | 자동 통지 없음 | daemon이 A에 통지 | 자동 통지 없음 |
 
-## Reply 의미
+A가 B·C에게 보낸 뒤 C만 실패하면 A에게만 알린다. full mesh라도 B에게 실패를 전파하지 않는다. B가 별도로 C에게 보낸 요청의 발신자는 B다. daemon 알림은 역방향 Agent route를 부여하지 않으며 vendor의 진짜 system role과 동일하다는 뜻도 아니다. daemon 알림 자체의 처리 종료로 다시 완료 알림을 생성하지 않는다.
 
-`replyExpected=false`는 **회신 불필요**다. 발신 Agent는 상대의 응답 종료나 회신을 기다리거나
-추가 확인할 필요가 없다. 수신 측에 ACK 도구, Stop 완료 알림, 자동 후속 Agent 대화를 강제하지
-않는다. 내부 관측과 발신 Agent에게 새 메시지를 보내는 것은 다른 행동이다.
+A가 B에게 보낸 X를 B가 처리하는 동안 A가 종료돼도 X의 결과 연결을 유지한다. 이후 B의 처리
+결과를 저장하되 알림 대상은 원 발신 Runtime ID로 한정한다. 같은 이름·역할로 새로 실행한 A′에게
+X의 알림을 넘기지 않는다. 원 발신자의 실행 종료가 수신 요청의 이력 삭제나 재전송 근거가 되지 않는다.
 
-`replyExpected=true`이면 reply를 원 요청과 연결한다. daemon은 원 메시지·대상과 인증된
-회신자의 관계를 검증하고 원 source에 귀속한다. 일반 outbound fan-out과 혼동하지 않는다.
-reply 허용 횟수·중복 처리·실행 중 route 변경 뒤 지연 reply 권한의 상세는 Open/deferred다.
-false를 기존 one-reply permission의 동의어로 정의하거나 이를 근거로 임의 오류 enum을
-확정하지 않는다. `isReplyTrue` 같은 alias를 추가하지 않는다.
+알림은 Web뿐 아니라 발신 Agent의 vendor 입력 경로로 전달한다. Codex는 `toolOutput` 본문과 `additionalContext` 메타데이터, Claude는 native inbox peer message를 사용한다. 정확한 wire·표시·busy 입력 연결은 vendor 통합에서 검증한다.
+
+Codex 조합의 성공은 사용자 전달 실험 근거이며 신규 AIOX 통합 완료와 구분한다. E2E 실패 시 원인을 확인한 뒤 IDE delimiter/Cyan 또는 toolOutput 단독을 검토한다. 사전 fallback으로 구현하지 않는다. 정확한 경계는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
 
 ## 관측은 단일 필수 순서가 아니다
 
@@ -94,13 +78,20 @@ false를 기존 one-reply permission의 동의어로 정의하거나 이를 근�
 | binding 연결 준비 | 입력 경로 준비 | 모델이 본문을 읽음 |
 | socket write/입력 수락 | 해당 단계가 입력을 받음 | 산출물·업무 성공 |
 | 연결된 prompt/turn 종료 | 응답 종료 | 프로세스 종료 또는 작업 검증 완료 |
-| correlated MCP reply | 원 요청에 대한 회신 | 이후 작업도 모두 종료 |
+| Agent의 send 응답 | 대화상 회신 | 원 요청 완료 또는 이후 작업 종료 |
+
+현재 상태 요약과 Web 상세 표시는 [[docs/specs/aiox-runtime]] 및 [[docs/specs/aiox-configuration-web]]을 따른다. MCP는 idle/working/failed로 요약하고 Host stopped는 전송 대상에서 제외한다.
 
 ```text
-입력 수신 → MCP reply → 추가 작업 → Stop        가능
-입력 수신 → 응답 종료 → MCP reply               가능
-회신 불필요 입력 → 응답 종료 관측, 후속 회신 대기 없음
+B가 요청 X 처리 → X completed, B는 실제 활동에 따라 idle 또는 working
+B가 요청 Y 처리 → X completed 유지, Y 진행 중, B working
 ```
+
+completed/failed/interrupted는 개별 AIOX 입력의 처리 결과이고 Agent의 현재 상태와 별개다. completed는 연결된 응답 처리가 끝났다는 뜻이며 산출물의 정확성·업무 성공 보장이 아니다. 한 요청이 실패해도 실행이 살아 다른 입력을 처리한다면 현재 상태는 실제 활동을 따른다.
+
+Claude는 Runtime·session_id·prompt_id와 연결된 UserPromptSubmit/Stop을, Codex는 Runtime·threadId·turnId와 연결된 `turn/completed`의 completed/failed/interrupted 결과를 사용한다. 입력 주입 성공만으로 처리 완료를 선언하지 않는다. busy 입력이 기존 turn에 합쳐질 수 있으므로 메시지 하나가 항상 새 turn 하나라는 가정을 하지 않는다. 임의 Stop 하나로 모든 요청을 완료하지 않는다.
+
+세션 만료·인증/API 오류·연결 손실 등이 실제 요청을 실패시킨 경우 failed에 포함한다. 일시 재시도·일반 도구 오류를 무조건 요청 또는 Runtime 실패로 승격하지 않는다. interrupted는 Web에 기록하되 발신 Agent 자동 통지는 하지 않으며 모든 중단의 원인을 사용자로 단정하지 않는다.
 
 Codex의 정상 입력 응답은 runtime 입력 수락 근거다. App Server의 진행·완료·오류·사용자
 요청을 관측하고 활성 thread는 연결된 TUI의 성공한 start/resume/fork 결과에 맞춰 binding한다.
@@ -135,4 +126,5 @@ Host/Agent instruction 주입은 유지한다.
 Sources:
 
 - `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §§5–18 — 공통 MCP, inbox/Relay,
-  입력 관측·표시 실험, replyExpected와 재전송 제거 결정의 provenance.
+  입력 관측·표시 실험과 재전송 제거 결정의 provenance.
+- `logs/2026-09-07-AIOX-TUI-Stage2-Daemon-MCP-Terminal.md` — 대상 지정 send·상태·완료/실패 알림과 W2의 원 발신자 종료 후 결과 보존 결정.

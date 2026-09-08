@@ -25,6 +25,7 @@ test("missing global file uses defaults without creating a project file", async 
     expect(configPath(directory)).toBe(join(directory, ".aiox", "config.json"));
     expect(await loadConfig({ home: directory })).toEqual({
         ports: { daemon: 4500, web: 4501 },
+        messages: { retentionDays: 30 },
     });
     expect(await readdir(directory)).toEqual([]);
 });
@@ -47,6 +48,7 @@ test("valid saves replace one global file and leave no temporary files", async (
     );
     expect(await loadConfig({ home: directory })).toEqual({
         ports: { daemon: 4500, web: 4501 },
+        messages: { retentionDays: 30 },
         keyboard: { nextPane: "Ctrl+Tab" },
     });
     expect(await readdir(join(directory, ".aiox"))).toEqual(["config.json"]);

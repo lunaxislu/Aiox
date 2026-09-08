@@ -18,7 +18,7 @@ Stage 1 구현에서는 Node 기본 JSON 처리로 `.aiox/config.json`을 선택
 | --- | --- | --- |
 | terminal font/color/cursor/theme, keyboard, 포트 | 전역 설정 파일 | JSON·기본 schema 구현. 상세 UI schema는 후속 확장 |
 | Web dark/light theme | localStorage | terminal palette와 별개. system 선택·언어·소리 설정 저장은 후보 |
-| 지속 Network/Route, 메시지·회신 관계, 실행 이력 | SQLite | 저장 범주 수용. 본문 전체 저장·retention/schema 미결 |
+| 지속 Network/Route, AIOX 메시지·대상별 결과·알림 본문, 실행 이력 | SQLite | 메시지 처리 종료 후 기본 30일 보존 |
 | 알림·읽음, terminal/workspace 배치 | SQLite | 브라우저 복귀에 필요한 지속 데이터 |
 | 살아 있는 process/binding/token/activity | 실행 상태 | DB의 과거 running 기록을 생존 증거로 쓰지 않음 |
 
@@ -28,20 +28,29 @@ vendor transcript·reasoning 전체 복제나 무제한 메시지 본문 저장�
 
 SQLite는 Windows/Linux/macOS에서 공통 domain/schema/migration을 쓰는 방향이다. DB 접근은
 daemon의 persistence 책임이며 CLI/Web/adapter가 파일을 직접 수정하지 않는다. 실제 DB 경로
-`.aiox/aiox.db` 기본 경로 연결과 WAL은 아직 구현 선택이다. 드라이버와 검증 범위는 아래 Stage 1 구현 범위를 따른다. Windows와
+`.aiox/aiox.db` 기본 경로 연결·드라이버와 현재 검증 범위는 [[docs/architecture/aiox-storage-terminal]]을 따른다. WAL은 미결이다. Windows와
 WSL 홈·DB를 자동 공유한다고 가정하지 않는다. DB 준비 실패를 정상 기동이나 빈 DB fallback으로
 숨기지 않고 기존 파일을 자동 삭제하지 않는다.
 
-## Stage 1 구현 범위
+## 메시지 보존과 persistence 전환
+
+AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시각·대상별 처리 결과·내부 상관관계를 연결한다. vendor 전체 대화·reasoning·터미널 출력은 이 메시지 저장 범위에 포함하지 않는다. 살아 있는 PTY의 Web 화면 복귀 책임은 별개다. 저장 데이터를 자동 재전송·실행 복원에 사용하지 않는다.
+
+보존 기본값은 요청 처리 종료 후 30일이다. 진행 중 요청은 삭제하지 않고, 정리 대상 요청의 본문·대상별 결과·연결된 daemon 알림을 함께 정리한다. 여러 대상의 처리가 남은 요청을 일부 완료만으로 삭제하지 않는다. 보존 일수는 전역 설정으로 변경하며 daemon 시작 시와 하루 한 번 정리한다. Host 종료 자체로 이력을 지우지 않는다. 이 정책은 persistent Network·route 정의, YAML·사용자 작업 파일을 삭제하거나 디스크 용량 상한을 보장하는 정책이 아니다.
+
+Persistent Network·route는 DB에 지속한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
+
+TypeORM과 better-sqlite3를 사용하며 기존 DB를 보존하는 명시적 migration과 transaction을 요구한다. 자동 synchronize로 schema를 변경하거나 두 migration 권위를 병행하지 않는다. 전환 구현과 검증 근거는 storage-terminal architecture의 이력 보존과 ORM 전환을 따른다.
+
+## 기반 구현과 검증 범위
 
 `packages/config`는 JSON 검증·load/save·last-good session을 제공한다. 구현 기본 포트는 daemon
-4500, Web 4501이며 해석 우선순위는 CLI override → 파일 → 기본값이다. 실제 listener·파일
-watch·Web 배포는 후속 단계다. terminal의 fontFamily/fontSize/theme과 keyboard 문자열 맵을
+4500, Web 4501이며 해석 우선순위는 CLI override → 파일 → 기본값이다. listener 연결과 최소 Web 정적 파일 제공은 Stage 2에 구현됐으며 [[docs/architecture/aiox-system]]의 현재 조립 범위를 따른다. 파일
+watch·운영 Web 설정 배포는 후속 대상이다. terminal의 fontFamily/fontSize/theme과 keyboard 문자열 맵을
 지원하며 상세 UI와 바인딩 의미는 해당 단계에서 구체화한다.
 
-`packages/persistence`는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
-transaction·close/reopen을 구현했다. DB 경로는 호출자가 주입하며 홈 기본 경로 연결과 daemon
-소유권은 아직 통합 전이다. Node 요구 조건은 >=22.12.0이며 Windows/Linux/macOS × Node22/24 CI에서
+Stage 1에서는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
+transaction·close/reopen을 검증했다. 당시 Node 요구 조건은 >=22.12.0이며 Windows/Linux/macOS × Node22/24 CI에서
 설치·빌드·타입 검사·테스트·CLI 진단을 통과했다. vendor/PTY/WSL과 npm 전역 배포 검증은 후속 단계다.
 근거: [Stage 1 CI](https://github.com/lunaxislu/aiox-prototype/actions/runs/34189231508).
 
@@ -75,7 +84,7 @@ cmux/일반 터미널 앱 전체 appearance를 바꾸거나 vendor가 직접 그
 
 daemon 포트와 Host·standalone이 공유하는 운영 Web 포트는 각각 기본값 및 전역 설정·CLI 시작
 override를 지원해야 한다. config 구현 기본값은 daemon 4500·Web 4501이고 우선순위는
-`CLI > config > default`다. CLI 옵션 연결과 실제 listener 구성은 Stage 2에서 통합한다. Host마다 Web 서버를 만드는
+`CLI > config > default`다. 현재 CLI 옵션·listener 연결은 system architecture의 구현 근거를 따른다. Host마다 Web 서버를 만드는
 계약은 아니다. 개발 Vite port와 배포 운영 Web port를 혼동하지 않는다.
 
 저장된 포트는 다음 daemon 시작에 적용하며 실행 중 MCP 연결을 즉시 이동시키지 않는다.
@@ -106,6 +115,10 @@ LLM headless 전환과 다른 개념이다. 무제한 raw 출력 저장도 확�
 
 범위는 daemon이 살아 있는 동안의 브라우저 복귀다. daemon 재시작 뒤 과거 PTY 재부착,
 자동 Agent 실행이나 durable message replay는 별도 기능이며 현재 추가하지 않는다.
+
+## 현재 상태와 요청 결과 표시
+
+Web은 현재 idle·reasoning·도구 실행·사용자 입력/승인 대기·실패 원인·Host stopped를 세분화해 표시한다. MCP 상태 요약은 [[docs/specs/aiox-runtime]]을 따른다. 개별 요청의 completed/failed/interrupted 이력과 현재 Agent 상태를 함께 보여 준다. 요청 하나가 끝나도 다른 작업은 working일 수 있고, 미해결 질문·승인 표시는 실제 해결까지 유지한다.
 
 ## 알림·포커스·사용자 요청
 

@@ -5,8 +5,16 @@ import { defineConfig, type Options } from "tsup";
 const packages: Record<string, Options> = {
     "@aiox/domain": {},
     "@aiox/config": {},
+    "@aiox/protocol": {},
     "@aiox/persistence": {
-        external: ["better-sqlite3", "@aiox/domain"],
+        external: ["better-sqlite3", "typeorm", "@aiox/domain"],
+    },
+    "@aiox/terminal": {
+        external: ["node-pty"],
+    },
+    "@aiox/daemon": {
+        // dev-harness is a Stage 2 verification entry, not part of the product surface.
+        entry: ["src/index.ts", "src/main.ts", "src/dev-harness.ts"],
     },
     "@aiox/cli": {
         entry: ["src/index.ts", "src/main.ts"],

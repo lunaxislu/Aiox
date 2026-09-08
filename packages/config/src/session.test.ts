@@ -10,6 +10,7 @@ test("reload applies terminal settings now and ports only at next startup", () =
     });
     expect(result.effective).toEqual({
         ports: { daemon: 4500, web: 4501 },
+        messages: { retentionDays: 30 },
         terminal: { fontSize: 16 },
     });
     expect(result.pendingPorts).toEqual({ daemon: 5100, web: 4501 });

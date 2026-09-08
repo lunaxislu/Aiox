@@ -21,9 +21,8 @@ export type CommandName =
     | "host.list"
     | "host.status"
     | "host.stop"
-    | "host.agent.add"
+    | "host.agent.start"
     | "host.agent.stop"
-    | "host.agent.remove"
     | "host.network.list"
     | "host.network.show"
     | "host.network.route"
@@ -43,6 +42,8 @@ export type CliOptions = {
     path?: string;
     worktree?: string;
     adapter?: string;
+    port?: number;
+    webPort?: number;
     default?: "allow" | "deny";
     resetDefault?: boolean;
     allowBetween?: string[];

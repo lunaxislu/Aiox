@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AIOX Stage 2 verification</title>
+        <style>
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
+            body {
+                display: flex;
+                background: #101214;
+                color: #d8dee4;
+                font:
+                    13px/1.45 ui-sans-serif,
+                    system-ui,
+                    sans-serif;
+            }
+            #side {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                width: 300px;
+                flex: none;
+                padding: 12px;
+                overflow-y: auto;
+                border-right: 1px solid #262b31;
+            }
+            h1 {
+                margin: 0;
+                font-size: 13px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: #8b949e;
+            }
+            h2 {
+                margin: 0 0 6px;
+                font-size: 12px;
+                color: #8b949e;
+            }
+            #status {
+                padding: 6px 8px;
+                border-radius: 4px;
+                background: #1b2027;
+                color: #8b949e;
+                word-break: break-word;
+            }
+            #status[data-error="true"] {
+                background: #3d1d1d;
+                color: #ffb4b4;
+            }
+            #agents {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .agent {
+                display: block;
+                width: 100%;
+                padding: 6px 8px;
+                border: 1px solid #262b31;
+                border-radius: 4px;
+                background: #171b20;
+                color: inherit;
+                font: inherit;
+                text-align: left;
+                cursor: pointer;
+            }
+            .agent:disabled {
+                cursor: not-allowed;
+                opacity: 0.5;
+            }
+            .agent[aria-pressed="true"] {
+                border-color: #4f8cc9;
+                background: #1d2b3a;
+            }
+            .meta {
+                display: block;
+                color: #8b949e;
+                font-size: 11px;
+            }
+            .empty {
+                color: #6b737c;
+            }
+            #notifications {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                margin: 0 0 8px;
+                padding: 0;
+                list-style: none;
+            }
+            #notifications li {
+                padding: 6px 8px;
+                border-left: 2px solid #4f8cc9;
+                background: #171b20;
+            }
+            #notifications time {
+                display: block;
+                color: #8b949e;
+                font-size: 11px;
+            }
+            button {
+                font: inherit;
+            }
+            #read-all {
+                padding: 4px 8px;
+                border: 1px solid #262b31;
+                border-radius: 4px;
+                background: #1b2027;
+                color: inherit;
+                cursor: pointer;
+            }
+            #stage {
+                display: flex;
+                flex: 1;
+                min-width: 0;
+                flex-direction: column;
+            }
+            #attach {
+                padding: 6px 10px;
+                border-bottom: 1px solid #262b31;
+                color: #8b949e;
+            }
+            #terminal {
+                flex: 1;
+                min-height: 0;
+                padding: 4px;
+            }
+        </style>
+    </head>
+    <body>
+        <aside id="side">
+            <h1>AIOX</h1>
+            <p id="status">daemon API 확인 중…</p>
+            <section>
+                <h2>Agents</h2>
+                <div id="agents"></div>
+            </section>
+            <section>
+                <h2>미확인 알림</h2>
+                <ul id="notifications"></ul>
+                <button id="read-all" type="button">모두 읽음 처리</button>
+            </section>
+        </aside>
+        <main id="stage">
+            <div id="attach">terminal이 붙은 agent를 선택하세요.</div>
+            <div id="terminal"></div>
+        </main>
+        <script type="module" src="/src/main.ts"></script>
+    </body>
+</html>

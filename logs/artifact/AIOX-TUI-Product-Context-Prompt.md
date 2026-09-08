@@ -24,7 +24,7 @@ AIOX는 Claude Code와 Codex의 실제 TUI를 실행·연결·관측하고, 하�
 
 - Claude Code TUI + native peer inbox + hooks.
 - Codex TUI + App Server + Binding Relay.
-- 공통 HTTP MCP를 통한 send/reply/agents_list.
+- 공통 HTTP MCP를 통한 send/agents_list.
 - CLI, standalone Agent, 선언형 Host, 단일 Network, route, Git Worktree.
 - React 운영 Web, 실제 터미널, 상태·알림, 전역 설정, SQLite, 브라우저 복귀.
 - Windows 네이티브·Linux·macOS 지원. WSL 실행은 별도 환경 경계로 구분한다.
@@ -33,7 +33,7 @@ AIOX는 Claude Code와 Codex의 실제 TUI를 실행·연결·관측하고, 하�
 제외 범위:
 
 - Headless agent 제품, Claude Agent SDK, `-p` 실행, vendor UX 전체 복제.
-- 현재 단계에서 ACP·NDJSON·다른 vendor 전수 조사·통합.
+- 현재 구현 단계에서 ACP·NDJSON·다른 vendor 통합. 사용자가 별도로 요청한 확장 연구는 이 구현 범위와 구분한다. ACP 자체를 headless로 단정하지 않으며, 실제 TUI와 같은 backend·대화를 공유하는 구조도 연구할 수 있다.
 - Claude custom Channel, development-channel 실행, Channel fallback.
 - 같은 메시지의 수동·자동 재전송/재주입.
 - 실행 중 Network join/leave와 다중 Network 소속.
@@ -55,7 +55,7 @@ AIOX daemon — 로컬 Node.js 서버
 │  ├─ StandaloneAgentController
 │  └─ HostController
 ├─ Runtime Credential Registry
-├─ 공통 HTTP MCP — send / reply / agents_list
+├─ 공통 HTTP MCP — send / agents_list
 ├─ Network / Message Service
 ├─ Provider bindings
 │  ├─ Claude TUI — inbox 입력 / hooks 관측
@@ -107,7 +107,7 @@ aiox/
    │  ├─ agent/{agent,runtime,runtime-status}.ts
    │  ├─ host/{host,host-runtime}.ts
    │  ├─ network/{network,membership,route}.ts
-   │  ├─ messaging/{message,delivery,reply}.ts
+   │  ├─ messaging/{message,delivery}.ts
    │  └─ terminal/terminal-id.ts
    ├─ application/src/{agent,host,network,messaging,ports}
    ├─ adapter-sdk/
@@ -167,6 +167,8 @@ spawn("claude", ["--mcp-config", mcpConfig], {
 - 사용자 hooks·설정·지침을 통째로 교체하지 않는다.
 - 위 코드는 MCP 부분 예시다. inbox 경로·hooks·instruction을 함께 구성하는 신규 launcher 통합 전체가 완료됐다는 뜻은 아니다.
 
+구현 시 참고: Claude의 `--append-system-prompt`는 실행 시 기본 system prompt에 AIOX 지침을 추가한다. 공식 [문서](https://code.claude.com/docs/en/output-styles#comparisons-to-related-features)는 적용 범위를 single invocation으로 설명한다. 같은 프로세스의 대화 초기화·재개에서도 지침을 적용하는 방향으로 구성하고, 첫 user message로 반복 주입하지 않는다. 이를 별도 사용자 요구·선행 실험 과제로 만들지 않으며 각 전환 동작을 모두 실측했다는 주장과는 구분한다.
+
 ### Codex 실행 주입
 
 ```sh
@@ -178,6 +180,10 @@ codex app-server \
 ```
 
 AIOX는 App Server child env에 token을 전달한다. `bearer_token_env_var`에는 변수 이름만 둔다. config 키 `developer_instructions`와 RPC 필드 `developerInstructions`는 다르다. TOML 문자열 escaping을 적용한다. `required=true`의 MCP 초기화 실패 처리와 AIOX Runtime cleanup은 별개다. listen·TUI·Relay 연결은 binding이 구성한다.
+
+구현 시 참고: `developer_instructions`는 첫 user message가 아니라 App Server 실행 config로 주입한다. 같은 실행에서 `/new`·resume·fork 등으로 활성 thread가 바뀌어도 AIOX 지침을 적용하는 방향으로 구성하며, 실행 설정과 thread별 RPC override의 관계는 Codex binding 구현에서 참고한다. 이 항목을 별도 사용자 요구·선행 실험 과제로 만들지 않는다. 공식 [설정 참조](https://learn.chatgpt.com/docs/config-file/config-reference)는 해당 키를 세션에 추가하는 developer 지침으로 설명한다. 이 문서가 각 대화 전환 명령의 유지 동작을 모두 독립 실측했다는 뜻은 아니다.
+
+입력 대상 추적은 아래 §7의 Binding Relay 근거를 사용한다. 지침의 실행 범위와 activeThreadId 갱신, §8의 개별 turnId 종료 연결은 서로 다른 책임이다. 과거 구현·테스트는 커밋 `8db476bad722717bf82cc598904f3f33af8a90b3`의 `src/adapters/codex/proxy.ts`와 `tests/unit/adapters/codex-proxy.test.ts`에 보존돼 있다. 이는 활성 thread 추적의 근거이며 instruction 지속성 테스트는 아니다. 근거 안내는 [vendor bindings](../../docs/architecture/aiox-vendor-bindings.md#codex-실행과-active-thread)에 있으며 이미 확인한 활성 thread 추적을 새 조사 과제로 되돌리지 않는다.
 
 공통 협업 policy, tool description과 schema는 하나의 원본을 가진다. vendor별로는 입력 framing만 다르게 구성한다. AIOX CLI/YAML 옵션은 단수 `instruction`이고 vendor의 고유 필드 이름은 바꾸지 않는다.
 
@@ -320,10 +326,10 @@ AIOX 메시지 M42가 포함된 inbox 원문
 | Codex 정상 입력 응답 | Runtime 입력 수락 |
 | Claude UserPromptSubmit 연결 | 해당 입력 관측 |
 | 연결된 Stop / turn completed | 응답 종료 |
-| correlated MCP reply | 원 요청에 대한 협업 회신 |
+| Agent의 send 응답 | 대화상 회신이며 요청 처리 종료와 별개 |
 | 실제 결과 검토 | 작업 성공 판단 |
 
-`입력 → reply → 추가 작업 → Stop`도 가능하다. reply와 응답 종료를 필수 순차 상태로 묶지 않는다. Stop은 작업 성공·MCP reply 성공·파일 변경 성공·프로세스 종료와 다르다.
+`입력 → send 응답 → 추가 작업 → Stop`도 가능하다. 대화상 회신과 응답 종료를 필수 순차 상태로 묶지 않는다. Stop은 작업 정확성·send 성공·파일 변경 성공·프로세스 종료와 다르다.
 
 관측 연결 후보:
 
@@ -341,39 +347,47 @@ Claude StopFailure에는 rate_limit, overloaded, authentication_failed, oauth_or
 
 일반 PreToolUse/PostToolUseFailure를 모두 수집해 AIOX delivery 오류로 만들지 않는다. agent가 자기 작업 중 겪는 도구 오류와 A2A 실패는 다르다. 승인·질문은 사용자 직접 작업에서도 발생하므로 Web 알림으로 전달하되 반드시 Message Service의 delivery 상태를 바꿀 필요는 없다. process/연결 손실은 hook 외의 실행 handle에서도 관측한다. reasoning 전문 수집은 요구하지 않는다.
 
-agent list와 MCP agents_list에는 `status` 필드를 둔다. 모델 자기보고가 아니라 daemon 관측 snapshot이다. lifecycle/readiness/activity를 구분하는 의미는 유지하지만 정확한 enum과 Web 배지·색상은 해당 단계에서 논의한다. herdr의 상태 UI는 Web 설계 시 비교 대상으로 다룬다.
+`agents_list()`의 현재 상태는 `idle`, `working`, `failed`만 공개한다. reasoning·도구 실행·사용자 질문·승인 대기는 모두 working으로 요약한다. 실행·연결 준비를 뜻하는 starting은 send 성공 상태가 아니며 MCP 공개 enum에 추가하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
+
+Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승인 대기, 실패 원인, Host stopped를 구분한다. 알림 읽음이나 다른 요청의 완료로 미해결 사용자 요청 표시를 지우지 않는다.
+
+```text
+B가 요청 X 처리 → X completed, B는 실제 활동에 따라 idle 또는 working
+B가 요청 Y 처리 → X completed 유지, Y 진행 중, B working
+```
+
+completed/failed/interrupted는 개별 AIOX 입력의 처리 결과이고 Agent의 현재 상태와 별개다. completed는 연결된 응답 처리가 끝났다는 뜻이며 산출물의 정확성·업무 성공 보장이 아니다. 한 요청이 실패해도 실행이 살아 다른 입력을 처리한다면 현재 상태는 실제 활동을 따른다.
+
+Claude는 Runtime·session_id·prompt_id와 연결된 UserPromptSubmit/Stop을, Codex는 Runtime·threadId·turnId와 연결된 `turn/completed`의 completed/failed/interrupted 결과를 사용한다. 입력 주입 성공만으로 처리 완료를 선언하지 않는다. busy 입력이 기존 turn에 합쳐질 수 있으므로 메시지 하나가 항상 새 turn 하나라는 가정을 하지 않는다. 임의 Stop 하나로 모든 요청을 완료하지 않는다.
+
+세션 만료·인증/API 오류·연결 손실 등이 실제 요청을 실패시킨 경우 failed에 포함한다. 일시 재시도·일반 도구 오류를 무조건 요청 또는 Runtime 실패로 승격하지 않는다. interrupted는 Web에 기록하되 발신 Agent 자동 통지는 하지 않으며 모든 중단의 원인을 사용자로 단정하지 않는다.
 
 ## 9. MCP 도구·메시지 정책
 
-확정한 도구 역할:
+공통 HTTP MCP 도구는 `agents_list`와 `send`로 분리한다. `reply`, `replyExpected`, 재전송 도구를 제공하지 않으며 legacy envelope의 type/intent를 필수 입력으로 가져오지 않는다.
 
-- `send`: 현재 outbound route가 허용하는 Agent에 메시지를 전달한다. A→B, A→C이면 일반 send는 B·C로 fan-out한다.
-- `reply`: 원 요청과 인증된 회신자를 연결해 원 발신자에게 회신한다. 일반 fan-out과 다르다.
-- `agents_list`: 현재 source→target route가 허용하는 Agent만 status와 함께 반환한다.
+- `agents_list()`는 현재 발신자가 outbound route로 보낼 수 있는 실행만 배열로 반환한다. 각 항목은 `agentId`, `name`, `role`, `description`, `status`다. 이름 미지정 시 daemon의 `agentId`를 name으로 사용한다. role·description 미지정은 목록에서 null, 수신 표시에서는 생략한다.
+- `send({ targets: [agentId, ...], content })`는 하나 또는 여러 대상 ID와 본문을 받는다. name·role·description은 대상 선택을 돕는 표시 정보이며 실제 전송 식별자는 agentId다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
+- daemon은 인증된 실행에서 source를 결정하고 전송 시점에 각 대상의 실행·membership·effective route를 검증한다. 오래된 목록은 권한이 아니며 대상별 접수·전송 시도 결과와 오류를 반환한다. 일부 실패를 전체 성공으로 표시하지 않는다.
+- A→B만 허용되면 A의 목록에는 B가 보이고 B의 목록에는 A가 보이지 않는다. 양방향·전이적 route를 추론하지 않는다. 대화상 회신도 `send`를 사용하며 역방향 route가 필요하다.
+- 수신 정보는 발신자의 name·role·description, daemon 접수 시각 `createdAt`, 본문 `content`다. daemon이 인증된 발신자 메타데이터를 채운다. deliveryId 등을 모델의 회신 도구 인자로 노출할 필요는 없지만 내부 메시지·대상별 delivery·vendor prompt/turn 상관관계는 유지한다.
 
-Web은 Network 전체 Agent·route를 표시한다. 일반 CLI agent list의 조회·필터와 MCP discovery 범위는 다르다. 과거 agents_list 결과를 현재 전송 권한으로 쓰지 않고 매 send마다 검증한다.
+단방향 대상에게는 원문 뒤에 줄바꿈 두 번과 아래 영어 안내를 붙인다. 원문 저장값과 daemon이 생성한 안내는 구분한다.
 
 ```text
-Daemon 내부:
-Runtime/source/target, Network/route, message/delivery ID,
-reply 연결, vendor prompt/turn 연결, 전송 결과
-
-모델에 전달할 내용:
-발신자, 본문, 필요한 연결 ID, 회신 필요 여부·방법
-Codex: toolOutput 본문 + additionalContext 메타데이터
+[AIOX Notice] No outbound route to the sender is available. Carry out the request. AIOX will automatically notify the sender when processing completes or fails. Do not attempt to send a reply or acknowledgment.
 ```
 
-`replyExpected=false`는 회신 불필요다. 보내는 Agent는 상대 종료·회신·ACK를 기다리거나 추가 확인할 필요가 없다. 단 send 접수/전송 시도 실패는 일반 tool 반환으로 알려 준다. 내부 관측까지 없애는 뜻이 아니며 false에도 상관관계 ID가 필요할 수 있다.
+대상별로 **전송 시점의 역방향 route 유무**를 요청에 보존하여 이후 route 변경과 무관하게 자동 알림 정책을 적용한다.
 
-`replyExpected=true`는 회신을 원 요청과 연결한다. reply 횟수·중복·route 변경 뒤 지연 reply 권한은 상세 논의 대상이다. false를 과거 one-reply permission과 같은 뜻으로 바꾸거나 `isReplyTrue` alias를 추가하지 않는다.
+| 전송 시점 관계 | completed | failed | interrupted |
+| --- | --- | --- | --- |
+| A→B 단방향 | daemon이 A에 통지 | daemon이 A에 통지 | 자동 통지 없음 |
+| A↔B 양방향 | 자동 통지 없음 | daemon이 A에 통지 | 자동 통지 없음 |
 
-삭제할 것은 retransmit 전용 tool/schema/handler/API와 같은 메시지의 자동·수동 재주입 및 그 사용 지침이다. 공통 협업 지침과 Agent/Host instruction은 유지한다. 아직 한 번도 전송하지 않은 메시지의 최초 queue는 재전송과 다르다. 새 send는 새 메시지다. DB 저장이 replay 허가를 뜻하지 않는다. 확인 불가를 성공으로 감추지 않는다.
+A가 B·C에게 보낸 뒤 C만 실패하면 A에게만 알린다. full mesh라도 B에게 실패를 전파하지 않는다. B가 별도로 C에게 보낸 요청의 발신자는 B다. daemon 알림은 역방향 Agent route를 부여하지 않으며 vendor의 진짜 system role과 동일하다는 뜻도 아니다. daemon 알림 자체의 처리 종료로 다시 완료 알림을 생성하지 않는다.
 
-### 해당 구현 단계에서 사용자와 논의할 MCP 정의
-
-MCP를 실제 정의·구현하는 단계에서 사용자와 도구 계약을 논의한다. 지금 이름과 역할이 정해졌다고 세부 schema·handler 의미까지 확정됐다고 하지 않는다.
-
-논의할 항목은 입력·반환 필드, type/intent 필요 여부, fan-out 결과·부분 실패 반환, reply 상관관계·횟수·route 변경과의 관계, status 값, 공통 tool description·instructions와 모델에 전달할 최소 메타데이터다. 이미 확정한 단일 Network·route 필터·replyExpected=false·재전송 제거는 다시 선택 과제로 만들지 않는다.
+알림은 Web뿐 아니라 발신 Agent의 vendor 입력 경로로 전달한다. Codex는 `toolOutput` 본문과 `additionalContext` 메타데이터, Claude는 native inbox peer message를 사용한다. 정확한 wire·표시·busy 입력 연결은 vendor 통합에서 검증한다.
 
 ## 10. Host·Network·routing·Worktree
 
@@ -462,6 +476,9 @@ aiox
 │     └─ --reset-from <agent> --to <agents...>
 ├─ host
 │  ├─ run
+│  │  ├─ --layout <auto|left-main|top-main|grid>
+│  │  ├─ --columns <number>
+│  │  ├─ --rows <number>
 │  │  ├─ --path <aiox.yaml>
 │  │  ├─ --name <host>
 │  │  └─ --worktree <branch>
@@ -469,16 +486,8 @@ aiox
 │  ├─ status <host> [--json]
 │  ├─ stop <host>
 │  ├─ agent
-│  │  ├─ add <host>
-│  │  │  ├─ --adapter <adapter>
-│  │  │  ├─ --name <name>
-│  │  │  ├─ --network <host-network>         # Host의 단일 Network
-│  │  │  ├─ --role <role>
-│  │  │  ├─ --description <description>
-│  │  │  ├─ --instruction <instruction>
-│  │  │  └─ -- <adapter-options>
-│  │  ├─ stop <host> <agents...>
-│  │  └─ remove <host> <agents...>
+│  │  ├─ start <host> <agent-names...>
+│  │  └─ stop <host> <agent-names...>
 │  └─ network
 │     ├─ list <host> [--json]
 │     ├─ show <host> <network> [--json]
@@ -500,10 +509,19 @@ aiox
 - `network list` 기본은 persistent, `--all`은 host-managed 포함. host-qualified show는 가능하지만 최상위 mutation은 persistent 전용이다.
 - Host-managed route 변경은 `host network route`로 한다.
 - standalone 실행은 foreground다. Ctrl+C·/exit 등 vendor 세션 종료를 사용한다. standalone 외부 stop/attach/detach 명령은 보류했다.
-- Declared Agent는 현재 실행에서 stop할 수 있지만 remove는 불가하고 다음 Host 실행에 다시 생긴다.
-- host agent add의 Ephemeral Agent는 manifest를 수정하지 않으며 stop/remove 가능하고 다음 Host 실행에 자동 복원되지 않는다.
 - adapter setup 명령 표면이 존재해도 Claude의 사전 영구 MCP 등록을 다시 요구하지 않는다.
 - Web 열기 명령의 정확한 이름, start에 넣을 포트 인자 이름과 agent list --all의 상세 범위는 CLI 구현 때 맞춘다.
+
+Host의 Agent 구성·Network·route 정의는 YAML이 소유한다. `host agent add/remove`와 Declared/Ephemeral 구분을 도입하지 않는다.
+
+```text
+aiox host agent start <host> <agent-names...>
+aiox host agent stop <host> <agent-names...>
+```
+
+Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실행·credential·binding·활성 membership을 정리하고 Host의 항목·메타데이터·실행 설정을 stopped로 유지한다. start는 기존 항목을 새 Runtime ID·credential로 실행하며 이전 vendor 대화를 자동 resume하지 않는다. 이미 실행 중인 항목을 중복 실행하지 않고 이름별 결과를 보고한다. 보존한 Host route 설정은 새 실행 ID에 연결하며 stopped 항목에는 전달하지 않는다.
+
+Standalone 실행 종료 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
 
 ## 12. aiox.yaml
 
@@ -525,6 +543,8 @@ version: 1
 
 host:
   name: feature-host
+  layout:
+    preset: auto
 
 agents:
   reviewer:
@@ -609,12 +629,20 @@ Baseline 시점의 JSON은 추천이었고, 이후 Stage 1 기록·구현에서�
 
 | 저장 위치 | 책임 |
 | --- | --- |
-| 전역 설정 파일 | terminal 폰트·색상·theme·keyboard, daemon/Web 포트 |
-| localStorage | Web 일반 dark/light theme |
-| SQLite | 지속 Network·route, 메시지/회신 관계, 실행 이력, 알림·읽음, workspace 배치 |
+| 전역 설정 파일 | terminal 폰트·색상·theme·keybindings, web.sidebar.width, host.layout, daemon/Web 포트 |
+| localStorage | Web 일반 system/light/dark 선택. system은 OS 테마를 따름 |
+| SQLite | 지속 Network·route, 메시지·대상별 처리 결과·daemon 알림, 실행 이력, 알림·읽음, workspace 배치 |
 | Server memory | 살아 있는 process·binding·credential·activity |
 
-언어·소리 설정의 localStorage 저장, DB 파일명 `.aiox/aiox.db`, 메시지 본문 보존 여부·retention은 제안 또는 세부 논의 대상이다. vendor transcript·reasoning 전문 무제한 저장은 요구하지 않는다. DB의 running 이력만으로 현재 프로세스가 살아 있다고 판단하지 않는다.
+AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시각·대상별 처리 결과·내부 상관관계를 연결한다. vendor 전체 대화·reasoning·터미널 출력은 이 메시지 저장 범위에 포함하지 않는다. 살아 있는 PTY의 Web 화면 복귀 책임은 별개다. 저장 데이터를 자동 재전송·실행 복원에 사용하지 않는다.
+
+보존 기본값은 요청 처리 종료 후 30일이다. 진행 중 요청은 삭제하지 않고, 정리 대상 요청의 본문·대상별 결과·연결된 daemon 알림을 함께 정리한다. 여러 대상의 처리가 남은 요청을 일부 완료만으로 삭제하지 않는다. 보존 일수는 전역 설정으로 변경하며 daemon 시작 시와 하루 한 번 정리한다. Host 종료 자체로 이력을 지우지 않는다. 이 정책은 persistent Network·route 정의, YAML·사용자 작업 파일을 삭제하거나 디스크 용량 상한을 보장하는 정책이 아니다.
+
+Persistent Network·route는 DB에 지속한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
+
+TypeORM을 기존 better-sqlite3 위에 도입한다. Stage 1의 직접 SQL 구현과 구분되는 채택 목표이며 아직 TypeORM 설치·전환 완료가 아니다. 기존 DB를 보존하는 명시적 migration과 transaction을 사용하고 자동 synchronize로 schema를 변경하거나 두 migration 권위를 병행하지 않는다.
+
+언어·소리 설정의 localStorage 저장과 DB 기본 경로 연결은 후속 구현 사항이다.
 
 설정 반영:
 
@@ -638,6 +666,153 @@ Windows native와 WSL은 실행 환경·홈·DB·path·IPC가 다르다. 같은 
 Node/CPU/native dependency 조합의 실제 배포 설치·DB 로딩·PTY·vendor 실행·종료를 각 OS에서 확인해야 한다. Linux Docker 성공은 Windows 실측이 아니다. npm 전역 설치 산출물이 대상이며 개발 환경 실행만으로 배포 호환 완료라고 하지 않는다.
 
 ## 15. 운영 Web·브라우저 복귀·알림
+
+터미널 작업 화면과 초기 layout의 확정 방향(구현 완료 보고가 아님):
+
+```text
+AIOX Web
+├─ 사이드바
+│  ├─ 일반 터미널
+│  ├─ Hosts
+│  │  ├─ development
+│  │  └─ review
+│  └─ Networks
+│     └─ dev
+└─ 선택한 작업 화면
+   └─ 분할 영역
+      └─ 영역별 탭 묶음
+         └─ 실제 PTY 터미널
+
+┌─[Claude][Shell][+]──────┬─[Codex][+]────────────┐
+│                        │                      │
+│                        ├─[Reviewer •][+]──────┤
+│                        │                      │
+└────────────────────────┴──────────────────────┘
+```
+
+- 탭·분할은 Host 전용이 아닌 공통 Web 터미널 기능이다. Host는 실행 묶음, Network는 통신 경계, layout은 화면 배치다. Network 선택은 Agent·route 조회로 연결한다.
+- 각 영역의 탭은 독립적으로 전환한다. Host 전체 배치를 넘기는 페이지 탭은 사용하지 않는다. 탭을 다른 영역으로 드래그하면 이동하고 가장자리에 놓으면 상하좌우 새 분할을 만든다. 드롭 위치를 미리 보여주며 마지막 탭을 옮긴 빈 영역은 합친다. 초기 이동 범위는 같은 작업 화면 내부다.
+- 경계선을 드래그해 너비·높이를 조절한다. 행·열을 다시 계산해 PTY resize를 전달한다. 현재 영역 확대·기존 배치로 복귀, 명시적 분할 크기 균등화를 제공한다. 탭 이동·확대·resize는 프로세스·대화·Network를 변경하지 않는다.
+- 영역별 `[+]` 메뉴는 새 shell 터미널, 오른쪽 분할, 아래쪽 분할을 제공한다. 새 shell 탭은 현재 영역에 추가하고 Host에서는 해당 Host 작업 경로를 사용한다. shell 추가로 기존 화면 전체를 자동 재배치하지 않는다.
+- 일반 shell에서는 git·pnpm 등 명령과 일반 Claude/Codex TUI도 실행할 수 있다. 직접 vendor CLI를 실행하는 것은 AIOX Agent 자동 등록이나 MCP/binding 주입이 아니다.
+- Host 없이 일반 터미널에서 `aiox network create dev` → 단축키로 shell 분할 → 각 shell에서 `aiox agent run claude --network dev`, `aiox agent run codex --network dev`도 지원한다. 기존 터미널에서 실행하고 등록 때문에 새 탭을 중복 생성하지 않는다. Agent 종료 후 원래 shell로 돌아온다. 화면 분할로 Host·Network를 자동 생성하지 않는다.
+
+각 영역의 추가 메뉴와 standalone 실행 흐름:
+
+```text
+[+]
+ ├─ 새 shell 터미널
+ ├─ 오른쪽으로 분할
+ └─ 아래쪽으로 분할
+
+일반 터미널 열기 → Network 생성 → 단축키로 분할
+→ 각 shell에서 standalone Agent 실행 → 종료 후 원래 shell로 복귀
+```
+
+```sh
+aiox network create dev
+aiox agent run claude --network dev
+aiox agent run codex --network dev
+```
+
+**Host 초기 layout**
+
+| host.layout.preset | 초기 영역 배치 |
+| --- | --- |
+| auto (기본) | 1개 전체, 2개 좌우, 3개 왼쪽 하나+오른쪽 위아래, 4개 2×2 |
+| left-main | 왼쪽 하나+오른쪽 위아래, 최대 3개 영역 |
+| top-main | 위쪽 하나+아래쪽 좌우, 최대 3개 영역 |
+| grid | columns × rows 영역 |
+
+```text
+auto: 2개        auto: 3개        auto: 4개
+┌────┬────┐     ┌────┬────┐     ┌────┬────┐
+│ A  │ B  │     │    │ B  │     │ A  │ B  │
+│    │    │     │ A  ├────┤     ├────┼────┤
+│    │    │     │    │ C  │     │ C  │ D  │
+└────┴────┘     └────┴────┘     └────┴────┘
+
+2열 × 1행, Agent 6개
+┌─[A][C][E][+]────┬─[B][D][F][+]────┐
+│ 선택한 A        │ 선택한 B        │
+└─────────────────┴─────────────────┘
+```
+
+영역 수를 넘는 Agent는 선언 순서대로 기존 영역에 돌아가며 탭으로 추가하고 기존 선택 탭을 유지한다. 예를 들어 2열·1행에서 A/C/E는 왼쪽, B/D/F는 오른쪽 탭이 된다. 불필요한 빈 영역은 만들지 않는다. 초기 배치 이후 사용자가 조정한 배치를 자동으로 원상복구하지 않는다.
+
+**설정·YAML·CLI**
+
+전역 `~/.aiox/config.json` 예시(너비 240은 예시이며 실제 기본값은 UI 구현 때 결정):
+
+```json
+{
+    "web": {
+        "sidebar": {
+            "width": 240
+        }
+    },
+    "host": {
+        "layout": {
+            "preset": "auto"
+        }
+    },
+    "keybindings": {}
+}
+```
+
+Host YAML의 초기 배치 예시:
+
+```yaml
+host:
+  name: development
+  layout:
+    preset: grid
+    columns: 2
+    rows: 2
+```
+
+```sh
+aiox host run --layout auto
+aiox host run --layout left-main
+aiox host run --layout top-main
+aiox host run --layout grid --columns 2 --rows 2
+```
+
+- layout 우선순위는 CLI → YAML → 전역 config → 기본 auto다. 상위에서 preset을 바꾸면 하위의 다른 preset용 행·열을 섞지 않는다.
+- columns·rows는 grid용 양의 정수다. YAML에 행·열만 지정하면 grid 생략형으로 해석한다. 다른 preset과 행·열의 충돌은 오류로 알린다. auto에서는 숫자 행·열 대신 preset 자체로 1~4개 배치를 선택한다.
+- 사이드바 너비는 전역 `web.sidebar.width`로 제공하고 DB에 중복 저장하지 않는다. Web 설정에서 저장해도 같은 전역 config를 갱신한다. 실제 터미널 목록·분할 방향/비율·탭 순서·선택 상태는 작업 화면별로 서버에서 유지·복원한다. 초기 layout 설정 변경이 현재 사용자 배치를 강제 재배치하지 않는다.
+**포커스·알림·단축키**
+
+```text
+브라우저 활성 + 대상 터미널에 실제 포커스
+→ 소리·토스트 생략
+
+다른 영역·숨겨진 탭·비활성 브라우저
+→ 탭 알림 표시 + 알림 목록 + 소리
+```
+
+- 포커스된 영역의 테두리·선택 탭을 강조하고 비활성 영역의 강조는 줄인다. 터미널 본문 색상은 사용자 설정을 유지한다. 방향별 포커스 이동과 현재 포커스 영역을 잠깐 강조하는 기능을 제공한다.
+- 알림 포커스 판단은 실제 대상 terminal 기준이다. 브라우저가 활성이고 해당 terminal에 포커스가 있으면 소리·토스트를 생략한다. 다른 영역·숨겨진 탭·비활성 브라우저에서는 탭 알림 표시와 목록·소리를 제공한다. 클릭하면 대상 영역의 탭을 선택하고 포커스를 이동하며 읽음 처리한다. 상태·이벤트 기록은 유지하고 짧게 몰린 알림의 소리는 한 번만 울린다.
+- 단축키 동작은 새 shell 탭, 분할, 탭 전환, 방향별 포커스, 영역 확대·복귀, 크기 균등화, 포커스 강조, 사이드바 토글이다. 전역 keybindings에서 재지정할 수 있게 한다. 브라우저를 사용하는 OS 기준으로 macOS·Windows·Linux 기본키를 적용하며 Windows 브라우저→WSL 서버는 Windows 기준이다.
+- 정확한 기본 키 조합과 OS별 keybindings schema는 구현 때 사용자와 논의한 후 정한다. cmux의 조작을 참고하되 브라우저 예약키와 터미널 프로그램 입력을 보존한다. Cmd→Ctrl 단순 치환을 확정하지 않는다.
+- Web 일반 테마는 localStorage에 system/light/dark 선택을 저장한다. system은 OS 테마를 따르며 터미널 theme과 별개다.
+
+**저장 책임**
+
+| 대상 | 저장 |
+| --- | --- |
+| 사이드바 너비 | 전역 config |
+| 터미널 폰트·색상·키 설정, 사용자 단축키 | 전역 config |
+| Host 초기 layout 기본값 | 전역 config |
+| Host별 초기 layout | YAML·CLI |
+| 실행 중 터미널·분할 비율·탭 순서·선택 상태 | 서버에서 유지·복원 |
+| Web 테마 system/light/dark | localStorage |
+
+브라우저를 닫아도 실행은 유지하고 다시 열면 기존 터미널 화면·배치·놓친 알림으로 복귀한다. 설정 저장과 실행 화면 복원은 다른 책임이며 사이드바 너비를 DB에 중복 저장하지 않는다. 알림 전체 읽음과 실제 승인·질문 해결의 구분은 기존 알림 정책을 따른다.
+
+참고 근거: [cmux 영역·탭 개념](https://cmux.com/docs/concepts), [분할 UX](https://manaflow-ai-cmux.mintlify.app/features/splits-and-panes), [단축키](https://cmux.com/docs/keyboard-shortcuts), [Paseo 현재 영역에 터미널 추가 테스트](https://github.com/getpaseo/paseo/blob/main/packages/app/e2e/browser/direct-terminal-shortcut-pane-placement.spec.ts). 문서·소스 조사 근거이며 AIOX 구현 또는 해당 테스트 실행 완료를 뜻하지 않는다. cmux의 초기 배치 정책을 복제했다는 뜻도 아니다.
+
+
 
 운영 Web은 React, Tailwind, shadcn/ui, i18n을 사용한다. 모델 선택·slash command·질문·승인·quota UX는 실제 TUI를 유지한다. Web에서 별도 vendor UX를 복제하지 않는다.
 
@@ -666,15 +841,11 @@ PTY 화면 상태·출력 유지와 재접속을 연결해야 한다. 단순 WS 
 - 여러 알림이 짧게 몰리면 개별 항목은 보존하고 소리는 한 번 울리는 방향이다. 묶음 시간과 multi-tab 소리 주체는 해당 단계에서 정한다.
 - 짧은 차임·Web Audio·볼륨·미리 듣기는 후보이며 확정 음원은 없다. Web이 닫혀도 OS 소리를 내는 native 알림은 자동 추가하지 않는다.
 
-## 16. 라이브러리 선택은 해당 단계에서 논의
-
-서버·daemon을 만드는 단계에서 사용할 라이브러리를 사용자와 논의한다. Web을 만드는 단계에서도 별도로 논의한다. 후보 목록이 있다는 이유로 사전 설치하거나 선택 완료로 간주하지 않는다. 이미 실제로 선택된 기반 도구는 현 상태와 이유를 설명하고 변경 필요가 있을 때 논의한다.
+## 16. 단계별 라이브러리 채택과 설치
 
 ### Server / daemon 단계
 
-논의 범위: HTTP/Gateway, WebSocket, HTTP MCP SDK와 transport, PTY, 입력 검증, YAML, SQLite 연동, 설정 변경 감지, process 종료·플랫폼 경계.
-
-기존 후보는 Node 기본 모듈, ws, MCP SDK, node-pty, better-sqlite3, zod, yaml, commander다. Express/Fastify·ORM·event bus·추가 추상화를 자동 도입하지 않는다. 표준 기능·이미 선택된 의존성으로 해결되는지와 실제 구현 비용을 비교한다. 과거 alpha/beta 버전을 새 제품의 고정 버전으로 물려받지 않는다.
+서버·daemon은 `node:http`, `ws`, 공식 MCP TypeScript SDK, Zod, `node-pty`, TypeORM, `better-sqlite3`를 채택한다. 별도 HTTP framework·event bus·추상화를 미리 추가하지 않는다. TypeORM 전환은 기존 Stage 1 DB와 migration을 보존한다. 실제 설치 단계에 Node >=22.12.0·SDK 호환성·지원 OS/CPU를 확인해 버전을 선택하며 채택과 설치·통합 검증 완료를 구분한다. YAML parser와 Web 세부 의존성은 실제 사용하는 단계에서 정한다.
 
 ### Web 단계
 
@@ -701,7 +872,7 @@ React·Tailwind·shadcn/ui·다국어 요구는 유지한다. Vite, use-intl, xt
 3. 사용자가 같은 YAML을 --name과 --worktree로 다시 실행한다. 기존 Host와 별도 workspace·Network·Runtime으로 표시된다.
 4. Claude가 send를 호출한다. daemon은 token으로 source를 확정하고 route를 검사한 뒤 Codex의 활성 thread에 toolOutput 본문과 additionalContext 메타데이터를 주입한다.
 5. Codex가 send를 호출한다. daemon은 Claude inbox에 peer 메시지를 넣는다. idle이면 턴이 시작되고 compact preview가 보인다. UserPromptSubmit/Stop으로 입력과 응답 종료를 연결한다.
-6. 회신 불필요 메시지면 보내는 Agent가 상대 완료를 기다리지 않는다. 회신이 필요하면 MCP reply가 원 요청과 연결된다. 재전송 도구는 없다.
+6. Agent는 agents_list의 agentId를 골라 send한다. 단방향 완료·실패와 양방향 실패는 daemon이 원 발신자에게만 알리고, 양방향 대화상 회신은 send를 사용한다. interrupted 자동 알림과 재전송 도구는 없다.
 7. 사용자가 route를 변경하면 같은 MCP URL에서 다음 send·agents_list에 적용된다. 실행 중 Network 소속은 바꾸지 않는다.
 8. 다른 terminal에서 승인이 필요하면 알림을 누르고 해당 TUI에서 응답한다. 이미 보고 있는 terminal의 알림은 중복으로 울리지 않는다.
 9. Web을 닫아도 실행은 계속된다. 다시 열면 같은 terminal의 현재 화면과 배치·놓친 알림이 나타난다.
@@ -717,7 +888,7 @@ React·Tailwind·shadcn/ui·다국어 요구는 유지한다. Vite, use-intl, xt
 | --- | --- | --- |
 | 0 | TUI 제품 기준선·새 설계 정리 | 방향 결정 완료 |
 | 1 | domain·package·전역 설정·SQLite·CLI 기반 | 필요한 최소 domain, 저장·설치 경계 |
-| 2 | daemon·공통 HTTP MCP·Network/route·Gateway·PTY·최소 Web | MCP tool 정의와 server/daemon 라이브러리, CLI 포트 연결 |
+| 2 | daemon·공통 HTTP MCP·Network/route·Gateway·PTY·최소 Web | 채택한 MCP·TypeORM·알림 계약 구현 경계, CLI 포트 연결 |
 | 3 | Claude 실행·inbox·hooks·상태·종료 | hidden path 신규 통합, Windows token, 관측 경계 |
 | 4 | Codex App Server·Relay·두 vendor 왕복 | toolOutput+additionalContext 구현·E2E, 실패하면 그 다음 방식 |
 | 5 | Host·Worktree·CLI 운영 | Git Worktree 생성·재사용·충돌과 종료 보상 |
@@ -728,4 +899,4 @@ React·Tailwind·shadcn/ui·다국어 요구는 유지한다. Vite, use-intl, xt
 
 OS 경계는 마지막에 처음 확인하는 것이 아니다. DB는 기반 단계, PTY는 서버 단계, vendor 경계는 해당 adapter 단계에 확인하고 마지막에 통합한다. 최소 Web은 연결 검증을 위한 것이며 운영 UI 전체를 기다려 vendor 연동을 미루지 않는다.
 
-남은 논의를 한꺼번에 사용자에게 질문하지 않는다. 특히 MCP 세부 계약은 MCP 구현 단계, daemon/server 의존성은 서버 단계, Web 의존성은 Web 단계에서 사용자와 논의한다. 현재의 제품 경계와 성공한 실험을 미결로 되돌리지 않는다.
+남은 논의를 한꺼번에 사용자에게 질문하지 않는다. MCP 응답 포장·실제 관측 연결과 채택 의존성 버전은 해당 통합 단계에서 확인하고 Web 의존성은 Web 단계에서 논의한다. 현재의 제품 경계와 성공한 실험을 미결로 되돌리지 않는다.

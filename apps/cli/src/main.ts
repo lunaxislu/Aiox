@@ -6,7 +6,11 @@ import { createCli } from "@/cli";
 
 try {
     await createCli(createFoundationPort(), (value) =>
-        process.stdout.write(`${JSON.stringify(value, null, 2)}\n`),
+        process.stdout.write(
+            typeof value === "string"
+                ? `${value}\n`
+                : `${JSON.stringify(value, null, 2)}\n`,
+        ),
     ).parseAsync();
 } catch (error) {
     if (error instanceof CommanderError) process.exitCode = error.exitCode;

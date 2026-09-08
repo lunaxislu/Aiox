@@ -6,14 +6,14 @@ Status: Target
 소유한다. 실행 소유권은 [[docs/architecture/aiox-system]], vendor 관측은
 [[docs/architecture/aiox-vendor-bindings]], 사용자 동작 계약은
 [[docs/specs/aiox-configuration-web]]와 [[docs/specs/aiox-runtime]]가 소유한다.
-아래 목표는 현재 DB migration이나 OS별 통합이 완료됐다는 뜻이 아니다.
+As-built로 표시한 범위 외에는 목표 구조다. OS별 통합 완료를 뜻하지 않는다.
 
 ## 데이터 소유권
 
 | 저장 책임 | 대상 | 경계 |
 | --- | --- | --- |
 | 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·daemon/운영 Web 포트 | 모든 프로젝트·Host·standalone 공통 |
-| SQLite | persistent Network/Route, Message/reply 관계, 실행 이력, 알림/읽음, workspace 배치 | 메시지 본문 포함 여부·retention·schema 미결 |
+| SQLite | persistent Network/Route, AIOX send·대상별 결과·daemon 알림 본문, 실행 이력, 알림/읽음, workspace 배치 | 처리 종료 후 기본 30일, 상세는 configuration-web 계약 |
 | daemon memory | live process/PTY/binding/credential/activity | DB의 과거 running을 현재 생존으로 간주하지 않음 |
 | browser localStorage | Web dark/light theme | terminal 전역 theme과 다름 |
 | Host YAML | Host-managed 정의 | DB persistent 정의와 이중 권위 금지 |
@@ -22,13 +22,25 @@ Status: Target
 credential을 영속화된 설정·메시지에 넣지 않는다. vendor transcript/reasoning 전체 복제나 SQLite
 저장을 근거로 동일 delivery 재전송·자동 재시작을 추가하지 않는다.
 
+## 이력 보존과 ORM 전환 [Status: As-built]
+
+TypeORM + 기존 better-sqlite3로 전환했다. Stage 1 DB의 최초 schema는 적용된 migration으로 인계하고 이후 migration을 실행한다. 기존 user_version은 호환성 검사에만 읽으며 TypeORM migration 이력을 단일 권위로 사용한다. synchronize는 끈다.
+
+단일 SQLite 연결의 조회·쓰기·close를 직렬화한다. route의 최신 값 읽기와 변경 저장은 같은 transaction에 두어 동시 변경을 잃지 않으며 실패한 작업이 후속 작업을 막지 않는다.
+
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:102-132`, `packages/persistence/src/sqlite/database.ts:267-320`; migration·재개방·병렬 작업·rollback 검증은 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:96-282`.
+
+메시지·대상별 결과·daemon 알림을 내부 식별자로 연결하고, 전송 당시 역방향 route 관계를 대상별로 보존한다. daemon 시작 시와 하루 한 번 완료된 요청의 보존 기한을 확인해 관련 이력을 함께 정리한다. 진행 중 요청은 제외한다. 보존 기간·범위는 [[docs/specs/aiox-configuration-web]]이 소유한다. Host 실행 종료 정리와 이력 삭제는 다른 경로이며 저장 이력을 실행 복원·재전송에 사용하지 않는다.
+
+근거: [[apps/daemon/src/retention.ts]] `apps/daemon/src/retention.ts:11-43`, [[apps/daemon/src/retention.test.ts]] `apps/daemon/src/retention.test.ts:8-31`; 저장·결과·보존 경계는 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:358-502`.
+
 ## SQLite와 플랫폼
 
 `packages/persistence`가 schema·migration·repository를 구현하고 daemon이 DB 연결을 소유한다.
 domain은 DB를 모르고 application은 port를 통해 작업한다. CLI·Web·vendor binding이 직접 DB 파일을
 열어 authoritative 상태를 변경하지 않는다. 필요한 상태 변경은 transaction 경계로 처리한다.
 
-DB 기본 후보는 실행 환경 사용자 홈 아래 `.aiox/aiox.db`다. [Status: Proposed]
+DB 기본 경로는 실행 환경 사용자 홈 아래 `.aiox/aiox.db`다. daemon boot가 설정을 읽고 DB를 연 뒤 listener를 시작한다. [Status: As-built] 근거: [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:14-16`, `apps/daemon/src/bootstrap.ts:44-67`.
 Node homedir/path로 구성하며 `~` 문자열·특정 사용자 경로·npm 설치 경로·프로젝트/Worktree 경로를
 하드코딩하지 않는다. 첫 daemon 시작에서 디렉터리/DB/migration을 준비하고 실패하면 정상 기동으로
 표시하지 않는다. 기존 파일 삭제나 빈 DB 대체로 오류를 숨기지 않는다.
@@ -88,6 +100,10 @@ vendor Ctrl+O 등 입력·브라우저 예약 키를 구분한다.
 
 ## PTY와 Web 복귀
 
+Stage 2는 서버 소유 node-pty의 입출력·resize·exit와 WebSocket attachment를 연결한다. 재부착에는 기본 64 KiB의 최근 출력 바이트를 사용한다. 이는 정확한 현재 화면 snapshot이 아니며 잘린 escape sequence나 과거 resize 뒤의 화면을 온전히 복원하지 못할 수 있다. 아래의 정확한 화면·배치 복귀는 운영 Web의 목표로 남는다. [Status: As-built]
+
+근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:18-73`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:37-127`; 실제 shell의 I/O·resize·detach 후 생존 검증은 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:219-273`.
+
 ```text
 Vendor TUI ↔ 서버 소유 PTY / 현재 화면
                          ↕ attachment
@@ -115,14 +131,15 @@ durable message replay까지 약속하지 않는다.
 ```text
 Binding / hooks / process 관측
  → daemon Runtime projection / 연결 가능한 입력 관측
- → Gateway 알림 후보
+ → 연결된 요청 결과 + 전송 시점 관계 → 원 발신자에게 daemon 메시지
+ → Gateway 사용자 알림 후보
  → 사용자 실제 focus 판정
  → 미확인 목록·읽음 저장 / Web 표시·소리
 ```
 
 승인·질문·리밋·중단은 Runtime/Web 알림 대상이며 사용자 직접 작업에서도 발생한다. 특정
 delivery 실패로 귀속하려면 입력 연결 근거가 있어야 한다. 일반 vendor 도구 오류를 모두 AIOX
-오류로 만들지 않는다. 입력 수락·응답 종료·MCP reply·작업 성공은 서로 다르다.
+오류로 만들지 않는다. 입력 수락·응답 종료·Agent send 응답·작업 성공은 서로 다르다.
 
 알림 클릭은 해당 terminal 이동+읽음 처리다. 전체 확인은 현재 미확인 항목을 읽음 처리한다.
 읽음은 승인이나 실제 문제 해결이 아니므로 요청이 살아 있으면 Runtime 대기 표시도 유지한다.
@@ -141,14 +158,16 @@ delivery 실패로 귀속하려면 입력 연결 근거가 있어야 한다. 일
 
 ## Web 상태와 라이브러리
 
+Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. HTTP polling으로 상태·미확인 알림을 조회하고 WebSocket으로 PTY에 붙는다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·다국어·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
+
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:7-14`, `apps/web/src/main.ts:140-181`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:37-127`. 실제 브라우저 UI 검증은 아직 완료하지 않았다.
+
 운영 Web은 Tailwind·shadcn/ui와 다국어를 제공한다. React/Vite는 재사용 후보이며 use-intl,
 한국어/영어 시작은 제안이다. 공개 site의 Next.js/next-intl 선택과 운영 Web은 독립적이다.
 agent 출력과 vendor 오류 원문을 무조건 번역하지 않는다.
 
 Gateway snapshot/event의 projection을 하나로 유지한다. Zustand는 실제 pane/설정/알림 공유
 필요가 있을 때, TanStack Query는 history pagination/search 같은 조회 필요가 있을 때 평가한다.
-같은 live authority를 여러 store/cache가 독립적으로 수정하게 하지 않는다. Node 기본 모듈과
-기존 ws/MCP SDK/node-pty/better-sqlite3/zod/yaml은 후보이며 존재만으로 버전 채택을 확정하지
-않는다. ORM·별도 event bus·HTTP framework·오디오 library를 선행 전부 도입하지 않는다.
+같은 live authority를 여러 store/cache가 독립적으로 수정하게 하지 않는다. 서버 채택 의존성은 [[docs/architecture/aiox-system]]을 따른다. YAML·오디오 등 후속 의존성은 실제 소비 단계에 선택하며 별도 event bus·HTTP framework를 미리 추가하지 않는다.
 
 Sources: `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §19–§24.

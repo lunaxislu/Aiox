@@ -15,10 +15,11 @@
         "lint:fix": "oxlint --fix apps packages tsup.config.ts vitest.config.ts",
         "format": "oxfmt --write apps packages package.json tsconfig.base.json tsup.config.ts vitest.config.ts pnpm-workspace.yaml .oxfmtrc.json .oxlintrc.json .vscode/settings.json",
         "format:check": "oxfmt --check apps packages package.json tsconfig.base.json tsup.config.ts vitest.config.ts pnpm-workspace.yaml .oxfmtrc.json .oxlintrc.json .vscode/settings.json",
-        "check": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test"
+        "check": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test",
+        "harness": "pnpm --filter @aiox/daemon harness"
     },
     "devDependencies": {
-        "@types/node": "20.19.43",
+        "@types/node": "22.20.1",
         "oxfmt": "0.66.0",
         "oxlint": "1.81.0",
         "tsup": "8.5.1",
@@ -26,13 +27,14 @@
         "vitest": "4.1.6"
     },
     "engines": {
-        "node": ">=22.12.0"
+        "node": "^22.13.0 || >=24.11.0"
     },
     "packageManager": "pnpm@10.33.0",
     "pnpm": {
         "onlyBuiltDependencies": [
             "better-sqlite3",
-            "esbuild"
+            "esbuild",
+            "node-pty"
         ]
     }
 }

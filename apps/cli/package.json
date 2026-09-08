@@ -22,9 +22,10 @@
     },
     "dependencies": {
         "@aiox/config": "workspace:*",
+        "@aiox/protocol": "workspace:*",
         "commander": "14.0.3"
     },
     "engines": {
-        "node": ">=22.12.0"
+        "node": "^22.13.0 || >=24.11.0"
     }
 }

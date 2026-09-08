@@ -8,7 +8,7 @@ Status: Target
 
 ## 공통 MCP와 실행 신원
 
-두 vendor는 daemon의 공통 HTTP MCP `send`·`reply`·`agents_list`를 사용한다. schema·handler·
+두 vendor는 daemon의 공통 HTTP MCP `send`·`agents_list`를 사용한다. schema·handler·
 협업 지침 원본은 공통화하고 vendor별 framing만 binding에 둔다. agent별 MCP child·HTTP server·
 route별 port는 만들지 않는다. 도구 입력의 source 이름을 신원으로 신뢰하지 않는다.
 
@@ -20,9 +20,11 @@ Runtime 종료·시작 실패 → revoke → 기존 MCP session의 후속 요청
 ```
 
 같은 Network는 URL을 공유하고 credential은 공유하지 않는다. route 변경은 전송 시 적용하므로
-같은 Network의 MCP 설정을 다시 주입하지 않는다. 모델 입력에는 발신자·본문·필요한 연결 ID·
-회신 필요/방법만 두고 전체 내부 envelope를 노출하지 않는다. `replyExpected=false`도 내부 수신
-연결 ID가 필요할 수 있다. 재전송·재주입·복구 도구는 제거하되 instructions 주입은 유지한다.
+같은 Network의 MCP 설정을 다시 주입하지 않는다. 모델 입력에는 발신자 name·선택적 role/description·createdAt과 본문을 전달한다. 내부 delivery/prompt/turn 연결은 유지하되 회신 도구 인자로 요구하지 않는다. 단방향 영어 안내와 자동 알림 조건은 [[docs/specs/aiox-collaboration]]을 따른다. 재전송·재주입·복구 도구는 제거하되 instructions 주입은 유지한다.
+
+daemon 알림도 각 vendor의 동일한 입력 경로로 전달하고 AIOX daemon 발신임을 표시한다. Agent의 역방향 route 권한이나 vendor system role을 만들어 내지 않는다. daemon 알림 처리는 다시 완료 알림을 만들지 않는다.
+
+Codex는 Runtime·threadId·turnId에 입력을 연결하고 `turn/completed`의 결과가 completed/failed/interrupted인지 구분한다. busy toolOutput이 기존 turn에서 처리될 수 있으므로 입력마다 별도 turn이 생성된다고 가정하지 않는다. Claude도 연결된 session_id/prompt_id의 Stop만 해당 입력 종료 근거로 사용한다. 정확한 busy/multi-input 연결은 실제 통합의 검증 대상이다.
 
 ## Claude 실행 구성
 
@@ -172,10 +174,15 @@ git show 8db476bad722717bf82cc598904f3f33af8a90b3:tests/unit/adapters/codex-prox
 당시 proxy의 68–100, 156–200줄과 test의 27–100줄에 해당한다. 좁은 과거 코드/테스트 근거이며
 새 구현의 존재나 신규 HTTP MCP 통합 완료를 뜻하지 않는다.
 
-입력 표시는 IDE delimiter+Cyan, toolOutput, toolOutput+additionalContext 세 실험 후보가 있다.
-최종 채택은 미결이며 완전한 wire 예시를 추측으로 재구성하지 않는다. 고정 `Sent by Codex` 문구의
-Claude 발신자 오표시, 내부 renderer 의존, context 길이 제한은 구현 선택에서 남는 경계다.
-표시 개선으로 exactly-once나 모델 action dedupe를 얻었다고 주장하지 않는다.
+입력은 [[docs/specs/aiox-collaboration]]의 채택에 따라 `toolOutput` 본문과
+`additionalContext` 전달 메타데이터로 구성한다. 사용자 확인상 이 조합의 실험은 통과했다.
+신규 AIOX 통합에서 실제 표시·입력 전달·회신을 E2E로 연결하며, 요구를 충족하지 못할 때만
+원인을 확인하고 IDE delimiter+Cyan 또는 toolOutput 단독 등 후순위 후보를 검토한다.
+후보 사이의 추가 우선순위는 정하지 않았으며 여러 fallback을 미리 구현하지 않는다.
+
+완전한 wire의 필드 배치와 context 길이 제한·절단 위치는 추측으로 재구성하지 않는다.
+고정 `Sent by Codex` 문구가 Claude 발신자를 올바르게 표시한다고 단정하지 않고 내부 renderer
+의존과 실제 표시를 확인한다. 표시 개선이 exactly-once나 모델 action dedupe를 뜻하지 않는다.
 
 ## 관측과 사용자 응답 경계
 

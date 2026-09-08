@@ -2,6 +2,8 @@ export type Ports = { daemon: number; web: number };
 export type PortOverrides = Partial<Ports>;
 export type AioxConfig = {
     ports: Ports;
+    /** How long a finished request's history is kept. */
+    messages: { retentionDays: number };
     terminal?: {
         fontFamily?: string;
         fontSize?: number;
@@ -9,6 +11,8 @@ export type AioxConfig = {
     };
     keyboard?: Record<string, string>;
 };
+
+export const DEFAULT_RETENTION_DAYS = 30;
 
 export class ConfigError extends Error {
     constructor(message: string) {
@@ -62,12 +66,21 @@ function port(value: unknown, label: string): number {
     return value;
 }
 
+function retentionDays(value: unknown): number {
+    if (value === undefined) return DEFAULT_RETENTION_DAYS;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1)
+        throw new ConfigError(
+            "messages.retentionDays must be an integer of at least 1",
+        );
+    return value;
+}
+
 export function parseConfig(
     value: unknown,
     overrides: PortOverrides = {},
 ): AioxConfig {
     const input = object(value, "config");
-    keys(input, ["ports", "terminal", "keyboard"], "config");
+    keys(input, ["ports", "messages", "terminal", "keyboard"], "config");
     const ports = input.ports === undefined ? {} : object(input.ports, "ports");
     keys(ports, ["daemon", "web"], "ports");
     const cli = object(overrides, "port overrides");
@@ -80,6 +93,9 @@ export function parseConfig(
         ),
         web: port(ports.web === undefined ? 4501 : ports.web, "ports.web"),
     };
+    const messages =
+        input.messages === undefined ? {} : object(input.messages, "messages");
+    keys(messages, ["retentionDays"], "messages");
     const config: AioxConfig = {
         ports: {
             daemon: port(
@@ -90,6 +106,9 @@ export function parseConfig(
                 cli.web === undefined ? filePorts.web : cli.web,
                 "ports.web",
             ),
+        },
+        messages: {
+            retentionDays: retentionDays(messages.retentionDays),
         },
     };
     if (config.ports.daemon === config.ports.web)

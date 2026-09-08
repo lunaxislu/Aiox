@@ -3,7 +3,7 @@
 Status: Committed target
 
 이 문서는 Host 실행·작업 공간·manifest, Network 정의의 권위와 directed routing을 소유한다.
-CLI 전체 표면은 [[docs/specs/aiox-runtime]], 인증·실제 send/reply 판정은
+CLI 전체 표면은 [[docs/specs/aiox-runtime]], 인증·실제 send 판정은
 [[docs/specs/aiox-collaboration]]을 따른다.
 
 ## 실행 namespace와 작업 공간
@@ -45,7 +45,7 @@ YAML 정의를 global persistent Network로 동시에 저장해 이중 권위로
   `feature-host/feature-a`는 이름이 비슷하다고 merge/replace하지 않는다.
 - `network list`는 persistent만, `--all`은 host-managed도 표시한다. `network show`는
   Host-qualified Network도 조회한다. 일반 delete/route는 persistent에만 적용한다.
-- `agent run --network`와 `host agent add --network`는 한 값만 받는다. 실행 중 join/leave나
+- `agent run --network`는 한 값만 받는다. 실행 중 join/leave나
   Network 소속 변경 기능은 제공하지 않는다. 실행 소유권과 Network membership은 별개다.
 - Manifest의 Agent definition key를 실행 때 새 Runtime ID로 해석해 membership/route를 만든다.
   같은 이름의 다른 Host Agent가 섞이지 않아야 한다.
@@ -80,6 +80,8 @@ Host CLI는 YAML을 수정하지 않는다. 재실행하면 runtime override는 
 
 ## aiox.yaml
 
+Agent별 vendor 실행 인자는 `agents.<name>.args: string[]`다. `execute`/`excute` alias는 두지 않는다. block/inline 배열은 같고 생략은 빈 배열이다. 문자열 이외의 요소는 거절한다. 각 요소를 argv 하나로 전달하며 공백 재분리·shell 실행·자동 `--` 삽입을 하지 않는다. CLI의 `--` 이후 인자와 같은 adapter 계약을 따른다. Codex TUI/App Server 중 적용 대상과 AIOX 관리 설정과의 충돌 처리는 adapter 경계에서 구체화한다.
+
 아래는 목표 구성의 전체 예시다. `instruction` 단수, Agent map, Network map 구조를 사용한다.
 `networks`라는 복수형 키는 다중 Network 지원을 뜻하지 않으며 현재 항목 하나만 허용한다.
 `version: 1`의 정식 schema 도입 여부와 adapter 등록 ID, 공통 Host instruction의 YAML 위치는
@@ -95,6 +97,11 @@ agents:
   reviewer:
     adapter: claude-code
     role: review
+    args:
+      - --model
+      - sonnet
+      - --permission-mode
+      - plan
     instruction: |
       구현을 검토하고 발견한 문제를 implementer에게 전달한다.
 
@@ -154,9 +161,16 @@ host stop <host>
 일부 child의 종료 실패·관측 불가는 전체 Host 종료 성공이 아니다. daemon force stop은
 [[docs/specs/aiox-runtime]]의 별도 강제 종료 계약을 따른다.
 
-Declared Agent는 현재 실행에서 stop 가능하지만 remove는 불가하고 다음 Host 실행에 다시
-생성된다. `host agent add`의 Ephemeral Agent는 stop/remove 가능하지만 manifest를 바꾸지 않고
-다음 실행에서 자동 복원되지 않는다. 실행 중 remove는 실제 종료와 실행 자원 정리를 확인한다.
+Host의 Agent 구성·Network·route 정의는 YAML이 소유한다. `host agent add/remove`와 Declared/Ephemeral 구분을 도입하지 않는다.
+
+```text
+aiox host agent start <host> <agent-names...>
+aiox host agent stop <host> <agent-names...>
+```
+
+Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실행·credential·binding·활성 membership을 정리하고 Host의 항목·메타데이터·실행 설정을 stopped로 유지한다. start는 기존 항목을 새 Runtime ID·credential로 실행하며 이전 vendor 대화를 자동 resume하지 않는다. 이미 실행 중인 항목을 중복 실행하지 않고 이름별 결과를 보고한다. 보존한 Host route 설정은 새 실행 ID에 연결하며 stopped 항목에는 전달하지 않는다.
+
+Standalone 실행 종료 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
 
 Sources:
 
