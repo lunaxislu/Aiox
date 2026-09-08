@@ -1,4 +1,4 @@
 packages:
-  - apps/*
-  - packages/*
-  - packages/adapters/*
+    - apps/*
+    - packages/*
+    - packages/adapters/*

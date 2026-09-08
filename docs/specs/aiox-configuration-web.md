@@ -11,7 +11,7 @@ Status: Committed target
 터미널·keyboard·daemon 및 운영 Web 포트는 **사용자 전역 설정 파일 하나**로 모든 프로젝트,
 Host, standalone에 적용한다. 프로젝트별 override는 두지 않는다. 설정 위치는 실행 환경의
 사용자 홈 아래 `.aiox/config.<확장명>`이며 npm 설치 경로나 프로젝트에 저장하지 않는다.
-JSON은 Web 편집 연동을 위한 후보이지 확정 파일 형식이 아니다. Host YAML은 실행 정의이며
+Stage 1 구현에서는 Node 기본 JSON 처리로 `.aiox/config.json`을 선택했다. Host YAML은 실행 정의이며
 사용자 취향 설정과 별개다.
 
 | 데이터 | 저장 책임 | 확정 범위와 남은 선택 |
@@ -31,6 +31,17 @@ daemon의 persistence 책임이며 CLI/Web/adapter가 파일을 직접 수정하
 `.aiox/aiox.db`, driver, WAL, native binary·Node 지원 조합은 아직 구현 선택이다. Windows와
 WSL 홈·DB를 자동 공유한다고 가정하지 않는다. DB 준비 실패를 정상 기동이나 빈 DB fallback으로
 숨기지 않고 기존 파일을 자동 삭제하지 않는다.
+
+## Stage 1 구현 범위
+
+`packages/config`는 JSON 검증·load/save·last-good session을 제공한다. 구현 기본 포트는 daemon
+4500, Web 4501이며 해석 우선순위는 CLI override → 파일 → 기본값이다. 실제 listener·파일
+watch·Web 배포는 후속 단계다. terminal의 fontFamily/fontSize/theme과 keyboard 문자열 맵을
+지원하며 상세 UI와 바인딩 의미는 해당 단계에서 구체화한다.
+
+`packages/persistence`는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
+transaction·close/reopen을 구현했다. DB 경로는 호출자가 주입하며 홈 기본 경로 연결과 daemon
+소유권은 아직 통합 전이다. macOS arm64에서 검증했으며 Windows/Linux 통합 완료가 아니다.
 
 ## 파일·Web 편집과 자동 적용
 

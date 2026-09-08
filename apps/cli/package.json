@@ -1,0 +1,30 @@
+{
+    "name": "@aiox/cli",
+    "version": "0.0.0",
+    "private": true,
+    "bin": {
+        "aiox": "./dist/main.js"
+    },
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "tsup --config ../../tsup.config.ts",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run --config ../../vitest.config.ts"
+    },
+    "dependencies": {
+        "@aiox/config": "workspace:*",
+        "commander": "14.0.3"
+    },
+    "engines": {
+        "node": "^20.19.0 || ^22.12.0 || ^24.0.0"
+    }
+}

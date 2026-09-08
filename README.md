@@ -2,8 +2,8 @@
 
 Claude Code와 Codex의 실제 TUI를 실행·연결·관측하는 로컬 multi-agent 작업 공간입니다.
 
-현재 TUI 제품을 새로 만드는 단계입니다. 이전 production·test·package 골격과 실행 진입점은
-제거했습니다. 아직 실행 가능한 AIOX CLI나 운영 Web은 없으며 새 설계의 구현을 시작할 상태입니다.
+현재 TUI 제품을 새로 만드는 Stage 1입니다. domain·전역 설정·SQLite 저장 라이브러리와 CLI
+parser/doctor를 구현했습니다. daemon·vendor 실행·운영 Web은 아직 구현하지 않았습니다.
 
 ## 설계와 구현 계획
 
@@ -25,5 +25,15 @@ Claude Code와 Codex의 실제 TUI를 실행·연결·관측하는 로컬 multi-
 scripts/onramp
 ```
 
-`pnpm test:workflow`는 작업 진입 도구만 검사합니다. 제품 build/test 명령과 dependencies는
-새 구현을 추가할 때 구성합니다. `spikes/`는 과거 독립 실험이며 제품 빌드나 검증에 포함하지 않습니다.
+`pnpm check`는 oxlint·oxfmt·타입 검사·tsup 빌드·Vitest를 실행합니다.
+`pnpm format`은 현재 앱·패키지와 개발 설정을 포맷합니다. 테스트는 production 파일 옆에 둡니다.
+빌드 후 `node apps/cli/dist/main.js doctor --json`으로 로컬 환경을 진단할 수 있습니다.
+나머지 명령의 daemon 연결은 후속 단계이며 아직 실행 성공으로 보고하지 않습니다.
+
+GitHub Actions의 [Stage 1 CI](.github/workflows/ci.yml)는 push·PR·수동 실행 시
+Windows·Linux·macOS 각각에서 Node 20·22·24로 의존성을 설치하고 같은 검사와 CLI 진단을
+실행합니다. pnpm 버전은 루트 `packageManager`를 따릅니다. 이 검사는 현재 foundation
+범위이며 아직 vendor TUI·PTY·WSL 통합의 지원을 증명하지 않습니다.
+
+`pnpm test:workflow`는 작업 진입 도구만 검사합니다. `spikes/`는 과거 독립 실험이며 제품
+빌드나 검증에 포함하지 않습니다.

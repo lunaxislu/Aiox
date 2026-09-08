@@ -24,13 +24,17 @@ architecture.excalidraw는 사용자의 개인 자산임 신경쓸 필요가 없
   decision/spec/architecture 연결을 끝까지 추적해 영향 범위와 검증 경로가 닫혔는지 반드시
   확인한다. 실제 절차와 사례는 `docs/guides/workflow.md`를 따른다.
 
-## Legacy And Compatibility Code
+## TypeScript Build And Tests
 
-- 하위호환·이행 코드(parser, fallback, alias, dual-read-write)는 명시적 요청 없이 추가하지 않는다.
-- 필요하다고 판단되면 조용히 넣지 말고, 근거와 대안을 함께 보고하고 결정을 요청한다.
-- 판단의 전제는 이 프로젝트의 default다: pre-v1이고, 외부 consumer가 없으며, 불필요한
-  코드는 유지가 아니라 삭제가 기본이다.
-- 이 규칙은 legacy·호환 코드에 한정하며, 일반적인 YAGNI·단순화 판단으로 확장하지 않는다.
+- 각 앱·패키지의 tsconfig에서 `paths: { "@/*": ["./src/*"] }`를 사용한다.
+  `@/`는 해당 패키지 내부 source 별칭이며 다른 패키지는 공개 package entry로 import한다.
+- 빌드는 tsup, 타입 검사는 `tsc --noEmit`, 테스트는 Vitest를 사용한다.
+- lint는 oxlint, 포맷은 oxfmt를 사용하며 루트 `.oxlintrc.json`과 `.oxfmtrc.json`을 따른다.
+  별칭이 타입 검사뿐 아니라 테스트와 빌드 후 Node 실행에서도 해석되는지 확인한다.
+- 테스트는 대상 production 파일과 같은 디렉터리에 같은 이름으로 작성한다.
+  `module.ts` 옆에 `module.test.ts`, `component.tsx` 옆에 `component.test.tsx`를 둔다.
+  예: `packages/domain/src/network/route.ts`와 `route.test.ts`.
+  앱·패키지 밖의 별도 tests 디렉터리에 대상 파일 테스트를 모으지 않는다.
 
 ## References
 

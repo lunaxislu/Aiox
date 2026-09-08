@@ -1,0 +1,67 @@
+export type CommandName =
+    | "daemon.start"
+    | "daemon.stop"
+    | "daemon.restart"
+    | "daemon.status"
+    | "adapter.install"
+    | "adapter.uninstall"
+    | "adapter.list"
+    | "adapter.show"
+    | "adapter.setup"
+    | "adapter.doctor"
+    | "agent.run"
+    | "agent.list"
+    | "agent.show"
+    | "network.create"
+    | "network.delete"
+    | "network.list"
+    | "network.show"
+    | "network.route"
+    | "host.run"
+    | "host.list"
+    | "host.status"
+    | "host.stop"
+    | "host.agent.add"
+    | "host.agent.stop"
+    | "host.agent.remove"
+    | "host.network.list"
+    | "host.network.show"
+    | "host.network.route"
+    | "status"
+    | "doctor";
+
+export type CliOptions = {
+    name?: string;
+    network?: string;
+    role?: string;
+    description?: string;
+    instruction?: string;
+    host?: string;
+    all?: boolean;
+    json?: boolean;
+    force?: boolean;
+    path?: string;
+    worktree?: string;
+    adapter?: string;
+    default?: "allow" | "deny";
+    resetDefault?: boolean;
+    allowBetween?: string[];
+    denyBetween?: string[];
+    resetBetween?: string[];
+    allowFrom?: string;
+    denyFrom?: string;
+    resetFrom?: string;
+    to?: string[];
+};
+
+export type CliRequest = {
+    command: CommandName;
+    args: (string | string[])[];
+    options: CliOptions;
+    adapterArgs?: string[];
+};
+
+/** The application/controller boundary. Parsing does not mutate SQLite or runtime state. */
+export interface CliPort {
+    execute(request: CliRequest): Promise<unknown>;
+}
