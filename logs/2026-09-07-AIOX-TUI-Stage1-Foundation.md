@@ -1,12 +1,12 @@
 ---
 topic: AIOX TUI Stage1 Foundation
 description: 새 TUI 설계를 domain 패키지 전역 설정 SQLite CLI 기반으로 구현하는 첫 단계
-status: open
+status: decided
 ---
 
 ## Work Items
 
-- [>] W1 Stage 1 기반 구현의 GitHub Actions 3 OS 검증 결과를 확인하고 owner 정합성을 검토한다
+- [x] W1 Stage 1 기반 구현의 GitHub Actions 3 OS 검증 결과를 확인하고 owner 정합성을 검토한다
 
 ## Required Context
 
@@ -144,3 +144,11 @@ tsconfig.json 중복과 `apps/cli/src/cli.ts`의 미구현 command tree는 이�
 현재 변경에 대한 커밋 전략: 이미 staged된 design-grounded-changes skill 삭제 3건, 기존 research-idea 자료 4개, Node/CI/README 및 현재 로그 갱신을 각각 분리한다. 사용자 기존 로그 entry 삭제는 유지하고 개인 architecture.excalidraw는 건드리지 않는다. 조사 자료는 기존 내용을 보존하며 현행 제품 spec으로 승격하지 않는다.
 
 로컬 확인: CI=true pnpm install --frozen-lockfile, pnpm check(lint/format/build/typecheck/Vitest 26개), built CLI doctor 모두 macOS arm64 Node24.14.0에서 통과. 새 6개 조합 CI는 push 후 결과 확인 예정이다. Stage1 전체 종료와 owner 정합성 검토는 아직 완료 처리하지 않는다.
+
+### 2026-09-08 16:33 · Stage 1 완료와 Stage 2 포인터 전환
+
+사용자 요청으로 Stage 1을 완료 처리한다. 커밋 2db827f의 GitHub Actions 34189231508에서 Windows/Linux/macOS × Node22/24 여섯 조합이 모두 성공했다: https://github.com/lunaxislu/aiox-prototype/actions/runs/34189231508 . 설치·lint·format·build·typecheck·26개 테스트·built CLI doctor가 검증 범위다. Node 요구는 >=22.12.0이며 모든 미래 버전의 검증을 의미하지 않는다.
+
+완료 산출물은 domain의 단일 Network/route, config JSON·기본 포트·load/save/session, persistence의 SQLite Network/Route·migration·transaction, CLI parser/doctor와 모노레포 개발 도구다. configuration-web 및 storage-terminal owner에 구현된 선택과 3 OS 근거를 반영해 후보/미검증으로 남던 표현을 정리했다. Stage 1 범위의 남은 작업은 없다.
+
+daemon 실행부·credential/MCP·PTY·최소 Web은 원래 Stage 2 범위다. config CLI port override의 실제 연결, reload의 다음 실행용 포트 의미와 DB 기본 경로 연결도 Stage 2에서 통합한다. runtime 상태는 관측 producer가 생길 때 구체화한다. Host/Worktree·운영 Web·vendor/WSL·npm 배포는 각 후속 단계에 남는다. Stage 2 W1을 다음 재개 지점으로 활성화하며 구현은 이번에 시작하지 않았다.

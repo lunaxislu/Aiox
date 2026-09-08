@@ -16,7 +16,7 @@ Stage 1 구현에서는 Node 기본 JSON 처리로 `.aiox/config.json`을 선택
 
 | 데이터 | 저장 책임 | 확정 범위와 남은 선택 |
 | --- | --- | --- |
-| terminal font/color/cursor/theme, keyboard, 포트 | 전역 설정 파일 | 전역 scope·홈 아래 위치, 형식/schema 미결 |
+| terminal font/color/cursor/theme, keyboard, 포트 | 전역 설정 파일 | JSON·기본 schema 구현. 상세 UI schema는 후속 확장 |
 | Web dark/light theme | localStorage | terminal palette와 별개. system 선택·언어·소리 설정 저장은 후보 |
 | 지속 Network/Route, 메시지·회신 관계, 실행 이력 | SQLite | 저장 범주 수용. 본문 전체 저장·retention/schema 미결 |
 | 알림·읽음, terminal/workspace 배치 | SQLite | 브라우저 복귀에 필요한 지속 데이터 |
@@ -28,7 +28,7 @@ vendor transcript·reasoning 전체 복제나 무제한 메시지 본문 저장�
 
 SQLite는 Windows/Linux/macOS에서 공통 domain/schema/migration을 쓰는 방향이다. DB 접근은
 daemon의 persistence 책임이며 CLI/Web/adapter가 파일을 직접 수정하지 않는다. 실제 DB 경로
-`.aiox/aiox.db`, driver, WAL, native binary·Node 지원 조합은 아직 구현 선택이다. Windows와
+`.aiox/aiox.db` 기본 경로 연결과 WAL은 아직 구현 선택이다. 드라이버와 검증 범위는 아래 Stage 1 구현 범위를 따른다. Windows와
 WSL 홈·DB를 자동 공유한다고 가정하지 않는다. DB 준비 실패를 정상 기동이나 빈 DB fallback으로
 숨기지 않고 기존 파일을 자동 삭제하지 않는다.
 
@@ -41,7 +41,9 @@ watch·Web 배포는 후속 단계다. terminal의 fontFamily/fontSize/theme과 
 
 `packages/persistence`는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
 transaction·close/reopen을 구현했다. DB 경로는 호출자가 주입하며 홈 기본 경로 연결과 daemon
-소유권은 아직 통합 전이다. macOS arm64에서 검증했으며 Windows/Linux 통합 완료가 아니다.
+소유권은 아직 통합 전이다. Node 요구 조건은 >=22.12.0이며 Windows/Linux/macOS × Node22/24 CI에서
+설치·빌드·타입 검사·테스트·CLI 진단을 통과했다. vendor/PTY/WSL과 npm 전역 배포 검증은 후속 단계다.
+근거: [Stage 1 CI](https://github.com/lunaxislu/aiox-prototype/actions/runs/34189231508).
 
 ## 파일·Web 편집과 자동 적용
 
@@ -72,8 +74,8 @@ cmux/일반 터미널 앱 전체 appearance를 바꾸거나 vendor가 직접 그
 ## 포트와 운영 Web
 
 daemon 포트와 Host·standalone이 공유하는 운영 Web 포트는 각각 기본값 및 전역 설정·CLI 시작
-override를 지원해야 한다. 정확한 기본값과 CLI 옵션 위치는 미결이다. `4500/4501`, 하나의 daemon이
-두 listener를 소유하는 구조, `CLI > config > default`는 후보다. Host마다 Web 서버를 만드는
+override를 지원해야 한다. config 구현 기본값은 daemon 4500·Web 4501이고 우선순위는
+`CLI > config > default`다. CLI 옵션 연결과 실제 listener 구성은 Stage 2에서 통합한다. Host마다 Web 서버를 만드는
 계약은 아니다. 개발 Vite port와 배포 운영 Web port를 혼동하지 않는다.
 
 저장된 포트는 다음 daemon 시작에 적용하며 실행 중 MCP 연결을 즉시 이동시키지 않는다.

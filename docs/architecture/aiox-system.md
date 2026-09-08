@@ -41,7 +41,9 @@ CLI foreground 연결과 실제 child/PTY 소유 handle의 배치는 구현에�
 
 daemon용과 공용 운영 Web용 포트는 각각 설정할 수 있다. 같은 Node 프로세스의 두 listener로
 구현할 수 있으며 Host마다 별도 Web server가 필요한 것은 아니다. 개발 Vite 포트와 배포 포트는
-다르다. `4500/4501`, CLI override 우선순위와 포트 충돌 처리는 아직 제안·구현 선택이다.
+다르다. 기본 포트와 설정 해석 우선순위는 Stage 1 config에 구현됐으며
+[[docs/specs/aiox-configuration-web]]의 포트 계약을 따른다. 실제 CLI 옵션·listener 연결과
+포트 충돌 처리는 Stage 2에서 구현한다.
 
 ## 서로 다른 수명
 

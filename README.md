@@ -2,8 +2,8 @@
 
 Claude Code와 Codex의 실제 TUI를 실행·연결·관측하는 로컬 multi-agent 작업 공간입니다.
 
-현재 TUI 제품을 새로 만드는 Stage 1입니다. domain·전역 설정·SQLite 저장 라이브러리와 CLI
-parser/doctor를 구현했습니다. daemon·vendor 실행·운영 Web은 아직 구현하지 않았습니다.
+Stage 1의 domain·전역 설정·SQLite 저장 라이브러리와 CLI parser/doctor 구현·검증을 마쳤으며,
+현재 Stage 2 진입 단계입니다. daemon·MCP·PTY·최소 Web과 vendor 실행은 아직 구현 전입니다.
 
 ## 설계와 구현 계획
 

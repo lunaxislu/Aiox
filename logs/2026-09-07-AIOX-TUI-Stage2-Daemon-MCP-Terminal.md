@@ -6,7 +6,7 @@ status: open
 
 ## Work Items
 
-- [ ] W1 Stage 1의 실제 산출물과 설치 버전을 확인하고 daemon·MCP·PTY·최소 Web의 첫 통합 시나리오를 구체화한다
+- [>] W1 Stage 1의 실제 산출물과 설치 버전을 확인하고 daemon·MCP·PTY·최소 Web의 첫 통합 시나리오를 구체화한다
 
 ## Required Context
 
@@ -16,7 +16,7 @@ status: open
 
 ### {Global}
 
-- 사용자가 다음 세션의 기억을 위해 Stage 2 일반 로그를 미리 만들도록 요청했다. 구현 미착수·대기 상태이며 현재 활성 단계는 Stage 1이다. Stage 1 완료 후 plans/aiox-tui-product-rebuild.md에서 Stage 2를 활성화한다. Package log/task 파일은 만들지 않는다.
+- Stage 1 완료 후 현재 활성 단계는 Stage 2다. 이 로그 W1이 다음 재개 지점이며 아직 Stage 2 제품 구현·라이브러리 설치는 시작하지 않았다. Package log/task 파일은 만들지 않는다. 아래 2026-09-07 대기 인계는 당시 기록이고 최신 진입 기준은 Stage 1 완료 인계 entry다.
 - 현재 설계 진입점 docs/aiox-tui-product.md. 읽을 계약: docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md, docs/specs/aiox-host.md, docs/specs/aiox-configuration-web.md. 구조: docs/architecture/aiox-system.md, docs/architecture/aiox-storage-terminal.md. Vendor 연결 경계가 필요할 때 docs/architecture/aiox-vendor-bindings.md를 읽는다. 선행 결과는 logs/2026-09-07-AIOX-TUI-Stage1-Foundation.md에서 확인한다.
 
 
@@ -95,3 +95,21 @@ Windows 네이티브·Linux·macOS 목표를 처음부터 고려한다. SQLite �
 ### 다음 세션 진입
 
 현재는 Stage 1을 계속한다. Stage 1 완료 후 plan에서 Stage 2를 활성화하고 이 로그 W1을 active로 전환한다. 먼저 위 Required Context와 Stage 1 결과를 읽는다. 이번 로그 준비만으로 설치·구현·검증이 끝났다고 표시하지 않는다.
+
+### 2026-09-08 16:34 · Stage 1 완료 인계와 현재 재개 기준
+
+Stage 1 완료에 따라 Stage 2 W1을 다음 재개 지점으로 활성화했다. 이번에는 포인터만 옮겼으며 Stage 2 구현·설치는 시작하지 않았다. 위 2026-09-07 대기 인계의 dependencies 없음/현재 Stage1/설정 형식 미결이라는 설명은 당시 기록이며 아래 결과로 대체한다.
+
+현재 기반: TypeScript5.9.3, tsup8.5.1, Vitest4.1.6, oxlint1.81.0, oxfmt0.66.0, pnpm10.33.0, Node>=22.12.0. 공통 tsup/vitest 설정은 workspace cwd 기준이고 pnpm check는 build 후 typecheck한다. 테스트는 production 옆 .test.ts다. domain/config/persistence/cli가 구현돼 있으며 CLI 실제 실행부는 doctor만 있고 나머지는 unavailable이다.
+
+config는 Node JSON 처리, 전역 .aiox/config.json, daemon4500/Web4501, CLI override→파일→기본값이다. persistence는 better-sqlite3 12.11.1로 경로를 호출자가 주입한다. watcher/listener·CLI port옵션·DB 홈 기본경로는 아직 통합 전이다. 최초 CLI override의 현재 포트와 파일 설정의 다음 실행 포트 표시 의미를 Stage2에서 명확히 한다.
+
+선행 CI https://github.com/lunaxislu/aiox-prototype/actions/runs/34189231508 (2db827f)는 Windows/Linux/macOS × Node22/24 여섯 조합 성공이다. foundation 검증이며 PTY/vendor/WSL/npm 전역 배포 완료는 아니다.
+
+첫 행동은 Stage1 공개 entry와 Required Context를 읽고 CLI→daemon lifecycle→credential/Network/MCP→PTY/최소 Web의 첫 통합 시나리오를 구체화하는 것이다. 이미 확정한 형식·드라이버를 다시 전수 조사하거나 package/task 로그를 선생성하지 않는다.
+
+### 2026-09-08 16:41 · Stage 1 종료 리뷰 보완과 Git 변경 커밋
+
+사용자 요청으로 서브에이전트의 Stage 1 읽기 리뷰 결과를 반영했다. 리뷰는 CI 34189231508의 커밋 2db827f 및 3 OS × Node22/24 여섯 job 성공과 code/tests를 대조했고 종료를 막는 구현 결함은 발견하지 못했다. root도 남은 문서 불일치를 직접 확인했다. storage-terminal의 JSON 미결 표현과 system의 포트 제안 표현을 configuration-web owner로 연결하고 README를 Stage 2 진입 상태로 정정했다. Stage 1 완료와 현재 Stage 2 W1은 유지하며 제품 구현은 변경하지 않았다.
+
+사용자는 반영 후 Git 변경 커밋을 요청했다. 기존 baseline 보완 및 logs/artifact의 제품 문맥·외부 CLI 조사 프롬프트는 내용을 보존해 별도 커밋하고, Stage 1 종료·owner 보완·Stage 2 인계는 함께 커밋한다. 이번 문서 수정의 Markdown inline-code 검사와 git diff --check는 통과했다. 제품 테스트는 재실행하지 않았으며 이전 CI 근거와 이번 문서 검사를 구분한다.

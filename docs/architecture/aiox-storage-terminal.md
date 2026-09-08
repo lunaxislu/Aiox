@@ -12,7 +12,7 @@ Status: Target
 
 | 저장 책임 | 대상 | 경계 |
 | --- | --- | --- |
-| 실행 환경 사용자 홈의 `.aiox/config.<확장명>` | 터미널·keyboard·daemon/운영 Web 포트 | 모든 프로젝트·Host·standalone 공통, 형식 미결 |
+| 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·daemon/운영 Web 포트 | 모든 프로젝트·Host·standalone 공통 |
 | SQLite | persistent Network/Route, Message/reply 관계, 실행 이력, 알림/읽음, workspace 배치 | 메시지 본문 포함 여부·retention·schema 미결 |
 | daemon memory | live process/PTY/binding/credential/activity | DB의 과거 running을 현재 생존으로 간주하지 않음 |
 | browser localStorage | Web dark/light theme | terminal 전역 theme과 다름 |
@@ -52,9 +52,10 @@ Windows native, Linux, macOS에서 domain/schema/migration은 공유한다. OS�
 path/socket/token/MCP/종료 경계를 별도로 해결해야 하므로 지원 확정이 아니다. Windows 브라우저가
 WSL Web에 접속하는 것은 이 혼합 실행과 다르며 네트워크 접근은 별도로 검증한다.
 
-기존 better-sqlite3는 재사용 후보다. OS 이름만으로 npm 전역 설치 성공을 약속하지 않고 채택
+Stage 1은 better-sqlite3 12.11.1을 사용한다. Node >=22.12.0을 요구하며 Windows/Linux/macOS의
+Node22/24 CI에서 DB 설치·저장·재개방 테스트를 통과했다. OS 이름만으로 npm 전역 설치 성공을 약속하지 않고 채택
 버전의 Node·CPU·OS에 맞는 prebuilt/native 로딩을 검증한다. PTY native 의존도 함께 확인한다.
-지원 Node 범위와 배포 artifact를 함께 결정한다. WAL 채택은 미결이며 채택 시 같은 디렉터리의
+npm 배포 artifact와 PTY·vendor 실행은 후속 단계에서 검증한다. WAL 채택은 미결이며 채택 시 같은 디렉터리의
 `-wal`/`-shm` 접근과 로컬 파일시스템 조건을 지킨다. 살아 있는 sidecar를 삭제하지 않는다.
 [better-sqlite3](https://github.com/WiseLibs/better-sqlite3), [SQLite WAL](https://sqlite.org/wal.html).
 
@@ -65,8 +66,8 @@ Linux Docker 결과를 native Windows 검증으로 보고하지 않는다.
 ## 전역 설정 적용
 
 설정 scope는 사용자 전역 하나이며 프로젝트 override는 없다. Host 실행 정의 `aiox.yaml`과도
-별개다. JSON은 Web 편집과 저장에 단순한 후보이지 확정 형식이 아니다. 사용자 홈에 첫 실행/저장
-때 준비하는 방식이 제안됐으며 npm 설치 디렉터리에 사용자 설정을 저장하지 않는다.
+별개다. 전역 설정은 `.aiox/config.json`을 사용하며 형식·검증 계약과 Stage 1 구현 범위는
+[[docs/specs/aiox-configuration-web]]를 따른다. npm 설치 디렉터리에 사용자 설정을 저장하지 않는다.
 
 ```text
 Web 수정·미리보기 → 저장 요청 → daemon 검증 → 전역 파일 저장 → 유효 설정 배포
