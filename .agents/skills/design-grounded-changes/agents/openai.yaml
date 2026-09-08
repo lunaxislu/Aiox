@@ -1,4 +1,0 @@
-interface:
-  display_name: "Design Grounded Changes"
-  short_description: "Ground changes in evidence and existing capabilities"
-  default_prompt: "Use $design-grounded-changes to design and verify the smallest justified change for this task."
