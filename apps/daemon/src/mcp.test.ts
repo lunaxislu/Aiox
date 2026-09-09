@@ -169,6 +169,22 @@ describe("credentials", () => {
 });
 
 describe("agents_list", () => {
+    it("does not discover general shells or accept them as message targets", async () => {
+        const a = await join("a");
+        const shell = harness.daemon.createShell();
+        await route({ kind: "default", policy: "allow" });
+        const client = await connect(a.token);
+        expect(await agentsList(client)).toEqual([]);
+        const result = await send(
+            client,
+            [shell.id],
+            "this must never become a shell command",
+        );
+        expect(result.results).toMatchObject([
+            { agentId: shell.id, accepted: false },
+        ]);
+        expect(harness.daemon.services.runtimes.list()).toHaveLength(1);
+    });
     it("shows only the agents the caller may send to, and not the reverse", async () => {
         const a = await join("a");
         const b = await join("b");

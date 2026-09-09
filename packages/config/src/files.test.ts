@@ -64,6 +64,32 @@ test("invalid saves preserve the last saved file", async () => {
     expect(await readFile(configPath(directory), "utf8")).toBe(before);
 });
 
+test("sidebar and host layout round-trip with existing settings and invalid replacements preserve disk", async () => {
+    const directory = await home();
+    const input = {
+        ports: { daemon: 5300, web: 5301 },
+        messages: { retentionDays: 7 },
+        keyboard: { nextPane: "Ctrl+Tab" },
+        web: { sidebar: { width: 300 } },
+        host: { layout: { preset: "grid", columns: 2, rows: 1 } },
+    };
+    await saveConfig(input, { home: directory });
+    expect(await loadConfig({ home: directory })).toEqual(input);
+    expect(
+        (await loadConfig({ home: directory, portOverrides: { web: 5401 } }))
+            .ports,
+    ).toEqual({ daemon: 5300, web: 5401 });
+    for (const invalid of [
+        { ...input, web: { sidebar: { width: -1 } } },
+        { ...input, host: { layout: { preset: "auto", rows: 2 } } },
+    ]) {
+        await expect(
+            saveConfig(invalid, { home: directory }),
+        ).rejects.toThrow();
+        expect(await loadConfig({ home: directory })).toEqual(input);
+    }
+});
+
 test("malformed file reports an error instead of silently restoring defaults", async () => {
     const directory = await home();
     await saveConfig({}, { home: directory });

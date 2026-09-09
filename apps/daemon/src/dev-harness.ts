@@ -7,15 +7,13 @@
  *
  *     pnpm build && pnpm harness
  *
- * The shell runtime deliberately has no network membership, so it can never be
- * an MCP send target and no AIOX message body can reach the shell as input.
+ * The plain shell has no Agent registration, credential or network membership.
+ * It is never an MCP send target; AIOX messages cannot reach it as shell input.
  * MCP authentication, agents_list, send, routing and the notification policy are
  * covered by the automated tests against vendor doubles instead.
  */
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { defaultShell } from "@aiox/terminal";
 
 import { boot } from "@/bootstrap";
 
@@ -23,30 +21,7 @@ const home =
     process.env.AIOX_HARNESS_HOME ?? join(tmpdir(), "aiox-stage2-harness");
 
 const { daemon } = await boot({ home });
-const shell = defaultShell();
-const terminal = daemon.createTerminal({
-    file: shell.file,
-    args: shell.args,
-    cwd: process.cwd(),
-});
-const { runtimeId } = await daemon.registerRuntime({
-    name: "stage2-shell",
-    description: "Plain shell used to verify the pty transport",
-    networkId: null,
-    terminalId: terminal.id,
-    createBinding: (controls) => {
-        controls.setActivity("idle");
-        return {
-            deliver: () =>
-                Promise.reject(
-                    new Error(
-                        "The Stage 2 shell terminal has no AIOX input path.",
-                    ),
-                ),
-            stop: () => Promise.resolve(),
-        };
-    },
-});
+const terminal = daemon.createShell({ cwd: process.cwd() });
 
 process.stdout.write(
     [
@@ -54,7 +29,6 @@ process.stdout.write(
         `AIOX Stage 2 harness — home ${home}`,
         `  Web        http://127.0.0.1:${daemon.ports.web}/`,
         `  daemon API http://127.0.0.1:${daemon.ports.daemon}/api/status`,
-        `  runtime    ${runtimeId}`,
         `  terminal   ${terminal.id}`,
         "",
         "Check by hand:",

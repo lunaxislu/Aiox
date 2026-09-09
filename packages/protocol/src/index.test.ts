@@ -2,7 +2,51 @@ import assert from "node:assert/strict";
 
 import { test } from "vitest";
 
-import { apiPath, errorBodySchema, routeOperationSchema } from "./index";
+import {
+    apiPath,
+    errorBodySchema,
+    routeOperationSchema,
+    createShellSchema,
+    terminalContextFromEnv,
+} from "./index";
+
+test("shell creation rejects executable and identity injection", () => {
+    assert.deepEqual(createShellSchema.parse({ cwd: "/tmp", cols: 80 }), {
+        cwd: "/tmp",
+        cols: 80,
+    });
+    for (const input of [
+        { cols: 0 },
+        { rows: 1.5 },
+        { cwd: "" },
+        { cwd: "a\0b" },
+        { file: "sh" },
+        { env: {} },
+        { networkId: "n" },
+    ]) {
+        assert.equal(createShellSchema.safeParse(input).success, false);
+    }
+});
+
+test("standalone terminal context is optional but must be complete and does not echo secrets", () => {
+    assert.equal(terminalContextFromEnv({}), undefined);
+    assert.deepEqual(
+        terminalContextFromEnv({
+            AIOX_TERMINAL_ID: "t",
+            AIOX_TERMINAL_TOKEN: "secret",
+        }),
+        { terminalId: "t", token: "secret" },
+    );
+    for (const env of [
+        { AIOX_TERMINAL_ID: "t" },
+        { AIOX_TERMINAL_TOKEN: "secret" },
+    ]) {
+        assert.throws(
+            () => terminalContextFromEnv(env),
+            /^Error: Invalid terminal context\.$/,
+        );
+    }
+});
 
 test("a between operation needs at least two distinct agents", () => {
     for (const agents of [[], ["a"], ["a", "a"]]) {

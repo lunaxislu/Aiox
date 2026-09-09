@@ -1,4 +1,4 @@
-import type { AgentView, NotificationView } from "@aiox/protocol";
+import type { AgentView, NotificationView, TerminalView } from "@aiox/protocol";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -20,14 +20,16 @@ function el<T extends HTMLElement>(id: string): T {
 
 const statusBox = el("status");
 const agentBox = el("agents");
+const terminalBox = el("terminals");
+const createShellButton = el<HTMLButtonElement>("create-shell");
 const notificationBox = el<HTMLUListElement>("notifications");
 const readAllButton = el<HTMLButtonElement>("read-all");
 const attachBox = el("attach");
 const terminalHost = el("terminal");
 
-let selectedAgentId: string | null = null;
 let attachment: Attachment | undefined;
 let renderedAgents = "";
+let renderedTerminals = "";
 let renderedNotifications = "";
 
 function setStatus(text: string, isError: boolean): void {
@@ -45,19 +47,40 @@ async function getList<T>(path: string): Promise<T[]> {
     return body as T[];
 }
 
-function select(agent: AgentView): void {
-    selectedAgentId = agent.agentId;
+function select(terminalId: string): void {
+    if (attachment?.terminalId === terminalId && !attachment.closed) return;
     attachment?.close();
-    attachment = undefined;
-    if (agent.terminalId === null) {
-        terminalHost.replaceChildren();
-        attachBox.textContent = `${agent.name}에 붙은 terminal이 없습니다.`;
-        return;
-    }
-    attachBox.textContent = `terminal ${agent.terminalId} · 연결 중…`;
-    attachment = attachTerminal(terminalHost, agent.terminalId, (text) => {
+    attachBox.textContent = `terminal ${terminalId} · 연결 중…`;
+    attachment = attachTerminal(terminalHost, terminalId, (text) => {
         attachBox.textContent = text;
     });
+    renderedAgents = "";
+    renderedTerminals = "";
+}
+
+function renderTerminals(terminals: TerminalView[]): void {
+    if (terminals.length === 0) {
+        terminalBox.replaceChildren(empty("실행 중인 terminal이 없습니다."));
+        return;
+    }
+    terminalBox.replaceChildren(
+        ...terminals.map((terminal) => {
+            const item = document.createElement("button");
+            item.type = "button";
+            item.className = "agent";
+            item.disabled = !terminal.alive;
+            item.setAttribute(
+                "aria-pressed",
+                String(terminal.id === attachment?.terminalId),
+            );
+            item.textContent = `${terminal.kind} · ${terminal.cwd} · ${terminal.id}`;
+            item.addEventListener("click", () => {
+                select(terminal.id);
+                void refresh();
+            });
+            return item;
+        }),
+    );
 }
 
 function renderAgents(agents: AgentView[]): void {
@@ -73,7 +96,7 @@ function renderAgents(agents: AgentView[]): void {
             item.disabled = agent.terminalId === null;
             item.setAttribute(
                 "aria-pressed",
-                String(agent.agentId === selectedAgentId),
+                String(agent.terminalId === attachment?.terminalId),
             );
             const name = document.createElement("strong");
             name.textContent = agent.name;
@@ -90,7 +113,7 @@ function renderAgents(agents: AgentView[]): void {
             ].join(" · ");
             item.append(name, meta);
             item.addEventListener("click", () => {
-                select(agent);
+                if (agent.terminalId !== null) select(agent.terminalId);
                 // Re-render so the pressed state follows the new selection.
                 renderedAgents = "";
                 void refresh();
@@ -130,12 +153,18 @@ function empty(text: string, tag: "p" | "li" = "p"): HTMLElement {
 
 async function refresh(): Promise<void> {
     try {
-        const [agents, notifications] = await Promise.all([
+        const [terminals, agents, notifications] = await Promise.all([
+            getList<TerminalView>("/api/terminals"),
             getList<AgentView>("/api/agents"),
             getList<NotificationView>("/api/notifications?unread=true"),
         ]);
         // Re-rendering identical lists would steal focus from the terminal and
         // flicker every poll, so only redraw what actually changed.
+        const terminalsJson = JSON.stringify(terminals);
+        if (terminalsJson !== renderedTerminals) {
+            renderedTerminals = terminalsJson;
+            renderTerminals(terminals);
+        }
         const agentsJson = JSON.stringify(agents);
         if (agentsJson !== renderedAgents) {
             renderedAgents = agentsJson;
@@ -147,18 +176,40 @@ async function refresh(): Promise<void> {
             renderNotifications(notifications);
         }
         setStatus(
-            `daemon 연결됨 · agent ${agents.length} · 미확인 알림 ${notifications.length}`,
+            `daemon 연결됨 · terminal ${terminals.length} · agent ${agents.length} · 미확인 알림 ${notifications.length}`,
             false,
         );
     } catch (error) {
         renderedAgents = "";
         renderedNotifications = "";
+        renderedTerminals = "";
         setStatus(
             `daemon API에 연결할 수 없습니다 (${String(error)}). daemon이 실행 중인지 확인하세요.`,
             true,
         );
     }
 }
+
+createShellButton.addEventListener("click", () => {
+    createShellButton.disabled = true;
+    void (async () => {
+        try {
+            const response = await fetch("/api/terminals", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: "{}",
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const terminal = (await response.json()) as TerminalView;
+            select(terminal.id);
+            await refresh();
+        } catch (error) {
+            setStatus(`shell 생성 실패: ${String(error)}`, true);
+        } finally {
+            createShellButton.disabled = false;
+        }
+    })();
+});
 
 readAllButton.addEventListener("click", () => {
     void (async () => {

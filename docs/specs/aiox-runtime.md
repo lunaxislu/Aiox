@@ -17,7 +17,7 @@ TUI 제품 목표이며 현재 코드·parser·플랫폼 통합이 구현 완료
 AgentRuntime — AIOX가 관리하는 실행
 ├─ vendor 실행·binding (Codex는 TUI와 App Server 포함)
 ├─ 현재 vendor conversation
-└─ Terminal / PTY
+└─ 직접 소유 PTY 또는 기존 shell terminal 연결
    └─ Web attachment — 연결·해제 가능한 화면 접근
 ```
 
@@ -89,6 +89,29 @@ daemon stop --force
 membership만 정리한다. 다른 실행과 daemon·Web은 유지하며 마지막 TUI 종료도 daemon 자동 종료를
 뜻하지 않는다. daemon 종료는 사용자가 별도로 `daemon stop` 또는 `daemon stop --force`를 요청한다.
 
+## 일반 shell과 Agent 연결
+
+일반 shell terminal은 Agent 없이 생성·조회·입출력 연결할 수 있다. 작업 경로를 유지하며
+credential·Network membership을 발급하지 않는다. shell에서 `claude`·`codex`를 직접 실행해도
+자동 Agent 등록하지 않는다. 공개 shell adapter나 `aiox agent run shell`을 추가하지 않고,
+AIOX 메시지 본문을 shell 명령으로 주입하지 않는다.
+
+```text
+일반 shell PTY
+ → 그 shell에서 aiox agent run → 같은 terminal에 새 Agent Runtime 연결
+ → vendor 종료 → Agent 등록·credential·membership·관련 활성 route 정리
+ → 같은 shell·terminal ID 유지
+```
+
+Runtime이 빌린 shell은 Agent 종료로 종료하지 않는다. 직접 소유 PTY·binding 자원은 종료를
+확인한 뒤 정리한다. 같은 terminal에는 동시에 하나의 Agent만 연결하고, 다음 실행은 새 Runtime과
+credential을 사용한다. 이전 요청 결과·알림은 collaboration 계약의 원 Runtime에 남는다.
+
+기존 terminal 연결은 내부 실행 문맥을 검증하며 terminal ID만으로 연결·Agent 신원을 주장할 수
+없다. 문맥이 없는 외부 터미널 standalone도 유지한다. 사용자 로그인·토큰 입력 UX는 추가하지 않는다.
+terminal 자체가 종료되면 연결 Agent도 정리한다. 마지막 Agent 종료로 daemon은 자동 종료하지
+않으며 `daemon stop --force`는 daemon이 직접 관리하는 일반 shell PTY도 정리한다.
+
 ## CLI 표면
 
 아래 전체 트리가 목표 명령 표면이다. `--` 이후는 adapter에 전달한다. AIOX 지침 옵션은
@@ -136,7 +159,10 @@ aiox
 │  ├─ run
 │  │  ├─ --path <aiox.yaml>
 │  │  ├─ --name <host>
-│  │  └─ --worktree <branch>
+│  │  ├─ --worktree <branch>
+│  │  ├─ --layout <auto|left-main|top-main|grid>
+│  │  ├─ --columns <n>
+│  │  └─ --rows <n>
 │  ├─ list [--json]
 │  ├─ status <host> [--json]
 │  ├─ stop <host>

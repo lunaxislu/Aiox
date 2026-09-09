@@ -28,6 +28,40 @@ export const daemonStateSchema = z.object({
 });
 
 export const stopRequestSchema = z.object({ force: z.boolean().optional() });
+export const createShellSchema = z.strictObject({
+    cwd: z
+        .string()
+        .min(1)
+        .refine((value) => !value.includes("\0"))
+        .optional(),
+    cols: z.int().positive().optional(),
+    rows: z.int().positive().optional(),
+});
+export const terminalViewSchema = z.object({
+    id: z.string(),
+    cwd: z.string(),
+    kind: z.enum(["shell", "agent"]),
+    alive: z.boolean(),
+});
+export const terminalContextSchema = z.strictObject({
+    terminalId: z.string().min(1),
+    token: z.string().min(1),
+});
+export type CreateShell = z.infer<typeof createShellSchema>;
+export type TerminalView = z.infer<typeof terminalViewSchema>;
+export type TerminalContext = z.infer<typeof terminalContextSchema>;
+
+/** Internal child environment; absence keeps external standalone execution valid. */
+export function terminalContextFromEnv(
+    env: Record<string, string | undefined>,
+): TerminalContext | undefined {
+    const terminalId = env["AIOX_TERMINAL_ID"];
+    const token = env["AIOX_TERMINAL_TOKEN"];
+    if (terminalId === undefined && token === undefined) return undefined;
+    const result = terminalContextSchema.safeParse({ terminalId, token });
+    if (!result.success) throw new Error("Invalid terminal context.");
+    return result.data;
+}
 export const stopResultSchema = z.object({
     stopped: z.boolean(),
     forced: z.boolean(),
@@ -141,6 +175,8 @@ export const apiPath = {
     networkRoute: (idOrName: string) =>
         `/api/networks/${encodeURIComponent(idOrName)}/route`,
     agents: "/api/agents",
+    terminals: "/api/terminals",
+    terminal: (id: string) => `/api/terminals/${encodeURIComponent(id)}`,
     agent: (idOrName: string) => `/api/agents/${encodeURIComponent(idOrName)}`,
     notifications: "/api/notifications",
     notificationsRead: "/api/notifications/read",

@@ -29,3 +29,24 @@ test("invalid reload preserves last good settings and returned snapshots cannot 
         "#000",
     );
 });
+
+test("new global defaults reload without restarting listeners and snapshots do not leak mutations", () => {
+    const session = createConfigSession({});
+    const result = session.reload({
+        web: { sidebar: { width: 320 } },
+        host: { layout: { preset: "grid", columns: 2, rows: 1 } },
+    });
+    expect(result.restartRequired).toBe(false);
+    expect(result.effective.web?.sidebar?.width).toBe(320);
+    expect(() =>
+        session.reload({ host: { layout: { preset: "auto", rows: 2 } } }),
+    ).toThrow();
+    result.effective.web!.sidebar!.width = 500;
+    result.effective.host!.layout = { preset: "auto" };
+    expect(session.snapshot().effective.web?.sidebar?.width).toBe(320);
+    expect(session.snapshot().effective.host?.layout).toEqual({
+        preset: "grid",
+        columns: 2,
+        rows: 1,
+    });
+});

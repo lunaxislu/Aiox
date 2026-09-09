@@ -141,6 +141,25 @@ Agent role/description/instruction 메타데이터를 유지한다. AIOX 공통 
 정확한 vendor 주입·우선순위는 adapter 경계에서 검증하며 모든 vendor에 동일한 role hierarchy를
 발명하지 않는다. 사용자 전역 terminal/keyboard/port 설정은 manifest와 분리한다.
 
+## 일반 shell과 초기 layout
+
+Host의 shell은 해당 Host 작업 경로를 사용하지만 그 자체는 Agent나 Network 구성원이 아니다.
+terminal과 Agent의 독립 수명은 runtime 계약을 따른다.
+
+`host.layout`은 최초 화면 배치 설정이다. `preset`은 `auto`(기본값), `left-main`, `top-main`,
+`grid`이며 `columns`·`rows`는 grid용 양의 정수다. 행·열만 지정하면 grid 생략형으로 해석한다.
+다른 preset에 행·열을 함께 지정하면 오류다.
+
+우선순위는 CLI → YAML → 전역 `host.layout` → auto다. 같은 preset에서는 명시 필드만
+덮어쓰고 누락 필드를 상속하며, preset 변경 시 하위 preset 전용 필드를 버린다.
+전역 grid 2×2 + YAML columns=3은 grid 3×2, YAML preset=auto는 행·열 없는 auto다.
+중간 계층이 auto로 바꾼 뒤 CLI가 grid로 바꿔도 과거 grid 치수를 되살리지 않는다.
+어느 계층에도 없는 grid 치수나 auto의 5개 이상 배치 세부는 미정이며 임의 기본값을 추론하지 않는다.
+
+YAML 위치는 `host.layout`, CLI 표면은 `aiox host run --layout <preset> [--columns <n>] [--rows <n>]`다.
+초기 설정 변경으로 사용자가 조정한 현재 화면을 자동 재배치하지 않는다. 공통 영역·탭 UI는
+configuration-web 계약을 따른다.
+
 ## 시작·실패 보상·종료
 
 실행 전에 YAML 전체, Agent 참조, adapter 지원, Host 이름과 Network를 검증한다. 시작 중

@@ -4,7 +4,9 @@ import type {
     NetworkView,
     NotificationView,
 } from "@aiox/protocol";
+import { terminalContextFromEnv } from "@aiox/protocol";
 import { defaultShell } from "@aiox/terminal";
+import * as terminalModule from "@aiox/terminal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DaemonHarness } from "@/testing";
@@ -17,6 +19,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+    vi.restoreAllMocks();
     await harness.close();
 });
 
@@ -39,6 +42,18 @@ async function call(
 
 const post = (path: string, body: unknown) =>
     call(path, { method: "POST", body: JSON.stringify(body) });
+
+function borrowableShell() {
+    const spawn = vi.spyOn(terminalModule, "createTerminal");
+    const shell = harness.daemon.createShell({ cwd: harness.home });
+    const context = terminalContextFromEnv(spawn.mock.calls.at(-1)![0].env!)!;
+    spawn.mockRestore();
+    return {
+        shell,
+        context,
+        session: harness.daemon.services.terminals.get(shell.id)!,
+    };
+}
 
 async function joinAgent(networkId: string | null, name: string) {
     const vendor = fakeVendor();
@@ -180,6 +195,53 @@ describe("network administration", () => {
 });
 
 describe("agent listing", () => {
+    it("creates a shell with no Agent identity and exposes it on both listeners", async () => {
+        const created = await post("/api/terminals", {
+            cwd: harness.home,
+            cols: 80,
+            rows: 24,
+        });
+        expect(created.status).toBe(201);
+        expect(created.body).toMatchObject({
+            cwd: harness.home,
+            kind: "shell",
+            alive: true,
+        });
+        const { id } = created.body as { id: string };
+        expect((await call("/api/agents")).body).toEqual([]);
+        expect((await call("/api/terminals")).body).toEqual([created.body]);
+        const view = await fetch(harness.webUrl(`/api/terminals/${id}`));
+        expect(await view.json()).toEqual(created.body);
+        expect((await post("/api/daemon/stop", {})).status).toBe(409);
+        expect(
+            (await call(`/api/terminals/${id}`, { method: "DELETE" })).body,
+        ).toEqual({ deleted: true });
+        expect((await call("/api/terminals")).body).toEqual([]);
+        expect((await call("/api/status")).status).toBe(200);
+    });
+
+    it("rejects invalid shell inputs without spawning and protects the new API", async () => {
+        for (const input of [
+            null,
+            { file: "sh" },
+            { env: {} },
+            { cols: 0 },
+            { cwd: "" },
+            { networkId: "n" },
+        ]) {
+            expect((await post("/api/terminals", input)).status).toBe(400);
+        }
+        const response = await fetch(harness.webUrl("/api/terminals"), {
+            method: "POST",
+            headers: {
+                origin: "https://foreign.example",
+                "content-type": "application/json",
+            },
+            body: "{}",
+        });
+        expect(response.status).toBe(403);
+        expect(harness.daemon.services.terminals.list()).toEqual([]);
+    });
     it("lists live runtimes and filters by network", async () => {
         const one = await harness.daemon.services.networks.create(
             "one",
@@ -228,6 +290,215 @@ describe("agent listing", () => {
 });
 
 describe("stopping", () => {
+    it("borrows one shell across fresh Runtime identities and keeps old delivery results with the old sender", async () => {
+        const { daemon } = harness;
+        const { shell, session, context } = borrowableShell();
+        const network = await daemon.services.networks.create("borrow", "deny");
+        const vendor = fakeVendor();
+        const a = await daemon.registerRuntime({
+            name: "a",
+            networkId: network.id,
+            terminalContext: context,
+            createBinding: vendor.createBinding,
+        });
+        expect(daemon.services.runtimes.get(a.runtimeId)?.terminalId).toBe(
+            shell.id,
+        );
+        expect(daemon.services.terminals.list()).toHaveLength(1);
+        const duplicate = fakeVendor();
+        await expect(
+            daemon.registerRuntime({
+                networkId: null,
+                terminalContext: context,
+                createBinding: duplicate.createBinding,
+            }),
+        ).rejects.toThrow(/already/);
+        const b = await joinAgent(network.id, "b");
+        await daemon.services.networks.route(network.id, {
+            kind: "directed",
+            from: a.runtimeId,
+            to: [b.runtimeId],
+            policy: "allow",
+        });
+        const sent = await daemon.services.messages.send(
+            daemon.services.runtimes.get(a.runtimeId)!,
+            [b.runtimeId],
+            "request X",
+        );
+        await daemon.stopRuntime(a.runtimeId, false);
+        expect(session.alive).toBe(true);
+        expect(daemon.services.runtimes.authenticate(a.token)).toBeUndefined();
+        expect(
+            (await daemon.services.networks.require(network.id)).routes,
+        ).toEqual([]);
+        const next = fakeVendor();
+        const aPrime = await daemon.registerRuntime({
+            name: "a",
+            networkId: network.id,
+            terminalContext: context,
+            createBinding: next.createBinding,
+        });
+        expect(aPrime.runtimeId).not.toBe(a.runtimeId);
+        expect(aPrime.token).not.toBe(a.token);
+        await b.vendor.settle(b.vendor.deliveryIds[0]!, "completed");
+        expect(next.received).toEqual([]);
+        expect(
+            (await daemon.services.db.messages.deliveriesFor(sent.messageId))[0]
+                ?.outcome,
+        ).toBe("completed");
+        expect(daemon.services.terminals.list()).toHaveLength(1);
+        await daemon.stopRuntime(aPrime.runtimeId, true);
+        expect(session.alive).toBe(true);
+    });
+
+    it("keeps a borrowed shell after binding preparation fails", async () => {
+        const { context, session } = borrowableShell();
+        await expect(
+            harness.daemon.registerRuntime({
+                networkId: null,
+                terminalContext: context,
+                createBinding: async () => {
+                    throw new Error("not ready");
+                },
+            }),
+        ).rejects.toThrow("not ready");
+        expect(session.alive).toBe(true);
+        expect(harness.daemon.services.runtimes.list()).toEqual([]);
+        expect(
+            harness.daemon.services.terminals.authenticateContext(context) ===
+                session,
+        ).toBe(true);
+    });
+
+    it("cancels an Agent whose borrowed shell exits during preparation", async () => {
+        const { context, session } = borrowableShell();
+        let release!: () => void;
+        const preparing = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const stopped = vi.fn(async () => {});
+        const registration = harness.daemon.registerRuntime({
+            networkId: null,
+            terminalContext: context,
+            createBinding: async () => {
+                await preparing;
+                return { deliver: async () => {}, stop: stopped };
+            },
+        });
+        const result = registration.catch((error: unknown) => error);
+        await session.kill();
+        release();
+        expect(await result).toBeInstanceOf(Error);
+        expect(stopped).toHaveBeenCalledTimes(1);
+        expect(harness.daemon.services.runtimes.list()).toEqual([]);
+        expect((await call("/api/status")).status).toBe(200);
+    });
+
+    it("cleans the connected Agent on shell exit and interrupts only its pending requests", async () => {
+        const { context, session } = borrowableShell();
+        const network = await harness.daemon.services.networks.create(
+            "exit",
+            "allow",
+        );
+        const source = await joinAgent(network.id, "source");
+        const vendor = fakeVendor();
+        const target = await harness.daemon.registerRuntime({
+            networkId: network.id,
+            terminalContext: context,
+            createBinding: vendor.createBinding,
+        });
+        const sent = await harness.daemon.services.messages.send(
+            harness.daemon.services.runtimes.get(source.runtimeId)!,
+            [target.runtimeId],
+            "pending",
+        );
+        session.write("exit\r");
+        await vi.waitFor(() =>
+            expect(
+                harness.daemon.services.runtimes.get(target.runtimeId),
+            ).toBeUndefined(),
+        );
+        expect(
+            harness.daemon.services.runtimes.authenticate(target.token),
+        ).toBeUndefined();
+        expect(
+            (
+                await harness.daemon.services.db.messages.deliveriesFor(
+                    sent.messageId,
+                )
+            )[0]?.outcome,
+        ).toBe("interrupted");
+        expect(source.vendor.received).toEqual([]);
+        expect(harness.daemon.services.terminals.list()).toEqual([]);
+        expect((await call("/api/status")).status).toBe(200);
+    });
+
+    it("keeps failed borrowed bindings and shell cleanup retryable", async () => {
+        const { context, session, shell } = borrowableShell();
+        const stop = vi
+            .fn(async () => {})
+            .mockRejectedValueOnce(new Error("vendor alive"));
+        const a = await harness.daemon.registerRuntime({
+            networkId: null,
+            terminalContext: context,
+            createBinding: () => ({ deliver: async () => {}, stop }),
+        });
+        expect(
+            (await post("/api/daemon/stop", { force: true })).body,
+        ).toMatchObject({ code: "stop_incomplete" });
+        expect(session.alive).toBe(true);
+        expect(
+            harness.daemon.services.runtimes.authenticate(a.token),
+        ).toBeDefined();
+        expect(
+            (await call(`/api/terminals/${shell.id}`, { method: "DELETE" }))
+                .body,
+        ).toEqual({ deleted: true });
+        expect(stop).toHaveBeenCalledTimes(2);
+        expect(session.alive).toBe(false);
+        expect(
+            harness.daemon.services.runtimes.authenticate(a.token),
+        ).toBeUndefined();
+    });
+
+    it("reports a failed shell kill and retries it on the next force stop", async () => {
+        const { session } = borrowableShell();
+        vi.spyOn(session, "kill").mockRejectedValueOnce(
+            new Error("shell alive"),
+        );
+        expect(
+            (await post("/api/daemon/stop", { force: true })).body,
+        ).toMatchObject({ code: "stop_incomplete" });
+        expect(session.alive).toBe(true);
+        expect((await post("/api/daemon/stop", { force: true })).status).toBe(
+            200,
+        );
+        expect(session.alive).toBe(false);
+    });
+
+    it("rejects terminal ID-only claims and invalid contexts before building an Agent", async () => {
+        const shell = harness.daemon.createShell();
+        const binding = vi.fn(fakeVendor().createBinding);
+        await expect(
+            harness.daemon.registerRuntime({
+                networkId: null,
+                terminalId: shell.id,
+                createBinding: binding,
+            }),
+        ).rejects.toThrow(/context/);
+        await expect(
+            harness.daemon.registerRuntime({
+                networkId: null,
+                terminalContext: { terminalId: shell.id, token: "wrong" },
+                createBinding: binding,
+            }),
+        ).rejects.toThrow();
+        expect(binding).not.toHaveBeenCalled();
+        expect(harness.daemon.services.runtimes.list()).toEqual([]);
+        expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
+            true,
+        );
+    });
     it("blocks MCP sends and terminal creation while a binding is shutting down", async () => {
         let release!: () => void;
         let entered!: () => void;

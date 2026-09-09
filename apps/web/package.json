@@ -8,6 +8,7 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
+        "test": "vitest run --config ../../vitest.config.ts",
         "dev": "vite",
         "typecheck": "tsc -p tsconfig.json --noEmit"
     },

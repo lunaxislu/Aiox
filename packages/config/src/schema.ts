@@ -1,5 +1,8 @@
 export type Ports = { daemon: number; web: number };
 export type PortOverrides = Partial<Ports>;
+export type HostLayout =
+    | { preset: "auto" | "left-main" | "top-main" }
+    | { preset: "grid"; columns?: number; rows?: number };
 export type AioxConfig = {
     ports: Ports;
     /** How long a finished request's history is kept. */
@@ -10,6 +13,8 @@ export type AioxConfig = {
         theme?: Record<string, string>;
     };
     keyboard?: Record<string, string>;
+    web?: { sidebar?: { width?: number } };
+    host?: { layout?: HostLayout };
 };
 
 export const DEFAULT_RETENTION_DAYS = 30;
@@ -80,7 +85,11 @@ export function parseConfig(
     overrides: PortOverrides = {},
 ): AioxConfig {
     const input = object(value, "config");
-    keys(input, ["ports", "messages", "terminal", "keyboard"], "config");
+    keys(
+        input,
+        ["ports", "messages", "terminal", "keyboard", "web", "host"],
+        "config",
+    );
     const ports = input.ports === undefined ? {} : object(input.ports, "ports");
     keys(ports, ["daemon", "web"], "ports");
     const cli = object(overrides, "port overrides");
@@ -139,5 +148,103 @@ export function parseConfig(
     }
     if (input.keyboard !== undefined)
         config.keyboard = stringMap(input.keyboard, "keyboard");
+    if (input.web !== undefined) {
+        const web = object(input.web, "web");
+        keys(web, ["sidebar"], "web");
+        config.web = {};
+        if (web.sidebar !== undefined) {
+            const sidebar = object(web.sidebar, "web.sidebar");
+            keys(sidebar, ["width"], "web.sidebar");
+            config.web.sidebar = {};
+            if (sidebar.width !== undefined) {
+                if (
+                    typeof sidebar.width !== "number" ||
+                    !Number.isFinite(sidebar.width) ||
+                    sidebar.width <= 0
+                )
+                    throw new ConfigError(
+                        "web.sidebar.width must be a positive finite number",
+                    );
+                config.web.sidebar.width = sidebar.width;
+            }
+        }
+    }
+    if (input.host !== undefined) {
+        const host = object(input.host, "host");
+        keys(host, ["layout"], "host");
+        config.host = {};
+        if (host.layout !== undefined)
+            config.host.layout = parseHostLayout(host.layout);
+    }
     return config;
+}
+
+/** Validate layout data; dimensions remain optional until the placement consumer resolves them. */
+export function parseHostLayout(
+    value: unknown,
+    source: "global" | "yaml" | "cli" = "global",
+): HostLayout {
+    const input = object(value, `${source} host.layout`);
+    keys(input, ["preset", "columns", "rows"], "host.layout");
+    const hasDimensions =
+        input.columns !== undefined || input.rows !== undefined;
+    const preset =
+        input.preset === undefined
+            ? hasDimensions
+                ? "grid"
+                : "auto"
+            : input.preset;
+    if (
+        preset !== "auto" &&
+        preset !== "left-main" &&
+        preset !== "top-main" &&
+        preset !== "grid"
+    )
+        throw new ConfigError(
+            "host.layout.preset must be auto, left-main, top-main, or grid",
+        );
+    if (preset !== "grid") {
+        if (hasDimensions)
+            throw new ConfigError(
+                "host.layout columns and rows require grid preset",
+            );
+        return { preset };
+    }
+    const result: HostLayout = { preset };
+    for (const dimension of ["columns", "rows"] as const) {
+        const value = input[dimension];
+        if (value === undefined) continue;
+        if (
+            typeof value !== "number" ||
+            !Number.isSafeInteger(value) ||
+            value <= 0
+        )
+            throw new ConfigError(
+                `host.layout.${dimension} must be a positive safe integer`,
+            );
+        result[dimension] = value;
+    }
+    return result;
+}
+
+/** CLI > YAML > global > auto, inheriting dimensions only within the same preset. */
+export function resolveHostLayout(
+    sources: { cli?: unknown; yaml?: unknown; global?: unknown } = {},
+): HostLayout {
+    let result: HostLayout = { preset: "auto" };
+    for (const source of ["global", "yaml", "cli"] as const) {
+        const value = sources[source];
+        if (value === undefined) continue;
+        const layout = parseHostLayout(value, source);
+        const input = value as Record<string, unknown>;
+        if (
+            input.preset === undefined &&
+            input.columns === undefined &&
+            input.rows === undefined
+        )
+            continue;
+        result =
+            result.preset === layout.preset ? { ...result, ...layout } : layout;
+    }
+    return result;
 }

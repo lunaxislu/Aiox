@@ -1,7 +1,8 @@
 import { stripVTControlCharacters } from "node:util";
 
+import * as terminalModule from "@aiox/terminal";
 import { defaultShell } from "@aiox/terminal";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import type { DaemonHarness } from "@/testing";
@@ -14,6 +15,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await harness.close();
 });
 
@@ -72,6 +75,128 @@ async function waitFor(
         `timed out waiting for ${typeof label === "function" ? label() : label}`,
     );
 }
+
+describe("general shell sessions", () => {
+    it("carries shell input and native resize across a browser detach without an Agent", async () => {
+        const shell = harness.daemon.services.terminals.createShell({
+            cols: 80,
+            rows: 24,
+        });
+        const first = attach(shell.id);
+        await first.open;
+        try {
+            first.type(
+                process.platform === "win32"
+                    ? "set /a 12345*6789\r"
+                    : "echo $((12345*6789))\r",
+            );
+            await waitFor(
+                () => first.text().includes("83810205"),
+                "general shell output",
+            );
+            await first.close();
+            expect(shell.alive).toBe(true);
+            expect(harness.daemon.services.runtimes.list()).toEqual([]);
+            const second = attach(shell.id);
+            await second.open;
+            try {
+                await waitFor(
+                    () => second.text().includes("83810205"),
+                    "general shell replay",
+                );
+                const readSize = `"${process.execPath}" -p "process.stdout.getWindowSize().join('x')"\r`;
+                second.type(readSize);
+                await waitFor(
+                    () => second.text().includes("80x24"),
+                    "general shell initial size",
+                );
+                second.resize(111, 37);
+                second.type(readSize);
+                await waitFor(
+                    () => second.text().includes("111x37"),
+                    "general shell resized size",
+                );
+                expect(shell.alive).toBe(true);
+                expect(harness.daemon.services.terminals.views()).toHaveLength(
+                    1,
+                );
+            } finally {
+                second.socket.terminate();
+            }
+        } finally {
+            first.socket.terminate();
+        }
+    });
+
+    it("preserves an unconfirmed shell and its context for a later cleanup retry", async () => {
+        const spawn = vi.spyOn(terminalModule, "createTerminal");
+        const terminals = harness.daemon.services.terminals;
+        const shell = terminals.createShell();
+        const token = spawn.mock.calls[0]![0].env!["AIOX_TERMINAL_TOKEN"]!;
+        const context = { terminalId: shell.id, token };
+        vi.spyOn(shell, "kill").mockRejectedValueOnce(
+            new Error("exit unconfirmed"),
+        );
+        await expect(terminals.kill(shell.id)).rejects.toThrow(
+            "exit unconfirmed",
+        );
+        expect(terminals.authenticateContext(context) === shell).toBe(true);
+        expect(terminals.view(shell.id)?.alive).toBe(true);
+        expect(await terminals.killAll()).toEqual({
+            stopped: [shell.id],
+            unconfirmed: [],
+        });
+        expect(terminals.get(shell.id)).toBeUndefined();
+        expect(terminals.views()).toEqual([]);
+        expect(() => terminals.authenticateContext(context)).toThrow();
+    });
+
+    it("keeps child context private, tied to one live shell, and clears it on exit", async () => {
+        vi.stubEnv("AIOX_MCP_TOKEN", "inherited-agent-token");
+        vi.stubEnv("AIOX_TERMINAL_TOKEN", "inherited-terminal-token");
+        const spawn = vi.spyOn(terminalModule, "createTerminal");
+        const terminals = harness.daemon.services.terminals;
+        const shell = terminals.createShell({ cwd: process.cwd() });
+        const env = spawn.mock.calls[0]![0].env!;
+        const token = env["AIOX_TERMINAL_TOKEN"]!;
+        expect(Boolean(token) && token !== "inherited-terminal-token").toBe(
+            true,
+        );
+        expect(env["AIOX_MCP_TOKEN"]).toBeUndefined();
+        expect(env["AIOX_TERMINAL_ID"]).toBe(shell.id);
+        expect(terminals.views()).toEqual([
+            { id: shell.id, cwd: process.cwd(), kind: "shell", alive: true },
+        ]);
+        expect(JSON.stringify(terminals.views()).includes(token)).toBe(false);
+        expect(
+            terminals.authenticateContext({ terminalId: shell.id, token }) ===
+                shell,
+        ).toBe(true);
+        expect(() =>
+            terminals.authenticateContext({
+                terminalId: shell.id,
+                token: shell.id,
+            }),
+        ).toThrow();
+        const other = terminals.createShell();
+        expect(() =>
+            terminals.authenticateContext({ terminalId: other.id, token }),
+        ).toThrow();
+        const direct = terminals.create();
+        expect(terminals.view(direct.id)?.kind).toBe("agent");
+        expect(() =>
+            terminals.authenticateContext({ terminalId: direct.id, token }),
+        ).toThrow();
+        expect(harness.daemon.services.runtimes.list()).toEqual([]);
+        shell.write("exit\r");
+        await waitFor(() => !shell.alive, "general shell exit");
+        expect(terminals.get(shell.id)).toBeUndefined();
+        expect(terminals.view(shell.id)).toBeUndefined();
+        expect(() =>
+            terminals.authenticateContext({ terminalId: shell.id, token }),
+        ).toThrow();
+    });
+});
 
 describe("terminal attachment", () => {
     it("cleans an attempt's PTY when binding preparation fails", async () => {

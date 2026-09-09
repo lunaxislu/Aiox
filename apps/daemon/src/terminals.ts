@@ -1,5 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { resolve } from "node:path";
 
+import type { TerminalContext, TerminalView } from "@aiox/protocol";
 import type { TerminalSession } from "@aiox/terminal";
 import { createTerminal } from "@aiox/terminal";
 import type { WebSocket } from "ws";
@@ -20,8 +22,48 @@ export type TerminalOptions = {
 export class TerminalService {
     readonly #sessions = new Map<string, TerminalSession>();
 
+    readonly #metadata = new Map<
+        string,
+        {
+            cwd: string;
+            kind: "shell" | "agent";
+            token: string | null;
+        }
+    >();
+
     create(options: TerminalOptions = {}): TerminalSession {
+        return this.#create(options, "agent");
+    }
+
+    createShell(
+        options: Pick<TerminalOptions, "cwd" | "cols" | "rows"> = {},
+    ): TerminalSession {
+        return this.#create(options, "shell");
+    }
+
+    #create(
+        options: TerminalOptions,
+        kind: "shell" | "agent",
+    ): TerminalSession {
         const id = randomUUID();
+        const cwd = resolve(options.cwd ?? process.cwd());
+        const token = kind === "shell" ? randomBytes(32).toString("hex") : null;
+        if (token) {
+            options = {
+                ...options,
+                env: {
+                    ...(Object.fromEntries(
+                        Object.entries(process.env).filter(
+                            ([key, value]) =>
+                                !key.toUpperCase().startsWith("AIOX_") &&
+                                value !== undefined,
+                        ),
+                    ) as Record<string, string>),
+                    AIOX_TERMINAL_ID: id,
+                    AIOX_TERMINAL_TOKEN: token,
+                },
+            };
+        }
         // Drop absent keys rather than passing explicit undefined, which an
         // exactOptionalPropertyTypes signature rejects.
         const session = createTerminal({
@@ -31,9 +73,51 @@ export class TerminalService {
                     ([, value]) => value !== undefined,
                 ),
             ),
+            cwd,
         });
         this.#sessions.set(id, session);
+        this.#metadata.set(id, { cwd, kind, token });
+        if (kind === "shell") {
+            session.subscribe({ data: () => {}, exit: () => this.#remove(id) });
+            if (!session.alive) this.#remove(id);
+        }
         return session;
+    }
+
+    authenticateContext(context: TerminalContext): TerminalSession {
+        const session = this.#sessions.get(context.terminalId);
+        const token = this.#metadata.get(context.terminalId)?.token;
+        const supplied = Buffer.from(context.token);
+        if (
+            !session?.alive ||
+            !token ||
+            supplied.length !== token.length ||
+            !timingSafeEqual(supplied, Buffer.from(token))
+        ) {
+            throw new Error("Invalid or expired terminal context.");
+        }
+        return session;
+    }
+
+    view(id: string): TerminalView | undefined {
+        const session = this.#sessions.get(id);
+        const metadata = this.#metadata.get(id);
+        if (!session || !metadata) return undefined;
+        return {
+            id,
+            cwd: metadata.cwd,
+            kind: metadata.kind,
+            alive: session.alive,
+        };
+    }
+
+    views(): TerminalView[] {
+        return [...this.#sessions.keys()].map((id) => this.view(id)!);
+    }
+
+    #remove(id: string): void {
+        this.#sessions.delete(id);
+        this.#metadata.delete(id);
     }
 
     get(id: string): TerminalSession | undefined {
@@ -48,7 +132,7 @@ export class TerminalService {
         const session = this.#sessions.get(id);
         if (!session) return false;
         await session.kill();
-        this.#sessions.delete(id);
+        this.#remove(id);
         return true;
     }
 
@@ -71,7 +155,7 @@ export class TerminalService {
                 }
             }),
         );
-        for (const id of stopped) this.#sessions.delete(id);
+        for (const id of stopped) this.#remove(id);
         return { stopped, unconfirmed };
     }
 }

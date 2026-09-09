@@ -12,7 +12,7 @@ As-built로 표시한 범위 외에는 목표 구조다. OS별 통합 완료를 
 
 | 저장 책임 | 대상 | 경계 |
 | --- | --- | --- |
-| 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·daemon/운영 Web 포트 | 모든 프로젝트·Host·standalone 공통 |
+| 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·포트·사이드바 너비·Host 초기 layout | 모든 프로젝트·Host·standalone 공통 |
 | SQLite | persistent Network/Route, AIOX send·대상별 결과·daemon 알림 본문, 실행 이력, 알림/읽음, workspace 배치 | 처리 종료 후 기본 30일, 상세는 configuration-web 계약 |
 | daemon memory | live process/PTY/binding/credential/activity | DB의 과거 running을 현재 생존으로 간주하지 않음 |
 | browser localStorage | Web dark/light theme | terminal 전역 theme과 다름 |
@@ -102,11 +102,29 @@ vendor Ctrl+O 등 입력·브라우저 예약 키를 구분한다.
 
 ## PTY와 Web 복귀
 
+일반 shell의 생성 작업 경로·terminal ID는 TerminalService가 유지한다. `cwd` 조회는 생성 경로이며
+shell 안의 `cd`를 실시간 추적한 값이 아니다. 일반 shell에는 Agent credential·membership이 없다.
+일반 shell 생성 시 상속 환경의 `AIOX_*` 문맥을 제거하고, 새 `AIOX_TERMINAL_ID`와 비공개
+`AIOX_TERMINAL_TOKEN`을 child env에 넣는다. 이 문맥은 메모리에만 유지하고 API 목록·URL·argv·로그에
+노출하지 않는다. 일반 shell exit/정리 후에는 유효하지 않다. [Status: As-built]
+
+standalone 연결 소비자는 protocol의 `terminalContextFromEnv(env)`로 문맥을 읽어 daemon의
+`registerRuntime({ terminalContext, createBinding, ... })`에 전달한다. daemon은 살아 있는 shell의
+비밀값과 중복 연결을 검증한 뒤 기존 terminal을 차용한다. 문맥이 없으면 외부 standalone 경로를
+유지하고 `terminalId` 직접 지정은 Agent 소유 PTY에만 사용한다. 등록/시작 실패도 빌린 shell을
+종료하지 않는다. 실제 CLI vendor 실행·foreground 프로세스 종료 관측·shell 복귀 연결은 아직
+구현하지 않았으며 이 내부 연결 지점은 대역으로 검증했다. 원격 Agent 등록 HTTP API는 추가하지 않았다.
+
+근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:38-115`,
+[[packages/protocol/src/index.ts]] `packages/protocol/src/index.ts:44-67`,
+[[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:473-552`,
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:293-435`.
+
 Stage 2는 서버 소유 node-pty의 입출력·resize·exit와 WebSocket attachment를 연결한다. 재부착에는 기본 64 KiB의 최근 출력 바이트를 사용한다. 이는 정확한 현재 화면 snapshot이 아니며 잘린 escape sequence나 과거 resize 뒤의 화면을 온전히 복원하지 못할 수 있다. 아래의 정확한 화면·배치 복귀는 운영 Web의 목표로 남는다. [Status: As-built]
 
 PTY 경계는 POSIX raw byte와 Windows 문자열 출력을 공통 바이트로 정규화해 WebSocket binary 출력과 JSON 제어 프레임을 구분한다. Windows 드라이버가 이미 문자열로 디코딩한 원본 바이트까지 복원한다고 보장하지 않는다.
 
-근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:18-73`, `packages/terminal/src/index.ts:106-137`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:37-127`; 실제 PTY의 I/O·resize·detach 후 생존 검증은 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:221-287`.
+근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:18-73`, `packages/terminal/src/index.ts:106-137`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:38-131`; 실제 일반 shell의 I/O·resize·detach 후 생존 검증은 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:79-128`.
 
 ```text
 Vendor TUI ↔ 서버 소유 PTY / 현재 화면
@@ -162,9 +180,11 @@ delivery 실패로 귀속하려면 입력 연결 근거가 있어야 한다. 일
 
 ## Web 상태와 라이브러리
 
-Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. HTTP polling으로 상태·미확인 알림을 조회하고 WebSocket으로 PTY에 붙는다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·다국어·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
+Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. HTTP polling으로 terminal·Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·다국어·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
 
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:7-14`, `apps/web/src/main.ts:140-181`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:37-127`. 실제 브라우저 UI 검증은 아직 완료하지 않았다.
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:49-85`, `apps/web/src/main.ts:193-212`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:38-131`; Node DOM 대역 검증은 [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:38-151`. 실제 브라우저 UI 검증은 macOS Chrome에서 shell 생성·선택·입출력·resize·재연결(attachment 해제 후 실행 생존)·종료를 확인했다. Windows/Linux 네이티브 브라우저 교차 검증은 아직 하지 않았다.
+
+Sources: `logs/2026-09-07-AIOX-TUI-Stage2-Daemon-MCP-Terminal.md` 2026-09-09 13:40 W1 실제 브라우저 검증 entry.
 
 운영 Web은 Tailwind·shadcn/ui와 다국어를 제공한다. React/Vite는 재사용 후보이며 use-intl,
 한국어/영어 시작은 제안이다. 공개 site의 Next.js/next-intl 선택과 운영 Web은 독립적이다.

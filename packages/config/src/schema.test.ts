@@ -1,6 +1,104 @@
 import { expect, test } from "vitest";
 
-import { ConfigError, parseConfig } from "@/schema";
+import {
+    ConfigError,
+    parseConfig,
+    parseHostLayout,
+    resolveHostLayout,
+} from "@/schema";
+
+test("layout priority inherits only matching presets and discards dimensions across preset changes", () => {
+    const global = { preset: "grid", columns: 2, rows: 2 };
+    expect(resolveHostLayout()).toEqual({ preset: "auto" });
+    expect(resolveHostLayout({ global, yaml: { columns: 3 } })).toEqual({
+        preset: "grid",
+        columns: 3,
+        rows: 2,
+    });
+    expect(
+        resolveHostLayout({ global, yaml: { columns: 3 }, cli: { rows: 4 } }),
+    ).toEqual({ preset: "grid", columns: 3, rows: 4 });
+    expect(resolveHostLayout({ global, yaml: { preset: "auto" } })).toEqual({
+        preset: "auto",
+    });
+    expect(
+        resolveHostLayout({
+            global,
+            yaml: { preset: "auto" },
+            cli: { preset: "grid", rows: 1 },
+        }),
+    ).toEqual({ preset: "grid", rows: 1 });
+    expect(resolveHostLayout({ global, yaml: {}, cli: {} })).toEqual(global);
+    expect(() =>
+        resolveHostLayout({
+            global: { preset: "grid", rows: -1 },
+            cli: { preset: "auto" },
+        }),
+    ).toThrow(ConfigError);
+});
+
+test("YAML dimensions imply grid while explicit non-grid conflicts are rejected", () => {
+    expect(parseHostLayout({ columns: 2, rows: 3 }, "yaml")).toEqual({
+        preset: "grid",
+        columns: 2,
+        rows: 3,
+    });
+    expect(parseHostLayout({ rows: 3 }, "yaml")).toEqual({
+        preset: "grid",
+        rows: 3,
+    });
+    for (const preset of ["auto", "left-main", "top-main"]) {
+        expect(() => parseHostLayout({ preset, columns: 2 }, "yaml")).toThrow(
+            ConfigError,
+        );
+    }
+    expect(parseHostLayout({ columns: 2 }, "global")).toEqual({
+        preset: "grid",
+        columns: 2,
+    });
+});
+
+test("host layout validates presets and grid dimensions without inferring missing dimensions", () => {
+    expect(parseConfig({ host: { layout: {} } }).host).toEqual({
+        layout: { preset: "auto" },
+    });
+    for (const preset of ["auto", "left-main", "top-main", "grid"]) {
+        expect(
+            parseConfig({ host: { layout: { preset } } }).host?.layout,
+        ).toEqual({ preset });
+    }
+    expect(
+        parseConfig({ host: { layout: { preset: "grid", columns: 2 } } }).host
+            ?.layout,
+    ).toEqual({ preset: "grid", columns: 2 });
+    for (const layout of [
+        null,
+        [],
+        { preset: "unknown" },
+        { preset: "auto", rows: 2 },
+        { preset: "grid", columns: 0 },
+        { preset: "grid", rows: 1.5 },
+        { preset: "grid", rows: "2" },
+        { preset: "grid", cells: 2 },
+    ]) {
+        expect(() => parseConfig({ host: { layout } })).toThrow(ConfigError);
+    }
+});
+
+test("sidebar width is optional and validates without choosing a UI default", () => {
+    expect(parseConfig({}).web).toBeUndefined();
+    expect(parseConfig({ web: { sidebar: { width: 280.5 } } }).web).toEqual({
+        sidebar: { width: 280.5 },
+    });
+    for (const width of [0, -1, Infinity, NaN, "240", null]) {
+        expect(() => parseConfig({ web: { sidebar: { width } } })).toThrow(
+            ConfigError,
+        );
+    }
+    expect(() => parseConfig({ web: { sidebar: { size: 240 } } })).toThrow(
+        ConfigError,
+    );
+});
 
 test("partial global settings merge defaults and CLI ports win", () => {
     expect(parseConfig({ ports: { daemon: 5100 } }, { web: 5200 })).toEqual({

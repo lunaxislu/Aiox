@@ -1,5 +1,5 @@
 import type { AioxDatabase } from "@aiox/persistence";
-import type { DaemonStatus } from "@aiox/protocol";
+import type { DaemonStatus, CreateShell, TerminalView } from "@aiox/protocol";
 
 import type { MessageService } from "@/messaging";
 import type { NetworkService } from "@/networks";
@@ -18,6 +18,8 @@ export type StopOutcome = {
 export type Lifecycle = {
     status(): Promise<DaemonStatus>;
     requestStop(force: boolean): Promise<StopOutcome>;
+    createShell(options: CreateShell): TerminalView;
+    stopTerminal(id: string): Promise<boolean>;
 };
 
 export type DaemonServices = {

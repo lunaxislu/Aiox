@@ -3,7 +3,13 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 
 import type { AioxDatabase } from "@aiox/persistence";
-import type { Ports } from "@aiox/protocol";
+import type {
+    Ports,
+    CreateShell,
+    TerminalView,
+    TerminalContext,
+} from "@aiox/protocol";
+import { createShellSchema, terminalContextSchema } from "@aiox/protocol";
 import { WebSocketServer } from "ws";
 
 import { createApiHandler, HttpError, readJson } from "@/http";
@@ -40,7 +46,12 @@ export type RegisteredRuntime = {
 export type Daemon = {
     readonly ports: Ports;
     readonly services: DaemonServices;
-    registerRuntime(input: RegisterRuntime): Promise<RegisteredRuntime>;
+    registerRuntime(
+        input: Omit<RegisterRuntime, "terminalOwnership"> & {
+            terminalContext?: TerminalContext;
+        },
+    ): Promise<RegisteredRuntime>;
+    createShell(options?: CreateShell): TerminalView;
     createTerminal(options?: TerminalOptions): { id: string };
     /** Attaches a terminal to a runtime so the Web can find it. */
     attachTerminalTo(runtimeId: string, terminalId: string): void;
@@ -93,6 +104,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         messages,
         terminals,
         lifecycle: {
+            createShell,
+            stopTerminal,
             status: async () => ({
                 status: "running" as const,
                 pid: process.pid,
@@ -261,7 +274,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 const record = runtimes.get(runtimeId);
                 if (!record) return;
                 await record.binding.stop(force);
-                if (record.terminalId) await terminals.kill(record.terminalId);
+                if (record.terminalId && record.terminalOwnership === "owned")
+                    await terminals.kill(record.terminalId);
                 await networks.removeRuntimeRoutes(record);
                 await messages.forget(runtimeId);
                 // Registration, credential and membership go together.
@@ -274,13 +288,55 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return attempt;
     }
 
+    function createShell(input: CreateShell = {}): TerminalView {
+        if (!admitting)
+            throw new HttpError(503, "stopping", "The daemon is stopping.");
+        const parsed = createShellSchema.safeParse(input);
+        if (!parsed.success)
+            throw new HttpError(
+                400,
+                "invalid_request",
+                "Invalid shell options.",
+            );
+        const session = terminals.createShell(parsed.data);
+        return terminals.view(session.id)!;
+    }
+
+    async function stopTerminal(id: string): Promise<boolean> {
+        const session = terminals.get(id);
+        if (!session) return false;
+        for (const record of runtimes.list()) {
+            if (record.terminalId === id) await stopRuntime(record.id, true);
+        }
+        if (terminals.get(id)) await terminals.kill(id);
+        return true;
+    }
+
     function attachTerminalTo(runtimeId: string, terminalId: string): void {
         const record = runtimes.get(runtimeId);
         const session = terminals.get(terminalId);
         if (!record || !session)
             throw new Error("Runtime or terminal not found.");
+        if (record.terminalId && record.terminalId !== terminalId)
+            throw new Error("Runtime already has a terminal.");
+        if (
+            runtimes
+                .list()
+                .some(
+                    (other) =>
+                        other.id !== runtimeId &&
+                        other.terminalId === terminalId,
+                )
+        )
+            throw new Error("Terminal already has an Agent.");
+        if (
+            terminals.view(terminalId)?.kind === "shell" &&
+            record.terminalOwnership !== "borrowed"
+        )
+            throw new Error("A shell requires authenticated terminal context.");
         terminalObservers.get(runtimeId)?.();
         record.terminalId = terminalId;
+        record.terminalOwnership ??= "owned";
         const onExit = () => {
             // A TUI exiting cleans only its own execution, never the daemon.
             void stopRuntime(runtimeId, false).catch((error: unknown) => {
@@ -413,10 +469,39 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     return {
         ports,
         services,
+        createShell,
         registerRuntime: async (input) => {
             if (!admitting)
                 throw new Error("The daemon is stopping; no new executions.");
-            const registration = runtimes.register(input);
+            let terminalId = input.terminalId;
+            const borrowing = input.terminalContext !== undefined;
+            if (borrowing) {
+                const context = terminalContextSchema.safeParse(
+                    input.terminalContext,
+                );
+                if (!context.success || terminalId !== undefined)
+                    throw new Error("Invalid terminal context.");
+                terminalId = terminals.authenticateContext(context.data).id;
+            }
+            if (terminalId !== undefined) {
+                if (!terminals.get(terminalId)?.alive)
+                    throw new Error("Terminal is not running.");
+                if (!borrowing && terminals.view(terminalId)?.kind === "shell")
+                    throw new Error(
+                        "A shell requires authenticated terminal context.",
+                    );
+                if (
+                    runtimes
+                        .list()
+                        .some((record) => record.terminalId === terminalId)
+                )
+                    throw new Error("Terminal already has an Agent.");
+            }
+            const registration = runtimes.register({
+                ...input,
+                terminalId,
+                terminalOwnership: borrowing ? "borrowed" : "owned",
+            });
             registrations.add(registration);
             let runtimeId: string | undefined;
             try {
@@ -424,6 +509,11 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 runtimeId = record.id;
                 if (record.terminalId)
                     attachTerminalTo(record.id, record.terminalId);
+                if (
+                    record.terminalId &&
+                    !terminals.get(record.terminalId)?.alive
+                )
+                    throw new Error("Terminal exited during registration.");
                 if (!admitting)
                     throw new Error(
                         "The daemon is stopping; registration cancelled.",
@@ -436,8 +526,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             } catch (error) {
                 try {
                     if (runtimeId) await stopRuntime(runtimeId, true);
-                    else if (input.terminalId)
-                        await terminals.kill(input.terminalId);
+                    else if (terminalId && !borrowing)
+                        await terminals.kill(terminalId);
                 } catch (cleanupError) {
                     throw new AggregateError(
                         [error, cleanupError],

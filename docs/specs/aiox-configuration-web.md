@@ -32,6 +32,21 @@ daemon의 persistence 책임이며 CLI/Web/adapter가 파일을 직접 수정하
 WSL 홈·DB를 자동 공유한다고 가정하지 않는다. DB 준비 실패를 정상 기동이나 빈 DB fallback으로
 숨기지 않고 기존 파일을 자동 삭제하지 않는다.
 
+## 공통 shell 화면과 설정
+
+일반 terminal과 Host는 공통 영역·영역별 탭을 사용한다. shell에서 Agent가 시작·종료해도 기존
+terminal 탭을 중복 생성하지 않는다. Network 조회는 Agent·route 조회이며 화면 분할로 Host나
+Network를 만들지 않는다. terminal 수명은 runtime, Host 최초 layout은 host 계약을 따른다.
+
+사이드바 너비는 전역 `web.sidebar.width`로 저장한다. 양의 유한수이며 240은 예시이지 확정
+기본값이 아니다. Host 초기 기본값은 전역 `host.layout`이며 DB에 중복 저장하지 않는다.
+실행 중 분할 비율·탭 순서·선택 상태의 서버 복원은 초기 설정 저장과 별개다.
+
+기존 `keyboard` 문자열 맵은 보존한다. 새 `keybindings`는 사용자 AIOX 화면 조작 재지정
+책임이며 정확한 기본 키와 OS별 schema는 구현 전에 사용자와 논의한다. 기존 keyboard를
+임의 alias로 바꾸거나 미정 keybindings schema·기본키를 확정하지 않는다. 브라우저 OS를 기준으로
+키를 적용하고 vendor 입력·브라우저 예약키를 보존한다.
+
 ## 메시지 보존과 persistence 전환
 
 AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시각·대상별 처리 결과·내부 상관관계를 연결한다. vendor 전체 대화·reasoning·터미널 출력은 이 메시지 저장 범위에 포함하지 않는다. 살아 있는 PTY의 Web 화면 복귀 책임은 별개다. 저장 데이터를 자동 재전송·실행 복원에 사용하지 않는다.
@@ -48,6 +63,12 @@ TypeORM과 better-sqlite3를 사용하며 기존 DB를 보존하는 명시적 mi
 4500, Web 4501이며 해석 우선순위는 CLI override → 파일 → 기본값이다. listener 연결과 최소 Web 정적 파일 제공은 Stage 2에 구현됐으며 [[docs/architecture/aiox-system]]의 현재 조립 범위를 따른다. 파일
 watch·운영 Web 설정 배포는 후속 대상이다. terminal의 fontFamily/fontSize/theme과 keyboard 문자열 맵을
 지원하며 상세 UI와 바인딩 의미는 해당 단계에서 구체화한다.
+
+`web.sidebar.width`·`host.layout` 검증과 공통 layout 해석은 구현돼 있다. `parseHostLayout`과
+`resolveHostLayout({ cli, yaml, global })`은 Host parser·CLI 연결이 재사용할 공개 함수이며
+배치 계산·누락 grid 치수의 기본값을 만들지 않는다. [Status: Current]
+근거: [[packages/config/src/schema.ts]] `packages/config/src/schema.ts:151-250`,
+[[packages/config/src/schema.test.ts]] `packages/config/src/schema.test.ts:10-102`.
 
 Stage 1에서는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
 transaction·close/reopen을 검증했다. 당시 Node 요구 조건은 >=22.12.0이며 Windows/Linux/macOS × Node22/24 CI에서

@@ -13,9 +13,18 @@ CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호�
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:215-522`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:44-80`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:115-249`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:54-181`.
 
-Runtime 공통 정리는 binding·PTY의 종료를 확인하고 standalone endpoint의 route, 요청 정리, 등록·credential 정리를 연결한다. 실패한 정리는 재시도 경로를 남기고 PTY exit만으로 daemon을 종료하지 않는다. 원 발신자 종료 후 수신 요청 결과 보존은 collaboration 계약을 따른다.
+Runtime 공통 정리는 binding·직접 소유 PTY의 종료를 확인하고 standalone endpoint의 route, 요청 정리, 등록·credential 정리를 연결한다. 실패한 정리는 재시도 경로를 남기고 PTY exit만으로 daemon을 종료하지 않는다. 원 발신자 종료 후 수신 요청 결과 보존은 collaboration 계약을 따른다.
 
-근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:255-293`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:90-106`; 실패·재시도와 Network 선행 삭제 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:472-522`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:151-217`.
+일반 shell은 TerminalService에만 등록하고 RuntimeRegistry와 분리한다. `/api/terminals` 생성·목록과
+개별 조회·명시 종료는 공통 HTTP 보호를 거쳐 같은 서비스로 연결되며 기존 WS 입출력 경로를 쓴다.
+Runtime은 직접 소유 PTY와 차용 shell을 구분한다. 차용 Agent의 종료는 binding·Runtime 관계만
+정리하고, terminal 자체 종료는 연결 Runtime 정리로 이어진다. daemon force stop은 남은 일반
+shell도 종료·확인한다. 실패한 binding에 연결된 shell은 재시도할 수 있게 유지한다.
+
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:268-355`,
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:293-485`.
+
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:268-289`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:90-106`; 실패·재시도와 Network 선행 삭제 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:743-793`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:280-346`.
 
 현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. 실제 Claude/Codex 입력 binding과 Host/Worktree 실행은 아직 구현 대상이다. 공통 MCP·요청 결과는 테스트 binding으로 검증하며 실제 vendor 성공으로 해석하지 않는다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
 
@@ -58,6 +67,15 @@ daemon용과 공용 운영 Web용 포트는 각각 설정할 수 있다. 같은 
 포트 충돌 처리는 현재 조립 범위의 코드·테스트를 따른다.
 
 Stage 2 서버 조립에는 node:http, ws, 공식 MCP TypeScript SDK, Zod, node-pty, TypeORM과 better-sqlite3가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.13.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. ORM migration·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
+
+편집기는 각 package의 `tsconfig.json`으로 source와 같은 디렉터리의 tests를 함께 해석한다.
+domain의 별도 `tsconfig.production.json` 검사는 tests를 제외하고 자동 Node ambient type을
+차단하는 기존 production 경계를 유지한다. 루트 도구 설정도 루트 tsconfig와 `pnpm typecheck`에
+포함한다. 루트의 `skipLibCheck`는 설치된 의존성의 선언 검사를 생략하여 tsup의 누락된 배포 선언·
+optional SWC 선언 문제를 우회하며 프로젝트 source의 타입·모듈 해석 검사는 유지한다. [Status: As-built]
+근거: [[packages/domain/tsconfig.json]] `packages/domain/tsconfig.json:1-14`,
+[[packages/domain/tsconfig.production.json]] `packages/domain/tsconfig.production.json:1-7`,
+[[tsconfig.json]] `tsconfig.json:1-10`, [[package.json]] `package.json:9-19`.
 
 두 HTTP listener의 모든 `/api/*` 조회·제어, `/mcp/*`와 WebSocket upgrade는 공통 연결 검증을
 먼저 거친다. 실제 listener 주소·포트에 맞는 Host, 운영 Web의 Origin과 요청 본문을 검증하고

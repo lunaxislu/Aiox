@@ -12,6 +12,10 @@ AIOX는 Claude Code와 Codex의 실제 TUI를 실행·연결·관측하고 하�
 협업시키는 로컬 제품이다. Vendor TUI가 모델 선택·슬래시 명령·질문·승인을 담당하고
 AIOX는 Host·Network·통신·터미널 배치·설정·알림을 담당한다.
 
+일반 shell과 Host는 공통 terminal 화면을 사용한다. shell에서 Agent를 시작하면 같은 terminal에
+연결하고 Agent 종료 후 shell을 유지한다. 실행 수명은 runtime spec, 초기 layout·설정 책임은
+host와 configuration-web spec을 따른다.
+
 제품 범위는 [[docs/product/product]], 공개 검증 기준은 [[docs/product/roadmap]]이 소유한다.
 
 ## 구성

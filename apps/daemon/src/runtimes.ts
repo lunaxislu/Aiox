@@ -53,6 +53,7 @@ export type RuntimeRecord = {
     readonly networkId: string | null;
     readonly hostId: string | null;
     terminalId: string | null;
+    terminalOwnership: "owned" | "borrowed" | null;
     activity: RuntimeActivity;
     binding: AgentBinding;
 };
@@ -71,6 +72,7 @@ export type RegisterRuntime = {
     networkId: string | null;
     hostId?: string | undefined;
     terminalId?: string | undefined;
+    terminalOwnership?: "owned" | "borrowed";
     createBinding(
         controls: RuntimeControls,
     ): AgentBinding | Promise<AgentBinding>;
@@ -129,6 +131,9 @@ export class RuntimeRegistry {
             networkId: input.networkId,
             hostId: input.hostId ?? null,
             terminalId: input.terminalId ?? null,
+            terminalOwnership: input.terminalId
+                ? (input.terminalOwnership ?? "owned")
+                : null,
             // Not yet a send target: process spawn is not binding readiness.
             activity: "starting",
             binding: unbound,

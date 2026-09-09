@@ -6,8 +6,10 @@ status: open
 
 ## Work Items
 
-- [>] W1 CI에서 검증한 설치·PTY 범위와 남은 실제 브라우저 검증을 구분하고 Stage 2의 다음 단계 인계를 확인한다
+- [x] W1 CI에서 검증한 설치·PTY 범위와 남은 실제 브라우저 검증을 구분하고 Stage 2의 다음 단계 인계를 확인한다
 - [x] W2 리뷰 1–4·6–8의 결함을 합의한 시나리오대로 수정하고 회귀·통합 검증한다
+- [x] W3 공통 shell·탭 방향에 맞춰 Stage 1 설정 기반과 Stage 2 terminal/Runtime 수명을 보완하고 회귀 검증·인계한다
+- [>] W4 타입·모듈 해석 오류를 점검·수정하고 작업 변경을 커밋·push한 뒤 CI 결과를 확인한다
 
 ## Required Context
 
@@ -17,10 +19,11 @@ status: open
 
 ### {Global}
 
-- 현재 활성 단계는 Stage 2이며 Git에 제품 구현·의존성이 존재한다. W2 리뷰 1–4·6–8 수정과 158 tests·빌드 Node smoke 검증은 완료했고 현재 재개점은 W1의 전체 완료 근거·인계 확인이다. 최신 W2 블록의 사용자 합의(일반 작업 자식 종료 제외, TUI exit 후 daemon 유지, 전체 API/WS 보호, 새 A′ 비전달)를 적용한다. 실제 vendor·브라우저 UI·다른 OS 완료로 확대하지 않는다. 과거 구현 미시작·reply/fan-out·라이브러리 미결 문구는 당시 기록이다. 기존 일반 로그에서 작업하며 package/task 파일과 미래 scaffold를 선생성하지 않는다.
+- Stage 2 W1/W2/W3 완료. W1의 2026-09-09 13:40 기록은 macOS Chrome plain-shell 생성·입출력·resize·재연결·종료 검증이며 실제 vendor/다른 OS 브라우저까지 확대하지 않는다. 현재 W4는 편집기 cannot resolve·타입 검사 수정 후 작업 커밋·push와 정확한 SHA의 CI 확인이다. W4 최신 entry와 system의 타입 설정 근거를 읽는다. 일반 작업 자식 종료 제외·daemon 수명·공통 보호·A′ 비전달과 폐기된 reply/Host add 정책 비복원 원칙은 유지한다.
 - 현재 설계 진입점 docs/aiox-tui-product.md. 읽을 계약: docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md, docs/specs/aiox-host.md, docs/specs/aiox-configuration-web.md. 구조: docs/architecture/aiox-system.md, docs/architecture/aiox-storage-terminal.md. Vendor 연결 경계가 필요할 때 docs/architecture/aiox-vendor-bindings.md를 읽는다. 선행 결과는 logs/2026-09-07-AIOX-TUI-Stage1-Foundation.md에서 확인한다.
 - W2 후속 리뷰 보완 완료: standalone 종료 endpoint route 정리·삭제된 Network·저장 실패 재시도 회귀와 pnpm check 162 tests 및 built Node 실제 PTY/HTTP/DB 재개방 검증을 통과했다. 최소 Web은 plain TypeScript/Vite/xterm 검증 페이지로 구현했고 Stage 6 운영 Web 방향과 구분한다. 최신 W2 후속 entry의 인계·검증 한계를 따른다.
 - ef624d8 push 후 CI 34258443461 최종 success: Windows/Linux/macOS × Node22/24. Windows 출력 타입·비동기 PID 결함 수정, Linux/macOS164 tests·Windows153 passed/11 POSIX skips. Linux Node22 버퍼 테스트 일회 timeout은 동일 commit failed-job 재실행 통과이며 원인 미확정. 실제 브라우저·vendor·WSL·npm 배포는 미검증. 최신 CI 결과 entry와 storage-terminal owner를 따른다.
+- W3의 layout 상속·shell 차용/직접 소유 PTY 계약은 owner와 Stage3~6 Global에 반영됐다. 이후 W1 브라우저 검증도 완료했고 사용자 새 지시로 W4에서 커밋·push를 진행한다. 과거 W3의 커밋 금지는 당시 범위다. 실제 vendor 연결은 Stage3/4, Host YAML/CLI는 Stage5, 공통 운영 UI·keybindings 사전 논의는 Stage6에서 소비한다.
 
 ## 2026-09-07 · Stage 2 대기 인계와 라이브러리 설치 방향
 
@@ -242,3 +245,92 @@ Node getWindowSize는 기존 stream의 columns/rows 캐시를 반환하므로 re
 검증 범위: frozen-lockfile 설치·lint·format·build·typecheck·테스트 및 built CLI doctor. Linux/macOS는 164 tests, Windows는 153 passed / 기존 POSIX 전용 11 skipped이며 Windows daemon의 75 tests(실제 PTY attachment 12 포함)는 통과했다. 브라우저 UI·실제 Claude/Codex·WSL·npm 배포 검증은 포함하지 않는다. 두 초기 CI 실패에서 발견한 Windows 출력 타입·비동기 PID 문제를 수정했다. ef624d8의 최초 Linux Node22 실행에서 기존 64 KiB 버퍼 테스트가 5초 timeout을 한 번 보였고, 코드 변경 없는 failed-job 재실행으로 성공했다. 일회성 timeout 원인은 확정하지 않았으며 재발 시 별도 재현·원인 확인이 필요하다.
 
 storage-terminal owner에 현재 플랫폼 CI 근거와 제외 범위를 반영했다. owner Markdown·링크와 log check·onramp·git diff --check를 점검한다. 사용자의 후속 지시대로 이 성공 결과를 별도 문서 커밋으로 남긴다. Stage 2 전체 완료나 vendor 단계 완료로 표시하지 않고 W1의 브라우저 검증·인계 확인은 유지한다. 별도 조사 prompt와 research-idea 사용자 변경 세 파일은 계속 제외한다.
+
+## 2026-09-09 · 공통 shell·layout 기반 보완과 후속 단계 연결
+
+사용자는 기존 Stage 2 구현·커밋 이후 새 공통 터미널 방향에 따른 단계별 로그 생성과 Stage 1/2 보완 프롬프트를 요청했다. 현재 HEAD 3283643과 Stage 2 최신 CI 기록을 읽었다. 기존 단계는 브라우저 검증·인계 때문에 open이며 W1을 유지하고 새 보완을 다음 작업으로 둔다. 이 entry 작성은 제품 구현이나 테스트 실행이 아니다.
+
+Stage 1 기반 보완: config의 web.sidebar.width와 host.layout 검증·해석을 추가한다. 240은 너비 예시, 기본 layout은 auto다. preset auto/left-main/top-main/grid, grid용 columns/rows 양의 정수, YAML 행·열만 지정 시 grid 생략형, 다른 preset과 행·열 충돌 오류, CLI → YAML → 전역 → auto 우선순위와 상위 preset 변경 시 하위 다른 preset용 값 혼합 금지를 공통 함수로 검증한다. 실제 Host YAML/CLI 연결은 Stage 5다. 기존 keyboard 의미와 새 keybindings 책임을 확인하되 정확한 기본키·OS별 설정 구조는 Stage 6에서 사용자와 먼저 논의한 후 결정한다. 이번에 임의 schema를 고정하지 않는다. 기존 config 읽기/쓰기·포트·retention은 유지하고 sidebar/layout을 DB에 중복 저장하지 않는다. 배치 DB 테이블을 선생성하지 않는다.
+
+Stage 2 보완: 일반 shell은 Agent 등록 없이 생성·목록·조회·HTTP/WS 연결한다. 현재 harness의 가짜 shell Runtime을 제품 모델로 삼지 않는다. 기존 TerminalService/protocol/공통 입구 보호를 재사용하고 최소 검증 페이지도 terminal을 직접 조회하게 한다. 공개 shell adapter를 추가하지 않는다. shell 추가나 일반 claude/codex 실행은 Agent 자동 등록이 아니며 MCP 목록·credential·membership을 부여하지 않는다. Host 작업 경로 연결은 Stage 5에서 소비할 수 있게 한다.
+
+기존 shell → aiox agent run → 같은 terminal에서 Agent 실행 → Agent 종료·등록/credential/route 정리 → 같은 shell·terminal ID 유지 흐름의 수명 경계를 구현한다. Agent 직접 소유 PTY와 빌린 shell을 구분하고 새 탭을 중복 생성하지 않는다. 같은 terminal의 다음 Agent는 새 Runtime/credential이며 A′에게 옛 알림을 넘기지 않는다. 기존 terminal 문맥 전달·검증은 최소 내부 계약으로 마련하되 ID만으로 타 terminal을 제어하지 못하게 한다. 외부 일반 터미널 standalone도 유지한다. 실제 Claude/Codex foreground 연결·종료 복귀는 Stage 3/4이며 이번에는 대역으로 검증한다.
+
+브라우저 detach는 실행 종료가 아니다. terminal 종료와 Agent 정리 연결, Agent 직접 소유 자원 정리, daemon force stop의 직접 관리 shell PTY 정리·실패 재시도를 보존한다. 일반 작업 자식 전체 kill은 추가하지 않는다. resize는 기존 PTY 경로를 쓰고 64KiB tail을 정확한 화면 복원이라고 주장하지 않는다. 전체 UI·배치 저장·실제 화면 복원·단축키·테마는 Stage 6, 포커스 기반 알림은 Stage 7이다.
+
+검증: 설정 오류/우선순위/기존 파일 보존, shell의 MCP 비등록, 대역 Agent 연결 시 terminal 중복 없음, Agent 종료 후 shell 유지, 재실행 신원 분리, route/credential/이력 정리, 직접 소유 PTY 종료, detach/resize, force 정리·실패 재시도·입력/문맥 검증을 관련 회귀 테스트로 확인한다. ponytail full·TDD를 적용하고 독립 범위만 subagent에 분담하며 main은 통합·실제 diff 리뷰를 수행한다. pnpm check 및 문서 검사를 실행하고 실제 브라우저 UI·vendor·다른 OS 새 검증과 커밋/push는 이번 보완 범위 밖이다.
+
+참고: cmux 조작·영역/탭·포커스·단축키와 Paseo 현재 영역에 새 terminal을 배치하는 테스트는 Stage 6 Global에 정확한 기존 링크와 목적을 보존했다. 이 원칙이 terminal/Runtime 연결에서 중복 탭을 만들지 않도록 Stage 2도 소비한다. 원문의 사전 논의 조건은 정확한 기본키 조합·OS별 설정 구조이며, agent가 추론한 auto 5개 이상 영역 수나 계층별 부분 grid 결합 문제를 사용자가 이미 확정한 정책으로 쓰지 않는다. 구현에 필요하면 미정 부분만 좁게 확인한다.
+
+### 2026-09-09 02:54 · 후속 로그 연결과 인계 문서 점검
+
+Stage 3~9 로그 일곱 개를 생성하고 plan의 해당 단계 포인터를 연결했다. Stage 2 W3만 현재 재개점으로, 기존 W1은 남은 검증으로 유지했다. 각 Global에 단계 책임·선행 문맥·참고 대상·사전 논의 조건을 보존했다. log check, onramp의 단일 W3 선택, plan 전체 포인터 실재성·활성 단계 단일성, Markdown inline-code와 git diff --check를 확인했다. 미래 로그의 빈 Work Items에 대한 decided 후보 힌트는 아직 시작하지 않은 단계 인계이므로 상태 전환 근거가 아니다. 제품 코드·기존 사용자 조사 파일은 수정하지 않았고 테스트·브라우저·vendor 실행·커밋은 하지 않았다.
+
+### 2026-09-09 13:15 · W3 구현·통합 검증과 후속 단계 인계
+
+W3 보완을 구현·검증하고 별도 agent의 리뷰와 실제 diff를 대조했다. ponytail full·TDD를 적용해 config, TerminalService, 최소 Web을 파일 범위로 분담했고 main이 protocol·HTTP·Runtime 차용/정리 통합과 회귀를 직접 구현했다. 새 framework·dependency·DB 테이블·공개 shell adapter·vendor transport는 추가하지 않았다. 기존 사용자 연구 파일과 architecture.excalidraw, Stage 3~9 로그/plan 변경은 보존하며 커밋·push하지 않았다.
+
+사용자 추가 결정: 같은 preset은 명시 필드만 덮어쓰고 누락 필드를 상속한다. 행·열만 있는 layout은 grid다. 전역 grid2x2 + YAML columns3은 grid3x2, YAML auto는 grid 치수를 상속하지 않는다. config 공개 해석 함수와 host owner에 반영했다. 누락 grid 치수의 배치 계산·auto 5개 이상 정책은 확정하지 않았다.
+
+구현 결과: 일반 shell은 Agent 등록 없이 생성·조회·WS 연결한다. child env의 비공개 문맥을 검증해 기존 shell에 대역 Runtime을 연결하며, Agent 종료는 credential·membership·route/진행 요청 관계를 정리하고 원 shell을 유지한다. 같은 shell의 A′는 새 Runtime/token이고 옛 결과를 전달받지 않는다. shell 자체 종료는 연결 Runtime 정리로 이어지며 force stop의 부분 실패·재시도를 유지했다. 생성 cwd는 보존하지만 실시간 cd 추적은 하지 않는다. 최소 Web과 harness는 terminal 직접 목록을 사용한다. 이력은 보존 계약대로 남기며 재전송·실행 복원에 사용하지 않는다.
+
+검증: pnpm check의 lint·format·build·typecheck·186 tests 통과(domain28/config15/protocol7/terminal15/cli18/persistence14/web1/daemon88). 새 config/HTTP/context/Web 검증은 RED→GREEN 확인, 기존 W2 회귀는 유지했다. 실제 로컬 macOS plain shell과 Node HTTP/WS로 I/O·native resize·detach/reconnect 생존·명시 종료·force 정리·실패 재시도와 등록 준비 중 shell 종료를 검증했다. /private/tmp/aiox-w3-built-smoke.mjs는 빌드된 공개 entry의 config 해석·HTTP shell 생성·Agent 비등록·WS 입력/resize 프레임·detach 생존·명시 종료·daemon stop을 통과했다. sandbox listener EPERM은 제품 실패로 해석하지 않고 허용된 외부 로컬 실행으로 재검증했다. 실제 resize 치수 관측 근거는 terminals.test.ts다.
+
+리뷰 보완: 독립 agent가 HTTP JSON null이 빈 설정으로 바뀌어 shell을 만드는 문제를 발견했다. main이 201/400 실패를 재현한 뒤 undefined만 빈 설정으로 처리하도록 수정했다. main diff 리뷰에서 동일 terminal 선택 no-op이 끊긴 WS 재연결까지 막는 문제를 발견해 Web 담당이 연결 상태 조건과 회귀를 추가했다. 최종 별도 agent는 코드·호출 경로·테스트를 재대조했으며 추가 확정 결함은 보고하지 않았다.
+
+owner는 runtime의 shell/Agent 수명, host의 layout, configuration-web의 설정/키 책임, system/storage-terminal의 실제 내부 연결과 한계를 갱신했다. Stage 3/4에는 실제 vendor foreground·CLI 등록 transport, Stage 5에는 layout parser/CLI·Host cwd 연결, Stage 6에는 terminal API·화면/탭·설정 소비 지점을 Global에 남겼다. Stage 7의 실제 포커스/읽음/소리 인계는 기존 Global을 유지한다.
+
+W3는 완료한다. W1의 실제 브라우저 UI 검증과 Stage 2 전체 인계 확인은 남으며 다음 재개점으로 돌린다. 이번 테스트는 vendor 대역·Node DOM 대역 성공이고 실제 Claude/Codex/브라우저·다른 OS 새 검증은 하지 않았다. 64KiB tail은 정확한 화면 복원이 아니다. 과거 CI 성공을 이 변경의 OS별 성공으로 승계하지 않는다.
+
+### 2026-09-09 13:18 · W3 owner·포인터 최종 점검
+
+최종 owner 리뷰에서 종료 대상 표현을 직접 소유 PTY로 한정하고 이동한 테스트·Web 생성/재연결 근거를 갱신했다. 링크·근거 범위 검사에서 파일 끝을 넘은 두 range를 고친 뒤 재검사했다. log check·Markdown inline-code·plan 포인터/단일 활성 단계·git diff --check를 확인했고 onramp는 남은 W1을 선택한다. 후속 로그의 빈 Work Items에 대한 closeout 힌트는 미착수 단계 인계이므로 완료 전환 근거가 아니다. 새 제품 코드 변경 없이 문서·기록만 마무리했다.
+
+### 2026-09-09 13:36 · W1 실제 브라우저 검증 완료와 남은 검증·Stage 3 인계
+
+### 2026-09-09 13:40 · W1 실제 브라우저 검증 완료와 남은 검증·Stage 3 인계
+
+#### 요청과 현재 상태 재확인
+
+사용자가 onramp로 W2·W3의 구현·회귀 테스트와 W1의 실제 브라우저 검증·Stage 3 인계 정리를 요청했다. 이 로그의 Work Items와 최신 entry(13:15/13:18)는 W2·W3를 이미 `[x]`로 기록했으므로, 재구현이 아니라 현재 트리 기준 회귀 확인으로 범위를 좁혔다. `pnpm check` 재실행으로 lint·format·build·typecheck 및 186 tests(domain28/config15/protocol7/terminal15/cli18/persistence14/web1/daemon88)가 13:15 entry의 수치와 정확히 일치함을 확인했다. 새 구현·수정은 하지 않았다.
+
+#### W1 실제 브라우저 검증
+
+`pnpm build`(daemon dist·web dist 포함)로 최신 커밋되지 않은 W2·W3 변경까지 반영한 산출물을 만들고, `AIOX_HARNESS_HOME`을 격리한 임시 홈에서 `apps/daemon/dist/dev-harness.js`를 구동했다. Claude-in-Chrome 자동화로 실제 Chrome 창에서 `http://127.0.0.1:4501/`을 열어 아래를 확인했다.
+
+- 생성: "새 shell" 버튼으로 2개 생성, 각각 목록에 즉시 반영되고 새로 만든 shell이 자동 선택·연결됨.
+- 선택: 두 terminal 사이 전환 시 서버가 보관한 이전 출력(64KiB tail)이 정확히 replay됨.
+- 입출력: `echo AIOX_W1_BROWSER_$((21+21))` → `AIOX_W1_BROWSER_42`로 실제 zsh가 산술식을 계산해 응답. 테스트 대역이 아닌 실제 PTY임을 확인.
+- resize: 브라우저 창을 1558×784 → 1000×700으로 줄인 뒤 `stty size` 결과가 `83 287` → `31 85`로 실측 변경. xterm fit → WS resize 프레임 → node-pty 실제 TTY 크기 반영 경로가 브라우저에서 동작함을 확인.
+- 재연결: 페이지 전체를 `location.reload()`로 새로고침한 뒤(= WS 종료, attachment 해제) 같은 terminal을 다시 선택하니 이전 history가 replay되고, 이어서 `echo RECONNECT_$$_OK` → `RECONNECT_12064_OK`로 같은 PID의 shell이 계속 살아 실시간 입출력을 받음. attachment 해제 후 실행 생존을 실제 브라우저로 확인.
+- 종료: 셸에 `exit` 입력 시 `[프로세스 종료 exitCode=0 signal=none]`이 렌더링되고 WS가 닫히며("연결 끊김"), terminal 목록과 상단 카운트(`terminal 2`→`terminal 1`)에서 즉시 제거됨.
+- 정리: 남은 두 번째 shell은 `POST /api/daemon/stop {"force":true}`로 강제 종료해 `{"stopped":true,"forced":true}` 200을 확인하고 harness 프로세스 종료와 임시 홈 삭제까지 마쳤다.
+
+#### 부수 발견 — Sec-Fetch-Site 자동화 아티팩트 (제품 결함 아님)
+
+Claude-in-Chrome의 `navigate`로 최초 진입할 때마다 daemon이 403 `{"code":"request_rejected","message":"Cross-site browser request."}`를 반환했다. `apps/daemon/src/request-guard.ts`의 origin-less `sec-fetch-site: cross-site` 거부 분기이며, `request-guard.test.ts`에 "keeps CLI and same-origin requests while rejecting originless cross-site browser requests"라는 기존 전용 테스트가 있어 의도된 CSRF 방어로 판단했다(사실+근거 있는 추론). 같은 페이지 컨텍스트에서 `location.reload()`로 재요청하면(same-origin) 정상 통과했고, 이후 모든 검증은 이 경로로 진행했다. 이 자동화 도구는 브라우저 주소창에 직접 타이핑하거나 북마크로 진입하는 것을 재현할 수 없어, 실제 사람이 주소창 입력·북마크로 처음 방문할 때의 `sec-fetch-site: none` 경로는 이번에 직접 재현하지 못했다 — 이 부분은 불확실성으로 남긴다. 코드나 계약을 변경하지 않았다.
+
+#### 남은 검증과 Stage 3 인계
+
+- 이번 실제 브라우저 검증은 macOS·Chrome 단일 조합이다. Windows/Linux 네이티브 브라우저 검증은 아직 하지 않았다.
+- 기존 CI(`ef624d8`/`34258443461`, storage-terminal owner 근거)는 W3 이전 커밋 기준이다. config layout 해석, shell/Agent 수명 분리, 최소 Web의 W3 변경분은 아직 어떤 CI에도 포함되지 않았다 — 커밋·push 전이므로 별도 CI 실행이 필요하다.
+- 실제 Claude/Codex 연동, vendor foreground 전환은 이번 범위 밖이며 Stage 3(Claude)·Stage 4(Codex)에서 다룬다. 이번에 확인한 것은 plain-shell PTY와 최소 Web의 transport·수명뿐이다.
+- Stage 3 착수 시 이 로그의 TerminalService·context 계약(shell↔Agent 수명 분리, A′ 비전달)과 request-guard 공통 보호를 그대로 재사용하며, 실제 Claude TUI 주입·inbox·hooks 연결만 추가한다.
+
+W1을 완료로 전환한다. Work Items 세 항목이 모두 닫히지만, 위 커밋·다중 OS CI·Stage 3 실제 연동이 남아 있어 Stage 2 전체 완료나 이 로그의 `decided` 전환은 이번에 선언하지 않는다.
+
+검증: 새 제품 코드 변경 없음(요청·응답 대조만 수행). `pnpm check` 186 tests 통과 재확인. 브라우저 세션·harness·임시 홈은 모두 정리했다. 커밋·push는 이번 범위 밖이다.
+
+## 2026-09-09 · W4 타입·모듈 해석 점검과 커밋·CI
+
+사용자가 W1 완료 후 cannot resolve·타입 오류 전반을 점검하고 문제 없으면 커밋·push하여 CI를 실행하도록 요청했다. W1 최신 기록은 macOS Chrome 실제 plain-shell transport/수명 검증 완료이며 이번 세션에서 브라우저 검증을 반복하지 않는다. 기존 W1/W2/W3 완료는 유지하고 이 커밋·CI 확인을 W4로 둔다.
+
+초기 pnpm check는 186 tests까지 통과했지만 실제 TypeScript 서버를 실행해 편집기 프로젝트 선택을 점검하니 domain route.test.ts가 inferredProject에 들어가 @/network/network·@/network/route TS2307, 루트 tsup.config.ts는 Object.hasOwn TS2550을 재현했다. 테스트는 패키지 tsconfig.json에 포함하고 기존 production용 types:[]·test 제외 검사를 tsconfig.production.json으로 옮겨 유지했다. 루트 tsconfig.json은 tsup/vitest 설정에만 적용하며 루트 tsc를 pnpm typecheck에 연결했다.
+
+루트 tsc 추가 과정에서 설치된 tsup 8.5.1의 dist/index.d.ts가 누락된 ./types.cts와 optional @swc/core 선언을 참조하는 TS2307도 확인했다. 새 SWC 의존성을 설치하지 않고 루트 도구 설정에만 skipLibCheck를 적용했다. 이는 외부 선언 검사 생략이며 프로젝트 소스·domain production 검사는 유지된다. 변경 후 TypeScript 서버에서 앱/패키지와 루트 설정의 .ts 60개 모두 configured project에 연결되고 semantic diagnostics 0건을 확인했다. 관련 owner에 설정 책임을 반영했다.
+
+현재 트리의 pnpm check와 built Node 실행·문서 검사를 마친 뒤 Stage2 작업·후속 단계 인계 로그/plan을 커밋·push한다. 별도 AIOX-Agent-CLI-Integration-Research-Prompt와 research-idea 파일, architecture.excalidraw는 이번 작업 커밋에서 제외한다. 기존 로컬 결과 커밋 3283643도 현재 branch의 선행 이력으로 함께 push된다. CI는 push한 정확한 SHA의 여섯 OS/Node 조합 결과로 판정하며 이전 CI를 승계하지 않는다.
+
+### 2026-09-09 13:55 · 로컬 타입·경로·전체 검증 통과와 push 준비
+
+수정 후 pnpm check는 루트 도구 tsc와 전체 workspace typecheck·빌드·lint·format 및 186 tests를 모두 통과했다. TypeScript 서버의 60개 source/config 파일은 inferred project·semantic diagnostics 없이 해석됐다. built CLI doctor와 built daemon의 config/HTTP/WS/PTY smoke도 통과했다. Markdown inline-code·log check·git diff --check를 확인했다. 이 트리를 작업 커밋으로 남겨 push하고 CI 결과를 기다린다.

@@ -16,6 +16,7 @@ import { Terminal } from "@xterm/xterm";
 
 export type Attachment = {
     readonly terminalId: string;
+    readonly closed: boolean;
     close(): void;
 };
 
@@ -113,6 +114,9 @@ export function attachTerminal(
 
     return {
         terminalId,
+        get closed() {
+            return socket.readyState >= WebSocket.CLOSING;
+        },
         close() {
             // Detach only. There is deliberately no stop/kill call here, and no
             // unload handler either: the browser closes the socket by itself.

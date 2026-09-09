@@ -6,6 +6,7 @@ import type { AgentView, NetworkView, NotificationView } from "@aiox/protocol";
 import {
     apiPath,
     createNetworkSchema,
+    createShellSchema,
     readNotificationsSchema,
     routeRequestSchema,
     stopRequestSchema,
@@ -154,6 +155,41 @@ async function route(
 ): Promise<void> {
     const method = request.method ?? "GET";
     const { runtimes, networks, db, lifecycle } = services;
+
+    if (path === apiPath.terminals) {
+        if (method === "GET") {
+            send(response, 200, services.terminals.views());
+            return;
+        }
+        if (method === "POST") {
+            const body = await readJson(request);
+            const input = parse(
+                createShellSchema,
+                body === undefined ? {} : body,
+            );
+            send(response, 201, lifecycle.createShell(input));
+            return;
+        }
+    }
+    const terminalMatch = /^\/api\/terminals\/([^/]+)$/.exec(path);
+    if (terminalMatch) {
+        const id = decodeURIComponent(terminalMatch[1]!);
+        if (method === "GET") {
+            const view = services.terminals.view(id);
+            if (!view)
+                throw new HttpError(
+                    404,
+                    "unknown_terminal",
+                    "No such terminal.",
+                );
+            send(response, 200, view);
+            return;
+        }
+        if (method === "DELETE") {
+            send(response, 200, { deleted: await lifecycle.stopTerminal(id) });
+            return;
+        }
+    }
 
     if (path === apiPath.status && method === "GET") {
         send(response, 200, await lifecycle.status());
