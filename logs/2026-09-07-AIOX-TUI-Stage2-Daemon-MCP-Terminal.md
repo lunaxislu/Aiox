@@ -334,3 +334,7 @@ W1을 완료로 전환한다. Work Items 세 항목이 모두 닫히지만, 위 
 ### 2026-09-09 13:55 · 로컬 타입·경로·전체 검증 통과와 push 준비
 
 수정 후 pnpm check는 루트 도구 tsc와 전체 workspace typecheck·빌드·lint·format 및 186 tests를 모두 통과했다. TypeScript 서버의 60개 source/config 파일은 inferred project·semantic diagnostics 없이 해석됐다. built CLI doctor와 built daemon의 config/HTTP/WS/PTY smoke도 통과했다. Markdown inline-code·log check·git diff --check를 확인했다. 이 트리를 작업 커밋으로 남겨 push하고 CI 결과를 기다린다.
+
+### 2026-09-09 14:22 · Windows CI 종료 관측 테스트 경계 수정
+
+첫 push 08b6afb의 CI 34312903244는 Linux/macOS 네 조합은 성공하고 Windows Node22/24는 같은 신규 테스트 한 건이 실패했다. 타입·빌드·모듈 해석 오류가 아니라 shell exit 이후 Runtime 제거를 기다리는 vi.waitFor 기본 1000ms 제한에서 실패했다. 설치된 node-pty WindowsPtyAgent의 FLUSH_DATA_INTERVAL=1000과 출력 flush 후 exit 연결을 직접 확인했다. 따라서 PTY exit 이벤트를 먼저 기다리고 그 후 daemon의 비동기 DB/등록 정리를 확인하도록 테스트를 수정했다. 제품 종료 경로나 전역 timeout을 바꾸지 않았다. 이 변경의 로컬 pnpm check와 새 push CI를 다시 확인한다.

@@ -412,7 +412,13 @@ describe("stopping", () => {
             [target.runtimeId],
             "pending",
         );
+        // ConPTY drains output before emitting exit; observe that event before
+        // timing the daemon's asynchronous registration/storage cleanup.
+        const exited = new Promise<void>((resolve) => {
+            session.subscribe({ data: () => {}, exit: () => resolve() });
+        });
         session.write("exit\r");
+        await exited;
         await vi.waitFor(() =>
             expect(
                 harness.daemon.services.runtimes.get(target.runtimeId),
