@@ -1,7 +1,7 @@
 ---
 topic: AIOX TUI Stage2 Daemon MCP Terminal
 description: daemon 공통 HTTP MCP Network Route Gateway PTY 최소 Web의 범위와 단계별 라이브러리 설치 방향을 보존한다
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -9,7 +9,7 @@ status: open
 - [x] W1 CI에서 검증한 설치·PTY 범위와 남은 실제 브라우저 검증을 구분하고 Stage 2의 다음 단계 인계를 확인한다
 - [x] W2 리뷰 1–4·6–8의 결함을 합의한 시나리오대로 수정하고 회귀·통합 검증한다
 - [x] W3 공통 shell·탭 방향에 맞춰 Stage 1 설정 기반과 Stage 2 terminal/Runtime 수명을 보완하고 회귀 검증·인계한다
-- [>] W4 타입·모듈 해석 오류를 점검·수정하고 작업 변경을 커밋·push한 뒤 CI 결과를 확인한다
+- [x] W4 타입·모듈 해석 오류를 점검·수정하고 작업 변경을 커밋·push한 뒤 CI 결과를 확인한다
 
 ## Required Context
 
@@ -19,11 +19,11 @@ status: open
 
 ### {Global}
 
-- Stage 2 W1/W2/W3 완료. W1의 2026-09-09 13:40 기록은 macOS Chrome plain-shell 생성·입출력·resize·재연결·종료 검증이며 실제 vendor/다른 OS 브라우저까지 확대하지 않는다. 현재 W4는 편집기 cannot resolve·타입 검사 수정 후 작업 커밋·push와 정확한 SHA의 CI 확인이다. W4 최신 entry와 system의 타입 설정 근거를 읽는다. 일반 작업 자식 종료 제외·daemon 수명·공통 보호·A′ 비전달과 폐기된 reply/Host add 정책 비복원 원칙은 유지한다.
+- Stage 2 W1/W2/W3/W4 완료. W1은 macOS Chrome plain-shell 생성·입출력·resize·재연결·종료, W4는 편집기 cannot resolve 수정과 6621fc3 push·CI 6개 조합 success까지 확인했다. 최신 W4 결과와 system/storage-terminal owner를 읽는다. 다음 재개는 plan의 Stage3 로그다. 실제 vendor/다른 OS 브라우저 검증으로 확대하지 않는다. daemon 수명·공통 보호·A′ 비전달과 폐기된 reply/Host add 정책 비복원 원칙을 유지한다.
 - 현재 설계 진입점 docs/aiox-tui-product.md. 읽을 계약: docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md, docs/specs/aiox-host.md, docs/specs/aiox-configuration-web.md. 구조: docs/architecture/aiox-system.md, docs/architecture/aiox-storage-terminal.md. Vendor 연결 경계가 필요할 때 docs/architecture/aiox-vendor-bindings.md를 읽는다. 선행 결과는 logs/2026-09-07-AIOX-TUI-Stage1-Foundation.md에서 확인한다.
 - W2 후속 리뷰 보완 완료: standalone 종료 endpoint route 정리·삭제된 Network·저장 실패 재시도 회귀와 pnpm check 162 tests 및 built Node 실제 PTY/HTTP/DB 재개방 검증을 통과했다. 최소 Web은 plain TypeScript/Vite/xterm 검증 페이지로 구현했고 Stage 6 운영 Web 방향과 구분한다. 최신 W2 후속 entry의 인계·검증 한계를 따른다.
-- ef624d8 push 후 CI 34258443461 최종 success: Windows/Linux/macOS × Node22/24. Windows 출력 타입·비동기 PID 결함 수정, Linux/macOS164 tests·Windows153 passed/11 POSIX skips. Linux Node22 버퍼 테스트 일회 timeout은 동일 commit failed-job 재실행 통과이며 원인 미확정. 실제 브라우저·vendor·WSL·npm 배포는 미검증. 최신 CI 결과 entry와 storage-terminal owner를 따른다.
-- W3의 layout 상속·shell 차용/직접 소유 PTY 계약은 owner와 Stage3~6 Global에 반영됐다. 이후 W1 브라우저 검증도 완료했고 사용자 새 지시로 W4에서 커밋·push를 진행한다. 과거 W3의 커밋 금지는 당시 범위다. 실제 vendor 연결은 Stage3/4, Host YAML/CLI는 Stage5, 공통 운영 UI·keybindings 사전 논의는 Stage6에서 소비한다.
+- 최신 코드 CI는 6621fc3 / 34314631099 success: Windows/Linux/macOS × Node22/24, Linux/macOS186 tests·Windows175 passed/11 POSIX skips. Ubuntu Node22 버퍼 테스트는 동일 SHA failed-job 재실행 통과이며 간헐 실패 원인은 미확정이다. 이전 ef624d8 결과를 새 코드 검증으로 승계하지 않았다. 실제 브라우저는 W1의 macOS Chrome만, vendor·WSL·npm 배포는 후속 범위다.
+- W3 layout 상속·shell 차용/직접 소유 PTY 계약은 owner와 Stage3~6 Global에 반영됐고 W1/W4 검증·commit·push를 마쳤다. 과거 W3의 커밋 금지는 당시 범위다. 실제 vendor 연결은 Stage3/4, Host YAML/CLI는 Stage5, 공통 운영 UI·keybindings 사전 논의는 Stage6에서 소비한다.
 
 ## 2026-09-07 · Stage 2 대기 인계와 라이브러리 설치 방향
 
@@ -338,3 +338,9 @@ W1을 완료로 전환한다. Work Items 세 항목이 모두 닫히지만, 위 
 ### 2026-09-09 14:22 · Windows CI 종료 관측 테스트 경계 수정
 
 첫 push 08b6afb의 CI 34312903244는 Linux/macOS 네 조합은 성공하고 Windows Node22/24는 같은 신규 테스트 한 건이 실패했다. 타입·빌드·모듈 해석 오류가 아니라 shell exit 이후 Runtime 제거를 기다리는 vi.waitFor 기본 1000ms 제한에서 실패했다. 설치된 node-pty WindowsPtyAgent의 FLUSH_DATA_INTERVAL=1000과 출력 flush 후 exit 연결을 직접 확인했다. 따라서 PTY exit 이벤트를 먼저 기다리고 그 후 daemon의 비동기 DB/등록 정리를 확인하도록 테스트를 수정했다. 제품 종료 경로나 전역 timeout을 바꾸지 않았다. 이 변경의 로컬 pnpm check와 새 push CI를 다시 확인한다.
+
+### 2026-09-09 14:30 · 최종 CI 통과와 Stage 3 인계
+
+작업 커밋 08b6afb와 Windows 종료 관측 테스트 보완 6621fc3을 main에 push했다. 최종 제품 코드 SHA 6621fc3의 CI 34314631099는 Windows/Linux/macOS × Node22/24 여섯 조합 모두 success다. Linux/macOS186 tests, Windows175 passed/11 POSIX skips이며 locked install·lint·format·typecheck·build·built CLI도 통과했다. Ubuntu Node22의 기존 default replay ceiling 테스트는 5초 timeout 후 같은 SHA의 failed-job 재실행에서 통과했다. 로컬 terminal15 tests도 재실행 통과했지만 CI 간헐 실패 원인은 확정하지 않았고 storage-terminal owner에 재발 시 조사 경계를 남겼다. 이를 제품 결함 수정 완료로 보고하지 않는다.
+
+편집기 60개 TS source/config의 configured project·semantic diagnostics 0건, 로컬 pnpm check186 tests와 built CLI/HTTP/WS/PTY smoke 결과를 함께 확인했다. 타입 설정 owner는 aiox-system, CI 범위 owner는 aiox-storage-terminal에 반영했다. W1/W2/W3/W4의 Stage2 범위 작업과 검증을 마쳐 로그를 decided로 닫고 plan의 다음 포인터를 Stage3으로 옮긴다. Stage3 구현은 시작하지 않는다. 실제 vendor는 Stage3/4, 운영 UI는 Stage6, 다른 OS 브라우저·WSL·npm 산출물 통합 검증은 후속 단계 범위이며 이번 CI 성공으로 갈음하지 않는다. 별도 research 파일과 architecture.excalidraw는 보존했다. 이 결과 기록 커밋은 검증한 제품 코드 SHA와 구분한다.
