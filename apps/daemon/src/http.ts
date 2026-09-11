@@ -82,6 +82,7 @@ function agentView(record: RuntimeRecord): AgentView {
         networkId: record.networkId,
         hostId: record.hostId,
         terminalId: record.terminalId,
+        observation: record.observation,
     };
 }
 
@@ -290,6 +291,7 @@ async function route(
             .list()
             .filter(
                 (record) =>
+                    record.collaborationActive &&
                     (networkId === null || record.networkId === networkId) &&
                     (host === null || record.hostId === host),
             )
@@ -301,7 +303,7 @@ async function route(
     const agentMatch = /^\/api\/agents\/([^/]+)$/.exec(path);
     if (agentMatch && method === "GET") {
         const record = runtimes.find(decodeURIComponent(agentMatch[1]!));
-        if (!record)
+        if (!record?.collaborationActive)
             throw new HttpError(404, "unknown_agent", "No such agent.");
         send(response, 200, agentView(record));
         return;

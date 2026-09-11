@@ -16,7 +16,14 @@ const packages: Record<string, Options> = {
     },
     "@aiox/daemon": {
         // dev-harness is a Stage 2 verification entry, not part of the product surface.
-        entry: ["src/index.ts", "src/main.ts", "src/dev-harness.ts"],
+        entry: [
+            "src/index.ts",
+            "src/main.ts",
+            "src/dev-harness.ts",
+            "src/claude-hook.ts",
+            "src/claude-environment.ts",
+        ],
+        splitting: false,
     },
     "@aiox/cli": {
         entry: ["src/index.ts", "src/main.ts"],

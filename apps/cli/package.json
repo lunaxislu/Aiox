@@ -22,8 +22,13 @@
     },
     "dependencies": {
         "@aiox/config": "workspace:*",
+        "@aiox/daemon": "workspace:*",
         "@aiox/protocol": "workspace:*",
-        "commander": "14.0.3"
+        "commander": "14.0.3",
+        "ws": "8.21.3"
+    },
+    "devDependencies": {
+        "@types/ws": "8.18.1"
     },
     "engines": {
         "node": "^22.13.0 || >=24.11.0"

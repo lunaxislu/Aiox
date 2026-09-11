@@ -120,11 +120,16 @@ export class NetworkService {
      * send targets at all — still starting, or left behind as Host stopped.
      */
     async reachable(source: RuntimeRecord): Promise<RuntimeRecord[]> {
-        if (source.networkId === null) return [];
+        if (!source.collaborationActive || source.networkId === null) return [];
         const network = await this.effective(source.networkId);
+        if (!source.collaborationActive) return [];
         const candidates = this.runtimes
             .inNetwork(source.networkId)
-            .filter((record) => mcpStatus(record.activity) !== null);
+            .filter(
+                (record) =>
+                    record.collaborationActive &&
+                    mcpStatus(record.activity) !== null,
+            );
         return outboundTargets(network, source, candidates);
     }
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -6,7 +7,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { saveConfig } from "@aiox/config";
-import { test } from "vitest";
+import { test, vi } from "vitest";
+import { WebSocket } from "ws";
+
+import { runExternal } from "./external";
+import { runForeground } from "./foreground";
+
+vi.mock("./external", () => ({
+    runExternal: vi.fn(async () => ({ exitCode: 0, signal: null })),
+}));
+
+vi.mock("./foreground", () => ({
+    runForeground: vi.fn(async () => ({ exitCode: 0, signal: null })),
+}));
+vi.mock("ws", async () => {
+    const { EventEmitter } = await import("node:events");
+    return {
+        WebSocket: vi.fn(function () {
+            const socket = Object.assign(new EventEmitter(), {
+                send: vi.fn(),
+                terminate: vi.fn(),
+            });
+            queueMicrotask(() => socket.emit("open"));
+            return socket;
+        }),
+    };
+});
 
 import { createFoundationPort } from "./bootstrap";
 import type { CliOptions, CliPort, CommandName } from "./requests";
@@ -282,11 +308,11 @@ test("network and agent reads reach their endpoints and summarise without --json
     }
 });
 
-test("commands that stage 2 does not deliver name the stage that will", async () => {
+test("unsupported adapters and Host commands remain unavailable", async () => {
     const stub = await daemonStub(() => {});
     try {
         await assert.rejects(
-            run(stub.cli, "agent.run", {}, ["claude"]),
+            run(stub.cli, "agent.run", {}, ["codex"]),
             /Stage 3/,
         );
         await assert.rejects(
@@ -294,6 +320,160 @@ test("commands that stage 2 does not deliver name the stage that will", async ()
             /Stage 5/,
         );
         assert.deepEqual(stub.routes, []);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("Claude launch forwards the current shell context and exact vendor arguments before foreground relay", async () => {
+    const stub = await daemonStub(() => {});
+    const previousExitCode = process.exitCode;
+    vi.stubEnv("AIOX_TERMINAL_ID", "shell-test");
+    vi.stubEnv("AIOX_TERMINAL_TOKEN", "private-terminal-token");
+    vi.mocked(runForeground).mockResolvedValueOnce({
+        exitCode: 7,
+        signal: null,
+    });
+    try {
+        await stub.cli.execute({
+            command: "agent.run",
+            args: ["claude"],
+            options: {
+                name: "review",
+                network: "dev",
+                role: "reviewer",
+                description: "Review",
+                instruction: "Be concise",
+            },
+            adapterArgs: ["--model", "sonnet", "argument with spaces"],
+        });
+        assert.equal(
+            vi.mocked(WebSocket).mock.calls.at(-1)?.[0],
+            `ws://127.0.0.1:${stub.httpPort}/api/agent-run`,
+        );
+        const socket = vi.mocked(WebSocket).mock.results.at(-1)!.value;
+        const frame = JSON.parse(socket.send.mock.calls[0][0]);
+        assert.equal(frame.adapter, "claude");
+        assert.equal(frame.cwd, process.cwd());
+        assert.equal(frame.env.AIOX_TERMINAL_TOKEN, "private-terminal-token");
+        assert.deepEqual(frame.terminalContext, {
+            terminalId: "shell-test",
+            token: "private-terminal-token",
+        });
+        assert.deepEqual(frame.args, [
+            "--model",
+            "sonnet",
+            "argument with spaces",
+        ]);
+        assert.equal(frame.instruction, "Be concise");
+        assert.equal(frame.name, "review");
+        assert.equal(frame.network, "dev");
+        assert.equal(frame.role, "reviewer");
+        assert.equal(frame.description, "Review");
+        assert.ok(
+            socket.send.mock.invocationCallOrder[0] <
+                vi.mocked(runForeground).mock.invocationCallOrder.at(-1)!,
+        );
+        assert.equal(process.exitCode, 7);
+    } finally {
+        process.exitCode = previousExitCode;
+        vi.unstubAllEnvs();
+        await stub.close();
+    }
+});
+
+test("external standalone uses lifecycle control and cleans the socket after launch failure", async () => {
+    const stub = await daemonStub(() => {});
+    vi.stubEnv("AIOX_TERMINAL_ID", undefined);
+    vi.stubEnv("AIOX_TERMINAL_TOKEN", undefined);
+    vi.mocked(runExternal).mockRejectedValueOnce(
+        new Error("Vendor start failed."),
+    );
+    try {
+        await assert.rejects(
+            run(stub.cli, "agent.run", {}, ["claude"]),
+            /Vendor start failed/,
+        );
+        const socket = vi.mocked(WebSocket).mock.results.at(-1)!.value;
+        const frame = vi.mocked(runExternal).mock.calls.at(-1)![1];
+        assert.ok(
+            String(vi.mocked(WebSocket).mock.calls.at(-1)![0]).endsWith(
+                "/api/agent-run/external",
+            ),
+        );
+        assert.equal("terminalContext" in frame, false);
+        assert.deepEqual(frame.args, []);
+        assert.equal(socket.terminate.mock.calls.length, 1);
+    } finally {
+        vi.unstubAllEnvs();
+        await stub.close();
+    }
+});
+
+test("keeps a socket error guard while the external launcher prepares its inbox", async () => {
+    const stub = await daemonStub(() => {});
+    vi.stubEnv("AIOX_TERMINAL_ID", undefined);
+    vi.stubEnv("AIOX_TERMINAL_TOKEN", undefined);
+    vi.mocked(runExternal).mockImplementationOnce(async (socket) => {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.doesNotThrow(() =>
+            socket.emit(
+                "error",
+                new Error("connection lost during inbox setup"),
+            ),
+        );
+        return { exitCode: 0, signal: null };
+    });
+    const previousExitCode = process.exitCode;
+    try {
+        await run(stub.cli, "agent.run", {}, ["claude"]);
+    } finally {
+        process.exitCode = previousExitCode;
+        vi.unstubAllEnvs();
+        await stub.close();
+    }
+});
+
+test.each(["error", "close"])(
+    "a handshake %s gives an actionable, credential-free failure and terminates the connection",
+    async (event) => {
+        const stub = await daemonStub(() => {});
+        const socket = Object.assign(new EventEmitter(), {
+            send: vi.fn(),
+            terminate: vi.fn(),
+        });
+        vi.mocked(WebSocket).mockImplementationOnce(function () {
+            queueMicrotask(() =>
+                socket.emit(event, new Error("secret-from-transport")),
+            );
+            return socket as unknown as WebSocket;
+        });
+        try {
+            await assert.rejects(
+                run(stub.cli, "agent.run", {}, ["claude"]),
+                (error: Error) => {
+                    assert.match(error.message, /aiox daemon start/);
+                    assert.ok(!error.message.includes("secret-from-transport"));
+                    return true;
+                },
+            );
+            assert.equal(socket.terminate.mock.calls.length, 1);
+            assert.equal(socket.send.mock.calls.length, 0);
+        } finally {
+            await stub.close();
+        }
+    },
+);
+
+test("invalid launch metadata is rejected before a socket exists without echoing environment secrets", async () => {
+    const stub = await daemonStub(() => {});
+    const before = vi.mocked(WebSocket).mock.calls.length;
+    try {
+        await assert.rejects(
+            run(stub.cli, "agent.run", { name: "bad/name" }, ["claude"]),
+            /Invalid Claude launch/,
+        );
+        assert.equal(vi.mocked(WebSocket).mock.calls.length, before);
     } finally {
         await stub.close();
     }
@@ -307,7 +487,10 @@ test("doctor keeps its stage 1 diagnosis and adds daemon reachability", async ()
     assert.equal(report.platform, process.platform);
     assert.equal(report.arch, process.arch);
     assert.ok(["native", "wsl"].includes(String(report.environment)));
-    assert.equal(report.vendorIntegration, "not implemented");
+    assert.equal(
+        report.vendorIntegration,
+        "Claude foreground launch; Codex integration pending",
+    );
     assert.deepEqual((report.config as { ports: unknown }).ports, {
         daemon: stub.httpPort,
         web: stub.httpPort - 1,

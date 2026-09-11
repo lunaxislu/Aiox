@@ -10,10 +10,13 @@ import type {
     TerminalContext,
 } from "@aiox/protocol";
 import { createShellSchema, terminalContextSchema } from "@aiox/protocol";
+import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { WebSocketServer } from "ws";
 
+import { ClaudeBinding } from "@/claude";
+import { ClaudeController } from "@/claude-controller";
 import { createApiHandler, HttpError, readJson } from "@/http";
-import { handleMcpRequest } from "@/mcp";
+import { bearerToken, handleMcpRequest } from "@/mcp";
 import { MessageService } from "@/messaging";
 import { NetworkService } from "@/networks";
 import { requestGuard } from "@/request-guard";
@@ -76,6 +79,7 @@ function listen(server: Server, port: number, host: string): Promise<number> {
 }
 
 export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
+    let claude: ClaudeController | undefined;
     const host = options.host ?? "127.0.0.1";
     const now = options.now ?? (() => Date.now());
     const startedAt = now();
@@ -150,6 +154,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         void (async () => {
             if (protectedRequest(request, response, ports.daemon)) return;
             const url = new URL(request.url ?? "/", `http://${host}`);
+            if (url.pathname === "/api/claude/hooks" && claude) {
+                await claude.hook(request, response);
+                return;
+            }
             const mcp = /^\/mcp\/([^/]+)$/.exec(url.pathname);
             if (mcp) {
                 if (!admitting)
@@ -169,6 +177,16 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     body,
                     { runtimes, networks, messages },
                 );
+                if (
+                    response.statusCode === 200 &&
+                    InitializeRequestSchema.safeParse(body).success
+                ) {
+                    const binding = runtimes.authenticate(
+                        bearerToken(request),
+                    )?.binding;
+                    if (binding instanceof ClaudeBinding)
+                        binding.mcpConnected();
+                }
                 return;
             }
             if (await api(request, response, url)) return;
@@ -204,6 +222,27 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     });
 
     const sockets = new WebSocketServer({ noServer: true });
+    daemonServer.on("upgrade", (request, socket, head) => {
+        const denied = requestGuard(request, ports.daemon, ports.web, host);
+        if (
+            denied ||
+            !admitting ||
+            !claude ||
+            !["/api/agent-run", "/api/agent-run/external"].includes(
+                request.url ?? "",
+            )
+        ) {
+            socket.end(
+                `HTTP/1.1 ${denied?.status ?? 404} Rejected\r\nConnection: close\r\n\r\n`,
+            );
+            return;
+        }
+        sockets.handleUpgrade(request, socket, head, (client) =>
+            request.url === "/api/agent-run/external"
+                ? claude!.attachExternal(client)
+                : claude!.attach(client),
+        );
+    });
     webServer.on(
         "upgrade",
         (request: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -268,12 +307,15 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     function stopRuntime(runtimeId: string, force: boolean): Promise<void> {
         const pending = runtimeStops.get(runtimeId);
         if (pending) return pending;
+        runtimes.revoke(runtimeId);
         const attempt = Promise.resolve()
             .then(async () => {
                 await Promise.allSettled(registrations);
                 const record = runtimes.get(runtimeId);
                 if (!record) return;
-                await record.binding.stop(force);
+                if (record.executionOwnership === "daemon")
+                    await record.binding.stop(force);
+                await record.binding.cleanup?.();
                 if (record.terminalId && record.terminalOwnership === "owned")
                     await terminals.kill(record.terminalId);
                 await networks.removeRuntimeRoutes(record);
@@ -317,6 +359,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         const session = terminals.get(terminalId);
         if (!record || !session)
             throw new Error("Runtime or terminal not found.");
+        if (record.executionOwnership !== "daemon")
+            throw new Error(
+                "External executions cannot own or borrow a daemon terminal.",
+            );
         if (record.terminalId && record.terminalId !== terminalId)
             throw new Error("Runtime already has a terminal.");
         if (
@@ -361,7 +407,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         if (stopping) return stopping;
         // Block admission first, then look at what is actually still live.
         admitting = false;
-        const live = runtimes.list();
+        const live = runtimes
+            .list()
+            .filter((record) => record.executionOwnership === "daemon");
         const liveTerminals = terminals
             .list()
             .filter((session) => session.alive);
@@ -385,6 +433,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             };
         }
         stopping = (async (): Promise<StopOutcome> => {
+            for (const record of runtimes.list()) runtimes.revoke(record.id);
             await messages.pause();
             // A binding already being prepared must finish before we can stop
             // its real resources, rather than its temporary registration.
@@ -466,13 +515,21 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return outcome;
     }
 
-    return {
+    const daemon: Daemon = {
         ports,
         services,
         createShell,
         registerRuntime: async (input) => {
             if (!admitting)
                 throw new Error("The daemon is stopping; no new executions.");
+            if (
+                input.executionOwnership === "external" &&
+                (input.terminalId !== undefined ||
+                    input.terminalContext !== undefined)
+            )
+                throw new Error(
+                    "External executions cannot own or borrow a daemon terminal.",
+                );
             let terminalId = input.terminalId;
             const borrowing = input.terminalContext !== undefined;
             if (borrowing) {
@@ -514,7 +571,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     !terminals.get(record.terminalId)?.alive
                 )
                     throw new Error("Terminal exited during registration.");
-                if (!admitting)
+                if (!admitting || !record.collaborationActive)
                     throw new Error(
                         "The daemon is stopping; registration cancelled.",
                     );
@@ -550,4 +607,6 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         stop,
         closed,
     };
+    claude = new ClaudeController(daemon);
+    return daemon;
 }

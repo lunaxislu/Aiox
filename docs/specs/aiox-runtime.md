@@ -14,11 +14,12 @@ TUI 제품 목표이며 현재 코드·parser·플랫폼 통합이 구현 완료
 않으며 Claude Agent SDK·`-p`·headless surface·다른 vendor는 현재 범위에서 제외한다.
 
 ```text
-AgentRuntime — AIOX가 관리하는 실행
+AgentRuntime — 한 실행의 협업 등록과 관측
 ├─ vendor 실행·binding (Codex는 TUI와 App Server 포함)
 ├─ 현재 vendor conversation
-└─ 직접 소유 PTY 또는 기존 shell terminal 연결
-   └─ Web attachment — 연결·해제 가능한 화면 접근
+└─ 실행 위치
+   ├─ daemon 소유 → 직접 소유 PTY 또는 차용 shell → Web attachment
+   └─ 외부 CLI 소유 → 사용자 터미널의 stdin/stdout/stderr 상속
 ```
 
 AgentRuntime은 PID 하나나 vendor conversation ID가 아니다. 같은 이름·manifest를 다시
@@ -26,9 +27,20 @@ AgentRuntime은 PID 하나나 vendor conversation ID가 아니다. 같은 이름
 `/resume`으로 대화가 바뀌어도 Runtime/PTY가 새 실행이 되는 것은 아니다. 다른 프로세스의
 `--resume`은 새 실행이다. 브라우저 종료·pane 해제·연결 손실은 Agent 종료 요청이 아니다.
 
-Daemon이 materialized Runtime·Network·route의 권위를 갖고 Controller가 실행·종료를
-소유한다. CLI/Web/MCP는 상태를 직접 덮어쓰지 않는다. Adapter는 vendor 실행·입력·관측·정리
+Daemon이 materialized Runtime·Network·route의 권위를 갖고 실행 소유자가 프로세스 수명을
+소유한다. CLI/Web/MCP는 등록 상태를 직접 덮어쓰지 않는다. Adapter는 vendor 실행·입력·관측·정리
 차이를 흡수한다. 실제 프로세스 배치는 architecture에서 정한다.
+
+| 명령과 인증된 실행 위치 | 실행 소유자 | 사용자 화면 |
+| --- | --- | --- |
+| 어디서든 `host run` | daemon | Web |
+| Web shell의 `agent run` | daemon | 기존 Web terminal, 종료 후 같은 shell |
+| 외부 터미널의 `agent run` | CLI | 사용자 터미널, 종료 후 같은 shell |
+
+외부 실행에는 AIOX PTY·headless·xterm·Serialize를 생성하지 않는다. 실행 소유권은 terminal
+차용 관계나 Network membership과 별개다. 외부 실행은 등록이 유효할 때 Web에서 상태만
+조회하며 Web terminal 생성·조작·이관 대상이 아니다. 선택 이유는
+[[docs/decisions/execution-ownership]]을 따른다.
 
 ## 시작·준비·상태 조회
 
@@ -36,6 +48,10 @@ Daemon이 materialized Runtime·Network·route의 권위를 갖고 Controller가
   별도 standalone agent stop/attach/detach 명령은 현재 범위에 없다.
 - 프로세스 생성과 binding 준비를 구분한다. 단순 PID·socket 파일 존재만으로 준비 성공을
   표시하지 않는다. 시작 실패와 관측할 수 없는 상태를 정상 실행으로 숨기지 않는다.
+- 외부 시작은 daemon 연결·등록 준비 성공 뒤 vendor를 실행한다. 사전 연결 실패는 vendor
+  실행 전 오류다. 명시적 초기 실패(`startup-failed`, 최초 협업 준비 timeout 포함)는 오류로 보고하고
+  이번 vendor 실행을 종료한다. daemon·제어 WS 손실은 초기 실패와 다른 사건이며 이미 시작한
+  vendor는 준비 완료 전후와 무관하게 유지한다.
 - Claude Peer 최소 지원 버전 미만은 실행 실패다. 지원 버전에서 inbox 준비가 실패해도
   실패를 표시하며 Channel fallback을 실행하지 않는다. 준비 확인용 모델 호출·ACK를 강제하지 않는다.
 - 업데이트가 정상 준비 전에 실행을 종료시킨 경우 등록 성공으로 표시하지 않는다. 사용자가
@@ -58,32 +74,41 @@ Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승�
 ## 종료와 daemon 수명
 
 일반 `daemon stop`은 신규 Controller/Runtime 등록·Host materialization을 차단하고 이미
-진행 중인 registration commit과 동기화한 뒤 활성 실행 의존성을 검사한다. 활성 실행이
-있으면 거절하고 running으로 돌아간다. persistent Network 정의만 있는 것은 blocker가 아니다.
+진행 중인 registration commit과 동기화한 뒤 daemon 소유 활성 실행 의존성을 검사한다. 해당
+실행이 있으면 거절하고 running으로 돌아간다. 외부 CLI 소유 등록과 persistent Network 정의만
+있는 것은 blocker가 아니다. 종료가 허용되면 외부 협업 등록도 정리한다.
 `daemon restart`는 safe stop + start이며 stop이 거절되면 기존 daemon을 유지한다.
 `restart --force`는 제공하지 않는다.
 
 ```text
 daemon stop --force
 → 신규 등록·실행·메시지 전달 차단
-→ 모든 AIOX 관리 Host·standalone 및 PTY·binding·Relay·App Server 강제 종료
-→ 실제 종료 확인, credential·membership·Host Network 정리
+→ daemon 소유 Host·standalone 및 PTY·binding·Relay·App Server 강제 종료
+→ 소유 실행의 실제 종료 확인, 외부 실행은 협업 등록 해제
+→ credential·membership·Host Network 정리
 → 모두 정리됐으면 DB 등 daemon 자원 정리 → daemon 종료
 → 미완료가 있으면 실패·남은 자원 보고 → daemon·Web 유지 → 종료 재시도
 ```
 
-- 작업 중인 TUI도 force 종료 대상이다. 정상 TUI 종료 입력 성공을 전제하지 않는다.
+- daemon 소유 TUI는 작업 중이어도 force 종료 대상이다. 정상 TUI 종료 입력 성공을 전제하지 않는다.
 - 관리 실행 handle과 소유 관계를 기준으로 종료한다. AIOX 밖의 vendor 프로세스나 터미널
   앱 전체를 이름으로 검색해 종료하지 않는다.
 - 종료 입력·신호 전달 성공은 실제 종료 성공이 아니다. 조회 실패는 프로세스 부재의 증거가
   아니다. 일부 자원이 남거나 관측할 수 없으면 전체 종료 성공으로 보고하지 않는다.
-- AIOX가 직접 관리하는 TUI·PTY·binding·Relay·App Server를 종료·확인한다. Agent가 실행한
+- daemon이 직접 소유하는 TUI·PTY·binding·Relay·App Server를 종료·확인한다. Agent가 실행한
   개발 서버·테스트·스크립트 등 일반 작업 자식 전체를 일괄 종료하거나 그 생존만으로 종료 실패를
   판정하지 않는다. daemon 자체를 먼저 죽인 뒤 관리 자원 정리가 됐다고 간주하지 않는다.
 - 일부 관리 자원 정리가 실패하면 daemon·Web과 남은 자원의 정리 경로를 유지한다. 같은
   `aiox daemon stop --force`를 다시 실행해 미완료 자원 정리를 재시도할 수 있어야 한다.
 - persistent Network 정의, Worktree와 이미 저장한 작업 파일은 삭제하지 않는다.
 - Host의 정상 종료·Agent stopped/start 규칙은 [[docs/specs/aiox-host]]를 따른다.
+
+이미 시작한 외부 실행은 준비 완료 전후와 무관하게 daemon의 정상·force·비정상 종료나 제어 연결 손실에도 vendor와
+필수 부속 실행을 유지한다. daemon은 연결 손실 시 협업 등록·credential·membership을 정리하며
+vendor 종료 성공으로 해석하지 않는다. 자동 재연결·재등록은 하지 않으며 daemon 재시작 후
+협업 복구는 `agent run` 재실행으로 한다. 등록·DB 정리 실패는 `stop_incomplete`로 보고하고
+daemon·Web과 재시도 경로를 유지한다. 외부 vendor 종료 후 CLI는 정리 요청 실패를 보고하되
+그 실패 때문에 shell 복귀를 막지 않는다.
 
 사용자가 남은 TUI에서 `/exit` 등으로 실제 실행을 끝내면 해당 Runtime의 자원·등록·credential·
 membership만 정리한다. 다른 실행과 daemon·Web은 유지하며 마지막 TUI 종료도 daemon 자동 종료를
@@ -97,7 +122,7 @@ credential·Network membership을 발급하지 않는다. shell에서 `claude`·
 AIOX 메시지 본문을 shell 명령으로 주입하지 않는다.
 
 ```text
-일반 shell PTY
+daemon 소유 일반 shell PTY
  → 그 shell에서 aiox agent run → 같은 terminal에 새 Agent Runtime 연결
  → vendor 종료 → Agent 등록·credential·membership·관련 활성 route 정리
  → 같은 shell·terminal ID 유지
@@ -108,7 +133,8 @@ Runtime이 빌린 shell은 Agent 종료로 종료하지 않는다. 직접 소유
 credential을 사용한다. 이전 요청 결과·알림은 collaboration 계약의 원 Runtime에 남는다.
 
 기존 terminal 연결은 내부 실행 문맥을 검증하며 terminal ID만으로 연결·Agent 신원을 주장할 수
-없다. 문맥이 없는 외부 터미널 standalone도 유지한다. 사용자 로그인·토큰 입력 UX는 추가하지 않는다.
+없다. 문맥이 없으면 외부 CLI 소유 실행이며, 잘못된 내부 문맥을 외부 실행으로 우회하지 않는다.
+사용자 로그인·토큰 입력 UX는 추가하지 않는다.
 terminal 자체가 종료되면 연결 Agent도 정리한다. 마지막 Agent 종료로 daemon은 자동 종료하지
 않으며 `daemon stop --force`는 daemon이 직접 관리하는 일반 shell PTY도 정리한다.
 

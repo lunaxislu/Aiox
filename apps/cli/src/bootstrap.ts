@@ -18,6 +18,7 @@ import type {
 } from "@aiox/protocol";
 import {
     agentViewSchema,
+    agentRunSchema,
     apiPath,
     daemonStateSchema,
     daemonStatusSchema,
@@ -25,8 +26,12 @@ import {
     errorBodySchema,
     networkViewSchema,
     stopResultSchema,
+    terminalContextFromEnv,
 } from "@aiox/protocol";
+import { WebSocket } from "ws";
 
+import { runExternal } from "@/external";
+import { runForeground } from "@/foreground";
 import type { CliOptions, CliPort, CliRequest, CommandName } from "@/requests";
 
 const execFileAsync = promisify(execFile);
@@ -413,8 +418,75 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                           networks: live.networks,
                       }),
             },
-            vendorIntegration: "not implemented",
+            vendorIntegration:
+                "Claude foreground launch; Codex integration pending",
         };
+    }
+
+    async function runAgent(request: CliRequest): Promise<void> {
+        if (operand(request.args, 0) !== "claude") unavailable("agent.run");
+        const { name, network, role, description, instruction } =
+            request.options;
+        const parsed = agentRunSchema.safeParse({
+            adapter: "claude",
+            cwd: process.cwd(),
+            env: Object.fromEntries(
+                Object.entries(process.env).filter(
+                    ([, value]) => value !== undefined,
+                ),
+            ),
+            args: request.adapterArgs ?? [],
+            cols: process.stdout.columns ?? 80,
+            rows: process.stdout.rows ?? 24,
+            name,
+            network,
+            role,
+            description,
+            instruction,
+            terminalContext: terminalContextFromEnv(process.env),
+        });
+        if (!parsed.success)
+            throw new Error("Invalid Claude launch options or environment.");
+        const url = await daemonUrl();
+        const external = parsed.data.terminalContext === undefined;
+        const socket = new WebSocket(
+            `${url.replace(/^http:/, "ws:")}/api/agent-run${external ? "/external" : ""}`,
+            { handshakeTimeout: requestTimeoutMs },
+        );
+        // Keep the error listener through the handshake-to-relay handoff.
+        let connectError: () => void = () => {};
+        try {
+            await new Promise<void>((resolve, reject) => {
+                connectError = () =>
+                    reject(
+                        new Error(
+                            `Cannot reach the AIOX daemon at ${url}. Start it with 'aiox daemon start'.`,
+                        ),
+                    );
+                socket.once("open", resolve);
+                socket.on("error", connectError);
+                socket.once("close", connectError);
+            });
+            let execution;
+            if (external) {
+                const {
+                    cols: _cols,
+                    rows: _rows,
+                    terminalContext: _context,
+                    ...launch
+                } = parsed.data;
+                execution = runExternal(socket, launch);
+            } else {
+                socket.send(JSON.stringify(parsed.data));
+                execution = runForeground(socket);
+            }
+            const result = await execution;
+            process.exitCode =
+                result.signal === null ? result.exitCode : 128 + result.signal;
+        } finally {
+            // Keep the handshake guard through asynchronous launcher preparation too.
+            socket.terminate();
+        }
     }
 
     return {
@@ -505,6 +577,8 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                         "no agents",
                     );
                 }
+                case "agent.run":
+                    return runAgent(request);
                 case "agent.show": {
                     const body = await call(
                         await daemonUrl(),

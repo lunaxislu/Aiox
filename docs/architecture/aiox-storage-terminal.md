@@ -102,25 +102,38 @@ vendor Ctrl+O 등 입력·브라우저 예약 키를 구분한다.
 
 ## PTY와 Web 복귀
 
+PTY·headless·Serialize·Web 화면 복원은 daemon 소유 terminal의 책임이다. 외부 CLI 소유
+실행은 사용자 입출력을 상속하며 TerminalService에 terminal을 생성·차용하거나 화면을
+이관하지 않는다. Web은 유효한 협업 등록 상태만 조회한다. 실행 위치 판정은 인증된 terminal
+문맥을 사용하며 소유권은 [[docs/architecture/aiox-system]]을 따른다. [Status: As-built]
+근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:451`,
+[[apps/cli/src/external.ts]] `apps/cli/src/external.ts:12`.
+
 일반 shell의 생성 작업 경로·terminal ID는 TerminalService가 유지한다. `cwd` 조회는 생성 경로이며
 shell 안의 `cd`를 실시간 추적한 값이 아니다. 일반 shell에는 Agent credential·membership이 없다.
 일반 shell 생성 시 상속 환경의 `AIOX_*` 문맥을 제거하고, 새 `AIOX_TERMINAL_ID`와 비공개
 `AIOX_TERMINAL_TOKEN`을 child env에 넣는다. 이 문맥은 메모리에만 유지하고 API 목록·URL·argv·로그에
 노출하지 않는다. 일반 shell exit/정리 후에는 유효하지 않다. [Status: As-built]
 
-standalone 연결 소비자는 protocol의 `terminalContextFromEnv(env)`로 문맥을 읽어 daemon의
+daemon foreground 연결 소비자는 protocol의 `terminalContextFromEnv(env)`로 문맥을 읽어 daemon의
 `registerRuntime({ terminalContext, createBinding, ... })`에 전달한다. daemon은 살아 있는 shell의
-비밀값과 중복 연결을 검증한 뒤 기존 terminal을 차용한다. 문맥이 없으면 외부 standalone 경로를
-유지하고 `terminalId` 직접 지정은 Agent 소유 PTY에만 사용한다. 등록/시작 실패도 빌린 shell을
-종료하지 않는다. 실제 CLI vendor 실행·foreground 프로세스 종료 관측·shell 복귀 연결은 아직
-구현하지 않았으며 이 내부 연결 지점은 대역으로 검증했다. 원격 Agent 등록 HTTP API는 추가하지 않았다.
+비밀값과 중복 연결을 검증한 뒤 기존 terminal을 차용한다. 문맥이 없으면 CLI 직접 실행 경로를
+사용하고 `terminalId` 직접 지정은 Agent 소유 PTY에만 사용한다. 등록/시작 실패도 빌린 shell을
+종료하지 않는다. Claude CLI는 이 문맥을 foreground WS의 실행 요청에 포함하고 내부 vendor PTY를
+중계한다. vendor 종료 후 raw mode를 복원하여 원래 shell로 돌아간다. 일반 browser attachment는
+이 foreground 연결과 별개다. 구현·검증 경계는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
+Codex 연결은 후속 구현 대상이다. [Status: As-built]
+
+근거: [[apps/cli/src/foreground.ts]] `apps/cli/src/foreground.ts:20`,
+[[apps/cli/src/foreground.test.ts]] `apps/cli/src/foreground.test.ts:1`,
+[[apps/daemon/src/claude-controller.test.ts]] `apps/daemon/src/claude-controller.test.ts:113-154`.
 
 근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:38-115`,
 [[packages/protocol/src/index.ts]] `packages/protocol/src/index.ts:44-67`,
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:473-552`,
 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:293-435`.
 
-Stage 2-1 구현은 세션당 xterm headless로 화면 상태를 유지하고, 통합 attachment가 snapshot과 이후 출력·resize·exit의 순서를 소유한다. SerializeAddon의 화면 바이트와 누락 상태 보완을 함께 전달하며 브라우저는 snapshot 크기에서 파싱과 상태 적용을 마친 뒤 실시간 이벤트를 처리한다. pane 크기 변경은 서버에 요청하고 서버의 resize 이벤트 순서에 따라 적용한다. 운영 Web의 탭·분할 배치 복귀는 별도 통합 대상이다. [Status: As-built]
+Stage 2-1 구현은 세션당 xterm headless로 화면 상태를 유지하고, 통합 attachment가 snapshot과 이후 출력·resize·exit의 순서를 소유한다. SerializeAddon의 화면 바이트와 누락 상태 보완을 함께 전달하며 브라우저는 snapshot 크기에서 파싱과 상태 적용을 마친 뒤 실시간 이벤트를 처리한다. pane 크기 변경은 서버에 요청하고 서버의 resize 이벤트 순서에 따라 적용한다. 새 foreground 실행은 초기 PTY listener로 첫 출력부터 전달하므로 Web snapshot을 재생하지 않는다. 운영 Web의 탭·분할 배치 복귀는 별도 통합 대상이다. [Status: As-built]
 
 복원 책임은 다음 순서로 연결된다. 화면 캡처와 live 구독을 호출자가 따로 조합하지 않고 세션의 attachment가 경계를 소유한다. [Status: As-built]
 

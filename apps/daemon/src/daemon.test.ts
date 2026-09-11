@@ -455,7 +455,7 @@ describe("stopping", () => {
         expect(session.alive).toBe(true);
         expect(
             harness.daemon.services.runtimes.authenticate(a.token),
-        ).toBeDefined();
+        ).toBeUndefined();
         expect(
             (await call(`/api/terminals/${shell.id}`, { method: "DELETE" }))
                 .body,
@@ -783,7 +783,10 @@ describe("stopping", () => {
                 code: "stop_incomplete",
                 warnings: ["runtime a: route write failed"],
             });
-            expect(runtimes.authenticate(agent.token)).toBeDefined();
+            expect(runtimes.authenticate(agent.token)).toBeUndefined();
+            expect(runtimes.get(agent.runtimeId)?.collaborationActive).toBe(
+                false,
+            );
             expect(await networks.require(network.id)).toEqual(before);
 
             expect(
@@ -897,5 +900,100 @@ describe("history retention", () => {
         } finally {
             await short.close();
         }
+    });
+});
+
+describe("execution ownership", () => {
+    it.each([false, true])(
+        "releases external collaboration without stopping its process (force=%s)",
+        async (force) => {
+            const stop = vi.fn(async () => {});
+            const cleanup = vi.fn(async () => {});
+            const agent = await harness.daemon.registerRuntime({
+                networkId: null,
+                executionOwnership: "external",
+                createBinding: () => ({
+                    deliver: async () => {},
+                    stop,
+                    cleanup,
+                }),
+            });
+            expect(await harness.daemon.stop(force)).toMatchObject({
+                stopped: true,
+            });
+            expect(stop).not.toHaveBeenCalled();
+            expect(cleanup).toHaveBeenCalledOnce();
+            expect(
+                harness.daemon.services.runtimes.authenticate(agent.token),
+            ).toBeUndefined();
+        },
+    );
+
+    it("revokes collaboration immediately and retains failed cleanup for retry", async () => {
+        const stop = vi.fn(async () => {});
+        const cleanup = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("cleanup failed"))
+            .mockResolvedValue(undefined);
+        const agent = await harness.daemon.registerRuntime({
+            networkId: null,
+            executionOwnership: "external",
+            createBinding: (controls) => {
+                controls.setActivity("idle");
+                return { deliver: async () => {}, stop, cleanup };
+            },
+        });
+        await expect(
+            harness.daemon.stopRuntime(agent.runtimeId, true),
+        ).rejects.toThrow("cleanup failed");
+        const { runtimes } = harness.daemon.services;
+        expect(runtimes.authenticate(agent.token)).toBeUndefined();
+        expect(runtimes.get(agent.runtimeId)?.collaborationActive).toBe(false);
+        expect((await call("/api/agents")).body).toEqual([]);
+        expect((await call(`/api/agents/${agent.runtimeId}`)).status).toBe(404);
+        expect(await harness.daemon.stop(false)).toMatchObject({
+            stopped: true,
+        });
+        expect(cleanup).toHaveBeenCalledTimes(2);
+        expect(stop).not.toHaveBeenCalled();
+    });
+});
+
+describe("external registration boundaries", () => {
+    it("rejects an external runtime borrowing a daemon shell", async () => {
+        const { context } = borrowableShell();
+        await expect(
+            harness.daemon.registerRuntime({
+                networkId: null,
+                executionOwnership: "external",
+                terminalContext: context,
+                createBinding: fakeVendor().createBinding,
+            }),
+        ).rejects.toThrow("External executions");
+    });
+    it("waits for an external preparation during plain stop without killing its process", async () => {
+        let release!: () => void;
+        const preparing = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const stop = vi.fn(async () => {});
+        const cleanup = vi.fn(async () => {});
+        const registration = harness.daemon
+            .registerRuntime({
+                networkId: null,
+                executionOwnership: "external",
+                createBinding: async () => {
+                    await preparing;
+                    return { deliver: async () => {}, stop, cleanup };
+                },
+            })
+            .catch((error: unknown) => error);
+        const stopping = harness.daemon.stop(false);
+        release();
+        expect(await stopping).toMatchObject({ stopped: true });
+        expect(await registration).toBeInstanceOf(Error);
+        expect(stop).not.toHaveBeenCalled();
+        expect(cleanup).toHaveBeenCalledOnce();
+        expect(harness.daemon.services.runtimes.list()).toEqual([]);
     });
 });

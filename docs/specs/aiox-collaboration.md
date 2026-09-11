@@ -24,7 +24,7 @@ Authorization: Bearer <runtime-token> → 요청 Runtime 신원
   인증을 대신하거나 다른 source로 바꾸게 하지 않는다.
 - 같은 Network의 Agent는 같은 MCP URL과 각자의 token을 사용한다. Network URL은 권한 자체가
   아니며 매 호출마다 token 유효성, 현재 소속과 route를 검사한다.
-- Runtime 종료·시작 실패 때 token과 peer binding을 정리한다. revoke 뒤 기존 MCP session으로
+- Runtime 종료·시작 실패·협업 등록 유효성 상실 때 token과 peer binding을 정리한다. revoke 뒤 기존 MCP session으로
   호출해도 허용하지 않으며 새 실행은 새 token을 사용한다.
 - Claude inbox token과 AIOX MCP token은 별개다. inbox display label도 인증 신원이 아니다.
 - 실행 시 선택한 단일 Network의 설정을 주입한다. route 변경은 같은 URL에서 다음 호출에
@@ -96,6 +96,9 @@ Claude는 Runtime·session_id·prompt_id와 연결된 UserPromptSubmit/Stop을, 
 Codex의 정상 입력 응답은 runtime 입력 수락 근거다. App Server의 진행·완료·오류·사용자
 요청을 관측하고 활성 thread는 연결된 TUI의 성공한 start/resume/fork 결과에 맞춰 binding한다.
 Claude는 hooks를 daemon으로 전달하며 프로세스/연결 손실은 별도 실행 관측도 사용한다.
+외부 제어 연결 손실은 협업 등록을 끝낸다. AIOX 요청의 연결·관측 실패와 vendor 프로세스
+종료·업무 결과를 구분한다. 연결 손실 원인은 요청 결과에 남기며 vendor가 계속 수행하는
+업무의 성공·실패를 확정하지 않는다. 실행 수명은 runtime 계약을 따른다.
 
 Claude `UserPromptSubmit`의 원문·AIOX 연결 ID를 `session_id`/`prompt_id`에 연결하고 같은
 `Stop`을 응답 종료로 연결하는 것이 수용한 관측 경로다. `source`는 optional이며 system이

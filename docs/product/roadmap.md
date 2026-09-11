@@ -29,7 +29,7 @@ Status: Current
 - 진입 조건: 새 외부 계약과 provider binding 경계가 구현에 사용 가능하다.
 - 착수 검토 / 열린 결정: 내부 wire의 지원 조건, 필요한 상태 매핑 및 입력 presentation.
 - 통과 조건: 실제 송신·수신·회신을 연결하고 불확실한 관측을 성공으로 표시하지 않는다.
-  HTTP MCP credential과 현재 Network·route 검사 및 관리 실행 전체 종료가 동작한다.
+  HTTP MCP credential·Network·route 검사, daemon 소유 실행 종료와 외부 실행의 독립 수명·등록 정리가 동작한다.
 - Owner refs: [[docs/specs/aiox-collaboration]]에서 메시지·route·회신 의미,
   [[docs/architecture/aiox-vendor-bindings]]에서 실행과 관측 경계를 확인한다.
 
@@ -48,7 +48,7 @@ Status: Current
 - 목표: 개발 머신의 소스 실행과 실제 배포 산출물의 동작 차이를 닫는다.
 - 진입 조건: 공개할 계약이 구현되고 관련 검증이 통과한다.
 - 착수 검토 / 열린 결정: 지원 Node·CPU 조합, npm package metadata와 플랫폼별 설치 조건.
-- 통과 조건: 동일 배포 산출물의 clean install, CLI·DB·PTY·vendor 연동·관리 실행 종료를
+- 통과 조건: 동일 배포 산출물의 clean install, CLI·DB·PTY·vendor 연동과 실행 소유권에 맞는 종료·등록 정리를
   지원 OS에서 확인하고 native Windows와 WSL 결과를 구분한다.
 - Owner refs: [[docs/specs/aiox-runtime]]에서 실행·종료 의미,
   [[docs/architecture/aiox-storage-terminal]]에서 DB·PTY 플랫폼 경계를 확인한다.

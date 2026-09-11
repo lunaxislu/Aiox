@@ -7,6 +7,10 @@
     ],
     "type": "module",
     "exports": {
+        "./claude-environment": {
+            "types": "./dist/claude-environment.d.ts",
+            "import": "./dist/claude-environment.js"
+        },
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js"

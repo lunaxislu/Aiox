@@ -191,7 +191,7 @@ export function createCli(
             .command("stop")
             .option(
                 "--force",
-                "Terminate all AIOX-managed executions, then stop daemon",
+                "Terminate daemon-owned executions and release external collaboration, then stop daemon",
             ),
         "daemon.stop",
     );

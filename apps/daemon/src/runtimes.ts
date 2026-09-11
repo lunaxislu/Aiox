@@ -26,13 +26,19 @@ export type InboundMessage = {
 export type AgentBinding = {
     /** Resolves when the input was accepted, never when the work is done. */
     deliver(message: InboundMessage): Promise<void>;
+    /** Terminates resources owned by the daemon; never called for external executions. */
     stop(force: boolean): Promise<void>;
+    /** Releases collaboration resources independently of process lifetime. */
+    cleanup?(): Promise<void>;
 };
 
 /** The daemon side a binding may call as it observes its runtime. */
 export type RuntimeControls = {
     readonly runtimeId: string;
-    setActivity(activity: RuntimeActivity): void;
+    setActivity(
+        activity: RuntimeActivity,
+        observation?: { event: string; reason?: string },
+    ): void;
     /**
      * Report the result of one previously delivered AIOX input. A turn that is
      * not connected to a delivery has nothing to settle, which is why finishing
@@ -52,9 +58,12 @@ export type RuntimeRecord = {
     readonly description: string | null;
     readonly networkId: string | null;
     readonly hostId: string | null;
+    readonly executionOwnership: "daemon" | "external";
+    collaborationActive: boolean;
     terminalId: string | null;
     terminalOwnership: "owned" | "borrowed" | null;
     activity: RuntimeActivity;
+    observation: { event: string; reason: string | null } | null;
     binding: AgentBinding;
 };
 
@@ -66,6 +75,7 @@ const unbound: AgentBinding = {
 };
 
 export type RegisterRuntime = {
+    executionOwnership?: "daemon" | "external";
     name?: string | undefined;
     role?: string | undefined;
     description?: string | undefined;
@@ -112,13 +122,21 @@ export class RuntimeRegistry {
     ): Promise<{ record: RuntimeRecord; token: string }> {
         const id = randomUUID();
         let reportedActivity: RuntimeActivity = "starting";
+        let reportedObservation: RuntimeRecord["observation"] = null;
         const controls: RuntimeControls = {
             runtimeId: id,
-            setActivity: (activity) => {
+            setActivity: (activity, observation) => {
                 reportedActivity = activity;
+                if (observation)
+                    reportedObservation = {
+                        event: observation.event,
+                        reason: observation.reason ?? null,
+                    };
                 const record = this.#runtimes.get(id);
-                if (record && record.binding !== unbound)
+                if (record && record.binding !== unbound) {
                     record.activity = activity;
+                    record.observation = reportedObservation;
+                }
             },
             settle: (deliveryId, outcome, error) =>
                 this.#onSettle(id, deliveryId, outcome, error),
@@ -130,12 +148,15 @@ export class RuntimeRegistry {
             description: input.description ?? null,
             networkId: input.networkId,
             hostId: input.hostId ?? null,
+            executionOwnership: input.executionOwnership ?? "daemon",
+            collaborationActive: true,
             terminalId: input.terminalId ?? null,
             terminalOwnership: input.terminalId
                 ? (input.terminalOwnership ?? "owned")
                 : null,
             // Not yet a send target: process spawn is not binding readiness.
             activity: "starting",
+            observation: null,
             binding: unbound,
         };
         // Registered before the binding is built so the binding can report its
@@ -145,13 +166,14 @@ export class RuntimeRegistry {
         try {
             record.binding = await input.createBinding(controls);
             record.activity = reportedActivity;
+            record.observation = reportedObservation;
         } catch (error) {
             // Only what this attempt created is removed.
             this.unregister(id);
             throw error;
         }
         const token = randomBytes(32).toString("base64url");
-        this.#tokens.set(token, id);
+        if (record.collaborationActive) this.#tokens.set(token, id);
         return { record, token };
     }
 
@@ -169,12 +191,13 @@ export class RuntimeRegistry {
     /** By id first, then by unique name; `/` is the qualified-name separator. */
     find(reference: string): RuntimeRecord | undefined {
         const byId = this.#runtimes.get(reference);
-        if (byId) return byId;
+        if (byId?.collaborationActive) return byId;
         const [host, name] = reference.includes("/")
             ? (reference.split("/", 2) as [string, string])
             : [undefined, reference];
         const matches = this.list().filter(
             (record) =>
+                record.collaborationActive &&
                 record.name === name &&
                 (host === undefined || record.hostId === host),
         );
@@ -191,11 +214,18 @@ export class RuntimeRegistry {
         return this.list().filter((record) => record.networkId === networkId);
     }
 
-    /** Drops the execution's registration, credential and membership. */
-    unregister(id: string): boolean {
+    /** Ends collaboration immediately while preserving resources awaiting cleanup. */
+    revoke(id: string): void {
+        const record = this.#runtimes.get(id);
+        if (record) record.collaborationActive = false;
         for (const [token, runtimeId] of this.#tokens) {
             if (runtimeId === id) this.#tokens.delete(token);
         }
+    }
+
+    /** Removes a record after its cleanup has succeeded. */
+    unregister(id: string): boolean {
+        this.revoke(id);
         return this.#runtimes.delete(id);
     }
 }

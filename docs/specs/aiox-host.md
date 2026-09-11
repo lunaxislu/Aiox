@@ -9,6 +9,8 @@ CLI 전체 표면은 [[docs/specs/aiox-runtime]], 인증·실제 send 판정은
 ## 실행 namespace와 작업 공간
 
 Host는 manifest의 Agent와 전용 Network 하나를 작업 공간에서 실행하는 독립 namespace다.
+`host run`은 호출한 터미널 위치와 무관하게 daemon 소유로 실행하고 Web에 표시한다.
+실행 소유권·daemon 종료 경계는 [[docs/specs/aiox-runtime]]을 따른다.
 같은 YAML을 여러 번 실행해도 Host Runtime ID, Agent Runtime ID, token, Network는 별개다.
 실행 중 Host 이름은 daemon 범위에서 유일하다. `--name`은 YAML `host.name`을 덮어쓰며,
 서로 다르다는 이유만으로 오류를 내지 않는다.
@@ -189,7 +191,7 @@ aiox host agent stop <host> <agent-names...>
 
 Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실행·credential·binding·활성 membership을 정리하고 Host의 항목·메타데이터·실행 설정을 stopped로 유지한다. start는 기존 항목을 새 Runtime ID·credential로 실행하며 이전 vendor 대화를 자동 resume하지 않는다. 이미 실행 중인 항목을 중복 실행하지 않고 이름별 결과를 보고한다. 보존한 Host route 설정은 새 실행 ID에 연결하며 stopped 항목에는 전달하지 않는다.
 
-Standalone 실행 종료 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
+Standalone 실행 종료 또는 협업 등록 유효성 상실 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
 
 Sources:
 

@@ -27,6 +27,7 @@ status: open
 - W3 소비 지점: packages/protocol의 terminalContextFromEnv(env) → daemon.registerRuntime({terminalContext, createBinding, ...})로 기존 shell을 차용한다. terminalId 단독은 일반 shell 연결 권한이 아니다. 문맥은 child env AIOX_TERMINAL_ID/AIOX_TERMINAL_TOKEN이며 URL·argv·로그에 노출하지 않는다. apps/daemon/src/daemon.ts·terminals.ts 및 daemon.test.ts/terminals.test.ts가 수명·실패/재시도 근거다. 실제 agent run HTTP 등록·vendor foreground 종료 관측·원 shell 복귀는 이 단계에서 연결한다. 문맥 없는 외부 standalone은 유지하고 직접 소유 PTY만 Agent 종료 시 종료한다. 생성 cwd는 실시간 cd 추적값이 아니다.
 - Stage2 W1~W4 완료 후 다음 단계로 선택됐으나 2026-09-10 공통 Stage2-1을 선행 배치했다. Stage2 최신 W4 entry와 owner를 읽는다. 코드 6621fc3의 CI 34314631099는 3 OS × Node22/24 success이며 Ubuntu Node22 버퍼 timeout은 동일 SHA 재실행 통과·원인 미확정이다. macOS Chrome plain-shell 검증과 vendor 대역 성공을 실제 Claude 통합 성공으로 승계하지 않는다. 2026-09-11 승인된 초기 준비 제한·Notification 힌트 정리·probe cwd·terminal dispose의 국소 수정을 반영했다. 최신 수정 블록을 소비하되 Stage3 전체 착수·완료나 실제 vendor 검증 완료로 확대하지 않는다.
 - Stage2-1 공통 headless·serialization 복원 단계는 완료됐다. logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md의 종료 결과와 docs/architecture/aiox-storage-terminal.md를 소비하고 이 로그 W1에서 실행·주입 계약 대조를 재개한다. 공통 Web 화면 검증을 Claude inbox·hooks 통합 완료로 승계하지 않는다. 다음 실사용 검증 전 서버와 Web이 추가 snapshot 필드를 포함한 동일 빌드인지 확인하며 사용자 세션 재시작은 별도 지시에 따른다.
+- 2026-09-11 사용자 요청으로 Stage2-2 공통 실행 소유권 단계를 선행 배치했다. 현재 활성 단계는 plans/aiox-tui-product-rebuild.md → logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md다. 이 로그 W1은 Stage2-2 완료 후 복귀 지점으로 보존한다. 외부 agent run의 CLI 직접 실행·daemon 종료 독립성은 모든 vendor 공통 정책이며 이전 daemon PTY 검증으로 충족을 선언하지 않는다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -83,3 +84,29 @@ owner docs/architecture/aiox-vendor-bindings.md에 초기 준비 이력·현재 
 ## 2026-09-11 · Stage2-1 완료 결과 소비 및 W1 재개
 
 공통 복원 단계의 W1~W5 완료 결과를 소비하고 W1을 재개 지점으로 올린다. PTY 통합 attachment, snapshot 상태 보완 및 LNM·커서 깜빡임 회귀는 선행 단계에서 완료했다. 사용자가 보고한 A~F 해결과 terminal67/Web20 회귀를 이 단계의 실제 Claude inbox·hooks·전 OS 통합 검증 완료로 확대하지 않는다. 기존 이 로그의 준비 제한·Notification·probe cwd·dispose 수정 결과를 유지하며 W1 실행·주입 계약과 남은 W2~W5를 이어간다. 이번 작업은 포인터 정리이며 vendor 실행이나 daemon 재시작은 하지 않았다.
+
+## 2026-09-11 · W1 실행·주입 계약 대조와 사전 검사 보완
+
+사용자가 진행 상태와 필요한 사용자 행동을 확인한 뒤 W1 진행에 동의했다. 기존 작업 트리의 Claude 구현과 변경을 보존하고 CLI bootstrap/foreground → agentRunSchema → daemon WS/등록 → ClaudeController → prepareClaudeLaunch/probeClaude/ClaudeBinding 및 관련 테스트를 대조했다. Stage2-1 종료 결과와 runtime/collaboration/vendor-bindings의 foreground·borrowed shell·실행별 신원 계약을 소비했다. 이번 수정은 claude-launch.ts와 launch/controller 테스트 3개 파일에 한정한다.
+
+확인: 기존 사전 검사는 --print/-p, --bare/--safe-mode, inbox 주소·MCP aiox·hook credential 충돌을 검사하지만 --bg/--background/--tmux를 통과시켰다. https://code.claude.com/docs/en/cli-reference 에서 background 실행 후 즉시 반환과 별도 tmux/iTerm2 실행 의미를 확인했다. foreground TUI 소유 계약에 맞게 해당 옵션(=classic 포함)을 실행 전에 거절한다. 실제 preflight를 사용하는 controller 회귀 4개가 수정 전 실패했고 수정 후 영어 오류·vendor 미생성·등록 정리·빌린 shell 생존을 확인했다.
+
+확인: https://code.claude.com/docs/en/env-vars 의 CLAUDE_CODE_SAFE_MODE는 --safe-mode와 같은 hooks/MCP 비활성화 경로다. caller env 및 로드한 settings env에서 활성 값 1/true(대소문자 무관)를 검사하도록 보완했다. 수정 전 통과하던 실패 테스트를 확인한 뒤 구현했으며 0/false/빈 값은 보존한다. 사용자 환경·영구 설정을 수정하지 않으며 오류에 값은 넣지 않는다. 이는 문서로 확인한 의미와 AIOX 자동 검증 결과이며 실제 vendor safe-mode 재현은 아니다. 기존 architecture의 필수 hooks·foreground·설정 보존 계약을 구현하는 국소 검사이므로 owner 문서에 옵션 목록을 중복 추가하지 않았다.
+
+검증: 최종 pnpm check가 lint·format·build·typecheck와 31개 파일/357개 테스트를 모두 통과했다. 최초 전체 검증은 CLI의 listen EPERM(127.0.0.1)과 연쇄 timeout으로 실패했으며 샌드박스 외 실행 승인 후 동일 명령 전체를 재실행해 통과했다. /private/tmp/aiox-stage3-w1-check-approved.log가 해당 실행 출력이다. 대상 launch/controller는 35개 테스트 통과, CLI는 34개 테스트 통과도 개별 확인했다. 실제 사용자 daemon·vendor 세션을 실행하거나 재시작하지 않았다.
+
+W1은 완료로 바꾸지 않는다. 다음은 최신 built CLI/daemon에서 실제 Claude 시작·실행별 주입과 기존 설정 보존, 같은 shell 및 외부 standalone의 foreground 복귀를 확인하고 W1 완료를 판정하는 것이다. 기존 대역 및 과거 시작 관측을 이번 실제 vendor 검증으로 승계하지 않는다. W2~W5, 실제 모델 inbox/hooks와 Windows 통합 완료 조건은 유지한다.
+
+### 2026-09-11 16:44 · 실제 Claude 두 shell 경로 검증 — 코드 수정 없음
+
+사용자는 같은 AIOX shell 및 외부 standalone 경로를 검증만 하고 코드는 수정하지 말라고 지시했다. 제품 소스·tests·owner를 수정하지 않고 pnpm build를 통과시킨 뒤 임시 harness /private/tmp/aiox-stage3-w1-real.mjs로 macOS 실제 Claude를 실행했다. 사용자 daemon 대신 별도 DB·임의 포트 daemon 및 검증용 PTY를 사용했다. CLI 빌드 사본의 createFoundationPort home 인자만 임시 daemon 탐색 위치로 지정하고 원래 vendor env·설정은 유지했다. 따라서 사용자 운영 daemon·브라우저 화면의 직접 검증은 아니다.
+
+확인: /private/tmp/aiox-s3-real-asYHai 실행에서 borrowed/external 모두 실제 Claude PTY 생존 + binding.ready(Network 사용에 따른 MCP initialize와 인증 hook/inbox 조건), borrowed의 기존 terminal ID 연결 및 external의 null terminal ID, 공개 terminal 수 1 유지가 통과했다. 두 경로 모두 /exit 후 shell 반환 코드 0, Runtime 목록 비움, vendor PTY 종료, inbox 경로 삭제, 원래 shell 생존 및 후속 printf 입력 성공을 확인했다. user settings.json·project settings.json·settings.local.json·project .mcp.json은 전후 SHA-256/부재 상태가 동일했다. 검증 daemon stop 성공을 확인했다.
+
+제한: 모델 요청이나 inbox 메시지를 보내지 않았다. instruction의 모델 소비, 기존 MCP 각각의 실제 연결·hook 각각의 실행, credential 폐기 후 HTTP 거부는 이번 검사의 assertion 대상이 아니다. 전역 .claude.json의 vendor 자체 갱신은 설정 파일 해시 검증 대상에 포함하지 않았다. Windows/Linux/WSL과 실제 GUI 표시는 미검증이며 W1 전체 완료나 W2~W5 완료로 확대하지 않는다. W1 next pointer를 유지한다.
+
+첫 시도는 localhost listen EPERM으로 실행하지 못해 승인 후 재실행했다. 승인된 최초 harness는 CLI 사본의 chunk 연결 누락으로 ERR_MODULE_NOT_FOUND가 나서 vendor 실행 전 실패했다. 임시 harness에 chunk symlink를 보완한 후 위 두 경로가 통과했다. 제품 결함으로 분류하지 않는다.
+
+## 2026-09-11 · Stage2-2 공통 실행 소유권 단계로 전환
+
+사용자는 명령·실행 위치에 따른 AIOX 공통 정책을 Stage3의 vendor 구현에서 분리하여 Stage2-2 생성·로그 기록·활성 포인터 이동을 요청했다. 합의 내용과 실행 작업은 logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md가 소유한다. plan은 Stage2-2를 활성화하고 Stage3를 대기로 둔다. 이 로그의 기존 구현·검증 기록과 W1~W5를 보존하며 W1 [>]는 단계 복귀 시 재개 지점이다. Stage2-2 완료 뒤 새 실행 경계를 소비해 W1 완료 여부를 판정한다. 이번 전환은 제품 구현·vendor 검증을 수행한 결과가 아니다.

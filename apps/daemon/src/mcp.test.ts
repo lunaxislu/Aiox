@@ -1,7 +1,7 @@
 import { ONE_WAY_NOTICE } from "@aiox/domain";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DaemonHarness, FakeVendor } from "@/testing";
 import { fakeVendor, startTestDaemon } from "@/testing";
@@ -537,4 +537,55 @@ describe("automatic notification", () => {
         );
         expect(stored!.outcome).toBe("completed");
     });
+});
+
+it("revoked runtimes cannot use MCP or remain discoverable while cleanup is retained", async () => {
+    const a = await join("A");
+    const b = await join("B");
+    await harness.daemon.services.db.networks.replaceRouting(networkId, {
+        defaultPolicy: "allow",
+        routes: [],
+    });
+    const aClient = await connect(a.token);
+    const bClient = await connect(b.token);
+    harness.daemon.services.runtimes.revoke(b.id);
+    expect(harness.daemon.services.runtimes.get(b.id)).toBeDefined();
+    expect(await agentsList(aClient)).toEqual([]);
+    expect((await send(aClient, [b.id], "no delivery")).results).toMatchObject([
+        { accepted: false },
+    ]);
+    await expect(agentsList(bClient)).rejects.toThrow();
+    expect(b.vendor.received).toEqual([]);
+});
+
+it("does not disclose discovery results when the caller is revoked during route lookup", async () => {
+    const a = await join("A");
+    await join("B");
+    const { networks, runtimes, db } = harness.daemon.services;
+    await db.networks.replaceRouting(networkId, {
+        defaultPolicy: "allow",
+        routes: [],
+    });
+    const client = await connect(a.token);
+    const route = await networks.effective(networkId);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const effective = vi
+        .spyOn(networks, "effective")
+        .mockImplementationOnce(async () => {
+            await held;
+            return route;
+        });
+    try {
+        const discovery = agentsList(client);
+        await vi.waitFor(() => expect(effective).toHaveBeenCalledOnce());
+        runtimes.revoke(a.id);
+        release();
+        expect(await discovery).toEqual([]);
+    } finally {
+        release();
+        effective.mockRestore();
+    }
 });

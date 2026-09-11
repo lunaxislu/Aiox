@@ -47,6 +47,61 @@ export const terminalContextSchema = z.strictObject({
     terminalId: z.string().min(1),
     token: z.string().min(1),
 });
+
+const argument = z.string().refine((value) => !value.includes("\0"));
+const name = z
+    .string()
+    .min(1)
+    .refine((value) => !value.includes("/") && !value.includes("\0"));
+
+/** Private launch frame: environment and terminal credentials are never views. */
+export const agentRunSchema = z.strictObject({
+    adapter: z.literal("claude"),
+    cwd: argument.min(1),
+    env: z.record(argument.min(1), argument),
+    args: z.array(argument),
+    cols: z.int().positive(),
+    rows: z.int().positive(),
+    name: name.optional(),
+    network: argument.min(1).optional(),
+    role: argument.optional(),
+    description: argument.optional(),
+    instruction: argument.optional(),
+    terminalContext: terminalContextSchema.optional(),
+});
+
+export type AgentRun = z.infer<typeof agentRunSchema>;
+
+/** External execution reports lifecycle only; it never borrows a daemon terminal. */
+export const externalAgentRunSchema = agentRunSchema
+    .omit({ cols: true, rows: true, terminalContext: true })
+    .extend({ inboxPath: argument.min(1) });
+const externalExitSchema = z.strictObject({
+    type: z.literal("exit"),
+    exitCode: z.int().nonnegative(),
+    signal: z.int().positive().nullable(),
+});
+export const externalAgentClientFrameSchema = z.discriminatedUnion("type", [
+    z.strictObject({ type: z.literal("started") }),
+    externalExitSchema,
+]);
+export const externalAgentServerFrameSchema = z.discriminatedUnion("type", [
+    z.strictObject({
+        type: z.literal("prepared"),
+        runtimeId: z.string().min(1),
+        args: z.array(argument),
+        env: z.record(argument.min(1), argument),
+    }),
+    z.strictObject({ type: z.literal("ready") }),
+    z.strictObject({ type: z.literal("startup-failed"), message: z.string() }),
+    z.strictObject({ type: z.literal("error"), message: z.string() }),
+    externalExitSchema,
+]);
+export type ExternalAgentRun = z.infer<typeof externalAgentRunSchema>;
+export type ExternalAgentServerFrame = z.infer<
+    typeof externalAgentServerFrameSchema
+>;
+
 export type CreateShell = z.infer<typeof createShellSchema>;
 export type TerminalView = z.infer<typeof terminalViewSchema>;
 export type TerminalContext = z.infer<typeof terminalContextSchema>;
@@ -125,6 +180,10 @@ export const agentViewSchema = z.object({
     networkId: z.string().nullable(),
     hostId: z.string().nullable(),
     terminalId: z.string().nullable(),
+    observation: z
+        .object({ event: z.string(), reason: z.string().nullable() })
+        .nullable()
+        .optional(),
 });
 
 export const notificationViewSchema = z.object({

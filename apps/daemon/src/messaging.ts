@@ -7,6 +7,9 @@ import type { AioxDatabase } from "@aiox/persistence";
 import type { NetworkService } from "@/networks";
 import type { RuntimeRecord, RuntimeRegistry } from "@/runtimes";
 
+export const collaborationInstruction =
+    "Use AIOX agents_list to discover reachable agents and send to their agentId values. Use send for replies too; it requires an outbound route. AIOX daemon notices are notifications, not requests to acknowledge. A send result reports the delivery attempt, not completion of the requested work.";
+
 export type SendTargetResult = {
     readonly agentId: string;
     readonly accepted: boolean;
@@ -77,6 +80,10 @@ export class MessageService {
         targets: readonly string[],
         content: string,
     ): Promise<SendResult> {
+        if (!source.collaborationActive)
+            return Promise.reject(
+                new Error("This runtime has left collaboration."),
+            );
         if (!this.#admitting)
             return Promise.reject(
                 new Error("The daemon is stopping; no new messages."),
@@ -189,6 +196,13 @@ export class MessageService {
                 createdAt,
             });
             try {
+                if (
+                    !source.collaborationActive ||
+                    !entry.target.collaborationActive
+                )
+                    throw new Error(
+                        "Runtime left collaboration before delivery.",
+                    );
                 await entry.target.binding.deliver({
                     deliveryId: entry.id,
                     from: {
@@ -315,7 +329,7 @@ export class MessageService {
             readAt: null,
         });
         const origin = this.runtimes.get(flight.originRuntimeId);
-        if (!origin) return;
+        if (!origin?.collaborationActive) return;
         try {
             // No delivery id: a daemon notice is not an AIOX request, so its own
             // turn cannot settle anything and cannot cascade another notice.
@@ -349,7 +363,7 @@ export class MessageService {
         agentId: string,
     ): Promise<string | undefined> {
         const target = this.runtimes.get(agentId);
-        if (!target) return "unknown_agent";
+        if (!target?.collaborationActive) return "unknown_agent";
         if (target.id === source.id) return "self_target";
         if (
             source.networkId === null ||

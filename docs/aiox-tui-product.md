@@ -22,12 +22,13 @@ host와 configuration-web spec을 따른다.
 
 ```text
 사용자
-├─ CLI
+├─ 외부 CLI → vendor + 필수 부속 실행 (사용자 터미널)
+│        │ 협업 등록·제어
 └─ React 운영 Web
          │
          ▼
 AIOX daemon
-├─ Controller / PTY — 실행·종료
+├─ Controller / PTY — daemon 소유 실행·종료 / 외부 협업 등록
 ├─ Gateway / HTTP MCP — 접속·통신
 ├─ Network / Message — 신원·route·전달·회신
 ├─ 설정 / SQLite — 사용자 설정·저장 상태
@@ -50,6 +51,7 @@ AIOX daemon
 | [[docs/architecture/aiox-vendor-bindings]] | vendor 실행 주입 코드, inbox·hooks·App Server·Relay와 실측 범위 |
 | [[docs/architecture/aiox-storage-terminal]] | SQLite·파일 설정·PTY·화면 연결·플랫폼 구현 경계 |
 | [[docs/decisions/tui-product-boundary]] | headless와 이전 Channel/재전송 구조를 채택하지 않은 이유 |
+| [[docs/decisions/execution-ownership]] | 외부 실행 수명과 daemon 협업 등록을 분리한 이유 |
 
 ## 기준과 근거
 

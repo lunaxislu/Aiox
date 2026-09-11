@@ -4,11 +4,51 @@ import { test } from "vitest";
 
 import {
     apiPath,
+    agentRunSchema,
+    externalAgentRunSchema,
+    externalAgentClientFrameSchema,
     errorBodySchema,
     routeOperationSchema,
     createShellSchema,
     terminalContextFromEnv,
 } from "./index";
+
+test("external registration cannot borrow a terminal or carry terminal control frames", () => {
+    const launch = {
+        adapter: "claude",
+        cwd: "/workspace",
+        env: {},
+        args: [],
+        inboxPath: "/tmp/ax/inbox.sock",
+    };
+    assert.deepEqual(externalAgentRunSchema.parse(launch), launch);
+    for (const extra of [
+        { terminalContext: { terminalId: "t", token: "secret" } },
+        { cols: 80 },
+        { executionOwnership: "daemon" },
+        { inboxPath: "bad\0path" },
+    ])
+        assert.equal(
+            externalAgentRunSchema.safeParse({ ...launch, ...extra }).success,
+            false,
+        );
+    assert.equal(
+        externalAgentClientFrameSchema.safeParse({
+            type: "resize",
+            cols: 80,
+            rows: 24,
+        }).success,
+        false,
+    );
+    assert.deepEqual(
+        externalAgentClientFrameSchema.parse({
+            type: "exit",
+            exitCode: 0,
+            signal: null,
+        }),
+        { type: "exit", exitCode: 0, signal: null },
+    );
+});
 
 test("shell creation rejects executable and identity injection", () => {
     assert.deepEqual(createShellSchema.parse({ cwd: "/tmp", cols: 80 }), {
@@ -121,4 +161,25 @@ test("an error body keeps the fields a code adds to it", () => {
 test("path builders escape the identifier segment", () => {
     assert.equal(apiPath.networkRoute("a/b"), "/api/networks/a%2Fb/route");
     assert.equal(apiPath.agent("x y"), "/api/agents/x%20y");
+});
+
+test("foreground launch validates context without re-parsing vendor arguments", () => {
+    const input = {
+        adapter: "claude",
+        cwd: "/workspace",
+        env: { PATH: "/bin" },
+        args: ["--model", "sonnet", "a prompt with spaces"],
+        cols: 80,
+        rows: 24,
+    };
+    assert.deepEqual(agentRunSchema.parse(input), input);
+    for (const bad of [
+        { ...input, adapter: "shell" },
+        { ...input, cwd: "a\0b" },
+        { ...input, cols: 0 },
+        { ...input, args: [4] },
+        { ...input, terminalContext: { terminalId: "t" } },
+        { ...input, runtimeId: "borrowed-identity" },
+    ])
+        assert.equal(agentRunSchema.safeParse(bad).success, false);
 });

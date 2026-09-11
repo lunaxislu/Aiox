@@ -10,8 +10,8 @@
 
 - Claude·Codex 실제 TUI가 실행별 MCP·instruction·credential을 주입받아 전송·회신하고,
   수신·응답 종료·회신·실패를 구분해 관측한다. Channel setup과 같은 메시지 재전송 경로는 없다.
-- 단일 Network, route 기반 MCP agents_list, standalone 및 Host·Worktree 실행과 전체 강제
-  종료가 동작한다. 종료 성공은 실제 관리 실행 자원과 DB 정리 결과로 판정한다.
+- 단일 Network, route 기반 MCP agents_list, standalone 및 Host·Worktree 실행, daemon 소유 실행의
+  강제 종료와 외부 실행의 독립 수명이 동작한다. 종료 성공은 소유 실행 자원과 협업 등록·DB 정리 결과로 판정한다.
 - 전역 설정 파일 저장이 검증·자동 반영되고 포트만 다음 시작에 적용된다.
   브라우저를 닫아도 실행이 유지되고 재방문 때 별도 사용자 인증 절차 없이 기존 화면으로 복귀한다.
 - DB 저장·Runtime 상태·알림·읽음·배치와 Web 취향 저장이 역할에 맞게 동작한다.
@@ -27,7 +27,8 @@
 - [x] Stage 1 — domain·패키지 경계·전역 설정·SQLite·CLI 기반과 3 OS 설치 경계 -> `logs/2026-09-07-AIOX-TUI-Stage1-Foundation.md`
 - [x] Stage 2 — daemon·공통 HTTP MCP·Network/Route·Gateway·PTY 및 최소 Web 연결 -> `logs/2026-09-07-AIOX-TUI-Stage2-Daemon-MCP-Terminal.md`
 - [x] Stage 2-1 — 공통 xterm·PTY 화면 복원을 headless·serialization 기반으로 리팩토링 -> `logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md`
-- [>] Stage 3 — Claude TUI runtime 주입·inbox·hooks·상태·종료 수직 구현 -> `logs/2026-09-09-AIOX-TUI-Stage3-Claude.md`
+- [>] Stage 2-2 — AIOX 명령·실행 위치에 따른 실행 소유권과 외부 터미널 독립 수명 -> `logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md`
+- [ ] Stage 3 — Claude TUI runtime 주입·inbox·hooks·상태·종료 수직 구현 -> `logs/2026-09-09-AIOX-TUI-Stage3-Claude.md`
 - [ ] Stage 4 — Codex App Server·TUI·Binding Relay와 두 vendor 메시지 왕복 -> `logs/2026-09-09-AIOX-TUI-Stage4-Codex.md`
 - [ ] Stage 5 — 선언형 Host·Worktree·다중 실행 및 CLI 운영·실패 정리 -> `logs/2026-09-09-AIOX-TUI-Stage5-Host.md`
 - [ ] Stage 6 — 운영 Web·브라우저 복귀·배치·다국어·전역 설정 편집·키 바인딩 -> `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`
@@ -50,5 +51,5 @@
   Stage 8은 새 구현에 불필요한 fallback·alias가 생겼는지도 확인하는 잔여 감사다.
 - Worktree와 상태 UI는 herdr 구현을 참고한다. 경로·브랜치 재사용 규칙과 native 표시는 구현 시
   필요한 범위에서 정하며 이전 실측 성공 사례를 반복 전수 테스트하지 않는다.
-- Stage 2 공통 기반·W1 브라우저·W3 보완과 다중 OS CI 검증을 마쳤으며 Stage 2-1 공통 화면 복원 단계를 완료해 Stage 3을 재개한다.
+- Stage 2·Stage 2-1을 완료했으며 Stage 3 재개 전에 Stage 2-2 공통 실행 소유권 단계를 수행한다.
   사용자 요청으로 후속 단계 로그의 Required Context를 준비했다. 각 단계의 실제 Work Items는 착수 때 구성하며 package/task scaffold를 선생성하지 않는다.

@@ -7,13 +7,46 @@ Status: Target
 [[docs/specs/aiox-runtime]], 협업 계약은 [[docs/specs/aiox-collaboration]],
 Host 선언 계약은 [[docs/specs/aiox-host]]가 소유한다. 현재 조립 범위 외의 구조는 목표이며 구현 완료 주장이 아니다.
 
+## 실행 소유권과 협업 등록 [Status: Target]
+
+실행 소유권은 [[docs/specs/aiox-runtime]]의 명령·인증된 실행 위치 계약을 따른다.
+기존 RuntimeRegistry를 사용하되 다음 책임을 분리한다. 아래 구조는 승인된 목표이며 뒤의
+Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한다.
+
+```text
+실행 소유자
+├─ daemon → Web·Host vendor / PTY / 필수 부속 실행
+└─ 외부 CLI → vendor child / 상속 입출력 / inbox 임시 디렉터리 / 필수 부속 실행
+협업 등록 — daemon RuntimeRegistry
+├─ Runtime 신원·credential·membership·등록 유효성
+├─ vendor binding → 입력·인증 hook·준비·관측
+└─ terminal 차용 관계 → daemon shell 연결만, 실행 소유권과 별개
+```
+
+실행 소유자가 프로세스 종료를, daemon이 협업 등록 해제를 담당한다. binding의 vendor
+입력·관측 책임에 외부 프로세스 kill이나 CLI 임시 자원 삭제를 결합하지 않는다. 기존 Claude
+모듈 배치는 이 책임을 충족하도록 바꿀 수 있으며 범용 runner·새 Registry를 선도입하지 않는다.
+
+```text
+외부 CLI: daemon 제어 WS 연결 → Registry·hook 맵·credential 준비 응답
+        → vendor 직접 실행 → 시작 통보 → 협업 준비 확인 → 종료 통보·CLI 자원 정리
+제어 WS 손실: daemon 등록 정리 / 시작한 CLI vendor는 준비 완료 전후 모두 유지
+```
+
+화면 바이트·resize는 제어 WS에 보내지 않는다. CLI 사망은 WS close로 관측하며 heartbeat·lease·
+자동 재연결은 추가하지 않는다. 명시적 초기 실패·최초 준비 timeout은 CLI에 `startup-failed`를
+알려 이번 실행을 종료한다. daemon·WS 손실은 이 실패 명령과 구분한다.
+등록 해제는 route·요청 결과·credential 정리를 재사용하되 관측 손실을 vendor exit로 확정하지
+않는다. DB 정리가 실패하면 `stop_incomplete`와 daemon·Web 재시도 경로를 유지한다.
+선택 이유는 [[docs/decisions/execution-ownership]]을 따른다.
+
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
 CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http의 daemon/Web listener, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 migration을 거친다.
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:215-522`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:44-80`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:115-249`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:54-181`.
 
-Runtime 공통 정리는 binding·직접 소유 PTY의 종료를 확인하고 standalone endpoint의 route, 요청 정리, 등록·credential 정리를 연결한다. 실패한 정리는 재시도 경로를 남기고 PTY exit만으로 daemon을 종료하지 않는다. 원 발신자 종료 후 수신 요청 결과 보존은 collaboration 계약을 따른다.
+Runtime 공통 정리는 credential·협업 유효성을 먼저 회수하고 daemon 소유 binding·PTY만 종료한다. binding cleanup과 standalone endpoint의 route·요청·등록 정리는 실행 소유권과 별도로 수행한다. 실패한 정리는 재시도 경로를 남기고 PTY exit만으로 daemon을 종료하지 않는다. 원 발신자 종료 후 수신 요청 결과 보존은 collaboration 계약을 따른다.
 
 일반 shell은 TerminalService에만 등록하고 RuntimeRegistry와 분리한다. `/api/terminals` 생성·목록과
 개별 조회·명시 종료는 공통 HTTP 보호를 거쳐 같은 서비스로 연결되며 기존 WS 입출력 경로를 쓴다.
@@ -26,23 +59,46 @@ shell도 종료·확인한다. 실패한 binding에 연결된 shell은 재시도
 
 근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:268-289`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:90-106`; 실패·재시도와 Network 선행 삭제 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:743-793`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:280-346`.
 
-현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. 실제 Claude/Codex 입력 binding과 Host/Worktree 실행은 아직 구현 대상이다. 공통 MCP·요청 결과는 테스트 binding으로 검증하며 실제 vendor 성공으로 해석하지 않는다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
+현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude 연결은 아래 Stage 3 범위로 확장했고 Codex와 Host/Worktree 실행은 아직 구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
+
+## Claude 현재 조립 범위 [Status: As-built]
+
+CLI는 terminal 문맥이 있으면 Web foreground WS로, 없으면 별도 external 제어 WS로 연결한다.
+Web은 ClaudeBinding의 vendor PTY를 중계하고 빌린 shell의 공개 terminal ID를 유지한다.
+외부는 CLI가 vendor를 직접 spawn해 입출력을 상속하고 daemon에는 시작·종료만 통보한다.
+RuntimeRegistry의 `executionOwnership`과 `collaborationActive`는 프로세스 종료 책임과
+협업 유효성을 분리하며 `terminalOwnership`은 daemon terminal 소유·차용만 표현한다.
+`stopRuntime`은 revoke 후 daemon 소유 binding에만 stop을 호출하고 cleanup·DB 정리를
+수행한다. 실패한 record는 재시도용으로 남지만 인증·발견·전송 대상에서는 제외한다.
+
+근거: 실행 분기는 [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:451`,
+직접 실행은 [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:12`,
+제어 연결은 [[apps/daemon/src/claude-controller.ts]] `apps/daemon/src/claude-controller.ts:80`,
+등록 유효성은 [[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:58`,
+정리 경계는 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:307`.
+
+이전 Stage3의 외부 shell 실측도 daemon vendor PTY 경로였다. 그 기록을 새 직접 실행이나
+외부 vendor 독립 수명 검증으로 승계하지 않는다.
+
+Runtime은 시작 중에도 credential 인증에 필요한 등록을 가지지만, 살아 있는 vendor·인증 hook·inbox 연결과 Network가 있는 경우 공통 MCP 초기화를 확인해야 전송 준비가 된다. hook 관측은 binding에서 기존 입력 결과·자동 알림 서비스로 이어진다. 세부 구성, 미확인 입력 결과와 OS별 검증 경계는 [[docs/architecture/aiox-vendor-bindings]]가 소유한다. 이 구현 존재는 사용자 참여 실제 모델 E2E 완료를 뜻하지 않는다.
 
 ## 책임과 프로세스
 
 ```text
-CLI / 일반 터미널 / 운영 Web / 향후 VS Code
+외부 CLI → vendor + 필수 부속 실행 (상속 입출력)
+   │ 협업 제어 WS
+CLI / 운영 Web / 향후 VS Code
                   │ 실행 명령·조회·terminal attachment
                   ▼
 AIOX daemon — Node.js 실행 구성
 ├─ HTTP / Gateway — 명령·snapshot·event·알림 중계
 ├─ 공통 HTTP MCP — send / agents_list
 ├─ Application services
-│  ├─ StandaloneAgentController — standalone 실행·종료
+│  ├─ StandaloneAgentController — daemon 소유 실행·종료 / 외부 협업 등록
 │  ├─ HostController — workspace·Network·Agent 실행 묶음
 │  ├─ Network / Messaging — 소속·route·전달·응답 연결
 │  └─ Credential registry — token → 현재 Runtime
-├─ Vendor bindings — 실행·준비·입력·관측·종료 방법
+├─ Vendor bindings — 준비·입력·관측 / 소유 실행의 vendor별 실행·종료 방법
 │  ├─ Claude TUI child + native inbox + hooks
 │  └─ Codex TUI child + App Server child + Binding Relay
 ├─ PTY Manager / Terminal Service — 실행 handle·화면·attachment
@@ -50,15 +106,16 @@ AIOX daemon — Node.js 실행 구성
 └─ Persistence — SQLite 연결·repositories
 ```
 
-Controller는 실행 판단을, binding은 vendor별 수단을, PTY는 실제 터미널 handle을 소유한다.
+Controller는 실행 판단·등록을, binding은 vendor별 수단을, 실행 소유자는 child 수명을, PTY는
+daemon 소유 터미널 handle을 담당한다.
 daemon은 materialized Runtime·Network·route 권위다. Gateway나 MCP handler가 독자적인
 실행 상태를 만들지 않고 application을 호출한다. Vendor TUI는 모델 선택·slash command·승인·질문을
 담당하고, 운영 Web은 AIOX Host 관리·배치·알림·설정을 담당한다.
 
 위 논리 책임은 별도 OS 프로세스를 요구하지 않는다. HTTP/Gateway/MCP, Controller, PTY를
 daemon 한 프로세스에 구성한다. 현재 구현 범위는 위 조립 근거를 따른다.
-daemon 종료 후 관리 실행 생존을 위한 별도 runtime-host는 만들지 않는다.
-CLI foreground 연결과 실제 child/PTY 소유 handle의 배치는 구현에서 이 종료 계약을 충족하도록 정한다.
+외부 실행은 기존 CLI가 직접 소유하므로 실행 생존만을 위한 별도 runtime-host는 만들지 않는다.
+Web foreground와 외부 제어 연결은 서로 다른 수명 경계다.
 
 daemon용과 공용 운영 Web용 포트는 각각 설정할 수 있다. 같은 Node 프로세스의 두 listener로
 구현할 수 있으며 Host마다 별도 Web server가 필요한 것은 아니다. 개발 Vite 포트와 배포 포트는
@@ -87,7 +144,7 @@ CLI 연결과 Web 자동 복귀를 지원하며 사용자 로그인·토큰 입�
 | 대상 | 소유하는 것 | 다른 대상으로 오인하면 안 되는 것 |
 | --- | --- | --- |
 | Agent definition | 이름·adapter·role·description·instruction | 실행 중인 프로세스 |
-| AgentRuntime | 한 번의 AIOX 관리 실행과 자원 묶음 | PID 하나 또는 vendor session ID |
+| AgentRuntime | 한 실행의 협업 등록·관측과 실행 소유권 | PID 하나 또는 vendor session ID |
 | HostRuntime | 한 manifest의 workspace·Agent·전용 Network 실체화 | 실행 머신 또는 파일 sandbox |
 | Vendor conversation | Claude session / Codex active thread 연결 | Runtime 전체 수명 |
 | Terminal / PTY | 살아 있는 터미널 실행 자원 | 브라우저 탭 |
@@ -99,6 +156,8 @@ CLI 연결과 Web 자동 복귀를 지원하며 사용자 로그인·토큰 입�
 상태 요약은 daemon 관측에서 만들며 모델이 작성하지 않는다. MCP의 idle/working/failed와 Web의 상세 상태를 분리하고, 개별 요청 결과는 현재 상태를 덮어쓰지 않는다. 외부 의미는 [[docs/specs/aiox-runtime]]을 따른다.
 
 ## 실행과 정리
+
+아래 launch 흐름은 daemon 소유 실행이다. 외부 준비·실행 순서는 위 실행 소유권 절을 따른다.
 
 ```text
 명령·manifest 전체 검증
@@ -126,7 +185,8 @@ host stop
 
 daemon stop --force
  → 신규 실행·등록·메시지 전달 차단 / 진행 중 등록 commit 동기화
- → AIOX 관리 Host·standalone·PTY·Relay·App Server 등 강제 종료
+ → daemon 소유 Host·standalone·PTY·Relay·App Server 등 강제 종료
+ → 외부 실행은 vendor 유지·협업 등록 해제
  → 실제 종료 확인·credential/실행 관계 정리
  → 모두 정리되면 DB 등 daemon 자원 정리 → daemon 종료
  → 미완료면 남은 관리 handle·listener·DB 유지 → 종료 재시도
@@ -135,12 +195,12 @@ daemon stop --force
 정상 stop 입력의 키·순서·시간 제한과 OS별 강제 종료 방법은 미확정이다. 입력 전송·kill 요청의
 성공 또는 조회 실패를 전체 종료 성공으로 표현하지 않는다. 관리 handle과 자원 소유권을 기준으로
 종료하며 외부 Claude/Codex나 터미널 앱 전체를 이름으로 찾아 죽이지 않는다. 강제 종료 대상은
-작업 중인 TUI를 포함한 직접 관리 자원이며 일반 작업 자식 전체로 확장하지 않는다. 재시도와 TUI의
+작업 중인 TUI를 포함한 daemon 직접 소유 자원이며 일반 작업 자식 전체로 확장하지 않는다. 재시도와 TUI의
 실제 종료 후 등록 정리는 [[docs/specs/aiox-runtime]]의 종료 계약을 따른다. persistent Network 정의,
 Worktree와 저장 파일을 삭제하지 않는다.
 
-일반 daemon stop은 admission을 막고 활성 실행 의존성을 검사한다. 의존성이 있으면 거절하고
-running으로 돌아가 admission을 다시 연다. persistent Network 정의만 있는 것은 blocker가 아니다.
+일반 daemon stop은 admission을 막고 daemon 소유 활성 실행 의존성을 검사한다. 의존성이 있으면 거절하고
+running으로 돌아가 admission을 다시 연다. 외부 실행 등록과 persistent Network 정의만 있는 것은 blocker가 아니다.
 restart는 safe stop + start이며 stop 거절 시 기존 daemon을 유지한다. `restart --force`는 없다.
 
 ## Host와 Network의 실체화

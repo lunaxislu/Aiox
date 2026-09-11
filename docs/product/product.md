@@ -23,7 +23,8 @@ AIOX는 별도의 공개 interoperability standard를 만드는 제품으로 설
 
 - Claude와 Codex 사이의 지시·토론·회신을 사람이 복사해 중계하지 않는다.
 - 같은 프로젝트 또는 별도 Git Worktree의 작업을 Host 단위로 구분한다.
-- 실제 vendor TUI와 실행 상태·알림·배치를 한 운영 화면에서 확인한다.
+- Web 실행의 실제 vendor TUI·배치와 등록된 Agent의 상태·알림을 한 운영 화면에서 확인한다.
+- 외부 터미널에서 시작한 TUI는 협업 연결이 끊겨도 계속 사용한다.
 - 브라우저를 닫아도 실행을 유지하고 다시 열면 기존 터미널로 돌아온다.
 - 모든 프로젝트에서 같은 터미널·키보드 설정을 사용한다.
 
@@ -52,7 +53,7 @@ Vendor TUI가 vendor와 사용자 사이의 상호작용을 담당하고, AIOX �
 
 ### Execution And Connectivity
 
-Controller는 실행 수명을, Network는 통신 경계를, daemon은 실행 등록과 통신 정책 집행을
+실행 소유자는 프로세스 수명을, Network는 통신 경계를, daemon은 실행 등록과 통신 정책 집행을
 소유한다. 논리적 책임 분리는 별도 OS 프로세스를 반드시 요구하지 않는다.
 종료 범위는 [[docs/specs/aiox-runtime]]이 정의한다.
 
