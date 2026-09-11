@@ -38,7 +38,7 @@ status: open
 
 ### {W8,W9}
 
-- W6/W7 완료 결과를 소비한다. 사용자가 GitHub Actions Windows runner에서 구현·자동 검증하고 별도 Windows PC에서는 마지막 사용 확인을 하는 방향을 승인했다. codex/stage2-2-idle-shell-windows 검증 브랜치에서 기존 3 OS×Node22/24 CI를 재사용한다. Windows cmd/PowerShell 연동은 구현·ConPTY 실측 중이며 단순 unknown 유지나 PowerShell 컨테이너 결과로 완료 처리하지 않는다. W9는 전체 지원범위 회귀·owner 반영과 단계 마감을 수행한다.
+- W6/W7 완료와 PowerShell7/5.1 PSReadLine2.4.5 Windows ConPTY 검증을 소비한다. 23a8f00 CI34592876478은 Windows/Linux/macOS × Node22/24 전체 성공이며 공개 closeIdle 경로까지 확인했다. 다음은 CMD 자동종료 잔여범위 결정이다: 자식수·PROMPT·consolemode 반례가 있어 현재 unknown blocker이며 별도 입력 확장 도입은 미결정이다. CMD 자동종료 완료로 취급하지 않는다. Windows 사용자PC의 설정·브라우저 수동사용은 별도 미검증이다. 작업 브랜치는 codex/stage2-2-idle-shell-windows이며 main 미병합이다. W9는 잔여 결정 후 지원범위 회귀·owner 정합과 단계마감을 수행한다.
 
 ## 2026-09-11 · 공통 실행 위치·명령 정책 합의와 Stage2-2 착수 준비
 
@@ -216,3 +216,9 @@ CMD ConPTY 조사 테스트는 Windows 두 job에서 통과했다. pause 및 set
 8447916의 CI34592261644는 Windows/Linux/macOS × Node22/24 여섯 job 전체 성공했다(https://github.com/lunaxislu/aiox-prototype/actions/runs/34592261644). PowerShell7·WindowsPowerShell5.1의 PSReadLine2.4.5 ConPTY14 tests가 Windows 양Node에서 통과했다. 종료요청부터 exit이벤트까지1480–1499ms, 승인부터는1059–1098ms였다. 설치된 node-pty의 WindowsPtyAgent FLUSH_DATA_INTERVAL=1000과 일치하며 첫실패는1초테스트대기 한계였다. 제품의 승인후2초대기는 수정하지 않았다. root가 gh run 결과와 /private/tmp/aiox-windows-ci-pass.txt를 직접 확인했다.
 
 최종 종료 검사는 대역이 아닌 createTerminal().closeIdle() 공개경로로 바꿔 dispatch·실제exit·dispose까지 확인하도록 보강했다. 해당 마지막 테스트 변경은 다음CI로 검증한다. CMD 안전자동종료 미구현과 사용자PC 설정/브라우저 미검증은 남는다. W8/W9 완료표시는 하지 않는다.
+
+## 2026-09-11 · W8 공개 종료 경로 CI 통과와 CMD 잔여 결정
+
+최종 제품코드/테스트 commit23a8f00의 CI34592876478에서 Windows/Linux/macOS × Node22/24 여섯job 전체 성공을 root가 직접 확인했다(https://github.com/lunaxislu/aiox-prototype/actions/runs/34592876478). PowerShell7·5.1의 실제 createTerminal().closeIdle()로 입력중문자열 폐기·승인후2초내exit·dispose를 확인했다. 로컬 최종 pnpm build도 exit0이다. 사용자 daemon은 재시작하지 않았고 main에는 병합하지 않았다. 구현은 codex/stage2-2-idle-shell-windows 브랜치에 있다.
+
+PowerShell 연동과 Windows 자동검증은 확보했다. CMD는 자식수·PROMPT·consolemode 반례로 자동종료 판정이 불충분하여 unknown blocker로 보존한다. 이는 합의한 확인불가시거절 정책을 지키는 현재동작이며 CMD 자동종료 구현완료를 뜻하지 않는다. 별도입력확장(native hook/Clink) 도입이나 CMD 자동종료 지원범위 변경은 사용자 결정 없이 하지 않는다. W8 재개점은 이 잔여범위 결정이고 W9 단계마감은 그 이후다. Windows 사용자PC의 프로필·브라우저 수동사용도 별도미검증으로 남는다.
