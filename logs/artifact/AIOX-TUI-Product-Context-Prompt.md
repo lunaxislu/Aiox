@@ -45,14 +45,14 @@ AIOX는 Claude Code와 Codex의 실제 TUI를 실행·연결·관측하고, 하�
 
 ```text
 사용자
-├─ 일반 터미널의 AIOX CLI
+├─ 일반 터미널의 AIOX CLI — 외부 vendor·필수 부속 실행 소유
 └─ React 운영 Web
        │ HTTP / WS / terminal attachment
        ▼
 AIOX daemon — 로컬 Node.js 서버
 ├─ Gateway — 명령·snapshot·event·알림 중계
 ├─ Controllers
-│  ├─ StandaloneAgentController
+│  ├─ AgentController — daemon 소유 실행 / 외부 협업 등록
 │  └─ HostController
 ├─ Runtime Credential Registry
 ├─ 공통 HTTP MCP — send / agents_list
@@ -68,7 +68,7 @@ AIOX daemon — 로컬 Node.js 서버
 별도 공개 사이트 — 제품 완성 후
 ```
 
-- Controller owns execution: 언제 실행·중단·정리할지 판단한다.
+- 공통 실행 계층은 명령·인증된 실행 위치로 소유권·표시 위치·종료 정책을 결정하고, 실제 실행 소유자가 프로세스 수명을 관리한다.
 - Adapter owns integration mechanics: vendor 실행 인자, 입력, 관측, 종료 수단을 구현한다.
 - Network owns connectivity: 소속, discovery, directed route와 전달 경계를 정의한다.
 - Daemon enforces materialized runtime state: 현재 Runtime·Network·route·credential의 권위를 가진다.
@@ -83,7 +83,7 @@ Daemon과 HTTP server/Gateway/MCP는 같은 Node 프로세스에 구성할 수 �
 AgentRuntime: AIOX가 관리하는 실행 단위
   ├─ vendor 프로세스와 부속 실행 자원
   ├─ 현재 vendor conversation binding
-  └─ Terminal / PTY
+  └─ daemon 소유 실행만 AIOX Terminal / PTY 연결
 
 Vendor conversation: /clear, /resume 등에 따라 변경 가능
 Terminal / PTY: 터미널 실행 자원
@@ -91,6 +91,10 @@ Web attachment: 브라우저가 해당 터미널을 보는 연결
 ```
 
 AgentRuntime은 PID 하나와 동일하지 않다. Codex Runtime에는 TUI·App Server·Relay가 함께 속할 수 있다. 브라우저 연결이 끊어져도 Runtime과 PTY는 유지한다.
+
+공통 실행 계층은 명령·인증된 실행 위치의 판정, 실행 소유권, daemon 종료 대상과 외부 제어 연결을 소유한다. 기존 RuntimeRegistry의 실행 소유권과 협업 등록 유효성을 구분하고, terminalOwnership은 daemon 터미널의 소유·차용 관계만 나타낸다. 등록 해제는 외부 프로세스 종료를 뜻하지 않는다. adapter는 vendor 실행 인자·주입·버전·통신·준비 판단·이벤트 해석과 부속 프로세스의 vendor별 수단을 담당한다. 부속 프로세스도 공통 실행 소유권을 따르며, Claude inbox/hooks나 단일 프로세스 형태를 모든 vendor의 필수 계약으로 삼지 않는다.
+
+Stage 2-2에서 `packages/vendor`의 공유 실행·자원 수명과 `packages/adapters/claude`의 Claude 준비·inbox·hooks·관측을 분리했다. daemon의 `AgentController`는 공통 등록·제어 수명을 관리하며 CLI와 daemon은 공유 package의 공개 entry를 사용한다. CLI가 daemon 앱의 실행 helper를 import하는 의존은 제거했다. 여러 vendor 지원은 확정 요구지만 실제 vendor 검증은 Claude이며, Codex의 TUI·Relay·App Server는 Stage 4에서 같은 소유권 계약에 연결한다. Host 실행 구현은 Stage 5에 남는다.
 
 ## 4. 코드 구조의 방향
 
@@ -110,7 +114,7 @@ aiox/
    │  ├─ messaging/{message,delivery}.ts
    │  └─ terminal/terminal-id.ts
    ├─ application/src/{agent,host,network,messaging,ports}
-   ├─ adapter-sdk/
+   ├─ vendor/ — 공유 adapter 계약·실행 자원 수명
    ├─ adapters/{claude,codex}/
    ├─ terminal/
    ├─ persistence/src/{sqlite,repositories}
@@ -121,7 +125,7 @@ aiox/
 
 domain은 제품 규칙을 소유하며 React·HTTP·SQLite·PTY·vendor 호출에 의존하지 않는다. application은 실행·등록·전달·정리 유스케이스를 조율한다. daemon이 application과 adapter·terminal·persistence를 조립한다. Web과 CLI는 daemon의 코드를 직접 가져다 실행하는 것이 아니라 공개 통신 계약으로 연결한다.
 
-파일 목록은 모든 파일을 미리 생성하라는 지시가 아니다. AgentRuntime 모델을 agent/runtime과 별도 runtime 디렉터리에 중복 소유하지 않는다. adapter-sdk와 application port도 같은 계약을 중복 정의하지 않는다. Node PTY와 브라우저 xterm은 실행 환경을 분리한다. 공통 wire는 protocol에, Web 전용 TerminalPane·HostSidebar 등은 Web features에 둔다.
+파일 목록은 모든 파일을 미리 생성하라는 지시가 아니다. AgentRuntime 모델을 agent/runtime과 별도 runtime 디렉터리에 중복 소유하지 않는다. vendor 계약과 application port도 같은 계약을 중복 정의하지 않는다. Node PTY와 브라우저 xterm은 실행 환경을 분리한다. 공통 wire는 protocol에, Web 전용 TerminalPane·HostSidebar 등은 Web features에 둔다.
 
 ## 5. 실행별 MCP와 인증
 
@@ -543,6 +547,35 @@ Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실
 
 Standalone 실행 종료 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
 
+**명령·인증된 실행 위치와 실행 소유권**
+
+| 명령·실행 위치 | 실행 소유자 | TUI 표시·종료 후 동작 |
+| --- | --- | --- |
+| 어디서든 `aiox host run` | daemon | Web에 생성·Agent 종료 상태 표시 |
+| 인증된 Web terminal의 `aiox agent run <vendor>` | daemon | 기존 Web terminal·vendor 종료 후 기존 shell 복귀 |
+| 외부 `aiox agent run <vendor>` | CLI | 사용자 stdin/stdout/stderr 상속·vendor 종료 후 기존 shell 복귀 |
+| Web 일반 shell | daemon | Web terminal |
+
+```text
+AIOX 명령 + daemon에서 인증한 실행 문맥
+→ 공통 계층이 실행 소유자·표시 위치·종료 정책 결정
+→ vendor adapter가 실행 설정·협업 연결 준비
+→ 소유자가 vendor와 필요한 부속 프로세스 실행
+→ adapter의 준비·관측 결과를 공통 협업 관리에 반영
+```
+
+실행 위치는 환경 변수의 존재만으로 신뢰하지 않는다. 외부 실행에는 AIOX PTY·headless·xterm·SerializeAddon을 사용하지 않는다. Web은 유효한 외부 Agent 등록의 상태만 조회하며 외부 TUI를 연결·조작·이관하지 않는다. 일반 `claude`·`codex` 직접 실행은 자동 Agent 등록 대상이 아니다.
+
+외부 CLI는 daemon 등록·credential·instruction·hook 등 주입 준비를 마친 뒤 vendor를 직접 실행한다. 제어 WS는 준비·시작·종료를 전달하며 화면 바이트·resize를 중계하지 않는다. 시작 시 daemon 연결 실패는 vendor 실행 전 오류다. 실행 중 daemon 또는 제어 연결 손실은 준비 완료 전후와 무관하게 시작한 vendor를 유지하고 협업 권한·등록을 정리한다. 관측 손실을 vendor 종료 성공으로 표시하지 않는다. heartbeat·자동 재연결·재등록은 추가하지 않으며 협업 복구는 `agent run` 재실행으로 처리한다.
+
+명시적 최초 준비 실패는 오류와 vendor 종료 처리로 연결한다. 연결 손실과 구분하며, 현재 Claude의 준비 제한값을 모든 vendor의 공통 deadline으로 확정하지 않는다. vendor 종료 후 CLI는 daemon 정리 요청 실패와 무관하게 로컬 임시 자원을 정리하고 shell 복귀를 완료한다.
+
+Claude 외부 inbox 임시 디렉터리는 CLI가 생성·권한·경로 검사부터 삭제까지 소유하고, daemon은 준비 시 고정한 경로와 인증된 hook 보고를 대조한다. 실제 실행 환경의 cwd/env로 버전을 검사하며 기존 주입·설정 보존·충돌 검사를 재사용한다. 외부 hook의 `ECONNREFUSED`만 stderr 없이 정상 종료하고, 401·잘못된 보고·설정 오류·timeout과 Web/Host hook 실패는 진단을 유지한다. CLI 사망 후 vendor만 남으면 hook 오류가 반복될 수 있다.
+
+Host의 실행 중 이름 유일성·실행별 신원 분리·Agent 중복 시작 방지와 이번 시작 시도가 만든 자원에 한정한 실패 보상은 유지한다. 중복 Host 반환이나 일부 실패 시 성공 Agent 유지 정책을 추가하지 않는다.
+
+실행 소유권의 근거는 [결정 문서](../../docs/decisions/execution-ownership.md), 현재 구조·검증 범위는 [Stage 2-2 로그](../2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md)를 따른다.
+
 ## 12. aiox.yaml
 
 YAML의 Agent별 실행 인자는 `agents.<name>.args: string[]`로 선언한다. `execute`/`excute` 필드나 호환 alias는 사용하지 않는다.
@@ -631,13 +664,13 @@ host stop → Controller 종료 상태
 
 키보드 이벤트 전달은 종료 요청 수단이지 종료 성공 증거가 아니다. 승인 화면·입력 중 상태에서 키가 항상 같은 의미라고 가정하지 않는다. 종료 시간 제한·OS별 수단은 구현 때 정한다. 조회 실패를 프로세스 부재로 간주하지 않는다.
 
-- `daemon stop`: 신규 등록을 막고 활성 실행 의존성이 있으면 거절한 뒤 running으로 복귀한다.
-- `daemon stop --force`: AIOX 관리 Host·standalone·vendor·PTY·Relay·App Server 전체를 강제로 종료하고 daemon을 종료한다. 작업 중인 실행도 대상이다.
-- 강제 종료는 관리 자원 종료 확인 후 credential·Network·DB 등을 정리한다. AIOX 밖에서 실행한 Claude/Codex를 프로세스 이름으로 찾아 죽이지 않는다.
-- `daemon restart`는 safe stop + start. 활성 실행 때문에 거절되면 기존 daemon을 유지한다. restart --force는 제공하지 않는다.
-- persistent Network·Worktree·이미 저장한 사용자 작업을 삭제하지 않는다.
+- `daemon stop`: 신규 등록을 막고 daemon 소유 활성 실행 의존성을 검사한다. 외부 등록 자체는 blocker가 아니며, 현재 Web 일반 shell은 blocker다. idle shell만 자동 종료하는 정책은 확정하지 않았다.
+- `daemon stop --force`: daemon 소유 Host·Web Agent·일반 shell과 그 PTY·Relay·App Server 등 실행 자원을 종료·확인한다. 외부 CLI 소유 vendor와 필수 부속 프로세스는 유지한다.
+- 협업 인증·발견·전송 자격 회수와 실제 프로세스 종료·등록 삭제를 구분한다. 정리 실패 정보는 재시도를 위해 보존하며 `stop_incomplete`로 daemon·Web을 유지한다. 정리 재시도는 회수한 협업 권한의 복구가 아니다.
+- `daemon restart`는 safe stop + start이며 stop이 거절되면 기존 daemon을 유지한다. `restart --force`는 제공하지 않는다.
+- 종료 요청 성공이나 조회 실패를 실제 종료 성공으로 간주하지 않는다. 프로세스 이름으로 외부 실행을 찾아 종료하지 않으며 persistent Network·Worktree·사용자 작업 파일을 보존한다.
 
-과거 “force는 daemon만 종료하고 Agent는 생존” 계약은 폐기됐다.
+종전의 모든 standalone을 force 종료하던 범위는 실행 소유권 기준으로 대체됐다. daemon 소유 실행은 종료하고 외부 CLI 소유 실행은 유지한다.
 
 업데이트 때문에 vendor가 준비되지 못하면 해당 실행 등록을 실패시키고 사용자가 업데이트 처리 후 다시 실행하는 단순 방향이다. Codex의 global update 후 “Please restart Codex” 종료가 관찰됐다. Claude background update가 매번 startup 실패를 뜻하지는 않는다. 안정된 update API·신호와 실패 매핑은 구현 때 좁게 확인한다. 자동 update orchestration·상세 진행 FSM·자동 Host 재실행을 추가하지 않는다.
 
@@ -850,7 +883,7 @@ Web 재방문 → 살아 있는 Server에 자동 연결
 
 **공통 터미널의 화면 유지·복원**
 
-공통 터미널은 서버의 PTY와 세션당 하나의 xterm headless로 실행과 화면 상태를 유지하고, 브라우저 xterm으로 화면을 표시하고 입력을 전달한다. 일반 shell과 터미널 프로그램에 공통으로 적용하며 Claude 전용 처리가 아니다. 여기서 headless는 터미널 VT 상태 엔진으로, 제외한 LLM headless 실행과 다르다. Ghostty는 구현 원리의 참고 대상이며 현재 서버·브라우저 터미널 엔진은 xterm이다.
+이 화면 관리·복원 경로는 daemon 소유 AIOX 터미널에 적용한다. 외부 `agent run`은 사용자 터미널 입출력을 사용하므로 AIOX PTY·headless·xterm·SerializeAddon 경로를 거치지 않는다. 공통 터미널은 서버의 PTY와 세션당 하나의 xterm headless로 실행과 화면 상태를 유지하고, 브라우저 xterm으로 화면을 표시하고 입력을 전달한다. 일반 shell과 터미널 프로그램에 공통으로 적용하며 Claude 전용 처리가 아니다. 여기서 headless는 터미널 VT 상태 엔진으로, 제외한 LLM headless 실행과 다르다. Ghostty는 구현 원리의 참고 대상이며 현재 서버·브라우저 터미널 엔진은 xterm이다.
 
 ```text
 서버 — PTY 세션마다
@@ -941,6 +974,7 @@ Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/ad
 | 1 | domain·package·전역 설정·SQLite·CLI 기반 | 필요한 최소 domain, 저장·설치 경계 |
 | 2 | daemon·공통 HTTP MCP·Network/route·Gateway·PTY·최소 Web | 채택한 MCP·TypeORM·알림 계약 구현 경계, CLI 포트 연결 |
 | 2-1 | 공통 PTY·xterm의 headless·serialization 기반 복원 | 기반 구현 완료. 구조·예외 정책은 §15, 검증 한계는 Stage 2-1 로그 참조 |
+| 2-2 | 명령·실행 위치별 소유권과 외부 독립 수명·공통 vendor 경계 | W1~W5 완료. Stage 3에서 소비하며 Codex·Host 실구현과 전 OS 검증은 후속 단계 |
 | 3 | Claude 실행·inbox·hooks·상태·종료 | hidden path 신규 통합, Windows token, 관측 경계 |
 | 4 | Codex App Server·Relay·두 vendor 왕복 | toolOutput+additionalContext 구현·E2E, 실패하면 그 다음 방식 |
 | 5 | Host·Worktree·CLI 운영 | Git Worktree 생성·재사용·충돌과 종료 보상 |
@@ -950,5 +984,7 @@ Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/ad
 | 9 | 공개 다국어 사이트 | 최종 framework/i18n·콘텐츠 |
 
 OS 경계는 마지막에 처음 확인하는 것이 아니다. DB는 기반 단계, PTY는 서버 단계, vendor 경계는 해당 adapter 단계에 확인하고 마지막에 통합한다. 최소 Web은 연결 검증을 위한 것이며 운영 UI 전체를 기다려 vendor 연동을 미루지 않는다.
+
+Stage 2-2는 공통 vendor 경계·Claude 마이그레이션과 macOS 실제 Claude 외부 수명·Web 복원을 검증하고 종료했다. 모델 메시지 E2E·다른 OS·Codex·Host 전체 완료를 뜻하지 않는다. 세부 증거와 한계는 [Stage 2-2 완료 기록](../2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md)을 따른다.
 
 남은 논의를 한꺼번에 사용자에게 질문하지 않는다. MCP 응답 포장·실제 관측 연결과 채택 의존성 버전은 해당 통합 단계에서 확인하고 Web 의존성은 Web 단계에서 논의한다. 현재의 제품 경계와 성공한 실험을 미결로 되돌리지 않는다.
