@@ -247,6 +247,21 @@ spawn("claude", ["--mcp-config", mcpConfig], {
 - 목표에서 custom channel flag·AIOX channel MCP child·agent별 /send listener는 제거한다. inbox/프로세스 등록·cleanup 자체를 제거하는 것은 아니다.
 - O: [Claude MCP](https://code.claude.com/docs/en/mcp), [Claude CLI reference](https://code.claude.com/docs/en/cli-reference), [Hooks](https://code.claude.com/docs/en/hooks). 전체 신규 launcher의 통합 검증은 남아 있다.
 
+D: 2026-09-09 사용자 확정 — Claude 필수 설정 충돌은 실행 전에 거절한다.
+
+- 사용자 인자·설정이 AIOX 필수 연결·관측을 깨뜨리면 터미널에 원인을 표시하고 Claude를 실행하지 않는다. 명령은 실패로 종료하고 원래 shell은 유지한다.
+- 대상은 AIOX inbox 주소 덮어쓰기, 필수 hooks 비활성화, 동일한 `aiox` MCP의 충돌하는 재정의다. 함께 적용할 수 있는 기존 사용자 MCP·hooks·지침과 일반 vendor 옵션은 보존하며, 설정이 존재한다는 이유만으로 거절하지 않는다.
+- 사용자 설정을 몰래 덮어쓰거나 비활성화하지 않는다. CLI 충돌 오류 메시지는 §24의 공통 메시지 언어 정책에 따라 영어로 작성하고 충돌한 옵션·설정과 사용자가 취할 조치를 알린다. 실제 token은 노출하지 않는다.
+
+예: `aiox agent run claude --network dev -- --settings '{"disableAllHooks":true}'`가 AIOX 필수 hooks를 비활성화하면 실행을 거절한다. 영어 메시지 예시는 다음과 같으며 정확한 문구 자체를 고정하지 않는다.
+
+```text
+Cannot start Claude: disableAllHooks=true disables hooks required by AIOX.
+Remove this setting and try again.
+```
+
+위 내용은 확정 정책이며 구현·실제 실행 검증 완료 보고가 아니다.
+
 #### 7. Host namespace, 작업 공간, Network와 runtime 인증
 
 D: Host 실행 하나를 작업 공간·Agent·manifest가 선언한 host-managed Network 하나를 묶는 namespace로 둔다. Host 설정은 Agent와 Network/route 구성이고, Host 실행은 그 구성을 실제로 띄운 별도 식별 단위다. 같은 설정을 여러 번 실행해도 Runtime/token/host-managed 통신 공간은 섞이지 않는다. 현재는 Host당 Network 하나, Agent의 동시 Network 소속도 최대 하나로 제한하고 다중 Network 연결은 연기한다. daemon 전체의 독립 Network 생성·관리를 하나로 제한하는 뜻은 아니다.
@@ -920,11 +935,45 @@ Web 재방문 → 살아 있는 Server에 자동 연결 → snapshot → 기존 
 - browser tab close/unmount/disconnect를 agent.stop/terminal.stop으로 연결하지 않는다. 명시적 종료 명령과 분리한다.
 - R: 현재 GatewayStore 재접속은 기존 page lifetime 기반이고 credential은 메모리에 있다. 이것만으로 완전 재방문 요구 충족이라고 말할 수 없다.
 - D: 재방문 때 사용자에게 로그인·토큰 입력 등 별도 인증 절차를 요구하지 않는다. 이전 “복귀 인증” 미결 항목은 기존 구현 제약을 사용자 요구처럼 올린 것이므로 제거한다. 내부 연결 보호는 이 자동 복귀 UX를 충족하도록 구현하며 별도 사용자 결정으로 재요청하지 않는다.
-- P/Q: workspace/pane 식별·배치 저장과 server-side terminal 화면 복원 수단은 구현에서 정한다. 단순 WS reconnect로 화면이 복원되지는 않는다.
-- xterm headless/serialize 또는 output/screen 유지 방식을 평가할 수 있다. 여기서 headless terminal renderer는 제외한 LLM headless 세션과 다른 개념이다. 특정 패키지 채택·무제한 raw 출력 저장은 아직 결정하지 않았다.
+- P/Q: workspace/pane 식별·배치 저장은 운영 Web 통합에서 구체화한다. 공통 terminal 화면 복원은 아래의 채택된 기반을 사용하며 단순 WS reconnect만으로 완료로 보지 않는다.
 - 범위는 **server가 살아 있는 동안의 Web 복귀**다. server restart 뒤 기존 외부 프로세스 재attach·자동 실행·durable message replay는 별도 요구이며 자동 추가하지 않는다.
 
+**공통 터미널의 화면 유지·복원 — 채택된 기반**
+
+공통 터미널은 서버의 PTY와 세션당 하나의 xterm headless로 실행과 화면 상태를 유지하고, 브라우저 xterm으로 화면을 표시하고 입력을 전달한다. 일반 shell과 터미널 프로그램에 공통으로 적용하며 Claude 전용 처리가 아니다. 여기서 headless는 터미널 VT 상태 엔진으로, 제외한 LLM headless 실행과 다르다. Ghostty는 구현 원리의 참고 대상이며 현재 서버·브라우저 터미널 엔진은 xterm이다.
+
+```text
+서버 — PTY 세션마다
+├─ PTY: shell·Claude·Codex 등 프로그램 실행·바이트 입출력
+├─ xterm headless: 화면·커서·모드·크기 유지
+└─ 복원 처리: SerializeAddon + 누락 상태 보완
+                         ↕ WebSocket
+브라우저
+└─ xterm: 화면 렌더링·키보드와 마우스 입력
+```
+
+```text
+PTY 출력 → 서버 상태 갱신 → 같은 경계의 snapshot·보류 출력 확보
+Web 접속 → snapshot 크기 적용 → 화면 파싱·상태 보완
+         → 보류 출력·resize 재생 → 이후 출력·resize·exit 처리
+         → 현재 pane 크기 요청
+```
+
+복원은 최근 64KiB raw 출력 재생을 대체한 SerializeAddon의 화면 바이트와 누락 상태 보완 데이터를 함께 사용한다. 화면·현재 커서뿐 아니라 저장 커서·문자 속성·문자 집합·스크롤 영역·탭 위치·입력 모드 등을 복원해 이후 프로그램의 출력과 입력도 정상적으로 이어져야 한다. xterm이 이미 관리하는 실제 상태를 활용하며 내부 접근은 고정 vendor 버전과 복원 회귀 검사로 관리한다.
+
+공통 attachment가 snapshot과 이후 이벤트의 누락·중복 없는 순서를 책임진다. snapshot 크기로 화면 파싱과 상태 보완을 마친 뒤 현재 pane 크기를 요청하며, 서버 PTY·미러·브라우저는 같은 resize 순서를 따른다. 복원 중 과거 조회에서 발생한 자동응답은 현재 PTY 입력으로 전달하지 않는다. 정상 live 조회 응답과 사용자 입력은 별도로 유지한다.
+
+미완성 UTF-8·제어 시퀀스는 xterm의 parser·decoder를 재사용해 안전한 경계의 snapshot과 보류 출력·resize로 이어서 복원한다. 시퀀스가 끝날 때까지 접속을 기다리는 방식이 아니다. 미완성 출력의 보관 한도를 넘으면 새 화면 복원만 이유를 표시하고 일시 거절한다. 기존 PTY·viewer는 유지하며 안전한 경계로 돌아오면 새 복원을 다시 허용한다. 정상적인 연속 출력이나 단순 청크 분할을 이 오류로 취급하지 않고, 잘린 데이터를 정상 snapshot으로 보내지 않는다.
+
+브라우저 연결 해제는 PTY 종료가 아니다. Stage 2-1은 공통 복원 기반을 완료했고, Stage 6는 이를 React 운영 UI·탭·분할·배치 복귀에 통합한다. React가 서버의 VT 상태 엔진을 대체하지 않는다.
+
+Stage 2-1에서 채택·설치한 조합은 서버 `@xterm/headless` 6.0.0·`@xterm/addon-serialize` 0.14.0, 브라우저 `@xterm/xterm` 6.0.0이다. 버전은 현재 구현 기준이며 업데이트 때 복원 보완과 회귀 검사를 함께 확인한다. 구조와 구현 근거는 [터미널 architecture](../docs/architecture/aiox-storage-terminal.md), 외부 동작은 [Web spec](../docs/specs/aiox-configuration-web.md), 검증 경위와 한계는 [Stage 2-1 로그](2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md)를 따른다.
+
 #### 24. 포트, CLI와 공개 사이트
+
+**AIOX 메시지 언어**
+
+D: AIOX가 생성하는 CLI 출력과 Agent에게 전달하는 시스템·자동 알림 메시지는 영어로 통일한다. 오류·경고·안내·성공·상태·시작 및 종료 메시지를 포함한다. 사용자 작성 본문과 vendor 출력은 원문을 유지한다. 운영 Web의 UI 문구(오류·성공·알림 표시 포함)는 기존 다국어 정책을 따른다.
 
 D: 기본 port가 있어야 하고 전역 설정 파일과 CLI 시작 인자로 바꿀 수 있어야 한다. 사용자는 daemon port 및 Host·standalone을 사용하는 React 운영 Web port를 각각 설정할 수 있도록 요청했다.
 
@@ -1084,7 +1133,7 @@ args: ["--model", "sonnet", "--permission-mode", "plan"]
 - `"--model sonnet"`을 자동으로 두 인자로 나누지 않는다. 한 인자로 전달하며 옵션의 유효성은 adapter/vendor가 판단한다.
 - CLI의 `--` 이후 인자와 YAML의 `args`는 같은 adapter 실행 인자 계약으로 연결한다. YAML 배열에 구분자 `--`를 자동으로 덧붙이지 않는다.
 - 실행 대상은 `adapter`가 정한다. 특히 Codex의 TUI와 App Server 중 어느 프로세스에 인자를 적용할지는 adapter가 담당한다.
-- AIOX가 관리하는 MCP·credential·binding 설정과 사용자 인자의 충돌 처리는 adapter 구현 단계에서 구체화한다. 이 계약 추가는 YAML parser·launcher 구현 완료를 뜻하지 않는다.
+- AIOX가 관리하는 MCP·credential·binding 설정과 사용자 인자의 충돌 중 Claude 필수 설정 충돌은 §6의 실행 전 거절 정책을 따른다. 구체적인 충돌 판정·병합 방식과 다른 adapter의 처리는 해당 adapter 구현 단계에서 구체화한다. 이 계약 추가는 YAML parser·launcher 구현 완료를 뜻하지 않는다.
 
 `aiox.yaml` 구성 예시(사용자가 제공한 원래 구조에 단일 Network·instruction·Claude/Codex 범위를 적용한 목표 예시이며 현재 parser의 지원 완료를 뜻하지 않음):
 
@@ -1174,7 +1223,7 @@ W2의 제품 방향 결정은 완료했다. 아래는 구현 단계에서 구체
 3. TypeORM 채택을 기존 Stage 1 DB/migration과 연결한다. AIOX 본문과 알림 보존 정책, 진행 중 요청 제외·관련 데이터 정리 경계를 검증한다. JSON·기본 포트·보존 기간은 미결이 아니다.
 4. Codex toolOutput+additionalContext E2E, busy 입력의 threadId/turnId 연결과 서버 요청 관측·사용자 응답 owner를 확인한다.
 5. Claude hidden inbox launch와 session_id/prompt_id 관측 연결·native Windows token forwarding을 확인한다. 이미 전달받은 단일 idle 성공을 busy 전체 검증으로 확대하지 않는다.
-6. 사용자 재인증 없는 Web 자동 복귀·현재 화면·배치 저장, 상세 상태·미해결 질문/승인 표시와 소리 묶음·multi-tab 주체를 구현한다.
+6. Stage 2-1에서 완료한 §23의 공통 터미널 복원 기반을 Stage 6의 React 운영 UI·탭·분할·배치 복귀에 통합한다. 사용자 재인증 없는 Web 자동 복귀, 상세 상태·미해결 질문/승인 표시와 소리 묶음·multi-tab 주체는 해당 운영 Web·알림 단계에서 구현한다.
 7. Host 이름 기반 start/stop과 YAML route 재연결, Worktree 생성·기존 branch 재사용·충돌·시작/종료 보상을 구체화한다. add/remove와 자동 vendor 대화 resume은 제외한다.
 8. 채택한 서버 라이브러리의 설치 버전·Node/OS 호환성을 확인한다. Web 세부 의존성은 소비 단계에 선택한다.
 

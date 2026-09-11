@@ -169,6 +169,22 @@ spawn("claude", ["--mcp-config", mcpConfig], {
 
 구현 시 참고: Claude의 `--append-system-prompt`는 실행 시 기본 system prompt에 AIOX 지침을 추가한다. 공식 [문서](https://code.claude.com/docs/en/output-styles#comparisons-to-related-features)는 적용 범위를 single invocation으로 설명한다. 같은 프로세스의 대화 초기화·재개에서도 지침을 적용하는 방향으로 구성하고, 첫 user message로 반복 주입하지 않는다. 이를 별도 사용자 요구·선행 실험 과제로 만들지 않으며 각 전환 동작을 모두 실측했다는 주장과는 구분한다.
 
+2026-09-09 사용자 확정 — Claude 필수 설정 충돌 정책:
+
+- 사용자 인자·설정이 AIOX 필수 연결·관측을 깨뜨리면 터미널에 원인을 표시하고 Claude 실행 전에 실패로 종료한다. 원래 shell은 유지한다.
+- 대상은 AIOX inbox 주소 덮어쓰기, 필수 hooks 비활성화, 동일한 `aiox` MCP의 충돌하는 재정의다.
+- 사용자 설정을 몰래 덮어쓰거나 비활성화하지 않는다. 함께 적용할 수 있는 기존 사용자 MCP·hooks·지침과 일반 vendor 옵션은 보존하며, 설정이 존재한다는 이유만으로 거절하지 않는다.
+- CLI 충돌 오류 메시지는 §11의 공통 메시지 언어 정책에 따라 영어로 작성한다. 충돌한 옵션·설정과 사용자가 취할 조치를 명확히 알리고 실제 token은 노출하지 않는다.
+
+예: `aiox agent run claude --network dev -- --settings '{"disableAllHooks":true}'`가 AIOX 필수 hooks를 비활성화하면 Claude를 띄우지 않는다. 영어 메시지 예시는 다음과 같으며 정확한 문구 자체를 고정하지 않는다.
+
+```text
+Cannot start Claude: disableAllHooks=true disables hooks required by AIOX.
+Remove this setting and try again.
+```
+
+이는 확정 정책이며 충돌 검사·launcher 구현이나 실제 실행 검증이 완료됐다는 뜻은 아니다.
+
 ### Codex 실행 주입
 
 ```sh
@@ -437,6 +453,10 @@ aiox host run --path ./aiox.yaml --name login --worktree feature/login
 
 ## 11. CLI 전체
 
+**AIOX 메시지 언어**
+
+AIOX가 생성하는 CLI 출력과 Agent에게 전달하는 시스템·자동 알림 메시지는 영어로 통일한다. 오류·경고·안내·성공·상태·시작 및 종료 메시지를 포함한다. 사용자 작성 본문과 vendor 출력은 원문을 유지한다. 운영 Web의 UI 문구(오류·성공·알림 표시 포함)는 기존 다국어 정책을 따른다.
+
 ```text
 aiox
 ├─ daemon
@@ -536,7 +556,7 @@ args: ["--model", "sonnet", "--permission-mode", "plan"]
 - `"--model sonnet"`을 자동으로 두 인자로 나누지 않는다. 한 인자로 전달하며 옵션의 유효성은 adapter/vendor가 판단한다.
 - CLI의 `--` 이후 인자와 YAML의 `args`는 같은 adapter 실행 인자 계약으로 연결한다. YAML 배열에 구분자 `--`를 자동으로 덧붙이지 않는다.
 - 실행 대상은 `adapter`가 정한다. 특히 Codex의 TUI와 App Server 중 어느 프로세스에 인자를 적용할지는 adapter가 담당한다.
-- AIOX가 관리하는 MCP·credential·binding 설정과 사용자 인자의 충돌 처리는 adapter 구현 단계에서 구체화한다. 이 계약 추가는 YAML parser·launcher 구현 완료를 뜻하지 않는다.
+- AIOX가 관리하는 MCP·credential·binding 설정과 사용자 인자의 충돌 중 Claude 필수 설정 충돌은 §5의 실행 전 거절 정책을 따른다. 구체적인 충돌 판정·병합 방식과 다른 adapter의 처리는 해당 adapter 구현 단계에서 구체화한다. 이 계약 추가는 YAML parser·launcher 구현 완료를 뜻하지 않는다.
 
 ```yaml
 version: 1
@@ -828,7 +848,36 @@ Web 재방문 → 살아 있는 Server에 자동 연결
 
 새 vendor 프로세스를 띄우거나 닫기 직전 이미지로 돌아가는 것이 아니다. 작업 중·idle·완료·승인 대기 모두 현재 화면으로 돌아온다. 재방문에 사용자 로그인·token 입력 절차를 요구하지 않는다. 내부 연결 보호는 이 자동 UX에 맞춰 구현한다. server 재시작 후 프로세스 재attach·자동 실행·message replay는 별도 요구다.
 
-PTY 화면 상태·출력 유지와 재접속을 연결해야 한다. 단순 WS reconnect만으로 화면 복원을 보장하지 않는다. xterm headless/serialize 같은 터미널 구현 후보는 제외한 LLM headless 제품과 다른 개념이다.
+**공통 터미널의 화면 유지·복원**
+
+공통 터미널은 서버의 PTY와 세션당 하나의 xterm headless로 실행과 화면 상태를 유지하고, 브라우저 xterm으로 화면을 표시하고 입력을 전달한다. 일반 shell과 터미널 프로그램에 공통으로 적용하며 Claude 전용 처리가 아니다. 여기서 headless는 터미널 VT 상태 엔진으로, 제외한 LLM headless 실행과 다르다. Ghostty는 구현 원리의 참고 대상이며 현재 서버·브라우저 터미널 엔진은 xterm이다.
+
+```text
+서버 — PTY 세션마다
+├─ PTY: shell·Claude·Codex 등 프로그램 실행·바이트 입출력
+├─ xterm headless: 화면·커서·모드·크기 유지
+└─ 복원 처리: SerializeAddon + 누락 상태 보완
+                         ↕ WebSocket
+브라우저
+└─ xterm: 화면 렌더링·키보드와 마우스 입력
+```
+
+```text
+PTY 출력 → 서버 상태 갱신 → 같은 경계의 snapshot·보류 출력 확보
+Web 접속 → snapshot 크기 적용 → 화면 파싱·상태 보완
+         → 보류 출력·resize 재생 → 이후 출력·resize·exit 처리
+         → 현재 pane 크기 요청
+```
+
+복원은 최근 64KiB raw 출력 재생을 대체한 SerializeAddon의 화면 바이트와 누락 상태 보완 데이터를 함께 사용한다. 화면·현재 커서뿐 아니라 저장 커서·문자 속성·문자 집합·스크롤 영역·탭 위치·입력 모드 등을 복원해 이후 프로그램의 출력과 입력도 정상적으로 이어져야 한다. xterm이 이미 관리하는 실제 상태를 활용하며 내부 접근은 고정 vendor 버전과 복원 회귀 검사로 관리한다.
+
+공통 attachment가 snapshot과 이후 이벤트의 누락·중복 없는 순서를 책임진다. snapshot 크기로 화면 파싱과 상태 보완을 마친 뒤 현재 pane 크기를 요청하며, 서버 PTY·미러·브라우저는 같은 resize 순서를 따른다. 복원 중 과거 조회에서 발생한 자동응답은 현재 PTY 입력으로 전달하지 않는다. 정상 live 조회 응답과 사용자 입력은 별도로 유지한다.
+
+미완성 UTF-8·제어 시퀀스는 xterm의 parser·decoder를 재사용해 안전한 경계의 snapshot과 보류 출력·resize로 이어서 복원한다. 시퀀스가 끝날 때까지 접속을 기다리는 방식이 아니다. 미완성 출력의 보관 한도를 넘으면 새 화면 복원만 이유를 표시하고 일시 거절한다. 기존 PTY·viewer는 유지하며 안전한 경계로 돌아오면 새 복원을 다시 허용한다. 정상적인 연속 출력이나 단순 청크 분할을 이 오류로 취급하지 않고, 잘린 데이터를 정상 snapshot으로 보내지 않는다.
+
+브라우저 연결 해제는 PTY 종료가 아니다. Stage 2-1은 공통 복원 기반을 완료했고, Stage 6는 이를 React 운영 UI·탭·분할·배치 복귀에 통합한다. React가 서버의 VT 상태 엔진을 대체하지 않는다.
+
+구조와 구현 근거는 [터미널 architecture](../../docs/architecture/aiox-storage-terminal.md), 복원 거절·회복 등 외부 동작은 [Web spec](../../docs/specs/aiox-configuration-web.md), 검증 경위와 한계는 [Stage 2-1 로그](../2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md)를 따른다.
 
 알림:
 
@@ -847,9 +896,11 @@ PTY 화면 상태·출력 유지와 재접속을 연결해야 한다. 단순 WS 
 
 서버·daemon은 `node:http`, `ws`, 공식 MCP TypeScript SDK, Zod, `node-pty`, TypeORM, `better-sqlite3`를 채택한다. 별도 HTTP framework·event bus·추상화를 미리 추가하지 않는다. TypeORM 전환은 기존 Stage 1 DB와 migration을 보존한다. 실제 설치 단계에 Node >=22.12.0·SDK 호환성·지원 OS/CPU를 확인해 버전을 선택하며 채택과 설치·통합 검증 완료를 구분한다. YAML parser와 Web 세부 의존성은 실제 사용하는 단계에서 정한다.
 
+Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/addon-serialize` 0.14.0이다. 이는 현재 채택·설치된 조합이며 영구 고정 제품 요구가 아니다. 업데이트 때 누락 상태 보완과 복원 회귀 검사를 함께 확인한다.
+
 ### Web 단계
 
-React·Tailwind·shadcn/ui·다국어 요구는 유지한다. Vite, use-intl, xterm 관련 패키지, Zustand, TanStack Query, keybinding·audio 도구의 실제 필요와 역할을 논의한다.
+브라우저 터미널은 `@xterm/xterm` 6.0.0을 사용하며 §15의 서버 복원 기반을 소비한다. React·Tailwind·shadcn/ui·다국어 요구는 유지한다. Vite, use-intl, 추가 xterm addon, Zustand, TanStack Query, keybinding·audio 도구의 실제 필요와 역할을 논의한다.
 
 - Zustand는 여러 pane/설정/알림이 공유하는 상태가 실제로 필요할 때 선택한다.
 - TanStack Query는 조회·pagination·검색 cache가 필요할 때 선택한다.
@@ -889,10 +940,11 @@ React·Tailwind·shadcn/ui·다국어 요구는 유지한다. Vite, use-intl, xt
 | 0 | TUI 제품 기준선·새 설계 정리 | 방향 결정 완료 |
 | 1 | domain·package·전역 설정·SQLite·CLI 기반 | 필요한 최소 domain, 저장·설치 경계 |
 | 2 | daemon·공통 HTTP MCP·Network/route·Gateway·PTY·최소 Web | 채택한 MCP·TypeORM·알림 계약 구현 경계, CLI 포트 연결 |
+| 2-1 | 공통 PTY·xterm의 headless·serialization 기반 복원 | 기반 구현 완료. 구조·예외 정책은 §15, 검증 한계는 Stage 2-1 로그 참조 |
 | 3 | Claude 실행·inbox·hooks·상태·종료 | hidden path 신규 통합, Windows token, 관측 경계 |
 | 4 | Codex App Server·Relay·두 vendor 왕복 | toolOutput+additionalContext 구현·E2E, 실패하면 그 다음 방식 |
 | 5 | Host·Worktree·CLI 운영 | Git Worktree 생성·재사용·충돌과 종료 보상 |
-| 6 | 운영 Web·복귀·배치·i18n·설정·키 | Web 라이브러리, state 책임, 화면 복원 UX |
+| 6 | 운영 Web·복귀·배치·i18n·설정·키 | Stage 2-1 기반의 React·탭·분할·배치 복귀 통합, Web 상태 책임과 UX |
 | 7 | 상태·알림·읽음·포커스·소리 | 실제 status 매핑·UI, 소리 묶음·multi-tab |
 | 8 | 3 OS/WSL·npm 산출물 통합 검증 | 실제 배포·실행·정리 증거 |
 | 9 | 공개 다국어 사이트 | 최종 framework/i18n·콘텐츠 |
