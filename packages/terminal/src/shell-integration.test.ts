@@ -25,7 +25,7 @@ describe.skipIf(process.platform === "win32")("POSIX shell integration", () => {
             const source =
                 "export AIOX_TEST_STARTUP=preserved\nPS1='AIOX_TEST_PROMPT> '\n" +
                 (file.endsWith("bash")
-                    ? "if (( BASH_VERSINFO[0] >= 4 )); then PROMPT_COMMAND=('export AIOX_TEST_STARTUP=first' 'export AIOX_TEST_STARTUP=preserved'); else PROMPT_COMMAND='export AIOX_TEST_STARTUP=preserved'; fi\n"
+                    ? "if (( BASH_VERSINFO[0] >= 4 )); then PROMPT_COMMAND=('export AIOX_TEST_STARTUP=first' 'export AIOX_TEST_STARTUP=preserved'); else PROMPT_COMMAND='export AIOX_TEST_STARTUP=preserved;'; fi\n"
                     : "");
             writeFileSync(join(home, rc), source);
             const shell = prepareShell({

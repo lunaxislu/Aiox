@@ -256,6 +256,8 @@ macOS zsh/bash 실제 18개 테스트와 Linux Bash5.2.37/Zsh5.9/Fish4.0.2의 PT
 Linux 결과는 분리된 shell 연동 모듈 범위이며 전체 daemon/CLI 검증은 아니다. macOS 빌드 CLI에서는
 출력·cd·Enter 전 문자열이 있는 대기 shell 정상 종료와 vim 실행 중 일반 stop 거절·force 후 실제
 프로세스 종료를 확인했다. 상세 근거와 후속 재개점은 Stage2-2 후속 W7/W9가 소유한다.
-Windows cmd/PowerShell의 안전 종료 연동과 ConPTY 실측은 아직 미완료다. 현재 Windows 일반
-shell은 unknown blocker를 유지하며 --force 종료는 기존 경로를 사용한다. 다른 OS의 테스트나
-PowerShell 컨테이너 prototype을 Windows 지원 완료 증거로 확대하지 않는다. [Status: Current gap]
+Windows PowerShell에는 PSReadLine 2.4.3 이상을 사용하는 연동 후보가 있다. 읽기 중 timer
+이벤트로 요청을 받고 정상 명령 루프에서 요청 유효기간·jobs·자식 프로세스를 다시 확인한 뒤
+종료한다. cmd와 연동되지 않은 PowerShell은 unknown blocker이며 --force는 기존 경로를
+사용한다. ConPTY 실측은 진행 중이다. 다른 OS의 테스트나 PowerShell 컨테이너 prototype을
+Windows 지원 완료 증거로 확대하지 않는다. [Status: Current gap]

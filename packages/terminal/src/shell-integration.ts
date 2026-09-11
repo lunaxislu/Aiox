@@ -70,7 +70,7 @@ ${handler}
     if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) = 'declare -a '* ]]; then
         PROMPT_COMMAND+=(__aiox_prompt)
     else
-        PROMPT_COMMAND="\${PROMPT_COMMAND:+$PROMPT_COMMAND; }__aiox_prompt"
+        PROMPT_COMMAND+=$'\\n__aiox_prompt'
     fi
     if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
         # PS0 runs before commands in this shell; its zero-length expansion emits no bytes.

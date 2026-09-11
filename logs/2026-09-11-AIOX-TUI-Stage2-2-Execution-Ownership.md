@@ -202,3 +202,11 @@ W8/W9는 미완료다. Windows cmd/PowerShell은 아직 안전 연동 구현·Co
 사용자가 GitHub Actions Windows 자동 검증 진행에 동의했다. 개인 Windows PC에는 저장소와 Codex가 없으며 이후 수동 사용 확인은 별도다. codex/stage2-2-idle-shell-windows 브랜치에서 기존 OS/Node matrix를 재사용한다.
 
 PowerShell 후보 구현은 PSReadLine 2.4.3 이상에서 읽기 중 timer 이벤트로 요청을 받고 정상 명령 루프에서 jobs·자식·요청 유효기간을 재확인한 뒤 종료한다. CI에는 Gallery에서 확인한 PSReadLine 2.4.5를 설치한다. 실제 Windows 검증 전이며 낮은 버전은 unknown blocker다. CMD는 출력 지연 PROMPT와 자식 없음의 오판을 조사하는 ConPTY 테스트를 준비했다. 별도 line editor나 native injection 도입은 결정하지 않았다. W8/W9 미완료를 유지한다.
+
+## 2026-09-11 · W8 첫 CI 결과와 CMD 반례
+
+c19d4c3를 작업 브랜치에 push하고 CI 34591849913을 실행했다(https://github.com/lunaxislu/aiox-prototype/actions/runs/34591849913). 로컬 pnpm check exit 0; macOS/Linux × Node22/24 CI 네 job 성공. Windows Node22/24는 PowerShell close 응답 후 실제 exit 대기 테스트 한 건에서 실패했다. 작업 보호·만료 요청 무시 검사는 통과했으나 전체 Windows 통과가 아니다.
+
+CMD ConPTY 조사 테스트는 Windows 두 job에서 통과했다. pause 및 set /p 실행 중 자식0·늦게 도착한 PROMPT로 idle 오판을 확인했다. 특히 set /p는 콘솔 입력 모드도 빈 prompt와 동일한487이어서 이 세 관측을 합쳐도 안전한 자동 종료 근거가 되지 않는다. CMD 자체 종료 연동은 여전히 미구현이며 별도 Clink/native hook 도입은 미결정이다. 근거는 해당 CI src/cmd-idle.test.ts stdout이며 로컬 /private/tmp/aiox-windows-ci-failure.txt에도 보존했다.
+
+독립 리뷰에서 Bash PROMPT_COMMAND 끝의 세미콜론과 추가 구분자가 합쳐져 syntax error가 나는 문제를 실제 재현했다. newline 구분자로 수정하고 기존 rc 보존 테스트를 강화해 POSIX18개·typecheck 통과를 확인했다. 다음 실행은 해당 수정과 Windows PowerShell5.1 검증 확장을 포함한다.
