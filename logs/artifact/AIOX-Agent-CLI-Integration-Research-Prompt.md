@@ -23,9 +23,8 @@ AIOX daemon — 로컬 Node.js 서버
 ├─ Runtime Credential Registry
 ├─ 공통 HTTP MCP Server
 │  ├─ send
-│  ├─ reply
 │  └─ agents_list
-├─ Network / Message Service — 소속·route·전달·회신 연결
+├─ Network / Message Service — 소속·route·전달·입력/턴 연결
 ├─ Vendor Adapter / Binding
 │  ├─ 실행별 MCP·협업 지침 주입
 │  ├─ 이미 실행 중인 TUI에 외부 메시지 주입
@@ -61,8 +60,8 @@ AIOX daemon
 ③ Agent → AIOX → 원 Agent: 협업 회신
 
 Agent B의 모델
-  → HTTP MCP reply 호출
-  → daemon이 원 요청·회신자 연결 검증
+  → HTTP MCP send 호출
+  → daemon이 발신자·역방향 route 검증
   → Agent A의 vendor 입력 경로로 회신 전달
 
 ④ Agent → AIOX: 실행 관측
@@ -72,7 +71,7 @@ TUI / runtime event / hook
   → Runtime 상태·입력/턴 연결·Web 알림
 ```
 
-MCP send의 tool 반환과 나중에 도착하는 협업 reply는 다르다. send 호출을 상대 Agent 작업 완료까지 계속 열어 두는 구조라고 가정하지 마라. 일반 MCP tool response를 받는 것과 외부에서 idle TUI에 새 입력을 넣는 것도 다르다.
+MCP send의 tool 반환과 나중에 send로 도착하는 협업 회신은 다르다. send 호출을 상대 Agent 작업 완료까지 계속 열어 두는 구조라고 가정하지 마라. 일반 MCP tool response를 받는 것과 외부에서 idle TUI에 새 입력을 넣는 것도 다르다.
 
 ### MCP 주소·실행별 인증
 
@@ -92,29 +91,26 @@ Env:      AIOX_MCP_TOKEN=<해당 Runtime의 실제 token>
 
 ### MCP 도구의 의미
 
+현재 계약의 권위는 [협업 명세](../../docs/specs/aiox-collaboration.md)다. 이 프롬프트는 조사에 필요한 요약만 제공한다.
+
 | 도구 | 현재 정한 역할 |
 | --- | --- |
-| send | 현재 outbound route가 허용하는 대상에 메시지를 fan-out |
-| reply | 원 요청과 연결해 원 발신자에게 협업 회신 |
+| send({targets: [agentId, ...], content}) | 명시한 대상별로 현재 outbound route를 검사해 전달 |
 | agents_list | source→target route가 허용되는 Agent만 status와 함께 반환 |
 
-예를 들어 A→B, A→C이면 A의 일반 send 대상은 B·C다. B의 reply는 원 요청자 A에게 연결하며 일반 fan-out과 구분한다. reply의 상세 권한·횟수·route 변경 후 처리는 별도 계약 논의 대상이다.
+대화상 회신도 `send`를 사용하며 역방향 route가 필요하다. `reply`, `replyExpected`, retransmit 도구 및 동일 메시지 자동 재주입은 제공하지 않는다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
 
-`replyExpected=false`는 회신 불필요다. 발신 Agent는 상대 응답 종료·회신·ACK를 기다리지 않는다. send 자체의 거절·실패는 일반 도구 반환으로 알려 준다. 내부 관측은 유지할 수 있지만 완료를 알리기 위해 발신 Agent를 자동으로 다시 깨우지 않는다.
-
-`replyExpected=true`는 협업 회신을 원 요청에 연결한다. 별도의 retransmit 도구나 동일 메시지 자동 재주입은 제공하지 않는다. 최초 전달 전 queue와 재전송은 구분한다.
-
-도구의 정확한 입력·반환 schema, type/intent enum, fan-out 부분 실패, reply 세부 계약, status enum은 MCP 구현 단계에서 사용자와 논의한다. 조사 agent가 기존 legacy envelope를 가져와 확정 schema로 만들지 마라.
+전송 시점의 역방향 route 유무에 따라 단방향 요청은 처리 완료·실패, 양방향 요청은 실패만 원 발신자에게 자동 통지한다. interrupted는 자동 통지하지 않는다. 이를 위해 개별 입력과 vendor의 종료·실패를 연결해야 하며, 단순 입력 수락을 완료로 취급하지 않는다. 세부 정책을 조사 agent가 재정의하지 마라.
 
 ### 본문·메타데이터 형식
 
 ```text
 Daemon 내부 데이터:
 Runtime/source/target, Network/route, message/delivery ID,
-전송 결과, reply 연결, vendor prompt/turn 연결
+전송 결과, vendor prompt/turn 연결
 
 대상 모델에 필요한 정보:
-협업 본문, 발신자, 필요한 연결 ID, 회신 필요 여부·회신 방법
+협업 본문, 발신자, 필요한 전달 안내
 
 TUI에 보여 줄 정보:
 사람이 입력한 메시지와 구별되는 협업 메시지 표시·preview
@@ -166,7 +162,7 @@ Channel은 다른 vendor에서 외부 이벤트 전달 후보가 될 수 있다.
 
 여기에 외부 HTTP MCP 연결·인증이 가능한지 확인해 AIOX 왕복 경로를 완성한다.
 
-현재 AIOX 코드 구조에 국한하지 말고 대상 CLI 자체의 기능을 조사해라. headless, SDK 전용 세션, print 모드, 별도로 만든 백그라운드 대화가 동작한다는 사실을 기존 TUI 통합의 근거로 사용하지 마라.
+현재 AIOX 코드 구조에 국한하지 말고 대상 CLI 자체의 기능을 조사해라. 기본 TUI가 같은 backend/leader의 같은 대화에 연결된 구조는 조사 대상이다. ACP·App Server라는 이름만으로 headless라고 배제하지 말고, 실제 TUI와 외부 client가 동일한 대화를 공유하는지 확인한다. headless, SDK 전용 세션, print 모드, 별도로 만든 백그라운드 대화가 동작한다는 사실을 기존 TUI 통합의 근거로 사용하지 마라.
 
 공식 API가 없다는 이유로 조사를 끝내지 말고 다음 경로를 찾는다.
 
@@ -203,6 +199,25 @@ Channel은 다른 vendor에서 외부 이벤트 전달 후보가 될 수 있다.
 - process 재실행과 같은 process의 대화 전환은 어떻게 다른가?
 - 연결·인증·입력 수락·모델 처리 시작을 각각 무엇으로 확인하는가?
 
+### 현재 입력 대상의 발견·추적·갱신
+
+“session ID가 있다”에서 멈추지 말고 AIOX가 실제로 그 값을 얻고 유지하는 경로를 제시한다.
+
+```text
+Runtime 실행 → endpoint 발견/지정 → 현재 보이는 conversation 식별
+→ 전환 성공 이벤트 관측 → active binding 갱신 → 그 대상에 입력
+→ 입력 응답의 prompt/turn ID 저장 → 해당 종료 이벤트 연결
+```
+
+비교 예시:
+
+- Codex는 endpoint만 알아서는 부족하다. 연결된 TUI의 성공한 thread start/resume/fork를 Relay가 관측해 activeThreadId를 바꾼다. threadId는 입력 대상, turnId는 턴 식별·관측 및 해당 API가 요구하는 진행 중 턴 제어 값이다. 모든 주입 API가 두 ID를 함께 요구한다고 일반화하지 않는다.
+- Claude는 Runtime의 peer socket/pipe 주소와 필요한 인증 정보를 확보해야 한다. 주소가 같은 프로세스에서 유지돼도 conversation ID와 prompt_id는 따로 추적한다. socket 주소와 턴 식별자를 같은 수명으로 취급하지 않는다.
+
+대상 vendor에 대해 `값 / 생성 주체 / 외부 획득 API·event·hook / 유효 수명 / 전환 시 갱신 방법 / 입력·관측에서의 용도`를 표로 작성한다. `/new`, `/clear`, resume, fork 중 실제 지원 동작을 기준으로 설명하고, 마지막으로 생성된 세션이나 최근 이벤트의 ID를 현재 화면의 세션이라고 추측하지 않는다.
+
+외부 client의 attach/load가 새 대화를 만드는지, 기존 TUI의 모델·지침·hooks·권한 응답 담당자를 변경하는지도 확인한다. binding이 오래됐거나 연결이 끊겼을 때 다른 대화에 잘못 주입하지 않도록 무엇을 관측할 수 있는지 밝힌다. 각 vendor에 필요 없는 relay나 hook을 일괄 요구하지 않는다.
+
 프로세스 생성, socket 파일 존재, connect 성공, write 성공, 모델 입력 관측을 같은 성공으로 합치지 마라. 특정 사용자 설정·플랜·기능 flag가 필요한 경우 명시한다.
 
 ## 6. 입력 역할과 TUI 표시
@@ -220,7 +235,7 @@ Channel은 다른 vendor에서 외부 이벤트 전달 후보가 될 수 있다.
 - 사용자 입력과 다른 메시지 종류로 표시되는가?
 - 발신 Agent 이름이나 출처를 표시할 수 있는가?
 - 본문을 짧게 접고 펼칠 수 있는가?
-- 본문과 연결 ID·reply 정보 등의 메타데이터를 분리할 수 있는가?
+- 본문과 연결 ID·발신자 정보 등의 메타데이터를 분리할 수 있는가?
 - 강제 문구·필드 제한·길이 제한·truncation은 어디에 적용되는가?
 - idle/busy가 다른 렌더링 경로를 사용하는가?
 - 공식 확장 계약인지 내부 문자열 규약인지?
@@ -235,11 +250,19 @@ Channel은 다른 vendor에서 외부 이벤트 전달 후보가 될 수 있다.
 - CLI args·config override·env·프로젝트 파일 중 어느 경로인가?
 - 기존 지침에 append하는가, replace하는가?
 - 영구 user/project 설정을 변경하지 않고 Runtime 한정으로 적용할 수 있는가?
-- `/clear`, resume, 새 thread 이후에도 유지되는가?
+- 같은 TUI 프로세스에서 `/clear`, `/new`, resume, fork 또는 새 thread로 전환해도 유지되는가?
+- 지침을 저장하는 주체는 launcher/TUI/backend 프로세스, conversation, 요청 중 무엇인가? 설정 parser에서 실제 모델 요청에 지침을 합성하는 경로까지 추적한다.
+- 실행 인자에 한 번 넣은 지침을 새 대화가 자동 상속하는가, 기존 대화를 resume하면 저장된 지침과 어느 쪽이 우선하는가?
+- 재적용이 필요하면 어떤 전환 이벤트 뒤 어떤 API/설정으로 적용하는가? append 중복이나 기존 지침 덮어쓰기가 생기는가?
+- TUI와 backend/proxy가 별도 프로세스라면 어느 프로세스의 args/env에 주입해야 하는가? 외부 client attach/load가 지침을 바꾸는가?
 - 기존 사용자 지침·MCP·plugins·hooks를 유지하는가?
 - 모델·slash command·사용자 승인 UX를 그대로 유지하는가?
 
-전용 지침 경로가 없어 첫 user message로 bootstrap해야 한다면 대안의 제약으로 보고한다. 동일한 우선순위·지속성의 지침 주입이라고 하지 않는다. 협업 지침은 send/reply 사용을 안내하지만 daemon의 인증·route 집행을 대신하지 않는다.
+사용자는 Claude의 실행별 `--append-system-prompt`와 Codex의 실행 config `developer_instructions`가 같은 실행 내 대화 초기화 후에도 유지되는 것으로 이해하고 있다. 이는 비교 요구이며 이 문서가 모든 명령·버전의 유지 동작을 새로 입증하는 것은 아니다. 기존 두 vendor를 재실험하지 말고, 조사 대상에서 같은 지속성을 제공하는 근거와 예외를 확인한다.
+
+보고에는 `실행 시 주입 / 같은 프로세스의 새 대화 / 기존 대화 resume / 외부 client 재연결 / 프로세스 재실행`별 유지·재적용·미확인을 구분한다. 지원하지 않는 동작은 해당 없음으로 둔다.
+
+전용 지침 경로가 없어 첫 user message로 bootstrap해야 한다면 대안의 제약으로 보고한다. 동일한 우선순위·지속성의 지침 주입이라고 하지 않는다. 협업 지침은 send 사용을 안내하지만 daemon의 인증·route 집행을 대신하지 않는다.
 
 ## 8. HTTP MCP 연결과 outbound 회신
 
@@ -251,7 +274,7 @@ Channel은 다른 vendor에서 외부 이벤트 전달 후보가 될 수 있다.
 - 기존 사용자 MCP를 유지하면서 추가할 수 있는가?
 - vendor별 MCP child 없이 daemon의 외부 HTTP endpoint에 연결할 수 있는가?
 - 초기화 실패를 관측하거나 필수 MCP의 실패로 실행 준비를 실패시킬 수 있는가?
-- 모델이 HTTP MCP reply 도구를 호출해 원 요청과 연결된 정보를 보낼 수 있는가?
+- 모델이 HTTP MCP send 도구로 지정 대상에게 메시지를 보낼 수 있는가?
 
 HTTP MCP가 없으면 stdio bridge나 다른 구조화된 outbound 대안과 추가 비용을 별도로 보고한다. AIOX의 기본 HTTP MCP 기준을 충족했다고 표시하지 않는다. 이번 조사에서 MCP tool의 세부 schema를 새로 확정하거나 서버 라이브러리를 설치하지 않는다.
 
@@ -288,7 +311,7 @@ AIOX message ID
 
 “전체 lifecycle 지원”이라고 뭉뚱그리지 말고 항목별 지원과 공백을 보여 줘라. transcript 파싱이나 화면 문자열 추출만 가능하면 구조화된 event/hook 경로와 구분한다.
 
-턴 종료는 업무 성공·파일 수정 성공·MCP reply 성공과 다르다. reply는 Stop보다 먼저 올 수 있다. 일반 도구 실패를 전부 AIOX delivery 실패로 분류하지 않는다. 승인·질문은 사용자 직접 작업에서도 발생하므로 Web 알림 대상일 수 있지만 A2A 실패와 동일하지 않다. reasoning 전문 수집은 요구하지 않는다.
+턴 종료는 업무 성공·파일 수정 성공·협업 회신 성공과 다르다. 회신용 send는 Stop보다 먼저 올 수 있다. 일반 도구 실패를 전부 AIOX delivery 실패로 분류하지 않는다. 승인·질문은 사용자 직접 작업에서도 발생하므로 Web 알림 대상일 수 있지만 A2A 실패와 동일하지 않다. reasoning 전문 수집은 요구하지 않는다.
 
 ## 10. 플랫폼·버전·운영 경계
 
@@ -341,11 +364,11 @@ endpoint나 연결이 미확인인 곳은 그대로 표시한다. 새 headless �
 - idle 입력·busy 입력.
 - 사용자 프롬프트와 구별되는 표시.
 - 본문·메타데이터 전달.
-- 지침 주입.
+- 지침 주입 위치·수명·대화 전환별 유지 또는 재적용.
 - HTTP MCP·실행별 인증.
 - 입력과 턴 종료 연결.
 - 승인·질문·실패 관측.
-- 주소 지정·발견·대화 전환.
+- 주소·인증·현재 대화 ID의 획득과 전환별 binding 갱신, prompt/turn ID 연결.
 - 플랫폼·버전 경계.
 
 ### D. 추천 경로 하나와 대안
