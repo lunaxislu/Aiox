@@ -79,6 +79,15 @@ Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승�
 진행 중인 registration commit과 동기화한 뒤 daemon 소유 활성 실행 의존성을 검사한다. 해당
 실행이 있으면 거절하고 running으로 돌아간다. 외부 CLI 소유 등록과 persistent Network 정의만
 있는 것은 blocker가 아니다. 종료가 허용되면 외부 협업 등록도 정리한다.
+일반 shell은 명령 입력 대기 중이고 실행·중지된 작업이 없음을 확인한 경우 정상 종료 대상으로
+처리한다. 이전 출력, `cd`한 경로, Enter 전 입력 문자열은 blocker가 아니며 입력 문자열은 종료와
+함께 사라진다. 명령·background·중지 작업이 있거나 상태를 확인할 수 없으면 일반 stop을 거절한다.
+일반 stop과 `--force` 모두 신규 실행과 기존 터미널 입력을 먼저 차단하며, 거절하거나 정리 실패로
+daemon을 유지하면 다시 허용한다. 일반 종료는 shell이 종료 직전 상태를 재판정해 스스로 종료하고,
+확인 실패를 강제 종료로 대체하지 않는다. 여러 shell 정리 중 일부가 먼저 종료된 뒤 다른 shell
+정리가 실패하면 기존 `stop_incomplete`로 보고하며 daemon을 유지한다.
+지원 목표는 macOS zsh/bash, Linux bash/zsh/fish, Windows cmd/PowerShell이다. shell별 구현·실측
+여부는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
 `daemon restart`는 safe stop + start이며 stop이 거절되면 기존 daemon을 유지한다.
 `restart --force`는 제공하지 않는다.
 

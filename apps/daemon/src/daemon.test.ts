@@ -212,7 +212,6 @@ describe("agent listing", () => {
         expect((await call("/api/terminals")).body).toEqual([created.body]);
         const view = await fetch(harness.webUrl(`/api/terminals/${id}`));
         expect(await view.json()).toEqual(created.body);
-        expect((await post("/api/daemon/stop", {})).status).toBe(409);
         expect(
             (await call(`/api/terminals/${id}`, { method: "DELETE" })).body,
         ).toEqual({ deleted: true });
@@ -290,6 +289,101 @@ describe("agent listing", () => {
 });
 
 describe("stopping", () => {
+    it("serializes stop checks, blocks new input and restores admission after rejection", async () => {
+        const { daemon } = harness;
+        let release!: (ids: string[]) => void;
+        const pending = new Promise<string[]>((resolve) => {
+            release = resolve;
+        });
+        const busy = vi
+            .spyOn(daemon.services.terminals, "busy")
+            .mockReturnValue(pending);
+        const first = daemon.stop(false);
+        expect(daemon.acceptingInput).toBe(false);
+        expect(() => daemon.createShell()).toThrow("stopping");
+        await expect(joinAgent(null, "late")).rejects.toThrow("stopping");
+        const second = daemon.stop(true);
+        release(["busy-terminal"]);
+        expect(await first).toMatchObject({
+            stopped: false,
+            blocking: ["terminal busy-terminal"],
+        });
+        expect(await second).toEqual(await first);
+        expect(busy).toHaveBeenCalledTimes(1);
+        expect(daemon.acceptingInput).toBe(true);
+        expect((await call("/api/status")).status).toBe(200);
+    });
+
+    it("preserves an admitted binding while a normal stop is checking blockers", async () => {
+        const { daemon } = harness;
+        let releaseBinding!: () => void;
+        const ready = new Promise<void>((resolve) => {
+            releaseBinding = resolve;
+        });
+        const stopped = vi.fn(async () => {});
+        const registration = daemon.registerRuntime({
+            name: "starting",
+            networkId: null,
+            createBinding: async () => {
+                await ready;
+                return { deliver: async () => {}, stop: stopped };
+            },
+        });
+        let releaseCheck!: (ids: string[]) => void;
+        vi.spyOn(daemon.services.terminals, "busy").mockReturnValue(
+            new Promise((resolve) => {
+                releaseCheck = resolve;
+            }),
+        );
+        const stopping = daemon.stop(false);
+        releaseBinding();
+        try {
+            const registered = await registration;
+            expect(
+                daemon.services.runtimes.authenticate(registered.token),
+            ).toBeDefined();
+            expect(stopped).not.toHaveBeenCalled();
+        } finally {
+            releaseCheck([]);
+            await stopping;
+        }
+        expect(daemon.acceptingInput).toBe(true);
+    });
+
+    it("closes idle shells normally and never falls back to killing a raced shell", async () => {
+        const { daemon } = harness;
+        const { session } = borrowableShell();
+        vi.spyOn(daemon.services.terminals, "busy").mockResolvedValue([]);
+        const close = vi
+            .spyOn(daemon.services.terminals, "closeIdle")
+            .mockRejectedValueOnce(new Error("shell became busy"));
+        const kill = vi.spyOn(session, "kill");
+        expect(await daemon.stop(false)).toMatchObject({
+            stopped: false,
+            warnings: [expect.stringContaining("shell became busy")],
+        });
+        expect(kill).not.toHaveBeenCalled();
+        expect(session.alive).toBe(true);
+        expect(daemon.acceptingInput).toBe(true);
+        close.mockImplementationOnce(async () => {
+            await session.kill();
+            return true;
+        });
+        expect(await daemon.stop(false)).toMatchObject({ stopped: true });
+        expect(close).toHaveBeenCalledTimes(2);
+        expect(daemon.acceptingInput).toBe(false);
+    });
+
+    it("restores input and admission when the busy check fails", async () => {
+        const { daemon } = harness;
+        vi.spyOn(daemon.services.terminals, "busy").mockRejectedValueOnce(
+            new Error("query failed"),
+        );
+        await expect(daemon.stop(false)).rejects.toThrow("query failed");
+        expect(daemon.acceptingInput).toBe(true);
+        expect(await daemon.stop(false)).toMatchObject({ stopped: true });
+    });
+
     it("borrows one shell across fresh Runtime identities and keeps old delivery results with the old sender", async () => {
         const { daemon } = harness;
         const { shell, session, context } = borrowableShell();
@@ -476,6 +570,7 @@ describe("stopping", () => {
             (await post("/api/daemon/stop", { force: true })).body,
         ).toMatchObject({ code: "stop_incomplete" });
         expect(session.alive).toBe(true);
+        expect(harness.daemon.acceptingInput).toBe(true);
         expect((await post("/api/daemon/stop", { force: true })).status).toBe(
             200,
         );
@@ -535,6 +630,7 @@ describe("stopping", () => {
         const stopping = harness.daemon.stop(true);
         await enteredStop;
         try {
+            expect(harness.daemon.acceptingInput).toBe(false);
             expect(() => harness.daemon.createTerminal()).toThrow("stopping");
             const response = await fetch(harness.mcpUrl(network.id), {
                 method: "POST",

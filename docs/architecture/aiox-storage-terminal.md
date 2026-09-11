@@ -237,3 +237,25 @@ Gateway snapshot/event의 projection을 하나로 유지한다. Zustand는 실�
 같은 live authority를 여러 store/cache가 독립적으로 수정하게 하지 않는다. 서버 채택 의존성은 [[docs/architecture/aiox-system]]을 따른다. YAML·오디오 등 후속 의존성은 실제 소비 단계에 선택하며 별도 event bus·HTTP framework를 미리 추가하지 않는다.
 
 Sources: `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §19–§24.
+
+## 대기 shell의 정상 종료 연동
+
+일반 종료 계약은 [[docs/specs/aiox-runtime]]이 소유한다. daemon은 admission과 기존 Web 입력을
+같은 종료 시도에 묶고 비동기 검사 전에 시도를 게시해 동시 stop을 직렬화한다. TerminalService는
+살아 있는 세션의 종료 가능 여부를 모으며, PTY 계층의 shell 연동이 대기·남은 작업을 판정하고
+실제 exit를 확인한다. vendor PTY에는 일반 shell 연동을 주입하지 않는다. [Status: As-built]
+
+POSIX 연동은 임시 startup 파일을 통해 기존 사용자 설정을 읽고, shell hook이 요청 시 대기 상태와
+job을 확인한다. 프로세스 조회는 disown한 자식의 추가 blocker이며 idle의 증거로 단독 사용하지
+않는다. 일반 종료도 shell 측에서 재판정하고 exit를 요청하며 TERM/KILL로 바꾸지 않는다.
+임시 연동 자원은 세션 종료 뒤 정리한다. 기존 hook과 충돌하거나 응답이 없으면 unknown으로
+보존한다. 근거: [[packages/terminal/src/shell-integration.ts]], [[packages/terminal/src/index.ts]],
+[[apps/daemon/src/terminals.ts]], [[apps/daemon/src/daemon.ts]]. [Status: As-built]
+
+macOS zsh/bash 실제 18개 테스트와 Linux Bash5.2.37/Zsh5.9/Fish4.0.2의 PTY 22개 시나리오를 검증했다.
+Linux 결과는 분리된 shell 연동 모듈 범위이며 전체 daemon/CLI 검증은 아니다. macOS 빌드 CLI에서는
+출력·cd·Enter 전 문자열이 있는 대기 shell 정상 종료와 vim 실행 중 일반 stop 거절·force 후 실제
+프로세스 종료를 확인했다. 상세 근거와 후속 재개점은 Stage2-2 후속 W7/W9가 소유한다.
+Windows cmd/PowerShell의 안전 종료 연동과 ConPTY 실측은 아직 미완료다. 현재 Windows 일반
+shell은 unknown blocker를 유지하며 --force 종료는 기존 경로를 사용한다. 다른 OS의 테스트나
+PowerShell 컨테이너 prototype을 Windows 지원 완료 증거로 확대하지 않는다. [Status: Current gap]

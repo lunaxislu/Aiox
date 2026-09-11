@@ -27,8 +27,8 @@
 - [x] Stage 1 — domain·패키지 경계·전역 설정·SQLite·CLI 기반과 3 OS 설치 경계 -> `logs/2026-09-07-AIOX-TUI-Stage1-Foundation.md`
 - [x] Stage 2 — daemon·공통 HTTP MCP·Network/Route·Gateway·PTY 및 최소 Web 연결 -> `logs/2026-09-07-AIOX-TUI-Stage2-Daemon-MCP-Terminal.md`
 - [x] Stage 2-1 — 공통 xterm·PTY 화면 복원을 headless·serialization 기반으로 리팩토링 -> `logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md`
-- [x] Stage 2-2 — AIOX 명령·실행 위치에 따른 실행 소유권과 외부 터미널 독립 수명 -> `logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md`
-- [>] Stage 3 — Claude TUI runtime 주입·inbox·hooks·상태·종료 수직 구현 -> `logs/2026-09-09-AIOX-TUI-Stage3-Claude.md`
+- [>] Stage 2-2 — AIOX 명령·실행 위치에 따른 실행 소유권과 외부 터미널 독립 수명 -> `logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md`
+- [ ] Stage 3 — Claude TUI runtime 주입·inbox·hooks·상태·종료 수직 구현 -> `logs/2026-09-09-AIOX-TUI-Stage3-Claude.md`
 - [ ] Stage 4 — Codex App Server·TUI·Binding Relay와 두 vendor 메시지 왕복 -> `logs/2026-09-09-AIOX-TUI-Stage4-Codex.md`
 - [ ] Stage 5 — 선언형 Host·Worktree·다중 실행 및 CLI 운영·실패 정리 -> `logs/2026-09-09-AIOX-TUI-Stage5-Host.md`
 - [ ] Stage 6 — 운영 Web·브라우저 복귀·배치·다국어·전역 설정 편집·키 바인딩 -> `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`

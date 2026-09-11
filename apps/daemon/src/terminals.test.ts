@@ -801,3 +801,29 @@ it("disconnects only a viewer more than 8 MiB behind parsed output and permits s
     fast.emit("close");
     returning.emit("close");
 });
+
+it("blocks user input and terminal responses during stop and resumes after refusal", () => {
+    const socket = Object.assign(new EventEmitter(), {
+        OPEN: 1,
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(),
+    });
+    const session = {
+        attach: () => () => {},
+        write: vi.fn(),
+        resize: vi.fn(),
+    } as unknown as terminalModule.TerminalSession;
+    let enabled = false;
+    attachTerminal(socket as unknown as WebSocket, session, () => enabled);
+    socket.emit("message", Buffer.from("build\r"), true);
+    socket.emit(
+        "message",
+        Buffer.from(JSON.stringify({ type: "response", data: "reply" })),
+        false,
+    );
+    expect(session.write).not.toHaveBeenCalled();
+    enabled = true;
+    socket.emit("message", Buffer.from("ls\r"), true);
+    expect(session.write).toHaveBeenCalledOnce();
+});

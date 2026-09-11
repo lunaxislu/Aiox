@@ -68,6 +68,7 @@ export class TerminalService {
         // exactOptionalPropertyTypes signature rejects.
         const session = createTerminal({
             id,
+            shellIntegration: kind === "shell",
             ...Object.fromEntries(
                 Object.entries(options).filter(
                     ([, value]) => value !== undefined,
@@ -130,6 +131,28 @@ export class TerminalService {
 
     list(): TerminalSession[] {
         return [...this.#sessions.values()];
+    }
+
+    async busy(): Promise<string[]> {
+        const states = await Promise.all(
+            this.list().map(async (session) => {
+                if (!session.alive) return null;
+                try {
+                    return (await session.busy()) ? session.id : null;
+                } catch {
+                    return session.id;
+                }
+            }),
+        );
+        return states.filter((id): id is string => id !== null);
+    }
+
+    async closeIdle(id: string): Promise<boolean> {
+        const session = this.#sessions.get(id);
+        if (!session) return true;
+        if (!(await session.closeIdle())) return false;
+        this.#remove(id);
+        return true;
     }
 
     async kill(id: string): Promise<boolean> {
@@ -234,6 +257,7 @@ function parseControl(raw: string): ControlMessage | undefined {
 export function attachTerminal(
     socket: WebSocket,
     session: TerminalSession,
+    acceptingInput: () => boolean = () => true,
 ): void {
     let group = responseOwners.get(session);
     if (!group) {
@@ -265,6 +289,7 @@ export function attachTerminal(
         if (detached) return;
         try {
             if (isBinary) {
+                if (!acceptingInput()) return;
                 ownership.owner = socket;
                 session.write(new Uint8Array(data));
                 return;
@@ -272,8 +297,9 @@ export function attachTerminal(
             const control = parseControl(data.toString("utf8"));
             if (control?.type === "resize")
                 session.resize(control.cols, control.rows);
-            else if (control?.type === "response") session.write(control.data);
-            else if (
+            else if (control?.type === "response") {
+                if (acceptingInput()) session.write(control.data);
+            } else if (
                 control?.type === "ack" &&
                 control.offset >= acknowledgedOffset &&
                 control.offset <= sentOffset

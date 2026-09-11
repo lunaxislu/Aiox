@@ -51,6 +51,7 @@ export type RegisteredRuntime = {
 export type Daemon = {
     readonly ports: Ports;
     readonly services: DaemonServices;
+    readonly acceptingInput: boolean;
     registerRuntime(
         input: Omit<RegisterRuntime, "terminalOwnership"> & {
             terminalContext?: TerminalContext;
@@ -272,7 +273,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     return;
                 }
                 sockets.handleUpgrade(request, socket, head, (ws) => {
-                    attachTerminal(ws, session);
+                    attachTerminal(ws, session, () => admitting);
                 });
             } catch {
                 socket.end(
@@ -408,32 +409,32 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         if (stopping) return stopping;
         // Block admission first, then look at what is actually still live.
         admitting = false;
-        const live = runtimes
-            .list()
-            .filter((record) => record.executionOwnership === "daemon");
-        const liveTerminals = terminals
-            .list()
-            .filter((session) => session.alive);
-        if (!force && (live.length > 0 || liveTerminals.length > 0)) {
-            admitting = true;
-            return {
-                stopped: false,
-                blocking: [
-                    ...live.map((record) => record.name),
-                    ...liveTerminals
-                        .filter(
-                            (session) =>
-                                !live.some(
-                                    (record) =>
-                                        record.terminalId === session.id,
-                                ),
-                        )
-                        .map((session) => `terminal ${session.id}`),
-                ],
-                warnings: [],
-            };
-        }
-        stopping = (async (): Promise<StopOutcome> => {
+        // Publish the attempt before an asynchronous idle check can admit another stop.
+        stopping = Promise.resolve().then(async (): Promise<StopOutcome> => {
+            const live = runtimes
+                .list()
+                .filter((record) => record.executionOwnership === "daemon");
+            if (!force) {
+                const busy = await terminals.busy();
+                if (live.length > 0 || busy.length > 0) {
+                    return {
+                        stopped: false,
+                        blocking: [
+                            ...live.map((record) => record.name),
+                            ...busy
+                                .filter(
+                                    (id) =>
+                                        !live.some(
+                                            (record) =>
+                                                record.terminalId === id,
+                                        ),
+                                )
+                                .map((id) => `terminal ${id}`),
+                        ],
+                        warnings: [],
+                    };
+                }
+            }
             for (const record of runtimes.list()) runtimes.revoke(record.id);
             await messages.pause();
             // A binding already being prepared must finish before we can stop
@@ -457,7 +458,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             for (const session of terminals.list()) {
                 if (owned.has(session.id)) continue;
                 try {
-                    await terminals.kill(session.id);
+                    if (force) await terminals.kill(session.id);
+                    else if (!(await terminals.closeIdle(session.id)))
+                        throw new Error("Shell is no longer idle.");
                 } catch (error) {
                     warnings.push(`terminal ${session.id}: ${String(error)}`);
                 }
@@ -475,10 +478,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             retention?.stop();
             retention = undefined;
             return { stopped: true, blocking: [], warnings };
-        })();
+        });
         try {
             const outcome = await stopping;
-            if (!outcome.stopped) stopping = undefined;
+            if (!outcome.stopped) {
+                stopping = undefined;
+                admitting = true;
+            }
             return outcome;
         } catch (error) {
             stopping = undefined;
@@ -519,6 +525,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     const daemon: Daemon = {
         ports,
         services,
+        get acceptingInput() {
+            return admitting;
+        },
         createShell,
         registerRuntime: async (input) => {
             if (!admitting)
@@ -572,7 +581,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     !terminals.get(record.terminalId)?.alive
                 )
                     throw new Error("Terminal exited during registration.");
-                if (!admitting || !record.collaborationActive)
+                // Admission closes during the idle check; only committed teardown
+                // revokes an execution that was already admitted.
+                if (!record.collaborationActive)
                     throw new Error(
                         "The daemon is stopping; registration cancelled.",
                     );

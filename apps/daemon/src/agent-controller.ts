@@ -409,7 +409,7 @@ export class AgentController {
                     void foreground.exited.then(processExited).catch(() => {});
                     socket.on("message", (data, isBinary) => {
                         if (ended) return;
-                        if (isBinary)
+                        if (isBinary && this.daemon.acceptingInput)
                             foreground!.write(
                                 Array.isArray(data)
                                     ? Buffer.concat(data)

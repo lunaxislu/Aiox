@@ -35,6 +35,10 @@ jobs:
                   run_install: false
             - name: Install locked dependencies
               run: pnpm install --frozen-lockfile
+            - name: Install PowerShell idle-handshake test prerequisite
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: Install-Module PSReadLine -RequiredVersion 2.4.5 -Scope CurrentUser -Force -AllowClobber
             - name: Lint, format, typecheck, build and test
               run: pnpm check
             - name: Run built CLI

@@ -1,7 +1,7 @@
 ---
 topic: AIOX TUI Stage2-2 Execution Ownership
 description: AIOX 명령·실행 위치에 따른 실행 소유권과 외부 터미널 독립 수명
-status: decided
+status: open
 ---
 
 ## Work Items
@@ -11,6 +11,10 @@ status: decided
 - [x] W3 외부 실행·제어 연결 구현 — Web foreground 경로를 유지하고 외부를 ClaudeController.attach에서 분리한다. CLI의 vendor 직접 실행·입출력 상속, 제어 WS의 준비·시작·종료·연결 손실, 등록·hook 맵·credential 준비 순서와 CLI 종료 후 등록 정리를 연결한다. AIOX 공통 정책을 첫 구현인 Claude에 적용하며 외부에 PTY·headless·Serialize를 생성하지 않는다.
 - [x] W4 실행별 주입·자원·hook 실패 경계 연결 — 기존 주입·충돌 검사를 재사용하고 실제 실행 CLI에서 버전을 검사한다. 외부 inbox 임시 디렉터리는 CLI가 생성부터 정리까지 소유하며 길이·권한 검사와 등록 경로 대조를 유지한다. 외부 hook ECONNREFUSED만 조용히 처리하고 401·잘못된 보고·timeout 및 Web/Host 오류 진단은 유지한다.
 - [x] W5 실제 수명 검증·회귀·Stage3 인계 — 외부 PTY 미생성, daemon 정상·force·비정상 종료 뒤 실제 vendor 조작과 shell 복귀, 연결 손실 등록 정리, Web 실행·빌린 shell·화면 복원 회귀 및 pnpm check를 검증한다. OS별 미검증을 명시하고 owner·링크 정합을 확인한 뒤 Stage3 W1로 plan 포인터를 복귀한다. Claude 메시지 E2E·Codex·Host 미구현을 완료로 확대하지 않는다.
+- [x] W6 일반 stop·force 공통 입력/신규 실행 차단과 종료 직렬화 — 거절·실패 시 입력을 복구하고 외부 vendor 수명은 유지한다.
+- [x] W7 대기 shell 안전 종료 연동 — macOS zsh/bash 및 Linux bash/zsh/fish에서 shell 자체 대기·남은 작업 판정과 정상종료 handshake를 구현·검증한다.
+- [>] W8 Windows cmd/PowerShell 대기 shell 정상종료 — builtin·ThreadJob·입력 경합을 보호하는 연동을 구현하고 실제 Windows 검증을 확보한다. 환경/관측 미확보는 미완료로 유지한다.
+- [ ] W9 통합 회귀·owner 반영과 단계 재마감 — 지원 shell별 대기/실행/중지/background/exec/입력 경합·일반/force 실패 복구를 검증하고 pnpm check·실측 범위를 기록한다.
 
 ## Required Context
 
@@ -27,6 +31,14 @@ status: decided
 ### {W4,W5}
 
 - W4·W5 완료. 최신 완료 entry의 실제 Claude 외부 4종 단절·Web 복원 근거와 최종 404 tests 결과를 따른다. Stage3 W1로 인계했으며 다른 OS·모델 메시지 E2E는 Stage3 후속 검증이다.
+
+### {W6,W7,W8,W9}
+
+- 최신 대기 shell 후속 블록의 승인 범위와 shell별 실측 한계를 따른다. 기존 W1–W5를 다시 구현하지 않는다. 일반 종료는 unknown/busy 보존, --force는 daemon 소유 실행 종료; 두 경로 모두 입력·신규실행 차단을 유지한다. Enter 전 문자열 보존·cwd 추적은 요구하지 않는다.
+
+### {W8,W9}
+
+- W6/W7 완료 결과를 소비한다. 사용자가 GitHub Actions Windows runner에서 구현·자동 검증하고 별도 Windows PC에서는 마지막 사용 확인을 하는 방향을 승인했다. codex/stage2-2-idle-shell-windows 검증 브랜치에서 기존 3 OS×Node22/24 CI를 재사용한다. Windows cmd/PowerShell 연동은 구현·ConPTY 실측 중이며 단순 unknown 유지나 PowerShell 컨테이너 결과로 완료 처리하지 않는다. W9는 전체 지원범위 회귀·owner 반영과 단계 마감을 수행한다.
 
 ## 2026-09-11 · 공통 실행 위치·명령 정책 합의와 Stage2-2 착수 준비
 
@@ -160,3 +172,33 @@ Web은 실제 Claude의 inbox·hook·Network MCP 준비, borrowed shell, viewer 
 계약·구조·실측 범위는 docs/specs/aiox-runtime.md와 docs/architecture/aiox-system.md, aiox-storage-terminal.md, aiox-vendor-bindings.md에 반영했다. Windows native/Linux/WSL 실제 vendor 통합과 Claude 모델 메시지 E2E는 Stage3 W2·W3·W5에서 해당 환경과 실제 vendor를 확보해 검증한다. Codex는 Stage4, Host는 Stage5다. Stage2-2 자체 미완료 항목은 없으며 Stage3 W1에서 새 공통 경계를 소비하도록 재개 문맥과 plan을 복귀한다.
 
 사용자가 추가 제기한 idle shell만 있으면 일반 daemon stop으로 닫히는 UX는 이번 완료 범위에 포함하지 않는다. 현재 일반 shell은 blocker다. 프롬프트 대기와 실행·중지된 background 작업 구분은 후속 설계/구현 검토 사항으로 Stage3 재개 문맥에 전달하며, CPU 사용량이나 화면만으로 idle을 판단하는 정책을 확정하지 않았다.
+
+## 2026-09-11 · 대기 shell의 일반 stop 허용과 공통 입력 차단
+
+사용자가 이미 decided인 Stage2-2에 후속 작업을 기록하도록 요청해 다시 열었다. 기존 W1–W5 완료와 증거는 보존하고 이번 변경은 W6 이후에서 추적한다. 이전 idle 판정 조사에는 기록을 남기지 않았으며 여기에는 최종 승인 요구와 구현 판단을 기록한다.
+
+확정: 대기 중이고 남은 실행/중지 작업이 없는 shell은 일반 daemon stop으로 조용히 닫는다. 이전 출력, 현재 cwd, Enter 전 입력 문자열은 종료를 막지 않으며 입력 문자열 유실을 허용한다. 실행 중인 명령·background·중지 작업 또는 판정 불가는 blocker다. stop과 --force 모두 신규 입력·실행 진입을 먼저 차단하고 거절·실패로 daemon을 유지할 경우 복구한다. 외부 CLI 소유 vendor 생존 정책은 유지한다. 지원 요청은 macOS zsh/bash, Linux bash/zsh/fish, Windows cmd/PowerShell이다. 사용자 shell을 임의 교체하지 않는다.
+
+macOS/Linux 격리 실측에서 자식 없는 builtin loop와 exec 프로그램 반례가 확인돼 자식 없음만으로 idle 판정하지 않는다. Windows ThreadJob는 동일 프로세스 작업이므로 process tree만으로 판정할 수 없다. POSIX는 shell 자체의 대기/jobs 관측과 종료 직전 재판정을 구현하고, 공통 daemon은 입력·등록 경합을 닫는다. Windows는 실측 환경이 없고 cmd/PowerShell 안전 handshake가 아직 확정되지 않아 구현/실측 완료로 취급하지 않는다. 단순 조회 fallback으로 사용자 요구를 축소하지 않는다.
+
+사용자 요청으로 subagent들이 ponytail full과 TDD를 적용한다. mac_shell_busy는 POSIX shell 연동, linux_shell_busy는 daemon stop 직렬화·입력 admission, windows_shell_busy는 Windows 안전 연동과 검증 경계, root는 terminal service·호출자·owner·로그·통합 검증을 담당한다. 필요한 정책 변경은 근거와 사용자 관찰 결과를 보고한 뒤 결정한다.
+
+### 2026-09-11 19:47 · W6·W7 구현·실측 완료와 Windows 잔여 경계
+
+W6 완료: daemon은 비동기 종료 검사 전에 stopping을 게시하고 acceptingInput을 false로 만든다. 기존 Web shell 입력·terminal response와 AgentController foreground 입력을 같은 gate로 막는다. 신규 등록은 거절하지만 이미 admission된 등록을 검사 중 취소하지 않으며 실제 teardown의 revoke로만 종료한다. 일반 stop 거절·stop_incomplete·예외에서는 입력을 복구한다. pending 등록·동시 stop·force·실패 복구는 테스트로 확인했다. 외부 CLI vendor 소유권은 변경하지 않았다.
+
+W7 완료: packages/terminal/src/shell-integration.ts에서 임시 startup 연동과 shell 내 대기/jobs 재판정·자체 exit를 구현했다. ps는 disown한 자식과 이미 exec로 교체된 프로세스를 거절하는 보조 근거다. 새입력은 daemon에서 막고 일반 close에서도 shell이 재판정하며 종료 실패를 kill로 대체하지 않는다. 사용자 rc·PROMPT_COMMAND·WINCH handler를 보존하며 연동 충돌·실패는 blocker다. macOS Bash3.2 DEBUG와 Linux Bash5.2 PS0 분기는 실제 shell 동작 차이를 확인해 적용했다. 지원되지 않는 shell/인자 조합은 보수적으로 유지한다.
+
+실측/회귀: macOS 실제 zsh/bash 18 tests(대기/cd/미제출text/builtin loop/read/foreground/background/stopped/disown/exec/기존trap보존), Linux Bash5.2.37/Zsh5.9/Fish4.0.2 실제 PTY 22 scenarios 통과. Linux는 Docker arm64, Python PTY+Node20의 분리 모듈 검사이며 전체 Linux daemon/CLI 또는 제품 Node engine 검증이 아니다. 근거 /private/tmp/aiox-linux-handshake-result.txt, /private/tmp/aiox-linux-handshake.mjs, /private/tmp/aiox-shell-linux.mjs. 최종 source SHA256 711f0683f19c1b9566bd654a34de3bb4639771b95e0555c7d51931269f9eabf7을 root가 대조했다.
+
+macOS 최종 built CLI 실제 검증: /private/tmp/aiox-idle-daemon-proof.mjs, /private/tmp/aiox-idle-daemon-DYhTFS/results.json. cd·이전 출력·Enter 전 문자열이 있는 shell에 CLI daemon stop 성공, 실제 vim 중 일반 stop active_runtimes 거절·입력 복구, --force 후 shell과 vim PID 실제 종료를 확인했다. 초기 검사에서 shell exit 관측자가 응답 파일을 먼저 지워 stop_incomplete 오판하는 경합을 발견했고 실제 exit 우선 확인으로 수정했다. 해당 회귀 테스트를 RED→GREEN으로 검증했다.
+
+최종 pnpm check exit 0, 428 tests 통과. /private/tmp/aiox-idle-final-check.txt에 전체 결과가 있다. docs/specs/aiox-runtime.md와 docs/architecture/aiox-storage-terminal.md에 계약·구조·검증 범위를 반영했다. 제품 코드·테스트는 미커밋이며 사용자 실행 중인 daemon은 재시작하지 않았다.
+
+W8/W9는 미완료다. Windows cmd/PowerShell은 아직 안전 연동 구현·ConPTY 실측이 없다. PowerShell OnIdle 요청파일+Get-Job prototype은 공식 ARM64 컨테이너에서 응답했으나 PSReadLine2.3.6 AcceptLine은 자동종료하지 않고 입력버퍼에 exit를 남겼으며, 입력 중 문자열이 있으면 OnIdle 자체가 발화하지 않는 제약도 확인했다. 이 축소안을 production에 넣지 않았다. /private/tmp/aiox-windows-idle-probe/probe.ps1은 조사 산출물일 뿐 구현 완료 증거가 아니다. 실제 Windows PC/CI runner 접근 방법을 사용자에게 비동기로 질문했고 아직 답이 없다. 다음 W8은 Windows 환경 확보와 cmd/PowerShell의 명시적 안전 종료 방법 검증부터 재개한다. 기존 Windows는 unknown blocker·force 경로를 유지한다. 지원 범위를 POSIX로 축소하거나 전체 작업 완료로 판정하지 않는다.
+
+## 2026-09-11 · W8 Windows CI 검증 착수
+
+사용자가 GitHub Actions Windows 자동 검증 진행에 동의했다. 개인 Windows PC에는 저장소와 Codex가 없으며 이후 수동 사용 확인은 별도다. codex/stage2-2-idle-shell-windows 브랜치에서 기존 OS/Node matrix를 재사용한다.
+
+PowerShell 후보 구현은 PSReadLine 2.4.3 이상에서 읽기 중 timer 이벤트로 요청을 받고 정상 명령 루프에서 jobs·자식·요청 유효기간을 재확인한 뒤 종료한다. CI에는 Gallery에서 확인한 PSReadLine 2.4.5를 설치한다. 실제 Windows 검증 전이며 낮은 버전은 unknown blocker다. CMD는 출력 지연 PROMPT와 자식 없음의 오판을 조사하는 ConPTY 테스트를 준비했다. 별도 line editor나 native injection 도입은 결정하지 않았다. W8/W9 미완료를 유지한다.

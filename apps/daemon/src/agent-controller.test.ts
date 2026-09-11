@@ -92,6 +92,8 @@ beforeEach(async () => {
             listeners.clear();
         };
         const session: TerminalSession = {
+            busy: async () => true,
+            closeIdle: async () => false,
             id: options.id,
             pid: 100 + sessions.length,
             get alive() {

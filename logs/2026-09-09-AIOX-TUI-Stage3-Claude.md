@@ -31,7 +31,7 @@ status: open
 
 ### {W1}
 
-- 추가 UX 요청: idle shell만 있을 때 일반 daemon stop이 shell을 닫고 종료하도록 하는 후속 검토가 남아 있다. Stage2-2 완료 범위 밖이다. 현재 shell blocker와 foreground/background·중지 작업 관측 경로를 조사하고 별도 작업 범위를 정한 뒤 구현한다. 이번 인계는 정책 확정이나 구현 승인이 아니다.
+- 추가 UX 요청을 사용자 승인에 따라 Stage2-2 후속 W6–W9로 구현 중이다. 현재 활성 작업은 logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md의 최신 대기 shell 블록이다. 이 로그 W1은 그 작업 종료 뒤 복귀하며, 기존 vendor 메시지 E2E 미완료 범위는 유지한다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 

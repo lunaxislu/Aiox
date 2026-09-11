@@ -4,6 +4,7 @@ import { type IPtyForkOptions, spawn } from "node-pty";
 import { MirrorBoundary, type BoundaryEvent } from "@/boundary";
 import type { TerminalRestoreState } from "@/restore";
 import { serializeTerminal } from "@/serialization";
+import { prepareShell } from "@/shell-integration";
 
 export { MirrorBoundary, type BoundaryEvent } from "@/boundary";
 
@@ -42,6 +43,10 @@ export type TerminalSession = {
     readonly id: string;
     readonly pid: number;
     readonly alive: boolean;
+    /** Unsupported or unconfirmed shells are busy. */
+    busy(): Promise<boolean>;
+    /** Ask an idle shell to exit itself; never signal termination. */
+    closeIdle(): Promise<boolean>;
     write(data: Uint8Array | string): void;
     resize(cols: number, rows: number): void;
     /** One ordered snapshot-to-live connection. Detach never stops the PTY. */
@@ -56,6 +61,8 @@ export type TerminalSession = {
 
 export type TerminalOptions = {
     id: string;
+    /** Enable cooperative idle shutdown for a general shell, never vendor PTYs. */
+    shellIntegration?: boolean;
     /** Defaults to `defaultShell().file`. */
     file?: string;
     args?: readonly string[];
@@ -92,6 +99,21 @@ export function defaultShell(): { file: string; args: string[] } {
 
 export function createTerminal(options: TerminalOptions): TerminalSession {
     const shell = defaultShell();
+    const launch = {
+        file: options.file ?? shell.file,
+        args: [
+            ...(options.args ?? (options.file === undefined ? shell.args : [])),
+        ],
+        env: Object.fromEntries(
+            Object.entries(options.env ?? process.env).filter(
+                (entry): entry is [string, string] => entry[1] !== undefined,
+            ),
+        ),
+    };
+    const integration = options.shellIntegration
+        ? prepareShell(launch)
+        : undefined;
+    const prepared = integration ?? launch;
 
     // POSIX encoding: null preserves raw bytes; Windows still emits strings.
     const ptyOptions: IPtyForkOptions = {
@@ -99,13 +121,15 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         cols: options.cols ?? 80,
         rows: options.rows ?? 24,
         cwd: options.cwd ?? process.cwd(),
-        env: options.env ?? process.env,
+        env: prepared.env,
     };
-    const pty = spawn(
-        options.file ?? shell.file,
-        [...(options.args ?? (options.file === undefined ? shell.args : []))],
-        ptyOptions,
-    );
+    let pty: ReturnType<typeof spawn>;
+    try {
+        pty = spawn(prepared.file, prepared.args, ptyOptions);
+    } catch (error) {
+        void integration?.dispose().catch(console.error);
+        throw error;
+    }
 
     const listeners = new Set<TerminalListener>();
     if (options.initialListener) listeners.add(options.initialListener);
@@ -219,6 +243,19 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         },
         get alive() {
             return exited === undefined;
+        },
+        async busy() {
+            if (exited) return false;
+            return integration ? integration.busy(pty.pid) : true;
+        },
+        async closeIdle() {
+            if (exited) return true;
+            if (!integration) return false;
+            const accepted = await integration.close(pty.pid);
+            // Exit observers may already have disposed the acknowledgement file.
+            if (exited) return true;
+            if (!accepted) return false;
+            return (await exitWithin(SIGTERM_GRACE_MS)) !== undefined;
         },
         write(data) {
             if (exited) return;
@@ -346,6 +383,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         async dispose() {
             await exitPromise;
             await boundary.dispose();
+            await integration?.dispose();
             geometryListeners.clear();
         },
     };

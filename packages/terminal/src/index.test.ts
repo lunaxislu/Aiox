@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -584,3 +584,39 @@ it("pauses PTY reads while mirror parsing lags and resumes after success or fail
         write.mockRestore();
     }
 });
+
+it.skipIf(process.platform === "win32")(
+    "confirms idle exit even when lifecycle disposal removes the shell acknowledgement",
+    async () => {
+        const home = mkdtempSync(join(tmpdir(), "aiox-idle-exit-"));
+        writeFileSync(join(home, ".bashrc"), "PS1='IDLE_EXIT> '\n");
+        const session = open({
+            id: "idle-exit",
+            file: "/bin/bash",
+            shellIntegration: true,
+            env: {
+                ...process.env,
+                HOME: home,
+                TERM: "dumb",
+            } as Record<string, string>,
+        });
+        const viewer = view(session);
+        session.subscribe({
+            data() {},
+            exit() {
+                void session.dispose();
+            },
+        });
+        try {
+            await expect
+                .poll(() => viewer.text.includes("IDLE_EXIT> "))
+                .toBe(true);
+            expect(await session.closeIdle()).toBe(true);
+            expect(session.alive).toBe(false);
+        } finally {
+            await session.kill();
+            await session.dispose();
+            rmSync(home, { recursive: true, force: true });
+        }
+    },
+);
