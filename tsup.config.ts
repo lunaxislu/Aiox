@@ -10,7 +10,9 @@ const packages: Record<string, Options> = {
         external: ["better-sqlite3", "typeorm", "@aiox/domain"],
     },
     "@aiox/terminal": {
+        entry: ["src/index.ts", "src/restore.ts"],
         external: ["node-pty"],
+        noExternal: ["@xterm/headless"],
     },
     "@aiox/daemon": {
         // dev-harness is a Stage 2 verification entry, not part of the product surface.

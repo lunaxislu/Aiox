@@ -120,11 +120,40 @@ standalone 연결 소비자는 protocol의 `terminalContextFromEnv(env)`로 문�
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:473-552`,
 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:293-435`.
 
-Stage 2는 서버 소유 node-pty의 입출력·resize·exit와 WebSocket attachment를 연결한다. 재부착에는 기본 64 KiB의 최근 출력 바이트를 사용한다. 이는 정확한 현재 화면 snapshot이 아니며 잘린 escape sequence나 과거 resize 뒤의 화면을 온전히 복원하지 못할 수 있다. 아래의 정확한 화면·배치 복귀는 운영 Web의 목표로 남는다. [Status: As-built]
+Stage 2-1 구현은 세션당 xterm headless로 화면 상태를 유지하고, 통합 attachment가 snapshot과 이후 출력·resize·exit의 순서를 소유한다. SerializeAddon의 화면 바이트와 누락 상태 보완을 함께 전달하며 브라우저는 snapshot 크기에서 파싱과 상태 적용을 마친 뒤 실시간 이벤트를 처리한다. pane 크기 변경은 서버에 요청하고 서버의 resize 이벤트 순서에 따라 적용한다. 운영 Web의 탭·분할 배치 복귀는 별도 통합 대상이다. [Status: As-built]
+
+복원 책임은 다음 순서로 연결된다. 화면 캡처와 live 구독을 호출자가 따로 조합하지 않고 세션의 attachment가 경계를 소유한다. [Status: As-built]
+
+```text
+PTY 출력 → 미러 제출 FIFO → 해당 시점까지 파싱 완료 → snapshot + 보류 tail
+                                                    → 이후 출력·resize·exit
+Web 접속 → snapshot 크기 적용 → 화면 바이트 파싱 → 누락 상태 적용
+         → 보류 tail → live 연결 → 현재 pane 크기 요청
+```
+
+근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:263-334`,
+[[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:299-356`,
+[[apps/web/src/attach.ts]] `apps/web/src/attach.ts:145-253`.
+
+SerializeAddon이 생략한 상태는 같은 snapshot의 보완 데이터로 전달한다. 저장 커서·문자 속성·문자 집합·스크롤 영역·탭 위치·마우스 인코딩·커서 표시뿐 아니라 프로그램이 변경한 줄바꿈 모드와 커서 깜빡임도 복원한다. 미러와 Web의 초기 커서 깜빡임은 모두 켜짐으로 맞추고, 이후 프로그램의 모드 변경을 따른다. 셀 읽기·패치에는 독립 작업 셀을 사용하며 xterm이 erase에 사용하는 공유 빈 셀을 변경하지 않는다. [Status: As-built]
+
+근거: [[packages/terminal/src/serialization.ts]] `packages/terminal/src/serialization.ts:97-165`,
+[[packages/terminal/src/restore.ts]] `packages/terminal/src/restore.ts:109-228`,
+[[packages/terminal/src/serialization.test.ts]] `packages/terminal/src/serialization.test.ts:45-82`의 모드 왕복 및 `packages/terminal/src/serialization.test.ts:504-538`의 snapshot 이후 erase 회귀 검사.
+
+미러의 출력 제출 FIFO와 파싱 완료 대기는 분리한다. 연속 출력은 청크마다 파싱 타이머를 기다리지 않고 순서대로 제출하되, snapshot·resize·dispose는 앞선 파싱 완료를 기다린다. 세션 소유자는 실제 PTY exit 뒤 대기 중인 복원과 출력 처리가 끝난 다음 미러를 dispose한다. 브라우저 detach는 이 정리의 계기가 아니다. [Status: As-built]
+
+native PTY에서 읽었지만 미러 처리가 끝나지 않은 출력이 1 MiB 이상이면 읽기를 pause하고, 512 KiB 이하로 줄면 resume한다. 이는 미완성 시퀀스 복원 tail의 1 MiB·1,024개 이벤트 제한과 별도이며, 느린 Web 연결의 출력 누적 제한·재접속 계약은 [[docs/specs/aiox-configuration-web]]를 따른다. [Status: As-built]
+
+복원 상태에는 각 버퍼의 baseY를 포함한다. 재생 후 대상 baseY가 다르면 저장 커서와 hidden/styled 셀·링크의 절대 행 번호를 적용하기 전에 거절한다. 스크롤백 용량이 달라도 실제 히스토리가 동일하면 허용하며, 잘린 히스토리에 저장 커서만 재배치해 성공으로 처리하지 않는다. [Status: As-built]
+
+근거: 제출·파싱 경계는 [[packages/terminal/src/boundary.ts]] `packages/terminal/src/boundary.ts:69-112`, `packages/terminal/src/boundary.ts:186-224`; 세션 정리는 [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:115-128`, [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:345-348`; PTY pause/resume 검증은 [[packages/terminal/src/index.test.ts]] `packages/terminal/src/index.test.ts:525-582`; 히스토리 차이 거절과 용량 차이 허용은 [[packages/terminal/src/serialization.test.ts]] `packages/terminal/src/serialization.test.ts:45-99`.
+
+terminal 패키지의 ESM 빌드는 CJS인 `@xterm/headless`만 번들에 포함해 배포 실행의 import 호환성을 유지한다. native `node-pty`는 외부 의존성으로 둔다. [Status: As-built] 근거: [[tsup.config.ts]] `tsup.config.ts:12-16`.
 
 PTY 경계는 POSIX raw byte와 Windows 문자열 출력을 공통 바이트로 정규화해 WebSocket binary 출력과 JSON 제어 프레임을 구분한다. Windows 드라이버가 이미 문자열로 디코딩한 원본 바이트까지 복원한다고 보장하지 않는다.
 
-근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:18-73`, `packages/terminal/src/index.ts:106-137`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:38-131`; 실제 일반 shell의 I/O·resize·detach 후 생존 검증은 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:79-128`.
+근거: [[packages/terminal/src/index.ts]], [[packages/terminal/src/boundary.ts]], [[packages/terminal/src/serialization.ts]], [[packages/terminal/src/restore.ts]], [[apps/web/src/attach.ts]], [[apps/daemon/src/terminals.test.ts]].
 
 ```text
 Vendor TUI ↔ 서버 소유 PTY / 현재 화면
@@ -141,9 +170,9 @@ Web close → attachment 해제 → 같은 Runtime/PTY 실행 지속
 재방문 때 로그인·token 수동 입력을 추가하지 않는다. 내부 연결 보호 수단은 이 UX를 충족하도록
 정하며 기존 메모리 credential 제약을 사용자 인증 절차 요구로 바꾸지 않는다.
 
-단순 WS reconnect만으로 현재 화면이 복원되지는 않는다. server-side screen 유지·xterm headless/
-serialize 또는 output 유지 방식을 구현에서 평가한다. terminal headless renderer는 제외한 LLM
-headless와 다르다. 특정 package, 무제한 raw output 저장, 저장 크기를 미리 확정하지 않는다.
+단순 WS reconnect만으로 현재 화면이 복원되지는 않는다. 서버 미러와 복원 경계가 이 책임을 맡는다.
+미완성 입력의 보관 한도와 복원 거절·회복 동작은 [[docs/specs/aiox-configuration-web]]를 따른다.
+terminal headless는 제외한 LLM headless와 다르며, 무제한 raw output을 보관하지 않는다.
 화면 snapshot과 후속 stream 연결이 일관되도록 구현하며 pane 이동은 routing을 바꾸지 않는다.
 범위는 서버가 살아 있는 동안의 복귀다. daemon 재시작 뒤 외부 프로세스 자동 재attach/실행이나
 durable message replay까지 약속하지 않는다.

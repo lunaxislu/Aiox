@@ -126,16 +126,39 @@ Web 재방문 → 자동 연결 → 현재 상태 snapshot
 ```
 
 사용자에게 로그인·token 입력 등 별도 인증 절차를 요구하지 않는다. 내부 연결 보호는 이
-자동 복귀 UX를 충족하도록 구현한다. Web close/unmount/disconnect를 agent.stop 또는 terminal.stop에
-연결하지 않는다. pane 선택이나 attachment가 새 vendor 실행을 뜻하지 않는다.
+자동 복귀 UX를 충족하도록 구현한다. Web close/unmount/disconnect를 agent.stop 또는 terminal.stop에 연결하지 않는다.
+pane 선택이나 attachment가 새 vendor 실행을 뜻하지 않는다.
 
 복원 대상은 작업 중·완료·승인 대기·idle 모두이며 닫기 직전 캡처가 아닌 **계속 진행된 동일
 terminal의 현재 화면**이다. 단순 WebSocket 재접속만으로 요구를 충족했다고 간주하지 않는다.
-배치 식별·저장과 terminal 화면 유지 수단은 구현에서 정한다. xterm headless/serialize는 후보이며
-LLM headless 전환과 다른 개념이다. 무제한 raw 출력 저장도 확정하지 않는다.
+배치 식별·저장은 구현에서 정한다. 현재 terminal 화면 유지 구조와 검증 범위는
+[[docs/architecture/aiox-storage-terminal]]를 따른다. terminal headless는 LLM headless 전환과
+다른 개념이며 무제한 raw 출력 저장을 요구하지 않는다.
 
 범위는 daemon이 살아 있는 동안의 브라우저 복귀다. daemon 재시작 뒤 과거 PTY 재부착,
 자동 Agent 실행이나 durable message replay는 별도 기능이며 현재 추가하지 않는다.
+
+미완성 제어 시퀀스 때문에 복원용 보관 한도를 넘으면 새 연결의 화면 복원을 일시적으로
+거절하고 이유를 표시한다. 기존 PTY와 연결된 viewer의 입출력은 유지한다. 안전한 파싱
+경계로 돌아오면 새 복원을 다시 허용한다. 정상적인 연속 로그 출력이나 단순한 청크 분할을
+이 오류로 취급하지 않으며, 잘린 데이터를 정상 snapshot으로 전달하지 않는다.
+보관 한도는 바이트와 이벤트 수를 모두 유한하게 제한한다. [Status: Current]
+
+근거: [[packages/terminal/src/boundary.ts]] `packages/terminal/src/boundary.ts:126-213`, [[packages/terminal/src/boundary.test.ts]] `packages/terminal/src/boundary.test.ts:117-178`.
+
+Web 연결이 실시간 출력의 파싱을 따라가지 못해 미확인 출력이 8 MiB를 넘게 되면 해당 연결만 종료한다. 오류와 재접속 안내를 표시하고 WebSocket 종료 코드는 1013을 사용한다. PTY 실행과 다른 viewer는 유지하며, 사용자는 같은 terminal에 재접속해 현재 snapshot부터 복원한다. 스냅샷과 복원 tail은 이 실시간 누적량에 포함하지 않는다. [Status: Current]
+
+실시간 바이너리 출력 앞의 `output` 제어 프레임은 연결별 누적 바이트 끝 위치 `offset`을 전달한다. Web은 안전한 정수와 실제 바이너리 길이의 일치를 검증하고, 해당 출력의 xterm 파싱 완료 후에만 `ack`와 같은 offset을 보낸다. 수신 또는 WebSocket 전송 완료만으로 파싱을 확인하지 않는다. [Status: Current]
+
+근거: 서버 한도·종료·재접속 검증은 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:715-804`; 파싱 완료 ACK와 복원·detach 제외 검증은 [[apps/web/src/attach.test.ts]] `apps/web/src/attach.test.ts:364-440`. 내부 미러의 처리량 제어와 복원 상태 검증은 [[docs/architecture/aiox-storage-terminal]]의 PTY와 Web 복귀를 따른다.
+
+같은 terminal에 연결된 여러 Web 화면은 출력을 함께 보고 각각 사용자 입력을 보낼 수 있다.
+live terminal 질의의 자동응답은 마지막으로 실제 입력을 보낸 연결 하나가 담당한다. 입력 전에는
+첫 연결이 담당하고, 담당 연결이 닫히면 남은 첫 연결로 넘긴다. 커서 좌표나 자동응답 자체는
+담당 변경의 기준이 아니다. 각 출력의 담당은 전달 도중 입력이 발생해도 바뀌지 않는다.
+과거 복원 데이터의 자동응답은 PTY에 보내지 않는다. [Status: Current]
+
+근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:232-350`, [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:581-679`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:274-306`.
 
 ## 현재 상태와 요청 결과 표시
 

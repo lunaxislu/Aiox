@@ -1,9 +1,16 @@
+import { Terminal } from "@xterm/headless";
 import { type IPtyForkOptions, spawn } from "node-pty";
+
+import { MirrorBoundary, type BoundaryEvent } from "@/boundary";
+import type { TerminalRestoreState } from "@/restore";
+import { serializeTerminal } from "@/serialization";
+
+export { MirrorBoundary, type BoundaryEvent } from "@/boundary";
 
 /**
  * A single server owned PTY. The daemon keeps the registry, the HTTP surface
- * and the WebSocket attachments; this module only owns one live process and
- * the bytes it produces.
+ * and the WebSocket attachments; this module owns one live process, its
+ * headless screen and the ordered snapshot-to-live boundary.
  *
  * Web attach and detach are viewing operations. Dropping the last subscriber
  * never stops the process ([[docs/architecture/aiox-storage-terminal]] "PTY와
@@ -13,8 +20,21 @@ import { type IPtyForkOptions, spawn } from "node-pty";
 
 export type TerminalExit = { exitCode: number; signal: number | null };
 
+export type TerminalSnapshot = {
+    cols: number;
+    rows: number;
+    data: Uint8Array;
+    state: TerminalRestoreState;
+    tail: BoundaryEvent[];
+};
+export type TerminalAttachmentListener = TerminalListener & {
+    snapshot(value: TerminalSnapshot): void;
+    resize(cols: number, rows: number): void;
+    error(error: Error): void;
+};
+
 export type TerminalListener = {
-    data(chunk: Uint8Array): void;
+    data(chunk: Uint8Array, frame?: object): void;
     exit(event: TerminalExit): void;
 };
 
@@ -24,18 +44,14 @@ export type TerminalSession = {
     readonly alive: boolean;
     write(data: Uint8Array | string): void;
     resize(cols: number, rows: number): void;
-    /** Recent output for a newly attached viewer, oldest-first. */
-    snapshot(): Uint8Array;
-    /**
-     * Returns an unsubscribe function. Unsubscribing never kills the pty.
-     *
-     * Call `snapshot()` and `subscribe()` in the same tick: pty output arrives
-     * on the event loop, so nothing can slip between them and the viewer gets
-     * replay followed by live output with no gap and no repeat.
-     */
+    /** One ordered snapshot-to-live connection. Detach never stops the PTY. */
+    attach(listener: TerminalAttachmentListener): () => void;
+    /** Raw live/lifecycle observation without replay. */
     subscribe(listener: TerminalListener): () => void;
     /** Resolves only once the process is confirmed gone. */
     kill(): Promise<TerminalExit>;
+    /** Retire an exited session after queued restoration and output complete. */
+    dispose(): Promise<void>;
 };
 
 export type TerminalOptions = {
@@ -53,19 +69,18 @@ export type TerminalOptions = {
     env?: Record<string, string>;
     cols?: number;
     rows?: number;
-    replayBytes?: number;
-};
 
-// ponytail: replay is a raw byte tail, not a screen. 64 KiB gives a re-attaching
-// viewer recent context; the trim can cut mid escape sequence and the first
-// line may be garbled. Exact current-screen restore needs xterm headless +
-// serialize, which is Stage 6.
-const DEFAULT_REPLAY_BYTES = 64 * 1024;
+    /** Capture fresh-process output from the first PTY callback. */
+    initialListener?: TerminalListener;
+};
 
 /** How long a child gets to handle SIGTERM before SIGKILL. */
 const SIGTERM_GRACE_MS = 2_000;
 /** How long the reaped-and-gone confirmation gets after SIGKILL. */
 const SIGKILL_GRACE_MS = 2_000;
+// Lossless read watermarks, separate from the incomplete-sequence replay limit.
+const MIRROR_HIGH_WATER = 1024 * 1024;
+const MIRROR_LOW_WATER = MIRROR_HIGH_WATER / 2;
 
 /** Platform default interactive shell. */
 export function defaultShell(): { file: string; args: string[] } {
@@ -77,7 +92,6 @@ export function defaultShell(): { file: string; args: string[] } {
 
 export function createTerminal(options: TerminalOptions): TerminalSession {
     const shell = defaultShell();
-    const replayCeiling = options.replayBytes ?? DEFAULT_REPLAY_BYTES;
 
     // POSIX encoding: null preserves raw bytes; Windows still emits strings.
     const ptyOptions: IPtyForkOptions = {
@@ -94,9 +108,26 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
     );
 
     const listeners = new Set<TerminalListener>();
-    const replay: Uint8Array[] = [];
-    let replayBytes = 0;
+    if (options.initialListener) listeners.add(options.initialListener);
+    const mirror = new Terminal({
+        cols: ptyOptions.cols!,
+        rows: ptyOptions.rows!,
+        scrollback: 5000,
+        cursorBlink: true,
+        allowProposedApi: true,
+    });
+    const boundary = new MirrorBoundary(mirror);
+    const geometryListeners = new Set<(cols: number, rows: number) => void>();
+    let mirrorError: Error | undefined;
+    const track = (work: Promise<void>): void => {
+        void work.catch((error: unknown) => {
+            mirrorError =
+                error instanceof Error ? error : new Error(String(error));
+        });
+    };
     let exited: TerminalExit | undefined;
+    let parsingBytes = 0;
+    let paused = false;
 
     let settle!: (event: TerminalExit) => void;
     const exitPromise = new Promise<TerminalExit>((resolve) => {
@@ -110,23 +141,24 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
             typeof chunk === "string"
                 ? Buffer.from(chunk, "utf8")
                 : (chunk as Uint8Array);
-        replay.push(bytes);
-        replayBytes += bytes.byteLength;
-        while (replayBytes > replayCeiling) {
-            const head = replay[0]!;
-            const excess = replayBytes - replayCeiling;
-            if (head.byteLength <= excess) {
-                replay.shift();
-                replayBytes -= head.byteLength;
-            } else {
-                replay[0] = head.subarray(excess);
-                replayBytes -= excess;
-            }
+        parsingBytes += bytes.length;
+        if (!paused && parsingBytes >= MIRROR_HIGH_WATER) {
+            pty.pause();
+            paused = true;
         }
+        track(
+            boundary.write(bytes).finally(() => {
+                parsingBytes -= bytes.length;
+                if (paused && parsingBytes <= MIRROR_LOW_WATER) {
+                    paused = false;
+                    if (!exited) pty.resume();
+                }
+            }),
+        );
         for (const listener of listeners) {
             // One broken viewer must not blind the others or crash the daemon.
             try {
-                listener.data(bytes);
+                listener.data(bytes, bytes);
             } catch {}
         }
     });
@@ -193,14 +225,104 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
             pty.write(typeof data === "string" ? data : Buffer.from(data));
         },
         resize(cols, rows) {
-            // The pty fd is closed on exit and the ioctl then throws EBADF,
-            // including in the window before the exit event lands.
+            if (exited) return;
+            if (
+                !Number.isSafeInteger(cols) ||
+                cols <= 0 ||
+                !Number.isSafeInteger(rows) ||
+                rows <= 0
+            )
+                throw new RangeError(
+                    "Terminal dimensions must be positive safe integers.",
+                );
+            // A failed ioctl must not invent a geometry change in the mirror.
             try {
                 pty.resize(cols, rows);
-            } catch {}
+            } catch {
+                return;
+            }
+            track(boundary.resize(cols, rows));
+            for (const listener of geometryListeners) {
+                try {
+                    listener(cols, rows);
+                } catch {}
+            }
         },
-        snapshot() {
-            return Buffer.concat(replay);
+        attach(listener) {
+            let detached = false;
+            let restoring = true;
+            const pending: Array<() => void> = [];
+            const detach = (): void => {
+                detached = true;
+                pending.length = 0;
+                listeners.delete(live);
+                geometryListeners.delete(resize);
+            };
+            const fail = (error: unknown): void => {
+                if (detached) return;
+                detach();
+                try {
+                    listener.error(
+                        error instanceof Error
+                            ? error
+                            : new Error(String(error)),
+                    );
+                } catch {}
+            };
+            const deliver = (action: () => void): void => {
+                if (detached) return;
+                if (restoring) pending.push(action);
+                else {
+                    try {
+                        action();
+                    } catch (error) {
+                        fail(error);
+                    }
+                }
+            };
+            const live: TerminalListener = {
+                data: (chunk, frame = chunk) => {
+                    const copy = Uint8Array.from(chunk);
+                    deliver(() => listener.data(copy, frame));
+                },
+                exit: (event) =>
+                    deliver(() => {
+                        listener.exit(event);
+                        detach();
+                    }),
+            };
+            const resize = (cols: number, rows: number): void =>
+                deliver(() => listener.resize(cols, rows));
+            // Enqueue the capture and subscribe synchronously. Later PTY events
+            // are buffered here; earlier writes are already in the mirror FIFO.
+            const captured = boundary.snapshot((term) => {
+                if (mirrorError) throw mirrorError;
+                const result = serializeTerminal(term);
+                return {
+                    cols: term.cols,
+                    rows: term.rows,
+                    data: Buffer.from(result.data),
+                    state: result.state,
+                };
+            });
+            listeners.add(live);
+            geometryListeners.add(resize);
+            if (exited) live.exit(exited);
+            void captured.then((value) => {
+                if (detached) return;
+                try {
+                    listener.snapshot({ ...value.state, tail: value.tail });
+                    // Keep buffering while callbacks run: a callback can itself
+                    // trigger input or resize without overtaking queued events.
+                    for (let i = 0; !detached && i < pending.length; i++)
+                        pending[i]!();
+                    pending.length = 0;
+                    restoring = false;
+                } catch (error) {
+                    fail(error);
+                }
+            }, fail);
+            return detach;
         },
         subscribe(listener) {
             const finished = exited;
@@ -220,6 +342,11 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
                 throw error;
             });
             return killing;
+        },
+        async dispose() {
+            await exitPromise;
+            await boundary.dispose();
+            geometryListeners.clear();
         },
     };
 }

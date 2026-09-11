@@ -26,6 +26,7 @@ status: open
 - Web 일반 theme은 localStorage에 system/light/dark로 저장한다. system은 OS 현재 테마와 변경을 따르고 터미널 theme과 분리한다. 터미널 외부 앱 appearance까지 변경하지 않는다. 터미널 폰트 변경도 fit/resize에 연결한다. 전역 파일 외부 변경·Web 저장은 같은 검증/적용 경로를 쓰고 잘못된 설정은 마지막 유효 상태 유지, 포트는 다음 daemon 시작에 적용한다.
 - 참고 대상·목적: cmux 영역·탭/분할 조작·포커스 표현·단축키는 https://cmux.com/docs/concepts , https://manaflow-ai-cmux.mintlify.app/features/splits-and-panes , https://cmux.com/docs/keyboard-shortcuts . Paseo의 현재 영역에 새 터미널을 배치하는 동작·회귀 사례는 https://github.com/getpaseo/paseo/blob/main/packages/app/e2e/browser/direct-terminal-shortcut-pane-placement.spec.ts . 기존 문맥의 조사 링크이며 이번 로그 작성에서 외부 소스/테스트를 새로 검증한 것은 아니다. 구현 시 관련 부분을 읽고 참고하되 cmux의 초기 배치 정책을 그대로 복제한다는 뜻은 아니다.
 - W3 구현 인계: 최소 Web은 /api/terminals 생성·목록과 /api/terminals/:id 조회, 기존 /ws/terminal/:id 연결을 사용한다. 목록은 {id,cwd,kind,alive}이고 비공개 terminal 문맥은 노출하지 않는다. Agent가 연결·종료·재실행돼도 같은 terminal 선택/살아 있는 attachment를 유지하며 끊긴 연결은 재선택 가능하다. /api/terminals/:id DELETE는 명시 종료이며 Web close와 연결하지 않는다. Node DOM/HTTP/attachment 대역 검증만 수행했고 실제 브라우저 UI·정확한 화면 복원·탭/분할 UI는 이 단계에서 구현·검증한다. web.sidebar.width는 default 없는 양의 유한수이고 host.layout 공통 해석은 packages/config에 구현됐다. keyboard 보존·keybindings schema/기본키 사전 논의 조건은 그대로다.
+- 2026-09-10 사용자 결정으로 공통 headless·SerializeAddon snapshot 기반 구현은 Stage2-1(logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md)이 선행 소유한다. Stage6는 해당 결과를 소비해 React·탭·분할·resize·재방문 화면 복귀에 통합하고 검증한다. 기존 raw tail 개선 요구는 유지되지만 구현을 중복하지 않으며 실제 완료 전에는 복원 완료로 간주하지 않는다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 

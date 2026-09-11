@@ -50,7 +50,7 @@ async function getList<T>(path: string): Promise<T[]> {
 function select(terminalId: string): void {
     if (attachment?.terminalId === terminalId && !attachment.closed) return;
     attachment?.close();
-    attachBox.textContent = `terminal ${terminalId} · 연결 중…`;
+    attachBox.textContent = `terminal ${terminalId} · connecting…`;
     attachment = attachTerminal(terminalHost, terminalId, (text) => {
         attachBox.textContent = text;
     });

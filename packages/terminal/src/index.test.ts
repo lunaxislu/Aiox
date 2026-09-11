@@ -10,6 +10,7 @@ import {
     defaultShell,
     type TerminalExit,
     type TerminalSession,
+    type TerminalSnapshot,
 } from "./index";
 
 const decoder = new TextDecoder();
@@ -87,7 +88,7 @@ describe("defaultShell", () => {
 
 it.each(["한글\u001b[31m", Buffer.from([0xff, 0x1b, 0x5b, 0x6d])])(
     "delivers PTY output as bytes to live viewers and replay: %s",
-    (chunk) => {
+    async (chunk) => {
         let reportData!: (data: string) => void;
         const pty = {
             pid: 0,
@@ -114,12 +115,172 @@ it.each(["한글\u001b[31m", Buffer.from([0xff, 0x1b, 0x5b, 0x6d])])(
             reportData(chunk as string);
             expect(received[0]).toBeInstanceOf(Uint8Array);
             expect(Buffer.from(received[0]!)).toEqual(Buffer.from(chunk));
-            expect(Buffer.from(session.snapshot())).toEqual(Buffer.from(chunk));
+            let off = () => {};
+            const captured = await new Promise<TerminalSnapshot>(
+                (resolve, reject) => {
+                    off = session.attach({
+                        snapshot: resolve,
+                        data() {},
+                        resize() {},
+                        exit() {},
+                        error: reject,
+                    });
+                },
+            );
+            off();
+            expect(captured.cols).toBe(80);
+            expect(captured.state.cursorBlink).toBe(true);
+            expect(captured.data).toBeInstanceOf(Uint8Array);
         } finally {
             spawn.mockRestore();
         }
     },
 );
+
+it("registers the initial foreground listener before the first PTY output", () => {
+    const data = vi.fn();
+    const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue({
+        pid: 123,
+        onData(listener: (chunk: string) => void) {
+            listener("FIRST");
+            return { dispose() {} };
+        },
+        onExit: () => ({ dispose() {} }),
+    } as unknown as ReturnType<typeof nodePty.spawn>);
+    try {
+        createTerminal({ id: "initial", initialListener: { data, exit() {} } });
+        expect(data).toHaveBeenCalledTimes(1);
+        expect(Buffer.from(data.mock.calls[0]![0]).toString()).toBe("FIRST");
+    } finally {
+        spawn.mockRestore();
+    }
+});
+
+it("orders snapshot, concurrent output, resize and exit at one attachment boundary", async () => {
+    let output!: (value: string) => void;
+    let exit!: (value: { exitCode: number }) => void;
+    const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue({
+        pid: 123,
+        onData(fn: typeof output) {
+            output = fn;
+            return { dispose() {} };
+        },
+        onExit(fn: typeof exit) {
+            exit = fn;
+            return { dispose() {} };
+        },
+        resize() {},
+    } as unknown as ReturnType<typeof nodePty.spawn>);
+    try {
+        const session = createTerminal({ id: "ordered" });
+        output("BEFORE");
+        const events: string[] = [];
+        let outputFrame: object | undefined;
+        session.subscribe({
+            data(_chunk, frame) {
+                outputFrame = frame;
+            },
+            exit() {},
+        });
+        const finished = new Promise<void>((resolve, reject) => {
+            session.attach({
+                snapshot(value) {
+                    expect(decoder.decode(value.data)).toContain("BEFORE");
+                    events.push("snapshot");
+                },
+                data(value, frame) {
+                    expect(frame).toBe(outputFrame);
+                    events.push(decoder.decode(value));
+                },
+                resize(cols, rows) {
+                    events.push(`${cols}x${rows}`);
+                },
+                exit() {
+                    events.push("exit");
+                    resolve();
+                },
+                error: reject,
+            });
+        });
+        output("AFTER");
+        session.resize(100, 30);
+        exit({ exitCode: 0 });
+        await session.dispose();
+        await finished;
+        const retired = vi.fn();
+        session.attach({
+            snapshot: retired,
+            data() {},
+            resize() {},
+            exit() {},
+            error: retired,
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(retired).toHaveBeenCalledWith(
+            expect.objectContaining({
+                message: "Terminal mirror is disposed.",
+            }),
+        );
+        expect(events).toEqual(["snapshot", "AFTER", "100x30", "exit"]);
+    } finally {
+        spawn.mockRestore();
+    }
+});
+
+it("keeps live output after restore overflow and permits a fresh attach after recovery", async () => {
+    let output!: (value: string) => void;
+    const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue({
+        pid: 123,
+        onData(fn: typeof output) {
+            output = fn;
+            return { dispose() {} };
+        },
+        onExit() {
+            return { dispose() {} };
+        },
+        pause() {},
+        resume() {},
+    } as unknown as ReturnType<typeof nodePty.spawn>);
+    try {
+        const session = createTerminal({ id: "overflow" });
+        const live = vi.fn();
+        session.subscribe({ data: live, exit() {} });
+        output("\x1b]999;" + "x".repeat(1024 * 1024));
+        const failure = await new Promise<Error>((resolve) =>
+            session.attach({
+                snapshot() {
+                    throw Error("unexpected snapshot");
+                },
+                data() {},
+                resize() {},
+                exit() {},
+                error: resolve,
+            }),
+        );
+        expect(failure.message).toContain("replay limit");
+        expect(session.alive).toBe(true);
+        output("\x07RECOVERED");
+        let off = () => {};
+        const captured = await new Promise<TerminalSnapshot>(
+            (resolve, reject) => {
+                off = session.attach({
+                    snapshot: resolve,
+                    data() {},
+                    resize() {},
+                    exit() {},
+                    error: reject,
+                });
+            },
+        );
+        off();
+        expect(decoder.decode(captured.data)).toContain("RECOVERED");
+        expect(captured.tail).toEqual([]);
+        expect(live).toHaveBeenCalledTimes(2);
+    } finally {
+        spawn.mockRestore();
+    }
+});
 
 it("retries an unconfirmed termination while sharing each concurrent attempt", async () => {
     vi.useFakeTimers();
@@ -222,65 +383,56 @@ describe.skipIf(process.platform === "win32")("createTerminal", () => {
         await waitFor("resized", () => viewer.text.includes("40 100"));
     });
 
-    it("replays recent output to a late viewer without gap or repeat", async () => {
+    it("attaches snapshot and subsequent output without gaps or repeats", async () => {
         const session = open({
             id: "replay",
             file: "/bin/sh",
             args: ["-c", "printf 'EARLY\\n'; sleep 0.4; printf 'LATE\\n'"],
         });
-
-        await waitFor("early output buffered", () =>
-            decoder.decode(session.snapshot()).includes("EARLY"),
-        );
-
-        // The daemon reads the snapshot and subscribes in one tick; nothing can
-        // interleave, so the viewer sees replay then live with no seam.
-        const replay = decoder.decode(session.snapshot());
-        const viewer = view(session);
-
-        await waitFor("live output", () => viewer.text.includes("LATE"));
-        expect(replay).toContain("EARLY");
-        expect(replay).not.toContain("LATE");
-        expect(viewer.text).not.toContain("EARLY");
-        expect(replay + viewer.text).toContain("EARLY");
+        const observer = view(session);
+        await waitFor("early output", () => observer.text.includes("EARLY"));
+        let snapshot = "";
+        let live = "";
+        let error: Error | undefined;
+        const off = session.attach({
+            snapshot(value) {
+                snapshot = decoder.decode(value.data);
+            },
+            data(chunk) {
+                live += decoder.decode(chunk);
+            },
+            resize() {},
+            exit() {},
+            error(value) {
+                error = value;
+            },
+        });
+        await waitFor("late output", () => live.includes("LATE") || !!error);
+        expect(error).toBeUndefined();
+        expect(snapshot).toContain("EARLY");
+        expect(snapshot).not.toContain("LATE");
+        expect(live).not.toContain("EARLY");
+        off();
     });
 
-    it("keeps the replay buffer under its ceiling", async () => {
-        const ceiling = 4096;
+    it("cancels an attachment during snapshot preparation", async () => {
         const session = open({
-            id: "bounded",
+            id: "cancel",
             file: "/bin/sh",
-            // ~300 KiB, far past both the test ceiling and the 64 KiB default.
-            args: [
-                "-c",
-                "i=0; while [ $i -lt 300 ]; do printf '%01000d\\n' $i; i=$((i+1)); done; printf 'TAIL\\n'",
-            ],
-            replayBytes: ceiling,
+            args: ["-c", "sleep 0.1"],
         });
-        const viewer = view(session);
-
-        await waitFor("generator finished", () => viewer.text.includes("TAIL"));
-        expect(viewer.text.length).toBeGreaterThan(300_000);
-
-        const snapshot = session.snapshot();
-        expect(snapshot.byteLength).toBeLessThanOrEqual(ceiling);
-        // Bounded means it keeps the newest bytes, not the oldest.
-        expect(decoder.decode(snapshot)).toContain("TAIL");
-    });
-
-    it("defaults the replay ceiling to 64 KiB", async () => {
-        const session = open({
-            id: "default-ceiling",
-            file: "/bin/sh",
-            args: [
-                "-c",
-                "i=0; while [ $i -lt 300 ]; do printf '%01000d\\n' $i; i=$((i+1)); done; printf 'TAIL\\n'",
-            ],
+        const called = vi.fn();
+        const off = session.attach({
+            snapshot: called,
+            data: called,
+            resize: called,
+            exit: called,
+            error: called,
         });
-        const viewer = view(session);
-
-        await waitFor("generator finished", () => viewer.text.includes("TAIL"));
-        expect(session.snapshot().byteLength).toBeLessThanOrEqual(64 * 1024);
+        off();
+        await session.kill();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        expect(called).not.toHaveBeenCalled();
     });
 
     it("kills a running process and confirms it is gone", async () => {
@@ -340,7 +492,6 @@ describe.skipIf(process.platform === "win32")("createTerminal", () => {
 
         expect(() => session.write("still typing\r")).not.toThrow();
         expect(() => session.resize(120, 40)).not.toThrow();
-        expect(() => session.snapshot()).not.toThrow();
     });
 
     it("hands a viewer that attaches after exit the exit event", async () => {
@@ -370,4 +521,66 @@ describe.skipIf(process.platform === "win32")("createTerminal", () => {
             viewer.text.includes("GOT:hello-pty"),
         );
     });
+});
+
+it("pauses PTY reads while mirror parsing lags and resumes after success or failure", async () => {
+    let output!: (value: string) => void;
+    let exit!: (value: { exitCode: number; signal: number }) => void;
+    const pty = {
+        pid: 123,
+        onData(fn: typeof output) {
+            output = fn;
+            return { dispose() {} };
+        },
+        onExit(fn: typeof exit) {
+            exit = fn;
+            return { dispose() {} };
+        },
+        kill() {
+            exit({ exitCode: 0, signal: 15 });
+        },
+        pause: vi.fn(),
+        resume: vi.fn(),
+    };
+    const spawn = vi
+        .spyOn(nodePty, "spawn")
+        .mockReturnValue(pty as unknown as ReturnType<typeof nodePty.spawn>);
+    const boundary = await import("./boundary");
+    const writes: { resolve(): void; reject(error: Error): void }[] = [];
+    const write = vi
+        .spyOn(boundary.MirrorBoundary.prototype, "write")
+        .mockImplementation(
+            () =>
+                new Promise<void>((resolve, reject) =>
+                    writes.push({ resolve, reject }),
+                ),
+        );
+    try {
+        const session = createTerminal({ id: "backpressure" });
+        const chunk = "x".repeat(512 * 1024);
+        output(chunk);
+        output(chunk);
+        output(chunk);
+        expect(pty.pause).toHaveBeenCalledOnce();
+        writes[0]!.resolve();
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(pty.resume).not.toHaveBeenCalled();
+        writes[1]!.reject(new Error("parser failed"));
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(pty.resume).toHaveBeenCalledOnce();
+        writes[2]!.resolve();
+        await new Promise((resolve) => setImmediate(resolve));
+        output(chunk);
+        output(chunk);
+        expect(pty.pause).toHaveBeenCalledTimes(2);
+        await session.kill();
+        writes[3]!.resolve();
+        writes[4]!.resolve();
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(pty.resume).toHaveBeenCalledOnce();
+        await session.dispose();
+    } finally {
+        spawn.mockRestore();
+        write.mockRestore();
+    }
 });

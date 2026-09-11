@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { stripVTControlCharacters } from "node:util";
 
 import * as terminalModule from "@aiox/terminal";
@@ -5,6 +6,7 @@ import { defaultShell } from "@aiox/terminal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
+import { attachTerminal } from "@/terminals";
 import type { DaemonHarness } from "@/testing";
 import { startTestDaemon } from "@/testing";
 
@@ -497,4 +499,305 @@ describe("terminal attachment", () => {
             }
         }, "stopped terminal process exit");
     });
+});
+
+it("sends geometry, snapshot, held events and live output in attachment order", () => {
+    const socket = Object.assign(new EventEmitter(), {
+        OPEN: 1,
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(),
+    });
+    let listener!: terminalModule.TerminalAttachmentListener;
+    const detach = vi.fn();
+    const session = {
+        attach: vi.fn((value) => {
+            listener = value;
+            return detach;
+        }),
+        write: vi.fn(),
+        resize: vi.fn(),
+        kill: vi.fn(),
+    } as unknown as terminalModule.TerminalSession;
+    attachTerminal(socket as unknown as WebSocket, session);
+    listener.snapshot({
+        cols: 219,
+        rows: 83,
+        state: {} as never,
+        data: Buffer.from("screen"),
+        tail: [
+            { type: "data", data: Buffer.from("held") },
+            { type: "resize", cols: 170, rows: 83 },
+        ],
+    });
+    listener.data(Buffer.from("live"));
+    expect(
+        socket.send.mock.calls.map(([frame]) =>
+            typeof frame === "string" ? JSON.parse(frame) : frame.toString(),
+        ),
+    ).toEqual([
+        { type: "snapshot", cols: 219, rows: 83, state: {} },
+        "screen",
+        { type: "snapshot-end" },
+        "held",
+        { type: "resize", cols: 170, rows: 83 },
+        { type: "restored" },
+        { type: "output", respond: true, offset: 4 },
+        "live",
+    ]);
+    socket.emit("close");
+    expect(detach).toHaveBeenCalledOnce();
+    expect(session.kill).not.toHaveBeenCalled();
+});
+
+it("detaches when snapshot failure closes synchronously without killing the PTY", () => {
+    const socket = Object.assign(new EventEmitter(), {
+        OPEN: 1,
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(() => {
+            socket.readyState = 3;
+            socket.emit("close");
+        }),
+    });
+    const detach = vi.fn();
+    const session = {
+        attach: (listener: terminalModule.TerminalAttachmentListener) => {
+            listener.error(new Error("replay limit"));
+            return detach;
+        },
+        write: vi.fn(),
+        resize: vi.fn(),
+        kill: vi.fn(),
+    } as unknown as terminalModule.TerminalSession;
+    attachTerminal(socket as unknown as WebSocket, session);
+    expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "error", message: "replay limit" }),
+    );
+    expect(detach).toHaveBeenCalledOnce();
+    expect(session.kill).not.toHaveBeenCalled();
+});
+
+it("assigns one response owner per live output, transfers on user input and preserves delayed responses", () => {
+    const listeners: terminalModule.TerminalAttachmentListener[] = [];
+    const session = {
+        attach: (listener: terminalModule.TerminalAttachmentListener) => {
+            listeners.push(listener);
+            return vi.fn();
+        },
+        write: vi.fn(),
+        resize: vi.fn(),
+    } as unknown as terminalModule.TerminalSession;
+    const socket = () =>
+        Object.assign(new EventEmitter(), {
+            OPEN: 1,
+            readyState: 1,
+            send: vi.fn(),
+            close: vi.fn(),
+        });
+    const one = socket();
+    const two = socket();
+    attachTerminal(one as unknown as WebSocket, session);
+    attachTerminal(two as unknown as WebSocket, session);
+    const output = (data: string) => {
+        listeners.forEach((listener) => listener.data(Buffer.from(data)));
+    };
+    const frames = (peer: typeof one) =>
+        peer.send.mock.calls.map(([frame]) =>
+            typeof frame === "string" ? JSON.parse(frame) : frame.toString(),
+        );
+    output("\x1b[");
+    expect(frames(one)).toEqual([
+        { type: "output", respond: true, offset: 2 },
+        "\x1b[",
+    ]);
+    expect(frames(two)).toEqual([
+        { type: "output", respond: false, offset: 2 },
+        "\x1b[",
+    ]);
+    two.emit("message", Buffer.from("user"), true);
+    one.send.mockClear();
+    two.send.mockClear();
+    output("6n");
+    expect(frames(one)).toEqual([
+        { type: "output", respond: false, offset: 4 },
+        "6n",
+    ]);
+    expect(frames(two)).toEqual([
+        { type: "output", respond: true, offset: 4 },
+        "6n",
+    ]);
+    one.emit(
+        "message",
+        Buffer.from(JSON.stringify({ type: "response", data: "\x1b[1;1R" })),
+        false,
+    );
+    expect(session.write).toHaveBeenLastCalledWith("\x1b[1;1R");
+    one.send.mockClear();
+    two.send.mockClear();
+    output("again");
+    expect(frames(two)[0]).toMatchObject({ type: "output", respond: true });
+    one.emit("message", Buffer.from("select-one"), true);
+    const token = {};
+    one.send.mockClear();
+    two.send.mockClear();
+    listeners[0]!.data(Buffer.from("delayed"), token);
+    two.emit("message", Buffer.from("select-two"), true);
+    listeners[1]!.data(Buffer.from("delayed"), token);
+    expect(frames(one)[0]).toMatchObject({ type: "output", respond: true });
+    expect(frames(two)[0]).toMatchObject({ type: "output", respond: false });
+    one.send.mockClear();
+    two.send.mockClear();
+    const nextToken = {};
+    listeners[0]!.data(Buffer.from("next"), nextToken);
+    listeners[1]!.data(Buffer.from("next"), nextToken);
+    expect(frames(two)[0]).toMatchObject({ type: "output", respond: true });
+    two.emit("close");
+    one.send.mockClear();
+    two.send.mockClear();
+    output("last");
+    expect(frames(one)[0]).toMatchObject({ type: "output", respond: true });
+    expect(frames(two)).toEqual([]);
+    one.emit(
+        "message",
+        Buffer.from(JSON.stringify({ type: "response", data: 1 })),
+        false,
+    );
+    expect(session.write).toHaveBeenCalledTimes(4);
+    const otherSession = {
+        ...session,
+        attach: (listener: terminalModule.TerminalAttachmentListener) => {
+            listener.data(Buffer.from("separate"));
+            return vi.fn();
+        },
+    };
+    const other = socket();
+    attachTerminal(other as unknown as WebSocket, otherSession);
+    expect(frames(other)[0]).toMatchObject({ type: "output", respond: true });
+    one.emit("close");
+    other.emit("close");
+});
+
+it("ignores unsafe resize values and confines native input failures to their attachment", () => {
+    const socket = Object.assign(new EventEmitter(), {
+        OPEN: 1,
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(),
+    });
+    const detach = vi.fn();
+    const session = {
+        attach: () => detach,
+        write: vi.fn(() => {
+            throw new Error("PTY input failed");
+        }),
+        resize: vi.fn(),
+        kill: vi.fn(),
+    } as unknown as terminalModule.TerminalSession;
+    attachTerminal(socket as unknown as WebSocket, session);
+    socket.emit(
+        "message",
+        Buffer.from(JSON.stringify({ type: "resize", cols: 1e21, rows: 24 })),
+        false,
+    );
+    expect(session.resize).not.toHaveBeenCalled();
+    expect(() =>
+        socket.emit("message", Buffer.from("input"), true),
+    ).not.toThrow();
+    expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "error", message: "PTY input failed" }),
+    );
+    expect(socket.close).toHaveBeenCalledOnce();
+    expect(detach).toHaveBeenCalledOnce();
+    expect(session.kill).not.toHaveBeenCalled();
+});
+
+it("disconnects only a viewer more than 8 MiB behind parsed output and permits snapshot reattachment", () => {
+    const listeners: terminalModule.TerminalAttachmentListener[] = [];
+    const detaches: ReturnType<typeof vi.fn>[] = [];
+    const session = {
+        attach: (listener: terminalModule.TerminalAttachmentListener) => {
+            listeners.push(listener);
+            const off = vi.fn();
+            detaches.push(off);
+            return off;
+        },
+        write: vi.fn(),
+        resize: vi.fn(),
+        kill: vi.fn(),
+    } as unknown as terminalModule.TerminalSession;
+    const peer = () =>
+        Object.assign(new EventEmitter(), {
+            OPEN: 1,
+            readyState: 1,
+            send: vi.fn(),
+            close: vi.fn(),
+        });
+    const slow = peer();
+    const fast = peer();
+    attachTerminal(slow as unknown as WebSocket, session);
+    attachTerminal(fast as unknown as WebSocket, session);
+    const snapshot = {
+        cols: 80,
+        rows: 24,
+        state: {} as never,
+        data: Buffer.alloc(9 * 1024 * 1024),
+        tail: [],
+    };
+    listeners.forEach((listener) => listener.snapshot(snapshot));
+    expect(slow.close).not.toHaveBeenCalled();
+    const ack = (socket: typeof slow, offset: unknown) =>
+        socket.emit(
+            "message",
+            Buffer.from(JSON.stringify({ type: "ack", offset })),
+            false,
+        );
+    const chunk = Buffer.alloc(4 * 1024 * 1024);
+    for (let n = 1; n <= 2; n++) {
+        const token = {};
+        listeners.forEach((listener) => listener.data(chunk, token));
+        ack(fast, n * chunk.length);
+    }
+    expect(slow.close).not.toHaveBeenCalled();
+    ack(slow, 16 * 1024 * 1024); // An ACK for unsent bytes cannot bypass the bound.
+    ack(slow, -1);
+    ack(slow, 1.5);
+    ack(slow, "1048576");
+    ack(fast, 8 * 1024 * 1024); // Duplicate ACK is harmless.
+    const token = {};
+    listeners.forEach((listener) => listener.data(Buffer.from("x"), token));
+    expect(slow.close).toHaveBeenCalledWith(
+        1013,
+        "Terminal output backlog exceeds limit. Reconnect to restore the screen.",
+    );
+    expect(detaches[0]).toHaveBeenCalledOnce();
+    expect(fast.close).not.toHaveBeenCalled();
+    expect(session.kill).not.toHaveBeenCalled();
+    expect(slow.send).toHaveBeenLastCalledWith(
+        JSON.stringify({
+            type: "error",
+            message:
+                "Terminal output backlog exceeds the limit. Reconnect to restore the current screen.",
+        }),
+    );
+    const last = fast.send.mock.calls.at(-2)![0];
+    expect(JSON.parse(last)).toMatchObject({
+        type: "output",
+        offset: 8 * 1024 * 1024 + 1,
+    });
+    slow.send.mockClear();
+    listeners[0]!.data(Buffer.from("ignored"));
+    expect(slow.send).not.toHaveBeenCalled();
+    const returning = peer();
+    attachTerminal(returning as unknown as WebSocket, session);
+    listeners[2]!.snapshot(snapshot);
+    listeners[2]!.data(Buffer.from("new"));
+    expect(returning.close).not.toHaveBeenCalled();
+    expect(JSON.parse(returning.send.mock.calls.at(-2)![0])).toMatchObject({
+        type: "output",
+        offset: 3,
+    });
+    slow.emit("close");
+    fast.emit("close");
+    returning.emit("close");
 });

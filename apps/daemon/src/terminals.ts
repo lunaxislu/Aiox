@@ -116,8 +116,12 @@ export class TerminalService {
     }
 
     #remove(id: string): void {
+        const session = this.#sessions.get(id);
         this.#sessions.delete(id);
         this.#metadata.delete(id);
+        void session?.dispose().catch((error: unknown) => {
+            console.error(`terminal ${id}: mirror disposal failed`, error);
+        });
     }
 
     get(id: string): TerminalSession | undefined {
@@ -160,7 +164,22 @@ export class TerminalService {
     }
 }
 
-type ControlMessage = { type: "resize"; cols: number; rows: number };
+type ControlMessage =
+    | { type: "resize"; cols: number; rows: number }
+    | { type: "response"; data: string }
+    | { type: "ack"; offset: number };
+
+// Bounds live bytes awaiting browser parsing, independently of snapshot/tail retention.
+const MAX_UNPARSED_VIEWER_BYTES = 8 * 1024 * 1024;
+
+const responseOwners = new WeakMap<
+    TerminalSession,
+    {
+        viewers: Set<WebSocket>;
+        owner: WebSocket | undefined;
+        decisions: WeakMap<object, WebSocket | undefined>;
+    }
+>();
 
 function parseControl(raw: string): ControlMessage | undefined {
     try {
@@ -168,12 +187,33 @@ function parseControl(raw: string): ControlMessage | undefined {
         if (
             typeof value === "object" &&
             value !== null &&
+            "type" in value &&
+            value.type === "ack" &&
+            "offset" in value &&
+            Number.isSafeInteger(value.offset) &&
+            (value.offset as number) >= 0
+        ) {
+            return { type: "ack", offset: value.offset as number };
+        }
+        if (
+            typeof value === "object" &&
+            value !== null &&
+            "type" in value &&
+            value.type === "response" &&
+            "data" in value &&
+            typeof value.data === "string"
+        ) {
+            return { type: "response", data: value.data };
+        }
+        if (
+            typeof value === "object" &&
+            value !== null &&
             (value as { type?: unknown }).type === "resize"
         ) {
             const { cols, rows } = value as { cols: unknown; rows: unknown };
             if (
-                Number.isInteger(cols) &&
-                Number.isInteger(rows) &&
+                Number.isSafeInteger(cols) &&
+                Number.isSafeInteger(rows) &&
                 (cols as number) > 0 &&
                 (rows as number) > 0
             ) {
@@ -190,40 +230,123 @@ function parseControl(raw: string): ControlMessage | undefined {
     return undefined;
 }
 
-/**
- * Binary frames carry raw pty bytes in both directions; text frames carry JSON
- * control. The attachment replays the recent output first so a reconnecting
- * viewer does not land on a blank screen.
- */
+/** Ordered snapshot restoration followed by live PTY output. */
 export function attachTerminal(
     socket: WebSocket,
     session: TerminalSession,
 ): void {
-    const replay = session.snapshot();
-    if (replay.length > 0) socket.send(replay);
-
-    const detach = session.subscribe({
-        data: (chunk) => {
-            if (socket.readyState === socket.OPEN) socket.send(chunk);
-        },
-        exit: (event) => {
-            if (socket.readyState === socket.OPEN) {
-                socket.send(JSON.stringify({ type: "exit", ...event }));
+    let group = responseOwners.get(session);
+    if (!group) {
+        group = { viewers: new Set(), owner: socket, decisions: new WeakMap() };
+        responseOwners.set(session, group);
+    }
+    group.viewers.add(socket);
+    const ownership = group;
+    let sentOffset = 0;
+    let acknowledgedOffset = 0;
+    let detached = false;
+    let detach = () => {};
+    const close = () => {
+        if (detached) return;
+        detached = true;
+        ownership.viewers.delete(socket);
+        if (ownership.owner === socket)
+            ownership.owner = ownership.viewers.values().next().value;
+        if (ownership.viewers.size === 0) responseOwners.delete(session);
+        detach();
+    };
+    const send = (data: Uint8Array | object) => {
+        if (detached || socket.readyState !== socket.OPEN) return;
+        socket.send(data instanceof Uint8Array ? data : JSON.stringify(data));
+    };
+    socket.on("close", close);
+    socket.on("error", close);
+    socket.on("message", (data: Buffer, isBinary: boolean) => {
+        if (detached) return;
+        try {
+            if (isBinary) {
+                ownership.owner = socket;
+                session.write(new Uint8Array(data));
+                return;
+            }
+            const control = parseControl(data.toString("utf8"));
+            if (control?.type === "resize")
+                session.resize(control.cols, control.rows);
+            else if (control?.type === "response") session.write(control.data);
+            else if (
+                control?.type === "ack" &&
+                control.offset >= acknowledgedOffset &&
+                control.offset <= sentOffset
+            )
+                acknowledgedOffset = control.offset;
+        } catch (error) {
+            try {
+                send({
+                    type: "error",
+                    message:
+                        error instanceof Error
+                            ? error.message
+                            : "Terminal input failed.",
+                });
+            } catch {
+                // A failed transport cannot carry its own error report.
+            } finally {
+                close();
                 socket.close();
             }
+        }
+    });
+    detach = session.attach({
+        snapshot: ({ cols, rows, state, data, tail }) => {
+            send({ type: "snapshot", cols, rows, state });
+            send(data);
+            send({ type: "snapshot-end" });
+            for (const event of tail) {
+                send(event.type === "data" ? event.data : event);
+            }
+            send({ type: "restored" });
+        },
+        data: (data, frame = data) => {
+            if (detached) return;
+            if (
+                sentOffset - acknowledgedOffset + data.byteLength >
+                    MAX_UNPARSED_VIEWER_BYTES ||
+                !Number.isSafeInteger(sentOffset + data.byteLength)
+            ) {
+                try {
+                    send({
+                        type: "error",
+                        message:
+                            "Terminal output backlog exceeds the limit. Reconnect to restore the current screen.",
+                    });
+                } finally {
+                    close();
+                    socket.close(
+                        1013,
+                        "Terminal output backlog exceeds limit. Reconnect to restore the screen.",
+                    );
+                }
+                return;
+            }
+            sentOffset += data.byteLength;
+            if (!ownership.decisions.has(frame))
+                ownership.decisions.set(frame, ownership.owner);
+            send({
+                type: "output",
+                respond: ownership.decisions.get(frame) === socket,
+                offset: sentOffset,
+            });
+            send(data);
+        },
+        resize: (cols, rows) => send({ type: "resize", cols, rows }),
+        exit: (event) => {
+            send({ type: "exit", ...event });
+            socket.close();
+        },
+        error: (error) => {
+            send({ type: "error", message: error.message });
+            socket.close();
         },
     });
-
-    socket.on("message", (data: Buffer, isBinary: boolean) => {
-        if (isBinary) {
-            session.write(new Uint8Array(data));
-            return;
-        }
-        const control = parseControl(data.toString("utf8"));
-        if (control) session.resize(control.cols, control.rows);
-    });
-
-    // Detaching only removes this viewer. The pty keeps running.
-    socket.on("close", detach);
-    socket.on("error", detach);
+    if (detached) detach();
 }
