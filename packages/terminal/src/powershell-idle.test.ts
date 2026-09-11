@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
 
 import { spawn } from "node-pty";
 import { describe, expect, it } from "vitest";
 
+import { createTerminal } from "./index";
 import { preparePowerShell } from "./powershell-idle";
 
 it("leaves unsupported PowerShell launch arguments conservative", async () => {
@@ -20,39 +22,30 @@ it("leaves unsupported PowerShell launch arguments conservative", async () => {
 
 describe.each(["pwsh.exe", "powershell.exe"])("%s", (file) => {
     it.skipIf(process.platform !== "win32")(
-        "closes PowerShell with unsubmitted text through its own command loop",
+        "closes PowerShell with unsubmitted text through the public terminal lifecycle",
         async () => {
-            const shell = preparePowerShell({
+            const terminal = createTerminal({
+                id: randomUUID(),
                 file,
-                args: [],
-                env: process.env as Record<string, string>,
-            });
-            const pty = spawn(shell.file, shell.args, {
-                env: shell.env,
+                shellIntegration: true,
                 cols: 100,
                 rows: 30,
             });
-            let exited = false;
             let output = "";
-            pty.onData((data) => {
-                output += data;
-            });
-            pty.onExit(() => {
-                exited = true;
+            terminal.subscribe({
+                data: (data) => {
+                    output += Buffer.from(data).toString();
+                },
+                exit: () => {},
             });
             try {
                 await expect
-                    .poll(() => shell.busy(pty.pid), { timeout: 15_000 })
+                    .poll(() => terminal.busy(), { timeout: 15_000 })
                     .toBe(false);
-                pty.write("not a submitted command");
-                await expect.poll(() => shell.busy(pty.pid)).toBe(false);
-                const requestedAt = performance.now();
-                expect(await shell.close(pty.pid)).toBe(true);
-                const acknowledgedAfter = performance.now() - requestedAt;
-                await expect.poll(() => exited, { timeout: 10_000 }).toBe(true);
-                console.log(
-                    `${file} close timing: acknowledged ${Math.round(acknowledgedAfter)}ms, exited ${Math.round(performance.now() - requestedAt)}ms`,
-                );
+                terminal.write("not a submitted command");
+                await expect.poll(() => terminal.busy()).toBe(false);
+                expect(await terminal.closeIdle()).toBe(true);
+                expect(terminal.alive).toBe(false);
             } catch (error) {
                 throw new Error(
                     `PowerShell output: ${JSON.stringify(output)}`,
@@ -61,9 +54,8 @@ describe.each(["pwsh.exe", "powershell.exe"])("%s", (file) => {
                     },
                 );
             } finally {
-                if (!exited) pty.kill();
-                await expect.poll(() => exited).toBe(true);
-                await shell.dispose();
+                if (terminal.alive) await terminal.kill();
+                await terminal.dispose();
             }
         },
         25_000,

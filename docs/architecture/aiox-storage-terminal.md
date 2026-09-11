@@ -256,8 +256,14 @@ macOS zsh/bash 실제 18개 테스트와 Linux Bash5.2.37/Zsh5.9/Fish4.0.2의 PT
 Linux 결과는 분리된 shell 연동 모듈 범위이며 전체 daemon/CLI 검증은 아니다. macOS 빌드 CLI에서는
 출력·cd·Enter 전 문자열이 있는 대기 shell 정상 종료와 vim 실행 중 일반 stop 거절·force 후 실제
 프로세스 종료를 확인했다. 상세 근거와 후속 재개점은 Stage2-2 후속 W7/W9가 소유한다.
-Windows PowerShell에는 PSReadLine 2.4.3 이상을 사용하는 연동 후보가 있다. 읽기 중 timer
+Windows PowerShell에는 PSReadLine 2.4.3 이상을 사용하는 연동이 있다. 읽기 중 timer
 이벤트로 요청을 받고 정상 명령 루프에서 요청 유효기간·jobs·자식 프로세스를 다시 확인한 뒤
 종료한다. cmd와 연동되지 않은 PowerShell은 unknown blocker이며 --force는 기존 경로를
-사용한다. ConPTY 실측은 진행 중이다. 다른 OS의 테스트나 PowerShell 컨테이너 prototype을
-Windows 지원 완료 증거로 확대하지 않는다. [Status: Current gap]
+사용한다. Windows runner에서 PowerShell 7과 Windows PowerShell 5.1을 PSReadLine 2.4.5로
+검증했다. 작업 보호와 미제출 입력이 있는 shell의 자체 종료가 통과했으며 상세 CI 결과는
+Stage2-2 W8이 소유한다. 사용자 PC의 설정·브라우저 사용까지 검증한 것은 아니다. [Status: As-built]
+
+CMD의 안전한 자동 종료는 미완료다. Windows ConPTY에서 `set /p` 실행 중에도 자식 수와
+콘솔 입력 모드가 빈 프롬프트와 같고, 지연된 PROMPT 출력이 idle로 오인되는 반례를 확인했다.
+이 관측을 종료 근거로 사용하지 않는다. 별도 shell 확장 도입은 결정하지 않았다.
+근거: [[packages/terminal/src/cmd-idle.test.ts]]. [Status: Current gap]

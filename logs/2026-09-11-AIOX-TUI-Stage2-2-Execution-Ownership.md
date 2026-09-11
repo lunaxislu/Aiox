@@ -210,3 +210,9 @@ c19d4c3를 작업 브랜치에 push하고 CI 34591849913을 실행했다(https:/
 CMD ConPTY 조사 테스트는 Windows 두 job에서 통과했다. pause 및 set /p 실행 중 자식0·늦게 도착한 PROMPT로 idle 오판을 확인했다. 특히 set /p는 콘솔 입력 모드도 빈 prompt와 동일한487이어서 이 세 관측을 합쳐도 안전한 자동 종료 근거가 되지 않는다. CMD 자체 종료 연동은 여전히 미구현이며 별도 Clink/native hook 도입은 미결정이다. 근거는 해당 CI src/cmd-idle.test.ts stdout이며 로컬 /private/tmp/aiox-windows-ci-failure.txt에도 보존했다.
 
 독립 리뷰에서 Bash PROMPT_COMMAND 끝의 세미콜론과 추가 구분자가 합쳐져 syntax error가 나는 문제를 실제 재현했다. newline 구분자로 수정하고 기존 rc 보존 테스트를 강화해 POSIX18개·typecheck 통과를 확인했다. 다음 실행은 해당 수정과 Windows PowerShell5.1 검증 확장을 포함한다.
+
+## 2026-09-11 · W8 PowerShell Windows CI 성공
+
+8447916의 CI34592261644는 Windows/Linux/macOS × Node22/24 여섯 job 전체 성공했다(https://github.com/lunaxislu/aiox-prototype/actions/runs/34592261644). PowerShell7·WindowsPowerShell5.1의 PSReadLine2.4.5 ConPTY14 tests가 Windows 양Node에서 통과했다. 종료요청부터 exit이벤트까지1480–1499ms, 승인부터는1059–1098ms였다. 설치된 node-pty의 WindowsPtyAgent FLUSH_DATA_INTERVAL=1000과 일치하며 첫실패는1초테스트대기 한계였다. 제품의 승인후2초대기는 수정하지 않았다. root가 gh run 결과와 /private/tmp/aiox-windows-ci-pass.txt를 직접 확인했다.
+
+최종 종료 검사는 대역이 아닌 createTerminal().closeIdle() 공개경로로 바꿔 dispatch·실제exit·dispose까지 확인하도록 보강했다. 해당 마지막 테스트 변경은 다음CI로 검증한다. CMD 안전자동종료 미구현과 사용자PC 설정/브라우저 미검증은 남는다. W8/W9 완료표시는 하지 않는다.
