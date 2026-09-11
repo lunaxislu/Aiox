@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 
+import { claudeAdapter } from "@aiox/adapter-claude";
 import type { AioxDatabase } from "@aiox/persistence";
 import type {
     Ports,
@@ -10,11 +11,11 @@ import type {
     TerminalContext,
 } from "@aiox/protocol";
 import { createShellSchema, terminalContextSchema } from "@aiox/protocol";
+import type { VendorAdapter } from "@aiox/vendor";
 import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { WebSocketServer } from "ws";
 
-import { ClaudeBinding } from "@/claude";
-import { ClaudeController } from "@/claude-controller";
+import { AgentController } from "@/agent-controller";
 import { createApiHandler, HttpError, readJson } from "@/http";
 import { bearerToken, handleMcpRequest } from "@/mcp";
 import { MessageService } from "@/messaging";
@@ -37,6 +38,7 @@ export type DaemonOptions = {
     webRoot?: string | undefined;
     host?: string;
     now?: () => number;
+    adapters?: readonly VendorAdapter[];
 };
 
 export type RegisteredRuntime = {
@@ -79,7 +81,7 @@ function listen(server: Server, port: number, host: string): Promise<number> {
 }
 
 export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
-    let claude: ClaudeController | undefined;
+    let agents: AgentController | undefined;
     const host = options.host ?? "127.0.0.1";
     const now = options.now ?? (() => Date.now());
     const startedAt = now();
@@ -154,8 +156,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         void (async () => {
             if (protectedRequest(request, response, ports.daemon)) return;
             const url = new URL(request.url ?? "/", `http://${host}`);
-            if (url.pathname === "/api/claude/hooks" && claude) {
-                await claude.hook(request, response);
+            if (url.pathname === "/api/agent-hooks" && agents) {
+                await agents.hook(request, response);
                 return;
             }
             const mcp = /^\/mcp\/([^/]+)$/.exec(url.pathname);
@@ -184,8 +186,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     const binding = runtimes.authenticate(
                         bearerToken(request),
                     )?.binding;
-                    if (binding instanceof ClaudeBinding)
-                        binding.mcpConnected();
+                    binding?.mcpConnected?.();
                 }
                 return;
             }
@@ -227,7 +228,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         if (
             denied ||
             !admitting ||
-            !claude ||
+            !agents ||
             !["/api/agent-run", "/api/agent-run/external"].includes(
                 request.url ?? "",
             )
@@ -239,8 +240,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         }
         sockets.handleUpgrade(request, socket, head, (client) =>
             request.url === "/api/agent-run/external"
-                ? claude!.attachExternal(client)
-                : claude!.attach(client),
+                ? agents!.attachExternal(client)
+                : agents!.attach(client),
         );
     });
     webServer.on(
@@ -607,6 +608,6 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         stop,
         closed,
     };
-    claude = new ClaudeController(daemon);
+    agents = new AgentController(daemon, options.adapters ?? [claudeAdapter]);
     return daemon;
 }

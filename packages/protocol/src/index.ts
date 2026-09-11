@@ -56,7 +56,7 @@ const name = z
 
 /** Private launch frame: environment and terminal credentials are never views. */
 export const agentRunSchema = z.strictObject({
-    adapter: z.literal("claude"),
+    adapter: z.string().regex(/^[a-z][a-z0-9-]*$/),
     cwd: argument.min(1),
     env: z.record(argument.min(1), argument),
     args: z.array(argument),
@@ -75,7 +75,7 @@ export type AgentRun = z.infer<typeof agentRunSchema>;
 /** External execution reports lifecycle only; it never borrows a daemon terminal. */
 export const externalAgentRunSchema = agentRunSchema
     .omit({ cols: true, rows: true, terminalContext: true })
-    .extend({ inboxPath: argument.min(1) });
+    .extend({ connection: z.json() });
 const externalExitSchema = z.strictObject({
     type: z.literal("exit"),
     exitCode: z.int().nonnegative(),
@@ -88,9 +88,7 @@ export const externalAgentClientFrameSchema = z.discriminatedUnion("type", [
 export const externalAgentServerFrameSchema = z.discriminatedUnion("type", [
     z.strictObject({
         type: z.literal("prepared"),
-        runtimeId: z.string().min(1),
-        args: z.array(argument),
-        env: z.record(argument.min(1), argument),
+        launch: z.json(),
     }),
     z.strictObject({ type: z.literal("ready") }),
     z.strictObject({ type: z.literal("startup-failed"), message: z.string() }),
@@ -182,8 +180,7 @@ export const agentViewSchema = z.object({
     terminalId: z.string().nullable(),
     observation: z
         .object({ event: z.string(), reason: z.string().nullable() })
-        .nullable()
-        .optional(),
+        .nullable(),
 });
 
 export const notificationViewSchema = z.object({

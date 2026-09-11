@@ -3,8 +3,6 @@ import { chmod, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export { probeClaude } from "@/claude-version";
-
 /** Owned by the launcher, independently of the daemon's collaboration registration. */
 export async function createClaudeInbox(): Promise<{
     path: string;

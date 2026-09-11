@@ -29,7 +29,9 @@ AgentRuntime은 PID 하나나 vendor conversation ID가 아니다. 같은 이름
 
 Daemon이 materialized Runtime·Network·route의 권위를 갖고 실행 소유자가 프로세스 수명을
 소유한다. CLI/Web/MCP는 등록 상태를 직접 덮어쓰지 않는다. Adapter는 vendor 실행·입력·관측·정리
-차이를 흡수한다. 실제 프로세스 배치는 architecture에서 정한다.
+차이를 흡수한다. 같은 adapter는 Web·외부 실행에서 동일한 vendor 연동 의미를 제공하며,
+실행 위치별 소유권은 adapter 선택과 독립적이다. 새 vendor에 Claude inbox나 단일 프로세스 구성을
+요구하지 않는다. 실제 프로세스 배치와 공유 계약은 [[docs/architecture/aiox-vendor-bindings]]가 소유한다.
 
 | 명령과 인증된 실행 위치 | 실행 소유자 | 사용자 화면 |
 | --- | --- | --- |

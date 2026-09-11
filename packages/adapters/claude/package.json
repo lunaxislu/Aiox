@@ -1,0 +1,25 @@
+{
+    "name": "@aiox/adapter-claude",
+    "version": "0.0.0",
+    "private": true,
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "tsup --config ../../../tsup.config.ts",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run --config ../../../vitest.config.ts"
+    },
+    "dependencies": {
+        "@aiox/domain": "workspace:*",
+        "@aiox/vendor": "workspace:*",
+        "zod": "4.5.4"
+    }
+}

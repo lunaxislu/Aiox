@@ -1,28 +1,28 @@
-import { randomBytes } from "node:crypto";
+import { InvalidVendorReport } from "@aiox/vendor";
+import type {
+    InboundMessage,
+    RuntimeControls,
+    VendorBinding,
+    VendorLaunchInput,
+} from "@aiox/vendor";
+import { z } from "zod";
 
-import {
-    createTerminal,
-    type TerminalListener,
-    type TerminalSession,
-} from "@aiox/terminal";
-
-import { createClaudeInbox } from "@/claude-environment";
 import { writeClaudeInbox } from "@/claude-inbox";
+import { prepareClaudeLaunch } from "@/claude-launch";
 import { ClaudeObservations } from "@/claude-observations";
-import type { AgentBinding, InboundMessage, RuntimeControls } from "@/runtimes";
+import { launchHooks } from "@/launch-hooks";
 
-export type ClaudeHookReport = {
-    event: Record<string, unknown>;
-    inboxPath?: string | undefined;
-    inboxToken?: string | undefined;
-};
+const reportSchema = z.strictObject({
+    event: z.looseObject({
+        hook_event_name: z.string().min(1),
+        session_id: z.string().min(1),
+    }),
+    inboxPath: z.string().optional(),
+    inboxToken: z.string().optional(),
+});
 
 /** The registered handle exists before any asynchronous preparation or spawn. */
-export class ClaudeBinding implements AgentBinding {
-    readonly hookToken = randomBytes(32).toString("base64url");
-    inboxPath = "";
-    session: TerminalSession | undefined;
-    #inbox: Awaited<ReturnType<typeof createClaudeInbox>> | undefined;
+export class ClaudeBinding implements VendorBinding {
     #stopped = false;
     #ready = false;
     #wasReady = false;
@@ -30,20 +30,18 @@ export class ClaudeBinding implements AgentBinding {
     #mcpReady = false;
     requireMcp = false;
     #inboxToken: string | undefined;
-    #preparation: Promise<void> | undefined;
     readonly observationOptions = { hasBlockingStopHooks: false };
     readonly observations: ClaudeObservations;
     #activity: Parameters<RuntimeControls["setActivity"]> | undefined;
 
-    #externalStarted = false;
+    #started = false;
     onReady: (() => void) | undefined;
     onReleased: (() => void) | undefined;
 
     constructor(
         readonly controls: RuntimeControls,
-        private readonly externalInboxPath?: string,
+        readonly inboxPath: string,
     ) {
-        if (externalInboxPath !== undefined) this.inboxPath = externalInboxPath;
         this.observations = new ClaudeObservations(
             {
                 ...controls,
@@ -57,53 +55,49 @@ export class ClaudeBinding implements AgentBinding {
     }
 
     get alive(): boolean {
-        return this.externalInboxPath === undefined
-            ? Boolean(this.session?.alive)
-            : this.#externalStarted;
+        return this.#started;
     }
-    externalStarted(): void {
+    executionStarted(): void {
         if (this.#stopped) throw new Error("Claude runtime was stopped.");
-        this.#externalStarted = true;
+        this.#started = true;
         this.#updateReady();
     }
 
-    prepare(): Promise<void> {
-        this.#preparation ??= this.#prepare();
-        return this.#preparation;
-    }
-    async #prepare(): Promise<void> {
+    async prepare(input: VendorLaunchInput): Promise<unknown> {
         if (this.#stopped) throw new Error("Claude runtime was stopped.");
-        this.#inbox = await createClaudeInbox();
-        this.inboxPath = this.#inbox.path;
-        if (this.#stopped) {
-            throw new Error("Claude runtime was stopped.");
-        }
-    }
-
-    async start(options: {
-        args: string[];
-        env: Record<string, string>;
-        cwd: string;
-        cols: number;
-        rows: number;
-        initialListener?: TerminalListener;
-    }): Promise<void> {
+        this.requireMcp = input.mcpUrl !== null;
+        const launch = await prepareClaudeLaunch({
+            ...input,
+            inboxPath: this.inboxPath,
+            hooks: launchHooks(),
+        });
         if (this.#stopped) throw new Error("Claude runtime was stopped.");
-        try {
-            this.session = createTerminal({
-                id: this.controls.runtimeId,
-                file: "claude",
-                ...options,
-            });
-        } catch {
-            throw new Error(
-                "Cannot start Claude: the vendor process could not be created. Check the Claude installation and working directory.",
-            );
-        }
+        this.observationOptions.hasBlockingStopHooks =
+            launch.hasBlockingStopHooks;
+        return {
+            file: "claude",
+            args: launch.args,
+            cwd: input.cwd,
+            env: {
+                ...Object.fromEntries(
+                    Object.entries(launch.env).filter(
+                        ([key]) => !key.toUpperCase().startsWith("AIOX_"),
+                    ),
+                ),
+                AIOX_EXECUTION_OWNERSHIP: input.executionOwnership,
+                AIOX_MCP_TOKEN: input.mcpToken,
+                AIOX_HOOK_TOKEN: input.reportToken,
+                AIOX_HOOK_URL: input.reportUrl,
+            },
+        };
     }
 
-    async observe(report: ClaudeHookReport): Promise<void> {
+    async observe(value: unknown): Promise<void> {
         if (this.#stopped) throw new Error("Claude runtime was stopped.");
+        const parsed = reportSchema.safeParse(value);
+        if (!parsed.success)
+            throw new InvalidVendorReport("Invalid Claude hook report.");
+        const report = parsed.data;
         if (
             !this.inboxPath ||
             report.inboxPath !== this.inboxPath ||
@@ -119,10 +113,7 @@ export class ClaudeBinding implements AgentBinding {
         this.#inboxToken = report.inboxToken;
         if (!this.#inboxReady) {
             await writeClaudeInbox(this.inboxPath, this.#inboxToken);
-            if (
-                this.#stopped ||
-                (this.externalInboxPath === undefined && !this.alive)
-            )
+            if (this.#stopped)
                 throw new Error("Claude exited before inbox readiness.");
             this.#inboxReady = true;
             this.#updateReady();
@@ -130,9 +121,6 @@ export class ClaudeBinding implements AgentBinding {
         await this.observations.observe(report.event);
     }
 
-    get ready(): boolean {
-        return this.#ready;
-    }
     get wasReady(): boolean {
         return this.#wasReady;
     }
@@ -182,40 +170,20 @@ export class ClaudeBinding implements AgentBinding {
         exitCode: number,
         signal: number | null,
     ): Promise<void> {
-        this.#externalStarted = false;
+        this.#started = false;
         if (!this.#stopped && signal === null && exitCode !== 0)
             await this.observations.failPending("vendor_process_failed");
         else await this.observations.interruptPending();
     }
 
-    async stop(_force: boolean): Promise<void> {
-        this.#stopped = true;
-        this.#ready = false;
-        await this.#preparation?.catch(() => {});
-        try {
-            await this.session?.kill();
-            await this.session?.dispose();
-        } catch {
-            this.controls.setActivity("failed", {
-                event: "cleanup",
-                reason: "unconfirmed",
-            });
-            throw new Error(
-                "Claude resource or input outcome cleanup is unconfirmed.",
-            );
-        }
-        if (this.#inbox) {
-            await this.#inbox.dispose();
-            this.#inbox = undefined;
-        }
-    }
-
-    async cleanup(): Promise<void> {
+    async cleanup(
+        reason: "external_connection_lost" | "execution_stopped",
+    ): Promise<void> {
         this.onReleased?.();
         this.#stopped = true;
         this.#ready = false;
-        this.#externalStarted = false;
-        if (this.externalInboxPath !== undefined)
+        this.#started = false;
+        if (reason === "external_connection_lost")
             await this.observations.failPending("external_connection_lost");
         else await this.observations.interruptPending();
         this.#inboxToken = undefined;

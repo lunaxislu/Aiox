@@ -4,6 +4,10 @@ import { defineConfig, type Options } from "tsup";
 
 const packages: Record<string, Options> = {
     "@aiox/domain": {},
+    "@aiox/vendor": {},
+    "@aiox/adapter-claude": {
+        entry: ["src/index.ts", "src/claude-hook-main.ts"],
+    },
     "@aiox/config": {},
     "@aiox/protocol": {},
     "@aiox/persistence": {
@@ -16,14 +20,7 @@ const packages: Record<string, Options> = {
     },
     "@aiox/daemon": {
         // dev-harness is a Stage 2 verification entry, not part of the product surface.
-        entry: [
-            "src/index.ts",
-            "src/main.ts",
-            "src/dev-harness.ts",
-            "src/claude-hook.ts",
-            "src/claude-environment.ts",
-        ],
-        splitting: false,
+        entry: ["src/index.ts", "src/main.ts", "src/dev-harness.ts"],
     },
     "@aiox/cli": {
         entry: ["src/index.ts", "src/main.ts"],

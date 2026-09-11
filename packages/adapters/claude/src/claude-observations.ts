@@ -1,8 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome } from "@aiox/domain";
-
-import type { InboundMessage, RuntimeControls } from "@/runtimes";
+import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 
 function escapeAttribute(value: string): string {
     return value

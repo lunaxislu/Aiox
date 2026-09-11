@@ -1,5 +1,4 @@
 import type { Readable } from "node:stream";
-import { pathToFileURL } from "node:url";
 
 const FAILURE = "AIOX hook report failed.";
 const TIMEOUT_MS = 5000;
@@ -61,7 +60,19 @@ export async function reportClaudeHook(
             }),
             redirect: "error",
             signal: controller.signal,
+        }).catch((error: unknown) => {
+            if (
+                env.AIOX_EXECUTION_OWNERSHIP === "external" &&
+                error instanceof TypeError &&
+                typeof error.cause === "object" &&
+                error.cause !== null &&
+                "code" in error.cause &&
+                error.cause.code === "ECONNREFUSED"
+            )
+                return null;
+            throw error;
         });
+        if (response === null) return;
         await response.body?.cancel();
         if (!response.ok) throw new Error(FAILURE);
     } catch {
@@ -69,14 +80,4 @@ export async function reportClaudeHook(
     } finally {
         clearTimeout(timer);
     }
-}
-
-if (
-    process.argv[1] &&
-    import.meta.url === pathToFileURL(process.argv[1]).href
-) {
-    reportClaudeHook().catch(() => {
-        process.stderr.write(`${FAILURE}\n`);
-        process.exitCode = 1;
-    });
 }

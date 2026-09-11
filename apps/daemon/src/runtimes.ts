@@ -1,23 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome, RuntimeActivity } from "@aiox/domain";
-
-/**
- * What a vendor binding receives. `deliveryId` is the correlation handle the
- * binding must echo back through `settle` when the connected request finishes.
- * It is null for a daemon notification, so a notification structurally cannot
- * settle anything and cannot produce another notification.
- */
-export type InboundMessage = {
-    readonly deliveryId: string | null;
-    readonly from: {
-        readonly name: string;
-        readonly role: string | null;
-        readonly description: string | null;
-    };
-    readonly createdAt: number;
-    readonly content: string;
-};
+import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
+export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 
 /**
  * How one vendor is driven. Stage 3 (Claude) and Stage 4 (Codex) supply real
@@ -30,25 +15,9 @@ export type AgentBinding = {
     stop(force: boolean): Promise<void>;
     /** Releases collaboration resources independently of process lifetime. */
     cleanup?(): Promise<void>;
-};
-
-/** The daemon side a binding may call as it observes its runtime. */
-export type RuntimeControls = {
-    readonly runtimeId: string;
-    setActivity(
-        activity: RuntimeActivity,
-        observation?: { event: string; reason?: string },
-    ): void;
-    /**
-     * Report the result of one previously delivered AIOX input. A turn that is
-     * not connected to a delivery has nothing to settle, which is why finishing
-     * a user's own request cannot notify anyone.
-     */
-    settle(
-        deliveryId: string,
-        outcome: DeliveryOutcome,
-        error?: string,
-    ): Promise<void>;
+    mcpConnected?(): void;
+    /** Ends control/report exposure synchronously, before fallible cleanup. */
+    revoke?(): void;
 };
 
 export type RuntimeRecord = {
@@ -165,6 +134,7 @@ export class RuntimeRegistry {
         this.#runtimes.set(id, record);
         try {
             record.binding = await input.createBinding(controls);
+            if (!record.collaborationActive) record.binding.revoke?.();
             record.activity = reportedActivity;
             record.observation = reportedObservation;
         } catch (error) {
@@ -217,10 +187,12 @@ export class RuntimeRegistry {
     /** Ends collaboration immediately while preserving resources awaiting cleanup. */
     revoke(id: string): void {
         const record = this.#runtimes.get(id);
+        const active = record?.collaborationActive;
         if (record) record.collaborationActive = false;
         for (const [token, runtimeId] of this.#tokens) {
             if (runtimeId === id) this.#tokens.delete(token);
         }
+        if (active) record.binding.revoke?.();
     }
 
     /** Removes a record after its cleanup has succeeded. */

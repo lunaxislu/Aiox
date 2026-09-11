@@ -96,3 +96,53 @@ it("bounds a hanging input stream", async () => {
         vi.useRealTimers();
     }
 });
+
+it("ignores only an external report connection refusal after the daemon has gone away", async () => {
+    const server = createServer();
+    await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("No port");
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    const disconnected = {
+        ...env,
+        AIOX_HOOK_URL: `http://127.0.0.1:${address.port}/report`,
+    };
+    await expect(
+        reportClaudeHook(Readable.from(["{}"]), {
+            ...disconnected,
+            AIOX_EXECUTION_OWNERSHIP: "external",
+        }),
+    ).resolves.toBeUndefined();
+    await expect(
+        reportClaudeHook(Readable.from(["{}"]), disconnected),
+    ).rejects.toThrow("AIOX hook report failed.");
+});
+
+it.each(["unauthorized", "timeout", "reset", "malformed"])(
+    "external connection-refusal policy preserves %s diagnostics",
+    async (failure) => {
+        const fetch = vi.fn();
+        if (failure === "unauthorized")
+            fetch.mockResolvedValue(new Response(null, { status: 401 }));
+        else if (failure === "timeout")
+            fetch.mockRejectedValue(new DOMException("timeout", "AbortError"));
+        else
+            fetch.mockRejectedValue(
+                new TypeError("fetch failed", {
+                    cause: Object.assign(new Error("reset"), {
+                        code: "ECONNRESET",
+                    }),
+                }),
+            );
+        vi.stubGlobal("fetch", fetch);
+        await expect(
+            reportClaudeHook(
+                Readable.from([failure === "malformed" ? "not-json" : "{}"]),
+                { ...env, AIOX_EXECUTION_OWNERSHIP: "external" },
+            ),
+        ).rejects.toThrow("AIOX hook report failed.");
+        if (failure === "malformed") expect(fetch).not.toHaveBeenCalled();
+    },
+);

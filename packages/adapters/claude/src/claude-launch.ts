@@ -212,7 +212,12 @@ export async function prepareClaudeLaunch(input: {
         )
             invalid("CLAUDE_CODE_SAFE_MODE", "disables hooks required by AIOX");
     }
-    for (const name of ["AIOX_MCP_TOKEN", "AIOX_HOOK_TOKEN", "AIOX_HOOK_URL"]) {
+    for (const name of [
+        "AIOX_MCP_TOKEN",
+        "AIOX_HOOK_TOKEN",
+        "AIOX_HOOK_URL",
+        "AIOX_EXECUTION_OWNERSHIP",
+    ]) {
         if (
             Object.keys(effectiveEnv).some(
                 (key) =>

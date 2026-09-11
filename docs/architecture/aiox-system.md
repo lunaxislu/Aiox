@@ -16,7 +16,7 @@ Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한�
 ```text
 실행 소유자
 ├─ daemon → Web·Host vendor / PTY / 필수 부속 실행
-└─ 외부 CLI → vendor child / 상속 입출력 / inbox 임시 디렉터리 / 필수 부속 실행
+└─ 외부 CLI → foreground / 상속 입출력 / adapter 임시 자원 / 필수 부속 실행
 협업 등록 — daemon RuntimeRegistry
 ├─ Runtime 신원·credential·membership·등록 유효성
 ├─ vendor binding → 입력·인증 hook·준비·관측
@@ -24,8 +24,8 @@ Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한�
 ```
 
 실행 소유자가 프로세스 종료를, daemon이 협업 등록 해제를 담당한다. binding의 vendor
-입력·관측 책임에 외부 프로세스 kill이나 CLI 임시 자원 삭제를 결합하지 않는다. 기존 Claude
-모듈 배치는 이 책임을 충족하도록 바꿀 수 있으며 범용 runner·새 Registry를 선도입하지 않는다.
+입력·관측 책임에 외부 프로세스 kill이나 CLI 임시 자원 삭제를 결합하지 않는다. 공유 vendor 계약과 실행 owner가 이 경계를 담당하고, vendor별 실행·입력·관측은 adapter에 둔다.
+현재 RuntimeRegistry를 재사용하며 adapter가 실행 위치별 소유권을 다시 정의하지 않는다.
 
 ```text
 외부 CLI: daemon 제어 WS 연결 → Registry·hook 맵·credential 준비 응답
@@ -46,7 +46,7 @@ CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호�
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:215-522`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:44-80`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:115-249`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:54-181`.
 
-Runtime 공통 정리는 credential·협업 유효성을 먼저 회수하고 daemon 소유 binding·PTY만 종료한다. binding cleanup과 standalone endpoint의 route·요청·등록 정리는 실행 소유권과 별도로 수행한다. 실패한 정리는 재시도 경로를 남기고 PTY exit만으로 daemon을 종료하지 않는다. 원 발신자 종료 후 수신 요청 결과 보존은 collaboration 계약을 따른다.
+Runtime 공통 정리는 credential·협업 유효성을 먼저 회수하고 daemon 소유 execution owner·PTY만 종료한다. binding cleanup과 standalone endpoint의 route·요청·등록 정리는 실행 소유권과 별도로 수행한다. 실패한 정리는 재시도 경로를 남기고 PTY exit만으로 daemon을 종료하지 않는다. 원 발신자 종료 후 수신 요청 결과 보존은 collaboration 계약을 따른다.
 
 일반 shell은 TerminalService에만 등록하고 RuntimeRegistry와 분리한다. `/api/terminals` 생성·목록과
 개별 조회·명시 종료는 공통 HTTP 보호를 거쳐 같은 서비스로 연결되며 기존 WS 입출력 경로를 쓴다.
@@ -61,26 +61,32 @@ shell도 종료·확인한다. 실패한 binding에 연결된 shell은 재시도
 
 현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude 연결은 아래 Stage 3 범위로 확장했고 Codex와 Host/Worktree 실행은 아직 구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
 
-## Claude 현재 조립 범위 [Status: As-built]
+## 공통 실행과 Claude adapter 현재 조립 범위 [Status: As-built]
 
 CLI는 terminal 문맥이 있으면 Web foreground WS로, 없으면 별도 external 제어 WS로 연결한다.
-Web은 ClaudeBinding의 vendor PTY를 중계하고 빌린 shell의 공개 terminal ID를 유지한다.
-외부는 CLI가 vendor를 직접 spawn해 입출력을 상속하고 daemon에는 시작·종료만 통보한다.
+Web은 daemon execution owner의 vendor PTY를 중계하고 빌린 shell의 공개 terminal ID를 유지한다.
+외부는 CLI execution owner가 입출력을 상속하고 daemon에는 시작·종료만 통보한다.
+양쪽은 `@aiox/vendor` 계약과 `@aiox/adapter-claude`를 사용하며 AgentController는 vendor별
+inbox·인자·버전을 해석하지 않는다. adapter는 부속 실행 준비 후 foreground를 시작할 수 있고
+owner는 전체 실행 자원을 정리한다. 현재 제품 adapter는 Claude이며 Codex·Host 실행은 미구현이다.
+근거: [[packages/vendor/src/index.ts]] `packages/vendor/src/index.ts:49-96`,
+[[packages/vendor/src/execution.ts]] `packages/vendor/src/execution.ts:7`,
+[[packages/adapters/claude/src/index.ts]] `packages/adapters/claude/src/index.ts:21`.
 RuntimeRegistry의 `executionOwnership`과 `collaborationActive`는 프로세스 종료 책임과
 협업 유효성을 분리하며 `terminalOwnership`은 daemon terminal 소유·차용만 표현한다.
-`stopRuntime`은 revoke 후 daemon 소유 binding에만 stop을 호출하고 cleanup·DB 정리를
+`stopRuntime`은 revoke 후 daemon 소유 Runtime의 execution owner를 종료하고 binding cleanup·DB 정리를
 수행한다. 실패한 record는 재시도용으로 남지만 인증·발견·전송 대상에서는 제외한다.
 
 근거: 실행 분기는 [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:451`,
 직접 실행은 [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:12`,
-제어 연결은 [[apps/daemon/src/claude-controller.ts]] `apps/daemon/src/claude-controller.ts:80`,
+제어 연결은 [[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:81`,
 등록 유효성은 [[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:58`,
 정리 경계는 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:307`.
 
 이전 Stage3의 외부 shell 실측도 daemon vendor PTY 경로였다. 그 기록을 새 직접 실행이나
 외부 vendor 독립 수명 검증으로 승계하지 않는다.
 
-Runtime은 시작 중에도 credential 인증에 필요한 등록을 가지지만, 살아 있는 vendor·인증 hook·inbox 연결과 Network가 있는 경우 공통 MCP 초기화를 확인해야 전송 준비가 된다. hook 관측은 binding에서 기존 입력 결과·자동 알림 서비스로 이어진다. 세부 구성, 미확인 입력 결과와 OS별 검증 경계는 [[docs/architecture/aiox-vendor-bindings]]가 소유한다. 이 구현 존재는 사용자 참여 실제 모델 E2E 완료를 뜻하지 않는다.
+Runtime은 시작 중에도 credential 인증에 필요한 등록을 가지지만, adapter가 요구하는 연결 준비를 확인해야 전송 준비가 된다. Claude는 실행 시작·인증 hook·inbox 연결과 Network가 있는 경우 공통 MCP 초기화를 확인한다. hook 관측은 binding에서 기존 입력 결과·자동 알림 서비스로 이어진다. 세부 구성, 미확인 입력 결과와 OS별 검증 경계는 [[docs/architecture/aiox-vendor-bindings]]가 소유한다. 이 구현 존재는 사용자 참여 실제 모델 E2E 완료를 뜻하지 않는다.
 
 ## 책임과 프로세스
 
@@ -94,13 +100,13 @@ AIOX daemon — Node.js 실행 구성
 ├─ HTTP / Gateway — 명령·snapshot·event·알림 중계
 ├─ 공통 HTTP MCP — send / agents_list
 ├─ Application services
-│  ├─ StandaloneAgentController — daemon 소유 실행·종료 / 외부 협업 등록
+│  ├─ AgentController — daemon 소유 실행·종료 / 외부 협업 등록
 │  ├─ HostController — workspace·Network·Agent 실행 묶음
 │  ├─ Network / Messaging — 소속·route·전달·응답 연결
 │  └─ Credential registry — token → 현재 Runtime
-├─ Vendor bindings — 준비·입력·관측 / 소유 실행의 vendor별 실행·종료 방법
-│  ├─ Claude TUI child + native inbox + hooks
-│  └─ Codex TUI child + App Server child + Binding Relay
+├─ 공유 vendor adapters — 실행 준비·주입 / binding 입력·관측
+│  ├─ Claude adapter + native inbox + hooks
+│  └─ Codex adapter + App Server + Binding Relay (목표)
 ├─ PTY Manager / Terminal Service — 실행 handle·화면·attachment
 ├─ Configuration Service — 읽기·검증·저장·변경 배포
 └─ Persistence — SQLite 연결·repositories
@@ -231,8 +237,8 @@ apps/
 packages/
 ├─ domain/src/{agent,host,network,messaging,terminal}/
 ├─ application/src/                 # 유스케이스·ports
-├─ adapter-sdk/
-├─ adapters/{claude,codex}/
+├─ vendor/                          # 현재 공유 adapter 계약·execution owner
+├─ adapters/claude/                 # 현재 Claude adapter; Codex는 후속 대상
 ├─ terminal/                        # Node PTY 구현
 ├─ persistence/src/{sqlite,repositories}/
 ├─ protocol/                        # wire·framing
@@ -256,7 +262,8 @@ AgentRuntime을 agent/runtime과 별도 runtime package 양쪽에서 소유하�
 domain은 제품 언어·단일 membership·routing·메시지·Runtime 규칙을 먼저 정의한다. 모든 모델을
 미리 완성하는 절차가 아니라 실제 시나리오의 규칙부터 구현한다. Node/PTY/SQLite/React/vendor SDK에
 의존하지 않는다. application은 인증된 신원을 받아 domain 규칙을 적용하고 실행·전달·정리 port를
-조율한다. adapter-sdk와 application port에 같은 계약을 복제하거나 순환 참조하지 않는다.
+조율한다. 공유 vendor 계약을 application port에 복제하거나 daemon 내부 타입으로 역참조하지 않는다.
+현재 `@aiox/vendor`와 Claude adapter는 CLI·daemon이 공개 package entry로 소비한다.
 
 daemon은 application과 구체 구현을 조립한다. CLI/Web은 protocol을 통해 통신하며 DB를 직접
 수정하지 않는다. packages가 apps를 역참조하지 않는다. 브라우저 xterm renderer는 Web에 두어

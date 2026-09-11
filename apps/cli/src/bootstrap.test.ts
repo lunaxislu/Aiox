@@ -286,6 +286,7 @@ test("network and agent reads reach their endpoints and summarise without --json
         networkId: "n1",
         hostId: null,
         terminalId: null,
+        observation: null,
     };
     const stub = await daemonStub((call, response) => {
         if (call.url.startsWith("/api/agents")) send(response, 200, [agent]);
@@ -313,7 +314,7 @@ test("unsupported adapters and Host commands remain unavailable", async () => {
     try {
         await assert.rejects(
             run(stub.cli, "agent.run", {}, ["codex"]),
-            /Stage 3/,
+            /Unsupported vendor: codex/,
         );
         await assert.rejects(
             run(stub.cli, "host.agent.start", {}, ["review"]),
@@ -471,7 +472,7 @@ test("invalid launch metadata is rejected before a socket exists without echoing
     try {
         await assert.rejects(
             run(stub.cli, "agent.run", { name: "bad/name" }, ["claude"]),
-            /Invalid Claude launch/,
+            /Invalid vendor launch/,
         );
         assert.equal(vi.mocked(WebSocket).mock.calls.length, before);
     } finally {

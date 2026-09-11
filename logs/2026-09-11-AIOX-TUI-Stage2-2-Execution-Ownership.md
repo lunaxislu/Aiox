@@ -1,7 +1,7 @@
 ---
 topic: AIOX TUI Stage2-2 Execution Ownership
 description: AIOX 명령·실행 위치에 따른 실행 소유권과 외부 터미널 독립 수명
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -9,8 +9,8 @@ status: open
 - [x] W1 공통 실행 계약·영향 범위 확정 및 owner 반영 — 명령·인증된 실행 위치로 실행 소유권을 결정하고 runtime/terminal 소유권을 구분한다. 기존 spec·architecture와 CLI→protocol→daemon→Registry→binding→Web·tests를 대조해 새 정책과 충돌하는 계약을 갱신한다.
 - [x] W2 Registry·daemon 수명 분리 — 기존 RuntimeRegistry에 실행 소유권을 표현하고 terminalOwnership과 구분한다. 등록 해제와 실제 프로세스 종료를 분리하며 일반 stop blocking·force 루프·실패 정리·진행 중 등록 경합에 새 정책을 적용한다.
 - [x] W3 외부 실행·제어 연결 구현 — Web foreground 경로를 유지하고 외부를 ClaudeController.attach에서 분리한다. CLI의 vendor 직접 실행·입출력 상속, 제어 WS의 준비·시작·종료·연결 손실, 등록·hook 맵·credential 준비 순서와 CLI 종료 후 등록 정리를 연결한다. AIOX 공통 정책을 첫 구현인 Claude에 적용하며 외부에 PTY·headless·Serialize를 생성하지 않는다.
-- [>] W4 실행별 주입·자원·hook 실패 경계 연결 — 기존 주입·충돌 검사를 재사용하고 실제 실행 CLI에서 버전을 검사한다. 외부 inbox 임시 디렉터리는 CLI가 생성부터 정리까지 소유하며 길이·권한 검사와 등록 경로 대조를 유지한다. 외부 hook ECONNREFUSED만 조용히 처리하고 401·잘못된 보고·timeout 및 Web/Host 오류 진단은 유지한다.
-- [ ] W5 실제 수명 검증·회귀·Stage3 인계 — 외부 PTY 미생성, daemon 정상·force·비정상 종료 뒤 실제 vendor 조작과 shell 복귀, 연결 손실 등록 정리, Web 실행·빌린 shell·화면 복원 회귀 및 pnpm check를 검증한다. OS별 미검증을 명시하고 owner·링크 정합을 확인한 뒤 Stage3 W1로 plan 포인터를 복귀한다. Claude 메시지 E2E·Codex·Host 미구현을 완료로 확대하지 않는다.
+- [x] W4 실행별 주입·자원·hook 실패 경계 연결 — 기존 주입·충돌 검사를 재사용하고 실제 실행 CLI에서 버전을 검사한다. 외부 inbox 임시 디렉터리는 CLI가 생성부터 정리까지 소유하며 길이·권한 검사와 등록 경로 대조를 유지한다. 외부 hook ECONNREFUSED만 조용히 처리하고 401·잘못된 보고·timeout 및 Web/Host 오류 진단은 유지한다.
+- [x] W5 실제 수명 검증·회귀·Stage3 인계 — 외부 PTY 미생성, daemon 정상·force·비정상 종료 뒤 실제 vendor 조작과 shell 복귀, 연결 손실 등록 정리, Web 실행·빌린 shell·화면 복원 회귀 및 pnpm check를 검증한다. OS별 미검증을 명시하고 owner·링크 정합을 확인한 뒤 Stage3 W1로 plan 포인터를 복귀한다. Claude 메시지 E2E·Codex·Host 미구현을 완료로 확대하지 않는다.
 
 ## Required Context
 
@@ -26,7 +26,7 @@ status: open
 
 ### {W4,W5}
 
-- W1–W3 완료. 최신 W3 완료 entry를 먼저 읽는다. W4의 CLI inbox 소유·권한·경로 길이·정리와 동일 cwd/env 버전 검사·주입 helper 재사용은 W3에 선행 구현됨. 남은 외부 hook ECONNREFUSED 처리와 실패 경계를 확인한다. 최종 pnpm check 383 tests 통과; built daemon/CLI 대역 vendor 4종 단절 검증은 실제 Claude TTY·모델·OS 통합 증거가 아니며 W5에서 검증한다.
+- W4·W5 완료. 최신 완료 entry의 실제 Claude 외부 4종 단절·Web 복원 근거와 최종 404 tests 결과를 따른다. Stage3 W1로 인계했으며 다른 OS·모델 메시지 E2E는 Stage3 후속 검증이다.
 
 ## 2026-09-11 · 공통 실행 위치·명령 정책 합의와 Stage2-2 착수 준비
 
@@ -142,3 +142,21 @@ W3를 완료한다. 외부 agent run은 CLI에서 vendor를 직접 실행하고 
 빌드 통합 증거: /private/tmp/aiox-w3-ownership-smoke/proof.mjs와 /private/tmp/aiox-w3-ownership-smoke/1789116638950/results.json. ownership_scout가 최종 빌드에서 daemon 정상 stop·force·SIGKILL·제어 WS만 단절하는 네 경우를 실행했고 main이 script와 결과를 직접 확인했다. 전부 terminalId=null, terminals=[]이며 종료/단절 뒤 vendor가 입력에 응답하고 CLI는 vendor exit code 7을 반환했다. inbox는 vendor 생존 중 유지되고 종료 뒤 제거됐다. WS만 단절한 경우 daemon은 살아 있고 Agent 조회는 비어 있었다. 실제 built CLI·daemon 프로세스에 대역 claude와 pipe stdio를 사용한 검증이며 실제 Claude 모델·native TTY·OS 전체 통합의 증거는 아니다.
 
 다음은 W4다. W3에서 필수였던 CLI inbox 생성·0700 권한·Unix 경로 길이·정리, 동일 cwd/env 버전 검사와 기존 주입 helper 재사용은 구현했다. W4에서는 외부 hook ECONNREFUSED만 조용히 처리하는 미구현 부분과 주입·자원 실패 경계의 남은 검증을 이어간다. 401·잘못된 보고·timeout 및 Web/Host 진단 유지 정책은 이미 합의돼 있다. 실제 vendor 조작·shell 복귀·Web 화면 회귀와 OS별 증거는 W5에 남는다. 사용자 요청 범위 W1–W3 완료이며 W4/W5 또는 Stage2-2 전체 완료로 확대하지 않는다. plan의 Stage2-2 활성 포인터는 유지한다. 새 사용자 동작 정책 결정은 필요하지 않았다. 기존 미커밋 변경을 보존했고 commit/push는 하지 않았다.
+
+### 2026-09-11 19:10 · W4·W5 완료와 공통 vendor 경계 반영·Stage3 인계
+
+사용자가 기록 금지를 해제하고 Stage2-2 완료 기록과 직전 구현 커밋의 병합을 요청했다. 기록 중단 기간에 수행한 구현·검증을 소급 정리한다. 기존 기준점은 7b5bbc5이며, 직전 구현 커밋 79b94d5는 이번 문서 반영과 함께 amend하므로 최종 SHA는 바뀐다.
+
+W4 완료: 실행 소유권을 공통 controller에서 adapter로 전달하며 외부 hook의 ECONNREFUSED만 조용히 exit 0으로 처리한다. 401·잘못된 입력·timeout·reset 및 daemon 소유 실행 진단을 유지하고 설정의 예약 환경 변수 덮어쓰기를 거절한다. 실제 built hook subprocess 확인은 /private/tmp/aiox-w4-hook-smoke.mjs다.
+
+공통 vendor 경계와 Claude 마이그레이션을 완료했다. packages/vendor가 실행·자원 수명을, packages/adapters/claude가 Claude 준비·inbox·hooks·관측을, apps/daemon/src/agent-controller.ts가 공통 등록·제어 수명을 맡는다. CLI→daemon 패키지 의존과 attach 경로 중복을 제거했다. 여러 vendor 요구는 확정이며 Claude의 통신 방식·단일 프로세스를 공통 필수 조건으로 두지 않는다. 실제 vendor 검증은 Claude 하나이고 helper/background의 다른 vendor 적용은 테스트 대역 근거뿐이다. Codex 실구현 전 여러 실제 vendor에 충분한 계약이라고 단정하지 않는다.
+
+W5 완료: macOS arm64, Node24.14.0, 실제 Claude2.1.268에서 daemon 정상 stop·force·SIGKILL·제어 WS 단절 후 /help 조작과 /exit 0·기존 shell 후속 입력을 확인했다. 외부 CLI와 Claude의 동일 TTY 및 직접 자식 관계, terminalId=null·daemon terminals=[], 생존 중 inbox 보존·종료 후 socket/임시 디렉터리 삭제를 확인했다. WS-only 단절은 daemon 생존·등록 제거·기존 hook credential 401을 확인했다. 근거: /private/tmp/aiox-w5-real-external.mjs, /private/tmp/aiox-w5-real-1789120416147/results.json 및 mode별 화면 산출물.
+
+Web은 실제 Claude의 inbox·hook·Network MCP 준비, borrowed shell, viewer detach 생존·재연결 snapshot/state 및 동일 idle 화면 복원, /exit 0·원래 shell 입력·socket/디렉터리 정리를 확인했다. 근거: /private/tmp/aiox-vendor-web-real.mjs, /private/tmp/aiox-vendor-web-real-RTgZLr/results.json. 최종 실측 빌드 해시 일치와 검사한 사용자/프로젝트 설정 보존을 확인했다. 실제 WebSocket+xterm 소비 경로 검증이며 브라우저 픽셀 또는 모델 메시지 E2E 증거는 아니다. 최초 Web 화면 비교 실패는 /rc connecting 표시의 자연 변화였고 안정된 화면으로 재검증 통과했으며 격리 daemon 정리도 성공했다.
+
+실측 뒤 리뷰의 미사용 ready 계약/getter 제거, hasProcessHandles 명명, native resize·두 번 stop의 이유 주석, dimensions 범위 정리, observation 필수화 및 CLI 응답 fixture 보완을 반영했다. 구버전 호환은 필요 없다는 사용자 지시를 적용했다. 해당 최종 코드의 pnpm check exit 0, 36개 파일/404 tests 통과(domain28/config15/protocol10/terminal67/persistence14/web20/vendor3/adapter66/cli43/daemon138), git diff --check 통과. 실제 Claude 수명 실측은 이 마지막 소규모 정리 전 결과이고 이후 회귀는 전체 자동 검사로 확인했다.
+
+계약·구조·실측 범위는 docs/specs/aiox-runtime.md와 docs/architecture/aiox-system.md, aiox-storage-terminal.md, aiox-vendor-bindings.md에 반영했다. Windows native/Linux/WSL 실제 vendor 통합과 Claude 모델 메시지 E2E는 Stage3 W2·W3·W5에서 해당 환경과 실제 vendor를 확보해 검증한다. Codex는 Stage4, Host는 Stage5다. Stage2-2 자체 미완료 항목은 없으며 Stage3 W1에서 새 공통 경계를 소비하도록 재개 문맥과 plan을 복귀한다.
+
+사용자가 추가 제기한 idle shell만 있으면 일반 daemon stop으로 닫히는 UX는 이번 완료 범위에 포함하지 않는다. 현재 일반 shell은 blocker다. 프롬프트 대기와 실행·중지된 background 작업 구분은 후속 설계/구현 검토 사항으로 Stage3 재개 문맥에 전달하며, CPU 사용량이나 화면만으로 idle을 판단하는 정책을 확정하지 않았다.

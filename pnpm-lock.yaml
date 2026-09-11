@@ -29,15 +29,18 @@ importers:
 
   apps/cli:
     dependencies:
+      '@aiox/adapter-claude':
+        specifier: workspace:*
+        version: link:../../packages/adapters/claude
       '@aiox/config':
         specifier: workspace:*
         version: link:../../packages/config
-      '@aiox/daemon':
-        specifier: workspace:*
-        version: link:../daemon
       '@aiox/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@aiox/vendor':
+        specifier: workspace:*
+        version: link:../../packages/vendor
       commander:
         specifier: 14.0.3
         version: 14.0.3
@@ -51,6 +54,9 @@ importers:
 
   apps/daemon:
     dependencies:
+      '@aiox/adapter-claude':
+        specifier: workspace:*
+        version: link:../../packages/adapters/claude
       '@aiox/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -66,6 +72,9 @@ importers:
       '@aiox/terminal':
         specifier: workspace:*
         version: link:../../packages/terminal
+      '@aiox/vendor':
+        specifier: workspace:*
+        version: link:../../packages/vendor
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
         version: 1.30.0(zod@4.5.4)
@@ -98,6 +107,18 @@ importers:
       vite:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.5.0)(esbuild@0.27.7)
+
+  packages/adapters/claude:
+    dependencies:
+      '@aiox/domain':
+        specifier: workspace:*
+        version: link:../../domain
+      '@aiox/vendor':
+        specifier: workspace:*
+        version: link:../../vendor
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
 
   packages/config: {}
 
@@ -136,6 +157,12 @@ importers:
       node-pty:
         specifier: 1.2.0-beta.15
         version: 1.2.0-beta.15
+
+  packages/vendor:
+    dependencies:
+      '@aiox/domain':
+        specifier: workspace:*
+        version: link:../domain
 
 packages:
 

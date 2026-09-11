@@ -21,9 +21,10 @@
         "test": "vitest run --config ../../vitest.config.ts"
     },
     "dependencies": {
+        "@aiox/adapter-claude": "workspace:*",
         "@aiox/config": "workspace:*",
-        "@aiox/daemon": "workspace:*",
         "@aiox/protocol": "workspace:*",
+        "@aiox/vendor": "workspace:*",
         "commander": "14.0.3",
         "ws": "8.21.3"
     },

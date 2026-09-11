@@ -5,6 +5,7 @@ import { test } from "vitest";
 import {
     apiPath,
     agentRunSchema,
+    agentViewSchema,
     externalAgentRunSchema,
     externalAgentClientFrameSchema,
     errorBodySchema,
@@ -19,14 +20,14 @@ test("external registration cannot borrow a terminal or carry terminal control f
         cwd: "/workspace",
         env: {},
         args: [],
-        inboxPath: "/tmp/ax/inbox.sock",
+        connection: { endpoint: "local" },
     };
     assert.deepEqual(externalAgentRunSchema.parse(launch), launch);
     for (const extra of [
         { terminalContext: { terminalId: "t", token: "secret" } },
         { cols: 80 },
         { executionOwnership: "daemon" },
-        { inboxPath: "bad\0path" },
+        { connection: undefined },
     ])
         assert.equal(
             externalAgentRunSchema.safeParse({ ...launch, ...extra }).success,
@@ -174,7 +175,7 @@ test("foreground launch validates context without re-parsing vendor arguments", 
     };
     assert.deepEqual(agentRunSchema.parse(input), input);
     for (const bad of [
-        { ...input, adapter: "shell" },
+        { ...input, adapter: "bad/vendor" },
         { ...input, cwd: "a\0b" },
         { ...input, cols: 0 },
         { ...input, args: [4] },
@@ -182,4 +183,14 @@ test("foreground launch validates context without re-parsing vendor arguments", 
         { ...input, runtimeId: "borrowed-identity" },
     ])
         assert.equal(agentRunSchema.safeParse(bad).success, false);
+});
+
+test("agent observation must be present, with null representing no observation", () => {
+    const schema = agentViewSchema.pick({ observation: true });
+    assert.equal(schema.safeParse({}).success, false);
+    assert.deepEqual(schema.parse({ observation: null }), {
+        observation: null,
+    });
+    const value = { observation: { event: "Stop", reason: null } };
+    assert.deepEqual(schema.parse(value), value);
 });

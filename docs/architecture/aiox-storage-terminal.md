@@ -119,14 +119,14 @@ daemon foreground 연결 소비자는 protocol의 `terminalContextFromEnv(env)`�
 `registerRuntime({ terminalContext, createBinding, ... })`에 전달한다. daemon은 살아 있는 shell의
 비밀값과 중복 연결을 검증한 뒤 기존 terminal을 차용한다. 문맥이 없으면 CLI 직접 실행 경로를
 사용하고 `terminalId` 직접 지정은 Agent 소유 PTY에만 사용한다. 등록/시작 실패도 빌린 shell을
-종료하지 않는다. Claude CLI는 이 문맥을 foreground WS의 실행 요청에 포함하고 내부 vendor PTY를
+종료하지 않는다. AIOX CLI는 이 문맥을 foreground WS의 실행 요청에 포함하고 daemon 실행 owner의 vendor PTY를
 중계한다. vendor 종료 후 raw mode를 복원하여 원래 shell로 돌아간다. 일반 browser attachment는
 이 foreground 연결과 별개다. 구현·검증 경계는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
 Codex 연결은 후속 구현 대상이다. [Status: As-built]
 
 근거: [[apps/cli/src/foreground.ts]] `apps/cli/src/foreground.ts:20`,
 [[apps/cli/src/foreground.test.ts]] `apps/cli/src/foreground.test.ts:1`,
-[[apps/daemon/src/claude-controller.test.ts]] `apps/daemon/src/claude-controller.test.ts:113-154`.
+[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:147-180`.
 
 근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:38-115`,
 [[packages/protocol/src/index.ts]] `packages/protocol/src/index.ts:44-67`,

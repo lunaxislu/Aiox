@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { DeliveryOutcome, RuntimeActivity } from "@aiox/domain";
 import { openDatabase } from "@aiox/persistence";
 
-import type { Daemon } from "@/daemon";
+import type { Daemon, DaemonOptions } from "@/daemon";
 import { startDaemon } from "@/daemon";
 import type { AgentBinding, InboundMessage, RuntimeControls } from "@/runtimes";
 
@@ -83,7 +83,11 @@ export type DaemonHarness = {
 
 /** A real daemon on ephemeral ports with its own temporary home and database. */
 export async function startTestDaemon(
-    options: { retentionDays?: number; now?: () => number } = {},
+    options: {
+        retentionDays?: number;
+        now?: () => number;
+        adapters?: DaemonOptions["adapters"];
+    } = {},
 ): Promise<DaemonHarness> {
     const home = await mkdtemp(join(tmpdir(), "aiox-daemon-"));
     const db = await openDatabase(join(home, ".aiox", "aiox.db"));
@@ -92,6 +96,9 @@ export async function startTestDaemon(
         db,
         retentionDays: () => options.retentionDays ?? 30,
         webRoot: undefined,
+        ...(options.adapters === undefined
+            ? {}
+            : { adapters: options.adapters }),
         ...(options.now === undefined ? {} : { now: options.now }),
     });
     return {

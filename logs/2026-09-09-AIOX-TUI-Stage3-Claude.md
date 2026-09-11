@@ -24,10 +24,14 @@ status: open
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Claude 실제 TUI + native peer inbox + hooks를 구현하며 headless·SDK·Channel fallback·vendor별 stdio MCP child를 추가하지 않는다. 실행별 credential·공통 HTTP MCP agents_list/send·instruction을 연결하고 기존 사용자 설정·hooks·MCP를 보존한다.
 - Stage 2의 terminal/Runtime 수명 분리를 소비한다. 기존 shell에서 aiox agent run claude --network dev → 같은 terminal에서 TUI 실행·Agent 등록 → vendor 종료·등록/credential/route 정리 → 원래 shell 복귀. 새 탭 중복 생성 금지. 일반 claude 직접 실행은 자동 Agent 등록이 아니다. 외부 터미널의 standalone 실행도 유지한다. Agent 소유 자원과 빌려 쓰는 shell PTY를 구분한다.
 - Claude Runtime/session_id/prompt_id의 UserPromptSubmit·Stop 연결로 해당 AIOX 입력만 완료한다. 이후 직접 사용자 요청 종료가 이전 발신자에게 재알림하지 않게 한다. busy 입력·실패·중단·Windows pipe/token은 실제 integration에서 좁게 확인하며 기존 사용자 실험을 신규 통합 성공으로 확대하지 않는다. 준비/종료 실패는 실제 관리 자원을 확인하고 재시도 경계를 유지한다.
-- W3 소비 지점: packages/protocol의 terminalContextFromEnv(env) → daemon.registerRuntime({terminalContext, createBinding, ...})로 기존 shell을 차용한다. terminalId 단독은 일반 shell 연결 권한이 아니다. 문맥은 child env AIOX_TERMINAL_ID/AIOX_TERMINAL_TOKEN이며 URL·argv·로그에 노출하지 않는다. apps/daemon/src/daemon.ts·terminals.ts 및 daemon.test.ts/terminals.test.ts가 수명·실패/재시도 근거다. 실제 agent run HTTP 등록·vendor foreground 종료 관측·원 shell 복귀는 이 단계에서 연결한다. 문맥 없는 외부 standalone은 유지하고 직접 소유 PTY만 Agent 종료 시 종료한다. 생성 cwd는 실시간 cd 추적값이 아니다.
+- 공통 실행 경계 소비 지점: packages/protocol의 terminalContextFromEnv(env)와 daemon.registerRuntime이 인증된 Web shell 차용을 처리한다. AIOX_TERMINAL_ID/AIOX_TERMINAL_TOKEN은 child env 문맥이며 URL·argv·로그에 노출하지 않는다. Web은 AgentController/ExecutionOwner가 daemon 소유 PTY를 관리하고, 문맥 없는 외부 실행은 CLI가 직접 vendor를 시작해 native stdio를 상속한다. 외부에는 daemon PTY를 만들지 않는다. 등록·종료·shell 복귀는 Stage2-2에서 구현·검증했으므로 이 단계는 기존 경계 위에서 Claude 메시지 통합의 누락을 확인한다. 생성 cwd는 실시간 cd 추적값이 아니다.
 - Stage2 W1~W4 완료 후 다음 단계로 선택됐으나 2026-09-10 공통 Stage2-1을 선행 배치했다. Stage2 최신 W4 entry와 owner를 읽는다. 코드 6621fc3의 CI 34314631099는 3 OS × Node22/24 success이며 Ubuntu Node22 버퍼 timeout은 동일 SHA 재실행 통과·원인 미확정이다. macOS Chrome plain-shell 검증과 vendor 대역 성공을 실제 Claude 통합 성공으로 승계하지 않는다. 2026-09-11 승인된 초기 준비 제한·Notification 힌트 정리·probe cwd·terminal dispose의 국소 수정을 반영했다. 최신 수정 블록을 소비하되 Stage3 전체 착수·완료나 실제 vendor 검증 완료로 확대하지 않는다.
 - Stage2-1 공통 headless·serialization 복원 단계는 완료됐다. logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md의 종료 결과와 docs/architecture/aiox-storage-terminal.md를 소비하고 이 로그 W1에서 실행·주입 계약 대조를 재개한다. 공통 Web 화면 검증을 Claude inbox·hooks 통합 완료로 승계하지 않는다. 다음 실사용 검증 전 서버와 Web이 추가 snapshot 필드를 포함한 동일 빌드인지 확인하며 사용자 세션 재시작은 별도 지시에 따른다.
-- 2026-09-11 사용자 요청으로 Stage2-2 공통 실행 소유권 단계를 선행 배치했다. 현재 활성 단계는 plans/aiox-tui-product-rebuild.md → logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md다. 이 로그 W1은 Stage2-2 완료 후 복귀 지점으로 보존한다. 외부 agent run의 CLI 직접 실행·daemon 종료 독립성은 모든 vendor 공통 정책이며 이전 daemon PTY 검증으로 충족을 선언하지 않는다.
+- Stage2-2 W1–W5 구현·검증·리뷰 수정을 완료하고 이 로그 W1로 복귀했다. logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md의 최신 완료 entry와 docs/architecture/aiox-vendor-bindings.md를 먼저 소비한다. 공통 packages/vendor·AgentController와 packages/adapters/claude 경계를 유지하고 기존 Claude 구현/tests를 설계 제약으로 복원하지 않는다. 실제 macOS 외부 4종 단절·Web 화면 복원은 검증됐으나 Claude 모델 메시지 E2E·Windows/Linux/WSL 통합은 이 단계 W2/W3/W5에서 실제 환경으로 검증해야 한다.
+
+### {W1}
+
+- 추가 UX 요청: idle shell만 있을 때 일반 daemon stop이 shell을 닫고 종료하도록 하는 후속 검토가 남아 있다. Stage2-2 완료 범위 밖이다. 현재 shell blocker와 foreground/background·중지 작업 관측 경로를 조사하고 별도 작업 범위를 정한 뒤 구현한다. 이번 인계는 정책 확정이나 구현 승인이 아니다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -110,3 +114,7 @@ W1은 완료로 바꾸지 않는다. 다음은 최신 built CLI/daemon에서 실
 ## 2026-09-11 · Stage2-2 공통 실행 소유권 단계로 전환
 
 사용자는 명령·실행 위치에 따른 AIOX 공통 정책을 Stage3의 vendor 구현에서 분리하여 Stage2-2 생성·로그 기록·활성 포인터 이동을 요청했다. 합의 내용과 실행 작업은 logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md가 소유한다. plan은 Stage2-2를 활성화하고 Stage3를 대기로 둔다. 이 로그의 기존 구현·검증 기록과 W1~W5를 보존하며 W1 [>]는 단계 복귀 시 재개 지점이다. Stage2-2 완료 뒤 새 실행 경계를 소비해 W1 완료 여부를 판정한다. 이번 전환은 제품 구현·vendor 검증을 수행한 결과가 아니다.
+
+## 2026-09-11 · Stage2-2 완료 결과 소비와 W1 복귀
+
+Stage2-2의 최신 완료 entry를 인계받고 W1 [>] 재개 지점을 활성화했다. 실행 소유권·협업 등록·vendor adapter 분리와 Claude 마이그레이션은 구현돼 있으므로 다시 작성하지 않는다. W1은 현재 코드·owner 대조로 남은 Claude 실행/주입 검증을 판정한다. 외부 실제 Claude 수명과 Web 복원 검증을 메시지 E2E 완료로 확대하지 않으며 W2~W5는 기존 미완료 표시를 유지한다. 관련 근거와 새 경계는 Required Context의 Stage2-2 인계를 따른다. 사용자가 추가 제기한 idle shell 일반 stop UX는 별도 후속 검토로 보존했다. 이번 변경은 기록·재개 경로 정합이며 제품 코드 변경이나 Stage3 신규 구현 수행이 아니다.

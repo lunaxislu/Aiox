@@ -200,6 +200,7 @@ it("rejects actual required connection overrides with redacted actionable errors
         ["--bare"],
         ["--settings", '{"disableAllHooks":true}'],
         ["--settings", '{"env":{"AIOX_MCP_TOKEN":"secret-token"}}'],
+        ["--settings", '{"env":{"AIOX_EXECUTION_OWNERSHIP":"external"}}'],
         [
             "--mcp-config",
             '{"mcpServers":{"aiox":{"type":"http","url":"secret-url"}}}',

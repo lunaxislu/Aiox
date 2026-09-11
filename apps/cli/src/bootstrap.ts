@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { claudeAdapter } from "@aiox/adapter-claude";
 import type { PortOverrides } from "@aiox/config";
 import { configPath, loadConfig } from "@aiox/config";
 import type {
@@ -28,6 +29,7 @@ import {
     stopResultSchema,
     terminalContextFromEnv,
 } from "@aiox/protocol";
+import { selectVendor } from "@aiox/vendor";
 import { WebSocket } from "ws";
 
 import { runExternal } from "@/external";
@@ -424,11 +426,11 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
     }
 
     async function runAgent(request: CliRequest): Promise<void> {
-        if (operand(request.args, 0) !== "claude") unavailable("agent.run");
+        const adapter = selectVendor([claudeAdapter], operand(request.args, 0));
         const { name, network, role, description, instruction } =
             request.options;
         const parsed = agentRunSchema.safeParse({
-            adapter: "claude",
+            adapter: adapter.id,
             cwd: process.cwd(),
             env: Object.fromEntries(
                 Object.entries(process.env).filter(
@@ -446,7 +448,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
             terminalContext: terminalContextFromEnv(process.env),
         });
         if (!parsed.success)
-            throw new Error("Invalid Claude launch options or environment.");
+            throw new Error("Invalid vendor launch options or environment.");
         const url = await daemonUrl();
         const external = parsed.data.terminalContext === undefined;
         const socket = new WebSocket(
@@ -475,7 +477,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                     terminalContext: _context,
                     ...launch
                 } = parsed.data;
-                execution = runExternal(socket, launch);
+                execution = runExternal(socket, launch, adapter);
             } else {
                 socket.send(JSON.stringify(parsed.data));
                 execution = runForeground(socket);

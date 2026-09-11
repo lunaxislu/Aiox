@@ -7,10 +7,6 @@
     ],
     "type": "module",
     "exports": {
-        "./claude-environment": {
-            "types": "./dist/claude-environment.d.ts",
-            "import": "./dist/claude-environment.js"
-        },
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js"
@@ -23,11 +19,13 @@
         "harness": "node dist/dev-harness.js"
     },
     "dependencies": {
+        "@aiox/adapter-claude": "workspace:*",
         "@aiox/config": "workspace:*",
         "@aiox/domain": "workspace:*",
         "@aiox/persistence": "workspace:*",
         "@aiox/protocol": "workspace:*",
         "@aiox/terminal": "workspace:*",
+        "@aiox/vendor": "workspace:*",
         "@modelcontextprotocol/sdk": "1.30.0",
         "ws": "8.21.3",
         "zod": "4.5.4"

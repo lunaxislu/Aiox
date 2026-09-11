@@ -1,7 +1,7 @@
+import type { InboundMessage } from "@aiox/vendor";
 import { expect, it, vi } from "vitest";
 
 import { ClaudeObservations } from "@/claude-observations";
-import type { InboundMessage } from "@/runtimes";
 
 function setup(options = {}) {
     const controls = {

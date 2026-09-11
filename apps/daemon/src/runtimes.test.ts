@@ -80,6 +80,7 @@ test("a failed preparation removes registration despite an early idle report", a
 test("revocation preserves cleanup state and cannot issue a late credential", async () => {
     const registry = new RuntimeRegistry();
     let controls!: RuntimeControls;
+    let revoked = 0;
     let release!: () => void;
     const preparing = new Promise<void>((resolve) => {
         release = resolve;
@@ -90,12 +91,20 @@ test("revocation preserves cleanup state and cannot issue a late credential", as
         createBinding: async (next) => {
             controls = next;
             await preparing;
-            return { deliver: async () => {}, stop: async () => {} };
+            return {
+                deliver: async () => {},
+                stop: async () => {},
+                revoke: () => {
+                    revoked++;
+                },
+            };
         },
     });
     registry.revoke(controls.runtimeId);
     release();
     const { record, token } = await registration;
+    registry.revoke(record.id);
+    expect(revoked).toBe(1);
     expect(record.executionOwnership).toBe("external");
     expect(record.collaborationActive).toBe(false);
     expect(registry.authenticate(token)).toBeUndefined();

@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { createServer } from "node:net";
 
+import { claudeAdapter } from "@aiox/adapter-claude";
 import { terminalContextFromEnv, type AgentRun } from "@aiox/protocol";
 import * as terminals from "@aiox/terminal";
 import type {
@@ -9,18 +10,28 @@ import type {
     TerminalOptions,
     TerminalSession,
 } from "@aiox/terminal";
+import type { VendorBinding, VendorLaunchInput, Command } from "@aiox/vendor";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
 
-import { ClaudeBinding } from "@/claude";
-import * as launch from "@/claude-launch";
-import * as version from "@/claude-version";
 import * as http from "@/http";
 import { fakeVendor, startTestDaemon, type DaemonHarness } from "@/testing";
 
 let harness: DaemonHarness;
+const bindings = new Map<string, VendorBinding>();
+const prepare =
+    vi.fn<
+        (
+            input: VendorLaunchInput,
+            original: VendorBinding["prepare"],
+        ) => Promise<unknown>
+    >();
+const start = vi.fn<(command: unknown) => void>();
+let wasReady: boolean | undefined;
+let holdStart: Promise<void> | undefined;
+
 const sessions: {
     options: TerminalOptions;
     session: TerminalSession;
@@ -30,13 +41,43 @@ const sessions: {
 
 beforeEach(async () => {
     sessions.length = 0;
-    vi.spyOn(version, "probeClaude").mockResolvedValue("2.1.266");
-    vi.spyOn(launch, "prepareClaudeLaunch").mockImplementation(
-        async (input) => ({
-            args: [...input.args, "--messaging-socket-path", input.inboxPath],
-            env: input.env as Record<string, string>,
-            hasBlockingStopHooks: false,
-        }),
+    bindings.clear();
+    wasReady = undefined;
+    holdStart = undefined;
+    prepare
+        .mockReset()
+        .mockImplementation((input, original) => original(input));
+    start.mockReset();
+    const createBinding = claudeAdapter.createBinding.bind(claudeAdapter);
+    vi.spyOn(claudeAdapter, "createBinding").mockImplementation(
+        (controls, connection) => {
+            const binding = createBinding(controls, connection);
+            const original = binding.prepare.bind(binding);
+            binding.prepare = (input) => prepare(input, original);
+            if (wasReady !== undefined)
+                Object.defineProperty(binding, "wasReady", {
+                    get: () => wasReady,
+                });
+            bindings.set(controls.runtimeId, binding);
+            return binding;
+        },
+    );
+    const createExecution = claudeAdapter.createExecution.bind(claudeAdapter);
+    vi.spyOn(claudeAdapter, "createExecution").mockImplementation(
+        async (owner) => {
+            const execution = await createExecution(owner);
+            return {
+                connection: execution.connection,
+                start: async (command, executionOwner) => {
+                    start(command);
+                    const foreground = await executionOwner.foreground(
+                        command as Command,
+                    );
+                    await holdStart;
+                    return foreground;
+                },
+            };
+        },
     );
     vi.spyOn(terminals, "createTerminal").mockImplementation((options) => {
         const listeners = new Set<TerminalListener>(
@@ -123,12 +164,33 @@ test("forwards startup bytes emitted before start resolves exactly once without 
         expect(messages[0]!.data).toEqual(
             Buffer.from([0x1b, 0x5b, 0x36, 0x6e, 0xff]),
         );
+        expect(sessions[0]!.options.env!.AIOX_EXECUTION_OWNERSHIP).toBe(
+            "daemon",
+        );
         sessions[0]!.output("LIVE");
         await vi.waitFor(() =>
             expect(messages.filter((item) => item.binary)).toHaveLength(2),
         );
         expect(messages[1]!.data.toString()).toBe("LIVE");
         expect(messages.every((item) => item.binary)).toBe(true);
+    } finally {
+        socket.terminate();
+    }
+});
+
+test("malformed authenticated vendor reports retain the bad-request response", async () => {
+    const { socket } = await connect(webFrame());
+    try {
+        await vi.waitFor(() => expect(sessions).toHaveLength(1));
+        const response = await fetch(harness.apiUrl("/api/agent-hooks"), {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${sessions[0]!.options.env!.AIOX_HOOK_TOKEN}`,
+            },
+            body: JSON.stringify({ event: {} }),
+        });
+        expect(response.status).toBe(400);
     } finally {
         socket.terminate();
     }
@@ -163,25 +225,23 @@ test("observes an exit during startup and does not replay or leave a launch pend
 
 test("a disconnect while start resolves cleans the initial listener and ignores later startup output", async () => {
     const webInput = webFrame();
-    const start = ClaudeBinding.prototype.start;
     let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
+    holdStart = new Promise<void>((resolve) => {
         release = resolve;
     });
-    vi.spyOn(ClaudeBinding.prototype, "start").mockImplementation(
-        async function (this: ClaudeBinding, options) {
-            await start.call(this, options);
-            await gate;
-        },
-    );
     const { socket } = await connect(webInput);
     try {
         await vi.waitFor(() => expect(sessions).toHaveLength(1));
         socket.terminate();
         await vi.waitFor(() =>
-            expect(harness.daemon.services.runtimes.list()).toEqual([]),
+            expect(
+                harness.daemon.services.runtimes.list()[0]?.collaborationActive,
+            ).toBe(false),
         );
         release();
+        await vi.waitFor(() =>
+            expect(harness.daemon.services.runtimes.list()).toEqual([]),
+        );
         await vi.waitFor(() =>
             expect(sessions[0]!.session.kill).toHaveBeenCalledOnce(),
         );
@@ -197,8 +257,7 @@ test("a disconnect while start resolves cleans the initial listener and ignores 
 test("does not apply the startup deadline to a runtime that was ready before losing inbox health", async () => {
     const webInput = webFrame();
     const timers = vi.spyOn(globalThis, "setTimeout");
-    vi.spyOn(ClaudeBinding.prototype, "wasReady", "get").mockReturnValue(true);
-    vi.spyOn(ClaudeBinding.prototype, "ready", "get").mockReturnValue(false);
+    wasReady = true;
     const { socket } = await connect(webInput);
     try {
         await vi.waitFor(() =>
@@ -344,29 +403,20 @@ test("disconnect during asynchronous launch preparation cleans the registration 
     const waiting = new Promise<void>((resolve) => {
         release = resolve;
     });
-    vi.mocked(launch.prepareClaudeLaunch).mockImplementationOnce(
-        async (input) => {
-            await waiting;
-            return {
-                args: [],
-                env: input.env as Record<string, string>,
-                hasBlockingStopHooks: false,
-            };
-        },
-    );
+    prepare.mockImplementationOnce(async (input, original) => {
+        await waiting;
+        return original(input);
+    });
     const { socket } = await connect(webInput);
     try {
-        await vi.waitFor(() =>
-            expect(launch.prepareClaudeLaunch).toHaveBeenCalled(),
-        );
+        await vi.waitFor(() => expect(prepare).toHaveBeenCalled());
         socket.terminate();
         await vi.waitFor(() =>
             expect(harness.daemon.services.runtimes.list()).toEqual([]),
         );
         release();
         await waiting;
-        // The post-preparation version probe provides a deterministic continuation checkpoint.
-        await vi.waitFor(() => expect(version.probeClaude).toHaveBeenCalled());
+        await new Promise<void>((resolve) => setImmediate(resolve));
         expect(sessions).toHaveLength(0);
     } finally {
         release();
@@ -383,7 +433,11 @@ function frame(): AgentRun {
     return {
         adapter: "claude",
         cwd: harness.home,
-        env: { PATH: process.env.PATH ?? "" },
+        env: {
+            PATH: process.env.PATH ?? "",
+            HOME: harness.home,
+            CLAUDE_CONFIG_DIR: harness.home,
+        },
         args: ["--model", "sonnet"],
         cols: 91,
         rows: 31,
@@ -434,17 +488,6 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
         await vi.waitFor(() => expect(sessions).toHaveLength(2));
         const vendor = sessions[1]!;
         expect(vendor.options.file).toBe("claude");
-        expect(
-            Object.keys(
-                vi.mocked(launch.prepareClaudeLaunch).mock.lastCall![0].hooks,
-            ),
-        ).toEqual(
-            expect.arrayContaining([
-                "PreToolUse",
-                "PostToolUse",
-                "PostToolUseFailure",
-            ]),
-        );
         expect(vendor.options.cwd).toBe(harness.home);
         expect(harness.daemon.services.terminals.views()).toHaveLength(1);
         const record = harness.daemon.services.runtimes.list()[0]!;
@@ -469,7 +512,7 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
         const inboxPath = args[args.indexOf("--messaging-socket-path") + 1]!;
         inbox.listen(inboxPath);
         await once(inbox, "listening");
-        const invalidHook = await fetch(harness.apiUrl("/api/claude/hooks"), {
+        const invalidHook = await fetch(harness.apiUrl("/api/agent-hooks"), {
             method: "POST",
             headers: {
                 "content-type": "application/json",
@@ -486,7 +529,7 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
         });
         expect(invalidHook.status).toBe(401);
         expect(record.activity).toBe("starting");
-        const hook = await fetch(harness.apiUrl("/api/claude/hooks"), {
+        const hook = await fetch(harness.apiUrl("/api/agent-hooks"), {
             method: "POST",
             headers: {
                 "content-type": "application/json",
@@ -597,7 +640,7 @@ test.each(["invalid-frame", "unknown-network", "policy-conflict"])(
     "rejects %s before spawning vendor resources",
     async (scenario) => {
         if (scenario === "policy-conflict") {
-            vi.mocked(launch.prepareClaudeLaunch).mockRejectedValueOnce(
+            vi.mocked(prepare).mockRejectedValueOnce(
                 new Error(
                     "--bare conflicts with required AIOX launch settings.",
                 ),
@@ -634,7 +677,7 @@ test.each(["invalid-frame", "unknown-network", "policy-conflict"])(
 test.each(["--bg", "--background", "--tmux", "--tmux=classic"])(
     "rejects foreground ownership conflict %s through the real launch preflight",
     async (argument) => {
-        vi.mocked(launch.prepareClaudeLaunch).mockRestore();
+        prepare.mockImplementation((input, original) => original(input));
         const shell = harness.daemon.createShell({ cwd: harness.home });
         const terminalContext = terminalContextFromEnv(
             sessions[0]!.options.env!,
@@ -660,7 +703,7 @@ test.each(["--bg", "--background", "--tmux", "--tmux=classic"])(
                 }),
             ]);
             expect(sessions).toHaveLength(1);
-            expect(version.probeClaude).not.toHaveBeenCalled();
+            expect(start).not.toHaveBeenCalled();
             expect(harness.daemon.services.runtimes.list()).toEqual([]);
             expect(
                 harness.daemon.services.terminals.view(shell.id),
@@ -733,7 +776,7 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
             event: Record<string, unknown>,
             credential = vendor.options.env!.AIOX_HOOK_TOKEN!,
         ) =>
-            fetch(harness.apiUrl("/api/claude/hooks"), {
+            fetch(harness.apiUrl("/api/agent-hooks"), {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
@@ -926,27 +969,29 @@ test("external control registers before preparation, creates no PTY and releases
     socket.send(
         JSON.stringify({
             ...input,
-            inboxPath: "/tmp/aiox-external/inbox.sock",
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
         }),
     );
     const [raw] = await response;
     const prepared = JSON.parse(raw.toString());
+    const runtimeId = harness.daemon.services.runtimes.list()[0]!.id;
     expect(prepared.type).toBe("prepared");
-    expect(prepared.env.AIOX_HOOK_TOKEN).toBeTruthy();
-    const record = harness.daemon.services.runtimes.get(prepared.runtimeId)!;
+    expect(prepared.launch.env.AIOX_HOOK_TOKEN).toBeTruthy();
+    expect(prepared.launch.env.AIOX_EXECUTION_OWNERSHIP).toBe("external");
+    const record = harness.daemon.services.runtimes.get(runtimeId)!;
     expect(record.executionOwnership).toBe("external");
     expect(record.terminalId).toBeNull();
     expect(sessions).toHaveLength(0);
-    expect(version.probeClaude).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
     socket.send(JSON.stringify({ type: "started" }));
     socket.terminate();
     await vi.waitFor(() =>
         expect(harness.daemon.services.runtimes.list()).toEqual([]),
     );
-    const result = await fetch(harness.apiUrl("/api/claude/hooks"), {
+    const result = await fetch(harness.apiUrl("/api/agent-hooks"), {
         method: "POST",
         headers: {
-            Authorization: `Bearer ${prepared.env.AIOX_HOOK_TOKEN}`,
+            Authorization: `Bearer ${prepared.launch.env.AIOX_HOOK_TOKEN}`,
             "Content-Type": "application/json",
         },
         body: "{}",
@@ -965,7 +1010,7 @@ test("external startup timeout explicitly fails and releases collaboration witho
     socket.send(
         JSON.stringify({
             ...input,
-            inboxPath: "/tmp/aiox-external/inbox.sock",
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
         }),
     );
     await response;
@@ -990,16 +1035,10 @@ test("external disconnect during preparation revokes the credential and prevents
     const waiting = new Promise<void>((resolve) => {
         release = resolve;
     });
-    vi.mocked(launch.prepareClaudeLaunch).mockImplementationOnce(
-        async (input) => {
-            await waiting;
-            return {
-                args: [],
-                env: input.env as Record<string, string>,
-                hasBlockingStopHooks: false,
-            };
-        },
-    );
+    prepare.mockImplementationOnce(async (input, original) => {
+        await waiting;
+        return original(input);
+    });
     const socket = new WebSocket(
         harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
     );
@@ -1010,13 +1049,11 @@ test("external disconnect during preparation revokes the credential and prevents
     socket.send(
         JSON.stringify({
             ...input,
-            inboxPath: "/tmp/aiox-external/inbox.sock",
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
         }),
     );
     try {
-        await vi.waitFor(() =>
-            expect(launch.prepareClaudeLaunch).toHaveBeenCalled(),
-        );
+        await vi.waitFor(() => expect(prepare).toHaveBeenCalled());
         socket.terminate();
         await vi.waitFor(() =>
             expect(harness.daemon.services.runtimes.list()).toEqual([]),
@@ -1057,15 +1094,15 @@ test("daemon release during external startup closes control without a kill instr
     socket.send(
         JSON.stringify({
             ...input,
-            inboxPath: "/tmp/aiox-external/inbox.sock",
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
         }),
     );
-    const [raw] = await response;
-    const prepared = JSON.parse(raw.toString());
+    await response;
+    const runtimeId = harness.daemon.services.runtimes.list()[0]!.id;
     const messages = vi.fn();
     socket.on("message", messages);
     const closed = once(socket, "close");
-    await harness.daemon.stopRuntime(prepared.runtimeId, true);
+    await harness.daemon.stopRuntime(runtimeId, true);
     await closed;
     const deadline = timers.mock.calls.find((call) => call[1] === 60_000)![0];
     if (typeof deadline !== "function") throw new Error("Missing deadline");
@@ -1084,13 +1121,13 @@ test("a hook body completing after external revocation cannot observe the bindin
     socket.send(
         JSON.stringify({
             ...input,
-            inboxPath: "/tmp/aiox-external/inbox.sock",
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
         }),
     );
     const [raw] = await response;
     const prepared = JSON.parse(raw.toString());
-    const binding = harness.daemon.services.runtimes.get(prepared.runtimeId)!
-        .binding as ClaudeBinding;
+    const runtimeId = harness.daemon.services.runtimes.list()[0]!.id;
+    const binding = bindings.get(runtimeId)!;
     const observe = vi.spyOn(binding, "observe");
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {
@@ -1101,16 +1138,16 @@ test("a hook body completing after external revocation cannot observe the bindin
         return { event: { hook_event_name: "SessionStart", session_id: "s" } };
     });
     try {
-        const report = fetch(harness.apiUrl("/api/claude/hooks"), {
+        const report = fetch(harness.apiUrl("/api/agent-hooks"), {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${prepared.env.AIOX_HOOK_TOKEN}`,
+                Authorization: `Bearer ${prepared.launch.env.AIOX_HOOK_TOKEN}`,
             },
             body: "{}",
         });
         await vi.waitFor(() => expect(read).toHaveBeenCalled());
-        await harness.daemon.stopRuntime(prepared.runtimeId, true);
+        await harness.daemon.stopRuntime(runtimeId, true);
         release();
         expect((await report).status).toBe(401);
         expect(observe).not.toHaveBeenCalled();
@@ -1131,13 +1168,12 @@ test("external startup failure is sent before held cleanup and failed cleanup re
     socket.send(
         JSON.stringify({
             ...input,
-            inboxPath: "/tmp/aiox-external/inbox.sock",
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
         }),
     );
-    const [raw] = await response;
-    const prepared = JSON.parse(raw.toString());
-    const binding = harness.daemon.services.runtimes.get(prepared.runtimeId)!
-        .binding as ClaudeBinding;
+    await response;
+    const runtimeId = harness.daemon.services.runtimes.list()[0]!.id;
+    const binding = bindings.get(runtimeId)!;
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {
         release = resolve;
@@ -1158,7 +1194,7 @@ test("external startup failure is sent before held cleanup and failed cleanup re
             expect(messages[0]?.type).toBe("startup-failed"),
         );
         expect(
-            harness.daemon.services.runtimes.get(prepared.runtimeId)
+            harness.daemon.services.runtimes.get(runtimeId)
                 ?.collaborationActive,
         ).toBe(false);
         const closed = once(socket, "close");
@@ -1166,18 +1202,16 @@ test("external startup failure is sent before held cleanup and failed cleanup re
         await closed;
         expect(messages[1]).toEqual({
             type: "error",
-            message: "Claude collaboration cleanup remains unconfirmed.",
+            message: "Agent collaboration cleanup remains unconfirmed.",
         });
-        expect(
-            harness.daemon.services.runtimes.get(prepared.runtimeId),
-        ).toBeDefined();
+        expect(harness.daemon.services.runtimes.get(runtimeId)).toBeDefined();
     } finally {
         release();
         await vi.waitFor(() => expect(cleanup).toHaveBeenCalled());
         await new Promise<void>((resolve) => setImmediate(resolve));
         cleanup.mockRestore();
         socket.terminate();
-        await harness.daemon.stopRuntime(prepared.runtimeId, true);
+        await harness.daemon.stopRuntime(runtimeId, true);
     }
 });
 
@@ -1191,34 +1225,34 @@ test("external disconnect logs cleanup failure without private details and retai
     socket.send(
         JSON.stringify({
             ...input,
-            inboxPath: "/tmp/aiox-external/inbox.sock",
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
         }),
     );
     const [raw] = await response;
     const prepared = JSON.parse(raw.toString());
-    const binding = harness.daemon.services.runtimes.get(prepared.runtimeId)!
-        .binding as ClaudeBinding;
+    const runtimeId = harness.daemon.services.runtimes.list()[0]!.id;
+    const binding = bindings.get(runtimeId)!;
     const cleanup = vi
         .spyOn(binding, "cleanup")
-        .mockRejectedValueOnce(new Error(prepared.env.AIOX_HOOK_TOKEN));
+        .mockRejectedValueOnce(new Error(prepared.launch.env.AIOX_HOOK_TOKEN));
     const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
         socket.terminate();
         await vi.waitFor(() =>
             expect(diagnostic).toHaveBeenCalledWith(
-                "Claude collaboration cleanup remains unconfirmed after connection loss.",
+                "Agent collaboration cleanup remains unconfirmed after connection loss.",
             ),
         );
         expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(
-            prepared.env.AIOX_HOOK_TOKEN,
+            prepared.launch.env.AIOX_HOOK_TOKEN,
         );
         expect(
-            harness.daemon.services.runtimes.get(prepared.runtimeId)
+            harness.daemon.services.runtimes.get(runtimeId)
                 ?.collaborationActive,
         ).toBe(false);
     } finally {
         cleanup.mockRestore();
-        await harness.daemon.stopRuntime(prepared.runtimeId, true);
+        await harness.daemon.stopRuntime(runtimeId, true);
     }
 });
 
@@ -1232,13 +1266,14 @@ test("external exit revokes credentials before pending exit outcome persistence 
     socket.send(
         JSON.stringify({
             ...input,
-            inboxPath: "/tmp/aiox-external/inbox.sock",
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
         }),
     );
     const [raw] = await response;
     const prepared = JSON.parse(raw.toString());
+    const runtimeId = harness.daemon.services.runtimes.list()[0]!.id;
     const registry = harness.daemon.services.runtimes;
-    const binding = registry.get(prepared.runtimeId)!.binding as ClaudeBinding;
+    const binding = bindings.get(runtimeId)!;
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {
         release = resolve;
@@ -1253,17 +1288,283 @@ test("external exit revokes credentials before pending exit outcome persistence 
             JSON.stringify({ type: "exit", exitCode: 0, signal: null }),
         );
         await vi.waitFor(() => expect(exited).toHaveBeenCalledWith(0, null));
-        expect(registry.get(prepared.runtimeId)?.collaborationActive).toBe(
-            false,
-        );
+        expect(registry.get(runtimeId)?.collaborationActive).toBe(false);
         expect(
-            registry.authenticate(prepared.env.AIOX_MCP_TOKEN),
+            registry.authenticate(prepared.launch.env.AIOX_MCP_TOKEN),
         ).toBeUndefined();
     } finally {
         release();
+        await vi.waitFor(() => expect(registry.get(runtimeId)).toBeUndefined());
+        socket.terminate();
+    }
+});
+
+test("another vendor uses external lifecycle without a Claude inbox or daemon process", async () => {
+    await harness.close();
+    const cleanup = vi.fn(async () => {});
+    let connected = false;
+    const binding: VendorBinding = {
+        prepare: async () => ({ connectTo: "vendor-owned-service" }),
+        get wasReady() {
+            return connected;
+        },
+        onReady: undefined,
+        onReleased: undefined,
+        executionStarted() {
+            connected = true;
+            this.onReady?.();
+        },
+        processExited: async () => {},
+        mcpConnected: () => {},
+        observe: async () => {},
+        deliver: async () => {},
+        connectionLost: async () => {},
+        cleanup,
+    };
+    const createExecution = vi.fn(async () => {
+        throw new Error("External owner must execute this vendor.");
+    });
+    const createBinding = vi.fn(
+        (_controls: unknown, _connection: unknown) => binding,
+    );
+    harness = await startTestDaemon({
+        adapters: [{ id: "another-vendor", createExecution, createBinding }],
+    });
+    const socket = new WebSocket(
+        harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
+    );
+    await once(socket, "open");
+    const response = once(socket, "message");
+    socket.send(
+        JSON.stringify({
+            adapter: "another-vendor",
+            cwd: harness.home,
+            env: {},
+            args: [],
+            connection: { relay: "local-control" },
+        }),
+    );
+    const [raw] = await response;
+    expect(JSON.parse(raw.toString())).toEqual({
+        type: "prepared",
+        launch: { connectTo: "vendor-owned-service" },
+    });
+    expect(createBinding.mock.calls[0]?.[1]).toEqual({
+        relay: "local-control",
+    });
+    expect(createExecution).not.toHaveBeenCalled();
+    expect(sessions).toHaveLength(0);
+    const ready = once(socket, "message");
+    socket.send(JSON.stringify({ type: "started" }));
+    expect(JSON.parse((await ready)[0].toString())).toEqual({ type: "ready" });
+    const closed = once(socket, "close");
+    await harness.daemon.stopRuntime(
+        harness.daemon.services.runtimes.list()[0]!.id,
+        true,
+    );
+    await closed;
+    expect(cleanup).toHaveBeenCalledWith("external_connection_lost");
+});
+
+test("another vendor starts a helper before its Web foreground and shares owner cleanup", async () => {
+    await harness.close();
+    const disposed = vi.fn(async () => {});
+    const order: string[] = [];
+    const binding: VendorBinding = {
+        prepare: async (input) => ({
+            file: "other-tui",
+            args: [],
+            cwd: input.cwd,
+            env: input.env,
+        }),
+        wasReady: true,
+        onReady: undefined,
+        onReleased: undefined,
+        executionStarted() {
+            order.push("started");
+            this.onReady?.();
+        },
+        processExited: async () => {},
+        mcpConnected: () => {},
+        observe: async () => {},
+        deliver: async () => {},
+        connectionLost: async () => {},
+        cleanup: async () => {},
+    };
+    harness = await startTestDaemon({
+        adapters: [
+            {
+                id: "another-vendor",
+                createBinding: () => binding,
+                async createExecution(owner) {
+                    await owner.own(disposed);
+                    return {
+                        connection: null,
+                        async start(launch, executionOwner) {
+                            const command = launch as Command;
+                            const helper = await executionOwner.background({
+                                ...command,
+                                file: process.execPath,
+                                args: [
+                                    "-e",
+                                    "process.stdout.write('ready');setInterval(()=>{},1000)",
+                                ],
+                            });
+                            await once(helper.stdout!, "data");
+                            order.push("helper-ready");
+                            return executionOwner.foreground(command);
+                        },
+                    };
+                },
+            },
+        ],
+    });
+    const { socket } = await connect({
+        ...webFrame(),
+        adapter: "another-vendor",
+    });
+    try {
         await vi.waitFor(() =>
-            expect(registry.get(prepared.runtimeId)).toBeUndefined(),
+            expect(order).toEqual(["helper-ready", "started"]),
         );
+        expect(sessions[0]!.options.file).toBe("other-tui");
+        const record = harness.daemon.services.runtimes.list()[0]!;
+        expect(record.executionOwnership).toBe("daemon");
+        expect(record.terminalOwnership).toBe("borrowed");
+        await harness.daemon.stopRuntime(record.id, true);
+        expect(sessions[0]!.session.kill).toHaveBeenCalledOnce();
+        expect(disposed).toHaveBeenCalledOnce();
+        expect(harness.daemon.services.terminals.views()).toHaveLength(1);
+    } finally {
+        socket.terminate();
+    }
+});
+
+test("a resource allocated after cancellation is still released by its execution owner", async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const disposed = vi.fn(async () => {});
+    vi.mocked(claudeAdapter.createExecution).mockImplementationOnce(
+        async (owner) => {
+            await waiting;
+            await owner.own(disposed);
+            return {
+                connection: null,
+                start: async () => {
+                    throw new Error("Must not start.");
+                },
+            };
+        },
+    );
+    const { socket } = await connect(webFrame());
+    try {
+        await vi.waitFor(() =>
+            expect(claudeAdapter.createExecution).toHaveBeenCalled(),
+        );
+        socket.terminate();
+        await vi.waitFor(() =>
+            expect(
+                harness.daemon.services.runtimes.list()[0]?.collaborationActive,
+            ).toBe(false),
+        );
+        release();
+        await vi.waitFor(() => expect(disposed).toHaveBeenCalledOnce());
+        await vi.waitFor(() =>
+            expect(harness.daemon.services.runtimes.list()).toEqual([]),
+        );
+        expect(sessions).toHaveLength(0);
+    } finally {
+        release();
+        socket.terminate();
+    }
+});
+
+test("failed Web termination revokes collaboration while preserving manual terminal exit", async () => {
+    const { socket, messages } = await connect(webFrame());
+    try {
+        await vi.waitFor(() => expect(sessions).toHaveLength(1));
+        const vendor = sessions[0]!;
+        const record = harness.daemon.services.runtimes.list()[0]!;
+        vi.mocked(vendor.session.kill).mockRejectedValueOnce(
+            new Error("exit unconfirmed"),
+        );
+        const result = await harness.daemon.stop(true);
+        expect(result.stopped).toBe(false);
+        expect(record.collaborationActive).toBe(false);
+        const hook = await fetch(harness.apiUrl("/api/agent-hooks"), {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${vendor.options.env!.AIOX_HOOK_TOKEN}`,
+                "Content-Type": "application/json",
+            },
+            body: "{}",
+        });
+        expect(hook.status).toBe(401);
+        expect(socket.readyState).toBe(WebSocket.OPEN);
+        socket.send(Buffer.from("/exit\r"));
+        await vi.waitFor(() =>
+            expect(vendor.session.write).toHaveBeenCalledWith(
+                Buffer.from("/exit\r"),
+            ),
+        );
+        vendor.output("manual exit remains available");
+        await vi.waitFor(() =>
+            expect(
+                messages.some(
+                    (item) =>
+                        item.binary &&
+                        item.data.toString() ===
+                            "manual exit remains available",
+                ),
+            ).toBe(true),
+        );
+        const closed = once(socket, "close");
+        vendor.exit();
+        await closed;
+        await vi.waitFor(() =>
+            expect(harness.daemon.services.runtimes.list()).toEqual([]),
+        );
+        expect(vendor.session.dispose).toHaveBeenCalledOnce();
+    } finally {
+        socket.terminate();
+    }
+});
+
+test("Web revocation during execution preparation cannot publish a late binding or leave control open", async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    vi.mocked(claudeAdapter.createExecution).mockImplementationOnce(
+        async () => {
+            await waiting;
+            return {
+                connection: { inboxPath: "/tmp/not-created" },
+                start: async () => {
+                    throw new Error("Must not start.");
+                },
+            };
+        },
+    );
+    const { socket } = await connect(webFrame());
+    try {
+        await vi.waitFor(() =>
+            expect(claudeAdapter.createExecution).toHaveBeenCalled(),
+        );
+        const record = harness.daemon.services.runtimes.list()[0]!;
+        const stopped = harness.daemon.stopRuntime(record.id, true);
+        expect(record.collaborationActive).toBe(false);
+        const closed = once(socket, "close");
+        release();
+        await stopped;
+        await closed;
+        expect(claudeAdapter.createBinding).not.toHaveBeenCalled();
+        expect(sessions).toHaveLength(0);
+        expect(harness.daemon.services.runtimes.list()).toEqual([]);
+    } finally {
+        release();
         socket.terminate();
     }
 });
