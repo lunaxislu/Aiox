@@ -184,7 +184,7 @@ test("help returns without invoking execution port", async () => {
     assert.equal(executed, false);
 });
 
-test("shutdown help exposes Windows work interruption and external force termination", () => {
+test("shutdown help distinguishes daemon-owned work from surviving external vendors", () => {
     const cli = createCli({ execute: async () => {} });
     const daemon = cli.commands.find((command) => command.name() === "daemon")!;
     for (const name of ["stop", "restart"]) {
@@ -192,13 +192,13 @@ test("shutdown help exposes Windows work interruption and external force termina
             .find((command) => command.name() === name)!
             .helpInformation();
         assert.match(help, /Windows/);
-        assert.match(help, /interrupts running work/);
-        assert.match(help, /external CLI/);
+        assert.match(help, /interrupts daemon-owned work/);
+        assert.match(help, /External CLI vendors keep\s+running/);
     }
     const stop = daemon.commands.find((command) => command.name() === "stop")!;
     assert.match(
         stop.options.find((option) => option.long === "--force")!.description,
-        /external CLI.*all platforms/,
+        /daemon-owned executions on all platforms/,
     );
 });
 

@@ -27,11 +27,11 @@ status: open
 - 공통 실행 경계 소비 지점: packages/protocol의 terminalContextFromEnv(env)와 daemon.registerRuntime이 인증된 Web shell 차용을 처리한다. AIOX_TERMINAL_ID/AIOX_TERMINAL_TOKEN은 child env 문맥이며 URL·argv·로그에 노출하지 않는다. Web은 AgentController/ExecutionOwner가 daemon 소유 PTY를 관리하고, 문맥 없는 외부 실행은 CLI가 직접 vendor를 시작해 native stdio를 상속한다. 외부에는 daemon PTY를 만들지 않는다. 등록·종료·shell 복귀는 Stage2-2에서 구현·검증했으므로 이 단계는 기존 경계 위에서 Claude 메시지 통합의 누락을 확인한다. 생성 cwd는 실시간 cd 추적값이 아니다.
 - Stage2 W1~W4 완료 후 다음 단계로 선택됐으나 2026-09-10 공통 Stage2-1을 선행 배치했다. Stage2 최신 W4 entry와 owner를 읽는다. 코드 6621fc3의 CI 34314631099는 3 OS × Node22/24 success이며 Ubuntu Node22 버퍼 timeout은 동일 SHA 재실행 통과·원인 미확정이다. macOS Chrome plain-shell 검증과 vendor 대역 성공을 실제 Claude 통합 성공으로 승계하지 않는다. 2026-09-11 승인된 초기 준비 제한·Notification 힌트 정리·probe cwd·terminal dispose의 국소 수정을 반영했다. 최신 수정 블록을 소비하되 Stage3 전체 착수·완료나 실제 vendor 검증 완료로 확대하지 않는다.
 - Stage2-1 공통 headless·serialization 복원 단계는 완료됐다. logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md의 종료 결과와 docs/architecture/aiox-storage-terminal.md를 소비하고 이 로그 W1에서 실행·주입 계약 대조를 재개한다. 공통 Web 화면 검증을 Claude inbox·hooks 통합 완료로 승계하지 않는다. 다음 실사용 검증 전 서버와 Web이 추가 snapshot 필드를 포함한 동일 빌드인지 확인하며 사용자 세션 재시작은 별도 지시에 따른다.
-- Stage2-2 W1–W5 구현·검증·리뷰 수정을 완료하고 이 로그 W1로 복귀했다. logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md의 최신 완료 entry와 docs/architecture/aiox-vendor-bindings.md를 먼저 소비한다. 공통 packages/vendor·AgentController와 packages/adapters/claude 경계를 유지하고 기존 Claude 구현/tests를 설계 제약으로 복원하지 않는다. 실제 macOS 외부 4종 단절·Web 화면 복원은 검증됐으나 Claude 모델 메시지 E2E·Windows/Linux/WSL 통합은 이 단계 W2/W3/W5에서 실제 환경으로 검증해야 한다.
+- Stage2-2 구현·검증 및 c000cab 로컬 main 반영은 완료됐다. 해당 단계 최신 마감 entry와 docs/architecture/aiox-vendor-bindings.md를 소비한다. 사용자 결정으로 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md의 처리 경계 개선을 먼저 완료한 뒤 이 로그 W1을 재개한다. 공통 packages/vendor·AgentController와 packages/adapters/claude 경계를 유지한다. 기존 macOS 수명·Web 복원 및 Windows 대역 검증을 Claude 모델 메시지 E2E 완료로 확대하지 않으며 실제 통합 검증은 이 단계 W2/W3/W5에 남는다.
 
 ### {W1}
 
-- 추가 UX 요청을 사용자 승인에 따라 Stage2-2 후속 W6–W9로 구현 중이다. 현재 활성 작업은 logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md의 최신 대기 shell 블록이다. 이 로그 W1은 그 작업 종료 뒤 복귀하며, 기존 vendor 메시지 E2E 미완료 범위는 유지한다.
+- 현재 선행 단계는 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md이며 Stage2-2 W6–W9는 완료됐다. 이 로그 W1 [>]는 Stage2-3 완료 뒤 복귀할 재개 지점이며 현재 활성 plan 단계가 아니다. Stage2-3의 최신 완료 결과와 owner 변경을 소비한 뒤 Claude 실행·주입의 남은 검증을 수행한다. 기존 vendor 메시지 E2E 미완료 범위는 유지한다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -118,3 +118,7 @@ W1은 완료로 바꾸지 않는다. 다음은 최신 built CLI/daemon에서 실
 ## 2026-09-11 · Stage2-2 완료 결과 소비와 W1 복귀
 
 Stage2-2의 최신 완료 entry를 인계받고 W1 [>] 재개 지점을 활성화했다. 실행 소유권·협업 등록·vendor adapter 분리와 Claude 마이그레이션은 구현돼 있으므로 다시 작성하지 않는다. W1은 현재 코드·owner 대조로 남은 Claude 실행/주입 검증을 판정한다. 외부 실제 Claude 수명과 Web 복원 검증을 메시지 E2E 완료로 확대하지 않으며 W2~W5는 기존 미완료 표시를 유지한다. 관련 근거와 새 경계는 Required Context의 Stage2-2 인계를 따른다. 사용자가 추가 제기한 idle shell 일반 stop UX는 별도 후속 검토로 보존했다. 이번 변경은 기록·재개 경로 정합이며 제품 코드 변경이나 Stage3 신규 구현 수행이 아니다.
+
+### 2026-09-12 21:56 · Stage2-2 마감과 Stage2-3 선행 인계
+
+사용자는 Stage2-2 로컬 마감 후 곧바로 Stage3로 복귀하지 않고 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md에 기존 처리 순서·성공/실패 경계 조사와 구조 개선을 묶도록 결정했다. Stage2-2는 완료, Stage2-3는 활성, Stage3는 대기로 plan을 맞춘다. 이 로그 W1–W5와 과거 실행·검증 History는 보존하며 W1은 새 선행 단계 종료 후 재개한다. 이번 변경은 단계 인계 문맥만 반영했고 Claude 구현·실측을 추가 수행하지 않았다. 원격 push는 사용자 보류다.

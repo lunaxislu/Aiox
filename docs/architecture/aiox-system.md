@@ -39,7 +39,13 @@ Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한�
 등록 해제는 route·요청 결과·credential 정리를 재사용하되 관측 손실을 vendor exit로 확정하지
 않는다. DB 정리가 실패하면 `stop_incomplete`와 daemon·Web 재시도 경로를 유지한다.
 실행 소유권의 이유는 [[docs/decisions/execution-ownership]], 명시적 종료 요청의 변경 이유는
-[[docs/decisions/explicit-execution-shutdown]]을 따른다.
+[[docs/decisions/external-execution-survival]]을 따른다.
+
+외부 binding의 정리는 협업 관측·등록 해제만 수행하고 실행 stop은 daemon 소유 record에만 호출한다.
+외부 WS에는 daemon 종료용 terminate/ACK 교환을 두지 않는다. 연결이 닫히면 CLI는 진단하고
+실행 owner를 유지하며 로컬 종료·자연 종료가 자원을 정리한다. [Status: As-built]
+근거: [[apps/daemon/src/daemon.ts]], [[apps/daemon/src/agent-controller.ts]],
+[[apps/cli/src/external.ts]], [[packages/protocol/src/index.ts]] 및 각 인접 테스트.
 
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
@@ -194,21 +200,22 @@ host stop
 daemon stop --force
  → 신규 실행·등록·메시지 전달 차단 / 진행 중 등록 commit 동기화
  → daemon 소유 Host·standalone·PTY·Relay·App Server 등 강제 종료
- → 외부 CLI execution owner에도 종료 요청·자원 정리 완료 확인
+ → 외부 실행은 vendor 수명을 유지하고 협업 등록·관측만 해제
  → 실제 종료 확인·credential/실행 관계 정리
  → 모두 정리되면 DB 등 daemon 자원 정리 → daemon 종료
  → 미완료면 남은 관리 handle·listener·DB 유지 → 종료 재시도
 ```
 
 종료는 관리 handle과 자원 소유권을 기준으로 하며 무관한 vendor나 터미널 앱 전체를 이름으로
-찾아 죽이지 않는다. 외부 CLI에 종료를 요청하는 것과 사용자 부모 shell을 종료하는 것은 다르다.
+찾아 죽이지 않는다. 외부 CLI 실행 owner에는 daemon 종료를 vendor 종료 명령으로 전달하지 않는다.
 일반 작업 자식 전체의 상태 추적은 추가하지 않는다. 재시도·실제 종료 확인은 runtime 계약을 따른다.
 Persistent Network 정의·Worktree·저장 파일을 삭제하지 않는다.
 
-일반 stop은 POSIX에서 외부 CLI를 포함한 활성 등록과 최초 shell의 busy/unknown을 확인한다.
+일반 stop은 POSIX에서 daemon 소유 활성 등록과 최초 shell의 busy/unknown을 확인한다.
+외부 등록은 실행 종료 blocker가 아니며 협업 정리의 실패·재시도만 daemon 종료 완료에 반영한다.
 Windows native에서는 이 검사를 생략하고 force와 같은 대상을 종료한다. restart는 이 일반 stop을
 재사용하므로 Windows의 작업 중단 정책도 동일하며 restart --force는 없다. SIGINT/SIGTERM 등
-명시적 CLI 요청이 아닌 daemon 종료는 외부 실행을 보존하는 별도 경로다.
+daemon 신호 종료도 명시적 일반 stop·force와 마찬가지로 외부 실행을 보존한다.
 
 ## Host와 Network의 실체화
 

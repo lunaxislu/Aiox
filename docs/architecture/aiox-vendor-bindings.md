@@ -278,11 +278,11 @@ Network MCP initialize 준비와 daemon force stop·등록 정리까지다. 모�
 기존 2.1.263 사용자 실험, 이번 시작 확인, 새 제품의 모델 E2E를 구분한다. 사용자 참여 실제 Claude
 입력·응답·표시 확인은 Stage3 W5에 남고 Windows/Linux/WSL의 실제 vendor 실행은 미검증이다.
 
-### 외부 직접 실행 수명 실측 — 2026-09-11 이전 종료 정책
+### 외부 직접 실행 수명 실측 — 2026-09-11 검증 시점
 
 2026-09-11 macOS arm64·Node v24.14.0·Claude Code 2.1.268에서 빌드된 CLI와 daemon으로
 당시 정책에서 정상 stop·force stop·daemon SIGKILL·제어 WS만 단절하는 네 경우를 확인했다.
-이 결과를 새 명시적 외부 실행 종료 정책의 검증으로 승계하지 않는다. 각 실행은
+관측한 외부 생존 방향은 현재 계약과 같지만 이후 변경한 코드의 검증을 대체하지 않는다. 각 실행은
 협업 준비 뒤 `terminalId=null`, daemon terminal 목록 비어 있음, 실제 Claude가 CLI의 직접 자식이며
 같은 사용자 TTY를 상속함을 확인했다. 검증 harness의 node-pty는 사용자 터미널을 대신하며
 제품 외부 실행이 추가 PTY를 생성했다는 뜻이 아니다.

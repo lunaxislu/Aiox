@@ -431,7 +431,7 @@ describe("stopping", () => {
             [b.runtimeId],
             "request X",
         );
-        await daemon.stopRuntime(a.runtimeId, false);
+        await daemon.stopRuntime(a.runtimeId);
         expect(session.alive).toBe(true);
         expect(daemon.services.runtimes.authenticate(a.token)).toBeUndefined();
         expect(
@@ -453,7 +453,7 @@ describe("stopping", () => {
                 ?.outcome,
         ).toBe("completed");
         expect(daemon.services.terminals.list()).toHaveLength(1);
-        await daemon.stopRuntime(aPrime.runtimeId, true);
+        await daemon.stopRuntime(aPrime.runtimeId);
         expect(session.alive).toBe(true);
     });
 
@@ -790,7 +790,7 @@ describe("stopping", () => {
         const forced = await post("/api/daemon/stop", { force: true });
         expect(forced.status).toBe(200);
         expect(forced.body).toEqual({ stopped: true, forced: true });
-        expect(agent.vendor.stopped).toEqual([{ force: true }]);
+        expect(agent.vendor.stopped).toEqual(["stopped"]);
         expect(
             harness.daemon.services.runtimes.authenticate(agent.token),
         ).toBeUndefined();
@@ -798,56 +798,50 @@ describe("stopping", () => {
         await harness.daemon.closed;
     });
 
-    it.each([false, true])(
-        "cleans up only what one stopped runtime owned (force=%s)",
-        async (force) => {
-            const network = await harness.daemon.services.networks.create(
-                "n",
-                "allow",
-            );
-            const going = await joinAgent(network.id, "going");
-            const staying = await joinAgent(network.id, "staying");
-            const third = await joinAgent(network.id, "third");
-            const preserved = {
-                from: staying.runtimeId,
-                to: third.runtimeId,
-                policy: "deny" as const,
-            };
-            await harness.daemon.services.db.networks.replaceRouting(
-                network.id,
+    it("cleans up only what one stopped runtime owned", async () => {
+        const network = await harness.daemon.services.networks.create(
+            "n",
+            "allow",
+        );
+        const going = await joinAgent(network.id, "going");
+        const staying = await joinAgent(network.id, "staying");
+        const third = await joinAgent(network.id, "third");
+        const preserved = {
+            from: staying.runtimeId,
+            to: third.runtimeId,
+            policy: "deny" as const,
+        };
+        await harness.daemon.services.db.networks.replaceRouting(network.id, {
+            defaultPolicy: "allow",
+            routes: [
                 {
-                    defaultPolicy: "allow",
-                    routes: [
-                        {
-                            from: going.runtimeId,
-                            to: staying.runtimeId,
-                            policy: "allow",
-                        },
-                        {
-                            from: third.runtimeId,
-                            to: going.runtimeId,
-                            policy: "allow",
-                        },
-                        preserved,
-                    ],
+                    from: going.runtimeId,
+                    to: staying.runtimeId,
+                    policy: "allow",
                 },
-            );
+                {
+                    from: third.runtimeId,
+                    to: going.runtimeId,
+                    policy: "allow",
+                },
+                preserved,
+            ],
+        });
 
-            await harness.daemon.stopRuntime(going.runtimeId, force);
+        await harness.daemon.stopRuntime(going.runtimeId);
 
-            expect(
-                harness.daemon.services.runtimes.authenticate(going.token),
-            ).toBeUndefined();
-            expect(
-                harness.daemon.services.runtimes.authenticate(staying.token),
-            ).toBeDefined();
-            // The persistent definition survives its members leaving.
-            expect(await harness.daemon.services.networks.find("n")).toEqual({
-                ...network,
-                routes: [preserved],
-            });
-        },
-    );
+        expect(
+            harness.daemon.services.runtimes.authenticate(going.token),
+        ).toBeUndefined();
+        expect(
+            harness.daemon.services.runtimes.authenticate(staying.token),
+        ).toBeDefined();
+        // The persistent definition survives its members leaving.
+        expect(await harness.daemon.services.networks.find("n")).toEqual({
+            ...network,
+            routes: [preserved],
+        });
+    });
 
     it("does not register a new execution once a forced stop began", async () => {
         const network = await harness.daemon.services.networks.create(
@@ -869,7 +863,7 @@ describe("stopping", () => {
             (await call(`/api/networks/${network.id}`, { method: "DELETE" }))
                 .status,
         ).toBe(200);
-        await harness.daemon.stopRuntime(agent.runtimeId, false);
+        await harness.daemon.stopRuntime(agent.runtimeId);
         expect(
             harness.daemon.services.runtimes.authenticate(agent.token),
         ).toBeUndefined();
@@ -1017,9 +1011,9 @@ describe("history retention", () => {
 });
 
 describe("execution ownership", () => {
-    it("explicit force stop terminates an external execution before cleanup", async () => {
+    it("explicit force stop releases external collaboration without stopping its execution", async () => {
         const events: string[] = [];
-        await harness.daemon.registerRuntime({
+        const agent = await harness.daemon.registerRuntime({
             networkId: null,
             executionOwnership: "external",
             createBinding: () => ({
@@ -1035,28 +1029,13 @@ describe("execution ownership", () => {
         expect(await harness.daemon.stop(true)).toMatchObject({
             stopped: true,
         });
-        expect(events).toEqual(["stop", "cleanup"]);
-    });
-
-    it("signal disposal releases external collaboration without stopping its process", async () => {
-        const stop = vi.fn(async () => {});
-        const cleanup = vi.fn(async () => {});
-        const agent = await harness.daemon.registerRuntime({
-            networkId: null,
-            executionOwnership: "external",
-            createBinding: () => ({ deliver: async () => {}, stop, cleanup }),
-        });
-        expect(
-            await harness.daemon.stop(true, { terminateExternal: false }),
-        ).toMatchObject({ stopped: true });
-        expect(stop).not.toHaveBeenCalled();
-        expect(cleanup).toHaveBeenCalledOnce();
+        expect(events).toEqual(["cleanup"]);
         expect(
             harness.daemon.services.runtimes.authenticate(agent.token),
         ).toBeUndefined();
     });
 
-    it("plain stop protects external sessions even when the vendor reports idle", async () => {
+    it("plain stop releases external sessions without stopping their execution", async () => {
         const stop = vi.fn(async () => {});
         await harness.daemon.registerRuntime({
             networkId: null,
@@ -1067,17 +1046,13 @@ describe("execution ownership", () => {
                 return { deliver: async () => {}, stop };
             },
         });
-        expect(await harness.daemon.stop(false)).toMatchObject(
-            process.platform === "win32"
-                ? { stopped: true }
-                : { stopped: false, blocking: ["external"] },
-        );
-        expect(stop).toHaveBeenCalledTimes(
-            process.platform === "win32" ? 1 : 0,
-        );
+        expect(await harness.daemon.stop(false)).toMatchObject({
+            stopped: true,
+        });
+        expect(stop).not.toHaveBeenCalled();
     });
 
-    it("Windows plain stop terminates external execution without a busy query", async () => {
+    it("Windows plain stop releases external collaboration without a busy query", async () => {
         vi.spyOn(process, "platform", "get").mockReturnValue("win32");
         const busy = vi.spyOn(harness.daemon.services.terminals, "busy");
         const stop = vi.fn(async () => {});
@@ -1090,7 +1065,7 @@ describe("execution ownership", () => {
             stopped: true,
         });
         expect(busy).not.toHaveBeenCalled();
-        expect(stop).toHaveBeenCalledOnce();
+        expect(stop).not.toHaveBeenCalled();
     });
 
     it("revokes collaboration immediately and retains failed cleanup for retry", async () => {
@@ -1108,16 +1083,14 @@ describe("execution ownership", () => {
             },
         });
         await expect(
-            harness.daemon.stopRuntime(agent.runtimeId, true),
+            harness.daemon.stopRuntime(agent.runtimeId),
         ).rejects.toThrow("cleanup failed");
         const { runtimes } = harness.daemon.services;
         expect(runtimes.authenticate(agent.token)).toBeUndefined();
         expect(runtimes.get(agent.runtimeId)?.collaborationActive).toBe(false);
         expect((await call("/api/agents")).body).toEqual([]);
         expect((await call(`/api/agents/${agent.runtimeId}`)).status).toBe(404);
-        expect(
-            await harness.daemon.stop(true, { terminateExternal: false }),
-        ).toMatchObject({
+        expect(await harness.daemon.stop(true)).toMatchObject({
             stopped: true,
         });
         expect(cleanup).toHaveBeenCalledTimes(2);
@@ -1158,8 +1131,123 @@ describe("external registration boundaries", () => {
         release();
         expect(await stopping).toMatchObject({ stopped: true });
         expect(await registration).toBeInstanceOf(Error);
-        expect(stop).toHaveBeenCalledOnce();
+        expect(stop).not.toHaveBeenCalled();
         expect(cleanup).toHaveBeenCalledOnce();
         expect(harness.daemon.services.runtimes.list()).toEqual([]);
     });
+});
+
+describe("external collaboration stop completion", () => {
+    it.each([false, true])(
+        "force joins pending external cleanup and preserves failures (fail=%s)",
+        async (fail) => {
+            let release!: () => void;
+            let entered!: () => void;
+            const waiting = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            const started = new Promise<void>((resolve) => {
+                entered = resolve;
+            });
+            const stop = vi.fn(async () => {});
+            const cleanup = vi
+                .fn()
+                .mockImplementationOnce(async () => {
+                    entered();
+                    await waiting;
+                    if (fail) throw new Error("external cleanup failed");
+                })
+                .mockResolvedValue(undefined);
+            const agent = await harness.daemon.registerRuntime({
+                networkId: null,
+                executionOwnership: "external",
+                createBinding: () => ({
+                    deliver: async () => {},
+                    stop,
+                    cleanup,
+                }),
+            });
+            const released = harness.daemon
+                .stopRuntime(agent.runtimeId)
+                .catch((error: unknown) => error);
+            await started;
+            let finished = false;
+            const stopping = harness.daemon.stop(true).then((result) => {
+                finished = true;
+                return result;
+            });
+            try {
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                expect(finished).toBe(false);
+                expect(
+                    harness.daemon.services.runtimes.authenticate(agent.token),
+                ).toBeUndefined();
+                release();
+                await released;
+                expect(await stopping).toMatchObject({ stopped: !fail });
+                expect(stop).not.toHaveBeenCalled();
+                expect(cleanup).toHaveBeenCalledOnce();
+                if (fail) {
+                    expect(
+                        harness.daemon.services.runtimes.get(agent.runtimeId),
+                    ).toBeDefined();
+                    expect(await harness.daemon.stop(true)).toMatchObject({
+                        stopped: true,
+                    });
+                    expect(cleanup).toHaveBeenCalledTimes(2);
+                }
+                expect(harness.daemon.services.runtimes.list()).toEqual([]);
+            } finally {
+                release();
+            }
+        },
+    );
+
+    it.each(["darwin", "linux", "win32"] as const)(
+        "normal and force stop respect ownership on %s",
+        async (platform) => {
+            vi.spyOn(process, "platform", "get").mockReturnValue(platform);
+            const externalStop = vi.fn(async () => {});
+            const externalCleanup = vi.fn(async () => {});
+            const external = await harness.daemon.registerRuntime({
+                name: "external",
+                networkId: null,
+                executionOwnership: "external",
+                createBinding: (controls) => {
+                    controls.setActivity("reasoning");
+                    return {
+                        deliver: async () => {},
+                        stop: externalStop,
+                        cleanup: externalCleanup,
+                    };
+                },
+            });
+            const owned = await joinAgent(null, "web-or-host");
+            const busy = vi
+                .spyOn(harness.daemon.services.terminals, "busy")
+                .mockResolvedValue([]);
+            const normal = await harness.daemon.stop(false);
+            if (platform === "win32") {
+                expect(normal).toMatchObject({ stopped: true });
+                expect(busy).not.toHaveBeenCalled();
+            } else {
+                expect(normal).toMatchObject({
+                    stopped: false,
+                    blocking: ["web-or-host"],
+                });
+                expect(externalCleanup).not.toHaveBeenCalled();
+                expect(
+                    harness.daemon.services.runtimes.authenticate(
+                        external.token,
+                    ),
+                ).toBeDefined();
+                expect(await harness.daemon.stop(true)).toMatchObject({
+                    stopped: true,
+                });
+            }
+            expect(owned.vendor.stopped).toHaveLength(1);
+            expect(externalStop).not.toHaveBeenCalled();
+            expect(externalCleanup).toHaveBeenCalledOnce();
+        },
+    );
 });

@@ -256,11 +256,13 @@ macOS zsh/bash 실제 18개 테스트와 Linux Bash5.2.37/Zsh5.9/Fish4.0.2의 PT
 Linux 결과는 분리된 shell 연동 모듈 범위이며 전체 daemon/CLI 검증은 아니다. macOS 빌드 CLI에서는
 출력·cd·Enter 전 문자열이 있는 대기 shell 정상 종료와 vim 실행 중 일반 stop 거절·force 후 실제
 프로세스 종료를 확인했다. 상세 근거와 후속 재개점은 Stage2-2 후속 W7/W9가 소유한다.
-Windows native daemon은 일반 stop에서도 작업 상태를 검사하지 않고 native PTY 종료 경로를
+Windows native daemon은 일반 stop에서도 daemon 소유 실행의 작업 상태를 검사하지 않고 native PTY 종료 경로를
 사용한다. PowerShell PSReadLine handshake와 CMD idle 조사 테스트는 제거했으며 Web shell 기본값을
 PowerShell로 강제하지 않는다. 과거 PSReadLine2.4.5 Windows CI 및 CMD 반례 결과는 Stage2-2
 로그에 당시 정책의 검증으로 보존한다. Windows 사용자 실측에서는 일반 stop·force 각각의
 shell PTY child/grandchild와 별도 외부 owner의 foreground/helper 트리 종료를 확인했다.
+외부 owner 종료는 당시 잘못 확장된 정책의 관측이며 현재 외부 생존 계약의 검증으로 사용하지 않는다.
+최신 소유권 범위와 수정 검증은 [[docs/specs/aiox-runtime]] 및 Stage2-3 W1을 따른다.
 외부 실행은 실제 runExternal·WebSocket·ExecutionOwner 경로와 대역 vendor를 사용했으므로
 실제 Claude/Codex 통합이나 임의 프로세스 트리 전체에 대한 보장으로 확대하지 않는다.
 
@@ -285,3 +287,13 @@ cwd 사용 거부는 미재현이며 실행 파일 ACL도 사전 보장 범위 �
 [CI](https://github.com/lunaxislu/aiox-prototype/actions/runs/34685159507)는 Windows/Linux/macOS × Node22/24에서
 통과했지만 실제 WSL 배포판 검사는 CI가 아닌 사용자 실측 근거다.
 Sources: `logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md`의 Windows 실측·오류 분류 보완과 최종 CI entry.
+
+### 외부 실행 생존 교정 검증
+
+Stage2-3 W1 교정은 root가 code agent의 전체 pnpm check 종료 코드 0과 479 tests 통과 원문을
+확인하고, macOS에서 별도 OS owner·대역 vendor를 사용하는 실제 daemon 일반 stop/force를
+검증했다. 두 경우 협업 등록과 MCP listener는 종료됐고 vendor의 후속 입력·출력과 자연 종료 후
+owner 자원 정리를 확인했다. built daemon과 현재 source를 별도 bundle한 runExternal 경로의
+검증이며 실제 Claude/Codex 및 Windows/Linux/WSL 실OS 재검증은 아니다. 플랫폼 분기는
+대역 회귀로 확인했다. 이번 수정의 CI·push는 수행하지 않았다.
+Sources: `logs/2026-09-12-AIOX-W1-External-Execution-Survival.md`의 root 결과 수용 entry.

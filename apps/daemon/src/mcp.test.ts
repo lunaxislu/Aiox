@@ -150,7 +150,7 @@ describe("credentials", () => {
         const client = await connect(a.token);
         expect(await agentsList(client)).toEqual([]);
 
-        await harness.daemon.stopRuntime(a.id, true);
+        await harness.daemon.stopRuntime(a.id);
 
         const response = await fetch(harness.mcpUrl(networkId), {
             method: "POST",

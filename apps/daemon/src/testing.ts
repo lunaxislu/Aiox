@@ -29,13 +29,13 @@ export type FakeVendor = {
     activity(next: RuntimeActivity): void;
     /** Make the next delivery attempt fail at injection time. */
     refuse(reason: string | undefined): void;
-    readonly stopped: { force: boolean }[];
+    readonly stopped: string[];
 };
 
 export function fakeVendor(): FakeVendor {
     const received: InboundMessage[] = [];
     const deliveryIds: string[] = [];
-    const stopped: { force: boolean }[] = [];
+    const stopped: string[] = [];
     let controls: RuntimeControls | undefined;
     let refusal: string | undefined;
 
@@ -57,8 +57,8 @@ export function fakeVendor(): FakeVendor {
                     }
                     return Promise.resolve();
                 },
-                stop: (force) => {
-                    stopped.push({ force });
+                stop: () => {
+                    stopped.push("stopped");
                     return Promise.resolve();
                 },
             };
@@ -113,7 +113,7 @@ export async function startTestDaemon(
         apiUrl: (path) => `http://127.0.0.1:${daemon.ports.daemon}${path}`,
         webUrl: (path) => `http://127.0.0.1:${daemon.ports.web}${path}`,
         close: async () => {
-            await daemon.stop(true, { terminateExternal: false });
+            await daemon.stop(true);
             await rm(home, { recursive: true, force: true });
         },
     };

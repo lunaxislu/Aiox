@@ -97,38 +97,52 @@ function launch(withHelper = false, waitForHelper = false) {
     return { child, helper, socket, input, result, frame, prepared, dispose };
 }
 
-test("inherits vendor stdio and keeps the child and inbox after daemon connection loss", async () => {
-    const h = launch();
-    const diagnostic = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    try {
-        await vi.waitFor(() => expect(h.socket.send).toHaveBeenCalled());
-        h.prepared();
-        await vi.waitFor(() =>
-            expect(h.socket.send).toHaveBeenCalledWith(
-                JSON.stringify({ type: "started" }),
-            ),
-        );
-        expect(spawn).toHaveBeenLastCalledWith(
-            "other-vendor",
-            ["--model", "example"],
-            expect.objectContaining({
-                cwd: "/workspace",
-                stdio: "inherit",
-                env: expect.objectContaining({ AIOX_MCP_TOKEN: "private" }),
-            }),
-        );
-        h.frame({ type: "ready" });
-        h.socket.readyState = 3;
-        h.socket.emit("close");
-        expect(h.child.kill).not.toHaveBeenCalled();
-        expect(h.dispose).not.toHaveBeenCalled();
-        h.child.emit("exit", 7, null);
-        await expect(h.result).resolves.toEqual({ exitCode: 7, signal: null });
-        expect(h.dispose).toHaveBeenCalledOnce();
-    } finally {
-        diagnostic.mockRestore();
-    }
-});
+test.each([false, true])(
+    "inherits vendor stdio and keeps execution after daemon loss (helper=%s)",
+    async (withHelper) => {
+        const h = launch(withHelper);
+        const diagnostic = vi
+            .spyOn(process.stderr, "write")
+            .mockReturnValue(true);
+        try {
+            await vi.waitFor(() => expect(h.socket.send).toHaveBeenCalled());
+            h.prepared();
+            await vi.waitFor(() =>
+                expect(h.socket.send).toHaveBeenCalledWith(
+                    JSON.stringify({ type: "started" }),
+                ),
+            );
+            expect(spawn).toHaveBeenLastCalledWith(
+                "other-vendor",
+                ["--model", "example"],
+                expect.objectContaining({
+                    cwd: "/workspace",
+                    stdio: "inherit",
+                    env: expect.objectContaining({ AIOX_MCP_TOKEN: "private" }),
+                }),
+            );
+            h.frame({ type: "ready" });
+            h.socket.readyState = 3;
+            h.socket.emit("close");
+            expect(h.child.kill).not.toHaveBeenCalled();
+            expect(h.helper.kill).not.toHaveBeenCalled();
+            expect(h.dispose).not.toHaveBeenCalled();
+            expect(diagnostic).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    "Collaboration connection lost. The vendor is still running",
+                ),
+            );
+            h.child.emit("exit", 7, null);
+            await expect(h.result).resolves.toEqual({
+                exitCode: 7,
+                signal: null,
+            });
+            expect(h.dispose).toHaveBeenCalledOnce();
+        } finally {
+            diagnostic.mockRestore();
+        }
+    },
+);
 
 test("an explicit initial preparation failure terminates the child and reports failure", async () => {
     const h = launch();
@@ -297,123 +311,7 @@ test("startup failure while a helper is preparing cancels startup and cleans its
     }
 });
 
-test("explicit termination acknowledges only after foreground, helpers and resources stop", async () => {
-    const h = launch(true);
-    await vi.waitFor(() => expect(h.socket.send).toHaveBeenCalled());
-    h.prepared();
-    await vi.waitFor(() =>
-        expect(h.socket.send).toHaveBeenCalledWith(
-            JSON.stringify({ type: "started" }),
-        ),
-    );
-    h.frame({ type: "ready" });
-    h.child.kill.mockImplementation(() => {
-        queueMicrotask(() => h.child.emit("exit", null, "SIGTERM"));
-        return true;
-    });
-    let release!: () => void;
-    h.dispose.mockImplementation(
-        () =>
-            new Promise<void>((resolve) => {
-                release = resolve;
-            }),
-    );
-    h.frame({ type: "terminate", requestId: "stop-1" });
-    await vi.waitFor(() => expect(h.dispose).toHaveBeenCalled());
-    expect(h.child.kill).toHaveBeenCalled();
-    expect(h.helper.kill).toHaveBeenCalled();
-    expect(h.socket.send).not.toHaveBeenCalledWith(
-        JSON.stringify({ type: "terminated", requestId: "stop-1" }),
-    );
-    release();
-    await vi.waitFor(() =>
-        expect(h.socket.send).toHaveBeenCalledWith(
-            JSON.stringify({ type: "terminated", requestId: "stop-1" }),
-        ),
-    );
-    h.socket.emit("close");
-    await expect(h.result).resolves.toMatchObject({ signal: 15 });
-});
-
-test("termination during helper startup cancels launch and acknowledges resource cleanup", async () => {
-    const h = launch(true, true);
-    await vi.waitFor(() => expect(h.socket.send).toHaveBeenCalled());
-    h.prepared();
-    await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
-    h.frame({ type: "terminate", requestId: "early" });
-    await vi.waitFor(() =>
-        expect(h.socket.send).toHaveBeenCalledWith(
-            JSON.stringify({ type: "terminated", requestId: "early" }),
-        ),
-    );
-    expect(spawn).toHaveBeenCalledOnce();
-    expect(h.helper.kill).toHaveBeenCalled();
-    expect(h.dispose).toHaveBeenCalledOnce();
-    h.socket.emit("close");
-    await expect(h.result).resolves.toEqual({ exitCode: 1, signal: null });
-});
-
-test("control loss during commanded stop still completes owner cleanup and returns to the shell", async () => {
-    const h = launch(true);
-    const diagnostic = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    try {
-        await vi.waitFor(() => expect(h.socket.send).toHaveBeenCalled());
-        h.prepared();
-        await vi.waitFor(() =>
-            expect(h.socket.send).toHaveBeenCalledWith(
-                JSON.stringify({ type: "started" }),
-            ),
-        );
-        h.frame({ type: "terminate", requestId: "disconnect" });
-        await vi.waitFor(() => expect(h.child.kill).toHaveBeenCalled());
-        h.socket.readyState = 3;
-        h.socket.emit("close");
-        h.child.emit("exit", null, "SIGTERM");
-        await expect(h.result).resolves.toMatchObject({ signal: 15 });
-        expect(h.helper.kill).toHaveBeenCalled();
-        expect(h.dispose).toHaveBeenCalledOnce();
-    } finally {
-        diagnostic.mockRestore();
-    }
-});
-
-test("owner resource cleanup failure is reported and the same connection accepts a retry", async () => {
-    const h = launch();
-    await vi.waitFor(() => expect(h.socket.send).toHaveBeenCalled());
-    h.prepared();
-    await vi.waitFor(() =>
-        expect(h.socket.send).toHaveBeenCalledWith(
-            JSON.stringify({ type: "started" }),
-        ),
-    );
-    h.child.kill.mockImplementation(() => {
-        queueMicrotask(() => h.child.emit("exit", null, "SIGTERM"));
-        return true;
-    });
-    h.dispose.mockRejectedValueOnce(new Error("private cleanup detail"));
-    h.frame({ type: "terminate", requestId: "failed" });
-    await vi.waitFor(() =>
-        expect(h.socket.send).toHaveBeenCalledWith(
-            JSON.stringify({
-                type: "terminated",
-                requestId: "failed",
-                error: "Vendor execution cleanup remains unconfirmed.",
-            }),
-        ),
-    );
-    h.frame({ type: "terminate", requestId: "retry" });
-    await vi.waitFor(() =>
-        expect(h.socket.send).toHaveBeenCalledWith(
-            JSON.stringify({ type: "terminated", requestId: "retry" }),
-        ),
-    );
-    expect(h.child.kill).toHaveBeenCalledOnce();
-    expect(h.dispose).toHaveBeenCalledTimes(2);
-    h.socket.emit("close");
-    await expect(h.result).resolves.toMatchObject({ signal: 15 });
-});
-
-test("natural foreground exit cannot release registration or acknowledge force before helper cleanup", async () => {
+test("natural foreground exit reports completion only after helper cleanup", async () => {
     const h = launch(true);
     await vi.waitFor(() => expect(h.socket.send).toHaveBeenCalled());
     h.prepared();
@@ -435,19 +333,42 @@ test("natural foreground exit cannot release registration or acknowledge force b
     expect(h.socket.send).not.toHaveBeenCalledWith(
         JSON.stringify({ type: "exit", exitCode: 0, signal: null }),
     );
-    h.frame({ type: "terminate", requestId: "natural-race" });
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(h.socket.send).not.toHaveBeenCalledWith(
-        JSON.stringify({ type: "terminated", requestId: "natural-race" }),
-    );
     release();
     await vi.waitFor(() =>
         expect(h.socket.send).toHaveBeenCalledWith(
-            JSON.stringify({ type: "terminated", requestId: "natural-race" }),
+            JSON.stringify({ type: "exit", exitCode: 0, signal: null }),
         ),
     );
     expect(h.helper.kill).toHaveBeenCalledOnce();
     expect(h.dispose).toHaveBeenCalledOnce();
     h.socket.emit("close");
     await expect(h.result).resolves.toEqual({ exitCode: 0, signal: null });
+});
+
+test("local SIGTERM still stops the foreground, helpers and resources after collaboration loss", async () => {
+    const h = launch(true);
+    const diagnostic = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+        await vi.waitFor(() => expect(h.socket.send).toHaveBeenCalled());
+        h.prepared();
+        await vi.waitFor(() =>
+            expect(h.socket.send).toHaveBeenCalledWith(
+                JSON.stringify({ type: "started" }),
+            ),
+        );
+        h.frame({ type: "ready" });
+        h.socket.readyState = 3;
+        h.socket.emit("close");
+        h.child.kill.mockImplementation(() => {
+            queueMicrotask(() => h.child.emit("exit", null, "SIGTERM"));
+            return true;
+        });
+        process.emit("SIGTERM", "SIGTERM");
+        await expect(h.result).resolves.toMatchObject({ signal: 15 });
+        expect(h.child.kill).toHaveBeenCalledWith("SIGTERM");
+        expect(h.helper.kill).toHaveBeenCalledWith("SIGTERM");
+        expect(h.dispose).toHaveBeenCalledOnce();
+    } finally {
+        diagnostic.mockRestore();
+    }
 });

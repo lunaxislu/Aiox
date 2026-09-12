@@ -190,11 +190,11 @@ export function createCli(
         daemon
             .command("stop")
             .description(
-                "Stop daemon. On native Windows, interrupts running work, including registered external CLI executions. Elsewhere, refuses while work remains.",
+                "Stop daemon. On native Windows, interrupts daemon-owned work. Elsewhere, refuses while daemon-owned work remains. External CLI vendors keep running.",
             )
             .option(
                 "--force",
-                "Terminate all AIOX-managed executions, including external CLI executions, on all platforms",
+                "Terminate daemon-owned executions on all platforms. External CLI vendors keep running",
             ),
         "daemon.stop",
     );
@@ -202,7 +202,7 @@ export function createCli(
         daemon
             .command("restart")
             .description(
-                "Stop then start daemon. On native Windows, interrupts running work, including registered external CLI executions. Elsewhere, refuses while work remains.",
+                "Stop then start daemon. On native Windows, interrupts daemon-owned work. Elsewhere, refuses while daemon-owned work remains. External CLI vendors keep running.",
             ),
         "daemon.restart",
     );

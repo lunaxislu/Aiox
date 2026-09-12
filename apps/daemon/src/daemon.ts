@@ -64,11 +64,8 @@ export type Daemon = {
     createTerminal(options?: TerminalOptions): { id: string };
     /** Attaches a terminal to a runtime so the Web can find it. */
     attachTerminalTo(runtimeId: string, terminalId: string): void;
-    stopRuntime(runtimeId: string, force: boolean): Promise<void>;
-    stop(
-        force: boolean,
-        options?: { terminateExternal: boolean },
-    ): Promise<StopOutcome>;
+    stopRuntime(runtimeId: string): Promise<void>;
+    stop(force: boolean): Promise<StopOutcome>;
     /** Resolves once both listeners are closed. */
     readonly closed: Promise<void>;
 };
@@ -312,34 +309,17 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         resolveClosed = resolve;
     });
 
-    function stopRuntime(
-        runtimeId: string,
-        force: boolean,
-        terminateExternal = false,
-    ): Promise<void> {
+    function stopRuntime(runtimeId: string): Promise<void> {
         const pending = runtimeStops.get(runtimeId);
         if (pending) return pending;
-        const initial = runtimes.get(runtimeId);
-        // Mark external termination before revocation or any asynchronous cleanup can
-        // mistake its disconnect for an ordinary collaboration release.
-        const terminatingBinding =
-            terminateExternal && initial?.executionOwnership === "external"
-                ? initial.binding
-                : undefined;
-        const termination = terminatingBinding?.stop(force);
-        void termination?.catch(() => {});
         runtimes.revoke(runtimeId);
         const attempt = Promise.resolve()
             .then(async () => {
                 await Promise.allSettled(registrations);
-                await termination;
                 const record = runtimes.get(runtimeId);
                 if (!record) return;
-                if (
-                    record.executionOwnership === "daemon" ||
-                    (terminateExternal && record.binding !== terminatingBinding)
-                )
-                    await record.binding.stop(force);
+                if (record.executionOwnership === "daemon")
+                    await record.binding.stop();
                 await record.binding.cleanup?.();
                 if (record.terminalId && record.terminalOwnership === "owned")
                     await terminals.kill(record.terminalId);
@@ -389,7 +369,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         const session = terminals.get(id);
         if (!session) return false;
         for (const record of runtimes.list()) {
-            if (record.terminalId === id) await stopRuntime(record.id, true);
+            if (record.terminalId === id) await stopRuntime(record.id);
         }
         if (terminals.get(id)) await terminals.kill(id);
         return true;
@@ -426,7 +406,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         record.terminalOwnership ??= "owned";
         const onExit = () => {
             // A TUI exiting cleans only its own execution, never the daemon.
-            void stopRuntime(runtimeId, false).catch((error: unknown) => {
+            void stopRuntime(runtimeId).catch((error: unknown) => {
                 process.stderr.write(
                     `Runtime cleanup failed: ${String(error)}\n`,
                 );
@@ -444,16 +424,15 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
      * confirmed gone. Deliberately separate from closing the listeners, so a
      * stop requested over HTTP can answer before its own socket goes away.
      */
-    async function teardown(
-        force: boolean,
-        terminateExternal = true,
-    ): Promise<StopOutcome> {
+    async function teardown(force: boolean): Promise<StopOutcome> {
         if (stopping) return stopping;
         // Block admission first, then look at what is actually still live.
         admitting = false;
         // Publish the attempt before an asynchronous idle check can admit another stop.
         stopping = Promise.resolve().then(async (): Promise<StopOutcome> => {
-            const live = runtimes.list();
+            const live = runtimes
+                .list()
+                .filter((record) => record.executionOwnership === "daemon");
             const terminate = force || process.platform === "win32";
             if (!terminate) {
                 const busy = await terminals.busy();
@@ -477,17 +456,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 }
             }
             const targets = runtimes.list();
-            const requestedStops = new Map<string, Promise<void>>();
-            for (const record of targets) {
-                if (
-                    terminateExternal &&
-                    record.executionOwnership === "external"
-                ) {
-                    const pending = stopRuntime(record.id, true, true);
-                    requestedStops.set(record.id, pending);
-                    void pending.catch(() => {});
-                } else runtimes.revoke(record.id);
-            }
+            for (const record of targets) runtimes.revoke(record.id);
             await messages.pause();
             // A binding already being prepared must finish before we can stop
             // its real resources, rather than its temporary registration.
@@ -495,8 +464,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             const warnings: string[] = [];
             for (const record of targets) {
                 try {
-                    await (requestedStops.get(record.id) ??
-                        stopRuntime(record.id, true, terminateExternal));
+                    await stopRuntime(record.id);
                 } catch (error) {
                     warnings.push(
                         `runtime ${record.name}: ${error instanceof Error ? error.message : String(error)}`,
@@ -569,11 +537,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return closing;
     }
 
-    async function stop(
-        force: boolean,
-        options = { terminateExternal: true },
-    ): Promise<StopOutcome> {
-        const outcome = await teardown(force, options.terminateExternal);
+    async function stop(force: boolean): Promise<StopOutcome> {
+        const outcome = await teardown(force);
         if (outcome.stopped) await closeListeners();
         return outcome;
     }
@@ -650,7 +615,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 };
             } catch (error) {
                 try {
-                    if (runtimeId) await stopRuntime(runtimeId, true);
+                    if (runtimeId) await stopRuntime(runtimeId);
                     else if (terminalId && !borrowing)
                         await terminals.kill(terminalId);
                 } catch (cleanupError) {

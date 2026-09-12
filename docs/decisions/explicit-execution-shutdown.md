@@ -1,5 +1,9 @@
 # 명시적 실행 종료와 shell별 판정 비용의 경계
 
+외부 실행까지 명시적 종료 대상을 확장한 선택은
+[[docs/decisions/external-execution-survival]]에서 교정했다. 아래는 당시 결정의 기록이며
+Windows shell별 작업 판정 비용을 줄인 이유는 daemon 소유 실행 범위에서 유지한다.
+
 ## Decision
 
 실행 소유권은 유지하되 명시적 CLI 종료 의도를 실행 owner에 전달한다. Windows 일반 stop은

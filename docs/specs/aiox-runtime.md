@@ -75,13 +75,13 @@ Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승�
 
 ## 종료와 daemon 수명
 
-명시적 CLI 종료는 Agent/vendor 종류보다 daemon 실행 환경과 force 여부로 결정한다.
+명시적 CLI 종료는 실행 소유권을 먼저 구분하고 daemon 소유 실행에만 실행 환경과 force 정책을 적용한다. 외부 `agent run claude/codex`의 vendor·필수 부속 실행은 모든 OS의 일반 stop·force에서 유지하고 협업 등록만 해제한다.
 
 | 요청 | 종료 정책 |
 | --- | --- |
-| macOS/Linux/WSL daemon의 일반 stop | 외부 CLI를 포함한 등록 실행이 있거나 일반 shell이 busy/unknown이면 거절. idle shell은 종료 |
-| Windows native daemon의 일반 stop | idle 검사 없이 외부 CLI를 포함한 AIOX 관리·등록 실행 종료 |
-| 모든 환경의 stop --force | 작업 상태와 관계없이 외부 CLI를 포함한 AIOX 관리·등록 실행 강제 종료 |
+| macOS/Linux/WSL daemon의 일반 stop | daemon 소유 등록 실행이 있거나 일반 shell이 busy/unknown이면 거절. idle shell은 종료; 외부 참여는 blocker가 아님 |
+| Windows native daemon의 일반 stop | idle 검사 없이 daemon 소유 실행 종료; 외부 실행은 협업만 해제 |
+| 모든 환경의 stop --force | 작업 상태와 관계없이 daemon 소유 실행 강제 종료; 외부 실행은 협업만 해제 |
 
 일반 shell의 idle은 AIOX가 처음 만든 shell의 입력 대기와 남은 작업으로 판정한다. 안쪽 shell의
 idle은 추적하지 않으며 자식 shell이 입력 대기 중이어도 바깥 shell의 작업이다. 이전 출력,
@@ -98,8 +98,8 @@ Windows 일반 stop의 작업 중단은 CLI 도움말과 사용자 문서에 명
 ```text
 daemon stop --force (Windows 일반 stop도 같은 종료 대상)
 → 신규 입력·등록·실행·메시지 전달 차단
-→ daemon 실행 owner 종료 + 외부 CLI execution owner에 명시적 종료 요청
-→ 각 owner의 foreground·필수 부속 실행·자원 정리 확인
+→ daemon 실행 owner 종료 + 외부 실행의 협업 해제
+→ daemon 소유 foreground·필수 부속 실행·자원 정리 확인
 → credential·membership·route·요청 정리
 → 완료하면 daemon 종료 / 미완료면 stop_incomplete와 재시도 경로 유지
 ```
@@ -107,19 +107,24 @@ daemon stop --force (Windows 일반 stop도 같은 종료 대상)
 종료는 관리 실행 handle과 소유 관계를 기준으로 한다. 사용자 부모 shell, 무관한 vendor·터미널 앱을
 이름으로 찾아 종료하지 않는다. WSL 배포판 전체 shutdown으로 무관한 실행을 종료하지 않는다.
 일반 작업 자식 전체의 추적·종료를 보장하지 않으며 입력/신호 전송을 실제 종료 확인으로 간주하지
-않는다. 등록된 외부 실행의 종료 완료는 foreground만이 아니라 실행 owner의 필수 부속 실행과
+않는다. daemon 소유 실행의 종료 완료는 foreground만이 아니라 실행 owner의 필수 부속 실행과
 자원 정리까지 확인한다. 확인 실패는 성공으로 처리하지 않고 daemon·Web 및 재시도 정보를 유지한다.
 Persistent Network 정의·Worktree·저장 파일은 삭제하지 않는다. Host 항목 수명은
 [[docs/specs/aiox-host]]를 따른다.
 
-명시적 CLI 종료와 daemon 자체 신호 종료를 구분한다. SIGINT/SIGTERM, 비정상 종료와 예기치 않은
-제어 연결 손실에서는 이미 시작한 외부 vendor·필수 부속 실행을 유지한다. 협업 등록은 해제하고
+일반 stop·force뿐 아니라 SIGINT/SIGTERM, 비정상 종료와 예기치 않은 제어 연결 손실에서도
+이미 시작한 외부 vendor·필수 부속 실행을 유지한다. 협업 등록은 해제하고
 관측 상실을 종료 성공으로 해석하지 않는다. 자동 재연결·재등록은 없으며 협업 복구는 agent run
 재실행이다. 이미 등록 해제된 실행을 후속 force가 탐색해 종료하지 않는다. 외부 vendor 종료 후 CLI는
 등록 정리 실패를 보고하되 그 실패 때문에 shell 복귀를 막지 않는다.
 
-종료 계약의 변경 근거는 [[docs/decisions/explicit-execution-shutdown]]을 따른다.
-구현·검증 범위는 [[docs/architecture/aiox-storage-terminal]] 및 Stage2-2 로그에서 구분한다.
+MCP 연결 실패는 호출측에서 협업 불가를 진단하며 vendor 실행을 종료하지 않는다. 꺼진 서버의
+오류 응답을 전제하지 않으며 서버 종료를 확인하지 못한 연결 실패는 원인을 단정하지 않는다.
+
+종료 계약의 교정 근거는 [[docs/decisions/external-execution-survival]]을 따른다.
+구현·검증 범위는 [[docs/architecture/aiox-storage-terminal]]을 따른다. Stage2-2 검증은 당시
+정책의 근거이며 이번 교정의 source·회귀·통합 검증은
+`logs/2026-09-12-AIOX-W1-External-Execution-Survival.md`에서 별도로 판정한다.
 
 ## 일반 shell과 Agent 연결
 

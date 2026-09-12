@@ -1108,7 +1108,7 @@ test("daemon release during external startup closes control without a kill instr
     const messages = vi.fn();
     socket.on("message", messages);
     const closed = once(socket, "close");
-    await harness.daemon.stopRuntime(runtimeId, true);
+    await harness.daemon.stopRuntime(runtimeId);
     await closed;
     const deadline = timers.mock.calls.find((call) => call[1] === 60_000)![0];
     if (typeof deadline !== "function") throw new Error("Missing deadline");
@@ -1153,7 +1153,7 @@ test("a hook body completing after external revocation cannot observe the bindin
             body: "{}",
         });
         await vi.waitFor(() => expect(read).toHaveBeenCalled());
-        await harness.daemon.stopRuntime(runtimeId, true);
+        await harness.daemon.stopRuntime(runtimeId);
         release();
         expect((await report).status).toBe(401);
         expect(observe).not.toHaveBeenCalled();
@@ -1217,7 +1217,7 @@ test("external startup failure is sent before held cleanup and failed cleanup re
         await new Promise<void>((resolve) => setImmediate(resolve));
         cleanup.mockRestore();
         socket.terminate();
-        await harness.daemon.stopRuntime(runtimeId, true);
+        await harness.daemon.stopRuntime(runtimeId);
     }
 });
 
@@ -1258,7 +1258,7 @@ test("external disconnect logs cleanup failure without private details and retai
         ).toBe(false);
     } finally {
         cleanup.mockRestore();
-        await harness.daemon.stopRuntime(runtimeId, true);
+        await harness.daemon.stopRuntime(runtimeId);
     }
 });
 
@@ -1366,7 +1366,6 @@ test("another vendor uses external lifecycle without a Claude inbox or daemon pr
     const closed = once(socket, "close");
     await harness.daemon.stopRuntime(
         harness.daemon.services.runtimes.list()[0]!.id,
-        true,
     );
     await closed;
     expect(cleanup).toHaveBeenCalledWith("external_connection_lost");
@@ -1437,7 +1436,7 @@ test("another vendor starts a helper before its Web foreground and shares owner 
         const record = harness.daemon.services.runtimes.list()[0]!;
         expect(record.executionOwnership).toBe("daemon");
         expect(record.terminalOwnership).toBe("borrowed");
-        await harness.daemon.stopRuntime(record.id, true);
+        await harness.daemon.stopRuntime(record.id);
         expect(sessions[0]!.session.kill).toHaveBeenCalledOnce();
         expect(disposed).toHaveBeenCalledOnce();
         expect(harness.daemon.services.terminals.views()).toHaveLength(1);
@@ -1560,7 +1559,7 @@ test("Web revocation during execution preparation cannot publish a late binding 
             expect(claudeAdapter.createExecution).toHaveBeenCalled(),
         );
         const record = harness.daemon.services.runtimes.list()[0]!;
-        const stopped = harness.daemon.stopRuntime(record.id, true);
+        const stopped = harness.daemon.stopRuntime(record.id);
         expect(record.collaborationActive).toBe(false);
         const closed = once(socket, "close");
         release();
@@ -1575,111 +1574,39 @@ test("Web revocation during execution preparation cannot publish a late binding 
     }
 });
 
-test("explicit force revokes collaboration but waits for external owner cleanup acknowledgement", async () => {
-    const socket = new WebSocket(
-        harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
-    );
-    await once(socket, "open");
-    const prepared = once(socket, "message");
-    const { cols: _cols, rows: _rows, ...input } = frame();
-    socket.send(
-        JSON.stringify({
-            ...input,
-            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
-        }),
-    );
-    await prepared;
-    const runtime = harness.daemon.services.runtimes.list()[0]!;
-    socket.send(JSON.stringify({ type: "started" }));
-    const request = once(socket, "message");
-    let settled = false;
-    const stopping = harness.daemon.stop(true).then((result) => {
-        settled = true;
-        return result;
-    });
-    const [raw] = await request;
-    const command = JSON.parse(raw.toString());
-    expect(command.type).toBe("terminate");
-    expect(runtime.collaborationActive).toBe(false);
-    expect(settled).toBe(false);
-    socket.send(JSON.stringify({ type: "terminated", requestId: "stale" }));
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(settled).toBe(false);
-    socket.send(
-        JSON.stringify({ type: "terminated", requestId: command.requestId }),
-    );
-    expect(await stopping).toMatchObject({ stopped: true });
-});
-
-test("external owner cleanup failure retains the control channel and retries on next force", async () => {
-    const socket = new WebSocket(
-        harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
-    );
-    await once(socket, "open");
-    const prepared = once(socket, "message");
-    const { cols: _cols, rows: _rows, ...input } = frame();
-    socket.send(
-        JSON.stringify({
-            ...input,
-            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
-        }),
-    );
-    await prepared;
-    const runtime = harness.daemon.services.runtimes.list()[0]!;
-    const first = once(socket, "message");
-    const stopping = harness.daemon.stop(true);
-    const [raw] = await first;
-    socket.send(
-        JSON.stringify({
-            type: "terminated",
-            requestId: JSON.parse(raw.toString()).requestId,
-            error: "cleanup failed",
-        }),
-    );
-    expect(await stopping).toMatchObject({
-        stopped: false,
-        warnings: [expect.stringContaining("cleanup failed")],
-    });
-    expect(harness.daemon.services.runtimes.get(runtime.id)).toBeDefined();
-    expect(socket.readyState).toBe(WebSocket.OPEN);
-    const second = once(socket, "message");
-    const retry = harness.daemon.stop(true);
-    const [retryRaw] = await second;
-    socket.send(
-        JSON.stringify({
-            type: "terminated",
-            requestId: JSON.parse(retryRaw.toString()).requestId,
-        }),
-    );
-    expect(await retry).toMatchObject({ stopped: true });
-});
-
-test("lost external stop response is incomplete and retains the unconfirmed execution", async () => {
-    const socket = new WebSocket(
-        harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
-    );
-    await once(socket, "open");
-    const prepared = once(socket, "message");
-    const { cols: _cols, rows: _rows, ...input } = frame();
-    socket.send(
-        JSON.stringify({
-            ...input,
-            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
-        }),
-    );
-    await prepared;
-    const runtime = harness.daemon.services.runtimes.list()[0]!;
-    const request = once(socket, "message");
-    const stopping = harness.daemon.stop(true);
-    await request;
-    socket.terminate();
-    expect(await stopping).toMatchObject({
-        stopped: false,
-        warnings: [expect.stringContaining("connection was lost")],
-    });
-    expect(harness.daemon.services.runtimes.get(runtime.id)).toBeDefined();
-    expect(await harness.daemon.stop(true)).toMatchObject({
-        stopped: false,
-        warnings: [expect.stringContaining("connection is closed")],
-    });
-});
+test.each([false, true])(
+    "daemon stop force=%s closes external collaboration without an execution command",
+    async (force) => {
+        const socket = new WebSocket(
+            harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
+        );
+        await once(socket, "open");
+        const prepared = once(socket, "message");
+        const { cols: _cols, rows: _rows, ...input } = frame();
+        socket.send(
+            JSON.stringify({
+                ...input,
+                connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
+            }),
+        );
+        await prepared;
+        const runtime = harness.daemon.services.runtimes.list()[0]!;
+        socket.send(JSON.stringify({ type: "started" }));
+        const frames: string[] = [];
+        socket.on("message", (raw) => frames.push(raw.toString()));
+        const closed = once(socket, "close");
+        try {
+            expect(await harness.daemon.stop(force)).toMatchObject({
+                stopped: true,
+            });
+            await closed;
+            expect(frames).toEqual([]);
+            expect(runtime.collaborationActive).toBe(false);
+            expect(
+                harness.daemon.services.runtimes.get(runtime.id),
+            ).toBeUndefined();
+        } finally {
+            socket.terminate();
+        }
+    },
+);

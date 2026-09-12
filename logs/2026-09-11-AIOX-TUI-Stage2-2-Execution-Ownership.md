@@ -1,7 +1,7 @@
 ---
 topic: AIOX TUI Stage2-2 Execution Ownership
 description: AIOX 명령·실행 위치에 따른 실행 소유권과 외부 터미널 독립 수명
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -14,7 +14,7 @@ status: open
 - [x] W6 일반 stop·force 공통 입력/신규 실행 차단과 종료 직렬화 — 거절·실패 시 입력을 복구하고 외부 vendor 수명은 유지한다.
 - [x] W7 대기 shell 안전 종료 연동 — macOS zsh/bash 및 Linux bash/zsh/fish에서 shell 자체 대기·남은 작업 판정과 정상종료 handshake를 구현·검증한다.
 - [x] W8 공통 터미널 설정·OS별 stop 정책 구현 — 기존 Windows 기준 브랜치를 보존하고 조사 후 shell/args/cwd와 외부 실행 종료를 구현한다. 새 정책 질문은 사용자 결정 후 재개하며 commit/push·CI·Windows 실측은 후속이다.
-- [>] W9 후속 통합 검증·단계 재마감 — 8c2fbd7의 전체 OS CI, Windows/WSL 사용자 실측 및 owner 정합 완료. 최종 마감 문서 커밋·main 병합 후 Stage3 W1 포인터 복귀와 단계 종료가 남음.
+- [x] W9 후속 통합 검증·단계 재마감 — 8c2fbd7 전체 OS CI, Windows/WSL 사용자 실측, owner 정합 및 c000cab 문서 커밋·로컬 main 병합 완료. 사용자 결정으로 Stage2-3에 별도 개선과 활성 포인터를 인계한다. 원격 push는 보류한다.
 
 ## Required Context
 
@@ -24,7 +24,7 @@ status: open
 
 ### {Global}
 
-- plans/aiox-tui-product-rebuild.md의 Stage2-2 공통 선행 단계다. Stage2-1 결과와 logs/2026-09-09-AIOX-TUI-Stage3-Claude.md의 최신 검증을 소비하고 완료 후 Stage3 W1로 복귀한다. Claude 전용 정책이 아니라 모든 aiox 명령·실행 위치에 적용하며 vendor별 framework를 선설계하지 않는다.
+- plans/aiox-tui-product-rebuild.md의 Stage2-2 공통 선행 단계이며 완료됐다. Stage2-1과 Stage3의 선행 결과를 소비했다. 사용자의 2026-09-12 결정으로 즉시 Stage3 복귀 대신 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md의 Stage2-3 개선을 먼저 수행한다. Claude 전용 정책이 아니라 모든 aiox 명령·실행 위치의 기반이며 vendor별 framework를 선설계하지 않는다.
 - Required read: docs/specs/aiox-runtime.md, docs/specs/aiox-host.md, docs/specs/aiox-collaboration.md, docs/architecture/aiox-vendor-bindings.md, docs/architecture/aiox-storage-terminal.md, docs/architecture/aiox-system.md 및 각 owner AGENTS.md. W1에서 실행 소유권 계약과 docs/decisions/execution-ownership.md를 반영했다. 문서의 As-built와 Codex/Host 등 Target을 구분한다. Stage3 이전 daemon PTY 검증을 외부 직접 실행 증거로 승계하지 않는다.
 - 기존 Claude production/test는 현재 동작 근거이며 설계 제약이 아니다. 2026-09-11 책임 경계 구현 착수 entry의 실행 분담과 정책을 따른다. 최초 준비 실패 오류·vendor 종료 유지, daemon 연결 손실 외부 생존, DB 정리 실패 stop_incomplete·재시도는 재승인 없이 적용한다.
 
@@ -34,11 +34,11 @@ status: open
 
 ### {W6,W7,W8,W9}
 
-- 2026-09-12 터미널 설정·종료 정책 변경 블록이 승인 범위다. 과거 W6/W7의 외부 force 생존·Windows idle 요구는 새 명시적 종료 정책으로 대체됐다. W8 구현과 W9 CI/Windows 실측은 완료했으며 최신 W9 entry의 최종 문서 커밋·병합·단계 복귀만 남는다.
+- 2026-09-12 터미널 설정·종료 정책 변경 블록이 승인 범위다. 과거 W6/W7 외부 force 생존·Windows idle 요구는 새 명시적 종료 정책으로 대체됐다. W8 구현·W9 CI/Windows 실측·owner 반영과 c000cab 로컬 main 병합을 완료했다. 최신 단계 마감 entry와 Stage2-3 인계를 따른다.
 
 ### {W8,W9}
 
-- 최신 Windows 실측·오류 분류 보완과 최종 CI entry를 소비한다. 8c2fbd7의 6개 OS/Node CI와 root pnpm check, Windows agent의 실측을 구분해 기록했다. 최종 문서 커밋·main 병합 및 Stage3 W1 복귀가 남아 W9는 active다. Windows cwd 사용 거부 미재현·실제 vendor 미검증을 완료로 확대하지 않는다. 별도 8개 개선은 독립 판단·논의이며 이 마감 범위 밖이다.
+- 최신 Windows 실측·오류 분류와 최종 CI entry를 소비한다. 8c2fbd7의 6개 OS/Node CI와 root pnpm check, 사용자 제공 Windows 실측을 구분한다. c000cab 문서 커밋·로컬 main 병합 후 W9를 마감했다. 원격 push는 사용자 보류이며 Windows cwd 사용 거부 미재현·실제 vendor 검증 한계는 유지한다. 별도 개선과 추가 후보의 수행·판정은 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md가 소유하며 Stage2-2 해결로 세지 않는다.
 - 신호 종료 질문은 기존 정책으로 철회했고 구현 반영됐다. SIGINT/SIGTERM·예기치 않은 연결 손실은 외부 생존, 명시적 CLI 요청은 새 OS별/force 정책이다. 필수 read는 최신 완료 블록과 runtime/config spec, explicit-execution-shutdown decision 및 변경 tests다.
 
 ## 2026-09-11 · 공통 실행 위치·명령 정책 합의와 Stage2-2 착수 준비
@@ -331,3 +331,19 @@ owner 점검: 현재 terminal/WSL resolver→daemon→HTTP와 회귀 테스트�
 이번 마감과 병행한 root의 별도 조사에서는 macOS spawnNative.stop()이 직접 Node child를 signal15로 종료한 뒤에도 그 child가 만든 자손이 살아 있는 사례를 재현했다. root가 검증 자손은 finally에서 정리했다. 이는 Windows에서 수집한 대역 트리 종료 결과를 반증하지 않지만, 임의·비협조적 자손 전체 종료로 확대할 수 없다는 구체 근거다. 해당 production 수정은 별도 개선 논의에 남기며 이 로그의 전체 자손 종료 보장으로 기록하지 않는다.
 
 로그 도구에는 entry 이동 명령이 없어 이번에 추가한 entry를 같은 수명의 최신 완료 블록 끝으로 수동 이동했다. 과거 entry의 내용·순서는 변경하지 않았다.
+
+### 2026-09-12 21:56 · 로컬 main 반영 완료와 Stage2-3 선행 전환
+
+사용자 지시에 따라 Stage2-2를 마감하고 별도 개선을 Stage2-3로 구성한다. 현재 git HEAD는 main의 c000cab(docs: record Stage 2-2 validation and execution boundaries)이며 기존 configuration/Web spec·storage-terminal architecture·이 로그의 마감 문서 변경이 커밋·로컬 병합됐다. 이전 entry의 문서 미커밋·main 미병합 대기 상태는 이 기록으로 대체한다. 코드 8c2fbd7의 검증과 Windows 사용자 실측은 직전 entry를 소비하며 이번 전환에서 다시 실행하지 않았다.
+
+Stage2-2 구현·검증 범위와 owner 반영을 마쳤고 W9를 완료한다. Windows cwd 사용 자체의 ACL 거부 미재현, 대역 vendor 검증 및 임의 자손 종료 보장 한계는 유지한다. force 경합·저장/시작/조회/Network/Web 및 구조 후보는 Stage2-2에서 해결한 것으로 세지 않고 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md W1–W7이 책임별로 수행·판정한다. 해당 로그에 조사 계기, 기존 근거와 Claude 의견/정정, 확정 정책을 인계했다. 원격 push는 사용자 후속 지시까지 보류하며 로컬 마감을 원격 main 반영 완료로 표현하지 않는다.
+
+plan의 Stage2-2를 완료하고 Stage2-3를 활성화한다. 기존 Stage3 즉시 복귀 예정은 사용자 결정으로 Stage2-3 완료 후 W1 복귀로 변경했으며 Stage3 Required Context와 최신 entry를 함께 갱신한다. 과거 History는 변경하지 않는다. 이 로그 자체의 미완료 Work Item·미소비 복귀 pointer는 없고 후속 책임은 명시된 Stage2-3가 소유하므로 decided로 닫는다.
+
+### 2026-09-12 21:59 · 외부 종료 범위 정정의 Stage2-3 인계
+
+사용자가 외부 aiox agent run claude/codex는 daemon 일반 stop·force 모두 vendor 생존, 협업만 종료하도록 명시적으로 정정했다. Windows 작업 검사 없는 종료는 Web 등 daemon 소유 실행에만 적용하며 외부 등록 관계만으로 daemon stop을 막지 않는다. MCP 연결 실패는 호출측에서 협업 불가를 진단하고 vendor는 유지한다. 서버 종료를 확인하지 못했으면 연결 실패 원인을 종료라고 단정하지 않는다.
+
+이 로그의 과거 외부 owner 종료 구현·테스트·CI 성공 기록은 당시 정책 전제의 사실이며 이번 요구 충족의 증거가 아니다. 구현과 owner 문서가 외부 종료까지 잘못 확장된 미해결 교정은 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md W1이 소유한다. Stage2-2 status decided·W9 완료·plan 포인터는 유지하고 과거 History는 덮어쓰지 않는다. 다음 작업은 외부 수명 분리와 협업 완료·실패·재시도 경계의 교정이며 외부 종료 의도를 강화하는 수정이 아니다.
+
+log 도구는 decided 로그의 entry append를 지원하지 않으므로, 사용자 지시대로 단계를 재개하지 않고 이 후속 인계 정정만 수동 append했다. 이번에는 production/spec/decision·commit·push를 변경하지 않았다.
