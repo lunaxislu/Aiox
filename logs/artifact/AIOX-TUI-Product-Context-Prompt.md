@@ -664,17 +664,150 @@ host stop → Controller 종료 상태
 
 키보드 이벤트 전달은 종료 요청 수단이지 종료 성공 증거가 아니다. 승인 화면·입력 중 상태에서 키가 항상 같은 의미라고 가정하지 않는다. 종료 시간 제한·OS별 수단은 구현 때 정한다. 조회 실패를 프로세스 부재로 간주하지 않는다.
 
-- `daemon stop`: 신규 등록을 막고 daemon 소유 활성 실행 의존성을 검사한다. 외부 등록 자체는 blocker가 아니며, 현재 Web 일반 shell은 blocker다. idle shell만 자동 종료하는 정책은 확정하지 않았다.
-- `daemon stop --force`: daemon 소유 Host·Web Agent·일반 shell과 그 PTY·Relay·App Server 등 실행 자원을 종료·확인한다. 외부 CLI 소유 vendor와 필수 부속 프로세스는 유지한다.
-- 협업 인증·발견·전송 자격 회수와 실제 프로세스 종료·등록 삭제를 구분한다. 정리 실패 정보는 재시도를 위해 보존하며 `stop_incomplete`로 daemon·Web을 유지한다. 정리 재시도는 회수한 협업 권한의 복구가 아니다.
-- `daemon restart`는 safe stop + start이며 stop이 거절되면 기존 daemon을 유지한다. `restart --force`는 제공하지 않는다.
-- 종료 요청 성공이나 조회 실패를 실제 종료 성공으로 간주하지 않는다. 프로세스 이름으로 외부 실행을 찾아 종료하지 않으며 persistent Network·Worktree·사용자 작업 파일을 보존한다.
+**daemon 소유권·환경별 종료 정책**
 
-종전의 모든 standalone을 force 종료하던 범위는 실행 소유권 기준으로 대체됐다. daemon 소유 실행은 종료하고 외부 CLI 소유 실행은 유지한다.
+현재 종료 계약은 [Runtime spec](../../docs/specs/aiox-runtime.md)을 따른다.
+
+작업 판정과 프로세스 종료 대상은 daemon 소유 실행이다. 외부 사용자 터미널의 aiox agent run은 CLI 소유이며 협업 등록만으로 종료 대상이나 blocker가 되지 않는다.
+
+| daemon 실행 환경 | 일반 stop | stop --force |
+| --- | --- | --- |
+| macOS·Linux·WSL 내부 | 남은 작업 없는 대기 shell 종료. daemon 소유 활성 세션·실행 중 작업·중지 작업·판정 불가가 있으면 거절 | daemon 소유 Host·Web Agent·일반 shell과 그 안의 프로그램 종료 |
+| Windows native | 작업 검사 없이 daemon 소유 실행 종료. Web에서 시작한 WSL 실행도 대상 | 일반 stop과 같은 종료 대상·작업 검사 정책 |
+| 모든 환경의 외부 CLI 소유 실행 | blocker 제외·vendor와 필수 부속 실행 유지·협업만 해제 | vendor와 필수 부속 실행 유지·협업만 해제 |
+
+일반 shell의 idle은 AIOX가 처음 만든 shell의 입력 대기와 남은 작업으로 판정한다. 이전 출력·cwd 변경·Enter 전 입력은 blocker가 아니며 미제출 입력은 종료 시 버릴 수 있다. 입력을 기다리는 daemon 소유 Agent는 실행 중인 세션이며 빈 shell처럼 취급하지 않는다. 중첩 shell은 바깥 shell의 작업이고 판정 불가를 임의의 강제 종료로 대체하지 않는다.
+
+```text
+신규 실행·Web 입력 차단
+→ 일반 stop이면 daemon 환경에 따라 작업 판정
+   └─ 거절: 입력·실행 접수 복구
+→ daemon 소유 대상 실행 종료
+→ 협업 등록·자원 정리 및 실제 종료 확인
+   ├─ 완료: daemon 종료
+   └─ 미완료: stop_incomplete 보고
+              daemon·Web·재시도 정보 유지
+              입력·실행 접수 복구
+```
+
+- daemon restart는 같은 일반 stop 뒤 start다. Windows에서는 daemon 소유 작업을 중단할 수 있고 macOS·Linux·WSL에서는 blocker가 있으면 거절한다. restart --force는 제공하지 않는다.
+- 종료 요청·신호 전송이나 조회 실패만으로 실제 종료 성공을 판단하지 않는다. daemon 소유 foreground·필수 부속 실행·자원 정리를 확인한다. 일부 자원 정리 후 실패할 수 있으며 남은 정리 정보를 보존한다.
+- 협업 인증·발견·전송 자격 회수와 프로세스 종료·등록 삭제는 별개다. 정리 재시도는 회수한 협업 권한의 복구가 아니다.
+- 외부 vendor와 필수 부속 실행은 일반 stop·force·daemon 신호 종료·비정상 종료·예기치 않은 연결 손실에도 유지한다. 자동 재연결·재등록은 없으며 협업 복구는 agent run 재실행이다. 외부 vendor 종료 뒤 로컬 자원을 정리하고 원래 shell로 복귀한다.
+- MCP 연결 실패는 호출측에서 협업 불가를 진단하며 vendor를 종료하지 않는다. 서버 종료가 확인되지 않은 연결 실패의 원인을 서버 종료라고 단정하지 않는다.
+- 사용자 부모 shell·터미널 앱·무관한 프로그램을 이름으로 찾아 종료하거나 WSL 배포판 전체를 종료하지 않는다. 임의 중첩 자손 전체의 종료 보장으로 확대하지 않는다.
+- Persistent Network 정의·Worktree·사용자 작업 파일은 보존한다.
 
 업데이트 때문에 vendor가 준비되지 못하면 해당 실행 등록을 실패시키고 사용자가 업데이트 처리 후 다시 실행하는 단순 방향이다. Codex의 global update 후 “Please restart Codex” 종료가 관찰됐다. Claude background update가 매번 startup 실패를 뜻하지는 않는다. 안정된 update API·신호와 실패 매핑은 구현 때 좁게 확인한다. 자동 update orchestration·상세 진행 FSM·자동 Host 재실행을 추가하지 않는다.
 
 ## 14. 전역 설정·SQLite·플랫폼
+
+**Terminal·shell과 상속의 의미**
+
+Terminal은 화면과 입력을 제공하고, shell은 명령을 해석하고 실행한다.
+
+| 터미널 | 그 안에서 실행하는 shell |
+| --- | --- |
+| Ghostty | zsh·bash 등 |
+| macOS Terminal 앱 | zsh·bash 등 |
+| AIOX Web terminal | daemon이 새로 실행한 shell |
+
+```text
+Ghostty의 zsh에서 cd ~/projects/my-app → aiox daemon start
+→ daemon이 작업 경로·환경변수를 물려받음
+→ Web에서 새 terminal 생성
+→ daemon이 새 PTY와 별도 shell 생성
+→ 설정·생성 요청을 반영한 작업 경로와 실행 환경 전달
+```
+
+| 전달될 수 있는 것 | 그대로 공유되지 않는 것 |
+| --- | --- |
+| 작업 경로, PATH 같은 환경변수 | 원래 터미널 창·화면·스크롤 기록 |
+| 환경변수로 내보낸 값 | 원래 shell 프로세스·실행 중인 작업 |
+| TERM_PROGRAM 같은 터미널 식별 환경변수 | 원래 shell의 일반 변수·alias 등 메모리 상태 |
+
+새 shell이 초기화 파일을 읽어 같은 alias를 설정할 수는 있지만 원래 shell 상태를 복제한 것은 아니다. TERM_PROGRAM에 ghostty가 남아 있는 경우도 환경변수 상속의 사례이지 Ghostty를 Web에 띄웠다는 뜻이 아니다. 이는 현재 AIOX가 해당 값을 그대로 전달한다는 보장이 아니며 실제 터미널 식별값은 공통 터미널 계층의 구성을 따른다.
+
+설정·검증 계약은 [Web 설정 spec](../../docs/specs/aiox-configuration-web.md), PTY·화면 관리 책임은 [터미널 architecture](../../docs/architecture/aiox-storage-terminal.md)를 따른다.
+
+**새 Web shell의 공통 실행 설정**
+
+Windows·macOS·Linux 모두 config.json의 terminal 설정을 사용한다. 시작 shell을 자동 추정하지 않고 실행할 shell을 명시적으로 선택할 수 있다.
+
+| 필드 | 의미 | 생략 시 |
+| --- | --- | --- |
+| shell | 실행할 shell의 이름 또는 경로 | Windows: COMSPEC 또는 cmd.exe; macOS·Linux: SHELL 또는 /bin/bash |
+| args | shell에 전달할 인자 배열 | 추가 인자 없음 |
+| cwd | 선택한 shell의 시작 폴더 | 기존 daemon 작업 경로 동작 |
+
+SHELL은 현재 실행 중인 shell을 항상 정확히 나타내지 않는다. PowerShell에서 daemon을 시작해도 Web 기본 shell이 PowerShell로 자동 선택되는 것은 아니다. Windows 실행 파일은 CMD cmd.exe, PowerShell 5.1 powershell.exe, PowerShell 7 pwsh.exe 등을 선택할 수 있다.
+
+Windows PowerShell 7:
+
+```json
+{
+  "terminal": {
+    "shell": "pwsh.exe",
+    "args": [],
+    "cwd": "C:\\projects\\my-app"
+  }
+}
+```
+
+Windows에서 WSL 배포판 선택:
+
+```json
+{
+  "terminal": {
+    "shell": "wsl.exe",
+    "args": ["-d", "Ubuntu"],
+    "cwd": "/home/user/projects/my-app"
+  }
+}
+```
+
+macOS:
+
+```json
+{
+  "terminal": {
+    "shell": "/bin/zsh",
+    "cwd": "/Users/user/projects"
+  }
+}
+```
+
+Linux:
+
+```json
+{
+  "terminal": {
+    "shell": "/bin/bash",
+    "cwd": "/home/user/projects"
+  }
+}
+```
+
+- WSL의 cwd는 선택한 배포판 내부 Linux 경로다. Windows PTY의 작업 경로와 구분하며 프로그램 설치·WSL 버전 변환은 설정의 역할이 아니다.
+- 새 일반 Web shell 생성 시 최신 설정을 읽는다. 기존 터미널·실행 중인 프로그램을 바꾸지 않으며 vendor 실행 PTY나 외부 사용자 터미널의 설정에 적용하지 않는다.
+- 명시적인 생성 요청 cwd는 전역 기본 cwd보다 우선한다.
+- daemon 시작 전에 실행 파일·cwd의 유효성을 검사하고 실패하면 DB·listener 준비 전에 거절한다. 새 shell 생성도 최종 요청을 검증하며 실패해도 기존 실행은 유지한다.
+- WSL은 배포판·사용자를 반영해 Linux cwd를 검사한다. 검사에서 사용자 command tail을 실행하지 않으며 해석할 수 없는 실행 옵션은 거절한다.
+- 사전 검사는 실행 파일 형식·초기화 성공까지 보장하지 않는다. 검증 이후 실제 실행 오류도 전달한다. Windows 실행 파일 ACL의 사전 보장 한계는 관련 spec을 따른다.
+- 잘못된 shell/cwd를 마지막 유효 값으로 조용히 대체하지 않는다. 아래 화면·keyboard 설정의 반영 정책과 실행 설정의 시작·생성 거절을 구분한다.
+
+**daemon 실행 환경과 중첩 shell**
+
+```text
+daemon 실행 환경
+→ AIOX가 Web terminal에 처음 만든 shell
+→ 사용자가 실행한 다른 shell·프로그램
+
+AIOX의 bash → PowerShell 실행
+→ PowerShell이 입력 대기 중이어도 bash 기준으로는 작업 실행 중
+```
+
+Windows daemon이 wsl.exe를 실행해도 종료 정책의 기준은 Windows다. WSL 내부 Linux Node로 daemon을 시작하면 Linux 정책을 적용한다. 안쪽 shell의 idle까지 추적하지 않는다. Windows→WSL 일반 shell 설정 지원을 vendor의 path·IPC·credential·MCP 혼합 연동 전체 지원으로 확대하지 않는다.
 
 설정은 프로젝트별이 아니라 모든 Host·standalone에 공통인 사용자 전역 설정이다. 실행 환경의 사용자 홈 아래 `.aiox/config.<확장명>`을 사용한다. npm 설치 디렉터리나 현재 프로젝트에 저장하지 않는다. Host YAML은 실행 선언이고 전역 설정과 별개다.
 
@@ -702,10 +835,11 @@ TypeORM을 기존 better-sqlite3 위에 도입한다. Stage 1의 직접 SQL 구�
 ```text
 Web 편집·미리보기 → 저장 → 검증 → 전역 파일 갱신 → 연결된 Web에 배포
 외부 파일 편집·저장 → 감지·검증 → 같은 적용 경로
-잘못된 설정 → 마지막 유효 설정 유지 + 오류 표시
+잘못된 화면·keyboard 설정 → 마지막 유효 설정 유지 + 오류 표시
 ```
 
 - terminal appearance와 keyboard는 실행 중 반영한다.
+- terminal.shell/args/cwd는 새 일반 Web shell 생성 시 검증·적용하며 기존 실행은 유지한다.
 - daemon/Web 포트는 다음 daemon 시작에 반영하고 “저장됨·재시작 후 적용”을 표시한다.
 - 별도 `aiox config apply`를 요구하지 않는다.
 - 설정 저장 때문에 daemon 자동 재시작·Agent 종료를 하지 않는다.
@@ -714,7 +848,7 @@ Web 편집·미리보기 → 저장 → 검증 → 전역 파일 갱신 → 연�
 
 SQLite는 동일 domain/schema/migration을 3 OS에서 사용한다. persistence 패키지가 접근하고 daemon이 연결을 소유한다. CLI·Web·adapter가 DB를 직접 수정하지 않는다. 파일 오류를 새 빈 DB로 우회하거나 자동 삭제하지 않는다. 필요 transaction과 migration, shutdown cleanup을 둔다. WAL 선택·pragma는 실제 필요에 따라 결정한다.
 
-Windows native와 WSL은 실행 환경·홈·DB·path·IPC가 다르다. 같은 환경 안에 daemon·Node·Git·vendor를 두는 구성이 초기 제안이다. Windows daemon이 wsl.exe로 Linux vendor를 제어하는 혼합 실행은 자동 지원으로 약속하지 않는다. Windows 브라우저가 WSL Web에 접속하는 것은 별도 사례다.
+Windows native와 WSL은 실행 환경·홈·DB·path·IPC가 다르다. 같은 환경 안에 daemon·Node·Git·vendor를 두는 구성이 초기 제안이다. Windows daemon의 wsl.exe 일반 shell 선택·Linux cwd 설정은 지원한다. 이를 Linux vendor의 혼합 협업 연동 전체 지원으로 확대하지 않는다. Windows 브라우저가 WSL Web에 접속하는 것은 별도 사례다.
 
 Node/CPU/native dependency 조합의 실제 배포 설치·DB 로딩·PTY·vendor 실행·종료를 각 OS에서 확인해야 한다. Linux Docker 성공은 Windows 실측이 아니다. npm 전역 설치 산출물이 대상이며 개발 환경 실행만으로 배포 호환 완료라고 하지 않는다.
 
@@ -960,8 +1094,8 @@ Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/ad
 7. 사용자가 route를 변경하면 같은 MCP URL에서 다음 send·agents_list에 적용된다. 실행 중 Network 소속은 바꾸지 않는다.
 8. 다른 terminal에서 승인이 필요하면 알림을 누르고 해당 TUI에서 응답한다. 이미 보고 있는 terminal의 알림은 중복으로 울리지 않는다.
 9. Web을 닫아도 실행은 계속된다. 다시 열면 같은 terminal의 현재 화면과 배치·놓친 알림이 나타난다.
-10. 전역 설정을 저장하면 terminal/keyboard는 반영되고 포트는 다음 시작에 적용된다. 저장 때문에 실행을 종료하지 않는다.
-11. host stop은 소유 실행을 종료·정리하고 Worktree를 남긴다. daemon stop은 활성 실행이 있으면 거절하며 --force는 관리 실행 전체를 종료한다.
+10. 전역 설정의 terminal appearance·keyboard는 실행 중 반영하고 shell/args/cwd는 새 일반 Web shell에, 포트는 다음 daemon 시작에 적용한다. 저장 때문에 기존 실행을 종료하지 않는다.
+11. host stop은 소유 실행을 종료·정리하고 Worktree를 남긴다. daemon 일반 stop은 실행 환경별 정책을 적용하며 force는 daemon 소유 실행을 종료한다. 외부 CLI 소유 실행은 두 경우 모두 유지하고 협업만 해제한다.
 12. vendor 업데이트·준비 실패는 실행 실패로 명확히 표시한다. 사용자가 처리 후 다시 실행하며 AIOX가 자동 업데이트·재실행을 복잡하게 조율하지 않는다.
 
 ## 18. 구현 순서와 남은 논의의 위치
@@ -985,6 +1119,6 @@ Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/ad
 
 OS 경계는 마지막에 처음 확인하는 것이 아니다. DB는 기반 단계, PTY는 서버 단계, vendor 경계는 해당 adapter 단계에 확인하고 마지막에 통합한다. 최소 Web은 연결 검증을 위한 것이며 운영 UI 전체를 기다려 vendor 연동을 미루지 않는다.
 
-Stage 2-2는 공통 vendor 경계·Claude 마이그레이션과 macOS 실제 Claude 외부 수명·Web 복원을 검증하고 종료했다. 모델 메시지 E2E·다른 OS·Codex·Host 전체 완료를 뜻하지 않는다. 세부 증거와 한계는 [Stage 2-2 완료 기록](../2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md)을 따른다.
+Stage 2-2는 공통 실행 소유권·vendor 경계, Web shell 설정·사전 검증과 OS별 종료 작업을 마감했다. Windows/WSL shell 실측과 OS별 CI 범위는 [Stage 2-2 기록](../2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md)을 따른다. 이후 외부 실행 유지 범위의 교정은 [Stage 2-3](../2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md) W1에서 완료했으며, 별도 처리·복구 경계 개선을 이어간 뒤 Stage 3 W1로 복귀한다. 과거 외부 종료 테스트 성공을 현재 외부 생존 정책의 검증으로 승계하지 않는다. 실제 vendor 메시지 E2E와 추가 OS 통합은 Stage 3, Codex TUI·Relay·App Server는 Stage 4, Host 실행은 Stage 5 범위다.
 
 남은 논의를 한꺼번에 사용자에게 질문하지 않는다. MCP 응답 포장·실제 관측 연결과 채택 의존성 버전은 해당 통합 단계에서 확인하고 Web 의존성은 Web 단계에서 논의한다. 현재의 제품 경계와 성공한 실험을 미결로 되돌리지 않는다.
