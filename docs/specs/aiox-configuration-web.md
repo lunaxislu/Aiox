@@ -63,6 +63,14 @@ shell 실행 파일 및 cwd 디렉터리·접근 여부를 확인하고, 실패�
 파일 존재·권한 검사가 실행 파일 형식이나 초기화 성공까지 보장하지는 않는다. Windows 실행 파일
 ACL 검증은 사전 보장 범위 밖이며 실제 실행 실패로 처리한다. NUL 등 실행 인자 경계 검증은 유지한다.
 
+새 shell 생성 API는 서버 설정 오류를 `500 / invalid_config`, 명시적 요청 cwd의 확인된
+오류를 `400 / invalid_request`로 반환한다. 검사 프로세스 timeout처럼 원인이 확인되지 않은
+검증 실패는 요청 cwd 오류로 단정하지 않고 `500 / invalid_config`로 반환하며 진단을 보존한다.
+예상하지 못한 실제 실행 오류는 `500 / internal_error`다. [Status: Current]
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:358-386`,
+[[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:123-131`,
+[[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:101-248`.
+
 Windows에서 wsl.exe를 선택하면 args로 배포판을 지정하고 cwd는 해당 Linux 경로로 전달한다.
 Windows PTY의 작업 경로와 Linux 시작 경로를 구분하며 AIOX가 드라이브 문자열을 수동 변환하지 않는다.
 배포판·사용자 선택을 반영한 내부 디렉터리 검사를 수행하고 확인된 Linux cwd를 실행에 전달한다.

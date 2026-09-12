@@ -259,7 +259,10 @@ Linux 결과는 분리된 shell 연동 모듈 범위이며 전체 daemon/CLI 검
 Windows native daemon은 일반 stop에서도 작업 상태를 검사하지 않고 native PTY 종료 경로를
 사용한다. PowerShell PSReadLine handshake와 CMD idle 조사 테스트는 제거했으며 Web shell 기본값을
 PowerShell로 강제하지 않는다. 과거 PSReadLine2.4.5 Windows CI 및 CMD 반례 결과는 Stage2-2
-로그에 당시 정책의 검증으로 보존한다. 새 Windows 종료 정책의 실제 Windows 검증은 별도다.
+로그에 당시 정책의 검증으로 보존한다. Windows 사용자 실측에서는 일반 stop·force 각각의
+shell PTY child/grandchild와 별도 외부 owner의 foreground/helper 트리 종료를 확인했다.
+외부 실행은 실제 runExternal·WebSocket·ExecutionOwner 경로와 대역 vendor를 사용했으므로
+실제 Claude/Codex 통합이나 임의 프로세스 트리 전체에 대한 보장으로 확대하지 않는다.
 
 공통 terminal.shell/args/cwd는 새 일반 shell 생성에만 적용하고 vendor 실행 구성과 분리한다.
 config의 resolveTerminalLaunch가 기본값·요청 override·실행 파일 탐색과 cwd 검증을 소유한다.
@@ -267,8 +270,18 @@ bootstrap은 DB 준비 전에 검증하고, 새 shell 생성은 파일을 다시
 재확인한다. TerminalService는 필수 실행 값을 받아 PTY를 생성하며 설정을 다시 해석하지 않는다.
 Windows에서 WSL의 Linux cwd는 선택한 배포판·사용자의 정적 검사 명령으로 확인한 뒤 wsl.exe --cd로
 전달하며 native PTY의 host cwd와 구분한다. Windows native cwd는 Node 자식이 실제 해당 경로에서
-시작할 수 있는지 검사한다. Windows 실행 파일 ACL·실제 Windows/WSL 전체 실행 검증은 별도 한계다.
+시작할 수 있는지 검사한다. 확인된 cwd 실패만 config 오류에 필드 근거를 붙이고 daemon이 요청
+cwd 유무와 함께 분류한다. Windows 검사 프로세스 실패와 WSL의 확정 cwd 실패 표식 없는 오류는
+실행 환경 실패로 유지한다. HTTP 분류 계약은 configuration/Web spec이 소유한다.
 근거: packages/config/src/terminal.ts 및 wsl.ts와 각 colocated tests,
 apps/daemon/src/bootstrap.test.ts 및 terminals.test.ts. [Status: As-built]
 설정 watch·현재 경로 polling·부모 shell 추적은 추가하지 않는다.
 계약은 [[docs/specs/aiox-configuration-web]]을 따른다.
+
+Windows 사용자 실측으로 cmd/PowerShell 입출력·cwd·재연결, Windows daemon에서 WSL2 Ubuntu의
+사용자·cwd 선택, 잘못된 배포판·사용자·cwd 및 Linux 권한 거부, 설정 오류 시 기존 실행 유지와
+복구 후 새 생성을 확인했다. Windows cwd 조회 거부 ACL에서는 Node child의 cwd 사용이 성공했으므로
+cwd 사용 거부는 미재현이며 실행 파일 ACL도 사전 보장 범위 밖이다. 최종 `8c2fbd7`의
+[CI](https://github.com/lunaxislu/aiox-prototype/actions/runs/34685159507)는 Windows/Linux/macOS × Node22/24에서
+통과했지만 실제 WSL 배포판 검사는 CI가 아닌 사용자 실측 근거다.
+Sources: `logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md`의 Windows 실측·오류 분류 보완과 최종 CI entry.

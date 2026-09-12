@@ -14,7 +14,7 @@ status: open
 - [x] W6 일반 stop·force 공통 입력/신규 실행 차단과 종료 직렬화 — 거절·실패 시 입력을 복구하고 외부 vendor 수명은 유지한다.
 - [x] W7 대기 shell 안전 종료 연동 — macOS zsh/bash 및 Linux bash/zsh/fish에서 shell 자체 대기·남은 작업 판정과 정상종료 handshake를 구현·검증한다.
 - [x] W8 공통 터미널 설정·OS별 stop 정책 구현 — 기존 Windows 기준 브랜치를 보존하고 조사 후 shell/args/cwd와 외부 실행 종료를 구현한다. 새 정책 질문은 사용자 결정 후 재개하며 commit/push·CI·Windows 실측은 후속이다.
-- [>] W9 후속 통합 검증·단계 재마감 — 승인된 순서인 commit/push → 해당 SHA CI 확인 → Windows/WSL desktop 실제 경로·종료 검증을 진행한다. 추가 shell/cwd 사전 검증과 전체 pnpm check 통과, 현재 커밋·push·CI는 미실행.
+- [>] W9 후속 통합 검증·단계 재마감 — 8c2fbd7의 전체 OS CI, Windows/WSL 사용자 실측 및 owner 정합 완료. 최종 마감 문서 커밋·main 병합 후 Stage3 W1 포인터 복귀와 단계 종료가 남음.
 
 ## Required Context
 
@@ -34,11 +34,11 @@ status: open
 
 ### {W6,W7,W8,W9}
 
-- 2026-09-12 터미널 설정·종료 정책 변경 블록이 현재 승인 범위다. 과거 W6/W7은 당시 정책의 검증 근거이며 외부 force 생존·Windows idle 요구는 새 명시적 종료 정책으로 대체됐다. 작업별 조사·구현은 W8에서 수행하고 W9 전체 CI/실측·단계마감은 후속으로 남긴다.
+- 2026-09-12 터미널 설정·종료 정책 변경 블록이 승인 범위다. 과거 W6/W7의 외부 force 생존·Windows idle 요구는 새 명시적 종료 정책으로 대체됐다. W8 구현과 W9 CI/Windows 실측은 완료했으며 최신 W9 entry의 최종 문서 커밋·병합·단계 복귀만 남는다.
 
 ### {W8,W9}
 
-- 최신 사전 검증 보완·별도 조사 결과 entry를 소비한다. commit/push와 해당 SHA CI 확인이 승인됐으며 그 후 사용자 Windows desktop(Git·Node·WSL2 설치)에서 실검증한다. 사전 검증 구현·로컬 pnpm check 통과를 Windows/WSL 또는 Stage2-2 전체 완료로 확대하지 않는다. 별도 8개 개선은 조사·재현과 판단용 문맥 전달까지이며 production 수정 범위에 합치지 않는다.
+- 최신 Windows 실측·오류 분류 보완과 최종 CI entry를 소비한다. 8c2fbd7의 6개 OS/Node CI와 root pnpm check, Windows agent의 실측을 구분해 기록했다. 최종 문서 커밋·main 병합 및 Stage3 W1 복귀가 남아 W9는 active다. Windows cwd 사용 거부 미재현·실제 vendor 미검증을 완료로 확대하지 않는다. 별도 8개 개선은 독립 판단·논의이며 이 마감 범위 밖이다.
 - 신호 종료 질문은 기존 정책으로 철회했고 구현 반영됐다. SIGINT/SIGTERM·예기치 않은 연결 손실은 외부 생존, 명시적 CLI 요청은 새 OS별/force 정책이다. 필수 read는 최신 완료 블록과 runtime/config spec, explicit-execution-shutdown decision 및 변경 tests다.
 
 ## 2026-09-11 · 공통 실행 위치·명령 정책 합의와 Stage2-2 착수 준비
@@ -306,3 +306,28 @@ Claude 분석 정정: 오류 terminate ACK 자체가 양쪽 영구 hang/이후 f
 Windows 실검증 논의: 사용자는 Git·Node·WSL2가 설치된 Windows desktop을 보유한다고 밝혔다. 권장 경로는 Windows Node → wsl.exe → 선택 배포판·사용자 cwd → 실제 PTY이며 WSL 안의 Linux 테스트만으로 대체하지 않는다. 현재 CI에는 Windows/Linux/macOS × Node22/24와 pnpm check가 있으나 WSL 배포판 준비 단계는 없다. Canonical WSL Actions 문서(https://ubuntu.com/wsl/docs/latest/reference/actions/)에서 설치·배포판 실행 지원을 확인했다. Linux Docker는 Windows ACL·ConPTY·wsl.exe 경계를 대체하지 못한다는 판단에는 커널 경계 설명(https://learn.microsoft.com/en-us/virtualization/windowscontainers/deploy-containers/set-up-linux-containers)을 참고했다. runner별 WSL/가상화 가능 여부는 실제 준비 때 확인한다.
 
 사용자는 미커밋 스냅샷을 먼저 Windows에 옮기는 제안보다 commit → push → CI 확인 → 같은 commit의 Windows/WSL desktop 실검증 순서를 지시했다. 그 순서로 진행을 승인받아 diff 확인과 전체 pnpm check까지 수행했고, 커밋 전에 이번 로그 기록 요청이 도착했다. 기록 시점에는 새 commit/push/CI/Windows 실측/main 병합이 없다. 다음 행동은 현재 Stage2-2 변경 커밋·push 후 해당 SHA의 CI 확인이다. Windows/WSL 실검증과 W9 전체 완료는 아직 남아 있으며, 이번 로그 요청을 앞으로 모든 토론을 자동 기록하라는 포괄 승인으로 확대하지 않는다.
+
+### 2026-09-12 18:18 · Windows 실측·오류 분류 보완과 최종 CI
+
+사용자가 Stage2-2 마감을 subagent에게 위임했다. 이번 범위는 누락된 검증 기록과 owner 정합이며 별도 8개 개선은 root와 논의한다. 아래 Windows 결과는 사용자가 전달한 Windows agent의 실측 보고이고 이 기록 담당자가 직접 재실행한 결과가 아니다.
+
+커밋·CI 경위: de3c92bce9b7bb7e66e98eeac50b01c2965432cd를 push한 뒤 CI34680957423의 6개 OS/Node 조합이 통과했다. macOS Node24의 기존 Git 조회 2초 timeout은 코드 변경 없는 재실행에서 통과했으며 간헐 실패 가능성을 남긴다. Windows agent는 깨끗한 de3c92b에서 codex/stage2-2-windows-validation 브랜치를 만들었다. 오류 분류·harness 보완 9512a5a의 CI34684848745도 6개 조합이 통과했고 root가 macOS 전체 pnpm check를 통과했다.
+
+Windows 환경은 PowerShell, Node24.21.0, pnpm10.33.0, WSL2 Ubuntu(root, /root)이며 별도 검증 폴더·임시 설정·DB를 사용했다. cmd/PowerShell 입출력·실제 cwd·브라우저 재연결, 없는 Windows shell/cwd와 파일인 cwd의 시작 거절을 확인했다. Windows daemon → wsl.exe → Ubuntu에서 root와 /root를 확인했고 없는 배포판·사용자·cwd, root 소유 700 폴더에 nobody 접근을 거절했다. 잘못된 shell로 설정 변경 후 새 생성은 거절하되 기존 터미널 명령 실행을 유지하고 복구 후 201 Created/alive:true를 확인했다. 최초 pnpm check는 사용자 완료 보고만 있었으나 후속 수정 뒤 Windows agent가 exit0, 437 tests passed/23 skipped와 lint·format·전체 build·typecheck·diff 검사를 보고했다.
+
+Windows 검증 중 발견한 계약 누락을 보완했다. 서버 설정은 500/invalid_config, 요청이 명시한 확인된 cwd 오류는 400/invalid_request, 예상하지 못한 실제 실행 오류는 500/internal_error로 구분한다. ConfigError는 HTTP를 모르는 선택적 cwd 필드 근거만 전달한다. WSL 고정 검사 명령의 정확한 표식으로만 cwd 실패를 확정하고 다른 실패는 실행 환경 진단을 보존한다. harness의 cwd override·잘못된 기본 CLI 안내·일반 stop 고정 거절 안내를 제거했다. RED 회귀 10개 후 수정했고 실제 수정 harness로 Windows cwd 및 WSL /root를 확인했다. 없는 WSL 배포판·사용자·cwd에서는 DB·상태 파일이 생성되지 않았고 확인된 요청 cwd 권한 거부는 400이었다. 정상/실패 사전 검사에서 사용자 command tail 미실행을 확인했다. nobody systemd 세션 지연과 Wsl/Service/E_UNEXPECTED는 cwd로 단정하지 않았으며 세션 준비 뒤 권한 거부를 재확인했다.
+
+종료 실측은 종료 전 각 프로세스의 PID/PPID·생존을 수집하고 이후 최대 10초 동안 상태를 확인했다. shell 일반 stop 2288→9904→15516, force 3652→16072→11884; 외부 owner21076의 일반 stop foreground17824→22384→20228/helper21644→22416→15520, owner12796의 force foreground2904→19804→18184/helper21780→20000→15812 모두 첫 검사에 잔존 PID가 없었다. 응답은 HTTP200/stopped:true였으며 외부 owner도 exit0·dispose 완료였다. 실제 runExternal·WS·ExecutionOwner와 별도 OS owner를 사용했지만 vendor는 대역이므로 실제 Claude/Codex 통합 검증은 아니다. 검증용 Node/WSL 프로세스·포트 리스너 및 WSL 임시 자원을 정리했다는 보고다.
+
+Windows ACL 한계: 현재 SID에 (RX), (RD,REA,RA,X,S) 거부를 각각 적용해 조회 EPERM을 확인했으나 Node child는 exit0으로 해당 cwd를 사용했다. 따라서 cwd 사용 거부를 재현하지 못했으며 사전 검사 결함으로 판정하거나 readdir 검사를 추가하지 않았다. SeChangeNotifyPrivilege 활성은 확인했지만 단독 원인으로 확정하지 않았다. ACL은 finally에서 원래 SDDL로 복원했으며 전역 보안 변경·배포판 전체 종료를 하지 않았다. 이 환경의 미재현과 임의 자손/실제 vendor 전체 보장 부재는 검증 범위 한계로 남긴다.
+
+root는 9512a5a 리뷰에서 native 디렉터리 검사와 Windows child probe 실패가 같은 catch로 처리되어 timeout도 요청 cwd 오류로 분류되는 경로를 발견했다. 실제 Windows timeout 장애 관측이 아니라 코드 경로 확인이었다. 8c2fbd7a59bf27f5f92bf22babd5fac96750414d에서 catch를 분리해 검사 프로세스 실패의 cwd 표식을 제거했다. EACCES/timeout 대역 회귀와 HTTP500 유지 검사를 추가했고 root pnpm check exit0(daemon174 tests)을 확인한 뒤 push했다. 최종 CI https://github.com/lunaxislu/aiox-prototype/actions/runs/34685159507 는 Windows/Linux/macOS × Node22/24 모두 success다. 이번 기록 담당자도 gh run view로 정확한 headSha와 6개 success를 재확인했다. 마지막 보완의 Windows 검증은 CI이며 전체 수동 시나리오를 해당 SHA에서 다시 실행했다고 주장하지 않는다.
+
+owner 점검: 현재 terminal/WSL resolver→daemon→HTTP와 회귀 테스트를 대조하고 configuration/Web spec에 오류 분류 계약, storage-terminal architecture에 필드 근거의 책임·Windows 실측 범위·잔여 한계를 반영했다. explicit-execution-shutdown decision의 임의 중첩 작업 보장 한계와 신호/연결 손실 생존 이유는 여전히 유효해 변경하지 않았다. Stage3의 vendor 메시지 E2E·후속 OS 경계와 Stage4/5의 Codex/Host 목표로 확대하지 않았다.
+
+현재 W9의 구현·CI·Windows 실측과 owner 정합은 완료다. 이번 위임 범위에서는 commit/push/main 병합을 수행하지 않으며 최종 마감 문서의 커밋·병합과 Stage3 W1 포인터 복귀가 남아 W9 active 및 로그 open을 유지한다. plan의 Stage2-2를 미리 완료로 바꾸지 않는다. 별도 8개 개선은 조사·재현 이후 독립 판단/논의 상태이며 이 마감의 production 변경에 포함하지 않았다.
+
+
+이번 마감과 병행한 root의 별도 조사에서는 macOS spawnNative.stop()이 직접 Node child를 signal15로 종료한 뒤에도 그 child가 만든 자손이 살아 있는 사례를 재현했다. root가 검증 자손은 finally에서 정리했다. 이는 Windows에서 수집한 대역 트리 종료 결과를 반증하지 않지만, 임의·비협조적 자손 전체 종료로 확대할 수 없다는 구체 근거다. 해당 production 수정은 별도 개선 논의에 남기며 이 로그의 전체 자손 종료 보장으로 기록하지 않는다.
+
+로그 도구에는 entry 이동 명령이 없어 이번에 추가한 entry를 같은 수명의 최신 완료 블록 끝으로 수동 이동했다. 과거 entry의 내용·순서는 변경하지 않았다.
