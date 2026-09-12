@@ -8,8 +8,8 @@ status: open
 
 - [x] W1 daemon 종료와 외부 vendor 수명 분리 교정 — 외부 aiox agent run claude/codex는 일반 stop·force 모두 vendor를 유지하고 협업만 정리한다. 외부 참여만으로 daemon stop을 막지 않는다. Windows 작업 검사 없는 종료는 daemon 소유 실행에만 적용한다. 종료 제어 경로의 다른 호출자를 확인한 뒤 불필요 경로를 정리하고 협업 정리의 완료·실패·재시도 및 daemon 소유 실행 종료를 검증한다. — detached: logs/2026-09-12-AIOX-W1-External-Execution-Survival.md — reason: 사용자 W1 실행 승인; code·owner 교정의 공통 완료 검증
 - [x] W2 메시지 저장·복구 단위 개선 — 결과와 필수 알림의 저장 완료 단위를 맞추고, 전송 거절 후 DB 실패가 뒤 대상과 미완료 행 추적을 잃게 하는 경로를 수정한다. 실제 저장 실패·재시도 회귀와 retention 경계를 검증하고 불필요한 InFlight 상태·route 반복 판단을 정리한다. — detached: logs/2026-09-12-AIOX-W2-Message-Persistence-Recovery.md — reason: 사용자 W2 구현 승인; messaging·persistence·owner의 공통 완료 검증
-- [>] W3 시작·재시작·조회 책임 정리 — 새 config의 가능한 준비·검증과 override 변경 안내 후 기존 daemon을 종료하고 준비 결과로 시작한다. Web·상태 파일 준비까지 성공 공개를 늦추며 실패 자원을 정리한다. daemon status·doctor는 실행 중 대상 발견을 다음 설정 검증과 분리한다.
-- [ ] W4 참여 중 Network 삭제 거절 — 실행 참여가 있으면 삭제를 거절하고 먼저 참여 정리를 요구한다. 자동 종료·분리를 추가하지 않으며 등록/삭제 경합과 이후 discovery·전송을 검증한다.
+- [x] W3 시작·재시작·조회 책임 정리 — 새 config의 가능한 준비·검증과 override 변경 안내 후 기존 daemon을 종료하고 준비 결과로 시작한다. Web·상태 파일 준비까지 성공 공개를 늦추며 실패 자원을 정리한다. daemon status·doctor는 실행 중 대상 발견을 다음 설정 검증과 분리한다. — detached: logs/2026-09-12-AIOX-W3-Startup-Readiness.md — reason: 사용자 W3 subagent 실행 승인; CLI·daemon·owner의 공통 완료 검증
+- [>] W4 참여 중 Network 삭제 거절 — 실행 참여가 있으면 삭제를 거절하고 먼저 참여 정리를 요구한다. 자동 종료·분리를 추가하지 않으며 등록/삭제 경합과 이후 discovery·전송을 검증한다.
 - [ ] W5 Web 작업 결과·화면 복원 상태 개선 — 서버 진단을 보존하고 연결 조회 성공이 작업 오류를 덮지 않게 한다. mirror 실패에도 실행을 유지하며 복원 불가와 사용자 종료·재생성을 안내한다. 중첩 조회 응답 역전의 실제 영향도 검증한다.
 - [ ] W6 등록 구성·삭제 후보 및 미채택 지적 판정 — 등록 예약·준비·활성화 대안을 현재 구조와 비교하고 필요한 경우에만 단순화한다. 미사용 필드·인자·killAll은 계약/검증 보존 후 제거하며 CLI 복귀·vendor 진단·임시 자원·신호 종료 등 남은 Claude 지적을 근거별로 채택·반증·후속 이관한다.
 - [ ] W7 통합 리뷰·owner 반영·단계 마감 — 변경별 회귀와 관련 OS 검증, 제거 코드의 책임 보존, 미해결 후보 disposition을 root가 확인한다. 확정 계약을 owner에 반영하고 잔여 한계와 후속 owner를 명시한 뒤 Stage3 W1로 활성 단계 포인터를 옮긴다. 원격 push는 사용자 지시가 있을 때만 수행한다.
@@ -22,10 +22,10 @@ status: open
 
 ### {Global}
 
-- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1은 a039525에 커밋됐다. W2는 logs/2026-09-12-AIOX-W2-Message-Persistence-Recovery.md의 code/docs 결과를 root가 수용·소비해 완료했다. 다음 지점은 W3 시작·재시작·조회이며 아직 구현하지 않았다. W2 변경은 미커밋이고 commit/push하지 않았다. 이 단계 완료 후 Stage3 W1을 재개한다.
-- 사용자는 root를 논의·정책·지시·직접 리뷰 담당으로, subagent를 조사·구현·테스트 담당으로 지정했다. 기존 조사와 확정 정책을 다시 승인받지 않는다. commit/push는 이번 범위 밖이며 원격 push는 사용자 후속 지시까지 금지한다. architecture.excalidraw는 개인 자산으로 제외한다.
+- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1 a039525와 W2 839c890 커밋 완료. W3는 logs/2026-09-12-AIOX-W3-Startup-Readiness.md의 두 Result를 root가 직접 리뷰·수용해 완료했다. 사용자가 W3 commit을 승인했으며 커밋 결과는 Git 기록을 참조한다. 다음 지점은 W4 참여 중 Network 삭제 거절이며 실행은 아직 요청받지 않았다. W4 이후 실행·후속 commit과 원격 push는 승인되지 않았다. 이 단계 완료 후 Stage3 W1을 재개한다.
+- 사용자는 root를 논의·정책·지시·직접 리뷰 담당으로, subagent를 조사·구현·테스트 담당으로 지정했다. 기존 조사와 확정 정책을 다시 승인받지 않는다. 이번 commit 승인은 완료된 W3 작업에 한정하며 원격 push는 사용자 후속 지시까지 금지한다. architecture.excalidraw는 개인 자산으로 제외한다.
 - 아래 조사 계기와 근거 분류·Claude 의견 대조를 먼저 읽고 선택 Work Item의 호출자·producer/consumer·owner·tests를 추적한다. 기존 조사를 전부 반복하지 말고 변경할 경계의 재현을 회귀 테스트로 고정한다. root가 실제 diff와 검증 근거를 확인하기 전 subagent 완료 보고를 최종 완료로 승격하지 않는다.
-- 관련 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md다. W1 교정은 docs/decisions/external-execution-survival.md로 수용됐고 기존 explicit-execution-shutdown은 결정 계보다. W2는 메시지 저장·복구에 필요한 owner만 대조·반영하며 무관한 last-good·자동 적용 요구는 유지한다.
+- 관련 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md다. W1 교정은 docs/decisions/external-execution-survival.md로 수용됐고 기존 explicit-execution-shutdown은 결정 계보다. W2 저장·복구와 W3 준비·조회·종료 자원 경계는 owner와 회귀에 반영됐다. 무관한 last-good·자동 적용 요구는 유지한다.
 
 
 ### {W1}
@@ -35,11 +35,15 @@ status: open
 
 ### {W2,W3}
 
-- W2는 messages.drain이 관측된 미저장 결과를 1회 재시도하고 지속 실패를 전달하도록 수정했다. 실제 SQLite 실패의 daemon stop은 500 internal_error·DB/listener·재시도 경로 유지, 실패 제거 후 stop 성공으로 검증했다. DB close catch의 자원 종료 완료 의미는 W3가 실제 영향과 필요 수정 여부를 판정한다. 이 잔여 후보를 확정 결함으로 인계하지 않는다.
 
 ### {W6}
 
 - W1은 stopTerminal fail-closed를 협업 정리 전 PTY를 죽이지 않는 보호로 보존했다. closeIdle timeout·ps 실패의 진단은 미검증 후보로 남아 있다. 정상 실패/재시도를 영구 busy·오보로 단정하지 않고 현재 계약과 관측 상태를 대조한다.
+- 외부 리뷰 top 10은 이 로그의 “외부 리뷰 판정과 W6 후보 인계” entry를 읽고 각 원주장·root 대조 근거·잔여 검증을 복원한다. quota 상태·activity 실패 reason·MCP 합성을 우선 후보로 보되 10개 모두 확정 버그나 자동수정 대상으로 승격하지 않는다. 스캔 수·verdict·commit 귀속은 사용자 전달 미검증 주장이다. W3 no-state+invalid-config의 status exit1/doctor config.error exit0는 root built 재확인과 사용자 동의로 현재 동작을 유지한다.
+
+### {W7}
+
+- W2 messages.drain의 필수 저장 지속 실패는 500 internal_error 및 DB/listener 재시도 유지다. W3 DB close 실패는 listener 해제 뒤 stderr 진단하고 closed 의미를 유지하는 것으로 판정·회귀 검증했다. 상태 파일 삭제는 listener 해제 전으로 이동해 지연 DB close 뒤 새 상태 기록을 삭제하지 않는다. 삭제 실패는 진단 후 stale 기록 가능성을 남기며 listener 종료와 구분한다. 이 후보를 미판정 결함으로 재개하지 않는다.
 
 ## 2026-09-12 · macOS 사전 검증 보고에서 확장한 처리 경계 개선 착수 준비
 
@@ -198,3 +202,46 @@ root 최종 Git 확인에서 HEAD 2e3bc87로 이동한 W2 밖 baseline/context p
 사용자는 route CLI가 같은 Network 내부의 통신 허용/차단만 바꾸고 실행 중 Agent의 Network 이동 CLI는 없다는 경계를 확인한 뒤, 전송 시작 시 route snapshot으로 해당 전송을 판단하고 DB 저장 뒤 route 재조회를 추가하지 않는 정책에 동의했다. 최초 route 검증과 실행·소속·수신 가능 여부 재검증은 유지한다. 이 확인으로 코드를 변경하지 않았다.
 
 사용자가 W2 commit과 다음 세션 인계 프롬프트를 요청했다. commit은 root가 수행하며 이 entry는 승인 기록이지 commit 완료 기록이 아니다. W3 실행과 원격 push는 여전히 승인되지 않았다. 닫힌 W2 package와 당시 미커밋 기록은 그대로 보존한다.
+
+### 2026-09-12 23:19 · W3 실행 승인과 package 분리
+
+사용자가 W3 작업을 subagent에게 지시하도록 승인했다. CLI·daemon code/tests와 관련 owner가 같은 시작·재시작·조회 완료 판정을 공유하므로 logs/2026-09-12-AIOX-W3-Startup-Readiness.md로 W3만 분리했다. root가 두 Compact task Brief revision 1의 contract gate를 직접 통과시켰으며 현재 결과 수용은 대기다. 후속 commit/push 및 W4 이후는 승인 범위 밖이다.
+
+Git HEAD 839c890413837ce8d6bc3a9c8c0672d4a1442af1을 직접 확인해 Required Context의 W2 미커밋 문구만 현재 사실로 정정했다. 이전 entry는 당시 경위로 보존한다. package registry·Base log check·onramp와 git diff --check가 통과했고 onramp는 W3 package W1을 선택한다.
+
+### 2026-09-12 23:51 · W3 결과 소비와 W4 재개 지점
+
+root가 logs/2026-09-12-AIOX-W3-Startup-Readiness.md의 code/owner Brief revision 1 Attempt 1을 전체 수용했다. 새 config 사전 준비·override 변경 안내·준비 snapshot 소비, Web/state readiness·실패 cleanup, 현재 daemon 조회와 config 진단 분리 및 상태 파일→listener→DB close 경계를 source·diff·실행 원문으로 확인했다. owner 4파일 반영과 candidate 의존 재검증을 소비해 W3를 완료한다.
+
+pnpm check exit 0/502 tests, check 뒤 doctor assertion focused 1 및 CLI typecheck를 root가 원문 확인했다. root는 별도 built probe를 직접 실행해 snapshot/home·Web/state 준비·launching 프로세스 종료 후 생존·본인 stop 정리, EISDIR child exit 1과 양 포트 해제를 검증했다. DB close 지연 중 새 상태 파일 보존은 실제 임시 파일+제어 gate 회귀이며 CLI 두 프로세스 경합 실측과 구분한다. 상세 RED·테스트 정정·한계는 package와 W1 Result를 따른다.
+
+DB close 무진단 후보는 진단 추가와 listener 종료 의미 보존으로 판정을 마쳤다. 필수 메시지 저장 실패의 W2 재시도 경계를 바꾸지 않았다. 다음은 W4이며 아직 실행 요청을 받지 않았다. W3 변경은 미커밋이고 commit/push를 하지 않았다. 신규 실제 vendor·다른 OS/CI를 실행하지 않았고 다른 작업의 untracked를 보존했다.
+
+### 2026-09-13 00:18 · 외부 리뷰 판정과 W6 후보 인계
+
+사용자가 외부 리뷰의 현재 판정을 부모 W6 문맥에 기록하도록 명시적으로 승인했다. W3는 완료·미커밋 상태로 유지하고 W4 next도 바꾸지 않는다. 새 W6 로그/package나 production 변경을 만들지 않는다.
+
+W3 조회 추가 확인: 상태 기록이 없고 다음 config가 잘못된 경우 daemon status는 CLI main catch에서 오류 한 줄과 exit 1로 처리한다. doctor는 config.error를 포함한 진단과 exit 0을 반환한다. root가 built probe를 직접 재실행해 확인했으며, 현재 W3 계약 위반으로 보지 않는 판정에 사용자가 동의해 동작을 유지한다. 아래 top 10과 별개의 재확인 결과이며 문서 담당자의 직접 실행 근거는 아니다.
+
+외부 리뷰의 “12,800줄 스캔”, “top 10”, 개별 verdict와 commit 귀속은 사용자 전달 주장이다. 원문 전수 확인·스캔 재실행·git blame을 하지 않았으므로 검증된 버그 수나 특정 commit의 책임으로 기록하지 않는다. 아래는 root의 source/계약 대조 판정을 인계한 것이며, 이 기록 작업이 새 source 조사나 실vendor 재현을 수행한 것은 아니다.
+
+| 외부 지적의 주제 | 현재 판정·근거와 W6에서 남은 확인 |
+| --- | --- |
+| quota fired 뒤 상태 잔존 | active가 없으면 unidentified 상태가 남을 수 있는 코드상 후보다. 실제 vendor 이벤트 순서·복구 관측은 미검증이다. W6 우선 후보로 실제 이벤트와 상태 종료 조건을 확인한다. |
+| failPending의 실패 reason | reason은 delivery 결과로 전달된다. 다만 activity 표시가 connection_lost로 고정되는 진단 정확성 후보가 남는다. W6 우선 후보로 delivery 결과와 화면/activity reason 소비를 구분해 채택 여부를 판정한다. |
+| MCP 중복 등록 | 지원하는 실제 Claude 버전의 merge semantics를 확인하지 않았다. 중복 구성만으로 충돌·덮어쓰기 결함을 확정하지 않고 W6에서 실제 합성 결과를 확인한다. |
+| signal 종료 정보 유실 | signal은 별도로 보존하고 CLI 종료 코드는 128+signal로 처리한다는 root 대조로 유실 주장을 반증했다. W6에서 해당 전달·소비 범위를 확인해 반증을 소비하며 불필요한 수정으로 바꾸지 않는다. |
+| WSL cwd 드라이브 경로 변환 | 현재 명세는 Linux cwd 입력과 수동 드라이브 변환 금지다. 자동 Windows 경로 변환 부재를 현 계약 위반으로 보는 주장은 반증된다. 다른 입력 지원은 별도 요구가 확정돼야 한다. |
+| stdin EPIPE 처리 | stdin error listener 부재는 확인했으나 production 실행은 외부 inherit 또는 daemon PTY이며 background 경로는 현재 test 소비다. 실제 production EPIPE 도달 경로·영향은 미확인이다. |
+| own 동일 callback 재등록 | 동일 callback 재등록이 pending을 덮을 수 있으나 실제 중복 등록 caller는 확인하지 못했다. W6에서 caller와 재등록 요구를 먼저 확인한다. |
+| foreground 실패 latch | 실패 뒤 latch가 true로 남지만 동일 owner 재사용·재시도 요구와 실제 caller는 확인하지 못했다. 필요한 재시도가 차단되는 실제 수명/소비 경로가 있는지 확인하기 전 결함으로 채택하지 않는다. |
+| .ps1 실행 가능성 | 실행 파일 형식의 사전 성공 보장은 현재 계약에 없고 Windows 실측도 없다. 실제 실행 실패 처리와 추가 사전 검증 요구를 구분해 판정한다. |
+| empty append와 file 옵션 | empty append와 file의 truthy 검사 우회 가능성은 있으나 단일 최종 옵션이므로 실제 충돌·유실은 미확인이다. parser 결과·소비 경로와 관찰 가능한 영향을 확인한다. |
+
+W6는 위 10개를 확정 버그로 일괄 수정하지 않는다. 각 항목을 현재 요구·source/caller·실제 관측과 대조해 채택·반증·요구 미확정으로 판정하고 필요한 검증을 남긴다. quota·activity reason·MCP 합성 후보를 우선 보되 자동수정 승인은 아니다. 기존 History와 W3 23:51 결과 소비 기록은 그대로 보존한다. 이번 기록으로 commit/push를 수행하지 않는다.
+
+### 2026-09-13 00:23 · W3 작업 커밋 승인
+
+사용자가 “현재 W3에 대해 작업 커밋하라”라고 명시적으로 승인했다. 완료·수용된 W3 code/tests·owner 문서·작업 기록을 root가 검토하고 커밋한다. 이 entry는 승인 기록이며 완료 hash를 예측하지 않는다. 실제 커밋 결과와 포함 파일은 Git 기록을 참조한다.
+
+부모 로그의 기존 W3 결과 소비와 W6 후보 인계 기록, 닫힌 W3 package의 당시 미커밋 기록은 보존한다. W4 next를 유지하며 W4 실행·후속 작업 commit·원격 push로 승인을 확대하지 않는다. 다른 작업의 untracked execution-flow-map 파일과 사용자 개인 자산은 포함하지 않는다.

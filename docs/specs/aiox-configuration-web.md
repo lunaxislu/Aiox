@@ -91,7 +91,7 @@ TypeORM과 better-sqlite3를 사용하며 기존 DB를 보존하는 명시적 mi
 ## 기반 구현과 검증 범위
 
 `packages/config`는 JSON 검증·load/save·last-good session을 제공한다. 구현 기본 포트는 daemon
-4500, Web 4501이며 해석 우선순위는 CLI override → 파일 → 기본값이다. listener 연결과 최소 Web 정적 파일 제공은 Stage 2에 구현됐으며 [[docs/architecture/aiox-system]]의 현재 조립 범위를 따른다. 파일
+4500, Web 4501이며 시작 설정의 해석 우선순위는 CLI override → 파일 → 기본값이다. 재시작의 새 설정 사용·이전 override 변경 안내와 현재 daemon 조회는 runtime의 시작·준비·상태 조회 계약을 따른다. listener 연결과 최소 Web 정적 파일 제공은 Stage 2에 구현됐으며 [[docs/architecture/aiox-system]]의 현재 조립 범위를 따른다. 파일
 watch·운영 Web 설정 배포는 후속 대상이다. terminal의 fontFamily/fontSize/theme과 keyboard 문자열 맵을
 지원하며 상세 UI와 바인딩 의미는 해당 단계에서 구체화한다.
 

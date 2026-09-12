@@ -42,6 +42,10 @@ export type DaemonOptions = {
     host?: string;
     now?: () => number;
     adapters?: readonly VendorAdapter[];
+    /** Complete startup recording before any external request is admitted. */
+    onListening?: (ports: Ports) => Promise<void>;
+    /** Release startup ownership before a replacement can bind the ports. */
+    onClosing?: () => Promise<void>;
 };
 
 export type RegisteredRuntime = {
@@ -100,6 +104,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
 
     /** Closed while stopping, so no new execution slips past the check. */
     let admitting = true;
+    let ready = false;
     let stopping: Promise<StopOutcome> | undefined;
     const registrations = new Set<Promise<unknown>>();
     const runtimeStops = new Map<string, Promise<void>>();
@@ -142,6 +147,16 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         response: ServerResponse,
         port: number,
     ): boolean {
+        if (!ready) {
+            response.writeHead(503, { "content-type": "application/json" });
+            response.end(
+                JSON.stringify({
+                    code: "starting",
+                    message: "The daemon is starting.",
+                }),
+            );
+            return true;
+        }
         const denied = requestGuard(request, port, ports.web, host);
         if (!denied) return false;
         response.writeHead(denied.status, {
@@ -230,6 +245,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     daemonServer.on("upgrade", (request, socket, head) => {
         const denied = requestGuard(request, ports.daemon, ports.web, host);
         if (
+            !ready ||
             denied ||
             !admitting ||
             !agents ||
@@ -238,7 +254,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             )
         ) {
             socket.end(
-                `HTTP/1.1 ${denied?.status ?? 404} Rejected\r\nConnection: close\r\n\r\n`,
+                `HTTP/1.1 ${!ready ? 503 : (denied?.status ?? 404)} Rejected\r\nConnection: close\r\n\r\n`,
             );
             return;
         }
@@ -252,6 +268,12 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         "upgrade",
         (request: IncomingMessage, socket: Duplex, head: Buffer) => {
             try {
+                if (!ready) {
+                    socket.end(
+                        "HTTP/1.1 503 Starting\r\nConnection: close\r\n\r\n",
+                    );
+                    return;
+                }
                 const denied = requestGuard(
                     request,
                     ports.web,
@@ -286,15 +308,19 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         },
     );
 
-    const daemonPort = await listen(daemonServer, options.ports.daemon, host);
     try {
+        const daemonPort = await listen(
+            daemonServer,
+            options.ports.daemon,
+            host,
+        );
         ports = {
             daemon: daemonPort,
             web: await listen(webServer, options.ports.web, host),
         };
     } catch (error) {
         // Half-open listeners are not a running daemon.
-        daemonServer.close();
+        await closeServers();
         throw error;
     }
 
@@ -517,21 +543,33 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
 
     let closing: Promise<void> | undefined;
 
+    async function closeServers(): Promise<void> {
+        for (const client of sockets.clients) client.terminate();
+        sockets.close();
+        await Promise.all(
+            [daemonServer, webServer].map(async (server) => {
+                const done = new Promise<void>((resolve) =>
+                    server.close(() => resolve()),
+                );
+                server.closeAllConnections();
+                await done;
+            }),
+        );
+    }
+
     function closeListeners(): Promise<void> {
         closing ??= (async () => {
-            for (const client of sockets.clients) client.terminate();
-            sockets.close();
-            await Promise.all(
-                [daemonServer, webServer].map(async (server) => {
-                    const done = new Promise<void>((r) =>
-                        server.close(() => r()),
-                    );
-                    // Idle keep-alive sockets would otherwise hold this open.
-                    server.closeAllConnections();
-                    await done;
-                }),
-            );
-            await options.db.close().catch(() => {});
+            await options.onClosing?.().catch((error: unknown) => {
+                process.stderr.write(
+                    `Daemon state cleanup failed before listeners closed: ${String(error)}\n`,
+                );
+            });
+            await closeServers();
+            await options.db.close().catch((error: unknown) => {
+                process.stderr.write(
+                    `Daemon database close failed after listeners closed: ${String(error)}\n`,
+                );
+            });
             resolveClosed();
         })();
         return closing;
@@ -641,5 +679,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         closed,
     };
     agents = new AgentController(daemon, options.adapters ?? [claudeAdapter]);
+    try {
+        await options.onListening?.(ports);
+    } catch (error) {
+        retention?.stop();
+        await closeServers();
+        throw error;
+    }
+    ready = true;
     return daemon;
 }

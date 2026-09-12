@@ -46,6 +46,14 @@ Daemon이 materialized Runtime·Network·route의 권위를 갖고 실행 소유
 
 ## 시작·준비·상태 조회
 
+- daemon은 API·Web listener와 상태 파일 기록까지 필수 시작 준비를 끝낸 뒤 running과 CLI 시작 성공을 공개한다. 준비 중 HTTP와 WebSocket 연결 요청은 503으로 거절하며, 중간 실패는 확보한 listener·DB를 정리하고 시작 실패로 보고한다. [Status: Current]
+- `daemon restart`는 새 config를 사용한다. 설정·shell/cwd·실행 준비의 가능한 검증과 기존 실행 포트 대비 변경 안내를 일반 stop 전에 끝낸다. 준비 실패는 기존 daemon을 유지하며, 준비에 사용한 설정으로 새 실행을 시작한다. 새 API 포트에서 기록된 기존 daemon과 다른 daemon의 응답이 확인되면 어느 쪽도 종료하지 않고 거절한다. 이전 CLI 포트 override는 자동 유지하지 않는다. 일반 stop의 OS별 거절·종료 정책은 아래 종료 계약을 따른다. [Status: Current]
+- `daemon status`는 상태 파일의 실행 포트가 있으면 다음 실행 config 검증 없이 그 daemon을 조회한다. `doctor`도 기록 포트를 우선하며 config 오류를 별도 진단으로 보고한다. 기록이 없을 때 설정에서 조회 포트를 찾는다. 파일·PID 존재만으로 실행 준비를 확정하지 않는다. [Status: Current]
+
+근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:244-358`, `apps/cli/src/bootstrap.ts:382-464`; 재시작 준비·설정 변경과 잘못된 다음 설정 회귀는 [[apps/cli/src/bootstrap.test.ts]] `apps/cli/src/bootstrap.test.ts:200-368`, `apps/cli/src/bootstrap.test.ts:777-805`.
+
+시작 준비·실패 정리 근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:145-159`, `apps/daemon/src/daemon.ts:244-275`, `apps/daemon/src/daemon.ts:681-690`; [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:55-175`, [[apps/daemon/src/bootstrap.test.ts]] `apps/daemon/src/bootstrap.test.ts:75-86`.
+
 - Standalone `agent run`은 foreground다. 사용자는 Ctrl+C·`/exit` 등 해당 세션에서 종료한다.
   별도 standalone agent stop/attach/detach 명령은 현재 범위에 없다.
 - 프로세스 생성과 binding 준비를 구분한다. 단순 PID·socket 파일 존재만으로 준비 성공을

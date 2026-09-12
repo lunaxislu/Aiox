@@ -1,6 +1,10 @@
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { openDatabase } from "@aiox/persistence";
 import type {
     AgentView,
     DaemonStatus,
@@ -11,7 +15,9 @@ import { terminalContextFromEnv } from "@aiox/protocol";
 import { defaultShell } from "@aiox/terminal";
 import * as terminalModule from "@aiox/terminal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WebSocket } from "ws";
 
+import { startDaemon } from "@/daemon";
 import type { DaemonHarness } from "@/testing";
 import { fakeVendor, startTestDaemon } from "@/testing";
 
@@ -45,6 +51,208 @@ async function call(
 
 const post = (path: string, body: unknown) =>
     call(path, { method: "POST", body: JSON.stringify(body) });
+
+it("keeps both HTTP surfaces unavailable until required startup recording finishes", async () => {
+    const db = await openDatabase(join(harness.home, "startup.db"));
+    let prepared = false;
+    const daemon = await startDaemon({
+        db,
+        ports: { daemon: 0, web: 0 },
+        retentionDays: () => 30,
+        onListening: async (ports) => {
+            for (const port of [ports.daemon, ports.web]) {
+                for (const path of [
+                    "/api/status",
+                    "/api/daemon/stop",
+                    "/mcp/test",
+                    "/api/agent-hooks",
+                ]) {
+                    const response = await fetch(
+                        `http://127.0.0.1:${port}${path}`,
+                    );
+                    expect(response.status).toBe(503);
+                }
+                const status = await new Promise<number>((resolve, reject) => {
+                    const socket = new WebSocket(
+                        `ws://127.0.0.1:${port}/api/agent-run`,
+                    );
+                    socket.on("error", reject);
+                    socket.on("unexpected-response", (_request, response) => {
+                        resolve(response.statusCode!);
+                        response.destroy();
+                        socket.terminate();
+                    });
+                });
+                expect(status).toBe(503);
+            }
+            prepared = true;
+        },
+    });
+    try {
+        expect(prepared).toBe(true);
+        expect(
+            (await fetch(`http://127.0.0.1:${daemon.ports.daemon}/api/status`))
+                .status,
+        ).toBe(200);
+    } finally {
+        await daemon.stop(true);
+    }
+});
+
+it("does not publish running while the Web listener is still being opened", async () => {
+    const db = await openDatabase(join(harness.home, "web-delay.db"));
+    const original: (
+        this: Server,
+        port: number,
+        host: string,
+        callback: () => void,
+    ) => Server = Server.prototype.listen;
+    let count = 0;
+    let apiPort = 0;
+    let observed = 0;
+    const listener = vi
+        .spyOn(Server.prototype, "listen")
+        .mockImplementation(function (
+            this: Server,
+            port: number,
+            host: string,
+            callback: () => void,
+        ) {
+            if (++count === 2) {
+                void fetch(`http://127.0.0.1:${apiPort}/api/status`)
+                    .then((response) => {
+                        observed = response.status;
+                        original.call(this, port, host, callback);
+                    })
+                    .catch((error) => this.emit("error", error));
+                return this;
+            }
+            return original.call(this, port, host, () => {
+                apiPort = (this.address() as AddressInfo).port;
+                callback();
+            });
+        } as Server["listen"]);
+    try {
+        const daemon = await startDaemon({
+            db,
+            ports: { daemon: 0, web: 0 },
+            retentionDays: () => 30,
+        });
+        listener.mockRestore();
+        try {
+            expect(observed).toBe(503);
+        } finally {
+            await daemon.stop(true);
+        }
+    } finally {
+        listener.mockRestore();
+    }
+});
+
+it("closes both listeners when required startup recording rejects", async () => {
+    const db = await openDatabase(join(harness.home, "failed-start.db"));
+    let ports: { daemon: number; web: number } | undefined;
+    try {
+        await expect(
+            startDaemon({
+                db,
+                ports: { daemon: 0, web: 0 },
+                retentionDays: () => 30,
+                onListening: async (bound) => {
+                    ports = bound;
+                    throw new Error("state write failed");
+                },
+            }),
+        ).rejects.toThrow("state write failed");
+        expect(ports).toBeDefined();
+        for (const port of [ports!.daemon, ports!.web])
+            await expect(
+                fetch(`http://127.0.0.1:${port}/api/status`),
+            ).rejects.toThrow();
+    } finally {
+        await db.close();
+    }
+});
+
+it("reports a database close failure while preserving the listener-closed contract", async () => {
+    const stderr = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+    const close = vi
+        .spyOn(harness.daemon.services.db, "close")
+        .mockRejectedValueOnce(new Error("db close injected"));
+    const result = await harness.daemon.stop(true);
+    await harness.daemon.closed;
+    expect(result.stopped).toBe(true);
+    expect(stderr.mock.calls.flat().join(" ")).toMatch(
+        /database.*close.*db close injected/i,
+    );
+    await expect(fetch(harness.apiUrl("/api/status"))).rejects.toThrow();
+    close.mockRestore();
+    await harness.daemon.services.db.close();
+});
+
+it("removes startup ownership before releasing listeners even when database close is delayed", async () => {
+    const db = await openDatabase(join(harness.home, "close-order.db"));
+    let release!: () => void;
+    let closing!: () => void;
+    const closingDb = new Promise<void>((resolve) => {
+        closing = resolve;
+    });
+    const wait = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const original = db.close.bind(db);
+    db.close = async () => {
+        closing();
+        await wait;
+        await original();
+    };
+    const stateFile = join(harness.home, "startup.json");
+    await writeFile(stateFile, "old");
+    const daemon = await startDaemon({
+        db,
+        ports: { daemon: 0, web: 0 },
+        retentionDays: () => 30,
+        onClosing: () => rm(stateFile),
+    });
+    const stopping = daemon.stop(true);
+    try {
+        await closingDb;
+        await expect(readFile(stateFile)).rejects.toThrow();
+        await expect(
+            fetch(`http://127.0.0.1:${daemon.ports.daemon}/api/status`),
+        ).rejects.toThrow();
+        await writeFile(stateFile, "new");
+    } finally {
+        release();
+        await stopping;
+    }
+    expect(await readFile(stateFile, "utf8")).toBe("new");
+});
+
+it("reports failed state cleanup and still closes its listeners", async () => {
+    const db = await openDatabase(join(harness.home, "state-close.db"));
+    const stderr = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+    const daemon = await startDaemon({
+        db,
+        ports: { daemon: 0, web: 0 },
+        retentionDays: () => 30,
+        onClosing: async () => {
+            throw new Error("state cleanup injected");
+        },
+    });
+    expect((await daemon.stop(true)).stopped).toBe(true);
+    await daemon.closed;
+    expect(stderr.mock.calls.flat().join(" ")).toMatch(
+        /state cleanup failed.*state cleanup injected/,
+    );
+    await expect(
+        fetch(`http://127.0.0.1:${daemon.ports.daemon}/api/status`),
+    ).rejects.toThrow();
+});
 
 async function borrowableShell() {
     const spawn = vi.spyOn(terminalModule, "createTerminal");

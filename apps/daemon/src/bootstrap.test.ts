@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,7 +10,10 @@ import { boot } from "@/bootstrap";
 import { startDaemon } from "@/daemon";
 
 vi.mock("@/daemon", () => ({
-    startDaemon: vi.fn(async () => ({ closed: new Promise<void>(() => {}) })),
+    startDaemon: vi.fn(async (options) => {
+        await options.onListening?.(options.ports);
+        return { closed: new Promise<void>(() => {}) };
+    }),
 }));
 vi.mock("@aiox/persistence", () => ({
     openDatabase: vi.fn(async () => ({ close: vi.fn() })),
@@ -32,6 +35,51 @@ it("boot supplies a fresh file-backed terminal configuration for each creation",
             args: ["-i"],
             cwd: home,
         });
+    } finally {
+        await rm(home, { recursive: true, force: true });
+    }
+});
+
+it("boot consumes the prepared config while future shells still read the current file", async () => {
+    const home = await mkdtemp(join(tmpdir(), "aiox-w3-startup-config-"));
+    try {
+        const config = await saveConfig(
+            {
+                terminal: { shell: process.execPath },
+                messages: { retentionDays: 7 },
+            },
+            { home },
+        );
+        await saveConfig(
+            {
+                ...config,
+                ports: { daemon: 4600, web: 4601 },
+                terminal: { shell: process.execPath, args: ["-i"] },
+                messages: { retentionDays: 99 },
+            },
+            { home },
+        );
+        await boot({ home, config });
+        const options = vi.mocked(startDaemon).mock.calls.at(-1)![0];
+        expect(options.ports).toEqual(config.ports);
+        expect(options.retentionDays()).toBe(7);
+        expect(await options.terminal!()).toEqual({
+            shell: process.execPath,
+            args: ["-i"],
+        });
+    } finally {
+        await rm(home, { recursive: true, force: true });
+    }
+});
+
+it("closes the startup database when writing daemon state fails", async () => {
+    const home = await mkdtemp(join(tmpdir(), "aiox-w3-startup-state-"));
+    try {
+        await saveConfig({ terminal: { shell: process.execPath } }, { home });
+        await mkdir(join(home, ".aiox", "daemon.json"));
+        await expect(boot({ home })).rejects.toThrow();
+        const db = await vi.mocked(openDatabase).mock.results.at(-1)!.value;
+        expect(db.close).toHaveBeenCalledOnce();
     } finally {
         await rm(home, { recursive: true, force: true });
     }

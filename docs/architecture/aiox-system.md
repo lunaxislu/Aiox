@@ -53,6 +53,15 @@ CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호�
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:215-522`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:44-80`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:115-249`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:54-181`.
 
+CLI와 daemon boot는 시작에 사용할 설정 snapshot을 공유한다. restart는 기존 daemon 종료 전에 가능한 준비를 끝내고 이 snapshot으로 새 프로세스를 시작하므로, 준비와 시작 사이 파일 편집이 이번 실행 설정을 바꾸지 않는다. 새 shell 생성은 별도로 현재 파일을 다시 읽는 설정 적용 경로를 유지한다. daemon status·doctor의 현재 실행 조회는 기록된 포트를 우선하며 다음 실행 config의 유효성 진단과 분리한다. [Status: As-built]
+근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:244-358`, `apps/cli/src/bootstrap.ts:382-464`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:46-90`; 준비 설정 소비와 새 shell 재조회는 [[apps/daemon/src/bootstrap.test.ts]] `apps/daemon/src/bootstrap.test.ts:43-73`.
+
+listener 개방과 외부 요청 접수는 별도 경계다. 두 listener와 필수 상태 기록을 마친 뒤 한 준비 상태로 HTTP·WebSocket 접수를 함께 연다. 준비 중 실패하면 listener·attachment 서버와 retention을 정리하고 boot가 DB를 닫는다. [Status: As-built]
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:145-159`, `apps/daemon/src/daemon.ts:311-325`, `apps/daemon/src/daemon.ts:681-690`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:59-87`; [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:55-175`.
+
+종료 시 boot의 상태 파일 삭제를 먼저 기다린 뒤 listener를 해제하고 DB를 닫는다. 이전 daemon의 지연된 DB close 뒤 상태 파일을 삭제하지 않으므로 새 실행의 상태 기록을 지우지 않는다. 상태 삭제 실패는 stale 기록 가능성을, listener 해제 뒤 DB close 실패는 해당 자원 종료 실패를 stderr에 진단한다. 두 오류가 이미 닫는 listener를 다시 열거나 `closed`를 미완료로 바꾸지는 않는다. 메시지 저장·실행 정리 실패의 재시도 경계와 구분한다. [Status: As-built]
+근거: [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:83`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:560-575`; DB close 실패와 지연 중 새 상태 기록 보존 회귀는 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:177-232`.
+
 Runtime 공통 정리는 credential·협업 유효성을 먼저 회수하고 daemon 소유 execution owner·PTY만 종료한다. binding cleanup과 standalone endpoint의 route·요청·등록 정리는 실행 소유권과 별도로 수행한다. 실패한 정리는 재시도 경로를 남기고 PTY exit만으로 daemon을 종료하지 않는다. 원 발신자 종료 후 수신 요청 결과 보존은 collaboration 계약을 따른다.
 
 일반 shell은 TerminalService에만 등록하고 RuntimeRegistry와 분리한다. `/api/terminals` 생성·목록과

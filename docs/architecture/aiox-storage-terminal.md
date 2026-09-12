@@ -58,7 +58,7 @@ TypeORM + 기존 better-sqlite3로 전환했다. Stage 1 DB의 최초 schema는 
 domain은 DB를 모르고 application은 port를 통해 작업한다. CLI·Web·vendor binding이 직접 DB 파일을
 열어 authoritative 상태를 변경하지 않는다. 필요한 상태 변경은 transaction 경계로 처리한다.
 
-DB 기본 경로는 실행 환경 사용자 홈 아래 `.aiox/aiox.db`다. daemon boot가 설정을 읽고 DB를 연 뒤 listener를 시작한다. [Status: As-built] 근거: [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:14-16`, `apps/daemon/src/bootstrap.ts:44-67`.
+DB 기본 경로는 실행 환경 사용자 홈 아래 `.aiox/aiox.db`다. daemon boot는 CLI가 준비한 설정을 소비하거나 직접 시작 시 파일을 읽고 검증한 뒤 DB와 listener를 준비한다. 시작 준비의 조립 경계는 [[docs/architecture/aiox-system]]을 따른다. [Status: As-built] 근거: [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:46-90`, [[apps/daemon/src/bootstrap.test.ts]] `apps/daemon/src/bootstrap.test.ts:43-73`.
 Node homedir/path로 구성하며 `~` 문자열·특정 사용자 경로·npm 설치 경로·프로젝트/Worktree 경로를
 하드코딩하지 않는다. 첫 daemon 시작에서 디렉터리/DB/migration을 준비하고 실패하면 정상 기동으로
 표시하지 않는다. 기존 파일 삭제나 빈 DB 대체로 오류를 숨기지 않는다.

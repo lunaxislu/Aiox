@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { PortOverrides } from "@aiox/config";
+import type { AioxConfig, PortOverrides } from "@aiox/config";
 import { loadConfig, resolveTerminalLaunch } from "@aiox/config";
 import { openDatabase } from "@aiox/persistence";
 import type { DaemonState } from "@aiox/protocol";
@@ -32,6 +32,8 @@ export function webRoot(): string | undefined {
 
 export type BootOptions = {
     home?: string;
+    /** Snapshot prepared by the starting CLI; subsequent shells still reload the file. */
+    config?: AioxConfig;
     portOverrides?: PortOverrides;
     webRoot?: string | undefined;
 };
@@ -45,14 +47,17 @@ export async function boot(
     options: BootOptions = {},
 ): Promise<{ daemon: Daemon; stateFile: string }> {
     const home = options.home ?? homedir();
-    const config = await loadConfig({
-        home,
-        ...(options.portOverrides === undefined
-            ? {}
-            : { portOverrides: options.portOverrides }),
-    });
+    const config =
+        options.config ??
+        (await loadConfig({
+            home,
+            ...(options.portOverrides === undefined
+                ? {}
+                : { portOverrides: options.portOverrides }),
+        }));
     await resolveTerminalLaunch(config.terminal);
     const db = await openDatabase(databasePath(home));
+    const stateFile = statePath(home);
     let daemon: Daemon;
     try {
         daemon = await startDaemon({
@@ -62,23 +67,26 @@ export async function boot(
             retentionDays: () => config.messages.retentionDays,
             webRoot:
                 options.webRoot === undefined ? webRoot() : options.webRoot,
+            onListening: async (ports) => {
+                const state: DaemonState = {
+                    pid: process.pid,
+                    ports,
+                    startedAt: Date.now(),
+                };
+                await mkdir(dirname(stateFile), { recursive: true });
+                await writeFile(
+                    stateFile,
+                    `${JSON.stringify(state, null, 2)}\n`,
+                    { mode: 0o600 },
+                );
+            },
+            onClosing: () => rm(stateFile, { force: true }),
         });
     } catch (error) {
         await db.close();
         throw error;
     }
 
-    const stateFile = statePath(home);
-    const state: DaemonState = {
-        pid: process.pid,
-        ports: config.ports,
-        startedAt: Date.now(),
-    };
-    await mkdir(dirname(stateFile), { recursive: true });
-    await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, {
-        mode: 0o600,
-    });
-    void daemon.closed.then(() => rm(stateFile, { force: true }));
     return { daemon, stateFile };
 }
 

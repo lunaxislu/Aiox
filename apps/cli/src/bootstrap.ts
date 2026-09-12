@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
 import type { PortOverrides } from "@aiox/config";
-import { configPath, loadConfig } from "@aiox/config";
+import { configPath, loadConfig, resolveTerminalLaunch } from "@aiox/config";
 import type {
     AgentView,
     DaemonState,
@@ -241,7 +241,10 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         }
     }
 
-    async function start(options: CliOptions): Promise<string> {
+    async function start(
+        options: CliOptions,
+        restarting = false,
+    ): Promise<string> {
         const config = await loadConfig({
             home,
             portOverrides: overrides(options),
@@ -250,15 +253,25 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         // Check the port this start would use and the port a recorded daemon
         // actually bound, so an override cannot start a second daemon.
         const recorded = (await readState())?.ports.daemon;
-        for (const candidate of new Set(
-            [config.ports.daemon, recorded].filter(
-                (port): port is number => port !== undefined,
-            ),
-        )) {
-            const live = await probe(origin(candidate));
-            if (live)
-                return `daemon already running (pid ${live.pid}) on port ${candidate}. Nothing was started.`;
+        let live: DaemonStatus | null = null;
+        if (restarting) {
+            live = await probe(origin(recorded ?? config.ports.daemon));
+            if (recorded !== undefined && recorded !== config.ports.daemon) {
+                const target = await probe(url);
+                if (target && target.pid !== live?.pid)
+                    throw new Error(
+                        `Configured daemon port ${config.ports.daemon} already belongs to another daemon; nothing was stopped.`,
+                    );
+            }
+        } else {
+            for (const candidate of new Set([config.ports.daemon, recorded])) {
+                if (candidate === undefined) continue;
+                live = await probe(origin(candidate));
+                if (live)
+                    return `daemon already running (pid ${live.pid}) on port ${candidate}. Nothing was started.`;
+            }
         }
+        await resolveTerminalLaunch(config.terminal);
         // ponytail: the daemon build is a workspace sibling of the CLI build.
         // Packaging (Stage 8) has to resolve it as a dependency instead.
         const entry = fileURLToPath(
@@ -272,48 +285,86 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         }
         await mkdir(directory, { recursive: true });
         const log = await open(logFile, "a");
-        let child;
+        let child: ReturnType<typeof spawn> | undefined;
         try {
-            child = spawn(
-                process.execPath,
-                [
-                    entry,
-                    "--port",
-                    String(config.ports.daemon),
-                    "--web-port",
-                    String(config.ports.web),
-                ],
-                {
-                    detached: true,
-                    windowsHide: true,
-                    stdio: ["ignore", log.fd, log.fd],
-                },
+            if (restarting && live) {
+                if (
+                    live.ports.daemon !== config.ports.daemon ||
+                    live.ports.web !== config.ports.web
+                )
+                    process.stderr.write(
+                        `Restart uses current config: daemon ${live.ports.daemon} -> ${config.ports.daemon}, web ${live.ports.web} -> ${config.ports.web}. Previous CLI port overrides are not retained.\n`,
+                    );
+                const previousUrl = origin(live.ports.daemon);
+                try {
+                    await stop({}, previousUrl);
+                } catch (error) {
+                    throw new Error(
+                        `daemon restart aborted and the running daemon was kept. ${message(error)}`,
+                    );
+                }
+                const deadline = Date.now() + shutdownTimeoutMs;
+                while (await probe(previousUrl)) {
+                    if (Date.now() >= deadline)
+                        throw new Error(
+                            `daemon still answers ${previousUrl} after a successful stop; no second daemon was started.`,
+                        );
+                    await delay(200);
+                }
+            }
+            child = spawn(process.execPath, [entry, "--config-stdin"], {
+                detached: true,
+                windowsHide: true,
+                stdio: ["pipe", log.fd, log.fd],
+            });
+            let failure: Error | undefined;
+            child.on("error", (error) => {
+                failure = error;
+            });
+            child.stdin!.on("error", (error) => {
+                failure = error;
+            });
+            child.stdin!.end(JSON.stringify({ home, config }));
+            const deadline = Date.now() + startTimeoutMs;
+            for (;;) {
+                if (failure) throw failure;
+                if (child.exitCode !== null || child.signalCode !== null) break;
+                const status = await probe(url);
+                if (failure) throw failure;
+                if (status && status.pid === child.pid) {
+                    child.unref();
+                    return `daemon started (pid ${status.pid}) on port ${status.ports.daemon}, web ${status.ports.web}. Log: ${logFile}`;
+                }
+                if (Date.now() >= deadline) break;
+                await delay(250);
+            }
+            throw new Error(
+                `daemon did not answer ${url}${apiPath.status} within ` +
+                    `${startTimeoutMs / 1000}s (exit code ${child.exitCode ?? "none"}). ` +
+                    `Last lines of ${logFile}:\n${await tail()}`,
             );
-            child.unref();
+        } catch (error) {
+            // Only the process spawned by this attempt is ours to clean up.
+            if (
+                child?.pid !== undefined &&
+                child.exitCode === null &&
+                child.signalCode === null
+            )
+                child.kill("SIGTERM");
+            throw error;
         } finally {
             await log.close();
         }
-        // The daemon writes its state file once listening; the port answering is the readiness signal.
-        const deadline = Date.now() + startTimeoutMs;
-        for (;;) {
-            const status = await probe(url);
-            if (status)
-                return `daemon started (pid ${status.pid}) on port ${status.ports.daemon}, web ${status.ports.web}. Log: ${logFile}`;
-            if (child.exitCode !== null || child.signalCode !== null) break;
-            if (Date.now() >= deadline) break;
-            await delay(250);
-        }
-        throw new Error(
-            `daemon did not answer ${url}${apiPath.status} within ` +
-                `${startTimeoutMs / 1000}s (exit code ${child.exitCode ?? "none"}). ` +
-                `Last lines of ${logFile}:\n${await tail()}`,
-        );
     }
 
-    async function stop(options: CliOptions): Promise<string> {
+    async function stop(options: CliOptions, url?: string): Promise<string> {
         const force = Boolean(options.force);
         const result = stopResultSchema.parse(
-            await call(await daemonUrl(), apiPath.daemonStop, post({ force })),
+            await call(
+                url ?? (await daemonUrl()),
+                apiPath.daemonStop,
+                post({ force }),
+            ),
         );
         const warnings = result.warnings ?? [];
         const detail =
@@ -328,33 +379,10 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         return `daemon stopped${result.forced ? " (forced)" : ""}.${detail}`;
     }
 
-    async function restart(): Promise<string> {
-        const url = await daemonUrl();
-        if (await probe(url)) {
-            try {
-                await stop({});
-            } catch (error) {
-                throw new Error(
-                    `daemon restart aborted and the running daemon was kept. ${message(error)}`,
-                );
-            }
-            const deadline = Date.now() + shutdownTimeoutMs;
-            while (await probe(url)) {
-                if (Date.now() >= deadline) {
-                    throw new Error(
-                        `daemon still answers ${url} after a successful stop; no second daemon was started.`,
-                    );
-                }
-                await delay(200);
-            }
-        }
-        return start({});
-    }
-
     async function status(options: CliOptions): Promise<unknown> {
-        const config = await loadConfig({ home });
         const recorded = await readState();
-        const port = recorded?.ports.daemon ?? config.ports.daemon;
+        const port =
+            recorded?.ports.daemon ?? (await loadConfig({ home })).ports.daemon;
         const url = origin(port);
         const live = await probe(url);
         const report = {
@@ -387,7 +415,14 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
     }
 
     async function doctor(): Promise<unknown> {
-        const config = await loadConfig({ home });
+        const recorded = await readState();
+        const config = await loadConfig({ home }).then(
+            (value) => ({ path: configPath(home), ports: value.ports }),
+            (error: unknown) => ({
+                path: configPath(home),
+                error: message(error),
+            }),
+        );
         let git: { available: boolean; version?: string; error?: string };
         try {
             const { stdout } = await execFileAsync("git", ["--version"], {
@@ -397,7 +432,10 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         } catch (error) {
             git = { available: false, error: message(error) };
         }
-        const live = await probe(origin(config.ports.daemon));
+        const port =
+            recorded?.ports.daemon ??
+            ("ports" in config ? config.ports.daemon : undefined);
+        const live = port === undefined ? null : await probe(origin(port));
         return {
             node: process.version,
             platform: process.platform,
@@ -407,11 +445,11 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                 Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP)
                     ? "wsl"
                     : "native",
-            config: { path: configPath(home), ports: config.ports },
+            config,
             git,
             daemon: {
                 reachable: live !== null,
-                port: config.ports.daemon,
+                ...(port === undefined ? {} : { port }),
                 ...(live === null
                     ? {}
                     : {
@@ -502,7 +540,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                 case "daemon.stop":
                     return stop(options);
                 case "daemon.restart":
-                    return restart();
+                    return start({}, true);
                 case "daemon.status":
                     return status(options);
                 case "status": {

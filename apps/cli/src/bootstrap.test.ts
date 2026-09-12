@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 
 import { saveConfig } from "@aiox/config";
 import { test, vi } from "vitest";
@@ -12,6 +15,15 @@ import { WebSocket } from "ws";
 
 import { runExternal } from "./external";
 import { runForeground } from "./foreground";
+
+vi.mock("node:child_process", async (original) => ({
+    ...(await original<typeof import("node:child_process")>()),
+    spawn: vi.fn(),
+}));
+vi.mock("node:fs", async (original) => {
+    const fs = await original<typeof import("node:fs")>();
+    return { ...fs, existsSync: vi.fn(fs.existsSync) };
+});
 
 vi.mock("./external", () => ({
     runExternal: vi.fn(async () => ({ exitCode: 0, signal: null })),
@@ -39,6 +51,7 @@ import type { CliOptions, CliPort, CommandName } from "./requests";
 
 type Call = { method: string; url: string; body: string };
 type Stub = {
+    home: string;
     calls: Call[];
     routes: string[];
     cli: CliPort;
@@ -86,6 +99,7 @@ async function daemonStub(
         { home },
     );
     return {
+        home,
         calls,
         get routes() {
             return calls.map((call) => `${call.method} ${call.url}`);
@@ -183,6 +197,239 @@ test("restart keeps the running daemon when the stop is refused", async () => {
     }
 });
 
+for (const invalid of ["JSON", "shell"] as const) {
+    test(`restart validates new ${invalid} before stopping the recorded daemon`, async () => {
+        const stub = await daemonStub((call, response, port) => {
+            if (call.url === "/api/status") send(response, 200, running(port));
+            if (call.url === "/api/daemon/stop") send(response, 409, refusal);
+        });
+        try {
+            await writeFile(
+                join(stub.home, ".aiox", "daemon.json"),
+                JSON.stringify({
+                    pid: process.pid,
+                    ports: { daemon: stub.httpPort, web: stub.httpPort - 1 },
+                    startedAt: 1,
+                }),
+            );
+            if (invalid === "JSON")
+                await writeFile(join(stub.home, ".aiox", "config.json"), "{");
+            else
+                await saveConfig(
+                    {
+                        ports: {
+                            daemon: stub.httpPort,
+                            web: stub.httpPort - 1,
+                        },
+                        terminal: { shell: join(stub.home, "missing") },
+                    },
+                    { home: stub.home },
+                );
+            await assert.rejects(
+                run(stub.cli, "daemon.restart"),
+                /Invalid JSON|terminal.shell/,
+            );
+            assert.ok(!stub.routes.includes("POST /api/daemon/stop"));
+        } finally {
+            await stub.close();
+            await rm(stub.home, { recursive: true, force: true });
+        }
+    });
+}
+
+test("restart checks the build before stop and starts from its prepared config after an edit", async () => {
+    const home = await mkdtemp(join(tmpdir(), "aiox-w3-startup-"));
+    const config = {
+        ports: { daemon: 4600, web: 4601 },
+        terminal: { shell: process.execPath },
+        messages: { retentionDays: 7 },
+    };
+    await saveConfig(config, { home });
+    await writeFile(
+        join(home, ".aiox", "daemon.json"),
+        JSON.stringify({
+            pid: 1,
+            ports: { daemon: 4700, web: 4701 },
+            startedAt: 1,
+        }),
+    );
+    let stopped = false;
+    let spawned = false;
+    const notices: string[] = [];
+    const stderr = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation((chunk) => {
+            notices.push(String(chunk));
+            return true;
+        });
+    const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(async (url, init) => {
+            if (init?.method === "POST") {
+                assert.ok(notices.some((line) => /4700.*4600/.test(line)));
+                stopped = true;
+                await saveConfig(
+                    { ...config, messages: { retentionDays: 99 } },
+                    { home },
+                );
+                return new Response(
+                    JSON.stringify({ stopped: true, forced: false }),
+                );
+            }
+            if (String(url).includes(":4700") && !stopped)
+                return new Response(
+                    JSON.stringify({ ...running(4700), pid: 1 }),
+                );
+            if (spawned)
+                return new Response(
+                    JSON.stringify({ ...running(4600), pid: 43210 }),
+                );
+            throw new Error("not listening");
+        });
+    const stdin = new PassThrough();
+    let payload = "";
+    stdin.on("data", (chunk) => {
+        payload += String(chunk);
+    });
+    vi.mocked(spawn).mockImplementation(() => {
+        spawned = true;
+        return Object.assign(new EventEmitter(), {
+            stdin,
+            pid: 43210,
+            exitCode: null,
+            signalCode: null,
+            unref: vi.fn(),
+            kill: vi.fn(),
+        }) as unknown as ReturnType<typeof spawn>;
+    });
+    try {
+        vi.mocked(existsSync).mockReturnValueOnce(false);
+        await assert.rejects(
+            run(createFoundationPort({ home }), "daemon.restart"),
+            /build not found/,
+        );
+        assert.equal(stopped, false);
+        const result = await run(
+            createFoundationPort({ home }),
+            "daemon.restart",
+        );
+        assert.match(String(result), /daemon started/);
+        assert.deepEqual(JSON.parse(payload), { home, config });
+        assert.equal(stdin.writableEnded, true);
+    } finally {
+        fetchMock.mockRestore();
+        stderr.mockRestore();
+        vi.mocked(spawn).mockReset();
+        await rm(home, { recursive: true, force: true });
+    }
+});
+
+test("restart refuses an occupied next port without stopping either daemon", async () => {
+    const current = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status")
+            send(response, 200, { ...running(port), pid: 1 });
+        if (call.url === "/api/daemon/stop") send(response, 409, refusal);
+    });
+    const other = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status")
+            send(response, 200, { ...running(port), pid: 2 });
+        if (call.url === "/api/daemon/stop") send(response, 409, refusal);
+    });
+    try {
+        await saveConfig(
+            { ports: { daemon: other.httpPort, web: other.httpPort - 1 } },
+            { home: current.home },
+        );
+        await writeFile(
+            join(current.home, ".aiox", "daemon.json"),
+            JSON.stringify({
+                pid: 1,
+                ports: { daemon: current.httpPort, web: current.httpPort - 1 },
+                startedAt: 1,
+            }),
+        );
+        const diagnosis = (await run(current.cli, "doctor")) as {
+            daemon: { pid: number; port: number };
+        };
+        assert.equal(diagnosis.daemon.pid, 1);
+        assert.equal(diagnosis.daemon.port, current.httpPort);
+        await assert.rejects(
+            run(current.cli, "daemon.restart"),
+            /configured.*port.*already/i,
+        );
+        assert.ok(!current.routes.includes("POST /api/daemon/stop"));
+        assert.ok(!other.routes.includes("POST /api/daemon/stop"));
+    } finally {
+        await current.close();
+        await other.close();
+        await rm(current.home, { recursive: true, force: true });
+        await rm(other.home, { recursive: true, force: true });
+    }
+});
+
+for (const failure of ["spawn", "pipe", "exit", "timeout"] as const) {
+    test(`start reports ${failure} failure and cleans only its own child`, async () => {
+        const home = await mkdtemp(join(tmpdir(), "aiox-w3-startup-child-"));
+        await saveConfig(
+            {
+                ports: { daemon: 4600, web: 4601 },
+                terminal: { shell: process.execPath },
+            },
+            { home },
+        );
+        const fetchMock = vi
+            .spyOn(globalThis, "fetch")
+            .mockRejectedValue(new Error("not listening"));
+        const stdin = new PassThrough();
+        const child = Object.assign(new EventEmitter(), {
+            stdin,
+            pid: failure === "spawn" ? undefined : 43210,
+            exitCode: failure === "exit" ? 1 : null,
+            signalCode: null,
+            unref: vi.fn(),
+            kill: vi.fn(),
+        });
+        vi.mocked(spawn).mockImplementation(() => {
+            if (failure === "spawn" || failure === "pipe")
+                queueMicrotask(() =>
+                    (failure === "spawn" ? child : stdin).emit(
+                        "error",
+                        new Error(`${failure} injected`),
+                    ),
+                );
+            return child as unknown as ReturnType<typeof spawn>;
+        });
+        const clock =
+            failure === "timeout"
+                ? vi
+                      .spyOn(Date, "now")
+                      .mockReturnValueOnce(0)
+                      .mockReturnValue(30_000)
+                : undefined;
+        try {
+            await assert.rejects(
+                run(createFoundationPort({ home }), "daemon.start"),
+                failure === "exit"
+                    ? /exit code 1/
+                    : failure === "timeout"
+                      ? /within 20s/
+                      : new RegExp(`${failure} injected`),
+            );
+            assert.equal(
+                child.kill.mock.calls.length,
+                failure === "pipe" || failure === "timeout" ? 1 : 0,
+            );
+            assert.equal(child.unref.mock.calls.length, 0);
+        } finally {
+            clock?.mockRestore();
+            fetchMock.mockRestore();
+            vi.mocked(spawn).mockReset();
+            stdin.destroy();
+            await rm(home, { recursive: true, force: true });
+        }
+    });
+}
+
 test("an incomplete force stop reports remaining resources and allows a user retry", async () => {
     let attempts = 0;
     const stub = await daemonStub((call, response) => {
@@ -214,6 +461,27 @@ test("an incomplete force stop reports remaining resources and allows a user ret
         assert.equal(attempts, 2);
     } finally {
         await stub.close();
+        await rm(stub.home, { recursive: true, force: true });
+    }
+});
+
+test("doctor separates invalid settings without a recorded target from an unreachable daemon", async () => {
+    const home = await mkdtemp(join(tmpdir(), "aiox-w3-startup-doctor-"));
+    try {
+        await mkdir(join(home, ".aiox"));
+        await writeFile(join(home, ".aiox", "config.json"), "{");
+        const report = (await run(
+            createFoundationPort({ home }),
+            "doctor",
+        )) as {
+            config: { error: string };
+            daemon: { reachable: boolean; port?: number };
+        };
+        assert.match(report.config.error, /Invalid JSON/);
+        assert.equal(report.daemon.reachable, false);
+        assert.equal(report.daemon.port, undefined);
+    } finally {
+        await rm(home, { recursive: true, force: true });
     }
 });
 
@@ -504,6 +772,36 @@ test("doctor keeps its stage 1 diagnosis and adds daemon reachability", async ()
         reachable: false,
         port: stub.httpPort,
     });
+});
+
+test("daemon status and doctor find the recorded daemon despite invalid next settings", async () => {
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+    });
+    try {
+        await writeFile(
+            join(stub.home, ".aiox", "daemon.json"),
+            JSON.stringify({
+                pid: process.pid,
+                ports: { daemon: stub.httpPort, web: stub.httpPort - 1 },
+                startedAt: 1,
+            }),
+        );
+        await writeFile(join(stub.home, ".aiox", "config.json"), "{");
+        const status = (await run(stub.cli, "daemon.status", {
+            json: true,
+        })) as { state: string };
+        assert.equal(status.state, "running");
+        const diagnosis = (await run(stub.cli, "doctor")) as {
+            config: { error: string };
+            daemon: { reachable: boolean; port: number };
+        };
+        assert.match(diagnosis.config.error, /Invalid JSON/);
+        assert.equal(diagnosis.daemon.reachable, true);
+        assert.equal(diagnosis.daemon.port, stub.httpPort);
+    } finally {
+        await stub.close();
+    }
 });
 
 test("commands follow the port a running daemon recorded, not the configured default", async () => {
