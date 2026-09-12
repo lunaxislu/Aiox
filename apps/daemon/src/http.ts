@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { ConfigError } from "@aiox/config";
 import { RouteOperationError } from "@aiox/domain";
 import type { PersistentNetwork } from "@aiox/persistence";
 import type { AgentView, NetworkView, NotificationView } from "@aiox/protocol";
@@ -118,6 +119,11 @@ export function createApiHandler(services: DaemonServices) {
                     code: error.code,
                     message: error.message,
                     ...error.extra,
+                });
+            } else if (error instanceof ConfigError) {
+                send(response, 500, {
+                    code: "invalid_config",
+                    message: error.message,
                 });
             } else if (error instanceof NetworkError) {
                 send(response, 400, {

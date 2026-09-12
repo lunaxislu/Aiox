@@ -21,7 +21,7 @@ const home =
     process.env.AIOX_HARNESS_HOME ?? join(tmpdir(), "aiox-stage2-harness");
 
 const { daemon } = await boot({ home });
-const terminal = await daemon.createShell({ cwd: process.cwd() });
+const terminal = await daemon.createShell();
 
 process.stdout.write(
     [
@@ -33,10 +33,13 @@ process.stdout.write(
         "",
         "Check by hand:",
         "  1. type in the terminal and see the shell answer",
-        "  2. resize the window, then run `stty size` in the shell",
+        "  2. resize the window (POSIX shells: stty size; Windows native: check wrapping)",
         "  3. close or reload the tab — the shell keeps running and reattaches",
-        "  4. from another shell: aiox daemon stop   (refused, an execution is live)",
-        "     then:                aiox daemon stop --force",
+        "  4. stop this isolated instance via its API (the default CLI uses your user home):",
+        `     POST http://127.0.0.1:${daemon.ports.daemon}/api/daemon/stop`,
+        '     Content-Type: application/json; body {} for normal stop or {"force":true}',
+        "     Windows: normal stop terminates managed executions.",
+        "     POSIX: normal stop may refuse registered executions or busy/unknown shells.",
         "",
         "Ctrl+C stops the harness.",
         "",

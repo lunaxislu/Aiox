@@ -23,7 +23,10 @@ export type AioxConfig = {
 export const DEFAULT_RETENTION_DAYS = 30;
 
 export class ConfigError extends Error {
-    constructor(message: string) {
+    constructor(
+        message: string,
+        readonly field?: "terminal.cwd",
+    ) {
         super(message);
         this.name = "ConfigError";
     }

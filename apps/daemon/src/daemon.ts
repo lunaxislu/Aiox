@@ -4,7 +4,7 @@ import type { Duplex } from "node:stream";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
 import type { AioxConfig } from "@aiox/config";
-import { resolveTerminalLaunch } from "@aiox/config";
+import { ConfigError, resolveTerminalLaunch } from "@aiox/config";
 import type { AioxDatabase } from "@aiox/persistence";
 import type {
     Ports,
@@ -369,7 +369,16 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         const launch = await resolveTerminalLaunch(
             settings,
             parsed.data.cwd === undefined ? {} : { cwd: parsed.data.cwd },
-        );
+        ).catch((error: unknown) => {
+            if (
+                error instanceof ConfigError &&
+                error.field === "terminal.cwd" &&
+                parsed.data.cwd !== undefined
+            ) {
+                throw new HttpError(400, "invalid_request", error.message);
+            }
+            throw error;
+        });
         if (!admitting)
             throw new HttpError(503, "stopping", "The daemon is stopping.");
         const session = terminals.createShell({ ...parsed.data, ...launch });

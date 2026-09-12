@@ -32,7 +32,7 @@ export const createShellSchema = z.strictObject({
     cwd: z
         .string()
         .min(1)
-        .refine((value) => !value.includes("\0"))
+        .refine((value) => value.trim().length > 0 && !value.includes("\0"))
         .optional(),
     cols: z.int().positive().optional(),
     rows: z.int().positive().optional(),

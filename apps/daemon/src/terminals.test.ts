@@ -83,6 +83,176 @@ async function waitFor(
 }
 
 describe("general shell sessions", () => {
+    it.each(["", "   ", "\0"])(
+        "rejects malformed request cwd %j as request input",
+        async (cwd) => {
+            const response = await fetch(harness.apiUrl("/api/terminals"), {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ cwd }),
+            });
+            expect(response.status).toBe(400);
+            expect(await response.json()).toMatchObject({
+                code: "invalid_request",
+            });
+        },
+    );
+
+    it.each([
+        [undefined, 500, "invalid_config"],
+        ["terminal.cwd", 400, "invalid_request"],
+    ] as const)(
+        "classifies WSL probe evidence %s without guessing from request cwd",
+        async (field, status, code) => {
+            vi.spyOn(
+                configModule,
+                "resolveTerminalLaunch",
+            ).mockRejectedValueOnce(
+                new configModule.ConfigError("WSL probe diagnostic", field),
+            );
+            const spawn = vi.spyOn(terminalModule, "createTerminal");
+            const response = await fetch(harness.apiUrl("/api/terminals"), {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ cwd: "/requested" }),
+            });
+            expect(response.status).toBe(status);
+            expect(await response.json()).toMatchObject({ code });
+            expect(spawn).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each([
+        [
+            "server shell",
+            { shell: "aiox-missing-shell-executable" },
+            {},
+            500,
+            "invalid_config",
+        ],
+        [
+            "server shell with request cwd",
+            { shell: "aiox-missing-shell-executable" },
+            { cwd: "." },
+            500,
+            "invalid_config",
+        ],
+        ["server cwd", { cwd: "missing" }, {}, 500, "invalid_config"],
+        ["request cwd", {}, { cwd: "missing" }, 400, "invalid_request"],
+        ["request file cwd", {}, { cwd: "file" }, 400, "invalid_request"],
+        [
+            "request overrides server cwd",
+            { cwd: "missing" },
+            { cwd: "." },
+            201,
+            undefined,
+        ],
+    ] as const)(
+        "classifies %s at the HTTP boundary",
+        async (_name, settings, request, status, code) => {
+            const home = harness.home;
+            const configured = await startTestDaemon({
+                terminal: async () => (await loadConfig({ home })).terminal,
+            });
+            try {
+                await saveConfig(
+                    {
+                        terminal: {
+                            shell: process.execPath,
+                            args: ["-e", "setInterval(() => {}, 1000)"],
+                            cwd: home,
+                        },
+                    },
+                    { home },
+                );
+                const existing = await configured.daemon.createShell();
+                await writeFile(join(home, "file"), "not a directory");
+                await saveConfig(
+                    {
+                        terminal: {
+                            shell: process.execPath,
+                            args: ["-e", "setInterval(() => {}, 1000)"],
+                            cwd: home,
+                            ...settings,
+                            ...("cwd" in settings
+                                ? { cwd: join(home, settings.cwd) }
+                                : {}),
+                        },
+                    },
+                    { home },
+                );
+                const spawn = vi.spyOn(terminalModule, "createTerminal");
+                const response = await fetch(
+                    configured.apiUrl("/api/terminals"),
+                    {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify(
+                            "cwd" in request
+                                ? { cwd: join(home, request.cwd) }
+                                : {},
+                        ),
+                    },
+                );
+                expect(response.status).toBe(status);
+                expect(await response.json()).toMatchObject(
+                    code ? { code } : { cwd: home, alive: true },
+                );
+                expect(spawn).toHaveBeenCalledTimes(status === 201 ? 1 : 0);
+                expect(
+                    configured.daemon.services.terminals.get(existing.id)
+                        ?.alive,
+                ).toBe(true);
+            } finally {
+                await configured.close();
+            }
+        },
+    );
+
+    it("classifies malformed server configuration and preserves unexpected launch errors", async () => {
+        const home = harness.home;
+        const configured = await startTestDaemon({
+            terminal: async () => (await loadConfig({ home })).terminal,
+        });
+        const post = () =>
+            fetch(configured.apiUrl("/api/terminals"), {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ cwd: home }),
+            });
+        try {
+            await mkdir(join(home, ".aiox"), { recursive: true });
+            for (const text of [
+                "{",
+                JSON.stringify({ terminal: { args: [1] } }),
+            ]) {
+                await writeFile(join(home, ".aiox", "config.json"), text);
+                const response = await post();
+                expect(response.status).toBe(500);
+                expect(await response.json()).toMatchObject({
+                    code: "invalid_config",
+                });
+            }
+            await saveConfig(
+                { terminal: { shell: process.execPath } },
+                { home },
+            );
+            vi.spyOn(terminalModule, "createTerminal").mockImplementationOnce(
+                () => {
+                    throw new Error("native launch failed");
+                },
+            );
+            const response = await post();
+            expect(response.status).toBe(500);
+            expect(await response.json()).toEqual({
+                code: "internal_error",
+                message: "native launch failed",
+            });
+        } finally {
+            await configured.close();
+        }
+    });
+
     it.skipIf(process.platform === "win32")(
         "observes native exec failure through the PTY exit event",
         async () => {

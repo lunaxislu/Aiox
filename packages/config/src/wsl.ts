@@ -7,7 +7,10 @@ import type { TerminalLaunch } from "@/terminal";
 const checkDirectory = `
 target=$1
 case "$target" in '~') target=$HOME;; '~/'*) target=$HOME/\${target#??};; esac
-[ -d "$target" ] && [ -x "$target" ] && CDPATH= cd -- "$target" || exit 1
+[ -d "$target" ] && [ -x "$target" ] && CDPATH= cd -- "$target" || {
+    printf 'aiox-cwd-unavailable\\0'
+    exit 1
+}
 printf '%s\\0' "$PWD"
 `;
 
@@ -69,9 +72,12 @@ export async function resolveWslLaunch(
             },
             (error, stdout, stderr) => {
                 if (error) {
+                    // Only our probe's exact signal establishes cwd as the failing input.
+                    const cwdFailed = stdout === "aiox-cwd-unavailable\0";
                     reject(
                         new ConfigError(
-                            `terminal.cwd: cannot access ${JSON.stringify(target)} in WSL (${selectors.join(" ") || "default distribution/user"}): ${stderr.trim() || error.message}`,
+                            `${cwdFailed ? "terminal.cwd: cannot access" : "WSL launch environment or starting directory validation failed for"} ${JSON.stringify(target)} in WSL (${selectors.join(" ") || "default distribution/user"}): ${stderr.trim() || error.message}`,
+                            cwdFailed ? "terminal.cwd" : undefined,
                         ),
                     );
                     return;
@@ -83,7 +89,7 @@ export async function resolveWslLaunch(
                 ) {
                     reject(
                         new ConfigError(
-                            "terminal.cwd: WSL did not confirm its starting directory",
+                            "WSL launch environment or starting directory validation failed: probe did not confirm its starting directory",
                         ),
                     );
                     return;

@@ -101,6 +101,7 @@ export async function resolveTerminalLaunch(
     } catch (error) {
         throw new ConfigError(
             `terminal.cwd: directory is unavailable: ${cwd}: ${error instanceof Error ? error.message : String(error)}`,
+            wsl ? undefined : "terminal.cwd",
         );
     }
     const file = await executable(terminal.shell!, cwd);

@@ -11,14 +11,18 @@ vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
 
 beforeEach(() => vi.resetAllMocks());
 
-function probeResult(error: Error | null, stdout = "/home/test\0") {
+function probeResult(
+    error: Error | null,
+    stdout = "/home/test\0",
+    stderr = "",
+) {
     vi.mocked(execFile).mockImplementationOnce((...input: unknown[]) => {
         const callback = input.at(-1) as (
             error: Error | null,
             stdout: string,
             stderr: string,
         ) => void;
-        callback(error, stdout, "");
+        callback(error, stdout, stderr);
         return {} as ReturnType<typeof execFile>;
     });
 }
@@ -54,7 +58,7 @@ test("checks cwd as the selected WSL user and pins that directory without runnin
 });
 
 test("rejects a failed WSL directory check instead of falling back to a different directory", async () => {
-    probeResult(new Error("Permission denied"));
+    probeResult(new Error("Permission denied"), "aiox-cwd-unavailable\0");
     await expect(
         resolveWslLaunch("wsl.exe", ["-d", "Ubuntu"], "/private"),
     ).rejects.toThrow("terminal.cwd");
@@ -81,7 +85,7 @@ test("does not execute WSL management arguments or accept an unconfirmed probe",
     expect(execFile).not.toHaveBeenCalled();
     probeResult(null, "unexpected output");
     await expect(resolveWslLaunch("wsl.exe", [])).rejects.toThrow(
-        "terminal.cwd",
+        "WSL launch environment or starting directory",
     );
 });
 
@@ -121,3 +125,33 @@ test.skipIf(process.platform === "win32")(
         }
     },
 );
+
+test("does not blame cwd for an unconfirmed WSL environment failure", async () => {
+    probeResult(new Error("launch diagnostic"), "", "selected user failed");
+    await expect(
+        resolveWslLaunch("wsl.exe", ["-u", "missing"], "/requested"),
+    ).rejects.toMatchObject({
+        message: expect.stringContaining(
+            "WSL launch environment or starting directory",
+        ),
+        field: undefined,
+    });
+    probeResult(new Error("launch diagnostic"), "", "selected user failed");
+    await expect(resolveWslLaunch("wsl.exe", [], "/requested")).rejects.toThrow(
+        "selected user failed",
+    );
+});
+
+test("marks only a confirmed directory failure as cwd and preserves diagnostics", async () => {
+    probeResult(
+        new Error("probe exited"),
+        "aiox-cwd-unavailable\0",
+        "permission diagnostic",
+    );
+    await expect(
+        resolveWslLaunch("wsl.exe", [], "/private"),
+    ).rejects.toMatchObject({
+        field: "terminal.cwd",
+        message: expect.stringContaining("permission diagnostic"),
+    });
+});
