@@ -99,16 +99,17 @@ describe("general shell sessions", () => {
     );
 
     it.each([
-        [undefined, 500, "invalid_config"],
-        ["terminal.cwd", 400, "invalid_request"],
+        [undefined, 500, "invalid_config", "WSL probe diagnostic"],
+        [undefined, 500, "invalid_config", "Windows probe timed out"],
+        ["terminal.cwd", 400, "invalid_request", "cwd unavailable"],
     ] as const)(
-        "classifies WSL probe evidence %s without guessing from request cwd",
-        async (field, status, code) => {
+        "classifies probe evidence %s (%s / %s: %s) without guessing from request cwd",
+        async (field, status, code, message) => {
             vi.spyOn(
                 configModule,
                 "resolveTerminalLaunch",
             ).mockRejectedValueOnce(
-                new configModule.ConfigError("WSL probe diagnostic", field),
+                new configModule.ConfigError(message, field),
             );
             const spawn = vi.spyOn(terminalModule, "createTerminal");
             const response = await fetch(harness.apiUrl("/api/terminals"), {

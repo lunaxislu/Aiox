@@ -86,7 +86,14 @@ export async function resolveTerminalLaunch(
         if (!(await stat(cwd)).isDirectory())
             throw new Error("not a directory");
         await access(cwd, constants.X_OK);
-        if (process.platform === "win32") {
+    } catch (error) {
+        throw new ConfigError(
+            `terminal.cwd: directory is unavailable: ${cwd}: ${error instanceof Error ? error.message : String(error)}`,
+            wsl ? undefined : "terminal.cwd",
+        );
+    }
+    if (process.platform === "win32") {
+        try {
             // Node access() does not check Windows directory ACLs. A child must
             // actually be able to use this cwd, without running the user shell.
             await new Promise<void>((done, reject) => {
@@ -97,12 +104,11 @@ export async function resolveTerminalLaunch(
                     (error) => (error ? reject(error) : done()),
                 );
             });
+        } catch (error) {
+            throw new ConfigError(
+                `Windows launch environment or starting directory validation failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
         }
-    } catch (error) {
-        throw new ConfigError(
-            `terminal.cwd: directory is unavailable: ${cwd}: ${error instanceof Error ? error.message : String(error)}`,
-            wsl ? undefined : "terminal.cwd",
-        );
     }
     const file = await executable(terminal.shell!, cwd);
     const args = [...(terminal.args ?? [])];

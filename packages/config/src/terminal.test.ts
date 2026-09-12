@@ -143,13 +143,18 @@ test("Windows resolves extensionless PATH shells to the exact executable passed 
         expect.objectContaining({ cwd: "C:\\work", timeout: 5000 }),
         expect.any(Function),
     );
-    vi.mocked(execFile).mockImplementationOnce((...input: unknown[]) => {
-        (input.at(-1) as (error: Error | null) => void)(new Error("EACCES"));
-        return {} as ReturnType<typeof execFile>;
-    });
-    await expect(resolveTerminalLaunch({ shell: "pwsh" })).rejects.toThrow(
-        /terminal.cwd.*EACCES/,
-    );
+    for (const reason of ["EACCES", "probe timed out"]) {
+        vi.mocked(execFile).mockImplementationOnce((...input: unknown[]) => {
+            (input.at(-1) as (error: Error | null) => void)(new Error(reason));
+            return {} as ReturnType<typeof execFile>;
+        });
+        await expect(
+            resolveTerminalLaunch({ shell: "pwsh" }, { cwd: "C:\\work" }),
+        ).rejects.toMatchObject({
+            field: undefined,
+            message: `Windows launch environment or starting directory validation failed: ${reason}`,
+        });
+    }
     await expect(
         resolveTerminalLaunch({ shell: "C:\\tools\\start.cmd" }),
     ).rejects.toThrow(/terminal.shell/);
