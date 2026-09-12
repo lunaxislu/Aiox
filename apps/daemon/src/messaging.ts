@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome } from "@aiox/domain";
-import { deliveredContent, mcpStatus, notifiesOrigin } from "@aiox/domain";
+import {
+    canSend,
+    deliveredContent,
+    mcpStatus,
+    notifiesOrigin,
+} from "@aiox/domain";
 import type { AioxDatabase } from "@aiox/persistence";
 
 import type { NetworkService } from "@/networks";
@@ -28,14 +33,16 @@ export type SendResult = {
  * and stored history is never used to resume or resend anything.
  */
 type InFlight = {
-    readonly messageId: string;
     readonly originRuntimeId: string;
     readonly targetRuntimeId: string;
     readonly targetName: string;
     readonly reverseRouteAtSend: boolean;
-    readonly notifiable: boolean;
     readonly content: string;
-    readonly createdAt: number;
+    result?: {
+        outcome: DeliveryOutcome;
+        error: string | undefined;
+        at: number;
+    };
 };
 
 const PREVIEW = 120;
@@ -116,30 +123,34 @@ export class MessageService {
 
         const createdAt = this.now();
         const messageId = randomUUID();
-        const checked = await Promise.all(
-            unique.map(async (agentId) => ({
-                agentId,
-                refusal: await this.#refuse(source, agentId),
-            })),
-        );
-
-        const accepted = await Promise.all(
-            checked
-                .filter((entry) => entry.refusal === undefined)
-                .map(async (entry) => {
-                    const target = this.runtimes.get(entry.agentId)!;
-                    return {
-                        id: randomUUID(),
-                        target,
-                        // Captured now, so a later route edit cannot change the
-                        // notification policy for this in-flight request.
-                        reverseRouteAtSend: await this.networks.permits(
-                            target,
-                            source,
-                        ),
-                    };
-                }),
-        );
+        const checked = unique.map((agentId) => ({
+            agentId,
+            refusal: this.#refuse(source, agentId),
+        }));
+        // Both directions use one send-time snapshot. Invalid targets do not
+        // require a Network lookup, and membership is checked again after it.
+        const network = checked.some(({ refusal }) => refusal === undefined)
+            ? await this.networks.effective(source.networkId!)
+            : undefined;
+        for (const entry of checked) {
+            if (entry.refusal !== undefined) continue;
+            entry.refusal = this.#refuse(source, entry.agentId);
+            if (
+                entry.refusal === undefined &&
+                !canSend(network!, source, this.runtimes.get(entry.agentId)!)
+            )
+                entry.refusal = "no_route";
+        }
+        const accepted = checked
+            .filter((entry) => entry.refusal === undefined)
+            .map((entry) => {
+                const target = this.runtimes.get(entry.agentId)!;
+                return {
+                    id: randomUUID(),
+                    target,
+                    reverseRouteAtSend: canSend(network!, target, source),
+                };
+            });
 
         await this.db.messages.record(
             {
@@ -186,22 +197,19 @@ export class MessageService {
         const delivered = new Map<string, SendTargetResult>();
         for (const entry of accepted) {
             this.#inFlight.set(entry.id, {
-                messageId,
                 originRuntimeId: source.id,
                 targetRuntimeId: entry.target.id,
                 targetName: entry.target.name,
                 reverseRouteAtSend: entry.reverseRouteAtSend,
-                notifiable: true,
                 content,
-                createdAt,
             });
             try {
                 if (
                     !source.collaborationActive ||
-                    !entry.target.collaborationActive
+                    this.#refuse(source, entry.target.id) !== undefined
                 )
                     throw new Error(
-                        "Runtime left collaboration before delivery.",
+                        "Runtime is no longer available for delivery.",
                     );
                 await entry.target.binding.deliver({
                     deliveryId: entry.id,
@@ -226,17 +234,21 @@ export class MessageService {
                 // response, so it must not also produce a later notification.
                 const reason =
                     error instanceof Error ? error.message : String(error);
-                this.#inFlight.delete(entry.id);
-                await this.db.messages.settle(
-                    entry.id,
-                    "rejected",
-                    this.now(),
-                    reason,
-                );
+                let diagnostic = reason;
+                try {
+                    await this.settle(
+                        entry.target.id,
+                        entry.id,
+                        "rejected",
+                        reason,
+                    );
+                } catch (storageError) {
+                    diagnostic += `; outcome storage failed: ${storageError instanceof Error ? storageError.message : String(storageError)}`;
+                }
                 delivered.set(entry.target.id, {
                     agentId: entry.target.id,
                     accepted: false,
-                    error: reason,
+                    error: diagnostic,
                 });
             }
         }
@@ -269,14 +281,11 @@ export class MessageService {
         // A binding may only settle its own delivery, and only once.
         if (!flight || flight.targetRuntimeId !== runtimeId)
             return Promise.resolve();
+        // A later cleanup or duplicate report cannot replace a result whose write failed.
+        flight.result ??= { outcome, error, at: this.now() };
         const active = this.#settling.get(deliveryId);
         if (active) return active;
-        const settling = this.#settle(
-            deliveryId,
-            flight,
-            outcome,
-            error,
-        ).finally(() => {
+        const settling = this.#settle(deliveryId, flight).finally(() => {
             this.#settling.delete(deliveryId);
         });
         this.#settling.set(deliveryId, settling);
@@ -286,48 +295,51 @@ export class MessageService {
     /** Called after runtimes stop producing outcomes, before closing storage. */
     async drain(): Promise<void> {
         await Promise.allSettled(this.#settling.values());
+        const results = await Promise.allSettled(
+            [...this.#inFlight]
+                .filter(([, flight]) => flight.result)
+                .map(([id, flight]) =>
+                    this.settle(
+                        flight.targetRuntimeId,
+                        id,
+                        flight.result!.outcome,
+                        flight.result!.error,
+                    ),
+                ),
+        );
+        const failure = results.find((result) => result.status === "rejected");
+        if (failure?.status === "rejected") throw failure.reason;
     }
 
-    async #settle(
-        deliveryId: string,
-        flight: InFlight,
-        outcome: DeliveryOutcome,
-        error?: string,
-    ): Promise<void> {
+    async #settle(deliveryId: string, flight: InFlight): Promise<void> {
+        const { outcome, error, at: createdAt } = flight.result!;
+        const notification = notifiesOrigin(
+            { notifiable: true, reverseRouteAtSend: flight.reverseRouteAtSend },
+            outcome,
+        )
+            ? {
+                  id: randomUUID(),
+                  originRuntimeId: flight.originRuntimeId,
+                  body: notificationBody(
+                      flight.targetName,
+                      outcome,
+                      flight.content,
+                      error,
+                  ),
+                  createdAt,
+                  readAt: null,
+              }
+            : undefined;
         const settled = await this.db.messages.settle(
             deliveryId,
             outcome,
-            this.now(),
+            createdAt,
             error,
+            notification,
         );
         this.#inFlight.delete(deliveryId);
-        if (!settled) return;
-        if (
-            !notifiesOrigin(
-                {
-                    notifiable: flight.notifiable,
-                    reverseRouteAtSend: flight.reverseRouteAtSend,
-                },
-                outcome,
-            )
-        ) {
-            return;
-        }
-        const body = notificationBody(
-            flight.targetName,
-            outcome,
-            flight.content,
-            error,
-        );
-        const createdAt = this.now();
-        await this.db.messages.addNotification({
-            id: randomUUID(),
-            deliveryId,
-            originRuntimeId: flight.originRuntimeId,
-            body,
-            createdAt,
-            readAt: null,
-        });
+        if (!settled || !notification) return;
+        const body = notification.body;
         const origin = this.runtimes.get(flight.originRuntimeId);
         if (!origin?.collaborationActive) return;
         try {
@@ -345,7 +357,7 @@ export class MessageService {
         }
     }
 
-    /** Target exit interrupts its requests; origin exit does not erase results. */
+    /** Target exit interrupts unobserved requests and retries already observed results. */
     async forget(runtimeId: string): Promise<void> {
         for (const [id, flight] of this.#inFlight) {
             if (flight.targetRuntimeId === runtimeId) {
@@ -358,10 +370,7 @@ export class MessageService {
         return this.#inFlight.size;
     }
 
-    async #refuse(
-        source: RuntimeRecord,
-        agentId: string,
-    ): Promise<string | undefined> {
+    #refuse(source: RuntimeRecord, agentId: string): string | undefined {
         const target = this.runtimes.get(agentId);
         if (!target?.collaborationActive) return "unknown_agent";
         if (target.id === source.id) return "self_target";
@@ -372,7 +381,6 @@ export class MessageService {
             return "not_in_network";
         }
         if (mcpStatus(target.activity) === null) return "not_available";
-        if (!(await this.networks.permits(source, target))) return "no_route";
         return undefined;
     }
 }

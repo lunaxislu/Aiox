@@ -1,3 +1,6 @@
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+
 import type {
     AgentView,
     DaemonStatus,
@@ -1250,4 +1253,61 @@ describe("external collaboration stop completion", () => {
             expect(externalCleanup).toHaveBeenCalledOnce();
         },
     );
+});
+
+it("keeps storage and listeners open after outcome persistence blocks stop, then retries the original result", async () => {
+    const { daemon } = harness;
+    const network = await daemon.services.networks.create("storage", "allow");
+    const a = await joinAgent(network.id, "A");
+    const b = await joinAgent(network.id, "B");
+    const sent = await daemon.services.messages.send(
+        daemon.services.runtimes.get(a.runtimeId)!,
+        [b.runtimeId],
+        "X",
+    );
+    const sqlite = new DatabaseSync(join(harness.home, ".aiox", "aiox.db"));
+    try {
+        sqlite.exec(`CREATE TRIGGER reject_notification BEFORE INSERT ON notifications
+            BEGIN SELECT RAISE(ABORT, 'notification unavailable'); END`);
+        await expect(
+            b.vendor.settle(
+                b.vendor.deliveryIds[0]!,
+                "failed",
+                "vendor failure",
+            ),
+        ).rejects.toThrow("notification unavailable");
+        const stopping = await post("/api/daemon/stop", { force: true });
+        expect(stopping.status).toBe(500);
+        expect(stopping.body).toMatchObject({
+            code: "internal_error",
+            message: expect.stringContaining("notification unavailable"),
+        });
+        expect(daemon.acceptingInput).toBe(true);
+        expect((await call("/api/agents")).status).toBe(200);
+        expect(
+            await daemon.services.db.messages.deliveryFor(
+                sent.messageId,
+                b.runtimeId,
+            ),
+        ).toMatchObject({ outcome: null });
+        expect(daemon.services.messages.pending()).toBe(1);
+        sqlite.exec("DROP TRIGGER reject_notification");
+        expect((await post("/api/daemon/stop", { force: true })).status).toBe(
+            200,
+        );
+        await daemon.closed;
+        expect(
+            sqlite
+                .prepare(
+                    "SELECT outcome, outcome_error FROM deliveries WHERE message_id = ?",
+                )
+                .get(sent.messageId),
+        ).toMatchObject({ outcome: "failed", outcome_error: "vendor failure" });
+        expect(
+            sqlite.prepare("SELECT COUNT(*) AS count FROM notifications").get(),
+        ).toMatchObject({ count: 1 });
+    } finally {
+        sqlite.exec("DROP TRIGGER IF EXISTS reject_notification");
+        sqlite.close();
+    }
 });

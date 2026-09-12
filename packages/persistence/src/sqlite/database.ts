@@ -66,14 +66,14 @@ export interface MessageHistory {
         targetRuntimeId: string,
     ): Promise<DeliveryRow | undefined>;
     deliveriesFor(messageId: string): Promise<DeliveryRow[]>;
-    /** false when the delivery is unknown or already terminal. */
+    /** Outcome and required notification commit together; false if unknown or already terminal. */
     settle(
         deliveryId: string,
         outcome: DeliveryOutcome,
         at: number,
         error?: string,
+        notification?: Omit<NotificationRow, "deliveryId">,
     ): Promise<boolean>;
-    addNotification(notification: NotificationRow): Promise<void>;
     unreadNotifications(): Promise<NotificationRow[]>;
     markRead(ids: readonly string[], at: number): Promise<void>;
     /** Retention. The caller owns the retention window; this takes its edge. */
@@ -210,7 +210,7 @@ function messages(dataSource: DataSource): MessageHistory {
         deliveryFor: async (messageId, targetRuntimeId) =>
             (await deliveries({ messageId, targetRuntimeId }))[0],
         deliveriesFor: (messageId) => deliveries({ messageId }),
-        settle: (deliveryId, outcome, at, error) =>
+        settle: (deliveryId, outcome, at, error, notification) =>
             dataSource.transaction(async (m) => {
                 const current = await m.findOne(DeliveryEntity, {
                     where: { id: deliveryId },
@@ -221,11 +221,13 @@ function messages(dataSource: DataSource): MessageHistory {
                     outcomeAt: at,
                     outcomeError: error ?? null,
                 });
+                if (notification)
+                    await m.insert(NotificationEntity, {
+                        ...notification,
+                        deliveryId,
+                    });
                 return true;
             }),
-        addNotification: async (notification) => {
-            await manager.insert(NotificationEntity, notification);
-        },
         unreadNotifications: () =>
             manager.find(NotificationEntity, {
                 where: { readAt: IsNull() },
@@ -309,10 +311,10 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
                     run(() => history.deliveryFor(messageId, targetId)),
                 deliveriesFor: (messageId) =>
                     run(() => history.deliveriesFor(messageId)),
-                settle: (id, outcome, at, error) =>
-                    run(() => history.settle(id, outcome, at, error)),
-                addNotification: (notification) =>
-                    run(() => history.addNotification(notification)),
+                settle: (id, outcome, at, error, notification) =>
+                    run(() =>
+                        history.settle(id, outcome, at, error, notification),
+                    ),
                 unreadNotifications: () =>
                     run(() => history.unreadNotifications()),
                 markRead: (ids, at) => run(() => history.markRead(ids, at)),

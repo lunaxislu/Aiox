@@ -34,6 +34,24 @@ TypeORM + 기존 better-sqlite3로 전환했다. Stage 1 DB의 최초 schema는 
 
 근거: [[apps/daemon/src/retention.ts]] `apps/daemon/src/retention.ts:11-43`, [[apps/daemon/src/retention.test.ts]] `apps/daemon/src/retention.test.ts:8-31`; 저장·결과·보존 경계는 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:358-502`.
 
+## 메시지 완료 저장과 실패 복구 [Status: As-built]
+
+대상별 처리 결과와 정책상 필요한 daemon 알림은 같은 SQLite transaction으로 저장한다.
+둘 다 저장된 뒤에만 메모리 추적을 제거하고 발신 Agent 입력으로 알림 전달을 시도한다.
+알림 입력이 거절돼도 저장된 알림은 Web 조회에 남는다. 알림 정책은
+[[docs/specs/aiox-collaboration]]을 따른다.
+
+저장 실패 시 최초 관측한 결과·오류·시각을 추적에 보존한다. 이후 target 정리나 저장 재시도는
+그 결과를 사용하며 뒤늦은 interrupted로 덮지 않는다. 한 대상의 전송 거절 결과를 저장하지
+못해도 뒤 대상의 전송을 계속하고, 미저장 결과는 추적에 남긴다. 종료 drain은 진행 중 저장을
+기다린 뒤 관측된 미저장 결과를 한 번 재시도하며 남은 실패를 호출자에 전달한다. 이는 vendor
+입력 재주입이나 daemon 재시작 후 실행 복원이 아니다.
+
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:213-230`,
+[[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:228-362`;
+실제 SQLite 알림 insert·결과 update 실패, rollback·재시도와 보존 기한 검증은
+[[apps/daemon/src/messaging.test.ts]] `apps/daemon/src/messaging.test.ts:216-334`.
+
 ## SQLite와 플랫폼
 
 `packages/persistence`가 schema·migration·repository를 구현하고 daemon이 DB 연결을 소유한다.

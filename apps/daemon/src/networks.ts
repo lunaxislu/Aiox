@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Network, RouteOperation, RoutePolicy } from "@aiox/domain";
-import {
-    applyRouteOperation,
-    canSend,
-    mcpStatus,
-    outboundTargets,
-} from "@aiox/domain";
+import { applyRouteOperation, mcpStatus, outboundTargets } from "@aiox/domain";
 import type { AioxDatabase, PersistentNetwork } from "@aiox/persistence";
 
 import type { RuntimeRecord } from "@/runtimes";
@@ -131,14 +126,5 @@ export class NetworkService {
                     mcpStatus(record.activity) !== null,
             );
         return outboundTargets(network, source, candidates);
-    }
-
-    /** Re-checked at send time; an older discovery result is not a permission. */
-    async permits(
-        source: RuntimeRecord,
-        target: RuntimeRecord,
-    ): Promise<boolean> {
-        if (source.networkId === null) return false;
-        return canSend(await this.effective(source.networkId), source, target);
     }
 }

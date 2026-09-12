@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import type { AioxDatabase } from "@aiox/persistence";
 import { openDatabase } from "@aiox/persistence";
@@ -156,14 +157,12 @@ it("drains an ongoing outcome and its notification before database shutdown", as
     const started = new Promise<void>((resolve) => {
         entered = resolve;
     });
-    const addNotification = db.messages.addNotification;
-    vi.spyOn(db.messages, "addNotification").mockImplementationOnce(
-        async (row) => {
-            entered();
-            await released;
-            await addNotification(row);
-        },
-    );
+    const settle = db.messages.settle;
+    vi.spyOn(db.messages, "settle").mockImplementationOnce(async (...args) => {
+        entered();
+        await released;
+        return settle(...args);
+    });
     const settling = b.vendor.settle(deliveryId, "completed");
     await started;
     let drained = false;
@@ -209,7 +208,151 @@ it("keeps correlation after a storage failure so target cleanup can retry once",
     await messages.forget(b.record.id);
     expect(
         await db.messages.deliveryFor(sent.messageId, b.record.id),
-    ).toMatchObject({ outcome: "interrupted" });
+    ).toMatchObject({ outcome: "completed" });
     expect(messages.pending()).toBe(0);
     expect(await db.messages.unreadNotifications()).toEqual([]);
 });
+
+it("rolls back a result when its required notification fails, then retries the original outcome", async () => {
+    const a = await joinAgent("A");
+    const b = await joinAgent("B");
+    await db.networks.replaceRouting(networkId, {
+        defaultPolicy: "deny",
+        routes: [{ from: a.record.id, to: b.record.id, policy: "allow" }],
+    });
+    const sent = await messages.send(a.record, [b.record.id], "X");
+    const deliveryId = b.vendor.deliveryIds[0]!;
+    const sqlite = new DatabaseSync(join(home, "aiox.db"));
+    try {
+        sqlite.exec(`CREATE TRIGGER reject_notification BEFORE INSERT ON notifications
+            BEGIN SELECT RAISE(ABORT, 'notification unavailable'); END`);
+        await expect(b.vendor.settle(deliveryId, "completed")).rejects.toThrow(
+            "notification unavailable",
+        );
+        expect(
+            await db.messages.deliveryFor(sent.messageId, b.record.id),
+        ).toMatchObject({ outcome: null });
+        expect(messages.pending()).toBe(1);
+        expect(await db.messages.unreadNotifications()).toEqual([]);
+        expect(a.vendor.received).toEqual([]);
+        expect(await db.messages.purgeBefore(Date.now() + 1)).toEqual({
+            messages: 0,
+            deliveries: 0,
+            notifications: 0,
+        });
+        sqlite.exec("DROP TRIGGER reject_notification");
+        await messages.forget(b.record.id);
+        await b.vendor.settle(deliveryId, "failed", "late failure");
+        expect(
+            await db.messages.deliveryFor(sent.messageId, b.record.id),
+        ).toMatchObject({ outcome: "completed", outcomeError: null });
+        expect(messages.pending()).toBe(0);
+        expect(await db.messages.unreadNotifications()).toHaveLength(1);
+        expect(a.vendor.received).toHaveLength(1);
+        expect(await db.messages.purgeBefore(Date.now() + 1)).toEqual({
+            messages: 1,
+            deliveries: 1,
+            notifications: 1,
+        });
+    } finally {
+        sqlite.close();
+    }
+});
+
+it("keeps a refused target's failed write pending while delivering to later targets, and drain retries only storage", async () => {
+    const a = await joinAgent("A");
+    const b = await joinAgent("B");
+    const c = await joinAgent("C");
+    await db.networks.replaceRouting(networkId, {
+        defaultPolicy: "allow",
+        routes: [],
+    });
+    b.vendor.refuse("inbox unavailable");
+    const sqlite = new DatabaseSync(join(home, "aiox.db"));
+    try {
+        sqlite.exec(`CREATE TRIGGER reject_outcome BEFORE UPDATE OF outcome ON deliveries
+            WHEN NEW.outcome = 'rejected'
+            BEGIN SELECT RAISE(ABORT, 'outcome unavailable'); END`);
+        const sent = await messages.send(
+            a.record,
+            [b.record.id, c.record.id],
+            "X",
+        );
+        expect(sent.results).toEqual([
+            {
+                agentId: b.record.id,
+                accepted: false,
+                error: expect.stringContaining("outcome unavailable"),
+            },
+            {
+                agentId: c.record.id,
+                accepted: true,
+                deliveryId: c.vendor.deliveryIds[0],
+            },
+        ]);
+        expect(sent.results[0]?.error).toContain("inbox unavailable");
+        expect(c.vendor.received).toHaveLength(1);
+        expect(messages.pending()).toBe(2);
+        expect(
+            await db.messages.deliveryFor(sent.messageId, b.record.id),
+        ).toMatchObject({ outcome: null });
+        await expect(messages.drain()).rejects.toThrow("outcome unavailable");
+        expect(messages.pending()).toBe(2);
+        sqlite.exec("DROP TRIGGER reject_outcome");
+        await messages.drain();
+        expect(
+            await db.messages.deliveryFor(sent.messageId, b.record.id),
+        ).toMatchObject({
+            outcome: "rejected",
+            outcomeError: "inbox unavailable",
+        });
+        expect(
+            await db.messages.deliveryFor(sent.messageId, c.record.id),
+        ).toMatchObject({ outcome: null });
+        expect(messages.pending()).toBe(1);
+        expect(b.vendor.received).toEqual([]);
+        expect(c.vendor.received).toHaveLength(1);
+        expect(a.vendor.received).toEqual([]);
+        expect(await db.messages.unreadNotifications()).toEqual([]);
+        expect(await db.messages.purgeBefore(Date.now() + 1)).toEqual({
+            messages: 0,
+            deliveries: 0,
+            notifications: 0,
+        });
+        await c.vendor.settle(c.vendor.deliveryIds[0]!, "completed");
+        expect(await db.messages.purgeBefore(Date.now() + 1)).toEqual({
+            messages: 1,
+            deliveries: 2,
+            notifications: 0,
+        });
+    } finally {
+        sqlite.close();
+    }
+});
+
+it.each(["source", "target"] as const)(
+    "rechecks %s collaboration after the send-time route lookup",
+    async (revoked) => {
+        const a = await joinAgent("A");
+        const b = await joinAgent("B");
+        await db.networks.replaceRouting(networkId, {
+            defaultPolicy: "allow",
+            routes: [],
+        });
+        const get = db.networks.get;
+        vi.spyOn(db.networks, "get").mockImplementationOnce(async (id) => {
+            const snapshot = await get(id);
+            runtimes.revoke(revoked === "source" ? a.record.id : b.record.id);
+            return snapshot;
+        });
+        const sent = await messages.send(a.record, [b.record.id], "X");
+        expect(sent.results).toMatchObject([
+            { agentId: b.record.id, accepted: false },
+        ]);
+        expect(b.vendor.received).toEqual([]);
+        expect(messages.pending()).toBe(0);
+        expect(await db.messages.deliveriesFor(sent.messageId)).toMatchObject([
+            { outcome: "rejected" },
+        ]);
+    },
+);

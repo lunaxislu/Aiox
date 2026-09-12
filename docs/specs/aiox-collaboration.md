@@ -113,14 +113,15 @@ raw inbox body·표시 태그·hidden 경로 옵션은 vendor 내부 구현 의�
 
 ## 실패·대기와 재전송 제외
 
-동일 메시지의 자동 재시도·재주입과 수동 재전송 API/tool/handler를 제공하지 않는다.
+동일 메시지를 vendor 입력으로 자동 재시도·재주입하거나 수동 재전송하는 API/tool/handler를 제공하지 않는다.
 `aiox_retransmit_unconfirmed_delivery` 및 그 사용 지침은 제거 대상이다. 공통 협업 지침과
 Host/Agent instruction 주입은 유지한다.
 
 최초 한 번도 전송하지 않은 메시지의 queue는 재전송과 다르므로 대기열 자체를 제거하는
 결정이 아니다. 그 queue의 용량·기한·최초 전달 조건은 별도 구현 계약이며 과거 retry 간격을
 새 기본값으로 가져오지 않는다. 사용자의 새 send는 새 메시지다. DB에 저장했다고 재전송·replay가
-허용되는 것은 아니다.
+허용되는 것은 아니다. 관측한 결과와 필수 알림의 DB 저장 실패를 다시 저장하는 것은
+입력 재전송과 별개이며 저장·복구 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
 
 거절·실패·확인 불가를 실제 증거에 맞게 표시하고 늦게 도착한 관측도 원 입력에 연결한다.
 확인 불가를 성공으로 숨기거나 모델 ACK·재전송으로 해결하지 않는다. Runtime 리밋이나 사용자

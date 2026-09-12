@@ -407,15 +407,26 @@ test("notifications stay unread until they are marked read", async (t) => {
     await store.messages.record(message("m1", 10), [
         delivery("d1", "m1", "t1"),
     ]);
-    for (const id of ["nf1", "nf2"])
-        await store.messages.addNotification({
-            id,
-            deliveryId: "d1",
-            originRuntimeId: "r-source",
-            body: `${id} finished`,
-            createdAt: id === "nf1" ? 20 : 30,
-            readAt: null,
-        });
+    await store.messages.record(message("m2", 10), [
+        delivery("d2", "m2", "t1"),
+    ]);
+    for (const [id, deliveryId] of [
+        ["nf1", "d1"],
+        ["nf2", "d2"],
+    ] as const)
+        await store.messages.settle(
+            deliveryId,
+            "completed",
+            id === "nf1" ? 20 : 30,
+            undefined,
+            {
+                id,
+                originRuntimeId: "r-source",
+                body: `${id} finished`,
+                createdAt: id === "nf1" ? 20 : 30,
+                readAt: null,
+            },
+        );
     assert.deepEqual(
         (await store.messages.unreadNotifications()).map((row) => row.id),
         ["nf1", "nf2"],
@@ -447,10 +458,8 @@ test("retention purges only messages whose every delivery finished before the cu
         delivery("old-2", "old", "t2"),
     ]);
     await store.messages.settle("old-1", "completed", 1000);
-    await store.messages.settle("old-2", "failed", 2000, "boom");
-    await store.messages.addNotification({
+    await store.messages.settle("old-2", "failed", 2000, "boom", {
         id: "nf-old",
-        deliveryId: "old-2",
         originRuntimeId: "r-source",
         body: "failed",
         createdAt: 2000,
@@ -461,10 +470,8 @@ test("retention purges only messages whose every delivery finished before the cu
         delivery("mixed-1", "mixed", "t1"),
         delivery("mixed-2", "mixed", "t2"),
     ]);
-    await store.messages.settle("mixed-1", "completed", 1500);
-    await store.messages.addNotification({
+    await store.messages.settle("mixed-1", "completed", 1500, undefined, {
         id: "nf-mixed",
-        deliveryId: "mixed-1",
         originRuntimeId: "r-source",
         body: "done",
         createdAt: 1500,

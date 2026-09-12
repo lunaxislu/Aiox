@@ -7,8 +7,8 @@ status: open
 ## Work Items
 
 - [x] W1 daemon 종료와 외부 vendor 수명 분리 교정 — 외부 aiox agent run claude/codex는 일반 stop·force 모두 vendor를 유지하고 협업만 정리한다. 외부 참여만으로 daemon stop을 막지 않는다. Windows 작업 검사 없는 종료는 daemon 소유 실행에만 적용한다. 종료 제어 경로의 다른 호출자를 확인한 뒤 불필요 경로를 정리하고 협업 정리의 완료·실패·재시도 및 daemon 소유 실행 종료를 검증한다. — detached: logs/2026-09-12-AIOX-W1-External-Execution-Survival.md — reason: 사용자 W1 실행 승인; code·owner 교정의 공통 완료 검증
-- [>] W2 메시지 저장·복구 단위 개선 — 결과와 필수 알림의 저장 완료 단위를 맞추고, 전송 거절 후 DB 실패가 뒤 대상과 미완료 행 추적을 잃게 하는 경로를 수정한다. 실제 저장 실패·재시도 회귀와 retention 경계를 검증하고 불필요한 InFlight 상태·route 반복 판단을 정리한다.
-- [ ] W3 시작·재시작·조회 책임 정리 — 새 config의 가능한 준비·검증과 override 변경 안내 후 기존 daemon을 종료하고 준비 결과로 시작한다. Web·상태 파일 준비까지 성공 공개를 늦추며 실패 자원을 정리한다. daemon status·doctor는 실행 중 대상 발견을 다음 설정 검증과 분리한다.
+- [x] W2 메시지 저장·복구 단위 개선 — 결과와 필수 알림의 저장 완료 단위를 맞추고, 전송 거절 후 DB 실패가 뒤 대상과 미완료 행 추적을 잃게 하는 경로를 수정한다. 실제 저장 실패·재시도 회귀와 retention 경계를 검증하고 불필요한 InFlight 상태·route 반복 판단을 정리한다. — detached: logs/2026-09-12-AIOX-W2-Message-Persistence-Recovery.md — reason: 사용자 W2 구현 승인; messaging·persistence·owner의 공통 완료 검증
+- [>] W3 시작·재시작·조회 책임 정리 — 새 config의 가능한 준비·검증과 override 변경 안내 후 기존 daemon을 종료하고 준비 결과로 시작한다. Web·상태 파일 준비까지 성공 공개를 늦추며 실패 자원을 정리한다. daemon status·doctor는 실행 중 대상 발견을 다음 설정 검증과 분리한다.
 - [ ] W4 참여 중 Network 삭제 거절 — 실행 참여가 있으면 삭제를 거절하고 먼저 참여 정리를 요구한다. 자동 종료·분리를 추가하지 않으며 등록/삭제 경합과 이후 discovery·전송을 검증한다.
 - [ ] W5 Web 작업 결과·화면 복원 상태 개선 — 서버 진단을 보존하고 연결 조회 성공이 작업 오류를 덮지 않게 한다. mirror 실패에도 실행을 유지하며 복원 불가와 사용자 종료·재생성을 안내한다. 중첩 조회 응답 역전의 실제 영향도 검증한다.
 - [ ] W6 등록 구성·삭제 후보 및 미채택 지적 판정 — 등록 예약·준비·활성화 대안을 현재 구조와 비교하고 필요한 경우에만 단순화한다. 미사용 필드·인자·killAll은 계약/검증 보존 후 제거하며 CLI 복귀·vendor 진단·임시 자원·신호 종료 등 남은 Claude 지적을 근거별로 채택·반증·후속 이관한다.
@@ -22,10 +22,10 @@ status: open
 
 ### {Global}
 
-- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. Stage2-2는 마감 유지하며 외부 종료 범위 교정 W1의 package 결과를 root가 수용·소비했다. 최신 W1 결과 소비 entry와 package 기록을 읽고 W2 메시지 저장·복구를 재개한다. W2는 다음 지점일 뿐 아직 실행하지 않았다. 이 단계 완료 후 Stage3 W1을 재개한다.
+- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1은 a039525에 커밋됐다. W2는 logs/2026-09-12-AIOX-W2-Message-Persistence-Recovery.md의 code/docs 결과를 root가 수용·소비해 완료했다. 다음 지점은 W3 시작·재시작·조회이며 아직 구현하지 않았다. W2 변경은 미커밋이고 commit/push하지 않았다. 이 단계 완료 후 Stage3 W1을 재개한다.
 - 사용자는 root를 논의·정책·지시·직접 리뷰 담당으로, subagent를 조사·구현·테스트 담당으로 지정했다. 기존 조사와 확정 정책을 다시 승인받지 않는다. commit/push는 이번 범위 밖이며 원격 push는 사용자 후속 지시까지 금지한다. architecture.excalidraw는 개인 자산으로 제외한다.
 - 아래 조사 계기와 근거 분류·Claude 의견 대조를 먼저 읽고 선택 Work Item의 호출자·producer/consumer·owner·tests를 추적한다. 기존 조사를 전부 반복하지 말고 변경할 경계의 재현을 회귀 테스트로 고정한다. root가 실제 diff와 검증 근거를 확인하기 전 subagent 완료 보고를 최종 완료로 승격하지 않는다.
-- 필수 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md 및 docs/decisions/external-execution-survival.md다. 기존 explicit-execution-shutdown은 당시 결정 계보로 읽는다. 사용자 W1 실행 승인에 따라 관련 code/tests와 현재 owner를 교정하며 무관한 last-good·자동 적용 요구는 유지한다.
+- 관련 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md다. W1 교정은 docs/decisions/external-execution-survival.md로 수용됐고 기존 explicit-execution-shutdown은 결정 계보다. W2는 메시지 저장·복구에 필요한 owner만 대조·반영하며 무관한 last-good·자동 적용 요구는 유지한다.
 
 
 ### {W1}
@@ -35,7 +35,7 @@ status: open
 
 ### {W2,W3}
 
-- W1에서 drain/DB close의 오류 흡수는 수정하지 않았다. W2는 메시지 drain·필수 결과 저장, W3는 시작/종료 자원과 DB close의 완료 의미를 대조해 실제 영향·필요 수정 여부를 판정한다. 미검증 후보이며 결함 확정으로 인계하지 않는다.
+- W2는 messages.drain이 관측된 미저장 결과를 1회 재시도하고 지속 실패를 전달하도록 수정했다. 실제 SQLite 실패의 daemon stop은 500 internal_error·DB/listener·재시도 경로 유지, 실패 제거 후 stop 성공으로 검증했다. DB close catch의 자원 종료 완료 의미는 W3가 실제 영향과 필요 수정 여부를 판정한다. 이 잔여 후보를 확정 결함으로 인계하지 않는다.
 
 ### {W6}
 
@@ -178,3 +178,23 @@ root가 logs/2026-09-12-AIOX-W1-External-Execution-Survival.md의 code/docs Brie
 code agent pnpm check exit0/479 passed 원문은 root가 직접 확인했다. root 별도 macOS 실제 owner/대역 vendor probe에서 일반/force 뒤 등록·MCP 종료와 vendor 후속 입출력, 자연 종료 후 자원 정리를 확인했다. 실제 Claude/Codex·Windows/Linux/WSL 실OS 신규 실측과 CI는 수행하지 않았다. current spec/architecture·새 decision 교정 및 과거 결정 계보 보존을 함께 수용했다.
 
 W1 결과를 소비해 완료하고 W2 메시지 저장·복구를 다음 재개 지점으로 옮긴다. stopTerminal fail-closed는 보호 동작으로 보존했다. drain/DB close 후보는 W2/W3, closeIdle/ps 진단은 W6에 남겨 계약과 영향 검증 후 판정한다. Stage2-2를 재개하지 않고 Stage2-3 활성 상태를 유지하며 이번에 W2 실행·commit·push는 하지 않는다.
+
+### 2026-09-12 22:30 · W1 커밋과 W2 실행 위임
+
+사용자가 W1 커밋을 요청해 a039525에 반영됐다. 이후 W2 메시지 저장·복구 구현을 subagent에게 ponytail로 위임하도록 승인했다. W2의 code·persistence·owner 공통 완료 검증을 logs/2026-09-12-AIOX-W2-Message-Persistence-Recovery.md로 분리했다. 현재 W2 재개·결과 수용은 package가 소유하며 부모는 결과 소비 대기다. 후속 commit/push 및 W3 이후 실행은 승인 범위가 아니다.
+
+### 2026-09-12 22:41 · W2 결과 소비와 W3 재개 지점
+
+root가 logs/2026-09-12-AIOX-W2-Message-Persistence-Recovery.md의 W1/W2 Brief revision 1 Attempt 1을 전체 수용했다. 실제 SQLite 두 실패 회귀, 원자 저장·최초 결과 보존·뒤 대상 진행·retention·재주입 없는 저장 retry 및 daemon HTTP 실패→복구를 source·diff·출력으로 직접 대조했다. 전체 pnpm check exit0, 484 tests passed. storage architecture와 collaboration spec 반영을 소비해 부모 W2를 완료한다.
+
+다음은 W3이며 아직 구현하지 않았다. DB close catch의 자원 종료 완료 의미는 W3 후보로 유지한다. 신규 vendor·Windows/Linux/WSL 실OS·CI는 수행하지 않았고 W2 변경은 미커밋이다. commit/push는 하지 않았다. 세부 실패 정정과 결과 근거는 package 및 두 task Result를 따른다.
+
+### 2026-09-12 22:42 · W2 마감 시 동시 외부 변경 구분
+
+root 최종 Git 확인에서 HEAD 2e3bc87로 이동한 W2 밖 baseline/context prompt 로그 2개 커밋과 untracked execution-flow-map skill 디렉터리를 관측했다. 우리 팀의 commit이 아니며 해당 변경은 수정하지 않았다. W2 source와 충돌이 없어 전체 검사 근거와 마감 판단은 유지한다.
+
+### 2026-09-12 23:06 · route snapshot 정책 확인과 W2 commit 승인
+
+사용자는 route CLI가 같은 Network 내부의 통신 허용/차단만 바꾸고 실행 중 Agent의 Network 이동 CLI는 없다는 경계를 확인한 뒤, 전송 시작 시 route snapshot으로 해당 전송을 판단하고 DB 저장 뒤 route 재조회를 추가하지 않는 정책에 동의했다. 최초 route 검증과 실행·소속·수신 가능 여부 재검증은 유지한다. 이 확인으로 코드를 변경하지 않았다.
+
+사용자가 W2 commit과 다음 세션 인계 프롬프트를 요청했다. commit은 root가 수행하며 이 entry는 승인 기록이지 commit 완료 기록이 아니다. W3 실행과 원격 push는 여전히 승인되지 않았다. 닫힌 W2 package와 당시 미커밋 기록은 그대로 보존한다.
