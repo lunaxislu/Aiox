@@ -73,7 +73,15 @@ shell도 종료·확인한다. 실패한 binding에 연결된 shell은 재시도
 근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:268-355`,
 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:293-485`.
 
-근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:268-289`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:90-106`; 실패·재시도와 Network 선행 삭제 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:743-793`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:280-346`.
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:337-363`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:91-108`; 실패·재시도와 저장소에서 Network를 직접 삭제한 경우의 정리 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1194-1246`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:280-346`.
+
+NetworkService는 준비·정리 중인 등록까지 검사해 삭제를 거절한다. daemon 등록은 동기 membership
+예약 뒤 Network 존재를 조회하고 binding을 만든다. 단일 DB 작업 queue에서 삭제가 앞서면
+뒤 등록 검증이 실패하고, 예약이 앞서면 삭제가 거절된다. 별도 Network lock은 두지 않는다.
+삭제의 외부 계약은 [[docs/specs/aiox-host]]가 소유한다.
+근거: [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:69-79`,
+[[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:626-644`,
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:396-527`.
 
 현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude 연결은 아래 Stage 3 범위로 확장했고 Codex와 Host/Worktree 실행은 아직 구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
 

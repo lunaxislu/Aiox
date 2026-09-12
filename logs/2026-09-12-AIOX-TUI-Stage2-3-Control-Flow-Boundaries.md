@@ -9,8 +9,8 @@ status: open
 - [x] W1 daemon 종료와 외부 vendor 수명 분리 교정 — 외부 aiox agent run claude/codex는 일반 stop·force 모두 vendor를 유지하고 협업만 정리한다. 외부 참여만으로 daemon stop을 막지 않는다. Windows 작업 검사 없는 종료는 daemon 소유 실행에만 적용한다. 종료 제어 경로의 다른 호출자를 확인한 뒤 불필요 경로를 정리하고 협업 정리의 완료·실패·재시도 및 daemon 소유 실행 종료를 검증한다. — detached: logs/2026-09-12-AIOX-W1-External-Execution-Survival.md — reason: 사용자 W1 실행 승인; code·owner 교정의 공통 완료 검증
 - [x] W2 메시지 저장·복구 단위 개선 — 결과와 필수 알림의 저장 완료 단위를 맞추고, 전송 거절 후 DB 실패가 뒤 대상과 미완료 행 추적을 잃게 하는 경로를 수정한다. 실제 저장 실패·재시도 회귀와 retention 경계를 검증하고 불필요한 InFlight 상태·route 반복 판단을 정리한다. — detached: logs/2026-09-12-AIOX-W2-Message-Persistence-Recovery.md — reason: 사용자 W2 구현 승인; messaging·persistence·owner의 공통 완료 검증
 - [x] W3 시작·재시작·조회 책임 정리 — 새 config의 가능한 준비·검증과 override 변경 안내 후 기존 daemon을 종료하고 준비 결과로 시작한다. Web·상태 파일 준비까지 성공 공개를 늦추며 실패 자원을 정리한다. daemon status·doctor는 실행 중 대상 발견을 다음 설정 검증과 분리한다. — detached: logs/2026-09-12-AIOX-W3-Startup-Readiness.md — reason: 사용자 W3 subagent 실행 승인; CLI·daemon·owner의 공통 완료 검증
-- [>] W4 참여 중 Network 삭제 거절 — 실행 참여가 있으면 삭제를 거절하고 먼저 참여 정리를 요구한다. 자동 종료·분리를 추가하지 않으며 등록/삭제 경합과 이후 discovery·전송을 검증한다.
-- [ ] W5 Web 작업 결과·화면 복원 상태 개선 — 서버 진단을 보존하고 연결 조회 성공이 작업 오류를 덮지 않게 한다. mirror 실패에도 실행을 유지하며 복원 불가와 사용자 종료·재생성을 안내한다. 중첩 조회 응답 역전의 실제 영향도 검증한다.
+- [x] W4 참여 중 Network 삭제 거절 — 실행 참여가 있으면 삭제를 거절하고 먼저 참여 정리를 요구한다. 자동 종료·분리를 추가하지 않으며 등록/삭제 경합과 이후 discovery·전송을 검증한다. — detached: logs/2026-09-13-AIOX-W4-Network-Deletion.md — reason: 사용자 W4 실행 승인; code·tests·owner 공통 완료 검증
+- [>] W5 Web 작업 결과·화면 복원 상태 개선 — 서버 진단을 보존하고 연결 조회 성공이 작업 오류를 덮지 않게 한다. mirror 실패에도 실행을 유지하며 복원 불가와 사용자 종료·재생성을 안내한다. 중첩 조회 응답 역전의 실제 영향도 검증한다.
 - [ ] W6 등록 구성·삭제 후보 및 미채택 지적 판정 — 등록 예약·준비·활성화 대안을 현재 구조와 비교하고 필요한 경우에만 단순화한다. 미사용 필드·인자·killAll은 계약/검증 보존 후 제거하며 CLI 복귀·vendor 진단·임시 자원·신호 종료 등 남은 Claude 지적을 근거별로 채택·반증·후속 이관한다.
 - [ ] W7 통합 리뷰·owner 반영·단계 마감 — 변경별 회귀와 관련 OS 검증, 제거 코드의 책임 보존, 미해결 후보 disposition을 root가 확인한다. 확정 계약을 owner에 반영하고 잔여 한계와 후속 owner를 명시한 뒤 Stage3 W1로 활성 단계 포인터를 옮긴다. 원격 push는 사용자 지시가 있을 때만 수행한다.
 
@@ -22,8 +22,8 @@ status: open
 
 ### {Global}
 
-- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1 a039525와 W2 839c890 커밋 완료. W3는 logs/2026-09-12-AIOX-W3-Startup-Readiness.md의 두 Result를 root가 직접 리뷰·수용해 완료했다. 사용자가 W3 commit을 승인했으며 커밋 결과는 Git 기록을 참조한다. 다음 지점은 W4 참여 중 Network 삭제 거절이며 실행은 아직 요청받지 않았다. W4 이후 실행·후속 commit과 원격 push는 승인되지 않았다. 이 단계 완료 후 Stage3 W1을 재개한다.
-- 사용자는 root를 논의·정책·지시·직접 리뷰 담당으로, subagent를 조사·구현·테스트 담당으로 지정했다. 기존 조사와 확정 정책을 다시 승인받지 않는다. 이번 commit 승인은 완료된 W3 작업에 한정하며 원격 push는 사용자 후속 지시까지 금지한다. architecture.excalidraw는 개인 자산으로 제외한다.
+- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1 a039525·W2 839c890·W3 3d2cb21 커밋 완료. W4는 logs/2026-09-13-AIOX-W4-Network-Deletion.md의 Brief1 Attempt1을 root가 직접 리뷰·수용해 완료했다. 사용자가 W4 commit을 승인했으며 실제 결과는 Git 기록을 참조한다. 이번 commit 승인은 W4에 한정한다. 다음 재개 지점 W5 실행과 원격 push는 승인되지 않았다. 이 단계 완료 후 Stage3 W1을 재개한다.
+- 사용자는 root를 논의·정책·지시·직접 리뷰 담당으로, subagent를 조사·구현·테스트 담당으로 지정했다. 기존 조사와 확정 정책을 다시 승인받지 않는다. 이번 commit 승인은 완료된 W4 작업에 한정하며 원격 push는 사용자 후속 지시까지 금지한다. architecture.excalidraw는 개인 자산으로 제외한다.
 - 아래 조사 계기와 근거 분류·Claude 의견 대조를 먼저 읽고 선택 Work Item의 호출자·producer/consumer·owner·tests를 추적한다. 기존 조사를 전부 반복하지 말고 변경할 경계의 재현을 회귀 테스트로 고정한다. root가 실제 diff와 검증 근거를 확인하기 전 subagent 완료 보고를 최종 완료로 승격하지 않는다.
 - 관련 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md다. W1 교정은 docs/decisions/external-execution-survival.md로 수용됐고 기존 explicit-execution-shutdown은 결정 계보다. W2 저장·복구와 W3 준비·조회·종료 자원 경계는 owner와 회귀에 반영됐다. 무관한 last-good·자동 적용 요구는 유지한다.
 
@@ -245,3 +245,17 @@ W6는 위 10개를 확정 버그로 일괄 수정하지 않는다. 각 항목을
 사용자가 “현재 W3에 대해 작업 커밋하라”라고 명시적으로 승인했다. 완료·수용된 W3 code/tests·owner 문서·작업 기록을 root가 검토하고 커밋한다. 이 entry는 승인 기록이며 완료 hash를 예측하지 않는다. 실제 커밋 결과와 포함 파일은 Git 기록을 참조한다.
 
 부모 로그의 기존 W3 결과 소비와 W6 후보 인계 기록, 닫힌 W3 package의 당시 미커밋 기록은 보존한다. W4 next를 유지하며 W4 실행·후속 작업 commit·원격 push로 승인을 확대하지 않는다. 다른 작업의 untracked execution-flow-map 파일과 사용자 개인 자산은 포함하지 않는다.
+
+### 2026-09-13 00:43 · W4 결과 소비와 W5 재개 지점
+
+root가 logs/2026-09-13-AIOX-W4-Network-Deletion.md의 W1 Brief revision 1 Attempt 1을 전체 수용했다. 공통 Network 삭제는 준비·정리 잔존 실행까지 참여가 있으면 거절하고 참여 정리를 안내한다. 등록은 동기 예약 뒤 존재 검증으로 삭제 경합을 막으며 별도 lock이나 자동 종료·분리를 추가하지 않았다. host spec과 system architecture 반영도 소비했다.
+
+root가 source/diff·RED3/GREEN3·pnpm check exit0/506 tests(최종4회귀 포함)를 직접 대조했다. built CLI를 별도 임시 home/port와 dummy binding으로 직접 실행해 거절 안내·실행 유지, 명시 참여 정리 뒤 삭제 성공을 확인했다. 신규 실제 vendor·다른 OS·CI 검증은 아니며 세부 근거와 정정은 package W1 Result를 따른다.
+
+W4 완료·package decided를 소비하고 W5를 다음 재개 지점으로 둔다. W4 변경은 미커밋이며 commit/push하지 않았다. W3는 3d2cb21 커밋 완료 상태다. W5 실행은 아직 승인되지 않았고 다른 작업의 미추적 execution-flow-map은 보존했다.
+
+### 2026-09-13 00:51 · W4 커밋 승인과 로그 배치 유지
+
+사용자가 현재 W4 커밋과 다음 세션 인계를 요청했다. root가 완료·수용된 W4 변경을 검토해 커밋한다. 이 entry는 승인 기록이며 실제 hash와 완료 여부는 Git 기록을 참조한다. 이번 commit 승인은 W4에 한정하고 W5 실행이나 원격 push로 확대하지 않는다.
+
+로그 구조 논의 결과, 이번 W1~W4 배치는 기존대로 유지한다. 합치기·이동·package 해체를 하지 않으며 향후 새 package 사용을 포괄 승인한 것으로 확대하지 않는다. 과거 기록과 닫힌 package는 보존한다.

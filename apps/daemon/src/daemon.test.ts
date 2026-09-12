@@ -393,6 +393,133 @@ describe("network administration", () => {
         expect(missing.body).toMatchObject({ code: "unknown_network" });
     });
 
+    it("rejects Network deletion until participation cleanup completes", async () => {
+        const { networks, runtimes, messages } = harness.daemon.services;
+        const network = await networks.create("occupied", "allow");
+        const a = await joinAgent(network.id, "a");
+        const b = await joinAgent(network.id, "b");
+        const source = runtimes.get(a.runtimeId)!;
+        const rejected = await call("/api/networks/occupied", {
+            method: "DELETE",
+        });
+        expect(rejected).toMatchObject({
+            status: 400,
+            body: {
+                code: "network_in_use",
+                message: expect.stringMatching(/participation.*first/i),
+            },
+        });
+        expect(await networks.require(network.id)).toEqual(network);
+        expect(runtimes.authenticate(a.token)).toBe(source);
+        expect(a.vendor.stopped).toEqual([]);
+        expect(b.vendor.stopped).toEqual([]);
+        expect((await networks.reachable(source)).map((r) => r.id)).toContain(
+            b.runtimeId,
+        );
+        await messages.send(source, [b.runtimeId], "still connected");
+        expect(b.vendor.received).toHaveLength(1);
+        await b.vendor.settle(b.vendor.deliveryIds[0]!, "completed");
+        await harness.daemon.stopRuntime(b.runtimeId);
+        const cleanup = vi
+            .spyOn(source.binding, "stop")
+            .mockRejectedValueOnce(new Error("cleanup failed"));
+        await expect(harness.daemon.stopRuntime(a.runtimeId)).rejects.toThrow(
+            "cleanup failed",
+        );
+        await expect(networks.delete(network.id)).rejects.toMatchObject({
+            code: "network_in_use",
+        });
+        cleanup.mockRestore();
+        await harness.daemon.stopRuntime(a.runtimeId);
+        expect(
+            await call(`/api/networks/${network.id}`, { method: "DELETE" }),
+        ).toEqual({ status: 200, body: { deleted: true } });
+        expect(await networks.find(network.id)).toBeUndefined();
+        expect(await networks.reachable(source)).toEqual([]);
+        await expect(
+            messages.send(source, [b.runtimeId], "after leave"),
+        ).rejects.toThrow(/left collaboration/);
+    });
+
+    it("protects a Network while registration is preparing and releases failed preparation", async () => {
+        const { networks, runtimes } = harness.daemon.services;
+        const network = await networks.create("preparing", "allow");
+        let fail!: (error: Error) => void;
+        const preparing = new Promise<never>((_, reject) => {
+            fail = reject;
+        });
+        const createBinding = vi.fn(() => preparing);
+        const registration = harness.daemon.registerRuntime({
+            networkId: network.id,
+            createBinding,
+        });
+        const result = registration.catch((error) => error);
+        await vi.waitFor(() => expect(createBinding).toHaveBeenCalledOnce());
+        expect(runtimes.inNetwork(network.id)).toHaveLength(1);
+        try {
+            await expect(networks.delete(network.id)).rejects.toMatchObject({
+                code: "network_in_use",
+            });
+        } finally {
+            fail(new Error("preparation failed"));
+        }
+        expect(await result).toMatchObject({ message: "preparation failed" });
+        expect(runtimes.inNetwork(network.id)).toEqual([]);
+        expect(await networks.delete(network.id)).toBe(true);
+    });
+
+    it("does not create a binding revoked during Network validation", async () => {
+        const { networks, runtimes } = harness.daemon.services;
+        const network = await networks.create("revoked", "allow");
+        let release!: () => void;
+        const validation = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const requireNetwork = networks.require.bind(networks);
+        vi.spyOn(networks, "require").mockImplementation(async (reference) => {
+            await validation;
+            return requireNetwork(reference);
+        });
+        const createBinding = vi.fn(fakeVendor().createBinding);
+        const registration = harness.daemon.registerRuntime({
+            networkId: network.id,
+            createBinding,
+        });
+        const result = registration.catch((error) => error);
+        const reserved = runtimes.inNetwork(network.id)[0]!;
+        const stopping = harness.daemon.stopRuntime(reserved.id);
+        release();
+        expect(await result).toMatchObject({
+            message: expect.stringMatching(/cancelled/),
+        });
+        await stopping;
+        expect(createBinding).not.toHaveBeenCalled();
+        expect(runtimes.inNetwork(network.id)).toEqual([]);
+    });
+
+    it("rejects registration when Network deletion was already queued", async () => {
+        const { networks, runtimes, db } = harness.daemon.services;
+        const network = await networks.create("deleting", "allow");
+        const vendor = fakeVendor();
+        const createBinding = vi.fn(vendor.createBinding);
+        let registration!: ReturnType<typeof harness.daemon.registerRuntime>;
+        const originalDelete = db.networks.delete;
+        vi.spyOn(db.networks, "delete").mockImplementation((id) => {
+            const deleted = originalDelete(id);
+            registration = harness.daemon.registerRuntime({
+                networkId: id,
+                createBinding,
+            });
+            return deleted;
+        });
+        expect(await networks.delete(network.id)).toBe(true);
+        await expect(registration).rejects.toMatchObject({
+            code: "unknown_network",
+        });
+        expect(createBinding).not.toHaveBeenCalled();
+        expect(runtimes.inNetwork(network.id)).toEqual([]);
+    });
+
     it("keeps a deleted network's definition gone", async () => {
         const network = (
             await post("/api/networks", { name: "n", defaultPolicy: "allow" })
@@ -1064,16 +1191,15 @@ describe("stopping", () => {
         await stopping;
     });
 
-    it("can stop a runtime after its Network was deleted", async () => {
+    it("can stop a runtime after its Network was deleted directly from storage", async () => {
         const network = await harness.daemon.services.networks.create(
             "deleted",
             "deny",
         );
         const agent = await joinAgent(network.id, "a");
         expect(
-            (await call(`/api/networks/${network.id}`, { method: "DELETE" }))
-                .status,
-        ).toBe(200);
+            await harness.daemon.services.db.networks.delete(network.id),
+        ).toBe(true);
         await harness.daemon.stopRuntime(agent.runtimeId);
         expect(
             harness.daemon.services.runtimes.authenticate(agent.token),

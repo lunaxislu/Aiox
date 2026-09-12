@@ -47,6 +47,12 @@ YAML 정의를 global persistent Network로 동시에 저장해 이중 권위로
   `feature-host/feature-a`는 이름이 비슷하다고 merge/replace하지 않는다.
 - `network list`는 persistent만, `--all`은 host-managed도 표시한다. `network show`는
   Host-qualified Network도 조회한다. 일반 delete/route는 persistent에만 적용한다.
+- Persistent Network에 참여 실행이 남아 있으면 삭제를 거절하고 먼저 참여 정리를 안내한다.
+  준비 중 등록과 정리 실패로 남은 등록도 포함하며, 삭제를 위해 실행을 자동 종료·분리하지 않는다.
+  현재 API는 HTTP 400 / `network_in_use`로 응답하고 CLI는 해당 안내를 표시한다. [Status: Current]
+  근거: [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:69-79`,
+  [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:396-527`,
+  [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:76-88`.
 - `agent run --network`는 한 값만 받는다. 실행 중 join/leave나
   Network 소속 변경 기능은 제공하지 않는다. 실행 소유권과 Network membership은 별개다.
 - Manifest의 Agent definition key를 실행 때 새 Runtime ID로 해석해 membership/route를 만든다.

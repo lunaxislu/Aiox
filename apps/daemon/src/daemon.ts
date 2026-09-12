@@ -627,6 +627,17 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 ...input,
                 terminalId,
                 terminalOwnership: borrowing ? "borrowed" : "owned",
+                createBinding: async (controls) => {
+                    // Reserve membership before awaiting storage: deletion either
+                    // sees this record or precedes this existence check.
+                    if (input.networkId !== null)
+                        await networks.require(input.networkId);
+                    if (!runtimes.get(controls.runtimeId)?.collaborationActive)
+                        throw new Error(
+                            "Registration cancelled during preparation.",
+                        );
+                    return input.createBinding(controls);
+                },
             });
             registrations.add(registration);
             let runtimeId: string | undefined;

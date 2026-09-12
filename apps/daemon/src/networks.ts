@@ -67,7 +67,13 @@ export class NetworkService {
     }
 
     async delete(reference: string): Promise<boolean> {
-        return this.db.networks.delete((await this.require(reference)).id);
+        const network = await this.require(reference);
+        if (this.runtimes.inNetwork(network.id).length)
+            throw new NetworkError(
+                "network_in_use",
+                `Network '${network.name}' has participating executions. Clean up their participation first, then delete the Network.`,
+            );
+        return this.db.networks.delete(network.id);
     }
 
     async route(
