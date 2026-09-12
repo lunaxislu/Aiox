@@ -1,5 +1,8 @@
 # 실행 소유권과 협업 등록의 분리
 
+명시적 CLI 종료 후 외부 생존 선택은 [[docs/decisions/explicit-execution-shutdown]]에서 대체했다.
+아래는 당시 결정이며 실행 소유권 분리와 예기치 않은 연결 손실 생존 근거는 유지한다.
+
 ## Decision
 
 외부 `agent run`은 CLI가 실행 수명을 소유하고 daemon은 협업 등록을 소유한다. Web·Host는

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { PortOverrides } from "@aiox/config";
-import { loadConfig } from "@aiox/config";
+import { loadConfig, resolveTerminalLaunch } from "@aiox/config";
 import { openDatabase } from "@aiox/persistence";
 import type { DaemonState } from "@aiox/protocol";
 
@@ -51,11 +51,13 @@ export async function boot(
             ? {}
             : { portOverrides: options.portOverrides }),
     });
+    await resolveTerminalLaunch(config.terminal);
     const db = await openDatabase(databasePath(home));
     let daemon: Daemon;
     try {
         daemon = await startDaemon({
             ports: config.ports,
+            terminal: async () => (await loadConfig({ home })).terminal,
             db,
             retentionDays: () => config.messages.retentionDays,
             webRoot:

@@ -256,14 +256,19 @@ macOS zsh/bash 실제 18개 테스트와 Linux Bash5.2.37/Zsh5.9/Fish4.0.2의 PT
 Linux 결과는 분리된 shell 연동 모듈 범위이며 전체 daemon/CLI 검증은 아니다. macOS 빌드 CLI에서는
 출력·cd·Enter 전 문자열이 있는 대기 shell 정상 종료와 vim 실행 중 일반 stop 거절·force 후 실제
 프로세스 종료를 확인했다. 상세 근거와 후속 재개점은 Stage2-2 후속 W7/W9가 소유한다.
-Windows PowerShell에는 PSReadLine 2.4.3 이상을 사용하는 연동이 있다. 읽기 중 timer
-이벤트로 요청을 받고 정상 명령 루프에서 요청 유효기간·jobs·자식 프로세스를 다시 확인한 뒤
-종료한다. cmd와 연동되지 않은 PowerShell은 unknown blocker이며 --force는 기존 경로를
-사용한다. Windows runner에서 PowerShell 7과 Windows PowerShell 5.1을 PSReadLine 2.4.5로
-검증했다. 작업 보호와 미제출 입력이 있는 shell의 자체 종료가 통과했으며 상세 CI 결과는
-Stage2-2 W8이 소유한다. 사용자 PC의 설정·브라우저 사용까지 검증한 것은 아니다. [Status: As-built]
+Windows native daemon은 일반 stop에서도 작업 상태를 검사하지 않고 native PTY 종료 경로를
+사용한다. PowerShell PSReadLine handshake와 CMD idle 조사 테스트는 제거했으며 Web shell 기본값을
+PowerShell로 강제하지 않는다. 과거 PSReadLine2.4.5 Windows CI 및 CMD 반례 결과는 Stage2-2
+로그에 당시 정책의 검증으로 보존한다. 새 Windows 종료 정책의 실제 Windows 검증은 별도다.
 
-CMD의 안전한 자동 종료는 미완료다. Windows ConPTY에서 `set /p` 실행 중에도 자식 수와
-콘솔 입력 모드가 빈 프롬프트와 같고, 지연된 PROMPT 출력이 idle로 오인되는 반례를 확인했다.
-이 관측을 종료 근거로 사용하지 않는다. 별도 shell 확장 도입은 결정하지 않았다.
-근거: [[packages/terminal/src/cmd-idle.test.ts]]. [Status: Current gap]
+공통 terminal.shell/args/cwd는 새 일반 shell 생성에만 적용하고 vendor 실행 구성과 분리한다.
+config의 resolveTerminalLaunch가 기본값·요청 override·실행 파일 탐색과 cwd 검증을 소유한다.
+bootstrap은 DB 준비 전에 검증하고, 새 shell 생성은 파일을 다시 읽어 검증한 뒤 admission을
+재확인한다. TerminalService는 필수 실행 값을 받아 PTY를 생성하며 설정을 다시 해석하지 않는다.
+Windows에서 WSL의 Linux cwd는 선택한 배포판·사용자의 정적 검사 명령으로 확인한 뒤 wsl.exe --cd로
+전달하며 native PTY의 host cwd와 구분한다. Windows native cwd는 Node 자식이 실제 해당 경로에서
+시작할 수 있는지 검사한다. Windows 실행 파일 ACL·실제 Windows/WSL 전체 실행 검증은 별도 한계다.
+근거: packages/config/src/terminal.ts 및 wsl.ts와 각 colocated tests,
+apps/daemon/src/bootstrap.test.ts 및 terminals.test.ts. [Status: As-built]
+설정 watch·현재 경로 polling·부모 shell 추적은 추가하지 않는다.
+계약은 [[docs/specs/aiox-configuration-web]]을 따른다.

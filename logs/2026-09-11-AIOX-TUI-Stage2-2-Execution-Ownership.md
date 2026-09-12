@@ -13,8 +13,8 @@ status: open
 - [x] W5 실제 수명 검증·회귀·Stage3 인계 — 외부 PTY 미생성, daemon 정상·force·비정상 종료 뒤 실제 vendor 조작과 shell 복귀, 연결 손실 등록 정리, Web 실행·빌린 shell·화면 복원 회귀 및 pnpm check를 검증한다. OS별 미검증을 명시하고 owner·링크 정합을 확인한 뒤 Stage3 W1로 plan 포인터를 복귀한다. Claude 메시지 E2E·Codex·Host 미구현을 완료로 확대하지 않는다.
 - [x] W6 일반 stop·force 공통 입력/신규 실행 차단과 종료 직렬화 — 거절·실패 시 입력을 복구하고 외부 vendor 수명은 유지한다.
 - [x] W7 대기 shell 안전 종료 연동 — macOS zsh/bash 및 Linux bash/zsh/fish에서 shell 자체 대기·남은 작업 판정과 정상종료 handshake를 구현·검증한다.
-- [>] W8 Windows cmd/PowerShell 대기 shell 정상종료 — builtin·ThreadJob·입력 경합을 보호하는 연동을 구현하고 실제 Windows 검증을 확보한다. 환경/관측 미확보는 미완료로 유지한다.
-- [ ] W9 통합 회귀·owner 반영과 단계 재마감 — 지원 shell별 대기/실행/중지/background/exec/입력 경합·일반/force 실패 복구를 검증하고 pnpm check·실측 범위를 기록한다.
+- [x] W8 공통 터미널 설정·OS별 stop 정책 구현 — 기존 Windows 기준 브랜치를 보존하고 조사 후 shell/args/cwd와 외부 실행 종료를 구현한다. 새 정책 질문은 사용자 결정 후 재개하며 commit/push·CI·Windows 실측은 후속이다.
+- [>] W9 후속 통합 검증·단계 재마감 — 승인된 순서인 commit/push → 해당 SHA CI 확인 → Windows/WSL desktop 실제 경로·종료 검증을 진행한다. 추가 shell/cwd 사전 검증과 전체 pnpm check 통과, 현재 커밋·push·CI는 미실행.
 
 ## Required Context
 
@@ -34,11 +34,12 @@ status: open
 
 ### {W6,W7,W8,W9}
 
-- 최신 대기 shell 후속 블록의 승인 범위와 shell별 실측 한계를 따른다. 기존 W1–W5를 다시 구현하지 않는다. 일반 종료는 unknown/busy 보존, --force는 daemon 소유 실행 종료; 두 경로 모두 입력·신규실행 차단을 유지한다. Enter 전 문자열 보존·cwd 추적은 요구하지 않는다.
+- 2026-09-12 터미널 설정·종료 정책 변경 블록이 현재 승인 범위다. 과거 W6/W7은 당시 정책의 검증 근거이며 외부 force 생존·Windows idle 요구는 새 명시적 종료 정책으로 대체됐다. 작업별 조사·구현은 W8에서 수행하고 W9 전체 CI/실측·단계마감은 후속으로 남긴다.
 
 ### {W8,W9}
 
-- W6/W7 완료와 PowerShell7/5.1 PSReadLine2.4.5 Windows ConPTY 검증을 소비한다. 23a8f00 CI34592876478은 Windows/Linux/macOS × Node22/24 전체 성공이며 공개 closeIdle 경로까지 확인했다. 다음은 CMD 자동종료 잔여범위 결정이다: 자식수·PROMPT·consolemode 반례가 있어 현재 unknown blocker이며 별도 입력 확장 도입은 미결정이다. CMD 자동종료 완료로 취급하지 않는다. Windows 사용자PC의 설정·브라우저 수동사용은 별도 미검증이다. 작업 브랜치는 codex/stage2-2-idle-shell-windows이며 main 미병합이다. W9는 잔여 결정 후 지원범위 회귀·owner 정합과 단계마감을 수행한다.
+- 최신 사전 검증 보완·별도 조사 결과 entry를 소비한다. commit/push와 해당 SHA CI 확인이 승인됐으며 그 후 사용자 Windows desktop(Git·Node·WSL2 설치)에서 실검증한다. 사전 검증 구현·로컬 pnpm check 통과를 Windows/WSL 또는 Stage2-2 전체 완료로 확대하지 않는다. 별도 8개 개선은 조사·재현과 판단용 문맥 전달까지이며 production 수정 범위에 합치지 않는다.
+- 신호 종료 질문은 기존 정책으로 철회했고 구현 반영됐다. SIGINT/SIGTERM·예기치 않은 연결 손실은 외부 생존, 명시적 CLI 요청은 새 OS별/force 정책이다. 필수 read는 최신 완료 블록과 runtime/config spec, explicit-execution-shutdown decision 및 변경 tests다.
 
 ## 2026-09-11 · 공통 실행 위치·명령 정책 합의와 Stage2-2 착수 준비
 
@@ -222,3 +223,86 @@ CMD ConPTY 조사 테스트는 Windows 두 job에서 통과했다. pause 및 set
 최종 제품코드/테스트 commit23a8f00의 CI34592876478에서 Windows/Linux/macOS × Node22/24 여섯job 전체 성공을 root가 직접 확인했다(https://github.com/lunaxislu/aiox-prototype/actions/runs/34592876478). PowerShell7·5.1의 실제 createTerminal().closeIdle()로 입력중문자열 폐기·승인후2초내exit·dispose를 확인했다. 로컬 최종 pnpm build도 exit0이다. 사용자 daemon은 재시작하지 않았고 main에는 병합하지 않았다. 구현은 codex/stage2-2-idle-shell-windows 브랜치에 있다.
 
 PowerShell 연동과 Windows 자동검증은 확보했다. CMD는 자식수·PROMPT·consolemode 반례로 자동종료 판정이 불충분하여 unknown blocker로 보존한다. 이는 합의한 확인불가시거절 정책을 지키는 현재동작이며 CMD 자동종료 구현완료를 뜻하지 않는다. 별도입력확장(native hook/Clink) 도입이나 CMD 자동종료 지원범위 변경은 사용자 결정 없이 하지 않는다. W8 재개점은 이 잔여범위 결정이고 W9 단계마감은 그 이후다. Windows 사용자PC의 프로필·브라우저 수동사용도 별도미검증으로 남는다.
+
+## 2026-09-12 · 터미널 설정·종료 정책 변경과 조사 선행
+
+사용자는 기존 Windows 검증 브랜치 보존 → 정책·변경 이유 기록 → 새 브랜치 구현의 3번까지만 승인했다. 새 코드 commit/push·CI·Windows 사용자PC 실측·main 병합은 이번 범위 밖이다. 기존 브랜치와 origin 추적 ref는 937055b14b9372d1f01ea19b3321b9fe77793a74로 일치하고 작업트리가 깨끗함을 확인한 뒤 codex/terminal-config-stop-policy를 생성했다. 기존 ref는 수정하지 않았다.
+
+새 합의: config.json의 공통 terminal.shell/args/cwd를 모든 OS에 선택적으로 제공한다. 생략 시 기존 기본값을 사용하고, WSL cwd는 배포판 내부 Linux 경로로 전달한다. 별도 파일/폴더 존재 preflight를 만들지 않고 실행 오류를 전달한다. 실행 파일 선택은 설치나 WSL 버전 변환이 아니다. Windows native 일반 stop은 작업을 검사하지 않고 AIOX 등록·관리 실행을 종료하며 외부 CLI vendor도 포함한다. macOS/Linux/WSL 일반 stop은 최초 shell idle과 등록된 실행을 확인하고 busy/unknown이면 거절한다. 모든 OS force는 외부 CLI vendor를 포함해 종료한다. 자연 연결 손실과 명시적인 종료 요청은 구분하며 기존 예기치 않은 연결 손실 생존 정책은 이번 명시적 종료 정책과 혼동하지 않는다. 안쪽 shell의 idle은 추적하지 않는다. 입력/admission gate·오류/정리 실패 보고는 유지한다.
+
+경위: 빈 shell의 일반 stop 마찰을 줄이려다 CMD builtin 반례와 PowerShell PSReadLine 연동 비용을 확인했다. WSL2 전용 제한·PowerShell만 지원·CMD unknown 안내를 검토했으나 native 실행을 허용하고 Windows 종료 정책을 단순화하는 방향을 선택했다. 시작 터미널 상속은 화면/세션 복제가 아닌 cwd/env 전달임을 확인했고 자동 부모 shell 식별 대신 명시적 공통 설정을 택했다. 내부 실행 소유권은 종료 방법 구분에 유지하되 사용자 종료 정책은 Agent/vendor로 나누지 않는다.
+
+조사 선행: settings_research는 config→shell/WSL cwd·POSIX args, shutdown_research는 daemon→외부 제어→실행 종료, windows_simplify_research는 PSReadLine 제거와 native 종료 근거를 읽기 전용 조사한다. 모두 ponytail full을 적용한다. root는 로그·owner 정합과 통합 경계를 담당한다. 기존 Base 로그의 같은 수명 안 W8 범위를 새 정책으로 바꾸며 과거 실측/결정 entry는 보존한다. 조사 결과의 새 정책이 필요하면 구현을 중단해 사용자와 논의한다. 구현 후 관련 로컬 테스트는 수행하되 전체 CI/배포 검증 완료를 주장하지 않는다.
+
+## 2026-09-12 · 조사 결과와 daemon 신호 종료 정책 질문
+
+세 subagent 읽기 전용 조사 완료. PSReadLine은 powershell-idle.ts와 prepareShell의 Windows idle 경로에만 필요하므로 새 정책에서 구현/테스트·CMD 반례 테스트·CI 모듈 설치를 제거할 수 있다. Windows matrix와 native PTY 종료 검증은 유지한다. 설정은 기존 terminal appearance 객체에 optional shell/args/cwd를 더하고 vendor PTY와 일반 shell 적용을 분리하는 최소 경로를 조사했다. WSL Linux cwd는 host resolve가 아닌 wsl --cd로 전달하고 PTY의 host cwd와 구분해야 한다. 기존 config는 시작 시 읽으므로 새 터미널 적용 요구를 지키려면 생성 시 읽기 등 연결이 필요하며 watcher를 미리 추가하지 않는다. POSIX 임의 args는 현재 unknown 처리이고 이를 자동으로 안전하다고 바꾸지 않는다.
+
+종료 조사에서 새 정책 질문 발견: root가 apps/daemon/src/main.ts:12–15의 SIGINT/SIGTERM → daemon.stop(true)를 직접 확인했다. 새 외부 force 종료를 이 호출에 그대로 적용하면 OS 신호 종료도 외부 vendor를 종료한다. 기존 연결 손실 생존과 명시적 CLI force의 경계를 사용자와 결정하기 전 production/test 변경을 중단한다. 관련 restart는 bootstrap.ts에서 stop({})를 재사용하므로 Windows 일반 stop 정책을 적용하면 restart도 작업을 종료하는 파생 동작임을 보고한다.
+
+외부 종료는 새 PID 트리 추적 대신 기존 ExecutionOwner를 재사용할 수 있으나 revoke의 control socket 즉시 닫힘과 foreground exit 직후 ACK를 그대로 쓰면 안 된다. helpers·자원 정리가 끝난 뒤 종료 확인을 받고, 미확인은 기존 stop_incomplete·재시도 정책으로 처리하는 방향이다. 이미 연결 손실로 등록 해제된 실행을 새로 찾아가는 기능은 범위 밖이다. wsl --shutdown/--terminate 같은 배포판 전체 종료도 무관 실행을 침범하므로 추가하지 않는다.
+
+현재 결과: 기준 branch 보존, 새 branch 생성, 정책/경위/조사 로그 기록 완료. production/test 수정·실행 없음, 새 commit/push/CI 없음. 다음은 SIGINT/SIGTERM 정책 답변 후 W8 구현 재개다. 단계3 구현은 미완료이며 목표 완료로 처리하지 않는다.
+
+## 2026-09-12 · 신호 종료 정책 재확인·불필요한 질문 정정과 구현 재개
+
+사용자 지적으로 기존 정책을 재확인했다. runtime spec의 외부 실행 생존 및 로그 Global의 연결 손실 생존 재승인 불필요 규칙이 이미 존재한다. 최신 합의는 명시적 CLI stop/force를 변경했으며 SIGINT/SIGTERM·예기치 않은 연결 손실 생존까지 변경한 합의는 없다. main.ts stop(true) 공용 호출은 새 사용자 정책 질문이 아니라 명시적 종료 요청과 신호 disposal 의도를 구분할 구현 문제였다. 앞선 질문과 작업 중단 판단을 철회하고 기존 정책으로 구현을 재개한다.
+
+settings_research는 공통 terminal 설정·새 shell에 적용·WSL cwd, shutdown_research는 명시적 종료 요청/ACK·신호 생존·실패 재시도, windows_simplify_research는 PowerShell/CMD idle 전용 코드 제거를 담당한다. root는 owner와 로그 정합·통합 검증을 담당한다. ponytail full/TDD를 유지하며 새 commit/push/CI는 하지 않는다.
+
+## 2026-09-12 · 설정·Windows idle 제거 구현과 부분 검증
+
+Windows idle 전용 powershell-idle.ts/test 및 cmd-idle.test, CI PSReadLine 설치 단계를 제거했다. Windows matrix/native PTY 검사는 유지한다. Windows 미주입 RED→GREEN 후 shell-integration19 및 terminal typecheck가 통과했다. CLI stop/restart 도움말에 Windows 작업 중단, force의 외부 실행 종료를 명시하고 CLI9 tests를 확인했다.
+
+공통 terminal.shell/args/cwd 설정은 기존 parseConfig/loadConfig를 재사용하며 새 Web shell 생성마다 비동기 파일 설정을 읽고 admission을 재확인한다. 기존 shell은 그대로이고 vendor PTY 설정과 분리했다. WSL Linux cwd는 --cd로 전달하며 host PTY cwd와 분리한다. root가 config16, terminal87, execution owner3 및 daemon terminals/bootstrap/mcp54 tests를 직접 실행해 통과했고 config typecheck와 oxlint도 통과했다. Windows platform stub/argv 확인은 실제 WSL 실행 증거가 아니다.
+
+실측 한계: macOS node-pty에서 없는 실행 파일은 PTY 생성 후 출력 없이 nonzero exit할 수 있다. 기존 shell exit 즉시 등록 제거 동작을 유지했고 별도 존재 preflight·실패 화면 보존 정책을 추가하지 않았다. Native throw는 HTTP 오류로 전달하고 비동기 exit는 기존 terminal lifecycle로 처리한다. 종료 신호·외부 owner 정리 ACK/retry의 통합 테스트는 아직 진행 중이다. 새 commit/push/CI/사용자PC 실측 없음.
+
+문서 검토는 runtime/config spec, system/storage/vendor architecture와 새 explicit-execution-shutdown decision을 대조했다. 기존 decision은 당시 이유를 고치지 않고 새 결정 forward pointer만 추가했다. 삭제 파일 링크가 없고 관련 wiki target 검사가 통과했다. log tool에 block 제목 rename이 없어 자동 날짜와 수동 날짜가 중복된 신규 두 제목만 직접 교정했다.
+
+## 2026-09-12 · 순서 1–3 구현 완료·검증과 후속 경계
+
+사용자 승인 순서 1–3(기준 branch 보존·기록·새 branch 구현)을 완료했다. 기준 codex/stage2-2-idle-shell-windows와 origin 추적 ref는 모두 937055b14b9372d1f01ea19b3321b9fe77793a74 그대로이며 새 branch codex/terminal-config-stop-policy의 변경은 미커밋이다. commit/push/CI/main 병합은 수행하지 않았다.
+
+외부 제어에 명시적 terminate/terminated 요청 식별과 전체 owner 정리 확인을 연결했다. POSIX 일반 stop은 외부 등록도 blocker, Windows 일반 stop과 모든 OS force는 외부 owner도 종료한다. main SIGINT/SIGTERM은 terminateExternal:false로 기존 생존 정책을 유지한다. revoke 전 종료 의도를 표시하고 협업 권한 회수 뒤 종료 제어 채널을 유지한다. stale ACK는 무시, 정리 실패는 같은 연결에서 재시도, 연결 손실 시 종료 미확인을 성공/등록 삭제로 바꾸지 않는다. 자연 foreground exit도 owner.stop 이후 통보해 부속 자원 정리와 force 경합을 닫았다. 새 프로세스 트리 추적이나 배포판 전체 종료 명령은 없다.
+
+root 최종 직접 검증: config16 + terminal87 + vendor3 + protocol10 + daemon154 + CLI49 = 319 tests 통과(중복 실행 제외 패키지별 최종 수). daemon/CLI/config 타입 검사, oxlint, apps/packages 포맷 검사, git diff --check 통과. daemon/CLI tsup 빌드 및 빌드 CLI daemon stop --help 확인, 최종 CLI 경합 수정 뒤 CLI 재빌드 통과. 외부 제어 테스트는 실제 WS+대역 owner/프로세스와 CLI fake child 검사이며 실제 vendor/Windows/WSL E2E가 아니다. WSL --cd는 인자 전달 대역 검사이며 실제 pwd 검증은 후속이다. 새 pnpm check 전체·GitHub CI·사용자PC 실측은 이번 범위에서 하지 않았다.
+
+W8 구현 완료, W9 통합 CI·Windows/WSL 실측·단계마감은 다음 사용자 지시 후 진행한다. Windows PSReadLine 설치는 새 구현에 필요 없다. 실제 WSL 경로, 잘못된 executable의 빠른 비동기 exit 화면, 중첩 프로세스 전체 종료 범위는 미검증/기존 한계로 보존한다. Stage2-2 전체 완료나 W9 완료를 주장하지 않는다.
+
+### 2026-09-12 16:26 · 사전 검증 보완·별도 조사 결과와 CI 선행 승인
+
+사용자가 로그 기록을 금지한 동안 수행한 구현·조사·검증과 이후 논의를 이번 명시적 기록 요청에 따라 소급해 남긴다. 과거의 “별도 존재 preflight를 추가하지 않는다”는 합의는 아래 사용자 요구로 대체됐다. 과거 entry는 당시 경위로 보존한다.
+
+출발점은 macOS에서 없는 executable도 PTY 생성 뒤 출력 없이 종료될 수 있다는 관측이었다. 사용자는 이를 표시 한계로만 남기지 말고 설정 계층의 선행 조건·검증 순서를 바로잡으라고 요구했다. 특정 shell에만 국한하지 않고 설정 소비 전에 유효성을 확인하는 취지이며, 이번 구현에서는 theme 색상·keyboard 의미 검증은 제외하고 shell과 cwd 존재·접근 조건을 포함했다. 사전 검사 후 환경 변화나 실제 실행 실패 처리는 유지한다.
+
+구현: config_preflight와 daemon_preflight가 분담했고 root가 WSL 및 통합을 마무리했다. packages/config/src/terminal.ts의 resolveTerminalLaunch가 기본값·요청 cwd override를 반영한 실행 정보를 검사·확정한다. POSIX executable 접근 검사, Windows executable 탐색 및 Node child의 cwd 사용 검사, packages/config/src/wsl.ts의 지정 배포판·사용자 cwd 검사를 연결했다. WSL 검사는 고정 shell script만 실행하며 사용자 command tail을 실행하지 않는다. 검증할 수 없는 WSL 옵션은 거절한다. 일반 parseConfig/loadConfig를 환경 검사로 바꾸지는 않아 상태 조회·복구용 소비자에 새 결합을 추가하지 않았다.
+
+apps/daemon/src/bootstrap.ts는 DB·listener 준비 전에 검사하고, daemon.ts는 새 shell마다 최신 설정을 검사한 뒤 admission을 재확인한다. TerminalService는 확정된 TerminalLaunch를 받도록 바꿨다. 서비스의 설정 해석·WSL 인자 구성과 no-argument 호환 경로를 제거하고 호출자를 갱신했다. mock throw만으로 없는 shell 검사를 주장하지 않도록 실제 파일 시스템 사전 거절 테스트를 추가했으며, 유효한 사전 검사 이후 native 실행 실패 테스트도 유지했다. 관련 config spec과 storage-terminal architecture에 검증 경계·한계를 반영했다. 이전 Windows idle 구현/테스트 및 CI PSReadLine 설치 제거는 앞선 W8 작업이며 이번 사전 검증 삭제와 구분한다.
+
+root 직접 검증: 추가 구현 이후 config26 + daemon160 + CLI49 + terminal87 = 322 tests 통과. 이 수는 해당 네 패키지 합계이지 repo 전체 합계가 아니다. 관련 타입 검사·lint/format·build·git diff --check 통과. 빌드된 bootstrap에 없는 shell/cwd를 주어 DB·상태 파일 생성 전 거절됨을 확인했다. macOS native 및 WSL 고정 script의 실제 /bin/sh 검사를 수행했다. Windows/WSL은 대역 검사이며 Windows ACL·ConPTY·실제 배포판 실행 성공의 증거가 아니다.
+
+현재 사용자 요청 직전에 시작한 repo 전체 pnpm check도 root가 종료 결과를 확인했다: exit 0. lint·format·전체 build·typecheck·test 통과이며 daemon 최종 160 tests가 통과했다. 앞선 “전체 pnpm check 미실행” 상태를 대체한다. GitHub CI 결과를 뜻하지 않는다.
+
+별도 조사 경위: 사용자는 config뿐 아니라 선행 조건, 부분 성공, 실패 복구와 여러 함수의 결합에도 같은 문제가 있을 것으로 판단해 조사 범위를 확장했다. 아래는 실제 모듈·실패/지연 주입 또는 CLI/Web 테스트에서 확인한 결과이며 production 수정은 하지 않았다.
+
+| 항목 | 확인한 범위와 근거 위치 |
+| --- | --- |
+| 재시작 순서 | CLI bootstrap에서 잘못된 config를 발견하기 전에 기존 daemon 종료 요청. 유효한 상태 파일·잘못된 config와 fetch 대역으로 순서 확인. |
+| 등록 정리와 force 경합 | daemon stopRuntime의 cleanup을 지연하고 force stop을 겹치자 owner.stop 호출 0회인데 stopped:true. 실제 WS 손실 전체가 아닌 공통 경계를 재현. |
+| 결과 뒤 알림 저장 실패 | messaging #settle에서 결과 저장 뒤 알림 저장 실패를 주입하자 추적이 없어지고 재시도에서도 알림 복구 안 됨. |
+| 전송 거절 뒤 DB 실패 | messaging #send에서 전송·실패 결과 저장을 연속 실패시키자 뒤 대상 중단, 추적 없는 outcome=null 행 잔존. retention은 미완료 행 제외. |
+| 시작 완료 판정 | Web listener 시작을 지연하자 API가 먼저 running 반환. 제어된 타이밍 재현이며 운영 무작위 장애 관측은 아님. |
+| status·doctor | 잘못된 config가 status 조회 전 실패를 유발하고 doctor는 기록 포트 대신 config 포트 조회. |
+| Web 오류 표시 | 서버 오류 설명 유실과 후속 polling 성공에 의한 작업 실패 표시 덮어쓰기를 DOM 테스트로 확인. |
+| 사용 중 Network 삭제 | 실행이 삭제된 networkId를 유지해 discovery 실패. 삭제 거절/분리 정책은 미결정. stateless MCP 세션의 영구 파괴라고 표현하지 않음. |
+
+재현 자료는 /private/tmp/aiox-preflight-review/probe.mjs, cli-probe.test.ts, web-probe.test.ts에 있다. probe는 당시 빌드 산출물을 사용하며 사본 테스트는 원래 repo 테스트 문맥에 맞춰 실행해야 한다. 임시 repo 테스트는 제거했다. 이 경로는 임시 자료이므로 재개 시 존재와 현재 코드 적합성을 확인한다.
+
+Claude 분석 정정: 오류 terminate ACK 자체가 양쪽 영구 hang/이후 force 영구 실패를 뜻하지 않는다. 같은 연결 재시도 구현·양쪽 테스트가 있고 제어 연결 손실은 별도 상황이다. args/미지원 shell의 busy 거절은 명시적 보수 정책일 수 있고 ps 실패는 검사마다 재조회한다. cleanup 재호출은 실제 비멱등 부작용 확인 전 결함으로 단정할 수 없다. fish 미실행 주장은 기존 /private/tmp/aiox-linux-handshake-result.txt의 Linux Fish4.0.2 검사 근거와 충돌한다. ConfigSession 미사용·설정 적용 시점 차이만으로 last-good fallback이나 전체 live reload를 추가하면 잘못된 실행 설정 거절 정책과 충돌할 수 있다.
+
+사용자는 별도 agent에게 위 조사 문맥만 주고 독립 판단을 시키기로 했다. 구현 지시형 프롬프트를 문맥·판단 전용 프롬프트로 교체해 전달했다. 실제 추가 agent 호출이나 위 8개 수정 착수는 하지 않았다. 이 로그에서 별도 개선의 구현 Work Item을 새로 만들지 않으며 Stage2-2 수정 완료로 세지 않는다.
+
+Windows 실검증 논의: 사용자는 Git·Node·WSL2가 설치된 Windows desktop을 보유한다고 밝혔다. 권장 경로는 Windows Node → wsl.exe → 선택 배포판·사용자 cwd → 실제 PTY이며 WSL 안의 Linux 테스트만으로 대체하지 않는다. 현재 CI에는 Windows/Linux/macOS × Node22/24와 pnpm check가 있으나 WSL 배포판 준비 단계는 없다. Canonical WSL Actions 문서(https://ubuntu.com/wsl/docs/latest/reference/actions/)에서 설치·배포판 실행 지원을 확인했다. Linux Docker는 Windows ACL·ConPTY·wsl.exe 경계를 대체하지 못한다는 판단에는 커널 경계 설명(https://learn.microsoft.com/en-us/virtualization/windowscontainers/deploy-containers/set-up-linux-containers)을 참고했다. runner별 WSL/가상화 가능 여부는 실제 준비 때 확인한다.
+
+사용자는 미커밋 스냅샷을 먼저 Windows에 옮기는 제안보다 commit → push → CI 확인 → 같은 commit의 Windows/WSL desktop 실검증 순서를 지시했다. 그 순서로 진행을 승인받아 diff 확인과 전체 pnpm check까지 수행했고, 커밋 전에 이번 로그 기록 요청이 도착했다. 기록 시점에는 새 commit/push/CI/Windows 실측/main 병합이 없다. 다음 행동은 현재 Stage2-2 변경 커밋·push 후 해당 SHA의 CI 확인이다. Windows/WSL 실검증과 W9 전체 완료는 아직 남아 있으며, 이번 로그 요청을 앞으로 모든 토론을 자동 기록하라는 포괄 승인으로 확대하지 않는다.

@@ -11,12 +11,12 @@ export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 export type AgentBinding = {
     /** Resolves when the input was accepted, never when the work is done. */
     deliver(message: InboundMessage): Promise<void>;
-    /** Terminates resources owned by the daemon; never called for external executions. */
+    /** Confirms execution-owner resource termination; external owners use lifecycle control. */
     stop(force: boolean): Promise<void>;
     /** Releases collaboration resources independently of process lifetime. */
     cleanup?(): Promise<void>;
     mcpConnected?(): void;
-    /** Ends control/report exposure synchronously, before fallible cleanup. */
+    /** Revokes collaboration/report exposure before fallible cleanup; termination control may remain. */
     revoke?(): void;
 };
 

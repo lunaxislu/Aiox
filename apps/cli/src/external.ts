@@ -32,6 +32,8 @@ export async function runExternal(
             let ready = false;
             let connected = true;
             let finished = false;
+            let terminationRequested = false;
+            let terminating: Promise<void> | undefined;
             let failure: Error | undefined;
             let exited: ExecutionExit | undefined;
             let timer: ReturnType<typeof setTimeout> | undefined;
@@ -66,16 +68,18 @@ export async function runExternal(
                 if (!connected || finished) return;
                 connected = false;
                 clearTimeout(timer);
-                if (!preparing || !owner.hasProcessHandles)
+                if (exited) finish();
+                else if (!preparing || !owner.hasProcessHandles)
                     finish(
                         new Error(
                             "AIOX connection closed before vendor launch.",
                         ),
                     );
-                else if (exited) finish();
                 else
                     diagnostic(
-                        "Collaboration connection lost. The vendor is still running; rerun agent run to reconnect after exiting.",
+                        terminationRequested
+                            ? "Control connection lost during vendor termination; local cleanup is continuing."
+                            : "Collaboration connection lost. The vendor is still running; rerun agent run to reconnect after exiting.",
                     );
             };
             // Native foreground terminal delivery already sends SIGINT to the vendor.
@@ -127,6 +131,42 @@ export async function runExternal(
                 }
                 const frame = parsed.data;
                 switch (frame.type) {
+                    case "terminate": {
+                        terminationRequested = true;
+                        clearTimeout(timer);
+                        terminating ??= (async () => {
+                            await owner.stop();
+                            await starting;
+                            await owner.stop();
+                            exited ??= { exitCode: 1, signal: null };
+                        })().finally(() => {
+                            terminating = undefined;
+                        });
+                        void terminating.then(
+                            () => {
+                                if (
+                                    !send({
+                                        type: "terminated",
+                                        requestId: frame.requestId,
+                                    })
+                                )
+                                    finish();
+                            },
+                            () => {
+                                const error =
+                                    "Vendor execution cleanup remains unconfirmed.";
+                                if (
+                                    !send({
+                                        type: "terminated",
+                                        requestId: frame.requestId,
+                                        error,
+                                    })
+                                )
+                                    finish(new Error(error));
+                            },
+                        );
+                        break;
+                    }
                     case "prepared": {
                         if (preparing) {
                             disconnected();
@@ -144,7 +184,10 @@ export async function runExternal(
                             );
                             send({ type: "started" });
                             exited = await foreground.exited;
-                            if (finished) return;
+                            // Natural exit also confirms the whole owner, not just its foreground.
+                            // Otherwise registration cleanup can race a force stop while helpers remain.
+                            await owner.stop();
+                            if (finished || terminationRequested) return;
                             if (
                                 !ready &&
                                 connected &&
@@ -163,7 +206,8 @@ export async function runExternal(
                                 );
                                 finish();
                             }, 1500);
-                        })().catch((error: unknown) =>
+                        })().catch((error: unknown) => {
+                            if (terminationRequested) return;
                             finish(
                                 failure ??
                                     (error instanceof Error
@@ -171,8 +215,8 @@ export async function runExternal(
                                         : new Error(
                                               "Vendor launch preparation failed.",
                                           )),
-                            ),
-                        );
+                            );
+                        });
                         break;
                     }
                     case "ready":

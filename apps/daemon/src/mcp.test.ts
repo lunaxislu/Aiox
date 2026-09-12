@@ -171,7 +171,7 @@ describe("credentials", () => {
 describe("agents_list", () => {
     it("does not discover general shells or accept them as message targets", async () => {
         const a = await join("a");
-        const shell = harness.daemon.createShell();
+        const shell = await harness.daemon.createShell();
         await route({ kind: "default", policy: "allow" });
         const client = await connect(a.token);
         expect(await agentsList(client)).toEqual([]);

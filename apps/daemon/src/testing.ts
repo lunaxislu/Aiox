@@ -87,6 +87,7 @@ export async function startTestDaemon(
         retentionDays?: number;
         now?: () => number;
         adapters?: DaemonOptions["adapters"];
+        terminal?: DaemonOptions["terminal"];
     } = {},
 ): Promise<DaemonHarness> {
     const home = await mkdtemp(join(tmpdir(), "aiox-daemon-"));
@@ -96,6 +97,9 @@ export async function startTestDaemon(
         db,
         retentionDays: () => options.retentionDays ?? 30,
         webRoot: undefined,
+        ...(options.terminal === undefined
+            ? {}
+            : { terminal: options.terminal }),
         ...(options.adapters === undefined
             ? {}
             : { adapters: options.adapters }),
@@ -109,7 +113,7 @@ export async function startTestDaemon(
         apiUrl: (path) => `http://127.0.0.1:${daemon.ports.daemon}${path}`,
         webUrl: (path) => `http://127.0.0.1:${daemon.ports.web}${path}`,
         close: async () => {
-            await daemon.stop(true);
+            await daemon.stop(true, { terminateExternal: false });
             await rm(home, { recursive: true, force: true });
         },
     };

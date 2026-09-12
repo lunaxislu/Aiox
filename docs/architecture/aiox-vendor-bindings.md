@@ -250,7 +250,8 @@ controller test의 `apps/daemon/src/agent-controller.test.ts:726`.
 daemon은 먼저 협업 등록 유효성과 credential을 회수한다. daemon 소유 execution owner의 stop은
 실제 PTY exit와 inbox 자원 정리를 확인하며, 외부 실행 owner는 CLI에 남는다. binding cleanup은
 협업 관측·hook 연결을 해제하고 daemon이 route·요청·등록을 정리한다. 외부 inbox 임시 자원은
-CLI가 vendor exit 후 정리한다. 부분 실패는 Runtime과 재시도 경로를 유지한다. foreground
+CLI가 vendor exit 후 정리한다. 명시적 전체 종료 요청은 공통 제어 연결로 CLI owner에 전달하고
+foreground와 필수 부속 실행·자원 정리 완료를 확인한다. 부분 실패는 Runtime과 재시도 경로를 유지한다. foreground
 연결 손실·프로세스 실패·중단은 연결된 입력 결과를 각각 정리하며 메시지를 재전송하지 않는다.
 daemon execution owner의 terminal 상태 자원은 kill 성공 후 dispose로 해제한다. kill 실패 시에는
 dispose를 진행하지 않아 종료 재시도에 필요한 세션을 보존한다.
@@ -277,10 +278,11 @@ Network MCP initialize 준비와 daemon force stop·등록 정리까지다. 모�
 기존 2.1.263 사용자 실험, 이번 시작 확인, 새 제품의 모델 E2E를 구분한다. 사용자 참여 실제 Claude
 입력·응답·표시 확인은 Stage3 W5에 남고 Windows/Linux/WSL의 실제 vendor 실행은 미검증이다.
 
-### 외부 직접 실행 수명 실측 [Status: As-built]
+### 외부 직접 실행 수명 실측 — 2026-09-11 이전 종료 정책
 
 2026-09-11 macOS arm64·Node v24.14.0·Claude Code 2.1.268에서 빌드된 CLI와 daemon으로
-정상 stop·force stop·daemon SIGKILL·제어 WS만 단절하는 네 경우를 확인했다. 각 실행은
+당시 정책에서 정상 stop·force stop·daemon SIGKILL·제어 WS만 단절하는 네 경우를 확인했다.
+이 결과를 새 명시적 외부 실행 종료 정책의 검증으로 승계하지 않는다. 각 실행은
 협업 준비 뒤 `terminalId=null`, daemon terminal 목록 비어 있음, 실제 Claude가 CLI의 직접 자식이며
 같은 사용자 TTY를 상속함을 확인했다. 검증 harness의 node-pty는 사용자 터미널을 대신하며
 제품 외부 실행이 추가 PTY를 생성했다는 뜻이 아니다.

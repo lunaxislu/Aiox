@@ -12,7 +12,7 @@ process.stdout.write(
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.on(signal, () => {
         void daemon
-            .stop(true)
+            .stop(true, { terminateExternal: false })
             .then((outcome) => {
                 if (!outcome.stopped)
                     process.stderr.write(

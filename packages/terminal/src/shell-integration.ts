@@ -6,8 +6,6 @@ import { basename, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
 
-import { preparePowerShell } from "./powershell-idle";
-
 export type ShellLaunch = {
     file: string;
     args: string[];
@@ -26,13 +24,13 @@ const execute = promisify(execFile);
 
 /** Only a shell that installed the handshake may declare itself idle. */
 export function prepareShell(input: ShellLaunch): ShellIntegration {
-    if (process.platform === "win32") return preparePowerShell(input);
     const unsupported: ShellIntegration = {
         ...input,
         busy: async () => true,
         close: async () => false,
         dispose: async () => {},
     };
+    if (process.platform === "win32") return unsupported;
     const name = basename(input.file);
     if (input.args.length || !["bash", "zsh", "fish"].includes(name))
         return unsupported;

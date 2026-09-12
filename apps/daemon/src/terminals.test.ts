@@ -1,6 +1,10 @@
 import { EventEmitter } from "node:events";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
+import * as configModule from "@aiox/config";
+import { loadConfig, saveConfig } from "@aiox/config";
 import * as terminalModule from "@aiox/terminal";
 import { defaultShell } from "@aiox/terminal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -79,8 +83,242 @@ async function waitFor(
 }
 
 describe("general shell sessions", () => {
+    it.skipIf(process.platform === "win32")(
+        "observes native exec failure through the PTY exit event",
+        async () => {
+            const session = harness.daemon.services.terminals.createShell({
+                file: "aiox-missing-shell-executable",
+                args: [],
+                cwd: process.cwd(),
+            });
+            const exited = new Promise<number>((resolve) =>
+                session.subscribe({
+                    data: () => {},
+                    exit: (event) => resolve(event.exitCode),
+                }),
+            );
+            expect(await exited).not.toBe(0);
+        },
+    );
+    it("does not create a shell when shutdown completes while configuration is loading", async () => {
+        let release!: () => void;
+        const loading = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const configured = await startTestDaemon({
+            terminal: async () => {
+                await loading;
+                return {};
+            },
+        });
+        const creating = configured.daemon.createShell();
+        try {
+            expect((await configured.daemon.stop(true)).stopped).toBe(true);
+            release();
+            await expect(creating).rejects.toThrow("stopping");
+            expect(configured.daemon.services.terminals.list()).toEqual([]);
+        } finally {
+            release();
+            await configured.close();
+        }
+    });
+    it("does not create a shell when shutdown finishes during launch validation", async () => {
+        const launch = await configModule.resolveTerminalLaunch({});
+        let started!: () => void;
+        const entered = new Promise<void>((resolve) => {
+            started = resolve;
+        });
+        let release!: () => void;
+        const validating = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        vi.spyOn(configModule, "resolveTerminalLaunch").mockImplementation(
+            async () => {
+                started();
+                await validating;
+                return launch;
+            },
+        );
+        const spawn = vi.spyOn(terminalModule, "createTerminal");
+        const creating = harness.daemon.createShell();
+        await entered;
+        try {
+            expect((await harness.daemon.stop(true)).stopped).toBe(true);
+            release();
+            await expect(creating).rejects.toThrow("stopping");
+            expect(spawn).not.toHaveBeenCalled();
+        } finally {
+            release();
+        }
+    });
+    it("loads settings for each new Web shell and leaves existing shells alone", async () => {
+        const home = harness.home;
+        const configured = await startTestDaemon({
+            terminal: async () => (await loadConfig({ home })).terminal,
+        });
+        const spawn = vi.spyOn(terminalModule, "createTerminal");
+        try {
+            await saveConfig(
+                {
+                    terminal: {
+                        shell: process.execPath,
+                        args: ["-e", "setInterval(() => {}, 1000)"],
+                        cwd: home,
+                    },
+                },
+                { home },
+            );
+            const first = await configured.daemon.createShell();
+            expect(spawn.mock.calls.at(-1)![0]).toMatchObject({
+                file: process.execPath,
+                cwd: home,
+            });
+            await saveConfig(
+                {
+                    terminal: {
+                        shell: process.execPath,
+                        args: ["-e", "setInterval(() => {}, 2000)"],
+                        cwd: home,
+                    },
+                },
+                { home },
+            );
+            const created = await fetch(configured.apiUrl("/api/terminals"), {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ cwd: process.cwd() }),
+            });
+            expect(created.status).toBe(201);
+            expect(await created.json()).toMatchObject({
+                cwd: process.cwd(),
+                kind: "shell",
+            });
+            expect(spawn.mock.calls.at(-1)![0]).toMatchObject({
+                args: ["-e", "setInterval(() => {}, 2000)"],
+                cwd: process.cwd(),
+            });
+            expect(
+                configured.daemon.services.terminals.get(first.id)?.alive,
+            ).toBe(true);
+            await saveConfig(
+                { terminal: { shell: "aiox-missing-shell-executable" } },
+                { home },
+            );
+            const spawns = spawn.mock.calls.length;
+            const failed = await fetch(configured.apiUrl("/api/terminals"), {
+                method: "POST",
+            });
+            expect(failed.status).toBe(500);
+            expect(await failed.text()).toContain("terminal.shell");
+            expect(spawn).toHaveBeenCalledTimes(spawns);
+            expect(
+                configured.daemon.services.terminals.get(first.id)?.alive,
+            ).toBe(true);
+            await saveConfig(
+                { terminal: { shell: process.execPath } },
+                { home },
+            );
+            // A file can become unusable after validation; preserve native failures.
+            spawn.mockImplementationOnce(() => {
+                throw new Error("native launch failed");
+            });
+            await expect(configured.daemon.createShell()).rejects.toThrow(
+                "native launch failed",
+            );
+        } finally {
+            await configured.close();
+        }
+    });
+    it("rejects invalid final cwd before PTY creation and permits a valid request override", async () => {
+        const home = harness.home;
+        const missing = join(home, "missing");
+        const file = join(home, "file");
+        await writeFile(file, "not a directory");
+        const configured = await startTestDaemon({
+            terminal: async () => ({
+                shell: process.execPath,
+                args: ["-e", "setInterval(() => {}, 1000)"],
+                cwd: missing,
+            }),
+        });
+        const spawn = vi.spyOn(terminalModule, "createTerminal");
+        try {
+            await expect(configured.daemon.createShell()).rejects.toThrow(
+                "terminal.cwd",
+            );
+            await expect(
+                configured.daemon.createShell({ cwd: file }),
+            ).rejects.toThrow("terminal.cwd");
+            expect(spawn).not.toHaveBeenCalled();
+            const existing = await configured.daemon.createShell({ cwd: home });
+            expect(spawn.mock.calls.at(-1)![0]).toMatchObject({ cwd: home });
+            await expect(
+                configured.daemon.createShell({ cwd: missing }),
+            ).rejects.toThrow("terminal.cwd");
+            expect(spawn).toHaveBeenCalledTimes(1);
+            expect(
+                configured.daemon.services.terminals.get(existing.id)?.alive,
+            ).toBe(true);
+        } finally {
+            await configured.close();
+        }
+    });
+    it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+        "rejects an inaccessible cwd before creating a PTY",
+        async () => {
+            const cwd = join(harness.home, "no-access");
+            await mkdir(cwd);
+            await chmod(cwd, 0);
+            const spawn = vi.spyOn(terminalModule, "createTerminal");
+            try {
+                await expect(
+                    harness.daemon.createShell({ cwd }),
+                ).rejects.toThrow("terminal.cwd");
+                expect(spawn).not.toHaveBeenCalled();
+            } finally {
+                await chmod(cwd, 0o700);
+            }
+        },
+    );
+    it("uses configured shell arguments and cwd", async () => {
+        const spawn = vi.spyOn(terminalModule, "createTerminal");
+        const terminals = harness.daemon.services.terminals;
+        const shell = terminals.createShell({
+            file: process.execPath,
+            args: ["-e", "setInterval(() => {}, 1000)"],
+            cwd: harness.home,
+        });
+        expect(spawn.mock.calls.at(-1)![0]).toMatchObject({
+            file: process.execPath,
+            args: ["-e", "setInterval(() => {}, 1000)"],
+            cwd: harness.home,
+        });
+        expect(terminals.view(shell.id)?.cwd).toBe(harness.home);
+    });
+
+    it("preserves a resolved WSL launch and its Linux display cwd", async () => {
+        const terminals = harness.daemon.services.terminals;
+        const existing = terminals.createShell(
+            await configModule.resolveTerminalLaunch({}),
+        );
+        const spawn = vi
+            .spyOn(terminalModule, "createTerminal")
+            .mockImplementation((options) => ({ ...existing, id: options.id }));
+        const shell = terminals.createShell({
+            file: "C:\\Windows\\System32\\wsl.exe",
+            args: ["--cd", "/home/me", "-d", "Ubuntu"],
+            cwd: process.cwd(),
+            displayCwd: "/home/me",
+        });
+        expect(spawn.mock.calls.at(-1)![0]).toMatchObject({
+            args: ["--cd", "/home/me", "-d", "Ubuntu"],
+            cwd: process.cwd(),
+        });
+        expect(terminals.view(shell.id)?.cwd).toBe("/home/me");
+    });
     it("carries shell input and native resize across a browser detach without an Agent", async () => {
         const shell = harness.daemon.services.terminals.createShell({
+            ...(await configModule.resolveTerminalLaunch({})),
             cols: 80,
             rows: 24,
         });
@@ -133,7 +371,9 @@ describe("general shell sessions", () => {
     it("preserves an unconfirmed shell and its context for a later cleanup retry", async () => {
         const spawn = vi.spyOn(terminalModule, "createTerminal");
         const terminals = harness.daemon.services.terminals;
-        const shell = terminals.createShell();
+        const shell = terminals.createShell(
+            await configModule.resolveTerminalLaunch({}),
+        );
         const token = spawn.mock.calls[0]![0].env!["AIOX_TERMINAL_TOKEN"]!;
         const context = { terminalId: shell.id, token };
         vi.spyOn(shell, "kill").mockRejectedValueOnce(
@@ -158,7 +398,9 @@ describe("general shell sessions", () => {
         vi.stubEnv("AIOX_TERMINAL_TOKEN", "inherited-terminal-token");
         const spawn = vi.spyOn(terminalModule, "createTerminal");
         const terminals = harness.daemon.services.terminals;
-        const shell = terminals.createShell({ cwd: process.cwd() });
+        const shell = terminals.createShell(
+            await configModule.resolveTerminalLaunch({}),
+        );
         const env = spawn.mock.calls[0]![0].env!;
         const token = env["AIOX_TERMINAL_TOKEN"]!;
         expect(Boolean(token) && token !== "inherited-terminal-token").toBe(
@@ -180,7 +422,9 @@ describe("general shell sessions", () => {
                 token: shell.id,
             }),
         ).toThrow();
-        const other = terminals.createShell();
+        const other = terminals.createShell(
+            await configModule.resolveTerminalLaunch({}),
+        );
         expect(() =>
             terminals.authenticateContext({ terminalId: other.id, token }),
         ).toThrow();

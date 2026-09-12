@@ -1,5 +1,23 @@
 import { expect, test } from "vitest";
 
+test("terminal launch settings preserve argv and reject invalid process inputs", () => {
+    const terminal = {
+        shell: "wsl.exe",
+        args: ["-d", "Ubuntu", ""],
+        cwd: "/home/me",
+    };
+    expect(parseConfig({ terminal }).terminal).toEqual(terminal);
+    for (const invalid of [
+        { shell: "" },
+        { shell: "bad\0file" },
+        { cwd: "bad\0dir" },
+        { args: "-l" },
+        { args: [1] },
+        { args: ["bad\0arg"] },
+    ])
+        expect(() => parseConfig({ terminal: invalid })).toThrow(ConfigError);
+});
+
 import {
     ConfigError,
     parseConfig,

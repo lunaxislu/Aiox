@@ -10,3 +10,6 @@ export { configPath, loadConfig, saveConfig } from "@/files";
 export type { ConfigLocation } from "@/files";
 export { createConfigSession } from "@/session";
 export type { ConfigSnapshot } from "@/session";
+
+export { resolveTerminalLaunch } from "@/terminal";
+export type { TerminalLaunch } from "@/terminal";

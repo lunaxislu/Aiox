@@ -21,7 +21,7 @@ const home =
     process.env.AIOX_HARNESS_HOME ?? join(tmpdir(), "aiox-stage2-harness");
 
 const { daemon } = await boot({ home });
-const terminal = daemon.createShell({ cwd: process.cwd() });
+const terminal = await daemon.createShell({ cwd: process.cwd() });
 
 process.stdout.write(
     [

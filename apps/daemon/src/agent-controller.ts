@@ -21,7 +21,7 @@ import {
     type VendorBinding,
     type VendorExecution,
 } from "@aiox/vendor";
-import type { WebSocket } from "ws";
+import type { RawData, WebSocket } from "ws";
 import { z } from "zod";
 
 import type { Daemon } from "@/daemon";
@@ -99,6 +99,72 @@ export class AgentController {
         let execution: VendorExecution | undefined;
         let preparingExecution: Promise<VendorExecution> | undefined;
         let startingExecution: Promise<ExecutionProcess> | undefined;
+        let terminationRequested = false;
+        let executionTerminated = false;
+        const terminateExternal = async () => {
+            if (executionTerminated) return;
+            terminationRequested = true;
+            clearTimeout(timer);
+            if (socket.readyState !== socket.OPEN)
+                throw new Error(
+                    "External execution termination is unconfirmed: control connection is closed.",
+                );
+            const requestId = randomBytes(16).toString("hex");
+            await new Promise<void>((resolve, reject) => {
+                const done = (error?: Error) => {
+                    clearTimeout(deadline);
+                    socket.off("message", receive);
+                    socket.off("close", lost);
+                    socket.off("error", lost);
+                    if (error) reject(error);
+                    else resolve();
+                };
+                const lost = () =>
+                    done(
+                        new Error(
+                            "External execution termination is unconfirmed: control connection was lost.",
+                        ),
+                    );
+                const receive = (raw: RawData, binary: boolean) => {
+                    let data: unknown;
+                    try {
+                        if (!binary) data = JSON.parse(raw.toString());
+                    } catch {}
+                    const frame =
+                        externalAgentClientFrameSchema.safeParse(data);
+                    if (
+                        !frame.success ||
+                        frame.data.type !== "terminated" ||
+                        frame.data.requestId !== requestId
+                    )
+                        return;
+                    done(
+                        frame.data.error
+                            ? new Error(frame.data.error)
+                            : undefined,
+                    );
+                };
+                const deadline = setTimeout(
+                    () =>
+                        done(
+                            new Error(
+                                "External execution termination is unconfirmed: owner response timed out.",
+                            ),
+                        ),
+                    15000,
+                );
+                socket.on("message", receive);
+                socket.on("close", lost);
+                socket.on("error", lost);
+                socket.resume();
+                try {
+                    send({ type: "terminate", requestId });
+                } catch {
+                    lost();
+                }
+            });
+            executionTerminated = true;
+        };
         let session: TerminalSession | undefined;
         const send = (frame: object) => {
             if (socket.readyState === socket.OPEN)
@@ -181,7 +247,7 @@ export class AgentController {
             return finishing;
         };
         const processExited = async (exit: TerminalExit) => {
-            if (ended) return;
+            if (ended || terminationRequested) return;
             // Revoke immediately, but let this path return the outcome before closing.
             ended = true;
             this.daemon.services.runtimes.revoke(runtimeId!);
@@ -197,6 +263,8 @@ export class AgentController {
             }
         };
         const disconnected = () => {
+            // A requested stop needs confirmed owner cleanup; retain its retry record on loss.
+            if (terminationRequested) return;
             if (ended) return;
             ended = true;
             clear();
@@ -282,11 +350,11 @@ export class AgentController {
                             mcpConnected: () => binding?.mcpConnected(),
                             revoke: () => {
                                 clear();
-                                // Web input remains usable if termination fails. External
-                                // lifecycle control ends independently of its vendor process.
-                                if (external) released();
+                                // Revoke collaboration immediately; retain external lifecycle control
+                                // until an explicit termination is acknowledged or cleanup releases it.
                             },
                             stop: async () => {
+                                if (external) return terminateExternal();
                                 await owner?.stop();
                                 await preparingExecution?.catch(() => {});
                                 await startingExecution?.catch(() => {});
@@ -391,6 +459,7 @@ export class AgentController {
                             );
                             return;
                         }
+                        if (frame.data.type === "terminated") return;
                         if (frame.data.type === "started") {
                             started = true;
                             binding!.executionStarted();

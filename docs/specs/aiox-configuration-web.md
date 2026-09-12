@@ -47,6 +47,29 @@ Network를 만들지 않는다. terminal 수명은 runtime, Host 최초 layout�
 임의 alias로 바꾸거나 미정 keybindings schema·기본키를 확정하지 않는다. 브라우저 OS를 기준으로
 키를 적용하고 vendor 입력·브라우저 예약키를 보존한다.
 
+### 새 Web shell의 실행 설정
+
+공통 config.json의 terminal.shell, terminal.args, terminal.cwd는 모든 OS에서 선택적이다.
+shell은 실행 파일 이름/경로, args는 인자 배열, cwd는 선택한 shell의 시작 폴더다. 생략하면 기존
+OS shell 및 daemon 작업 경로를 사용한다. Windows 기본은 COMSPEC 또는 cmd.exe이고 POSIX는
+SHELL 또는 /bin/bash다. 시작한 터미널의 화면·shell 상태를 복제하지 않는다.
+
+새 shell 생성 시 파일의 실행 설정을 읽고 기존 터미널은 바꾸지 않는다. Web 표시 설정의 파일 watch나
+자동 배포까지 의미하지 않는다. 명시적 생성 요청 cwd는 전역 기본 cwd보다 우선한다. Vendor 실행
+PTY에는 일반 Web shell 설정을 적용하지 않는다. daemon 시작은 설정 구조 검증과 기본값 결정 뒤
+shell 실행 파일 및 cwd 디렉터리·접근 여부를 확인하고, 실패하면 DB와 listener 준비 전에 중단한다.
+새 shell 생성도 최종 요청 cwd를 포함한 같은 검증을 통과해야 하며 실패해도 기존 실행은 유지한다.
+검증한 실행 파일·인자·cwd로 실행하며 검증 이후의 native 실행 오류 처리도 유지한다.
+파일 존재·권한 검사가 실행 파일 형식이나 초기화 성공까지 보장하지는 않는다. Windows 실행 파일
+ACL 검증은 사전 보장 범위 밖이며 실제 실행 실패로 처리한다. NUL 등 실행 인자 경계 검증은 유지한다.
+
+Windows에서 wsl.exe를 선택하면 args로 배포판을 지정하고 cwd는 해당 Linux 경로로 전달한다.
+Windows PTY의 작업 경로와 Linux 시작 경로를 구분하며 AIOX가 드라이브 문자열을 수동 변환하지 않는다.
+배포판·사용자 선택을 반영한 내부 디렉터리 검사를 수행하고 확인된 Linux cwd를 실행에 전달한다.
+cwd 생략 시 host cwd에서 WSL이 선택한 디렉터리를 확인한다. 검증은 사용자 실행 명령을 실행하지
+않으며 해석할 수 없는 WSL 실행 옵션은 설정 오류로 거절한다. 설정은 WSL 설치·버전 변환·혼합 협업 지원을
+완료시키지 않으며 Windows daemon의 종료 정책은 runtime 계약을 따른다.
+
 ## 메시지 보존과 persistence 전환
 
 AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시각·대상별 처리 결과·내부 상관관계를 연결한다. vendor 전체 대화·reasoning·터미널 출력은 이 메시지 저장 범위에 포함하지 않는다. 살아 있는 PTY의 Web 화면 복귀 책임은 별개다. 저장 데이터를 자동 재전송·실행 복원에 사용하지 않는다.

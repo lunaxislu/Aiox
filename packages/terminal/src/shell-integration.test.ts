@@ -16,6 +16,25 @@ import { prepareShell } from "./shell-integration";
 
 const shells = ["/bin/zsh", "/bin/bash"].filter(existsSync);
 
+it("leaves Windows shells unchanged without installing idle hooks", async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+        const launch = { file: "powershell.exe", args: [], env: {} };
+        const shell = prepareShell(launch);
+        try {
+            expect(shell.args).toEqual(launch.args);
+            expect(shell.env).toEqual(launch.env);
+            expect(await shell.busy(1)).toBe(true);
+            expect(await shell.close(1)).toBe(false);
+        } finally {
+            await shell.dispose();
+        }
+    } finally {
+        Object.defineProperty(process, "platform", platform);
+    }
+});
+
 describe.skipIf(process.platform === "win32")("POSIX shell integration", () => {
     it.each(shells)(
         "only closes %s at its prompt, preserving user startup configuration",

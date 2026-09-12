@@ -82,10 +82,19 @@ const externalExitSchema = z.strictObject({
     signal: z.int().positive().nullable(),
 });
 export const externalAgentClientFrameSchema = z.discriminatedUnion("type", [
+    z.strictObject({
+        type: z.literal("terminated"),
+        requestId: z.string().min(1),
+        error: z.string().optional(),
+    }),
     z.strictObject({ type: z.literal("started") }),
     externalExitSchema,
 ]);
 export const externalAgentServerFrameSchema = z.discriminatedUnion("type", [
+    z.strictObject({
+        type: z.literal("terminate"),
+        requestId: z.string().min(1),
+    }),
     z.strictObject({
         type: z.literal("prepared"),
         launch: z.json(),

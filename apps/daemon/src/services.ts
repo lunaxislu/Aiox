@@ -18,7 +18,7 @@ export type StopOutcome = {
 export type Lifecycle = {
     status(): Promise<DaemonStatus>;
     requestStop(force: boolean): Promise<StopOutcome>;
-    createShell(options: CreateShell): TerminalView;
+    createShell(options: CreateShell): Promise<TerminalView>;
     stopTerminal(id: string): Promise<boolean>;
 };
 

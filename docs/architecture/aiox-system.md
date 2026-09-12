@@ -38,7 +38,8 @@ Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한�
 알려 이번 실행을 종료한다. daemon·WS 손실은 이 실패 명령과 구분한다.
 등록 해제는 route·요청 결과·credential 정리를 재사용하되 관측 손실을 vendor exit로 확정하지
 않는다. DB 정리가 실패하면 `stop_incomplete`와 daemon·Web 재시도 경로를 유지한다.
-선택 이유는 [[docs/decisions/execution-ownership]]을 따른다.
+실행 소유권의 이유는 [[docs/decisions/execution-ownership]], 명시적 종료 요청의 변경 이유는
+[[docs/decisions/explicit-execution-shutdown]]을 따른다.
 
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
@@ -74,8 +75,9 @@ owner는 전체 실행 자원을 정리한다. 현재 제품 adapter는 Claude�
 [[packages/adapters/claude/src/index.ts]] `packages/adapters/claude/src/index.ts:21`.
 RuntimeRegistry의 `executionOwnership`과 `collaborationActive`는 프로세스 종료 책임과
 협업 유효성을 분리하며 `terminalOwnership`은 daemon terminal 소유·차용만 표현한다.
-`stopRuntime`은 revoke 후 daemon 소유 Runtime의 execution owner를 종료하고 binding cleanup·DB 정리를
-수행한다. 실패한 record는 재시도용으로 남지만 인증·발견·전송 대상에서는 제외한다.
+명시적 종료 요청은 소유 위치와 관계없이 execution owner에 전달한다. 외부 owner는 CLI에 있으므로
+협업 권한을 회수한 뒤에도 종료 확인용 제어 채널은 완료까지 유지한다. 자연 연결 손실의 등록 정리는
+실행 종료 요청과 분리한다. 이후 binding cleanup·DB 정리를 수행한다. 실패한 record는 재시도용으로 남지만 인증·발견·전송 대상에서는 제외한다.
 
 근거: 실행 분기는 [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:451`,
 직접 실행은 [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:12`,
@@ -192,22 +194,21 @@ host stop
 daemon stop --force
  → 신규 실행·등록·메시지 전달 차단 / 진행 중 등록 commit 동기화
  → daemon 소유 Host·standalone·PTY·Relay·App Server 등 강제 종료
- → 외부 실행은 vendor 유지·협업 등록 해제
+ → 외부 CLI execution owner에도 종료 요청·자원 정리 완료 확인
  → 실제 종료 확인·credential/실행 관계 정리
  → 모두 정리되면 DB 등 daemon 자원 정리 → daemon 종료
  → 미완료면 남은 관리 handle·listener·DB 유지 → 종료 재시도
 ```
 
-정상 stop 입력의 키·순서·시간 제한과 OS별 강제 종료 방법은 미확정이다. 입력 전송·kill 요청의
-성공 또는 조회 실패를 전체 종료 성공으로 표현하지 않는다. 관리 handle과 자원 소유권을 기준으로
-종료하며 외부 Claude/Codex나 터미널 앱 전체를 이름으로 찾아 죽이지 않는다. 강제 종료 대상은
-작업 중인 TUI를 포함한 daemon 직접 소유 자원이며 일반 작업 자식 전체로 확장하지 않는다. 재시도와 TUI의
-실제 종료 후 등록 정리는 [[docs/specs/aiox-runtime]]의 종료 계약을 따른다. persistent Network 정의,
-Worktree와 저장 파일을 삭제하지 않는다.
+종료는 관리 handle과 자원 소유권을 기준으로 하며 무관한 vendor나 터미널 앱 전체를 이름으로
+찾아 죽이지 않는다. 외부 CLI에 종료를 요청하는 것과 사용자 부모 shell을 종료하는 것은 다르다.
+일반 작업 자식 전체의 상태 추적은 추가하지 않는다. 재시도·실제 종료 확인은 runtime 계약을 따른다.
+Persistent Network 정의·Worktree·저장 파일을 삭제하지 않는다.
 
-일반 daemon stop은 admission을 막고 daemon 소유 활성 실행 의존성을 검사한다. 의존성이 있으면 거절하고
-running으로 돌아가 admission을 다시 연다. 외부 실행 등록과 persistent Network 정의만 있는 것은 blocker가 아니다.
-restart는 safe stop + start이며 stop 거절 시 기존 daemon을 유지한다. `restart --force`는 없다.
+일반 stop은 POSIX에서 외부 CLI를 포함한 활성 등록과 최초 shell의 busy/unknown을 확인한다.
+Windows native에서는 이 검사를 생략하고 force와 같은 대상을 종료한다. restart는 이 일반 stop을
+재사용하므로 Windows의 작업 중단 정책도 동일하며 restart --force는 없다. SIGINT/SIGTERM 등
+명시적 CLI 요청이 아닌 daemon 종료는 외부 실행을 보존하는 별도 경로다.
 
 ## Host와 Network의 실체화
 

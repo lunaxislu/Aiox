@@ -3,6 +3,8 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
+import type { AioxConfig } from "@aiox/config";
+import { resolveTerminalLaunch } from "@aiox/config";
 import type { AioxDatabase } from "@aiox/persistence";
 import type {
     Ports,
@@ -31,6 +33,7 @@ import type { TerminalOptions } from "@/terminals";
 import { attachTerminal, TerminalService } from "@/terminals";
 
 export type DaemonOptions = {
+    terminal?: () => Promise<AioxConfig["terminal"]>;
     ports: Ports;
     db: AioxDatabase;
     retentionDays: () => number;
@@ -57,12 +60,15 @@ export type Daemon = {
             terminalContext?: TerminalContext;
         },
     ): Promise<RegisteredRuntime>;
-    createShell(options?: CreateShell): TerminalView;
+    createShell(options?: CreateShell): Promise<TerminalView>;
     createTerminal(options?: TerminalOptions): { id: string };
     /** Attaches a terminal to a runtime so the Web can find it. */
     attachTerminalTo(runtimeId: string, terminalId: string): void;
     stopRuntime(runtimeId: string, force: boolean): Promise<void>;
-    stop(force: boolean): Promise<StopOutcome>;
+    stop(
+        force: boolean,
+        options?: { terminateExternal: boolean },
+    ): Promise<StopOutcome>;
     /** Resolves once both listeners are closed. */
     readonly closed: Promise<void>;
 };
@@ -306,16 +312,33 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         resolveClosed = resolve;
     });
 
-    function stopRuntime(runtimeId: string, force: boolean): Promise<void> {
+    function stopRuntime(
+        runtimeId: string,
+        force: boolean,
+        terminateExternal = false,
+    ): Promise<void> {
         const pending = runtimeStops.get(runtimeId);
         if (pending) return pending;
+        const initial = runtimes.get(runtimeId);
+        // Mark external termination before revocation or any asynchronous cleanup can
+        // mistake its disconnect for an ordinary collaboration release.
+        const terminatingBinding =
+            terminateExternal && initial?.executionOwnership === "external"
+                ? initial.binding
+                : undefined;
+        const termination = terminatingBinding?.stop(force);
+        void termination?.catch(() => {});
         runtimes.revoke(runtimeId);
         const attempt = Promise.resolve()
             .then(async () => {
                 await Promise.allSettled(registrations);
+                await termination;
                 const record = runtimes.get(runtimeId);
                 if (!record) return;
-                if (record.executionOwnership === "daemon")
+                if (
+                    record.executionOwnership === "daemon" ||
+                    (terminateExternal && record.binding !== terminatingBinding)
+                )
                     await record.binding.stop(force);
                 await record.binding.cleanup?.();
                 if (record.terminalId && record.terminalOwnership === "owned")
@@ -332,7 +355,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return attempt;
     }
 
-    function createShell(input: CreateShell = {}): TerminalView {
+    async function createShell(input: CreateShell = {}): Promise<TerminalView> {
         if (!admitting)
             throw new HttpError(503, "stopping", "The daemon is stopping.");
         const parsed = createShellSchema.safeParse(input);
@@ -342,7 +365,14 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 "invalid_request",
                 "Invalid shell options.",
             );
-        const session = terminals.createShell(parsed.data);
+        const settings = await options.terminal?.();
+        const launch = await resolveTerminalLaunch(
+            settings,
+            parsed.data.cwd === undefined ? {} : { cwd: parsed.data.cwd },
+        );
+        if (!admitting)
+            throw new HttpError(503, "stopping", "The daemon is stopping.");
+        const session = terminals.createShell({ ...parsed.data, ...launch });
         return terminals.view(session.id)!;
     }
 
@@ -405,16 +435,18 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
      * confirmed gone. Deliberately separate from closing the listeners, so a
      * stop requested over HTTP can answer before its own socket goes away.
      */
-    async function teardown(force: boolean): Promise<StopOutcome> {
+    async function teardown(
+        force: boolean,
+        terminateExternal = true,
+    ): Promise<StopOutcome> {
         if (stopping) return stopping;
         // Block admission first, then look at what is actually still live.
         admitting = false;
         // Publish the attempt before an asynchronous idle check can admit another stop.
         stopping = Promise.resolve().then(async (): Promise<StopOutcome> => {
-            const live = runtimes
-                .list()
-                .filter((record) => record.executionOwnership === "daemon");
-            if (!force) {
+            const live = runtimes.list();
+            const terminate = force || process.platform === "win32";
+            if (!terminate) {
                 const busy = await terminals.busy();
                 if (live.length > 0 || busy.length > 0) {
                     return {
@@ -435,15 +467,27 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     };
                 }
             }
-            for (const record of runtimes.list()) runtimes.revoke(record.id);
+            const targets = runtimes.list();
+            const requestedStops = new Map<string, Promise<void>>();
+            for (const record of targets) {
+                if (
+                    terminateExternal &&
+                    record.executionOwnership === "external"
+                ) {
+                    const pending = stopRuntime(record.id, true, true);
+                    requestedStops.set(record.id, pending);
+                    void pending.catch(() => {});
+                } else runtimes.revoke(record.id);
+            }
             await messages.pause();
             // A binding already being prepared must finish before we can stop
             // its real resources, rather than its temporary registration.
             await Promise.allSettled(registrations);
             const warnings: string[] = [];
-            for (const record of runtimes.list()) {
+            for (const record of targets) {
                 try {
-                    await stopRuntime(record.id, true);
+                    await (requestedStops.get(record.id) ??
+                        stopRuntime(record.id, true, terminateExternal));
                 } catch (error) {
                     warnings.push(
                         `runtime ${record.name}: ${error instanceof Error ? error.message : String(error)}`,
@@ -458,7 +502,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             for (const session of terminals.list()) {
                 if (owned.has(session.id)) continue;
                 try {
-                    if (force) await terminals.kill(session.id);
+                    if (terminate) await terminals.kill(session.id);
                     else if (!(await terminals.closeIdle(session.id)))
                         throw new Error("Shell is no longer idle.");
                 } catch (error) {
@@ -516,8 +560,11 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return closing;
     }
 
-    async function stop(force: boolean): Promise<StopOutcome> {
-        const outcome = await teardown(force);
+    async function stop(
+        force: boolean,
+        options = { terminateExternal: true },
+    ): Promise<StopOutcome> {
+        const outcome = await teardown(force, options.terminateExternal);
         if (outcome.stopped) await closeListeners();
         return outcome;
     }

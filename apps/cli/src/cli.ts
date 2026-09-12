@@ -189,13 +189,23 @@ export function createCli(
     bind(
         daemon
             .command("stop")
+            .description(
+                "Stop daemon. On native Windows, interrupts running work, including registered external CLI executions. Elsewhere, refuses while work remains.",
+            )
             .option(
                 "--force",
-                "Terminate daemon-owned executions and release external collaboration, then stop daemon",
+                "Terminate all AIOX-managed executions, including external CLI executions, on all platforms",
             ),
         "daemon.stop",
     );
-    bind(daemon.command("restart"), "daemon.restart");
+    bind(
+        daemon
+            .command("restart")
+            .description(
+                "Stop then start daemon. On native Windows, interrupts running work, including registered external CLI executions. Elsewhere, refuses while work remains.",
+            ),
+        "daemon.restart",
+    );
     bind(daemon.command("status").option("--json"), "daemon.status");
 
     const adapter = cli.command("adapter").description("Manage adapters");

@@ -184,6 +184,24 @@ test("help returns without invoking execution port", async () => {
     assert.equal(executed, false);
 });
 
+test("shutdown help exposes Windows work interruption and external force termination", () => {
+    const cli = createCli({ execute: async () => {} });
+    const daemon = cli.commands.find((command) => command.name() === "daemon")!;
+    for (const name of ["stop", "restart"]) {
+        const help = daemon.commands
+            .find((command) => command.name() === name)!
+            .helpInformation();
+        assert.match(help, /Windows/);
+        assert.match(help, /interrupts running work/);
+        assert.match(help, /external CLI/);
+    }
+    const stop = daemon.commands.find((command) => command.name() === "stop")!;
+    assert.match(
+        stop.options.find((option) => option.long === "--force")!.description,
+        /external CLI.*all platforms/,
+    );
+});
+
 test("required option values containing -- are not adapter delimiters", async () => {
     const [request] = await parse([
         "agent",

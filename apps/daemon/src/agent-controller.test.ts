@@ -282,7 +282,7 @@ test("does not apply the startup deadline to a runtime that was ready before los
 });
 
 test("spawn failure cleans the registered identity while preserving its borrowed shell", async () => {
-    const shell = harness.daemon.createShell();
+    const shell = await harness.daemon.createShell();
     const terminalContext = terminalContextFromEnv(sessions[0]!.options.env!)!;
     vi.mocked(terminals.createTerminal).mockImplementationOnce(() => {
         throw new Error("spawn failed");
@@ -308,7 +308,7 @@ test("spawn failure cleans the registered identity while preserving its borrowed
 });
 
 test("foreground connection loss terminates its managed vendor handle and keeps the borrowed shell", async () => {
-    const shell = harness.daemon.createShell();
+    const shell = await harness.daemon.createShell();
     const terminalContext = terminalContextFromEnv(sessions[0]!.options.env!)!;
     const { socket } = await connect({ ...frame(), terminalContext });
     await vi.waitFor(() => expect(sessions).toHaveLength(2));
@@ -327,7 +327,7 @@ test("foreground connection loss terminates its managed vendor handle and keeps 
 });
 
 test("a browser attachment detaches without stopping either the foreground CLI runtime or shell", async () => {
-    const shell = harness.daemon.createShell();
+    const shell = await harness.daemon.createShell();
     const terminalContext = terminalContextFromEnv(sessions[0]!.options.env!)!;
     const { socket } = await connect({ ...frame(), terminalContext });
     const browser = new WebSocket(
@@ -352,7 +352,7 @@ test("a browser attachment detaches without stopping either the foreground CLI r
 });
 
 test("daemon force stop confirms both the internal vendor PTY and daemon-owned ordinary shell are gone", async () => {
-    harness.daemon.createShell();
+    await harness.daemon.createShell();
     const terminalContext = terminalContextFromEnv(sessions[0]!.options.env!)!;
     const { socket } = await connect({ ...frame(), terminalContext });
     try {
@@ -371,7 +371,7 @@ test("daemon force stop confirms both the internal vendor PTY and daemon-owned o
 });
 
 test("an unconfirmed vendor kill retains its Runtime and shell until the next force-stop attempt succeeds", async () => {
-    const shell = harness.daemon.createShell();
+    const shell = await harness.daemon.createShell();
     const terminalContext = terminalContextFromEnv(sessions[0]!.options.env!)!;
     const { socket } = await connect({ ...frame(), terminalContext });
     try {
@@ -448,7 +448,11 @@ function frame(): AgentRun {
 
 // Most controller tests inspect only the vendor; shell ownership is covered separately below.
 function webFrame(): AgentRun {
-    harness.daemon.createShell();
+    harness.daemon.services.terminals.createShell({
+        file: process.execPath,
+        args: [],
+        cwd: process.cwd(),
+    });
     const shell = sessions.pop()!;
     return {
         ...frame(),
@@ -470,7 +474,7 @@ async function connect(input: unknown) {
 }
 
 test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its own identity after exit", async () => {
-    const shell = harness.daemon.createShell({ cwd: harness.home });
+    const shell = await harness.daemon.createShell({ cwd: harness.home });
     const shellSession = sessions[0]!;
     const terminalContext = terminalContextFromEnv(shellSession.options.env!)!;
     const network = await harness.daemon.services.networks.create(
@@ -680,7 +684,7 @@ test.each(["--bg", "--background", "--tmux", "--tmux=classic"])(
     "rejects foreground ownership conflict %s through the real launch preflight",
     async (argument) => {
         prepare.mockImplementation((input, original) => original(input));
-        const shell = harness.daemon.createShell({ cwd: harness.home });
+        const shell = await harness.daemon.createShell({ cwd: harness.home });
         const terminalContext = terminalContextFromEnv(
             sessions[0]!.options.env!,
         )!;
@@ -1569,4 +1573,113 @@ test("Web revocation during execution preparation cannot publish a late binding 
         release();
         socket.terminate();
     }
+});
+
+test("explicit force revokes collaboration but waits for external owner cleanup acknowledgement", async () => {
+    const socket = new WebSocket(
+        harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
+    );
+    await once(socket, "open");
+    const prepared = once(socket, "message");
+    const { cols: _cols, rows: _rows, ...input } = frame();
+    socket.send(
+        JSON.stringify({
+            ...input,
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
+        }),
+    );
+    await prepared;
+    const runtime = harness.daemon.services.runtimes.list()[0]!;
+    socket.send(JSON.stringify({ type: "started" }));
+    const request = once(socket, "message");
+    let settled = false;
+    const stopping = harness.daemon.stop(true).then((result) => {
+        settled = true;
+        return result;
+    });
+    const [raw] = await request;
+    const command = JSON.parse(raw.toString());
+    expect(command.type).toBe("terminate");
+    expect(runtime.collaborationActive).toBe(false);
+    expect(settled).toBe(false);
+    socket.send(JSON.stringify({ type: "terminated", requestId: "stale" }));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    socket.send(
+        JSON.stringify({ type: "terminated", requestId: command.requestId }),
+    );
+    expect(await stopping).toMatchObject({ stopped: true });
+});
+
+test("external owner cleanup failure retains the control channel and retries on next force", async () => {
+    const socket = new WebSocket(
+        harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
+    );
+    await once(socket, "open");
+    const prepared = once(socket, "message");
+    const { cols: _cols, rows: _rows, ...input } = frame();
+    socket.send(
+        JSON.stringify({
+            ...input,
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
+        }),
+    );
+    await prepared;
+    const runtime = harness.daemon.services.runtimes.list()[0]!;
+    const first = once(socket, "message");
+    const stopping = harness.daemon.stop(true);
+    const [raw] = await first;
+    socket.send(
+        JSON.stringify({
+            type: "terminated",
+            requestId: JSON.parse(raw.toString()).requestId,
+            error: "cleanup failed",
+        }),
+    );
+    expect(await stopping).toMatchObject({
+        stopped: false,
+        warnings: [expect.stringContaining("cleanup failed")],
+    });
+    expect(harness.daemon.services.runtimes.get(runtime.id)).toBeDefined();
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    const second = once(socket, "message");
+    const retry = harness.daemon.stop(true);
+    const [retryRaw] = await second;
+    socket.send(
+        JSON.stringify({
+            type: "terminated",
+            requestId: JSON.parse(retryRaw.toString()).requestId,
+        }),
+    );
+    expect(await retry).toMatchObject({ stopped: true });
+});
+
+test("lost external stop response is incomplete and retains the unconfirmed execution", async () => {
+    const socket = new WebSocket(
+        harness.apiUrl("/api/agent-run/external").replace("http:", "ws:"),
+    );
+    await once(socket, "open");
+    const prepared = once(socket, "message");
+    const { cols: _cols, rows: _rows, ...input } = frame();
+    socket.send(
+        JSON.stringify({
+            ...input,
+            connection: { inboxPath: "/tmp/aiox-external/inbox.sock" },
+        }),
+    );
+    await prepared;
+    const runtime = harness.daemon.services.runtimes.list()[0]!;
+    const request = once(socket, "message");
+    const stopping = harness.daemon.stop(true);
+    await request;
+    socket.terminate();
+    expect(await stopping).toMatchObject({
+        stopped: false,
+        warnings: [expect.stringContaining("connection was lost")],
+    });
+    expect(harness.daemon.services.runtimes.get(runtime.id)).toBeDefined();
+    expect(await harness.daemon.stop(true)).toMatchObject({
+        stopped: false,
+        warnings: [expect.stringContaining("connection is closed")],
+    });
 });

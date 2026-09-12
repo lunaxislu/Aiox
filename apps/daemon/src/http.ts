@@ -168,7 +168,7 @@ async function route(
                 createShellSchema,
                 body === undefined ? {} : body,
             );
-            send(response, 201, lifecycle.createShell(input));
+            send(response, 201, await lifecycle.createShell(input));
             return;
         }
     }

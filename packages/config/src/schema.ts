@@ -8,6 +8,9 @@ export type AioxConfig = {
     /** How long a finished request's history is kept. */
     messages: { retentionDays: number };
     terminal?: {
+        shell?: string;
+        args?: string[];
+        cwd?: string;
         fontFamily?: string;
         fontSize?: number;
         theme?: Record<string, string>;
@@ -124,8 +127,31 @@ export function parseConfig(
         throw new ConfigError("daemon and web ports must differ");
     if (input.terminal !== undefined) {
         const terminal = object(input.terminal, "terminal");
-        keys(terminal, ["fontFamily", "fontSize", "theme"], "terminal");
+        keys(
+            terminal,
+            ["fontFamily", "fontSize", "theme", "shell", "args", "cwd"],
+            "terminal",
+        );
         config.terminal = {};
+        for (const key of ["shell", "cwd"] as const) {
+            if (terminal[key] === undefined) continue;
+            const value = string(terminal[key], `terminal.${key}`);
+            if (value.includes("\0"))
+                throw new ConfigError(`terminal.${key} must not contain NUL`);
+            config.terminal[key] = value;
+        }
+        if (terminal.args !== undefined) {
+            if (
+                !Array.isArray(terminal.args) ||
+                terminal.args.some(
+                    (arg) => typeof arg !== "string" || arg.includes("\0"),
+                )
+            )
+                throw new ConfigError(
+                    "terminal.args must be an array of strings without NUL",
+                );
+            config.terminal.args = [...terminal.args] as string[];
+        }
         if (terminal.fontFamily !== undefined)
             config.terminal.fontFamily = string(
                 terminal.fontFamily,

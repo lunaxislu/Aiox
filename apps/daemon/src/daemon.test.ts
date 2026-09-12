@@ -43,9 +43,9 @@ async function call(
 const post = (path: string, body: unknown) =>
     call(path, { method: "POST", body: JSON.stringify(body) });
 
-function borrowableShell() {
+async function borrowableShell() {
     const spawn = vi.spyOn(terminalModule, "createTerminal");
-    const shell = harness.daemon.createShell({ cwd: harness.home });
+    const shell = await harness.daemon.createShell({ cwd: harness.home });
     const context = terminalContextFromEnv(spawn.mock.calls.at(-1)![0].env!)!;
     spawn.mockRestore();
     return {
@@ -289,104 +289,116 @@ describe("agent listing", () => {
 });
 
 describe("stopping", () => {
-    it("serializes stop checks, blocks new input and restores admission after rejection", async () => {
-        const { daemon } = harness;
-        let release!: (ids: string[]) => void;
-        const pending = new Promise<string[]>((resolve) => {
-            release = resolve;
-        });
-        const busy = vi
-            .spyOn(daemon.services.terminals, "busy")
-            .mockReturnValue(pending);
-        const first = daemon.stop(false);
-        expect(daemon.acceptingInput).toBe(false);
-        expect(() => daemon.createShell()).toThrow("stopping");
-        await expect(joinAgent(null, "late")).rejects.toThrow("stopping");
-        const second = daemon.stop(true);
-        release(["busy-terminal"]);
-        expect(await first).toMatchObject({
-            stopped: false,
-            blocking: ["terminal busy-terminal"],
-        });
-        expect(await second).toEqual(await first);
-        expect(busy).toHaveBeenCalledTimes(1);
-        expect(daemon.acceptingInput).toBe(true);
-        expect((await call("/api/status")).status).toBe(200);
-    });
+    it.skipIf(process.platform === "win32")(
+        "serializes stop checks, blocks new input and restores admission after rejection",
+        async () => {
+            const { daemon } = harness;
+            let release!: (ids: string[]) => void;
+            const pending = new Promise<string[]>((resolve) => {
+                release = resolve;
+            });
+            const busy = vi
+                .spyOn(daemon.services.terminals, "busy")
+                .mockReturnValue(pending);
+            const first = daemon.stop(false);
+            expect(daemon.acceptingInput).toBe(false);
+            await expect(daemon.createShell()).rejects.toThrow("stopping");
+            await expect(joinAgent(null, "late")).rejects.toThrow("stopping");
+            const second = daemon.stop(true);
+            release(["busy-terminal"]);
+            expect(await first).toMatchObject({
+                stopped: false,
+                blocking: ["terminal busy-terminal"],
+            });
+            expect(await second).toEqual(await first);
+            expect(busy).toHaveBeenCalledTimes(1);
+            expect(daemon.acceptingInput).toBe(true);
+            expect((await call("/api/status")).status).toBe(200);
+        },
+    );
 
-    it("preserves an admitted binding while a normal stop is checking blockers", async () => {
-        const { daemon } = harness;
-        let releaseBinding!: () => void;
-        const ready = new Promise<void>((resolve) => {
-            releaseBinding = resolve;
-        });
-        const stopped = vi.fn(async () => {});
-        const registration = daemon.registerRuntime({
-            name: "starting",
-            networkId: null,
-            createBinding: async () => {
-                await ready;
-                return { deliver: async () => {}, stop: stopped };
-            },
-        });
-        let releaseCheck!: (ids: string[]) => void;
-        vi.spyOn(daemon.services.terminals, "busy").mockReturnValue(
-            new Promise((resolve) => {
-                releaseCheck = resolve;
-            }),
-        );
-        const stopping = daemon.stop(false);
-        releaseBinding();
-        try {
-            const registered = await registration;
-            expect(
-                daemon.services.runtimes.authenticate(registered.token),
-            ).toBeDefined();
-            expect(stopped).not.toHaveBeenCalled();
-        } finally {
-            releaseCheck([]);
-            await stopping;
-        }
-        expect(daemon.acceptingInput).toBe(true);
-    });
+    it.skipIf(process.platform === "win32")(
+        "preserves an admitted binding while a normal stop is checking blockers",
+        async () => {
+            const { daemon } = harness;
+            let releaseBinding!: () => void;
+            const ready = new Promise<void>((resolve) => {
+                releaseBinding = resolve;
+            });
+            const stopped = vi.fn(async () => {});
+            const registration = daemon.registerRuntime({
+                name: "starting",
+                networkId: null,
+                createBinding: async () => {
+                    await ready;
+                    return { deliver: async () => {}, stop: stopped };
+                },
+            });
+            let releaseCheck!: (ids: string[]) => void;
+            vi.spyOn(daemon.services.terminals, "busy").mockReturnValue(
+                new Promise((resolve) => {
+                    releaseCheck = resolve;
+                }),
+            );
+            const stopping = daemon.stop(false);
+            releaseBinding();
+            try {
+                const registered = await registration;
+                expect(
+                    daemon.services.runtimes.authenticate(registered.token),
+                ).toBeDefined();
+                expect(stopped).not.toHaveBeenCalled();
+            } finally {
+                releaseCheck([]);
+                await stopping;
+            }
+            expect(daemon.acceptingInput).toBe(true);
+        },
+    );
 
-    it("closes idle shells normally and never falls back to killing a raced shell", async () => {
-        const { daemon } = harness;
-        const { session } = borrowableShell();
-        vi.spyOn(daemon.services.terminals, "busy").mockResolvedValue([]);
-        const close = vi
-            .spyOn(daemon.services.terminals, "closeIdle")
-            .mockRejectedValueOnce(new Error("shell became busy"));
-        const kill = vi.spyOn(session, "kill");
-        expect(await daemon.stop(false)).toMatchObject({
-            stopped: false,
-            warnings: [expect.stringContaining("shell became busy")],
-        });
-        expect(kill).not.toHaveBeenCalled();
-        expect(session.alive).toBe(true);
-        expect(daemon.acceptingInput).toBe(true);
-        close.mockImplementationOnce(async () => {
-            await session.kill();
-            return true;
-        });
-        expect(await daemon.stop(false)).toMatchObject({ stopped: true });
-        expect(close).toHaveBeenCalledTimes(2);
-        expect(daemon.acceptingInput).toBe(false);
-    });
+    it.skipIf(process.platform === "win32")(
+        "closes idle shells normally and never falls back to killing a raced shell",
+        async () => {
+            const { daemon } = harness;
+            const { session } = await borrowableShell();
+            vi.spyOn(daemon.services.terminals, "busy").mockResolvedValue([]);
+            const close = vi
+                .spyOn(daemon.services.terminals, "closeIdle")
+                .mockRejectedValueOnce(new Error("shell became busy"));
+            const kill = vi.spyOn(session, "kill");
+            expect(await daemon.stop(false)).toMatchObject({
+                stopped: false,
+                warnings: [expect.stringContaining("shell became busy")],
+            });
+            expect(kill).not.toHaveBeenCalled();
+            expect(session.alive).toBe(true);
+            expect(daemon.acceptingInput).toBe(true);
+            close.mockImplementationOnce(async () => {
+                await session.kill();
+                return true;
+            });
+            expect(await daemon.stop(false)).toMatchObject({ stopped: true });
+            expect(close).toHaveBeenCalledTimes(2);
+            expect(daemon.acceptingInput).toBe(false);
+        },
+    );
 
-    it("restores input and admission when the busy check fails", async () => {
-        const { daemon } = harness;
-        vi.spyOn(daemon.services.terminals, "busy").mockRejectedValueOnce(
-            new Error("query failed"),
-        );
-        await expect(daemon.stop(false)).rejects.toThrow("query failed");
-        expect(daemon.acceptingInput).toBe(true);
-        expect(await daemon.stop(false)).toMatchObject({ stopped: true });
-    });
+    it.skipIf(process.platform === "win32")(
+        "restores input and admission when the busy check fails",
+        async () => {
+            const { daemon } = harness;
+            vi.spyOn(daemon.services.terminals, "busy").mockRejectedValueOnce(
+                new Error("query failed"),
+            );
+            await expect(daemon.stop(false)).rejects.toThrow("query failed");
+            expect(daemon.acceptingInput).toBe(true);
+            expect(await daemon.stop(false)).toMatchObject({ stopped: true });
+        },
+    );
 
     it("borrows one shell across fresh Runtime identities and keeps old delivery results with the old sender", async () => {
         const { daemon } = harness;
-        const { shell, session, context } = borrowableShell();
+        const { shell, session, context } = await borrowableShell();
         const network = await daemon.services.networks.create("borrow", "deny");
         const vendor = fakeVendor();
         const a = await daemon.registerRuntime({
@@ -446,7 +458,7 @@ describe("stopping", () => {
     });
 
     it("keeps a borrowed shell after binding preparation fails", async () => {
-        const { context, session } = borrowableShell();
+        const { context, session } = await borrowableShell();
         await expect(
             harness.daemon.registerRuntime({
                 networkId: null,
@@ -465,7 +477,7 @@ describe("stopping", () => {
     });
 
     it("cancels an Agent whose borrowed shell exits during preparation", async () => {
-        const { context, session } = borrowableShell();
+        const { context, session } = await borrowableShell();
         let release!: () => void;
         const preparing = new Promise<void>((resolve) => {
             release = resolve;
@@ -489,7 +501,7 @@ describe("stopping", () => {
     });
 
     it("cleans the connected Agent on shell exit and interrupts only its pending requests", async () => {
-        const { context, session } = borrowableShell();
+        const { context, session } = await borrowableShell();
         const network = await harness.daemon.services.networks.create(
             "exit",
             "allow",
@@ -534,7 +546,7 @@ describe("stopping", () => {
     });
 
     it("keeps failed borrowed bindings and shell cleanup retryable", async () => {
-        const { context, session, shell } = borrowableShell();
+        const { context, session, shell } = await borrowableShell();
         const stop = vi
             .fn(async () => {})
             .mockRejectedValueOnce(new Error("vendor alive"));
@@ -562,7 +574,7 @@ describe("stopping", () => {
     });
 
     it("reports a failed shell kill and retries it on the next force stop", async () => {
-        const { session } = borrowableShell();
+        const { session } = await borrowableShell();
         vi.spyOn(session, "kill").mockRejectedValueOnce(
             new Error("shell alive"),
         );
@@ -578,7 +590,7 @@ describe("stopping", () => {
     });
 
     it("rejects terminal ID-only claims and invalid contexts before building an Agent", async () => {
-        const shell = harness.daemon.createShell();
+        const shell = await harness.daemon.createShell();
         const binding = vi.fn(fakeVendor().createBinding);
         await expect(
             harness.daemon.registerRuntime({
@@ -734,25 +746,30 @@ describe("stopping", () => {
         await harness.daemon.closed;
     });
 
-    it("refuses a plain stop while an execution is registered, and keeps serving", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "allow",
-        );
-        await joinAgent(network.id, "busy");
+    it.skipIf(process.platform === "win32")(
+        "refuses a plain stop while an execution is registered, and keeps serving",
+        async () => {
+            const network = await harness.daemon.services.networks.create(
+                "n",
+                "allow",
+            );
+            await joinAgent(network.id, "busy");
 
-        const refused = await post("/api/daemon/stop", {});
-        expect(refused.status).toBe(409);
-        expect(refused.body).toMatchObject({
-            code: "active_runtimes",
-            runtimes: ["busy"],
-        });
+            const refused = await post("/api/daemon/stop", {});
+            expect(refused.status).toBe(409);
+            expect(refused.body).toMatchObject({
+                code: "active_runtimes",
+                runtimes: ["busy"],
+            });
 
-        // Admission reopens: the daemon is still running.
-        expect((await call("/api/status")).status).toBe(200);
-        await joinAgent(network.id, "another");
-        expect((await call("/api/agents")).body as AgentView[]).toHaveLength(2);
-    });
+            // Admission reopens: the daemon is still running.
+            expect((await call("/api/status")).status).toBe(200);
+            await joinAgent(network.id, "another");
+            expect(
+                (await call("/api/agents")).body as AgentView[],
+            ).toHaveLength(2);
+        },
+    );
 
     it("allows a plain stop once nothing is running", async () => {
         const stopped = await post("/api/daemon/stop", {});
@@ -1000,30 +1017,81 @@ describe("history retention", () => {
 });
 
 describe("execution ownership", () => {
-    it.each([false, true])(
-        "releases external collaboration without stopping its process (force=%s)",
-        async (force) => {
-            const stop = vi.fn(async () => {});
-            const cleanup = vi.fn(async () => {});
-            const agent = await harness.daemon.registerRuntime({
-                networkId: null,
-                executionOwnership: "external",
-                createBinding: () => ({
-                    deliver: async () => {},
-                    stop,
-                    cleanup,
-                }),
-            });
-            expect(await harness.daemon.stop(force)).toMatchObject({
-                stopped: true,
-            });
-            expect(stop).not.toHaveBeenCalled();
-            expect(cleanup).toHaveBeenCalledOnce();
-            expect(
-                harness.daemon.services.runtimes.authenticate(agent.token),
-            ).toBeUndefined();
-        },
-    );
+    it("explicit force stop terminates an external execution before cleanup", async () => {
+        const events: string[] = [];
+        await harness.daemon.registerRuntime({
+            networkId: null,
+            executionOwnership: "external",
+            createBinding: () => ({
+                deliver: async () => {},
+                stop: async () => {
+                    events.push("stop");
+                },
+                cleanup: async () => {
+                    events.push("cleanup");
+                },
+            }),
+        });
+        expect(await harness.daemon.stop(true)).toMatchObject({
+            stopped: true,
+        });
+        expect(events).toEqual(["stop", "cleanup"]);
+    });
+
+    it("signal disposal releases external collaboration without stopping its process", async () => {
+        const stop = vi.fn(async () => {});
+        const cleanup = vi.fn(async () => {});
+        const agent = await harness.daemon.registerRuntime({
+            networkId: null,
+            executionOwnership: "external",
+            createBinding: () => ({ deliver: async () => {}, stop, cleanup }),
+        });
+        expect(
+            await harness.daemon.stop(true, { terminateExternal: false }),
+        ).toMatchObject({ stopped: true });
+        expect(stop).not.toHaveBeenCalled();
+        expect(cleanup).toHaveBeenCalledOnce();
+        expect(
+            harness.daemon.services.runtimes.authenticate(agent.token),
+        ).toBeUndefined();
+    });
+
+    it("plain stop protects external sessions even when the vendor reports idle", async () => {
+        const stop = vi.fn(async () => {});
+        await harness.daemon.registerRuntime({
+            networkId: null,
+            executionOwnership: "external",
+            name: "external",
+            createBinding: (controls) => {
+                controls.setActivity("idle");
+                return { deliver: async () => {}, stop };
+            },
+        });
+        expect(await harness.daemon.stop(false)).toMatchObject(
+            process.platform === "win32"
+                ? { stopped: true }
+                : { stopped: false, blocking: ["external"] },
+        );
+        expect(stop).toHaveBeenCalledTimes(
+            process.platform === "win32" ? 1 : 0,
+        );
+    });
+
+    it("Windows plain stop terminates external execution without a busy query", async () => {
+        vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+        const busy = vi.spyOn(harness.daemon.services.terminals, "busy");
+        const stop = vi.fn(async () => {});
+        await harness.daemon.registerRuntime({
+            networkId: null,
+            executionOwnership: "external",
+            createBinding: () => ({ deliver: async () => {}, stop }),
+        });
+        expect(await harness.daemon.stop(false)).toMatchObject({
+            stopped: true,
+        });
+        expect(busy).not.toHaveBeenCalled();
+        expect(stop).toHaveBeenCalledOnce();
+    });
 
     it("revokes collaboration immediately and retains failed cleanup for retry", async () => {
         const stop = vi.fn(async () => {});
@@ -1047,7 +1115,9 @@ describe("execution ownership", () => {
         expect(runtimes.get(agent.runtimeId)?.collaborationActive).toBe(false);
         expect((await call("/api/agents")).body).toEqual([]);
         expect((await call(`/api/agents/${agent.runtimeId}`)).status).toBe(404);
-        expect(await harness.daemon.stop(false)).toMatchObject({
+        expect(
+            await harness.daemon.stop(true, { terminateExternal: false }),
+        ).toMatchObject({
             stopped: true,
         });
         expect(cleanup).toHaveBeenCalledTimes(2);
@@ -1057,7 +1127,7 @@ describe("execution ownership", () => {
 
 describe("external registration boundaries", () => {
     it("rejects an external runtime borrowing a daemon shell", async () => {
-        const { context } = borrowableShell();
+        const { context } = await borrowableShell();
         await expect(
             harness.daemon.registerRuntime({
                 networkId: null,
@@ -1067,7 +1137,7 @@ describe("external registration boundaries", () => {
             }),
         ).rejects.toThrow("External executions");
     });
-    it("waits for an external preparation during plain stop without killing its process", async () => {
+    it("waits for an external preparation during explicit force stop", async () => {
         let release!: () => void;
         const preparing = new Promise<void>((resolve) => {
             release = resolve;
@@ -1084,11 +1154,11 @@ describe("external registration boundaries", () => {
                 },
             })
             .catch((error: unknown) => error);
-        const stopping = harness.daemon.stop(false);
+        const stopping = harness.daemon.stop(true);
         release();
         expect(await stopping).toMatchObject({ stopped: true });
         expect(await registration).toBeInstanceOf(Error);
-        expect(stop).not.toHaveBeenCalled();
+        expect(stop).toHaveBeenCalledOnce();
         expect(cleanup).toHaveBeenCalledOnce();
         expect(harness.daemon.services.runtimes.list()).toEqual([]);
     });

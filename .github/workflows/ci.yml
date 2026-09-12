@@ -35,16 +35,6 @@ jobs:
                   run_install: false
             - name: Install locked dependencies
               run: pnpm install --frozen-lockfile
-            - name: Install PowerShell idle-handshake test prerequisite
-              if: runner.os == 'Windows'
-              shell: pwsh
-              run: |
-                  Install-Module PSReadLine -RequiredVersion 2.4.5 -Scope CurrentUser -Force -AllowClobber
-                  # Windows PowerShell 5.1 has a separate user module directory.
-                  $module = Get-Module PSReadLine -ListAvailable | Where-Object Version -eq '2.4.5' | Select-Object -First 1
-                  $destination = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell/Modules/PSReadLine/2.4.5'
-                  New-Item -ItemType Directory -Force $destination | Out-Null
-                  Copy-Item "$($module.ModuleBase)/*" $destination -Recurse -Force
             - name: Lint, format, typecheck, build and test
               run: pnpm check
             - name: Run built CLI

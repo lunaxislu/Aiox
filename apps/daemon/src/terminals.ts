@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 
+import type { TerminalLaunch } from "@aiox/config";
 import type { TerminalContext, TerminalView } from "@aiox/protocol";
 import type { TerminalSession } from "@aiox/terminal";
 import { createTerminal } from "@aiox/terminal";
@@ -36,14 +37,16 @@ export class TerminalService {
     }
 
     createShell(
-        options: Pick<TerminalOptions, "cwd" | "cols" | "rows"> = {},
+        options: TerminalLaunch & Pick<TerminalOptions, "cols" | "rows">,
     ): TerminalSession {
-        return this.#create(options, "shell");
+        const { displayCwd, ...launch } = options;
+        return this.#create(launch, "shell", displayCwd);
     }
 
     #create(
         options: TerminalOptions,
         kind: "shell" | "agent",
+        displayCwd?: string,
     ): TerminalSession {
         const id = randomUUID();
         const cwd = resolve(options.cwd ?? process.cwd());
@@ -77,7 +80,7 @@ export class TerminalService {
             cwd,
         });
         this.#sessions.set(id, session);
-        this.#metadata.set(id, { cwd, kind, token });
+        this.#metadata.set(id, { cwd: displayCwd ?? cwd, kind, token });
         if (kind === "shell") {
             session.subscribe({ data: () => {}, exit: () => this.#remove(id) });
             if (!session.alive) this.#remove(id);
