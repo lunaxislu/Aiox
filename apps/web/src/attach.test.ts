@@ -238,8 +238,19 @@ it("shows restoration failure and closes only the attachment", async () => {
     await flush();
     expect(report).toHaveBeenLastCalledWith(
         expect.stringContaining("복원 일시 제한"),
+        "failed",
     );
     expect(socket.close).toHaveBeenCalledOnce();
+});
+
+it("distinguishes an unrestorable mirror from connection failure", async () => {
+    const { message, report } = setup();
+    message({ type: "error", message: "mirror failed", restorable: false });
+    await flush();
+    expect(report).toHaveBeenLastCalledWith(
+        expect.stringContaining("mirror failed"),
+        "unrestorable",
+    );
 });
 
 it("finishes received output and exit notice even when the socket closes during parsing", async () => {
@@ -296,6 +307,7 @@ it("reports malformed control frames instead of silently continuing", async () =
     expect(socket.close).toHaveBeenCalledOnce();
     expect(report).toHaveBeenLastCalledWith(
         expect.stringContaining("terminal terminal-1"),
+        "failed",
     );
 });
 
@@ -308,6 +320,7 @@ it("rejects a snapshot missing its required state instead of using a partial res
     expect(socket.close).toHaveBeenCalledOnce();
     expect(report).toHaveBeenLastCalledWith(
         expect.stringContaining("restoration state"),
+        "failed",
     );
     expect(term.focus).not.toHaveBeenCalled();
 });
@@ -390,6 +403,7 @@ it("reports an incompatible stream that sends output without a snapshot", async 
     expect(socket.close).toHaveBeenCalledOnce();
     expect(report).toHaveBeenLastCalledWith(
         expect.stringContaining("snapshot"),
+        "failed",
     );
 });
 
@@ -464,6 +478,7 @@ it("reports a slow-viewer close immediately while the last write is still parsin
     socket.dispatchEvent(close);
     expect(report).toHaveBeenLastCalledWith(
         expect.stringContaining("Viewer is too slow; reconnect"),
+        "failed",
     );
     socket.send.mockClear();
     callbacks.shift()?.();

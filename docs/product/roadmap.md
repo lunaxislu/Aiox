@@ -37,7 +37,7 @@ Status: Current
 
 - 목표: 작업 공간·실행·터미널·알림을 일관되게 운영한다.
 - 진입 조건: 두 vendor runtime과 기반 PTY가 실제 동작한다.
-- 착수 검토 / 열린 결정: Worktree 세부, 화면 복원 방식, 채택한 DB 보존 계약의 migration·정리 검증.
+- 착수 검토 / 열린 결정: Worktree 세부, 화면 복원 방식, 현재 schema 초기화·저장·재오픈·정리 검증.
 - 통과 조건: Host·단일 Network·Worktree·종료와 자동 브라우저 복귀가 동작한다.
   전역 설정 자동 적용·포트 다음 시작 적용·알림 읽음과 포커스 억제를 확인한다.
 - Owner refs: [[docs/specs/aiox-host]]에서 실행 구성과 route,

@@ -10,8 +10,8 @@ status: open
 - [x] W2 메시지 저장·복구 단위 개선 — 결과와 필수 알림의 저장 완료 단위를 맞추고, 전송 거절 후 DB 실패가 뒤 대상과 미완료 행 추적을 잃게 하는 경로를 수정한다. 실제 저장 실패·재시도 회귀와 retention 경계를 검증하고 불필요한 InFlight 상태·route 반복 판단을 정리한다. — detached: logs/2026-09-12-AIOX-W2-Message-Persistence-Recovery.md — reason: 사용자 W2 구현 승인; messaging·persistence·owner의 공통 완료 검증
 - [x] W3 시작·재시작·조회 책임 정리 — 새 config의 가능한 준비·검증과 override 변경 안내 후 기존 daemon을 종료하고 준비 결과로 시작한다. Web·상태 파일 준비까지 성공 공개를 늦추며 실패 자원을 정리한다. daemon status·doctor는 실행 중 대상 발견을 다음 설정 검증과 분리한다. — detached: logs/2026-09-12-AIOX-W3-Startup-Readiness.md — reason: 사용자 W3 subagent 실행 승인; CLI·daemon·owner의 공통 완료 검증
 - [x] W4 참여 중 Network 삭제 거절 — 실행 참여가 있으면 삭제를 거절하고 먼저 참여 정리를 요구한다. 자동 종료·분리를 추가하지 않으며 등록/삭제 경합과 이후 discovery·전송을 검증한다. — detached: logs/2026-09-13-AIOX-W4-Network-Deletion.md — reason: 사용자 W4 실행 승인; code·tests·owner 공통 완료 검증
-- [>] W5 Web 작업 결과·화면 복원 상태 개선 — 서버 진단을 보존하고 연결 조회 성공이 작업 오류를 덮지 않게 한다. mirror 실패에도 실행을 유지하며 복원 불가와 사용자 종료·재생성을 안내한다. 중첩 조회 응답 역전의 실제 영향도 검증한다.
-- [ ] W6 등록 구성·삭제 후보 및 미채택 지적 판정 — 등록 예약·준비·활성화 대안을 현재 구조와 비교하고 필요한 경우에만 단순화한다. 미사용 필드·인자·killAll은 계약/검증 보존 후 제거하며 CLI 복귀·vendor 진단·임시 자원·신호 종료 등 남은 Claude 지적을 근거별로 채택·반증·후속 이관한다.
+- [x] W5 Web 작업 결과·화면 복원 및 SSE·알림 개선 완료 — root가 527 tests와 built daemon·브라우저 근거를 수용했고 사용자 실행 정리 후 일반 daemon stop과 승인된 개발 DB 일회 삭제까지 완료했다.
+- [>] W6 정리 후보 1~6 수용 완료·남은 등록 구조 및 외부 리뷰 판정 — 최신 결과의 526 tests·public built 검증을 소비한다. 등록 예약·준비·활성화 대안과 미판정 vendor 이벤트·옵션 등 기존 외부 리뷰를 실제 caller·요구·근거로 검토한다. 완료한 정리를 반복하거나 미확인 후보를 확정 결함으로 승격하지 않는다.
 - [ ] W7 통합 리뷰·owner 반영·단계 마감 — 변경별 회귀와 관련 OS 검증, 제거 코드의 책임 보존, 미해결 후보 disposition을 root가 확인한다. 확정 계약을 owner에 반영하고 잔여 한계와 후속 owner를 명시한 뒤 Stage3 W1로 활성 단계 포인터를 옮긴다. 원격 push는 사용자 지시가 있을 때만 수행한다.
 
 ## Required Context
@@ -22,8 +22,8 @@ status: open
 
 ### {Global}
 
-- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1 a039525·W2 839c890·W3 3d2cb21 커밋 완료. W4는 logs/2026-09-13-AIOX-W4-Network-Deletion.md의 Brief1 Attempt1을 root가 직접 리뷰·수용해 완료했다. 사용자가 W4 commit을 승인했으며 실제 결과는 Git 기록을 참조한다. 이번 commit 승인은 W4에 한정한다. 다음 재개 지점 W5 실행과 원격 push는 승인되지 않았다. 이 단계 완료 후 Stage3 W1을 재개한다.
-- 사용자는 root를 논의·정책·지시·직접 리뷰 담당으로, subagent를 조사·구현·테스트 담당으로 지정했다. 기존 조사와 확정 정책을 다시 승인받지 않는다. 이번 commit 승인은 완료된 W4 작업에 한정하며 원격 push는 사용자 후속 지시까지 금지한다. architecture.excalidraw는 개인 자산으로 제외한다.
+- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1 a039525·W2 839c890·W3 3d2cb21·W4 11c6392 커밋 완료. W5 완료와 W6 정리 후보 1~6은 root 수용 후 사용자가 커밋·인계를 승인했으며 실제 커밋 완료와 hash는 Git에서 확인한다. 최신 커밋 승인 entry의 구조/행위 분리와 526 tests·public built 검증, W5의 별도 한계를 따른다. W6 나머지 외부 리뷰·등록 구조 검토는 열린 next이나 미착수로 자동 실행하지 않는다. 추가 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 원격 push는 금지한다. 이 단계 완료 후 Stage3 W1을 재개한다.
+- 사용자는 root를 논의·정책·지시·직접 리뷰 담당으로, subagent를 조사·구현·테스트 담당으로 지정했다. 기존 조사와 확정 정책을 다시 승인받지 않는다. 최신 커밋 승인은 수용된 W5·W6 후보 1~6과 관련 문서/로그에 한정한다. 원격 push는 사용자 후속 지시까지 금지한다. 다른 작업의 미추적 execution-flow-map skill과 architecture.excalidraw 개인 자산은 제외한다.
 - 아래 조사 계기와 근거 분류·Claude 의견 대조를 먼저 읽고 선택 Work Item의 호출자·producer/consumer·owner·tests를 추적한다. 기존 조사를 전부 반복하지 말고 변경할 경계의 재현을 회귀 테스트로 고정한다. root가 실제 diff와 검증 근거를 확인하기 전 subagent 완료 보고를 최종 완료로 승격하지 않는다.
 - 관련 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md다. W1 교정은 docs/decisions/external-execution-survival.md로 수용됐고 기존 explicit-execution-shutdown은 결정 계보다. W2 저장·복구와 W3 준비·조회·종료 자원 경계는 owner와 회귀에 반영됐다. 무관한 last-good·자동 적용 요구는 유지한다.
 
@@ -40,10 +40,16 @@ status: open
 
 - W1은 stopTerminal fail-closed를 협업 정리 전 PTY를 죽이지 않는 보호로 보존했다. closeIdle timeout·ps 실패의 진단은 미검증 후보로 남아 있다. 정상 실패/재시도를 영구 busy·오보로 단정하지 않고 현재 계약과 관측 상태를 대조한다.
 - 외부 리뷰 top 10은 이 로그의 “외부 리뷰 판정과 W6 후보 인계” entry를 읽고 각 원주장·root 대조 근거·잔여 검증을 복원한다. quota 상태·activity 실패 reason·MCP 합성을 우선 후보로 보되 10개 모두 확정 버그나 자동수정 대상으로 승격하지 않는다. 스캔 수·verdict·commit 귀속은 사용자 전달 미검증 주장이다. W3 no-state+invalid-config의 status exit1/doctor config.error exit0는 root built 재확인과 사용자 동의로 현재 동작을 유지한다.
+- 사용자 승인한 정리 후보 1~6은 root가 source/diff·RED/GREEN·526 tests·public built package 검증을 직접 대조해 수용했다. 선택적 snapshot 깊은 복사도 완료했고 최신 W6 결과 수용 entry의 보존 경계와 한계를 따른다. 다음 재개는 기존 외부 리뷰의 실제 vendor 검증·등록 구조 대안 등 남은 검토이며 1~6 구현을 반복하지 않는다. 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다.
+- DB는 현재 schema DDL의 transaction 직접 초기화로 교체됐고 과거 migration/version 채택은 제거했다. spec·storage/system as-built와 관련 검증 근거도 정합화했다. 저장 원자성·직렬화·실패 재시도·재오픈과 정상 terminal nullable을 유지한다. 사용자 배포 완료 통지 전에는 AGENTS의 개발 DB 원칙을 적용하며 배포를 임의 추정하지 않는다.
 
 ### {W7}
 
 - W2 messages.drain의 필수 저장 지속 실패는 500 internal_error 및 DB/listener 재시도 유지다. W3 DB close 실패는 listener 해제 뒤 stderr 진단하고 closed 의미를 유지하는 것으로 판정·회귀 검증했다. 상태 파일 삭제는 listener 해제 전으로 이동해 지연 DB close 뒤 새 상태 기록을 삭제하지 않는다. 삭제 실패는 진단 후 stale 기록 가능성을 남기며 listener 종료와 구분한다. 이 후보를 미판정 결함으로 재개하지 않는다.
+
+### {W5}
+
+- W5 구현·검증과 승인된 개발 DB 일회 초기화가 완료됐다. 실제 daemon은 일반 stop으로 종료했고 재시작·force는 하지 않았다. 과거 종료 거절·대기는 당시 경위이며 최신 완료 entry를 따른다. 당시 일회 삭제 승인은 startup 자동 reset이나 migration 재편 승인이 아니었다. 이후 별도로 승인된 첫 배포 전 개발 DB 원칙과 불필요 코드 조사는 AGENTS.md와 {W6}를 따른다. 검증 범위와 native 창·탭 전환 미검증 한계는 15:37 수용 entry를 유지한다.
 
 ## 2026-09-12 · macOS 사전 검증 보고에서 확장한 처리 경계 개선 착수 준비
 
@@ -259,3 +265,194 @@ W4 완료·package decided를 소비하고 W5를 다음 재개 지점으로 둔�
 사용자가 현재 W4 커밋과 다음 세션 인계를 요청했다. root가 완료·수용된 W4 변경을 검토해 커밋한다. 이 entry는 승인 기록이며 실제 hash와 완료 여부는 Git 기록을 참조한다. 이번 commit 승인은 W4에 한정하고 W5 실행이나 원격 push로 확대하지 않는다.
 
 로그 구조 논의 결과, 이번 W1~W4 배치는 기존대로 유지한다. 합치기·이동·package 해체를 하지 않으며 향후 새 package 사용을 포괄 승인한 것으로 확대하지 않는다. 과거 기록과 닫힌 package는 보존한다.
+
+### 2026-09-13 12:36 · W5 실행 승인과 UI 결정·논의 중단 조건
+
+사용자가 W5 시행을 승인했다. root는 사용자 논의·정책 결정 지원·위임과 source·diff·테스트·실행 원문 직접 리뷰를 맡고 subagent는 조사·구현·테스트·문서 작업을 맡는다. production 변경은 TDD와 ponytail full을 적용한다. **작업 중 정책·UI·실패 처리 등 추가 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 임의로 결정해 진행하지 않는다.**
+
+사용자는 정상 연결과 작업 오류를 나란히 상시 표시하는 제안이 여전히 혼란스럽다고 지적했다. 그 제안 대신 아래 UI 방향을 확정했다. 이는 구현 목표이며 구현 완료나 신규 재현 근거가 아니다.
+
+- 정상 연결을 상시 강조하지 않고 연결 실패를 안내한다. 작업 오류는 실제 서버 설명을 우선 표시하고 설명이 없거나 해석 불가하면 HTTP 상태 등으로 대체한다. polling 성공이나 다른 작업 성공이 해당 작업 오류를 지우지 않는다. 같은 작업 재시도 중에는 이전 실패 사유와 진행 상태를 함께 표시하고, 성공하면 새 작업 성공 결과와 실제 화면을 표시한다.
+- 화면 복원 실패는 해당 terminal panel에 확인한 원인을 표시하고 '화면 다시 연결'과 '강제 종료'를 별도 동작으로 제공한다. 강제 종료에는 진행 중인 작업이 중단된다는 확인 단계를 둔다. 재연결은 기존 실행을 유지하며 연결만 재시도한다. 복원 실패만으로 자동 종료·재생성하지 않는다.
+- '백그라운드 프로세스는 안전하게 계속 실행 중'처럼 생존을 보장하지 않는다. '화면 복원 실패로 실행을 종료하지는 않았습니다'를 안내하고, 조회로 확인한 '마지막 확인 시 실행 중'과 '현재 실행 상태를 확인할 수 없음'을 구분한다. mirror 오류로 복원 불가하면 재연결의 한계와 사용자 선택에 따른 종료·재생성을 안내한다.
+- 중첩 조회 응답 역전은 실제 사용자 영향을 검증한 뒤 필요한 방어를 적용한다. 기존 코드상 가능성을 신규 재현 사실로 승격하지 않는다.
+
+정확한 API·실행 소유권·오류 전달 경계는 조사 중이다. 확정 UI를 기존 계약으로 수행할 수 없거나 새 정책이 필요하면 위 중단 조건을 적용한다. 이번 단일 W5의 결정·진행은 부모 Work Item과 최신 entry에서 복원할 수 있어 별도 독립 기록 수명을 추가하지 않는다. 기존 W1~W4 배치를 유지하고 새 log/package/task scaffold를 만들지 않는다.
+
+Git에서 HEAD 11c6392와 W1~W4 커밋을 확인했다. 과거 미커밋·미승인 기록은 당시 경위로 보존한다. 현재 재개 지점은 W5이며 구현 결과 수용은 아직 대기다. W6 실행·후속 commit·원격 push는 승인 범위 밖이고 다른 작업의 미추적 execution-flow-map 파일과 개인 자산을 수정·포함하지 않는다.
+
+### 2026-09-13 12:53 · W5 결과 수용과 검증 정정·W6 재개 지점
+
+root가 W5 production·tests·owner diff, RED/GREEN 원문과 실제 브라우저 probe·출력·스크린샷 3장을 직접 대조해 결과를 수용했다. 정상 연결 상시 표시를 제거하고 서버 설명/HTTP fallback을 작업별 결과에 보존했다. polling이나 다른 작업 성공은 오류를 지우지 않으며 같은 작업 재시도 중 이전 사유와 진행 표시, 성공 후 새 결과를 보여 준다. 복원 실패 panel의 화면 다시 연결과 확인 후 강제 종료는 별도 동작이며 기존 terminal DELETE·cleanup 보호·종료 경로를 사용한다. 실행 소유권이나 종료 정책을 바꾸지 않았다.
+
+mirror 오류가 보존된 세션은 복원 불가를 terminal → daemon 오류 프레임 → Web으로 전달한다. Web은 재연결 한계와 사용자 종료·새 생성 선택을 안내하고 자동 종료·재생성하지 않는다. 마지막 조회의 생존·종료·목록 부재와 조회 불가를 구분하며 안전한 실행을 보장하지 않는다. 이전 연결 callback·종료 응답은 새 선택을 정리하지 않는다. 조회는 마지막 반영 순서 이전 응답을 버리고 작업 성공 이전 조회도 무효화하되, 새 조회가 대기 중이라는 이유만으로 완료된 조회를 버리지 않는다.
+
+검증과 근거 범위:
+
+- root 최종 pnpm check exit0: lint·format·build·tsc와 516 tests(daemon194, CLI57, persistence14, domain28, config28, protocol10, terminal88, vendor3, web28, Claude66). 원문: /private/tmp/aiox-w5-root-check-final.txt.
+- mirror 실패 RED/GREEN: /private/tmp/aiox-w5-red-mirror.txt, /private/tmp/aiox-w5-green-mirror.txt. PTY는 대역이고 실제 headless mirror write에 실패를 주입했다. 실행 유지·후속 입출력·반복 attach 복원 불가를 확인한 회귀이며 실제 OS PTY/vendor 신규 실측은 아니다. 오류 프레임 RED/GREEN: /private/tmp/aiox-w5-red-wire-authorized.txt, /private/tmp/aiox-w5-green-wire.txt. Web DOM 회귀는 작업 오류 보존·재시도·응답 역전·느린 조회 진행·종료 확인·선택 격리를 확인한다.
+- root built Web + 실제 Chromium/xterm probe exit0: /private/tmp/aiox-w5-ui-proof.mjs, /private/tmp/aiox-w5-root-ui-proof.txt, /private/tmp/aiox-w5-ui-proof-artifacts의 3개 스크린샷. 제어한 HTTP/WS 대역으로 polling 후 오류 보존·정상 상태 숨김·재시도·조회 불가 표시·snapshot 재연결·복원 불가·종료 확인 취소/승인·목록 응답 역전을 확인했다. 실제 daemon/vendor 생존·종료 근거로 확대하지 않는다.
+
+최초 전체 검사 /private/tmp/aiox-w5-root-check.txt는 기존 borrowed shell exit cleanup 테스트의 5초 timeout에 실패했고 /private/tmp/aiox-w5-root-failure-focused.txt에서도 재현됐다. shell 생성 동안 HOME/ZDOTDIR를 임시 harness home으로 격리하자 같은 focused 테스트가 106ms에 통과했다(/private/tmp/aiox-w5-exit-isolated.txt). 개인 rc를 읽지 않았으므로 특정 설정이 원인이라고 확정하지 않는다. 공통 borrowableShell fixture만 기존 임시 home 검증 원칙에 맞춰 실제 PTY spawn 환경을 격리하고 try/finally로 spy를 복원했다. 제품 코드·timeout을 변경하지 않았다. 관련 focused25도 통과했다(/private/tmp/aiox-w5-exit-fixture-focused.txt). 최종 전체 검사는 이 보정 뒤 통과한 결과다.
+
+configuration-web spec과 storage-terminal architecture의 계약·내부 책임·근거를 반영했다. fixture 행 이동의 system/host 문서는 테스트 locator만 현재 범위로 맞췄다. 이번 작업에서 추가 정책·UI·실패 처리 논의가 필요한 쟁점은 없었고 fixture 환경 보정은 기존 격리 원칙 범위였다. 추가 논의가 필요하면 작업을 중단하고 사용자와 논의한다는 조건은 임의 결정으로 대체하지 않았다.
+
+W5를 완료하고 W6를 다음 재개 지점으로 둔다. W5 변경은 미커밋이며 commit/push하지 않았다. W6 실행이나 후속 commit·push로 승인을 확대하지 않는다. 신규 실제 Claude/Codex·다른 OS·CI 검증은 수행하지 않았다. 기존 W1~W4 배치·과거 History·다른 작업의 미추적 execution-flow-map과 개인 자산을 보존했고 새 log/package/task scaffold는 만들지 않았다.
+
+### 2026-09-13 12:54 · W5 검증 환경 근거 구분 보완
+
+최초 /private/tmp/aiox-w5-red-wire.txt는 sandbox listen EPERM으로 실패했으므로 제품 RED 근거가 아니며, /private/tmp/aiox-w5-red-wire-authorized.txt가 실제 오류 프레임 RED다. 최초 daemon typecheck 실패는 이전 terminal dist 선언을 소비한 상태에서 발생했고 terminal build 뒤 source 추가 수정 없이 해소됐다. 이 구분을 앞선 W5 검증 결과에 보완하며 W5 완료·미커밋과 W6 next·실행 미승인 상태는 유지한다.
+
+### 2026-09-13 13:04 · W5 리뷰 보완 승인과 재검증 착수
+
+사용자가 W5 리뷰의 1번 알림 버튼 조회 의존성 보정, 2번 이전 선택의 종료 성공 뒤에도 목록 재조회, 3번 attachment callback 축약, 6번 storage-terminal 이중 빈 줄 정리를 승인했다. 4번 restorable 오류 전달, 5번 조회 실패 문구, 7번 HOME/ZDOTDIR fixture 격리는 유지한다. 정책을 추가 변경하지 않고 승인한 보완만 적용한다.
+
+W5를 재검증 중으로 되돌리고 W6는 대기한다. code agent가 구현·회귀, 문서 agent가 승인·진행 기록과 관련 owner locator 정합을 맡고 root가 source·diff·테스트 원문을 직접 대조한 뒤 최종 수용한다. 앞선 516 tests와 브라우저 결과는 보완 전 검증으로 보존하며 이번 보완의 통과를 미리 주장하지 않는다. 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의하며 임의로 결정하지 않는다. 새 log/package/task scaffold, W6 실행, commit/push는 하지 않는다.
+
+### 2026-09-13 13:08 · W5 승인 리뷰 보완 수용과 재검증 완료
+
+root가 승인된 1·2·3·6번 보완의 source·diff·RED2/GREEN2와 최종 전체 검사 원문을 직접 대조해 수용했다. 알림 읽음 요청 완료 뒤 버튼 상태는 후속 조회 성공을 기다리지 않고 갱신한다. 이전에 선택했던 terminal의 종료가 성공해도 목록은 다시 조회하며 새 attachment와 표시를 정리하지 않는다. attachment callback의 불필요한 분기를 축약하고 storage-terminal 이중 빈 줄을 제거했다. 4번 restorable 오류 전달·5번 조회 실패 문구·7번 HOME/ZDOTDIR fixture는 유지했다. 두 Web owner의 관련 source/test locator만 함께 정합화했으며 정책을 추가 변경하지 않았다.
+
+신규 DOM 회귀 2개는 읽음 성공 후 조회 대기·실패·무효화에서 버튼 복구와 이전 선택 종료 후 목록 재조회·새 선택 보존·오래된 조회 무효화를 검증한다. RED2 원문 /private/tmp/aiox-w5-review-red.txt, GREEN2 원문 /private/tmp/aiox-w5-review-green.txt를 root가 직접 확인했다. Web30 tests·typecheck·build 근거는 /private/tmp/aiox-w5-review-web-tests.txt, /private/tmp/aiox-w5-review-web-typecheck.txt, /private/tmp/aiox-w5-review-web-build.txt다.
+
+최초 전체 검사 /private/tmp/aiox-w5-review-root-check.txt의 sandbox 실행에서는 terminal의 실제 shell 관련 테스트 17개가 실패했다. 같은 source를 sandbox 밖에서 재실행한 /private/tmp/aiox-w5-review-root-check-authorized.txt는 root가 exit0을 확인했고 lint·format·build·typecheck와 518 tests(기존 516 + Web 신규 2)가 통과했다. 실패 원인을 특정 제품 결함이나 개인 설정으로 단정하지 않는다. source freeze 뒤 production/tests 추가 수정은 없었으며 이번 보완의 실제 브라우저·다른 OS·CI 신규 실측은 하지 않았다. 앞선 Chromium 대역 검증은 보완 전 결과로 보존한다.
+
+추가 논의가 필요한 정책 쟁점 없이 승인한 범위를 마쳤다. W5 완료·미커밋, W6 next·실행 미승인으로 복귀한다. 추가 논의가 필요하면 작업을 중단하고 사용자와 논의한다는 조건을 유지하며 W6 실행·commit·push로 승인을 확대하지 않는다. 새 scaffold는 만들지 않았다. 재검증 착수 때 log 도구가 completed 항목의 active 복원을 지원하지 않아 W5 marker만 수동으로 복원하고 즉시 구조 검사를 통과했으며, 이번 완료·next 전이는 도구로 처리했다.
+
+### 2026-09-13 14:44 · 운영 Web UI와 알림 후속 문서 반영
+
+사용자가 Stage6의 cmux pane·tab·window UI/UX 참고와 React 알림 UI 방향을 기존 문서에 반영하도록 승인했다. configuration-web spec에 알림 아이콘 dropdown·해당 Agent가 포함된 창으로 이동·Agent B 클릭 시 B 미확인 읽음 처리를 반영하고 Stage6/7 Required Context와 인계 entry를 맞췄다. 미확인 해제를 저장된 알림 이력 삭제로 확대하지 않는다. React의 기존 후보 표현도 승인된 운영 Web 목표와 맞췄다. plan은 기존 단계 순서와 포인터가 유효해 수정하지 않았으며 Stage7 전체를 이동·삭제하지 않았다.
+
+외부 CLI 실행을 Web 목록·알림에서 제외하는 것은 사용자 확정 요구다. 이 제외 요구의 구현과 관련 owner 정합은 아직 반영하지 않았으며 기존 구현 완료로 주장하지 않는다. SSE 전환은 논의 방향이며 구현에 착수하지 않았다. 이번 변경은 앞서 승인된 UI 두 주제의 문서 반영만이고 production·추가 정책·commit/push 작업이 아니다. W5 완료·미커밋과 W6 next·실행 미승인 상태, 추가 논의 필요 시 중단 조건은 유지한다. 새 log/package/task scaffold는 만들지 않았다.
+
+### 2026-09-13 14:47 · 알림 대상 선택 의미 정정과 활성·선택 기준 확정
+
+root가 앞선 문서 brief와 entry의 'Agent B 클릭' 표현을 정정했다. B는 대상 터미널 선택을 뜻하고 일반 shell도 배제하지 않는다. 대상 터미널(B) 선택 클릭 시 해당 대상의 미확인 알림 해제는 현재 간단 Web 적용 목표이며 Stage6 전용 작업으로 미루지 않는다. 알림 자체 클릭의 대상 창 이동·해당 알림 읽음 처리는 보존한다. 표시 해제는 저장된 알림 이력 삭제가 아니다.
+
+확인 대기하던 focus 질문에 사용자가 '창·탭 활성 + 선택된 터미널 기준'으로 답했다. 활성 브라우저 창·탭에서 A 선택이면 A의 팝업·소리·알림 목록 추가·미확인 표시를 억제한다. 검색창·버튼으로 입력 포커스가 옮겨도 선택이 A이면 유지하며 다른 앱·브라우저 탭으로 이동하면 A도 대상이다. 기존 actual terminal input focus 조건은 이 새 기준으로 대체했다. W2 메시지 처리 결과·필수 알림 저장 기록 삭제로 확대하지 않는다.
+
+configuration-web spec, storage-terminal의 flow·table, Stage6/7 Required Context와 후속 정정 entry를 맞췄다. main.ts의 terminal 선택·목록 polling·전체 읽음 경로를 read-only 대조했고 선택별 읽음·활성/선택 억제 구현은 아직 없다. 승인된 target로만 표시하고 production·새 테스트·commit/push를 수행하지 않았다. 외부 CLI 목록·알림 제외의 구현/owner 정합과 SSE 논의는 이번 문서 작업의 완료 범위에 포함하지 않는다. W5 완료·미커밋, W6 next·실행 미승인 및 추가 논의 필요 시 중단 조건을 유지한다.
+
+### 2026-09-13 14:55 · W5 SSE 실행 승인과 이력 소유권 정책 논의 대기
+
+사용자가 SSE 기반 변경 통지와 현재 간단 Web의 알림 처리를 구현하도록 승인했다. 서버의 상태 관측과 브라우저로의 전달을 root가 혼동해 설명했던 것을 정정하는 과정에서, 기존 Web의 polling·외부 실행 표시와 활성/선택 알림 처리 미구현이 드러났다. 앞선 518 tests 수용은 당시 변경 결과로 보존하고 이번 확장 완료 근거로 승계하지 않는다.
+
+승인 범위는 SSE 통지로 Web polling을 제거하고 Web 소유 실행의 목록·알림만 표시하는 것이다. 브라우저 창·탭이 활성이고 선택된 terminal이면 신규 사용자 알림을 억제하며 terminal 입력 focus 여부에는 의존하지 않는다. 대상 terminal 선택 클릭은 해당 미확인 알림을 읽음 처리하고 현재 목록에는 최소 미확인 표시를 둔다. 메시지 결과·필수 알림 저장 책임은 유지한다. Stage6의 cmux pane·tab·window, React dropdown 등 운영 UI는 후속 범위이며 이번에 구현하지 않는다.
+
+root가 위임한 backend/frontend 구현과 회귀, 문서·로그 정합 이후 root가 source·diff·테스트 원문을 직접 대조해 수용한다. **작업 중 정책·UI·실패 처리 등 추가 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 임의 결정으로 진행하지 않는다.**
+
+조사 중 기존 notification row가 originRuntimeId만 보존해 unregister 뒤 실행 소유권과 terminal 대상을 판별할 수 없다는 보고를 root가 확인하고, 해당 정책에 의존하는 구현을 중단했다. 기존 이력을 DB에 보존하면서 Web에서 제외할지(권고), Web에 포함할지 사용자 답변을 기다린다. 이는 신규 미확정 정책이며 승인 완료나 구현 결과로 기록하지 않는다. 이 entry 시점 backend production 편집은 없고 frontend는 RED 준비 중이라는 root 보고다.
+
+W5 active·W6 open으로 재개 지점을 맞췄다. log 도구가 completed W5의 active 전이를 거절해 W5 marker만 수동으로 복원하고 그 밖의 항목·context·entry는 도구로 갱신했다. 새 log/package/task scaffold, W6 실행, commit/push는 하지 않는다. 기존 W1~W4 배치와 다른 작업 자산은 보존한다.
+
+### 2026-09-13 15:16 · W5 기존 개발 데이터 삭제 결정과 구현 재개
+
+사용자가 기존 개발 알림을 삭제하고 Network 등 다른 DB 데이터도 삭제하도록 명시했다. 따라서 앞선 이력의 Web 포함/제외 질문은 개발 DB 일회 삭제로 해결됐으며, legacy unknown 이력 호환 없이 fresh DB schema 기준으로 backend/frontend 구현을 재개한다. 이는 기존 개발 데이터에 대한 일회 조치이며 제품 코드의 startup 자동 reset·반복 데이터 삭제 요구가 아니다.
+
+root 보고 기준 실제 ~/.aiox/aiox.db를 사용하는 daemon PID 53230이 살아 있어 root가 일반 stop과 DB 전체 삭제의 실행 허가를 사용자에게 확인 중이다. 열린 DB를 삭제하지 않으며, 이 entry는 실제 stop·삭제 완료를 주장하지 않는다. 해당 실행 절차와 독립적인 코드·회귀 구현은 재개한다.
+
+W5 active와 미커밋 상태를 유지한다. 과거 518 tests 수용은 보존하며 새 구현의 검증·수용은 root 직접 리뷰 후 기록한다. 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 새 scaffold·W6 실행·commit/push는 하지 않는다.
+
+### 2026-09-13 15:17 · W5 개발 DB 일반 종료 거절과 실행 정리 대기
+
+사용자가 개발 daemon 일반 stop과 DB 삭제를 승인했으나, root가 실행한 node apps/cli/dist/main.js daemon stop은 exit1·active_runtimes로 거절됐다. root 보고의 대상 terminal은 541ab816-69b6-4c51-bef6-427328edbdfc다. 일반 종료가 거절된 상태에서 강제 종료로 확대하지 않았고 DB도 삭제하지 않았다.
+
+사용자에게 해당 실행을 직접 정리하도록 요청해 답변을 기다린다. 실제 개발 DB reset은 미완료이며, SSE 구현·검증은 별도 임시 DB로 계속한다. 열린 DB 삭제·자동 reset은 하지 않는다. 이번 entry는 root 실행 보고를 기록한 것으로 문서 담당자가 명령을 재실행한 결과가 아니다.
+
+### 2026-09-13 15:37 · W5 SSE·알림 구현 검증 수용과 실제 개발 DB 초기화 대기
+
+root가 SSE·Web 소유 실행 목록/알림·활성 창/탭과 선택 terminal 기반 표시·읽음 구현의 source·diff·회귀와 아래 실행 원문을 직접 대조해 구현 결과를 수용했다. 문서 담당자는 code/test와 검사·probe 출력도 대조했으며 root의 실행을 재실행한 것으로 보고하지 않는다.
+
+- root pnpm check exit0, /private/tmp/aiox-w5-sse-root-check.txt: lint·format·build·typecheck와 527 tests(domain28, config28, protocol10, terminal88, vendor3, persistence14, web34, Claude66, CLI57, daemon199). 과거 518 tests는 이전 수용 결과로 보존한다.
+- root actual built probe exit0, /private/tmp/aiox-w5-sse-root-built-proof.txt: 실제 daemon·SQLite·HTTP/SSE·본인 shell에 대역 vendor binding을 연결해 terminal 생성/종료·Runtime 등록/활동/제거·저장된 알림/읽음 통지·unregister 뒤 원 terminal/소유권 유지·외부 Web 제외와 공통 API 보존·daemon 종료의 SSE 해제를 확인했다. 실제 Claude/Codex·외부 CLI vendor 실행 검증은 아니다.
+- root browser probe exit0, /private/tmp/aiox-w5-sse-root-focus-double-ui-proof.txt: 실제 Chromium/xterm과 native EventSource가 제어 SSE를 소비하고 HTTP/WS는 대역이다. 무polling·초기/변경/재접속 조회·작업 오류 보존·snapshot 복원·확인 후 종료·대상별 읽음/미확인 표시·응답 역전을 확인했다. 알림의 활성/비활성 입력은 document.hasFocus·visibilityState 대역으로 분리했으며 실제 native 창·탭 전환 실측이 아니다. root는 screenshot04도 직접 확인했다.
+- native headless와 별도 임시 profile의 headed Testing Chromium은 다른 페이지를 앞으로 가져와도 기존 페이지의 background 판정이 바뀌지 않아 전체 probe가 실패했다. /private/tmp/aiox-w5-sse-root-ui-proof.txt와 /private/tmp/aiox-w5-sse-root-headed-ui-proof.txt는 환경 한계의 실패 근거로 보존하며 후속 대역 통과로 덮지 않는다. 사용자 기존 profile/창은 조작하지 않았다.
+
+WebEvents는 초기·변경 시 빈 change 통지 후 최신 조회를 유도하며 event replay나 별도 상태 권위를 추가하지 않는다. daemon 소유 Runtime·알림을 대상으로 통지하고 retention 알림 삭제는 더 넓은 무효화를 허용하되 외부 데이터를 노출하지 않는다. 느린/실패한 SSE viewer는 해당 연결만 정리한다. 발신 terminal은 send 첫 await 전에 고정하고 실행 소유권은 Runtime 수명 불변값으로 보존해 unregister 후에도 원대상을 유지한다. Web 읽음은 외부 알림을 지우지 않고 저장 완료 후 통지하며 대상이 없는 읽음은 통지하지 않는다.
+
+기존 TypeORM migration 체계와 nullable schema column은 유지한다. 신규 producer는 소유권·terminal 정보를 명시하며 unknown 이력을 현재 Runtime으로 추정하는 fallback은 추가하지 않았다. 사용자의 개발 DB 일회 삭제와 양립하며 migration 미사용·legacy column 제거 완료로 설명하지 않는다. configuration-web/runtime spec과 storage-terminal architecture, Stage6/7 선행 결과 소비를 정합화했다. cmux pane·tab·window, React dropdown과 popup·소리 후속 범위는 유지한다.
+
+실제 개발 DB 초기화는 여전히 미완료다. root의 read-only 확인은 Agent 0·shell 1, daemon 53230→zsh 53607→foreground zsh 36847 자식 존재이며 그 shell 생성 경위는 미확인이다. 일반 stop이 거절돼 사용자에게 terminal 직접 종료를 요청하고 기다린다. 강제 stop·열린 DB 삭제는 수행하지 않았으며 구현 검증 완료를 W5 전체 완료로 확대하지 않는다.
+
+W5 active·W6 open·미커밋을 유지한다. 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 검증 이후 production/tests 추가 변경·commit/push·새 scaffold는 없으며 README도 추가 변경하지 않았다.
+
+### 2026-09-13 15:44 · W5 개발 DB 초기화 완료와 W6 재개 지점
+
+사용자가 terminal을 종료했다고 알린 뒤 root가 node apps/cli/dist/main.js daemon stop을 직접 실행해 exit0·daemon stopped.를 확인했다. daemon.json 부재, ps -p 53230,53607,36847의 출력 없음·exit1, 기존 DB의 lsof 출력 없음·exit1을 확인한 후 승인된 /Users/lunaxislu/.aiox/aiox.db를 삭제했다. aiox.db·aiox.db-wal·aiox.db-shm·aiox.db-journal 모두 부재를 assertion으로 확인했다. 이 entry는 root의 실행 결과 보고이며 문서 담당자가 종료·삭제를 재실행한 결과가 아니다.
+
+앞선 527 tests·built daemon·브라우저 검증을 수용한 구현 결과에 마지막 미완료 개발 DB 초기화를 더해 W5를 완료한다. 기존 검증 범위와 native 창·탭 전환 미검증 한계는 15:37 수용 entry를 따른다. daemon 재시작·force·commit/push는 하지 않았다. 이번 초기화는 승인된 개발 데이터 일회 삭제이며 제품의 startup 자동 reset이 아니다.
+
+W5 completed·W6 next로 맞추되 W6는 미착수·실행 미승인이다. Stage2-3 전체는 진행 중이고 W5 변경은 미커밋이다. 추가 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 다른 기록이나 단계 배치를 개편하지 않는다.
+
+### 2026-09-13 15:57 · 설계·개발 DB 원칙 반영과 불필요 코드 조사 승인
+
+사용자가 합의 내용을 root AGENTS.md에 기록한 뒤 subagent에게 다른 코드의 불필요한 부분을 조사시켜 목록화하도록 승인했다. 이번 승인은 작업 원칙 반영과 조사·목록화이며 코드 수정·삭제 승인이 아니다. 기존 W6의 후보 판정 범위에서 이어가고 중복 Work Item이나 새 log/package/task scaffold를 만들지 않는다.
+
+회고의 핵심은 서버의 상태 관측과 Web 전달을 혼동하거나 기존 polling·migration 구조가 있다는 이유로 필요성을 인정하지 않는 것이다. AGENTS.md에 사용자 entry→상태 생성/관측/전달/소비→완료/실패 경계를 먼저 확인하고, 현재 요구와 실제 caller/consumer를 근거로 구현을 선택하도록 반영했다. 자원 생성 성공과 작업 성공을 구분하며 선행 조건 검증·실행 실패·사용자 오류 전달을 보존한다.
+
+첫 배포 전에는 과거 개발 DB 호환용 migration·backfill·legacy fallback·옛 행만을 위한 nullable을 추가·유지하지 않고 현재 schema/code/tests를 직접 고친다는 새 원칙을 반영했다. 빈 DB의 현재 schema 초기화와 저장/조회/재오픈, 원자성·실패 재시도·무결성 검증은 유지한다. DB 삭제는 승인 범위에서 daemon 종료 확인 후 수행하며 startup 자동 reset이 아니다. 첫 배포나 실제 보존 요구가 생기면 정책을 재정립한다.
+
+앞선 W5 수용 당시의 TypeORM migration·nullable 유지 판단은 과거 구현 사실로 보존한다. 새 원칙과 현재 코드의 불일치는 이번 조사와 후속 승인 대상이며, 현재 as-built 문서를 삭제하거나 migration 제거를 구현 완료로 주장하지 않는다. root·하위 AGENTS.md에서 이 개발 DB 원칙과 직접 충돌하는 규칙은 검색 범위에서 발견하지 못했다. docs/product와 logs의 migration/backfill 언급은 문서 이관·로그 구조에 관한 규칙이므로 DB 호환 규칙과 구분한다. 이후 root가 configuration-web spec의 기존 DB 보존 migration 요구를 새 AGENTS 원칙과 직접 충돌하는 규칙으로 확인했다. 해당 문장은 TypeORM·better-sqlite3·transaction을 유지하면서 개발 DB 변경 정책을 root AGENTS로 위임하도록 최소 정합화했다. 현재 migration의 as-built 구현·근거는 storage-terminal에 보존하며 구현 제거 완료로 표현하지 않는다.
+
+subagent 조사 결과는 대기 중이다. root가 source·diff·caller·검증 근거를 직접 대조한 뒤 필요 없음·현재 필요·추가 검증 필요를 구분해 목록화한다. 추가 정책이나 실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다. W5 완료·미커밋을 유지하며 commit/push하지 않는다.
+
+### 2026-09-13 16:01 · W6 불필요 코드 조사 결과와 정리 후보 수용
+
+root가 subagent의 조사 결과를 source·caller·owner와 직접 대조해 아래 목록을 수용했다. 이번 결과는 AGENTS/spec 정책 정합과 읽기 기반 조사·목록화이며 코드·테스트 수정이나 신규 테스트 실행을 수행한 결과가 아니다. 정리 구현은 아직 승인되지 않았다.
+
+| 판정 | 근거와 후보 | 후속 변경에서 보존할 경계 |
+| --- | --- | --- |
+| 정리 후보 | packages/persistence/src/sqlite/database.ts:106-132의 Stage1 fake/user_version 경로, schema.ts:150-241의 3개 migration·과거 행을 위한 ownership null 허용·old seed/migration assertion → 현재 schema 직접 초기화 | 빈 DB·재오픈·저장/조회·transaction·무결성 검증. originTerminalId nullable은 정상 등록에도 필요하므로 별개로 유지 |
+| 정리 후보 | packages/config/src/files.ts:9-14의 ConfigLocation.filePath와 location 옵션은 실제 production/tests 옵션 사용이 없고 home만 소비 | 현재 home 기반 파일 경로·검증·저장 계약 |
+| 정리 후보 | apps/daemon/src/terminals.ts:174-195의 TerminalService.killAll은 production 호출 없이 terminals.test.ts:558에서만 사용 | daemon.ts:468 부근의 개별 kill/closeIdle teardown은 별도 경로로 유지. 실패 재시도 테스트는 kill 재호출로 보존 |
+| 정리 후보 | apps/daemon/src/daemon.ts:70의 공개 Daemon.attachTerminalTo type과 :703의 반환 노출 | :664의 실제 내부 호출과 :418의 함수 본체·검증·observer는 유지 |
+| 정리 후보 | packages/adapters/claude/src/claude-launch.ts:277-278의 기존 사용자 hook 배열 중복 검사. :271 전수 검증 이후 await/mutation이 없음 | AIOX 입력 검증과 hook 병합은 유지 |
+| 선택적·저우선 | packages/config/src/session.ts:16의 snapshot 복제용 parseConfig(current) 재검증은 structuredClone 후보 | 결함 판정이 아니며 last-good·포트 고정·격리된 snapshot 요구 유지 |
+
+유지 판정은 config session의 last-good·자동 반영과 실행 중 포트 고정, 정상 등록의 originTerminalId nullable, W1~W5의 원자성·직렬화·실패 재시도, createExecution의 own/signal 및 비동기 준비 뒤 권한 확인, background 부속 실행 계약, retention timer다. 단순 미사용처럼 보이는 이름이나 코드 모양으로 이 책임을 삭제하지 않는다.
+
+현재 후보 목록은 W6 전체 완료가 아니다. 기존 외부 리뷰의 실제 vendor 이벤트·옵션 의미 검증과 등록 예약/준비/활성화 구조 대안 등은 미착수 범위로 남긴다. W6 next를 유지하고 구현 승인 전 목록을 자동 수정하지 않는다. 승인 후 DB 구현을 교체하면 storage-terminal의 현재 migration 근거·target 정합도 함께 확인한다. 추가 정책·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 새 scaffold·commit/push는 하지 않았다.
+
+### 2026-09-13 16:15 · 과거 DB 보존 migration 금지 재확인과 문서 목표 정합
+
+사용자가 기존 DB를 보존하는 명시적 migration을 하지 말라고 재강조하고 spec 갱신과 AGENTS.md 반영을 지시했다. root AGENTS의 기존 개발 DB 항목에 spec·architecture의 migration 서술을 과거 호환 유지 근거로 삼지 않는다는 점을 흡수했다. 빈 DB의 현재 schema 직접 초기화·저장/조회/재오픈과 transaction·무결성·실패 재시도는 유지한다.
+
+configuration-web spec의 공통 migration 목표를 현재 schema 초기화로 갱신하고, storage-terminal의 목표 준비 흐름과 roadmap의 검증 목표도 맞췄다. TypeORM·better-sqlite3·transaction은 유지한다. 현재 코드에 migration이 남은 사실은 storage-terminal의 as-built에 보존하되 그곳에 현재 schema 직접 초기화로 교체할 대상임을 한 번 명시하고 system에서 연결했다. 과거 구현의 존재를 정책 근거로 사용하지 않으며 실제 제거 완료를 주장하지 않는다.
+
+이번은 승인된 작업 규칙·spec/관련 owner 문서 정합이다. 코드·테스트 수정이나 실행은 하지 않았고 W6 정리 후보의 구현은 여전히 미승인이다. 기존 decision·닫힌 로그나 미추적 자산을 개편하지 않았다. 추가 정책 논의가 필요한 불확실성은 없었으며 이후 생기면 작업을 중단하고 사용자와 논의한다.
+
+### 2026-09-13 16:16 · 사용자 배포 완료 통지 이후 migration 적용 조건 확정
+
+사용자가 배포 완료를 알리는 시점부터 이후 DB schema 변경에 기존 데이터를 보존하는 migration을 적용하도록 명시했다. AGENTS.md의 기존 정책 재논의 항목을 이 전환 조건으로 대체하고 배포 여부를 임의 추정하지 않도록 했다. 첫 배포 전 현재 schema 직접 초기화와 원자성·실패 재시도·무결성·승인된 종료 후 DB 삭제 경계는 유지한다.
+
+이번 요청은 향후 전환 조건의 문서 반영이며 현재 배포 완료 통지가 아니다. W6 코드 구현은 여전히 미승인이고 코드·테스트·다른 owner 문서·commit/push는 변경하지 않았다.
+
+### 2026-09-13 16:32 · W6 정리 후보 1~6 구현 승인과 검증 착수
+
+사용자가 앞서 목록화한 정리 후보 1~6의 구현을 승인했다. 선택적 저우선이었던 config snapshot 깊은 복사도 포함한다. DB의 과거 호환 migration을 현재 schema 직접 초기화로 교체하고 ownership non-null을 적용하며, ConfigLocation.filePath/location·TerminalService.killAll·Daemon.attachTerminalTo 공개 노출·검증 완료된 사용자 hook 배열의 중복 검사·snapshot 복제용 재검증을 정리한다.
+
+DB·config 담당과 terminal/daemon/hook 담당이 production 변경과 회귀를 수행하고 문서 담당은 실제 source·tests·caller가 확정된 뒤 관련 owner의 as-built와 locator를 맞춘다. root가 diff·테스트·실행 원문을 직접 확인하기 전 완료로 수용하지 않는다. 저장/조회/재오픈·원자성·직렬화·실패 재시도, 정상 terminal nullable, 내부 attach 검증과 observer, AIOX hook 입력 검증과 병합, config last-good와 snapshot 격리를 보존한다.
+
+**작업 중 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 임의 결정으로 진행하지 않는다.** W6의 나머지 외부 리뷰 검증과 등록 구조 대안 검토는 이번 범위에 포함하지 않는다. 기존 W5 결과·미추적 skill을 보존하고 새 package/task scaffold·commit/push는 만들지 않는다.
+
+### 2026-09-13 16:38 · W6 정리 후보 1~6 결과 수용과 남은 검토 재개 지점
+
+root가 승인된 1~6 변경의 source·diff·RED/GREEN 원문·전체 검사와 public built package 실행을 직접 대조해 수용했다. 선택적이었던 6번도 포함해 완료했다. DB는 현재 DDL을 transaction으로 직접 초기화하고 과거 migration/version 채택을 제거했으며 실행 소유권은 필수, 정상적으로 없을 수 있는 terminal ID는 nullable로 유지했다. ConfigLocation.filePath/location과 미사용 killAll, Daemon.attachTerminalTo의 공개 노출, 중복 hook 배열 검사만 제거했고 config snapshot은 structuredClone으로 복제한다. 내부 attach 검증/observer·실패 재시도·입력 검증/병합·last-good/포트 고정은 보존했다.
+
+검증 근거와 범위:
+
+- root pnpm check exit0, /private/tmp/aiox-w6-candidates-root-check.txt: lint·format·build·typecheck와 526 tests(domain28, config28, protocol10, terminal88, vendor3, persistence13, web34, Claude66, CLI57, daemon199). 과거 DB migration 전용 검사를 현재 schema·초기화 rollback 검증으로 교체한 결과이며 W5의 527 tests와 구분한다.
+- DB RED/GREEN/final은 /private/tmp/aiox-w6-persistence-red.txt, /private/tmp/aiox-w6-persistence-green.txt, /private/tmp/aiox-w6-persistence-final.txt를 따른다. terminal cleanup 재시도는 /private/tmp/aiox-candidates-terminal-before.txt와 /private/tmp/aiox-candidates-terminal-after.txt로 보존을 확인했다. root가 담당자의 원문과 실제 변경을 대조했다.
+- root가 script 전체를 읽고 실행한 public built smoke는 exit0, /private/tmp/aiox-w6-built-package-proof.txt다. public dist persistence/config와 실제 임시 SQLite에서 현재 5개 table·migration journal 부재·ownership NOT NULL·terminal nullable, Network/route·delivery outcome·daemon/외부 소유 알림의 저장/재오픈·읽음, 임시 home의 config save/load·실패 저장 보존, snapshot 격리·last-good·시작 포트 고정을 확인했다. 사용자 daemon/DB에는 접근하지 않았다. 신규 실제 vendor·브라우저·다른 OS·CI 검증으로 확대하지 않는다.
+
+storage-terminal/system architecture와 configuration-web spec을 현재 초기화 구현으로 정합화했고 관련 source/test locator를 직접 대조했다. config 복제 방식과 미사용 공개 노출 제거는 국소 구현 사실이므로 불필요한 별도 owner 설명을 만들지 않았다. 문서의 migration 교체 대기 표시는 해소했으며 사용자 배포 완료 통지 전 개발 DB 원칙을 적용한다.
+
+이번 1~6은 완료지만 W6 전체는 완료하지 않는다. 기존 외부 리뷰의 실제 vendor 이벤트·옵션 의미와 등록 예약/준비/활성화 대안 검토는 열린 next로 남긴다. W5/W6 변경은 미커밋이며 나머지 검토로 구현 승인을 확대하거나 commit/push하지 않는다. 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 새 scaffold와 미추적 skill 변경은 없다.
+
+### 2026-09-13 16:40 · W5·W6 수용 변경 커밋 승인과 다음 세션 인계
+
+사용자가 작업 로그 기록 후 커밋과 다음 세션 프롬프트 작성을 승인했다. root는 구조/행위 변경을 분리해 먼저 후보 2·3·4·5·6의 구조 정리를 커밋하고, 이어 W5·DB 현재 schema 직접 초기화·owner 및 작업 정책/로그 변경을 커밋한다. 이 entry는 승인과 예정된 경계 기록이며 실제 완료·hash는 Git에서 확인한다.
+
+최종 526 tests 전체 검사와 public built package 검증 이후 production/tests 추가 변경은 없다. 기존 검증 범위·native 창/탭 전환 미검증 한계와 개발 DB 일회 초기화 완료를 인계한다. W6의 나머지 외부 리뷰·등록 구조 검토는 미착수이며 다음 세션에서 자동 실행하지 않는다. 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다.
+
+원격 push는 금지하고 다른 작업의 미추적 execution-flow-map skill과 architecture.excalidraw 개인 자산은 커밋 대상에서 제외한다. 새 로그·scaffold나 코드 변경은 하지 않는다. root가 최종 diff를 확인한 뒤 커밋하고 실제 Git 상태를 다음 세션 인계에 반영한다.

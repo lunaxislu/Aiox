@@ -49,7 +49,7 @@ Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한�
 
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
-CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http의 daemon/Web listener, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 migration을 거친다.
+CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http의 daemon/Web listener, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:215-522`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:44-80`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:115-249`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:54-181`.
 
@@ -71,9 +71,9 @@ Runtime은 직접 소유 PTY와 차용 shell을 구분한다. 차용 Agent의 �
 shell도 종료·확인한다. 실패한 binding에 연결된 shell은 재시도할 수 있게 유지한다.
 
 근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:268-355`,
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:293-485`.
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:554-598`, `apps/daemon/src/daemon.test.ts:755-969`.
 
-근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:337-363`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:91-108`; 실패·재시도와 저장소에서 Network를 직접 삭제한 경우의 정리 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1194-1246`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:280-346`.
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:337-363`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:91-108`; 실패·재시도와 저장소에서 Network를 직접 삭제한 경우의 정리 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1212-1264`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:280-346`.
 
 NetworkService는 준비·정리 중인 등록까지 검사해 삭제를 거절한다. daemon 등록은 동기 membership
 예약 뒤 Network 존재를 조회하고 binding을 만든다. 단일 DB 작업 queue에서 삭제가 앞서면
@@ -81,7 +81,7 @@ NetworkService는 준비·정리 중인 등록까지 검사해 삭제를 거절�
 삭제의 외부 계약은 [[docs/specs/aiox-host]]가 소유한다.
 근거: [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:69-79`,
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:626-644`,
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:396-527`.
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:414-539`.
 
 현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude 연결은 아래 Stage 3 범위로 확장했고 Codex와 Host/Worktree 실행은 아직 구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
 
@@ -154,7 +154,7 @@ daemon용과 공용 운영 Web용 포트는 각각 설정할 수 있다. 같은 
 [[docs/specs/aiox-configuration-web]]의 포트 계약을 따른다. 실제 CLI 옵션·listener 연결과
 포트 충돌 처리는 현재 조립 범위의 코드·테스트를 따른다.
 
-Stage 2 서버 조립에는 node:http, ws, 공식 MCP TypeScript SDK, Zod, node-pty, TypeORM과 better-sqlite3가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.13.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. ORM migration·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
+Stage 2 서버 조립에는 node:http, ws, 공식 MCP TypeScript SDK, Zod, node-pty, TypeORM과 better-sqlite3가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.13.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. DB 초기화·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
 
 편집기는 각 package의 `tsconfig.json`으로 source와 같은 디렉터리의 tests를 함께 해석한다.
 domain의 별도 `tsconfig.production.json` 검사는 tests를 제외하고 자동 Node ambient type을

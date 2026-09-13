@@ -221,6 +221,7 @@ it("orders snapshot, concurrent output, resize and exit at one attachment bounda
             expect.objectContaining({
                 message: "Terminal mirror is disposed.",
             }),
+            true,
         );
         expect(events).toEqual(["snapshot", "AFTER", "100x30", "exit"]);
     } finally {
@@ -620,3 +621,65 @@ it.skipIf(process.platform === "win32")(
         }
     },
 );
+
+it("keeps the PTY alive and marks every attach unrestorable after a mirror write failure", async () => {
+    const { default: headless } = await import("@xterm/headless");
+    let output!: (value: string) => void;
+    let exit!: (value: { exitCode: number }) => void;
+    const pty = {
+        pid: 123,
+        onData(fn: typeof output) {
+            output = fn;
+            return { dispose() {} };
+        },
+        onExit(fn: typeof exit) {
+            exit = fn;
+            return { dispose() {} };
+        },
+        write: vi.fn(),
+        pause() {},
+        resume() {},
+        kill: vi.fn(() => exit({ exitCode: 0 })),
+    };
+    const spawn = vi
+        .spyOn(nodePty, "spawn")
+        .mockReturnValue(pty as unknown as ReturnType<typeof nodePty.spawn>);
+    const write = vi
+        .spyOn(headless.Terminal.prototype, "write")
+        .mockImplementationOnce(() => {
+            throw new Error("mirror storage failed");
+        });
+    const session = createTerminal({ id: "broken-mirror" });
+    try {
+        const live = vi.fn();
+        session.subscribe({ data: live, exit() {} });
+        output("first");
+        await new Promise((resolve) => setImmediate(resolve));
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const failure = vi.fn();
+            session.attach({
+                snapshot: vi.fn(),
+                data() {},
+                resize() {},
+                exit() {},
+                error: failure,
+            });
+            await vi.waitFor(() => expect(failure).toHaveBeenCalled());
+            expect(failure).toHaveBeenCalledWith(
+                expect.objectContaining({ message: "mirror storage failed" }),
+                false,
+            );
+            expect(session.alive).toBe(true);
+            expect(pty.kill).not.toHaveBeenCalled();
+        }
+        output("later");
+        session.write("input");
+        expect(live).toHaveBeenCalledTimes(2);
+        expect(pty.write).toHaveBeenCalledWith("input");
+    } finally {
+        await session.kill();
+        await session.dispose();
+        write.mockRestore();
+        spawn.mockRestore();
+    }
+});

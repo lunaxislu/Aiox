@@ -5,6 +5,7 @@ import type { MessageService } from "@/messaging";
 import type { NetworkService } from "@/networks";
 import type { RuntimeRegistry } from "@/runtimes";
 import type { TerminalService } from "@/terminals";
+import type { WebEvents } from "@/web-events";
 
 export type StopOutcome = {
     /** false when a stop was refused or managed cleanup remains unconfirmed. */
@@ -23,6 +24,7 @@ export type Lifecycle = {
 };
 
 export type DaemonServices = {
+    readonly webEvents: WebEvents;
     readonly db: AioxDatabase;
     readonly runtimes: RuntimeRegistry;
     readonly networks: NetworkService;

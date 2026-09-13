@@ -24,15 +24,26 @@ credential을 영속화된 설정·메시지에 넣지 않는다. vendor transcr
 
 ## 이력 보존과 ORM 전환 [Status: As-built]
 
-TypeORM + 기존 better-sqlite3로 전환했다. Stage 1 DB의 최초 schema는 적용된 migration으로 인계하고 이후 migration을 실행한다. 기존 user_version은 호환성 검사에만 읽으며 TypeORM migration 이력을 단일 권위로 사용한다. synchronize는 끈다.
+TypeORM·better-sqlite3 연결을 연 뒤 현재 schema의 DDL을 한 transaction에서 직접 실행한다.
+`IF NOT EXISTS`로 같은 schema의 DB를 재오픈하며 과거 DB migration·version 채택 경로는 없다.
+초기화 실패는 생성 중인 테이블을 rollback하고 연결을 닫아 오류를 전달한다. 기존 데이터를
+자동 삭제하거나 초기화 성공으로 바꾸지 않는다. 첫 배포 전·후 변경 원칙은 [[AGENTS]]의
+Development Database Before First Release를 따른다.
+
+notification의 실행 소유권은 필수이며 terminal ID는 정상적으로 없는 실행을 위해 nullable을
+유지한다. 과거 행 호환을 위해 소유권을 미확인으로 허용하지 않는다.
 
 단일 SQLite 연결의 조회·쓰기·close를 직렬화한다. route의 최신 값 읽기와 변경 저장은 같은 transaction에 두어 동시 변경을 잃지 않으며 실패한 작업이 후속 작업을 막지 않는다.
 
-근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:102-132`, `packages/persistence/src/sqlite/database.ts:267-320`; migration·재개방·병렬 작업·rollback 검증은 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:96-282`.
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:227-287`,
+[[packages/persistence/src/sqlite/schema.ts]] `packages/persistence/src/sqlite/schema.ts:144-192`;
+초기화·재오픈·직렬화·실패 rollback은 [[packages/persistence/src/sqlite/database.test.ts]]
+`packages/persistence/src/sqlite/database.test.ts:66-212`, `packages/persistence/src/sqlite/database.test.ts:252-272`,
+소유권/terminal 제약과 재오픈은 `packages/persistence/src/sqlite/database.test.ts:435-468`.
 
 메시지·대상별 결과·daemon 알림을 내부 식별자로 연결하고, 전송 당시 역방향 route 관계를 대상별로 보존한다. daemon 시작 시와 하루 한 번 완료된 요청의 보존 기한을 확인해 관련 이력을 함께 정리한다. 진행 중 요청은 제외한다. 보존 기간·범위는 [[docs/specs/aiox-configuration-web]]이 소유한다. Host 실행 종료 정리와 이력 삭제는 다른 경로이며 저장 이력을 실행 복원·재전송에 사용하지 않는다.
 
-근거: [[apps/daemon/src/retention.ts]] `apps/daemon/src/retention.ts:11-43`, [[apps/daemon/src/retention.test.ts]] `apps/daemon/src/retention.test.ts:8-31`; 저장·결과·보존 경계는 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:358-502`.
+근거: [[apps/daemon/src/retention.ts]] `apps/daemon/src/retention.ts:11-43`, [[apps/daemon/src/retention.test.ts]] `apps/daemon/src/retention.test.ts:8-31`; 저장·결과·보존 경계는 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:274-433`.
 
 ## 메시지 완료 저장과 실패 복구 [Status: As-built]
 
@@ -47,32 +58,34 @@ TypeORM + 기존 better-sqlite3로 전환했다. Stage 1 DB의 최초 schema는 
 기다린 뒤 관측된 미저장 결과를 한 번 재시도하며 남은 실패를 호출자에 전달한다. 이는 vendor
 입력 재주입이나 daemon 재시작 후 실행 복원이 아니다.
 
-근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:213-230`,
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:171-188`,
 [[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:228-362`;
 실제 SQLite 알림 insert·결과 update 실패, rollback·재시도와 보존 기한 검증은
 [[apps/daemon/src/messaging.test.ts]] `apps/daemon/src/messaging.test.ts:216-334`.
 
 ## SQLite와 플랫폼
 
-`packages/persistence`가 schema·migration·repository를 구현하고 daemon이 DB 연결을 소유한다.
+`packages/persistence`가 현재 schema 초기화·repository를 담당하고 daemon이 DB 연결을 소유한다.
 domain은 DB를 모르고 application은 port를 통해 작업한다. CLI·Web·vendor binding이 직접 DB 파일을
 열어 authoritative 상태를 변경하지 않는다. 필요한 상태 변경은 transaction 경계로 처리한다.
 
 DB 기본 경로는 실행 환경 사용자 홈 아래 `.aiox/aiox.db`다. daemon boot는 CLI가 준비한 설정을 소비하거나 직접 시작 시 파일을 읽고 검증한 뒤 DB와 listener를 준비한다. 시작 준비의 조립 경계는 [[docs/architecture/aiox-system]]을 따른다. [Status: As-built] 근거: [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:46-90`, [[apps/daemon/src/bootstrap.test.ts]] `apps/daemon/src/bootstrap.test.ts:43-73`.
 Node homedir/path로 구성하며 `~` 문자열·특정 사용자 경로·npm 설치 경로·프로젝트/Worktree 경로를
-하드코딩하지 않는다. 첫 daemon 시작에서 디렉터리/DB/migration을 준비하고 실패하면 정상 기동으로
+하드코딩하지 않는다. 첫 daemon 시작에서 디렉터리와 현재 schema의 DB를 준비하고 실패하면 정상 기동으로
 표시하지 않는다. 기존 파일 삭제나 빈 DB 대체로 오류를 숨기지 않는다.
+
+DB 초기화 흐름:
 
 ```text
 실행 환경의 사용자 홈 결정
- → 로컬 DB 준비·migration
+ → 로컬 DB 준비·현재 schema 초기화
  → 단일 daemon 연결 소유
  → repositories를 통한 저장·조회
  → 관리 실행 종료 / DB 작업 정리·close
  → 다음 시작에서 저장 데이터 읽기
 ```
 
-Windows native, Linux, macOS에서 domain/schema/migration은 공유한다. OS별 DB 모델은 만들지
+Windows native, Linux, macOS에서 domain/schema와 초기화 경로를 공유한다. OS별 DB 모델은 만들지
 않는다. Windows native와 WSL은 홈·실행 환경이 다르므로 별도 DB를 사용하는 방향이며 Windows
 마운트의 같은 DB를 두 daemon이 공유하는 운영은 도입하지 않는다. 파일 지속과 프로세스 재부착은
 다르다. 실행 중 포트 설정 변경이 같은 DB를 소유하는 두 번째 daemon을 만들게 하지 않는다.
@@ -91,7 +104,7 @@ npm 배포 artifact와 vendor 실행은 후속 검증 대상이다. PTY의 현�
 
 Stage 2 W3와 타입 설정 보완을 포함한 `6621fc3`은 [CI 실행 34314631099](https://github.com/lunaxislu/aiox-prototype/actions/runs/34314631099)에서 Windows/Linux/macOS × Node22/24의 locked install·lint·build·typecheck·테스트·built CLI 진단을 통과했다. Linux/macOS는 186 tests, Windows는 175 tests와 기존 POSIX 전용 11 skips다. Windows에서도 daemon의 실제 PTY 입출력·resize·detach·종료 테스트는 실행했다. Windows shell 종료 테스트는 native exit 관측 후 등록 정리를 기다린다. Linux Node22의 기본 출력 버퍼 테스트 timeout은 같은 commit의 실패 job 재실행에서 통과했다. 이전 ef624d8에서도 발생한 간헐 실패로 원인은 미확정이며, 재발 시 출력 수신·종료 순서와 실행 시간을 확인해야 한다. 실제 브라우저·vendor·WSL·npm 배포 artifact 검증은 이 CI에 포함되지 않는다. [Status: As-built]
 
-검증 경로는 설치→DB 생성/migration→저장→정상/force 종료→재시작 후 데이터 확인이다.
+검증 경로는 설치→현재 schema로 DB 초기화→저장·조회→정상/force 종료→재오픈 후 데이터 확인이다.
 Windows native/Linux/macOS를 구분하고 WSL 실행·Windows 브라우저 연결은 별도 확인한다.
 Linux Docker 결과를 native Windows 검증으로 보고하지 않는다.
 
@@ -146,10 +159,10 @@ Codex 연결은 후속 구현 대상이다. [Status: As-built]
 [[apps/cli/src/foreground.test.ts]] `apps/cli/src/foreground.test.ts:1`,
 [[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:147-180`.
 
-근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:38-115`,
+근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:40-120`,
 [[packages/protocol/src/index.ts]] `packages/protocol/src/index.ts:44-67`,
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:473-552`,
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:293-435`.
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:755-969`.
 
 Stage 2-1 구현은 세션당 xterm headless로 화면 상태를 유지하고, 통합 attachment가 snapshot과 이후 출력·resize·exit의 순서를 소유한다. SerializeAddon의 화면 바이트와 누락 상태 보완을 함께 전달하며 브라우저는 snapshot 크기에서 파싱과 상태 적용을 마친 뒤 실시간 이벤트를 처리한다. pane 크기 변경은 서버에 요청하고 서버의 resize 이벤트 순서에 따라 적용한다. 새 foreground 실행은 초기 PTY listener로 첫 출력부터 전달하므로 Web snapshot을 재생하지 않는다. 운영 Web의 탭·분할 배치 복귀는 별도 통합 대상이다. [Status: As-built]
 
@@ -162,15 +175,15 @@ Web 접속 → snapshot 크기 적용 → 화면 바이트 파싱 → 누락 상
          → 보류 tail → live 연결 → 현재 pane 크기 요청
 ```
 
-근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:263-334`,
-[[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:299-356`,
-[[apps/web/src/attach.ts]] `apps/web/src/attach.ts:145-253`.
+근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:288-363`,
+[[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:281-366`,
+[[apps/web/src/attach.ts]] `apps/web/src/attach.ts:154-262`.
 
 SerializeAddon이 생략한 상태는 같은 snapshot의 보완 데이터로 전달한다. 저장 커서·문자 속성·문자 집합·스크롤 영역·탭 위치·마우스 인코딩·커서 표시뿐 아니라 프로그램이 변경한 줄바꿈 모드와 커서 깜빡임도 복원한다. 미러와 Web의 초기 커서 깜빡임은 모두 켜짐으로 맞추고, 이후 프로그램의 모드 변경을 따른다. 셀 읽기·패치에는 독립 작업 셀을 사용하며 xterm이 erase에 사용하는 공유 빈 셀을 변경하지 않는다. [Status: As-built]
 
-근거: [[packages/terminal/src/serialization.ts]] `packages/terminal/src/serialization.ts:97-165`,
+근거: [[packages/terminal/src/serialization.ts]] `packages/terminal/src/serialization.ts:97-161`,
 [[packages/terminal/src/restore.ts]] `packages/terminal/src/restore.ts:109-228`,
-[[packages/terminal/src/serialization.test.ts]] `packages/terminal/src/serialization.test.ts:45-82`의 모드 왕복 및 `packages/terminal/src/serialization.test.ts:504-538`의 snapshot 이후 erase 회귀 검사.
+[[packages/terminal/src/serialization.test.ts]] `packages/terminal/src/serialization.test.ts:45-82`의 모드 왕복 및 `packages/terminal/src/serialization.test.ts:504-537`의 snapshot 이후 erase 회귀 검사.
 
 미러의 출력 제출 FIFO와 파싱 완료 대기는 분리한다. 연속 출력은 청크마다 파싱 타이머를 기다리지 않고 순서대로 제출하되, snapshot·resize·dispose는 앞선 파싱 완료를 기다린다. 세션 소유자는 실제 PTY exit 뒤 대기 중인 복원과 출력 처리가 끝난 다음 미러를 dispose한다. 브라우저 detach는 이 정리의 계기가 아니다. [Status: As-built]
 
@@ -178,7 +191,7 @@ native PTY에서 읽었지만 미러 처리가 끝나지 않은 출력이 1 MiB 
 
 복원 상태에는 각 버퍼의 baseY를 포함한다. 재생 후 대상 baseY가 다르면 저장 커서와 hidden/styled 셀·링크의 절대 행 번호를 적용하기 전에 거절한다. 스크롤백 용량이 달라도 실제 히스토리가 동일하면 허용하며, 잘린 히스토리에 저장 커서만 재배치해 성공으로 처리하지 않는다. [Status: As-built]
 
-근거: 제출·파싱 경계는 [[packages/terminal/src/boundary.ts]] `packages/terminal/src/boundary.ts:69-112`, `packages/terminal/src/boundary.ts:186-224`; 세션 정리는 [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:115-128`, [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:345-348`; PTY pause/resume 검증은 [[packages/terminal/src/index.test.ts]] `packages/terminal/src/index.test.ts:525-582`; 히스토리 차이 거절과 용량 차이 허용은 [[packages/terminal/src/serialization.test.ts]] `packages/terminal/src/serialization.test.ts:45-99`.
+근거: 제출·파싱 경계는 [[packages/terminal/src/boundary.ts]] `packages/terminal/src/boundary.ts:69-112`, `packages/terminal/src/boundary.ts:186-224`; 세션 정리는 [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:122-134`, [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:384-389`; PTY pause/resume 검증은 [[packages/terminal/src/index.test.ts]] `packages/terminal/src/index.test.ts:527-587`; 히스토리 차이 거절과 용량 차이 허용은 [[packages/terminal/src/serialization.test.ts]] `packages/terminal/src/serialization.test.ts:45-99`.
 
 terminal 패키지의 ESM 빌드는 CJS인 `@xterm/headless`만 번들에 포함해 배포 실행의 import 호환성을 유지한다. native `node-pty`는 외부 의존성으로 둔다. [Status: As-built] 근거: [[tsup.config.ts]] `tsup.config.ts:12-16`.
 
@@ -208,15 +221,42 @@ terminal headless는 제외한 LLM headless와 다르며, 무제한 raw output�
 범위는 서버가 살아 있는 동안의 복귀다. daemon 재시작 뒤 외부 프로세스 자동 재attach/실행이나
 durable message replay까지 약속하지 않는다.
 
+미러 쓰기 실패는 세션의 오류로 보존하고 이후 snapshot을 거절한다. 실패한 attachment만
+해제하며 PTY와 기존 live 출력 수명은 유지한다. terminal 계층이 보존된 미러 오류 유무로
+복원 불가를 판정하고 daemon은 확인된 경우에만 오류 프레임에 `restorable: false`를 전달한다.
+Web은 오류 원문과 이 분류를 함께 소비하며, 분류가 없는 연결 실패에는 재연결 시도를 제공한다.
+이는 재연결 성공 보장이 아니다. [Status: As-built]
+
+근거: [[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:145-151`,
+`packages/terminal/src/index.ts:298-307`, `packages/terminal/src/index.ts:336-337`;
+[[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:357-365`,
+[[apps/web/src/attach.ts]] `apps/web/src/attach.ts:138-148`, `apps/web/src/attach.ts:263-268`.
+PTY 대역과 실제 headless 미러 쓰기 실패 회귀는 [[packages/terminal/src/index.test.ts]]
+`packages/terminal/src/index.test.ts:625-685`, 오류 프레임 전달 회귀는
+[[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:1243-1267`이다.
+
 ## 관측에서 알림까지
+
+메시지 처리 완료와 Web 변경 통지는 서로 다른 경계다. 발신 terminal ID는 send의 첫 await
+전에 고정하고 실행 소유권은 Runtime 수명 동안 불변이다. 이 정보를 InFlight와 notification
+row에 보존해 발신 등록 정리 뒤에도 Web 대상과 원래 terminal을 판별한다. 대상별 결과·필수
+알림의 transaction이 성공한 뒤 daemon 소유 발신자의 알림 변경을 통지한다. 실시간 등록
+조회로 과거 알림의 소유권을 재해석하지 않는다. [Status: As-built]
+
+근거: [[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:30`,
+[[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:118-137`,
+`apps/daemon/src/messaging.ts:197-209`, `apps/daemon/src/messaging.ts:320-350`;
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1669-1728`.
+
 
 ```text
 Binding / hooks / process 관측
  → daemon Runtime projection / 연결 가능한 입력 관측
  → 연결된 요청 결과 + 전송 시점 관계 → 원 발신자에게 daemon 메시지
- → Gateway 사용자 알림 후보
- → 사용자 실제 focus 판정
- → 미확인 목록·읽음 저장 / Web 표시·소리
+ → 결과·필수 알림 저장 → Web 대상 변경 통지
+ → Web 전용 최신 목록 조회
+ → 브라우저 창·탭 활성과 선택 terminal 판정
+ → 미확인 목록 projection·읽음 저장 / Web 표시 (소리는 후속)
 ```
 
 승인·질문·리밋·중단은 Runtime/Web 알림 대상이며 사용자 직접 작업에서도 발생한다. 특정
@@ -228,10 +268,21 @@ delivery 실패로 귀속하려면 입력 연결 근거가 있어야 한다. 일
 
 | 실제 사용자 상태 | 처리 |
 | --- | --- |
-| 활성 창·활성 tab에서 같은 terminal focus | 추가 팝업·소리·미확인 항목 억제, TUI/상태는 표시 |
-| 다른 terminal focus | 대상 알림을 미확인 목록에 추가 |
+| 브라우저 창·탭 활성 + 해당 terminal 선택 | 팝업·소리·알림 목록 추가·미확인 표시 억제, TUI/상태는 표시 |
+| 다른 terminal 선택 | 대상 알림을 미확인 목록에 추가 |
 | background tab/window | 선택된 pane만으로 읽음 판정하지 않음 |
 | Web 닫힘 | daemon이 미확인 알림 유지, 재방문에 표시 |
+
+알림 projection은 terminal의 입력 포커스 대신 브라우저 창·탭 활성과 선택 terminal을
+소비한다. 현재 최소 Web은 visibilityState와 document.hasFocus를 함께 확인하고 선택된
+terminal의 알림 ID를 표시 projection에서 제외한 뒤 읽음 저장한다. 검색창·버튼으로 입력
+포커스가 이동해도 terminal 선택은 유지한다. 대상 선택의 읽음 요청은 진행 중인 쓰기 뒤에
+이어가며 그 쓰기의 후속 조회가 끝날 때까지 기다리지 않는다. 이 표시·읽음 경계는 메시지
+처리 결과·필수 알림 저장과 분리한다. popup·소리는 후속 구현이다. 사용자 계약은
+[[docs/specs/aiox-configuration-web]]의 알림·포커스·사용자 요청을 따른다. [Status: As-built]
+
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:218-230`, `apps/web/src/main.ts:261-306`,
+`apps/web/src/main.ts:343-370`; [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:667-862`.
 
 짧은 시간의 여러 알림은 항목을 남기고 소리를 묶는 방향이다. 묶음 시간, 같은 요청의 반복
 알림 갱신, multi-tab 단일 재생 주체는 구현 제안이며 정확한 수단은 미결이다. Web Audio는
@@ -240,13 +291,57 @@ delivery 실패로 귀속하려면 입력 연결 근거가 있어야 한다. 일
 
 ## Web 상태와 라이브러리
 
-Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. HTTP polling으로 terminal·Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·다국어·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
+WebEvents는 데이터 본문 대신 최신 조회가 필요하다는 SSE 통지만 보낸다. terminal 생성·종료,
+daemon 소유 Runtime의 등록·활성 상태·정리, Web 대상 알림의 저장·읽음 완료가 producer다.
+외부 전용 Runtime·알림 변경은 통지하지 않으며 읽음 대상이 없으면 통지하지 않는다.
+retention의 알림 삭제 건수가 양수이면 조회를 갱신하므로 외부 알림만 지운 경우에도 빈 변경
+통지가 나갈 수 있지만, Web 전용 조회의 대상 필터를 우회하거나 외부 내용을 보내지는 않는다.
+SSE는 event replay나 별도 상태 권위를 갖지 않는다. [Status: As-built]
 
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:49-85`, `apps/web/src/main.ts:193-212`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:38-131`; Node DOM 대역 검증은 [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:38-151`. 실제 브라우저 UI 검증은 macOS Chrome에서 shell 생성·선택·입출력·resize·재연결(attachment 해제 후 실행 생존)·종료를 확인했다. Windows/Linux 네이티브 브라우저 교차 검증은 아직 하지 않았다.
+최초·재연결 때 한 번 통지하고 준비 gate를 통과한 HTTP 경로만 구독을 연다. 쓰기 실패나
+backpressure를 보인 viewer는 해당 연결만 정리해 새 연결의 최신 조회로 복구하도록 한다.
+daemon 종료는 열린 SSE를 먼저 닫아 HTTP listener 종료를 가로막지 않게 한다. [Status: As-built]
+
+근거: [[apps/daemon/src/web-events.ts]] `apps/daemon/src/web-events.ts:3-36`,
+[[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:81-143`,
+`apps/daemon/src/runtimes.ts:190-208`, [[apps/daemon/src/daemon.ts]]
+`apps/daemon/src/daemon.ts:96-106`, `apps/daemon/src/daemon.ts:334-342`,
+`apps/daemon/src/daemon.ts:557-571`, [[apps/daemon/src/terminals.ts]]
+`apps/daemon/src/terminals.ts:83-91`, `apps/daemon/src/terminals.ts:126-134`,
+[[apps/daemon/src/http.ts]]
+`apps/daemon/src/http.ts:348-378`; 실제 HTTP 통지·등록 해제 뒤 알림 범위 회귀는
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1669-1904`,
+느린 viewer·쓰기 실패 격리는 [[apps/daemon/src/web-events.test.ts]]
+`apps/daemon/src/web-events.test.ts:20-47`.
+
+Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. SSE 변경 통지 뒤 HTTP로 terminal·Web 대상 Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·다국어·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
+
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:148-216`, `apps/web/src/main.ts:261-317`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:42-136`; Node DOM 대역 검증은 [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:56-151`. Stage 2 당시 실제 브라우저 UI 검증은 macOS Chrome에서 shell 생성·선택·입출력·resize·재연결(attachment 해제 후 실행 생존)·종료를 확인했다. Windows/Linux 네이티브 브라우저 교차 검증은 아직 하지 않았다.
 
 Sources: `logs/2026-09-07-AIOX-TUI-Stage2-Daemon-MCP-Terminal.md` 2026-09-09 13:40 W1 실제 브라우저 검증 entry.
 
-운영 Web은 Tailwind·shadcn/ui와 다국어를 제공한다. React/Vite는 재사용 후보이며 use-intl,
+상태 조회, 사용자 작업 결과, attachment 복구 안내는 서로 다른 DOM 영역에서 갱신한다.
+attachment는 복원 완료·종료·실패·미러 복원 불가를 보고하고, main은 선택된 연결의 보고만
+소비한다. 재연결은 attachment만 교체하고 명시 종료는 확인 후 기존 terminal DELETE 경로를
+사용한다. 이전 선택의 늦은 종료 응답이나 연결 callback이 새 선택의 화면을 정리하지 않는다.
+실행 생존 표시는 목록 조회 결과이며 attachment 연결 성공과 별개다. [Status: As-built]
+
+조회 응답은 마지막 반영된 요청 순서보다 오래된 경우 버린다. 더 새 요청이 대기 중이라는
+이유만으로 완료된 조회를 버리지는 않아 느린 조회에서도 화면을 갱신한다. 사용자 작업
+성공 시 그 이전 조회를 무효화하므로 오래된 목록이 작업 결과를 되돌리지 않는다. [Status: As-built]
+
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:89-146`, `apps/web/src/main.ts:261-434`;
+DOM 대역의 목록 역전·느린 조회 진행·이전 선택 callback·종료 응답 격리·오류 보존 회귀는
+[[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:223-628`이다.
+
+SSE 전환 전 W5의 built Web은 실제 Chromium/xterm과 제어된 HTTP·WebSocket 대역으로 작업 오류의 polling
+후 보존·재시도 결과, 조회 실패 시 실행 상태 미확인, snapshot 재연결, 복원 불가 안내와 종료
+확인 취소/승인, 중첩 조회 역전을 검증했다. 이 검증은 실제 daemon·PTY·vendor의 생존이나
+종료를 실측한 것이 아니다.
+Sources: `logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md`의
+“W5 결과 수용과 검증 정정·W6 재개 지점” entry.
+
+운영 Web은 React·Tailwind·shadcn/ui와 다국어를 제공한다. Vite는 재사용 후보이며 use-intl,
 한국어/영어 시작은 제안이다. 공개 site의 Next.js/next-intl 선택과 운영 Web은 독립적이다.
 agent 출력과 vendor 오류 원문을 무조건 번역하지 않는다.
 

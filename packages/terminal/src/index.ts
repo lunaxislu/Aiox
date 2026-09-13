@@ -31,7 +31,7 @@ export type TerminalSnapshot = {
 export type TerminalAttachmentListener = TerminalListener & {
     snapshot(value: TerminalSnapshot): void;
     resize(cols: number, rows: number): void;
-    error(error: Error): void;
+    error(error: Error, restorable?: boolean): void;
 };
 
 export type TerminalListener = {
@@ -303,6 +303,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
                         error instanceof Error
                             ? error
                             : new Error(String(error)),
+                        mirrorError === undefined,
                     );
                 } catch {}
             };

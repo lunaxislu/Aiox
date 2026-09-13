@@ -190,6 +190,10 @@ export const notificationViewSchema = z.object({
     createdAt: z.int(),
     readAt: z.int().nullable(),
 });
+export const webNotificationViewSchema = notificationViewSchema.extend({
+    terminalId: z.string().nullable(),
+});
+export type WebNotificationView = z.infer<typeof webNotificationViewSchema>;
 export const readNotificationsSchema = z.object({
     ids: z.array(z.string()).optional(),
 });

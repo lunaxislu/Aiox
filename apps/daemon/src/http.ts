@@ -162,6 +162,10 @@ async function route(
 ): Promise<void> {
     const method = request.method ?? "GET";
     const { runtimes, networks, db, lifecycle } = services;
+    if (path === "/api/web/events" && method === "GET") {
+        services.webEvents.connect(response);
+        return;
+    }
 
     if (path === apiPath.terminals) {
         if (method === "GET") {
@@ -286,7 +290,10 @@ async function route(
         }
     }
 
-    if (path === apiPath.agents && method === "GET") {
+    if (
+        (path === apiPath.agents || path === "/api/web/agents") &&
+        method === "GET"
+    ) {
         const network = url.searchParams.get("network");
         const host = url.searchParams.get("host");
         const networkId =
@@ -298,6 +305,8 @@ async function route(
             .filter(
                 (record) =>
                     record.collaborationActive &&
+                    (path !== "/api/web/agents" ||
+                        record.executionOwnership === "daemon") &&
                     (networkId === null || record.networkId === networkId) &&
                     (host === null || record.hostId === host),
             )
@@ -315,26 +324,41 @@ async function route(
         return;
     }
 
-    if (path === apiPath.notifications && method === "GET") {
+    if (
+        (path === apiPath.notifications || path === "/api/web/notifications") &&
+        method === "GET"
+    ) {
+        const web = path === "/api/web/notifications";
         const views: NotificationView[] = (
             await db.messages.unreadNotifications()
-        ).map((row) => ({
-            id: row.id,
-            originRuntimeId: row.originRuntimeId,
-            body: row.body,
-            createdAt: row.createdAt,
-            readAt: row.readAt,
-        }));
+        )
+            .filter((row) => !web || row.originExecutionOwnership === "daemon")
+            .map((row) => ({
+                id: row.id,
+                originRuntimeId: row.originRuntimeId,
+                body: row.body,
+                createdAt: row.createdAt,
+                readAt: row.readAt,
+                ...(web ? { terminalId: row.originTerminalId } : {}),
+            }));
         send(response, 200, views);
         return;
     }
 
-    if (path === apiPath.notificationsRead && method === "POST") {
+    if (
+        (path === apiPath.notificationsRead ||
+            path === "/api/web/notifications/read") &&
+        method === "POST"
+    ) {
         const { ids } = parse(
             readNotificationsSchema,
             (await readJson(request)) ?? {},
         );
-        const unread = await db.messages.unreadNotifications();
+        const unread = (await db.messages.unreadNotifications()).filter(
+            (row) =>
+                path !== "/api/web/notifications/read" ||
+                row.originExecutionOwnership === "daemon",
+        );
         // Reading is not resolving: this only clears the unread list.
         const targets =
             ids === undefined
@@ -343,6 +367,14 @@ async function route(
                       .filter((row) => ids.includes(row.id))
                       .map((row) => row.id);
         await db.messages.markRead(targets, Date.now());
+        if (
+            unread.some(
+                (row) =>
+                    row.originExecutionOwnership === "daemon" &&
+                    targets.includes(row.id),
+            )
+        )
+            services.webEvents.notify();
         send(response, 200, { read: targets.length });
         return;
     }

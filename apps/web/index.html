@@ -57,6 +57,17 @@
                 background: #3d1d1d;
                 color: #ffb4b4;
             }
+            #status:empty,
+            .result:empty {
+                display: none;
+            }
+            .result {
+                white-space: pre-line;
+                overflow-wrap: anywhere;
+            }
+            .result[data-error="true"] {
+                color: #ffb4b4;
+            }
             #agents,
             #terminals {
                 display: flex;
@@ -142,6 +153,20 @@
                 overflow-x: auto;
                 overflow-y: hidden;
             }
+            #recovery,
+            #termination-result {
+                margin: 10px;
+            }
+            #recovery {
+                padding: 16px;
+                border: 1px solid #654343;
+                border-radius: 4px;
+            }
+            #terminate {
+                margin-left: 16px;
+                color: #ffb4b4;
+                background: #3d1d1d;
+            }
         </style>
     </head>
     <body>
@@ -151,6 +176,7 @@
             <section>
                 <h2>Terminals</h2>
                 <button id="create-shell" type="button">새 shell</button>
+                <p id="create-result" class="result" role="status"></p>
                 <div id="terminals"></div>
             </section>
             <section>
@@ -161,10 +187,23 @@
                 <h2>미확인 알림</h2>
                 <ul id="notifications"></ul>
                 <button id="read-all" type="button">모두 읽음 처리</button>
+                <p id="read-result" class="result" role="status"></p>
             </section>
         </aside>
         <main id="stage">
             <div id="attach">Select a terminal or open a new shell.</div>
+            <section id="recovery" hidden aria-label="터미널 화면 복구">
+                <p id="recovery-error" class="result" role="status"></p>
+                <p id="recovery-limit"></p>
+                <button id="reconnect" type="button">화면 다시 연결</button>
+                <button id="terminate" type="button">강제 종료</button>
+                <p>
+                    화면 복원 실패로 실행을 종료하지는 않았습니다.<br />화면
+                    다시 연결은 기존 실행을 유지하며 연결만 재시도합니다.
+                </p>
+                <p id="execution-state" role="status"></p>
+            </section>
+            <p id="termination-result" class="result" role="status"></p>
             <div id="terminal"></div>
         </main>
         <script type="module" src="/src/main.ts"></script>

@@ -78,6 +78,7 @@ export class AmbiguousRuntimeError extends Error {
  * written to the database, an argv, a URL or a log line.
  */
 export class RuntimeRegistry {
+    constructor(private readonly onChange: () => void = () => {}) {}
     readonly #runtimes = new Map<string, RuntimeRecord>();
     readonly #tokens = new Map<string, string>();
     #onSettle: SettleHandler = () => Promise.resolve();
@@ -105,6 +106,7 @@ export class RuntimeRegistry {
                 if (record && record.binding !== unbound) {
                     record.activity = activity;
                     record.observation = reportedObservation;
+                    if (record.executionOwnership === "daemon") this.onChange();
                 }
             },
             settle: (deliveryId, outcome, error) =>
@@ -132,11 +134,13 @@ export class RuntimeRegistry {
         // own readiness. Nothing can reach it yet: no credential exists, and
         // `starting` keeps it out of discovery and out of send.
         this.#runtimes.set(id, record);
+        if (record.executionOwnership === "daemon") this.onChange();
         try {
             record.binding = await input.createBinding(controls);
             if (!record.collaborationActive) record.binding.revoke?.();
             record.activity = reportedActivity;
             record.observation = reportedObservation;
+            if (record.executionOwnership === "daemon") this.onChange();
         } catch (error) {
             // Only what this attempt created is removed.
             this.unregister(id);
@@ -193,11 +197,15 @@ export class RuntimeRegistry {
             if (runtimeId === id) this.#tokens.delete(token);
         }
         if (active) record.binding.revoke?.();
+        if (active && record.executionOwnership === "daemon") this.onChange();
     }
 
     /** Removes a record after its cleanup has succeeded. */
     unregister(id: string): boolean {
+        const record = this.#runtimes.get(id);
         this.revoke(id);
-        return this.#runtimes.delete(id);
+        const removed = this.#runtimes.delete(id);
+        if (removed && record?.executionOwnership === "daemon") this.onChange();
+        return removed;
     }
 }

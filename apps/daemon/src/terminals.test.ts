@@ -1239,3 +1239,29 @@ it("blocks user input and terminal responses during stop and resumes after refus
     socket.emit("message", Buffer.from("ls\r"), true);
     expect(session.write).toHaveBeenCalledOnce();
 });
+
+it("sends persistent mirror failure classification without killing the terminal", () => {
+    const socket = Object.assign(new EventEmitter(), {
+        OPEN: 1,
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(),
+    });
+    const session = {
+        attach(listener: terminalModule.TerminalAttachmentListener) {
+            listener.error(new Error("mirror failed"), false);
+            return vi.fn();
+        },
+        kill: vi.fn(),
+    } as unknown as terminalModule.TerminalSession;
+    attachTerminal(socket as unknown as WebSocket, session);
+    expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({
+            type: "error",
+            message: "mirror failed",
+            restorable: false,
+        }),
+    );
+    expect(socket.close).toHaveBeenCalledOnce();
+    expect(session.kill).not.toHaveBeenCalled();
+});

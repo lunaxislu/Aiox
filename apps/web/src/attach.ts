@@ -21,6 +21,8 @@ export type Attachment = {
     close(): void;
 };
 
+type AttachmentState = "connected" | "exited" | "failed" | "unrestorable";
+
 type ServerMessage = {
     type?: string;
     exitCode?: number;
@@ -31,6 +33,7 @@ type ServerMessage = {
     state?: unknown;
     respond?: boolean;
     offset?: number;
+    restorable?: boolean;
 };
 
 const encoder = new TextEncoder();
@@ -39,7 +42,7 @@ const RESIZE_DEBOUNCE_MS = 120;
 export function attachTerminal(
     host: HTMLElement,
     terminalId: string,
-    onState: (text: string) => void,
+    onState: (text: string, state?: AttachmentState) => void,
 ): Attachment {
     host.replaceChildren();
 
@@ -109,8 +112,8 @@ export function attachTerminal(
             parsing = previous;
         }
     };
-    const report = (text: string): void => {
-        if (!detached) onState(text);
+    const report = (text: string, state?: AttachmentState): void => {
+        if (!detached) onState(text, state);
     };
 
     const sendResize = (): void => {
@@ -132,11 +135,14 @@ export function attachTerminal(
     });
     resizeObserver.observe(host);
 
-    const fail = (message: string): void => {
+    const fail = (message: string, restorable = true): void => {
         if (detached || failed) return;
         failed = true;
         term.options.disableStdin = true;
-        report(`terminal ${terminalId} · ${message}`);
+        report(
+            `terminal ${terminalId} · ${message}`,
+            restorable ? "failed" : "unrestorable",
+        );
         socket.close();
     };
     const write = (data: string | Uint8Array): Promise<void> =>
@@ -234,7 +240,10 @@ export function attachTerminal(
                         term.options.disableStdin = false;
                         sendResize();
                         if (document.activeElement === opener) term.focus();
-                        report(`terminal ${terminalId} · connected`);
+                        report(
+                            `terminal ${terminalId} · connected`,
+                            "connected",
+                        );
                         break;
                     case "exit":
                         ended = true;
@@ -246,9 +255,16 @@ export function attachTerminal(
                             `\u001b[0m\r\n\u001b[33m[Process exited exitCode=${message.exitCode} ` +
                                 `signal=${message.signal ?? "none"}]\u001b[0m\r\n`,
                         );
+                        report(
+                            `terminal ${terminalId} · process exited`,
+                            "exited",
+                        );
                         break;
                     case "error":
-                        fail(message.message ?? "Screen restoration failed");
+                        fail(
+                            message.message ?? "Screen restoration failed",
+                            message.restorable !== false,
+                        );
                         break;
                     default:
                         throw new Error("Unknown terminal message");
@@ -266,9 +282,10 @@ export function attachTerminal(
     socket.addEventListener("close", (event) => {
         if (detached) return;
         term.options.disableStdin = true;
-        if (!failed)
+        if (!failed && !ended)
             report(
                 `terminal ${terminalId} · ${event.code === 1013 ? event.reason || "Terminal display fell behind. Reconnect to restore the current screen." : "disconnected"}`,
+                "failed",
             );
     });
     socket.addEventListener("error", () => {

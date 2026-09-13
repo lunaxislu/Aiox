@@ -31,6 +31,7 @@ import type { DaemonServices, StopOutcome } from "@/services";
 import { createStaticHandler } from "@/static";
 import type { TerminalOptions } from "@/terminals";
 import { attachTerminal, TerminalService } from "@/terminals";
+import { WebEvents } from "@/web-events";
 
 export type DaemonOptions = {
     terminal?: () => Promise<AioxConfig["terminal"]>;
@@ -92,10 +93,17 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     const now = options.now ?? (() => Date.now());
     const startedAt = now();
 
-    const runtimes = new RuntimeRegistry();
+    const webEvents = new WebEvents();
+    const runtimes = new RuntimeRegistry(webEvents.notify);
     const networks = new NetworkService(options.db, runtimes);
-    const messages = new MessageService(options.db, runtimes, networks, now);
-    const terminals = new TerminalService();
+    const messages = new MessageService(
+        options.db,
+        runtimes,
+        networks,
+        now,
+        webEvents.notify,
+    );
+    const terminals = new TerminalService(webEvents.notify);
     runtimes.onSettle((runtimeId, deliveryId, outcome, error) =>
         messages.settle(runtimeId, deliveryId, outcome, error),
     );
@@ -111,6 +119,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     let ports = options.ports;
 
     const services: DaemonServices = {
+        webEvents,
         db: options.db,
         runtimes,
         networks,
@@ -325,7 +334,12 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     let retention: RetentionSchedule | undefined = scheduleRetention(
         options.db,
         options.retentionDays,
-        { now },
+        {
+            now,
+            onPurge: (report) => {
+                if (report.notifications > 0) webEvents.notify();
+            },
+        },
     );
 
     let resolveClosed: () => void;
@@ -428,6 +442,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         terminalObservers.get(runtimeId)?.();
         record.terminalId = terminalId;
         record.terminalOwnership ??= "owned";
+        webEvents.notify();
         const onExit = () => {
             // A TUI exiting cleans only its own execution, never the daemon.
             void stopRuntime(runtimeId).catch((error: unknown) => {
@@ -542,6 +557,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     let closing: Promise<void> | undefined;
 
     async function closeServers(): Promise<void> {
+        webEvents.close();
         for (const client of sockets.clients) client.terminate();
         sockets.close();
         await Promise.all(

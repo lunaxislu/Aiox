@@ -63,6 +63,8 @@ it("keeps both HTTP surfaces unavailable until required startup recording finish
             for (const port of [ports.daemon, ports.web]) {
                 for (const path of [
                     "/api/status",
+                    "/api/web/events",
+                    "/api/web/agents",
                     "/api/daemon/stop",
                     "/mcp/test",
                     "/api/agent-hooks",
@@ -255,15 +257,33 @@ it("reports failed state cleanup and still closes its listeners", async () => {
 });
 
 async function borrowableShell() {
-    const spawn = vi.spyOn(terminalModule, "createTerminal");
-    const shell = await harness.daemon.createShell({ cwd: harness.home });
-    const context = terminalContextFromEnv(spawn.mock.calls.at(-1)![0].env!)!;
-    spawn.mockRestore();
-    return {
-        shell,
-        context,
-        session: harness.daemon.services.terminals.get(shell.id)!,
-    };
+    const createTerminal = terminalModule.createTerminal;
+    const spawn = vi
+        .spyOn(terminalModule, "createTerminal")
+        .mockImplementation((options) =>
+            createTerminal({
+                ...options,
+                // A temporary cwd alone still loads the user's shell startup files.
+                env: {
+                    ...options.env,
+                    HOME: harness.home,
+                    ZDOTDIR: harness.home,
+                },
+            }),
+        );
+    try {
+        const shell = await harness.daemon.createShell({ cwd: harness.home });
+        const context = terminalContextFromEnv(
+            spawn.mock.calls.at(-1)![0].env!,
+        )!;
+        return {
+            shell,
+            context,
+            session: harness.daemon.services.terminals.get(shell.id)!,
+        };
+    } finally {
+        spawn.mockRestore();
+    }
 }
 
 async function joinAgent(networkId: string | null, name: string) {
@@ -1643,5 +1663,242 @@ it("keeps storage and listeners open after outcome persistence blocks stop, then
     } finally {
         sqlite.exec("DROP TRIGGER IF EXISTS reject_notification");
         sqlite.close();
+    }
+});
+
+it("keeps Web notifications scoped to their original daemon terminal after unregistering", async () => {
+    const { context, shell } = await borrowableShell();
+    const network = await harness.daemon.services.networks.create(
+        "web-scope",
+        "allow",
+    );
+    const origin = await harness.daemon.registerRuntime({
+        networkId: network.id,
+        terminalContext: context,
+        createBinding: fakeVendor().createBinding,
+    });
+    const external = await harness.daemon.registerRuntime({
+        networkId: network.id,
+        executionOwnership: "external",
+        createBinding: fakeVendor().createBinding,
+    });
+    const target = await joinAgent(network.id, "target");
+    const webAgents = await call("/api/web/agents");
+    expect(webAgents.status).toBe(200);
+    expect((webAgents.body as AgentView[]).map((row) => row.agentId)).toContain(
+        origin.runtimeId,
+    );
+    expect(
+        (webAgents.body as AgentView[]).map((row) => row.agentId),
+    ).not.toContain(external.runtimeId);
+    expect(
+        ((await call("/api/agents")).body as AgentView[]).map(
+            (row) => row.agentId,
+        ),
+    ).toContain(external.runtimeId);
+    for (const runtimeId of [origin.runtimeId, external.runtimeId]) {
+        await harness.daemon.services.messages.send(
+            harness.daemon.services.runtimes.get(runtimeId)!,
+            [target.runtimeId],
+            "work",
+        );
+    }
+    await harness.daemon.stopRuntime(origin.runtimeId);
+    await harness.daemon.stopRuntime(external.runtimeId);
+    for (const id of target.vendor.deliveryIds)
+        await target.vendor.settle(id, "failed", "failed work");
+    const all = (await call("/api/notifications")).body as NotificationView[];
+    expect(all).toHaveLength(2);
+    const scoped = await call("/api/web/notifications?unread=true");
+    expect(scoped.status).toBe(200);
+    expect(scoped.body).toEqual([
+        expect.objectContaining({
+            originRuntimeId: origin.runtimeId,
+            terminalId: shell.id,
+        }),
+    ]);
+    const ids = all.map((row) => row.id);
+    expect((await post("/api/web/notifications/read", { ids })).body).toEqual({
+        read: 1,
+    });
+    expect((await call("/api/web/notifications")).body).toEqual([]);
+    expect((await call("/api/notifications")).body).toEqual([
+        expect.objectContaining({ originRuntimeId: external.runtimeId }),
+    ]);
+});
+
+it("streams initial and changed Web state, reconnects, and closes with the daemon", async () => {
+    const connect = async () => {
+        const response = await fetch(harness.webUrl("/api/web/events"));
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toContain(
+            "text/event-stream",
+        );
+        const reader = response.body!.getReader();
+        expect(new TextDecoder().decode((await reader.read()).value)).toContain(
+            "event: change",
+        );
+        return reader;
+    };
+    const first = await connect();
+    try {
+        const next = first.read();
+        const vendor = fakeVendor();
+        const agent = await harness.daemon.registerRuntime({
+            networkId: null,
+            createBinding: vendor.createBinding,
+        });
+        expect(new TextDecoder().decode((await next).value)).toContain(
+            "event: change",
+        );
+        await first.cancel();
+        const second = await connect();
+        const activity = second.read();
+        vendor.activity("reasoning");
+        expect(new TextDecoder().decode((await activity).value)).toContain(
+            "event: change",
+        );
+        await second.cancel();
+        const third = await connect();
+        const removed = third.read();
+        await harness.daemon.stopRuntime(agent.runtimeId);
+        expect(new TextDecoder().decode((await removed).value)).toContain(
+            "event: change",
+        );
+        await third.cancel();
+        const closing = await connect();
+        const end = closing.read().catch(() => ({ done: true }));
+        expect((await harness.daemon.stop(true)).stopped).toBe(true);
+        expect((await end).done).toBe(true);
+    } finally {
+        await first.cancel().catch(() => {});
+    }
+});
+
+it("invalidates SSE snapshots on shell exit and committed notification changes, but not no-op reads", async () => {
+    const network = await harness.daemon.services.networks.create(
+        "events",
+        "allow",
+    );
+    const origin = await joinAgent(network.id, "origin");
+    const target = await joinAgent(network.id, "target");
+    const response = await fetch(harness.webUrl("/api/web/events"));
+    const reader = response.body!.getReader();
+    let events = 0;
+    const observing = (async () => {
+        let buffered = "";
+        while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) return;
+            buffered += new TextDecoder().decode(chunk.value);
+            const frames = buffered.split("\n\n");
+            buffered = frames.pop()!;
+            events += frames.filter((frame) =>
+                frame.includes("event: change"),
+            ).length;
+        }
+    })();
+    try {
+        await vi.waitFor(() => expect(events).toBe(1));
+        const { session } = await borrowableShell();
+        await vi.waitFor(() => expect(events).toBe(2));
+        session.write("exit\r");
+        await vi.waitFor(() => expect(events).toBe(3));
+        await harness.daemon.services.messages.send(
+            harness.daemon.services.runtimes.get(origin.runtimeId)!,
+            [target.runtimeId],
+            "event",
+        );
+        await vi.waitFor(() => expect(events).toBeGreaterThanOrEqual(4));
+        const beforeSettle = events;
+        await target.vendor.settle(
+            target.vendor.deliveryIds[0]!,
+            "failed",
+            "event failure",
+        );
+        await vi.waitFor(() => expect(events).toBeGreaterThan(beforeSettle));
+        const unread = (await call("/api/web/notifications"))
+            .body as NotificationView[];
+        expect(unread).toHaveLength(1);
+        const beforeRead = events;
+        expect(
+            (
+                await post("/api/web/notifications/read", {
+                    ids: [unread[0]!.id],
+                })
+            ).body,
+        ).toEqual({ read: 1 });
+        await vi.waitFor(() => expect(events).toBe(beforeRead + 1));
+        expect(
+            (
+                await post("/api/web/notifications/read", {
+                    ids: [unread[0]!.id],
+                })
+            ).body,
+        ).toEqual({ read: 0 });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(events).toBe(beforeRead + 1);
+    } finally {
+        await reader.cancel();
+        await observing;
+    }
+});
+
+it("does not invalidate Web state for external-only runtime and notification changes", async () => {
+    const network = await harness.daemon.services.networks.create(
+        "external-events",
+        "allow",
+    );
+    const web = await joinAgent(network.id, "web");
+    const response = await fetch(harness.webUrl("/api/web/events"));
+    const reader = response.body!.getReader();
+    await reader.read();
+    const frames: Uint8Array[] = [];
+    const observing = (async () => {
+        while (true) {
+            const frame = await reader.read();
+            if (frame.done) return;
+            frames.push(frame.value);
+        }
+    })();
+    try {
+        const originVendor = fakeVendor();
+        const targetVendor = fakeVendor();
+        const origin = await harness.daemon.registerRuntime({
+            networkId: network.id,
+            executionOwnership: "external",
+            createBinding: originVendor.createBinding,
+        });
+        const target = await harness.daemon.registerRuntime({
+            networkId: network.id,
+            executionOwnership: "external",
+            createBinding: targetVendor.createBinding,
+        });
+        originVendor.activity("reasoning");
+        await harness.daemon.services.messages.send(
+            harness.daemon.services.runtimes.get(origin.runtimeId)!,
+            [target.runtimeId],
+            "external",
+        );
+        await targetVendor.settle(targetVendor.deliveryIds[0]!, "failed");
+        expect((await post("/api/notifications/read", {})).body).toEqual({
+            read: 1,
+        });
+        await harness.daemon.stopRuntime(origin.runtimeId);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(frames).toHaveLength(0);
+        await harness.daemon.services.messages.send(
+            harness.daemon.services.runtimes.get(web.runtimeId)!,
+            [target.runtimeId],
+            "web request",
+        );
+        await targetVendor.settle(targetVendor.deliveryIds[1]!, "failed");
+        await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0));
+        expect((await call("/api/web/notifications")).body).toEqual([
+            expect.objectContaining({ originRuntimeId: web.runtimeId }),
+        ]);
+    } finally {
+        await reader.cancel();
+        await observing;
     }
 });

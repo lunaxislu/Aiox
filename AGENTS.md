@@ -24,6 +24,27 @@ architecture.excalidraw는 사용자의 개인 자산임 신경쓸 필요가 없
   decision/spec/architecture 연결을 끝까지 추적해 영향 범위와 검증 경로가 닫혔는지 반드시
   확인한다. 실제 절차와 사례는 `docs/guides/workflow.md`를 따른다.
 
+## Design And Implementation
+
+- 사용자 entry부터 상태 생성·관측·전달·소비 경로와 완료·실패 조건을 먼저 확인한다.
+  서버가 상태를 관측하는 것과 사용자 화면에 전달하는 것을 구분한다.
+- 기존 구현의 존재를 필요성의 근거로 삼지 않는다. polling·호환 처리·추가 상태는 현재 요구와
+  실제 caller/consumer의 필요를 확인한 뒤 선택하며 불필요한 경로는 유지하지 않는다.
+- 자원 생성 성공을 작업 성공으로 간주하지 않는다. 실행 전 확인 가능한 선행 조건을 검증하고,
+  이후 실제 실행 실패와 서버 진단이 사용자에게 전달되는지 확인한다.
+  확인한 요구 위반을 플랫폼 한계로 기록하는 것만으로 작업을 완료하지 않는다.
+
+## Development Database Before First Release
+
+- 첫 배포 전에는 과거 개발 DB 호환을 보존하지 않고 현재 schema·code·tests를 직접 수정한다.
+  기존 spec·architecture의 migration 서술을 근거로 과거 DB를 보존하는 명시적 migration·
+  backfill·legacy fallback이나 옛 행만을 위한 nullable을 구현·유지하지 않는다.
+  빈 DB를 현재 schema로 직접 초기화하고 저장·조회·재오픈 검증은 유지한다.
+- 저장 원자성·실패 재시도·데이터 무결성은 보존한다. 개발 DB 삭제는 사용자 승인 범위에서
+  해당 daemon 종료를 확인한 뒤 수행하며, startup 자동 삭제·reset을 추가하지 않는다.
+- 사용자가 배포 완료를 알리면 그 시점부터 이후 DB schema 변경은 기존 데이터를 보존하는
+  migration으로 수행한다. 배포 여부를 임의로 추정하지 않는다.
+
 ## TypeScript Build And Tests
 
 - 각 앱·패키지의 tsconfig에서 `paths: { "@/*": ["./src/*"] }`를 사용한다.

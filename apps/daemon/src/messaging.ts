@@ -34,6 +34,8 @@ export type SendResult = {
  */
 type InFlight = {
     readonly originRuntimeId: string;
+    readonly originExecutionOwnership: RuntimeRecord["executionOwnership"];
+    readonly originTerminalId: string | null;
     readonly targetRuntimeId: string;
     readonly targetName: string;
     readonly reverseRouteAtSend: boolean;
@@ -75,6 +77,7 @@ export class MessageService {
         private readonly runtimes: RuntimeRegistry,
         private readonly networks: NetworkService,
         private readonly now: () => number = () => Date.now(),
+        private readonly onChange: () => void = () => {},
     ) {}
 
     /**
@@ -118,6 +121,7 @@ export class MessageService {
         content: string,
     ): Promise<SendResult> {
         const unique = [...new Set(targets)];
+        const originTerminalId = source.terminalId;
         if (unique.length === 0)
             throw new Error("send requires at least one target");
 
@@ -198,6 +202,8 @@ export class MessageService {
         for (const entry of accepted) {
             this.#inFlight.set(entry.id, {
                 originRuntimeId: source.id,
+                originExecutionOwnership: source.executionOwnership,
+                originTerminalId,
                 targetRuntimeId: entry.target.id,
                 targetName: entry.target.name,
                 reverseRouteAtSend: entry.reverseRouteAtSend,
@@ -320,6 +326,8 @@ export class MessageService {
             ? {
                   id: randomUUID(),
                   originRuntimeId: flight.originRuntimeId,
+                  originExecutionOwnership: flight.originExecutionOwnership,
+                  originTerminalId: flight.originTerminalId,
                   body: notificationBody(
                       flight.targetName,
                       outcome,
@@ -339,6 +347,7 @@ export class MessageService {
         );
         this.#inFlight.delete(deliveryId);
         if (!settled || !notification) return;
+        if (notification.originExecutionOwnership === "daemon") this.onChange();
         const body = notification.body;
         const origin = this.runtimes.get(flight.originRuntimeId);
         if (!origin?.collaborationActive) return;

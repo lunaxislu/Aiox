@@ -21,6 +21,7 @@ export type TerminalOptions = {
  * owner: closing a tab detaches, it does not stop anything.
  */
 export class TerminalService {
+    constructor(private readonly onChange: () => void = () => {}) {}
     readonly #sessions = new Map<string, TerminalSession>();
 
     readonly #metadata = new Map<
@@ -84,7 +85,10 @@ export class TerminalService {
         if (kind === "shell") {
             session.subscribe({ data: () => {}, exit: () => this.#remove(id) });
             if (!session.alive) this.#remove(id);
+        } else {
+            session.subscribe({ data: () => {}, exit: () => this.onChange() });
         }
+        this.onChange();
         return session;
     }
 
@@ -123,6 +127,7 @@ export class TerminalService {
         const session = this.#sessions.get(id);
         this.#sessions.delete(id);
         this.#metadata.delete(id);
+        this.onChange();
         void session?.dispose().catch((error: unknown) => {
             console.error(`terminal ${id}: mirror disposal failed`, error);
         });
@@ -349,8 +354,12 @@ export function attachTerminal(
             send({ type: "exit", ...event });
             socket.close();
         },
-        error: (error) => {
-            send({ type: "error", message: error.message });
+        error: (error, restorable = true) => {
+            send({
+                type: "error",
+                message: error.message,
+                ...(restorable ? {} : { restorable: false }),
+            });
             socket.close();
         },
     });

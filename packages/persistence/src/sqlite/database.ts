@@ -2,23 +2,15 @@ import { mkdirSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
 
 import type { DeliveryOutcome, DirectedRoute, RoutePolicy } from "@aiox/domain";
-import {
-    DataSource,
-    type FindOptionsWhere,
-    In,
-    IsNull,
-    type Migration,
-    MigrationExecutor,
-} from "typeorm";
+import { DataSource, type FindOptionsWhere, In, IsNull } from "typeorm";
 
 import {
     DeliveryEntity,
     type DeliveryRow,
     ENTITIES,
-    INITIAL_MIGRATION,
     MessageEntity,
     type MessageRow,
-    MIGRATIONS,
+    SCHEMA,
     NetworkEntity,
     NotificationEntity,
     type NotificationRow,
@@ -97,40 +89,6 @@ FROM messages m
 JOIN deliveries d ON d.message_id = m.id
 GROUP BY m.id
 HAVING COUNT(*) = COUNT(d.outcome) AND MAX(d.outcome_at) < ?`;
-
-/**
- * Stage 1 databases hold the initial schema but no TypeORM migration row.
- * Faking just that one migration records it as applied without re-running it,
- * so the later migrations still run for real.
- */
-class InitialMigrationOnly extends MigrationExecutor {
-    protected override getMigrations(): Migration[] {
-        return super
-            .getMigrations()
-            .filter(({ name }) => name === INITIAL_MIGRATION);
-    }
-}
-
-async function migrate(dataSource: DataSource): Promise<void> {
-    // Stage 1's marker, kept read-only: TypeORM's migrations table is the
-    // single authority now, and this only rejects a database from the future.
-    const [pragma] = await dataSource.query<{ user_version: number }[]>(
-        "PRAGMA user_version",
-    );
-    const version = pragma?.user_version ?? 0;
-    if (version !== 0 && version !== 1)
-        throw new Error(`Unsupported database schema version: ${version}`);
-
-    const stage1 = await dataSource.query<unknown[]>(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'persistent_networks'",
-    );
-    if (stage1.length > 0) {
-        const executor = new InitialMigrationOnly(dataSource);
-        executor.fake = true;
-        await executor.executePendingMigrations();
-    }
-    await dataSource.runMigrations({ transaction: "all" });
-}
 
 function networks(dataSource: DataSource): PersistentNetworks {
     const manager = dataSource.manager;
@@ -274,13 +232,13 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
         type: "better-sqlite3",
         database: path,
         entities: ENTITIES,
-        migrations: MIGRATIONS,
         synchronize: false,
-        migrationsRun: false,
     });
     await dataSource.initialize();
     try {
-        await migrate(dataSource);
+        await dataSource.transaction(async (manager) => {
+            for (const sql of SCHEMA) await manager.query(sql);
+        });
         // One SQLite connection owns every transaction; even a read or a
         // nontransactional write must wait rather than enter another caller's
         // transaction. A rejected operation does not poison the next one.

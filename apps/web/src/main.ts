@@ -1,4 +1,8 @@
-import type { AgentView, NotificationView, TerminalView } from "@aiox/protocol";
+import type {
+    AgentView,
+    WebNotificationView,
+    TerminalView,
+} from "@aiox/protocol";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -7,10 +11,8 @@ import { type Attachment, attachTerminal } from "./attach";
 /**
  * Stage 2 verification page, not the Stage 6 operational Web. Its only job is
  * to prove that daemon HTTP and the pty WebSocket work from a browser, so it is
- * plain TypeScript with no framework and polls instead of listening for events.
+ * plain TypeScript with no framework.
  */
-
-const POLL_MS = 3_000;
 
 function el<T extends HTMLElement>(id: string): T {
     const node = document.getElementById(id);
@@ -26,33 +28,122 @@ const notificationBox = el<HTMLUListElement>("notifications");
 const readAllButton = el<HTMLButtonElement>("read-all");
 const attachBox = el("attach");
 const terminalHost = el("terminal");
+const createResult = el("create-result");
+const readResult = el("read-result");
+const recovery = el("recovery");
+const recoveryError = el("recovery-error");
+const recoveryLimit = el("recovery-limit");
+const executionState = el("execution-state");
+const reconnectButton = el<HTMLButtonElement>("reconnect");
+const terminateButton = el<HTMLButtonElement>("terminate");
+const terminationResult = el("termination-result");
 
 let attachment: Attachment | undefined;
 let renderedAgents = "";
 let renderedTerminals = "";
 let renderedNotifications = "";
+let refreshVersion = 0;
+let appliedRefreshVersion = 0;
+let attachmentVersion = 0;
+let terminalViews: TerminalView[] | undefined;
+let reading: Promise<void> | undefined;
+let terminating = false;
+let eventsConnected = false;
+let notificationViews: WebNotificationView[] = [];
 
-function setStatus(text: string, isError: boolean): void {
-    statusBox.textContent = text;
-    statusBox.dataset["error"] = String(isError);
+function result(box: HTMLElement, text: string, isError = false): void {
+    box.textContent = text;
+    box.dataset["error"] = String(isError);
+}
+
+function progressing(box: HTMLElement, text: string): void {
+    box.textContent =
+        box.dataset["error"] === "true" ? `${box.textContent}\n${text}` : text;
+}
+
+async function checkResponse(response: Response): Promise<void> {
+    if (response.ok) return;
+    let message = `HTTP ${response.status}`;
+    try {
+        const body: unknown = await response.json();
+        if (
+            typeof body === "object" &&
+            body !== null &&
+            "message" in body &&
+            typeof body.message === "string" &&
+            body.message.trim()
+        )
+            message = body.message;
+    } catch {
+        /* A non-JSON error still has its HTTP status. */
+    }
+    throw new Error(message);
 }
 
 async function getList<T>(path: string): Promise<T[]> {
     const response = await fetch(path, {
         headers: { accept: "application/json" },
     });
-    if (!response.ok) throw new Error(`${path} → HTTP ${response.status}`);
+    await checkResponse(response);
     const body: unknown = await response.json();
     if (!Array.isArray(body)) throw new Error(`${path} → 목록이 아닌 응답`);
     return body as T[];
 }
 
-function select(terminalId: string): void {
-    if (attachment?.terminalId === terminalId && !attachment.closed) return;
+function showExecutionState(terminalId = attachment?.terminalId): void {
+    const view = terminalViews?.find((item) => item.id === terminalId);
+    executionState.textContent =
+        terminalViews === undefined
+            ? "현재 실행 상태를 확인할 수 없습니다."
+            : view === undefined
+              ? "마지막 조회에서 이 터미널을 찾지 못했습니다."
+              : view.alive
+                ? "마지막 확인 시 실행 중입니다."
+                : "마지막 확인 시 실행이 종료된 상태입니다.";
+}
+
+function select(terminalId: string, reconnect = false): void {
+    if (
+        !reconnect &&
+        attachment?.terminalId === terminalId &&
+        !attachment.closed
+    )
+        return;
+    const version = ++attachmentVersion;
     attachment?.close();
+    terminating = false;
+    terminateButton.disabled = false;
+    if (reconnect) {
+        progressing(recoveryError, "화면 다시 연결 중…");
+        reconnectButton.disabled = true;
+    } else {
+        result(terminationResult, "");
+        recovery.hidden = true;
+        result(recoveryError, "");
+        recoveryLimit.textContent = "";
+    }
+    showExecutionState(terminalId);
     attachBox.textContent = `terminal ${terminalId} · connecting…`;
-    attachment = attachTerminal(terminalHost, terminalId, (text) => {
+    attachment = attachTerminal(terminalHost, terminalId, (text, state) => {
+        if (version !== attachmentVersion) return;
         attachBox.textContent = text;
+        if (state === "failed" || state === "unrestorable") {
+            recovery.hidden = false;
+            result(
+                recoveryError,
+                `터미널 화면을 복원하지 못했습니다.\n원인: ${text}`,
+                true,
+            );
+            recoveryLimit.textContent =
+                state === "unrestorable"
+                    ? "서버의 화면 기록 오류로 이 실행의 화면은 다시 연결해도 복원할 수 없습니다. 필요하면 기존 실행을 종료하고 새로 생성하세요."
+                    : "";
+            reconnectButton.disabled = terminating || state === "unrestorable";
+        } else if (state === "connected" || state === "exited") {
+            recovery.hidden = true;
+            result(recoveryError, "");
+            recoveryLimit.textContent = "";
+        }
     });
     renderedAgents = "";
     renderedTerminals = "";
@@ -73,10 +164,10 @@ function renderTerminals(terminals: TerminalView[]): void {
                 "aria-pressed",
                 String(terminal.id === attachment?.terminalId),
             );
-            item.textContent = `${terminal.kind} · ${terminal.cwd} · ${terminal.id}`;
+            item.textContent = `${terminal.kind} · ${terminal.cwd} · ${terminal.id}${unreadLabel(terminal.id)}`;
             item.addEventListener("click", () => {
                 select(terminal.id);
-                void refresh();
+                void readTerminal(terminal.id);
             });
             return item;
         }),
@@ -99,7 +190,7 @@ function renderAgents(agents: AgentView[]): void {
                 String(agent.terminalId === attachment?.terminalId),
             );
             const name = document.createElement("strong");
-            name.textContent = agent.name;
+            name.textContent = agent.name + unreadLabel(agent.terminalId);
             const meta = document.createElement("span");
             meta.className = "meta";
             meta.textContent = [
@@ -116,15 +207,31 @@ function renderAgents(agents: AgentView[]): void {
                 if (agent.terminalId !== null) select(agent.terminalId);
                 // Re-render so the pressed state follows the new selection.
                 renderedAgents = "";
-                void refresh();
+                if (agent.terminalId !== null)
+                    void readTerminal(agent.terminalId);
             });
             return item;
         }),
     );
 }
 
-function renderNotifications(items: NotificationView[]): void {
-    readAllButton.disabled = items.length === 0;
+function unreadLabel(terminalId: string | null): string {
+    const count = notificationViews.filter(
+        (item) => item.terminalId === terminalId,
+    ).length;
+    return count ? ` · 미확인 ${count}` : "";
+}
+
+async function readTerminal(terminalId: string): Promise<void> {
+    const ids = notificationViews
+        .filter((item) => item.terminalId === terminalId)
+        .map((item) => item.id);
+    if (ids.length) await markRead(ids);
+    else await refresh();
+}
+
+function renderNotifications(items: WebNotificationView[]): void {
+    readAllButton.disabled = reading !== undefined || items.length === 0;
     if (items.length === 0) {
         notificationBox.replaceChildren(empty("미확인 알림이 없습니다.", "li"));
         return;
@@ -152,46 +259,66 @@ function empty(text: string, tag: "p" | "li" = "p"): HTMLElement {
 }
 
 async function refresh(): Promise<void> {
+    const version = ++refreshVersion;
     try {
         const [terminals, agents, notifications] = await Promise.all([
             getList<TerminalView>("/api/terminals"),
-            getList<AgentView>("/api/agents"),
-            getList<NotificationView>("/api/notifications?unread=true"),
+            getList<AgentView>("/api/web/agents"),
+            getList<WebNotificationView>("/api/web/notifications?unread=true"),
         ]);
+        if (version < appliedRefreshVersion) return;
+        appliedRefreshVersion = version;
+        const suppressed =
+            attachment !== undefined &&
+            document.visibilityState === "visible" &&
+            document.hasFocus()
+                ? notifications
+                      .filter(
+                          (item) =>
+                              item.terminalId !== null &&
+                              item.terminalId === attachment?.terminalId,
+                      )
+                      .map((item) => item.id)
+                : [];
+        notificationViews = notifications.filter(
+            (item) => !suppressed.includes(item.id),
+        );
+        terminalViews = terminals;
+        showExecutionState();
         // Re-rendering identical lists would steal focus from the terminal and
-        // flicker every poll, so only redraw what actually changed.
-        const terminalsJson = JSON.stringify(terminals);
+        // flicker on every change, so only redraw what actually changed.
+        const terminalsJson = JSON.stringify([terminals, notificationViews]);
         if (terminalsJson !== renderedTerminals) {
             renderedTerminals = terminalsJson;
             renderTerminals(terminals);
         }
-        const agentsJson = JSON.stringify(agents);
+        const agentsJson = JSON.stringify([agents, notificationViews]);
         if (agentsJson !== renderedAgents) {
             renderedAgents = agentsJson;
             renderAgents(agents);
         }
-        const notificationsJson = JSON.stringify(notifications);
+        const notificationsJson = JSON.stringify(notificationViews);
         if (notificationsJson !== renderedNotifications) {
             renderedNotifications = notificationsJson;
-            renderNotifications(notifications);
+            renderNotifications(notificationViews);
         }
-        setStatus(
-            `daemon 연결됨 · terminal ${terminals.length} · agent ${agents.length} · 미확인 알림 ${notifications.length}`,
-            false,
-        );
+        if (eventsConnected) result(statusBox, "");
+        if (suppressed.length && !reading) void markRead(suppressed, true);
     } catch (error) {
+        if (version < appliedRefreshVersion) return;
+        appliedRefreshVersion = version;
+        terminalViews = undefined;
+        showExecutionState();
         renderedAgents = "";
         renderedNotifications = "";
         renderedTerminals = "";
-        setStatus(
-            `daemon API에 연결할 수 없습니다 (${String(error)}). daemon이 실행 중인지 확인하세요.`,
-            true,
-        );
+        result(statusBox, `daemon 상태 조회 실패: ${String(error)}`, true);
     }
 }
 
 createShellButton.addEventListener("click", () => {
     createShellButton.disabled = true;
+    progressing(createResult, "shell 생성 중…");
     void (async () => {
         try {
             const response = await fetch("/api/terminals", {
@@ -199,34 +326,132 @@ createShellButton.addEventListener("click", () => {
                 headers: { "content-type": "application/json" },
                 body: "{}",
             });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            await checkResponse(response);
             const terminal = (await response.json()) as TerminalView;
+            appliedRefreshVersion = ++refreshVersion;
             select(terminal.id);
+            result(createResult, "shell을 생성했습니다.");
             await refresh();
         } catch (error) {
-            setStatus(`shell 생성 실패: ${String(error)}`, true);
+            result(createResult, `shell 생성 실패: ${String(error)}`, true);
         } finally {
             createShellButton.disabled = false;
         }
     })();
 });
 
-readAllButton.addEventListener("click", () => {
-    void (async () => {
+async function markRead(ids?: string[], automatic = false): Promise<void> {
+    if (reading) {
+        await reading;
+        return markRead(ids, automatic);
+    }
+    readAllButton.disabled = true;
+    if (!automatic) progressing(readResult, "읽음 처리 중…");
+    reading = (async () => {
         try {
-            const response = await fetch("/api/notifications/read", {
+            const response = await fetch("/api/web/notifications/read", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: "{}",
+                body: JSON.stringify(ids === undefined ? {} : { ids }),
             });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            await checkResponse(response);
+            if (!automatic) result(readResult, "알림을 읽음 처리했습니다.");
+            appliedRefreshVersion = ++refreshVersion;
+            reading = undefined;
+            readAllButton.disabled = notificationViews.length === 0;
             renderedNotifications = "";
+            void refresh();
+        } catch (error) {
+            reading = undefined;
+            result(readResult, `읽음 처리 실패: ${String(error)}`, true);
+            readAllButton.disabled = false;
+        }
+    })();
+    return reading;
+}
+
+readAllButton.addEventListener("click", () => void markRead());
+
+reconnectButton.addEventListener("click", () => {
+    if (attachment && !reconnectButton.disabled)
+        select(attachment.terminalId, true);
+});
+
+terminateButton.addEventListener("click", () => {
+    if (
+        !attachment ||
+        terminating ||
+        !confirm(
+            "진행 중인 작업이 중단됩니다. 이 터미널을 강제 종료하시겠습니까?",
+        )
+    )
+        return;
+    const { terminalId } = attachment;
+    const version = attachmentVersion;
+    terminating = true;
+    terminateButton.disabled = true;
+    reconnectButton.disabled = true;
+    progressing(terminationResult, "종료 요청 중…");
+    void (async () => {
+        try {
+            const response = await fetch(
+                `/api/terminals/${encodeURIComponent(terminalId)}`,
+                { method: "DELETE" },
+            );
+            await checkResponse(response);
+            const body: unknown = await response.json();
+            if (
+                typeof body !== "object" ||
+                body === null ||
+                !("deleted" in body) ||
+                typeof body.deleted !== "boolean"
+            )
+                throw new Error("종료 결과를 확인할 수 없습니다.");
+            appliedRefreshVersion = ++refreshVersion;
+            if (version === attachmentVersion) {
+                attachment?.close();
+                attachment = undefined;
+                ++attachmentVersion;
+                recovery.hidden = true;
+                result(
+                    terminationResult,
+                    body.deleted
+                        ? "터미널을 종료했습니다."
+                        : "종료할 터미널이 이미 없습니다.",
+                );
+                attachBox.textContent = `terminal ${terminalId} · 종료할 실행 없음`;
+            }
             await refresh();
         } catch (error) {
-            setStatus(`읽음 처리 실패: ${String(error)}`, true);
+            if (version !== attachmentVersion) return;
+            result(terminationResult, `종료 요청 실패: ${String(error)}`, true);
+            terminating = false;
+            terminateButton.disabled = false;
+            reconnectButton.disabled = recoveryLimit.textContent !== "";
+            await refresh();
         }
     })();
 });
 
-void refresh();
-setInterval(() => void refresh(), POLL_MS);
+const events = new EventSource("/api/web/events");
+events.onopen = () => {
+    eventsConnected = true;
+};
+// The server sends change immediately on each connection, including reconnects.
+events.addEventListener("change", () => void refresh());
+events.onerror = () => {
+    eventsConnected = false;
+    appliedRefreshVersion = ++refreshVersion;
+    terminalViews = undefined;
+    showExecutionState();
+    result(
+        statusBox,
+        "daemon 변경 알림 연결이 끊겼습니다. 다시 연결 중…",
+        true,
+    );
+};
+
+window.addEventListener("focus", () => void refresh());
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void refresh();
+});

@@ -40,8 +40,9 @@ Daemon이 materialized Runtime·Network·route의 권위를 갖고 실행 소유
 | 외부 터미널의 `agent run` | CLI | 사용자 터미널, 종료 후 같은 shell |
 
 외부 실행에는 AIOX PTY·headless·xterm·Serialize를 생성하지 않는다. 실행 소유권은 terminal
-차용 관계나 Network membership과 별개다. 외부 실행은 등록이 유효할 때 Web에서 상태만
-조회하며 Web terminal 생성·조작·이관 대상이 아니다. 선택 이유는
+차용 관계나 Network membership과 별개다. 외부 실행은 협업 등록이 유효해도 Web 목록·알림과
+Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위는
+[[docs/specs/aiox-configuration-web]]을 따르며 선택 이유는
 [[docs/decisions/execution-ownership]]을 따른다.
 
 ## 시작·준비·상태 조회

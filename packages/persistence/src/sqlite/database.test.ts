@@ -15,28 +15,6 @@ function databasePath(t: TestContext, name = "aiox.db"): string {
     return join(directory, name);
 }
 
-/** Exactly what Stage 1's direct-SQL implementation left on disk. */
-function seedStage1Database(path: string): void {
-    const db = new Database(path);
-    db.exec(`
-CREATE TABLE persistent_networks (
-  id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
-  name TEXT NOT NULL UNIQUE CHECK(length(trim(name)) > 0 AND instr(name, '/') = 0),
-  default_policy TEXT NOT NULL CHECK(default_policy IN ('allow', 'deny'))
-) STRICT;
-CREATE TABLE persistent_routes (
-  network_id TEXT NOT NULL REFERENCES persistent_networks(id) ON DELETE CASCADE,
-  source_id TEXT NOT NULL CHECK(length(source_id) > 0),
-  target_id TEXT NOT NULL CHECK(length(target_id) > 0 AND source_id <> target_id),
-  policy TEXT NOT NULL CHECK(policy IN ('allow', 'deny')),
-  PRIMARY KEY(network_id, source_id, target_id)
-) STRICT;
-INSERT INTO persistent_networks VALUES ('n1', 'review', 'deny');
-INSERT INTO persistent_routes VALUES ('n1', 'a', 'b', 'allow');`);
-    db.pragma("user_version = 1");
-    db.close();
-}
-
 function inspect(t: TestContext, path: string): Database.Database {
     const db = new Database(path, { readonly: true });
     t.onTestFinished(() => {
@@ -44,14 +22,6 @@ function inspect(t: TestContext, path: string): Database.Database {
     });
     return db;
 }
-
-const appliedMigrations = (db: Database.Database): string[] =>
-    db
-        .prepare<[], { name: string }>(
-            "SELECT name FROM migrations ORDER BY id",
-        )
-        .all()
-        .map(({ name }) => name);
 
 const tableNames = (db: Database.Database): string[] =>
     db
@@ -93,43 +63,7 @@ function delivery(
     };
 }
 
-test("a Stage 1 database keeps its data and gains message history", async (t) => {
-    const path = databasePath(t);
-    seedStage1Database(path);
-
-    const store = await openDatabase(path);
-    assert.deepEqual(await store.networks.get("n1"), {
-        id: "n1",
-        name: "review",
-        defaultPolicy: "deny",
-        routes: [{ from: "a", to: "b", policy: "allow" }],
-    });
-    await store.messages.record(message("m1", 10), [
-        delivery("d1", "m1", "t1"),
-    ]);
-    assert.equal((await store.messages.deliveriesFor("m1")).length, 1);
-    await store.close();
-
-    const db = inspect(t, path);
-    // The initial migration was recorded, not replayed: replaying it would have
-    // failed on the tables the Stage 1 database already had.
-    assert.deepEqual(appliedMigrations(db), [
-        "InitialSchema1758240000000",
-        "MessageHistory1758240001000",
-    ]);
-    assert.equal(
-        db
-            .prepare<[], { count: number }>(
-                "SELECT count(*) AS count FROM persistent_routes",
-            )
-            .get()?.count,
-        1,
-    );
-    // Stage 1's marker is left as history, not rewritten as a second authority.
-    assert.equal(db.pragma("user_version", { simple: true }), 1);
-});
-
-test("a fresh database creates every table and reopens without re-migrating", async (t) => {
+test("a fresh database creates the current schema directly and reopens", async (t) => {
     const path = databasePath(t, join("nested", "aiox.db"));
     let store = await openDatabase(path);
     await store.networks.create({
@@ -153,13 +87,9 @@ test("a fresh database creates every table and reopens without re-migrating", as
         "messages",
         "deliveries",
         "notifications",
-        "migrations",
     ])
         assert.ok(tableNames(db).includes(table), `missing table ${table}`);
-    assert.deepEqual(appliedMigrations(db), [
-        "InitialSchema1758240000000",
-        "MessageHistory1758240001000",
-    ]);
+    assert.equal(tableNames(db).includes("migrations"), false);
 });
 
 test("persistent network and routing survive close and reopen", async (t) => {
@@ -319,40 +249,26 @@ test("deleting a network removes its edges and does not affect other networks", 
     assert.equal((await store.networks.get("n2"))?.defaultPolicy, "allow");
 });
 
-test("a failing initial migration rolls back schema changes and preserves existing data", async (t) => {
+test("a failed schema initialization rolls back new tables and preserves existing data", async (t) => {
     const path = databasePath(t);
     const seed = new Database(path);
     seed.exec(
-        "CREATE TABLE persistent_routes(valuable TEXT); INSERT INTO persistent_routes VALUES ('keep me')",
+        "CREATE TABLE notifications(valuable TEXT); INSERT INTO notifications VALUES ('keep me')",
     );
     seed.close();
-    await assert.rejects(() => openDatabase(path), /already exists/);
+    await assert.rejects(() => openDatabase(path), /delivery_id/);
     const db = inspect(t, path);
-    assert.equal(db.pragma("user_version", { simple: true }), 0);
-    assert.deepEqual(db.prepare("SELECT * FROM persistent_routes").all(), [
+    assert.deepEqual(db.prepare("SELECT * FROM notifications").all(), [
         { valuable: "keep me" },
     ]);
     assert.ok(!tableNames(db).includes("persistent_networks"));
-    assert.deepEqual(appliedMigrations(db), []);
-});
-
-test("a newer schema is rejected without downgrading or deleting its data", async (t) => {
-    const path = databasePath(t);
-    const seed = new Database(path);
-    seed.exec(
-        "CREATE TABLE future_data(value TEXT); INSERT INTO future_data VALUES ('keep me'); PRAGMA user_version = 2",
-    );
-    seed.close();
-    await assert.rejects(
-        () => openDatabase(path),
-        /Unsupported database schema version: 2/,
-    );
-    const db = inspect(t, path);
-    assert.equal(db.pragma("user_version", { simple: true }), 2);
-    assert.deepEqual(db.prepare("SELECT * FROM future_data").all(), [
-        { value: "keep me" },
-    ]);
-    assert.ok(!tableNames(db).includes("migrations"));
+    const repair = new Database(path);
+    repair.exec("DROP TABLE notifications");
+    repair.close();
+    const retried = await openDatabase(path);
+    assert.deepEqual(await retried.networks.list(), []);
+    assert.deepEqual(await retried.messages.unreadNotifications(), []);
+    await retried.close();
 });
 
 test("a rejected delivery insert leaves no message behind", async (t) => {
@@ -422,6 +338,8 @@ test("notifications stay unread until they are marked read", async (t) => {
             {
                 id,
                 originRuntimeId: "r-source",
+                originExecutionOwnership: "daemon",
+                originTerminalId: "terminal-source",
                 body: `${id} finished`,
                 createdAt: id === "nf1" ? 20 : 30,
                 readAt: null,
@@ -438,6 +356,8 @@ test("notifications stay unread until they are marked read", async (t) => {
         ["nf2"],
     );
     assert.equal(unread[0]?.readAt, null);
+    assert.equal(unread[0]?.originExecutionOwnership, "daemon");
+    assert.equal(unread[0]?.originTerminalId, "terminal-source");
 });
 
 test("retention purges only messages whose every delivery finished before the cutoff", async (t) => {
@@ -461,6 +381,8 @@ test("retention purges only messages whose every delivery finished before the cu
     await store.messages.settle("old-2", "failed", 2000, "boom", {
         id: "nf-old",
         originRuntimeId: "r-source",
+        originExecutionOwnership: "daemon",
+        originTerminalId: "terminal-source",
         body: "failed",
         createdAt: 2000,
         readAt: null,
@@ -473,6 +395,8 @@ test("retention purges only messages whose every delivery finished before the cu
     await store.messages.settle("mixed-1", "completed", 1500, undefined, {
         id: "nf-mixed",
         originRuntimeId: "r-source",
+        originExecutionOwnership: "daemon",
+        originTerminalId: "terminal-source",
         body: "done",
         createdAt: 1500,
         readAt: null,
@@ -506,4 +430,39 @@ test("retention purges only messages whose every delivery finished before the cu
         deliveries: 0,
         notifications: 0,
     });
+});
+
+test("current notifications require ownership but allow a missing terminal", async (t) => {
+    const path = databasePath(t);
+    let store = await openDatabase(path);
+    t.onTestFinished(() => store.close());
+    await store.messages.record(message("m", 1), [
+        delivery("d", "m", "target"),
+    ]);
+    const db = new Database(path);
+    try {
+        assert.throws(
+            () =>
+                db
+                    .prepare(
+                        "INSERT INTO notifications(id, delivery_id, origin_runtime_id, body, created_at) VALUES ('bad', 'd', 'origin', 'notice', 2)",
+                    )
+                    .run(),
+            /NOT NULL/,
+        );
+        db.prepare(
+            "INSERT INTO notifications(id, delivery_id, origin_runtime_id, origin_execution_ownership, origin_terminal_id, body, created_at) VALUES ('good', 'd', 'origin', 'daemon', NULL, 'notice', 2)",
+        ).run();
+    } finally {
+        db.close();
+    }
+    await store.close();
+    store = await openDatabase(path);
+    assert.deepEqual(
+        (await store.messages.unreadNotifications()).map((row) => [
+            row.originExecutionOwnership,
+            row.originTerminalId,
+        ]),
+        [["daemon", null]],
+    );
 });
