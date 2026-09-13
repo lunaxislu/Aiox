@@ -239,7 +239,16 @@ it("keeps another approval pending when an elicitation resolves or a prompt ends
         event("UserPromptSubmit", "one", { prompt: "direct" }),
     );
     await observer.observe(
-        event("PermissionRequest", "one", { tool_use_id: "approval" }),
+        event("PreToolUse", "one", {
+            tool_use_id: "approval",
+            tool_name: "Bash",
+        }),
+    );
+    await observer.observe(
+        event("PermissionRequest", "one", {
+            tool_name: "Bash",
+            tool_input: { command: "printf test" },
+        }),
     );
     await observer.observe(
         event("Elicitation", "one", {
@@ -404,10 +413,28 @@ it("reconciles approval notification hints with identified waits without clearin
         }),
     );
     await observer.observe(
-        event("PermissionRequest", "one", { tool_use_id: "one-tool" }),
+        event("PreToolUse", "one", {
+            tool_use_id: "one-tool",
+            tool_name: "Bash",
+        }),
     );
     await observer.observe(
-        event("PermissionRequest", "two", { tool_use_id: "two-tool" }),
+        event("PermissionRequest", "one", {
+            tool_name: "Bash",
+            tool_input: { command: "printf test" },
+        }),
+    );
+    await observer.observe(
+        event("PreToolUse", "two", {
+            tool_use_id: "two-tool",
+            tool_name: "Bash",
+        }),
+    );
+    await observer.observe(
+        event("PermissionRequest", "two", {
+            tool_name: "Bash",
+            tool_input: { command: "printf test" },
+        }),
     );
     await observer.observe(
         event("PostToolUse", "one", { tool_use_id: "one-tool" }),
@@ -443,7 +470,16 @@ it.each(["elicitation_dialog", "elicitation_url_dialog"])(
         );
         expect(controls.setActivity.mock.lastCall?.[0]).toBe("awaiting-user");
         await observer.observe(
-            event("PermissionRequest", "two", { tool_use_id: "tool" }),
+            event("PreToolUse", "two", {
+                tool_use_id: "tool",
+                tool_name: "Bash",
+            }),
+        );
+        await observer.observe(
+            event("PermissionRequest", "two", {
+                tool_name: "Bash",
+                tool_input: { command: "printf test" },
+            }),
         );
         await observer.observe(
             event("PostToolUseFailure", "two", { tool_use_id: "tool" }),
@@ -460,10 +496,159 @@ it("replaces an uncorrelated approval notification with identified evidence", as
         notification_type: "permission_prompt",
     });
     await observer.observe(
-        event("PermissionRequest", "one", { tool_use_id: "tool" }),
+        event("PreToolUse", "one", { tool_use_id: "tool", tool_name: "Bash" }),
+    );
+    await observer.observe(
+        event("PermissionRequest", "one", {
+            tool_name: "Bash",
+            tool_input: { command: "printf test" },
+        }),
     );
     await observer.observe(
         event("PostToolUse", "one", { tool_use_id: "tool" }),
     );
     expect(controls.setActivity.mock.lastCall?.[0]).toBe("idle");
+});
+
+it("clears only the finished prompt's real permission payload and tools", async () => {
+    const { observer, controls } = setup();
+    for (const prompt of ["one", "two"]) {
+        await observer.observe(event("UserPromptSubmit", prompt, { prompt }));
+        await observer.observe(
+            event("PreToolUse", prompt, {
+                tool_name: "Bash",
+                tool_use_id: prompt,
+            }),
+        );
+        await observer.observe(
+            event("PermissionRequest", prompt, {
+                tool_name: "Bash",
+                tool_input: { command: "printf test" },
+            }),
+        );
+    }
+    await observer.observe(event("Stop", "one"));
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("awaiting-user");
+    await observer.observe(event("PostToolUse", "two", { tool_use_id: "two" }));
+    await observer.observe(event("Stop", "two"));
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("idle");
+    await observer.observe(
+        event("PermissionRequest", "one", { tool_name: "Bash" }),
+    );
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("idle");
+});
+
+it("correlates transcript interruption with an observed tool and preserves other prompts", async () => {
+    const { observer, controls } = setup({ hasBlockingStopHooks: true });
+    for (const prompt of ["one", "two"]) {
+        await observer.observe(
+            event("UserPromptSubmit", prompt, {
+                prompt: observer.track(message(prompt)),
+            }),
+        );
+        await observer.observe(
+            event("PreToolUse", prompt, { tool_use_id: prompt }),
+        );
+        await observer.observe(
+            event("PermissionRequest", prompt, { tool_name: "Bash" }),
+        );
+    }
+    const result = {
+        type: "user",
+        isSidechain: false,
+        sessionId: "session",
+        promptId: "one",
+        uuid: "result",
+        toolDenialKind: "user-rejected",
+        message: {
+            role: "user",
+            content: [
+                { type: "tool_result", tool_use_id: "one", is_error: true },
+            ],
+        },
+    };
+    const interrupted = {
+        type: "user",
+        isSidechain: false,
+        sessionId: "session",
+        promptId: "one",
+        parentUuid: "result",
+        uuid: "interrupted",
+        message: {
+            role: "user",
+            content: [
+                {
+                    type: "text",
+                    text: "[Request interrupted by user for tool use]",
+                },
+            ],
+        },
+    };
+    await observer.observeTranscript(interrupted);
+    expect(controls.settle).not.toHaveBeenCalled();
+    await observer.observeTranscript({ ...result, sessionId: "other" });
+    await observer.observeTranscript(interrupted);
+    expect(controls.settle).not.toHaveBeenCalled();
+    await observer.observeTranscript(result);
+    expect(controls.settle).not.toHaveBeenCalled();
+    controls.settle.mockRejectedValueOnce(new Error("storage"));
+    await expect(observer.observeTranscript(interrupted)).rejects.toThrow(
+        "storage",
+    );
+    await observer.observeTranscript(interrupted);
+    await observer.observeTranscript(result);
+    await observer.observeTranscript(interrupted);
+    expect(controls.settle.mock.calls).toEqual([
+        ["one", "interrupted"],
+        ["one", "interrupted"],
+    ]);
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("awaiting-user");
+    await observer.observe(event("PostToolUse", "one", { tool_use_id: "one" }));
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("awaiting-user");
+});
+
+it("retains approval during another tool's Post and releases it when all owned tools resolve", async () => {
+    const { observer, controls } = setup();
+    await observer.observe(
+        event("UserPromptSubmit", "one", { prompt: "direct" }),
+    );
+    for (const tool of ["read", "bash"])
+        await observer.observe(
+            event("PreToolUse", "one", { tool_use_id: tool }),
+        );
+    await observer.observe(
+        event("PermissionRequest", "one", { tool_name: "Bash" }),
+    );
+    await observer.observe(
+        event("PostToolUse", "one", { tool_use_id: "read" }),
+    );
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("awaiting-user");
+    await observer.observe(
+        event("PostToolUse", "one", { tool_use_id: "bash" }),
+    );
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("reasoning");
+    await observer.observe(event("Stop", "one"));
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("idle");
+});
+
+it("still consumes session quota notices carrying a finished prompt ID", async () => {
+    const { observer, controls } = setup();
+    await observer.observe(
+        event("UserPromptSubmit", "one", { prompt: "direct" }),
+    );
+    await observer.observe(
+        event("StopFailure", "one", { error: "rate_limit" }),
+    );
+    await observer.observe(
+        event("Notification", "one", {
+            notification_type: "quota_auto_resume_stale",
+        }),
+    );
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("awaiting-user");
+    await observer.observe(
+        event("Notification", "one", {
+            notification_type: "quota_auto_resume_fired",
+        }),
+    );
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("failed");
 });

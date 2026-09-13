@@ -1,5 +1,7 @@
 import { once } from "node:events";
+import { writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import { join } from "node:path";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
 import { terminalContextFromEnv, type AgentRun } from "@aiox/protocol";
@@ -957,6 +959,113 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
         ).toMatchObject({ outcome: "failed", outcomeError: "rate_limit" });
         expect(sourceVendor.received).toHaveLength(2);
         expect(target.activity).toBe("failed");
+        const cancelled = await sender.callTool({
+            name: "send",
+            arguments: { targets: [target.id], content: "A cancelled request" },
+        });
+        await vi.waitFor(() =>
+            expect(lines.filter((line) => line.type === "user")).toHaveLength(
+                3,
+            ),
+        );
+        const transcript = join(harness.home, "claude-session.jsonl");
+        const prompt = lines.filter((line) => line.type === "user")[2]!.message!
+            .content;
+        for (const event of [
+            { hook_event_name: "UserPromptSubmit", prompt },
+            {
+                hook_event_name: "PreToolUse",
+                tool_use_id: "cancelled-tool",
+                tool_name: "Bash",
+            },
+            {
+                hook_event_name: "PermissionRequest",
+                tool_name: "Bash",
+                tool_input: { command: "printf test" },
+            },
+        ])
+            expect(
+                (
+                    await hook({
+                        ...event,
+                        session_id: "session",
+                        prompt_id: "cancelled",
+                        transcript_path: transcript,
+                    })
+                ).ok,
+            ).toBe(true);
+        expect(target.activity).toBe("awaiting-user");
+        const webAgent = async () =>
+            (await fetch(harness.apiUrl(`/api/agents/${target.id}`))).json();
+        expect(await webAgent()).toMatchObject({ activity: "awaiting-user" });
+        const peers = async () =>
+            (await sender.callTool({ name: "agents_list" })).structuredContent;
+        expect(await peers()).toMatchObject({
+            agents: [{ agentId: target.id, status: "working" }],
+        });
+        const base = {
+            type: "user",
+            isSidechain: false,
+            sessionId: "session",
+            promptId: "cancelled",
+        };
+        await writeFile(
+            transcript,
+            [
+                {
+                    ...base,
+                    uuid: "rejected",
+                    toolDenialKind: "user-rejected",
+                    message: {
+                        role: "user",
+                        content: [
+                            {
+                                type: "tool_result",
+                                tool_use_id: "cancelled-tool",
+                                is_error: true,
+                            },
+                        ],
+                    },
+                },
+                {
+                    ...base,
+                    uuid: "interrupted",
+                    parentUuid: "rejected",
+                    message: {
+                        role: "user",
+                        content: [
+                            {
+                                type: "text",
+                                text: "[Request interrupted by user for tool use]",
+                            },
+                        ],
+                    },
+                },
+            ]
+                .map((row) => JSON.stringify(row))
+                .join("\n") + "\n",
+        );
+        const cancelledData = cancelled.structuredContent as {
+            messageId: string;
+        };
+        await vi.waitFor(async () =>
+            expect(
+                (
+                    await harness.daemon.services.db.messages.deliveriesFor(
+                        cancelledData.messageId,
+                    )
+                )[0],
+            ).toMatchObject({ outcome: "interrupted" }),
+        );
+        expect(await webAgent()).toMatchObject({
+            activity: "idle",
+            observation: { event: "TranscriptInterrupted" },
+        });
+        expect(await peers()).toMatchObject({
+            agents: [{ agentId: target.id, status: "idle" }],
+        });
+        expect(sourceVendor.received).toHaveLength(2);
+        expect(vendor.session.alive).toBe(true);
     } finally {
         await Promise.all(clients.map((client) => client.close()));
         socket.terminate();

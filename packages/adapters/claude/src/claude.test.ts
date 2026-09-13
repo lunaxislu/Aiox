@@ -1,3 +1,7 @@
+import { appendFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { InvalidVendorReport } from "@aiox/vendor";
 import { expect, test, vi } from "vitest";
 
@@ -81,3 +85,92 @@ test("malformed vendor reports are distinguished from valid reports with invalid
         binding.observe({ ...report, inboxPath: "/wrong" }),
     ).rejects.not.toBeInstanceOf(InvalidVendorReport);
 });
+
+test.each(["poll", "SessionEnd"])(
+    "reads transcript via %s while Claude stays open and releases the reader",
+    async (mode) => {
+        const probe = vi.spyOn(inbox, "writeClaudeInbox").mockResolvedValue();
+        const directory = await mkdtemp(join(tmpdir(), "aiox-binding-"));
+        const path = join(directory, "session.jsonl");
+        const control = controls();
+        const binding = new ClaudeBinding(control, "/assigned");
+        binding.executionStarted();
+        const send = (name: string, extra = {}) =>
+            binding.observe({
+                ...report,
+                event: {
+                    hook_event_name: name,
+                    session_id: "session",
+                    prompt_id: "one",
+                    transcript_path: path,
+                    ...extra,
+                },
+            });
+        try {
+            await send("UserPromptSubmit", { prompt: "direct" });
+            await send("PreToolUse", {
+                tool_use_id: "tool",
+                tool_name: "Bash",
+            });
+            await send("PermissionRequest", { tool_name: "Bash" });
+            expect(control.setActivity.mock.lastCall?.[0]).toBe(
+                "awaiting-user",
+            );
+            const common = {
+                type: "user",
+                isSidechain: false,
+                sessionId: "session",
+                promptId: "one",
+            };
+            const rows = [
+                {
+                    ...common,
+                    uuid: "result",
+                    toolDenialKind: "user-rejected",
+                    message: {
+                        role: "user",
+                        content: [
+                            {
+                                type: "tool_result",
+                                tool_use_id: "tool",
+                                is_error: true,
+                            },
+                        ],
+                    },
+                },
+                {
+                    ...common,
+                    uuid: "interrupt",
+                    parentUuid: "result",
+                    message: {
+                        role: "user",
+                        content: [
+                            {
+                                type: "text",
+                                text: "[Request interrupted by user for tool use]",
+                            },
+                        ],
+                    },
+                },
+            ];
+            await writeFile(
+                path,
+                rows.map((row) => JSON.stringify(row)).join("\n") + "\n",
+            );
+            if (mode === "SessionEnd") await send("SessionEnd");
+            await vi.waitFor(() =>
+                expect(control.setActivity.mock.lastCall?.[0]).toBe("idle"),
+            );
+            expect(binding.alive).toBe(true);
+            await binding.cleanup("execution_stopped");
+            control.setActivity.mockClear();
+            await appendFile(path, JSON.stringify(rows[1]) + "\n");
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            expect(control.setActivity).not.toHaveBeenCalled();
+        } finally {
+            await binding.cleanup("execution_stopped");
+            probe.mockRestore();
+            await rm(directory, { recursive: true, force: true });
+        }
+    },
+);

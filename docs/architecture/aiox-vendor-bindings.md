@@ -52,11 +52,11 @@ owner가 생성한 프로세스와 임시 자원은 한 실행에 속하며 정�
 vendor 필드가 없는 metadata이며 adapter 경계에서 검증한다. 현재 adapter 선택은 조립 시 전달한
 목록을 사용한다. 동적 설치·capability framework·Codex 실제 구현 완료를 뜻하지 않는다.
 
-근거: [[packages/vendor/src/index.ts]] `packages/vendor/src/index.ts:49-96`,
+근거: [[packages/vendor/src/index.ts]] `packages/vendor/src/index.ts:49-99`,
 [[packages/vendor/src/execution.ts]] `packages/vendor/src/execution.ts:7`,
 [[packages/adapters/claude/src/index.ts]] `packages/adapters/claude/src/index.ts:21`.
 다른 vendor 대역의 inbox 없는 제어 연결과 helper 준비 후 Web 실행은
-[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:1298-1439`에서 검증한다.
+[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:1416-1554`에서 검증한다.
 
 외부 CLI는 실행별 자원을 준비하고 daemon에 connection을 전달한다. AgentController가
 Runtime·보고 credential·binding을 준비한 뒤 launch를 반환하면 adapter가 실제 실행 위치에서
@@ -75,14 +75,14 @@ Claude inbox 임시 디렉터리는 실행 위치의 owner가 생성·권한·�
 실제 socket은 Claude가 열고 daemon binding은 접속한다. adapter는 등록한 주소와 인증 hook 보고를
 정확히 대조하며 인증만으로 임의 경로를 신뢰하지 않는다. CLI의 등록 정리 실패도 shell 복귀를
 막지 않으며 실패 진단을 남긴다. 근거:
-[[packages/adapters/claude/src/claude-environment.ts]] `packages/adapters/claude/src/claude-environment.ts:9`,
-[[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:94`.
+[[packages/adapters/claude/src/claude-environment.ts]] `packages/adapters/claude/src/claude-environment.ts:7`,
+[[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:101-127`.
 
 외부 실행의 hook은 daemon 연결 거부 `ECONNREFUSED`만 조용히 종료한다. 401·잘못된 보고·
 timeout·연결 reset과 daemon 소유 실행의 오류 진단은 유지한다. 실행별 소유권 표지는 공통
 controller가 adapter에 전달하고 사용자 설정의 같은 환경 변수 덮어쓰기는 충돌로 거절한다.
 근거: [[packages/adapters/claude/src/claude-hook.ts]] `packages/adapters/claude/src/claude-hook.ts:49-80`,
-[[packages/adapters/claude/src/claude-hook.test.ts]] `packages/adapters/claude/src/claude-hook.test.ts:100-151`,
+[[packages/adapters/claude/src/claude-hook.test.ts]] `packages/adapters/claude/src/claude-hook.test.ts:100-148`,
 [[packages/adapters/claude/src/claude-launch.ts]] `packages/adapters/claude/src/claude-launch.ts:215-231`.
 Host의 실제 실행 통합은 여전히 목표이며 이 hook 분기 검증으로 완료 처리하지 않는다. [Status: Target]
 
@@ -91,10 +91,10 @@ Host의 실제 실행 통합은 여전히 목표이며 이 hook 분기 검증으
 Web shell의 CLI는 현재 cwd·env·vendor 인자와 인증된 terminal 문맥을 daemon에 전달하고 foreground WS로
 raw 입출력·resize를 중계한다. daemon의 AgentController가 Runtime·credential을 먼저 등록하고
 adapter의 준비·주입·version 확인과 execution owner의 PTY 생성을 조율한다. 내부 vendor PTY는
-daemon 실행 소유자가 관리하며, 빌린 shell의 공개 terminal ID는 유지하고 새 탭을 만들지 않는다. 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:425`,
+daemon 실행 소유자가 관리하며, 빌린 shell의 공개 terminal ID는 유지하고 새 탭을 만들지 않는다. 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:466-523`,
 [[apps/cli/src/foreground.ts]] `apps/cli/src/foreground.ts:20`,
 [[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:88`,
-[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:305`.
+[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:477-615`.
 
 Web의 실행 owner와 daemon 관리 등록은 화면 중계 연결보다 오래 유지된다. controller는
 살아 있는 vendor의 중계 연결 손실을 `relayDisconnected`로 기록하고 owner를 종료하지 않는다.
@@ -108,7 +108,7 @@ owner의 foreground·필수 부속 실행·자원 종료를 확인한 뒤 등록
 `apps/daemon/src/agent-controller.ts:228-252`; [[apps/daemon/src/http.ts]]
 `apps/daemon/src/http.ts:170-217`; [[apps/daemon/src/daemon.ts]]
 `apps/daemon/src/daemon.ts:297-318`, `apps/daemon/src/daemon.ts:362-390`;
-[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:1613-1780`.
+[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:1722-1889`.
 
 다음은 MCP 주입 부분만 보여주는 축약 예시다. 포트·Network ID는 예시이며 실제 spawn handle은
 daemon 실행 소유자가 소유한다.
@@ -206,7 +206,7 @@ auth 첫 줄을 보낸다. hook helper가 Claude의 `CLAUDE_CODE_MESSAGING_SOCKE
 daemon으로 보고하고 binding은 할당한 주소·실행 내 token 일관성을 확인한다. inbox·hook·MCP
 token은 별개다. Windows named pipe 주소 생성·token 전달·인증 경로는 구현됐지만 Windows 실제
 vendor 통합은 미검증이다. macOS 바이너리 문자열이나 Unix socket 테스트를 Windows 실측으로
-취급하지 않는다. 근거: [[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:94`,
+취급하지 않는다. 근거: [[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:101-127`,
 [[packages/adapters/claude/src/claude-inbox.ts]] `packages/adapters/claude/src/claude-inbox.ts:4-53`.
 accept/hold/refuse는 vendor 정책이며 AIOX가 몰래 accept로 바꾸지 않는다.
 [Inbox 문서](https://code.claude.com/docs/en/cross-session-messaging#the-sessions-inbox-socket).
@@ -220,9 +220,9 @@ accept/hold/refuse는 vendor 정책이며 AIOX가 몰래 accept로 바꾸지 않
 성공 이력인 wasReady를 기준으로 판단하며, 준비 후 inbox 연결 손실을 초기 시작 실패로
 다시 처리하지 않는다. 현재 연결 상태와 최초 준비 성공 이력은 binding이 별도로 소유한다.
 근거: [[packages/adapters/claude/src/claude-version.ts]] `packages/adapters/claude/src/claude-version.ts:3-32`,
-[[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:386`,
+[[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:473-487`,
 [[packages/adapters/claude/src/index.ts]] `packages/adapters/claude/src/index.ts:21`,
-controller test의 `apps/daemon/src/agent-controller.test.ts:254`.
+controller test의 `apps/daemon/src/agent-controller.test.ts:259-282`.
 
 같은 프로세스 `/clear`·`/resume`에서 listener/address/token 유지가 보고됐다. vendor session ID는
 바뀔 수 있으므로 optional session_id를 과거 값으로 계속 주입하지 않는다. 새 Claude 프로세스는
@@ -249,15 +249,37 @@ vendor 내부 subagent의 agent_id가 있는 보고는 부모 입력 결과·현
 개별 completed/failed/interrupted와 현재 작업·승인/질문 대기·오류 상태는 별도로 투영한다.
 Notification은 session·종류·prompt별 대기 힌트다. 대응하는 식별된 요청과 완료 관측으로
 같은 prompt의 힌트 및 session의 미식별 힌트를 정리하되 다른 prompt의 미해결 요청은 유지한다.
-근거: [[packages/adapters/claude/src/claude-observations.ts]] `packages/adapters/claude/src/claude-observations.ts:273`,
-[[packages/adapters/claude/src/claude-observations.test.ts]] `packages/adapters/claude/src/claude-observations.test.ts:367`.
+근거: [[packages/adapters/claude/src/claude-observations.ts]] `packages/adapters/claude/src/claude-observations.ts:381`,
+[[packages/adapters/claude/src/claude-observations.test.ts]] `packages/adapters/claude/src/claude-observations.test.ts:406`.
+도구와 승인/질문 대기는 생성 당시 prompt에 귀속한다. Stop/StopFailure로 종료가 확인되면
+그 prompt의 잔존 도구·대기만 정리한다. PermissionRequest에는 tool ID가 없으므로 임의 도구의
+Post로 해당 승인이 해소됐다고 판단하지 않는다. 해당 prompt에 귀속한 관측 도구가 모두
+해소되거나 prompt 종료가 확인될 때 prompt 단위 승인 대기를 정리한다.
+
+ClaudeBinding은 인증된 주 세션 hook의 transcript_path를 사용해 Claude가 저장한 JSONL을
+읽는다. 경로를 OS별로 추측하거나 파일을 생성·변경하지 않는다. ClaudeTranscript는 완성된
+추가 줄만 순서대로 소비하며 파일 교체·축소와 저장 callback 실패를 재시도한다. SessionEnd에서
+마지막 읽기를 수행한 뒤 감시를 닫고, 연결 손실·프로세스 종료·binding cleanup에서도 해제한다.
+읽기 실패는 본문·경로를 노출하지 않는 stderr 진단으로 남기며 정상 hook 관측을 유지한다.
+
+No·도구 실행 중 Esc 보완은 알려진 session/prompt/tool의 user-rejected 결과를 parentUuid의
+직접 부모로 가리키는 같은 prompt의 중단 레코드를 함께 요구한다. prompt_snapshot 첨부를
+경유하는 No 연결은 현재 해석기가 놓치는 미해결 범위다. 단순 중단 문구, 다른 세션·subagent,
+모호하거나 이미 끝난 prompt는 종료 근거로 쓰지 않는다. 연결된 요청은 interrupted로 기록하며
+다른 요청의 상태와 기존 결과는 보존한다. transcript 미저장·누락된 식별자·이와 다른 중단 기록
+형식은 이 보완으로 확정하지 않는다. 2.1.269 macOS No·실행 중 Esc의 수집 기록과 파일 추가
+읽기 회귀를 검증했으며 Windows/Linux 실제 vendor 실행 검증과는 구분한다. [Status: As-built]
+근거: packages/adapters/claude/src/claude-transcript.ts와 같은 디렉터리의 claude-transcript.test.ts,
+claude.ts·claude.test.ts, claude-observations.ts·claude-observations.test.ts,
+apps/daemon/src/agent-controller.test.ts의 인증 hook·transcript·Web API/MCP 통합 회귀.
+
 Stop은 응답 종료이며 작업 성공·프로세스 종료가 아니다. 여러 입력에 하나의 Stop이 왔다고
 모두 성공으로 표시하지 않는다. StopFailure의 prompt_id 연결은 구현·대역 검증됐지만 단일 Stop의
 과거 실측을 모든 busy·실패 상황의 vendor 관측 증거로 확대하지 않는다.
 이미 수용한 단일 inbox/Stop 연결이나 Codex active thread를 다시 전체 실험 과제로 만들지 않는다.
-근거: [[packages/adapters/claude/src/claude-observations.ts]] `packages/adapters/claude/src/claude-observations.ts:43`,
-[[packages/adapters/claude/src/claude-observations.test.ts]] `packages/adapters/claude/src/claude-observations.test.ts:36-347`,
-controller test의 `apps/daemon/src/agent-controller.test.ts:726`.
+근거: [[packages/adapters/claude/src/claude-observations.ts]] `packages/adapters/claude/src/claude-observations.ts:66`,
+[[packages/adapters/claude/src/claude-observations.test.ts]] `packages/adapters/claude/src/claude-observations.test.ts:36-386`,
+controller test의 `apps/daemon/src/agent-controller.test.ts:736-1074`.
 
 ## Claude 정리와 검증 경계
 
@@ -273,17 +295,17 @@ CLI가 vendor exit 후 정리한다. daemon의 종료 요청은 daemon 소유 �
 연결 손실·프로세스 실패·중단은 연결된 입력 결과를 각각 정리하며 메시지를 재전송하지 않는다.
 daemon execution owner의 terminal 상태 자원은 kill 성공 후 dispose로 해제한다. kill 실패 시에는
 dispose를 진행하지 않아 종료 재시도에 필요한 세션을 보존한다.
-근거: [[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:181`,
+근거: [[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:226-258`,
 [[packages/vendor/src/execution.ts]] `packages/vendor/src/execution.ts:7`;
-[[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:307`.
+[[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:362-386`.
 브라우저 attachment 해제는 입력 연결 손실과 별개다. Agent 종료의 borrowed shell 유지와 daemon
 force stop의 shell 종료는 [[docs/specs/aiox-runtime]]의 소유 관계를 따른다. [Status: As-built]
-근거: controller test의 `apps/daemon/src/agent-controller.test.ts:147-253`,
-[[packages/adapters/claude/src/claude.test.ts]] `packages/adapters/claude/src/claude.test.ts:18-69`.
+근거: controller test의 `apps/daemon/src/agent-controller.test.ts:151-255`,
+[[packages/adapters/claude/src/claude.test.ts]] `packages/adapters/claude/src/claude.test.ts:22-73`.
 
 현재 트리의 검증은 실제 HTTP MCP→native socket→인증 hook→DB 결과·자동 알림까지 연결한
 controller 대역 테스트와 개별 관측 테스트를 포함한다. 실행 owner의 helper·foreground 정리와
-adapter 자원 수명은 [[packages/vendor/src/execution.test.ts]] `packages/vendor/src/execution.test.ts:6`,
+adapter 자원 수명은 [[packages/vendor/src/execution.test.ts]] `packages/vendor/src/execution.test.ts:12`,
 [[packages/adapters/claude/src/index.test.ts]] `packages/adapters/claude/src/index.test.ts:11`에서 검증한다.
 이는 실제 Claude 모델 수신·응답 성공의 증거가 아니다.
 

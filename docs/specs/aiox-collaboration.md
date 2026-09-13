@@ -96,6 +96,9 @@ Claude는 Runtime·session_id·prompt_id와 연결된 UserPromptSubmit/Stop을, 
 Codex의 정상 입력 응답은 runtime 입력 수락 근거다. App Server의 진행·완료·오류·사용자
 요청을 관측하고 활성 thread는 연결된 TUI의 성공한 start/resume/fork 결과에 맞춰 binding한다.
 Claude는 hooks를 daemon으로 전달하며 프로세스/연결 손실은 별도 실행 관측도 사용한다.
+Claude의 hook이 누락되는 도구 거부·중단은 세션 기록에서 해당 요청과 중단의 연결을 확인한
+경우 interrupted로 보완한다. 기록이 없거나 귀속이 불확실하면 종료를 추측하지 않는다.
+관측 구성과 검증 한계는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
 외부 제어 연결 손실은 협업 등록을 끝낸다. AIOX 요청의 연결·관측 실패와 vendor 프로세스
 종료·업무 결과를 구분한다. 연결 손실 원인은 요청 결과에 남기며 vendor가 계속 수행하는
 업무의 성공·실패를 확정하지 않는다. 실행 수명은 runtime 계약을 따른다.

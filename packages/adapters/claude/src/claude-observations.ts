@@ -2,6 +2,30 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome } from "@aiox/domain";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
+import { z } from "zod";
+
+const transcriptRecord = z.object({
+    type: z.literal("user"),
+    isSidechain: z.literal(false),
+    sessionId: z.string().min(1),
+    promptId: z.string().min(1),
+    uuid: z.string().min(1),
+    parentUuid: z.string().nullable().optional(),
+    toolDenialKind: z.string().optional(),
+    origin: z.never().optional(),
+    promptSource: z.never().optional(),
+    message: z.object({
+        role: z.literal("user"),
+        content: z.array(
+            z.object({
+                type: z.string(),
+                tool_use_id: z.string().optional(),
+                is_error: z.boolean().optional(),
+                text: z.string().optional(),
+            }),
+        ),
+    }),
+});
 
 function escapeAttribute(value: string): string {
     return value
@@ -54,6 +78,8 @@ export class ClaudeObservations {
     #failed = false;
     readonly #waiting = new Map<string, { event: string; reason?: string }>();
     readonly #tools = new Set<string>();
+    readonly #owners = new Map<string, string>();
+    readonly #denials = new Map<string, string>();
     readonly #unidentified = new Set<string>();
     #queue = Promise.resolve();
 
@@ -78,10 +104,78 @@ export class ClaudeObservations {
         return this.#enqueue(() => this.#observe(event));
     }
 
+    observeTranscript(value: unknown): Promise<void> {
+        return this.#enqueue(async () => {
+            const parsed = transcriptRecord.safeParse(value);
+            if (!parsed.success) return;
+            const row = parsed.data;
+            const key = JSON.stringify([row.sessionId, row.promptId]);
+            if (
+                this.#finished.has(key) ||
+                this.#ambiguous.has(key) ||
+                !this.#prompts.has(key)
+            )
+                return;
+            const blocks = row.message.content;
+            if (
+                row.toolDenialKind === "user-rejected" &&
+                blocks.some(
+                    (block) =>
+                        block.type === "tool_result" &&
+                        block.is_error === true &&
+                        block.tool_use_id &&
+                        this.#owners.get(
+                            JSON.stringify([
+                                row.sessionId,
+                                "tool",
+                                block.tool_use_id,
+                            ]),
+                        ) === key,
+                )
+            ) {
+                this.#denials.set(
+                    JSON.stringify([row.sessionId, row.uuid]),
+                    key,
+                );
+                return;
+            }
+            // A quoted interruption string is not a terminal observation. Require
+            // the vendor's parent link to a rejected tool owned by this prompt.
+            if (
+                blocks.length !== 1 ||
+                blocks[0]?.type !== "text" ||
+                blocks[0].text !==
+                    "[Request interrupted by user for tool use]" ||
+                this.#denials.get(
+                    JSON.stringify([row.sessionId, row.parentUuid]),
+                ) !== key
+            )
+                return;
+            this.#clearPrompt(key);
+            this.#active.delete(key);
+            this.#project("TranscriptInterrupted");
+            const frame = this.#prompts.get(key);
+            if (frame != null) await this.#settle(frame, "interrupted");
+            this.#prompts.delete(key);
+            this.#fingerprints.delete(key);
+            this.#finished.add(key);
+            for (const [id, owner] of this.#denials)
+                if (owner === key) this.#denials.delete(id);
+        });
+    }
+
     async #observe(event: Record<string, unknown>): Promise<void> {
         // Child agents inherit hooks and may share the ambient prompt id.
         if (event.agent_id !== undefined) return;
         const key = promptKey(event);
+        const quotaNotice =
+            event.hook_event_name === "Notification" &&
+            [
+                "quota_auto_resume_fired",
+                "quota_auto_resume_stale",
+                "quota_auto_resume_disabled",
+            ].includes(String(event.notification_type));
+        if (key && this.#finished.has(key) && !quotaNotice) return;
         if (this.#observeActivity(event)) return;
         if (
             !key &&
@@ -163,14 +257,7 @@ export class ClaudeObservations {
                 }
                 return;
             }
-            for (const type of [
-                "permission_prompt",
-                "elicitation_dialog",
-                "elicitation_url_dialog",
-            ])
-                this.#waiting.delete(
-                    JSON.stringify([event.session_id, type, key]),
-                );
+            this.#clearPrompt(key);
             const failed = event.hook_event_name === "StopFailure";
             const error = errorType(event.error);
             this.#active.delete(key);
@@ -185,6 +272,8 @@ export class ClaudeObservations {
             this.#prompts.delete(key);
             this.#fingerprints.delete(key);
             this.#finished.add(key);
+            for (const [id, owner] of this.#denials)
+                if (owner === key) this.#denials.delete(id);
         }
     }
 
@@ -193,6 +282,8 @@ export class ClaudeObservations {
             this.#active.clear();
             this.#waiting.clear();
             this.#tools.clear();
+            this.#owners.clear();
+            this.#denials.clear();
             this.#unidentified.clear();
             this.#failed = true;
             this.#project("RuntimeFailure", "connection_lost");
@@ -205,6 +296,8 @@ export class ClaudeObservations {
             this.#active.clear();
             this.#waiting.clear();
             this.#tools.clear();
+            this.#owners.clear();
+            this.#denials.clear();
             this.#unidentified.clear();
             this.#failed = false;
             this.#project("RuntimeInterrupted");
@@ -269,6 +362,22 @@ export class ClaudeObservations {
         return next;
     }
 
+    #clearPrompt(key: string): void {
+        const [session] = JSON.parse(key) as [string, string];
+        for (const type of [
+            "permission_prompt",
+            "elicitation_dialog",
+            "elicitation_url_dialog",
+        ])
+            this.#waiting.delete(JSON.stringify([session, type, key]));
+        for (const [id, owner] of this.#owners) {
+            if (owner !== key) continue;
+            this.#tools.delete(id);
+            this.#waiting.delete(id);
+            this.#owners.delete(id);
+        }
+    }
+
     #clearNotification(
         event: Record<string, unknown>,
         types: readonly string[],
@@ -318,10 +427,16 @@ export class ClaudeObservations {
                         ? ["permission_prompt"]
                         : ["elicitation_dialog", "elicitation_url_dialog"],
                 );
-            this.#waiting.set(
-                wait ?? JSON.stringify([session, name, "unidentified"]),
-                { event: name },
-            );
+            const id =
+                wait ??
+                JSON.stringify([
+                    session,
+                    name,
+                    promptKey(event) ?? "unidentified",
+                ]);
+            this.#waiting.set(id, { event: name });
+            const owner = promptKey(event);
+            if (owner) this.#owners.set(id, owner);
         } else if (name === "ElicitationResult") {
             if (
                 !elicitation ||
@@ -332,19 +447,37 @@ export class ClaudeObservations {
                 "elicitation_dialog",
                 "elicitation_url_dialog",
             ]);
+            this.#owners.delete(elicitation);
             if (!this.#waiting.delete(elicitation)) {
                 this.#project(name);
                 return true;
             }
         } else if (name === "PreToolUse") {
             if (!tool) return true;
+            const owner = promptKey(event);
+            if (owner) this.#owners.set(tool, owner);
             if (event.tool_name === "AskUserQuestion")
                 this.#waiting.set(tool, { event: "AskUserQuestion" });
-            else this.#tools.add(tool);
+            this.#tools.add(tool);
         } else if (name === "PostToolUse" || name === "PostToolUseFailure") {
             if (!tool) return true;
-            this.#tools.delete(tool);
+            const owner = this.#owners.get(tool);
+            const resolved = this.#tools.delete(tool);
             this.#waiting.delete(tool);
+            this.#owners.delete(tool);
+            if (
+                resolved &&
+                owner &&
+                ![...this.#tools].some((id) => this.#owners.get(id) === owner)
+            ) {
+                const permission = JSON.stringify([
+                    session,
+                    "PermissionRequest",
+                    owner,
+                ]);
+                this.#waiting.delete(permission);
+                this.#owners.delete(permission);
+            }
             this.#clearNotification(event, ["permission_prompt"]);
         } else if (name === "Notification") {
             const type = event.notification_type;

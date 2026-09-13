@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+
 import { InvalidVendorReport } from "@aiox/vendor";
 import type {
     InboundMessage,
@@ -10,6 +12,7 @@ import { z } from "zod";
 import { writeClaudeInbox } from "@/claude-inbox";
 import { prepareClaudeLaunch } from "@/claude-launch";
 import { ClaudeObservations } from "@/claude-observations";
+import { ClaudeTranscript } from "@/claude-transcript";
 import { launchHooks } from "@/launch-hooks";
 
 const reportSchema = z.strictObject({
@@ -34,6 +37,9 @@ export class ClaudeBinding implements VendorBinding {
     readonly observations: ClaudeObservations;
     #activity: Parameters<RuntimeControls["setActivity"]> | undefined;
 
+    readonly #transcripts = new Map<string, ClaudeTranscript>();
+    readonly #endedSessions = new Set<string>();
+    #observationClosed = false;
     #started = false;
     onReady: (() => void) | undefined;
     onReleased: (() => void) | undefined;
@@ -119,6 +125,61 @@ export class ClaudeBinding implements VendorBinding {
             this.#updateReady();
         }
         await this.observations.observe(report.event);
+        if (
+            this.#stopped ||
+            this.#observationClosed ||
+            report.event.agent_id !== undefined
+        )
+            return;
+        const session = report.event.session_id;
+        if (report.event.hook_event_name === "SessionEnd") {
+            this.#endedSessions.add(session);
+            await this.#transcripts.get(session)?.read();
+            await this.#transcripts.get(session)?.close();
+            this.#transcripts.delete(session);
+            return;
+        }
+        if (report.event.hook_event_name === "SessionStart")
+            this.#endedSessions.delete(session);
+        if (this.#endedSessions.has(session)) return;
+        const path = report.event.transcript_path;
+        if (typeof path !== "string" || !isAbsolute(path)) return;
+        const previous = this.#transcripts.get(session);
+        if (previous) {
+            if (previous.path !== path)
+                throw new InvalidVendorReport(
+                    "Claude transcript path changed within one session.",
+                );
+            return;
+        }
+        const transcript = new ClaudeTranscript(
+            path,
+            async (row) => {
+                if (
+                    !row ||
+                    typeof row !== "object" ||
+                    !("sessionId" in row) ||
+                    row.sessionId !== session
+                )
+                    return;
+                await this.observations.observeTranscript(row);
+            },
+            () => {
+                process.stderr.write(
+                    "AIOX: Claude transcript observation failed; retrying.\n",
+                );
+            },
+        );
+        this.#transcripts.set(session, transcript);
+        transcript.start();
+    }
+
+    async #closeTranscripts(): Promise<void> {
+        this.#observationClosed = true;
+        await Promise.all(
+            [...this.#transcripts.values()].map((reader) => reader.close()),
+        );
+        this.#transcripts.clear();
     }
 
     get wasReady(): boolean {
@@ -163,6 +224,7 @@ export class ClaudeBinding implements VendorBinding {
     }
 
     async connectionLost(): Promise<void> {
+        await this.#closeTranscripts();
         await this.observations.failPending("foreground_connection_lost");
     }
 
@@ -171,6 +233,7 @@ export class ClaudeBinding implements VendorBinding {
         signal: number | null,
     ): Promise<void> {
         this.#started = false;
+        await this.#closeTranscripts();
         if (!this.#stopped && signal === null && exitCode !== 0)
             await this.observations.failPending("vendor_process_failed");
         else await this.observations.interruptPending();
@@ -186,6 +249,7 @@ export class ClaudeBinding implements VendorBinding {
         this.#stopped = true;
         this.#ready = false;
         this.#started = false;
+        await this.#closeTranscripts();
         if (reason !== "execution_stopped")
             await this.observations.failPending(reason);
         else await this.observations.interruptPending();

@@ -10,6 +10,7 @@ export function launchHooks(): Record<string, unknown> {
     return Object.fromEntries(
         [
             "SessionStart",
+            "SessionEnd",
             "UserPromptSubmit",
             "Stop",
             "StopFailure",
