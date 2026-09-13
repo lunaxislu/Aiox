@@ -53,7 +53,7 @@ Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:244-358`, `apps/cli/src/bootstrap.ts:382-464`; 재시작 준비·설정 변경과 잘못된 다음 설정 회귀는 [[apps/cli/src/bootstrap.test.ts]] `apps/cli/src/bootstrap.test.ts:200-368`, `apps/cli/src/bootstrap.test.ts:777-805`.
 
-시작 준비·실패 정리 근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:145-159`, `apps/daemon/src/daemon.ts:244-275`, `apps/daemon/src/daemon.ts:681-690`; [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:55-175`, [[apps/daemon/src/bootstrap.test.ts]] `apps/daemon/src/bootstrap.test.ts:75-86`.
+시작 준비·실패 정리 근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:153-167`, `apps/daemon/src/daemon.ts:252-283`, `apps/daemon/src/daemon.ts:719-728`; [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:55-177`, [[apps/daemon/src/bootstrap.test.ts]] `apps/daemon/src/bootstrap.test.ts:75-86`.
 
 - Standalone `agent run`은 foreground다. 사용자는 Ctrl+C·`/exit` 등 해당 세션에서 종료한다.
   별도 standalone agent stop/attach/detach 명령은 현재 범위에 없다.
@@ -84,6 +84,9 @@ Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위
 
 Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승인 대기, 실패 원인, Host stopped를 구분한다. 알림 읽음이나 다른 요청의 완료로 미해결 사용자 요청 표시를 지우지 않는다.
 
+현재 최소 Web의 Agent 목록은 상태와 함께 현재 관측 이유를 표시한다. 새 관측 이유로 교체하고 이유가 없는 관측에서는 이전 이유를 지우며, 별도 오류 이력을 보존하지 않는다. [Status: Current]
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:222-264`, [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:989-1026`.
+
 Web도 daemon이 살아 있는 동안 최초 협업 준비 실패·timeout·협업 해제만으로 이미 시작한
 vendor·필수 부속 실행을 종료하지 않는다. 협업 실패에서는 협업 권한을 해제하되 daemon의
 실행 등록·종료 관리는 유지하고, 터미널 사용 가능 여부와 AIOX 협업 끊김을 구분해 표시한다.
@@ -96,7 +99,7 @@ vendor·필수 부속 실행을 종료하지 않는다. 협업 실패에서는 �
 
 근거: [[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:163-184`,
 `apps/daemon/src/agent-controller.ts:228-252`; [[apps/daemon/src/agent-controller.test.ts]]
-`apps/daemon/src/agent-controller.test.ts:1613-1780`; [[apps/web/src/main.test.ts]]
+`apps/daemon/src/agent-controller.test.ts:1722-1889`; [[apps/web/src/main.test.ts]]
 `apps/web/src/main.test.ts:864`. 실제 macOS Web·PTY 검증 범위는
 [[docs/architecture/aiox-storage-terminal]]의 화면 중계 복구 근거를 따른다.
 

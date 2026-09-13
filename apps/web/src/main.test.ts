@@ -985,3 +985,42 @@ it("recovers the retained vendor in the same selected terminal and retries vendo
     );
     expect(node("terminals").children).toHaveLength(1);
 });
+
+it("shows only the latest observation reason as Agent snapshots change", async () => {
+    const { node, shell, fetchMock, refresh } = await page();
+    const agent = {
+        agentId: "A",
+        name: "Agent A",
+        terminalId: shell.id,
+        networkId: null,
+        activity: "failed",
+        observation: { event: "StopFailure", reason: "connection_lost" } as {
+            event: string;
+            reason: string | null;
+        } | null,
+    };
+    fetchMock.mockImplementation(async (path) => ({
+        ok: true,
+        status: 200,
+        json: async () =>
+            path === "/api/terminals"
+                ? [shell]
+                : path === "/api/web/agents"
+                  ? [agent]
+                  : [],
+    }));
+    for (const [observation, expected] of [
+        [agent.observation, "failed · connection_lost"],
+        [{ event: "StopFailure", reason: "api_error" }, "failed · api_error"],
+        [{ event: "UserPromptSubmit", reason: null }, "failed"],
+        [null, "failed"],
+    ] as const) {
+        agent.observation = observation;
+        refresh();
+        await vi.waitFor(() =>
+            expect(node("agents").children[0]?.children[1]?.textContent).toBe(
+                `${expected} · network 없음 · terminal 연결 가능`,
+            ),
+        );
+    }
+});

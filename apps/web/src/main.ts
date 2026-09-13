@@ -240,6 +240,9 @@ function renderAgents(agents: AgentView[]): void {
             meta.className = "meta";
             meta.textContent = [
                 agent.activity,
+                ...(agent.observation?.reason
+                    ? [agent.observation.reason]
+                    : []),
                 agent.networkId === null
                     ? "network 없음"
                     : `network ${agent.networkId}`,
