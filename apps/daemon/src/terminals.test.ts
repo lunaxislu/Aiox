@@ -555,10 +555,7 @@ describe("general shell sessions", () => {
         );
         expect(terminals.authenticateContext(context) === shell).toBe(true);
         expect(terminals.view(shell.id)?.alive).toBe(true);
-        expect(await terminals.killAll()).toEqual({
-            stopped: [shell.id],
-            unconfirmed: [],
-        });
+        expect(await terminals.kill(shell.id)).toBe(true);
         expect(terminals.get(shell.id)).toBeUndefined();
         expect(terminals.views()).toEqual([]);
         expect(() => terminals.authenticateContext(context)).toThrow();

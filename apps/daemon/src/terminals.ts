@@ -165,29 +165,6 @@ export class TerminalService {
         this.#remove(id);
         return true;
     }
-
-    /**
-     * Stops every managed terminal and reports what could not be confirmed
-     * gone. A failure to observe an exit is not evidence of an exit.
-     */
-    async killAll(): Promise<{ stopped: string[]; unconfirmed: string[] }> {
-        const stopped: string[] = [];
-        const unconfirmed: string[] = [];
-        await Promise.all(
-            [...this.#sessions].map(async ([id, session]) => {
-                try {
-                    await session.kill();
-                    stopped.push(id);
-                } catch (error) {
-                    unconfirmed.push(
-                        `${id}: ${error instanceof Error ? error.message : String(error)}`,
-                    );
-                }
-            }),
-        );
-        for (const id of stopped) this.#remove(id);
-        return { stopped, unconfirmed };
-    }
 }
 
 type ControlMessage =

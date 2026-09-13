@@ -274,8 +274,6 @@ export async function prepareClaudeLaunch(input: {
     const hooks = { ...userHooks };
     for (const [event, entries] of Object.entries(input.hooks)) {
         const existing = userHooks[event];
-        if (existing !== undefined && !Array.isArray(existing))
-            invalid("--settings hooks");
         if (!Array.isArray(entries)) invalid("AIOX hooks");
         hooks[event] = [
             ...((existing as unknown[] | undefined) ?? []),

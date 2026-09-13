@@ -66,8 +66,6 @@ export type Daemon = {
     ): Promise<RegisteredRuntime>;
     createShell(options?: CreateShell): Promise<TerminalView>;
     createTerminal(options?: TerminalOptions): { id: string };
-    /** Attaches a terminal to a runtime so the Web can find it. */
-    attachTerminalTo(runtimeId: string, terminalId: string): void;
     stopRuntime(runtimeId: string): Promise<void>;
     stop(force: boolean): Promise<StopOutcome>;
     /** Resolves once both listeners are closed. */
@@ -684,7 +682,6 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             const session = terminals.create(terminalOptions);
             return { id: session.id };
         },
-        attachTerminalTo,
         stopRuntime,
         stop,
         closed,

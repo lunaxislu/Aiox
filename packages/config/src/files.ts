@@ -6,19 +6,16 @@ import { dirname, join } from "node:path";
 import type { AioxConfig, PortOverrides } from "@/schema";
 import { ConfigError, parseConfig } from "@/schema";
 
-export type ConfigLocation = { home?: string; filePath?: string };
+export type ConfigLocation = { home?: string };
 export function configPath(home: string = homedir()): string {
     return join(home, ".aiox", "config.json");
-}
-function location(options: ConfigLocation): string {
-    return options.filePath ?? configPath(options.home);
 }
 export async function loadConfig(
     options: ConfigLocation & { portOverrides?: PortOverrides } = {},
 ): Promise<AioxConfig> {
     let text: string;
     try {
-        text = await readFile(location(options), "utf8");
+        text = await readFile(configPath(options.home), "utf8");
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT")
             return parseConfig({}, options.portOverrides);
@@ -28,7 +25,7 @@ export async function loadConfig(
     try {
         value = JSON.parse(text);
     } catch {
-        throw new ConfigError(`Invalid JSON in ${location(options)}`);
+        throw new ConfigError(`Invalid JSON in ${configPath(options.home)}`);
     }
     return parseConfig(value, options.portOverrides);
 }
@@ -39,7 +36,7 @@ export async function saveConfig(
     options: ConfigLocation = {},
 ): Promise<AioxConfig> {
     const config = parseConfig(value);
-    const file = location(options);
+    const file = configPath(options.home);
     await mkdir(dirname(file), { recursive: true });
     const temporary = `${file}.${randomUUID()}.tmp`;
     try {

@@ -13,7 +13,10 @@ export function createConfigSession(initial: unknown) {
     const startupPorts = { ...current.ports };
     function snapshot(): ConfigSnapshot {
         return {
-            effective: { ...parseConfig(current), ports: { ...startupPorts } },
+            effective: {
+                ...structuredClone(current),
+                ports: { ...startupPorts },
+            },
             pendingPorts: { ...current.ports },
             restartRequired:
                 current.ports.daemon !== startupPorts.daemon ||
