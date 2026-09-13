@@ -20,6 +20,7 @@ status: open
 - 짧게 몰린 알림은 개별 항목을 보존하고 소리만 한 번 울린다. 정확한 묶음 시간·multi-tab 소리 주체·음원은 확정값을 꾸며내지 말고 해당 단계에서 구체화한다. native OS 알림/브라우저가 닫힌 상태의 OS 소리를 자동 추가하지 않는다. AIOX 자동 완료/실패 통지는 원 Runtime 발신자만 대상으로 하고 새 A′ 비전달·알림 재귀 방지를 유지한다.
 - cmux의 포커스·활성/비활성 영역 표현과 단축키 조작을 참고한다: https://cmux.com/docs/concepts , https://cmux.com/docs/keyboard-shortcuts . Stage 6 로그의 Paseo 현재 영역 terminal 배치 참고와 연결해 알림 클릭 대상이 맞는 탭을 가리키는지 검증한다. 정확한 기본키·OS별 keybindings 구조는 Stage 6에서 사용자와 논의한 결정만 소비한다.
 - Stage6의 2026-09-13 알림 UI 인계를 소비한다. React 알림 아이콘 dropdown과 Agent가 포함된 창으로 이동·해당 알림 읽음 처리는 Stage6 구현 범위다. 대상 터미널(B) 선택 클릭 시 해당 대상의 미확인 해제는 Stage2-3 W5의 현재 간단 Web에 구현·검증됐으므로 그 결과를 소비한다. 이 단계는 선행 UI 결과 위에서 상태·읽음·알림음 통합과 검증을 이어간다. 미확인 해제를 저장 이력 삭제로 해석하지 않으며 UX owner는 docs/specs/aiox-configuration-web.md다.
+- Stage2-3의 2026-09-14 최신 마감 entry 및 이 로그의 「Stage2-3 사용자 실측·현재 이유 표시 인계」를 소비한다. 현재 관측 이유 표시·교체·제거와 별도 오류 이력 비보존은 runtime spec 및 최소 Web 구현을 소비한다. React 운영 UI·popup·소리 등 기존 후속 범위는 유지한다. 사용자 실측을 agent 재실행·모든 환경 인증으로 확대하지 않으며 확인된 동일 사용 흐름을 일괄 재검증하지 않는다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -40,3 +41,9 @@ status: open
 Stage2-3 W5의 SSE 변경 통지·Web 소유 실행 목록/알림 한정·활성 창/탭과 선택 terminal 기반 미확인 억제·대상 선택 읽음·최소 미확인 표시 구현 결과를 소비한다. root 전체 검사 527 tests와 actual built daemon/SSE, Chromium 대역 검증의 범위·한계는 부모 Stage2-3 최신 수용 entry를 따른다. 실제 native 창·탭 전환은 브라우저 환경에서 확인하지 못했고 focus 입력 대역 검증으로 구분한다.
 
 cmux pane·tab·window와 React dropdown·알림 클릭의 대상 창 이동, popup·소리 통합은 기존 Stage6/7 후속 범위로 유지한다. 저장된 알림 이력 삭제나 외부 CLI 실행의 Web 노출로 확대하지 않는다. 이 단계의 구현을 착수·완료 처리하지 않는다.
+
+### 2026-09-14 00:26 · Stage2-3 사용자 실측·현재 이유 표시 인계
+
+사용자는 host:4501 운영 Web 접속·Claude 실행과 브라우저 창/탭 전환에 따른 알림 표시·읽음 처리까지 이전에 직접 확인했다고 보고했다. 이 사용 흐름의 사용자 실측 근거로 수용하고 같은 검증을 반복 요구하지 않는다. 이번 세션의 agent 재실행 결과는 아니며 OS·WSL 구성, 브라우저/vendor 버전과 실행 SHA는 특정되지 않았다. Windows 네이티브와 WSL 각각의 전체 인증이나 모든 vendor 메시지·중단 시나리오 완료로 확대하지 않는다.
+
+현재 관측 이유 표시·교체·제거와 별도 오류 이력 비보존은 runtime spec 및 최소 Web 구현을 소비한다. React 운영 UI·popup·소리 등 기존 후속 범위는 유지한다. Stage2-3은 마감하되 후속 단계 활성화·착수는 하지 않았다.

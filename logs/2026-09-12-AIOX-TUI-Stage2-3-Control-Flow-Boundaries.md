@@ -1,7 +1,7 @@
 ---
 topic: AIOX TUI Stage2-3 Control Flow Boundaries
 description: 사전 검증에서 확장한 실행 순서·완료와 복구 경계 개선 및 불필요한 결합 정리
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -12,7 +12,7 @@ status: open
 - [x] W4 참여 중 Network 삭제 거절 — 실행 참여가 있으면 삭제를 거절하고 먼저 참여 정리를 요구한다. 자동 종료·분리를 추가하지 않으며 등록/삭제 경합과 이후 discovery·전송을 검증한다. — detached: logs/2026-09-13-AIOX-W4-Network-Deletion.md — reason: 사용자 W4 실행 승인; code·tests·owner 공통 완료 검증
 - [x] W5 Web 작업 결과·화면 복원 및 SSE·알림 개선 완료 — root가 527 tests와 built daemon·브라우저 근거를 수용했고 사용자 실행 정리 후 일반 daemon stop과 승인된 개발 DB 일회 삭제까지 완료했다.
 - [x] W6 정리 후보·외부 리뷰 판정과 외부 실행·Web 중계 복구·진단·quota A안 구현 확인 완료 — 최종 534 tests 통과 출력과 기존 직접 실행 근거를 수용했다. 필요한 owner 정합화를 완료했고 quota 추가 반영은 불필요하다. 사용자 직접 중단 상태 보정은 제외한다.
-- [>] W7 통합 리뷰·owner 반영·단계 마감 — 변경별 회귀와 관련 OS 검증, 제거 코드의 책임 보존, 미해결 후보 disposition을 root가 확인한다. 확정 계약을 owner에 반영하고 잔여 한계와 후속 owner를 명시한 뒤 Stage3 W1로 활성 단계 포인터를 옮긴다. 원격 push는 사용자 지시가 있을 때만 수행한다.
+- [x] W7 통합 리뷰·owner 반영·단계 마감 완료 — 참조 정합화·현재 관측 이유 표시·사용자 실측 수용과 후속 owner 인계를 완료했다. 사용자 지시로 Stage3는 활성화하지 않는다. commit·push 없음.
 
 ## Required Context
 
@@ -22,8 +22,8 @@ status: open
 
 ### {Global}
 
-- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1~W6를 완료했고 다음 재개 지점은 W7 통합 확인·owner 정합성·단계 마감이다. 이번에는 포인터만 이동하며 W7 실행이나 Stage3 진입으로 확대하지 않는다. 추가 정책·UI·실패 처리 결정은 사용자와 논의한다. 사용자는 W6까지 현재 변경의 커밋을 승인했고 원격 push는 금지한다. 단계 완료 뒤 Stage3 W1을 재개한다.
-- 사용자는 최신 변경 확인·필요한 문서 반영·완료 표시·포인터 이동·커밋을 root가 직접 수행하도록 지시했다. 이미 확정된 정책을 재승인받거나 완료 조사를 반복하지 않는다. 이번 커밋 승인은 현재까지 수용한 변경과 인계 기록에 한정하며 후속 커밋·원격 push로 확대하지 않는다. 다른 작업의 미추적 execution-flow-map skill과 architecture.excalidraw 개인 자산은 제외한다.
+- Stage2-3은 마감됐다. 최신 「W7 참조·관측 이유 표시 완료, 사용자 실측 수용과 Stage2-3 마감」을 소비한다. 사용자 지시로 Stage3는 대기이며 plan에 활성 단계가 없다. 다음 후보는 Stage3 W1이지만 자동 활성화·착수하지 않는다. 로그는 명시적 요청 때 기록하며 commit·push는 별도 지시 없이 수행하지 않는다.
+- 이번 마감 승인은 기록·최종 인계 점검·Stage2-3 종료까지만이다. 과거 커밋·포인터 이동 승인으로 후속 commit·push·Stage3 활성화를 정당화하지 않는다. architecture.excalidraw 개인 자산과 무관한 execution-flow-map skill은 제외한다.
 - 아래 조사 계기와 근거 분류·Claude 의견 대조를 먼저 읽고 선택 Work Item의 호출자·producer/consumer·owner·tests를 추적한다. 기존 조사를 전부 반복하지 말고 변경할 경계의 재현을 회귀 테스트로 고정한다. root가 실제 diff와 검증 근거를 확인하기 전 subagent 완료 보고를 최종 완료로 승격하지 않는다.
 - 관련 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md다. W1 교정은 docs/decisions/external-execution-survival.md로 수용됐고 기존 explicit-execution-shutdown은 결정 계보다. W2 저장·복구와 W3 준비·조회·종료 자원 경계는 owner와 회귀에 반영됐다. 무관한 last-good·자동 적용 요구는 유지한다.
 
@@ -48,7 +48,8 @@ status: open
 ### {W7}
 
 - W2 messages.drain의 필수 저장 지속 실패는 500 internal_error 및 DB/listener 재시도 유지다. W3 DB close 실패는 listener 해제 뒤 stderr 진단하고 closed 의미를 유지하는 것으로 판정·회귀 검증했다. 상태 파일 삭제는 listener 해제 전으로 이동해 지연 DB close 뒤 새 상태 기록을 삭제하지 않는다. 삭제 실패는 진단 후 stale 기록 가능성을 남기며 listener 종료와 구분한다. 이 후보를 미판정 결함으로 재개하지 않는다.
-- W6 완료와 포인터 이동만 수행했다. 최신 534 tests 출력·Web 실제 복구 근거·각 후보 disposition을 소비하고, 남겨 둔 진단 표시 요구와 검증 한계를 통합 확인에서 구분한다. 완료 작업의 조사·실험을 이유 없이 반복하지 않는다. 이번 커밋 승인으로 W7 실행·추가 커밋·push를 승인받았다고 간주하지 않는다.
+- W1~W6 대조와 W7 owner 참조 정합화·현재 관측 이유 표시를 완료했다. 최신 마감 entry의 검증 범위·사용자 실측을 소비한다. Claude 미해결 관측은 Stage3 W3/W5, 운영 Web·알림은 Stage6/7, 나머지 플랫폼·배포 인증은 Stage8이 소유하며 이 로그에서 다시 실행하지 않는다.
+- Claude 관측의 기존 구현·검증과 미해결 No/Esc·snapshot 연결 결함, FileChanged/OTel 방식 선택·구현은 logs/2026-09-09-AIOX-TUI-Stage3-Claude.md의 W3 및 Required Context {W3}를 따른다. 실제 수직 통합 검증은 W5다. 원본은 이 로그 2026-09-13 22:04~23:42 기록이다. 현재 production은 250ms polling이며 541 tests 통과 뒤 발견된 snapshot 반례는 미수정이다. W7에서 Claude 보완 구현을 다시 시작하지 않는다.
 
 ### {W5}
 
@@ -623,3 +624,228 @@ vendor-bindings의 기존 Notification 대기 힌트·현재 상태와 개별 �
 사용자가 W6 완료 표시, W7 포인터 이동과 현재까지 확인된 변경 커밋을 명시적으로 지시했다. root가 W6를 완료로 표시하고 W7을 다음 재개 지점으로 활성화했다. quota 확인 대기·미구현·커밋 미승인으로 남았던 Required Context를 최신 상태로 정합화했다.
 
 이번 커밋은 외부 실행 유지·Web 동일 vendor 중계 복구·종료 및 버전 진단·quota A안과 관련 테스트·owner·인계 기록을 포함한다. 다른 작업의 미추적 execution-flow-map 파일은 제외한다. 기존 534 tests 통과 출력과 직접 확인한 검증 근거를 소비하며 전체 테스트를 다시 실행하지 않는다. W7 실제 작업·Stage3 이동·후속 커밋·원격 push로 확대하지 않는다. 실제 커밋 완료는 Git 결과로 확인한다.
+
+### 2026-09-13 20:48 · B′ 승인 대기 잔존 직접 확인과 PermissionRequest payload 전제 정정
+
+사용자 요청으로 B′ 보고와 /private/tmp/aiox-w7-deny-latch.txt·test.ts, ClaudeObservations 전체·hook 등록/전달·runtime/MCP/HTTP/Web consumer 및 runtime/vendor-bindings owner를 대조했다. 기존 재현 파일은 expect import만 있고 assertion이 없는 출력 probe다. root는 현재 repo source를 직접 import하는 /private/tmp/aiox-w7-deny-root.mjs를 node --experimental-transform-types로 실행해 6개 합성 경로 assertion과 5개 interruptPending 정리를 exit0로 확인했다. 실제 vendor 세션 실측이나 전체 check 재실행은 아니다.
+
+설치된 Claude 2.1.269 바이너리의 제시 offset에서 권한 거부 return, auto-mode 한정 LCn 호출, 뒤쪽 PostToolUse/PostToolUseFailure 및 PreToolUse 권한 결과를 직접 확인했다. 공식 https://code.claude.com/docs/en/hooks#permissiondenied 도 manual deny·PreToolUse deny에서는 PermissionDenied가 없음을 명시한다. 단, 공식 PermissionRequest input은 tool_use_id가 없으며 바이너리 byte 167064786의 payload 생성도 이를 넣지 않는다. AIOX 전달 계층은 event를 그대로 전달한다. 보고서와 기존 테스트의 tool_use_id가 있는 PermissionRequest는 실제 공개 payload 계약을 대표하지 않는다.
+
+보고서 형태의 deny는 후속 두 요청 Stop 뒤에도 awaiting-user, allow는 idle을 재현했다. tool_use_id 없는 PermissionRequest로 바꾸면 deny·allow·StopFailure 모두 후속 두 요청 종료 뒤에도 awaiting-user다. 현재 [session,PermissionRequest,unidentified] 키는 Post*의 tool-key 삭제나 notification 정리, Stop의 prompt별 notification 정리 어디에도 걸리지 않는다. PreToolUse 뒤 Post* 없이 Stop만 오는 별도 경로는 tool이 남았다. 따라서 tool-key 완료 누락과 미식별 PermissionRequest 완료 누락을 함께 다뤄야 한다. tool key에 prompt만 추가하는 안은 후자를 해결하지 못한다.
+
+waiting 우선 투영→runtime activity→MCP working/HTTP activity→Web 렌더를 확인했다. '영원히'는 과장이다. failPending/interruptPending은 waiting/tools를 모두 지우며 root가 interruptPending을 확인했다. 정상 후속 prompt/Stop으로 회복되지 않는다는 범위로 표현한다. 발생 빈도·quota보다 심하다는 순위와 실제 사용자 거부의 hook 도착 순서는 미실측이다. spec의 다른 요청 보호는 끝난 해당 요청을 정리하지 말라는 의미가 아니므로 prompt 귀속 정리에 대한 새 정책 승인을 강제하는 근거가 아니다.
+
+수정 제안은 기존 prompt 식별을 사용해 해당 prompt의 도구·승인 대기를 함께 종료 정리하는 방향이다. PermissionRequest의 tool ID 부재, prompt 누락/모호성, blocking Stop hook 및 다른 prompt 대기 보존 경계를 포함해야 한다. PermissionDenied만 추가하거나 session 전체 정리는 충분/적절하지 않다. 이번은 조사만 승인된 범위이며 production/tests·owner 수정, 구현·커밋·push·W7 마감·Stage3 전이는 하지 않았다. W7의 미해결 후보로 이 결과를 소비한다.
+
+### 2026-09-13 20:51 · Claude B′ 재제안 판정 — prompt 귀속 방향 수용과 누락 전제 유지
+
+사용자가 전달한 재제안을 대조했다. Stop을 받았는데 해당 도구/승인 대기를 정리하지 못한다는 핵심과 prompt별 정리 방향은 타당하다. 다만 '불일치는 도구 키 하나뿐'은 앞 entry에서 확인한 PermissionRequest tool_use_id 부재·미식별 키 잔존을 빠뜨린다. 제안의 PermissionRequest(t1) 도식과 허용 대조군은 실제 payload 계약을 반영하지 않으므로 그대로 구현안으로 수용하지 않는다.
+
+mcp.ts의 고정 도구 등록과 호출 시 networks.reachable(source), networks.ts의 outboundTargets 사용 및 domain RuntimeActivity의 관측 기반 주석을 직접 확인했다. route 변경에 따른 tool 재등록은 필요하지 않다. self-report로 교체할 필요가 있다는 근거는 이번 결함에 없으며 관측 기반 정리 보완을 권고한다.
+
+실측한다면 Pre/Post prompt_id 일치만이 아니라 PermissionRequest/Stop의 prompt_id, 허용·거부 분기와 실제 도착 순서를 함께 보는 범위가 적절하다. Pre/Post의 prompt_id가 다르다고 prompt별 귀속 자체가 불가능하다고 단정하지 않는다. 기존 session/tool ID로 생성 당시 prompt 귀속을 기억하는 구현 가능성도 있으나 아직 채택·구현하지 않았다. 도구 거부 후 turn이 이어질 수 있다는 것과 모든 거부에 Stop이 반드시 전달된다는 보장은 구분한다. 이번은 제안 검토와 로그 기록이며 실세션 실측·production 수정·단계 마감·커밋·push는 하지 않았다.
+
+### 2026-09-13 20:59 · PermissionRequest prompt 귀속 근거와 Post 단독 해제 제안의 한계
+
+사용자가 전달한 Claude 수정 구체안을 대조했다. root가 설치본 2.1.269의 Na 공통 생성부 byte 170756676에서 일반 경로의 prompt_id:Hre()??void 0을 직접 확인했다. PermissionRequest는 이 공통 필드를 사용하므로 prompt 귀속 구현 근거가 있다. 다만 값이 undefined일 수 있으며 remoteCall 별도 반환은 prompt_id를 넣지 않는다. 모든 payload에서 항상 존재한다거나 실측으로 확인했다는 표현은 하지 않는다.
+
+Map<toolKey,promptKey>와 해당 prompt 종료 시 잔존 정리 방향은 타당하다. 그러나 PostToolUse*에서 prompt 단위 permission 대기를 무조건 지우는 부분은 아직 수용하지 않는다. 같은 prompt에서 도구 A의 승인 대기와 도구 B의 완료가 겹친다면 B의 Post가 A 대기를 지우는 반례가 가능하다. 이는 제안된 키/삭제 연산의 논리적 반례이며 실제 vendor에서 해당 중첩이 발생한다는 실측은 아니다. PermissionRequest에 tool ID가 없으므로 Post 단독으로 해당 승인의 해소를 증명하려면 추가 연결 근거 또는 실행 직렬성 보장이 필요하다. 기존 clearNotification은 session의 미식별 힌트도 지우므로 이를 식별되지 않은 승인 요청에 그대로 재사용하는 것도 별도 근거 없이 안전하다고 보지 않는다.
+
+turn 종료 시 귀속된 잔존 상태 정리와 turn 도중 승인 해제의 정확성을 분리한다. ID 누락·모호성·blocking Stop hook 보호를 단순히 우회하지 않는다. AskUserQuestion은 현재 tools가 아니라 waiting에만 저장되므로 tools Map만으로 해당 대기의 귀속 정리가 해결된다고 확대하지 않는다. 이번은 조사/제안 판정과 로그 보완이며 구현·실세션 실험·커밋·push는 하지 않았다.
+
+### 2026-09-13 21:09 · Claude 실제 승인·거부·동일 turn 중첩 검증 — Stop 단독 수정의 한계 확정
+
+사용자가 검증 실행을 승인했다. root가 /private/tmp/aiox-w7-permission-live에서 Claude Code 2.1.269 실제 TUI·모델·hook subprocess를 실행했다. 사용자 기존 세션/daemon에는 입력하지 않았고 새 PTY 세션 2개(4fb6605c-c3fb-462b-8ca0-90540ac81e11, c1ded084-a3a0-41cf-a0b5-8431cc21a368)를 사용했다. 별도 cwd·명시 settings와 setting-sources 빈값·strict-mcp-config를 사용했으나 HOME/인증은 기존 환경을 사용했다. Bash ask 규칙과 무해한 printf, 임시 sample.txt Read만 수행했다. UI에 Remote Control 자동 연결과 첫 세션의 update installed가 표시됐으므로 완전 격리 HOME/설정 환경으로 표현하지 않는다. 두 번째 실행은 버전 경로를 고정하고 DISABLE_AUTOUPDATER=1을 사용했다. 임시 settings의 remoteControlAtStartup=false는 실행 중 추가했으며 기존 bridge 해제를 확인한 것으로 표현하지 않는다.
+
+수용 근거 1: prompt e03d17f1-8eec-4ad1-b58b-6b7a4cdb29ad에서 UserPromptSubmit→PreToolUse(Bash)→PermissionRequest→PostToolUse(Bash)→Stop을 관측했다. 모두 같은 prompt_id, Pre/Post tool_use_id 일치, PermissionRequest tool_use_id 부재다. UI Yes 뒤 printf AIOX_ALLOW_FINAL 실행과 DONE 응답을 확인했다. 실측 payload를 현재 repo ClaudeObservations에 독립 재생해 최종 awaiting-user 잔존을 assertion으로 확인했다. 초기 허용 시행은 이후 입력에 의한 interrupt 기록이 있어 Stop 검증 근거에서 제외한다.
+
+수용 근거 2: prompt 3d05b93a-c7e8-44b2-85b1-3508a1ace1ff에서 Read·Bash를 같은 응답의 독립 도구로 요청했다. Read Pre hook에 10초 지연을 주어 중첩을 재현했다. Pre(Read)→Pre(Bash)→PermissionRequest(Bash)→Post(Read)가 같은 prompt_id로 수집됐고, root가 Bash 승인 창이 열린 화면·Read 결과 존재·Bash 결과 부재를 함께 확인하고 overlap-proof.json에 해당 시점 snapshot을 보존했다. 이후 root가 Yes를 선택해 Post(Bash)→Stop을 확인했다. 따라서 같은 prompt의 임의 Post가 승인 대기를 지우는 제안은 실제 가능한 순서에서 잘못 해제한다. 이 삭제 연산을 실측 trace에 적용한 작은 assertion도 통과했다. 인위적 Read 지연을 사용한 재현이며 운영 빈도 주장이 아니다. 초기 중첩 시행은 Read 완료 직전 Bash 거부가 기록돼 열린 승인 중첩의 근거에서 제외했다.
+
+수용 근거 3: prompt 902066a8-9488-4559-8392-2ae91f0ce316에서 Pre(Bash)와 PermissionRequest 후 UI의 2. No를 숫자 2 키로 직접 선택했다. 즉시 Interrupted · What should Claude do instead?로 복귀했고 transcript에 해당 tool의 거부 error result가 남았다. 관측 종료 및 세션 종료까지 해당 prompt의 PostToolUse/PostToolUseFailure/PermissionDenied/Stop/StopFailure는 수집되지 않았다. deny-ui.txt와 deny-proof.json으로 보존했다. 앞선 화살표 No 시험도 같은 결과였지만 숫자 선택 시험을 주 근거로 삼는다. 별도 무도구 응답과 허용 경로에서는 Stop 수집에 성공했으므로 collector가 Stop 전반을 못 받는 상태와 구분한다. 실제 수동 거부가 항상 Stop으로 이어진다는 주장과 Stop 정리만으로 이 경로까지 해결된다는 주장은 기각한다. 모든 거부 UI/모드에 같은 동작이 있다는 일반화는 하지 않는다.
+
+검증 파일은 /private/tmp/aiox-w7-permission-live/{capture.py,settings.json,events.jsonl,overlap-proof.json,deny-proof.json,deny-ui.txt,replay.mjs,replay.json}이다. node --experimental-transform-types replay.mjs는 exit0이며 실제 허용 payload의 ID 관계·독립 observer latch와 any-Post 해제 반례를 assert한다. 두 PTY는 Ctrl-C 종료 후 exec exit0를 각각 확인했다. 전체 pnpm check·production/test 변경·owner 계약 변경·커밋·push는 수행하지 않았다.
+
+현재 판정: prompt 귀속과 종료 관측이 있는 turn의 정리는 구현 근거가 확인됐다. 그러나 수동 No 중단의 종료 미관측과 turn 도중 승인 해제 연결은 남아 있다. 추측으로 다른 도구 완료나 다음 사용자 입력에서 대기를 지우는 정책을 추가하지 않는다. 앞선 '검증 후 즉시 완결 수정 가능'으로 해석될 설명은 이 한계에 맞춰 정정한다. W7의 B′ 검증 요청은 수행 완료, B′ 결함의 수정·해결은 미완료다. Stage4는 이미 연결한 원본 로그의 이 실측 결과와 vendor별 관측 한계를 소비한다.
+
+### 2026-09-13 21:16 · 공식 공개 저장소의 승인 결과·중단 hook 요청 대조
+
+사용자 요청으로 anthropics/claude-code 공개 이슈의 본문·댓글·종료 사유와 공식 Python SDK types.py를 확인했다. #77996(https://github.com/anthropics/claude-code/issues/77996)은 manual denial 결과 hook 부재와 PermissionResponse 등을 요청한다. 작성자가 AI agent 작성임을 명시했으므로 vendor 확정 답변으로 승격하지 않는다. #64170(https://github.com/anthropics/claude-code/issues/64170)은 승인 직후 hook 부재로 실행 중에도 승인 대기 표시가 남는 실측 보고와 PermissionResolved 요청이다. 둘 다 github-actions bot이 장기 비활동으로 닫았으며 수정 완료·제품팀 거절 확정 근거가 아니다. #71652는 사용자 interrupt 뒤 상태 표시가 남는 보고이고 bot이 #70370 중복으로 닫았다.
+
+공식 SDK src/claude_agent_sdk/types.py의 PermissionRequestHookInput에도 tool_use_id가 없고 Pre/Post에는 있다. ToolPermissionContext.tool_use_id와 PermissionResultDeny.interrupt는 SDK permission callback의 입력/결정 표면이지 기존 TUI에서 No 선택 후 보내는 hook이라는 증거가 아니다. 공개 repo 루트는 plugin/example/script/changelog 등이며 설치본 TUI 권한 실행 경로를 공개 core source에서 확인한 것으로 표현하지 않는다. 공식 문서·설치본 분석·실측을 주 근거로 유지하고 공개 이슈는 유사 보고로 구분한다. production 수정·추가 실행 실험·커밋·push는 하지 않았다.
+
+### 2026-09-13 21:18 · SessionEnd 역할과 관측 보완 후보 — PostToolBatch 우선 확인
+
+사용자가 해결 아이디어와 SessionEnd 활용을 질문했다. 공식 hooks 문서에서 SessionEnd는 세션 종료·clear·resume 전환 등의 정리 경계이며 같은 세션의 도구 승인/거부나 Esc 중단을 직접 나타내는 이벤트가 아님을 확인했다. 공식 PostToolBatch는 병렬 batch 전체 도구가 해소된 뒤 다음 모델 요청 전에 실행되며 tool_calls에 tool_use_id와 tool_response를 제공한다. 앞 실측 collector에는 PostToolBatch·SessionEnd를 등록하지 않았으므로 '아무 hook도 없음'이 아니라 당시 등록한 hook에서 해당 종료 신호 미관측이라고 제한한다.
+
+설치본 byte 169005700 부근에서 batch 결과를 LKt에 넘기는 호출과 이후 abort 반환 분기를 확인했지만 abortController.signal도 전달하므로 수동 No에서 callback 실행이 보장된다고 판정하지 않는다. PostToolBatch 실제 발화·도구 결과 귀속·abort 시 취소를 먼저 검증할 후보로 둔다. batch 해소는 turn 종료가 아니므로 수신만으로 무조건 idle을 만들지 않는다.
+
+추가 후보는 현재 hook의 transcript_path가 가리키는 해당 세션 기록에서 hook이 놓친 tool 결과/interrupt를 제한적으로 보완하는 것이다. 앞 실측에서 거부 tool_result가 남은 사실은 있으나 문구 파싱·쓰기 지연·요청 귀속·버전 변화·누락 경계가 미검증이며 구현 채택하지 않았다. statusline 공식 입력에서도 승인/실행 상태를 직접 제공하는 필드는 이번 확인 범위에서 찾지 못했다. 승인 UI를 SDK callback으로 직접 소유하는 방식은 기존 vendor TUI 유지 요구에 영향이 커 현 단계 권고가 아니다. 코드·정책·owner 변경·추가 실세션 검증 없이 제안만 기록했다.
+
+### 2026-09-13 21:23 · PostToolBatch 단일 허용·No·실행 중 Esc 실측 완료
+
+사용자가 PostToolBatch 실제 확인을 지시했다. root가 /private/tmp/aiox-w7-batch-live에 collector와 명시 settings를 만들고 Claude 2.1.269 고정 경로·DISABLE_AUTOUPDATER=1·remoteControlAtStartup=false로 새 TUI session 515505f8-1e24-4d93-bfd6-5835258b0d3c를 실행했다. PostToolBatch·SessionEnd를 기존 이벤트 목록에 추가하고 Bash ask 규칙으로 printf/sleep만 검사했다. 기존 HOME 인증은 사용했으나 사용자 기존 session/daemon에 입력하지 않았다.
+
+단일 printf를 1. Yes로 허용한 prompt a19ce101-ea54-4a23-b4d9-b337f51a7cf6에서 UserPromptSubmit→PreToolUse→PermissionRequest→PostToolUse→PostToolBatch→Stop을 실측했다. prompt ID가 일치하고 batch.tool_calls 길이는 1이며 tool ID·printf 결과가 일치했다. 따라서 단일 도구도 PostToolBatch 대상이라는 코드 판정을 실측으로 확인했다.
+
+단일 printf의 2. No 선택 prompt a79f74ee-a6d0-409c-9146-4f864296f2e5에서는 Pre/PermissionRequest 뒤 Interrupted로 복귀했고 PostToolBatch·Post*·PermissionDenied·Stop/StopFailure는 관측되지 않았다. 다음 prompt와 session 종료까지 해당 prompt 결과를 대조했다. printf AIOX_BATCH_RUNNING; sleep 30을 Yes로 허용한 뒤 실행 UI에서 Esc를 보낸 prompt 02aa6d57-41e6-4823-bf64-88dbcb5aa788도 Interrupted로 복귀했으며 같은 종료 이벤트들이 관측되지 않았다. 따라서 실행 중 Esc에서 PostToolUseFailure가 반드시 온다는 보장도 하지 않는다. 이전 is_interrupt 합성 경로가 이번 실측을 대신하지 않는다.
+
+마지막 Ctrl-C 종료에서만 SessionEnd(reason=prompt_input_exit)가 수집됐고 PTY exec exit0를 확인했다. /private/tmp/aiox-w7-batch-live/check.py는 실측 3경로의 이벤트 배열·단일 batch 크기·tool ID/결과를 assertion으로 대조해 exit0였다. events.jsonl·summary.json·settings.json·capture.py와 함께 재현 근거를 남겼다. 이 결과는 이번 버전·환경·경로의 실측이며 모든 tool/실패/모드의 전수 보장이 아니다.
+
+현재 결론: PostToolBatch는 정상 batch 완료 보완 후보지만 이번 수동 No/Esc의 관측 공백을 해결하지 않는다. SessionEnd는 해당 턴마다 오지 않고 세션 종료 정리에만 사용 가능하다. 사용자 후속 질문의 'turn마다 끝날 때'는 정상 응답 Stop·API 오류 StopFailure와 사용자 중단을 구분해 답한다. 기존 결함 미해결 상태를 유지하고 production/test·owner 변경, Stage 마감·커밋·push는 수행하지 않았다.
+
+### 2026-09-13 21:30 · 기존 transcript No·Esc 도구와 prompt 귀속 재현 검증
+
+사용자가 기존 수집 transcript에서 No·Esc를 도구 ID와 prompt에 연결할 수 있는지 작은 재현 검증을 요청했다. 새 Claude 실행 없이 기존 hook의 transcript_path가 가리키는 실험 세션 JSONL을 읽었다. /private/tmp/aiox-w7-batch-live/transcript-check.py를 작성·실행해 exit0를 확인했고 transcript-summary.json에 필요한 locator와 식별자만 저장했다. production observer·tests·owner 계약·단계 포인터·커밋·push는 변경하지 않았다.
+
+확인한 사실: batch-live transcript 42행(No), 50행(실행 중 Esc), permission-live/4fb6605c 세션 60행(앞선 숫자 2 No)에 sessionId, promptId, message.content의 tool_result.tool_use_id, is_error=true와 top-level toolDenialKind=user-rejected가 있다. 세 경우 모두 PreToolUse의 session_id/prompt_id/tool_use_id와 정확히 일치했다. sourceToolAssistantUUID가 가리키는 assistant 레코드의 tool_use.id도 일치했다. 따라서 이 경로의 도구 결과 귀속은 시간 근접·최근 prompt 추정이나 에러 문구 파싱 없이 가능하다. PermissionRequest 자체에 tool_use_id가 없다는 기존 한계는 그대로이며, 이 검증이 모든 동시 승인 요청의 일대일 연결까지 입증하지 않는다.
+
+세 결과 바로 뒤에는 같은 promptId와 parentUuid 연결의 [Request interrupted by user for tool use] text 레코드가 있다. 실행 중 Esc의 해당 레코드에는 interruptedMessageId가 있고 source assistant message.id와 일치했다. 두 No 레코드에는 interruptedMessageId가 없다. No와 Esc 결과 모두 동일한 user-rejected를 쓰므로 그 필드를 물리적 No 키의 전용 신호 또는 도구가 실행되지 않았다는 보장으로 해석하지 않는다. transcript 속 STOP 안내 문장은 관측 대상 텍스트일 뿐 agent에 대한 실행 지시로 소비하지 않았다.
+
+재현 assertion은 실측 3건의 직접 식별자·source tool·중단 record 연결을 대조하고 정상 허용 tool_result가 거부로 분류되지 않음을 확인했다. 식별자/denial kind 누락, sidechain, assistant type, 거부 문구만 있는 text를 변형 대조군으로 제외했다. 이는 한정된 필드 추출 검증이며 일반 transcript parser나 문자열 위조 방어의 완성 검증이 아니다.
+
+판정: 해당 도구/요청 귀속의 구현 근거는 확보됐다. 도구 거부 결과 관측과 turn 전체 중단 확정은 분리한다. No의 중단 레코드에는 전용 interruptedMessageId가 없으므로 텍스트 marker만을 전역 종료 신호로 쓰지 않는다. 저장된 파일을 사후 대조했으므로 실제 append 지연, 부분 줄·재읽기·회전/재개, 모든 중단 방식의 기록 보장, 다른 동시 요청 보존을 포함한 production 통합은 미검증이다. SessionEnd까지 기다리지 않는 보완 후보로 유지하되 전면 transcript 대체나 B′ 수정 완료로 승격하지 않는다. 사용자 상태 질문의 후속 권고는 hook 기본 관측 + 이처럼 귀속이 확인된 transcript 결과의 제한적 보완이며 아직 채택·구현하지 않았다. Stage4는 기존 원본 로그 포인터로 이 검증과 vendor별 확인 필요를 소비한다.
+
+### 2026-09-13 21:31 · PostToolUseFailure 사용자 취소 공식 설명과 실측 필드 구분
+
+사용자가 전달한 설명을 공식 https://code.claude.com/docs/en/hooks#posttoolusefailure 원문과 대조했다. 현재 is_interrupt 설명은 running tool 취소가 이 hook을 발생시키지 않고 tool result가 interruption message를 담는다고 명시한다. 앞선 Esc 미발화 실측과 일치하며 is_interrupt=true 스키마 존재를 사용자 Esc 발화 보장으로 해석하지 않는다.
+
+다만 Bash 출력의 interrupted 필드가 모든 취소 transcript에 남는다는 확대는 수용하지 않는다. 공식 PostToolUse 설명에 Bash 출력 schema의 interrupted는 있지만 이번 batch-live Esc 결과 50행은 toolUseResult 문자열 User rejected tool use와 toolDenialKind=user-rejected, tool_result.is_error/tool_use_id, promptId 형태이며 interrupted 필드가 없다. 다음 51행의 interruptedMessageId와도 다른 필드다. 따라서 이번 재현은 실제 필드 기반 귀속 근거이며 interrupted=true 단독 검사를 구현하지 않는다. 추가 실세션이나 production 수정은 하지 않았다.
+
+### 2026-09-13 21:35 · transcript 저장 비활성화 가능 여부와 보완 관측 의존성
+
+사용자가 transcript 파일 생성을 끌 수 있는지 질문했다. 설치본 2.1.269 --help에서 --no-session-persistence는 print 전용이고 재개 불가라고 확인했다. 공식 sessions·cli-usage·claude-directory 문서는 CLAUDE_CODE_SKIP_PROMPT_HISTORY 환경 변수가 대화형을 포함한 모든 모드에서 transcript/prompt history 쓰기를 억제한다고 설명한다(https://code.claude.com/docs/en/sessions, https://code.claude.com/docs/en/cli-usage). 실제 비활성화 실행이나 설정 변경은 하지 않았다. 따라서 transcript 보완 관측은 저장 활성화를 전제로 하며 저장을 끄면 해당 No/Esc 보완 소스도 사라진다. 파일 미생성을 사용자 확정 정책으로 해석하지 않으며 구현 채택은 여전히 미확정이다.
+
+### 2026-09-13 21:55 · 사용자 구현 승인과 Claude transcript 보완 착수
+
+사용자가 Windows/Linux/macOS를 함께 처리하는 범위를 확인한 뒤 작업 실행을 지시했다. 이전 검증 한정 범위를 이번 Claude hook+transcript 구현·회귀·owner 정합화로 확장한다. Stage 마감·커밋·push나 Codex production 변경은 포함하지 않는다. 기본 hook과 transcript_path 기반 읽기를 유지하고 설정/기록 저장을 끄지 않는다.
+
+TDD로 실제 PermissionRequest(tool ID 없음)의 Stop 뒤 잔존과 다른 prompt 보존 회귀를 먼저 실패시킨 뒤 prompt ownership 정리를 추가했다. transcript의 알려진 tool/session/prompt에 속한 user-rejected 결과와 parentUuid로 이어진 중단 레코드를 결합해 해당 prompt만 interrupted로 정리한다. 결과 저장 실패 재시도와 중복/후행 hook 보호를 검사했다. ClaudeTranscript는 vendor 파일을 수정하지 않고 250ms 간격으로 추가된 완전한 줄을 읽는다. 이 간격은 vendor 기록 지연 보장이 아니다. 부분 UTF-8·파일 생성 지연·교체/축소·callback 실패 재시도·cleanup 후 중단을 회귀한다. binding 통합에서 새 파일 기록 후 vendor alive를 유지한 채 idle 전환을 확인했다. 전체 검사·최종 리뷰와 owner 반영은 진행 중이다.
+
+초기 package 테스트 재실행에서 sandbox의 listen EPERM이 발생해 승인된 권한 확장으로 재실행했다. 당시 adapter 69 tests 통과했고 이후 파일 reader/binding 회귀 27 tests도 통과했다. Windows/Linux 실제 OS 실행은 아직 하지 않았으며 공통 Node 파일 API 사용을 세 OS 실측 성공으로 표현하지 않는다.
+
+### 2026-09-13 22:04 · Claude No·Esc transcript 보완 구현과 전체 541 tests 검증 완료
+
+사용자가 승인한 Claude 보완 구현을 완료했다. ClaudeObservations는 도구·승인/질문 대기를 생성 당시 prompt에 귀속하고 Stop/StopFailure에서 해당 prompt만 정리한다. 실제 PermissionRequest에 tool_use_id가 없는 형태로 기존 테스트 5곳을 교정했다. 다른 도구 하나의 Post로 승인 대기를 해제하지 않고, 해당 prompt의 관측된 도구가 모두 해소된 경우 prompt 단위 PermissionRequest를 해제한다. 이미 종료된 prompt의 늦은 hook은 상태를 되살리지 않는다. 이 보호가 session quota 알림을 막는 회귀를 최종 리뷰에서 발견해 red/green으로 교정했으며 quota_auto_resume_* 처리는 유지한다.
+
+ClaudeTranscript를 binding 수명에 연결했다. 인증된 주 세션 hook의 절대 transcript_path를 그대로 읽고 다른 sessionId·subagent/직접 입력 origin·미확인 prompt·tool 귀속은 중단 근거로 쓰지 않는다. user-rejected tool_result와 parentUuid로 연결된 중단 레코드가 같은 알려진 prompt에 속하면 해당 요청을 interrupted로 정리한다. 결과 저장 실패 시 reader offset을 전진하지 않아 다음 읽기에서 재시도하고 원래 결과를 보존한다. 다른 요청의 승인 대기를 보존하며 단순 거부/중단 텍스트만으로 종료하지 않는다. 실제 No와 실행 중 Esc를 물리적 키 종류로 구별하는 기능은 아니다.
+
+파일은 읽기 전용이며 전체 .claude 폴더를 탐색하지 않는다. 세션별 250ms polling을 사용하고 이전 polling이 진행 중이면 다음 tick을 건너뛴다. 64KiB chunk, 완전한 줄까지의 offset, 최대 16MiB 미완성 줄 버퍼로 읽으며 부분 UTF-8·줄, 파일 생성 지연·교체/축소와 close 뒤 미소비를 검사했다. 16MiB는 전체 transcript 크기 제한이 아니다. 읽기/소비 실패는 본문·경로 없는 stderr 진단 후 재시도한다. SessionEnd는 마지막 read 후 세션 reader를 닫고 연결 손실·processExited·cleanup도 감시를 해제한다. SessionEnd 직전에 append된 결과 누락을 red/green 회귀로 교정했다. 세션 기록 저장을 끄거나 경로/식별자가 없거나 지원하지 않는 중단 형식이면 이 보완으로 확정하지 않는다. malformed 완성 줄/초과 미완성 줄은 진단하고 재시도하며 임의로 건너뛰어 종료를 추정하지 않는다.
+
+검증: 최종 pnpm check exit0 — lint·format·build·typecheck와 전체 541 tests(Claude 74, daemon 203 포함)를 통과했다. /private/tmp/aiox-w7-batch-live/check-output.txt에 출력이 있다. 실제 수집한 2.1.269 macOS payload와 원본 JSONL을 수정 코드/reader에 재생한 fixed-replay.mjs도 exit0다. 허용은 hook만으로 idle, No/Esc는 hook 재생 awaiting-user에서 transcript 소비 후 idle, Read 완료 중 Bash 승인 창 유지 trace는 awaiting-user 보존이었다. fixed-replay.json에 요약했다. 이전 latch를 기대하는 과거 probe는 역사적 근거로 유지하고 현재 성공 검사로 재실행하지 않았다.
+
+apps/daemon/src/agent-controller.test.ts의 기존 실제 daemon/MCP/inbox 통합에 취소 요청을 추가했다. 인증 hook→파일 append→delivery interrupted 저장→Web agent API idle·MCP agents_list idle을 확인했고 vendor alive 및 발신자 자동 중단 알림 없음도 확인했다. vendor TUI는 대역인 이 통합 검증과 앞선 실제 Claude 수집 기록 재생을 구분한다. 이번 변경 뒤 새 실제 Claude TUI/브라우저 화면 실험 또는 Windows/Linux 실제 OS 실행은 하지 않았다. 공통 Node 파일 API와 이식 가능한 temp-file 회귀를 세 OS 실측 성공으로 확대하지 않는다.
+
+owner 정합: docs/architecture/aiox-vendor-bindings.md에 관측 책임·수명·보완 한계를, docs/specs/aiox-collaboration.md에 연결된 중단 결과 보완을 반영했다. runtime spec의 다른 요청 보존·activity/delivery 분리와 기존 HTTP/MCP consumer를 유지했고 markdown inline-code 검사 및 git diff --check를 통과했다. Stage4는 별도 인계 entry로 이 결과를 소비하며 Codex production/활성 단계/커밋/push는 변경하지 않는다. B′의 이번 재현 범위 수정과 회귀는 완료했지만 전체 vendor 중단 방식·OS 실측을 완료한 것으로 기록하지 않는다. W7 전체 마감은 별도 유지한다.
+
+사용자가 polling·queue와 SSE/WebSocket 대안 및 /resume을 질문했다. 현재 250ms는 구현 선택이며 최적 성능을 입증한 수치가 아니다. SSE/WebSocket은 Claude 측 producer가 필요한 신호를 송신해야 하므로 AIOX transport만 교체해서 공백을 해결하지 못한다. 파일 변경 알림 fs.watch는 대안이지만 OS별 파일 교체/이벤트 신뢰성 처리와 비교해야 한다. 공식 Node fs caveats와 Claude hooks SessionEnd를 확인했다. 대화형 /resume 전환은 기존 세션의 SessionEnd reason=resume, 재개 시작은 SessionStart이며 CLI --resume 시작과 구분한다. 질문을 fs.watch 변경 승인으로 해석하지 않고 현재 구현은 polling을 유지했다.
+
+### 2026-09-13 22:08 · FileChanged·SessionStart watchPaths 공식 구독 후보 발견과 앞선 대안 설명 정정
+
+사용자가 AIOX polling/fs.watch 대신 Claude가 transcript를 기록할 때 hook으로 구독할 수 없는지 질문했다. 공식 hooks의 FileChanged와 SessionStart decision control을 확인했다. SessionStart hookSpecificOutput.watchPaths에 절대 경로 배열을 반환해 동적 감시를 시작하고 matcher 없는 FileChanged hook으로 변경 파일의 file_path/event(add/change/unlink)를 받을 수 있다. FileChanged는 내부 쓰기 함수의 callback이 아니라 Claude가 소유하는 filesystem watcher다. 따라서 앞서 AIOX polling/fs.watch만 대안으로 제시한 설명은 불완전했고, 이 native 후보 검토 없이 fs.watch 전환을 권한 것은 성급했다고 정정한다.
+
+설치본 2.1.269의 SessionStart watchPaths schema(byte 162696734), hook 결과 watchPaths 합치기(byte 166111390 부근), watcher(byte 167789978 부근)를 직접 확인했다. 해당 watcher 생성부는 ignoreInitial=true, awaitWriteFinish stabilityThreshold=500/pollInterval=200, ignorePermissionErrors=true를 쓰고 change/add/unlink에서 FileChanged hook을 호출한다. 경로 목록에서 remote UNC를 제거한다. 이 코드 확인 범위에서 transcript 전용 제외 조건은 보이지 않았으나 실제 자체 transcript 구독 성공/No·Esc 때 발화/자기 hook 기록에 의한 반복 호출/세션 전환·기존 watchPaths 공존은 실측하지 않았다. native 기능으로 옮겨도 내부 감시와 쓰기 안정화 polling 자체가 없어지는 것은 아니다.
+
+현재 구현은 여전히 250ms AIOX polling이며 production 변경이나 새 Claude 실행은 하지 않았다. 후보 흐름은 SessionStart에서 transcript_path를 watchPaths에 등록 → Claude FileChanged → 기존 인증 hook 중계 → 해당 transcript 추가 줄 소비다. 직접 writer callback이라고 부르거나 이 후보로 모든 hook 공백 해결을 확정하지 않는다. 실제 검증이 선행돼야 하며 fs.watch 전환도 아직 수행하지 않는다. 공식 근거: https://code.claude.com/docs/en/hooks#filechanged 및 #sessionstart-decision-control.
+
+### 2026-09-13 22:21 · FileChanged 실측: 수신 가능 경로·최초 세션 미발화와 No 첨부 중간 연결 결함
+
+사용자가 현재 흐름 표시 후 FileChanged 후보 실측을 지시했다. 현재 production은 일반 hook HTTP 중계와 session별 250ms transcript polling을 동일 관측기에 합치는 구조이며 FileChanged 미등록임을 source로 확인해 ASCII 흐름으로 설명했다. 이번 작업은 검증이며 production 수정·커밋·push·Stage 전환은 하지 않았다.
+
+/private/tmp/aiox-w7-filechanged-live에 별도 collector/settings와 check.mjs, summary.json, idle-result.json을 남겼다. Claude 2.1.269, macOS, 기존 HOME 인증, DISABLE_AUTOUPDATER=1, remoteControlAtStartup=false, Bash ask로 printf/sleep만 실행했다. SessionStart가 stdin의 실제 transcript_path를 hookSpecificOutput.watchPaths에 반환하고 FileChanged는 matcher 없이 등록했다. collector는 transcript를 수정하지 않고 FileChanged 시점의 크기와 중단 레코드 식별자만 별도 events.jsonl에 기록한다.
+
+첫 session e5acc957-71a0-464a-a982-d783166504a0은 실행 argv에 첫 printf 요청을 포함했다. SessionStart·첫 Yes의 Pre/Permission/Post/Batch/Stop은 수집됐지만 FileChanged는 세션 전체 0회였다. 이후 같은 TUI에서 두 번째 printf를 숫자 2 No로 거부하고 세 번째 sleep30을 허용 후 실행 중 Esc로 취소했다. 두 요청 모두 transcript에 거부·중단 기록이 존재하지만 FileChanged는 없었고 마지막 SessionEnd와 프로세스 exit0를 확인했다. 이 세션은 debug 미설정이므로 내부 watchPaths 적용 성공/실패는 미확인이다. 첫 프롬프트 인자 전달을 원인으로 확정하지 않는다.
+
+진단 session 9ef40015-095f-40c1-bd10-57df4a15db33은 초기 프롬프트 없이 실행하고 debug-file 및 정적 control.txt matcher 대조군을 추가했다. debug.txt에 SessionStart provided 1 watchPaths 및 watching 2 paths가 기록됐다. 외부에서 수정한 control.txt의 FileChanged와 transcript add/change가 실제 발화했다. No와 실행 중 Esc 뒤 FileChanged에서 두 중단 기록을 읽었다. Esc 후 안정된 시점부터 34.79초 동안 추가 FileChanged 0회로 이번 무출력 collector의 유휴 자기 반복은 관측되지 않았다. 세 번째 session 15aac5e4-93f5-4f28-9616-558f049f810e은 초기 프롬프트 없이 원래 matcher 없는 settings와 debug-file만 사용했으며 watching 1 paths와 No 뒤 transcript FileChanged를 확인했다. 따라서 정적 matcher가 필수라고 결론내리지 않는다. 모든 실험 TUI를 종료하고 exit0 및 SessionEnd를 확인했다. debug와 초기 프롬프트 조건이 함께 달라 최초 미발화 원인은 아직 분리하지 못했다.
+
+중요 추가 결함: 두 성공 수신 session의 No는 거부 user 결과 → attachment(type=prompt_snapshot) → 중단 user marker로 parentUuid가 연결된다. 현재 observeTranscript는 marker의 직접 부모가 거부 결과인 경우만 처리하므로 이 두 No는 FileChanged가 와도 awaiting-user가 남는다. Esc는 직접 부모 연결이라 idle이 됐다. 앞선 commentary의 '연결된 기록을 읽음'을 직접 연결·상태 해제까지 성공한 의미로 확대하지 않고 즉시 정정했다. 기존 polling에서도 같은 parser 제한이 적용된다. 최종 파일의 FileChanged 당시 snapshot_size 범위만 현재 observer에 재생한 check.mjs는 5개 거부/취소에서 hook-only awaiting-user, 첫 session 2개 수신 없음, 후속 3개 수신 있음 중 Esc만 idle·No 2개 잔존을 assertion으로 특성화한다. 이는 결함 재현 성공이며 수정 테스트 통과가 아니다. npx tsx는 설치된 도구가 아니어서 실행 경로에서 제외하고 Node 24 --experimental-transform-types로 검증했다.
+
+판정: FileChanged가 자체 transcript No/Esc 기록을 전달하는 경로는 실측했지만 polling 제거 채택 근거는 아직 불충분하다. 최초 시작 경로 미발화 원인 분리와 첨부를 경유하는 parent chain의 정확한 prompt/tool 귀속 처리가 남는다. /resume·/clear·Windows/Linux 실제 검증은 하지 않았다. W7 수정 완료 범위는 이 새 No 반례로 제한되며 현 구현의 모든 No 해결을 주장하지 않는다.
+
+### 2026-09-13 22:27 · argv prompt 재검증 성공으로 고정 원인 가설 배제·snapshot parent 연결 확인
+
+사용자가 최초 argv prompt FileChanged 미발화 원인과 거부 결과 하위 중단 탐색을 질문했다. 같은 최초 명령에 --debug-file만 추가한 session 1d6d7f99-bcf6-458b-b98a-a0d42e8504dd에서 SessionStart provided 1 watchPaths → watching 1 paths → transcript add/change → collector status0를 argv-debug.txt와 events.jsonl로 확인했다. debug 없는 원래 명령도 session d1411ec9-70eb-475c-b3d3-a2d776485097에서 FileChanged add를 수집했다. 두 요청은 사용 한도에 걸려 StopFailure로 끝났고 도구 승인/No까지 재측정하지 못했다. Esc로 자동 재개 대기를 취소하고 두 프로세스 exit0·SessionEnd를 확인했다. 따라서 argv prompt 자체 또는 debug 유무가 감시를 고정적으로 차단한다는 가설은 배제한다. 최초 미발화의 내부 원인은 미확정이며 초기화 경합 등을 사실로 단정하지 않는다. 기존 'argv 실패·TUI 입력 성공'은 최초 샘플 설명이지 일반 동작 계약이 아니라고 정정했다.
+
+chain-check.py/chain-proof.json은 기존 진단 두 session의 No 두 건과 Esc 한 건에서 parentUuid를 직접 추적했다. No 두 건은 marker → attachment(prompt_snapshot) → user-rejected tool_result로 이어지고 session 일치·비sidechain·양끝 prompt 일치·PreToolUse tool ID 일치를 assertion으로 확인했다. Esc는 첨부 없이 직접 연결됐다. 사용자의 하위 중단 탐색 방향은 유효하나 모든 후손 또는 시간상 뒤의 marker를 찾기보다는 검증된 snapshot 부모 연결에 기존 거부의 prompt 귀속을 이어 전달하는 최소 처리를 제안한다. 실제 production 구현·tests 수정·polling 제거는 이번 턴에 하지 않았다. 최초 감시 미발화 원인과 기존 parser 반례는 미해결로 유지한다.
+
+### 2026-09-13 22:28 · 논의·설계만 진행: 수동 거부와 Esc의 hook 보장 재정리
+
+사용자가 Claude 세션 만료로 이후 논의·설계만 진행하도록 지시했다. 새 Claude 실행·production 변경 없이 공식 hooks와 기존 batch-live summary.json을 대조했다. PermissionDenied는 auto mode 전용이며 수동 dialog 거부에서는 미발화한다. PreToolUse permissionDecision은 hook 자신의 사전 허용/거부 결정이지 이후 사용자의 No 관측 수단이 아니다. Bash output schema에 interrupted가 존재하는 사실을 실행 중 Esc의 PostToolUse 발화 보장으로 확대하지 않는다. 기존 실제 실행 중 Esc는 Pre/PermissionRequest까지만 수집됐고 Post*·Stop은 없었다. 문서 PostToolUseFailure의 사용자 실행 취소 미발화 설명과도 구분해 설명한다.
+
+현재 문제는 (1) 정상 hook만으로 No/Esc 종료를 보장할 수 없는 vendor 관측 공백, (2) transcript 중단 귀속을 직접 parent만으로 제한해 snapshot 첨부 경유 No를 놓치는 AIOX 해석 결함, (3) transcript 읽기 트리거로 FileChanged 채택 시 최초 미발화 원인이 남는 별도 전달 문제다. 현재 polling은 (3)의 교체 후보이며 (2)를 해결하지 않는다. 설계는 hook 기본 관측 + 식별자가 연결된 transcript 보완, snapshot을 경유하는 검증된 parent 귀속 전달, 해당 prompt만 정리하고 다른 요청의 활동은 보존하는 방향이다. 도구 거부 결과 하나를 즉시 전체 idle로 해석하지 않는다. Stage 전환·커밋·push는 하지 않는다.
+
+### 2026-09-13 22:55 · FileChanged 설계 방향 정정·현재 reader와 소비 schema 설명
+
+사용자는 기존 방식이라는 발언이 polling 유지가 아니라 FileChanged 전환 방향을 뜻한다고 정정했다. 설계 방향은 FileChanged이며 현재 production은 여전히 polling이다. 논의·설계만 허용한다는 제한을 유지한다. 현재 추가 기록 읽기와 schema 질문에 claude-transcript.ts·claude.ts·claude-observations.ts 및 기존 실측 JSONL의 필요한 필드만 대조했다.
+
+reader는 처음 offset0부터, 이후 성공 처리 위치부터 모든 완성된 JSON 줄을 파싱한다. 같은 세션을 확인한 뒤 관측기는 type=user, role=user, isSidechain=false, sessionId/promptId/uuid 필수 및 origin/promptSource 없는 행만 수용한다. 알려진 미완료·비모호 prompt에 대해 user-rejected+is_error tool_result와 PreToolUse 소유 tool ID를 대조해 거부 UUID를 보관하고, 직접 parentUuid로 이어지는 단일 중단 text marker만 해당 요청 종료로 처리한다. 정상 결과·assistant·attachment는 상태 보완에 쓰지 않는다. 이는 vendor 전체 schema가 아니라 AIOX의 제한적 소비 schema다.
+
+실측 snapshot attachment는 uuid/parentUuid/sessionId/isSidechain 및 attachment.type=prompt_snapshot, systemPrompt/tools/cliPrefix를 가지며 promptId는 키 자체가 없다. 본문과 도구 schema 전체를 출력하지 않고 연결 필드 위주 축약 예시로 설명한다. snapshot은 현재 필터에서 제외돼 연결을 놓친다. 제안 설계는 본문 분석 없이 parent 연결로 소속을 이어받는 것이며 아직 구현하지 않았다.
+
+### 2026-09-13 23:14 · OTel tool_decision 구조화 거부 신호 후보·statusLine 범위 확인
+
+사용자가 transcript의 중단 text exact-match 취약성을 지적하고 OpenTelemetry/statusLine 대안을 제시했다. 공식 https://code.claude.com/docs/en/monitoring-usage 를 확인했다. tool_decision은 decision accept/reject, source user_reject(No)/user_abort(승인 프롬프트 무응답 dismiss), tool_use_id 및 공통 session.id/prompt.id를 문서화한다. hook 전용 수동 거부 이벤트 부재를 구조화된 외부 신호 전체 부재로 확대하면 안 된다. 이 이벤트를 hook의 도구/승인 대기 정리에 결합하는 후보가 문자열 기반 transcript 파싱 확장보다 우선 검증할 가치가 있다. 단 user_abort는 실행 중 도구 취소 전체가 아니며 reject 자체로 prompt 종료/idle을 보장하지 않는다.
+Traces beta에는 interaction/tool/blocked_on_user/execution span이 있고 blocked_on_user decision/source를 제공한다. interaction status는 UNSET이며 취소 이유 전용 필드나 모든 Esc에서 종료/export 보장은 이번 문서 확인으로 확보하지 못했다. logs/traces 기본 export 간격은 5000ms이므로 상태 즉시 전달 계약으로 간주하지 않는다. statusLine 문서 https://code.claude.com/docs/en/statusline 의 공개 필드는 모델/비용/컨텍스트/session/prompt 등이며 AIOX activity나 사용자 중단 전용 상태가 없다. thinking.enabled는 설정값이다.
+설계 후보는 hooks 기본 관측 + 필요한 OTel logs, 부족한 prompt 종료 신호만 traces 검증이다. 모든 수집 방식을 누적 도입하거나 기존 polling/FileChanged 교체를 완료했다고 주장하지 않는다. 실제 No/승인창 Esc/실행중 Esc/답변중 Esc의 emission·귀속·지연 검증은 미실시다. 사용자 제한대로 Claude 실행·production 변경은 하지 않았다. 이전 논의에서 reasoning은 거부만 정리했을 때의 가상 결과이며 실측 No는 awaiting-user였음을 재확인한다. W7 미해결이며 단계/commit/push 변화 없음.
+
+### 2026-09-13 23:22 · OTel 한계 분류 재검토·실행 중 Esc hook 전달 보장 구분
+
+사용자가 ID 귀속은 해결 가능, 실행 중 Esc는 OTel+hook 병행 가능, 요청 지속/추론 Esc/크래시는 미확정으로 분류했다. ID 기반 지연 이벤트 귀속은 설계상 해결 가능한 것으로 수용하되 실제 payload 귀속·종료된 요청 재활성화 방지는 검증 대상으로 유지한다. https://code.claude.com/docs/en/hooks 의 PostToolUseFailure/is_interrupt와 Bash output schema를 재확인했다. 취소는 failure hook을 발생시키지 않는다는 설명의 tool result는 OTel tool_result 또는 PostToolUse 전달 보장을 뜻하지 않는다. 기존 batch-live 승인 후 실행 중 Bash Esc에서도 Post* 미수신이 관측됐으므로 OTel+hook만으로 해결 확정은 반대한다. interrupted 필드 존재와 외부 전달 여부를 분리한다.
+Stop 수신은 정상 완료 근거이나 이후 api_request 부재는 종료 근거가 아니며 last_assistant_message/stop_hook_active는 취소 전용 신호가 아니다. 프로세스 종료는 OS/부모 프로세스 lifecycle로 별도 관측하되 daemon 연결 유실과 프로세스 종료를 동일시하지 않는다. beta interaction 종료 후보도 미검증 상태로 유지한다. 논의/문서 확인만 수행하고 Claude 실행·production 변경은 하지 않았다.
+
+### 2026-09-13 23:27 · 외부 조사 stdout lifecycle 예시 검증·TUI와 print mode 구분
+
+사용자가 claude --json stdout session_start/status_change/session_end, onSessionStart/onSessionEnd 문자열 hook, CLAUDE_SESSION_ID/CLAUDE_SESSION_COST 자동 환경변수, exit0/130 분기 조사를 제시했다. 공식 cli-reference/hooks/agent-sdk/streaming-output을 대조했다. 문서의 출력 스트림은 print mode의 --output-format stream-json이며 --include-partial-messages/--verbose 조합을 사용한다. 제시된 top-level --json과 lifecycle JSON 예시를 공식 계약으로 확인하지 못했고 기존 interactive TUI를 유지하는 관측 채널로 볼 근거가 없다. hooks는 SessionStart/SessionEnd 및 matcher/hooks/type/command 배열 객체이며 session_id 등은 stdin JSON으로 받는다. 제시된 두 환경변수의 자동 주입 보장도 확인되지 않았다.
+프로세스 exit는 프로세스 종료를 관측할 뿐 TUI가 살아 있는 No/Esc의 turn 상태를 말하지 않는다. exit0은 모든 요청 성공을 뜻하지 않으며 130을 모든 취소의 계약으로 사용하지 않는다. SDK/print mode 전환은 입력/승인/화면 책임이 달라지는 별도 설계이므로 현 native TUI 관측 결함의 단순 대체로 채택하지 않는다. 문서 확인/로그만 수행했고 Claude 실행/production 수정은 없다.
+
+### 2026-09-13 23:31 · 공개 레포·블로그의 Claude TUI 중단 관측 보완 조사
+
+사용자 요청으로 공개 저장소와 작성자 블로그를 검색하고 실제 구현/설계 문서를 대조했다. 설치/실행 없이 read-only 조사했으며 Claude quota 제한을 유지했다.
+1. hoangsonww/Claude-Code-Agent-Monitor docs/HOOKS.md User interrupts: 15초 watchdog으로 transcript marker 또는 interruptedMessageId를 소비하고, 출력 전 Esc의 marker 부재는 current_tool null + hook/transcript 무활동 120초로 추정한다고 명시한다. GitHub API로 server/lib/transcript-cache.js를 /private/tmp/aiox-research-transcript-cache.js에 받아 entry.type user && (interruptedMessageId != null || hasInterruptText(message)), INTERRUPT_RE=/\[Request interrupted by user/i, lastInterruptTs/lastTurnTs 비교를 실제 확인했다. 공식 안정 계약을 발견한 것이 아니라 문자열/필드 기반 보완 및 timeout 추정 구현이다. URL: https://github.com/hoangsonww/Claude-Code-Agent-Monitor/blob/master/server/lib/transcript-cache.js ; https://github.com/hoangsonww/Claude-Code-Agent-Monitor/blob/master/docs/HOOKS.md
+2. agent-of-empires/agent-of-empires src/tmux/status_detection.rs 실제 소스와 회귀 테스트 확인: reconcile_claude_hook_status가 화면 승인 prompt→Waiting, interrupt banner+활성 신호 없음→Idle, 오래된 Running+ready prompt→Idle로 보완한다. reconcile_waiting_hook는 빈 화면 보존, 승인 창 사라지면 pane detector 판정으로 해제한다. 출력에 검사 문구가 인용되거나 미리 다음 prompt를 입력한 상황의 오판 방지 테스트도 있다. https://github.com/agent-of-empires/agent-of-empires/blob/main/src/tmux/status_detection.rs
+3. yohasebe/tmux-ccm docs/state-machine.md를 GitHub API로 읽었다. 자체 hooks event journal + transcript stop_reason/mtime + pane/process 판단 및 시간 임계치 결합이다. Esc의 stop_sequence 예시는 해당 프로젝트 설계 설명이며 모든 Esc의 Claude 공식 계약으로 승격하지 않는다. https://github.com/yohasebe/tmux-ccm/blob/main/docs/state-machine.md
+4. Telemtra 작성자 OTel blog는 collector 연결/비용/토큰/API error/tool_decision 수집 예시를 확인했지만 No/실행중 Esc/답변중 Esc 후 정확한 idle 전환을 증명한 자료는 찾지 못했다. https://telemtra.io/blog/claude-code-opentelemetry/ . Softween/claude-session-monitor README의 hooks/transcript/process 결합도 확인했으나 src/core.ts는 web fetch 실패로 상세 판정 근거로 사용하지 않는다. AgentManager guide는 검색 excerpt만 확인되고 본문 fetch 실패로 확정 해결 사례에서 제외한다.
+판정: 유사 공백을 보완한 프로젝트는 존재하지만 이번 조사 범위에서 native TUI 모든 No/Esc를 안정된 구조화 이벤트만으로 정확히 해결한 구현은 확인하지 못했다. 우리 요구에 timeout을 확정 idle로 사용하는 정책은 그대로 수용하지 않는다. interruptedMessageId는 추가 연구 후보지만 기존 No sample에 없었으므로 만능 대체가 아니다. TUI 화면 파싱은 문자열 의존을 옮기며 tmux/플랫폼·렌더링 결합도 추가한다. 추천은 hook+OTel 승인결과 검증을 우선하고 요청 종료 신호는 별도 검증하는 기존 방향이다. production 변경·실측·stage/commit/push 없음.
+
+### 2026-09-13 23:36 · A 요청 중 B 사용자 직접 입력의 runtime 상태와 요청 귀속 구분
+
+사용자가 관측 목적이 A→B 요청 후 Web/agents_list 상태이며 B 작업 중 사용자 prompt 입력 시 현 동작을 질문했다. claude-observations.ts UserPromptSubmit/Stop/#project, 직접 입력 분리 및 다른 작업 보존 tests, http.ts agentView, mcp.ts agents_list, domain runtime.ts를 확인했다. 단순 작성중 keystroke는 해당 관측기를 갱신하지 않는다. 새 ID UserPromptSubmit이 관측되면 active에 추가하고 AIOX pending frame과 전체 문자열이 일치하지 않는 직접 입력은 prompts에 null로 등록한다. 기존 요청/도구/대기를 새 입력만으로 정리하지 않는다. activity는 runtime 전체 waiting>tool>active reasoning 순으로 합성하고 MCP는 이 셋을 working으로 축약한다. 사용자 prompt의 Stop은 그 prompt만 정리하고 원래 A delivery를 완료시키지 않는다. 원래 A 요청이 끝나도 사용자 요청이 활동중이면 B는 working이다. status는 A의 특정 요청 진행률이 아니며 전달 outcome도 의미상 작업 성취/답장 보장과 다르다. TUI가 입력을 실제로 큐잉/중간 반영/중단하는 세부 순서는 이번에 실행 검증하지 않았다. 기존 요청이 중단됐으나 신호가 누락되면 잔존할 수 있다는 현 한계를 유지한다. production 변경/Claude 실행 없음.
+
+### 2026-09-13 23:42 · send 답장 연결 가능성 점검·기존 delivery 분리와 단방향 정책 정정
+
+사용자가 기존 send/답장 경로로 원 요청 결과를 연결할 수 있는지 확인 요청했다. mcp.ts send schema(targets/content만), messaging.ts #send/settle/#settle, domain delivery, persistence schema, Claude track/UserPromptSubmit/Stop, collaboration spec 및 messaging/observer tests를 읽었다. 현 send는 매번 독립 messageId를 만들며 replyTo/원본 ID/결과 종류 입력이 없다. B→A send는 대화상 답장일 뿐 A→B delivery를 settle하지 않는다. 현재 내부 연결은 messageId→대상별 deliveryId→vendor prompt/turn→controls.settle→DB outcome/자동 알림이며, runtime 전체 activity와 이미 분리돼 있다. 앞선 '관점을 나누자' 제안은 기존 설계를 새 기능처럼 설명한 것으로 정정한다.
+중요 충돌: A→B 단방향에서는 B→A send가 no_route로 거절되고 spec도 답장 시도를 금지한다. 완료 보고를 일반 send 답장에 의존하면 현재 단방향 자동 알림 요구를 충족하지 못한다. spec은 completed=응답 처리 종료(업무 성공 아님), send reply=원 요청 완료 아님을 명시한다. 전송시점 역방향 route 없음+completed 또는 failed일 때 정책에 따라 daemon 알림, interrupted는 자동 알림 없음이며 원 발신 runtime에만 전달한다. 답장 상관관계 자체는 확장 가능하지만 MCP/schema/수신 표시/검증/저장/명세 변경이 필요한 별도 기능이고 현재 관측 누락의 직접 대체가 아니다. 별도 결과 보고를 도입한다면 daemon에 대한 보고 권한과 peer route를 분리하는 새로운 계약이 필요하며 이번 작업에서 선택/구현하지 않는다. 핵심 미해결은 연결된 Claude prompt의 종료 관측 공백이다. read-only 검토/로그만 수행, 테스트 재실행·Claude 실행·production 변경 없음.
+
+### 2026-09-14 00:07 · W1~W6 최종 대조 완료와 W7 다음 세션 인계
+
+사용자가 Claude 관측 보완을 Stage3 W3에 구체화하고 기존 근거를 해당 scope에 연결하도록 승인했다. logs/2026-09-09-AIOX-TUI-Stage3-Claude.md의 W3 문구와 Required Context {W3}에 구현·검증·새 반례·FileChanged/OTel 논의·Web/MCP와 delivery 소비 경계의 원본 entry 포인터를 반영했다. 실제 통합 검증은 Stage3 W5다. 기존 구현을 보존하며 No/Esc·snapshot 경유 연결 결함은 미해결이다. Stage3 활성화나 Stage2-3 마감은 하지 않았다.
+
+이후 사용자가 W7의 첫 작업인 W1~W6 변경·회귀 근거·owner 최종 대조를 지시했고 root가 수행했다. Git c000cab..f334c04의 8개 커밋, 현재 미커밋 diff 범위, 각 완료 로그, production caller/producer/consumer와 회귀 assertion, runtime/collaboration/configuration-web/host spec 및 system/storage-terminal/vendor-bindings architecture와 외부 생존 decision을 대조했다. 이번 대조 범위에서 핵심 동작 계약의 새 충돌은 발견하지 못했다. 무결함이나 미검증 시나리오의 성공을 보장하는 판정은 아니다.
+
+| 대상 | 대조한 경계 |
+| --- | --- |
+| W1 | 외부 vendor 일반/force 생존, 협업 권한 회수·등록 정리, 실패 재시도와 daemon 소유 실행 종료 |
+| W2 | 결과·필수 알림 transaction, 최초 결과 보존, 전송 거절 뒤 저장 실패에도 뒤 대상 진행, drain 저장 재시도·실패 전달 |
+| W3 | restart 사전 준비와 설정 snapshot, API·Web·상태 파일 이후 성공 공개, status/doctor 분리, listener 전 상태 파일 해제·DB close 진단 |
+| W4 | 참여 중 삭제 거절, 동기 등록 예약과 DB 직렬화에 의한 삭제 경합 방어, cleanup 실패 중 삭제 금지 |
+| W5 | SSE→최신 조회→화면 소비, 작업별 오류 보존, 응답 역전 방어, daemon 소유 알림·terminal 신원과 읽음 범위 |
+| W6 | 현재 schema 직접 초기화·재오픈, 제거 API의 기존 내부 책임 보존, 외부 실행 유지·동일 Web vendor 복구, quota A안과 최초 delivery 결과 보존 |
+
+기존 /private/tmp 검사 출력에서 합계 W1 479, W2 484, W3 502, W4 506, W5 527, W6 정리 526, W6 최종 534, 이후 Claude 보완 포함 541 tests passed를 직접 확인했다. 최종 출력은 /private/tmp/aiox-w6-quota-fix-check.txt 및 /private/tmp/aiox-w7-batch-live/check-output.txt다. /private/tmp/aiox-w6-built-package-proof.txt, aiox-w5-sse-root-built-proof.txt, aiox-w5-sse-root-focus-double-ui-proof.txt, aiox-w6-web-relay-browser-root-final.txt의 저장·Web·실제 PTY/Node 대역 vendor 근거도 읽었다. 이번에는 테스트·실험을 재실행하지 않았고 기존 통과 근거를 재사용했다. git diff --check는 통과했다.
+
+문서 정리 사항: 일부 owner의 source/test 줄 번호가 후속 변경으로 어긋나 있다. 예를 들어 docs/architecture/aiox-system.md:78은 정리 경로 근거로 daemon.ts:337-363을 가리키지만 현재 stopRuntime 본체는 :362부터다. 계약 내용 충돌과 locator drift를 구분하며 아직 수정하지 않았다. 실제 vendor·Windows/Linux/WSL 신규 실측과 native 창/탭 전환의 기존 미검증 한계도 유지한다. 진단 표시 요구(runtime spec의 실패 원인 구분)는 기존 잔여 항목으로서 후속 처리 위치 판정이 남았으며 이번 리뷰로 해소하지 않았다.
+
+다음 세션은 W1~W6 대조를 반복하지 않고 W7의 남은 owner locator 정합화, 진단 표시 요구·OS/브라우저 미검증 범위의 disposition과 후속 owner 확인에서 재개한다. Claude 관측 보완은 Stage3 W3/W5를 따른다. 필요한 정합화와 마감 조건 확인 뒤에만 W7·Stage2-3 완료와 Stage3 W1 포인터 이동을 수행한다. 현재 W7 active·Stage2-3 open을 유지한다. 이번 요청은 리뷰 결과 기록과 인계이며 코드 수정·단계 마감·커밋·push를 수행하지 않았다. 사용자는 로그 기록을 명시적으로 요청할 때만 하도록 지시했으며 이번 기록은 그 요청에 따른 것이다.
+
+### 2026-09-14 00:25 · W7 참조·관측 이유 표시 완료, 사용자 실측 수용과 Stage2-3 마감
+
+사용자가 기록·최종 인계 점검·Stage2-3 마감까지만 지시했다. Stage3 활성화·착수, commit·push는 이번 범위에 없다. plan의 통상 다음 단계 활성화 절차보다 이번 명시적 범위를 우선해 Stage2-3만 완료하고 Stage3는 대기로 유지한다.
+
+owner 참조: architecture의 aiox-system·aiox-storage-terminal·aiox-vendor-bindings와 specs의 aiox-runtime·aiox-host·aiox-configuration-web에서 코드·테스트 참조 96곳을 교정했다. 당시 213개 참조의 파일·줄 범위와 wikilink 대상을 검사했고 내용 변경 없이 위치만 교정했다. 이후 Web 렌더 변경으로 이동한 main.ts 참조도 정합화했다.
+
+진단 요구: 사용자는 새 이벤트가 오면 관측을 교체하고 이전 오류를 별도 보존할 필요가 없다고 확정했다. apps/web/src/main.ts의 Agent 목록에 현재 observation.reason을 표시하고 새 조회에 따라 이유를 교체·제거한다. 서버/API/DB의 별도 오류 저장은 추가하지 않았다. 인접 main.test.ts의 새 회귀에서 미표시 실패를 먼저 확인한 뒤 표시·교체·제거를 검증했다. Web 전체 36 tests, Web typecheck·build, 대상 oxlint·oxfmt와 git diff --check가 통과했다. docs/specs/aiox-runtime.md가 현재 표시·교체·비보존 계약과 근거를 소유한다. 이번 Web 검사와 기존 전체 541 tests 기록은 별개이며 전체 검사를 새로 통과했다고 주장하지 않는다. 과거 진단 표시의 처리 위치 미결은 이번 구현으로 해소한다.
+
+사용자는 host:4501 운영 Web 접속·Claude 실행과 브라우저 창/탭 전환에 따른 알림 표시·읽음 처리까지 이전에 직접 확인했다고 보고했다. 이 사용 흐름의 사용자 실측 근거로 수용하고 같은 검증을 반복 요구하지 않는다. 이번 세션의 agent 재실행 결과는 아니며 OS·WSL 구성, 브라우저/vendor 버전과 실행 SHA는 특정되지 않았다. Windows 네이티브와 WSL 각각의 전체 인증이나 모든 vendor 메시지·중단 시나리오 완료로 확대하지 않는다.
+
+최종 인계 점검: W1~W6는 2026-09-14 00:07 최종 대조를 소비하고 반복하지 않았다. W7의 locator·진단 표시·미검증 disposition은 처리했다. Claude No/Esc·snapshot 연결 결함과 관측 방식 선택은 Stage3 W3 및 실제 수직 통합 W5의 명시적 Work Items/Required Context에 남아 있다. 이번 일반 실행 확인으로 그 결함을 해결 완료 처리하지 않는다. 최소 Web 결과와 사용자 실측은 Stage6/7로 인계하고 React 창·탭·dropdown·popup·소리 등 미구현 범위는 유지한다. 나머지 OS·WSL·npm 배포 인증은 Stage8에서 해당 환경과 산출물이 준비됐을 때 수행한다. 그 상세 환경 구분은 기존 실측을 부정하거나 같은 사용 흐름을 일괄 재검증할 이유가 아니다.
+
+각 후속 로그에 이번 결과 소비 기준을 반영했고 owner 반영 누락·미소비 detached W는 없다. Stage2-3 내부의 미완료 행동은 남지 않아 W7 completed·로그 decided·plan Stage2-3 completed로 마감한다. 다음 후보는 Stage3 W1이나 사용자 지시대로 활성 포인터를 이동하지 않는다. 현재 plan의 활성 단계는 의도적으로 없다. 장문 기록은 같은 처리 경계 개선 수명의 경위로 보존하고 이번 마감에 이력 분할을 추가하지 않는다.

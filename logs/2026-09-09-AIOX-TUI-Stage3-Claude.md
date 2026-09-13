@@ -8,7 +8,7 @@ status: open
 
 - [>] W1 Claude 실행·주입 연결 — Stage2 최신 결과와 CLI→Controller→daemon 등록·terminal 문맥·binding 및 관련 owner/tests를 대조하고, 같은 shell·외부 standalone의 foreground TUI 실행에 실행별 HTTP MCP·credential·instruction·hooks를 주입한다. 기존 사용자 설정·hooks·MCP 보존과 설치·버전·시작 실패 경계를 검증한다. -- 이후 vendor 인자 전달과 AIOX 관리 MCP·credential·binding 설정의 충돌 정책을 확정·검증한다. YAML 구현은 Stage5에서 수행한다.
 - [ ] W2 Claude native inbox 전송 연결 — Runtime별 socket/pipe와 준비 관측·인증을 구성하고 공통 send 및 daemon 알림을 연결한다. 발신자 표시·본문 전달·route 권한을 검증하며 inbox token과 MCP token을 분리한다. Windows 네이티브 inbox token 확보·전달·named pipe 인증 경로를 구현하고 검증한다.
-- [ ] W3 Claude hooks·입력 결과·Runtime 상태 연결 — 인증된 UserPromptSubmit/Stop의 Runtime·session_id·prompt_id로 해당 AIOX 입력만 연결·완료하고 직접 사용자 입력의 종료가 이전 발신자에게 재알림하지 않게 한다. busy·복수 입력·실패·중단과 승인/질문·리밋 관측을 검증하고 확인 불가 상태를 성공으로 추정하지 않는다.
+- [ ] W3 Claude hooks·입력 결과·Runtime 상태 연결 — 인증된 UserPromptSubmit/Stop의 Runtime·session_id·prompt_id로 해당 AIOX 입력만 연결·완료하고 직접 사용자 입력의 종료가 이전 발신자에게 재알림하지 않게 한다. busy·복수 입력·실패·중단과 승인/질문·리밋 관측을 검증하고 확인 불가 상태를 성공으로 추정하지 않는다. No/Esc에서 승인 대기 해제와 해당 요청 종료를 구분하고, snapshot 경유 연결 누락으로 상태가 남는 결함을 해결한다. FileChanged·OTel의 전달 신뢰성·요청 귀속·종료 신호를 검증해 필요한 관측 방식을 선택·구현한다. 기존 구현과 검증 근거를 이어받되 새 반례는 미해결로 유지한다.
 - [ ] W4 Claude 종료·실패 정리 연결 — 정상 종료·준비 실패·프로세스 종료와 binding 연결 손실의 관측·실패 처리를 구분하고 실제 관리 자원 종료와 credential·등록·route 정리를 확인한다. 브라우저 attachment 손실은 Runtime 종료로 처리하지 않는다. Agent 정상 종료에서는 빌린 shell·terminal ID를 유지하고 원 shell 복귀와 직접 소유 자원 종료를 검증한다. daemon force stop에서는 관리 Agent 자원과 daemon 소유 일반 shell PTY까지 종료·확인한다. 재실행 시 새 Runtime 신원 분리와 부분 실패·재시도 경계를 검증한다.
 - [ ] W5 실제 Claude 수직 통합 검증·owner 반영·Stage4 인계 — 같은 terminal 실행부터 HTTP MCP 송수신·inbox 표시·hooks 결과·종료 복귀까지 실제 TUI로 검증하고 기존 사용자 설정 보존·브라우저 detach 생존을 확인한다. Windows 네이티브 token 확보·전달·pipe 인증의 실제 검증 결과와 Linux/macOS·WSL 결과로 통합 완료 여부를 판정한다. 환경 부재 등으로 미검증이면 해당 범위는 미완료로 남기고 후속 검증 위치·재개 조건을 명시한다. 미검증 표기만으로 Windows 통합 완료를 선언하지 않는다. 관련 회귀·pnpm check·owner/링크 정합을 점검해 후속 단계 소비 지점을 남긴다.
 
@@ -27,11 +27,19 @@ status: open
 - 공통 실행 경계 소비 지점: packages/protocol의 terminalContextFromEnv(env)와 daemon.registerRuntime이 인증된 Web shell 차용을 처리한다. AIOX_TERMINAL_ID/AIOX_TERMINAL_TOKEN은 child env 문맥이며 URL·argv·로그에 노출하지 않는다. Web은 AgentController/ExecutionOwner가 daemon 소유 PTY를 관리하고, 문맥 없는 외부 실행은 CLI가 직접 vendor를 시작해 native stdio를 상속한다. 외부에는 daemon PTY를 만들지 않는다. 등록·종료·shell 복귀는 Stage2-2에서 구현·검증했으므로 이 단계는 기존 경계 위에서 Claude 메시지 통합의 누락을 확인한다. 생성 cwd는 실시간 cd 추적값이 아니다.
 - Stage2 W1~W4 완료 후 다음 단계로 선택됐으나 2026-09-10 공통 Stage2-1을 선행 배치했다. Stage2 최신 W4 entry와 owner를 읽는다. 코드 6621fc3의 CI 34314631099는 3 OS × Node22/24 success이며 Ubuntu Node22 버퍼 timeout은 동일 SHA 재실행 통과·원인 미확정이다. macOS Chrome plain-shell 검증과 vendor 대역 성공을 실제 Claude 통합 성공으로 승계하지 않는다. 2026-09-11 승인된 초기 준비 제한·Notification 힌트 정리·probe cwd·terminal dispose의 국소 수정을 반영했다. 최신 수정 블록을 소비하되 Stage3 전체 착수·완료나 실제 vendor 검증 완료로 확대하지 않는다.
 - Stage2-1 공통 headless·serialization 복원 단계는 완료됐다. logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md의 종료 결과와 docs/architecture/aiox-storage-terminal.md를 소비하고 이 로그 W1에서 실행·주입 계약 대조를 재개한다. 공통 Web 화면 검증을 Claude inbox·hooks 통합 완료로 승계하지 않는다. 다음 실사용 검증 전 서버와 Web이 추가 snapshot 필드를 포함한 동일 빌드인지 확인하며 사용자 세션 재시작은 별도 지시에 따른다.
-- Stage2-2 구현·검증 및 c000cab 로컬 main 반영은 완료됐다. 해당 단계 최신 마감 entry와 docs/architecture/aiox-vendor-bindings.md를 소비한다. 사용자 결정으로 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md의 처리 경계 개선을 먼저 완료한 뒤 이 로그 W1을 재개한다. 공통 packages/vendor·AgentController와 packages/adapters/claude 경계를 유지한다. 기존 macOS 수명·Web 복원 및 Windows 대역 검증을 Claude 모델 메시지 E2E 완료로 확대하지 않으며 실제 통합 검증은 이 단계 W2/W3/W5에 남는다.
+- Stage2-2 구현·검증 및 c000cab 로컬 main 반영은 완료됐다. 해당 단계 최신 마감 entry와 docs/architecture/aiox-vendor-bindings.md를 소비한다. logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md의 처리 경계 개선은 마감됐다. 사용자 지시로 이 단계는 아직 대기하며 이후 활성화 시 W1을 재개한다. 공통 packages/vendor·AgentController와 packages/adapters/claude 경계를 유지한다. 기존 macOS 수명·Web 복원 및 Windows 대역 검증을 Claude 모델 메시지 E2E 완료로 확대하지 않으며 실제 통합 검증은 이 단계 W2/W3/W5에 남는다.
 
 ### {W1}
 
-- 현재 선행 단계는 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md이며 Stage2-2 W6–W9는 완료됐다. 이 로그 W1 [>]는 Stage2-3 완료 뒤 복귀할 재개 지점이며 현재 활성 plan 단계가 아니다. Stage2-3의 최신 완료 결과와 owner 변경을 소비한 뒤 Claude 실행·주입의 남은 검증을 수행한다. 기존 vendor 메시지 E2E 미완료 범위는 유지한다.
+- Stage2-3은 마감됐고 현재 plan 활성 단계는 Stage4다. 사용자 결정으로 Codex 독립 실행·관측·Codex 간 왕복을 먼저 진행한다. 이 로그 W1은 이후 Claude 재개 후보이며 Stage4 W4의 교차 검증에 필요한 W2/W3/W5 결과를 제공한다. 기존 미해결 관측을 완료로 표시하지 않는다.
+
+### {W3}
+
+- 사용자 승인으로 Claude No/Esc 관측 보완의 남은 작업과 기존 근거를 이 W3에 인계한다. [Stage2-3 기록](2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md)의 2026-09-13 아래 entry들을 순서대로 소비한다. 이번 변경은 W3 문구·Required Context 기록에 한정하며 Stage2-3 W7 완료나 Stage3 활성화를 뜻하지 않는다. 기존 코드와 tests를 보존하고 실제 Claude 수직 통합 검증은 W5에서 수행한다.
+- 구현·검증 인계: 22:04 「Claude No·Esc transcript 보완 구현과 전체 541 tests 검증 완료」. hook의 prompt별 정리와 인증된 transcript_path의 읽기 전용 250ms polling, 거부 tool_result와 직접 parent 중단 marker의 귀속, 저장 실패 재시도·다른 요청 보존·reader 수명 및 owner 반영 근거를 읽는다. 작업 트리의 packages/adapters/claude/src/claude-observations.ts, claude.ts, launch-hooks.ts와 새 claude-transcript.ts 및 각각의 인접 tests가 재개 시 대조 대상이다. owner는 docs/architecture/aiox-vendor-bindings.md 및 docs/specs/aiox-collaboration.md, 상태 계약은 docs/specs/aiox-runtime.md다. 541 tests·fixed-replay 성공은 당시 범위의 기록이며 이번 재실행 결과나 후속 반례 해결 근거가 아니다.
+- 미해결 반례·전달 문제: 22:21 「FileChanged 실측: 수신 가능 경로·최초 세션 미발화와 No 첨부 중간 연결 결함」, 22:27 「argv prompt 재검증 성공으로 고정 원인 가설 배제·snapshot parent 연결 확인」, 22:55 「FileChanged 설계 방향 정정·현재 reader와 소비 schema 설명」. No에서 거부 결과 → attachment(prompt_snapshot) → 중단 marker 연결을 현재 관측기가 놓쳐 awaiting-user가 남는 2건은 미수정이다. FileChanged 수신은 실측했으나 최초 미발화 원인은 미확정이며 argv/debug를 고정 원인으로 설명하지 않는다. 당시 FileChanged 전환은 설계 방향이고 production은 polling이다. snapshot 연결 수정 또는 대체 신호로 같은 반례를 해결했는지 검증한다.
+- 방식 선택 근거: 22:28 「논의·설계만 진행: 수동 거부와 Esc의 hook 보장 재정리」, 23:14 「OTel tool_decision 구조화 거부 신호 후보·statusLine 범위 확인」, 23:22 「OTel 한계 분류 재검토·실행 중 Esc hook 전달 보장 구분」, 23:27 「외부 조사 stdout lifecycle 예시 검증·TUI와 print mode 구분」, 23:31 「공개 레포·블로그의 Claude TUI 중단 관측 보완 조사」. OTel 승인 결과는 후보이며 reject/user_abort를 요청 종료나 모든 실행 중 Esc의 보장으로 확대하지 않는다. No·승인창 Esc·실행 중 Esc·답변 중 Esc의 실제 전달·ID 귀속·지연과 종료된 요청 재활성화 방지를 검증한다. FileChanged와 OTel 모두 도입은 확정하지 않았고 timeout·화면 문자열·print/SDK 전환도 해결로 채택하지 않았다. 당시 quota로 실제 실행을 중단한 뒤 논의·설계만 진행했으며 /resume·/clear·Windows/Linux 실측 등 남은 검증을 완료로 승계하지 않는다.
+- 소비 경계: 23:36 「A 요청 중 B 사용자 직접 입력의 runtime 상태와 요청 귀속 구분」 및 23:42 「send 답장 연결 가능성 점검·기존 delivery 분리와 단방향 정책 정정」. Web/agents_list의 runtime 전체 activity와 원 AIOX delivery 결과는 이미 분리돼 있다. 직접 입력의 Stop으로 다른 delivery를 완료하지 않고 다른 요청의 활동·대기를 보존한다. B→A send는 독립 메시지이고 단방향 route에서는 거절되므로 원 요청 종료 관측의 대체로 사용하지 않는다. interrupted 자동 알림 부재와 completed가 업무 성공이 아닌 응답 처리 종료라는 기존 계약을 소비한다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -122,3 +130,11 @@ Stage2-2의 최신 완료 entry를 인계받고 W1 [>] 재개 지점을 활성�
 ### 2026-09-12 21:56 · Stage2-2 마감과 Stage2-3 선행 인계
 
 사용자는 Stage2-2 로컬 마감 후 곧바로 Stage3로 복귀하지 않고 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md에 기존 처리 순서·성공/실패 경계 조사와 구조 개선을 묶도록 결정했다. Stage2-2는 완료, Stage2-3는 활성, Stage3는 대기로 plan을 맞춘다. 이 로그 W1–W5와 과거 실행·검증 History는 보존하며 W1은 새 선행 단계 종료 후 재개한다. 이번 변경은 단계 인계 문맥만 반영했고 Claude 구현·실측을 추가 수행하지 않았다. 원격 push는 사용자 보류다.
+
+### 2026-09-14 00:25 · Stage2-3 마감 결과 인계·Stage3 대기 유지
+
+Stage2-3의 최신 마감 entry를 소비한다. 현재 관측 이유 표시·새 관측에 따른 교체/제거는 최소 Web과 runtime spec에 반영됐다. 사용자는 host:4501 운영 Web 접속·Claude 실행과 브라우저 창/탭 전환에 따른 알림 표시·읽음 처리까지 이전에 직접 확인했다고 보고했다. 이 사용 흐름의 사용자 실측 근거로 수용하고 같은 검증을 반복 요구하지 않는다. 이번 세션의 agent 재실행 결과는 아니며 OS·WSL 구성, 브라우저/vendor 버전과 실행 SHA는 특정되지 않았다. Windows 네이티브와 WSL 각각의 전체 인증이나 모든 vendor 메시지·중단 시나리오 완료로 확대하지 않는다. 기존 W3의 No/Esc·snapshot 연결 결함과 W5 실제 수직 통합 범위는 유지한다. 사용자 요청은 선행 단계 마감까지만이므로 이 단계는 활성화·착수하지 않는다.
+
+### 2026-09-14 00:32 · Stage4 우선 진행·Claude 교차 검증 의존 유지
+
+사용자가 Stage4의 Codex 실행·관측·Codex 간 왕복을 먼저 진행하도록 결정했다. 이 단계는 대기로 유지하고 Stage4 W4의 Claude 교차 검증에 필요한 W2/W3/W5는 기존 미완료 상태로 남긴다. 현재 활성 pointer는 Stage4 W1이다. Claude 관측 해결을 Codex 독립 작업의 선행 조건으로 두지 않는다.

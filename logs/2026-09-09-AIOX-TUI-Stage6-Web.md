@@ -28,6 +28,7 @@ status: open
 - W3 구현 인계: 최소 Web은 /api/terminals 생성·목록과 /api/terminals/:id 조회, 기존 /ws/terminal/:id 연결을 사용한다. 목록은 {id,cwd,kind,alive}이고 비공개 terminal 문맥은 노출하지 않는다. Agent가 연결·종료·재실행돼도 같은 terminal 선택/살아 있는 attachment를 유지하며 끊긴 연결은 재선택 가능하다. /api/terminals/:id DELETE는 명시 종료이며 Web close와 연결하지 않는다. Node DOM/HTTP/attachment 대역 검증만 수행했고 실제 브라우저 UI·정확한 화면 복원·탭/분할 UI는 이 단계에서 구현·검증한다. web.sidebar.width는 default 없는 양의 유한수이고 host.layout 공통 해석은 packages/config에 구현됐다. keyboard 보존·keybindings schema/기본키 사전 논의 조건은 그대로다.
 - 2026-09-10 사용자 결정으로 공통 headless·SerializeAddon snapshot 기반 구현은 Stage2-1(logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md)이 선행 소유한다. Stage6는 해당 결과를 소비해 React·탭·분할·resize·재방문 화면 복귀에 통합하고 검증한다. 기존 raw tail 개선 요구는 유지되지만 구현을 중복하지 않으며 실제 완료 전에는 복원 완료로 간주하지 않는다.
 - 2026-09-13 사용자 승인: 기존 cmux 참고 범위를 pane·tab·window UI/UX로 보완한다. React 운영 Web에서 알림 아이콘 클릭 시 dropdown에 항목을 표시하고 알림 클릭 시 해당 Agent가 포함된 작업 창·영역·탭으로 이동하며 해당 알림을 읽음 처리한다. 대상 터미널(B) 선택 클릭 시 해당 대상의 미확인 해제는 Stage2-3 W5의 현재 간단 Web에 구현·검증됐으므로 그 결과를 소비한다. 저장 이력 삭제는 아니다. 외부 UX owner는 docs/specs/aiox-configuration-web.md다. Stage7은 이 UI 결과를 소비해 상태·읽음·알림음 통합과 검증을 이어가며 삭제하거나 Stage6로 전체 이전하지 않는다.
+- Stage2-3의 2026-09-14 최신 마감 entry 및 이 로그의 「Stage2-3 사용자 실측·현재 이유 표시 인계」를 소비한다. 현재 관측 이유 표시·교체·제거와 별도 오류 이력 비보존은 runtime spec 및 최소 Web 구현을 소비한다. React 운영 UI·popup·소리 등 기존 후속 범위는 유지한다. 사용자 실측을 agent 재실행·모든 환경 인증으로 확대하지 않으며 확인된 동일 사용 흐름을 일괄 재검증하지 않는다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -48,3 +49,9 @@ status: open
 Stage2-3 W5의 SSE 변경 통지·Web 소유 실행 목록/알림 한정·활성 창/탭과 선택 terminal 기반 미확인 억제·대상 선택 읽음·최소 미확인 표시 구현 결과를 소비한다. root 전체 검사 527 tests와 actual built daemon/SSE, Chromium 대역 검증의 범위·한계는 부모 Stage2-3 최신 수용 entry를 따른다. 실제 native 창·탭 전환은 브라우저 환경에서 확인하지 못했고 focus 입력 대역 검증으로 구분한다.
 
 cmux pane·tab·window와 React dropdown·알림 클릭의 대상 창 이동, popup·소리 통합은 기존 Stage6/7 후속 범위로 유지한다. 저장된 알림 이력 삭제나 외부 CLI 실행의 Web 노출로 확대하지 않는다. 이 단계의 구현을 착수·완료 처리하지 않는다.
+
+### 2026-09-14 00:25 · Stage2-3 사용자 실측·현재 이유 표시 인계
+
+사용자는 host:4501 운영 Web 접속·Claude 실행과 브라우저 창/탭 전환에 따른 알림 표시·읽음 처리까지 이전에 직접 확인했다고 보고했다. 이 사용 흐름의 사용자 실측 근거로 수용하고 같은 검증을 반복 요구하지 않는다. 이번 세션의 agent 재실행 결과는 아니며 OS·WSL 구성, 브라우저/vendor 버전과 실행 SHA는 특정되지 않았다. Windows 네이티브와 WSL 각각의 전체 인증이나 모든 vendor 메시지·중단 시나리오 완료로 확대하지 않는다.
+
+현재 관측 이유 표시·교체·제거와 별도 오류 이력 비보존은 runtime spec 및 최소 Web 구현을 소비한다. React 운영 UI·popup·소리 등 기존 후속 범위는 유지한다. Stage2-3은 마감하되 후속 단계 활성화·착수는 하지 않았다.
