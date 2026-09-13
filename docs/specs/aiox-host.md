@@ -51,7 +51,7 @@ YAML 정의를 global persistent Network로 동시에 저장해 이중 권위로
   준비 중 등록과 정리 실패로 남은 등록도 포함하며, 삭제를 위해 실행을 자동 종료·분리하지 않는다.
   현재 API는 HTTP 400 / `network_in_use`로 응답하고 CLI는 해당 안내를 표시한다. [Status: Current]
   근거: [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:69-79`,
-  [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:414-539`,
+  [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:416-541`,
   [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:76-88`.
 - `agent run --network`는 한 값만 받는다. 실행 중 join/leave나
   Network 소속 변경 기능은 제공하지 않는다. 실행 소유권과 Network membership은 별개다.

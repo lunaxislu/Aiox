@@ -53,16 +53,16 @@ Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한�
 
 CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http의 daemon/Web listener, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 
-근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:215-522`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:44-80`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:115-249`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:54-181`.
+근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:222-636`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:46-90`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:151-356`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:300-554`.
 
 CLI와 daemon boot는 시작에 사용할 설정 snapshot을 공유한다. restart는 기존 daemon 종료 전에 가능한 준비를 끝내고 이 snapshot으로 새 프로세스를 시작하므로, 준비와 시작 사이 파일 편집이 이번 실행 설정을 바꾸지 않는다. 새 shell 생성은 별도로 현재 파일을 다시 읽는 설정 적용 경로를 유지한다. daemon status·doctor의 현재 실행 조회는 기록된 포트를 우선하며 다음 실행 config의 유효성 진단과 분리한다. [Status: As-built]
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:244-358`, `apps/cli/src/bootstrap.ts:382-464`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:46-90`; 준비 설정 소비와 새 shell 재조회는 [[apps/daemon/src/bootstrap.test.ts]] `apps/daemon/src/bootstrap.test.ts:43-73`.
 
 listener 개방과 외부 요청 접수는 별도 경계다. 두 listener와 필수 상태 기록을 마친 뒤 한 준비 상태로 HTTP·WebSocket 접수를 함께 연다. 준비 중 실패하면 listener·attachment 서버와 retention을 정리하고 boot가 DB를 닫는다. [Status: As-built]
-근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:145-159`, `apps/daemon/src/daemon.ts:311-325`, `apps/daemon/src/daemon.ts:681-690`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:59-87`; [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:55-175`.
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:153-167`, `apps/daemon/src/daemon.ts:330-344`, `apps/daemon/src/daemon.ts:719-728`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:59-87`; [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:55-177`.
 
 종료 시 boot의 상태 파일 삭제를 먼저 기다린 뒤 listener를 해제하고 DB를 닫는다. 이전 daemon의 지연된 DB close 뒤 상태 파일을 삭제하지 않으므로 새 실행의 상태 기록을 지우지 않는다. 상태 삭제 실패는 stale 기록 가능성을, listener 해제 뒤 DB close 실패는 해당 자원 종료 실패를 stderr에 진단한다. 두 오류가 이미 닫는 listener를 다시 열거나 `closed`를 미완료로 바꾸지는 않는다. 메시지 저장·실행 정리 실패의 재시도 경계와 구분한다. [Status: As-built]
-근거: [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:83`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:560-575`; DB close 실패와 지연 중 새 상태 기록 보존 회귀는 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:177-232`.
+근거: [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:83`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:588-603`; DB close 실패와 지연 중 새 상태 기록 보존 회귀는 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:179-234`.
 
 Runtime 공통 정리는 credential·협업 유효성을 먼저 회수하고 daemon 소유 execution owner·PTY만 종료한다. binding cleanup과 standalone endpoint의 route·요청·등록 정리는 실행 소유권과 별도로 수행한다. 실패한 정리는 재시도 경로를 남기고 PTY exit만으로 daemon을 종료하지 않는다. 원 발신자 종료 후 수신 요청 결과 보존은 collaboration 계약을 따른다.
 
@@ -72,18 +72,18 @@ Runtime은 직접 소유 PTY와 차용 shell을 구분한다. 차용 Agent의 �
 정리하고, terminal 자체 종료는 연결 Runtime 정리로 이어진다. daemon force stop은 남은 일반
 shell도 종료·확인한다. 실패한 binding에 연결된 shell은 재시도할 수 있게 유지한다.
 
-근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:268-355`,
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:554-598`, `apps/daemon/src/daemon.test.ts:755-969`.
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:362-472`,
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:556-600`, `apps/daemon/src/daemon.test.ts:761-976`.
 
-근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:337-363`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:91-108`; 실패·재시도와 저장소에서 Network를 직접 삭제한 경우의 정리 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1212-1264`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:280-346`.
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:362-386`, [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:91-108`; 실패·재시도와 저장소에서 Network를 직접 삭제한 경우의 정리 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1218-1268`, 실제 PTY exit는 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:694-760`.
 
 NetworkService는 준비·정리 중인 등록까지 검사해 삭제를 거절한다. daemon 등록은 동기 membership
 예약 뒤 Network 존재를 조회하고 binding을 만든다. 단일 DB 작업 queue에서 삭제가 앞서면
 뒤 등록 검증이 실패하고, 예약이 앞서면 삭제가 거절된다. 별도 Network lock은 두지 않는다.
 삭제의 외부 계약은 [[docs/specs/aiox-host]]가 소유한다.
 근거: [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:69-79`,
-[[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:626-644`,
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:414-539`.
+[[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:654-672`,
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:416-541`.
 
 현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude 연결은 아래 Stage 3 범위로 확장했고 Codex와 Host/Worktree 실행은 아직 구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
 
@@ -100,7 +100,7 @@ Web은 daemon execution owner의 vendor PTY를 중계하고 빌린 shell의 공�
 양쪽은 `@aiox/vendor` 계약과 `@aiox/adapter-claude`를 사용하며 AgentController는 vendor별
 inbox·인자·버전을 해석하지 않는다. adapter는 부속 실행 준비 후 foreground를 시작할 수 있고
 owner는 전체 실행 자원을 정리한다. 현재 제품 adapter는 Claude이며 Codex·Host 실행은 미구현이다.
-근거: [[packages/vendor/src/index.ts]] `packages/vendor/src/index.ts:49-96`,
+근거: [[packages/vendor/src/index.ts]] `packages/vendor/src/index.ts:49-99`,
 [[packages/vendor/src/execution.ts]] `packages/vendor/src/execution.ts:7`,
 [[packages/adapters/claude/src/index.ts]] `packages/adapters/claude/src/index.ts:21`.
 RuntimeRegistry의 `executionOwnership`과 `collaborationActive`는 프로세스 종료 책임과
@@ -110,11 +110,11 @@ daemon의 명시적 종료 요청은 daemon 소유 execution owner만 종료한�
 정리는 CLI 로컬 종료와 자연 vendor exit가 소유한다. daemon의 협업 해제는 binding cleanup·DB
 정리를 수행한다. 실패한 record는 재시도용으로 남지만 인증·발견·전송 대상에서는 제외한다.
 
-근거: 실행 분기는 [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:451`,
-직접 실행은 [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:12`,
+근거: 실행 분기는 [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:491`,
+직접 실행은 [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:15`,
 제어 연결은 [[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:81`,
-등록 유효성은 [[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:58`,
-정리 경계는 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:307`.
+등록 유효성은 [[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:158-213`,
+정리 경계는 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:362-386`.
 
 이전 Stage3의 외부 shell 실측도 daemon vendor PTY 경로였다. 그 기록을 새 직접 실행이나
 외부 vendor 독립 수명 검증으로 승계하지 않는다.

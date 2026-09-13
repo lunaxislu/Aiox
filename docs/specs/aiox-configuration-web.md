@@ -67,7 +67,7 @@ ACL 검증은 사전 보장 범위 밖이며 실제 실행 실패로 처리한�
 오류를 `400 / invalid_request`로 반환한다. 검사 프로세스 timeout처럼 원인이 확인되지 않은
 검증 실패는 요청 cwd 오류로 단정하지 않고 `500 / invalid_config`로 반환하며 진단을 보존한다.
 예상하지 못한 실제 실행 오류는 `500 / internal_error`다. [Status: Current]
-근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:358-386`,
+근거: [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:388-416`,
 [[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:123-131`,
 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:101-248`.
 
@@ -98,8 +98,8 @@ watch·운영 Web 설정 배포는 후속 대상이다. terminal의 fontFamily/f
 `web.sidebar.width`·`host.layout` 검증과 공통 layout 해석은 구현돼 있다. `parseHostLayout`과
 `resolveHostLayout({ cli, yaml, global })`은 Host parser·CLI 연결이 재사용할 공개 함수이며
 배치 계산·누락 grid 치수의 기본값을 만들지 않는다. [Status: Current]
-근거: [[packages/config/src/schema.ts]] `packages/config/src/schema.ts:151-250`,
-[[packages/config/src/schema.test.ts]] `packages/config/src/schema.test.ts:10-102`.
+근거: [[packages/config/src/schema.ts]] `packages/config/src/schema.ts:180-279`,
+[[packages/config/src/schema.test.ts]] `packages/config/src/schema.test.ts:28-120`.
 
 Stage 1에서는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
 transaction·close/reopen을 검증했다. 당시 Node 요구 조건은 >=22.12.0이며 Windows/Linux/macOS × Node22/24 CI에서
@@ -158,8 +158,8 @@ terminal 연결은 전송 당시 발신 실행에 귀속하며 해당 실행이 
 실행으로 이전하지 않는다. Web 읽음 요청에 외부 알림 ID를 넣어도 외부 알림을 읽음 처리하지
 않는다. 공통 CLI·협업 조회 범위를 Web 표시 범위로 축소하지 않는다. [Status: Current]
 
-근거: [[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:293-378`,
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1669-1728`.
+근거: [[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:346-431`,
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1673-1732`.
 
 
 ## 살아 있는 서버로 자동 복귀
@@ -193,10 +193,10 @@ terminal의 현재 화면**이다. 단순 WebSocket 재접속만으로 요구를
 실패가 지속돼 복원할 수 없다고 확인되면 재연결을 비활성화하고 사용자 선택에 따른
 종료·새 생성을 안내한다. 원인을 확인하지 못한 연결 실패를 영구 복원 불가로 단정하지 않는다. [Status: Current]
 
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:89-146`, `apps/web/src/main.ts:380-434`,
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:96-195`, `apps/web/src/main.ts:438-499`,
 [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:253-388`;
 복원 불가 전달은 [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:357-365`,
-[[apps/web/src/attach.ts]] `apps/web/src/attach.ts:138-148`, `apps/web/src/attach.ts:263-268`.
+[[apps/web/src/attach.ts]] `apps/web/src/attach.ts:139-149`, `apps/web/src/attach.ts:264-269`.
 
 미완성 제어 시퀀스 때문에 복원용 보관 한도를 넘으면 새 연결의 화면 복원을 일시적으로
 거절하고 이유를 표시한다. 기존 PTY와 연결된 viewer의 입출력은 유지한다. 안전한 파싱
@@ -218,7 +218,7 @@ live terminal 질의의 자동응답은 마지막으로 실제 입력을 보낸 
 담당 변경의 기준이 아니다. 각 출력의 담당은 전달 도중 입력이 발생해도 바뀌지 않는다.
 과거 복원 데이터의 자동응답은 PTY에 보내지 않는다. [Status: Current]
 
-근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:242-355`, [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:993-1091`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:295-319`.
+근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:242-355`, [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:993-1091`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:296-320`.
 
 ## 현재 상태와 요청 결과 표시
 
@@ -234,7 +234,7 @@ Web의 shell 생성·알림 읽음·명시 종료 결과는 상태 조회와 분
 대상이나 조회 오류를 되돌리지 않는다. 새 작업 성공 이전에 시작한 조회도 그 결과를 되돌리는
 근거로 사용하지 않는다. [Status: Current]
 
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:50-87`, `apps/web/src/main.ts:261-370`,
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:53-90`, `apps/web/src/main.ts:309-428`,
 [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:389-447`, `apps/web/src/main.test.ts:223-251`,
 `apps/web/src/main.test.ts:448-492`.
 
@@ -280,11 +280,11 @@ Web 전용 조회로 최신 상태를 가져온다. daemon 준비 전 접수는 
 
 근거: [[apps/daemon/src/web-events.ts]] `apps/daemon/src/web-events.ts:3-36`,
 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:56-100`,
-`apps/daemon/src/daemon.test.ts:1730-1776`.
+`apps/daemon/src/daemon.test.ts:1734-1780`.
 
 
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:218-306`, `apps/web/src/main.ts:343-370`,
-`apps/web/src/main.ts:436-457`; [[apps/web/src/main.test.ts]]
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:266-364`, `apps/web/src/main.ts:401-428`,
+`apps/web/src/main.ts:501-522`; [[apps/web/src/main.test.ts]]
 `apps/web/src/main.test.ts:630-862`.
 
 짧은 시간에 여러 알림이 오면 항목은 남기고 소리는 묶는 방향이다. 정확한 묶음 시간,
