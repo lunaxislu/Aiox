@@ -61,12 +61,15 @@ vendor 필드가 없는 metadata이며 adapter 경계에서 검증한다. 현재
 외부 CLI는 실행별 자원을 준비하고 daemon에 connection을 전달한다. AgentController가
 Runtime·보고 credential·binding을 준비한 뒤 launch를 반환하면 adapter가 실제 실행 위치에서
 버전을 검사하고 실행한다. CLI는 시작·종료를 제어 WS로 통보하며 화면·resize를 전송하지 않는다.
-최초 준비 timeout의 명시적 `startup-failed`는 이번 실행을 종료하지만 daemon·WS 손실은 협업
-등록만 끝내고 이미 시작한 foreground·필수 부속 실행은 준비 완료 전후 모두 유지한다.
-실제 프로세스 종료와 협업 정리 책임은 [[docs/specs/aiox-runtime]]을 따른다.
+외부 CLI는 `startup-failed` 원인을 출력하고 제어 연결을 해제하되 시작한 실행 owner를
+유지한다. 최초 준비 timeout·daemon/WS 손실과 프로세스 종료는 다른 사건이며 자연 종료·로컬
+종료가 foreground·필수 부속 실행·임시 자원을 정리한다. 실제 프로세스 종료와 협업 정리 계약은
+[[docs/specs/aiox-runtime]]을 따른다. 이 처리 경계는 vendor 공통이다. [Status: As-built]
 
 근거: [[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:88`,
-[[apps/cli/src/external.ts]] `apps/cli/src/external.ts:1`.
+[[apps/cli/src/external.ts]] `apps/cli/src/external.ts:171-177`,
+[[apps/cli/src/external.test.ts]] `apps/cli/src/external.test.ts:147-188`,
+`apps/cli/src/external.test.ts:303-325`, `apps/cli/src/external.test.ts:363-387`.
 
 Claude inbox 임시 디렉터리는 실행 위치의 owner가 생성·권한·경로 길이 검사부터 정리까지 소유한다.
 실제 socket은 Claude가 열고 daemon binding은 접속한다. adapter는 등록한 주소와 인증 hook 보고를
@@ -92,6 +95,20 @@ daemon 실행 소유자가 관리하며, 빌린 shell의 공개 terminal ID는 �
 [[apps/cli/src/foreground.ts]] `apps/cli/src/foreground.ts:20`,
 [[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:88`,
 [[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:305`.
+
+Web의 실행 owner와 daemon 관리 등록은 화면 중계 연결보다 오래 유지된다. controller는
+살아 있는 vendor의 중계 연결 손실을 `relayDisconnected`로 기록하고 owner를 종료하지 않는다.
+협업 준비 실패는 별도로 권한을 회수하고 실패 원인을 보존한다. terminal 조회는 기존 shell
+ID 아래 vendor 실행 신원·생존·중계·협업 상태를 제공한다. 기존 terminal의 다시 연결은
+terminal과 Runtime 소속을 검증한 뒤 같은 vendor PTY에 attachment를 복원한다. vendor 정리는
+owner의 foreground·필수 부속 실행·자원 종료를 확인한 뒤 등록을 제거하며 빌린 shell은
+유지한다. 화면 복구로 MCP를 재등록하거나 vendor를 새로 생성하지 않는다. [Status: As-built]
+
+근거: [[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:163-184`,
+`apps/daemon/src/agent-controller.ts:228-252`; [[apps/daemon/src/http.ts]]
+`apps/daemon/src/http.ts:170-217`; [[apps/daemon/src/daemon.ts]]
+`apps/daemon/src/daemon.ts:297-318`, `apps/daemon/src/daemon.ts:362-390`;
+[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:1613-1780`.
 
 다음은 MCP 주입 부분만 보여주는 축약 예시다. 포트·Network ID는 예시이며 실제 spawn handle은
 daemon 실행 소유자가 소유한다.
@@ -250,8 +267,9 @@ controller test의 `apps/daemon/src/agent-controller.test.ts:726`.
 daemon은 먼저 협업 등록 유효성과 credential을 회수한다. daemon 소유 execution owner의 stop은
 실제 PTY exit와 inbox 자원 정리를 확인하며, 외부 실행 owner는 CLI에 남는다. binding cleanup은
 협업 관측·hook 연결을 해제하고 daemon이 route·요청·등록을 정리한다. 외부 inbox 임시 자원은
-CLI가 vendor exit 후 정리한다. 명시적 전체 종료 요청은 공통 제어 연결로 CLI owner에 전달하고
-foreground와 필수 부속 실행·자원 정리 완료를 확인한다. 부분 실패는 Runtime과 재시도 경로를 유지한다. foreground
+CLI가 vendor exit 후 정리한다. daemon의 종료 요청은 daemon 소유 실행만 종료하며 외부
+실행은 협업만 정리한다. 외부 CLI의 로컬 종료는 해당 owner의 foreground·필수 부속 실행·자원
+정리 완료를 확인한다. 부분 실패는 Runtime과 재시도 경로를 유지한다. foreground
 연결 손실·프로세스 실패·중단은 연결된 입력 결과를 각각 정리하며 메시지를 재전송하지 않는다.
 daemon execution owner의 terminal 상태 자원은 kill 성공 후 dispose로 해제한다. kill 실패 시에는
 dispose를 진행하지 않아 종료 재시도에 필요한 세션을 보존한다.

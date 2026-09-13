@@ -59,10 +59,12 @@ export async function probeClaude(
         throw new Error(
             failure?.code === "ENOENT"
                 ? "Claude executable was not found"
-                : failure?.killed === true &&
-                    failure.code !== "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
-                  ? "Claude version probe timed out"
-                  : "Claude version probe failed",
+                : failure?.code === "EACCES"
+                  ? "Claude executable permission denied"
+                  : failure?.killed === true &&
+                      failure.code !== "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+                    ? "Claude version probe timed out"
+                    : "Claude version probe failed",
         );
     });
     return checkClaudeVersion(output);

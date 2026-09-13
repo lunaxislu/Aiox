@@ -164,6 +164,23 @@ Codex 연결은 후속 구현 대상이다. [Status: As-built]
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:473-552`,
 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:755-969`.
 
+화면 중계 유실 뒤에도 같은 terminal 신원과 vendor PTY를 유지하고, 기존 다시 연결에서
+해당 PTY의 snapshot·후속 출력·키보드 입력을 복원한다. vendor 정리는 PTY만
+종료하는 것으로 완료하지 않고 execution owner의 부속 실행·자원과 daemon 관리 등록 정리까지
+연결한다. MCP 재등록이나 새 vendor 생성은 화면 복구의 책임이 아니다. 공통 실행 수명 경계는
+[[docs/architecture/aiox-vendor-bindings]]를 따른다. 조회 실패 중에도 마지막 vendor 정리 대상을
+보존해 같은 버튼이 부모 shell 종료로 바뀌지 않으며 생존 여부는 확인 불가로 표시한다. [Status: As-built]
+
+근거: [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:42-67`, [[apps/web/src/main.ts]]
+`apps/web/src/main.ts:96-131`, `apps/web/src/main.ts:435-460`, [[apps/web/src/main.test.ts]]
+`apps/web/src/main.test.ts:864`; [[apps/daemon/src/agent-controller.test.ts]]
+`apps/daemon/src/agent-controller.test.ts:1613-1780`.
+macOS에서 built daemon/Web·SQLite·실제 PTY·Chromium으로 같은 terminal/Runtime을 유지한
+화면 복구를 확인했다. 중계 공백 중 출력의 snapshot 복원, 후속 live 출력과 키보드 입력,
+vendor 1회 생성, helper·자원 정리와 부모 shell 생존을 확인했다. vendor는 Node 대역이며
+CLI relay는 실제 foreground source를 사용하되 인자 parsing을 생략했고 종료 confirm은 대역이다.
+실제 Claude/Codex나 다른 OS 검증으로 확대하지 않는다.
+
 Stage 2-1 구현은 세션당 xterm headless로 화면 상태를 유지하고, 통합 attachment가 snapshot과 이후 출력·resize·exit의 순서를 소유한다. SerializeAddon의 화면 바이트와 누락 상태 보완을 함께 전달하며 브라우저는 snapshot 크기에서 파싱과 상태 적용을 마친 뒤 실시간 이벤트를 처리한다. pane 크기 변경은 서버에 요청하고 서버의 resize 이벤트 순서에 따라 적용한다. 새 foreground 실행은 초기 PTY listener로 첫 출력부터 전달하므로 Web snapshot을 재생하지 않는다. 운영 Web의 탭·분할 배치 복귀는 별도 통합 대상이다. [Status: As-built]
 
 복원 책임은 다음 순서로 연결된다. 화면 캡처와 live 구독을 호출자가 따로 조합하지 않고 세션의 attachment가 경계를 소유한다. [Status: As-built]

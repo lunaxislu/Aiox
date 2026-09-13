@@ -225,7 +225,7 @@ test("observes an exit during startup and does not replay or leave a launch pend
     }
 });
 
-test("a disconnect while start resolves cleans the initial listener and ignores later startup output", async () => {
+test("a disconnect after PTY creation retains the vendor while start resolves", async () => {
     const webInput = webFrame();
     let release!: () => void;
     holdStart = new Promise<void>((resolve) => {
@@ -237,16 +237,14 @@ test("a disconnect while start resolves cleans the initial listener and ignores 
         socket.terminate();
         await vi.waitFor(() =>
             expect(
-                harness.daemon.services.runtimes.list()[0]?.collaborationActive,
-            ).toBe(false),
+                harness.daemon.services.runtimes.list()[0]?.binding
+                    .relayDisconnected,
+            ).toBe(true),
         );
         release();
-        await vi.waitFor(() =>
-            expect(harness.daemon.services.runtimes.list()).toEqual([]),
-        );
-        await vi.waitFor(() =>
-            expect(sessions[0]!.session.kill).toHaveBeenCalledOnce(),
-        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(harness.daemon.services.runtimes.list()).toHaveLength(1);
+        expect(sessions[0]!.session.kill).not.toHaveBeenCalled();
         expect(() =>
             sessions[0]!.options.initialListener!.data(Buffer.from("late")),
         ).not.toThrow();
@@ -307,7 +305,7 @@ test("spawn failure cleans the registered identity while preserving its borrowed
     }
 });
 
-test("foreground connection loss terminates its managed vendor handle and keeps the borrowed shell", async () => {
+test("foreground connection loss retains its managed vendor and the borrowed shell", async () => {
     const shell = await harness.daemon.createShell();
     const terminalContext = terminalContextFromEnv(sessions[0]!.options.env!)!;
     const { socket } = await connect({ ...frame(), terminalContext });
@@ -316,14 +314,15 @@ test("foreground connection loss terminates its managed vendor handle and keeps 
     const token = vendor.options.env!.AIOX_MCP_TOKEN!;
     socket.terminate();
     await vi.waitFor(() =>
-        expect(harness.daemon.services.runtimes.list()).toEqual([]),
+        expect(
+            harness.daemon.services.runtimes.list()[0]?.binding
+                .relayDisconnected,
+        ).toBe(true),
     );
-    expect(vendor.session.kill).toHaveBeenCalledOnce();
-    expect(vendor.session.alive).toBe(false);
+    expect(vendor.session.kill).not.toHaveBeenCalled();
+    expect(vendor.session.alive).toBe(true);
     expect(harness.daemon.services.terminals.view(shell.id)?.alive).toBe(true);
-    expect(
-        harness.daemon.services.runtimes.authenticate(token),
-    ).toBeUndefined();
+    expect(harness.daemon.services.runtimes.authenticate(token)).toBeDefined();
 });
 
 test("a browser attachment detaches without stopping either the foreground CLI runtime or shell", async () => {
@@ -1610,3 +1609,183 @@ test.each([false, true])(
         }
     },
 );
+
+test("keeps Web execution and registration after relay loss and restores the same vendor through its terminal", async () => {
+    const input = webFrame();
+    const { socket } = await connect(input);
+    await vi.waitFor(() => expect(sessions).toHaveLength(1));
+    const vendor = sessions[0]!;
+    const record = harness.daemon.services.runtimes.list()[0]!;
+    socket.terminate();
+    await vi.waitFor(async () => {
+        const response = await fetch(
+            harness.apiUrl(`/api/terminals/${record.terminalId}`),
+        );
+        expect(await response.json()).toMatchObject({
+            vendor: {
+                runtimeId: record.id,
+                alive: true,
+                relayDisconnected: true,
+                collaborationActive: true,
+            },
+        });
+    });
+    expect(vendor.session.kill).not.toHaveBeenCalled();
+    expect(harness.daemon.services.runtimes.get(record.id)).toBe(record);
+    const restored = new WebSocket(
+        harness
+            .webUrl(`/ws/terminal/${record.terminalId}?runtime=${record.id}`)
+            .replace("http:", "ws:"),
+    );
+    await once(restored, "open");
+    restored.send(Buffer.from("same vendor"));
+    await vi.waitFor(() =>
+        expect(vendor.session.write).toHaveBeenCalledWith(
+            new Uint8Array(Buffer.from("same vendor")),
+        ),
+    );
+    const response = await fetch(
+        harness.apiUrl(
+            `/api/terminals/${record.terminalId}/vendor?runtime=${record.id}`,
+        ),
+        { method: "DELETE" },
+    );
+    expect(response.ok).toBe(true);
+    await vi.waitFor(() => expect(vendor.session.kill).toHaveBeenCalled());
+    expect(
+        harness.daemon.services.terminals.get(record.terminalId!)?.alive,
+    ).toBe(true);
+    expect(harness.daemon.services.runtimes.list()).toEqual([]);
+    restored.terminate();
+});
+
+test("Web collaboration timeout revokes only collaboration and retains its usable relay until explicit cleanup", async () => {
+    const input = webFrame();
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    const { socket } = await connect(input);
+    await vi.waitFor(() =>
+        expect(timers.mock.calls.some((call) => call[1] === 60_000)).toBe(true),
+    );
+    const record = harness.daemon.services.runtimes.list()[0]!;
+    const vendor = sessions[0]!;
+    const cleanup = vi.spyOn(bindings.get(record.id)!, "cleanup");
+    const deadline = timers.mock.calls.find((call) => call[1] === 60_000)![0];
+    if (typeof deadline !== "function") throw new Error("Missing deadline");
+    deadline();
+    await vi.waitFor(async () => {
+        const response = await fetch(
+            harness.apiUrl(`/api/terminals/${record.terminalId}`),
+        );
+        expect(await response.json()).toMatchObject({
+            vendor: {
+                alive: true,
+                collaborationActive: false,
+                relayDisconnected: false,
+                collaborationError: expect.stringContaining("60 seconds"),
+            },
+        });
+    });
+    expect(cleanup).toHaveBeenCalledWith("collaboration_lost");
+    expect(vendor.session.kill).not.toHaveBeenCalled();
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    socket.send(Buffer.from("still usable"));
+    await vi.waitFor(() =>
+        expect(vendor.session.write).toHaveBeenCalledWith(
+            Buffer.from("still usable"),
+        ),
+    );
+    expect((await harness.daemon.stop(false)).stopped).toBe(false);
+    await harness.daemon.stopRuntime(record.id);
+    expect(vendor.session.kill).toHaveBeenCalledOnce();
+    expect(harness.daemon.services.runtimes.list()).toEqual([]);
+    socket.terminate();
+});
+
+test("a failure after Web PTY creation retains the same vendor for recovery and natural-exit cleanup", async () => {
+    let fail!: (error: Error) => void;
+    holdStart = new Promise<void>((_resolve, reject) => {
+        fail = reject;
+    });
+    const { socket } = await connect(webFrame());
+    await vi.waitFor(() => expect(sessions).toHaveLength(1));
+    const record = harness.daemon.services.runtimes.list()[0]!;
+    const vendor = sessions[0]!;
+    fail(new Error("post-spawn preparation failed"));
+    await vi.waitFor(() =>
+        expect(record.binding.collaborationError).toBe(
+            "post-spawn preparation failed",
+        ),
+    );
+    expect(record.binding.relayDisconnected).toBe(true);
+    expect(record.collaborationActive).toBe(false);
+    expect(vendor.session.kill).not.toHaveBeenCalled();
+    const viewer = new WebSocket(
+        harness
+            .webUrl(`/ws/terminal/${record.terminalId}?runtime=${record.id}`)
+            .replace("http:", "ws:"),
+    );
+    await once(viewer, "open");
+    viewer.send(Buffer.from("/exit\r"));
+    await vi.waitFor(() =>
+        expect(vendor.session.write).toHaveBeenCalledWith(
+            new Uint8Array(Buffer.from("/exit\r")),
+        ),
+    );
+    vendor.exit();
+    await vi.waitFor(() =>
+        expect(harness.daemon.services.runtimes.list()).toEqual([]),
+    );
+    expect(
+        harness.daemon.services.terminals.view(record.terminalId!)?.alive,
+    ).toBe(true);
+    expect(vendor.session.dispose).toHaveBeenCalled();
+    viewer.terminate();
+    socket.terminate();
+});
+
+test("retained Web vendor cleanup retries failures and rejects stale terminal ownership", async () => {
+    const { socket } = await connect(webFrame());
+    await vi.waitFor(() => expect(sessions).toHaveLength(1));
+    const record = harness.daemon.services.runtimes.list()[0]!;
+    const vendor = sessions[0]!;
+    socket.terminate();
+    await vi.waitFor(() => expect(record.binding.relayDisconnected).toBe(true));
+    const remove = (id: string, runtime = record.id) =>
+        fetch(
+            harness.apiUrl(`/api/terminals/${id}/vendor?runtime=${runtime}`),
+            { method: "DELETE" },
+        );
+    expect((await remove(record.terminalId!, "stale-runtime")).status).toBe(
+        404,
+    );
+    expect((await remove("another-terminal")).status).toBe(404);
+    expect(vendor.session.kill).not.toHaveBeenCalled();
+    vi.mocked(vendor.session.kill).mockRejectedValueOnce(
+        new Error("kill unconfirmed"),
+    );
+    expect((await remove(record.terminalId!)).status).toBe(500);
+    expect(vendor.session.alive).toBe(true);
+    expect(harness.daemon.services.runtimes.get(record.id)).toBe(record);
+    const viewer = new WebSocket(
+        harness
+            .webUrl(`/ws/terminal/${record.terminalId}?runtime=${record.id}`)
+            .replace("http:", "ws:"),
+    );
+    await once(viewer, "open");
+    viewer.send(Buffer.from("retry input"));
+    await vi.waitFor(() =>
+        expect(vendor.session.write).toHaveBeenCalledWith(
+            new Uint8Array(Buffer.from("retry input")),
+        ),
+    );
+    const detached = once(viewer, "close");
+    viewer.close();
+    await detached;
+    expect(vendor.session.alive).toBe(true);
+    expect((await remove(record.terminalId!)).status).toBe(200);
+    expect(vendor.session.kill).toHaveBeenCalledTimes(2);
+    expect(harness.daemon.services.runtimes.get(record.id)).toBeUndefined();
+    expect(
+        harness.daemon.services.terminals.view(record.terminalId!)?.alive,
+    ).toBe(true);
+});

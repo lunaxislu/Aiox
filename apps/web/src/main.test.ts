@@ -860,3 +860,128 @@ it("starts a queued selection read after the write even while its follow-up quer
         finishQuery?.({ ok: true, status: 200, json: async () => [shell] });
     }
 });
+
+it("recovers the retained vendor in the same selected terminal and retries vendor-only cleanup", async () => {
+    const nodes = new Map<string, Element>();
+    const node = (id: string) => {
+        if (!nodes.has(id)) nodes.set(id, new Element());
+        return nodes.get(id)!;
+    };
+    vi.stubGlobal("document", {
+        getElementById: node,
+        createElement: () => new Element(),
+        hasFocus: () => true,
+        visibilityState: "visible",
+        addEventListener: vi.fn(),
+    });
+    vi.stubGlobal("window", { addEventListener: vi.fn() });
+    vi.stubGlobal("EventSource", Events);
+    vi.stubGlobal("confirm", () => true);
+    const vendor = {
+        runtimeId: "vendor-1",
+        alive: true,
+        relayDisconnected: true,
+        collaborationActive: false,
+        collaborationError: "startup deadline",
+    };
+    let shell: object = {
+        id: "shell-1",
+        cwd: "/work",
+        kind: "shell",
+        alive: true,
+        vendor,
+    };
+    let failCleanup = true;
+    let failQuery = false;
+    const fetchMock = vi.fn(
+        async (path: string, options?: { method?: string }) => {
+            if (options?.method === "DELETE") {
+                if (failCleanup)
+                    return {
+                        ok: false,
+                        json: async () => ({ message: "kill unconfirmed" }),
+                    };
+                shell = {
+                    id: "shell-1",
+                    cwd: "/work",
+                    kind: "shell",
+                    alive: true,
+                };
+                return { ok: true, json: async () => ({ deleted: true }) };
+            }
+            if (failQuery && path === "/api/terminals")
+                return {
+                    ok: false,
+                    json: async () => ({ message: "list unavailable" }),
+                };
+            return {
+                ok: true,
+                json: async () => (path === "/api/terminals" ? [shell] : []),
+            };
+        },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    attach.mockImplementation((_host, terminalId) => ({
+        terminalId,
+        close,
+        closed: false,
+    }));
+    await import("./main");
+    await vi.waitFor(() => expect(node("terminals").children).toHaveLength(1));
+    node("terminals").children[0]!.click();
+    expect(node("execution-state").textContent).toContain("협업은 끊긴 상태");
+    expect(node("execution-state").textContent).toContain("다시 연결해야");
+    expect(node("terminate").textContent).toBe("vendor 정리");
+    node("reconnect").click();
+    expect(attach).toHaveBeenLastCalledWith(
+        node("terminal"),
+        "shell-1",
+        expect.any(Function),
+        "vendor-1",
+    );
+    const callback = attach.mock.calls.at(-1)![2] as (
+        text: string,
+        state: string,
+    ) => void;
+    callback("failed reconnect", "failed");
+    expect(node("reconnect").disabled).toBe(false);
+    expect(
+        fetchMock.mock.calls.filter(
+            ([, options]) => options?.method === "DELETE",
+        ),
+    ).toHaveLength(0);
+    node("reconnect").click();
+    node("terminate").click();
+    await vi.waitFor(() =>
+        expect(node("termination-result").textContent).toContain(
+            "kill unconfirmed",
+        ),
+    );
+    expect(node("terminate").disabled).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+        "/api/terminals/shell-1/vendor?runtime=vendor-1",
+        { method: "DELETE" },
+    );
+    failQuery = true;
+    Events.current.onmessage?.();
+    await vi.waitFor(() =>
+        expect(node("status").textContent).toContain("list unavailable"),
+    );
+    expect(node("terminate").textContent).toBe("vendor 정리");
+    failCleanup = false;
+    failQuery = false;
+    node("terminate").click();
+    expect(
+        fetchMock.mock.calls
+            .filter(([, options]) => options?.method === "DELETE")
+            .at(-1)?.[0],
+    ).toBe("/api/terminals/shell-1/vendor?runtime=vendor-1");
+    await vi.waitFor(() =>
+        expect(attach).toHaveBeenLastCalledWith(
+            node("terminal"),
+            "shell-1",
+            expect.any(Function),
+        ),
+    );
+    expect(node("terminals").children).toHaveLength(1);
+});

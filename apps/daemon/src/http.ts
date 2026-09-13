@@ -167,9 +167,62 @@ async function route(
         return;
     }
 
+    const terminalView = (id: string) => {
+        const view = services.terminals.view(id);
+        if (!view) return undefined;
+        const record = runtimes
+            .list()
+            .find(
+                (r) =>
+                    r.executionOwnership === "daemon" &&
+                    r.terminalId === id &&
+                    r.binding.terminal,
+            );
+        return record
+            ? {
+                  ...view,
+                  vendor: {
+                      runtimeId: record.id,
+                      alive: record.binding.terminal!.alive,
+                      relayDisconnected:
+                          record.binding.relayDisconnected === true,
+                      collaborationActive: record.collaborationActive,
+                      ...(record.binding.collaborationError
+                          ? {
+                                collaborationError:
+                                    record.binding.collaborationError,
+                            }
+                          : {}),
+                  },
+              }
+            : view;
+    };
+    const vendorMatch = /^\/api\/terminals\/([^/]+)\/vendor$/.exec(path);
+    if (vendorMatch && method === "DELETE") {
+        const id = decodeURIComponent(vendorMatch[1]!);
+        const record = runtimes.get(url.searchParams.get("runtime") ?? "");
+        if (
+            !record ||
+            record.executionOwnership !== "daemon" ||
+            record.terminalId !== id
+        )
+            throw new HttpError(
+                404,
+                "unknown_agent",
+                "No such terminal execution.",
+            );
+        await lifecycle.stopRuntime(record.id);
+        send(response, 200, { deleted: true });
+        return;
+    }
+
     if (path === apiPath.terminals) {
         if (method === "GET") {
-            send(response, 200, services.terminals.views());
+            send(
+                response,
+                200,
+                services.terminals.views().map((view) => terminalView(view.id)),
+            );
             return;
         }
         if (method === "POST") {
@@ -186,7 +239,7 @@ async function route(
     if (terminalMatch) {
         const id = decodeURIComponent(terminalMatch[1]!);
         if (method === "GET") {
-            const view = services.terminals.view(id);
+            const view = terminalView(id);
             if (!view)
                 throw new HttpError(
                     404,

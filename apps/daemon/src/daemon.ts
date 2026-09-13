@@ -128,6 +128,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         lifecycle: {
             createShell,
             stopTerminal,
+            stopRuntime,
             status: async () => ({
                 status: "running" as const,
                 pid: process.pid,
@@ -295,9 +296,20 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 }
                 const url = new URL(request.url ?? "/", `http://${host}`);
                 const match = /^\/ws\/terminal\/([^/]+)$/.exec(url.pathname);
-                const session = match
-                    ? terminals.get(decodeURIComponent(match[1]!))
+                const terminalId = match
+                    ? decodeURIComponent(match[1]!)
                     : undefined;
+                const runtimeId = url.searchParams.get("runtime");
+                const record = runtimeId ? runtimes.get(runtimeId) : undefined;
+                const session = runtimeId
+                    ? record?.executionOwnership === "daemon" &&
+                      record.terminalId === terminalId &&
+                      record.binding.relayDisconnected
+                        ? record.binding.terminal
+                        : undefined
+                    : terminalId
+                      ? terminals.get(terminalId)
+                      : undefined;
                 if (!session) {
                     socket.end(
                         "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n",
@@ -520,7 +532,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 try {
                     if (terminate) await terminals.kill(session.id);
                     else if (!(await terminals.closeIdle(session.id)))
-                        throw new Error("Shell is no longer idle.");
+                        throw new Error(
+                            "Could not confirm shell shutdown. Please check the shell.",
+                        );
                 } catch (error) {
                     warnings.push(`terminal ${session.id}: ${String(error)}`);
                 }

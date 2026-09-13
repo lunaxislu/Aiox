@@ -297,6 +297,36 @@ it("reports quota notifications without completing or resending requests", async
     expect(controls.settle).not.toHaveBeenCalled();
 });
 
+it("keeps a quota-interrupted session failed until its continuation starts and ends", async () => {
+    const { observer, controls } = setup();
+    await observer.observe(
+        event("UserPromptSubmit", "one", { prompt: observer.track(message()) }),
+    );
+    await observer.observe(
+        event("StopFailure", "one", { error: "rate_limit" }),
+    );
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "failed",
+        "rate_limit",
+    );
+    await observer.observe(
+        event("Notification", "one", {
+            notification_type: "quota_auto_resume_fired",
+        }),
+    );
+    // The notice announces a resume; only the continuation's own request proves
+    // one started, and only its own end proves the session went idle again.
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("failed");
+    await observer.observe(
+        event("UserPromptSubmit", "resumed", { prompt: "continue the task" }),
+    );
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("reasoning");
+    await observer.observe(event("Stop", "resumed"));
+    expect(controls.setActivity.mock.lastCall?.[0]).toBe("idle");
+    expect(controls.settle).toHaveBeenCalledTimes(1);
+});
+
 it("records uncorrelated API failures but never guesses their delivery", async () => {
     const { observer, controls } = setup();
     observer.track(message());

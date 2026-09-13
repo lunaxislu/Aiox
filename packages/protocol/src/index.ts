@@ -42,6 +42,15 @@ export const terminalViewSchema = z.object({
     cwd: z.string(),
     kind: z.enum(["shell", "agent"]),
     alive: z.boolean(),
+    vendor: z
+        .object({
+            runtimeId: z.string(),
+            alive: z.boolean(),
+            relayDisconnected: z.boolean(),
+            collaborationActive: z.boolean(),
+            collaborationError: z.string().optional(),
+        })
+        .optional(),
 });
 export const terminalContextSchema = z.strictObject({
     terminalId: z.string().min(1),

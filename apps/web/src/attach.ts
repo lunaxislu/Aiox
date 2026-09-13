@@ -43,6 +43,7 @@ export function attachTerminal(
     host: HTMLElement,
     terminalId: string,
     onState: (text: string, state?: AttachmentState) => void,
+    runtimeId?: string,
 ): Attachment {
     host.replaceChildren();
 
@@ -62,7 +63,7 @@ export function attachTerminal(
     term.open(host);
 
     const socket = new WebSocket(
-        `ws://${location.host}/ws/terminal/${terminalId}`,
+        `ws://${location.host}/ws/terminal/${encodeURIComponent(terminalId)}${runtimeId ? `?runtime=${encodeURIComponent(runtimeId)}` : ""}`,
     );
     socket.binaryType = "arraybuffer";
 

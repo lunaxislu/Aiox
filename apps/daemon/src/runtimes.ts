@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome, RuntimeActivity } from "@aiox/domain";
+import type { TerminalSession } from "@aiox/terminal";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 
@@ -9,6 +10,9 @@ export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
  * implementations; Stage 2 exercises the seam with test doubles.
  */
 export type AgentBinding = {
+    readonly terminal?: TerminalSession | undefined;
+    readonly relayDisconnected?: boolean;
+    readonly collaborationError?: string | undefined;
     /** Resolves when the input was accepted, never when the work is done. */
     deliver(message: InboundMessage): Promise<void>;
     /** Confirms daemon-owned execution resources have stopped; never called for external execution. */

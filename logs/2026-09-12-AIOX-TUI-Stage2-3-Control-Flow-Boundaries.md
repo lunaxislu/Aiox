@@ -11,8 +11,8 @@ status: open
 - [x] W3 시작·재시작·조회 책임 정리 — 새 config의 가능한 준비·검증과 override 변경 안내 후 기존 daemon을 종료하고 준비 결과로 시작한다. Web·상태 파일 준비까지 성공 공개를 늦추며 실패 자원을 정리한다. daemon status·doctor는 실행 중 대상 발견을 다음 설정 검증과 분리한다. — detached: logs/2026-09-12-AIOX-W3-Startup-Readiness.md — reason: 사용자 W3 subagent 실행 승인; CLI·daemon·owner의 공통 완료 검증
 - [x] W4 참여 중 Network 삭제 거절 — 실행 참여가 있으면 삭제를 거절하고 먼저 참여 정리를 요구한다. 자동 종료·분리를 추가하지 않으며 등록/삭제 경합과 이후 discovery·전송을 검증한다. — detached: logs/2026-09-13-AIOX-W4-Network-Deletion.md — reason: 사용자 W4 실행 승인; code·tests·owner 공통 완료 검증
 - [x] W5 Web 작업 결과·화면 복원 및 SSE·알림 개선 완료 — root가 527 tests와 built daemon·브라우저 근거를 수용했고 사용자 실행 정리 후 일반 daemon stop과 승인된 개발 DB 일회 삭제까지 완료했다.
-- [>] W6 정리 후보 1~6 수용 완료·남은 등록 구조 및 외부 리뷰 판정 — 최신 결과의 526 tests·public built 검증을 소비한다. 등록 예약·준비·활성화 대안과 미판정 vendor 이벤트·옵션 등 기존 외부 리뷰를 실제 caller·요구·근거로 검토한다. 완료한 정리를 반복하거나 미확인 후보를 확정 결함으로 승격하지 않는다.
-- [ ] W7 통합 리뷰·owner 반영·단계 마감 — 변경별 회귀와 관련 OS 검증, 제거 코드의 책임 보존, 미해결 후보 disposition을 root가 확인한다. 확정 계약을 owner에 반영하고 잔여 한계와 후속 owner를 명시한 뒤 Stage3 W1로 활성 단계 포인터를 옮긴다. 원격 push는 사용자 지시가 있을 때만 수행한다.
+- [x] W6 정리 후보·외부 리뷰 판정과 외부 실행·Web 중계 복구·진단·quota A안 구현 확인 완료 — 최종 534 tests 통과 출력과 기존 직접 실행 근거를 수용했다. 필요한 owner 정합화를 완료했고 quota 추가 반영은 불필요하다. 사용자 직접 중단 상태 보정은 제외한다.
+- [>] W7 통합 리뷰·owner 반영·단계 마감 — 변경별 회귀와 관련 OS 검증, 제거 코드의 책임 보존, 미해결 후보 disposition을 root가 확인한다. 확정 계약을 owner에 반영하고 잔여 한계와 후속 owner를 명시한 뒤 Stage3 W1로 활성 단계 포인터를 옮긴다. 원격 push는 사용자 지시가 있을 때만 수행한다.
 
 ## Required Context
 
@@ -22,8 +22,8 @@ status: open
 
 ### {Global}
 
-- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1 a039525·W2 839c890·W3 3d2cb21·W4 11c6392 커밋 완료. W5 완료와 W6 정리 후보 1~6은 root 수용 후 사용자가 커밋·인계를 승인했으며 실제 커밋 완료와 hash는 Git에서 확인한다. 최신 커밋 승인 entry의 구조/행위 분리와 526 tests·public built 검증, W5의 별도 한계를 따른다. W6 나머지 외부 리뷰·등록 구조 검토는 열린 next이나 미착수로 자동 실행하지 않는다. 추가 논의가 필요하면 작업을 중단하고 사용자와 논의한다. 원격 push는 금지한다. 이 단계 완료 후 Stage3 W1을 재개한다.
-- 사용자는 root를 논의·정책·지시·직접 리뷰 담당으로, subagent를 조사·구현·테스트 담당으로 지정했다. 기존 조사와 확정 정책을 다시 승인받지 않는다. 최신 커밋 승인은 수용된 W5·W6 후보 1~6과 관련 문서/로그에 한정한다. 원격 push는 사용자 후속 지시까지 금지한다. 다른 작업의 미추적 execution-flow-map skill과 architecture.excalidraw 개인 자산은 제외한다.
+- plans/aiox-tui-product-rebuild.md의 Stage2-3이다. W1~W6를 완료했고 다음 재개 지점은 W7 통합 확인·owner 정합성·단계 마감이다. 이번에는 포인터만 이동하며 W7 실행이나 Stage3 진입으로 확대하지 않는다. 추가 정책·UI·실패 처리 결정은 사용자와 논의한다. 사용자는 W6까지 현재 변경의 커밋을 승인했고 원격 push는 금지한다. 단계 완료 뒤 Stage3 W1을 재개한다.
+- 사용자는 최신 변경 확인·필요한 문서 반영·완료 표시·포인터 이동·커밋을 root가 직접 수행하도록 지시했다. 이미 확정된 정책을 재승인받거나 완료 조사를 반복하지 않는다. 이번 커밋 승인은 현재까지 수용한 변경과 인계 기록에 한정하며 후속 커밋·원격 push로 확대하지 않는다. 다른 작업의 미추적 execution-flow-map skill과 architecture.excalidraw 개인 자산은 제외한다.
 - 아래 조사 계기와 근거 분류·Claude 의견 대조를 먼저 읽고 선택 Work Item의 호출자·producer/consumer·owner·tests를 추적한다. 기존 조사를 전부 반복하지 말고 변경할 경계의 재현을 회귀 테스트로 고정한다. root가 실제 diff와 검증 근거를 확인하기 전 subagent 완료 보고를 최종 완료로 승격하지 않는다.
 - 관련 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md다. W1 교정은 docs/decisions/external-execution-survival.md로 수용됐고 기존 explicit-execution-shutdown은 결정 계보다. W2 저장·복구와 W3 준비·조회·종료 자원 경계는 owner와 회귀에 반영됐다. 무관한 last-good·자동 적용 요구는 유지한다.
 
@@ -38,14 +38,17 @@ status: open
 
 ### {W6}
 
-- W1은 stopTerminal fail-closed를 협업 정리 전 PTY를 죽이지 않는 보호로 보존했다. closeIdle timeout·ps 실패의 진단은 미검증 후보로 남아 있다. 정상 실패/재시도를 영구 busy·오보로 단정하지 않고 현재 계약과 관측 상태를 대조한다.
-- 외부 리뷰 top 10은 이 로그의 “외부 리뷰 판정과 W6 후보 인계” entry를 읽고 각 원주장·root 대조 근거·잔여 검증을 복원한다. quota 상태·activity 실패 reason·MCP 합성을 우선 후보로 보되 10개 모두 확정 버그나 자동수정 대상으로 승격하지 않는다. 스캔 수·verdict·commit 귀속은 사용자 전달 미검증 주장이다. W3 no-state+invalid-config의 status exit1/doctor config.error exit0는 root built 재확인과 사용자 동의로 현재 동작을 유지한다.
-- 사용자 승인한 정리 후보 1~6은 root가 source/diff·RED/GREEN·526 tests·public built package 검증을 직접 대조해 수용했다. 선택적 snapshot 깊은 복사도 완료했고 최신 W6 결과 수용 entry의 보존 경계와 한계를 따른다. 다음 재개는 기존 외부 리뷰의 실제 vendor 검증·등록 구조 대안 등 남은 검토이며 1~6 구현을 반복하지 않는다. 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다.
+- W1의 stopTerminal fail-closed와 cleanup 실패 재시도는 보존한다. 최신 조사 결과 수용 entry에서 closeIdle의 no-longer-idle 단정은 진단 수정 제안으로 분류했다. timeout의 종료 미확인 실패 자체와 ps 실패 후 재조회는 정상 보호이므로 영구 busy·종료 실패 오보로 재해석하지 않는다.
+- quota A안 구현과 root 확인을 완료했다. quota_auto_resume_fired는 quota 대기 힌트만 해제하며 failed를 지우거나 unidentified 실행 기록을 만들지 않는다. 후속 UserPromptSubmit 제출 관측과 Stop/StopFailure로 상태를 갱신하며 모델 실행 개시를 보장하지 않는다. 회귀 1개와 전체 534 tests 통과 출력을 확인했고 원 delivery의 최초 결과를 보존한다. observation 교체만을 필수 blocker로 본 과거 판단은 철회했다. 사용자 직접 중단 상태 보정은 이번 범위에서 제외한다. MCP 합성·append 반증·signal/WSL 정정과 production 영향 미입증 판정은 다시 조사하지 않는다.
+- 정리 후보 1~6과 기존 526 tests·public built 검증은 완료한 과거 근거다. 후속 외부 실행·Web 복구·진단·quota 변경도 구현·확인을 완료했다. 최종 전체 검사는 534 tests 통과 출력이며 root의 전체 검사 재실행과 구분한다. 사용자가 W6 완료 표시·W7 포인터 이동·현재 변경 커밋을 승인했다. push와 후속 커밋으로 승인 범위를 확대하지 않는다.
 - DB는 현재 schema DDL의 transaction 직접 초기화로 교체됐고 과거 migration/version 채택은 제거했다. spec·storage/system as-built와 관련 검증 근거도 정합화했다. 저장 원자성·직렬화·실패 재시도·재오픈과 정상 terminal nullable을 유지한다. 사용자 배포 완료 통지 전에는 AGENTS의 개발 DB 원칙을 적용하며 배포를 임의 추정하지 않는다.
+- 최신 실행 유지 정책은 vendor 공통이다. 외부 제어 연결 손실은 daemon의 해당 협업 등록을 정리하고 CLI owner의 vendor·필수 자원을 유지한다. Web 화면 중계 손실은 daemon의 실행 관리 등록과 vendor를 유지하며 기존 terminal의 다시 연결로 동일 vendor 화면·키보드를 복구한다. vendor 정리는 owner 전체 종료·부속 자원·등록 정리를 소유한다. 협업 준비 실패의 권한 해제와 화면 복구를 구분하고 MCP 재등록·vendor 재생성으로 확대하지 않는다. 앞선 중계 손실 owner 종료 유지·화면 선택 대기·취소는 최신 재개 승인으로 대체됐다. daemon stop/force의 기존 소유권 정책은 유지한다.
+- 최신 진단 소비·설정 승인 범위 정정을 먼저 소비한다. failPending activity reason 차이는 revoke와 inactive 제외 때문에 현재 API/MCP 노출 근거가 없어 필수 수정 후보에서 제외했으며 새 생존 정책으로 consumer가 바뀔 때 재검토한다. retention 전역 변경과 일반 자동 적용 기록은 있으나 필드명·실행 중 새값 소비 시점의 사용자 직접 확정 근거는 없다. 이를 항목별 승인으로 확대하지 않고 후속 논의에서 구분한다.
 
 ### {W7}
 
 - W2 messages.drain의 필수 저장 지속 실패는 500 internal_error 및 DB/listener 재시도 유지다. W3 DB close 실패는 listener 해제 뒤 stderr 진단하고 closed 의미를 유지하는 것으로 판정·회귀 검증했다. 상태 파일 삭제는 listener 해제 전으로 이동해 지연 DB close 뒤 새 상태 기록을 삭제하지 않는다. 삭제 실패는 진단 후 stale 기록 가능성을 남기며 listener 종료와 구분한다. 이 후보를 미판정 결함으로 재개하지 않는다.
+- W6 완료와 포인터 이동만 수행했다. 최신 534 tests 출력·Web 실제 복구 근거·각 후보 disposition을 소비하고, 남겨 둔 진단 표시 요구와 검증 한계를 통합 확인에서 구분한다. 완료 작업의 조사·실험을 이유 없이 반복하지 않는다. 이번 커밋 승인으로 W7 실행·추가 커밋·push를 승인받았다고 간주하지 않는다.
 
 ### {W5}
 
@@ -456,3 +459,167 @@ storage-terminal/system architecture와 configuration-web spec을 현재 초기�
 최종 526 tests 전체 검사와 public built package 검증 이후 production/tests 추가 변경은 없다. 기존 검증 범위·native 창/탭 전환 미검증 한계와 개발 DB 일회 초기화 완료를 인계한다. W6의 나머지 외부 리뷰·등록 구조 검토는 미착수이며 다음 세션에서 자동 실행하지 않는다. 추가 정책·UI·실패 처리 논의가 필요하면 작업을 중단하고 사용자와 논의한다.
 
 원격 push는 금지하고 다른 작업의 미추적 execution-flow-map skill과 architecture.excalidraw 개인 자산은 커밋 대상에서 제외한다. 새 로그·scaffold나 코드 변경은 하지 않는다. root가 최종 diff를 확인한 뒤 커밋하고 실제 Git 상태를 다음 세션 인계에 반영한다.
+
+### 2026-09-13 17:37 · W6 남은 후보 조사·보고 승인과 검토 착수
+
+사용자가 남은 W6는 조사 뒤 근거와 판정을 보고하고 그 보고를 바탕으로 구현 범위를 정하는 작업임을 확인한 뒤 실행을 승인했다. 이번 승인은 등록 구조·외부 리뷰의 조사와 필요한 검증 및 보고에 한정하며 production/tests 수정 승인이 아니다. 완료한 W1~W5와 W6 정리 후보 1~6, 기존 526 tests·public built package 결과를 다시 수행하지 않는다.
+
+subagent는 등록 구조와 종료·설정 적용 경계, Claude quota·실패 reason 등 상태 관측, MCP 합성·execution·옵션 관련 외부 리뷰를 나누어 실제 caller·producer/consumer·owner·tests와 대조한다. root는 source와 검증 script·출력 원문을 직접 확인하고 최종 후보별 판정을 수용한 뒤 보고한다. 이 entry는 승인과 진행 경계이며 조사 결과의 최종 수용 기록은 아니다.
+
+추가 정책·UI·실패 처리 결정이 필요하면 해당 작업을 중단하고 사용자와 논의한다. 사용자 daemon·vendor를 임의 종료하지 않고 실행 검증은 임시 home·포트와 본인이 만든 자원을 사용한다. 현재 부모 로그만 갱신하며 새 로그/package/scaffold, 다른 작업의 미추적 execution-flow-map 변경, production/tests 수정, commit/push는 하지 않는다. W6 active와 W7 미착수를 유지한다.
+
+### 2026-09-13 17:39 · W6 조사 결과 수용과 구현 범위·후속 판정 대기
+
+root가 세 조사 결과의 source·caller·owner와 probe script/출력을 직접 대조하고 아래 조사 판정을 수용했다. 이는 조사·보고 결과 수용이며 수정안의 구현 승인이나 W6 전체 완료가 아니다.
+
+| 판정 | 확인 범위·근거와 다음 판단 |
+| --- | --- |
+| 결함 확인 | 외부 실행의 prepared 응답 전 SIGTERM에서 Claude inbox 임시 디렉터리가 잔존했다. root가 본인 Node child로 재현했고 probe가 잔존 자원을 정리했다. apps/cli/src/external.ts:130-139의 signal handler 설치 전, packages/adapters/claude/src/claude-environment.ts:16의 자원 생성 경계다. SIGINT는 같은 설치 위치의 코드상 가능성일 뿐 이번 신호 실측이 아니다. |
+| 진단 수정 제안 4건 | claude-observations.ts:191-198의 failPending은 delivery reason을 보존하지만 activity reason을 connection_lost로 고정한다. 현재 Web은 reason을 렌더하지 않으며 HTTP 조회 레이스 실측은 아니다. terminal/index.ts:251-259의 closeIdle false는 ACK·ps 실패나 exit timeout일 수도 있는데 daemon.ts:522-523은 no-longer-idle로 단정한다. timeout 실패·fail-closed 자체는 유지한다. claude-version.ts:65는 EACCES 원인을 generic version probe failed로 축약하되 시작 거절은 정상이다. external.ts:65-104,183-187의 startup-failed 뒤 close는 종료 진행 중에도 vendor 재실행 안내를 섞는다. 당시 생존값과 최종 시작 실패 오류는 보존되므로 vendor 생존 거짓말·오류 전체 유실로 확대하지 않는다. |
+| quota 추가 근거·논의 필요 | claude-observations.ts:352-355의 active 없는 quota fired → 새 keyed Submit → Stop 뒤 reasoning 잔존을 합성 hook 입력으로 실제 adapter에서 재현했다. 실제 vendor의 사건 순서는 미확정이다. 어떤 관측으로 잔존을 해소할지는 사용자 논의·추가 근거 전 임의 구현하지 않는다. 공식 hooks 문서는 자동 재개 의미만 제공하며 전체 순서·종료를 보장하지 않는다. |
+| 등록 구조 유지 권고 | runtimes.ts:90-153, daemon.ts:605-693, agent-controller.ts:259-367을 대조했다. reserve/activate 분리만으로 실제 owner cleanup·credential 준비·진행 Promise가 줄어든다는 근거가 없다. 현재 동기 예약·DB 존재 확인·비동기 revoke 재검사와 외부/Web 소유권을 보존한다. Host는 아직 production caller가 아니므로 미래 caller를 위한 재설계를 추가하지 않는다. |
+| MCP·append 원주장 반증 | root가 설치 Claude 2.1.269의 embedded parser/merge 위치와 공식 action 문서를 직접 대조했다. 여러 --mcp-config의 앞 구성 전체가 사라지는 last-only 주장은 맞지 않으며, 빈 append+file도 probe에서 사용자 파일과 AIOX instruction이 합성됐다. 모든 지원 버전이나 실제 MCP 서버 연결 실측은 아니다. |
+| 현 경계 유지·영향 미입증 | EPIPE·동일 own callback 재등록·foreground 실패 latch는 실제 production 영향 근거가 없어 수정하지 않는다. .ps1 실행 형식 사전 성공 보장 부재는 현 계약 자체 결함이 아니고, WSL 수동 변환 부재와 signal 유실 주장도 반증을 유지한다. stop 실패 뒤 inbox 보존은 재시도 경계이며 hook 401은 기존 협업 권한 정책이다. 외부 생존과 cleanup을 구분하고 ExecutionOwner의 TERM→KILL 종료와 외부 native SIGINT를 임의 변경하지 않는다. |
+| retention 후속 연결 제안 | bootstrap.ts:69와 bootstrap.test.ts:43-73은 boot snapshot 고정을 확인한다. plan:15의 포트만 다음 시작·configuration-web:109-128의 자동 반영 target과 차이가 있지만 spec의 기반 구현/file watch 후속 범위도 구분한다. 현재 단계의 미구현 연결을 현 자동 반영 구현의 회귀로 단정하지 않는다. Stage6 로그:26의 설정 자동 반영 작업에 retention consumer도 포함하자는 제안이며 이관 확정이나 새 적용 정책 승인이 아니다. 새 shell의 생성 시 파일 재조회는 현 계약과 일치한다. |
+
+외부 근거: https://github.com/anthropics/claude-code-action/blob/main/docs/configuration.md#multiple-mcp-servers ; https://code.claude.com/docs/en/hooks#notification . 외부 리뷰의 스캔 수·top10 verdict·commit 귀속 원주장 전수 검증으로 확대하지 않는다.
+
+검증: root가 /private/tmp/aiox-w6-execution-review.ts와 관련 source·bundle 구성, /private/tmp/aiox-w6-claude-candidate-probe.mjs 전체를 읽고 execution-review.mjs와 claude-candidate-probe.mjs를 각각 node, node --experimental-transform-types로 직접 실행해 exit0를 확인했다. 전자는 source bundle·기존 vendor dist·fake socket·본인 Node child, 후자는 실제 adapter와 제어 hook 입력이며 실제 Claude/Codex 세션·모든 OS 실측이 아니다. probe 출력 파일 /private/tmp/aiox-w6-execution-review.txt, /private/tmp/aiox-w6-claude-candidate-probe.txt는 재사용 전 존재와 실행 주체를 확인한다. 문서 담당자는 파일을 대조했으며 root 실행을 재실행한 것은 아니다.
+
+Registry/bootstrap focused는 담당 agent 실행·root 출력 확인으로 2 files/10 tests 통과했다(/private/tmp/aiox-w6-registry-review-focused.txt). 최초 명령의 -- 때문에 의도치 않게 daemon 199 tests가 선택되어 listen EPERM으로 실패한 기록은 환경/명령 범위 실패이며 제품 RED가 아니다(/private/tmp/aiox-w6-registry-review-tests.txt). 기존 526 tests 전체 수용 결과와 구분하고 전체 재실행은 하지 않는다.
+
+W6는 조사 결과 보고 뒤 구현 범위와 quota·retention 후속 판정을 기다리는 active로 유지한다. W7·Stage3·추가 커밋·push로 확대하지 않는다. 이번에는 부모 로그만 갱신했고 production/tests와 다른 작업 자산은 변경하지 않았다. 추가 정책·UI·실패 처리 결정이 필요하면 사용자와 논의한 뒤 진행한다.
+
+### 2026-09-13 18:13 · MCP 합성 반증 수용·후보 마감과 외부 CLI 재현 위치 명확화
+
+사용자는 보고의 8번 MCP 설정 합성을 AIOX 때문에 사용자 MCP 구성 전체가 사라지지 않는 것으로 이해하고 별도 조치·추가 실측이 불필요하다고 판단했다. 이 후보는 반증 수용으로 마감하며 수정하거나 추가 실측하지 않는다. 설치 Claude 2.1.269의 parser/merge와 공식 문서 대조를 모든 지원 버전의 실제 연결 검증으로 확대하지 않는다. W6 전체는 열린 상태로 유지한다.
+
+재현 위치를 명확히 한다. 보고의 1번은 외부 aiox agent run claude를 실행한 AIOX CLI에서 inbox 디렉터리 생성 후 prepared 수신 전에 SIGTERM이 도착한 경우다. Claude에 신호를 보내거나 /exit를 입력한 재현이 아니다. 5번은 외부 CLI가 startup-failed를 받은 뒤 owner 종료 중 WebSocket close가 겹쳐 같은 외부 터미널에 생존 안내가 출력되는 진단 후보이며 Web 화면 경로가 아니다. 이 정정은 새 구현·정책 승인이 아니며 다른 후보와 W6 구현 범위 대기는 유지한다.
+
+### 2026-09-13 18:20 · 외부·Web 협업 준비 실패 뒤 실행 유지 정책 확정
+
+사용자는 외부 Claude의 최초 협업 준비 실패에도 이미 시작한 vendor를 유지하고 협업 권한·Agent 등록만 정리하는 방향을 수용했다. 사용자가 MCP를 다시 연결한다는 뜻이 아니라 끊겼는지 확인한다는 의미로 정정했다. 이어 Web도 터미널은 사용 가능하지만 AIOX 협업은 끊긴 상태임을 표시하는 정책으로 확정했다.
+
+Web은 daemon이 살아 있어 관리할 수 있는 경우, 최초 협업 준비 실패를 포함한 협업 연결 해제만으로 이미 실행된 Claude/PTY를 종료하지 않는다. daemon은 실행·화면 입력·사용자 종료 관리를 유지하고 협업 권한과 Agent 등록을 정리한다. 프로세스 자체 종료, 실행 전 검증 실패, 화면 attachment 실패는 별개이며 죽은 프로세스를 사용 가능하다고 표시하지 않는다. daemon 종료·force의 기존 소유권 정책을 바꾸거나 자동 재연결·재등록을 추가하는 승인이 아니다. 구체적인 표시 UI는 미정이다.
+
+이 결정은 기존 최초 준비 실패 시 실행 종료 방향을 대체하는 정책이며 구현 완료가 아니다. docs/specs/aiox-runtime.md:62-65와 docs/architecture/aiox-vendor-bindings.md:63-65의 현재 최초 실패 종료 서술 및 관련 code/tests는 구현할 때 함께 변경·검증할 대상이다. 이번에는 owner의 현재 사실을 미리 덮지 않고 부모 로그에 결정과 반영 대상을 연결한다. production/tests 수정·커밋·push는 하지 않으며 W6 active를 유지한다. 추가 정책·UI 세부·실패 처리 결정이 필요하면 작업을 중단하고 사용자와 논의한다.
+
+### 2026-09-13 18:32 · W6 진단 소비 경계와 설정 승인 범위 정정
+
+root가 보고 2번의 실제 소비 경로를 추가 대조했다. agent-controller.ts:183-209는 failPending 전에 revoke하며 http.ts:307,321과 networks.ts:124-134는 inactive 등록을 제외하고 cleanup도 ready=false로 전달을 막는다. 앞선 합성 probe는 내부 activity reason과 delivery reason 차이만 입증했다. 현재 API/MCP에 잘못된 reason이 노출될 수 있다는 설명은 철회하고 수정 필수 후보에서 제외한다. 새 실행 생존 정책의 구현으로 실제 consumer가 바뀌면 그 경계에서 재검토한다.
+
+보고 9번의 사용자 --instruction 주 경로와 Claude --append-system-prompt/--append-system-prompt-file 예외 조합을 혼동하지 않는다. 후자의 빈 값 조합 검증을 일반 instruction 기능의 결함으로 확대하지 않는다. 10A/B는 코드상 가능성과 실제 production 영향 미입증 판정을 유지한다. 3번의 please check shells 안내는 사용자 제안을 바탕으로 타당성을 논의 중인 의견이며 정확한 문구나 구현 승인이 확정된 것은 아니다.
+
+11번 설정 적용은 항목별 사용자 승인으로 과대해석한 부분을 정정한다. Baseline 로그:674,678에는 보존 일수의 전역 변경 정책 채택이, :799에는 파일 저장 자동 적용 수용이 기록돼 있다. :803-807의 항목별 표는 폰트·색상·단축키 즉시 적용, shell/args/cwd 새 shell 생성 시 적용, 포트 다음 시작을 구분하지만 retention은 나열하지 않는다. Stage2-2 로그:231에도 shell/args/cwd 선택 설정 합의가 있다. 이는 과거 대화를 증류한 합의 기록이며 당시 사용자 발화 원문을 이번에 확인한 것은 아니다. messages.retentionDays라는 필드명이나 실행 중 새 retention 값의 소비 시점을 사용자가 직접 확정했다고 할 근거는 찾지 못했다. 포괄 자동 적용 target에서 retention까지 연결한 것은 문서 해석이며 사용자 항목별 승인 사실로 설명하지 않는다.
+
+근거 로그: logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md:674-678,777-807 및 logs/2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md:231. 이번은 조사·설명 정정이며 production/tests·owner 문서 변경이나 구현 승인이 아니다. 기존 부모 W6 active·추가 결정 대기를 유지하고 새 정책·UI·실패 처리 결정은 사용자와 논의한다. 커밋·push는 하지 않는다.
+
+### 2026-09-13 18:42 · W6 구현 goal 승인과 vendor 공통 실행 생존 정책 정정
+
+사용자가 W6 구현 goal을 승인했다. 외부 CLI 준비 중 신호 자원 누수, 버전 진단·quota 관련 승인 범위, daemon/Web 협업 해제 뒤 실행 유지와 간단 shell 종료 진단을 담당 subagent가 나누어 구현하고 root가 source·diff·RED/GREEN·실행 근거를 직접 대조한다. 이전 조사·정책 결정만 승인된 상태에서 이번 명시적 구현 승인으로 전환한다.
+
+실행 유지 정책은 Claude에만 한정하지 않고 Claude/Codex/미래 vendor의 공통 실행 경계에 적용한다. 이미 시작한 실행은 최초 협업 준비 실패·timeout·협업 연결 해제만으로 종료하지 않는다. 협업 권한·Agent 등록은 정리하되 실패 cleanup 재시도와 메시지 원자성을 보존한다. daemon이 살아 있는 Web 실행은 PTY·화면·입력·사용자 종료 관리를 유지하고 협업 끊김을 표시한다. 등록 삭제로 live 실행을 idle shell로 잘못 판정하지 않는다. 실행 전 검증 실패·native 실행 실패·자연 종료·화면 attachment 실패는 별개이며 daemon stop/force의 기존 소유권 정책은 유지한다.
+
+closeIdle false의 간단 진단은 Could not confirm shell shutdown. Please check the shell.로 변경하고 거절·재시도를 유지한다. TDD와 ponytail full을 적용하고 구조 변경이 필요하면 전후 GREEN 및 행위 변경 분리를 지킨다. 기존 부모 로그 외 새 scaffold는 만들지 않으며 owner 문서는 구현 결과 확정 뒤 별도 반영한다. 사용자 daemon/vendor에 접근하지 않고 본인 임시 자원으로 검증한다. 추가 정책·구체 UI·실패 처리 결정이 필요하면 즉시 중단하고 사용자와 논의한다. commit/push는 하지 않는다.
+
+### 2026-09-13 18:46 · W6 독립 수정 직접 검토와 Web 중계 정책 응답 대기
+
+root가 1번 준비 중 신호 정리, 3번 shell 종료 확인 진단, 4번 버전 실행 실패 진단과 5번 외부 CLI 실행 유지 변경의 diff/source를 직접 대조했다. production/tests 변경은 apps/cli/src/external.ts·external.test.ts, apps/daemon/src/daemon.ts·daemon.test.ts, packages/adapters/claude/src/claude-version.ts·claude-version.test.ts다. root는 실행 probe의 TypeScript 전체를 읽고 정확한 esbuild 명령으로 bundle을 다시 만든 뒤 node 실행 exit0를 확인했다.
+
+이번 실제 OS SIGTERM은 prepared 수신 전 AIOX CLI에 전달했으며 status1/signalnull, inbox 디렉터리 부재와 의도한 claude fixture만 남음을 확인했다. EACCES는 구체 원인 메시지를 보존했고 startup-failed와 close 뒤 vendor를 유지한 채 자연 exit7까지 기다리며 원인·협업 연결 해제 진단을 출력했다. 실제 Claude/Codex가 아닌 본인 Node child와 제어 socket을 사용한 검증이다. 이전 누수·종료 재현과 이번 수정 후 결과를 구분한다.
+
+3번의 focused RED는 /private/tmp/aiox-w6-shell-diagnostic-red-authorized.txt의 문구 assertion 실패, GREEN은 /private/tmp/aiox-w6-shell-diagnostic-green.txt의 1 test 통과다. false 반환 뒤 거절·강제 kill 없음·다음 정상 종료 재시도를 유지했다. 최초 /private/tmp/aiox-w6-shell-diagnostic-red.txt는 sandbox listen EPERM으로 제품 RED가 아니다.
+
+root 전체 pnpm check의 /private/tmp/aiox-w6-followup-root-check.txt는 sandbox ps EPERM으로 실패했다. sandbox 밖의 /private/tmp/aiox-w6-followup-root-check-authorized.txt는 이 기록 시점 실행 중이며 최종 수치를 미리 수용하지 않는다. 완료 뒤 root가 실제 결과를 확인해 후속 기록한다.
+
+5번 Web의 협업 해제와 foreground 중계 연결 자체 유실을 구분하는 세 가지 범위 질문·설명을 사용자에게 전달했으나 답변은 아직 없다. 의존하는 Web 구현은 변경하지 않았다. 6번 quota는 추가 source 근거로도 실제 vendor 이벤트 ID·순서를 확정하지 못해 추가 근거·논의 대기를 유지한다. 외부 최초 준비 실패 시 실행 종료를 서술한 runtime spec과 vendor-bindings architecture의 현재 문장은 후속 owner 정합화 대상으로 남아 있으며 구현 수용을 owner 반영 완료로 확대하지 않는다. W6와 전체 goal은 미완료이고 추가 커밋·push는 하지 않는다.
+
+### 2026-09-13 18:47 · W6 독립 수정 전체 검사 통과와 미완료 경계
+
+root가 sandbox 밖 pnpm check의 exit0를 직접 확인했다(/private/tmp/aiox-w6-followup-root-check-authorized.txt). lint·format·build·typecheck와 528 tests(domain28, config28, protocol10, terminal88, vendor3, persistence13, web34, Claude66, CLI59, daemon199)가 통과했다. 앞선 sandbox ps EPERM 실패와 구분한다. 문서 담당자는 출력 파일을 대조했으며 root 명령을 재실행한 것은 아니다.
+
+앞 entry의 독립 수정과 외부 CLI 실행 검증에 대한 전체 검사를 완료했고 이후 source/tests 추가 변경은 없다. 5번 Web은 중계 연결 자체 유실의 정책 응답 대기, 6번 quota는 실제 이벤트 근거·판정 대기이며 owner 현재 서술 정합화도 남아 있다. W6·전체 goal 완료나 W7 진행으로 확대하지 않는다. 추가 커밋·push는 하지 않는다.
+
+### 2026-09-13 18:50 · 외부 실행 유지 owner 반영과 Web 목표·현재 구현 구분
+
+완료한 외부 CLI 협업 준비 실패 뒤 실행 유지 변경을 source/tests와 대조해 runtime spec, vendor-bindings architecture 및 system의 최초 실패 종료 서술을 정합화했다. 외부 경로는 vendor 공통 Current/As-built로 반영하고 실제 vendor 종료 결과 반환·원인 진단·로컬 종료 관리를 명시했다. Codex 실제 실행 통합 완료로 확대하지 않는다.
+
+Web의 협업 해제 뒤 실행·화면·입력·사용자 종료 관리 유지는 확정 target이지만 구현 대기라고 runtime에 구분했다. vendor-bindings에는 현재 foreground WS 해제와 controller 실행 정리 결합 및 중계 연결 자체 유실 시 화면 연결 방식의 미정을 국소 gap으로 표시했다. storage-terminal의 빌린 shell 유지·foreground 중계 설명은 현재 사실과 일치해 유지하고 기존 vendor-bindings 연결로 gap을 확인하도록 했다. 과거 decision·로그 History는 고치지 않았다.
+
+이번은 독립 수정의 owner 정합화이며 Web 구현·UI 정책을 추가 확정하지 않는다. 앞선 root 528 tests 전체 검사 이후 production/tests 추가 변경은 없다. Web 중계 연결 자체 유실 정책 응답과 quota 실제 관측 근거·판정은 계속 대기한다. W6·전체 goal 미완료, W7·추가 커밋·push 미착수를 유지하며 추가 정책·UI·실패 처리 결정은 사용자와 논의한다.
+
+### 2026-09-13 18:50 · owner 정합화 수용과 기존 terminal UI 재사용 설명 정정
+
+root가 문서 diff를 직접 대조해 외부 Current/As-built와 Web Committed target/current gap 구분을 수용했다. 별도 복구 UI가 반드시 필요하다는 설명은 철회한다. 기존 terminal 목록·선택·복원·종료 UI를 내부 vendor PTY B에도 재사용할 수 있다. 현재 B는 controller가 직접 생성해 TerminalService에 등록하지 않고 Runtime은 원 shell A를 차용하므로, B 등록만으로 helper/inbox owner 정리·실패 재시도·A 종료·알림 대상까지 해결되지는 않는다.
+
+사용자에게 필요한 선택은 foreground 중계 연결 자체 유실 시 A shell로 돌아가 기존 목록에서 B를 선택할지, 같은 A에서 화면을 이어받을지다. 이미 확정한 협업 해제 뒤 실행 유지 정책을 재승인받는 질문이 아니다. 답변은 아직 없고 Web 의존 코드 변경도 없다. 기존 대기와 W6·goal 미완료를 유지한다.
+
+### 2026-09-13 18:52 · Web 중계 유실 선택 대기로 goal blocked 전환
+
+독립 수정·검증·owner 반영은 앞선 18:47 전체 검사와 18:50 owner 수용 기록을 따른다. 모든 subagent의 독립 작업은 끝났고 Web 중계 유실 시 사용자 동작 선택에 대한 답변은 아직 없다. 같은 외부 입력 의존성이 세 goal turn 이상 지속되어 root가 goal을 blocked로 전환할 예정이며 완료 판정은 아니다.
+
+W6는 [>]를 유지하고 사용자 답변 시 Web 구현을 재개한다. quota 실제 이벤트 근거·판정 대기도 남아 있다. 선택을 임의 결정하지 않으며 코드·owner 문서·커밋·push를 추가 변경하지 않는다. 이번은 재개 조건의 단일 checkpoint이며 자동 turn별 상태 기록으로 반복하지 않는다.
+
+### 2026-09-13 18:55 · Web 중계 복구 과잉 범위 질문 철회와 승인 구현 재개
+
+root와 실행 담당이 실제 caller를 재대조했다. 브라우저 선택·재연결·닫기는 attachment만 바꾸며 foreground 중계는 유지한다. terminal/daemon stop은 명시 종료이고 실제 CLI crash·SIGTERM·입출력/WS 오류는 현재 disconnected를 통해 실행 owner를 종료한다. 살아 있는 고아 PTY 복구 UI 선택은 새로운 중계 유실 생존 정책을 가정한 질문이었으며 승인된 작업의 필수 blocker가 아니었다. 앞선 goal blocked 판단과 필수 UI 선택 대기 설명을 철회한다.
+
+승인된 Web 작업은 협업 준비 실패·timeout·협업 해제 때 기존 foreground 중계를 유지하면서 협업 권한·등록을 정리하고 같은 terminal에서 계속 사용하며 협업 끊김을 표시하는 범위다. 실제 foreground 중계 유실의 기존 owner 종료 경계는 유지한다. 고아 PTY 별도 목록 노출·relay 재연결을 추가하지 않는다. W6의 승인된 Web 구현을 TDD·ponytail full로 재개하고 새로운 정책·UI·실패 처리 결정이 필요한 경우에만 중단·논의한다. 이 정정 자체는 새 생존 정책 승인이 아니다.
+
+### 2026-09-13 19:48 · Web 동일 terminal 복구 재개와 quota 제안 검증 판정
+
+사용자가 화면 중계 장애의 실행 위치별 책임을 확정하고 Web 작업과 quota 제안 검증을 재개하도록 지시했다. 외부는 daemon의 해당 협업 등록을 정리하되 CLI가 소유한 vendor TUI를 유지한다. Web은 daemon이 실행 관리 등록과 vendor·필수 부속 실행을 유지하며, 기존 terminal의 다시 연결은 동일 vendor의 화면·키보드를 복원하고 vendor 정리는 실행·부속 자원·등록 정리를 완료한다. 화면 복구를 MCP 재등록이나 새 vendor 생성으로 확대하지 않는다.
+
+18:55의 실제 중계 유실 owner 종료 유지와 이후 화면 선택 대기·작업 취소는 이번 확정과 명시적 재개 승인으로 대체한다. 과거 경위는 보존한다. Web 담당은 공통 owner·화면 중계·기존 terminal UI 경계를 구현·검증하고 root가 결과를 직접 리뷰한다. runtime spec과 system/vendor-bindings/storage-terminal은 이 Web 정책을 Target로 반영했으며 구현 완료·검증 수용으로 미리 승격하지 않는다.
+
+quota 담당은 임시 복사본에서 unidentified.add(session)만 제거해 13개 합성 경로를 비교했다. root는 source diff를 대조하고 재실행 exit0를 확인했다(/private/tmp/aiox-w6-quota-proposal-root.txt). notification-first/late-notification의 미식별 상태 잔존은 없어지지만 기존 failed=false 때문에 알림만 받고 실제 요청 전에 idle로 바뀐다. 실패 표시 해제도 UserPromptSubmit에 맡길지 판단이 남아 수정안은 채택하지 않았고 repo quota 코드는 변경하지 않았다. 같은 ID continuation 가정에서는 finished가 무시되지만 실제 vendor ID 관계·순서는 미확정이며 차단·미관측 한계를 보존한다. 검증은 완료됐고 이 결과를 사용자 논의 대상으로 보고한다.
+
+W6와 Web 구현은 진행 중이고 W7·Stage3·commit/push로 확대하지 않는다. 독립 수정의 528 tests는 이전 수용 근거로 보존하며 새 Web 변경의 전체 검증으로 소비하지 않는다. 추가 정책·UI·실패 처리 결정이 필요하면 중단하고 사용자와 논의한다. 기존 부모 로그만 갱신하고 새 scaffold·이동은 하지 않았다.
+
+### 2026-09-13 20:05 · Web 최종 구현·533 tests·실제 화면 복구 수용과 quota 미채택
+
+root가 Web 동일 terminal 복구 변경의 source·diff·회귀와 실제 실행을 직접 대조해 수용했다. daemon이 살아 있는 상태의 화면 중계 유실에서는 같은 vendor·실행 관리 등록을 유지한다. 기존 다시 연결은 같은 terminal/Runtime의 vendor 화면·키보드를 복구하고 vendor 정리는 부속 실행·자원·등록을 정리한 뒤 부모 shell을 유지한다. 협업 준비 실패의 권한 해제·원인 보존은 화면 중계 손실과 구분하며 MCP 재등록이나 새 vendor 생성은 추가하지 않았다. 조회 실패 중 마지막 vendor 정리 대상을 보존해 부모 shell 종료로 바뀌지 않는 보완도 포함했다.
+
+최종 pnpm check는 exit0이고 533 tests(domain28, config28, protocol10, terminal88, vendor3, persistence13, web35, Claude66, CLI59, daemon203)가 통과했다(/private/tmp/aiox-w6-web-root-check.txt). 최종 main.ts 보완 시각 20:02:23은 해당 check 초기 lint/build 뒤이므로 root가 Web oxlint·oxfmt --check·typecheck를 별도로 실행해 exit0를 확인했다. check의 Web tests는 20:02:27 시작으로 최종 source를 포함한다. 최종 Web rebuild 뒤 root가 actual browser proof를 재실행해 exit0를 확인했다(/private/tmp/aiox-w6-web-relay-browser-root-final.txt). 앞선 528 tests는 보완 전 독립 수정의 근거로 보존한다.
+
+실제 built daemon/Web·SQLite·본인 PTY·agent-browser Chromium에서 같은 A terminal/Runtime·vendor 1회 생성을 유지하며 중계 공백 tick의 snapshot 복원, 이후 live tick 증가, 실제 키보드 입력의 vendor 도착을 확인했다. vendor 정리 뒤 helper exit·disposed1·등록 제거와 A 생존을 확인했고 사용한 임시 home /private/tmp/aiox-w6-web-relay-browser-C0F3Ae 부재도 확인했다. Node vendor 대역, 실제 foreground source relay(인자 parsing 생략), confirm 대역이며 실제 Claude/Codex·다른 OS·native 창 전환 검증으로 확대하지 않는다. runtime Current와 system/vendor-bindings/storage-terminal As-built를 해당 source/tests·실측 범위로 정합화했다.
+
+quota는 root가 두 번째 제안의 14개 합성 경로도 재실행 exit0로 확인했다(/private/tmp/aiox-w6-quota-proposal2-root.txt). unidentified 추가와 failed=false를 모두 제거해도 project가 failure 원인 관측을 quota 이벤트로 덮는다. 앞선 13개 경로의 제안1과 함께 미채택이며 repo quota 코드는 변경하지 않았다. 실패 상태와 원인을 언제 보존·해제할지 사용자 논의가 남아 있다. 실제 vendor 이벤트 ID·순서가 미확정이라는 한계도 유지한다.
+
+W6의 Web 구현·검증은 수용됐지만 W6 전체는 quota 수정 방향 논의가 남아 미완료다. W7·Stage3·추가 commit/push를 진행하지 않는다. 추가 정책·UI·실패 처리 결정이 필요하면 사용자와 논의하며 기존 부모 로그 외 scaffold·이동은 하지 않았다.
+
+### 2026-09-13 20:22 · quota 독립 보고 대조와 최소 수정 권고 정정
+
+사용자가 전달한 Claude quota 독립 보고를 root가 AIOX source·consumer와 임시 비교 probe 범위에서 대조했다. quota_auto_resume_fired 분기의 failed=false와 active가 없을 때 unidentified.add(session)가 순서 의존 상태 잔존을 만드는 근거는 타당하다. 다만 항상 reasoning이라는 표현은 waiting/tool 우선순위 때문에 부정확하고, 매번·거의 항상 발생한다는 빈도는 실제 vendor 이벤트 순서가 미확정이라 채택하지 않는다. subprocess 분리만으로 비순차 spawn을 증명한 것으로 보지 않는다.
+
+현재 활동과 개별 delivery 결과는 이미 분리돼 있다(runtime spec:103, vendor-bindings:249). 이를 새로운 구조 대안처럼 설명한 점을 정정한다. observation은 HTTP 공개 필드(http.ts:86)이지만 repo Web·CLI·MCP의 렌더 reader는 확인되지 않았다. HTTP 공개 필드 자체는 consumer 경계이며 외부 reader가 없다고 확정하지 않는다. runtime spec:85의 실패 원인 구분 요구도 유지한다. 최신 이벤트로 observation이 교체된다는 사실만으로 두 줄 수정을 막을 근거가 부족하다는 정정이지 진단 요구를 철회하는 것이 아니다. 연결된 StopFailure delivery의 원인은 messaging의 결과·알림 저장에 별도 보존된다. 반면 직접 사용자 입력·미연결 실패는 delivery가 없으므로 모든 실패 원인의 영속 보장을 주장하지 않는다(claude-observations.ts:157-163, messaging.ts:273-297).
+
+root는 이전 제안2의 observation 교체만을 필수 blocker로 본 근거를 철회하고 두 줄 삭제를 현재 최소 수정 후보로 권고했다. 이 quota 후보만으로 구조 전체 재설계가 필요하다는 근거는 없다. 별도 상태·원인 정책 세 가지를 필수 승인 항목으로 만들지 않는다. 이는 사용자 구현 승인이나 코드 변경이 아니다. 기존 quota 보류 기록은 당시 판단으로 보존하되 최신 권고를 현재 판정으로 소비한다.
+
+root가 probe.ts 전체, repo와 동일한 current.ts, 정확히 두 줄 삭제한 patched.ts diff를 확인하고 node --experimental-transform-types로 비교를 재실행해 exit0를 확인했다(/private/tmp/aiox-w6-claude-independent-root-probe.txt). 14개 합성 시나리오에서 settle14/14가 같고 trace12개가 달랐다. 이는 assert 기반 회귀 테스트가 아니라 비교 출력이다. 01/12는 현재 latch와 수정안 idle, 02는 양쪽 idle, 03은 UserPromptSubmit 미관측 시 수정안 failed, 11은 UserPromptSubmit 관측 뒤 Stop 미관측 시 양쪽 reasoning, 13은 선행 실패 없이 수정안 idle을 확인했다. 따라서 실제 요청 후 종료 hook이 관측되지 않는 경우의 reasoning 잔존까지 이 수정이 해결한다고 확대하지 않으며 차단 시 항상 failed라는 주장도 채택하지 않는다. root는 공식 hooks 문서에서 같은 이벤트의 matching hooks 병렬 실행과 사용자 interrupt 때 Stop 미발생 설명을 확인했지만 vendor 전체 경로를 재검증한 것은 아니다.
+
+보고서의 공식 vendor 발생 빈도·전체 바이너리 경로·19 tests RED/GREEN은 root가 이번에 독립 재검증하지 않았고 기존 533 tests도 재실행하지 않았다. production/tests·quota 코드는 변경하지 않았다. 사용자 수정 실행 지시가 아직 없어 W6는 미완료이며 최소 수정 권고와 보고서 대조 결과를 사용자와 논의한다. 추가 정책·UI·실패 처리 결정이 필요하면 중단·논의하며 W7·Stage3·commit/push나 새 scaffold로 확대하지 않는다.
+
+### 2026-09-13 20:28 · quota 상태 처리 A안 구현과 534 tests 검증
+
+사용자가 앞선 최소 수정 권고 중 A안(재개 알림 구간의 실패 표시 유지)을 선택하고 구현을 지시했다. quota_auto_resume_fired 분기에서 `this.#failed = false;`와 `if (this.#active.size === 0) this.#unidentified.add(session);` 두 줄을 제거하고 `#waiting.delete(quota)`만 남겼다. 대기 해제 이유를 밝히는 주석 2줄을 같은 자리에 넣었고 새 상태·ID 연결·wrapper는 추가하지 않았다.
+
+변경 파일은 packages/adapters/claude/src/claude-observations.ts와 같은 디렉터리의 claude-observations.test.ts 둘뿐이다. TDD 순서를 지켰다. 회귀 테스트 "keeps a quota-interrupted session failed until its continuation starts and ends"를 먼저 추가해 repo 현재 코드에서 RED(`expected 'reasoning' to be 'failed'`, claude-observations.test.ts:318)를 확인한 뒤 source 두 줄을 제거했다. 이 테스트는 StopFailure(rate_limit) 시 settle("delivery","failed","rate_limit") 1회, fired 수신 시 failed 유지, continuation UserPromptSubmit 시 reasoning, 그 Stop 시 idle, 그리고 continuation이 delivery를 재settle하지 않음(settle 총 1회)을 고정한다.
+
+검증은 root 권한으로 pnpm check를 실행해 exit0을 확인했다(/private/tmp/aiox-w6-quota-fix-check.txt). lint·format:check·build·typecheck와 534 tests(domain28, config28, protocol10, terminal88, vendor3, persistence13, web35, Claude67, CLI59, daemon203)가 통과했다. 이전 533 대비 증가분은 이번 회귀 테스트 1개다. 최초 실행은 새 테스트의 oxfmt 줄바꿈 1곳 때문에 format:check에서 실패했고 oxfmt --write로 해당 파일만 정리한 뒤 재실행했다. apps/cli 출력의 error 문구는 인자 검증 테스트가 의도적으로 발생시키는 stderr이며 59 tests 통과다.
+
+주장 범위를 앞선 20:22 정정에 맞춘다. 이 수정이 고치는 것은 waiting·tool 대기가 없어 idle이어야 할 구간이 unidentified 잔존 때문에 reasoning으로 표시되던 경로다. 모든 재개에서 항상 발생한다거나 vendor 이벤트 도착 순서가 확정됐다고 주장하지 않는다. UserPromptSubmit을 관측한 뒤 Stop이 오지 않는 경우의 reasoning 잔존은 이 수정 범위가 아니며 그대로 남는다(기존 probe 11). 재개 차단 시 항상 failed가 된다고도 주장하지 않는다. observation이 최신 이벤트로 교체되는 사실은 변하지 않았고 runtime spec:85의 실패 원인 구분 진단 요구는 열린 항목으로 유지한다. observation의 외부 HTTP reader 부재를 확정하지 않는다.
+
+owner 문서는 이번에 변경하지 않았다. vendor-bindings:249의 "Notification은 session·종류·prompt별 대기 힌트다"라는 현재 서술과 수정 결과가 어긋나지 않으며, 제거한 동작을 서술하는 owner 문장은 찾지 못했다. 반영 필요 여부 판정은 W7 몫으로 남긴다. commit/push는 하지 않았고 사용자 daemon·vendor 세션에 접근하지 않았다. root가 실제 diff와 위 검증 출력을 직접 대조하기 전까지 W6 완료로 승격하지 않으며 W7·Stage3로 확대하지 않는다.
+
+### 2026-09-13 20:32 · quota 변경·검증 출력 직접 확인과 owner 반영 판정
+
+root가 quota source 두 줄 제거·주석과 회귀 테스트 1개를 직접 확인했다. /private/tmp/aiox-w6-quota-fix-check.txt에서 lint·format·build·typecheck 및 534 tests 통과 출력을 확인했다. 전체 check를 root가 재실행한 것은 아니며 20:28의 실행 보고와 이번 출력 확인을 구분한다. 사용자 정정에 따라 추가 리뷰·재검증·위임을 중단하고 직접 확인으로 마쳤다.
+
+vendor-bindings의 기존 Notification 대기 힌트·현재 상태와 개별 결과 분리 설명은 이번 수정과 충돌하지 않아 owner 추가 수정은 불필요하다고 판단했다. 사용자 직접 중단 상태 보정은 이번 범위에서 제외한다. quota 변경 확인은 완료했으며 W6 전체 마감·W7·커밋·push로 확대하지 않는다.
+
+### 2026-09-13 20:37 · W6 완료와 W7 재개 포인터 이동·커밋 승인
+
+사용자가 W6 완료 표시, W7 포인터 이동과 현재까지 확인된 변경 커밋을 명시적으로 지시했다. root가 W6를 완료로 표시하고 W7을 다음 재개 지점으로 활성화했다. quota 확인 대기·미구현·커밋 미승인으로 남았던 Required Context를 최신 상태로 정합화했다.
+
+이번 커밋은 외부 실행 유지·Web 동일 vendor 중계 복구·종료 및 버전 진단·quota A안과 관련 테스트·owner·인계 기록을 포함한다. 다른 작업의 미추적 execution-flow-map 파일은 제외한다. 기존 534 tests 통과 출력과 직접 확인한 검증 근거를 소비하며 전체 테스트를 다시 실행하지 않는다. W7 실제 작업·Stage3 이동·후속 커밋·원격 push로 확대하지 않는다. 실제 커밋 완료는 Git 결과로 확인한다.

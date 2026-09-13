@@ -66,6 +66,7 @@ it("probes only --version with the caller environment and bounded execution", as
 it("reports installation, timeout and execution failures without child output or secrets", async () => {
     for (const [properties, message] of [
         [{ code: "ENOENT" }, "Claude executable was not found"],
+        [{ code: "EACCES" }, "Claude executable permission denied"],
         [{ killed: true }, "Claude version probe timed out"],
         [{ code: 1 }, "Claude version probe failed"],
     ] as const) {

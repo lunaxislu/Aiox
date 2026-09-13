@@ -21,6 +21,7 @@ export type Lifecycle = {
     requestStop(force: boolean): Promise<StopOutcome>;
     createShell(options: CreateShell): Promise<TerminalView>;
     stopTerminal(id: string): Promise<boolean>;
+    stopRuntime(id: string): Promise<void>;
 };
 
 export type DaemonServices = {

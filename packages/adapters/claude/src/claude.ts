@@ -177,14 +177,17 @@ export class ClaudeBinding implements VendorBinding {
     }
 
     async cleanup(
-        reason: "external_connection_lost" | "execution_stopped",
+        reason:
+            | "external_connection_lost"
+            | "collaboration_lost"
+            | "execution_stopped",
     ): Promise<void> {
         this.onReleased?.();
         this.#stopped = true;
         this.#ready = false;
         this.#started = false;
-        if (reason === "external_connection_lost")
-            await this.observations.failPending("external_connection_lost");
+        if (reason !== "execution_stopped")
+            await this.observations.failPending(reason);
         else await this.observations.interruptPending();
         this.#inboxToken = undefined;
     }

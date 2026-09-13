@@ -722,11 +722,15 @@ describe("stopping", () => {
             vi.spyOn(daemon.services.terminals, "busy").mockResolvedValue([]);
             const close = vi
                 .spyOn(daemon.services.terminals, "closeIdle")
-                .mockRejectedValueOnce(new Error("shell became busy"));
+                .mockResolvedValueOnce(false);
             const kill = vi.spyOn(session, "kill");
             expect(await daemon.stop(false)).toMatchObject({
                 stopped: false,
-                warnings: [expect.stringContaining("shell became busy")],
+                warnings: [
+                    expect.stringContaining(
+                        "Could not confirm shell shutdown. Please check the shell.",
+                    ),
+                ],
             });
             expect(kill).not.toHaveBeenCalled();
             expect(session.alive).toBe(true);

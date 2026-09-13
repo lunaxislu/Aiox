@@ -70,7 +70,10 @@ export type VendorBinding = {
     deliver(message: InboundMessage): Promise<void>;
     connectionLost(): Promise<void>;
     cleanup(
-        reason: "external_connection_lost" | "execution_stopped",
+        reason:
+            | "external_connection_lost"
+            | "collaboration_lost"
+            | "execution_stopped",
     ): Promise<void>;
 };
 export type VendorExecution = {

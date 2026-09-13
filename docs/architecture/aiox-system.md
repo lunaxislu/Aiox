@@ -34,8 +34,10 @@ Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한�
 ```
 
 화면 바이트·resize는 제어 WS에 보내지 않는다. CLI 사망은 WS close로 관측하며 heartbeat·lease·
-자동 재연결은 추가하지 않는다. 명시적 초기 실패·최초 준비 timeout은 CLI에 `startup-failed`를
-알려 이번 실행을 종료한다. daemon·WS 손실은 이 실패 명령과 구분한다.
+자동 재연결은 추가하지 않는다. 명시적 초기 협업 실패·최초 준비 timeout은 CLI에
+`startup-failed`로 알리고 협업 등록을 정리한다. CLI는 원인을 표시하며 시작한 실행 owner를
+유지한다. 현재 외부 경로와 구현 대기인 Web의 실행·협업 수명 분리는
+[[docs/architecture/aiox-vendor-bindings]]의 해당 실행 구성을 따른다.
 등록 해제는 route·요청 결과·credential 정리를 재사용하되 관측 손실을 vendor exit로 확정하지
 않는다. DB 정리가 실패하면 `stop_incomplete`와 daemon·Web 재시도 경로를 유지한다.
 실행 소유권의 이유는 [[docs/decisions/execution-ownership]], 명시적 종료 요청의 변경 이유는
@@ -85,6 +87,11 @@ NetworkService는 준비·정리 중인 등록까지 검사해 삭제를 거절�
 
 현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude 연결은 아래 Stage 3 범위로 확장했고 Codex와 Host/Worktree 실행은 아직 구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
 
+Web 화면 중계가 끊겨도 daemon의 실행 owner·관리 등록은 유지하고, 기존 terminal의 다시
+연결이 같은 실행의 화면·키보드를 복원한다. 명시적 vendor 정리는 owner 전체 종료 후 등록
+정리까지 확인한다. transport·협업 권한·실행 수명 분리와 구현 근거는
+[[docs/architecture/aiox-vendor-bindings]]가 소유한다. [Status: As-built]
+
 ## 공통 실행과 Claude adapter 현재 조립 범위 [Status: As-built]
 
 CLI는 terminal 문맥이 있으면 Web foreground WS로, 없으면 별도 external 제어 WS로 연결한다.
@@ -98,9 +105,10 @@ owner는 전체 실행 자원을 정리한다. 현재 제품 adapter는 Claude�
 [[packages/adapters/claude/src/index.ts]] `packages/adapters/claude/src/index.ts:21`.
 RuntimeRegistry의 `executionOwnership`과 `collaborationActive`는 프로세스 종료 책임과
 협업 유효성을 분리하며 `terminalOwnership`은 daemon terminal 소유·차용만 표현한다.
-명시적 종료 요청은 소유 위치와 관계없이 execution owner에 전달한다. 외부 owner는 CLI에 있으므로
-협업 권한을 회수한 뒤에도 종료 확인용 제어 채널은 완료까지 유지한다. 자연 연결 손실의 등록 정리는
-실행 종료 요청과 분리한다. 이후 binding cleanup·DB 정리를 수행한다. 실패한 record는 재시도용으로 남지만 인증·발견·전송 대상에서는 제외한다.
+daemon의 명시적 종료 요청은 daemon 소유 execution owner만 종료한다. 외부 owner는 CLI에
+남으며 daemon 연결 손실·등록 정리가 그 실행을 종료하지 않는다. 외부 실행의 종료·필수 자원
+정리는 CLI 로컬 종료와 자연 vendor exit가 소유한다. daemon의 협업 해제는 binding cleanup·DB
+정리를 수행한다. 실패한 record는 재시도용으로 남지만 인증·발견·전송 대상에서는 제외한다.
 
 근거: 실행 분기는 [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:451`,
 직접 실행은 [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:12`,

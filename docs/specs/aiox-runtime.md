@@ -60,9 +60,13 @@ Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위
 - 프로세스 생성과 binding 준비를 구분한다. 단순 PID·socket 파일 존재만으로 준비 성공을
   표시하지 않는다. 시작 실패와 관측할 수 없는 상태를 정상 실행으로 숨기지 않는다.
 - 외부 시작은 daemon 연결·등록 준비 성공 뒤 vendor를 실행한다. 사전 연결 실패는 vendor
-  실행 전 오류다. 명시적 초기 실패(`startup-failed`, 최초 협업 준비 timeout 포함)는 오류로 보고하고
-  이번 vendor 실행을 종료한다. daemon·제어 WS 손실은 초기 실패와 다른 사건이며 이미 시작한
-  vendor는 준비 완료 전후와 무관하게 유지한다.
+  실행 전 오류다. 명시적 초기 협업 실패(`startup-failed`, 최초 협업 준비 timeout 포함)는
+  원인을 표시하고 협업 등록을 해제하되 이미 시작한 vendor·필수 부속 실행은 유지한다.
+  daemon·제어 WS 손실도 준비 완료 전후와 무관하게 같은 실행 생존 경계를 따른다.
+  CLI는 실제 vendor 종료까지 입출력과 로컬 종료 관리를 유지하고 그 종료 결과를 반환한다.
+  이 경계는 vendor 공통이며 Codex 실제 실행 통합 완료를 뜻하지 않는다. [Status: Current]
+  근거: [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:171-177`,
+  [[apps/cli/src/external.test.ts]] `apps/cli/src/external.test.ts:147-188`.
 - Claude Peer 최소 지원 버전 미만은 실행 실패다. 지원 버전에서 inbox 준비가 실패해도
   실패를 표시하며 Channel fallback을 실행하지 않는다. 준비 확인용 모델 호출·ACK를 강제하지 않는다.
 - 업데이트가 정상 준비 전에 실행을 종료시킨 경우 등록 성공으로 표시하지 않는다. 사용자가
@@ -79,6 +83,22 @@ Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위
 `agents_list()`의 현재 상태는 `idle`, `working`, `failed`만 공개한다. reasoning·도구 실행·사용자 질문·승인 대기는 모두 working으로 요약한다. 실행·연결 준비를 뜻하는 starting은 send 성공 상태가 아니며 MCP 공개 enum에 추가하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
 
 Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승인 대기, 실패 원인, Host stopped를 구분한다. 알림 읽음이나 다른 요청의 완료로 미해결 사용자 요청 표시를 지우지 않는다.
+
+Web도 daemon이 살아 있는 동안 최초 협업 준비 실패·timeout·협업 해제만으로 이미 시작한
+vendor·필수 부속 실행을 종료하지 않는다. 협업 실패에서는 협업 권한을 해제하되 daemon의
+실행 등록·종료 관리는 유지하고, 터미널 사용 가능 여부와 AIOX 협업 끊김을 구분해 표시한다.
+화면 중계 연결 자체가 끊겨도 같은 실행과 daemon의 관리 등록을 유지한다. 기존 terminal의
+`다시 연결`은 동일 vendor의 화면·키보드 연결을 복원하고, `vendor 정리`는 그 실행과 필수
+부속 자원을 종료한 뒤 등록을 정리한다. 화면 복구를 MCP 재등록이나 vendor 재생성으로
+확대하지 않는다. 프로세스 자체 종료·실행 전 검증 실패·명시적 사용자 종료는 연결 손실과
+별개이며 죽은 실행을 사용 가능으로 표시하지 않는다. daemon 종료·force의 기존 소유권 정책은
+유지한다. [Status: Current]
+
+근거: [[apps/daemon/src/agent-controller.ts]] `apps/daemon/src/agent-controller.ts:163-184`,
+`apps/daemon/src/agent-controller.ts:228-252`; [[apps/daemon/src/agent-controller.test.ts]]
+`apps/daemon/src/agent-controller.test.ts:1613-1780`; [[apps/web/src/main.test.ts]]
+`apps/web/src/main.test.ts:864`. 실제 macOS Web·PTY 검증 범위는
+[[docs/architecture/aiox-storage-terminal]]의 화면 중계 복구 근거를 따른다.
 
 개별 요청의 completed/failed/interrupted와 자동 알림은 [[docs/specs/aiox-collaboration]]이 소유한다. 현재 상태와 요청 결과는 별개이며 상세 Web 표시는 [[docs/specs/aiox-configuration-web]]을 따른다.
 

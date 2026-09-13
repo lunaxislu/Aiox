@@ -350,9 +350,9 @@ export class ClaudeObservations {
             const type = event.notification_type;
             const quota = JSON.stringify([session, "quota"]);
             if (type === "quota_auto_resume_fired") {
+                // Only ends the wait: the continuation is an ordinary turn that
+                // reports its own UserPromptSubmit and Stop.
                 this.#waiting.delete(quota);
-                this.#failed = false;
-                if (this.#active.size === 0) this.#unidentified.add(session);
             } else if (
                 type === "quota_auto_resume_stale" ||
                 type === "quota_auto_resume_disabled"

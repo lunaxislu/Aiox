@@ -91,6 +91,8 @@ export class AgentController {
         let runtimeId: string | undefined;
         let reportToken: string | undefined;
         let ended = false;
+        let relayDisconnected = false;
+        let collaborationError: string | undefined;
         let prepared = false;
         let started = false;
         let finishing: Promise<void> | undefined;
@@ -110,6 +112,7 @@ export class AgentController {
         };
         const released = () => {
             clear();
+            if (session?.alive && collaborationError && !ended) return;
             if (ended) return;
             ended = true;
             socket.resume();
@@ -130,13 +133,19 @@ export class AgentController {
                       rows: dimensions.rows,
                       initialListener: {
                           data: (data) => {
-                              if (!ended && socket.readyState === socket.OPEN)
+                              if (
+                                  !ended &&
+                                  !relayDisconnected &&
+                                  socket.readyState === socket.OPEN
+                              )
                                   socket.send(data);
                           },
                           exit: resolveExit,
                       },
                   });
                   const current = session;
+                  void exited.then(processExited).catch(() => {});
+                  this.daemon.services.webEvents.notify();
                   return {
                       exited,
                       write: (data) => current.write(data),
@@ -156,6 +165,26 @@ export class AgentController {
             message?: string,
             exit?: TerminalExit,
         ): Promise<void> => {
+            if (!external && session?.alive && message && !ended) {
+                collaborationError = message;
+                if (!foreground) {
+                    relayDisconnected = true;
+                    socket.close();
+                }
+                this.daemon.services.runtimes.revoke(runtimeId!);
+                clear();
+                socket.resume();
+                this.daemon.services.webEvents.notify();
+                return (async () => {
+                    try {
+                        await binding?.cleanup("collaboration_lost");
+                    } catch {
+                        collaborationError +=
+                            " Agent collaboration cleanup remains unconfirmed.";
+                        this.daemon.services.webEvents.notify();
+                    }
+                })();
+            }
             finishing ??= (async () => {
                 ended = true;
                 clear();
@@ -198,6 +227,12 @@ export class AgentController {
         };
         const disconnected = () => {
             if (ended) return;
+            if (!external && session?.alive) {
+                relayDisconnected = true;
+                this.daemon.services.webEvents.notify();
+                socket.close();
+                return;
+            }
             ended = true;
             clear();
             // Authority ends before asynchronous outcome persistence or resource cleanup.
@@ -271,6 +306,15 @@ export class AgentController {
                         runtimeId = controls.runtimeId;
                         controlsForBinding = controls;
                         return {
+                            get terminal() {
+                                return session;
+                            },
+                            get relayDisconnected() {
+                                return relayDisconnected;
+                            },
+                            get collaborationError() {
+                                return collaborationError;
+                            },
                             deliver: (message) =>
                                 binding
                                     ? binding.deliver(message)
@@ -293,7 +337,9 @@ export class AgentController {
                                 await binding?.cleanup(
                                     external
                                         ? "external_connection_lost"
-                                        : "execution_stopped",
+                                        : collaborationError
+                                          ? "collaboration_lost"
+                                          : "execution_stopped",
                                 );
                             },
                         };
@@ -401,9 +447,8 @@ export class AgentController {
                         return;
                     }
                     binding.executionStarted();
-                    void foreground.exited.then(processExited).catch(() => {});
                     socket.on("message", (data, isBinary) => {
-                        if (ended) return;
+                        if (ended || relayDisconnected) return;
                         if (isBinary && this.daemon.acceptingInput)
                             foreground!.write(
                                 Array.isArray(data)
@@ -431,7 +476,7 @@ export class AgentController {
                         !this.daemon.services.runtimes.get(runtimeId!)
                             ?.collaborationActive
                     ) {
-                        released();
+                        if (!collaborationError) released();
                         return;
                     }
                     if (!binding!.wasReady)

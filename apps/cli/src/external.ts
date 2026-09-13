@@ -21,11 +21,20 @@ export async function runExternal(
         spawnNative(command, "inherit"),
     );
     let starting: Promise<void> | undefined;
+    let finishTermination: ((error?: unknown) => void) | undefined;
+    const terminated = () => {
+        void owner.stop().then(
+            () => finishTermination?.(),
+            (error: unknown) => finishTermination?.(error),
+        );
+    };
+    process.on("SIGTERM", terminated);
     try {
         const execution = await adapter.createExecution({
             own: (dispose) => owner.own(dispose),
             signal: owner.signal,
         });
+        owner.signal.throwIfAborted();
         return await new Promise<ExecutionExit>((resolve, reject) => {
             let foreground: ExecutionProcess | undefined;
             let preparing = false;
@@ -44,7 +53,6 @@ export async function runExternal(
                 socket.off("message", receive);
                 socket.off("close", disconnected);
                 process.off("SIGINT", interrupted);
-                process.off("SIGTERM", terminated);
                 if (error ?? failure) reject(error ?? failure);
                 else resolve(exited!);
             };
@@ -75,41 +83,22 @@ export async function runExternal(
                     );
                 else
                     diagnostic(
-                        "Collaboration connection lost. The vendor is still running; rerun agent run to reconnect after exiting.",
+                        "Collaboration connection lost. The vendor is still running.",
                     );
             };
             // Native foreground terminal delivery already sends SIGINT to the vendor.
             const interrupted = () => {};
-            const terminated = () => {
-                void owner.stop().then(
-                    () => {
-                        if (!foreground)
-                            finish(
-                                new Error("Vendor execution was terminated."),
-                            );
-                    },
-                    (error: unknown) =>
-                        finish(
-                            error instanceof Error
-                                ? error
-                                : new Error(String(error)),
-                        ),
-                );
-            };
-            const startupFailed = (message: string) => {
-                if (failure) return;
-                failure = new Error(message);
-                diagnostic(message);
-                void owner.stop().then(
-                    () => finish(failure),
-                    (error: unknown) =>
-                        finish(
-                            new AggregateError(
-                                [failure, error],
-                                "Vendor startup and cleanup failed.",
-                            ),
-                        ),
-                );
+            finishTermination = (error) => {
+                if (error || !foreground)
+                    finish(
+                        error instanceof Error
+                            ? error
+                            : new Error(
+                                  error === undefined
+                                      ? "Vendor execution was terminated."
+                                      : String(error),
+                              ),
+                    );
             };
             const receive = (raw: RawData, binary: boolean) => {
                 if (finished || !connected) return;
@@ -136,7 +125,6 @@ export async function runExternal(
                         preparing = true;
                         clearTimeout(timer);
                         process.on("SIGINT", interrupted);
-                        process.on("SIGTERM", terminated);
                         starting = (async () => {
                             foreground = await execution.start(
                                 frame.launch,
@@ -181,10 +169,11 @@ export async function runExternal(
                         if (foreground && !exited) ready = true;
                         break;
                     case "startup-failed":
-                        if (ready) {
-                            disconnected();
-                            socket.terminate();
-                        } else startupFailed(frame.message);
+                        diagnostic(frame.message);
+                        if (!owner.hasProcessHandles)
+                            finish(new Error(frame.message));
+                        disconnected();
+                        socket.terminate();
                         break;
                     case "error":
                         if (!preparing || !owner.hasProcessHandles)
@@ -210,6 +199,7 @@ export async function runExternal(
                 disconnected();
         });
     } finally {
+        process.off("SIGTERM", terminated);
         await owner.stop();
         await starting;
         // Startup may acquire resources while the first stop is in progress.

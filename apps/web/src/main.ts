@@ -39,6 +39,9 @@ const terminateButton = el<HTMLButtonElement>("terminate");
 const terminationResult = el("termination-result");
 
 let attachment: Attachment | undefined;
+let attachedRuntimeId: string | undefined;
+let recoveryRuntimeId: string | undefined;
+let attachmentConnected = false;
 let renderedAgents = "";
 let renderedTerminals = "";
 let renderedNotifications = "";
@@ -92,14 +95,39 @@ async function getList<T>(path: string): Promise<T[]> {
 
 function showExecutionState(terminalId = attachment?.terminalId): void {
     const view = terminalViews?.find((item) => item.id === terminalId);
+    if (terminalViews !== undefined)
+        recoveryRuntimeId = view?.vendor?.relayDisconnected
+            ? view.vendor.runtimeId
+            : undefined;
     executionState.textContent =
         terminalViews === undefined
             ? "현재 실행 상태를 확인할 수 없습니다."
             : view === undefined
               ? "마지막 조회에서 이 터미널을 찾지 못했습니다."
-              : view.alive
-                ? "마지막 확인 시 실행 중입니다."
-                : "마지막 확인 시 실행이 종료된 상태입니다.";
+              : view.vendor?.alive && !view.vendor.collaborationActive
+                ? `${view.vendor.relayDisconnected && !(attachedRuntimeId && attachmentConnected) ? "vendor는 실행 중이며 화면·키보드는 다시 연결해야 합니다. AIOX 협업은 끊긴 상태입니다." : "터미널은 사용 가능하지만 AIOX 협업은 끊긴 상태입니다."} ${view.vendor.collaborationError ?? ""}`
+                : view.alive
+                  ? "마지막 확인 시 실행 중입니다."
+                  : "마지막 확인 시 실행이 종료된 상태입니다.";
+    terminateButton.textContent = recoveryRuntimeId
+        ? "vendor 정리"
+        : "강제 종료";
+    if (view?.vendor?.relayDisconnected) {
+        recovery.hidden = false;
+        if (!attachedRuntimeId && recoveryLimit.textContent) {
+            recoveryLimit.textContent = "";
+            result(recoveryError, "");
+        }
+        if (!attachedRuntimeId && recoveryError.dataset["error"] !== "true")
+            result(
+                recoveryError,
+                "vendor 화면·키보드 중계가 끊겼습니다. 같은 실행에 다시 연결하거나 vendor를 정리할 수 있습니다.",
+            );
+        reconnectButton.disabled =
+            terminating ||
+            !view.vendor.alive ||
+            recoveryLimit.textContent !== "";
+    }
 }
 
 function select(terminalId: string, reconnect = false): void {
@@ -109,7 +137,9 @@ function select(terminalId: string, reconnect = false): void {
         !attachment.closed
     )
         return;
+    if (attachment?.terminalId !== terminalId) recoveryRuntimeId = undefined;
     const version = ++attachmentVersion;
+    attachmentConnected = false;
     attachment?.close();
     terminating = false;
     terminateButton.disabled = false;
@@ -122,11 +152,19 @@ function select(terminalId: string, reconnect = false): void {
         result(recoveryError, "");
         recoveryLimit.textContent = "";
     }
+    const previousRuntimeId = attachedRuntimeId;
+    showExecutionState(terminalId);
+    attachedRuntimeId = reconnect ? recoveryRuntimeId : undefined;
+    if (previousRuntimeId !== attachedRuntimeId) {
+        recoveryLimit.textContent = "";
+        result(recoveryError, "");
+    }
     showExecutionState(terminalId);
     attachBox.textContent = `terminal ${terminalId} · connecting…`;
-    attachment = attachTerminal(terminalHost, terminalId, (text, state) => {
+    const onState: Parameters<typeof attachTerminal>[2] = (text, state) => {
         if (version !== attachmentVersion) return;
         attachBox.textContent = text;
+        attachmentConnected = state === "connected";
         if (state === "failed" || state === "unrestorable") {
             recovery.hidden = false;
             result(
@@ -139,12 +177,19 @@ function select(terminalId: string, reconnect = false): void {
                     ? "서버의 화면 기록 오류로 이 실행의 화면은 다시 연결해도 복원할 수 없습니다. 필요하면 기존 실행을 종료하고 새로 생성하세요."
                     : "";
             reconnectButton.disabled = terminating || state === "unrestorable";
+            showExecutionState(terminalId);
         } else if (state === "connected" || state === "exited") {
             recovery.hidden = true;
             result(recoveryError, "");
             recoveryLimit.textContent = "";
+            showExecutionState(terminalId);
+            if (state === "exited" && attachedRuntimeId) void refresh();
         }
-    });
+    };
+    attachment = attachedRuntimeId
+        ? attachTerminal(terminalHost, terminalId, onState, attachedRuntimeId)
+        : attachTerminal(terminalHost, terminalId, onState);
+    showExecutionState(terminalId);
     renderedAgents = "";
     renderedTerminals = "";
 }
@@ -284,6 +329,16 @@ async function refresh(): Promise<void> {
             (item) => !suppressed.includes(item.id),
         );
         terminalViews = terminals;
+        const selected = terminals.find(
+            (item) => item.id === attachment?.terminalId,
+        );
+        if (
+            attachedRuntimeId &&
+            selected &&
+            (!selected.vendor?.alive ||
+                selected.vendor.runtimeId !== attachedRuntimeId)
+        )
+            select(selected.id, true);
         showExecutionState();
         // Re-rendering identical lists would steal focus from the terminal and
         // flicker on every change, so only redraw what actually changed.
@@ -378,15 +433,17 @@ reconnectButton.addEventListener("click", () => {
 });
 
 terminateButton.addEventListener("click", () => {
+    if (!attachment || terminating) return;
+    const { terminalId } = attachment;
+    const runtimeId = recoveryRuntimeId;
     if (
-        !attachment ||
-        terminating ||
         !confirm(
-            "진행 중인 작업이 중단됩니다. 이 터미널을 강제 종료하시겠습니까?",
+            runtimeId
+                ? "vendor와 부속 자원을 종료하고 등록을 정리하시겠습니까? 기존 shell은 유지됩니다."
+                : "진행 중인 작업이 중단됩니다. 이 터미널을 강제 종료하시겠습니까?",
         )
     )
         return;
-    const { terminalId } = attachment;
     const version = attachmentVersion;
     terminating = true;
     terminateButton.disabled = true;
@@ -395,7 +452,7 @@ terminateButton.addEventListener("click", () => {
     void (async () => {
         try {
             const response = await fetch(
-                `/api/terminals/${encodeURIComponent(terminalId)}`,
+                `/api/terminals/${encodeURIComponent(terminalId)}${runtimeId ? `/vendor?runtime=${encodeURIComponent(runtimeId)}` : ""}`,
                 { method: "DELETE" },
             );
             await checkResponse(response);
@@ -408,7 +465,12 @@ terminateButton.addEventListener("click", () => {
             )
                 throw new Error("종료 결과를 확인할 수 없습니다.");
             appliedRefreshVersion = ++refreshVersion;
-            if (version === attachmentVersion) {
+            if (version === attachmentVersion && runtimeId) {
+                result(terminationResult, "vendor를 정리했습니다.");
+                // Refresh switches the same selected terminal back to its shell.
+                attachedRuntimeId = runtimeId;
+                terminating = false;
+            } else if (version === attachmentVersion) {
                 attachment?.close();
                 attachment = undefined;
                 ++attachmentVersion;

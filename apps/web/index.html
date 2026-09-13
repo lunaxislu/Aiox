@@ -192,16 +192,16 @@
         </aside>
         <main id="stage">
             <div id="attach">Select a terminal or open a new shell.</div>
+            <p id="execution-state" role="status"></p>
             <section id="recovery" hidden aria-label="터미널 화면 복구">
                 <p id="recovery-error" class="result" role="status"></p>
                 <p id="recovery-limit"></p>
                 <button id="reconnect" type="button">화면 다시 연결</button>
                 <button id="terminate" type="button">강제 종료</button>
                 <p>
-                    화면 복원 실패로 실행을 종료하지는 않았습니다.<br />화면
-                    다시 연결은 기존 실행을 유지하며 연결만 재시도합니다.
+                    다시 연결은 기존 실행의 화면·키보드 연결만 복구합니다.
+                    실행을 종료하려면 종료 버튼을 사용하세요.
                 </p>
-                <p id="execution-state" role="status"></p>
             </section>
             <p id="termination-result" class="result" role="status"></p>
             <div id="terminal"></div>
