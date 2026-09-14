@@ -8,6 +8,19 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { codexAdapter } from "./index";
 
+vi.mock("node:child_process", async (original) => {
+    const actual = await original<typeof import("node:child_process")>();
+    const { promisify } = await import("node:util");
+    return {
+        ...actual,
+        execFile: Object.assign(vi.fn(), {
+            [promisify.custom]: async () => ({
+                stdout: "--remote-auth-token-env",
+            }),
+        }),
+    };
+});
+
 test("starts App Server before foreground, gates readiness on thread and MCP, and releases collaboration separately", async () => {
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(server, "listening");
