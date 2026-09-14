@@ -581,8 +581,8 @@ test("unsupported adapters and Host commands remain unavailable", async () => {
     const stub = await daemonStub(() => {});
     try {
         await assert.rejects(
-            run(stub.cli, "agent.run", {}, ["codex"]),
-            /Unsupported vendor: codex/,
+            run(stub.cli, "agent.run", {}, ["unknown-vendor"]),
+            /Unsupported vendor: unknown-vendor/,
         );
         await assert.rejects(
             run(stub.cli, "host.agent.start", {}, ["review"]),
@@ -758,7 +758,7 @@ test("doctor keeps its stage 1 diagnosis and adds daemon reachability", async ()
     assert.ok(["native", "wsl"].includes(String(report.environment)));
     assert.equal(
         report.vendorIntegration,
-        "Claude foreground launch; Codex integration pending",
+        "Claude and Codex foreground launch",
     );
     assert.deepEqual((report.config as { ports: unknown }).ports, {
         daemon: stub.httpPort,

@@ -11,7 +11,7 @@ Host 선언 계약은 [[docs/specs/aiox-host]]가 소유한다. 현재 조립 �
 
 실행 소유권은 [[docs/specs/aiox-runtime]]의 명령·인증된 실행 위치 계약을 따른다.
 기존 RuntimeRegistry를 사용하되 다음 책임을 분리한다. 아래 구조는 승인된 목표이며 뒤의
-Stage 2·Claude 현재 조립 근거와 Host·Codex 목표 범위를 구분한다.
+Stage 2·Claude·Codex 실행의 현재 조립 근거와 Host 목표 범위를 구분한다.
 
 ```text
 실행 소유자
@@ -85,21 +85,21 @@ NetworkService는 준비·정리 중인 등록까지 검사해 삭제를 거절�
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:654-672`,
 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:416-541`.
 
-현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude 연결은 아래 Stage 3 범위로 확장했고 Codex와 Host/Worktree 실행은 아직 구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
+현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude와 Codex 실행 연결은 아래 조립 범위로 확장했고 vendor별 관측·메시지 통합과 Host/Worktree 실행은 후속 검증·구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
 
 Web 화면 중계가 끊겨도 daemon의 실행 owner·관리 등록은 유지하고, 기존 terminal의 다시
 연결이 같은 실행의 화면·키보드를 복원한다. 명시적 vendor 정리는 owner 전체 종료 후 등록
 정리까지 확인한다. transport·협업 권한·실행 수명 분리와 구현 근거는
 [[docs/architecture/aiox-vendor-bindings]]가 소유한다. [Status: As-built]
 
-## 공통 실행과 Claude adapter 현재 조립 범위 [Status: As-built]
+## 공통 실행과 vendor adapter 현재 조립 범위 [Status: As-built]
 
 CLI는 terminal 문맥이 있으면 Web foreground WS로, 없으면 별도 external 제어 WS로 연결한다.
 Web은 daemon execution owner의 vendor PTY를 중계하고 빌린 shell의 공개 terminal ID를 유지한다.
 외부는 CLI execution owner가 입출력을 상속하고 daemon에는 시작·종료만 통보한다.
-양쪽은 `@aiox/vendor` 계약과 `@aiox/adapter-claude`를 사용하며 AgentController는 vendor별
+양쪽은 `@aiox/vendor` 계약과 Claude·Codex adapter를 사용하며 AgentController는 vendor별
 inbox·인자·버전을 해석하지 않는다. adapter는 부속 실행 준비 후 foreground를 시작할 수 있고
-owner는 전체 실행 자원을 정리한다. 현재 제품 adapter는 Claude이며 Codex·Host 실행은 미구현이다.
+owner는 전체 실행 자원을 정리한다. Codex는 Runtime별 App Server·owner 내부 Relay·remote TUI를 연결한다. vendor별 준비·검증 범위는 [[docs/architecture/aiox-vendor-bindings]]가 소유하고 Host 실행은 미구현이다.
 근거: [[packages/vendor/src/index.ts]] `packages/vendor/src/index.ts:49-99`,
 [[packages/vendor/src/execution.ts]] `packages/vendor/src/execution.ts:7`,
 [[packages/adapters/claude/src/index.ts]] `packages/adapters/claude/src/index.ts:21`.
@@ -139,7 +139,7 @@ AIOX daemon — Node.js 실행 구성
 │  └─ Credential registry — token → 현재 Runtime
 ├─ 공유 vendor adapters — 실행 준비·주입 / binding 입력·관측
 │  ├─ Claude adapter + native inbox + hooks
-│  └─ Codex adapter + App Server + Binding Relay (목표)
+│  └─ Codex adapter + App Server + Binding Relay (실행 연결 구현)
 ├─ PTY Manager / Terminal Service — 실행 handle·화면·attachment
 ├─ Configuration Service — 읽기·검증·저장·변경 배포
 └─ Persistence — SQLite 연결·repositories
@@ -271,7 +271,7 @@ packages/
 ├─ domain/src/{agent,host,network,messaging,terminal}/
 ├─ application/src/                 # 유스케이스·ports
 ├─ vendor/                          # 현재 공유 adapter 계약·execution owner
-├─ adapters/claude/                 # 현재 Claude adapter; Codex는 후속 대상
+├─ adapters/{claude,codex}/         # 현재 vendor 실행 adapter
 ├─ terminal/                        # Node PTY 구현
 ├─ persistence/src/{sqlite,repositories}/
 ├─ protocol/                        # wire·framing

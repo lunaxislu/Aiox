@@ -3,6 +3,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
+import { codexAdapter } from "@aiox/adapter-codex";
 import type { AioxConfig } from "@aiox/config";
 import { ConfigError, resolveTerminalLaunch } from "@aiox/config";
 import type { AioxDatabase } from "@aiox/persistence";
@@ -716,7 +717,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         stop,
         closed,
     };
-    agents = new AgentController(daemon, options.adapters ?? [claudeAdapter]);
+    agents = new AgentController(
+        daemon,
+        options.adapters ?? [claudeAdapter, codexAdapter],
+    );
     try {
         await options.onListening?.(ports);
     } catch (error) {

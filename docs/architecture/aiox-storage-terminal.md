@@ -153,7 +153,7 @@ daemon foreground 연결 소비자는 protocol의 `terminalContextFromEnv(env)`�
 종료하지 않는다. AIOX CLI는 이 문맥을 foreground WS의 실행 요청에 포함하고 daemon 실행 owner의 vendor PTY를
 중계한다. vendor 종료 후 raw mode를 복원하여 원래 shell로 돌아간다. 일반 browser attachment는
 이 foreground 연결과 별개다. 구현·검증 경계는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
-Codex 연결은 후속 구현 대상이다. [Status: As-built]
+Claude와 Codex가 이 foreground 연결을 사용한다. [Status: As-built]
 
 근거: [[apps/cli/src/foreground.ts]] `apps/cli/src/foreground.ts:20`,
 [[apps/cli/src/foreground.test.ts]] `apps/cli/src/foreground.test.ts:1`,

@@ -32,6 +32,9 @@ importers:
       '@aiox/adapter-claude':
         specifier: workspace:*
         version: link:../../packages/adapters/claude
+      '@aiox/adapter-codex':
+        specifier: workspace:*
+        version: link:../../packages/adapters/codex
       '@aiox/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -57,6 +60,9 @@ importers:
       '@aiox/adapter-claude':
         specifier: workspace:*
         version: link:../../packages/adapters/claude
+      '@aiox/adapter-codex':
+        specifier: workspace:*
+        version: link:../../packages/adapters/codex
       '@aiox/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -119,6 +125,25 @@ importers:
       zod:
         specifier: 4.5.4
         version: 4.5.4
+
+  packages/adapters/codex:
+    dependencies:
+      '@aiox/domain':
+        specifier: workspace:*
+        version: link:../../domain
+      '@aiox/vendor':
+        specifier: workspace:*
+        version: link:../../vendor
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
+    devDependencies:
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
 
   packages/config: {}
 

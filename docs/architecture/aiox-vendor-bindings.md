@@ -3,10 +3,10 @@
 Status: Current
 
 [[docs/architecture/aiox-system]]의 공통 실행 소유자와 vendor adapter가 실행, 입력, 관측과 정리를
-나누는 경계다. 현재 제품 adapter는 Claude이며 Codex와 이후 vendor는 같은 계약에 연결한다.
+나누는 경계다. 현재 실행 adapter는 Claude와 Codex이며 이후 vendor도 같은 계약에 연결한다.
 Headless·Claude SDK·`-p`·ACP 실행은 현재 범위가 아니다.
 공통 도구와 메시지 의미는 [[docs/specs/aiox-collaboration]]를 따른다.
-Claude는 아래 현재 구현과 과거 실측을 구분하며, Codex 연결은 Target이다.
+Claude와 Codex의 현재 실행 연결, 과거 실측, 미완료 관측·메시지 통합을 아래에서 구분한다.
 실제 모델 E2E와 플랫폼별 검증 상태는 구현 존재와 구분한다.
 
 ## 공통 MCP와 실행 신원
@@ -353,7 +353,35 @@ snapshot/state를 headless terminal로 소비한 화면은 단절 전 idle 화�
 브라우저 픽셀 캡처나 Web UI 전체 E2E 검증은 아니다. 모델 메시지 송수신과 다른 OS의 실제
 vendor 통합 한계는 위 외부 실측과 동일하게 남는다.
 
-## Codex 실행과 active thread [Status: Target]
+## Codex 실행과 active thread [Status: As-built]
+
+CLI와 daemon은 `@aiox/adapter-codex`를 공통 실행 계약에 등록한다. Relay는 실행 위치의
+CLI/daemon 안에 있으며 owner의 자원으로 등록한다. App Server는 owner의 background,
+TUI는 foreground다. Relay root는 TUI, `/control`은 daemon binding이 서로 다른 실행별
+credential로 접속한다. 협업 binding cleanup은 control 연결만 닫고 Relay 수명을 끝내지 않는다.
+
+Relay와 App Server는 loopback port 0으로 바인딩하고 실제 할당 주소를 연결한다.
+App Server의 listener 준비·조기 종료·timeout·취소를 확인한 뒤 remote TUI를 시작한다.
+App Server와 Relay 인증 token은 별개이며 App Server에는 token hash, TUI에는 token 환경 변수
+이름을 전달한다. 현재 실행 주입과 listener announcement 해석은 Codex 0.153.4에서 확인했다.
+
+실행 시작·확정된 TUI thread·Network 사용 시 MCP initialize가 갖춰져야 최초 준비 완료다.
+대화 전환 요청 중에는 전송을 거절하며 같은 연결의 성공 응답으로 대상을 갱신한다.
+resume 선택창의 보조 연결도 허용하되 요청 ID는 연결별로 대응한다. 입력은 마지막으로
+thread/start·resume·fork가 성공한 연결로 보내며 보조 연결 종료가 그 대상을 지우지 않는다.
+TUI가 developerInstructions를 명시적으로 덮어쓰면 실행의 AIOX 지침을 병합한다.
+서버 조기 종료는 binding 진단과 실행 위치의 stderr에 전달하고 TUI 종료를 요청한다.
+준비 실패의 stderr는 credential을 가린 뒤 호출자에게 전달한다.
+
+근거: [[packages/adapters/codex/src/index.ts]], [[packages/adapters/codex/src/launch.ts]],
+[[packages/adapters/codex/src/relay.ts]], [[packages/adapters/codex/src/binding.ts]] 및 각 인접 테스트.
+macOS 실제 Web TUI 실행·MCP 준비·재접속·new·shell 복귀와 외부 daemon force stop/SIGKILL 후
+TUI 조작·shell 복귀를 확인했다. 사용자 동반 resume/fork/clear/new·선택 취소·Web 재접속에서
+현재 대화 ID와 고유 입력의 화면 표시·응답을 확인했다. 사용자 세션의 RPC 전체를 동시 수집한
+근거는 아니며 binding→Relay→turn/start 대상 대응·전환 중 거절·보조 연결과 listener 종료는
+인접 index/relay 테스트가 검증한다. 아래 입력의 완료/실패/중단 귀속·승인/질문 관측은 W2, 실제 메시지 왕복은
+W3~W4의 미완료 범위이며 실행 준비를 그 완료로 승격하지 않는다. Windows/Linux/WSL 실측도 남는다.
+
 
 TUI·Binding Relay·App Server는 함께 필요한 실행 자원이다. Web·Host는 daemon이, 외부
 `agent run`은 CLI가 이 자원들을 소유한다. daemon 연결 손실에도 이미 시작한 외부 TUI에 필요한
@@ -368,7 +396,7 @@ codex app-server \
 ```
 
 MCP와 instruction은 MCP host인 App Server에 주입한다. 위는 MCP 부분이며 listen/Relay/TUI
-연결은 binding이 구성한다. token은 App Server child env에 전달하고 `bearer_token_env_var`에는
+연결은 adapter 실행부가 구성한다. token은 App Server child env에 전달하고 `bearer_token_env_var`에는
 변수 이름만 둔다. config의 `developer_instructions`와 RPC의 `developerInstructions`를 혼용하지
 않고 TOML escaping을 적용한다. required MCP 초기화 실패와 AIOX registration cleanup은 별개다.
 [설정 reference](https://learn.chatgpt.com/docs/config-file/config-reference).
@@ -383,7 +411,7 @@ daemon 입력 → binding → turn/start(activeThreadId)
 
 Relay는 frame 전달과 binding 관측을 분리한다. 성공 응답의 thread ID를 사용하며 요청 ID는 같은
 연결에서 대응시킨다. 임의 loaded-thread 선택이나 기존 fallback을 가져오지 않는다.
-이 책임의 과거 코드·테스트 근거는 Git commit
+이 책임의 재사용 원본 코드·테스트 근거는 Git commit
 `8db476bad722717bf82cc598904f3f33af8a90b3`에 보존돼 있다. 이전 구현 파일은 재구축 정리에서 삭제했다.
 
 ```sh
@@ -392,13 +420,21 @@ git show 8db476bad722717bf82cc598904f3f33af8a90b3:tests/unit/adapters/codex-prox
 ```
 
 당시 proxy의 68–100, 156–200줄과 test의 27–100줄에 해당한다. 좁은 과거 코드/테스트 근거이며
-새 구현의 존재나 신규 HTTP MCP 통합 완료를 뜻하지 않는다.
+그 자체로 새 구현의 검증이나 메시지 왕복 완료를 뜻하지 않는다.
 
 입력은 [[docs/specs/aiox-collaboration]]의 채택에 따라 `toolOutput` 본문과
 `additionalContext` 전달 메타데이터로 구성한다. 사용자 확인상 이 조합의 실험은 통과했다.
 신규 AIOX 통합에서 실제 표시·입력 전달·회신을 E2E로 연결하며, 요구를 충족하지 못할 때만
 원인을 확인하고 IDE delimiter+Cyan 또는 toolOutput 단독 등 후순위 후보를 검토한다.
 후보 사이의 추가 우선순위는 정하지 않았으며 여러 fallback을 미리 구현하지 않는다.
+
+현재 binding의 공통 입력 변환은 `codex_tui/send_message_to_thread`의 `toolOutput`에
+`codex_delegation` wrapper를 사용한다. `source_thread_id`에는 표시용 발신자 이름,
+`input`에는 전달 본문을 이스케이프해 넣는다. 이 표시용 필드는 실제 입력 대상 thread ID와
+별개다. `additionalContext.aiox`는 untrusted 메타데이터로 발신자 name/role/description과
+createdAt을 전달하며 내부 delivery ID는 포함하지 않는다. 일반 메시지와 AIOX 알림에 같은
+변환을 적용한다. 근거: [[packages/adapters/codex/src/binding.test.ts]]
+`packages/adapters/codex/src/binding.test.ts:1-37` 및 binding.ts의 codexInput.
 
 완전한 wire의 필드 배치와 context 길이 제한·절단 위치는 추측으로 재구성하지 않는다.
 고정 `Sent by Codex` 문구가 Claude 발신자를 올바르게 표시한다고 단정하지 않고 내부 renderer

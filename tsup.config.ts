@@ -5,6 +5,7 @@ import { defineConfig, type Options } from "tsup";
 const packages: Record<string, Options> = {
     "@aiox/domain": {},
     "@aiox/vendor": {},
+    "@aiox/adapter-codex": {},
     "@aiox/adapter-claude": {
         entry: ["src/index.ts", "src/claude-hook-main.ts"],
     },

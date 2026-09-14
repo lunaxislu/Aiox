@@ -1,0 +1,29 @@
+{
+    "name": "@aiox/adapter-codex",
+    "version": "0.0.0",
+    "private": true,
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "build": "tsup --config ../../../tsup.config.ts",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "vitest run --config ../../../vitest.config.ts"
+    },
+    "dependencies": {
+        "@aiox/domain": "workspace:*",
+        "@aiox/vendor": "workspace:*",
+        "ws": "8.21.3",
+        "zod": "4.5.4"
+    },
+    "devDependencies": {
+        "@types/ws": "8.18.1"
+    }
+}

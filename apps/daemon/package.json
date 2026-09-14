@@ -20,6 +20,7 @@
     },
     "dependencies": {
         "@aiox/adapter-claude": "workspace:*",
+        "@aiox/adapter-codex": "workspace:*",
         "@aiox/config": "workspace:*",
         "@aiox/domain": "workspace:*",
         "@aiox/persistence": "workspace:*",

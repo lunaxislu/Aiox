@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
+import { codexAdapter } from "@aiox/adapter-codex";
 import type { PortOverrides } from "@aiox/config";
 import { configPath, loadConfig, resolveTerminalLaunch } from "@aiox/config";
 import type {
@@ -458,13 +459,15 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                           networks: live.networks,
                       }),
             },
-            vendorIntegration:
-                "Claude foreground launch; Codex integration pending",
+            vendorIntegration: "Claude and Codex foreground launch",
         };
     }
 
     async function runAgent(request: CliRequest): Promise<void> {
-        const adapter = selectVendor([claudeAdapter], operand(request.args, 0));
+        const adapter = selectVendor(
+            [claudeAdapter, codexAdapter],
+            operand(request.args, 0),
+        );
         const { name, network, role, description, instruction } =
             request.options;
         const parsed = agentRunSchema.safeParse({
