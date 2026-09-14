@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import { expect, test } from "vitest";
 
 import { prepareLaunch } from "./launch";
@@ -73,7 +75,7 @@ test("does not expose parent execution credentials to the child TUI", async () =
 
 test("resolves a relative --cd once while preserving the TUI's launch directory", async () => {
     const launch = await prepareLaunch({ ...input, args: ["--cd", "src"] });
-    expect(launch.server.cwd).toBe(input.cwd + "/src");
+    expect(launch.server.cwd).toBe(join(input.cwd, "src"));
     expect(launch.tui.cwd).toBe(input.cwd);
     expect(launch.tui.args).toEqual(["--cd", "src"]);
 });
