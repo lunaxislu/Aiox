@@ -1,7 +1,7 @@
 import type {
     AgentView,
-    WebNotificationView,
     TerminalView,
+    WebNotificationView,
 } from "@aiox/protocol";
 
 import "@xterm/xterm/css/xterm.css";
