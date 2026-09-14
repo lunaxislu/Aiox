@@ -63,6 +63,8 @@ it.each(["win32", "linux"])(
             ]) {
                 const launch = prepareClaudeLaunch(
                     input([
+                        "--setting-sources",
+                        "",
                         "--settings",
                         JSON.stringify({ env: { [key]: "user-value" } }),
                     ]),
