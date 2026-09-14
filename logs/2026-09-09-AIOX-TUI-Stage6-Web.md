@@ -6,6 +6,9 @@ status: open
 
 ## Work Items
 
+- [ ] W1 1차 디자인 프로토타입(사이드바·workspace·알림)을 받아 드롭 존 두께·드롭 미리보기·리사이즈 감각·상태 표현을 검토하고 프롬프트를 수정한다. 사이드바 기본·최소·최대 너비와 pane 가장자리 존 비율의 확정값을 여기서 정한다.
+- [ ] W2 설정 화면 2차 디자인 프롬프트를 만든다. 전역 config 편집(terminal font/color/theme, shell/args/cwd, 포트, 보존 일수)과 keybindings를 다루며, keybindings 기본키와 OS별 schema는 spec이 요구하는 대로 사용자와 먼저 논의한 뒤 프롬프트에 넣는다.
+
 ## Required Context
 
 ### Return Target
@@ -29,6 +32,8 @@ status: open
 - 2026-09-10 사용자 결정으로 공통 headless·SerializeAddon snapshot 기반 구현은 Stage2-1(logs/2026-09-10-AIOX-TUI-Stage2-1-Terminal-Snapshot.md)이 선행 소유한다. Stage6는 해당 결과를 소비해 React·탭·분할·resize·재방문 화면 복귀에 통합하고 검증한다. 기존 raw tail 개선 요구는 유지되지만 구현을 중복하지 않으며 실제 완료 전에는 복원 완료로 간주하지 않는다.
 - 2026-09-13 사용자 승인: 기존 cmux 참고 범위를 pane·tab·window UI/UX로 보완한다. React 운영 Web에서 알림 아이콘 클릭 시 dropdown에 항목을 표시하고 알림 클릭 시 해당 Agent가 포함된 작업 창·영역·탭으로 이동하며 해당 알림을 읽음 처리한다. 대상 터미널(B) 선택 클릭 시 해당 대상의 미확인 해제는 Stage2-3 W5의 현재 간단 Web에 구현·검증됐으므로 그 결과를 소비한다. 저장 이력 삭제는 아니다. 외부 UX owner는 docs/specs/aiox-configuration-web.md다. Stage7은 이 UI 결과를 소비해 상태·읽음·알림음 통합과 검증을 이어가며 삭제하거나 Stage6로 전체 이전하지 않는다.
 - Stage2-3의 2026-09-14 최신 마감 entry 및 이 로그의 「Stage2-3 사용자 실측·현재 이유 표시 인계」를 소비한다. 현재 관측 이유 표시·교체·제거와 별도 오류 이력 비보존은 runtime spec 및 최소 Web 구현을 소비한다. React 운영 UI·popup·소리 등 기존 후속 범위는 유지한다. 사용자 실측을 agent 재실행·모든 환경 인증으로 확대하지 않으며 확인된 동일 사용 흐름을 일괄 재검증하지 않는다.
+- 2026-09-14 사용자 확정 운영 Web 화면 모델. 사이드바는 workspace 목록 하나이며 Workspaces(Web에서 사용자가 생성, 여러 개)·Networks(aiox network create로만 생성)·Hosts(aiox host run으로만 생성) 세 섹션은 전부 같은 workspace 화면(pane 분할 + pane별 독립 탭바)을 연다. 생성 출처와 자동으로 들어오는 실행만 다르다. 사이드바는 전체 높이이고 로고를 품으며 메인 위 헤더 바가 workspace 맥락(Host는 작업 경로·worktree 브랜치, Network는 멤버 수)·검색·알림·테마를 갖는다. 사이드바와 메인은 flush이고 inset·아이콘 rail은 쓰지 않는다. agent run은 --network가 가리키는 workspace에 나타난다. 그 workspace 안에서 실행했으면 해당 pane이 vendor 화면이 되고, 밖에서 실행했으면 대상 workspace에 탭이 생기며 명령을 친 shell은 살아남는다. 외부 CLI 실행 agent는 이름과 상태만 목록에 표시하고 화면·조작은 제공하지 않는다. 첫 진입에 복원할 것이 없으면 shell 1개를 자동 생성하고, Network·Host workspace가 비면 shell을 재생성하며(CLI로만 사라지는 칸이므로), 사용자 Workspace가 비면 사이드바에서 사라지고 다른 workspace 또는 첫 진입 화면으로 간다. 이 모델은 사용자 결정이며 구현·검증 결과가 아니다.
+- 위 화면 모델을 적용하려면 착수 시 docs/specs/aiox-configuration-web.md의 두 서술을 갱신해야 한다. 첫째, 외부 CLI 소유 실행을 'Web 목록·알림에서 제외'로 둔 계약을 '목록에는 표시하되 화면·조작·알림 대상에서 제외'로 바꾼다. 외부 실행을 완전히 숨기면 Network workspace가 그 network의 일부만 보여 주기 때문이다. 둘째, 실행 소유권 표와 §15의 '기존 Web terminal에서 실행하고 등록 때문에 새 탭을 중복 생성하지 않는다. Agent 종료 후 원래 shell로 돌아온다'를 workspace 기반 배치 규칙으로 바꾼다. 그 문구는 CLI 중계로 shell 화면에 그리는 현재 구조를 전제로 한 것이라 전제가 바뀌면 중복 판정도 달라진다. 두 갱신 모두 사용자 결정을 반영하는 것이며 아직 문서에 적용하지 않았다. 남은 미결은 탭 닫기(x)가 종료인지 배치에서 제거인지, keybindings 기본키와 OS별 schema(spec이 구현 전 사용자 논의를 요구), 설정 화면 2차 프롬프트다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -55,3 +60,17 @@ cmux pane·tab·window와 React dropdown·알림 클릭의 대상 창 이동, po
 사용자는 host:4501 운영 Web 접속·Claude 실행과 브라우저 창/탭 전환에 따른 알림 표시·읽음 처리까지 이전에 직접 확인했다고 보고했다. 이 사용 흐름의 사용자 실측 근거로 수용하고 같은 검증을 반복 요구하지 않는다. 이번 세션의 agent 재실행 결과는 아니며 OS·WSL 구성, 브라우저/vendor 버전과 실행 SHA는 특정되지 않았다. Windows 네이티브와 WSL 각각의 전체 인증이나 모든 vendor 메시지·중단 시나리오 완료로 확대하지 않는다.
 
 현재 관측 이유 표시·교체·제거와 별도 오류 이력 비보존은 runtime spec 및 최소 Web 구현을 소비한다. React 운영 UI·popup·소리 등 기존 후속 범위는 유지한다. Stage2-3은 마감하되 후속 단계 활성화·착수는 하지 않았다.
+
+## 2026-09-14 · 운영 Web UI 구조 확정과 디자인 프롬프트 산출
+
+사용자와 운영 Web의 화면 구조를 확정하고 외부 디자인 세션용 프롬프트를 만들었다. 구현에 착수하지 않았고 프로토타입도 아직 받지 않았다. plan의 활성 단계는 Stage 4이며 이 기록은 Stage 6 활성화 시 소비할 선행 결정이다. 확정한 구조 모델 자체는 Required Context에 두고 여기에는 판단 근거를 남긴다.
+
+cmux(concepts, splits-and-panes, keyboard-shortcuts, getting-started)와 Paseo(public-docs의 workspaces.md, orchestration.md)를 이번 세션에서 직접 읽었다. cmux는 Window > Workspace > Pane > Surface 계층이고 첫 실행에 workspace 1개가 이미 열려 있으며 마지막 pane을 닫지 못하게 해 빈 상태를 설계에서 제거한다. Paseo는 Project > Workspace > Session이며 workspace 준비와 agent 실행을 분리한다. AIOX의 Host는 Paseo Workspace에, AIOX terminal은 Session에 대응하고 Network는 두 제품 모두 대응물이 없다. 이 조사는 공개 문서 읽기이며 두 제품의 실제 동작 실측이 아니다.
+
+기존 사이드바 3섹션(일반 터미널·Hosts·Networks)은 앞 둘이 장소이고 Networks만 조회 대상이라 성격이 섞여 있었다. 사용자가 Network도 장소로 취급하려던 의도를 밝혀, 셋을 모두 같은 workspace로 통일하고 생성 출처만 구분하는 모델로 바꿨다.
+
+논의 중 agent 실행 구조를 코드에서 재확인해 세션 중반의 설명을 정정했다. shell에 vendor runtime이 얹히는 것이 아니라 daemon이 createTerminal로 agent PTY를 별도 생성하고(`apps/daemon/src/agent-controller.ts:129`) 그 바이트를 WS로 CLI에 중계해 명령을 친 shell 화면에 그린다. terminalContext는 실행 위치 인증용이고 borrowing은 Runtime을 그 shell에 귀속시키는 것이다(`apps/daemon/src/daemon.ts:632-658`). 따라서 agent terminal을 network workspace의 탭으로 두는 구성은 새 자원 계약 추가가 아니라 중계 경로를 어떻게 처리할지의 문제다.
+
+daemon stop의 idle 판정은 shell integration을 심을 수 있을 때만 가능하다. POSIX + bash/zsh/fish + args 없음이 조건이고 그 외에는 `busy: () => true`로 고정된다(`packages/terminal/src/shell-integration.ts:33-35`). 중첩 실행 자체는 `[[ $__aiox_idle = 1 && -z $(jobs -p) ]]`로 잡히므로 "중첩을 안 본다"가 아니라 "물어볼 창구가 없다"가 정확한 서술이다. 아래 빈 workspace shell 재생성 규칙은 이 조건에서만 stop을 막을 수 있으며 알려진 한계로 둔다.
+
+디자인 프롬프트는 `logs/artifact/AIOX-Web-UI-Design-Prompt.md`에 두었다. 1차 범위는 사이드바·workspace 화면·알림이고 설정 화면은 2차로 분리했다. 산출물은 동작하는 단일 HTML 프로토타입, 톤은 dark-first 고밀도, UI 문구는 영어로 정했다. 정적 이미지로는 드롭 존 두께·드롭 미리보기·리사이즈 감각을 판정할 수 없다는 이유다. 사이드바 기본 240px·최소 180px·최대 400px은 프로토타입 검증용 초안이며 확정값이 아니다.
