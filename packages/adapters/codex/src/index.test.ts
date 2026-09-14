@@ -59,11 +59,14 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         return helper;
     });
     const activity = vi.fn();
+    const settle = vi.fn(
+        async (_id: string, _outcome: string, _error?: string) => {},
+    );
     let tui: WebSocket | undefined;
     try {
         const execution = await codexAdapter.createExecution(owner);
         const binding = codexAdapter.createBinding(
-            { runtimeId: "r", setActivity: activity, settle: async () => {} },
+            { runtimeId: "r", setActivity: activity, settle },
             execution.connection,
         );
         const prepared = await binding.prepare({
@@ -110,17 +113,141 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
             content: "probe",
             createdAt: 1,
         };
-        const deliverTo = async (threadId: string) => {
+        const deliverTo = async (
+            threadId: string,
+            deliveryId: string,
+            completeFirst = false,
+            turnId = "turn-A",
+        ) => {
             const received = once(peer, "message");
-            const delivered = binding.deliver(message);
+            const delivered = binding.deliver({ ...message, deliveryId });
             const [raw] = await received;
             const frame = JSON.parse(raw.toString());
             expect(frame.method).toBe("turn/start");
             expect(frame.params.threadId).toBe(threadId);
-            peer.send(JSON.stringify({ id: frame.id, result: {} }));
+            if (completeFirst)
+                peer.send(
+                    JSON.stringify({
+                        method: "turn/completed",
+                        params: {
+                            threadId,
+                            turn: {
+                                id: turnId,
+                                status: "failed",
+                                error: { message: "model failed" },
+                            },
+                        },
+                    }),
+                );
+            peer.send(
+                JSON.stringify({
+                    id: frame.id,
+                    result: { turn: { id: turnId } },
+                }),
+            );
             await delivered;
         };
-        await deliverTo("thread-A");
+        await deliverTo("thread-A", "delivery-A");
+        peer.send(
+            JSON.stringify({
+                method: "turn/started",
+                params: { threadId: "thread-A", turn: { id: "turn-A" } },
+            }),
+        );
+        await expect
+            .poll(() => activity.mock.calls.at(-1)?.[0])
+            .toBe("reasoning");
+        peer.send(
+            JSON.stringify({
+                id: 7,
+                method: "item/commandExecution/requestApproval",
+                params: { threadId: "thread-A", turnId: "turn-A" },
+            }),
+        );
+        await expect
+            .poll(() => activity.mock.calls.at(-1)?.[0])
+            .toBe("awaiting-user");
+        peer.send(
+            JSON.stringify({
+                id: 8,
+                method: "item/tool/requestUserInput",
+                params: { threadId: "thread-A", turnId: "turn-A" },
+            }),
+        );
+        peer.send(
+            JSON.stringify({
+                method: "serverRequest/resolved",
+                params: { threadId: "thread-A", requestId: 7 },
+            }),
+        );
+        await expect
+            .poll(() => activity.mock.calls.at(-1)?.[0])
+            .toBe("awaiting-user");
+        peer.send(
+            JSON.stringify({
+                method: "serverRequest/resolved",
+                params: { threadId: "thread-A", requestId: 8 },
+            }),
+        );
+        await expect
+            .poll(() => activity.mock.calls.at(-1)?.[0])
+            .toBe("reasoning");
+        await deliverTo("thread-A", "delivery-A2");
+        peer.send(
+            JSON.stringify({
+                method: "turn/completed",
+                params: {
+                    threadId: "thread-A",
+                    turn: { id: "turn-A", status: "completed" },
+                },
+            }),
+        );
+        await expect
+            .poll(() => settle)
+            .toHaveBeenCalledWith("delivery-A", "completed", undefined);
+        await expect
+            .poll(() => settle)
+            .toHaveBeenCalledWith("delivery-A2", "completed", undefined);
+        await expect.poll(() => activity.mock.calls.at(-1)?.[0]).toBe("idle");
+        await deliverTo(
+            "thread-A",
+            "delivery-interrupted",
+            false,
+            "turn-interrupted",
+        );
+        peer.send(
+            JSON.stringify({
+                method: "turn/completed",
+                params: {
+                    threadId: "thread-A",
+                    turn: { id: "turn-interrupted", status: "interrupted" },
+                },
+            }),
+        );
+        await expect
+            .poll(() => settle)
+            .toHaveBeenCalledWith(
+                "delivery-interrupted",
+                "interrupted",
+                undefined,
+            );
+        peer.send(
+            JSON.stringify({
+                method: "item/completed",
+                params: {
+                    threadId: "thread-A",
+                    turnId: "turn-interrupted",
+                    item: {
+                        id: "late",
+                        type: "commandExecution",
+                        status: "completed",
+                    },
+                },
+            }),
+        );
+        expect(
+            settle.mock.calls.filter(([id]) => id === "delivery-interrupted"),
+        ).toHaveLength(1);
         const switching = once(peer, "message");
         tui.send(
             JSON.stringify({ id: 2, method: "thread/resume", params: {} }),
@@ -136,8 +263,19 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         );
         await resumed;
         await expect.poll(() => activity.mock.calls.at(-1)?.[0]).toBe("idle");
-        await deliverTo("thread-B");
+        settle.mockRejectedValueOnce(new Error("storage unavailable"));
+        await deliverTo("thread-B", "delivery-B", true);
+        await expect
+            .poll(
+                () =>
+                    settle.mock.calls.filter(([id]) => id === "delivery-B")
+                        .length,
+            )
+            .toBe(1);
         await binding.cleanup("external_connection_lost");
+        expect(
+            settle.mock.calls.filter(([id]) => id === "delivery-B"),
+        ).toHaveLength(2);
         expect(tui.readyState).toBe(WebSocket.OPEN);
         expect(foreground.stop).not.toHaveBeenCalled();
         const tuiClosed = once(tui, "close");

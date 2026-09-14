@@ -32,9 +32,13 @@ test("tracks only successful TUI thread responses and control loss leaves the TU
     });
     await once(tui, "open");
     const [server] = await connected;
-    const exchange = async (method: string, result: object) => {
+    const exchange = async (
+        method: string,
+        result: object,
+        params: object = {},
+    ) => {
         const request = once(server, "message");
-        tui.send(JSON.stringify({ id: 1, method, params: {} }));
+        tui.send(JSON.stringify({ id: 1, method, params }));
         await request;
         const response = once(tui, "message");
         server.send(JSON.stringify({ id: 1, ...result }));
@@ -42,8 +46,33 @@ test("tracks only successful TUI thread responses and control loss leaves the TU
     };
     await exchange("thread/start", { result: { thread: { id: "A" } } });
     expect(relay.activeThreadId).toBe("A");
-    await exchange("thread/resume", { error: { message: "no" } });
+    await exchange(
+        "thread/start",
+        { result: { thread: { id: "helper" } } },
+        { ephemeral: true, threadSource: "system" },
+    );
     expect(relay.activeThreadId).toBe("A");
+    const observed = new Promise<any>((resolve) =>
+        control.on("message", (raw) => {
+            const event = JSON.parse(raw.toString());
+            if (event.type === "event") resolve(event);
+        }),
+    );
+    server.send(
+        JSON.stringify({
+            method: "turn/started",
+            params: { threadId: "A", turn: { id: "turn" } },
+        }),
+    );
+    expect((await observed).params.turn.id).toBe("turn");
+    await exchange(
+        "thread/start",
+        { result: { thread: { id: "ephemeral-user" } } },
+        { ephemeral: true, threadSource: "user" },
+    );
+    expect(relay.activeThreadId).toBe("ephemeral-user");
+    await exchange("thread/resume", { error: { message: "no" } });
+    expect(relay.activeThreadId).toBe("ephemeral-user");
     await exchange("thread/fork", { result: { thread: { id: "B" } } });
     expect(relay.activeThreadId).toBe("B");
     const closed = once(control, "close");

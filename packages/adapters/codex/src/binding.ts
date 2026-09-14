@@ -57,6 +57,16 @@ const responseSchema = z.object({
     error: z.string().optional(),
     result: z.unknown().optional(),
 });
+const eventSchema = z.object({
+    type: z.literal("event"),
+    method: z.string(),
+    params: z.record(z.string(), z.unknown()),
+    id: z.union([z.string(), z.number()]).optional(),
+});
+type TurnResult = {
+    outcome: "completed" | "failed" | "interrupted";
+    error?: string;
+};
 
 export class CodexBinding implements VendorBinding {
     #socket: WebSocket | undefined;
@@ -67,10 +77,17 @@ export class CodexBinding implements VendorBinding {
     #thread: string | null = null;
     #wasReady = false;
     #ready = false;
+    #turns = new Map<string, Set<string>>();
+    #results = new Map<string, TurnResult>();
+    #earlyResults = new Map<string, TurnResult>();
+    #awaitingAcceptance = 0;
+    #activeTurns = new Map<string, string>();
+    #tools = new Map<string, Set<string>>();
+    #pending = new Map<string, { threadId: string; turnId: string }>();
     #requests = new Map<
         string,
         {
-            resolve(): void;
+            resolve(result: unknown): void;
             reject(error: Error): void;
             timer: ReturnType<typeof setTimeout>;
         }
@@ -110,7 +127,12 @@ export class CodexBinding implements VendorBinding {
             if (state.success) {
                 this.#thread = state.data.threadId;
                 if (state.data.error) this.#failed(state.data.error);
-                else this.#update();
+                else this.#updateActivity();
+                return;
+            }
+            const event = eventSchema.safeParse(value);
+            if (event.success) {
+                this.#event(event.data);
                 return;
             }
             const response = responseSchema.safeParse(value);
@@ -124,7 +146,7 @@ export class CodexBinding implements VendorBinding {
             this.#requests.delete(response.data.id);
             if (response.data.error)
                 pending.reject(new Error(response.data.error));
-            else pending.resolve();
+            else pending.resolve(response.data.result);
         });
         await once(socket, "open");
         if (this.#stopped) {
@@ -157,6 +179,135 @@ export class CodexBinding implements VendorBinding {
             });
         this.#ready = ready;
     }
+    #updateActivity() {
+        this.#update();
+        if (!this.#ready || !this.#thread) return;
+        const threadId = this.#thread;
+        const waiting = [...this.#pending.values()].some(
+            (request) => request.threadId === threadId,
+        );
+        const active = this.#activeTurns.has(threadId);
+        const turnId = this.#activeTurns.get(threadId);
+        const tool = turnId
+            ? (this.#tools.get(`${threadId}:${turnId}`)?.size ?? 0) > 0
+            : false;
+        this.controls.setActivity(
+            waiting
+                ? "awaiting-user"
+                : active
+                  ? tool
+                      ? "tool"
+                      : "reasoning"
+                  : "idle",
+            {
+                event: waiting
+                    ? "codex_request"
+                    : active
+                      ? tool
+                          ? "codex_tool"
+                          : "codex_turn"
+                      : "codex_idle",
+            },
+        );
+    }
+    #event(event: z.infer<typeof eventSchema>) {
+        const { method, params, id } = event;
+        const threadId = params.threadId;
+        if (typeof threadId !== "string") return;
+        const turn = params.turn as
+            | { id?: unknown; status?: unknown; error?: unknown }
+            | undefined;
+        const turnId = typeof turn?.id === "string" ? turn.id : null;
+        const key = turnId ? `${threadId}:${turnId}` : null;
+        if (method === "turn/started" && turnId)
+            this.#activeTurns.set(threadId, turnId);
+        if (method === "turn/completed" && key) {
+            const status = turn?.status;
+            if (
+                status === "completed" ||
+                status === "failed" ||
+                status === "interrupted"
+            ) {
+                const error = turn?.error;
+                const result: TurnResult = {
+                    outcome: status,
+                    ...(status === "failed" &&
+                    error &&
+                    typeof error === "object" &&
+                    "message" in error
+                        ? { error: String(error.message) }
+                        : {}),
+                };
+                if (this.#turns.has(key)) {
+                    this.#results.set(key, result);
+                    void this.#flush(key).catch(() => {});
+                } else if (this.#awaitingAcceptance > 0)
+                    this.#earlyResults.set(key, result);
+            }
+            if (this.#activeTurns.get(threadId) === turnId)
+                this.#activeTurns.delete(threadId);
+            this.#tools.delete(key);
+            for (const [requestId, request] of this.#pending)
+                if (request.threadId === threadId && request.turnId === turnId)
+                    this.#pending.delete(requestId);
+        }
+        const item = params.item as
+            | { id?: unknown; type?: unknown }
+            | undefined;
+        if (
+            typeof item?.id === "string" &&
+            typeof params.turnId === "string" &&
+            this.#activeTurns.get(threadId) === params.turnId
+        ) {
+            const toolKey = `${threadId}:${params.turnId}`;
+            const tools = this.#tools.get(toolKey) ?? new Set<string>();
+            if (
+                method === "item/started" &&
+                [
+                    "commandExecution",
+                    "fileChange",
+                    "mcpToolCall",
+                    "dynamicToolCall",
+                ].includes(String(item.type))
+            )
+                tools.add(item.id);
+            if (method === "item/completed") tools.delete(item.id);
+            if (tools.size) this.#tools.set(toolKey, tools);
+            else this.#tools.delete(toolKey);
+        }
+        if (
+            id !== undefined &&
+            typeof params.turnId === "string" &&
+            (method.endsWith("/requestApproval") ||
+                method === "item/tool/requestUserInput")
+        )
+            this.#pending.set(`${threadId}:${id}`, {
+                threadId,
+                turnId: params.turnId,
+            });
+        if (
+            method === "serverRequest/resolved" &&
+            (typeof params.requestId === "string" ||
+                typeof params.requestId === "number")
+        )
+            this.#pending.delete(`${threadId}:${params.requestId}`);
+        if (threadId === this.#thread) this.#updateActivity();
+    }
+    async #flush(key: string) {
+        const result = this.#results.get(key);
+        const deliveries = this.#turns.get(key);
+        if (!result || !deliveries) return;
+        for (const deliveryId of deliveries) {
+            await this.controls.settle(
+                deliveryId,
+                result.outcome,
+                result.error,
+            );
+            deliveries.delete(deliveryId);
+        }
+        this.#turns.delete(key);
+        this.#results.delete(key);
+    }
     #failed(reason: string) {
         this.#ready = false;
         this.controls.setActivity("failed", {
@@ -182,35 +333,67 @@ export class CodexBinding implements VendorBinding {
         )
             throw new Error("Codex has no confirmed active TUI thread.");
         const id = randomUUID();
-        await new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => {
-                this.#requests.delete(id);
-                reject(
-                    new Error(
-                        "Codex input outcome is unknown; input was not retried.",
-                    ),
+        this.#awaitingAcceptance++;
+        let result: unknown;
+        try {
+            result = await new Promise<unknown>((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    this.#requests.delete(id);
+                    reject(
+                        new Error(
+                            "Codex input outcome is unknown; input was not retried.",
+                        ),
+                    );
+                }, 31_000);
+                this.#requests.set(id, { resolve, reject, timer });
+                this.#socket!.send(
+                    JSON.stringify({
+                        type: "deliver",
+                        id,
+                        params: codexInput(message),
+                    }),
+                    (error) => {
+                        if (error) {
+                            clearTimeout(timer);
+                            this.#requests.delete(id);
+                            reject(
+                                new Error(
+                                    "Codex relay write failed; input outcome is unknown.",
+                                ),
+                            );
+                        }
+                    },
                 );
-            }, 31_000);
-            this.#requests.set(id, { resolve, reject, timer });
-            this.#socket!.send(
-                JSON.stringify({
-                    type: "deliver",
-                    id,
-                    params: codexInput(message),
-                }),
-                (error) => {
-                    if (error) {
-                        clearTimeout(timer);
-                        this.#requests.delete(id);
-                        reject(
-                            new Error(
-                                "Codex relay write failed; input outcome is unknown.",
-                            ),
-                        );
-                    }
-                },
+            });
+        } catch (error) {
+            if (this.#awaitingAcceptance === 1) this.#earlyResults.clear();
+            throw error;
+        } finally {
+            this.#awaitingAcceptance--;
+        }
+        const accepted = z
+            .object({
+                threadId: z.string(),
+                turn: z.object({ id: z.string() }),
+            })
+            .safeParse(result);
+        if (!accepted.success)
+            throw new Error(
+                "Codex accepted input without thread and turn IDs.",
             );
-        });
+        if (message.deliveryId) {
+            const key = `${accepted.data.threadId}:${accepted.data.turn.id}`;
+            const deliveries = this.#turns.get(key) ?? new Set<string>();
+            deliveries.add(message.deliveryId);
+            this.#turns.set(key, deliveries);
+            const early = this.#earlyResults.get(key);
+            if (early) {
+                this.#results.set(key, early);
+                this.#earlyResults.delete(key);
+                void this.#flush(key).catch(() => {});
+            }
+        }
+        if (this.#awaitingAcceptance === 0) this.#earlyResults.clear();
     }
     async connectionLost() {
         this.#failed("Codex foreground connection lost.");
@@ -226,6 +409,9 @@ export class CodexBinding implements VendorBinding {
     async cleanup() {
         this.#stopped = true;
         this.#failed("Codex collaboration released.");
+        await Promise.allSettled(
+            [...this.#results.keys()].map((key) => this.#flush(key)),
+        );
         const socket = this.#socket;
         if (socket && socket.readyState !== WebSocket.CLOSED) {
             const closed = once(socket, "close");

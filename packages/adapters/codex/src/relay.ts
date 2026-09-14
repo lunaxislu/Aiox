@@ -5,6 +5,17 @@ import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 
 const threadMethods = new Set(["thread/start", "thread/resume", "thread/fork"]);
+const observedMethods = new Set([
+    "turn/started",
+    "turn/completed",
+    "item/started",
+    "item/completed",
+    "serverRequest/resolved",
+    "item/commandExecution/requestApproval",
+    "item/fileChange/requestApproval",
+    "item/permissions/requestApproval",
+    "item/tool/requestUserInput",
+]);
 export type RelayState = { threadId: string | null; error: string | null };
 export type RelayConnection = { url: string; token: string };
 
@@ -27,6 +38,7 @@ export async function createRelay() {
             client: WebSocket;
             peer: WebSocket;
             id: string;
+            threadId: string;
             timer: ReturnType<typeof setTimeout>;
         }
     >();
@@ -126,6 +138,7 @@ export async function createRelay() {
                     client,
                     peer: upstream,
                     id: originalId,
+                    threadId: activeThreadId!,
                     timer,
                 });
                 send(upstream, {
@@ -142,6 +155,8 @@ export async function createRelay() {
         }
         // The resume picker opens its own connection; request IDs are connection-local.
         const pendingThreads = new Set<string | number>();
+        const internalThreads = new Set<string | number>();
+        const hiddenThreads = new Set<string>();
         pendingConnections.add(pendingThreads);
         const peer = new WebSocket(upstreamUrl, {
             headers: { Authorization: `Bearer ${upstreamToken}` },
@@ -190,8 +205,16 @@ export async function createRelay() {
                 typeof message.method === "string" &&
                 threadMethods.has(message.method)
             ) {
-                pendingThreads.add(message.id);
                 const params = message.params;
+                const internal =
+                    message.method === "thread/start" &&
+                    params &&
+                    typeof params === "object" &&
+                    (params as Record<string, unknown>).ephemeral === true &&
+                    (params as Record<string, unknown>).threadSource ===
+                        "system";
+                if (internal) internalThreads.add(message.id);
+                else pendingThreads.add(message.id);
                 if (
                     instruction &&
                     params &&
@@ -212,7 +235,7 @@ export async function createRelay() {
                     }
                 }
 
-                publish();
+                if (!internal) publish();
             }
             if (peer.readyState === WebSocket.OPEN) peer.send(frame);
             else {
@@ -246,9 +269,27 @@ export async function createRelay() {
                                       ? message.error.message
                                       : "Codex rejected the input.",
                           }
-                        : { result: message.result }),
+                        : {
+                              result: {
+                                  ...(message.result as object),
+                                  threadId: pending.threadId,
+                              },
+                          }),
                 });
                 return;
+            }
+            if (
+                message &&
+                message.method === undefined &&
+                (typeof message.id === "string" ||
+                    typeof message.id === "number") &&
+                internalThreads.delete(message.id)
+            ) {
+                const result = message.result as
+                    | { thread?: { id?: unknown } }
+                    | undefined;
+                if (!message.error && typeof result?.thread?.id === "string")
+                    hiddenThreads.add(result.thread.id);
             }
             if (
                 message &&
@@ -272,6 +313,23 @@ export async function createRelay() {
                 }
                 publish();
             }
+            if (
+                message &&
+                observedMethods.has(String(message.method)) &&
+                message.params &&
+                typeof message.params === "object" &&
+                !hiddenThreads.has(
+                    String(
+                        (message.params as Record<string, unknown>).threadId,
+                    ),
+                )
+            )
+                send(control, {
+                    type: "event",
+                    method: message.method,
+                    params: message.params,
+                    id: message.id,
+                });
             if (client.readyState === WebSocket.OPEN) client.send(frame);
         });
     });

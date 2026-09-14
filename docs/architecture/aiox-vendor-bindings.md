@@ -379,8 +379,8 @@ macOS 실제 Web TUI 실행·MCP 준비·재접속·new·shell 복귀와 외부 
 TUI 조작·shell 복귀를 확인했다. 사용자 동반 resume/fork/clear/new·선택 취소·Web 재접속에서
 현재 대화 ID와 고유 입력의 화면 표시·응답을 확인했다. 사용자 세션의 RPC 전체를 동시 수집한
 근거는 아니며 binding→Relay→turn/start 대상 대응·전환 중 거절·보조 연결과 listener 종료는
-인접 index/relay 테스트가 검증한다. 아래 입력의 완료/실패/중단 귀속·승인/질문 관측은 W2, 실제 메시지 왕복은
-W3~W4의 미완료 범위이며 실행 준비를 그 완료로 승격하지 않는다. Windows/Linux/WSL 실측도 남는다.
+인접 index/relay 테스트가 검증한다. 실제 메시지 왕복은 W3~W4의 미완료 범위다.
+Windows/Linux/WSL 실측도 남는다.
 
 
 TUI·Binding Relay·App Server는 함께 필요한 실행 자원이다. Web·Host는 daemon이, 외부
@@ -411,7 +411,40 @@ daemon 입력 → binding → turn/start(activeThreadId)
 
 Relay는 frame 전달과 binding 관측을 분리한다. 성공 응답의 thread ID를 사용하며 요청 ID는 같은
 연결에서 대응시킨다. 임의 loaded-thread 선택이나 기존 fallback을 가져오지 않는다.
-이 책임의 재사용 원본 코드·테스트 근거는 Git commit
+`ephemeral=true`와 `threadSource="system"`이 함께 있는 내부 helper thread는 TUI와
+App Server 사이를 그대로 통과하되 active thread로 선택하지 않는다. 일반 `ephemeral`
+대화는 선택 대상이다. Relay는 전달 당시 thread ID를 `turn/start` 응답의 turn ID에 붙이고
+turn·item·요청 이벤트를 control로 전한다. Binding은 Runtime/thread/turn에 delivery ID를
+연결하고 같은 turn의 `turn/completed`만 해당 delivery들의 결과로 저장한다. 화면의 현재
+활동은 선택된 thread의 turn·도구·request ID별 승인/질문 대기에서 계산한다. 끝난 turn의
+늦은 item 이벤트는 결과를 바꾸지 않고, 한 요청 해소는 다른 미해결 요청을 지우지 않는다.
+DB 저장 실패 결과는 보존해 cleanup에서 재시도하며 daemon의 기존 in-flight drain도 유지한다.
+TUI가 사용자 승인·질문 응답을 소유한다.
+
+AIOX MCP가 활성인 실행의 제목 생성 helper는 Codex TUI가
+`config.mcp_servers.aiox={enabled:false}`만 보낸다. Codex 0.153.4의 같은 App Server에서
+이 override는 transport 누락으로 거절됐고, URL을 포함한 완전한 disabled entry는
+수락됐다. Relay의 내부 helper 제외는 이 오류와 별개로 동작한다. 제품 Relay는 helper
+설정을 보정하지 않으며 제목 생성 실패는 현재 gap이다. [Status: Current gap]
+
+근거: [[packages/adapters/codex/src/relay.ts]], [[packages/adapters/codex/src/binding.ts]],
+[[packages/adapters/codex/src/relay.test.ts]], [[packages/adapters/codex/src/index.test.ts]].
+Codex 0.153.4를 사용한 격리 TUI·App Server·daemon 실행에서 AIOX MCP 입력의 화면 처리,
+DB `completed` 기록과 발신자 알림, 진행 중 `reasoning`·종료 후 `idle`을 확인했다.
+별도 busy 입력 실측에서도 기존 TUI 작업 중 MCP 전송을 수락했고, 최종 화면 응답에 두 입력이
+함께 반영된 뒤 해당 delivery의 DB `completed`와 발신자 알림을 확인했다. 이 재실측에서는
+turn ID를 wire로 수집하지 않았으며 같은 turn ID 귀속은 앞선 wire 실측과 대역 회귀 근거다.
+별도 격리 실행의 같은 진행 상태를 Web `/api/web/agents`는 `reasoning`, MCP
+`agents_list`는 `working`으로 반환했다.
+지원하지 않는 모델을 지정한 별도 App Server 임시 turn에서 `turn/started` 뒤
+`turn/completed(status=failed, error=…)`를 직접 관측했다. 임시 Relay가 AIOX 시험 입력에만
+같은 모델을 지정한 격리 실행에서도 MCP 전송은 수락됐고 해당 delivery가 DB에 `failed`와
+오류 원문으로 기록됐으며 발신자 알림이 생성됐다. Runtime/Web/MCP는 turn 종료 후 `idle`을
+유지했다. 별도 실제 TUI의 병렬 `exec_command` 두 건에서는 같은 thread/turn의 승인
+request ID 두 개가 모두 해소 전 발생했고 Web `awaiting-user`·MCP `working`을 확인했다.
+두 ID는 한 번의 화면 승인 뒤 모두 해소됐다. 한 ID만 해소되고 다른 ID가 남는 경로는
+대역 회귀로 확인했으며 이 실제 TUI 실행에서는 발생하지 않았다.
+active thread 선택 책임의 재사용 원본 코드·테스트 근거는 Git commit
 `8db476bad722717bf82cc598904f3f33af8a90b3`에 보존돼 있다. 이전 구현 파일은 재구축 정리에서 삭제했다.
 
 ```sh
