@@ -19,8 +19,8 @@ export async function writeClaudeInbox(
         let socket;
         try {
             socket = connect(path);
-        } catch {
-            reject(new Error("Claude inbox connection failed."));
+        } catch (error) {
+            reject(new Error(failure("connection", error)));
             return;
         }
         let finished = false;
@@ -36,18 +36,29 @@ export async function writeClaudeInbox(
             () => finish("Claude inbox connection timed out."),
             2000,
         );
-        socket.once("error", () => finish("Claude inbox connection failed."));
+        socket.once("error", (error) => finish(failure("connection", error)));
         socket.once("close", () =>
             finish("Claude inbox closed before write completion."),
         );
         socket.once("connect", () => {
             try {
                 socket.write(auth + body, (error) =>
-                    finish(error ? "Claude inbox write failed." : undefined),
+                    finish(error ? failure("write", error) : undefined),
                 );
-            } catch {
-                finish("Claude inbox write failed.");
+            } catch (error) {
+                finish(failure("write", error));
             }
         });
     });
+}
+
+function failure(operation: string, error: unknown): string {
+    const code =
+        error instanceof Error &&
+        "code" in error &&
+        typeof error.code === "string" &&
+        /^E[A-Z0-9]+$/.test(error.code)
+            ? ` (${error.code})`
+            : "";
+    return `Claude inbox ${operation} failed${code}.`;
 }

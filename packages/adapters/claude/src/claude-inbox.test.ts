@@ -62,7 +62,7 @@ it.each([undefined, '안녕하세요\n"body" 😀'])(
 it("rejects unavailable transport without echoing its path or token", async () => {
     await expect(
         writeClaudeInbox("secret-invalid-path", "secret-token", "body"),
-    ).rejects.toThrow(/^Claude inbox connection failed\.$/);
+    ).rejects.toThrow(/^Claude inbox connection failed \(ENOENT\)\.$/);
     expect(connect).toHaveBeenCalledTimes(1);
 });
 
