@@ -948,6 +948,8 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
             session_id: "session",
             prompt_id: "second",
             error: "rate_limit",
+            last_assistant_message: "Usage limit reached. Try again later.",
+            error_details: "429 Too Many Requests",
         });
         const failedData = failed.structuredContent as { messageId: string };
         expect(
@@ -976,14 +978,16 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
                 agents: [{ agentId: target.id, status, status_reason }],
             });
         };
-        await sharedStatus("failed", "rate_limit");
+        const failureReason =
+            "Usage limit reached. Try again later. · rate_limit";
+        await sharedStatus("failed", failureReason);
         for (const [notification_type, status, reason] of [
             [
                 "quota_auto_resume_stale",
                 "awaiting-user",
                 "Press Enter to resume the task automatically.",
             ],
-            ["quota_auto_resume_disabled", "failed", "rate_limit"],
+            ["quota_auto_resume_disabled", "failed", failureReason],
             ["quota_auto_resume_fired", "working", null],
             ["quota_auto_resume_disabled", "idle", null],
             ["quota_auto_resume_fired", "working", null],

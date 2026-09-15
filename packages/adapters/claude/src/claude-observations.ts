@@ -63,6 +63,15 @@ function errorType(value: unknown): string {
         : "unknown";
 }
 
+function failureReason(event: Record<string, unknown>): string {
+    const detail = [event.last_assistant_message, event.error_details].find(
+        (value): value is string =>
+            typeof value === "string" && value.trim() !== "",
+    );
+    const type = errorType(event.error);
+    return detail ? `${detail} · ${type}` : type;
+}
+
 /** Consumes reports only after the caller authenticates this Runtime's hook credential. */
 export class ClaudeObservations {
     readonly #pending = new Map<string, string | null>();
@@ -195,7 +204,7 @@ export class ClaudeObservations {
             this.#resuming.delete(event.session_id);
             if (event.hook_event_name === "StopFailure") {
                 this.#failed = true;
-                this.#failureReason = errorType(event.error);
+                this.#failureReason = failureReason(event);
             }
             this.#project();
         }
@@ -228,11 +237,11 @@ export class ClaudeObservations {
         ) {
             if (event.hook_event_name === "StopFailure") {
                 this.#failed = true;
-                this.#failureReason = errorType(event.error);
+                this.#failureReason = failureReason(event);
             }
             this.#project(
                 event.hook_event_name === "StopFailure"
-                    ? errorType(event.error)
+                    ? failureReason(event)
                     : "prompt_identity_unconfirmed",
             );
         }
@@ -285,7 +294,7 @@ export class ClaudeObservations {
             if (frame === undefined) {
                 if (event.hook_event_name === "StopFailure") {
                     this.#failed = true;
-                    this.#failureReason = errorType(event.error);
+                    this.#failureReason = failureReason(event);
                     this.#project();
                 }
                 return;
@@ -295,7 +304,7 @@ export class ClaudeObservations {
             const error = errorType(event.error);
             this.#active.delete(key);
             this.#failed = failed;
-            this.#failureReason = failed ? error : undefined;
+            this.#failureReason = failed ? failureReason(event) : undefined;
             this.#project();
             if (frame !== null)
                 await this.#settle(

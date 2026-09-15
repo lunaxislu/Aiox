@@ -33,6 +33,36 @@ function event(
     return { hook_event_name, session_id: "session", prompt_id, ...extra };
 }
 
+it.each([
+    [
+        { last_assistant_message: "Limit reached", error_details: "429" },
+        "Limit reached · rate_limit",
+    ],
+    [
+        { last_assistant_message: "  ", error_details: "429" },
+        "429 · rate_limit",
+    ],
+    [{ last_assistant_message: {}, error_details: "429" }, "429 · rate_limit"],
+    [{ error_details: " " }, "rate_limit"],
+    [
+        { error: "future_error", error_details: "New failure details" },
+        "New failure details · unknown",
+    ],
+] as const)("reports StopFailure explanation %j", async (details, reason) => {
+    const { observer, controls } = setup();
+    await observer.observe(
+        event("UserPromptSubmit", "prompt", { prompt: "Hello" }),
+    );
+    await observer.observe(
+        event("StopFailure", "prompt", { error: "rate_limit", ...details }),
+    );
+    expect(controls.setStatus.mock.lastCall).toEqual(["failed", reason]);
+    await observer.observe(
+        event("UserPromptSubmit", "next", { prompt: "Retry" }),
+    );
+    expect(controls.setStatus.mock.lastCall?.[1]).toBeUndefined();
+});
+
 it("ignores subagent hooks sharing the main prompt identity", async () => {
     const { observer, controls } = setup();
     const frame = observer.track(message());
@@ -366,11 +396,11 @@ it("records uncorrelated API failures but never guesses their delivery", async (
         hook_event_name: "StopFailure",
         session_id: "session",
         error: "authentication_failed",
-        error_details: "secret",
+        error_details: "Please sign in again",
     });
     expect(controls.setStatus.mock.lastCall).toEqual([
         "failed",
-        "authentication_failed",
+        "Please sign in again · authentication_failed",
     ]);
     expect(controls.settle).not.toHaveBeenCalled();
     await observer.observe(
