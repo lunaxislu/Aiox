@@ -86,6 +86,8 @@ AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시�
 
 Persistent Network 이름·default는 DB에 지속한다. 참여 실행의 route 수명과 daemon 재시작 정리는 [[docs/specs/aiox-host]]의 Routing·종료 계약을 따른다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
 
+새 Network·Message·Delivery·Notification 행의 ID는 UUID v7으로 생성한다. 기존 ID를 재발급하지 않으며 Runtime·terminal 참조 ID와 vendor 고유 ID의 형식은 별개다.
+
 TypeORM과 better-sqlite3 및 transaction을 유지한다. 빈 DB를 현재 schema로 직접 초기화하고 저장·조회·재오픈을 검증한다. 첫 배포 전 개발 DB 변경 원칙은 [[AGENTS]]의 Development Database Before First Release를 따른다. 자동 synchronize로 schema를 변경하지 않는다. 현재 초기화 구현과 검증 근거는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 
 ## 기반 구현과 검증 범위

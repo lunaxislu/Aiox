@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import type { DeliveryOutcome } from "@aiox/domain";
 import { canSend, deliveredContent, notifiesOrigin } from "@aiox/domain";
 import type { AioxDatabase } from "@aiox/persistence";
+import { v7 as uuidv7 } from "uuid";
 
 import type { NetworkService } from "@/networks";
 import type { RuntimeRecord, RuntimeRegistry } from "@/runtimes";
@@ -124,7 +123,7 @@ export class MessageService {
             throw new Error("send requires at least one target");
 
         const createdAt = this.now();
-        const messageId = randomUUID();
+        const messageId = uuidv7();
         const checked = unique.map((agentId) => ({
             agentId,
             refusal: this.#refuse(source, agentId),
@@ -148,7 +147,7 @@ export class MessageService {
             .map((entry) => {
                 const target = this.runtimes.get(entry.agentId)!;
                 return {
-                    id: randomUUID(),
+                    id: uuidv7(),
                     target,
                     reverseRouteAtSend: canSend(network!, target, source),
                 };
@@ -183,7 +182,7 @@ export class MessageService {
                 ...checked
                     .filter((entry) => entry.refusal !== undefined)
                     .map((entry) => ({
-                        id: randomUUID(),
+                        id: uuidv7(),
                         messageId,
                         targetRuntimeId: entry.agentId,
                         reverseRouteAtSend: false,
@@ -322,7 +321,7 @@ export class MessageService {
             outcome,
         )
             ? {
-                  id: randomUUID(),
+                  id: uuidv7(),
                   originRuntimeId: flight.originRuntimeId,
                   originExecutionOwnership: flight.originExecutionOwnership,
                   originTerminalId: flight.originTerminalId,

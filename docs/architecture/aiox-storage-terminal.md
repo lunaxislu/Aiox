@@ -28,6 +28,8 @@ endpoint route를 정리하되 Network 이름·default와 메시지 이력은 �
 
 ## 이력 보존과 ORM 전환 [Status: As-built]
 
+NetworkService와 MessageService는 `uuid`의 v7 생성기를 사용해 새 Network·Message·Delivery·Notification ID를 발급한다. MCP의 전원 대상 부재 응답도 v7 messageId를 쓰되 저장하지 않는다. schema는 문자열 ID를 유지하며 재발급·backfill을 추가하지 않는다. 생성·저장·재오픈 근거는 apps/daemon/src/networks.ts, messaging.ts와 messaging.test.ts의 UUID v7 회귀다.
+
 TypeORM·better-sqlite3 연결을 연 뒤 현재 schema의 DDL을 한 transaction에서 직접 실행한다.
 `IF NOT EXISTS`로 같은 schema의 DB를 재오픈하며 과거 DB migration·version 채택 경로는 없다.
 초기화 실패는 생성 중인 테이블을 rollback하고 연결을 닫아 오류를 전달한다. 기존 데이터를

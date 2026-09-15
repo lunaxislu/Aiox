@@ -685,7 +685,7 @@ Persistent Network 이름·default는 DB에 지속한다. endpoint route는 참�
 
 TypeORM·better-sqlite3는 도입돼 있으며 현재 schema를 transaction 안에서 직접 초기화한다. 첫 배포 전에는 과거 개발 DB 호환을 위한 migration·backfill·legacy fallback을 유지하지 않는다. 저장 원자성·실패 재시도·재오픈 검증은 유지하고 startup 자동 삭제·reset은 하지 않는다. 배포 완료 통지 이후 schema 변경은 기존 데이터를 보존하는 migration으로 수행한다.
 
-D: DB 저장 ID를 UUID v7으로 통일하기로 결정했다. 아직 구현하지 않았으며 현재 저장 형식이나 vendor 고유 ID 변경으로 설명하지 않는다.
+D: 새 Network·Message·Delivery·Notification 행의 ID를 UUID v7으로 생성하도록 구현했다. 기존 ID를 재발급하지 않으며 Runtime·terminal 참조 ID와 vendor 고유 ID는 이 변경 대상이 아니다.
 
 서버 라이브러리 후속 결정:
 
@@ -1401,7 +1401,7 @@ W2의 제품 방향 결정은 완료했다. 아래는 구현 단계에서 구체
 
 1. Stage 2-2는 공통 실행 소유권·vendor 경계, Web shell 설정·사전 검증과 OS별 종료 작업을 마감했다. Windows/WSL shell 실측과 OS별 CI 범위는 [Stage 2-2 기록](2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md)을 따른다. 이후 외부 실행 유지 범위의 교정은 [Stage 2-3](2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md) W1에서 완료했으며, 별도 처리·복구 경계 개선을 이어간 뒤 Stage 3 W1로 복귀한다. 과거 외부 종료 테스트 성공을 현재 외부 생존 정책의 검증으로 승계하지 않는다. 실제 vendor 메시지 E2E와 추가 OS 통합은 Stage 3, Codex TUI·Relay·App Server는 Stage 4, Host 실행은 Stage 5 범위다.
 2. §16·§18의 확정된 MCP schema·공개 상태·대상별 알림을 구현한다. 정확한 MCP 응답 포장과 vendor 이벤트 상관관계를 검증하되 replyExpected·상태 enum을 다시 선택 과제로 만들지 않는다.
-3. TypeORM 도입과 현재 schema 직접 초기화는 반영됐다. AIOX 본문·알림 보존과 진행 중 요청 제외·관련 데이터 정리의 검증 근거는 저장 owner와 해당 단계 로그를 따른다. DB 저장 ID UUID v7 통일은 확정했지만 미구현이다. JSON·기본 포트·보존 기간은 미결이 아니다.
+3. TypeORM 도입과 현재 schema 직접 초기화는 반영됐다. AIOX 본문·알림 보존과 진행 중 요청 제외·관련 데이터 정리의 검증 근거는 저장 owner와 해당 단계 로그를 따른다. 새 Network·Message·Delivery·Notification ID의 UUID v7 생성과 저장·재오픈 검증을 반영했다. JSON·기본 포트·보존 기간은 미결이 아니다.
 4. Codex toolOutput+additionalContext E2E, busy 입력의 threadId/turnId 연결과 서버 요청 관측·사용자 응답 owner를 확인한다.
 5. Claude hidden inbox launch와 session_id/prompt_id 관측 연결·native Windows token forwarding을 확인한다. 이미 전달받은 단일 idle 성공을 busy 전체 검증으로 확대하지 않는다.
 6. Stage 2-1에서 완료한 §23의 공통 터미널 복원 기반을 Stage 6의 React 운영 UI·탭·분할·배치 복귀에 통합한다. 사용자 재인증 없는 Web 자동 복귀, 상세 상태·미해결 질문/승인 표시와 소리 묶음·multi-tab 주체는 해당 운영 Web·알림 단계에서 구현한다.

@@ -840,7 +840,7 @@ Persistent Network 이름·default는 DB에 지속한다. endpoint route는 참�
 
 TypeORM·better-sqlite3는 도입돼 있으며 현재 schema를 transaction 안에서 직접 초기화한다. 첫 배포 전에는 과거 개발 DB 호환을 위한 migration·backfill·legacy fallback을 유지하지 않는다. 저장 원자성·실패 재시도·재오픈 검증은 유지하고 startup 자동 삭제·reset은 하지 않는다. 배포 완료 통지 이후 schema 변경은 기존 데이터를 보존하는 migration으로 수행한다.
 
-DB 저장 ID를 UUID v7으로 통일하기로 결정했지만 아직 구현하지 않았다. 이를 현재 저장 형식으로 설명하거나 vendor 고유 ID까지 변경하는 결정으로 확대하지 않는다.
+새 Network·Message·Delivery·Notification 행의 ID를 UUID v7으로 생성하도록 구현했다. 기존 ID를 재발급하지 않으며 Runtime·terminal 참조 ID와 vendor 고유 ID는 이 변경 대상이 아니다.
 
 언어·소리 설정의 localStorage 저장과 DB 기본 경로 연결은 후속 구현 사항이다.
 

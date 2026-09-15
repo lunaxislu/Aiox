@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { agentViewSchema } from "@aiox/protocol";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 
 import type { MessageService } from "@/messaging";
@@ -102,7 +102,7 @@ function tools(
             const sent =
                 ids.length > 0
                     ? await messages.send(source, ids, content)
-                    : { messageId: randomUUID(), results: [] };
+                    : { messageId: uuidv7(), results: [] };
             const results = resolved.map(({ name, id }) => {
                 if (id === undefined)
                     return { name, accepted: false, error: targetNotFound };

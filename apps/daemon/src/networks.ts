@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import type { Network, RouteOperation, RoutePolicy } from "@aiox/domain";
 import { applyRouteOperation, outboundTargets } from "@aiox/domain";
 import type { AioxDatabase, PersistentNetwork } from "@aiox/persistence";
+import { v7 as uuidv7 } from "uuid";
 
 import type { RuntimeRecord } from "@/runtimes";
 
@@ -38,7 +37,7 @@ export class NetworkService {
                 "A network name must be non-empty and must not contain '/'",
                 "invalid_name",
             );
-        const id = randomUUID();
+        const id = uuidv7();
         try {
             await this.db.networks.create({ id, name, defaultPolicy });
         } catch (error) {

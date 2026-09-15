@@ -44,6 +44,39 @@ async function joinAgent(name: string) {
     return { record, vendor };
 }
 
+it("persists UUID v7 Network, Message, Delivery and Notification IDs across reopening", async () => {
+    const a = await joinAgent("A");
+    const b = await joinAgent("B");
+    await db.networks.replaceRouting(networkId, {
+        defaultPolicy: "deny",
+        routes: [{ from: a.record.id, to: b.record.id, policy: "allow" }],
+    });
+    const sent = await messages.send(a.record, [b.record.id, a.record.id], "X");
+    await b.vendor.settle(b.vendor.deliveryIds[0]!, "completed");
+    await db.close();
+    db = await openDatabase(join(home, "aiox.db"));
+    const deliveries = await db.messages.deliveriesFor(sent.messageId);
+    const notices = await db.messages.unreadNotifications();
+    expect(deliveries).toHaveLength(2);
+    expect(notices).toHaveLength(1);
+    expect((await db.networks.get(networkId))?.name).toBe("work");
+    const ids = [
+        networkId,
+        sent.messageId,
+        ...deliveries.map((row) => row.id),
+        notices[0]!.id,
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids)
+        expect(id).toMatch(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+    expect(deliveries.every((row) => row.messageId === sent.messageId)).toBe(
+        true,
+    );
+    expect(notices[0]!.deliveryId).toBe(b.vendor.deliveryIds[0]);
+});
+
 it("saves B's result after A exits without delivering it to a same-name replacement", async () => {
     const a = await joinAgent("A");
     const b = await joinAgent("B");
