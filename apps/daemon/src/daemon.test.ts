@@ -406,8 +406,20 @@ describe("network administration", () => {
         expect((routed.body as NetworkView).routes).toHaveLength(2);
         expect((routed.body as NetworkView).routes).toEqual(
             expect.arrayContaining([
-                { from: x.runtimeId, to: y.runtimeId, policy: "allow" },
-                { from: y.runtimeId, to: x.runtimeId, policy: "allow" },
+                {
+                    from: x.runtimeId,
+                    to: y.runtimeId,
+                    fromName: "x",
+                    toName: "y",
+                    policy: "allow",
+                },
+                {
+                    from: y.runtimeId,
+                    to: x.runtimeId,
+                    fromName: "y",
+                    toName: "x",
+                    policy: "allow",
+                },
             ]),
         );
         const invalid = await post(`/api/networks/${network.id}/route`, {
@@ -428,7 +440,13 @@ describe("network administration", () => {
         expect(invalid.body).not.toHaveProperty("code");
         expect(
             (await harness.daemon.services.networks.require(network.id)).routes,
-        ).toEqual((routed.body as NetworkView).routes);
+        ).toEqual(
+            (routed.body as NetworkView).routes.map(({ from, to, policy }) => ({
+                from,
+                to,
+                policy,
+            })),
+        );
 
         // Reachable by name as well as by id.
         const byName = await call("/api/networks/collab");

@@ -162,13 +162,23 @@ function describeStatus(status: DaemonStatus): string {
 }
 
 function describeNetwork(network: NetworkView): string {
-    return [
+    const routes = new Map(
+        network.routes.map((route) => [`${route.from}/${route.to}`, route]),
+    );
+    const output = [
         `${network.name} (${network.scope}, default ${network.defaultPolicy}, ` +
             `${network.routes.length} route(s))`,
-        ...network.routes.map(
-            (route) => `  ${route.from} -> ${route.to}: ${route.policy}`,
-        ),
-    ].join("\n");
+    ];
+    for (const [key, route] of routes) {
+        routes.delete(key);
+        const reverseKey = `${route.to}/${route.from}`;
+        const bidirectional = routes.get(reverseKey)?.policy === route.policy;
+        if (bidirectional) routes.delete(reverseKey);
+        output.push(
+            `  ${route.fromName} ${bidirectional ? "<->" : "->"} ${route.toName}: ${route.policy}`,
+        );
+    }
+    return output.join("\n");
 }
 
 function describeAgent(agent: AgentView): string {

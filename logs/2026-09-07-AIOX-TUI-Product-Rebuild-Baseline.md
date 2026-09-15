@@ -1188,6 +1188,7 @@ aiox
 - D: route 호출은 한 번에 한 종류의 변경이다. between은 자기 자신을 제외한 모든 상호 directed edge로 전개한다. from은 --to가 필수이며 --to 단독도 오류다. Persistent Network reset은 명시 edge rule을 제거해 Network default로 돌아간다. Host reset의 상속 순서는 아래 계약을 따른다.
 - D: Persistent route의 endpoint는 해당 Network에 참여 중인 Agent의 이름 또는 Runtime ID로 지정한다. 모든 대상을 ID 우선·이름 순으로 해석·검증한 뒤 Runtime ID로 저장한다. 같은 실행을 반복 지정해도 endpoint는 한 번만 적용한다. Network 또는 대상 부재·다른 Network 대상은 전체 변경을 거절하고 CLI에 오류를 표시해 해당 명령만 실패 종료한다. default만 변경할 때는 endpoint가 필요하지 않다.
 - D: default allow에서 A→B allow만 설정해도 B→A는 허용된다. 단방향 통신에는 B→A deny가 필요하며 reset은 차단이 아니다.
+- D: CLI route 출력은 이름을 사용하고 이름 미지정 시 Runtime ID를 표시한다. 같은 정책의 명시적 양방향 edge는 `A <-> B: allow`로 합치며 서로 다른 정책은 각 방향을 따로 표시한다. route 수는 directed edge 개수다.
 - D: Agent 이름은 참여 Network 안에서 유일하다. 준비 중·정리 대기 중인 등록도 이름을 예약하며 중복 등록을 거절한다. 다른 Network의 같은 이름은 허용한다. Network 미참여 실행의 이름 정책까지 확대하지 않는다.
 - D: 일반 Agent resolver는 이름/ID/host-qualified 이름을 지원하고 Network 범위 없는 조회에서 여러 실행의 이름이 일치하면 모호성 오류와 후보를 제공한다. standalone 실행은 foreground이며 종료는 Ctrl+C·/exit 등 세션에서 수행한다. 별도 agent stop/attach/detach는 deferred다. Host 이름은 실행 중 daemon 범위에서 유일하고 `/`는 qualified name 구분자로 예약하므로 Host/Agent/Network 사용자 이름에는 허용하지 않는다.
 **daemon 소유권·환경별 종료 정책**

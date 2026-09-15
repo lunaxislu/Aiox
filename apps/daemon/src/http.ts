@@ -59,7 +59,10 @@ function send(response: ServerResponse, status: number, body: unknown): void {
     response.end(text);
 }
 
-function networkView(network: PersistentNetwork): NetworkView {
+function networkView(
+    network: PersistentNetwork,
+    runtimes: DaemonServices["runtimes"],
+): NetworkView {
     return {
         id: network.id,
         name: network.name,
@@ -68,6 +71,8 @@ function networkView(network: PersistentNetwork): NetworkView {
         routes: network.routes.map(({ from, to, policy }) => ({
             from,
             to,
+            fromName: runtimes.get(from)?.name ?? from,
+            toName: runtimes.get(to)?.name ?? to,
             policy,
         })),
     };
@@ -300,7 +305,13 @@ async function route(
 
     if (path === apiPath.networks) {
         if (method === "GET") {
-            send(response, 200, (await networks.list()).map(networkView));
+            send(
+                response,
+                200,
+                (await networks.list()).map((network) =>
+                    networkView(network, runtimes),
+                ),
+            );
             return;
         }
         if (method === "POST") {
@@ -310,6 +321,7 @@ async function route(
                 201,
                 networkView(
                     await networks.create(input.name, input.defaultPolicy),
+                    runtimes,
                 ),
             );
             return;
@@ -330,6 +342,7 @@ async function route(
                     decodeURIComponent(routeMatch[1]!),
                     operation,
                 ),
+                runtimes,
             ),
         );
         return;
@@ -339,7 +352,11 @@ async function route(
     if (networkMatch) {
         const reference = decodeURIComponent(networkMatch[1]!);
         if (method === "GET") {
-            send(response, 200, networkView(await networks.require(reference)));
+            send(
+                response,
+                200,
+                networkView(await networks.require(reference), runtimes),
+            );
             return;
         }
         if (method === "DELETE") {

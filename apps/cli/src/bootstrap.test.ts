@@ -544,6 +544,69 @@ test("route flags become exactly one route operation", async () => {
     }
 });
 
+test("network output names endpoints and folds only matching reverse policies", async () => {
+    const view = {
+        id: "n1",
+        name: "w1",
+        scope: "persistent",
+        defaultPolicy: "allow",
+        routes: [
+            {
+                from: "id-a",
+                to: "id-b",
+                fromName: "A",
+                toName: "B",
+                policy: "allow",
+            },
+            {
+                from: "id-b",
+                to: "id-a",
+                fromName: "B",
+                toName: "A",
+                policy: "allow",
+            },
+            {
+                from: "id-a",
+                to: "unnamed-id",
+                fromName: "A",
+                toName: "unnamed-id",
+                policy: "deny",
+            },
+            {
+                from: "unnamed-id",
+                to: "id-a",
+                fromName: "unnamed-id",
+                toName: "A",
+                policy: "allow",
+            },
+        ],
+    };
+    const stub = await daemonStub((call, response) => {
+        send(response, 200, call.url === "/api/networks" ? [view] : view);
+    });
+    try {
+        const expected =
+            "w1 (persistent, default allow, 4 route(s))\n  A <-> B: allow\n  A -> unnamed-id: deny\n  unnamed-id -> A: allow";
+        for (const command of [
+            "network.route",
+            "network.show",
+            "network.list",
+        ] as const)
+            assert.equal(
+                await run(stub.cli, command, { allowBetween: ["A", "B"] }, [
+                    "w1",
+                ]),
+                expected,
+            );
+        assert.deepEqual(
+            await run(stub.cli, "network.show", { json: true }, ["w1"]),
+            view,
+        );
+    } finally {
+        await stub.close();
+    }
+});
+
 test("network and agent reads reach their endpoints and summarise without --json", async () => {
     const agent = {
         agentId: "a1",

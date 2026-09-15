@@ -137,7 +137,13 @@ export const networkViewSchema = z.object({
     scope: z.enum(["persistent", "host"]),
     defaultPolicy: policySchema,
     routes: z.array(
-        z.object({ from: z.string(), to: z.string(), policy: policySchema }),
+        z.object({
+            from: z.string(),
+            to: z.string(),
+            fromName: z.string(),
+            toName: z.string(),
+            policy: policySchema,
+        }),
     ),
 });
 

@@ -453,6 +453,7 @@ YAML은 reference 검증·directed edge 확장·allow/deny 충돌 검증을 부�
 Persistent route의 양쪽 endpoint는 해당 Network에 참여 중인 Agent의 이름 또는 Runtime ID여야 한다. 모든 대상을 ID 우선·이름 순으로 해석하고 검증한 뒤 Runtime ID로 저장한다. 같은 실행을 반복 지정해도 endpoint는 한 번만 적용한다.
 Network 또는 대상이 없거나 다른 Network의 대상을 지정하면 오류 설명을 표시하고 해당 명령을 실패로 종료한다. 일부 edge만 저장하지 않으며 daemon 종료를 뜻하지 않는다. default만 변경할 때는 endpoint가 필요하지 않다.
 default allow에서 A→B allow만 설정해도 B→A는 허용된다. 단방향 통신에는 B→A deny가 필요하다. reset은 차단이 아니라 default 복귀다.
+CLI route 출력은 이름을 사용하고 이름 미지정 시 Runtime ID를 표시한다. 같은 정책의 명시적 양방향 edge는 `A <-> B: allow`로 합치며 서로 다른 정책은 각 방향을 따로 표시한다. route 수는 directed edge 개수다.
 
 ### Worktree
 

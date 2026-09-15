@@ -78,6 +78,8 @@ Network 또는 대상을 찾지 못한 경우 API는 오류 설명을 반환하�
 종료 정리와 엇갈려 종료한 실행의 route를 다시 만들지 않아야 한다. default만 바꾸는 요청에는
 endpoint가 필요하지 않다.
 
+CLI의 Network 목록·조회·route 변경 결과는 endpoint의 Agent 이름을 표시하고 이름 미지정 시 Runtime ID를 표시한다. 명시적 역방향 edge도 같은 정책이면 `A <-> B: allow`처럼 한 줄로 합친다. 정책이 다르면 각 방향을 따로 표시하며 route 수는 저장된 directed edge 개수다. API/JSON의 `from`·`to`는 Runtime ID를 유지하고 표시용 `fromName`·`toName`을 함께 제공한다.
+
 Host의 effective policy는 다음 우선순위로 결정한다.
 
 ```text
