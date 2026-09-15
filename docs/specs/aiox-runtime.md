@@ -67,6 +67,7 @@ Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위
   이 경계는 vendor 공통이며 Codex 실제 실행 통합 완료를 뜻하지 않는다. [Status: Current]
   근거: [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:171-177`,
   [[apps/cli/src/external.test.ts]] `apps/cli/src/external.test.ts:147-188`.
+- CLI `doctor` 기본 출력은 Node·실행 환경·설정·Git·daemon의 진단 요약이며 `--json`은 구조화된 상세 결과다. 설정 오류와 daemon 연결 실패를 별도로 표시한다. 일반 shell의 종료 거절·정리 실패는 작업 경로와 식별 ID를 함께 제공한다.
 - Claude Peer 최소 지원 버전 미만은 실행 실패다. 지원 버전에서 inbox 준비가 실패해도
   실패를 표시하며 Channel fallback을 실행하지 않는다. 준비 확인용 모델 호출·ACK를 강제하지 않는다.
 - 업데이트가 정상 준비 전에 실행을 종료시킨 경우 등록 성공으로 표시하지 않는다. 사용자가
@@ -80,8 +81,10 @@ Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위
   사용한다. 준비 중 등록을 포함해 같은 이름이 있으면 새 등록을 거절하며, 서로 다른 Network의
   같은 이름은 허용한다.
 - 일반 Agent 조회는 이름/ID/Host-qualified 이름을 받는다. Network 범위 없이 조회해 여러
-  활성 Runtime에 걸친 이름이면 모호성 오류와 후보를 제공한다. `/`는 qualified 이름 구분자이므로 Host/Agent/Network
+  활성 Runtime에 걸친 이름이면 모호성 오류를 반환하고 각 후보의 이름·Network 이름을 한 번만 표시한다. 후보 목록에 Runtime ID를 출력하지 않는다. `/`는 qualified 이름 구분자이므로 Host/Agent/Network
   사용자 이름에 허용하지 않는다.
+
+CLI `agent list`는 Agent 이름·상태·role·Network 이름을 간결하게 표시한다. `agent show`는 설명과 현재 상태의 이유까지 표시한다. 이름 미지정 Agent의 이름은 Runtime ID이며, API/JSON은 내부 ID와 표시용 Network 이름을 함께 제공한다.
 
 Web과 `agents_list()`는 동일한 `status`와 `status_reason`을 사용한다.
 

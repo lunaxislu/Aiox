@@ -189,6 +189,7 @@ export const agentViewSchema = z.object({
         "failed",
     ]),
     networkId: z.string().nullable(),
+    networkName: z.string().nullable(),
     hostId: z.string().nullable(),
     terminalId: z.string().nullable(),
     status_reason: z.string().nullable(),
@@ -214,8 +215,11 @@ export const readResultSchema = z.object({ read: z.int() });
 
 /** Every non-2xx body. Codes carry their own extra fields, so unknown keys survive. */
 export const errorBodySchema = z.looseObject({
-    code: z.string(),
+    code: z.string().optional(),
     message: z.string(),
+    candidates: z
+        .array(z.object({ name: z.string(), network: z.string().nullable() }))
+        .optional(),
 });
 
 export type Ports = z.infer<typeof portsSchema>;

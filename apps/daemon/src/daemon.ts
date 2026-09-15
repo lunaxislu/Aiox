@@ -514,7 +514,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                                                 record.terminalId === id,
                                         ),
                                 )
-                                .map((id) => `terminal ${id}`),
+                                .map(
+                                    (id) =>
+                                        `shell ${terminals.view(id)?.cwd ?? "(working directory unavailable)"} [${id}]`,
+                                ),
                         ],
                         warnings: [],
                     };
@@ -550,7 +553,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                             "Could not confirm shell shutdown. Please check the shell.",
                         );
                 } catch (error) {
-                    warnings.push(`terminal ${session.id}: ${String(error)}`);
+                    warnings.push(
+                        `shell ${terminals.view(session.id)?.cwd ?? "(working directory unavailable)"} [${session.id}]: ${String(error)}`,
+                    );
                 }
             }
             await messages.drain();

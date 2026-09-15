@@ -78,7 +78,10 @@ function networkView(
     };
 }
 
-function agentView(record: RuntimeRecord): AgentView {
+function agentView(
+    record: RuntimeRecord,
+    names: ReadonlyMap<string, string>,
+): AgentView {
     return {
         agentId: record.id,
         name: record.name,
@@ -86,6 +89,10 @@ function agentView(record: RuntimeRecord): AgentView {
         description: record.description,
         status: record.status,
         networkId: record.networkId,
+        networkName:
+            record.networkId === null
+                ? null
+                : (names.get(record.networkId) ?? null),
         hostId: record.hostId,
         terminalId: record.terminalId,
         status_reason: record.status_reason,
@@ -146,10 +153,22 @@ export function createApiHandler(services: DaemonServices) {
                     message: error.message,
                 });
             } else if (error instanceof AmbiguousRuntimeError) {
+                const names = new Map(
+                    (await services.networks.list()).map(({ id, name }) => [
+                        id,
+                        name,
+                    ]),
+                );
                 send(response, 409, {
                     code: "ambiguous_agent",
                     message: error.message,
-                    candidates: error.candidates,
+                    candidates: error.candidates.map(({ name, networkId }) => ({
+                        name,
+                        network:
+                            networkId === null
+                                ? null
+                                : (names.get(networkId) ?? null),
+                    })),
                 });
             } else {
                 send(response, 500, {
@@ -375,6 +394,9 @@ async function route(
             network === null
                 ? null
                 : ((await networks.find(network))?.id ?? network);
+        const names = new Map(
+            (await networks.list()).map(({ id, name }) => [id, name]),
+        );
         const views = runtimes
             .list()
             .filter(
@@ -385,7 +407,7 @@ async function route(
                     (networkId === null || record.networkId === networkId) &&
                     (host === null || record.hostId === host),
             )
-            .map(agentView);
+            .map((record) => agentView(record, names));
         send(response, 200, views);
         return;
     }
@@ -395,7 +417,10 @@ async function route(
         const record = runtimes.find(decodeURIComponent(agentMatch[1]!));
         if (!record?.collaborationActive)
             throw new HttpError(404, "unknown_agent", "No such agent.");
-        send(response, 200, agentView(record));
+        const names = new Map(
+            (await networks.list()).map(({ id, name }) => [id, name]),
+        );
+        send(response, 200, agentView(record, names));
         return;
     }
 

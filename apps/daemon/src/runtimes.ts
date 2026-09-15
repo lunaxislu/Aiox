@@ -79,10 +79,13 @@ export class DuplicateRuntimeNameError extends Error {
 }
 
 export class AmbiguousRuntimeError extends Error {
-    constructor(readonly candidates: readonly string[]) {
-        super(
-            `Several running agents match that name: ${candidates.join(", ")}`,
-        );
+    constructor(
+        readonly candidates: readonly Pick<
+            RuntimeRecord,
+            "name" | "networkId"
+        >[],
+    ) {
+        super("Several running agents match that name.");
         this.name = "AmbiguousRuntimeError";
     }
 }
@@ -213,7 +216,9 @@ export class RuntimeRegistry {
                 (host === undefined || record.hostId === host),
         );
         if (matches.length > 1)
-            throw new AmbiguousRuntimeError(matches.map((r) => r.id));
+            throw new AmbiguousRuntimeError(
+                matches.map(({ name, networkId }) => ({ name, networkId })),
+            );
         return matches[0];
     }
 

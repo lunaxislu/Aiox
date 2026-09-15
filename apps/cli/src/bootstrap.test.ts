@@ -348,7 +348,9 @@ test("restart refuses an occupied next port without stopping either daemon", asy
                 startedAt: 1,
             }),
         );
-        const diagnosis = (await run(current.cli, "doctor")) as {
+        const diagnosis = (await run(current.cli, "doctor", {
+            json: true,
+        })) as {
             daemon: { pid: number; port: number };
         };
         assert.equal(diagnosis.daemon.pid, 1);
@@ -470,16 +472,21 @@ test("doctor separates invalid settings without a recorded target from an unreac
     try {
         await mkdir(join(home, ".aiox"));
         await writeFile(join(home, ".aiox", "config.json"), "{");
-        const report = (await run(
-            createFoundationPort({ home }),
-            "doctor",
-        )) as {
+        const report = (await run(createFoundationPort({ home }), "doctor", {
+            json: true,
+        })) as {
             config: { error: string };
             daemon: { reachable: boolean; port?: number };
         };
         assert.match(report.config.error, /Invalid JSON/);
         assert.equal(report.daemon.reachable, false);
         assert.equal(report.daemon.port, undefined);
+        const text = String(
+            await run(createFoundationPort({ home }), "doctor"),
+        );
+        assert.match(text, /Config: .*Invalid JSON/);
+        assert.match(text, /Daemon: unreachable \(no valid port\)/);
+        assert.ok(!text.includes('"daemon":'));
     } finally {
         await rm(home, { recursive: true, force: true });
     }
@@ -493,6 +500,33 @@ test("daemon start refuses to start a second daemon on a live port", async () =>
         const message = await run(stub.cli, "daemon.start");
         assert.match(String(message), /already running/);
         assert.deepEqual(stub.routes, ["GET /api/status"]);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("CLI errors preserve a message without a code and render candidates once", async () => {
+    const stub = await daemonStub((call, response) => {
+        if (call.url.startsWith("/api/networks"))
+            send(response, 400, { message: "No such network: nope" });
+        else
+            send(response, 409, {
+                code: "ambiguous_agent",
+                message: "Several running agents match that name.",
+                candidates: [
+                    { name: "B", network: "w1" },
+                    { name: "B", network: "w2" },
+                ],
+            });
+    });
+    try {
+        await assert.rejects(run(stub.cli, "network.show", {}, ["nope"]), {
+            message: "No such network: nope",
+        });
+        await assert.rejects(run(stub.cli, "agent.show", {}, ["B"]), {
+            message:
+                "Several running agents match that name. [ambiguous_agent]\n  B — network=w1\n  B — network=w2",
+        });
     } finally {
         await stub.close();
     }
@@ -615,6 +649,7 @@ test("network and agent reads reach their endpoints and summarise without --json
         description: null,
         status: "idle",
         networkId: "n1",
+        networkName: "review",
         hostId: null,
         terminalId: null,
         status_reason: null,
@@ -814,7 +849,10 @@ test("invalid launch metadata is rejected before a socket exists without echoing
 test("doctor keeps its stage 1 diagnosis and adds daemon reachability", async () => {
     const stub = await daemonStub(() => {});
     await stub.close();
-    const report = (await run(stub.cli, "doctor")) as Record<string, unknown>;
+    const report = (await run(stub.cli, "doctor", { json: true })) as Record<
+        string,
+        unknown
+    >;
     assert.equal(report.node, process.version);
     assert.equal(report.platform, process.platform);
     assert.equal(report.arch, process.arch);
@@ -855,7 +893,7 @@ test("daemon status and doctor find the recorded daemon despite invalid next set
             json: true,
         })) as { state: string };
         assert.equal(status.state, "running");
-        const diagnosis = (await run(stub.cli, "doctor")) as {
+        const diagnosis = (await run(stub.cli, "doctor", { json: true })) as {
             config: { error: string };
             daemon: { reachable: boolean; port: number };
         };

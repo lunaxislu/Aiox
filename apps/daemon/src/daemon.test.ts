@@ -759,7 +759,14 @@ describe("agent listing", () => {
 
         const ambiguous = await call("/api/agents/twin");
         expect(ambiguous.status).toBe(409);
-        expect(ambiguous.body).toMatchObject({ code: "ambiguous_agent" });
+        expect(ambiguous.body).toEqual({
+            code: "ambiguous_agent",
+            message: "Several running agents match that name.",
+            candidates: [
+                { name: "twin", network: "n" },
+                { name: "twin", network: "other" },
+            ],
+        });
     });
 });
 
@@ -783,7 +790,9 @@ describe("stopping", () => {
             release(["busy-terminal"]);
             expect(await first).toMatchObject({
                 stopped: false,
-                blocking: ["terminal busy-terminal"],
+                blocking: [
+                    "shell (working directory unavailable) [busy-terminal]",
+                ],
             });
             expect(await second).toEqual(await first);
             expect(busy).toHaveBeenCalledTimes(1);

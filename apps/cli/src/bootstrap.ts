@@ -79,11 +79,15 @@ function describeError(status: number, body: unknown, text: string): string {
     const parsed = errorBodySchema.safeParse(body);
     if (!parsed.success)
         return `daemon responded ${status}: ${text.trim() || "<empty body>"}`;
-    const { code, message: reason, ...extra } = parsed.data;
+    const { code, message: reason, candidates, ...extra } = parsed.data;
     return [
-        `${reason} [${code}]`,
+        code === undefined ? reason : `${reason} [${code}]`,
+        ...(candidates ?? []).map(
+            ({ name, network }) => `${name} — network=${network ?? "none"}`,
+        ),
         ...Object.entries(extra).map(
-            ([key, value]) => `${key}: ${JSON.stringify(value)}`,
+            ([key, value]) =>
+                `${key}: ${Array.isArray(value) ? value.join("; ") : JSON.stringify(value)}`,
         ),
     ].join("\n  ");
 }
@@ -181,13 +185,21 @@ function describeNetwork(network: NetworkView): string {
     return output.join("\n");
 }
 
-function describeAgent(agent: AgentView): string {
-    return [
-        `${agent.name} [${agent.status}]`,
-        agent.role === null ? "" : ` role=${agent.role}`,
-        agent.networkId === null ? "" : ` network=${agent.networkId}`,
-        agent.hostId === null ? "" : ` host=${agent.hostId}`,
-    ].join("");
+function describeAgent(agent: AgentView, detailed = false): string {
+    const heading = `${agent.name} [${agent.status}]`;
+    const details = [
+        agent.networkName === null ? "" : `Network: ${agent.networkName}`,
+        agent.role === null ? "" : `Role: ${agent.role}`,
+        agent.description === null ? "" : `Description: ${agent.description}`,
+        agent.status_reason === null ? "" : `Reason: ${agent.status_reason}`,
+    ].filter(Boolean);
+    if (detailed)
+        return [heading, ...details.map((line) => `  ${line}`)].join("\n");
+    return (
+        heading +
+        (agent.role === null ? "" : ` role=${agent.role}`) +
+        (agent.networkName === null ? "" : ` network=${agent.networkName}`)
+    );
 }
 
 function lines(values: string[], empty: string): string {
@@ -425,7 +437,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         return options.json ? report : report.detail;
     }
 
-    async function doctor(): Promise<unknown> {
+    async function doctor(options: CliOptions): Promise<unknown> {
         const recorded = await readState();
         const config = await loadConfig({ home }).then(
             (value) => ({ path: configPath(home), ports: value.ports }),
@@ -447,7 +459,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
             recorded?.ports.daemon ??
             ("ports" in config ? config.ports.daemon : undefined);
         const live = port === undefined ? null : await probe(origin(port));
-        return {
+        const report = {
             node: process.version,
             platform: process.platform,
             arch: process.arch,
@@ -471,6 +483,13 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
             },
             vendorIntegration: "Claude and Codex foreground launch",
         };
+        if (options.json) return report;
+        return [
+            `Node: ${report.node} (${report.platform}/${report.arch}, ${report.environment})`,
+            `Config: ${config.path}${"error" in config ? ` — ${config.error}` : " — OK"}`,
+            `Git: ${git.available ? git.version : git.error}`,
+            `Daemon: ${live ? `running (pid ${live.pid}), port ${port}, web ${live.ports.web}` : `unreachable${port === undefined ? " (no valid port)" : ` on port ${port}`}`}`,
+        ].join("\n");
     }
 
     async function runAgent(request: CliRequest): Promise<void> {
@@ -547,7 +566,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
             const { args, command, options } = request;
             switch (command) {
                 case "doctor":
-                    return doctor();
+                    return doctor(options);
                 case "daemon.start":
                     return start(options);
                 case "daemon.stop":
@@ -626,7 +645,10 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                     );
                     if (options.json) return body;
                     return lines(
-                        agentViewSchema.array().parse(body).map(describeAgent),
+                        agentViewSchema
+                            .array()
+                            .parse(body)
+                            .map((agent) => describeAgent(agent)),
                         "no agents",
                     );
                 }
@@ -639,7 +661,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                     );
                     return options.json
                         ? body
-                        : describeAgent(agentViewSchema.parse(body));
+                        : describeAgent(agentViewSchema.parse(body), true);
                 }
                 default:
                     return unavailable(command);
