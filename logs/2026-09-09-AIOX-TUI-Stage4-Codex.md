@@ -8,7 +8,7 @@ status: open
 
 - [x] W1 Codex 실행·주입·수명 연결 — 환경·옵션 감사, active thread 입력 대응·전환 차단·소유 자원 정리, 사용자 동반 E2E와 최신 전체 검사 및 owner 반영을 완료했다.
 - [x] W2 Codex 관측·공통 상태 반영 — 공통 상태 구현·자동 검사·주요 실측을 완료했다. nullable 추가 실측은 사용자 지시로 생략. async 종료 후 선택 UI 부재, failed 대화 선택/취소 및 다른 연결별 복구는 미실측 제한으로 보존하고 W3로 진행한다.
-- [>] W3 Codex 간 실제 메시지 왕복 — Stage2-3 W8 이름/route/MCP 보완과 579 tests 결과를 소비하고 실제 agents_list/send·인증·단방향/양방향 route·본문/지침·busy 입력·대상별 결과·발신자 전용 완료/실패 알림을 검증한다. interrupted 자동 통지 없음·알림 비재귀와 코드/대역/실제 vendor 근거를 구분한다. 확정했으나 미구현인 DB 저장 ID UUID v7 통일의 구현·owner 반영도 후속 처리한다. Claude 완료를 선행 조건으로 두지 않는다.
+- [>] W3 Codex 간 실제 메시지 왕복 — Network/MCP·CLI 표시·UUID v7 구현과 전체 582 tests 결과 및 사용자 AIOX 알림 수신 보고를 소비한다. 남은 실제 양방향 회신·단방향 차단·busy 입력·대상별 결과·실패/중단·알림 비재귀 검증을 이어가며 코드/대역/사용자 실측 범위를 구분한다. Claude 완료를 선행 조건으로 두지 않는다.
 - [ ] W4 Claude와 Codex 교차 검증 — W1~W3 뒤 수행한다. Stage3 W2/W3/W5에서 필요한 Claude 메시지·관측 경계가 검증돼야 해당 시나리오를 완료한다. Claude 미해결로 막히는 경우 완료로 표시하지 않고 정확한 의존 항목을 Stage3에 연결해 그 작업 후 이 W4로 복귀한다. 양 vendor 송수신·결과 귀속·알림을 실제로 확인한다.
 - [ ] W5 Stage4 통합 리뷰·owner 반영·마감 — W1~W4 결과와 회귀·실측 범위, 실행/정리·상태·메시지 owner를 대조한다. 제목 helper의 incomplete AIOX MCP config current gap에 대한 별도 수정·유지 판단을 닫는다. 남은 OS·배포 인증은 Stage8 조건과 연결하고 Claude 교차 검증이 남아 있으면 Stage4 전체 완료로 처리하지 않는다.
 
@@ -20,7 +20,7 @@ status: open
 
 ### {Global}
 
-- 현재 활성 단계는 Stage4이고 재개점은 W3다. Stage2-3 W8의 최신 완료 entry에서 Network 이름 유일성·route 참여 검증/수명·MCP 이름/ID 전송·오류 안내 구현과 전체 579 tests 통과 결과를 소비한다. 같은 보완을 미구현으로 다시 시작하지 않는다. 실제 Codex 왕복·단방향 알림 검증 및 미구현 UUID v7 후속은 W3에 남는다. W1/W2 완료·실측 제한과 W4/W5 순서를 유지하며 commit·push는 별도 지시 없이 수행하지 않는다.
+- 현재 활성 단계는 Stage4이고 재개점은 W3다. Stage2-3 W8 결과와 이 로그 최신 CLI 표시·UUID v7 완료 entry, 전체 582 tests 통과 및 사용자 AIOX 알림 수신 보고를 소비한다. UUID v7과 CLI 표시 보완을 미구현으로 재개하지 않는다. 남은 실제 Codex 메시지 검증은 W3가 소유한다. W1/W2 완료·실측 제한과 W4/W5 순서를 유지하며 commit·push는 별도 지시 없이 수행하지 않는다.
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Codex 실제 TUI + Runtime별 App Server + Binding Relay를 연결한다. 입력은 채택된 toolOutput 본문 + additionalContext 메타데이터이며 E2E가 실패할 때만 원인을 확인한 뒤 후순위 방법을 검토한다. 임의 active thread 선택이나 선제 fallback을 만들지 않는다.
 - Stage2~2-3에서 완료한 공통 실행 소유권·terminal·메시지·상태 결과를 직접 소비한다. Codex W1~W3는 Stage3 완료를 기다리지 않는다. 기존 shell의 aiox agent run codex → 같은 terminal TUI → 종료 후 shell 복귀를 연결하고 외부 CLI와 daemon 소유 자원의 종료 정책을 유지한다. Runtime/threadId/turnId로 입력 결과를 연결한다. Stage3 결과 의존은 W4의 Claude 교차 검증에만 적용한다.
 - W3에서 Codex↔Codex의 agents_list/send·인증·단방향/양방향 route·결과·발신자 전용 알림을 먼저 검증한다. 두 vendor 교차 검증은 W4에서 Claude 준비 상태에 따라 수행한다. interrupted 자동 통지 없음·알림 재귀 방지와 실제 OS별 근거/대역 구분은 공통으로 유지한다.
@@ -44,7 +44,7 @@ status: open
 
 ### {W3}
 
-- 재개 시 Stage2-3 W8 최신 완료 entry와 현재 collaboration/host/runtime owner를 먼저 소비한다. MCP agents_list의 name을 send에 그대로 쓸 수 있고 실제 Runtime ID도 허용한다. default allow에서 단방향 검증은 B→A 명시 deny가 필요하며 새 메시지로 검증한다. B 목록에서 A 제외·직접 send 차단·AIOX 완료 통지·통지 비재귀를 실제 Codex에서 확인한다. 자동 검사 통과를 vendor 실측으로 대체하지 않는다. DB 저장 ID UUID v7 통일은 사용자 확정이나 미구현이다. 후속 작업에서 생성부·저장 consumer와 owner를 대조해 구현·검증하고 v4 Runtime ID와 vendor 고유 ID까지 임의 확장하지 않는다.
+- 재개 시 최신 W3 CLI 표시·UUID v7 완료 entry와 collaboration/host/runtime owner를 소비한다. MCP name 또는 실제 Runtime ID 전송, default allow에서 B→A 명시 deny 후 새 메시지 검증을 유지한다. 사용자 AIOX 알림 정상 수신 보고는 수용하되 남은 시나리오 전체 완료로 확대하지 않는다. 새 Network·Message·Delivery·Notification ID의 v7 구현·저장 재오픈 검증은 완료됐고 Runtime·terminal 참조 및 vendor 고유 ID는 대상이 아니다. 최신 코드는 미커밋이며 사용자 daemon 재시작을 실행한 것은 아니다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -711,3 +711,23 @@ W8 완료 후 Stage4 W3로 돌아온다. 이름 중복 금지만으로 route 이
 W3는 실제 Codex 양방향 회신과 단방향 차단/발신자 전용 완료 알림, 실패·중단 및 알림 비재귀 검증에서 재개한다. default allow에서는 역방향 명시 deny 뒤 새 메시지로 시험하며 목록 노출·실제 send·처리 완료 알림을 구분한다. 이번에는 사용자 daemon이나 vendor를 조작하지 않아 실제 W3 성공으로 판정하지 않는다.
 
 DB 저장 ID UUID v7 통일은 사용자 결정이며 아직 randomUUID 생성부와 owner에 반영되지 않았다. W3의 후속 행동 및 Required Context에 명시해 누락을 방지한다. Runtime ID 전체나 vendor 고유 ID까지 변경했다고 기록하지 않는다. W1/W2 완료·기존 실측 제한과 W4/W5 순서는 유지한다. Stage4 open·W3 active이며 이번 요청은 기록과 복귀까지만 수행했다. 제품 변경·후속 실험·commit·push 없음.
+
+### 2026-09-15 22:12 · W3 사용자 알림 수신 보고·CLI 표시 개선·UUID v7 반영
+
+사용자가 AIOX 자동 알림이 정상 수신됐다고 보고했고 send의 name:B/accepted:true 반환을 제시했다. 사용자 전달 실측으로 수용하며 accepted는 전송 수락, 자동 알림은 별도 처리 결과 통지로 구분한다. 이 보고만으로 모든 양방향·실패·중단·비재귀 시나리오를 완료 처리하지 않는다.
+
+후속 승인으로 root가 직접 반영한 범위:
+
+- Network route의 HTTP 응답은 저장된 from/to Runtime ID에 fromName/toName을 함께 제공한다. CLI network list/show/route는 이름을 표시하고 같은 정책의 명시적 역방향 edge만 A <-> B로 합친다. 서로 다른 정책은 각각 표시하고 route 수는 directed edge 개수다.
+- 새 Network·Message·Delivery·Notification 행 ID 생성은 uuid 14.0.2의 v7으로 교체했다. 전원 대상 부재 MCP 응답의 messageId도 v7이지만 DB에 저장하지 않는다. Runtime·terminal 참조 ID와 vendor 고유 ID, 기존 저장 ID는 재발급하지 않는다. 개발 DB 삭제·migration·backfill·자동 reset은 추가하지 않았다. 이전 UUID v7 미구현 인계를 대체한다.
+- agent list는 Network 이름을 표시하고 agent show는 description/status_reason까지 제공한다. API/JSON은 ID와 networkName을 유지한다. 모호성 후보는 사용자 결정대로 이름·Network만 한 번 표시하며 ID를 후보에 추가하지 않는다.
+- NetworkError의 code 없는 응답을 CLI의 필수 code schema가 거부해 JSON 원문을 표시하던 consumer 누락을 수정했다. 코드 없는 오류 설명을 그대로 표시하고 모호성 후보 중복도 제거했다.
+- 일반 shell의 종료 거절·정리 실패는 cwd와 식별 ID를 함께 표시한다. doctor는 기본 진단 요약과 명시적 --json 상세 출력을 구분하고 config 오류와 daemon 연결 진단을 보존한다. 미구현 Host·Adapter 안내 변경은 사용자 제외 지시대로 하지 않았다.
+
+검증: route 표시·UUID v7 단계의 pnpm check 581 tests 이후 CLI 표시·오류 수정까지 포함한 root pnpm check가 exit 0, 전체 46 files/582 tests 및 lint·format·build·typecheck 통과했다. 오류 문구가 JSON 원문으로 노출되는 실패를 먼저 확인했고 수정 후 통과했다. v7 회귀는 Network/Message/수락·거절 Delivery/Notification ID의 생성, 저장·재오픈, 관계 보존을 검증한다. 단순 이름 문자열 표시용 별도 테스트는 추가하지 않았다. 기존 양방향 병합·상이한 정책 보존 회귀와 오류/진단 회귀를 유지했다. 이번 기록 시 테스트를 다시 실행하지 않았으며 같은 세션의 완료 출력을 소비했다.
+
+owner는 runtime/host/configuration-web spec 및 storage-terminal architecture에 반영했다. 사용자 승인된 Baseline과 Context Prompt 본문도 route 표시·v7 구현 상태로 정합화했고 새 history entry를 추가한 것은 이번 명시적 기록 요청이다. 이전 Network/MCP 작업 커밋은 36156a6이며 이후 표시·v7 변경은 아직 미커밋이다. 사용자 daemon 재시작·DB 조작·새 vendor 실험·push는 수행하지 않았다.
+
+http.ts 질문 확인: networkView는 CLI 문자열 출력 함수가 아니라 Network 생성·목록·조회·route 변경 HTTP 응답을 만드는 변환 함수다. runtimes: DaemonServices["runtimes"]는 RuntimeRegistry 타입을 기존 서비스 정의에서 가져오는 표기이며 route의 ID로 현재 Agent 이름을 읽기 위해 추가했다. 실제 화면 문자열과 <-> 병합은 apps/cli/src/bootstrap.ts의 describeNetwork가 담당한다. 새 registry 생성이나 polling이 아니다.
+
+Stage4 open·W3 active를 유지한다. 이후에는 최신 구현으로 daemon을 재시작한 환경의 남은 실제 메시지 검증을 이어간다. 이번 요청에서는 로그만 수정하고 제품 코드·테스트·owner·commit은 변경하지 않는다.
