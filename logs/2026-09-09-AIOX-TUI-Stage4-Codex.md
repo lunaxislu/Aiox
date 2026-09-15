@@ -647,3 +647,33 @@ W2 active 유지: 이번 중단·idle 대화 전환/선택 취소·복수 승인
 커밋 대상은 공통 status/status_reason 도메인·vendor 계약과 Registry/HTTP/Web/MCP 전달, preparing 목록·send 분리, Codex turn 실패·요청별 대기/nullable elicitation, Claude quota 재개 수명과 인접 테스트·owner 문서·W2 로그의 35개 파일이다. 개인 architecture.excalidraw·무관한 스킬 변경은 대상에 없다.
 
 커밋 전 pnpm check는 sandbox PTY/ps 제한으로 처음 실패했고, 권한 적용 재실행은 lint·format·build·typecheck와 전체 565 tests exit0으로 완료했다. 근거: /private/tmp/aiox-w2-precommit-check-approved.log. 기존 ABI 우회 실행이 아니라 현재 Node24.14.0 환경에서 통과했다. log item 도구는 완료 W2의 action 편집을 거절해 그 설명 줄만 수동으로 정합화했다. commit은 이번 지시 범위이며 push는 하지 않는다.
+
+### 2026-09-15 14:13 · W2 잔여 사용자 시나리오·W3 직접 왕복 검증 안내
+
+사용자는 W2 미실측을 사용자 조작과 AIOX agent 동작별 상태 변화 흐름으로 먼저 보고하도록 요청했다. W3가 Codex 간 send/답장 및 단방향 daemon 알림 시나리오라면 직접 해보겠다고 밝혔다. 이번에는 시나리오를 안내하며 실행·실패 주입은 하지 않았다.
+
+runtime/collaboration spec 및 vendor-bindings의 W2 근거를 대조했다. 제안한 W2 순서: 실제 최종 실패를 확인한 대화에서 resume 선택창 취소 시 failed/이유 유지 → 정상 대화 선택 시 해당 상태 → 실패 대화 복귀 시 failed/이유 복원 → 같은 대화 새 turn 시작 시 이전 실패 해제. 실패 전제는 일반 도구 오류와 구분해 agent가 이벤트로 확인해야 한다. async 종료 뒤 선택 제출은 실제 조작 가능한 UI가 있을 때만 수행하며 글머리표·일반 텍스트 입력으로 대체하지 않는다. 연결별 복구는 control/daemon/화면 채널과 소유권을 agent가 먼저 특정해야 하므로 사용자 단독 종료 조작 항목으로 넘기지 않는다. nullable 생략은 유지하며 자연 quota 관측은 한도 소진 실험 없이 별도 제한으로 남긴다.
+
+W3 안내: A↔B는 agents_list 확인 후 A send → B 처리·send 답장 → A 수신이며 정상 완료 daemon 자동 알림은 없다. A→B는 B 목록에 A 없음·직접 답장 없음, 처리 completed/failed 뒤 daemon이 원 발신 A의 입력으로 알린다. 이는 vendor system role이나 B 답변 본문 전달 보장이 아니다. 사용자 화면 결과와 agent의 Runtime/thread/turn·delivery·알림 관측을 구분한다. busy 입력·실패·interrupted 무통지·대상별 귀속·알림 재귀 방지는 단순 왕복 성공만으로 완료 처리하지 않는다.
+
+W2 완료 및 미실측 제한, W3 활성 pointer는 유지한다. 다음은 사용자 시나리오 선택/실행에 맞춘 관측 준비이며 새 검증 통과·코드 변경·commit/push는 없다.
+
+### 2026-09-15 14:19 · 연결 복구 재검증 안내 정정·Codex 한도 상태 수집 확인
+
+사용자가 연결 손실·복구는 이미 했다고 지적해 Stage4 W1/W2와 Stage2-3 W6 원본을 재확인했다. 앞선 안내에서 화면 복구·외부 daemon 단절을 W2 잔여 사용자 실측으로 넓게 묶은 것은 부정확했다. Stage4 W1 사용자 기록(line147)은 브라우저 새로고침 뒤 같은 B 대화와 W1-RECONNECT-B-01 수신·응답, line150은 daemon stop 뒤 외부 Codex /status·/exit·shell 복귀를 확인한다. W2 line635는 App Server SIGTERM 뒤 기존 Runtime 제거·shell 복귀와 새 Runtime preparing→idle 실측이다. Stage2-3의 2026-09-13 20:05 entry는 실제 daemon/Web/PTY/Chromium과 Node vendor 대역으로 동일 terminal/Runtime의 중계 공백 snapshot·live·키보드 복구를 수용했다. 이를 실제 Codex의 control WS 단독 차단·복구로 확대하지 않지만, 완료한 사용자 흐름을 재실험할 필요도 없다. 남은 특정 채널 미실측은 제한으로 보존하며 새 결함 근거 없이 필수 사용자 재측정을 요구하지 않는다.
+
+별도 사용자 질문인 Codex weekly/5시간 한도 처리도 읽기 전용으로 확인했다. relay.ts observedMethods에는 account/rateLimits/updated가 없고 전체 packages/apps에서 rateLimits/usedPercent/windowDurationMins/resetsAt 소비를 찾지 못했다. TUI frame 전달과 daemon 관측은 별개다. binding.ts는 turn/completed failed의 error.message 및 codexErrorInfo를 status_reason에 반영하고 같은 대화 turn/started에 이전 실패를 해제한다. runtimes.ts→http.ts/mcp.ts→Web main.ts까지 status/이유 전달을 확인했다. 따라서 한도 원인의 최종 turn 실패를 받는 일반 경로는 있으나 주간/5시간별 사용량·reset·고갈을 별도로 읽는 구현은 없다. 인접 index.test.ts는 합성 429 오류/상태 이유를 검증하며 실제 weekly/5시간 소진 payload 실측은 기존처럼 미확인이다. reset 시각 경과만으로 실패를 해제하는 구현도 없다.
+
+공식 https://learn.chatgpt.com/docs/app-server 의 Rate limits (ChatGPT)에서 account/rateLimits/read·updated, usedPercent/windowDurationMins/resetsAt 제공을 확인했다. 현재 AIOX 미수집과 공급자 기능 부재를 혼동하지 않는다. 기존 W2 기록은 계정 한도 숫자 자체를 status로 만들지 않는 방향을 명시한다. 이번은 조사·안내 정정이며 한도 기능 추가나 W2 재개 결정이 아니다. W3 active 유지, production/test 변경·실제 한도 소진·테스트 재실행·commit/push 없음.
+
+### 2026-09-15 14:26 · Claude StopFailure 표시 범위 확인
+
+사용자가 Claude StopFailure도 모두 status/status_reason으로 전달하는지 물어 현재 launch-hooks.ts와 claude-observations.ts·인접 테스트를 확인했다. StopFailure hook을 등록하고 실패를 관측하지만 Codex처럼 오류 상세 원문을 전달하는 구현은 아니다. errorType은 event.error의 등록된 11개 분류만 보존하고 나머지는 unknown으로 바꾼다. error_details는 상태 이유로 소비하지 않는다. #project는 awaiting-user→working→failed→idle 우선순위이므로 다른 대기/활동이 남으면 실패를 보관해도 화면 상태와 이유는 그 대기/활동을 따른다. subagent event·이미 종료한 prompt·귀속 모호성 guard도 있으므로 모든 StopFailure가 무조건 즉시 failed로 노출된다고 설명하지 않는다. 인접 테스트는 rate_limit 상세 미전달·다른 prompt 작업 유지·알 수 없는 오류 unknown을 검증하도록 작성돼 있다. 이번은 코드 읽기 확인이며 테스트 재실행·production 변경·추가 실측은 없다. W3 pointer 유지.
+
+### 2026-09-15 14:27 · StopFailure 구조화 payload와 상세 미표시 원인 구분
+
+사용자가 상세 미표시가 StopFailure payload 비구조화 때문인지 질문했다. 공식 https://code.claude.com/docs/en/hooks#stopfailure 를 직접 확인했다. JSON의 error는 오류 분류, optional error_details는 추가 상세, optional last_assistant_message는 StopFailure에서 대화에 표시된 API 오류 문자열이다. 구조 부재가 아니라 현재 AIOX errorType 소비가 분류만 남기는 구현이다. 상세 텍스트 안의 weekly/5시간/reset은 별도 구조화 필드가 보장되지 않지만 원문 표시에는 그 분해가 필요하지 않다. 테스트의 error_details=secret과 분류만 기대하는 assertion은 상세 제외 동작 근거이나 최초 제외 이유를 확정하는 근거는 아니다. 검색한 로그/owner에서 상세 제외의 명시적 결정 이유는 찾지 못했으며 민감정보 보호 목적을 확정 사실로 설명하지 않는다. 제안은 failure 판정은 유지하고 서버가 제공하는 화면 오류 문자열/상세를 status_reason에 보존하는 방향이며 이번 질문만으로 구현하지 않았다. W3 active 유지.
+
+### 2026-09-15 14:30 · StopFailure 상세 필드 string 타입 확인
+
+사용자가 error_details의 string/object 여부와 오류별 필드 변형·공통 표시 문자열을 질문했다. Anthropic 배포 @anthropic-ai/claude-agent-sdk 0.3.220 sdk.d.ts의 StopFailureHookInput을 직접 확인했다(https://app.unpkg.com/@anthropic-ai/claude-agent-sdk@0.3.220/files/sdk.d.ts). error_details?: string, last_assistant_message?: string이며 error는 SDKAssistantMessageError다. 오류별 object union이나 다수 하위 필드 구조가 아니다. 공식 hooks 문서에 따르면 last_assistant_message는 StopFailure에서 화면 API 오류 문자열이다. 제안하는 공통 표시 선택은 비어 있지 않은 last_assistant_message → error_details → error 순이며 이는 아직 구현/승인된 정책이 아니다. 설치된 CLI에서 모든 오류 종류의 실제 필드 존재·본문을 실측한 것으로 확대하지 않는다.
