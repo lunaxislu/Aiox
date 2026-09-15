@@ -373,6 +373,18 @@ describe("network administration", () => {
             defaultPolicy: "deny",
         });
         expect(created.status).toBe(201);
+        expect(
+            await post("/api/networks", {
+                name: "collab",
+                defaultPolicy: "allow",
+            }),
+        ).toMatchObject({
+            status: 400,
+            body: {
+                code: "duplicate_name",
+                message: "A network named 'collab' already exists",
+            },
+        });
         const network = created.body as NetworkView;
         expect(network).toMatchObject({
             name: "collab",

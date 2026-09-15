@@ -5,7 +5,38 @@ import { join } from "node:path";
 import { openDatabase } from "@aiox/persistence";
 import { expect, test } from "vitest";
 
-import { NetworkService } from "@/networks";
+import { NetworkError, NetworkService } from "@/networks";
+
+test("create rejects a name already used by another network", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "aiox-route-"));
+    const db = await openDatabase(join(directory, "aiox.db"));
+    t.onTestFinished(async () => {
+        await db.close();
+        await rm(directory, { recursive: true, force: true });
+    });
+    const networks = new NetworkService(db, {
+        get: () => undefined,
+        inNetwork: () => [],
+    });
+    const created = await Promise.allSettled([
+        networks.create("review", "deny"),
+        networks.create("review", "allow"),
+    ]);
+    expect(
+        created.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+        created.find((result) => result.status === "rejected"),
+    ).toMatchObject({
+        reason: { constructor: NetworkError, code: "duplicate_name" },
+    });
+    await expect(networks.create("review", "allow")).rejects.toMatchObject({
+        constructor: NetworkError,
+        code: "duplicate_name",
+    });
+    const network = await networks.require("review");
+    expect((await networks.create(network.id, "deny")).name).toBe(network.id);
+});
 
 test("concurrent route edits preserve both edges on the same network", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "aiox-route-"));

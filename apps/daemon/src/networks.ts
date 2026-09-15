@@ -39,7 +39,20 @@ export class NetworkService {
                 "A network name must be non-empty and must not contain '/'",
             );
         const id = randomUUID();
-        await this.db.networks.create({ id, name, defaultPolicy });
+        try {
+            await this.db.networks.create({ id, name, defaultPolicy });
+        } catch (error) {
+            if (
+                error instanceof Error &&
+                "code" in error &&
+                error.code === "SQLITE_CONSTRAINT_UNIQUE"
+            )
+                throw new NetworkError(
+                    "duplicate_name",
+                    `A network named '${name}' already exists`,
+                );
+            throw error;
+        }
         return this.require(id);
     }
 
