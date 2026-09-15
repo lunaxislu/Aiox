@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { agentViewSchema } from "@aiox/protocol";
@@ -6,11 +7,11 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 
 import type { MessageService } from "@/messaging";
+import { targetNotFound } from "@/messaging";
 import type { NetworkService } from "@/networks";
 import type { RuntimeRecord, RuntimeRegistry } from "@/runtimes";
 
 const agent = agentViewSchema.pick({
-    agentId: true,
     name: true,
     role: true,
     description: true,
@@ -38,14 +39,13 @@ function tools(
         {
             title: "List reachable agents",
             description:
-                "Agents visible through your current routes. Preparing agents cannot receive messages yet. Names, roles and descriptions help you choose; agentId is what send takes.",
+                "Agents visible through your current routes. Preparing agents cannot receive messages yet. Use the returned name values as send targets. Unnamed agents use their runtime ID as their name.",
             // No inputSchema: a zero-argument tool must not reject a caller
             // that omits `arguments` entirely.
             outputSchema: { agents: z.array(agent) },
         },
         async () => {
             const agents = (await networks.reachable(source)).map((record) => ({
-                agentId: record.id,
                 name: record.name,
                 role: record.role,
                 description: record.description,
@@ -66,19 +66,23 @@ function tools(
         {
             title: "Send a message to chosen agents",
             description:
-                "Send content to the agents you name. Only the listed agents receive it. Each target reports its own result.",
+                "Send content to current agents in your Network using names from agents_list or runtime IDs. Targets resolve at send time, with IDs taking precedence over names. Each distinct input has a result; aliases of one agent share a single delivery.",
             inputSchema: {
                 targets: z
                     .array(z.string().min(1))
                     .min(1)
-                    .describe("agentId values from agents_list"),
+                    .describe("Agent names or runtime IDs in your Network"),
                 content: z.string().min(1),
             },
             outputSchema: {
                 messageId: z.string(),
                 results: z.array(
                     z.object({
-                        agentId: z.string(),
+                        name: z
+                            .string()
+                            .describe(
+                                "The target name or ID supplied in the input",
+                            ),
                         accepted: z.boolean(),
                         error: z.string().optional(),
                     }),
@@ -86,15 +90,27 @@ function tools(
             },
         },
         async ({ targets, content }) => {
-            const sent = await messages.send(source, targets, content);
-            // Per-target outcomes stay visible; a partial failure is not success.
-            const results = sent.results.map(
-                ({ agentId, accepted, error }) => ({
-                    agentId,
-                    accepted,
-                    ...(error === undefined ? {} : { error }),
-                }),
+            const resolved = [...new Set(targets)].map((name) => ({
+                name,
+                id: networks.resolveAgent(source.networkId!, name)?.id,
+            }));
+            const ids = resolved.flatMap(({ id }) =>
+                id === undefined ? [] : [id],
             );
+            // Unknown references have no runtime to attach a delivery to. An all-unknown
+            // attempt gets a response ID only; no message or delivery is stored.
+            const sent =
+                ids.length > 0
+                    ? await messages.send(source, ids, content)
+                    : { messageId: randomUUID(), results: [] };
+            const results = resolved.map(({ name, id }) => {
+                if (id === undefined)
+                    return { name, accepted: false, error: targetNotFound };
+                const { accepted, error } = sent.results.find(
+                    (entry) => entry.agentId === id,
+                )!;
+                return { name, accepted, error };
+            });
             const structuredContent = { messageId: sent.messageId, results };
             return {
                 content: [

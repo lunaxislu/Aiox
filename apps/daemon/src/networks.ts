@@ -8,8 +8,8 @@ import type { RuntimeRecord } from "@/runtimes";
 
 export class NetworkError extends Error {
     constructor(
-        readonly code: string,
         message: string,
+        readonly code?: string,
     ) {
         super(message);
         this.name = "NetworkError";
@@ -35,8 +35,8 @@ export class NetworkService {
     ): Promise<PersistentNetwork> {
         if (!name.trim() || name.includes("/"))
             throw new NetworkError(
-                "invalid_name",
                 "A network name must be non-empty and must not contain '/'",
+                "invalid_name",
             );
         const id = randomUUID();
         try {
@@ -48,8 +48,8 @@ export class NetworkService {
                 error.code === "SQLITE_CONSTRAINT_UNIQUE"
             )
                 throw new NetworkError(
-                    "duplicate_name",
                     `A network named '${name}' already exists`,
+                    "duplicate_name",
                 );
             throw error;
         }
@@ -71,11 +71,7 @@ export class NetworkService {
 
     async require(reference: string): Promise<PersistentNetwork> {
         const network = await this.find(reference);
-        if (!network)
-            throw new NetworkError(
-                "unknown_network",
-                `No such network: ${reference}`,
-            );
+        if (!network) throw new NetworkError(`No such network: ${reference}`);
         return network;
     }
 
@@ -83,8 +79,8 @@ export class NetworkService {
         const network = await this.require(reference);
         if (this.runtimes.inNetwork(network.id).length)
             throw new NetworkError(
-                "network_in_use",
                 `Network '${network.name}' has participating executions. Clean up their participation first, then delete the Network.`,
+                "network_in_use",
             );
         return this.db.networks.delete(network.id);
     }
@@ -94,10 +90,47 @@ export class NetworkService {
         operation: RouteOperation,
     ): Promise<PersistentNetwork> {
         const network = await this.require(reference);
-        await this.db.networks.replaceRouting(network.id, (current) =>
-            applyRouteOperation(current, operation),
-        );
+        await this.db.networks.replaceRouting(network.id, (current) => {
+            // Resolve inside the serialized storage operation. A departing runtime
+            // is either already revoked, or its queued cleanup removes these edges.
+            const resolve = (reference: string): string => {
+                const target = this.resolveAgent(network.id, reference);
+                if (!target)
+                    throw new NetworkError(
+                        `No participating agent '${reference}' in Network '${network.name}'.`,
+                    );
+                return target.id;
+            };
+            const resolved: RouteOperation =
+                operation.kind === "directed"
+                    ? {
+                          ...operation,
+                          from: resolve(operation.from),
+                          to: [...new Set(operation.to.map(resolve))],
+                      }
+                    : operation.kind === "between"
+                      ? {
+                            ...operation,
+                            agents: [...new Set(operation.agents.map(resolve))],
+                        }
+                      : operation;
+            return applyRouteOperation(current, resolved);
+        });
         return this.require(network.id);
+    }
+
+    /** IDs take precedence over names within the current Network only. */
+    resolveAgent(
+        networkId: string,
+        reference: string,
+    ): RuntimeRecord | undefined {
+        const members = this.runtimes
+            .inNetwork(networkId)
+            .filter((record) => record.collaborationActive);
+        return (
+            members.find((record) => record.id === reference) ??
+            members.find((record) => record.name === reference)
+        );
     }
 
     /** Standalone endpoints leave with their execution, not their Network. */

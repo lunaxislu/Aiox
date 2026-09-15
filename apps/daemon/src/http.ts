@@ -14,7 +14,7 @@ import {
 } from "@aiox/protocol";
 
 import { NetworkError } from "@/networks";
-import { AmbiguousRuntimeError } from "@/runtimes";
+import { AmbiguousRuntimeError, DuplicateRuntimeNameError } from "@/runtimes";
 import type { RuntimeRecord } from "@/runtimes";
 import type { DaemonServices } from "@/services";
 
@@ -133,6 +133,11 @@ export function createApiHandler(services: DaemonServices) {
             } else if (error instanceof RouteOperationError) {
                 send(response, 400, {
                     code: "invalid_route_operation",
+                    message: error.message,
+                });
+            } else if (error instanceof DuplicateRuntimeNameError) {
+                send(response, 409, {
+                    code: error.code,
                     message: error.message,
                 });
             } else if (error instanceof AmbiguousRuntimeError) {

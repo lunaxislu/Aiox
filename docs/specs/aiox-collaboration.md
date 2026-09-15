@@ -39,11 +39,22 @@ vendor binding 책임이다.
 
 공통 HTTP MCP 도구는 `agents_list`와 `send`로 분리한다. `reply`, `replyExpected`, 재전송 도구를 제공하지 않으며 legacy envelope의 type/intent를 필수 입력으로 가져오지 않는다.
 
-- `agents_list()`는 현재 발신자가 outbound route로 보낼 수 있는 실행만 배열로 반환한다. 각 항목은 `agentId`, `name`, `role`, `description`, `status`다. 이름 미지정 시 daemon의 `agentId`를 name으로 사용한다. role·description 미지정은 목록에서 null, 수신 표시에서는 생략한다.
-- `send({ targets: [agentId, ...], content })`는 하나 또는 여러 대상 ID와 본문을 받는다. name·role·description은 대상 선택을 돕는 표시 정보이며 실제 전송 식별자는 agentId다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
-- daemon은 인증된 실행에서 source를 결정하고 전송 시점에 각 대상의 실행·membership·effective route를 검증한다. 오래된 목록은 권한이 아니며 대상별 접수·전송 시도 결과와 오류를 반환한다. 일부 실패를 전체 성공으로 표시하지 않는다.
+- `agents_list()`는 현재 발신자가 outbound route로 보낼 수 있는 실행만 배열로 반환한다. 각 항목은 `name`, `role`, `description`, `status`, `status_reason`이며 별도 `agentId` 필드를 노출하지 않는다. 이름 미지정 시 Runtime ID 값이 `name`이다. role·description 미지정은 목록에서 null, 수신 표시에서는 생략한다.
+- `send({ targets: [nameOrId, ...], content })`는 하나 또는 여러 Agent 이름·Runtime ID와 본문을 받는다. 이름을 지정한 Agent도 이름과 실제 Runtime ID 어느 쪽으로든 지정할 수 있다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
+- daemon은 인증된 실행에서 source와 Network 범위를 결정하고 전송 시점에 각 대상을 해당 Network의 현재 참여 실행에서 ID 우선, 이름 순으로 해석한 뒤 membership·effective route를 검증한다. 오래된 목록은 권한이 아니며 대상별 결과는 `name`, `accepted`, 선택적 `error`로 반환한다. 결과의 `name`은 입력한 이름 또는 ID 문자열이며, 동일 입력 문자열은 한 번만 반환한다. 같은 실행의 이름과 ID를 함께 입력하면 각각에 같은 결과를 반환하되 실제 전달·Delivery 저장은 한 번만 한다. 일부 실패를 전체 성공으로 표시하지 않는다.
 - A→B만 허용되면 A의 목록에는 B가 보이고 B의 목록에는 A가 보이지 않는다. 양방향·전이적 route를 추론하지 않는다. 대화상 회신도 `send`를 사용하며 역방향 route가 필요하다.
 - 수신 정보는 발신자의 name·role·description, daemon 접수 시각 `createdAt`, 본문 `content`다. daemon이 인증된 발신자 메타데이터를 채운다. deliveryId 등을 모델의 회신 도구 인자로 노출할 필요는 없지만 내부 메시지·대상별 delivery·vendor prompt/turn 상관관계는 유지한다.
+
+공통 MCP 설명과 주입 지침은 `agents_list`의 `name`을 `send.targets`에 그대로 사용하도록
+안내하며, 알고 있는 Runtime ID도 허용한다고 명시한다. 목록 조회 뒤 B가 종료하고 새 B가 참여하면 `targets: ["B"]` 전송은 그 시점의 새 B를
+대상으로 한다. 종료된 B의 ID를 지정하면 새 B로 바꾸지 않고 대상 부재 안내로 거절한다. 내부 메시지·처리 결과·알림은 해석한 Runtime ID에 귀속하며 이름 재사용으로
+이전 요청의 수신자나 알림 대상을 바꾸지 않는다.
+
+현재 Network에서 해석되지 않는 이름·ID는 대상별 `accepted: false`와 `error` 안내 문장으로 거절한다.
+안내는 `agents_list`로 현재 대상을 다시 확인하고 이미 수락된 대상에는 재전송하지 않도록 한다.
+daemon은 자동 재전송하지 않으며, 해석되지 않는 대상의 Runtime에 귀속되는
+Delivery 이력을 만들지 않는다. 모든 대상이 해석되지 않으면 응답의 `messageId`는 호출 결과를
+구분하는 값이며 저장된 메시지 존재를 뜻하지 않는다. 해석된 대상의 전달 시도·결과는 Runtime ID로 저장한다.
 
 Web은 Network 전체 Agent·route를 표시한다. 일반 CLI 조회·필터와 MCP discovery의 범위는 구분한다.
 

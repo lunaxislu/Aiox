@@ -832,7 +832,7 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
         const sent = await sender.callTool({
             name: "send",
             arguments: {
-                targets: [target.id],
+                targets: [target.name],
                 content: "Review line one.\nThen line two.",
             },
         });
@@ -928,7 +928,7 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
         expect(sourceVendor.received).toHaveLength(1);
         const failed = await sender.callTool({
             name: "send",
-            arguments: { targets: [target.id], content: "A second request" },
+            arguments: { targets: [target.name], content: "A second request" },
         });
         await vi.waitFor(() =>
             expect(lines.filter((line) => line.type === "user")).toHaveLength(
@@ -975,7 +975,7 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
                 (await sender.callTool({ name: "agents_list" }))
                     .structuredContent,
             ).toMatchObject({
-                agents: [{ agentId: target.id, status, status_reason }],
+                agents: [{ name: target.name, status, status_reason }],
             });
         };
         const failureReason =
@@ -1030,7 +1030,10 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
 
         const cancelled = await sender.callTool({
             name: "send",
-            arguments: { targets: [target.id], content: "A cancelled request" },
+            arguments: {
+                targets: [target.name],
+                content: "A cancelled request",
+            },
         });
         await vi.waitFor(() =>
             expect(lines.filter((line) => line.type === "user")).toHaveLength(
@@ -1070,7 +1073,7 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
         const peers = async () =>
             (await sender.callTool({ name: "agents_list" })).structuredContent;
         expect(await peers()).toMatchObject({
-            agents: [{ agentId: target.id, status: "awaiting-user" }],
+            agents: [{ name: target.name, status: "awaiting-user" }],
         });
         const base = {
             type: "user",
@@ -1131,7 +1134,7 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
             status_reason: null,
         });
         expect(await peers()).toMatchObject({
-            agents: [{ agentId: target.id, status: "idle" }],
+            agents: [{ name: target.name, status: "idle" }],
         });
         expect(sourceVendor.received).toHaveLength(2);
         expect(vendor.session.alive).toBe(true);

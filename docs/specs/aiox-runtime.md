@@ -76,8 +76,11 @@ Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위
   임의 선언하는 필드가 아니다. MCP의 목록 범위는 collaboration 계약을 따른다.
 - 프로세스 생존, binding 준비, 작업 활동, 사용자 입력 대기, 리밋·오류와 종료 관측을
   구별할 수 있어야 한다. 일반 vendor 도구 실패 하나를 Runtime 전체 실패로 승격하지 않는다.
-- 이름/ID/Host-qualified 이름으로 Agent를 찾는다. 여러 활성 Runtime에 걸친 이름이면
-  모호성 오류와 후보를 제공한다. `/`는 qualified 이름 구분자이므로 Host/Agent/Network
+- Agent 이름은 참여 Network 안에서 유일해야 한다. 이름 미지정 시 새 Runtime ID를 이름으로
+  사용한다. 준비 중 등록을 포함해 같은 이름이 있으면 새 등록을 거절하며, 서로 다른 Network의
+  같은 이름은 허용한다.
+- 일반 Agent 조회는 이름/ID/Host-qualified 이름을 받는다. Network 범위 없이 조회해 여러
+  활성 Runtime에 걸친 이름이면 모호성 오류와 후보를 제공한다. `/`는 qualified 이름 구분자이므로 Host/Agent/Network
   사용자 이름에 허용하지 않는다.
 
 Web과 `agents_list()`는 동일한 `status`와 `status_reason`을 사용한다.

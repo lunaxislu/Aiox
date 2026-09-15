@@ -101,3 +101,47 @@ test("revocation preserves cleanup state and cannot issue a late credential", as
     expect(registry.authenticate(token)).toBeUndefined();
     expect(registry.get(record.id)).toBe(record);
 });
+
+test("Network names are reserved through preparation and cleanup, and reusable after removal", async () => {
+    const registry = new RuntimeRegistry();
+    const binding = { deliver: async () => {}, stop: async () => {} };
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const input = {
+        name: "B",
+        networkId: "w1",
+        createBinding: async () => binding,
+    };
+    const preparing = registry.register({
+        ...input,
+        createBinding: async () => {
+            await pending;
+            return binding;
+        },
+    });
+    await expect(registry.register(input)).rejects.toMatchObject({
+        code: "duplicate_agent_name",
+    });
+    expect(registry.inNetwork("w1")).toHaveLength(1);
+    await registry.register({ ...input, networkId: "w2" });
+    await registry.register({ ...input, networkId: null });
+    await registry.register({ ...input, networkId: null });
+    release();
+    const original = (await preparing).record;
+    registry.revoke(original.id);
+    await expect(registry.register(input)).rejects.toMatchObject({
+        code: "duplicate_agent_name",
+    });
+    registry.unregister(original.id);
+    const replacement = (await registry.register(input)).record;
+    expect(replacement.id).not.toBe(original.id);
+    const unnamed = (
+        await registry.register({
+            networkId: "w1",
+            createBinding: async () => binding,
+        })
+    ).record;
+    expect(unnamed.name).toBe(unnamed.id);
+});

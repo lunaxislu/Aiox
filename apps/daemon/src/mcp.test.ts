@@ -8,6 +8,7 @@ import { fakeVendor, startTestDaemon } from "@/testing";
 
 type Party = {
     id: string;
+    name: string;
     token: string;
     vendor: FakeVendor;
 };
@@ -15,6 +16,8 @@ type Party = {
 let harness: DaemonHarness;
 let networkId: string;
 const clients: Client[] = [];
+const targetNotFoundMessage =
+    "Target not found in your Network. Call agents_list to check current targets before sending again. Do not resend to targets already accepted.";
 
 async function join(
     name: string,
@@ -28,7 +31,7 @@ async function join(
         ...extra,
         createBinding: vendor.createBinding,
     });
-    return { id: runtimeId, token, vendor };
+    return { id: runtimeId, name, token, vendor };
 }
 
 /** An anonymous runtime keeps the daemon's agentId fallback observable. */
@@ -38,7 +41,7 @@ async function joinAnonymous(): Promise<Party> {
         networkId,
         createBinding: vendor.createBinding,
     });
-    return { id: runtimeId, token, vendor };
+    return { id: runtimeId, name: runtimeId, token, vendor };
 }
 
 async function connect(token: string, network = networkId): Promise<Client> {
@@ -65,7 +68,7 @@ async function send(client: Client, targets: string[], content: string) {
     });
     return result.structuredContent as {
         messageId: string;
-        results: { agentId: string; accepted: boolean; error?: string }[];
+        results: { name: string; accepted: boolean; error?: string }[];
     };
 }
 
@@ -181,7 +184,7 @@ describe("agents_list", () => {
             "this must never become a shell command",
         );
         expect(result.results).toMatchObject([
-            { agentId: shell.id, accepted: false },
+            { name: shell.id, accepted: false },
         ]);
         expect(harness.daemon.services.runtimes.list()).toHaveLength(1);
     });
@@ -196,8 +199,8 @@ describe("agents_list", () => {
         });
 
         expect(
-            (await agentsList(await connect(a.token))).map((x) => x.agentId),
-        ).toEqual([b.id]);
+            (await agentsList(await connect(a.token))).map((x) => x.name),
+        ).toEqual([b.name]);
         expect(await agentsList(await connect(b.token))).toEqual([]);
     });
 
@@ -213,7 +216,6 @@ describe("agents_list", () => {
 
         expect(await agentsList(await connect(a.token))).toEqual([
             {
-                agentId: anonymous.id,
                 name: anonymous.id,
                 role: null,
                 description: null,
@@ -249,23 +251,143 @@ describe("agents_list", () => {
             status: "failed",
         });
     });
-
-    it("removes revoked agents", async () => {
-        const a = await join("a");
-        const b = await join("b");
-        await route({
-            kind: "between",
-            policy: "allow",
-            agents: [a.id, b.id],
-        });
-        const client = await connect(a.token);
-
-        harness.daemon.services.runtimes.revoke(b.id);
-        expect(await agentsList(client)).toEqual([]);
-    });
 });
 
 describe("send", () => {
+    it("resolves Network names or IDs and delivers once per runtime", async () => {
+        const a = await join("a");
+        const b = await join("b");
+        const anonymous = await joinAnonymous();
+        const otherNetwork = await harness.daemon.services.networks.create(
+            "other",
+            "allow",
+        );
+        const otherB = await join("b", {}, otherNetwork.id);
+        const outsider = await join("outsider", {}, otherNetwork.id);
+        await route({ kind: "default", policy: "allow" });
+        const client = await connect(a.token);
+        const listed = await agentsList(client);
+        expect(listed.map((agent) => agent.name)).toEqual([
+            b.name,
+            anonymous.name,
+        ]);
+        expect(listed.every((agent) => !("agentId" in agent))).toBe(true);
+        const sent = await send(
+            client,
+            [b.name, b.id, anonymous.name, "outsider", otherB.id, b.name],
+            "hello",
+        );
+        expect(sent.results).toEqual([
+            { name: b.name, accepted: true },
+            { name: b.id, accepted: true },
+            { name: anonymous.name, accepted: true },
+            {
+                name: "outsider",
+                accepted: false,
+                error: targetNotFoundMessage,
+            },
+            {
+                name: otherB.id,
+                accepted: false,
+                error: targetNotFoundMessage,
+            },
+        ]);
+        expect(b.vendor.received).toHaveLength(1);
+        expect(anonymous.vendor.received).toHaveLength(1);
+        expect(otherB.vendor.received).toHaveLength(0);
+        expect(outsider.vendor.received).toHaveLength(0);
+        const stored = await harness.daemon.services.db.messages.deliveriesFor(
+            sent.messageId,
+        );
+        expect(
+            stored.map((delivery) => delivery.targetRuntimeId).sort(),
+        ).toEqual([b.id, anonymous.id].sort());
+        const unknown = await send(client, ["missing"], "no runtime");
+        expect(unknown.results).toEqual([
+            {
+                name: "missing",
+                accepted: false,
+                error: targetNotFoundMessage,
+            },
+        ]);
+        expect(
+            await harness.daemon.services.db.messages.deliveriesFor(
+                unknown.messageId,
+            ),
+        ).toEqual([]);
+    });
+
+    it("returns discovery guidance when the resolved target leaves during send", async () => {
+        const a = await join("a");
+        const b = await join("b");
+        const { networks, runtimes } = harness.daemon.services;
+        const effective = networks.effective.bind(networks);
+        vi.spyOn(networks, "effective").mockImplementationOnce(async (id) => {
+            const network = await effective(id);
+            runtimes.revoke(b.id);
+            return network;
+        });
+        const sent = await send(await connect(a.token), [b.name], "hello");
+        expect(sent.results).toEqual([
+            {
+                name: b.name,
+                accepted: false,
+                error: targetNotFoundMessage,
+            },
+        ]);
+        expect(b.vendor.received).toHaveLength(0);
+    });
+
+    it("uses the same ID-first resolution for send and route", async () => {
+        const a = await join("a");
+        const b = await join("b");
+        const namedAfterB = await join(b.id);
+        await route({
+            kind: "directed",
+            from: a.name,
+            to: [b.id],
+            policy: "allow",
+        });
+        const sent = await send(await connect(a.token), [b.id], "only b");
+        expect(sent.results).toEqual([{ name: b.id, accepted: true }]);
+        expect(b.vendor.received).toHaveLength(1);
+        expect(namedAfterB.vendor.received).toHaveLength(0);
+    });
+
+    it("resolves a reused name to the current participant and keeps history on the old ID", async () => {
+        const a = await join("a");
+        const b = await join("b");
+        await route({ kind: "default", policy: "allow" });
+        const client = await connect(a.token);
+        const [listed] = await agentsList(client);
+        const first = await send(client, [listed!.name as string], "first");
+        await harness.daemon.stopRuntime(b.id);
+        const replacement = await join("b");
+        const second = await send(
+            client,
+            [listed!.name as string, b.id],
+            "second",
+        );
+        expect(second.results).toEqual([
+            { name: "b", accepted: true },
+            {
+                name: b.id,
+                accepted: false,
+                error: targetNotFoundMessage,
+            },
+        ]);
+        expect(b.vendor.received).toHaveLength(1);
+        expect(replacement.vendor.received[0]!.content).toBe("second");
+        const { messages } = harness.daemon.services.db;
+        expect(
+            (await messages.deliveriesFor(first.messageId))[0]!.targetRuntimeId,
+        ).toBe(b.id);
+        expect(
+            (await messages.deliveriesFor(second.messageId))[0]!
+                .targetRuntimeId,
+        ).toBe(replacement.id);
+    });
+
     it("delivers only to the agents the caller named", async () => {
         const a = await join("a");
         const b = await join("b");
@@ -276,8 +398,8 @@ describe("send", () => {
             agents: [a.id, b.id, c.id],
         });
 
-        const sent = await send(await connect(a.token), [b.id], "just b");
-        expect(sent.results).toEqual([{ agentId: b.id, accepted: true }]);
+        const sent = await send(await connect(a.token), [b.name], "just b");
+        expect(sent.results).toEqual([{ name: b.name, accepted: true }]);
         expect(b.vendor.received).toHaveLength(1);
         expect(c.vendor.received).toHaveLength(0);
     });
@@ -295,16 +417,17 @@ describe("send", () => {
 
         const sent = await send(
             await connect(a.token),
-            [b.id, c.id, "no-such-agent"],
+            [b.name, c.name, c.id, "no-such-agent"],
             "hello",
         );
         expect(sent.results).toEqual([
-            { agentId: b.id, accepted: true },
-            { agentId: c.id, accepted: false, error: "no_route" },
+            { name: b.name, accepted: true },
+            { name: c.name, accepted: false, error: "no_route" },
+            { name: c.id, accepted: false, error: "no_route" },
             {
-                agentId: "no-such-agent",
+                name: "no-such-agent",
                 accepted: false,
-                error: "unknown_agent",
+                error: targetNotFoundMessage,
             },
         ]);
         expect(c.vendor.received).toHaveLength(0);
@@ -320,7 +443,11 @@ describe("send", () => {
             to: [b.id],
         });
 
-        const sent = await send(await connect(a.token), [b.id], "do the thing");
+        const sent = await send(
+            await connect(a.token),
+            [b.name],
+            "do the thing",
+        );
         expect(b.vendor.received[0]!.content).toBe(
             `do the thing\n\n${ONE_WAY_NOTICE}`,
         );
@@ -340,7 +467,7 @@ describe("send", () => {
             agents: [a.id, b.id],
         });
 
-        await send(await connect(a.token), [b.id], "do the thing");
+        await send(await connect(a.token), [b.name], "do the thing");
         expect(b.vendor.received[0]!.content).toBe("do the thing");
     });
 
@@ -354,7 +481,7 @@ describe("send", () => {
             to: [b.id],
         });
 
-        await send(await connect(a.token), [b.id], "hi");
+        await send(await connect(a.token), [b.name], "hi");
         expect(b.vendor.received[0]!.from).toEqual({
             name: "a",
             role: "impl",
@@ -371,9 +498,7 @@ describe("send", () => {
             agents: [a.id, b.id],
         });
         const client = await connect(a.token);
-        expect((await agentsList(client)).map((x) => x.agentId)).toEqual([
-            b.id,
-        ]);
+        expect((await agentsList(client)).map((x) => x.name)).toEqual([b.name]);
 
         await route({
             kind: "directed",
@@ -382,9 +507,9 @@ describe("send", () => {
             to: [b.id],
         });
 
-        const sent = await send(client, [b.id], "too late");
+        const sent = await send(client, [b.name], "too late");
         expect(sent.results).toEqual([
-            { agentId: b.id, accepted: false, error: "no_route" },
+            { name: b.name, accepted: false, error: "no_route" },
         ]);
         expect(b.vendor.received).toHaveLength(0);
     });
@@ -399,7 +524,7 @@ describe("send", () => {
         });
         b.vendor.refuse("vendor input path closed");
 
-        const sent = await send(await connect(a.token), [b.id], "hi");
+        const sent = await send(await connect(a.token), [b.name], "hi");
         expect(sent.results[0]).toMatchObject({
             accepted: false,
             error: "vendor input path closed",
@@ -411,8 +536,9 @@ describe("send", () => {
 
 describe("automatic notification", () => {
     async function pair(twoWay: boolean) {
-        const a = await join("a");
-        const b = await join("b");
+        const suffix = harness.daemon.services.runtimes.list().length;
+        const a = await join(`a-${suffix}`);
+        const b = await join(`b-${suffix}`);
         await route(
             twoWay
                 ? { kind: "between", policy: "allow", agents: [a.id, b.id] }
@@ -423,7 +549,11 @@ describe("automatic notification", () => {
                       to: [b.id],
                   },
         );
-        const sent = await send(await connect(a.token), [b.id], "work item X");
+        const sent = await send(
+            await connect(a.token),
+            [b.name],
+            "work item X",
+        );
         return { a, b, sent };
     }
 
@@ -475,7 +605,7 @@ describe("automatic notification", () => {
             agents: [a.id, b.id, c.id],
         });
 
-        await send(await connect(a.token), [b.id, c.id], "shared work");
+        await send(await connect(a.token), [b.name, c.name], "shared work");
         await b.vendor.settle(b.vendor.deliveryIds[0]!, "completed");
         await c.vendor.settle(c.vendor.deliveryIds[0]!, "failed", "quota");
 
@@ -550,9 +680,9 @@ it("revoked runtimes cannot use MCP or remain discoverable while cleanup is reta
     harness.daemon.services.runtimes.revoke(b.id);
     expect(harness.daemon.services.runtimes.get(b.id)).toBeDefined();
     expect(await agentsList(aClient)).toEqual([]);
-    expect((await send(aClient, [b.id], "no delivery")).results).toMatchObject([
-        { accepted: false },
-    ]);
+    expect(
+        (await send(aClient, [b.name], "no delivery")).results,
+    ).toMatchObject([{ accepted: false }]);
     await expect(agentsList(bClient)).rejects.toThrow();
     expect(b.vendor.received).toEqual([]);
 });
@@ -596,7 +726,7 @@ it("publishes preparing agents but refuses delivery until ready", async () => {
     const client = await connect(a.token);
     b.vendor.status("aiox-preparing");
     expect((await agentsList(client))[0]).toMatchObject({
-        agentId: b.id,
+        name: b.name,
         status: "aiox-preparing",
         status_reason: null,
     });
@@ -607,8 +737,8 @@ it("publishes preparing agents but refuses delivery until ready", async () => {
         status: "aiox-preparing",
         status_reason: null,
     });
-    expect((await send(client, [b.id], "too early")).results).toEqual([
-        { agentId: b.id, accepted: false, error: "not_available" },
+    expect((await send(client, [b.name], "too early")).results).toEqual([
+        { name: b.name, accepted: false, error: "not_available" },
     ]);
     expect(b.vendor.received).toHaveLength(0);
 });

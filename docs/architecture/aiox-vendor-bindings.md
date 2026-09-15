@@ -477,8 +477,8 @@ createdAt을 전달하며 내부 delivery ID는 포함하지 않는다. 일반 �
 
 양 adapter는 `RuntimeControls.setStatus(status, reason?)`로 현재 관측을 전달한다.
 RuntimeRegistry는 `status/status_reason`을 보관하고 이유 생략을 null로 교체한다.
-HTTP AgentView와 MCP agents_list가 같은 필드를 소비하며 MCP schema는 AgentView의 공통
-필드를 재사용한다. Web은 상태와 이유를 함께 표시한다. 기존 event/observation 전달과 MCP
+HTTP AgentView와 MCP agents_list는 같은 상태 필드를 소비하며 MCP schema는 AgentView의
+공통 상태·메타데이터 필드를 재사용한다. Web은 상태와 이유를 함께 표시한다. 기존 event/observation 전달과 MCP
 요약 함수는 제거했다. 외부 상태 의미는 [[docs/specs/aiox-runtime]]이 소유한다.
 
 NetworkService의 목록 계산은 기존 membership·outbound route·등록 유효성을 유지하며

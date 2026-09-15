@@ -68,6 +68,16 @@ export type SettleHandler = (
     error?: string,
 ) => Promise<void>;
 
+export class DuplicateRuntimeNameError extends Error {
+    readonly code = "duplicate_agent_name";
+    constructor(name: string) {
+        super(
+            `An agent named '${name}' is already registered in this Network.`,
+        );
+        this.name = "DuplicateRuntimeNameError";
+    }
+}
+
 export class AmbiguousRuntimeError extends Error {
     constructor(readonly candidates: readonly string[]) {
         super(
@@ -82,7 +92,12 @@ export class AmbiguousRuntimeError extends Error {
  * written to the database, an argv, a URL or a log line.
  */
 export class RuntimeRegistry {
-    constructor(private readonly onChange: () => void = () => {}) {}
+    constructor(
+        private readonly onChange: () => void = () => {},
+        private readonly cleanupPreparation: (
+            record: RuntimeRecord,
+        ) => Promise<void> = async () => {},
+    ) {}
     readonly #runtimes = new Map<string, RuntimeRecord>();
     readonly #tokens = new Map<string, string>();
     #onSettle: SettleHandler = () => Promise.resolve();
@@ -95,6 +110,15 @@ export class RuntimeRegistry {
         input: RegisterRuntime,
     ): Promise<{ record: RuntimeRecord; token: string }> {
         const id = randomUUID();
+        const name = input.name ?? id;
+        // Reserve names before any await, including preparation and pending cleanup.
+        if (
+            input.networkId !== null &&
+            this.inNetwork(input.networkId).some(
+                (record) => record.name === name,
+            )
+        )
+            throw new DuplicateRuntimeNameError(name);
         let reportedStatus: RuntimeStatus = "aiox-preparing";
         let reportedReason: string | null = null;
         const controls: RuntimeControls = {
@@ -114,7 +138,7 @@ export class RuntimeRegistry {
         };
         const record: RuntimeRecord = {
             id,
-            name: input.name ?? id,
+            name,
             role: input.role ?? null,
             description: input.description ?? null,
             networkId: input.networkId,
@@ -142,7 +166,20 @@ export class RuntimeRegistry {
             record.status_reason = reportedReason;
             if (record.executionOwnership === "daemon") this.onChange();
         } catch (error) {
-            // Only what this attempt created is removed.
+            // Revoke before fallible route cleanup. Failed cleanup reserves the
+            // name and leaves a record that stopRuntime can retry.
+            this.revoke(id);
+            record.status = "failed";
+            record.status_reason =
+                error instanceof Error ? error.message : String(error);
+            try {
+                await this.cleanupPreparation(record);
+            } catch (cleanupError) {
+                throw new AggregateError(
+                    [error, cleanupError],
+                    "Registration failed and route cleanup is unconfirmed.",
+                );
+            }
             this.unregister(id);
             throw error;
         }

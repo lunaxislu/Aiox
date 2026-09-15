@@ -393,6 +393,8 @@ describe("network administration", () => {
             routes: [],
         });
 
+        const x = await joinAgent(network.id, "x");
+        const y = await joinAgent(network.id, "y");
         const routed = await post(`/api/networks/${network.id}/route`, {
             operation: {
                 kind: "between",
@@ -400,7 +402,33 @@ describe("network administration", () => {
                 agents: ["x", "y"],
             },
         });
+        expect(routed.status).toBe(200);
         expect((routed.body as NetworkView).routes).toHaveLength(2);
+        expect((routed.body as NetworkView).routes).toEqual(
+            expect.arrayContaining([
+                { from: x.runtimeId, to: y.runtimeId, policy: "allow" },
+                { from: y.runtimeId, to: x.runtimeId, policy: "allow" },
+            ]),
+        );
+        const invalid = await post(`/api/networks/${network.id}/route`, {
+            operation: {
+                kind: "directed",
+                policy: "deny",
+                from: "x",
+                to: ["y", "missing"],
+            },
+        });
+        expect(invalid).toMatchObject({
+            status: 400,
+            body: {
+                message:
+                    "No participating agent 'missing' in Network 'collab'.",
+            },
+        });
+        expect(invalid.body).not.toHaveProperty("code");
+        expect(
+            (await harness.daemon.services.networks.require(network.id)).routes,
+        ).toEqual((routed.body as NetworkView).routes);
 
         // Reachable by name as well as by id.
         const byName = await call("/api/networks/collab");
@@ -422,7 +450,7 @@ describe("network administration", () => {
     it("says which network is missing instead of inventing one", async () => {
         const missing = await call("/api/networks/nope");
         expect(missing.status).toBe(400);
-        expect(missing.body).toMatchObject({ code: "unknown_network" });
+        expect(missing.body).toEqual({ message: "No such network: nope" });
     });
 
     it("rejects Network deletion until participation cleanup completes", async () => {
@@ -500,6 +528,58 @@ describe("network administration", () => {
         expect(await networks.delete(network.id)).toBe(true);
     });
 
+    it.each([false, true])(
+        "cleans routes after failed preparation and retains failed cleanup for retry (%s)",
+        async (cleanupFails) => {
+            const { networks, runtimes, db } = harness.daemon.services;
+            const network = await networks.create(
+                "failed-preparation",
+                "allow",
+            );
+            const a = await joinAgent(network.id, "A");
+            let fail!: (error: Error) => void;
+            const preparing = new Promise<never>((_, reject) => {
+                fail = reject;
+            });
+            const createBinding = vi.fn(() => preparing);
+            const result = harness.daemon
+                .registerRuntime({
+                    name: "B",
+                    networkId: network.id,
+                    createBinding,
+                })
+                .catch((error) => error);
+            await vi.waitFor(() =>
+                expect(createBinding).toHaveBeenCalledOnce(),
+            );
+            const b = runtimes
+                .inNetwork(network.id)
+                .find((record) => record.name === "B")!;
+            await networks.route(network.id, {
+                kind: "between",
+                agents: ["A", "B"],
+                policy: "deny",
+            });
+            if (cleanupFails)
+                vi.spyOn(db.networks, "replaceRouting").mockRejectedValueOnce(
+                    new Error("cleanup failed"),
+                );
+            fail(new Error("preparation failed"));
+            expect(await result).toBeInstanceOf(Error);
+            if (cleanupFails) {
+                expect(runtimes.get(b.id)?.collaborationActive).toBe(false);
+                await expect(joinAgent(network.id, "B")).rejects.toMatchObject({
+                    code: "duplicate_agent_name",
+                });
+                await harness.daemon.stopRuntime(b.id);
+            }
+            expect(runtimes.get(b.id)).toBeUndefined();
+            expect((await networks.require(network.id)).routes).toEqual([]);
+            expect(runtimes.get(a.runtimeId)).toBeDefined();
+            expect((await joinAgent(network.id, "B")).runtimeId).not.toBe(b.id);
+        },
+    );
+
     it("does not create a binding revoked during Network validation", async () => {
         const { networks, runtimes } = harness.daemon.services;
         const network = await networks.create("revoked", "allow");
@@ -546,7 +626,7 @@ describe("network administration", () => {
         });
         expect(await networks.delete(network.id)).toBe(true);
         await expect(registration).rejects.toMatchObject({
-            code: "unknown_network",
+            message: `No such network: ${network.id}`,
         });
         expect(createBinding).not.toHaveBeenCalled();
         expect(runtimes.inNetwork(network.id)).toEqual([]);
@@ -650,7 +730,14 @@ describe("agent listing", () => {
             "allow",
         );
         await joinAgent(network.id, "twin");
-        await joinAgent(network.id, "twin");
+        await expect(joinAgent(network.id, "twin")).rejects.toMatchObject({
+            code: "duplicate_agent_name",
+        });
+        const other = await harness.daemon.services.networks.create(
+            "other",
+            "allow",
+        );
+        await joinAgent(other.id, "twin");
 
         const ambiguous = await call("/api/agents/twin");
         expect(ambiguous.status).toBe(409);
@@ -1032,7 +1119,7 @@ describe("stopping", () => {
                     params: {
                         name: "send",
                         arguments: {
-                            targets: [target.runtimeId],
+                            targets: ["target"],
                             content: "late",
                         },
                     },
@@ -1246,6 +1333,7 @@ describe("stopping", () => {
         const { db, networks, runtimes } = harness.daemon.services;
         const network = await networks.create("retry-routes", "deny");
         const agent = await joinAgent(network.id, "a");
+        await joinAgent(network.id, "b");
         await networks.route(network.id, {
             kind: "directed",
             from: agent.runtimeId,
@@ -1267,7 +1355,12 @@ describe("stopping", () => {
             expect(runtimes.get(agent.runtimeId)?.collaborationActive).toBe(
                 false,
             );
-            expect(await networks.require(network.id)).toEqual(before);
+            // The other endpoint cleaned the shared edge; the failed runtime
+            // still retains its registration until its own cleanup succeeds.
+            expect(await networks.require(network.id)).toEqual({
+                ...before,
+                routes: [],
+            });
 
             expect(
                 (await post("/api/daemon/stop", { force: true })).status,
@@ -1916,5 +2009,36 @@ it("does not invalidate Web state for external-only runtime and notification cha
     } finally {
         await reader.cancel();
         await observing;
+    }
+});
+
+it("reopening a daemon preserves Network defaults but discards past execution routes", async () => {
+    const path = join(harness.home, "reopen-routes.db");
+    const seed = await openDatabase(path);
+    await seed.networks.create({
+        id: "w1",
+        name: "w1",
+        defaultPolicy: "allow",
+    });
+    await seed.networks.replaceRouting("w1", {
+        defaultPolicy: "allow",
+        routes: [{ from: "past-a", to: "past-b", policy: "deny" }],
+    });
+    await seed.close();
+    const daemon = await startDaemon({
+        db: await openDatabase(path),
+        ports: { daemon: 0, web: 0 },
+        retentionDays: () => 30,
+    });
+    try {
+        expect(await daemon.services.networks.require("w1")).toEqual({
+            id: "w1",
+            name: "w1",
+            defaultPolicy: "allow",
+            routes: [],
+        });
+        expect(daemon.services.runtimes.list()).toEqual([]);
+    } finally {
+        await daemon.stop(true);
     }
 });

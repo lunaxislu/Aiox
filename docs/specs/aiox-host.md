@@ -71,6 +71,13 @@ YAML 정의를 global persistent Network로 동시에 저장해 이중 권위로
 필요하고 `--to` 단독도 오류다. 같은 layer의 edge에는 하나의 값만 두며 runtime CLI 변경은
 기존 값을 교체한다. Persistent reset은 명시 edge를 제거해 Network default로 돌아간다.
 
+Persistent route의 endpoint는 해당 Network에 참여 중인 Agent의 이름 또는 Runtime ID로
+지정한다. daemon은 해당 Network 안에서 ID 우선, 이름 순으로 모든 대상을 해석·검증한 뒤 Runtime ID로 저장한다. 같은 실행의 이름·ID를 함께 지정하거나 대상을 반복해도 endpoint는 한 번만 적용한다.
+없는 대상이나 다른 Network의 대상은 전체 변경을 저장 전에 거절한다.
+Network 또는 대상을 찾지 못한 경우 API는 오류 설명을 반환하고 CLI는 이를 표시한 뒤 해당 명령을 실패로 종료한다. 대상 검증과 저장은
+종료 정리와 엇갈려 종료한 실행의 route를 다시 만들지 않아야 한다. default만 바꾸는 요청에는
+endpoint가 필요하지 않다.
+
 Host의 effective policy는 다음 우선순위로 결정한다.
 
 ```text
@@ -197,7 +204,7 @@ aiox host agent stop <host> <agent-names...>
 
 Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실행·credential·binding·활성 membership을 정리하고 Host의 항목·메타데이터·실행 설정을 stopped로 유지한다. start는 기존 항목을 새 Runtime ID·credential로 실행하며 이전 vendor 대화를 자동 resume하지 않는다. 이미 실행 중인 항목을 중복 실행하지 않고 이름별 결과를 보고한다. 보존한 Host route 설정은 새 실행 ID에 연결하며 stopped 항목에는 전달하지 않는다.
 
-Standalone 실행 종료 또는 협업 등록 유효성 상실 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
+Standalone 실행 종료 또는 협업 등록 유효성 상실 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. 정리가 끝나면 같은 이름을 다시 사용할 수 있으며 새 실행은 이전 route를 승계하지 않고 Network default를 적용한다. 따라서 default allow에서는 이전 deny가 새 실행을 차단하지 않는다. daemon 재시작 시에도 Network 이름·default는 유지하지만 과거 Runtime과 그 endpoint route는 복원하지 않고 잔존 route를 정리한다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
 
 Sources:
 

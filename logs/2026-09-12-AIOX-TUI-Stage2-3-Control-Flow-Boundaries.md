@@ -13,6 +13,7 @@ status: decided
 - [x] W5 Web 작업 결과·화면 복원 및 SSE·알림 개선 완료 — root가 527 tests와 built daemon·브라우저 근거를 수용했고 사용자 실행 정리 후 일반 daemon stop과 승인된 개발 DB 일회 삭제까지 완료했다.
 - [x] W6 정리 후보·외부 리뷰 판정과 외부 실행·Web 중계 복구·진단·quota A안 구현 확인 완료 — 최종 534 tests 통과 출력과 기존 직접 실행 근거를 수용했다. 필요한 owner 정합화를 완료했고 quota 추가 반영은 불필요하다. 사용자 직접 중단 상태 보정은 제외한다.
 - [x] W7 통합 리뷰·owner 반영·단계 마감 완료 — 참조 정합화·현재 관측 이유 표시·사용자 실측 수용과 후속 owner 인계를 완료했다. 사용자 지시로 Stage3는 활성화하지 않는다. commit·push 없음.
+- [x] W8 Network 이름 유일성·route 수명·MCP 이름/ID 전송 및 오류 안내 구현 확인 완료 — 중복 테스트 정리 뒤 전체 579 tests 통과. 실제 Codex 검증과 미구현 UUID v7 후속은 Stage4 W3로 인계했다.
 
 ## Required Context
 
@@ -22,8 +23,8 @@ status: decided
 
 ### {Global}
 
-- Stage2-3은 마감됐다. 최신 「W7 참조·관측 이유 표시 완료, 사용자 실측 수용과 Stage2-3 마감」을 소비한다. 사용자 지시로 Stage3는 대기이며 plan에 활성 단계가 없다. 다음 후보는 Stage3 W1이지만 자동 활성화·착수하지 않는다. 로그는 명시적 요청 때 기록하며 commit·push는 별도 지시 없이 수행하지 않는다.
-- 이번 마감 승인은 기록·최종 인계 점검·Stage2-3 종료까지만이다. 과거 커밋·포인터 이동 승인으로 후속 commit·push·Stage3 활성화를 정당화하지 않는다. architecture.excalidraw 개인 자산과 무관한 execution-flow-map skill은 제외한다.
+- W8 구현·자동 검증과 owner 반영을 완료하고 Stage2-3을 마감했다. 현재 활성 단계는 Stage4이며 logs/2026-09-09-AIOX-TUI-Stage4-Codex.md W3가 재개점이다. 최신 W8 완료 entry의 결과·한계와 Stage4 인계를 소비하며 W1~W7 완료 이력은 유지한다.
+- 이번 사용자 요청에 따라 변경 확인·로그 기록·Stage4 복귀 포인터 이동까지 수행했다. 후속 제품 작업·실제 vendor 실행·commit·push는 시작하지 않는다. architecture.excalidraw와 무관한 개인 자산은 제외한다.
 - 아래 조사 계기와 근거 분류·Claude 의견 대조를 먼저 읽고 선택 Work Item의 호출자·producer/consumer·owner·tests를 추적한다. 기존 조사를 전부 반복하지 말고 변경할 경계의 재현을 회귀 테스트로 고정한다. root가 실제 diff와 검증 근거를 확인하기 전 subagent 완료 보고를 최종 완료로 승격하지 않는다.
 - 관련 owner는 docs/specs/aiox-runtime.md, aiox-collaboration.md, aiox-configuration-web.md와 docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, aiox-system.md다. W1 교정은 docs/decisions/external-execution-survival.md로 수용됐고 기존 explicit-execution-shutdown은 결정 계보다. W2 저장·복구와 W3 준비·조회·종료 자원 경계는 owner와 회귀에 반영됐다. 무관한 last-good·자동 적용 요구는 유지한다.
 
@@ -54,6 +55,10 @@ status: decided
 ### {W5}
 
 - W5 구현·검증과 승인된 개발 DB 일회 초기화가 완료됐다. 실제 daemon은 일반 stop으로 종료했고 재시작·force는 하지 않았다. 과거 종료 거절·대기는 당시 경위이며 최신 완료 entry를 따른다. 당시 일회 삭제 승인은 startup 자동 reset이나 migration 재편 승인이 아니었다. 이후 별도로 승인된 첫 배포 전 개발 DB 원칙과 불필요 코드 조사는 AGENTS.md와 {W6}를 따른다. 검증 범위와 native 창·탭 전환 미검증 한계는 15:37 수용 entry를 유지한다.
+
+### {W8}
+
+- W8 결과는 최신 완료 entry와 runtime/host/collaboration spec 및 인접 회귀를 따른다. Network 내 이름 유일성·참여자 route 해석과 수명·MCP 이름/ID 전송·대상 부재 안내를 구현 확인했다. 실제 vendor 검증과 DB 저장 ID UUID v7 구현·owner 반영은 Stage4 W3로 인계했으며 이 W8의 완료 근거로 포함하지 않는다.
 
 ## 2026-09-12 · macOS 사전 검증 보고에서 확장한 처리 경계 개선 착수 준비
 
@@ -849,3 +854,36 @@ owner 참조: architecture의 aiox-system·aiox-storage-terminal·aiox-vendor-bi
 최종 인계 점검: W1~W6는 2026-09-14 00:07 최종 대조를 소비하고 반복하지 않았다. W7의 locator·진단 표시·미검증 disposition은 처리했다. Claude No/Esc·snapshot 연결 결함과 관측 방식 선택은 Stage3 W3 및 실제 수직 통합 W5의 명시적 Work Items/Required Context에 남아 있다. 이번 일반 실행 확인으로 그 결함을 해결 완료 처리하지 않는다. 최소 Web 결과와 사용자 실측은 Stage6/7로 인계하고 React 창·탭·dropdown·popup·소리 등 미구현 범위는 유지한다. 나머지 OS·WSL·npm 배포 인증은 Stage8에서 해당 환경과 산출물이 준비됐을 때 수행한다. 그 상세 환경 구분은 기존 실측을 부정하거나 같은 사용 흐름을 일괄 재검증할 이유가 아니다.
 
 각 후속 로그에 이번 결과 소비 기준을 반영했고 owner 반영 누락·미소비 detached W는 없다. Stage2-3 내부의 미완료 행동은 남지 않아 W7 completed·로그 decided·plan Stage2-3 completed로 마감한다. 다음 후보는 Stage3 W1이나 사용자 지시대로 활성 포인터를 이동하지 않는다. 현재 plan의 활성 단계는 의도적으로 없다. 장문 기록은 같은 처리 경계 개선 수명의 경위로 보존하고 이번 마감에 이력 분할을 추가하지 않는다.
+
+## 2026-09-15 · Network 내 Agent 이름 유일성 정책 반영을 위한 재개
+
+사용자는 같은 Network 내 동명 Agent 등록을 거절하는 정책으로 명세·구현·테스트를 변경하기로 확정하고, Stage2-3 로그를 open으로 재개해 현재 작업 포인터를 옮기고 Work Item과 결정 기록을 준비하도록 지시했다. 명시적인 기존 로그 재개 요청에 따라 W1~W7의 완료 이력은 보존하고 W8을 추가한다. 이번에는 기록·포인터만 변경하며 구현을 시작하지 않는다.
+
+확인한 현행 근거: RuntimeRegistry.register에는 Network 내 이름 중복 차단이 없고 daemon.test.ts:647은 같은 Network에 twin 두 개 등록 후 조회 409를 기대한다. runtime spec의 일반 이름 모호성 규칙과 등록 단계의 Network 내 유일성은 구분해야 한다. 서로 다른 Network의 동명 Agent까지 금지하거나 전역 조회의 모호성 오류를 전부 없애기로 결정한 것은 아니다.
+
+W8 완료 조건: 사용자 entry부터 공통 등록 경로와 이름 예약·관측·실패 정리를 추적하고, 같은 Network의 동명 등록 거절 및 다른 Network의 동명 허용을 명세와 구현에 반영한다. 준비 중 동시 등록에서도 중복을 막고, 실패한 등록이 기존 Agent를 제거하지 않으며, 종료·정리 후 이름 재사용이 새 Runtime으로 동작함을 인접 회귀로 확인한다. 무관한 실행·Host 수명을 바꾸지 않는다. Network 없는 실행의 이름 정책은 이번 결정에 포함하지 않는다.
+
+배경: Stage4 W3에서 이름 A/B로 저장된 route와 권한 검사 UUID의 불일치를 실측했다. Network 범위 route 대상 해석·참여 검증, Standalone 종료 시 endpoint route 정리와 비정상 종료 후 잔존 route 문제는 Stage4 원본 로그의 최신 조사에서 확인할 수 있다. 이름 중복 금지만으로 이 route 결함과 단방향 완료 알림 검증이 해결됐다고 표시하지 않는다.
+
+현재 재개점은 W8이며 필요한 owner는 runtime/host spec과 system architecture, 공통 Runtime 등록 코드 및 caller·인접 tests다. 완료 후 plans/aiox-tui-product-rebuild.md의 활성 단계를 Stage4로 돌려 logs/2026-09-09-AIOX-TUI-Stage4-Codex.md W3에서 잔여 route 보완·실제 메시지 검증을 이어간다. 기존 장문 로그는 사용자의 명시적 재개 요청에 따라 유지하고 별도 package/child로 분리하지 않는다.
+
+### 2026-09-15 21:30 · W8 구현·오류 안내·중복 테스트 정리 확인과 Stage4 복귀
+
+사용자의 후속 구현 승인으로 W8 범위가 이름 유일성에서 Network route 대상 해석·수명, MCP 이름/ID 전송과 오류 안내까지 확장됐다. 구현·리뷰 중 로그를 쓰지 말라는 지시를 따랐으며 이번 명시적인 기록·Stage4 복귀 요청으로 결과를 증류한다. root가 현재 git diff, 공통 등록·종료 caller, NetworkService의 resolver/직렬화된 저장, MCP producer/consumer, 인접 회귀 및 변경된 spec·architecture를 직접 대조했다.
+
+확인한 변경:
+
+- RuntimeRegistry.register는 같은 Network에서 준비 중·정리 대기 중인 이름도 예약한다. 중복 등록은 거절하고 다른 Network의 같은 이름은 허용한다. 준비 실패는 협업 권한을 먼저 회수하고 route 정리를 마친 뒤 등록을 제거하며, 정리 실패는 재시도할 행과 이름 예약을 보존한다. Network 미참여 실행의 정책은 확대하지 않았다.
+- Persistent route는 해당 Network의 현재 참여자를 ID 우선·이름 순으로 해석해 Runtime ID로 저장한다. 모든 endpoint를 저장 직렬화 경계 안에서 검증해 없는 대상·다른 Network 대상은 전체 변경을 거절한다. 같은 실행의 이름/ID 중복은 한 endpoint로 적용한다. Standalone 종료 정리와 새 이름 등록은 별개 실행이며 과거 route를 승계하지 않는다. daemon 시작은 Network/default를 보존하고 과거 endpoint route를 정리한다. Host의 보존 항목·route 재연결 계약은 별도다.
+- MCP agents_list는 별도 agentId 필드를 제거하고 name·메타데이터·상태를 반환한다. 미지정 name은 Runtime ID다. send는 이름 있는 Agent도 이름 또는 실제 ID로 지정할 수 있고 source Network 안에서 해석한다. 이름/ID를 함께 입력하면 입력별 결과를 반환하되 실제 전달은 한 번이다. 새 B에 대한 이름 전송과 종료된 B의 ID 전송을 구분하고 이전 요청/알림 귀속은 옛 Runtime ID를 유지한다.
+- Network/route 대상 부재는 오류 설명으로 명령을 실패 종료하며 daemon 종료를 뜻하지 않는다. MCP 대상 부재는 accepted:false 및 agents_list 재조회 안내를 직접 반환한다. 이미 수락된 대상에 재전송하지 않도록 안내하고 자동 재시도는 없다. 모든 대상이 해석되지 않으면 응답 식별자만 반환하고 메시지/Delivery를 저장하지 않는다. 다른 API의 오류 코드 전체를 삭제한 것은 아니다.
+
+owner 반영은 docs/specs/aiox-runtime.md, aiox-host.md, aiox-collaboration.md, aiox-configuration-web.md 및 docs/architecture/aiox-storage-terminal.md, aiox-vendor-bindings.md에서 확인했다. 현재 동작의 정본은 이 owner와 code/tests이며 이 로그는 변경 경위와 검증 범위를 소유한다.
+
+TDD 정리: mcp.test.ts의 단순 revoked 목록 제외 테스트는 권한 회수·조회 제외·send 거절을 함께 검증하는 기존 회귀와 중복돼 삭제했다. runtimes.test.ts 이름 재사용 테스트 안의 준비 실패 재검증만 제거하고 독립 실패/정리 회귀는 유지했다. 반복 오류 문구 6곳은 production 상수를 import하지 않는 테스트 내부 상수로 통합했다. 이전 전체 580 tests와 정리 직후 관련 100 tests 통과 기록 이후, 이번 root가 pnpm check를 새로 실행해 exit 0 및 46 files/579 tests 통과를 확인했다. lint·format·build·typecheck도 같은 명령에서 통과했다. 실제 Codex/Claude를 실행하거나 사용자 daemon·Network·DB를 조작한 결과는 아니다.
+
+판단 정정: 별도 daemon 실행 파일 중복 실행 시 시작 정리 위험은 정상 aiox daemon start의 흔한 실패로 입증되지 않아 필수 결함 주장을 철회했다. UUID와 사용자 이름 일치는 random UUID 충돌이 아니라 사용자가 다른 실행 ID를 이름으로 지정하는 경우이며, 확률적 충돌 문제로 과장하지 않는다. 현재 선택은 ID 우선 해석이다.
+
+미완료 구분: 사용자는 DB 저장 ID를 UUID v7으로 통일하기로 결정했지만 현재 생성부는 randomUUID를 사용하며 v7 구현·owner 반영은 아직 없다. Stage4 W3의 후속 추적 항목으로 넘기며 이 결과에 포함해 완료 처리하지 않는다. 실제 Codex 양방향 send 회신, 단방향 역방향 차단·완료 알림·알림 비재귀 및 failed/interrupted 실측도 Stage4 W3가 계속 소유한다.
+
+W8의 승인된 이름/route/MCP 구현과 자동 검증은 완료했다. UUID v7 후속과 실제 vendor 검증을 Stage4의 Work Item·Required Context에 명시적으로 인계하고 W8 completed, Stage2-3 decided로 닫는다. plan 활성 포인터는 Stage4 W3로 복귀한다. W1~W7 이력과 장문 로그는 동일 수명의 경위로 보존한다. 이번 변경은 로그·plan 기록이며 추가 제품 수정·commit·push는 하지 않는다.

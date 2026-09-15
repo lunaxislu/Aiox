@@ -8,7 +8,10 @@ import type { NetworkService } from "@/networks";
 import type { RuntimeRecord, RuntimeRegistry } from "@/runtimes";
 
 export const collaborationInstruction =
-    "Use AIOX agents_list to discover reachable agents and send to their agentId values. Use send for replies too; it requires an outbound route. AIOX daemon notices are notifications, not requests to acknowledge. A send result reports the delivery attempt, not completion of the requested work.";
+    "Use AIOX agents_list to discover reachable agents and use the returned name values or runtime IDs as send targets in your Network. An unnamed agent uses its runtime ID as its name. Targets resolve to the current participant at send time, with IDs taking precedence over names. Use send for replies too; it requires an outbound route. AIOX daemon notices are notifications, not requests to acknowledge. A send result reports the delivery attempt, not completion of the requested work.";
+
+export const targetNotFound =
+    "Target not found in your Network. Call agents_list to check current targets before sending again. Do not resend to targets already accepted.";
 
 export type SendTargetResult = {
     readonly agentId: string;
@@ -376,7 +379,7 @@ export class MessageService {
 
     #refuse(source: RuntimeRecord, agentId: string): string | undefined {
         const target = this.runtimes.get(agentId);
-        if (!target?.collaborationActive) return "unknown_agent";
+        if (!target?.collaborationActive) return targetNotFound;
         if (target.id === source.id) return "self_target";
         if (
             source.networkId === null ||

@@ -1,6 +1,6 @@
 # AIOX 제품·아키텍처·결정 기억용 프롬프트
 
-기준일: 2026-09-08. 이 문서는 AIOX에 관한 사용자와의 대화, 제품 요구, 설계 결정, 실험 결과와 남은 논의를 새 Codex 세션에 전달하는 독립적인 문맥이다. 구현 완료 보고서가 아니다.
+초기 기준일: 2026-09-08. Network·MCP·상태·DB 관련 후속 결정은 2026-09-15 기준으로 반영한다. 이 문서는 AIOX에 관한 사용자와의 대화, 제품 요구, 설계 결정, 실험 결과와 남은 논의를 새 Codex 세션에 전달하는 독립적인 문맥이다. 구현 완료 보고서가 아니다.
 
 ## 1. 이 세션의 역할
 
@@ -367,7 +367,7 @@ Claude StopFailure에는 rate_limit, overloaded, authentication_failed, oauth_or
 
 일반 PreToolUse/PostToolUseFailure를 모두 수집해 AIOX delivery 오류로 만들지 않는다. agent가 자기 작업 중 겪는 도구 오류와 A2A 실패는 다르다. 승인·질문은 사용자 직접 작업에서도 발생하므로 Web 알림으로 전달하되 반드시 Message Service의 delivery 상태를 바꿀 필요는 없다. process/연결 손실은 hook 외의 실행 handle에서도 관측한다. reasoning 전문 수집은 요구하지 않는다.
 
-`agents_list()`의 현재 상태는 `idle`, `working`, `failed`만 공개한다. reasoning·도구 실행·사용자 질문·승인 대기는 모두 working으로 요약한다. 실행·연결 준비를 뜻하는 starting은 send 성공 상태가 아니며 MCP 공개 enum에 추가하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
+`agents_list()`와 Web은 동일한 `status`와 `status_reason`을 사용한다. 상태는 `aiox-preparing`, `idle`, `working`, `awaiting-user`, `failed`다. 준비 중 Agent도 허용된 route의 목록에 포함하지만 메시지 수신 준비 완료를 뜻하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
 
 Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승인 대기, 실패 원인, Host stopped를 구분한다. 알림 읽음이나 다른 요청의 완료로 미해결 사용자 요청 표시를 지우지 않는다.
 
@@ -386,9 +386,13 @@ Claude는 Runtime·session_id·prompt_id와 연결된 UserPromptSubmit/Stop을, 
 
 공통 HTTP MCP 도구는 `agents_list`와 `send`로 분리한다. `reply`, `replyExpected`, 재전송 도구를 제공하지 않으며 legacy envelope의 type/intent를 필수 입력으로 가져오지 않는다.
 
-- `agents_list()`는 현재 발신자가 outbound route로 보낼 수 있는 실행만 배열로 반환한다. 각 항목은 `agentId`, `name`, `role`, `description`, `status`다. 이름 미지정 시 daemon의 `agentId`를 name으로 사용한다. role·description 미지정은 목록에서 null, 수신 표시에서는 생략한다.
-- `send({ targets: [agentId, ...], content })`는 하나 또는 여러 대상 ID와 본문을 받는다. name·role·description은 대상 선택을 돕는 표시 정보이며 실제 전송 식별자는 agentId다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
-- daemon은 인증된 실행에서 source를 결정하고 전송 시점에 각 대상의 실행·membership·effective route를 검증한다. 오래된 목록은 권한이 아니며 대상별 접수·전송 시도 결과와 오류를 반환한다. 일부 실패를 전체 성공으로 표시하지 않는다.
+- `agents_list()`는 현재 발신자가 outbound route로 보낼 수 있는 실행만 배열로 반환한다. 각 항목은 `name`, `role`, `description`, `status`, `status_reason`이며 별도 `agentId` 필드는 없다. 이름 미지정 시 Runtime ID를 name으로 사용한다. role·description 미지정은 목록에서 null, 수신 표시에서는 생략한다.
+- `send({ targets: [nameOrId, ...], content })`는 Agent 이름 또는 실제 Runtime ID와 본문을 받는다. 목록의 name을 그대로 사용할 수 있고, 이름 있는 Agent도 실제 ID로 지정할 수 있다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
+- daemon은 인증된 source의 Network 안에서 전송 시점의 현재 참여자를 ID 우선·이름 순으로 해석하고 membership·effective route를 검증한다. 오래된 목록은 권한이 아니다.
+- 대상별 결과는 입력 문자열을 담은 `name`, `accepted`, 선택적 `error`다. 동일 입력은 한 번만 반환한다. 같은 실행의 이름과 ID를 함께 입력하면 각각에 같은 결과를 반환하되 실제 전달·Delivery 저장은 한 번만 한다.
+- 대상 부재는 `accepted: false`와 `agents_list` 재조회 안내로 반환한다. 이미 수락된 대상에는 재전송하지 않도록 안내하며 daemon은 자동 재전송하지 않는다.
+- 해석되지 않는 대상의 Delivery는 저장하지 않는다. 모든 대상이 해석되지 않으면 응답의 `messageId`만 생성하며 저장된 메시지 존재를 뜻하지 않는다.
+- B 종료 후 새 B가 참여하면 이름 B는 새 실행으로 해석한다. 종료된 B의 ID는 새 B로 바꾸지 않는다. 기존 요청·결과·알림은 원래 Runtime ID에 귀속한다.
 - A→B만 허용되면 A의 목록에는 B가 보이고 B의 목록에는 A가 보이지 않는다. 양방향·전이적 route를 추론하지 않는다. 대화상 회신도 `send`를 사용하며 역방향 route가 필요하다.
 - 수신 정보는 발신자의 name·role·description, daemon 접수 시각 `createdAt`, 본문 `content`다. daemon이 인증된 발신자 메타데이터를 채운다. deliveryId 등을 모델의 회신 도구 인자로 노출할 필요는 없지만 내부 메시지·대상별 delivery·vendor prompt/turn 상관관계는 유지한다.
 
@@ -422,7 +426,9 @@ Network에 속하는 Agent 수와 Host가 실행하는 Agent 수에 AIOX의 고�
 
 Agent당 동시 소속은 하나, Host manifest의 Network도 하나다. YAML `networks` map 표기는 유지하지만 현재 항목은 하나만 허용한다. join/leave·실행 중 소속 변경·external persistent Network 참조는 제외한다. YAML agents 목록은 최초 membership 선언이므로 유지한다.
 
-서로 다른 Host에서 같은 Agent/Network 이름을 쓸 수 있다. 내부 key는 hostRuntimeId 또는 networkId로 구분한다. 실행 중 Host 이름은 daemon 범위에서 유일하며 `/`는 qualified name 구분자로 예약한다. 이름이 모호하면 ID 또는 host-qualified 이름을 요구하고 후보를 보여 준다.
+Agent 이름은 참여 Network 안에서 유일하다. 준비 중·정리 대기 중인 등록도 이름을 예약하며 중복 등록을 거절한다. 다른 Network의 같은 이름은 허용한다. Network 미참여 실행의 이름 정책까지 확대하지 않는다.
+서로 다른 Host에서 같은 Agent/Network 이름을 쓸 수 있다. 내부 key는 hostRuntimeId 또는 networkId로 구분한다. 실행 중 Host 이름은 daemon 범위에서 유일하며 `/`는 qualified name 구분자로 예약한다.
+Network 범위 없는 일반 Agent 조회에서 여러 실행의 이름이 일치하면 모호성 오류와 후보를 제공한다. Network 내 등록 중복 거절과 일반 조회의 모호성 처리는 별개다.
 
 ```text
 H1 / reviewer / feature-a  ≠  H2 / reviewer / feature-a
@@ -443,6 +449,10 @@ Runtime edge override
 between은 자기 자신을 제외한 양방향 clique다. from/to는 단방향이다. reset은 해당 override를 제거한다. Host edge reset은 manifest edge로 돌아갈 수 있다. default deny가 manifest의 explicit allow를 지우지는 않는다. 조회 시 effective policy와 출처를 표시한다.
 
 YAML은 reference 검증·directed edge 확장·allow/deny 충돌 검증을 부수효과 전에 한다. runtime CLI는 같은 edge의 현재 override를 교체한다. 한 route 명령은 한 종류의 변경만 수행한다. `--to`는 from 계열과 함께 써야 한다. Host route 변경은 YAML을 수정하지 않고 Host 재실행 시 사라진다.
+
+Persistent route의 양쪽 endpoint는 해당 Network에 참여 중인 Agent의 이름 또는 Runtime ID여야 한다. 모든 대상을 ID 우선·이름 순으로 해석하고 검증한 뒤 Runtime ID로 저장한다. 같은 실행을 반복 지정해도 endpoint는 한 번만 적용한다.
+Network 또는 대상이 없거나 다른 Network의 대상을 지정하면 오류 설명을 표시하고 해당 명령을 실패로 종료한다. 일부 edge만 저장하지 않으며 daemon 종료를 뜻하지 않는다. default만 변경할 때는 endpoint가 필요하지 않다.
+default allow에서 A→B allow만 설정해도 B→A는 허용된다. 단방향 통신에는 B→A deny가 필요하다. reset은 차단이 아니라 default 복귀다.
 
 ### Worktree
 
@@ -545,7 +555,8 @@ aiox host agent stop <host> <agent-names...>
 
 Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실행·credential·binding·활성 membership을 정리하고 Host의 항목·메타데이터·실행 설정을 stopped로 유지한다. start는 기존 항목을 새 Runtime ID·credential로 실행하며 이전 vendor 대화를 자동 resume하지 않는다. 이미 실행 중인 항목을 중복 실행하지 않고 이름별 결과를 보고한다. 보존한 Host route 설정은 새 실행 ID에 연결하며 stopped 항목에는 전달하지 않는다.
 
-Standalone 실행 종료 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
+Standalone 실행 종료 또는 협업 등록 유효성 상실 시 실행 등록·membership·해당 실행 endpoint의 route를 정리한다. 정리 완료 후 이름을 재사용할 수 있으며 새 실행은 이전 route를 승계하지 않고 Network default를 적용한다. 따라서 default allow에서는 이전 B→A deny가 새 B를 차단하지 않는다. daemon 재시작 시 Network 이름·default는 유지하고 과거 Runtime의 잔존 route는 정리한다.
+Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다. 개별 Host Agent의 stopped 항목·보존 route 재연결은 앞의 별도 계약을 따른다.
 
 **명령·인증된 실행 위치와 실행 소유권**
 
@@ -824,9 +835,11 @@ AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시�
 
 보존 기본값은 요청 처리 종료 후 30일이다. 진행 중 요청은 삭제하지 않고, 정리 대상 요청의 본문·대상별 결과·연결된 daemon 알림을 함께 정리한다. 여러 대상의 처리가 남은 요청을 일부 완료만으로 삭제하지 않는다. 보존 일수는 전역 설정으로 변경하며 daemon 시작 시와 하루 한 번 정리한다. Host 종료 자체로 이력을 지우지 않는다. 이 정책은 persistent Network·route 정의, YAML·사용자 작업 파일을 삭제하거나 디스크 용량 상한을 보장하는 정책이 아니다.
 
-Persistent Network·route는 DB에 지속한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
+Persistent Network 이름·default는 DB에 지속한다. endpoint route는 참여 실행의 수명을 따르며 종료·daemon 재시작 시 정리한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
 
-TypeORM을 기존 better-sqlite3 위에 도입한다. Stage 1의 직접 SQL 구현과 구분되는 채택 목표이며 아직 TypeORM 설치·전환 완료가 아니다. 기존 DB를 보존하는 명시적 migration과 transaction을 사용하고 자동 synchronize로 schema를 변경하거나 두 migration 권위를 병행하지 않는다.
+TypeORM·better-sqlite3는 도입돼 있으며 현재 schema를 transaction 안에서 직접 초기화한다. 첫 배포 전에는 과거 개발 DB 호환을 위한 migration·backfill·legacy fallback을 유지하지 않는다. 저장 원자성·실패 재시도·재오픈 검증은 유지하고 startup 자동 삭제·reset은 하지 않는다. 배포 완료 통지 이후 schema 변경은 기존 데이터를 보존하는 migration으로 수행한다.
+
+DB 저장 ID를 UUID v7으로 통일하기로 결정했지만 아직 구현하지 않았다. 이를 현재 저장 형식으로 설명하거나 vendor 고유 ID까지 변경하는 결정으로 확대하지 않는다.
 
 언어·소리 설정의 localStorage 저장과 DB 기본 경로 연결은 후속 구현 사항이다.
 
@@ -846,7 +859,7 @@ Web 편집·미리보기 → 저장 → 검증 → 전역 파일 갱신 → 연�
 - daemon이 꺼져 있을 때 수정한 설정은 다음 시작에 검증한다.
 - 동시 편집 충돌 처리와 변경 감지 방식은 구현 때 정한다.
 
-SQLite는 동일 domain/schema/migration을 3 OS에서 사용한다. persistence 패키지가 접근하고 daemon이 연결을 소유한다. CLI·Web·adapter가 DB를 직접 수정하지 않는다. 파일 오류를 새 빈 DB로 우회하거나 자동 삭제하지 않는다. 필요 transaction과 migration, shutdown cleanup을 둔다. WAL 선택·pragma는 실제 필요에 따라 결정한다.
+SQLite는 동일 domain/schema를 3 OS에서 사용한다. persistence 패키지가 접근하고 daemon이 연결을 소유한다. CLI·Web·adapter가 DB를 직접 수정하지 않는다. 파일 오류를 새 빈 DB로 우회하거나 자동 삭제하지 않는다. transaction과 shutdown cleanup을 유지하고 schema 변경은 앞의 첫 배포 전·후 정책을 따른다. WAL 선택·pragma는 실제 필요에 따라 결정한다.
 
 Windows native와 WSL은 실행 환경·홈·DB·path·IPC가 다르다. 같은 환경 안에 daemon·Node·Git·vendor를 두는 구성이 초기 제안이다. Windows daemon의 wsl.exe 일반 shell 선택·Linux cwd 설정은 지원한다. 이를 Linux vendor의 혼합 협업 연동 전체 지원으로 확대하지 않는다. Windows 브라우저가 WSL Web에 접속하는 것은 별도 사례다.
 
@@ -1061,7 +1074,7 @@ Web 접속 → snapshot 크기 적용 → 화면 파싱·상태 보완
 
 ### Server / daemon 단계
 
-서버·daemon은 `node:http`, `ws`, 공식 MCP TypeScript SDK, Zod, `node-pty`, TypeORM, `better-sqlite3`를 채택한다. 별도 HTTP framework·event bus·추상화를 미리 추가하지 않는다. TypeORM 전환은 기존 Stage 1 DB와 migration을 보존한다. 실제 설치 단계에 Node >=22.12.0·SDK 호환성·지원 OS/CPU를 확인해 버전을 선택하며 채택과 설치·통합 검증 완료를 구분한다. YAML parser와 Web 세부 의존성은 실제 사용하는 단계에서 정한다.
+서버·daemon은 `node:http`, `ws`, 공식 MCP TypeScript SDK, Zod, `node-pty`, TypeORM, `better-sqlite3`를 채택한다. 별도 HTTP framework·event bus·추상화를 미리 추가하지 않는다. TypeORM 도입과 첫 배포 전·후 DB 변경 정책은 앞의 저장 계약을 따른다. 실제 설치 단계에 Node >=22.12.0·SDK 호환성·지원 OS/CPU를 확인해 버전을 선택하며 채택과 설치·통합 검증 완료를 구분한다. YAML parser와 Web 세부 의존성은 실제 사용하는 단계에서 정한다.
 
 Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/addon-serialize` 0.14.0이다. 이는 현재 채택·설치된 조합이며 영구 고정 제품 요구가 아니다. 업데이트 때 누락 상태 보완과 복원 회귀 검사를 함께 확인한다.
 

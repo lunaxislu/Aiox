@@ -8,7 +8,7 @@ status: open
 
 - [x] W1 Codex 실행·주입·수명 연결 — 환경·옵션 감사, active thread 입력 대응·전환 차단·소유 자원 정리, 사용자 동반 E2E와 최신 전체 검사 및 owner 반영을 완료했다.
 - [x] W2 Codex 관측·공통 상태 반영 — 공통 상태 구현·자동 검사·주요 실측을 완료했다. nullable 추가 실측은 사용자 지시로 생략. async 종료 후 선택 UI 부재, failed 대화 선택/취소 및 다른 연결별 복구는 미실측 제한으로 보존하고 W3로 진행한다.
-- [>] W3 Codex 간 실제 메시지 왕복 — 두 Codex Runtime의 agents_list/send·인증·단방향/양방향 route·toolOutput 본문/additionalContext·busy 입력·대상별 결과·발신자 전용 완료/실패 알림을 검증한다. interrupted 자동 통지 없음·알림 재귀 방지를 확인하고 코드/대역/실제 vendor 근거를 구분한다. Claude 완료를 선행 조건으로 두지 않는다.
+- [>] W3 Codex 간 실제 메시지 왕복 — Stage2-3 W8 이름/route/MCP 보완과 579 tests 결과를 소비하고 실제 agents_list/send·인증·단방향/양방향 route·본문/지침·busy 입력·대상별 결과·발신자 전용 완료/실패 알림을 검증한다. interrupted 자동 통지 없음·알림 비재귀와 코드/대역/실제 vendor 근거를 구분한다. 확정했으나 미구현인 DB 저장 ID UUID v7 통일의 구현·owner 반영도 후속 처리한다. Claude 완료를 선행 조건으로 두지 않는다.
 - [ ] W4 Claude와 Codex 교차 검증 — W1~W3 뒤 수행한다. Stage3 W2/W3/W5에서 필요한 Claude 메시지·관측 경계가 검증돼야 해당 시나리오를 완료한다. Claude 미해결로 막히는 경우 완료로 표시하지 않고 정확한 의존 항목을 Stage3에 연결해 그 작업 후 이 W4로 복귀한다. 양 vendor 송수신·결과 귀속·알림을 실제로 확인한다.
 - [ ] W5 Stage4 통합 리뷰·owner 반영·마감 — W1~W4 결과와 회귀·실측 범위, 실행/정리·상태·메시지 owner를 대조한다. 제목 helper의 incomplete AIOX MCP config current gap에 대한 별도 수정·유지 판단을 닫는다. 남은 OS·배포 인증은 Stage8 조건과 연결하고 Claude 교차 검증이 남아 있으면 Stage4 전체 완료로 처리하지 않는다.
 
@@ -20,7 +20,7 @@ status: open
 
 ### {Global}
 
-- 현재 활성 단계는 Stage4이며 W1/W2는 완료, 재개점은 W3 실제 Codex 간 왕복이다. 최신 W2 browser 검증·커밋 handoff의 실측 범위와 미실측 제한을 소비한다. nullable 추가 실측은 사용자 지시로 생략하며 실제 quota hook 순서, failed 대화 선택/취소, 다른 연결별 복구와 async 종료 후 선택 UI 제출을 완료로 확대하지 않는다. 순서는 W3 Codex 간 왕복, Claude 준비 후 W4 교차 검증, W5 통합 마감이다. 기존 제품 문맥은 logs/artifact/AIOX-TUI-Product-Context-Prompt.md 및 logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md를 따른다. 이번 W2 커밋은 사용자 지시로 수행하며 push는 지시받지 않았다.
+- 현재 활성 단계는 Stage4이고 재개점은 W3다. Stage2-3 W8의 최신 완료 entry에서 Network 이름 유일성·route 참여 검증/수명·MCP 이름/ID 전송·오류 안내 구현과 전체 579 tests 통과 결과를 소비한다. 같은 보완을 미구현으로 다시 시작하지 않는다. 실제 Codex 왕복·단방향 알림 검증 및 미구현 UUID v7 후속은 W3에 남는다. W1/W2 완료·실측 제한과 W4/W5 순서를 유지하며 commit·push는 별도 지시 없이 수행하지 않는다.
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Codex 실제 TUI + Runtime별 App Server + Binding Relay를 연결한다. 입력은 채택된 toolOutput 본문 + additionalContext 메타데이터이며 E2E가 실패할 때만 원인을 확인한 뒤 후순위 방법을 검토한다. 임의 active thread 선택이나 선제 fallback을 만들지 않는다.
 - Stage2~2-3에서 완료한 공통 실행 소유권·terminal·메시지·상태 결과를 직접 소비한다. Codex W1~W3는 Stage3 완료를 기다리지 않는다. 기존 shell의 aiox agent run codex → 같은 terminal TUI → 종료 후 shell 복귀를 연결하고 외부 CLI와 daemon 소유 자원의 종료 정책을 유지한다. Runtime/threadId/turnId로 입력 결과를 연결한다. Stage3 결과 의존은 W4의 Claude 교차 검증에만 적용한다.
 - W3에서 Codex↔Codex의 agents_list/send·인증·단방향/양방향 route·결과·발신자 전용 알림을 먼저 검증한다. 두 vendor 교차 검증은 W4에서 Claude 준비 상태에 따라 수행한다. interrupted 자동 통지 없음·알림 재귀 방지와 실제 OS별 근거/대역 구분은 공통으로 유지한다.
@@ -41,6 +41,10 @@ status: open
 ### {W2}
 
 - MCP elicitation의 nullable turnId 수명은 승인됐다. 현재 turn에 임의 귀속하지 않고 threadId/requestId로 추적·resolved 해소하며 turn 종료·새 turn 시작으로 지우지 않는다. 대화 전환은 표시 대상만 바꾸고 이전 대화의 미해결 요청을 보존한다. turnId가 있는 요청은 해당 turn 종료로 정리하고 늦은 요청으로 복원하지 않는다. 소켓 대역 구현 검증과 실제 elicitation 발생·해소 실측을 구분한다.
+
+### {W3}
+
+- 재개 시 Stage2-3 W8 최신 완료 entry와 현재 collaboration/host/runtime owner를 먼저 소비한다. MCP agents_list의 name을 send에 그대로 쓸 수 있고 실제 Runtime ID도 허용한다. default allow에서 단방향 검증은 B→A 명시 deny가 필요하며 새 메시지로 검증한다. B 목록에서 A 제외·직접 send 차단·AIOX 완료 통지·통지 비재귀를 실제 Codex에서 확인한다. 자동 검사 통과를 vendor 실측으로 대체하지 않는다. DB 저장 ID UUID v7 통일은 사용자 확정이나 미구현이다. 후속 작업에서 생성부·저장 consumer와 owner를 대조해 구현·검증하고 v4 Runtime ID와 vendor 고유 ID까지 임의 확장하지 않는다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -677,3 +681,33 @@ W2 완료 및 미실측 제한, W3 활성 pointer는 유지한다. 다음은 사
 ### 2026-09-15 14:30 · StopFailure 상세 필드 string 타입 확인
 
 사용자가 error_details의 string/object 여부와 오류별 필드 변형·공통 표시 문자열을 질문했다. Anthropic 배포 @anthropic-ai/claude-agent-sdk 0.3.220 sdk.d.ts의 StopFailureHookInput을 직접 확인했다(https://app.unpkg.com/@anthropic-ai/claude-agent-sdk@0.3.220/files/sdk.d.ts). error_details?: string, last_assistant_message?: string이며 error는 SDKAssistantMessageError다. 오류별 object union이나 다수 하위 필드 구조가 아니다. 공식 hooks 문서에 따르면 last_assistant_message는 StopFailure에서 화면 API 오류 문자열이다. 제안하는 공통 표시 선택은 비어 있지 않은 last_assistant_message → error_details → error 순이며 이는 아직 구현/승인된 정책이 아니다. 설치된 CLI에서 모든 오류 종류의 실제 필드 존재·본문을 실측한 것으로 확대하지 않는다.
+
+### 2026-09-15 15:05 · W3 단방향 설정·default allow 원인 확인
+
+사용자는 default allow인 w1에 --allow-from A --to B 적용 후 B 목록에 A가 보이고 B→A send가 가능하며 완료 알림이 없다고 보고했다. 제공한 CLI 출력과 host spec, domain route.ts, daemon networks.route/ reachable 및 messaging.send/settle을 대조했다. directed 변경은 default를 보존하며 명시 edge가 없는 B→A는 default allow를 따른다. send 시 역방향 허용을 저장하고 양방향 completed에는 자동 알림을 생성하지 않는다. 따라서 세 현상은 설정과 일치한다. 실제 daemon delivery 기록은 조회하지 않았으므로 유실 여부를 실측한 것은 아니다.
+
+앞선 역방향 route 제거 안내는 default allow에서 부족했다. 현재 A→B allow를 유지하고 node apps/cli/dist/main.js network route w1 --deny-from B --to A로 역방향을 명시 차단하도록 정정한다. reset은 default로 복귀하므로 차단이 아니다. 이후 B에서 agents_list를 새로 호출하고 새 W3-ONEWAY-02로 완료 알림을 확인해야 한다. 전송한 기존 메시지의 정책은 소급 변경되지 않는다. 실제 network 변경·vendor send·production 수정·테스트 재실행은 수행하지 않았다. W3 active 유지, 단방향 실제 검증은 남는다.
+
+### 2026-09-15 15:27 · W3 Network 이름·route 수명 정책 대조
+
+사용자는 원인 보고 후 사용 시나리오부터 재검토하도록 지시했다. 참여 중인 대상에 한해 route 변경, 같은 Network의 이름 중복 등록 거절, Standalone 종료 시 row/endpoint route 삭제 및 이름 재사용은 새 실행으로 취급하고 daemon 재시작 시 Network/default만 재사용하는 제안에 동의한 뒤 기존 정책 확인을 요청했다. 이번에는 제품·owner 변경 없이 현행 계약과 구현 차이를 조사했다.
+
+확인: runtime spec은 같은 이름/manifest/resume도 새 실행이며 이름/ID/Host-qualified 조회와 모호성 오류를 명시한다. host spec은 실행 중 Network 이동 없이 agent run 시 단일 Network 선택, Standalone 종료 시 등록·membership·endpoint route 삭제와 persistent 정의 유지, Host stopped 항목 및 보존 route를 새 ID에 연결하는 별도 계약을 가진다. Network 안 Agent 이름 유일성 명시는 확인한 정본/연결된 baseline·context prompt에서 찾지 못했다. RuntimeRegistry.register와 daemon 등록 경로에는 이름 중복 차단이 없고 daemon.test.ts:647은 동일 Network에 twin 두 개를 등록한 뒤 조회 409를 기대한다. 따라서 사용자 지향 Network 내 중복 등록 금지는 현행 테스트와 다르며 owner·구현·회귀를 함께 보완할 대상이다.
+
+route 변경은 Network 존재와 연산 모양만 검증하고 대상 이름 해석·참여 여부 검증 없이 저장한다. 앞선 실제 w1 조회에서 A/B 문자열 edge와 실제 UUID 불일치를 확인했다. stopRuntime→removeRuntimeRoutes는 UUID endpoint로 삭제하므로 잘못 저장된 이름 edge도 지워지지 않는 구조다. 정상 종료의 유효 UUID route 정리는 기존 daemon 테스트에 근거가 있다. RuntimeRegistry는 메모리이므로 재시작 시 과거 Agent를 복원하지 않고 DB는 Network/default/route를 보존한다. DB open/daemon bootstrap에서 비정상 종료 후 잔존 route를 정리하는 경로는 찾지 못했다. 새 UUID로 예전 UUID route가 적용되지는 않지만 잔존 row 제거까지 구현됐다고 말할 수 없다. 재시작·강제 종료 실험이나 테스트 재실행은 하지 않았다.
+
+다음 W3 보완은 이름 유일성·Network 범위 대상 해석과 참여 검증·종료 및 시작 시 route 수명 정합을 owner와 함께 구체화하는 것이다. Host의 stopped/재시작 계약을 Standalone 정책으로 덮어쓰지 않는다. W3 실제 단방향 메시지 성공/알림 검증은 미완료, 이번은 조사·논의 기록만 추가한다.
+
+### 2026-09-15 19:39 · Stage2-3 W8 선행 보완으로 활성 단계 이동
+
+사용자가 Network 내 동명 Agent 등록 거절을 명세·구현·테스트에 반영하기로 확정하고 Stage2-3 재개·활성화와 Work Item 기록을 지시했다. 해당 로그를 open으로 바꾸고 W8을 추가했으며 plan Stage2-3을 active, Stage4를 pending으로 전환했다. 현재 작업은 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md W8이다. Stage4 W3는 복귀 시 재개점으로 보존한다.
+
+W8 완료 후 Stage4 W3로 돌아온다. 이름 중복 금지만으로 route 이름/UUID 불일치·참여 대상 검증·잔존 route와 실제 단방향 알림 검증이 완료되지는 않는다. 기존 W3 조사·사용자 메시지 실측을 보존한다. 이번에는 로그·plan만 변경하며 제품 코드·명세·테스트 구현과 commit·push는 수행하지 않는다.
+
+### 2026-09-15 21:31 · Stage2-3 W8 결과 소비와 W3 복귀
+
+사용자 요청으로 Stage2-3 W8의 변경·검증을 확인해 기록하고 plan 활성 포인터를 Stage4로 돌렸다. 선행 구현 경위·정정·검증 근거는 logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md의 최신 W8 완료 entry가 소유한다. 이름 중복 거절뿐 아니라 route 이름/UUID 해석·현재 참여 검증·종료/재시작 수명과 MCP 이름/ID 전송·대상 부재 안내까지 구현돼 이전의 잔여 보완 목록을 대체한다. root의 이번 pnpm check는 46 files/579 tests 및 lint·format·build·typecheck 통과다.
+
+W3는 실제 Codex 양방향 회신과 단방향 차단/발신자 전용 완료 알림, 실패·중단 및 알림 비재귀 검증에서 재개한다. default allow에서는 역방향 명시 deny 뒤 새 메시지로 시험하며 목록 노출·실제 send·처리 완료 알림을 구분한다. 이번에는 사용자 daemon이나 vendor를 조작하지 않아 실제 W3 성공으로 판정하지 않는다.
+
+DB 저장 ID UUID v7 통일은 사용자 결정이며 아직 randomUUID 생성부와 owner에 반영되지 않았다. W3의 후속 행동 및 Required Context에 명시해 누락을 방지한다. Runtime ID 전체나 vendor 고유 ID까지 변경했다고 기록하지 않는다. W1/W2 완료·기존 실측 제한과 W4/W5 순서는 유지한다. Stage4 open·W3 active이며 이번 요청은 기록과 복귀까지만 수행했다. 제품 변경·후속 실험·commit·push 없음.

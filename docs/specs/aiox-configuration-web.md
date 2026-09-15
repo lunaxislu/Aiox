@@ -84,7 +84,7 @@ AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시�
 
 보존 기본값은 요청 처리 종료 후 30일이다. 진행 중 요청은 삭제하지 않고, 정리 대상 요청의 본문·대상별 결과·연결된 daemon 알림을 함께 정리한다. 여러 대상의 처리가 남은 요청을 일부 완료만으로 삭제하지 않는다. 보존 일수는 전역 설정으로 변경하며 daemon 시작 시와 하루 한 번 정리한다. Host 종료 자체로 이력을 지우지 않는다. 이 정책은 persistent Network·route 정의, YAML·사용자 작업 파일을 삭제하거나 디스크 용량 상한을 보장하는 정책이 아니다.
 
-Persistent Network·route는 DB에 지속한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
+Persistent Network 이름·default는 DB에 지속한다. 참여 실행의 route 수명과 daemon 재시작 정리는 [[docs/specs/aiox-host]]의 Routing·종료 계약을 따른다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
 
 TypeORM과 better-sqlite3 및 transaction을 유지한다. 빈 DB를 현재 schema로 직접 초기화하고 저장·조회·재오픈을 검증한다. 첫 배포 전 개발 DB 변경 원칙은 [[AGENTS]]의 Development Database Before First Release를 따른다. 자동 synchronize로 schema를 변경하지 않는다. 현재 초기화 구현과 검증 근거는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 

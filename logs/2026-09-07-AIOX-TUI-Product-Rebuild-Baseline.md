@@ -24,7 +24,7 @@ status: decided
 - 사용자가 2026-09-07 새 plan과 단일 상세 로그 작성을 요청했다. 본 로그는 Stage 0 요구·근거·계약 재정립 수명이다. 기존 미완성 구현·plan은 설계 제약이 아니며 구현을 자동 재개하지 않는다.
 - Headless·Claude SDK 제외. Claude TUI inbox와 hooks, Codex App Server와 TUI, 공통 HTTP MCP가 목표다. 공개 AIOX 사이트는 새 plan의 마지막 단계다.
 - 기록의 근거 구분을 유지한다: 사용자 전달 실측, 이전 subagent 조사, 이번 직접 코드 확인, 공식 문서, 사용자 결정, 제안·미확인. 삭제된 테스트 산출물을 현재 존재하는 증거처럼 링크하지 않는다.
-- Stage 0 완료. 현재 제품 권위는 docs/aiox-tui-product.md와 연결된 새 문서다. §25는 owner map과 구현 미결이며 당시 Stage 1로 인계했으며 현재 활성 작업은 logs/2026-09-07-AIOX-TUI-Stage2-Daemon-MCP-Terminal.md다. 후속 합의는 관련 본문에 통합했고 과거 실험·작성 entry는 당시 근거로 읽는다. 개인 architecture.excalidraw와 기존 사용자 코드 변경은 보존했다.
+- Stage 0 완료. 현재 제품 권위는 docs/aiox-tui-product.md와 연결된 문서다. §25는 당시 owner map과 구현 미결을 보존하며 현재 활성 작업은 plans/aiox-tui-product-rebuild.md와 scripts/onramp로 확인한다. 후속 합의는 관련 본문에 통합했고 과거 실험·작성 entry는 당시 근거로 읽는다. 개인 architecture.excalidraw와 기존 사용자 코드 변경은 보존했다.
 
 
 ## 2026-09-07 · W1 대화 기반 제품 재구축 기준선과 검증 근거
@@ -341,7 +341,7 @@ Host 실행 H2 → Network N2
 
 - D: persistent Network는 `aiox network`로 관리하고 host-managed Network 하나는 Host manifest로 선언·실체화한다. 위 N1/N2는 별도 Host에 속한 별도 Network다.
 - D: Host-managed NetworkSpec의 authority는 aiox.yaml이며 Host 실행 범위의 임시 자원이다. Persistent NetworkSpec의 authority는 daemon DB이며 명시적 network delete까지 유지된다. daemon은 두 종류의 NetworkRuntime에서 같은 routing engine으로 membership/discovery/delivery를 실행한다. YAML 선언을 persistent global Network로 동시에 저장·소유하는 모델은 사용하지 않는다.
-- D: Host-managed Network는 Host 종료 시 membership과 함께 정리한다. 비정상 종료도 Host 등록의 유효성 상실을 감지한 정리 경로에서 처리해야 한다. 감지 수단으로 lease를 새로 강제하지는 않는다. Persistent Network 정의는 daemon 재시작 후에도 유지하지만 과거 Runtime membership을 살아 있는 프로세스로 간주하지 않는다.
+- D: Host-managed Network는 Host 종료 시 membership과 함께 정리한다. 비정상 종료도 Host 등록의 유효성 상실을 감지한 정리 경로에서 처리해야 한다. 감지 수단으로 lease를 새로 강제하지는 않는다. Persistent Network 이름·default는 daemon 재시작 후에도 유지하지만 과거 Runtime membership은 복원하지 않고 잔존 endpoint route를 정리한다.
 - D: Network 이름은 Host runtime scope와 persistent global scope를 구분한다. 표시 예시는 feature-host/feature-a와 feature-a이고, 내부 식별은 Host runtime ID 또는 독립 Network ID를 사용한다. 서로 다른 scope를 이름만으로 merge/replace하지 않는다. Host YAML의 persistent Network external 참조는 현재 범위에서 제외한다.
 - D: Network에 속하는 Agent 수와 Host가 실행하는 Agent 수에 AIOX의 고정 숫자 상한을 두지 않는다. 사용자는 100개·1,000개 이상도 계속 추가할 수 있으며 숫자만으로 등록을 거절하지 않는다. 실제 실행의 자원 부족·vendor 제한은 해당 실패로 보고한다. 이는 Agent당 Network 최대 1개·Host당 Network 1개 계약과 별개다.
 - D: 일반 `network list --all`/`show`에서 host-managed Network도 조회할 수 있지만, 그 runtime route 변경은 `host network route`를 사용한다. 일반 network delete/route는 persistent Network에 적용한다. YAML의 networks.<name>.agents는 초기 소속 선언이므로 유지하며 동적 가입·탈퇴 명령과 혼동하지 않는다.
@@ -579,9 +579,13 @@ D: 이전 reply/replyExpected 논의를 다음 채택 계약으로 대체한다.
 
 공통 HTTP MCP 도구는 `agents_list`와 `send`로 분리한다. `reply`, `replyExpected`, 재전송 도구를 제공하지 않으며 legacy envelope의 type/intent를 필수 입력으로 가져오지 않는다.
 
-- `agents_list()`는 현재 발신자가 outbound route로 보낼 수 있는 실행만 배열로 반환한다. 각 항목은 `agentId`, `name`, `role`, `description`, `status`다. 이름 미지정 시 daemon의 `agentId`를 name으로 사용한다. role·description 미지정은 목록에서 null, 수신 표시에서는 생략한다.
-- `send({ targets: [agentId, ...], content })`는 하나 또는 여러 대상 ID와 본문을 받는다. name·role·description은 대상 선택을 돕는 표시 정보이며 실제 전송 식별자는 agentId다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
-- daemon은 인증된 실행에서 source를 결정하고 전송 시점에 각 대상의 실행·membership·effective route를 검증한다. 오래된 목록은 권한이 아니며 대상별 접수·전송 시도 결과와 오류를 반환한다. 일부 실패를 전체 성공으로 표시하지 않는다.
+- `agents_list()`는 현재 발신자가 outbound route로 보낼 수 있는 실행만 배열로 반환한다. 각 항목은 `name`, `role`, `description`, `status`, `status_reason`이며 별도 `agentId` 필드는 없다. 이름 미지정 시 Runtime ID를 name으로 사용한다. role·description 미지정은 목록에서 null, 수신 표시에서는 생략한다.
+- `send({ targets: [nameOrId, ...], content })`는 Agent 이름 또는 실제 Runtime ID와 본문을 받는다. 이름 있는 Agent도 두 방식 모두 허용한다. 허용된 모든 Agent에게 자동 fan-out하지 않는다.
+- daemon은 인증된 source의 Network 안에서 전송 시점의 현재 참여자를 ID 우선·이름 순으로 해석하고 membership·effective route를 검증한다. 오래된 목록은 권한이 아니다.
+- 대상별 결과는 입력 문자열을 담은 `name`, `accepted`, 선택적 `error`다. 동일 입력은 한 번만 반환한다. 같은 실행의 이름과 ID를 함께 입력하면 각각에 같은 결과를 반환하되 실제 전달·Delivery 저장은 한 번만 한다.
+- 대상 부재는 `accepted: false`와 `agents_list` 재조회 안내로 반환한다. 이미 수락된 대상에는 재전송하지 않도록 안내하며 daemon은 자동 재전송하지 않는다.
+- 해석되지 않는 대상의 Delivery는 저장하지 않는다. 모든 대상이 해석되지 않으면 응답의 `messageId`만 생성하며 저장된 메시지 존재를 뜻하지 않는다.
+- B 종료 후 새 B가 참여하면 이름 B는 새 실행으로 해석한다. 종료된 B의 ID는 새 B로 바꾸지 않는다. 기존 요청·결과·알림은 원래 Runtime ID에 귀속한다.
 - A→B만 허용되면 A의 목록에는 B가 보이고 B의 목록에는 A가 보이지 않는다. 양방향·전이적 route를 추론하지 않는다. 대화상 회신도 `send`를 사용하며 역방향 route가 필요하다.
 - 수신 정보는 발신자의 name·role·description, daemon 접수 시각 `createdAt`, 본문 `content`다. daemon이 인증된 발신자 메타데이터를 채운다. deliveryId 등을 모델의 회신 도구 인자로 노출할 필요는 없지만 내부 메시지·대상별 delivery·vendor prompt/turn 상관관계는 유지한다.
 
@@ -615,7 +619,7 @@ D: MCP `aiox_retransmit_unconfirmed_delivery`(대화에서는 retransmit_unconfi
 
 #### 18. MCP agents_list와 상태 모델
 
-D: `agents_list()`의 현재 상태는 `idle`, `working`, `failed`만 공개한다. reasoning·도구 실행·사용자 질문·승인 대기는 모두 working으로 요약한다. 실행·연결 준비를 뜻하는 starting은 send 성공 상태가 아니며 MCP 공개 enum에 추가하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
+D: `agents_list()`와 Web은 동일한 `status`와 `status_reason`을 사용한다. 상태는 `aiox-preparing`, `idle`, `working`, `awaiting-user`, `failed`다. 준비 중 Agent도 허용된 route의 목록에 포함하지만 메시지 수신 준비 완료를 뜻하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
 
 Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승인 대기, 실패 원인, Host stopped를 구분한다. 알림 읽음이나 다른 요청의 완료로 미해결 사용자 요청 표시를 지우지 않는다.
 
@@ -662,14 +666,14 @@ P: 저장 위치를 아래처럼 나누자는 제안이 있었다. 명시적 결
 
 SQLite의 3 OS 적용 기준(사용자 요청에 따른 목표 보강, 제품 구현 완료 아님):
 
-- D/P: Windows/Linux/macOS에서 동일한 domain·schema·migration을 사용하고 OS별 DB 모델을 만들지 않는다. SQLite 접근은 packages/persistence가 담당하고 daemon이 연결을 소유한다. CLI·Web·vendor adapter가 DB 파일을 직접 열어 상태를 수정하지 않는다.
-- P: DB 위치는 실행 환경의 사용자 홈 아래 `.aiox/aiox.db`를 기본 후보로 둔다. Node의 homedir와 path 조합으로 구성하며 `~` 문자열이나 `/Users/...`를 하드코딩하지 않는다. npm 전역 설치 디렉터리·프로젝트·Worktree별로 DB를 만들지 않는다. 최초 daemon 시작 시 디렉터리·DB 준비와 migration을 수행하고 준비 실패 시 정상 기동으로 표시하지 않는다.
+- D/P: Windows/Linux/macOS에서 동일한 domain·schema를 사용하고 OS별 DB 모델을 만들지 않는다. SQLite 접근은 packages/persistence가 담당하고 daemon이 연결을 소유한다. CLI·Web·vendor adapter가 DB 파일을 직접 열어 상태를 수정하지 않는다.
+- P: DB 위치는 실행 환경의 사용자 홈 아래 `.aiox/aiox.db`를 기본 후보로 둔다. Node의 homedir와 path 조합으로 구성하며 `~` 문자열이나 `/Users/...`를 하드코딩하지 않는다. npm 전역 설치 디렉터리·프로젝트·Worktree별로 DB를 만들지 않는다. 최초 daemon 시작 시 디렉터리·DB 준비와 현재 schema 초기화를 수행하고 준비 실패 시 정상 기동으로 표시하지 않는다.
 - P: Windows native와 WSL은 각 환경의 홈에 별도 DB를 둔다. Windows daemon과 WSL daemon이 Windows 마운트 경로의 같은 파일을 동시에 공유하는 운영은 도입하지 않는다. 실행 환경별 로컬 저장 원칙이며 프로젝트별 DB 분리는 아니다.
 - R: 현재 root package.json에는 better-sqlite3 ^12.10.0과 Node ^20.19.0 또는 ^22.12.0 또는 ^24.0.0 지원 선언이 있다. packages/database/package.json에는 domain 의존만 있고 SQLite driver 의존은 없다. 따라서 신규 persistence가 이미 3 OS 설치·동작을 검증한 것으로 취급하지 않는다.
 - O/P: better-sqlite3 공식 README는 지원 Node 버전 요구와 주요 플랫폼/아키텍처용 prebuilt binary 제공을 명시한다(https://github.com/WiseLibs/better-sqlite3). OS 이름만으로 설치 성공을 보장하지 말고 채택 버전의 Node·CPU 아키텍처 조합에서 배포 artifact 설치·driver 로딩을 확인한다. 후속 Stage 1에서 better-sqlite3 12.11.1을 채택했고 Stage 2에서는 그 위 TypeORM 도입을 선택했다. 이번 문서 갱신은 설치·업그레이드를 실행하지 않는다. 지원 Node 범위와 native binary 배포는 함께 확정한다.
-- P: DB migration과 상태 변경은 필요한 transaction 경계로 처리한다. 실행 중 포트 변경으로 별도 daemon이 같은 DB를 중복 소유하지 않게 한다. `daemon stop --force`도 Agent 강제 종료 뒤 진행 중 DB 작업을 정리하고 연결을 닫은 후 daemon을 종료한다. 프로세스 강제 종료와 DB 파일 삭제를 혼동하지 않는다. DB 접근 오류를 빈 신규 DB로 우회하거나 기존 파일을 자동 삭제하지 않는다.
+- P: DB 초기화·상태 변경은 필요한 transaction 경계로 처리한다. 실행 중 포트 변경으로 별도 daemon이 같은 DB를 중복 소유하지 않게 한다. 종료는 §24의 실행 소유권 정책에 따라 협업·소유 자원과 진행 중 DB 작업을 정리하고 연결을 닫은 후 완료한다. 프로세스 강제 종료와 DB 파일 삭제를 혼동하지 않는다. DB 접근 오류를 빈 신규 DB로 우회하거나 기존 파일을 자동 삭제하지 않는다.
 - O/P: WAL을 채택한다면 DB와 같은 디렉터리의 -wal/-shm 파일 접근 및 로컬 파일시스템 조건을 고려한다. SQLite는 WAL의 네트워크 파일시스템 제약과 WAL 파일의 지속 상태 의미를 설명한다(https://sqlite.org/wal.html). 실행 중 sidecar 파일을 임의 삭제하지 않는다. WAL 채택과 세부 pragma는 아직 구현 선택이며 무조건 새 튜닝 설정을 추가하지 않는다.
-- P/Q: 설치→DB 생성·migration→저장→정상/force 종료→재시작 후 저장 데이터 확인을 Windows native/Linux/macOS에서 검증한다. WSL은 Linux 환경 실행과 Windows 브라우저 연결을 별도로 확인한다. Linux Docker 성공을 Windows 실측으로 대체하지 않는다. 현재 OS별 실측이나 실제 DB migration은 수행하지 않았다.
+- P/Q: 설치→현재 schema로 DB 초기화→저장→정상/force 종료→재시작 후 저장 데이터 확인을 Windows native/Linux/macOS에서 검증한다. WSL은 Linux 환경 실행과 Windows 브라우저 연결을 별도로 확인한다. Linux Docker 성공을 Windows 실측으로 대체하지 않는다. OS별 검증 완료 여부는 해당 단계 로그의 실측 근거로 판정한다.
 
 - D/Q: JSON과 아래 본문 보존 정책은 채택했다. 설정 동시 편집, DB 기본 경로 연결·WAL 등의 실제 구현은 남아 있다.
 
@@ -677,13 +681,15 @@ AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시�
 
 보존 기본값은 요청 처리 종료 후 30일이다. 진행 중 요청은 삭제하지 않고, 정리 대상 요청의 본문·대상별 결과·연결된 daemon 알림을 함께 정리한다. 여러 대상의 처리가 남은 요청을 일부 완료만으로 삭제하지 않는다. 보존 일수는 전역 설정으로 변경하며 daemon 시작 시와 하루 한 번 정리한다. Host 종료 자체로 이력을 지우지 않는다. 이 정책은 persistent Network·route 정의, YAML·사용자 작업 파일을 삭제하거나 디스크 용량 상한을 보장하는 정책이 아니다.
 
-Persistent Network·route는 DB에 지속한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
+Persistent Network 이름·default는 DB에 지속한다. endpoint route는 참여 실행의 수명을 따르며 종료·daemon 재시작 시 정리한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
 
-TypeORM을 기존 better-sqlite3 위에 도입한다. Stage 1의 직접 SQL 구현과 구분되는 채택 목표이며 아직 TypeORM 설치·전환 완료가 아니다. 기존 DB를 보존하는 명시적 migration과 transaction을 사용하고 자동 synchronize로 schema를 변경하거나 두 migration 권위를 병행하지 않는다.
+TypeORM·better-sqlite3는 도입돼 있으며 현재 schema를 transaction 안에서 직접 초기화한다. 첫 배포 전에는 과거 개발 DB 호환을 위한 migration·backfill·legacy fallback을 유지하지 않는다. 저장 원자성·실패 재시도·재오픈 검증은 유지하고 startup 자동 삭제·reset은 하지 않는다. 배포 완료 통지 이후 schema 변경은 기존 데이터를 보존하는 migration으로 수행한다.
+
+D: DB 저장 ID를 UUID v7으로 통일하기로 결정했다. 아직 구현하지 않았으며 현재 저장 형식이나 vendor 고유 ID 변경으로 설명하지 않는다.
 
 서버 라이브러리 후속 결정:
 
-서버·daemon은 `node:http`, `ws`, 공식 MCP TypeScript SDK, Zod, `node-pty`, TypeORM, `better-sqlite3`를 채택한다. 별도 HTTP framework·event bus·추상화를 미리 추가하지 않는다. TypeORM 전환은 기존 Stage 1 DB와 migration을 보존한다. 실제 설치 단계에 Node >=22.12.0·SDK 호환성·지원 OS/CPU를 확인해 버전을 선택하며 채택과 설치·통합 검증 완료를 구분한다. YAML parser와 Web 세부 의존성은 실제 사용하는 단계에서 정한다.
+서버·daemon은 `node:http`, `ws`, 공식 MCP TypeScript SDK, Zod, `node-pty`, TypeORM, `better-sqlite3`를 채택한다. 별도 HTTP framework·event bus·추상화를 미리 추가하지 않는다. TypeORM 도입과 첫 배포 전·후 DB 변경 정책은 앞의 저장 계약을 따른다. 실제 설치 단계에 Node >=22.12.0·SDK 호환성·지원 OS/CPU를 확인해 버전을 선택하며 채택과 설치·통합 검증 완료를 구분한다. YAML parser와 Web 세부 의존성은 실제 사용하는 단계에서 정한다.
 
 #### 20. 설정 편집, 터미널 커스터마이징, keyboard
 
@@ -1180,7 +1186,10 @@ aiox
 
 - D: network create의 기본 routing 정책은 allow다. 명시 edge rule이 없으면 Network default를 적용한다. list는 기본 persistent만, --all은 host-managed도 포함한다. show는 host-qualified Network도 받는다. 동적 가입·탈퇴 명령은 제공하지 않는다.
 - D: route 호출은 한 번에 한 종류의 변경이다. between은 자기 자신을 제외한 모든 상호 directed edge로 전개한다. from은 --to가 필수이며 --to 단독도 오류다. Persistent Network reset은 명시 edge rule을 제거해 Network default로 돌아간다. Host reset의 상속 순서는 아래 계약을 따른다.
-- D: Agent resolver는 이름/ID/host-qualified 이름을 지원하고 이름이 여러 활성 Runtime에 걸치면 모호성 오류와 후보를 제공한다. standalone 실행은 foreground이며 종료는 Ctrl+C·/exit 등 세션에서 수행한다. 별도 agent stop/attach/detach는 deferred다. Host 이름은 실행 중 daemon 범위에서 유일하고 `/`는 qualified name 구분자로 예약하므로 Host/Agent/Network 사용자 이름에는 허용하지 않는다.
+- D: Persistent route의 endpoint는 해당 Network에 참여 중인 Agent의 이름 또는 Runtime ID로 지정한다. 모든 대상을 ID 우선·이름 순으로 해석·검증한 뒤 Runtime ID로 저장한다. 같은 실행을 반복 지정해도 endpoint는 한 번만 적용한다. Network 또는 대상 부재·다른 Network 대상은 전체 변경을 거절하고 CLI에 오류를 표시해 해당 명령만 실패 종료한다. default만 변경할 때는 endpoint가 필요하지 않다.
+- D: default allow에서 A→B allow만 설정해도 B→A는 허용된다. 단방향 통신에는 B→A deny가 필요하며 reset은 차단이 아니다.
+- D: Agent 이름은 참여 Network 안에서 유일하다. 준비 중·정리 대기 중인 등록도 이름을 예약하며 중복 등록을 거절한다. 다른 Network의 같은 이름은 허용한다. Network 미참여 실행의 이름 정책까지 확대하지 않는다.
+- D: 일반 Agent resolver는 이름/ID/host-qualified 이름을 지원하고 Network 범위 없는 조회에서 여러 실행의 이름이 일치하면 모호성 오류와 후보를 제공한다. standalone 실행은 foreground이며 종료는 Ctrl+C·/exit 등 세션에서 수행한다. 별도 agent stop/attach/detach는 deferred다. Host 이름은 실행 중 daemon 범위에서 유일하고 `/`는 qualified name 구분자로 예약하므로 Host/Agent/Network 사용자 이름에는 허용하지 않는다.
 **daemon 소유권·환경별 종료 정책**
 
 현재 종료 계약은 [Runtime spec](../docs/specs/aiox-runtime.md)을 따른다.
@@ -1272,7 +1281,8 @@ aiox host agent stop <host> <agent-names...>
 
 Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실행·credential·binding·활성 membership을 정리하고 Host의 항목·메타데이터·실행 설정을 stopped로 유지한다. start는 기존 항목을 새 Runtime ID·credential로 실행하며 이전 vendor 대화를 자동 resume하지 않는다. 이미 실행 중인 항목을 중복 실행하지 않고 이름별 결과를 보고한다. 보존한 Host route 설정은 새 실행 ID에 연결하며 stopped 항목에는 전달하지 않는다.
 
-Standalone 실행 종료 시 실행 등록·membership·해당 실행 endpoint의 활성 route를 정리한다. Persistent Network 정의 자체는 남긴다. Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다.
+Standalone 실행 종료 또는 협업 등록 유효성 상실 시 실행 등록·membership·해당 실행 endpoint의 route를 정리한다. 정리 완료 후 이름을 재사용할 수 있으며 새 실행은 이전 route를 승계하지 않고 Network default를 적용한다. 따라서 default allow에서는 이전 B→A deny가 새 B를 차단하지 않는다. daemon 재시작 시 Network 이름·default는 유지하고 과거 Runtime의 잔존 route는 정리한다.
+Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다. 개별 Host Agent의 stopped 항목·보존 route 재연결은 앞의 별도 계약을 따른다.
 
 - 실행 전 YAML 전체, Agent 참조, Adapter 지원, Host 이름, Network를 검증한다. 실패 보상은 이번 실행에서 만든 Runtime·membership·binding·credential에 한정하고 기존 Host/사용자 작업 파일을 삭제하지 않는다. 정리 실패를 숨기고 전부 rollback됐다고 보고하지 않는다.
 - `--name`이 있으면 YAML host.name의 기본값을 덮어쓴다. 같은 YAML로 현재 경로 Host와 별도 Worktree Host를 실행할 수 있게 하기 위한 선택이며, 레거시의 서로 다른 이름이면 오류 규칙은 채택하지 않는다. 실행 중인 이름과의 충돌 검사는 유지한다.
@@ -1390,7 +1400,7 @@ W2의 제품 방향 결정은 완료했다. 아래는 구현 단계에서 구체
 
 1. Stage 2-2는 공통 실행 소유권·vendor 경계, Web shell 설정·사전 검증과 OS별 종료 작업을 마감했다. Windows/WSL shell 실측과 OS별 CI 범위는 [Stage 2-2 기록](2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md)을 따른다. 이후 외부 실행 유지 범위의 교정은 [Stage 2-3](2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md) W1에서 완료했으며, 별도 처리·복구 경계 개선을 이어간 뒤 Stage 3 W1로 복귀한다. 과거 외부 종료 테스트 성공을 현재 외부 생존 정책의 검증으로 승계하지 않는다. 실제 vendor 메시지 E2E와 추가 OS 통합은 Stage 3, Codex TUI·Relay·App Server는 Stage 4, Host 실행은 Stage 5 범위다.
 2. §16·§18의 확정된 MCP schema·공개 상태·대상별 알림을 구현한다. 정확한 MCP 응답 포장과 vendor 이벤트 상관관계를 검증하되 replyExpected·상태 enum을 다시 선택 과제로 만들지 않는다.
-3. TypeORM 채택을 기존 Stage 1 DB/migration과 연결한다. AIOX 본문과 알림 보존 정책, 진행 중 요청 제외·관련 데이터 정리 경계를 검증한다. JSON·기본 포트·보존 기간은 미결이 아니다.
+3. TypeORM 도입과 현재 schema 직접 초기화는 반영됐다. AIOX 본문·알림 보존과 진행 중 요청 제외·관련 데이터 정리의 검증 근거는 저장 owner와 해당 단계 로그를 따른다. DB 저장 ID UUID v7 통일은 확정했지만 미구현이다. JSON·기본 포트·보존 기간은 미결이 아니다.
 4. Codex toolOutput+additionalContext E2E, busy 입력의 threadId/turnId 연결과 서버 요청 관측·사용자 응답 owner를 확인한다.
 5. Claude hidden inbox launch와 session_id/prompt_id 관측 연결·native Windows token forwarding을 확인한다. 이미 전달받은 단일 idle 성공을 busy 전체 검증으로 확대하지 않는다.
 6. Stage 2-1에서 완료한 §23의 공통 터미널 복원 기반을 Stage 6의 React 운영 UI·탭·분할·배치 복귀에 통합한다. 사용자 재인증 없는 Web 자동 복귀, 상세 상태·미해결 질문/승인 표시와 소리 묶음·multi-tab 주체는 해당 운영 Web·알림 단계에서 구현한다.
