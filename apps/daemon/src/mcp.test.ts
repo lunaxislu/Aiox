@@ -218,6 +218,7 @@ describe("agents_list", () => {
                 role: null,
                 description: null,
                 status: "idle",
+                status_reason: null,
             },
         ]);
     });
@@ -232,24 +233,24 @@ describe("agents_list", () => {
         });
         const client = await connect(a.token);
 
-        b.vendor.activity("tool");
+        b.vendor.status("working");
         expect((await agentsList(client))[0]).toMatchObject({
             name: "b",
             role: "review",
             description: "reviews",
             status: "working",
         });
-        b.vendor.activity("awaiting-user");
+        b.vendor.status("awaiting-user");
         expect((await agentsList(client))[0]).toMatchObject({
-            status: "working",
+            status: "awaiting-user",
         });
-        b.vendor.activity("failed");
+        b.vendor.status("failed");
         expect((await agentsList(client))[0]).toMatchObject({
             status: "failed",
         });
     });
 
-    it("hides an agent that is not a send target at all", async () => {
+    it("removes revoked agents", async () => {
         const a = await join("a");
         const b = await join("b");
         await route({
@@ -259,9 +260,7 @@ describe("agents_list", () => {
         });
         const client = await connect(a.token);
 
-        b.vendor.activity("starting");
-        expect(await agentsList(client)).toEqual([]);
-        b.vendor.activity("stopped");
+        harness.daemon.services.runtimes.revoke(b.id);
         expect(await agentsList(client)).toEqual([]);
     });
 });
@@ -509,8 +508,8 @@ describe("automatic notification", () => {
 
         // The user asks B for something directly. It has no delivery id, so
         // there is nothing to settle and nobody to notify.
-        b.vendor.activity("reasoning");
-        b.vendor.activity("idle");
+        b.vendor.status("working");
+        b.vendor.status("idle");
         expect(await unread()).toHaveLength(1);
     });
 
@@ -526,10 +525,10 @@ describe("automatic notification", () => {
         const { b, sent } = await pair(true);
         await b.vendor.settle(b.vendor.deliveryIds[0]!, "completed");
         // B moves straight on to other work; X is still completed.
-        b.vendor.activity("tool");
+        b.vendor.status("working");
 
-        expect(harness.daemon.services.runtimes.get(b.id)!.activity).toBe(
-            "tool",
+        expect(harness.daemon.services.runtimes.get(b.id)!.status).toBe(
+            "working",
         );
         const stored = await harness.daemon.services.db.messages.deliveryFor(
             sent.messageId,
@@ -588,4 +587,28 @@ it("does not disclose discovery results when the caller is revoked during route 
         release();
         effective.mockRestore();
     }
+});
+
+it("publishes preparing agents but refuses delivery until ready", async () => {
+    const a = await join("a");
+    const b = await join("b");
+    await route({ kind: "between", policy: "allow", agents: [a.id, b.id] });
+    const client = await connect(a.token);
+    b.vendor.status("aiox-preparing");
+    expect((await agentsList(client))[0]).toMatchObject({
+        agentId: b.id,
+        status: "aiox-preparing",
+        status_reason: null,
+    });
+    const web = (await (
+        await fetch(harness.webUrl("/api/web/agents"))
+    ).json()) as { agentId: string }[];
+    expect(web.find((agent) => agent.agentId === b.id)).toMatchObject({
+        status: "aiox-preparing",
+        status_reason: null,
+    });
+    expect((await send(client, [b.id], "too early")).results).toEqual([
+        { agentId: b.id, accepted: false, error: "not_available" },
+    ]);
+    expect(b.vendor.received).toHaveLength(0);
 });

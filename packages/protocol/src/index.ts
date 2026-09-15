@@ -175,21 +175,17 @@ export const agentViewSchema = z.object({
     name: z.string(),
     role: z.string().nullable(),
     description: z.string().nullable(),
-    activity: z.enum([
-        "starting",
+    status: z.enum([
+        "aiox-preparing",
         "idle",
-        "reasoning",
-        "tool",
+        "working",
         "awaiting-user",
         "failed",
-        "stopped",
     ]),
     networkId: z.string().nullable(),
     hostId: z.string().nullable(),
     terminalId: z.string().nullable(),
-    observation: z
-        .object({ event: z.string(), reason: z.string().nullable() })
-        .nullable(),
+    status_reason: z.string().nullable(),
 });
 
 export const notificationViewSchema = z.object({
@@ -228,7 +224,7 @@ export type CreateNetwork = z.infer<typeof createNetworkSchema>;
 export type RouteOperation = z.infer<typeof routeOperationSchema>;
 export type RouteRequest = z.infer<typeof routeRequestSchema>;
 export type AgentView = z.infer<typeof agentViewSchema>;
-export type AgentActivity = AgentView["activity"];
+export type AgentStatus = AgentView["status"];
 export type NotificationView = z.infer<typeof notificationViewSchema>;
 export type ReadNotifications = z.infer<typeof readNotificationsSchema>;
 export type DeletedResult = z.infer<typeof deletedResultSchema>;

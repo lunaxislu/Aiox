@@ -82,8 +82,11 @@ export class CodexBinding implements VendorBinding {
     #earlyResults = new Map<string, TurnResult>();
     #awaitingAcceptance = 0;
     #activeTurns = new Map<string, string>();
+    #latestTurns = new Map<string, string>();
+    #failures = new Map<string, string | undefined>();
+    #connectionFailure: string | null = null;
     #tools = new Map<string, Set<string>>();
-    #pending = new Map<string, { threadId: string; turnId: string }>();
+    #pending = new Map<string, { threadId: string; turnId: string | null }>();
     #requests = new Map<
         string,
         {
@@ -126,7 +129,8 @@ export class CodexBinding implements VendorBinding {
             const state = stateSchema.safeParse(value);
             if (state.success) {
                 this.#thread = state.data.threadId;
-                if (state.data.error) this.#failed(state.data.error);
+                this.#connectionFailure = state.data.error;
+                if (state.data.error !== null) this.#failed(state.data.error);
                 else this.#updateActivity();
                 return;
             }
@@ -157,26 +161,24 @@ export class CodexBinding implements VendorBinding {
     }
     executionStarted() {
         this.#started = true;
-        this.#update();
+        this.#updateActivity();
     }
     mcpConnected() {
         this.#mcp = true;
-        this.#update();
+        this.#updateActivity();
     }
     #update() {
         if (this.#stopped) return;
         const ready =
+            this.#connectionFailure === null &&
             this.#started &&
             this.#thread !== null &&
             (!this.#requireMcp || this.#mcp);
         if (ready && !this.#ready) {
             this.#wasReady = true;
-            this.controls.setActivity("idle", { event: "codex_connection" });
             this.onReady?.();
         } else if (!ready && this.#ready)
-            this.controls.setActivity("starting", {
-                event: "codex_thread_transition",
-            });
+            this.controls.setStatus("aiox-preparing");
         this.#ready = ready;
     }
     #updateActivity() {
@@ -191,23 +193,21 @@ export class CodexBinding implements VendorBinding {
         const tool = turnId
             ? (this.#tools.get(`${threadId}:${turnId}`)?.size ?? 0) > 0
             : false;
-        this.controls.setActivity(
+        this.controls.setStatus(
             waiting
                 ? "awaiting-user"
                 : active
+                  ? "working"
+                  : this.#failures.has(threadId)
+                    ? "failed"
+                    : "idle",
+            waiting
+                ? "Waiting for user input."
+                : active
                   ? tool
-                      ? "tool"
-                      : "reasoning"
-                  : "idle",
-            {
-                event: waiting
-                    ? "codex_request"
-                    : active
-                      ? tool
-                          ? "codex_tool"
-                          : "codex_turn"
-                      : "codex_idle",
-            },
+                      ? "Running a tool."
+                      : "Processing the turn."
+                  : this.#failures.get(threadId),
         );
     }
     #event(event: z.infer<typeof eventSchema>) {
@@ -219,8 +219,11 @@ export class CodexBinding implements VendorBinding {
             | undefined;
         const turnId = typeof turn?.id === "string" ? turn.id : null;
         const key = turnId ? `${threadId}:${turnId}` : null;
-        if (method === "turn/started" && turnId)
+        if (method === "turn/started" && turnId) {
             this.#activeTurns.set(threadId, turnId);
+            this.#latestTurns.set(threadId, turnId);
+            this.#failures.delete(threadId);
+        }
         if (method === "turn/completed" && key) {
             const status = turn?.status;
             if (
@@ -234,10 +237,39 @@ export class CodexBinding implements VendorBinding {
                     ...(status === "failed" &&
                     error &&
                     typeof error === "object" &&
-                    "message" in error
-                        ? { error: String(error.message) }
+                    "message" in error &&
+                    typeof error.message === "string"
+                        ? { error: error.message }
                         : {}),
                 };
+                // A late result still settles its delivery, but cannot replace a newer turn's status.
+                if (
+                    !this.#latestTurns.has(threadId) ||
+                    this.#latestTurns.get(threadId) === turnId
+                ) {
+                    this.#latestTurns.set(threadId, turnId!);
+                    if (status === "failed") {
+                        const info =
+                            error &&
+                            typeof error === "object" &&
+                            "codexErrorInfo" in error
+                                ? error.codexErrorInfo
+                                : undefined;
+                        const classification =
+                            typeof info === "string"
+                                ? info
+                                : info && typeof info === "object"
+                                  ? JSON.stringify(info)
+                                  : undefined;
+                        const parts = [result.error, classification].filter(
+                            (value) => value !== undefined,
+                        );
+                        this.#failures.set(
+                            threadId,
+                            parts.length ? parts.join(" · ") : undefined,
+                        );
+                    } else this.#failures.delete(threadId);
+                }
                 if (this.#turns.has(key)) {
                     this.#results.set(key, result);
                     void this.#flush(key).catch(() => {});
@@ -277,9 +309,13 @@ export class CodexBinding implements VendorBinding {
         }
         if (
             id !== undefined &&
-            typeof params.turnId === "string" &&
+            ((typeof params.turnId === "string" &&
+                this.#activeTurns.get(threadId) === params.turnId) ||
+                (params.turnId === null &&
+                    method === "mcpServer/elicitation/request")) &&
             (method.endsWith("/requestApproval") ||
-                method === "item/tool/requestUserInput")
+                method === "item/tool/requestUserInput" ||
+                method === "mcpServer/elicitation/request")
         )
             this.#pending.set(`${threadId}:${id}`, {
                 threadId,
@@ -310,10 +346,8 @@ export class CodexBinding implements VendorBinding {
     }
     #failed(reason: string) {
         this.#ready = false;
-        this.controls.setActivity("failed", {
-            event: "codex_connection",
-            reason,
-        });
+        this.#connectionFailure = reason;
+        this.controls.setStatus("failed", reason);
         for (const pending of this.#requests.values()) {
             clearTimeout(pending.timer);
             pending.reject(new Error(reason));

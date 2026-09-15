@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Network, RouteOperation, RoutePolicy } from "@aiox/domain";
-import { applyRouteOperation, mcpStatus, outboundTargets } from "@aiox/domain";
+import { applyRouteOperation, outboundTargets } from "@aiox/domain";
 import type { AioxDatabase, PersistentNetwork } from "@aiox/persistence";
 
 import type { RuntimeRecord } from "@/runtimes";
@@ -116,21 +116,14 @@ export class NetworkService {
         };
     }
 
-    /**
-     * Runtimes the source may send to right now. Excludes runtimes that are not
-     * send targets at all — still starting, or left behind as Host stopped.
-     */
+    /** Current route-visible agents, including agents still preparing. */
     async reachable(source: RuntimeRecord): Promise<RuntimeRecord[]> {
         if (!source.collaborationActive || source.networkId === null) return [];
         const network = await this.effective(source.networkId);
         if (!source.collaborationActive) return [];
         const candidates = this.runtimes
             .inNetwork(source.networkId)
-            .filter(
-                (record) =>
-                    record.collaborationActive &&
-                    mcpStatus(record.activity) !== null,
-            );
+            .filter((record) => record.collaborationActive);
         return outboundTargets(network, source, candidates);
     }
 }

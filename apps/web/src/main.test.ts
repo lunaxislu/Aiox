@@ -107,7 +107,7 @@ it("keeps terminal selection across Agent changes and handles shell creation fai
             name: "Agent A",
             terminalId: "shell-1",
             networkId: null,
-            activity: "working",
+            status: "working",
         },
     ];
     refresh();
@@ -993,11 +993,8 @@ it("shows only the latest observation reason as Agent snapshots change", async (
         name: "Agent A",
         terminalId: shell.id,
         networkId: null,
-        activity: "failed",
-        observation: { event: "StopFailure", reason: "connection_lost" } as {
-            event: string;
-            reason: string | null;
-        } | null,
+        status: "failed",
+        status_reason: "connection_lost" as string | null,
     };
     fetchMock.mockImplementation(async (path) => ({
         ok: true,
@@ -1009,13 +1006,12 @@ it("shows only the latest observation reason as Agent snapshots change", async (
                   ? [agent]
                   : [],
     }));
-    for (const [observation, expected] of [
-        [agent.observation, "failed · connection_lost"],
-        [{ event: "StopFailure", reason: "api_error" }, "failed · api_error"],
-        [{ event: "UserPromptSubmit", reason: null }, "failed"],
+    for (const [reason, expected] of [
+        [agent.status_reason, "failed · connection_lost"],
+        ["api_error", "failed · api_error"],
         [null, "failed"],
     ] as const) {
-        agent.observation = observation;
+        agent.status_reason = reason;
         refresh();
         await vi.waitFor(() =>
             expect(node("agents").children[0]?.children[1]?.textContent).toBe(

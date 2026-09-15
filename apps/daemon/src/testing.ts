@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { DeliveryOutcome, RuntimeActivity } from "@aiox/domain";
+import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
 import { openDatabase } from "@aiox/persistence";
 
 import type { Daemon, DaemonOptions } from "@/daemon";
@@ -26,7 +26,7 @@ export type FakeVendor = {
         error?: string,
     ): Promise<void>;
     /** Simulate work that is not connected to any AIOX input. */
-    activity(next: RuntimeActivity): void;
+    status(next: RuntimeStatus): void;
     /** Make the next delivery attempt fail at injection time. */
     refuse(reason: string | undefined): void;
     readonly stopped: string[];
@@ -45,7 +45,7 @@ export function fakeVendor(): FakeVendor {
         stopped,
         createBinding(next) {
             controls = next;
-            next.setActivity("idle");
+            next.setStatus("idle");
             return {
                 deliver: (message) => {
                     if (refusal !== undefined)
@@ -53,7 +53,7 @@ export function fakeVendor(): FakeVendor {
                     received.push(message);
                     if (message.deliveryId !== null) {
                         deliveryIds.push(message.deliveryId);
-                        next.setActivity("reasoning");
+                        next.setStatus("working");
                     }
                     return Promise.resolve();
                 },
@@ -65,7 +65,7 @@ export function fakeVendor(): FakeVendor {
         },
         settle: (deliveryId, outcome, error) =>
             controls!.settle(deliveryId, outcome, error),
-        activity: (next) => controls!.setActivity(next),
+        status: (next) => controls!.setStatus(next),
         refuse: (reason) => {
             refusal = reason;
         },

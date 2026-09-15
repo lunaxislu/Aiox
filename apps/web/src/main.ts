@@ -239,10 +239,8 @@ function renderAgents(agents: AgentView[]): void {
             const meta = document.createElement("span");
             meta.className = "meta";
             meta.textContent = [
-                agent.activity,
-                ...(agent.observation?.reason
-                    ? [agent.observation.reason]
-                    : []),
+                agent.status,
+                ...(agent.status_reason ? [agent.status_reason] : []),
                 agent.networkId === null
                     ? "network 없음"
                     : `network ${agent.networkId}`,

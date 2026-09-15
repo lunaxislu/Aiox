@@ -703,7 +703,7 @@ describe("terminal attachment", () => {
             networkId: network.id,
             terminalId: terminal.id,
             createBinding: (controls) => {
-                controls.setActivity("idle");
+                controls.setStatus("idle");
                 return {
                     deliver: async () => {},
                     stop: async () => {

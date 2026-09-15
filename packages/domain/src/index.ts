@@ -1,5 +1,4 @@
-export type { AgentRuntime, McpStatus, RuntimeActivity } from "@/agent/runtime";
-export { mcpStatus } from "@/agent/runtime";
+export type { AgentRuntime, RuntimeStatus } from "@/agent/runtime";
 export type { Network, DirectedRoute, RoutePolicy } from "@/network/network";
 export type { RouteOperation } from "@/network/route";
 export {

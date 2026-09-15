@@ -499,7 +499,7 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
         expect(harness.daemon.services.terminals.views()).toHaveLength(1);
         const record = harness.daemon.services.runtimes.list()[0]!;
         expect(record.terminalId).toBe(shell.id);
-        expect(record.activity).toBe("starting");
+        expect(record.status).toBe("aiox-preparing");
         const token = vendor.options.env!.AIOX_MCP_TOKEN!;
         expect(harness.daemon.services.runtimes.authenticate(token)?.id).toBe(
             record.id,
@@ -535,7 +535,7 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
             }),
         });
         expect(invalidHook.status).toBe(401);
-        expect(record.activity).toBe("starting");
+        expect(record.status).toBe("aiox-preparing");
         const hook = await fetch(harness.apiUrl("/api/agent-hooks"), {
             method: "POST",
             headers: {
@@ -552,7 +552,7 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
             }),
         });
         expect(hook.ok).toBe(true);
-        expect(record.activity).toBe("starting");
+        expect(record.status).toBe("aiox-preparing");
         const initialize = async (
             credential: string,
             params: unknown = {
@@ -578,15 +578,15 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
         expect(
             (await initialize(vendor.options.env!.AIOX_HOOK_TOKEN!)).status,
         ).toBe(401);
-        expect(record.activity).toBe("starting");
+        expect(record.status).toBe("aiox-preparing");
         const invalidInitialization = await initialize(token, {});
         expect(invalidInitialization.status).toBe(200);
         expect(await invalidInitialization.json()).toHaveProperty("error");
-        expect(record.activity).toBe("starting");
+        expect(record.status).toBe("aiox-preparing");
         const initialized = await initialize(token);
         expect(initialized.ok).toBe(true);
         await initialized.text();
-        expect(record.activity).toBe("idle");
+        expect(record.status).toBe("idle");
         const rawInput = Buffer.from([3, 0xff]);
         socket.send(rawInput);
         socket.send(JSON.stringify({ type: "resize", cols: 120, rows: 40 }));
@@ -958,7 +958,72 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
             )[0],
         ).toMatchObject({ outcome: "failed", outcomeError: "rate_limit" });
         expect(sourceVendor.received).toHaveLength(2);
-        expect(target.activity).toBe("failed");
+        expect(target.status).toBe("failed");
+        const sharedStatus = async (
+            status: string,
+            status_reason: string | null,
+        ) => {
+            const web = (await (
+                await fetch(harness.webUrl("/api/web/agents"))
+            ).json()) as { agentId: string }[];
+            expect(
+                web.find((agent) => agent.agentId === target.id),
+            ).toMatchObject({ status, status_reason });
+            expect(
+                (await sender.callTool({ name: "agents_list" }))
+                    .structuredContent,
+            ).toMatchObject({
+                agents: [{ agentId: target.id, status, status_reason }],
+            });
+        };
+        await sharedStatus("failed", "rate_limit");
+        for (const [notification_type, status, reason] of [
+            [
+                "quota_auto_resume_stale",
+                "awaiting-user",
+                "Press Enter to resume the task automatically.",
+            ],
+            ["quota_auto_resume_disabled", "failed", "rate_limit"],
+            ["quota_auto_resume_fired", "working", null],
+            ["quota_auto_resume_disabled", "idle", null],
+            ["quota_auto_resume_fired", "working", null],
+        ] as const) {
+            expect(
+                (
+                    await hook({
+                        hook_event_name: "Notification",
+                        session_id: "session",
+                        prompt_id: "second",
+                        notification_type,
+                    })
+                ).ok,
+            ).toBe(true);
+            await sharedStatus(status, reason);
+            expect(
+                (
+                    await harness.daemon.services.db.messages.deliveriesFor(
+                        failedData.messageId,
+                    )
+                )[0],
+            ).toMatchObject({ outcome: "failed", outcomeError: "rate_limit" });
+            expect(sourceVendor.received).toHaveLength(2);
+        }
+
+        await hook({
+            hook_event_name: "Stop",
+            session_id: "session",
+            prompt_id: "second",
+        });
+        await sharedStatus("idle", null);
+        expect(
+            (
+                await harness.daemon.services.db.messages.deliveriesFor(
+                    failedData.messageId,
+                )
+            )[0],
+        ).toMatchObject({ outcome: "failed", outcomeError: "rate_limit" });
+        expect(sourceVendor.received).toHaveLength(2);
+
         const cancelled = await sender.callTool({
             name: "send",
             arguments: { targets: [target.id], content: "A cancelled request" },
@@ -994,14 +1059,14 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
                     })
                 ).ok,
             ).toBe(true);
-        expect(target.activity).toBe("awaiting-user");
+        expect(target.status).toBe("awaiting-user");
         const webAgent = async () =>
             (await fetch(harness.apiUrl(`/api/agents/${target.id}`))).json();
-        expect(await webAgent()).toMatchObject({ activity: "awaiting-user" });
+        expect(await webAgent()).toMatchObject({ status: "awaiting-user" });
         const peers = async () =>
             (await sender.callTool({ name: "agents_list" })).structuredContent;
         expect(await peers()).toMatchObject({
-            agents: [{ agentId: target.id, status: "working" }],
+            agents: [{ agentId: target.id, status: "awaiting-user" }],
         });
         const base = {
             type: "user",
@@ -1058,8 +1123,8 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
             ).toMatchObject({ outcome: "interrupted" }),
         );
         expect(await webAgent()).toMatchObject({
-            activity: "idle",
-            observation: { event: "TranscriptInterrupted" },
+            status: "idle",
+            status_reason: null,
         });
         expect(await peers()).toMatchObject({
             agents: [{ agentId: target.id, status: "idle" }],

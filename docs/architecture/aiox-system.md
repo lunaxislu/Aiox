@@ -192,7 +192,7 @@ CLI 연결과 Web 자동 복귀를 지원하며 사용자 로그인·토큰 입�
 같은 Claude 프로세스의 `/clear`·`/resume`은 Runtime/PTY를 유지하면서 대화 연결을 바꿀 수 있다.
 새 프로세스 실행은 새 Runtime·credential 수명이다. 브라우저를 닫으면 attachment만 끊고,
 살아 있는 daemon에 재방문하면 같은 터미널의 현재 화면에 연결한다.
-상태 요약은 daemon 관측에서 만들며 모델이 작성하지 않는다. MCP의 idle/working/failed와 Web의 상세 상태를 분리하고, 개별 요청 결과는 현재 상태를 덮어쓰지 않는다. 외부 의미는 [[docs/specs/aiox-runtime]]을 따른다.
+vendor adapter가 관측한 공통 status와 이유를 RuntimeRegistry가 보관하고 HTTP/Web·MCP가 동일하게 소비한다. 모델이 직접 상태를 선언하지 않으며 개별 delivery 결과는 별도로 처리한다. 목록의 route 필터와 전송 준비 검사를 분리한다. 외부 의미는 [[docs/specs/aiox-runtime]], 구현·검증 근거는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
 
 ## 실행과 정리
 

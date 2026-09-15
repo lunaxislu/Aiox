@@ -80,7 +80,7 @@ Codex 조합의 성공은 사용자 전달 실험 근거이며 신규 AIOX 통�
 | 연결된 prompt/turn 종료 | 응답 종료 | 프로세스 종료 또는 작업 검증 완료 |
 | Agent의 send 응답 | 대화상 회신 | 원 요청 완료 또는 이후 작업 종료 |
 
-현재 상태 요약과 Web 상세 표시는 [[docs/specs/aiox-runtime]] 및 [[docs/specs/aiox-configuration-web]]을 따른다. MCP는 idle/working/failed로 요약하고 Host stopped는 전송 대상에서 제외한다.
+현재 상태와 이유는 [[docs/specs/aiox-runtime]]의 공통 `status/status_reason` 계약을 따른다. `agents_list()`는 현재 Network·outbound route·인증 범위 안의 준비 중 Agent도 표시한다. 목록 포함은 전송 준비 완료를 뜻하지 않으며 준비 전 send는 `not_available`로 거절한다. 종료·등록 해제된 Agent는 제외하고 Host stopped 항목을 Agent로 추가하지 않는다. Web도 같은 상태와 이유를 표시한다.
 
 ```text
 B가 요청 X 처리 → X completed, B는 실제 활동에 따라 idle 또는 working

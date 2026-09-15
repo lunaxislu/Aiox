@@ -10,7 +10,7 @@ import * as inbox from "@/claude-inbox";
 
 const controls = () => ({
     runtimeId: "runtime",
-    setActivity: vi.fn(),
+    setStatus: vi.fn(),
     settle: vi.fn(),
 });
 const report = {
@@ -40,7 +40,7 @@ test("readiness requires assigned inbox credential, connection and execution sta
         await binding.observe(report);
         binding.mcpConnected();
         expect(ready).not.toHaveBeenCalled();
-        expect(control.setActivity).not.toHaveBeenCalled();
+        expect(control.setStatus).not.toHaveBeenCalled();
         binding.executionStarted();
         expect(ready).toHaveBeenCalledOnce();
         await expect(
@@ -113,9 +113,7 @@ test.each(["poll", "SessionEnd"])(
                 tool_name: "Bash",
             });
             await send("PermissionRequest", { tool_name: "Bash" });
-            expect(control.setActivity.mock.lastCall?.[0]).toBe(
-                "awaiting-user",
-            );
+            expect(control.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
             const common = {
                 type: "user",
                 isSidechain: false,
@@ -159,14 +157,14 @@ test.each(["poll", "SessionEnd"])(
             );
             if (mode === "SessionEnd") await send("SessionEnd");
             await vi.waitFor(() =>
-                expect(control.setActivity.mock.lastCall?.[0]).toBe("idle"),
+                expect(control.setStatus.mock.lastCall?.[0]).toBe("idle"),
             );
             expect(binding.alive).toBe(true);
             await binding.cleanup("execution_stopped");
-            control.setActivity.mockClear();
+            control.setStatus.mockClear();
             await appendFile(path, JSON.stringify(rows[1]) + "\n");
             await new Promise((resolve) => setTimeout(resolve, 300));
-            expect(control.setActivity).not.toHaveBeenCalled();
+            expect(control.setStatus).not.toHaveBeenCalled();
         } finally {
             await binding.cleanup("execution_stopped");
             probe.mockRestore();

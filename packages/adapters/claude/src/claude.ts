@@ -35,7 +35,7 @@ export class ClaudeBinding implements VendorBinding {
     #inboxToken: string | undefined;
     readonly observationOptions = { hasBlockingStopHooks: false };
     readonly observations: ClaudeObservations;
-    #activity: Parameters<RuntimeControls["setActivity"]> | undefined;
+    #status: Parameters<RuntimeControls["setStatus"]> | undefined;
 
     readonly #transcripts = new Map<string, ClaudeTranscript>();
     readonly #endedSessions = new Set<string>();
@@ -51,9 +51,9 @@ export class ClaudeBinding implements VendorBinding {
         this.observations = new ClaudeObservations(
             {
                 ...controls,
-                setActivity: (...args) => {
-                    this.#activity = args;
-                    if (this.#ready) controls.setActivity(...args);
+                setStatus: (...args) => {
+                    this.#status = args;
+                    if (this.#ready) controls.setStatus(...args);
                 },
             },
             this.observationOptions,
@@ -199,8 +199,8 @@ export class ClaudeBinding implements VendorBinding {
         ) {
             this.#ready = true;
             this.#wasReady = true;
-            if (this.#activity) this.controls.setActivity(...this.#activity);
-            else this.controls.setActivity("idle");
+            if (this.#status) this.controls.setStatus(...this.#status);
+            else this.controls.setStatus("idle");
             this.onReady?.();
         }
     }
@@ -215,10 +215,7 @@ export class ClaudeBinding implements VendorBinding {
             this.observations.forget(frame);
             this.#ready = false;
             this.#inboxReady = false;
-            this.controls.setActivity("failed", {
-                event: "inbox",
-                reason: "connection_failed",
-            });
+            this.controls.setStatus("failed", "connection_failed");
             throw error;
         }
     }

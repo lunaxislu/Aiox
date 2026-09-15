@@ -173,7 +173,7 @@ function describeNetwork(network: NetworkView): string {
 
 function describeAgent(agent: AgentView): string {
     return [
-        `${agent.name} [${agent.activity}]`,
+        `${agent.name} [${agent.status}]`,
         agent.role === null ? "" : ` role=${agent.role}`,
         agent.networkId === null ? "" : ` network=${agent.networkId}`,
         agent.hostId === null ? "" : ` host=${agent.hostId}`,

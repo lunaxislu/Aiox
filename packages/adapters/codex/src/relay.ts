@@ -15,6 +15,7 @@ const observedMethods = new Set([
     "item/fileChange/requestApproval",
     "item/permissions/requestApproval",
     "item/tool/requestUserInput",
+    "mcpServer/elicitation/request",
 ]);
 export type RelayState = { threadId: string | null; error: string | null };
 export type RelayConnection = { url: string; token: string };

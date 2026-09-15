@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome } from "@aiox/domain";
-import {
-    canSend,
-    deliveredContent,
-    mcpStatus,
-    notifiesOrigin,
-} from "@aiox/domain";
+import { canSend, deliveredContent, notifiesOrigin } from "@aiox/domain";
 import type { AioxDatabase } from "@aiox/persistence";
 
 import type { NetworkService } from "@/networks";
@@ -389,7 +384,7 @@ export class MessageService {
         ) {
             return "not_in_network";
         }
-        if (mcpStatus(target.activity) === null) return "not_available";
+        if (target.status === "aiox-preparing") return "not_available";
         return undefined;
     }
 }

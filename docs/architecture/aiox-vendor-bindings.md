@@ -473,6 +473,87 @@ createdAt을 전달하며 내부 delivery ID는 포함하지 않는다. 일반 �
 고정 `Sent by Codex` 문구가 Claude 발신자를 올바르게 표시한다고 단정하지 않고 내부 renderer
 의존과 실제 표시를 확인한다. 표시 개선이 exactly-once나 모델 action dedupe를 뜻하지 않는다.
 
+## 공통 상태 저장과 전달 [Status: As-built]
+
+양 adapter는 `RuntimeControls.setStatus(status, reason?)`로 현재 관측을 전달한다.
+RuntimeRegistry는 `status/status_reason`을 보관하고 이유 생략을 null로 교체한다.
+HTTP AgentView와 MCP agents_list가 같은 필드를 소비하며 MCP schema는 AgentView의 공통
+필드를 재사용한다. Web은 상태와 이유를 함께 표시한다. 기존 event/observation 전달과 MCP
+요약 함수는 제거했다. 외부 상태 의미는 [[docs/specs/aiox-runtime]]이 소유한다.
+
+NetworkService의 목록 계산은 기존 membership·outbound route·등록 유효성을 유지하며
+준비 중이라는 이유로 제외하지 않는다. MessageService는 준비 중 전송을 계속 거절하고
+실제 입력 수락은 vendor binding이 검증한다. 종료·협업 해제 항목은 기존 등록 수명과 조회
+필터로 제거하며 Host의 stopped 수명을 변경하지 않는다.
+
+근거: [[packages/vendor/src/index.ts]] `packages/vendor/src/index.ts:37`, [[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:94`,
+[[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:120`, [[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:377`, [[apps/daemon/src/mcp.ts]] `apps/daemon/src/mcp.ts:12`,
+[[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:76`, [[packages/protocol/src/index.ts]] `packages/protocol/src/index.ts:173`, [[apps/web/src/main.ts]] `apps/web/src/main.ts:222`와
+인접 runtimes/mcp/protocol/main 테스트의 현재 이유 교체·제거, 준비 중 표시·전송 거절 검증.
+
+ClaudeObservations는 StopFailure의 오류 분류를 실패 이유로 보관하고 quota 대기를 별도로
+투영한다. fired는 재개 관측을 기록하고 실패와 quota 대기를 해제한다. disabled는 해당
+세션의 quota 대기와 재개 기록을 모두 제거한 뒤 남은 관측으로 상태를 재계산한다.
+현재 실패는 보존하고 fired가 지운 과거 실패는 복원하지 않으며 delivery 결과는 변경하지 않는다.
+세션 재개 활동의 Stop/StopFailure 처리는 prompt 중복 정산 guard 앞에
+두어 종료된 ID·미등록 ID도 현재 활동에 반영한다. 기존 delivery 귀속·결과와 blocking Stop
+제한을 보존하며 다른 활동·대기를 지우지 않는다. 새 입력은 해당 세션 quota 대기를 해제한다.
+대기 이유는 등록 시 저장해 공통 상태 투영 시 별도 event 번역이 필요하지 않다.
+`cloud_credential_error`를 공식 오류 값으로 인식한다. 인증 hook을 주입하는
+통합 테스트는 ClaudeBinding→Registry→Web API/MCP의 상태·이유 일치와 원 delivery 결과·알림
+보존을 검증한다. 공식 Notification 문서 기반 구현·대역 테스트이며 실제 quota hook의 발생
+순서와 실제 화면 표시는 미실측이다. fired → disabled 입력 시 재개 기록이 남지 않는다는
+검증도 코드 테스트이며 실제 발생 순서의 근거가 아니다.
+
+근거: [[packages/adapters/claude/src/claude-observations.ts]] `packages/adapters/claude/src/claude-observations.ts:181`와 인접
+[[packages/adapters/claude/src/claude-observations.test.ts]] `packages/adapters/claude/src/claude-observations.test.ts:310`, `packages/adapters/claude/src/claude-observations.test.ts:657`,
+[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:736`의 common HTTP MCP send 테스트.
+[공식 Notification/StopFailure 문서](https://code.claude.com/docs/en/hooks#notification)는
+알림 의미와 오류 분류의 근거이며 설치된 vendor의 실제 발생을 증명하지 않는다.
+
+CodexBinding은 delivery 결과와 현재 선택 thread의 최신 turn 실패를 분리해 보관한다.
+다음 turn 시작으로 해당 thread 실패를 해제하며 이전 turn의 늦은 완료는 최신 상태를 덮어쓰지
+않는다. 오류 message와 제공된 codexErrorInfo를 상태 이유에 표시하고 delivery 오류는 기존
+message를 유지한다. 준비 완료 시 실제 관측 상태를 한 번 보고하며 중간 idle 보고는 없다.
+준비 통지와 타이머 해제는 기존 onReady 소비자가 유지한다. 연결 실패는 별도 연결 관측으로 보존해 turn 시작이 지우지 않게 한다.
+근거: [[packages/adapters/codex/src/binding.ts]] `packages/adapters/codex/src/binding.ts:170`, [[packages/adapters/codex/src/index.test.ts]] `packages/adapters/codex/src/index.test.ts:24`.
+이 변경의 근거는 소켓 대역 회귀이며 앞선 과거 실측을 새 status 표시 실측으로 확대하지 않는다.
+
+Relay는 `mcpServer/elicitation/request`를 Binding으로 전달한다. Binding은 기존 요청별
+대기 저장소에 nullable turnId를 보존하며 선택 thread와 요청 수명을 분리한다.
+turn 귀속이 있는 요청은 진행 중 turn과 대조하고 종료 시 정리하며, nullable 요청은
+현재 turn을 채워 넣지 않고 threadId/requestId의 resolved로만 해소한다.
+외부 상태 수명은 runtime spec의 공통 상태 계약을 따른다. 근거는 relay.ts의 observedMethods,
+binding.ts의 pending 처리와 index.test.ts의 소켓 대역 시나리오다. 복수 요청의 개별 해소,
+turn 종료·시작과 대화 왕복 뒤 nullable 대기 보존, 다른 thread의 동일 요청 ID 해소 격리,
+종료 turn의 늦은 요청 차단을 검증한다.
+
+Codex 0.153.4의 격리 실제 실행에서는 임시 stdio MCP의 boolean form 요청, TUI의
+True 제출, 서버 반환 `action=accept`·`confirmed=true`, 같은 thread/requestId의 resolved와
+turn completed를 확인했다. HTTP/MCP는 awaiting-user→working→idle/null로 일치했고
+TUI 입력 화면·Web 대기 표시 및 완료 뒤 이유 제거도 캡처했다. 이 요청의 turnId는
+null이 아니므로 nullable 수명의 실측 근거는 아니다. 첫 시도는 시험 MCP SDK의 기본
+60초 타임아웃 후 사용자가 제출해 resolved·idle로 끝났으며 정상 입력 반환 성공과 구분한다.
+근거: `/private/tmp/aiox-elicitation-live-YzLPwZ`의 events/status/lists.jsonl,
+request-retry.png·success.png와 `/private/tmp/aiox-elicitation-server-events.jsonl`.
+
+추가 실제 browser 검증에서 작업 중·Plan 질문창의 Esc 뒤 interrupted와 idle/null,
+idle 대화의 /new·/resume·선택 취소, 복수 승인 중 첫 요청만 resolved된 동안
+awaiting-user 유지와 두 번째 해소 뒤 working→completed→idle/null을 확인했다.
+Default async 질문은 completed 뒤 글머리표만 남아 선택 UI 제출은 검증하지 못했다.
+격리 App Server를 종료하면 내부 실패 보고 뒤 Agent가 목록에서 제거되고 shell로 복귀했다.
+같은 shell의 재실행은 새 Runtime으로 preparing→idle을 확인한 것이며 동일 Runtime의
+자동 재연결 근거가 아니다. 근거: `/private/tmp/aiox-w2-live-XjC36P`의 events/status/lists.jsonl과
+interrupted.png·plan-cancel.png·picker-cancel.png·resumed.png·approval-after-first.png·
+async-ended.png·app-server-lost.png·restarted-idle.png.
+
+### 남은 관측 경계 [Status: Current gap]
+
+Codex nullable MCP elicitation의 실제 발생·해소는 미실측이며 추가 실측은 사용자 지시로
+생략한다. 실패한 대화의 선택/취소, async 종료 후 선택 UI 제출, 자연 발생 한도 payload와
+control WS 등 App Server 종료 이외 연결별 실제 복구는 미확인이다. 기존 Claude
+transcript 중단 미해결 범위와 제목 helper config gap도 유지한다.
+
 ## 관측과 사용자 응답 경계
 
 | 목적 | Codex | Claude |

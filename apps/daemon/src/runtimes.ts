@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import type { DeliveryOutcome, RuntimeActivity } from "@aiox/domain";
+import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
 import type { TerminalSession } from "@aiox/terminal";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
@@ -35,8 +35,8 @@ export type RuntimeRecord = {
     collaborationActive: boolean;
     terminalId: string | null;
     terminalOwnership: "owned" | "borrowed" | null;
-    activity: RuntimeActivity;
-    observation: { event: string; reason: string | null } | null;
+    status: RuntimeStatus;
+    status_reason: string | null;
     binding: AgentBinding;
 };
 
@@ -95,21 +95,17 @@ export class RuntimeRegistry {
         input: RegisterRuntime,
     ): Promise<{ record: RuntimeRecord; token: string }> {
         const id = randomUUID();
-        let reportedActivity: RuntimeActivity = "starting";
-        let reportedObservation: RuntimeRecord["observation"] = null;
+        let reportedStatus: RuntimeStatus = "aiox-preparing";
+        let reportedReason: string | null = null;
         const controls: RuntimeControls = {
             runtimeId: id,
-            setActivity: (activity, observation) => {
-                reportedActivity = activity;
-                if (observation)
-                    reportedObservation = {
-                        event: observation.event,
-                        reason: observation.reason ?? null,
-                    };
+            setStatus: (status, reason) => {
+                reportedStatus = status;
+                reportedReason = reason ?? null;
                 const record = this.#runtimes.get(id);
                 if (record && record.binding !== unbound) {
-                    record.activity = activity;
-                    record.observation = reportedObservation;
+                    record.status = status;
+                    record.status_reason = reportedReason;
                     if (record.executionOwnership === "daemon") this.onChange();
                 }
             },
@@ -130,20 +126,20 @@ export class RuntimeRegistry {
                 ? (input.terminalOwnership ?? "owned")
                 : null,
             // Not yet a send target: process spawn is not binding readiness.
-            activity: "starting",
-            observation: null,
+            status: "aiox-preparing",
+            status_reason: null,
             binding: unbound,
         };
         // Registered before the binding is built so the binding can report its
         // own readiness. Nothing can reach it yet: no credential exists, and
-        // `starting` keeps it out of discovery and out of send.
+        // preparation keeps it out of send, but visible in discovery.
         this.#runtimes.set(id, record);
         if (record.executionOwnership === "daemon") this.onChange();
         try {
             record.binding = await input.createBinding(controls);
             if (!record.collaborationActive) record.binding.revoke?.();
-            record.activity = reportedActivity;
-            record.observation = reportedObservation;
+            record.status = reportedStatus;
+            record.status_reason = reportedReason;
             if (record.executionOwnership === "daemon") this.onChange();
         } catch (error) {
             // Only what this attempt created is removed.

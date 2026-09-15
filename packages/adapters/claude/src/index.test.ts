@@ -15,7 +15,7 @@ test("execution owner retains resources after collaboration cleanup and receives
     const execution = await claudeAdapter.createExecution(owner);
     try {
         const binding = claudeAdapter.createBinding(
-            { runtimeId: "r", setActivity: vi.fn(), settle: vi.fn() },
+            { runtimeId: "r", setStatus: vi.fn(), settle: vi.fn() },
             execution.connection,
         );
         await binding.cleanup("external_connection_lost");

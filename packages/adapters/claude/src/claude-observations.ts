@@ -57,6 +57,7 @@ function errorType(value: unknown): string {
             "model_not_found",
             "server_error",
             "max_output_tokens",
+            "cloud_credential_error",
         ].includes(value)
         ? value
         : "unknown";
@@ -76,7 +77,9 @@ export class ClaudeObservations {
         { outcome: DeliveryOutcome; error?: string }
     >();
     #failed = false;
-    readonly #waiting = new Map<string, { event: string; reason?: string }>();
+    #failureReason: string | undefined;
+    readonly #resuming = new Set<string>();
+    readonly #waiting = new Map<string, string>();
     readonly #tools = new Set<string>();
     readonly #owners = new Map<string, string>();
     readonly #denials = new Map<string, string>();
@@ -153,7 +156,7 @@ export class ClaudeObservations {
                 return;
             this.#clearPrompt(key);
             this.#active.delete(key);
-            this.#project("TranscriptInterrupted");
+            this.#project();
             const frame = this.#prompts.get(key);
             if (frame != null) await this.#settle(frame, "interrupted");
             this.#prompts.delete(key);
@@ -175,8 +178,37 @@ export class ClaudeObservations {
                 "quota_auto_resume_stale",
                 "quota_auto_resume_disabled",
             ].includes(String(event.notification_type));
+        // Session resumption is activity evidence, independent of prompt settlement.
+        if (
+            typeof event.session_id === "string" &&
+            this.#resuming.has(event.session_id) &&
+            (event.hook_event_name === "Stop" ||
+                event.hook_event_name === "StopFailure")
+        ) {
+            if (
+                event.hook_event_name === "Stop" &&
+                this.options.hasBlockingStopHooks
+            ) {
+                this.#project("stop_hook_outcome_unconfirmed");
+                return;
+            }
+            this.#resuming.delete(event.session_id);
+            if (event.hook_event_name === "StopFailure") {
+                this.#failed = true;
+                this.#failureReason = errorType(event.error);
+            }
+            this.#project();
+        }
         if (key && this.#finished.has(key) && !quotaNotice) return;
         if (this.#observeActivity(event)) return;
+        if (
+            event.hook_event_name === "UserPromptSubmit" &&
+            typeof event.prompt === "string" &&
+            typeof event.session_id === "string"
+        ) {
+            this.#resuming.delete(event.session_id);
+            this.#waiting.delete(JSON.stringify([event.session_id, "quota"]));
+        }
         if (
             !key &&
             event.hook_event_name === "UserPromptSubmit" &&
@@ -187,16 +219,18 @@ export class ClaudeObservations {
                     ? event.session_id
                     : "unknown",
             );
-            this.#project("UserPromptSubmit", "prompt_identity_unconfirmed");
+            this.#project("prompt_identity_unconfirmed");
         }
         if (
             !key &&
             (event.hook_event_name === "StopFailure" ||
                 event.hook_event_name === "Stop")
         ) {
-            if (event.hook_event_name === "StopFailure") this.#failed = true;
+            if (event.hook_event_name === "StopFailure") {
+                this.#failed = true;
+                this.#failureReason = errorType(event.error);
+            }
             this.#project(
-                event.hook_event_name,
                 event.hook_event_name === "StopFailure"
                     ? errorType(event.error)
                     : "prompt_identity_unconfirmed",
@@ -229,7 +263,8 @@ export class ClaudeObservations {
             );
             this.#active.add(key);
             this.#failed = false;
-            this.#project("UserPromptSubmit");
+            this.#failureReason = undefined;
+            this.#project();
         }
         if (
             event.hook_event_name === "Stop" ||
@@ -239,21 +274,19 @@ export class ClaudeObservations {
                 event.hook_event_name === "Stop" &&
                 this.options.hasBlockingStopHooks
             ) {
-                this.#project("Stop", "stop_hook_outcome_unconfirmed");
+                this.#project("stop_hook_outcome_unconfirmed");
                 return;
             }
             if (this.#ambiguous.has(key)) {
-                this.#project(
-                    event.hook_event_name,
-                    "prompt_identity_ambiguous",
-                );
+                this.#project("prompt_identity_ambiguous");
                 return;
             }
             const frame = this.#prompts.get(key);
             if (frame === undefined) {
                 if (event.hook_event_name === "StopFailure") {
                     this.#failed = true;
-                    this.#project("StopFailure", errorType(event.error));
+                    this.#failureReason = errorType(event.error);
+                    this.#project();
                 }
                 return;
             }
@@ -262,7 +295,8 @@ export class ClaudeObservations {
             const error = errorType(event.error);
             this.#active.delete(key);
             this.#failed = failed;
-            this.#project(event.hook_event_name, failed ? error : undefined);
+            this.#failureReason = failed ? error : undefined;
+            this.#project();
             if (frame !== null)
                 await this.#settle(
                     frame,
@@ -286,7 +320,9 @@ export class ClaudeObservations {
             this.#denials.clear();
             this.#unidentified.clear();
             this.#failed = true;
-            this.#project("RuntimeFailure", "connection_lost");
+            this.#failureReason = "connection_lost";
+            this.#resuming.clear();
+            this.#project();
             await this.#finishPending("failed", reason);
         });
     }
@@ -300,7 +336,8 @@ export class ClaudeObservations {
             this.#denials.clear();
             this.#unidentified.clear();
             this.#failed = false;
-            this.#project("RuntimeInterrupted");
+            this.#resuming.clear();
+            this.#project();
             await this.#finishPending("interrupted");
         });
     }
@@ -434,7 +471,12 @@ export class ClaudeObservations {
                     name,
                     promptKey(event) ?? "unidentified",
                 ]);
-            this.#waiting.set(id, { event: name });
+            this.#waiting.set(
+                id,
+                name === "PermissionRequest"
+                    ? "Waiting for approval."
+                    : "Waiting for user input.",
+            );
             const owner = promptKey(event);
             if (owner) this.#owners.set(id, owner);
         } else if (name === "ElicitationResult") {
@@ -449,7 +491,7 @@ export class ClaudeObservations {
             ]);
             this.#owners.delete(elicitation);
             if (!this.#waiting.delete(elicitation)) {
-                this.#project(name);
+                this.#project();
                 return true;
             }
         } else if (name === "PreToolUse") {
@@ -457,7 +499,7 @@ export class ClaudeObservations {
             const owner = promptKey(event);
             if (owner) this.#owners.set(tool, owner);
             if (event.tool_name === "AskUserQuestion")
-                this.#waiting.set(tool, { event: "AskUserQuestion" });
+                this.#waiting.set(tool, "Waiting for user input.");
             this.#tools.add(tool);
         } else if (name === "PostToolUse" || name === "PostToolUseFailure") {
             if (!tool) return true;
@@ -483,14 +525,19 @@ export class ClaudeObservations {
             const type = event.notification_type;
             const quota = JSON.stringify([session, "quota"]);
             if (type === "quota_auto_resume_fired") {
-                // Only ends the wait: the continuation is an ordinary turn that
-                // reports its own UserPromptSubmit and Stop.
                 this.#waiting.delete(quota);
-            } else if (
-                type === "quota_auto_resume_stale" ||
-                type === "quota_auto_resume_disabled"
-            ) {
-                this.#waiting.set(quota, { event: type });
+                this.#failed = false;
+                this.#failureReason = undefined;
+                this.#resuming.add(session);
+            } else if (type === "quota_auto_resume_stale") {
+                this.#waiting.set(
+                    quota,
+                    "Press Enter to resume the task automatically.",
+                );
+            } else if (type === "quota_auto_resume_disabled") {
+                const waiting = this.#waiting.delete(quota);
+                const resuming = this.#resuming.delete(session);
+                if (!waiting && !resuming) return true;
             } else if (
                 type === "permission_prompt" ||
                 type === "elicitation_dialog" ||
@@ -502,30 +549,40 @@ export class ClaudeObservations {
                         type,
                         promptKey(event) ?? "unidentified",
                     ]),
-                    { event: type },
+                    type === "permission_prompt"
+                        ? "Waiting for approval."
+                        : "Waiting for user input.",
                 );
             } else return true;
-            this.#project(type);
+            this.#project();
             return true;
         } else return false;
-        this.#project(name);
+        this.#project();
         return true;
     }
 
-    #project(event: string, reason?: string): void {
+    #project(reason?: string): void {
         const waiting = this.#waiting.values().next().value;
-        const activity = waiting
+        const working =
+            this.#tools.size > 0 ||
+            this.#active.size > 0 ||
+            this.#unidentified.size > 0 ||
+            this.#resuming.size > 0;
+        const status = waiting
             ? "awaiting-user"
-            : this.#tools.size > 0
-              ? "tool"
-              : this.#active.size > 0 || this.#unidentified.size > 0
-                ? "reasoning"
-                : this.#failed
-                  ? "failed"
-                  : "idle";
-        this.controls.setActivity(
-            activity,
-            waiting ?? { event, ...(reason === undefined ? {} : { reason }) },
+            : working
+              ? "working"
+              : this.#failed
+                ? "failed"
+                : "idle";
+        this.controls.setStatus(
+            status,
+            waiting
+                ? waiting
+                : status === "failed"
+                  ? this.#failureReason
+                  : (reason ??
+                    (this.#tools.size > 0 ? "Running a tool." : undefined)),
         );
     }
 }

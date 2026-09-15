@@ -7,8 +7,8 @@ status: open
 ## Work Items
 
 - [x] W1 Codex 실행·주입·수명 연결 — 환경·옵션 감사, active thread 입력 대응·전환 차단·소유 자원 정리, 사용자 동반 E2E와 최신 전체 검사 및 owner 반영을 완료했다.
-- [>] W2 Codex 관측·공통 상태 반영 — 기존 결과 귀속·실측을 보존하고 최신 W2 handoff의 D1/D2/D3를 구현·검증한다. Web·agents_list에 aiox-preparing/idle/working/awaiting-user/failed와 status_reason을 동일하게 표시하고 준비 중 노출·send 차단, turn 실패·해제·대화 전환, 비동기 질문·중단 경계와 기존 Web 이유 표시를 함께 반영한다. owner/tests와 미실측 범위를 정합화한다.
-- [ ] W3 Codex 간 실제 메시지 왕복 — 두 Codex Runtime의 agents_list/send·인증·단방향/양방향 route·toolOutput 본문/additionalContext·busy 입력·대상별 결과·발신자 전용 완료/실패 알림을 검증한다. interrupted 자동 통지 없음·알림 재귀 방지를 확인하고 코드/대역/실제 vendor 근거를 구분한다. Claude 완료를 선행 조건으로 두지 않는다.
+- [x] W2 Codex 관측·공통 상태 반영 — 공통 상태 구현·자동 검사·주요 실측을 완료했다. nullable 추가 실측은 사용자 지시로 생략. async 종료 후 선택 UI 부재, failed 대화 선택/취소 및 다른 연결별 복구는 미실측 제한으로 보존하고 W3로 진행한다.
+- [>] W3 Codex 간 실제 메시지 왕복 — 두 Codex Runtime의 agents_list/send·인증·단방향/양방향 route·toolOutput 본문/additionalContext·busy 입력·대상별 결과·발신자 전용 완료/실패 알림을 검증한다. interrupted 자동 통지 없음·알림 재귀 방지를 확인하고 코드/대역/실제 vendor 근거를 구분한다. Claude 완료를 선행 조건으로 두지 않는다.
 - [ ] W4 Claude와 Codex 교차 검증 — W1~W3 뒤 수행한다. Stage3 W2/W3/W5에서 필요한 Claude 메시지·관측 경계가 검증돼야 해당 시나리오를 완료한다. Claude 미해결로 막히는 경우 완료로 표시하지 않고 정확한 의존 항목을 Stage3에 연결해 그 작업 후 이 W4로 복귀한다. 양 vendor 송수신·결과 귀속·알림을 실제로 확인한다.
 - [ ] W5 Stage4 통합 리뷰·owner 반영·마감 — W1~W4 결과와 회귀·실측 범위, 실행/정리·상태·메시지 owner를 대조한다. 제목 helper의 incomplete AIOX MCP config current gap에 대한 별도 수정·유지 판단을 닫는다. 남은 OS·배포 인증은 Stage8 조건과 연결하고 Claude 교차 검증이 남아 있으면 Stage4 전체 완료로 처리하지 않는다.
 
@@ -20,7 +20,7 @@ status: open
 
 ### {Global}
 
-- 현재 활성 단계는 Stage4이며 W1은 완료, 재개점은 다시 열린 W2다. 최신 W2 공통 status/status_reason handoff를 먼저 읽는다. 기존 W2 완료는 당시 범위의 이력이며 새 계약은 아직 미구현이다. 순서는 W2 공통 상태 반영·검증, W3 Codex 간 왕복, Claude 준비 후 W4 교차 검증, W5 통합 마감이다. 기존 제품 문맥은 logs/artifact/AIOX-TUI-Product-Context-Prompt.md 및 logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md를 따른다. commit·push는 별도 지시 없이 하지 않는다.
+- 현재 활성 단계는 Stage4이며 W1/W2는 완료, 재개점은 W3 실제 Codex 간 왕복이다. 최신 W2 browser 검증·커밋 handoff의 실측 범위와 미실측 제한을 소비한다. nullable 추가 실측은 사용자 지시로 생략하며 실제 quota hook 순서, failed 대화 선택/취소, 다른 연결별 복구와 async 종료 후 선택 UI 제출을 완료로 확대하지 않는다. 순서는 W3 Codex 간 왕복, Claude 준비 후 W4 교차 검증, W5 통합 마감이다. 기존 제품 문맥은 logs/artifact/AIOX-TUI-Product-Context-Prompt.md 및 logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md를 따른다. 이번 W2 커밋은 사용자 지시로 수행하며 push는 지시받지 않았다.
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Codex 실제 TUI + Runtime별 App Server + Binding Relay를 연결한다. 입력은 채택된 toolOutput 본문 + additionalContext 메타데이터이며 E2E가 실패할 때만 원인을 확인한 뒤 후순위 방법을 검토한다. 임의 active thread 선택이나 선제 fallback을 만들지 않는다.
 - Stage2~2-3에서 완료한 공통 실행 소유권·terminal·메시지·상태 결과를 직접 소비한다. Codex W1~W3는 Stage3 완료를 기다리지 않는다. 기존 shell의 aiox agent run codex → 같은 terminal TUI → 종료 후 shell 복귀를 연결하고 외부 CLI와 daemon 소유 자원의 종료 정책을 유지한다. Runtime/threadId/turnId로 입력 결과를 연결한다. Stage3 결과 의존은 W4의 Claude 교차 검증에만 적용한다.
 - W3에서 Codex↔Codex의 agents_list/send·인증·단방향/양방향 route·결과·발신자 전용 알림을 먼저 검증한다. 두 vendor 교차 검증은 W4에서 Claude 준비 상태에 따라 수행한다. interrupted 자동 통지 없음·알림 재귀 방지와 실제 OS별 근거/대역 구분은 공통으로 유지한다.
@@ -36,7 +36,11 @@ status: open
 
 ### {W2,W3,W4,W5}
 
-- 최신 W2 handoff의 D1/D2/D3가 이번 공통 상태 반영 기준이다. Web·agents_list는 aiox-preparing/idle/working/awaiting-user/failed 및 status_reason을 동일하게 표시하며 준비 중도 목록에 포함하되 send 가용성과 분리한다. 기존 MCP 3종 요약은 현재 구현 사실이지 유지 결정이 아니다. 새 계약의 owner 반영과 인접 회귀·필요 실측이 남아 있고 기존 실측을 새 표시 근거로 확대하지 않는다. 한도 확인을 위해 사용량을 일부러 소진하지 않는다. 새 예외 처리·설계가 필요하면 추측하지 말고 사용자에게 묻는다.
+- 최신 W2 disabled 구현 handoff와 D1/D2/D3를 소비한다. Web·agents_list는 aiox-preparing/idle/working/awaiting-user/failed 및 status_reason을 동일하게 전달하며 준비 중도 목록에 포함하되 send 준비와 분리한다. Claude quota는 fired→working·이전 실패 해제, stale→Enter 대기다. disabled는 해당 세션 quota 대기와 재개 기록을 해제한 뒤 상태를 재계산하며 현재 실패를 보존하고 이미 해제된 과거 실패는 복원하지 않는다. 다른 작업·대기가 없으면 StopFailure→stale→disabled는 failed, StopFailure→fired→disabled는 idle이다. 기존 delivery 결과는 바꾸지 않는다. 재개 후 같은 세션 Stop/StopFailure 처리, blocking Stop 제한과 다른 활동·대기 보존, 새 입력의 해당 세션 quota 대기 해제를 유지한다. 전체 565 tests를 통과했으나 남은 W2 관측/필요 검증은 미완료다. 실제 quota 순서·화면·Esc/Ctrl+C는 미실측이며 한도 소진이나 임의 TUI 조작으로 실험하지 않는다. 새 예외 처리·설계가 필요하면 사용자에게 묻는다.
+
+### {W2}
+
+- MCP elicitation의 nullable turnId 수명은 승인됐다. 현재 turn에 임의 귀속하지 않고 threadId/requestId로 추적·resolved 해소하며 turn 종료·새 turn 시작으로 지우지 않는다. 대화 전환은 표시 대상만 바꾸고 이전 대화의 미해결 요청을 보존한다. turnId가 있는 요청은 해당 turn 종료로 정리하고 늦은 요청으로 복원하지 않는다. 소켓 대역 구현 검증과 실제 elicitation 발생·해소 실측을 구분한다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -326,7 +330,7 @@ W2의 결과·활동 연결과 검증을 완료로 판정했다. 실제 idle/bus
 
 | 항목 | 확정 내용 |
 | --- | --- |
-| D1 공통 표시 | Web과 MCP `agents_list()`가 `aiox-preparing / idle / working / awaiting-user / failed`를 동일하게 표시하고 `status_reason`을 제공한다. `reasoning`·`tool`은 `working`의 세부 이유로 표현한다. `aiox-preparing`도 양쪽 목록에 표시한다. MCP 3종 요약 유지 제안은 채택하지 않았다. |
+| D1 공통 표시 | Web과 MCP `agents_list()`가 `aiox-preparing / idle / working / awaiting-user / failed`를 동일하게 표시하고 `status_reason`을 제공한다. Codex는 `turn.status: inProgress`를 기본 `working`으로 판정하고, 명시적인 미해결 사용자 요청이 있으면 `awaiting-user`를 우선한다. `reasoning`·`tool` 종류를 열거해 `working`을 판정하지 않으며 세부 활동은 필요한 경우 `status_reason`에만 사용한다. `aiox-preparing`도 양쪽 목록에 표시한다. MCP 3종 요약 유지 제안은 채택하지 않았다. |
 | 이유 변환 책임 | vendor 신호를 아는 adapter가 공통 상태와 이유를 만든다. Claude hook 이름·Codex 내부 event 토큰을 그대로 공통 이유 어휘로 간주하지 않는다. 기존 `observation.event`를 어떤 내부 타입으로 대체할지는 아직 코드 변경하지 않았다. |
 | D2 실패 | vendor가 보고한 최종 응답/turn 실패를 `failed`로 표시한다. Codex에서는 `turn/completed`의 `turn.status === "failed"`가 판정 기준이며 `turn.error` 존재나 `codexErrorInfo` 이름으로 실패 여부·지속성을 추측하지 않는다. 직접 TUI에 입력한 turn도 같은 활동 관측 대상이다. |
 | 실패 해제 | 같은 대화의 다음 `turn/started`에서 이전 turn 실패를 해제한다. 다른 대화 선택이 성공하면 그 대화의 관측 상태를 표시하며, 진행 중 작업·대기가 없으면 `idle`이다. `/resume` 선택창 취소만으로 실패를 해제하지 않는다. 연결 실패는 새 turn 시작과 섞지 않고 연결 준비 복구 관측으로 해제한다. 실제 복구 경로 검증은 남는다. |
@@ -343,12 +347,13 @@ W2의 결과·활동 연결과 검증을 완료로 판정했다. 실제 idle/bus
 선택/준비 성공
   → 해당 thread의 관측된 작업·요청에 따라 idle / working / awaiting-user
 
-turn/started
+turn/started (turn.status=inProgress)
   → 이전 turn 실패 해제, working
 item 시작·완료
-  → 진행 중 turn의 세부 활동 갱신; 도구 하나 완료로 turn 종료를 만들지 않음
+  → 필요한 세부 이유만 갱신; working 판정에 도구 종류별 분류를 요구하지 않음
+  → 도구 하나 완료로 turn 종료를 만들지 않음
 명시적인 승인·사용자 입력 요청
-  → 요청 ID별 미해결 대기; awaiting-user
+  → 요청 ID별 미해결 대기; turn이 inProgress여도 awaiting-user 우선
 serverRequest/resolved
   → 해당 요청만 해제; 다른 미해결 요청은 보존
 turn/completed
@@ -430,3 +435,215 @@ turn/completed
 검증: 최초 pnpm check는 미추적 apps/web/src/t.js의 미사용 변수 lint 오류로 중단됐다. 이 파일은 미정의 변수와 오타를 포함한 상태 계산 초안으로 판단해 수정·삭제·커밋하지 않았다. 해당 파일만 제외한 oxlint·oxfmt 검사, 전체 build·typecheck는 통과했다. 전체 테스트는 sandbox /bin/ps EPERM으로 실패한 뒤 승인된 sandbox 외부 pnpm test로 재실행해 558 tests 모두 통과했다. 출력은 /private/tmp/aiox-commit-tests-20260915.log다. git diff --check도 통과했다. 실제 vendor 재실행은 하지 않았다.
 
 Stage6 디자인 프롬프트의 starting/reasoning/tool/stopped 표시는 최신 W2 공통 상태 결정과 불일치함을 확인했다. 이번 커밋은 기존 디자인 초안 보존이며 최신 계약으로 승인하거나 제품 구현에 반영한 것이 아니다. W2 owner/소비 정합화 시 이 Stage6 산출물도 함께 확인해야 한다. 개인 architecture.excalidraw는 변경하지 않았다.
+
+### 2026-09-15 00:45 · W2 공통 상태 경로 조사·Claude quota 상태 판단 대기
+
+사용자가 W2 공통 status/status_reason 구현과 준비 중 목록 노출·send 차단 분리를 요청했다. 새 예외 처리나 설계 결정이 필요하면 멈추고 질문하며 commit/push·개인 architecture.excalidraw·무관한 execution-flow-map·Stage6 Web은 제외한다. onramp와 최신 W2 handoff를 복원했다. 미추적 apps/web/src/t.js는 변경하지 않았다.
+
+확인한 사실: domain runtime.ts의 mcpStatus는 starting/stopped를 null로 요약하고 networks.reachable의 목록 필터와 messaging의 not_available 판정에 함께 쓰인다. mcp.ts는 요약 status만 전달하며 HTTP AgentView와 Web은 activity/observation.reason을 소비한다. RuntimeRegistry.setActivity는 observation 인자가 생략되면 이전 observation을 유지한다. 공통 상태와 이유의 교체·제거 및 목록과 send 경계를 함께 변경해야 한다.
+
+Claude 추가 판단 지점: packages/adapters/claude/src/claude-observations.ts의 Notification 분기는 quota_auto_resume_stale/disabled를 waiting에 넣고 fired에서 제거하며 #project는 waiting을 failed보다 우선한다. 인접 claude-observations.test.ts:639-653은 StopFailure(rate_limit) → quota_auto_resume_stale → awaiting-user → quota_auto_resume_fired → failed를 기대한다. 이는 현재 코드·테스트 정의이며 실제 vendor 재실측 결과가 아니다. architecture 관측 표는 quota 신호를 사용량/재개 연결 후보로 설명하며 전체 live wiring 검증이라고 하지 않는다.
+
+판단: 최신 handoff의 한도 알림 자체로 상태 생성 금지와 이 Claude 기존 동작의 관계를 확정해야 한다. 기존 구현 존재만으로 awaiting-user 전이를 유지하거나 사용자 판단 없이 삭제하지 않는다. 제안은 quota 알림으로 상태를 바꾸지 않고 관측된 StopFailure 실패와 이유를 유지하며 다음 유효한 UserPromptSubmit 등 vendor 활동 신호로 갱신하는 것이다. 아직 승인된 결정이 아니므로 사용자에게 질문하고 제품 구현을 멈춘다.
+
+제품 코드·테스트·owner 명세는 변경하지 않았고 테스트 실행·실제 vendor 실행·commit/push도 하지 않았다. W2는 active이며 공통 계약 구현·검증이 남는다. 재개 첫 행동은 Claude quota 알림의 상태 영향에 대한 사용자 답변을 반영한 뒤 producer→registry→HTTP/MCP→Web와 준비 전 send 경계를 계속 수정·검증하는 것이다.
+
+### 2026-09-15 01:26 · W2 공통 상태·Claude quota 전이 구현과 종료 귀속 질문
+
+사용자는 이전 quota 알림 무시 제안을 철회하고 공식 Notification 문서에 따른 전이를 확정했다. StopFailure는 failed와 실제 오류 이유, quota_auto_resume_fired는 UserPromptSubmit을 기다리지 않고 working과 이전 실패·자동 대기 이유 해제, stale은 awaiting-user와 자동 재개용 Enter 대기 이유, disabled는 자동 재개 대기만 제거하고 기존 실패·이유를 유지한다. disabled 자체로 실패를 만들거나 idle로 바꾸지 않는다. cloud_credential_error를 오류 값에 추가하고 rate_limit을 임의의 세션/주간 한도로 번역하지 않는다. 새 예외·미정 전이는 질문하며 commit/push 금지와 기존 제외 범위를 유지한다.
+
+공식 확인: https://code.claude.com/docs/en/hooks#notification 에 fired의 작업 재개, stale의 Enter 입력 대기, disabled의 작업 재개 없는 대기 종료가 명시돼 있다. 같은 문서 StopFailure 절은 cloud_credential_error와 error/error_details/last_assistant_message의 의미를 설명한다. 코드에서는 기존 오류 분류 경로에 cloud_credential_error를 추가했고 원문 rate_limit을 유지했다. 이전 agent의 UserPromptSubmit 필수 대기·quota 알림 일괄 무시 제안은 철회한다. 공식 문서 확인은 설치된 Claude의 실제 hook 발생·순서 실측이 아니다.
+
+구현: domain RuntimeStatus를 aiox-preparing/idle/working/awaiting-user/failed로 변경하고 기존 mcpStatus 요약·Agent stopped를 제거했다. RuntimeControls.setStatus(status, reason?) → RuntimeRegistry.status/status_reason → HTTP AgentView/Web 및 MCP agents_list를 연결했다. 이유 생략은 null로 교체한다. MCP schema는 AgentView의 공통 필드를 재사용한다. 목록 계산은 기존 membership·outbound route·인증 경계를 유지하며 준비 중도 포함한다. MessageService의 준비 전 not_available와 실제 vendor 입력 준비 검증은 유지했다. CLI 소비도 새 AgentView 필드로 변경했고 Host stopped 수명은 변경하지 않았다.
+
+Claude는 기존 hook·prompt/요청 귀속을 유지하며 실패 이유와 quota 재개 관측을 보존한다. fired에서 이전 실패와 quota 대기를 해제하고 stale의 현재 이유는 "Press Enter to resume the task automatically."로 표시한다. disabled는 quota 대기만 제거하고 실패 이유를 복원한다. 승인·질문 이유는 vendor hook 이름 대신 관측 의미로 전달하고 도구 실행은 working의 이유로 표시한다. Codex는 공통 어휘·이유를 전달하며 선택 thread의 최신 turn 실패를 다음 turn 시작까지 보존한다. 이전 turn의 늦은 완료는 최신 상태를 덮어쓰지 않고 원 delivery만 정산한다. 오류 message와 실제 codexErrorInfo 문자열/JSON 분류·HTTP 코드를 상태 이유에 표시하되 delivery 오류는 기존 message를 유지한다. 연결 실패는 turn 시작으로 지우지 않도록 연결 관측과 분리했다. https://learn.chatgpt.com/docs/app-server 의 turn/completed·Errors 구조도 확인했다. 기존 실측을 새 공통 표시의 실측 근거로 확대하지 않는다.
+
+검증: quota 상태 테스트 수정 전 6건 실패를 확인한 뒤 구현했다. 소켓 listen EPERM 때문에 Claude 전체 테스트가 sandbox 안에서 실패했고 권한 적용 후 통과했다. 준비 중 MCP 목록 노출 테스트의 기존 undefined 실패와 Codex 최종 실패 표시·오류 분류 누락 실패도 확인 후 수정했다. 최종 pnpm check는 lint·format·build·typecheck와 전체 560 tests(domain25/config28/protocol11/terminal88/vendor3/persistence13/Web36/Claude77/Codex16/CLI59/daemon204) exit0이다. 출력은 /private/tmp/aiox-w2-final-check.log. 제거한 domain 요약 함수의 3 tests 대신 실제 protocol enum 검증을 두었다. 인증 Claude hook 대역→native inbox/Binding→Registry→Web API/MCP에서 quota 상태와 이유 일치, 기존 failed delivery·발신자 알림 불변을 검증했다. 준비 중 Web/MCP 노출·send 차단, 등록 해제·route·인증 회귀와 Web 이유 교체·제거도 통과했다. 실제 quota hook 발생 순서·실제 화면 표시·자연 한도 발생은 실측하지 않았다.
+
+Owner 반영: runtime spec에 공통 상태와 vendor별 관측 기준, collaboration/Web spec에 동일 상태·이유와 목록/전송 경계, architecture system/vendor-bindings에 저장·전달 책임과 코드/대역·실측 한계를 반영했다. 새 spec은 승인된 target 계약이며 vendor-bindings에 현재 구현과 미완료 경계를 구분했다. 변경 문서의 inline-code 검사와 git diff --check를 통과했다. architecture.excalidraw·execution-flow-map·Stage6 Web 산출물·commit/push는 변경/수행하지 않았다. 시작 시 존재한 미추적 apps/web/src/t.js는 이 작업에서 편집·삭제하지 않았고 최종 확인 시 존재하지 않았다.
+
+추가 판단 지점 — 구현을 멈추고 사용자 질문: fired 뒤 새 UserPromptSubmit 없이 Stop이 오는 경우 현재 ClaudeObservations는 등록된 prompt가 없는 Stop을 종료로 투영하지 않는다. 이미 끝난 prompt ID를 사용한 Stop도 기존 finished guard에서 제외한다. session 수준 재개 관측을 이 Stop으로 종료해도 되는지, 기존 prompt 귀속 근거를 더 요구할지는 이번 확정 전이에 포함되지 않았다. 제안은 같은 session의 재개 이후 Stop으로 현재 상태만 종료하고 개별 delivery는 기존 ID 귀속을 유지하는 것이지만 아직 승인하지 않은 제안이다. 임의 prompt ID 생성·delivery 재귀속·실측 순서 추정은 하지 않는다. 해당 지점은 vendor-bindings의 Current gap에 남겼다.
+
+W2는 active로 유지한다. 첫 재개는 위 종료 귀속에 대한 사용자 답변이다. 그 뒤 필요한 상태 수명 테스트/수정과 W2 미완료인 Codex nullable turnId MCP elicitation 경계·대화 전환/연결 복구 및 새 표시의 필요한 실제 검증을 닫는다. 자연 quota를 일부러 소진하지 않으며 W3/W4의 두 실제 vendor 메시지 왕복·기존 Claude 중단 gap·제목 helper config gap을 이번 통과로 완료 처리하지 않는다.
+
+### 2026-09-15 01:39 · W2 변경 코드·테스트 단순화 리뷰
+
+사용자가 현재 로그와 코드를 대조해 구조 단순화·불필요한 테스트를 리뷰하도록 요청했다. 앞선 대화에서 Claude 자동 재개 후 Stop은 재개 기록을 해제하고 상태를 재계산하되 이전 delivery 결과와 blocking Stop 제한은 보존하는 방향을 확인했다. 이번 리뷰에서 제품 코드·테스트는 변경하지 않았다.
+
+직접 확인: 현재 ClaudeObservations에 UserPromptSubmit → StopFailure(rate_limit) → quota_auto_resume_fired → Stop을 주입하면 종료된 동일 ID와 미등록 새 ID 모두 마지막 보고가 working으로 남는다. 동일 종료 ID의 StopFailure(server_error)도 finished guard에서 무시돼 working으로 남는다. stale 뒤 새 ID의 UserPromptSubmit만 주입하면 quota waiting이 남아 awaiting-user를 계속 보고한다. 이는 코드 이벤트 주입 결과이며 실제 hook 순서 실측이 아니다. 마지막 경로에서 fired가 별도로 보장되는지는 확인하지 않았다.
+
+구조 제안: 기존 Claude 관측기 내부에서 세션 재개 활동 종료와 prompt/delivery 중복 정산 방지를 분리한다. 별도 공통 상태 엔진은 불필요하다. waiting 값의 event는 project의 이유 변환에 사용되므로 producer에서 이유를 저장하면 분기를 줄일 수 있다. Codex #update의 준비 완료 idle 보고는 유일 caller인 #updateActivity가 곧 실제 상태를 보고하므로 중간 보고 제거 후보다. 외부 onReady는 준비 통지/타이머 정리를 수행한다. 실제 화면 깜빡임은 미실측이다.
+
+테스트 리뷰: quota 테스트 두 곳의 실패한 동일 prompt ID stale/fired 수용 검증은 통합 가능하다. MCP preparing 표시 검사는 별도 preparing/send 차단 통합 테스트와 겹치므로 revoke 검증은 남기고 표시 검증 일부를 합칠 수 있다. registry 이유 제거·Web DOM 이유 제거·MCP route/auth/send 경계는 유지한다. 제거된 mcpStatus 함수의 테스트 삭제는 타당하다. 재개 후 Stop/StopFailure·blocking Stop·타 세션/작업 보존·기존 delivery 불변 검증이 필요하다.
+
+검증: Node --experimental-transform-types로 현재 TypeScript 관측기를 직접 실행해 위 4가지 경계를 확인했다. pnpm --filter @aiox/adapter-claude test -- claude-observations.test.ts는 실제 Claude 전체 10 files/77 tests를 실행해 통과했다. 전체 560 tests는 재실행하지 않았다. 실제 vendor/TUI 조작·commit/push는 하지 않았다. W2 active 유지; 리뷰 제안은 적용 전이다.
+
+### 2026-09-15 01:47 · W2 리뷰 반영·Claude 재개 종료와 상태 회귀 정리
+
+사용자는 최신 리뷰의 자동 재개 종료 처리를 확정했다. 같은 세션의 Stop/StopFailure로 재개 활동을 처리하되 기존 delivery 결과·blocking Stop 제한과 다른 세션/작업/대기를 보존하고, stale 이후 실제 새 입력에서 이전 quota 대기를 해제하도록 요청했다. 이전 종료 귀속 질문은 이번 지시로 해소됐다. 별도 공통 상태 엔진이나 quota 순서 추측은 추가하지 않았다.
+
+직접 확인과 변경: ClaudeObservations의 finished guard 앞에서 세션 재개 종료를 처리한다. 기존 종료 ID와 미등록 새 ID의 Stop으로 재개 기록을 해제·재투영하고 재개 후 StopFailure의 새 오류를 반영한다. blocking Stop은 재개 기록을 보존하며 기존 prompt 정산 guard와 delivery 결과는 유지한다. 유효한 UserPromptSubmit은 해당 세션의 quota 대기와 재개 기록을 해제하고 기존 prompt 활동 경로로 이어진다. fired 동반을 가정하지 않는다. waiting은 등록 시 이유 문자열을 저장하여 투영 시 event 번역을 제거했다.
+
+Codex #update의 유일 caller는 #updateActivity이며 onReady의 실제 외부 소비자는 AgentController의 타이머 해제·external ready 전송이다. 중간 idle 보고 한 줄을 제거하고 실제 관측 상태만 보고하게 했다. turn 추적·실패 보존·delivery 귀속은 합치지 않았다. readiness 테스트는 상태 보고 1회와 onReady 1회를 검증한다. 실제 화면 깜빡임 유무는 측정하지 않았다.
+
+테스트 정리: 종료된 prompt의 별도 stale/fired 테스트를 delivery 불변·재개 종료 테스트에 통합했다. 활성 prompt에 대한 quota 알림의 미정산 범위는 유지한다. MCP preparing 목록 중복 assertion을 제거하고 기존 준비 중 Web/MCP 노출·send 차단 통합 테스트와 revoke 검증을 유지했다. 기존 Registry 이유 제거·Web DOM 교체/제거·MCP 권한/route/send 회귀를 유지한다. 추가 회귀는 기존 ID/미등록 ID Stop과 재실패, blocking Stop 뒤 재실패, 같은/다른 세션의 다른 prompt·도구·승인 대기와 다른 세션 재개 활동 보존, stale 뒤 새 입력만 관측한 경로다. 기존 인증 hook→ClaudeBinding→Registry→HTTP/MCP 통합 테스트에 재개 후 기존 ID Stop→idle/null과 DB 실패·발신자 알림 불변을 추가했다.
+
+검증 근거: 수정 전 Claude 상태 회귀 5건의 예상 실패를 확인했다(/private/tmp/aiox-w2-review-red.log; 이 실행의 소켓 테스트는 sandbox EPERM으로 실패). 수정 후 권한 적용 Claude 80 tests를 통과했고 같은 세션 작업 보존 케이스까지 추가했다. Codex 중간 idle 제거 전에는 readiness 상태가 2번 보고돼 테스트가 실패했다(/private/tmp/aiox-w2-codex-red.log). 최종 pnpm check exit0: lint·format·build·typecheck와 전체 564 tests(domain25/config28/protocol11/terminal88/vendor3/persistence13/Web36/Claude81/Codex16/CLI59/daemon204). 전체 출력은 /private/tmp/aiox-w2-review-check.log다. 변경 owner 문서 inline-code 검사와 git diff --check도 통과했다.
+
+Owner 정합화: runtime spec은 확정된 재개 종료·새 입력 계약, vendor-bindings architecture는 세션 활동과 prompt/delivery 중복 정산 경계·대기 이유 저장·Codex 준비 보고와 코드/대역 근거를 반영했다. 해당 Claude 종료 Current gap을 제거하고 실제 quota 순서·화면 미실측은 유지했다. 연결된 system/collaboration/Web 계약은 이미 동일 상태 전달·전송 분리를 소유하므로 이번 추가 편집은 필요하지 않았다. 새 예외·fallback·공통 엔진·의존성은 추가하지 않았다.
+
+W2는 active다. 이번 리뷰 범위의 구현·회귀·owner 정리는 완료했으며, 다음은 남은 Codex nullable turnId MCP elicitation 수집/해소 경계와 대화 전환·연결 복구/새 공통 표시의 필요한 검증 범위를 최신 W2 관측 근거와 대조하는 것이다. W3/W4 실제 vendor 왕복, 기존 Claude 중단 gap, 제목 helper config gap은 완료로 올리지 않는다. 실제 vendor 실행·quota 소진·TUI 조작을 하지 않았으며 quota 발생 순서와 실제 화면은 미실측이다. 다른 작업자의 변경·architecture.excalidraw·무관한 execution-flow-map·Stage6 작업은 건드리지 않았고 commit/push도 하지 않았다.
+
+### 2026-09-15 02:09 · W2 disabled 자동 재개 기록 해제 계약 반영
+
+사용자가 disabled 처리의 의미를 확정하고 구현을 지시했다. 실패 보존은 현재 남아 있는 실패를 지우지 않는 뜻이며 fired에서 이미 해제한 과거 실패를 복원하는 뜻이 아니다. disabled는 해당 세션의 quota 대기와 자동 재개 기록을 모두 해제한 뒤 상태를 재계산한다. 다른 작업·대기가 없을 때 StopFailure → stale → disabled는 failed, StopFailure → fired → disabled는 idle이다. 새 실패나 delivery 결과 변경은 없다. 이전의 “disabled는 대기만 제거·idle 전환 안 함” 서술을 이 계약으로 구체화한다.
+
+구현: ClaudeObservations Notification 분기에서 waiting.delete와 resuming.delete를 각각 실행한다. 두 기록이 모두 없으면 기존처럼 상태 보고를 생략한다. 어느 하나라도 제거하면 기존 project가 다른 활동·대기·현재 실패를 반영한다. 실패 저장·delivery 정산·공통 상태 전달 경로는 변경하지 않았다. runtime spec과 vendor-bindings architecture의 disabled 설명을 새 계약으로 맞췄다.
+
+코드 검증: 기존 rate_limit/cloud_credential_error 테스트를 확장해 현재 실패 유지와 fired 뒤 disabled→idle, 과거 delivery 실패 1회 불변을 검증했다. 수정 전 이 두 테스트가 working 잔존으로 실패한 것을 확인했다(/private/tmp/aiox-w2-disabled-red.log). quota 대기·재개 기록이 함께 존재하는 입력과 다른 작업·승인 대기 보존 테스트도 추가했다. 기존 인증 hook→Binding→Registry→HTTP/MCP 통합 테스트에 fired→disabled→idle/null을 추가해 DB failed 결과·발신자 알림 불변을 확인했다. 이어 fired→Stop 기존 검증도 유지했다.
+
+최종 pnpm check exit0: lint·format·build·typecheck와 565 tests(domain25/config28/protocol11/terminal88/vendor3/persistence13/Web36/Claude82/Codex16/CLI59/daemon204). 출력은 /private/tmp/aiox-w2-disabled-check.log. 변경 문서 inline-code 검사와 git diff --check도 통과했다. 테스트는 입력한 이벤트 순서에서 재개 기록이 남지 않는다는 근거이며 fired→disabled의 실제 발생 순서를 관측한 근거가 아니다. 실제 quota 순서·화면·Esc/Ctrl+C 관측은 미실측이고 vendor/TUI 실행·한도 소진 실험은 하지 않았다.
+
+W2는 active이며 남은 Codex 관측/필요 검증 범위는 유지한다. 이번 disabled 수정은 Esc/Ctrl+C 종료 신호를 새로 정의하거나 해결한 작업이 아니다. 다른 작업자의 변경·개인 architecture.excalidraw·무관한 execution-flow-map·Stage6 작업을 건드리지 않았고 commit/push도 하지 않았다.
+
+### 2026-09-15 10:59 · W2 재개 조사·nullable elicitation 수명 결정 대기
+
+사용자는 W2 공통 저장·전달/목록·send 경계와 Codex turn 상태 계약의 계속 구현을 요청했다. 최신 disabled 확정 계약을 소비하며 새 예외·설계가 필요하면 멈추고 질문한다. 기존 제외 범위와 실제 TUI 실험 사전 합의를 유지한다.
+
+직접 확인: domain RuntimeStatus → vendor RuntimeControls.setStatus → RuntimeRegistry.status/status_reason → HTTP AgentView/Web 및 MCP agents_list 공통 경로가 현재 작업 트리에 구현돼 있다. networks.reachable은 membership/outboundTargets/collaborationActive를 유지하면서 preparing을 포함하고 messaging.#refuse는 preparing send를 not_available로 차단한다. 이전 565 tests는 이번에 재실행하지 않았다.
+
+Codex Relay observedMethods에는 mcpServer/elicitation/request가 없으며 Binding pending은 string turnId와 approval/requestUserInput만 소비한다. 설치 codex-cli 0.153.4에서 app-server generate-ts를 /private/tmp/aiox-w2-schema-review에 실행했다. v2/McpServerElicitationRequestParams.ts는 threadId:string, turnId:string|null이며 주석은 elicitation이 독립 요청이고 turn은 App Server의 상관관계 정보라고 명시한다. v2/ServerRequestResolvedNotification.ts는 threadId/requestId로 해소한다. 공식 https://learn.chatgpt.com/docs/app-server 의 MCP server elicitation requests 절은 form/URL 입력과 accept/decline/cancel 응답 뒤 serverRequest/resolved를 설명한다. 스키마/문서 근거이며 실제 TUI 발생·해소 실측이 아니다.
+
+미승인 제안: null turnId를 현재 turn으로 추정하지 않고 해당 thread/requestId의 독립 대기로 보관한다. 현재 선택 thread의 미해결 요청은 awaiting-user, resolved에서 그 요청만 제거한다. 명시적 turnId가 있는 요청만 해당 turn 종료로 정리하며 null 요청은 turn 종료·새 turn 시작으로 지우지 않는다. 다른 대화 선택 시 그 대화 상태를 표시하고 원 대화 복귀 시 unresolved 요청을 다시 표시한다. resolved가 관측되지 않으면 해당 대기는 남는다. turn 종료에 null 요청도 정리하는 대안은 실제 미해결 입력을 숨길 수 있어 권하지 않는다. 사용자 결정 전 구현하지 않는다.
+
+후속 대조 항목: Binding approval pending 등록에 active turn 일치 검사가 없어 종료된 turn의 늦은 요청이 대기를 다시 만들 가능성이 있다(정적 코드 판단, 재현 테스트 미실행). 승인 후 합의된 늦은 이벤트 차단 계약의 회귀로 확인한다. 대화 선택/취소·연결 복구 및 async 질문 검증도 남는다. 제품 코드·테스트·owner 문서를 수정하지 않았고 실제 vendor/TUI 실행·한도 소진·commit/push도 하지 않았다. W2 active; 다음 행동은 nullable 요청 수명 제안에 대한 사용자 답변 반영이다.
+
+### 2026-09-15 11:21 · W2 nullable elicitation 수명 구현·소켓 대역 검증
+
+사용자는 nullable 요청을 현재 turn에 임의 귀속하지 않고 threadId/requestId로 추적·해소하며 대화 전환 때 원 대화 요청을 보존하는 제안을 승인했다. 실제 elicitation 관측 여부와 구현 테스트를 구분한다. 직전 수명 결정 질문은 해소됐으며 새 예외·fallback은 추가하지 않았다.
+
+구현: Relay observedMethods에 mcpServer/elicitation/request를 추가하고 CodexBinding의 기존 pending 값에 nullable turnId를 보존한다. 현재 선택 thread의 pending을 표시하는 기존 투영과 serverRequest/resolved의 threadId/requestId 해소를 재사용한다. null 요청은 turn 종료·새 turn 시작으로 삭제하지 않고, 대화 전환은 표시만 변경한다. 명시적 turnId 요청은 현재 진행 중 turn과 일치할 때 등록해 종료된 turn의 늦은 elicitation/approval이 대기를 복원하지 않게 했다. delivery 정산 경로·인증·Network·공통 저장/전달 경계는 수정하지 않았다.
+
+검증: 실제 localhost WebSocket 대역의 App Server → Relay → Binding → RuntimeControls 통합 시나리오를 기존 index.test.ts에 확장했다. 수정 전 첫 nullable 요청이 failed에 남아 awaiting-user 기대와 어긋나는 실패를 확인했다(/private/tmp/aiox-w2-elicitation-red.log). 종료된 turn의 늦은 요청도 idle 대신 awaiting-user가 되는 실패를 확인한 뒤 공통 등록 guard를 수정했다(/private/tmp/aiox-w2-elicitation-late-red.log). turn 전/진행 중 nullable 요청 수집, turn 시작·interrupted 종료 뒤 보존, 명시적 turn 요청 정리, 복수 요청 중 하나만 해소, 다른 대화 왕복 뒤 원 대기 보존, 다른 thread의 동일 ID 해소 격리, 늦은 approval/elicitation 차단과 기존 interrupted delivery 1회 불변을 검증했다.
+
+최종 검사: pnpm check의 lint·format·build·typecheck는 통과했다. 전체 테스트는 Node 26.8.2(ABI147)와 기존 better-sqlite3 모듈(ABI137)의 불일치로 persistence에서 중단됐다(/private/tmp/aiox-w2-elicitation-check.log). 기존 모듈과 ABI가 일치하는 로컬 Node 24.8.0으로 pnpm test를 실행해 전체 565 tests(domain25/config28/protocol11/terminal88/vendor3/persistence13/Web36/Claude82/Codex16/CLI59/daemon204) exit0를 확인했다(/private/tmp/aiox-w2-elicitation-tests-node24.log). 의존성 재설치·재빌드나 DB 삭제는 하지 않았다. 전체 실행의 Codex 테스트 이후 nullable 요청 하나를 turn 시작 뒤에 주입하도록 테스트 순서만 보강했고 최종 Codex 16 tests를 Node26에서 재통과했다(/private/tmp/aiox-w2-elicitation-green.log). scripts/check-markdown-inline-code와 git diff --check도 통과했다. 테스트 소켓은 sandbox listen EPERM 이후 권한 적용으로 실행했다.
+
+Owner: runtime spec의 공통 상태에 승인한 요청별 수명 계약을 반영했고 vendor-bindings architecture에 Relay 수집·Binding pending 귀속과 소켓 대역 근거를 반영했다. 기존 nullable 수집/해소 구현 gap을 실제 발생·해소 미실측 gap으로 정정했다. 연결된 collaboration/system/product/roadmap은 기존 owner 위임·실측 기준을 유지하므로 변경하지 않았다.
+
+판정: 승인한 nullable 구현·회귀 범위는 완료다. 실제 MCP 서버/TUI의 elicitation 발생·응답·해소, 비동기 질문 미응답 turn 종료 및 종료 뒤 선택지 제출은 이번에 실측하지 않았다. 새 공통 표시·연결 실패별 실제 복구, 자연 한도 payload도 미실측으로 유지한다. W2 전체 완료는 아니며 남은 대화 선택/취소·연결 복구와 async 질문 경계의 필요한 회귀/실측 범위를 기존 근거와 대조한다. 필요한 TUI 실험은 사전 범위 합의 후 수행한다. commit/push·개인 architecture.excalidraw·무관한 execution-flow-map·Stage6 Web 변경은 하지 않았다.
+
+### 2026-09-15 11:26 · W2 남은 상태 경계 회귀·실제 표시 검증 범위 대기
+
+사용자가 최신 W2 계속 구현과 대역 검증을 요청했다. bc48d94의 renderAgents 및 latest observation reason 회귀는 현재 status/status_reason에 이미 연결돼 있다. Registry 이유 생략→null, HTTP/MCP schema·실제 값 공유, 준비 중 목록/send 분리와 Claude hook 통합 회귀를 직접 대조했다. 제품 코드 재작성이나 새 설계·fallback은 추가하지 않았다.
+
+이번 변경은 packages/adapters/codex/src/index.test.ts의 기존 소켓 통합 시나리오 보강이다. failed 상태에서 선택 RPC error 뒤 기존 실패 복원, 다른 대화 선택 뒤 failed 대화 복귀, 전환 중 preparing/send 차단을 확인했다. error 응답은 취소 대역이며 실제 picker Esc 실측이 아니다. binding.connectionLost를 직접 주입한 뒤 turn/started만으로 연결 실패를 해제하지 않고 성공한 thread/resume의 준비 관측 뒤 working을 보고함을 확인했다. daemon의 실제 connectionLost caller는 등록 해제·정리 경로이므로 이를 실제 transport 재연결이나 사용자 복구 완료로 확대하지 않는다.
+
+async agentMessage의 질문 존재만으로 대기를 만들지 않고 completed/interrupted 뒤 idle·이유 제거, 늦은 도구 완료 뒤 idle과 기존 interrupted delivery 1회 정산 불변을 검증했다. 처음 작성한 질문 fixture는 동기 요청 형태였으므로 기존 생성 스키마 /private/tmp/aiox-w2-schema-review/v2/ThreadItem.ts·AgentMessageDelivery.ts·AsyncUserInputQuestion.ts를 직접 읽고 title/options:string[]로 맞췄다. 과거 실측 wire는 현재 경로에 없어 재생하지 않았다. 실제 미응답 turn 종료·종료 후 질문 선택지 제출은 여전히 미실측이다.
+
+검증: 최초 Codex 소켓 테스트는 sandbox listen EPERM, 권한 적용 후 Codex16 통과. lint·format check·Codex typecheck 통과. 기존 SQLite ABI와 일치하는 로컬 Node24.8.0에서 전체565 tests exit0(/private/tmp/aiox-w2-boundaries-tests.log). Node24.8.0은 현재 package engines 범위 밖 경고가 있으므로 전체 지원 버전 인증으로 주장하지 않는다. 전체 실행 뒤 질문 fixture만 생성 스키마에 맞췄으며 최종 Node26 Codex16·typecheck 재통과. git diff --check 통과. 제품 코드·계약 변경이 없어 runtime/collaboration/vendor-bindings의 기존 상태 계약과 실제 미측정 경계는 유지한다.
+
+W2 active이며 다음은 실제 실험 범위 합의다. 미승인 제안: 격리 daemon의 Codex 한 개에서 새 Web/MCP 상태·이유를 관측하며 일반 작업·명시 요청/해소·중단·대화 선택/취소, 사용자 동반 async 질문 미응답 종료·종료 후 선택지 제출을 확인한다. 실제 elicitation은 시험 MCP 연결 범위를 별도 합의하고 연결 실패 주입도 대상 채널과 정리 영향을 먼저 합의한다. 이번에 vendor/TUI를 실행하지 않았으며 자연 quota payload는 미실측 유지, 비용·한도 소진 실험은 하지 않는다. commit/push·개인 architecture.excalidraw·무관한 execution-flow-map·Stage6 Web 변경은 하지 않았다. 로그 entry 도구의 첫 after-line은 unit heading이 아니어서 거절됐고 올바른 heading 45로 재실행했다.
+
+### 2026-09-15 11:33 · W2 격리 Codex 실측 시작·일반 turn 확인
+
+사용자가 격리 Codex 한 개의 실제 실험을 승인했다. pnpm build exit0 후 /private/tmp/aiox-w2-live.mjs로 새 임시 DB·daemon·shell을 구성했다. root=/private/tmp/aiox-w2-live-V6tGVv, daemon PID11561, exec session42279, Web http://127.0.0.1:63523, API63522. 현재 실행 중이며 사용자 동반 실험을 위해 유지한다. 종료 시 이 daemon만 SIGTERM하여 harness의 client.close/daemon.stop(true) 정리를 사용한다. 기존 DB를 삭제하지 않았다.
+
+agent-browser 스킬을 읽고 전용 headed session w2-live-e160cb916b01에서 Web terminal을 열었다. 실제 Codex는 W2-Codex 한 개(runtime b079e677-7635-455a-9abf-ba93683765ae), 목록 조회용 W2-list-observer는 모델/프로세스를 실행하지 않는 테스트 binding이다. 관측자는 agents_list만 호출하며 send하지 않는다. CLI 임시 사본의 foundation home만 격리 디렉터리로 지정했다. adapter의 setStatus wrapper와 ws 수신 관측은 임시 harness에 있으며 제품 파일을 변경하지 않는다. events.jsonl에는 method/ID/상태/질문 수만 기록하고 token이나 입력 원문은 수집하지 않는다. lists.jsonl은 HTTP/MCP 순차 표본이므로 전이 순간 원자적 snapshot이라고 주장하지 않는다.
+
+Codex 0.153.4 업데이트 창에서 ArrowDown 후 screenshot으로 Skip 선택을 확인하고 Enter로 넘겼다. 사용자 설정의 gpt-6-astra medium을 변경하지 않았다. Notion 재인증 경고·주간 잔여량 안내가 보였으나 AIOX 준비 완료와 구분한다. 한도 소진 실험은 하지 않았다.
+
+실측: 준비 중 aiox-preparing/null과 준비 뒤 idle/null이 Web DOM screenshot과 실제 MCP 반환값에 동일하게 노출됐다. 도구 없는 W2-HELLO-OK 한 줄 응답 요청에서 실제 turn/started→turn/completed(completed), working/Processing the turn.→idle/null을 수신했고 HTTP/MCP 표본도 일치했다. working의 실제 DOM screenshot은 별도로 확보하지 않았으므로 일반 turn의 working Web API 값과 완료 DOM 확인 범위를 구분한다. 자료: status.jsonl/events.jsonl/lists.jsonl, start.png/skip.png/ready.png/hello.png. 원래 thread=01a0a2e7-dfc9-7ac3-8d17-6c38d4446b64, 첫 turn=01a0a2e8-9975-7271-94c5-0a71e05b4947.
+
+next는 사용자 동반 async 질문 미응답 종료·종료 후 선택지 제출, 명시 요청/해소·중단·대화 선택/취소 관측이다. 실제 elicitation·연결 실패 주입은 별도 합의 대상으로 유지한다. 실험 실행 중이므로 W2 미완료, commit/push는 하지 않았다.
+
+### 2026-09-15 11:35 · W2 async 미응답 turn 종료 실측
+
+사용자가 W2-Codex에 비동기 빨강/파랑 질문 뒤 답을 기다리지 말고 종료하도록 입력했고 질문 목록과 “질문 표시 실험 완료” 화면을 보고했다. events.jsonl 직접 확인 결과 turn 01a0a2ea-5b09-7492-a940-5ba8a9ad7a10에 agentMessage(delivery=async, questionCount=1)가 실제 수신됐으며 이후 일반 agentMessage와 turn/completed(completed)가 이어졌다. 단순 질문 문장만 나온 것이 아니다. 사용자는 답변을 제출하지 않은 상태로 보고했다. HTTP/MCP 표본은 working/Processing the turn.→idle/null로 일치했다. 따라서 이번 실행의 async 질문 미응답 종료는 실측으로 갱신한다. 종료 후 선택지 제출은 아직 미실측이며 화면에 실제 조작 가능한 선택 UI가 남는지 먼저 구분한다. 일반 텍스트로 빨강을 새 입력하는 경로와 선택지 제출 경로를 혼동하지 않는다. 격리 실행은 사용자 동반 후속 실험을 위해 유지한다.
+
+### 2026-09-15 11:37 · W2 종료 뒤 일반 답변의 새 turn 확인·선택 UI 정정
+
+사용자는 async 질문이 조작 가능한 선택 UI 없이 자신이 전달한 글머리표 텍스트로 표시됐다고 명확히 정정했다. 이를 그대로 화면 근거로 소비한다. 내부 agentMessage(delivery=async, questions=1) 관측을 선택 UI 존재로 확대하지 않는다. 이 실행에서 종료 뒤 선택지 제출 시나리오는 해당 UI가 없어 수행하지 못했다.
+
+사용자가 같은 터미널에 일반 텍스트 빨강을 입력했다고 보고한 뒤 events.jsonl/lists.jsonl/status.jsonl을 확인했다. 기존 thread 01a0a2e7-dfc9-7ac3-8d17-6c38d4446b64와 Runtime은 유지됐고 새 turn 01a0a2ec-8d08-73e2-9b4f-e77d26e6dbbb의 turn/started(inProgress)→userMessage→agentMessage→turn/completed(completed)가 관측됐다. HTTP/MCP 모두 working/Processing the turn.→idle/null로 일치한다. 입력 본문은 관측 파일에 저장하지 않으므로 빨강이라는 본문은 사용자 보고 근거다. 확인 범위는 종료 뒤 일반 답변이 새 turn으로 처리되는 경로이며 종료한 질문의 선택지 제출 경로가 아니다.
+
+다음 사용자 동반 실험은 Plan 모드의 명시 입력 요청과 응답 해소다. /plan 전환 뒤 명시 질문 도구로 빨강/파랑 선택을 요청하고 응답 전 대기 상태를 확인한 후 사용자가 제출하도록 안내한다. 격리 실행 유지; 중단·대화 선택/취소 및 실험 정리도 남아 있다.
+
+### 2026-09-15 11:38 · W2 Plan 명시 질문 대기·실제 Web MCP 표시 일치
+
+사용자가 Plan 전환 및 명시 입력 질문 요청 뒤 선택창이 떴다고 보고했다. events.jsonl에서 thread 01a0a2e7-dfc9-7ac3-8d17-6c38d4446b64, turn 01a0a2ed-8262-76d2-89b8-67b083f0dd15의 item/tool/requestUserInput(requestId=0)을 확인했다. 현재 미해소이며 status.jsonl은 awaiting-user/Waiting for user input.을 보고한다. lists.jsonl의 실제 HTTP/MCP 값이 동일하고 agent-browser snapshot에서도 W2-Codex awaiting-user · Waiting for user input.을 직접 확인했다. 화면 캡처는 /private/tmp/aiox-w2-live-V6tGVv/plan-waiting.png. 사용자 선택창을 조작하지 않았다. 다음은 사용자가 파랑을 선택·제출한 뒤 같은 requestId resolved와 대기 이유 해소·turn 결과를 확인하는 것이다. 격리 실행 유지.
+
+### 2026-09-15 11:39 · W2 Plan 선택 제출·요청 해소와 이유 제거 실측
+
+사용자가 선택을 제출했다고 보고했다. events.jsonl에서 같은 thread의 serverRequest/resolved(requestId=0, 02:38:41.480Z), 원 turn 01a0a2ed-8262-76d2-89b8-67b083f0dd15의 최종 agentMessage와 turn/completed(completed, 02:38:46.301Z)를 확인했다. HTTP/MCP 표본은 awaiting-user/Waiting for user input.→working/Processing the turn.→idle/null로 일치했다. agent-browser snapshot에서도 W2-Codex idle이며 이전 대기 이유가 사라짐을 직접 확인했다. 선택 값 자체는 기록하지 않으므로 파랑 선택을 wire로 확인했다고 주장하지 않는다.
+
+명시 질문의 발생·응답 후 요청별 해소·정상 완료와 공통 표시 회귀는 이번 실제 실행에서 확인했다. 복수 요청 중 하나만 해소하는 경우는 기존 대역 근거이며 이번 실측으로 확대하지 않는다. 다음은 같은 Plan 질문을 다시 요청하고 선택 대신 Esc로 중단한 뒤 해당 요청/turn 정리와 idle 표시를 확인하는 사용자 동반 실험이다. 격리 실행 유지.
+
+### 2026-09-15 11:41 · W2 elicitation 발생 조건과 실측 방법 설명
+
+사용자가 elicitation을 어떻게 발생시키는지 질문했다. 공식 https://learn.chatgpt.com/docs/app-server 의 MCP server elicitation requests 절에서 MCP 서버가 form/URL 요청을 보내고 사용자 accept/decline/cancel 뒤 serverRequest/resolved로 이어지는 구조를 확인했다. 현재 apps/daemon/src/mcp.ts의 AIOX 도구는 agents_list/send이며 elicitation 생성 호출이 없다. 설치 MCP SDK의 server/index.d.ts에는 elicitInput API가 있다.
+
+설명할 실측 제안: 무해한 입력 확인을 요청하는 임시 MCP 서버/도구를 격리된 실제 Codex에 연결하고 사용자가 그 도구를 호출하게 한다. MCP 요청→App Server→Relay→TUI 입력과 AIOX awaiting-user→사용자 응답→resolved→남은 turn 상태를 함께 관측한다. 이는 기존 App Server 프레임 대역 테스트와 다른 실제 연결 검증이다. turnId가 null로 발생한다는 보장은 없으므로 nullable 실측 성공으로 확대하지 않는다. 구현/설치/실제 실행을 요청받은 것은 아니므로 수행하지 않았으며 W2 pointer와 기존 실험 사전 범위 합의를 유지한다.
+
+### 2026-09-15 11:49 · W2 실제 MCP elicitation 요청 발생·사용자 제출 대기
+
+사용자가 임시 MCP 도구를 연결한 실제 elicitation 실험을 승인했다. 기존 W2-live 실행(Web63523/PID11561)은 건드리지 않고 별도 /private/tmp/aiox-elicitation-live.mjs로 임시 daemon/DB/shell/목록 관측자를 구성했다. root=/private/tmp/aiox-elicitation-live-YzLPwZ, PID36240, exec session6776, Web http://127.0.0.1:64451, API64450, info=/private/tmp/aiox-elicitation-info.json. 전용 headed agent-browser session은 w2-elicitation이다. 실험 종료 시 이 PID만 SIGTERM하여 harness client.close/daemon.stop(true)를 수행한다. 기존 실행의 정리 의무를 대체하지 않는다.
+
+임시 /private/tmp/aiox-elicitation-server.mjs는 stdio MCP confirm_test 도구 한 개로 외부 변경 없는 boolean form elicitation을 요청한다. 사용자 설정 파일을 수정하지 않고 해당 Codex 실행의 -c mcp_servers.elicitation_probe 옵션으로만 연결했다. 사용자 기본 model/effort는 유지했으며 업데이트 창은 Skip을 화면 확인 후 선택했다. 두 임시 스크립트 node --check와 built Codex의 elicitation 처리 존재를 확인했다. 기존 Node24 ABI 실행을 사용했고 제품 파일·의존성·DB 삭제는 하지 않았다.
+
+실측: Runtime e649a1ba-1066-493b-a132-7388279a5066(Elicitation-Codex), thread 01a0a2f6-800e-7380-a183-c782899d74b2, turn 01a0a2f7-4b23-7f01-81f7-60d5dfab9bf6. 실제 모델에 confirm_test 한 번 호출을 요청했고 02:48:38.207Z mcpServer/elicitation/request(requestId=0)가 Relay→Binding에 도달했다. 이번 turnId는 null이 아니다. MCP 서버가 받은 client capabilities는 form/url을 포함했다. TUI에 AIOX elicitation test 문구와 Confirm test True/False 입력 UI가 실제 표시됐다. Web DOM 캡처 request.png와 lists.jsonl의 HTTP/MCP 값은 awaiting-user/Waiting for user input.으로 일치한다. events.jsonl은 ID/이벤트만 기록하고 MCP server-events 파일은 이 무해한 테스트 결과만 기록한다.
+
+현재 사용자 제출 전이다. http://127.0.0.1:64451 의 Elicitation-Codex에서 True를 선택·제출한 뒤 응답을 알려 달라고 안내한다. 이후 같은 requestId resolved, MCP 서버의 반환값, 최종 turn 결과와 HTTP/MCP/화면의 대기 해제를 확인하고 이 전용 실행을 정리한다. nullable 실측 성공이나 전체 W2 완료로 확대하지 않는다. 기존 W2 본류의 중단/선택/취소 실험은 별도 실행에서 유지한다. commit/push 및 개인 architecture.excalidraw·무관한 execution-flow-map·Stage6 변경은 하지 않았다.
+
+### 2026-09-15 11:52 · W2 첫 elicitation 제출 뒤 타임아웃 구분·재실험 준비
+
+사용자가 제출했다고 보고했다. 직접 확인 결과 첫 임시 MCP 서버 요청은 02:48:38.198Z 발생 뒤 02:49:38.209Z SDK Request timed out(-32001)으로 먼저 끝났다. 그 뒤 02:50:03.131Z 같은 thread/requestId0의 serverRequest/resolved, 02:50:08.951Z 원 turn completed가 관측됐다. HTTP/MCP는 awaiting-user→working→idle/null로 일치했고 submitted.png에서 timeout 오류 및 최종 idle을 확인했다. 따라서 요청 해소와 공통 상태 전이는 실제 확인했지만 MCP 서버의 accept/confirmed 반환 성공은 아니다. tool 오류 자체로 failed가 되지 않고 최종 completed로 idle인 것도 이번 관측이다.
+
+원인 근거: 설치 @modelcontextprotocol/sdk 1.30.0 shared/protocol.js의 DEFAULT_REQUEST_TIMEOUT_MSEC=60000, 임시 서버가 options 없이 elicitInput을 호출했다. 사용자 동반 실험에 필요한 대기 시간을 agent가 충분히 설정하지 않았다. 임시 서버의 요청 timeout만 600000ms로 늘리고 공식 https://learn.chatgpt.com/docs/extend/mcp?surface=cli 의 tool_timeout_sec 옵션에 따라 이번 실행의 elicitation_probe 도구 제한도 600초로 설정했다. 제품 상태·fallback·사용자 영구 설정은 변경하지 않았다.
+
+첫 Elicitation-Codex를 /exit로 종료하고 Web 목록에서 제거 및 shell 복귀를 확인한 뒤 같은 전용 shell에서 새 실행을 시작했다. 기존 W2-live와 전용 daemon(PID36240/Web64451)은 유지한다. 새 확인창을 띄워 사용자에게 한 번 더 제출을 요청하고 실제 MCP 응답까지 확인한 후 전용 실행을 정리한다. 정상 응답 성공이나 nullable 실측 성공으로 기록하지 않는다.
+
+### 2026-09-15 11:53 · W2 10분 대기 재실험 요청 표시
+
+재실험 요청이 02:52:37.394Z 실제 수신됐다. Runtime53bfce72-fecf-40df-a96f-f1a494960d93, thread01a0a2fa-7848-7d10-a06b-eb4f318db1a8, turn01a0a2fa-ef08-7d61-a40e-9316ebd2ce60, requestId0이며 turnId는 null이 아니다. request-retry.png에서 True/False 선택창과 AIOX awaiting-user를 확인했다. 동일 Web64451에서 사용자 제출을 기다린다. 첫 요청의 expired 결과와 혼동하지 않고 이 새 thread/request의 MCP 응답·resolved·최종 상태를 확인한 뒤 전용 실행을 정리한다.
+
+### 2026-09-15 11:55 · W2 실제 elicitation 정상 제출·상태 해소와 전용 실행 정리 완료
+
+사용자가 재실험 제출 완료를 보고했다. MCP 서버의 02:53:17.402Z 응답은 action=accept, content.confirmed=true였다. thread 01a0a2fa-7848-7d10-a06b-eb4f318db1a8의 requestId0 serverRequest/resolved가 02:53:17.396Z 관측됐고, 같은 turn 01a0a2fa-ef08-7d61-a40e-9316ebd2ce60은 02:53:25.132Z completed로 끝났다. 별도 프로세스 기록 시각의 미세한 차이를 추가 인과 순서로 해석하지 않는다. 실제 HTTP/MCP 표본은 awaiting-user→working→idle/null로 일치했고 success.png에서 TUI의 accept/true 출력과 Web idle·이유 제거를 확인했다. 첫 60초 timeout 시도와 이번 정상 반환 성공을 구분한다.
+
+실측 범위: 실제 MCP boolean form 요청→Codex TUI 사용자 제출→MCP 서버 반환→Relay의 요청 해소→Binding/Registry→Web/MCP 표시와 최종 turn 완료를 확인했다. 실제 요청의 turnId는 non-null이다. nullable 수명·복수 미해결 요청 중 일부만 해소·다른 thread 동시 대기는 기존 소켓 대역 근거이며 이번 실제 단일 요청의 성공으로 확대하지 않는다. 사용자 응답은 사람이 TUI에서 제출했으며 agent가 대리 응답하지 않았다.
+
+정리: 전용 Elicitation-Codex /exit 후 Web Agent 목록 제거를 확인하고 전용 daemon PID36240에 SIGTERM을 보냈다. harness exec session6776 exit0, agent-browser w2-elicitation close 성공, ps에서 PID36240 부재 및 임시 aiox-elicitation-server.mjs 프로세스 잔존 없음([])을 확인했다. 기존 W2-live PID11561은 생존하며 건드리지 않았다. 증거 파일/임시 DB는 삭제하지 않았다.
+
+Owner: vendor-bindings의 elicitation 전체 미실측 서술을 정상 응답·표시 실측과 nullable 미실측으로 구분해 정합화했다. 상태 계약·제품 코드는 변경하지 않았다. 문서 inline-code 검사와 git diff --check 통과. 이번 실행을 전체 tests 재검증이나 W2 전체 완료로 주장하지 않는다. 다음은 기존 W2-live의 중단·대화 선택/취소 등 남은 사용자 동반 검증과 그 실행 정리다. 별도 연결 실패 주입이나 한도 소진은 하지 않는다. commit/push·architecture.excalidraw·무관한 execution-flow-map·Stage6 변경 없음. 600줄 soft hint는 같은 W2 수명과 사용자 Base log 지시를 고려해 분리하지 않았다.
+
+### 2026-09-15 11:56 · W2 기존 63523 실험 실행 정리 확인
+
+사용자가 http://127.0.0.1:63523 실행도 정리하도록 지시했다. info 파일에서 PID11561·Web63523·API63522의 소유 관계를 확인했다. 처음 ps에는 PID11561이 있었지만 뒤의 kill -TERM 시점에는 no such process였고 재확인에서도 PID가 없었다. 따라서 이번 kill이 종료시켰다고 주장하지 않는다. status.jsonl에는 이미 02:55:17Z Codex process exited와 collaboration released가 있었다. 종료 주체는 이번 출력만으로 특정하지 않는다.
+
+전용 agent-browser w2-live-e160cb916b01 close를 완료했다. Web63523 및 API63522 모두 curl connection refused로 종료를 확인했다. 임시 DB·관측 증거는 삭제하지 않았다. 앞서 정리한 elicitation Web64451과 함께 두 실험 실행의 유지 의무는 해제됐다. 중단·대화 선택/취소 등 미완료 실측은 완료 처리하지 않고, 이후 필요한 검증 범위를 먼저 정한 뒤 새 격리 실행에서 진행한다. 제품 코드·commit/push 변경 없음.
+
+### 2026-09-15 13:44 · W2 browser 실측·중단과 대화 전환·복수 승인·App Server 종료
+
+사용자가 nullable MCP 추가 실측은 건너뛰고 browser agent로 나머지를 검증하도록 지시했다. nullable 구현·대역 근거는 유지하며 실제 null 요청을 검증했다고 표시하지 않는다. agent-browser 및 log 스킬을 사용했다. 최신 pnpm build exit0 후 기존 격리 harness /private/tmp/aiox-w2-live.mjs를 재사용했다. 새 root=/private/tmp/aiox-w2-live-XjC36P, daemon PID65618, Web49232/API49231, shell b3515505-f644-4f97-9ce7-76a4f25d11b8, browser session w2-final-check. Node24.14.0으로 실행했고 SQLite ABI 문제는 발생하지 않았다. localhost listen은 sandbox EPERM 뒤 승인된 실행으로 진행했다. 실제 Codex0.153.4 한 개와 agents_list만 호출하는 시험 관측자를 사용했으며 AIOX send는 하지 않았다. 사용자 기본 model/effort를 유지하고 Plan 전환에 따른 자동 effort 변경만 관측했다.
+
+실측 결과:
+- 작업 Esc: thread01a0a307-5a64-7a73-a74e-a277627d7d59, turn01a0a307-8d46-70a3-884e-98fa4c42077f에서 sleep45 commandExecution 진행 중 브라우저 Escape를 입력했다. 03:06:34.520Z turn/completed(interrupted), Web/MCP working/Running a tool.→idle/null 및 실제 DOM을 확인했다. TUI는 background terminal 하나를 표시했다. 이번 관측 파일에는 그 명령의 늦은 item/completed가 없으므로 늦은 완료 수신까지 실측했다고 확대하지 않는다.
+- 대화 전환/취소: /new에서 aiox-preparing→idle/null, /resume 선택창에서 Escape 취소 후 idle/null 유지, 이 실험의 원 대화를 검색·선택해 복귀한 뒤 aiox-preparing→idle/null을 확인했다. 복귀 뒤 다음 turn/started가 원 thread ID임을 확인했다. failed 대화 전환/취소 실측은 아니며 기존 소켓 대역 근거와 구분한다.
+- Plan 질문 Esc: 첫 요청은 모드 전환이 적용되지 않아 Default 일반 응답으로 completed였고 요청 대기 실측으로 세지 않았다. Plan mode 화면을 직접 확인한 뒤 turn01a0a30b-dc7d-7d83-8924-03be78c00578에서 requestId0 item/tool/requestUserInput을 관측했다. 질문창 Escape 뒤 03:11:23.002Z interrupted와 serverRequest/resolved가 기록됐고 Web/MCP awaiting-user/Waiting for user input.→idle/null 및 DOM 이유 제거를 확인했다.
+- Default async: turn01a0a30c-c941-7893-a4bb-694cea628a6f에서 agentMessage delivery=async/questions=1 뒤 completed를 관측했다. 화면에는 CSV/JSON 글머리표와 TEST-END, 일반 입력창만 남았다. Web/MCP idle/null이다. 종료 후 선택 UI 제출은 이번에도 UI가 없어 수행하지 못했으며 일반 텍스트 답변으로 대체하지 않았다.
+- 복수 승인 개별 해소: turn01a0a30e-1110-7ea1-a2ab-2b6ef7311f60에 printf W2-A와 printf W2-B 승인 requestId1/2가 모두 03:13:28.833Z 발생했다. 브라우저 재실행 출력 후 doctor 진단을 거쳐 같은 Web/terminal에 재접속했다. 첫 승인만 Enter로 허용한 04:40:52.109Z resolved1 뒤 status 보고와 실제 화면은 awaiting-user를 유지했고 두 번째 승인창이 남았다. 04:41:06.011Z resolved2 뒤 working, 두 commandExecution 완료, 04:41:45.486Z turn completed 뒤 idle/null을 확인했다. 두 요청을 한 번에 해소한 것으로 확대하지 않는다. lists.jsonl은 값 변화만 저장하므로 첫 해소 시 동일 MCP 값의 새 행은 없고, 해당 시점 상태 재보고와 Web DOM이 직접 근거다. 승인 대기 사이 긴 wall time의 원인은 이번 자료만으로 단정하지 않는다.
+- 실제 연결 손실: 소유 관계를 검증한 격리 App Server native PID67285에 SIGTERM을 보냈다. 내부 setStatus 실패 보고 뒤 원 Runtime40420d07-ac43-422f-a762-dd28f2600560이 Web/MCP 목록에서 제거되고 shell로 복귀했다. 표본/화면에 failed가 지속 노출됐다고 주장하지 않는다. 같은 shell에서 다시 실행한 새 Runtime9a8bf47b-1a6f-40f3-b5af-b796df62490b의 aiox-preparing→idle/null을 Web/MCP/DOM에서 확인했다. 이는 App Server 종료와 새 Runtime 재실행이지 같은 Runtime 자동 재연결이 아니다. control WS 단독 단절·daemon 연결 단절과 각각의 복구는 이번에 주입하지 않았다.
+
+근거: 위 root의 events.jsonl/status.jsonl/lists.jsonl 및 working.png, interrupted.png, new.png, resume-picker.png, picker-cancel.png, picker-filtered.png, resumed.png, plan-mode.png, plan-waiting.png, plan-cancel.png, async-ended.png, two-approvals-visible.png, approval-after-first.png, approvals-resolved.png, app-server-lost.png, restarted-idle.png. wire 전체·토큰을 수집하지 않는 기존 이벤트 관측 harness를 사용했다. status_reason의 App Server 종료 진단에는 stderr가 들어 있으므로 원문 전체를 보고서에 복사하지 않는다.
+
+정리: 재실행한 Codex /exit 후 목록 제거를 확인했고 전용 브라우저 close, daemon PID65618 SIGTERM, harness exec69682 exit0을 확인했다. ps에서 PID65618/67284/67285/67286 부재, Web49232 connection refused를 확인했다. 임시 증거·DB는 보존했다. 제품 코드·테스트 수정과 전체 테스트 재실행은 하지 않았다. 이전 565개 테스트 근거는 별도이며 이번은 build 및 실제 UI 검증이다. commit/push 없음. 같은 W2 수명과 사용자 Base log 지시로 기존 로그에 기록했다.
+
+W2 active 유지: 이번 중단·idle 대화 전환/선택 취소·복수 승인 일부 해소 실측은 완료했다. nullable 추가 실측은 사용자 지시로 생략한다. async 종료 후 선택 제출은 UI 부재로 미확인, failed 대화 선택/취소와 control WS 등 다른 연결별 복구는 기존 대역/미실측 범위를 유지한다. 다음은 이 남은 범위를 W2 마감에 어떻게 반영할지 판단하고 W3 실제 Codex 왕복으로 전환하는 것이다. 새 복구 기능을 만들거나 W3를 시작하지 않았다.
+
+### 2026-09-15 13:50 · W2 커밋 검사·W3 재개점 확정
+
+사용자는 검증 결과를 확인하고 W3 진행을 논의한 뒤 현재 변경의 커밋을 지시했다. W2 구현·주요 실측을 완료로 정리하고 W3를 다음 활성 Work Item으로 전환했다. nullable 추가 실측 생략, async 종료 후 선택 UI 부재, failed 대화 선택/취소 및 App Server 종료 이외 연결별 복구의 미실측 제한은 남겨 두며 통과로 확대하지 않는다. W3 실제 두 Codex 왕복은 아직 실행하지 않았다.
+
+커밋 대상은 공통 status/status_reason 도메인·vendor 계약과 Registry/HTTP/Web/MCP 전달, preparing 목록·send 분리, Codex turn 실패·요청별 대기/nullable elicitation, Claude quota 재개 수명과 인접 테스트·owner 문서·W2 로그의 35개 파일이다. 개인 architecture.excalidraw·무관한 스킬 변경은 대상에 없다.
+
+커밋 전 pnpm check는 sandbox PTY/ps 제한으로 처음 실패했고, 권한 적용 재실행은 lint·format·build·typecheck와 전체 565 tests exit0으로 완료했다. 근거: /private/tmp/aiox-w2-precommit-check-approved.log. 기존 ABI 우회 실행이 아니라 현재 Node24.14.0 환경에서 통과했다. log item 도구는 완료 W2의 action 편집을 거절해 그 설명 줄만 수동으로 정합화했다. commit은 이번 지시 범위이며 push는 하지 않는다.

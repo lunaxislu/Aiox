@@ -185,12 +185,27 @@ test("foreground launch validates context without re-parsing vendor arguments", 
         assert.equal(agentRunSchema.safeParse(bad).success, false);
 });
 
-test("agent observation must be present, with null representing no observation", () => {
-    const schema = agentViewSchema.pick({ observation: true });
-    assert.equal(schema.safeParse({}).success, false);
-    assert.deepEqual(schema.parse({ observation: null }), {
-        observation: null,
+test("agent status reasons are required and absent reasons are null", () => {
+    const schema = agentViewSchema.pick({ status_reason: true });
+    assert.throws(() => schema.parse({}));
+    assert.deepEqual(schema.parse({ status_reason: null }), {
+        status_reason: null,
     });
-    const value = { observation: { event: "Stop", reason: null } };
-    assert.deepEqual(schema.parse(value), value);
+    assert.deepEqual(schema.parse({ status_reason: "rate_limit" }), {
+        status_reason: "rate_limit",
+    });
+});
+
+test("agent status accepts the common vocabulary and excludes stopped", () => {
+    const schema = agentViewSchema.shape.status;
+    for (const status of [
+        "aiox-preparing",
+        "idle",
+        "working",
+        "awaiting-user",
+        "failed",
+    ])
+        assert.equal(schema.parse(status), status);
+    for (const status of ["starting", "reasoning", "tool", "stopped"])
+        assert.throws(() => schema.parse(status));
 });

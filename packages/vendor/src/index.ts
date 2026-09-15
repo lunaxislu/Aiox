@@ -1,6 +1,6 @@
 import type { Readable } from "node:stream";
 
-import type { DeliveryOutcome, RuntimeActivity } from "@aiox/domain";
+import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
 
 import type { ExecutionOwner } from "@/execution";
 
@@ -36,10 +36,7 @@ export type InboundMessage = {
 };
 export type RuntimeControls = {
     readonly runtimeId: string;
-    setActivity(
-        activity: RuntimeActivity,
-        observation?: { event: string; reason?: string },
-    ): void;
+    setStatus(status: RuntimeStatus, statusReason?: string): void;
     settle(
         deliveryId: string,
         outcome: DeliveryOutcome,

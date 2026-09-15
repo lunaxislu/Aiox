@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { mcpStatus } from "@aiox/domain";
+import { agentViewSchema } from "@aiox/protocol";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -9,12 +9,13 @@ import type { MessageService } from "@/messaging";
 import type { NetworkService } from "@/networks";
 import type { RuntimeRecord, RuntimeRegistry } from "@/runtimes";
 
-const agent = z.object({
-    agentId: z.string(),
-    name: z.string(),
-    role: z.string().nullable(),
-    description: z.string().nullable(),
-    status: z.enum(["idle", "working", "failed"]),
+const agent = agentViewSchema.pick({
+    agentId: true,
+    name: true,
+    role: true,
+    description: true,
+    status: true,
+    status_reason: true,
 });
 
 /** Only the header carries the credential; never the URL, argv or a log line. */
@@ -37,7 +38,7 @@ function tools(
         {
             title: "List reachable agents",
             description:
-                "Agents you may send to right now. Names, roles and descriptions help you choose; agentId is what send takes.",
+                "Agents visible through your current routes. Preparing agents cannot receive messages yet. Names, roles and descriptions help you choose; agentId is what send takes.",
             // No inputSchema: a zero-argument tool must not reject a caller
             // that omits `arguments` entirely.
             outputSchema: { agents: z.array(agent) },
@@ -48,7 +49,8 @@ function tools(
                 name: record.name,
                 role: record.role,
                 description: record.description,
-                status: mcpStatus(record.activity)!,
+                status: record.status,
+                status_reason: record.status_reason,
             }));
             return {
                 content: [

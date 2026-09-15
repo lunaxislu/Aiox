@@ -623,12 +623,12 @@ describe("agent listing", () => {
             "allow",
         );
         const agent = await joinAgent(network.id, "a");
-        agent.vendor.activity("awaiting-user");
+        agent.vendor.status("awaiting-user");
 
-        // The Web keeps the detail that MCP summarises away as "working".
+        // The same observed status is published to Web and MCP.
         const view = (await call(`/api/agents/${agent.runtimeId}`))
             .body as AgentView;
-        expect(view.activity).toBe("awaiting-user");
+        expect(view.status).toBe("awaiting-user");
         expect(view.agentId).toBe(agent.runtimeId);
     });
 
@@ -990,7 +990,7 @@ describe("stopping", () => {
         const source = await harness.daemon.registerRuntime({
             networkId: network.id,
             createBinding: (controls) => {
-                controls.setActivity("idle");
+                controls.setStatus("idle");
                 return {
                     deliver: async () => {},
                     stop: () => {
@@ -1046,7 +1046,7 @@ describe("stopping", () => {
                 networkId: null,
                 createBinding: async (controls) => {
                     await ready;
-                    controls.setActivity("idle");
+                    controls.setStatus("idle");
                     return {
                         deliver: async () => {},
                         stop: async () => {
@@ -1074,7 +1074,7 @@ describe("stopping", () => {
             name: "remaining",
             networkId: null,
             createBinding: (controls) => {
-                controls.setActivity("idle");
+                controls.setStatus("idle");
                 return {
                     deliver: async () => {},
                     stop: async () => {
@@ -1403,7 +1403,7 @@ describe("execution ownership", () => {
             executionOwnership: "external",
             name: "external",
             createBinding: (controls) => {
-                controls.setActivity("idle");
+                controls.setStatus("idle");
                 return { deliver: async () => {}, stop };
             },
         });
@@ -1439,7 +1439,7 @@ describe("execution ownership", () => {
             networkId: null,
             executionOwnership: "external",
             createBinding: (controls) => {
-                controls.setActivity("idle");
+                controls.setStatus("idle");
                 return { deliver: async () => {}, stop, cleanup };
             },
         });
@@ -1575,7 +1575,7 @@ describe("external collaboration stop completion", () => {
                 networkId: null,
                 executionOwnership: "external",
                 createBinding: (controls) => {
-                    controls.setActivity("reasoning");
+                    controls.setStatus("working");
                     return {
                         deliver: async () => {},
                         stop: externalStop,
@@ -1757,9 +1757,9 @@ it("streams initial and changed Web state, reconnects, and closes with the daemo
         );
         await first.cancel();
         const second = await connect();
-        const activity = second.read();
-        vendor.activity("reasoning");
-        expect(new TextDecoder().decode((await activity).value)).toContain(
+        const status = second.read();
+        vendor.status("working");
+        expect(new TextDecoder().decode((await status).value)).toContain(
             "event: change",
         );
         await second.cancel();
@@ -1878,7 +1878,7 @@ it("does not invalidate Web state for external-only runtime and notification cha
             executionOwnership: "external",
             createBinding: targetVendor.createBinding,
         });
-        originVendor.activity("reasoning");
+        originVendor.status("working");
         await harness.daemon.services.messages.send(
             harness.daemon.services.runtimes.get(origin.runtimeId)!,
             [target.runtimeId],

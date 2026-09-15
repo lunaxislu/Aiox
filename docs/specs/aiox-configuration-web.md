@@ -20,7 +20,7 @@ Stage 1 구현에서는 Node 기본 JSON 처리로 `.aiox/config.json`을 선택
 | Web dark/light theme | localStorage | terminal palette와 별개. system 선택·언어·소리 설정 저장은 후보 |
 | 지속 Network/Route, AIOX 메시지·대상별 결과·알림 본문, 실행 이력 | SQLite | 메시지 처리 종료 후 기본 30일 보존 |
 | 알림·읽음, terminal/workspace 배치 | SQLite | 브라우저 복귀에 필요한 지속 데이터 |
-| 살아 있는 process/binding/token/activity | 실행 상태 | DB의 과거 running 기록을 생존 증거로 쓰지 않음 |
+| 살아 있는 process/binding/token/status | 실행 상태 | DB의 과거 running 기록을 생존 증거로 쓰지 않음 |
 
 vendor transcript·reasoning 전체 복제나 무제한 메시지 본문 저장을 요구하지 않는다. 저장한
 메시지의 자동 재전송도 허용하지 않는다. Host YAML과 DB의 materialization/history를 이중
@@ -222,7 +222,7 @@ live terminal 질의의 자동응답은 마지막으로 실제 입력을 보낸 
 
 ## 현재 상태와 요청 결과 표시
 
-Web은 현재 idle·reasoning·도구 실행·사용자 입력/승인 대기·실패 원인·Host stopped를 세분화해 표시한다. MCP 상태 요약은 [[docs/specs/aiox-runtime]]을 따른다. 개별 요청의 completed/failed/interrupted 이력과 현재 Agent 상태를 함께 보여 준다. 요청 하나가 끝나도 다른 작업은 working일 수 있고, 미해결 질문·승인 표시는 실제 해결까지 유지한다.
+Web Agent 목록은 [[docs/specs/aiox-runtime]]의 다섯 `status`와 현재 `status_reason`을 MCP와 동일하게 표시한다. `aiox-preparing`도 그대로 노출하며 이유가 교체·제거되면 화면에 반영한다. 추론·도구 실행의 세부 내용은 working의 이유이고 Host stopped는 Host 항목 표시다. 개별 요청의 completed/failed/interrupted 이력과 현재 Agent 상태를 함께 보여 준다. 요청 하나가 끝나도 다른 작업은 working일 수 있고, 미해결 질문·승인 표시는 실제 해결까지 유지한다.
 
 Web의 shell 생성·알림 읽음·명시 종료 결과는 상태 조회와 분리한다. 정상 연결을 상시 강조하지
 않고 조회 실패를 안내하며, 조회 성공이나 다른 작업 성공이 해당 작업 오류를 지우지 않는다.

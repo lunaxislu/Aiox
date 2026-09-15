@@ -79,11 +79,11 @@ function agentView(record: RuntimeRecord): AgentView {
         name: record.name,
         role: record.role,
         description: record.description,
-        activity: record.activity,
+        status: record.status,
         networkId: record.networkId,
         hostId: record.hostId,
         terminalId: record.terminalId,
-        observation: record.observation,
+        status_reason: record.status_reason,
     };
 }
 

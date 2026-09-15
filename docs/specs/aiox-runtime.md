@@ -80,12 +80,62 @@ Web terminal 생성·조작·이관 대상에서 제외한다. Web 표시 범위
   모호성 오류와 후보를 제공한다. `/`는 qualified 이름 구분자이므로 Host/Agent/Network
   사용자 이름에 허용하지 않는다.
 
-`agents_list()`의 현재 상태는 `idle`, `working`, `failed`만 공개한다. reasoning·도구 실행·사용자 질문·승인 대기는 모두 working으로 요약한다. 실행·연결 준비를 뜻하는 starting은 send 성공 상태가 아니며 MCP 공개 enum에 추가하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
+Web과 `agents_list()`는 동일한 `status`와 `status_reason`을 사용한다.
 
-Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승인 대기, 실패 원인, Host stopped를 구분한다. 알림 읽음이나 다른 요청의 완료로 미해결 사용자 요청 표시를 지우지 않는다.
+| status | 관측 의미 |
+| --- | --- |
+| `aiox-preparing` | AIOX 실행·연결·현재 대화 준비 중 |
+| `idle` | 현재 진행 중인 작업·미해결 대기가 없음 |
+| `working` | 작업 진행 중; 추론·도구 실행은 현재 이유로 구분 |
+| `awaiting-user` | 명시적으로 관측된 사용자 입력·승인 대기 |
+| `failed` | 관측된 최종 응답 실패 또는 AIOX 연결 실패 |
 
-현재 최소 Web의 Agent 목록은 상태와 함께 현재 관측 이유를 표시한다. 새 관측 이유로 교체하고 이유가 없는 관측에서는 이전 이유를 지우며, 별도 오류 이력을 보존하지 않는다. [Status: Current]
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:222-264`, [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:989-1026`.
+`status_reason`은 현재 상태의 이유이며 없는 정보는 `null`이다. adapter가 vendor 관측을
+해석하고 양쪽 소비자는 같은 값을 표시한다. 새 이유로 교체하고 이유가 없으면 이전 이유를
+제거한다. vendor hook/event 이름을 그대로 공통 이유로 표시하지 않는다.
+상태, 메시지 전송 가용성, 개별 delivery 결과는 별개다. 준비 중도 허용된 목록 범위에 노출하되
+준비 전 send는 거절한다. `failed`만으로 모든 전송을 차단하지 않는다. Agent에는 `stopped`가
+없으며 종료한 Agent는 목록에서 제거한다. Host 항목의 `stopped`는 Host 계약을 따른다.
+
+Codex의 최종 실패는 `turn/completed`의 `turn.status=failed`로 판정한다. 오류 message와
+실제로 제공된 codexErrorInfo 분류·HTTP 코드를 이유로 표시하며, 오류 이름에서 실패 지속성이나
+회복 시점을 추정하지 않는다. 같은 대화의 다음 `turn/started`에서 이전 turn 실패를 해제한다.
+대화 선택 성공 시 그 대화의 상태를 표시하며 선택 취소·다른 turn의 늦은 이벤트로 현재 실패를
+해제하지 않는다. 연결 실패는 turn 시작 대신 연결 준비 복구 관측으로 해제한다.
+비동기 질문만으로 사용자 대기나 turn 종료를 추정하지 않는다. 명시적 대기 없이 진행 중이면
+`working`, completed/interrupted로 종료되면 `idle`이며 늦은 도구 완료로 다시 진행 상태를 만들지 않는다.
+
+Codex의 명시적 입력 요청은 threadId/requestId별로 추적하며 현재 대화의 미해결 요청은
+`working`보다 우선해 `awaiting-user`로 표시한다. `serverRequest/resolved`는 해당 요청만
+해제한다. turnId가 있는 요청은 해당 turn 종료에도 정리하고 종료된 turn의 늦은 요청으로
+대기를 복원하지 않는다. MCP elicitation의 `turnId: null`은 현재 turn에 임의 귀속하지 않으며
+turn 종료·새 turn 시작으로 해제하지 않는다. 대화 전환은 표시 대상만 바꾸고 이전 대화의
+미해결 요청을 보존한다. nullable 요청은 resolved를 관측하기 전까지 해당 대화의 대기로 남는다.
+
+Claude는 자기 hook 관측을 사용하며 Codex RPC를 적용하지 않는다.
+
+| Claude 관측 | 상태 반영 |
+| --- | --- |
+| `StopFailure` | `failed`와 실제 오류 이유. `rate_limit`을 세션/주간 한도로 임의 번역하지 않으며 `cloud_credential_error`를 보존 |
+| `quota_auto_resume_fired` | 작업 재개이므로 `working`; 이전 실패·자동 재개 대기 이유 해제. UserPromptSubmit을 추가로 기다리지 않음 |
+| `quota_auto_resume_stale` | `awaiting-user`; 자동 재개를 위해 Enter 입력을 기다린다는 이유 표시 |
+| `quota_auto_resume_disabled` | 해당 세션의 quota 대기·자동 재개 기록을 해제한 뒤 상태 재계산. 현재 남은 실패·이유는 보존하고 이미 해제된 과거 실패는 복원하지 않음 |
+
+다른 작업·대기가 없을 때 StopFailure → stale → disabled는 현재 실패가 남아 `failed`이고,
+StopFailure → fired → disabled는 fired가 실패를 해제했으므로 `idle`이다. disabled가 새 실패를
+만들거나 기존 delivery 결과를 변경하지 않는다. 이 순서의 상태 계약과 코드 테스트는 실제
+hook 발생 순서를 관측했다는 뜻이 아니다.
+
+자동 재개 뒤 같은 세션의 Stop은 새 UserPromptSubmit이나 등록된 prompt ID 없이도 재개
+활동을 해제하고 상태를 재계산한다. 재개 후 StopFailure는 새 실패와 이유를 반영한다.
+이미 확정한 delivery 실패는 다시 쓰지 않으며 blocking Stop hook이 있으면 Stop만으로
+종료를 확정하지 않는다. 다른 세션·작업·사용자 대기는 보존한다. 새 UserPromptSubmit으로
+작업 시작을 관측하면 해당 세션의 이전 quota 대기를 제거하며 fired 동반을 요구하지 않는다.
+
+quota 이외 승인·질문은 해당 요청의 해소 관측으로 정리하며 다른 요청의 미해결 대기를 임의로
+제거하지 않는다. quota 전이는 [공식 hook 문서](https://code.claude.com/docs/en/hooks#notification)에
+따른 계약이다. 실제 quota hook 발생 순서·화면 표시를 실측 완료로 간주하지 않는다.
+구현과 vendor별 검증 범위는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
 
 Web도 daemon이 살아 있는 동안 최초 협업 준비 실패·timeout·협업 해제만으로 이미 시작한
 vendor·필수 부속 실행을 종료하지 않는다. 협업 실패에서는 협업 권한을 해제하되 daemon의

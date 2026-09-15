@@ -1,4 +1,3 @@
-import { mcpStatus } from "@aiox/domain";
 import { expect, test } from "vitest";
 
 import { RuntimeRegistry } from "@/runtimes";
@@ -14,22 +13,15 @@ test("runtime observations retain a reason separately from request outcomes", as
             return { deliver: async () => {}, stop: async () => {} };
         },
     });
-    controls.setActivity("failed", {
-        event: "StopFailure",
-        reason: "rate_limit",
-    });
-    expect(record.observation).toEqual({
-        event: "StopFailure",
-        reason: "rate_limit",
-    });
-    controls.setActivity("reasoning", { event: "UserPromptSubmit" });
-    expect(record.observation).toEqual({
-        event: "UserPromptSubmit",
-        reason: null,
-    });
+    controls.setStatus("failed", "rate_limit");
+    expect(record.status).toBe("failed");
+    expect(record.status_reason).toBe("rate_limit");
+    controls.setStatus("working");
+    expect(record.status).toBe("working");
+    expect(record.status_reason).toBeNull();
 });
 
-test("an early activity report stays starting until the binding is ready", async () => {
+test("an early status report stays aiox-preparing until the binding is ready", async () => {
     const registry = new RuntimeRegistry();
     let release!: () => void;
     const ready = new Promise<void>((resolve) => {
@@ -40,23 +32,22 @@ test("an early activity report stays starting until the binding is ready", async
         networkId: "n",
         createBinding: async (next) => {
             controls = next;
-            next.setActivity("idle");
+            next.setStatus("idle");
             await ready;
             return { deliver: async () => {}, stop: async () => {} };
         },
     });
     const preparing = registry.get(controls.runtimeId)!;
-    expect(preparing.activity).toBe("starting");
-    expect(mcpStatus(preparing.activity)).toBeNull();
-    controls.setActivity("awaiting-user");
-    expect(preparing.activity).toBe("starting");
+    expect(preparing.status).toBe("aiox-preparing");
+    controls.setStatus("awaiting-user");
+    expect(preparing.status).toBe("aiox-preparing");
 
     release();
     const { record, token } = await registration;
-    expect(record.activity).toBe("awaiting-user");
+    expect(record.status).toBe("awaiting-user");
     expect(registry.authenticate(token)).toBe(record);
-    controls.setActivity("idle");
-    expect(record.activity).toBe("idle");
+    controls.setStatus("idle");
+    expect(record.status).toBe("idle");
 });
 
 test("a failed preparation removes registration despite an early idle report", async () => {
@@ -67,12 +58,12 @@ test("a failed preparation removes registration despite an early idle report", a
             networkId: "n",
             createBinding: async (next) => {
                 controls = next;
-                next.setActivity("idle");
+                next.setStatus("idle");
                 throw new Error("binding failed");
             },
         }),
     ).rejects.toThrow("binding failed");
-    controls.setActivity("idle");
+    controls.setStatus("idle");
     expect(registry.get(controls.runtimeId)).toBeUndefined();
     expect(registry.list()).toEqual([]);
 });

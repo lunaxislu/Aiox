@@ -58,7 +58,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         );
         return helper;
     });
-    const activity = vi.fn();
+    const status = vi.fn();
     const settle = vi.fn(
         async (_id: string, _outcome: string, _error?: string) => {},
     );
@@ -66,7 +66,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
     try {
         const execution = await codexAdapter.createExecution(owner);
         const binding = codexAdapter.createBinding(
-            { runtimeId: "r", setActivity: activity, settle },
+            { runtimeId: "r", setStatus: status, settle },
             execution.connection,
         );
         const prepared = await binding.prepare({
@@ -104,9 +104,13 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         );
         await response;
         expect(binding.wasReady).toBe(false);
+        status.mockClear();
+        const ready = vi.fn();
+        binding.onReady = ready;
         binding.mcpConnected();
         await expect.poll(() => binding.wasReady).toBe(true);
-        expect(activity).toHaveBeenCalledWith("idle", expect.anything());
+        expect(status.mock.calls).toEqual([["idle", undefined]]);
+        expect(ready).toHaveBeenCalledTimes(1);
         const message = {
             deliveryId: "delivery",
             from: { name: "sender", role: null, description: null },
@@ -134,7 +138,14 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
                             turn: {
                                 id: turnId,
                                 status: "failed",
-                                error: { message: "model failed" },
+                                error: {
+                                    message: "model failed",
+                                    codexErrorInfo: {
+                                        httpConnectionFailed: {
+                                            httpStatusCode: 429,
+                                        },
+                                    },
+                                },
                             },
                         },
                     }),
@@ -154,9 +165,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
                 params: { threadId: "thread-A", turn: { id: "turn-A" } },
             }),
         );
-        await expect
-            .poll(() => activity.mock.calls.at(-1)?.[0])
-            .toBe("reasoning");
+        await expect.poll(() => status.mock.calls.at(-1)?.[0]).toBe("working");
         peer.send(
             JSON.stringify({
                 id: 7,
@@ -165,7 +174,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
             }),
         );
         await expect
-            .poll(() => activity.mock.calls.at(-1)?.[0])
+            .poll(() => status.mock.calls.at(-1)?.[0])
             .toBe("awaiting-user");
         peer.send(
             JSON.stringify({
@@ -181,7 +190,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
             }),
         );
         await expect
-            .poll(() => activity.mock.calls.at(-1)?.[0])
+            .poll(() => status.mock.calls.at(-1)?.[0])
             .toBe("awaiting-user");
         peer.send(
             JSON.stringify({
@@ -189,9 +198,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
                 params: { threadId: "thread-A", requestId: 8 },
             }),
         );
-        await expect
-            .poll(() => activity.mock.calls.at(-1)?.[0])
-            .toBe("reasoning");
+        await expect.poll(() => status.mock.calls.at(-1)?.[0]).toBe("working");
         await deliverTo("thread-A", "delivery-A2");
         peer.send(
             JSON.stringify({
@@ -208,7 +215,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         await expect
             .poll(() => settle)
             .toHaveBeenCalledWith("delivery-A2", "completed", undefined);
-        await expect.poll(() => activity.mock.calls.at(-1)?.[0]).toBe("idle");
+        await expect.poll(() => status.mock.calls.at(-1)?.[0]).toBe("idle");
         await deliverTo(
             "thread-A",
             "delivery-interrupted",
@@ -254,15 +261,15 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         );
         await switching;
         await expect
-            .poll(() => activity.mock.calls.at(-1)?.[0])
-            .toBe("starting");
+            .poll(() => status.mock.calls.at(-1)?.[0])
+            .toBe("aiox-preparing");
         await expect(binding.deliver(message)).rejects.toThrow("no confirmed");
         const resumed = once(tui, "message");
         peer.send(
             JSON.stringify({ id: 2, result: { thread: { id: "thread-B" } } }),
         );
         await resumed;
-        await expect.poll(() => activity.mock.calls.at(-1)?.[0]).toBe("idle");
+        await expect.poll(() => status.mock.calls.at(-1)?.[0]).toBe("idle");
         settle.mockRejectedValueOnce(new Error("storage unavailable"));
         await deliverTo("thread-B", "delivery-B", true);
         await expect
@@ -272,6 +279,240 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
                         .length,
             )
             .toBe(1);
+        await expect
+            .poll(() => status.mock.calls.at(-1))
+            .toEqual([
+                "failed",
+                'model failed · {"httpConnectionFailed":{"httpStatusCode":429}}',
+            ]);
+        peer.send(
+            JSON.stringify({
+                method: "turn/started",
+                params: { threadId: "thread-B", turn: { id: "next" } },
+            }),
+        );
+        await expect.poll(() => status.mock.calls.at(-1)?.[0]).toBe("working");
+        peer.send(
+            JSON.stringify({
+                method: "turn/completed",
+                params: {
+                    threadId: "thread-B",
+                    turn: {
+                        id: "turn-A",
+                        status: "failed",
+                        error: { message: "late failure" },
+                    },
+                },
+            }),
+        );
+        peer.send(
+            JSON.stringify({
+                method: "item/completed",
+                params: {
+                    threadId: "thread-B",
+                    turnId: "next",
+                    item: { id: "barrier", type: "agentMessage" },
+                },
+            }),
+        );
+        await expect
+            .poll(() => status.mock.calls.at(-1))
+            .toEqual(["working", "Processing the turn."]);
+        peer.send(
+            JSON.stringify({
+                method: "turn/completed",
+                params: {
+                    threadId: "thread-B",
+                    turn: { id: "next", status: "failed" },
+                },
+            }),
+        );
+        await expect
+            .poll(() => status.mock.calls.at(-1))
+            .toEqual(["failed", undefined]);
+        const observe = async (frame: object, expected: string) => {
+            const count = status.mock.calls.length;
+            peer.send(JSON.stringify(frame));
+            // A selected-thread event is a barrier for events about other threads too.
+            peer.send(
+                JSON.stringify({
+                    method: "item/completed",
+                    params: { threadId: "thread-B" },
+                }),
+            );
+            await expect
+                .poll(() => status.mock.calls.length)
+                .toBeGreaterThan(count);
+            expect(status.mock.calls.at(-1)?.[0]).toBe(expected);
+        };
+        const elicit = (
+            id: string | number,
+            turnId: string | null,
+            threadId = "thread-B",
+        ) => ({
+            id,
+            method: "mcpServer/elicitation/request",
+            params: {
+                threadId,
+                turnId,
+                serverName: "test",
+                mode: "form",
+                message: "Confirm",
+                requestedSchema: { type: "object", properties: {} },
+            },
+        });
+        const resolve = (
+            requestId: string | number,
+            threadId = "thread-B",
+        ) => ({
+            method: "serverRequest/resolved",
+            params: { threadId, requestId },
+        });
+        const turnEvent = (method: string, id: string, turnStatus: string) => ({
+            method,
+            params: { threadId: "thread-B", turn: { id, status: turnStatus } },
+        });
+        // Selection responses change the projection; rejected selections preserve it.
+        const select = async (
+            threadId: string,
+            expected: string,
+            rejected = false,
+            wasConnected = true,
+        ) => {
+            const received = once(peer, "message");
+            tui!.send(
+                JSON.stringify({
+                    id: 30,
+                    method: "thread/resume",
+                    params: { threadId },
+                }),
+            );
+            await received;
+            if (wasConnected)
+                await expect
+                    .poll(() => status.mock.calls.at(-1)?.[0])
+                    .toBe("aiox-preparing");
+            await expect(binding.deliver(message)).rejects.toThrow(
+                "no confirmed",
+            );
+            peer.send(
+                JSON.stringify({
+                    id: 30,
+                    ...(rejected
+                        ? {
+                              error: {
+                                  code: -32000,
+                                  message: "Selection cancelled",
+                              },
+                          }
+                        : { result: { thread: { id: threadId } } }),
+                }),
+            );
+            await expect
+                .poll(() => status.mock.calls.at(-1)?.[0])
+                .toBe(expected);
+        };
+        await select("thread-A", "failed", true);
+        expect(status.mock.calls.at(-1)).toEqual(["failed", undefined]);
+        await select("thread-A", "idle");
+        await select("thread-B", "failed");
+        await binding.connectionLost();
+        const failedAt = status.mock.calls.length;
+        peer.send(
+            JSON.stringify(
+                turnEvent("turn/started", "recovery-turn", "inProgress"),
+            ),
+        );
+        await expect(binding.deliver(message)).rejects.toThrow("no confirmed");
+        await select("thread-B", "working", false, false);
+        // The state response follows the turn event on the same control socket.
+        // A turn alone must not clear a connection failure before readiness returns.
+        expect(status.mock.calls.slice(failedAt)).toEqual([
+            ["working", "Processing the turn."],
+        ]);
+        await observe(
+            turnEvent("turn/completed", "recovery-turn", "completed"),
+            "idle",
+        );
+
+        // An async agent message is not an explicit server input request.
+        for (const outcome of ["completed", "interrupted"]) {
+            await observe(
+                turnEvent("turn/started", "async-" + outcome, "inProgress"),
+                "working",
+            );
+            await observe(
+                {
+                    method: "item/completed",
+                    params: {
+                        threadId: "thread-B",
+                        turnId: "async-" + outcome,
+                        item: {
+                            id: "question",
+                            type: "agentMessage",
+                            delivery: "async",
+                            text: "Choose a color",
+                            phase: null,
+                            memoryCitation: null,
+                            questions: [
+                                {
+                                    title: "Choose a color",
+                                    options: ["Red", "Blue"],
+                                },
+                            ],
+                        },
+                    },
+                },
+                "working",
+            );
+            await observe(
+                turnEvent("turn/completed", "async-" + outcome, outcome),
+                "idle",
+            );
+            expect(status.mock.calls.at(-1)).toEqual(["idle", undefined]);
+            await observe(
+                {
+                    method: "item/completed",
+                    params: {
+                        threadId: "thread-B",
+                        turnId: "async-" + outcome,
+                        item: { id: "late-tool", type: "commandExecution" },
+                    },
+                },
+                "idle",
+            );
+        }
+        await observe(elicit(20, null), "awaiting-user");
+        await observe(
+            turnEvent("turn/started", "elicitation-turn", "inProgress"),
+            "awaiting-user",
+        );
+        await observe(elicit(21, null), "awaiting-user");
+        await observe(elicit(22, "elicitation-turn"), "awaiting-user");
+        await observe(
+            turnEvent("turn/completed", "elicitation-turn", "interrupted"),
+            "awaiting-user",
+        );
+        await observe(resolve(20), "awaiting-user");
+
+        await select("thread-A", "idle");
+        await select("thread-B", "awaiting-user");
+        // The same request ID in another conversation must not resolve this one.
+        await observe(elicit(21, null, "thread-A"), "awaiting-user");
+        await observe(resolve(21, "thread-A"), "awaiting-user");
+        await observe(resolve(21), "idle");
+        await observe(elicit(23, "elicitation-turn"), "idle");
+        await observe(
+            {
+                id: 24,
+                method: "item/commandExecution/requestApproval",
+                params: { threadId: "thread-B", turnId: "elicitation-turn" },
+            },
+            "idle",
+        );
+        expect(
+            settle.mock.calls.filter(([id]) => id === "delivery-interrupted"),
+        ).toHaveLength(1);
         await binding.cleanup("external_connection_lost");
         expect(
             settle.mock.calls.filter(([id]) => id === "delivery-B"),
@@ -323,7 +564,7 @@ test("App Server startup failure reaches the caller without leaking the MCP toke
     try {
         const execution = await codexAdapter.createExecution(owner);
         binding = codexAdapter.createBinding(
-            { runtimeId: "r", setActivity() {}, settle: async () => {} },
+            { runtimeId: "r", setStatus() {}, settle: async () => {} },
             execution.connection,
         );
         const launch = await binding.prepare({
