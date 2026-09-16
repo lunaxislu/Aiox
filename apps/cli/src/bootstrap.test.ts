@@ -532,104 +532,88 @@ test("CLI errors preserve a message without a code and render candidates once", 
     }
 });
 
-test("route flags become exactly one route operation", async () => {
-    const view = {
-        id: "n1",
-        name: "review",
-        scope: "persistent",
-        defaultPolicy: "allow",
-        routes: [],
-    };
-    const stub = await daemonStub((call, response) => {
-        if (call.url === "/api/networks/review/route")
-            send(response, 200, view);
-    });
+test("routing verbs send one operation and show no blocks", async () => {
+    const view = { id: "n1", name: "review", scope: "persistent", routes: [] };
+    const stub = await daemonStub((call, response) =>
+        send(response, 200, view),
+    );
     try {
-        const cases: [CliOptions, unknown][] = [
-            [{ default: "deny" }, { kind: "default", policy: "deny" }],
-            [{ resetDefault: true }, { kind: "reset-default" }],
-            [
-                { denyBetween: ["a", "b"] },
-                { kind: "between", policy: "deny", agents: ["a", "b"] },
-            ],
-            [
-                { resetBetween: ["a", "b"] },
-                { kind: "between", policy: "reset", agents: ["a", "b"] },
-            ],
-            [
-                { allowFrom: "a", to: ["b", "c"] },
-                {
-                    kind: "directed",
-                    policy: "allow",
-                    from: "a",
-                    to: ["b", "c"],
-                },
-            ],
-        ];
-        for (const [options, operation] of cases) {
-            await run(stub.cli, "network.route", options, ["review"]);
-            assert.deepEqual(JSON.parse(stub.calls.at(-1)?.body ?? "null"), {
-                operation,
-            });
+        for (const action of ["block", "unblock", "reset"] as const) {
+            for (const [options, operation] of [
+                [
+                    { between: ["a", "b"] },
+                    { kind: "between", action, agents: ["a", "b"] },
+                ],
+                [
+                    { from: "a", to: ["b", "c"] },
+                    { kind: "directed", action, from: "a", to: ["b", "c"] },
+                ],
+            ] as [CliOptions, unknown][]) {
+                assert.equal(
+                    await run(stub.cli, `network.${action}`, options, [
+                        "review",
+                    ]),
+                    "review (persistent)\n  Persistent networks always default to allow; Hosts can choose allow or deny in YAML.\n  Default: allow\n  Blocks: none",
+                );
+                assert.deepEqual(
+                    JSON.parse(stub.calls.at(-1)?.body ?? "null"),
+                    { operation },
+                );
+                assert.equal(
+                    stub.calls.at(-1)?.url,
+                    "/api/networks/review/route",
+                );
+            }
         }
-        assert.equal(stub.calls.length, cases.length);
+        await run(stub.cli, "network.create", {}, ["review"]);
+        assert.deepEqual(JSON.parse(stub.calls.at(-1)?.body ?? "null"), {
+            name: "review",
+        });
+        for (const action of ["block", "unblock", "reset"] as const)
+            await assert.rejects(
+                run(
+                    stub.cli,
+                    `host.network.${action}`,
+                    { between: ["a", "b"] },
+                    ["feature", "review"],
+                ),
+                /Stage 5/,
+            );
+        assert.equal(stub.calls.length, 7);
     } finally {
         await stub.close();
     }
 });
 
-test("network output names endpoints and folds only matching reverse policies", async () => {
+test("network output names blocked endpoints and folds reverse pairs without counts", async () => {
     const view = {
         id: "n1",
         name: "w1",
         scope: "persistent",
-        defaultPolicy: "allow",
         routes: [
-            {
-                from: "id-a",
-                to: "id-b",
-                fromName: "A",
-                toName: "B",
-                policy: "allow",
-            },
-            {
-                from: "id-b",
-                to: "id-a",
-                fromName: "B",
-                toName: "A",
-                policy: "allow",
-            },
+            { from: "id-a", to: "id-b", fromName: "A", toName: "B" },
+            { from: "id-b", to: "id-a", fromName: "B", toName: "A" },
             {
                 from: "id-a",
                 to: "unnamed-id",
                 fromName: "A",
                 toName: "unnamed-id",
-                policy: "deny",
-            },
-            {
-                from: "unnamed-id",
-                to: "id-a",
-                fromName: "unnamed-id",
-                toName: "A",
-                policy: "allow",
             },
         ],
     };
-    const stub = await daemonStub((call, response) => {
-        send(response, 200, call.url === "/api/networks" ? [view] : view);
-    });
+    const stub = await daemonStub((call, response) =>
+        send(response, 200, call.url === "/api/networks" ? [view] : view),
+    );
     try {
         const expected =
-            "w1 (persistent, default allow, 4 route(s))\n  A <-> B: allow\n  A -> unnamed-id: deny\n  unnamed-id -> A: allow";
+            "w1 (persistent)\n  Persistent networks always default to allow; Hosts can choose allow or deny in YAML.\n  Default: allow\n  A <-> B: blocked\n  A -> unnamed-id: blocked";
         for (const command of [
-            "network.route",
+            "network.block",
             "network.show",
             "network.list",
         ] as const)
             assert.equal(
-                await run(stub.cli, command, { allowBetween: ["A", "B"] }, [
-                    "w1",
-                ]),
+                await run(stub.cli, command, { between: ["A", "B"] }, ["w1"]),
                 expected,
             );
         assert.deepEqual(

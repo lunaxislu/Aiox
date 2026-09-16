@@ -11,6 +11,7 @@ import {
     errorBodySchema,
     routeOperationSchema,
     createShellSchema,
+    createNetworkSchema,
     terminalContextFromEnv,
 } from "./index";
 
@@ -94,7 +95,7 @@ test("a between operation needs at least two distinct agents", () => {
         assert.equal(
             routeOperationSchema.safeParse({
                 kind: "between",
-                policy: "allow",
+                action: "unblock",
                 agents,
             }).success,
             false,
@@ -104,10 +105,10 @@ test("a between operation needs at least two distinct agents", () => {
     assert.deepEqual(
         routeOperationSchema.parse({
             kind: "between",
-            policy: "reset",
+            action: "reset",
             agents: ["a", "b"],
         }),
-        { kind: "between", policy: "reset", agents: ["a", "b"] },
+        { kind: "between", action: "reset", agents: ["a", "b"] },
     );
 });
 
@@ -115,7 +116,7 @@ test("a directed operation needs at least one target", () => {
     assert.equal(
         routeOperationSchema.safeParse({
             kind: "directed",
-            policy: "deny",
+            action: "block",
             from: "a",
             to: [],
         }).success,
@@ -124,7 +125,7 @@ test("a directed operation needs at least one target", () => {
     assert.equal(
         routeOperationSchema.safeParse({
             kind: "directed",
-            policy: "deny",
+            action: "block",
             from: "a",
             to: ["b"],
         }).success,
@@ -132,22 +133,26 @@ test("a directed operation needs at least one target", () => {
     );
 });
 
-test("route operations are discriminated on kind, and reset is default-only", () => {
+test("route operations reject removed default controls", () => {
     assert.equal(
-        routeOperationSchema.safeParse({ kind: "toggle", policy: "allow" })
+        routeOperationSchema.safeParse({ kind: "toggle", action: "unblock" })
             .success,
         false,
     );
-    // The default policy is a persisted network setting: reset removes an
-    // override, so it is not a value the default operation can carry.
     assert.equal(
-        routeOperationSchema.safeParse({ kind: "default", policy: "reset" })
+        routeOperationSchema.safeParse({ kind: "default", action: "reset" })
             .success,
         false,
     );
-    assert.deepEqual(routeOperationSchema.parse({ kind: "reset-default" }), {
-        kind: "reset-default",
-    });
+    assert.equal(
+        routeOperationSchema.safeParse({ kind: "reset-default" }).success,
+        false,
+    );
+    assert.equal(
+        createNetworkSchema.safeParse({ name: "work", defaultPolicy: "deny" })
+            .success,
+        false,
+    );
 });
 
 test("an error body keeps the fields a code adds to it", () => {

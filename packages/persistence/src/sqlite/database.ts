@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
 
-import type { DeliveryOutcome, DirectedRoute, RoutePolicy } from "@aiox/domain";
+import type { DeliveryOutcome, DirectedRoute } from "@aiox/domain";
 import { DataSource, type FindOptionsWhere, In, IsNull } from "typeorm";
 
 import {
@@ -22,11 +22,10 @@ export type { DeliveryRow, MessageRow, NotificationRow };
 export type PersistentNetwork = {
     readonly id: string;
     readonly name: string;
-    readonly defaultPolicy: RoutePolicy;
-    readonly routes: readonly DirectedRoute[];
+    readonly routes: readonly Pick<DirectedRoute, "from" | "to">[];
 };
 
-type Routing = Pick<PersistentNetwork, "defaultPolicy" | "routes">;
+type Routing = Pick<PersistentNetwork, "routes">;
 
 export interface PersistentNetworks {
     create(input: Omit<PersistentNetwork, "routes">): Promise<void>;
@@ -92,15 +91,16 @@ HAVING COUNT(*) = COUNT(d.outcome) AND MAX(d.outcome_at) < ?`;
 
 function networks(dataSource: DataSource): PersistentNetworks {
     const manager = dataSource.manager;
-    const routesOf = async (id: string): Promise<DirectedRoute[]> => {
+    const routesOf = async (
+        id: string,
+    ): Promise<Pick<DirectedRoute, "from" | "to">[]> => {
         const rows = await manager.find(RouteEntity, {
             where: { networkId: id },
             order: { sourceId: "ASC", targetId: "ASC" },
         });
-        return rows.map(({ sourceId, targetId, policy }) => ({
+        return rows.map(({ sourceId, targetId }) => ({
             from: sourceId,
             to: targetId,
-            policy,
         }));
     };
     const get = async (id: string): Promise<PersistentNetwork | undefined> => {
@@ -110,7 +110,6 @@ function networks(dataSource: DataSource): PersistentNetworks {
             : {
                   id: row.id,
                   name: row.name,
-                  defaultPolicy: row.defaultPolicy,
                   routes: await routesOf(id),
               };
     };
@@ -132,9 +131,6 @@ function networks(dataSource: DataSource): PersistentNetworks {
                 if (!current) throw new Error(`Network not found: ${id}`);
                 const routing =
                     typeof update === "function" ? update(current) : update;
-                await m.update(NetworkEntity, id, {
-                    defaultPolicy: routing.defaultPolicy,
-                });
                 await m.delete(RouteEntity, { networkId: id });
                 if (routing.routes.length === 0) return;
                 await m.insert(
@@ -143,7 +139,6 @@ function networks(dataSource: DataSource): PersistentNetworks {
                         networkId: id,
                         sourceId: route.from,
                         targetId: route.to,
-                        policy: route.policy,
                     })),
                 );
             }),

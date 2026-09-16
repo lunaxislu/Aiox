@@ -435,25 +435,24 @@ H1 / reviewer / feature-a  ≠  H2 / reviewer / feature-a
 같은 YAML을 실행해도 Runtime·credential·Network는 분리
 ```
 
-Persistent routing은 explicit directed edge, 없으면 Network default를 따른다. 생성 기본값은 allow다.
+Persistent Network는 기본 전체 허용이며 차단된 directed edge만 저장한다. 변경 가능한 default 정책과 명시 allow 행은 두지 않는다. block은 차단 추가, unblock/reset은 차단 제거다. 반복 block은 중복 행을 만들지 않으며 없는 차단의 제거는 변화가 없다.
 
 Host routing 우선순위:
 
 ```text
 Runtime edge override
-→ Manifest edge
-→ Runtime default override
-→ Manifest default
+→ 없으면 Manifest edge
+→ 없으면 Manifest default
 ```
 
-between은 자기 자신을 제외한 양방향 clique다. from/to는 단방향이다. reset은 해당 override를 제거한다. Host edge reset은 manifest edge로 돌아갈 수 있다. default deny가 manifest의 explicit allow를 지우지는 않는다. 조회 시 effective policy와 출처를 표시한다.
+between은 자기 자신을 제외한 양방향 clique이며 인자 순서는 결과에 영향을 주지 않는다. from/to는 단방향이다. Host block은 runtime 명시 deny, unblock은 runtime 명시 allow, reset은 runtime override 제거다. YAML이 차단한 방향도 unblock으로 열 수 있으며 reset하면 YAML 정책으로 돌아간다. default는 YAML에서만 설정하고 runtime default는 두지 않는다. 조회 시 effective policy와 출처를 표시하며 Host 출력 세부는 미결이다.
 
-YAML은 reference 검증·directed edge 확장·allow/deny 충돌 검증을 부수효과 전에 한다. runtime CLI는 같은 edge의 현재 override를 교체한다. 한 route 명령은 한 종류의 변경만 수행한다. `--to`는 from 계열과 함께 써야 한다. Host route 변경은 YAML을 수정하지 않고 Host 재실행 시 사라진다.
+Host YAML은 routing.default의 allow/deny와 routing.allow/routing.deny 목록을 유지한다. default 생략값과 동일 값 중복 처리 방식은 미결이다. Reference 검증·directed edge 확장·allow/deny 충돌 검증을 부수효과 전에 한다. 일반 Network와 Host의 block/unblock/reset은 --between 또는 --from/--to 중 정확히 하나를 받는다. --to 단독, --from의 --to 누락과 self edge는 오류다. Host runtime 변경은 YAML을 수정하지 않고 Host 전체 재실행 시 사라진다.
 
 Persistent route의 양쪽 endpoint는 해당 Network에 참여 중인 Agent의 이름 또는 Runtime ID여야 한다. 모든 대상을 ID 우선·이름 순으로 해석하고 검증한 뒤 Runtime ID로 저장한다. 같은 실행을 반복 지정해도 endpoint는 한 번만 적용한다.
-Network 또는 대상이 없거나 다른 Network의 대상을 지정하면 오류 설명을 표시하고 해당 명령을 실패로 종료한다. 일부 edge만 저장하지 않으며 daemon 종료를 뜻하지 않는다. default만 변경할 때는 endpoint가 필요하지 않다.
-default allow에서 A→B allow만 설정해도 B→A는 허용된다. 단방향 통신에는 B→A deny가 필요하다. reset은 차단이 아니라 default 복귀다.
-CLI route 출력은 이름을 사용하고 이름 미지정 시 Runtime ID를 표시한다. 같은 정책의 명시적 양방향 edge는 `A <-> B: allow`로 합치며 서로 다른 정책은 각 방향을 따로 표시한다. route 수는 directed edge 개수다.
+Network 또는 대상이 없거나 다른 Network의 대상을 지정하면 오류 설명을 표시하고 해당 명령을 실패로 종료한다. 일부 edge만 저장하지 않으며 daemon 종료를 뜻하지 않는다.
+Persistent Network의 A와 B 사이에서 A→B만 열려 있게 하려면 B→A를 block한다. unblock/reset --between A B는 양방향 차단을 제거한다. 자기 자신·다른 Network 전송 금지와 agents_list/send의 공통 권한 판정은 유지한다.
+CLI Network 출력은 이름을 사용하고 이름 미지정 시 Runtime ID를 표시한다. Persistent는 `<name> (persistent)` 아래 `Persistent networks always default to allow; Hosts can choose allow or deny in YAML.` 안내와 `Default: allow`를 표시한다. 차단이 없으면 `Blocks: none`, 있으면 `B -> A: blocked`처럼 표시한다. 양방향 차단은 `A <-> B: blocked`로 합치며 route 개수는 표시하지 않는다. CLI 출력은 영어 정책을 따른다.
 
 ### Worktree
 
@@ -497,18 +496,19 @@ aiox
 │  ├─ list [--network <network>] [--host <host>] [--all] [--json]
 │  └─ show <agent> [--json]
 ├─ network
-│  ├─ create <name> [--default <allow|deny>]
+│  ├─ create <name>
 │  ├─ delete <network>
 │  ├─ list [--all] [--json]
 │  ├─ show <network> [--json]
-│  └─ route <network>
-│     ├─ --default <allow|deny>
-│     ├─ --allow-between <agents...>
-│     ├─ --deny-between <agents...>
-│     ├─ --reset-between <agents...>
-│     ├─ --allow-from <agent> --to <agents...>
-│     ├─ --deny-from <agent> --to <agents...>
-│     └─ --reset-from <agent> --to <agents...>
+│  ├─ block <network>
+│  │  ├─ --between <agents...>
+│  │  └─ --from <agent> --to <agents...>
+│  ├─ unblock <network>
+│  │  ├─ --between <agents...>
+│  │  └─ --from <agent> --to <agents...>
+│  └─ reset <network>
+│     ├─ --between <agents...>
+│     └─ --from <agent> --to <agents...>
 ├─ host
 │  ├─ run
 │  │  ├─ --layout <auto|left-main|top-main|grid>
@@ -526,23 +526,22 @@ aiox
 │  └─ network
 │     ├─ list <host> [--json]
 │     ├─ show <host> <network> [--json]
-│     └─ route <host> <network>
-│        ├─ --default <allow|deny>
-│        ├─ --reset-default
-│        ├─ --allow-between <agents...>
-│        ├─ --deny-between <agents...>
-│        ├─ --reset-between <agents...>
-│        ├─ --allow-from <agent> --to <agents...>
-│        ├─ --deny-from <agent> --to <agents...>
-│        ├─ --reset-from <agent> --to <agents...>
-│        └─ --json
+│     ├─ block <host> <network> [--json]
+│     │  ├─ --between <agents...>
+│     │  └─ --from <agent> --to <agents...>
+│     ├─ unblock <host> <network> [--json]
+│     │  ├─ --between <agents...>
+│     │  └─ --from <agent> --to <agents...>
+│     └─ reset <host> <network> [--json]
+│        ├─ --between <agents...>
+│        └─ --from <agent> --to <agents...>
 ├─ status [--json]
 └─ doctor [--json]
 ```
 
 - AIOX 옵션은 `--instruction` 단수. `--network` 반복은 거절한다. `--` 뒤는 adapter 인자다.
 - `network list` 기본은 persistent, `--all`은 host-managed 포함. host-qualified show는 가능하지만 최상위 mutation은 persistent 전용이다.
-- Host-managed route 변경은 `host network route`로 한다.
+- Host-managed route 변경은 `host network block/unblock/reset`으로 한다.
 - standalone 실행은 foreground다. Ctrl+C·/exit 등 vendor 세션 종료를 사용한다. standalone 외부 stop/attach/detach 명령은 보류했다.
 - adapter setup 명령 표면이 존재해도 Claude의 사전 영구 MCP 등록을 다시 요구하지 않는다.
 - Web 열기 명령의 정확한 이름, start에 넣을 포트 인자 이름과 agent list --all의 상세 범위는 CLI 구현 때 맞춘다.
@@ -556,8 +555,8 @@ aiox host agent stop <host> <agent-names...>
 
 Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실행·credential·binding·활성 membership을 정리하고 Host의 항목·메타데이터·실행 설정을 stopped로 유지한다. start는 기존 항목을 새 Runtime ID·credential로 실행하며 이전 vendor 대화를 자동 resume하지 않는다. 이미 실행 중인 항목을 중복 실행하지 않고 이름별 결과를 보고한다. 보존한 Host route 설정은 새 실행 ID에 연결하며 stopped 항목에는 전달하지 않는다.
 
-Standalone 실행 종료 또는 협업 등록 유효성 상실 시 실행 등록·membership·해당 실행 endpoint의 route를 정리한다. 정리 완료 후 이름을 재사용할 수 있으며 새 실행은 이전 route를 승계하지 않고 Network default를 적용한다. 따라서 default allow에서는 이전 B→A deny가 새 B를 차단하지 않는다. daemon 재시작 시 Network 이름·default는 유지하고 과거 Runtime의 잔존 route는 정리한다.
-Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network route`는 현재 Host 실행만 변경하고 YAML에 쓰지 않는다. 개별 Host Agent의 stopped 항목·보존 route 재연결은 앞의 별도 계약을 따른다.
+Standalone 실행 종료 또는 협업 등록 유효성 상실 시 실행 등록·membership·해당 실행 endpoint의 route를 정리한다. 정리 완료 후 이름을 재사용할 수 있으며 새 실행은 이전 차단을 승계하지 않고 기본 허용을 적용한다. 이전 B→A 차단은 새 B를 차단하지 않는다. daemon 재시작 시 Network 이름은 유지하고 과거 Runtime의 잔존 route는 정리한다.
+Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network block/unblock/reset`은 현재 Host 실행만 변경하고 YAML에 쓰지 않는다. 개별 Host Agent의 stopped 항목·보존 route 재연결은 앞의 별도 계약을 따른다.
 
 **명령·인증된 실행 위치와 실행 소유권**
 
@@ -836,7 +835,7 @@ AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시�
 
 보존 기본값은 요청 처리 종료 후 30일이다. 진행 중 요청은 삭제하지 않고, 정리 대상 요청의 본문·대상별 결과·연결된 daemon 알림을 함께 정리한다. 여러 대상의 처리가 남은 요청을 일부 완료만으로 삭제하지 않는다. 보존 일수는 전역 설정으로 변경하며 daemon 시작 시와 하루 한 번 정리한다. Host 종료 자체로 이력을 지우지 않는다. 이 정책은 persistent Network·route 정의, YAML·사용자 작업 파일을 삭제하거나 디스크 용량 상한을 보장하는 정책이 아니다.
 
-Persistent Network 이름·default는 DB에 지속한다. endpoint route는 참여 실행의 수명을 따르며 종료·daemon 재시작 시 정리한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
+Persistent Network 이름은 DB에 지속한다. endpoint route는 참여 실행의 수명을 따르며 종료·daemon 재시작 시 정리한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
 
 TypeORM·better-sqlite3는 도입돼 있으며 현재 schema를 transaction 안에서 직접 초기화한다. 첫 배포 전에는 과거 개발 DB 호환을 위한 migration·backfill·legacy fallback을 유지하지 않는다. 저장 원자성·실패 재시도·재오픈 검증은 유지하고 startup 자동 삭제·reset은 하지 않는다. 배포 완료 통지 이후 schema 변경은 기존 데이터를 보존하는 migration으로 수행한다.
 

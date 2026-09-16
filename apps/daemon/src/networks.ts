@@ -1,4 +1,4 @@
-import type { Network, RouteOperation, RoutePolicy } from "@aiox/domain";
+import type { Network, RouteOperation } from "@aiox/domain";
 import { applyRouteOperation, outboundTargets } from "@aiox/domain";
 import type { AioxDatabase, PersistentNetwork } from "@aiox/persistence";
 import { v7 as uuidv7 } from "uuid";
@@ -28,10 +28,7 @@ export class NetworkService {
         },
     ) {}
 
-    async create(
-        name: string,
-        defaultPolicy: RoutePolicy,
-    ): Promise<PersistentNetwork> {
+    async create(name: string): Promise<PersistentNetwork> {
         if (!name.trim() || name.includes("/"))
             throw new NetworkError(
                 "A network name must be non-empty and must not contain '/'",
@@ -39,7 +36,7 @@ export class NetworkService {
             );
         const id = uuidv7();
         try {
-            await this.db.networks.create({ id, name, defaultPolicy });
+            await this.db.networks.create({ id, name });
         } catch (error) {
             if (
                 error instanceof Error &&
@@ -107,12 +104,10 @@ export class NetworkService {
                           from: resolve(operation.from),
                           to: [...new Set(operation.to.map(resolve))],
                       }
-                    : operation.kind === "between"
-                      ? {
-                            ...operation,
-                            agents: [...new Set(operation.agents.map(resolve))],
-                        }
-                      : operation;
+                    : {
+                          ...operation,
+                          agents: [...new Set(operation.agents.map(resolve))],
+                      };
             return applyRouteOperation(current, resolved);
         });
         return this.require(network.id);
@@ -156,8 +151,8 @@ export class NetworkService {
         const network = await this.require(networkId);
         return {
             id: network.id,
-            defaultPolicy: network.defaultPolicy,
-            routes: network.routes,
+            defaultPolicy: "allow",
+            routes: network.routes.map((edge) => ({ ...edge, policy: "deny" })),
         };
     }
 

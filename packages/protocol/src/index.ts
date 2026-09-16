@@ -8,8 +8,8 @@ import { z } from "zod";
 
 export const portsSchema = z.object({ daemon: z.int(), web: z.int() });
 export const policySchema = z.enum(["allow", "deny"]);
-/** Route operations can also remove a route, which a stored policy cannot be. */
-export const routePolicySchema = z.enum(["allow", "deny", "reset"]);
+/** Persistent route changes; unblock and reset both remove a blocked edge. */
+export const routeActionSchema = z.enum(["block", "unblock", "reset"]);
 
 export const daemonStatusSchema = z.object({
     status: z.literal("running"),
@@ -135,29 +135,24 @@ export const networkViewSchema = z.object({
     id: z.string(),
     name: z.string(),
     scope: z.enum(["persistent", "host"]),
-    defaultPolicy: policySchema,
     routes: z.array(
         z.object({
             from: z.string(),
             to: z.string(),
             fromName: z.string(),
             toName: z.string(),
-            policy: policySchema,
         }),
     ),
 });
 
-export const createNetworkSchema = z.object({
+export const createNetworkSchema = z.strictObject({
     name: z.string().min(1),
-    defaultPolicy: policySchema,
 });
 
 export const routeOperationSchema = z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("default"), policy: policySchema }),
-    z.object({ kind: z.literal("reset-default") }),
-    z.object({
+    z.strictObject({
         kind: z.literal("between"),
-        policy: routePolicySchema,
+        action: routeActionSchema,
         agents: z
             .array(z.string())
             .refine(
@@ -165,9 +160,9 @@ export const routeOperationSchema = z.discriminatedUnion("kind", [
                 "A between operation requires at least two distinct agents",
             ),
     }),
-    z.object({
+    z.strictObject({
         kind: z.literal("directed"),
-        policy: routePolicySchema,
+        action: routeActionSchema,
         from: z.string(),
         to: z.array(z.string()).min(1),
     }),
@@ -224,7 +219,7 @@ export const errorBodySchema = z.looseObject({
 
 export type Ports = z.infer<typeof portsSchema>;
 export type Policy = z.infer<typeof policySchema>;
-export type RoutePolicy = z.infer<typeof routePolicySchema>;
+export type RouteAction = z.infer<typeof routeActionSchema>;
 export type DaemonStatus = z.infer<typeof daemonStatusSchema>;
 export type DaemonState = z.infer<typeof daemonStateSchema>;
 export type StopRequest = z.infer<typeof stopRequestSchema>;

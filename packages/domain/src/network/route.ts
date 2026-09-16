@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "@/agent/runtime";
-import type { DirectedRoute, Network, RoutePolicy } from "@/network/network";
+import type { DirectedRoute, Network } from "@/network/network";
 
 export function canSend(
     network: Network,
@@ -30,16 +30,14 @@ export function outboundTargets<T extends AgentRuntime>(
 
 /** One route call is one kind of change. `reset` drops the explicit edge. */
 export type RouteOperation =
-    | { readonly kind: "default"; readonly policy: RoutePolicy }
-    | { readonly kind: "reset-default" }
     | {
           readonly kind: "between";
-          readonly policy: RoutePolicy | "reset";
+          readonly action: "block" | "unblock" | "reset";
           readonly agents: readonly string[];
       }
     | {
           readonly kind: "directed";
-          readonly policy: RoutePolicy | "reset";
+          readonly action: "block" | "unblock" | "reset";
           readonly from: string;
           readonly to: readonly string[];
       };
@@ -51,9 +49,7 @@ export class RouteOperationError extends Error {
     }
 }
 
-type EdgeOperation = Extract<RouteOperation, { kind: "between" | "directed" }>;
-
-function edgesOf(operation: EdgeOperation): { from: string; to: string }[] {
+function edgesOf(operation: RouteOperation): { from: string; to: string }[] {
     if (operation.kind === "directed") {
         if (operation.to.length === 0)
             throw new RouteOperationError(
@@ -63,7 +59,10 @@ function edgesOf(operation: EdgeOperation): { from: string; to: string }[] {
             throw new RouteOperationError(
                 "A directed routing operation cannot target its own source",
             );
-        return operation.to.map((to) => ({ from: operation.from, to }));
+        return [...new Set(operation.to)].map((to) => ({
+            from: operation.from,
+            to,
+        }));
     }
     const agents = [...new Set(operation.agents)];
     if (agents.length < 2)
@@ -76,39 +75,20 @@ function edgesOf(operation: EdgeOperation): { from: string; to: string }[] {
     );
 }
 
-/**
- * Applies one route change to a routing snapshot. The edge layer holds at most
- * one policy per directed edge, so a new value replaces the old one.
- */
+/** Changes a persistent network's blocked edges; unblock and reset both remove. */
 export function applyRouteOperation(
-    current: Pick<Network, "defaultPolicy" | "routes">,
+    current: { readonly routes: readonly Pick<DirectedRoute, "from" | "to">[] },
     operation: RouteOperation,
-): { defaultPolicy: RoutePolicy; routes: DirectedRoute[] } {
-    const routes = [...current.routes];
-    if (operation.kind === "default")
-        return { defaultPolicy: operation.policy, routes };
-    if (operation.kind === "reset-default")
-        throw new RouteOperationError(
-            "A persistent network has no runtime default override to reset",
-        );
+): { routes: Pick<DirectedRoute, "from" | "to">[] } {
     const edges = edgesOf(operation);
-    const remaining = routes.filter(
+    const remaining = current.routes.filter(
         (route) =>
             !edges.some(
                 (edge) => edge.from === route.from && edge.to === route.to,
             ),
     );
     return {
-        defaultPolicy: current.defaultPolicy,
         routes:
-            operation.policy === "reset"
-                ? remaining
-                : [
-                      ...remaining,
-                      ...edges.map((edge) => ({
-                          ...edge,
-                          policy: operation.policy as RoutePolicy,
-                      })),
-                  ],
+            operation.action === "block" ? [...remaining, ...edges] : remaining,
     };
 }

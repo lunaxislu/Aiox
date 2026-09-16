@@ -269,18 +269,19 @@ aiox
 │  ├─ list [--network <network>] [--host <host>] [--all] [--json]
 │  └─ show <agent> [--json]
 ├─ network
-│  ├─ create <name> [--default <allow|deny>]
+│  ├─ create <name>
 │  ├─ delete <network>
 │  ├─ list [--all] [--json]
 │  ├─ show <network> [--json]
-│  └─ route <network>
-│     ├─ --default <allow|deny>
-│     ├─ --allow-between <agents...>
-│     ├─ --deny-between <agents...>
-│     ├─ --reset-between <agents...>
-│     ├─ --allow-from <agent> --to <agents...>
-│     ├─ --deny-from <agent> --to <agents...>
-│     └─ --reset-from <agent> --to <agents...>
+│  ├─ block <network>
+│  │  ├─ --between <agents...>
+│  │  └─ --from <agent> --to <agents...>
+│  ├─ unblock <network>
+│  │  ├─ --between <agents...>
+│  │  └─ --from <agent> --to <agents...>
+│  └─ reset <network>
+│     ├─ --between <agents...>
+│     └─ --from <agent> --to <agents...>
 ├─ host
 │  ├─ run
 │  │  ├─ --path <aiox.yaml>
@@ -298,16 +299,15 @@ aiox
 │  └─ network
 │     ├─ list <host> [--json]
 │     ├─ show <host> <network> [--json]
-│     └─ route <host> <network>
-│        ├─ --default <allow|deny>
-│        ├─ --reset-default
-│        ├─ --allow-between <agents...>
-│        ├─ --deny-between <agents...>
-│        ├─ --reset-between <agents...>
-│        ├─ --allow-from <agent> --to <agents...>
-│        ├─ --deny-from <agent> --to <agents...>
-│        ├─ --reset-from <agent> --to <agents...>
-│        └─ --json
+│     ├─ block <host> <network> [--json]
+│     │  ├─ --between <agents...>
+│     │  └─ --from <agent> --to <agents...>
+│     ├─ unblock <host> <network> [--json]
+│     │  ├─ --between <agents...>
+│     │  └─ --from <agent> --to <agents...>
+│     └─ reset <host> <network> [--json]
+│        ├─ --between <agents...>
+│        └─ --from <agent> --to <agents...>
 ├─ status [--json]
 └─ doctor [--json]
 ```

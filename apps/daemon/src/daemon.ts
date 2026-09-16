@@ -94,8 +94,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     const now = options.now ?? (() => Date.now());
     const startedAt = now();
 
-    // No execution survives a daemon restart. Preserve Network definitions and
-    // defaults, but discard edges whose endpoints belonged to the past process.
+    // No execution survives a daemon restart. Preserve Network definitions,
+    // but discard edges whose endpoints belonged to the past process.
     for (const network of await options.db.networks.list()) {
         if (network.routes.length)
             await options.db.networks.replaceRouting(network.id, (current) => ({

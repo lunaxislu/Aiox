@@ -20,8 +20,8 @@ test("create rejects a name already used by another network", async (t) => {
         inNetwork: () => [],
     });
     const created = await Promise.allSettled([
-        networks.create("review", "deny"),
-        networks.create("review", "allow"),
+        networks.create("review"),
+        networks.create("review"),
     ]);
     expect(
         created.filter((result) => result.status === "fulfilled"),
@@ -31,12 +31,12 @@ test("create rejects a name already used by another network", async (t) => {
     ).toMatchObject({
         reason: { constructor: NetworkError, code: "duplicate_name" },
     });
-    await expect(networks.create("review", "allow")).rejects.toMatchObject({
+    await expect(networks.create("review")).rejects.toMatchObject({
         constructor: NetworkError,
         code: "duplicate_name",
     });
     const network = await networks.require("review");
-    expect((await networks.create(network.id, "deny")).name).toBe(network.id);
+    expect((await networks.create(network.id)).name).toBe(network.id);
 });
 
 test("concurrent route edits preserve both edges on the same network", async (t) => {
@@ -55,20 +55,20 @@ test("concurrent route edits preserve both edges on the same network", async (t)
         get: (id) => members.find((record) => record.id === id),
         inNetwork: () => members,
     });
-    const network = await networks.create("review", "deny");
+    const network = await networks.create("review");
     await Promise.all(
         ["b", "c"].map((to) =>
             networks.route(network.id, {
                 kind: "directed",
                 from: "a",
                 to: [to],
-                policy: "allow",
+                action: "block",
             }),
         ),
     );
     expect((await networks.require(network.id)).routes).toEqual([
-        { from: "a", to: "b", policy: "allow" },
-        { from: "a", to: "c", policy: "allow" },
+        { from: "a", to: "b" },
+        { from: "a", to: "c" },
     ]);
 });
 
@@ -88,14 +88,13 @@ test("runtime route cleanup preserves a concurrent edit and tolerates Network de
         get: (id) => members.find((record) => record.id === id),
         inNetwork: () => members,
     });
-    const network = await networks.create("review", "deny");
+    const network = await networks.create("review");
     const runtime = { id: "a", networkId: network.id, hostId: null };
     await db.networks.replaceRouting(network.id, {
-        defaultPolicy: "deny",
         routes: [
-            { from: "a", to: "b", policy: "allow" },
-            { from: "c", to: "a", policy: "deny" },
-            { from: "b", to: "c", policy: "allow" },
+            { from: "a", to: "b" },
+            { from: "c", to: "a" },
+            { from: "b", to: "c" },
         ],
     });
     await Promise.all([
@@ -104,14 +103,14 @@ test("runtime route cleanup preserves a concurrent edit and tolerates Network de
             kind: "directed",
             from: "b",
             to: ["d"],
-            policy: "deny",
+            action: "block",
         }),
     ]);
     expect(await networks.require(network.id)).toEqual({
         ...network,
         routes: [
-            { from: "b", to: "c", policy: "allow" },
-            { from: "b", to: "d", policy: "deny" },
+            { from: "b", to: "c" },
+            { from: "b", to: "d" },
         ],
     });
     members.length = 0;
@@ -131,7 +130,7 @@ test("route names and IDs must resolve to current Network participants before an
     });
     const runtimes = new RuntimeRegistry();
     const networks = new NetworkService(db, runtimes);
-    const network = await networks.create("w1", "allow");
+    const network = await networks.create("w1");
     const binding = { deliver: async () => {}, stop: async () => {} };
     const a = (
         await runtimes.register({
@@ -158,10 +157,10 @@ test("route names and IDs must resolve to current Network participants before an
         kind: "directed",
         from: "B",
         to: [a.id, a.name, a.name],
-        policy: "deny",
+        action: "block",
     } as const;
     await networks.route(network.id, operation);
-    const expected = [{ from: b.id, to: a.id, policy: "deny" }];
+    const expected = [{ from: b.id, to: a.id }];
     expect((await networks.require(network.id)).routes).toEqual(expected);
     for (const target of ["missing", other.id]) {
         await expect(
@@ -169,7 +168,7 @@ test("route names and IDs must resolve to current Network participants before an
                 kind: "directed",
                 from: "A",
                 to: ["B", target],
-                policy: "allow",
+                action: "block",
             }),
         ).rejects.toThrow(/No participating agent/);
         expect((await networks.require(network.id)).routes).toEqual(expected);
@@ -195,14 +194,14 @@ test("route names and IDs must resolve to current Network participants before an
     await networks.route(network.id, {
         kind: "between",
         agents: [a.name, a.id, replacement.name, replacement.id],
-        policy: "allow",
+        action: "block",
     });
     const routes = (await networks.require(network.id)).routes;
     expect(routes).toHaveLength(2);
     expect(routes).toEqual(
         expect.arrayContaining([
-            { from: a.id, to: replacement.id, policy: "allow" },
-            { from: replacement.id, to: a.id, policy: "allow" },
+            { from: a.id, to: replacement.id },
+            { from: replacement.id, to: a.id },
         ]),
     );
 });

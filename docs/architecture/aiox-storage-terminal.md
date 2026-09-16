@@ -23,7 +23,7 @@ credential을 영속화된 설정·메시지에 넣지 않는다. vendor transcr
 저장을 근거로 동일 delivery 재전송·자동 재시작을 추가하지 않는다.
 
 Persistent Network의 저장된 endpoint route는 live Runtime 관계다. daemon 시작 시 과거
-endpoint route를 정리하되 Network 이름·default와 메시지 이력은 유지한다. 이름 재사용을
+endpoint route를 정리하되 Network 이름과 메시지 이력은 유지한다. 이름 재사용을
 실행 복원으로 해석하지 않는다. 외부 수명 계약은 [[docs/specs/aiox-host]]를 따른다.
 
 ## 이력 보존과 ORM 전환 [Status: As-built]

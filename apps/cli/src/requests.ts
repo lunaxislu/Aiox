@@ -16,7 +16,9 @@ export type CommandName =
     | "network.delete"
     | "network.list"
     | "network.show"
-    | "network.route"
+    | "network.block"
+    | "network.unblock"
+    | "network.reset"
     | "host.run"
     | "host.list"
     | "host.status"
@@ -25,7 +27,9 @@ export type CommandName =
     | "host.agent.stop"
     | "host.network.list"
     | "host.network.show"
-    | "host.network.route"
+    | "host.network.block"
+    | "host.network.unblock"
+    | "host.network.reset"
     | "status"
     | "doctor";
 
@@ -44,14 +48,8 @@ export type CliOptions = {
     adapter?: string;
     port?: number;
     webPort?: number;
-    default?: "allow" | "deny";
-    resetDefault?: boolean;
-    allowBetween?: string[];
-    denyBetween?: string[];
-    resetBetween?: string[];
-    allowFrom?: string;
-    denyFrom?: string;
-    resetFrom?: string;
+    between?: string[];
+    from?: string;
     to?: string[];
 };
 

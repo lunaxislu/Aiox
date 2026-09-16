@@ -14,17 +14,6 @@ class AioxCommand extends Command {
     }
 }
 
-const routeOperations = [
-    "default",
-    "resetDefault",
-    "allowBetween",
-    "denyBetween",
-    "resetBetween",
-    "allowFrom",
-    "denyFrom",
-    "resetFrom",
-] as const;
-
 /** Required option operands may themselves be "--"; only an unconsumed token ends AIOX parsing. */
 function adapterBoundary(argv: readonly string[], command: Command): number {
     const options: Option[] = [];
@@ -76,48 +65,29 @@ function metadata(command: Command): Command {
         .option("--instruction <instruction>", "Runtime instruction");
 }
 
-function routing(command: Command, host: boolean): Command {
-    command.addOption(
-        new Option("--default <policy>", "Default routing policy").choices([
-            "allow",
-            "deny",
-        ]),
-    );
-    if (host)
-        command.option("--reset-default", "Remove runtime default override");
-    for (const operation of ["allow", "deny", "reset"]) {
-        command
-            .option(
-                `--${operation}-between <agents...>`,
-                `${operation} both directions`,
-            )
-            .option(
-                `--${operation}-from <agent>`,
-                `${operation} outgoing routes`,
-            );
-    }
-    return command.option("--to <agents...>", "Directed route targets");
+function routing(command: Command): Command {
+    return command
+        .option(
+            "--between <agents...>",
+            "Apply to all directed pairs between agents",
+        )
+        .option("--from <agent>", "Directed route source")
+        .option("--to <agents...>", "Directed route targets");
 }
 
 function validateRoute(options: CliOptions): void {
-    const operations = routeOperations.filter(
-        (key) => options[key] !== undefined,
-    );
-    if (operations.length !== 1)
-        throw new Error("Specify exactly one routing operation");
-    const from = options.allowFrom ?? options.denyFrom ?? options.resetFrom;
-    if (from !== undefined && !options.to?.length)
-        throw new Error("--to is required with a directed routing operation");
-    if (from === undefined && options.to !== undefined)
-        throw new Error(
-            "--to requires --allow-from, --deny-from, or --reset-from",
-        );
-    const between =
-        options.allowBetween ?? options.denyBetween ?? options.resetBetween;
-    if (between && new Set(between).size < 2)
+    if ((options.between !== undefined) === (options.from !== undefined))
+        throw new Error("Specify either --between or --from with --to");
+    if (options.from !== undefined && !options.to?.length)
+        throw new Error("--to is required with --from");
+    if (options.from === undefined && options.to !== undefined)
+        throw new Error("--to requires --from");
+    if (options.between && new Set(options.between).size < 2)
         throw new Error(
             "A between operation requires at least two distinct agents",
         );
+    if (options.from !== undefined && options.to?.includes(options.from))
+        throw new Error("A route cannot target its source");
 }
 
 export function createCli(
@@ -159,7 +129,12 @@ export function createCli(
                     throw new Error("Adapter arguments must follow --");
                 }
             }
-            if (name.endsWith(".route")) validateRoute(options);
+            if (
+                ["block", "unblock", "reset"].some((verb) =>
+                    name.endsWith(`.${verb}`),
+                )
+            )
+                validateRoute(options);
             const result = await port.execute({
                 command: name,
                 args,
@@ -242,23 +217,15 @@ export function createCli(
     const network = cli
         .command("network")
         .description("Manage persistent networks and routes");
-    bind(
-        network
-            .command("create <name>")
-            .addOption(
-                new Option("--default <policy>")
-                    .choices(["allow", "deny"])
-                    .default("allow"),
-            ),
-        "network.create",
-    );
+    bind(network.command("create <name>"), "network.create");
     bind(network.command("delete <network>"), "network.delete");
     bind(
         network.command("list").option("--all").option("--json"),
         "network.list",
     );
     bind(network.command("show <network>").option("--json"), "network.show");
-    bind(routing(network.command("route <network>"), false), "network.route");
+    for (const verb of ["block", "unblock", "reset"] as const)
+        bind(routing(network.command(`${verb} <network>`)), `network.${verb}`);
 
     const host = cli.command("host").description("Manage manifest-based hosts");
     bind(
@@ -284,12 +251,13 @@ export function createCli(
         hostNetwork.command("show <host> <network>").option("--json"),
         "host.network.show",
     );
-    bind(
-        routing(hostNetwork.command("route <host> <network>"), true).option(
-            "--json",
-        ),
-        "host.network.route",
-    );
+    for (const verb of ["block", "unblock", "reset"] as const)
+        bind(
+            routing(hostNetwork.command(`${verb} <host> <network>`)).option(
+                "--json",
+            ),
+            `host.network.${verb}`,
+        );
     bind(cli.command("status").option("--json"), "status");
     bind(cli.command("doctor").option("--json"), "doctor");
     return cli;

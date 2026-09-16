@@ -20,6 +20,7 @@ status: open
 - 초기 preset: auto는 1개 전체, 2개 좌우, 3개 왼쪽 하나+오른쪽 위아래, 4개 2×2. left-main은 왼쪽 하나+오른쪽 위아래, top-main은 위쪽 하나+아래쪽 좌우, grid는 columns × rows. 초과 Agent는 선언 순서대로 기존 영역에 순환 탭 배치한다. 2열×1행의 A~F는 [A,C,E] / [B,D,F], 최초 선택 A/B를 유지한다. 불필요한 빈 영역을 만들지 않는다. Host 실행 시 최초 배치에만 적용하고 이후 사용자 수정·설정 변경으로 자동 재정렬하지 않는다.
 - Stage 6 공통 화면이 초기 layout을 소비한다. Host 전체 페이지 탭을 만들지 않는다. auto의 5개 이상 기본 영역 수 등 원문에서 미정인 세부를 확정된 요구로 주장하지 않는다. Worktree 생성·재사용·충돌은 기존 herdr 참고 방향과 실제 계약을 확인해 구체화한다. terminal/Runtime 정리와 Host stopped 항목 유지, 새 실행 ID route 연결, Host 전체 종료 시 YAML·작업 파일 보존을 검증한다.
 - W3 구현 인계: packages/config 공개 parseHostLayout(value, source)·resolveHostLayout({cli,yaml,global})를 YAML/CLI 연결에서 재사용한다. 사용자 추가 결정: 같은 preset은 명시 필드만 덮어쓰고 누락 값을 상속한다. 행·열만 있으면 grid다. 전역 grid2x2 + YAML columns3 = grid3x2; YAML auto는 치수 폐기, 이후 CLI grid도 과거 치수 복원 안 함. 어느 계층에도 없는 grid 치수는 이번 기반에서 계산하지 않는다. daemon.createShell({cwd}) 또는 POST /api/terminals의 cwd에 Host 경로를 연결한다. 생성 cwd를 실시간 cwd 관측으로 해석하지 않는다.
+- Routing 변경 인계: docs/specs/aiox-host.md의 Routing과 변경 및 aiox.yaml, docs/specs/aiox-runtime.md의 CLI tree를 기준으로 구현한다. Persistent 차단 목록 모델을 Host YAML에 확대하지 않는다. Host의 YAML default·allow/deny는 유지하고 runtime default 조작은 제거한다. block/unblock/reset의 명시 차단·명시 허용·YAML 복귀를 구현하며 YAML deny를 runtime unblock으로 열 수 있어야 한다. 이번 반영은 계약과 기존 CLI parser 표면 정합화이며 Host YAML 파서·실행·정책 합성 구현 완료 증거가 아니다. Agent 개별 stop/start의 override 유지와 Host 전체 재실행의 override 소멸을 검증한다. YAML default 생략값·동일 값 중복 처리와 Host 출력 세부는 구현 시 미결을 확인하고 임의 확정하지 않는다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 

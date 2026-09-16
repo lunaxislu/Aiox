@@ -143,18 +143,20 @@ function alive(pid: number): boolean {
     }
 }
 
-function routeOperation(options: CliOptions): RouteOperation {
-    if (options.default !== undefined)
-        return { kind: "default", policy: options.default };
-    if (options.resetDefault) return { kind: "reset-default" };
-    for (const policy of ["allow", "deny", "reset"] as const) {
-        const agents = options[`${policy}Between`];
-        if (agents !== undefined) return { kind: "between", policy, agents };
-        const from = options[`${policy}From`];
-        if (from !== undefined)
-            return { kind: "directed", policy, from, to: options.to ?? [] };
-    }
-    throw new Error("Specify exactly one routing operation");
+function routeOperation(
+    action: RouteOperation["action"],
+    options: CliOptions,
+): RouteOperation {
+    if (options.between !== undefined)
+        return { kind: "between", action, agents: options.between };
+    if (options.from !== undefined)
+        return {
+            kind: "directed",
+            action,
+            from: options.from,
+            to: options.to ?? [],
+        };
+    throw new Error("Specify either --between or --from with --to");
 }
 
 function describeStatus(status: DaemonStatus): string {
@@ -170,16 +172,18 @@ function describeNetwork(network: NetworkView): string {
         network.routes.map((route) => [`${route.from}/${route.to}`, route]),
     );
     const output = [
-        `${network.name} (${network.scope}, default ${network.defaultPolicy}, ` +
-            `${network.routes.length} route(s))`,
+        `${network.name} (${network.scope})`,
+        "  Persistent networks always default to allow; Hosts can choose allow or deny in YAML.",
+        "  Default: allow",
+        ...(network.routes.length === 0 ? ["  Blocks: none"] : []),
     ];
     for (const [key, route] of routes) {
         routes.delete(key);
         const reverseKey = `${route.to}/${route.from}`;
-        const bidirectional = routes.get(reverseKey)?.policy === route.policy;
+        const bidirectional = routes.has(reverseKey);
         if (bidirectional) routes.delete(reverseKey);
         output.push(
-            `  ${route.fromName} ${bidirectional ? "<->" : "->"} ${route.toName}: ${route.policy}`,
+            `  ${route.fromName ?? route.from} ${bidirectional ? "<->" : "->"} ${route.toName ?? route.to}: blocked`,
         );
     }
     return output.join("\n");
@@ -587,7 +591,6 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                         apiPath.networks,
                         post({
                             name: operand(args, 0),
-                            defaultPolicy: options.default ?? "allow",
                         }),
                     );
                     return `created ${describeNetwork(networkViewSchema.parse(body))}`;
@@ -626,11 +629,22 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                         ? body
                         : describeNetwork(networkViewSchema.parse(body));
                 }
-                case "network.route": {
+                case "network.block":
+                case "network.unblock":
+                case "network.reset": {
                     const body = await call(
                         await daemonUrl(),
                         apiPath.networkRoute(operand(args, 0)),
-                        post({ operation: routeOperation(options) }),
+                        post({
+                            operation: routeOperation(
+                                command === "network.block"
+                                    ? "block"
+                                    : command === "network.unblock"
+                                      ? "unblock"
+                                      : "reset",
+                                options,
+                            ),
+                        }),
                     );
                     return describeNetwork(networkViewSchema.parse(body));
                 }

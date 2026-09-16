@@ -69,7 +69,6 @@ test("a fresh database creates the current schema directly and reopens", async (
     await store.networks.create({
         id: "n1",
         name: "review",
-        defaultPolicy: "deny",
     });
     await store.close();
 
@@ -90,6 +89,20 @@ test("a fresh database creates the current schema directly and reopens", async (
     ])
         assert.ok(tableNames(db).includes(table), `missing table ${table}`);
     assert.equal(tableNames(db).includes("migrations"), false);
+    assert.deepEqual(
+        db
+            .prepare("PRAGMA table_info(persistent_networks)")
+            .all()
+            .map((row) => (row as { name: string }).name),
+        ["id", "name"],
+    );
+    assert.deepEqual(
+        db
+            .prepare("PRAGMA table_info(persistent_routes)")
+            .all()
+            .map((row) => (row as { name: string }).name),
+        ["network_id", "source_id", "target_id"],
+    );
 });
 
 test("persistent network and routing survive close and reopen", async (t) => {
@@ -98,11 +111,9 @@ test("persistent network and routing survive close and reopen", async (t) => {
     await store.networks.create({
         id: "n1",
         name: "review",
-        defaultPolicy: "deny",
     });
     const routing = {
-        defaultPolicy: "deny",
-        routes: [{ from: "a", to: "b", policy: "allow" }],
+        routes: [{ from: "a", to: "b" }],
     } as const;
     await store.networks.replaceRouting("n1", routing);
     await store.close();
@@ -116,26 +127,23 @@ test("persistent network and routing survive close and reopen", async (t) => {
     assert.equal((await store.networks.list()).length, 1);
 });
 
-test("a failed route replacement preserves the previous default and every edge", async (t) => {
+test("a failed route replacement preserves every previous edge", async (t) => {
     const store = await openDatabase(databasePath(t));
     t.onTestFinished(() => store.close());
     await store.networks.create({
         id: "n1",
         name: "review",
-        defaultPolicy: "deny",
     });
     await store.networks.replaceRouting("n1", {
-        defaultPolicy: "deny",
-        routes: [{ from: "a", to: "b", policy: "allow" }],
+        routes: [{ from: "a", to: "b" }],
     });
     const before = await store.networks.get("n1");
     await assert.rejects(
         () =>
             store.networks.replaceRouting("n1", {
-                defaultPolicy: "allow",
                 routes: [
-                    { from: "b", to: "a", policy: "deny" },
-                    { from: "b", to: "a", policy: "allow" },
+                    { from: "b", to: "a" },
+                    { from: "b", to: "a" },
                 ],
             }),
         /UNIQUE constraint/,
@@ -144,7 +152,6 @@ test("a failed route replacement preserves the previous default and every edge",
     await assert.rejects(
         () =>
             store.networks.replaceRouting("missing", {
-                defaultPolicy: "deny",
                 routes: [],
             }),
         /Network not found/,
@@ -154,40 +161,36 @@ test("a failed route replacement preserves the previous default and every edge",
 test("concurrent writes to unrelated networks both commit", async (t) => {
     const store = await openDatabase(databasePath(t));
     t.onTestFinished(() => store.close());
-    for (const id of ["a", "b"])
-        await store.networks.create({ id, name: id, defaultPolicy: "deny" });
+    for (const id of ["a", "b"]) await store.networks.create({ id, name: id });
 
     await Promise.all(
         ["a", "b"].map((id) =>
             store.networks.replaceRouting(id, {
-                defaultPolicy: "allow",
-                routes: [],
+                routes: [{ from: "x", to: "y" }],
             }),
         ),
     );
     assert.deepEqual(
-        (await store.networks.list()).map(({ defaultPolicy }) => defaultPolicy),
-        ["allow", "allow"],
+        (await store.networks.list()).map(({ routes }) => routes),
+        [[{ from: "x", to: "y" }], [{ from: "x", to: "y" }]],
     );
 });
 
 test("a rollback cannot absorb a queued write or expose partial routes to a read", async (t) => {
     const store = await openDatabase(databasePath(t));
     t.onTestFinished(() => store.close());
-    await store.networks.create({ id: "a", name: "a", defaultPolicy: "deny" });
+    await store.networks.create({ id: "a", name: "a" });
     const before = await store.networks.get("a");
     const failing = store.networks.replaceRouting("a", {
-        defaultPolicy: "allow",
         routes: [
-            { from: "a", to: "b", policy: "allow" },
-            { from: "a", to: "b", policy: "deny" },
+            { from: "a", to: "b" },
+            { from: "a", to: "b" },
         ],
     });
     const reading = store.networks.get("a");
     const writing = store.networks.create({
         id: "b",
         name: "b",
-        defaultPolicy: "deny",
     });
     await assert.rejects(failing, /UNIQUE constraint/);
     assert.deepEqual(await reading, before);
@@ -217,25 +220,21 @@ test("deleting a network removes its edges and does not affect other networks", 
     await store.networks.create({
         id: "n1",
         name: "review",
-        defaultPolicy: "deny",
     });
     await store.networks.create({
         id: "n2",
         name: "other",
-        defaultPolicy: "allow",
     });
     await assert.rejects(
         () =>
             store.networks.create({
                 id: "n3",
                 name: "review",
-                defaultPolicy: "allow",
             }),
         /UNIQUE constraint/,
     );
     await store.networks.replaceRouting("n1", {
-        defaultPolicy: "deny",
-        routes: [{ from: "a", to: "b", policy: "allow" }],
+        routes: [{ from: "a", to: "b" }],
     });
     assert.equal(await store.networks.delete("n1"), true);
     assert.equal(await store.networks.delete("n1"), false);
@@ -243,10 +242,9 @@ test("deleting a network removes its edges and does not affect other networks", 
     await store.networks.create({
         id: "n1",
         name: "review",
-        defaultPolicy: "allow",
     });
     assert.deepEqual((await store.networks.get("n1"))?.routes, []);
-    assert.equal((await store.networks.get("n2"))?.defaultPolicy, "allow");
+    assert.equal((await store.networks.get("n2"))?.name, "other");
 });
 
 test("a failed schema initialization rolls back new tables and preserves existing data", async (t) => {
@@ -366,11 +364,9 @@ test("retention purges only messages whose every delivery finished before the cu
     await store.networks.create({
         id: "n1",
         name: "review",
-        defaultPolicy: "deny",
     });
     await store.networks.replaceRouting("n1", {
-        defaultPolicy: "deny",
-        routes: [{ from: "a", to: "b", policy: "allow" }],
+        routes: [{ from: "a", to: "b" }],
     });
 
     await store.messages.record(message("old", 10), [
@@ -422,8 +418,7 @@ test("retention purges only messages whose every delivery finished before the cu
     assert.deepEqual(await store.networks.get("n1"), {
         id: "n1",
         name: "review",
-        defaultPolicy: "deny",
-        routes: [{ from: "a", to: "b", policy: "allow" }],
+        routes: [{ from: "a", to: "b" }],
     });
     assert.deepEqual(await store.messages.purgeBefore(5000), {
         messages: 0,

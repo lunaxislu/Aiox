@@ -67,13 +67,11 @@ function networkView(
         id: network.id,
         name: network.name,
         scope: "persistent",
-        defaultPolicy: network.defaultPolicy,
-        routes: network.routes.map(({ from, to, policy }) => ({
+        routes: network.routes.map(({ from, to }) => ({
             from,
             to,
             fromName: runtimes.get(from)?.name ?? from,
             toName: runtimes.get(to)?.name ?? to,
-            policy,
         })),
     };
 }
@@ -338,10 +336,7 @@ async function route(
             send(
                 response,
                 201,
-                networkView(
-                    await networks.create(input.name, input.defaultPolicy),
-                    runtimes,
-                ),
+                networkView(await networks.create(input.name), runtimes),
             );
             return;
         }

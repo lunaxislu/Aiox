@@ -693,10 +693,8 @@ describe("terminal attachment", () => {
 
     it("keeps a failed-stop TUI usable, then cleans its exit without stopping the daemon", async () => {
         const terminal = openShell();
-        const network = await harness.daemon.services.networks.create(
-            "manual-exit",
-            "deny",
-        );
+        const network =
+            await harness.daemon.services.networks.create("manual-exit");
         let attempts = 0;
         const registered = await harness.daemon.registerRuntime({
             name: "manual-exit",
@@ -713,12 +711,11 @@ describe("terminal attachment", () => {
                 };
             },
         });
-        const preserved = { from: "b", to: "c", policy: "allow" as const };
+        const preserved = { from: "b", to: "c" };
         await harness.daemon.services.db.networks.replaceRouting(network.id, {
-            defaultPolicy: "deny",
             routes: [
-                { from: registered.runtimeId, to: "b", policy: "allow" },
-                { from: "c", to: registered.runtimeId, policy: "allow" },
+                { from: registered.runtimeId, to: "b" },
+                { from: "c", to: registered.runtimeId },
                 preserved,
             ],
         });

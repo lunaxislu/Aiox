@@ -89,10 +89,7 @@ async function route(operation: unknown): Promise<void> {
 
 beforeEach(async () => {
     harness = await startTestDaemon();
-    const created = await harness.daemon.services.networks.create(
-        "collab",
-        "deny",
-    );
+    const created = await harness.daemon.services.networks.create("collab");
     networkId = created.id;
 });
 
@@ -175,7 +172,6 @@ describe("agents_list", () => {
     it("does not discover general shells or accept them as message targets", async () => {
         const a = await join("a");
         const shell = await harness.daemon.createShell();
-        await route({ kind: "default", policy: "allow" });
         const client = await connect(a.token);
         expect(await agentsList(client)).toEqual([]);
         const result = await send(
@@ -193,9 +189,9 @@ describe("agents_list", () => {
         const b = await join("b");
         await route({
             kind: "directed",
-            policy: "allow",
-            from: a.id,
-            to: [b.id],
+            action: "block",
+            from: b.id,
+            to: [a.id],
         });
 
         expect(
@@ -207,12 +203,6 @@ describe("agents_list", () => {
     it("falls back to the agentId as a name and leaves absent metadata null", async () => {
         const a = await join("a");
         const anonymous = await joinAnonymous();
-        await route({
-            kind: "directed",
-            policy: "allow",
-            from: a.id,
-            to: [anonymous.id],
-        });
 
         expect(await agentsList(await connect(a.token))).toEqual([
             {
@@ -228,11 +218,6 @@ describe("agents_list", () => {
     it("summarises every kind of progress as working", async () => {
         const a = await join("a");
         const b = await join("b", { role: "review", description: "reviews" });
-        await route({
-            kind: "between",
-            policy: "allow",
-            agents: [a.id, b.id],
-        });
         const client = await connect(a.token);
 
         b.vendor.status("working");
@@ -258,13 +243,10 @@ describe("send", () => {
         const a = await join("a");
         const b = await join("b");
         const anonymous = await joinAnonymous();
-        const otherNetwork = await harness.daemon.services.networks.create(
-            "other",
-            "allow",
-        );
+        const otherNetwork =
+            await harness.daemon.services.networks.create("other");
         const otherB = await join("b", {}, otherNetwork.id);
         const outsider = await join("outsider", {}, otherNetwork.id);
-        await route({ kind: "default", policy: "allow" });
         const client = await connect(a.token);
         const listed = await agentsList(client);
         expect(listed.map((agent) => agent.name)).toEqual([
@@ -346,7 +328,17 @@ describe("send", () => {
             kind: "directed",
             from: a.name,
             to: [b.id],
-            policy: "allow",
+            action: "block",
+        });
+        const client = await connect(a.token);
+        expect((await agentsList(client)).map((agent) => agent.name)).toEqual([
+            namedAfterB.name,
+        ]);
+        await route({
+            kind: "directed",
+            from: a.name,
+            to: [b.id],
+            action: "unblock",
         });
         const sent = await send(await connect(a.token), [b.id], "only b");
         expect(sent.results).toEqual([{ name: b.id, accepted: true }]);
@@ -357,7 +349,6 @@ describe("send", () => {
     it("resolves a reused name to the current participant and keeps history on the old ID", async () => {
         const a = await join("a");
         const b = await join("b");
-        await route({ kind: "default", policy: "allow" });
         const client = await connect(a.token);
         const [listed] = await agentsList(client);
         const first = await send(client, [listed!.name as string], "first");
@@ -392,11 +383,6 @@ describe("send", () => {
         const a = await join("a");
         const b = await join("b");
         const c = await join("c");
-        await route({
-            kind: "between",
-            policy: "allow",
-            agents: [a.id, b.id, c.id],
-        });
 
         const sent = await send(await connect(a.token), [b.name], "just b");
         expect(sent.results).toEqual([{ name: b.name, accepted: true }]);
@@ -410,9 +396,9 @@ describe("send", () => {
         const c = await join("c");
         await route({
             kind: "directed",
-            policy: "allow",
+            action: "block",
             from: a.id,
-            to: [b.id],
+            to: [c.id],
         });
 
         const sent = await send(
@@ -438,9 +424,9 @@ describe("send", () => {
         const b = await join("b");
         await route({
             kind: "directed",
-            policy: "allow",
-            from: a.id,
-            to: [b.id],
+            action: "block",
+            from: b.id,
+            to: [a.id],
         });
 
         const sent = await send(
@@ -461,11 +447,6 @@ describe("send", () => {
     it("leaves a two-way target's body untouched", async () => {
         const a = await join("a");
         const b = await join("b");
-        await route({
-            kind: "between",
-            policy: "allow",
-            agents: [a.id, b.id],
-        });
 
         await send(await connect(a.token), [b.name], "do the thing");
         expect(b.vendor.received[0]!.content).toBe("do the thing");
@@ -474,12 +455,6 @@ describe("send", () => {
     it("names the authenticated sender rather than anything the caller claims", async () => {
         const a = await join("a", { role: "impl", description: "writes code" });
         const b = await join("b");
-        await route({
-            kind: "directed",
-            policy: "allow",
-            from: a.id,
-            to: [b.id],
-        });
 
         await send(await connect(a.token), [b.name], "hi");
         expect(b.vendor.received[0]!.from).toEqual({
@@ -492,17 +467,12 @@ describe("send", () => {
     it("re-checks the route at send time, so an older list is not a permission", async () => {
         const a = await join("a");
         const b = await join("b");
-        await route({
-            kind: "between",
-            policy: "allow",
-            agents: [a.id, b.id],
-        });
         const client = await connect(a.token);
         expect((await agentsList(client)).map((x) => x.name)).toEqual([b.name]);
 
         await route({
             kind: "directed",
-            policy: "deny",
+            action: "block",
             from: a.id,
             to: [b.id],
         });
@@ -517,11 +487,6 @@ describe("send", () => {
     it("reports an injection refusal in the response and does not queue a retry", async () => {
         const a = await join("a");
         const b = await join("b");
-        await route({
-            kind: "between",
-            policy: "allow",
-            agents: [a.id, b.id],
-        });
         b.vendor.refuse("vendor input path closed");
 
         const sent = await send(await connect(a.token), [b.name], "hi");
@@ -539,16 +504,14 @@ describe("automatic notification", () => {
         const suffix = harness.daemon.services.runtimes.list().length;
         const a = await join(`a-${suffix}`);
         const b = await join(`b-${suffix}`);
-        await route(
-            twoWay
-                ? { kind: "between", policy: "allow", agents: [a.id, b.id] }
-                : {
-                      kind: "directed",
-                      policy: "allow",
-                      from: a.id,
-                      to: [b.id],
-                  },
-        );
+        if (!twoWay) {
+            await route({
+                kind: "directed",
+                action: "block",
+                from: b.id,
+                to: [a.id],
+            });
+        }
         const sent = await send(
             await connect(a.token),
             [b.name],
@@ -599,11 +562,6 @@ describe("automatic notification", () => {
         const a = await join("a");
         const b = await join("b");
         const c = await join("c");
-        await route({
-            kind: "between",
-            policy: "allow",
-            agents: [a.id, b.id, c.id],
-        });
 
         await send(await connect(a.token), [b.name, c.name], "shared work");
         await b.vendor.settle(b.vendor.deliveryIds[0]!, "completed");
@@ -671,10 +629,6 @@ describe("automatic notification", () => {
 it("revoked runtimes cannot use MCP or remain discoverable while cleanup is retained", async () => {
     const a = await join("A");
     const b = await join("B");
-    await harness.daemon.services.db.networks.replaceRouting(networkId, {
-        defaultPolicy: "allow",
-        routes: [],
-    });
     const aClient = await connect(a.token);
     const bClient = await connect(b.token);
     harness.daemon.services.runtimes.revoke(b.id);
@@ -690,11 +644,7 @@ it("revoked runtimes cannot use MCP or remain discoverable while cleanup is reta
 it("does not disclose discovery results when the caller is revoked during route lookup", async () => {
     const a = await join("A");
     await join("B");
-    const { networks, runtimes, db } = harness.daemon.services;
-    await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "allow",
-        routes: [],
-    });
+    const { networks, runtimes } = harness.daemon.services;
     const client = await connect(a.token);
     const route = await networks.effective(networkId);
     let release!: () => void;
@@ -722,7 +672,6 @@ it("does not disclose discovery results when the caller is revoked during route 
 it("publishes preparing agents but refuses delivery until ready", async () => {
     const a = await join("a");
     const b = await join("b");
-    await route({ kind: "between", policy: "allow", agents: [a.id, b.id] });
     const client = await connect(a.token);
     b.vendor.status("aiox-preparing");
     expect((await agentsList(client))[0]).toMatchObject({

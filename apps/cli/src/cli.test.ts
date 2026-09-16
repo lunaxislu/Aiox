@@ -108,27 +108,84 @@ test("daemon start takes integer port overrides", async () => {
         await assert.rejects(parse(["daemon", "start", ...args]));
 });
 
-test("route validates exclusive operations and directed operands before dispatch", async () => {
-    for (const args of [
-        [],
-        ["--allow-from", "a"],
-        ["--to", "a"],
-        ["--allow-between", "a"],
-        ["--default", "allow", "--deny-between", "a", "b"],
-    ]) {
-        await assert.rejects(parse(["network", "route", "review", ...args]));
+test("routing verbs validate targets before dispatch", async () => {
+    for (const prefix of [["network"], ["host", "network"]]) {
+        const operands = prefix.length === 1 ? ["work"] : ["feature", "work"];
+        for (const verb of ["block", "unblock", "reset"]) {
+            for (const flags of [
+                [],
+                ["--from", "a"],
+                ["--to", "b"],
+                ["--between", "a"],
+                ["--between", "a", "a"],
+                ["--between", "a", "b", "--from", "a", "--to", "b"],
+                ["--from", "a", "--to", "a"],
+            ]) {
+                await assert.rejects(
+                    parse([...prefix, verb, ...operands, ...flags]),
+                );
+            }
+            assert.deepEqual(
+                (
+                    await parse([
+                        ...prefix,
+                        verb,
+                        ...operands,
+                        "--from",
+                        "a",
+                        "--to",
+                        "b",
+                        "c",
+                    ])
+                )[0],
+                {
+                    command: `${prefix.join(".")}.${verb}`,
+                    args: operands,
+                    options: { from: "a", to: ["b", "c"] },
+                },
+            );
+            for (const agents of [
+                ["a", "b"],
+                ["b", "a"],
+            ]) {
+                assert.deepEqual(
+                    (
+                        await parse([
+                            ...prefix,
+                            verb,
+                            ...operands,
+                            "--between",
+                            ...agents,
+                        ])
+                    )[0]?.options,
+                    { between: agents },
+                );
+            }
+        }
+        await assert.rejects(
+            parse([
+                ...prefix,
+                "route",
+                ...operands,
+                "--allow-between",
+                "a",
+                "b",
+            ]),
+        );
+        await assert.rejects(
+            parse([...prefix, "block", ...operands, "--default", "deny"]),
+        );
+        await assert.rejects(
+            parse([...prefix, "reset", ...operands, "--reset-default"]),
+        );
     }
-    const [request] = await parse([
-        "network",
-        "route",
-        "review",
-        "--allow-from",
-        "a",
-        "--to",
-        "b",
-        "c",
-    ]);
-    assert.deepEqual(request?.options, { allowFrom: "a", to: ["b", "c"] });
+    assert.deepEqual(
+        (await parse(["network", "create", "work"]))[0]?.options,
+        {},
+    );
+    await assert.rejects(
+        parse(["network", "create", "work", "--default", "allow"]),
+    );
 });
 
 test("host worktree, single network, instruction and force reach application boundary", async () => {
@@ -149,18 +206,21 @@ test("host worktree, single network, instruction and force reach application bou
         (await parse(["daemon", "stop", "--force"]))[0]?.options.force,
         true,
     );
-    assert.equal(
+    assert.deepEqual(
         (
             await parse([
                 "host",
                 "network",
-                "route",
+                "reset",
                 "review",
                 "one",
-                "--reset-default",
+                "--between",
+                "a",
+                "b",
+                "--json",
             ])
-        )[0]?.options.resetDefault,
-        true,
+        )[0]?.options,
+        { between: ["a", "b"], json: true },
     );
 });
 

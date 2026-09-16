@@ -478,10 +478,7 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
     const shell = await harness.daemon.createShell({ cwd: harness.home });
     const shellSession = sessions[0]!;
     const terminalContext = terminalContextFromEnv(shellSession.options.env!)!;
-    const network = await harness.daemon.services.networks.create(
-        "dev",
-        "allow",
-    );
+    const network = await harness.daemon.services.networks.create("dev");
     const { socket, messages } = await connect({
         ...frame(),
         network: network.name,
@@ -734,10 +731,7 @@ test("rejects a foreign browser Origin before creating an Agent", async () => {
 });
 
 test("common HTTP MCP send reaches native inbox and authenticated hooks settle only the connected request", async () => {
-    const network = await harness.daemon.services.networks.create(
-        "one-way",
-        "deny",
-    );
+    const network = await harness.daemon.services.networks.create("one-way");
     const sourceVendor = fakeVendor();
     const source = await harness.daemon.registerRuntime({
         name: "Reviewer",
@@ -825,9 +819,9 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
         const sender = await client(source.token);
         await harness.daemon.services.networks.route(network.id, {
             kind: "directed",
-            from: source.runtimeId,
-            to: [target.id],
-            policy: "allow",
+            from: target.id,
+            to: [source.runtimeId],
+            action: "block",
         });
         const sent = await sender.callTool({
             name: "send",

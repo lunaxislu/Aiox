@@ -318,7 +318,6 @@ describe("daemon status", () => {
                 },
                 body: JSON.stringify({
                     name: "unwanted",
-                    defaultPolicy: "allow",
                 }),
             });
             expect(mutation.status).toBe(403);
@@ -333,7 +332,6 @@ describe("daemon status", () => {
                 headers: { "content-type": "text/plain" },
                 body: JSON.stringify({
                     name: "unwanted",
-                    defaultPolicy: "allow",
                 }),
             });
             expect(plain.status).toBe(415);
@@ -342,10 +340,7 @@ describe("daemon status", () => {
     });
 
     it("reports the ports it actually bound and what it is holding", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "allow",
-        );
+        const network = await harness.daemon.services.networks.create("n");
         await joinAgent(network.id, "a");
 
         const { status, body } = await call("/api/status");
@@ -370,13 +365,11 @@ describe("network administration", () => {
     it("creates, reads back and routes a persistent network", async () => {
         const created = await post("/api/networks", {
             name: "collab",
-            defaultPolicy: "deny",
         });
         expect(created.status).toBe(201);
         expect(
             await post("/api/networks", {
                 name: "collab",
-                defaultPolicy: "allow",
             }),
         ).toMatchObject({
             status: 400,
@@ -389,7 +382,6 @@ describe("network administration", () => {
         expect(network).toMatchObject({
             name: "collab",
             scope: "persistent",
-            defaultPolicy: "deny",
             routes: [],
         });
 
@@ -398,7 +390,7 @@ describe("network administration", () => {
         const routed = await post(`/api/networks/${network.id}/route`, {
             operation: {
                 kind: "between",
-                policy: "allow",
+                action: "block",
                 agents: ["x", "y"],
             },
         });
@@ -411,21 +403,19 @@ describe("network administration", () => {
                     to: y.runtimeId,
                     fromName: "x",
                     toName: "y",
-                    policy: "allow",
                 },
                 {
                     from: y.runtimeId,
                     to: x.runtimeId,
                     fromName: "y",
                     toName: "x",
-                    policy: "allow",
                 },
             ]),
         );
         const invalid = await post(`/api/networks/${network.id}/route`, {
             operation: {
                 kind: "directed",
-                policy: "deny",
+                action: "block",
                 from: "x",
                 to: ["y", "missing"],
             },
@@ -441,10 +431,9 @@ describe("network administration", () => {
         expect(
             (await harness.daemon.services.networks.require(network.id)).routes,
         ).toEqual(
-            (routed.body as NetworkView).routes.map(({ from, to, policy }) => ({
+            (routed.body as NetworkView).routes.map(({ from, to }) => ({
                 from,
                 to,
-                policy,
             })),
         );
 
@@ -454,12 +443,11 @@ describe("network administration", () => {
     });
 
     it("rejects a routing call that cannot describe an edge", async () => {
-        const network = (
-            await post("/api/networks", { name: "n", defaultPolicy: "allow" })
-        ).body as NetworkView;
+        const network = (await post("/api/networks", { name: "n" }))
+            .body as NetworkView;
 
         const bad = await post(`/api/networks/${network.id}/route`, {
-            operation: { kind: "directed", policy: "allow", from: "a", to: [] },
+            operation: { kind: "directed", action: "block", from: "a", to: [] },
         });
         expect(bad.status).toBe(400);
         expect(bad.body).toMatchObject({ code: "invalid_request" });
@@ -473,7 +461,7 @@ describe("network administration", () => {
 
     it("rejects Network deletion until participation cleanup completes", async () => {
         const { networks, runtimes, messages } = harness.daemon.services;
-        const network = await networks.create("occupied", "allow");
+        const network = await networks.create("occupied");
         const a = await joinAgent(network.id, "a");
         const b = await joinAgent(network.id, "b");
         const source = runtimes.get(a.runtimeId)!;
@@ -521,7 +509,7 @@ describe("network administration", () => {
 
     it("protects a Network while registration is preparing and releases failed preparation", async () => {
         const { networks, runtimes } = harness.daemon.services;
-        const network = await networks.create("preparing", "allow");
+        const network = await networks.create("preparing");
         let fail!: (error: Error) => void;
         const preparing = new Promise<never>((_, reject) => {
             fail = reject;
@@ -550,10 +538,7 @@ describe("network administration", () => {
         "cleans routes after failed preparation and retains failed cleanup for retry (%s)",
         async (cleanupFails) => {
             const { networks, runtimes, db } = harness.daemon.services;
-            const network = await networks.create(
-                "failed-preparation",
-                "allow",
-            );
+            const network = await networks.create("failed-preparation");
             const a = await joinAgent(network.id, "A");
             let fail!: (error: Error) => void;
             const preparing = new Promise<never>((_, reject) => {
@@ -575,8 +560,8 @@ describe("network administration", () => {
                 .find((record) => record.name === "B")!;
             await networks.route(network.id, {
                 kind: "between",
+                action: "block",
                 agents: ["A", "B"],
-                policy: "deny",
             });
             if (cleanupFails)
                 vi.spyOn(db.networks, "replaceRouting").mockRejectedValueOnce(
@@ -600,7 +585,7 @@ describe("network administration", () => {
 
     it("does not create a binding revoked during Network validation", async () => {
         const { networks, runtimes } = harness.daemon.services;
-        const network = await networks.create("revoked", "allow");
+        const network = await networks.create("revoked");
         let release!: () => void;
         const validation = new Promise<void>((resolve) => {
             release = resolve;
@@ -629,7 +614,7 @@ describe("network administration", () => {
 
     it("rejects registration when Network deletion was already queued", async () => {
         const { networks, runtimes, db } = harness.daemon.services;
-        const network = await networks.create("deleting", "allow");
+        const network = await networks.create("deleting");
         const vendor = fakeVendor();
         const createBinding = vi.fn(vendor.createBinding);
         let registration!: ReturnType<typeof harness.daemon.registerRuntime>;
@@ -651,9 +636,8 @@ describe("network administration", () => {
     });
 
     it("keeps a deleted network's definition gone", async () => {
-        const network = (
-            await post("/api/networks", { name: "n", defaultPolicy: "allow" })
-        ).body as NetworkView;
+        const network = (await post("/api/networks", { name: "n" }))
+            .body as NetworkView;
         expect(
             (await call(`/api/networks/${network.id}`, { method: "DELETE" }))
                 .body,
@@ -710,14 +694,8 @@ describe("agent listing", () => {
         expect(harness.daemon.services.terminals.list()).toEqual([]);
     });
     it("lists live runtimes and filters by network", async () => {
-        const one = await harness.daemon.services.networks.create(
-            "one",
-            "allow",
-        );
-        const two = await harness.daemon.services.networks.create(
-            "two",
-            "allow",
-        );
+        const one = await harness.daemon.services.networks.create("one");
+        const two = await harness.daemon.services.networks.create("two");
         await joinAgent(one.id, "a");
         await joinAgent(two.id, "b");
 
@@ -728,10 +706,7 @@ describe("agent listing", () => {
     });
 
     it("reports the daemon's own observation, not a self-declared status", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "allow",
-        );
+        const network = await harness.daemon.services.networks.create("n");
         const agent = await joinAgent(network.id, "a");
         agent.vendor.status("awaiting-user");
 
@@ -743,18 +718,12 @@ describe("agent listing", () => {
     });
 
     it("reports an ambiguous name with its candidates rather than guessing", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "allow",
-        );
+        const network = await harness.daemon.services.networks.create("n");
         await joinAgent(network.id, "twin");
         await expect(joinAgent(network.id, "twin")).rejects.toMatchObject({
             code: "duplicate_agent_name",
         });
-        const other = await harness.daemon.services.networks.create(
-            "other",
-            "allow",
-        );
+        const other = await harness.daemon.services.networks.create("other");
         await joinAgent(other.id, "twin");
 
         const ambiguous = await call("/api/agents/twin");
@@ -887,7 +856,7 @@ describe("stopping", () => {
     it("borrows one shell across fresh Runtime identities and keeps old delivery results with the old sender", async () => {
         const { daemon } = harness;
         const { shell, session, context } = await borrowableShell();
-        const network = await daemon.services.networks.create("borrow", "deny");
+        const network = await daemon.services.networks.create("borrow");
         const vendor = fakeVendor();
         const a = await daemon.registerRuntime({
             name: "a",
@@ -910,9 +879,9 @@ describe("stopping", () => {
         const b = await joinAgent(network.id, "b");
         await daemon.services.networks.route(network.id, {
             kind: "directed",
-            from: a.runtimeId,
-            to: [b.runtimeId],
-            policy: "allow",
+            action: "block",
+            from: b.runtimeId,
+            to: [a.runtimeId],
         });
         const sent = await daemon.services.messages.send(
             daemon.services.runtimes.get(a.runtimeId)!,
@@ -990,10 +959,7 @@ describe("stopping", () => {
 
     it("cleans the connected Agent on shell exit and interrupts only its pending requests", async () => {
         const { context, session } = await borrowableShell();
-        const network = await harness.daemon.services.networks.create(
-            "exit",
-            "allow",
-        );
+        const network = await harness.daemon.services.networks.create("exit");
         const source = await joinAgent(network.id, "source");
         const vendor = fakeVendor();
         const target = await harness.daemon.registerRuntime({
@@ -1109,10 +1075,7 @@ describe("stopping", () => {
         const enteredStop = new Promise<void>((resolve) => {
             entered = resolve;
         });
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "allow",
-        );
+        const network = await harness.daemon.services.networks.create("n");
         const source = await harness.daemon.registerRuntime({
             networkId: network.id,
             createBinding: (controls) => {
@@ -1237,10 +1200,7 @@ describe("stopping", () => {
     it.skipIf(process.platform === "win32")(
         "refuses a plain stop while an execution is registered, and keeps serving",
         async () => {
-            const network = await harness.daemon.services.networks.create(
-                "n",
-                "allow",
-            );
+            const network = await harness.daemon.services.networks.create("n");
             await joinAgent(network.id, "busy");
 
             const refused = await post("/api/daemon/stop", {});
@@ -1267,10 +1227,7 @@ describe("stopping", () => {
     });
 
     it("forces every execution down and drops its credential", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "allow",
-        );
+        const network = await harness.daemon.services.networks.create("n");
         const agent = await joinAgent(network.id, "busy");
         const shell = defaultShell();
         harness.daemon.createTerminal({ file: shell.file, args: shell.args });
@@ -1287,30 +1244,23 @@ describe("stopping", () => {
     });
 
     it("cleans up only what one stopped runtime owned", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "allow",
-        );
+        const network = await harness.daemon.services.networks.create("n");
         const going = await joinAgent(network.id, "going");
         const staying = await joinAgent(network.id, "staying");
         const third = await joinAgent(network.id, "third");
         const preserved = {
             from: staying.runtimeId,
             to: third.runtimeId,
-            policy: "deny" as const,
         };
         await harness.daemon.services.db.networks.replaceRouting(network.id, {
-            defaultPolicy: "allow",
             routes: [
                 {
                     from: going.runtimeId,
                     to: staying.runtimeId,
-                    policy: "allow",
                 },
                 {
                     from: third.runtimeId,
                     to: going.runtimeId,
-                    policy: "allow",
                 },
                 preserved,
             ],
@@ -1332,20 +1282,15 @@ describe("stopping", () => {
     });
 
     it("does not register a new execution once a forced stop began", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "allow",
-        );
+        const network = await harness.daemon.services.networks.create("n");
         const stopping = harness.daemon.stop(true);
         await expect(joinAgent(network.id, "late")).rejects.toThrow(/stopping/);
         await stopping;
     });
 
     it("can stop a runtime after its Network was deleted directly from storage", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "deleted",
-            "deny",
-        );
+        const network =
+            await harness.daemon.services.networks.create("deleted");
         const agent = await joinAgent(network.id, "a");
         expect(
             await harness.daemon.services.db.networks.delete(network.id),
@@ -1358,14 +1303,14 @@ describe("stopping", () => {
 
     it("keeps route cleanup failure retryable through daemon force stop", async () => {
         const { db, networks, runtimes } = harness.daemon.services;
-        const network = await networks.create("retry-routes", "deny");
+        const network = await networks.create("retry-routes");
         const agent = await joinAgent(network.id, "a");
         await joinAgent(network.id, "b");
         await networks.route(network.id, {
             kind: "directed",
+            action: "block",
             from: agent.runtimeId,
             to: ["b"],
-            policy: "allow",
         });
         const before = await networks.require(network.id);
         const replace = vi
@@ -1402,18 +1347,15 @@ describe("stopping", () => {
 
 describe("notifications endpoint", () => {
     it("lists unread notices and clears them when they are read", async () => {
-        const network = await harness.daemon.services.networks.create(
-            "n",
-            "deny",
-        );
+        const network = await harness.daemon.services.networks.create("n");
         const a = await joinAgent(network.id, "a");
         const b = await joinAgent(network.id, "b");
         await post(`/api/networks/${network.id}/route`, {
             operation: {
                 kind: "directed",
-                policy: "allow",
-                from: a.runtimeId,
-                to: [b.runtimeId],
+                action: "block",
+                from: b.runtimeId,
+                to: [a.runtimeId],
             },
         });
         await harness.daemon.services.messages.send(
@@ -1448,10 +1390,7 @@ describe("history retention", () => {
             now: () => clock,
         });
         try {
-            const network = await short.daemon.services.networks.create(
-                "n",
-                "allow",
-            );
+            const network = await short.daemon.services.networks.create("n");
             const registerVendor = async (name: string) => {
                 const vendor = fakeVendor();
                 const registered = await short.daemon.registerRuntime({
@@ -1747,7 +1686,7 @@ describe("external collaboration stop completion", () => {
 
 it("keeps storage and listeners open after outcome persistence blocks stop, then retries the original result", async () => {
     const { daemon } = harness;
-    const network = await daemon.services.networks.create("storage", "allow");
+    const network = await daemon.services.networks.create("storage");
     const a = await joinAgent(network.id, "A");
     const b = await joinAgent(network.id, "B");
     const sent = await daemon.services.messages.send(
@@ -1804,10 +1743,7 @@ it("keeps storage and listeners open after outcome persistence blocks stop, then
 
 it("keeps Web notifications scoped to their original daemon terminal after unregistering", async () => {
     const { context, shell } = await borrowableShell();
-    const network = await harness.daemon.services.networks.create(
-        "web-scope",
-        "allow",
-    );
+    const network = await harness.daemon.services.networks.create("web-scope");
     const origin = await harness.daemon.registerRuntime({
         networkId: network.id,
         terminalContext: context,
@@ -1912,10 +1848,7 @@ it("streams initial and changed Web state, reconnects, and closes with the daemo
 });
 
 it("invalidates SSE snapshots on shell exit and committed notification changes, but not no-op reads", async () => {
-    const network = await harness.daemon.services.networks.create(
-        "events",
-        "allow",
-    );
+    const network = await harness.daemon.services.networks.create("events");
     const origin = await joinAgent(network.id, "origin");
     const target = await joinAgent(network.id, "target");
     const response = await fetch(harness.webUrl("/api/web/events"));
@@ -1981,10 +1914,8 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
 });
 
 it("does not invalidate Web state for external-only runtime and notification changes", async () => {
-    const network = await harness.daemon.services.networks.create(
-        "external-events",
-        "allow",
-    );
+    const network =
+        await harness.daemon.services.networks.create("external-events");
     const web = await joinAgent(network.id, "web");
     const response = await fetch(harness.webUrl("/api/web/events"));
     const reader = response.body!.getReader();
@@ -2039,17 +1970,15 @@ it("does not invalidate Web state for external-only runtime and notification cha
     }
 });
 
-it("reopening a daemon preserves Network defaults but discards past execution routes", async () => {
+it("reopening a daemon preserves Network definitions but discards past execution routes", async () => {
     const path = join(harness.home, "reopen-routes.db");
     const seed = await openDatabase(path);
     await seed.networks.create({
         id: "w1",
         name: "w1",
-        defaultPolicy: "allow",
     });
     await seed.networks.replaceRouting("w1", {
-        defaultPolicy: "allow",
-        routes: [{ from: "past-a", to: "past-b", policy: "deny" }],
+        routes: [{ from: "past-a", to: "past-b" }],
     });
     await seed.close();
     const daemon = await startDaemon({
@@ -2061,7 +1990,6 @@ it("reopening a daemon preserves Network defaults but discards past execution ro
         expect(await daemon.services.networks.require("w1")).toEqual({
             id: "w1",
             name: "w1",
-            defaultPolicy: "allow",
             routes: [],
         });
         expect(daemon.services.runtimes.list()).toEqual([]);

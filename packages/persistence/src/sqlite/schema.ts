@@ -1,17 +1,15 @@
-import type { DeliveryOutcome, MessageKind, RoutePolicy } from "@aiox/domain";
+import type { DeliveryOutcome, MessageKind } from "@aiox/domain";
 import { EntitySchema } from "typeorm";
 
 export type NetworkRow = {
     id: string;
     name: string;
-    defaultPolicy: RoutePolicy;
 };
 
 export type RouteRow = {
     networkId: string;
     sourceId: string;
     targetId: string;
-    policy: RoutePolicy;
 };
 
 /** `content` is the sender's original body; the one-way notice is not stored. */
@@ -57,7 +55,6 @@ export const NetworkEntity = new EntitySchema<NetworkRow>({
     columns: {
         id: { type: "text", primary: true },
         name: { type: "text" },
-        defaultPolicy: { type: "text", name: "default_policy" },
     },
 });
 
@@ -68,7 +65,6 @@ export const RouteEntity = new EntitySchema<RouteRow>({
         networkId: { type: "text", name: "network_id", primary: true },
         sourceId: { type: "text", name: "source_id", primary: true },
         targetId: { type: "text", name: "target_id", primary: true },
-        policy: { type: "text" },
     },
 });
 
@@ -145,14 +141,12 @@ export const ENTITIES = [
 export const SCHEMA = [
     `CREATE TABLE IF NOT EXISTS persistent_networks (
   id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
-  name TEXT NOT NULL UNIQUE CHECK(length(trim(name)) > 0 AND instr(name, '/') = 0),
-  default_policy TEXT NOT NULL CHECK(default_policy IN ('allow', 'deny'))
+  name TEXT NOT NULL UNIQUE CHECK(length(trim(name)) > 0 AND instr(name, '/') = 0)
 ) STRICT`,
     `CREATE TABLE IF NOT EXISTS persistent_routes (
   network_id TEXT NOT NULL REFERENCES persistent_networks(id) ON DELETE CASCADE,
   source_id TEXT NOT NULL CHECK(length(source_id) > 0),
   target_id TEXT NOT NULL CHECK(length(target_id) > 0 AND source_id <> target_id),
-  policy TEXT NOT NULL CHECK(policy IN ('allow', 'deny')),
   PRIMARY KEY(network_id, source_id, target_id)
 ) STRICT`,
     `CREATE TABLE IF NOT EXISTS messages (

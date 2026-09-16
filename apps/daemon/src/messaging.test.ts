@@ -25,7 +25,7 @@ beforeEach(async () => {
     const networks = new NetworkService(db, runtimes);
     messages = new MessageService(db, runtimes, networks);
     runtimes.onSettle((...args) => messages.settle(...args));
-    networkId = (await networks.create("work", "deny")).id;
+    networkId = (await networks.create("work")).id;
 });
 
 afterEach(async () => {
@@ -48,8 +48,7 @@ it("persists UUID v7 Network, Message, Delivery and Notification IDs across reop
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "deny",
-        routes: [{ from: a.record.id, to: b.record.id, policy: "allow" }],
+        routes: [{ from: b.record.id, to: a.record.id }],
     });
     const sent = await messages.send(a.record, [b.record.id, a.record.id], "X");
     await b.vendor.settle(b.vendor.deliveryIds[0]!, "completed");
@@ -81,8 +80,7 @@ it("saves B's result after A exits without delivering it to a same-name replacem
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "deny",
-        routes: [{ from: a.record.id, to: b.record.id, policy: "allow" }],
+        routes: [{ from: b.record.id, to: a.record.id }],
     });
     const sent = await messages.send(a.record, [b.record.id], "X");
     await messages.forget(a.record.id);
@@ -114,7 +112,6 @@ it("records an exited target's pending request as interrupted without notifying 
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "allow",
         routes: [],
     });
     const sent = await messages.send(a.record, [b.record.id], "X");
@@ -138,11 +135,10 @@ it("keeps overlapping senders and targets separate when one request fails before
     const c = await joinAgent("C");
     const d = await joinAgent("D");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "deny",
         routes: [
-            { from: a.record.id, to: b.record.id, policy: "allow" },
-            { from: a.record.id, to: c.record.id, policy: "allow" },
-            { from: d.record.id, to: c.record.id, policy: "allow" },
+            { from: b.record.id, to: a.record.id },
+            { from: c.record.id, to: a.record.id },
+            { from: c.record.id, to: d.record.id },
         ],
     });
     const first = await messages.send(
@@ -232,7 +228,6 @@ it("pauses admission, drains accepted sends before stopping, and can resume", as
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "allow",
         routes: [],
     });
     let release!: () => void;
@@ -273,8 +268,7 @@ it("drains an ongoing outcome and its notification before database shutdown", as
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "deny",
-        routes: [{ from: a.record.id, to: b.record.id, policy: "allow" }],
+        routes: [{ from: b.record.id, to: a.record.id }],
     });
     await messages.send(a.record, [b.record.id], "X");
     const deliveryId = b.vendor.deliveryIds[0]!;
@@ -312,7 +306,6 @@ it("keeps correlation after a storage failure so target cleanup can retry once",
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "allow",
         routes: [],
     });
     const sent = await messages.send(a.record, [b.record.id], "X");
@@ -346,8 +339,7 @@ it("rolls back a result when its required notification fails, then retries the o
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "deny",
-        routes: [{ from: a.record.id, to: b.record.id, policy: "allow" }],
+        routes: [{ from: b.record.id, to: a.record.id }],
     });
     const sent = await messages.send(a.record, [b.record.id], "X");
     const deliveryId = b.vendor.deliveryIds[0]!;
@@ -393,7 +385,6 @@ it("keeps a refused target's failed write pending while delivering to later targ
     const b = await joinAgent("B");
     const c = await joinAgent("C");
     await db.networks.replaceRouting(networkId, {
-        defaultPolicy: "allow",
         routes: [],
     });
     b.vendor.refuse("inbox unavailable");
@@ -465,7 +456,6 @@ it.each(["source", "target"] as const)(
         const a = await joinAgent("A");
         const b = await joinAgent("B");
         await db.networks.replaceRouting(networkId, {
-            defaultPolicy: "allow",
             routes: [],
         });
         const get = db.networks.get;
