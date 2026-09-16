@@ -8,8 +8,8 @@ status: open
 
 - [x] W1 Codex 실행·주입·수명 연결 — 환경·옵션 감사, active thread 입력 대응·전환 차단·소유 자원 정리, 사용자 동반 E2E와 최신 전체 검사 및 owner 반영을 완료했다.
 - [x] W2 Codex 관측·공통 상태 반영 — 공통 상태 구현·자동 검사·주요 실측을 완료했다. nullable 추가 실측은 사용자 지시로 생략. async 종료 후 선택 UI 부재, failed 대화 선택/취소 및 다른 연결별 복구는 미실측 제한으로 보존하고 W3로 진행한다.
-- [>] W3 Codex 간 실제 메시지 왕복 — Network/MCP·CLI 표시·UUID v7 구현과 전체 582 tests 결과 및 사용자 AIOX 알림 수신 보고를 소비한다. 남은 실제 양방향 회신·단방향 차단·busy 입력·대상별 결과·실패/중단·알림 비재귀 검증을 이어가며 코드/대역/사용자 실측 범위를 구분한다. Claude 완료를 선행 조건으로 두지 않는다.
-- [ ] W4 Claude와 Codex 교차 검증 — W1~W3 뒤 수행한다. Stage3 W2/W3/W5에서 필요한 Claude 메시지·관측 경계가 검증돼야 해당 시나리오를 완료한다. Claude 미해결로 막히는 경우 완료로 표시하지 않고 정확한 의존 항목을 Stage3에 연결해 그 작업 후 이 W4로 복귀한다. 양 vendor 송수신·결과 귀속·알림을 실제로 확인한다.
+- [x] W3 Codex 간 실제 메시지 왕복 — 사용자 재시작 후 양방향 회신·단방향 차단/완료 알림·중단 무통지·알림 비재귀·양방향/단방향 busy 입력 실측 성공과 대상별 delivery 자동 검증을 완료했다. 최종 실패 실측은 사용자 지시로 생략한다. 근거와 실측 범위를 보존하며 완료한 실험은 반복하지 않는다.
+- [>] W4 Claude와 Codex 교차 검증 — W1~W3 뒤 수행한다. Stage3 W2/W3/W5에서 필요한 Claude 메시지·관측 경계가 검증돼야 해당 시나리오를 완료한다. Claude 미해결로 막히는 경우 완료로 표시하지 않고 정확한 의존 항목을 Stage3에 연결해 그 작업 후 이 W4로 복귀한다. 양 vendor 송수신·결과 귀속·알림을 실제로 확인한다.
 - [ ] W5 Stage4 통합 리뷰·owner 반영·마감 — W1~W4 결과와 회귀·실측 범위, 실행/정리·상태·메시지 owner를 대조한다. 제목 helper의 incomplete AIOX MCP config current gap에 대한 별도 수정·유지 판단을 닫는다. 남은 OS·배포 인증은 Stage8 조건과 연결하고 Claude 교차 검증이 남아 있으면 Stage4 전체 완료로 처리하지 않는다.
 
 ## Required Context
@@ -20,7 +20,7 @@ status: open
 
 ### {Global}
 
-- 현재 활성 단계는 Stage4이고 재개점은 W3다. Stage2-3 W8 결과와 이 로그 최신 CLI 표시·UUID v7 완료 entry, 전체 582 tests 통과 및 사용자 AIOX 알림 수신 보고를 소비한다. UUID v7과 CLI 표시 보완을 미구현으로 재개하지 않는다. 남은 실제 Codex 메시지 검증은 W3가 소유한다. W1/W2 완료·실측 제한과 W4/W5 순서를 유지하며 commit·push는 별도 지시 없이 수행하지 않는다.
+- 현재 활성 단계는 Stage4이고 재개점은 W4다. W1~W3는 완료했으며 W3 사용자 실측·대상별 delivery 자동 검증과 최종 실패 실측 생략 결정을 소비한다. W4에서 필요한 Stage3 Claude 메시지·관측 선행 조건부터 확인한다. UUID v7·CLI 표시 보완이나 완료한 Codex 검증을 재개하지 않는다. W1/W2 실측 제한과 W5 후속 순서를 유지하며 commit·push는 별도 지시 없이 수행하지 않는다.
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Codex 실제 TUI + Runtime별 App Server + Binding Relay를 연결한다. 입력은 채택된 toolOutput 본문 + additionalContext 메타데이터이며 E2E가 실패할 때만 원인을 확인한 뒤 후순위 방법을 검토한다. 임의 active thread 선택이나 선제 fallback을 만들지 않는다.
 - Stage2~2-3에서 완료한 공통 실행 소유권·terminal·메시지·상태 결과를 직접 소비한다. Codex W1~W3는 Stage3 완료를 기다리지 않는다. 기존 shell의 aiox agent run codex → 같은 terminal TUI → 종료 후 shell 복귀를 연결하고 외부 CLI와 daemon 소유 자원의 종료 정책을 유지한다. Runtime/threadId/turnId로 입력 결과를 연결한다. Stage3 결과 의존은 W4의 Claude 교차 검증에만 적용한다.
 - W3에서 Codex↔Codex의 agents_list/send·인증·단방향/양방향 route·결과·발신자 전용 알림을 먼저 검증한다. 두 vendor 교차 검증은 W4에서 Claude 준비 상태에 따라 수행한다. interrupted 자동 통지 없음·알림 재귀 방지와 실제 OS별 근거/대역 구분은 공통으로 유지한다.
@@ -44,7 +44,8 @@ status: open
 
 ### {W3}
 
-- 재개 시 최신 W3 CLI 표시·UUID v7 완료 entry와 collaboration/host/runtime owner를 소비한다. MCP name 또는 실제 Runtime ID 전송, default allow에서 B→A 명시 deny 후 새 메시지 검증을 유지한다. 사용자 AIOX 알림 정상 수신 보고는 수용하되 남은 시나리오 전체 완료로 확대하지 않는다. 새 Network·Message·Delivery·Notification ID의 v7 구현·저장 재오픈 검증은 완료됐고 Runtime·terminal 참조 및 vendor 고유 ID는 대상이 아니다. 최신 코드는 미커밋이며 사용자 daemon 재시작을 실행한 것은 아니다.
+- 표시·UUID v7·CLI 개선은 c070462·66288cf·4463964, 관련 로그는 3feae9e로 커밋됐다. 2026-09-16 최신 W3 정합 entry와 collaboration/host/runtime owner를 소비한다. 새 Network·Message·Delivery·Notification ID의 v7 구현·저장 재오픈 검증은 완료됐고 Runtime·terminal 참조 및 vendor 고유 ID는 대상이 아니다. 사용자 daemon 재시작 후 최신 구현으로 기대 결과를 확인했다는 명시적 보고를 수용하며 미커밋·재시작 미수행으로 재개하지 않는다.
+- 사용자 실측 성공: Codex↔Codex 양방향 회신, default allow에서 명시 deny한 단방향 차단·완료 알림, 중단 무통지, 알림 비재귀, 양방향/단방향 busy 입력. 양쪽 모두 sleep 종료 전 B가 메시지를 처리했고 자동 완료 알림은 단방향에서만 sleep 종료 후 도착했다. 최종 실패 실동작은 사용자 지시로 생략한다. 대상별 delivery 귀속·부분 거절/실패 격리·원 발신자 알림은 관련 96 tests로 확인했고 lazy 축소 후 messaging 11 tests도 통과했다. 목록 노출·전송 수락·화면 답변·처리 완료 알림 및 사용자 실측/대역 검증을 구분한다. W3는 완료했으며 완료한 검증을 다시 요청하지 않는다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -731,3 +732,59 @@ owner는 runtime/host/configuration-web spec 및 storage-terminal architecture�
 http.ts 질문 확인: networkView는 CLI 문자열 출력 함수가 아니라 Network 생성·목록·조회·route 변경 HTTP 응답을 만드는 변환 함수다. runtimes: DaemonServices["runtimes"]는 RuntimeRegistry 타입을 기존 서비스 정의에서 가져오는 표기이며 route의 ID로 현재 Agent 이름을 읽기 위해 추가했다. 실제 화면 문자열과 <-> 병합은 apps/cli/src/bootstrap.ts의 describeNetwork가 담당한다. 새 registry 생성이나 polling이 아니다.
 
 Stage4 open·W3 active를 유지한다. 이후에는 최신 구현으로 daemon을 재시작한 환경의 남은 실제 메시지 검증을 이어간다. 이번 요청에서는 로그만 수정하고 제품 코드·테스트·owner·commit은 변경하지 않는다.
+
+### 2026-09-16 14:09 · W3 양방향 회신·명시 deny 단방향 차단 사용자 실측 성공
+
+사용자가 다음 두 시나리오를 이미 실제로 시험했고 성공했다고 명시적으로 확인하여 기록을 요청했다.
+
+- 실제 Codex↔Codex 양방향 회신: 사용자 실측 성공.
+- 단방향 차단: default allow인 w1에서 `network route w1 --deny-from B --to A`로 역방향을 명시적으로 deny한 뒤 새 메시지로 시험하여 사용자 실측 성공. reset은 default 정책으로 돌아가는 동작이며 차단이 아니다.
+
+위 두 항목은 미검증으로 재개하거나 반복 실험하지 않는다. 근거는 사용자 실측 보고이며 이번 턴에 agent가 vendor 실행이나 별도 관측을 수행한 것은 아니다. W3 active와 Stage4 포인터는 유지하고 다른 검증 항목의 상태는 이번 기록에서 변경하지 않는다. 로그만 수정하며 제품 코드·테스트·커밋·push는 수행하지 않는다.
+
+### 2026-09-16 14:12 · W3 재시작 실측·커밋 상태 정합과 잔여 검증 범위
+
+사용자가 daemon을 직접 재시작한 다음 확인했으며 기대 결과와 동일했다고 명확히 밝혔다. 최신 구현으로 재시작한 환경의 W3 사용자 실측 보고로 수용한다. 이전 entry의 agent가 재시작하지 않았다는 설명을 사용자 재시작 미수행으로 해석하지 않는다. agent가 당시 PID·빌드 정보를 직접 수집한 근거와는 구분한다.
+
+직전 git log 및 git show 확인에서 c070462(route 이름·양방향 표시), 66288cf(저장 UUID v7), 4463964(CLI 상세·진단), 3feae9e(관련 로그)가 모두 2026-09-15 23:05경 커밋된 것을 확인했다. 22:12 entry의 미커밋 서술은 당시 이력으로 보존하고, 현재 Required Context의 미커밋 안내는 커밋 완료로 정정한다.
+
+W3 현재 검증 범위를 다음과 같이 정합화한다.
+
+- 사용자 실측 성공: 실제 Codex↔Codex 양방향 회신, default allow w1에서 B→A 명시 deny 후 새 메시지의 단방향 차단·완료 알림.
+- 사용자 실측 성공: 작업 중단 시 자동 완료·실패 알림 없음, 알림 처리 종료 후 연쇄 알림 없음. 앞선 사용자의 “1,2에 대해서 기대한 결과 값을 다 가지고 있다”는 보고를 소비한다. 내부 이벤트 원문을 agent가 수집한 것으로 확대하지 않는다.
+- 최종 실패 실동작 검증: 사용자의 “3번은 건너뛰어도 되고” 지시로 생략한다. 실측 성공으로 표시하거나 다시 필수 실험으로 요청하지 않는다. 기존 자동 테스트 근거와 구분한다.
+- 남은 확인: busy 상태에서 새 입력을 받는 경로, 대상별 delivery 결과의 귀속·구분. 기존 코드/자동 테스트/실측 근거부터 대조하며 새 실험은 부족한 범위에 한한다.
+- 계속 적용할 판정 기준: agents_list 목록 노출, 실제 send 수락(accepted:true), 처리 완료 알림을 각각 구분한다. 목록에 보이거나 전송이 수락됐다는 사실만으로 처리 완료로 판정하지 않는다. 이 기준 자체를 별도의 미완료 실험으로 세지 않는다.
+
+Stage4 open·W3 active를 유지한다. 이번에는 로그의 History·Work Items·Required Context만 정합화하며 제품 코드·테스트 실행·daemon 조작·커밋·push는 하지 않는다.
+
+### 2026-09-16 14:40 · W3 단방향 busy 입력·완료 통지 사용자 실측 성공
+
+사용자가 실제 Codex A→B 단방향 환경에서 busy 입력 실험 결과를 보고하고 기록을 요청했다. 안내에는 양방향 설정이 있었으나 사용자가 실제 실험은 단방향이었다고 명확히 정정했다. 따라서 아래 완료 알림을 양방향 정책 위반으로 해석하지 않는다.
+
+사용자 관측 순서:
+
+1. B가 터미널 도구로 sleep 120을 실행 중이었다.
+2. A가 B에게 “W3-BUSY-01: 이 메시지를 처리하면 네 화면에 W3-BUSY-DONE-01이라고 답해.”를 send했고 accepted:true를 받았다.
+3. sleep 종료 전에 B 화면에 W3-BUSY-DONE-01 완료 문구가 표시됐다.
+4. sleep 120 종료 후 A에게 AIOX 발신 완료 알림이 도착했다. 알림은 B가 해당 요청 처리를 마쳤으며 역방향 outbound route가 없어 회신은 오지 않는다는 내용이었다.
+
+판정: 단방향에서 작업 중인 B가 새 메시지를 받아 처리한 busy 입력 실측을 사용자 보고 근거로 성공 수용한다. 전송 수락, B 화면의 답변 문구, daemon 완료 알림은 별도 관측이며 이번에는 문구 표시가 먼저이고 알림은 sleep 종료 후였다. 내부 turn/delivery 이벤트나 DB 행을 직접 수집한 근거로 확대하지 않으며, 알림 시점 차이의 내부 원인을 이번 기록에서 확정하지 않는다. 이 실측을 이유로 route 변경이나 같은 실험의 반복을 요청하지 않는다.
+
+W3 active·Stage4 포인터를 유지한다. 남은 확인은 대상별 delivery 결과의 귀속·구분이며 기존 자동 테스트 근거부터 대조한다. 최종 실패 실측 생략과 기존 중단 무통지·알림 비재귀 사용자 성공 판정은 유지한다. 이번에는 로그만 수정하고 제품 코드·테스트 실행·daemon 조작·커밋·push는 수행하지 않는다.
+
+### 2026-09-16 14:59 · W3 대상별 delivery 검증 완료·lazy 테스트 축소
+
+사용자 요청에 따라 대상별 delivery 검증으로 추가한 messaging.test.ts의 lazy 리뷰 두 항목을 반영했다. 중복 ID Set assertion 3줄을 제거하고 알림 필드 추출 map을 toMatchObject 배열 검증으로 대체해 5줄을 줄였다. 합계 8줄 감소이며 대상별 결과·원 발신자 연결, 배열 길이·순서와 중간 상태 검증은 유지한다. 제품 코드는 변경하지 않았다.
+
+선행 검증 결과를 함께 기록한다. 공통 MCP·MessageService·RuntimeRegistry·SQLite와 Codex binding의 thread/turn→delivery 경로를 대조했다. 기존 테스트는 대상별 수락/거절, 한 대상의 전달 거절 및 거절 결과 저장 실패에도 뒤 대상 전송 지속, 원 발신자 종료 후 같은 이름의 새 실행에 알림 미전달을 검증한다. 새 테스트는 A→B·C와 D→C에 같은 본문을 보내고 A→C 실패, D→C 완료, A→B 완료 순으로 처리해 각 결과의 DB 귀속과 원 발신자만의 알림 수신, 다른 Runtime의 delivery 완료 시도 무시를 확인한다. 정책 변경이 필요한 문제는 발견하지 않았다.
+
+선행 실행: MCP·messaging 42 tests, domain 25, persistence 13, Codex adapter 16으로 관련 96 tests 통과. daemon 타입 검사·변경 파일 lint/format도 통과했다. MCP 첫 실행은 sandbox 로컬 포트 제한으로 실패했고 권한 허용 후 통과했다. 이번 8줄 축소 후 messaging 11 tests와 변경 파일 format, git diff --check를 다시 통과했다. 대역 vendor·실제 SQLite·MCP/소켓 테스트 근거이며 실제 Codex 다중 대상 실험으로 확대하지 않는다.
+
+사용자는 앞선 단방향 busy 실측에 이어 양방향에서도 sleep 종료 전 메시지 처리를 확인했고, 양방향 자동 완료 알림은 없었다고 확인했다. busy 입력은 양방향·단방향 모두 사용자 실측 성공으로 소비한다. 최종 실패 실동작 생략 결정은 유지한다.
+
+대상별 delivery 결과의 근거 확인은 완료했다. W3 active·Stage4 포인터를 유지하되 재개 행동은 완료한 검증의 반복이 아니라 W3 마감 판정과 W4의 Claude 선행 조건 확인으로 정리한다. 이번 요청에서는 테스트 축소와 로그 정합만 수행했으며 실제 daemon/vendor 조작·커밋·push는 하지 않았다.
+
+### 2026-09-16 15:02 · W3 완료·W4 포인터 전환
+
+사용자가 W3 완료 처리, W4 포인터 이동과 커밋까지만 지시했다. 기존 사용자 실측·자동 검증 근거 및 최종 실패 실측 생략 결정을 소비해 W3를 completed로 바꾸고 W4를 active로 전환한다. Stage4는 open·활성을 유지한다. W4의 첫 행동은 Stage3의 필요한 Claude 메시지·관측 선행 조건 확인이며 이번에는 W4 조사나 실험을 시작하지 않는다. 커밋 범위는 messaging.test.ts와 이 Stage4 로그이며 사용자의 별도 Web UI Design Prompt 변경은 제외한다.

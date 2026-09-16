@@ -132,6 +132,102 @@ it("records an exited target's pending request as interrupted without notifying 
     expect(a.vendor.received).toEqual([]);
 });
 
+it("keeps overlapping senders and targets separate when one request fails before the others finish", async () => {
+    const a = await joinAgent("A");
+    const b = await joinAgent("B");
+    const c = await joinAgent("C");
+    const d = await joinAgent("D");
+    await db.networks.replaceRouting(networkId, {
+        defaultPolicy: "deny",
+        routes: [
+            { from: a.record.id, to: b.record.id, policy: "allow" },
+            { from: a.record.id, to: c.record.id, policy: "allow" },
+            { from: d.record.id, to: c.record.id, policy: "allow" },
+        ],
+    });
+    const first = await messages.send(
+        a.record,
+        [b.record.id, c.record.id],
+        "same work",
+    );
+    const second = await messages.send(d.record, [c.record.id], "same work");
+    const [ab, ac] = first.results;
+    const [dc] = second.results;
+    expect(first.results).toEqual([
+        {
+            agentId: b.record.id,
+            accepted: true,
+            deliveryId: b.vendor.deliveryIds[0],
+        },
+        {
+            agentId: c.record.id,
+            accepted: true,
+            deliveryId: c.vendor.deliveryIds[0],
+        },
+    ]);
+    expect(dc).toEqual({
+        agentId: c.record.id,
+        accepted: true,
+        deliveryId: c.vendor.deliveryIds[1],
+    });
+
+    // B cannot finish C's delivery, even with its correlation handle.
+    await b.vendor.settle(ac!.deliveryId!, "completed");
+    expect(
+        await db.messages.deliveryFor(first.messageId, c.record.id),
+    ).toMatchObject({ outcome: null });
+    expect(await db.messages.unreadNotifications()).toEqual([]);
+
+    await c.vendor.settle(ac!.deliveryId!, "failed", "quota");
+    expect(
+        await db.messages.deliveryFor(first.messageId, c.record.id),
+    ).toMatchObject({
+        id: ac!.deliveryId,
+        outcome: "failed",
+        outcomeError: "quota",
+    });
+    expect(
+        await db.messages.deliveryFor(first.messageId, b.record.id),
+    ).toMatchObject({ outcome: null });
+    expect(
+        await db.messages.deliveryFor(second.messageId, c.record.id),
+    ).toMatchObject({ outcome: null });
+    expect(a.vendor.received).toHaveLength(1);
+    expect(a.vendor.received[0]!.content).toContain("request to C");
+    expect(d.vendor.received).toEqual([]);
+
+    await c.vendor.settle(dc!.deliveryId!, "completed");
+    await b.vendor.settle(ab!.deliveryId!, "completed");
+    expect(
+        await db.messages.deliveryFor(second.messageId, c.record.id),
+    ).toMatchObject({ id: dc!.deliveryId, outcome: "completed" });
+    expect(
+        await db.messages.deliveryFor(first.messageId, b.record.id),
+    ).toMatchObject({ id: ab!.deliveryId, outcome: "completed" });
+    const notices = await db.messages.unreadNotifications();
+    expect(notices).toMatchObject([
+        { deliveryId: ac!.deliveryId, originRuntimeId: a.record.id },
+        { deliveryId: dc!.deliveryId, originRuntimeId: d.record.id },
+        { deliveryId: ab!.deliveryId, originRuntimeId: a.record.id },
+    ]);
+    expect(a.vendor.received.map(({ content }) => content)).toEqual([
+        notices[0]!.body,
+        notices[2]!.body,
+    ]);
+    expect(d.vendor.received.map(({ content }) => content)).toEqual([
+        notices[1]!.body,
+    ]);
+    expect(
+        [...a.vendor.received, ...d.vendor.received].every(
+            (message) =>
+                message.deliveryId === null && message.from.name === "AIOX",
+        ),
+    ).toBe(true);
+    expect(b.vendor.received).toHaveLength(1);
+    expect(c.vendor.received).toHaveLength(2);
+    expect(messages.pending()).toBe(0);
+});
+
 it("pauses admission, drains accepted sends before stopping, and can resume", async () => {
     const a = await joinAgent("A");
     const b = await joinAgent("B");
