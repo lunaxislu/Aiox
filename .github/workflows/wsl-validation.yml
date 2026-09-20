@@ -21,10 +21,10 @@ jobs:
         shell: pwsh
         run: |
           wsl --version
+          wsl --set-default-version 2
+          if ($LASTEXITCODE -ne 0) { throw "WSL2 default setup failed" }
           wsl --install --distribution Ubuntu-24.04 --web-download --no-launch
           if ($LASTEXITCODE -ne 0) { throw "WSL installation failed: $LASTEXITCODE" }
-          wsl --set-version Ubuntu-24.04 2
-          if ($LASTEXITCODE -ne 0) { throw "WSL2 conversion failed" }
           wsl --list --verbose
           wsl -d Ubuntu-24.04 -u root -- uname -a
           if ($LASTEXITCODE -ne 0) { throw "WSL2 boot failed" }
