@@ -2,6 +2,7 @@ name: Stage 1 CI
 
 on:
     push:
+        branches-ignore: [codex/wsl-validation]
     pull_request:
     workflow_dispatch:
 
