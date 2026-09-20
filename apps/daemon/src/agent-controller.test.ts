@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 
@@ -516,6 +516,20 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
         const inboxPath = args[args.indexOf("--messaging-socket-path") + 1]!;
         inbox.listen(inboxPath);
         await once(inbox, "listening");
+        const transcript = join(
+            harness.home,
+            "projects",
+            "project",
+            "session-a.jsonl",
+        );
+        await mkdir(join(harness.home, "projects", "project"), {
+            recursive: true,
+        });
+        await mkdir(join(harness.home, "sessions"), { recursive: true });
+        await writeFile(
+            join(harness.home, "sessions", `${process.pid}.json`),
+            JSON.stringify({ sessionId: "session-a", status: "idle" }),
+        );
         const invalidHook = await fetch(harness.apiUrl("/api/agent-hooks"), {
             method: "POST",
             headers: {
@@ -525,9 +539,11 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
             body: JSON.stringify({
                 inboxPath,
                 inboxToken: "separate-inbox-token",
+                ppid: process.pid,
                 event: {
                     hook_event_name: "SessionStart",
                     session_id: "session-a",
+                    transcript_path: transcript,
                 },
             }),
         });
@@ -542,9 +558,11 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
             body: JSON.stringify({
                 inboxPath,
                 inboxToken: "separate-inbox-token",
+                ppid: process.pid,
                 event: {
                     hook_event_name: "SessionStart",
                     session_id: "session-a",
+                    transcript_path: transcript,
                 },
             }),
         });
@@ -730,7 +748,7 @@ test("rejects a foreign browser Origin before creating an Agent", async () => {
     socket.terminate();
 });
 
-test("common HTTP MCP send reaches native inbox and authenticated hooks settle only the connected request", async () => {
+test("MCP inbox input settles through direct transcript observation with storage retry and shared registry status", async () => {
     const network = await harness.daemon.services.networks.create("one-way");
     const sourceVendor = fakeVendor();
     const source = await harness.daemon.registerRuntime({
@@ -769,6 +787,20 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
         const target = harness.daemon.services.runtimes
             .list()
             .find((record) => record.id !== source.runtimeId)!;
+
+        const project = join(harness.home, "projects", "project");
+        const transcript = join(project, "session.jsonl");
+        const registry = join(harness.home, "sessions", `${process.pid}.json`);
+        await mkdir(project, { recursive: true });
+        await mkdir(join(harness.home, "sessions"), { recursive: true });
+        await writeFile(transcript, "");
+        const state = async (status: string, waitingFor?: string) => {
+            await writeFile(
+                registry,
+                JSON.stringify({ sessionId: "session", status, waitingFor }),
+            );
+        };
+        await state("idle");
         const args = vendor.options.args!;
         const inboxPath = args[args.indexOf("--messaging-socket-path") + 1]!;
         inbox.listen(inboxPath);
@@ -786,17 +818,21 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
                 body: JSON.stringify({
                     inboxPath,
                     inboxToken: "native-inbox-token",
-                    event,
+                    ppid: process.pid,
+                    event: {
+                        session_id: "session",
+                        transcript_path: transcript,
+                        ...event,
+                    },
                 }),
             });
         expect(
-            (
-                await hook({
-                    hook_event_name: "SessionStart",
-                    session_id: "session",
-                })
-            ).ok,
-        ).toBe(true);
+            (await hook({ hook_event_name: "SessionStart" }, source.token))
+                .status,
+        ).toBe(401);
+        expect((await hook({ hook_event_name: "SessionStart" })).status).toBe(
+            204,
+        );
         const client = async (token: string) => {
             const result = new Client({
                 name: "controller-test",
@@ -823,313 +859,165 @@ test("common HTTP MCP send reaches native inbox and authenticated hooks settle o
             to: [source.runtimeId],
             action: "block",
         });
-        const sent = await sender.callTool({
-            name: "send",
-            arguments: {
-                targets: [target.name],
-                content: "Review line one.\nThen line two.",
-            },
-        });
-        const sentData = sent.structuredContent as {
-            messageId: string;
-            results: { accepted: boolean }[];
+        const send = async (content: string, count: number) => {
+            const response = await sender.callTool({
+                name: "send",
+                arguments: { targets: [target.name], content },
+            });
+            const data = response.structuredContent as {
+                messageId: string;
+                results: { accepted: boolean }[];
+            };
+            expect(data.results[0]!.accepted).toBe(true);
+            await vi.waitFor(() =>
+                expect(
+                    lines.filter((line) => line.type === "user"),
+                ).toHaveLength(count),
+            );
+            const frame = lines.filter((line) => line.type === "user")[
+                count - 1
+            ]!.message!.content;
+            return { id: data.messageId, frame };
         };
-        expect(sentData.results[0]!.accepted).toBe(true);
-        await vi.waitFor(() =>
-            expect(lines.filter((line) => line.type === "user")).toHaveLength(
-                1,
-            ),
-        );
-        const fullInput = lines.find((line) => line.type === "user")!.message!
-            .content;
+        const rows = async (values: Record<string, unknown>[]) =>
+            appendFile(
+                transcript,
+                values
+                    .map(
+                        (row) =>
+                            JSON.stringify({
+                                sessionId: "session",
+                                isSidechain: false,
+                                ...row,
+                            }) + "\n",
+                    )
+                    .join(""),
+            );
+        const input = async (id: string, frame: string) => {
+            await rows([
+                {
+                    type: "user",
+                    uuid: id,
+                    parentUuid: null,
+                    promptId: id,
+                    origin: {
+                        kind: "peer",
+                        name: "Reviewer",
+                        body: frame.slice(
+                            frame.indexOf("\n") + 1,
+                            frame.lastIndexOf("\n"),
+                        ),
+                    },
+                    message: { role: "user", content: frame },
+                },
+            ]);
+            await state("busy");
+            await vi.waitFor(() => expect(target.status).toBe("working"));
+        };
+        const finish = async (id: string) => {
+            await rows([
+                {
+                    type: "assistant",
+                    uuid: `${id}-answer`,
+                    parentUuid: id,
+                    message: {
+                        role: "assistant",
+                        stop_reason: "end_turn",
+                        content: [],
+                    },
+                },
+                {
+                    type: "system",
+                    subtype: "turn_duration",
+                    uuid: `${id}-end`,
+                    parentUuid: `${id}-answer`,
+                    durationMs: 1,
+                },
+            ]);
+            await state("idle");
+        };
+        const delivery = async (id: string) =>
+            (await harness.daemon.services.db.messages.deliveriesFor(id))[0]!;
+        const sharedStatus = async (status: string) =>
+            vi.waitFor(async () => {
+                expect(target.status).toBe(status);
+                expect(
+                    await (
+                        await fetch(harness.apiUrl(`/api/agents/${target.id}`))
+                    ).json(),
+                ).toMatchObject({ status });
+                expect(
+                    (await sender.callTool({ name: "agents_list" }))
+                        .structuredContent,
+                ).toMatchObject({ agents: [{ name: target.name, status }] });
+            });
+        const first = await send("Review line one.\nThen line two.", 1);
+        expect(first.frame).toContain('from-name="Reviewer"');
+        expect(first.frame).toContain("Role: reviewer");
+        expect(first.frame).toContain("Description: Check changes");
         expect(
             lines
                 .filter((line) => line.type === "auth")
                 .every((line) => line.token === "native-inbox-token"),
         ).toBe(true);
-        expect(fullInput).toContain('from-name="Reviewer"');
-        expect(fullInput).toContain("Role: reviewer");
-        expect(fullInput).toContain("Description: Check changes");
-        expect(fullInput).toContain("Review line one.\nThen line two.");
-        const delivery = async () =>
-            (
-                await harness.daemon.services.db.messages.deliveriesFor(
-                    sentData.messageId,
-                )
-            )[0]!;
-        expect((await delivery()).outcome).toBeNull();
-        expect(
-            (
-                await hook(
-                    {
-                        hook_event_name: "UserPromptSubmit",
-                        session_id: "session",
-                        prompt_id: "aiox",
-                        prompt: fullInput,
-                    },
-                    source.token,
-                )
-            ).status,
-        ).toBe(401);
-        await hook({
-            hook_event_name: "UserPromptSubmit",
-            session_id: "session",
-            prompt_id: "tampered",
-            prompt: `${fullInput} changed`,
-        });
-        await hook({
-            hook_event_name: "Stop",
-            session_id: "session",
-            prompt_id: "tampered",
-        });
-        expect((await delivery()).outcome).toBeNull();
-        await hook({
-            hook_event_name: "UserPromptSubmit",
-            session_id: "session",
-            prompt_id: "aiox",
-            prompt: fullInput,
-        });
-        await hook({
-            hook_event_name: "Stop",
-            session_id: "other-session",
-            prompt_id: "aiox",
-        });
-        expect((await delivery()).outcome).toBeNull();
-        expect(
-            (
-                await hook({
-                    hook_event_name: "Stop",
-                    session_id: "session",
-                    prompt_id: "aiox",
-                })
-            ).ok,
-        ).toBe(true);
-        expect((await delivery()).outcome).toBe("completed");
-        expect(sourceVendor.received).toHaveLength(1);
-        expect(sourceVendor.received[0]!.from.name).toBe("AIOX");
-        expect(sourceVendor.received[0]!.deliveryId).toBeNull();
-        await hook({
-            hook_event_name: "UserPromptSubmit",
-            session_id: "session",
-            prompt_id: "direct",
-            prompt: "User's direct request",
-        });
-        await hook({
-            hook_event_name: "Stop",
-            session_id: "session",
-            prompt_id: "direct",
-        });
-        expect(sourceVendor.received).toHaveLength(1);
-        const failed = await sender.callTool({
-            name: "send",
-            arguments: { targets: [target.name], content: "A second request" },
-        });
-        await vi.waitFor(() =>
-            expect(lines.filter((line) => line.type === "user")).toHaveLength(
-                2,
-            ),
+        await input("first", first.frame);
+        const save = vi
+            .spyOn(harness.daemon.services.db.messages, "settle")
+            .mockRejectedValueOnce(new Error("temporary DB failure"));
+        await finish("first");
+        await vi.waitFor(
+            async () =>
+                expect(await delivery(first.id)).toMatchObject({
+                    outcome: "completed",
+                }),
+            { timeout: 3000 },
         );
-        const second = lines.filter((line) => line.type === "user")[1]!.message!
-            .content;
-        await hook({
-            hook_event_name: "UserPromptSubmit",
-            session_id: "session",
-            prompt_id: "second",
-            prompt: second,
-        });
+        expect(save.mock.calls.length).toBeGreaterThanOrEqual(2);
+        await vi.waitFor(() => expect(sourceVendor.received).toHaveLength(1));
+        expect(sourceVendor.received[0]!.deliveryId).toBeNull();
+        await finish("first");
+        const second = await send("Fail this request", 2);
+        // The failure can arrive before its transcript input is observed.
         await hook({
             hook_event_name: "StopFailure",
-            session_id: "session",
             prompt_id: "second",
             error: "rate_limit",
-            last_assistant_message: "Usage limit reached. Try again later.",
-            error_details: "429 Too Many Requests",
+            last_assistant_message: "Usage limit reached",
         });
-        const failedData = failed.structuredContent as { messageId: string };
-        expect(
-            (
-                await harness.daemon.services.db.messages.deliveriesFor(
-                    failedData.messageId,
-                )
-            )[0],
-        ).toMatchObject({ outcome: "failed", outcomeError: "rate_limit" });
-        expect(sourceVendor.received).toHaveLength(2);
-        expect(target.status).toBe("failed");
-        const sharedStatus = async (
-            status: string,
-            status_reason: string | null,
-        ) => {
-            const web = (await (
-                await fetch(harness.webUrl("/api/web/agents"))
-            ).json()) as { agentId: string }[];
-            expect(
-                web.find((agent) => agent.agentId === target.id),
-            ).toMatchObject({ status, status_reason });
-            expect(
-                (await sender.callTool({ name: "agents_list" }))
-                    .structuredContent,
-            ).toMatchObject({
-                agents: [{ name: target.name, status, status_reason }],
-            });
-        };
-        const failureReason =
-            "Usage limit reached. Try again later. · rate_limit";
-        await sharedStatus("failed", failureReason);
-        for (const [notification_type, status, reason] of [
-            [
-                "quota_auto_resume_stale",
-                "awaiting-user",
-                "Press Enter to resume the task automatically.",
-            ],
-            ["quota_auto_resume_disabled", "failed", failureReason],
-            ["quota_auto_resume_fired", "working", null],
-            ["quota_auto_resume_disabled", "idle", null],
-            ["quota_auto_resume_fired", "working", null],
-        ] as const) {
-            expect(
-                (
-                    await hook({
-                        hook_event_name: "Notification",
-                        session_id: "session",
-                        prompt_id: "second",
-                        notification_type,
-                    })
-                ).ok,
-            ).toBe(true);
-            await sharedStatus(status, reason);
-            expect(
-                (
-                    await harness.daemon.services.db.messages.deliveriesFor(
-                        failedData.messageId,
-                    )
-                )[0],
-            ).toMatchObject({ outcome: "failed", outcomeError: "rate_limit" });
-            expect(sourceVendor.received).toHaveLength(2);
-        }
-
-        await hook({
-            hook_event_name: "Stop",
-            session_id: "session",
-            prompt_id: "second",
-        });
-        await sharedStatus("idle", null);
-        expect(
-            (
-                await harness.daemon.services.db.messages.deliveriesFor(
-                    failedData.messageId,
-                )
-            )[0],
-        ).toMatchObject({ outcome: "failed", outcomeError: "rate_limit" });
-        expect(sourceVendor.received).toHaveLength(2);
-
-        const cancelled = await sender.callTool({
-            name: "send",
-            arguments: {
-                targets: [target.name],
-                content: "A cancelled request",
-            },
-        });
-        await vi.waitFor(() =>
-            expect(lines.filter((line) => line.type === "user")).toHaveLength(
-                3,
-            ),
-        );
-        const transcript = join(harness.home, "claude-session.jsonl");
-        const prompt = lines.filter((line) => line.type === "user")[2]!.message!
-            .content;
-        for (const event of [
-            { hook_event_name: "UserPromptSubmit", prompt },
-            {
-                hook_event_name: "PreToolUse",
-                tool_use_id: "cancelled-tool",
-                tool_name: "Bash",
-            },
-            {
-                hook_event_name: "PermissionRequest",
-                tool_name: "Bash",
-                tool_input: { command: "printf test" },
-            },
-        ])
-            expect(
-                (
-                    await hook({
-                        ...event,
-                        session_id: "session",
-                        prompt_id: "cancelled",
-                        transcript_path: transcript,
-                    })
-                ).ok,
-            ).toBe(true);
-        expect(target.status).toBe("awaiting-user");
-        const webAgent = async () =>
-            (await fetch(harness.apiUrl(`/api/agents/${target.id}`))).json();
-        expect(await webAgent()).toMatchObject({ status: "awaiting-user" });
-        const peers = async () =>
-            (await sender.callTool({ name: "agents_list" })).structuredContent;
-        expect(await peers()).toMatchObject({
-            agents: [{ name: target.name, status: "awaiting-user" }],
-        });
-        const base = {
-            type: "user",
-            isSidechain: false,
-            sessionId: "session",
-            promptId: "cancelled",
-        };
-        await writeFile(
-            transcript,
-            [
-                {
-                    ...base,
-                    uuid: "rejected",
-                    toolDenialKind: "user-rejected",
-                    message: {
-                        role: "user",
-                        content: [
-                            {
-                                type: "tool_result",
-                                tool_use_id: "cancelled-tool",
-                                is_error: true,
-                            },
-                        ],
-                    },
-                },
-                {
-                    ...base,
-                    uuid: "interrupted",
-                    parentUuid: "rejected",
-                    message: {
-                        role: "user",
-                        content: [
-                            {
-                                type: "text",
-                                text: "[Request interrupted by user for tool use]",
-                            },
-                        ],
-                    },
-                },
-            ]
-                .map((row) => JSON.stringify(row))
-                .join("\n") + "\n",
-        );
-        const cancelledData = cancelled.structuredContent as {
-            messageId: string;
-        };
+        await input("second", second.frame);
+        await state("idle");
         await vi.waitFor(async () =>
-            expect(
-                (
-                    await harness.daemon.services.db.messages.deliveriesFor(
-                        cancelledData.messageId,
-                    )
-                )[0],
-            ).toMatchObject({ outcome: "interrupted" }),
+            expect(await delivery(second.id)).toMatchObject({
+                outcome: "failed",
+                outcomeError: "Usage limit reached · rate_limit",
+            }),
         );
-        expect(await webAgent()).toMatchObject({
-            status: "idle",
-            status_reason: null,
-        });
-        expect(await peers()).toMatchObject({
-            agents: [{ name: target.name, status: "idle" }],
-        });
+        await vi.waitFor(() => expect(sourceVendor.received).toHaveLength(2));
+        await state("waiting", "permission");
+        await sharedStatus("awaiting-user");
+        expect((await delivery(second.id)).outcome).toBe("failed");
+        const third = await send("Cancel this request", 3);
+        await input("third", third.frame);
+        await rows([
+            {
+                type: "user",
+                uuid: "third-interrupted",
+                parentUuid: "third",
+                message: {
+                    role: "user",
+                    content: [
+                        { type: "text", text: "[Request interrupted by user]" },
+                    ],
+                },
+            },
+        ]);
+        await state("idle");
+        await vi.waitFor(async () =>
+            expect(await delivery(third.id)).toMatchObject({
+                outcome: "interrupted",
+            }),
+        );
+        await sharedStatus("idle");
         expect(sourceVendor.received).toHaveLength(2);
         expect(vendor.session.alive).toBe(true);
     } finally {

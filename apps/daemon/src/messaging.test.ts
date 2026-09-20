@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -5,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import type { AioxDatabase } from "@aiox/persistence";
 import { openDatabase } from "@aiox/persistence";
+import type { VendorBinding } from "@aiox/vendor";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { MessageService } from "@/messaging";
@@ -168,7 +170,9 @@ it("keeps overlapping senders and targets separate when one request fails before
     });
 
     // B cannot finish C's delivery, even with its correlation handle.
-    await b.vendor.settle(ac!.deliveryId!, "completed");
+    await expect(b.vendor.settle(ac!.deliveryId!, "completed")).rejects.toThrow(
+        "does not own",
+    );
     expect(
         await db.messages.deliveryFor(first.messageId, c.record.id),
     ).toMatchObject({ outcome: null });
@@ -319,10 +323,8 @@ it("keeps correlation after a storage failure so target cleanup can retry once",
         .mockImplementationOnce(() => failure);
     const first = b.vendor.settle(deliveryId, "completed");
     const duplicate = b.vendor.settle(deliveryId, "failed");
-    const firstFailed = expect(first).rejects.toThrow("storage unavailable");
-    const duplicateFailed = expect(duplicate).rejects.toThrow(
-        "storage unavailable",
-    );
+    const firstFailed = expect(first).resolves.toBeUndefined();
+    const duplicateFailed = expect(duplicate).resolves.toBeUndefined();
     fail(new Error("storage unavailable"));
     await Promise.all([firstFailed, duplicateFailed]);
     expect(settle).toHaveBeenCalledTimes(1);
@@ -347,9 +349,9 @@ it("rolls back a result when its required notification fails, then retries the o
     try {
         sqlite.exec(`CREATE TRIGGER reject_notification BEFORE INSERT ON notifications
             BEGIN SELECT RAISE(ABORT, 'notification unavailable'); END`);
-        await expect(b.vendor.settle(deliveryId, "completed")).rejects.toThrow(
-            "notification unavailable",
-        );
+        await expect(
+            b.vendor.settle(deliveryId, "completed"),
+        ).resolves.toBeUndefined();
         expect(
             await db.messages.deliveryFor(sent.messageId, b.record.id),
         ).toMatchObject({ outcome: null });
@@ -402,7 +404,7 @@ it("keeps a refused target's failed write pending while delivering to later targ
             {
                 agentId: b.record.id,
                 accepted: false,
-                error: expect.stringContaining("outcome unavailable"),
+                error: "inbox unavailable",
             },
             {
                 agentId: c.record.id,
@@ -473,5 +475,263 @@ it.each(["source", "target"] as const)(
         expect(await db.messages.deliveriesFor(sent.messageId)).toMatchObject([
             { outcome: "rejected" },
         ]);
+    },
+);
+
+it("acknowledges ownership and retries staggered failures on one unchanged timer", async () => {
+    vi.useFakeTimers();
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    const a = await joinAgent("A");
+    const b = await joinAgent("B");
+    const sent = await messages.send(a.record, [b.record.id], "A");
+    const first = b.vendor.deliveryIds[0]!;
+    const persist = db.messages.settle;
+    const write = vi
+        .spyOn(db.messages, "settle")
+        .mockRejectedValue(new Error("disk full"));
+    try {
+        await expect(
+            b.vendor.settle(first, "completed"),
+        ).resolves.toBeUndefined();
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.advanceTimersByTimeAsync(400);
+        await messages.send(a.record, [b.record.id], "B");
+        await b.vendor.settle(
+            b.vendor.deliveryIds[1]!,
+            "failed",
+            "vendor failure",
+        );
+        await vi.advanceTimersByTimeAsync(400);
+        await messages.send(a.record, [b.record.id], "C");
+        await b.vendor.settle(b.vendor.deliveryIds[2]!, "interrupted");
+        await messages.send(a.record, [b.record.id], "still working");
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.advanceTimersByTimeAsync(199);
+        expect(write).toHaveBeenCalledTimes(3);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(write).toHaveBeenCalledTimes(6);
+        expect(diagnostic).toHaveBeenCalledTimes(3);
+        expect(vi.getTimerCount()).toBe(1);
+        write.mockImplementation(persist);
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(messages.pending()).toBe(1);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(
+            await db.messages.deliveryFor(sent.messageId, b.record.id),
+        ).toMatchObject({ outcome: "completed" });
+    } finally {
+        write.mockRestore();
+        await messages.drain();
+        vi.useRealTimers();
+        diagnostic.mockRestore();
+    }
+});
+
+it("joins a running retry batch on drain, defers new failures and resumes once after failed drain", async () => {
+    vi.useFakeTimers();
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    const a = await joinAgent("A");
+    const b = await joinAgent("B");
+    const ids: string[] = [];
+    for (const content of ["A", "B", "C", "D", "running"])
+        ids.push(
+            (await messages.send(a.record, [b.record.id], content)).results[0]!
+                .deliveryId!,
+        );
+    const persist = db.messages.settle;
+    const write = vi
+        .spyOn(db.messages, "settle")
+        .mockRejectedValue(new Error("disk full"));
+    let release!: () => void;
+    try {
+        for (const id of ids.slice(0, 3))
+            await b.vendor.settle(id, "completed");
+        const originals = write.mock.calls.slice();
+        write.mockImplementationOnce(
+            async () =>
+                new Promise<boolean>((resolve) => {
+                    release = () => resolve(false);
+                }),
+        );
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(write).toHaveBeenCalledTimes(4);
+        await b.vendor.settle(ids[3]!, "failed", "actual vendor failure");
+        expect(vi.getTimerCount()).toBe(0);
+        let drained = false;
+        const drain = messages.drain().catch((error: Error) => {
+            drained = true;
+            return error.message;
+        });
+        await Promise.resolve();
+        expect(drained).toBe(false);
+        release();
+        expect(await drain).toContain("Unstored outcomes (3)");
+        expect(vi.getTimerCount()).toBe(0);
+        expect(write.mock.calls.filter(([id]) => id === ids[3])).toHaveLength(
+            2,
+        );
+        expect(write.mock.calls.some(([id]) => id === ids[4])).toBe(false);
+        await messages.forget(b.record.id);
+        runtimes.unregister(b.record.id);
+        // Cleanup cannot replace the completed result or its original timestamp.
+        for (const original of originals.slice(1))
+            expect(
+                write.mock.calls
+                    .filter(([id]) => id === original[0])
+                    .every((call) =>
+                        call
+                            .slice(0, 4)
+                            .every((value, i) => value === original[i]),
+                    ),
+            ).toBe(true);
+        write.mockImplementation(persist);
+        messages.resume();
+        messages.resume();
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(messages.pending()).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+    } finally {
+        write.mockRestore();
+        await messages.drain();
+        vi.useRealTimers();
+        diagnostic.mockRestore();
+    }
+});
+
+it("rejects ownership mismatches before accepting a result", async () => {
+    const a = await joinAgent("A");
+    const b = await joinAgent("B");
+    await messages.send(a.record, [b.record.id], "work");
+    await expect(
+        a.vendor.settle(b.vendor.deliveryIds[0]!, "completed"),
+    ).rejects.toThrow("does not own");
+    expect(messages.pending()).toBe(1);
+    await b.vendor.settle(b.vendor.deliveryIds[0]!, "interrupted");
+});
+
+it.each(["completed", "failed", "interrupted"] as const)(
+    "owns Codex %s before failed storage, then persists after binding cleanup without more vendor events",
+    async (outcome) => {
+        const { WebSocketServer } = await import("ws");
+        const { codexAdapter } = await import("@aiox/adapter-codex");
+        const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+        await once(server, "listening");
+        const address = server.address();
+        if (!address || typeof address === "string") throw new Error("port");
+        const source = await joinAgent("source");
+        let binding!: VendorBinding;
+        const { record } = await runtimes.register({
+            name: "codex",
+            networkId,
+            createBinding: (controls) => {
+                binding = codexAdapter.createBinding(controls, {
+                    url: `ws://127.0.0.1:${address.port}`,
+                    token: "x".repeat(43),
+                });
+                return {
+                    deliver: (message) => binding.deliver(message),
+                    stop: async () => {
+                        await binding.cleanup?.("execution_stopped");
+                    },
+                };
+            },
+        });
+        const writes = vi
+            .spyOn(db.messages, "settle")
+            .mockRejectedValue(new Error("disk full"));
+        const diagnostic = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
+        try {
+            const connected = once(server, "connection");
+            await binding.prepare!({
+                executionOwnership: "external",
+                args: [],
+                cwd: home,
+                env: {},
+                mcpUrl: null,
+                mcpToken: "",
+                reportUrl: "",
+                reportToken: "",
+                instruction: "",
+            });
+            const [peer] = await connected;
+            binding.executionStarted!();
+            peer.send(
+                JSON.stringify({
+                    type: "state",
+                    threadId: "thread",
+                    error: null,
+                }),
+            );
+            await expect.poll(() => record.status).toBe("idle");
+            await db.networks.replaceRouting(networkId, {
+                routes: [{ from: record.id, to: source.record.id }],
+            });
+            peer.on("message", (raw: { toString(): string }) => {
+                const frame = JSON.parse(raw.toString());
+                peer.send(
+                    JSON.stringify({
+                        type: "response",
+                        id: frame.id,
+                        result: { threadId: "thread", turn: { id: "turn" } },
+                    }),
+                );
+            });
+            const sent = await messages.send(
+                source.record,
+                [record.id],
+                "work",
+            );
+            const id = sent.results[0]!.deliveryId!;
+            peer.send(
+                JSON.stringify({
+                    type: "event",
+                    method: "turn/completed",
+                    params: {
+                        threadId: "thread",
+                        turn: {
+                            id: "turn",
+                            status: outcome,
+                            ...(outcome === "failed"
+                                ? { error: { message: "vendor reason" } }
+                                : {}),
+                        },
+                    },
+                }),
+            );
+            await expect.poll(() => writes.mock.calls.length).toBe(1);
+            await expect(
+                binding.cleanup!("execution_stopped"),
+            ).resolves.toBeUndefined();
+            expect(writes).toHaveBeenCalledTimes(1);
+            expect(messages.pending()).toBe(1);
+            expect((await db.messages.delivery(id))?.outcome).toBeNull();
+            writes.mockRestore();
+            await expect
+                .poll(async () => (await db.messages.delivery(id))?.outcome, {
+                    timeout: 3000,
+                })
+                .toBe(outcome);
+            expect((await db.messages.delivery(id))?.outcomeError).toBe(
+                outcome === "failed" ? "vendor reason" : null,
+            );
+            expect(messages.pending()).toBe(0);
+            const notices = await db.messages.unreadNotifications();
+            expect(notices).toHaveLength(outcome === "interrupted" ? 0 : 1);
+            expect(
+                source.vendor.received.every(
+                    (message) => message.deliveryId === null,
+                ),
+            ).toBe(true);
+        } finally {
+            writes.mockRestore();
+            diagnostic.mockRestore();
+            await binding.cleanup!("execution_stopped");
+            await messages.drain();
+            for (const client of server.clients) client.terminate();
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
     },
 );

@@ -99,6 +99,13 @@ Web과 `agents_list()`는 동일한 `status`와 `status_reason`을 사용한다.
 `status_reason`은 현재 상태의 이유이며 없는 정보는 `null`이다. adapter가 vendor 관측을
 해석하고 양쪽 소비자는 같은 값을 표시한다. 새 이유로 교체하고 이유가 없으면 이전 이유를
 제거한다. vendor hook/event 이름을 그대로 공통 이유로 표시하지 않는다.
+Agent 조회의 `observation_error`는 관측 연결·읽기의 실패 진단이며 정상일 때 `null`이다.
+현재 session의 `status`·`status_reason` 및 delivery 결과와 분리한다. 옛 session의 읽기 실패도
+사용자에게 드러내되 현재 session 상태를 실패로 바꾸지 않는다. Web은 진단을 상태 옆에, CLI는
+상세 조회에 표시하며 관측 복구 시 제거한다. 근거: [[apps/daemon/src/runtimes.test.ts]]
+`apps/daemon/src/runtimes.test.ts:6-28`, [[apps/web/src/main.test.ts]]
+`apps/web/src/main.test.ts:1024-1060`. [Status: Current]
+
 상태, 메시지 전송 가용성, 개별 delivery 결과는 별개다. 준비 중도 허용된 목록 범위에 노출하되
 준비 전 send는 거절한다. `failed`만으로 모든 전송을 차단하지 않는다. Agent에는 `stopped`가
 없으며 종료한 Agent는 목록에서 제거한다. Host 항목의 `stopped`는 Host 계약을 따른다.
@@ -118,28 +125,31 @@ Codex의 명시적 입력 요청은 threadId/requestId별로 추적하며 현재
 turn 종료·새 turn 시작으로 해제하지 않는다. 대화 전환은 표시 대상만 바꾸고 이전 대화의
 미해결 요청을 보존한다. nullable 요청은 resolved를 관측하기 전까지 해당 대화의 대기로 남는다.
 
-Claude는 자기 hook 관측을 사용하며 Codex RPC를 적용하지 않는다.
+Claude는 세 hooks(SessionStart·StopFailure·Notification)와 registry·transcript 파일 직접 감시를 사용하며 Codex RPC를 적용하지 않는다.
 
 | Claude 관측 | 상태 반영 |
 | --- | --- |
-| `StopFailure` | `failed`와 실제 오류 이유. `rate_limit`을 세션/주간 한도로 임의 번역하지 않으며 `cloud_credential_error`를 보존 |
-| `quota_auto_resume_fired` | 작업 재개이므로 `working`; 이전 실패·자동 재개 대기 이유 해제. UserPromptSubmit을 추가로 기다리지 않음 |
+| `StopFailure` | 현재 instance의 실패 이유를 보관하고 registry가 idle일 때 `failed`로 표시. `rate_limit`을 세션/주간 한도로 임의 번역하지 않으며 `cloud_credential_error`를 보존 |
+| `quota_auto_resume_fired` | 이전 실패·quota 대기 이유를 해제. busy/waiting/idle은 현재 session의 registry로 표시 |
 | `quota_auto_resume_stale` | `awaiting-user`; 자동 재개를 위해 Enter 입력을 기다린다는 이유 표시 |
 | `quota_auto_resume_disabled` | 해당 세션의 quota 대기·자동 재개 기록을 해제한 뒤 상태 재계산. 현재 남은 실패·이유는 보존하고 이미 해제된 과거 실패는 복원하지 않음 |
 
-다른 작업·대기가 없을 때 StopFailure → stale → disabled는 현재 실패가 남아 `failed`이고,
+현재 registry가 idle이고 다른 대기가 없을 때 StopFailure → stale → disabled는 현재 실패가 남아 `failed`이고,
 StopFailure → fired → disabled는 fired가 실패를 해제했으므로 `idle`이다. disabled가 새 실패를
 만들거나 기존 delivery 결과를 변경하지 않는다. 이 순서의 상태 계약과 코드 테스트는 실제
 hook 발생 순서를 관측했다는 뜻이 아니다.
 
-자동 재개 뒤 같은 세션의 Stop은 새 UserPromptSubmit이나 등록된 prompt ID 없이도 재개
-활동을 해제하고 상태를 재계산한다. 재개 후 StopFailure는 새 실패와 이유를 반영한다.
-이미 확정한 delivery 실패는 다시 쓰지 않으며 blocking Stop hook이 있으면 Stop만으로
-종료를 확정하지 않는다. 다른 세션·작업·사용자 대기는 보존한다. 새 UserPromptSubmit으로
-작업 시작을 관측하면 해당 세션의 이전 quota 대기를 제거하며 fired 동반을 요구하지 않는다.
+자동 재개 뒤 해당 요청의 검증된 transcript 종료 chain은 재개 활동을 해제하고 상태를
+재계산한다. 재개 후 StopFailure는 현재 실패와 실제 이유를 반영한다. 이미 확정한 delivery
+결과는 다시 쓰지 않는다. AIOX는 Stop을 완료 관측으로 사용하지 않으며 사용자 Stop hook의
+후속 작업은 같은 요청으로 추적한다. 정상 Stop 경로는 시작 시 hook 설정과 무관하게 해당
+turn의 종료 근거를 관측하며 continue:false/stopReason도 상태 종료로 취급한다. 이는 업무의
+의미적 성공 평가가 아니며 판정 근거는 collaboration의 요청 종료 계약을 따른다.
+종료는 그 요청의 활동·대기만 해소한다. 다른 활동이 남으면 working/awaiting-user를 유지하며
+늦은 이전 결과가 현재 상태를 덮지 않는다.
+새 transcript 사용자 입력은 해당 세션의 이전 quota 대기를 제거하며 fired 동반을 요구하지 않는다.
 
-quota 이외 승인·질문은 해당 요청의 해소 관측으로 정리하며 다른 요청의 미해결 대기를 임의로
-제거하지 않는다. quota 전이는 [공식 hook 문서](https://code.claude.com/docs/en/hooks#notification)에
+Claude의 quota 이외 승인·질문 대기는 현재 session registry의 waiting 및 waitingFor로 표시한다. quota 전이는 [공식 hook 문서](https://code.claude.com/docs/en/hooks#notification)에
 따른 계약이다. 실제 quota hook 발생 순서·화면 표시를 실측 완료로 간주하지 않는다.
 구현과 vendor별 검증 범위는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
 

@@ -66,7 +66,12 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
     try {
         const execution = await codexAdapter.createExecution(owner);
         const binding = codexAdapter.createBinding(
-            { runtimeId: "r", setStatus: status, settle },
+            {
+                runtimeId: "r",
+                setStatus: status,
+                setObservationError: vi.fn(),
+                settle,
+            },
             execution.connection,
         );
         const prepared = await binding.prepare({
@@ -513,7 +518,35 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         expect(
             settle.mock.calls.filter(([id]) => id === "delivery-interrupted"),
         ).toHaveLength(1);
+        settle.mockRejectedValueOnce(new Error("ownership not accepted"));
+        await deliverTo("thread-B", "cleanup-pending", true, "cleanup-turn");
+        await expect
+            .poll(
+                () =>
+                    settle.mock.calls.filter(([id]) => id === "cleanup-pending")
+                        .length,
+            )
+            .toBe(1);
+        settle.mockRejectedValueOnce(new Error("ownership still unavailable"));
+        await expect(
+            binding.cleanup("external_connection_lost"),
+        ).rejects.toThrow("ownership still unavailable");
         await binding.cleanup("external_connection_lost");
+        expect(
+            settle.mock.calls.filter(([id]) => id === "cleanup-pending"),
+        ).toEqual([
+            ["cleanup-pending", "failed", "model failed"],
+            ["cleanup-pending", "failed", "model failed"],
+            ["cleanup-pending", "failed", "model failed"],
+        ]);
+        expect(
+            settle.mock.calls
+                .filter(([id]) => id === "delivery-B")
+                .every(
+                    ([, outcome, error]) =>
+                        outcome === "failed" && error === "model failed",
+                ),
+        ).toBe(true);
         expect(
             settle.mock.calls.filter(([id]) => id === "delivery-B"),
         ).toHaveLength(2);
@@ -564,7 +597,12 @@ test("App Server startup failure reaches the caller without leaking the MCP toke
     try {
         const execution = await codexAdapter.createExecution(owner);
         binding = codexAdapter.createBinding(
-            { runtimeId: "r", setStatus() {}, settle: async () => {} },
+            {
+                runtimeId: "r",
+                setStatus() {},
+                setObservationError() {},
+                settle: async () => {},
+            },
             execution.connection,
         );
         const launch = await binding.prepare({

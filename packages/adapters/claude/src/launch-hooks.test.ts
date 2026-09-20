@@ -6,16 +6,7 @@ test("each Claude observation hook invokes the adapter-owned executable entry", 
     const hooks = launchHooks();
     expect(Object.keys(hooks)).toEqual([
         "SessionStart",
-        "SessionEnd",
-        "UserPromptSubmit",
-        "Stop",
         "StopFailure",
-        "PermissionRequest",
-        "PreToolUse",
-        "PostToolUse",
-        "PostToolUseFailure",
-        "Elicitation",
-        "ElicitationResult",
         "Notification",
     ]);
     for (const entries of Object.values(hooks)) {

@@ -94,6 +94,7 @@ function agentView(
         hostId: record.hostId,
         terminalId: record.terminalId,
         status_reason: record.status_reason,
+        observation_error: record.observation_error,
     };
 }
 

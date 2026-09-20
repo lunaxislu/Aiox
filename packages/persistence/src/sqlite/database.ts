@@ -56,6 +56,7 @@ export interface MessageHistory {
         messageId: string,
         targetRuntimeId: string,
     ): Promise<DeliveryRow | undefined>;
+    delivery(id: string): Promise<DeliveryRow | undefined>;
     deliveriesFor(messageId: string): Promise<DeliveryRow[]>;
     /** Outcome and required notification commit together; false if unknown or already terminal. */
     settle(
@@ -162,6 +163,7 @@ function messages(dataSource: DataSource): MessageHistory {
             }),
         deliveryFor: async (messageId, targetRuntimeId) =>
             (await deliveries({ messageId, targetRuntimeId }))[0],
+        delivery: async (id) => (await deliveries({ id }))[0],
         deliveriesFor: (messageId) => deliveries({ messageId }),
         settle: (deliveryId, outcome, at, error, notification) =>
             dataSource.transaction(async (m) => {
@@ -262,6 +264,7 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
                     run(() => history.record(message, rows)),
                 deliveryFor: (messageId, targetId) =>
                     run(() => history.deliveryFor(messageId, targetId)),
+                delivery: (id) => run(() => history.delivery(id)),
                 deliveriesFor: (messageId) =>
                     run(() => history.deliveriesFor(messageId)),
                 settle: (id, outcome, at, error, notification) =>

@@ -79,10 +79,12 @@ export class CodexBinding implements VendorBinding {
     #ready = false;
     #turns = new Map<string, Set<string>>();
     #results = new Map<string, TurnResult>();
+    #flushing = new Map<string, Promise<void>>();
     #earlyResults = new Map<string, TurnResult>();
     #awaitingAcceptance = 0;
     #activeTurns = new Map<string, string>();
     #latestTurns = new Map<string, string>();
+    #terminalTurns = new Map<string, { id: string; result: TurnResult }>();
     #failures = new Map<string, string | undefined>();
     #connectionFailure: string | null = null;
     #tools = new Map<string, Set<string>>();
@@ -232,22 +234,28 @@ export class CodexBinding implements VendorBinding {
                 status === "interrupted"
             ) {
                 const error = turn?.error;
-                const result: TurnResult = {
-                    outcome: status,
-                    ...(status === "failed" &&
-                    error &&
-                    typeof error === "object" &&
-                    "message" in error &&
-                    typeof error.message === "string"
-                        ? { error: error.message }
-                        : {}),
-                };
+                const previous = this.#terminalTurns.get(threadId);
+                const result: TurnResult =
+                    previous?.id === turnId
+                        ? previous.result
+                        : {
+                              outcome: status,
+                              ...(status === "failed" &&
+                              error &&
+                              typeof error === "object" &&
+                              "message" in error &&
+                              typeof error.message === "string"
+                                  ? { error: error.message }
+                                  : {}),
+                          };
                 // A late result still settles its delivery, but cannot replace a newer turn's status.
                 if (
-                    !this.#latestTurns.has(threadId) ||
-                    this.#latestTurns.get(threadId) === turnId
+                    previous?.id !== turnId &&
+                    (!this.#latestTurns.has(threadId) ||
+                        this.#latestTurns.get(threadId) === turnId)
                 ) {
                     this.#latestTurns.set(threadId, turnId!);
+                    this.#terminalTurns.set(threadId, { id: turnId!, result });
                     if (status === "failed") {
                         const info =
                             error &&
@@ -271,10 +279,17 @@ export class CodexBinding implements VendorBinding {
                     } else this.#failures.delete(threadId);
                 }
                 if (this.#turns.has(key)) {
-                    this.#results.set(key, result);
+                    if (!this.#results.has(key)) this.#results.set(key, result);
                     void this.#flush(key).catch(() => {});
-                } else if (this.#awaitingAcceptance > 0)
-                    this.#earlyResults.set(key, result);
+                }
+                if (
+                    this.#awaitingAcceptance > 0 &&
+                    !this.#earlyResults.has(key)
+                )
+                    this.#earlyResults.set(
+                        key,
+                        this.#results.get(key) ?? result,
+                    );
             }
             if (this.#activeTurns.get(threadId) === turnId)
                 this.#activeTurns.delete(threadId);
@@ -329,20 +344,32 @@ export class CodexBinding implements VendorBinding {
             this.#pending.delete(`${threadId}:${params.requestId}`);
         if (threadId === this.#thread) this.#updateActivity();
     }
-    async #flush(key: string) {
-        const result = this.#results.get(key);
-        const deliveries = this.#turns.get(key);
-        if (!result || !deliveries) return;
-        for (const deliveryId of deliveries) {
-            await this.controls.settle(
-                deliveryId,
-                result.outcome,
-                result.error,
-            );
-            deliveries.delete(deliveryId);
-        }
-        this.#turns.delete(key);
-        this.#results.delete(key);
+    #flush(key: string): Promise<void> {
+        const active = this.#flushing.get(key);
+        if (active) return active;
+        // Register ownership before settling; release it in the same synchronous
+        // step as the drained entries so a late acceptance starts a new flush.
+        const flushing = Promise.resolve().then(async () => {
+            try {
+                const result = this.#results.get(key);
+                const deliveries = this.#turns.get(key);
+                if (!result || !deliveries) return;
+                for (const deliveryId of deliveries) {
+                    await this.controls.settle(
+                        deliveryId,
+                        result.outcome,
+                        result.error,
+                    );
+                    deliveries.delete(deliveryId);
+                }
+                this.#turns.delete(key);
+                this.#results.delete(key);
+            } finally {
+                this.#flushing.delete(key);
+            }
+        });
+        this.#flushing.set(key, flushing);
+        return flushing;
     }
     #failed(reason: string) {
         this.#ready = false;
@@ -422,8 +449,7 @@ export class CodexBinding implements VendorBinding {
             this.#turns.set(key, deliveries);
             const early = this.#earlyResults.get(key);
             if (early) {
-                this.#results.set(key, early);
-                this.#earlyResults.delete(key);
+                if (!this.#results.has(key)) this.#results.set(key, early);
                 void this.#flush(key).catch(() => {});
             }
         }
@@ -443,9 +469,11 @@ export class CodexBinding implements VendorBinding {
     async cleanup() {
         this.#stopped = true;
         this.#failed("Codex collaboration released.");
-        await Promise.allSettled(
+        const flushed = await Promise.allSettled(
             [...this.#results.keys()].map((key) => this.#flush(key)),
         );
+        const failure = flushed.find((result) => result.status === "rejected");
+        if (failure?.status === "rejected") throw failure.reason;
         const socket = this.#socket;
         if (socket && socket.readyState !== WebSocket.CLOSED) {
             const closed = once(socket, "close");

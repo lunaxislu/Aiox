@@ -1704,13 +1704,13 @@ it("keeps storage and listeners open after outcome persistence blocks stop, then
                 "failed",
                 "vendor failure",
             ),
-        ).rejects.toThrow("notification unavailable");
+        ).resolves.toBeUndefined();
         const stopping = await post("/api/daemon/stop", { force: true });
-        expect(stopping.status).toBe(500);
-        expect(stopping.body).toMatchObject({
-            code: "internal_error",
-            message: expect.stringContaining("notification unavailable"),
-        });
+        expect(stopping.status).toBe(409);
+        expect(stopping.body).toMatchObject({ code: "stop_incomplete" });
+        expect(JSON.stringify(stopping.body)).toContain(
+            "notification unavailable",
+        );
         expect(daemon.acceptingInput).toBe(true);
         expect((await call("/api/agents")).status).toBe(200);
         expect(
@@ -1996,4 +1996,40 @@ it("reopening a daemon preserves Network definitions but discards past execution
     } finally {
         await daemon.stop(true);
     }
+});
+
+it("keeps the daemon and database open on outcome drain failure and resumes central retries", async () => {
+    const { daemon } = harness;
+    const network = await daemon.services.networks.create("retry-stop");
+    const a = await joinAgent(network.id, "A");
+    const b = await joinAgent(network.id, "B");
+    const source = daemon.services.runtimes.get(a.runtimeId)!;
+    const sent = await daemon.services.messages.send(
+        source,
+        [b.runtimeId],
+        "work",
+    );
+    const id = sent.results[0]!.deliveryId!;
+    const write = vi
+        .spyOn(daemon.services.db.messages, "settle")
+        .mockRejectedValue(new Error("disk full"));
+    const close = vi.spyOn(daemon.services.db, "close");
+    await b.vendor.settle(id, "completed");
+    const stopped = await post("/api/daemon/stop", { force: true });
+    expect(stopped.status).toBe(409);
+    expect(stopped.body).toMatchObject({ code: "stop_incomplete" });
+    expect(JSON.stringify(stopped.body)).toContain("disk full");
+    expect(close).not.toHaveBeenCalled();
+    expect(daemon.services.runtimes.list()).toEqual([]);
+    expect((await call("/api/status")).status).toBe(200);
+    write.mockRestore();
+    await vi.waitFor(
+        async () =>
+            expect(
+                await daemon.services.db.messages.delivery(id),
+            ).toMatchObject({ outcome: "completed" }),
+        { timeout: 3000 },
+    );
+    expect(daemon.services.messages.pending()).toBe(0);
+    expect((await post("/api/daemon/stop", { force: true })).status).toBe(200);
 });

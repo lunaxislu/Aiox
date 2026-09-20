@@ -69,8 +69,12 @@ export class AgentController {
                 response.writeHead(401).end("Invalid agent report credential.");
                 return;
             }
-            await report!.binding.observe(body);
-            response.writeHead(204).end();
+            const output = await report!.binding.observe(body);
+            if (output === undefined) response.writeHead(204).end();
+            else
+                response
+                    .writeHead(200, { "Content-Type": "application/json" })
+                    .end(JSON.stringify(output));
         } catch (error) {
             response
                 .writeHead(error instanceof InvalidVendorReport ? 400 : 409)

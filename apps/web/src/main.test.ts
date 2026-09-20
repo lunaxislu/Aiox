@@ -1020,3 +1020,39 @@ it("shows only the latest observation reason as Agent snapshots change", async (
         );
     }
 });
+
+it("shows observation failures without changing the selected session status", async () => {
+    const { node, shell, fetchMock, refresh } = await page();
+    const agent = {
+        agentId: "A",
+        name: "Agent A",
+        terminalId: shell.id,
+        networkId: null,
+        status: "working",
+        status_reason: null,
+        observation_error: "Old session read failed" as string | null,
+    };
+    fetchMock.mockImplementation(async (path) => ({
+        ok: true,
+        status: 200,
+        json: async () =>
+            path === "/api/terminals"
+                ? [shell]
+                : path === "/api/web/agents"
+                  ? [agent]
+                  : [],
+    }));
+    refresh();
+    await vi.waitFor(() =>
+        expect(node("agents").children[0]?.children[1]?.textContent).toBe(
+            "working · 관측 오류: Old session read failed · network 없음 · terminal 연결 가능",
+        ),
+    );
+    agent.observation_error = null;
+    refresh();
+    await vi.waitFor(() =>
+        expect(node("agents").children[0]?.children[1]?.textContent).toBe(
+            "working · network 없음 · terminal 연결 가능",
+        ),
+    );
+});

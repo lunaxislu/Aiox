@@ -241,6 +241,9 @@ function renderAgents(agents: AgentView[]): void {
             meta.textContent = [
                 agent.status,
                 ...(agent.status_reason ? [agent.status_reason] : []),
+                ...(agent.observation_error
+                    ? [`관측 오류: ${agent.observation_error}`]
+                    : []),
                 agent.networkId === null
                     ? "network 없음"
                     : `network ${agent.networkId}`,

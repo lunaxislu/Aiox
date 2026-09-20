@@ -637,6 +637,7 @@ test("network and agent reads reach their endpoints and summarise without --json
         hostId: null,
         terminalId: null,
         status_reason: null,
+        observation_error: null,
     };
     const stub = await daemonStub((call, response) => {
         if (call.url.startsWith("/api/agents")) send(response, 200, [agent]);

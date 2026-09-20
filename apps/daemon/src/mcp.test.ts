@@ -687,7 +687,11 @@ it("publishes preparing agents but refuses delivery until ready", async () => {
         status_reason: null,
     });
     expect((await send(client, [b.name], "too early")).results).toEqual([
-        { name: b.name, accepted: false, error: "not_available" },
+        {
+            name: b.name,
+            accepted: false,
+            error: "not_available: Agent is preparing/switching session. Please try again in a few moments.",
+        },
     ]);
     expect(b.vendor.received).toHaveLength(0);
 });

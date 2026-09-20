@@ -27,7 +27,7 @@ Runtime 종료·시작 실패 → revoke → 기존 MCP session의 후속 요청
 
 daemon 알림도 각 vendor의 동일한 입력 경로로 전달하고 AIOX daemon 발신임을 표시한다. Agent의 역방향 route 권한이나 vendor system role을 만들어 내지 않는다. daemon 알림 처리는 다시 완료 알림을 만들지 않는다.
 
-Codex는 Runtime·threadId·turnId에 입력을 연결하고 `turn/completed`의 결과가 completed/failed/interrupted인지 구분한다. busy toolOutput이 기존 turn에서 처리될 수 있으므로 입력마다 별도 turn이 생성된다고 가정하지 않는다. Claude도 연결된 session_id/prompt_id의 Stop만 해당 입력 종료 근거로 사용한다. 정확한 busy/multi-input 연결은 실제 통합의 검증 대상이다.
+Codex는 Runtime·threadId·turnId에 입력을 연결하고 `turn/completed`의 결과가 completed/failed/interrupted인지 구분한다. busy toolOutput이 기존 turn에서 처리될 수 있으므로 입력마다 별도 turn이 생성된다고 가정하지 않는다. Claude는 hooks와 FileChanged로 읽은 session/prompt의 transcript 인과관계로 해당 입력 종료를 판정한다. 정확한 busy/multi-input 연결은 실제 통합의 검증 대상이다.
 
 ## 공통 실행 소유자와 adapter 경계 [Status: As-built]
 
@@ -146,13 +146,15 @@ custom Channel flag, AIOX channel child, agent별 `/send` listener와 Channel fa
 사용자 내용과 AIOX 내용을 합쳐 전달한다. 영구 설정 파일은 수정하지 않는다. 일반 옵션은 그대로
 전달하며, 필수 inbox·MCP·credential·hooks를 무효화하는 충돌은 실행 전에 원인·수정 방향을
 표시하고 거절한다. 범용 vendor parser가 아니라 AIOX 주입에 직접 영향을 주는 옵션·설정만
-검사한다. 기존 Stop hook이나 plugin 영향으로 Stop의 최종 결과를 확인할 수 없으면 입력을
-완료로 추정하지 않는다. 근거: [[packages/adapters/claude/src/claude-launch.ts]] `packages/adapters/claude/src/claude-launch.ts:7`,
-[[packages/adapters/claude/src/claude-launch.test.ts]] `packages/adapters/claude/src/claude-launch.test.ts:131`.
+검사한다. 사용자 Stop hook은 보존하고 AIOX Stop hook은 주입하지 않는다.
+종료 관측을 위한 Stop 구성값은 계산·전달하지 않으며 plugin 실행 인자·설정은 보존한다. 근거: [[packages/adapters/claude/src/claude-launch.ts]] `packages/adapters/claude/src/claude-launch.ts:7`,
+[[packages/adapters/claude/src/claude-launch.test.ts]] `packages/adapters/claude/src/claude-launch.test.ts:87-176`.
 
 hook helper는 exec-form command/args로 실행돼 shell quoting을 거치지 않는다. 실행별 hook token으로
 보고를 인증하며 MCP token과 구분한다. payload의 session_id/prompt_id 자체는 Runtime 인증이
-아니다. helper는 vendor 결정·표준출력·재전송을 추가하지 않는다. 실행 entry는 adapter의
+아니다. helper는 실제 process.ppid를 보고하며 전체 입력·HTTP 보고 제한은 30초다.
+현재 SessionStart/CwdChanged/FileChanged 응답의 검증된 watchPaths JSON만 stdout에 전달한다.
+다른 보고는 204이며 vendor 결정이나 입력 재전송을 추가하지 않는다. 실행 entry는 adapter의
 `claude-hook-main.js`이며 공통 실행 controller는 이 vendor 파일 경로를 구성하지 않는다. 근거:
 [[packages/adapters/claude/src/launch-hooks.ts]] `packages/adapters/claude/src/launch-hooks.ts:5-9`,
 [[packages/adapters/claude/src/claude-hook-main.ts]] `packages/adapters/claude/src/claude-hook-main.ts:1-6`,
@@ -231,55 +233,121 @@ controller test의 `apps/daemon/src/agent-controller.test.ts:259-282`.
 ## Claude 입력과 응답 종료 관측 [Status: As-built]
 
 ```text
-AIOX 연결 ID가 포함된 inbox 원문
- → UserPromptSubmit {prompt, prompt_id:X, session_id:S}
- → daemon: AIOX 입력 ↔ Runtime/S/X 연결
- → Stop {prompt_id:X, session_id:S}
- → 해당 입력의 응답 종료 관측
+SessionStart → inbox·ppid registry 확인 → session reader 초기 offset 확보 → 204 응답
+registry 파일 감시 → 현재 선택 session 화면 상태
+transcript 파일 감시 → session/prompt 입력 및 parent chain → completed / interrupted
+StopFailure → 해당 session/prompt 실패 관측 (입력보다 빠르면 보관)
+→ adapter 최초 outcome 보존 → controls.settle → daemon 인수 ack → local 연결 해제
 ```
 
-위 단일 idle 입력 연결은 2.1.263의 임시 UserPromptSubmit/Stop hook 실측 보고로 수용한다.
-원문 마커와 동일 prompt_id 연결이며 모델 ACK 도구나 상시 transcript 파싱이 필수는 아니다.
-실제 payload에는 optional source가 없었다. source=system도 inbox 독점 신원이 아니다.
-Stop에는 원문/origin이 없으므로 Stop만 보고 발신자를 정하지 않는다.
+ClaudeBinding은 인증된 report의 inbox 경로·credential과 실제 inbox 연결을 확인한다.
+SessionStart는 절대 transcript 경로와 정확한 sessions/<ppid>.json의 존재·형식을 확인한다.
+실행·clear·resume 모두 대상 session의 관측을 준비하고 hook에 응답한다. registry ID가 다르면
+준비 상태로 두며, 일치하는 registry 관측과 실행·inbox·필요한 MCP 연결이 갖춰져야 최초 ready를
+발행한다. registry 미존재·형식 오류·초기 watcher 실패는 초기화 오류다. 보관한 이전 ID로
+불일치를 특별 허용하지 않으며 hook에서 registry 일치를 기다리지 않는다.
 
-ClaudeObservations는 실행별 원문과 session/prompt를 연결하고 직접 입력·daemon 알림은 발신 요청을
-완료시키지 않는다. 같은 key 재사용·원문의 복수 key 귀속·prompt ID 누락은 불확실 상태로 남긴다.
-vendor 내부 subagent의 agent_id가 있는 보고는 부모 입력 결과·현재 상태에 적용하지 않는다.
-개별 completed/failed/interrupted와 현재 작업·승인/질문 대기·오류 상태는 별도로 투영한다.
-Notification은 session·종류·prompt별 대기 힌트다. 대응하는 식별된 요청과 완료 관측으로
-같은 prompt의 힌트 및 session의 미식별 힌트를 정리하되 다른 prompt의 미해결 요청은 유지한다.
-근거: [[packages/adapters/claude/src/claude-observations.ts]] `packages/adapters/claude/src/claude-observations.ts:381`,
-[[packages/adapters/claude/src/claude-observations.test.ts]] `packages/adapters/claude/src/claude-observations.test.ts:406`.
-도구와 승인/질문 대기는 생성 당시 prompt에 귀속한다. Stop/StopFailure로 종료가 확인되면
-그 prompt의 잔존 도구·대기만 정리한다. PermissionRequest에는 tool ID가 없으므로 임의 도구의
-Post로 해당 승인이 해소됐다고 판단하지 않는다. 해당 prompt에 귀속한 관측 도구가 모두
-해소되거나 prompt 종료가 확인될 때 prompt 단위 승인 대기를 정리한다.
+새 instance는 hook 응답 전에 transcript identity와 EOF를 확보한다. 파일 미존재는 offset 0이며
+나중 생성 시 EOF를 다시 잡지 않는다. 동일 ID를 포함해 session을 resume하면 새 instance와 EOF로
+시작한다. 현재 instance의 compact는 cursor를 유지하고, 처음 보는 compact transcript만 0에서
+시작한다. 옛 읽기·정산은 새 instance의 offset 확보와 hook 응답을 막지 않는다.
+CwdChanged·FileChanged·SessionEnd·도구 hook 보고와 vendor watchPaths 출력은 사용하지 않는다.
 
-ClaudeBinding은 인증된 주 세션 hook의 transcript_path를 사용해 Claude가 저장한 JSONL을
-읽는다. 경로를 OS별로 추측하거나 파일을 생성·변경하지 않는다. ClaudeTranscript는 완성된
-추가 줄만 순서대로 소비하며 파일 교체·축소와 저장 callback 실패를 재시도한다. SessionEnd에서
-마지막 읽기를 수행한 뒤 감시를 닫고, 연결 손실·프로세스 종료·binding cleanup에서도 해제한다.
-읽기 실패는 본문·경로를 노출하지 않는 stderr 진단으로 남기며 정상 hook 관측을 유지한다.
+ClaudeTranscript는 파일 identity·byte offset과 UTF-8/미완성 행 경계를 관리한다. 전환 시
+읽지 않는 옛 reader는 즉시 폐기하고, 읽는 reader는 이미 확보한 파일 크기까지 완성된 행을
+소비한 뒤 폐기한다. 대기 중 읽기와 이후 append는 소비하지 않는다. watcher·cursor·파싱 및
+정산 상태도 해제하며 새 화면에는 관여하지 않는다. 실제 입력으로 해당 instance에 귀속된 남은 요청만 interrupted로 정산하되 이미
+확정한 결과는 바꾸지 않는다. 저장이 거절되면 확정 outcome과 재시도에 필요한 정보만 남긴다.
+실제 프로세스 종료는 현재 reader의 마지막 읽기와 진행 중인 옛 읽기의 종료를 기다린 뒤 기존
+종료 원인에 따른 fallback을 적용한다. 근거: claude.test.ts의 discard/fresh EOF, rapid resume,
+retired outcome retry, repeated transitions 및 claude-transcript.test.ts의 retire 회귀.
 
-No·도구 실행 중 Esc 보완은 알려진 session/prompt/tool의 user-rejected 결과를 parentUuid의
-직접 부모로 가리키는 같은 prompt의 중단 레코드를 함께 요구한다. prompt_snapshot 첨부를
-경유하는 No 연결은 현재 해석기가 놓치는 미해결 범위다. 단순 중단 문구, 다른 세션·subagent,
-모호하거나 이미 끝난 prompt는 종료 근거로 쓰지 않는다. 연결된 요청은 interrupted로 기록하며
-다른 요청의 상태와 기존 결과는 보존한다. transcript 미저장·누락된 식별자·이와 다른 중단 기록
-형식은 이 보완으로 확정하지 않는다. 2.1.269 macOS No·실행 중 Esc의 수집 기록과 파일 추가
-읽기 회귀를 검증했으며 Windows/Linux 실제 vendor 실행 검증과는 구분한다. [Status: As-built]
-근거: packages/adapters/claude/src/claude-transcript.ts와 같은 디렉터리의 claude-transcript.test.ts,
-claude.ts·claude.test.ts, claude-observations.ts·claude-observations.test.ts,
-apps/daemon/src/agent-controller.test.ts의 인증 hook·transcript·Web API/MCP 통합 회귀.
+binding은 존재하는 현재 transcript와 정확한 sessions/<ppid>.json 파일 자체에 fs.watch를
+연결한다. 변경 이벤트는 runtime 관측 queue로 합치고 비동기 읽기를 수행한다. 디렉터리 감시나
+정상 polling은 없다. rename/error는 현재 reader에 한해 재부착하고 실패한 읽기만 backoff로
+재시도한다. 초기 transcript가 없으면 registry 변경에서 부착을 재시도하며 offset 0을 유지한다.
 
-Stop은 응답 종료이며 작업 성공·프로세스 종료가 아니다. 여러 입력에 하나의 Stop이 왔다고
-모두 성공으로 표시하지 않는다. StopFailure의 prompt_id 연결은 구현·대역 검증됐지만 단일 Stop의
-과거 실측을 모든 busy·실패 상황의 vendor 관측 증거로 확대하지 않는다.
-이미 수용한 단일 inbox/Stop 연결이나 Codex active thread를 다시 전체 실험 과제로 만들지 않는다.
-근거: [[packages/adapters/claude/src/claude-observations.ts]] `packages/adapters/claude/src/claude-observations.ts:66`,
-[[packages/adapters/claude/src/claude-observations.test.ts]] `packages/adapters/claude/src/claude-observations.test.ts:36-386`,
-controller test의 `apps/daemon/src/agent-controller.test.ts:736-1074`.
+현재 transcript 경로가 사라졌다면 config/projects 바로 아래 디렉터리에서 동일 session 파일명을
+찾고 단일 후보에 reader를 이전한다. 여러 후보는 관측 오류이며 추측하지 않는다. 같은 instance의
+경로 이전은 cursor를 유지하지만 session 전환으로 폐기한 instance는 복구하지 않는다.
+
+ClaudeObservations는 instance별 입력·chain·실패 상태를 관리한다. StopFailure와 Notification만
+hook 관측으로 소비하고 실제 입력은 transcript에서 연결한다. 내부 UserPromptSubmit 합성과
+도구 hook 상태 분기는 제거했다. 빠른 A→B→A에서 옛 A 읽기는 자신이 확보한 instance를 사용하며
+새 A의 화면·정산 상태를 변경하지 않는다.
+
+관측 진단은 RuntimeControls.setObservationError → RuntimeRecord.observation_error → HTTP
+snapshot → Web 및 CLI 상세 조회로 전달한다. registry/현재 transcript 실패와 저장 거절 진단은
+화면 status나 delivery 결과와 분리하며 복구된 항목만 해제한다. 폐기한 reader의 늦은 감시
+콜백은 재등록하지 않는다. 저장 실패는 실패한 outcome만 재시도하고 삭제한 transcript를 열지 않는다.
+근거: claude.test.ts의 repeated transitions/outcome retry와 apps/daemon/src/runtimes.test.ts,
+apps/web/src/main.test.ts의 observation_error 회귀.
+
+ClaudeTranscriptChain은 관측한 입력의 causal metadata만 보관한다. attachment를 거친 연결과
+부모보다 먼저 기록된 자식을 연결한다. 미연결 기록 수가 4096개를 넘었다고 throw하거나
+오래된 종료 근거를 버리지 않는다. session release까지 정제된 미연결 metadata를 보관하므로
+그 크기에 비례한 메모리가 필요하며 고정 상한은 없다. 메모리 상한이 필요하면 근거 유실 없는
+보관 방식이 별도 필요하다. 재개 시 관측 대상이 아닌 과거 입력은 건너뛴다.
+무시한 UUID는 session release까지 보존해 늦은 자손을 미연결 행으로 적재하지 않는다.
+부모 없는 귀속 불가 행과 미관측 요청도 무시 계보를 전파하되 새 사용자 입력은 별도 lifecycle로 관측한다.
+무시 UUID도 이력에 비례한 메모리를 사용하며 고정 상한은 없다.
+종료 요청의 graph는 다음 입력에서 제거하며 중복 억제용 종료 ID는 해당 instance가
+해제될 때까지 유지한다. session 전환은 옛 instance를 폐기하며 resume에서 재사용하지 않는다.
+저장 거절 outcome의 재시도 수명은 관측 instance의 수명과 분리한다.
+
+정상 Stop 경로의 종료는 인증된 Runtime·동일 session/request의 현재 parent chain에서 정상
+assistant end_turn과 완성된 turn_duration을 함께 확인한다. API 오류·중단 근거가 있는 경로,
+duration 단독, 과거 branch의 duration은 정상 종료로 처리하지 않는다. 시작 시 Stop 설정과
+무관하며 stop_hook_summary는 있으면 parent 연결로 소비하되 존재를 요구하지 않는다.
+hasOutput·preventedContinuation·stopReason으로 별도 대기 조건을 만들지 않는다.
+block/additionalContext 후속 작업은 같은 lifecycle의 working을 유지하고 최종 duration에서
+해당 활동을 끝낸다. continue:false/stopReason도 이 종료 기준을 따르며 업무의 의미적 성공을
+평가하거나 실패·사용자 중단으로 임의 분류하지 않는다. 명시적 async background hook 전체의
+종료나 미래 continuation 부재를 기다리는 timeout/grace period는 두지 않는다.
+
+중단은 실행 중이던 작업 종류와 무관하게 현재 요청의 parent chain에 연결된 vendor 중단
+선언으로 판정한다. 두 vendor 중단 문구를 하나의 interrupted 결과로 정규화하며 오류 tool_result나
+중단된 assistant ID의 존재를 요구하지 않는다. 선택적으로 전달된 interruptedMessageId는
+연결된 assistant ID와 일치해야 한다. 직접 입력(origin/promptSource), 다른 요청·sidechain,
+과거 branch는 제외하며 attachment를 통한 연결·부모 지연·중복 억제는 유지한다.
+거부 결과나 isAbortedMidStream만으로는 요청 종료를 확정하지 않는다. interruptedByShutdown이
+명시되면 표시 이유는 Interrupted이며 사용자 중단으로 표시하지 않는다.
+
+ClaudeObservations는 transcript 입력 행에서도 session/prompt를 등록한다. AIOX 연결은
+origin.kind=peer, origin.name=escape된 from-name 속성값, origin.body=발신 frame 본문 전체의
+정확 일치로 확인한다. vendor가 붙인 안내문이나 UUID 표식 포함만으로 연결하지 않는다.
+미연결 delivery는 Runtime에 보관하고 session 전환으로 귀속을 정하지 않는다. 먼저 온
+StopFailure는 session/prompt별 최초 이유를 보관해 실제 입력이 도착하면 적용한다. 입력보다
+먼저 온 자식 행도 인과 metadata로 보관한다. 직접 입력·daemon notice는 새 delivery를 만들지 않는다.
+입력 연결은 transcript에서 수행하며 UserPromptSubmit hook 분기를 사용하지 않는다.
+검증은 `claude-observations.test.ts`의 peer 입력·잘못된 origin/name/body·선행 실패·부모 지연 회귀와
+`claude.test.ts`의 응답 전 EOF·compact 보존·차단된 consumer 독립 초기화 회귀다.
+
+ClaudeObservations는 요청별 활동·대기와 Runtime 현재 상태를 분리한다. transcript API 오류는
+completed를 막고 StopFailure가 실제 vendor 이유로 failed를 확정한다. 모든 StopFailure 오류
+분류를 보존하며 일반 도구 오류를 요청 실패로 승격하지 않는다. 한 요청 종료는 그 요청의 도구·
+승인·질문만 해소한다. 직접 입력은 delivery를 만들지 않으며 daemon 알림은 deliveryId=null이다.
+최초 결과는 settle 인수 전 reject에도 보존하고 다음 flush/cleanup에서 그대로 전달한다.
+인수 후 DB 실패는 daemon 책임이므로 adapter는 local 연결을 해제한다.
+
+관측 수명 근거: [[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:101-377`,
+[[packages/adapters/claude/src/claude-transcript.ts]] `packages/adapters/claude/src/claude-transcript.ts:4-82`.
+인과관계와 인수 경계: [[packages/adapters/claude/src/claude-transcript-chain.ts]] `packages/adapters/claude/src/claude-transcript-chain.ts:53-198`,
+[[packages/adapters/claude/src/claude-observations.ts]] `packages/adapters/claude/src/claude-observations.ts:80-130`, `packages/adapters/claude/src/claude-observations.ts:268-324`.
+검증: [[packages/adapters/claude/src/claude-transcript-chain.test.ts]] `packages/adapters/claude/src/claude-transcript-chain.test.ts:52`,
+`packages/adapters/claude/src/claude-transcript-chain.test.ts:81-120`의 늦은 과거 기록·부모 지연 회귀,
+[[packages/adapters/claude/src/claude-observations.test.ts]] `packages/adapters/claude/src/claude-observations.test.ts:193-254`의 API 오류 뒤 과거 summary·duration과 StopFailure 결과 검증,
+[[packages/adapters/claude/src/claude.test.ts]] `packages/adapters/claude/src/claude.test.ts:195-464`,
+[[apps/daemon/src/agent-controller.test.ts]] `apps/daemon/src/agent-controller.test.ts:900-964`의 인증 HTTP·MCP·SQLite 통합 회귀.
+SessionStart offset의 독립 확보, 최초 compact, 동일 session resume의 새 instance·EOF, 실제 process exit의
+마지막 읽기와 세 종료 조건, 모든 reader drain 시도, 정산 거절 재시도는 `claude.test.ts`의 이름별
+회귀를 따른다. 구형 FileChanged/CwdChanged 응답 테스트는 직접 파일 변경·registry 관측으로
+대체했다. 진행 중 읽기 경로 이동은 `claude-transcript.test.ts`, 미연결 chain 보존은
+`claude-transcript-chain.test.ts`가 검증한다. 실제 macOS Claude 2.1.276과 최신 production
+adapter·daemon·DB 통합에서 기본 입력 및 /cd 전후 두 요청의 completed·알림 2건을 확인했다.
+watchPaths 응답과 FileChanged hook은 없었다. 근거와 이전 vendor hook 실측의 구분은
+Stage3 W3의 2026-09-19 직접 감시 전환 기록을 따른다. 최신 구조의 /clear·/resume 입력 두 순서,
+다른 OS 실제 통합은 미검증이다.
 
 ## Claude 정리와 검증 경계
 
@@ -295,7 +363,7 @@ CLI가 vendor exit 후 정리한다. daemon의 종료 요청은 daemon 소유 �
 연결 손실·프로세스 실패·중단은 연결된 입력 결과를 각각 정리하며 메시지를 재전송하지 않는다.
 daemon execution owner의 terminal 상태 자원은 kill 성공 후 dispose로 해제한다. kill 실패 시에는
 dispose를 진행하지 않아 종료 재시도에 필요한 세션을 보존한다.
-근거: [[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:226-258`,
+근거: [[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:412-444`,
 [[packages/vendor/src/execution.ts]] `packages/vendor/src/execution.ts:7`;
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:362-386`.
 브라우저 attachment 해제는 입력 연결 손실과 별개다. Agent 종료의 borrowed shell 유지와 daemon
@@ -418,8 +486,18 @@ turn·item·요청 이벤트를 control로 전한다. Binding은 Runtime/thread/
 연결하고 같은 turn의 `turn/completed`만 해당 delivery들의 결과로 저장한다. 화면의 현재
 활동은 선택된 thread의 turn·도구·request ID별 승인/질문 대기에서 계산한다. 끝난 turn의
 늦은 item 이벤트는 결과를 바꾸지 않고, 한 요청 해소는 다른 미해결 요청을 지우지 않는다.
-DB 저장 실패 결과는 보존해 cleanup에서 재시도하며 daemon의 기존 in-flight drain도 유지한다.
+입력 수락 응답보다 turn 종료가 먼저 와도 결과를 보관해 같은 busy turn의 후속 수락에 연결한다.
+진행 중인 입력 수락이 모두 끝날 때까지 조기 결과를 유지한다. flush는 인수 대기 중 합류한
+delivery를 같은 목록에서 소비하고, 목록·결과 정리와 flush 소유권 해제를 함께 수행해
+그 뒤 수락된 delivery가 새 flush를 시작하도록 한다.
+최초 outcome을 보존하고 동일 turn flush를 병합한다. controls.settle 인수 ack 뒤 delivery 연결을
+제거하며 인수 전 reject는 cleanup에서 같은 결과로 재시도한다. 인수 후 DB 실패는 daemon이
+소유하므로 binding 종료 뒤에도 중앙 timer가 저장한다. 최근 종료 turn의 중복 결과는 현재 상태를
+덮어쓰지 않는다.
 TUI가 사용자 승인·질문 응답을 소유한다.
+근거: [[packages/adapters/codex/src/binding.ts]] `packages/adapters/codex/src/binding.ts:231-295`, `packages/adapters/codex/src/binding.ts:347-373`, `packages/adapters/codex/src/binding.ts:445-484`;
+[[packages/adapters/codex/src/binding.test.ts]] `packages/adapters/codex/src/binding.test.ts:41-184`의 즉시·지연 인수 ack와 여러 busy 입력 결과 회귀;
+[[apps/daemon/src/messaging.test.ts]] `apps/daemon/src/messaging.test.ts:613-736`의 Codex socket 대역·DB 실패 통합 검증.
 
 AIOX MCP가 활성인 실행의 제목 생성 helper는 Codex TUI가
 `config.mcp_servers.aiox={enabled:false}`만 보낸다. Codex 0.153.4의 같은 App Server에서
@@ -495,9 +573,8 @@ ClaudeObservations는 StopFailure의 오류 분류를 실패 이유로 보관하
 투영한다. fired는 재개 관측을 기록하고 실패와 quota 대기를 해제한다. disabled는 해당
 세션의 quota 대기와 재개 기록을 모두 제거한 뒤 남은 관측으로 상태를 재계산한다.
 현재 실패는 보존하고 fired가 지운 과거 실패는 복원하지 않으며 delivery 결과는 변경하지 않는다.
-세션 재개 활동의 Stop/StopFailure 처리는 prompt 중복 정산 guard 앞에
-두어 종료된 ID·미등록 ID도 현재 활동에 반영한다. 기존 delivery 귀속·결과와 blocking Stop
-제한을 보존하며 다른 활동·대기를 지우지 않는다. 새 입력은 해당 세션 quota 대기를 해제한다.
+세션 재개 활동은 검증된 transcript 종료 또는 StopFailure로 해소한다. 기존 delivery의
+최초 결과는 유지하고 해당 요청 외 활동·대기를 지우지 않는다. 새 입력은 해당 세션 quota 대기를 해제한다.
 대기 이유는 등록 시 저장해 공통 상태 투영 시 별도 event 번역이 필요하지 않다.
 `cloud_credential_error`를 공식 오류 값으로 인식한다. 인증 hook을 주입하는
 통합 테스트는 ClaudeBinding→Registry→Web API/MCP의 상태·이유 일치와 원 delivery 결과·알림
@@ -552,17 +629,17 @@ async-ended.png·app-server-lost.png·restarted-idle.png.
 Codex nullable MCP elicitation의 실제 발생·해소는 미실측이며 추가 실측은 사용자 지시로
 생략한다. 실패한 대화의 선택/취소, async 종료 후 선택 UI 제출, 자연 발생 한도 payload와
 control WS 등 App Server 종료 이외 연결별 실제 복구는 미확인이다. 기존 Claude
-transcript 중단 미해결 범위와 제목 helper config gap도 유지한다.
+transcript copy 이동·production relocation 전체 통합·다른 OS 검증과 Codex 제목 helper config gap도 남아 있다.
 
 ## 관측과 사용자 응답 경계
 
 | 목적 | Codex | Claude |
 | --- | --- | --- |
-| 입력 | turn/start 응답의 runtime 입력 수락 | UserPromptSubmit 원문/ID 연결 |
-| 응답 종료/실패 | turn/completed 상태·error | Stop / StopFailure |
-| 승인 | commandExecution/fileChange/permissions requestApproval | PermissionRequest / permission_prompt |
-| 질문 | item/tool/requestUserInput, mcpServer/elicitation/request | Elicitation·관련 Notification |
-| 해소 | serverRequest/resolved(threadId/requestId) | ElicitationResult 등, 모든 승인의 resolved는 미확인 |
+| 입력 | turn/start 응답의 runtime 입력 수락 | transcript peer origin·이름·본문 / session·prompt 연결 |
+| 응답 종료/실패 | turn/completed 상태·error | 직접 감시로 읽은 transcript chain / StopFailure |
+| 승인 | commandExecution/fileChange/permissions requestApproval | registry waiting/waitingFor |
+| 질문 | item/tool/requestUserInput, mcpServer/elicitation/request | registry waiting/waitingFor |
+| 해소 | serverRequest/resolved(threadId/requestId) | registry busy/idle 전환 |
 | 사용량/재개 | account/rateLimits/read·updated | quota_auto_resume_fired/stale/disabled |
 
 이 표는 공식 문서 조사 기반의 연결 후보를 포함하며 전체 live wiring 검증표가 아니다.

@@ -37,6 +37,7 @@ type InFlight = {
     readonly targetName: string;
     readonly reverseRouteAtSend: boolean;
     readonly content: string;
+    storageError?: string;
     result?: {
         outcome: DeliveryOutcome;
         error: string | undefined;
@@ -68,6 +69,11 @@ export class MessageService {
     readonly #sending = new Set<Promise<SendResult>>();
     readonly #settling = new Map<string, Promise<void>>();
     #admitting = true;
+    #retryTimer: ReturnType<typeof setTimeout> | undefined;
+    #retryBatch: Promise<void> | undefined;
+    #draining: Promise<void> | undefined;
+    #retryPaused = false;
+    #retryDelay = 1000;
 
     constructor(
         private readonly db: AioxDatabase,
@@ -110,6 +116,8 @@ export class MessageService {
 
     resume(): void {
         this.#admitting = true;
+        this.#retryPaused = false;
+        this.#scheduleRetry();
     }
 
     async #send(
@@ -207,12 +215,11 @@ export class MessageService {
                 content,
             });
             try {
-                if (
-                    !source.collaborationActive ||
-                    this.#refuse(source, entry.target.id) !== undefined
-                )
+                const refusal = this.#refuse(source, entry.target.id);
+                if (!source.collaborationActive || refusal !== undefined)
                     throw new Error(
-                        "Runtime is no longer available for delivery.",
+                        refusal ??
+                            "Runtime is no longer available for delivery.",
                     );
                 await entry.target.binding.deliver({
                     deliveryId: entry.id,
@@ -282,36 +289,102 @@ export class MessageService {
     ): Promise<void> {
         const flight = this.#inFlight.get(deliveryId);
         // A binding may only settle its own delivery, and only once.
-        if (!flight || flight.targetRuntimeId !== runtimeId)
-            return Promise.resolve();
+        if (!flight) return this.#ackStored(runtimeId, deliveryId);
+        if (flight.targetRuntimeId !== runtimeId)
+            return Promise.reject(
+                new Error("Runtime does not own this delivery."),
+            );
         // A later cleanup or duplicate report cannot replace a result whose write failed.
         flight.result ??= { outcome, error, at: this.now() };
+        return this.#persist(deliveryId, flight);
+    }
+
+    async #ackStored(runtimeId: string, deliveryId: string): Promise<void> {
+        const stored = await this.db.messages.delivery(deliveryId);
+        if (stored?.targetRuntimeId !== runtimeId || stored.outcome === null)
+            throw new Error("Runtime does not own a settled delivery.");
+    }
+
+    #persist(deliveryId: string, flight: InFlight): Promise<void> {
         const active = this.#settling.get(deliveryId);
         if (active) return active;
-        const settling = this.#settle(deliveryId, flight).finally(() => {
-            this.#settling.delete(deliveryId);
-        });
+        const settling = this.#settle(deliveryId, flight)
+            .catch((error: unknown) => {
+                const reason =
+                    error instanceof Error ? error.message : String(error);
+                if (flight.storageError !== reason)
+                    console.error(
+                        `AIOX: outcome storage failed for ${deliveryId}: ${reason}`,
+                    );
+                flight.storageError = reason;
+            })
+            .finally(() => {
+                this.#settling.delete(deliveryId);
+                this.#scheduleRetry();
+            });
         this.#settling.set(deliveryId, settling);
         return settling;
     }
 
-    /** Called after runtimes stop producing outcomes, before closing storage. */
-    async drain(): Promise<void> {
-        await Promise.allSettled(this.#settling.values());
-        const results = await Promise.allSettled(
-            [...this.#inFlight]
-                .filter(([, flight]) => flight.result)
-                .map(([id, flight]) =>
-                    this.settle(
-                        flight.targetRuntimeId,
-                        id,
-                        flight.result!.outcome,
-                        flight.result!.error,
-                    ),
-                ),
+    #snapshot(): [string, InFlight][] {
+        return [...this.#inFlight].filter(
+            ([, flight]) => flight.result !== undefined,
         );
-        const failure = results.find((result) => result.status === "rejected");
-        if (failure?.status === "rejected") throw failure.reason;
+    }
+
+    #scheduleRetry(): void {
+        if (this.#snapshot().length === 0) {
+            clearTimeout(this.#retryTimer);
+            this.#retryTimer = undefined;
+            this.#retryDelay = 1000;
+            return;
+        }
+        if (this.#retryPaused || this.#retryTimer || this.#retryBatch) return;
+        // Only failed writes start a retry; active first attempts are not failures.
+        if (
+            ![...this.#inFlight.values()].some(
+                (flight) => flight.storageError !== undefined,
+            )
+        )
+            return;
+        this.#retryTimer = setTimeout(() => {
+            this.#retryTimer = undefined;
+            const snapshot = this.#snapshot();
+            this.#retryBatch = this.#persistSnapshot(snapshot).finally(() => {
+                this.#retryBatch = undefined;
+                if (snapshot.some(([id]) => this.#inFlight.has(id)))
+                    this.#retryDelay = Math.min(30_000, this.#retryDelay * 2);
+                this.#scheduleRetry();
+            });
+        }, this.#retryDelay);
+        this.#retryTimer.unref();
+    }
+
+    async #persistSnapshot(snapshot: [string, InFlight][]): Promise<void> {
+        for (const [id, flight] of snapshot)
+            if (this.#inFlight.get(id) === flight)
+                await this.#persist(id, flight);
+    }
+
+    /** Join active writes, then make one final attempt; leave failures owned here. */
+    drain(): Promise<void> {
+        if (this.#draining) return this.#draining;
+        this.#retryPaused = true;
+        clearTimeout(this.#retryTimer);
+        this.#retryTimer = undefined;
+        this.#draining = (async () => {
+            await this.#retryBatch;
+            await Promise.all(this.#settling.values());
+            await this.#persistSnapshot(this.#snapshot());
+            const remaining = this.#snapshot();
+            if (remaining.length)
+                throw new Error(
+                    `Unstored outcomes (${remaining.length}): ${remaining.map(([id, flight]) => `${id}: ${flight.storageError ?? "write incomplete"}`).join("; ")}`,
+                );
+        })().finally(() => {
+            this.#draining = undefined;
+        });
+        return this.#draining;
     }
 
     async #settle(deliveryId: string, flight: InFlight): Promise<void> {
@@ -343,6 +416,8 @@ export class MessageService {
             notification,
         );
         this.#inFlight.delete(deliveryId);
+        if (flight.storageError !== undefined)
+            console.error(`AIOX: outcome storage recovered for ${deliveryId}`);
         if (!settled || !notification) return;
         if (notification.originExecutionOwnership === "daemon") this.onChange();
         const body = notification.body;
@@ -386,7 +461,8 @@ export class MessageService {
         ) {
             return "not_in_network";
         }
-        if (target.status === "aiox-preparing") return "not_available";
+        if (target.status === "aiox-preparing")
+            return "not_available: Agent is preparing/switching session. Please try again in a few moments.";
         return undefined;
     }
 }

@@ -91,7 +91,7 @@ Codex 조합의 성공은 사용자 전달 실험 근거이며 신규 AIOX 통�
 | 연결된 prompt/turn 종료 | 응답 종료 | 프로세스 종료 또는 작업 검증 완료 |
 | Agent의 send 응답 | 대화상 회신 | 원 요청 완료 또는 이후 작업 종료 |
 
-현재 상태와 이유는 [[docs/specs/aiox-runtime]]의 공통 `status/status_reason` 계약을 따른다. `agents_list()`는 현재 Network·outbound route·인증 범위 안의 준비 중 Agent도 표시한다. 목록 포함은 전송 준비 완료를 뜻하지 않으며 준비 전 send는 `not_available`로 거절한다. 종료·등록 해제된 Agent는 제외하고 Host stopped 항목을 Agent로 추가하지 않는다. Web도 같은 상태와 이유를 표시한다.
+현재 상태와 이유는 [[docs/specs/aiox-runtime]]의 공통 `status/status_reason` 계약을 따른다. `agents_list()`는 현재 Network·outbound route·인증 범위 안의 준비 중 Agent도 표시한다. 목록 포함은 전송 준비 완료를 뜻하지 않으며 준비 중 send는 `not_available: Agent is preparing/switching session. Please try again in a few moments.`로 거절한다. 이미 주입한 대기 메시지를 취소하거나 회수하지 않는다. 종료·등록 해제된 Agent는 제외하고 Host stopped 항목을 Agent로 추가하지 않는다. Web도 같은 상태와 이유를 표시한다.
 
 ```text
 B가 요청 X 처리 → X completed, B는 실제 활동에 따라 idle 또는 working
@@ -100,7 +100,7 @@ B가 요청 Y 처리 → X completed 유지, Y 진행 중, B working
 
 completed/failed/interrupted는 개별 AIOX 입력의 처리 결과이고 Agent의 현재 상태와 별개다. completed는 연결된 응답 처리가 끝났다는 뜻이며 산출물의 정확성·업무 성공 보장이 아니다. 한 요청이 실패해도 실행이 살아 다른 입력을 처리한다면 현재 상태는 실제 활동을 따른다.
 
-Claude는 Runtime·session_id·prompt_id와 연결된 UserPromptSubmit/Stop을, Codex는 Runtime·threadId·turnId와 연결된 `turn/completed`의 completed/failed/interrupted 결과를 사용한다. 입력 주입 성공만으로 처리 완료를 선언하지 않는다. busy 입력이 기존 turn에 합쳐질 수 있으므로 메시지 하나가 항상 새 turn 하나라는 가정을 하지 않는다. 임의 Stop 하나로 모든 요청을 완료하지 않는다.
+Claude는 인증된 세 hooks와 직접 감시로 읽은 transcript의 session/prompt 및 parent chain을, Codex는 Runtime·threadId·turnId와 연결된 `turn/completed`의 completed/failed/interrupted 결과를 사용한다. 입력 주입 성공만으로 처리 완료를 선언하지 않는다. busy 입력이 기존 turn에 합쳐질 수 있으므로 메시지 하나가 항상 새 turn 하나라는 가정을 하지 않는다. 임의 Stop 하나로 모든 요청을 완료하지 않는다.
 
 세션 만료·인증/API 오류·연결 손실 등이 실제 요청을 실패시킨 경우 failed에 포함한다. 일시 재시도·일반 도구 오류를 무조건 요청 또는 Runtime 실패로 승격하지 않는다. interrupted는 Web에 기록하되 발신 Agent 자동 통지는 하지 않으며 모든 중단의 원인을 사용자로 단정하지 않는다.
 
@@ -114,16 +114,42 @@ Claude의 hook이 누락되는 도구 거부·중단은 세션 기록에서 해�
 종료·업무 결과를 구분한다. 연결 손실 원인은 요청 결과에 남기며 vendor가 계속 수행하는
 업무의 성공·실패를 확정하지 않는다. 실행 수명은 runtime 계약을 따른다.
 
-Claude `UserPromptSubmit`의 원문·AIOX 연결 ID를 `session_id`/`prompt_id`에 연결하고 같은
-`Stop`을 응답 종료로 연결하는 것이 수용한 관측 경로다. `source`는 optional이며 system이
-inbox만의 값도 아니다. Stop만으로 origin을 인증하지 않는다. 일반 PreToolUse/PostToolUseFailure를
-모두 수집해 협업 오류로 만드는 것은 범위 밖이다.
+Claude session 전환은 옛 관측 instance의 수명을 끝낸다. 진행 중인 읽기는 이미 확보한 범위의
+완성된 행을 처리한 뒤 끝내며, 읽지 않는 instance는 즉시 삭제한다. 이후 기록을 기다리지 않는다.
+실제 입력 행으로 옛 session에 연결된 남은 AIOX 요청만 interrupted로 정산하며, 이미 확정한 outcome과 저장 재시도는 보존한다.
+아직 입력 행이 관측되지 않은 요청은 전환만으로 정산하지 않고 실제 처리 session의 입력에 연결한다.
+resume은 새 관측 instance로 연결하고 기존 대화 기록은 다시 정산하지 않는다. [Status: Current]
 
-**근거 한계:** 사용자 전달 실측은 Claude 2.1.263의 **단일 idle inbox 입력 → UserPromptSubmit
-→ 같은 prompt_id의 Stop**이다. busy/multi-input 전체, StopFailure 연결, native Windows를
-검증한 결과가 아니다. 하나의 Stop으로 여러 입력이 각각 성공했다고 단정하지 않는다.
-raw inbox body·표시 태그·hidden 경로 옵션은 vendor 내부 구현 의존이며 안정된 범용 공식 API로
-승격하지 않는다. 이미 확보한 수신·응답 종료 근거를 다시 “아무것도 알 수 없음”으로 낮추지도 않는다.
+Claude는 인증된 session/절대 transcript 경로에서 실제 입력의 session/promptId와
+uuid/parentUuid 인과관계를 확인한다. Transcript peer 입력은 발신 frame의 escape된 이름과
+전체 본문이 origin.name/body와 정확히 일치할 때 AIOX delivery에 연결하며, UUID 표식 포함만으로
+연결하지 않는다. 먼저 온 StopFailure는 해당 입력과 연결할 때까지 보관한다. session 관측·삭제의 구현 책임은 bindings가 소유한다.
+정상 종료는 같은 요청의 현재 chain에 있는
+정상 assistant end_turn과 완성된 turn_duration을 함께 요구하며 해당 경로에 API 오류·중단
+근거가 없어야 한다. 시작 시 Stop 설정이나 summary 존재 여부는 종료 조건이 아니다.
+Stop의 후속 작업과 결과 취합 뒤의 최종 기록까지 같은 lifecycle이며 continue:false/stopReason도
+이 기준으로 turn 종료를 처리한다. Stop, end_turn, duration, hasOutput 중 하나만으로 완료를
+선언하지 않으며 과거 branch의 기록을 사용하지 않는다. 의미적 업무 성공이나 명시적 async
+background hook 전체 종료를 보장하지 않는다. AIOX는 Stop hook을 주입하지 않는다.
+
+종료는 작업 종류가 아니라 해당 요청의 명시적 종료 근거로 판정한다. 중단은 attachment를
+포함한 현재 parent chain의 vendor 중단 선언으로 interrupted를 확정하며, 도구 거부 결과만으로
+요청을 끝내지 않는다. 사용자 중단의 표시 문구는 `Interrupted by user`이며 vendor가 shutdown을
+명시한 중단은 `Interrupted`로 표시한다. API 오류 transcript가
+먼저 오면 completed를 금지하고 같은 요청의 StopFailure로 failed와 실제 이유를 확정한다.
+도착하지 않은 hook을 처리한 것으로 간주하지 않는다.
+
+adapter의 `controls.settle` resolve는 daemon이 최초 outcome과 저장 재시도 책임을 인수했다는
+ack다. DB 저장 완료와 다르다. 인수 전 reject는 adapter가 최초 outcome을 보존하고, 인수 후
+DB 실패는 daemon이 소유한다. 종료 cleanup은 최초 결과를 바꾸지 않는다.
+
+**근거 한계:** macOS Claude 2.1.274의 격리 TUI·로컬 API 대역으로 production reporter,
+사용자 Stop 없음/단순 출력/block/additionalContext, cwd 변경·clear·resume 및 사용자 watchPaths
+공존을 검증했다. 별도 TUI에서는 동작 중인 감시를 전제로 /cd의 동일 파일시스템 이동과
+FileChanged unlink→새 watchPaths→새 transcript 수신을 확인했다. 변경된 binding의 이동·재시도는
+회귀 테스트로 검증했으며 전체 daemon을 포함한 relocation 실측은 아니다. 이를 native Windows/Linux,
+copy 이동, 실제 quota 발생이나 모든 busy 입력 순서로 확대하지 않는다. 상세 근거는 Stage3 W3 로그에 남긴다. raw inbox와
+transcript 레코드는 vendor 구현 의존이며 안정된 범용 공식 API로 승격하지 않는다.
 
 ## 실패·대기와 재전송 제외
 

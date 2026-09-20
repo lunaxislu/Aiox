@@ -196,6 +196,9 @@ function describeAgent(agent: AgentView, detailed = false): string {
         agent.role === null ? "" : `Role: ${agent.role}`,
         agent.description === null ? "" : `Description: ${agent.description}`,
         agent.status_reason === null ? "" : `Reason: ${agent.status_reason}`,
+        agent.observation_error === null
+            ? ""
+            : `Observation error: ${agent.observation_error}`,
     ].filter(Boolean);
     if (detailed)
         return [heading, ...details.map((line) => `  ${line}`)].join("\n");

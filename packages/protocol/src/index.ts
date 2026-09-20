@@ -188,6 +188,7 @@ export const agentViewSchema = z.object({
     hostId: z.string().nullable(),
     terminalId: z.string().nullable(),
     status_reason: z.string().nullable(),
+    observation_error: z.string().nullable(),
 });
 
 export const notificationViewSchema = z.object({

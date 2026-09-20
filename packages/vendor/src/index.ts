@@ -37,6 +37,9 @@ export type InboundMessage = {
 export type RuntimeControls = {
     readonly runtimeId: string;
     setStatus(status: RuntimeStatus, statusReason?: string): void;
+    /** Observation health is separate from the selected session status. */
+    setObservationError(error: string | null): void;
+    /** Resolves when the daemon owns the first outcome and any storage retries. */
     settle(
         deliveryId: string,
         outcome: DeliveryOutcome,
@@ -63,7 +66,8 @@ export type VendorBinding = {
     executionStarted(): void;
     processExited(exitCode: number, signal: number | null): Promise<void>;
     mcpConnected(): void;
-    observe(report: unknown): Promise<void>;
+    /** Optional vendor response is transported as JSON to its authenticated reporter. */
+    observe(report: unknown): Promise<unknown>;
     deliver(message: InboundMessage): Promise<void>;
     connectionLost(): Promise<void>;
     cleanup(

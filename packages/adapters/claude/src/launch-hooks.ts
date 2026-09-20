@@ -8,19 +8,9 @@ export function launchHooks(): Record<string, unknown> {
         fileURLToPath(new URL("./claude-hook-main.js", import.meta.url)),
     );
     return Object.fromEntries(
-        [
-            "SessionStart",
-            "SessionEnd",
-            "UserPromptSubmit",
-            "Stop",
-            "StopFailure",
-            "PermissionRequest",
-            "PreToolUse",
-            "PostToolUse",
-            "PostToolUseFailure",
-            "Elicitation",
-            "ElicitationResult",
-            "Notification",
-        ].map((name) => [name, [{ hooks: [hook] }]]),
+        ["SessionStart", "StopFailure", "Notification"].map((name) => [
+            name,
+            [{ hooks: [hook] }],
+        ]),
     );
 }

@@ -47,6 +47,7 @@ it("forwards stdin and vendor inbox credentials using authenticated HTTP", async
         expect(authorization).toBe("Bearer hook-secret");
         expect(received).toEqual({
             event: { session_id: "s" },
+            ppid: process.ppid,
             inboxPath: env.CLAUDE_CODE_MESSAGING_SOCKET,
             inboxToken: "inbox-secret",
         });
@@ -89,7 +90,9 @@ it("bounds a hanging input stream", async () => {
         const result = expect(reportClaudeHook(input, env)).rejects.toThrow(
             "AIOX hook report failed.",
         );
-        await vi.advanceTimersByTimeAsync(5000);
+        await vi.advanceTimersByTimeAsync(29_999);
+        expect(input.destroyed).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
         await result;
         expect(input.destroyed).toBe(true);
     } finally {
@@ -146,3 +149,30 @@ it.each(["unauthorized", "timeout", "reset", "malformed"])(
         if (failure === "malformed") expect(fetch).not.toHaveBeenCalled();
     },
 );
+
+it("consumes successful report responses without vendor watch output", async () => {
+    const write = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const response = new Response(
+        JSON.stringify({
+            hookSpecificOutput: {
+                hookEventName: "SessionStart",
+                watchPaths: ["/old.jsonl"],
+            },
+        }),
+        { status: 200 },
+    );
+    const cancel = vi.spyOn(response.body!, "cancel");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    try {
+        await reportClaudeHook(
+            Readable.from([
+                JSON.stringify({ hook_event_name: "SessionStart" }),
+            ]),
+            env,
+        );
+        expect(write).not.toHaveBeenCalled();
+        expect(cancel).toHaveBeenCalledOnce();
+    } finally {
+        write.mockRestore();
+    }
+});

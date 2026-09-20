@@ -15,7 +15,6 @@ export async function prepareClaudeLaunch(input: {
 }): Promise<{
     args: string[];
     env: Record<string, string>;
-    hasBlockingStopHooks: boolean;
 }> {
     const args: string[] = [];
     const tail: string[] = [];
@@ -28,7 +27,6 @@ export async function prepareClaudeLaunch(input: {
     const extracted = new Map<string, string>();
     let restricted = false;
     let strictMcp = false;
-    let inlinePlugins = false;
     for (let index = 0; index < input.args.length; index++) {
         const argument = input.args[index]!;
         if (argument === "--") {
@@ -39,12 +37,6 @@ export async function prepareClaudeLaunch(input: {
         const name = equal < 0 ? argument : argument.slice(0, equal);
         if (name === "--restricted") restricted = true;
         if (name === "--strict-mcp-config") strictMcp = true;
-        if (
-            ["--plugin-dir", "--plugin-dir-no-mcp", "--plugin-url"].includes(
-                name,
-            )
-        )
-            inlinePlugins = true;
         if (["--safe-mode", "--bare"].includes(name))
             invalid(name, "disables hooks required by AIOX");
         if (["--print", "-p"].includes(name))
@@ -169,12 +161,6 @@ export async function prepareClaudeLaunch(input: {
         ...inherited,
         user,
         ...managed,
-    ) as Record<string, unknown>;
-    const enabledPlugins = Object.assign(
-        {},
-        ...[...inherited, user, ...managed].map((settings) =>
-            object(settings.enabledPlugins),
-        ),
     ) as Record<string, unknown>;
     if (effective.disableAllHooks === true)
         invalid("disableAllHooks=true", "disables hooks required by AIOX");
@@ -313,14 +299,6 @@ export async function prepareClaudeLaunch(input: {
                 (entry): entry is [string, string] => entry[1] !== undefined,
             ),
         ),
-        // A plugin's dynamic hooks are not inspected by this launch preflight.
-        hasBlockingStopHooks:
-            inlinePlugins ||
-            Object.values(enabledPlugins).some((enabled) => enabled === true) ||
-            [...inherited, user, ...managed].some((settings) => {
-                const stop = object(settings.hooks).Stop;
-                return Array.isArray(stop) && stop.length > 0;
-            }),
     };
 }
 function invalid(

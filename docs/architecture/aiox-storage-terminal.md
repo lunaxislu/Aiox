@@ -58,16 +58,29 @@ notification의 실행 소유권은 필수이며 terminal ID는 정상적으로 
 알림 입력이 거절돼도 저장된 알림은 Web 조회에 남는다. 알림 정책은
 [[docs/specs/aiox-collaboration]]을 따른다.
 
-저장 실패 시 최초 관측한 결과·오류·시각을 추적에 보존한다. 이후 target 정리나 저장 재시도는
-그 결과를 사용하며 뒤늦은 interrupted로 덮지 않는다. 한 대상의 전송 거절 결과를 저장하지
-못해도 뒤 대상의 전송을 계속하고, 미저장 결과는 추적에 남긴다. 종료 drain은 진행 중 저장을
-기다린 뒤 관측된 미저장 결과를 한 번 재시도하며 남은 실패를 호출자에 전달한다. 이는 vendor
-입력 재주입이나 daemon 재시작 후 실행 복원이 아니다.
+controls.settle resolve는 daemon이 최초 outcome과 향후 저장 재시도 책임을 인수했다는 ack다.
+인수 전 소유권·delivery 검증 실패는 reject하며 adapter가 결과를 보존한다. 인수 후 DB 실패는
+resolve하고 기존 MessageService의 inFlight.result에 최초 outcome/error/time을 불변으로 남긴다.
+별도 pending 권위나 durable outbox는 없다. Runtime 종료·cleanup도 인수한 결과를 변경하지 않는다.
 
-근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:171-188`,
-[[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:240-376`;
-실제 SQLite 알림 insert·결과 update 실패, rollback·재시도와 보존 기한 검증은
-[[apps/daemon/src/messaging.test.ts]] `apps/daemon/src/messaging.test.ts:216-334`.
+최초 DB 실패가 daemon 전체의 timer 하나를 예약한다. 새 실패는 기존 due time을 미루지 않는다.
+1초로 시작해 실패 batch마다 두 배, 최대 30초이며 batch 시작의 snapshot을 순차 처리한다.
+같은 delivery 저장은 settling으로 병합하고 실행 중 새 실패는 다음 batch에서 처리한다. 결과가
+아직 없는 진행 중 delivery는 재시도 대상이 아니다. 성공만 제거하고 남은 대상이 있으면 timer
+하나를 예약하며 pending이 없으면 timer와 backoff를 초기화한다. 각 요청의 transaction은 유지한다.
+최초·변경된 저장 오류와 복구는 기존 daemon stderr로 진단하고 같은 오류의 반복 출력은 억제한다.
+
+종료 drain은 timer를 취소하고 active persist/running batch에 합류한 뒤 최종 snapshot을 처리한다.
+미저장 결과가 남으면 warnings와 stopped:false를 반환하며 HTTP 409 stop_incomplete로 daemon·DB를
+유지하고 중앙 재시도를 재개한다. 성공으로 숨기거나 DB를 먼저 닫지 않는다. 메모리 pending은
+프로세스 크래시·daemon 재시작의 내구성을 제공하지 않으며 vendor 입력 재주입도 하지 않는다.
+
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:168-194`,
+[[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:280-389`,
+[[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:561-578`.
+검증: [[apps/daemon/src/messaging.test.ts]] `apps/daemon/src/messaging.test.ts:481-607`,
+[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:2001-2035`. SQLite 결과+알림 rollback, A/B/C 시간차 실패의 단일 timer,
+긴 batch 중 D 추가, Runtime 종료 후 저장, drain 실패·HTTP 409·재시도 재개를 검증한다.
 
 ## SQLite와 플랫폼
 

@@ -1,7 +1,7 @@
 import type { Readable } from "node:stream";
 
 const FAILURE = "AIOX hook report failed.";
-const TIMEOUT_MS = 5000;
+const TIMEOUT_MS = 30_000;
 const MAX_INPUT_BYTES = 1024 * 1024;
 
 /** Exec-form hooks bypass platform shell parsing entirely. */
@@ -13,7 +13,7 @@ export function claudeHookCommand(executablePath: string, scriptPath: string) {
     };
 }
 
-/** No stdout, retry, vendor decision, or credential-bearing error output. */
+/** Reports observations without returning vendor decisions or watch registrations. */
 export async function reportClaudeHook(
     input: Readable = process.stdin,
     env: NodeJS.ProcessEnv = process.env,
@@ -55,6 +55,7 @@ export async function reportClaudeHook(
             },
             body: JSON.stringify({
                 event,
+                ppid: process.ppid,
                 inboxPath: env.CLAUDE_CODE_MESSAGING_SOCKET,
                 inboxToken: env.CLAUDE_CODE_MESSAGING_TOKEN,
             }),
@@ -73,8 +74,11 @@ export async function reportClaudeHook(
             throw error;
         });
         if (response === null) return;
+        if (!response.ok) {
+            await response.body?.cancel();
+            throw new Error(FAILURE);
+        }
         await response.body?.cancel();
-        if (!response.ok) throw new Error(FAILURE);
     } catch {
         throw new Error(FAILURE);
     } finally {

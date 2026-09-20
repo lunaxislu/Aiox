@@ -558,7 +558,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     );
                 }
             }
-            await messages.drain();
+            try {
+                await messages.drain();
+            } catch (error) {
+                warnings.push(
+                    error instanceof Error ? error.message : String(error),
+                );
+            }
             if (warnings.length > 0) {
                 admitting = true;
                 messages.resume();

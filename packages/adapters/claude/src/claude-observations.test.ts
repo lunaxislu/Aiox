@@ -3,14 +3,67 @@ import { expect, it, vi } from "vitest";
 
 import { ClaudeObservations } from "@/claude-observations";
 
-function setup(options = {}) {
+function setup() {
     const controls = {
         runtimeId: "runtime",
         setStatus: vi.fn(),
+        setObservationError: vi.fn(),
         settle: vi.fn().mockResolvedValue(undefined),
     };
-    return { controls, observer: new ClaudeObservations(controls, options) };
+    return { controls, observer: new ClaudeObservations(controls) };
 }
+
+it("retires only the old instance and keeps the resumed instance independent", async () => {
+    const { observer, controls } = setup();
+    const old = observer.selectSession("session", true);
+    const frame = observer.track(message("old"));
+    await observer.observeTranscript(peerInput(frame), old);
+    observer.selectSession("other", true);
+    const resumed = observer.selectSession("session", true);
+    const next = observer.track(message("new"));
+    const retiring = observer.retireSession("session", old);
+    expect(old.retired).toBe(true);
+    expect(old.prompts.size).toBe(0);
+    await retiring;
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "old",
+        "interrupted",
+    );
+    await observer.observeTranscript(peerInput(next), resumed);
+    await finishPeer(observer, peerInput(next));
+    expect(controls.settle).toHaveBeenLastCalledWith("new", "completed");
+});
+
+it("keeps unobserved deliveries across retirement and attributes them to actual input", async () => {
+    const { observer, controls } = setup();
+    const old = observer.selectSession("old", true);
+    const frame = observer.track(message());
+    const current = observer.selectSession("session", true);
+    await observer.retireSession("old", old);
+    expect(controls.settle).not.toHaveBeenCalled();
+    const row = peerInput(frame);
+    await observer.observeTranscript(row, current);
+    await finishPeer(observer, row);
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "completed",
+    );
+});
+
+it("retirement releases session state while retaining rejected outcomes for retry", async () => {
+    const { observer, controls } = setup();
+    const old = observer.selectSession("session", true);
+    await observer.observeTranscript(peerInput(observer.track(message())), old);
+    controls.settle.mockRejectedValueOnce(new Error("storage"));
+    await expect(observer.retireSession("session", old)).rejects.toThrow();
+    expect(observer.hasPendingOutcomes).toBe(true);
+    await observer.retryOutcomes();
+    expect(controls.settle.mock.calls).toEqual([
+        ["delivery", "interrupted"],
+        ["delivery", "interrupted"],
+    ]);
+    expect(observer.hasPendingOutcomes).toBe(false);
+});
 
 function message(deliveryId: string | null = "delivery"): InboundMessage {
     return {
@@ -33,6 +86,175 @@ function event(
     return { hook_event_name, session_id: "session", prompt_id, ...extra };
 }
 
+function peerInput(frame: string, prompt = "peer-prompt", session = "session") {
+    return {
+        type: "user",
+        sessionId: session,
+        promptId: prompt,
+        isSidechain: false,
+        uuid: `${prompt}-input`,
+        parentUuid: null,
+        origin: {
+            kind: "peer",
+            name: "Alice&quot;&lt;",
+            body: frame.slice(frame.indexOf("\n") + 1, frame.lastIndexOf("\n")),
+        },
+        promptSource: "system",
+        message: { role: "user", content: `vendor wrapper\n${frame}` },
+    };
+}
+
+async function finishPeer(
+    observer: ClaudeObservations,
+    row: ReturnType<typeof peerInput>,
+) {
+    await observer.observeTranscript({
+        type: "assistant",
+        sessionId: row.sessionId,
+        isSidechain: false,
+        uuid: `${row.uuid}-answer`,
+        parentUuid: row.uuid,
+        message: { role: "assistant", stop_reason: "end_turn", content: [] },
+    });
+    await observer.observeTranscript({
+        type: "system",
+        subtype: "turn_duration",
+        durationMs: 1,
+        sessionId: row.sessionId,
+        isSidechain: false,
+        uuid: `${row.uuid}-duration`,
+        parentUuid: `${row.uuid}-answer`,
+    });
+}
+
+it("connects transcript peer input without a submit hook and settles once after a session switch", async () => {
+    const { observer, controls } = setup();
+    const row = peerInput(observer.track(message()));
+    observer.observeRegistry({ sessionId: "next", status: "idle" });
+    await observer.observeTranscript(row);
+    await finishPeer(observer, row);
+    await observer.observeTranscript(row);
+    await finishPeer(observer, row);
+    expect(controls.settle.mock.calls).toEqual([["delivery", "completed"]]);
+});
+
+it.each(["human", "sender", "body", "sidechain", "notice"])(
+    "does not turn a %s transcript row into another delivery",
+    async (mode) => {
+        const { observer, controls } = setup();
+        const row = peerInput(
+            observer.track(message(mode === "notice" ? null : "delivery")),
+        );
+        if (mode === "human") row.origin.kind = "human";
+        if (mode === "sender") row.origin.name = "other";
+        if (mode === "body") row.origin.body += " changed";
+        if (mode === "sidechain") row.isSidechain = true;
+        await observer.observeTranscript(row);
+        await finishPeer(observer, row);
+        expect(controls.settle).not.toHaveBeenCalled();
+        if (mode !== "notice") {
+            row.isSidechain = false;
+            row.origin = peerInput(observer.track(message("correct"))).origin;
+            row.promptId = "correct-prompt";
+            row.uuid = "correct-input";
+            await observer.observeTranscript(row);
+            await finishPeer(observer, row);
+            expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+                "correct",
+                "completed",
+            );
+        }
+    },
+);
+
+it("retains the first StopFailure until its late input arrives, then preserves it across ack rejection", async () => {
+    const { observer, controls } = setup();
+    const row = peerInput(observer.track(message()));
+    await observer.observe(
+        event("StopFailure", row.promptId, { error: "rate_limit" }),
+    );
+    await observer.observe(
+        event("StopFailure", row.promptId, { error: "later_failure" }),
+    );
+    expect(controls.settle).not.toHaveBeenCalled();
+    observer.observeRegistry({ sessionId: "next", status: "idle" });
+    controls.setStatus.mockClear();
+    controls.settle.mockRejectedValueOnce(new Error("ack"));
+    await expect(observer.observeTranscript(row)).rejects.toThrow("ack");
+    await observer.observeTranscript(row);
+    await finishPeer(observer, row);
+    expect(controls.settle.mock.calls).toEqual([
+        ["delivery", "failed", "rate_limit"],
+        ["delivery", "failed", "rate_limit"],
+    ]);
+    expect(controls.setStatus).not.toHaveBeenCalled();
+});
+
+it("joins terminal rows that were written before the peer input, including explicit prompt ids", async () => {
+    const { observer, controls } = setup();
+    const row = peerInput(observer.track(message()));
+    await observer.observeTranscript({
+        type: "system",
+        subtype: "turn_duration",
+        durationMs: 1,
+        sessionId: row.sessionId,
+        promptId: row.promptId,
+        isSidechain: false,
+        uuid: "late-duration",
+        parentUuid: "late-answer",
+    });
+    await observer.observeTranscript({
+        type: "assistant",
+        sessionId: row.sessionId,
+        promptId: row.promptId,
+        isSidechain: false,
+        uuid: "late-answer",
+        parentUuid: row.uuid,
+        message: { role: "assistant", stop_reason: "end_turn", content: [] },
+    });
+    expect(controls.settle).not.toHaveBeenCalled();
+    await observer.observeTranscript(row);
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "completed",
+    );
+});
+
+it("requires registry state and ignores removed hooks", async () => {
+    const { observer, controls } = setup();
+    const frame = observer.track(message());
+    for (const name of [
+        "SessionStart",
+        "UserPromptSubmit",
+        "PermissionRequest",
+        "PreToolUse",
+        "PostToolUse",
+        "Elicitation",
+        "ElicitationResult",
+        "SessionEnd",
+        "Stop",
+    ])
+        await observer.observe(
+            event(name, "p", { prompt: frame, tool_use_id: "tool" }),
+        );
+    expect(controls.setStatus).not.toHaveBeenCalled();
+    expect(controls.settle).not.toHaveBeenCalled();
+    observer.observeRegistry({ sessionId: "session", status: "busy" });
+    expect(controls.setStatus).toHaveBeenLastCalledWith("working", undefined);
+    observer.observeRegistry({
+        sessionId: "session",
+        status: "waiting",
+        waitingFor: "permission prompt",
+    });
+    expect(controls.setStatus).toHaveBeenLastCalledWith(
+        "awaiting-user",
+        "Waiting for approval.",
+    );
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    expect(controls.setStatus).toHaveBeenLastCalledWith("idle", undefined);
+    expect(controls.settle).not.toHaveBeenCalled();
+});
+
 it.each([
     [
         { last_assistant_message: "Limit reached", error_details: "429" },
@@ -44,879 +266,246 @@ it.each([
     ],
     [{ last_assistant_message: {}, error_details: "429" }, "429 · rate_limit"],
     [{ error_details: " " }, "rate_limit"],
-    [
-        { error: "future_error", error_details: "New failure details" },
-        "New failure details · unknown",
-    ],
-] as const)("reports StopFailure explanation %j", async (details, reason) => {
-    const { observer, controls } = setup();
-    await observer.observe(
-        event("UserPromptSubmit", "prompt", { prompt: "Hello" }),
-    );
-    await observer.observe(
-        event("StopFailure", "prompt", { error: "rate_limit", ...details }),
-    );
-    expect(controls.setStatus.mock.lastCall).toEqual(["failed", reason]);
-    await observer.observe(
-        event("UserPromptSubmit", "next", { prompt: "Retry" }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[1]).toBeUndefined();
-});
-
-it("ignores subagent hooks sharing the main prompt identity", async () => {
-    const { observer, controls } = setup();
-    const frame = observer.track(message());
-    await observer.observe(
-        event("UserPromptSubmit", "prompt", { prompt: frame }),
-    );
-    controls.setStatus.mockClear();
-    await observer.observe(
-        event("StopFailure", "prompt", {
-            agent_id: "child",
-            error: "rate_limit",
-        }),
-    );
-    await observer.observe(
-        event("PreToolUse", "prompt", {
-            agent_id: "child",
-            tool_name: "AskUserQuestion",
-            tool_use_id: "tool",
-        }),
-    );
-    expect(controls.settle).not.toHaveBeenCalled();
-    expect(controls.setStatus).not.toHaveBeenCalled();
-    await observer.observe(
-        event("Stop", "prompt", { agent_type: "custom-main-agent" }),
-    );
-    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
-        "delivery",
-        "completed",
-    );
-});
-
-it("frames the complete sender and body and settles only the exact observed input", async () => {
-    const { observer, controls } = setup();
-    const frame = observer.track(message());
-    expect(frame).toContain('from-name="Alice&quot;&lt;"');
-    expect(frame).toContain("reviewer");
-    expect(frame).toContain("Reviews changes");
-    expect(frame).toContain("123");
-    expect(frame).toContain("First line\nSecond line");
-    expect(controls.setStatus).not.toHaveBeenCalled();
-    await observer.observe(
-        event("UserPromptSubmit", "prompt", { prompt: frame }),
-    );
-    await observer.observe(event("Stop"));
-    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
-        "delivery",
-        "completed",
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("idle");
-});
-
-it("does not confuse a quoted marker or later direct input with the original sender", async () => {
-    const { observer, controls } = setup();
-    const frame = observer.track(message());
-    await observer.observe(
-        event("UserPromptSubmit", "quote", {
-            prompt: `Quoted content: ${frame}`,
-        }),
-    );
-    await observer.observe(event("Stop", "quote"));
-    expect(controls.settle).not.toHaveBeenCalled();
-    await observer.observe(event("UserPromptSubmit", "aio", { prompt: frame }));
-    await observer.observe(event("Stop", "aio"));
-    await observer.observe(
-        event("UserPromptSubmit", "direct", { prompt: "My own task" }),
-    );
-    await observer.observe(event("Stop", "direct"));
-    expect(controls.settle).toHaveBeenCalledTimes(1);
-});
-
-it("keeps other observed work active when one input completes", async () => {
-    const { observer, controls } = setup();
-    const first = observer.track(message("first"));
-    const second = observer.track(message("second"));
-    await observer.observe(event("UserPromptSubmit", "one", { prompt: first }));
-    await observer.observe(
-        event("UserPromptSubmit", "two", { prompt: second }),
-    );
-    await observer.observe(event("Stop", "one"));
-    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
-        "first",
-        "completed",
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    await observer.observe(event("Stop", "two"));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("idle");
-});
-
-it("does not settle a reused key or one raw input observed under two keys", async () => {
-    const { observer, controls } = setup();
-    const first = observer.track(message("first"));
-    const second = observer.track(message("second"));
-    await observer.observe(
-        event("UserPromptSubmit", "same", { prompt: first }),
-    );
-    await observer.observe(
-        event("UserPromptSubmit", "same", { prompt: second }),
-    );
-    await observer.observe(event("Stop", "same"));
-    expect(controls.settle).not.toHaveBeenCalled();
-    const third = observer.track(message("third"));
-    await observer.observe(event("UserPromptSubmit", "one", { prompt: third }));
-    await observer.observe(event("UserPromptSubmit", "two", { prompt: third }));
-    await observer.observe(event("Stop", "one"));
-    await observer.observe(event("Stop", "two"));
-    expect(controls.settle).not.toHaveBeenCalled();
-});
-
-it("retains uncertain Stop-hook outcomes and never settles daemon notices", async () => {
-    const blocked = setup({ hasBlockingStopHooks: true });
-    const frame = blocked.observer.track(message());
-    await blocked.observer.observe(
-        event("UserPromptSubmit", "prompt", { prompt: frame }),
-    );
-    await blocked.observer.observe(event("Stop"));
-    expect(blocked.controls.settle).not.toHaveBeenCalled();
-    expect(blocked.controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    const { observer, controls } = setup();
-    await observer.observe(
-        event("UserPromptSubmit", "notice", {
-            prompt: observer.track(message(null)),
-        }),
-    );
-    await observer.observe(event("Stop", "notice"));
-    expect(controls.settle).not.toHaveBeenCalled();
-});
-
-it("retains a failed storage settlement for retry without notifying twice", async () => {
-    const { observer, controls } = setup();
-    const frame = observer.track(message());
-    await observer.observe(
-        event("UserPromptSubmit", "prompt", { prompt: frame }),
-    );
-    controls.settle.mockRejectedValueOnce(new Error("storage failure"));
-    await expect(observer.observe(event("Stop"))).rejects.toThrow(
-        "storage failure",
-    );
-    await observer.observe(event("Stop"));
-    await observer.observe(event("Stop"));
-    expect(controls.settle).toHaveBeenCalledTimes(2);
-});
-
-it("distinguishes an individual API failure from the other active input", async () => {
-    const { observer, controls } = setup();
-    await observer.observe(
-        event("UserPromptSubmit", "one", {
-            prompt: observer.track(message("one")),
-        }),
-    );
-    await observer.observe(
-        event("UserPromptSubmit", "two", {
-            prompt: observer.track(message("two")),
-        }),
-    );
-    await observer.observe(
-        event("StopFailure", "one", {
-            error: "rate_limit",
-            error_details: "secret",
-        }),
-    );
-    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
-        "one",
-        "failed",
-        "rate_limit",
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    await observer.observe(event("StopFailure", "two", { error: "secret" }));
-    expect(controls.settle).toHaveBeenLastCalledWith(
-        "two",
-        "failed",
-        "unknown",
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("failed");
-});
-
-it("fails or interrupts outstanding inputs without losing earlier confirmed outcomes on retry", async () => {
-    const { observer, controls } = setup();
-    const first = observer.track(message("first"));
-    observer.track(message("second"));
-    const failedWrite = observer.track(message("unsent"));
-    observer.forget(failedWrite);
-    await observer.observe(event("UserPromptSubmit", "one", { prompt: first }));
-    controls.settle.mockRejectedValueOnce(new Error("storage"));
-    await expect(observer.observe(event("Stop", "one"))).rejects.toThrow(
-        "storage",
-    );
-    await observer.failPending("connection_lost");
-    expect(controls.settle.mock.calls).toEqual([
-        ["first", "completed"],
-        ["first", "completed"],
-        ["second", "failed", "connection_lost"],
-    ]);
-    const third = observer.track(message("third"));
-    await observer.observe(
-        event("UserPromptSubmit", "three", { prompt: third }),
-    );
-    await observer.interruptPending();
-    expect(controls.settle).toHaveBeenLastCalledWith("third", "interrupted");
-});
-
-it("keeps another approval pending when an elicitation resolves or a prompt ends", async () => {
-    const { observer, controls } = setup();
-    await observer.observe(
-        event("UserPromptSubmit", "one", { prompt: "direct" }),
-    );
-    await observer.observe(
-        event("PreToolUse", "one", {
-            tool_use_id: "approval",
-            tool_name: "Bash",
-        }),
-    );
-    await observer.observe(
-        event("PermissionRequest", "one", {
-            tool_name: "Bash",
-            tool_input: { command: "printf test" },
-        }),
-    );
-    await observer.observe(
-        event("Elicitation", "one", {
-            mcp_server_name: "user",
-            elicitation_id: "question",
-        }),
-    );
-    await observer.observe(
-        event("ElicitationResult", "one", {
-            mcp_server_name: "user",
-            elicitation_id: "other",
-            action: "accept",
-        }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-    await observer.observe(
-        event("ElicitationResult", "one", {
-            mcp_server_name: "user",
-            elicitation_id: "question",
-            action: "cancel",
-        }),
-    );
-    await observer.observe(
-        event("UserPromptSubmit", "two", { prompt: "another" }),
-    );
-    await observer.observe(event("Stop", "two"));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-    await observer.observe(
-        event("PostToolUse", "one", { tool_use_id: "approval" }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    expect(controls.settle).not.toHaveBeenCalled();
-});
-
-it("reports quota notifications without completing or resending requests", async () => {
-    const { observer, controls } = setup();
-    const frame = observer.track(message());
-    await observer.observe(event("UserPromptSubmit", "one", { prompt: frame }));
-    await observer.observe(
-        event("Notification", "one", {
-            notification_type: "quota_auto_resume_stale",
-            message: "secret",
-        }),
-    );
-    expect(controls.setStatus.mock.lastCall).toEqual([
-        "awaiting-user",
-        "Press Enter to resume the task automatically.",
-    ]);
-    await observer.observe(
-        event("Notification", "one", {
-            notification_type: "quota_auto_resume_fired",
-        }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    expect(controls.settle).not.toHaveBeenCalled();
-});
-
-it.each(["one", "unregistered"])(
-    "ends resumed activity for %s without rewriting delivery",
-    async (id) => {
+] as const)(
+    "preserves failure details %j without overriding busy or waiting",
+    async (details, reason) => {
         const { observer, controls } = setup();
+        observer.observeRegistry({ sessionId: "session", status: "busy" });
+        const row = peerInput(observer.track(message()));
+        await observer.observeTranscript(row);
         await observer.observe(
-            event("UserPromptSubmit", "one", {
-                prompt: observer.track(message()),
+            event("StopFailure", row.promptId, {
+                error: "rate_limit",
+                ...details,
             }),
-        );
-        await observer.observe(
-            event("StopFailure", "one", { error: "rate_limit" }),
         );
         expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
             "delivery",
             "failed",
-            "rate_limit",
+            reason,
         );
-        await observer.observe(
-            event("Notification", "one", {
-                notification_type: "quota_auto_resume_stale",
-            }),
-        );
-        expect(controls.setStatus.mock.lastCall).toEqual([
-            "awaiting-user",
-            "Press Enter to resume the task automatically.",
-        ]);
-        await observer.observe(
-            event("Notification", "one", {
-                notification_type: "quota_auto_resume_fired",
-            }),
-        );
-        expect(controls.setStatus.mock.lastCall).toEqual([
+        expect(controls.setStatus).toHaveBeenLastCalledWith(
             "working",
             undefined,
-        ]);
-        await observer.observe(event("Stop", id));
-        expect(controls.setStatus.mock.lastCall).toEqual(["idle", undefined]);
-        await observer.observe(
-            event("Notification", "one", {
-                notification_type: "quota_auto_resume_fired",
-            }),
         );
-        await observer.observe(
-            event("StopFailure", id, { error: "server_error" }),
+        observer.observeRegistry({ sessionId: "session", status: "idle" });
+        expect(controls.setStatus).toHaveBeenLastCalledWith("failed", reason);
+        observer.observeRegistry({ sessionId: "session", status: "waiting" });
+        expect(controls.setStatus).toHaveBeenLastCalledWith(
+            "awaiting-user",
+            "Waiting for user input.",
         );
-        expect(controls.setStatus.mock.lastCall).toEqual([
-            "failed",
-            "server_error",
-        ]);
-        expect(controls.settle).toHaveBeenCalledTimes(1);
+        observer.observeRegistry({ sessionId: "session", status: "busy" });
+        expect(controls.setStatus).toHaveBeenLastCalledWith(
+            "working",
+            undefined,
+        );
     },
 );
 
-it("records uncorrelated API failures but never guesses their delivery", async () => {
+it("old session failure and quota reports cannot change selected screen", async () => {
     const { observer, controls } = setup();
-    observer.track(message());
+    const row = peerInput(observer.track(message()), "old-prompt", "old");
+    await observer.observeTranscript(row);
+    observer.observeRegistry({ sessionId: "new", status: "busy" });
+    controls.setStatus.mockClear();
+    await observer.observe(
+        event("StopFailure", row.promptId, {
+            session_id: "old",
+            error: "rate_limit",
+        }),
+    );
+    for (const type of [
+        "quota_auto_resume_stale",
+        "quota_auto_resume_fired",
+        "quota_auto_resume_disabled",
+    ])
+        await observer.observe(
+            event("Notification", row.promptId, {
+                session_id: "old",
+                notification_type: type,
+            }),
+        );
+    expect(controls.setStatus).not.toHaveBeenCalled();
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "failed",
+        "rate_limit",
+    );
+    observer.observeRegistry({ sessionId: "old", status: "idle" });
+    await observer.observeTranscript(row);
+    await finishPeer(observer, row);
+    expect(controls.settle).toHaveBeenCalledTimes(1);
+});
+
+it("retains independent prompt IDs and early failures across rapid switches and resume", async () => {
+    const { observer, controls } = setup();
+    const a = peerInput(observer.track(message("a")), "same", "a");
+    const b = peerInput(observer.track(message("b")), "same", "b");
+    await observer.observe(
+        event("StopFailure", "same", { session_id: "a", error: "rate_limit" }),
+    );
+    observer.observeRegistry({ sessionId: "b", status: "busy" });
+    await observer.observeTranscript(b);
+    observer.observeRegistry({ sessionId: "c", status: "idle" });
+    await observer.observeTranscript(a);
+    await finishPeer(observer, b);
+    observer.observeRegistry({ sessionId: "a", status: "idle" });
+    await observer.observeTranscript(a);
+    await finishPeer(observer, a);
+    expect(controls.settle.mock.calls).toEqual([
+        ["a", "failed", "rate_limit"],
+        ["b", "completed"],
+    ]);
+    expect(controls.setStatus).toHaveBeenLastCalledWith("failed", "rate_limit");
+});
+
+it("keeps a finished request immutable through quota continuation", async () => {
+    const { observer, controls } = setup();
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    const row = peerInput(observer.track(message()));
+    await observer.observeTranscript(row);
+    await observer.observe(
+        event("StopFailure", row.promptId, { error: "rate_limit" }),
+    );
+    await observer.observe(
+        event("Notification", row.promptId, {
+            notification_type: "quota_auto_resume_stale",
+        }),
+    );
+    expect(controls.setStatus).toHaveBeenLastCalledWith(
+        "awaiting-user",
+        "Press Enter to resume the task automatically.",
+    );
+    await observer.observe(
+        event("Notification", row.promptId, {
+            notification_type: "quota_auto_resume_fired",
+        }),
+    );
+    observer.observeRegistry({ sessionId: "session", status: "busy" });
+    await finishPeer(observer, row);
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    expect(controls.setStatus).toHaveBeenLastCalledWith("idle", undefined);
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "failed",
+        "rate_limit",
+    );
+});
+
+it("does not infer prompt ownership from text or uncorrelated failures", async () => {
+    const { observer, controls } = setup();
+    const row = peerInput(observer.track(message()));
+    delete (row as Partial<typeof row>).promptId;
+    await observer.observeTranscript(row);
     await observer.observe({
         hook_event_name: "StopFailure",
         session_id: "session",
-        error: "authentication_failed",
-        error_details: "Please sign in again",
+        error: "api_error",
     });
-    expect(controls.setStatus.mock.lastCall).toEqual([
-        "failed",
-        "Please sign in again · authentication_failed",
-    ]);
+    await finishPeer(observer, row);
     expect(controls.settle).not.toHaveBeenCalled();
-    await observer.observe(
-        event("UserPromptSubmit", "direct", { prompt: "direct" }),
-    );
-    await observer.observe(event("Stop", "direct"));
-    expect(controls.settle).not.toHaveBeenCalled();
-});
-
-it("serializes concurrent terminal hooks and retains each cleanup failure for retry", async () => {
-    const { observer, controls } = setup();
-    await observer.observe(
-        event("UserPromptSubmit", "one", {
-            prompt: observer.track(message("one")),
-        }),
-    );
-    await Promise.all([
-        observer.observe(event("Stop", "one")),
-        observer.observe(event("Stop", "one")),
-    ]);
-    expect(controls.settle).toHaveBeenCalledTimes(1);
-    observer.track(message("two"));
-    observer.track(message("three"));
-    controls.settle.mockRejectedValueOnce(new Error("storage"));
-    await expect(observer.failPending("connection_lost")).rejects.toThrow(
-        "retry cleanup",
-    );
-    expect(controls.settle).toHaveBeenLastCalledWith(
-        "three",
-        "failed",
-        "connection_lost",
-    );
-    await observer.failPending("connection_lost");
-    expect(controls.settle).toHaveBeenLastCalledWith(
-        "two",
-        "failed",
-        "connection_lost",
-    );
-});
-
-it("retains missing prompt identity as unconfirmed when another prompt ends", async () => {
-    const { observer, controls } = setup();
-    await observer.observe({
-        hook_event_name: "UserPromptSubmit",
-        session_id: "session",
-        prompt: "no id",
-    });
-    await observer.observe(
-        event("UserPromptSubmit", "known", { prompt: "known" }),
-    );
-    await observer.observe(event("Stop", "known"));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    expect(controls.settle).not.toHaveBeenCalled();
-});
-
-it("reconciles approval notification hints with identified waits without clearing other prompts", async () => {
-    const { observer, controls } = setup();
-    await observer.observe(event("UserPromptSubmit", "one", { prompt: "one" }));
-    await observer.observe(event("UserPromptSubmit", "two", { prompt: "two" }));
-    await observer.observe(
-        event("Notification", "one", {
-            notification_type: "permission_prompt",
-        }),
-    );
-    await observer.observe(
-        event("PreToolUse", "one", {
-            tool_use_id: "one-tool",
-            tool_name: "Bash",
-        }),
-    );
-    await observer.observe(
-        event("PermissionRequest", "one", {
-            tool_name: "Bash",
-            tool_input: { command: "printf test" },
-        }),
-    );
-    await observer.observe(
-        event("PreToolUse", "two", {
-            tool_use_id: "two-tool",
-            tool_name: "Bash",
-        }),
-    );
-    await observer.observe(
-        event("PermissionRequest", "two", {
-            tool_name: "Bash",
-            tool_input: { command: "printf test" },
-        }),
-    );
-    await observer.observe(
-        event("PostToolUse", "one", { tool_use_id: "one-tool" }),
-    );
-    await observer.observe(event("Stop", "one"));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-    await observer.observe(
-        event("PostToolUse", "two", { tool_use_id: "two-tool" }),
-    );
-    await observer.observe(event("Stop", "two"));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("idle");
-});
-
-it.each(["elicitation_dialog", "elicitation_url_dialog"])(
-    "clears a late %s notification when its identified request resolves",
-    async (notification_type) => {
-        const { observer, controls } = setup();
-        const identity = { mcp_server_name: "mcp", elicitation_id: "question" };
-        await observer.observe(event("Elicitation", "one", identity));
-        await observer.observe(
-            event("Notification", "one", { notification_type }),
-        );
-        await observer.observe(
-            event("Notification", "two", {
-                notification_type: "permission_prompt",
-            }),
-        );
-        await observer.observe(
-            event("ElicitationResult", "one", {
-                ...identity,
-                action: "accept",
-            }),
-        );
-        expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-        await observer.observe(
-            event("PreToolUse", "two", {
-                tool_use_id: "tool",
-                tool_name: "Bash",
-            }),
-        );
-        await observer.observe(
-            event("PermissionRequest", "two", {
-                tool_name: "Bash",
-                tool_input: { command: "printf test" },
-            }),
-        );
-        await observer.observe(
-            event("PostToolUseFailure", "two", { tool_use_id: "tool" }),
-        );
-        expect(controls.setStatus.mock.lastCall?.[0]).toBe("idle");
-    },
-);
-
-it("replaces an uncorrelated approval notification with identified evidence", async () => {
-    const { observer, controls } = setup();
-    await observer.observe({
-        hook_event_name: "Notification",
-        session_id: "session",
-        notification_type: "permission_prompt",
-    });
-    await observer.observe(
-        event("PreToolUse", "one", { tool_use_id: "tool", tool_name: "Bash" }),
-    );
-    await observer.observe(
-        event("PermissionRequest", "one", {
-            tool_name: "Bash",
-            tool_input: { command: "printf test" },
-        }),
-    );
-    await observer.observe(
-        event("PostToolUse", "one", { tool_use_id: "tool" }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("idle");
-});
-
-it("clears only the finished prompt's real permission payload and tools", async () => {
-    const { observer, controls } = setup();
-    for (const prompt of ["one", "two"]) {
-        await observer.observe(event("UserPromptSubmit", prompt, { prompt }));
-        await observer.observe(
-            event("PreToolUse", prompt, {
-                tool_name: "Bash",
-                tool_use_id: prompt,
-            }),
-        );
-        await observer.observe(
-            event("PermissionRequest", prompt, {
-                tool_name: "Bash",
-                tool_input: { command: "printf test" },
-            }),
-        );
-    }
-    await observer.observe(event("Stop", "one"));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-    await observer.observe(event("PostToolUse", "two", { tool_use_id: "two" }));
-    await observer.observe(event("Stop", "two"));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("idle");
-    await observer.observe(
-        event("PermissionRequest", "one", { tool_name: "Bash" }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("idle");
-});
-
-it("correlates transcript interruption with an observed tool and preserves other prompts", async () => {
-    const { observer, controls } = setup({ hasBlockingStopHooks: true });
-    for (const prompt of ["one", "two"]) {
-        await observer.observe(
-            event("UserPromptSubmit", prompt, {
-                prompt: observer.track(message(prompt)),
-            }),
-        );
-        await observer.observe(
-            event("PreToolUse", prompt, { tool_use_id: prompt }),
-        );
-        await observer.observe(
-            event("PermissionRequest", prompt, { tool_name: "Bash" }),
-        );
-    }
-    const result = {
-        type: "user",
-        isSidechain: false,
-        sessionId: "session",
-        promptId: "one",
-        uuid: "result",
-        toolDenialKind: "user-rejected",
-        message: {
-            role: "user",
-            content: [
-                { type: "tool_result", tool_use_id: "one", is_error: true },
-            ],
-        },
-    };
-    const interrupted = {
-        type: "user",
-        isSidechain: false,
-        sessionId: "session",
-        promptId: "one",
-        parentUuid: "result",
-        uuid: "interrupted",
-        message: {
-            role: "user",
-            content: [
-                {
-                    type: "text",
-                    text: "[Request interrupted by user for tool use]",
-                },
-            ],
-        },
-    };
-    await observer.observeTranscript(interrupted);
-    expect(controls.settle).not.toHaveBeenCalled();
-    await observer.observeTranscript({ ...result, sessionId: "other" });
-    await observer.observeTranscript(interrupted);
-    expect(controls.settle).not.toHaveBeenCalled();
-    await observer.observeTranscript(result);
-    expect(controls.settle).not.toHaveBeenCalled();
-    controls.settle.mockRejectedValueOnce(new Error("storage"));
-    await expect(observer.observeTranscript(interrupted)).rejects.toThrow(
-        "storage",
-    );
-    await observer.observeTranscript(interrupted);
-    await observer.observeTranscript(result);
-    await observer.observeTranscript(interrupted);
-    expect(controls.settle.mock.calls).toEqual([
-        ["one", "interrupted"],
-        ["one", "interrupted"],
-    ]);
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-    await observer.observe(event("PostToolUse", "one", { tool_use_id: "one" }));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-});
-
-it("retains approval during another tool's Post and releases it when all owned tools resolve", async () => {
-    const { observer, controls } = setup();
-    await observer.observe(
-        event("UserPromptSubmit", "one", { prompt: "direct" }),
-    );
-    for (const tool of ["read", "bash"])
-        await observer.observe(
-            event("PreToolUse", "one", { tool_use_id: tool }),
-        );
-    await observer.observe(
-        event("PermissionRequest", "one", { tool_name: "Bash" }),
-    );
-    await observer.observe(
-        event("PostToolUse", "one", { tool_use_id: "read" }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-    await observer.observe(
-        event("PostToolUse", "one", { tool_use_id: "bash" }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    await observer.observe(event("Stop", "one"));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("idle");
-});
-
-it.each(["rate_limit", "cloud_credential_error"])(
-    "preserves current %s failure on disabled but does not restore it after fired",
-    async (error) => {
-        const { observer, controls } = setup();
-        await observer.observe(
-            event("UserPromptSubmit", "one", {
-                prompt: observer.track(message()),
-            }),
-        );
-        await observer.observe(event("StopFailure", "one", { error }));
-        expect(controls.setStatus.mock.lastCall).toEqual(["failed", error]);
-        await observer.observe(
-            event("Notification", "one", {
-                notification_type: "quota_auto_resume_stale",
-            }),
-        );
-        await observer.observe(
-            event("Notification", "one", {
-                notification_type: "quota_auto_resume_disabled",
-            }),
-        );
-        expect(controls.setStatus.mock.lastCall?.[0]).toBe("failed");
-        expect(controls.setStatus.mock.lastCall?.[1]).toBe(error);
-        await observer.observe(
-            event("Notification", "one", {
-                notification_type: "quota_auto_resume_fired",
-            }),
-        );
-        expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-        expect(controls.setStatus.mock.lastCall?.[1]).toBeUndefined();
-        await observer.observe(
-            event("Notification", "one", {
-                notification_type: "quota_auto_resume_disabled",
-            }),
-        );
-        expect(controls.setStatus.mock.lastCall).toEqual(["idle", undefined]);
-        expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
-            "delivery",
-            "failed",
-            error,
-        );
-    },
-);
-
-it("does not invent a failure or change work on quota disabled without a quota wait", async () => {
-    const { observer, controls } = setup();
-    await observer.observe(
-        event("UserPromptSubmit", "one", { prompt: "direct" }),
-    );
-    const previous = controls.setStatus.mock.lastCall;
-    await observer.observe(
-        event("Notification", "one", {
-            notification_type: "quota_auto_resume_disabled",
-        }),
-    );
-    expect(controls.setStatus.mock.lastCall).toEqual(previous);
-});
-
-it("clears only the submitting session's stale quota wait when new work starts", async () => {
-    const { observer, controls } = setup();
-    await observer.observe(
-        event("UserPromptSubmit", "old", { prompt: "original" }),
-    );
-    await observer.observe(
-        event("StopFailure", "old", { error: "rate_limit" }),
-    );
-    for (const session_id of ["session", "other"]) {
-        await observer.observe(
-            event("Notification", "old", {
-                session_id,
-                notification_type: "quota_auto_resume_stale",
-            }),
-        );
-    }
-    await observer.observe(
-        event("UserPromptSubmit", "new", { prompt: "continue" }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("awaiting-user");
-    await observer.observe(
-        event("Notification", "old", {
-            session_id: "other",
-            notification_type: "quota_auto_resume_disabled",
-        }),
-    );
-    expect(controls.setStatus.mock.lastCall).toEqual(["working", undefined]);
-    await observer.observe(event("Stop", "new"));
-    expect(controls.setStatus.mock.lastCall).toEqual(["idle", undefined]);
-});
-
-it("keeps resumed activity through blocking Stop and still observes a new failure", async () => {
-    const { observer, controls } = setup({ hasBlockingStopHooks: true });
-    await observer.observe(
-        event("UserPromptSubmit", "one", { prompt: observer.track(message()) }),
-    );
-    await observer.observe(
-        event("StopFailure", "one", { error: "rate_limit" }),
-    );
-    await observer.observe(
-        event("Notification", "one", {
-            notification_type: "quota_auto_resume_fired",
-        }),
-    );
-    await observer.observe(event("Stop", "one"));
-    expect(controls.setStatus.mock.lastCall).toEqual([
-        "working",
-        "stop_hook_outcome_unconfirmed",
-    ]);
-    await observer.observe(
-        event("StopFailure", "one", { error: "cloud_credential_error" }),
-    );
-    expect(controls.setStatus.mock.lastCall).toEqual([
-        "failed",
-        "cloud_credential_error",
-    ]);
+    await observer.failPending("vendor_process_failed");
     expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
         "delivery",
         "failed",
-        "rate_limit",
+        "vendor_process_failed",
     );
 });
 
-it.each(["session", "third"])(
-    "preserves other resumed sessions and %s work on resumed Stop",
-    async (workSession) => {
-        const { observer, controls } = setup();
-        await observer.observe(
-            event("UserPromptSubmit", "one", {
-                prompt: observer.track(message()),
-            }),
-        );
-        await observer.observe(
-            event("StopFailure", "one", { error: "rate_limit" }),
-        );
-        await observer.observe(
-            event("UserPromptSubmit", "two", {
-                session_id: workSession,
-                prompt: "other work",
-            }),
-        );
-        await observer.observe(
-            event("PreToolUse", "two", {
-                session_id: workSession,
-                tool_use_id: "tool",
-            }),
-        );
-        await observer.observe(
-            event("PermissionRequest", "two", {
-                session_id: workSession,
-                tool_use_id: "tool",
-            }),
-        );
-        for (const session_id of ["session", "other"]) {
-            await observer.observe(
-                event("Notification", "one", {
-                    session_id,
-                    notification_type: "quota_auto_resume_fired",
-                }),
-            );
-        }
-        await observer.observe(event("Stop", "one"));
-        expect(controls.setStatus.mock.lastCall).toEqual([
-            "awaiting-user",
-            "Waiting for approval.",
-        ]);
-        await observer.observe(
-            event("PostToolUse", "two", {
-                session_id: workSession,
-                tool_use_id: "tool",
-            }),
-        );
-        expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-        await observer.observe(
-            event("Stop", "unregistered", { session_id: "other" }),
-        );
-        expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-        await observer.observe(
-            event("Stop", "two", { session_id: workSession }),
-        );
-        expect(controls.setStatus.mock.lastCall).toEqual(["idle", undefined]);
-        expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
-            "delivery",
-            "failed",
-            "rate_limit",
-        );
-    },
-);
-
-it("clears both quota records on disabled while preserving other activity and waits", async () => {
+it("does not assign one pending frame to multiple session prompts", async () => {
     const { observer, controls } = setup();
+    const frame = observer.track(message());
+    const a = peerInput(frame, "a", "a");
+    const b = peerInput(frame, "b", "b");
+    await observer.observeTranscript(a);
+    await observer.observeTranscript(b);
+    await finishPeer(observer, a);
+    await finishPeer(observer, b);
+    expect(controls.settle).not.toHaveBeenCalled();
+    await observer.interruptPending();
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "interrupted",
+    );
+});
+
+it("preserves a completed outcome on rejection while attempting every remaining delivery", async () => {
+    const { observer, controls } = setup();
+    const row = peerInput(observer.track(message()));
+    await observer.observeTranscript(row);
+    controls.settle.mockRejectedValue(new Error("storage unavailable"));
+    await expect(finishPeer(observer, row)).rejects.toThrow(
+        "storage unavailable",
+    );
+    observer.track(message("other"));
+    await expect(observer.failPending("connection_lost")).rejects.toThrow(
+        "storage failed",
+    );
+    expect(controls.settle).toHaveBeenCalledWith(
+        "other",
+        "failed",
+        "connection_lost",
+    );
+    controls.settle.mockResolvedValue(undefined);
+    await observer.interruptPending();
+    expect(controls.settle.mock.calls.slice(-2)).toEqual([
+        ["delivery", "completed"],
+        ["other", "failed", "connection_lost"],
+    ]);
+    await observer.interruptPending();
+    expect(controls.settle).toHaveBeenCalledTimes(5);
+});
+
+it("ignores subagent failures and notification payloads for main prompt", async () => {
+    const { observer, controls } = setup();
+    observer.observeRegistry({ sessionId: "session", status: "busy" });
+    const row = peerInput(observer.track(message()));
+    await observer.observeTranscript(row);
+    controls.setStatus.mockClear();
     await observer.observe(
-        event("UserPromptSubmit", "work", {
-            session_id: "third",
-            prompt: "other work",
+        event("StopFailure", row.promptId, {
+            agent_id: "child",
+            error: "api_error",
         }),
     );
-    for (const session_id of ["session", "other"]) {
-        await observer.observe(
-            event("Notification", "quota", {
-                session_id,
-                notification_type: "quota_auto_resume_fired",
-            }),
-        );
-    }
     await observer.observe(
-        event("Notification", "quota", {
+        event("Notification", row.promptId, {
+            agent_id: "child",
             notification_type: "quota_auto_resume_stale",
         }),
     );
-    await observer.observe(
-        event("PermissionRequest", "work", {
-            session_id: "third",
-            tool_use_id: "tool",
-        }),
-    );
-    await observer.observe(
-        event("Notification", "quota", {
-            notification_type: "quota_auto_resume_disabled",
-        }),
-    );
-    expect(controls.setStatus.mock.lastCall).toEqual([
-        "awaiting-user",
-        "Waiting for approval.",
-    ]);
-    await observer.observe(
-        event("PostToolUse", "work", {
-            session_id: "third",
-            tool_use_id: "tool",
-        }),
-    );
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    await observer.observe(event("Stop", "quota", { session_id: "other" }));
-    expect(controls.setStatus.mock.lastCall?.[0]).toBe("working");
-    await observer.observe(event("Stop", "work", { session_id: "third" }));
-    expect(controls.setStatus.mock.lastCall).toEqual(["idle", undefined]);
+    expect(controls.setStatus).not.toHaveBeenCalled();
     expect(controls.settle).not.toHaveBeenCalled();
+    await finishPeer(observer, row);
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "completed",
+    );
+});
+
+it("retains settled prompt identity beyond the old 1024-entry cutoff", async () => {
+    const { observer, controls } = setup();
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    const frame = observer.track(message());
+    const first = peerInput(frame, "first");
+    await observer.observeTranscript(first);
+    await finishPeer(observer, first);
+    // Cardinality regression, not a throughput or load measurement.
+    for (let index = 0; index < 1024; index++) {
+        const row = peerInput(frame, `later-${index}`);
+        row.origin.kind = "human";
+        await observer.observeTranscript(row);
+        await finishPeer(observer, row);
+    }
+    await observer.observe({
+        hook_event_name: "StopFailure",
+        session_id: "session",
+        error: "current_failure",
+    });
+    controls.setStatus.mockClear();
+    await observer.observeTranscript(first);
+    await finishPeer(observer, first);
+    expect(controls.setStatus).not.toHaveBeenCalled();
+    expect(controls.settle).toHaveBeenCalledTimes(1);
 });

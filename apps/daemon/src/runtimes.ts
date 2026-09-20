@@ -37,6 +37,7 @@ export type RuntimeRecord = {
     terminalOwnership: "owned" | "borrowed" | null;
     status: RuntimeStatus;
     status_reason: string | null;
+    observation_error: string | null;
     binding: AgentBinding;
 };
 
@@ -136,6 +137,12 @@ export class RuntimeRegistry {
                     if (record.executionOwnership === "daemon") this.onChange();
                 }
             },
+            setObservationError: (error) => {
+                const record = this.#runtimes.get(id);
+                if (!record || record.observation_error === error) return;
+                record.observation_error = error;
+                if (record.executionOwnership === "daemon") this.onChange();
+            },
             settle: (deliveryId, outcome, error) =>
                 this.#onSettle(id, deliveryId, outcome, error),
         };
@@ -155,6 +162,7 @@ export class RuntimeRegistry {
             // Not yet a send target: process spawn is not binding readiness.
             status: "aiox-preparing",
             status_reason: null,
+            observation_error: null,
             binding: unbound,
         };
         // Registered before the binding is built so the binding can report its

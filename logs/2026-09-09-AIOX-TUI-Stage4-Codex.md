@@ -20,7 +20,7 @@ status: open
 
 ### {Global}
 
-- 현재 활성 단계는 Stage4이고 재개점은 W4다. W1~W3는 완료했으며 W3 사용자 실측·대상별 delivery 자동 검증과 최종 실패 실측 생략 결정을 소비한다. W4에서 필요한 Stage3 Claude 메시지·관측 선행 조건부터 확인한다. UUID v7·CLI 표시 보완이나 완료한 Codex 검증을 재개하지 않는다. W1/W2 실측 제한과 W5 후속 순서를 유지하며 commit·push는 별도 지시 없이 수행하지 않는다.
+- 2026-09-16 사용자 지시로 현재 plan 활성 단계는 Stage3이며 재개점은 logs/2026-09-09-AIOX-TUI-Stage3-Claude.md W3다. Stage4는 대기이고 이 로그 W4 [>]는 복귀 시 재개점으로 보존한다. W1~W3 완료·기존 사용자 실측·대상별 delivery 자동 검증과 최종 실패 실측 생략 결정을 유지한다. Stage3 W2/W3/W5의 필요한 Claude 메시지·관측 선행 조건을 충족한 뒤 W4 교차 검증으로 복귀한다. 완료한 Codex 검증을 다시 시작하지 않으며 commit·push는 별도 지시 없이 수행하지 않는다.
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Codex 실제 TUI + Runtime별 App Server + Binding Relay를 연결한다. 입력은 채택된 toolOutput 본문 + additionalContext 메타데이터이며 E2E가 실패할 때만 원인을 확인한 뒤 후순위 방법을 검토한다. 임의 active thread 선택이나 선제 fallback을 만들지 않는다.
 - Stage2~2-3에서 완료한 공통 실행 소유권·terminal·메시지·상태 결과를 직접 소비한다. Codex W1~W3는 Stage3 완료를 기다리지 않는다. 기존 shell의 aiox agent run codex → 같은 terminal TUI → 종료 후 shell 복귀를 연결하고 외부 CLI와 daemon 소유 자원의 종료 정책을 유지한다. Runtime/threadId/turnId로 입력 결과를 연결한다. Stage3 결과 의존은 W4의 Claude 교차 검증에만 적용한다.
 - W3에서 Codex↔Codex의 agents_list/send·인증·단방향/양방향 route·결과·발신자 전용 알림을 먼저 검증한다. 두 vendor 교차 검증은 W4에서 Claude 준비 상태에 따라 수행한다. interrupted 자동 통지 없음·알림 재귀 방지와 실제 OS별 근거/대역 구분은 공통으로 유지한다.
@@ -788,3 +788,33 @@ W3 active·Stage4 포인터를 유지한다. 남은 확인은 대상별 delivery
 ### 2026-09-16 15:02 · W3 완료·W4 포인터 전환
 
 사용자가 W3 완료 처리, W4 포인터 이동과 커밋까지만 지시했다. 기존 사용자 실측·자동 검증 근거 및 최종 실패 실측 생략 결정을 소비해 W3를 completed로 바꾸고 W4를 active로 전환한다. Stage4는 open·활성을 유지한다. W4의 첫 행동은 Stage3의 필요한 Claude 메시지·관측 선행 조건 확인이며 이번에는 W4 조사나 실험을 시작하지 않는다. 커밋 범위는 messaging.test.ts와 이 Stage4 로그이며 사용자의 별도 Web UI Design Prompt 변경은 제외한다.
+
+### 2026-09-16 15:52 · Codex No·Esc 관측 범위 재확인 — Esc 실측과 No 미실측 구분
+
+사용자가 Claude No/Esc 관측 논의에 이어 Codex에서도 추적되는지 로그 기록과 보고만 요청했다. onramp 실행·제품 코드 변경·새 vendor/TUI 실행·테스트 재실행 없이 현재 Codex Relay/Binding·인접 테스트·owner 문서·W2 실측 원본을 대조했다. 이 요청에 한해 앞선 로그 기록 금지보다 최신 기록 지시를 적용했다.
+
+확인 사실: packages/adapters/codex/src/relay.ts는 App Server의 requestApproval, serverRequest/resolved, item/started·completed, turn/started·completed를 Binding으로 전달한다. TUI의 승인 응답은 App Server로 중계하지만 decision을 Binding 관측 이벤트로 별도 전달하지 않는다. binding.ts:227의 turn/completed는 threadId/turn.id로 completed·failed·interrupted를 연결된 delivery에 반영하고 해당 turn의 tools·pending만 정리한다. :325의 resolved는 threadId/requestId 대기만 해제한다. item/completed는 도구 활동을 지우며 declined 상태를 별도 거절 이력으로 보존하지 않는다. 따라서 요청 해소·turn 중단 추적과 물리적 No/Esc 조작 원인 식별은 다르며 resolved를 No 또는 turn 종료로 해석하지 않는다. turnId=null인 독립 elicitation은 turn 종료만으로 지우지 않는 기존 계약을 유지한다.
+
+실측 재확인: /private/tmp/aiox-w2-live-XjC36P/events.jsonl·status.jsonl·lists.jsonl을 직접 읽었다. 기존 Codex 0.153.4/macOS 실험의 실행 중 Esc는 2026-09-15T03:06:34.520Z turn/completed(interrupted), Plan 질문창 Esc는 03:11:23.002Z interrupted와 requestId0 resolved가 있다. 두 경우 setStatus idle/null 및 각각 03:06:34.562Z·03:11:23.107Z Web API/MCP idle/null이 기록돼 있다. 키 조작·DOM 확인은 이 로그 2026-09-15 13:44 실험 기록을 근거로 하며 이번에 재조작하거나 screenshot을 재검사하지 않았다. 같은 실험의 복수 승인은 Enter 허용 뒤 resolved1/2를 확인한 것이므로 No 실측으로 확대하지 않는다. 이번에 확인한 Stage4 기록·해당 실측 자료에는 승인창 No 전용 성공 근거가 없다. index.test.ts:188~256의 소켓 대역 시나리오는 개별 resolved·interrupted delivery 귀속·늦은 item 완료의 중복 결과 방지를 검사하며 물리적 No 조작 실측이 아니다.
+
+공식 문서 https://learn.chatgpt.com/docs/app-server 의 Approvals·Interrupt a turn을 이번에 열어 대조했다. command/file 승인 결정에는 decline/cancel이 있고 resolved는 응답 또는 정리, item/completed에는 declined가 있으며 turn/interrupt의 종료 상태는 interrupted다. 문서 계약과 설치 버전 TUI의 실제 No→decision 매핑·이벤트 발생은 구분한다. 판단: Codex에는 Claude의 transcript marker·parent chain 보완과 달리 요청 해소와 turn 중단의 구조화 관측 경로가 있고 Esc 주요 두 경로는 실측됐다. No도 후속 구조화 이벤트를 소비할 구현은 있지만 현재 No 결정 자체의 별도 이력은 없고 실제 No 시나리오 검증 완료를 주장할 근거는 부족하다. 도구 없는 생성 중 Esc나 승인창 Esc 등 미측정 조작을 기존 두 Esc 표본으로 인증하지 않는다.
+
+보고·기록으로 이번 질문을 마친다. 관측 결함을 새로 재현한 것은 아니므로 구현 변경이나 W2 재개·새 검증 과제를 자동 생성하지 않는다. 기존 W1~W3 완료·W4 next pointer와 Stage4 open 상태를 유지한다. owner 계약 변경이 없어 추가 owner 수정은 없다. 같은 Codex 관측 검증 수명의 근거 구분이므로 기존 Base 로그에 append하며 분리하지 않았다.
+
+### 2026-09-16 22:59 · Stage3 W3 관측 보완으로 전환·W4 복귀 지점 보존
+
+사용자가 Stage3 전환·로그 기록·pointer 변경을 지시했다. plan Stage4는 pending, Stage3는 active이며 현재 재개점은 logs/2026-09-09-AIOX-TUI-Stage3-Claude.md W3다. Claude 상태 파일/fs.watch/FileChanged, No·Esc·cwd·/clear·/resume 실측과 현재 상태·delivery 결과·시스템 발신의 대체 범위는 해당 로그의 2026-09-16 「W3 세션 상태 파일 관측·세션 전환 실측과 Stage3 재개」 블록이 소유한다.
+
+W1~W3 완료와 이 로그 W4 [>]는 Stage3 선행 조건 충족 후 복귀할 재개점으로 보존한다. W4 교차 검증·W5 마감은 미완료다. 기존 Codex 실측을 반복하거나 Stage4를 완료로 닫지 않는다. 이번에는 plan과 양 단계 로그만 변경했으며 구현·commit·push는 수행하지 않았다. Stage4 기존 수명의 의존/복귀 정리라 동일 Base 로그에 append하고 별도 로그로 분리하지 않는다.
+
+### 2026-09-17 22:27 · /rename·/cd 이후 Codex 상태 추적의 코드 근거와 실측 한계
+
+사용자는 Stage3 Claude 로그의 2026-09-17 22:17 「/rename·/cd 실제 TUI 파일 식별과 경로 이동 검증」을 읽고 Codex TUI/App Server에서도 이름·작업 디렉터리 변경 후 같은 실행과 이후 작업 상태를 추적할 수 있는지 추론하도록 요청했다. 앞선 기록 금지 이후 이번 분석을 Stage4에 남기도록 명시적으로 지시했다. 이 기록은 코드 조사 결과이며 신규 TUI 실측이나 구현 완료 판정이 아니다.
+
+확인 사실: 현재 packages/adapters/codex/src/index.ts는 TUI를 --remote로 Relay에 연결한다. relay.ts는 thread/start·resume·fork 성공 응답으로 activeThreadId를 선택하고 turn·item·승인/질문·resolved 이벤트를 binding.ts에 전달한다. Binding의 현재 상태·delivery 결과 귀속은 threadId/turnId 기반이며 transcript 파일 경로나 대화 이름을 식별키로 쓰지 않는다. 이름 변경 알림은 현재 Relay의 Binding 전달 목록에 없다. 작업 상태 추적과 변경된 이름·cwd 자체의 AIOX 표시 동기화는 구분해야 한다. owner 근거는 docs/architecture/aiox-vendor-bindings.md의 Codex Relay·상태 관측 경계다.
+
+/rename 근거와 추론: 저장된 /private/tmp/codex154-chatwidget-interaction.rs, codex154-app-thread_routing.rs, codex154-app_server_session.rs, codex154-thread_processor.rs에서 현재 thread ID를 대상으로 thread/name/set을 호출하고 이름 메타데이터를 갱신한 뒤 같은 ID의 ThreadNameUpdated 알림을 만드는 경로를 확인했다. 공식 https://learn.chatgpt.com/docs/developer-commands#rename-the-current-chat-with-rename 도 현재 대화 이름 변경 기능임을 설명한다. 이 경로대로 동작하면 /rename 뒤에도 같은 thread/turn 이벤트로 작업 상태를 계속 추적할 것으로 판단한다. AIOX 표시 이름 자동 동기화까지 구현됐다는 뜻은 아니다.
+
+/cd 근거와 추론: 저장된 /private/tmp/codex154-app-event_dispatch.rs:125의 ChangeWorkingDirectory 분기는 idle primary session·queued input 조건을 검사하고 remote workspace 또는 remote execution environment이면 변경을 거절한다. 별도 저장 소스 /private/tmp/aiox-w1-lib.rs:285, :777, :876에서는 --remote 대상이 AppServerTarget::Remote로 선택되고 이 variant가 remote workspace 판정에 포함됨을 확인했다. AIOX의 loopback App Server도 --remote 연결이므로 현재 구성에서는 /cd 자체가 거절될 가능성이 높다는 코드 기반 판단이다. 서로 다른 시점의 저장 소스를 대조한 근거이며, 이번에 --version으로 확인한 설치 0.154.0에서 실제 키 입력·거절 화면까지 검증하지 않았다. 이를 디렉터리 이동 후 추적 성공으로 기록하지 않는다. 시작 인자 --cd 지원과 실행 중 slash /cd는 별개이며, 일반 standalone TUI 또는 App Server API를 직접 사용하는 다른 연결 구성까지 같은 결론으로 확대하지 않는다.
+
+Claude 비교: Stage3 실측은 /rename의 session/path 유지와 /cd의 실제 transcript 이동을 확인했으나 CwdChanged/FileChanged 미수신으로 reader 자동 전환은 미확인이다. Codex의 이벤트 기반 관측에는 그 transcript 경로 전환이 관측 선행 조건이 아니다. 다만 구조 차이만으로 /cd 성공이나 전체 E2E 성공을 보장하지 않는다. 이번에는 production·tests·owner 계약을 변경하거나 테스트·신규 TUI/daemon 실험·onramp를 실행하지 않았다. 실제 확인이 필요할 때의 미확인 지점은 격리된 현재 버전 AIOX remote TUI에서 /rename 후 후속 turn 상태 유지와 /cd 허용/거절 동작이다. 새 실험 과제를 자동 활성화하지 않고 W1~W3 완료, Stage4 대기와 W4 복귀 pointer, W5 미완료를 유지한다. 기존 Codex 관측 검증의 후속 근거 구분이므로 같은 Base 로그에 append한다.

@@ -1,0 +1,1969 @@
+[
+    {
+        "name": "no Stop hook",
+        "source": "/private/tmp/aiox-stopfailure-probe/config/projects/-private-tmp-aiox-transcript-stop-five/26bdbe3a-0b5a-4883-a9df-dacd2c4cace4.jsonl",
+        "vendor": "Claude Code 2.1.274 / macOS / local API fixture",
+        "expected": "completed",
+        "rows": [
+            {
+                "isSidechain": false,
+                "type": "user",
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "0",
+                "parentUuid": null,
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "1",
+                "parentUuid": "0",
+                "attachment": {
+                    "type": "environment"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "2",
+                "parentUuid": "1",
+                "attachment": {
+                    "type": "model"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "3",
+                "parentUuid": "2",
+                "attachment": {
+                    "type": "total_tokens_reminder"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": "3",
+                "attachment": {
+                    "type": "session_context"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "5",
+                "parentUuid": "4",
+                "attachment": {
+                    "type": "date"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "5",
+                "attachment": {
+                    "type": "remote_session_change"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "7",
+                "parentUuid": "6",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "8",
+                "parentUuid": "7",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-0",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "9",
+                "parentUuid": "8",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "turn_duration",
+                "durationMs": 91,
+                "sessionId": "session",
+                "uuid": "10",
+                "parentUuid": "9"
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "11",
+                "parentUuid": "10",
+                "attachment": {
+                    "type": "hook_success"
+                }
+            }
+        ],
+        "expectedIndex": 10
+    },
+    {
+        "name": "quiet Stop hook",
+        "source": "/private/tmp/aiox-stopfailure-probe/config/projects/-private-tmp-aiox-transcript-stop-five/f09eb4f3-4851-42cb-8f8f-ef1e2876d756.jsonl",
+        "vendor": "Claude Code 2.1.274 / macOS / local API fixture",
+        "expected": "completed",
+        "rows": [
+            {
+                "isSidechain": false,
+                "type": "user",
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "0",
+                "parentUuid": null,
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "1",
+                "parentUuid": "0",
+                "attachment": {
+                    "type": "environment"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "2",
+                "parentUuid": "1",
+                "attachment": {
+                    "type": "model"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "3",
+                "parentUuid": "2",
+                "attachment": {
+                    "type": "total_tokens_reminder"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": "3",
+                "attachment": {
+                    "type": "session_context"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "5",
+                "parentUuid": "4",
+                "attachment": {
+                    "type": "date"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "5",
+                "attachment": {
+                    "type": "remote_session_change"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "7",
+                "parentUuid": "6",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "8",
+                "parentUuid": "7",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-0",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "9",
+                "parentUuid": "8",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookCount": 1,
+                "hookErrors": [],
+                "hookAdditionalContext": [],
+                "hasOutput": false,
+                "sessionId": "session",
+                "uuid": "10",
+                "parentUuid": "9"
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "turn_duration",
+                "durationMs": 2184,
+                "sessionId": "session",
+                "uuid": "11",
+                "parentUuid": "10"
+            }
+        ],
+        "expectedIndex": 11
+    },
+    {
+        "name": "blocking Stop continuation",
+        "source": "/private/tmp/aiox-stopfailure-probe/config/projects/-private-tmp-aiox-transcript-stop-five/f09eb4f3-4851-42cb-8f8f-ef1e2876d756.jsonl",
+        "vendor": "Claude Code 2.1.274 / macOS / local API fixture",
+        "expected": "completed",
+        "rows": [
+            {
+                "isSidechain": false,
+                "type": "user",
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "0",
+                "parentUuid": null,
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "1",
+                "parentUuid": "0",
+                "attachment": {
+                    "type": "total_tokens_reminder"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "2",
+                "parentUuid": "1",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-0",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "user",
+                "sessionId": "session",
+                "uuid": "3",
+                "parentUuid": "2",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": "3",
+                "attachment": {
+                    "type": "hook_blocking_error"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookCount": 1,
+                "hookErrors": ["fixture context"],
+                "hookAdditionalContext": [],
+                "hasOutput": true,
+                "sessionId": "session",
+                "uuid": "5",
+                "parentUuid": "4"
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "5",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-1",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "user",
+                "sessionId": "session",
+                "uuid": "7",
+                "parentUuid": "6",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "8",
+                "parentUuid": "7",
+                "attachment": {
+                    "type": "hook_blocking_error"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookCount": 1,
+                "hookErrors": ["fixture context"],
+                "hookAdditionalContext": [],
+                "hasOutput": true,
+                "sessionId": "session",
+                "uuid": "9",
+                "parentUuid": "8"
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "10",
+                "parentUuid": "9",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-2",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookCount": 1,
+                "hookErrors": [],
+                "hookAdditionalContext": [],
+                "hasOutput": false,
+                "sessionId": "session",
+                "uuid": "11",
+                "parentUuid": "10"
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "turn_duration",
+                "durationMs": 6343,
+                "sessionId": "session",
+                "uuid": "12",
+                "parentUuid": "11"
+            }
+        ],
+        "expectedIndex": 12
+    },
+    {
+        "name": "response Esc in continuation",
+        "source": "/private/tmp/aiox-stopfailure-probe/config/projects/-private-tmp-aiox-transcript-stop-five/f09eb4f3-4851-42cb-8f8f-ef1e2876d756.jsonl",
+        "vendor": "Claude Code 2.1.274 / macOS / local API fixture",
+        "expected": "interrupted",
+        "rows": [
+            {
+                "isSidechain": false,
+                "type": "user",
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "0",
+                "parentUuid": null,
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "1",
+                "parentUuid": "0",
+                "attachment": {
+                    "type": "total_tokens_reminder"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "2",
+                "parentUuid": "1",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-0",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "user",
+                "sessionId": "session",
+                "uuid": "3",
+                "parentUuid": "2",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": "3",
+                "attachment": {
+                    "type": "hook_blocking_error"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookCount": 1,
+                "hookErrors": ["fixture context"],
+                "hookAdditionalContext": [],
+                "hasOutput": true,
+                "sessionId": "session",
+                "uuid": "5",
+                "parentUuid": "4"
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "isAbortedMidStream": true,
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "5",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": null,
+                    "id": "message-1",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "user",
+                "interruptedMessageId": "message-1",
+                "sessionId": "session",
+                "uuid": "7",
+                "parentUuid": "6",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "[Request interrupted by user]"
+                        }
+                    ]
+                }
+            }
+        ],
+        "expectedIndex": 7
+    },
+    {
+        "name": "API error in continuation",
+        "source": "/private/tmp/aiox-stopfailure-probe/config/projects/-private-tmp-aiox-transcript-stop-five/f09eb4f3-4851-42cb-8f8f-ef1e2876d756.jsonl",
+        "vendor": "Claude Code 2.1.274 / macOS / local API fixture",
+        "expected": null,
+        "rows": [
+            {
+                "isSidechain": false,
+                "type": "user",
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "0",
+                "parentUuid": null,
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "1",
+                "parentUuid": "0",
+                "attachment": {
+                    "type": "total_tokens_reminder"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "2",
+                "parentUuid": "1",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-0",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "user",
+                "sessionId": "session",
+                "uuid": "3",
+                "parentUuid": "2",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": "3",
+                "attachment": {
+                    "type": "hook_blocking_error"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookCount": 1,
+                "hookErrors": ["fixture context"],
+                "hookAdditionalContext": [],
+                "hasOutput": true,
+                "sessionId": "session",
+                "uuid": "5",
+                "parentUuid": "4"
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "isApiErrorMessage": true,
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "5",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "stop_sequence",
+                    "id": "message-1",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "turn_duration",
+                "durationMs": 2155,
+                "sessionId": "session",
+                "uuid": "7",
+                "parentUuid": "6"
+            }
+        ],
+        "expectedIndex": null
+    },
+    {
+        "name": "additionalContext continuation",
+        "source": "/private/tmp/aiox-additional-context-probe/run-L9J92N/transcript.jsonl",
+        "vendor": "Claude Code 2.1.274 / macOS / local API fixture",
+        "expected": "completed",
+        "rows": [
+            {
+                "isSidechain": false,
+                "type": "user",
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "0",
+                "parentUuid": null,
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "1",
+                "parentUuid": "0",
+                "attachment": {
+                    "type": "environment"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "2",
+                "parentUuid": "1",
+                "attachment": {
+                    "type": "model"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "3",
+                "parentUuid": "2",
+                "attachment": {
+                    "type": "total_tokens_reminder"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": "3",
+                "attachment": {
+                    "type": "session_context"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "5",
+                "parentUuid": "4",
+                "attachment": {
+                    "type": "date"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "5",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "informational",
+                "sessionId": "session",
+                "uuid": "7",
+                "parentUuid": "6"
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "8",
+                "parentUuid": "7",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-0",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "9",
+                "parentUuid": "8",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "10",
+                "parentUuid": "9",
+                "attachment": {
+                    "type": "hook_success"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "attachment",
+                "sessionId": "session",
+                "uuid": "11",
+                "parentUuid": "10",
+                "attachment": {
+                    "type": "hook_additional_context"
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookCount": 1,
+                "hookErrors": [],
+                "hookAdditionalContext": ["fixture context"],
+                "hasOutput": true,
+                "sessionId": "session",
+                "uuid": "12",
+                "parentUuid": "11"
+            },
+            {
+                "isSidechain": false,
+                "type": "assistant",
+                "sessionId": "session",
+                "uuid": "13",
+                "parentUuid": "12",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-1",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookCount": 1,
+                "hookErrors": [],
+                "hookAdditionalContext": [],
+                "hasOutput": false,
+                "sessionId": "session",
+                "uuid": "14",
+                "parentUuid": "13"
+            },
+            {
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "turn_duration",
+                "durationMs": 113,
+                "sessionId": "session",
+                "uuid": "15",
+                "parentUuid": "14"
+            }
+        ],
+        "expectedIndex": 15
+    },
+    {
+        "name": "No through prompt_snapshot",
+        "source": "/private/tmp/aiox-stopfailure-probe/config/projects/-private-tmp-aiox-otel-interrupt-probe/f64372c5-beaf-4866-99ac-d3e654c5f63f.jsonl",
+        "vendor": "Claude Code 2.1.274 / macOS / local API fixture",
+        "expected": "interrupted",
+        "expectedIndex": 10,
+        "rows": [
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "0",
+                "parentUuid": null,
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "1",
+                "parentUuid": "0",
+                "attachment": {
+                    "type": "environment"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "2",
+                "parentUuid": "1",
+                "attachment": {
+                    "type": "model"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "3",
+                "parentUuid": "2",
+                "attachment": {
+                    "type": "session_context"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": "3",
+                "attachment": {
+                    "type": "date"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "5",
+                "parentUuid": "4",
+                "attachment": {
+                    "type": "remote_session_change"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "5",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "7",
+                "parentUuid": "6",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "tool_use",
+                    "id": "msg-0",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tool-0"
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "toolDenialKind": "user-rejected",
+                "sessionId": "session",
+                "uuid": "8",
+                "parentUuid": "7",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "tool-0",
+                            "is_error": true
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "9",
+                "parentUuid": "8",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "10",
+                "parentUuid": "9",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "[Request interrupted by user for tool use]"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "name": "tool execution Esc",
+        "source": "/Users/lunaxislu/.claude/projects/-private-tmp-aiox-session-filechanged-mad1xz1m/c4217ddb-1343-4d1d-b7d8-beb1e4bff636.jsonl",
+        "vendor": "Claude Code 2.1.273 / macOS / isolated TUI",
+        "expected": "interrupted",
+        "expectedIndex": 6,
+        "rows": [
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "0",
+                "parentUuid": null,
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "1",
+                "parentUuid": "0",
+                "attachment": {
+                    "type": "total_tokens_reminder"
+                }
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "2",
+                "parentUuid": "1",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "tool_use",
+                    "id": "msg-0",
+                    "content": [
+                        {
+                            "type": "thinking"
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "3",
+                "parentUuid": "2",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "tool_use",
+                    "id": "msg-0",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "fixture text"
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": "3",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "tool_use",
+                    "id": "msg-0",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tool-0"
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "toolDenialKind": "user-rejected",
+                "sessionId": "session",
+                "uuid": "5",
+                "parentUuid": "4",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "tool-0",
+                            "is_error": true
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "5",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "[Request interrupted by user for tool use]"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "name": "dynamic Stop configuration in one session",
+        "source": "/private/tmp/aiox-dynamic-stop-probe/run-FLeDjD/transcript.jsonl",
+        "vendor": "Claude Code 2.1.274 / macOS / local API fixture",
+        "phases": [
+            "none",
+            "one",
+            "multiple",
+            "block",
+            "removed",
+            "readded",
+            "disabled",
+            "reenabled",
+            "skill",
+            "skill-next"
+        ],
+        "expected": "completed",
+        "expectedIndices": [10, 15, 20, 29, 33, 38, 42, 47, 53, 58],
+        "rows": [
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-0",
+                "parentUuid": null
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-1",
+                "parentUuid": "dynamic-0",
+                "promptId": "prompt-0",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-2",
+                "parentUuid": "dynamic-1"
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-3",
+                "parentUuid": "dynamic-2"
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-4",
+                "parentUuid": "dynamic-3"
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-5",
+                "parentUuid": "dynamic-4"
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-6",
+                "parentUuid": "dynamic-5"
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-7",
+                "parentUuid": "dynamic-6"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-8",
+                "parentUuid": "dynamic-7",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-9",
+                "parentUuid": "dynamic-8"
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 97,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-10",
+                "parentUuid": "dynamic-9"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-11",
+                "parentUuid": "dynamic-10",
+                "promptId": "prompt-1",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-12",
+                "parentUuid": "dynamic-11"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-13",
+                "parentUuid": "dynamic-12",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": false,
+                "hasOutput": false,
+                "preventedContinuation": false,
+                "stopReason": "",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-14",
+                "parentUuid": "dynamic-13",
+                "hookErrors": [],
+                "hookAdditionalContext": []
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 323,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-15",
+                "parentUuid": "dynamic-14"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-16",
+                "parentUuid": "dynamic-15",
+                "promptId": "prompt-2",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-17",
+                "parentUuid": "dynamic-16"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-18",
+                "parentUuid": "dynamic-17",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": false,
+                "hasOutput": false,
+                "preventedContinuation": false,
+                "stopReason": "",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-19",
+                "parentUuid": "dynamic-18",
+                "hookErrors": [],
+                "hookAdditionalContext": []
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 1523,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-20",
+                "parentUuid": "dynamic-19"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-21",
+                "parentUuid": "dynamic-20",
+                "promptId": "prompt-3",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-22",
+                "parentUuid": "dynamic-21"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-23",
+                "parentUuid": "dynamic-22",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-24",
+                "parentUuid": "dynamic-23",
+                "promptId": "prompt-3",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-25",
+                "parentUuid": "dynamic-24"
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": false,
+                "hasOutput": true,
+                "preventedContinuation": false,
+                "stopReason": "",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-26",
+                "parentUuid": "dynamic-25",
+                "hookErrors": ["fixture block"],
+                "hookAdditionalContext": []
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-27",
+                "parentUuid": "dynamic-26",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": false,
+                "hasOutput": false,
+                "preventedContinuation": false,
+                "stopReason": "",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-28",
+                "parentUuid": "dynamic-27",
+                "hookErrors": [],
+                "hookAdditionalContext": []
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 2002,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-29",
+                "parentUuid": "dynamic-28"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-30",
+                "parentUuid": "dynamic-29",
+                "promptId": "prompt-4",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-31",
+                "parentUuid": "dynamic-30"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-32",
+                "parentUuid": "dynamic-31",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 70,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-33",
+                "parentUuid": "dynamic-32"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-34",
+                "parentUuid": "dynamic-33",
+                "promptId": "prompt-5",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-35",
+                "parentUuid": "dynamic-34"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-36",
+                "parentUuid": "dynamic-35",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": false,
+                "hasOutput": false,
+                "preventedContinuation": false,
+                "stopReason": "",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-37",
+                "parentUuid": "dynamic-36",
+                "hookErrors": [],
+                "hookAdditionalContext": []
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 323,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-38",
+                "parentUuid": "dynamic-37"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-39",
+                "parentUuid": "dynamic-38",
+                "promptId": "prompt-6",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-40",
+                "parentUuid": "dynamic-39"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-41",
+                "parentUuid": "dynamic-40",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 25,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-42",
+                "parentUuid": "dynamic-41"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-43",
+                "parentUuid": "dynamic-42",
+                "promptId": "prompt-7",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-44",
+                "parentUuid": "dynamic-43"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-45",
+                "parentUuid": "dynamic-44",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": false,
+                "hasOutput": false,
+                "preventedContinuation": false,
+                "stopReason": "",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-46",
+                "parentUuid": "dynamic-45",
+                "hookErrors": [],
+                "hookAdditionalContext": []
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 321,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-47",
+                "parentUuid": "dynamic-46"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-48",
+                "parentUuid": "dynamic-47",
+                "promptId": "prompt-8",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-49",
+                "parentUuid": "dynamic-48",
+                "promptId": "prompt-8",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-50",
+                "parentUuid": "dynamic-49"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-51",
+                "parentUuid": "dynamic-50",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": false,
+                "hasOutput": false,
+                "preventedContinuation": false,
+                "stopReason": "",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-52",
+                "parentUuid": "dynamic-51",
+                "hookErrors": [],
+                "hookAdditionalContext": []
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 324,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-53",
+                "parentUuid": "dynamic-52"
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-54",
+                "parentUuid": "dynamic-53",
+                "promptId": "prompt-9",
+                "message": {
+                    "role": "user",
+                    "content": "fixture input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-55",
+                "parentUuid": "dynamic-54"
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-56",
+                "parentUuid": "dynamic-55",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "content": []
+                }
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "isSidechain": false,
+                "hasOutput": false,
+                "preventedContinuation": false,
+                "stopReason": "",
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-57",
+                "parentUuid": "dynamic-56",
+                "hookErrors": [],
+                "hookAdditionalContext": []
+            },
+            {
+                "type": "system",
+                "subtype": "turn_duration",
+                "isSidechain": false,
+                "durationMs": 325,
+                "sessionId": "dynamic-session",
+                "uuid": "dynamic-58",
+                "parentUuid": "dynamic-57"
+            }
+        ]
+    },
+    {
+        "name": "Stop hook Esc without aborted assistant ID",
+        "expectedIndex": 11,
+        "expected": "interrupted",
+        "rows": [
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "4",
+                "parentUuid": null,
+                "attachment": {
+                    "type": "hook_success"
+                }
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "origin": {
+                    "kind": "human"
+                },
+                "promptSource": "typed",
+                "sessionId": "session",
+                "uuid": "6",
+                "parentUuid": "4",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": "input"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "7",
+                "parentUuid": "6",
+                "attachment": {
+                    "type": "environment"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "8",
+                "parentUuid": "7",
+                "attachment": {
+                    "type": "model"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "9",
+                "parentUuid": "8",
+                "attachment": {
+                    "type": "total_tokens_reminder"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "10",
+                "parentUuid": "9",
+                "attachment": {
+                    "type": "session_context"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "11",
+                "parentUuid": "10",
+                "attachment": {
+                    "type": "date"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "12",
+                "parentUuid": "11",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "type": "assistant",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "13",
+                "parentUuid": "12",
+                "message": {
+                    "role": "assistant",
+                    "stop_reason": "end_turn",
+                    "id": "message-stop",
+                    "content": []
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "14",
+                "parentUuid": "13",
+                "attachment": {
+                    "type": "prompt_snapshot"
+                }
+            },
+            {
+                "type": "attachment",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "15",
+                "parentUuid": "14",
+                "attachment": {
+                    "type": "hook_cancelled"
+                }
+            },
+            {
+                "type": "user",
+                "isSidechain": false,
+                "sessionId": "session",
+                "uuid": "16",
+                "parentUuid": "15",
+                "promptId": "prompt",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "[Request interrupted by user]"
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+]

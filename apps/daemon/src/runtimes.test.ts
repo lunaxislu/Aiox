@@ -16,7 +16,13 @@ test("runtime observations retain a reason separately from request outcomes", as
     controls.setStatus("failed", "rate_limit");
     expect(record.status).toBe("failed");
     expect(record.status_reason).toBe("rate_limit");
+    controls.setObservationError("Old session transcript unavailable");
+    expect(record.observation_error).toBe("Old session transcript unavailable");
+    expect(record.status).toBe("failed");
     controls.setStatus("working");
+    expect(record.observation_error).toBe("Old session transcript unavailable");
+    controls.setObservationError(null);
+    expect(record.observation_error).toBeNull();
     expect(record.status).toBe("working");
     expect(record.status_reason).toBeNull();
 });

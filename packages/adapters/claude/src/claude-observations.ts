@@ -1,31 +1,12 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome } from "@aiox/domain";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
-import { z } from "zod";
 
-const transcriptRecord = z.object({
-    type: z.literal("user"),
-    isSidechain: z.literal(false),
-    sessionId: z.string().min(1),
-    promptId: z.string().min(1),
-    uuid: z.string().min(1),
-    parentUuid: z.string().nullable().optional(),
-    toolDenialKind: z.string().optional(),
-    origin: z.never().optional(),
-    promptSource: z.never().optional(),
-    message: z.object({
-        role: z.literal("user"),
-        content: z.array(
-            z.object({
-                type: z.string(),
-                tool_use_id: z.string().optional(),
-                is_error: z.boolean().optional(),
-                text: z.string().optional(),
-            }),
-        ),
-    }),
-});
+import {
+    ClaudeTranscriptChain,
+    transcriptRowSchema,
+} from "@/claude-transcript-chain";
 
 function escapeAttribute(value: string): string {
     return value
@@ -44,293 +25,355 @@ function promptKey(event: Record<string, unknown>): string | undefined {
         : undefined;
 }
 
-function errorType(value: unknown): string {
-    return typeof value === "string" &&
-        [
-            "rate_limit",
-            "overloaded",
-            "authentication_failed",
-            "oauth_org_not_allowed",
-            "account_on_hold",
-            "billing_error",
-            "invalid_request",
-            "model_not_found",
-            "server_error",
-            "max_output_tokens",
-            "cloud_credential_error",
-        ].includes(value)
-        ? value
-        : "unknown";
-}
-
 function failureReason(event: Record<string, unknown>): string {
     const detail = [event.last_assistant_message, event.error_details].find(
         (value): value is string =>
             typeof value === "string" && value.trim() !== "",
     );
-    const type = errorType(event.error);
+    const type =
+        typeof event.error === "string" && event.error.trim()
+            ? event.error
+            : "unknown";
     return detail ? `${detail} · ${type}` : type;
+}
+
+class ClaudeSession {
+    retired = false;
+    readonly earlyFailures = new Map<string, string>();
+    readonly ambiguous = new Set<string>();
+    readonly finished = new Set<string>();
+    readonly prompts = new Map<string, string | null>();
+    readonly chain = new ClaudeTranscriptChain();
+    latest: string | undefined;
+    failure: string | undefined;
+    quota: string | undefined;
+    resuming = false;
 }
 
 /** Consumes reports only after the caller authenticates this Runtime's hook credential. */
 export class ClaudeObservations {
-    readonly #pending = new Map<string, string | null>();
-    readonly #prompts = new Map<string, string | null>();
-    readonly #fingerprints = new Map<string, string>();
-    readonly #finished = new Set<string>();
-    readonly #frameKeys = new Map<string, string>();
-    readonly #ambiguous = new Set<string>();
-    readonly #active = new Set<string>();
+    readonly #sessions = new Map<string, ClaudeSession>();
+    readonly #pending = new Map<
+        string,
+        { deliveryId: string | null; peer: string; session?: ClaudeSession }
+    >();
+    readonly #peers = new Map<string, string>();
+    readonly #frameKeys = new Map<
+        string,
+        { key: string; session: ClaudeSession }
+    >();
     readonly #outcomes = new Map<
         string,
         { outcome: DeliveryOutcome; error?: string }
     >();
-    #failed = false;
-    #failureReason: string | undefined;
-    readonly #resuming = new Set<string>();
-    readonly #waiting = new Map<string, string>();
-    readonly #tools = new Set<string>();
-    readonly #owners = new Map<string, string>();
-    readonly #denials = new Map<string, string>();
-    readonly #unidentified = new Set<string>();
+    #currentSession: string | undefined;
+    #registry:
+        | {
+              sessionId: string;
+              status: "idle" | "busy" | "waiting";
+              waitingFor?: string | undefined;
+          }
+        | undefined;
     #queue = Promise.resolve();
 
-    constructor(
-        readonly controls: RuntimeControls,
-        readonly options: { hasBlockingStopHooks?: boolean } = {},
-    ) {}
+    constructor(readonly controls: RuntimeControls) {}
+
+    #session(id: string): ClaudeSession {
+        let session = this.#sessions.get(id);
+        if (!session) {
+            session = new ClaudeSession();
+            this.#sessions.set(id, session);
+        }
+        return session;
+    }
+
+    #promptSession(key: string): ClaudeSession {
+        return this.#session((JSON.parse(key) as [string, string])[0]);
+    }
+
+    selectSession(id: string, fresh = false): ClaudeSession {
+        if (fresh) {
+            this.#sessions.set(id, new ClaudeSession());
+            this.#registry = undefined;
+        }
+        this.#currentSession = id;
+        const session = this.#session(id);
+        if (this.#registry?.sessionId !== id)
+            this.controls.setStatus(
+                "aiox-preparing",
+                "Waiting for session registry.",
+            );
+        return session;
+    }
+
+    get hasPendingOutcomes(): boolean {
+        return this.#outcomes.size > 0;
+    }
+
+    retryOutcomes(): Promise<void> {
+        return this.#enqueue(() => this.#flushOutcomes());
+    }
+
+    retireSession(id: string, session: ClaudeSession): Promise<void> {
+        session.retired = true;
+        if (this.#sessions.get(id) === session) this.#sessions.delete(id);
+        session.prompts.clear();
+        session.finished.clear();
+        session.ambiguous.clear();
+        session.earlyFailures.clear();
+        session.chain.clear();
+        const frames: string[] = [];
+        for (const [frame, pending] of this.#pending) {
+            if (pending.session !== session) continue;
+            frames.push(frame);
+            delete pending.session;
+            this.#frameKeys.delete(frame);
+            this.#peers.delete(pending.peer);
+        }
+        return this.#enqueue(async () => {
+            let failed = false;
+            for (const frame of frames) {
+                try {
+                    await this.#settle(frame, "interrupted");
+                } catch {
+                    failed = true;
+                }
+            }
+            if (failed)
+                throw new Error(
+                    "AIOX input outcome storage failed; retry cleanup",
+                );
+        });
+    }
+
+    observeRegistry(registry: {
+        sessionId: string;
+        status: "idle" | "busy" | "waiting";
+        waitingFor?: string | undefined;
+    }): void {
+        if (
+            registry.status === "busy" &&
+            (this.#registry?.sessionId !== registry.sessionId ||
+                this.#registry.status !== "busy")
+        )
+            this.#session(registry.sessionId).failure = undefined;
+        this.#registry = registry;
+        this.#currentSession = registry.sessionId;
+        this.#project();
+    }
 
     track(message: InboundMessage): string {
         const frame = `<cross-session-message from-name="${escapeAttribute(message.from.name)}">\n[AIOX ${message.deliveryId === null ? "daemon notification" : "input"} ${randomUUID()}]\nFrom: ${message.from.name}\n${message.from.role === null ? "" : `Role: ${message.from.role}\n`}${message.from.description === null ? "" : `Description: ${message.from.description}\n`}Created at: ${message.createdAt}\n\n${message.content}\n</cross-session-message>`;
-        this.#pending.set(frame, message.deliveryId);
+        const body = frame.slice(
+            frame.indexOf("\n") + 1,
+            frame.lastIndexOf("\n"),
+        );
+        const peer = JSON.stringify([escapeAttribute(message.from.name), body]);
+        this.#pending.set(frame, {
+            deliveryId: message.deliveryId,
+            peer,
+        });
+        this.#peers.set(peer, frame);
         return frame;
     }
 
     forget(content: string): void {
+        const pending = this.#pending.get(content);
+        if (pending) this.#peers.delete(pending.peer);
         this.#pending.delete(content);
         this.#outcomes.delete(content);
         this.#frameKeys.delete(content);
     }
 
-    observe(event: Record<string, unknown>): Promise<void> {
-        return this.#enqueue(() => this.#observe(event));
-    }
-
-    observeTranscript(value: unknown): Promise<void> {
+    observe(
+        event: Record<string, unknown>,
+        instance?: ClaudeSession,
+    ): Promise<void> {
         return this.#enqueue(async () => {
-            const parsed = transcriptRecord.safeParse(value);
-            if (!parsed.success) return;
-            const row = parsed.data;
-            const key = JSON.stringify([row.sessionId, row.promptId]);
-            if (
-                this.#finished.has(key) ||
-                this.#ambiguous.has(key) ||
-                !this.#prompts.has(key)
-            )
-                return;
-            const blocks = row.message.content;
-            if (
-                row.toolDenialKind === "user-rejected" &&
-                blocks.some(
-                    (block) =>
-                        block.type === "tool_result" &&
-                        block.is_error === true &&
-                        block.tool_use_id &&
-                        this.#owners.get(
-                            JSON.stringify([
-                                row.sessionId,
-                                "tool",
-                                block.tool_use_id,
-                            ]),
-                        ) === key,
-                )
-            ) {
-                this.#denials.set(
-                    JSON.stringify([row.sessionId, row.uuid]),
-                    key,
-                );
-                return;
-            }
-            // A quoted interruption string is not a terminal observation. Require
-            // the vendor's parent link to a rejected tool owned by this prompt.
-            if (
-                blocks.length !== 1 ||
-                blocks[0]?.type !== "text" ||
-                blocks[0].text !==
-                    "[Request interrupted by user for tool use]" ||
-                this.#denials.get(
-                    JSON.stringify([row.sessionId, row.parentUuid]),
-                ) !== key
-            )
-                return;
-            this.#clearPrompt(key);
-            this.#active.delete(key);
-            this.#project();
-            const frame = this.#prompts.get(key);
-            if (frame != null) await this.#settle(frame, "interrupted");
-            this.#prompts.delete(key);
-            this.#fingerprints.delete(key);
-            this.#finished.add(key);
-            for (const [id, owner] of this.#denials)
-                if (owner === key) this.#denials.delete(id);
+            if (instance?.retired) return;
+            await this.#observe(event, instance);
+            await this.#flushOutcomes();
         });
     }
 
-    async #observe(event: Record<string, unknown>): Promise<void> {
-        // Child agents inherit hooks and may share the ambient prompt id.
-        if (event.agent_id !== undefined) return;
-        const key = promptKey(event);
-        const quotaNotice =
-            event.hook_event_name === "Notification" &&
-            [
-                "quota_auto_resume_fired",
-                "quota_auto_resume_stale",
-                "quota_auto_resume_disabled",
-            ].includes(String(event.notification_type));
-        // Session resumption is activity evidence, independent of prompt settlement.
-        if (
-            typeof event.session_id === "string" &&
-            this.#resuming.has(event.session_id) &&
-            (event.hook_event_name === "Stop" ||
-                event.hook_event_name === "StopFailure")
-        ) {
-            if (
-                event.hook_event_name === "Stop" &&
-                this.options.hasBlockingStopHooks
-            ) {
-                this.#project("stop_hook_outcome_unconfirmed");
-                return;
-            }
-            this.#resuming.delete(event.session_id);
-            if (event.hook_event_name === "StopFailure") {
-                this.#failed = true;
-                this.#failureReason = failureReason(event);
-            }
-            this.#project();
-        }
-        if (key && this.#finished.has(key) && !quotaNotice) return;
-        if (this.#observeActivity(event)) return;
-        if (
-            event.hook_event_name === "UserPromptSubmit" &&
-            typeof event.prompt === "string" &&
-            typeof event.session_id === "string"
-        ) {
-            this.#resuming.delete(event.session_id);
-            this.#waiting.delete(JSON.stringify([event.session_id, "quota"]));
-        }
-        if (
-            !key &&
-            event.hook_event_name === "UserPromptSubmit" &&
-            typeof event.prompt === "string"
-        ) {
-            this.#unidentified.add(
-                typeof event.session_id === "string"
-                    ? event.session_id
-                    : "unknown",
-            );
-            this.#project("prompt_identity_unconfirmed");
-        }
-        if (
-            !key &&
-            (event.hook_event_name === "StopFailure" ||
-                event.hook_event_name === "Stop")
-        ) {
-            if (event.hook_event_name === "StopFailure") {
-                this.#failed = true;
-                this.#failureReason = failureReason(event);
-            }
-            this.#project(
-                event.hook_event_name === "StopFailure"
-                    ? failureReason(event)
-                    : "prompt_identity_unconfirmed",
-            );
-        }
-        if (!key) return;
-        if (
-            event.hook_event_name === "UserPromptSubmit" &&
-            typeof event.prompt === "string"
-        ) {
-            if (this.#finished.has(key)) return;
-            const fingerprint = createHash("sha256")
-                .update(event.prompt)
-                .digest("hex");
-            const previous = this.#fingerprints.get(key);
-            if (previous === fingerprint) return;
-            if (previous !== undefined) this.#ambiguous.add(key);
-            this.#fingerprints.set(key, fingerprint);
-            if (this.#pending.has(event.prompt)) {
-                const oldKey = this.#frameKeys.get(event.prompt);
-                if (oldKey !== undefined && oldKey !== key) {
-                    this.#ambiguous.add(oldKey);
-                    this.#ambiguous.add(key);
+    observeTranscript(value: unknown, instance?: ClaudeSession): Promise<void> {
+        return this.#enqueue(async () => {
+            if (instance?.retired) return;
+            const parsed = transcriptRowSchema.safeParse(value);
+            const state = parsed.success
+                ? (instance ?? this.#session(parsed.data.sessionId))
+                : undefined;
+            if (parsed.success) {
+                const row = parsed.data;
+                const key =
+                    row.promptId &&
+                    JSON.stringify([row.sessionId, row.promptId]);
+                if (
+                    key &&
+                    row.type === "user" &&
+                    row.message?.role === "user" &&
+                    (row.origin !== undefined ||
+                        row.promptSource !== undefined) &&
+                    !state!.prompts.has(key) &&
+                    !state!.finished.has(key)
+                ) {
+                    const origin = row.origin as {
+                        kind?: unknown;
+                        name?: unknown;
+                        body?: unknown;
+                    } | null;
+                    const frame =
+                        origin &&
+                        origin.kind === "peer" &&
+                        typeof origin.name === "string" &&
+                        typeof origin.body === "string"
+                            ? (this.#peers.get(
+                                  JSON.stringify([origin.name, origin.body]),
+                              ) ?? null)
+                            : null;
+                    await this.#input(key, frame, state!);
                 }
-                this.#frameKeys.set(event.prompt, key);
             }
-            this.#prompts.set(
-                key,
-                this.#pending.has(event.prompt) ? event.prompt : null,
-            );
-            this.#active.add(key);
-            this.#failed = false;
-            this.#failureReason = undefined;
-            this.#project();
-        }
-        if (
-            event.hook_event_name === "Stop" ||
-            event.hook_event_name === "StopFailure"
-        ) {
-            if (
-                event.hook_event_name === "Stop" &&
-                this.options.hasBlockingStopHooks
-            ) {
-                this.#project("stop_hook_outcome_unconfirmed");
-                return;
-            }
-            if (this.#ambiguous.has(key)) {
-                this.#project("prompt_identity_ambiguous");
-                return;
-            }
-            const frame = this.#prompts.get(key);
-            if (frame === undefined) {
-                if (event.hook_event_name === "StopFailure") {
-                    this.#failed = true;
-                    this.#failureReason = failureReason(event);
-                    this.#project();
-                }
-                return;
-            }
-            this.#clearPrompt(key);
-            const failed = event.hook_event_name === "StopFailure";
-            const error = errorType(event.error);
-            this.#active.delete(key);
-            this.#failed = failed;
-            this.#failureReason = failed ? failureReason(event) : undefined;
-            this.#project();
-            if (frame !== null)
-                await this.#settle(
-                    frame,
-                    failed ? "failed" : "completed",
-                    failed ? error : undefined,
+            const result = parsed.success
+                ? state!.chain.observe(value)
+                : undefined;
+            if (result && !state!.ambiguous.has(result.key))
+                await this.#finish(
+                    result.key,
+                    result.outcome,
+                    result.reason,
+                    state!,
                 );
-            this.#prompts.delete(key);
-            this.#fingerprints.delete(key);
-            this.#finished.add(key);
-            for (const [id, owner] of this.#denials)
-                if (owner === key) this.#denials.delete(id);
+            await this.#flushOutcomes();
+        });
+    }
+
+    async #finish(
+        key: string,
+        outcome: DeliveryOutcome,
+        reason?: string,
+        state = this.#promptSession(key),
+    ): Promise<void> {
+        const [session] = JSON.parse(key) as [string, string];
+        if (state.finished.has(key) && !state.resuming) return;
+        const resumed = state.resuming;
+        state.resuming = false;
+        if (outcome === "failed" && (state.latest === key || resumed))
+            state.failure = reason ?? "unknown";
+        if (state.latest !== key) state.chain.forget(key);
+        if (
+            !this.#currentSession ||
+            (this.#currentSession === session &&
+                this.#sessions.get(session) === state)
+        )
+            this.#project();
+        if (state.finished.has(key)) return;
+        this.#rememberFinished(key, state);
+        const frame = state.prompts.get(key);
+        if (frame != null) await this.#settle(frame, outcome, reason);
+        state.prompts.delete(key);
+    }
+
+    async #flushOutcomes(): Promise<void> {
+        for (const [frame, result] of this.#outcomes)
+            await this.#settle(frame, result.outcome, result.error);
+    }
+
+    async #input(
+        key: string,
+        frame: string | null,
+        state: ClaudeSession,
+    ): Promise<void> {
+        const session = (JSON.parse(key) as [string, string])[0];
+        state.resuming = false;
+        state.quota = undefined;
+        if (frame !== null) {
+            const oldKey = this.#frameKeys.get(frame);
+            if (
+                oldKey !== undefined &&
+                (oldKey.key !== key || oldKey.session !== state)
+            ) {
+                oldKey.session.ambiguous.add(oldKey.key);
+                state.ambiguous.add(key);
+            }
+            this.#frameKeys.set(frame, { key, session: state });
+            const pending = this.#pending.get(frame);
+            if (pending) pending.session = state;
+        }
+        state.prompts.set(key, frame);
+        const old = state.latest;
+        if (old && state.finished.has(old)) state.chain.forget(old);
+        state.latest = key;
+        state.failure = undefined;
+        if (
+            this.#currentSession === session &&
+            this.#sessions.get(session) === state
+        )
+            this.#project();
+        const earlyFailure = state.earlyFailures.get(key);
+        if (earlyFailure !== undefined) {
+            state.earlyFailures.delete(key);
+            await this.#finish(key, "failed", earlyFailure, state);
+        }
+    }
+
+    async #observe(
+        event: Record<string, unknown>,
+        instance?: ClaudeSession,
+    ): Promise<void> {
+        if (
+            event.agent_id !== undefined ||
+            typeof event.session_id !== "string"
+        )
+            return;
+        const session = event.session_id;
+        const state = instance ?? this.#session(session);
+        const name = event.hook_event_name;
+        const key = promptKey(event);
+        if (name !== "StopFailure" && name !== "Notification") return;
+        const quotaNotice =
+            name === "Notification" &&
+            String(event.notification_type).startsWith("quota_auto_resume_");
+        if (
+            key &&
+            state.finished.has(key) &&
+            !quotaNotice &&
+            !(name === "StopFailure" && state.resuming)
+        )
+            return;
+        if (this.#observeNotification(event, state)) return;
+        if (name === "StopFailure") {
+            if (key && state.ambiguous.has(key)) return;
+            if (key && !state.prompts.has(key) && !state.earlyFailures.has(key))
+                state.earlyFailures.set(key, failureReason(event));
+            if (key && (state.prompts.has(key) || state.resuming))
+                await this.#finish(key, "failed", failureReason(event), state);
+            else if (
+                !key ||
+                state.latest === undefined ||
+                state.latest === key
+            ) {
+                state.resuming = false;
+                state.failure = failureReason(event);
+                if (
+                    !this.#currentSession ||
+                    (this.#currentSession === session &&
+                        this.#sessions.get(session) === state)
+                )
+                    this.#project();
+            }
         }
     }
 
     async failPending(reason: string): Promise<void> {
         return this.#enqueue(async () => {
-            this.#active.clear();
-            this.#waiting.clear();
-            this.#tools.clear();
-            this.#owners.clear();
-            this.#denials.clear();
-            this.#unidentified.clear();
-            this.#failed = true;
-            this.#failureReason = "connection_lost";
-            this.#resuming.clear();
+            for (const session of this.#sessions.values())
+                session.quota = undefined;
+
+            this.#session(this.#currentSession ?? "unknown").failure =
+                "connection_lost";
+            for (const session of this.#sessions.values())
+                session.resuming = false;
             this.#project();
             await this.#finishPending("failed", reason);
         });
@@ -338,14 +381,13 @@ export class ClaudeObservations {
 
     async interruptPending(): Promise<void> {
         return this.#enqueue(async () => {
-            this.#active.clear();
-            this.#waiting.clear();
-            this.#tools.clear();
-            this.#owners.clear();
-            this.#denials.clear();
-            this.#unidentified.clear();
-            this.#failed = false;
-            this.#resuming.clear();
+            for (const session of this.#sessions.values())
+                session.quota = undefined;
+
+            for (const session of this.#sessions.values())
+                session.failure = undefined;
+            for (const session of this.#sessions.values())
+                session.resuming = false;
             this.#project();
             await this.#finishPending("interrupted");
         });
@@ -372,8 +414,9 @@ export class ClaudeObservations {
         outcome: DeliveryOutcome,
         error?: string,
     ): Promise<void> {
-        const delivery = this.#pending.get(frame);
-        if (delivery === undefined) return;
+        const pending = this.#pending.get(frame);
+        if (pending === undefined) return;
+        const delivery = pending.deliveryId;
         if (!this.#outcomes.has(frame))
             this.#outcomes.set(frame, {
                 outcome,
@@ -390,16 +433,18 @@ export class ClaudeObservations {
                     result.error,
                 );
         }
-        this.#pending.delete(frame);
-        this.#outcomes.delete(frame);
-        this.#frameKeys.delete(frame);
-        for (const [key, content] of this.#prompts)
-            if (content === frame) {
-                this.#prompts.delete(key);
-                this.#fingerprints.delete(key);
-                this.#ambiguous.delete(key);
-                this.#finished.add(key);
-            }
+        this.forget(frame);
+        for (const session of this.#sessions.values())
+            for (const [key, content] of session.prompts)
+                if (content === frame) {
+                    session.prompts.delete(key);
+                    session.ambiguous.delete(key);
+                    this.#rememberFinished(key);
+                }
+    }
+
+    #rememberFinished(key: string, state = this.#promptSession(key)): void {
+        state.finished.add(key);
     }
 
     #enqueue(action: () => Promise<void>): Promise<void> {
@@ -408,190 +453,60 @@ export class ClaudeObservations {
         return next;
     }
 
-    #clearPrompt(key: string): void {
-        const [session] = JSON.parse(key) as [string, string];
-        for (const type of [
-            "permission_prompt",
-            "elicitation_dialog",
-            "elicitation_url_dialog",
-        ])
-            this.#waiting.delete(JSON.stringify([session, type, key]));
-        for (const [id, owner] of this.#owners) {
-            if (owner !== key) continue;
-            this.#tools.delete(id);
-            this.#waiting.delete(id);
-            this.#owners.delete(id);
-        }
-    }
-
-    #clearNotification(
+    #observeNotification(
         event: Record<string, unknown>,
-        types: readonly string[],
-    ): void {
-        for (const type of types) {
-            this.#waiting.delete(
-                JSON.stringify([
-                    event.session_id,
-                    type,
-                    promptKey(event) ?? "unidentified",
-                ]),
-            );
-            // A correlated observation supersedes the session's uncorrelated hint,
-            // while identified waits and hints for other prompts remain intact.
-            this.#waiting.delete(
-                JSON.stringify([event.session_id, type, "unidentified"]),
-            );
+        session: ClaudeSession,
+    ): boolean {
+        if (event.hook_event_name !== "Notification") return false;
+        const id = String(event.session_id);
+        switch (event.notification_type) {
+            case "quota_auto_resume_fired":
+                session.quota = undefined;
+                session.failure = undefined;
+                session.resuming = true;
+                if (session.latest) session.chain.resume(session.latest);
+                break;
+            case "quota_auto_resume_stale":
+                session.quota = "Press Enter to resume the task automatically.";
+                break;
+            case "quota_auto_resume_disabled":
+                if (!session.quota && !session.resuming) return true;
+                session.quota = undefined;
+                session.resuming = false;
+                break;
+            default:
+                return true;
         }
-    }
-
-    #observeActivity(event: Record<string, unknown>): boolean {
-        if (typeof event.session_id !== "string" || event.session_id === "")
-            return false;
-        const name = event.hook_event_name;
-        const session = event.session_id;
-        const tool =
-            typeof event.tool_use_id === "string" && event.tool_use_id !== ""
-                ? JSON.stringify([session, "tool", event.tool_use_id])
-                : undefined;
-        const elicitation =
-            typeof event.elicitation_id === "string" &&
-            event.elicitation_id !== "" &&
-            typeof event.mcp_server_name === "string"
-                ? JSON.stringify([
-                      session,
-                      "elicitation",
-                      event.mcp_server_name,
-                      event.elicitation_id,
-                  ])
-                : undefined;
-        if (name === "PermissionRequest" || name === "Elicitation") {
-            const wait = name === "PermissionRequest" ? tool : elicitation;
-            if (wait)
-                this.#clearNotification(
-                    event,
-                    name === "PermissionRequest"
-                        ? ["permission_prompt"]
-                        : ["elicitation_dialog", "elicitation_url_dialog"],
-                );
-            const id =
-                wait ??
-                JSON.stringify([
-                    session,
-                    name,
-                    promptKey(event) ?? "unidentified",
-                ]);
-            this.#waiting.set(
-                id,
-                name === "PermissionRequest"
-                    ? "Waiting for approval."
-                    : "Waiting for user input.",
-            );
-            const owner = promptKey(event);
-            if (owner) this.#owners.set(id, owner);
-        } else if (name === "ElicitationResult") {
-            if (
-                !elicitation ||
-                !["accept", "decline", "cancel"].includes(String(event.action))
-            )
-                return true;
-            this.#clearNotification(event, [
-                "elicitation_dialog",
-                "elicitation_url_dialog",
-            ]);
-            this.#owners.delete(elicitation);
-            if (!this.#waiting.delete(elicitation)) {
-                this.#project();
-                return true;
-            }
-        } else if (name === "PreToolUse") {
-            if (!tool) return true;
-            const owner = promptKey(event);
-            if (owner) this.#owners.set(tool, owner);
-            if (event.tool_name === "AskUserQuestion")
-                this.#waiting.set(tool, "Waiting for user input.");
-            this.#tools.add(tool);
-        } else if (name === "PostToolUse" || name === "PostToolUseFailure") {
-            if (!tool) return true;
-            const owner = this.#owners.get(tool);
-            const resolved = this.#tools.delete(tool);
-            this.#waiting.delete(tool);
-            this.#owners.delete(tool);
-            if (
-                resolved &&
-                owner &&
-                ![...this.#tools].some((id) => this.#owners.get(id) === owner)
-            ) {
-                const permission = JSON.stringify([
-                    session,
-                    "PermissionRequest",
-                    owner,
-                ]);
-                this.#waiting.delete(permission);
-                this.#owners.delete(permission);
-            }
-            this.#clearNotification(event, ["permission_prompt"]);
-        } else if (name === "Notification") {
-            const type = event.notification_type;
-            const quota = JSON.stringify([session, "quota"]);
-            if (type === "quota_auto_resume_fired") {
-                this.#waiting.delete(quota);
-                this.#failed = false;
-                this.#failureReason = undefined;
-                this.#resuming.add(session);
-            } else if (type === "quota_auto_resume_stale") {
-                this.#waiting.set(
-                    quota,
-                    "Press Enter to resume the task automatically.",
-                );
-            } else if (type === "quota_auto_resume_disabled") {
-                const waiting = this.#waiting.delete(quota);
-                const resuming = this.#resuming.delete(session);
-                if (!waiting && !resuming) return true;
-            } else if (
-                type === "permission_prompt" ||
-                type === "elicitation_dialog" ||
-                type === "elicitation_url_dialog"
-            ) {
-                this.#waiting.set(
-                    JSON.stringify([
-                        session,
-                        type,
-                        promptKey(event) ?? "unidentified",
-                    ]),
-                    type === "permission_prompt"
-                        ? "Waiting for approval."
-                        : "Waiting for user input.",
-                );
-            } else return true;
+        if (this.#currentSession === id && this.#sessions.get(id) === session)
             this.#project();
-            return true;
-        } else return false;
-        this.#project();
         return true;
     }
 
-    #project(reason?: string): void {
-        const waiting = this.#waiting.values().next().value;
-        const working =
-            this.#tools.size > 0 ||
-            this.#active.size > 0 ||
-            this.#unidentified.size > 0 ||
-            this.#resuming.size > 0;
-        const status = waiting
-            ? "awaiting-user"
-            : working
-              ? "working"
-              : this.#failed
-                ? "failed"
-                : "idle";
-        this.controls.setStatus(
-            status,
-            waiting
-                ? waiting
-                : status === "failed"
-                  ? this.#failureReason
-                  : (reason ??
-                    (this.#tools.size > 0 ? "Running a tool." : undefined)),
-        );
+    #project(): void {
+        if (!this.#registry) return;
+        if (
+            this.#registry &&
+            this.#registry.sessionId === this.#currentSession
+        ) {
+            const registry = this.#registry;
+            const failure = this.#session(registry.sessionId).failure;
+            const quota = this.#session(registry.sessionId).quota;
+            this.controls.setStatus(
+                registry.status === "waiting" || quota
+                    ? "awaiting-user"
+                    : registry.status === "busy"
+                      ? "working"
+                      : failure
+                        ? "failed"
+                        : "idle",
+                registry.status === "waiting"
+                    ? registry.waitingFor === "permission prompt"
+                        ? "Waiting for approval."
+                        : "Waiting for user input."
+                    : (quota ??
+                          (registry.status === "busy" ? undefined : failure)),
+            );
+            return;
+        }
     }
 }

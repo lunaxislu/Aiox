@@ -84,48 +84,30 @@ it.each(["win32", "linux"])(
     },
 );
 
-it("retains Stop uncertainty for active plugins without inspecting their code", async () => {
-    for (const args of [
-        ["--plugin-dir", "./user-plugin"],
-        ["--plugin-dir=./user-plugin"],
-        ["--settings", '{"enabledPlugins":{"review@example":true}}'],
-    ]) {
-        expect(
-            (await prepareClaudeLaunch(input(args))).hasBlockingStopHooks,
-        ).toBe(true);
-    }
+it.each([["--plugin-dir", "./user-plugin"], ["--plugin-dir=./user-plugin"]])(
+    "preserves plugin arguments %j",
+    async (...args) => {
+        const launch = await prepareClaudeLaunch(input(args));
+        expect(launch.args.slice(0, args.length)).toEqual(args);
+    },
+);
+
+it("preserves plugin settings without reading plugin code", async () => {
+    const inherited =
+        '{"enabledPlugins":{"review@example":true,"other@example":true}}';
     await mkdir(join(cwd, "config"));
-    await writeFile(
-        join(cwd, "config/settings.json"),
-        '{"enabledPlugins":{"review@example":true,"other@example":true}}',
+    await writeFile(join(cwd, "config/settings.json"), inherited);
+    const settings = { enabledPlugins: { "review@example": false } };
+    const launch = await prepareClaudeLaunch(
+        input(["--settings", JSON.stringify(settings)]),
     );
-    expect(
-        (
-            await prepareClaudeLaunch(
-                input([
-                    "--settings",
-                    '{"enabledPlugins":{"review@example":false}}',
-                ]),
-            )
-        ).hasBlockingStopHooks,
-    ).toBe(true);
-    expect(
-        (
-            await prepareClaudeLaunch(
-                input([
-                    "--settings",
-                    '{"enabledPlugins":{"review@example":false,"other@example":false}}',
-                ]),
-            )
-        ).hasBlockingStopHooks,
-    ).toBe(false);
-    expect(
-        (
-            await prepareClaudeLaunch(
-                input(["--setting-sources", "project,local"]),
-            )
-        ).hasBlockingStopHooks,
-    ).toBe(false);
+    expect(JSON.parse(option(launch.args, "--settings"))).toEqual({
+        ...settings,
+        hooks: input().hooks,
+    });
+    expect(await readFile(join(cwd, "config/settings.json"), "utf8")).toBe(
+        inherited,
+    );
 });
 
 it("adds invocation-only settings without changing ordinary arguments or exposing a token", async () => {
@@ -149,7 +131,6 @@ it("adds invocation-only settings without changing ordinary arguments or exposin
     expect(option(launch.args, "--messaging-socket-path")).toBe(
         input().inboxPath,
     );
-    expect(launch.hasBlockingStopHooks).toBe(false);
 });
 
 it("preserves the final user settings and append file while adding hooks", async () => {
@@ -189,7 +170,6 @@ it("preserves the final user settings and append file while adding hooks", async
     expect(option(launch.args, "--append-system-prompt")).toBe(
         "User instruction\n\nAIOX communication instructions",
     );
-    expect(launch.hasBlockingStopHooks).toBe(true);
     expect(await readFile(join(cwd, "settings.json"), "utf8")).toBe(
         JSON.stringify(settings),
     );
@@ -281,9 +261,7 @@ it("inspects active user/project sources without rejecting harmless files", asyn
             },
         }),
     );
-    expect((await prepareClaudeLaunch(input())).hasBlockingStopHooks).toBe(
-        true,
-    );
+    await expect(prepareClaudeLaunch(input())).resolves.toBeDefined();
     await writeFile(
         join(cwd, ".mcp.json"),
         JSON.stringify({

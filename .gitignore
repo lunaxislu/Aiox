@@ -48,3 +48,5 @@ next-env.d.ts
 
 # Local log-script hint state
 logs/.log-hints/
+.headroom_*
+.serena/
