@@ -1884,8 +1884,8 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
         try { await vi.waitFor(() => expect(events).toBe(3)); }
         catch(error) {
             console.error("[DIAG 1s]", Date.now()-began, session.alive, events, JSON.stringify(output));
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            console.error("[DIAG 6s]", Date.now()-began, session.alive, events, JSON.stringify(output));
+            await new Promise(resolve => setTimeout(resolve, 600));
+            console.error("[DIAG after-exit-window]", Date.now()-began, session.alive, events, JSON.stringify(output));
             throw error;
         }
         await harness.daemon.services.messages.send(

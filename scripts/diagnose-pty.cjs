@@ -1,0 +1,11 @@
+const { createRequire } = require("node:module");
+const { resolve, dirname, join } = require("node:path");
+const { readFileSync, writeFileSync } = require("node:fs");
+const req = createRequire(resolve("packages/terminal/package.json"));
+const file = join(dirname(req.resolve("node-pty")), "windowsPtyAgent.js");
+let s = readFileSync(file, "utf8");
+s = s.replace("this._exitCode = exitCode;", 'console.error("[DIAG native-exit]", Date.now(), exitCode, this._useConptyDll); this._exitCode = exitCode;');
+s = s.replace("this._closeTimeout = setTimeout", 'console.error("[DIAG flush-timer]", Date.now(), FLUSH_DATA_INTERVAL); this._closeTimeout = setTimeout');
+s = s.replace("this._outSocket.destroy();", 'console.error("[DIAG output-destroy]", Date.now()); this._outSocket.destroy();');
+writeFileSync(file, s);
+console.log("[DIAG dependency]", file);

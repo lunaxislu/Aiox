@@ -20,7 +20,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [ubuntu-latest, windows-latest, macos-latest]
+                os: [windows-latest]
                 node: [22, 24]
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -40,12 +40,7 @@ jobs:
             - name: Diagnose existing failures
               shell: bash
               run: |
-                cd packages/adapters/claude
-                for attempt in {1..30}; do
-                  echo "DIAG Claude attempt $attempt"
-                  pnpm exec vitest run --config ../../../vitest.config.ts src/claude.test.ts -t 'keeps only current transcript' || true
-                done
-                cd ../../../apps/daemon
-                pnpm exec vitest run --config ../../vitest.config.ts src/agent-controller.test.ts -t 'Web collaboration timeout revokes' || true
+                node scripts/diagnose-pty.cjs
+                cd apps/daemon
                 pnpm exec vitest run --config ../../vitest.config.ts src/daemon.test.ts -t 'invalidates SSE snapshots on shell exit' || true
                 DIAG_READY=1 pnpm exec vitest run --config ../../vitest.config.ts src/daemon.test.ts -t 'invalidates SSE snapshots on shell exit' || true
