@@ -840,12 +840,20 @@ test("keeps only current transcript and registry watches across repeated transit
             await f.start(String(index));
             expect(active.size).toBe(2);
         }
+        await vi.waitFor(
+            () =>
+                expect(f.control.setObservationError).toHaveBeenLastCalledWith(
+                    null,
+                ),
+            { timeout: 3000 },
+        );
+        f.control.setObservationError.mockClear();
         const retired = watchers.find((watcher) => !active.has(watcher))!;
         vi.mocked(retired.close).mockClear();
         retired.emit("change", "rename");
         expect(retired.close).not.toHaveBeenCalled();
         retired.emit("error", new Error("late retired watch error"));
-        expect(f.control.setObservationError).toHaveBeenLastCalledWith(null);
+        expect(f.control.setObservationError).not.toHaveBeenCalled();
         await f.binding.cleanup("execution_stopped");
         expect(active.size).toBe(0);
     } finally {

@@ -1872,6 +1872,10 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
         const { session } = await borrowableShell();
         await vi.waitFor(() => expect(events).toBe(2));
         session.write("exit\r");
+        // Windows node-pty flushes output for 1s before reporting process exit.
+        await vi.waitFor(() => expect(session.alive).toBe(false), {
+            timeout: 3000,
+        });
         await vi.waitFor(() => expect(events).toBe(3));
         await harness.daemon.services.messages.send(
             harness.daemon.services.runtimes.get(origin.runtimeId)!,
