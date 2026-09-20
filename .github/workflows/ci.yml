@@ -47,5 +47,5 @@ jobs:
                 done
                 cd ../../../apps/daemon
                 pnpm exec vitest run --config ../../vitest.config.ts src/agent-controller.test.ts -t 'Web collaboration timeout revokes' || true
-                pnpm exec vitest run --config ../../vitest.config.ts src/daemon.test.ts -t 'publishes SSE snapshots on shell exit' || true
-                DIAG_READY=1 pnpm exec vitest run --config ../../vitest.config.ts src/daemon.test.ts -t 'publishes SSE snapshots on shell exit' || true
+                pnpm exec vitest run --config ../../vitest.config.ts src/daemon.test.ts -t 'invalidates SSE snapshots on shell exit' || true
+                DIAG_READY=1 pnpm exec vitest run --config ../../vitest.config.ts src/daemon.test.ts -t 'invalidates SSE snapshots on shell exit' || true
