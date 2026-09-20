@@ -1871,8 +1871,23 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
         await vi.waitFor(() => expect(events).toBe(1));
         const { session } = await borrowableShell();
         await vi.waitFor(() => expect(events).toBe(2));
+        const began = Date.now();
+        let output = "";
+        session.subscribe({data: (bytes) => { output += Buffer.from(bytes).toString(); console.error("[DIAG shell-data]", Date.now()-began, JSON.stringify(output.slice(-500))); }, exit: (result) => console.error("[DIAG shell-exit]", Date.now()-began, JSON.stringify(result))});
+        if (process.env["DIAG_READY"] === "1") {
+            session.write("echo AIOX_DIAG_READY\r");
+            await vi.waitFor(() => expect(output).toContain("AIOX_DIAG_READY"), {timeout: 10000});
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        console.error("[DIAG exit-write]", Date.now()-began, session.alive, events);
         session.write("exit\r");
-        await vi.waitFor(() => expect(events).toBe(3));
+        try { await vi.waitFor(() => expect(events).toBe(3)); }
+        catch(error) {
+            console.error("[DIAG 1s]", Date.now()-began, session.alive, events, JSON.stringify(output));
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            console.error("[DIAG 6s]", Date.now()-began, session.alive, events, JSON.stringify(output));
+            throw error;
+        }
         await harness.daemon.services.messages.send(
             harness.daemon.services.runtimes.get(origin.runtimeId)!,
             [target.runtimeId],

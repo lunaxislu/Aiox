@@ -840,11 +840,18 @@ test("keeps only current transcript and registry watches across repeated transit
             await f.start(String(index));
             expect(active.size).toBe(2);
         }
+        console.error("[DIAG before-retired]", JSON.stringify(f.control.setObservationError.mock.lastCall));
         const retired = watchers.find((watcher) => !active.has(watcher))!;
         vi.mocked(retired.close).mockClear();
         retired.emit("change", "rename");
         expect(retired.close).not.toHaveBeenCalled();
         retired.emit("error", new Error("late retired watch error"));
+        console.error("[DIAG after-retired]", JSON.stringify(f.control.setObservationError.mock.lastCall));
+        if (f.control.setObservationError.mock.lastCall?.[0] !== null) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            console.error("[DIAG after-retry]", JSON.stringify(f.control.setObservationError.mock.lastCall));
+            throw new Error("DIAG original assertion failed before retry");
+        }
         expect(f.control.setObservationError).toHaveBeenLastCalledWith(null);
         await f.binding.cleanup("execution_stopped");
         expect(active.size).toBe(0);

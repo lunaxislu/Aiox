@@ -403,6 +403,7 @@ export class ClaudeBinding implements VendorBinding {
     }
 
     async #readRegistry(): Promise<void> {
+        let diagnosticRaw: string | undefined;
         try {
             this.#armRegistry();
             const path = this.#registryPath;
@@ -413,7 +414,7 @@ export class ClaudeBinding implements VendorBinding {
                     status: z.enum(["idle", "busy", "waiting"]).default("idle"),
                     waitingFor: z.string().optional(),
                 })
-                .parse(JSON.parse(await readFile(path, "utf8")));
+                .parse(JSON.parse(diagnosticRaw = await readFile(path, "utf8")));
             // A registry may move ahead of SessionStart. It cannot select a session.
             if (
                 path !== this.#registryPath ||
@@ -431,7 +432,8 @@ export class ClaudeBinding implements VendorBinding {
                     !this.#watchers.has(reader)
                 )
                     await this.#read(reader).catch(() => {});
-        } catch {
+        } catch (error) {
+            console.error("[DIAG registry]", JSON.stringify({raw: diagnosticRaw, selected: this.#selectedSession, error: String(error), at: Date.now()}));
             this.#registryFailure = true;
             this.#reportObservationError();
         } finally {

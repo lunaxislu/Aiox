@@ -1757,7 +1757,9 @@ test("Web collaboration timeout revokes only collaboration and retains its usabl
             Buffer.from("still usable"),
         ),
     );
-    expect((await harness.daemon.stop(false)).stopped).toBe(false);
+    const diagnosticStop = await harness.daemon.stop(false);
+    console.error("[DIAG stop]", JSON.stringify({platform: process.platform, result: diagnosticStop, kills: vendor.session.kill.mock?.calls?.length}));
+    expect(diagnosticStop.stopped).toBe(false);
     await harness.daemon.stopRuntime(record.id);
     expect(vendor.session.kill).toHaveBeenCalledOnce();
     expect(harness.daemon.services.runtimes.list()).toEqual([]);
