@@ -453,30 +453,6 @@ it("connects records whose parent is written later, as in the actual streaming r
     });
 });
 
-it("skips a long historical session while retaining out-of-order current request parents", () => {
-    const chain = new ClaudeTranscriptChain((key) => key === '["s","p"]');
-    for (let index = 0; index < 5000; index++) {
-        chain.observe({
-            ...user,
-            promptId: `old-${index}`,
-            uuid: `old-user-${index}`,
-        });
-        chain.observe(assistant(`old-assistant-${index}`, `old-user-${index}`));
-        chain.observe(duration(`old-assistant-${index}`));
-    }
-    chain.observe({
-        ...common,
-        type: "attachment",
-        uuid: "early",
-        parentUuid: "u",
-    });
-    chain.observe({ ...user, parentUuid: "old-assistant-4999" });
-    chain.observe(assistant("a", "early"));
-    expect(chain.observe(duration("a"))).toMatchObject({
-        outcome: "completed",
-    });
-});
-
 it("keeps delayed ancestry beyond 4096 records without wedging or dropping the oldest evidence", () => {
     const chain = new ClaudeTranscriptChain();
     for (let i = 0; i < 4097; i++)
@@ -487,30 +463,10 @@ it("keeps delayed ancestry beyond 4096 records without wedging or dropping the o
         key: '["s","p"]',
         outcome: "completed",
     });
-    chain.releaseSession("s");
-});
-
-it("retains ignored ancestors beyond 4096 entries until session release", () => {
-    const chain = new ClaudeTranscriptChain((key) => {
-        if (key === '["s","unexpected"]')
-            throw new Error("descendant escaped ignored ancestry");
-        return false;
-    });
-    for (let i = 0; i < 4097; i++)
-        chain.observe({ ...user, uuid: `ignored-${i}` });
-    expect(() =>
-        chain.observe(
-            summary("child", "ignored-0", { promptId: "unexpected" }),
-        ),
-    ).not.toThrow();
 });
 
 it("propagates ignored ancestry through unowned roots and already queued children", () => {
-    const chain = new ClaudeTranscriptChain((key) => {
-        if (key === '["s","unexpected"]')
-            throw new Error("descendant escaped ignored ancestry");
-        return true;
-    });
+    const chain = new ClaudeTranscriptChain();
     chain.observe(summary("child", "root"));
     chain.observe({
         ...common,
@@ -518,11 +474,11 @@ it("propagates ignored ancestry through unowned roots and already queued childre
         uuid: "root",
         parentUuid: null,
     });
-    expect(() =>
+    expect(
         chain.observe(
             summary("grandchild", "child", { promptId: "unexpected" }),
         ),
-    ).not.toThrow();
+    ).toBeUndefined();
     // An actual input starts its own lifecycle even below an ignored ancestor.
     chain.observe({ ...user, parentUuid: "root" });
     chain.observe(assistant("a", "u"));

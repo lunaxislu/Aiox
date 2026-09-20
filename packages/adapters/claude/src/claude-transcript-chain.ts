@@ -57,8 +57,6 @@ export class ClaudeTranscriptChain {
         this.#ignored.clear();
     }
 
-    constructor(readonly accepts: (key: string) => boolean = () => true) {}
-
     observe(
         value: unknown,
     ):
@@ -94,9 +92,7 @@ export class ClaudeTranscriptChain {
         const key = input ? explicitKey : parent?.key;
         if (
             (!input && this.#ignored.has(parentId)) ||
-            (explicitKey !== undefined && !this.accepts(explicitKey)) ||
-            ((input || parent !== undefined || row.parentUuid === null) &&
-                (!key || !this.accepts(key)))
+            ((input || parent !== undefined || row.parentUuid === null) && !key)
         ) {
             this.#ignore(nodeId);
             for (const [id, child] of this.#unlinked) {
@@ -207,13 +203,6 @@ export class ClaudeTranscriptChain {
         this.#ignored.add(id);
         // ponytail: retain IDs until session release; evicting a parent retains
         // every late descendant as an unresolved row instead.
-    }
-
-    releaseSession(session: string): void {
-        for (const id of this.#ignored)
-            if (JSON.parse(id)[0] === session) this.#ignored.delete(id);
-        for (const [id, row] of this.#unlinked)
-            if (row.sessionId === session) this.#unlinked.delete(id);
     }
 
     resume(key: string): void {

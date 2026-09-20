@@ -8,7 +8,7 @@ status: open
 
 - [ ] W1 Claude 실행·주입 연결 — Stage2 최신 결과와 CLI→Controller→daemon 등록·terminal 문맥·binding 및 관련 owner/tests를 대조하고, 같은 shell·외부 standalone의 foreground TUI 실행에 실행별 HTTP MCP·credential·instruction·hooks를 주입한다. 기존 사용자 설정·hooks·MCP 보존과 설치·버전·시작 실패 경계를 검증한다. -- 이후 vendor 인자 전달과 AIOX 관리 MCP·credential·binding 설정의 충돌 정책을 확정·검증한다. YAML 구현은 Stage5에서 수행한다.
 - [ ] W2 Claude native inbox 전송 연결 — Runtime별 socket/pipe와 준비 관측·인증을 구성하고 공통 send 및 daemon 알림을 연결한다. 발신자 표시·본문 전달·route 권한을 검증하며 inbox token과 MCP token을 분리한다. Windows 네이티브 inbox token 확보·전달·named pipe 인증 경로를 구현하고 검증한다.
-- [>] W3 최신 첨부 전체 완료 감사와 수면 원인 검증 entry를 소비한다. 첨부6d95ca93의 registry 대기·옛 session 삭제/fresh EOF·정산 retry·실제 전환·문서 감사 완료, 최종47files/628 PASS. W3의 별도 남은 다른 OS 검증은 기존 범위로 재개하며 이번 macOS 완료를 다른 OS 실측으로 확대하지 않는다.
+- [>] W3 상태 정규화 리뷰·수정과 준비·경로·감시 수명 확인 결과를 소비한다. 2026-09-20 최신 entry의 adapter 135개·daemon 연동 78개 PASS를 과거 전체 628 PASS와 구분한다. 실제 quota TUI와 다른 OS 검증은 미실측으로 유지하고 W3의 남은 검증 범위를 재개한다.
 - [ ] W4 Claude 종료·실패 정리 연결 — 정상 종료·준비 실패·프로세스 종료와 binding 연결 손실의 관측·실패 처리를 구분하고 실제 관리 자원 종료와 credential·등록·route 정리를 확인한다. 브라우저 attachment 손실은 Runtime 종료로 처리하지 않는다. Agent 정상 종료에서는 빌린 shell·terminal ID를 유지하고 원 shell 복귀와 직접 소유 자원 종료를 검증한다. daemon force stop에서는 관리 Agent 자원과 daemon 소유 일반 shell PTY까지 종료·확인한다. 재실행 시 새 Runtime 신원 분리와 부분 실패·재시도 경계를 검증한다.
 - [ ] W5 실제 Claude 수직 통합 검증·owner 반영·Stage4 인계 — 같은 terminal 실행부터 HTTP MCP 송수신·inbox 표시·hooks 결과·종료 복귀까지 실제 TUI로 검증하고 기존 사용자 설정 보존·브라우저 detach 생존을 확인한다. Windows 네이티브 token 확보·전달·pipe 인증의 실제 검증 결과와 Linux/macOS·WSL 결과로 통합 완료 여부를 판정한다. 환경 부재 등으로 미검증이면 해당 범위는 미완료로 남기고 후속 검증 위치·재개 조건을 명시한다. 미검증 표기만으로 Windows 통합 완료를 선언하지 않는다. 관련 회귀·pnpm check·owner/링크 정합을 점검해 후속 단계 소비 지점을 남긴다.
 
@@ -19,6 +19,8 @@ status: open
 - None: independent log.
 
 ### {Global}
+
+- 현재 W3 후속 결과: 2026-09-20 상태 정규화 리뷰·수정 entry가 이번 변경의 근거다. status 누락/shell/quota 취소와 준비·세션·감시 수명을 반영했고 adapter 135개·daemon 연동 78개를 검증했다. 아래 이전 전체 628 PASS와 실제 macOS 실측은 해당 당시 코드 근거이며 이번 실제 quota TUI·다른 OS 검증을 뜻하지 않는다.
 
 - 사용자가 2026-09-09 단계별 로그 선생성과 plan 연결을 요청했다. 초기 기록은 단계 인계이며 이후 구현·검증 여부는 최신 기록을 따른다. plans/aiox-tui-product-rebuild.md에서 이 단계가 활성화될 때 선행 로그 최신 결과와 실제 코드를 다시 확인한다. logs/artifact/AIOX-TUI-Product-Context-Prompt.md의 전체 제품 문맥과 §15 운영 Web·브라우저 복귀·알림, logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md의 대응 결정을 읽는다. 초기 goal의 reply/Host add 등 폐기된 정책을 복원하지 않는다. 구현 시 관련 owner docs와 producer/consumer·테스트까지 추적하고 변경된 계약을 owner에 반영한다.
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Claude 실제 TUI + native peer inbox + hooks를 구현하며 headless·SDK·Channel fallback·vendor별 stdio MCP child를 추가하지 않는다. 실행별 credential·공통 HTTP MCP agents_list/send·instruction을 연결하고 기존 사용자 설정·hooks·MCP를 보존한다.
@@ -162,12 +164,12 @@ macOS, Claude 2.1.273, Node24.14의 실제 native TUI를 node-pty로 실행하�
 - session c4217ddb-1343-4d1d-b7d8-beb1e4bff636, PID45653, ~/.claude/sessions/45653.json.
 - collector가 sessions 디렉터리를 직접 fs.watch하고 대상 PID 파일만 읽는 동시에, SessionStart가 같은 절대경로를 watchPaths로 반환하고 FileChanged hook에서 다시 읽었다. 관측은 메모리와 이 대화의 도구 출력에 보존했으며 events.jsonl/debug 로그는 만들지 않았다. 종료한 collector의 메모리 이력이 임시 디렉터리에 저장돼 있다고 가정하지 않는다.
 
-| 동작 | 상태 전환 | statusUpdatedAt→직접 수신 | statusUpdatedAt→FileChanged 수신 |
-| --- | --- | --- | --- |
-| 승인창 No | waiting→idle | 17ms | 740ms |
-| 승인창 Esc | waiting→idle | 16ms | 683ms |
-| 도구 없는 thinking 중 Esc | busy→idle | 14ms | 722ms |
-| 도구 실행 중 Esc | busy→idle | 13ms | 692ms |
+| 동작                      | 상태 전환    | statusUpdatedAt→직접 수신 | statusUpdatedAt→FileChanged 수신 |
+| ------------------------- | ------------ | ------------------------- | -------------------------------- |
+| 승인창 No                 | waiting→idle | 17ms                      | 740ms                            |
+| 승인창 Esc                | waiting→idle | 16ms                      | 683ms                            |
+| 도구 없는 thinking 중 Esc | busy→idle    | 14ms                      | 722ms                            |
+| 도구 실행 중 Esc          | busy→idle    | 13ms                      | 692ms                            |
 
 위 지연은 파일에 기록된 statusUpdatedAt에서 collector가 파일을 읽은 시점까지며 물리 키 입력부터의 지연이 아니다. PTY 키 전송에서 직접/FileChanged 수신까지는 각각 No 36/759ms, 승인창 Esc 76/743ms, thinking Esc 83/791ms, 도구 Esc 70/749ms였다. 각 중단 뒤 Stop/StopFailure/PostToolUseFailure 없이 idle을 읽었다. 이번 승인 대기 이유는 permission prompt였다. normal Stop 후에도 idle이 되므로 idle만으로 완료와 중단을 구분할 수 없다.
 
@@ -181,13 +183,13 @@ CwdChanged 실측은 같은 TUI에서 Bash로 격리 cwd의 child 폴더로 이�
 
 첫 harness에는 --disable-slash-commands가 있어 /clear가 Unknown command였으므로 그 시도는 세션 전환 검증이 아니다. 두 번째 /private/tmp/aiox-session-switch-nnw2gw4u/probe.mjs는 해당 제한을 제거하고 실제 TUI 명령·선택창을 사용했다. PID76266과 ~/.claude/sessions/76266.json은 다음 과정 내내 동일했다.
 
-| 조작 | 관측 |
-| --- | --- |
-| A에서 /clear | SessionEnd(A, clear)→SessionStart(B, clear); 파일 sessionId A→B, FileChanged 수신 |
-| B에서 /resume 선택창 열기 | B의 waiting / dialog open; FileChanged 수신 |
-| 선택창 Esc | B 유지, idle 복귀; SessionEnd 없이 FileChanged 수신 |
-| /resume 목록에서 A 선택 | SessionEnd(B, resume)→SessionStart(A, resume); 파일 B→A, FileChanged 수신 |
-| A 재개 뒤 새 입력 | A의 UserPromptSubmit→Stop, 상태 busy→idle과 FileChanged 수신 |
+| 조작                      | 관측                                                                              |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| A에서 /clear              | SessionEnd(A, clear)→SessionStart(B, clear); 파일 sessionId A→B, FileChanged 수신 |
+| B에서 /resume 선택창 열기 | B의 waiting / dialog open; FileChanged 수신                                       |
+| 선택창 Esc                | B 유지, idle 복귀; SessionEnd 없이 FileChanged 수신                               |
+| /resume 목록에서 A 선택   | SessionEnd(B, resume)→SessionStart(A, resume); 파일 B→A, FileChanged 수신         |
+| A 재개 뒤 새 입력         | A의 UserPromptSubmit→Stop, 상태 busy→idle과 FileChanged 수신                      |
 
 A=1caf7548-b318-4a0b-8550-5113681ac65e, B=a8eb50b4-0b49-4832-b408-9c35a5ff4616. /resume 선택 직후 SessionStart(A) 수신 시각1789566154519에는 읽은 파일이 여전히 B/waiting이었다. 직접 fs.watch가 A/idle을 읽은 시각은1789566154543이다. 따라서 hook 신원과 파일 스냅샷이 동시에 바뀐다고 가정하지 않는다. 메뉴 열기/취소의 FileChanged에 지난 prompt_id가 포함된 사례도 있어 해당 필드를 새 요청 시작·종료 근거로 쓰지 않는다. 위 전환·취소·재개 후 요청 귀속을 메모리 assertion으로 확인했다.
 
@@ -235,13 +237,13 @@ claude_state_design과 claude_outcome_design이 읽기 전용 조사·설계를 
 
 root는 ~/.claude/sessions의 JSON 5개(버전 2.1.271/272/273)와 설치본 ~/.local/share/claude/versions/2.1.273을 읽었다. 현재 읽은 5개는 모두 idle이며 실패·대기 전이 실험은 아니다. 내부 파일에서 확인한 구조는 다음과 같다.
 
-| 필드 | 확인한 내용 |
-| --- | --- |
-| pid, sessionId, cwd | 실행 PID·현재 대화·작업 디렉터리 |
-| startedAt, procStart | 실행 시작 관련 값; procStart는 읽은 macOS 파일에서 문자열 |
-| version, kind, entrypoint, pidDomain | 버전·실행 종류·진입·PID 환경 |
-| status, waitingFor | 현재 활동과 선택적 대기 이유 |
-| updatedAt, statusUpdatedAt | 갱신 시각·상태 쓰기 시각; 요청 종료 시각으로 해석하지 않음 |
+| 필드                                                                          | 확인한 내용                                                                 |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| pid, sessionId, cwd                                                           | 실행 PID·현재 대화·작업 디렉터리                                            |
+| startedAt, procStart                                                          | 실행 시작 관련 값; procStart는 읽은 macOS 파일에서 문자열                   |
+| version, kind, entrypoint, pidDomain                                          | 버전·실행 종류·진입·PID 환경                                                |
+| status, waitingFor                                                            | 현재 활동과 선택적 대기 이유                                                |
+| updatedAt, statusUpdatedAt                                                    | 갱신 시각·상태 쓰기 시각; 요청 종료 시각으로 해석하지 않음                  |
 | peerProtocol, peerFeatures, messagingSocketPath, name/nameSource/nameSince 등 | 파일에 부가 메타데이터도 존재; 상태 최소 schema로 전체 구조를 단정하지 않음 |
 
 설치본 oue 등록 코드(byte170691474)는 status 없는 초기 파일을 생성할 수 있다. XQe/Tqo(byte195021400 부근)는 waiting 이유와 busy/idle을 계산하고, byte195028300 부근에는 미종료 local shell 작업에 shell을 쓰는 분기가 있다. Bfe(byte170696062)는 상태 patch에 updatedAt/statusUpdatedAt을 기록한다. shell은 설치본 코드 근거이며 실제 shell 시나리오 실측은 아니다. 이 코드 확인은 StopFailure/quota 때 실제 어떤 값이 쓰이는지의 전이 실측을 대신하지 않는다.
@@ -270,15 +272,15 @@ PID=37653, session=03a9347a-7b45-4751-be6f-55a6d64dc7cc, prompt=e51c2386-f49a-40
 
 **관측 시간순 — Unix ms**
 
-| 수신 시각 | 관측 | 파일 스냅샷/내용 |
-| --- | --- | --- |
-| 1789571217478 | SessionStart | idle |
-| 1789571226703 | TUI 입력 | Reply with OK only. |
-| 1789571226729 | fs.watch | busy, statusUpdatedAt=1789571226717 |
-| 1789571226757 | UserPromptSubmit | 위 prompt_id, 파일 busy |
+| 수신 시각          | 관측                   | 파일 스냅샷/내용                                                     |
+| ------------------ | ---------------------- | -------------------------------------------------------------------- |
+| 1789571217478      | SessionStart           | idle                                                                 |
+| 1789571226703      | TUI 입력               | Reply with OK only.                                                  |
+| 1789571226729      | fs.watch               | busy, statusUpdatedAt=1789571226717                                  |
+| 1789571226757      | UserPromptSubmit       | 위 prompt_id, 파일 busy                                              |
 | 1789571226786~6790 | 실제 모델 API 요청 3건 | stream=true, 모두 HTTP 400 반환; 각 요청의 내부 역할은 조사하지 않음 |
-| 1789571226809 | fs.watch | idle, statusUpdatedAt=1789571226797 |
-| 1789571226836 | StopFailure | 같은 session_id/prompt_id, 파일 idle |
+| 1789571226809      | fs.watch               | idle, statusUpdatedAt=1789571226797                                  |
+| 1789571226836      | StopFailure            | 같은 session_id/prompt_id, 파일 idle                                 |
 
 StopFailure.error는 예상했던 invalid_request가 아니라 실제 unknown이었다. last_assistant_message에는 'API Error: 400 AIOX isolated StopFailure test: injected HTTP 400'이 있었다. error_details는 수신 payload에 없었다. TUI에 동일 오류와 새 입력 프롬프트가 표시됐다. 해당 요청에서 Stop은 수신되지 않았다. busy/idle 스냅샷에 waitingFor는 없었다. 파일 쓰기 시각부터 fs.watch 읽기까지 각각 12ms, idle 읽기부터 StopFailure hook 수신까지 27ms였다. 키 입력부터의 지연 또는 이벤트 발생 자체의 시간 차이로 확대하지 않는다.
 
@@ -308,13 +310,13 @@ Python assertion으로 UserPromptSubmit/StopFailure의 동일 prompt/session, bu
 
 **질문·MCP 입력 대기 — 확인**
 
-| 실제 TUI 상황 | 파일 전이 | hook/결과 | 기존 daemon 관측 |
-| --- | --- | --- | --- |
-| AskUserQuestion 답변 Blue 선택 | busy → waiting(input needed) → busy → idle | PreToolUse → PermissionRequest → PostToolUse → Stop | working → awaiting-user → working → idle |
-| AskUserQuestion Esc 취소 | busy → waiting(input needed) → idle | PreToolUse/PermissionRequest 뒤 Stop·StopFailure 없음 | 최종 idle; 기존 transcript 보완이 실행됨 |
-| MCP 입력 수락 | busy → waiting(input needed) → busy → idle | Elicitation → ElicitationResult(action=accept) → PostToolUse → Stop | 해소 뒤에도 Stop까지 awaiting-user 잔존 |
-| MCP 입력 거절 | 동일 | action=decline, 후속 PostToolUse/Stop | 동일 |
-| MCP 입력 Esc 취소 | 동일 | action=cancel, 후속 PostToolUse/Stop | 동일 |
+| 실제 TUI 상황                  | 파일 전이                                  | hook/결과                                                           | 기존 daemon 관측                         |
+| ------------------------------ | ------------------------------------------ | ------------------------------------------------------------------- | ---------------------------------------- |
+| AskUserQuestion 답변 Blue 선택 | busy → waiting(input needed) → busy → idle | PreToolUse → PermissionRequest → PostToolUse → Stop                 | working → awaiting-user → working → idle |
+| AskUserQuestion Esc 취소       | busy → waiting(input needed) → idle        | PreToolUse/PermissionRequest 뒤 Stop·StopFailure 없음               | 최종 idle; 기존 transcript 보완이 실행됨 |
+| MCP 입력 수락                  | busy → waiting(input needed) → busy → idle | Elicitation → ElicitationResult(action=accept) → PostToolUse → Stop | 해소 뒤에도 Stop까지 awaiting-user 잔존  |
+| MCP 입력 거절                  | 동일                                       | action=decline, 후속 PostToolUse/Stop                               | 동일                                     |
+| MCP 입력 Esc 취소              | 동일                                       | action=cancel, 후속 PostToolUse/Stop                                | 동일                                     |
 
 AskUserQuestion prompt: 답변 c89988ba-cc5e-4af4-b3af-cf53ec6879cc, 취소 dc5d2ebc-d361-4d39-b220-ba483c558eda. MCP prompt: accept 45a18875-8798-4c65-b016-6aecd0dbd845, decline f3692dd5-3616-463e-861e-473c705ebe0b, cancel 2b3ad5d1-4e90-45ae-9c89-e65a13d72815. MCP는 시험용 stdio 서버의 실제 elicitation/create를 native TUI가 처리했다. production AIOX MCP transport 변경이 아니다.
 
@@ -330,14 +332,14 @@ AskUserQuestion prompt: 답변 c89988ba-cc5e-4af4-b3af-cf53ec6879cc, 취소 dc5d
 
 **daemon 결과 저장·원 발신 수신 — 확인**
 
-| 전송 시점 관계 | 실제 종료 | DB outcome | 생성 알림 | 실제 원 발신 Claude 수신 |
-| --- | --- | --- | --- | --- |
-| 단방향 | HTTP400 StopFailure | failed | 1 | native inbox·UserPromptSubmit·화면 확인 |
-| 단방향 | 정상 Stop | completed | 1 | 동일 |
-| 양방향 | HTTP400 StopFailure | failed | 1 | 동일 |
-| 양방향 | 정상 Stop | completed | 0 | 알림 입력 없음 |
-| 단방향 | AskUserQuestion Esc | interrupted | 0 | 알림 입력 없음 |
-| 양방향 | AskUserQuestion Esc | interrupted | 0 | 알림 입력 없음 |
+| 전송 시점 관계 | 실제 종료           | DB outcome  | 생성 알림 | 실제 원 발신 Claude 수신                |
+| -------------- | ------------------- | ----------- | --------- | --------------------------------------- |
+| 단방향         | HTTP400 StopFailure | failed      | 1         | native inbox·UserPromptSubmit·화면 확인 |
+| 단방향         | 정상 Stop           | completed   | 1         | 동일                                    |
+| 양방향         | HTTP400 StopFailure | failed      | 1         | 동일                                    |
+| 양방향         | 정상 Stop           | completed   | 0         | 알림 입력 없음                          |
+| 단방향         | AskUserQuestion Esc | interrupted | 0         | 알림 입력 없음                          |
+| 양방향         | AskUserQuestion Esc | interrupted | 0         | 알림 입력 없음                          |
 
 run1 DB followup-1789571555597.db의 delivery 결과는 순서대로 failed/completed/failed/completed 4개, 알림3개다. 원 발신 A의 실제 UserPromptSubmit에 각 저장 알림 본문과 AIOX daemon notification frame이 일치했고 응답 Stop까지 왔다. 알림 처리로 추가 delivery/notification이 생성되지 않았다. 이후 B가 정상/실패 요청을 처리해도 앞선 DB 결과는 보존됐다. run2 DB followup-1789571716985.db는 두 delivery 모두 interrupted, 알림0, pending0이다. interrupted 정산은 기존 transcript 보완 경로이며 hook+file만으로 결과 귀속을 해결한 증거로 쓰지 않는다. 시스템 발신은 session idle이 아니라 귀속된 결과 저장 후 발생한다.
 
@@ -345,7 +347,7 @@ run1 DB followup-1789571555597.db의 delivery 결과는 순서대로 failed/comp
 
 초기 native inbox 실행은 시험 디렉터리 mode755 때문에 TUI가 시작을 거절했다. 시험 디렉터리만700으로 바꾸고 새 실행으로 검증했다. 첫 질문 fixture가 tools 없는 보조 API 호출에 먼저 소비돼 질문이 안 열린 시도는 실패로 기록하고, AskUserQuestion이 tools에 있는 요청에만 fixture를 반환하도록 고쳤다. MCP 시험 서버의 Python 괄호 오류는 compile 점검으로 고치고 /mcp Reconnect 성공 후 실측했다. 종료 hook에서 시험 Python reporter가 부재 env를 null로 보낸 collector 오류가 있었으며 이것은 production reporter와 다른 시험 도구 형상 오류다. 최종 종료는 PTY exit0과 PID 파일 삭제로 별도 확인했다.
 
-원본은 /private/tmp/aiox-stopfailure-probe/{run1-evidence,run2-evidence,run1-report,run2-report}.json, 시나리오별 JSON 및 screen-*.json, 두 시험 DB, followup.mjs/followup-hook.py/elicitation-server.py. Python check-followup.py는 복구 전이·6 delivery 결과·3 알림의 실제 수신·알림 비재귀·질문/MCP 5경로·429 종료·양방향 interrupted 무알림을 검증하며 실행 통과했다. 시험 TUI4개 모두 exit0, PID 상태 파일4개 삭제, collector2개 exit0, 시험 MCP 프로세스 부재를 확인했다. 이전 사용자 실행은 건드리지 않았다. 별도 테스트 스위트 재실행은 하지 않았다.
+원본은 /private/tmp/aiox-stopfailure-probe/{run1-evidence,run2-evidence,run1-report,run2-report}.json, 시나리오별 JSON 및 screen-\*.json, 두 시험 DB, followup.mjs/followup-hook.py/elicitation-server.py. Python check-followup.py는 복구 전이·6 delivery 결과·3 알림의 실제 수신·알림 비재귀·질문/MCP 5경로·429 종료·양방향 interrupted 무알림을 검증하며 실행 통과했다. 시험 TUI4개 모두 exit0, PID 상태 파일4개 삭제, collector2개 exit0, 시험 MCP 프로세스 부재를 확인했다. 이전 사용자 실행은 건드리지 않았다. 별도 테스트 스위트 재실행은 하지 않았다.
 
 W3는 active다. 새로 미확인에서 확인으로 바뀐 것은 fixture 조건의 정상 복구·질문/MCP 대기·API429 retry/최종 실패·기존 서비스와 native inbox의 결과/알림 연결이다. 남은 것은 실제 구독 quota 대응과 새 hook+session 상태 결합 설계, Elicitation ID 부재 해소, marker 없는 interrupted 귀속, launch/HTTP/MCP/Web 전체 통합·다른 OS다. production 구현은 계속 지시 범위 밖이며 owner 계약을 이번 실험만으로 수정하지 않는다.
 
@@ -430,6 +432,7 @@ No/Esc 전용 hook 추가 가능성을 공식 https://code.claude.com/docs/en/ho
 시험 보정: 첫 응답 조건 data.stream으로 보조 요청이 fixture를 소비한 실패를 setup-evidence.json에 보존했다. Bash 도구가 있는 요청으로 조건을 수정했다. 다음 sleep30 요청은 vendor가 standalone sleep을 자체 거부해 승인창이 없었으므로 No 실측에서 제외했다. 최종 승인 실험은 permissions.ask Bash와 무해한 printf AIOX_OTEL_TEST로 수행했다. 사용자 입력 key bytes·승인창/응답대기/재시도 화면을 보존해 이전 Esc 기록 한계를 보완했다.
 
 유효 결과:
+
 - session89a81186-74db-4254-9ee8-a55be23d9802 PID3696, prompt d71e4efd-0e4e-40c4-a4e0-470e386f9dc9: 도구 없이 API stream 시작 후 응답 대기 화면에서 Esc. 실제 모델 thinking 토큰 생성 검증은 아니다. FileChanged busy→idle, Stop/StopFailure 없음. OTel user_prompt 및 UserPromptSubmit hook 실행 이벤트·보조 title 응답은 있으나 해당 중단을 명시하는 로그 이벤트는 수신하지 못했다. interaction span 종료는 있고 status UNSET(code0), 종료 사유 필드 없음.
 - session f64372c5-beaf-4866-99ac-d3e654c5f63f PID6427, prompt3a93c2e1-98e5-4b44-9dcc-e730b97ccfc7: 실제 Bash 승인창에서 아래 방향키+Enter로 No 선택. OTel tool_decision decision=reject/source=user_reject, session.id/prompt.id/tool_use_id가 hook과 일치. FileChanged waiting→idle, Stop/StopFailure 없음.
 - 같은 session prompt541cae60-43b7-45e6-bebe-591a295d23e8: 실제 동일 승인창 Esc. tool_decision reject/source=user_reject로 수신. 공식 문서의 dismiss=user_abort 설명과 달리 이번 경로는 No와 같은 source였다. source만으로 No/Esc를 구분한다고 주장하지 않는다. FileChanged waiting→idle, Stop/StopFailure 없음.
@@ -542,13 +545,13 @@ transcript에는 최종 실패400/429 오류 필드와 중단 marker, Stop 후�
 
 동일 transcript가 존재하는 --resume으로 각 세션을 다시 실행(PID47021/51746)하며 --debug-file도 추가했다. 재개 조건에서는 각 5개 요청의 FileChanged 수신·종료 레코드 읽기가 모두 확인됐다. 파일 존재/재개/debug 조건을 동시에 바꿨으므로 미발화 원인을 파일 생성 전 등록이라고 확정하지 않는다. debug는 watchPaths1개 및 FileChanged change·handler exit0 기록을 남겼다. fresh와 resume 각각 5개 입력을 대조한 원본 검증 결과:
 
-| case | 조건 | transcript 종료 근거 | resume FileChanged read 횟수 |
-| --- | --- | --- | --- |
-| 1 | 사용자 Stop hook 없음 | assistant end_turn1회→turn_duration1회, stop_hook_summary 없음 | 1 |
-| 2 | 사용자 Stop hook1개, 추가 작업 요구 없음 | end_turn1회→summary hasOutput:false→turn_duration | 2 |
-| 3 | 사용자 Stop hook이2회 추가 작업 요구 후 허용 | end_turn3회, summary hasOutput:true/true/false, 최종 turn_duration1회 | 4 |
-| 4 | 사용자 Stop 요구 뒤 후속 응답 출력 중 Esc | 첫 end_turn→blocking summary→부분 assistant isAbortedMidStream:true→같은 prompt 중단 marker; 최종 허용 summary/turn_duration 없음 | 3 |
-| 5 | 사용자 Stop 요구 뒤 후속 요청400실패 | 첫 end_turn→blocking summary→isApiErrorMessage:true 오류→turn_duration; 같은 prompt StopFailure(error unknown, last_assistant_message API Error: 400 FIVE_FOLLOWUP_FAILURE) | 2 |
+| case | 조건                                         | transcript 종료 근거                                                                                                                                                        | resume FileChanged read 횟수 |
+| ---- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| 1    | 사용자 Stop hook 없음                        | assistant end_turn1회→turn_duration1회, stop_hook_summary 없음                                                                                                              | 1                            |
+| 2    | 사용자 Stop hook1개, 추가 작업 요구 없음     | end_turn1회→summary hasOutput:false→turn_duration                                                                                                                           | 2                            |
+| 3    | 사용자 Stop hook이2회 추가 작업 요구 후 허용 | end_turn3회, summary hasOutput:true/true/false, 최종 turn_duration1회                                                                                                       | 4                            |
+| 4    | 사용자 Stop 요구 뒤 후속 응답 출력 중 Esc    | 첫 end_turn→blocking summary→부분 assistant isAbortedMidStream:true→같은 prompt 중단 marker; 최종 허용 summary/turn_duration 없음                                           | 3                            |
+| 5    | 사용자 Stop 요구 뒤 후속 요청400실패         | 첫 end_turn→blocking summary→isApiErrorMessage:true 오류→turn_duration; 같은 prompt StopFailure(error unknown, last_assistant_message API Error: 400 FIVE_FOLLOWUP_FAILURE) | 2                            |
 
 case3 resume에서는 첫 handler시작1789627196319, 첫 FileChanged read1789627197016(종료 summary없음), 중간 summary수신1789627199155/1789627201235, 최종 사용자handler반환1789627202497 뒤 마지막 summary와 duration수신1789627203299. 즉 다른 handler 실행중에도 FileChanged는 오며 그때 최종 결과가 아직 없는 경우가 관측됐고 이후 변경으로 최종 결과를 받았다. case4는 화면에 후속 응답 출력이 실제 진행중인 것을 확인한 후 Esc bytes를 입력했으며 원본 화면과 입력을 보존. 입력창 복원 취소 실험으로 대체하지 않았다. case5 후속 오류에 대해 StopFailure와 transcript 오류의 prompt 귀속을 확인했다.
 
@@ -560,7 +563,7 @@ check.py는 parent 체인으로 각 요청을 귀속하고 Stop reporter 미등�
 
 사용자의 신규 세션 FileChanged 미발화 확인 요청에 따라 기존 실험 harness를 복사한 /private/tmp/aiox-transcript-stop-five/fresh-probe.mjs로 동일 cwd·격리 config·plain-settings·Claude Code2.1.274 native TUI·로컬 API fixture를 사용했다. AIOX Stop 없음, session 파일/fs.watch/polling 없음. debug on/off × SessionStart 응답 전에 빈 transcript 사전 생성 yes/no의 4개 신규 session을 실행했다. 모든 session은 등록 직전 transcript가 존재하지 않았고 사전 생성 그룹만 빈 파일을 만들었다. 실제 기존 사용자 transcript는 수정하지 않았다.
 
-결과: debug/미생성 977c787d-118a-4253-8665-ad6f5aaed63f, debug/사전생성 77fd9f4b-3f41-4ebc-a55a-1fd93b561d54, no-debug/미생성 f6aa4039-19b6-4a5f-9894-c42fc16a5275, no-debug/사전생성 7a066a7b-1174-499c-86f5-d54f9dd066a6 모두 첫 요청과 두 번째 요청 각각 FileChanged 1회로 assistant end_turn·turn_duration을 수신했다. debug/미생성은 vendor debug에 SessionStart:startup watchPaths1→watching1→FileChanged:add가 확인됐다. 사전 생성 그룹은 첫 입력 전 빈 파일 이벤트가 추가로 올 수 있으므로 요청별 횟수와 분리했다. check-fresh.py 8개 요청 assertion PASS, fresh-verified.json 및 각 fresh-*-events.jsonl 보존.
+결과: debug/미생성 977c787d-118a-4253-8665-ad6f5aaed63f, debug/사전생성 77fd9f4b-3f41-4ebc-a55a-1fd93b561d54, no-debug/미생성 f6aa4039-19b6-4a5f-9894-c42fc16a5275, no-debug/사전생성 7a066a7b-1174-499c-86f5-d54f9dd066a6 모두 첫 요청과 두 번째 요청 각각 FileChanged 1회로 assistant end_turn·turn_duration을 수신했다. debug/미생성은 vendor debug에 SessionStart:startup watchPaths1→watching1→FileChanged:add가 확인됐다. 사전 생성 그룹은 첫 입력 전 빈 파일 이벤트가 추가로 올 수 있으므로 요청별 횟수와 분리했다. check-fresh.py 8개 요청 assertion PASS, fresh-verified.json 및 각 fresh-\*-events.jsonl 보존.
 
 이전 plain fresh는 등록 후 입력까지14680ms, 이번 debug/미생성은14617ms였고 모두 CwdChanged 수신 없음. 따라서 이전 실패를 단순히 등록 전 입력이나 cwd 변경으로 설명할 근거도 없다. 이전 hooks fresh는 최초 입력이 등록보다164ms 빨랐으나 이후 요청까지 0회였으며 plain 반례도 설명하지 못한다. 확인된 결론은 신규 실행·debug 없음·파일 미존재 각각이 고정 실패 조건은 아니라는 것. 이전 0회 기록은 유지하며 원인은 재현되지 않아 미확정이다. 파일 선생성/debug 활성화를 production 해결책으로 제안하지 않는다. 이번 4세션 성공을 전달 안정성 보장으로 확대하지 않는다. production 변경 없이 W3 조사 유지.
 
@@ -692,16 +695,16 @@ Runtime status 우선순위는 명시적 미해결 대기 `awaiting-user` → �
 
 **시나리오별 관찰 결과**
 
-| 시나리오 | status/status_reason | 요청 결과 | 자동 알림 |
-| --- | --- | --- | --- |
-| Stop hook 없음, end_turn+turn_duration | 다른 활동 없으면 `idle`/null | completed | 단방향만 |
-| Stop hook 출력 없음, summary(false)+최종 duration | 다른 활동 없으면 `idle`/null | completed | 단방향만 |
-| Stop hook 후속 작업, summary(true) | `working`/관측 가능한 활동 이유 또는 null | 미확정 | 없음 |
-| 후속 작업 최종 summary(false)+duration | 다른 활동 없으면 `idle`/null | completed | 단방향만 |
-| 승인 No/도구 거부 | 대기가 해소되고 후속 활동에 따라 working/idle | 중단 record 연결 전 미확정, 연결 뒤 interrupted | 없음 |
-| 답변/도구 실행 중 Esc | 다른 활동 없으면 `idle`/`Interrupted by user` 또는 공통 계약상 reason 정규화 후 null 여부를 owner에서 확정 | interrupted | 없음 |
-| StopFailure | `failed`/vendor 실제 이유 | failed | 단방향·양방향 모두 |
-| 직접 사용자 입력의 위 결과 | 같은 status projection | delivery 결과 저장 없음 | 없음 |
+| 시나리오                                          | status/status_reason                                                                                       | 요청 결과                                       | 자동 알림          |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------ |
+| Stop hook 없음, end_turn+turn_duration            | 다른 활동 없으면 `idle`/null                                                                               | completed                                       | 단방향만           |
+| Stop hook 출력 없음, summary(false)+최종 duration | 다른 활동 없으면 `idle`/null                                                                               | completed                                       | 단방향만           |
+| Stop hook 후속 작업, summary(true)                | `working`/관측 가능한 활동 이유 또는 null                                                                  | 미확정                                          | 없음               |
+| 후속 작업 최종 summary(false)+duration            | 다른 활동 없으면 `idle`/null                                                                               | completed                                       | 단방향만           |
+| 승인 No/도구 거부                                 | 대기가 해소되고 후속 활동에 따라 working/idle                                                              | 중단 record 연결 전 미확정, 연결 뒤 interrupted | 없음               |
+| 답변/도구 실행 중 Esc                             | 다른 활동 없으면 `idle`/`Interrupted by user` 또는 공통 계약상 reason 정규화 후 null 여부를 owner에서 확정 | interrupted                                     | 없음               |
+| StopFailure                                       | `failed`/vendor 실제 이유                                                                                  | failed                                          | 단방향·양방향 모두 |
+| 직접 사용자 입력의 위 결과                        | 같은 status projection                                                                                     | delivery 결과 저장 없음                         | 없음               |
 
 중단 뒤 status_reason을 `Interrupted by user`로 얼마 동안/어떤 상태에 표시할지는 runtime owner와 현재 `idle` reason-null 계약 사이에 충돌 여지가 있다. 요청 결과/표시 문구는 확정하되, idle reason에 유지할지 transient UI event로 둘지는 구현 전 owner 정합을 결정해야 한다.
 
@@ -1082,17 +1085,17 @@ W3는 active이고 production 구현은 시작하지 않았다. 최초 FileChang
 
 **확인한 사실과 분류**
 
-| 범위 | 판정 | 근거와 필요한 변화 |
-| --- | --- | --- |
-| Claude adapter의 전달 책임 | 변경 필요 | 현재 `ClaudeObservations.#settle`은 `controls.settle` resolve 뒤 pending/outcome/frame을 지우므로 새 인수 ack 계약을 그대로 소비할 수 있다. 다만 현재 reject를 DB 저장 실패로 해석해 hook/reader 재호출에 의존하는 테스트와 `failPending` 오류 문구가 있다. 이를 “daemon 인수 전 전달 실패만 local 보존/cleanup 재시도, 인수 뒤 DB 실패는 daemon 책임”으로 바꿔야 한다. adapter retry timer는 추가하지 않는다. |
-| 공통 settle 의미·반환 | 변경 필요 | `RuntimeControls → RuntimeRegistry.onSettle → MessageService.settle`의 `Promise<void>` 의미는 현재 DB transaction 완료다. 새 의미는 daemon이 기존 `#inFlight.result`에 최초 outcome을 고정하고 저장 재시도 책임을 인수했다는 ack다. 최소 변경은 최초 DB 시도를 그대로 await하되 성공이면 제거, DB 실패면 result 유지+중앙 timer 예약 후 resolve하는 것이다. daemon 경계 도달/소유 확인 전 실패만 reject한다. 별도 result type/API/status field는 필요 없다. |
-| transcript reader offset | 기존 구조로 충족 + trigger 변경 필요 | 현재 reader는 한 queue에서 완성 newline을 parse하고 `await consume` 성공 뒤 offset을 올리므로, terminal reducer가 `controls.settle` 인수 ack까지 await하면 offset은 인수 전에 전진하지 않는다. 미완성 행·중복 read·동시 read도 기존 offset/queue로 처리된다. 바꿀 것은 250ms polling을 제거하고 인증된 FileChanged가 `read()`를 호출하게 하는 trigger와, DB 실패가 더는 consume reject가 아니라는 테스트 기대다. readOffset/commitOffset 분리는 필요 없다. |
-| Runtime 종료 | 기존 구조로 충족 + adapter 오류 경계 변경 필요 | `stopRuntime`은 binding cleanup 뒤 `messages.forget(runtimeId)`, unregister 순서다. daemon이 이미 인수한 result는 `#inFlight.result ??=` 때문에 cleanup/forget의 interrupted로 바뀌지 않고 Runtime 제거 뒤에도 origin/target snapshot과 함께 남는다. 인수 전 adapter 결과가 있으면 Claude/Codex cleanup이 전달을 끝내거나 실패를 반환해 unregister를 막아야 한다. |
-| daemon 종료 | 변경 필요 | 현재 pause → Runtime cleanup/forget → `messages.drain` → DB close 순서는 적합하고 drain 실패는 teardown reject, catch에서 admission/messages resume으로 돌아간다. 중앙 timer 도입 시 drain이 timer를 취소하고 active persist와 합류해 즉시 한 batch를 시도해야 한다. 남은 항목이 있으면 절대 지우지 말고 종료 실패를 반환하며, teardown 재개 시 timer 하나를 다시 예약해야 한다. stop API에서 구조화된 warning으로 변환할지 reject를 유지할지는 기존 caller 기대를 구현 시 확인해야 한다. |
-| Codex 결과·종료 | 변경 필요 | `turn/completed`가 `#results`를 만들고 `#flush`가 delivery별 settle resolve 뒤 set에서 제거한다. 따라서 새 ack 의미를 소비하면 DB 실패를 vendor state에 남기지 않고 daemon으로 넘길 수 있다. 그러나 현재 event path의 `void #flush().catch`와 cleanup의 `Promise.allSettled`는 인수 전 reject도 삼킨다. cleanup은 미인수 delivery가 남으면 실패를 전파해 Runtime 정리를 막도록 바꿔야 한다. turn 결과 판정·현재 status 계산은 변경하지 않는다. |
-| persistence·알림 | 기존 구조로 충족 | 요청별 `messages.settle` transaction이 outcome과 필요한 notification을 함께 저장하고 terminal guard가 중복을 막는다. `notifiesOrigin` 정책과 null delivery daemon notice의 재알림 금지도 그대로다. 100개를 한 transaction으로 묶지 않는다. |
-| 테스트 | 변경 필요 | messaging의 “DB 실패면 vendor settle reject” 기대는 “인수 ack resolve+pending 유지+timer 예약”으로 교체한다. 중앙 one-shot timer 시간차 A/B/C, 예약 불변, batch 중 D, 부분 성공, 반복 실패, 중복 보고, Runtime 종료, drain 실패/재개, hook 없이 retry를 fake clock으로 검증한다. Claude는 ack 전 reject 보존/ack 후 정리와 FileChanged-offset 순서, Codex는 ack 전 cleanup 실패 전파를 추가한다. 기존 persistence 원자성·알림 정책 회귀는 유지한다. |
-| 명세·아키텍처 | 변경 필요 | `packages/vendor`의 RuntimeControls 주석/계약, collaboration의 저장 재시도 문구, storage-terminal의 “둘 다 저장된 뒤 메모리 추적 제거”를 중앙 pending 수명과 ack 의미에 맞춘다. vendor-bindings의 Claude/Codex cleanup 재시도 서술은 adapter DB 재시도가 아니라 인수 전 전달 보존으로 고친다. runtime의 현재 상태/개별 outcome 분리는 유지한다. |
+| 범위                       | 판정                                           | 근거와 필요한 변화                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude adapter의 전달 책임 | 변경 필요                                      | 현재 `ClaudeObservations.#settle`은 `controls.settle` resolve 뒤 pending/outcome/frame을 지우므로 새 인수 ack 계약을 그대로 소비할 수 있다. 다만 현재 reject를 DB 저장 실패로 해석해 hook/reader 재호출에 의존하는 테스트와 `failPending` 오류 문구가 있다. 이를 “daemon 인수 전 전달 실패만 local 보존/cleanup 재시도, 인수 뒤 DB 실패는 daemon 책임”으로 바꿔야 한다. adapter retry timer는 추가하지 않는다.                                                                            |
+| 공통 settle 의미·반환      | 변경 필요                                      | `RuntimeControls → RuntimeRegistry.onSettle → MessageService.settle`의 `Promise<void>` 의미는 현재 DB transaction 완료다. 새 의미는 daemon이 기존 `#inFlight.result`에 최초 outcome을 고정하고 저장 재시도 책임을 인수했다는 ack다. 최소 변경은 최초 DB 시도를 그대로 await하되 성공이면 제거, DB 실패면 result 유지+중앙 timer 예약 후 resolve하는 것이다. daemon 경계 도달/소유 확인 전 실패만 reject한다. 별도 result type/API/status field는 필요 없다.                               |
+| transcript reader offset   | 기존 구조로 충족 + trigger 변경 필요           | 현재 reader는 한 queue에서 완성 newline을 parse하고 `await consume` 성공 뒤 offset을 올리므로, terminal reducer가 `controls.settle` 인수 ack까지 await하면 offset은 인수 전에 전진하지 않는다. 미완성 행·중복 read·동시 read도 기존 offset/queue로 처리된다. 바꿀 것은 250ms polling을 제거하고 인증된 FileChanged가 `read()`를 호출하게 하는 trigger와, DB 실패가 더는 consume reject가 아니라는 테스트 기대다. readOffset/commitOffset 분리는 필요 없다.                                |
+| Runtime 종료               | 기존 구조로 충족 + adapter 오류 경계 변경 필요 | `stopRuntime`은 binding cleanup 뒤 `messages.forget(runtimeId)`, unregister 순서다. daemon이 이미 인수한 result는 `#inFlight.result ??=` 때문에 cleanup/forget의 interrupted로 바뀌지 않고 Runtime 제거 뒤에도 origin/target snapshot과 함께 남는다. 인수 전 adapter 결과가 있으면 Claude/Codex cleanup이 전달을 끝내거나 실패를 반환해 unregister를 막아야 한다.                                                                                                                         |
+| daemon 종료                | 변경 필요                                      | 현재 pause → Runtime cleanup/forget → `messages.drain` → DB close 순서는 적합하고 drain 실패는 teardown reject, catch에서 admission/messages resume으로 돌아간다. 중앙 timer 도입 시 drain이 timer를 취소하고 active persist와 합류해 즉시 한 batch를 시도해야 한다. 남은 항목이 있으면 절대 지우지 말고 종료 실패를 반환하며, teardown 재개 시 timer 하나를 다시 예약해야 한다. stop API에서 구조화된 warning으로 변환할지 reject를 유지할지는 기존 caller 기대를 구현 시 확인해야 한다. |
+| Codex 결과·종료            | 변경 필요                                      | `turn/completed`가 `#results`를 만들고 `#flush`가 delivery별 settle resolve 뒤 set에서 제거한다. 따라서 새 ack 의미를 소비하면 DB 실패를 vendor state에 남기지 않고 daemon으로 넘길 수 있다. 그러나 현재 event path의 `void #flush().catch`와 cleanup의 `Promise.allSettled`는 인수 전 reject도 삼킨다. cleanup은 미인수 delivery가 남으면 실패를 전파해 Runtime 정리를 막도록 바꿔야 한다. turn 결과 판정·현재 status 계산은 변경하지 않는다.                                            |
+| persistence·알림           | 기존 구조로 충족                               | 요청별 `messages.settle` transaction이 outcome과 필요한 notification을 함께 저장하고 terminal guard가 중복을 막는다. `notifiesOrigin` 정책과 null delivery daemon notice의 재알림 금지도 그대로다. 100개를 한 transaction으로 묶지 않는다.                                                                                                                                                                                                                                                |
+| 테스트                     | 변경 필요                                      | messaging의 “DB 실패면 vendor settle reject” 기대는 “인수 ack resolve+pending 유지+timer 예약”으로 교체한다. 중앙 one-shot timer 시간차 A/B/C, 예약 불변, batch 중 D, 부분 성공, 반복 실패, 중복 보고, Runtime 종료, drain 실패/재개, hook 없이 retry를 fake clock으로 검증한다. Claude는 ack 전 reject 보존/ack 후 정리와 FileChanged-offset 순서, Codex는 ack 전 cleanup 실패 전파를 추가한다. 기존 persistence 원자성·알림 정책 회귀는 유지한다.                                       |
+| 명세·아키텍처              | 변경 필요                                      | `packages/vendor`의 RuntimeControls 주석/계약, collaboration의 저장 재시도 문구, storage-terminal의 “둘 다 저장된 뒤 메모리 추적 제거”를 중앙 pending 수명과 ack 의미에 맞춘다. vendor-bindings의 Claude/Codex cleanup 재시도 서술은 adapter DB 재시도가 아니라 인수 전 전달 보존으로 고친다. runtime의 현재 상태/개별 outcome 분리는 유지한다.                                                                                                                                           |
 
 **Claude 전체 설계 연결 점검**
 
@@ -1239,12 +1242,14 @@ Claude 통합 run에서 확정 방향을 바꿀 반례는 나오지 않았다. �
 구현 결과: Claude의 인증 hook→watchPaths→FileChanged→증분 reader→request chain 경로와 daemon의 최초 결과 인수·중앙 DB 재시도를 연결했다. Codex는 같은 인수 계약을 소비하고 busy 입력 수락보다 먼저 도착한 결과 및 cleanup reject를 보존한다. 요청 결과와 현재 상태·알림 정책을 분리했다. 별도 event/outbox/scheduler framework나 durable 저장소를 추가하지 않았다. 직접 입력에 delivery를 생성하지 않으며 결과+필수 알림은 요청별 transaction을 유지한다. 코드의 세부 책임은 owner와 tests가 소유한다.
 
 실측과 수정 근거:
+
 - 최초 production probe /private/tmp/aiox-w3-production-probe/run-t3TBLe는 실패했다. FileChanged는 도착했지만 실제 transcript의 informational 자식 행이 parent보다 먼저 기록돼 chain이 끊겼다. 부모가 나중에 오면 연결하도록 보완했고 인접 회귀를 추가했다. SessionEnd에서 vendor가 inbox env를 생략하는 것도 확인했다. 준비 후 생략은 Runtime hook token 인증 아래 허용하며, 제공된 값의 불일치는 계속 거절한다.
 - macOS Claude Code 2.1.274 실제 격리 TUI + production reporter/daemon·SQLite + 로컬 API 대역으로 /private/tmp/aiox-w3-production-probe/run-1nX8CD가 stdout/block/additionalContext completed 3건·알림 3건을 확인했다. run-OMW8hR는 사용자 Stop 없음 completed 1건·알림 1건이다. 실제 모델 판단·production 사용자 세션 검증과 구분한다.
 - 최종 빌드 재실행 run-08UmuF도 completed 3건·알림 3건, 최종 idle·hook error 0이었다. check.py가 사용자 watchPaths 응답과 AIOX watchPaths 응답, 사용자 파일 FileChanged 1건·transcript 7건을 확인했다. no-Stop 실행도 사용자 파일 1건·transcript 5건이었다. AIOX Stop 미주입과 사용자 Stop 실행, cwd 후 동일 경로 감시, clear 새 session/path·resume 원 session/path, notification deliveryId=null을 assertion으로 확인했다. 실행별 settings, probe/user-hook 사본, hook 입출력, vendor debug, DB, production hash manifest와 assertions.json을 보존했다.
 - 정제된 실제 vendor fixture 8개는 claude-transcript-chain.fixtures.json에 두고 새 reducer로 재생한다. 사용자 Stop 없음/quiet/block/additionalContext, 응답 Esc, API 오류 후속 작업, attachment를 경유하는 No, 도구 실행 중 Esc다. 원본 출처·버전은 각 fixture에 기록했고 본문은 제거했다. 재생을 이번 실제 vendor 재실행으로 표현하지 않는다. marker 없는 취소에는 결과를 생성하지 않는다.
 
 검증:
+
 - pnpm check 최종 통과: lint·format·build·typecheck, 47 files / 602 tests. /private/tmp/aiox-w3-production-check-final.log. Claude 104, Codex 17, daemon 222가 포함된다. 초기 검사에서 신규 테스트의 Node events 동적 import 타입과 Runtime AgentBinding/VendorBinding 경계 오류를 발견해 수정했다. socket listen EPERM은 sandbox 밖 같은 검사로 재실행했다.
 - 합성/실패 주입 범위: completed 인과관계·StopFailure 교차 도착·No/응답 Esc·session/path 불일치·늦은 이벤트·부분 UTF-8/행·동시/중복 읽기·same-inode relocation·과거 5000요청 replay; A/B/C due time 보존·단일 timer·긴 batch 중 D·일부 성공·최초 outcome/error/time 보존·Runtime 종료 후 저장; drain 실패→HTTP409 stop_incomplete→재시도 재개·원자 rollback·알림 비재귀. 실제 CodexBinding+socket 대역+SQLite로 completed/failed/interrupted 모두 인수 후 DB 실패에도 cleanup 성공 후 timer 저장을 검증했다. adapter 인수 전 reject는 최초 결과를 남기고 cleanup/flush에서 재시도한다.
 - 최종 검토에서 Codex busy 수락 응답을 첫 outcome 처리 완료 전에 보내도록 테스트를 더 엄격하게 바꿨고 해당 파일 5 tests가 통과했다. 기존 실제 Codex vendor 자료를 이번 변경의 신규 실측으로 승계하지 않았다.
@@ -1274,7 +1279,7 @@ run에는 manifest, 실행 코드, 설정 변경·hook 입출력·시각, termin
 
 공식 문서: https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons 는 end_turn을 모델 응답의 자연 종료로 정의한다. https://code.claude.com/docs/en/hooks#stop-decision-control 의 block/additionalContext는 후속 작업을 만들며 Stop 자체는 최종완료가 아니다. async/asyncRewake는 현재 실행과 분리된 후속 실행이 가능하다. turn_duration의 최종성 공개 계약은 조사한 공식 문서에서 찾지 못했다. SDK ResultMessage를 native TUI 계약으로 일반화하지 않는다.
 
-설치 코드 근거: /private/tmp/aiox-turn-end-source-audit/manifest.json, binary /Users/lunaxislu/.local/share/claude/versions/2.1.274, sha256 3509913f9d1576316c8845b88837f8fd3bbbcf26625833ac82cfb6b8985da94a. root가 195387500-195389700.txt에서 _runImpl 뒤 finally → guard.end → O&&!signal.aborted 조건으로 duration 생성, running swarm이면 지연을 확인했다. 성공 outcome만 검사하는 코드가 아니다. 183873300-183878700.txt와 183974000-183976100.txt에서 Stop 결과 취합/summary → blockingErrors면 continue → 종료 허용이면 completed return을 확인했다. 따라서 기존 block/additionalContext 실측의 마지막 duration만 생성되는 흐름과 일치한다.
+설치 코드 근거: /private/tmp/aiox-turn-end-source-audit/manifest.json, binary /Users/lunaxislu/.local/share/claude/versions/2.1.274, sha256 3509913f9d1576316c8845b88837f8fd3bbbcf26625833ac82cfb6b8985da94a. root가 195387500-195389700.txt에서 \_runImpl 뒤 finally → guard.end → O&&!signal.aborted 조건으로 duration 생성, running swarm이면 지연을 확인했다. 성공 outcome만 검사하는 코드가 아니다. 183873300-183878700.txt와 183974000-183976100.txt에서 Stop 결과 취합/summary → blockingErrors면 continue → 종료 허용이면 completed return을 확인했다. 따라서 기존 block/additionalContext 실측의 마지막 duration만 생성되는 흐름과 일치한다.
 
 추가 경계: Stop continue:false의 preventContinuation은 hook_stopped_continuation attachment, summary.preventedContinuation/stopReason을 기록하고 stop_hook_prevented로 loop를 종료한다. abort가 아니면 finally duration 생성 조건에 들어갈 수 있다. 이는 코드 기반 가능성이고 새 실측은 아니다. 현재 parser는 이 필드를 읽지 않는다. 이를 completed/failed/interrupted 중 무엇으로 투영할지는 오류나 사용자 중단과 같은 것으로 단정하지 말고 별도 의미를 확인해야 한다. --max-turns는 도움말상 print 전용이므로 native TUI 반례로 채택하지 않았다.
 
@@ -1287,6 +1292,7 @@ run에는 manifest, 실행 코드, 설정 변경·hook 입출력·시각, termin
 확인한 근거: 지정한 /private/tmp/aiox-dynamic-stop-probe/run-FLeDjD/verification.json과 transcript·manifest·result, /private/tmp/aiox-turn-end-source-audit/manifest.json 및 코드 발췌가 모두 존재했다. 전자의 저장된 77 assertions allPassed=true, 10개 turn·FileChanged 0건을 직접 확인했다. 후자는 Stop 취합→preventContinuation/block/종료 분기와 finally duration 생성 경로를 확인했다. 이 확인은 기존 artifact 읽기이며 새 TUI 실행이 아니다. turn_duration을 모든 vendor 버전의 공개 보장으로 확대하지 않는다.
 
 변경과 검증 경로:
+
 - prepareClaudeLaunch의 hasStopHooks 계산·반환, ClaudeBinding의 observationOptions 저장·전달, ClaudeObservations 옵션, ClaudeTranscriptChain 인자·summary 필드·필수 summary 조건을 제거했다. summary 행은 일반 parent 연결로 계속 소비하며 부모 지연 대응을 유지했다. 설정 재탐색·ConfigChange cache·plugin 코드 추정으로 대체하지 않았다. 사용자 hooks·plugin 인자·설정과 시작 선행 조건 검사는 보존했다.
 - Runtime token 인증→session/path 검사→완성 JSONL→동일 요청의 현재 parent chain→정상 end_turn+duration 및 오류/중단 배제→해당 활동 종료라는 경로다. 다른 요청의 활동·대기를 보존한 상태 투영과 delivery settle은 분리돼 있다. 공통 completed/failed/interrupted·알림·StopFailure 이유·No/Esc·daemon 인수 ack·최초 outcome·중앙 저장 재시도는 변경하지 않았다.
 - binding API 합성 회귀는 시작 Stop 있음/없음 각각에 같은 세션의 Stop 추가·제거를 주입한다. 수정 전 시작 true/Stop 제거 경로가 working 잔류로 실패했고 제거 후 통과했다. end_turn/summary·미완성 duration에서는 working, 완성 duration에서 idle, 중복 행은 무효임을 확인했다. continue:false attachment/preventedContinuation/stopReason은 summary 유무 chain 회귀와 observations 상태·delivery 회귀로 검증했다. 신규 TUI continue:false 실측은 하지 않았다.
@@ -1326,7 +1332,7 @@ run에는 manifest, 실행 코드, 설정 변경·hook 입출력·시각, termin
 
 ### 2026-09-17 21:21 · Controller 통합 테스트의 파일 작성과 Claude 검증 범위 설명
 
-사용자 질문에 따라 agent-controller.ts 전체와 agent-controller.test.ts의 common HTTP MCP send 테스트 및 testing.ts를 읽었다. Controller 자체에는 파일 쓰기 API가 없으며 hook HTTP 인증과 binding.observe 위임, 반환 JSON(watchPaths 등)의 응답을 담당한다. 테스트는 임시 harness.home에 claude-session.jsonl을 생성하고 정상 종료/중단 JSONL을 직접 append한 뒤 FileChanged HTTP 보고를 직접 전송한다. 실제 Claude가 파일을 작성하거나 FileChanged를 발화하는지 시험하는 것은 아니다. harness는 tmpdir의 aiox-daemon-*이며 afterEach의 harness.close에서 제거한다.
+사용자 질문에 따라 agent-controller.ts 전체와 agent-controller.test.ts의 common HTTP MCP send 테스트 및 testing.ts를 읽었다. Controller 자체에는 파일 쓰기 API가 없으며 hook HTTP 인증과 binding.observe 위임, 반환 JSON(watchPaths 등)의 응답을 담당한다. 테스트는 임시 harness.home에 claude-session.jsonl을 생성하고 정상 종료/중단 JSONL을 직접 append한 뒤 FileChanged HTTP 보고를 직접 전송한다. 실제 Claude가 파일을 작성하거나 FileChanged를 발화하는지 시험하는 것은 아니다. harness는 tmpdir의 aiox-daemon-\*이며 afterEach의 harness.close에서 제거한다.
 해당 테스트는 실제 Claude adapter와 공통 daemon HTTP MCP/인증/SQLite/알림 경로를 결합한 Claude 대상 통합 테스트다. 터미널 실행은 mock이고 inbox는 테스트가 만든 socket server, hook은 테스트의 HTTP 요청, transcript는 합성 입력이다. send 내용/발신자 보존, hook credential 거절, 정확한 입력 귀속, Stop 단독 미정산, transcript 완료, DB 실패 후 중앙 재시도와 단방향 알림, 사용자 직접 입력 무알림, StopFailure 이유/실패, quota 상태와 기존 결과 불변, 중단 후 idle 및 무알림, Web/MCP 상태 일치를 검사한다. Codex 관측 경로나 실제 Claude TUI/vendor 이벤트 생성 검증을 대신하지 않는다. 다른 agent의 수정 작업에는 관여하지 않았다.
 
 ### 2026-09-17 21:26 · Codex busy 결과 누락·Claude 과거 metadata head 역행 수정과 전체 검사 통과
@@ -1474,7 +1480,7 @@ cleanup의 inboxToken 초기화는 try/finally 뒤에서 정리 시작 시점으
 
 사용자가 잔여 검증 1번(최종 수정 코드의 전체 연결 실측)과 2번(복사 후 원본 삭제 이동)을 함께 실측하도록 지시했다. 3·5번은 1·2번 완료 후 다시 지시하기로 했고, 4번(200~500건 저장 부하)은 수행하지 않기로 하고 방법만 제시하기로 했다. 23:13 entry가 준비한 대화형 시험 환경(/private/tmp/aiox-interactive-move)은 사용하지 않았고 별도 스크립트 probe로 수행했다. 해당 환경의 Claude(PID 34258)와 probe(PID 34239)가 아직 종료되지 않은 상태로 남아 있으며 정리 여부는 사용자 확인 대기다.
 
-실행 구성: pnpm build 재실행 후 dist가 23:01 최종 소스와 일치함을 cleanup try/finally와 chain cap 부재로 대조했다. probe는 production daemon/binding/persistence dist를 그대로 적재하고 agent-run/external로 실제 Claude TUI를 띄운다. 설치 버전은 2.1.275이며 앞선 실측·바이너리 분석 entry들의 2.1.274와 다르다. probe가 바꾼 것은 모델 API의 localhost mock, CLAUDE_CONFIG_DIR 격리, binding.observe 기록 wrapper 셋뿐이고 판정 로직은 통과시킨다. 근거는 /private/tmp/aiox-w3-relocation-probe의 probe.mjs와 run-* 아래 events.jsonl·verdict.json·manifest.json(production dist hash)·vendor-debug.txt·terminal.txt다.
+실행 구성: pnpm build 재실행 후 dist가 23:01 최종 소스와 일치함을 cleanup try/finally와 chain cap 부재로 대조했다. probe는 production daemon/binding/persistence dist를 그대로 적재하고 agent-run/external로 실제 Claude TUI를 띄운다. 설치 버전은 2.1.275이며 앞선 실측·바이너리 분석 entry들의 2.1.274와 다르다. probe가 바꾼 것은 모델 API의 localhost mock, CLAUDE_CONFIG_DIR 격리, binding.observe 기록 wrapper 셋뿐이고 판정 로직은 통과시킨다. 근거는 /private/tmp/aiox-w3-relocation-probe의 probe.mjs와 run-\* 아래 events.jsonl·verdict.json·manifest.json(production dist hash)·vendor-debug.txt·terminal.txt다.
 
 1번 통과(run-paIrxV): FileChanged가 change→change→unlink(구경로)→change(새경로) 순으로 도착했고 unlink 이벤트는 file_path=구경로, transcript_path=새경로를 함께 실었다. binding이 그 응답에 새 경로를 watchPaths로 반환했다. 이동 전 delivery와 이동 후 delivery가 모두 DB에서 completed, sender 알림 2건, hook 오류 0건, 최종 status idle이다. 이동은 ino 39583006 동일로 rename 경로였다.
 
@@ -1622,12 +1628,12 @@ SessionEnd의 "clear/resume용 cursor 유지" 서술도 삭제했다.
 - 자연 왕복 시간은 0~1ms다. `hookTimings`가 SessionStart·UserPromptSubmit·FileChanged 전부
   `max: 1`. `claude-hook.ts:7`의 5000ms 예산 대비 3~4 자릿수 여유다 (baseline run-ZlUL1I).
 - FileChanged가 예산을 넘겨도 관측은 유실되지 않는다. vendor debug에 `FileChanged [...] completed
-  with status 1`이 두 번 찍혔는데도 BEFORE·AFTER 양쪽 delivery가 completed다. hook의 abort는
+with status 1`이 두 번 찍혔는데도 BEFORE·AFTER 양쪽 delivery가 completed다. hook의 abort는
   클라이언트 측이라 daemon의 `observe`는 완주한다. 피해는 보고 지연뿐이다 (run-cBrzUk).
 - watchPaths가 전달되지 못해도 vendor의 기존 감시 목록은 유지된다. 위 run에서 `watching 2 paths`는
   SessionStart 응답 1회뿐인데 이후 change 이벤트가 계속 도착했다.
 - SessionStart가 예산을 넘기면 감시가 영구히 붙지 않는다. `Hook SessionStart:startup (SessionStart)
-  error` 이후 vendor debug에 `watching N paths` 라인이 0건, FileChanged 0건, delivery timeout이다.
+error` 이후 vendor debug에 `watching N paths` 라인이 0건, FileChanged 0건, delivery timeout이다.
   레지스트리 부트스트랩도 watchPaths를 경유하므로 이 경우는 구제하지 못한다 (run-iKmFaB).
 - UserPromptSubmit이 예산을 넘기면 감시가 멀쩡한데도 그 턴의 관측이 유실된다. FileChanged는
   `status 0`으로 정상이고 change도 2건 도착했는데 delivery만 timeout이다 (run-jyRCHJ).
@@ -1681,6 +1687,7 @@ SessionEnd의 "clear/resume용 cursor 유지" 서술도 삭제했다.
 ### 2026-09-18 17:21 · 사용자 개편 방향·session 전환 규칙과 현행 코드·vendor 대조
 
 사용자 방향(논의 시작점, 구현 승인 아님):
+
 - 범위는 registry 탐색만이 아니라 현재 구현된 vendor/adapter 관련 전체다.
 - registry 파일이 3000개면 탐색 I/O가 병목이므로 최적화한다.
 - `/resume`·`/clear`·`/fork`가 각각 새 sessionId 또는 기존 sessionId를 쓰는 것을 사용자가 확인했다.
@@ -1691,6 +1698,7 @@ SessionEnd의 "clear/resume용 cursor 유지" 서술도 삭제했다.
   화면에는 새 session의 status(예: idle)가 보인다.
 
 확인한 사실(코드·바이너리 2.1.276·로컬 파일):
+
 - status 규칙은 15:38 구현과 대부분 일치한다. SessionStart(새 id)가 보고 queue에서
   `#releaseOthers`(`claude.ts:351`) → `releaseSession`(`claude-observations.ts:209`)으로 옛 session의
   frame을 interrupted로 정산하고, `#currentSession` 교체 뒤 `#project`(`:499`)는 선택 session만 본다.
@@ -1716,6 +1724,7 @@ SessionEnd의 "clear/resume용 cursor 유지" 서술도 삭제했다.
   daemon·Codex를 바꾸지 않는다.
 
 추론:
+
 - 3000개 전제: registry는 실행 중인 Claude 프로세스 수만큼이라 평상시에는 수십 개 이하로 본다. crash 뒤
   stale 파일이 남는지는 미확인이다. 그래도 동기 scan은 daemon event loop 전체를 막으므로(지연 원인 X)
   N개 agent가 각자 N개를 읽는 O(N²) 구조이며, pid 직접 조회로 O(1)이 된다.
@@ -1728,6 +1737,7 @@ SessionEnd의 "clear/resume용 cursor 유지" 서술도 삭제했다.
 - 부하 1순위는 hook마다의 Node 프로세스 spawn으로 보인다(미측정).
 
 제안(미승인)과 논의할 결정:
+
 - D-A 전환 시 옛 session: 즉시 interrupted / 옛 reader를 끝까지 읽은 뒤(drain) 남은 것만 interrupted.
   후자를 추천한다. 완료된 턴의 오보를 막고 SessionEnd(B1) 의존을 없애 비선택 session 분기를 삭제할 수 있다.
 - D-B offset 점프 범위: SessionStart로 새로 만든 reader 전부 / resume·fork만.
@@ -1745,6 +1755,7 @@ SessionEnd의 "clear/resume용 cursor 유지" 서술도 삭제했다.
 ### 2026-09-18 18:06 · 개편 결정 D-A~D-F와 SessionEnd 마지막 읽기의 종료 경로 이전
 
 사용자 결정:
+
 - D-A: session 전환 시 옛 session reader를 끝까지 읽은 뒤 남은 것만 interrupted로 정산한다. 판단 근거는
   `aiox-collaboration.md:69`의 통지 정책이다. 단방향 A→B에서 completed는 A에 통지되고 interrupted는
   통지되지 않으므로, 실제로 끝난 턴을 interrupted로 기록하면 요청자가 완료를 받지 못한다. Codex도 thread
@@ -1760,6 +1771,7 @@ SessionEnd의 "clear/resume용 cursor 유지" 서술도 삭제했다.
 - Codex는 Claude 개편 뒤 논의한다. 그때 Codex의 `/clear`·`/resume`·`/new` 상태 흐름을 다시 확인한다.
 
 확인한 사실(SessionEnd 이전 판단 근거):
+
 - SessionEnd의 유일한 기능은 `claude.ts:342`의 마지막 읽기다. observations에는 SessionEnd 분기가 없다.
 - vendor SessionEnd hook 예산은 `max(1500, min(hook별 timeout 최댓값, 60000))`ms이며(`Dse()`, `K1r=1500`,
   `Aes=60000`), 우리 hook은 timeout이 없어 1.5초다. 현재 SessionEnd 응답은 큐 전체와 마지막 읽기를 기다린다.
@@ -1772,6 +1784,7 @@ SessionEnd의 "clear/resume용 cursor 유지" 서술도 삭제했다.
   `interruptPending`이 이미 쓰는 경로다.
 
 추론(영향 없음 판단):
+
 - hook 요청 경로 밖이라 우리 30초 상한과 vendor 1.5초 예산 모두 적용되지 않는다.
 - 큐를 기다린 뒤 끝까지 읽으므로, 닫힘 이후 건너뛴 FileChanged 읽기도 흡수된다. 건너뛴 UserPromptSubmit의
   턴은 종료 시 interrupted가 되며 현재와 같다.
@@ -1791,6 +1804,7 @@ run: http 4회(R5XF8t·5mhARy·wUp5VP·EHhoZt, 앞 3회는 가짜 API의 표식 
 mcp 1회(uMu1Zd), mcp+deny 1회(1swXaY).
 
 확인한 사실:
+
 - ppid: 6회 모두 exec-form command hook의 `process.ppid`가 pty child pid(claude 본체)와 같았다. SessionStart
   hook 시점에 `<config>/sessions/<ppid>.json`이 이미 있고 sessionId가 hook 입력과 일치했다(source=startup).
 - `http`: SessionStart는 "HTTP hooks are not supported for SessionStart"로 건너뛴다. UserPromptSubmit·
@@ -1815,6 +1829,7 @@ mcp 1회(uMu1Zd), mcp+deny 1회(1swXaY).
 않았다. http는 코드상 SessionStart·Setup만 제외한다. mcp_tool은 MCP 연결 전 이벤트의 동작을 보지 않았다.
 
 추론·선택지(미승인):
+
 - E1 혼합 http: SessionStart·CwdChanged·FileChanged는 command로 남기고 나머지는 http. MCP 의존이 없고 변경이
   작지만, 가장 잦은 FileChanged의 프로세스 생성이 남는다.
 - E2 mcp_tool: SessionStart만 command, 나머지는 mcp_tool. 프로세스 생성이 session 시작 1회로 준다. 대가는
@@ -1830,6 +1845,7 @@ mcp 1회(uMu1Zd), mcp+deny 1회(1swXaY).
 transcript에 없고, 승인 대기 중인 tool_use와 실행 중인 tool_use를 행만으로 구분할 수 없다.
 
 확인한 사실:
+
 - AIOX가 native inbox로 전달한 입력의 transcript 행(run-9bjCR7, 2건)은 UserPromptSubmit 원문 frame 전체를
   포함한다. 다만 앞에 vendor 문구 "Another Claude session sent a message:\n"가 붙어 정확히 같지는 않다.
   같은 `promptId`, `origin.kind: "peer"`, `origin.name`(발신자), `promptSource`가 함께 기록된다. frame에는
@@ -1838,6 +1854,7 @@ transcript에 없고, 승인 대기 중인 tool_use와 실행 중인 tool_use를
   약 1.1초였다(mcp run 2회, 10건).
 
 추론·선택지(미승인): transcript에 있는 것만 transcript로 옮기는 혼합안(T).
+
 - transcript로 이동: 턴 시작과 prompt key(입력 행의 promptId), AIOX frame 연결(고유 표식 포함 여부), working,
   도구 실행 중(tool_use에 tool_result 없음), AskUserQuestion 대기, 승인 대기 해소(tool_result 행).
 - hook 유지: SessionStart(감시·session 선택·inbox 준비), CwdChanged·FileChanged(감시 갱신·읽기 계기),
@@ -1856,6 +1873,7 @@ transcript에 없고, 승인 대기 중인 tool_use와 실행 중인 tool_use를
 사용자가 다른 에이전트의 T안 보완 의견 세 가지를 전달했다. 대조 결과 세 가지 모두 수용하되 두 곳을 보정한다.
 
 확인한 사실:
+
 - AIOX는 inbox에 `{message:{role:"user",content:frame}}`로 frame 전체를 보낸다(`claude-inbox.ts`).
   transcript 입력 행의 content는 vendor 앞 문구 + frame + vendor 뒤 문구("This came from another Claude
   session — ...")다. `origin.body`는 frame에서 `<cross-session-message ...>` 감싸기를 뺀 본문과 정확히 같고,
@@ -1869,6 +1887,7 @@ transcript에 없고, 승인 대기 중인 tool_use와 실행 중인 tool_use를
   읽기보다 먼저 올 수 있다.
 
 판단:
+
 - 보완 1(끝나지 않은 도구 호출 ≠ 실행 중): 수용. 상태 이름을 "끝나지 않은 도구 호출"로 바꾸고 PermissionRequest가
   오면 승인 대기로 덮는다. 승인 후 장시간 실행 표시는 기존 한계이므로 실측으로 승인 시점 신호가 있는지 찾는다.
 - 보완 2(표식 포함만으로 연결 금지): 수용하되 방법을 보정한다. content 전체 비교는 vendor 앞뒤 문구를 코드에
@@ -1890,6 +1909,7 @@ run-WWxG1z(기준), run-4YUn2N(`permissions.ask: ["Bash"]`+감시 목록 수정)
 run-WWxG1z의 4번은 Bash가 승인 없이 실행돼 측정하지 못했고, 1번 대기 조건의 probe 결함은 결과에 영향이 없다.
 
 확인한 사실:
+
 - 1(B3): busy 중 보낸 frame은 즉시 `queue-operation`(operation=enqueue, content=frame 전체) 행으로 기록되고,
   현재 턴이 끝난 뒤 새 promptId의 UserPromptSubmit과 `origin.kind: peer` 입력 행을 가진 별도 턴으로 처리됐다.
   입력 행 모양은 idle 전달과 같다.
@@ -1903,7 +1923,7 @@ run-WWxG1z의 4번은 Bash가 승인 없이 실행돼 측정하지 못했고, 1�
 - 5(origin): 3건 모두 `origin.body`가 frame 본문과 정확히 같았다(여러 줄·빈 줄·뒤 공백·탭·`"<>&'`·한글·이모지).
   `origin.name`은 원래 이름이 아니라 AIOX가 escape해 쓴 from-name 속성값 그대로다.
 - 감시 목록: vendor는 FileChanged 감시를 chokidar `ignoreInitial: true`, `awaitWriteFinish {stabilityThreshold: 500,
-  pollInterval: 200}`로 만들고, 새 watchPaths를 정렬 비교해 같으면 감시를 다시 만들지 않는다(`ve()`). SessionStart에
+pollInterval: 200}`로 만들고, 새 watchPaths를 정렬 비교해 같으면 감시를 다시 만들지 않는다(`ve()`). SessionStart에
   아직 없는 transcript를 넣으면 이후 같은 목록 응답으로는 transcript 감시가 생기지 않아 transcript FileChanged가
   0건이었다(run-WWxG1z, registry FileChanged만 발생). transcript가 생긴 뒤 목록에 추가하자 `watching 2 paths`가 다시
   찍히고 transcript FileChanged가 왔다(run-4YUn2N·T9SqdB).
@@ -1913,6 +1933,7 @@ run-WWxG1z의 4번은 Bash가 승인 없이 실행돼 측정하지 못했고, 1�
   request"·"sandbox request"·"dialog open"을 만든다. registry FileChanged는 쓰기 뒤 약 0.5~0.65초에 온다.
 
 추론:
+
 - 현재 production `#watch()`도 SessionStart에서 아직 없는 transcript를 같은 목록으로 넣으므로 fresh session에서는
   transcript FileChanged 없이 registry FileChanged로만 읽고 있을 것이다(13:33 기록의 "transcript FileChanged 0건"과
   일치). 턴 시작·상태 변경·종료마다 registry가 바뀌므로 완료 판정은 동작하지만 턴 중간 행은 늦게 읽힌다.
@@ -1929,6 +1950,7 @@ run-WWxG1z의 4번은 Bash가 승인 없이 실행돼 측정하지 못했고, 1�
 복원되는 흐름을 idle로 취급하기로 한 기존 결정도 확인하도록 요청했다.
 
 확인한 사실:
+
 - 응답 전 입력 복원 취소의 idle 취급은 09-17 14:31 기록(공식 CHANGELOG v2.1.83)에서 정했고, 14:40에 관측된 busy→idle을
   그대로 반영하며 복원 판별 조건을 만들지 않는 것으로 확정됐다. 답변 출력 중 Esc(marker·`isAbortedMidStream`)와
   구분하고, marker 없는 취소에는 결과를 만들지 않는다(요청 결과 기준). 15:15 기록은 이 표본의 idle 전이 근거가
@@ -1946,6 +1968,7 @@ run-WWxG1z의 4번은 Bash가 승인 없이 실행돼 측정하지 못했고, 1�
   (09-17 14:44). 재시도 도중 오류 행이 기록되는지는 미확인이다.
 
 판단:
+
 - Codex의 idle≠completed, 재시도 구분 필요, 감시 결함의 재현 전 추론 표기는 수용한다.
 - daemon 밖 관측 프로세스 분리는 daemon 부하 측정이 없어 보류를 제안한다. 사용자가 지목한 registry 전체 스캔은 D-C
   ppid 조회로 사라지고, 가장 큰 기동 비용은 Claude 쪽 hook 프로세스라 분리로 줄지 않는다. 분리는 관측 프로세스 장애와
@@ -1987,6 +2010,7 @@ Claude는 transcript 경로만 있고 파일이 없다는 점을 전제로 했�
 (`WATCH_MODE=kq`: 디렉터리 감시 없이 registry·transcript 파일 감시만). 기준값은 25ms polling이다.
 
 확인한 사실:
+
 - A1: registry는 제자리 쓰기다(34회 변경·/clear·/resume에서 inode 불변). 파일 감시는 두 run 모두 34/34 변경을 polling보다
   먼저 받았다. 디렉터리 감시(run-CtIbcy)는 34/34를 받았지만 3건이 약 2.5초 늦었고, 모두 다른 감시 재등록 전후였다.
   registry 파일은 종료 때 삭제된다.
@@ -2011,6 +2035,7 @@ Claude는 transcript 경로만 있고 파일이 없다는 점을 전제로 했�
   09-17 00:32 사용자 기준대로 필수 재현으로 두지 않는다.
 
 추론:
+
 - 파일 감시 2개와 SessionStart로 FileChanged·CwdChanged 없이 생성·/cd·/clear·/resume·종료를 따라갈 수 있다. 디렉터리
   감시는 재등록 전후 지연이 있어 쓰지 않는다. libuv macOS 구현의 공유 FSEvents 재구성이 원인일 가능성은 미확인이다.
 - UserPromptSubmit이 주던 promptId와 입력 출처는 입력 행에 모두 있다. AIOX 입력의 응답 전 취소는 marker로 interrupted가
@@ -2025,6 +2050,7 @@ Claude는 transcript 경로만 있고 파일이 없다는 점을 전제로 했�
 다음 registry 변경까지 감시가 붙지 않는 빈틈, session 전환 뒤 늦은 행, 처리 분산 결정이 남았다는 것이다.
 
 확인한 사실:
+
 - run-FIpDrB 첫 턴에서 busy 쓰기(4781ms) 때는 파일이 없었고, transcript 감시는 턴 종료의 registry idle 쓰기(4865ms)가
   일으킨 존재 확인으로 붙었다. 지적대로 첫 턴의 행을 제때 읽은 것이 아니라 턴 끝에 읽은 것이다. registry 쓰기는
   38건 중 35건이 상태 변경이라, 긴 첫 턴에서는 다음 상태 변경까지 읽기가 늦어진다.
@@ -2036,6 +2062,7 @@ Claude는 transcript 경로만 있고 파일이 없다는 점을 전제로 했�
   별도 관측 프로세스는 Codex 제안이다.
 
 판단:
+
 - 첫 부착 빈틈은 결과를 잃지 않는다고 본다. registry 변경, session 전환 drain, 종료 읽기 모두 존재 확인 뒤 파일을 끝까지
   읽고, 감시는 읽기를 앞당길 뿐이기 때문이다. 영향은 긴 첫 턴 중간 행의 읽기 지연이며, 이를 쓰는 소비자는 현재 없다(추론).
 - 종료 뒤 읽기는 쓰는 프로세스가 끝난 뒤라 늦은 행이 없다. session 전환은 같은 프로세스가 이전 파일에 계속 쓸 수 있어
@@ -2072,6 +2099,7 @@ daemon 내부 유지(D)를 비교해 사용자 결정을 받는다. 코드 변�
 (W/P/D)는 아직 결정하지 않았다. 사용자는 이대로 구현할 때 기존 로직과 비교한 과부하 처리 시간·timeout을 물었다.
 
 확인한 사실:
+
 - 현행 reporter는 `TIMEOUT_MS = 5000`이다. `claude.ts:137-149`에서 SessionStart·CwdChanged 외 보고는 runtime의 `#reports` queue
   처리가 끝나야 HTTP 응답이 나간다. FileChanged의 transcript 읽기도 이 queue에서 한다.
 - hook 1건마다 node 프로세스가 뜬다. `claude-hook-main.js` 기동과 종료는 daemon 없이 평균 45.7ms였다(`node -e 0`은 18.8ms,
@@ -2080,6 +2108,7 @@ daemon 내부 유지(D)를 비교해 사용자 결정을 받는다. 코드 변�
 - 5초 초과 시 SessionStart는 감시 영구 미부착, UserPromptSubmit은 턴 관측 영구 유실이 된다(W3 기존 실측).
 
 판단:
+
 - 현행은 UserPromptSubmit·PreToolUse·PermissionRequest 응답이 daemon queue를 기다린다. vendor는 이 hook들이 끝나야 prompt 처리와
   도구 실행을 진행하므로, daemon 과부하가 Claude의 prompt·도구 지연으로 번지고 5초를 넘으면 관측을 잃는다(vendor 대기 동작은
   공식 hook 계약 기준 추론).
@@ -2111,11 +2140,13 @@ Runtime 진단으로 사용자에게 드러내야 한다. "Claude에 영향 없�
 worker_threads(W)와 관측 자식 프로세스(P)는 채택하지 않는다.
 
 근거:
+
 - prompt·도구 경로의 blocking hook이 없어진다.
 - 남는 동기 I/O(`#findRegistry`)는 D-C로 삭제된다.
 - 부하 측정은 사용자 지시로 제외했으므로, W가 필요하다는 실측 근거가 없다.
 
 W를 넣으면 추가되는 것:
+
 - thread 사이 결과 전달 경계
 - daemon 저장 확인 전 결과 보관
 - `controls` 대리 호출
@@ -2149,11 +2180,11 @@ rec-hook.mjs의 SessionStart 처리 중 이전 transcript 바이트를 직접 �
 
 **신규 실행 결과**
 
-| run | 실행/시나리오 | 결과 |
-| --- | --- | --- |
-| run-iflhc8 | WATCH_MODE=kq node probe-switch.mjs; C1 모델 대기 /clear, C2 도구 실행 /clear, C3 모델 대기 /resume, C4 AIOX 입력 처리 중 /clear | 네 경우 모두 SessionStart snapshot에 종료 행이 없고 이후 발견 |
-| run-s9XlxS | SCEN=queue WATCH_MODE=kq node probe-switch.mjs; C5 입력→/clear, C6 /clear→입력 | C5 옛 session, C6 새 session에서 peer 입력 처리; C6 옛 종료 행은 snapshot 뒤 추가 |
-| run-tR05gz | SS_SLEEP=2000 SCEN=queue WATCH_MODE=kq node probe-switch.mjs | SessionStart 2초 지연 대조; C6 새 UserPromptSubmit은 recorder 완료 기록 후 +30ms |
+| run        | 실행/시나리오                                                                                                                    | 결과                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| run-iflhc8 | WATCH_MODE=kq node probe-switch.mjs; C1 모델 대기 /clear, C2 도구 실행 /clear, C3 모델 대기 /resume, C4 AIOX 입력 처리 중 /clear | 네 경우 모두 SessionStart snapshot에 종료 행이 없고 이후 발견                     |
+| run-s9XlxS | SCEN=queue WATCH_MODE=kq node probe-switch.mjs; C5 입력→/clear, C6 /clear→입력                                                   | C5 옛 session, C6 새 session에서 peer 입력 처리; C6 옛 종료 행은 snapshot 뒤 추가 |
+| run-tR05gz | SS_SLEEP=2000 SCEN=queue WATCH_MODE=kq node probe-switch.mjs                                                                     | SessionStart 2초 지연 대조; C6 새 UserPromptSubmit은 recorder 완료 기록 후 +30ms  |
 
 명령의 cwd는 신규 harness다. seed `/private/tmp/aiox-stopfailure-probe/config/.claude.json`과 repo node-pty 설치에 의존하므로 완전한 독립 배포 패키지는 아니다.
 
@@ -2218,12 +2249,14 @@ Owner: aiox-vendor-bindings의 session 폐기·재개·종료 읽기 as-built를
 현재 worktree를 재확인해 앞선 전환 보존·종료 읽기 변경을 소비했다. 이전 goal turn은 코드·검증·owner 상태를 변경한 progress다. 첨부 지시 전체 목표를 유지하며 W3 완료로 축소하지 않는다.
 
 구현:
+
 - ClaudeObservations.observeTranscript가 실제 user 입력 행에서 session/prompt를 등록한다. AIOX peer 연결은 origin.kind=peer와 저장한 발신 frame의 escape된 from-name·전체 body의 정확 일치다. pending entry와 peer lookup은 Runtime 범위이며 전환으로 폐기하지 않는다. UUID 포함, vendor wrapper 텍스트, human/sidechain이나 잘못된 name/body는 delivery 연결 근거가 아니다. 직접 입력과 deliveryId=null daemon notice는 정산 알림을 생성하지 않는다.
 - 먼저 온 StopFailure는 session/prompt별 최초 이유를 보관하고 입력 등록 시 failed로 정산한다. 인수 reject 후 기존 #outcomes가 최초 결과를 유지하며 재시도한다. 옛 session 입력·실패는 현재 화면 projection을 하지 않는다.
 - 입력보다 먼저 기록된 자식의 explicit promptId를 미등록이라는 이유로 버리던 chain accepts 제한을 observations에서 제거했다. transcript 입력 자체가 소유를 정하고 부모가 늦으면 기존 unlinked metadata 경로로 연결한다. chain 단독 accepts 기능과 기존 회귀는 보존했다.
 - 새 SessionStart는 fromEnd를 await한 뒤 응답한다. 미존재는 0이며 compact와 기존 session 재개는 cursor를 유지한다. 초기화 queue는 결과 소비/정산 queue와 분리했고 shutdown은 진행 중 초기화를 기다린다. async 파일 I/O가 추가돼 기존 microtask 20회 고정 대기 테스트를 consumer를 계속 잡은 채 초기화 완료를 기다리는 assertion으로 바꿨다.
 
 근거·검증:
+
 - 신규 peer 연결, 선행 실패와 부모 지연, EOF 회귀의 RED를 각각 확인 후 구현했다. 해당 adapter 최종 151 tests와 공통 daemon 222 tests를 포함해 pnpm check(lint·format·build·typecheck·전체 tests) PASS. 실행 원문 /private/tmp/aiox-w3-check-20260918.log. 기존 읽기 재시도 snapshot spread에 oxlint warning은 남지만 check exit 0이다.
 - 기존 run-T9SqdB 실제 transcript를 직접 열어 origin.name이 `Alice &quot;Q&quot; &lt;x&gt; &amp; 'y' 한글 🙂`인 것을 확인했다. 처음 작성한 raw name 비교를 escape된 wire 이름 비교로 수정했다. origin.body의 여러 줄·공백·특수문자는 그대로 대조한다. 새 vendor 실측은 하지 않았다.
 - 새 tests는 submit hook 없는 peer 연결, 전환 뒤 늦은 결과, 중복 행, 틀린 origin/name/body·sidechain·notice, 선행 StopFailure 두 번의 최초 이유·ack reject, explicit promptId 자식 선행, 응답 전 EOF와 compact cursor 보존을 검증한다. 기존 전체 회귀와 제품 TUI 통합은 구분한다.
@@ -2236,12 +2269,14 @@ Owner: aiox-vendor-bindings의 session 폐기·재개·종료 읽기 as-built를
 첨부 지시와 현재 worktree를 재확인했다. 앞선 턴은 입력 연결·EOF 코드와 검증을 변경한 progress다. 이번은 승인된 D-C/D-F와 직접 감시의 transcript 경로를 구현한 checkpoint이며 전체 W3 완료가 아니다.
 
 구현:
+
 - reporter는 실제 process.ppid를 top-level report 필드로 보낸다. binding schema는 양의 정수 ppid를 요구하고 sessions/<ppid>.json 하나만 비동기 readFile로 읽어 sessionId를 대조한다. sync readdir/readFile과 다른 PID 탐색 fallback을 제거했다. 공통 daemon 테스트의 reporter 대역도 이 계약으로 맞췄다. registry 미존재는 현재 undefined로 남으며 필수 초기화·진단 처리는 아래 미완료 범위다.
 - reporter 전체 제한을 승인된 30초로 변경했다. 실제 HTTP 테스트의 ppid 수신과 fake timer의 29,999ms 생존·30,000ms 실패를 검증했다.
 - 존재하는 각 transcript 파일에 직접 fs.watch를 부착한다. 옛 session watcher도 유지해 선택 session 전환 뒤 늦은 결과를 FileChanged hook 없이 소비한다. 이벤트는 Runtime queue에 reader별로 합쳐 넣으며 읽기·정산은 기존 비동기 경로다.
 - rename은 watcher를 닫고 재부착하며 error와 이미 감시한 파일의 소실은 기존 실패 재시도 대상으로 둔다. 처음부터 없는 파일은 timer를 만들지 않고 registry 변경 때 부착을 시도하는 현재 경로를 유지한다. 경로 이동 시 이전 watcher를 닫으며 종료는 watcher를 닫고 모든 reader를 마지막 읽는다. watch error는 현재 controls.setStatus 진단이고 마지막 실패 reader 복구 시 보관한 상태를 다시 표시한다. 이 진단과 registry 화면 상태의 최종 분리는 남아 있다.
 
 검증:
+
 - ppid 전송·timeout 및 직접 감시 테스트의 RED를 확인 후 구현했다. 다른 PID에 같은 session이 있어도 보고된 PID의 session mismatch를 거절하는 회귀, 실제 fs append로 옛 peer 입력→결과→controls.settle, watch error 주입→재부착→추가 이벤트 없이 놓친 행 읽기를 추가했다.
 - 기존 실패 재시도 테스트는 자체 retry 책임을 검증하도록 fs.watch를 통제한다. 실제 native 감시는 별도 테스트에서 호출한다. ESM node:fs 직접 spy가 불가능해 module mock이 원래 watch를 기본 호출하고 필요한 테스트만 1회 가짜 watcher를 쓰게 했다. 타입/spy 호출 누적 문제는 수정했다.
 - pnpm check 전체 PASS: 47 files/653 tests(Claude154·daemon222 포함). 원문 /private/tmp/aiox-w3-watch-check-20260918.log. 기존 retry snapshot spread의 oxlint warning은 남는다. architecture as-built/gap과 markdown inline 정합을 맞췄다. 실제 Claude TUI 통합·새 reporter 프로세스 ppid 실측은 이번 실행 범위가 아니다(기존 vendor ppid 실측과 unit HTTP를 구분).
@@ -2263,12 +2298,14 @@ registry 변경은 현재 reader 및 아직 watcher가 없는 옛 reader에 읽�
 첨부 지시와 onramp·기존 W3를 소비했다. 사용자가 채택한 옛 session 유지 정책을 계속 적용하며 앞선 코드/테스트를 재확인했다. 이번은 전체 개편의 progress이며 W3 완료가 아니다.
 
 구현:
+
 - AIOX 주입 hooks를 SessionStart·StopFailure·Notification 세 개로 줄였다. 사용자 hook 병합은 유지한다. 기존 FileChanged/CwdChanged/도구 hook 처리 분기와 watchPaths 응답은 아직 제거하지 않았으므로 최종 구조로 간주하지 않는다.
 - 감시 중인 transcript 경로가 사라지면 config/projects 바로 아래 디렉터리에서 동일 session 파일명의 단일 후보를 비동기로 찾는다. 후보가 여럿이면 오류이며 PID registry를 scan하지 않는다. 같은 inode 이동은 기존 reader/cursor를 재사용한다. 종료 마지막 읽기에서도 경로 이동을 확인한다. 이 탐색은 미존재 경로에 한하며 정상 polling이나 디렉터리 watcher는 없다. 프로젝트 디렉터리 수에 비례하는 탐색 비용은 남는다.
 - RuntimeControls.setObservationError와 RuntimeRecord/AgentView.observation_error를 추가했다. Claude registry·현재/옛 transcript 감시/읽기 실패는 상태를 failed로 바꾸는 대신 이 진단으로 전달한다. SessionStart 등록 reject는 hook 오류 응답과 같은 진단 경로로 드러낸다. 성공한 SessionStart가 초기화 진단을 해제하며 독립된 읽기 실패는 복구 때까지 남긴다. HTTP Agent snapshot→Web 상태 옆 진단·CLI agent show로 소비된다. MCP agents_list의 status/status_reason 의미는 바꾸지 않았다.
 - 현재 status 변경은 관측 진단을 지우지 않으며 진단 복구도 현재 status나 delivery outcome을 변경하지 않는다. 관련 production/test 대역을 새 필수 control에 맞췄다.
 
 검증:
+
 - 직접 rename 후 6개 행만 소비하는 cursor 회귀, 세 hooks 정확 일치, 감시 오류 상태 비오염 및 복구·registry 복구, 초기화 session mismatch 진단의 RED를 확인 후 구현했다. RuntimeRegistry 분리 저장과 Web 실패/복구 표시는 테스트로 확인했다.
 - pnpm check 최종 PASS: 47 files/657 tests(Claude157, Web37, daemon222). 원문 /private/tmp/aiox-w3-diagnostics-final-check-20260919.log. 앞선 실행은 Codex control 대역 1곳 누락, CLI AgentView fixture 필드 누락으로 실패했으며 수정 후 최종 전체 실행 exit0을 확인했다. 기존 retry snapshot spread oxlint warning은 남는다.
 - 실제 production adapter+daemon+DB+native Claude+fake API 통합을 /private/tmp/aiox-w3-native-probe에서 실행했다. run-LNkTYT: 무예열·무선생성 BEFORE/AFTER 둘 다 DB completed, 발신자 notices2, FileChanged0, hook errors0. run-fAOwbZ: 즉시 /cd 이동 전후 둘 다 DB completed·notices2, CwdChanged/FileChanged 없이 같은 inode 이동 확인. standalone vendor-only harness 결과로 대신하지 않았다. 각 run의 manifest/probe/events/verdict/DB/terminal이 근거다. run-LNkTYT는 진단 변경 전 빌드, run-fAOwbZ는 진단 분리 초기 빌드이며 이후 초기화 오류 진단 추가는 최종 unit/전체 check로 검증했다.
@@ -2372,3 +2409,16 @@ registry 변경은 현재 reader 및 아직 watcher가 없는 옛 reader에 읽�
 - 첨부6d95ca93 요구1~6 완료 감사: (1) 세 SessionStart registry 대기 통일 및 knownTransition 제거, (2) old instance의 active snapshot 완료 후 삭제·idle 삭제·late queue/callback 차단, (3) 보관/재사용 제거와 fresh EOF·빠른 같은ID 재진입 격리, (4) interrupted fallback/first outcome/DB ack retry/실제 종료 마지막 읽기, (5) unit·daemon integration·실제 전환/입력 순서·watcher 회수 및 전체 검사, (6) owner 문서 반영과 최신 로그 reconcile. 각각의 코드·명명된 테스트·실제 run 근거는 직전 「첨부 요구 감사와 최종 검증 제한 정리」와 「자원 회수·실제 전환 검증과 owner 반영」 entry를 따른다. 최종 검사 미확정 제한은 이번 통과로 해소됐다.
 - 실제 제품 검증 범위는 macOS Claude 2.1.278이다. 반복 전환 run-xzs4OH completed4/notice4, busy중 resume run-giu8ia completed3/notice3, 입력/clear 두 순서는 전환 때 미정산 interrupted와 AFTER completed를 확인했다. busy 명령 입력과 실제 전환 시점은 구분한다. 실제 실행 이후의 마지막 변경은 retired rename callback 소유권 guard이며 재현 회귀와 최종 전체 검사로 검증했다.
 - 이번 첨부 전체 작업은 완료했다. 다른 OS 실측·Stage3 W1/W2/W4/W5 등 기존 별도 작업은 이 완료에 포함하지 않으며 자동 완료하지 않는다. stage/commit/reset이나 사용자 daemon/DB 변경은 하지 않았다.
+
+### 2026-09-20 22:50 · W3 상태 정규화 리뷰·수정과 준비·경로·감시 수명 확인
+
+- 사용자 지시: 이 작업 동안 로그를 쓰지 않았으며, 이번 명시적 요청으로 결과를 기록한다. logs 하위 문서는 append-only로 취급하지 않고 사용자 권한으로 기존 내용의 갱신·수정·보완·추가를 수행한다. 과거 근거와 현재 계약을 구분한다.
+- 리뷰 결론: registry가 현재 활동의 권위이고 transcript/StopFailure는 요청 귀속·결과 및 registry에 없는 quota 대기를 보완한다. PermissionRequest/PostToolUse 등으로 동일 활동을 재조합하지 않는다. 필요한 수명·인과·최초 outcome 재시도 보관은 유지한다.
+- 수정: registry status의 idle 기본값 제거, 초기 누락 시 preparing 유지; shell 허용 및 working/Bash 잔여 작업 이유 매핑; 설치본의 정확한 취소 system 알림으로 quota 대기 해제; production caller 없는 chain accepts/releaseSession 제거. busy 전환 시 실패 기록을 지우는 로직은 사용자 지정대로 수정하지 않았다.
+- 리뷰 정정: reducer에 StopFailure→busy→idle을 직접 주입한 결과만으로 실제 binding에서 늦은 과거 busy가 도착하는 버그를 확정할 수 없다. registry와 hook 관측은 공통 reports 큐를 쓰고 watcher는 과거 status snapshot이 아니라 처리 시 파일을 읽는다. 해당 가정에 따른 실패 삭제 변경은 제외했다.
+- 근거와 한계: Claude 2.1.278 초기 registry producer는 status를 생략할 수 있고 미종료 local_bash에 shell을 사용한다. quota 취소는 MQt→Wt/c0의 system/informational notice가 MJe.record→EE/insertMessageChain 저장 경로를 통과하는 설치 코드로 확인했다. 정확한 내용은 `Automatic continue cancelled · /rate-limit-options to re-arm`이다. 실제 quota TUI 재현·다른 버전/OS 계약 검증은 하지 않았다. Enter continuation의 새 입력이 대기를 해제하고 재한도 시 이전 stale이 남지 않는 회귀 테스트는 통과했다.
+- 흐름 확인: 초기 실행은 실행·inbox·필요한 MCP·선택 session의 유효한 registry 관측·감시 준비를 모두 충족한 때 최초 ready가 되어 최신 상태를 공개한다. 세션 전환은 같은 실행의 연결 준비를 유지하고 새 session 선택→preparing→해당 registry status 반영으로 진행한다. registry 선행 관측이 session을 선택하지 않으며 transcript 첫 기록/이전 정산 완료를 ready 조건으로 삼지 않는다.
+- /cd·오류·자원 확인: 같은 session의 파일 이동은 reader/cursor를 유지하고 watcher 경로를 옮긴다(파일 교체·축소는 cursor 초기화). 전환/resume은 old watcher를 닫고 late callback을 차단한다. 같은 PID registry 감시는 재사용하고 종료 시 모두 닫는다. observation_error는 status/status_reason과 별도이며 Web Agent 영역·CLI 상세에서 표시하고 Claude TUI에는 주입하지 않는다.
+- 검증: Claude adapter 11 files/135 tests PASS, daemon agent-controller/runtimes/mcp 3 files/78 tests PASS. adapter tsc --noEmit·tsup build·built Node import·oxlint·oxfmt·git diff --check PASS. daemon 첫 시도는 Node ABI 불일치, 다음은 sandbox localhost listen EPERM이었다. 기존 native module과 맞는 Node 24.14.0 및 로컬 서버 허용으로 78개 통과했다. 이후 watcher 정리 확인을 위해 claude.test.ts 32개를 재실행해 PASS: 30회 전환 동안 활성 watcher 2개, cleanup 뒤 0개, old callback 무효화 포함. 전체 repo 628개 재실행이나 실제 quota TUI 실측으로 확대하지 않는다.
+- Owner 반영: docs/specs/aiox-runtime.md와 docs/architecture/aiox-vendor-bindings.md에 누락 status·shell·quota 취소 계약 반영 완료. 이번 사용자 요청으로 Baseline §11/12/18과 Product Context Prompt §3/6/8/17의 기존 내용을 현재 계약으로 갱신했다. 과거 UserPromptSubmit/Stop 실측은 역사 근거로 표시하고 current 흐름에서는 제거했다.
+- 상태: 이번 합의한 수정·검증은 완료. Stage3/W3 전체나 W1/W2/W4/W5를 완료 처리하지 않는다. 기존 macOS 실측·47 files/628 PASS는 해당 과거 코드의 근거로 남기며 실제 quota TUI와 다른 OS 검증은 남아 있다. 새 로그로 분리하지 않은 이유는 같은 W3 개편의 후속 의미 검증·수정이므로 같은 수명에 속하기 때문이다.

@@ -2,11 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome } from "@aiox/domain";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
+import { z } from "zod";
 
 import {
     ClaudeTranscriptChain,
     transcriptRowSchema,
 } from "@/claude-transcript-chain";
+
+const observationRowSchema = transcriptRowSchema.extend({
+    content: z.unknown().optional(),
+    level: z.unknown().optional(),
+});
 
 function escapeAttribute(value: string): string {
     return value
@@ -70,7 +76,7 @@ export class ClaudeObservations {
     #registry:
         | {
               sessionId: string;
-              status: "idle" | "busy" | "waiting";
+              status: "idle" | "busy" | "waiting" | "shell";
               waitingFor?: string | undefined;
           }
         | undefined;
@@ -148,7 +154,7 @@ export class ClaudeObservations {
 
     observeRegistry(registry: {
         sessionId: string;
-        status: "idle" | "busy" | "waiting";
+        status: "idle" | "busy" | "waiting" | "shell";
         waitingFor?: string | undefined;
     }): void {
         if (
@@ -199,12 +205,29 @@ export class ClaudeObservations {
     observeTranscript(value: unknown, instance?: ClaudeSession): Promise<void> {
         return this.#enqueue(async () => {
             if (instance?.retired) return;
-            const parsed = transcriptRowSchema.safeParse(value);
+            const parsed = observationRowSchema.safeParse(value);
             const state = parsed.success
                 ? (instance ?? this.#session(parsed.data.sessionId))
                 : undefined;
             if (parsed.success) {
                 const row = parsed.data;
+                // Claude 2.1.278 persists this notice for Esc/Ctrl+C/menu cancellation;
+                // those actions do not emit quota_auto_resume_disabled.
+                if (
+                    row.type === "system" &&
+                    row.subtype === "informational" &&
+                    row.level === "notice" &&
+                    row.content ===
+                        "Automatic continue cancelled · /rate-limit-options to re-arm"
+                ) {
+                    state!.quota = undefined;
+                    state!.resuming = false;
+                    if (
+                        this.#currentSession === row.sessionId &&
+                        this.#sessions.get(row.sessionId) === state
+                    )
+                        this.#project();
+                }
                 const key =
                     row.promptId &&
                     JSON.stringify([row.sessionId, row.promptId]);
@@ -494,7 +517,7 @@ export class ClaudeObservations {
             this.controls.setStatus(
                 registry.status === "waiting" || quota
                     ? "awaiting-user"
-                    : registry.status === "busy"
+                    : registry.status === "busy" || registry.status === "shell"
                       ? "working"
                       : failure
                         ? "failed"
@@ -504,7 +527,11 @@ export class ClaudeObservations {
                         ? "Waiting for approval."
                         : "Waiting for user input."
                     : (quota ??
-                          (registry.status === "busy" ? undefined : failure)),
+                          (registry.status === "shell"
+                              ? "Bash 작업이 남아 있습니다."
+                              : registry.status === "busy"
+                                ? undefined
+                                : failure)),
             );
             return;
         }

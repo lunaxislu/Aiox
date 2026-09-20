@@ -244,7 +244,10 @@ ClaudeBinding은 인증된 report의 inbox 경로·credential과 실제 inbox �
 SessionStart는 절대 transcript 경로와 정확한 sessions/<ppid>.json의 존재·형식을 확인한다.
 실행·clear·resume 모두 대상 session의 관측을 준비하고 hook에 응답한다. registry ID가 다르면
 준비 상태로 두며, 일치하는 registry 관측과 실행·inbox·필요한 MCP 연결이 갖춰져야 최초 ready를
-발행한다. registry 미존재·형식 오류·초기 watcher 실패는 초기화 오류다. 보관한 이전 ID로
+발행한다. registry의 정상적인 초기 `status` 누락은 오류가 아니며 준비 완료 근거로도 사용하지 않는다.
+유효한 status가 확인될 때까지 준비 상태를 유지하면서 transcript 감시는 계속한다.
+`idle` 기본값을 채우지 않고 `shell`도 허용하여 `working`과 Bash 잔여 작업 이유로 투영한다.
+registry 미존재·형식 오류·초기 watcher 실패는 초기화 오류다. 보관한 이전 ID로
 불일치를 특별 허용하지 않으며 hook에서 registry 일치를 기다리지 않는다.
 
 새 instance는 hook 응답 전에 transcript identity와 EOF를 확보한다. 파일 미존재는 offset 0이며
@@ -574,7 +577,17 @@ ClaudeObservations는 StopFailure의 오류 분류를 실패 이유로 보관하
 세션의 quota 대기와 재개 기록을 모두 제거한 뒤 남은 관측으로 상태를 재계산한다.
 현재 실패는 보존하고 fired가 지운 과거 실패는 복원하지 않으며 delivery 결과는 변경하지 않는다.
 세션 재개 활동은 검증된 transcript 종료 또는 StopFailure로 해소한다. 기존 delivery의
-최초 결과는 유지하고 해당 요청 외 활동·대기를 지우지 않는다. 새 입력은 해당 세션 quota 대기를 해제한다.
+최초 결과는 유지하고 해당 요청 외 활동·대기를 지우지 않는다.
+새 입력은 해당 세션 quota 대기를 해제한다. stale 상태에서 Enter로 제출되는 continuation도
+새 사용자 입력으로 관측하므로, 재차 한도에 걸려도 이전 Enter 대기는 남기지 않는다.
+Esc·Ctrl+C·취소 메뉴는 `quota_auto_resume_disabled`를 발생시키지 않는다.
+설치본 Claude 2.1.278은 취소 시 `system/informational`, `level: notice`와
+`Automatic continue cancelled · /rate-limit-options to re-arm` 내용의 알림을 transcript에
+추가한다. 이 정확한 알림으로 해당 instance의 quota 대기·재개 기록만 해제하고 최초 outcome은
+유지한다. 일반 사용자 텍스트·다른 session·폐기된 instance는 취소 근거가 아니다.
+근거는 설치본의 quota UI producer `MQt` → `Wt`/`c0` → transcript 저장
+`MJe.record` → `EE`/`insertMessageChain` 경로다. 공개된 영구 호환 계약이 아니며
+실제 quota TUI 실측을 대신하지 않는다. 알림 본문은 인과 chain의 보관 대상에 추가하지 않는다.
 대기 이유는 등록 시 저장해 공통 상태 투영 시 별도 event 번역이 필요하지 않다.
 `cloud_credential_error`를 공식 오류 값으로 인식한다. 인증 hook을 주입하는
 통합 테스트는 ClaudeBinding→Registry→Web API/MCP의 상태·이유 일치와 원 delivery 결과·알림

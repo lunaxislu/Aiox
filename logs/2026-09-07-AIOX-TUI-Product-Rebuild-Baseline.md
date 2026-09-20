@@ -21,6 +21,8 @@ status: decided
 
 ### {Global}
 
+- 사용자 명시 권한(2026-09-20): logs 하위 문서는 append-only로 제한하지 않는다. 필요한 경우 기존 내용을 직접 갱신·수정·보완·추가한다. 정정 내용을 끝에 덧붙이기만 해서 오래된 현재 설명을 남기지 않는다. 사실·결정의 시점과 근거를 구분하고 무관한 기록은 보존한다. 이 지시는 log skill의 기존 entry 수정 금지보다 우선한다.
+
 - 사용자가 2026-09-07 새 plan과 단일 상세 로그 작성을 요청했다. 본 로그는 Stage 0 요구·근거·계약 재정립 수명이다. 기존 미완성 구현·plan은 설계 제약이 아니며 구현을 자동 재개하지 않는다.
 - Headless·Claude SDK 제외. Claude TUI inbox와 hooks, Codex App Server와 TUI, 공통 HTTP MCP가 목표다. 공개 AIOX 사이트는 새 plan의 마지막 단계다.
 - 기록의 근거 구분을 유지한다: 사용자 전달 실측, 이전 subagent 조사, 이번 직접 코드 확인, 공식 문서, 사용자 결정, 제안·미확인. 삭제된 테스트 산출물을 현재 존재하는 증거처럼 링크하지 않는다.
@@ -444,6 +446,8 @@ claude --messaging-socket-path '\\.\pipe\aiox-runtime-123'
 
 #### 11. Runtime, /clear, /resume와 준비 확인
 
+D/R(2026-09-20): 아래 당시 inbox 준비 논의를 전체 Runtime ready 조건으로 축약하지 않는다. 현재 초기 준비·세션 전환·상태 반영 계약은 이 문서 §18과 docs/specs/aiox-runtime.md, docs/architecture/aiox-vendor-bindings.md를 따른다.
+
 U: 사용자는 같은 Claude 프로세스에서 `/status`, `/resume`, `/clear` 후 socket 경로가 같은 것을 직접 관찰했다.
 
 S: 2.1.263 조사에서 listener/address/token은 TUI host 수명에 묶이고 같은 프로세스의 clear/resume은 대화 식별자를 바꾸는 경로였다. 단순히 같은 이름으로 rebind한 것만이 아니라 listener·token을 유지하는 코드로 보고됐다. 새 `claude --resume` 프로세스는 별도 listener/token 수명이다.
@@ -465,6 +469,8 @@ Web attachment는 별도로 연결·해제될 수 있음
 - Q: hidden 경로 지정 옵션과 신규 launcher 통합, Windows token forwarding, messaging 비활성/late-bind 상황의 사용자 표시를 구현 범위에서 정한다. dedup/queue 상한/부하 전수 테스트를 이 항목 때문에 추가하지 않는다.
 
 #### 12. UserPromptSubmit → Stop: 단일 inbox 입력 직접 연결 실측
+
+아래 UserPromptSubmit/Stop 연결은 당시 설치본 실측 근거다. 현재 adapter가 두 hook을 사용하는 것은 아니며, 현행 입력 귀속·결과 관측은 §18의 transcript·StopFailure 계약을 따른다.
 
 U: 사용자가 전달한 마지막 검증의 실행 바이너리는 `/Applications/cmux.app/Contents/Resources/bin/claude`, 실체 `/Users/lunaxislu/.local/share/claude/versions/2.1.263`이다. 기본 TUI에 임시 --settings로 UserPromptSubmit+Stop을 등록했고 영구 설정은 수정하지 않았다고 보고했다.
 
@@ -619,6 +625,14 @@ D: MCP `aiox_retransmit_unconfirmed_delivery`(대화에서는 retransmit_unconfi
 
 #### 18. MCP agents_list와 상태 모델
 
+현재 Claude 관측 계약(2026-09-20): SessionStart가 현재 session을 선택하고 registry가 현재 활동을 제공한다. 초기 실행은 실행 시작·inbox 연결/credential·필요한 MCP 연결·registry 감시와 현재 session의 유효한 status가 모두 확인돼야 최초 ready가 된다. status가 없으면 idle로 채우지 않고 aiox-preparing을 유지한다. 같은 실행의 세션 전환은 기존 연결 준비를 재사용하되 새 session의 유효한 registry 상태까지 preparing으로 둔다. registry가 먼저 다른 session을 보고해도 session을 선택하지 않는다.
+
+별도 quota 입력 대기가 없을 때 registry busy→working, waiting→awaiting-user, shell→working(“Bash 작업이 남아 있습니다.”), idle→관측된 실패가 있으면 failed/없으면 idle로 투영한다. 요청 결과는 registry idle로 추론하지 않고 transcript 입력 귀속·인과 종료와 StopFailure로 정산한다. 현재 상태와 개별 요청의 최초 completed/failed/interrupted는 별개다.
+
+quota stale은 Enter 입력 대기다. 새 transcript 사용자 입력 또는 fired로 기존 대기를 해제하며, Enter 재개 직후 다시 한도에 걸려도 이전 대기를 남기지 않는다. Esc·Ctrl+C·취소 메뉴는 disabled hook으로 가정하지 않는다. Claude 2.1.278 설치 코드의 system/informational·notice 취소 알림을 transcript에서 관측해 대기를 해제한다. 이 설치본 근거를 영구 vendor 계약이나 실제 quota TUI 실측으로 확대하지 않는다.
+
+/cd는 같은 session의 경로 변경이다. transcript 이동 시 reader와 같은 파일의 cursor를 유지해 감시를 다시 연결한다. 세션 전환/resume은 이전 transcript watcher를 닫고 instance를 폐기하며 새 EOF로 시작한다. 같은 PID registry watcher는 재사용하고 종료 때 모두 닫는다. 관측 실패는 status/status_reason을 덮어쓰지 않는 observation_error로 전달하며 Web Agent 영역과 CLI 상세에 표시한다. Claude 자체 TUI에 오류를 주입하지 않는다.
+
 D: `agents_list()`와 Web은 동일한 `status`와 `status_reason`을 사용한다. 상태는 `aiox-preparing`, `idle`, `working`, `awaiting-user`, `failed`다. 준비 중 Agent도 허용된 route의 목록에 포함하지만 메시지 수신 준비 완료를 뜻하지 않는다. Host에 남은 stopped 항목은 Host/Web에서 보이고 전송 대상 목록에서는 제외한다.
 
 Web은 idle, reasoning·도구 실행 등 진행 상세, 사용자 입력·승인 대기, 실패 원인, Host stopped를 구분한다. 알림 읽음이나 다른 요청의 완료로 미해결 사용자 요청 표시를 지우지 않는다.
@@ -630,7 +644,7 @@ B가 요청 Y 처리 → X completed 유지, Y 진행 중, B working
 
 completed/failed/interrupted는 개별 AIOX 입력의 처리 결과이고 Agent의 현재 상태와 별개다. completed는 연결된 응답 처리가 끝났다는 뜻이며 산출물의 정확성·업무 성공 보장이 아니다. 한 요청이 실패해도 실행이 살아 다른 입력을 처리한다면 현재 상태는 실제 활동을 따른다.
 
-Claude는 Runtime·session_id·prompt_id와 연결된 UserPromptSubmit/Stop을, Codex는 Runtime·threadId·turnId와 연결된 `turn/completed`의 completed/failed/interrupted 결과를 사용한다. 입력 주입 성공만으로 처리 완료를 선언하지 않는다. busy 입력이 기존 turn에 합쳐질 수 있으므로 메시지 하나가 항상 새 turn 하나라는 가정을 하지 않는다. 임의 Stop 하나로 모든 요청을 완료하지 않는다.
+Claude는 Runtime·session_id·prompt_id에 귀속된 transcript 입력·인과 종료와 StopFailure를, Codex는 Runtime·threadId·turnId와 연결된 `turn/completed`의 completed/failed/interrupted 결과를 사용한다. 입력 주입 성공만으로 처리 완료를 선언하지 않는다. busy 입력이 기존 turn에 합쳐질 수 있으므로 메시지 하나가 항상 새 turn 하나라는 가정을 하지 않는다. 임의 Stop 하나로 모든 요청을 완료하지 않는다.
 
 세션 만료·인증/API 오류·연결 손실 등이 실제 요청을 실패시킨 경우 failed에 포함한다. 일시 재시도·일반 도구 오류를 무조건 요청 또는 Runtime 실패로 승격하지 않는다. interrupted는 Web에 기록하되 발신 Agent 자동 통지는 하지 않으며 모든 중단의 원인을 사용자로 단정하지 않는다.
 

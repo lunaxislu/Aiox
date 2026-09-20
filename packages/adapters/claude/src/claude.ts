@@ -410,7 +410,9 @@ export class ClaudeBinding implements VendorBinding {
             const body = z
                 .object({
                     sessionId: z.string(),
-                    status: z.enum(["idle", "busy", "waiting"]).default("idle"),
+                    status: z
+                        .enum(["idle", "busy", "waiting", "shell"])
+                        .optional(),
                     waitingFor: z.string().optional(),
                 })
                 .parse(JSON.parse(await readFile(path, "utf8")));
@@ -420,9 +422,14 @@ export class ClaudeBinding implements VendorBinding {
                 body.sessionId !== this.#selectedSession
             )
                 return;
-            this.observations.observeRegistry(body);
-            this.#observedRegistrySession = body.sessionId;
-            this.#updateReady();
+            if (body.status !== undefined) {
+                this.observations.observeRegistry({
+                    ...body,
+                    status: body.status,
+                });
+                this.#observedRegistrySession = body.sessionId;
+                this.#updateReady();
+            }
             this.#registryFailure = false;
             this.#reportObservationError();
             for (const [session, reader] of this.#transcripts)

@@ -145,6 +145,49 @@ test("waits for the reported parent PID registry to match before becoming ready"
     }
 });
 
+test("waits for status in the initial matching registry before becoming ready", async () => {
+    const probe = vi.spyOn(inbox, "writeClaudeInbox").mockResolvedValue();
+    const directory = await mkdtemp(join(tmpdir(), "aiox-registry-pid-"));
+    const path = join(directory, "projects", "project", "session.jsonl");
+    const registry = join(directory, "sessions", "1234.json");
+    const control = controls();
+    const binding = new ClaudeBinding(control, "/assigned");
+    const ready = vi.fn();
+    binding.onReady = ready;
+    binding.executionStarted();
+    try {
+        await mkdir(dirname(registry), { recursive: true });
+        await writeFile(registry, JSON.stringify({ sessionId: "session" }));
+        await expect(
+            binding.observe({
+                ...report,
+                event: {
+                    ...report.event,
+                    hook_event_name: "SessionStart",
+                    transcript_path: path,
+                },
+            }),
+        ).resolves.toBeUndefined();
+        await binding.observe(report);
+        expect(control.setObservationError).toHaveBeenLastCalledWith(null);
+        expect(ready).not.toHaveBeenCalled();
+        expect(control.setStatus).not.toHaveBeenCalled();
+        await writeFile(
+            registry,
+            JSON.stringify({ sessionId: "session", status: "shell" }),
+        );
+        await vi.waitFor(() => expect(ready).toHaveBeenCalledOnce());
+        expect(control.setStatus).toHaveBeenLastCalledWith(
+            "working",
+            "Bash 작업이 남아 있습니다.",
+        );
+    } finally {
+        await binding.cleanup("execution_stopped");
+        probe.mockRestore();
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
 test("discards the old session and resumes from a fresh EOF", async () => {
     const f = await fixture();
     try {
@@ -472,6 +515,49 @@ const terminalRows = (session: string, prompt: string, frame?: string) => {
         )
         .join("");
 };
+
+test("observes quota cancellation from the selected transcript while registry stays idle", async () => {
+    const f = await fixture();
+    try {
+        f.binding.executionStarted();
+        await writeFile(f.path("session"), "");
+        await f.start();
+        await f.binding.observe({
+            ...report,
+            event: {
+                ...report.event,
+                notification_type: "quota_auto_resume_stale",
+            },
+        });
+        expect(f.control.setStatus).toHaveBeenLastCalledWith(
+            "awaiting-user",
+            "Press Enter to resume the task automatically.",
+        );
+        await appendFile(
+            f.path("session"),
+            JSON.stringify({
+                sessionId: "session",
+                uuid: "cancel",
+                parentUuid: null,
+                isSidechain: false,
+                type: "system",
+                subtype: "informational",
+                level: "notice",
+                content:
+                    "Automatic continue cancelled · /rate-limit-options to re-arm",
+            }) + "\n",
+        );
+        await vi.waitFor(() =>
+            expect(f.control.setStatus).toHaveBeenLastCalledWith(
+                "idle",
+                undefined,
+            ),
+        );
+        expect(f.control.settle).not.toHaveBeenCalled();
+    } finally {
+        await f.close();
+    }
+});
 
 async function fixture() {
     const directory = await mkdtemp(join(tmpdir(), "aiox-native-binding-"));

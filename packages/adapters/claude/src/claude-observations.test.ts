@@ -220,6 +220,28 @@ it("joins terminal rows that were written before the peer input, including expli
     );
 });
 
+it("shows remaining Bash work without changing a settled request", async () => {
+    const { observer, controls } = setup();
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    const row = peerInput(observer.track(message()));
+    await observer.observeTranscript(row);
+    await observer.observe(
+        event("StopFailure", row.promptId, { error: "api_error" }),
+    );
+    observer.observeRegistry({ sessionId: "session", status: "shell" });
+    expect(controls.setStatus).toHaveBeenLastCalledWith(
+        "working",
+        "Bash 작업이 남아 있습니다.",
+    );
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    expect(controls.setStatus).toHaveBeenLastCalledWith("failed", "api_error");
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "failed",
+        "api_error",
+    );
+});
+
 it("requires registry state and ignores removed hooks", async () => {
     const { observer, controls } = setup();
     const frame = observer.track(message());
@@ -358,6 +380,78 @@ it("retains independent prompt IDs and early failures across rapid switches and 
         ["b", "completed"],
     ]);
     expect(controls.setStatus).toHaveBeenLastCalledWith("failed", "rate_limit");
+});
+
+it("clears stale quota wait from the vendor cancellation notice without changing the request result", async () => {
+    const { observer, controls } = setup();
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    const row = peerInput(observer.track(message()));
+    await observer.observeTranscript(row);
+    await observer.observe(
+        event("StopFailure", row.promptId, { error: "rate_limit" }),
+    );
+    await observer.observe(
+        event("Notification", row.promptId, {
+            notification_type: "quota_auto_resume_stale",
+        }),
+    );
+    const notice = {
+        sessionId: "session",
+        uuid: "cancel",
+        parentUuid: row.uuid,
+        isSidechain: false,
+        type: "system",
+        subtype: "informational",
+        level: "notice",
+        content: "Automatic continue cancelled · /rate-limit-options to re-arm",
+    };
+    await observer.observeTranscript({ ...notice, type: "user" });
+    await observer.observeTranscript({ ...notice, sessionId: "other" });
+    expect(controls.setStatus).toHaveBeenLastCalledWith(
+        "awaiting-user",
+        "Press Enter to resume the task automatically.",
+    );
+    await observer.observeTranscript(notice);
+    expect(controls.setStatus).toHaveBeenLastCalledWith("failed", "rate_limit");
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "failed",
+        "rate_limit",
+    );
+});
+
+it("clears stale quota wait on the Enter continuation input even when the continuation hits the limit again", async () => {
+    const { observer, controls } = setup();
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    const row = peerInput(observer.track(message()));
+    await observer.observeTranscript(row);
+    await observer.observe(
+        event("StopFailure", row.promptId, { error: "rate_limit" }),
+    );
+    await observer.observe(
+        event("Notification", row.promptId, {
+            notification_type: "quota_auto_resume_stale",
+        }),
+    );
+    const continuation = {
+        ...row,
+        uuid: "continuation",
+        promptId: "continuation",
+        origin: { kind: "human" },
+    };
+    await observer.observeTranscript(continuation);
+    observer.observeRegistry({ sessionId: "session", status: "busy" });
+    expect(controls.setStatus).toHaveBeenLastCalledWith("working", undefined);
+    await observer.observe(
+        event("StopFailure", continuation.promptId, { error: "rate_limit" }),
+    );
+    observer.observeRegistry({ sessionId: "session", status: "idle" });
+    expect(controls.setStatus).toHaveBeenLastCalledWith("failed", "rate_limit");
+    expect(controls.settle).toHaveBeenCalledExactlyOnceWith(
+        "delivery",
+        "failed",
+        "rate_limit",
+    );
 });
 
 it("keeps a finished request immutable through quota continuation", async () => {

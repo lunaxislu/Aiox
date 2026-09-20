@@ -127,10 +127,17 @@ turn 종료·새 turn 시작으로 해제하지 않는다. 대화 전환은 표�
 
 Claude는 세 hooks(SessionStart·StopFailure·Notification)와 registry·transcript 파일 직접 감시를 사용하며 Codex RPC를 적용하지 않는다.
 
+초기 registry에 `status`가 없으면 `idle`로 간주하거나 관측 오류로 처리하지 않고
+`aiox-preparing`을 유지한다. 현재 선택 session과 일치하는 유효한 status를 관측해야
+준비를 완료한다. 별도로 관측한 quota 입력 대기가 없을 때 `busy`는 `working`, `waiting`은 `awaiting-user`, `shell`은
+`working`과 “Bash 작업이 남아 있습니다.”라는 이유로 표시한다. `idle`은 별도로
+관측한 실패가 있으면 `failed`, 없으면 `idle`이다. registry 활동 상태는 개별 요청의
+완료·실패 결과를 변경하지 않는다.
+
 | Claude 관측 | 상태 반영 |
 | --- | --- |
 | `StopFailure` | 현재 instance의 실패 이유를 보관하고 registry가 idle일 때 `failed`로 표시. `rate_limit`을 세션/주간 한도로 임의 번역하지 않으며 `cloud_credential_error`를 보존 |
-| `quota_auto_resume_fired` | 이전 실패·quota 대기 이유를 해제. busy/waiting/idle은 현재 session의 registry로 표시 |
+| `quota_auto_resume_fired` | 이전 실패·quota 대기 이유를 해제. busy/waiting/idle/shell은 현재 session의 registry로 표시 |
 | `quota_auto_resume_stale` | `awaiting-user`; 자동 재개를 위해 Enter 입력을 기다린다는 이유 표시 |
 | `quota_auto_resume_disabled` | 해당 세션의 quota 대기·자동 재개 기록을 해제한 뒤 상태 재계산. 현재 남은 실패·이유는 보존하고 이미 해제된 과거 실패는 복원하지 않음 |
 
@@ -147,9 +154,13 @@ turn의 종료 근거를 관측하며 continue:false/stopReason도 상태 종료
 의미적 성공 평가가 아니며 판정 근거는 collaboration의 요청 종료 계약을 따른다.
 종료는 그 요청의 활동·대기만 해소한다. 다른 활동이 남으면 working/awaiting-user를 유지하며
 늦은 이전 결과가 현재 상태를 덮지 않는다.
+quota 취소가 transcript의 vendor system 알림으로 확인되면 해당 session의 quota
+대기를 해제한다. 취소 자체로 개별 요청 결과를 변경하거나 과거 실패를 복원하지 않는다.
+registry의 `idle`이나 원시 Esc 키 입력만으로 취소를 추론하지 않는다.
+
 새 transcript 사용자 입력은 해당 세션의 이전 quota 대기를 제거하며 fired 동반을 요구하지 않는다.
 
-Claude의 quota 이외 승인·질문 대기는 현재 session registry의 waiting 및 waitingFor로 표시한다. quota 전이는 [공식 hook 문서](https://code.claude.com/docs/en/hooks#notification)에
+Claude의 quota 이외 승인·질문 대기는 현재 session registry의 waiting 및 waitingFor로 표시한다. quota hook 전이는 [공식 hook 문서](https://code.claude.com/docs/en/hooks#notification)에
 따른 계약이다. 실제 quota hook 발생 순서·화면 표시를 실측 완료로 간주하지 않는다.
 구현과 vendor별 검증 범위는 [[docs/architecture/aiox-vendor-bindings]]를 따른다.
 
