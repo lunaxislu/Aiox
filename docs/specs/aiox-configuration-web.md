@@ -78,13 +78,78 @@ cwd 생략 시 host cwd에서 WSL이 선택한 디렉터리를 확인한다. 검
 않으며 해석할 수 없는 WSL 실행 옵션은 설정 오류로 거절한다. 설정은 WSL 설치·버전 변환·혼합 협업 지원을
 완료시키지 않으며 Windows daemon의 종료 정책은 runtime 계약을 따른다.
 
+CLI·YAML·전역 config 모두 grid만 지정하고 columns와 rows를 모두 생략한 입력은
+검증 단계에서 오류다. 다른 계층의 값이나 기본값으로 보완하지 않는다. columns 또는 rows 중 하나라도
+유효한 양의 정수로 지정하면 검증을 통과한다.
+이는 목표 계약이며 현재 config parser의 구현 완료를 뜻하지 않는다.
+
+## Host panel과 Agent terminal UX
+
+Panel은 사이드바에서 선택하는 작업 화면, pane은 분할 영역, tab은 pane 안의 terminal이다.
+HOSTS의 `[+]`는 사용자 workspace를 만들고, Host CLI run은 별도 실행 panel을 만든다.
+Mockup의 더미 Host/Network 관계를 실제 실행 계약으로 해석하지 않는다. 운영 Web은 React로 구현한다.
+
+Host Agent는 shell 안에서 실행된다. 관리 Agent 목록은 열려 있는 탭만으로 만들지 않고 실제 적용된
+Host Agent 구성에서 만든다. 아직 적용하지 않은 YAML 파일 편집을 현재 구성으로 표시하지 않는다.
+Agent 탭을 닫아도 관리 항목과 YAML 정의는 없어지지 않는다. 실행이 없는 stopped 표시는
+실시간 activity의 다섯 status 값과 별개다.
+
+| 사건 | 탭 본문과 수명 |
+| --- | --- |
+| 정상 `/exit` | 실제 Agent 종료 확인 후 기존 shell 표시, 관리 Agent는 stopped |
+| 명시 Agent/Host stop | shell·terminal·탭 유지, 본문에 `Agent has stopped.`와 시작 명령·Copy 표시 |
+| 비정상 종료 | `Agent exited unexpectedly.`와 실제 이유·시작 명령·Copy |
+| Agent 시작 실패 | `Agent failed to start.`와 실제 이유·시작 명령·Copy |
+| Copy | 명령 복사 후 안내 해제, 같은 기존 shell 표시. 새 shell·탭 생성이나 자동 실행 없음 |
+| stopped 안내의 × | 확인 없이 기반 shell과 탭을 정리. 마지막 탭이면 빈 panel/pane과 [+] 유지 |
+| 살아 있는 Agent 탭의 × | 종료 확인을 거쳐 실제 종료·정리가 확인된 뒤 닫기. 실패하면 이유와 대상 유지 |
+
+안내는 종료 직전 TUI 출력을 대체한다. 명령에는 대상 YAML을 다시 선택하는 데 필요한 `--path`와
+`--file`을 포함한다. Copy는 명령 복사와 기존 shell 표시만 수행하며, 사용자가 붙여 넣어 실행하면
+그 명령의 일반 YAML 선택 규칙을 그대로 적용한다. 원래 탭의 Host와 현재 YAML의 Host 이름이
+달라졌다는 이유로 거절하거나 원래 Host로 강제 지정하지 않는다. 실행 시 YAML이 review를 가리키면
+review가 대상이며, 입력 shell이 dev panel이면 다른 Host panel에서 실행한 배치 규칙을 따른다.
+원래 dev의 Agent를 자동 재시작하는 의미는 아니다. Restart 버튼은 추가하지 않는다. shell의 살아 있는 프로세스와 Agent 실행의
+종료를 구분하며, stopped 탭을 닫는다고 YAML의 Agent 정의나 Host Network를 삭제하지 않는다.
+
+```text
+TUI → 정상 /exit → 기존 shell
+TUI → 명시 stop → stopped 안내 → Copy → 기존 shell
+stopped 안내 → Agent 시작 준비 → TUI 또는 시작 실패 안내
+```
+
+같은 Host panel의 shell에서 해당 Agent 시작 명령을 실행하면 그 입력 자리에 TUI를 표시한다.
+복수 Agent는 첫 실행을 입력 자리에, 나머지는 panel의 다음 순서에 배치한다.
+입력 shell의 준비 과정은 shell 출력을 유지하며 라벨에 preparing을 표시한다.
+외부 터미널·다른 panel에서 실행하면 대상 Host panel의 해당 stopped 탭을 재사용하거나 순차로 새 탭을 만든다.
+같은 cwd만으로 다른 panel의 shell을 사용하지 않는다.
+
+같은 Agent가 다른 shell에서 준비를 시작해도 옛 stopped 안내를 미리 지우지 않는다.
+새 TUI가 연결되면 옛 안내 탭을 제거한다. 새 자리에서 시작에 실패하면 그 자리에 실패 이유를
+표시하고 옛 stopped 안내 탭은 그대로 둔다. 실패를 이유로 옛 탭을 삭제하거나 실패 안내로 통합하지 않는다.
+이미 Copy나 /exit으로 일반 shell이 된 탭도 보존한다.
+
+최초 layout은 host spec의 CLI > YAML > 전역 설정 > auto 순서를 따른다.
+Grid는 상속 후 빠진 한쪽 치수만 1로 채운다. 이는 최초 배치이며 기존 panel의 pane 수·분할·탭을
+그 치수에 맞춰 다시 만들지 않는다. 이후 추가는 현재 panel의 실제 구성과 아래 순서를 따른다. 새 탭은 현재 화면의
+위→아래·왼쪽→오른쪽 pane 순서로 순환 추가하고 기존 탭을 재정렬하지 않는다.
+2×2는 좌상→우상→좌하→우하이며 수동 분할 후에도 현재 화면 순서를 사용한다.
+이는 auto를 포함한 모든 preset에 적용한다. 최초 auto의 4개 pane은 개수 제한이 아니며,
+사용자의 생성·삭제·이동·분할 후 현재 존재하는 pane 순서에 새 탭을 배치한다.
+전체 restart의 같은 key 탭 재사용과 제거 Agent shell 정리는 host spec을 따른다.
+Host 이름 변경은 별도 panel 생성, YAML 읽기·사전 검증 실패는 기존 화면 유지와 CLI 오류 안내다.
+
+Host stop은 YAML Agent만 멈추며 사용자 shell·panel·Network를 유지한다.
+Host delete 확인은 사용자 추가 shell과 내부 작업까지 종료되고 panel·Network가 삭제됨을 알린다.
+실제 정리 완료를 확인하기 전에 panel을 지우지 않는다. YAML 파일은 유지한다.
+
 ## 메시지 보존과 persistence 전환
 
 AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시각·대상별 처리 결과·내부 상관관계를 연결한다. vendor 전체 대화·reasoning·터미널 출력은 이 메시지 저장 범위에 포함하지 않는다. 살아 있는 PTY의 Web 화면 복귀 책임은 별개다. 저장 데이터를 자동 재전송·실행 복원에 사용하지 않는다.
 
 보존 기본값은 요청 처리 종료 후 30일이다. 진행 중 요청은 삭제하지 않고, 정리 대상 요청의 본문·대상별 결과·연결된 daemon 알림을 함께 정리한다. 여러 대상의 처리가 남은 요청을 일부 완료만으로 삭제하지 않는다. 보존 일수는 전역 설정으로 변경하며 daemon 시작 시와 하루 한 번 정리한다. Host 종료 자체로 이력을 지우지 않는다. 이 정책은 persistent Network·route 정의, YAML·사용자 작업 파일을 삭제하거나 디스크 용량 상한을 보장하는 정책이 아니다.
 
-Persistent Network 이름은 DB에 지속한다. 참여 실행의 route 수명과 daemon 재시작 정리는 [[docs/specs/aiox-host]]의 Routing·종료 계약을 따른다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
+Persistent Network 이름은 DB에 지속한다. 참여 실행의 route 수명과 daemon 재시작 정리는 [[docs/specs/aiox-host]]의 Routing·종료 계약을 따른다. Host의 정의 원본은 YAML이다. Host stop은 전용 Network와 적용 정책을 보존하며 delete에서 정리한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
 
 새 Network·Message·Delivery·Notification 행의 ID는 UUID v7으로 생성한다. 기존 ID를 재발급하지 않으며 Runtime·terminal 참조 ID와 vendor 고유 ID의 형식은 별개다.
 

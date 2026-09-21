@@ -304,19 +304,19 @@ aiox
 │     ├─ --between <agents...>
 │     └─ --from <agent> --to <agents...>
 ├─ host
-│  ├─ run
-│  │  ├─ --path <aiox.yaml>
-│  │  ├─ --name <host>
-│  │  ├─ --worktree <branch>
+│  ├─ run [--path <directory>] [--file <yaml>]
 │  │  ├─ --layout <auto|left-main|top-main|grid>
 │  │  ├─ --columns <n>
 │  │  └─ --rows <n>
 │  ├─ list [--json]
-│  ├─ status <host> [--json]
-│  ├─ stop <host>
+│  ├─ status [hostname] [--path <directory>] [--file <yaml>] [--json]
+│  ├─ stop [hostname] [--path <directory>] [--file <yaml>]
+│  ├─ restart [--path <directory>] [--file <yaml>]
+│  ├─ delete [hostname] [--path <directory>] [--file <yaml>]
 │  ├─ agent
-│  │  ├─ start <host> <agent-names...>
-│  │  └─ stop <host> <agent-names...>
+│  │  ├─ start <agent-names...> [--path <directory>] [--file <yaml>]
+│  │  ├─ stop <agent-names...> [--path <directory>] [--file <yaml>]
+│  │  └─ restart <agent-names...> [--path <directory>] [--file <yaml>]
 │  └─ network
 │     ├─ list <host> [--json]
 │     ├─ show <host> <network> [--json]
@@ -333,7 +333,32 @@ aiox
 └─ doctor [--json]
 ```
 
-`host agent start/stop`은 해당 Host의 Agent 이름을 하나 이상 받는다. 이미 실행 중인 항목을 중복 시작하지 않고 이름별 결과를 보고한다. stopped 항목 보존·새 실행·route 재연결과 전체 Host 종료는 [[docs/specs/aiox-host]]를 따른다. 이전 vendor 대화를 자동 resume하지 않는다.
+Host 실행·Agent 명령은 `--path <directory>`와 `--file <yaml>`로 대상 YAML을 선택한다.
+경로 생략은 현재 디렉터리이며 파일 미지정 시 `aiox.yaml`/`aiox.*.yaml` 후보가 하나일 때만 선택한다.
+복수 후보는 CLI 안내 후 실행하지 않는다.
+CLI·YAML·전역 config는 모두 입력 검증 시 grid만 지정하고 columns/rows를 모두 생략하면
+오류다. `--layout grid` 단독도 거절하며 다른 계층의 치수로 오류를 보완하지 않는다.
+유효한 --columns 또는 --rows 중 하나라도 있으면 검증을 통과하며 둘 다 요구하지 않는다.
+
+`host stop [hostname]`과 `host status [hostname]`도 이름을 명시하면 등록된 Host를 직접
+선택하고, 생략하면 YAML 선택 규칙을 따른다. 명시한 Host가 없으면 오류다.
+
+`host delete <hostname>`은 등록된 Host를 YAML 없이 직접 선택한다. 이름을 생략하면
+`--path`/`--file` 또는 현재 디렉터리의 YAML 탐색으로 선택한다. 후보 없음·복수 후보는 삭제하지
+않고 안내하며 Host 이름과 `--file` 동시 지정은 거절한다.
+
+`host network`는 모든 하위 명령에서 등록된 `<host>`를 반드시 지정한다.
+현재 경로의 YAML에서 Host를 추론하거나 `--path`/`--file`로 대신 선택하지 않는다.
+Host 인자가 없거나 등록된 Host를 찾지 못하면 CLI 오류를 반환한다.
+`list <host>`, `show/block/unblock/reset <host> <network>` 순서다.
+Host 선택용 `--host` 옵션은 추가하지 않는다. 필수 positional `<host>`와는 별개다.
+Host 실행의 `--name`·`--worktree`는 제외하며 일반 `agent list --host` 조회 필터도 별개다.
+
+`host agent start/stop/restart`는 해당 Host의 Agent 이름을 하나 이상 받는다.
+Start는 신규·stopped 항목에 적용하고 실행 중이면 중복 시작하지 않는다. Restart는 실행 중인 대상에
+적용한다. 동일 YAML·동일 Host 이름의 중복 run은 상태와 start/restart 사용법을 안내한다.
+YAML 재읽기·route 적용 범위·stop/delete·전체 restart·실패 보상은 [[docs/specs/aiox-host]]를 따른다.
+이전 vendor 대화를 자동 resume하지 않는다.
 
 Adapter install/uninstall/setup/list/show/doctor 표면을 유지하되 Claude 실행을 위한 사전 영구
 MCP setup을 다시 요구하지 않는다. provider별 설치/setup 구현은 이 명령 트리만으로 완료됐다고

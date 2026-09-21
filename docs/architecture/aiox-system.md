@@ -85,7 +85,7 @@ NetworkService는 준비·정리 중인 등록까지 검사해 삭제를 거절�
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:654-672`,
 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:416-541`.
 
-현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude와 Codex 실행 연결은 아래 조립 범위로 확장했고 vendor별 관측·메시지 통합과 Host/Worktree 실행은 후속 검증·구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
+현재 application 책임은 daemon 내부 모듈에 있으며 별도 application/controller package를 모두 만든 상태가 아니다. Claude와 Codex 실행 연결은 아래 조립 범위로 확장했고 vendor별 관측·메시지 통합과 Host 실행은 후속 검증·구현 대상이다. 최소 Web·화면 복귀의 현재 한계는 [[docs/architecture/aiox-storage-terminal]]을 따른다. CLI와 Web 산출물 탐색은 workspace 배치 기준이며 npm 배포 검증을 대신하지 않는다.
 
 Web 화면 중계가 끊겨도 daemon의 실행 owner·관리 등록은 유지하고, 기존 terminal의 다시
 연결이 같은 실행의 화면·키보드를 복원한다. 명시적 vendor 정리는 owner 전체 종료 후 등록
@@ -200,7 +200,7 @@ vendor adapter가 관측한 공통 status와 이유를 RuntimeRegistry가 보관
 
 ```text
 명령·manifest 전체 검증
- → workspace 준비(Host --worktree이면 Git)
+ → 작업 디렉터리와 선택한 YAML 준비(Host Worktree 생성 제외)
  → Runtime 신원·단일 Network 선택·credential 준비
  → binding / PTY / vendor 실행
  → 실제 연결 준비 확인
@@ -216,11 +216,16 @@ membership만 정리하고, cleanup 실패도 보고한다. 다른 Host나 사�
 
 ```text
 host stop
- → HostController stopping
- → binding이 소유한 TUI에 종료 입력 요청
- → 실제 exit 확인·부속 실행 정리
- → credential/binding/membership/Host Network 정리
- → Worktree·작업 결과 보존
+ → HostController가 YAML Agent 실행의 종료 요청
+ → 실제 프로세스 종료·필수 부속 실행 정리 확인
+ → credential/binding/활성 membership 정리
+ → shell·panel·Host Network·적용 정책 보존, stopped 표시 이벤트
+
+host delete
+ → 해당 panel의 모든 소유 실행·shell 종료 요청
+ → 실제 종료와 정리 확인
+ → Host Network·등록·panel 삭제 이벤트
+ → YAML·프로젝트 파일 보존
 
 daemon stop --force
  → 신규 실행·등록·메시지 전달 차단 / 진행 중 등록 commit 동기화
@@ -242,22 +247,55 @@ Windows native에서는 이 검사를 생략하고 force와 같은 대상을 종
 재사용하므로 Windows의 작업 중단 정책도 동일하며 restart --force는 없다. SIGINT/SIGTERM 등
 daemon 신호 종료도 명시적 일반 stop·force와 마찬가지로 외부 실행을 보존한다.
 
-## Host와 Network의 실체화
+## Host와 Network의 실체화 [Status: Target]
 
-Host 한 실행은 한 workspace와 host-managed Network 하나를 소유한다. 기본은 현재 프로젝트,
-`--worktree <branch>`는 AIOX가 Git workspace를 준비하며 내부 Agent 모두 같은 cwd를 쓴다.
-같은 YAML로 새 Host를 띄우면 Runtime ID·token·Network는 새로 분리된다. 같은 디렉터리를 쓴다면
-파일은 공유하므로 namespace를 sandbox로 설명하지 않는다.
+HostController는 선택한 YAML의 적용 구성, Host 식별자, 작업 디렉터리, 전용 Network와 Agent
+실행들을 연결한다. YAML의 선언과 DB의 적용 구성·실행 이력을 구분하며 파일 편집만으로 현재
+실행 상태를 바꾸지 않는다. 파일 선택·중복 run·이름 변경·route 적용 범위의 외부 계약은 host spec이 소유한다.
+Worktree 자동 생성은 이번 범위에 없다. 같은 경로의 파일을 공유하므로 namespace는 sandbox가 아니다.
 
-Worktree 생성 위치·기준 commit·기존 branch/checkout 재사용·충돌 처리는 herdr 구현을 참고할
-미결 사항이다. `.aiox/worktrees`를 이미 선택한 기본값으로 쓰거나 자동 force/merge/commit을 넣지 않는다.
-Host Agent stop은 항목을 stopped로 남기고 활성 실행 관계를 정리한다. 이름 기반 start는 새 Runtime·credential을 만들고 보존한 route를 새 ID에 연결한다. 이전 vendor 대화는 자동 resume하지 않는다. Host 전체 종료는 materialization·override를 지우고 다음 실행은 YAML로 새로 구성한다.
-Host 이름 override, YAML validation과 CLI 표면은 Host spec을 따른다.
+아래는 YAML을 적용하는 run/start/restart 흐름이다. Network 관리 명령은 등록된 `<host>`를
+필수로 선택하며 YAML 재읽기·shell 준비 경로를 실행하지 않는다.
 
-Persistent Network 정의는 DB가, host-managed 정의는 YAML이 소유한다. daemon은 두 종류를 같은
-routing engine으로 실행하지만 YAML을 persistent 정의로도 저장해 이중 권위로 만들지 않는다.
-Agent는 동시에 최대 한 Network에 속하며 실행 중 join/leave는 없다. Network URL은 선택자이고
-권한은 credential의 Runtime 신원 + 현재 membership + directed route로 판정한다.
+```text
+CLI: --path / --file, Agent 이름, 실제 명령 입력 terminal 식별
+ → YAML 탐색·읽기·전체 사전 검증
+ → HostController: 대상과 적용 범위 결정
+ → 개별 start/restart: Network 이름/default 변경이면 부수효과 전에 거절
+ → 최초 실행·새 탭 필요: shell/terminal 생성
+   또는 stopped/재시작 탭: 살아 있는 기존 shell 재사용
+   또는 같은 Host shell의 개별 실행: 명령 입력 shell 사용
+ → 선택한 shell 안에서 Agent CLI 실행, 새 Runtime·credential·binding 연결
+ → vendor 실제 준비 확인·membership/route 적용
+ → Gateway 상태 이벤트 → Web panel/pane/tab 갱신 + terminal stream 연결
+```
+
+프로세스·실행 수명 관측은 daemon이 소유하며, Web은 Gateway로 전달된 상태를 표시한다.
+서버가 종료를 관측했다는 사실만으로 화면 갱신 완료를 가정하지 않는다. 화면 재조회·재연결에서도
+관리 Agent와 terminal 연결, 적용 구성, 종료 사유를 복원하여 stopped/실패/일반 shell을 구분한다.
+
+Agent 실행과 기반 shell의 수명은 분리한다. 명시 stop은 Agent와 필수 부속 실행만 종료하고 shell은
+유지한다. 정상 /exit은 같은 shell 표시로 복귀하며, 명시 stop은 그 shell 대신 안내를 표시한다.
+Copy는 기존 shell을 다시 표시하고 명령을 복사하는 Web 동작이다. 새 shell 생성·자동 실행 요청이 아니다.
+종료 원인과 실행 존재 여부는 activity status와 구분하며 화면 disconnect나 idle을 종료로 추정하지 않는다.
+임의 shell의 OS별 idle 탐색을 Host 실행 위치 선정의 선행 조건으로 만들지 않는다.
+
+같은 Host panel에서 명시 실행한 첫 Agent는 입력 terminal을 사용하고 복수 실행의 나머지는
+순차 배치한다. cwd 일치만으로 같은 panel이라고 판단하지 않는다. 다른 panel·외부 터미널 입력은
+대상 Host 안에 연결하며, 일반 shell로 돌아온 과거 Agent 탭은 자동 예약 자리로 취급하지 않는다.
+
+전체 restart는 사전 검증 후 같은 key의 Agent 탭을 재사용하고 제거된 key의 실행 shell/stopped
+shell을 정리한다. 일반 shell로 돌아온 탭과 사용자 shell은 보존한다. Host 이름 변경은 별도 Host와
+Network를 만들며 기존 Host를 유지한다. 새 시도의 실패 보상은 기존 Network·사용자 자원을 침범하지 않는다.
+
+Persistent Network는 DB, Host Network의 선언은 YAML이 소유한다. Host stop은 Network·적용 정책을
+남기고 활성 관계만 정리한다. 다음 start의 새 Runtime ID에 적용 범위의 route를 연결한다.
+CLI 변경과 YAML 재적용의 마지막 변경이 해당 범위에서 유효하며 전체 restart만 전체 구성을 적용한다.
+DB의 적용 구성은 일반 Persistent Network 정의의 중복 등록도, 죽은 Runtime의 자동 복원 근거도 아니다.
+
+현재 vendor PTY 직접 생성 경로를 이 shell 기반 Host 목표 구조의 구현 완료 증거로 사용하지 않는다.
+현재 조립 범위는 앞의 As-built 절, terminal 저장·attachment 책임은
+[[docs/architecture/aiox-storage-terminal]]을 따른다.
 
 ## 목표 workspace와 의존
 

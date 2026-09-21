@@ -8,7 +8,7 @@ Status: Current
 
 ## Release Path
 
-실행·통신 기반 → Claude/Codex 실제 TUI 협업 → Host·Worktree·운영 Web
+실행·통신 기반 → Claude/Codex 실제 TUI 협업 → Host·운영 Web
 → OS별 배포 검증 → 실제 제품에 맞는 공개 사이트 순서로 준비한다.
 과거 headless·Channel·canonical envelope·retry 전제의 gate는 현재 공개 요구가 아니다.
 
@@ -17,7 +17,7 @@ Status: Current
 | Gate | 목적 |
 | --- | --- |
 | 실행·통신 | 실제 두 vendor TUI에서 권한에 맞는 메시지·회신·상태 관측 |
-| 운영 | Host·Worktree·브라우저 복귀·설정·알림이 실행 수명과 일치 |
+| 운영 | Host·브라우저 복귀·설정·알림이 실행 수명과 일치 |
 | 배포 | 지원 OS에서 npm 산출물 설치·실행·종료 및 저장 검증 |
 | 공개 사이트 | 구현한 기능·지원 범위와 일치하는 다국어 안내 |
 
@@ -37,11 +37,13 @@ Status: Current
 
 - 목표: 작업 공간·실행·터미널·알림을 일관되게 운영한다.
 - 진입 조건: 두 vendor runtime과 기반 PTY가 실제 동작한다.
-- 착수 검토 / 열린 결정: Worktree 세부, 화면 복원 방식, 현재 schema 초기화·저장·재오픈·정리 검증.
-- 통과 조건: Host·단일 Network·Worktree·종료와 자동 브라우저 복귀가 동작한다.
+- 착수 검토 / 열린 결정: 화면 복원 방식, 현재 schema 초기화·저장·재오픈·정리 검증.
+- 통과 조건: Host·단일 Network·종료와 자동 브라우저 복귀가 동작한다.
   전역 설정 자동 적용·포트 다음 시작 적용·알림 읽음과 포커스 억제를 확인한다.
 - Owner refs: [[docs/specs/aiox-host]]에서 실행 구성과 route,
   [[docs/specs/aiox-configuration-web]]에서 Web·설정·저장 경험을 확인한다.
+
+Worktree 자동 생성은 이번 Host 구현 범위와 운영 gate에서 제외하며 후속 범위로 둔다.
 
 ### 배포
 

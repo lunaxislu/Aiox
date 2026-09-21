@@ -2,6 +2,10 @@
 
 초기 기준일: 2026-09-08. Network·MCP·상태·DB 관련 후속 결정은 2026-09-15, Claude 관측 계약은 2026-09-20 기준으로 반영한다. 이 문서는 AIOX에 관한 사용자와의 대화, 제품 요구, 설계 결정, 실험 결과와 남은 논의를 새 Codex 세션에 전달하는 독립적인 문맥이다. 구현 완료 보고서가 아니다.
 
+Host 내용은 2026-09-21 Stage 5 확정과 owner 명세로 갱신했다. 구현 완료 보고가 아니며,
+파일 선택·수명은 `docs/specs/aiox-host.md`, CLI는 `docs/specs/aiox-runtime.md`, 화면은
+`docs/specs/aiox-configuration-web.md`를 기준으로 읽는다.
+
 ## 1. 이 세션의 역할
 
 너는 사용자와 AIOX의 방향을 함께 논의하고, 이미 결정한 내용과 근거를 기억하는 agent다. 이 문서를 받았다는 이유로 프로젝트 구현을 시작하거나 goal을 생성하거나 실험을 실행하지 않는다. 사용자가 요청하는 질문·설계·검토에 이 문맥을 적용한다.
@@ -25,7 +29,7 @@ AIOX는 Claude Code와 Codex의 실제 TUI를 실행·연결·관측하고, 하�
 - Claude Code TUI + native peer inbox + hooks.
 - Codex TUI + App Server + Binding Relay.
 - 공통 HTTP MCP를 통한 send/agents_list.
-- CLI, standalone Agent, 선언형 Host, 단일 Network, route, Git Worktree.
+- CLI, standalone Agent, 선언형 Host, 단일 Network, route. Worktree는 이번 Host 범위에서 제외한다.
 - React 운영 Web, 실제 터미널, 상태·알림, 전역 설정, SQLite, 브라우저 복귀.
 - Windows 네이티브·Linux·macOS 지원. WSL 실행은 별도 환경 경계로 구분한다.
 - 공개 다국어 AIOX 사이트는 실제 제품 이후 마지막 단계다.
@@ -61,7 +65,6 @@ AIOX daemon — 로컬 Node.js 서버
 │  ├─ Claude TUI — inbox 입력 / SessionStart·StopFailure·Notification 및 registry·transcript 관측
 │  └─ Codex TUI — App Server 입력·관측 / Binding Relay
 ├─ PTY / Terminal Service
-├─ Worktree 관리
 ├─ 전역 설정 검증·저장·변경 배포
 └─ SQLite persistence
 
@@ -421,57 +424,20 @@ A가 B·C에게 보낸 뒤 C만 실패하면 A에게만 알린다. full mesh라�
 
 알림은 Web뿐 아니라 발신 Agent의 vendor 입력 경로로 전달한다. Codex는 `toolOutput` 본문과 `additionalContext` 메타데이터, Claude는 native inbox peer message를 사용한다. 정확한 wire·표시·busy 입력 연결은 vendor 통합에서 검증한다.
 
-## 10. Host·Network·routing·Worktree
+## 10. Host·Network·routing
 
-Host는 하나의 workspace를 사용하는 Agent 실행 묶음이자 namespace다. Network는 통신 경계다. Host와 Network를 같은 객체로 만들지 않는다. standalone을 가짜 local Host에 넣어 실행 머신과 Host 실행을 혼동하지 않는다.
+Host의 현재 계약은 `docs/specs/aiox-host.md`를 따른다. Host는 작업 묶음, Network는 통신 경계이며
+standalone을 가짜 Host로 만들지 않는다. Host당 Network 하나·Agent의 동시 Network 소속 하나를
+유지한다. 일반 Network와 동명 Host Network는 별개이며 YAML 선언을 일반 DB 정의로 중복 등록하지 않는다.
 
-| Network 종류 | 정의 권위 | 수명·범위 |
-| --- | --- | --- |
-| Persistent | daemon DB의 지속 정의 | daemon 전체, 명시 delete까지 |
-| Host-managed | aiox.yaml | 해당 Host 실행 동안, host-scoped |
+`--path`는 디렉터리(생략=현재), `--file`은 YAML 파일이다. 파일 미지정 시 `aiox.yaml`/`aiox.*.yaml`
+후보가 하나일 때만 선택한다. 같은 YAML·같은 Host 이름의 중복 run은 안내만 하며, Host 이름 변경 후
+restart는 기존 Host를 유지하고 별도 Host로 실행한다. `--host`·`--name`·`--worktree`는 Host 실행
+표면에 사용하지 않는다. Worktree 자동 생성은 이번 범위에서 제외한다.
 
-Network에 속하는 Agent 수와 Host가 실행하는 Agent 수에 AIOX의 고정 숫자 상한을 두지 않는다. 사용자는 100개·1,000개 이상도 계속 추가할 수 있으며 숫자만으로 등록을 거절하지 않는다. 실제 실행의 자원 부족·vendor 제한은 해당 실패로 보고한다. 이는 Agent당 Network 최대 1개·Host당 Network 1개 계약과 별개다.
-
-Agent당 동시 소속은 하나, Host manifest의 Network도 하나다. YAML `networks` map 표기는 유지하지만 현재 항목은 하나만 허용한다. join/leave·실행 중 소속 변경·external persistent Network 참조는 제외한다. YAML agents 목록은 최초 membership 선언이므로 유지한다.
-
-Agent 이름은 참여 Network 안에서 유일하다. 준비 중·정리 대기 중인 등록도 이름을 예약하며 중복 등록을 거절한다. 다른 Network의 같은 이름은 허용한다. Network 미참여 실행의 이름 정책까지 확대하지 않는다.
-서로 다른 Host에서 같은 Agent/Network 이름을 쓸 수 있다. 내부 key는 hostRuntimeId 또는 networkId로 구분한다. 실행 중 Host 이름은 daemon 범위에서 유일하며 `/`는 qualified name 구분자로 예약한다.
-Network 범위 없는 일반 Agent 조회에서 여러 실행의 이름이 일치하면 모호성 오류와 후보를 제공한다. Network 내 등록 중복 거절과 일반 조회의 모호성 처리는 별개다.
-
-```text
-H1 / reviewer / feature-a  ≠  H2 / reviewer / feature-a
-같은 YAML을 실행해도 Runtime·credential·Network는 분리
-```
-
-Persistent Network는 기본 전체 허용이며 차단된 directed edge만 저장한다. 변경 가능한 default 정책과 명시 allow 행은 두지 않는다. block은 차단 추가, unblock/reset은 차단 제거다. 반복 block은 중복 행을 만들지 않으며 없는 차단의 제거는 변화가 없다.
-
-Host routing 우선순위:
-
-```text
-Runtime edge override
-→ 없으면 Manifest edge
-→ 없으면 Manifest default
-```
-
-between은 자기 자신을 제외한 양방향 clique이며 인자 순서는 결과에 영향을 주지 않는다. from/to는 단방향이다. Host block은 runtime 명시 deny, unblock은 runtime 명시 allow, reset은 runtime override 제거다. YAML이 차단한 방향도 unblock으로 열 수 있으며 reset하면 YAML 정책으로 돌아간다. default는 YAML에서만 설정하고 runtime default는 두지 않는다. 조회 시 effective policy와 출처를 표시하며 Host 출력 세부는 미결이다.
-
-Host YAML은 routing.default의 allow/deny와 routing.allow/routing.deny 목록을 유지한다. default 생략값과 동일 값 중복 처리 방식은 미결이다. Reference 검증·directed edge 확장·allow/deny 충돌 검증을 부수효과 전에 한다. 일반 Network와 Host의 block/unblock/reset은 --between 또는 --from/--to 중 정확히 하나를 받는다. --to 단독, --from의 --to 누락과 self edge는 오류다. Host runtime 변경은 YAML을 수정하지 않고 Host 전체 재실행 시 사라진다.
-
-Persistent route의 양쪽 endpoint는 해당 Network에 참여 중인 Agent의 이름 또는 Runtime ID여야 한다. 모든 대상을 ID 우선·이름 순으로 해석하고 검증한 뒤 Runtime ID로 저장한다. 같은 실행을 반복 지정해도 endpoint는 한 번만 적용한다.
-Network 또는 대상이 없거나 다른 Network의 대상을 지정하면 오류 설명을 표시하고 해당 명령을 실패로 종료한다. 일부 edge만 저장하지 않으며 daemon 종료를 뜻하지 않는다.
-Persistent Network의 A와 B 사이에서 A→B만 열려 있게 하려면 B→A를 block한다. unblock/reset --between A B는 양방향 차단을 제거한다. 자기 자신·다른 Network 전송 금지와 agents_list/send의 공통 권한 판정은 유지한다.
-CLI Network 출력은 이름을 사용하고 이름 미지정 시 Runtime ID를 표시한다. Persistent는 `<name> (persistent)` 아래 `Persistent networks always default to allow; Hosts can choose allow or deny in YAML.` 안내와 `Default: allow`를 표시한다. 차단이 없으면 `Blocks: none`, 있으면 `B -> A: blocked`처럼 표시한다. 양방향 차단은 `A <-> B: blocked`로 합치며 route 개수는 표시하지 않는다. CLI 출력은 영어 정책을 따른다.
-
-### Worktree
-
-```sh
-aiox host run --path ./aiox.yaml --name development
-aiox host run --path ./aiox.yaml --name login --worktree feature/login
-```
-
-현재 작업 경로의 Git 저장소 여부를 확인하고 AIOX가 Git Worktree를 내부적으로 준비한다. 원래 경로 Host와 Worktree Host는 별도 실행 묶음이다. 한 Host 내부 Agent들은 같은 작업 경로를 사용한다. Agent마다 별도 Worktree를 자동 생성하지 않는다.
-
-`--name`은 YAML host.name을 덮어쓴다. 같은 YAML을 별도 이름·workspace로 실행할 수 있다. Worktree 생성 위치·기준 commit·기존 branch/checkout 재사용·충돌 처리는 herdr 구현에서 유용한 방식을 검토해 해당 단계에 구체화한다. `.aiox/worktrees` 등 과거 경로 후보를 확정값으로 쓰지 않는다. Host 종료가 자동 merge·branch 삭제·Worktree 삭제를 뜻하지 않는다.
+Network와 routing의 detailed validation·참조·block/unblock/reset 계약은 위 owner를 읽는다.
+YAML/CLI는 적용한 범위에서 마지막 변경이 우선한다. 개별 start/restart는 Agent와 관련 route,
+전체 restart는 전체 구성이다. stop은 Network·정책을 남기고 delete에서 삭제한다.
 
 ## 11. CLI 전체
 
@@ -518,19 +484,19 @@ aiox
 │     ├─ --between <agents...>
 │     └─ --from <agent> --to <agents...>
 ├─ host
-│  ├─ run
+│  ├─ run [--path <directory>] [--file <yaml>]
 │  │  ├─ --layout <auto|left-main|top-main|grid>
-│  │  ├─ --columns <number>
-│  │  ├─ --rows <number>
-│  │  ├─ --path <aiox.yaml>
-│  │  ├─ --name <host>
-│  │  └─ --worktree <branch>
+│  │  ├─ --columns <n>
+│  │  └─ --rows <n>
 │  ├─ list [--json]
-│  ├─ status <host> [--json]
-│  ├─ stop <host>
+│  ├─ status [hostname] [--path <directory>] [--file <yaml>] [--json]
+│  ├─ stop [hostname] [--path <directory>] [--file <yaml>]
+│  ├─ restart [--path <directory>] [--file <yaml>]
+│  ├─ delete [hostname] [--path <directory>] [--file <yaml>]
 │  ├─ agent
-│  │  ├─ start <host> <agent-names...>
-│  │  └─ stop <host> <agent-names...>
+│  │  ├─ start <agent-names...> [--path <directory>] [--file <yaml>]
+│  │  ├─ stop <agent-names...> [--path <directory>] [--file <yaml>]
+│  │  └─ restart <agent-names...> [--path <directory>] [--file <yaml>]
 │  └─ network
 │     ├─ list <host> [--json]
 │     ├─ show <host> <network> [--json]
@@ -554,46 +520,26 @@ aiox
 - adapter setup 명령 표면이 존재해도 Claude의 사전 영구 MCP 등록을 다시 요구하지 않는다.
 - Web 열기 명령의 정확한 이름, start에 넣을 포트 인자 이름과 agent list --all의 상세 범위는 CLI 구현 때 맞춘다.
 
-Host의 Agent 구성·Network·route 정의는 YAML이 소유한다. `host agent add/remove`와 Declared/Ephemeral 구분을 도입하지 않는다.
+Host delete는 `aiox host delete <hostname>`으로 등록된 Host를 직접 선택하거나
+`--file`로 YAML을 선택한다. 이름·파일 생략 시 현재 경로의 YAML 후보 하나만 사용하고,
+후보 없음·복수는 안내 후 삭제하지 않는다. Host 이름과 --file 동시 지정은 거절한다.
+Stop/status도 [hostname]을 지원한다. 명시하면 등록된 Host를 직접 선택하고 생략하면 YAML 선택 규칙을 따른다. Copy 명령은 실행 시 현재 YAML 기준으로 그대로 실행하며 원래 탭의 Host 이름과 다르다는 이유로 거절하지 않는다.
 
-```text
-aiox host agent start <host> <agent-names...>
-aiox host agent stop <host> <agent-names...>
-```
+Host Network 대상 선택: `host network list <host>`와
+`host network show/block/unblock/reset <host> <network>`를 사용한다.
+등록된 Host를 반드시 명시한다. 생략·미등록은 CLI 오류이며 현재 경로의 YAML이나
+`--path`/`--file`로 대체 선택하지 않는다. Host 실행·Agent 명령의 YAML 선택과 별개다.
 
-Agent는 해당 Host 안의 이름으로 하나 이상 지정한다. stop은 실행·credential·binding·활성 membership을 정리하고 Host의 항목·메타데이터·실행 설정을 stopped로 유지한다. start는 기존 항목을 새 Runtime ID·credential로 실행하며 이전 vendor 대화를 자동 resume하지 않는다. 이미 실행 중인 항목을 중복 실행하지 않고 이름별 결과를 보고한다. 보존한 Host route 설정은 새 실행 ID에 연결하며 stopped 항목에는 전달하지 않는다.
+구현 인계 주의: 확정된 동작은 owner 명세에 반영돼 있다. Delete/stop/status의 등록 Host 직접
+선택과 Copy 명령의 현재 YAML 기준 실행으로 기존 대상 선택 미결은 정리됐다.
+YAML route 중복 선언은 오류이며 현재 실행·배치 계약은 `docs/specs/aiox-host.md`를 따른다.
+개별 Agent start/restart에서 YAML Network 이름 또는 default가 현재 적용 구성과 다르면 실행 전에
+거절하고 CLI로 안내한다. 기존 실행·정책은 유지하며 전체 restart의 전체 구성 적용은 별개다.
 
-Standalone 실행 종료 또는 협업 등록 유효성 상실 시 실행 등록·membership·해당 실행 endpoint의 route를 정리한다. 정리 완료 후 이름을 재사용할 수 있으며 새 실행은 이전 차단을 승계하지 않고 기본 허용을 적용한다. 이전 B→A 차단은 새 B를 차단하지 않는다. daemon 재시작 시 Network 이름은 유지하고 과거 Runtime의 잔존 route는 정리한다.
-Host 전체 종료 시 Host·전용 Network·membership·runtime route override를 정리한다. YAML·Worktree·작업 파일과 보존 기간 내 메시지 이력은 남긴다. 다음 host run은 YAML로 새로 build하며 과거 실행이나 vendor 대화를 자동 복원하지 않는다. `host network block/unblock/reset`은 현재 Host 실행만 변경하고 YAML에 쓰지 않는다. 개별 Host Agent의 stopped 항목·보존 route 재연결은 앞의 별도 계약을 따른다.
-
-**명령·인증된 실행 위치와 실행 소유권**
-
-| 명령·실행 위치 | 실행 소유자 | TUI 표시·종료 후 동작 |
-| --- | --- | --- |
-| 어디서든 `aiox host run` | daemon | Web에 생성·Agent 종료 상태 표시 |
-| 인증된 Web terminal의 `aiox agent run <vendor>` | daemon | 기존 Web terminal·vendor 종료 후 기존 shell 복귀 |
-| 외부 `aiox agent run <vendor>` | CLI | 사용자 stdin/stdout/stderr 상속·vendor 종료 후 기존 shell 복귀 |
-| Web 일반 shell | daemon | Web terminal |
-
-```text
-AIOX 명령 + daemon에서 인증한 실행 문맥
-→ 공통 계층이 실행 소유자·표시 위치·종료 정책 결정
-→ vendor adapter가 실행 설정·협업 연결 준비
-→ 소유자가 vendor와 필요한 부속 프로세스 실행
-→ adapter의 준비·관측 결과를 공통 협업 관리에 반영
-```
-
-실행 위치는 환경 변수의 존재만으로 신뢰하지 않는다. 외부 실행에는 AIOX PTY·headless·xterm·SerializeAddon을 사용하지 않는다. Web은 유효한 외부 Agent 등록의 상태만 조회하며 외부 TUI를 연결·조작·이관하지 않는다. 일반 `claude`·`codex` 직접 실행은 자동 Agent 등록 대상이 아니다.
-
-외부 CLI는 daemon 등록·credential·instruction·hook 등 주입 준비를 마친 뒤 vendor를 직접 실행한다. 제어 WS는 준비·시작·종료를 전달하며 화면 바이트·resize를 중계하지 않는다. 시작 시 daemon 연결 실패는 vendor 실행 전 오류다. 실행 중 daemon 또는 제어 연결 손실은 준비 완료 전후와 무관하게 시작한 vendor를 유지하고 협업 권한·등록을 정리한다. 관측 손실을 vendor 종료 성공으로 표시하지 않는다. heartbeat·자동 재연결·재등록은 추가하지 않으며 협업 복구는 `agent run` 재실행으로 처리한다.
-
-명시적 최초 준비 실패는 오류와 vendor 종료 처리로 연결한다. 연결 손실과 구분하며, 현재 Claude의 준비 제한값을 모든 vendor의 공통 deadline으로 확정하지 않는다. vendor 종료 후 CLI는 daemon 정리 요청 실패와 무관하게 로컬 임시 자원을 정리하고 shell 복귀를 완료한다.
-
-Claude 외부 inbox 임시 디렉터리는 CLI가 생성·권한·경로 검사부터 삭제까지 소유하고, daemon은 준비 시 고정한 경로와 인증된 hook 보고를 대조한다. 실제 실행 환경의 cwd/env로 버전을 검사하며 기존 주입·설정 보존·충돌 검사를 재사용한다. 외부 hook의 `ECONNREFUSED`만 stderr 없이 정상 종료하고, 401·잘못된 보고·설정 오류·timeout과 Web/Host hook 실패는 진단을 유지한다. CLI 사망 후 vendor만 남으면 hook 오류가 반복될 수 있다.
-
-Host의 실행 중 이름 유일성·실행별 신원 분리·Agent 중복 시작 방지와 이번 시작 시도가 만든 자원에 한정한 실패 보상은 유지한다. 중복 Host 반환이나 일부 실패 시 성공 Agent 유지 정책을 추가하지 않는다.
-
-실행 소유권의 근거는 [결정 문서](../../docs/decisions/execution-ownership.md), 현재 구조·검증 범위는 [Stage 2-2 로그](../2026-09-11-AIOX-TUI-Stage2-2-Execution-Ownership.md)를 따른다.
+Host 명령의 공통 `--path`/`--file`, Agent start/stop/restart 및 stop/delete의 종료 경계는
+`docs/specs/aiox-runtime.md`와 `docs/specs/aiox-host.md`를 따른다. 개별 start는 신규·stopped Agent,
+restart는 실행 중인 Agent에 적용하며 이전 vendor 대화를 자동 resume하지 않는다.
+Host shell·panel 배치와 /exit·stop·Copy UI는 `docs/specs/aiox-configuration-web.md`가 소유한다.
 
 ## 12. aiox.yaml
 
@@ -611,16 +557,16 @@ args: ["--model", "sonnet", "--permission-mode", "plan"]
 - AIOX가 관리하는 MCP·credential·binding 설정과 사용자 인자의 충돌 중 Claude 필수 설정 충돌은 §5의 실행 전 거절 정책을 따른다. 구체적인 충돌 판정·병합 방식과 다른 adapter의 처리는 해당 adapter 구현 단계에서 구체화한다. 이 계약 추가는 YAML parser·launcher 구현 완료를 뜻하지 않는다.
 
 ```yaml
-version: 1
-
 host:
   name: feature-host
+  instruction: |
+    이 Host의 Agent들은 역할에 따라 협업한다.
   layout:
     preset: auto
 
 agents:
   reviewer:
-    adapter: claude-code
+    adapter: claude
     role: review
     args:
       - --model
@@ -637,7 +583,7 @@ agents:
       요구사항에 맞게 구현하고 reviewer에게 검토를 요청한다.
 
   researcher:
-    adapter: claude-code
+    adapter: claude
     role: research
     instruction: |
       조사 결과를 reviewer에게 전달한다.
@@ -656,7 +602,7 @@ networks:
           to: [reviewer]
 ```
 
-`networks.<name>.agents`는 같은 YAML의 Agent Definition key를 참조한다. 실행 시 definition → 새 Runtime ID로 매핑해 membership·route를 만든다. 위 예시는 reviewer↔implementer, researcher→reviewer만 허용한다. 모두 같은 Host 작업 경로를 쓴다. adapter ID·version 필드의 parser 세부는 실제 계약에 맞추며 이 예시만으로 구현 완료라고 하지 않는다.
+`networks.<name>.agents`는 같은 YAML의 Agent Definition key를 참조한다. 실행 시 definition → 새 Runtime ID로 매핑해 membership·route를 만든다. 위 예시는 reviewer↔implementer, researcher→reviewer만 허용한다. 모두 같은 Host 작업 경로를 쓴다. adapter 이름은 claude/codex, 공통 instruction은 host.instruction이며 version 필드는 사용하지 않는다. routing.default 생략값은 allow다. 이 예시는 parser 구현 완료를 뜻하지 않는다.
 
 ```text
 YAML·이름·adapter·route 검증
@@ -670,18 +616,11 @@ YAML·이름·adapter·route 검증
 
 ## 13. 종료·시작 실패·업데이트
 
-정상 Host 종료:
-
-```text
-host stop → Controller 종료 상태
-→ adapter가 TUI 종료 입력 전달
-→ 실제 종료 관측
-→ App Server·Relay 등 소유 자원 정리
-→ token·binding·membership·Host Network·등록 정리
-→ Worktree와 작업 결과 보존
-```
-
-키보드 이벤트 전달은 종료 요청 수단이지 종료 성공 증거가 아니다. 승인 화면·입력 중 상태에서 키가 항상 같은 의미라고 가정하지 않는다. 종료 시간 제한·OS별 수단은 구현 때 정한다. 조회 실패를 프로세스 부재로 간주하지 않는다.
+Host stop은 YAML Agent 프로세스와 필수 부속 실행을 종료하고 shell·panel·Network·정책을 보존한다.
+Host delete는 사용자 추가 shell과 그 작업까지 소유 프로세스를 종료한 뒤 Host·Network·panel을 삭제한다.
+YAML·프로젝트 파일은 보존한다. 실제 종료·정리 실패를 성공으로 숨기지 않는다.
+Restart의 YAML 읽기·사전 검증 실패는 기존 실행을 건드리지 않고 CLI에 안내한다.
+실제 시작 실패의 보상 범위는 Host spec을 따른다.
 
 **daemon 소유권·환경별 종료 정책**
 
@@ -843,7 +782,7 @@ AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시�
 
 보존 기본값은 요청 처리 종료 후 30일이다. 진행 중 요청은 삭제하지 않고, 정리 대상 요청의 본문·대상별 결과·연결된 daemon 알림을 함께 정리한다. 여러 대상의 처리가 남은 요청을 일부 완료만으로 삭제하지 않는다. 보존 일수는 전역 설정으로 변경하며 daemon 시작 시와 하루 한 번 정리한다. Host 종료 자체로 이력을 지우지 않는다. 이 정책은 persistent Network·route 정의, YAML·사용자 작업 파일을 삭제하거나 디스크 용량 상한을 보장하는 정책이 아니다.
 
-Persistent Network 이름은 DB에 지속한다. endpoint route는 참여 실행의 수명을 따르며 종료·daemon 재시작 시 정리한다. Host의 정의 원본은 YAML이며 Host와 전용 Network·runtime override는 실행 수명에 한정한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
+Persistent Network 이름은 DB에 지속한다. endpoint route는 참여 실행의 수명을 따르며 종료·daemon 재시작 시 정리한다. Host의 정의 원본은 YAML이며 Host Network·정책은 stop 후 유지하고 delete에서 정리한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
 
 TypeORM·better-sqlite3는 도입돼 있으며 현재 schema를 transaction 안에서 직접 초기화한다. 첫 배포 전에는 과거 개발 DB 호환을 위한 migration·backfill·legacy fallback을 유지하지 않는다. 저장 원자성·실패 재시도·재오픈 검증은 유지하고 startup 자동 삭제·reset은 하지 않는다. 배포 완료 통지 이후 schema 변경은 기존 데이터를 보존하는 migration으로 수행한다.
 
@@ -923,11 +862,36 @@ aiox agent run claude --network dev
 aiox agent run codex --network dev
 ```
 
+**Host Agent의 shell·종료 화면**
+
+Panel은 전체 작업 화면, pane은 분할 영역, tab은 그 안의 terminal이다. HOSTS의 [+]는 사용자
+workspace를 만들 뿐 Host를 실행하지 않는다. 어디서든 최초 host run은 별도 실행 panel을 만든다.
+목업 `aiox-version7.html`은 더미 UI 가이드이며 실행 계약의 근거가 아니다.
+
+```text
+shell → Agent CLI → TUI
+  ├─ 정상 /exit → Agent는 stopped, 기존 shell 표시
+  └─ 명시 stop → shell 유지 + stopped 안내
+                   → Copy → 명령 복사 + 기존 shell 다시 표시
+```
+
+Copy는 새 shell 생성이나 자동 명령 실행이 아니다. 비정상 종료·시작 실패는 실제 원인과 시작 명령을
+표시하며 안내에 종료 직전 TUI 출력을 남기지 않는다. stopped 탭 ×는 기반 shell과 탭을 바로 정리하고,
+마지막 탭이어도 panel·빈 pane·[+]는 유지한다. Agent 관리 목록은 실제 적용 구성에서 만들며 탭 닫기로
+YAML 정의를 삭제하지 않는다. stopped는 activity status 다섯 값에 추가하는 값이 아니다.
+
+같은 Host panel의 shell에서 명령을 실행하면 첫 Agent는 입력 자리, 나머지는 다음 순서에 배치한다.
+외부·다른 panel에서 실행하면 대상 Host의 stopped 탭을 재사용하거나 새 탭을 순차 생성한다.
+새 TUI가 다른 shell에 연결되면 옛 stopped 안내 탭은 제거하되 이미 일반 shell이 된 탭은 보존한다.
+시작 결과를 알기 전에 옛 진단·재시도 자리를 지우지 않는다. 새 자리에서 시작에 실패하면 실패 이유를 표시하고 옛 stopped 탭은 그대로 둔다.
+새 탭 순서는 현재 화면 위→아래·왼쪽→오른쪽 pane 순환이며 기존 탭·수동 분할 배치를 재정렬하지 않는다.
+최신 표시 계약은 `docs/specs/aiox-configuration-web.md`, 디자인 인계는 Stage 6 로그를 따른다.
+
 **Host 초기 layout**
 
 | host.layout.preset | 초기 영역 배치 |
 | --- | --- |
-| auto (기본) | 1개 전체, 2개 좌우, 3개 왼쪽 하나+오른쪽 위아래, 4개 2×2 |
+| auto (기본) | 1개 전체, 2개 좌우, 3개 왼쪽 하나+오른쪽 위아래, 4개 이상 2×2, 초과 Agent는 순환 탭 |
 | left-main | 왼쪽 하나+오른쪽 위아래, 최대 3개 영역 |
 | top-main | 위쪽 하나+아래쪽 좌우, 최대 3개 영역 |
 | grid | columns × rows 영역 |
@@ -946,7 +910,7 @@ auto: 2개        auto: 3개        auto: 4개
 └─────────────────┴─────────────────┘
 ```
 
-영역 수를 넘는 Agent는 선언 순서대로 기존 영역에 돌아가며 탭으로 추가하고 기존 선택 탭을 유지한다. 예를 들어 2열·1행에서 A/C/E는 왼쪽, B/D/F는 오른쪽 탭이 된다. 불필요한 빈 영역은 만들지 않는다. 초기 배치 이후 사용자가 조정한 배치를 자동으로 원상복구하지 않는다.
+영역 수를 넘는 Agent는 선언 순서대로 기존 영역에 돌아가며 탭으로 추가하고 기존 선택 탭을 유지한다. 최초 auto 생성에서 5개 이상이면 2×2를 만들고 5번째부터 순환 탭으로 추가한다. 이는 shell/tab/pane 개수의 상한이 아니다. 이후 생성·삭제·이동·분할은 허용하며 모든 preset에서 현재 존재하는 pane의 위→아래·왼쪽→오른쪽 순서로 새 탭을 순환 배치한다. 예를 들어 2열·1행에서 A/C/E는 왼쪽, B/D/F는 오른쪽 탭이 된다. 불필요한 빈 영역은 만들지 않는다. 초기 배치 이후 사용자가 조정한 배치를 자동으로 원상복구하지 않는다.
 
 **설정·YAML·CLI**
 
@@ -987,6 +951,7 @@ aiox host run --layout grid --columns 2 --rows 2
 ```
 
 - layout 우선순위는 CLI → YAML → 전역 config → 기본 auto다. 상위에서 preset을 바꾸면 하위의 다른 preset용 행·열을 섞지 않는다.
+- CLI·YAML·전역 config 모두 각 입력에서 grid만 지정하고 columns/rows를 모두 생략하면 검증 오류다. CLI --layout grid 단독도 거절한다. 다른 계층의 치수 상속 또는 2×2 기본값으로 오류를 보완하지 않는다. columns 또는 rows 중 하나라도 유효한 양의 정수이면 검증을 통과한다. 둘 다 필수로 요구하지 않는다. 우선순위·상속 적용 후에도 columns만 있으면 rows=1, rows만 있으면 columns=1로 최초 배치를 계산한다. 기존 panel은 실제 pane·탭 구성에 따라 배치하며 초기 치수로 재정렬하지 않는다.
 - columns·rows는 grid용 양의 정수다. YAML에 행·열만 지정하면 grid 생략형으로 해석한다. 다른 preset과 행·열의 충돌은 오류로 알린다. auto에서는 숫자 행·열 대신 preset 자체로 1~4개 배치를 선택한다.
 - 사이드바 너비는 전역 `web.sidebar.width`로 제공하고 DB에 중복 저장하지 않는다. Web 설정에서 저장해도 같은 전역 config를 갱신한다. 실제 터미널 목록·분할 방향/비율·탭 순서·선택 상태는 작업 화면별로 서버에서 유지·복원한다. 초기 layout 설정 변경이 현재 사용자 배치를 강제 재배치하지 않는다.
 **포커스·알림·단축키**
@@ -1108,7 +1073,7 @@ Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/ad
 
 1. 사용자가 daemon을 시작하고 persistent Network를 만든다. Claude와 Codex를 각각 agent run으로 같은 Network에 실행한다. runtime별 MCP/token/instruction이 주입되고 route에 따라 협업한다.
 2. 사용자가 aiox.yaml로 Host를 실행한다. Agent들은 같은 workspace와 해당 Host 전용 Network를 사용한다. 다른 Host의 같은 이름 Agent와 섞이지 않는다.
-3. 사용자가 같은 YAML을 --name과 --worktree로 다시 실행한다. 기존 Host와 별도 workspace·Network·Runtime으로 표시된다.
+3. 여러 `aiox.*.yaml` 중 `--file`로 선택해 실행한다. 같은 YAML·Host 이름의 중복 run은 안내만 하고, Host 이름 변경 후 restart는 별도 Host로 실행한다.
 4. Claude가 send를 호출한다. daemon은 token으로 source를 확정하고 route를 검사한 뒤 Codex의 활성 thread에 toolOutput 본문과 additionalContext 메타데이터를 주입한다.
 5. Codex가 send를 호출한다. daemon은 Claude inbox에 peer 메시지를 넣는다. idle이면 턴이 시작되고 compact preview가 보인다. UserPromptSubmit/Stop으로 입력과 응답 종료를 연결한다.
 6. Agent는 agents_list의 agentId를 골라 send한다. 단방향 완료·실패와 양방향 실패는 daemon이 원 발신자에게만 알리고, 양방향 대화상 회신은 send를 사용한다. interrupted 자동 알림과 재전송 도구는 없다.
@@ -1116,8 +1081,10 @@ Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/ad
 8. 다른 terminal에서 승인이 필요하면 알림을 누르고 해당 TUI에서 응답한다. 이미 보고 있는 terminal의 알림은 중복으로 울리지 않는다.
 9. Web을 닫아도 실행은 계속된다. 다시 열면 같은 terminal의 현재 화면과 배치·놓친 알림이 나타난다.
 10. 전역 설정의 terminal appearance·keyboard는 실행 중 반영하고 shell/args/cwd는 새 일반 Web shell에, 포트는 다음 daemon 시작에 적용한다. 저장 때문에 기존 실행을 종료하지 않는다.
-11. host stop은 소유 실행을 종료·정리하고 Worktree를 남긴다. daemon 일반 stop은 실행 환경별 정책을 적용하며 force는 daemon 소유 실행을 종료한다. 외부 CLI 소유 실행은 두 경우 모두 유지하고 협업만 해제한다.
+11. host stop은 YAML Agent 실행을 종료하고 shell·panel·Network·정책을 남긴다. host delete는 사용자 shell과 그 작업까지 종료하고 Host·Network·panel을 삭제한다. YAML·프로젝트 파일은 보존한다. daemon stop/force의 별도 소유권·환경별 계약은 runtime spec을 따른다.
 12. vendor 업데이트·준비 실패는 실행 실패로 명확히 표시한다. 사용자가 처리 후 다시 실행하며 AIOX가 자동 업데이트·재실행을 복잡하게 조율하지 않는다.
+13. 같은 Host의 YAML에서 Agent를 바꾸고 전체 restart하면 같은 key의 Agent 탭은 재사용하고 삭제된 Agent의 실행 shell/stopped shell은 종료 후 제거한다. /exit·Copy 후 일반 shell과 사용자 추가 shell은 보존한다.
+14. restart에서 YAML 읽기·사전 검증이 실패하면 기존 실행을 그대로 유지하고 CLI에 안내한다. 파일을 수정하는 것만으로 자동 재시작하지 않는다.
 
 ## 18. 구현 순서와 남은 논의의 위치
 
@@ -1132,7 +1099,7 @@ Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/ad
 | 2-2 | 명령·실행 위치별 소유권과 외부 독립 수명·공통 vendor 경계 | W1~W5 완료. Stage 3에서 소비하며 Codex·Host 실구현과 전 OS 검증은 후속 단계 |
 | 3 | Claude 실행·inbox·hooks·상태·종료 | hidden path 신규 통합, Windows token, 관측 경계 |
 | 4 | Codex App Server·Relay·두 vendor 왕복 | toolOutput+additionalContext 구현·E2E, 실패하면 그 다음 방식 |
-| 5 | Host·Worktree·CLI 운영 | Git Worktree 생성·재사용·충돌과 종료 보상 |
+| 5 | Host·CLI 운영 | 확정된 파일 선택·실행 수명·route 적용·shell/탭·실패 보상 구현. Worktree 제외 |
 | 6 | 운영 Web·복귀·배치·i18n·설정·키 | Stage 2-1 기반의 React·탭·분할·배치 복귀 통합, Web 상태 책임과 UX |
 | 7 | 상태·알림·읽음·포커스·소리 | 실제 status 매핑·UI, 소리 묶음·multi-tab |
 | 8 | 3 OS/WSL·npm 산출물 통합 검증 | 실제 배포·실행·정리 증거 |

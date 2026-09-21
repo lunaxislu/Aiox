@@ -26,6 +26,21 @@ Persistent Network의 저장된 endpoint route는 live Runtime 관계다. daemon
 endpoint route를 정리하되 Network 이름과 메시지 이력은 유지한다. 이름 재사용을
 실행 복원으로 해석하지 않는다. 외부 수명 계약은 [[docs/specs/aiox-host]]를 따른다.
 
+## Host shell과 화면 projection [Status: Target]
+
+Host Agent 실행은 기반 shell/terminal과 별도 수명이다. stop은 Agent 실행 연결을 해제하고
+shell handle을 유지한다. Web의 stopped 안내는 같은 terminal을 가리는 표시이며 Copy는 그 표시를
+해제한다. 이를 terminal 프로세스 재생성이나 자동 입력으로 구현하지 않는다.
+
+Host의 적용된 Agent 구성과 terminal 연결을 구분해 보관한다. Agent 탭이 없어도 관리 항목을
+표시할 수 있어야 하며, 과거 연결만으로 일반 shell로 돌아온 탭을 Agent 전용 자리로 재사용하지 않는다.
+실행 생존·종료 사유의 원천은 daemon 관측이며 DB의 과거 상태를 생존 증거로 삼지 않는다.
+Gateway snapshot/event와 terminal stream의 소비 결과가 준비·TUI·stopped·실패·shell 표시로 이어져야 한다.
+
+Host Network와 적용 정책은 stop 후 유지하고 delete에서 정리한다. 선언은 YAML,
+적용 구성·배치·이력은 저장 상태, 실제 process/PTY/binding/credential은 live 자원이라는 경계를 유지한다.
+명령별 정리 범위는 [[docs/specs/aiox-host]], 화면 전환은 configuration-web 계약이 소유한다.
+
 ## 이력 보존과 ORM 전환 [Status: As-built]
 
 NetworkService와 MessageService는 `uuid`의 v7 생성기를 사용해 새 Network·Message·Delivery·Notification ID를 발급한다. MCP의 전원 대상 부재 응답도 v7 messageId를 쓰되 저장하지 않는다. schema는 문자열 ID를 유지하며 재발급·backfill을 추가하지 않는다. 생성·저장·재오픈 근거는 apps/daemon/src/networks.ts, messaging.ts와 messaging.test.ts의 UUID v7 회귀다.
