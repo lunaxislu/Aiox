@@ -1,4 +1,4 @@
-name: Stage 1 CI
+name: CI
 
 on:
     push:
@@ -39,3 +39,61 @@ jobs:
               run: pnpm check
             - name: Run built CLI
               run: node apps/cli/dist/main.js doctor --json
+
+    wsl:
+      name: WSL2 / Node ${{ matrix.node }}
+      if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.base_ref == 'main'
+      runs-on: windows-2025
+      timeout-minutes: 35
+      strategy:
+        fail-fast: false
+        matrix:
+          node: [22, 24]
+      steps:
+        - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+          with:
+            persist-credentials: false
+        - name: Install WSL2 Ubuntu
+          shell: pwsh
+          run: |
+            wsl --version
+            wsl --set-default-version 2
+            if ($LASTEXITCODE -ne 0) { throw "WSL2 default setup failed" }
+            wsl --install --distribution Ubuntu-24.04 --web-download --no-launch
+            if ($LASTEXITCODE -ne 0) { throw "WSL installation failed: $LASTEXITCODE" }
+            wsl --list --verbose
+            wsl -d Ubuntu-24.04 -u root --exec uname -a
+            if ($LASTEXITCODE -ne 0) { throw "WSL2 boot failed" }
+        - name: Prepare Linux filesystem and Node
+          shell: pwsh
+          run: |
+            $linuxSource = (wsl -d Ubuntu-24.04 -u root --exec wslpath -u "$env:GITHUB_WORKSPACE").Trim()
+            $script = @'
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y build-essential python3 curl xz-utils ca-certificates git
+            useradd -m -s /bin/bash aiox
+            mkdir -p /home/aiox/repo /opt/node
+            tar -C "$1" --exclude=.git -cf - . | tar -C /home/aiox/repo -xf -
+            chown -R aiox:aiox /home/aiox/repo
+            cd /tmp
+            base="https://nodejs.org/dist/latest-v$2.x"
+            curl -fsSLo SHASUMS256.txt "$base/SHASUMS256.txt"
+            archive=$(awk '$2 ~ /linux-x64.tar.xz$/ {print $2}' SHASUMS256.txt)
+            test -n "$archive"
+            curl -fsSLO "$base/$archive"
+            grep " $archive$" SHASUMS256.txt | sha256sum -c -
+            tar -xJf "$archive" -C /opt/node --strip-components=1
+            export PATH="/opt/node/bin:$PATH"
+            npm install -g pnpm@10.33.0
+            '@
+            $script = $script.Replace("`r", "")
+            [System.IO.File]::WriteAllText("$env:GITHUB_WORKSPACE/.github/scripts/prepare-wsl.sh", $script, [System.Text.UTF8Encoding]::new($false))
+            wsl -d Ubuntu-24.04 -u root --exec bash "$linuxSource/.github/scripts/prepare-wsl.sh" "$linuxSource" '${{ matrix.node }}'
+            if ($LASTEXITCODE -ne 0) { throw "Linux environment preparation failed" }
+        - name: Run full checks in WSL2
+          shell: pwsh
+          run: |
+            wsl -d Ubuntu-24.04 -u aiox --cd /home/aiox/repo --exec bash .github/scripts/verify-wsl.sh
+            if ($LASTEXITCODE -ne 0) { throw "WSL validation failed: $LASTEXITCODE" }
