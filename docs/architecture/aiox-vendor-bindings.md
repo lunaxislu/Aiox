@@ -450,8 +450,18 @@ macOS 실제 Web TUI 실행·MCP 준비·재접속·new·shell 복귀와 외부 
 TUI 조작·shell 복귀를 확인했다. 사용자 동반 resume/fork/clear/new·선택 취소·Web 재접속에서
 현재 대화 ID와 고유 입력의 화면 표시·응답을 확인했다. 사용자 세션의 RPC 전체를 동시 수집한
 근거는 아니며 binding→Relay→turn/start 대상 대응·전환 중 거절·보조 연결과 listener 종료는
-인접 index/relay 테스트가 검증한다. 실제 메시지 왕복은 W3~W4의 미완료 범위다.
-Windows/Linux/WSL 실측도 남는다.
+인접 index/relay 테스트가 검증한다. Codex↔Codex 메시지 왕복과 busy 입력은 사용자 동반
+실측으로 확인했다. 2026-09-21 macOS의 Claude Code 2.1.278 / Haiku 4.5와 Codex 0.155.1 /
+gpt-5.6-luna에서는 실제 AIOX TUI·MCP 경로로 양방향 송수신과 양쪽 단방향 전송을 확인했다.
+네 delivery 모두 DB `completed`에 귀속됐고, 단방향 두 건은 원 발신자에게만 완료 알림이
+전달됐으며 알림 재귀는 없었다. 이 교차 검증은 추가 실패·중단·busy 행렬이나 Stage3 전체
+검증을 대신하지 않는다. Windows/Linux/WSL 실측도 남는다.
+
+같은 Codex 버전의 별도 실제 AIOX remote TUI에서 `/rename` 후 같은 thread의 후속 turn이
+완료되고 Web 상태가 idle로 복귀했다. `/cd`는 remote 환경 제한으로 거절됐으며, 후속 `pwd`
+turn은 기존 cwd에서 정상 완료됐다. 실제 cwd 이동 성공을 검증한 것은 아니다.
+실측 출처: `logs/2026-09-09-AIOX-TUI-Stage4-Codex.md`의 2026-09-21 `/rename·/cd` 및
+Haiku↔Luna 교차 검증 기록.
 
 
 TUI·Binding Relay·App Server는 함께 필요한 실행 자원이다. Web·Host는 daemon이, 외부
@@ -502,11 +512,30 @@ TUI가 사용자 승인·질문 응답을 소유한다.
 [[packages/adapters/codex/src/binding.test.ts]] `packages/adapters/codex/src/binding.test.ts:41-184`의 즉시·지연 인수 ack와 여러 busy 입력 결과 회귀;
 [[apps/daemon/src/messaging.test.ts]] `apps/daemon/src/messaging.test.ts:613-736`의 Codex socket 대역·DB 실패 통합 검증.
 
-AIOX MCP가 활성인 실행의 제목 생성 helper는 Codex TUI가
-`config.mcp_servers.aiox={enabled:false}`만 보낸다. Codex 0.153.4의 같은 App Server에서
-이 override는 transport 누락으로 거절됐고, URL을 포함한 완전한 disabled entry는
-수락됐다. Relay의 내부 helper 제외는 이 오류와 별개로 동작한다. 제품 Relay는 helper
-설정을 보정하지 않으며 제목 생성 실패는 현재 gap이다. [Status: Current gap]
+AIOX MCP를 CLI `-c`로 주입한 실행에서 Codex 0.155.1의 제목 생성 helper는
+`config.mcp_servers` 전체 table 아래 서버별 `{enabled:false}`만 보낸다. App Server는 이
+요청 override를 기존 CLI override 뒤에 같은 계층으로 적용하면서 MCP table을 교체한다.
+따라서 AIOX가 처음 주입한 URL 등이 사라지고, disabled 서버에도 transport를 요구하는
+설정 파싱에서 `invalid transport in mcp_servers.aiox`로 거절된다. 초기 AIOX 설정의
+transport 누락이나 MCP HTTP 연결·인증 실패가 아니다. [Status: Current gap]
+
+격리된 같은 버전의 App Server 비교에서 CLI 주입을 URL·enabled별 `-c`로 나눠도 실패했다.
+같은 설정을 `config.toml` 계층에 두면 재귀 병합으로 URL이 보존돼 수락됐고, helper 요청을
+`mcp_servers.aiox.enabled=false` leaf override로 바꾸거나 URL까지 포함해도 수락됐다.
+이 비교의 성공은 `thread/start` 설정 수락이며 제목 생성 완료를 뜻하지 않는다.
+
+실제 TUI에서는 helper 실패 중에도 사용자 답변·turn 완료·AIOX idle을 확인했다. 모든 사용
+경로의 무영향을 보장하는 근거는 아니다. 이 범위의 정상 사용을 근거로 사용자와 합의해
+AIOX 보정은 적용하지 않고 자동 제목 생성 실패를 알려진 제한으로 유지한다. Relay의 내부
+helper 제외와 일반 대화 추적은 설정 실패와 별개이며 helper의 MCP 설정을 변경하지 않는다.
+
+주입 근거: launch.ts의 `packages/adapters/codex/src/launch.ts:82-87`.
+병합·파싱 근거: Codex rust-v0.155.1의
+[config manager](https://github.com/openai/codex/blob/rust-v0.155.1/codex-rs/app-server/src/config_manager.rs#L186-L196),
+[CLI table 교체](https://github.com/openai/codex/blob/rust-v0.155.1/codex-rs/config/src/overrides.rs#L9-L14),
+[transport 검증](https://github.com/openai/codex/blob/rust-v0.155.1/codex-rs/config/src/mcp_types.rs#L488).
+실측·12조건 비교·유지 결정 출처: `logs/2026-09-09-AIOX-TUI-Stage4-Codex.md`의
+2026-09-21 제목 helper 재현·근본 원인·보정 취소 기록.
 
 근거: [[packages/adapters/codex/src/relay.ts]], [[packages/adapters/codex/src/binding.ts]],
 [[packages/adapters/codex/src/relay.test.ts]], [[packages/adapters/codex/src/index.test.ts]].
@@ -551,8 +580,13 @@ createdAt을 전달하며 내부 delivery ID는 포함하지 않는다. 일반 �
 `packages/adapters/codex/src/binding.test.ts:1-37` 및 binding.ts의 codexInput.
 
 완전한 wire의 필드 배치와 context 길이 제한·절단 위치는 추측으로 재구성하지 않는다.
-고정 `Sent by Codex` 문구가 Claude 발신자를 올바르게 표시한다고 단정하지 않고 내부 renderer
-의존과 실제 표시를 확인한다. 표시 개선이 exactly-once나 모델 action dedupe를 뜻하지 않는다.
+Codex renderer의 고정 `Sent by Codex from task …` 문구를 유지하고 task 자리에 발신자
+이름을 넣는 것이 채택한 표시 방식이다. 2026-09-21 교차 실측에서 Codex가 Haiku 메시지를
+받을 때 task 이름은 `CrossHaiku`, AIOX 알림은 `AIOX`였으며, Claude 수신 화면은
+`Message from @CrossLuna`였다. 고정 Codex 문구를 새 발신자 귀속 결함으로 분류하지 않는다.
+이 표시는 exactly-once나 모델 action dedupe를 뜻하지 않는다.
+출처: `logs/2026-09-09-AIOX-TUI-Stage4-Codex.md`의 2026-09-14 표시 규약 결정과
+2026-09-21 기존 결정 재확인 기록.
 
 ## 공통 상태 저장과 전달 [Status: As-built]
 
@@ -655,7 +689,16 @@ transcript copy 이동·production relocation 전체 통합·다른 OS 검증과
 | 해소 | serverRequest/resolved(threadId/requestId) | registry busy/idle 전환 |
 | 사용량/재개 | account/rateLimits/read·updated | quota_auto_resume_fired/stale/disabled |
 
-이 표는 공식 문서 조사 기반의 연결 후보를 포함하며 전체 live wiring 검증표가 아니다.
+이 Codex 0.155.1 / gpt-6-astra의 실제 비동기 질문 UI는 별도 경로였다. 실측한
+`request_user_input_async`는 `item/started`·`item/completed`의 `agentMessage`에
+`delivery=async`와 questions를 담았고 `item/tool/requestUserInput`은 발생하지 않았다.
+질문을 미응답으로 둔 채 작업과 turn 완료가 진행됐으며 AIOX는 working → idle로 표시했다.
+이후 TUI에서 답하면 같은 thread의 새 turn이 시작됐다. 따라서 접힌 질문 UI만으로 승인·질문
+대기 RPC나 AIOX awaiting-user 상태를 추정하지 않는다. 다른 질문 경로에 이 결과를 일반화하지
+않는다. 실측 출처: `logs/2026-09-09-AIOX-TUI-Stage4-Codex.md`의 2026-09-21 Astra
+비동기 질문 재현 기록.
+
+표는 공식 문서 조사 기반의 연결 후보를 포함하며 전체 live wiring 검증표가 아니다.
 별도 daemon WS에 모든 TUI server request가 broadcast된다고 가정하지 않는다. 관측 위치는
 Relay/연결 구성에서 정하고 사용자는 TUI에서 응답하며 daemon과 TUI가 같은 요청에 이중 응답하지 않는다.
 resolved는 취소·정리도 포함해 승인 성공과 같지 않다.

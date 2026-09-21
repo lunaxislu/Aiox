@@ -1,7 +1,7 @@
 ---
 topic: AIOX TUI Stage4 Codex
 description: Codex TUI App Server Relay와 같은 terminal의 두 vendor 협업
-status: open
+status: decided
 ---
 
 ## Work Items
@@ -9,8 +9,8 @@ status: open
 - [x] W1 Codex 실행·주입·수명 연결 — 환경·옵션 감사, active thread 입력 대응·전환 차단·소유 자원 정리, 사용자 동반 E2E와 최신 전체 검사 및 owner 반영을 완료했다.
 - [x] W2 Codex 관측·공통 상태 반영 — 공통 상태 구현·자동 검사·주요 실측을 완료했다. nullable 추가 실측은 사용자 지시로 생략. async 종료 후 선택 UI 부재, failed 대화 선택/취소 및 다른 연결별 복구는 미실측 제한으로 보존하고 W3로 진행한다.
 - [x] W3 Codex 간 실제 메시지 왕복 — 사용자 재시작 후 양방향 회신·단방향 차단/완료 알림·중단 무통지·알림 비재귀·양방향/단방향 busy 입력 실측 성공과 대상별 delivery 자동 검증을 완료했다. 최종 실패 실측은 사용자 지시로 생략한다. 근거와 실측 범위를 보존하며 완료한 실험은 반복하지 않는다.
-- [>] W4 Claude와 Codex 교차 검증 — W1~W3 뒤 수행한다. Stage3 W2/W3/W5에서 필요한 Claude 메시지·관측 경계가 검증돼야 해당 시나리오를 완료한다. Claude 미해결로 막히는 경우 완료로 표시하지 않고 정확한 의존 항목을 Stage3에 연결해 그 작업 후 이 W4로 복귀한다. 양 vendor 송수신·결과 귀속·알림을 실제로 확인한다.
-- [ ] W5 Stage4 통합 리뷰·owner 반영·마감 — W1~W4 결과와 회귀·실측 범위, 실행/정리·상태·메시지 owner를 대조한다. 제목 helper의 incomplete AIOX MCP config current gap에 대한 별도 수정·유지 판단을 닫는다. 남은 OS·배포 인증은 Stage8 조건과 연결하고 Claude 교차 검증이 남아 있으면 Stage4 전체 완료로 처리하지 않는다.
+- [x] W4 Claude Haiku↔Codex Luna 실제 교차 검증 완료 — 양방향 송수신·결과 귀속, 양쪽 단방향 완료 알림·발신자 수신·비재귀를 2026-09-21 실측으로 확인했다. Stage3 전체 완료와 추가 실패·중단·busy 행렬을 대신하지 않는다.
+- [x] W5 Stage4 통합 리뷰·owner 반영·마감 완료 — 최신 실측과 알려진 제한을 vendor-bindings에 반영하고 OS·배포 인증을 Stage8 W4에 연결했다. 검증용 실행 정리와 로그·plan 정합을 확인했다. 출력 적체·입력 분리 추가 조사는 생략하고 제목 helper 보정 취소 결정을 유지한다.
 
 ## Required Context
 
@@ -20,7 +20,7 @@ status: open
 
 ### {Global}
 
-- 2026-09-16 사용자 지시로 현재 plan 활성 단계는 Stage3이며 재개점은 logs/2026-09-09-AIOX-TUI-Stage3-Claude.md W3다. Stage4는 대기이고 이 로그 W4 [>]는 복귀 시 재개점으로 보존한다. W1~W3 완료·기존 사용자 실측·대상별 delivery 자동 검증과 최종 실패 실측 생략 결정을 유지한다. Stage3 W2/W3/W5의 필요한 Claude 메시지·관측 선행 조건을 충족한 뒤 W4 교차 검증으로 복귀한다. 완료한 Codex 검증을 다시 시작하지 않으며 commit·push는 별도 지시 없이 수행하지 않는다.
+- Stage4는 W1~W5 완료로 종료했다. 최종 결과·한계의 owner는 docs/architecture/aiox-vendor-bindings.md다. 남은 OS·배포 인증은 logs/2026-09-09-AIOX-TUI-Stage8-Integration.md W4에서 수행하며 기존 생략·미실측 제한은 그 로그의 Required Context에 구분해 보존했다. 출력 적체·입력 분리 추가 조사와 제목 helper 보정은 진행하지 않는다. 사용자 지시로 plan 활성 포인터를 Stage5로 옮겼다. Stage3는 미완료 대기로 남으며 해당 로그의 재개점을 보존한다. Stage5의 현재 작업은 logs/2026-09-09-AIOX-TUI-Stage5-Host.md에서 소비한다. 이번 커밋 범위는 Stage4 결과와 해당 인계·포인터 변경뿐이며 push하지 않는다.
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Codex 실제 TUI + Runtime별 App Server + Binding Relay를 연결한다. 입력은 채택된 toolOutput 본문 + additionalContext 메타데이터이며 E2E가 실패할 때만 원인을 확인한 뒤 후순위 방법을 검토한다. 임의 active thread 선택이나 선제 fallback을 만들지 않는다.
 - Stage2~2-3에서 완료한 공통 실행 소유권·terminal·메시지·상태 결과를 직접 소비한다. Codex W1~W3는 Stage3 완료를 기다리지 않는다. 기존 shell의 aiox agent run codex → 같은 terminal TUI → 종료 후 shell 복귀를 연결하고 외부 CLI와 daemon 소유 자원의 종료 정책을 유지한다. Runtime/threadId/turnId로 입력 결과를 연결한다. Stage3 결과 의존은 W4의 Claude 교차 검증에만 적용한다.
 - W3에서 Codex↔Codex의 agents_list/send·인증·단방향/양방향 route·결과·발신자 전용 알림을 먼저 검증한다. 두 vendor 교차 검증은 W4에서 Claude 준비 상태에 따라 수행한다. interrupted 자동 통지 없음·알림 재귀 방지와 실제 OS별 근거/대역 구분은 공통으로 유지한다.
@@ -818,3 +818,166 @@ W1~W3 완료와 이 로그 W4 [>]는 Stage3 선행 조건 충족 후 복귀할 �
 /cd 근거와 추론: 저장된 /private/tmp/codex154-app-event_dispatch.rs:125의 ChangeWorkingDirectory 분기는 idle primary session·queued input 조건을 검사하고 remote workspace 또는 remote execution environment이면 변경을 거절한다. 별도 저장 소스 /private/tmp/aiox-w1-lib.rs:285, :777, :876에서는 --remote 대상이 AppServerTarget::Remote로 선택되고 이 variant가 remote workspace 판정에 포함됨을 확인했다. AIOX의 loopback App Server도 --remote 연결이므로 현재 구성에서는 /cd 자체가 거절될 가능성이 높다는 코드 기반 판단이다. 서로 다른 시점의 저장 소스를 대조한 근거이며, 이번에 --version으로 확인한 설치 0.154.0에서 실제 키 입력·거절 화면까지 검증하지 않았다. 이를 디렉터리 이동 후 추적 성공으로 기록하지 않는다. 시작 인자 --cd 지원과 실행 중 slash /cd는 별개이며, 일반 standalone TUI 또는 App Server API를 직접 사용하는 다른 연결 구성까지 같은 결론으로 확대하지 않는다.
 
 Claude 비교: Stage3 실측은 /rename의 session/path 유지와 /cd의 실제 transcript 이동을 확인했으나 CwdChanged/FileChanged 미수신으로 reader 자동 전환은 미확인이다. Codex의 이벤트 기반 관측에는 그 transcript 경로 전환이 관측 선행 조건이 아니다. 다만 구조 차이만으로 /cd 성공이나 전체 E2E 성공을 보장하지 않는다. 이번에는 production·tests·owner 계약을 변경하거나 테스트·신규 TUI/daemon 실험·onramp를 실행하지 않았다. 실제 확인이 필요할 때의 미확인 지점은 격리된 현재 버전 AIOX remote TUI에서 /rename 후 후속 turn 상태 유지와 /cd 허용/거절 동작이다. 새 실험 과제를 자동 활성화하지 않고 W1~W3 완료, Stage4 대기와 W4 복귀 pointer, W5 미완료를 유지한다. 기존 Codex 관측 검증의 후속 근거 구분이므로 같은 Base 로그에 append한다.
+
+### 2026-09-21 17:16 · /rename·/cd 실제 AIOX Codex TUI 검증 완료
+
+사용자는 /rename·/cd를 실제 AIOX 실행 Codex TUI로 우선 검증하도록 지시했고, remote 연결의 /cd 거절은 허용 가능한 제한으로 판단했다. 다른 에이전트의 46521 포트 작업과 분리해 검증했으며, 결과 확인 후 이번 로그 기록을 명시적으로 요청했다. onramp는 실행하지 않았다.
+
+실측 구성은 macOS·Node 24.14.0·Codex 0.155.1이다. /private/tmp/aiox-codex-ui-ImdI1o에 별도 DB·daemon 상태·작업 디렉터리를 두고 실제 startDaemon·Codex adapter를 사용했다. daemon 55906·Web 55907·agent-browser 독립 세션 codex-rename-cd-ImdI1o에서 Web shell의 기존 CLI bootstrap을 별도 home으로 실행했다. aiox agent run codex --name RenameProbe --network CodexVerify → 실제 App Server·Relay·remote TUI 경로를 통과했다. 임시 계측은 WS 이벤트의 method/threadId/turnId/결과와 binding 상태만 추출했다. 제품 코드는 변경하지 않았다.
+
+확인 사실: 기준 turn 완료 후 /rename AIOX-RENAME-VERIFY-0921을 입력했다. thread/name/updated에 새 이름과 기존 thread ID 01a0c303-aa46-7511-9481-cf3905c35614가 기록됐다. 후속 sleep 5 요청도 같은 thread의 별도 turn으로 시작·completed됐고 RENAME_FOLLOWUP_OK 응답과 Web working → idle을 확인했다. AIOX Agent 이름은 RenameProbe를 유지했다. 이름 변경 후 상태 추적 성공이며 Agent 표시 이름 자동 동기화를 뜻하지 않는다.
+
+/cd /private/tmp/aiox-codex-ui-ImdI1o/other 입력에는 “Changing directories is not supported for remote workspaces or remote execution environments.”가 표시됐다. 이어 pwd를 실행한 후속 turn도 같은 thread에서 completed됐고 원 디렉터리 /private/tmp/aiox-codex-ui-ImdI1o/project와 CD_REJECTION_FOLLOWUP_OK를 화면에서 확인했다. 두 항목은 합의한 기대값에 부합한다. 실제 디렉터리 이동 후 추적 성공이나 다른 버전·standalone 구성으로 확대하지 않는다. 이번 근거는 TUI·Relay·binding·Web이며 MCP agents_list 상태 전달이나 vendor 간 delivery를 새로 실측한 것은 아니다.
+
+별도 관측: 기준 turn과 rename 후 turn에서 Web terminal의 “Terminal output backlog exceeds limit. Reconnect to restore the screen.” 오류가 각 1회 발생했다. 상태 관측·turn 완료는 계속됐고 화면 다시 연결 버튼으로 응답을 복원했다. /cd 후속 응답은 연결된 화면에서 확인했다. 원인은 미진단이며 rename/cd 추적 실패로 동일시하지 않는다. 오류 생성 위치는 apps/daemon/src/terminals.ts와 인접 테스트다. Web 소비 경로를 포함한 진단·처리 판단은 W5 통합 리뷰에서 수행한다.
+
+임시 근거는 /private/tmp/aiox-codex-ui-ImdI1o/evidence.jsonl, rename-restored.png, cd-result.png, cd-followup.png, probe.mjs다. 이벤트 대조 assertion으로 이름 변경과 세 completed turn의 동일 thread 귀속 및 각 완료 직후 idle을 확인했다. 최초 assertion은 /exit 이후 종료 상태까지 포함해 실패했고, turn 완료 직후로 판정 범위를 고쳐 통과했다. 검증용 Codex 종료 후 해당 daemon force stop의 stopped:true 응답·프로세스 종료와 독립 브라우저 종료를 확인했다. 46521 자원은 조작하지 않았다.
+
+판정과 다음 행동: 2026-09-17 entry의 /rename·/cd 미실측 두 항목은 이번 버전·구성에서 완료다. W1~W3 완료·W4 복귀 지점·W5 미완료와 Stage4 open을 유지한다. Stage3 최신 Work Items는 W3 완료·W4 종료/실패 정리 진행이며 W2/W5는 미완료다. 다음은 Claude 메시지·관측·수직 통합 선행 근거를 확인한 뒤 W4 양 vendor 송수신·결과 귀속·알림을 실측하는 것이다. W5에서는 출력 적체 진단, 제목 helper incomplete MCP config 수정/유지 판단, owner 반영과 OS·배포 검증의 Stage8 연결을 닫는다. 이번에는 로그만 갱신하며 plan 활성 단계·제품·owner 계약 변경과 commit/push는 수행하지 않는다.
+
+### 2026-09-21 17:18 · Codex 비동기 질문 요약 UI와 이벤트 식별 범위
+
+사용자가 Working 아래 Queued follow-up inputs 및 “? 1 question · 20s / … to answer”가 표시된 화면을 제공하고 업데이트로 추가된 이벤트인지 질문했다. 확인한 로컬 보존 소스 /private/tmp/codex154-bottom_pane-questions.rs의 question_summary는 접힌 AsyncQuestions의 unanswered_count와 countdown(now)를 같은 형식으로 렌더링한다. 따라서 question 줄은 접힌 비동기 질문 요약이고 초 표시는 카운트다운이라는 코드 근거가 있다. 상위 Queued follow-up inputs 영역과 질문 줄은 bottom_pane-mod.rs에서 별도 렌더링 경로이므로 하나의 서버 이벤트 이름으로 동일시하지 않는다.
+
+공식 https://learn.chatgpt.com/docs/app-server 에서 item/tool/requestUserInput·serverRequest/resolved와 autoResolutionMs를 확인했다. 보존 request_user_input.rs 통합 테스트는 Plan 요청의 is_blocking:true와 기능을 켠 Default 요청의 is_blocking:false 전달을 검증한다. 다만 제공된 화면의 실제 RPC를 수집하지 않았으므로 해당 질문이 이 요청인지 다른 async 질문 전달 경로인지는 아직 확정하지 않는다. 0.154 보존 소스에도 UI가 있어 이번 0.155 업데이트에서 최초 추가됐다고 단정하지 않는다.
+
+AIOX binding.ts는 현재 pending 요청이 있으면 active turn보다 awaiting-user를 우선하며 item/tool/requestUserInput 수신 시 isBlocking을 구분하지 않는다. 비동기 질문의 실제 신호·계속 실행·응답/자동 해소 경계를 캡처한 뒤 현 상태 표현이 기대와 맞는지 판정해야 한다. 이는 코드상 점검 후보이며 사진만으로 AIOX 결함 재현을 주장하거나 W2 완료를 취소하지 않는다. 현재 질문의 UI 설명까지 수행했고 추가 실측·수정은 수행하지 않았다.
+
+### 2026-09-21 17:29 · Luna 비동기 질문 재현 시도와 질문 경로 구분 정정
+
+- 요청: 사진의 접힌 `? 1 question · 20s` UI를 AIOX → Codex에서 luna 모델로 재현한다. 기존 46521 세션은 건드리지 않고 임시 DB·daemon 56798/Web 56799와 agent-browser `codex-async-luna-0921`을 사용했다. 실제 TUI Codex 0.155.1 / gpt-5.6-luna medium을 확인했다.
+- 실측: 기본 설정의 `request_user_input` 호출은 `request_user_input is unavailable in Default mode`로 실패했다. 해당 실행에만 `--enable default_mode_request_user_input`을 적용한 두 번째 시도는 `item/tool/requestUserInput`(requestId 0, isBlocking false, autoResolutionMs null)을 관측했다. AIOX Web은 awaiting-user, TUI는 전체 질문 선택 창을 표시했다. 사진의 접힌 질문·20초 카운트다운은 재현되지 않았다.
+- 해소: 08:25:21.754Z 요청 → 08:27:21.771Z serverRequest/resolved → working → 08:27:49.050Z turn/completed 및 idle. 반환은 `{"answers":{}}`였다. Enter를 전달했지만 Brief 선택 성공은 아니며, 약 120초 뒤 빈 응답 해소로 기록한다. sleep 20은 해소 후 실행되어 질문 중 작업 지속은 입증되지 않았다.
+- 경로 정정: 공식 0.154 및 0.155.1 `core/src/tools/spec_plan.rs`는 root 모델의 experimental_supported_tools에 request_user_input_async 또는 이전 이름 send_user_message_async가 있을 때 별도 RequestUserInputAsyncHandler를 등록한다. 로컬 models_cache.json에서 gpt-5.6-luna는 빈 배열, gpt-6-astra는 send_user_message_async를 포함했다. 현재 Luna 제공 조건에서는 사진의 별도 질문 도구를 사용할 근거가 없으며 임의 모델 교체·카탈로그 조작은 하지 않았다.
+- 구현 근거: 별도 request_user_input_async handler는 delivery Async와 questions를 가진 AgentMessage를 emit_turn_item_started/completed로 내보내고 즉시 accepted true를 반환한다. 앞선 item/tool/requestUserInput의 isBlocking false 경로와 동일시하지 않는다. 직전 기록의 AIOX 오분류 후보는 사진의 실제 이벤트를 검증한 결론이 아니며, 이번에도 결함으로 확정하지 않았다.
+- 증거: 임시 디렉터리 `/private/var/folders/9w/40748jy967n0bcx9vljj4zg40000gn/T/aiox-async-luna-1od3wei6`의 evidence.jsonl, 스크린샷 `/private/tmp/async-luna-start.png`, `/private/tmp/async-luna-tall.png`. 실측 thread 01a0c311-707c-7203-97f4-63f59bb4088f / turn 01a0c311-bc3b-7ce2-bfbb-215b602dfd3f. 관측은 socket 수신이 중복 기록될 수 있어 동일 request를 두 요청으로 세지 않는다.
+- 정리·남은 일: Web terminal backlog 오류가 다시 발생해 화면 재연결했다. 제품 코드와 사용자 전역 설정은 변경하지 않았다. 검증 Codex /exit, daemon stop 응답 stopped true, 지정 브라우저 close 완료. W4/W5 상태는 유지하며 사진 자체의 실측에는 별도 비동기 질문 도구가 제공되는 모델이 필요하다.
+
+### 2026-09-21 17:33 · Astra 비동기 질문 UI·실제 이벤트·상태 재현 완료
+
+- 사용자 승인으로 모델을 gpt-6-astra로 변경해 별도 임시 AIOX daemon 57579/Web 57580, agent-browser codex-async-astra-0921에서 검증했다. 실제 Codex 0.155.1 / gpt-6-astra medium을 확인했고 질문 관련 기능 플래그·사용자 전역 설정은 변경하지 않았다. 기존 46521 세션은 건드리지 않았다.
+- 재현 성공: request_user_input_async로 질문을 만들자 사진과 같은 Queued follow-up inputs / ? 1 question / 카운트다운 / Alt+↑ to answer가 표시됐다. `/private/tmp/astra-question-live.png`에는 질문 1개·2s와 Working, background terminal running, AIOX working이 함께 보인다. sleep 35는 질문이 미응답인 동안 실제 실행됐다.
+- 확정 이벤트: 08:30:44.560Z item/started 및 item/completed의 item.type agentMessage, delivery async, questions 배열(title/options), phase final_answer. thread 01a0c316-7f53-7851-8b10-c842ba273862 / turn 01a0c316-b68c-7532-84e5-d425fdb46f42. item/tool/requestUserInput은 발생하지 않았고 awaiting-user 전이도 없었다. 질문 agentMessage의 phase final_answer는 turn 종료가 아니었다.
+- 완료 및 응답: 08:31:24.358Z 원래 turn이 ASYNC_ASTRA_DONE — No answer arrived로 완료되어 AIOX idle로 돌아왔다. 이후 Alt+↑로 남아 있는 질문을 열고 Brief를 제출하자 같은 thread의 새 turn 01a0c318-37b0-7ee2-a132-bb8a609ac28f로 처리됐다. 08:32:22.331Z Answer arrived: Brief (Recommended) 응답과 completed → idle을 확인했다. 질문 답변은 이 실측에서 후속 사용자 입력이었다.
+- 판단 정정: 사진의 비동기 질문 경로에서 AIOX가 awaiting-user로 오분류한다는 우려는 이번 실측에서 재현되지 않았다. Luna의 isBlocking false requestUserInput 경로와 구분한다. 공식 0.155.1 async_questions/state.rs는 접힌 질문에 30초 timer를 두고 남은 20초부터 countdown을 표시한다. 이 숫자를 RPC autoResolutionMs와 동일시하지 않는다. 시간 경과만으로 추천 선택지가 응답 전달된다는 근거도 없으며 이번에는 명시적으로 선택 제출한 뒤 답변이 도착했다.
+- 증거·검증: `/private/tmp/aiox-async-astra-pthg7pms/evidence.jsonl`, `/private/tmp/astra-start.png`, `/private/tmp/astra-question-live.png`, `/private/tmp/astra-completed.png`, `/private/tmp/astra-answered.png`. JSON 검증에서 async agentMessage 존재, requestUserInput/awaiting-user 부재, turn completed를 확인했다. socket 관측 중복은 동일 사건으로 취급한다.
+- 별도 제한·정리: Web terminal backlog와 서버 완료 대비 화면 갱신 지연을 관측해 재연결·reload했다. 상태 카드와 서버 이벤트, 복구 화면을 구분해 판단했다. 기존 W5 출력 적체 조사 범위로 남긴다. 제품 코드는 수정하지 않았다. Codex /exit, daemon stopped true, 지정 브라우저 close 완료. W4/W5와 Stage4 대기 상태는 유지하며 비동기 질문 후보의 이번 재현은 완료다.
+
+### 2026-09-21 20:45 · Haiku↔Luna 교차 송수신·결과 귀속·양방향 및 단방향 알림 검증 완료
+
+- 사용자 요청: Claude haiku와 Codex luna로 실제 AIOX TUI 교차 검증. onramp는 기존 지시대로 생략했다. Stage3의 최신 W3 완료 및 W4 실측 결과를 소비하고 Stage3 전체 완료를 전제하지 않았다. 현재 소스 pnpm build 성공 후 CLI bootstrap을 새로 bundle했다.
+- 격리 환경: `/private/tmp/aiox-cross-9x58ti0g`, 임시 DB `.aiox/aiox.db`, daemon PID23364/63017, Web63018. Claude Code2.1.278 / Haiku4.5, Codex0.155.1 / gpt-5.6-luna medium을 TUI에서 확인했다. Network CrossVerify 01a0c3c0-4d53-7639-8c30-bb5322acc18b. CrossHaiku Runtime b40abc4c-eae5-43ba-8063-f5a3b236ae28 / shell aa01d825-9f82-49e5-8b00-5c57dfbdd7ee, CrossLuna Runtime 1bbf7148-399f-46d9-adcd-55c3f2064118 / shell b3d18cdd-aaf1-48e6-977b-d923015a8a3b. 다른 에이전트의 포트·DB·프로세스는 조작하지 않았다.
+- 양방향: 실제 Haiku agents_list/send → Luna 수신/agents_list/send → Haiku native inbox 수신 및 CROSS_HAIKU_ACK_RECEIVED. message 01a0c3c1-dcc9-71b3-8530-c6e7f107583e와 01a0c3c2-1a3c-7377-94e8-02c41565a496의 delivery가 각각 올바른 상대 Runtime에 accepted1/completed로 귀속됐다. reverse_route_at_send1이며 자동 성공 알림은 0건으로 기대와 일치한다. Luna가 요청된 CROSS_L2H_ACK_0921 대신 CROSS_H2L_ACK_0921을 도구 인자로 생성했다. DB와 실제 MCP 인자/수신은 일치하므로 모델의 문자열 지시 불이행과 전송 본문 변조를 구분한다.
+- Luna→Haiku 단방향: Haiku→Luna만 block한 뒤 message 01a0c3c3-28ee-712d-85a0-f13fe2f49639를 전송했다. Haiku agents_list 승인 시 awaiting-user, 허용 뒤 처리 및 CROSS_HAIKU_ONEWAY_DONE을 확인했다. delivery reverse_route_at_send0/completed, 자동 알림은 원 발신 Luna에 1건이며 Luna TUI에 AIOX 알림 본문과 Acknowledged locally가 표시됐다. Web에도 Luna/shell 미확인1이 표시됐고 해당 terminal 선택 후 읽음 처리됐다.
+- Haiku→Luna 단방향: route를 반대로 바꾼 뒤 message 01a0c3c6-e70d-710d-b10f-b1ed6cc1d0f4를 전송했다. Luna의 실제 agents_list 결과는 agents 빈 배열, delivery reverse_route_at_send0/completed. Haiku TUI가 @AIOX daemon notification을 수신해 CrossLuna 처리 완료를 확인했다. 총 agent message/delivery4건 모두 accepted1/completed, 단방향 알림만 총2건, 알림마다 origin_runtime_id가 원 발신자와 일치하고 재귀 알림은 없다.
+- 검증·증거: 임시 디렉터리 verify.py의 위 조건 assert PASS, inspect.py/results.json, evidence.jsonl. 스크린샷 `/private/tmp/cross-haiku-start.png`, `cross-luna-done.png`, `cross-haiku-ack.png`, `cross-luna-notified.png`, `cross-third-approval.png`. 실측은 실제 HTTP MCP·vendor TUI·DB·Web이며 대역 메시지 주입이 아니다. 최종 실패·중단·busy 및 OS 추가 행렬을 이번 성공 경로의 결과로 확대하지 않는다. W3의 기존 실측/사용자 생략 제한은 유지한다.
+- 별도 관측: Codex 수신 화면은 Claude 발신자도 Sent by Codex from task CrossHaiku로 표시하고 AIOX 알림도 Sent by Codex from task AIOX로 표시했다. 실제 source_name/Runtime 귀속은 맞으며 vendor 이름 표현은 W5 검토 대상으로 남긴다. 기존 Web terminal backlog·화면 재연결 문제가 재발했다. 첫 agent-browser 세션이 응답 지연되어 전용 recovery 세션으로 전환했다. 긴 프롬프트가 TUI에서 둘로 나뉘어 내용이 누락된 시도가 있어 짧은 붙여넣기로 복구했으며, 그 실패 시도에는 send가 없어 중복 전송은 없었다. 입력 분리 원인을 AIOX/브라우저/터미널 중 하나로 단정하지 않는다.
+- 정리: 두 검증 TUI에 /exit 전달 후 해당 daemon stop 응답 stopped true/forced true, 두 지정 브라우저 close를 확인했다. 제품 코드·사용자 전역 설정 변경은 없다. 현재 다른 에이전트 변경을 보존했다.
+- 완료 판정: W4의 양 vendor 송수신·결과 귀속·알림 실측은 완료한다. Stage3 W1/W2/W5와 전체 완료를 대신 선언하지 않는다. W5를 다음 재개점으로 전환하여 통합 리뷰·owner 반영·표시/입력/출력 관측·기존 미실측 제한을 정리한다.
+
+### 2026-09-21 20:47 · Sent by Codex 표시의 기존 확정 결정 재확인·신규 이슈 판정 정정
+
+- 사용자 질문에 따라 과거 표시 결정을 재검색했다. 2026-09-14 12:06 「Codex 수신 표시 규약 복원과 본문·메타데이터 배치 확정」은 Sent by Codex from task 표시 규약 채택, task 자리에 발신자 이름 사용, 고정 Sent by Codex 문구 자체를 바꾸는 구현이 아님을 명시한다. 현재 binding.ts codexInput 및 architecture §Codex 입력 변환과 일치한다.
+- 이전 대안은 baseline의 IDE delimiter/Cyan 표시 실험이며 사용자 화면 확인 성공 기록이 있다. 그러나 이후 toolOutput+additionalContext 채택으로 세 후보 미결 상태는 대체됐다(Product-Context-Prompt §7). 다른 표현의 과거 실험과 현재 채택 구현을 구분한다.
+- 정정: 이번 CrossHaiku 수신의 Sent by Codex from task CrossHaiku는 기존 채택 경로의 실제 표시다. 이를 새로 발견한 회귀나 새 수정 필요 항목처럼 W5에 올린 판단을 철회한다. 고정 vendor 문구의 의미상 한계는 이미 알려진 제한이며 변경은 별도 요구가 있을 때 논의한다. 실제 발신자 이름과 DB 귀속 검증 결과는 유지한다.
+
+### 2026-09-21 21:07 · 출력 부하로 terminal backlog 재현·사용자 확인용 화면 유지
+
+- 사용자 요청: 출력 적체·화면 갱신 지연을 직접 눈으로 확인할 수 있도록 재현한다. agent-browser 독립 headed 세션 aiox-backlog-0921과 임시 DB/daemon을 사용했다. 다른 에이전트의 46521 포트는 건드리지 않았다.
+- 현재 소스 pnpm build 완료 후 /private/tmp/aiox-backlog-dlw0kqam/probe.mjs로 daemon PID 96238, daemon 64612/Web 64613을 실행했다. shell 4ab3df28-6d7a-4f9b-9a77-bad495620543. 접속 http://127.0.0.1:64613/.
+- 실제 shell의 python3 reproduce.py가 유한한 약 25MiB 출력을 연속 발생시키자 Web에 Terminal output backlog exceeds limit. Reconnect to restore the screen. 및 화면 다시 연결 버튼이 표시됐다. 브라우저 ack나 네트워크를 조작하지 않았다. daemon terminals.ts의 미확인 출력 8MiB 상한과 일치하는 오류 경로를 재현했다.
+- 화면 다시 연결 뒤 동일 terminal이 connected로 복귀하고 OUTPUT FINISHED - shell remains alive 및 shell prompt가 표시됐다. GET /api/terminals의 alive:true도 확인했다. 다시 실행해 사용자 확인용 오류 화면을 유지했다. 서버·브라우저는 사용자 확인을 위해 종료하지 않았다.
+- 한계: 이번 결과는 대량 출력 부하에서의 동일 오류 재현이다. 이전 Claude/Codex 일반 사용 중 적체 발생 원인이나 화면 지연 전체의 원인이 같다고 확정하지 않는다. production 코드는 수정하지 않았다.
+- 증거: /private/tmp/aiox-backlog-reproduced.png, /private/tmp/aiox-backlog-reconnected.png, 임시 project/reproduce.py. 새 브라우저로 접속하면 오류는 연결별 상태이므로 자동 재현되지 않는다. shell 선택 뒤 python3 reproduce.py를 실행하면 다시 관찰할 수 있다.
+
+### 2026-09-21 21:09 · 과거 backlog 관측 상황과 부하 재현의 증명 범위 구분
+
+- 사용자는 대량 출력 재현이 문제로 보이지 않는다며 과거 Claude/Codex 검증 당시 수행한 동작을 질문했다. 기존 기록에서 확인되는 범위는 /rename·/cd 및 후속 sleep/pwd 검증, Luna/Astra 질문·sleep·응답 검증, Haiku↔Luna agents_list/send·회신·단방향 완료 알림 검증 중 backlog/화면 재연결을 관측했다는 것이다.
+- 당시 오류 직전의 단일 조작과 WebSocket 누적 출력·ack를 대응한 기록이 없어 특정 명령·질문·메시지 전송이 원인이라고 확정할 수 없다. 당시 일반 사용 시나리오에서의 정확한 재현 절차는 아직 확보하지 못했다.
+- 이번 25MiB 부하 재현은 출력 상한에서 연결 보호와 재연결이 동작함을 확인한 것이다. 이를 곧바로 제품 결함이나 과거 일반 사용 중 지연의 재현 성공으로 보고하지 않는다. 과거 증상 관측과 현재 결함 확정을 구분한다.
+
+### 2026-09-21 21:11 · 긴 입력 분리 당시 화면 재확인
+
+- 사용자는 1번 출력 적체 논의를 넘어가고 2번 긴 입력 분리의 시각화를 요청했다. 이번에는 추가 backlog 조사·수정을 수행하지 않는다.
+- /private/tmp/cross-haiku-third.png와 cross-third-input.png를 직접 다시 확인했다. Haiku TUI에는 첫 입력이 Third cross-vendor test. Call AIOX send ONCE to CrossLuna with content에서 끝나고, 별도 두 번째 입력은 or use subagents. Finish your turn after sending. ...으로 시작한다. 각각 Claude가 내용 불완전·전송할 본문 미지정을 답했다. 짧게 다시 넣은 요청은 한 입력으로 표시된다.
+- 따라서 단순 줄바꿈이 아니라 두 개의 사용자 입력과 각각의 응답이 보이는 현상이다. 입력 경로 중 어느 단계에서 분리·누락됐는지는 이 스크린샷으로 확정할 수 없다. 원문 전체와 byte별 전송 기록 없이 정확한 누락 문자열을 복원하지 않는다. 실제 당시 화면을 근거로 설명한다.
+
+### 2026-09-21 21:32 · 긴 입력 분리 원인 조사: 원문·수신 바이트·Claude transcript 대조, 현재 재현 안 됨
+
+- 사용자가 자동화 원인 가능성을 제시하며 진단을 요청했다. 과거 도구 호출 원문을 ~/.codex/sessions/2026/09/21/rollout-2026-09-21T16-59-14-01a0c2f9-eeb2-7c52-ae04-7faff0438da2.jsonl:1374에서 확인했다. 339자 단일 행을 agent-browser type @e11로 입력한 뒤 press Enter한 명령이며 원문에 줄바꿈은 없다. 1397의 복구 시도는 focus + keyboard inserttext이며 명시 Enter가 없다. 원문·관련 호출은 /private/tmp/aiox-cross-9x58ti0g/original-prompt.txt, original-input-command.txt, automation-input-history.txt, automation-timeline.txt로 추출했다.
+- 당시 Claude transcript /Users/lunaxislu/.claude/projects/-private-tmp-aiox-cross-9x58ti0g-project/4d7b3a87-1d26-4f82-8e4d-a67e33e72f64.jsonl에서 11:42:29.636Z 첫 65자 요청, 11:42:32.238Z 뒤쪽 별도 요청을 확인했다. 명령 호출 11:42:29.528Z~.785Z 중 첫 제출이 기록돼 있다. 복구 입력도 11:42:58.201Z user turn으로 제출됐다. 이 시간 관계만으로 당시 type 내부 진행 지점이나 Enter 출처를 확정할 수 없다.
+- 현재 실측: agent-browser 0.37.1, Claude Code 2.1.278/Haiku 4.5. raw PTY에서 동일 339자 원문을 type와 keyboard inserttext로 각각 전송해 339자+CR 1개가 정확히 일치했다. 실제 Claude TUI에 type만 하면 전체 문장이 입력창에 남고, type 직후 Enter를 보내면 정확히 한 요청으로 제출됐다. WebSocket send 관측에서도 원문 339바이트 뒤 CR 1개로 일치했다. 직접 Claude 실행과 AIOX CLI agent run claude 실행 양쪽 Claude transcript에서 원문 전체가 동일한 단일 user message임을 확인했다.
+- AIOX 구성 재현: /private/tmp/aiox-input-repro-x85dv3o9, daemon PID58249/49496, Web49497, headless 1400x1000, 실제 CrossHaiku 등록. 과거 bootstrap/probe를 별도 DB에 복사해 사용했으며 CrossLuna 수신자는 생성하지 않았다. 입력 제출 확인까지이며 메시지 전송 교차검증을 다시 수행한 것은 아니다. 추가 두 브라우저 연결과 type 반복에서는 비의도적 CR이 관측되지 않았다. Ctrl+U가 전체 multiline을 비우지 않아 그 반복은 정확한 동일 초기 상태의 제출 비교로 세지 않는다.
+- 판정: 당시 입력 분리 자체는 확인되지만 자동화 명령의 줄바꿈/길이/단순 type 사용이 원인이라는 가설은 이번 재현으로 입증되지 않았다. 조기 제출 또는 다른 입력 개입 가능성은 추론이다. 과거 browser/PTY 입력 trace가 없어 원인 확정 불가. 앞서 자동화 입력 실수로 확정하려던 표현은 철회한다. AIOX 결함도 확정하지 않고 production 수정 없음.
+- 증거: /private/tmp/capture-type.json, capture-insert.json, input-diag-type-trace.json, input-diag-enter-trace.json, input-wrapper-trace.json, input-wrapper-submitted.png. /private/tmp/aiox-input-repro-x85dv3o9/verify-input.py 실행 PASS(raw·browser bytes·direct/AIOX Claude transcript 대조). 공식 agent-browser v0.37.1 interaction.rs는 type의 일반 문자를 문자별 Input.insertText로 전달한다. 출처 https://github.com/vercel-labs/agent-browser/blob/v0.37.1/cli/src/native/interaction.rs.
+
+### 2026-09-21 22:13 · 제목 helper MCP 설정 항목의 의미 설명
+
+- 사용자는 2번 입력 분리 추가 조사를 넘어가기로 했으며, 제목 helper의 불완전한 MCP 설정 항목이 무엇인지 질문했다.
+- 이 항목은 보안상 불안전하다는 의미가 아니라 Codex 내부 제목 생성 요청의 설정 정보가 불완전했던 과거 오류다. 2026-09-14 18:04 실측과 vendor-bindings architecture의 현재 gap 서술을 대조했다. Codex 0.153.4에서 제목 helper가 mcp_servers.aiox={enabled:false}만 전달하면 transport 누락으로 설정 검증이 실패했고, 같은 요청에 url까지 포함하면 수락됐다.
+- 현재 AIOX launch는 URL/token 설정을 가진 AIOX MCP entry를 주입하고 Relay는 제목 helper의 부분 설정을 보정하지 않는다. 이 설명은 기존 0.153.4 검증의 의미이며 최신 0.155.1에서도 발생한다고 재확인한 것은 아니다. 현재 작업의 일반 메시지 송수신 실패나 보안 취약점으로 확대하지 않는다.
+
+### 2026-09-21 22:25 · Codex 0.155.1 실제 제목 helper의 incomplete MCP 설정 오류 재현
+
+- 사용자가 현재 버전에서 실제 제목 helper 요청을 우선 관측하는 검증을 승인했다. pnpm build 성공 후 별도 임시 home/DB /private/tmp/aiox-title-2l37j8vs에서 AIOX CLI로 Codex 0.155.1, gpt-5.6-luna medium을 실행했다. 검증 daemon PID87986/51570, Web51571, shell 0a44b3ad-4002-4d3d-803f-ace121005b6c, 사용자 thread 01a0c422-f927-78a3-9093-7f580d0e705f. 초기 계측 위치를 보정하기 위해 첫 실행은 대화 전에 종료했고, daemon 프로세스의 실제 WebSocket Relay 경로에서 요청·응답을 기록했다. 사용자 46521 및 다른 에이전트 자원은 조작하지 않았다.
+- 첫 사용자 입력은 가을 잎 색깔에 대한 두 문장 설명, 도구·파일 변경 금지 요청이었다. 13:23:53.620Z TUI가 thread/start id temporary-structured-91d89aa3-fce0-47ff-bad8-5454c666adef, ephemeral:true, threadSource:system, model:gpt-5.6-luna를 보냈다. config.mcp_servers.aiox는 정확히 {enabled:false}였고 url/command는 없었다. 다른 MCP도 disabled-only entry였다. AIOX Relay가 같은 설정을 App Server로 전달한 것을 양쪽에서 확인했다.
+- 13:23:53.627Z 같은 요청에 code:-32600, failed to load configuration: invalid transport in mcp_servers.aiox 오류가 반환됐다. 임의 주입한 오류가 아니라 실제 TUI helper 요청에 대한 서버 응답이다. 0.153.4에서 기록했던 오류가 현재 0.155.1에서도 재현되므로 과거에만 남은 미확인 항목이라는 제한은 이번 범위에서 해소됐다. AIOX가 enabled:false를 생성한 것은 아니며 현재 production은 해당 설정을 보정하지 않는다.
+- 사용자 turn은 13:23:56.604Z completed, AIOX idle로 끝났다. 실제 TUI에 정상 두 문장 답변이 표시됐다. helper 실패와 일반 대화 완료를 구분한다. 관측 구간에 thread/name/updated는 없었다. 시작 화면의 별도 MCP sign-in 경고를 이 helper 설정 오류와 동일시하지 않는다.
+- 증거: title-rpc.jsonl(요청/응답 ID·방향·MCP 설정), evidence.jsonl(사용자 turn·응답·상태), /private/tmp/aiox-title-completed.png. verify.py의 실제 helper disabled-only 설정/동일 ID 오류/사용자 turn 완료/제목 update 부재 assertion PASS. 실제 경로에서 재현됐으므로 조건부로 제안했던 직접 App Server 설정 비교는 추가하지 않았다. production 코드·전역 설정은 수정하지 않았다. TUI /exit 뒤 검증 daemon/browser 정리를 수행했다. W5의 남은 판단은 이 재현된 helper 오류를 AIOX가 보정할지 여부이며 이번 요청은 검증까지다.
+
+### 2026-09-21 22:38 · 제목 helper 오류 근본 원인 확정: CLI override 테이블 교체와 파일 계층 병합 차이
+
+- 사용자는 AIOX 설정 주입과 Codex 병합을 추적해 원인을 확정하도록 지시했다. Codex rust-v0.155.1 공식 소스와 동일 codex-cli 0.155.1의 격리 stdio App Server 비교로 확인했다. production·사용자 전역 config는 수정하지 않았다.
+- 생산자: AIOX packages/adapters/codex/src/launch.ts:86은 -c mcp_servers.aiox={url=...,bearer_token_env_var=...,required=true,enabled=true}를 App Server에 전달한다. 처음 설정에 transport 필드는 존재한다. Codex tui/src/temporary_structured_request.rs:116-124는 내부 helper에서 mcp_servers 전체 키 아래 각 서버를 {enabled:false}만으로 만든다.
+- 병합 경로: app-server/src/request_processors/thread_processor.rs:1355-1359 → config_manager.rs:186-196,232-244. request_overrides를 기존 cli_overrides 뒤에 chain해서 한 CLI override 계층을 만든다. config/src/overrides.rs:9-14는 순서대로 적용하고 :64의 table.insert는 mcp_servers 같은 일반 table을 재귀 병합하지 않고 통째로 교체한다. 따라서 먼저 CLI 주입된 mcp_servers.aiox.url/인증/required가 뒤의 helper mcp_servers table로 지워진다. 구조화된 일부 features만 예외 병합하며 MCP에는 해당하지 않는다.
+- 실패 소비자: config/src/mcp_types.rs의 RawMcpServerConfig 변환은 command도 url도 없으면 :488에서 invalid transport를 반환한다. enabled 값 적용은 이후 :500이므로 enabled:false라고 transport 검증을 건너뛰지 않는다. Relay 전송·인증·HTTP 접속 실패가 아니라 모델 실행 전 설정 파싱 오류다.
+- 대조 실험: /private/tmp/codex-title-source/probe.py. 각기 별도 CODEX_HOME·빈 project·config로 CLI table / CLI leaf fields / config.toml의 3종 주입을 비교했다. base는 로컬 포트1 URL+enabled:false로 네트워크 접속과 모델 실행 없이 설정 처리만 검증했다. 각 경우 startup_only, helper root table, helper leaf override, helper complete entry의 4종 thread/start를 수행했다. 일반 시작은 모두 성공. helper root table은 CLI table·CLI fields 두 경우 같은 -32600 invalid transport로 실패하고 config.toml이면 성공했다. helper leaf override(mcp_servers.aiox.enabled=false) 또는 URL 포함 complete entry는 모든 경우 성공했다. 12개 비교 결과 /private/tmp/aiox-title-matrix-bh6o2wgm/results.json, /private/tmp/codex-title-matrix-check.py PASS.
+- 왜 파일은 성공하는가: config/src/loader/mod.rs는 파일 계층과 만들어진 CLI 계층을 merge_toml_values로 합치고 config/src/merge.rs는 table 간 재귀 병합을 한다. 파일의 URL은 살아남지만 같은 CLI 계층 안에서 앞서 주입된 URL은 override table 구성 단계에서 이미 삭제되어 복구되지 않는다. AIOX Relay 없이 직접 App Server에서도 재현됐다.
+- 판정: AIOX 초기 필드 누락이 아니라 현재 -c 주입 방식과 Codex helper의 전체-table override가 충돌한다. CLI URL/auth 필드를 더 넣거나 -c를 leaf 단위로 쪼개는 것으로 해결되지 않는다. Codex helper를 leaf override로 보내도록 바꾸면 기존 transport를 유지하고 끄기만 하는 동작이 가능함을 확인했다. AIOX에서 대응한다면 이 요청 범위의 보정 또는 설정 계층 변경을 검토해야 하며, 이번에는 원인 조사만 수행하고 구현하지 않았다. 사용자 전역 config 파일에 런타임 URL/token을 쓰는 변경은 수행하지 않는다.
+- 공식 소스 원본 https://github.com/openai/codex/tree/rust-v0.155.1/codex-rs, 필요한 파일 보존 /private/tmp/codex-title-source/. 모든 비교용 App Server는 finally에서 종료·wait했다. 앞선 0.155.1 실제 TUI 오류와 이번 최소 비교가 같은 설정 검증 실패를 보여 준다.
+
+### 2026-09-21 22:42 · 사용자 지시로 제목 helper 보정 취소·기존 동작 유지
+
+- 사용자가 제목 생성 오류가 일반 사용을 방해하지 않는다면 수정을 취소하라고 지시했다. 이번 실제 검증에서는 helper 요청만 실패하고 사용자 답변·turn completed·AIOX idle은 정상이었다. 모든 사용 경로에 영향이 없다는 보장으로 확대하지 않는다. 자동 제목 생성 실패는 알려진 제한으로 유지하고 AIOX 보정을 진행하지 않는다.
+- 취소 직전 Relay에 내부 disabled-only MCP table을 leaf override로 바꾸는 코드와 회귀 테스트를 추가했고, 대상 실패 확인 후 Codex adapter 19 tests·typecheck·lint가 통과했다. 사용자의 취소 지시에 따라 해당 두 파일의 추가분만 확인 후 전부 되돌렸다. production 최종 변경은 없다. 변경된 dist가 남지 않도록 원복 소스로 다시 빌드한다.
+- 변경 후 실제 TUI 검증은 아직 실행하지 않았으며 임시 /private/tmp/aiox-title-fixed-pxg0pwzd는 준비만 했다. 새 daemon이나 TUI는 띄우지 않았다. 앞선 원인·재현 증거는 유지한다. 제목 helper의 수정/유지 판단은 보정 취소·기존 동작 유지로 정리하며 W5 전체 종료를 뜻하지 않는다. commit/push 없음.
+
+### 2026-09-21 22:43 · 사용자 요청: 제목 helper 설정 비교표와 최종 취소 판단 명시
+
+- 사용자 요청에 따라 비교 조건과 결과를 표로 명시한다. Codex 0.155.1의 격리된 App Server에서 모델 작업을 실행하지 않고 thread/start 설정 수락 여부를 비교했다. 아래 성공은 제목 문장 생성 완료가 아니라 해당 설정 요청의 수락을 뜻한다. 실제 제목 helper 실패·일반 답변 완료는 앞선 TUI 검증으로 별도 확인했다.
+
+| 조건 | 결과 |
+| --- | --- |
+| 현재처럼 `-c mcp_servers.aiox={...}`로 주입 + 기존 제목 helper의 `mcp_servers` table 요청 | 실패: `invalid transport in mcp_servers.aiox` |
+| `-c`를 URL·enabled 항목별로 나눠 주입 + 같은 helper 요청 | 동일하게 실패 |
+| 같은 설정을 격리된 `config.toml`에 넣기 + 같은 helper 요청 | 성공: thread/start 수락 |
+| 제목 요청을 `mcp_servers.aiox.enabled=false` leaf override로 변경 | 성공: thread/start 수락 |
+
+- 해석: CLI 주입값과 요청 override는 같은 CLI 계층에서 순서대로 적용되며 뒤의 `mcp_servers` table이 앞서 주입된 URL 등을 교체한다. 파일 계층은 재귀 병합되어 URL이 유지된다. leaf override는 enabled만 변경하므로 접속 정보가 유지된다. 초기 주입에 필드를 더 추가하거나 `-c`를 항목별로 쪼개는 것만으로 해결되지 않는다.
+- 증거: /private/tmp/aiox-title-matrix-bh6o2wgm/results.json의 12개 비교, /private/tmp/codex-title-matrix-check.py PASS, 공식 Codex 0.155.1 config_manager.rs/overrides.rs/merge.rs/mcp_types.rs 추적. 사용자 전역 config는 변경하지 않았다.
+- 최종 판단: 해결 가능한 조건은 확인했으나 사용자가 일반 사용 정상 확인을 근거로 보정을 취소했다. 자동 제목 생성 실패를 알려진 제한으로 남기며 수정은 적용하지 않는다. 앞선 원복 시 git restore는 sandbox의 index.lock 제한으로 실행되지 않았고, 이후 확인한 두 파일만 git show HEAD 원본으로 복원했다. 두 파일 git diff가 비어 있음을 확인했다.
+
+### 2026-09-21 22:44 · 남은 작업 정리: 추가 기능 수정이 아닌 W5 마감
+
+- 사용자가 현재 남은 작업을 질문했다. W1~W4는 완료 상태이며, 논의한 출력 적체·입력 분리의 추가 조사는 사용자 지시로 넘어갔다. 제목 helper는 원인과 비교 검증을 완료했고 보정 취소·현행 유지 결정까지 기록됐다. 이를 다시 미결 수정 항목으로 제시하지 않는다.
+- 남은 것은 W5 마감: 최신 실측과 제목 helper 유지 결정을 owner architecture에 반영하고 기존 미실측·OS/배포 항목의 Stage8 연결을 점검한다. 특히 vendor-bindings의 제목 helper 설명은 0.153.4 근거에 머물러 있어 이번 0.155.1 재현·CLI 계층 교체 원인·사용자 유지 결정을 반영할 필요가 있다. 검증 자원 정리 및 Work Items/Required Context/next pointer 정합 점검 후 W5 완료와 Stage4 로그 종료 여부를 결정한다.
+- 추가 기능 수정이나 성공 경로 재검증을 새 필수 작업으로 만들지 않는다. 이번 응답 시점에는 W5를 완료하거나 로그를 닫지 않았다.
+
+### 2026-09-21 23:02 · W5 확정 결과의 vendor-bindings owner 반영
+
+- 사용자 지시로 docs/architecture/aiox-vendor-bindings.md에 최신 확정 결과를 반영했다. 교차 메시지 검증 미완료 서술을 실제 Haiku↔Luna 양방향·단방향 검증 범위로 교체하고, rename 후 동일 thread 추적과 remote cd 거절 후 정상 사용, Astra 비동기 질문의 agentMessage 경로를 구분했다. Sent by Codex는 기존 채택 표시로 정정했다.
+- 제목 helper는 0.155.1 실제 실패, 같은 CLI 계층의 table 교체로 인한 transport 소실, 파일 계층·leaf override 비교와 보정 취소·현행 유지 결정을 반영했다. 설정 수락과 제목 생성 완료, 일반 사용자 turn 정상과 모든 경로 무영향을 구분했다. production·tests는 변경하지 않았다.
+- runtime/collaboration spec의 vendor 구조 참조와 기존 입력 계약, launch의 완전한 MCP 주입 및 relay의 내부 helper 제외·인접 회귀를 대조했다. 공개 계약 변경 없이 architecture의 오래된 실측 범위와 미결 서술을 갱신했다. 문서 구조 개편이나 새 owner 생성은 하지 않았다.
+- scripts/check-markdown-inline-code docs/architecture/aiox-vendor-bindings.md 및 git diff --check 통과. W5 action과 Global 재개 문맥을 최신 결정에 맞췄다. 이번 요청은 문서 반영이며 Stage8 연결 확인·검증 자원 정리·최종 종료 점검은 남아 있다. W5 active와 Stage4 open을 유지한다.
+
+### 2026-09-21 23:06 · W5 최종 점검 완료·Stage4 종료
+
+- 사용자 요청으로 남은 마감을 확인했다. owner 반영은 완료됐고 Stage8의 기존 OS·배포 범위에 Codex 인증을 W4로 구체화했다. logs/2026-09-09-AIOX-TUI-Stage8-Integration.md에 기존 생략·미실측과 완료 범위를 함께 연결했으며, 생략 시나리오를 자동으로 재활성화하지 않았다. 추가 제품 수정은 없다.
+- 출력 적체 데모의 info.json과 실제 PID 96238 명령(node /private/tmp/aiox-backlog-dlw0kqam/probe.mjs), listener 64612/64613을 대조한 뒤 해당 daemon stop의 stopped:true/forced:true와 독립 browser aiox-backlog-0921 close를 확인했다. 후속 ps에서 이번 Stage4 임시 probe 경로의 node 실행은 0개였고 두 listener도 없었다. 기존 rename/cd·async·교차·입력·제목 검증은 앞선 개별 종료 근거를 소비했다. 다른 브라우저 세션과 포트46521은 조작하지 않았고 임시 증거 파일은 보존했다.
+- W1~W5 완료로 Stage4를 종료한다. plan의 Stage4만 완료로 갱신하며 별도 진행 중인 Stage3 활성 상태를 유지한다. 본 로그는 독립 로그여서 소비할 Return Target이 없다. Stage8 W4는 해당 단계에서 실제 OS/vendor·배포 환경을 확보해 실행할 후속 인증이며 Stage4 미완료 작업으로 남기지 않는다.
+- 이 기록이 과거 Required Context의 W2 미완료·W4 대기·W5 조사 재개 표현을 대체하는 최종 상태다. 기존 결과와 미실측 근거는 history로 보존한다. log 구조·문서 inline code·diff 공백 검사를 수행하며 코드 테스트 재실행이나 새 실측·commit/push는 하지 않는다.
+
+### 2026-09-21 23:09 · 사용자 지시로 Stage5 포인터 전환·Stage4 변경만 커밋
+
+- 사용자 지시로 plan의 활성 포인터를 Stage5로 전환한다. Stage3는 현재 미완료이므로 대기로 표시하고 원본 로그의 재개점을 보존한다. Stage4 완료 상태는 유지한다. Stage5 로그의 기존 W1 재개점을 소비하며 다른 에이전트가 작성한 Stage5 내용은 이번 커밋에 포함하지 않는다.
+- 커밋 범위는 이 Stage4 로그, docs/architecture/aiox-vendor-bindings.md, plan의 Stage3/4/5 표시와 Stage8의 Stage4 유래 W4·Global 인계·마감 인계 entry다. Stage8의 기존 Stage3 W1~W3 인계 등 타 작업 변경은 부분 staging으로 제외한다. production·다른 owner 문서·다른 단계 로그의 변경을 포함하지 않으며 push하지 않는다. 후속 포인터 기록을 위해 로그를 잠시 open으로 전환한 뒤 decided로 되돌리며 검증 작업을 재개하지 않는다.
