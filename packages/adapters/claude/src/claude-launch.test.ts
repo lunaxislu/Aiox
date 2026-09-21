@@ -30,7 +30,12 @@ function input(args: string[] = []) {
     return {
         args,
         cwd,
-        env: { HOME: cwd, CLAUDE_CONFIG_DIR: join(cwd, "config") },
+        env: {
+            HOME: cwd,
+            CLAUDE_CONFIG_DIR: join(cwd, "config"),
+            // Generic launch tests use the Git-unavailable fallback.
+            PATH: join(cwd, "no-executables"),
+        },
         inboxPath: join(cwd, "inbox.sock"),
         mcpUrl: "http://localhost:4500/mcp/network",
         instruction: "AIOX communication instructions",
@@ -299,6 +304,7 @@ it.skipIf(process.platform === "win32")(
                 env: {
                     HOME: join(cwd, "home"),
                     CLAUDE_CONFIG_DIR: join(cwd, "config"),
+                    PATH: process.env.PATH,
                 },
             }),
         ).rejects.toThrow("disableAllHooks");

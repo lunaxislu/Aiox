@@ -8,7 +8,7 @@ status: open
 
 - [ ] W1 Claude 실행·주입 연결 — Stage2 최신 결과와 CLI→Controller→daemon 등록·terminal 문맥·binding 및 관련 owner/tests를 대조하고, 같은 shell·외부 standalone의 foreground TUI 실행에 실행별 HTTP MCP·credential·instruction·hooks를 주입한다. 기존 사용자 설정·hooks·MCP 보존과 설치·버전·시작 실패 경계를 검증한다. -- 이후 vendor 인자 전달과 AIOX 관리 MCP·credential·binding 설정의 충돌 정책을 확정·검증한다. YAML 구현은 Stage5에서 수행한다.
 - [ ] W2 Claude native inbox 전송 연결 — Runtime별 socket/pipe와 준비 관측·인증을 구성하고 공통 send 및 daemon 알림을 연결한다. 발신자 표시·본문 전달·route 권한을 검증하며 inbox token과 MCP token을 분리한다. Windows 네이티브 inbox token 확보·전달·named pipe 인증 경로를 구현하고 검증한다.
-- [>] W3 상태 정규화 결과와 최신 WSL2 자동 검증 완료 entry를 소비한다. 34ea4f6 기반 WSL Node22/24 전체 검사 및 main 131b37c의 WSL CI 통과를 확인했다. 2c23cb5의 3 OS 통과와 구분하며 실제 Claude TUI·quota·Windows/WSL 혼합 흐름 등 잔여 실측을 재개한다.
+- [>] W3 최신 통합 CI·Git 테스트 격리 완료 entry를 소비한다. 25fa742의 로컬 전체 검사 PASS와 사용자 CI 성공 보고를 구분해 보존한다. PTY snapshot/live 및 SSE 무이벤트 검사 후보의 재현·완료 조건 검토와 실제 Claude TUI·quota·Windows/WSL 혼합 흐름 잔여 실측을 재개한다.
 - [ ] W4 Claude 종료·실패 정리 연결 — 정상 종료·준비 실패·프로세스 종료와 binding 연결 손실의 관측·실패 처리를 구분하고 실제 관리 자원 종료와 credential·등록·route 정리를 확인한다. 브라우저 attachment 손실은 Runtime 종료로 처리하지 않는다. Agent 정상 종료에서는 빌린 shell·terminal ID를 유지하고 원 shell 복귀와 직접 소유 자원 종료를 검증한다. daemon force stop에서는 관리 Agent 자원과 daemon 소유 일반 shell PTY까지 종료·확인한다. 재실행 시 새 Runtime 신원 분리와 부분 실패·재시도 경계를 검증한다.
 - [ ] W5 실제 Claude 수직 통합 검증·owner 반영·Stage4 인계 — 같은 terminal 실행부터 HTTP MCP 송수신·inbox 표시·hooks 결과·종료 복귀까지 실제 TUI로 검증하고 기존 사용자 설정 보존·브라우저 detach 생존을 확인한다. Windows 네이티브 token 확보·전달·pipe 인증의 실제 검증 결과와 Linux/macOS·WSL 결과로 통합 완료 여부를 판정한다. 환경 부재 등으로 미검증이면 해당 범위는 미완료로 남기고 후속 검증 위치·재개 조건을 명시한다. 미검증 표기만으로 Windows 통합 완료를 선언하지 않는다. 관련 회귀·pnpm check·owner/링크 정합을 점검해 후속 단계 소비 지점을 남긴다.
 
@@ -46,6 +46,7 @@ status: open
 - 2026-09-18 사용자 확정으로 과거 session 상태 파일·직접 fs.watch 복귀 금지 규칙을 번복했다. 개편 방향은 registry(`sessions/<pid>.json`) 파일 감시로 현재 status를, transcript 파일 감시로 promptId·입력 출처·prompt별 결과를 판정하는 T-R이다. 제거 hook은 FileChanged·CwdChanged·UserPromptSubmit·PreToolUse·PostToolUse(+Failure)·PermissionRequest·Elicitation(+Result)·SessionEnd이고 SessionStart·StopFailure·Notification만 남긴다. 디렉터리 감시는 쓰지 않고, 첫 transcript 감시는 registry 변경 때 존재를 확인해 붙이며 그 지연은 허용한다. 먼저 온 StopFailure는 입력 행과 연결될 때까지 보관한다. OTel과 250ms polling reader는 계속 History다. 근거는 2026-09-18 block의 직접 fs.watch 실측(run-CtIbcy/run-FIpDrB)이다.
 - 최신 정책은 전환 시 옛 instance 삭제다. 활성 읽기 snapshot 소비 후 삭제하고 미래 행을 기다리지 않는다. resume은 새 instance/fromEnd이며 옛 cursor 재사용 금지. idle은 즉시 해제, pending 결과는 interrupted(first outcome 보존), 저장 거절은 outcome만 재시도한다. 기존 프로세스 종료까지 보관·resume 재사용 승인은 최신 사용자 지시로 대체됐다. 실제 최종 반복 전환 run-xzs4OH와 busy resume run-giu8ia는 completed4/notice4 및 completed3/notice3, hook 오류0이다.
 - 최신 OS 검증 근거는 「WSL2 자동 검증 완료와 main CI 반영」 entry를 따른다. 34ea4f6 기반 WSL2 내부 자동 검사와 131b37c main WSL CI는 통과했고, 2c23cb5의 3 OS 결과는 해당 과거 코드의 근거다. 이전 다른 OS 미검증 표기를 WSL 자동 검사까지 적용하지 않되 실제 Claude TUI·quota·혼합 실행은 미실측으로 유지한다.
+- 최신 재개 근거는 「통합 CI와 Git 테스트 격리 완료 — 사용자 CI 성공 보고」 entry다. WSL은 ci.yml의 별도 job으로 통합됐고 Git 일반 테스트의 외부 실행 의존성은25fa742에서 분리됐다. 해당 커밋 CI 성공은 사용자 보고이며 원격 실행 ID는 미제공이다. PTY400ms/SSE20ms 후보는 아직 미수정·미실측이며 기존 실제 TUI 검증 잔여와 구분한다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -2433,3 +2434,21 @@ registry 변경은 현재 reader 및 아직 watcher가 없는 옛 reader에 읽�
 - main 반영: .github/workflows/wsl-validation.yml과 .github/scripts/verify-wsl.sh를 131b37c에 추가해 main push/PR 및 수동 실행에서 Node22/24 WSL 검증을 수행한다. 기존 3 OS workflow는 유지한다. main 실행35554123625(https://github.com/lunaxislu/aiox-prototype/actions/runs/35554123625)의 headSha=131b37c51b6244a2685e265da33bfab5efbadf26이며 두 WSL job 모두 success를 확인했다. 이번 amend는 로그만 추가하므로 검증 근거의 원래 SHA를 보존하며 새 SHA에서 CI를 확인했다고 표현하지 않는다.
 - 기존 3 OS 근거: 2c23cb5의 실행35512308692에서 Linux/Windows native/macOS × Node22/24 전체 성공. 그 결과를 이후34ea4f6의 모든 OS 검증으로 확대하지 않는다.
 - 한계와 재개: WSL 내부 자동 검증은 완료. 실제 Claude TUI·quota 재현·Windows daemon에서 wsl.exe로 실행하는 혼합 제품 흐름·Windows 공유 filesystem 경로는 검증하지 않았다. W3 및 W1/W2/W4/W5는 미완료로 유지하며 잔여 실측을 재개한다.
+
+### 2026-09-21 · Headroom wrap Codex 사용 주의점 확인
+
+사용자가 `headroom wrap codex`의 토큰 절감 방식과 알아야 할 점을 질문했다. 로컬 CLI 0.37.0의 wrap/unwrap help와 설치된 wrap.py, output_shaper.py 및 upstream README를 확인했다. 로컬 프록시에서 입력을 압축하고 MCP로 원문을 회수하는 방식이며, Codex config에 지속되는 변경과 기본 Serena 등록이 있다. unwrap은 사전 config 백업이 있으면 복원하므로 wrap 이후 설정 변경의 보존을 먼저 확인해야 한다. output shaping은 설치 코드상 opt-in이며 이번 실행의 활성 여부는 확인하지 않았다.
+
+관측: 이번 세션 도구 출력에 압축 표시와 CCR 참조가 나타났다. 일부 CCR hash를 headroom_retrieve로 요청했으나 원문 대신 참조가 반환되었다. 원인·일반 재현성은 확인하지 않았으며, 정확한 코드/문서 판독 시 원문 복원 확인이 필요하다는 제한으로 보고한다. 실제 총 토큰·과금·구독 quota 절감률은 검증하지 않았다. 근거: https://github.com/headroomlabs-ai/headroom 및 로컬 CLI help/source.
+
+이번은 도구 사용 질의 기록이며 제품 코드·Headroom/Codex 설정은 변경하지 않았다. 기존 Stage3 Work Items와 next pointer를 유지한다. 로그 분량은 크지만 이번 짧은 실행환경 질의를 별도 workstream으로 분리하지 않고 현재 작업의 부수 기록으로 남긴다.
+
+### 2026-09-21 12:14 · 통합 CI와 Git 테스트 격리 완료 — 사용자 CI 성공 보고
+
+- 사용자 요청으로 기존 Stage3 미커밋 기록(Headroom 사용 주의점 포함)과 이번 검증 결과를 최신 테스트 수정 커밋에 합친다. Stage5 로그와 yaml-extension 별도 작업은 포함하지 않는다.
+- 3f57d0b에서 WSL job을 .github/workflows/ci.yml에 통합하고 별도 wsl-validation.yml을 삭제했다. Windows runner 내부 Ubuntu/Node 설치 경로가 달라 WSL은 별도 job으로 유지하며 같은 CI 결과에서 확인한다.
+- 실패 원인 검증: main 실행35554667247의 macOS Node22는 claude-launch.test.ts의 plugin 인자 보존 검사 중 Git 조회에서 실패했다. 진단 실행35555320668(https://github.com/lunaxislu/aiox-prototype/actions/runs/35555320668)에서는 Node24도2004ms 후 SIGKILL/killed=true로 같은 실패가 재현됐다. PATH 없는 fixture의 실제 Git 조회와 제품의2000ms 제한이 결합한 간헐적 실패이며 Node22 전용 문제로 분류하지 않는다. 환경 상속 대조군은43ms였다. 시스템 Git 첫 실행이 느려지는 내부 원인은 확정하지 않았다.
+- 25fa742 수정: claude-launch.test.ts 일반 fixture는 존재하지 않는 PATH로 기존 Git 미설치 fallback을 사용해 불필요한 실제 Git 의존성을 제거한다. user/project/local 설정 검증은 유지한다. 실제 Git 저장소 루트 설정 탐색 테스트만 PATH를 명시적으로 상속하고 HOME/config는 격리한다. 제품 코드·Git timeout은 변경하지 않았다.
+- 직접 검증: Node22.18.0/24.14.0에서 대상16개씩 PASS, 포맷 검사 및 root caffeinate -i pnpm check PASS(/private/tmp/aiox-git-isolation-full-check.log). 사용자께서 이번 턴에 push 후 CI 성공을 보고했다. 이를 사용자 보고 근거로 수용하며 이 턴에 원격 CI를 재조회하지 않았다. 실행 ID는 제공되지 않았으므로 새 ID나 세부 job 결과를 추정하지 않는다. amend 이전 검증 기준 SHA는25fa742이며 로그 합친 새 SHA의 CI 성공으로 표현하지 않는다.
+- 서브에이전트 read-only 점검의 남은 후보: packages/terminal/src/index.test.ts:386의 sleep0.4 기반 snapshot/live 구분은 늦은 attach에서 false failure 가능성이 있다. apps/daemon/src/daemon.test.ts:1912/1959의 sleep20 후 무이벤트 단언은 늦게 도착하는 이벤트를 놓쳐 false positive 가능성이 있다. 두 항목은 코드 경로에서 도출한 경쟁 조건이며 해당 CI 실패의 실측 원인은 아니다. 아직 수정하지 않았다. 단순 timeout 일괄 증가는 하지 않는다.
+- W3 active 유지. 다음은 위 공통 비동기 테스트 후보의 재현·완료 조건 검토와 기존 실제 Claude TUI/quota/Windows-WSL 혼합 흐름 잔여 실측이다. W1/W2/W4/W5 완료로 확대하지 않는다. 동일 W3의 검증 후속이므로 기존 로그 수명을 유지한다.
