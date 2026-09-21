@@ -388,6 +388,8 @@ async function localSettingsRoot(
             },
         ));
     } catch (error) {
+        const e = error as NodeJS.ErrnoException & {killed?: boolean; signal?: string; stderr?: string};
+        console.error("[DIAG git]", JSON.stringify({elapsed: Date.now()-diagStart, node: process.version, pathPresent: env.PATH !== undefined, code:e.code, signal:e.signal, killed:e.killed, stderr:e.stderr}));
         if ((error as { killed?: boolean }).killed)
             return invalid("Git local settings resolution");
         return cwd;

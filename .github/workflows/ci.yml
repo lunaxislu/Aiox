@@ -42,7 +42,7 @@ jobs:
             - name: Diagnose cold Git lookup
               env:
                   DIAG_ENV: ${{ matrix.env }}
-              run: pnpm --filter @aiox/adapter-claude exec vitest run --config ../../../vitest.config.ts src/claude-launch.test.ts
+              run: pnpm test
             - name: Compare Git executables after first launch
               if: always()
               run: |
