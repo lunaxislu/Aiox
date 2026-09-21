@@ -1851,7 +1851,9 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
     const network = await harness.daemon.services.networks.create("events");
     const origin = await joinAgent(network.id, "origin");
     const target = await joinAgent(network.id, "target");
+    const connections = vi.spyOn(harness.daemon.services.webEvents, "connect");
     const response = await fetch(harness.webUrl("/api/web/events"));
+    const writes = vi.spyOn(connections.mock.calls[0]![0], "write");
     const reader = response.body!.getReader();
     let events = 0;
     const observing = (async () => {
@@ -1902,6 +1904,7 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
             ).body,
         ).toEqual({ read: 1 });
         await vi.waitFor(() => expect(events).toBe(beforeRead + 1));
+        const beforeNoOp = writes.mock.calls.length;
         expect(
             (
                 await post("/api/web/notifications/read", {
@@ -1909,7 +1912,8 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
                 })
             ).body,
         ).toEqual({ read: 0 });
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        // The HTTP response follows notify(); socket delivery need not have caught up.
+        expect(writes).toHaveBeenCalledTimes(beforeNoOp);
         expect(events).toBe(beforeRead + 1);
     } finally {
         await reader.cancel();
@@ -1921,7 +1925,9 @@ it("does not invalidate Web state for external-only runtime and notification cha
     const network =
         await harness.daemon.services.networks.create("external-events");
     const web = await joinAgent(network.id, "web");
+    const connections = vi.spyOn(harness.daemon.services.webEvents, "connect");
     const response = await fetch(harness.webUrl("/api/web/events"));
+    const writes = vi.spyOn(connections.mock.calls[0]![0], "write");
     const reader = response.body!.getReader();
     await reader.read();
     const frames: Uint8Array[] = [];
@@ -1956,8 +1962,8 @@ it("does not invalidate Web state for external-only runtime and notification cha
             read: 1,
         });
         await harness.daemon.stopRuntime(origin.runtimeId);
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        expect(frames).toHaveLength(0);
+        // Registration, settlement and cleanup have all completed their notifications.
+        expect(writes).not.toHaveBeenCalled();
         await harness.daemon.services.messages.send(
             harness.daemon.services.runtimes.get(web.runtimeId)!,
             [target.runtimeId],

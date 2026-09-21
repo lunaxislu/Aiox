@@ -388,7 +388,10 @@ describe.skipIf(process.platform === "win32")("createTerminal", () => {
         const session = open({
             id: "replay",
             file: "/bin/sh",
-            args: ["-c", "printf 'EARLY\\n'; sleep 0.4; printf 'LATE\\n'"],
+            args: [
+                "-c",
+                "printf 'EARLY\\n'; read -r release; printf 'LATE\\n'",
+            ],
         });
         const observer = view(session);
         await waitFor("early output", () => observer.text.includes("EARLY"));
@@ -398,6 +401,8 @@ describe.skipIf(process.platform === "win32")("createTerminal", () => {
         const off = session.attach({
             snapshot(value) {
                 snapshot = decoder.decode(value.data);
+                // Release the child only after the snapshot boundary is established.
+                session.write("\r");
             },
             data(chunk) {
                 live += decoder.decode(chunk);
