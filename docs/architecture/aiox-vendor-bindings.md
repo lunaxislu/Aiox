@@ -27,7 +27,7 @@ Runtime 종료·시작 실패 → revoke → 기존 MCP session의 후속 요청
 
 daemon 알림도 각 vendor의 동일한 입력 경로로 전달하고 AIOX daemon 발신임을 표시한다. Agent의 역방향 route 권한이나 vendor system role을 만들어 내지 않는다. daemon 알림 처리는 다시 완료 알림을 만들지 않는다.
 
-Codex는 Runtime·threadId·turnId에 입력을 연결하고 `turn/completed`의 결과가 completed/failed/interrupted인지 구분한다. busy toolOutput이 기존 turn에서 처리될 수 있으므로 입력마다 별도 turn이 생성된다고 가정하지 않는다. Claude는 hooks와 FileChanged로 읽은 session/prompt의 transcript 인과관계로 해당 입력 종료를 판정한다. 정확한 busy/multi-input 연결은 실제 통합의 검증 대상이다.
+Codex는 Runtime·threadId·turnId에 입력을 연결하고 `turn/completed`의 결과가 completed/failed/interrupted인지 구분한다. busy toolOutput이 기존 turn에서 처리될 수 있으므로 입력마다 별도 turn이 생성된다고 가정하지 않는다. Claude는 registry·transcript 파일 감시와 StopFailure 보고로 session/prompt의 인과관계와 입력 종료를 판정한다. 정확한 busy/multi-input 연결은 실제 통합의 검증 대상이다.
 
 ## 공통 실행 소유자와 adapter 경계 [Status: As-built]
 
@@ -153,8 +153,8 @@ custom Channel flag, AIOX channel child, agent별 `/send` listener와 Channel fa
 hook helper는 exec-form command/args로 실행돼 shell quoting을 거치지 않는다. 실행별 hook token으로
 보고를 인증하며 MCP token과 구분한다. payload의 session_id/prompt_id 자체는 Runtime 인증이
 아니다. helper는 실제 process.ppid를 보고하며 전체 입력·HTTP 보고 제한은 30초다.
-현재 SessionStart/CwdChanged/FileChanged 응답의 검증된 watchPaths JSON만 stdout에 전달한다.
-다른 보고는 204이며 vendor 결정이나 입력 재전송을 추가하지 않는다. 실행 entry는 adapter의
+현재 주입하는 hooks는 SessionStart·StopFailure·Notification이며, 성공한 Claude 보고는 204로 응답한다.
+helper는 stdout 출력을 만들지 않으며 vendor 결정이나 입력 재전송을 추가하지 않는다. 실행 entry는 adapter의
 `claude-hook-main.js`이며 공통 실행 controller는 이 vendor 파일 경로를 구성하지 않는다. 근거:
 [[packages/adapters/claude/src/launch-hooks.ts]] `packages/adapters/claude/src/launch-hooks.ts:5-9`,
 [[packages/adapters/claude/src/claude-hook-main.ts]] `packages/adapters/claude/src/claude-hook-main.ts:1-6`,

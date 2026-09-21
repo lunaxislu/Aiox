@@ -1,16 +1,18 @@
 ---
 topic: AIOX TUI Stage3 Claude
 description: Claude TUI inbox hooks와 기존 shell 실행 수명 연결
-status: open
+status: decided
 ---
 
 ## Work Items
 
-- [ ] W1 Claude 실행·주입 연결 — Stage2 최신 결과와 CLI→Controller→daemon 등록·terminal 문맥·binding 및 관련 owner/tests를 대조하고, 같은 shell·외부 standalone의 foreground TUI 실행에 실행별 HTTP MCP·credential·instruction·hooks를 주입한다. 기존 사용자 설정·hooks·MCP 보존과 설치·버전·시작 실패 경계를 검증한다. -- 이후 vendor 인자 전달과 AIOX 관리 MCP·credential·binding 설정의 충돌 정책을 확정·검증한다. YAML 구현은 Stage5에서 수행한다.
-- [ ] W2 Claude native inbox 전송 연결 — Runtime별 socket/pipe와 준비 관측·인증을 구성하고 공통 send 및 daemon 알림을 연결한다. 발신자 표시·본문 전달·route 권한을 검증하며 inbox token과 MCP token을 분리한다. Windows 네이티브 inbox token 확보·전달·named pipe 인증 경로를 구현하고 검증한다.
-- [>] W3 최신 통합 CI·Git 테스트 격리 완료 entry를 소비한다. 25fa742의 로컬 전체 검사 PASS와 사용자 CI 성공 보고를 구분해 보존한다. PTY snapshot/live 및 SSE 무이벤트 검사 후보의 재현·완료 조건 검토와 실제 Claude TUI·quota·Windows/WSL 혼합 흐름 잔여 실측을 재개한다.
-- [ ] W4 Claude 종료·실패 정리 연결 — 정상 종료·준비 실패·프로세스 종료와 binding 연결 손실의 관측·실패 처리를 구분하고 실제 관리 자원 종료와 credential·등록·route 정리를 확인한다. 브라우저 attachment 손실은 Runtime 종료로 처리하지 않는다. Agent 정상 종료에서는 빌린 shell·terminal ID를 유지하고 원 shell 복귀와 직접 소유 자원 종료를 검증한다. daemon force stop에서는 관리 Agent 자원과 daemon 소유 일반 shell PTY까지 종료·확인한다. 재실행 시 새 Runtime 신원 분리와 부분 실패·재시도 경계를 검증한다.
-- [ ] W5 실제 Claude 수직 통합 검증·owner 반영·Stage4 인계 — 같은 terminal 실행부터 HTTP MCP 송수신·inbox 표시·hooks 결과·종료 복귀까지 실제 TUI로 검증하고 기존 사용자 설정 보존·브라우저 detach 생존을 확인한다. Windows 네이티브 token 확보·전달·pipe 인증의 실제 검증 결과와 Linux/macOS·WSL 결과로 통합 완료 여부를 판정한다. 환경 부재 등으로 미검증이면 해당 범위는 미완료로 남기고 후속 검증 위치·재개 조건을 명시한다. 미검증 표기만으로 Windows 통합 완료를 선언하지 않는다. 관련 회귀·pnpm check·owner/링크 정합을 점검해 후속 단계 소비 지점을 남긴다.
+- [x] W1 Claude 실행·주입 연결 — Stage2 최신 결과와 CLI→Controller→daemon 등록·terminal 문맥·binding 및 관련 owner/tests를 대조하고, 같은 shell·외부 standalone의 foreground TUI 실행에 실행별 HTTP MCP·credential·instruction·hooks를 주입한다. 기존 사용자 설정·hooks·MCP 보존과 설치·버전·시작 실패 경계를 검증한다. -- 이후 vendor 인자 전달과 AIOX 관리 MCP·credential·binding 설정의 충돌 정책을 확정·검증한다. YAML 구현은 Stage5에서 수행한다.
+- [x] W2 Claude native inbox 전송 연결 — Runtime별 socket/pipe·준비 관측·인증 및 send·daemon 알림 구현과 자동 검사를 확인했다. macOS 실제 발신자·본문·route 차단·알림·Unix 선택 인증 검증 완료. Windows native token 확보·전달·named pipe 실제 인증은 W7을 통해 Stage8 W5로 이관했다.
+- [x] W3 Claude 상태·결과 관측 개편과 검증 완료 — registry/transcript·세션 전환·최초 outcome/DB 재시도·기존 macOS 실측·상태 정규화·WSL 내부 자동 검사·CI/Git 격리 및 PTY/SSE 비동기 테스트 보완 완료. 실제 quota·Windows 혼합 실행·공유 filesystem 실측은 W6 → logs/2026-09-09-AIOX-TUI-Stage8-Integration.md W1/W2/W3로 이관했다.
+- [x] W4 Claude 종료·실패 정리 연결 — 정상 종료·준비 실패·프로세스 종료와 binding 연결 손실의 관측·실패 처리를 구분하고 실제 관리 자원 종료와 credential·등록·route 정리를 확인한다. 브라우저 attachment 손실은 Runtime 종료로 처리하지 않는다. Agent 정상 종료에서는 빌린 shell·terminal ID를 유지하고 원 shell 복귀와 직접 소유 자원 종료를 검증한다. daemon force stop에서는 관리 Agent 자원과 daemon 소유 일반 shell PTY까지 종료·확인한다. 재실행 시 새 Runtime 신원 분리와 부분 실패·재시도 경계를 검증한다.
+- [x] W5 실제 Claude 수직 통합 검증·owner 반영·Stage4 인계 — 같은 terminal 실행부터 HTTP MCP 송수신·inbox 표시·hooks 결과·종료 복귀까지 실제 TUI로 검증하고 기존 사용자 설정 보존·브라우저 detach 생존을 확인한다. Windows 네이티브 token 확보·전달·pipe 인증의 실제 검증 결과와 Linux/macOS·WSL 결과로 통합 완료 여부를 판정한다. 환경 부재 등으로 미검증이면 해당 범위는 미완료로 남기고 후속 검증 위치·재개 조건을 명시한다. 미검증 표기만으로 Windows 통합 완료를 선언하지 않는다. 관련 회귀·pnpm check·owner/링크 정합을 점검해 후속 단계 소비 지점을 남긴다.
+- [→] W6 W3에서 분리한 실제 구독 quota 및 Windows 혼합 실행·공유 filesystem 실측 — Stage8 W1/W2/W3에서 이어서 검증한다. — transferred: logs/2026-09-09-AIOX-TUI-Stage8-Integration.md — 사용자 승인으로 미검증 실측 소유권을 Stage8 W1/W2/W3에 넘기며 W3 완료를 위한 결과 복귀는 기다리지 않는다.
+- [→] W7 W2에서 분리한 Windows native Claude token 확보·전달·named pipe 인증 실측 — Stage8 W5에서 검증한다. — transferred: logs/2026-09-09-AIOX-TUI-Stage8-Integration.md — 사용자 지시로 Windows native inbox 실측 소유권을 Stage8 W5에 이관하며 W2 완료를 위한 복귀는 기다리지 않는다.
 
 ## Required Context
 
@@ -20,7 +22,7 @@ status: open
 
 ### {Global}
 
-- 현재 W3 후속 결과: 2026-09-20 상태 정규화 리뷰·수정 entry가 이번 변경의 근거다. status 누락/shell/quota 취소와 준비·세션·감시 수명을 반영했고 adapter 135개·daemon 연동 78개를 검증했다. 아래 이전 전체 628 PASS와 실제 macOS 실측은 해당 당시 코드 근거이며 이번 실제 quota TUI·다른 OS 검증을 뜻하지 않는다.
+- Stage3 W1~W5는 완료했으며 재개할 로컬 작업은 없다. 최종 「W5 통합 증거 대조·전체 회귀·owner 정합과 Stage3 마감」을 소비한다. pnpm check49files/663tests PASS와 macOS 실제 W1~W4 증거 및 owner 정합이 완료 근거다. W6→Stage8 W1/W2/W3, W7→Stage8 W5 이관은 복귀 대기가 아니며 Stage8 W6의 Claude Linux/WSL·배포 인증도 별도 후속 범위다. 모든 OS 실제 통합 성공을 뜻하지 않는다.
 
 - 사용자가 2026-09-09 단계별 로그 선생성과 plan 연결을 요청했다. 초기 기록은 단계 인계이며 이후 구현·검증 여부는 최신 기록을 따른다. plans/aiox-tui-product-rebuild.md에서 이 단계가 활성화될 때 선행 로그 최신 결과와 실제 코드를 다시 확인한다. logs/artifact/AIOX-TUI-Product-Context-Prompt.md의 전체 제품 문맥과 §15 운영 Web·브라우저 복귀·알림, logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md의 대응 결정을 읽는다. 초기 goal의 reply/Host add 등 폐기된 정책을 복원하지 않는다. 구현 시 관련 owner docs와 producer/consumer·테스트까지 추적하고 변경된 계약을 owner에 반영한다.
 - docs/architecture/aiox-vendor-bindings.md, docs/specs/aiox-runtime.md, docs/specs/aiox-collaboration.md를 읽는다. Claude 실제 TUI + native peer inbox + hooks를 구현하며 headless·SDK·Channel fallback·vendor별 stdio MCP child를 추가하지 않는다. 실행별 credential·공통 HTTP MCP agents_list/send·instruction을 연결하고 기존 사용자 설정·hooks·MCP를 보존한다.
@@ -28,7 +30,7 @@ status: open
 - Claude W3는 registry 화면·transcript 정산 분리 및 세 hooks를 유지한다. 최신 승인으로 옛 session은 진행 중 읽기를 완료한 뒤 삭제하고 같은 ID resume도 새 instance로 관측한다. registry 불일치는 모든 SessionStart에서 준비 상태이며 hook 응답을 막지 않는다. 628개 검사, 직접 /clear·/resume·busy중resume·입력 전후clear 검증은 최신 entry에서 최종 코드 대응을 확인한다. 다른 OS와 W1/W2/W4/W5를 자동 완료하지 않는다.
 - 공통 실행 경계 소비 지점: packages/protocol의 terminalContextFromEnv(env)와 daemon.registerRuntime이 인증된 Web shell 차용을 처리한다. AIOX_TERMINAL_ID/AIOX_TERMINAL_TOKEN은 child env 문맥이며 URL·argv·로그에 노출하지 않는다. Web은 AgentController/ExecutionOwner가 daemon 소유 PTY를 관리하고, 문맥 없는 외부 실행은 CLI가 직접 vendor를 시작해 native stdio를 상속한다. 외부에는 daemon PTY를 만들지 않는다. 등록·종료·shell 복귀는 Stage2-2에서 구현·검증했으므로 이 단계는 기존 경계 위에서 Claude 메시지 통합의 누락을 확인한다. 생성 cwd는 실시간 cd 추적값이 아니다.
 - Stage2 W1~W4 완료 후 다음 단계로 선택됐으나 2026-09-10 공통 Stage2-1을 선행 배치했다. Stage2 최신 W4 entry와 owner를 읽는다. 코드 6621fc3의 CI 34314631099는 3 OS × Node22/24 success이며 Ubuntu Node22 버퍼 timeout은 동일 SHA 재실행 통과·원인 미확정이다. macOS Chrome plain-shell 검증과 vendor 대역 성공을 실제 Claude 통합 성공으로 승계하지 않는다. 2026-09-11 승인된 초기 준비 제한·Notification 힌트 정리·probe cwd·terminal dispose의 국소 수정을 반영했다. 최신 수정 블록을 소비하되 Stage3 전체 착수·완료나 실제 vendor 검증 완료로 확대하지 않는다.
-- Stage2-1 공통 headless·serialization 복원 단계의 완료 결과와 docs/architecture/aiox-storage-terminal.md를 소비한다. 공통 Web 화면 검증을 Claude inbox·hooks 통합 완료로 승계하지 않는다. 현재 W3를 우선하며 W1 실행·주입 검증은 미완료로 남긴다. 다음 실제 Web 통합 검증 전 서버와 Web의 빌드 정합을 확인하고 사용자 세션 재시작은 별도 지시에 따른다.
+- W1~W5 완료 결과와 정정한 docs/architecture/aiox-vendor-bindings.md를 후속 Stage5/6/8에서 소비한다. 본 로그에 활성 next는 없다. plan의 현재 Stage5 포인터는 유지하며 새 검증은 해당 작업 로그의 지시를 따른다.
 - Stage2-2 구현·검증 및 c000cab 로컬 main 반영과 Stage2-3 마감 결과를 소비한다. 2026-09-16 사용자 지시로 plan은 Stage3 활성·Stage4 대기이며 현재 재개점은 W3다. W1/W2/W4/W5의 기존 미완료 범위는 보존한다. 공통 packages/vendor·AgentController와 Claude adapter 경계를 유지하며, Stage3에서 필요한 Claude 메시지·관측·수직 통합 선행 조건을 충족한 뒤 Stage4 W4 교차 검증으로 복귀한다.
 
 ### {W1}
@@ -38,15 +40,20 @@ status: open
 ### {W3}
 
 - 2026-09-17 사용자 승인 구현과 최신 「Codex busy 결과 누락·Claude 과거 metadata head 역행 수정과 전체 검사 통과」 entry를 소비한다. Stop 시작 설정 의존 제거에 이어 두 P1 수정과 tests/owner 반영을 완료했다. pnpm check 전체 47 files/615 tests PASS(Claude 116·Codex 18·daemon 222)이며 이전 Codex 실패는 해소됐다. 신규 TUI 실측은 없고 W3는 실제 transcript relocation·다른 OS·잔여 통합을 남겨 active다. W1/W2/W4/W5를 일괄 완료하지 않는다. 최초 FileChanged 미수신 조사는 종료됐으며 fallback·polling·선생성 조건을 만들지 않는다.
-- 첨부6d95ca93 요구1~6 완료. 최신 첨부 전체 완료 감사와 수면 원인 검증 entry 참조. 최종 코드 caffeinate -i pnpm check 47files/628 PASS(/private/tmp/aiox-disposal-awake-final-check.log), 실제 macOS 전환/정산·자원 회수·owner 반영 완료. 이전 장시간 timeout은 pmset의 수면 기록과 대응하며 수면 방지 실행에서 해소됐다. 다른 OS와 기존 별도 Stage3 작업은 완료 범위 밖이다.
+- 첨부6d95ca93 요구1~6 완료. 최신 첨부 전체 완료 감사와 수면 원인 검증 entry 참조. 최종 코드 caffeinate -i pnpm check 47files/628 PASS(/private/tmp/aiox-disposal-awake-final-check.log), 실제 macOS 전환/정산·자원 회수·owner 반영 완료. 이전 장시간 timeout은 pmset의 수면 기록과 대응하며 수면 방지 실행에서 해소됐다. 다른 OS와 기존 별도 Stage3 작업은 완료 범위 밖이다. 현재 미검증 quota·Windows 혼합 실행·공유 filesystem의 소유자는 logs/2026-09-09-AIOX-TUI-Stage8-Integration.md W1/W2/W3다.
 - 공통 settle resolve는 최초 outcome/error/time 및 향후 저장 재시도 책임의 daemon 인수 ack다. 인수 전 reject는 두 adapter가 최초 결과를 보존한다. 인수 후 DB 실패는 #inFlight.result와 #settling을 사용하는 단일 timer/batch로 1초→최대30초 재시도한다. Runtime 종료 뒤 유지하며 drain 실패는 stopped:false/warnings→HTTP409 stop_incomplete→daemon/DB 유지·재시도 재개다. 메모리 pending은 crash/restart durable outbox가 아니다.
 - 최신 실제 근거: /private/tmp/aiox-w3-relocation-probe. 수정 후 통과 run-f7rqaJ(문제 A: 무예열·무선생성 BEFORE·AFTER completed), run-eAEcjQ(문제 B: 빠른 /cd에서 unlink 0건인데 레지스트리 이벤트로 재정박해 completed), 회귀 run-sB9rmz(CwdChanged 경로)·run-3dDHCq(unlink 이동). 수정 전 dist c8380701 기준 대조 run-nRmIYW(CwdChanged 재등록)·run-gIdmnQ(재등록 없음, FileChanged 0건)·run-kONGOv(--add-dir 영향 없음), 레지스트리 실측 run-aMVyxF·run-tZKMQV·run-4v7tWA, 이동 실측 run-paIrxV·run-IiQihC·run-FpGSJA. run-Ye5Z5D는 watchPaths replace로 CwdChanged에서 레지스트리를 떨어뜨린 실패 사례다. 선행 run-1nX8CD·run-OMW8hR은 probe가 cwd를 바꿔 재등록했기 때문에 통과한 것이므로 초기 감시 동작의 근거로 쓰지 않는다.
 - 과거 attachment No와 도구 실행 Esc·응답 Esc·Stop 후속 실패/완료 원본은 claude-transcript-chain.fixtures.json의 정제 fixture로 새 reducer에서 재생한다. 이 재생과 합성 교차순서/DB 실패 주입 검증을 새 실제 vendor 실측으로 표현하지 않는다. 최초 production probe run-t3TBLe에서 부모보다 먼저 저장된 자식 기록과 SessionEnd inbox env 생략을 확인해 수정했으며 해당 실패 기록도 보존했다.
 - 재개 시 현재 변경 owner(docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, docs/specs/aiox-runtime.md, aiox-collaboration.md)와 인접 구현/tests를 소비한다. 실제 다른 절대경로 transcript relocation, 다른 OS와 기존 Stage3 잔여 통합은 미검증이다. 사용자 session/설정·기존 daemon/TUI는 변경하거나 재시작하지 않았다. 추가 논의 결정이 필요한 요구 충돌이 나오면 중단한다.
 - 2026-09-18 사용자 확정으로 과거 session 상태 파일·직접 fs.watch 복귀 금지 규칙을 번복했다. 개편 방향은 registry(`sessions/<pid>.json`) 파일 감시로 현재 status를, transcript 파일 감시로 promptId·입력 출처·prompt별 결과를 판정하는 T-R이다. 제거 hook은 FileChanged·CwdChanged·UserPromptSubmit·PreToolUse·PostToolUse(+Failure)·PermissionRequest·Elicitation(+Result)·SessionEnd이고 SessionStart·StopFailure·Notification만 남긴다. 디렉터리 감시는 쓰지 않고, 첫 transcript 감시는 registry 변경 때 존재를 확인해 붙이며 그 지연은 허용한다. 먼저 온 StopFailure는 입력 행과 연결될 때까지 보관한다. OTel과 250ms polling reader는 계속 History다. 근거는 2026-09-18 block의 직접 fs.watch 실측(run-CtIbcy/run-FIpDrB)이다.
 - 최신 정책은 전환 시 옛 instance 삭제다. 활성 읽기 snapshot 소비 후 삭제하고 미래 행을 기다리지 않는다. resume은 새 instance/fromEnd이며 옛 cursor 재사용 금지. idle은 즉시 해제, pending 결과는 interrupted(first outcome 보존), 저장 거절은 outcome만 재시도한다. 기존 프로세스 종료까지 보관·resume 재사용 승인은 최신 사용자 지시로 대체됐다. 실제 최종 반복 전환 run-xzs4OH와 busy resume run-giu8ia는 completed4/notice4 및 completed3/notice3, hook 오류0이다.
-- 최신 OS 검증 근거는 「WSL2 자동 검증 완료와 main CI 반영」 entry를 따른다. 34ea4f6 기반 WSL2 내부 자동 검사와 131b37c main WSL CI는 통과했고, 2c23cb5의 3 OS 결과는 해당 과거 코드의 근거다. 이전 다른 OS 미검증 표기를 WSL 자동 검사까지 적용하지 않되 실제 Claude TUI·quota·혼합 실행은 미실측으로 유지한다.
-- 최신 재개 근거는 「통합 CI와 Git 테스트 격리 완료 — 사용자 CI 성공 보고」 entry다. WSL은 ci.yml의 별도 job으로 통합됐고 Git 일반 테스트의 외부 실행 의존성은25fa742에서 분리됐다. 해당 커밋 CI 성공은 사용자 보고이며 원격 실행 ID는 미제공이다. PTY400ms/SSE20ms 후보는 아직 미수정·미실측이며 기존 실제 TUI 검증 잔여와 구분한다.
+- 최신 OS 검증 근거는 「WSL2 자동 검증 완료와 main CI 반영」 entry를 따른다. 34ea4f6 기반 WSL2 내부 자동 검사와 131b37c main WSL CI는 통과했고, 2c23cb5의 3 OS 결과는 해당 과거 코드의 근거다. 이전 다른 OS 미검증 표기를 WSL 자동 검사까지 적용하지 않되 실제 Claude TUI·quota·혼합 실행은 미실측으로 유지한다. 이 항목의 미검증 실측은 2026-09-21 사용자 승인으로 logs/2026-09-09-AIOX-TUI-Stage8-Integration.md W1/W2/W3에 이관했으며 W3 재개 조건이 아니다.
+- 2026-09-21 PTY400ms/SSE20ms 테스트 보완은 완료했다. PTY는 snapshot callback에서 입력으로 child를 해제하고, SSE는 실제 연결의 ServerResponse.write를 관측해 완료된 작업의 무이벤트 여부를 판정한다. /private/tmp/aiox-async-boundary-check.txt의 Node24.14.0 pnpm check 47files/635tests PASS를 소비한다. 기존 25fa742 CI 성공은 사용자 보고이며 이번 변경의 원격 CI 실행 근거는 아니다.
+
+### {W4}
+
+- W4는 완료됐다. 정상 /exit·signal·비정상 exit·준비 실패·협업 연결 손실·브라우저 detach를 구분하고 AgentController → adapter processExited/cleanup → daemon.stopRuntime → 자원/route/messages.forget/unregister 경로를 코드·tests·실측으로 검증했다. 빌린 shell 복귀, daemon 소유 자원 종료, 부분 실패 재시도와 새 Runtime 신원 분리 증거는 최신 W4 entries를 따른다. 완료를 W1/W2/W5나 Stage8 이관 범위로 확대하지 않는다.
+- W4의 자동28files/452tests와 실제 정상·signal·nonzero 종료, SQLite 정리 실패·재시도 및 Haiku completed 보존·pending interrupted·DB 재오픈 PASS는 W5 마감에서 소비했다. W1~W5 완료로 로컬 재개 포인터는 없으며 Windows/OS 후속 검증은 Global에 지정된 Stage8 범위를 따른다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -2452,3 +2459,153 @@ registry 변경은 현재 reader 및 아직 watcher가 없는 옛 reader에 읽�
 - 직접 검증: Node22.18.0/24.14.0에서 대상16개씩 PASS, 포맷 검사 및 root caffeinate -i pnpm check PASS(/private/tmp/aiox-git-isolation-full-check.log). 사용자께서 이번 턴에 push 후 CI 성공을 보고했다. 이를 사용자 보고 근거로 수용하며 이 턴에 원격 CI를 재조회하지 않았다. 실행 ID는 제공되지 않았으므로 새 ID나 세부 job 결과를 추정하지 않는다. amend 이전 검증 기준 SHA는25fa742이며 로그 합친 새 SHA의 CI 성공으로 표현하지 않는다.
 - 서브에이전트 read-only 점검의 남은 후보: packages/terminal/src/index.test.ts:386의 sleep0.4 기반 snapshot/live 구분은 늦은 attach에서 false failure 가능성이 있다. apps/daemon/src/daemon.test.ts:1912/1959의 sleep20 후 무이벤트 단언은 늦게 도착하는 이벤트를 놓쳐 false positive 가능성이 있다. 두 항목은 코드 경로에서 도출한 경쟁 조건이며 해당 CI 실패의 실측 원인은 아니다. 아직 수정하지 않았다. 단순 timeout 일괄 증가는 하지 않는다.
 - W3 active 유지. 다음은 위 공통 비동기 테스트 후보의 재현·완료 조건 검토와 기존 실제 Claude TUI/quota/Windows-WSL 혼합 흐름 잔여 실측이다. W1/W2/W4/W5 완료로 확대하지 않는다. 동일 W3의 검증 후속이므로 기존 로그 수명을 유지한다.
+
+### 2026-09-21 16:14 · W3 완료·잔여 실측 Stage8 이관·W4 재개
+
+- 사용자 승인: 실제 구독 quota 대기·취소·재개, Windows daemon → wsl.exe 혼합 실행, Windows 공유 filesystem 실측은 logs/2026-09-09-AIOX-TUI-Stage8-Integration.md W1/W2/W3로 소유권을 이관하고 W3를 완료한다. 분리한 source W6는 transferred이며 결과 복귀 대기를 만들지 않는다. Stage8은 대기 상태다.
+- W3 완료 근거: 기존 registry/transcript 개편·세션 instance 회수·EOF 격리·최초 outcome/DB 재시도·실제 macOS 전환/입력 정산, 9/20 상태 정규화 수정, WSL 내부 자동 검사와 CI/Git 테스트 격리 결과를 소비했다. 실제 quota/Windows 미검증을 성공으로 간주하지 않고 후속 단계가 이어받는다.
+- 이번 비동기 테스트 보완: packages/terminal/src/index.test.ts의 400ms 경계를 600ms 늦은 attach로 재현하면 기존 테스트가 timeout으로 실패했다. child가 read로 대기하고 snapshot callback의 입력을 받은 뒤 LATE를 출력하도록 바꾸자 같은 600ms 조건에서 통과했다. 재현용 지연은 제거했다. apps/daemon/src/daemon.test.ts의 두 20ms 무이벤트 단언은 실제 SSE 연결의 ServerResponse.write 관측으로 교체했다. HTTP 응답/등록/정산/정리 완료 이후 서버 전송 여부를 판정하고 실제 클라이언트 SSE 수신 검사는 유지한다. 제품 코드는 변경하지 않았다.
+- 검증: SSE 대상 2개 PASS. 첫 시도는 작업 디렉터리의 Node26 ABI와 기존 SQLite Node24 모듈 불일치였고, Node24 명시 후 sandbox localhost EPERM은 허용된 실행으로 해소했다. 포맷 수정 뒤 Node24.14.0 PATH로 caffeinate -i pnpm check exit0, 47files/635tests PASS; lint/format/build/typecheck 포함. 근거 /private/tmp/aiox-async-boundary-check.txt, /private/tmp/aiox-pty-boundary-red.txt, /private/tmp/aiox-pty-boundary-delayed-green.txt, /private/tmp/aiox-sse-boundary-green.txt. 이번 변경의 원격 CI 재조회·신규 실측·commit은 하지 않았다.
+- 종료 흐름 질의의 확인 범위: 사용자 직접 입력에는 AIOX delivery를 새로 저장하지 않는다. 정상 vendor 종료 시 미확정 AIOX delivery는 interrupted, 기존 확정 결과는 보존하며 정리 성공 후 RuntimeRegistry에서 제거한다. Claude 비정상 nonzero/no-signal은 failed, Codex의 결과 없는 요청은 공통 정리 interrupted라는 차이를 유지한다. 코드 판독을 W4 실제 실행 완료로 승격하지 않는다.
+- Reconcile: W3 [x], W6 [→], 다음 포인터 W4 [>]. W1/W2/W5는 open이며 Stage3 로그/plan Stage3는 활성 상태를 유지한다. W4는 기존 종료 근거와 현재 코드의 대조부터 재개한다. Stage8과 source의 Work Items·Required Context·plan 단계 경계를 함께 갱신했다.
+- 수명 판단: 기존 W3의 완료·검증 기록과 후속 실측 transfer이며 새 package 실행은 아니다. 1000줄을 넘는 source 로그를 유지하는 이유는 동일 W3 완료 근거를 현재 Stage3 W4가 소비해야 하기 때문이다. 후속 통합 실측은 이미 독립 Stage8 로그로 넘겼다. 사용자 기존 문서 변경과 다른 단계 로그는 수정하지 않는다.
+
+### 2026-09-21 16:40 · W4 단위·통합 검증 완료와 E2E 대기
+
+- 사용자 지시: W4 단위·통합 검증을 수행하고 E2E는 대기한다. 실제 Claude TUI·브라우저 E2E는 실행하지 않았다.
+- 검증 경로: docs/specs/aiox-runtime.md의 종료·실행 소유권·shell 재사용 계약과 AgentController → ClaudeBinding.processExited/connectionLost/cleanup → daemon.stopRuntime → ExecutionOwner/terminal·route·messages·RuntimeRegistry 정리를 대조했다. 기존 테스트에서 정상 종료 후 빌린 shell 유지, 준비 전 종료 오류, 브라우저/relay 분리 후 실행 유지·재접속, 외부 실행 소유권, credential 선행 회수, 강제 종료·kill/route 정리 실패 재시도, 새 Runtime/token 및 이전 delivery 귀속을 확인했다.
+- 보완: packages/adapters/claude/src/claude.test.ts에 원인별 4개 테스트를 추가했다. connectionLost는 foreground_connection_lost, 외부/협업 cleanup은 각각 external_connection_lost/collaboration_lost로 미확정 delivery를 failed 정산하고 execution_stopped는 interrupted 정산한다. 마지막 transcript의 completed 결과 보존과 뒤따르는 cleanup의 중복 정산 방지를 함께 단언한다. 제품 코드 변경은 없다.
+- 검증 결과: Node24.14.0에서 pnpm build PASS. Claude 11 files/139 tests, daemon 12 files/222 tests, vendor 1 file/3 tests, terminal 4 files/88 tests로 총 28 files/452 tests PASS. 변경 테스트의 oxlint·oxfmt --check, Claude tsc --noEmit, git diff --check PASS. daemon 전체 suite를 실행했으며 테스트 대역을 사용하는 경로와 실제 테스트 PTY/socket을 사용하는 경로가 포함된다. 실제 Claude E2E 또는 다른 OS 통과로 확대하지 않는다.
+- 환경 실패: 최초 sandbox 실행은 localhost/socket listen EPERM으로 Claude 4개 및 daemon harness 기반 테스트가 실패했다. 로컬 서버/PTY 허용 실행에서 위 결과로 모두 통과했다. vendor 3개는 최초 실행부터 통과했다.
+- 실행 근거: /private/tmp/aiox-w4-build.log, /private/tmp/aiox-w4-claude-tests.log, /private/tmp/aiox-w4-daemon-tests.log, /private/tmp/aiox-w4-vendor-tests.log, /private/tmp/aiox-w4-terminal-tests.log. 재실행 로그는 최초 sandbox 실패 로그를 덮어썼으므로 최초 오류 근거는 이번 실행 도구 출력과 이 기록을 따른다.
+- Reconcile: W4 [>]를 유지한다. 다음 작업은 사용자 후속 지시 후 W4 실제 E2E 검증이며, 지금은 E2E 대기한다. 단위·통합 통과를 W4 전체 완료로 승격하지 않는다. W1/W2/W5와 Stage8 이관 범위는 변경하지 않는다.
+- 수명 판단: 기존 Stage3 W4의 검증 결과와 재개 조건이므로 동일 로그에 기록한다. 파일 크기만으로 별도 로그를 분리하지 않는다.
+
+### 2026-09-21 17:10 · W4 실제 macOS 가시 E2E — 종료·복구·소유권 확인과 quota 제한
+
+- 사용자 승인: 실제 화면을 보며 E2E를 진행하라는 지시로 이전 E2E 대기를 해제했다. agent-browser headed session w4-e160cb916b01, 검증용 Web http://127.0.0.1:46521을 사용했다. 외부 Claude는 별도 Terminal 창으로 실행했다. Terminal 앱의 CUA 제어는 도구 정책상 거부되어 네이티브 화면을 자동 조작하지 않았고 API/PID로 확인했다.
+- 환경: macOS, Node24.14.0, 실제 Claude Code 2.1.278. /private/tmp/aiox-w4-visible에 격리 config/DB/work 디렉터리를 만들고 기존 dev-harness로 daemon PID19628·포트46520/46521을 시작했다. CLI는 현재 bootstrap.ts를 esbuild로 임시 번들해 createFoundationPort({home:검증경로})를 호출했다. HOME·기존 설정을 바꾸지 않았다. 제품 소스 변경은 없다. 기존 사용자 daemon PID21629는 종료 전후 생존을 확인했다. 일반 배포 CLI 설치 검증으로 확대하지 않는다.
+- 정상 종료 PASS: 첫 Runtime a100ecb7-d16a-41ad-a4ac-f6a5b5cfc3ee, Claude PID22150이 idle에 도달한 뒤 /exit. Runtime 목록이 비고 Claude PID 소멸, 기존 MCP credential HTTP401을 확인했다. terminal69a48404-45b0-4e25-b20b-3e84e052f186과 shell PID19643은 유지됐고 화면에서 W4_SHELL_RETURN_OK pid=19643 명령 출력으로 원 shell 복귀를 검증했다.
+- 재실행·브라우저 분리 PASS: 같은 shell에서 새 Runtime f1c3d04f-a0d6-4fd4-a658-bb2d945fb83f·Claude PID25598·새 MCP credential을 확인했다. 브라우저를 about:blank로 이동한 동안 같은 PID/Runtime이 유지됐고 재접속 후 입력이 실제 Claude에 도달했다. 정상 모델 응답 대신 계정 quota 오류가 발생해 정상 응답 성공으로 세지 않는다.
+- 제어 연결 손실·복구 PASS: 검증 foreground CLI PID25579만 SIGKILL해 relay 손실을 유발했다. Claude25598은 살아 있고 Web에 화면 다시 연결/vendor 정리 UI가 표시됐다. 화면 다시 연결로 같은 Claude 화면에 복귀했고 /exit로 종료했다. 브라우저 attachment 손실과 제어 relay 손실을 별도로 검증했다.
+- 준비 실패 PASS: 실제 Claude에 --w4-invalid-option을 전달했다. 화면에 unknown option 및 Vendor exited before collaboration became ready 진단이 출력됐고 shell로 복귀했으며 Runtime은 남지 않았다. 최초 준비 과정의 alias 정의와 호출을 같은 줄에 넣어 zsh command not found가 한 번 발생한 것은 검증 스크립트 준비 오류였고, 다음 줄 호출로 해소했다.
+- 실제 요청·프로세스 종료 PASS(범위 한정): 관리 Runtime97a5c680-eb8e-48f7-815d-3bdfdbf4ea15/Claude33005와 외부 Runtime1e27af6c-c4ab-4b9f-9396-c33c8ff89e6f/Claude33242를 실행했다. 외부 Runtime credential로 HTTP MCP send를 호출해 관리 Claude의 native inbox 수신과 accepted=true를 확인했다. 첫 요청은 실제 quota로 failed/rate_limit 확정됐다. 검증 관리 Claude만 SIGSTOP한 뒤 두 번째 send를 받아 DB accepted=1/outcome=NULL을 확인하고 SIGKILL했다. 두 번째 delivery는 interrupted로 정산됐고 첫 failed/rate_limit은 보존됐다. 종료 직전 추가한 관리→외부 blocked route가 삭제됐다. 이는 실제 signal 종료 검증이며 ready 이후 nonzero/no-signal 종료나 자연스러운 사용자 정상 완료를 대신하지 않는다.
+- force stop PASS: 관리 Claude40859·빌린 shell19643·일반 shell41454·외부 Claude33242가 존재한 상태에서 검증 daemon API에 force stop. stopped=true/forced=true 응답 후 daemon19628·관리 Claude40859·shell19643/41454 모두 소멸, daemon.json 제거를 확인했다. 외부 Claude33242와 기존 사용자 daemon21629는 생존했다. Web은 daemon 연결 손실과 process exited를 표시했다. 종료 후 DB 재조회에서 failed/interrupted 결과와 빈 routes가 유지됐다.
+- 정리: 외부 실행 보존 확인 뒤 이번 검증의 외부 Claude33242만 SIGTERM으로 종료했고 PID 소멸을 확인했다. 임시 credential JSON은 삭제했다. DB·스크린샷·결과는 /private/tmp/aiox-w4-visible에 보존했다. results.json과 01~11 PNG, daemon.log가 근거이며 토큰 원문은 로그에 남기지 않는다.
+- 제한/남은 일: 계정 세션 한도(화면상 20:00 Asia/Seoul reset) 때문에 실제 모델 completed 결과를 만든 뒤 종료해 보존하는 시나리오는 미검증이다. 실제 미확정 요청을 정상 /exit로 종료하는 조합과 ready 이후 nonzero/no-signal 종료, 실제 정리 실패 후 재시도는 이번 E2E에서 확인하지 않았다(기존 단위·통합 근거와 구분). 실제 E2E 전체 통과 또는 W4 완료로 승격하지 않는다. 다음 재개는 이번 근거로 W4 잔여 조건을 대조하고 가능한 잔여 E2E를 수행하는 것이다. W4 [>] 유지, W1/W2/W5 및 Stage8의 소유 범위 변경 없음.
+- 수명 판단: 동일 Stage3 W4의 검증 결과와 미완료 조건이므로 기존 로그에 기록한다. 길이만으로 별도 수명으로 분리하지 않는다.
+
+### 2026-09-21 17:25 · W4 ready 이후 실제 Claude nonzero/no-signal 종료 실패 주입 검증
+
+- 사용자 지시: 앞서 미검증으로 남긴 준비 완료 후 nonzero/no-signal 종료를 수행한다. 이전 누락을 quota 제약으로 취급하지 않는다.
+- 방법/범위: 설치된 실제 Claude2.1.278(Bun1.4.3)에 BUN_INSPECT=ws://127.0.0.1:46532/w4를 이번 프로세스에만 전달했다. 디버거에서 process.pid=67853을 확인하고 준비 완료 후 실제 프로세스 안에서 process.exit(42)를 실행했다. 대역 vendor·종료 코드 변환 wrapper·SIGKILL을 사용하지 않았다. 자연 발생 Claude 결함 재현은 아니며 실제 프로세스에 대한 검증용 실패 주입이다. Bun debugger 공식 설명 https://bun.com/docs/runtime/debugger 및 compiled 실행의 환경 변수 조사 https://github.com/oven-sh/bun/discussions/10742를 참고했고 해당 설치본에서 직접 확인했다.
+- 격리/관측: /private/tmp/aiox-w4-nonzero의 별도 DB/config, daemon PID59336·포트46530/46531, shell59339·terminal de01db0e-233d-4afd-8104-33c222faed82. 임시 harness에서 ClaudeBinding.processExited의 입력과 wasReady를 기록한 뒤 원본 메서드를 그대로 호출했다. 제품 코드나 결과 처리 로직은 변경하지 않았다. 현재 CLI bootstrap의 임시 번들로 home 경로만 분리했다.
+- 실제 입력: 수신 Runtime899accc6-b1d0-478a-88a1-2db9d2766bb8/w4-exit42가 idle임을 API로 확인했다. 실제 외부 Claude69895/Runtime1f3e7a3f-88f8-4ab4-bcfa-6ff1ad024f43를 발신자로 등록하고 해당 credential로 실제 HTTP MCP send를 호출했다. accepted=true 응답과 DB delivery01a0c30f-d76c-7303-ad05-1f6e92be89c9의 accepted=1/outcome=NULL을 확인한 직후 exit42를 호출했다. quota 응답으로 먼저 정산된 요청을 nonzero 정산으로 오인하지 않도록 NULL을 선행 단언했다.
+- PASS 근거: events.jsonl의 processExited 이벤트는 wasReady=true/code=42/signal=null이다. DB 결과는 failed/vendor_process_failed이며 interrupted 또는 rate_limit이 아니다. 실제 CLI는 shell에 W4_EXIT_CODE=42를 출력했다. 수신 Claude PID 소멸, 수신 Runtime 제거, 이전 MCP credential HTTP401, 같은 shell/terminal 생존을 확인했다. exit42.png에서 CLI42와 원 shell prompt 복귀를 확인했다. 추가 shell 명령은 입력했지만 shell-return.png에는 해당 출력이 보이지 않아 명령 출력 성공 근거로 세지 않는다.
+- 시도/제한: debugger pause는 두 차례 timeout/paused 이벤트 미수신으로 사용하지 못했다. 성공 실행은 pause 없이 accepted·미정산을 직접 확인하고 종료했다. 브라우저 일반 click/Enter 자동화가 기대대로 전달되지 않는 과정과 활성 탭 전환이 있어 terminal DOM 버튼 및 실제 제품 terminal WebSocket 입력으로 진행했고 t1에 화면을 다시 고정했다. 이를 사용자 수동 키보드 입력의 추가 성공 근거로 확대하지 않는다. ready.png는 당시 다른 탭 화면이므로 Claude 준비 근거로 사용하지 않는다. 준비 근거는 probe-output3.log의 API 응답과 adapter wasReady이며 성공 화면 근거는 exit42.png다. shell-return.png는 후속 화면이며 추가 명령 출력 성공을 입증하지 않는다.
+- 정리/근거: 외부 발신 Claude를 /exit로 종료하고 검증 daemon에 force stop했다. daemon59336·shell59339·수신67853·발신69895 PID 소멸, 기존 daemon21629 생존, 재오픈 DB의 failed/vendor_process_failed 보존을 확인했다. 임시 credential JSON은 삭제했다. /private/tmp/aiox-w4-nonzero/events.jsonl, probe-output3.log, after-exit.json, final-results.json, exit42.png, shell-return.png 및 nonzero.mjs/harness.mjs가 실행·재현 근거다.
+- Reconcile: ready 이후 nonzero/no-signal 종료는 검증 완료로 소비한다. W4 전체 [>]는 유지한다. 남은 실측은 실제 completed 결과의 종료 후 보존(quota 해제 필요), 정상 /exit 중 미확정 요청 정산, 실제 정리 실패 후 재시도다. 이전 기록의 nonzero 미검증 문장은 역사이며 현재 미검증 상태로 재사용하지 않는다.
+- 수명 판단: 기존 W4의 누락 검증을 보완한 동일 작업 수명이므로 기존 로그에 기록한다.
+
+### 2026-09-21 17:35 · W4 정리 실패 재시도 실측 준비와 실제 Claude 실행 승인 대기
+
+- 사용자 범위: 남은 항목 중 2번(실제 정리 실패 후 재시도)만 수행한다. pending 상태의 정상 /exit 및 completed 보존은 이번 범위에서 제외한다.
+- 확인: daemon.stopRuntime은 revoke → binding.stop/cleanup → 소유 terminal 정리 → networks.removeRuntimeRoutes → messages.forget → unregister 순서다. route 저장 실패 시 등록을 남기며 force stop은 HTTP 409/stop_incomplete와 warnings를 반환하고 daemon/DB를 유지한다. 기존 daemon.test.ts의 route retry 테스트는 mock 실패이며 실제 DB 잠금 실측과 구분한다. owner는 docs/specs/aiox-runtime.md 및 docs/architecture/aiox-storage-terminal.md다.
+- 준비: /private/tmp/aiox-w4-retry 별도 DB/config, daemon PID99063·46540/46541 및 shell 2개를 준비했다. harness는 원본 removeRuntimeRoutes에 성공/실패 관측만 추가한다. check-retry.mjs는 실제 SQLite BEGIN IMMEDIATE 잠금 → force stop 409/등록 비활성·route 보존 → 잠금 해제 → 재시도 200/route 삭제/daemon closed 검증을 준비했으며 node --check만 통과했다. 아직 실행 결과가 아니다.
+- 차단: 자동 승인 검토가 테스트 shell에서 실제 Claude 2개 실행을 거부했다. 사유는 실제 계정·외부 서비스 사용 및 quota 소비 가능성이 사용자의 ‘2번만’ 범위를 넘는다는 판단이다. 우회 실행하지 않았으며 사용자에게 해당 실행 승인 또는 실제 Claude 없는 검증 선택을 요청했다. 실측은 미완료이며 W4 상태는 유지한다.
+
+### 2026-09-21 17:39 · W4 실제 SQLite 정리 실패 후 재시도 실측 통과
+
+- 사용자가 실제 Claude 실행을 명시 승인했다. 이번 범위는 2번 정리 실패 후 재시도이며 모델 응답 요청은 보내지 않았다. 앞선 자동 승인 거부로 인한 대기는 해소됐다.
+- 환경: /private/tmp/aiox-w4-retry, daemon PID99063·46540/46541, shell99073/99074, 실제 Claude6815/6847(2.1.278), CLI6784/6827. 별도 Network w4-retry와 두 Runtime22c6b95e-32fd-4ece-b711-f79e0b4295fa/4115e7c4-23c6-4ebb-b478-e8d25c63d0b4가 API 및 Web에서 idle임을 확인했다. 최초 실행은 Network 미생성으로 No such network가 났고 Network 생성 후 재실행했다. 이 준비 오류를 제품 실패로 세지 않는다.
+- 실패 주입: 두 Runtime 사이 blocked route 1개를 실제 API로 저장하고 별도 SQLite 연결에서 BEGIN IMMEDIATE 쓰기 잠금을 유지한 채 POST /api/daemon/stop(force:true)를 호출했다. 원본 route 저장 메서드는 바꾸지 않았으며 harness는 removeRuntimeRoutes 결과만 관측한다. 실제 DB 잠금 오류이며 mockRejectedValue로 대체한 테스트가 아니다.
+- 첫 종료 PASS: HTTP409/code=stop_incomplete, 두 Runtime 각각 database is locked 경고. 관측 Runtime2개는 collaborationActive=false로 등록이 남았고 blocked route1개는 보존됐다. daemon API는 계속 응답했다. 실제 credential은 검증 전 HTTP200에서 실패 후 각각 HTTP401로 바뀌었다. 토큰은 프로세스 환경에서 메모리로만 읽어 사용했으며 파일·출력에 기록하지 않았다.
+- 재시도 PASS: 잠금 rollback/연결 종료 후 같은 force stop은 HTTP200/stopped=true/forced=true. 두 Runtime route cleanup의 성공과 daemon.closed를 관측했다. DB를 재오픈해 route0개를 확인했고 daemon·shell·CLI·Claude 테스트 PID7개가 전부 사라졌다. 기존 사용자 daemon21629는 살아 있으며 조작하지 않았다.
+- 증거: /private/tmp/aiox-w4-retry/results.jsonl의 PASS와 events.jsonl, check-retry.mjs(검증 assert), harness.mjs(관측), ready.png/incomplete.png. 스크린샷은 캡처했으나 이번 판정은 API/DB/내부 관측/PID에 근거한다. 제품 코드 변경 없이 실제 실행·저장소 경계를 검증했다. Vitest 재실행은 하지 않았다.
+- W4 남은 범위는 pending 상태 정상 /exit 정산과 실제 completed 결과 종료 후 보존이다. 이번 2번은 완료했으며 W4 전체는 완료하지 않는다. 로그가 1000줄을 넘지만 같은 W4 수명의 후속 검증이므로 기존 블록에 기록한다.
+
+### 2026-09-21 20:43 · W4 Haiku 실제 completed 보존·pending 정상 종료 통과와 W4 완료
+
+- 사용자 지시: quota reset 후 Haiku로 브라우저에서 남은 실측을 진행한다. 다른 agent의 Codex↔Claude 검증 http://127.0.0.1:63018에는 접근·조작하지 않았다. 별도 /private/tmp/aiox-w4-haiku DB/config·daemon46550/Web46551, agent-browser session w4-haiku의 headed 창을 사용했다.
+- 실제 실행: daemon30453, shell30486/30487, Claude30962/31009. -- --model haiku를 전달했고 Web TUI의 Haiku 4.5/Claude Pro 표시 및 API idle을 확인했다. 제품 terminal WebSocket 입력 경로로 실행·/exit을 전달하며 headed 브라우저에서 출력과 shell 복귀를 관측했다. 브라우저 키보드 자동화 자체의 검증으로 확대하지 않는다.
+- 실제 completed 보존 PASS: haiku-1의 실제 credential로 haiku-0(ed3d7af4-0933-4e60-9556-32ea7cfd3866)에 native inbox send를 호출했다. TUI에서 W4_HAIKU_COMPLETED 응답을 확인했다. delivery01a0c3c3-f03d-7695-ac1d-f53e06ef76cd가 completed/outcome_at1789990797462/errorNULL로 저장됐고 /exit 뒤 Runtime·Claude PID가 없어져 shell로 복귀한 후에도 같은 결과·시각이 유지됐다.
+- pending 정상 /exit PASS: 같은 shell에서 새 Haiku Runtime6e5564b7-0804-4774-bef6-5d0c80d5dd1a를 실행해 idle을 확인했다. 실제 inbox send accepted=true 뒤 delivery01a0c3c5-09eb-704a-8d22-f147e872a33a의 accepted=1/outcomeNULL을 확인했다. WebSocket 연결 후 /exit 입력 직전 다시 outcomeNULL을 확인했다. signal·강제 process.exit·모의 vendor 없이 /exit으로 종료했고 delivery는 interrupted/errorNULL, Runtime 해제, 원래 shell30486 복귀 및 CLI 종료 코드0을 확인했다. 이미 생성 중인 긴 응답이나 실행 중인 tool 중단까지 검증한 것은 아니며 접수 후 미확정 요청의 정상 종료 경계다.
+- 정리/최종 assert PASS: 발신 Haiku도 /exit 후 agents=[]를 확인했다. 발신 종료 직후 UI snapshot에 registry observation error가 잠깐 보였으나 다음 조회에서 Runtime은 제거됐다. 별도 daemon만 force stop HTTP200/stopped=true로 종료했고 daemon·shell·Claude PID가 전부 없어졌다. DB 재오픈 후 completed의 결과/시각과 interrupted가 보존됐다. 기존 daemon21629는 생존했다.
+- 근거: /private/tmp/aiox-w4-haiku/{completed-run.log,pending-run.log,results.jsonl,final-results.json,probe.mjs,pending.mjs,final-check.mjs,events.jsonl}; completed.png/after-pending-exit.png 캡처 및 DOM 출력으로 실제 응답/Haiku 표시/종료 코드0을 관측했다. 토큰은 메모리에서만 소비하고 기록하지 않았다.
+- 완료 판정: 기존 28 files/452 tests, 정상 종료·재실행·credential 회수·브라우저/relay 분리·준비 실패·signal 종료·daemon 소유 자원 정리, ready 후 code42/signalNULL, 실제 DB 정리 실패 재시도 결과에 이번 잔여2개 PASS를 합쳐 W4를 완료한다. 이번에는 production 변경이나 Vitest 재실행이 없고 기존 owner 계약의 실측 증거만 추가했으므로 owner 문서 수정은 필요하지 않다. W1/W2/W5·Stage3 전체는 미완료이며 다음 재개 포인터는 W1로 복귀한다. W6의 Stage8 이관 검증을 이번 Haiku 결과로 완료 처리하지 않는다. 같은 W4 검증 수명이므로 1000줄 초과 로그의 기존 블록을 유지한다.
+
+### 2026-09-21 21:05 · W1 항목별 검증 방법 제안과 기존 테스트 대조
+
+- 사용자 질문은 W1 각 항목의 검증 방법이다. 이번에는 기존 cli/bootstrap/external 및 Claude launch/version/binding tests와 docs/architecture/aiox-vendor-bindings.md를 읽어 검증 계획만 정리했으며 새 실행·테스트 PASS를 주장하지 않는다.
+- 제안1 실행/등록: 별도 daemon에서 Web shell 경유 및 실제 외부 CLI 경유를 나눠 Haiku TUI 준비, 정확히1개 Runtime, network/cwd/model, 관리 실행의 terminal 연결과 외부 실행의 소유 경계를 확인한다. W4 종료 증거를 재사용하고 W1 때문에 전체 종료 매트릭스를 반복하지 않는다.
+- 제안2 주입: 실제 Haiku가 agents_list/send 도구를 호출하도록 해 MCP 연결·인증·inbox 수신을 확인하고, 실행별 instruction marker 및 실제 SessionStart/사용자 입력→관측 상태 변화를 검증한다. 토큰 원문은 출력하지 않는다. argv/설정 구조와 중복 hook은 자동 테스트에서 확인한다.
+- 제안3 보존: 임시 project/settings에 무해한 사용자 hook(marker 기록), 추가 MCP(marker 도구), 사용자 지침을 두고 AIOX 기능과 함께 실제 실행한다. 실행 전후 파일 hash 동일 및 사용자 hook/MCP/지침의 실제 사용을 확인한다. 실제 개인 설정 파일은 수정하지 않는다. 전체 설정 source 우선순위 조합은 기존 launch 테스트를 대조해 자동 검증한다.
+- 제안4 실패: 설치 없음/실행 권한/최소 버전/이상 version 출력/probe timeout은 격리 환경·대역 executable 또는 자동 테스트로 검증하며 이를 실제 구버전 Claude E2E로 부르지 않는다. 현재 실제 Haiku 준비 및 준비 실패는 기존 증거를 재사용하고, 실패 시 사용자 진단·등록/credential/자원 누수 여부를 확인한다.
+- 제안5 인자/충돌: -- 뒤 model/cwd 관련 인자·공백/따옴표 전달, 사용자 settings/MCP/append instruction 병합 및 AIOX 소유 inbox/MCP/hook 무력화 시도를 대조한다. 현 owner는 충돌을 명확히 진단하고 AIOX-owned 설정을 조용히 덮어쓰지 않는 정책이다. 실제 대표 허용/거부 사례와 자동 경계 조합으로 확인한다. 불명확한 정책은 실패 결과에 맞춰 임의로 정의하지 않고 owner/사용자 시나리오로 먼저 확정한다.
+- 범위: 다른 agent의 63018은 계속 제외한다. 실행 시 별도 포트/DB/workdir와 Haiku를 사용한다. W1은 계획 단계의 active 상태이며 아직 완료되지 않았다. 같은 W1/W4 후속 수명이므로 기존 블록에 기록한다.
+
+### 2026-09-21 21:17 · W1 자동 검사·Haiku 실행 주입 보존·오류 충돌 실측 통과와 완료
+
+- 사용자 승인에 따라 W1의 앞서 제안한5개 범위를 검증했다. 별도 /private/tmp/aiox-w1(DB/config/work), daemon46560/Web46561, headed agent-browser session w1-check를 사용했다. 타 agent의63018은 접근·조작하지 않았다. 로그 수명은 기존 Stage3 W1이므로 같은 블록을 유지한다.
+- 자동 검사 PASS: pnpm --filter @aiox/cli test =4 files/61 tests, pnpm --filter @aiox/adapter-claude test =11 files/139 tests, 합계15 files/200 tests. 최초 root에서 파일 필터로 실행한 Vitest는 package-root include(src/**/*.test.ts) 때문에 파일을 못 찾았고 패키지별 실행으로 바로잡았다. 테스트 실패가 아닌 실행 위치 오류다. 근거 /private/tmp/aiox-w1-{cli,claude}-tests.log. 이번에는 production 변경이 없고 관련 source diff는 기존 claude.test.ts뿐이었다.
+- 실행/등록 PASS: Web shell에서 w1-managed/e6661d10-aae3-464a-b620-4f792fd51fb6, 실제 외부 CLI PTY에서 w1-external/0a6ba59f-2898-4306-a1ac-1bb6ad650402를 실행했다. 둘 다 --model haiku, 실제 TUI Haiku4.5·cwd=/private/tmp/aiox-w1/work 및 API idle을 확인했다. 관측된 등록은 정확히2개로 managed는 executionOwnership=daemon/해당terminal, external은 executionOwnership=external/terminalIdNULL이었다. 외부 CLI는 테스트 도구가 할당한 별도 PTY이며 Web terminal로 위장하지 않았다.
+- 주입/사용자 설정 보존 PASS: 임시 project SessionStart hook과 --settings로 주입한 사용자 SessionStart hook이 모두 실행됐다(project2회, invocation1회). 사용자 stdio MCP w1user.marker와 AIOX agents_list/send를 실제 Haiku가 호출했다. Web TUI에 W1_USER_MCP_OK, W1_USER_APPEND, W1_AIOX_INSTRUCTION 응답과 외부 Runtime으로 W1_MCP_FROM_MANAGED 전달 결과가 표시됐다. 실제 외부 Haiku native inbox 수신과 DB accepted1/completed/errorNULL을 확인했다. 별도 HTTP 대역 호출로 모델 자체 도구 사용을 대체하지 않았다. 실측 입력은 WebSocket 경로와 브라우저 terminal focus/Enter를 사용했으며 초기 프롬프트가 입력란에 남아 제출 포커스를 바로잡았다. 외부에 추가로 작성했던 검증 프롬프트는 제출하지 않고 정리 시 취소했다.
+- 파일/credential PASS: project settings·실행별 settings·MCP설정·append 지침4개 fixture의 실행 전후 SHA256이 모두 같았다. 실제 관리 Claude10583 argv에 --model haiku가 있고 env의 실제 token 원문은 argv에 없음을 메모리 비교했다. token을 출력·파일에 기록하지 않았다. 영구 사용자 설정을 수정하지 않았다. 다중 설정 source·plugin 인자·공백 인자·hook 병합·OS별 경계 조합은 기존 자동 테스트로 검증했다.
+- 설치/버전 오류 실측 PASS: 별도 PATH와 임시 executable로 missing/permission denied/2.1.1 최소버전 미달/잘못된 version 출력/probe timeout5건을 실제 CLI→daemon 경로에 주입했다. 각 원인별 진단과 exit1을 확인했다. 실제 구버전 Claude 설치 실측으로 확대하지 않는다. 현재 macOS minimum 진단은2.1.224였다. 근거 failure-cases.sh/log. 현재 실제 Claude 준비·vendor 시작 실패는 이번 Haiku 및 기존 W4 invalid-option 실측을 함께 소비한다.
+- 충돌 실측 PASS: disableAllHooks, aiox MCP 이름의 다른URL, 임의 messaging-socket-path, settings.env.AIOX_MCP_TOKEN, --print5건을 실제 CLI로 시도했다. 전부 원인·수정 방향을 표시하고 exit1로 거부했으며 기존 정상 Runtime2개만 남았다. 사용자 설정·일반 인자를 보존하되 AIOX 기능을 무력화하는 충돌을 거절하는 기존 owner 정책과 일치한다. 근거 conflict-cases.sh/log.
+- 정리/저장 PASS: 관리 Claude /exit 및 외부 Claude 입력 초안 취소 후 /exit, agents=[]를 확인했다. 별도 daemon만 종료해 daemon8835/shell8868,8869/Claude10583 소멸, daemon.closed 및 DB 재오픈 completed 보존을 확인했다. 기존 사용자 daemon21629는 살아 있다. results.json에 assertion 결과와 cleanup을 저장했다. 추가 증거 injection-ui.json, injection-success.png, conflicts.png, user-hooks.jsonl, user-mcp.jsonl, hashes-before.json, events.jsonl이 있다.
+- 완료/owner: W1 실행·등록·주입·사용자 설정 보존·선행 오류·인자 충돌의 계약과 자동/실측 검증이 닫혀 W1을 완료한다. 기존 docs/architecture/aiox-vendor-bindings.md 정책을 확인한 검증이며 변경할 production/owner 계약은 발견하지 않았다. git diff --check도 통과했다. 다음은 W2 native inbox 전송 연결의 잔여 검증·정리이며 이번 사용자 승인 범위를 넘어 새로 착수하지 않는다. W3/W4 완료 유지, W2/W5 및 Stage3 전체 미완료, W6 Stage8 이관 범위도 유지한다.
+
+### 2026-09-21 22:24 · W2·W5 기존 검증 중복 대조와 잔여 범위
+
+- 사용자 요청은 재실행이 아닌 기존 검증과의 중복 보고다. onramp의 W2 포인터, W1/W3/W4 완료 기록, collaboration spec·vendor bindings owner와 Claude inbox/binding·daemon MCP/messaging tests를 대조했다. 이번에는 테스트나 실제 Claude를 새로 실행하지 않았다.
+- W2 재사용: W1 Haiku 실제 모델 agents_list/send→외부 Claude inbox 수신→accepted/completed, 발신자·본문 표시와 W4 Haiku completed를 재사용한다. /private/tmp/aiox-w1/results.json 및 /private/tmp/aiox-w4-haiku/final-results.json의 pass와 DB 결과도 재확인했다. 준비 관측·inbox 빈 credential/연결 실패/timeout/직렬화는 기존 adapter 자동 검사 범위다. MCP 인증·send 시 route 재검사·인증된 발신자·단방향 completed/양방향 completed 무알림/failed/중단 무알림은 apps/daemon/src/mcp.test.ts에 있으며 기존 W4 daemon 통과 기록을 재사용할 수 있다.
+- W2 경계: route 삭제 실측은 차단된 route로 send가 거부되는 실제 Claude 실측과 다르다. MCP token revoke→401도 inbox token 거부 검증과 다르다. 실제 잘못된 inbox token/MCP token 대입, route 차단 후 discovery·send 거부, 실제 Claude 대상 daemon 알림 수신의 정책별 커버리지를 추가 대조·필요한 경우 잔여 실측해야 한다. W3 completed4/notice4·interrupted 무알림 실측 기록이 이미 있으므로 daemon 알림 전체를 미검증으로 설명하지 않는다. DB notice 기록과 실제 발신 TUI 표시도 구분한다.
+- W5 재사용: W1 실행·등록·사용자 설정/MCP/hooks 공존, W3 상태/세션 전환·outcome/알림 저장, W4 정상·signal·nonzero 종료/브라우저 detach/정리 재시도를 묶어 소비한다. 같은 정상 시나리오를 처음부터 전부 재실행할 필요는 없다. 최종 소스 대비 기존 검증의 적용 가능성, 남은 W2 경계, 필요한 회귀, owner/spec/로그 정합과 Stage8 이관 범위를 마감 시 확인한다. 과거 CI 성공은 최신 소스 전체 OS 성공으로 확대하지 않는다.
+- 판단: 직전 W2/W5 설명은 전체 책임 범위여서 이미 통과한 부분까지 새 작업처럼 보이게 했다. 잔여 작업은 기존 증거의 범위·버전 매핑과 비어 있는 경계 중심으로 축소한다. W2 active/W5 open 및 Stage8 이관은 유지한다.
+
+### 2026-09-21 22:42 · W2 macOS Haiku route·실제 daemon 알림·Unix 인증 경계 검증
+
+- 사용자 승인: W2 작업 후 보고. 기존 W1/W3/W4 증거를 재사용하며 빠진 경계만 수행했다. 독립 /private/tmp/aiox-w2, daemon46570/Web46571, agent-browser w2-check headed를 사용했고 타 agent63018에는 접근하지 않았다. products source 변경은 없다.
+- 사전/자동: @aiox/daemon... build PASS. Claude adapter 11files/139tests + daemon12files/222tests =23files/361tests PASS. 근거 /private/tmp/aiox-w2-build.log, aiox-w2-claude-tests.log, aiox-w2-daemon-tests.log. 관련 owner aiox-vendor-bindings의 socket/pipe·token 계약과 aiox-collaboration의 route/알림 행렬, RuntimeRegistry→AgentController→ClaudeBinding.observe/deliver 및 MessageService.settle→DB/발신 binding 경로를 대조했다.
+- 실제 실행: Claude2.1.278/Haiku4.5 source b60b828e-130a-453f-9cc9-d5326ac535b5/PID26223와 target659fa469-0e17-4a95-be32-e37564375ccb/PID26282, 두 관리 shell에서 ready/idle. 실제 MCP token은 source 프로세스 환경에서 메모리로만 읽었고 inbox token은 원래 observe를 위임하는 검증 wrapper가 메모리에만 보유했다. 토큰을 파일·출력으로 남기지 않았다.
+- Route PASS: 처음 agents_list에 target 존재, source→target 차단 후 agents=[], 이름/Runtime ID 직접 send 모두 accepted=false/no_route. unblock 후 목록 복귀·정상 send 완료. 검증 transcript에 W2_BLOCKED_MUST_NOT_APPEAR는 없었다. 호출은 실제 runtime credential을 이용한 HTTP MCP이며 이번 route 조작을 모델 자체 도구 호출로 주장하지 않는다(W1 모델 tools/call 실측은 재사용).
+- 알림 기존 증거 구분: /private/tmp/aiox-w3-session-probe/run-xzs4OH/probe.mjs의 Sender binding은 notices.push 대역이다. 기존 notice4는 실제 발신 Claude 수신 증거가 아니므로 이번에 실제 source TUI/transcript까지 보완했다.
+- 알림 PASS: 단방향 W2_ONEWAY_COMPLETED delivery01a0c431-0a90-72d7-8b1b-715d912113d3 completed→notification1→실제 source Message @AIOX 및 user transcript 본문 확인. 양방향 W2_TWOWAY_COMPLETED delivery01a0c431-8296-77f0-b4c8-6ecba0cd1686 completed→notification0. 양방향 W2_FAILURE_NOTICE delivery01a0c431-ffd8-717f-8184-908207b99ee5 accepted1/outcomeNULL을 확인한 직후 target 전용 Bun inspector로 process.exit(42)→failed/vendor_process_failed→notification1→실제 source 수신. source에 daemon notice 정확히2개이며 재귀 알림 없음. 단방향 실패 정책은 기존·이번 자동 검사로 확인했고 별도 실제 실패를 반복하지 않았다.
+- 중단 무알림 재사용 PASS: W4 Haiku DB delivery01a0c3c5-09eb-704a-8d22-f147e872a33a를 재조회해 interrupted/notification0 확인. 정상 송수신·발신자 본문·종료 기존 결과를 반복하지 않았다.
+- 인증 기대값 정정: macOS Unix socket에 잘못된 inbox token과 실제 MCP token을 auth 첫 줄로 넣었을 때 두 메시지가 모두 실제 target transcript/TUI에 들어왔다. 두 토큰이 정상 inbox token과 다름을 메모리에서 확인했다. 이는 owner에 명시된 Unix 인증 선택 가능 계약과 일치하며, 앞서 제시한 모든 플랫폼의 wrong-token 거부 기대는 잘못이었다. MCP 인증·route 검사를 우회한 AIOX send가 아니라 로컬 native socket 직접 주입 결과다. AIOX가 실제 inbox token을 사용한다는 것과 Unix vendor가 token을 강제한다는 것은 별개다. Windows named pipe 인증 필수의 실제 vendor 거부는 이번 macOS 결과로 증명하지 않는다.
+- 검증 harness 오류와 해소: 최초 RuntimeRegistry wrapper에는 observe가 없어 시작 실패하여 Claude adapter createBinding wrapper로 수정 후 전용 daemon 재시작. API runtime 필드 id 대신 name으로 조회 수정, route action allow를 실제 schema unblock으로 수정, 기존 W4 조회 message_id를 delivery id로 수정했다. 제품 결함/테스트 통과로 은폐하지 않으며 수정 후 final-check.py assertion 전체 PASS와 DB 재오픈 PASS를 확인했다.
+- 정리: source /exit 후 agents[]; 전용 daemon force stop HTTP200 stopped/forced true. 초기/최종 daemon20659/25402와 Claude26223/26282 종료, 기존 사용자 daemon21629 생존 확인. 전용 브라우저 종료. 근거 /private/tmp/aiox-w2/final-check.py, final-results.json, results.jsonl, events.jsonl, auth-unix.png, oneway-notice.png, failure-notice.png. source 실제 transcript 경로는 final-results.json에 있다.
+- 상태: macOS W2 잔여 route·알림·인증 동작 확인은 끝났다. W2 문구의 Windows native Claude token 확보·전달·named pipe 실제 인증은 미검증이며 W2 active를 유지한다. Stage8이 OS 실제 통합 범위를 갖지만 이번에 새 이관이나 완료 승격을 하지 않는다. W5는 미착수/open, W1/W3/W4 완료 및 기존 Stage8 이관은 유지한다.
+
+### 2026-09-21 22:47 · 공식 inbox 문서의 OS별 인증 조건 재확인
+
+- 사용자가 Windows 필수·Unix 선택 인증이라는 의미인지 재확인을 요청했다. https://code.claude.com/docs/en/cross-session-messaging#the-sessions-inbox-socket 공식 원문을 웹에서 확인했다. macOS/Linux/WSL2는 auth 첫 줄이 선택 사항이며 유무와 관계없이 연결을 수락한다. native Windows는 첫 줄에 유효한 auth가 없으면 연결을 닫고 아무 메시지도 전달하지 않는다.
+- 공식 문서는 Unix socket을 해당 OS 사용자로 제한한다고 설명한다. 따라서 macOS의 토큰 비강제 자체를 제품 결함으로 분류하지 않는다. 정확한 문서상 optional 대상은 연결 인증 첫 줄이며 token은 own-child 판별에도 쓰이므로 Unix에서 모든 용도로 무의미하다는 뜻은 아니다. 잘못된 token 수신은 이번 Claude2.1.278 macOS 실측 근거이고 Linux에서 동일 입력을 별도 실측한 것은 아니다. Windows 실제 vendor 검증 잔여와 W2 상태는 유지한다.
+
+### 2026-09-21 22:59 · Windows 인증 실측의 Docker 대체 가능 범위
+
+- 사용자 질문: Docker에서 Windows 인증 검증이 가능한가. Docker 공식 networking/VMM 문서와 Microsoft Windows containers 환경 문서를 확인했다. 현재 Mac의 일반 Docker Linux container는 Unix socket 경로를 검증하므로 Windows native named pipe 인증 증거가 아니다. Windows container에는 Windows host/VM이 필요하며, 그 환경의 Claude 실행 가능성은 별도 확인해야 한다. 이번 목적은 Windows PC/VM에서 직접 실제 Claude를 실행하는 것이 가장 단순하다. Docker 안에서 Windows VM을 구동하는 구성은 결국 VM을 추가하는 것이며 이번에 준비하거나 실행하지 않았다. W2 상태 변경 없음.
+
+### 2026-09-21 23:09 · Windows native inbox 실측 Stage8 이관과 W2 완료
+
+- 사용자 지시로 W2의 Windows native token 확보·전달·named pipe 실제 인증을 W7로 분리해 logs/2026-09-09-AIOX-TUI-Stage8-Integration.md W5로 이관했다. 기존 W6 및 Stage8 W1~W4의 범위는 유지한다. 동일 작업을 대기/복귀 항목으로 중복 보유하지 않는다.
+- W2의 macOS 실제 route·본문·발신자·알림·Unix 선택 인증과 자동 검증은 완료했고, 남은 Windows 실측은 사용자 승인으로 소유권을 넘겼으므로 W2를 완료했다. Windows 검증 성공을 뜻하지 않는다. 현재 next는 W5 전체 통합 검증·마감이며 이번에는 W5 검사를 실행하지 않았다.
+- Required Context·양쪽 Work Items·이관 근거를 갱신했다. 독립 Base 로그 간 기존 단계 책임에 따른 transfer이고 새 workstream/package나 plan 단계 변경은 없다. 제품 코드·owner 계약 변경은 없다.
+
+### 2026-09-21 23:26 · W5 통합 증거 대조·전체 회귀·owner 정합과 Stage3 마감
+
+- 사용자 지시: W5 통합 검증·마감. onramp는 타 작업의 Stage5를 가리켰지만 명시된 Stage3 W5를 수행했다. Stage5 활성 포인터와 타 agent63018 환경은 보존했다. 새 실제 Claude 실행은 없으며 중복 정상 시나리오 대신 기존 W1~W4 실측과 최종 회귀를 소비했다.
+- 통합 증거: W1 /private/tmp/aiox-w1/results.json PASS와 실제 Haiku user MCP+AIOX agents_list/send, managed/external 등록·사용자 설정/hooks/지침 보존·원본 hash·종료/DB 보존. W2 /private/tmp/aiox-w2/final-results.json macOSChecksPassed: 실제 route 차단/복구·발신자/본문·단방향 완료 알림·양방향 완료 무알림·code42 실패 알림의 실제 source transcript까지 연결됐다. MCP 호출 주체·브라우저 입력 경로·Unix 선택 인증의 기존 제한도 보존한다.
+- 상태/세션 증거: /private/tmp/aiox-w3-session-probe/run-xzs4OH/verdict.json과 run-giu8ia/verdict.json을 재확인해 각각 completed4/notice4 및 completed3/notice3, hookErrors/vendorHookFailures 없음, final idle을 소비했다. W3의 relocation·최초 결과/저장 재시도·수면 경계 및 과거 WSL/3 OS 자동 검증은 해당 entry 범위로 한정한다. notice 수신 대역의 한계는 W2 실제 발신 Claude 수신 증거로 보완했다.
+- 종료/화면 증거: W4의 정상 /exit·같은 shell 복귀·fresh identity·credential401, 브라우저 detach 생존/relay 재연결, signal 종료, ready 후 nonzero/no-signal, SQLite cleanup 실패→409 유지→재시도200 결과를 소비했다. /private/tmp/aiox-w4-haiku/final-results.json PASS(completed 보존·pending interrupted), /private/tmp/aiox-w4-nonzero/final-results.json 및 기존 retry/visible 기록을 연결했다. 실제 검증 screenshot의 제외 사유 등 과거 제한을 없애지 않았다.
+- 최종 자동 PASS: HEAD6b0f5886ba22dc406220bcceea155c5532a5f283와 당시 working tree에서 pnpm check exit0, lint·format·build·typecheck·49files/663tests 전체 통과. /private/tmp/aiox-w5-check.log. 기존47files/635와 비교해 Claude 종료 회귀4개 및 IDE24개를 포함한다. 최신 관련 production 경로의 git 이력과 diff를 확인했고 현재 Claude source의 미커밋 변경은 기존 claude.test.ts 회귀뿐이다. 이후 수정은 문서/로그/plan만이어서 제품 회귀를 반복하지 않았다. 원격 CI를 이번 변경으로 실행한 결과는 아니다.
+- Owner 감사/수정: CLI→AgentController/ExecutionOwner→ClaudeBinding.prepare/observe/deliver→registry/transcript→MessageService outcome/notification→DB/Web/발신 inbox→cleanup과 해당 tests를 spec/runtime·collaboration 및 architecture/vendor-bindings·storage-terminal에 대조했다. vendor-bindings의 현재 설명 두 곳에 남은 FileChanged hook/watchPaths stdout을 registry·transcript 감시+StopFailure 및 SessionStart/StopFailure/Notification·204·stdout 없음으로 정정했다. 같은 문서의 상세 관측 절은 이미 현 구현과 일치했다. runtime spec의 타 Stage5 신규 내용 중 multiline inline code2곳은 의미 변경 없이 한 줄로 수정했다. 문서 구조/owner 경계·Codex 설명·다른 Stage5/6 설계는 유지했다.
+- 문서 검증 PASS: 관련 owner4개 wiki link213건 존재, scripts/check-markdown-inline-code 4문서, git diff --check. 중간 doc 편집은 실제 줄이 예상과 달라 assertion에서 쓰기 전에 중단됐고 정확한 패턴 확인 후 적용했다. inline 검사 첫 호출은 지원하지 않는 --check 옵션 때문에 실패해 도구 사용법의 파일 인자만으로 재실행했다. 최종 검사에 오류 없음.
+- OS/후속 경계: Windows native inbox 실제 인증은 승인된 W7→Stage8 W5. 실제 quota·Windows 혼합 실행·공유 filesystem은 W6→Stage8 W1/W2/W3. Stage8이 이미 소유한 Claude Linux/WSL·배포 산출물 실제 인증은 Stage8 W6로 구체화했다. macOS 실측·자동 검사 성공을 전체 OS/vendor 통합 성공으로 선언하지 않는다. Stage4는 이미 완료됐으므로 다시 활성화하지 않으며 이후 Stage5/6/8이 본 로그와 정정한 owner를 소비한다.
+- 완료: W5 완료, W1~W5 completed와 W6/W7 transferred로 Stage3 수명을 닫는다. 복귀 대기/미결 질문은 없다. 단일 Stage3 구현·검증 이력의 마감이므로 1000행 초과 기존 로그를 유지하고 history를 새 로그로 옮기지 않았다. plan Stage3만 완료 표시하고 활성 Stage5를 유지한다. 새 commit/push나 기존 사용자 프로세스 조작은 하지 않았다.
+
+### 2026-09-21 23:30 · Stage3 변경과 plan 완료 표시의 한정 커밋
+
+- 사용자 지시: Stage3 관련 변경만 커밋하고 plans도 포함한다. Claude 종료 회귀4개, vendor-bindings 현재 hook 설명 정정, 본 로그 마감, Stage8의 Stage3 인계 기록 및 plan Stage3 완료 표시를 묶는다. Stage5/6 설계 변경과 runtime spec의 해당 신규 내용은 제외한다. 기존 전체 검사49files/663tests PASS를 소비하고 staged diff/공백을 확인한다.
+- /private/tmp의 실제 검증 스크립트·결과·스크린샷은 로컬 임시 증거로서 이번 커밋에 포함하지 않는다. 임시 경로는 영구 보관을 보장하지 않으며 로그에 증거 경로·요약만 남아 있다. 제품 코드/추가 실측·push는 이번 범위가 아니다. 기록을 위해 잠시 open으로 전환했으며 Stage3 완료 상태는 유지하고 decided로 복원한다.

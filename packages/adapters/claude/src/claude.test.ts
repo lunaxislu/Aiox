@@ -731,6 +731,39 @@ test.each([
     },
 );
 
+test.each([
+    ["connection_lost", "failed", "foreground_connection_lost"],
+    ["external_connection_lost", "failed", "external_connection_lost"],
+    ["collaboration_lost", "failed", "collaboration_lost"],
+    ["execution_stopped", "interrupted", undefined],
+] as const)(
+    "%s preserves transcript results and settles pending deliveries as %s",
+    async (cause, outcome, reason) => {
+        const f = await fixture();
+        try {
+            await f.start();
+            const frame = f.track("completed");
+            f.track("remaining");
+            await writeFile(
+                f.path("session"),
+                terminalRows("session", "p", frame),
+            );
+            if (cause === "connection_lost") await f.binding.connectionLost();
+            else await f.binding.cleanup(cause);
+            expect(f.control.settle.mock.calls).toEqual([
+                ["completed", "completed"],
+                outcome === "failed"
+                    ? ["remaining", outcome, reason]
+                    : ["remaining", outcome],
+            ]);
+            await f.binding.cleanup("execution_stopped");
+            expect(f.control.settle).toHaveBeenCalledTimes(2);
+        } finally {
+            await f.close();
+        }
+    },
+);
+
 test("exit does not reopen a discarded session", async () => {
     const f = await fixture();
     const consume = vi.spyOn(f.binding.observations, "observeTranscript");
