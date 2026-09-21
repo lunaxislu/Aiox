@@ -8,7 +8,7 @@ status: open
 
 - [ ] W1 Claude 실행·주입 연결 — Stage2 최신 결과와 CLI→Controller→daemon 등록·terminal 문맥·binding 및 관련 owner/tests를 대조하고, 같은 shell·외부 standalone의 foreground TUI 실행에 실행별 HTTP MCP·credential·instruction·hooks를 주입한다. 기존 사용자 설정·hooks·MCP 보존과 설치·버전·시작 실패 경계를 검증한다. -- 이후 vendor 인자 전달과 AIOX 관리 MCP·credential·binding 설정의 충돌 정책을 확정·검증한다. YAML 구현은 Stage5에서 수행한다.
 - [ ] W2 Claude native inbox 전송 연결 — Runtime별 socket/pipe와 준비 관측·인증을 구성하고 공통 send 및 daemon 알림을 연결한다. 발신자 표시·본문 전달·route 권한을 검증하며 inbox token과 MCP token을 분리한다. Windows 네이티브 inbox token 확보·전달·named pipe 인증 경로를 구현하고 검증한다.
-- [>] W3 상태 정규화 리뷰·수정과 준비·경로·감시 수명 확인 결과를 소비한다. 2026-09-20 최신 entry의 adapter 135개·daemon 연동 78개 PASS를 과거 전체 628 PASS와 구분한다. 실제 quota TUI와 다른 OS 검증은 미실측으로 유지하고 W3의 남은 검증 범위를 재개한다.
+- [>] W3 상태 정규화 결과와 최신 WSL2 자동 검증 완료 entry를 소비한다. 34ea4f6 기반 WSL Node22/24 전체 검사 및 main 131b37c의 WSL CI 통과를 확인했다. 2c23cb5의 3 OS 통과와 구분하며 실제 Claude TUI·quota·Windows/WSL 혼합 흐름 등 잔여 실측을 재개한다.
 - [ ] W4 Claude 종료·실패 정리 연결 — 정상 종료·준비 실패·프로세스 종료와 binding 연결 손실의 관측·실패 처리를 구분하고 실제 관리 자원 종료와 credential·등록·route 정리를 확인한다. 브라우저 attachment 손실은 Runtime 종료로 처리하지 않는다. Agent 정상 종료에서는 빌린 shell·terminal ID를 유지하고 원 shell 복귀와 직접 소유 자원 종료를 검증한다. daemon force stop에서는 관리 Agent 자원과 daemon 소유 일반 shell PTY까지 종료·확인한다. 재실행 시 새 Runtime 신원 분리와 부분 실패·재시도 경계를 검증한다.
 - [ ] W5 실제 Claude 수직 통합 검증·owner 반영·Stage4 인계 — 같은 terminal 실행부터 HTTP MCP 송수신·inbox 표시·hooks 결과·종료 복귀까지 실제 TUI로 검증하고 기존 사용자 설정 보존·브라우저 detach 생존을 확인한다. Windows 네이티브 token 확보·전달·pipe 인증의 실제 검증 결과와 Linux/macOS·WSL 결과로 통합 완료 여부를 판정한다. 환경 부재 등으로 미검증이면 해당 범위는 미완료로 남기고 후속 검증 위치·재개 조건을 명시한다. 미검증 표기만으로 Windows 통합 완료를 선언하지 않는다. 관련 회귀·pnpm check·owner/링크 정합을 점검해 후속 단계 소비 지점을 남긴다.
 
@@ -45,6 +45,7 @@ status: open
 - 재개 시 현재 변경 owner(docs/architecture/aiox-vendor-bindings.md, aiox-storage-terminal.md, docs/specs/aiox-runtime.md, aiox-collaboration.md)와 인접 구현/tests를 소비한다. 실제 다른 절대경로 transcript relocation, 다른 OS와 기존 Stage3 잔여 통합은 미검증이다. 사용자 session/설정·기존 daemon/TUI는 변경하거나 재시작하지 않았다. 추가 논의 결정이 필요한 요구 충돌이 나오면 중단한다.
 - 2026-09-18 사용자 확정으로 과거 session 상태 파일·직접 fs.watch 복귀 금지 규칙을 번복했다. 개편 방향은 registry(`sessions/<pid>.json`) 파일 감시로 현재 status를, transcript 파일 감시로 promptId·입력 출처·prompt별 결과를 판정하는 T-R이다. 제거 hook은 FileChanged·CwdChanged·UserPromptSubmit·PreToolUse·PostToolUse(+Failure)·PermissionRequest·Elicitation(+Result)·SessionEnd이고 SessionStart·StopFailure·Notification만 남긴다. 디렉터리 감시는 쓰지 않고, 첫 transcript 감시는 registry 변경 때 존재를 확인해 붙이며 그 지연은 허용한다. 먼저 온 StopFailure는 입력 행과 연결될 때까지 보관한다. OTel과 250ms polling reader는 계속 History다. 근거는 2026-09-18 block의 직접 fs.watch 실측(run-CtIbcy/run-FIpDrB)이다.
 - 최신 정책은 전환 시 옛 instance 삭제다. 활성 읽기 snapshot 소비 후 삭제하고 미래 행을 기다리지 않는다. resume은 새 instance/fromEnd이며 옛 cursor 재사용 금지. idle은 즉시 해제, pending 결과는 interrupted(first outcome 보존), 저장 거절은 outcome만 재시도한다. 기존 프로세스 종료까지 보관·resume 재사용 승인은 최신 사용자 지시로 대체됐다. 실제 최종 반복 전환 run-xzs4OH와 busy resume run-giu8ia는 completed4/notice4 및 completed3/notice3, hook 오류0이다.
+- 최신 OS 검증 근거는 「WSL2 자동 검증 완료와 main CI 반영」 entry를 따른다. 34ea4f6 기반 WSL2 내부 자동 검사와 131b37c main WSL CI는 통과했고, 2c23cb5의 3 OS 결과는 해당 과거 코드의 근거다. 이전 다른 OS 미검증 표기를 WSL 자동 검사까지 적용하지 않되 실제 Claude TUI·quota·혼합 실행은 미실측으로 유지한다.
 
 ## 2026-09-09 · 단계별 확정 요구와 인계 준비
 
@@ -2422,3 +2423,13 @@ registry 변경은 현재 reader 및 아직 watcher가 없는 옛 reader에 읽�
 - 검증: Claude adapter 11 files/135 tests PASS, daemon agent-controller/runtimes/mcp 3 files/78 tests PASS. adapter tsc --noEmit·tsup build·built Node import·oxlint·oxfmt·git diff --check PASS. daemon 첫 시도는 Node ABI 불일치, 다음은 sandbox localhost listen EPERM이었다. 기존 native module과 맞는 Node 24.14.0 및 로컬 서버 허용으로 78개 통과했다. 이후 watcher 정리 확인을 위해 claude.test.ts 32개를 재실행해 PASS: 30회 전환 동안 활성 watcher 2개, cleanup 뒤 0개, old callback 무효화 포함. 전체 repo 628개 재실행이나 실제 quota TUI 실측으로 확대하지 않는다.
 - Owner 반영: docs/specs/aiox-runtime.md와 docs/architecture/aiox-vendor-bindings.md에 누락 status·shell·quota 취소 계약 반영 완료. 이번 사용자 요청으로 Baseline §11/12/18과 Product Context Prompt §3/6/8/17의 기존 내용을 현재 계약으로 갱신했다. 과거 UserPromptSubmit/Stop 실측은 역사 근거로 표시하고 current 흐름에서는 제거했다.
 - 상태: 이번 합의한 수정·검증은 완료. Stage3/W3 전체나 W1/W2/W4/W5를 완료 처리하지 않는다. 기존 macOS 실측·47 files/628 PASS는 해당 과거 코드의 근거로 남기며 실제 quota TUI와 다른 OS 검증은 남아 있다. 새 로그로 분리하지 않은 이유는 같은 W3 개편의 후속 의미 검증·수정이므로 같은 수명에 속하기 때문이다.
+
+### 2026-09-21 11:34 · WSL2 자동 검증 완료와 main CI 반영
+
+- 사용자 요청으로 WSL 검증 결과를 기록하고 이번 로그를 WSL CI 설정 커밋에 합친다. 기존 로그 삭제 지시는 이번 명시적 기록 요청으로 해당 결과 범위에서 대체한다. 독립 workstream이 아니라 W3의 OS 검증 후속이므로 같은 로그 수명에 기록한다.
+- 검증 기준: Claude 상태 정규화 변경 11개를 main의 34ea4f6에 커밋했다. WSL 검증 브랜치는 이 커밋을 기준으로 만들었으며 제품 수정 없이 실행 환경과 workflow만 추가했다.
+- 실측: 실행35516236930(https://github.com/lunaxislu/aiox-prototype/actions/runs/35516236930)에서 Windows runner가 WSL2 Ubuntu24.04를 부팅했다. kernel 6.18.33.2-microsoft-standard-WSL2, /home/aiox/repo의 ext4, 일반 사용자 aiox, Node22.23.2/24.21.0 각각 pnpm check 및 built CLI doctor --json 성공. 각각47files/626tests PASS(Claude135, daemon222); doctor는 environment=wsl을 보고했다. 검사는 Bash 환경이며 zsh 등 설치되지 않은 shell 검증으로 확대하지 않는다.
+- 준비 중 실패와 해소: 이미 WSL2인 배포판에 set-version을 재요청해 WSL_E_VM_MODE_INVALID_STATE가 발생하여 설치 전 default version2 지정으로 바꿨다. Windows 경로가 shell에서 해석된 오류는 wsl --exec로 해결했다. 두 실패는 제품 테스트 진입 전 환경 준비 오류다.
+- main 반영: .github/workflows/wsl-validation.yml과 .github/scripts/verify-wsl.sh를 131b37c에 추가해 main push/PR 및 수동 실행에서 Node22/24 WSL 검증을 수행한다. 기존 3 OS workflow는 유지한다. main 실행35554123625(https://github.com/lunaxislu/aiox-prototype/actions/runs/35554123625)의 headSha=131b37c51b6244a2685e265da33bfab5efbadf26이며 두 WSL job 모두 success를 확인했다. 이번 amend는 로그만 추가하므로 검증 근거의 원래 SHA를 보존하며 새 SHA에서 CI를 확인했다고 표현하지 않는다.
+- 기존 3 OS 근거: 2c23cb5의 실행35512308692에서 Linux/Windows native/macOS × Node22/24 전체 성공. 그 결과를 이후34ea4f6의 모든 OS 검증으로 확대하지 않는다.
+- 한계와 재개: WSL 내부 자동 검증은 완료. 실제 Claude TUI·quota 재현·Windows daemon에서 wsl.exe로 실행하는 혼합 제품 흐름·Windows 공유 filesystem 경로는 검증하지 않았다. W3 및 W1/W2/W4/W5는 미완료로 유지하며 잔여 실측을 재개한다.
