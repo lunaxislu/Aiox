@@ -30,7 +30,7 @@ function input(args: string[] = []) {
     return {
         args,
         cwd,
-        env: { HOME: cwd, CLAUDE_CONFIG_DIR: join(cwd, "config") },
+        env: { ...(process.env["DIAG_ENV"] === "inherit" ? process.env : {}), HOME: cwd, CLAUDE_CONFIG_DIR: join(cwd, "config") },
         inboxPath: join(cwd, "inbox.sock"),
         mcpUrl: "http://localhost:4500/mcp/network",
         instruction: "AIOX communication instructions",

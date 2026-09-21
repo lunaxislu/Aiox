@@ -374,6 +374,7 @@ async function localSettingsRoot(
 ): Promise<string> {
     if (process.platform === "win32") return cwd;
     let output: string;
+    const diagStart = Date.now();
     try {
         ({ stdout: output } = await promisify(execFile)(
             "git",
