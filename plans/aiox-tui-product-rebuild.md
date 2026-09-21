@@ -47,6 +47,8 @@
   최소 Web 연결을 먼저 마련한다. 완성된 운영 UI를 기다려 vendor 연동을 시작하지 않는다.
 - OS 확인은 마지막 Stage 8에만 몰지 않는다. native DB 설치는 Stage 1, PTY·정리는 Stage 2,
   각 vendor의 Windows/WSL 경계는 Stage 3–4에서 다루며 Stage 8은 통합된 배포 산출물을 재검증한다.
+  2026-09-21 사용자 승인으로 Stage 3 W3의 실제 구독 quota·Windows 혼합 실행·공유 filesystem
+  실측은 Stage 8 로그의 W1/W2/W3로 이관한다. 세부 조건과 검증 결과는 해당 로그가 소유한다.
 - 이전 src/apps/packages/adapters/tests와 legacy 실행·빌드 설정은 재구축 정리에서 제거했다.
   Stage 1에서 새 기반을 작성했다. 과거 실험은 참고 자료이며 파일·API를 유지해야 하는 제약이 아니다.
   Stage 8은 새 구현에 불필요한 fallback·alias가 생겼는지도 확인하는 잔여 감사다.
