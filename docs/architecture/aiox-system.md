@@ -49,6 +49,21 @@ Stage 2·Claude·Codex 실행의 현재 조립 근거와 Host 목표 범위를 �
 근거: [[apps/daemon/src/daemon.ts]], [[apps/daemon/src/agent-controller.ts]],
 [[apps/cli/src/external.ts]], [[packages/protocol/src/index.ts]] 및 각 인접 테스트.
 
+## IDE 작성 지원 [Status: As-built]
+
+`packages/IDE/vscode`는 VS Code·Cursor를 대상으로 하는 독립 배포 확장이다.
+Red Hat YAML에 번들 JSON Schema를 연결해 기본 작성 지원을 제공하고,
+`src/document.ts`는 YAML AST의 source range로 Agent 참조·route 검사 결과를 만든다.
+`src/extension.ts`가 문서 열기·수정·닫기에 맞춰 진단을 교체·해제하고 VS Code의
+completion/definition/hover API로 결과를 전달한다. 정의와 참조의 이름·위치 정보는
+현재 문서에서만 계산하며 daemon·vendor·DB를 호출하지 않는다. 별도 AIOX LSP 서버는 없다.
+
+YAML 계약의 owner는 [Host spec](../specs/aiox-host.md)이고, 구조 검사는
+`schemas/aiox.schema.json`, 관계 검사는 `src/document.ts`가 맡아 같은 오류의 중복 표시를 줄인다.
+Ajv는 배포할 JSON Schema의 테스트에만 사용하며 확장 실행 bundle에는 포함하지 않는다.
+증거와 설치·검증 방법은 [패키지 안내](../../packages/IDE/vscode/README.md),
+인접 `document.test.ts`·`schema.test.ts`를 따른다. Cursor 실검증은 별도로 남아 있다.
+
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
 CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http의 daemon/Web listener, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.

@@ -3,6 +3,13 @@ import { readFileSync } from "node:fs";
 import { defineConfig, type Options } from "tsup";
 
 const packages: Record<string, Options> = {
+    "aiox-yaml": {
+        entry: ["src/extension.ts"],
+        format: ["cjs"],
+        dts: false,
+        external: ["vscode"],
+        noExternal: ["yaml"],
+    },
     "@aiox/domain": {},
     "@aiox/vendor": {},
     "@aiox/adapter-codex": {},

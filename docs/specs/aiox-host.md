@@ -124,6 +124,18 @@ YAML 실행 → CLI 변경 → YAML restart → CLI 변경 순서대로 앞선 �
 Host stop 자체는 정책을 초기화하지 않는다. 파일 편집만으로 hot reload하지 않으며 적용 범위 밖의
 변경을 적용된 것으로 표시하지 않는다. 새 Agent 추가만으로 YAML이 금지한 route를 자동 허용하지 않는다.
 
+## IDE YAML 작성 지원
+
+VS Code·Cursor용 확장은 `aiox.yaml`과 `aiox.*.yaml`을 자동 인식한다. 필드·값 자동완성,
+설명·구조 검사, Agent 참조 자동완성, 참조·라우팅 오류 검사와 정의로 이동을 제공한다.
+검사 기준은 이 문서의 Host 입력 계약이다. optional 필드를 강제로 삽입하거나 누락 오류로 취급하지
+않으며, 기본값 안내는 편집 중인 파일의 의미이지 실행 중 Host의 적용 구성 조회가 아니다.
+저장 전 편집 내용에 반응하고 문법이 깨진 동안 파생 참조 오류를 억제한다.
+임의 파일의 수동 연결, Agent 일괄 rename, 시각화와 실행·운영 연동은 현재 범위에서 제외한다.
+
+구현·설치 안내: [AIOX YAML 확장](../../packages/IDE/vscode/README.md).
+VS Code 실검증과 Cursor 지원 목표의 검증 상태는 해당 패키지 안내를 따른다.
+
 ## aiox.yaml
 
 `routing.default`는 `allow` 또는 `deny`이며, `routing.allow`와 `routing.deny` 목록은

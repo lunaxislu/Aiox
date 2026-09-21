@@ -1,0 +1,244 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "AIOX Host",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "host": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "$ref": "#/definitions/name",
+                    "description": "Host name, case-sensitive."
+                },
+                "instruction": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$",
+                    "description": "Optional common instruction for all Agents. Omitted means empty; individual Agent instructions still apply."
+                },
+                "layout": {
+                    "$ref": "#/definitions/layout"
+                }
+            },
+            "required": ["name"],
+            "description": "Host identity and optional shared instruction/layout. Omitted instruction is empty."
+        },
+        "agents": {
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": {
+                "$ref": "#/definitions/name"
+            },
+            "additionalProperties": {
+                "$ref": "#/definitions/agent"
+            },
+            "description": "Agent definitions. Map keys are the names referenced by networks."
+        },
+        "networks": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 1,
+            "propertyNames": {
+                "$ref": "#/definitions/name"
+            },
+            "additionalProperties": {
+                "$ref": "#/definitions/network"
+            },
+            "description": "Exactly one Host-owned Network."
+        }
+    },
+    "required": ["host", "agents", "networks"],
+    "definitions": {
+        "text": {
+            "type": "string",
+            "pattern": "^[^\\u0000]*$"
+        },
+        "name": {
+            "type": "string",
+            "pattern": "^(?=.*\\S)[^/\\u0000]+$"
+        },
+        "dimension": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+        },
+        "layout": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "preset": {
+                    "type": "string",
+                    "enum": ["auto", "left-main", "top-main", "grid"],
+                    "description": "Initial layout. Dimensions without a preset imply grid; otherwise omitted layout inherits global settings."
+                },
+                "columns": {
+                    "$ref": "#/definitions/dimension"
+                },
+                "rows": {
+                    "$ref": "#/definitions/dimension"
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "required": ["preset"],
+                        "properties": {
+                            "preset": {
+                                "const": "grid"
+                            }
+                        }
+                    },
+                    "then": {
+                        "anyOf": [
+                            {
+                                "required": ["columns"]
+                            },
+                            {
+                                "required": ["rows"]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "required": ["preset"],
+                        "properties": {
+                            "preset": {
+                                "enum": ["auto", "left-main", "top-main"]
+                            }
+                        }
+                    },
+                    "then": {
+                        "not": {
+                            "anyOf": [
+                                {
+                                    "required": ["columns"]
+                                },
+                                {
+                                    "required": ["rows"]
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "agent": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "adapter": {
+                    "type": "string",
+                    "enum": ["claude", "codex"],
+                    "description": "Agent vendor adapter."
+                },
+                "role": {
+                    "type": "string",
+                    "pattern": "^(?=.*\\S)[^\\u0000]+$",
+                    "description": "Optional role metadata."
+                },
+                "description": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$",
+                    "description": "Optional Agent description."
+                },
+                "instruction": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$",
+                    "description": "Optional Agent instructions, appended after host.instruction with a blank line. Omitted means empty."
+                },
+                "args": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/text"
+                    },
+                    "description": "Vendor argument strings passed unchanged, without shell splitting. Omitted means []."
+                }
+            },
+            "required": ["adapter"]
+        },
+        "network": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "agents": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/name"
+                    },
+                    "uniqueItems": true,
+                    "description": "Declared Agents participating in this Network. Empty or partial membership is allowed."
+                },
+                "routing": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "default": {
+                            "type": "string",
+                            "enum": ["allow", "deny"],
+                            "default": "allow",
+                            "description": "Optional. Omitted default is allow. Explicit edges override the default."
+                        },
+                        "allow": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/edge"
+                            },
+                            "description": "Allowed directed edges. Omitted means an empty list."
+                        },
+                        "deny": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/edge"
+                            },
+                            "description": "Denied directed edges. Omitted means an empty list."
+                        }
+                    },
+                    "description": "Optional routing policy. Omitted routing/default means allow; omitted edge lists are empty."
+                }
+            },
+            "required": ["agents"]
+        },
+        "edge": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "between": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/name"
+                            },
+                            "uniqueItems": true,
+                            "minItems": 2,
+                            "description": "Allow or deny both directions between these members."
+                        }
+                    },
+                    "required": ["between"]
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "from": {
+                            "$ref": "#/definitions/name",
+                            "description": "Source Agent in this Network."
+                        },
+                        "to": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/name"
+                            },
+                            "uniqueItems": true,
+                            "minItems": 1,
+                            "description": "Destination Agents in this Network."
+                        }
+                    },
+                    "required": ["from", "to"]
+                }
+            ]
+        }
+    }
+}
