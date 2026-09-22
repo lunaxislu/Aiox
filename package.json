@@ -16,12 +16,14 @@
         "format": "oxfmt --write apps packages package.json tsconfig.json tsconfig.base.json tsup.config.ts vitest.config.ts pnpm-workspace.yaml .oxfmtrc.json .oxlintrc.json .vscode/settings.json",
         "format:check": "oxfmt --check apps packages package.json tsconfig.json tsconfig.base.json tsup.config.ts vitest.config.ts pnpm-workspace.yaml .oxfmtrc.json .oxlintrc.json .vscode/settings.json",
         "check": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test",
-        "harness": "pnpm --filter @aiox/daemon harness"
+        "harness": "pnpm --filter @aiox/daemon harness",
+        "react-doctor": "react-doctor --project apps/web"
     },
     "devDependencies": {
         "@types/node": "22.20.1",
         "oxfmt": "0.66.0",
         "oxlint": "1.81.0",
+        "react-doctor": "^0.9.14",
         "tsup": "8.5.1",
         "typescript": "5.9.3",
         "vitest": "4.1.6"
