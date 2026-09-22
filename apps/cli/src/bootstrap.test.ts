@@ -651,16 +651,108 @@ test("network and agent reads reach their endpoints and summarise without --json
     }
 });
 
-test("unsupported adapters and prepared Host queries remain unavailable", async () => {
+test("Host list/status query registered state and resolve YAML only without a name", async (t) => {
+    const host = {
+        id: "host-id",
+        name: "demo",
+        directory: "/work",
+        sourceFile: "/work/aiox.yaml",
+        instruction: "",
+        revision: 1,
+        panelId: "panel-id",
+        networkId: "network-id",
+        activeOperationId: null,
+        agents: [
+            {
+                key: "a",
+                adapter: "codex",
+                args: [],
+                instruction: "",
+                role: null,
+                description: null,
+                member: true,
+                runtime: null,
+                lastExit: null,
+                lastTerminalId: null,
+            },
+        ],
+    };
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+        if (["/api/hosts", "/api/hosts?name=demo"].includes(call.url))
+            send(response, 200, [host]);
+        if (call.url === "/api/hosts?name=host-id") send(response, 200, []);
+        if (call.url === "/api/hosts/resolve")
+            send(response, 200, { hostId: host.id });
+        if (call.url === "/api/hosts/host-id" && call.method === "GET")
+            send(response, 200, host);
+        if (call.url === "/api/hosts/host-id/stop" || call.method === "DELETE")
+            send(response, 202, {
+                id: "operation",
+                requestId: JSON.parse(call.body).requestId,
+                kind: call.method === "DELETE" ? "host.delete" : "host.stop",
+                hostId: host.id,
+                panelId: host.panelId,
+                state: "succeeded",
+                targets: [],
+                error: null,
+                cleanupErrors: [],
+                createdAt: 1,
+                finishedAt: 2,
+            });
+    });
+    t.onTestFinished(() => stub.close());
+    assert.deepEqual(await run(stub.cli, "host.list", { json: true }), [host]);
+    assert.deepEqual(
+        await run(stub.cli, "host.status", { json: true }, ["demo"]),
+        host,
+    );
+    assert.match(
+        String(await run(stub.cli, "host.status", {}, ["demo"])),
+        /a.*stopped/,
+    );
+    await assert.rejects(
+        run(stub.cli, "host.status", {}, ["host-id"]),
+        /unknown_host/,
+    );
+    assert.ok(!stub.routes.some((route) => route.includes("resolve")));
+    for (const action of ["stop", "delete"] as const) {
+        assert.match(
+            String(await run(stub.cli, `host.${action}`, {}, ["demo"])),
+            /succeeded/,
+        );
+        const call = stub.calls.at(-1)!;
+        assert.equal(call.method, action === "stop" ? "POST" : "DELETE");
+        assert.deepEqual(Object.keys(JSON.parse(call.body)), ["requestId"]);
+    }
+    await writeFile(
+        join(stub.home, "aiox.yaml"),
+        "host: {name: demo}\nagents:\n  a: {adapter: codex}\nnetworks:\n  team: {agents: [a], routing: {default: deny}}\n",
+    );
+    assert.deepEqual(
+        await run(stub.cli, "host.status", { path: stub.home, json: true }),
+        host,
+    );
+    assert.ok(stub.routes.includes("POST /api/hosts/resolve"));
+    assert.deepEqual(
+        JSON.parse(
+            stub.calls.find((call) => call.url === "/api/hosts/resolve")!.body,
+        ),
+        {
+            source: {
+                directory: stub.home,
+                file: join(stub.home, "aiox.yaml"),
+            },
+        },
+    );
+});
+
+test("unsupported adapters fail before contacting the daemon", async () => {
     const stub = await daemonStub(() => {});
     try {
         await assert.rejects(
             run(stub.cli, "agent.run", {}, ["unknown-vendor"]),
             /Unsupported vendor: unknown-vendor/,
-        );
-        await assert.rejects(
-            run(stub.cli, "host.status", {}, ["review"]),
-            /Stage 5/,
         );
         assert.deepEqual(stub.routes, []);
     } finally {

@@ -16,7 +16,13 @@ import {
     lastExitSchema,
     type LastExit,
 } from "@aiox/protocol";
-import { IsNull, LessThan, type DataSource, type EntityManager } from "typeorm";
+import {
+    IsNull,
+    Not,
+    LessThan,
+    type DataSource,
+    type EntityManager,
+} from "typeorm";
 
 import {
     HostEntity,
@@ -89,6 +95,13 @@ export interface HostState {
         tabId: string,
     ): Promise<void>;
     removeTerminal(id: string): Promise<void>;
+    deleteHost(id: string, panelRevision: number): Promise<void>;
+    replaceHost(
+        host: HostView,
+        network: HostNetworkView,
+        panel: PanelView,
+        expectedRevision: number,
+    ): Promise<void>;
     deletePanel(id: string, expectedRevision: number): Promise<void>;
     createPanel(panel: PanelView): Promise<void>;
     updatePanel(panel: PanelView, expectedRevision: number): Promise<void>;
@@ -263,6 +276,127 @@ export function hostState(dataSource: DataSource): HostState {
             operations,
         };
     }
+    async function writeHost(
+        input: HostView,
+        networkInput: HostNetworkView,
+        panelInput: PanelView,
+        createdAt: number,
+        operation?: { value: Operation; requestHash: string },
+        expectedRevision?: number,
+    ) {
+        const host = hostViewSchema.parse(input),
+            network = hostNetworkViewSchema.parse(networkInput),
+            panel = panelViewSchema.parse(panelInput);
+        if (
+            network.hostId !== host.id ||
+            host.networkId !== network.id ||
+            host.panelId !== panel.id ||
+            panel.hostId !== host.id ||
+            panel.networkId !== network.id ||
+            panel.kind !== "host" ||
+            network.members.some(
+                (m) =>
+                    !host.agents.some((a) => a.key === m.agentKey && a.member),
+            ) ||
+            host.agents.some(
+                (a) =>
+                    a.member !==
+                    network.members.some((m) => m.agentKey === a.key),
+            )
+        )
+            throw new Error("Invalid Host references");
+        await dataSource.transaction(async (manager) => {
+            if (expectedRevision !== undefined) {
+                const previous = await manager.findOne(HostEntity, {
+                    where: { id: host.id },
+                });
+                if (!previous) throw new HostStateError("unknown_host");
+                if (previous.revision !== expectedRevision)
+                    throw new HostStateError("revision_conflict");
+                const previousPanel = await manager.findOne(PanelEntity, {
+                    where: { hostId: host.id },
+                });
+                if (
+                    !previousPanel ||
+                    previousPanel.id !== panel.id ||
+                    previousPanel.revision !== panel.revision
+                )
+                    throw new HostStateError("revision_conflict");
+                createdAt = previous.createdAt;
+                panel.revision++;
+                await manager.delete(HostEntity, { id: host.id });
+            }
+            await manager.insert(HostEntity, {
+                id: host.id,
+                name: host.name,
+                directory: host.directory,
+                sourceFile: host.sourceFile,
+                instruction: host.instruction,
+                revision: host.revision,
+                createdAt,
+            });
+            if (host.agents.length)
+                await manager.insert(
+                    HostAgentEntity,
+                    host.agents.map((a, ordinal) => ({
+                        hostId: host.id,
+                        agentKey: a.key,
+                        ordinal,
+                        adapter: a.adapter,
+                        role: a.role,
+                        description: a.description,
+                        instruction: a.instruction,
+                        argsJson: JSON.stringify(a.args),
+                        lastTerminalId: a.lastTerminalId,
+                        lastExitJson: json(a.lastExit),
+                    })),
+                );
+            await manager.insert(HostNetworkEntity, {
+                id: network.id,
+                hostId: host.id,
+                name: network.name,
+                defaultPolicy: network.default,
+            });
+            if (network.members.length)
+                await manager.insert(
+                    HostMemberEntity,
+                    network.members.map((m) => ({
+                        networkId: network.id,
+                        agentKey: m.agentKey,
+                    })),
+                );
+            const explicit = network.edges.filter(
+                (e) => e.source !== "manifest-default",
+            );
+            if (explicit.length)
+                await manager.insert(
+                    HostEdgeEntity,
+                    explicit.map((e) => ({
+                        networkId: network.id,
+                        fromKey: e.from,
+                        toKey: e.to,
+                        manifestPolicy:
+                            e.source === "manifest-edge" ? e.policy : null,
+                        overridePolicy:
+                            e.source === "runtime-override" ? e.policy : null,
+                    })),
+                );
+            await manager.insert(PanelEntity, panelRow(panel));
+            await insertTabs(manager, panel);
+            if (operation) {
+                const { targets, error, cleanupErrors, ...rest } =
+                    operationSchema.parse(operation.value);
+                await manager.insert(HostOperationEntity, {
+                    ...rest,
+                    requestHash: operation.requestHash,
+                    targetsJson: JSON.stringify(targets),
+                    errorJson: json(error),
+                    cleanupErrorsJson: JSON.stringify(cleanupErrors),
+                });
+            }
+        });
+    }
+
     return {
         snapshot,
         async routeNetwork(hostId, networkId, operation) {
@@ -590,6 +724,29 @@ export function hostState(dataSource: DataSource): HostState {
                 );
             });
         },
+        async deleteHost(id, panelRevision) {
+            await dataSource.transaction(async (manager) => {
+                const host = await manager.findOne(HostEntity, {
+                    where: { id },
+                });
+                if (!host) throw new HostStateError("unknown_host");
+                const panel = await manager.findOne(PanelEntity, {
+                    where: { hostId: id },
+                });
+                if (!panel || panel.revision !== panelRevision)
+                    throw new HostStateError("revision_conflict");
+                if (
+                    await manager.count(PanelTabEntity, {
+                        where: { panelId: panel.id, terminalId: Not(IsNull()) },
+                    })
+                )
+                    throw new HostStateError(
+                        "revision_conflict",
+                        "Host still owns terminals.",
+                    );
+                await manager.delete(HostEntity, { id });
+            });
+        },
         async deletePanel(id, expectedRevision) {
             await dataSource.transaction(async (manager) => {
                 const panel = await manager.findOne(PanelEntity, {
@@ -628,109 +785,9 @@ export function hostState(dataSource: DataSource): HostState {
                 await insertTabs(manager, panel);
             });
         },
-        async createHost(
-            input,
-            networkInput,
-            panelInput,
-            createdAt,
-            operation,
-        ) {
-            const host = hostViewSchema.parse(input),
-                network = hostNetworkViewSchema.parse(networkInput),
-                panel = panelViewSchema.parse(panelInput);
-            if (
-                network.hostId !== host.id ||
-                host.networkId !== network.id ||
-                host.panelId !== panel.id ||
-                panel.hostId !== host.id ||
-                panel.networkId !== network.id ||
-                panel.kind !== "host" ||
-                network.members.some(
-                    (m) =>
-                        !host.agents.some(
-                            (a) => a.key === m.agentKey && a.member,
-                        ),
-                ) ||
-                host.agents.some(
-                    (a) =>
-                        a.member !==
-                        network.members.some((m) => m.agentKey === a.key),
-                )
-            )
-                throw new Error("Invalid Host references");
-            await dataSource.transaction(async (manager) => {
-                await manager.insert(HostEntity, {
-                    id: host.id,
-                    name: host.name,
-                    directory: host.directory,
-                    sourceFile: host.sourceFile,
-                    instruction: host.instruction,
-                    revision: host.revision,
-                    createdAt,
-                });
-                if (host.agents.length)
-                    await manager.insert(
-                        HostAgentEntity,
-                        host.agents.map((a, ordinal) => ({
-                            hostId: host.id,
-                            agentKey: a.key,
-                            ordinal,
-                            adapter: a.adapter,
-                            role: a.role,
-                            description: a.description,
-                            instruction: a.instruction,
-                            argsJson: JSON.stringify(a.args),
-                            lastTerminalId: a.lastTerminalId,
-                            lastExitJson: json(a.lastExit),
-                        })),
-                    );
-                await manager.insert(HostNetworkEntity, {
-                    id: network.id,
-                    hostId: host.id,
-                    name: network.name,
-                    defaultPolicy: network.default,
-                });
-                if (network.members.length)
-                    await manager.insert(
-                        HostMemberEntity,
-                        network.members.map((m) => ({
-                            networkId: network.id,
-                            agentKey: m.agentKey,
-                        })),
-                    );
-                const explicit = network.edges.filter(
-                    (e) => e.source !== "manifest-default",
-                );
-                if (explicit.length)
-                    await manager.insert(
-                        HostEdgeEntity,
-                        explicit.map((e) => ({
-                            networkId: network.id,
-                            fromKey: e.from,
-                            toKey: e.to,
-                            manifestPolicy:
-                                e.source === "manifest-edge" ? e.policy : null,
-                            overridePolicy:
-                                e.source === "runtime-override"
-                                    ? e.policy
-                                    : null,
-                        })),
-                    );
-                await manager.insert(PanelEntity, panelRow(panel));
-                await insertTabs(manager, panel);
-                if (operation) {
-                    const { targets, error, cleanupErrors, ...rest } =
-                        operationSchema.parse(operation.value);
-                    await manager.insert(HostOperationEntity, {
-                        ...rest,
-                        requestHash: operation.requestHash,
-                        targetsJson: JSON.stringify(targets),
-                        errorJson: json(error),
-                        cleanupErrorsJson: JSON.stringify(cleanupErrors),
-                    });
-                }
-            });
-        },
+        createHost: writeHost,
+        replaceHost: (host, network, panel, revision) =>
+            writeHost(host, network, panel, 0, undefined, revision),
         async saveOperation(input, requestHash) {
             const operation = operationSchema.parse(input);
             return dataSource.transaction(async (manager) => {

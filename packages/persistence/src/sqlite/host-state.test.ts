@@ -634,4 +634,59 @@ test("Host route overrides reset to applied YAML and agent updates preserve unre
         ),
         false,
     );
+    const current = await db.hostState.snapshot();
+    const replacement = {
+        ...current.hosts[0]!,
+        revision: current.hosts[0]!.revision + 1,
+        instruction: "replaced",
+        agents: [agent("z")],
+    };
+    const replacedNetwork = {
+        ...current.networks[0]!,
+        name: "replacement",
+        default: "deny" as const,
+        members: [{ agentKey: "z", runtimeId: null }],
+        edges: [],
+    };
+    await assert.rejects(
+        db.hostState.replaceHost(
+            replacement,
+            replacedNetwork,
+            current.panels[0]!,
+            replacement.revision,
+        ),
+        /revision_conflict/,
+    );
+    assert.deepEqual(await db.hostState.snapshot(), current);
+    await db.hostState.replaceHost(
+        replacement,
+        replacedNetwork,
+        current.panels[0]!,
+        current.hosts[0]!.revision,
+    );
+    await db.close();
+    db = await openDatabase(path);
+    const replaced = await db.hostState.snapshot();
+    assert.deepEqual(replaced.hosts, [replacement]);
+    assert.deepEqual(replaced.networks, [replacedNetwork]);
+    assert.deepEqual(
+        replaced.panels,
+        current.panels.map((p) => ({ ...p, revision: p.revision + 1 })),
+    );
+    await assert.rejects(
+        db.hostState.deleteHost("h", replaced.panels[0]!.revision),
+        /still owns terminals/,
+    );
+    assert.deepEqual(await db.hostState.snapshot(), replaced);
+    await db.hostState.removeTerminal("old-terminal");
+    const deletable = (await db.hostState.snapshot()).panels[0]!;
+    await db.hostState.deleteHost("h", deletable.revision);
+    await db.close();
+    db = await openDatabase(path);
+    assert.deepEqual(await db.hostState.snapshot(), {
+        hosts: [],
+        networks: [],
+        panels: [],
+        operations: [],
+    });
 });

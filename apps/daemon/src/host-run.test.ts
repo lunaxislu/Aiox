@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { writeFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -17,7 +17,7 @@ import type {
 } from "@aiox/vendor";
 import { expect, test, vi } from "vitest";
 
-import { initialHostPanel } from "./host-run";
+import { initialHostPanel, launcher } from "./host-run";
 import { startTestDaemon } from "./testing";
 
 test.each([
@@ -236,6 +236,132 @@ networks:
                         state.hosts[0]!.id,
             ),
         ).toBe(true);
+        const restart = () =>
+            fetch(h.apiUrl("/api/hosts/restart"), {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    requestId: randomUUID(),
+                    source: input.source,
+                }),
+            });
+        const beforeInvalid = await h.daemon.services.db.hostState.snapshot();
+        const runtimeIds = h.daemon.services.runtimes.list().map((r) => r.id);
+        await writeFile(join(h.home, "aiox.yaml"), "host: []");
+        expect((await restart()).status).toBe(400);
+        expect(await h.daemon.services.db.hostState.snapshot()).toEqual(
+            beforeInvalid,
+        );
+        expect(h.daemon.services.runtimes.list().map((r) => r.id)).toEqual(
+            runtimeIds,
+        );
+        const userShell = await h.daemon.createShell();
+        const customized = structuredClone(beforeInvalid.panels[0]!);
+        const panes = panelLayoutReferences(customized.layout).panes;
+        panes[0]!.tabIds.push("user-tab");
+        customized.tabs.push({
+            id: "user-tab",
+            terminalId: userShell.id,
+            agentKey: "beta",
+            runtimeId: null,
+            label: "User shell",
+            presentation: "shell",
+            notice: null,
+        });
+        await h.daemon.services.db.hostState.updatePanel(
+            { ...customized, revision: customized.revision + 1 },
+            customized.revision,
+        );
+        const oldAlpha = customized.tabs.find(
+            (tab) => tab.agentKey === "alpha",
+        )!;
+        const oldBeta = customized.tabs.find((tab) => tab.agentKey === "beta")!;
+        await writeFile(
+            join(h.home, "aiox.yaml"),
+            "host: {name: demo, instruction: latest}\nagents:\n  alpha: {adapter: codex}\n  gamma: {adapter: codex}\nnetworks:\n  replaced: {agents: [alpha, gamma], routing: {default: allow}}\n",
+        );
+        const terminate = vi
+            .spyOn(h.daemon.services.lifecycle, "stopTerminal")
+            .mockRejectedValueOnce(new Error("removed shell still alive"));
+        const rejectedRestart = operationSchema.parse(
+            await (await restart()).json(),
+        );
+        await vi.waitFor(
+            async () => {
+                const failed = await h.daemon.services.db.hostState.snapshot();
+                expect(
+                    failed.operations.find((o) => o.id === rejectedRestart.id),
+                ).toMatchObject({
+                    state: "failed",
+                    error: {
+                        stage: "execution",
+                        message: "removed shell still alive",
+                    },
+                });
+                expect(failed.hosts[0]!.agents.map((a) => a.key)).toEqual([
+                    "alpha",
+                    "beta",
+                ]);
+                expect(
+                    h.daemon.services.terminals.view(oldBeta.terminalId!)
+                        ?.alive,
+                ).toBe(true);
+            },
+            { timeout: 10000 },
+        );
+        terminate.mockRestore();
+        const restarting = await restart();
+        expect(restarting.status).toBe(202);
+        const restartOperation = operationSchema.parse(await restarting.json());
+        await vi.waitFor(
+            async () => {
+                const latest = await h.daemon.services.db.hostState.snapshot();
+                expect(
+                    latest.operations.find((o) => o.id === restartOperation.id)
+                        ?.state,
+                ).toBe("succeeded");
+            },
+            { timeout: 15000 },
+        );
+        const replaced = await h.daemon.services.db.hostState.snapshot();
+        expect(replaced.hosts[0]).toMatchObject({
+            id: state.hosts[0]!.id,
+            instruction: "latest",
+        });
+        expect(replaced.hosts[0]!.agents.map((a) => a.key)).toEqual([
+            "alpha",
+            "gamma",
+        ]);
+        expect(replaced.networks[0]).toMatchObject({
+            id: state.networks[0]!.id,
+            name: "replaced",
+            default: "allow",
+        });
+        expect(
+            replaced.networks[0]!.edges.every(
+                (edge) =>
+                    edge.source === "manifest-default" &&
+                    edge.policy === "allow",
+            ),
+        ).toBe(true);
+        expect(
+            replaced.panels[0]!.tabs.find((tab) => tab.agentKey === "alpha"),
+        ).toMatchObject({ id: oldAlpha.id, terminalId: oldAlpha.terminalId });
+        expect(
+            replaced.panels[0]!.tabs.some((tab) => tab.id === oldBeta.id),
+        ).toBe(false);
+        expect(
+            h.daemon.services.terminals.view(oldBeta.terminalId!)?.alive ??
+                false,
+        ).toBe(false);
+        expect(h.daemon.services.terminals.view(userShell.id)?.alive).toBe(
+            true,
+        );
+        expect(
+            panelLayoutReferences(replaced.panels[0]!.layout).panes.map(
+                (p) => p.id,
+            ),
+        ).toEqual(panes.map((p) => p.id));
         await writeFile(
             join(h.home, "aiox.yaml"),
             `host: {name: partial}
@@ -246,9 +372,7 @@ networks:
   shared: {agents: [alpha, broken], routing: {default: allow}}
 `,
         );
-        const partial = operationSchema.parse(
-            await (await post({ ...input, requestId: randomUUID() })).json(),
-        );
+        const partial = operationSchema.parse(await (await restart()).json());
         await vi.waitFor(
             async () => {
                 const state = await h.daemon.services.db.hostState.snapshot();
@@ -286,14 +410,91 @@ networks:
         );
         const cli = await promisify(execFile)(
             process.execPath,
-            [resolve("../cli/dist/main.js"), "host", "run", "--path", h.home],
+            [
+                resolve("../cli/dist/main.js"),
+                "host",
+                "restart",
+                "--path",
+                h.home,
+            ],
             { env: { ...process.env, HOME: h.home }, timeout: 15000 },
         );
-        expect(cli.stdout).toContain("Host run succeeded");
+        expect(cli.stdout).toContain("Host restart succeeded");
         expect(cli.stdout).toContain("alpha: ready");
         expect(cli.stderr).toBe("");
+        const cliHost = (
+            await h.daemon.services.db.hostState.snapshot()
+        ).hosts.find((host) => host.name === "cli-entry")!;
+        const cliRuntime = h.daemon.services.runtimes
+            .list()
+            .find((runtime) => runtime.hostId === cliHost.id)!;
+        await rm(join(h.home, "aiox.yaml"));
+        const control = (verb: string) =>
+            promisify(execFile)(
+                process.execPath,
+                [resolve("../cli/dist/main.js"), "host", verb, "cli-entry"],
+                { env: { ...process.env, HOME: h.home }, timeout: 15000 },
+            );
+        expect((await control("stop")).stdout).toContain("Host stop succeeded");
+        expect(h.daemon.services.runtimes.get(cliRuntime.id)).toBeUndefined();
+        expect(
+            h.daemon.services.terminals.view(cliRuntime.terminalId!)?.alive,
+        ).toBe(true);
+        expect((await control("status")).stdout).toContain("alpha: stopped");
+        await writeFile(
+            join(h.home, "aiox.yaml"),
+            "host: {name: cli-entry}\nagents: {alpha: {adapter: codex}}\nnetworks: {shared: {agents: [alpha]}}\n",
+        );
+        const callerScript = join(h.home, "restart-caller.cjs");
+        await writeFile(
+            callerScript,
+            `import(${JSON.stringify(launcher.href)}).then(async ({createFoundationPort})=>{try{await createFoundationPort({home:${JSON.stringify(h.home)}}).execute({command:'host.restart',args:[],options:{path:${JSON.stringify(h.home)}}});console.log('RESTART_CALLER_DONE');}catch(e){console.error('RESTART_CALLER_FAILED',e.message);process.exitCode=1;}});`,
+        );
+        const caller = h.daemon.services.terminals.get(cliRuntime.terminalId!)!;
+        let callerOutput = "";
+        const unsubscribe = caller.subscribe({
+            data: (data) => {
+                callerOutput += Buffer.from(data).toString();
+            },
+            exit: () => {},
+        });
+        t.onTestFinished(unsubscribe);
+        caller.write(
+            `${JSON.stringify(process.execPath)} ${JSON.stringify(callerScript)}\r`,
+        );
+        await vi.waitFor(
+            () => {
+                const current = h.daemon.services.runtimes
+                    .list()
+                    .find((runtime) => runtime.hostId === cliHost.id);
+                expect(current?.phase).toBe("running");
+                expect(current?.id).not.toBe(cliRuntime.id);
+                expect(current?.terminalId).toBe(cliRuntime.terminalId);
+            },
+            { timeout: 15000 },
+        );
+        expect((await control("stop")).stdout).toContain("Host stop succeeded");
+        await vi.waitFor(
+            () => expect(callerOutput).toContain("RESTART_CALLER_DONE"),
+            { timeout: 10000 },
+        );
+        expect(callerOutput).not.toContain("RESTART_CALLER_FAILED");
+        expect((await control("delete")).stdout).toContain(
+            "Host delete succeeded",
+        );
+        const afterDelete = await h.daemon.services.db.hostState.snapshot();
+        expect(afterDelete.hosts.some((host) => host.id === cliHost.id)).toBe(
+            false,
+        );
+        expect(afterDelete.hosts.map((host) => host.name).sort()).toEqual([
+            "demo",
+            "partial",
+        ]);
+        expect(h.daemon.services.terminals.view(userShell.id)?.alive).toBe(
+            true,
+        );
     },
-    45000,
+    60000,
 );
 
 test("invalid caller context creates nothing; shell failure is retained on the declared tab", async (t) => {

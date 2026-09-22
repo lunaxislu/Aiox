@@ -26,11 +26,13 @@ test.each([
         try {
             for (const args of [[option, value], [`${option}=${value}`]]) {
                 await expect(
-                    createCli(createFoundationPort({ home })).parseAsync(
-                        ["host", "status", ...args],
-                        { from: "user" },
-                    ),
-                ).rejects.toThrow(/arrives in Stage 5/);
+                    createCli({
+                        execute: (request) =>
+                            prepareHostRequest(request, { home }),
+                    }).parseAsync(["host", "status", ...args], {
+                        from: "user",
+                    }),
+                ).resolves.toBeDefined();
             }
         } finally {
             cwd.mockRestore();
@@ -131,13 +133,23 @@ test("named Host and mandatory Host Network commands do not require YAML; help d
             ["host", ...args],
             { from: "user" },
         );
+    vi.stubGlobal(
+        "fetch",
+        vi.fn(
+            async () =>
+                new Response("[]", {
+                    status: 200,
+                    headers: { "content-type": "application/json" },
+                }),
+        ),
+    );
     for (const args of [
         ["status", "named"],
         ["stop", "named"],
         ["delete", "named"],
-        ["list"],
     ])
-        await expect(run(...args)).rejects.toThrow(/arrives in Stage 5/);
+        await expect(run(...args)).rejects.toThrow(/unknown_host/);
+    await expect(run("list")).resolves.toBeDefined();
     vi.stubGlobal(
         "fetch",
         vi.fn(

@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import { prepareHostInput } from "@aiox/config";
 import {
     hostRunRequestSchema,
+    hostRestartRequestSchema,
+    panelLayoutReferences,
     type HostLayout,
     type HostNetworkView,
     type HostView,
@@ -18,6 +20,7 @@ import {
 } from "@aiox/protocol";
 import { z } from "zod";
 
+import { placeAgent } from "./host-agents";
 import { HttpError, parse, readJson, send } from "./http";
 import { restartCommand } from "./managed-agents";
 import type { DaemonServices } from "./services";
@@ -228,9 +231,16 @@ export async function handleHostRun(
     url: URL,
     services: DaemonServices,
 ): Promise<boolean> {
-    if (url.pathname !== "/api/hosts/run" || request.method !== "POST")
+    if (
+        !["/api/hosts/run", "/api/hosts/restart"].includes(url.pathname) ||
+        request.method !== "POST"
+    )
         return false;
-    const input = parse(runInputSchema, await readJson(request));
+    const restarting = url.pathname.endsWith("/restart");
+    const input = parse(
+        restarting ? hostRestartRequestSchema : runInputSchema,
+        await readJson(request),
+    );
     const hash = createHash("sha256")
         .update(JSON.stringify([url.pathname, input]))
         .digest("hex");
@@ -268,6 +278,18 @@ export async function handleHostRun(
                 { stage: "cli" },
             );
         }
+        if (
+            restarting &&
+            services.runtimes
+                .list()
+                .some((r) => r.terminalId === input.terminalContext!.terminalId)
+        )
+            throw new HttpError(
+                409,
+                "terminal_busy",
+                "The calling terminal already runs an Agent.",
+                { stage: "cli" },
+            );
     }
     const manifest = prepared.manifest!;
     const duplicate = async () =>
@@ -290,16 +312,20 @@ export async function handleHostRun(
         );
     };
     const existing = await duplicate();
-    if (existing) throw exists(existing);
-    const hostId = randomUUID(),
-        networkId = randomUUID();
-    const panel = initialHostPanel(
-        hostId,
-        networkId,
-        manifest.host.name,
-        manifest.agentOrder,
-        prepared.layout,
-    );
+    if (existing && !restarting) throw exists(existing);
+    const hostId = existing?.id ?? randomUUID(),
+        networkId = existing?.networkId ?? randomUUID();
+    let panel = existing
+        ? (await services.db.hostState.snapshot()).panels.find(
+              (p) => p.id === existing.panelId,
+          )!
+        : initialHostPanel(
+              hostId,
+              networkId,
+              manifest.host.name,
+              manifest.agentOrder,
+              prepared.layout,
+          );
     const host: HostView = {
         id: hostId,
         name: manifest.host.name,
@@ -358,11 +384,16 @@ export async function handleHostRun(
     const operation: Operation = {
         id: randomUUID(),
         requestId: input.requestId,
-        kind: "host.run",
+        kind: restarting ? "host.restart" : "host.run",
         hostId,
         panelId: panel.id,
         state: "running",
-        targets: host.agents.map((a) => ({
+        targets: [
+            ...host.agents,
+            ...(existing?.agents.filter(
+                (a) => !manifest.agentOrder.includes(a.key),
+            ) ?? []),
+        ].map((a) => ({
             agentKey: a.key,
             terminalId: null,
             state: "pending",
@@ -374,13 +405,23 @@ export async function handleHostRun(
         finishedAt: null,
     };
     try {
-        await services.db.hostState.createHost(
-            host,
-            network,
-            panel,
-            operation.createdAt,
-            { value: operation, requestHash: hash },
-        );
+        if (existing) {
+            const admitted = await services.db.hostState.saveOperation(
+                operation,
+                hash,
+            );
+            if (admitted.id !== operation.id) {
+                send(response, 202, admitted);
+                return true;
+            }
+        } else
+            await services.db.hostState.createHost(
+                host,
+                network,
+                panel,
+                operation.createdAt,
+                { value: operation, requestHash: hash },
+            );
     } catch (error) {
         const retry = await services.db.hostState.getOperation(
             input.requestId,
@@ -391,7 +432,7 @@ export async function handleHostRun(
             return true;
         }
         const concurrent = await duplicate();
-        if (concurrent) throw exists(concurrent);
+        if (!existing && concurrent) throw exists(concurrent);
         throw error;
     }
     services.webEvents.notify();
@@ -405,25 +446,108 @@ export async function handleHostRun(
 
     async function execute() {
         const persist = async () => {
+            const previousStage = stage;
+            stage = "storage";
             await services.db.hostState.saveOperation(operation, hash);
+            stage = previousStage;
             services.webEvents.notify();
         };
         let stage: OperationError["stage"] = "execution";
         try {
+            if (existing) {
+                for (const runtime of services.runtimes
+                    .list()
+                    .filter((r) => r.hostId === host.id)) {
+                    const target = operation.targets.find(
+                        (t) => t.agentKey === runtime.name,
+                    )!;
+                    target.state = "stopping";
+                    target.terminalId = runtime.terminalId;
+                    await persist();
+                    await services.lifecycle.stopRuntime(runtime.id);
+                    target.state = "stopped";
+                }
+                const stopped = (
+                    await services.db.hostState.snapshot()
+                ).panels.find((p) => p.id === panel.id)!;
+                const removed = stopped.tabs.filter(
+                    (t) =>
+                        t.agentKey &&
+                        !manifest.agentOrder.includes(t.agentKey) &&
+                        t.presentation !== "shell",
+                );
+                for (const tab of removed) {
+                    if (tab.terminalId) {
+                        await services.lifecycle.stopTerminal(tab.terminalId);
+                        if (services.terminals.view(tab.terminalId)?.alive)
+                            throw new Error(
+                                "Removed Agent shell termination is not confirmed.",
+                            );
+                    }
+                }
+                const latest = await services.db.hostState.snapshot();
+                panel = latest.panels.find((p) => p.id === panel.id)!;
+                const removedIds = new Set(removed.map((t) => t.id));
+                panel.tabs = panel.tabs.filter((t) => !removedIds.has(t.id));
+                for (const pane of panelLayoutReferences(panel.layout).panes) {
+                    pane.tabIds = pane.tabIds.filter(
+                        (id) => !removedIds.has(id),
+                    );
+                    if (!pane.tabIds.includes(pane.selectedTabId!))
+                        pane.selectedTabId = pane.tabIds[0] ?? null;
+                }
+                let placement = 0;
+                for (const agent of host.agents) {
+                    const tab = placeAgent(panel, agent.key, placement++);
+                    const prior = latest.hosts
+                        .find((h) => h.id === host.id)!
+                        .agents.find((a) => a.key === agent.key);
+                    agent.lastExit = prior?.lastExit ?? null;
+                    agent.lastTerminalId = tab.terminalId;
+                }
+                host.revision =
+                    latest.hosts.find((h) => h.id === host.id)!.revision + 1;
+                stage = "storage";
+                await services.db.hostState.replaceHost(
+                    host,
+                    network,
+                    panel,
+                    host.revision - 1,
+                );
+                for (const target of operation.targets)
+                    if (!manifest.agentOrder.includes(target.agentKey!))
+                        target.state = "stopped";
+                await persist();
+            }
             for (const target of operation.targets) {
                 const agent = host.agents.find(
                     (a) => a.key === target.agentKey,
-                )!;
+                );
+                if (!agent) continue;
                 let savedTerminal = false;
+                let createdTerminal = false;
+                let failureTabId: string | undefined;
                 let launchFile: string | undefined;
                 try {
                     stage = "execution";
-                    const terminal = await services.lifecycle.createShell(
-                        {
-                            cwd: host.directory,
-                        },
-                        prepared.terminal,
-                    );
+                    const tab = panel.tabs.find(
+                        (t) =>
+                            t.agentKey === agent.key &&
+                            t.presentation === "preparing",
+                    )!;
+                    failureTabId = tab.id;
+                    const reusable = tab.terminalId
+                        ? services.terminals.view(tab.terminalId)
+                        : undefined;
+                    createdTerminal = !reusable?.alive;
+                    const terminal = reusable?.alive
+                        ? reusable
+                        : await services.lifecycle.createShell(
+                              {
+                                  cwd: host.directory,
+                              },
+                              prepared.terminal,
+                          );
                     target.terminalId = terminal.id;
                     if (!terminal.alive)
                         throw new Error("Host shell exited during creation.");
@@ -436,7 +560,7 @@ export async function handleHostRun(
                             ...current,
                             revision: current.revision + 1,
                             tabs: current.tabs.map((t) =>
-                                t.agentKey === agent.key
+                                t.id === tab.id
                                     ? { ...t, terminalId: terminal.id }
                                     : t,
                             ),
@@ -447,19 +571,26 @@ export async function handleHostRun(
                     target.state = "preparing";
                     await persist();
                     stage = "execution";
-                    const marker = `AIOX_LAUNCH_${randomUUID()}_`;
-                    launchFile = join(
-                        tmpdir(),
-                        `aiox-launch-${randomUUID()}.cjs`,
-                    );
-                    const command = await launchCommand(
-                        host,
-                        agent.key,
-                        agent.adapter,
-                        services.configLocation.home,
-                        marker,
-                        launchFile,
-                    );
+                    const inCaller =
+                        terminal.id === input.terminalContext?.terminalId;
+                    const marker = inCaller
+                        ? `AIOX_CALLER_${operation.id}_`
+                        : `AIOX_LAUNCH_${randomUUID()}_`;
+                    if (!inCaller)
+                        launchFile = join(
+                            tmpdir(),
+                            `aiox-launch-${randomUUID()}.cjs`,
+                        );
+                    const command = inCaller
+                        ? undefined
+                        : await launchCommand(
+                              host,
+                              agent.key,
+                              agent.adapter,
+                              services.configLocation.home,
+                              marker,
+                              launchFile!,
+                          );
                     const waiting = waitForAgent(
                         services,
                         host,
@@ -468,9 +599,10 @@ export async function handleHostRun(
                         marker,
                     );
                     try {
-                        services.terminals
-                            .get(terminal.id)!
-                            .write(command + "\r");
+                        if (command)
+                            services.terminals
+                                .get(terminal.id)!
+                                .write(command + "\r");
                     } catch (error) {
                         waiting.cancel();
                         await waiting.ready.catch(() => {});
@@ -494,7 +626,11 @@ export async function handleHostRun(
                     target.state = "failed";
                     target.error = failure;
                     operation.error ??= failure;
-                    if (target.terminalId && !savedTerminal) {
+                    if (
+                        target.terminalId &&
+                        createdTerminal &&
+                        !savedTerminal
+                    ) {
                         try {
                             await services.lifecycle.stopTerminal(
                                 target.terminalId,
@@ -514,14 +650,13 @@ export async function handleHostRun(
                         .find(
                             (r) => r.hostId === host.id && r.name === agent.key,
                         );
-                    if (!runtime)
+                    if (!runtime && failureTabId)
                         await services.db.hostState.failStart(
                             host.id,
                             agent.key,
                             failure.message,
                             restartCommand(host, agent.key),
-                            panel.tabs.find((t) => t.agentKey === agent.key)!
-                                .id,
+                            failureTabId,
                         );
                 } finally {
                     if (launchFile) {
@@ -548,13 +683,14 @@ export async function handleHostRun(
         } catch (error) {
             operation.state = "failed";
             operation.error = {
-                code: "storage_error",
-                stage: "storage",
-                message: String(error),
+                code:
+                    stage === "storage" ? "storage_error" : "execution_failed",
+                stage,
+                message: error instanceof Error ? error.message : String(error),
             };
             operation.finishedAt = Date.now();
             operation.targets = operation.targets.map((t) =>
-                t.state === "pending" || t.state === "preparing"
+                ["pending", "preparing", "stopping"].includes(t.state)
                     ? { ...t, state: "failed", error: operation.error }
                     : t,
             );

@@ -85,7 +85,7 @@ export function hostOperationResult(operation: Operation): string {
             `${t.agentKey ?? t.terminalId}: ${t.state}${operation.kind === "host.agent.start" && t.state === "unchanged" ? " (already running)" : ""}${t.error ? ` — ${t.error.message} [${t.error.stage}/${t.error.code}]` : ""}`,
     );
     const result = [
-        `Host run ${operation.state} (operationId=${operation.id}, requestId=${operation.requestId})`,
+        `${operation.kind.replaceAll(".", " ").replace(/^host/, "Host")} ${operation.state} (operationId=${operation.id}, requestId=${operation.requestId})`,
         ...targets,
         ...(operation.error ? [operation.error.message] : []),
         ...operation.cleanupErrors.map((e) => `Cleanup: ${e.message}`),

@@ -12,8 +12,8 @@ status: open
 - [x] W4 shell 내부 Agent 실행과 준비·실패·종료 관측을 구현한다
 - [x] W5 Host run·전용 Network·초기 배치를 구현하고 CLI·daemon 경로를 검증한다
 - [x] W6 개별 Agent start/stop/restart와 Host Network 명령을 구현하고 서버 결과를 검증한다
-- [>] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현하고 CLI·daemon 경로를 검증한다
-- [ ] W8 Stage6 준비 후 W5~W7의 실제 화면 연결과 전체 흐름을 통합 검증한다
+- [x] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현하고 CLI·daemon 경로를 검증한다
+- [>] W8 Stage6 준비 후 W5~W7의 실제 화면 연결과 전체 흐름을 통합 검증한다
 
 ## Required Context
 
@@ -373,3 +373,19 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 - P2 배치 확인·수정: 좌우 각각 상하 분할에서 두 번째 신규 탭이 좌하로 가는 회귀를 재현했다. placeAgent는 현재 split axis/weight로 pane 사각형을 계산하고 top→left로 정렬한다. 균등/비균등 분할과 분할·선택 보존 회귀, 실제 좌상 shell의 빌드 CLI에서 a·e 두 Agent를 시작하여 두 번째가 우상 pane에 놓이는 경로가 통과했다. 단순 reference 수집·검증용 panelLayoutReferences의 순회 계약은 바꾸지 않았다.
 - 검증: 새 테스트의 unknown 응답·narrowed layout 타입 오류를 수정한 뒤 최종 `pnpm check` exit 0 — lint·format·전체 build·typecheck, 61개 파일·731개 테스트(daemon 261개 포함). 빌드된 daemon/CLI Node entry import, 변경 문서 inline-code·wikilink 대상·git diff 검사도 통과했다. 실제 macOS shell·CLI·HTTP/WS/SSE와 vendor 대역 검증이며 실제 vendor·React·Windows/WSL 검증을 추가한 것은 아니다.
 - 반영·상태: system/storage-terminal architecture의 사전 검증·저장 rollback·화면 배치 설명을 구현과 맞췄다. 앞선 완료 보고에서 누락한 세 경계를 보완했으므로 W6를 다시 완료하고 W7을 next로 복원한다. Stage6·apps/web·plan·사용자 DB·architecture.excalidraw는 수정하지 않았으며 commit/push는 하지 않았다.
+
+## 2026-09-22 · W7 전체 Host 제어 구현 착수
+
+- 사용자 요청: W7 전체 restart/stop/delete·조회·구성 변경을 lazy하게 구현한다. W7 범위와 완료 조건은 축소하지 않는다.
+- 확인: 작업 시작 시 git status는 깨끗했다. CLI 명령 표면·공개 DTO·조회 API와 개별 Agent 제어는 있으나 CLI list/status/stop/delete와 daemon 전체 stop/delete는 미구현이었다. 최신 YAML 전체 restart도 미구현이다.
+- 진행: CLI list/status 이름 직접 조회·YAML resolve, stop/delete 이름→ID 선택과 기존 Operation/SSE 완료 대기를 연결했다. daemon stop/delete는 기존 lifecycle.stopRuntime/stopTerminal과 Operation 저장을 사용한다. persistence의 직렬 실행 wrapper 및 FK cascade를 이용한 삭제 transaction을 추가했다.
+- 검증 중: 조회 및 stop/delete CLI 회귀의 RED→GREEN을 확인했다. daemon HTTP 404 RED 확인 뒤 구현했고 실제 shell 종료·실패 보존·재시도·다른 terminal 보존 회귀를 진행 중이다. 로컬 listen EPERM은 sandbox 밖의 같은 테스트 명령으로 재검증했다. 전체 restart·구성 교체·전체 범위 검증과 owner 반영은 남아 있으며 W7은 계속 active다.
+
+### 2026-09-22 23:13 · W7 전체 제어·구성 교체 구현 및 검증 완료
+
+- 구현: CLI list/status는 현재 적용 구성·Runtime projection을 조회한다. stop/status/delete의 명시 hostname은 정확한 이름→ID로 선택하고 YAML을 읽지 않는다. 이름 생략 시 기존 YAML resolve를 사용한다. stop/delete/restart는 기존 requestId·Operation·SSE 완료 대기와 오류 재조회 안내를 사용하며 결과 라벨은 실제 명령 종류를 표시한다.
+- 전체 restart: 공통 config/YAML/환경 검증 뒤 같은 이름은 기존 Host/panel/Network ID를 유지해 교체한다. Runtime 종료와 제거된 Agent shell 종료를 확인한 뒤 최신 정의·membership·route를 원자적으로 저장한다. 같은 key의 관리 탭·shell, pane tree와 일반 shell을 보존하고 새 key를 추가한다. host.name 변경은 별도 Host로 실행한다. 호출 shell 재사용은 SSE preparing 대상에서 foreground CLI가 이어받아 교착을 피한다. 종료 실패 시 기존 관리 정의와 미종료 shell을 남기고 실패 Operation으로 재시도할 수 있다.
+- stop/delete: 기존 lifecycle.stopRuntime/stopTerminal을 재사용한다. stop은 YAML Agent 실행만 종료하고 shell·적용 구성·정책을 유지한다. delete는 panel 소유 terminal 종료 뒤 참조·revision 검사를 통과해야 Host FK cascade를 적용한다. 사용자 shell·그 작업은 동일 종료 경로를 사용하며 외부 terminal·다른 Host는 보존한다. Operation·실행 이력은 구성 삭제와 별도로 유지한다.
+- 저장: 생성과 교체가 같은 검증·transaction을 공유한다. 현재 Host/panel revision을 확인하고 기존 ID·createdAt과 이력을 유지하며 적용 구성을 교체한다. 직렬 DB wrapper도 연결했다. stale revision 거절·snapshot 보존, 구성 교체·삭제 후 DB 재오픈, terminal 참조가 남은 삭제 거절을 검증했다. 개발 DB 호환 계층·migration·추가 의존성은 추가하지 않았다.
+- 검증: 신규 조회·제어·restart의 RED를 확인한 뒤 구현했다. 실제 macOS PTY·빌드 CLI·HTTP/WS/SSE와 vendor 대역으로 YAML 오류 시 기존 Runtime/DB 보존, key 증감·Network 교체·같은 자리 재사용, 제거 shell 종료 실패 후 재시도, /exit과 같은 일반 shell 상태 보존, 호출 shell 내부 restart, YAML 삭제 후 이름 stop/status/delete, 삭제 실패 보존·재시도·다른 terminal/Host 격리를 확인했다. 최종 전체 pnpm check exit 0: lint·format·build·typecheck와 62개 파일·733개 테스트. 이후 실행 중 Agent에 과거 종료 메시지가 붙지 않게 출력 한 줄을 정리하고 영향받는 CLI 41개 회귀·CLI build·format 및 빌드 daemon/CLI Node import를 다시 통과했다. 문서 wikilink 대상·git diff 검사도 통과했다.
+- owner·완료: docs/architecture/aiox-system.md와 docs/architecture/aiox-storage-terminal.md의 현재 구현 범위·전체 제어·원자적 저장 책임을 맞췄다. W7 완료, 다음은 W8에서 Stage6 준비 상태에 맞춰 실제 React 연결·TUI UX를 검증한다. 실제 vendor·React·Windows/WSL 검증 완료를 주장하지 않는다. Stage6 로그·apps/web·plan·사용자 DB·architecture.excalidraw는 수정하지 않았고 commit/push는 하지 않았다.

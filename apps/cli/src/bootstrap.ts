@@ -19,6 +19,7 @@ import type {
     NetworkView,
     RouteOperation,
     Operation,
+    HostView,
 } from "@aiox/protocol";
 import {
     agentViewSchema,
@@ -593,6 +594,59 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
             const { args, command, options } = request;
             if (command.startsWith("host.")) {
                 const prepared = await prepareHostRequest(request, { home });
+                if (command === "host.list" || command === "host.status") {
+                    const url = await daemonUrl();
+                    const name = args[0] as string | undefined;
+                    let hosts: HostView[];
+                    if (command === "host.list" || name !== undefined) {
+                        hosts = hostViewSchema
+                            .array()
+                            .parse(
+                                await call(url, `/api/hosts${query({ name })}`),
+                            );
+                        if (name !== undefined)
+                            hosts = hosts.filter((h) => h.name === name);
+                    } else {
+                        const resolved = (await call(
+                            url,
+                            "/api/hosts/resolve",
+                            post({
+                                source: {
+                                    directory: prepared.directory!,
+                                    file: prepared.file!,
+                                },
+                            }),
+                        )) as { hostId: string };
+                        hosts = [
+                            hostViewSchema.parse(
+                                await call(
+                                    url,
+                                    `/api/hosts/${encodeURIComponent(resolved.hostId)}`,
+                                ),
+                            ),
+                        ];
+                    }
+                    if (command === "host.status" && hosts.length !== 1)
+                        throw new Error(
+                            `unknown_host: No registered Host named '${name}'.`,
+                        );
+                    if (options.json)
+                        return command === "host.list" ? hosts : hosts[0];
+                    return hosts
+                        .map((host) =>
+                            [
+                                `${host.name} (${host.id})`,
+                                `Source: ${host.sourceFile}`,
+                                `Directory: ${host.directory}`,
+                                `Operation: ${host.activeOperationId ?? "none"}`,
+                                ...host.agents.map(
+                                    (agent) =>
+                                        `${agent.key}: ${agent.runtime ? `${agent.runtime.phase} / ${agent.runtime.status}` : "stopped"}${!agent.runtime && agent.lastExit?.message ? ` — ${agent.lastExit.message}` : ""}`,
+                                ),
+                            ].join("\n"),
+                        )
+                        .join("\n\n");
+                }
                 if (command.startsWith("host.network.")) {
                     const url = await daemonUrl();
                     const name = operand(args, 0);
@@ -662,42 +716,61 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                 }
                 if (
                     command === "host.run" ||
+                    command === "host.restart" ||
+                    command === "host.stop" ||
+                    command === "host.delete" ||
                     command.startsWith("host.agent.")
                 ) {
                     const url = await daemonUrl();
                     const requestId = randomUUID();
                     const terminalContext = terminalContextFromEnv(process.env);
                     const agents = [...new Set(args.flat())];
-                    const stop = command === "host.agent.stop";
-                    const hostId = stop
-                        ? (
-                              (await call(
-                                  url,
-                                  "/api/hosts/resolve",
-                                  post({
-                                      source: {
-                                          directory: prepared.directory!,
-                                          file: prepared.file!,
-                                      },
-                                  }),
-                              )) as { hostId: string }
-                          ).hostId
-                        : undefined;
+                    const control =
+                        command === "host.stop" || command === "host.delete";
+                    const stop = command === "host.agent.stop" || control;
+                    let hostId: string | undefined;
+                    if (control && typeof args[0] === "string") {
+                        const name = args[0];
+                        const hosts = hostViewSchema
+                            .array()
+                            .parse(
+                                await call(url, `/api/hosts${query({ name })}`),
+                            );
+                        hostId = hosts.find((h) => h.name === name)?.id;
+                        if (!hostId)
+                            throw new Error(
+                                `unknown_host: No registered Host named '${name}'.`,
+                            );
+                    } else
+                        hostId = stop
+                            ? (
+                                  (await call(
+                                      url,
+                                      "/api/hosts/resolve",
+                                      post({
+                                          source: {
+                                              directory: prepared.directory!,
+                                              file: prepared.file!,
+                                          },
+                                      }),
+                                  )) as { hostId: string }
+                              ).hostId
+                            : undefined;
                     const path =
-                        command === "host.run"
-                            ? "/api/hosts/run"
-                            : stop
-                              ? `/api/hosts/${encodeURIComponent(hostId!)}/agents/stop`
-                              : `/api/hosts/agents/${command.split(".")[2]}`;
+                        command === "host.run" || command === "host.restart"
+                            ? `/api/hosts/${command.split(".")[1]}`
+                            : control
+                              ? `/api/hosts/${encodeURIComponent(hostId!)}${command === "host.stop" ? "/stop" : ""}`
+                              : stop
+                                ? `/api/hosts/${encodeURIComponent(hostId!)}/agents/stop`
+                                : `/api/hosts/agents/${command.split(".")[2]}`;
                     let operation: Operation | undefined;
                     let foreground: Promise<void> | undefined;
                     let foregroundError: unknown;
                     try {
                         operation = operationSchema.parse(
-                            await call(
-                                url,
-                                path,
-                                post({
+                            await call(url, path, {
+                                ...post({
                                     requestId,
                                     ...(stop
                                         ? {}
@@ -744,7 +817,10 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                                         ? {}
                                         : { terminalContext }),
                                 }),
-                            ),
+                                ...(command === "host.delete"
+                                    ? { method: "DELETE" }
+                                    : {}),
+                            }),
                         );
                         operation = await waitForHostOperation(
                             url,
@@ -753,7 +829,10 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                                 if (
                                     foreground ||
                                     !terminalContext ||
-                                    !command.startsWith("host.agent.") ||
+                                    !(
+                                        command.startsWith("host.agent.") ||
+                                        command === "host.restart"
+                                    ) ||
                                     stop
                                 )
                                     return;
@@ -799,7 +878,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                         );
                     } catch (error) {
                         throw new Error(
-                            `${message(error)}\nrequestId=${requestId}${operation ? ` operationId=${operation.id}` : ""}\nRecheck: aiox host status ${JSON.stringify(prepared.manifest!.host.name)} --json; GET /api/operations?requestId=${requestId}`,
+                            `${message(error)}\nrequestId=${requestId}${operation ? ` operationId=${operation.id}` : ""}\nRecheck: aiox host status ${JSON.stringify(prepared.manifest?.host.name ?? args[0])} --json; GET /api/operations?requestId=${requestId}`,
                         );
                     }
                     if (foreground) {

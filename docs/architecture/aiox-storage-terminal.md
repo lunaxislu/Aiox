@@ -530,8 +530,8 @@ Operation 접수 뒤 기존 TerminalService로 실행하고 결과를 durable �
 미완료 Operation·실행 이력을 정산하며 없는 terminal의 tab을 unavailable로 표시한다.
 
 완료 Operation과 종료 이력은 보존 기간 이후 정리하되 cleanup 오류가 남은 Operation은 보존한다.
-Host resolve와 run은 공통 config/YAML 준비를 소비한다. run 접수·초기 배치·실행 결과는 연결했으며,
-개별 Agent·Host Network 제어는 연결했으며 전체 Host 제어는 후속 구현 범위다. 실제 React 연결은 Stage6 준비 후 통합 검증한다.
+Host resolve와 run/restart는 공통 config/YAML 준비를 소비한다. 최초 실행·개별 Agent·Host Network와
+전체 Host 제어를 연결했다. 실제 React 연결은 Stage6 준비 후 통합 검증한다.
 
 근거: [[packages/persistence/src/sqlite/host-schema.ts]],
 [[packages/persistence/src/sqlite/host-state.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]],
@@ -546,6 +546,12 @@ Host Network의 block/unblock은 별도 override를 저장하고 reset은 overri
 진행 중 Host Operation과의 정책 변경 충돌도 저장소에서 거절한다.
 
 근거: [[apps/daemon/src/host-agents.ts]], [[apps/daemon/src/host-agents.test.ts]]와 기존 Host 저장소·회귀 테스트.
+
+전체 구성 교체는 기존 생성과 같은 저장 검증·transaction을 사용한다. 현재 Host·panel revision을
+확인한 뒤 동일 ID의 Host·전용 Network·panel과 최신 선언을 원자적으로 교체하며 실행 이력과
+Operation은 유지한다. 전체 delete는 소유 terminal 참조가 정리된 뒤 Host FK cascade로
+관리 구성·Network·panel을 함께 삭제한다. 남아 있는 terminal 또는 revision 충돌은 삭제를 거절한다.
+저장 실패 rollback과 재오픈 후 구성·삭제 결과의 근거는 위 저장소 회귀 테스트다.
 
 ### 관리 실행 이력과 live projection [Status: As-built]
 

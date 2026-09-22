@@ -14,6 +14,7 @@ import {
 } from "@aiox/protocol";
 
 import { handleHostAgents } from "./host-agents";
+import { handleHostControl } from "./host-control";
 import { handleHostRun } from "./host-run";
 import { HttpError, parse, readJson, send } from "./http";
 import { handlePanelOperation } from "./panel-operations";
@@ -31,6 +32,8 @@ export async function handleStateApi(
     if (!/^\/api\/(panels|hosts|operations)(\/|$)/.test(path)) return false;
     try {
         if (await handleHostRun(request, response, url, services)) return true;
+        if (await handleHostControl(request, response, url, services))
+            return true;
         if (await handleHostAgents(request, response, url, services))
             return true;
         if (await handlePanelOperation(request, response, url, services))

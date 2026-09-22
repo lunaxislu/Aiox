@@ -281,6 +281,12 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
                 snapshot: () => run(() => state.snapshot()),
                 deletePanel: (id, revision) =>
                     run(() => state.deletePanel(id, revision)),
+                deleteHost: (id, revision) =>
+                    run(() => state.deleteHost(id, revision)),
+                replaceHost: (host, network, panel, revision) =>
+                    run(() =>
+                        state.replaceHost(host, network, panel, revision),
+                    ),
                 createPanel: (panel) => run(() => state.createPanel(panel)),
                 updatePanel: (panel, revision) =>
                     run(() => state.updatePanel(panel, revision)),

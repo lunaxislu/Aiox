@@ -75,7 +75,7 @@ Host 실행 준비는 선택 directory를 shell의 명시 cwd로 전달하여 �
 CLI의 `host-input.ts`는 파일 선택 인자와 CLI 오류를 보존하여 공통 준비로 전달한다.
 `bootstrap.ts`의 Host run은 준비 후 daemon 접수와 SSE 결과 대기로 연결한다. daemon의 resolve와
 run도 공통 준비를 소비하며 조회·panel 배치·설정 HTTP와 저장 기반을 사용한다. 관리 Agent의
-shell 실행과 개별 Agent·Host Network 제어는 연결했고 전체 Host 제어는 후속 구현 범위다.
+shell 실행과 개별 Agent·Host Network 제어, 전체 Host 제어·조회 CLI를 연결했다.
 IDE는 편집 중 불완전한
 문서의 AST 진단을 유지하고 실행 준비 모듈을 호출하지 않는다.
 
@@ -452,7 +452,7 @@ prepare 오류는 부수효과 전 실패, 실행 후 실패는 부분 적용 �
 config에 남으며 기존 공개 parser를 통해 같은 검증 함수를 사용한다. Host·panel·Operation 저장,
 조회·배치와 workspace shell 제어, 설정 revision 저장, snapshot/state/fault SSE는 daemon에 연결했다.
 Host `run`은 입력 준비 뒤 daemon의 실행 접수 API로 연결하며 Operation의 실제 완료를 SSE로 기다린다.
-개별 Agent 제어와 Host Network 조회·정책 CLI는 연결했으며 전체 Host 제어·조회 CLI는 후속 구현 범위다. 관리 Agent의 내부 연결과 관측은 아래 구현을 소비한다.
+개별 Agent·Host Network와 전체 Host 제어·조회 CLI를 연결했다. 관리 Agent의 내부 연결과 관측은 아래 구현을 소비한다.
 React의 Host 화면 연결과 실제 TUI 표시 검증은 별도 통합 범위로 남아 있다.
 
 근거: [[packages/protocol/src/index.ts]], [[packages/protocol/src/host.test.ts]],
@@ -510,6 +510,23 @@ Host Network CLI는 정확한 Host·Network 이름 조회로 ID를 고정한다.
 [[apps/cli/src/bootstrap.test.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]].
 실제 macOS shell·빌드 CLI·HTTP/SSE를 vendor 대역으로 검증한 범위이며 실제 vendor·React·Windows/WSL
 통합 완료를 뜻하지 않는다.
+
+### 전체 Host 제어 [Status: As-built]
+
+전체 restart는 `host-run.ts`의 공통 사전 검증·준비 관측을 재사용한다. 기존 이름이면
+Operation 접수, 기존 Runtime 종료, 제거 Agent의 shell 종료 확인, 적용 구성 교체, 선언 Agent 실행을
+순서대로 처리한다. 일반 shell과 pane tree는 유지하고 같은 key의 관리 탭을 재사용한다.
+새 이름이면 기존 Host를 변경하지 않고 최초 실행 경로로 접수한다. 호출 shell을 재사용할 때는
+CLI의 SSE 수신 경로가 foreground 실행을 이어받는다.
+
+`host-control.ts`는 stop을 Runtime 종료에, delete를 panel 소유 terminal의 종료 확인과 저장소 삭제에
+연결한다. 종료 실패는 Operation에 남기며 Host를 유지해 재시도할 수 있다. CLI의 이름 직접 조회·제어는
+등록 Host를 정확한 이름으로 찾아 ID API를 호출한다. 이름 생략 시에만 YAML resolve를 사용하고
+list/status는 서버의 live projection을 출력한다.
+
+근거: [[apps/daemon/src/host-control.ts]], [[apps/daemon/src/host-control.test.ts]],
+[[apps/daemon/src/host-run.test.ts]], [[apps/cli/src/bootstrap.test.ts]]. macOS의 실제 shell·빌드 CLI와
+vendor 대역 검증이며 실제 vendor·React·Windows/WSL 연결은 이 근거에 포함하지 않는다.
 
 ### 관리 Agent의 shell 실행 연결 [Status: As-built]
 
