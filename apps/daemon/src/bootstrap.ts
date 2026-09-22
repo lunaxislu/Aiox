@@ -61,6 +61,7 @@ export async function boot(
     let daemon: Daemon;
     try {
         daemon = await startDaemon({
+            home,
             ports: config.ports,
             terminal: async () => (await loadConfig({ home })).terminal,
             db,

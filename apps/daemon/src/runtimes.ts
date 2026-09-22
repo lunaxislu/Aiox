@@ -113,6 +113,13 @@ export class RuntimeRegistry {
     async register(
         input: RegisterRuntime,
     ): Promise<{ record: RuntimeRecord; token: string }> {
+        if (
+            input.executionOwnership === "external" &&
+            (input.terminalId != null || input.hostId != null)
+        )
+            throw new Error(
+                "External executions cannot belong to a Host or terminal.",
+            );
         const id = randomUUID();
         const name = input.name ?? id;
         // Reserve names before any await, including preparation and pending cleanup.
@@ -134,14 +141,14 @@ export class RuntimeRegistry {
                 if (record && record.binding !== unbound) {
                     record.status = status;
                     record.status_reason = reportedReason;
-                    if (record.executionOwnership === "daemon") this.onChange();
+                    this.onChange();
                 }
             },
             setObservationError: (error) => {
                 const record = this.#runtimes.get(id);
                 if (!record || record.observation_error === error) return;
                 record.observation_error = error;
-                if (record.executionOwnership === "daemon") this.onChange();
+                this.onChange();
             },
             settle: (deliveryId, outcome, error) =>
                 this.#onSettle(id, deliveryId, outcome, error),
@@ -169,13 +176,13 @@ export class RuntimeRegistry {
         // own readiness. Nothing can reach it yet: no credential exists, and
         // preparation keeps it out of send, but visible in discovery.
         this.#runtimes.set(id, record);
-        if (record.executionOwnership === "daemon") this.onChange();
+        this.onChange();
         try {
             record.binding = await input.createBinding(controls);
             if (!record.collaborationActive) record.binding.revoke?.();
             record.status = reportedStatus;
             record.status_reason = reportedReason;
-            if (record.executionOwnership === "daemon") this.onChange();
+            this.onChange();
         } catch (error) {
             // Revoke before fallible route cleanup. Failed cleanup reserves the
             // name and leaves a record that stopRuntime can retry.
@@ -247,15 +254,14 @@ export class RuntimeRegistry {
             if (runtimeId === id) this.#tokens.delete(token);
         }
         if (active) record.binding.revoke?.();
-        if (active && record.executionOwnership === "daemon") this.onChange();
+        if (active) this.onChange();
     }
 
     /** Removes a record after its cleanup has succeeded. */
     unregister(id: string): boolean {
-        const record = this.#runtimes.get(id);
         this.revoke(id);
         const removed = this.#runtimes.delete(id);
-        if (removed && record?.executionOwnership === "daemon") this.onChange();
+        if (removed) this.onChange();
         return removed;
     }
 }

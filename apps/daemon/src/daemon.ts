@@ -5,7 +5,11 @@ import type { Duplex } from "node:stream";
 import { claudeAdapter } from "@aiox/adapter-claude";
 import { codexAdapter } from "@aiox/adapter-codex";
 import type { AioxConfig } from "@aiox/config";
-import { ConfigError, resolveTerminalLaunch } from "@aiox/config";
+import {
+    ConfigError,
+    resolveTerminalLaunch,
+    createConfigDocument,
+} from "@aiox/config";
 import type { AioxDatabase } from "@aiox/persistence";
 import type {
     Ports,
@@ -34,7 +38,10 @@ import type { TerminalOptions } from "@/terminals";
 import { attachTerminal, TerminalService } from "@/terminals";
 import { WebEvents } from "@/web-events";
 
+import { readWebSnapshot } from "./web-state";
+
 export type DaemonOptions = {
+    home?: string;
     terminal?: () => Promise<AioxConfig["terminal"]>;
     ports: Ports;
     db: AioxDatabase;
@@ -104,12 +111,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             }));
     }
 
+    await options.db.hostState.recover(now());
     const webEvents = new WebEvents();
     const runtimes: RuntimeRegistry = new RuntimeRegistry(
         webEvents.notify,
         (record) => networks.removeRuntimeRoutes(record),
     );
-    const networks = new NetworkService(options.db, runtimes);
+    const networks = new NetworkService(options.db, runtimes, webEvents.notify);
     const messages = new MessageService(
         options.db,
         runtimes,
@@ -117,7 +125,21 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         now,
         webEvents.notify,
     );
-    const terminals = new TerminalService(webEvents.notify);
+    const terminals = new TerminalService(webEvents.notify, (id) => {
+        if (!admitting) return;
+        const finish = webEvents.beginUpdate();
+        const task = options.db.hostState
+            .removeTerminal(id)
+            .catch((error) =>
+                webEvents.fault(
+                    "storage_error",
+                    error instanceof Error ? error.message : String(error),
+                ),
+            )
+            .finally(finish);
+        services.operationTasks.add(task);
+        void task.then(() => services.operationTasks.delete(task));
+    });
     runtimes.onSettle((runtimeId, deliveryId, outcome, error) =>
         messages.settle(runtimeId, deliveryId, outcome, error),
     );
@@ -133,6 +155,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     let ports = options.ports;
 
     const services: DaemonServices = {
+        operationTasks: new Set(),
+        configDocument: createConfigDocument(
+            options.home === undefined ? {} : { home: options.home },
+            () => ports,
+        ),
+        configLocation:
+            options.home === undefined ? {} : { home: options.home },
         webEvents,
         db: options.db,
         runtimes,
@@ -140,6 +169,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         messages,
         terminals,
         lifecycle: {
+            acceptingInput: () => admitting,
             createShell,
             stopTerminal,
             stopRuntime,
@@ -363,7 +393,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         {
             now,
             onPurge: (report) => {
-                if (report.notifications > 0) webEvents.notify();
+                if (report.notifications > 0 || (report.operations ?? 0) > 0)
+                    webEvents.notify();
             },
         },
     );
@@ -431,11 +462,15 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
 
     async function stopTerminal(id: string): Promise<boolean> {
         const session = terminals.get(id);
-        if (!session) return false;
+        if (!session) {
+            await options.db.hostState.removeTerminal(id);
+            return false;
+        }
         for (const record of runtimes.list()) {
             if (record.terminalId === id) await stopRuntime(record.id);
         }
         if (terminals.get(id)) await terminals.kill(id);
+        await options.db.hostState.removeTerminal(id);
         return true;
     }
 
@@ -529,6 +564,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             // A binding already being prepared must finish before we can stop
             // its real resources, rather than its temporary registration.
             await Promise.allSettled(registrations);
+            await Promise.allSettled(services.operationTasks);
             const warnings: string[] = [];
             for (const record of targets) {
                 try {
@@ -634,6 +670,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return outcome;
     }
 
+    webEvents.setSnapshot(() => readWebSnapshot(services));
     const daemon: Daemon = {
         ports,
         services,

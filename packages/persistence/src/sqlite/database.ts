@@ -17,6 +17,8 @@ import {
     RouteEntity,
 } from "@/sqlite/schema";
 
+import { hostState, type HostState } from "./host-state";
+
 export type { DeliveryRow, MessageRow, NotificationRow };
 
 export type PersistentNetwork = {
@@ -43,6 +45,7 @@ export type PurgeCounts = {
     readonly messages: number;
     readonly deliveries: number;
     readonly notifications: number;
+    readonly operations?: number;
 };
 
 export interface MessageHistory {
@@ -73,6 +76,7 @@ export interface MessageHistory {
 }
 
 export interface AioxDatabase {
+    readonly hostState: HostState;
     readonly networks: PersistentNetworks;
     readonly messages: MessageHistory;
     close(): Promise<void>;
@@ -250,7 +254,23 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
         };
         const networkStore = networks(dataSource);
         const history = messages(dataSource);
+        const state = hostState(dataSource);
         return {
+            hostState: {
+                removeTerminal: (id) => run(() => state.removeTerminal(id)),
+                snapshot: () => run(() => state.snapshot()),
+                deletePanel: (id, revision) =>
+                    run(() => state.deletePanel(id, revision)),
+                createPanel: (panel) => run(() => state.createPanel(panel)),
+                updatePanel: (panel, revision) =>
+                    run(() => state.updatePanel(panel, revision)),
+                createHost: (host, network, panel, at) =>
+                    run(() => state.createHost(host, network, panel, at)),
+                saveOperation: (operation, hash) =>
+                    run(() => state.saveOperation(operation, hash)),
+                purgeBefore: (at) => run(() => state.purgeBefore(at)),
+                recover: (at) => run(() => state.recover(at)),
+            },
             networks: {
                 create: (input) => run(() => networkStore.create(input)),
                 get: (id) => run(() => networkStore.get(id)),

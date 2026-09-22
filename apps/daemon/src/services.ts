@@ -1,3 +1,4 @@
+import type { ConfigLocation, createConfigDocument } from "@aiox/config";
 import type { AioxDatabase } from "@aiox/persistence";
 import type { DaemonStatus, CreateShell, TerminalView } from "@aiox/protocol";
 
@@ -17,6 +18,7 @@ export type StopOutcome = {
 };
 
 export type Lifecycle = {
+    acceptingInput(): boolean;
     status(): Promise<DaemonStatus>;
     requestStop(force: boolean): Promise<StopOutcome>;
     createShell(options: CreateShell): Promise<TerminalView>;
@@ -25,6 +27,9 @@ export type Lifecycle = {
 };
 
 export type DaemonServices = {
+    readonly operationTasks: Set<Promise<void>>;
+    readonly configLocation: ConfigLocation;
+    readonly configDocument: ReturnType<typeof createConfigDocument>;
     readonly webEvents: WebEvents;
     readonly db: AioxDatabase;
     readonly runtimes: RuntimeRegistry;

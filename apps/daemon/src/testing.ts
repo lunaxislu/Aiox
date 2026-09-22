@@ -93,6 +93,7 @@ export async function startTestDaemon(
     const home = await mkdtemp(join(tmpdir(), "aiox-daemon-"));
     const db = await openDatabase(join(home, ".aiox", "aiox.db"));
     const daemon = await startDaemon({
+        home,
         ports: { daemon: 0, web: 0 },
         db,
         retentionDays: () => options.retentionDays ?? 30,

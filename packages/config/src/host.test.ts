@@ -144,3 +144,15 @@ test("manifest preserves numeric-looking declaration order and rejects non-UTF8 
     await writeFile(join(path, "aiox.yaml"), Buffer.from([0xff]));
     await expect(loadHostManifest({ directory: path })).rejects.toThrow();
 });
+
+test("shared preparation identifies config and YAML failure stages", async () => {
+    const home = await directory();
+    await expect(
+        prepareHostInput({ source: { directory: home } }, { home }),
+    ).rejects.toMatchObject({ stage: "yaml" });
+    await mkdir(join(home, ".aiox"));
+    await writeFile(configPath(home), "{bad");
+    await expect(
+        prepareHostInput({ source: { directory: home } }, { home }),
+    ).rejects.toMatchObject({ stage: "config" });
+});

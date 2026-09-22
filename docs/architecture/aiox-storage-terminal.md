@@ -341,30 +341,21 @@ terminal의 알림 ID를 표시 projection에서 제외한 뒤 읽음 저장한�
 
 ## Web 상태와 라이브러리
 
-WebEvents는 데이터 본문 대신 최신 조회가 필요하다는 SSE 통지만 보낸다. terminal 생성·종료,
-daemon 소유 Runtime의 등록·활성 상태·정리, Web 대상 알림의 저장·읽음 완료가 producer다.
-외부 전용 Runtime·알림 변경은 통지하지 않으며 읽음 대상이 없으면 통지하지 않는다.
-retention의 알림 삭제 건수가 양수이면 조회를 갱신하므로 외부 알림만 지운 경우에도 빈 변경
-통지가 나갈 수 있지만, Web 전용 조회의 대상 필터를 우회하거나 외부 내용을 보내지는 않는다.
-SSE는 event replay나 별도 상태 권위를 갖지 않는다. [Status: As-built]
+WebEvents는 최초·재접속 snapshot과 DTO별 state, 조회 실패 fault를 전송한다. 읽는 동안
+관측 버전이 바뀌면 snapshot을 다시 읽고, shell 생성·배치 commit은 공개 경계로 묶어 중간
+배치를 노출하지 않는다. 각 연결의 직전 snapshot과 현재 조회를 비교하여 변경된 DTO만 보낸다.
+Runtime 변경은 external도 포함하며 Web 알림은 daemon 소유만 포함한다. SSE는 replay나
+별도의 durable 상태 권위를 갖지 않는다. [Status: As-built]
 
-최초·재연결 때 한 번 통지하고 준비 gate를 통과한 HTTP 경로만 구독을 연다. 쓰기 실패나
-backpressure를 보인 viewer는 해당 연결만 정리해 새 연결의 최신 조회로 복구하도록 한다.
-daemon 종료는 열린 SSE를 먼저 닫아 HTTP listener 종료를 가로막지 않게 한다. [Status: As-built]
+쓰기 실패·backpressure는 해당 viewer를 닫고, 상태 읽기 실패는 빈 snapshot으로 숨기지 않는다.
+daemon 종료는 SSE를 닫고 접수한 panel Operation을 정산한 뒤 DB를 닫는다. 연결 종료는
+실행 자원을 종료하지 않는다. [Status: As-built]
 
-근거: [[apps/daemon/src/web-events.ts]] `apps/daemon/src/web-events.ts:3-36`,
-[[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:85-147`,
-`apps/daemon/src/runtimes.ts:194-212`, [[apps/daemon/src/daemon.ts]]
-`apps/daemon/src/daemon.ts:96-106`, `apps/daemon/src/daemon.ts:346-354`,
-`apps/daemon/src/daemon.ts:571-585`, [[apps/daemon/src/terminals.ts]]
-`apps/daemon/src/terminals.ts:83-91`, `apps/daemon/src/terminals.ts:126-134`,
-[[apps/daemon/src/http.ts]]
-`apps/daemon/src/http.ts:401-431`; 실제 HTTP 통지·등록 해제 뒤 알림 범위 회귀는
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1673-1908`,
-느린 viewer·쓰기 실패 격리는 [[apps/daemon/src/web-events.test.ts]]
-`apps/daemon/src/web-events.test.ts:20-47`.
+근거: [[apps/daemon/src/web-events.ts]], [[apps/daemon/src/web-state.ts]],
+[[apps/daemon/src/daemon.ts]], [[apps/daemon/src/web-events.test.ts]],
+[[apps/daemon/src/daemon.test.ts]], [[apps/daemon/src/panel-operations.test.ts]].
 
-Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. SSE 변경 통지 뒤 HTTP로 terminal·Web 대상 Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
+Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. 과거 change 이벤트 뒤 HTTP로 terminal·Web 대상 Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 현재 서버의 snapshot/state 이벤트를 소비하는 React 연결은 Stage6 범위로 남아 있다. 아래 운영 UI·설정·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
 
 근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:193-264`, `apps/web/src/main.ts:309-375`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:42-137`; Node DOM 대역 검증은 [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:56-151`. Stage 2 당시 실제 브라우저 UI 검증은 macOS Chrome에서 shell 생성·선택·입출력·resize·재연결(attachment 해제 후 실행 생존)·종료를 확인했다. Windows/Linux 네이티브 브라우저 교차 검증은 아직 하지 않았다.
 
@@ -525,21 +516,29 @@ restart 실패는 이전 실행을 자동 되살리거나 사전 실패처럼 �
 새 명령으로 실행한다. Host·Network 정의/적용 정책은 보존하고 활성 membership은 비운다.
 예전 PTY 번호·PID만으로 다시 연결하거나 임의 프로세스를 종료하지 않는다.
 
-### 현재 구현과 W1 차이 [Status: Current gap]
+### 현재 저장·API 구현 범위 [Status: As-built]
 
-- 현재 DB는 persistent Network/route·message/delivery/notification 테이블을 만든다.
-  위 Host/panel/Operation 테이블은 아직 없다. 근거: [[packages/persistence/src/sqlite/schema.ts]]
-  `packages/persistence/src/sqlite/schema.ts:144-192`; 초기화·재오픈·rollback 근거는
-  [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:66-212`.
-- 현재 shell·terminal metadata와 token은 TerminalService memory에 있으며 browser detach는
-  PTY를 종료하지 않는다. 근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:24-125`,
-  [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:759-864`.
-- 현재 layout parser는 `preset:grid` 단독을 허용하므로 목표의 입력 단계 오류와 다르다.
-  근거: [[packages/config/src/schema.ts]] `packages/config/src/schema.ts:218-279`,
-  [[packages/config/src/schema.test.ts]] `packages/config/src/schema.test.ts:79-105`.
-  W2에서 교정할 대상이며 기존 테스트 기대를 새 계약의 근거로 쓰지 않는다.
+Host·관리 Agent·전용 Network·membership/edge, panel/tab, Operation·실행 이력 테이블을 현재
+schema로 직접 초기화한다. pane tree·오류·안내 JSON은 protocol 검증을 통과한 값으로 저장한다.
+Host와 전용 Network·panel 생성은 하나의 transaction이며 panel 쓰기는 revision과 terminal
+유일 소유를 검사한다. 관리 구성과 실제 실행을 분리하여 runtime/token/PTY를 저장하지 않는다.
 
-### 사용자 panel 분류·이름과 외부 실행 귀속 [Status: Committed target]
+panel 생성·rename·layout·dismiss는 commit 뒤 응답한다. shell 생성·tab 닫기·workspace 삭제는
+Operation 접수 뒤 기존 TerminalService로 실행하고 결과를 durable 기록한다. 같은 requestId의
+같은 요청은 기존 결과를 반환한다. 자연 shell exit와 직접 terminal 삭제는 같은 tab 정리를
+사용하며 관리 Agent 정의는 지우지 않는다. 정상 daemon 종료는 배치를 보존하고, 다음 startup은
+미완료 Operation·실행 이력을 정산하며 없는 terminal의 tab을 unavailable로 표시한다.
+
+완료 Operation과 종료 이력은 보존 기간 이후 정리하되 cleanup 오류가 남은 Operation은 보존한다.
+Host resolve는 공통 config/YAML 준비를 소비한다. Host 실행·제어와 관리 Runtime 합성은 W4~W7,
+실제 React 연결은 Stage6·W5 이후 범위다.
+
+근거: [[packages/persistence/src/sqlite/host-schema.ts]],
+[[packages/persistence/src/sqlite/host-state.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]],
+[[apps/daemon/src/state-api.ts]], [[apps/daemon/src/panel-operations.ts]],
+[[apps/daemon/src/panel-operations.test.ts]], [[apps/daemon/src/terminals.ts]].
+
+### 사용자 panel 분류·이름과 외부 실행 귀속 [Status: As-built]
 
 panels에는 kind와 별도로 section을 저장한다. 현재 schema에 직접 section과 이름을 설계하며
 기존 개발 DB를 위한 migration/backfill을 만들지 않는다. kind workspace는 세 section,
@@ -552,10 +551,13 @@ SSE는 저장된 section을 전달하며 소비자가 kind로 section을 추정�
 executionOwnership을 노출하고 외부 실행도 포함한다. Runtime 변경 전달도 external을 제외하지
 않되 외부 실행에서 발생한 알림의 Web 제외는 유지한다. panel 분류와 Agent 소유권은 별개다.
 
-### W1 상태 공개 경계 [Status: Committed target]
+근거: [[packages/protocol/src/host.ts]], [[apps/daemon/src/state-api.test.ts]],
+[[apps/daemon/src/runtimes.ts]], [[apps/daemon/src/daemon.test.ts]].
+
+### 상태 공개 경계 [Status: As-built]
 
 새 SSE wire와 초기 snapshot은 [[docs/specs/aiox-configuration-web]]이 소유한다. 기존
-WebEvents의 빈 change 방송은 현재 구현이며 새 Host 상태 전달 계약의 완료 근거가 아니다.
+WebEvents는 위 snapshot/state 구현을 사용하며 React 연결 완료 여부는 별도로 검증한다.
 daemon은 기존 관측 owner와 persistence 결과를 조회 DTO로 공개한다. 하나의 반영 단위에서
 연관된 Host/panel/terminal/Operation 결과를 함께 공개한 뒤 SSE state로 보낸다.
 새 연결은 구독 등록과 일관된 snapshot 생성·송신을 연결하며, 준비 중 발생한 후속 변경은

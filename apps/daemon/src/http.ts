@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { ConfigError } from "@aiox/config";
+import { ConfigError, ConfigConflictError } from "@aiox/config";
 import { RouteOperationError } from "@aiox/domain";
-import type { PersistentNetwork } from "@aiox/persistence";
-import type { AgentView, NetworkView, NotificationView } from "@aiox/protocol";
+import type { NotificationView } from "@aiox/protocol";
 import {
     apiPath,
+    putConfigRequestSchema,
     createNetworkSchema,
     createShellSchema,
     readNotificationsSchema,
@@ -15,8 +15,10 @@ import {
 
 import { NetworkError } from "@/networks";
 import { AmbiguousRuntimeError, DuplicateRuntimeNameError } from "@/runtimes";
-import type { RuntimeRecord } from "@/runtimes";
 import type { DaemonServices } from "@/services";
+
+import { handleStateApi } from "./state-api";
+import { networkView, agentView, terminalView } from "./web-state";
 
 const MAX_BODY = 1_000_000;
 
@@ -50,7 +52,11 @@ export class HttpError extends Error {
     }
 }
 
-function send(response: ServerResponse, status: number, body: unknown): void {
+export function send(
+    response: ServerResponse,
+    status: number,
+    body: unknown,
+): void {
     const text = JSON.stringify(body);
     response.writeHead(status, {
         "content-type": "application/json; charset=utf-8",
@@ -59,46 +65,10 @@ function send(response: ServerResponse, status: number, body: unknown): void {
     response.end(text);
 }
 
-function networkView(
-    network: PersistentNetwork,
-    runtimes: DaemonServices["runtimes"],
-): NetworkView {
-    return {
-        id: network.id,
-        name: network.name,
-        scope: "persistent",
-        routes: network.routes.map(({ from, to }) => ({
-            from,
-            to,
-            fromName: runtimes.get(from)?.name ?? from,
-            toName: runtimes.get(to)?.name ?? to,
-        })),
-    };
-}
-
-function agentView(
-    record: RuntimeRecord,
-    names: ReadonlyMap<string, string>,
-): AgentView {
-    return {
-        agentId: record.id,
-        name: record.name,
-        role: record.role,
-        description: record.description,
-        status: record.status,
-        networkId: record.networkId,
-        networkName:
-            record.networkId === null
-                ? null
-                : (names.get(record.networkId) ?? null),
-        hostId: record.hostId,
-        terminalId: record.terminalId,
-        status_reason: record.status_reason,
-        observation_error: record.observation_error,
-    };
-}
-
-function parse<T>(schema: { parse(value: unknown): T }, value: unknown): T {
+export function parse<T>(
+    schema: { parse(value: unknown): T },
+    value: unknown,
+): T {
     try {
         return schema.parse(value);
     } catch (error) {
@@ -121,6 +91,8 @@ export function createApiHandler(services: DaemonServices) {
         url: URL,
     ): Promise<boolean> {
         const path = url.pathname;
+        const stateContract =
+            /^\/api\/(hosts|panels|operations|config)(\/|$)/.test(path);
         if (!path.startsWith("/api/")) return false;
         try {
             await route(request, response, url, path, services);
@@ -129,12 +101,23 @@ export function createApiHandler(services: DaemonServices) {
                 send(response, error.status, {
                     code: error.code,
                     message: error.message,
+                    ...(stateContract
+                        ? {
+                              stage:
+                                  path === "/api/config"
+                                      ? "config"
+                                      : error.status >= 500
+                                        ? "storage"
+                                        : "cli",
+                          }
+                        : {}),
                     ...error.extra,
                 });
             } else if (error instanceof ConfigError) {
                 send(response, 500, {
                     code: "invalid_config",
                     message: error.message,
+                    ...(stateContract ? { stage: "config" } : {}),
                 });
             } else if (error instanceof NetworkError) {
                 send(response, 400, {
@@ -191,40 +174,44 @@ async function route(
     const method = request.method ?? "GET";
     const { runtimes, networks, db, lifecycle } = services;
     if (path === "/api/web/events" && method === "GET") {
-        services.webEvents.connect(response);
+        try {
+            await services.webEvents.connect(response);
+        } catch (error) {
+            throw new HttpError(
+                500,
+                "storage_error",
+                error instanceof Error ? error.message : String(error),
+                { stage: "storage" },
+            );
+        }
         return;
     }
 
-    const terminalView = (id: string) => {
-        const view = services.terminals.view(id);
-        if (!view) return undefined;
-        const record = runtimes
-            .list()
-            .find(
-                (r) =>
-                    r.executionOwnership === "daemon" &&
-                    r.terminalId === id &&
-                    r.binding.terminal,
+    if (await handleStateApi(request, response, url, services)) return;
+
+    if (path === "/api/config") {
+        if (method === "GET") {
+            send(response, 200, await services.configDocument.read());
+            return;
+        }
+        if (method === "PUT") {
+            const input = parse(
+                putConfigRequestSchema,
+                await readJson(request),
             );
-        return record
-            ? {
-                  ...view,
-                  vendor: {
-                      runtimeId: record.id,
-                      alive: record.binding.terminal!.alive,
-                      relayDisconnected:
-                          record.binding.relayDisconnected === true,
-                      collaborationActive: record.collaborationActive,
-                      ...(record.binding.collaborationError
-                          ? {
-                                collaborationError:
-                                    record.binding.collaborationError,
-                            }
-                          : {}),
-                  },
-              }
-            : view;
-    };
+            try {
+                send(response, 200, await services.configDocument.write(input));
+            } catch (error) {
+                if (error instanceof ConfigConflictError)
+                    throw new HttpError(409, "config_conflict", error.message, {
+                        current: error.current,
+                    });
+                throw error;
+            }
+            return;
+        }
+    }
+    const getTerminal = (id: string) => terminalView(services, id);
     const vendorMatch = /^\/api\/terminals\/([^/]+)\/vendor$/.exec(path);
     if (vendorMatch && method === "DELETE") {
         const id = decodeURIComponent(vendorMatch[1]!);
@@ -249,7 +236,7 @@ async function route(
             send(
                 response,
                 200,
-                services.terminals.views().map((view) => terminalView(view.id)),
+                services.terminals.views().map((view) => getTerminal(view.id)),
             );
             return;
         }
@@ -267,7 +254,7 @@ async function route(
     if (terminalMatch) {
         const id = decodeURIComponent(terminalMatch[1]!);
         if (method === "GET") {
-            const view = terminalView(id);
+            const view = getTerminal(id);
             if (!view)
                 throw new HttpError(
                     404,
@@ -397,9 +384,8 @@ async function route(
             .list()
             .filter(
                 (record) =>
-                    record.collaborationActive &&
-                    (path !== "/api/web/agents" ||
-                        record.executionOwnership === "daemon") &&
+                    (path === "/api/web/agents" ||
+                        record.collaborationActive) &&
                     (networkId === null || record.networkId === networkId) &&
                     (host === null || record.hostId === host),
             )

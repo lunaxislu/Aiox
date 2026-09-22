@@ -73,12 +73,14 @@ Host 실행 준비는 선택 directory를 shell의 명시 cwd로 전달하여 �
 사용한다. 외부 입력 규칙은 [[docs/specs/aiox-host]]와 [[docs/specs/aiox-runtime]]이 소유한다.
 
 CLI의 `host-input.ts`는 파일 선택 인자와 parser 오류를 보존하여 공통 준비 함수에 전달한다.
-현재 `bootstrap.ts`는 준비 뒤 미구현 오류로 끝난다. HTTP handler·저장·Host 실행은 아직
-연결하지 않았으며, 후속 handler도 이 준비 경로를 소비해야 한다. IDE는 편집 중 불완전한
+현재 `bootstrap.ts`는 준비 뒤 Host 실행 미구현 오류로 끝난다. daemon의 Host resolve는 같은
+준비 경로를 소비하고 조회·panel 배치·설정 HTTP 및 저장 기반은 연결했다. Host run·Agent 실행과
+제어 handler는 후속 W4~W7 범위다. IDE는 편집 중 불완전한
 문서의 AST 진단을 유지하고 실행 준비 모듈을 호출하지 않는다.
 
 근거: [[packages/config/src/host.ts]], [[packages/config/src/host.test.ts]],
-[[packages/config/src/schema.test.ts]], [[apps/cli/src/host-input.ts]],
+[[packages/config/src/schema.test.ts]], [[packages/protocol/src/configuration.ts]],
+[[apps/daemon/src/state-api.ts]], [[apps/daemon/src/state-api.test.ts]], [[apps/cli/src/host-input.ts]],
 [[apps/cli/src/host-input.test.ts]], [[apps/cli/src/bootstrap.ts]].
 
 ## Stage 2 현재 조립 범위 [Status: As-built]
@@ -443,19 +445,22 @@ prepare 오류는 부수효과 전 실패, 실행 후 실패는 부분 적용 �
 되돌리거나 실패한 대상까지 전체 성공으로 묶지 않는다. shell 생성만으로 Agent 준비 성공,
 서버 ready만으로 React 실제 연결 완료를 보고하지 않는다.
 
-### 현재 경로 대조 [Status: Current gap]
+### 현재 구현과 남은 연결 [Status: Current gap]
 
-Host parser는 이전 표면을 남기고 bootstrap은 Host 요청을 unavailable로 거절한다.
-근거: [[apps/cli/src/cli.ts]] `apps/cli/src/cli.ts:230-261`, [[apps/cli/src/bootstrap.ts]]
-`apps/cli/src/bootstrap.ts:223-231`, [[apps/cli/src/bootstrap.test.ts]]
-`apps/cli/src/bootstrap.test.ts:663-679`. 따라서 새 계약을 기존 Host 동작으로 보고하지 않는다.
-HTTP handler가 두 listener를 공유하고 terminal/Network/Agent 조회를 제공하는 경로는 재사용한다.
-근거: [[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:111-188`.
-SSE 변경 후 HTTP 조회와 xterm WS 소비는 최소 Web에 구현돼 있다.
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:309-375`, `apps/web/src/main.ts:502`,
-[[apps/web/src/attach.ts]] `apps/web/src/attach.ts:161-269`,
-[[apps/web/src/attach.test.ts]] `apps/web/src/attach.test.ts:146-194`.
-W1의 React·Host 저장/제어·최소 mock 구현이나 실제 vendor 검증은 아직 수행하지 않았다.
+공개 HTTP/SSE 스키마와 config의 순수 검증은 protocol이 소유한다. config 파일·YAML 로딩은
+config에 남으며 기존 공개 parser를 통해 같은 검증 함수를 사용한다. Host·panel·Operation 저장,
+조회·배치와 workspace shell 제어, 설정 revision 저장, snapshot/state/fault SSE는 daemon에 연결했다.
+Host CLI는 입력 준비 뒤 실행 미구현 오류를 반환하며 Host run·Agent 실행·제어는 아직 연결하지 않았다.
+
+근거: [[packages/protocol/src/index.ts]], [[packages/protocol/src/host.test.ts]],
+[[packages/config/src/schema.ts]], [[apps/daemon/src/state-api.ts]],
+[[apps/daemon/src/panel-operations.ts]], [[apps/daemon/src/state-api.test.ts]],
+[[apps/daemon/src/panel-operations.test.ts]], [[apps/cli/src/bootstrap.ts]].
+
+기존 최소 Web의 change 알림 뒤 GET 방식은 새 서버 SSE의 consumer가 아니다. React의
+snapshot/state 소비와 실제 Host TUI 연결은 Stage6·W5 이후 검증 범위다. terminal byte stream은
+기존 WS 경로를 유지한다. 근거: [[apps/web/src/main.ts]], [[apps/web/src/attach.ts]],
+[[apps/daemon/src/web-events.ts]], [[apps/daemon/src/web-events.test.ts]].
 
 기존 terminal 생성/DELETE consumer도 동일 TerminalService/실행 종료 경로를 소비한다.
 panel에 연결된 terminal의 직접 종료나 자연 shell exit는 연결 tab·관리 Runtime 정리를 함께

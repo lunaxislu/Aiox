@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import type { HostSource } from "@aiox/protocol";
 import { isAlias, isMap, isScalar, parseAllDocuments, visit } from "yaml";
 
 import { loadConfig, type ConfigLocation } from "@/files";
@@ -13,8 +14,7 @@ import {
     type HostLayout,
 } from "@/schema";
 import { resolveTerminalLaunch } from "@/terminal";
-
-export type HostSource = { directory: string; file?: string };
+export type { HostSource } from "@aiox/protocol";
 export type HostManifest = {
     host: { name: string; instruction: string; layout?: HostLayout };
     agentOrder: string[];
@@ -255,6 +255,28 @@ export async function loadHostManifest(source: HostSource) {
     }
 }
 
+export class HostInputError extends ConfigError {
+    constructor(
+        readonly stage: "config" | "yaml" | "cli" | "environment",
+        error: unknown,
+    ) {
+        super(
+            error instanceof Error ? error.message : String(error),
+            error instanceof ConfigError ? error.field : undefined,
+        );
+    }
+}
+async function prepareStage<T>(
+    stage: HostInputError["stage"],
+    action: () => T | Promise<T>,
+): Promise<T> {
+    try {
+        return await action();
+    } catch (error) {
+        throw new HostInputError(stage, error);
+    }
+}
+
 /** Read-only preparation shared by CLI and the future Host HTTP handlers. */
 export async function prepareHostInput(
     input: {
@@ -266,28 +288,32 @@ export async function prepareHostInput(
     },
     location: ConfigLocation = {},
 ) {
-    const config = await loadConfig(location);
+    const config = await prepareStage("config", () => loadConfig(location));
     if (input.selectionErrors?.length)
-        throw new ConfigError(input.selectionErrors.join("\n"));
+        throw new HostInputError("cli", input.selectionErrors.join("\n"));
     const loaded =
         input.source === undefined
             ? undefined
-            : await loadHostManifest(input.source);
+            : await prepareStage("yaml", () => loadHostManifest(input.source!));
     if (input.cliErrors?.length)
-        throw new ConfigError(input.cliErrors.join("\n"));
-    const layout = resolveHostLayout({
-        ...(config.host?.layout === undefined
-            ? {}
-            : { global: config.host.layout }),
-        ...(loaded?.manifest.host.layout === undefined
-            ? {}
-            : { yaml: loaded.manifest.host.layout }),
-        ...(input.layout === undefined ? {} : { cli: input.layout }),
-    });
+        throw new HostInputError("cli", input.cliErrors.join("\n"));
+    const layout = await prepareStage("cli", () =>
+        resolveHostLayout({
+            ...(config.host?.layout === undefined
+                ? {}
+                : { global: config.host.layout }),
+            ...(loaded?.manifest.host.layout === undefined
+                ? {}
+                : { yaml: loaded.manifest.host.layout }),
+            ...(input.layout === undefined ? {} : { cli: input.layout }),
+        }),
+    );
     const terminal = input.launch
-        ? await resolveTerminalLaunch(
-              config.terminal,
-              loaded === undefined ? {} : { cwd: loaded.directory },
+        ? await prepareStage("environment", () =>
+              resolveTerminalLaunch(
+                  config.terminal,
+                  loaded === undefined ? {} : { cwd: loaded.directory },
+              ),
           )
         : undefined;
     return { config, ...loaded, layout, terminal };

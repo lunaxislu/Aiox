@@ -83,8 +83,10 @@ function describeError(status: number, body: unknown, text: string): string {
     const { code, message: reason, candidates, ...extra } = parsed.data;
     return [
         code === undefined ? reason : `${reason} [${code}]`,
-        ...(candidates ?? []).map(
-            ({ name, network }) => `${name} — network=${network ?? "none"}`,
+        ...(candidates ?? []).map((candidate) =>
+            typeof candidate === "string"
+                ? candidate
+                : `${candidate.name} — network=${candidate.network ?? "none"}`,
         ),
         ...Object.entries(extra).map(
             ([key, value]) =>

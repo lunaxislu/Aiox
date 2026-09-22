@@ -1,6 +1,8 @@
 import type { DeliveryOutcome, MessageKind } from "@aiox/domain";
 import { EntitySchema } from "typeorm";
 
+import { HOST_ENTITIES, HOST_SCHEMA } from "./host-schema";
+
 export type NetworkRow = {
     id: string;
     name: string;
@@ -130,6 +132,7 @@ export const NotificationEntity = new EntitySchema<NotificationRow>({
 });
 
 export const ENTITIES = [
+    ...HOST_ENTITIES,
     NetworkEntity,
     RouteEntity,
     MessageEntity,
@@ -139,6 +142,7 @@ export const ENTITIES = [
 
 /** Current development schema; opening never upgrades or resets an older database. */
 export const SCHEMA = [
+    ...HOST_SCHEMA,
     `CREATE TABLE IF NOT EXISTS persistent_networks (
   id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
   name TEXT NOT NULL UNIQUE CHECK(length(trim(name)) > 0 AND instr(name, '/') = 0)

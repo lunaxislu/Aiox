@@ -8,8 +8,8 @@ status: open
 
 - [x] W1 공통 API 계약·owner 반영 및 Stage6 수신·담당 경계·보완 1~4 합의 완료
 - [x] W2 CLI 입력·config·YAML 로딩과 검증·layout 해석을 구현한다
-- [>] W3 protocol 스키마·타입을 먼저 인계한 뒤 공통 저장 모델·조회·화면 배치 API와 상태 전달 기반을 구현한다
-- [ ] W4 shell 내부 Agent 실행과 준비·실패·종료 관측을 구현한다
+- [x] W3 protocol 스키마·타입을 먼저 인계한 뒤 공통 저장 모델·조회·화면 배치 API와 상태 전달 기반을 구현한다
+- [>] W4 shell 내부 Agent 실행과 준비·실패·종료 관측을 구현한다
 - [ ] W5 Host run·전용 Network·초기 배치를 구현하고 Stage6 최초 실제 연결을 확인한다
 - [ ] W6 개별 Agent start/stop/restart와 Host Network 명령을 구현한다
 - [ ] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현한다
@@ -51,13 +51,13 @@ status: open
 
 ### {W3}
 
-- 선행: W1 계약 확정과 W2 완료. 첫 산출물은 packages/protocol의 zod 스키마·추론 타입·공개 export이며 핸들러/persistence 구현 전에 Stage6에 인계한다. 전체 서버 구현을 기다리게 하지 않고 검증 가능한 스키마 묶음을 먼저 제공한다. 인계에는 실제 export 이름·소스 파일 경로·@aiox/protocol import 예시·포함/미포함 범위를 적는다. 이후 Storage/terminal의 저장 책임·Host projection, 설정·Web의 HTTP/SSE 계약을 packages/persistence·daemon에 연결한다. 지금 W3를 착수하거나 단계를 활성화하지 않는다.
+- 완료: 공개 schema·타입의 선행 인계와 저장/조회/panel/config HTTP·Operation·SSE 기반을 구현·검증했다. 구현 위치·실제 인계 범위·검증·미구현 경계는 최신 W3 완료 기록과 system/storage-terminal architecture를 따른다. 다음 local 재개 지점은 W4다.
 - 적용된 Agent 관리 구성은 현재 Runtime 및 terminal 연결과 분리해 저장한다. 탭이 없어도 관리 항목을 조회할 수 있고 파일 편집만으로 적용 구성이 바뀌지 않아야 한다. 종료 원인·표시 상태를 기존 다섯 activity status에 무리하게 합치지 않는다.
 - 현재 pane 구성·탭 순서·연결을 저장·조회하는 공통 경로를 구현한다. Web 이동·분할과 CLI의 다음 Agent 배치가 같은 상태를 소비한다. 배치 변경은 terminalId나 프로세스를 교체하지 않는다. Copy 후 안내 해제의 재조회/복원도 W1 계약을 따른다.
 - 완료 조건: 빈 DB 초기화·저장·조회·재오픈, API 입력 검증·실패, 변경 알림 후 재조회와 재접속 복원을 검증한다. DB 실패를 빈 상태로 숨기지 않는다. 기존 Web/terminal snapshot·stream 기능을 보존한다.
 - 스키마 선행 범위: PanelView/layout 재귀 union/TabView/notice와 panel 요청 7종(생성·layout·shells·tab 삭제·dismiss·panel 삭제·rename), HostView/ManagedAgentView/runtime/lastExit/HostNetworkView/Source/Invocation, Operation/target/오류, config DTO·PUT body·stored 전체, SSE snapshot/state/fault, AgentView.executionOwnership을 포함한다. Host 명령 HTTP body(run/restart/resolve/개별 start·restart·stop/전체 stop·delete)도 공통 계약에서 누락하지 않는다. Network route와 알림 read, TerminalView/WebNotificationView/NetworkView는 기존 공개 스키마 재사용 여부를 확인한다. LayoutInput/Layout과 keybindings 등 참조 스키마·config effective/stored 구분도 함께 닫는다. SSE upsert는 resource별 DTO를 연결하고 remove는 value 없이 검증한다.
 - 단일 스키마 권위: W2 config 검증과 W3 공개 zod schema가 별도 정의로 유지되지 않도록 기존 parseConfig/설정 타입·패키지 의존 방향을 대조한다. 이동·재사용이 필요한 부분을 맞추되 Stage6 apps/web에 영구 중복 스키마를 만들지 않는다. Stage6의 임시 정의 한 파일은 비차단 mock 준비용이며 인계 후 공개 package import로 교체한다. 실제 export 이름은 스키마 산출 시 확인해서 보고하고 지금 미구현 export를 사용 가능하다고 안내하지 않는다.
-- W2의 packages/config/src/host.ts와 schema.ts는 현재 입력 검증의 구현 owner다. W3 schema/타입 작업은 이 parser·HostManifest/HostSource/HostLayout과 정책을 이중 정의하지 않도록 정합화하고, HTTP handler는 공통 준비 경로를 소비한다. CLI의 parser 오류 보존과 명시 hostname/YAML 생략 경로는 apps/cli/src/host-input.ts 및 인접 테스트로 검증한다.
+- 공통 순수 config/layout 검증은 packages/protocol/src/configuration.ts로 이동했고 config/schema.ts는 재export한다. packages/config/src/host.ts는 YAML 파일·참조·route 검증과 prepareHostInput을 소유하며 Host resolve가 이를 소비한다. 이후 실행 handler도 이 경로를 재사용한다.
 
 ### {W4}
 
@@ -66,6 +66,7 @@ status: open
 - 준비 성공·시작 실패·종료를 실제 실행으로 관측한다. 명시 stop은 Agent와 필수 부속 실행만 종료하고 shell을 보존하며 stopped 표시를 전달한다. 정상 `/exit`은 같은 shell로 돌아간다. Copy는 명령 복사·기존 shell 표시이며 shell 생성이나 자동 실행이 아니다.
 - 명령 입력 위치는 실제 panel/terminal identity로 확인하며 cwd만으로 동일 panel이라 판단하지 않는다. 사용자 일반 shell을 idle 추정으로 임의 점유하지 않는다. disconnect·무출력·quota를 종료로 간주하지 않는다.
 - 완료 조건: shell 생존과 Agent 종료를 구분하고 준비/실패/종료가 CLI·조회·알림 경로로 전달되는지 검증한다. 기존 standalone 실행·terminal attachment·credential 정리의 회귀를 확인한다.
+- W3 공개 schema·저장·HTTP/Operation/SSE 산출물과 검증은 최신 W3 완료 기록을 읽는다. 아직 Host run/Agent 실행 handler와 Host/ManagedAgent의 live Runtime projection은 미연결이다. Web Agent 소유권·공통 panel/terminal 정리·requestId/revision·실패 전달 경로를 재사용하고, 실제 vendor 준비 성공이나 React 연결 완료를 저장 성공으로 대체하지 않는다.
 
 ### {W5}
 
@@ -260,3 +261,39 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 - 수정: `apps/cli/src/host-input.ts`에서 두 검사만 제거하여 필수 값 토큰을 소비한다. `apps/cli/src/host-input.test.ts`에 `--path -workspace`, `--file -custom.yaml` 및 equals 형식, `host --path --file status dev --unknown` 회귀를 추가했다. 값 누락·서로 다른 path 중복 거절, config→YAML→CLI 순서, 명시 hostname 조회·제어의 YAML 생략도 확인했다.
 - 검증: 새 회귀 3개가 수정 전 실패·수정 후 통과했다. config 36개 및 CLI 전체 재실행 67개, 양쪽 typecheck·oxlint·oxfmt 검사를 통과했다. 최초 묶음 실행에서는 WebSocket 테스트 실패 후 종료되지 않아 중단했으나 해당 테스트 단독 11개와 CLI 전체 재실행은 통과했다. 최초 실패 원인은 확정하지 않았다.
 - 범위: 입력 준비와 기존 CLI 테스트를 검증했다. 실제 Host 저장·실행 보존이나 빌드된 CLI smoke를 이번 수정에서 검증한 것은 아니다. daemon start의 loadConfig·resolveTerminalLaunch 경로, config/layout/terminal 공개 검증, W3 이후 구현, Stage6·apps/web·plan 및 다른 변경은 수정하지 않았다. commit/push 없음. W2 완료와 W3 next pointer를 유지한다.
+
+## 2026-09-22 · W3 공개 스키마 구현과 후속 연결 착수
+
+- 요청: W3 작업 수행. 공통 계약 → 저장·조회·배치·SSE 연결 순서로 진행한다. Stage6·apps/web·plan은 변경하지 않는다.
+- 공개 산출물: packages/protocol/src/host.ts, core.ts, configuration.ts를 index.ts에서 export한다. HostView/ManagedAgentView/HostNetworkView, PanelView/PanelLayout/TabView, Operation/OperationError/OperationTarget, ConfigView, HostSource/Invocation과 HTTP 요청 7종 panel·Host 요청, WebSnapshot/WebState/WebChange/WebFault 및 대응 camelCase Schema를 제공한다. 기존 TerminalView/WebNotificationView/NetworkView와 routeRequestSchema를 재사용한다. AgentView.executionOwnership을 추가했다.
+- 사용 예: `import { panelViewSchema, webSnapshotSchema, type PanelView } from "@aiox/protocol"; const panel: PanelView = panelViewSchema.parse(payload); webSnapshotSchema.parse({hosts:[],networks:[],panels:[panel],terminals:[],agents:[],operations:[],notifications:[]});`. 저장·조회·SSE 서버 handler와 Host 실행은 아직 연결하지 않았다. Stage6는 공개 타입/스키마를 mock 경계에서 소비할 수 있으며 실제 서버 구현 완료를 뜻하지 않는다. 상대 에이전트 수신·동의는 확인하지 않았다.
+- 단일 권위: 기존 config의 순수 검증 함수를 protocol/configuration.ts로 이동하고 config/schema.ts는 재export한다. YAML parser의 Layout 검증, 공개 LayoutInput 및 config wire 검증이 같은 parser를 사용한다. HostSource는 공개 타입을 config가 재사용한다.
+- 검증: 신규 계약 테스트 3개가 미구현으로 실패함을 확인한 뒤 구현하여 protocol 14개·config 36개 통과, 두 패키지 build 통과. 전체 typecheck에서 오류 candidates에 새 string 형식을 추가한 영향으로 CLI 소비자 보완 중이다. W3 완료 처리하지 않으며 다음은 공통 저장과 API/SSE 실제 연결이다.
+
+## 2026-09-22 · W3 저장·조회·panel 제어·SSE 구현 및 검증 완료
+
+- 완료 범위: protocol의 스키마·타입 선행 공개 후 TypeORM Host/Agent/전용 Network/membership/edge·panel/tab·Operation/실행 이력 schema와 저장 경로를 연결했다. 빈 DB 직접 초기화, Host+Network+panel 원자 생성, 배치 revision·terminal 유일 소유, Operation requestId/hash 재전송·완료 상태 보존·재시작 정산·보존 기간 정리를 구현했다. 기존 개발 DB 삭제·migration·backfill은 수행하지 않았다.
+- HTTP/상태 전달: Host resolve/조회·전용 Network 조회, Operation 조회, panel 요청 7종 및 config GET/PUT을 연결했다. shell 생성·닫기·workspace 삭제는 접수된 Operation에 실제 완료/실패를 기록한다. 자연 shell exit·직접 terminal 삭제도 공통 tab 정리를 사용하며 관리 Agent 구성은 유지한다. 최초/재접속 snapshot, resource별 state, 저장 오류 fault·느린 viewer 격리를 연결했다. 외부 실행은 Agent 조회/상태 전달에 포함하고 Web 알림 대상에서는 제외한다.
+- 단일 입력 권위: protocol/configuration.ts의 순수 검증을 config/schema.ts가 재export한다. config Host YAML parser는 공개 HostSource 및 같은 layout parser를 사용한다. prepareHostInput은 실패 stage를 보존하고 Host resolve handler가 소비한다. CLI error candidates의 파일 경로 형식 소비자도 함께 보완했다.
+- 인계: 앞선 W3 스키마 인계의 공개 import는 그대로 사용 가능하다. 실제 서버 연결 파일은 apps/daemon/src/state-api.ts, panel-operations.ts, web-state.ts, web-events.ts이며 저장은 packages/persistence/src/sqlite/host-state.ts다. Host run/restart/Agent 제어의 요청 스키마는 공개됐지만 해당 실행 handler와 관리 Runtime projection은 W4~W7에서 연결한다. Stage6의 실제 React 소비/연결, vendor 준비·TUI 검증을 이번 결과로 주장하지 않는다. Stage6 로그·apps/web·plan은 수정하지 않았고 상대 에이전트 수신/동의는 확인하지 않았다.
+- 검증: 최종 pnpm check exit 0(lint·format·build·typecheck·56개 test 파일·688개 테스트). 별도 built Node smoke에서 공개 package export·공통 config 검증·SSE schema·SQLite 저장/재오픈을 확인했다. 실제 HTTP·PTY로 panel 생성/rename/layout 충돌/Copy·shell 생성·동일 요청 재전송·확인 없는 종료 거절·종료 후 Operation target 완료·자연 shell exit·panel 삭제·Host resolve/ID 조회·설정 충돌·저장 오류를 검증했다. 실패 테스트부터 구현했으며 중간 실패였던 SSE 초기 이벤트 기대·CLI ownership fixture·retention 비동기 기대도 새 계약에 맞춰 교정 후 통과했다. markdown inline-code와 git diff --check도 통과했다. macOS 로컬 검증이며 다른 OS 실측·React 브라우저 통합·vendor 실행 검증은 수행하지 않았다.
+- Owner 반영: docs/architecture/aiox-system.md와 aiox-storage-terminal.md의 현재 조립·입력 검증·저장/API/SSE 구현 및 남은 연결 범위를 갱신했다. 기존 최소 Web의 change→GET consumer는 새 snapshot/state 서버 계약을 소비하지 않으며 React 교체는 Stage6 범위다.
+- 다음: W3 완료. W4에서 shell 내부 Agent 실행·준비/실패/종료 관측, 관리 Runtime과 Host/panel projection 및 실제 restart 안내를 연결한다. 현재 Host CLI는 입력 준비 뒤 실행 미구현 오류를 반환한다. commit/push 없음.
+
+### 2026-09-22 13:12 · W3 최종 오류 계약 대조
+
+- 최종 대조에서 새 Host/panel/Operation/config HTTP의 일부 HttpError 응답에 공개 오류 계약의 stage가 빠진 것을 확인했다. 공통 응답 경계에서 기본 stage를 채우고 구체 yaml/environment/storage stage는 보존하도록 수정했다.
+- 보완 후 lint·daemon typecheck·실제 state-api 통합 2개 테스트·daemon build를 통과했다. 앞선 전체 check(56개 파일·688개 테스트)와 built smoke 결과는 위 기록을 따른다. W3 완료와 W4 next pointer는 유지한다.
+
+### 2026-09-22 13:46 · W3 회귀 수정: SSE backpressure와 Config 읽기 오류
+
+- 사용자 P1/P2 지적을 코드·명세와 대조하고 회귀 테스트로 확인했다. 수정 전 write(false) 연결 파괴 2개 테스트와 config.json 디렉터리의 500 internal_error/stage 누락 HTTP 테스트가 실패했다.
+- web-events.ts는 false 반환 프레임을 정상 접수로 간주하고 해당 연결의 후속 state를 drain까지 보류한다. drain 후 마지막 송신 상태와 최신 snapshot의 차이를 전달하며 다른 연결은 계속 송신한다. socket 오류·종료는 연결을 제거한다. 별도 무제한 전송 큐는 추가하지 않았다.
+- config/document.ts는 ENOENT 기본값을 유지하고 나머지 파일 읽기 오류를 ConfigError로 변환한다. 실제 HTTP 회귀에서 500 invalid_config와 stage=config를 확인했다.
+- 검증: 대상 회귀 7개, daemon 전체 229개와 config 전체 38개 통과. 88,589바이트 초과 실제 HTTP snapshot 전체 수신 및 같은 연결의 후속 state 수신, 초기/후속 backpressure·drain·연결 종료·다른 viewer 진행을 검증했다. lint, 두 패키지 typecheck/build, 변경 코드 format 및 diff 검사를 통과했다. 추가 HTTP 테스트의 최초 payload 문자열 비교는 JSON key 순서에 의존해 실패하여 구조 비교로 고친 뒤 재검증했다.
+- owner architecture에 backpressure 동작을 반영했다. W3 완료와 W4 next pointer를 유지하며 W4 구현은 이번 수정 범위에 포함하지 않았다.
+
+### 2026-09-22 14:07 · W3 커밋 범위 확정
+
+- 사용자 요청에 따라 W3 공통 protocol·저장·조회·panel/config API·Operation·SSE와 관련 문서·테스트를 한 커밋으로 묶는다. 직전 검증한 SSE backpressure 및 Config 읽기 오류 회귀 수정도 포함한다.
+- 기존 전체 check 688개 통과와 회귀 수정 후 daemon 229개·config 38개, lint·typecheck·build 검증 결과를 사용한다. 커밋 전 diff whitespace 검사를 다시 통과했다. W4 구현·Stage6·apps/web·plan·사용자 개인 architecture.excalidraw는 포함하지 않으며 W4 next pointer를 유지한다. push는 수행하지 않는다.

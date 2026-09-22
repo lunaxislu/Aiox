@@ -628,6 +628,7 @@ test("network output names blocked endpoints and folds reverse pairs without cou
 test("network and agent reads reach their endpoints and summarise without --json", async () => {
     const agent = {
         agentId: "a1",
+        executionOwnership: "daemon",
         name: "reviewer",
         role: "review",
         description: null,

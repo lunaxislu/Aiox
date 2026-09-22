@@ -13,5 +13,12 @@ export type { ConfigSnapshot } from "@/session";
 
 export { resolveTerminalLaunch } from "@/terminal";
 export type { TerminalLaunch } from "@/terminal";
-export { parseHostManifest, loadHostManifest, prepareHostInput } from "@/host";
+export {
+    HostInputError,
+    parseHostManifest,
+    loadHostManifest,
+    prepareHostInput,
+} from "@/host";
 export type { HostSource, HostManifest } from "@/host";
+
+export { createConfigDocument, ConfigConflictError } from "./document";

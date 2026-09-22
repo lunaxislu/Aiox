@@ -1760,9 +1760,9 @@ it("keeps Web notifications scoped to their original daemon terminal after unreg
     expect((webAgents.body as AgentView[]).map((row) => row.agentId)).toContain(
         origin.runtimeId,
     );
-    expect(
-        (webAgents.body as AgentView[]).map((row) => row.agentId),
-    ).not.toContain(external.runtimeId);
+    expect((webAgents.body as AgentView[]).map((row) => row.agentId)).toContain(
+        external.runtimeId,
+    );
     expect(
         ((await call("/api/agents")).body as AgentView[]).map(
             (row) => row.agentId,
@@ -1808,7 +1808,7 @@ it("streams initial and changed Web state, reconnects, and closes with the daemo
         );
         const reader = response.body!.getReader();
         expect(new TextDecoder().decode((await reader.read()).value)).toContain(
-            "event: change",
+            "event: snapshot",
         );
         return reader;
     };
@@ -1821,21 +1821,21 @@ it("streams initial and changed Web state, reconnects, and closes with the daemo
             createBinding: vendor.createBinding,
         });
         expect(new TextDecoder().decode((await next).value)).toContain(
-            "event: change",
+            "event: state",
         );
         await first.cancel();
         const second = await connect();
         const status = second.read();
         vendor.status("working");
         expect(new TextDecoder().decode((await status).value)).toContain(
-            "event: change",
+            "event: state",
         );
         await second.cancel();
         const third = await connect();
         const removed = third.read();
         await harness.daemon.stopRuntime(agent.runtimeId);
         expect(new TextDecoder().decode((await removed).value)).toContain(
-            "event: change",
+            "event: state",
         );
         await third.cancel();
         const closing = await connect();
@@ -1865,7 +1865,7 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
             const frames = buffered.split("\n\n");
             buffered = frames.pop()!;
             events += frames.filter((frame) =>
-                frame.includes("event: change"),
+                /event: (snapshot|state)/.test(frame),
             ).length;
         }
     })();
@@ -1963,7 +1963,8 @@ it("does not invalidate Web state for external-only runtime and notification cha
         });
         await harness.daemon.stopRuntime(origin.runtimeId);
         // Registration, settlement and cleanup have all completed their notifications.
-        expect(writes).not.toHaveBeenCalled();
+        await vi.waitFor(() => expect(writes).toHaveBeenCalled());
+        expect((await call("/api/web/notifications")).body).toEqual([]);
         await harness.daemon.services.messages.send(
             harness.daemon.services.runtimes.get(web.runtimeId)!,
             [target.runtimeId],
