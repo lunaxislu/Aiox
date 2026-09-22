@@ -3,10 +3,13 @@
     "compilerOptions": {
         "lib": ["ES2022"],
         "types": ["node"],
-        "paths": { "@/*": ["./src/*"] },
+        "paths": {
+            "@/*": ["./src/*"]
+        },
         "rootDir": "src",
         "outDir": "dist",
-        "declaration": true
+        "declaration": true,
+        "skipLibCheck": true
     },
     "include": ["src/**/*.ts"]
 }

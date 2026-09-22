@@ -17,12 +17,17 @@ import {
     type LastExit,
 } from "@aiox/protocol";
 import {
-    IsNull,
-    Not,
-    LessThan,
-    type DataSource,
-    type EntityManager,
-} from "typeorm";
+    and,
+    or,
+    eq,
+    isNull,
+    isNotNull,
+    lt,
+    asc,
+    count,
+    sql,
+} from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import {
     HostEntity,
@@ -125,16 +130,18 @@ function panelRow(panel: PanelView): PanelRow {
     const { tabs: _tabs, layout, ...row } = panel;
     return { ...row, layoutJson: JSON.stringify(layout) };
 }
-async function insertTabs(manager: EntityManager, panel: PanelView) {
+function insertTabs(manager: BetterSQLite3Database, panel: PanelView) {
     if (panel.tabs.length)
-        await manager.insert(
-            PanelTabEntity,
-            panel.tabs.map(({ runtimeId: _runtime, notice, ...tab }) => ({
-                ...tab,
-                panelId: panel.id,
-                noticeJson: json(notice),
-            })),
-        );
+        manager
+            .insert(PanelTabEntity)
+            .values(
+                panel.tabs.map(({ runtimeId: _runtime, notice, ...tab }) => ({
+                    ...tab,
+                    panelId: panel.id,
+                    noticeJson: json(notice),
+                })),
+            )
+            .run();
 }
 function operationView(row: HostOperationRow): Operation {
     const {
@@ -151,30 +158,42 @@ function operationView(row: HostOperationRow): Operation {
         cleanupErrors: JSON.parse(cleanupErrorsJson),
     });
 }
-export function hostState(dataSource: DataSource): HostState {
-    const manager = dataSource.manager;
+export function hostState(dataSource: BetterSQLite3Database): HostState {
+    const manager = dataSource;
     // ponytail: scan local Host collections per snapshot; use indexed joins if measured scale requires it.
     async function snapshot(): Promise<HostStateSnapshot> {
-        const hosts = await manager.find(HostEntity, {
-            order: { createdAt: "ASC", id: "ASC" },
-        });
-        const agents = await manager.find(HostAgentEntity, {
-            order: { ordinal: "ASC" },
-        });
-        const networks = await manager.find(HostNetworkEntity);
-        const members = await manager.find(HostMemberEntity);
-        const edges = await manager.find(HostEdgeEntity);
-        const panels = await manager.find(PanelEntity, {
-            order: { id: "ASC" },
-        });
-        const tabs = await manager.find(PanelTabEntity, {
-            order: { id: "ASC" },
-        });
-        const operations = (
-            await manager.find(HostOperationEntity, {
-                order: { createdAt: "ASC", id: "ASC" },
-            })
-        ).map(operationView);
+        const hosts = manager
+            .select()
+            .from(HostEntity)
+            .orderBy(asc(HostEntity.createdAt), asc(HostEntity.id))
+            .all();
+        const agents = manager
+            .select()
+            .from(HostAgentEntity)
+            .orderBy(asc(HostAgentEntity.ordinal))
+            .all();
+        const networks = manager.select().from(HostNetworkEntity).all();
+        const members = manager.select().from(HostMemberEntity).all();
+        const edges = manager.select().from(HostEdgeEntity).all();
+        const panels = manager
+            .select()
+            .from(PanelEntity)
+            .orderBy(asc(PanelEntity.id))
+            .all();
+        const tabs = manager
+            .select()
+            .from(PanelTabEntity)
+            .orderBy(asc(PanelTabEntity.id))
+            .all();
+        const operations = manager
+            .select()
+            .from(HostOperationEntity)
+            .orderBy(
+                asc(HostOperationEntity.createdAt),
+                asc(HostOperationEntity.id),
+            )
+            .all()
+            .map(operationView);
         return {
             hosts: hosts.map(({ createdAt: _at, ...host }) => {
                 const network = networks.find((n) => n.hostId === host.id);
@@ -305,17 +324,21 @@ export function hostState(dataSource: DataSource): HostState {
             )
         )
             throw new Error("Invalid Host references");
-        await dataSource.transaction(async (manager) => {
+        dataSource.transaction((manager) => {
             if (expectedRevision !== undefined) {
-                const previous = await manager.findOne(HostEntity, {
-                    where: { id: host.id },
-                });
+                const previous = manager
+                    .select()
+                    .from(HostEntity)
+                    .where(eq(HostEntity.id, host.id))
+                    .get();
                 if (!previous) throw new HostStateError("unknown_host");
                 if (previous.revision !== expectedRevision)
                     throw new HostStateError("revision_conflict");
-                const previousPanel = await manager.findOne(PanelEntity, {
-                    where: { hostId: host.id },
-                });
+                const previousPanel = manager
+                    .select()
+                    .from(PanelEntity)
+                    .where(eq(PanelEntity.hostId, host.id))
+                    .get();
                 if (
                     !previousPanel ||
                     previousPanel.id !== panel.id ||
@@ -324,75 +347,95 @@ export function hostState(dataSource: DataSource): HostState {
                     throw new HostStateError("revision_conflict");
                 createdAt = previous.createdAt;
                 panel.revision++;
-                await manager.delete(HostEntity, { id: host.id });
+                manager
+                    .delete(HostEntity)
+                    .where(eq(HostEntity.id, host.id))
+                    .run();
             }
-            await manager.insert(HostEntity, {
-                id: host.id,
-                name: host.name,
-                directory: host.directory,
-                sourceFile: host.sourceFile,
-                instruction: host.instruction,
-                revision: host.revision,
-                createdAt,
-            });
+            manager
+                .insert(HostEntity)
+                .values({
+                    id: host.id,
+                    name: host.name,
+                    directory: host.directory,
+                    sourceFile: host.sourceFile,
+                    instruction: host.instruction,
+                    revision: host.revision,
+                    createdAt,
+                })
+                .run();
             if (host.agents.length)
-                await manager.insert(
-                    HostAgentEntity,
-                    host.agents.map((a, ordinal) => ({
-                        hostId: host.id,
-                        agentKey: a.key,
-                        ordinal,
-                        adapter: a.adapter,
-                        role: a.role,
-                        description: a.description,
-                        instruction: a.instruction,
-                        argsJson: JSON.stringify(a.args),
-                        lastTerminalId: a.lastTerminalId,
-                        lastExitJson: json(a.lastExit),
-                    })),
-                );
-            await manager.insert(HostNetworkEntity, {
-                id: network.id,
-                hostId: host.id,
-                name: network.name,
-                defaultPolicy: network.default,
-            });
+                manager
+                    .insert(HostAgentEntity)
+                    .values(
+                        host.agents.map((a, ordinal) => ({
+                            hostId: host.id,
+                            agentKey: a.key,
+                            ordinal,
+                            adapter: a.adapter,
+                            role: a.role,
+                            description: a.description,
+                            instruction: a.instruction,
+                            argsJson: JSON.stringify(a.args),
+                            lastTerminalId: a.lastTerminalId,
+                            lastExitJson: json(a.lastExit),
+                        })),
+                    )
+                    .run();
+            manager
+                .insert(HostNetworkEntity)
+                .values({
+                    id: network.id,
+                    hostId: host.id,
+                    name: network.name,
+                    defaultPolicy: network.default,
+                })
+                .run();
             if (network.members.length)
-                await manager.insert(
-                    HostMemberEntity,
-                    network.members.map((m) => ({
-                        networkId: network.id,
-                        agentKey: m.agentKey,
-                    })),
-                );
+                manager
+                    .insert(HostMemberEntity)
+                    .values(
+                        network.members.map((m) => ({
+                            networkId: network.id,
+                            agentKey: m.agentKey,
+                        })),
+                    )
+                    .run();
             const explicit = network.edges.filter(
                 (e) => e.source !== "manifest-default",
             );
             if (explicit.length)
-                await manager.insert(
-                    HostEdgeEntity,
-                    explicit.map((e) => ({
-                        networkId: network.id,
-                        fromKey: e.from,
-                        toKey: e.to,
-                        manifestPolicy:
-                            e.source === "manifest-edge" ? e.policy : null,
-                        overridePolicy:
-                            e.source === "runtime-override" ? e.policy : null,
-                    })),
-                );
-            await manager.insert(PanelEntity, panelRow(panel));
-            await insertTabs(manager, panel);
+                manager
+                    .insert(HostEdgeEntity)
+                    .values(
+                        explicit.map((e) => ({
+                            networkId: network.id,
+                            fromKey: e.from,
+                            toKey: e.to,
+                            manifestPolicy:
+                                e.source === "manifest-edge" ? e.policy : null,
+                            overridePolicy:
+                                e.source === "runtime-override"
+                                    ? e.policy
+                                    : null,
+                        })),
+                    )
+                    .run();
+            manager.insert(PanelEntity).values(panelRow(panel)).run();
+            insertTabs(manager, panel);
             if (operation) {
                 const { targets, error, cleanupErrors, ...rest } =
                     operationSchema.parse(operation.value);
-                await manager.insert(HostOperationEntity, {
-                    ...rest,
-                    requestHash: operation.requestHash,
-                    targetsJson: JSON.stringify(targets),
-                    errorJson: json(error),
-                    cleanupErrorsJson: JSON.stringify(cleanupErrors),
-                });
+                manager
+                    .insert(HostOperationEntity)
+                    .values({
+                        ...rest,
+                        requestHash: operation.requestHash,
+                        targetsJson: JSON.stringify(targets),
+                        errorJson: json(error),
+                        cleanupErrorsJson: JSON.stringify(cleanupErrors),
+                    })
+                    .run();
             }
         });
     }
@@ -400,22 +443,38 @@ export function hostState(dataSource: DataSource): HostState {
     return {
         snapshot,
         async routeNetwork(hostId, networkId, operation) {
-            await dataSource.transaction(async (manager) => {
+            dataSource.transaction((manager) => {
                 if (
-                    !(await manager.findOne(HostNetworkEntity, {
-                        where: { id: networkId, hostId },
-                    }))
+                    !manager
+                        .select()
+                        .from(HostNetworkEntity)
+                        .where(
+                            and(
+                                eq(HostNetworkEntity.id, networkId),
+                                eq(HostNetworkEntity.hostId, hostId),
+                            ),
+                        )
+                        .get()
                 )
                     throw new HostStateError("unknown_network");
                 if (
-                    await manager.findOne(HostOperationEntity, {
-                        where: { hostId, state: "running" },
-                    })
+                    manager
+                        .select()
+                        .from(HostOperationEntity)
+                        .where(
+                            and(
+                                eq(HostOperationEntity.hostId, hostId),
+                                eq(HostOperationEntity.state, "running"),
+                            ),
+                        )
+                        .get()
                 )
                     throw new HostStateError("panel_busy");
-                const members = await manager.find(HostMemberEntity, {
-                    where: { networkId },
-                });
+                const members = manager
+                    .select()
+                    .from(HostMemberEntity)
+                    .where(eq(HostMemberEntity.networkId, networkId))
+                    .all();
                 const pairs = applyRouteOperation(
                     { routes: [] },
                     { ...operation, action: "block" },
@@ -430,10 +489,34 @@ export function hostState(dataSource: DataSource): HostState {
                     throw new HostStateError("unknown_agent");
                 for (const { from, to } of pairs) {
                     const key = { networkId, fromKey: from, toKey: to };
-                    const current = await manager.findOne(HostEdgeEntity, {
-                        where: key,
-                    });
-                    await manager.save(HostEdgeEntity, {
+                    const current = manager
+                        .select()
+                        .from(HostEdgeEntity)
+                        .where(
+                            and(
+                                eq(HostEdgeEntity.networkId, networkId),
+                                eq(HostEdgeEntity.fromKey, from),
+                                eq(HostEdgeEntity.toKey, to),
+                            ),
+                        )
+                        .get();
+                    if (
+                        operation.action === "reset" &&
+                        current?.manifestPolicy == null
+                    ) {
+                        manager
+                            .delete(HostEdgeEntity)
+                            .where(
+                                and(
+                                    eq(HostEdgeEntity.networkId, networkId),
+                                    eq(HostEdgeEntity.fromKey, from),
+                                    eq(HostEdgeEntity.toKey, to),
+                                ),
+                            )
+                            .run();
+                        continue;
+                    }
+                    const row = {
                         ...key,
                         manifestPolicy: current?.manifestPolicy ?? null,
                         overridePolicy:
@@ -442,24 +525,42 @@ export function hostState(dataSource: DataSource): HostState {
                                 : operation.action === "block"
                                   ? "deny"
                                   : "allow",
-                    });
+                    };
+                    manager
+                        .insert(HostEdgeEntity)
+                        .values(row)
+                        .onConflictDoUpdate({
+                            target: [
+                                HostEdgeEntity.networkId,
+                                HostEdgeEntity.fromKey,
+                                HostEdgeEntity.toKey,
+                            ],
+                            set: row,
+                        })
+                        .run();
                 }
             });
         },
         async applyAgent(hostId, agent, routes) {
-            await dataSource.transaction(async (manager) => {
-                const host = await manager.findOne(HostEntity, {
-                    where: { id: hostId },
-                });
+            dataSource.transaction((manager) => {
+                const host = manager
+                    .select()
+                    .from(HostEntity)
+                    .where(eq(HostEntity.id, hostId))
+                    .get();
                 if (!host) throw new HostStateError("unknown_host");
-                const network = (await manager.findOne(HostNetworkEntity, {
-                    where: { hostId },
-                }))!;
-                const agents = await manager.find(HostAgentEntity, {
-                    where: { hostId },
-                });
+                const network = manager
+                    .select()
+                    .from(HostNetworkEntity)
+                    .where(eq(HostNetworkEntity.hostId, hostId))
+                    .get()!;
+                const agents = manager
+                    .select()
+                    .from(HostAgentEntity)
+                    .where(eq(HostAgentEntity.hostId, hostId))
+                    .all();
                 const previous = agents.find((a) => a.agentKey === agent.key);
-                await manager.save(HostAgentEntity, {
+                const row = {
                     hostId,
                     agentKey: agent.key,
                     ordinal:
@@ -472,25 +573,57 @@ export function hostState(dataSource: DataSource): HostState {
                     argsJson: JSON.stringify(agent.args),
                     lastTerminalId: previous?.lastTerminalId ?? null,
                     lastExitJson: previous?.lastExitJson ?? null,
-                });
+                };
+                manager
+                    .insert(HostAgentEntity)
+                    .values(row)
+                    .onConflictDoUpdate({
+                        target: [
+                            HostAgentEntity.hostId,
+                            HostAgentEntity.agentKey,
+                        ],
+                        set: row,
+                    })
+                    .run();
                 const networkId = network.id;
-                await manager.delete(HostMemberEntity, {
-                    networkId,
-                    agentKey: agent.key,
-                });
+                manager
+                    .delete(HostMemberEntity)
+                    .where(
+                        and(
+                            eq(HostMemberEntity.networkId, networkId),
+                            eq(HostMemberEntity.agentKey, agent.key),
+                        ),
+                    )
+                    .run();
                 if (agent.member)
-                    await manager.insert(HostMemberEntity, {
-                        networkId,
-                        agentKey: agent.key,
-                    });
-                await manager.delete(HostEdgeEntity, [
-                    { networkId, fromKey: agent.key },
-                    { networkId, toKey: agent.key },
-                ]);
+                    manager
+                        .insert(HostMemberEntity)
+                        .values({
+                            networkId,
+                            agentKey: agent.key,
+                        })
+                        .run();
+                manager
+                    .delete(HostEdgeEntity)
+                    .where(
+                        or(
+                            and(
+                                eq(HostEdgeEntity.networkId, networkId),
+                                eq(HostEdgeEntity.fromKey, agent.key),
+                            ),
+                            and(
+                                eq(HostEdgeEntity.networkId, networkId),
+                                eq(HostEdgeEntity.toKey, agent.key),
+                            ),
+                        ),
+                    )
+                    .run();
                 if (agent.member) {
-                    const members = await manager.find(HostMemberEntity, {
-                        where: { networkId },
-                    });
+                    const members = manager
+                        .select()
+                        .from(HostMemberEntity)
+                        .where(eq(HostMemberEntity.networkId, networkId))
+                        .all();
                     for (const route of routes.filter(
                         (e) => e.from === agent.key || e.to === agent.key,
                     )) {
@@ -502,169 +635,245 @@ export function hostState(dataSource: DataSource): HostState {
                                 "unknown_agent",
                                 `Cannot apply edge ${route.from} -> ${route.to}: missing Host Network member.`,
                             );
-                        await manager.insert(HostEdgeEntity, {
-                            networkId,
-                            fromKey: route.from,
-                            toKey: route.to,
-                            manifestPolicy: route.policy,
-                            overridePolicy: null,
-                        });
+                        manager
+                            .insert(HostEdgeEntity)
+                            .values({
+                                networkId,
+                                fromKey: route.from,
+                                toKey: route.to,
+                                manifestPolicy: route.policy,
+                                overridePolicy: null,
+                            })
+                            .run();
                     }
                 }
-                await manager.update(
-                    HostEntity,
-                    { id: hostId },
-                    { revision: host.revision + 1 },
-                );
+                manager
+                    .update(HostEntity)
+                    .set({ revision: host.revision + 1 })
+                    .where(eq(HostEntity.id, hostId))
+                    .run();
             });
         },
         async getOperation(requestId, requestHash) {
-            const row = await manager.findOneBy(HostOperationEntity, {
-                requestId,
-            });
+            const row = manager
+                .select()
+                .from(HostOperationEntity)
+                .where(eq(HostOperationEntity.requestId, requestId))
+                .get();
             if (!row) return undefined;
             if (row.requestHash !== requestHash)
                 throw new HostStateError("request_conflict");
             return operationView(row);
         },
         async failStart(hostId, agentKey, message, restartCommand, tabId) {
-            await dataSource.transaction(async (manager) => {
+            dataSource.transaction((manager) => {
                 if (
-                    await manager.findOneBy(HostExecutionEntity, {
-                        hostId,
-                        agentKey,
-                        endedAt: IsNull(),
-                    })
+                    manager
+                        .select()
+                        .from(HostExecutionEntity)
+                        .where(
+                            and(
+                                eq(HostExecutionEntity.hostId, hostId),
+                                eq(HostExecutionEntity.agentKey, agentKey),
+                                isNull(HostExecutionEntity.endedAt),
+                            ),
+                        )
+                        .get()
                 )
                     throw new Error(
                         "Cannot mark a live execution as a failed start.",
                     );
-                const panel = await manager.findOneByOrFail(PanelEntity, {
-                    hostId,
-                });
-                const tab = await manager.findOneByOrFail(PanelTabEntity, {
-                    id: tabId,
-                    panelId: panel.id,
-                    agentKey,
-                });
-                await manager.update(
-                    HostAgentEntity,
-                    { hostId, agentKey },
-                    {
+                const panel = manager
+                    .select()
+                    .from(PanelEntity)
+                    .where(eq(PanelEntity.hostId, hostId))
+                    .get();
+                if (!panel) throw new Error("Missing stored panel.");
+                const tab = manager
+                    .select()
+                    .from(PanelTabEntity)
+                    .where(
+                        and(
+                            eq(PanelTabEntity.id, tabId),
+                            eq(PanelTabEntity.panelId, panel.id),
+                            eq(PanelTabEntity.agentKey, agentKey),
+                        ),
+                    )
+                    .get();
+                if (!tab) throw new Error("Missing stored panel tab.");
+                manager
+                    .update(HostAgentEntity)
+                    .set({
                         lastTerminalId: tab.terminalId,
                         lastExitJson: json({
                             kind: "start-failed",
                             message,
                             at: Date.now(),
                         }),
-                    },
-                );
-                await manager.update(
-                    PanelTabEntity,
-                    { id: tab.id },
-                    {
+                    })
+                    .where(
+                        and(
+                            eq(HostAgentEntity.hostId, hostId),
+                            eq(HostAgentEntity.agentKey, agentKey),
+                        ),
+                    )
+                    .run();
+                manager
+                    .update(PanelTabEntity)
+                    .set({
                         presentation: "start-failed",
                         noticeJson: json({
                             message,
                             reason: "start-failed",
                             restartCommand,
                         }),
-                    },
-                );
-                await manager.increment(
-                    PanelEntity,
-                    { id: panel.id },
-                    "revision",
-                    1,
-                );
+                    })
+                    .where(eq(PanelTabEntity.id, tab.id))
+                    .run();
+                manager
+                    .update(PanelEntity)
+                    .set({ revision: sql`${PanelEntity.revision} + 1` })
+                    .where(eq(PanelEntity.id, panel.id))
+                    .run();
             });
         },
         async startExecution(input) {
-            await dataSource.transaction(async (manager) => {
-                const panel = await manager.findOneBy(PanelEntity, {
-                    hostId: input.hostId,
-                });
-                const agent = await manager.findOneBy(HostAgentEntity, {
-                    hostId: input.hostId,
-                    agentKey: input.agentKey,
-                });
+            dataSource.transaction((manager) => {
+                const panel = manager
+                    .select()
+                    .from(PanelEntity)
+                    .where(eq(PanelEntity.hostId, input.hostId))
+                    .get();
+                const agent = manager
+                    .select()
+                    .from(HostAgentEntity)
+                    .where(
+                        and(
+                            eq(HostAgentEntity.hostId, input.hostId),
+                            eq(HostAgentEntity.agentKey, input.agentKey),
+                        ),
+                    )
+                    .get();
                 const tab =
                     panel &&
-                    (await manager.findOneBy(PanelTabEntity, {
-                        panelId: panel.id,
-                        terminalId: input.terminalId,
-                        agentKey: input.agentKey,
-                    }));
+                    manager
+                        .select()
+                        .from(PanelTabEntity)
+                        .where(
+                            and(
+                                eq(PanelTabEntity.panelId, panel.id),
+                                eq(PanelTabEntity.terminalId, input.terminalId),
+                                eq(PanelTabEntity.agentKey, input.agentKey),
+                            ),
+                        )
+                        .get();
                 if (!agent || !tab)
                     throw new Error(
                         "Managed Agent does not own this panel terminal.",
                     );
                 if (
-                    await manager.findOneBy(HostExecutionEntity, {
-                        hostId: input.hostId,
-                        agentKey: input.agentKey,
-                        endedAt: IsNull(),
-                    })
+                    manager
+                        .select()
+                        .from(HostExecutionEntity)
+                        .where(
+                            and(
+                                eq(HostExecutionEntity.hostId, input.hostId),
+                                eq(
+                                    HostExecutionEntity.agentKey,
+                                    input.agentKey,
+                                ),
+                                isNull(HostExecutionEntity.endedAt),
+                            ),
+                        )
+                        .get()
                 )
                     throw new Error(
                         "Managed Agent already has an execution awaiting cleanup.",
                     );
-                await manager.insert(HostExecutionEntity, {
-                    ...input,
-                    endedAt: null,
-                    exitJson: null,
-                });
-                await manager.update(
-                    HostAgentEntity,
-                    { hostId: input.hostId, agentKey: input.agentKey },
-                    { lastTerminalId: input.terminalId },
-                );
-                await manager.update(
-                    PanelTabEntity,
-                    { id: tab.id },
-                    { presentation: "preparing", noticeJson: null },
-                );
-                await manager.increment(
-                    PanelEntity,
-                    { id: panel!.id },
-                    "revision",
-                    1,
-                );
+                manager
+                    .insert(HostExecutionEntity)
+                    .values({
+                        ...input,
+                        endedAt: null,
+                        exitJson: null,
+                    })
+                    .run();
+                manager
+                    .update(HostAgentEntity)
+                    .set({ lastTerminalId: input.terminalId })
+                    .where(
+                        and(
+                            eq(HostAgentEntity.hostId, input.hostId),
+                            eq(HostAgentEntity.agentKey, input.agentKey),
+                        ),
+                    )
+                    .run();
+                manager
+                    .update(PanelTabEntity)
+                    .set({ presentation: "preparing", noticeJson: null })
+                    .where(eq(PanelTabEntity.id, tab.id))
+                    .run();
+                manager
+                    .update(PanelEntity)
+                    .set({ revision: sql`${PanelEntity.revision} + 1` })
+                    .where(eq(PanelEntity.id, panel!.id))
+                    .run();
             });
         },
         async finishExecution(runtimeId, input, restartCommand) {
             const exit = lastExitSchema.parse(input);
-            await dataSource.transaction(async (manager) => {
-                const execution = await manager.findOneBy(HostExecutionEntity, {
-                    runtimeId,
-                    endedAt: IsNull(),
-                });
+            dataSource.transaction((manager) => {
+                const execution = manager
+                    .select()
+                    .from(HostExecutionEntity)
+                    .where(
+                        and(
+                            eq(HostExecutionEntity.runtimeId, runtimeId),
+                            isNull(HostExecutionEntity.endedAt),
+                        ),
+                    )
+                    .get();
                 if (!execution) return;
-                await manager.update(
-                    HostExecutionEntity,
-                    { runtimeId },
-                    { endedAt: exit.at, exitJson: json(exit) },
-                );
-                await manager.update(
-                    HostAgentEntity,
-                    { hostId: execution.hostId, agentKey: execution.agentKey },
-                    { lastExitJson: json(exit) },
-                );
-                const panel = await manager.findOneBy(PanelEntity, {
-                    hostId: execution.hostId,
-                });
+                manager
+                    .update(HostExecutionEntity)
+                    .set({ endedAt: exit.at, exitJson: json(exit) })
+                    .where(eq(HostExecutionEntity.runtimeId, runtimeId))
+                    .run();
+                manager
+                    .update(HostAgentEntity)
+                    .set({ lastExitJson: json(exit) })
+                    .where(
+                        and(
+                            eq(HostAgentEntity.hostId, execution.hostId),
+                            eq(HostAgentEntity.agentKey, execution.agentKey),
+                        ),
+                    )
+                    .run();
+                const panel = manager
+                    .select()
+                    .from(PanelEntity)
+                    .where(eq(PanelEntity.hostId, execution.hostId))
+                    .get();
                 const tab =
                     panel &&
-                    (await manager.findOneBy(PanelTabEntity, {
-                        panelId: panel.id,
-                        terminalId: execution.terminalId,
-                        agentKey: execution.agentKey,
-                    }));
+                    manager
+                        .select()
+                        .from(PanelTabEntity)
+                        .where(
+                            and(
+                                eq(PanelTabEntity.panelId, panel.id),
+                                eq(
+                                    PanelTabEntity.terminalId,
+                                    execution.terminalId,
+                                ),
+                                eq(PanelTabEntity.agentKey, execution.agentKey),
+                            ),
+                        )
+                        .get();
                 if (!tab) return;
-                await manager.update(
-                    PanelTabEntity,
-                    { id: tab.id },
-                    {
+                manager
+                    .update(PanelTabEntity)
+                    .set({
                         presentation:
                             exit.kind === "exited"
                                 ? "shell"
@@ -679,25 +888,30 @@ export function hostState(dataSource: DataSource): HostState {
                                       reason: exit.kind,
                                       restartCommand,
                                   }),
-                    },
-                );
-                await manager.increment(
-                    PanelEntity,
-                    { id: panel!.id },
-                    "revision",
-                    1,
-                );
+                    })
+                    .where(eq(PanelTabEntity.id, tab.id))
+                    .run();
+                manager
+                    .update(PanelEntity)
+                    .set({ revision: sql`${PanelEntity.revision} + 1` })
+                    .where(eq(PanelEntity.id, panel!.id))
+                    .run();
             });
         },
         async removeTerminal(id) {
-            await dataSource.transaction(async (manager) => {
-                const tab = await manager.findOne(PanelTabEntity, {
-                    where: { terminalId: id },
-                });
+            dataSource.transaction((manager) => {
+                const tab = manager
+                    .select()
+                    .from(PanelTabEntity)
+                    .where(eq(PanelTabEntity.terminalId, id))
+                    .get();
                 if (!tab) return;
-                const panel = await manager.findOneByOrFail(PanelEntity, {
-                    id: tab.panelId,
-                });
+                const panel = manager
+                    .select()
+                    .from(PanelEntity)
+                    .where(eq(PanelEntity.id, tab.panelId))
+                    .get();
+                if (!panel) throw new Error("Missing stored panel.");
                 const remove = (node: PanelLayout): PanelLayout => {
                     if (node.type === "split")
                         return { ...node, children: node.children.map(remove) };
@@ -711,78 +925,104 @@ export function hostState(dataSource: DataSource): HostState {
                                 : node.selectedTabId,
                     };
                 };
-                await manager.delete(PanelTabEntity, { id: tab.id });
-                await manager.update(
-                    PanelEntity,
-                    { id: panel.id },
-                    {
+                manager
+                    .delete(PanelTabEntity)
+                    .where(eq(PanelTabEntity.id, tab.id))
+                    .run();
+                manager
+                    .update(PanelEntity)
+                    .set({
                         layoutJson: JSON.stringify(
                             remove(JSON.parse(panel.layoutJson)),
                         ),
                         revision: panel.revision + 1,
-                    },
-                );
+                    })
+                    .where(eq(PanelEntity.id, panel.id))
+                    .run();
             });
         },
         async deleteHost(id, panelRevision) {
-            await dataSource.transaction(async (manager) => {
-                const host = await manager.findOne(HostEntity, {
-                    where: { id },
-                });
+            dataSource.transaction((manager) => {
+                const host = manager
+                    .select()
+                    .from(HostEntity)
+                    .where(eq(HostEntity.id, id))
+                    .get();
                 if (!host) throw new HostStateError("unknown_host");
-                const panel = await manager.findOne(PanelEntity, {
-                    where: { hostId: id },
-                });
+                const panel = manager
+                    .select()
+                    .from(PanelEntity)
+                    .where(eq(PanelEntity.hostId, id))
+                    .get();
                 if (!panel || panel.revision !== panelRevision)
                     throw new HostStateError("revision_conflict");
                 if (
-                    await manager.count(PanelTabEntity, {
-                        where: { panelId: panel.id, terminalId: Not(IsNull()) },
-                    })
+                    manager
+                        .select({ count: count() })
+                        .from(PanelTabEntity)
+                        .where(
+                            and(
+                                eq(PanelTabEntity.panelId, panel.id),
+                                isNotNull(PanelTabEntity.terminalId),
+                            ),
+                        )
+                        .get()!.count
                 )
                     throw new HostStateError(
                         "revision_conflict",
                         "Host still owns terminals.",
                     );
-                await manager.delete(HostEntity, { id });
+                manager.delete(HostEntity).where(eq(HostEntity.id, id)).run();
             });
         },
         async deletePanel(id, expectedRevision) {
-            await dataSource.transaction(async (manager) => {
-                const panel = await manager.findOne(PanelEntity, {
-                    where: { id },
-                });
+            dataSource.transaction((manager) => {
+                const panel = manager
+                    .select()
+                    .from(PanelEntity)
+                    .where(eq(PanelEntity.id, id))
+                    .get();
                 if (!panel) throw new HostStateError("unknown_panel");
                 if (panel.revision !== expectedRevision)
                     throw new HostStateError("revision_conflict");
-                await manager.delete(PanelEntity, { id });
+                manager.delete(PanelEntity).where(eq(PanelEntity.id, id)).run();
             });
         },
         async createPanel(input) {
             const panel = panelViewSchema.parse(input);
-            await dataSource.transaction(async (manager) => {
-                await manager.insert(PanelEntity, panelRow(panel));
-                await insertTabs(manager, panel);
+            dataSource.transaction((manager) => {
+                manager.insert(PanelEntity).values(panelRow(panel)).run();
+                insertTabs(manager, panel);
             });
         },
         async updatePanel(input, expectedRevision) {
             const panel = panelViewSchema.parse(input);
             if (panel.revision !== expectedRevision + 1)
                 throw new HostStateError("revision_conflict");
-            await dataSource.transaction(async (manager) => {
-                const current = await manager.findOne(PanelEntity, {
-                    where: { id: panel.id },
-                });
+            dataSource.transaction((manager) => {
+                const current = manager
+                    .select()
+                    .from(PanelEntity)
+                    .where(eq(PanelEntity.id, panel.id))
+                    .get();
                 if (!current) throw new HostStateError("unknown_panel");
                 if (current.revision !== expectedRevision)
                     throw new HostStateError("revision_conflict");
-                await manager.update(
-                    PanelEntity,
-                    { id: panel.id, revision: expectedRevision },
-                    panelRow(panel),
-                );
-                await manager.delete(PanelTabEntity, { panelId: panel.id });
-                await insertTabs(manager, panel);
+                manager
+                    .update(PanelEntity)
+                    .set(panelRow(panel))
+                    .where(
+                        and(
+                            eq(PanelEntity.id, panel.id),
+                            eq(PanelEntity.revision, expectedRevision),
+                        ),
+                    )
+                    .run();
+                manager
+                    .delete(PanelTabEntity)
+                    .where(eq(PanelTabEntity.panelId, panel.id))
+                    .run();
+                insertTabs(manager, panel);
             });
         },
         createHost: writeHost,
@@ -790,10 +1030,14 @@ export function hostState(dataSource: DataSource): HostState {
             writeHost(host, network, panel, 0, undefined, revision),
         async saveOperation(input, requestHash) {
             const operation = operationSchema.parse(input);
-            return dataSource.transaction(async (manager) => {
-                const existing = await manager.findOne(HostOperationEntity, {
-                    where: { requestId: operation.requestId },
-                });
+            return dataSource.transaction((manager) => {
+                const existing = manager
+                    .select()
+                    .from(HostOperationEntity)
+                    .where(
+                        eq(HostOperationEntity.requestId, operation.requestId),
+                    )
+                    .get();
                 if (existing && existing.requestHash !== requestHash)
                     throw new HostStateError("request_conflict");
                 if (
@@ -805,53 +1049,80 @@ export function hostState(dataSource: DataSource): HostState {
                 if (
                     !existing &&
                     operation.panelId !== null &&
-                    (await manager.findOne(HostOperationEntity, {
-                        where: { panelId: operation.panelId, state: "running" },
-                    }))
+                    manager
+                        .select()
+                        .from(HostOperationEntity)
+                        .where(
+                            and(
+                                eq(
+                                    HostOperationEntity.panelId,
+                                    operation.panelId,
+                                ),
+                                eq(HostOperationEntity.state, "running"),
+                            ),
+                        )
+                        .get()
                 )
                     throw new HostStateError("panel_busy");
                 const { targets, error, cleanupErrors, ...rest } = operation;
-                await manager.save(HostOperationEntity, {
+                const row = {
                     ...rest,
                     requestHash,
                     targetsJson: JSON.stringify(targets),
                     errorJson: json(error),
                     cleanupErrorsJson: JSON.stringify(cleanupErrors),
-                });
+                };
+                manager
+                    .insert(HostOperationEntity)
+                    .values(row)
+                    .onConflictDoUpdate({
+                        target: [HostOperationEntity.id],
+                        set: row,
+                    })
+                    .run();
                 return operation;
             });
         },
         async purgeBefore(at) {
-            return dataSource.transaction(async (manager) => {
-                const rows = await manager.find(HostOperationEntity, {
-                    where: {
-                        finishedAt: LessThan(at),
-                        cleanupErrorsJson: "[]",
-                    },
-                });
+            return dataSource.transaction((manager) => {
+                const rows = manager
+                    .select()
+                    .from(HostOperationEntity)
+                    .where(
+                        and(
+                            lt(HostOperationEntity.finishedAt, at),
+                            eq(HostOperationEntity.cleanupErrorsJson, "[]"),
+                        ),
+                    )
+                    .all();
                 for (const row of rows)
-                    await manager.delete(HostOperationEntity, { id: row.id });
-                await manager.delete(HostExecutionEntity, {
-                    endedAt: LessThan(at),
-                });
+                    manager
+                        .delete(HostOperationEntity)
+                        .where(eq(HostOperationEntity.id, row.id))
+                        .run();
+                manager
+                    .delete(HostExecutionEntity)
+                    .where(lt(HostExecutionEntity.endedAt, at))
+                    .run();
                 return rows.length;
             });
         },
         async recover(at) {
-            await dataSource.transaction(async (manager) => {
-                for (const row of await manager.find(HostOperationEntity, {
-                    where: { state: "running" },
-                })) {
+            dataSource.transaction((manager) => {
+                for (const row of manager
+                    .select()
+                    .from(HostOperationEntity)
+                    .where(eq(HostOperationEntity.state, "running"))
+                    .all()) {
                     const error = {
                         code: "daemon_interrupted",
                         message: "Daemon ended before completion.",
                         stage: "execution",
                     };
                     const operation = operationView(row);
-                    await manager.update(
-                        HostOperationEntity,
-                        { id: row.id },
-                        {
+                    manager
+                        .update(HostOperationEntity)
+                        .set({
                             state: "failed",
                             finishedAt: at,
                             errorJson: JSON.stringify(error),
@@ -866,44 +1137,55 @@ export function hostState(dataSource: DataSource): HostState {
                                         : t,
                                 ),
                             ),
-                        },
-                    );
+                        })
+                        .where(eq(HostOperationEntity.id, row.id))
+                        .run();
                 }
-                for (const execution of await manager.find(
-                    HostExecutionEntity,
-                    { where: { endedAt: IsNull() } },
-                )) {
+                for (const execution of manager
+                    .select()
+                    .from(HostExecutionEntity)
+                    .where(isNull(HostExecutionEntity.endedAt))
+                    .all()) {
                     const exit = JSON.stringify({
                         kind: "daemon-ended",
                         message: "Daemon ended before execution cleanup.",
                         at,
                     });
-                    await manager.update(
-                        HostExecutionEntity,
-                        { runtimeId: execution.runtimeId },
-                        { endedAt: at, exitJson: exit },
-                    );
-                    await manager.update(
-                        HostAgentEntity,
-                        {
-                            hostId: execution.hostId,
-                            agentKey: execution.agentKey,
-                        },
-                        { lastExitJson: exit },
-                    );
+                    manager
+                        .update(HostExecutionEntity)
+                        .set({ endedAt: at, exitJson: exit })
+                        .where(
+                            eq(
+                                HostExecutionEntity.runtimeId,
+                                execution.runtimeId,
+                            ),
+                        )
+                        .run();
+                    manager
+                        .update(HostAgentEntity)
+                        .set({ lastExitJson: exit })
+                        .where(
+                            and(
+                                eq(HostAgentEntity.hostId, execution.hostId),
+                                eq(
+                                    HostAgentEntity.agentKey,
+                                    execution.agentKey,
+                                ),
+                            ),
+                        )
+                        .run();
                 }
                 const changed = new Set<string>();
-                for (const tab of await manager.find(PanelTabEntity)) {
+                for (const tab of manager.select().from(PanelTabEntity).all()) {
                     if (
                         tab.terminalId === null ||
                         tab.presentation === "unavailable"
                     )
                         continue;
                     changed.add(tab.panelId);
-                    await manager.update(
-                        PanelTabEntity,
-                        { id: tab.id },
-                        {
+                    manager
+                        .update(PanelTabEntity)
+                        .set({
                             presentation: "unavailable",
                             noticeJson: JSON.stringify({
                                 message:
@@ -911,16 +1193,17 @@ export function hostState(dataSource: DataSource): HostState {
                                 reason: "daemon-ended",
                                 restartCommand: "",
                             }),
-                        },
-                    );
+                        })
+                        .where(eq(PanelTabEntity.id, tab.id))
+                        .run();
                 }
-                for (const panel of await manager.find(PanelEntity)) {
+                for (const panel of manager.select().from(PanelEntity).all()) {
                     if (!changed.has(panel.id)) continue;
-                    await manager.update(
-                        PanelEntity,
-                        { id: panel.id },
-                        { revision: panel.revision + 1 },
-                    );
+                    manager
+                        .update(PanelEntity)
+                        .set({ revision: panel.revision + 1 })
+                        .where(eq(PanelEntity.id, panel.id))
+                        .run();
                 }
             });
         },

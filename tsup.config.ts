@@ -20,7 +20,7 @@ const packages: Record<string, Options> = {
     "@aiox/config": {},
     "@aiox/protocol": {},
     "@aiox/persistence": {
-        external: ["better-sqlite3", "typeorm", "@aiox/domain"],
+        external: ["better-sqlite3", "drizzle-orm", "@aiox/domain"],
     },
     "@aiox/terminal": {
         entry: ["src/index.ts", "src/restore.ts"],

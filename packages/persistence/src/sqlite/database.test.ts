@@ -81,6 +81,15 @@ test("a fresh database creates the current schema directly and reopens", async (
 
     const db = inspect(t, path);
     for (const table of [
+        "hosts",
+        "host_agents",
+        "host_networks",
+        "host_members",
+        "host_edges",
+        "panels",
+        "panel_tabs",
+        "host_operations",
+        "host_executions",
         "persistent_networks",
         "persistent_routes",
         "messages",
@@ -88,7 +97,16 @@ test("a fresh database creates the current schema directly and reopens", async (
         "notifications",
     ])
         assert.ok(tableNames(db).includes(table), `missing table ${table}`);
+    assert.equal(tableNames(db).length, 14);
     assert.equal(tableNames(db).includes("migrations"), false);
+    assert.deepEqual(db.pragma("foreign_key_check"), []);
+    assert.equal(db.pragma("integrity_check", { simple: true }), "ok");
+    const tables = db.pragma("table_list") as {
+        name: string;
+        strict: number;
+    }[];
+    for (const name of tableNames(db))
+        assert.equal(tables.find((t) => t.name === name)?.strict, 1, name);
     assert.deepEqual(
         db
             .prepare("PRAGMA table_info(persistent_networks)")
@@ -176,7 +194,7 @@ test("concurrent writes to unrelated networks both commit", async (t) => {
     );
 });
 
-test("a rollback cannot absorb a queued write or expose partial routes to a read", async (t) => {
+test("a rollback cannot absorb another write or expose partial routes to a read", async (t) => {
     const store = await openDatabase(databasePath(t));
     t.onTestFinished(() => store.close());
     await store.networks.create({ id: "a", name: "a" });
@@ -198,7 +216,7 @@ test("a rollback cannot absorb a queued write or expose partial routes to a read
     assert.equal((await store.networks.get("b"))?.name, "b");
 });
 
-test("close drains queued transactions before closing the connection", async (t) => {
+test("close completes earlier writes before closing the connection", async (t) => {
     const path = databasePath(t);
     const store = await openDatabase(path);
     const writing = store.messages.record(message("m1", 10), [
@@ -460,4 +478,139 @@ test("current notifications require ownership but allow a missing terminal", asy
         ]),
         [["daemon", null]],
     );
+});
+
+test("a notification constraint failure rolls back settlement and permits retry after reopen", async (t) => {
+    const path = databasePath(t);
+    let store = await openDatabase(path);
+    t.onTestFinished(() => store.close());
+    await store.messages.record(message("m1", 10), [
+        delivery("d1", "m1", "t1"),
+    ]);
+    const notification = {
+        id: "n1",
+        originRuntimeId: "",
+        originExecutionOwnership: "daemon" as const,
+        originTerminalId: null,
+        body: "finished",
+        createdAt: 20,
+        readAt: null,
+    };
+    await assert.rejects(
+        store.messages.settle("d1", "completed", 20, undefined, notification),
+        /CHECK/,
+    );
+    await store.close();
+    store = await openDatabase(path);
+    assert.equal((await store.messages.delivery("d1"))!.outcome, null);
+    assert.deepEqual(await store.messages.unreadNotifications(), []);
+    assert.equal(
+        await store.messages.settle("d1", "completed", 30, undefined, {
+            ...notification,
+            originRuntimeId: "r-source",
+        }),
+        true,
+    );
+    assert.equal((await store.messages.delivery("d1"))!.outcomeAt, 30);
+    assert.equal((await store.messages.unreadNotifications()).length, 1);
+});
+
+test("a closed connection rejects reads and writes instead of returning empty success", async (t) => {
+    const store = await openDatabase(databasePath(t));
+    await store.close();
+    await assert.rejects(store.networks.list());
+    await assert.rejects(store.hostState.snapshot());
+    await assert.rejects(store.messages.unreadNotifications());
+    await assert.rejects(store.networks.create({ id: "n", name: "no write" }));
+});
+
+test("Host FK cascades preserve independent Networks and execution, Operation and message history", async (t) => {
+    const path = databasePath(t);
+    const store = await openDatabase(path);
+    t.onTestFinished(() => store.close());
+    const raw = new Database(path);
+    t.onTestFinished(() => {
+        raw.close();
+    });
+    raw.pragma("foreign_keys = ON");
+    raw.exec(`
+        INSERT INTO hosts (id, name, directory, source_file, instruction, revision, created_at) VALUES ('h', 'Team', '/work', '/work/aiox.yaml', '', 1, 1);
+        INSERT INTO host_agents (host_id, agent_key, ordinal, adapter, role, description, instruction, args_json, last_terminal_id, last_exit_json) VALUES ('h', 'a', 0, 'codex', NULL, NULL, '', '[]', NULL, NULL);
+        INSERT INTO host_agents (host_id, agent_key, ordinal, adapter, role, description, instruction, args_json, last_terminal_id, last_exit_json) VALUES ('h', 'b', 1, 'codex', NULL, NULL, '', '[]', NULL, NULL);
+        INSERT INTO host_networks (id, host_id, name, default_policy) VALUES ('n', 'h', 'Team', 'deny');
+        INSERT INTO host_members (network_id, agent_key) VALUES ('n', 'a'), ('n', 'b');
+        INSERT INTO host_edges (network_id, from_key, to_key, manifest_policy, override_policy) VALUES ('n', 'a', 'b', 'allow', NULL);
+        INSERT INTO panels (id, kind, section, name, host_id, network_id, revision, layout_json, active_pane_id) VALUES ('p', 'host', 'hosts', 'Team', 'h', 'n', 1, '{}', 'pane');
+        INSERT INTO panel_tabs (id, panel_id, terminal_id, label, agent_key, presentation, notice_json) VALUES ('tab', 'p', NULL, 'a', 'a', 'stopped', NULL);
+        INSERT INTO host_executions (runtime_id, host_id, agent_key, terminal_id, started_at, ended_at, exit_json) VALUES ('r', 'h', 'a', 'terminal', 1, 2, NULL);
+        INSERT INTO host_operations (id, request_id, request_hash, kind, host_id, panel_id, state, targets_json, error_json, cleanup_errors_json, created_at, finished_at) VALUES ('op', 'request', 'hash', 'host.stop', 'h', 'p', 'succeeded', '[]', NULL, '[]', 1, 2);
+    `);
+    assert.throws(
+        () =>
+            raw.exec(
+                "INSERT INTO host_members (network_id, agent_key) VALUES ('n', 'missing')",
+            ),
+        /unknown_host_agent/,
+    );
+    assert.throws(
+        () =>
+            raw.exec(
+                "INSERT INTO host_edges (network_id, from_key, to_key, manifest_policy, override_policy) VALUES ('n', 'a', 'missing', 'allow', NULL)",
+            ),
+        /FOREIGN KEY/,
+    );
+    assert.throws(
+        () =>
+            raw.exec(
+                "INSERT INTO panel_tabs (id, panel_id, terminal_id, label, agent_key, presentation, notice_json) VALUES ('orphan', 'missing', NULL, '', NULL, 'shell', NULL)",
+            ),
+        /FOREIGN KEY/,
+    );
+    await store.networks.create({ id: "n", name: "Team" });
+    await store.networks.replaceRouting("n", {
+        routes: [{ from: "one", to: "two" }],
+    });
+    await assert.rejects(
+        store.networks.create({ id: "other", name: "Team" }),
+        /UNIQUE/,
+    );
+    await store.messages.record(
+        { ...message("m1", 1), sourceRuntimeId: "r", networkId: "n" },
+        [delivery("d1", "m1", "t1")],
+    );
+    await store.hostState.deleteHost("h", 1);
+    for (const table of [
+        "hosts",
+        "host_agents",
+        "host_networks",
+        "host_members",
+        "host_edges",
+        "panels",
+        "panel_tabs",
+    ])
+        assert.equal(
+            raw
+                .prepare<[], { count: number }>(
+                    `SELECT count(*) AS count FROM ${table}`,
+                )
+                .get()?.count,
+            0,
+        );
+    for (const table of [
+        "host_executions",
+        "host_operations",
+        "messages",
+        "deliveries",
+        "persistent_networks",
+        "persistent_routes",
+    ])
+        assert.equal(
+            raw
+                .prepare<[], { count: number }>(
+                    `SELECT count(*) AS count FROM ${table}`,
+                )
+                .get()?.count,
+            1,
+        );
+    assert.deepEqual(raw.pragma("foreign_key_check"), []);
 });

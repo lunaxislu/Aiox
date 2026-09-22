@@ -2,22 +2,26 @@ import { mkdirSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
 
 import type { DeliveryOutcome, DirectedRoute } from "@aiox/domain";
-import { DataSource, type FindOptionsWhere, In, IsNull } from "typeorm";
+import Database from "better-sqlite3";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+    drizzle,
+    type BetterSQLite3Database,
+} from "drizzle-orm/better-sqlite3";
 
+import { HOST_MEMBER_TRIGGER } from "./host-schema";
+import { hostState, type HostState } from "./host-state";
 import {
     DeliveryEntity,
     type DeliveryRow,
-    ENTITIES,
     MessageEntity,
     type MessageRow,
-    SCHEMA,
     NetworkEntity,
     NotificationEntity,
     type NotificationRow,
     RouteEntity,
-} from "@/sqlite/schema";
-
-import { hostState, type HostState } from "./host-state";
+} from "./schema";
+import { SCHEMA_SQL } from "./schema.generated";
 
 export type { DeliveryRow, MessageRow, NotificationRow };
 
@@ -82,252 +86,214 @@ export interface AioxDatabase {
     close(): Promise<void>;
 }
 
-/**
- * A message is purgeable only once every one of its targets reached a terminal
- * outcome and the last of them is older than the cutoff. `COUNT(outcome)`
- * skips nulls, so a single in-flight target keeps the whole message.
- */
-const PURGEABLE_MESSAGES = `
-SELECT m.id AS id
-FROM messages m
-JOIN deliveries d ON d.message_id = m.id
-GROUP BY m.id
-HAVING COUNT(*) = COUNT(d.outcome) AND MAX(d.outcome_at) < ?`;
-
-function networks(dataSource: DataSource): PersistentNetworks {
-    const manager = dataSource.manager;
-    const routesOf = async (
-        id: string,
-    ): Promise<Pick<DirectedRoute, "from" | "to">[]> => {
-        const rows = await manager.find(RouteEntity, {
-            where: { networkId: id },
-            order: { sourceId: "ASC", targetId: "ASC" },
-        });
-        return rows.map(({ sourceId, targetId }) => ({
-            from: sourceId,
-            to: targetId,
-        }));
+function networks(db: BetterSQLite3Database): PersistentNetworks {
+    const get = (id: string): PersistentNetwork | undefined => {
+        const row = db
+            .select()
+            .from(NetworkEntity)
+            .where(eq(NetworkEntity.id, id))
+            .get();
+        if (!row) return undefined;
+        const routes = db
+            .select({ from: RouteEntity.sourceId, to: RouteEntity.targetId })
+            .from(RouteEntity)
+            .where(eq(RouteEntity.networkId, id))
+            .orderBy(asc(RouteEntity.sourceId), asc(RouteEntity.targetId))
+            .all();
+        return { ...row, routes };
     };
-    const get = async (id: string): Promise<PersistentNetwork | undefined> => {
-        const row = await manager.findOne(NetworkEntity, { where: { id } });
-        return row === null
-            ? undefined
-            : {
-                  id: row.id,
-                  name: row.name,
-                  routes: await routesOf(id),
-              };
-    };
-
     return {
-        create: async (input) => {
-            await manager.insert(NetworkEntity, input);
+        async create(input) {
+            db.insert(NetworkEntity).values(input).run();
         },
-        get,
-        list: async () => {
-            const rows = await manager.find(NetworkEntity, {
-                order: { name: "ASC" },
-            });
-            return Promise.all(rows.map(async ({ id }) => (await get(id))!));
+        async get(id) {
+            return get(id);
         },
-        replaceRouting: (id, update) =>
-            dataSource.transaction(async (m) => {
-                const current = await get(id);
+        async list() {
+            return db
+                .select()
+                .from(NetworkEntity)
+                .orderBy(asc(NetworkEntity.name))
+                .all()
+                .map(({ id }) => get(id)!);
+        },
+        async replaceRouting(id, update) {
+            db.transaction((tx) => {
+                const current = get(id);
                 if (!current) throw new Error(`Network not found: ${id}`);
                 const routing =
                     typeof update === "function" ? update(current) : update;
-                await m.delete(RouteEntity, { networkId: id });
-                if (routing.routes.length === 0) return;
-                await m.insert(
-                    RouteEntity,
-                    routing.routes.map((route) => ({
-                        networkId: id,
-                        sourceId: route.from,
-                        targetId: route.to,
-                    })),
-                );
-            }),
-        delete: async (id) =>
-            (await manager.delete(NetworkEntity, id)).affected === 1,
+                tx.delete(RouteEntity)
+                    .where(eq(RouteEntity.networkId, id))
+                    .run();
+                if (routing.routes.length)
+                    tx.insert(RouteEntity)
+                        .values(
+                            routing.routes.map(({ from, to }) => ({
+                                networkId: id,
+                                sourceId: from,
+                                targetId: to,
+                            })),
+                        )
+                        .run();
+            });
+        },
+        async delete(id) {
+            return (
+                db.delete(NetworkEntity).where(eq(NetworkEntity.id, id)).run()
+                    .changes === 1
+            );
+        },
     };
 }
 
-function messages(dataSource: DataSource): MessageHistory {
-    const manager = dataSource.manager;
-    const deliveries = async (
-        where: FindOptionsWhere<DeliveryRow>,
-    ): Promise<DeliveryRow[]> =>
-        manager.find(DeliveryEntity, { where, order: { id: "ASC" } });
-
+function messages(db: BetterSQLite3Database): MessageHistory {
     return {
-        record: (message, rows) =>
-            dataSource.transaction(async (m) => {
-                await m.insert(MessageEntity, message);
-                if (rows.length > 0) await m.insert(DeliveryEntity, [...rows]);
-            }),
-        deliveryFor: async (messageId, targetRuntimeId) =>
-            (await deliveries({ messageId, targetRuntimeId }))[0],
-        delivery: async (id) => (await deliveries({ id }))[0],
-        deliveriesFor: (messageId) => deliveries({ messageId }),
-        settle: (deliveryId, outcome, at, error, notification) =>
-            dataSource.transaction(async (m) => {
-                const current = await m.findOne(DeliveryEntity, {
-                    where: { id: deliveryId },
-                });
-                if (current === null || current.outcome !== null) return false;
-                await m.update(DeliveryEntity, deliveryId, {
-                    outcome,
-                    outcomeAt: at,
-                    outcomeError: error ?? null,
-                });
-                if (notification)
-                    await m.insert(NotificationEntity, {
-                        ...notification,
-                        deliveryId,
-                    });
-                return true;
-            }),
-        unreadNotifications: () =>
-            manager.find(NotificationEntity, {
-                where: { readAt: IsNull() },
-                order: { createdAt: "ASC", id: "ASC" },
-            }),
-        markRead: async (ids, at) => {
-            if (ids.length === 0) return;
-            await manager.update(NotificationEntity, [...ids], { readAt: at });
+        async record(message, deliveries) {
+            db.transaction((tx) => {
+                tx.insert(MessageEntity).values(message).run();
+                if (deliveries.length)
+                    tx.insert(DeliveryEntity)
+                        .values([...deliveries])
+                        .run();
+            });
         },
-        purgeBefore: (cutoffMs) =>
-            dataSource.transaction(async (m) => {
-                const purgeable = await m.query<{ id: string }[]>(
-                    PURGEABLE_MESSAGES,
-                    [cutoffMs],
-                );
-                const ids = purgeable.map(({ id }) => id);
-                if (ids.length === 0)
-                    return { messages: 0, deliveries: 0, notifications: 0 };
-                const deliveryIds = (
-                    await m.find(DeliveryEntity, {
-                        where: { messageId: In(ids) },
-                        select: { id: true },
+        async deliveryFor(messageId, targetRuntimeId) {
+            return db
+                .select()
+                .from(DeliveryEntity)
+                .where(
+                    and(
+                        eq(DeliveryEntity.messageId, messageId),
+                        eq(DeliveryEntity.targetRuntimeId, targetRuntimeId),
+                    ),
+                )
+                .get();
+        },
+        async delivery(id) {
+            return db
+                .select()
+                .from(DeliveryEntity)
+                .where(eq(DeliveryEntity.id, id))
+                .get();
+        },
+        async deliveriesFor(messageId) {
+            return db
+                .select()
+                .from(DeliveryEntity)
+                .where(eq(DeliveryEntity.messageId, messageId))
+                .orderBy(asc(DeliveryEntity.id))
+                .all();
+        },
+        async settle(deliveryId, outcome, at, error, notification) {
+            return db.transaction((tx) => {
+                const changed = tx
+                    .update(DeliveryEntity)
+                    .set({
+                        outcome,
+                        outcomeAt: at,
+                        outcomeError: error ?? null,
                     })
-                ).map(({ id }) => id);
-                const notifications = await m.count(NotificationEntity, {
-                    where: { deliveryId: In(deliveryIds) },
-                });
-                // The two child tables go with it through ON DELETE CASCADE.
-                await m.delete(MessageEntity, ids);
+                    .where(
+                        and(
+                            eq(DeliveryEntity.id, deliveryId),
+                            isNull(DeliveryEntity.outcome),
+                        ),
+                    )
+                    .run().changes;
+                if (!changed) return false;
+                if (notification)
+                    tx.insert(NotificationEntity)
+                        .values({ ...notification, deliveryId })
+                        .run();
+                return true;
+            });
+        },
+        async unreadNotifications() {
+            return db
+                .select()
+                .from(NotificationEntity)
+                .where(isNull(NotificationEntity.readAt))
+                .orderBy(
+                    asc(NotificationEntity.createdAt),
+                    asc(NotificationEntity.id),
+                )
+                .all();
+        },
+        async markRead(ids, at) {
+            if (ids.length)
+                db.update(NotificationEntity)
+                    .set({ readAt: at })
+                    .where(inArray(NotificationEntity.id, [...ids]))
+                    .run();
+        },
+        async purgeBefore(cutoffMs) {
+            return db.transaction((tx) => {
+                // Every target must be terminal, and the last completion older than the cutoff.
+                const ids = tx
+                    .select({ id: MessageEntity.id })
+                    .from(MessageEntity)
+                    .innerJoin(
+                        DeliveryEntity,
+                        eq(DeliveryEntity.messageId, MessageEntity.id),
+                    )
+                    .groupBy(MessageEntity.id)
+                    .having(
+                        sql`count(*) = count(${DeliveryEntity.outcome}) AND max(${DeliveryEntity.outcomeAt}) < ${cutoffMs}`,
+                    )
+                    .all()
+                    .map(({ id }) => id);
+                if (!ids.length)
+                    return { messages: 0, deliveries: 0, notifications: 0 };
+                const deliveryIds = tx
+                    .select({ id: DeliveryEntity.id })
+                    .from(DeliveryEntity)
+                    .where(inArray(DeliveryEntity.messageId, ids))
+                    .all()
+                    .map(({ id }) => id);
+                const notifications = tx
+                    .select({ count: count() })
+                    .from(NotificationEntity)
+                    .where(inArray(NotificationEntity.deliveryId, deliveryIds))
+                    .get()!.count;
+                tx.delete(MessageEntity)
+                    .where(inArray(MessageEntity.id, ids))
+                    .run();
                 return {
                     messages: ids.length,
                     deliveries: deliveryIds.length,
                     notifications,
                 };
-            }),
+            });
+        },
     };
 }
 
-/** Called by the daemon; the caller supplies its environment's absolute DB path. */
+/** Current schema only; opening never upgrades or resets an older database. */
 export async function openDatabase(path: string): Promise<AioxDatabase> {
     if (!isAbsolute(path)) throw new Error("Database path must be absolute");
     mkdirSync(dirname(path), { recursive: true });
-    const dataSource = new DataSource({
-        type: "better-sqlite3",
-        database: path,
-        entities: ENTITIES,
-        synchronize: false,
-    });
-    await dataSource.initialize();
+    const client = new Database(path);
     try {
-        await dataSource.transaction(async (manager) => {
-            for (const sql of SCHEMA) await manager.query(sql);
-        });
-        // One SQLite connection owns every transaction; even a read or a
-        // nontransactional write must wait rather than enter another caller's
-        // transaction. A rejected operation does not poison the next one.
-        let pending = Promise.resolve();
-        const run = <T>(operation: () => Promise<T>): Promise<T> => {
-            const result = pending.then(operation);
-            pending = result.then(
-                () => {},
-                () => {},
-            );
-            return result;
-        };
-        const networkStore = networks(dataSource);
-        const history = messages(dataSource);
-        const state = hostState(dataSource);
+        client.pragma("foreign_keys = ON");
+        client.pragma("journal_mode = WAL");
+        client.transaction(() => {
+            client.exec(SCHEMA_SQL);
+            client.exec(HOST_MEMBER_TRIGGER);
+        })();
+        const db = drizzle(client);
+        // Each public async method completes all synchronous DB work before yielding.
+        // Thus reads and close cannot enter another call's unfinished transaction.
         return {
-            hostState: {
-                routeNetwork: (hostId, networkId, operation) =>
-                    run(() => state.routeNetwork(hostId, networkId, operation)),
-                applyAgent: (hostId, agent, routes) =>
-                    run(() => state.applyAgent(hostId, agent, routes)),
-                getOperation: (requestId, requestHash) =>
-                    run(() => state.getOperation(requestId, requestHash)),
-                startExecution: (input) =>
-                    run(() => state.startExecution(input)),
-                finishExecution: (id, exit, command) =>
-                    run(() => state.finishExecution(id, exit, command)),
-                failStart: (hostId, agentKey, message, command, tabId) =>
-                    run(() =>
-                        state.failStart(
-                            hostId,
-                            agentKey,
-                            message,
-                            command,
-                            tabId,
-                        ),
-                    ),
-                removeTerminal: (id) => run(() => state.removeTerminal(id)),
-                snapshot: () => run(() => state.snapshot()),
-                deletePanel: (id, revision) =>
-                    run(() => state.deletePanel(id, revision)),
-                deleteHost: (id, revision) =>
-                    run(() => state.deleteHost(id, revision)),
-                replaceHost: (host, network, panel, revision) =>
-                    run(() =>
-                        state.replaceHost(host, network, panel, revision),
-                    ),
-                createPanel: (panel) => run(() => state.createPanel(panel)),
-                updatePanel: (panel, revision) =>
-                    run(() => state.updatePanel(panel, revision)),
-                createHost: (host, network, panel, at, operation) =>
-                    run(() =>
-                        state.createHost(host, network, panel, at, operation),
-                    ),
-                saveOperation: (operation, hash) =>
-                    run(() => state.saveOperation(operation, hash)),
-                purgeBefore: (at) => run(() => state.purgeBefore(at)),
-                recover: (at) => run(() => state.recover(at)),
+            hostState: hostState(db),
+            networks: networks(db),
+            messages: messages(db),
+            async close() {
+                client.close();
             },
-            networks: {
-                create: (input) => run(() => networkStore.create(input)),
-                get: (id) => run(() => networkStore.get(id)),
-                list: () => run(() => networkStore.list()),
-                replaceRouting: (id, routing) =>
-                    run(() => networkStore.replaceRouting(id, routing)),
-                delete: (id) => run(() => networkStore.delete(id)),
-            },
-            messages: {
-                record: (message, rows) =>
-                    run(() => history.record(message, rows)),
-                deliveryFor: (messageId, targetId) =>
-                    run(() => history.deliveryFor(messageId, targetId)),
-                delivery: (id) => run(() => history.delivery(id)),
-                deliveriesFor: (messageId) =>
-                    run(() => history.deliveriesFor(messageId)),
-                settle: (id, outcome, at, error, notification) =>
-                    run(() =>
-                        history.settle(id, outcome, at, error, notification),
-                    ),
-                unreadNotifications: () =>
-                    run(() => history.unreadNotifications()),
-                markRead: (ids, at) => run(() => history.markRead(ids, at)),
-                purgeBefore: (cutoff) => run(() => history.purgeBefore(cutoff)),
-            },
-            close: () => run(() => dataSource.destroy()),
         };
     } catch (error) {
-        await dataSource.destroy();
+        client.close();
         throw error;
     }
 }

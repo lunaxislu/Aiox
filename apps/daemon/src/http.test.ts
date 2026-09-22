@@ -2,7 +2,7 @@ import { request } from "node:http";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { startTestDaemon, type DaemonHarness } from "./testing";
+import { sseFrameReader, startTestDaemon, type DaemonHarness } from "./testing";
 let h: DaemonHarness;
 beforeEach(async () => {
     h = await startTestDaemon();
@@ -106,9 +106,8 @@ it("pauses actual SSE writes until drain and removes the Node drain listener on 
     const connections = vi.spyOn(h.daemon.services.webEvents, "connect");
     const response = await fetch(h.webUrl("/api/web/events"));
     const reader = response.body!.getReader();
-    expect(new TextDecoder().decode((await reader.read()).value)).toContain(
-        "event: snapshot",
-    );
+    const frame = sseFrameReader(reader);
+    expect(await frame()).toContain("event: snapshot");
     const outgoing = connections.mock.calls[0]![0].env.outgoing;
     const write = outgoing.write.bind(outgoing);
     let blocked = true;
@@ -119,9 +118,7 @@ it("pauses actual SSE writes until drain and removes the Node drain listener on 
             return blocked ? false : result;
         });
     const first = await h.daemon.services.networks.create("first");
-    expect(new TextDecoder().decode((await reader.read()).value)).toContain(
-        first.id,
-    );
+    expect(await frame()).toContain(first.id);
     await vi.waitFor(() => expect(outgoing.listenerCount("drain")).toBe(1));
     const second = await h.daemon.services.networks.create("second");
     await h.daemon.services.networks.delete(first.id);
@@ -134,11 +131,11 @@ it("pauses actual SSE writes until drain and removes the Node drain listener on 
         !received.includes(second.id) ||
         !received.includes('"action":"remove"')
     )
-        received += new TextDecoder().decode((await reader.read()).value);
+        received += await frame();
     expect(received).toContain(first.id);
     blocked = true;
     await h.daemon.services.networks.create("disconnect");
-    await reader.read();
+    await frame();
     await vi.waitFor(() => expect(outgoing.listenerCount("drain")).toBe(1));
     await reader.cancel();
     await vi.waitFor(() => expect(outgoing.destroyed).toBe(true));
@@ -173,16 +170,17 @@ it("reconnects over HTTP while the first SSE snapshot is still synchronizing", a
     const network = await h.daemon.services.networks.create("during-sync");
     const reconnect = await fetch(h.webUrl("/api/web/events"));
     const reader = reconnect.body!.getReader();
-    const initial = new TextDecoder().decode((await reader.read()).value);
+    const frame = sseFrameReader(reader);
+    const initial = await frame();
     expect(initial.startsWith("event: snapshot\n")).toBe(true);
     expect(initial).toContain(network.id);
     release();
     await vi.waitFor(() =>
         expect(firstRead.mock.settledResults[0]?.type).toBe("fulfilled"),
     );
-    const next = reader.read();
+    const next = frame();
     await h.daemon.services.networks.delete(network.id);
-    const changed = new TextDecoder().decode((await next).value);
+    const changed = await next;
     expect(changed).toContain(`"action":"remove","id":"${network.id}"`);
     await reader.cancel();
     expect(firstResponse.listenerCount("drain")).toBe(0);

@@ -9,6 +9,7 @@ import {
 } from "@aiox/protocol";
 import type { Context } from "hono";
 
+import { logHostOperationAccepted } from "./host-operation-log";
 import type { HttpEnv } from "./http";
 import { HttpError, parse, readJson } from "./http";
 import type { DaemonServices } from "./services";
@@ -28,15 +29,7 @@ export async function handleHostControl(
         hash,
     );
     if (previous) {
-        logger.info(
-            {
-                operationId: previous.id,
-                operationRequestId: previous.requestId,
-                requestId: c.get("requestId"),
-                hostId: previous.hostId,
-            },
-            "Host operation accepted",
-        );
+        logHostOperationAccepted(previous, c.get("requestId"));
         return c.json(previous, 202);
     }
     if (!services.lifecycle.acceptingInput())
@@ -75,15 +68,7 @@ export async function handleHostControl(
     };
     const admitted = await services.db.hostState.saveOperation(operation, hash);
     services.webEvents.notify();
-    logger.info(
-        {
-            operationId: admitted.id,
-            operationRequestId: admitted.requestId,
-            requestId: c.get("requestId"),
-            hostId: admitted.hostId,
-        },
-        "Host operation accepted",
-    );
+    logHostOperationAccepted(admitted, c.get("requestId"));
     c.res = c.json(admitted, 202);
     if (admitted.id !== operation.id) return c.res;
 

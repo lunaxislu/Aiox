@@ -1,190 +1,129 @@
 import type { DeliveryOutcome, MessageKind } from "@aiox/domain";
-import { EntitySchema } from "typeorm";
+import { sql } from "drizzle-orm";
+import {
+    sqliteTable,
+    text,
+    integer,
+    primaryKey,
+    unique,
+    check,
+    index,
+} from "drizzle-orm/sqlite-core";
 
-import { HOST_ENTITIES, HOST_SCHEMA } from "./host-schema";
-
-export type NetworkRow = {
-    id: string;
-    name: string;
-};
-
-export type RouteRow = {
-    networkId: string;
-    sourceId: string;
-    targetId: string;
-};
-
-/** `content` is the sender's original body; the one-way notice is not stored. */
-export type MessageRow = {
-    id: string;
-    kind: MessageKind;
-    sourceRuntimeId: string;
-    sourceName: string;
-    sourceRole: string | null;
-    sourceDescription: string | null;
-    networkId: string;
-    content: string;
-    createdAt: number;
-};
-
-/** One message aimed at one target. `outcome === null` means still in flight. */
-export type DeliveryRow = {
-    id: string;
-    messageId: string;
-    targetRuntimeId: string;
-    reverseRouteAtSend: boolean;
-    accepted: boolean;
-    rejectReason: string | null;
-    outcome: DeliveryOutcome | null;
-    outcomeAt: number | null;
-    outcomeError: string | null;
-};
-
-export type NotificationRow = {
-    id: string;
-    deliveryId: string;
-    originRuntimeId: string;
-    originExecutionOwnership: "daemon" | "external";
-    originTerminalId: string | null;
-    body: string;
-    createdAt: number;
-    readAt: number | null;
-};
-
-export const NetworkEntity = new EntitySchema<NetworkRow>({
-    name: "persistent_network",
-    tableName: "persistent_networks",
-    columns: {
-        id: { type: "text", primary: true },
-        name: { type: "text" },
+export const NetworkEntity = sqliteTable(
+    "persistent_networks",
+    {
+        id: text("id").notNull().primaryKey(),
+        name: text("name").notNull().unique(),
     },
-});
+    (t) => [
+        check("persistent_networks_check_0", sql`length(${t.id}) > 0`),
+        check(
+            "persistent_networks_check_1",
+            sql`length(trim(${t.name})) > 0 AND instr(${t.name}, '/') = 0`,
+        ),
+    ],
+);
 
-export const RouteEntity = new EntitySchema<RouteRow>({
-    name: "persistent_route",
-    tableName: "persistent_routes",
-    columns: {
-        networkId: { type: "text", name: "network_id", primary: true },
-        sourceId: { type: "text", name: "source_id", primary: true },
-        targetId: { type: "text", name: "target_id", primary: true },
+export const RouteEntity = sqliteTable(
+    "persistent_routes",
+    {
+        networkId: text("network_id")
+            .notNull()
+            .references(() => NetworkEntity.id, { onDelete: "cascade" }),
+        sourceId: text("source_id").notNull(),
+        targetId: text("target_id").notNull(),
     },
-});
+    (t) => [
+        primaryKey({ columns: [t.networkId, t.sourceId, t.targetId] }),
+        check("persistent_routes_check_0", sql`length(${t.sourceId}) > 0`),
+        check(
+            "persistent_routes_check_1",
+            sql`length(${t.targetId}) > 0 AND ${t.sourceId} <> ${t.targetId}`,
+        ),
+    ],
+);
 
-export const MessageEntity = new EntitySchema<MessageRow>({
-    name: "message",
-    tableName: "messages",
-    columns: {
-        id: { type: "text", primary: true },
-        kind: { type: "text" },
-        sourceRuntimeId: { type: "text", name: "source_runtime_id" },
-        sourceName: { type: "text", name: "source_name" },
-        sourceRole: { type: "text", name: "source_role", nullable: true },
-        sourceDescription: {
-            type: "text",
-            name: "source_description",
-            nullable: true,
-        },
-        networkId: { type: "text", name: "network_id" },
-        content: { type: "text" },
-        createdAt: { type: "integer", name: "created_at" },
+export const MessageEntity = sqliteTable(
+    "messages",
+    {
+        id: text("id").notNull().primaryKey(),
+        kind: text("kind").$type<MessageKind>().notNull(),
+        sourceRuntimeId: text("source_runtime_id").notNull(),
+        sourceName: text("source_name").notNull(),
+        sourceRole: text("source_role"),
+        sourceDescription: text("source_description"),
+        networkId: text("network_id").notNull(),
+        content: text("content").notNull(),
+        createdAt: integer("created_at").notNull(),
     },
-});
+    (t) => [
+        check("messages_check_0", sql`length(${t.id}) > 0`),
+        check(
+            "messages_check_1",
+            sql`${t.kind} IN ('agent', 'daemon-notification')`,
+        ),
+        check("messages_check_2", sql`length(${t.sourceRuntimeId}) > 0`),
+        check("messages_check_3", sql`length(${t.networkId}) > 0`),
+    ],
+);
+export type MessageRow = typeof MessageEntity.$inferSelect;
 
-export const DeliveryEntity = new EntitySchema<DeliveryRow>({
-    name: "delivery",
-    tableName: "deliveries",
-    columns: {
-        id: { type: "text", primary: true },
-        messageId: { type: "text", name: "message_id" },
-        targetRuntimeId: { type: "text", name: "target_runtime_id" },
-        reverseRouteAtSend: {
-            type: "boolean",
-            name: "reverse_route_at_send",
-        },
-        accepted: { type: "boolean" },
-        rejectReason: { type: "text", name: "reject_reason", nullable: true },
-        outcome: { type: "text", nullable: true },
-        outcomeAt: { type: "integer", name: "outcome_at", nullable: true },
-        outcomeError: { type: "text", name: "outcome_error", nullable: true },
+export const DeliveryEntity = sqliteTable(
+    "deliveries",
+    {
+        id: text("id").notNull().primaryKey(),
+        messageId: text("message_id")
+            .notNull()
+            .references(() => MessageEntity.id, { onDelete: "cascade" }),
+        targetRuntimeId: text("target_runtime_id").notNull(),
+        reverseRouteAtSend: integer("reverse_route_at_send", {
+            mode: "boolean",
+        }).notNull(),
+        accepted: integer("accepted", { mode: "boolean" }).notNull(),
+        rejectReason: text("reject_reason"),
+        outcome: text("outcome").$type<DeliveryOutcome>(),
+        outcomeAt: integer("outcome_at"),
+        outcomeError: text("outcome_error"),
     },
-});
+    (t) => [
+        unique().on(t.messageId, t.targetRuntimeId),
+        check("deliveries_check_0", sql`length(${t.id}) > 0`),
+        check("deliveries_check_1", sql`length(${t.targetRuntimeId}) > 0`),
+        check("deliveries_check_2", sql`${t.reverseRouteAtSend} IN (0, 1)`),
+        check("deliveries_check_3", sql`${t.accepted} IN (0, 1)`),
+        check(
+            "deliveries_check_4",
+            sql`${t.outcome} IS NULL OR ${t.outcome} IN ('rejected', 'completed', 'failed', 'interrupted')`,
+        ),
+    ],
+);
+export type DeliveryRow = typeof DeliveryEntity.$inferSelect;
 
-export const NotificationEntity = new EntitySchema<NotificationRow>({
-    name: "notification",
-    tableName: "notifications",
-    columns: {
-        id: { type: "text", primary: true },
-        deliveryId: { type: "text", name: "delivery_id" },
-        originRuntimeId: { type: "text", name: "origin_runtime_id" },
-        originExecutionOwnership: {
-            type: "text",
-            name: "origin_execution_ownership",
-        },
-        originTerminalId: {
-            type: "text",
-            name: "origin_terminal_id",
-            nullable: true,
-        },
-        body: { type: "text" },
-        createdAt: { type: "integer", name: "created_at" },
-        readAt: { type: "integer", name: "read_at", nullable: true },
+export const NotificationEntity = sqliteTable(
+    "notifications",
+    {
+        id: text("id").notNull().primaryKey(),
+        deliveryId: text("delivery_id")
+            .notNull()
+            .references(() => DeliveryEntity.id, { onDelete: "cascade" }),
+        originRuntimeId: text("origin_runtime_id").notNull(),
+        originExecutionOwnership: text("origin_execution_ownership")
+            .$type<"daemon" | "external">()
+            .notNull(),
+        originTerminalId: text("origin_terminal_id"),
+        body: text("body").notNull(),
+        createdAt: integer("created_at").notNull(),
+        readAt: integer("read_at"),
     },
-});
-
-export const ENTITIES = [
-    ...HOST_ENTITIES,
-    NetworkEntity,
-    RouteEntity,
-    MessageEntity,
-    DeliveryEntity,
-    NotificationEntity,
-];
-
-/** Current development schema; opening never upgrades or resets an older database. */
-export const SCHEMA = [
-    ...HOST_SCHEMA,
-    `CREATE TABLE IF NOT EXISTS persistent_networks (
-  id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
-  name TEXT NOT NULL UNIQUE CHECK(length(trim(name)) > 0 AND instr(name, '/') = 0)
-) STRICT`,
-    `CREATE TABLE IF NOT EXISTS persistent_routes (
-  network_id TEXT NOT NULL REFERENCES persistent_networks(id) ON DELETE CASCADE,
-  source_id TEXT NOT NULL CHECK(length(source_id) > 0),
-  target_id TEXT NOT NULL CHECK(length(target_id) > 0 AND source_id <> target_id),
-  PRIMARY KEY(network_id, source_id, target_id)
-) STRICT`,
-    `CREATE TABLE IF NOT EXISTS messages (
-  id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
-  kind TEXT NOT NULL CHECK(kind IN ('agent', 'daemon-notification')),
-  source_runtime_id TEXT NOT NULL CHECK(length(source_runtime_id) > 0),
-  source_name TEXT NOT NULL,
-  source_role TEXT,
-  source_description TEXT,
-  network_id TEXT NOT NULL CHECK(length(network_id) > 0),
-  content TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-) STRICT`,
-    `CREATE TABLE IF NOT EXISTS deliveries (
-  id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
-  message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-  target_runtime_id TEXT NOT NULL CHECK(length(target_runtime_id) > 0),
-  reverse_route_at_send INTEGER NOT NULL CHECK(reverse_route_at_send IN (0, 1)),
-  accepted INTEGER NOT NULL CHECK(accepted IN (0, 1)),
-  reject_reason TEXT,
-  outcome TEXT CHECK(outcome IS NULL OR outcome IN ('rejected', 'completed', 'failed', 'interrupted')),
-  outcome_at INTEGER,
-  outcome_error TEXT,
-  UNIQUE(message_id, target_runtime_id)
-) STRICT`,
-    `CREATE TABLE IF NOT EXISTS notifications (
-  id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
-  delivery_id TEXT NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
-  origin_runtime_id TEXT NOT NULL CHECK(length(origin_runtime_id) > 0),
-  origin_execution_ownership TEXT NOT NULL CHECK(origin_execution_ownership IN ('daemon', 'external')),
-  origin_terminal_id TEXT,
-  body TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  read_at INTEGER
-) STRICT`,
-    "CREATE INDEX IF NOT EXISTS notifications_delivery ON notifications(delivery_id)",
-];
+    (t) => [
+        check("notifications_check_0", sql`length(${t.id}) > 0`),
+        check("notifications_check_1", sql`length(${t.originRuntimeId}) > 0`),
+        check(
+            "notifications_check_2",
+            sql`${t.originExecutionOwnership} IN ('daemon', 'external')`,
+        ),
+        index("notifications_delivery").on(t.deliveryId),
+    ],
+);
+export type NotificationRow = typeof NotificationEntity.$inferSelect;

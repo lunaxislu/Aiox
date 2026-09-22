@@ -22,6 +22,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 
 import { placeAgent } from "./host-agents";
+import { logHostOperationAccepted } from "./host-operation-log";
 import type { HttpEnv } from "./http";
 import { HttpError, parse, readJson } from "./http";
 import { restartCommand } from "./managed-agents";
@@ -244,15 +245,7 @@ export async function handleHostRun(
         hash,
     );
     if (previous) {
-        logger.info(
-            {
-                operationId: previous.id,
-                operationRequestId: previous.requestId,
-                requestId: c.get("requestId"),
-                hostId: previous.hostId,
-            },
-            "Host operation accepted",
-        );
+        logHostOperationAccepted(previous, c.get("requestId"));
         return c.json(previous, 202);
     }
     if (!services.lifecycle.acceptingInput())
@@ -414,15 +407,7 @@ export async function handleHostRun(
                 hash,
             );
             if (admitted.id !== operation.id) {
-                logger.info(
-                    {
-                        operationId: admitted.id,
-                        operationRequestId: admitted.requestId,
-                        requestId: c.get("requestId"),
-                        hostId: admitted.hostId,
-                    },
-                    "Host operation accepted",
-                );
+                logHostOperationAccepted(admitted, c.get("requestId"));
                 return c.json(admitted, 202);
             }
         } else
@@ -439,15 +424,7 @@ export async function handleHostRun(
             hash,
         );
         if (retry) {
-            logger.info(
-                {
-                    operationId: retry.id,
-                    operationRequestId: retry.requestId,
-                    requestId: c.get("requestId"),
-                    hostId: retry.hostId,
-                },
-                "Host operation accepted",
-            );
+            logHostOperationAccepted(retry, c.get("requestId"));
             return c.json(retry, 202);
         }
         const concurrent = await duplicate();
@@ -455,15 +432,7 @@ export async function handleHostRun(
         throw error;
     }
     services.webEvents.notify();
-    logger.info(
-        {
-            operationId: operation.id,
-            operationRequestId: operation.requestId,
-            requestId: c.get("requestId"),
-            hostId: operation.hostId,
-        },
-        "Host operation accepted",
-    );
+    logHostOperationAccepted(operation, c.get("requestId"));
     c.res = c.json(operation, 202);
     const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
         execute,

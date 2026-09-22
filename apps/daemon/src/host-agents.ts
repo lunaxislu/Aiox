@@ -25,6 +25,7 @@ import {
 import type { Context } from "hono";
 import { z } from "zod";
 
+import { logHostOperationAccepted } from "./host-operation-log";
 import { launcher, launchCommand, waitForAgent } from "./host-run";
 import type { HttpEnv } from "./http";
 import { HttpError, parse, readJson } from "./http";
@@ -135,15 +136,7 @@ export async function handleHostAgents(
         hash,
     );
     if (previous) {
-        logger.info(
-            {
-                operationId: previous.id,
-                operationRequestId: previous.requestId,
-                requestId: c.get("requestId"),
-                hostId: previous.hostId,
-            },
-            "Host operation accepted",
-        );
+        logHostOperationAccepted(previous, c.get("requestId"));
         return c.json(previous, 202);
     }
     if (!services.lifecycle.acceptingInput())
@@ -317,28 +310,12 @@ export async function handleHostAgents(
     };
     const admitted = await services.db.hostState.saveOperation(operation, hash);
     if (admitted.id !== operation.id) {
-        logger.info(
-            {
-                operationId: admitted.id,
-                operationRequestId: admitted.requestId,
-                requestId: c.get("requestId"),
-                hostId: admitted.hostId,
-            },
-            "Host operation accepted",
-        );
+        logHostOperationAccepted(admitted, c.get("requestId"));
         return c.json(admitted, 202);
     }
     services.webEvents.notify();
     c.res = c.json(operation, 202);
-    logger.info(
-        {
-            operationId: operation.id,
-            operationRequestId: operation.requestId,
-            requestId: c.get("requestId"),
-            hostId: operation.hostId,
-        },
-        "Host operation accepted",
-    );
+    logHostOperationAccepted(operation, c.get("requestId"));
     const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
         execute,
     );

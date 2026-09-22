@@ -11,7 +11,7 @@ import {
 } from "@aiox/protocol";
 import { expect, it, vi } from "vitest";
 
-import { startTestDaemon } from "./testing";
+import { sseFrameReader, startTestDaemon } from "./testing";
 it("commits workspace panels, rejects stale or injected layout writes and exposes them in the initial SSE snapshot", async (t) => {
     const h = await startTestDaemon();
     t.onTestFinished(() => h.close());
@@ -71,7 +71,7 @@ it("commits workspace panels, rejects stale or injected layout writes and expose
     });
     const response = await fetch(h.webUrl("/api/web/events"));
     const reader = response.body!.getReader();
-    const frame = new TextDecoder().decode((await reader.read()).value);
+    const frame = await sseFrameReader(reader)();
     await reader.cancel();
     expect(frame).toContain("event: snapshot");
     expect(frame).toContain("Renamed");
@@ -272,19 +272,7 @@ it("streams a large snapshot and subsequent state over a real HTTP connection", 
     const response = await fetch(h.webUrl("/api/web/events"));
     const reader = response.body!.getReader();
     t.onTestFinished(() => reader.cancel());
-    const decoder = new TextDecoder();
-    let buffered = "";
-    const frame = async () => {
-        while (!buffered.includes("\n\n")) {
-            const chunk = await reader.read();
-            expect(chunk.done).toBe(false);
-            buffered += decoder.decode(chunk.value, { stream: true });
-        }
-        const end = buffered.indexOf("\n\n");
-        const result = buffered.slice(0, end);
-        buffered = buffered.slice(end + 2);
-        return result;
-    };
+    const frame = sseFrameReader(reader);
     const initial = await frame();
     expect(Buffer.byteLength(initial)).toBeGreaterThan(88_589);
     expect(initial.startsWith("event: snapshot\ndata: ")).toBe(true);

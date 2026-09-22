@@ -60,12 +60,16 @@ it.each(["SIGTERM", "http"] as const)(
         const url = `http://127.0.0.1:${config.ports.daemon}`;
         try {
             await expect
-                .poll(async () => {
-                    const response = await fetch(`${url}/api/status`).catch(
-                        () => undefined,
-                    );
-                    return response?.status;
-                })
+                .poll(
+                    async () => {
+                        const response = await fetch(`${url}/api/status`).catch(
+                            () => undefined,
+                        );
+                        return response?.status;
+                    },
+                    // Process startup under the parallel suite can exceed poll's 1s default.
+                    { timeout: 5000 },
+                )
                 .toBe(200);
             const failed = await fetch(
                 `${url}/api/hosts/private-input?secret=private-query`,

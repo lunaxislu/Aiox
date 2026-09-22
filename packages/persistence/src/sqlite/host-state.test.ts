@@ -73,6 +73,18 @@ test("panel storage preserves layout across reopen, rejects stale writes and dup
         1,
     );
     assert.equal((await db.hostState.snapshot()).panels[0]!.name, "Renamed");
+    const concurrent = await Promise.allSettled([
+        db.hostState.updatePanel({ ...panel, name: "Winner", revision: 3 }, 2),
+        db.hostState.updatePanel(
+            { ...panel, name: "Stale competitor", revision: 3 },
+            2,
+        ),
+    ]);
+    assert.equal(concurrent[0]!.status, "fulfilled");
+    assert.equal(concurrent[1]!.status, "rejected");
+    if (concurrent[1]!.status === "rejected")
+        assert.match(String(concurrent[1]!.reason), /revision_conflict/);
+    assert.equal((await db.hostState.snapshot()).panels[0]!.name, "Winner");
 });
 
 test("Host creation is atomic and Operation retries, recovery and retention preserve unfinished cleanup", async (t) => {
@@ -241,7 +253,18 @@ test("Host creation is atomic and Operation retries, recovery and retention pres
         createdAt: 1,
         finishedAt: null,
     };
-    await db.hostState.saveOperation(operation, "hash");
+    const admitted = await Promise.allSettled([
+        db.hostState.saveOperation(operation, "hash"),
+        db.hostState.saveOperation({ ...operation, id: "retry" }, "hash"),
+        db.hostState.saveOperation({ ...operation, id: "conflict" }, "other"),
+    ]);
+    assert.equal(admitted[0]!.status, "fulfilled");
+    assert.equal(admitted[1]!.status, "fulfilled");
+    if (admitted[1]!.status === "fulfilled")
+        assert.equal(admitted[1]!.value.id, operation.id);
+    assert.equal(admitted[2]!.status, "rejected");
+    if (admitted[2]!.status === "rejected")
+        assert.match(String(admitted[2]!.reason), /request_conflict/);
     assert.equal(
         (await db.hostState.getOperation(operation.requestId, "hash"))!.id,
         "o1",
@@ -551,6 +574,29 @@ test("Host route overrides reset to applied YAML and agent updates preserve unre
             agents: ["a", "b"],
         }),
     );
+    await db.hostState.routeNetwork("h", "n", {
+        kind: "directed",
+        action: "unblock",
+        from: "c",
+        to: ["a"],
+    });
+    assert.equal((await edge("c", "a")).source, "runtime-override");
+    await db.hostState.routeNetwork("h", "n", {
+        kind: "directed",
+        action: "reset",
+        from: "c",
+        to: ["a"],
+    });
+    assert.equal((await edge("c", "a")).source, "manifest-default");
+    assert.equal((await edge("c", "a")).policy, "deny");
+    // Resetting an already-default edge is also idempotent.
+    await db.hostState.routeNetwork("h", "n", {
+        kind: "directed",
+        action: "reset",
+        from: "c",
+        to: ["a"],
+    });
+
     const beforeInvalidApply = await db.hostState.snapshot();
     await assert.rejects(
         db.hostState.applyAgent(

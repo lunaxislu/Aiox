@@ -119,3 +119,23 @@ export async function startTestDaemon(
         },
     };
 }
+
+/** Read one LF-delimited frame from the daemon's SSE stream. */
+export function sseFrameReader(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+) {
+    const decoder = new TextDecoder();
+    let buffered = "";
+    return async () => {
+        while (!buffered.includes("\n\n")) {
+            const chunk = await reader.read();
+            if (chunk.done)
+                throw new Error("SSE stream ended before a complete frame");
+            buffered += decoder.decode(chunk.value, { stream: true });
+        }
+        const end = buffered.indexOf("\n\n");
+        const frame = buffered.slice(0, end);
+        buffered = buffered.slice(end + 2);
+        return frame;
+    };
+}

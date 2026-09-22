@@ -86,7 +86,7 @@ IDE는 편집 중 불완전한
 
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
-CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http listener에 연결한 Hono·Node adapter의 daemon/Web HTTP app, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
+CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http listener에 연결한 Hono·Node adapter의 daemon/Web HTTP app, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 Drizzle·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:222-636`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:46-90`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:151-356`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:300-554`.
 
@@ -209,7 +209,7 @@ daemon용과 공용 운영 Web용 포트는 각각 설정할 수 있다. 같은 
 [[docs/specs/aiox-configuration-web]]의 포트 계약을 따른다. 실제 CLI 옵션·listener 연결과
 포트 충돌 처리는 현재 조립 범위의 코드·테스트를 따른다.
 
-현재 서버 조립에는 node:http, Hono와 `@hono/node-server`, ws, 공식 MCP TypeScript SDK, Zod, node-pty, TypeORM과 better-sqlite3가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.13.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. DB 초기화·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
+현재 서버 조립에는 node:http, Hono와 `@hono/node-server`, ws, 공식 MCP TypeScript SDK, Zod, node-pty, Drizzle과 better-sqlite3가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.13.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. DB 초기화·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
 
 편집기는 각 package의 `tsconfig.json`으로 source와 같은 디렉터리의 tests를 함께 해석한다.
 domain의 별도 `tsconfig.production.json` 검사는 tests를 제외하고 자동 Node ambient type을

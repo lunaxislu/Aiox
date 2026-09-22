@@ -12,15 +12,17 @@
     "scripts": {
         "build": "tsup --config ../../tsup.config.ts",
         "typecheck": "tsc -p tsconfig.json --noEmit",
-        "test": "vitest run --config ../../vitest.config.ts"
+        "test": "vitest run --config ../../vitest.config.ts",
+        "schema:generate": "node scripts/generate-schema.mjs"
     },
     "dependencies": {
         "@aiox/domain": "workspace:*",
         "@aiox/protocol": "workspace:*",
         "better-sqlite3": "12.11.1",
-        "typeorm": "1.1.1"
+        "drizzle-orm": "0.45.3"
     },
     "devDependencies": {
-        "@types/better-sqlite3": "9.6.0"
+        "@types/better-sqlite3": "9.6.0",
+        "drizzle-kit": "0.31.11"
     }
 }

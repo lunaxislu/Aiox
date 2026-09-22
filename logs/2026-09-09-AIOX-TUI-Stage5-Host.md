@@ -15,8 +15,8 @@ status: open
 - [x] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현하고 CLI·daemon 경로를 검증한다
 - [x] W8 서비스 진단 로그를 Pino로 전환한다
 - [x] W9 서비스 HTTP 처리를 Hono로 전환한다
-- [>] W10 서비스 SQLite 저장 계층을 TypeORM에서 Drizzle로 전환한다
-- [ ] W11 Stage6 준비 후 W5~W10의 실제 화면 연결과 전체 흐름을 통합 검증한다
+- [x] W10 서비스 SQLite 저장 계층을 TypeORM에서 Drizzle로 전환한다
+- [>] W11 Stage6 준비 후 W5~W10의 실제 화면 연결과 전체 흐름을 통합 검증한다
 
 ## Required Context
 
@@ -26,7 +26,7 @@ status: open
 
 ### {Global}
 
-- W8~W10은 Host에 한정하지 않는 서비스 서버 계층 전환이다. 외부 계약을 유지하며 진단·HTTP·저장의 기존 구현을 각각 교체한다. W1~W9는 완료했고 다음 작업은 W10 Drizzle이며, 실제 React 통합 검증은 W11이다. 완료 근거는 각 W의 최신 기록과 관련 owner architecture를 따른다.
+- W8~W10은 Host에 한정하지 않는 서비스 서버 계층 전환이다. 외부 계약을 유지하며 진단·HTTP·저장의 기존 구현을 각각 교체했다. W1~W10은 완료했고 다음 작업은 Stage6 준비 후 W11 실제 화면 연결·전체 흐름 통합 검증이다. 완료 근거는 각 W의 최신 기록과 관련 owner architecture를 따른다.
 - 사용자가 이 로그의 논의·정정 누적 기록을 구현 순서 중심으로 직접 재구성하도록 승인했다. 확정 정책의 권위는 아래 owner 문서에 있으며, 각 W scope는 구현에 필요한 적용 기준과 검증 조건을 담는다. 과거 제안이나 목업 더미 데이터를 계약으로 복원하지 않는다.
 - Stage6와 합의한 W1 API 계약·보완 1~4 및 담당 경계를 유지한다. Stage5 구현은 CLI·daemon·공통 protocol/config/persistence와 관련 owner 문서에 한정하며 Stage6 로그·apps/web·plan 활성 단계는 변경하지 않는다. Stage6 연결 준비와 독립적으로 W8~W10의 전환·서버 검증을 진행하고 실제 React 연결은 W11에서 검증한다.
 - Owner: [Host spec](../docs/specs/aiox-host.md), [Runtime/CLI spec](../docs/specs/aiox-runtime.md), [설정·Web UX spec](../docs/specs/aiox-configuration-web.md), [System architecture](../docs/architecture/aiox-system.md), [Storage/terminal architecture](../docs/architecture/aiox-storage-terminal.md). 인증·전송 판정은 [Collaboration spec](../docs/specs/aiox-collaboration.md), vendor 지침 주입은 [Vendor bindings architecture](../docs/architecture/aiox-vendor-bindings.md)를 함께 따른다.
@@ -479,3 +479,48 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 
 - 사용자 요청에 따라 W8·W9를 각각의 커밋으로 유지한다. git log/show로 W8은 이미 2a5446a(feat(diagnostics): migrate W8 service logging to Pino)에 구현·테스트·owner 문서·로그가 포함됐음을 확인하여 재커밋하거나 amend하지 않는다.
 - W9 Hono 전환 코드·테스트·의존성과 HTTP/SSE owner 설명·W9 로그만 별도 커밋한다. 공유 문서·lockfile·로그는 W9 시점 내용만 index에 반영하고 W10 저장 전환·readiness timeout·DDL 생성기 보완은 worktree에 보존한다. W9 완료 기록의 전체 검사와 이후 W10 전체 751개 테스트 통과를 검증 근거로 사용하며, 커밋 전 staged diff와 diff --check를 확인한다. push는 요청 범위에 없다.
+
+## 2026-09-23 · W10 서비스 SQLite Drizzle 전환
+
+- 요청: 서비스 전체 저장을 Drizzle로 교체하고 better-sqlite3·공개 Promise API·HTTP/SSE/WS/CLI 계약을 보존한다. W9 worktree를 유지하고 commit/push·Stage6 로그·apps/web·plan·사용자 DB·architecture.excalidraw는 변경하지 않는다.
+- 확인: 저장 범위는 일반 Network/route, message/delivery/notification, Host/applied agent/config·전용 network/member/edge, panel/tab/layout, Operation/requestId, execution의 14개 테이블이다. 호출자는 bootstrap/daemon lifecycle, host-run/host-control/host-agents/panel-operations/state-api, network/messaging/retention/web-state/HTTP이며 CLI는 daemon HTTP를 소비한다.
+- 전환 기준: DB-only 동기 transaction에서 조회·변경·rollback을 완료하고 공개 Promise 경계는 유지한다. Drizzle schema에서 초기화 DDL을 생성해 테이블·제약 이중 수작업 정의를 제거한다. 기존 FK/cascade/unique/check/STRICT와 Host member trigger를 보존한다. 과거 DB migration/reset은 추가하지 않는다.
+- owner 충돌: configuration-web spec의 TypeORM 유지 문구는 이번 사용자 전환 지시로 대체한다. 저장 동작 spec과 W9 계약은 유지한다.
+- 진행: 기존 persistence 회귀 baseline을 실행했다. Drizzle 공식 SQLite/transaction 문서와 better-sqlite3 API의 async transaction 금지를 확인한 뒤 구현·추가 회귀·전체 check를 수행한다.
+
+### 2026-09-23 02:02 · W10 전체 전환·무결성 검증 완료와 W11 인계
+
+- 결과: 서비스 SQLite 저장 전체를 Drizzle ORM 0.45.3·better-sqlite3 12.11.1로 전환했다. 공개 AioxDatabase/HostState/MessageHistory/PersistentNetworks의 Promise API와 HTTP/SSE/WS·CLI·DTO는 유지한다. W9 변경을 보존했고 commit/push는 하지 않았다.
+- 저장 대상: 일반 Network/route는 persistent_networks·persistent_routes, 메시지 계열은 messages·deliveries·notifications, Host 적용 구성은 hosts·host_agents·host_networks·host_members·host_edges, 화면 배치는 panels·panel_tabs, 작업/실행 이력은 host_operations·host_executions다. 총 14개 테이블을 전환했다.
+- 실제 경계: bootstrap이 연결을 열고 daemon이 recover·실행 시작/종료·정리·close를 소유한다. NetworkService, MessageService와 retention, host-run/host-control/host-agents/panel-operations/state-api가 저장을 생산하고 web-state/HTTP가 조회·공개한다. CLI는 daemon HTTP를 소비한다. 저장 commit 이후 기존 WebEvents 알림과 Operation 접수/완료 흐름은 그대로다. 파일·process·PTY·network 작업을 transaction으로 옮기지 않았다.
+- 제거: TypeORM DataSource/EntityManager/EntitySchema와 query·의존성·빌드 external, 수작업 row 타입 중복, 별도 수작업 CREATE TABLE 배열, 비동기 DB 공유용 Promise 대기열과 메서드별 forwarding을 제거했다. 필요한 protocol DTO↔JSON row 변환은 유지한다. production 코드·manifest·lockfile 검색과 pnpm why에서 TypeORM 잔여가 없다.
+- 초기화: Drizzle schema가 타입·컬럼·index·FK·check의 원본이다. 개발 의존성 drizzle-kit 0.31.11의 export로 schema.generated.ts를 생성하며 schema.test.ts가 drift를 검사한다. 생성 DDL에는 IF NOT EXISTS·STRICT를 적용한다. Drizzle이 표현하지 않는 교차 테이블 Host member trigger만 host-schema.ts가 소유한다. FK·WAL 설정 후 DDL·trigger를 한 동기 transaction으로 실행하며 오류는 rollback·close 후 전달한다. migration 이력·backfill·legacy fallback·자동 삭제/reset은 없다.
+- transaction: Drizzle callback에는 async/await가 없고 모든 query를 all/get/run으로 완료한다. 외부 Promise API의 각 호출은 yield 전에 DB 작업을 마쳐 다른 호출·close가 미완료 transaction에 들어가지 않는다. route 교체, Host 전체 반영, panel/tab/layout, Operation/requestId, 실행 상태, message/delivery, settlement/notification, retention/recovery의 원자성을 보존했다. 실패는 빈 목록이나 성공으로 숨기지 않는다.
+- 무결성: 이전/새 DDL을 각각 실제 SQLite에 적용해 14개 테이블의 column type/nullability/PK, unique/index 열, FK/cascade가 일치함을 확인했다. 회귀는 STRICT·integrity_check·foreign_key_check, 실제 잘못된 FK/Host member 거부, Host 소유 행 cascade와 독립 Network 이름 공간, 실행·Operation·메시지 이력 보존을 검증한다. revision/requestId 동시 호출의 승자·충돌·동일 요청 재접수, settlement 이후 notification 실패 rollback·재오픈·재시도, 닫힌 연결 오류도 검증했다.
+- 발견·수정: 기존 route reset은 manifest edge가 없는 경우 두 정책을 모두 NULL로 저장해 CHECK 제약과 충돌하는 경로가 있었다. 올바른 directed reset 회귀에서 CHECK 실패를 재현한 뒤 해당 override 행을 삭제하여 기본 정책으로 복귀하게 수정했다. manifest edge 복귀와 반복 reset은 함께 통과한다.
+- 빌드/검사 조정: Drizzle 배포 선언의 선택적 다른 DB driver 참조·선언 오류 때문에 persistence tsconfig에 기존 daemon과 같은 skipLibCheck를 적용했다. 프로젝트 source의 strict 타입 검사는 유지한다. 최초 전체 검사는 sandbox의 /bin/ps EPERM으로 중단되어 허용된 환경에서 다시 실행했다. 이후 built daemon 테스트의 기본 1초 readiness timeout이 전체 병렬 실행에서 반복됐고, 실제 HTTP 200까지 1495ms/910ms를 측정했다. main.test.ts의 준비 조건·프로토콜·종료 검증은 그대로 두고 polling 상한만 5초로 수정했다. 임시 계측은 제거했다.
+- 최종 검증: pnpm check exit 0, lint·format·build·tsc --noEmit 및 67개 파일·751개 테스트. domain 19 + IDE/vscode 24 + protocol 14 + diagnostics 2 + vendor 3 + config 38 + persistence 21 + terminal 88 + adapter-codex 18 + adapter-claude 139 + web 37 + cli 75 + daemon 273 = 751. 최종 출력은 /private/tmp/w10-check-verified.log다. built persistence의 별도 Node 저장소 초기화·snapshot·close와 built daemon 실HTTP 시작/종료도 확인했다. git diff --check, owner/로그 inline-code 검사와 owner wikilink 대상 검사를 통과했다.
+- owner 반영: docs/architecture/aiox-storage-terminal.md의 저장·초기화·transaction·Host query 책임, docs/architecture/aiox-system.md의 실제 기술 구성, docs/specs/aiox-configuration-web.md의 기존 TypeORM 문구를 실제 구현에 맞췄다. 기존 W9 HTTP/SSE 설명은 보존한다.
+- 근거 문서: https://orm.drizzle.team/docs/sqlite/get-started-sqlite , https://orm.drizzle.team/docs/transactions , https://orm.drizzle.team/docs/kit-overview , https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md 와 설치된 drizzle-orm/better-sqlite3/session.js를 대조했다. better-sqlite3 transaction의 async 금지와 동기 commit/rollback을 적용했고 Drizzle Kit은 현재 schema export에만 사용한다.
+- 제한·인계: macOS Node v24.14.0에서 vendor 대역·실제 SQLite/HTTP/WS/PTY를 검증했다. 실제 vendor·React 화면 통합·Windows/WSL·성능 향상을 검증했다고 주장하지 않는다. W10의 확인된 미해결 결함은 없다. W11은 Stage6 준비 후 W5~W10 실제 화면 연결·전체 흐름 통합 검증을 이어받는다. W11 구현·Stage6 로그·apps/web source·plan·사용자 DB·architecture.excalidraw는 변경하지 않았다.
+
+### 2026-09-23 02:13 · W10 리뷰 보완 — Windows pnpm.cmd 의존 제거
+
+- 리뷰 지적을 코드와 Node 공식 문서(https://nodejs.org/api/child_process.html#spawning-bat-and-cmd-files-on-windows)로 확인했다. 생성기의 두 execFileSync 호출이 pnpm 명령에 의존했고 Windows .cmd는 shell 없이 직접 실행할 수 없다. 실제 Windows/CI 설치 형태는 확인하지 않았다.
+- generate-schema.mjs에서 설치된 drizzle-kit·oxfmt의 JS 진입점을 import.meta.resolve와 fileURLToPath로 구하고 process.execPath로 직접 실행한다. 패키지 bin 선언과 실제 파일을 확인했다. shell·플랫폼 분기·의존성 추가 없이 두 호출을 수정했다.
+- 기존 schema.test.ts의 DDL 일치 검사를 PATH 명령 없이 실행하도록 강화했다. 환경 변수의 대소문자 차이도 처리한다. 수정 전 pnpm ENOENT 실패, 수정 후 persistence 21개 테스트 통과를 확인했다. schema:generate 및 --check, persistence 타입 검사, repo lint, 변경 파일 포맷 검사와 git diff --check도 통과했다.
+- 이번 보완에서 전체 751개 테스트 재실행과 Windows 실환경 검증은 수행하지 않았다. 저장 런타임·DDL 계약·owner 문서 설명은 바뀌지 않았다. W10 완료와 W11 next를 유지하며 W11 착수·commit·push는 하지 않았다.
+
+## 2026-09-23 · W8~W10 리뷰 보완 — SSE 수신·접수 로그·DB fixture
+
+- 첨부 리뷰의 우선 권장 1건과 선택적 정리 2건을 현재 코드로 대조하고 모두 반영했다. dead code 삭제나 Operation 실행 전체 추상화는 하지 않았다. 기존 W8(2a5446a)·W9(080aadd) 커밋과 W10 미커밋 변경을 유지한다.
+- SSE: state-api.test.ts의 누적 프레임 수신 로직을 testing.ts의 sseFrameReader로 옮겨 http.test.ts와 state-api.test.ts에서 재사용한다. HTTP read 한 번을 이벤트 전체로 가정하던 곳을 같은 방식으로 수정했다. UTF-8 분할을 TextDecoder stream 모드로 보존하고, 다음 프레임 잔여 데이터를 유지하며 완전한 프레임 전 EOF는 명시 오류로 처리한다. testing.test.ts의 분할·병합·EOF 회귀는 helper 추가 전 실패, 추가 후 통과했다. 기존 SSE 단위·실HTTP backpressure/재접속/대형 snapshot 검증은 유지한다.
+- 진단: Host run·agent·control의 동일한 접수 로그 9곳만 host-operation-log.ts의 logHostOperationAccepted로 통합했다. 호출 위치·분기·반환·실행 순서는 유지하며 HTTP requestId와 Operation의 operationRequestId를 별개 필드로 보존한다. 기존 host-control 회귀가 최초·재접수의 식별자 연결을 계속 검증한다. 공통 diagnostics·readJson과 완료/실패 진단은 유지한다.
+- DB fixture: 실제 SQLite FK·trigger·cascade 검사의 9개 테이블 INSERT에 SQL 컬럼명을 명시했다. 정상 fixture와 잘못된 member/edge/tab fixture 모두 적용했다. 값·제약 오류 assertion·Host 소유 행 삭제·독립 Network와 이력 보존 검증은 바꾸지 않았다. Drizzle schema·생성 SQL·생성기와 공개 Promise API·transaction·재오픈 회귀는 유지한다.
+- 검증: 변경 전 daemon 관련 5개 파일 31개 테스트 통과. 변경 후 helper 포함 6개 파일 32개 및 persistence 3개 파일 21개, 총 53개 통과. daemon 타입 검사·tsup 빌드, repo lint, 변경 파일 포맷 검사, git diff --check 통과. 출력은 /private/tmp/w-review-baseline.log와 /private/tmp/w-review-final.log에 있다. 전체 suite·Windows 실환경 검증은 재실행하지 않았다.
+- owner 확인: system architecture의 진단 필드·HTTP 책임과 storage-terminal의 SSE/저장 불변식은 그대로라 추가 owner 수정은 필요하지 않다. W10 완료·W11 next를 유지하며 W11·Stage6·apps/web·plan·사용자 DB에는 착수하지 않았다. 이번 보완의 commit/push는 하지 않았다.
+
+### 2026-09-23 02:39 · W10과 리뷰 보완 커밋
+
+- 사용자 요청으로 W10 Drizzle 저장 전환·owner 문서·DDL 생성기의 Windows pnpm.cmd 의존 제거와 이번 SSE 수신/접수 로그/DB fixture 보완을 함께 커밋한다. W8·W9 기존 커밋은 유지한다.
+- W10 전체 pnpm check 751개 통과와 이후 변경에 대한 최신 관련 53개 테스트·daemon 타입/빌드·lint·포맷 검증 결과를 사용한다. 이후 production 수정은 없으며 현재 diff --check도 통과했다. 전체 suite·Windows 실환경을 추가 실행했다고 주장하지 않는다. push는 하지 않는다.

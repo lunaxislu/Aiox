@@ -45,7 +45,14 @@ Host Network와 적용 정책은 stop 후 유지하고 delete에서 정리한다
 
 NetworkService와 MessageService는 `uuid`의 v7 생성기를 사용해 새 Network·Message·Delivery·Notification ID를 발급한다. MCP의 전원 대상 부재 응답도 v7 messageId를 쓰되 저장하지 않는다. schema는 문자열 ID를 유지하며 재발급·backfill을 추가하지 않는다. 생성·저장·재오픈 근거는 apps/daemon/src/networks.ts, messaging.ts와 messaging.test.ts의 UUID v7 회귀다.
 
-TypeORM·better-sqlite3 연결을 연 뒤 현재 schema의 DDL을 한 transaction에서 직접 실행한다.
+Drizzle·better-sqlite3 연결이 저장 조회·변경을 담당한다. `schema.ts`와 `host-schema.ts`의
+Drizzle 정의가 컬럼 타입·테이블·index·FK·check의 원본이며 공개 저장 row 타입도 여기서 추론한다.
+`pnpm --filter @aiox/persistence schema:generate`가 Drizzle Kit export로 현재 초기화 SQL을 생성한다.
+생성기는 `IF NOT EXISTS`와 `STRICT`를 적용하고, 회귀 검사가 생성물과 원본의 일치를 확인한다.
+Host member의 교차 테이블 검증 trigger는 `host-schema.ts`에서 별도로 소유한다. 런타임에는
+Drizzle Kit이나 migration 이력 테이블을 사용하지 않는다.
+
+better-sqlite3 연결에서 FK·WAL을 설정한 뒤 생성된 DDL과 trigger를 한 동기 transaction에서 실행한다.
 `IF NOT EXISTS`로 같은 schema의 DB를 재오픈하며 과거 DB migration·version 채택 경로는 없다.
 초기화 실패는 생성 중인 테이블을 rollback하고 연결을 닫아 오류를 전달한다. 기존 데이터를
 자동 삭제하거나 초기화 성공으로 바꾸지 않는다. 첫 배포 전·후 변경 원칙은 [[AGENTS]]의
@@ -54,17 +61,23 @@ Development Database Before First Release를 따른다.
 notification의 실행 소유권은 필수이며 terminal ID는 정상적으로 없는 실행을 위해 nullable을
 유지한다. 과거 행 호환을 위해 소유권을 미확인으로 허용하지 않는다.
 
-단일 SQLite 연결의 조회·쓰기·close를 직렬화한다. route의 최신 값 읽기와 변경 저장은 같은 transaction에 두어 동시 변경을 잃지 않으며 실패한 작업이 후속 작업을 막지 않는다.
+공개 persistence API는 Promise를 유지하지만 각 호출의 조회·쓰기·transaction·close는 yield 전에
+동기적으로 끝난다. 따라서 이전 비동기 ORM의 연결 공유용 Promise 대기열은 필요하지 않다.
+route의 최신 값 읽기와 변경, Host·panel·Operation 변경, delivery outcome과 notification 저장은
+각각 같은 DB transaction에서 commit/rollback한다. 파일·PTY·network 실행과 commit 이후 상태
+알림은 daemon의 책임이며 DB transaction에 넣지 않는다. 실패는 caller로 전달하고 다음 호출을 막지 않는다.
 
-근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:227-287`,
-[[packages/persistence/src/sqlite/schema.ts]] `packages/persistence/src/sqlite/schema.ts:144-192`;
-초기화·재오픈·직렬화·실패 rollback은 [[packages/persistence/src/sqlite/database.test.ts]]
-`packages/persistence/src/sqlite/database.test.ts:66-212`, `packages/persistence/src/sqlite/database.test.ts:252-272`,
-소유권/terminal 제약과 재오픈은 `packages/persistence/src/sqlite/database.test.ts:435-468`.
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:88-299`,
+[[packages/persistence/src/sqlite/host-state.ts]], [[packages/persistence/src/sqlite/schema.ts]],
+[[packages/persistence/src/sqlite/host-schema.ts]], [[packages/persistence/scripts/generate-schema.mjs]],
+[[packages/persistence/src/sqlite/schema.test.ts]]. 초기화·재오픈·rollback·오류 전달과 무결성은
+[[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:66-124`,
+`packages/persistence/src/sqlite/database.test.ts:268-310`, `packages/persistence/src/sqlite/database.test.ts:448-608`;
+revision/requestId 경쟁·재시도는 [[packages/persistence/src/sqlite/host-state.test.ts]]로 검증한다.
 
 메시지·대상별 결과·daemon 알림을 내부 식별자로 연결하고, 전송 당시 역방향 route 관계를 대상별로 보존한다. daemon 시작 시와 하루 한 번 완료된 요청의 보존 기한을 확인해 관련 이력을 함께 정리한다. 진행 중 요청은 제외한다. 보존 기간·범위는 [[docs/specs/aiox-configuration-web]]이 소유한다. Host 실행 종료 정리와 이력 삭제는 다른 경로이며 저장 이력을 실행 복원·재전송에 사용하지 않는다.
 
-근거: [[apps/daemon/src/retention.ts]] `apps/daemon/src/retention.ts:11-43`, [[apps/daemon/src/retention.test.ts]] `apps/daemon/src/retention.test.ts:8-31`; 저장·결과·보존 경계는 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:274-433`.
+근거: [[apps/daemon/src/retention.ts]] `apps/daemon/src/retention.ts:11-43`, [[apps/daemon/src/retention.test.ts]] `apps/daemon/src/retention.test.ts:8-31`; 저장·결과·보존 경계는 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:290-446`.
 
 ## 메시지 완료 저장과 실패 복구 [Status: As-built]
 
@@ -90,7 +103,7 @@ resolve하고 기존 MessageService의 inFlight.result에 최초 outcome/error/t
 유지하고 중앙 재시도를 재개한다. 성공으로 숨기거나 DB를 먼저 닫지 않는다. 메모리 pending은
 프로세스 크래시·daemon 재시작의 내구성을 제공하지 않으며 vendor 입력 재주입도 하지 않는다.
 
-근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:168-194`,
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:188-210`,
 [[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:280-389`,
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:561-578`.
 검증: [[apps/daemon/src/messaging.test.ts]] `apps/daemon/src/messaging.test.ts:481-607`,
@@ -99,7 +112,7 @@ resolve하고 기존 MessageService의 inFlight.result에 최초 outcome/error/t
 
 ## SQLite와 플랫폼
 
-`packages/persistence`가 현재 schema 초기화·repository를 담당하고 daemon이 DB 연결을 소유한다.
+`packages/persistence`가 현재 schema 초기화·저장 query·transaction을 담당하고 daemon이 DB 연결을 소유한다.
 domain은 DB를 모르고 application은 port를 통해 작업한다. CLI·Web·vendor binding이 직접 DB 파일을
 열어 authoritative 상태를 변경하지 않는다. 필요한 상태 변경은 transaction 경계로 처리한다.
 
@@ -114,7 +127,7 @@ DB 초기화 흐름:
 실행 환경의 사용자 홈 결정
  → 로컬 DB 준비·현재 schema 초기화
  → 단일 daemon 연결 소유
- → repositories를 통한 저장·조회
+ → persistence를 통한 저장·조회
  → 관리 실행 종료 / DB 작업 정리·close
  → 다음 시작에서 저장 데이터 읽기
 ```
@@ -388,7 +401,7 @@ agent 출력과 vendor 오류 원문을 무조건 번역하지 않는다.
 
 Gateway snapshot/event의 projection을 하나로 유지한다. Zustand는 실제 pane/설정/알림 공유
 필요가 있을 때, TanStack Query는 history pagination/search 같은 조회 필요가 있을 때 평가한다.
-같은 live authority를 여러 store/cache가 독립적으로 수정하게 하지 않는다. 서버 채택 의존성은 [[docs/architecture/aiox-system]]을 따른다. YAML·오디오 등 후속 의존성은 실제 소비 단계에 선택하며 별도 event bus·HTTP framework를 미리 추가하지 않는다.
+같은 live authority를 여러 store/cache가 독립적으로 수정하게 하지 않는다. 서버 채택 의존성은 [[docs/architecture/aiox-system]]을 따른다. YAML·오디오 등 후속 의존성은 실제 소비 단계에 선택하며 별도 event bus를 미리 추가하지 않는다. 서버 HTTP framework는 실제 서비스 경계를 전환한 Hono를 사용하며 조립 책임은 위 system architecture를 따른다.
 
 Sources: `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §19–§24.
 
@@ -457,7 +470,7 @@ Sources: `logs/2026-09-12-AIOX-W1-External-Execution-Survival.md`의 root 결과
 외부 DTO는 [[docs/specs/aiox-host]]의 Host HTTP, [[docs/specs/aiox-configuration-web]]의 Panel
 HTTP가 소유한다. 다음은 첫 배포 전 현재 schema를 직접 설계할 때의 논리 테이블 계약이다.
 SQL 이름은 아래 snake_case를 사용하고 JSON 열은 TEXT에 protocol schema로 검증한 값을 저장한다.
-TypeORM repository/기존 SQLite transaction을 사용한다. JSON 안의 참조는 같은 transaction에서
+Drizzle query와 better-sqlite3의 동기 transaction을 사용한다. JSON 안의 참조는 같은 transaction에서
 검증하며 별도 ORM entity를 pane마다 만드는 요구는 없다.
 
 ```text
