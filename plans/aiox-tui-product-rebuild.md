@@ -31,8 +31,8 @@
 - [x] Stage 2-3 — 실행 순서·완료와 복구 경계 개선 및 불필요한 결합 정리 -> `logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md`
 - [x] Stage 3 — Claude TUI runtime 주입·inbox·hooks·상태·종료 수직 구현 -> `logs/2026-09-09-AIOX-TUI-Stage3-Claude.md`
 - [x] Stage 4 — Codex App Server·TUI·Binding Relay와 두 vendor 메시지 왕복 -> `logs/2026-09-09-AIOX-TUI-Stage4-Codex.md`
-- [>] Stage 5 — 선언형 Host·다중 실행 및 CLI 운영·실패 정리 -> `logs/2026-09-09-AIOX-TUI-Stage5-Host.md`
-- [ ] Stage 6 — 운영 Web·브라우저 복귀·배치·전역 설정 편집·키 바인딩 -> `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`
+- [ ] Stage 5 — 선언형 Host·다중 실행 및 CLI 운영·실패 정리 -> `logs/2026-09-09-AIOX-TUI-Stage5-Host.md`
+- [>] Stage 6 — 운영 Web·브라우저 복귀·배치·전역 설정 편집·키 바인딩 -> `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`
 - [ ] Stage 7 — 상태·알림 목록·읽음·포커스 억제·알림음 -> `logs/2026-09-09-AIOX-TUI-Stage7-Notifications.md`
 - [ ] Stage 8 — 통합 시나리오·3 OS/WSL 인증·npm 산출물 검증·잔여 legacy 제거 -> `logs/2026-09-09-AIOX-TUI-Stage8-Integration.md`
 - [ ] Stage 9 — 실제 제품에 맞는 다국어 공개 AIOX 사이트 -> `logs/2026-09-09-AIOX-TUI-Stage9-Site.md`
