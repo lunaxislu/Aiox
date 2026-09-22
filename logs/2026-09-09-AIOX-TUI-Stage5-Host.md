@@ -7,8 +7,8 @@ status: open
 ## Work Items
 
 - [x] W1 공통 API 계약·owner 반영 및 Stage6 수신·담당 경계·보완 1~4 합의 완료
-- [>] W2 CLI 입력·config·YAML 로딩과 검증·layout 해석을 구현한다
-- [ ] W3 protocol 스키마·타입을 먼저 인계한 뒤 공통 저장 모델·조회·화면 배치 API와 상태 전달 기반을 구현한다
+- [x] W2 CLI 입력·config·YAML 로딩과 검증·layout 해석을 구현한다
+- [>] W3 protocol 스키마·타입을 먼저 인계한 뒤 공통 저장 모델·조회·화면 배치 API와 상태 전달 기반을 구현한다
 - [ ] W4 shell 내부 Agent 실행과 준비·실패·종료 관측을 구현한다
 - [ ] W5 Host run·전용 Network·초기 배치를 구현하고 Stage6 최초 실제 연결을 확인한다
 - [ ] W6 개별 Agent start/stop/restart와 Host Network 명령을 구현한다
@@ -47,13 +47,7 @@ status: open
 
 ### {W2}
 
-- 참조: Host spec의 YAML 선택·aiox.yaml·초기 layout, Runtime spec의 CLI 표면, 설정·Web spec의 전역 설정·새 shell 실행 설정. `packages/config/src/{files,schema,terminal,wsl}.ts`와 인접 tests, CLI parser와 bootstrap caller를 추적한다.
-- `--path`는 디렉터리이며 생략하면 현재 경로다. `--file`은 명시 파일이며 상대 경로는 선택 디렉터리 기준이다. 자동 탐색은 `aiox.yaml`·`aiox.*.yaml`: 후보 없음은 오류, 하나면 선택, 복수면 후보와 파일 지정법을 안내하고 실행하지 않는다.
-- 검증은 config → YAML → CLI 순서로 진행하고 각 단계 실패 즉시 이번 명령을 실패 종료한다. restart도 예외가 아니며 다음 단계·후속 실행을 진행하거나 기존 실행을 종료하지 않는다. YAML 파일 선택에 필요한 CLI 인자를 읽는 것과 CLI 설정의 검증·적용 단계를 구분한다. YAML을 소비하지 않는 등록 Host 직접 조회·제어에 불필요한 YAML 의존성을 추가하지 않는다.
-- Config 파일 없음은 기본값, 잘못된 JSON·읽기 실패·지원하지 않는 키·잘못된 값은 오류다. 기존 포트 범위/중복·보존 기간·terminal·keyboard·sidebar 검증을 재사용한다. 신규 keybindings(mac/windows/linux 아래 action id→조합 문자열 map, 변경분만 저장)와 web.sidebar.open(boolean, 생략 시 true)을 명시적으로 검증한다. keyboard와 keybindings는 별도 필드이며 alias로 처리하지 않는다. action id·키 조합 규칙은 Stage6 소유 keybindings owner 계약을 소비한다. dev 환경이라는 이유로 파일 부재를 가정하지 않는다. shell·args·cwd의 형식/NUL 검증과 최종 실행 파일·cwd 사용 가능 여부 검증을 연결하고 Windows/WSL은 기존 공통 경로를 소비한다.
-- CLI·YAML·전역 config 각각 grid만 있고 columns/rows가 모두 없으면 병합 전 오류다. 하나 이상의 양의 정수 치수면 유효하고 치수만 있으면 grid다. non-grid와 치수 조합은 오류다. 유효 입력을 CLI→YAML→전역→auto 우선순위로 합치고 같은 preset의 누락 필드는 상속한다. preset 변경은 이전 치수를 폐기한다. 상속 완료 후 남은 한쪽만 1로 채운다.
-- YAML 전체 참조·adapter·이름·Network·route를 부수효과 전에 검증한다. `routing.default` 생략은 allow다. between/from-to 확장 후 동일 directed edge 중복은 같은 값이어도 오류이고 allow/deny 충돌도 오류다. 위치와 edge를 진단한다.
-- 완료 조건: 유효 입력의 해석 결과와 config/파일/참조/route/layout 오류를 검증한다. config부터 오류면 CLI 실패 종료·후속 실행 없음·기존 실행 보존을 확인한다. shell 실행 요청의 명시 cwd 우선순위를 Host 경로에 연결한다. owner와 아직 다른 parser 동작을 완료로 오인하지 않는다.
+- 완료: 공통 입력 준비·config/YAML/CLI 검증 순서·layout·route·shell/cwd와 CLI 실패 차단을 구현하고 pnpm check 및 빌드 CLI smoke를 통과했다. 상세 근거는 History의 W2 입력 준비 구현·검증 완료와 docs/architecture/aiox-system.md의 Host 입력 준비 절을 따른다. 실제 Host 저장·실행은 후속 W 범위다.
 
 ### {W3}
 
@@ -63,6 +57,7 @@ status: open
 - 완료 조건: 빈 DB 초기화·저장·조회·재오픈, API 입력 검증·실패, 변경 알림 후 재조회와 재접속 복원을 검증한다. DB 실패를 빈 상태로 숨기지 않는다. 기존 Web/terminal snapshot·stream 기능을 보존한다.
 - 스키마 선행 범위: PanelView/layout 재귀 union/TabView/notice와 panel 요청 7종(생성·layout·shells·tab 삭제·dismiss·panel 삭제·rename), HostView/ManagedAgentView/runtime/lastExit/HostNetworkView/Source/Invocation, Operation/target/오류, config DTO·PUT body·stored 전체, SSE snapshot/state/fault, AgentView.executionOwnership을 포함한다. Host 명령 HTTP body(run/restart/resolve/개별 start·restart·stop/전체 stop·delete)도 공통 계약에서 누락하지 않는다. Network route와 알림 read, TerminalView/WebNotificationView/NetworkView는 기존 공개 스키마 재사용 여부를 확인한다. LayoutInput/Layout과 keybindings 등 참조 스키마·config effective/stored 구분도 함께 닫는다. SSE upsert는 resource별 DTO를 연결하고 remove는 value 없이 검증한다.
 - 단일 스키마 권위: W2 config 검증과 W3 공개 zod schema가 별도 정의로 유지되지 않도록 기존 parseConfig/설정 타입·패키지 의존 방향을 대조한다. 이동·재사용이 필요한 부분을 맞추되 Stage6 apps/web에 영구 중복 스키마를 만들지 않는다. Stage6의 임시 정의 한 파일은 비차단 mock 준비용이며 인계 후 공개 package import로 교체한다. 실제 export 이름은 스키마 산출 시 확인해서 보고하고 지금 미구현 export를 사용 가능하다고 안내하지 않는다.
+- W2의 packages/config/src/host.ts와 schema.ts는 현재 입력 검증의 구현 owner다. W3 schema/타입 작업은 이 parser·HostManifest/HostSource/HostLayout과 정책을 이중 정의하지 않도록 정합화하고, HTTP handler는 공통 준비 경로를 소비한다. CLI의 parser 오류 보존과 명시 hostname/YAML 생략 경로는 apps/cli/src/host-input.ts 및 인접 테스트로 검증한다.
 
 ### {W4}
 
@@ -249,3 +244,19 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 - 사용자 요청에 따라 onramp와 최신 기록·Work Items·W2 Required Context를 확인했다. W1은 문서 계약 완료이며, W2를 현재 재개 지점으로 지정했다.
 - 이번 작업은 할 일 보고까지다. 구현·테스트는 수행하지 않았다. 기존 구현의 충족 여부는 아직 판정하지 않았다.
 - 다음: W2가 참조하는 Host/Runtime/설정·Web owner와 config·CLI caller·인접 tests를 대조하고, 파일 선택·config→YAML→CLI 검증·shell/cwd·layout·route 검증을 구현한다. 실패 시 후속 실행 없음과 기존 실행 보존을 검증한다. W3 protocol 스키마·타입 인계는 W2 완료 후다.
+
+## 2026-09-22 · W2 입력 준비 구현·검증 완료
+
+- 사용자 지시에 따라 W2를 구현했다. 기존 config·shell/WSL 검증과 IDE에서 사용 중인 yaml 2.8.3을 재사용했다. Host 실행·저장 API는 이번 범위에 포함하지 않았다.
+- 공통 입력 준비: packages/config/src/host.ts에서 파일 탐색/명시 선택, UTF-8 단일 YAML과 키·tag·타입 검증, Host/Agent/Network 참조, directed edge 확장·중복/충돌 검증을 구현했다. 선언 순서는 agentOrder로 보존한다. prepareHostInput은 config→YAML→CLI 오류/layout→최종 shell/cwd 검증을 수행하고 부수효과 없는 준비 결과를 반환한다.
+- 설정: schema.ts에 keybindings action/조합·web.sidebar.open·appearance.theme 검증을 추가했다. 각 계층의 치수 없는 grid를 거절하고 같은 preset 상속·preset 변경 시 치수 폐기·최종 누락 치수 1 처리를 구현했다. CLI port override가 파일의 port 충돌을 숨기던 경로도 차단했다. 기존 terminal 형식/NUL 및 실행 파일/cwd 검증을 재사용하며 Host directory를 명시 cwd로 전달한다.
+- CLI: --path directory/--file과 layout 입력, Host restart/delete·Agent restart/복수 이름·필수 host network 문법을 반영했다. parser 오류를 보존해 공통 준비 뒤 CLI 단계에서 거절한다. 명시 hostname 조회·제어와 Network 명령은 YAML을 읽지 않는다. 잘못된 옵션이 있을 때 앞쪽 --path 때문에 명시 hostname을 놓치던 회귀도 테스트 후 수정했다.
+- 확인한 검증: 추가 테스트의 실패→구현→통과를 확인했다. 최종 pnpm check(lint/format/build/typecheck/전체 테스트) exit 0; config 36개·CLI 64개·daemon 222개를 포함한 전체 회귀 통과. 빌드된 Node CLI smoke에서 config→YAML→CLI 오류 순서, stderr+exit 1, help exit 0, 실행 상태 파일 생성/변경 없음도 확인했다. docs/architecture/aiox-system.md의 입력 준비 책임·현재 한계와 code/test 근거를 반영했고 inline-code 검사와 diff whitespace 검사를 통과했다.
+- 완료 범위/다음: W2는 입력 준비와 실패 차단까지 완료다. 유효 입력도 bootstrap에서 기존 Stage5 미구현 오류로 종료하며 실제 Host 실행 성공을 뜻하지 않는다. W3는 packages/protocol의 zod schema/추론 타입/export를 먼저 제공하고 실제 export·import 예시·미구현 범위를 Stage6에 인계한다. 이때 config의 HostManifest/HostSource/HostLayout 및 parser와 별도 정책 권위를 만들지 않도록 공통 계약을 정합화한다. 서버 handler가 공통 prepare 경로를 소비하는 연결과 DB 대상·충돌 검증은 후속 W3~W7에서 수행한다. 실제 서버·React 합류 검증은 W5다.
+
+### 2026-09-22 12:23 · W2 리뷰 수정: 필수 옵션 값 소비를 Commander와 일치
+
+- 확인한 원인: Commander 14.0.3의 필수 옵션은 다음 토큰이 `-`로 시작해도 값으로 소비한다. `hostSelection`과 `failedHostRequest`의 별도 접두사 검사가 이 의미와 달라 값 누락과 `host.status` → `host.run` 오인을 만들었다.
+- 수정: `apps/cli/src/host-input.ts`에서 두 검사만 제거하여 필수 값 토큰을 소비한다. `apps/cli/src/host-input.test.ts`에 `--path -workspace`, `--file -custom.yaml` 및 equals 형식, `host --path --file status dev --unknown` 회귀를 추가했다. 값 누락·서로 다른 path 중복 거절, config→YAML→CLI 순서, 명시 hostname 조회·제어의 YAML 생략도 확인했다.
+- 검증: 새 회귀 3개가 수정 전 실패·수정 후 통과했다. config 36개 및 CLI 전체 재실행 67개, 양쪽 typecheck·oxlint·oxfmt 검사를 통과했다. 최초 묶음 실행에서는 WebSocket 테스트 실패 후 종료되지 않아 중단했으나 해당 테스트 단독 11개와 CLI 전체 재실행은 통과했다. 최초 실패 원인은 확정하지 않았다.
+- 범위: 입력 준비와 기존 CLI 테스트를 검증했다. 실제 Host 저장·실행 보존이나 빌드된 CLI smoke를 이번 수정에서 검증한 것은 아니다. daemon start의 loadConfig·resolveTerminalLaunch 경로, config/layout/terminal 공개 검증, W3 이후 구현, Stage6·apps/web·plan 및 다른 변경은 수정하지 않았다. commit/push 없음. W2 완료와 W3 next pointer를 유지한다.

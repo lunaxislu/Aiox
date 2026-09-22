@@ -35,6 +35,7 @@ import { WebSocket } from "ws";
 
 import { runExternal } from "@/external";
 import { runForeground } from "@/foreground";
+import { prepareHostRequest } from "@/host-input";
 import type { CliOptions, CliPort, CliRequest, CommandName } from "@/requests";
 
 const execFileAsync = promisify(execFile);
@@ -571,6 +572,10 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
     return {
         async execute(request) {
             const { args, command, options } = request;
+            if (command.startsWith("host.")) {
+                await prepareHostRequest(request, { home });
+                return unavailable(command);
+            }
             switch (command) {
                 case "doctor":
                     return doctor(options);

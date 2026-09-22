@@ -40,6 +40,13 @@ const parse = async (args: string[]) => {
     const calls: CliRequest[] = [];
     const cli = createCli({
         execute: async (request) => {
+            if (request.cliErrors?.length || request.selectionErrors?.length)
+                throw new Error(
+                    [
+                        ...(request.cliErrors ?? []),
+                        ...(request.selectionErrors ?? []),
+                    ].join("; "),
+                );
             calls.push(request);
         },
     });
@@ -60,27 +67,26 @@ test("rejects duplicate network and removed plural instruction and join", async 
         await assert.rejects(parse(args));
 });
 
-test("host agent membership commands are start and stop only", async () => {
-    for (const args of [
-        ["host", "agent", "add", "review", "--adapter", "codex"],
-        ["host", "agent", "remove", "review", "reviewer"],
-        ["host", "agent", "start", "review"],
-        ["host", "agent", "stop", "review"],
-    ])
-        await assert.rejects(parse(args));
-    for (const verb of ["start", "stop"]) {
+test("host agents take YAML-scoped names and support restart", async () => {
+    for (const verb of ["start", "stop", "restart"]) {
+        await assert.rejects(parse(["host", "agent", verb]));
         assert.deepEqual(
-            (await parse(["host", "agent", verb, "review", "one"]))[0],
+            (
+                await parse([
+                    "host",
+                    "agent",
+                    verb,
+                    "one",
+                    "two",
+                    "--file",
+                    "aiox.dev.yaml",
+                ])
+            )[0],
             {
                 command: `host.agent.${verb}`,
-                args: ["review", ["one"]],
-                options: {},
+                args: [["one", "two"]],
+                options: { file: "aiox.dev.yaml" },
             },
-        );
-        assert.deepEqual(
-            (await parse(["host", "agent", verb, "review", "one", "two"]))[0]
-                ?.args,
-            ["review", ["one", "two"]],
         );
     }
 });
@@ -188,39 +194,34 @@ test("routing verbs validate targets before dispatch", async () => {
     );
 });
 
-test("host worktree, single network, instruction and force reach application boundary", async () => {
+test("Host source/layout replace removed worktree/name options", async () => {
+    for (const flag of ["--worktree", "--name", "--host"])
+        await assert.rejects(parse(["host", "run", flag, "review"]));
     assert.deepEqual(
         (
             await parse([
                 "host",
-                "run",
-                "--worktree",
-                "feature",
-                "--name",
-                "review",
+                "--path",
+                "project",
+                "--file",
+                "aiox.dev.yaml",
+                "--columns",
+                "2",
             ])
-        )[0]?.options,
-        { worktree: "feature", name: "review" },
+        )[0],
+        {
+            command: "host.run",
+            args: [],
+            options: { path: "project", file: "aiox.dev.yaml", columns: "2" },
+        },
     );
+    for (const verb of ["status", "stop", "delete"])
+        assert.deepEqual((await parse(["host", verb, "named"]))[0]?.args, [
+            "named",
+        ]);
     assert.equal(
         (await parse(["daemon", "stop", "--force"]))[0]?.options.force,
         true,
-    );
-    assert.deepEqual(
-        (
-            await parse([
-                "host",
-                "network",
-                "reset",
-                "review",
-                "one",
-                "--between",
-                "a",
-                "b",
-                "--json",
-            ])
-        )[0]?.options,
-        { between: ["a", "b"], json: true },
     );
 });
 

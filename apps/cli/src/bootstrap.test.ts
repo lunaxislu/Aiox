@@ -660,7 +660,7 @@ test("network and agent reads reach their endpoints and summarise without --json
     }
 });
 
-test("unsupported adapters and Host commands remain unavailable", async () => {
+test("unsupported adapters and prepared Host queries remain unavailable", async () => {
     const stub = await daemonStub(() => {});
     try {
         await assert.rejects(
@@ -668,7 +668,7 @@ test("unsupported adapters and Host commands remain unavailable", async () => {
             /Unsupported vendor: unknown-vendor/,
         );
         await assert.rejects(
-            run(stub.cli, "host.agent.start", {}, ["review"]),
+            run(stub.cli, "host.status", {}, ["review"]),
             /Stage 5/,
         );
         assert.deepEqual(stub.routes, []);

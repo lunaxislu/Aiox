@@ -16,7 +16,11 @@ export type AioxConfig = {
         theme?: Record<string, string>;
     };
     keyboard?: Record<string, string>;
-    web?: { sidebar?: { width?: number } };
+    web?: { sidebar?: { width?: number; open?: boolean } };
+    keybindings?: Partial<
+        Record<"mac" | "windows" | "linux", Record<string, string>>
+    >;
+    appearance?: { theme: "system" | "light" | "dark" };
     host?: { layout?: HostLayout };
 };
 
@@ -32,14 +36,14 @@ export class ConfigError extends Error {
     }
 }
 
-function object(value: unknown, label: string): Record<string, unknown> {
+export function object(value: unknown, label: string): Record<string, unknown> {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         throw new ConfigError(`${label} must be an object`);
     }
     return value as Record<string, unknown>;
 }
 
-function keys(
+export function keys(
     value: Record<string, unknown>,
     allowed: string[],
     label: string,
@@ -93,7 +97,16 @@ export function parseConfig(
     const input = object(value, "config");
     keys(
         input,
-        ["ports", "messages", "terminal", "keyboard", "web", "host"],
+        [
+            "ports",
+            "messages",
+            "terminal",
+            "keyboard",
+            "keybindings",
+            "appearance",
+            "web",
+            "host",
+        ],
         "config",
     );
     const ports = input.ports === undefined ? {} : object(input.ports, "ports");
@@ -108,6 +121,8 @@ export function parseConfig(
         ),
         web: port(ports.web === undefined ? 4501 : ports.web, "ports.web"),
     };
+    if (filePorts.daemon === filePorts.web)
+        throw new ConfigError("daemon and web ports must differ");
     const messages =
         input.messages === undefined ? {} : object(input.messages, "messages");
     keys(messages, ["retentionDays"], "messages");
@@ -177,14 +192,87 @@ export function parseConfig(
     }
     if (input.keyboard !== undefined)
         config.keyboard = stringMap(input.keyboard, "keyboard");
+    if (input.appearance !== undefined) {
+        const appearance = object(input.appearance, "appearance");
+        keys(appearance, ["theme"], "appearance");
+        const theme =
+            appearance.theme === undefined ? "system" : appearance.theme;
+        if (theme !== "system" && theme !== "light" && theme !== "dark")
+            throw new ConfigError(
+                "appearance.theme must be system, light, or dark",
+            );
+        config.appearance = { theme };
+    }
+    if (input.keybindings !== undefined) {
+        const bindings = object(input.keybindings, "keybindings");
+        keys(bindings, ["mac", "windows", "linux"], "keybindings");
+        config.keybindings = {};
+        for (const os of ["mac", "windows", "linux"] as const) {
+            if (bindings[os] === undefined) continue;
+            const map = stringMap(bindings[os], `keybindings.${os}`);
+            keys(
+                map,
+                [
+                    "newShell",
+                    "splitRight",
+                    "splitDown",
+                    "switchTab",
+                    "closeTab",
+                    "focusLeft",
+                    "focusDown",
+                    "focusUp",
+                    "focusRight",
+                    "zoomPane",
+                    "equalizeSizes",
+                    "flashPane",
+                    "toggleSidebar",
+                    "openPalette",
+                ],
+                `keybindings.${os}`,
+            );
+            for (const [action, combination] of Object.entries(map)) {
+                const parts = combination.split("+");
+                const modifiers =
+                    action === "switchTab" ? parts : parts.slice(0, -1);
+                const key = parts.at(-1)!;
+                const namedKey =
+                    /^(?:Enter|Tab|Escape|Backspace|Delete|ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|Space|F(?:[1-9]|1[0-9]|2[0-4]))$/.test(
+                        key,
+                    );
+                const printableKey =
+                    key.length === 1 &&
+                    key.charCodeAt(0) > 32 &&
+                    key.charCodeAt(0) !== 127;
+                if (
+                    new Set(modifiers).size !== modifiers.length ||
+                    modifiers.some(
+                        (part) =>
+                            !["Cmd", "Ctrl", "Alt", "Shift"].includes(part),
+                    ) ||
+                    (action === "switchTab"
+                        ? !modifiers.length
+                        : !(namedKey || printableKey))
+                )
+                    throw new ConfigError(
+                        `Invalid keybindings.${os}.${action}: ${combination}`,
+                    );
+            }
+            config.keybindings[os] = map;
+        }
+    }
     if (input.web !== undefined) {
         const web = object(input.web, "web");
         keys(web, ["sidebar"], "web");
         config.web = {};
         if (web.sidebar !== undefined) {
             const sidebar = object(web.sidebar, "web.sidebar");
-            keys(sidebar, ["width"], "web.sidebar");
+            keys(sidebar, ["width", "open"], "web.sidebar");
             config.web.sidebar = {};
+            if (sidebar.open !== undefined) {
+                if (typeof sidebar.open !== "boolean")
+                    throw new ConfigError("web.sidebar.open must be a boolean");
+                config.web.sidebar.open = sidebar.open;
+            }
             if (sidebar.width !== undefined) {
                 if (
                     typeof sidebar.width !== "number" ||
@@ -239,6 +327,8 @@ export function parseHostLayout(
             );
         return { preset };
     }
+    if (!hasDimensions)
+        throw new ConfigError("host.layout grid requires columns or rows");
     const result: HostLayout = { preset };
     for (const dimension of ["columns", "rows"] as const) {
         const value = input[dimension];
@@ -275,5 +365,7 @@ export function resolveHostLayout(
         result =
             result.preset === layout.preset ? { ...result, ...layout } : layout;
     }
-    return result;
+    return result.preset === "grid"
+        ? { ...result, columns: result.columns ?? 1, rows: result.rows ?? 1 }
+        : result;
 }

@@ -64,6 +64,23 @@ Ajv는 배포할 JSON Schema의 테스트에만 사용하며 확장 실행 bundl
 증거와 설치·검증 방법은 [패키지 안내](../../packages/IDE/vscode/README.md),
 인접 `document.test.ts`·`schema.test.ts`를 따른다. Cursor 실검증은 별도로 남아 있다.
 
+## Host 입력 준비 [Status: As-built]
+
+`packages/config/src/host.ts`는 파일 선택·YAML 파싱·전체 참조와 route 검증을 소유한다.
+`prepareHostInput`은 config → YAML → CLI 오류·layout → 실행 환경 순서로 읽기 전용
+snapshot을 만든다. 이름으로 선택한 조회·제어와 Host Network 명령은 YAML을 읽지 않는다.
+Host 실행 준비는 선택 directory를 shell의 명시 cwd로 전달하여 기존 공통 shell/WSL 검증을
+사용한다. 외부 입력 규칙은 [[docs/specs/aiox-host]]와 [[docs/specs/aiox-runtime]]이 소유한다.
+
+CLI의 `host-input.ts`는 파일 선택 인자와 parser 오류를 보존하여 공통 준비 함수에 전달한다.
+현재 `bootstrap.ts`는 준비 뒤 미구현 오류로 끝난다. HTTP handler·저장·Host 실행은 아직
+연결하지 않았으며, 후속 handler도 이 준비 경로를 소비해야 한다. IDE는 편집 중 불완전한
+문서의 AST 진단을 유지하고 실행 준비 모듈을 호출하지 않는다.
+
+근거: [[packages/config/src/host.ts]], [[packages/config/src/host.test.ts]],
+[[packages/config/src/schema.test.ts]], [[apps/cli/src/host-input.ts]],
+[[apps/cli/src/host-input.test.ts]], [[apps/cli/src/bootstrap.ts]].
+
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
 CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http의 daemon/Web listener, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
