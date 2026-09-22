@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 /**
  * Stage 2 verification harness. NOT a product surface — it is not in `bin`, the
  * CLI never runs it, and it adds no adapter. It boots the real daemon and opens
@@ -12,8 +15,7 @@
  * MCP authentication, agents_list, send, routing and the notification policy are
  * covered by the automated tests against vendor doubles instead.
  */
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { logger } from "@aiox/diagnostics";
 
 import { boot } from "@/bootstrap";
 
@@ -53,14 +55,16 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
             .stop(true)
             .then((outcome) => {
                 if (!outcome.stopped)
-                    process.stderr.write(
-                        `Daemon shutdown incomplete: ${outcome.warnings.join("; ")}\n`,
+                    logger.error(
+                        {
+                            warningCount: outcome.warnings.length,
+                            blockingCount: outcome.blocking.length,
+                        },
+                        "Daemon shutdown incomplete",
                     );
             })
             .catch((error: unknown) =>
-                process.stderr.write(
-                    `Daemon shutdown failed: ${String(error)}\n`,
-                ),
+                logger.error({ err: error }, "Daemon shutdown failed"),
             );
     });
 }

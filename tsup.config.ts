@@ -10,6 +10,7 @@ const packages: Record<string, Options> = {
         external: ["vscode"],
         noExternal: ["yaml"],
     },
+    "@aiox/diagnostics": {},
     "@aiox/domain": {},
     "@aiox/vendor": {},
     "@aiox/adapter-codex": {},

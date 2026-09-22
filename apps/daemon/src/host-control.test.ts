@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
+import { logger } from "@aiox/diagnostics";
 import { expect, test, vi } from "vitest";
 
 import { initialHostPanel } from "./host-run";
@@ -14,6 +15,7 @@ test("Host stop preserves shells and policy; delete waits for shell termination 
         }),
     });
     t.onTestFinished(() => h.close());
+    const diagnostic = vi.spyOn(logger, "info");
     const services = h.daemon.services;
     const shell = await h.daemon.createShell();
     const outside = await h.daemon.createShell();
@@ -73,6 +75,14 @@ test("Host stop preserves shells and policy; delete waits for shell termination 
         });
         expect(response.status).toBe(202);
         const operation = (await response.json()) as { id: string };
+        expect(diagnostic).toHaveBeenCalledWith(
+            expect.objectContaining({
+                operationId: operation.id,
+                operationRequestId: requestId,
+                requestId: response.headers.get("x-request-id"),
+            }),
+            "Host operation accepted",
+        );
         await vi.waitFor(
             async () => {
                 expect(
@@ -108,6 +118,15 @@ test("Host stop preserves shells and policy; delete waits for shell termination 
     const requestId = randomUUID();
     const deleted = await request("DELETE", "/api/hosts/host", requestId);
     expect(deleted.state).toBe("succeeded");
+    expect(diagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({
+            operationId: deleted.id,
+            operationRequestId: requestId,
+            hostId: "host",
+            state: "succeeded",
+        }),
+        "Host operation finished",
+    );
     expect(await services.db.hostState.snapshot()).toMatchObject({
         hosts: [],
         panels: [],

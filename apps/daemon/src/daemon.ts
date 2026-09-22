@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
@@ -10,6 +11,7 @@ import {
     resolveTerminalLaunch,
     createConfigDocument,
 } from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import type { AioxDatabase } from "@aiox/persistence";
 import type {
     Ports,
@@ -224,7 +226,24 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return true;
     }
 
+    function observeRequest(
+        request: IncomingMessage,
+        response: ServerResponse,
+        component: string,
+    ) {
+        const requestId = randomUUID();
+        response.setHeader("x-request-id", requestId);
+        const diagnostic = logger.child({
+            requestId,
+            component,
+            method: request.method,
+        });
+        diagnostic.info("HTTP request received");
+        return diagnostic;
+    }
+
     const daemonServer = createServer((request, response) => {
+        const diagnostic = observeRequest(request, response, "daemon");
         void (async () => {
             if (protectedRequest(request, response, ports.daemon)) return;
             const url = new URL(request.url ?? "/", `http://${host}`);
@@ -268,6 +287,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 JSON.stringify({ code: "not_found", message: "Not found." }),
             );
         })().catch((error: unknown) => {
+            diagnostic.error({ err: error }, "HTTP request failed");
             if (!response.headersSent)
                 response.writeHead(
                     error instanceof HttpError ? error.status : 500,
@@ -277,6 +297,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     });
 
     const webServer = createServer((request, response) => {
+        const diagnostic = observeRequest(request, response, "web");
         void (async () => {
             if (protectedRequest(request, response, ports.web)) return;
             const url = new URL(request.url ?? "/", `http://${host}`);
@@ -289,6 +310,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     : "Not found.",
             );
         })().catch((error: unknown) => {
+            diagnostic.error({ err: error }, "HTTP request failed");
             if (!response.headersSent) response.writeHead(500);
             response.end(String(error));
         });
@@ -393,6 +415,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         options.retentionDays,
         {
             now,
+            onError: (err) => logger.error({ err }, "Retention purge failed"),
             onPurge: (report) => {
                 if (report.notifications > 0 || (report.operations ?? 0) > 0)
                     webEvents.notify();
@@ -529,8 +552,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         const onExit = () => {
             // A TUI exiting cleans only its own execution, never the daemon.
             void stopRuntime(runtimeId).catch((error: unknown) => {
-                process.stderr.write(
-                    `Runtime cleanup failed: ${String(error)}\n`,
+                logger.error(
+                    { err: error, runtimeId, terminalId },
+                    "Runtime cleanup failed",
                 );
             });
         };
@@ -671,16 +695,20 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     function closeListeners(): Promise<void> {
         closing ??= (async () => {
             await options.onClosing?.().catch((error: unknown) => {
-                process.stderr.write(
-                    `Daemon state cleanup failed before listeners closed: ${String(error)}\n`,
+                logger.error(
+                    { err: error },
+                    "Daemon state cleanup failed before listeners closed",
                 );
             });
             await closeServers();
             await options.db.close().catch((error: unknown) => {
-                process.stderr.write(
-                    `Daemon database close failed after listeners closed: ${String(error)}\n`,
+                logger.error(
+                    { err: error },
+                    "Daemon database close failed after listeners closed",
                 );
             });
+            logger.info("Daemon stopped");
+            logger.flush();
             resolveClosed();
         })();
         return closing;
@@ -855,5 +883,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         throw error;
     }
     ready = true;
+    logger.info(
+        { daemonPort: ports.daemon, webPort: ports.web },
+        "Daemon listening",
+    );
     return daemon;
 }

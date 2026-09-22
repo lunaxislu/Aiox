@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { logger } from "@aiox/diagnostics";
 import { openDatabase } from "@aiox/persistence";
 import type {
     AgentView,
@@ -177,17 +178,16 @@ it("closes both listeners when required startup recording rejects", async () => 
 });
 
 it("reports a database close failure while preserving the listener-closed contract", async () => {
-    const stderr = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     const close = vi
         .spyOn(harness.daemon.services.db, "close")
         .mockRejectedValueOnce(new Error("db close injected"));
     const result = await harness.daemon.stop(true);
     await harness.daemon.closed;
     expect(result.stopped).toBe(true);
-    expect(stderr.mock.calls.flat().join(" ")).toMatch(
-        /database.*close.*db close injected/i,
+    expect(diagnostic).toHaveBeenCalledWith(
+        { err: expect.any(Error) },
+        "Daemon database close failed after listeners closed",
     );
     await expect(fetch(harness.apiUrl("/api/status"))).rejects.toThrow();
     close.mockRestore();
@@ -235,9 +235,7 @@ it("removes startup ownership before releasing listeners even when database clos
 
 it("reports failed state cleanup and still closes its listeners", async () => {
     const db = await openDatabase(join(harness.home, "state-close.db"));
-    const stderr = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     const daemon = await startDaemon({
         db,
         ports: { daemon: 0, web: 0 },
@@ -248,8 +246,9 @@ it("reports failed state cleanup and still closes its listeners", async () => {
     });
     expect((await daemon.stop(true)).stopped).toBe(true);
     await daemon.closed;
-    expect(stderr.mock.calls.flat().join(" ")).toMatch(
-        /state cleanup failed.*state cleanup injected/,
+    expect(diagnostic).toHaveBeenCalledWith(
+        { err: expect.any(Error) },
+        "Daemon state cleanup failed before listeners closed",
     );
     await expect(
         fetch(`http://127.0.0.1:${daemon.ports.daemon}/api/status`),

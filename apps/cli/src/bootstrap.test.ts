@@ -1140,3 +1140,54 @@ test("Host Agent commands resolve stop by YAML and wait on admitted operations w
             });
     }
 });
+
+test("failed daemon start includes the stored Pino tail in the existing user error", async () => {
+    const home = await mkdtemp(join(tmpdir(), "aiox-w8-cli-log-"));
+    await saveConfig({ terminal: { shell: process.execPath } }, { home });
+    const entries = Array.from({ length: 25 }, (_, index) =>
+        JSON.stringify({
+            level: 50,
+            time: index,
+            msg: `diagnostic-${index}`,
+        }),
+    );
+    await writeFile(
+        join(home, ".aiox", "daemon.log"),
+        entries.join("\n") + "\n",
+    );
+    const fetcher = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValue(new Error("offline"));
+    const stdin = new PassThrough();
+    const child = Object.assign(new EventEmitter(), {
+        stdin,
+        pid: 43210,
+        exitCode: 1,
+        signalCode: null,
+        kill: vi.fn(),
+        unref: vi.fn(),
+    });
+    vi.mocked(spawn).mockReturnValueOnce(
+        child as unknown as ReturnType<typeof spawn>,
+    );
+    try {
+        await assert.rejects(
+            run(createFoundationPort({ home }), "daemon.start"),
+            (error: Error) => {
+                assert.match(error.message, /daemon did not answer/);
+                assert.match(error.message, /Last lines of .*daemon.log/);
+                assert.ok(!error.message.includes('"msg":"diagnostic-4"'));
+                assert.ok(error.message.includes(entries[5]!));
+                assert.ok(error.message.includes(entries[24]!));
+                return true;
+            },
+        );
+        const stdio = vi.mocked(spawn).mock.calls.at(-1)?.[2]?.stdio;
+        assert.ok(Array.isArray(stdio));
+        assert.equal(typeof stdio[1], "number");
+        assert.equal(stdio[1], stdio[2]);
+    } finally {
+        fetcher.mockRestore();
+        await rm(home, { recursive: true, force: true });
+    }
+});

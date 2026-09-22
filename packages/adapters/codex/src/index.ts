@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { promisify, stripVTControlCharacters } from "node:util";
 
+import { logger } from "@aiox/diagnostics";
 import type { ExecutionProcess, VendorAdapter } from "@aiox/vendor";
 import { z } from "zod";
 
@@ -86,7 +87,14 @@ export const codexAdapter: VendorAdapter = {
                     if (executionOwner.signal.aborted) return;
                     const reason = `Codex App Server exited (${exit.exitCode}). ${sanitize(diagnostic).slice(-2000)}`;
                     relay.fail(reason);
-                    process.stderr.write(`AIOX: ${reason}\n`);
+                    logger.error(
+                        {
+                            component: "codex",
+                            exitCode: exit.exitCode,
+                            signal: exit.signal,
+                        },
+                        "Codex App Server exited",
+                    );
                     void foreground
                         ?.stop()
                         .catch(() =>

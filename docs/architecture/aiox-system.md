@@ -127,6 +127,18 @@ Web 화면 중계가 끊겨도 daemon의 실행 owner·관리 등록은 유지�
 정리까지 확인한다. transport·협업 권한·실행 수명 분리와 구현 근거는
 [[docs/architecture/aiox-vendor-bindings]]가 소유한다. [Status: As-built]
 
+## 서비스 진단 로그 [Status: As-built]
+
+`@aiox/diagnostics`는 Pino 인스턴스와 필드·오류 직렬화 정책을 공유한다. daemon 시작·종료·HTTP 접수/실패·Host Operation 접수/완료·Agent 준비/실패/정리·메시지 저장 실패/복구와 Claude binding·Codex App Server·terminal의 서버 진단이 직접 사용한다. 별도 Logger interface나 worker는 두지 않는다. HTTP `requestId`는 응답 `x-request-id`와 같은 서버 생성 ID이고, Operation 입력의 멱등 키는 로그에서 `operationRequestId`로 구분한다. 최초 접수와 재요청의 접수 로그가 두 ID와 `operationId`·`hostId`를 연결한다. 완료·저장 실패에도 해당 ID를 기록한다. 실행 진단은 Runtime의 `runtimeId`와 조회용 `terminalId`를 사용한다. 공통 실패 경로는 PTY 보존 분기보다 먼저 `failureCode`를 기록해 준비 실패·timeout·잘못된 lifecycle·조기 종료를 구분한다.
+
+진단은 동기 stderr JSONL이다. CLI start가 소유한 append fd가 daemon stdout/stderr를 `~/.aiox/daemon.log`에 연결하며, 시작 실패 안내는 기존처럼 마지막 20줄을 읽는다. 직접 daemon을 실행하면 stderr로 나온다. 각 기록이 동기로 쓰이고 정상 종료는 listener·DB 종료 처리 후 마지막 기록과 flush를 마친 뒤 `closed`를 완료한다. 시작 실패도 stderr에 기록하고 exit code 1을 반환한다. 강제 종료 이전에 호출되지 않은 진단이나 OS 저장장치 내구성까지 보장하는 계약은 아니다.
+
+로그 입력은 고정 설명과 허용된 식별자·상태 필드로 제한한다. Error는 유형과 제한된 OS/SQLite 코드만 직렬화하고, 임의 message·stack·cause·추가 속성은 제외한다. token·credential·환경·요청 본문/URL·경로·vendor/PTY 본문을 기록하지 않는다. 사용자용 HTTP·Operation/SSE 오류와 CLI JSON·MCP 응답·foreground/PTY 출력은 기존 경로를 유지하며, 진단 로그가 사용자 결과 전달을 대신하지 않는다.
+
+daemon 시작 실패는 `stage`를 기록하며 잘못된 포트는 `EINVALIDPORT`와 검증된 `field`(`--port`·`--web-port`)를 보존하고 입력값은 제외한다. Codex App Server 종료 진단은 고정 메시지와 component·exitCode·signal만 기록한다. token을 가린 vendor 오류는 기존 호출자/Relay 사용자 오류 경로로 전달하고 서버 로그에 복사하지 않는다.
+
+근거: [[packages/diagnostics/src/index.ts]], [[packages/diagnostics/src/index.test.ts]], [[apps/daemon/src/main.test.ts]], [[apps/daemon/src/agent-controller.test.ts]], [[packages/adapters/codex/src/index.test.ts]], [[apps/daemon/src/daemon.ts]], [[apps/daemon/src/http.ts]], [[apps/daemon/src/host-control.test.ts]], [[apps/cli/src/bootstrap.test.ts]]. 실제 vendor·React·Windows/WSL 연결 검증을 이 로그 전환의 검증으로 대체하지 않는다.
+
 ## 공통 실행과 vendor adapter 현재 조립 범위 [Status: As-built]
 
 CLI는 terminal 문맥이 있으면 Web foreground WS로, 없으면 별도 external 제어 WS로 연결한다.

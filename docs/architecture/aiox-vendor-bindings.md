@@ -443,6 +443,7 @@ thread/start·resume·fork가 성공한 연결로 보내며 보조 연결 종료
 TUI가 developerInstructions를 명시적으로 덮어쓰면 실행의 AIOX 지침을 병합한다.
 서버 조기 종료는 binding 진단과 실행 위치의 stderr에 전달하고 TUI 종료를 요청한다.
 준비 실패의 stderr는 credential을 가린 뒤 호출자에게 전달한다.
+App Server 종료의 서버 진단은 Pino의 고정 메시지·exitCode·signal만 남긴다. vendor 원문은 서버 로그로 복사하지 않으며 공통 정책은 [[docs/architecture/aiox-system]]의 서비스 진단 로그 절이 소유한다.
 
 근거: [[packages/adapters/codex/src/index.ts]], [[packages/adapters/codex/src/launch.ts]],
 [[packages/adapters/codex/src/relay.ts]], [[packages/adapters/codex/src/binding.ts]] 및 각 인접 테스트.

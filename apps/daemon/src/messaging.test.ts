@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { logger } from "@aiox/diagnostics";
 import type { AioxDatabase } from "@aiox/persistence";
 import { openDatabase } from "@aiox/persistence";
 import type { VendorBinding } from "@aiox/vendor";
@@ -480,7 +481,7 @@ it.each(["source", "target"] as const)(
 
 it("acknowledges ownership and retries staggered failures on one unchanged timer", async () => {
     vi.useFakeTimers();
-    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     const sent = await messages.send(a.record, [b.record.id], "A");
@@ -529,7 +530,7 @@ it("acknowledges ownership and retries staggered failures on one unchanged timer
 
 it("joins a running retry batch on drain, defers new failures and resumes once after failed drain", async () => {
     vi.useFakeTimers();
-    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     const a = await joinAgent("A");
     const b = await joinAgent("B");
     const ids: string[] = [];
@@ -641,7 +642,7 @@ it.each(["completed", "failed", "interrupted"] as const)(
             .spyOn(db.messages, "settle")
             .mockRejectedValue(new Error("disk full"));
         const diagnostic = vi
-            .spyOn(console, "error")
+            .spyOn(logger, "error")
             .mockImplementation(() => {});
         try {
             const connected = once(server, "connection");

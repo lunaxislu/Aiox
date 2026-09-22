@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { ConfigError, ConfigConflictError } from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import { RouteOperationError } from "@aiox/domain";
 import type { NotificationView } from "@aiox/protocol";
 import {
@@ -106,6 +107,10 @@ export function createApiHandler(services: DaemonServices) {
         try {
             await route(request, response, url, path, services);
         } catch (error) {
+            logger.warn(
+                { err: error, requestId: response.getHeader("x-request-id") },
+                "API request failed",
+            );
             if (error instanceof HttpError) {
                 send(response, error.status, {
                     code: error.code,

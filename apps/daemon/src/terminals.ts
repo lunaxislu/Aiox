@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 
 import type { TerminalLaunch } from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import type { TerminalContext, TerminalView } from "@aiox/protocol";
 import type { TerminalSession } from "@aiox/terminal";
 import { createTerminal } from "@aiox/terminal";
@@ -134,7 +135,10 @@ export class TerminalService {
         this.onRemoved(id);
         this.onChange();
         void session?.dispose().catch((error: unknown) => {
-            console.error(`terminal ${id}: mirror disposal failed`, error);
+            logger.error(
+                { err: error, terminalId: id },
+                "Terminal mirror disposal failed",
+            );
         });
     }
 

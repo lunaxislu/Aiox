@@ -83,7 +83,7 @@ resolve하고 기존 MessageService의 inFlight.result에 최초 outcome/error/t
 같은 delivery 저장은 settling으로 병합하고 실행 중 새 실패는 다음 batch에서 처리한다. 결과가
 아직 없는 진행 중 delivery는 재시도 대상이 아니다. 성공만 제거하고 남은 대상이 있으면 timer
 하나를 예약하며 pending이 없으면 timer와 backoff를 초기화한다. 각 요청의 transaction은 유지한다.
-최초·변경된 저장 오류와 복구는 기존 daemon stderr로 진단하고 같은 오류의 반복 출력은 억제한다.
+최초·변경된 저장 오류와 복구는 Pino stderr 진단에 deliveryId·대상 runtimeId를 남기며 같은 오류의 반복 출력은 억제한다. 진단 파일·오류 직렬화·민감정보 제외 정책은 [[docs/architecture/aiox-system]]의 서비스 진단 로그 절을 따른다. 저장 오류의 사용자 결과·재시도 상태는 이 진단과 별도로 유지한다.
 
 종료 drain은 timer를 취소하고 active persist/running batch에 합류한 뒤 최종 snapshot을 처리한다.
 미저장 결과가 남으면 warnings와 stopped:false를 반환하며 HTTP 409 stop_incomplete로 daemon·DB를

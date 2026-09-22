@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { logger } from "@aiox/diagnostics";
 import {
     type LastExit,
     agentRunSchema,
@@ -96,6 +97,7 @@ export class AgentController {
         let binding: VendorBinding | undefined;
         let controlsForBinding: RuntimeControls | undefined;
         let runtimeId: string | undefined;
+        let terminalId: string | undefined;
         let reportToken: string | undefined;
         let ended = false;
         let relayDisconnected = false;
@@ -174,7 +176,20 @@ export class AgentController {
         const finish = (
             message?: string,
             exit?: TerminalExit,
+            failureCode:
+                | "preparation_failed"
+                | "preparation_timeout"
+                | "invalid_lifecycle"
+                | "process_exit"
+                | "launch_timeout" = "preparation_failed",
         ): Promise<void> => {
+            if (message && !ended && !collaborationError && !finishing) {
+                logger.error(
+                    { runtimeId, hostId, terminalId, failureCode },
+                    "Agent collaboration failed",
+                );
+            }
+
             if (!external && session?.alive && message && !ended) {
                 collaborationError = message;
                 if (!foreground) {
@@ -216,11 +231,15 @@ export class AgentController {
                 } catch {
                     message =
                         "Agent collaboration cleanup remains unconfirmed.";
-                    console.error(message);
+                    logger.error({ runtimeId, terminalId }, message);
                     send({ type: "error", message });
                     socket.close();
                     return;
                 }
+                logger.info(
+                    { runtimeId, hostId, terminalId },
+                    "Agent execution released",
+                );
                 if (message && !startupFailed) send({ type: "error", message });
                 else if (!message && exit) send({ type: "exit", ...exit });
                 socket.close();
@@ -254,6 +273,7 @@ export class AgentController {
                         ? undefined
                         : "Vendor exited before collaboration became ready. Check the vendor startup output and try again.",
                     exit,
+                    "process_exit",
                 );
             }
         };
@@ -276,7 +296,8 @@ export class AgentController {
                     await release();
                 }
             })().catch(() =>
-                console.error(
+                logger.error(
+                    { runtimeId, terminalId },
                     "Agent collaboration cleanup remains unconfirmed after connection loss.",
                 ),
             );
@@ -284,7 +305,12 @@ export class AgentController {
         socket.on("close", disconnected);
         socket.on("error", disconnected);
         timer = setTimeout(
-            () => void finish("No agent launch request was received."),
+            () =>
+                void finish(
+                    "No agent launch request was received.",
+                    undefined,
+                    "launch_timeout",
+                ),
             5000,
         );
         socket.once("message", (raw, binary) => {
@@ -400,6 +426,9 @@ export class AgentController {
                         };
                     },
                 });
+                terminalId =
+                    this.daemon.services.runtimes.get(runtimeId!)?.terminalId ??
+                    undefined;
                 if (
                     ended ||
                     !this.daemon.services.runtimes.get(runtimeId!)
@@ -435,6 +464,10 @@ export class AgentController {
                 binding.onReleased = released;
                 binding.onReady = () => {
                     this.daemon.services.runtimes.ready(runtimeId!);
+                    logger.info(
+                        { runtimeId, hostId, terminalId },
+                        "Agent collaboration ready",
+                    );
                     clearTimeout(timer);
                     if (
                         !ended &&
@@ -449,6 +482,10 @@ export class AgentController {
                     runtimeId: registration.runtimeId,
                     binding,
                 });
+                logger.info(
+                    { runtimeId, hostId, terminalId },
+                    "Agent execution preparing",
+                );
                 const launch = await binding.prepare({
                     executionOwnership: external ? "external" : "daemon",
                     args: input.args,
@@ -485,6 +522,8 @@ export class AgentController {
                         ) {
                             void finish(
                                 "Invalid external agent lifecycle frame.",
+                                undefined,
+                                "invalid_lifecycle",
                             );
                             return;
                         }
@@ -538,6 +577,8 @@ export class AgentController {
                     if (!binding!.wasReady)
                         void finish(
                             "Vendor collaboration did not become ready within 60 seconds. Check vendor startup and settings, then try again.",
+                            undefined,
+                            "preparation_timeout",
                         );
                 }, 60_000);
                 timer.unref();

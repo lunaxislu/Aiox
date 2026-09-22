@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { prepareHostInput } from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import {
     hostRunRequestSchema,
     hostRestartRequestSchema,
@@ -249,6 +250,15 @@ export async function handleHostRun(
         hash,
     );
     if (previous) {
+        logger.info(
+            {
+                operationId: previous.id,
+                operationRequestId: previous.requestId,
+                requestId: response.getHeader("x-request-id"),
+                hostId: previous.hostId,
+            },
+            "Host operation accepted",
+        );
         send(response, 202, previous);
         return true;
     }
@@ -411,6 +421,15 @@ export async function handleHostRun(
                 hash,
             );
             if (admitted.id !== operation.id) {
+                logger.info(
+                    {
+                        operationId: admitted.id,
+                        operationRequestId: admitted.requestId,
+                        requestId: response.getHeader("x-request-id"),
+                        hostId: admitted.hostId,
+                    },
+                    "Host operation accepted",
+                );
                 send(response, 202, admitted);
                 return true;
             }
@@ -428,6 +447,15 @@ export async function handleHostRun(
             hash,
         );
         if (retry) {
+            logger.info(
+                {
+                    operationId: retry.id,
+                    operationRequestId: retry.requestId,
+                    requestId: response.getHeader("x-request-id"),
+                    hostId: retry.hostId,
+                },
+                "Host operation accepted",
+            );
             send(response, 202, retry);
             return true;
         }
@@ -436,6 +464,15 @@ export async function handleHostRun(
         throw error;
     }
     services.webEvents.notify();
+    logger.info(
+        {
+            operationId: operation.id,
+            operationRequestId: operation.requestId,
+            requestId: response.getHeader("x-request-id"),
+            hostId: operation.hostId,
+        },
+        "Host operation accepted",
+    );
     send(response, 202, operation);
     const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
         execute,
@@ -449,6 +486,17 @@ export async function handleHostRun(
             const previousStage = stage;
             stage = "storage";
             await services.db.hostState.saveOperation(operation, hash);
+            if (operation.finishedAt !== null)
+                logger[operation.state === "failed" ? "error" : "info"](
+                    {
+                        operationId: operation.id,
+                        operationRequestId: operation.requestId,
+                        requestId: response.getHeader("x-request-id"),
+                        hostId: operation.hostId,
+                        state: operation.state,
+                    },
+                    "Host operation finished",
+                );
             stage = previousStage;
             services.webEvents.notify();
         };
@@ -697,6 +745,16 @@ export async function handleHostRun(
             try {
                 await persist();
             } catch (error) {
+                logger.error(
+                    {
+                        err: error,
+                        operationId: operation.id,
+                        operationRequestId: operation.requestId,
+                        requestId: response.getHeader("x-request-id"),
+                        hostId: operation.hostId,
+                    },
+                    "Host operation storage failed",
+                );
                 services.webEvents.fault("storage_error", String(error));
             }
         }

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { loadConfig } from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import {
     hostControlRequestSchema,
     type Operation,
@@ -33,6 +34,15 @@ export async function handleHostControl(
         hash,
     );
     if (previous) {
+        logger.info(
+            {
+                operationId: previous.id,
+                operationRequestId: previous.requestId,
+                requestId: response.getHeader("x-request-id"),
+                hostId: previous.hostId,
+            },
+            "Host operation accepted",
+        );
         send(response, 202, previous);
         return true;
     }
@@ -75,8 +85,18 @@ export async function handleHostControl(
     };
     const admitted = await services.db.hostState.saveOperation(operation, hash);
     services.webEvents.notify();
+    logger.info(
+        {
+            operationId: admitted.id,
+            operationRequestId: admitted.requestId,
+            requestId: response.getHeader("x-request-id"),
+            hostId: admitted.hostId,
+        },
+        "Host operation accepted",
+    );
     send(response, 202, admitted);
     if (admitted.id !== operation.id) return true;
+
     const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
         execute,
     );
@@ -90,6 +110,17 @@ export async function handleHostControl(
             const previousStage = stage;
             stage = "storage";
             await services.db.hostState.saveOperation(operation, hash);
+            if (operation.finishedAt !== null)
+                logger[operation.state === "failed" ? "error" : "info"](
+                    {
+                        operationId: operation.id,
+                        operationRequestId: operation.requestId,
+                        requestId: response.getHeader("x-request-id"),
+                        hostId: operation.hostId,
+                        state: operation.state,
+                    },
+                    "Host operation finished",
+                );
             stage = previousStage;
             services.webEvents.notify();
         };
@@ -166,6 +197,16 @@ export async function handleHostControl(
         try {
             await persist();
         } catch (error) {
+            logger.error(
+                {
+                    err: error,
+                    operationId: operation.id,
+                    operationRequestId: operation.requestId,
+                    requestId: response.getHeader("x-request-id"),
+                    hostId: operation.hostId,
+                },
+                "Host operation storage failed",
+            );
             services.webEvents.fault("storage_error", String(error));
         }
     }

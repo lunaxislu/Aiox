@@ -10,6 +10,7 @@ import {
     prepareHostInput,
     resolveTerminalLaunch,
 } from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import { RouteOperationError } from "@aiox/domain";
 import {
     hostAgentStartRequestSchema,
@@ -175,6 +176,15 @@ export async function handleHostAgents(
         hash,
     );
     if (previous) {
+        logger.info(
+            {
+                operationId: previous.id,
+                operationRequestId: previous.requestId,
+                requestId: response.getHeader("x-request-id"),
+                hostId: previous.hostId,
+            },
+            "Host operation accepted",
+        );
         send(response, 202, previous);
         return true;
     }
@@ -349,11 +359,29 @@ export async function handleHostAgents(
     };
     const admitted = await services.db.hostState.saveOperation(operation, hash);
     if (admitted.id !== operation.id) {
+        logger.info(
+            {
+                operationId: admitted.id,
+                operationRequestId: admitted.requestId,
+                requestId: response.getHeader("x-request-id"),
+                hostId: admitted.hostId,
+            },
+            "Host operation accepted",
+        );
         send(response, 202, admitted);
         return true;
     }
     services.webEvents.notify();
     send(response, 202, operation);
+    logger.info(
+        {
+            operationId: operation.id,
+            operationRequestId: operation.requestId,
+            requestId: response.getHeader("x-request-id"),
+            hostId: operation.hostId,
+        },
+        "Host operation accepted",
+    );
     const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
         execute,
     );
@@ -364,6 +392,17 @@ export async function handleHostAgents(
     async function execute() {
         const persist = async () => {
             await services.db.hostState.saveOperation(operation, hash);
+            if (operation.finishedAt !== null)
+                logger[operation.state === "failed" ? "error" : "info"](
+                    {
+                        operationId: operation.id,
+                        operationRequestId: operation.requestId,
+                        requestId: response.getHeader("x-request-id"),
+                        hostId: operation.hostId,
+                        state: operation.state,
+                    },
+                    "Host operation finished",
+                );
             services.webEvents.notify();
         };
         let placement = 0;
@@ -652,6 +691,16 @@ export async function handleHostAgents(
             try {
                 await persist();
             } catch (storage) {
+                logger.error(
+                    {
+                        err: storage,
+                        operationId: operation.id,
+                        operationRequestId: operation.requestId,
+                        requestId: response.getHeader("x-request-id"),
+                        hostId: operation.hostId,
+                    },
+                    "Host operation storage failed",
+                );
                 services.webEvents.fault("storage_error", String(storage));
             }
         }

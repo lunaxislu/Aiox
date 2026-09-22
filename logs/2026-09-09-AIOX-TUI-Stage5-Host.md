@@ -1,6 +1,6 @@
 ---
 topic: AIOX TUI Stage5 Host
-description: Host CLI·YAML·설정·실행 수명과 Stage6 연결 구현
+description: Host 실행·CLI 운영, 서비스 로그·HTTP·저장 전환과 Stage6 연결
 status: open
 ---
 
@@ -13,7 +13,10 @@ status: open
 - [x] W5 Host run·전용 Network·초기 배치를 구현하고 CLI·daemon 경로를 검증한다
 - [x] W6 개별 Agent start/stop/restart와 Host Network 명령을 구현하고 서버 결과를 검증한다
 - [x] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현하고 CLI·daemon 경로를 검증한다
-- [>] W8 Stage6 준비 후 W5~W7의 실제 화면 연결과 전체 흐름을 통합 검증한다
+- [x] W8 서비스 진단 로그를 Pino로 전환한다
+- [>] W9 서비스 HTTP 처리를 Hono로 전환한다
+- [ ] W10 서비스 SQLite 저장 계층을 TypeORM에서 Drizzle로 전환한다
+- [ ] W11 Stage6 준비 후 W5~W10의 실제 화면 연결과 전체 흐름을 통합 검증한다
 
 ## Required Context
 
@@ -23,8 +26,9 @@ status: open
 
 ### {Global}
 
+- W8~W10은 Host에 한정하지 않는 서비스 서버 계층 전환이다. 외부 계약을 유지하며 진단·HTTP·저장의 기존 구현을 각각 교체한다. W1~W8은 완료했고 다음 작업은 W9 Hono이며, 실제 React 통합 검증은 W11이다. W8 검증 근거는 최신 완료 기록과 system architecture의 서비스 진단 로그 절을 따른다.
 - 사용자가 이 로그의 논의·정정 누적 기록을 구현 순서 중심으로 직접 재구성하도록 승인했다. 확정 정책의 권위는 아래 owner 문서에 있으며, 각 W scope는 구현에 필요한 적용 기준과 검증 조건을 담는다. 과거 제안이나 목업 더미 데이터를 계약으로 복원하지 않는다.
-- Stage6와 합의한 W1 API 계약·보완 1~4 및 담당 경계를 유지한다. Stage5 구현은 CLI·daemon·공통 protocol/config/persistence와 관련 owner 문서에 한정하며 Stage6 로그·apps/web·plan 활성 단계는 변경하지 않는다. Stage6 연결 준비와 독립적으로 W6·W7 구현·서버 검증을 진행하고 실제 React 연결은 W8에서 검증한다.
+- Stage6와 합의한 W1 API 계약·보완 1~4 및 담당 경계를 유지한다. Stage5 구현은 CLI·daemon·공통 protocol/config/persistence와 관련 owner 문서에 한정하며 Stage6 로그·apps/web·plan 활성 단계는 변경하지 않는다. Stage6 연결 준비와 독립적으로 W8~W10의 전환·서버 검증을 진행하고 실제 React 연결은 W11에서 검증한다.
 - Owner: [Host spec](../docs/specs/aiox-host.md), [Runtime/CLI spec](../docs/specs/aiox-runtime.md), [설정·Web UX spec](../docs/specs/aiox-configuration-web.md), [System architecture](../docs/architecture/aiox-system.md), [Storage/terminal architecture](../docs/architecture/aiox-storage-terminal.md). 인증·전송 판정은 [Collaboration spec](../docs/specs/aiox-collaboration.md), vendor 지침 주입은 [Vendor bindings architecture](../docs/architecture/aiox-vendor-bindings.md)를 함께 따른다.
 - 병렬 작업 상대의 재개점은 [Stage6 로그](2026-09-09-AIOX-TUI-Stage6-Web.md)다. 전체 단계 연결은 [rebuild plan](../plans/aiox-tui-product-rebuild.md)을 따른다. 각 W 착수 시 최신 code/test와 owner를 대조하고 producer→consumer 및 실패 전달 경로까지 확인한다.
 - Worktree 생성·`--worktree`, Host 이름 override `--name`, 대상 선택 `--host`, YAML `version`은 제외한다. adapter 이름은 `claude`와 `codex`다. 새 Runtime을 vendor 대화 자동 resume으로 해석하지 않는다.
@@ -61,7 +65,7 @@ status: open
 
 ### {W4}
 
-- 완료: 인증된 Host tab과 shell의 관리 Agent 실행 연결, 준비/실패/종료 관측, 실행 이력과 HTTP/SSE projection을 구현·검증했다. 실제 CLI·bash PTY 왕복은 vendor 대역으로 확인했다. 공개 Host run은 W5 구현을 소비하며 개별·전체 제어는 W6·W7, 실제 React 연결은 W8에서 확인한다.
+- 완료: 인증된 Host tab과 shell의 관리 Agent 실행 연결, 준비/실패/종료 관측, 실행 이력과 HTTP/SSE projection을 구현·검증했다. 실제 CLI·bash PTY 왕복은 vendor 대역으로 확인했다. 공개 Host run은 W5 구현을 소비하며 개별·전체 제어는 W6·W7, 실제 React 연결은 W11에서 확인한다.
 
 - 선행: W1 계약 및 W2 실행 설정 검증, W3 연결 모델. 참조: Runtime spec의 일반 shell과 Agent 연결·종료, System architecture의 Host 실행 흐름, Storage/terminal projection 및 vendor binding 계약.
 - Host Agent는 shell 안에서 실행한다. shell/terminal과 Agent 실행 수명을 분리하고 새 Runtime·credential·binding을 연결한다. 공통 Host instruction과 Agent instruction을 vendor 계약에 따라 합성하며 native 설정 파일을 자동 덮어쓰지 않는다.
@@ -77,27 +81,49 @@ status: open
 - 전용 Network와 membership·route를 올바른 Runtime ID에 연결한다. 일반 Network나 다른 Host의 동명 Network와 섞지 않는다. 초기 배치는 config/YAML/CLI의 유효 layout과 YAML 선언 순서를 소비한다.
 - auto는 1개 전체·2개 좌우·3개 왼쪽+오른쪽 위아래·4개 이상 2×2다. left-main/top-main은 owner의 세 영역 배치, grid는 유효 치수다. 초과 Agent는 순환 탭으로 배치하며 불필요한 빈 pane을 만들지 않는다. 최초 선택 탭을 유지한다. 이는 shell/tab/pane 개수 상한이 아니다.
 - YAML을 읽지 못해 Agent를 특정할 수 없는 실패는 CLI만 표시한다. 특정 Agent 시작 실패는 실제 원인을 CLI와 해당 탭에 전달한다. 실패 보상은 이번 시도가 만든 자원·변경에 한정하고 기존 Host·Network·사용자 shell을 보존한다. 정리 실패를 완전 rollback으로 보고하지 않는다.
-- 완료 조건: `aiox host run`의 config/YAML 해석→Host/Network→Agent 실행→panel 배치와 HTTP/SSE·terminal API까지 CLI·daemon 경로를 검증한다. Stage6 준비를 기다리지 않고 W6로 진행하며, React Hosts panel 표시·TUI 입출력의 최초 실제 연결 검증은 W8에서 수행한다.
-- 완료: 공개 run 접수·전용 Network·초기 배치·shell 내부 실행과 CLI의 SSE 완료 대기를 구현·검증했다. 재개 시 최신 W5 완료 기록과 system/storage-terminal architecture, host-run·host-operation 및 인접 테스트를 읽는다. 현재 다음 작업은 W6이며 실제 vendor·React·Windows/WSL의 미실측 범위는 W8에서 구분해 확인한다.
+- 완료 조건: `aiox host run`의 config/YAML 해석→Host/Network→Agent 실행→panel 배치와 HTTP/SSE·terminal API까지 CLI·daemon 경로를 검증한다. Stage6 준비를 기다리지 않고 W6로 진행하며, React Hosts panel 표시·TUI 입출력의 최초 실제 연결 검증은 W11에서 수행한다.
+- 완료: 공개 run 접수·전용 Network·초기 배치·shell 내부 실행과 CLI의 SSE 완료 대기를 구현·검증했다. 재개 시 최신 W5 완료 기록과 system/storage-terminal architecture, host-run·host-operation 및 인접 테스트를 읽는다. W5 이후 W6·W7도 완료했으며 현재 다음 작업은 W8이다. 실제 vendor·React·Windows/WSL의 미실측 범위는 W11에서 구분해 확인한다.
 
-### {W7,W8}
+### {W7,W11}
 - 리뷰 보완 완료: 관련 route의 미적용 상대 endpoint는 실행 종료 전에 invalid_yaml로 거절한다. 직접 HTTP의 YAML 불필요 변경도 config를 먼저 검증하며, pane 순서는 트리 순회가 아니라 split weight로 계산한 사각형 top→left를 사용한다. 아래 W6 리뷰 수정 기록·회귀를 재개 근거에 포함한다.
 - W6 완료: 개별 Agent start/stop/restart·Host Network list/show/block/unblock/reset의 CLI·HTTP·저장·SSE 경로를 구현·검증했다. 최신 W6 완료 기록, system/storage-terminal architecture, `apps/daemon/src/host-agents.ts`와 인접 테스트, CLI bootstrap·host-operation, persistence host-state를 재사용한다.
 - 같은 Host panel의 첫 실행은 현재 CLI가 SSE preparing 대상을 받아 foreground 실행을 이어간다. 부모 shell이 CLI 종료를 기다리는 동안 명령을 주입해 준비를 기다리는 방식은 교착한다. 다른 자리는 기존 shell 내부 CLI 경로를 사용한다.
-- 대상 정의·membership·관련 route만 적용하고 나머지 정책·일반 shell·현재 배치를 보존한다. stop은 실행 정산 후 shell을 유지한다. 실패는 tab ID로 기록하여 다른 자리의 옛 stopped 안내를 보존하고 준비 성공 뒤에만 옛 안내 자원을 정리한다. 실제 React 표시·Copy·/exit 연결과 vendor·Windows/WSL 실측 여부는 W8에서 구분해 검증한다.
+- 대상 정의·membership·관련 route만 적용하고 나머지 정책·일반 shell·현재 배치를 보존한다. stop은 실행 정산 후 shell을 유지한다. 실패는 tab ID로 기록하여 다른 자리의 옛 stopped 안내를 보존하고 준비 성공 뒤에만 옛 안내 자원을 정리한다. 실제 React 표시·Copy·/exit 연결과 vendor·Windows/WSL 실측 여부는 W11에서 구분해 검증한다.
 
 ### {W7}
 
-- 선행 충족: W6의 구현·서버 검증 완료. Stage6 연결 검증은 선행 조건이 아니며 W8에서 수행한다. 참조: Host spec의 전체 restart 구성과 탭·stop/delete 종료 경계, Runtime CLI와 Web UX.
+- 선행 충족: W6의 구현·서버 검증 완료. Stage6 연결 검증은 선행 조건이 아니며 W11에서 수행한다. 참조: Host spec의 전체 restart 구성과 탭·stop/delete 종료 경계, Runtime CLI와 Web UX.
 - 전체 restart는 config/YAML 전체 사전 검증 뒤 실행을 교체한다. 읽기·검증 실패는 CLI 오류이며 기존 실행·정책·화면을 그대로 둔다. 과거 설정으로 새 실행을 만드는 fallback이 아니다. 같은 Host는 최신 전체 구성과 route를 적용한다. host.name 변경은 기존 Host를 남기고 별도 Host/panel/Network를 실행한다.
 - 같은 Agent key의 재사용 가능한 자리는 유지한다. 새 key는 추가하고 제거된 key는 종료한다. 이름 변경은 삭제+추가다. 제거된 Agent 전용 shell 또는 stopped 안내 뒤 shell은 종료 확인 후 탭과 함께 제거한다. 이미 일반 shell로 복귀한 탭과 사용자 추가 shell은 보존한다. 현재 pane 배치를 초기 preset으로 되돌리지 않는다.
 - Host stop은 관리 YAML Agent 프로세스와 필수 부속 실행을 종료하며 shell·panel·Network·적용 정책을 유지한다. 실행 credential·binding·활성 membership은 정리한다. delete는 busy/idle에 관계없이 panel 소유 프로세스와 사용자 shell의 작업까지 종료 확인 후 Host·panel·Network를 제거한다. 외부 terminal·다른 Host·YAML·프로젝트 파일은 건드리지 않는다.
 - stop/status/delete는 `[hostname]` 직접 지정 시 YAML 없이 등록 Host를 선택하고, 생략하면 YAML 선택 규칙을 따른다. delete의 hostname과 `--file` 동시 지정은 거절한다. 옛 Host·파일이 사라진 Host도 이름으로 조회·제어할 수 있어야 한다. list/status가 실제 실행과 적용 구성을 보고하도록 마무리한다.
-- 완료 조건: 사전 오류 보존, Host 이름 변경, Agent 증감, 사용자 shell 보존과 delete 정리 범위, 종료 실패 진단·재시도 가능한 대상 유지를 검증한다. 신호 전송만으로 panel을 먼저 없애지 않는다. CLI·daemon 경로로 검증하며 실제 Stage6 화면 연결은 W8에서 확인한다.
+- 완료 조건: 사전 오류 보존, Host 이름 변경, Agent 증감, 사용자 shell 보존과 delete 정리 범위, 종료 실패 진단·재시도 가능한 대상 유지를 검증한다. 신호 전송만으로 panel을 먼저 없애지 않는다. CLI·daemon 경로로 검증하며 실제 Stage6 화면 연결은 W11에서 확인한다.
 
 ### {W8}
 
-- 선행: W5~W7의 구현·CLI·daemon 검증 완료 및 Stage6의 실제 API 연결 준비. W5의 최초 React Hosts panel 표시·TUI 입출력, W6의 제어 결과·stopped 표시, W7의 전체 수명·구성 변경 결과를 실제 화면에서 확인한다. Host·Runtime·설정/Web UX를 CLI→daemon→저장/관측→Web 표시까지 한 흐름으로 대조하며, backend 성공만으로 React 연결 완료라 보고하지 않는다.
+- 선행: W7 완료·커밋. 서비스 전체의 서버 측 진단을 대상으로 daemon·CLI·공유 패키지의 실제 로그 producer/consumer를 조사하고 Pino로 전환한다. React에 서버 로거를 도입하는 작업은 아니다.
+- daemon의 요청 접수·실행 준비·종료·실패를 requestId·operationId·hostId·agentKey 등 해당 경로에 존재하는 식별자로 연결한다. 기존 daemon.log 저장·조회·daemon 시작 실패 진단 경로를 유지하고 중복 출력은 제거한다.
+- CLI 사용자 결과·--json·help·TUI/PTY 출력·MCP 프로토콜 stdout은 진단 로그와 구분한다. token·credential·전체 환경변수·터미널 본문은 로그 입력에서 제외하고 필요한 민감 필드 redaction을 적용한다. Operation/SSE의 사용자 결과 전달을 로그로 대체하지 않는다.
+- 범용 Logger 추상화·로그 서버·불필요한 transport 계층을 추가하지 않는다. 종료 시 진단 유실·중복 여부와 실제 파일/출력 경로를 검증한다.
+- 완료 조건: 대상 진단 경로 전환, 연결 식별자·오류 직렬화·민감정보 제외, CLI JSON/MCP/TUI 출력 보존과 daemon 로그 조회를 테스트하고 관련 owner의 실제 구현 설명을 갱신한다.
+
+### {W9}
+
+- 선행: W8. 서비스의 수동 HTTP 라우팅·요청/응답·공통 오류 처리를 Hono로 전환한다. Host뿐 아니라 일반 Network·Agent·terminal·config·notification·Operation·정적 Web 제공과 MCP HTTP 진입 경계를 조사한다. SDK가 소유하는 MCP 프로토콜 구현은 재작성하지 않는다.
+- 기존 API path/method/status/body·공개 protocol DTO·CLI/React 소비 계약을 유지한다. config → YAML → CLI → 환경/대상 검증 순서, 요청 크기·origin·인증, 실제 완료·실패와 재시도 계약을 보존한다.
+- SSE snapshot → state의 누락 없는 초기/재접속 전달과 느린 연결의 backpressure·종료 처리를 검증한다. 기존 terminal WebSocket/PTY의 입출력·resize·복구·수명 경로는 재사용하고 Hono HTTP 전환 때문에 재생성하지 않는다. WS 라이브러리 교체 자체는 목표가 아니다.
+- 완료 조건: 실제 CLI/HTTP/MCP/SSE/WS 회귀와 정적 Web 제공·daemon 시작/종료 검증, 대체된 수동 HTTP 코드 제거, Pino 진단 연결 및 owner 반영. Stage6의 화면 구현 완료를 선행 조건으로 두지 않는다.
+
+### {W10}
+
+- 선행: W9. packages/persistence 전체의 TypeORM 저장 구현을 Drizzle로 교체한다. Host·Agent 정의/실행 이력·panel·Network/route·Operation뿐 아니라 일반 Network·메시지·delivery·notification·보존 기간 정리까지 포함한다. better-sqlite3와 기존 persistence 공개 인터페이스를 유지한다.
+- schema 기반 타입을 사용하고 중복 Row/Entity 정의와 TypeORM 의존성을 제거한다. transaction·FK/cascade·uniqueness·revision/requestId 충돌·직렬화·실패 재시도와 이력 보존을 유지한다. 드라이버의 동기 transaction 경계를 확인하며 기존 async 호출 계약을 무조건 transaction callback 안으로 옮기지 않는다.
+- 첫 배포 전 정책대로 빈 DB를 현재 schema로 직접 초기화한다. 과거 개발 DB migration/backfill/legacy fallback·startup 자동 reset은 만들지 않으며 사용자 DB 삭제는 이번 전환에 포함하지 않는다.
+- 완료 조건: 저장·조회·재오픈·rollback·삭제 범위·경쟁/재시도·이력 보존과 daemon/CLI 통합 회귀, TypeORM 참조/의존성 제거, 현재 schema와 owner 설명 정합화. 전환 후 실제 성능 향상은 측정 없이 주장하지 않는다.
+
+### {W11}
+
+- 선행: W5~W10의 구현·CLI·daemon 검증 완료 및 Stage6의 실제 API 연결 준비. W5의 최초 React Hosts panel 표시·TUI 입출력, W6의 제어 결과·stopped 표시, W7의 전체 수명·구성 변경 결과를 실제 화면에서 확인한다. Host·Runtime·설정/Web UX를 CLI→daemon→저장/관측→Web 표시까지 한 흐름으로 대조하며, backend 성공만으로 React 연결 완료라 보고하지 않는다.
 - 검증: 최초 run·config/YAML 오류, 개별/전체 restart·stop·delete, /exit·Copy·실패 표시, 사용자 변경 배치에서의 새 Agent 추가, 브라우저 재접속, 실제 terminal 입력/출력·resize·shell 생존. 반복 이동 stress 검증은 추가하지 않는다.
 - stopped ×는 기반 shell·탭 정리, running Agent ×는 확인과 종료 검증, 마지막 탭은 빈 pane/panel과 [+] 유지라는 UI 계약을 Stage6와 대조한다. UI 구현 자체는 Stage6 담당 범위다.
 - OS별 공통 로직과 기존 지원 경계를 확인하고 실제 실행한 플랫폼·미실측 범위를 구분해 보고한다. 검증 결과와 변경된 owner 문서를 맞추고 모든 완료 조건이 충족된 뒤 로그 종료를 판단한다.
@@ -389,3 +415,40 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 - 저장: 생성과 교체가 같은 검증·transaction을 공유한다. 현재 Host/panel revision을 확인하고 기존 ID·createdAt과 이력을 유지하며 적용 구성을 교체한다. 직렬 DB wrapper도 연결했다. stale revision 거절·snapshot 보존, 구성 교체·삭제 후 DB 재오픈, terminal 참조가 남은 삭제 거절을 검증했다. 개발 DB 호환 계층·migration·추가 의존성은 추가하지 않았다.
 - 검증: 신규 조회·제어·restart의 RED를 확인한 뒤 구현했다. 실제 macOS PTY·빌드 CLI·HTTP/WS/SSE와 vendor 대역으로 YAML 오류 시 기존 Runtime/DB 보존, key 증감·Network 교체·같은 자리 재사용, 제거 shell 종료 실패 후 재시도, /exit과 같은 일반 shell 상태 보존, 호출 shell 내부 restart, YAML 삭제 후 이름 stop/status/delete, 삭제 실패 보존·재시도·다른 terminal/Host 격리를 확인했다. 최종 전체 pnpm check exit 0: lint·format·build·typecheck와 62개 파일·733개 테스트. 이후 실행 중 Agent에 과거 종료 메시지가 붙지 않게 출력 한 줄을 정리하고 영향받는 CLI 41개 회귀·CLI build·format 및 빌드 daemon/CLI Node import를 다시 통과했다. 문서 wikilink 대상·git diff 검사도 통과했다.
 - owner·완료: docs/architecture/aiox-system.md와 docs/architecture/aiox-storage-terminal.md의 현재 구현 범위·전체 제어·원자적 저장 책임을 맞췄다. W7 완료, 다음은 W8에서 Stage6 준비 상태에 맞춰 실제 React 연결·TUI UX를 검증한다. 실제 vendor·React·Windows/WSL 검증 완료를 주장하지 않는다. Stage6 로그·apps/web·plan·사용자 DB·architecture.excalidraw는 수정하지 않았고 commit/push는 하지 않았다.
+
+## 2026-09-22 · W7 커밋 및 서비스 기반 전환 순서 확정
+
+- 사용자 요청으로 리뷰한 W7 전체 제어·구성 교체와 테스트·owner·로그를 먼저 커밋했다. 커밋은 `fd7a317` (`feat(host): implement W7 whole-host lifecycle controls`)이며 푸시는 하지 않았다.
+- 사용자 승인: W8 Pino → W9 Hono → W10 Drizzle로 서비스 전체의 서버 측 진단·HTTP·저장 계층을 전환한다. 기존 W8의 Stage6 실제 연결·통합 검증은 W11로 이동한다. 앞선 History의 W8은 당시 통합 검증 번호이며 현재 재개 기준은 위 Work Items/Required Context다.
+- 범위: React는 기존 API 소비 계약을 유지한다. SSE/terminal WS·PTY·MCP의 동작과 CLI 사용자 출력을 보존하고, TypeORM은 persistence 전체에서 Drizzle로 교체한다. 라이브러리 도입 자체와 실제 정책/통합 검증 완료를 구분한다.
+- 현재 W8이 다음 작업이다. 이번에는 커밋과 작업 구조만 갱신했으며 Pino/Hono/Drizzle 구현·의존성 설치는 시작하지 않았다. 기존 owner의 현재 구현 설명은 각 전환 완료 시 갱신한다.
+
+## 2026-09-22 · W8 서비스 진단 로그 전환 착수
+
+- 요청: 서비스 전체 서버 측 진단을 Pino로 전환하고 CLI JSON·MCP stdout·TUI/PTY·사용자 오류 안내를 보존한다. 연결 식별자·오류 직렬화·민감정보 제외·종료 처리를 검증한다. W9/W10, commit/push는 수행하지 않는다.
+- 확인: CLI start가 daemon stdout/stderr를 `~/.aiox/daemon.log` append fd로 연결하고 tail/log 조회가 마지막 줄을 그대로 읽는다. daemon·Claude binding·terminal 공통 구현에 console/stderr 진단이 있으며 CLI 안내·vendor foreground 출력과 구분해야 한다.
+- 진행: 공통 Pino 설정을 직접 공유하고 실제 파일/프로세스 출력과 기존 실패·재시도·정리 경로를 검증한다. 기존 로그 변경은 보존한다. W8 완료 여부는 검증 후 판단한다.
+
+## 2026-09-22 · W8 Pino 전환·검증 완료
+
+- 생산·저장·조회 확인: daemon·메시지 저장 재시도·Agent 정리·Claude 관측·terminal 정리의 기존 console/stderr 진단을 전환했다. CLI start의 append fd → `~/.aiox/daemon.log` → 시작 실패 시 마지막 20줄 조회 경로를 유지했다. CLI 안내·foreground 오류·Host shell OSC 오류·Claude hook 안내·harness 사용 안내는 사용자 출력이므로 기존 경로를 보존했다. MCP는 기존 HTTP 응답 경로를 유지한다.
+- 구현: `@aiox/diagnostics`는 Pino 10.3.1 인스턴스를 직접 공유하며 별도 Logger interface·transport worker를 두지 않는다. 동기 stderr JSONL을 사용한다. HTTP 접수/실패는 서버 생성 x-request-id, Host Operation 접수/완료·저장 실패는 requestId/operationId/hostId, Agent 준비/ready/정리와 저장·terminal 진단은 해당 runtimeId/deliveryId/terminalId로 연결한다. main의 중복 시작 안내를 제거하고 시작 실패도 구조화했다.
+- 민감정보·종료: 고정 설명·허용 필드만 기록하고 Error는 유형과 제한된 OS/SQLite 코드만 직렬화한다. 임의 error message/stack/cause/속성·token·환경·body·URL·vendor/PTY 본문은 제외한다. 기존 HTTP·Operation/SSE·CLI 사용자 오류와 재시도 정책은 유지한다. 정상 종료는 최종 기록과 flush 뒤 closed를 완료한다.
+- 검증: 미구현 diagnostic 모듈 테스트와 기존 저장 재시도의 Pino 호출 누락 RED를 확인한 뒤 구현했다. 실제 자식 프로세스의 stderr JSONL/깨끗한 stdout, append 파일의 즉시 exit 전 마지막 기록, 준비 입력 오류의 exit 1, 실제 daemon의 SIGTERM/HTTP 종료·시작/종료 기록 각 1회·MCP 인증 오류 보존·민감정보 제외·HTTP 식별자 연결을 검증했다. 기존 PTY 원시 byte/foreground 테스트에 준비 진단 연결을 확인했고 Host Operation 식별자와 CLI 시작 실패 tail도 검증했다.
+- 전체 검증: macOS arm64 / Node v24.14.0에서 `pnpm check` 성공(lint·format·build·typecheck, 839 tests). 완료 대조에서 접수/준비·Operation 저장 실패 진단을 추가한 뒤 root lint/format, daemon build/typecheck 및 daemon 265 tests를 다시 통과했다. markdown inline-code 검사와 git diff --check도 통과했다. 초기 sandbox loopback EPERM은 허용된 실행으로 재검증했다. 실제 vendor·React·Windows/WSL 실측을 완료했다고 주장하지 않는다.
+- Owner: system architecture의 서비스 진단 로그 책임·경계와 storage-terminal의 저장 실패/복구 진단 설명을 갱신했다. W8 완료, 다음 포인터는 W9이며 Hono·Drizzle 구현은 착수하지 않았다. 기존 Stage5 로그 변경을 보존했고 Stage6·apps/web·plan·사용자 DB·architecture.excalidraw는 수정하지 않았다. commit/push 없음.
+
+## 2026-09-23 · W8 진단 누락·안전성 보완 착수
+
+사용자 지적 4건을 코드에서 확인했다. Codex App Server 종료 원문 진단, 시작 실패 원인 분류 손실, HTTP/Operation requestId 의미 충돌, 일반 Agent 준비 실패·timeout 진단 누락을 W8 범위에서 재현·수정·검증한다. W9·W10은 착수하지 않는다.
+
+## 2026-09-23 · W8 진단 오류·누락 4건 보완 완료
+
+- 사용자 지적 네 건을 모두 확인하고 수정했다. Codex App Server 종료는 vendor 원문 stderr 출력을 제거하고 Pino component·exitCode·signal만 기록한다. 기존 token 마스킹 사용자 오류·Relay 실패 전달은 유지한다. daemon의 잘못된 포트는 EINVALIDPORT·arguments stage·검증된 옵션 field를 남기고 입력값은 제외한다.
+- HTTP requestId와 Operation 입력 멱등 키(operationRequestId)를 로그에서 구분했다. run/restart·개별 Agent 명령·전체 stop/delete의 최초 접수, 저장 경쟁과 재요청 접수 모두 두 ID와 operationId를 연결하며 완료·저장 실패에도 기록한다. Agent 공통 실패 경로는 PTY 보존 분기 전에 preparation_failed/preparation_timeout 등 고정 분류와 runtimeId·조회용 terminalId를 기록한다. 테스트로 기존 session.id가 Runtime 조회 terminalId와 달랐음을 확인해 준비/실패/정리 진단도 일치시켰다.
+- 검증: 잘못된 포트의 코드·stage·field 누락 RED 확인 후 수정했다. 초기 loopback sandbox EPERM 및 승인 실행 환경의 Node ABI 불일치는 Node 24.14.0 명시로 해소했다. 대상 daemon 55개·Codex 2개 통과 후 pnpm check(lint·format·build·typecheck·전체 741개 테스트, daemon 267개) 통과. CLI JSON·MCP·HTTP·PTY·파일 JSONL·종료 동작의 기존 회귀를 포함한다. 이전 완료 보고의 전체 839개 표기는 집계 오류였다(당시 패키지별 수의 합은 739개); 이번 전체 실행은 패키지별 결과를 합산해 741개로 확인했다. git diff --check와 Markdown inline-code 검사도 통과했다.
+- owner는 System architecture의 서비스 진단 절과 Vendor bindings의 App Server 경계에 반영했다. 기존 사용자 변경을 보존했으며 W9·W10 미착수, 실제 vendor/React/Windows/WSL 추가 실측과 commit/push는 하지 않았다. W8 보완을 완료하고 다음 재개점은 W9로 복원한다. 완료 항목 재개는 log 도구가 지원하지 않아 W8 재개 marker만 직접 수정했고 완료 전이는 도구로 수행한다.
+
+## 2026-09-23 · W8 커밋 요청
+
+- 사용자 요청으로 W8 Pino 전환과 진단 오류·누락 4건 보완의 구현·테스트·owner 문서·작업 로그를 하나의 커밋으로 묶는다. 직전 pnpm check의 전체 741개 테스트 통과 결과를 사용하며 이후 production 변경은 없다. W9·W10은 미착수이고 push는 요청 범위에 없다.

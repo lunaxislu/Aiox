@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
+import { logger } from "@aiox/diagnostics";
 import {
     hostViewSchema,
     terminalContextFromEnv,
@@ -155,6 +156,7 @@ beforeEach(async () => {
 });
 
 test("forwards startup bytes emitted before start resolves exactly once without replay", async () => {
+    const diagnostic = vi.spyOn(logger, "info");
     const webInput = webFrame();
     const create = vi.mocked(terminals.createTerminal).getMockImplementation()!;
     vi.mocked(terminals.createTerminal).mockImplementationOnce((options) => {
@@ -183,6 +185,12 @@ test("forwards startup bytes emitted before start resolves exactly once without 
         );
         expect(messages[1]!.data.toString()).toBe("LIVE");
         expect(messages.every((item) => item.binary)).toBe(true);
+        expect(diagnostic).toHaveBeenCalledWith(
+            expect.objectContaining({
+                runtimeId: harness.daemon.services.runtimes.list()[0]!.id,
+            }),
+            "Agent execution preparing",
+        );
     } finally {
         socket.terminate();
     }
@@ -1309,11 +1317,12 @@ test("external disconnect logs cleanup failure without private details and retai
     const cleanup = vi
         .spyOn(binding, "cleanup")
         .mockRejectedValueOnce(new Error(prepared.launch.env.AIOX_HOOK_TOKEN));
-    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     try {
         socket.terminate();
         await vi.waitFor(() =>
             expect(diagnostic).toHaveBeenCalledWith(
+                expect.objectContaining({ runtimeId }),
                 "Agent collaboration cleanup remains unconfirmed after connection loss.",
             ),
         );
@@ -1729,6 +1738,7 @@ test("keeps Web execution and registration after relay loss and restores the sam
 });
 
 test("Web collaboration timeout revokes only collaboration and retains its usable relay until explicit cleanup", async () => {
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     const input = webFrame();
     const timers = vi.spyOn(globalThis, "setTimeout");
     const { socket } = await connect(input);
@@ -1755,6 +1765,15 @@ test("Web collaboration timeout revokes only collaboration and retains its usabl
         });
     });
     expect(cleanup).toHaveBeenCalledWith("collaboration_lost");
+    expect(diagnostic).toHaveBeenCalledWith(
+        {
+            runtimeId: record.id,
+            terminalId: record.terminalId,
+            hostId: undefined,
+            failureCode: "preparation_timeout",
+        },
+        "Agent collaboration failed",
+    );
     expect(vendor.session.kill).not.toHaveBeenCalled();
     expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.send(Buffer.from("still usable"));
@@ -1772,6 +1791,7 @@ test("Web collaboration timeout revokes only collaboration and retains its usabl
 });
 
 test("a failure after Web PTY creation retains the same vendor for recovery and natural-exit cleanup", async () => {
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     let fail!: (error: Error) => void;
     holdStart = new Promise<void>((_resolve, reject) => {
         fail = reject;
@@ -1785,6 +1805,15 @@ test("a failure after Web PTY creation retains the same vendor for recovery and 
         expect(record.binding.collaborationError).toBe(
             "post-spawn preparation failed",
         ),
+    );
+    expect(diagnostic).toHaveBeenCalledWith(
+        {
+            runtimeId: record.id,
+            terminalId: record.terminalId,
+            hostId: undefined,
+            failureCode: "preparation_failed",
+        },
+        "Agent collaboration failed",
     );
     expect(record.binding.relayDisconnected).toBe(true);
     expect(record.collaborationActive).toBe(false);
@@ -2031,6 +2060,7 @@ test("managed collaboration timeout preserves execution and shell while revoking
         deadline();
         await vi.waitFor(() => {
             expect(cleanup).toHaveBeenCalledWith("collaboration_lost");
+
             expect(record.collaborationActive).toBe(false);
         });
         expect(
