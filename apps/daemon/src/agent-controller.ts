@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
+    type LastExit,
     agentRunSchema,
     externalAgentClientFrameSchema,
     externalAgentRunSchema,
@@ -28,6 +29,8 @@ import type { Daemon } from "@/daemon";
 import { readJson } from "@/http";
 import { bearerToken } from "@/mcp";
 import { collaborationInstruction } from "@/messaging";
+
+import { managedLaunch } from "./managed-agents";
 
 const resizeSchema = z.strictObject({
     type: z.literal("resize"),
@@ -106,6 +109,9 @@ export class AgentController {
         let preparingExecution: Promise<VendorExecution> | undefined;
         let startingExecution: Promise<ExecutionProcess> | undefined;
         let session: TerminalSession | undefined;
+        let hostId: string | undefined;
+        let exitRecord: LastExit | undefined;
+        let stopping = false;
         const send = (frame: object) => {
             if (socket.readyState === socket.OPEN)
                 socket.send(JSON.stringify(frame));
@@ -189,6 +195,14 @@ export class AgentController {
                     }
                 })();
             }
+            if (message && hostId) {
+                collaborationError = message;
+                exitRecord ??= {
+                    kind: "start-failed",
+                    message,
+                    at: Date.now(),
+                };
+            }
             finishing ??= (async () => {
                 ended = true;
                 clear();
@@ -217,12 +231,26 @@ export class AgentController {
             if (ended) return;
             // Revoke immediately, but let this path return the outcome before closing.
             ended = true;
+            if (hostId && !stopping && !exitRecord)
+                exitRecord = {
+                    kind: !binding?.wasReady
+                        ? "start-failed"
+                        : exit.exitCode === 0 && exit.signal === null
+                          ? "exited"
+                          : "crashed",
+                    message: !binding?.wasReady
+                        ? "Vendor exited before collaboration became ready."
+                        : exit.exitCode === 0 && exit.signal === null
+                          ? null
+                          : `Vendor exited with code ${exit.exitCode}, signal ${exit.signal}.`,
+                    at: Date.now(),
+                };
             this.daemon.services.runtimes.revoke(runtimeId!);
             try {
                 await binding?.processExited(exit.exitCode, exit.signal);
             } finally {
                 await finish(
-                    binding?.wasReady
+                    binding?.wasReady || stopping
                         ? undefined
                         : "Vendor exited before collaboration became ready. Check the vendor startup output and try again.",
                     exit,
@@ -274,29 +302,48 @@ export class AgentController {
                     throw new Error(
                         "Cannot start agent: invalid launch request.",
                     );
-                const input = parsed.data;
-                const webInput = external
+                let input = parsed.data;
+                let webInput = external
                     ? undefined
                     : agentRunSchema.parse(input);
                 if (webInput && !webInput.terminalContext)
                     throw new Error(
                         "Web foreground requires authenticated terminal context.",
                     );
-                if (webInput)
+                if (
+                    external &&
+                    (input.env.AIOX_HOST_ID !== undefined ||
+                        input.env.AIOX_AGENT_KEY !== undefined)
+                )
+                    throw new Error(
+                        "Managed Agent requires authenticated terminal context.",
+                    );
+                if (webInput) {
+                    const managed = await managedLaunch(
+                        this.daemon.services,
+                        webInput,
+                    );
+                    webInput = managed.input;
+                    input = webInput;
+                    hostId = managed.host?.id;
                     dimensions = { cols: webInput.cols, rows: webInput.rows };
+                }
                 const adapter = selectVendor(this.adapters, input.adapter);
                 const networkId =
                     input.network === undefined
                         ? null
-                        : (
-                              await this.daemon.services.networks.require(
-                                  input.network,
-                              )
-                          ).id;
+                        : hostId
+                          ? input.network
+                          : (
+                                await this.daemon.services.networks.require(
+                                    input.network,
+                                )
+                            ).id;
                 if (ended) return;
                 // The owner scope exists before resource acquisition; failed preparation remains retryable.
                 const registration = await this.daemon.registerRuntime({
                     networkId,
+                    ...(hostId === undefined ? {} : { hostId }),
                     executionOwnership: external ? "external" : "daemon",
                     ...(input.name === undefined ? {} : { name: input.name }),
                     ...(input.role === undefined ? {} : { role: input.role }),
@@ -310,6 +357,9 @@ export class AgentController {
                         runtimeId = controls.runtimeId;
                         controlsForBinding = controls;
                         return {
+                            get exit() {
+                                return exitRecord;
+                            },
                             get terminal() {
                                 return session;
                             },
@@ -330,6 +380,7 @@ export class AgentController {
                             mcpConnected: () => binding?.mcpConnected(),
                             revoke: clear,
                             stop: async () => {
+                                stopping = true;
                                 await owner?.stop();
                                 await preparingExecution?.catch(() => {});
                                 await startingExecution?.catch(() => {});
@@ -383,6 +434,7 @@ export class AgentController {
                 );
                 binding.onReleased = released;
                 binding.onReady = () => {
+                    this.daemon.services.runtimes.ready(runtimeId!);
                     clearTimeout(timer);
                     if (
                         !ended &&

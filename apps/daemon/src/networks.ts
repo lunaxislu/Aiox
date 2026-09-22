@@ -154,6 +154,27 @@ export class NetworkService {
 
     /** The routing snapshot a send or discovery call is judged against. */
     async effective(networkId: string): Promise<Network> {
+        const managed = (await this.db.hostState.snapshot()).networks.find(
+            (n) => n.id === networkId,
+        );
+        if (managed) {
+            const members = this.runtimes
+                .inNetwork(networkId)
+                .filter(
+                    (r) => r.collaborationActive && r.hostId === managed.hostId,
+                );
+            return {
+                id: networkId,
+                defaultPolicy: managed.default,
+                routes: managed.edges.flatMap((edge) => {
+                    const from = members.find((r) => r.name === edge.from),
+                        to = members.find((r) => r.name === edge.to);
+                    return from && to
+                        ? [{ from: from.id, to: to.id, policy: edge.policy }]
+                        : [];
+                }),
+            };
+        }
         const network = await this.require(networkId);
         return {
             id: network.id,

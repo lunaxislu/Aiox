@@ -8,6 +8,8 @@ import {
     type PanelView,
     type Operation,
     type PanelLayout,
+    lastExitSchema,
+    type LastExit,
 } from "@aiox/protocol";
 import { IsNull, LessThan, type DataSource, type EntityManager } from "typeorm";
 
@@ -45,6 +47,18 @@ export type HostStateSnapshot = {
 };
 export interface HostState {
     snapshot(): Promise<HostStateSnapshot>;
+    startExecution(input: {
+        runtimeId: string;
+        hostId: string;
+        agentKey: string;
+        terminalId: string;
+        startedAt: number;
+    }): Promise<void>;
+    finishExecution(
+        runtimeId: string,
+        exit: LastExit,
+        restartCommand: string,
+    ): Promise<void>;
     removeTerminal(id: string): Promise<void>;
     deletePanel(id: string, expectedRevision: number): Promise<void>;
     createPanel(panel: PanelView): Promise<void>;
@@ -221,6 +235,116 @@ export function hostState(dataSource: DataSource): HostState {
     }
     return {
         snapshot,
+        async startExecution(input) {
+            await dataSource.transaction(async (manager) => {
+                const panel = await manager.findOneBy(PanelEntity, {
+                    hostId: input.hostId,
+                });
+                const agent = await manager.findOneBy(HostAgentEntity, {
+                    hostId: input.hostId,
+                    agentKey: input.agentKey,
+                });
+                const tab =
+                    panel &&
+                    (await manager.findOneBy(PanelTabEntity, {
+                        panelId: panel.id,
+                        terminalId: input.terminalId,
+                        agentKey: input.agentKey,
+                    }));
+                if (!agent || !tab)
+                    throw new Error(
+                        "Managed Agent does not own this panel terminal.",
+                    );
+                if (
+                    await manager.findOneBy(HostExecutionEntity, {
+                        hostId: input.hostId,
+                        agentKey: input.agentKey,
+                        endedAt: IsNull(),
+                    })
+                )
+                    throw new Error(
+                        "Managed Agent already has an execution awaiting cleanup.",
+                    );
+                await manager.insert(HostExecutionEntity, {
+                    ...input,
+                    endedAt: null,
+                    exitJson: null,
+                });
+                await manager.update(
+                    HostAgentEntity,
+                    { hostId: input.hostId, agentKey: input.agentKey },
+                    { lastTerminalId: input.terminalId },
+                );
+                await manager.update(
+                    PanelTabEntity,
+                    { id: tab.id },
+                    { presentation: "preparing", noticeJson: null },
+                );
+                await manager.increment(
+                    PanelEntity,
+                    { id: panel!.id },
+                    "revision",
+                    1,
+                );
+            });
+        },
+        async finishExecution(runtimeId, input, restartCommand) {
+            const exit = lastExitSchema.parse(input);
+            await dataSource.transaction(async (manager) => {
+                const execution = await manager.findOneBy(HostExecutionEntity, {
+                    runtimeId,
+                    endedAt: IsNull(),
+                });
+                if (!execution) return;
+                await manager.update(
+                    HostExecutionEntity,
+                    { runtimeId },
+                    { endedAt: exit.at, exitJson: json(exit) },
+                );
+                await manager.update(
+                    HostAgentEntity,
+                    { hostId: execution.hostId, agentKey: execution.agentKey },
+                    { lastExitJson: json(exit) },
+                );
+                const panel = await manager.findOneBy(PanelEntity, {
+                    hostId: execution.hostId,
+                });
+                const tab =
+                    panel &&
+                    (await manager.findOneBy(PanelTabEntity, {
+                        panelId: panel.id,
+                        terminalId: execution.terminalId,
+                        agentKey: execution.agentKey,
+                    }));
+                if (!tab) return;
+                await manager.update(
+                    PanelTabEntity,
+                    { id: tab.id },
+                    {
+                        presentation:
+                            exit.kind === "exited"
+                                ? "shell"
+                                : exit.kind === "daemon-ended"
+                                  ? "unavailable"
+                                  : exit.kind,
+                        noticeJson:
+                            exit.kind === "exited"
+                                ? null
+                                : json({
+                                      message: exit.message ?? "Agent stopped.",
+                                      reason: exit.kind,
+                                      restartCommand,
+                                  }),
+                    },
+                );
+                await manager.increment(
+                    PanelEntity,
+                    { id: panel!.id },
+                    "revision",
+                    1,
+                );
+            });
+        },
         async removeTerminal(id) {
             await dataSource.transaction(async (manager) => {
                 const tab = await manager.findOne(PanelTabEntity, {

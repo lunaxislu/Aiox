@@ -21,6 +21,15 @@ import { handleStateApi } from "./state-api";
 import { networkView, agentView, terminalView } from "./web-state";
 
 const MAX_BODY = 1_000_000;
+async function networkNames(
+    services: DaemonServices,
+): Promise<Map<string, string>> {
+    const persistent = await services.networks.list();
+    const { networks: managed } = await services.db.hostState.snapshot();
+    return new Map(
+        [...persistent, ...managed].map(({ id, name }) => [id, name]),
+    );
+}
 
 export async function readJson(request: IncomingMessage): Promise<unknown> {
     const chunks: Buffer[] = [];
@@ -135,12 +144,7 @@ export function createApiHandler(services: DaemonServices) {
                     message: error.message,
                 });
             } else if (error instanceof AmbiguousRuntimeError) {
-                const names = new Map(
-                    (await services.networks.list()).map(({ id, name }) => [
-                        id,
-                        name,
-                    ]),
-                );
+                const names = await networkNames(services);
                 send(response, 409, {
                     code: "ambiguous_agent",
                     message: error.message,
@@ -377,9 +381,7 @@ async function route(
             network === null
                 ? null
                 : ((await networks.find(network))?.id ?? network);
-        const names = new Map(
-            (await networks.list()).map(({ id, name }) => [id, name]),
-        );
+        const names = await networkNames(services);
         const views = runtimes
             .list()
             .filter(
@@ -399,9 +401,7 @@ async function route(
         const record = runtimes.find(decodeURIComponent(agentMatch[1]!));
         if (!record?.collaborationActive)
             throw new HttpError(404, "unknown_agent", "No such agent.");
-        const names = new Map(
-            (await networks.list()).map(({ id, name }) => [id, name]),
-        );
+        const names = await networkNames(services);
         send(response, 200, agentView(record, names));
         return;
     }

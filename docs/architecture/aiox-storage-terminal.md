@@ -530,13 +530,33 @@ Operation 접수 뒤 기존 TerminalService로 실행하고 결과를 durable �
 미완료 Operation·실행 이력을 정산하며 없는 terminal의 tab을 unavailable로 표시한다.
 
 완료 Operation과 종료 이력은 보존 기간 이후 정리하되 cleanup 오류가 남은 Operation은 보존한다.
-Host resolve는 공통 config/YAML 준비를 소비한다. Host 실행·제어와 관리 Runtime 합성은 W4~W7,
+Host resolve는 공통 config/YAML 준비를 소비한다. 공개 Host run·제어 조정은 W5~W7,
 실제 React 연결은 Stage6·W5 이후 범위다.
 
 근거: [[packages/persistence/src/sqlite/host-schema.ts]],
 [[packages/persistence/src/sqlite/host-state.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]],
 [[apps/daemon/src/state-api.ts]], [[apps/daemon/src/panel-operations.ts]],
 [[apps/daemon/src/panel-operations.test.ts]], [[apps/daemon/src/terminals.ts]].
+
+### 관리 실행 이력과 live projection [Status: As-built]
+
+관리 Runtime 연결 시 실행 이력 시작·Agent의 lastTerminalId·tab의 preparing 표시를 같은
+transaction으로 저장한다. 해당 Host/key의 미정산 실행이 있으면 중복 실행을 거절한다.
+종료 확인과 binding·membership 정리 뒤 실행 이력 종료·lastExit·tab 표시를 원자적으로 저장한다.
+저장이 실패하면 Runtime 등록을 남겨 재시도하며 완료된 이전 실행의 지연 종료는 다음 실행을
+덮어쓰지 않는다. 정상 종료는 shell 표시, 명시 stop·시작 실패·비정상 종료는 원인과 재시작 명령을
+담은 안내다. shell 자체가 종료되어 tab이 없어져도 관리 Agent와 종료 이력은 유지한다.
+
+HTTP와 SSE는 같은 `projectHostState`를 사용한다. Host의 runtime/phase, Network의 live
+membership/edge ID, panel의 runtimeId·preparing/TUI 표시는 실제 RuntimeRegistry에서 합성하며
+저장된 이력을 생존 증거로 사용하지 않는다. 재시작 정산 후 unavailable 안내의 명령도 적용된
+Host source와 Agent key에서 복원한다. Host 통신 정책은 Agent key로 보존하고 현재 Runtime ID로
+해석하므로 실행 교체나 credential 폐기로 선언된 정책을 삭제하지 않는다.
+
+근거: [[packages/persistence/src/sqlite/host-state.ts]],
+[[packages/persistence/src/sqlite/host-state.test.ts]], [[apps/daemon/src/web-state.ts]],
+[[apps/daemon/src/networks.ts]], [[apps/daemon/src/networks.test.ts]],
+[[apps/daemon/src/agent-controller.test.ts]].
 
 ### 사용자 panel 분류·이름과 외부 실행 귀속 [Status: As-built]
 

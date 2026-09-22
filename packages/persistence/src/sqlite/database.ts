@@ -257,6 +257,10 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
         const state = hostState(dataSource);
         return {
             hostState: {
+                startExecution: (input) =>
+                    run(() => state.startExecution(input)),
+                finishExecution: (id, exit, command) =>
+                    run(() => state.finishExecution(id, exit, command)),
                 removeTerminal: (id) => run(() => state.removeTerminal(id)),
                 snapshot: () => run(() => state.snapshot()),
                 deletePanel: (id, revision) =>

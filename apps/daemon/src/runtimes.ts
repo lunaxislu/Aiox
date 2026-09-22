@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
+import type { LastExit } from "@aiox/protocol";
 import type { TerminalSession } from "@aiox/terminal";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
@@ -10,6 +11,7 @@ export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
  * implementations; Stage 2 exercises the seam with test doubles.
  */
 export type AgentBinding = {
+    readonly exit?: LastExit | undefined;
     readonly terminal?: TerminalSession | undefined;
     readonly relayDisconnected?: boolean;
     readonly collaborationError?: string | undefined;
@@ -35,6 +37,7 @@ export type RuntimeRecord = {
     collaborationActive: boolean;
     terminalId: string | null;
     terminalOwnership: "owned" | "borrowed" | null;
+    phase: "preparing" | "running" | "stopping";
     status: RuntimeStatus;
     status_reason: string | null;
     observation_error: string | null;
@@ -167,6 +170,7 @@ export class RuntimeRegistry {
                 ? (input.terminalOwnership ?? "owned")
                 : null,
             // Not yet a send target: process spawn is not binding readiness.
+            phase: "preparing",
             status: "aiox-preparing",
             status_reason: null,
             observation_error: null,
@@ -204,6 +208,18 @@ export class RuntimeRegistry {
         const token = randomBytes(32).toString("base64url");
         if (record.collaborationActive) this.#tokens.set(token, id);
         return { record, token };
+    }
+
+    ready(id: string): void {
+        const record = this.#runtimes.get(id);
+        if (
+            record &&
+            record.phase === "preparing" &&
+            record.collaborationActive
+        ) {
+            record.phase = "running";
+            this.onChange();
+        }
     }
 
     /** Resolves the authenticated source. A revoked token never resolves. */

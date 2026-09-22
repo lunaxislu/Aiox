@@ -1,7 +1,9 @@
+import type { HostStateSnapshot } from "@aiox/persistence";
 import type { PersistentNetwork } from "@aiox/persistence";
 import type { AgentView, NetworkView, WebSnapshot } from "@aiox/protocol";
 import { webSnapshotSchema } from "@aiox/protocol";
 
+import { restartCommand } from "./managed-agents";
 import type { RuntimeRecord } from "./runtimes";
 import type { DaemonServices } from "./services";
 
@@ -76,10 +78,12 @@ export function terminalView(services: DaemonServices, id: string) {
 export async function readWebSnapshot(
     services: DaemonServices,
 ): Promise<WebSnapshot> {
-    const state = await services.db.hostState.snapshot();
+    const state = projectHostState(
+        await services.db.hostState.snapshot(),
+        services,
+    );
     const networks = await services.networks.list();
     const notifications = await services.db.messages.unreadNotifications();
-    state.panels = projectPanels(state.panels, services);
     const names = new Map(
         [...networks, ...state.networks].map((n) => [n.id, n.name]),
     );
@@ -113,13 +117,104 @@ export function projectPanels(
     const runtimes = services.runtimes.list();
     return panels.map((panel) => ({
         ...panel,
-        tabs: panel.tabs.map((tab) => ({
-            ...tab,
-            runtimeId:
+        tabs: panel.tabs.map((tab) => {
+            const runtime =
                 tab.terminalId === null
-                    ? null
-                    : (runtimes.find((r) => r.terminalId === tab.terminalId)
-                          ?.id ?? null),
-        })),
+                    ? undefined
+                    : runtimes.find((r) => r.terminalId === tab.terminalId);
+            return {
+                ...tab,
+                runtimeId: runtime?.id ?? null,
+                ...(runtime
+                    ? {
+                          presentation:
+                              runtime.phase === "preparing"
+                                  ? ("preparing" as const)
+                                  : ("tui" as const),
+                          notice: null,
+                      }
+                    : {}),
+            };
+        }),
     }));
+}
+
+/** One projection for HTTP reads and SSE snapshot/state; stored history is never live evidence. */
+export function projectHostState(
+    state: HostStateSnapshot,
+    services: DaemonServices,
+): HostStateSnapshot {
+    const runtimes = services.runtimes.list();
+    return {
+        ...state,
+        hosts: state.hosts.map((host) => ({
+            ...host,
+            agents: host.agents.map((agent) => {
+                const runtime = runtimes.find(
+                    (r) => r.hostId === host.id && r.name === agent.key,
+                );
+                return {
+                    ...agent,
+                    runtime: runtime?.terminalId
+                        ? {
+                              id: runtime.id,
+                              terminalId: runtime.terminalId,
+                              phase: runtime.phase,
+                              status: runtime.status,
+                              status_reason: runtime.status_reason,
+                              observation_error: runtime.observation_error,
+                              collaborationActive: runtime.collaborationActive,
+                              collaborationError:
+                                  runtime.binding.collaborationError ?? null,
+                          }
+                        : null,
+                };
+            }),
+        })),
+        networks: state.networks.map((network) => {
+            const runtimeId = (key: string) =>
+                runtimes.find(
+                    (r) =>
+                        r.hostId === network.hostId &&
+                        r.networkId === network.id &&
+                        r.name === key &&
+                        r.collaborationActive,
+                )?.id ?? null;
+            return {
+                ...network,
+                members: network.members.map((member) => ({
+                    ...member,
+                    runtimeId: runtimeId(member.agentKey),
+                })),
+                edges: network.edges.map((edge) => ({
+                    ...edge,
+                    fromRuntimeId: runtimeId(edge.from),
+                    toRuntimeId: runtimeId(edge.to),
+                })),
+            };
+        }),
+        panels: projectPanels(state.panels, services).map((panel) => {
+            const host = state.hosts.find((h) => h.id === panel.hostId);
+            return {
+                ...panel,
+                tabs: panel.tabs.map((tab) => ({
+                    ...tab,
+                    ...(host &&
+                    tab.agentKey &&
+                    tab.notice &&
+                    !tab.notice.restartCommand
+                        ? {
+                              notice: {
+                                  ...tab.notice,
+                                  restartCommand: restartCommand(
+                                      host,
+                                      tab.agentKey,
+                                  ),
+                              },
+                          }
+                        : {}),
+                })),
+            };
+        }),
+    };
 }

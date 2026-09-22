@@ -38,6 +38,7 @@ import type { TerminalOptions } from "@/terminals";
 import { attachTerminal, TerminalService } from "@/terminals";
 import { WebEvents } from "@/web-events";
 
+import { restartCommand } from "./managed-agents";
 import { readWebSnapshot } from "./web-state";
 
 export type DaemonOptions = {
@@ -407,6 +408,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     function stopRuntime(runtimeId: string): Promise<void> {
         const pending = runtimeStops.get(runtimeId);
         if (pending) return pending;
+        const stoppingRecord = runtimes.get(runtimeId);
+        if (stoppingRecord) stoppingRecord.phase = "stopping";
         runtimes.revoke(runtimeId);
         const attempt = Promise.resolve()
             .then(async () => {
@@ -420,6 +423,20 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     await terminals.kill(record.terminalId);
                 await networks.removeRuntimeRoutes(record);
                 await messages.forget(runtimeId);
+                if (record.hostId !== null) {
+                    const host = (
+                        await options.db.hostState.snapshot()
+                    ).hosts.find((h) => h.id === record.hostId);
+                    await options.db.hostState.finishExecution(
+                        record.id,
+                        record.binding.exit ?? {
+                            kind: "stopped",
+                            message: "Agent stopped.",
+                            at: now(),
+                        },
+                        host ? restartCommand(host, record.name) : "",
+                    );
+                }
                 // Registration, credential and membership go together.
                 runtimes.unregister(runtimeId);
                 terminalObservers.get(runtimeId)?.();
@@ -713,6 +730,18 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 )
                     throw new Error("Terminal already has an Agent.");
             }
+            if (
+                input.hostId !== undefined &&
+                runtimes
+                    .list()
+                    .some(
+                        (r) =>
+                            r.hostId === input.hostId && r.name === input.name,
+                    )
+            )
+                throw new Error(
+                    "Managed Agent already has an execution awaiting cleanup.",
+                );
             const registration = runtimes.register({
                 ...input,
                 terminalId,
@@ -720,8 +749,25 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 createBinding: async (controls) => {
                     // Reserve membership before awaiting storage: deletion either
                     // sees this record or precedes this existence check.
-                    if (input.networkId !== null)
-                        await networks.require(input.networkId);
+                    if (input.networkId !== null) {
+                        if (input.hostId === undefined)
+                            await networks.require(input.networkId);
+                        else if (
+                            !(
+                                await options.db.hostState.snapshot()
+                            ).networks.some(
+                                (n) =>
+                                    n.hostId === input.hostId &&
+                                    n.id === input.networkId &&
+                                    n.members.some(
+                                        (m) => m.agentKey === input.name,
+                                    ),
+                            )
+                        )
+                            throw new Error(
+                                "Managed Agent does not belong to this Host Network.",
+                            );
+                    }
                     if (!runtimes.get(controls.runtimeId)?.collaborationActive)
                         throw new Error(
                             "Registration cancelled during preparation.",
@@ -734,6 +780,20 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             try {
                 const { record, token } = await registration;
                 runtimeId = record.id;
+                if (record.hostId !== null) {
+                    if (!record.terminalId || !borrowing)
+                        throw new Error(
+                            "Managed Agent requires its authenticated shell.",
+                        );
+                    await options.db.hostState.startExecution({
+                        runtimeId: record.id,
+                        hostId: record.hostId,
+                        agentKey: record.name,
+                        terminalId: record.terminalId,
+                        startedAt: now(),
+                    });
+                    webEvents.notify();
+                }
                 if (record.terminalId)
                     attachTerminalTo(record.id, record.terminalId);
                 if (

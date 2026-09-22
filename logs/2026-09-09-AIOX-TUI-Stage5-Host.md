@@ -9,8 +9,8 @@ status: open
 - [x] W1 공통 API 계약·owner 반영 및 Stage6 수신·담당 경계·보완 1~4 합의 완료
 - [x] W2 CLI 입력·config·YAML 로딩과 검증·layout 해석을 구현한다
 - [x] W3 protocol 스키마·타입을 먼저 인계한 뒤 공통 저장 모델·조회·화면 배치 API와 상태 전달 기반을 구현한다
-- [>] W4 shell 내부 Agent 실행과 준비·실패·종료 관측을 구현한다
-- [ ] W5 Host run·전용 Network·초기 배치를 구현하고 Stage6 최초 실제 연결을 확인한다
+- [x] W4 shell 내부 Agent 실행과 준비·실패·종료 관측을 구현한다
+- [>] W5 Host run·전용 Network·초기 배치를 구현하고 Stage6 최초 실제 연결을 확인한다
 - [ ] W6 개별 Agent start/stop/restart와 Host Network 명령을 구현한다
 - [ ] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현한다
 - [ ] W8 Stage6와 실제 연결한 Host 전체 흐름을 통합 검증한다
@@ -51,7 +51,7 @@ status: open
 
 ### {W3}
 
-- 완료: 공개 schema·타입의 선행 인계와 저장/조회/panel/config HTTP·Operation·SSE 기반을 구현·검증했다. 구현 위치·실제 인계 범위·검증·미구현 경계는 최신 W3 완료 기록과 system/storage-terminal architecture를 따른다. 다음 local 재개 지점은 W4다.
+- 완료: 공개 schema·타입의 선행 인계와 저장/조회/panel/config HTTP·Operation·SSE 기반을 구현·검증했다. 구현 위치·실제 인계 범위·검증·미구현 경계는 최신 W3 완료 기록과 system/storage-terminal architecture를 따른다. 다음 local 재개 지점은 W5다.
 - 적용된 Agent 관리 구성은 현재 Runtime 및 terminal 연결과 분리해 저장한다. 탭이 없어도 관리 항목을 조회할 수 있고 파일 편집만으로 적용 구성이 바뀌지 않아야 한다. 종료 원인·표시 상태를 기존 다섯 activity status에 무리하게 합치지 않는다.
 - 현재 pane 구성·탭 순서·연결을 저장·조회하는 공통 경로를 구현한다. Web 이동·분할과 CLI의 다음 Agent 배치가 같은 상태를 소비한다. 배치 변경은 terminalId나 프로세스를 교체하지 않는다. Copy 후 안내 해제의 재조회/복원도 W1 계약을 따른다.
 - 완료 조건: 빈 DB 초기화·저장·조회·재오픈, API 입력 검증·실패, 변경 알림 후 재조회와 재접속 복원을 검증한다. DB 실패를 빈 상태로 숨기지 않는다. 기존 Web/terminal snapshot·stream 기능을 보존한다.
@@ -60,6 +60,8 @@ status: open
 - 공통 순수 config/layout 검증은 packages/protocol/src/configuration.ts로 이동했고 config/schema.ts는 재export한다. packages/config/src/host.ts는 YAML 파일·참조·route 검증과 prepareHostInput을 소유하며 Host resolve가 이를 소비한다. 이후 실행 handler도 이 경로를 재사용한다.
 
 ### {W4}
+
+- 완료: 인증된 Host tab과 shell의 관리 Agent 실행 연결, 준비/실패/종료 관측, 실행 이력과 HTTP/SSE projection을 구현·검증했다. 실제 CLI·bash PTY 왕복은 vendor 대역으로 확인했다. 공개 Host run/제어 및 실제 React 연결 완료를 뜻하지 않으며 다음은 W5다.
 
 - 선행: W1 계약 및 W2 실행 설정 검증, W3 연결 모델. 참조: Runtime spec의 일반 shell과 Agent 연결·종료, System architecture의 Host 실행 흐름, Storage/terminal projection 및 vendor binding 계약.
 - Host Agent는 shell 안에서 실행한다. shell/terminal과 Agent 실행 수명을 분리하고 새 Runtime·credential·binding을 연결한다. 공통 Host instruction과 Agent instruction을 vendor 계약에 따라 합성하며 native 설정 파일을 자동 덮어쓰지 않는다.
@@ -297,3 +299,31 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 
 - 사용자 요청에 따라 W3 공통 protocol·저장·조회·panel/config API·Operation·SSE와 관련 문서·테스트를 한 커밋으로 묶는다. 직전 검증한 SSE backpressure 및 Config 읽기 오류 회귀 수정도 포함한다.
 - 기존 전체 check 688개 통과와 회귀 수정 후 daemon 229개·config 38개, lint·typecheck·build 검증 결과를 사용한다. 커밋 전 diff whitespace 검사를 다시 통과했다. W4 구현·Stage6·apps/web·plan·사용자 개인 architecture.excalidraw는 포함하지 않으며 W4 next pointer를 유지한다. push는 수행하지 않는다.
+
+## 2026-09-22 · W4 착수
+
+- 사용자 지시에 따라 W4를 진행한다. 기존 AgentController의 인증된 shell 차용·vendor 실행/준비·종료 관측을 재사용하고 Host 관리 Agent 연결·실행 이력·조회/panel 상태·종료 안내를 연결한다. W5 run/초기 배치와 W6/W7 관리 명령은 별도 Work Item으로 유지한다.
+- 확인: 일반 foreground 실행과 shell 보존 테스트는 이미 있으나 Host 저장 snapshot의 runtime은 null이며 Host 실행 이력의 기록 경로가 없다. 먼저 저장/실행 경계 회귀 테스트를 추가한다.
+
+## 2026-09-22 · W4 관리 Agent 실행·관측·shell 복귀 구현 및 검증 완료
+
+- 구현: 기존 foreground CLI/AgentController를 재사용한다. 실행별 `AIOX_HOST_ID`·`AIOX_AGENT_KEY`와 인증된 terminal context를 받아 저장된 Host panel의 terminalId·agentKey·adapter를 대조한다. cwd/idle로 일반 shell을 임의 선택하지 않는다. 적용된 Host/Agent args·metadata·instruction을 사용하고 private context를 vendor 환경에서 제거한다. 새 Runtime/credential/binding을 발급하며 vendor native 설정 파일을 수정하지 않는다.
+- 관측/정리: 실제 binding 준비 이벤트로 preparing→running을 전환한다. 준비 전 실패·정상 종료·비정상 종료·명시 stop을 구분한다. stop은 vendor와 owner 부속 실행의 종료를 확인하고 borrowed shell을 유지한다. 정리 또는 저장 실패는 등록을 남겨 재시도하며 연결 단절만으로 종료를 추정하지 않는다.
+- 저장/전달: 실행 시작·lastTerminalId·preparing tab, 종료 이력·lastExit·안내를 각각 원자적으로 저장한다. 중복 실행과 이전 실행의 지연 종료를 차단한다. HTTP와 SSE가 같은 Host/runtime·Network/membership/edge·panel projection을 소비한다. CLI Agent 조회도 Host Network 이름을 표시한다. 정상 종료는 shell, stop/실패는 재시작 명령을 포함한 안내이며 daemon 재시작 안내도 Host source에서 명령을 복원한다.
+- 검증: lint·format·전체 build·전체 typecheck 통과. 최초 전체 check의 테스트 단계는 sandbox의 loopback/ps EPERM으로 실패하여 허용된 실행 권한으로 전체 테스트를 다시 실행했고 57개 파일·697개 테스트가 통과했다. 이후 null terminal과 외부 Runtime의 오연결 방지·shell 인자 quoting을 포함한 daemon 16개 파일·237개 테스트, 마지막 준비 전/후 비정상 종료 회귀 2개 테스트가 통과했다. 최종 daemon typecheck·format·built Node entry import도 확인했다. 저장 테스트는 빈 DB 생성·실행 기록·재오픈·재시작 정산·지연 종료·retention을 확인한다.
+- 실제 실행 범위: macOS bash PTY → 빌드된 CLI → HTTP/WS → daemon/vendor 대역 PTY의 준비·정상 종료·명시 stop·같은 shell 복귀, 새 Runtime/credential, SSE 재접속 snapshot을 확인했다. 실 Claude/Codex 모델 호출, Windows/WSL 실기기, Stage6 React 화면은 이번 검증 증거에 포함하지 않는다.
+- owner 반영: system architecture에는 private 관리 실행 연결과 W5 caller 경계를, storage-terminal architecture에는 실행 이력·live projection·정책 보존을 반영했다. Stage6 로그·apps/web·plan은 수정하지 않았다. 개발 DB 삭제·migration·backfill·commit/push 없음.
+- 다음: W4 완료. W5에서 run의 사전 준비·Host/전용 Network 생성·초기 shell/tab 배치와 명령별 Operation을 연결한다. 선택한 shell에서 실행하는 CLI 호출에만 위 private context를 전달하고 기반 shell 환경에 영구 주입하지 않는다. 공개 Host CLI는 현재 입력 준비 뒤 미구현 오류를 유지한다. W5의 실제 Stage6 연결은 별도로 확인해야 한다.
+
+## 2026-09-22 · W4 협업 준비 timeout 보존 정책 수정·재검증
+
+- 사용자 검토의 P1을 코드·Runtime 명세와 대조했고, 새 회귀 테스트에서 timeout 후 Runtime이 제거되는 실패를 직접 재현했다. W4 완료 판단을 보류하여 재개했다. 도구가 completed→active 전이를 지원하지 않아 W4 marker를 수동 복원했고 W5는 open으로 돌렸다.
+- 원인: AgentController.finish의 !hostId 조건이 Host Agent만 살아 있는 vendor 보존 분기에서 제외했다. 이 예외를 제거하여 협업 준비 실패 시 기존 vendor·shell·관리 등록과 진단·TUI 입출력을 유지하고 협업 credential만 해제한다. 실행이 살아 있으므로 lastExit와 시작 실패 안내를 기록하지 않는다.
+- 회귀 검증 중 timeout 뒤 명시 stop도 start-failed로 기록되는 추가 오류를 확인했다. processExited가 명시 stop을 준비 실패로 다시 분류하지 않도록 수정하여 stopped 이력을 유지한다.
+- 검증: 새 테스트의 Runtime 제거 실패(red)와 후속 stop 이력 실패를 각각 확인한 뒤 통과(green)했다. vendor kill 미호출·shell 생존·동일 Runtime 등록·MCP token 해제·Host snapshot 진단·lastExit null·탭 안내 없음·기존 socket 입력·명시 stop 후 stopped 이력을 검증한다. daemon 전체 16개 파일·240개 테스트, daemon build/typecheck·built Node entry, repo lint·format·diff 검사 통과. 이번 수정에서 실제 vendor 및 React UI는 검증하지 않았다.
+- Required Context의 Runtime projection 미연결 설명을 현재 구현과 맞췄다. W4를 다시 완료하고 다음은 W5 공개 run·전용 Network·초기 배치·Stage6 실제 연결이다. commit/push는 하지 않았다.
+
+## 2026-09-22 · W4 커밋 범위 확정
+
+- 사용자가 커밋 대상으로 방금 완료한 Stage5 W4를 명시했다. 관리 Agent 실행·관측·종료 이력·Host Network와 HTTP/SSE projection, 협업 준비 timeout 보존 수정 및 관련 테스트·architecture·현재 로그를 한 커밋으로 묶는다.
+- 기존 전체 테스트 697개 및 후속 회귀, 최종 daemon 전체 240개와 daemon build/typecheck·built Node entry·repo lint/format 검증 결과를 사용한다. 다음 작업은 W5이며 push는 요청되지 않았다.

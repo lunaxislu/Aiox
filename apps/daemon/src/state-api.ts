@@ -16,7 +16,7 @@ import {
 import { HttpError, parse, readJson, send } from "./http";
 import { handlePanelOperation } from "./panel-operations";
 import type { DaemonServices } from "./services";
-import { projectPanels } from "./web-state";
+import { projectHostState } from "./web-state";
 
 export async function handleStateApi(
     request: IncomingMessage,
@@ -52,8 +52,10 @@ export async function handleStateApi(
             send(response, 200, { hostId: host.id });
             return true;
         }
-        const state = await services.db.hostState.snapshot();
-        state.panels = projectPanels(state.panels, services);
+        const state = projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        );
         if (path === "/api/hosts" && method === "GET") {
             const name = url.searchParams.get("name");
             send(

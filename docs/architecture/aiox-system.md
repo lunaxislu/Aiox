@@ -450,7 +450,9 @@ prepare 오류는 부수효과 전 실패, 실행 후 실패는 부분 적용 �
 공개 HTTP/SSE 스키마와 config의 순수 검증은 protocol이 소유한다. config 파일·YAML 로딩은
 config에 남으며 기존 공개 parser를 통해 같은 검증 함수를 사용한다. Host·panel·Operation 저장,
 조회·배치와 workspace shell 제어, 설정 revision 저장, snapshot/state/fault SSE는 daemon에 연결했다.
-Host CLI는 입력 준비 뒤 실행 미구현 오류를 반환하며 Host run·Agent 실행·제어는 아직 연결하지 않았다.
+Host CLI는 입력 준비 뒤 실행 미구현 오류를 반환하며 공개 Host run·제어는 아직 연결하지 않았다.
+관리 Agent의 내부 실행 연결과 관측은 아래 구현을 소비하며, run의 shell 생성·초기 배치와
+명령별 Operation 조정은 W5~W7이 연결한다.
 
 근거: [[packages/protocol/src/index.ts]], [[packages/protocol/src/host.test.ts]],
 [[packages/config/src/schema.ts]], [[apps/daemon/src/state-api.ts]],
@@ -465,3 +467,24 @@ snapshot/state 소비와 실제 Host TUI 연결은 Stage6·W5 이후 검증 범�
 기존 terminal 생성/DELETE consumer도 동일 TerminalService/실행 종료 경로를 소비한다.
 panel에 연결된 terminal의 직접 종료나 자연 shell exit는 연결 tab·관리 Runtime 정리를 함께
 반영하고 SSE로 알린다. Host stop은 terminal DELETE가 아니라 Agent owner stop을 사용한다.
+
+### 관리 Agent의 shell 실행 연결 [Status: As-built]
+
+기존 `aiox agent run` foreground 경로는 실행 요청의 `AIOX_HOST_ID`·`AIOX_AGENT_KEY`를
+관리 실행의 private context로 소비한다. 이 값은 해당 CLI 호출에만 설정하고 기반 shell의
+영구 환경으로 두지 않는다. CLI가 전달한 인증된 terminal context로 살아 있는 shell을 확인하고,
+저장된 Host panel의 terminalId·agentKey가 모두 일치해야 연결한다. cwd나 idle 여부로 shell을
+선택하지 않으며 외부 실행은 이 context를 사용할 수 없다.
+
+`managedLaunch`는 적용된 Host의 adapter·args·role·description과 공통/Agent instruction을
+선택하고 private context를 vendor 환경에서 제거한다. AgentController는 기존 vendor execution과
+binding을 재사용한다. Runtime 등록은 같은 Host/key와 terminal의 중복 실행을 예약 단계에서
+막고, 실제 binding 준비 이벤트로 preparing→running을 전환한다. 제어 연결 단절만으로 vendor를
+종료하지 않는다. 명시 stop은 실행 owner와 부속 자원의 종료를 확인하고 borrowed shell을 보존한다.
+준비 전 실패·정상 종료·비정상 종료·명시 stop을 구분하며 정리 실패 시 등록을 보존해 재시도한다.
+
+근거: [[apps/daemon/src/managed-agents.ts]], [[apps/daemon/src/agent-controller.ts]],
+[[apps/daemon/src/daemon.ts]], [[apps/daemon/src/agent-controller.test.ts]],
+[[apps/daemon/src/managed-agents.test.ts]]. 마지막 테스트는 실제 bash PTY와 빌드된 CLI의
+왕복·shell 복귀를 검증하며 vendor는 테스트 대역이다. 실제 React 소비와 실 vendor 수동 검증의
+증거로 사용하지 않는다.

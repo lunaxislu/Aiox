@@ -77,7 +77,7 @@ test("panel storage preserves layout across reopen, rejects stale writes and dup
 
 test("Host creation is atomic and Operation retries, recovery and retention preserve unfinished cleanup", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "aiox-host-state-"));
-    const db = await openDatabase(join(directory, "aiox.db"));
+    let db = await openDatabase(join(directory, "aiox.db"));
     t.onTestFinished(async () => {
         await db.close();
         await rm(directory, { recursive: true, force: true });
@@ -145,6 +145,73 @@ test("Host creation is atomic and Operation retries, recovery and retention pres
     };
     await db.hostState.createHost(host, network, panel, 1);
     assert.deepEqual((await db.hostState.snapshot()).hosts, [host]);
+    await db.hostState.startExecution({
+        runtimeId: "r1",
+        hostId: "h1",
+        agentKey: "a",
+        terminalId: "t1",
+        startedAt: 2,
+    });
+    await assert.rejects(
+        db.hostState.startExecution({
+            runtimeId: "r2",
+            hostId: "h1",
+            agentKey: "a",
+            terminalId: "t1",
+            startedAt: 3,
+        }),
+    );
+    await db.hostState.finishExecution(
+        "r1",
+        {
+            kind: "stopped",
+            message: "Agent stopped.",
+            at: 4,
+        },
+        "aiox host agent start a",
+    );
+    let stored = await db.hostState.snapshot();
+    assert.equal(stored.hosts[0]!.agents[0]!.lastTerminalId, "t1");
+    assert.equal(stored.hosts[0]!.agents[0]!.lastExit?.kind, "stopped");
+    assert.equal(stored.panels[0]!.tabs[0]!.presentation, "stopped");
+    assert.equal(
+        stored.panels[0]!.tabs[0]!.notice?.restartCommand,
+        "aiox host agent start a",
+    );
+    await db.hostState.startExecution({
+        runtimeId: "r2",
+        hostId: "h1",
+        agentKey: "a",
+        terminalId: "t1",
+        startedAt: 5,
+    });
+    await db.hostState.finishExecution(
+        "r1",
+        { kind: "crashed", message: "late", at: 6 },
+        "",
+    );
+    await db.hostState.finishExecution(
+        "r2",
+        { kind: "exited", message: null, at: 7 },
+        "",
+    );
+    stored = await db.hostState.snapshot();
+    assert.equal(stored.panels[0]!.tabs[0]!.presentation, "shell");
+    assert.equal(stored.panels[0]!.tabs[0]!.notice, null);
+    await db.hostState.startExecution({
+        runtimeId: "r3",
+        hostId: "h1",
+        agentKey: "a",
+        terminalId: "t1",
+        startedAt: 8,
+    });
+    await db.close();
+    db = await openDatabase(join(directory, "aiox.db"));
+    assert.equal(
+        (await db.hostState.snapshot()).hosts[0]!.agents[0]!.lastExit?.kind,
+        "exited",
+    );
+
     await assert.rejects(
         db.hostState.createHost(
             { ...host, id: "h2", panelId: "p2", networkId: "n2" },
