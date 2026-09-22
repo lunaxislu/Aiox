@@ -605,10 +605,18 @@ daemon은 기존 관측 owner와 persistence 결과를 조회 DTO로 공개한�
 snapshot 뒤에 순서대로 전달한다. snapshot 시점과 구독 사이의 변경을 누락하지 않는다.
 DB commit 또는 관측 결과 공개에 실패하면 성공 DTO를 먼저 방송하지 않는다. 장시간 실행
 전체를 하나의 transaction으로 묶지 않으며 preparing·ready·실패는 각각 실제 반영 시점의 상태다.
-snapshot 실패·느린 연결은 오류/연결 종료 후 새 snapshot으로 복원한다. 연결 종료는 실행
+snapshot 읽기 실패는 fault/연결 종료 후 새 snapshot으로 복원한다. 단순히 느린 연결은
+전송 가능 시점까지 대기하고 최신 상태 차이를 이어 보내며, backpressure만으로 종료하지 않는다. 연결 종료는 실행
 자원의 종료가 아니다. 별도 HTTP snapshot endpoint·epoch/sequence·SQLite 이벤트 log나
 migration을 추가하지 않는다. PTY 출력마다 상태 이벤트를 만들지 않고 실제 조회 DTO가
 바뀔 때만 전달한다. HTTP와 SSE는 같은 projection을 소비하며 별도 실행 상태 권위를 만들지 않는다.
+
+SSE 응답은 Hono streamSSE와 Node adapter를 통한다. WebEvents는 초기 읽기 중 변경과 진행 중인
+상태 반영을 재확인한 뒤 snapshot을 먼저 쓰며, 해당 stream의 쓰기가 끝나기 전에는 후속 state를
+쌓지 않는다. 느린 소비자의 변경은 마지막 전송 상태와 최신 snapshot 사이의 차이로 합친다.
+연결 취소·daemon 종료는 stream 구독과 대기 writer를 해제하고, Node response의 drain listener도
+정리한다. 근거: [[apps/daemon/src/web-events.ts]], [[apps/daemon/src/web-events.test.ts]],
+[[apps/daemon/src/http.test.ts]], [[apps/daemon/src/daemon.test.ts]]. [Status: As-built]
 
 ### W1 미확인 알림 공개·보존 [Status: Committed target]
 

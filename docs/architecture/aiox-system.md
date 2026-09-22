@@ -86,7 +86,7 @@ IDE는 편집 중 불완전한
 
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
-CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http의 daemon/Web listener, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
+CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http listener에 연결한 Hono·Node adapter의 daemon/Web HTTP app, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 TypeORM·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:222-636`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:46-90`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:151-356`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:300-554`.
 
@@ -209,7 +209,7 @@ daemon용과 공용 운영 Web용 포트는 각각 설정할 수 있다. 같은 
 [[docs/specs/aiox-configuration-web]]의 포트 계약을 따른다. 실제 CLI 옵션·listener 연결과
 포트 충돌 처리는 현재 조립 범위의 코드·테스트를 따른다.
 
-Stage 2 서버 조립에는 node:http, ws, 공식 MCP TypeScript SDK, Zod, node-pty, TypeORM과 better-sqlite3가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.13.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. DB 초기화·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
+현재 서버 조립에는 node:http, Hono와 `@hono/node-server`, ws, 공식 MCP TypeScript SDK, Zod, node-pty, TypeORM과 better-sqlite3가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.13.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. DB 초기화·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
 
 편집기는 각 package의 `tsconfig.json`으로 source와 같은 디렉터리의 tests를 함께 해석한다.
 domain의 별도 `tsconfig.production.json` 검사는 tests를 제외하고 자동 Node ambient type을
@@ -224,6 +224,25 @@ optional SWC 선언 문제를 우회하며 프로젝트 source의 타입·모듈
 먼저 거친다. 실제 listener 주소·포트에 맞는 Host, 운영 Web의 Origin과 요청 본문을 검증하고
 잘못된 연결만 거절한다. 이 입구 보호 뒤에도 MCP의 credential·membership·route 검사는 유지한다.
 CLI 연결과 Web 자동 복귀를 지원하며 사용자 로그인·토큰 입력·허용 목록 수동 설정을 추가하지 않는다.
+
+Hono가 두 listener의 공통 API route·요청/응답·오류 변환을 소유한다. Host·Panel·Operation의
+route 등록은 `state-api.ts`, 일반 Network·Agent·terminal·config·notification·SSE 등록은
+`http.ts`가 맡고 기존 service·protocol·config·저장 로직을 호출한다. Host 입력 오류는
+ConfigError보다 먼저 분류하여 config→YAML→CLI 검증 순서와 오류 stage를 보존한다. 공통
+본문 reader는 Content-Length 유무와 관계없이 실제 읽은 byte 수를 제한한다. 요청마다 생성한
+HTTP requestId는 Hono context를 통해 Operation 접수·완료 진단까지 전달한다. [Status: As-built]
+
+daemon 전용 agent hook과 MCP도 Hono route에 연결한다. MCP는 기존 SDK의 Web 표준
+transport가 protocol 처리를 맡으며, 요청별 credential·Network 재검증과 무세션 모드를 유지한다.
+SDK 정리는 Node response 종료에 연결한다. Web 정적 제공은 Hono 응답 stream으로 같은 Web
+listener에 연결하고 기존 SPA fallback·파일 부재 처리를 유지한다. WebSocket upgrade와
+terminal PTY attachment는 기존 node:http·ws 경계에 남고 HTTP route로 재구현하지 않는다.
+Node adapter의 stream은 write(false) 뒤 drain까지 전송을 보류하며, 닫힌 response에 남은 drain
+listener는 공통 listener 종료 처리에서 제거한다. [Status: As-built]
+
+근거: [[apps/daemon/src/daemon.ts]], [[apps/daemon/src/http.ts]], [[apps/daemon/src/state-api.ts]],
+[[apps/daemon/src/mcp.ts]], [[apps/daemon/src/static.ts]], [[apps/daemon/src/http.test.ts]],
+[[apps/daemon/src/static.test.ts]], [[apps/daemon/src/daemon.test.ts]], [[apps/daemon/src/mcp.test.ts]].
 
 ## 서로 다른 수명
 

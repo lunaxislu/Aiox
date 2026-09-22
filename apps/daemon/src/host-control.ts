@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { loadConfig } from "@aiox/config";
 import { logger } from "@aiox/diagnostics";
@@ -8,26 +7,21 @@ import {
     type Operation,
     type OperationError,
 } from "@aiox/protocol";
+import type { Context } from "hono";
 
-import { HttpError, parse, readJson, send } from "./http";
+import type { HttpEnv } from "./http";
+import { HttpError, parse, readJson } from "./http";
 import type { DaemonServices } from "./services";
 
 export async function handleHostControl(
-    request: IncomingMessage,
-    response: ServerResponse,
-    url: URL,
+    c: Context<HttpEnv>,
     services: DaemonServices,
-): Promise<boolean> {
-    const match = /^\/api\/hosts\/([^/]+)(\/stop)?$/.exec(url.pathname);
-    if (
-        !match ||
-        !(match[2] ? request.method === "POST" : request.method === "DELETE")
-    )
-        return false;
+    remove: boolean,
+): Promise<Response> {
     await loadConfig(services.configLocation);
-    const input = parse(hostControlRequestSchema, await readJson(request));
+    const input = parse(hostControlRequestSchema, await readJson(c.req.raw));
     const hash = createHash("sha256")
-        .update(JSON.stringify([request.method, url.pathname, input]))
+        .update(JSON.stringify([c.req.method, c.req.path, input]))
         .digest("hex");
     const previous = await services.db.hostState.getOperation(
         input.requestId,
@@ -38,26 +32,22 @@ export async function handleHostControl(
             {
                 operationId: previous.id,
                 operationRequestId: previous.requestId,
-                requestId: response.getHeader("x-request-id"),
+                requestId: c.get("requestId"),
                 hostId: previous.hostId,
             },
             "Host operation accepted",
         );
-        send(response, 202, previous);
-        return true;
+        return c.json(previous, 202);
     }
     if (!services.lifecycle.acceptingInput())
         throw new HttpError(503, "shutting_down", "Daemon stopping.");
     const state = await services.db.hostState.snapshot();
-    const host = state.hosts.find(
-        (h) => h.id === decodeURIComponent(match[1]!),
-    );
+    const host = state.hosts.find((h) => h.id === c.req.param("hostId"));
     if (!host)
         throw new HttpError(404, "unknown_host", "No such Host.", {
             stage: "cli",
         });
     const panel = state.panels.find((p) => p.id === host.panelId)!;
-    const remove = !match[2];
     const operation: Operation = {
         id: randomUUID(),
         requestId: input.requestId,
@@ -89,20 +79,20 @@ export async function handleHostControl(
         {
             operationId: admitted.id,
             operationRequestId: admitted.requestId,
-            requestId: response.getHeader("x-request-id"),
+            requestId: c.get("requestId"),
             hostId: admitted.hostId,
         },
         "Host operation accepted",
     );
-    send(response, 202, admitted);
-    if (admitted.id !== operation.id) return true;
+    c.res = c.json(admitted, 202);
+    if (admitted.id !== operation.id) return c.res;
 
     const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
         execute,
     );
     services.operationTasks.add(task);
     void task.finally(() => services.operationTasks.delete(task));
-    return true;
+    return c.res;
 
     async function execute() {
         let stage: OperationError["stage"] = "execution";
@@ -115,7 +105,7 @@ export async function handleHostControl(
                     {
                         operationId: operation.id,
                         operationRequestId: operation.requestId,
-                        requestId: response.getHeader("x-request-id"),
+                        requestId: c.get("requestId"),
                         hostId: operation.hostId,
                         state: operation.state,
                     },
@@ -202,7 +192,7 @@ export async function handleHostControl(
                     err: error,
                     operationId: operation.id,
                     operationRequestId: operation.requestId,
-                    requestId: response.getHeader("x-request-id"),
+                    requestId: c.get("requestId"),
                     hostId: operation.hostId,
                 },
                 "Host operation storage failed",

@@ -1,11 +1,11 @@
-import type { ServerResponse } from "node:http";
-
 import {
     webSnapshotSchema,
     webStateSchema,
     type WebSnapshot,
     type WebChange,
 } from "@aiox/protocol";
+import type { Context } from "hono";
+import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 
 const resources = {
     hosts: "host",
@@ -40,8 +40,11 @@ function changes(before: WebSnapshot, after: WebSnapshot): WebChange[] {
     return webStateSchema.parse({ changes: result }).changes;
 }
 export class WebEvents {
-    readonly #clients = new Map<ServerResponse, WebSnapshot>();
-    readonly #blocked = new Set<ServerResponse>();
+    readonly #clients = new Map<
+        SSEStreamingApi,
+        { snapshot: WebSnapshot; finish: () => void }
+    >();
+    readonly #blocked = new Set<SSEStreamingApi>();
     #read: (() => Promise<WebSnapshot>) | undefined;
     #version = 0;
     #pending = false;
@@ -77,27 +80,37 @@ export class WebEvents {
             if (version === this.#version) return { snapshot, version };
         }
     }
-    async connect(response: ServerResponse): Promise<void> {
+    async connect(c: Context): Promise<Response> {
         const { snapshot, version: capturedVersion } = await this.#snapshot();
-        if (response.destroyed) return;
-        response.writeHead(200, {
-            "content-type": "text/event-stream; charset=utf-8",
-            "cache-control": "no-cache",
+        const response = streamSSE(c, async (stream) => {
+            let finish!: () => void;
+            const closed = new Promise<void>((resolve) => {
+                finish = resolve;
+            });
+            const remove = () => {
+                this.#clients.delete(stream);
+                this.#blocked.delete(stream);
+                finish();
+            };
+            stream.onAbort(remove);
+            if (c.req.raw.signal.aborted || this.#closed) {
+                stream.abort();
+                return;
+            }
+            this.#clients.set(stream, { snapshot, finish });
+            void this.#send(stream, "snapshot", snapshot);
+            if (capturedVersion !== this.#version) this.notify();
+            try {
+                await closed;
+            } finally {
+                remove();
+            }
         });
-        const remove = () => {
-            this.#clients.delete(response);
-            this.#blocked.delete(response);
-            response.off("drain", drained);
-        };
-        const drained = () => {
-            if (this.#blocked.delete(response)) this.notify();
-        };
-        response.on("drain", drained);
-        response.on("close", remove);
-        response.on("error", remove);
-        this.#clients.set(response, snapshot);
-        this.#send(response, "snapshot", snapshot);
-        if (capturedVersion !== this.#version) this.notify();
+        response.headers.set(
+            "content-type",
+            "text/event-stream; charset=utf-8",
+        );
+        return response;
     }
     notify = (): void => {
         this.#version++;
@@ -111,53 +124,53 @@ export class WebEvents {
             const { snapshot, version: capturedVersion } =
                 await this.#snapshot();
             if (capturedVersion !== this.#version) return;
-            for (const [response, previous] of this.#clients) {
+            for (const [response, client] of this.#clients) {
                 if (this.#blocked.has(response)) continue;
-                const update = changes(previous, snapshot);
-                this.#clients.set(response, snapshot);
+                const update = changes(client.snapshot, snapshot);
+                client.snapshot = snapshot;
                 if (update.length)
-                    this.#send(response, "state", { changes: update });
+                    void this.#send(response, "state", { changes: update });
             }
         } catch (error) {
-            for (const response of this.#clients.keys()) {
-                this.#send(response, "fault", {
-                    code: "storage_error",
-                    message:
-                        error instanceof Error ? error.message : String(error),
-                });
-                response.end();
-            }
-            this.#clients.clear();
+            this.fault(
+                "storage_error",
+                error instanceof Error ? error.message : String(error),
+            );
         } finally {
             this.#pending = false;
             if (version !== this.#version && this.#clients.size) this.notify();
         }
     }
     fault(code: string, message: string): void {
-        for (const response of this.#clients.keys()) {
-            this.#send(response, "fault", { code, message });
-            response.end();
+        for (const [stream, client] of this.#clients) {
+            void this.#send(stream, "fault", { code, message }).finally(
+                client.finish,
+            );
         }
         this.#clients.clear();
+        this.#blocked.clear();
     }
     close(): void {
         this.#closed = true;
-        for (const response of this.#clients.keys()) response.destroy();
+        for (const stream of this.#clients.keys()) stream.abort();
         this.#clients.clear();
+        this.#blocked.clear();
     }
-    #send(response: ServerResponse, event: string, data: unknown): void {
+    async #send(
+        stream: SSEStreamingApi,
+        event: string,
+        data: unknown,
+    ): Promise<void> {
+        this.#blocked.add(stream);
         try {
-            // write(false) accepted the frame; coalesce later state until drain.
-            if (
-                !response.write(
-                    `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-                )
-            )
-                this.#blocked.add(response);
+            // The Node adapter stops pulling on write(false) until drain. Do not
+            // queue state while the stream writer waits; coalesce it after drain.
+            await stream.writeSSE({ event, data: JSON.stringify(data) });
         } catch {
-            this.#clients.delete(response);
-            this.#blocked.delete(response);
-            response.destroy();
+            stream.abort();
+        } finally {
+            if (this.#blocked.delete(stream) && this.#clients.has(stream))
+                this.notify();
         }
     }
 }

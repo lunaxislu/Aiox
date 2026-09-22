@@ -14,8 +14,8 @@ status: open
 - [x] W6 개별 Agent start/stop/restart와 Host Network 명령을 구현하고 서버 결과를 검증한다
 - [x] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현하고 CLI·daemon 경로를 검증한다
 - [x] W8 서비스 진단 로그를 Pino로 전환한다
-- [>] W9 서비스 HTTP 처리를 Hono로 전환한다
-- [ ] W10 서비스 SQLite 저장 계층을 TypeORM에서 Drizzle로 전환한다
+- [x] W9 서비스 HTTP 처리를 Hono로 전환한다
+- [>] W10 서비스 SQLite 저장 계층을 TypeORM에서 Drizzle로 전환한다
 - [ ] W11 Stage6 준비 후 W5~W10의 실제 화면 연결과 전체 흐름을 통합 검증한다
 
 ## Required Context
@@ -26,7 +26,7 @@ status: open
 
 ### {Global}
 
-- W8~W10은 Host에 한정하지 않는 서비스 서버 계층 전환이다. 외부 계약을 유지하며 진단·HTTP·저장의 기존 구현을 각각 교체한다. W1~W8은 완료했고 다음 작업은 W9 Hono이며, 실제 React 통합 검증은 W11이다. W8 검증 근거는 최신 완료 기록과 system architecture의 서비스 진단 로그 절을 따른다.
+- W8~W10은 Host에 한정하지 않는 서비스 서버 계층 전환이다. 외부 계약을 유지하며 진단·HTTP·저장의 기존 구현을 각각 교체한다. W1~W9는 완료했고 다음 작업은 W10 Drizzle이며, 실제 React 통합 검증은 W11이다. 완료 근거는 각 W의 최신 기록과 관련 owner architecture를 따른다.
 - 사용자가 이 로그의 논의·정정 누적 기록을 구현 순서 중심으로 직접 재구성하도록 승인했다. 확정 정책의 권위는 아래 owner 문서에 있으며, 각 W scope는 구현에 필요한 적용 기준과 검증 조건을 담는다. 과거 제안이나 목업 더미 데이터를 계약으로 복원하지 않는다.
 - Stage6와 합의한 W1 API 계약·보완 1~4 및 담당 경계를 유지한다. Stage5 구현은 CLI·daemon·공통 protocol/config/persistence와 관련 owner 문서에 한정하며 Stage6 로그·apps/web·plan 활성 단계는 변경하지 않는다. Stage6 연결 준비와 독립적으로 W8~W10의 전환·서버 검증을 진행하고 실제 React 연결은 W11에서 검증한다.
 - Owner: [Host spec](../docs/specs/aiox-host.md), [Runtime/CLI spec](../docs/specs/aiox-runtime.md), [설정·Web UX spec](../docs/specs/aiox-configuration-web.md), [System architecture](../docs/architecture/aiox-system.md), [Storage/terminal architecture](../docs/architecture/aiox-storage-terminal.md). 인증·전송 판정은 [Collaboration spec](../docs/specs/aiox-collaboration.md), vendor 지침 주입은 [Vendor bindings architecture](../docs/architecture/aiox-vendor-bindings.md)를 함께 따른다.
@@ -452,3 +452,30 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 ## 2026-09-23 · W8 커밋 요청
 
 - 사용자 요청으로 W8 Pino 전환과 진단 오류·누락 4건 보완의 구현·테스트·owner 문서·작업 로그를 하나의 커밋으로 묶는다. 직전 pnpm check의 전체 741개 테스트 통과 결과를 사용하며 이후 production 변경은 없다. W9·W10은 미착수이고 push는 요청 범위에 없다.
+
+## 2026-09-23 · W9 서비스 HTTP Hono 전환
+
+- 요청: daemon·Web listener 전체 HTTP 라우팅·요청/응답·공통 오류를 Hono로 교체하고 대체 수동 구현을 제거한다. Host·Network·Agent·terminal·config·notification·Operation·SSE·agent hook·정적 제공·MCP를 포함한다.
+- 보존: 공개 API와 검증 순서·Operation 멱등성·HTTP requestId/operationRequestId·SSE snapshot/state 순서 및 backpressure·WS/PTY 수명. MCP 프로토콜은 SDK에 맡긴다.
+- 범위: W9만 구현·검증하며 commit/push, W10/W11, Stage6 로그·apps/web·plan·사용자 DB·architecture.excalidraw 변경은 하지 않는다.
+- 조사: 두 listener의 수동 dispatcher와 공통 http/state-api, Host/panel handler, hook, static, WebEvents, MCP SDK 경계를 확인했다. 기존 서비스·저장 로직을 재사용하고 HTTP 경계를 직접 Hono route로 옮긴다.
+
+### 2026-09-23 00:46 · W9 전환·최종 검증 완료와 W10 인계
+
+- 구현: daemon·Web listener를 Hono app와 Node adapter에 연결했다. Host·Panel·Operation·일반 Network·Agent·terminal·config·notification·SSE의 공통 route, daemon 전용 hook·MCP와 Web 정적 제공을 전환했다. 수동 URL 정규식/method dispatcher, boolean handled chain, send/writeHead/end 응답 helper를 제거했다. body byte 제한 reader·schema 검증·오류 분류와 기존 service/config/protocol/persistence 로직은 유지했다.
+- 경계: MCP SDK 1.30.0의 기존 Node transport 내부가 이미 WebStandardStreamableHTTPServerTransport를 사용함을 설치 소스에서 확인하여 그 transport를 직접 연결했다. 무세션·credential/membership/route 검증과 응답 종료 시 SDK 정리를 유지한다. 기존 ws upgrade/terminal attachment·PTY·vendor 수명은 재사용한다. Hono 4.13.8과 @hono/node-server 2.1.1을 직접 의존성으로 선언했다. 설치 manifest의 Node 요구(각 >=16.9.0, >=20)는 repo의 ^22.13.0 || >=24.11.0 범위를 포함한다. 공식 문서 https://hono.dev/docs/getting-started/nodejs 및 https://hono.dev/docs/helpers/streaming 과 설치 SDK의 Web 표준 transport 문서를 대조했다.
+- 재현·수정: 전환 첫 회귀에서 HostInputError의 ConfigError 상속 때문에 YAML/CLI 오류가 config로 분류되는 6건을 확인하고 검사 순서를 복원했다. 새 실제 HTTP 테스트는 Hono 기본 HEAD→GET이 기존 404 계약을 바꾸는 것과, Node adapter가 write(false) 뒤 연결 종료 시 drain listener를 남기는 것을 각각 RED로 확인했다. 명시 method 계약과 response 종료 정리를 보완한 뒤 GREEN이다.
+- 보존 검증: 기존 Host/config/CLI 테스트로 config→YAML→CLI→환경 검증·실패 시 기존 실행/저장 보존, Operation 접수/완료·requestId 멱등성·재요청·HTTP requestId/operationRequestId 연결을 확인했다. MCP 실HTTP SDK 호출, startup gating·SIGTERM/HTTP 종료, WS 원시 byte·resize·재연결·shell/vendor 수명 회귀도 통과했다. 추가 HTTP 회귀는 Content-Length 없는 chunked JSON의 크기 제한/잘못된 JSON, 양 listener 성공·오류·HEAD/없는 route, MCP body 제한·hook 인증, 실제 파일/SPA fallback/빈 directory/빌드 부재, SSE write(false)→drain 전송 보류·연결 종료 listener 해제·초기 snapshot 대기 중 연결 취소/재접속을 검증한다. 느린/정상 소비자 격리·state 병합·snapshot/fault 순서는 stream 단위 회귀도 유지한다.
+- owner: system architecture의 Hono route·SDK/WS 경계와 storage-terminal architecture의 SSE stream/상태 병합·종료 정리를 반영했다. 기존 '느린 연결은 종료 후 복원' 문장은 기존 write(false) 대기와도 충돌하여 단순 backpressure는 대기 후 전송한다는 실제 계약으로 정정했다. 공개 spec/DTO는 바꾸지 않았다.
+- 최종 검증: macOS Node v24.14.0, pnpm check exit 0 — lint·format·build·typecheck와 66개 파일·747개 테스트. 패키지별 domain 19 + IDE/vscode 24 + protocol 14 + diagnostics 2 + vendor 3 + config 38 + persistence 17 + terminal 88 + adapter-codex 18 + adapter-claude 139 + web 37 + cli 75 + daemon 273 = 747. 최초 daemon baseline은 267개 통과였다. sandbox의 loopback EPERM 이후 허용된 실행으로 실제 HTTP·WS·PTY를 검증했다. 최종 출력은 /private/tmp/w9-check-final.log다. diff --check, 변경 owner/로그 inline-code 검사와 owner wikilink 대상 확인도 통과했다.
+- 제한·인계: vendor 대역과 macOS shell을 사용했으며 실제 vendor·React 통합·Windows/WSL을 검증했다고 주장하지 않는다. W9의 확인된 미해결 결함은 없다. W9를 완료하고 W10을 next로 둔다. W10은 기존 공개 persistence 인터페이스·transaction/FK/revision/requestId 및 저장/재오픈 회귀를 보존하며 SQLite 저장 구현 전체를 Drizzle로 전환하는 별도 작업이다. 이번에는 착수하지 않았다. W11·Stage6 로그·apps/web·plan·사용자 DB·architecture.excalidraw는 수정하지 않았고 commit/push도 하지 않았다.
+
+### 2026-09-23 01:27 · W9 hook 실패 응답 원문 복원
+
+- 사용자 리뷰를 HEAD와 대조해 hook 실패 body가 변경된 사실을 확인했다. `apps/daemon/src/agent-controller.ts`의 문구를 `Agent report could not be applied to this runtime.`으로 복원했다. `InvalidVendorReport`의 400 및 나머지 실패의 409 분기는 유지한다.
+- 검증: Python assertion으로 HEAD와 수정본의 원문 일치 및 400/409 분기 보존을 확인했고 `git diff --check`를 통과했다. 문구 한 줄 복원이므로 전체 테스트는 재실행하지 않았다. W9 완료·W10 next pointer는 유지하며 commit/push는 하지 않았다.
+
+### 2026-09-23 02:27 · W8·W9 개별 커밋 범위 확인
+
+- 사용자 요청에 따라 W8·W9를 각각의 커밋으로 유지한다. git log/show로 W8은 이미 2a5446a(feat(diagnostics): migrate W8 service logging to Pino)에 구현·테스트·owner 문서·로그가 포함됐음을 확인하여 재커밋하거나 amend하지 않는다.
+- W9 Hono 전환 코드·테스트·의존성과 HTTP/SSE owner 설명·W9 로그만 별도 커밋한다. 공유 문서·lockfile·로그는 W9 시점 내용만 index에 반영하고 W10 저장 전환·readiness timeout·DDL 생성기 보완은 worktree에 보존한다. W9 완료 기록의 전체 검사와 이후 W10 전체 751개 테스트 통과를 검증 근거로 사용하며, 커밋 전 staged diff와 diff --check를 확인한다. push는 요청 범위에 없다.

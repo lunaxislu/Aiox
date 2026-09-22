@@ -1,7 +1,9 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import type { ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
+
+import type { MiddlewareHandler } from "hono";
 
 const types: Record<string, string> = {
     ".css": "text/css; charset=utf-8",
@@ -19,17 +21,17 @@ const types: Record<string, string> = {
  * and the API share one origin. Missing build output says so instead of 404ing
  * silently.
  */
-export function createStaticHandler(root: string | undefined) {
-    return async function serve(
-        response: ServerResponse,
-        pathname: string,
-    ): Promise<boolean> {
-        if (root === undefined) return false;
+export function createStaticHandler(
+    root: string | undefined,
+): MiddlewareHandler {
+    return async (c, next) => {
+        if (root === undefined) return next();
+        const pathname = c.req.path;
         const requested = pathname === "/" ? "/index.html" : pathname;
         // Keep traversal inside the build output.
         const target = resolve(join(root, normalize(requested)));
         if (target !== resolve(root) && !target.startsWith(resolve(root) + sep))
-            return false;
+            return next();
         let file = target;
         try {
             if ((await stat(file)).isDirectory())
@@ -40,15 +42,19 @@ export function createStaticHandler(root: string | undefined) {
         }
         try {
             const info = await stat(file);
-            response.writeHead(200, {
-                "content-type":
-                    types[extname(file)] ?? "application/octet-stream",
-                "content-length": info.size,
-            });
-            createReadStream(file).pipe(response);
-            return true;
+            return c.body(
+                Readable.toWeb(
+                    createReadStream(file),
+                ) as ReadableStream<Uint8Array>,
+                200,
+                {
+                    "content-type":
+                        types[extname(file)] ?? "application/octet-stream",
+                    "content-length": String(info.size),
+                },
+            );
         } catch {
-            return false;
+            return next();
         }
     };
 }

@@ -1852,7 +1852,10 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
     const target = await joinAgent(network.id, "target");
     const connections = vi.spyOn(harness.daemon.services.webEvents, "connect");
     const response = await fetch(harness.webUrl("/api/web/events"));
-    const writes = vi.spyOn(connections.mock.calls[0]![0], "write");
+    const writes = vi.spyOn(
+        connections.mock.calls[0]![0].env.outgoing,
+        "write",
+    );
     const reader = response.body!.getReader();
     let events = 0;
     const observing = (async () => {
@@ -1926,7 +1929,10 @@ it("does not invalidate Web state for external-only runtime and notification cha
     const web = await joinAgent(network.id, "web");
     const connections = vi.spyOn(harness.daemon.services.webEvents, "connect");
     const response = await fetch(harness.webUrl("/api/web/events"));
-    const writes = vi.spyOn(connections.mock.calls[0]![0], "write");
+    const writes = vi.spyOn(
+        connections.mock.calls[0]![0].env.outgoing,
+        "write",
+    );
     const reader = response.body!.getReader();
     await reader.read();
     const frames: Uint8Array[] = [];

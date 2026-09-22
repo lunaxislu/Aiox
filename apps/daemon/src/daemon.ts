@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
@@ -21,11 +21,14 @@ import type {
 } from "@aiox/protocol";
 import { createShellSchema, terminalContextSchema } from "@aiox/protocol";
 import type { VendorAdapter } from "@aiox/vendor";
+import { getRequestListener } from "@hono/node-server";
 import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { WebSocketServer } from "ws";
 
 import { AgentController } from "@/agent-controller";
-import { createApiHandler, HttpError, readJson } from "@/http";
+import { createApi, apiError, HttpError, readJson } from "@/http";
 import { bearerToken, handleMcpRequest } from "@/mcp";
 import { MessageService } from "@/messaging";
 import { NetworkService } from "@/networks";
@@ -40,6 +43,7 @@ import type { TerminalOptions } from "@/terminals";
 import { attachTerminal, TerminalService } from "@/terminals";
 import { WebEvents } from "@/web-events";
 
+import type { HttpEnv } from "./http";
 import { restartCommand } from "./managed-agents";
 import { readWebSnapshot } from "./web-state";
 
@@ -194,65 +198,68 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         },
     };
 
-    const api = createApiHandler(services);
-    const serveStatic = createStaticHandler(options.webRoot);
-
-    function protectedRequest(
-        request: IncomingMessage,
-        response: ServerResponse,
-        port: number,
-    ): boolean {
-        if (!ready) {
-            response.writeHead(503, { "content-type": "application/json" });
-            response.end(
-                JSON.stringify({
-                    code: "starting",
-                    message: "The daemon is starting.",
-                }),
+    const api = createApi(services);
+    function listener(component: "daemon" | "web") {
+        const app = new Hono<HttpEnv>();
+        app.use(async (c, next) => {
+            const requestId = randomUUID();
+            c.set("requestId", requestId);
+            c.header("x-request-id", requestId);
+            // @hono/node-server leaves a pending drain callback after a blocked
+            // stream closes. This response can no longer drain or accept writes.
+            c.env.outgoing.once("close", () =>
+                c.env.outgoing.removeAllListeners("drain"),
             );
-            return true;
-        }
-        const denied = requestGuard(request, port, ports.web, host);
-        if (!denied) return false;
-        response.writeHead(denied.status, {
-            "content-type": "application/json",
+            logger.info(
+                { requestId, component, method: c.req.method },
+                "HTTP request received",
+            );
+            if (!ready)
+                return c.json(
+                    { code: "starting", message: "The daemon is starting." },
+                    503,
+                );
+            const denied = requestGuard(
+                c.env.incoming,
+                ports[component],
+                ports.web,
+                host,
+            );
+            if (denied)
+                return c.json(
+                    { code: "request_rejected", message: denied.message },
+                    denied.status,
+                );
+            await next();
         });
-        response.end(
-            JSON.stringify({
-                code: "request_rejected",
-                message: denied.message,
-            }),
-        );
-        return true;
-    }
-
-    function observeRequest(
-        request: IncomingMessage,
-        response: ServerResponse,
-        component: string,
-    ) {
-        const requestId = randomUUID();
-        response.setHeader("x-request-id", requestId);
-        const diagnostic = logger.child({
-            requestId,
-            component,
-            method: request.method,
+        app.onError((error, c) => {
+            if (
+                c.req.path.startsWith("/api/") &&
+                c.req.path !== "/api/agent-hooks"
+            )
+                return apiError(error, c, services);
+            logger.error(
+                { err: error, requestId: c.get("requestId"), component },
+                "HTTP request failed",
+            );
+            return c.body(
+                String(error),
+                error instanceof HttpError
+                    ? (error.status as ContentfulStatusCode)
+                    : 500,
+            );
         });
-        diagnostic.info("HTTP request received");
-        return diagnostic;
-    }
-
-    const daemonServer = createServer((request, response) => {
-        const diagnostic = observeRequest(request, response, "daemon");
-        void (async () => {
-            if (protectedRequest(request, response, ports.daemon)) return;
-            const url = new URL(request.url ?? "/", `http://${host}`);
-            if (url.pathname === "/api/agent-hooks" && agents) {
-                await agents.hook(request, response);
-                return;
-            }
-            const mcp = /^\/mcp\/([^/]+)$/.exec(url.pathname);
-            if (mcp) {
+        if (component === "daemon") {
+            app.all("/api/agent-hooks", (c) => {
+                if (!agents)
+                    throw new HttpError(
+                        404,
+                        "not_found",
+                        `No such endpoint: ${c.req.method} ${c.req.path}`,
+                    );
+                return agents.hook(c);
+            });
+            app.all("/mcp/:networkId", async (c) => {
                 if (!admitting)
                     throw new HttpError(
                         503,
@@ -260,61 +267,45 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                         "The daemon is stopping.",
                     );
                 const body =
-                    request.method === "POST"
-                        ? await readJson(request)
+                    c.req.method === "POST"
+                        ? await readJson(c.req.raw)
                         : undefined;
-                await handleMcpRequest(
-                    decodeURIComponent(mcp[1]!),
-                    request,
-                    response,
+                const response = await handleMcpRequest(
+                    c.req.param("networkId"),
+                    c,
                     body,
                     { runtimes, networks, messages },
                 );
                 if (
-                    response.statusCode === 200 &&
+                    response.status === 200 &&
                     InitializeRequestSchema.safeParse(body).success
                 ) {
-                    const binding = runtimes.authenticate(
-                        bearerToken(request),
-                    )?.binding;
-                    binding?.mcpConnected?.();
+                    runtimes
+                        .authenticate(bearerToken(c.req.raw))
+                        ?.binding.mcpConnected?.();
                 }
-                return;
-            }
-            if (await api(request, response, url)) return;
-            response.writeHead(404, { "content-type": "application/json" });
-            response.end(
-                JSON.stringify({ code: "not_found", message: "Not found." }),
+                return response;
+            });
+        }
+        app.route("/", api);
+        if (component === "web") {
+            app.use("*", createStaticHandler(options.webRoot));
+            app.notFound((c) =>
+                c.text(
+                    options.webRoot === undefined
+                        ? "The operational Web is not built. Run: pnpm --filter @aiox/web build"
+                        : "Not found.",
+                    404,
+                ),
             );
-        })().catch((error: unknown) => {
-            diagnostic.error({ err: error }, "HTTP request failed");
-            if (!response.headersSent)
-                response.writeHead(
-                    error instanceof HttpError ? error.status : 500,
-                );
-            response.end(String(error));
-        });
-    });
-
-    const webServer = createServer((request, response) => {
-        const diagnostic = observeRequest(request, response, "web");
-        void (async () => {
-            if (protectedRequest(request, response, ports.web)) return;
-            const url = new URL(request.url ?? "/", `http://${host}`);
-            if (await api(request, response, url)) return;
-            if (await serveStatic(response, url.pathname)) return;
-            response.writeHead(404, { "content-type": "text/plain" });
-            response.end(
-                options.webRoot === undefined
-                    ? "The operational Web is not built. Run: pnpm --filter @aiox/web build"
-                    : "Not found.",
+        } else
+            app.notFound((c) =>
+                c.json({ code: "not_found", message: "Not found." }, 404),
             );
-        })().catch((error: unknown) => {
-            diagnostic.error({ err: error }, "HTTP request failed");
-            if (!response.headersSent) response.writeHead(500);
-            response.end(String(error));
-        });
-    });
+        return createServer(getRequestListener(app.fetch));
+    }
+    const daemonServer = listener("daemon");
+    const webServer = listener("web");
 
     const sockets = new WebSocketServer({ noServer: true });
     daemonServer.on("upgrade", (request, socket, head) => {

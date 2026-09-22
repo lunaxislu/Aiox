@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { resolveTerminalLaunch, loadConfig } from "@aiox/config";
 import {
@@ -12,8 +11,10 @@ import {
     type Operation,
     type OperationError,
 } from "@aiox/protocol";
+import type { Context } from "hono";
 
-import { HttpError, parse, readJson, send } from "./http";
+import type { HttpEnv } from "./http";
+import { HttpError, parse, readJson } from "./http";
 import type { DaemonServices } from "./services";
 
 function mapPanes(
@@ -28,43 +29,27 @@ function mapPanes(
           };
 }
 export async function handlePanelOperation(
-    request: IncomingMessage,
-    response: ServerResponse,
-    url: URL,
+    c: Context<HttpEnv>,
     services: DaemonServices,
-): Promise<boolean> {
-    const match =
-        /^\/api\/panels\/([^/]+)(?:\/(shells)|\/tabs\/([^/]+))?$/.exec(
-            url.pathname,
-        );
-    if (
-        !match ||
-        !(
-            (request.method === "POST" && match[2]) ||
-            (request.method === "DELETE" && !match[2])
-        )
-    )
-        return false;
-    const panelId = decodeURIComponent(match[1]!),
-        tabId =
-            match[3] === undefined ? undefined : decodeURIComponent(match[3]);
-    const create = request.method === "POST";
-    const raw = await readJson(request);
+    create: boolean,
+): Promise<Response> {
+    const panelId = c.req.param("panelId")!,
+        tabId = c.req.param("tabId");
+    const raw = await readJson(c.req.raw);
     const input = create
         ? parse(createPanelShellRequestSchema, raw)
         : tabId === undefined
           ? parse(deletePanelRequestSchema, raw)
           : parse(closePanelTabRequestSchema, raw);
     const hash = createHash("sha256")
-        .update(JSON.stringify([request.method, url.pathname, input]))
+        .update(JSON.stringify([c.req.method, c.req.path, input]))
         .digest("hex");
     const previous = await services.db.hostState.getOperation(
         input.requestId,
         hash,
     );
     if (previous) {
-        send(response, 202, previous);
-        return true;
+        return c.json(previous, 202);
     }
     if (!services.lifecycle.acceptingInput())
         throw new HttpError(503, "stopping", "Daemon is stopping.");
@@ -160,8 +145,8 @@ export async function handlePanelOperation(
     };
     const accepted = await services.db.hostState.saveOperation(initial, hash);
     services.webEvents.notify();
-    send(response, 202, accepted);
-    if (accepted.id !== initial.id) return true;
+    c.res = c.json(accepted, 202);
+    if (accepted.id !== initial.id) return c.res;
     // Admission is durable before execution; failures remain queryable after the HTTP reply.
     const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
         execute,
@@ -395,5 +380,5 @@ export async function handlePanelOperation(
             finishUpdate?.();
         }
     }
-    return true;
+    return c.res;
 }

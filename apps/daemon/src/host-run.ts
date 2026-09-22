@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import { access, writeFile, rm } from "node:fs/promises";
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,10 +18,12 @@ import {
     type PanelLayout,
     type PanelView,
 } from "@aiox/protocol";
+import type { Context } from "hono";
 import { z } from "zod";
 
 import { placeAgent } from "./host-agents";
-import { HttpError, parse, readJson, send } from "./http";
+import type { HttpEnv } from "./http";
+import { HttpError, parse, readJson } from "./http";
 import { restartCommand } from "./managed-agents";
 import type { DaemonServices } from "./services";
 
@@ -227,23 +228,16 @@ export function waitForAgent(
 }
 
 export async function handleHostRun(
-    request: IncomingMessage,
-    response: ServerResponse,
-    url: URL,
+    c: Context<HttpEnv>,
     services: DaemonServices,
-): Promise<boolean> {
-    if (
-        !["/api/hosts/run", "/api/hosts/restart"].includes(url.pathname) ||
-        request.method !== "POST"
-    )
-        return false;
-    const restarting = url.pathname.endsWith("/restart");
+    restarting: boolean,
+): Promise<Response> {
     const input = parse(
         restarting ? hostRestartRequestSchema : runInputSchema,
-        await readJson(request),
+        await readJson(c.req.raw),
     );
     const hash = createHash("sha256")
-        .update(JSON.stringify([url.pathname, input]))
+        .update(JSON.stringify([c.req.path, input]))
         .digest("hex");
     const previous = await services.db.hostState.getOperation(
         input.requestId,
@@ -254,13 +248,12 @@ export async function handleHostRun(
             {
                 operationId: previous.id,
                 operationRequestId: previous.requestId,
-                requestId: response.getHeader("x-request-id"),
+                requestId: c.get("requestId"),
                 hostId: previous.hostId,
             },
             "Host operation accepted",
         );
-        send(response, 202, previous);
-        return true;
+        return c.json(previous, 202);
     }
     if (!services.lifecycle.acceptingInput())
         throw new HttpError(503, "shutting_down", "Daemon is stopping.");
@@ -425,13 +418,12 @@ export async function handleHostRun(
                     {
                         operationId: admitted.id,
                         operationRequestId: admitted.requestId,
-                        requestId: response.getHeader("x-request-id"),
+                        requestId: c.get("requestId"),
                         hostId: admitted.hostId,
                     },
                     "Host operation accepted",
                 );
-                send(response, 202, admitted);
-                return true;
+                return c.json(admitted, 202);
             }
         } else
             await services.db.hostState.createHost(
@@ -451,13 +443,12 @@ export async function handleHostRun(
                 {
                     operationId: retry.id,
                     operationRequestId: retry.requestId,
-                    requestId: response.getHeader("x-request-id"),
+                    requestId: c.get("requestId"),
                     hostId: retry.hostId,
                 },
                 "Host operation accepted",
             );
-            send(response, 202, retry);
-            return true;
+            return c.json(retry, 202);
         }
         const concurrent = await duplicate();
         if (!existing && concurrent) throw exists(concurrent);
@@ -468,18 +459,18 @@ export async function handleHostRun(
         {
             operationId: operation.id,
             operationRequestId: operation.requestId,
-            requestId: response.getHeader("x-request-id"),
+            requestId: c.get("requestId"),
             hostId: operation.hostId,
         },
         "Host operation accepted",
     );
-    send(response, 202, operation);
+    c.res = c.json(operation, 202);
     const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
         execute,
     );
     services.operationTasks.add(task);
     void task.finally(() => services.operationTasks.delete(task));
-    return true;
+    return c.res;
 
     async function execute() {
         const persist = async () => {
@@ -491,7 +482,7 @@ export async function handleHostRun(
                     {
                         operationId: operation.id,
                         operationRequestId: operation.requestId,
-                        requestId: response.getHeader("x-request-id"),
+                        requestId: c.get("requestId"),
                         hostId: operation.hostId,
                         state: operation.state,
                     },
@@ -750,7 +741,7 @@ export async function handleHostRun(
                         err: error,
                         operationId: operation.id,
                         operationRequestId: operation.requestId,
-                        requestId: response.getHeader("x-request-id"),
+                        requestId: c.get("requestId"),
                         hostId: operation.hostId,
                     },
                     "Host operation storage failed",

@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import { access, rm } from "node:fs/promises";
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,10 +22,12 @@ import {
     type Operation,
     type OperationError,
 } from "@aiox/protocol";
+import type { Context } from "hono";
 import { z } from "zod";
 
 import { launcher, launchCommand, waitForAgent } from "./host-run";
-import { HttpError, parse, readJson, send } from "./http";
+import type { HttpEnv } from "./http";
+import { HttpError, parse, readJson } from "./http";
 import { restartCommand } from "./managed-agents";
 import type { DaemonServices } from "./services";
 import { projectHostState } from "./web-state";
@@ -116,60 +117,18 @@ export function placeAgent(
 }
 
 export async function handleHostAgents(
-    request: IncomingMessage,
-    response: ServerResponse,
-    url: URL,
+    c: Context<HttpEnv>,
     services: DaemonServices,
-): Promise<boolean> {
-    const route = /^\/api\/hosts\/([^/]+)\/networks\/([^/]+)\/route$/.exec(
-        url.pathname,
-    );
-    if (route && request.method === "POST") {
-        await loadConfig(services.configLocation);
-        const hostId = decodeURIComponent(route[1]!),
-            networkId = decodeURIComponent(route[2]!);
-        const input = parse(
-            z.strictObject({ operation: routeOperationSchema }),
-            await readJson(request),
-        );
-        const state = await services.db.hostState.snapshot();
-        if (!state.hosts.some((h) => h.id === hostId))
-            throw new HttpError(404, "unknown_host", "No such Host.");
-        try {
-            await services.db.hostState.routeNetwork(
-                hostId,
-                networkId,
-                input.operation,
-            );
-        } catch (error) {
-            if (error instanceof RouteOperationError)
-                throw new HttpError(400, "invalid_route", error.message, {
-                    stage: "cli",
-                });
-            throw error;
-        }
-        services.webEvents.notify();
-        send(
-            response,
-            200,
-            projectHostState(
-                await services.db.hostState.snapshot(),
-                services,
-            ).networks.find((n) => n.id === networkId),
-        );
-        return true;
-    }
-    const start = /^\/api\/hosts\/agents\/(start|restart)$/.exec(url.pathname);
-    const stop = /^\/api\/hosts\/([^/]+)\/agents\/stop$/.exec(url.pathname);
-    if (request.method !== "POST" || (!start && !stop)) return false;
-    const action = start?.[1] ?? "stop";
-    if (stop) await loadConfig(services.configLocation);
-    const body = await readJson(request);
+    action: "start" | "restart" | "stop",
+): Promise<Response> {
+    const start = action !== "stop";
+    if (!start) await loadConfig(services.configLocation);
+    const body = await readJson(c.req.raw);
     const input = start
         ? parse(startInput, body)
         : parse(hostAgentStopRequestSchema, body);
     const hash = createHash("sha256")
-        .update(JSON.stringify([url.pathname, input]))
+        .update(JSON.stringify([c.req.path, input]))
         .digest("hex");
     const previous = await services.db.hostState.getOperation(
         input.requestId,
@@ -180,13 +139,12 @@ export async function handleHostAgents(
             {
                 operationId: previous.id,
                 operationRequestId: previous.requestId,
-                requestId: response.getHeader("x-request-id"),
+                requestId: c.get("requestId"),
                 hostId: previous.hostId,
             },
             "Host operation accepted",
         );
-        send(response, 202, previous);
-        return true;
+        return c.json(previous, 202);
     }
     if (!services.lifecycle.acceptingInput())
         throw new HttpError(503, "shutting_down", "Daemon is stopping.");
@@ -207,7 +165,7 @@ export async function handleHostAgents(
     const host = state.hosts.find((h) =>
         prepared
             ? h.name === prepared.manifest!.host.name
-            : h.id === decodeURIComponent(stop![1]!),
+            : h.id === c.req.param("hostId"),
     );
     if (!host)
         throw new HttpError(
@@ -363,21 +321,20 @@ export async function handleHostAgents(
             {
                 operationId: admitted.id,
                 operationRequestId: admitted.requestId,
-                requestId: response.getHeader("x-request-id"),
+                requestId: c.get("requestId"),
                 hostId: admitted.hostId,
             },
             "Host operation accepted",
         );
-        send(response, 202, admitted);
-        return true;
+        return c.json(admitted, 202);
     }
     services.webEvents.notify();
-    send(response, 202, operation);
+    c.res = c.json(operation, 202);
     logger.info(
         {
             operationId: operation.id,
             operationRequestId: operation.requestId,
-            requestId: response.getHeader("x-request-id"),
+            requestId: c.get("requestId"),
             hostId: operation.hostId,
         },
         "Host operation accepted",
@@ -387,7 +344,7 @@ export async function handleHostAgents(
     );
     services.operationTasks.add(task);
     void task.finally(() => services.operationTasks.delete(task));
-    return true;
+    return c.res;
 
     async function execute() {
         const persist = async () => {
@@ -397,7 +354,7 @@ export async function handleHostAgents(
                     {
                         operationId: operation.id,
                         operationRequestId: operation.requestId,
-                        requestId: response.getHeader("x-request-id"),
+                        requestId: c.get("requestId"),
                         hostId: operation.hostId,
                         state: operation.state,
                     },
@@ -696,7 +653,7 @@ export async function handleHostAgents(
                         err: storage,
                         operationId: operation.id,
                         operationRequestId: operation.requestId,
-                        requestId: response.getHeader("x-request-id"),
+                        requestId: c.get("requestId"),
                         hostId: operation.hostId,
                     },
                     "Host operation storage failed",
@@ -705,4 +662,41 @@ export async function handleHostAgents(
             }
         }
     }
+}
+
+export async function routeHostNetwork(
+    c: Context<HttpEnv>,
+    services: DaemonServices,
+): Promise<Response> {
+    await loadConfig(services.configLocation);
+    const hostId = c.req.param("hostId")!,
+        networkId = c.req.param("networkId")!;
+    const input = parse(
+        z.strictObject({ operation: routeOperationSchema }),
+        await readJson(c.req.raw),
+    );
+    const state = await services.db.hostState.snapshot();
+    if (!state.hosts.some((h) => h.id === hostId))
+        throw new HttpError(404, "unknown_host", "No such Host.");
+    try {
+        await services.db.hostState.routeNetwork(
+            hostId,
+            networkId,
+            input.operation,
+        );
+    } catch (error) {
+        if (error instanceof RouteOperationError)
+            throw new HttpError(400, "invalid_route", error.message, {
+                stage: "cli",
+            });
+        throw error;
+    }
+    services.webEvents.notify();
+    return c.json(
+        projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        ).networks.find((n) => n.id === networkId),
+        200,
+    );
 }

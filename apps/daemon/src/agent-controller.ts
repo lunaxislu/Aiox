@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { logger } from "@aiox/diagnostics";
 import {
@@ -23,6 +22,7 @@ import {
     type VendorBinding,
     type VendorExecution,
 } from "@aiox/vendor";
+import type { Context } from "hono";
 import type { WebSocket } from "ws";
 import { z } from "zod";
 
@@ -31,6 +31,7 @@ import { readJson } from "@/http";
 import { bearerToken } from "@/mcp";
 import { collaborationInstruction } from "@/messaging";
 
+import type { HttpEnv } from "./http";
 import { managedLaunch } from "./managed-agents";
 
 const resizeSchema = z.strictObject({
@@ -50,42 +51,27 @@ export class AgentController {
         private readonly adapters: readonly VendorAdapter[],
     ) {}
 
-    async hook(
-        request: IncomingMessage,
-        response: ServerResponse,
-    ): Promise<void> {
-        const report = this.#reports.get(bearerToken(request) ?? "");
+    async hook(c: Context<HttpEnv>): Promise<Response> {
+        const report = this.#reports.get(bearerToken(c.req.raw) ?? "");
         const active = () =>
             report &&
             this.daemon.services.runtimes.get(report.runtimeId)
                 ?.collaborationActive;
-        if (!active()) {
-            response.writeHead(401).end("Invalid agent report credential.");
-            return;
-        }
-        if (request.method !== "POST") {
-            response.writeHead(405).end();
-            return;
-        }
+        if (!active()) return c.body("Invalid agent report credential.", 401);
+        if (c.req.method !== "POST") return c.body(null, 405);
         try {
-            const body = await readJson(request);
-            if (!active()) {
-                response.writeHead(401).end("Invalid agent report credential.");
-                return;
-            }
+            const body = await readJson(c.req.raw);
+            if (!active())
+                return c.body("Invalid agent report credential.", 401);
             const output = await report!.binding.observe(body);
-            if (output === undefined) response.writeHead(204).end();
-            else
-                response
-                    .writeHead(200, { "Content-Type": "application/json" })
-                    .end(JSON.stringify(output));
+            return output === undefined ? c.body(null, 204) : c.json(output);
         } catch (error) {
-            response
-                .writeHead(error instanceof InvalidVendorReport ? 400 : 409)
-                .end("Agent report could not be applied to this runtime.");
+            return c.body(
+                "Agent report could not be applied to this runtime.",
+                error instanceof InvalidVendorReport ? 400 : 409,
+            );
         }
     }
-
     attachExternal(socket: WebSocket): void {
         this.#attach(socket, true);
     }

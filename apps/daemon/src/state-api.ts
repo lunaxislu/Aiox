@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { prepareHostInput, HostInputError, ConfigError } from "@aiox/config";
-import { HostStateError } from "@aiox/persistence";
+import { prepareHostInput } from "@aiox/config";
 import {
     createPanelRequestSchema,
     renamePanelRequestSchema,
@@ -12,241 +10,267 @@ import {
     hostResolveRequestSchema,
     type PanelView,
 } from "@aiox/protocol";
+import type { Hono } from "hono";
 
-import { handleHostAgents } from "./host-agents";
+import { handleHostAgents, routeHostNetwork } from "./host-agents";
 import { handleHostControl } from "./host-control";
 import { handleHostRun } from "./host-run";
-import { HttpError, parse, readJson, send } from "./http";
+import type { HttpEnv } from "./http";
+import { HttpError, parse, readJson } from "./http";
 import { handlePanelOperation } from "./panel-operations";
 import type { DaemonServices } from "./services";
 import { projectHostState } from "./web-state";
 
-export async function handleStateApi(
-    request: IncomingMessage,
-    response: ServerResponse,
-    url: URL,
-    services: DaemonServices,
-): Promise<boolean> {
-    const path = url.pathname,
-        method = request.method ?? "GET";
-    if (!/^\/api\/(panels|hosts|operations)(\/|$)/.test(path)) return false;
-    try {
-        if (await handleHostRun(request, response, url, services)) return true;
-        if (await handleHostControl(request, response, url, services))
-            return true;
-        if (await handleHostAgents(request, response, url, services))
-            return true;
-        if (await handlePanelOperation(request, response, url, services))
-            return true;
-        if (path === "/api/hosts/resolve" && method === "POST") {
-            const input = parse(
-                hostResolveRequestSchema,
-                await readJson(request),
+export function registerStateApi(app: Hono<HttpEnv>, services: DaemonServices) {
+    app.post("/api/hosts/run", (c) => handleHostRun(c, services, false));
+    app.post("/api/hosts/restart", (c) => handleHostRun(c, services, true));
+    app.post("/api/hosts/:hostId/stop", (c) =>
+        handleHostControl(c, services, false),
+    );
+    app.delete("/api/hosts/:hostId", (c) =>
+        handleHostControl(c, services, true),
+    );
+    app.post("/api/hosts/agents/start", (c) =>
+        handleHostAgents(c, services, "start"),
+    );
+    app.post("/api/hosts/agents/restart", (c) =>
+        handleHostAgents(c, services, "restart"),
+    );
+    app.post("/api/hosts/:hostId/agents/stop", (c) =>
+        handleHostAgents(c, services, "stop"),
+    );
+    app.post("/api/hosts/:hostId/networks/:networkId/route", (c) =>
+        routeHostNetwork(c, services),
+    );
+    app.post("/api/panels/:panelId/shells", (c) =>
+        handlePanelOperation(c, services, true),
+    );
+    app.delete("/api/panels/:panelId", (c) =>
+        handlePanelOperation(c, services, false),
+    );
+    app.delete("/api/panels/:panelId/tabs/:tabId", (c) =>
+        handlePanelOperation(c, services, false),
+    );
+    app.post("/api/hosts/resolve", async (c) => {
+        const input = parse(
+            hostResolveRequestSchema,
+            await readJson(c.req.raw),
+        );
+        const prepared = await prepareHostInput(input, services.configLocation);
+        const host = (await services.db.hostState.snapshot()).hosts.find(
+            (h) => h.name === prepared.manifest!.host.name,
+        );
+        if (!host)
+            throw new HttpError(
+                404,
+                "unknown_host",
+                "No Host matches the selected YAML.",
+                { stage: "cli" },
             );
-            const prepared = await prepareHostInput(
-                input,
-                services.configLocation,
-            );
-            const host = (await services.db.hostState.snapshot()).hosts.find(
-                (h) => h.name === prepared.manifest!.host.name,
-            );
-            if (!host)
-                throw new HttpError(
-                    404,
-                    "unknown_host",
-                    "No Host matches the selected YAML.",
-                    { stage: "cli" },
-                );
-            send(response, 200, { hostId: host.id });
-            return true;
-        }
+        return c.json({ hostId: host.id }, 200);
+    });
+    app.get("/api/hosts", async (c) => {
         const state = projectHostState(
             await services.db.hostState.snapshot(),
             services,
         );
-        if (path === "/api/hosts" && method === "GET") {
-            const name = url.searchParams.get("name");
-            send(
-                response,
-                200,
-                state.hosts.filter((h) => name === null || h.name === name),
-            );
-            return true;
-        }
-        const hostMatch =
-            /^\/api\/hosts\/([^/]+)(?:\/networks(?:\/([^/]+))?)?$/.exec(path);
-        if (hostMatch && method === "GET") {
-            const host = state.hosts.find(
-                (h) => h.id === decodeURIComponent(hostMatch[1]!),
-            );
-            if (!host)
-                throw new HttpError(404, "unknown_host", "No such Host.");
-            if (path.endsWith(`/hosts/${hostMatch[1]}`))
-                send(response, 200, host);
-            else {
-                const networks = state.networks.filter(
-                    (n) => n.hostId === host.id,
-                );
-                if (hostMatch[2]) {
-                    const network = networks.find(
-                        (n) => n.id === decodeURIComponent(hostMatch[2]!),
-                    );
-                    if (!network)
-                        throw new HttpError(
-                            404,
-                            "unknown_network",
-                            "No such Host Network.",
-                        );
-                    send(response, 200, network);
-                } else {
-                    const name = url.searchParams.get("name");
-                    send(
-                        response,
-                        200,
-                        networks.filter(
-                            (n) => name === null || n.name === name,
-                        ),
-                    );
-                }
-            }
-            return true;
-        }
-        if (path === "/api/operations" && method === "GET") {
-            const requestId = url.searchParams.get("requestId");
-            send(
-                response,
-                200,
-                state.operations.filter(
-                    (o) => requestId === null || o.requestId === requestId,
-                ),
-            );
-            return true;
-        }
-        const operationMatch = /^\/api\/operations\/([^/]+)$/.exec(path);
-        if (operationMatch && method === "GET") {
-            const operation = state.operations.find(
-                (o) => o.id === decodeURIComponent(operationMatch[1]!),
-            );
-            if (!operation)
-                throw new HttpError(
-                    404,
-                    "unknown_operation",
-                    "No such Operation.",
-                );
-            send(response, 200, operation);
-            return true;
-        }
-        if (path === "/api/panels") {
-            if (method === "GET") {
-                send(response, 200, state.panels);
-                return true;
-            }
-            if (method === "POST") {
-                const input = parse(
-                    createPanelRequestSchema,
-                    await readJson(request),
-                );
-                const paneId = randomUUID();
-                const panel: PanelView = {
-                    id: randomUUID(),
-                    kind: "workspace",
-                    section: input.section ?? "workspaces",
-                    name: input.name,
-                    hostId: null,
-                    networkId: null,
-                    revision: 1,
-                    layout: {
-                        type: "pane",
-                        id: paneId,
-                        tabIds: [],
-                        selectedTabId: null,
-                    },
-                    activePaneId: paneId,
-                    tabs: [],
-                };
-                await services.db.hostState.createPanel(panel);
-                services.webEvents.notify();
-                send(response, 201, panel);
-                return true;
-            }
-        }
-        const panelMatch =
-            /^\/api\/panels\/([^/]+)(?:\/(name|layout)|\/tabs\/([^/]+)\/dismiss)?$/.exec(
-                path,
-            );
-        if (!panelMatch) return false;
-        const panel = state.panels.find(
-            (p) => p.id === decodeURIComponent(panelMatch[1]!),
+        const name = c.req.query("name") ?? null;
+        return c.json(
+            state.hosts.filter((h) => name === null || h.name === name),
+            200,
         );
-        if (!panel) throw new HttpError(404, "unknown_panel", "No such panel.");
-        if (method === "GET" && !panelMatch[2] && !panelMatch[3]) {
-            send(response, 200, panel);
-            return true;
-        }
+    });
+    app.get("/api/hosts/:hostId", async (c) => {
+        const state = projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        );
+        const host = state.hosts.find((h) => h.id === c.req.param("hostId"));
+        if (!host) throw new HttpError(404, "unknown_host", "No such Host.");
+        return c.json(host);
+    });
+    app.get("/api/hosts/:hostId/networks", async (c) => {
+        const state = projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        );
+        const host = state.hosts.find((h) => h.id === c.req.param("hostId"));
+        if (!host) throw new HttpError(404, "unknown_host", "No such Host.");
+        const name = c.req.query("name");
+        return c.json(
+            state.networks.filter(
+                (n) =>
+                    n.hostId === host.id &&
+                    (name === undefined || n.name === name),
+            ),
+        );
+    });
+    app.get("/api/hosts/:hostId/networks/:networkId", async (c) => {
+        const state = projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        );
+        const host = state.hosts.find((h) => h.id === c.req.param("hostId"));
+        if (!host) throw new HttpError(404, "unknown_host", "No such Host.");
+        const network = state.networks.find(
+            (n) => n.hostId === host.id && n.id === c.req.param("networkId"),
+        );
+        if (!network)
+            throw new HttpError(
+                404,
+                "unknown_network",
+                "No such Host Network.",
+            );
+        return c.json(network);
+    });
+    app.get("/api/operations", async (c) => {
+        const state = projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        );
+        const requestId = c.req.query("requestId") ?? null;
+        return c.json(
+            state.operations.filter(
+                (o) => requestId === null || o.requestId === requestId,
+            ),
+            200,
+        );
+    });
+    app.get("/api/operations/:operationId", async (c) => {
+        const state = projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        );
+        const operation = state.operations.find(
+            (o) => o.id === c.req.param("operationId"),
+        );
+        if (!operation)
+            throw new HttpError(404, "unknown_operation", "No such Operation.");
+        return c.json(operation, 200);
+    });
+    app.get("/api/panels", async (c) => {
+        const state = projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        );
+        return c.json(state.panels, 200);
+    });
+    app.post("/api/panels", async (c) => {
+        projectHostState(await services.db.hostState.snapshot(), services);
+        const input = parse(
+            createPanelRequestSchema,
+            await readJson(c.req.raw),
+        );
+        const paneId = randomUUID();
+        const panel: PanelView = {
+            id: randomUUID(),
+            kind: "workspace",
+            section: input.section ?? "workspaces",
+            name: input.name,
+            hostId: null,
+            networkId: null,
+            revision: 1,
+            layout: {
+                type: "pane",
+                id: paneId,
+                tabIds: [],
+                selectedTabId: null,
+            },
+            activePaneId: paneId,
+            tabs: [],
+        };
+        await services.db.hostState.createPanel(panel);
+        services.webEvents.notify();
+        return c.json(panel, 201);
+    });
+    app.get("/api/panels/:panelId", async (c) => {
+        const panel = await getPanel(c.req.param("panelId"));
+        return c.json(panel);
+    });
+    app.put("/api/panels/:panelId/name", async (c) => {
+        const panel = await getPanel(c.req.param("panelId"));
         let next: PanelView, revision: number;
-        if (method === "PUT" && panelMatch[2] === "name") {
-            if (panel.kind !== "workspace")
-                throw new HttpError(
-                    400,
-                    "invalid_request",
-                    "Only workspace panels can be renamed.",
-                );
-            const input = parse(
-                renamePanelRequestSchema,
-                await readJson(request),
+        if (panel.kind !== "workspace")
+            throw new HttpError(
+                400,
+                "invalid_request",
+                "Only workspace panels can be renamed.",
             );
-            revision = input.revision;
-            next = { ...panel, name: input.name, revision: revision + 1 };
-        } else if (method === "PUT" && panelMatch[2] === "layout") {
-            const input = parse(
-                putPanelLayoutRequestSchema,
-                await readJson(request),
+        const input = parse(
+            renamePanelRequestSchema,
+            await readJson(c.req.raw),
+        );
+        revision = input.revision;
+        next = { ...panel, name: input.name, revision: revision + 1 };
+        return c.json(await updatePanel(panel, next, revision));
+    });
+    app.put("/api/panels/:panelId/layout", async (c) => {
+        const panel = await getPanel(c.req.param("panelId"));
+        let next: PanelView, revision: number;
+        const input = parse(
+            putPanelLayoutRequestSchema,
+            await readJson(c.req.raw),
+        );
+        revision = input.revision;
+        next = parse(panelViewSchema, {
+            ...panel,
+            ...input,
+            revision: revision + 1,
+        });
+        return c.json(await updatePanel(panel, next, revision));
+    });
+    app.post("/api/panels/:panelId/tabs/:tabId/dismiss", async (c) => {
+        const panel = await getPanel(c.req.param("panelId"));
+        let next: PanelView, revision: number;
+        const input = parse(
+            dismissPanelTabRequestSchema,
+            await readJson(c.req.raw),
+        );
+        revision = input.revision;
+        const tab = panel.tabs.find((t) => t.id === c.req.param("tabId"));
+        if (!tab) throw new HttpError(404, "unknown_tab", "No such tab.");
+        if (
+            !tab.terminalId ||
+            !services.terminals.view(tab.terminalId)?.alive ||
+            !tab.notice ||
+            !["stopped", "start-failed", "crashed"].includes(tab.presentation)
+        )
+            throw new HttpError(
+                409,
+                "tab_state_conflict",
+                "This tab cannot return to a live shell.",
             );
-            revision = input.revision;
-            next = parse(panelViewSchema, {
-                ...panel,
-                ...input,
-                revision: revision + 1,
-            });
-        } else if (method === "POST" && panelMatch[3]) {
-            const input = parse(
-                dismissPanelTabRequestSchema,
-                await readJson(request),
-            );
-            revision = input.revision;
-            const tab = panel.tabs.find(
-                (t) => t.id === decodeURIComponent(panelMatch[3]!),
-            );
-            if (!tab) throw new HttpError(404, "unknown_tab", "No such tab.");
-            if (
-                !tab.terminalId ||
-                !services.terminals.view(tab.terminalId)?.alive ||
-                !tab.notice ||
-                !["stopped", "start-failed", "crashed"].includes(
-                    tab.presentation,
-                )
-            )
-                throw new HttpError(
-                    409,
-                    "tab_state_conflict",
-                    "This tab cannot return to a live shell.",
-                );
-            next = {
-                ...panel,
-                revision: revision + 1,
-                tabs: panel.tabs.map((t) =>
-                    t.id === tab.id
-                        ? {
-                              ...t,
-                              agentKey: null,
-                              runtimeId: null,
-                              presentation: "shell",
-                              notice: null,
-                          }
-                        : t,
-                ),
-            };
-        } else return false;
+        next = {
+            ...panel,
+            revision: revision + 1,
+            tabs: panel.tabs.map((t) =>
+                t.id === tab.id
+                    ? {
+                          ...t,
+                          agentKey: null,
+                          runtimeId: null,
+                          presentation: "shell",
+                          notice: null,
+                      }
+                    : t,
+            ),
+        };
+        return c.json(await updatePanel(panel, next, revision));
+    });
+    async function getPanel(id: string): Promise<PanelView> {
+        const state = projectHostState(
+            await services.db.hostState.snapshot(),
+            services,
+        );
+        const panel = state.panels.find((p) => p.id === id);
+        if (!panel) throw new HttpError(404, "unknown_panel", "No such panel.");
+        return panel;
+    }
+    async function updatePanel(
+        panel: PanelView,
+        next: PanelView,
+        revision: number,
+    ): Promise<PanelView> {
         if (panel.revision !== revision)
             throw new HttpError(
                 409,
@@ -255,37 +279,6 @@ export async function handleStateApi(
             );
         await services.db.hostState.updatePanel(next, revision);
         services.webEvents.notify();
-        send(response, 200, next);
-        return true;
-    } catch (error) {
-        if (error instanceof HttpError) throw error;
-        if (error instanceof HostInputError)
-            throw new HttpError(
-                error.stage === "config" ? 500 : 400,
-                error.stage === "yaml"
-                    ? "invalid_yaml"
-                    : error.stage === "config"
-                      ? "invalid_config"
-                      : "invalid_request",
-                error.message,
-                { stage: error.stage },
-            );
-        if (error instanceof ConfigError)
-            throw new HttpError(500, "invalid_config", error.message, {
-                stage: "config",
-            });
-        if (error instanceof HostStateError)
-            throw new HttpError(
-                error.code.startsWith("unknown_") ? 404 : 409,
-                error.code,
-                error.message,
-                { stage: "storage" },
-            );
-        throw new HttpError(
-            500,
-            "storage_error",
-            error instanceof Error ? error.message : String(error),
-            { stage: "storage" },
-        );
+        return next;
     }
 }
