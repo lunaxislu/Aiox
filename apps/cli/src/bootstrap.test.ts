@@ -569,16 +569,6 @@ test("routing verbs send one operation and show no blocks", async () => {
         assert.deepEqual(JSON.parse(stub.calls.at(-1)?.body ?? "null"), {
             name: "review",
         });
-        for (const action of ["block", "unblock", "reset"] as const)
-            await assert.rejects(
-                run(
-                    stub.cli,
-                    `host.network.${action}`,
-                    { between: ["a", "b"] },
-                    ["feature", "review"],
-                ),
-                /Stage 5/,
-            );
         assert.equal(stub.calls.length, 7);
     } finally {
         await stub.close();
@@ -915,4 +905,146 @@ test("commands follow the port a running daemon recorded, not the configured def
     assert.deepEqual(await run(cli, "agent.list", { json: true }), []);
     assert.deepEqual(stub.routes, ["GET /api/agents"]);
     await stub.close();
+});
+
+test("Host Network resolves exact names to IDs and sends explicit allow/reset operations", async (t) => {
+    const network = {
+        id: "network-id",
+        hostId: "host-id",
+        name: "team",
+        scope: "host",
+        default: "deny",
+        members: [
+            { agentKey: "a", runtimeId: null },
+            { agentKey: "b", runtimeId: null },
+        ],
+        edges: [
+            {
+                from: "a",
+                to: "b",
+                fromRuntimeId: null,
+                toRuntimeId: null,
+                policy: "allow",
+                source: "runtime-override",
+            },
+            {
+                from: "b",
+                to: "a",
+                fromRuntimeId: null,
+                toRuntimeId: null,
+                policy: "deny",
+                source: "manifest-default",
+            },
+        ],
+    };
+    const host = {
+        id: "host-id",
+        name: "demo",
+        directory: "/work",
+        sourceFile: "/work/aiox.yaml",
+        instruction: "",
+        revision: 1,
+        panelId: "panel-id",
+        networkId: "network-id",
+        activeOperationId: null,
+        agents: ["a", "b"].map((key) => ({
+            key,
+            adapter: "codex",
+            args: [],
+            instruction: "",
+            role: null,
+            description: null,
+            member: true,
+            runtime: null,
+            lastExit: null,
+            lastTerminalId: null,
+        })),
+    };
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+        if (call.url === "/api/hosts?name=demo") send(response, 200, [host]);
+        if (call.url === "/api/hosts?name=missing") send(response, 200, []);
+        if (call.url === "/api/hosts/host-id/networks?name=team")
+            send(response, 200, [network]);
+        if (call.url === "/api/hosts/host-id/networks/network-id/route")
+            send(response, 200, network);
+    });
+    t.onTestFinished(() => stub.close());
+    for (const action of ["unblock", "reset"] as const) {
+        const result = await stub.cli.execute({
+            command: `host.network.${action}`,
+            args: ["demo", "team"],
+            options: { from: "a", to: ["b"], json: true },
+        });
+        assert.deepEqual(result, network);
+        assert.deepEqual(JSON.parse(stub.calls.at(-1)!.body), {
+            operation: { kind: "directed", action, from: "a", to: ["b"] },
+        });
+    }
+    await assert.rejects(
+        stub.cli.execute({
+            command: "host.network.show",
+            args: ["missing", "team"],
+            options: {},
+        }),
+        /unknown_host/,
+    );
+});
+
+test("Host Agent commands resolve stop by YAML and wait on admitted operations with deduplicated keys", async (t) => {
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+        if (call.url === "/api/hosts/resolve")
+            send(response, 200, { hostId: "host-id" });
+        if (call.method === "POST" && call.url.includes("/agents/")) {
+            const input = JSON.parse(call.body);
+            const verb = call.url.split("/").at(-1);
+            send(response, 202, {
+                id: `op-${verb}`,
+                requestId: input.requestId,
+                kind: `host.agent.${verb}`,
+                hostId: "host-id",
+                panelId: "panel",
+                state: "succeeded",
+                targets: input.agents.map((agentKey: string) => ({
+                    agentKey,
+                    terminalId: null,
+                    state: verb === "stop" ? "stopped" : "ready",
+                    error: null,
+                })),
+                error: null,
+                cleanupErrors: [],
+                createdAt: 1,
+                finishedAt: 2,
+            });
+        }
+    });
+    t.onTestFinished(() => stub.close());
+    await writeFile(
+        join(stub.home, "aiox.yaml"),
+        "host: {name: demo}\nagents:\n  a: {adapter: codex}\nnetworks:\n  team: {agents: [a], routing: {default: deny}}\n",
+    );
+    for (const verb of ["start", "restart", "stop"] as const) {
+        const result = await stub.cli.execute({
+            command: `host.agent.${verb}`,
+            args: [["a", "a"]],
+            options: { path: stub.home },
+        });
+        assert.match(String(result), /succeeded/);
+        const call = stub.calls.at(-1)!;
+        assert.equal(
+            call.url,
+            verb === "stop"
+                ? "/api/hosts/host-id/agents/stop"
+                : `/api/hosts/agents/${verb}`,
+        );
+        const body = JSON.parse(call.body);
+        assert.deepEqual(body.agents, ["a"]);
+        if (verb === "stop") assert.equal(body.source, undefined);
+        else
+            assert.deepEqual(body.source, {
+                directory: stub.home,
+                file: join(stub.home, "aiox.yaml"),
+            });
+    }
 });

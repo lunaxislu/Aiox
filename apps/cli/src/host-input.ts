@@ -139,12 +139,9 @@ export async function prepareHostRequest(
                 : { selectionErrors: request.selectionErrors }),
             cliErrors: errors,
             ...(Object.keys(layout).length ? { layout } : {}),
-            launch: [
-                "host.run",
-                "host.restart",
-                "host.agent.start",
-                "host.agent.restart",
-            ].includes(command),
+            // Agent membership/running-state validation belongs before shell
+            // preflight and needs the daemon's current applied Host.
+            launch: ["host.run", "host.restart"].includes(command),
         },
         location,
     );

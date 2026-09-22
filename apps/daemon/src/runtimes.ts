@@ -99,6 +99,17 @@ export class AmbiguousRuntimeError extends Error {
  * written to the database, an argv, a URL or a log line.
  */
 export class RuntimeRegistry {
+    readonly #listeners = new Set<() => void>();
+    subscribe(listener: () => void): () => void {
+        this.#listeners.add(listener);
+        return () => {
+            this.#listeners.delete(listener);
+        };
+    }
+    private changed(): void {
+        this.onChange();
+        for (const listener of this.#listeners) listener();
+    }
     constructor(
         private readonly onChange: () => void = () => {},
         private readonly cleanupPreparation: (
@@ -144,14 +155,14 @@ export class RuntimeRegistry {
                 if (record && record.binding !== unbound) {
                     record.status = status;
                     record.status_reason = reportedReason;
-                    this.onChange();
+                    this.changed();
                 }
             },
             setObservationError: (error) => {
                 const record = this.#runtimes.get(id);
                 if (!record || record.observation_error === error) return;
                 record.observation_error = error;
-                this.onChange();
+                this.changed();
             },
             settle: (deliveryId, outcome, error) =>
                 this.#onSettle(id, deliveryId, outcome, error),
@@ -180,13 +191,13 @@ export class RuntimeRegistry {
         // own readiness. Nothing can reach it yet: no credential exists, and
         // preparation keeps it out of send, but visible in discovery.
         this.#runtimes.set(id, record);
-        this.onChange();
+        this.changed();
         try {
             record.binding = await input.createBinding(controls);
             if (!record.collaborationActive) record.binding.revoke?.();
             record.status = reportedStatus;
             record.status_reason = reportedReason;
-            this.onChange();
+            this.changed();
         } catch (error) {
             // Revoke before fallible route cleanup. Failed cleanup reserves the
             // name and leaves a record that stopRuntime can retry.
@@ -218,7 +229,7 @@ export class RuntimeRegistry {
             record.collaborationActive
         ) {
             record.phase = "running";
-            this.onChange();
+            this.changed();
         }
     }
 
@@ -270,14 +281,14 @@ export class RuntimeRegistry {
             if (runtimeId === id) this.#tokens.delete(token);
         }
         if (active) record.binding.revoke?.();
-        if (active) this.onChange();
+        if (active) this.changed();
     }
 
     /** Removes a record after its cleanup has succeeded. */
     unregister(id: string): boolean {
         this.revoke(id);
         const removed = this.#runtimes.delete(id);
-        if (removed) this.onChange();
+        if (removed) this.changed();
         return removed;
     }
 }

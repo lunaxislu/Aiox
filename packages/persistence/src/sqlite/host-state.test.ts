@@ -243,6 +243,15 @@ test("Host creation is atomic and Operation retries, recovery and retention pres
     };
     await db.hostState.saveOperation(operation, "hash");
     assert.equal(
+        (await db.hostState.getOperation(operation.requestId, "hash"))!.id,
+        "o1",
+    );
+    await assert.rejects(
+        db.hostState.getOperation(operation.requestId, "other"),
+        /request_conflict/,
+    );
+    assert.equal(await db.hostState.getOperation("missing", "hash"), undefined);
+    assert.equal(
         (
             await db.hostState.saveOperation(
                 { ...operation, id: "other" },
@@ -290,4 +299,339 @@ test("Host creation is atomic and Operation retries, recovery and retention pres
     assert.equal(await db.hostState.purgeBefore(100), 1);
     assert.equal((await db.hostState.snapshot()).operations[0]!.id, "o2");
     assert.equal((await db.hostState.snapshot()).hosts.length, 1);
+});
+
+test("Host admission atomically stores its Operation and failed pre-registration start survives reopen", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "aiox-admission-"));
+    const file = join(directory, "aiox.db");
+    let db = await openDatabase(file);
+    t.onTestFinished(async () => {
+        await db.close();
+        await rm(directory, { recursive: true, force: true });
+    });
+    const host: HostView = {
+        id: "host",
+        name: "Host",
+        directory,
+        sourceFile: join(directory, "aiox.yaml"),
+        instruction: "",
+        revision: 1,
+        panelId: "panel",
+        networkId: "network",
+        activeOperationId: null,
+        agents: [
+            {
+                key: "a",
+                adapter: "codex",
+                role: null,
+                description: null,
+                instruction: "",
+                args: [],
+                member: false,
+                runtime: null,
+                lastTerminalId: null,
+                lastExit: null,
+            },
+        ],
+    };
+    const network: HostNetworkView = {
+        id: "network",
+        hostId: "host",
+        name: "N",
+        scope: "host",
+        default: "allow",
+        members: [],
+        edges: [],
+    };
+    const panel: PanelView = {
+        id: "panel",
+        kind: "host",
+        section: "hosts",
+        name: "Host",
+        hostId: "host",
+        networkId: "network",
+        revision: 1,
+        activePaneId: "pane",
+        layout: {
+            type: "pane",
+            id: "pane",
+            tabIds: ["tab"],
+            selectedTabId: "tab",
+        },
+        tabs: [
+            {
+                id: "tab",
+                label: "a",
+                agentKey: "a",
+                terminalId: null,
+                runtimeId: null,
+                presentation: "preparing",
+                notice: null,
+            },
+        ],
+    };
+    const operation: Operation = {
+        id: "operation",
+        requestId: "6a8ed620-0000-4000-8000-000000000090",
+        kind: "host.run",
+        hostId: "host",
+        panelId: "panel",
+        state: "running",
+        targets: [
+            { agentKey: "a", terminalId: null, state: "pending", error: null },
+        ],
+        error: null,
+        cleanupErrors: [],
+        createdAt: 1,
+        finishedAt: null,
+    };
+    await db.hostState.saveOperation(
+        { ...operation, hostId: null, panelId: null },
+        "hash",
+    );
+    await assert.rejects(
+        db.hostState.createHost(host, network, panel, 1, {
+            value: operation,
+            requestHash: "hash",
+        }),
+    );
+    assert.deepEqual((await db.hostState.snapshot()).hosts, []);
+    const admitted = {
+        ...operation,
+        id: "admitted",
+        requestId: "6a8ed620-0000-4000-8000-000000000091",
+    };
+    await db.hostState.createHost(host, network, panel, 1, {
+        value: admitted,
+        requestHash: "hash2",
+    });
+    assert.equal(
+        (await db.hostState.snapshot()).hosts[0]!.activeOperationId,
+        "admitted",
+    );
+    await db.hostState.failStart(
+        "host",
+        "a",
+        "shell unavailable",
+        "aiox host agent start a",
+        panel.tabs[0]!.id,
+    );
+    await db.close();
+    db = await openDatabase(file);
+    const state = await db.hostState.snapshot();
+    assert.equal(
+        state.hosts[0]!.agents[0]!.lastExit?.message,
+        "shell unavailable",
+    );
+    assert.equal(
+        state.panels[0]!.tabs[0]!.notice?.message,
+        "shell unavailable",
+    );
+    assert.equal(state.panels[0]!.tabs[0]!.presentation, "start-failed");
+    assert.equal(
+        state.operations.find((o) => o.id === "admitted")!.state,
+        "running",
+    );
+});
+
+test("Host route overrides reset to applied YAML and agent updates preserve unrelated policies across reopen", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "aiox-host-routes-"));
+    const path = join(directory, "aiox.db");
+    let db = await openDatabase(path);
+    t.onTestFinished(async () => {
+        await db.close();
+        await rm(directory, { recursive: true, force: true });
+    });
+    const agent = (key: string) => ({
+        key,
+        adapter: "codex" as const,
+        role: null,
+        description: null,
+        instruction: "",
+        args: [],
+        member: true,
+        runtime: null,
+        lastTerminalId: null,
+        lastExit: null,
+    });
+    const host: HostView = {
+        id: "h",
+        name: "Host",
+        directory: "/work",
+        sourceFile: "/work/aiox.yaml",
+        instruction: "",
+        revision: 1,
+        panelId: "p",
+        networkId: "n",
+        activeOperationId: null,
+        agents: ["a", "b", "c"].map(agent),
+    };
+    const panel: PanelView = {
+        id: "p",
+        name: "Host",
+        kind: "host",
+        section: "hosts",
+        hostId: "h",
+        networkId: "n",
+        revision: 1,
+        layout: { type: "pane", id: "pane", tabIds: [], selectedTabId: null },
+        activePaneId: "pane",
+        tabs: [],
+    };
+    await db.hostState.createHost(
+        host,
+        {
+            id: "n",
+            hostId: "h",
+            name: "Team",
+            scope: "host",
+            default: "deny",
+            members: host.agents.map((a) => ({
+                agentKey: a.key,
+                runtimeId: null,
+            })),
+            edges: host.agents.flatMap((a) =>
+                host.agents
+                    .filter((b) => b.key !== a.key)
+                    .map((b) => ({
+                        from: a.key,
+                        to: b.key,
+                        fromRuntimeId: null,
+                        toRuntimeId: null,
+                        policy:
+                            a.key === "a" && b.key === "b"
+                                ? ("allow" as const)
+                                : ("deny" as const),
+                        source:
+                            a.key === "a" && b.key === "b"
+                                ? ("manifest-edge" as const)
+                                : ("manifest-default" as const),
+                    })),
+            ),
+        },
+        panel,
+        1,
+    );
+    const edge = async (from: string, to: string) =>
+        (await db.hostState.snapshot()).networks[0]!.edges.find(
+            (e) => e.from === from && e.to === to,
+        )!;
+    await db.hostState.routeNetwork("h", "n", {
+        kind: "directed",
+        action: "block",
+        from: "a",
+        to: ["b"],
+    });
+    assert.equal((await edge("a", "b")).policy, "deny");
+    await db.hostState.routeNetwork("h", "n", {
+        kind: "directed",
+        action: "reset",
+        from: "a",
+        to: ["b"],
+    });
+    assert.equal((await edge("a", "b")).source, "manifest-edge");
+    await db.hostState.routeNetwork("h", "n", {
+        kind: "between",
+        action: "unblock",
+        agents: ["a", "b", "c"],
+    });
+    await assert.rejects(
+        db.hostState.routeNetwork("h", "n", {
+            kind: "directed",
+            action: "block",
+            from: "a",
+            to: ["b", "missing"],
+        }),
+    );
+    assert.equal((await edge("a", "b")).policy, "allow");
+    await assert.rejects(
+        db.hostState.routeNetwork("other", "n", {
+            kind: "between",
+            action: "block",
+            agents: ["a", "b"],
+        }),
+    );
+    const beforeInvalidApply = await db.hostState.snapshot();
+    await assert.rejects(
+        db.hostState.applyAgent(
+            "h",
+            { ...agent("a"), instruction: "must roll back" },
+            [{ from: "a", to: "missing", policy: "allow" }],
+        ),
+        /a -> missing/,
+    );
+    assert.deepEqual(await db.hostState.snapshot(), beforeInvalidApply);
+    await db.hostState.applyAgent(
+        "h",
+        { ...agent("a"), instruction: "latest" },
+        [{ from: "a", to: "b", policy: "allow" }],
+    );
+    assert.equal((await edge("a", "b")).source, "manifest-edge");
+    assert.equal((await edge("a", "c")).policy, "deny");
+    assert.equal((await edge("b", "c")).source, "runtime-override");
+    await db.hostState.applyAgent("h", agent("d"), [
+        { from: "d", to: "c", policy: "allow" },
+    ]);
+    await db.close();
+    db = await openDatabase(path);
+    assert.equal((await edge("d", "c")).policy, "allow");
+    assert.equal(
+        (await db.hostState.snapshot()).hosts[0]!.agents[0]!.instruction,
+        "latest",
+    );
+    const before = (await db.hostState.snapshot()).panels[0]!;
+    await db.hostState.updatePanel(
+        {
+            ...before,
+            revision: before.revision + 1,
+            layout: {
+                type: "pane",
+                id: "pane",
+                tabIds: ["old", "new"],
+                selectedTabId: "old",
+            },
+            tabs: [
+                {
+                    id: "old",
+                    terminalId: "old-terminal",
+                    agentKey: "a",
+                    runtimeId: null,
+                    label: "a",
+                    presentation: "stopped",
+                    notice: {
+                        message: "old notice",
+                        reason: "stopped",
+                        restartCommand: "start",
+                    },
+                },
+                {
+                    id: "new",
+                    terminalId: null,
+                    agentKey: "a",
+                    runtimeId: null,
+                    label: "a",
+                    presentation: "preparing",
+                    notice: null,
+                },
+            ],
+        },
+        before.revision,
+    );
+    await db.hostState.failStart("h", "a", "new failure", "start", "new");
+    const failedTabs = (await db.hostState.snapshot()).panels[0]!.tabs;
+    assert.equal(
+        failedTabs.find((t) => t.id === "old")!.notice!.message,
+        "old notice",
+    );
+    assert.equal(
+        failedTabs.find((t) => t.id === "new")!.notice!.message,
+        "new failure",
+    );
+    await db.hostState.applyAgent("h", { ...agent("a"), member: false }, []);
+    assert.equal(
+        (await db.hostState.snapshot()).networks[0]!.edges.some(
+            (e) => e.from === "a" || e.to === "a",
+        ),
+        false,
+    );
 });

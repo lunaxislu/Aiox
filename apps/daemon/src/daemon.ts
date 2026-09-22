@@ -4,7 +4,7 @@ import type { Duplex } from "node:stream";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
 import { codexAdapter } from "@aiox/adapter-codex";
-import type { AioxConfig } from "@aiox/config";
+import type { AioxConfig, TerminalLaunch } from "@aiox/config";
 import {
     ConfigError,
     resolveTerminalLaunch,
@@ -447,7 +447,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return attempt;
     }
 
-    async function createShell(input: CreateShell = {}): Promise<TerminalView> {
+    async function createShell(
+        input: CreateShell = {},
+        prepared?: TerminalLaunch,
+    ): Promise<TerminalView> {
         if (!admitting)
             throw new HttpError(503, "stopping", "The daemon is stopping.");
         const parsed = createShellSchema.safeParse(input);
@@ -457,20 +460,22 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 "invalid_request",
                 "Invalid shell options.",
             );
-        const settings = await options.terminal?.();
-        const launch = await resolveTerminalLaunch(
-            settings,
-            parsed.data.cwd === undefined ? {} : { cwd: parsed.data.cwd },
-        ).catch((error: unknown) => {
-            if (
-                error instanceof ConfigError &&
-                error.field === "terminal.cwd" &&
-                parsed.data.cwd !== undefined
-            ) {
-                throw new HttpError(400, "invalid_request", error.message);
-            }
-            throw error;
-        });
+        const settings = prepared ? undefined : await options.terminal?.();
+        const launch =
+            prepared ??
+            (await resolveTerminalLaunch(
+                settings,
+                parsed.data.cwd === undefined ? {} : { cwd: parsed.data.cwd },
+            ).catch((error: unknown) => {
+                if (
+                    error instanceof ConfigError &&
+                    error.field === "terminal.cwd" &&
+                    parsed.data.cwd !== undefined
+                ) {
+                    throw new HttpError(400, "invalid_request", error.message);
+                }
+                throw error;
+            }));
         if (!admitting)
             throw new HttpError(503, "stopping", "The daemon is stopping.");
         const session = terminals.createShell({ ...parsed.data, ...launch });

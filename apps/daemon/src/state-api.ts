@@ -13,6 +13,8 @@ import {
     type PanelView,
 } from "@aiox/protocol";
 
+import { handleHostAgents } from "./host-agents";
+import { handleHostRun } from "./host-run";
 import { HttpError, parse, readJson, send } from "./http";
 import { handlePanelOperation } from "./panel-operations";
 import type { DaemonServices } from "./services";
@@ -28,6 +30,9 @@ export async function handleStateApi(
         method = request.method ?? "GET";
     if (!/^\/api\/(panels|hosts|operations)(\/|$)/.test(path)) return false;
     try {
+        if (await handleHostRun(request, response, url, services)) return true;
+        if (await handleHostAgents(request, response, url, services))
+            return true;
         if (await handlePanelOperation(request, response, url, services))
             return true;
         if (path === "/api/hosts/resolve" && method === "POST") {
@@ -268,7 +273,7 @@ export async function handleStateApi(
             });
         if (error instanceof HostStateError)
             throw new HttpError(
-                error.code === "unknown_panel" ? 404 : 409,
+                error.code.startsWith("unknown_") ? 404 : 409,
                 error.code,
                 error.message,
                 { stage: "storage" },

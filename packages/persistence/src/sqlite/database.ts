@@ -257,10 +257,26 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
         const state = hostState(dataSource);
         return {
             hostState: {
+                routeNetwork: (hostId, networkId, operation) =>
+                    run(() => state.routeNetwork(hostId, networkId, operation)),
+                applyAgent: (hostId, agent, routes) =>
+                    run(() => state.applyAgent(hostId, agent, routes)),
+                getOperation: (requestId, requestHash) =>
+                    run(() => state.getOperation(requestId, requestHash)),
                 startExecution: (input) =>
                     run(() => state.startExecution(input)),
                 finishExecution: (id, exit, command) =>
                     run(() => state.finishExecution(id, exit, command)),
+                failStart: (hostId, agentKey, message, command, tabId) =>
+                    run(() =>
+                        state.failStart(
+                            hostId,
+                            agentKey,
+                            message,
+                            command,
+                            tabId,
+                        ),
+                    ),
                 removeTerminal: (id) => run(() => state.removeTerminal(id)),
                 snapshot: () => run(() => state.snapshot()),
                 deletePanel: (id, revision) =>
@@ -268,8 +284,10 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
                 createPanel: (panel) => run(() => state.createPanel(panel)),
                 updatePanel: (panel, revision) =>
                     run(() => state.updatePanel(panel, revision)),
-                createHost: (host, network, panel, at) =>
-                    run(() => state.createHost(host, network, panel, at)),
+                createHost: (host, network, panel, at, operation) =>
+                    run(() =>
+                        state.createHost(host, network, panel, at, operation),
+                    ),
                 saveOperation: (operation, hash) =>
                     run(() => state.saveOperation(operation, hash)),
                 purgeBefore: (at) => run(() => state.purgeBefore(at)),

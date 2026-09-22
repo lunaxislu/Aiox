@@ -1,4 +1,9 @@
 import {
+    applyRouteOperation,
+    type RouteOperation,
+    type DirectedRoute,
+} from "@aiox/domain";
+import {
     hostViewSchema,
     hostNetworkViewSchema,
     panelViewSchema,
@@ -33,7 +38,10 @@ export class HostStateError extends Error {
             | "revision_conflict"
             | "unknown_panel"
             | "request_conflict"
-            | "panel_busy",
+            | "panel_busy"
+            | "unknown_host"
+            | "unknown_network"
+            | "unknown_agent",
         message: string = code,
     ) {
         super(message);
@@ -46,7 +54,21 @@ export type HostStateSnapshot = {
     operations: Operation[];
 };
 export interface HostState {
+    routeNetwork(
+        hostId: string,
+        networkId: string,
+        operation: RouteOperation,
+    ): Promise<void>;
+    applyAgent(
+        hostId: string,
+        agent: HostView["agents"][number],
+        routes: readonly DirectedRoute[],
+    ): Promise<void>;
     snapshot(): Promise<HostStateSnapshot>;
+    getOperation(
+        requestId: string,
+        requestHash: string,
+    ): Promise<Operation | undefined>;
     startExecution(input: {
         runtimeId: string;
         hostId: string;
@@ -59,6 +81,13 @@ export interface HostState {
         exit: LastExit,
         restartCommand: string,
     ): Promise<void>;
+    failStart(
+        hostId: string,
+        agentKey: string,
+        message: string,
+        restartCommand: string,
+        tabId: string,
+    ): Promise<void>;
     removeTerminal(id: string): Promise<void>;
     deletePanel(id: string, expectedRevision: number): Promise<void>;
     createPanel(panel: PanelView): Promise<void>;
@@ -68,6 +97,7 @@ export interface HostState {
         network: HostNetworkView,
         panel: PanelView,
         createdAt: number,
+        operation?: { value: Operation; requestHash: string },
     ): Promise<void>;
     saveOperation(
         operation: Operation,
@@ -235,6 +265,186 @@ export function hostState(dataSource: DataSource): HostState {
     }
     return {
         snapshot,
+        async routeNetwork(hostId, networkId, operation) {
+            await dataSource.transaction(async (manager) => {
+                if (
+                    !(await manager.findOne(HostNetworkEntity, {
+                        where: { id: networkId, hostId },
+                    }))
+                )
+                    throw new HostStateError("unknown_network");
+                if (
+                    await manager.findOne(HostOperationEntity, {
+                        where: { hostId, state: "running" },
+                    })
+                )
+                    throw new HostStateError("panel_busy");
+                const members = await manager.find(HostMemberEntity, {
+                    where: { networkId },
+                });
+                const pairs = applyRouteOperation(
+                    { routes: [] },
+                    { ...operation, action: "block" },
+                ).routes;
+                if (
+                    pairs.some(
+                        (e) =>
+                            !members.some((m) => m.agentKey === e.from) ||
+                            !members.some((m) => m.agentKey === e.to),
+                    )
+                )
+                    throw new HostStateError("unknown_agent");
+                for (const { from, to } of pairs) {
+                    const key = { networkId, fromKey: from, toKey: to };
+                    const current = await manager.findOne(HostEdgeEntity, {
+                        where: key,
+                    });
+                    await manager.save(HostEdgeEntity, {
+                        ...key,
+                        manifestPolicy: current?.manifestPolicy ?? null,
+                        overridePolicy:
+                            operation.action === "reset"
+                                ? null
+                                : operation.action === "block"
+                                  ? "deny"
+                                  : "allow",
+                    });
+                }
+            });
+        },
+        async applyAgent(hostId, agent, routes) {
+            await dataSource.transaction(async (manager) => {
+                const host = await manager.findOne(HostEntity, {
+                    where: { id: hostId },
+                });
+                if (!host) throw new HostStateError("unknown_host");
+                const network = (await manager.findOne(HostNetworkEntity, {
+                    where: { hostId },
+                }))!;
+                const agents = await manager.find(HostAgentEntity, {
+                    where: { hostId },
+                });
+                const previous = agents.find((a) => a.agentKey === agent.key);
+                await manager.save(HostAgentEntity, {
+                    hostId,
+                    agentKey: agent.key,
+                    ordinal:
+                        previous?.ordinal ??
+                        Math.max(-1, ...agents.map((a) => a.ordinal)) + 1,
+                    adapter: agent.adapter,
+                    role: agent.role,
+                    description: agent.description,
+                    instruction: agent.instruction,
+                    argsJson: JSON.stringify(agent.args),
+                    lastTerminalId: previous?.lastTerminalId ?? null,
+                    lastExitJson: previous?.lastExitJson ?? null,
+                });
+                const networkId = network.id;
+                await manager.delete(HostMemberEntity, {
+                    networkId,
+                    agentKey: agent.key,
+                });
+                if (agent.member)
+                    await manager.insert(HostMemberEntity, {
+                        networkId,
+                        agentKey: agent.key,
+                    });
+                await manager.delete(HostEdgeEntity, [
+                    { networkId, fromKey: agent.key },
+                    { networkId, toKey: agent.key },
+                ]);
+                if (agent.member) {
+                    const members = await manager.find(HostMemberEntity, {
+                        where: { networkId },
+                    });
+                    for (const route of routes.filter(
+                        (e) => e.from === agent.key || e.to === agent.key,
+                    )) {
+                        if (
+                            !members.some((m) => m.agentKey === route.from) ||
+                            !members.some((m) => m.agentKey === route.to)
+                        )
+                            throw new HostStateError(
+                                "unknown_agent",
+                                `Cannot apply edge ${route.from} -> ${route.to}: missing Host Network member.`,
+                            );
+                        await manager.insert(HostEdgeEntity, {
+                            networkId,
+                            fromKey: route.from,
+                            toKey: route.to,
+                            manifestPolicy: route.policy,
+                            overridePolicy: null,
+                        });
+                    }
+                }
+                await manager.update(
+                    HostEntity,
+                    { id: hostId },
+                    { revision: host.revision + 1 },
+                );
+            });
+        },
+        async getOperation(requestId, requestHash) {
+            const row = await manager.findOneBy(HostOperationEntity, {
+                requestId,
+            });
+            if (!row) return undefined;
+            if (row.requestHash !== requestHash)
+                throw new HostStateError("request_conflict");
+            return operationView(row);
+        },
+        async failStart(hostId, agentKey, message, restartCommand, tabId) {
+            await dataSource.transaction(async (manager) => {
+                if (
+                    await manager.findOneBy(HostExecutionEntity, {
+                        hostId,
+                        agentKey,
+                        endedAt: IsNull(),
+                    })
+                )
+                    throw new Error(
+                        "Cannot mark a live execution as a failed start.",
+                    );
+                const panel = await manager.findOneByOrFail(PanelEntity, {
+                    hostId,
+                });
+                const tab = await manager.findOneByOrFail(PanelTabEntity, {
+                    id: tabId,
+                    panelId: panel.id,
+                    agentKey,
+                });
+                await manager.update(
+                    HostAgentEntity,
+                    { hostId, agentKey },
+                    {
+                        lastTerminalId: tab.terminalId,
+                        lastExitJson: json({
+                            kind: "start-failed",
+                            message,
+                            at: Date.now(),
+                        }),
+                    },
+                );
+                await manager.update(
+                    PanelTabEntity,
+                    { id: tab.id },
+                    {
+                        presentation: "start-failed",
+                        noticeJson: json({
+                            message,
+                            reason: "start-failed",
+                            restartCommand,
+                        }),
+                    },
+                );
+                await manager.increment(
+                    PanelEntity,
+                    { id: panel.id },
+                    "revision",
+                    1,
+                );
+            });
+        },
         async startExecution(input) {
             await dataSource.transaction(async (manager) => {
                 const panel = await manager.findOneBy(PanelEntity, {
@@ -418,7 +628,13 @@ export function hostState(dataSource: DataSource): HostState {
                 await insertTabs(manager, panel);
             });
         },
-        async createHost(input, networkInput, panelInput, createdAt) {
+        async createHost(
+            input,
+            networkInput,
+            panelInput,
+            createdAt,
+            operation,
+        ) {
             const host = hostViewSchema.parse(input),
                 network = hostNetworkViewSchema.parse(networkInput),
                 panel = panelViewSchema.parse(panelInput);
@@ -502,6 +718,17 @@ export function hostState(dataSource: DataSource): HostState {
                     );
                 await manager.insert(PanelEntity, panelRow(panel));
                 await insertTabs(manager, panel);
+                if (operation) {
+                    const { targets, error, cleanupErrors, ...rest } =
+                        operationSchema.parse(operation.value);
+                    await manager.insert(HostOperationEntity, {
+                        ...rest,
+                        requestHash: operation.requestHash,
+                        targetsJson: JSON.stringify(targets),
+                        errorJson: json(error),
+                        cleanupErrorsJson: JSON.stringify(cleanupErrors),
+                    });
+                }
             });
         },
         async saveOperation(input, requestHash) {

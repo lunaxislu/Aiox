@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -17,6 +18,7 @@ import type {
     DaemonStatus,
     NetworkView,
     RouteOperation,
+    Operation,
 } from "@aiox/protocol";
 import {
     agentViewSchema,
@@ -29,6 +31,9 @@ import {
     networkViewSchema,
     stopResultSchema,
     terminalContextFromEnv,
+    operationSchema,
+    hostViewSchema,
+    hostNetworkViewSchema,
 } from "@aiox/protocol";
 import { selectVendor } from "@aiox/vendor";
 import { WebSocket } from "ws";
@@ -36,6 +41,7 @@ import { WebSocket } from "ws";
 import { runExternal } from "@/external";
 import { runForeground } from "@/foreground";
 import { prepareHostRequest } from "@/host-input";
+import { waitForHostOperation, hostOperationResult } from "@/host-operation";
 import type { CliOptions, CliPort, CliRequest, CommandName } from "@/requests";
 
 const execFileAsync = promisify(execFile);
@@ -502,7 +508,10 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         ].join("\n");
     }
 
-    async function runAgent(request: CliRequest): Promise<void> {
+    async function runAgent(
+        request: CliRequest,
+        managed?: { hostId: string; agentKey: string },
+    ): Promise<void> {
         const adapter = selectVendor(
             [claudeAdapter, codexAdapter],
             operand(request.args, 0),
@@ -512,11 +521,19 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         const parsed = agentRunSchema.safeParse({
             adapter: adapter.id,
             cwd: process.cwd(),
-            env: Object.fromEntries(
-                Object.entries(process.env).filter(
-                    ([, value]) => value !== undefined,
+            env: {
+                ...Object.fromEntries(
+                    Object.entries(process.env).filter(
+                        ([, value]) => value !== undefined,
+                    ),
                 ),
-            ),
+                ...(managed
+                    ? {
+                          AIOX_HOST_ID: managed.hostId,
+                          AIOX_AGENT_KEY: managed.agentKey,
+                      }
+                    : {}),
+            },
             args: request.adapterArgs ?? [],
             cols: process.stdout.columns ?? 80,
             rows: process.stdout.rows ?? 24,
@@ -575,7 +592,227 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         async execute(request) {
             const { args, command, options } = request;
             if (command.startsWith("host.")) {
-                await prepareHostRequest(request, { home });
+                const prepared = await prepareHostRequest(request, { home });
+                if (command.startsWith("host.network.")) {
+                    const url = await daemonUrl();
+                    const name = operand(args, 0);
+                    const hosts = hostViewSchema
+                        .array()
+                        .parse(await call(url, `/api/hosts${query({ name })}`));
+                    const host = hosts.find((h) => h.name === name);
+                    if (!host)
+                        throw new Error(
+                            `unknown_host: No registered Host '${name}'.`,
+                        );
+                    const base = `/api/hosts/${encodeURIComponent(host.id)}/networks`;
+                    const networkName =
+                        command === "host.network.list"
+                            ? undefined
+                            : operand(args, 1);
+                    const networks = hostNetworkViewSchema
+                        .array()
+                        .parse(
+                            await call(
+                                url,
+                                `${base}${query({ name: networkName })}`,
+                            ),
+                        );
+                    let selected = networks;
+                    if (networkName !== undefined) {
+                        let network = networks.find(
+                            (n) => n.name === networkName,
+                        );
+                        if (!network)
+                            throw new Error(
+                                `unknown_network: No Network '${networkName}' in Host '${name}'.`,
+                            );
+                        if (command !== "host.network.show")
+                            network = hostNetworkViewSchema.parse(
+                                await call(
+                                    url,
+                                    `${base}/${encodeURIComponent(network.id)}/route`,
+                                    post({
+                                        operation: routeOperation(
+                                            command.split(
+                                                ".",
+                                            )[2] as RouteOperation["action"],
+                                            options,
+                                        ),
+                                    }),
+                                ),
+                            );
+                        selected = [network];
+                    }
+                    if (options.json)
+                        return networkName === undefined
+                            ? selected
+                            : selected[0];
+                    return selected
+                        .map((n) =>
+                            [
+                                `${name}/${n.name} (host)`,
+                                `Default: ${n.default}`,
+                                ...n.edges.map(
+                                    (e) =>
+                                        `${e.from} -> ${e.to}: ${e.policy} (${e.source})`,
+                                ),
+                            ].join("\n"),
+                        )
+                        .join("\n\n");
+                }
+                if (
+                    command === "host.run" ||
+                    command.startsWith("host.agent.")
+                ) {
+                    const url = await daemonUrl();
+                    const requestId = randomUUID();
+                    const terminalContext = terminalContextFromEnv(process.env);
+                    const agents = [...new Set(args.flat())];
+                    const stop = command === "host.agent.stop";
+                    const hostId = stop
+                        ? (
+                              (await call(
+                                  url,
+                                  "/api/hosts/resolve",
+                                  post({
+                                      source: {
+                                          directory: prepared.directory!,
+                                          file: prepared.file!,
+                                      },
+                                  }),
+                              )) as { hostId: string }
+                          ).hostId
+                        : undefined;
+                    const path =
+                        command === "host.run"
+                            ? "/api/hosts/run"
+                            : stop
+                              ? `/api/hosts/${encodeURIComponent(hostId!)}/agents/stop`
+                              : `/api/hosts/agents/${command.split(".")[2]}`;
+                    let operation: Operation | undefined;
+                    let foreground: Promise<void> | undefined;
+                    let foregroundError: unknown;
+                    try {
+                        operation = operationSchema.parse(
+                            await call(
+                                url,
+                                path,
+                                post({
+                                    requestId,
+                                    ...(stop
+                                        ? {}
+                                        : {
+                                              source: {
+                                                  directory:
+                                                      prepared.directory!,
+                                                  file: prepared.file!,
+                                              },
+                                          }),
+                                    ...(command.startsWith("host.agent.")
+                                        ? { agents }
+                                        : {}),
+                                    ...(options.layout === undefined &&
+                                    options.columns === undefined &&
+                                    options.rows === undefined
+                                        ? {}
+                                        : {
+                                              layout: {
+                                                  ...(options.layout ===
+                                                  undefined
+                                                      ? {}
+                                                      : {
+                                                            preset: options.layout,
+                                                        }),
+                                                  ...(options.columns ===
+                                                  undefined
+                                                      ? {}
+                                                      : {
+                                                            columns: Number(
+                                                                options.columns,
+                                                            ),
+                                                        }),
+                                                  ...(options.rows === undefined
+                                                      ? {}
+                                                      : {
+                                                            rows: Number(
+                                                                options.rows,
+                                                            ),
+                                                        }),
+                                              },
+                                          }),
+                                    ...(stop || terminalContext === undefined
+                                        ? {}
+                                        : { terminalContext }),
+                                }),
+                            ),
+                        );
+                        operation = await waitForHostOperation(
+                            url,
+                            operation,
+                            (current) => {
+                                if (
+                                    foreground ||
+                                    !terminalContext ||
+                                    !command.startsWith("host.agent.") ||
+                                    stop
+                                )
+                                    return;
+                                const target = current.targets.find(
+                                    (t) =>
+                                        t.terminalId ===
+                                            terminalContext.terminalId &&
+                                        t.state === "preparing",
+                                );
+                                if (!target?.agentKey) return;
+                                foreground = runAgent(
+                                    {
+                                        command: "agent.run",
+                                        args: [
+                                            prepared.manifest!.agents[
+                                                target.agentKey
+                                            ]!.adapter,
+                                        ],
+                                        options: {},
+                                    },
+                                    {
+                                        hostId: current.hostId!,
+                                        agentKey: target.agentKey,
+                                    },
+                                )
+                                    .then(() => {
+                                        if (
+                                            process.exitCode &&
+                                            operation?.state === "running"
+                                        )
+                                            throw new Error(
+                                                `Agent exited with code ${process.exitCode}`,
+                                            );
+                                    })
+                                    .catch((error) => {
+                                        foregroundError = error;
+                                        const diagnostic = message(error);
+                                        process.stdout.write(
+                                            `\x1b]777;AIOX_CALLER_${current.id}_${Buffer.from(diagnostic).subarray(0, 4096).toString("base64")}\x07`,
+                                        );
+                                    });
+                            },
+                        );
+                    } catch (error) {
+                        throw new Error(
+                            `${message(error)}\nrequestId=${requestId}${operation ? ` operationId=${operation.id}` : ""}\nRecheck: aiox host status ${JSON.stringify(prepared.manifest!.host.name)} --json; GET /api/operations?requestId=${requestId}`,
+                        );
+                    }
+                    if (foreground) {
+                        if (operation.state !== "succeeded")
+                            console.error(
+                                operation.error?.message ??
+                                    "Host Agent operation failed.",
+                            );
+                        await foreground;
+                        if (foregroundError) throw foregroundError;
+                    }
+                    return hostOperationResult(operation);
+                }
                 return unavailable(command);
             }
             switch (command) {

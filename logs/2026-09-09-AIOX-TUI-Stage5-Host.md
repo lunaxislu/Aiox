@@ -10,10 +10,10 @@ status: open
 - [x] W2 CLI 입력·config·YAML 로딩과 검증·layout 해석을 구현한다
 - [x] W3 protocol 스키마·타입을 먼저 인계한 뒤 공통 저장 모델·조회·화면 배치 API와 상태 전달 기반을 구현한다
 - [x] W4 shell 내부 Agent 실행과 준비·실패·종료 관측을 구현한다
-- [>] W5 Host run·전용 Network·초기 배치를 구현하고 Stage6 최초 실제 연결을 확인한다
-- [ ] W6 개별 Agent start/stop/restart와 Host Network 명령을 구현한다
-- [ ] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현한다
-- [ ] W8 Stage6와 실제 연결한 Host 전체 흐름을 통합 검증한다
+- [x] W5 Host run·전용 Network·초기 배치를 구현하고 CLI·daemon 경로를 검증한다
+- [x] W6 개별 Agent start/stop/restart와 Host Network 명령을 구현하고 서버 결과를 검증한다
+- [>] W7 Host 전체 restart/stop/delete·조회와 구성 변경 처리를 구현하고 CLI·daemon 경로를 검증한다
+- [ ] W8 Stage6 준비 후 W5~W7의 실제 화면 연결과 전체 흐름을 통합 검증한다
 
 ## Required Context
 
@@ -24,7 +24,7 @@ status: open
 ### {Global}
 
 - 사용자가 이 로그의 논의·정정 누적 기록을 구현 순서 중심으로 직접 재구성하도록 승인했다. 확정 정책의 권위는 아래 owner 문서에 있으며, 각 W scope는 구현에 필요한 적용 기준과 검증 조건을 담는다. 과거 제안이나 목업 더미 데이터를 계약으로 복원하지 않는다.
-- Stage6의 W1 계약 수신·검토 및 담당 경계 수용을 확인했고 API 보완 1~4의 합의를 owner에 반영했다. 이번에는 W1 계약 확정만 수행했으며 기능 구현 완료가 아니다. Stage6 로그·apps/web·plan 활성 단계와 production/test/mock은 수정하지 않는다. 사용자는 확정 API를 바탕으로 Stage6 화면 설계를 논의할 예정이다. Stage5 다음 구현 범위는 W2다.
+- Stage6와 합의한 W1 API 계약·보완 1~4 및 담당 경계를 유지한다. Stage5 구현은 CLI·daemon·공통 protocol/config/persistence와 관련 owner 문서에 한정하며 Stage6 로그·apps/web·plan 활성 단계는 변경하지 않는다. Stage6 연결 준비와 독립적으로 W6·W7 구현·서버 검증을 진행하고 실제 React 연결은 W8에서 검증한다.
 - Owner: [Host spec](../docs/specs/aiox-host.md), [Runtime/CLI spec](../docs/specs/aiox-runtime.md), [설정·Web UX spec](../docs/specs/aiox-configuration-web.md), [System architecture](../docs/architecture/aiox-system.md), [Storage/terminal architecture](../docs/architecture/aiox-storage-terminal.md). 인증·전송 판정은 [Collaboration spec](../docs/specs/aiox-collaboration.md), vendor 지침 주입은 [Vendor bindings architecture](../docs/architecture/aiox-vendor-bindings.md)를 함께 따른다.
 - 병렬 작업 상대의 재개점은 [Stage6 로그](2026-09-09-AIOX-TUI-Stage6-Web.md)다. 전체 단계 연결은 [rebuild plan](../plans/aiox-tui-product-rebuild.md)을 따른다. 각 W 착수 시 최신 code/test와 owner를 대조하고 producer→consumer 및 실패 전달 경로까지 확인한다.
 - Worktree 생성·`--worktree`, Host 이름 override `--name`, 대상 선택 `--host`, YAML `version`은 제외한다. adapter 이름은 `claude`와 `codex`다. 새 Runtime을 vendor 대화 자동 resume으로 해석하지 않는다.
@@ -47,11 +47,11 @@ status: open
 
 ### {W2}
 
-- 완료: 공통 입력 준비·config/YAML/CLI 검증 순서·layout·route·shell/cwd와 CLI 실패 차단을 구현하고 pnpm check 및 빌드 CLI smoke를 통과했다. 상세 근거는 History의 W2 입력 준비 구현·검증 완료와 docs/architecture/aiox-system.md의 Host 입력 준비 절을 따른다. 실제 Host 저장·실행은 후속 W 범위다.
+- 완료: 공통 입력 준비·config/YAML/CLI 검증 순서·layout·route·shell/cwd와 CLI 실패 차단을 구현하고 pnpm check 및 빌드 CLI smoke를 통과했다. 상세 근거는 History의 W2 입력 준비 구현·검증 완료와 docs/architecture/aiox-system.md의 Host 입력 준비 절을 따른다. 실제 Host 저장·실행의 구현 근거는 W3~W5 기록과 owner를 함께 읽는다.
 
 ### {W3}
 
-- 완료: 공개 schema·타입의 선행 인계와 저장/조회/panel/config HTTP·Operation·SSE 기반을 구현·검증했다. 구현 위치·실제 인계 범위·검증·미구현 경계는 최신 W3 완료 기록과 system/storage-terminal architecture를 따른다. 다음 local 재개 지점은 W5다.
+- 완료: 공개 schema·타입의 선행 인계와 저장/조회/panel/config HTTP·Operation·SSE 기반을 구현·검증했다. 구현 위치·실제 인계 범위·검증·미구현 경계는 최신 W3 완료 기록과 system/storage-terminal architecture를 따른다. 현재 local 재개 지점은 W6다.
 - 적용된 Agent 관리 구성은 현재 Runtime 및 terminal 연결과 분리해 저장한다. 탭이 없어도 관리 항목을 조회할 수 있고 파일 편집만으로 적용 구성이 바뀌지 않아야 한다. 종료 원인·표시 상태를 기존 다섯 activity status에 무리하게 합치지 않는다.
 - 현재 pane 구성·탭 순서·연결을 저장·조회하는 공통 경로를 구현한다. Web 이동·분할과 CLI의 다음 Agent 배치가 같은 상태를 소비한다. 배치 변경은 terminalId나 프로세스를 교체하지 않는다. Copy 후 안내 해제의 재조회/복원도 W1 계약을 따른다.
 - 완료 조건: 빈 DB 초기화·저장·조회·재오픈, API 입력 검증·실패, 변경 알림 후 재조회와 재접속 복원을 검증한다. DB 실패를 빈 상태로 숨기지 않는다. 기존 Web/terminal snapshot·stream 기능을 보존한다.
@@ -61,14 +61,14 @@ status: open
 
 ### {W4}
 
-- 완료: 인증된 Host tab과 shell의 관리 Agent 실행 연결, 준비/실패/종료 관측, 실행 이력과 HTTP/SSE projection을 구현·검증했다. 실제 CLI·bash PTY 왕복은 vendor 대역으로 확인했다. 공개 Host run/제어 및 실제 React 연결 완료를 뜻하지 않으며 다음은 W5다.
+- 완료: 인증된 Host tab과 shell의 관리 Agent 실행 연결, 준비/실패/종료 관측, 실행 이력과 HTTP/SSE projection을 구현·검증했다. 실제 CLI·bash PTY 왕복은 vendor 대역으로 확인했다. 공개 Host run은 W5 구현을 소비하며 개별·전체 제어는 W6·W7, 실제 React 연결은 W8에서 확인한다.
 
 - 선행: W1 계약 및 W2 실행 설정 검증, W3 연결 모델. 참조: Runtime spec의 일반 shell과 Agent 연결·종료, System architecture의 Host 실행 흐름, Storage/terminal projection 및 vendor binding 계약.
 - Host Agent는 shell 안에서 실행한다. shell/terminal과 Agent 실행 수명을 분리하고 새 Runtime·credential·binding을 연결한다. 공통 Host instruction과 Agent instruction을 vendor 계약에 따라 합성하며 native 설정 파일을 자동 덮어쓰지 않는다.
 - 준비 성공·시작 실패·종료를 실제 실행으로 관측한다. 명시 stop은 Agent와 필수 부속 실행만 종료하고 shell을 보존하며 stopped 표시를 전달한다. 정상 `/exit`은 같은 shell로 돌아간다. Copy는 명령 복사·기존 shell 표시이며 shell 생성이나 자동 실행이 아니다.
 - 명령 입력 위치는 실제 panel/terminal identity로 확인하며 cwd만으로 동일 panel이라 판단하지 않는다. 사용자 일반 shell을 idle 추정으로 임의 점유하지 않는다. disconnect·무출력·quota를 종료로 간주하지 않는다.
 - 완료 조건: shell 생존과 Agent 종료를 구분하고 준비/실패/종료가 CLI·조회·알림 경로로 전달되는지 검증한다. 기존 standalone 실행·terminal attachment·credential 정리의 회귀를 확인한다.
-- W3 공개 schema·저장·HTTP/Operation/SSE 산출물과 검증은 최신 W3 완료 기록을 읽는다. 아직 Host run/Agent 실행 handler와 Host/ManagedAgent의 live Runtime projection은 미연결이다. Web Agent 소유권·공통 panel/terminal 정리·requestId/revision·실패 전달 경로를 재사용하고, 실제 vendor 준비 성공이나 React 연결 완료를 저장 성공으로 대체하지 않는다.
+- 공개 schema·저장·HTTP/Operation/SSE와 관리 Agent live Runtime projection은 W3·W4 구현을 따른다. W5의 공개 run은 이 경로를 소비한다. W6·W7에서도 Web Agent 소유권·공통 panel/terminal 정리·requestId/revision·실패 전달 경로를 재사용하며, 실제 vendor 준비 성공이나 React 연결 완료를 저장 성공으로 대체하지 않는다.
 
 ### {W5}
 
@@ -77,29 +77,27 @@ status: open
 - 전용 Network와 membership·route를 올바른 Runtime ID에 연결한다. 일반 Network나 다른 Host의 동명 Network와 섞지 않는다. 초기 배치는 config/YAML/CLI의 유효 layout과 YAML 선언 순서를 소비한다.
 - auto는 1개 전체·2개 좌우·3개 왼쪽+오른쪽 위아래·4개 이상 2×2다. left-main/top-main은 owner의 세 영역 배치, grid는 유효 치수다. 초과 Agent는 순환 탭으로 배치하며 불필요한 빈 pane을 만들지 않는다. 최초 선택 탭을 유지한다. 이는 shell/tab/pane 개수 상한이 아니다.
 - YAML을 읽지 못해 Agent를 특정할 수 없는 실패는 CLI만 표시한다. 특정 Agent 시작 실패는 실제 원인을 CLI와 해당 탭에 전달한다. 실패 보상은 이번 시도가 만든 자원·변경에 한정하고 기존 Host·Network·사용자 shell을 보존한다. 정리 실패를 완전 rollback으로 보고하지 않는다.
-- 최초 실제 사용 합류점: `aiox host run`의 config/YAML 해석→Host/Network→Agent 실행→React Hosts panel→TUI 입출력을 확인한다. Stage6가 mock을 실제 조회·알림·terminal API로 연결해야 화면에서 확인 가능하다. backend 성공만으로 React 연결 완료라 보고하지 않는다.
+- 완료 조건: `aiox host run`의 config/YAML 해석→Host/Network→Agent 실행→panel 배치와 HTTP/SSE·terminal API까지 CLI·daemon 경로를 검증한다. Stage6 준비를 기다리지 않고 W6로 진행하며, React Hosts panel 표시·TUI 입출력의 최초 실제 연결 검증은 W8에서 수행한다.
+- 완료: 공개 run 접수·전용 Network·초기 배치·shell 내부 실행과 CLI의 SSE 완료 대기를 구현·검증했다. 재개 시 최신 W5 완료 기록과 system/storage-terminal architecture, host-run·host-operation 및 인접 테스트를 읽는다. 현재 다음 작업은 W6이며 실제 vendor·React·Windows/WSL의 미실측 범위는 W8에서 구분해 확인한다.
 
-### {W6}
-
-- 선행: W5. 참조: Host spec의 Routing과 변경·시작/재시작/정지, Runtime CLI, Web UX의 입력 위치·stopped 처리.
-- 개별 start는 신규 또는 stopped Agent를 최신 YAML로 시작하며 실행 중이면 안내만 한다. 개별 restart는 실행 중 대상을 최신 정의로 다시 실행한다. 복수 Agent 이름을 지원한다. Network 이름/default가 현재 적용값과 다르면 기존 실행을 멈추기 전에 거절하고 전체 restart를 안내한다.
-- 적용 route는 대상 Agent가 출발지 또는 목적지인 범위다. 그 범위는 최신 YAML이 이전 CLI 변경을 대체하고 다른 Agent 간 정책은 보존한다. 뒤이은 CLI 변경은 다시 그 범위를 덮어쓴다. Host Network 명령의 `<host>`는 필수이며 생략/미등록을 YAML 선택으로 대체하지 않는다. block=명시 deny, unblock=명시 allow, reset=현재 적용 YAML 복귀다.
-- 같은 Host panel의 shell에서 실행하면 첫 Agent는 입력 자리, 나머지는 현재 pane 순서로 배치한다. 외부/다른 panel은 대상의 재사용 가능한 stopped 자리 또는 순차 새 탭을 사용한다. 사용자 추가·이동·삭제·분할 후 현재 pane의 위→아래·왼쪽→오른쪽 순서를 따르며 기존 위치·선택을 재정렬하지 않는다.
-- 다른 shell에서 같은 Agent를 시작하면 새 TUI 연결 성공 후 옛 stopped 탭을 제거한다. 실패하면 새 자리 실패 표시와 옛 stopped 탭을 유지한다. 이미 Copy 또는 /exit으로 일반 shell이 된 탭은 보존한다. Copy 명령은 실행 시점의 YAML을 그대로 선택하며 원래 Host를 강제하지 않는다.
-- 완료 조건: 관련 route만 변경, Network 변경 사전 거절, stop 후 shell/Network/정책 보존, 위치 선택과 성공/실패 시 옛 탭 처리의 서버 결과 및 Stage6 표시 연결을 확인한다.
+### {W7,W8}
+- 리뷰 보완 완료: 관련 route의 미적용 상대 endpoint는 실행 종료 전에 invalid_yaml로 거절한다. 직접 HTTP의 YAML 불필요 변경도 config를 먼저 검증하며, pane 순서는 트리 순회가 아니라 split weight로 계산한 사각형 top→left를 사용한다. 아래 W6 리뷰 수정 기록·회귀를 재개 근거에 포함한다.
+- W6 완료: 개별 Agent start/stop/restart·Host Network list/show/block/unblock/reset의 CLI·HTTP·저장·SSE 경로를 구현·검증했다. 최신 W6 완료 기록, system/storage-terminal architecture, `apps/daemon/src/host-agents.ts`와 인접 테스트, CLI bootstrap·host-operation, persistence host-state를 재사용한다.
+- 같은 Host panel의 첫 실행은 현재 CLI가 SSE preparing 대상을 받아 foreground 실행을 이어간다. 부모 shell이 CLI 종료를 기다리는 동안 명령을 주입해 준비를 기다리는 방식은 교착한다. 다른 자리는 기존 shell 내부 CLI 경로를 사용한다.
+- 대상 정의·membership·관련 route만 적용하고 나머지 정책·일반 shell·현재 배치를 보존한다. stop은 실행 정산 후 shell을 유지한다. 실패는 tab ID로 기록하여 다른 자리의 옛 stopped 안내를 보존하고 준비 성공 뒤에만 옛 안내 자원을 정리한다. 실제 React 표시·Copy·/exit 연결과 vendor·Windows/WSL 실측 여부는 W8에서 구분해 검증한다.
 
 ### {W7}
 
-- 선행: W6. 참조: Host spec의 전체 restart 구성과 탭·stop/delete 종료 경계, Runtime CLI와 Web UX.
+- 선행 충족: W6의 구현·서버 검증 완료. Stage6 연결 검증은 선행 조건이 아니며 W8에서 수행한다. 참조: Host spec의 전체 restart 구성과 탭·stop/delete 종료 경계, Runtime CLI와 Web UX.
 - 전체 restart는 config/YAML 전체 사전 검증 뒤 실행을 교체한다. 읽기·검증 실패는 CLI 오류이며 기존 실행·정책·화면을 그대로 둔다. 과거 설정으로 새 실행을 만드는 fallback이 아니다. 같은 Host는 최신 전체 구성과 route를 적용한다. host.name 변경은 기존 Host를 남기고 별도 Host/panel/Network를 실행한다.
 - 같은 Agent key의 재사용 가능한 자리는 유지한다. 새 key는 추가하고 제거된 key는 종료한다. 이름 변경은 삭제+추가다. 제거된 Agent 전용 shell 또는 stopped 안내 뒤 shell은 종료 확인 후 탭과 함께 제거한다. 이미 일반 shell로 복귀한 탭과 사용자 추가 shell은 보존한다. 현재 pane 배치를 초기 preset으로 되돌리지 않는다.
 - Host stop은 관리 YAML Agent 프로세스와 필수 부속 실행을 종료하며 shell·panel·Network·적용 정책을 유지한다. 실행 credential·binding·활성 membership은 정리한다. delete는 busy/idle에 관계없이 panel 소유 프로세스와 사용자 shell의 작업까지 종료 확인 후 Host·panel·Network를 제거한다. 외부 terminal·다른 Host·YAML·프로젝트 파일은 건드리지 않는다.
 - stop/status/delete는 `[hostname]` 직접 지정 시 YAML 없이 등록 Host를 선택하고, 생략하면 YAML 선택 규칙을 따른다. delete의 hostname과 `--file` 동시 지정은 거절한다. 옛 Host·파일이 사라진 Host도 이름으로 조회·제어할 수 있어야 한다. list/status가 실제 실행과 적용 구성을 보고하도록 마무리한다.
-- 완료 조건: 사전 오류 보존, Host 이름 변경, Agent 증감, 사용자 shell 보존과 delete 정리 범위, 종료 실패 진단·재시도 가능한 대상 유지를 검증한다. 신호 전송만으로 panel을 먼저 없애지 않는다.
+- 완료 조건: 사전 오류 보존, Host 이름 변경, Agent 증감, 사용자 shell 보존과 delete 정리 범위, 종료 실패 진단·재시도 가능한 대상 유지를 검증한다. 신호 전송만으로 panel을 먼저 없애지 않는다. CLI·daemon 경로로 검증하며 실제 Stage6 화면 연결은 W8에서 확인한다.
 
 ### {W8}
 
-- 선행: W5 최초 연결과 W6/W7 backend, Stage6의 해당 React consumer. W1 계약 및 owner UX를 기준으로 mock을 실제 응답으로 교체하고 실제 CLI→daemon→저장/관측→Web 전달을 확인한다.
+- 선행: W5~W7의 구현·CLI·daemon 검증 완료 및 Stage6의 실제 API 연결 준비. W5의 최초 React Hosts panel 표시·TUI 입출력, W6의 제어 결과·stopped 표시, W7의 전체 수명·구성 변경 결과를 실제 화면에서 확인한다. Host·Runtime·설정/Web UX를 CLI→daemon→저장/관측→Web 표시까지 한 흐름으로 대조하며, backend 성공만으로 React 연결 완료라 보고하지 않는다.
 - 검증: 최초 run·config/YAML 오류, 개별/전체 restart·stop·delete, /exit·Copy·실패 표시, 사용자 변경 배치에서의 새 Agent 추가, 브라우저 재접속, 실제 terminal 입력/출력·resize·shell 생존. 반복 이동 stress 검증은 추가하지 않는다.
 - stopped ×는 기반 shell·탭 정리, running Agent ×는 확인과 종료 검증, 마지막 탭은 빈 pane/panel과 [+] 유지라는 UI 계약을 Stage6와 대조한다. UI 구현 자체는 Stage6 담당 범위다.
 - OS별 공통 로직과 기존 지원 경계를 확인하고 실제 실행한 플랫폼·미실측 범위를 구분해 보고한다. 검증 결과와 변경된 owner 문서를 맞추고 모든 완료 조건이 충족된 뒤 로그 종료를 판단한다.
@@ -327,3 +325,51 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 
 - 사용자가 커밋 대상으로 방금 완료한 Stage5 W4를 명시했다. 관리 Agent 실행·관측·종료 이력·Host Network와 HTTP/SSE projection, 협업 준비 timeout 보존 수정 및 관련 테스트·architecture·현재 로그를 한 커밋으로 묶는다.
 - 기존 전체 테스트 697개 및 후속 회귀, 최종 daemon 전체 240개와 daemon build/typecheck·built Node entry·repo lint/format 검증 결과를 사용한다. 다음 작업은 W5이며 push는 요청되지 않았다.
+
+## 2026-09-22 · W5 Host run·전용 Network·초기 배치 구현 및 검증 완료
+
+- 범위 결정: Stage6 연결 준비가 늦어져 사용자가 승인한 Work Items 조정대로 W5~W7은 CLI·daemon 구현과 검증을 소유하고, 최초 React Host panel·TUI 연결 및 제어 결과의 실제 화면 검증은 W8로 모았다. 과거 W5의 Stage6 최초 합류를 완료 조건으로 둔 기록은 이 결정으로 대체한다. 앞선 기록 보류 요청에 따라 구현 중 History를 추가하지 않았으며, 이번 사용자 요청으로 결과를 기록한다.
+- 구현: `aiox host run`과 `POST /api/hosts/run`을 연결했다. config/YAML/CLI·shell 환경 준비 뒤 Host·전용 Network·초기 panel/tab·Operation을 원자적으로 접수한다. 선언 순서와 유효 layout으로 pane·순환 탭을 배치하며 호출자의 workspace를 점유하지 않는다. 이름 충돌을 거절하고 일반 Network·다른 Host의 동명 Network와 분리한다.
+- 실행·결과: 검증한 shell 설정과 기존 W4 foreground CLI/관리 Agent 경로를 재사용한다. RuntimeRegistry의 실제 준비·실패 이벤트로 target 결과를 기록하고 CLI는 SSE snapshot/state의 Operation 완료를 기다린다. 일부 실패는 성공한 실행을 유지하며, shell·CLI의 등록 전 실패도 lastExit·탭 안내와 CLI 진단에 전달한다. 임시 launch 파일은 준비 완료·실패 후 정리하고 정리 실패는 Operation cleanupErrors에 남긴다.
+- 보완: requestId 재전송이 진행 중 Operation의 오래된 snapshot을 다시 저장할 수 있는 경로를 발견하여 해시를 검증하는 읽기 전용 getOperation으로 바꿨다. 같은 저장 경로를 사용하던 panel Operation 재전송도 함께 변경했다. Host 생성과 Operation 접수의 원자성, 실패 이력의 재오픈 보존을 검증했다.
+- 실패 관측과 판단: 전체 회귀 중 Agent 준비 및 등록 전 CLI 오류 전달이 대기 상태로 남았으나, PTY 출력을 수집한 단독 테스트에서는 오류 신호가 정상 전달됐다. 긴 명령 입력과 새 shell 초기화 타이밍의 영향은 추정이며 직접 확정한 원인은 아니다. 긴 실행 코드를 임시 파일로 옮겨 shell 입력을 짧게 만든 뒤 최종 daemon 전체 회귀가 통과했다. 재발하면 준비 전 PTY 입력·출력과 Runtime 전이를 함께 확인한다.
+- 검증: Node 24 환경에서 전체 60개 파일·718개 테스트를 통과했고, 이후 보완의 최종 관련 검증은 persistence 16개·CLI 71개·daemon 252개(합계 339개)가 각각 통과했다. repo build/typecheck·lint·format·diff 검사, 빌드된 daemon Node entry import와 CLI host run help도 통과했다. 실제 macOS shell·빌드 CLI·HTTP/WS/SSE를 vendor 대역으로 연결해 준비 완료·부분 실패·등록 전 실패·중복 요청·전용 Network 격리를 확인했다. 전체 718개는 최종 보완 이전 실행이며 전체를 최종 상태로 재실행했다고 주장하지 않는다.
+- 근거·owner: `apps/daemon/src/host-run.ts`와 인접 테스트, `apps/cli/src/host-operation.ts`와 인접 테스트, `packages/persistence/src/sqlite/host-state.ts`와 인접 테스트를 따른다. 내부 실행·저장 책임과 남은 연결 범위는 `docs/architecture/aiox-system.md`와 `docs/architecture/aiox-storage-terminal.md`에 반영했다. 실제 vendor·React·Windows/WSL은 이번에 검증하지 않았다. Stage6 로그·apps/web·plan, 개발 DB와 사용자 architecture.excalidraw는 수정하지 않았으며 commit/push는 하지 않았다.
+- 완료·다음: 조정된 W5의 구현·검증을 완료했다. 다음은 W6 개별 Agent start/stop/restart와 Host Network 명령의 구현·서버 검증이다. W6·W7은 Stage6 연결 준비를 기다리지 않고 진행하며 실제 화면 연결은 W8에서 확인한다. W6~W8이 남아 있으므로 로그는 open을 유지한다.
+
+### 2026-09-22 21:48 · W5 HTTP 검증 순서·YAML 출처 충돌 계약 수정
+
+- 사용자 지적 2건을 Runtime의 config→YAML→CLI 검증 순서와 Host spec의 sourceFile 충돌 계약에 대조했고, 실제 HTTP 회귀 테스트에서 config 오류 우선순위·YAML 오류 우선순위·다른 YAML의 충돌 코드 3개 실패를 재현했다. 유효한 config/YAML 뒤 잘못된 layout을 거절하는 대조 테스트는 수정 전에도 통과했다.
+- 검증 순서 원인·수정: hostRunRequestSchema가 공통 prepareHostInput 호출 전에 layout 의미 검증을 수행했다. HTTP 요청의 외형 검증은 공개 schema를 재사용하되 layout은 미해석 값으로 받아 공통 prepareHostInput의 CLI 단계에 맡겼다. 공개 protocol schema와 공통 layout 정책은 변경하지 않았다. config 오류는 500 invalid_config/stage=config, YAML 없음은 400 invalid_yaml/stage=yaml, 그 뒤 치수 없는 grid는 400 invalid_request/stage=cli로 반환되며 어느 사전 실패에서도 Host·Network·panel·Operation·shell을 생성하지 않는다.
+- 이름 충돌 원인·수정: Host 이름만 비교하던 공통 충돌 판정을 정규화된 sourceFile까지 구분하도록 고쳤다. 같은 파일(상대 경로의 ./ 표기 포함)은 기존 host_exists와 start/restart 안내를 유지하고, 다른 파일은 409 host_name_conflict와 기존·요청 sourceFile 및 구성 교체 안내를 반환한다. 사전 검사와 동시 생성 충돌 후 검사 모두 같은 판정을 사용하며 기존 Host와 Operation은 변경하지 않는다.
+- 검증: 새 HTTP 회귀 4개 및 daemon 전체 17개 파일·256개 테스트 통과. daemon typecheck/build·빌드된 Node entry import와 repo lint·format·diff 검사도 통과했다. 이번 변경은 apps/daemon/src/host-run.ts와 인접 테스트이며 기존 owner 계약에 구현을 맞춘 수정이므로 spec·architecture 계약 변경은 없다. 실제 vendor·React·Windows/WSL을 추가 검증하지 않았고 commit/push는 하지 않았다.
+- 완료·다음: 두 계약 오류 수정·재검증을 반영해 W5 완료와 W6 next pointer를 유지한다. 후속 명령도 의미 검증을 HTTP schema에서 앞당기지 말고 공통 prepare 단계를 재사용한다. W8의 실제 화면 연결 검증은 남아 있다.
+
+## 2026-09-22 · W6 개별 Agent·Host Network 제어 구현
+
+- 요청: W6 구현을 진행한다. W5의 미커밋 변경을 보존하고 기존 shell 내부 CLI 실행·준비 관측·Operation·SSE와 종료 경로를 재사용한다. Stage6·apps/web·plan은 변경하지 않는다.
+- 진행: Host Network의 명시 allow/deny/reset 저장과 개별 Agent 정의·membership·관련 route만 적용하는 transaction을 추가했다. 저장소 회귀로 reset의 적용 YAML 복귀, 잘못된 복수 대상의 원자적 거절, 무관한 route 보존과 재오픈을 확인했다. 실제 PTY·CLI·HTTP를 vendor 대역과 연결한 Agent stop/start/restart 검증도 통과했으며 CLI 연결·배치·실패 경계 회귀를 보강 중이다.
+- 확인한 결함: 기존 failStart가 Agent key로 탭 하나를 고르므로 새 자리의 실패가 옛 stopped 안내를 덮을 수 있었다. 두 탭 저장 회귀로 재현하고 tab ID를 필수로 받아 해당 자리만 갱신하도록 모든 caller를 변경했다.
+- 검증 제약: CLI HTTP 테스트의 sandbox 실행은 loopback listen EPERM으로 실패했다. 허용된 권한으로 다시 실행해 실제 미구현 오류를 확인한 뒤 구현했다. 실제 vendor·React·Windows/WSL을 검증했다고 주장하지 않는다. W6는 진행 중이며 검증과 owner 반영 후 완료 판단한다.
+
+### 2026-09-22 22:22 · W6 구현·검증 완료
+
+- 결과: CLI의 개별 Agent start/stop/restart와 Host Network list/show/block/unblock/reset을 HTTP·Operation·SSE에 연결했다. 중복 Agent 이름은 첫 출현 순서로 처리하고 실행 중 start는 unchanged 안내만 한다. Network 이름/default 변경·미등록/없는 대상·stopped restart를 부수효과 전에 거절한다. config→YAML→CLI→실행 환경 검증 순서를 유지하며 전체 대상 검증 뒤 종료한다.
+- 저장·실행: 선택 Agent 정의·membership·관련 YAML route와 override 정리를 transaction으로 적용하고 무관한 정책을 보존한다. stop은 실제 실행 정산 뒤 shell·배치·정책을 유지한다. 신규·stopped·복수 Agent, shell 생성/준비/종료 실패·재시도, 현재 pane 순서·선택, requestId 재조회, Host/Network ID 경계와 정책 출처를 검증했다.
+- 추가 확인·해결: 같은 shell의 Host CLI가 SSE 완료를 기다리는 동안 daemon이 다음 CLI 명령을 주입하면 부모 shell이 실행할 수 없다. 입력 자리의 첫 Agent는 현재 CLI가 preparing Operation을 받아 foreground 연결을 이어가도록 구현했다. 실제 shell에서 빌드 CLI를 실행해 실패 시 옛 stopped 안내 보존, 성공 후 옛 shell·tab 정리와 새 TUI 준비, stop 후 호출 CLI 복귀를 확인했다. 실패 저장은 명시 tab ID를 사용한다.
+- 검증: 최종 `pnpm check` exit 0 — lint·format·전체 build·typecheck와 61개 파일·729개 테스트. 빌드된 daemon/CLI Node entry import, Agent restart·Network reset help도 통과했다. 저장 검증은 빈 DB 초기화·저장·재오픈을 포함한다. CLI 회귀의 미구현 기대값 두 곳은 구현된 이름 조회·제어 결과로 갱신했고 최종 전체 재실행이 통과했다. macOS 실제 shell·CLI·HTTP/WS/SSE에 vendor 대역을 연결한 결과이며 실제 vendor·React·Windows/WSL 검증은 아니다.
+- owner: `docs/architecture/aiox-system.md`의 제어 책임·현재 구현 범위, `docs/architecture/aiox-storage-terminal.md`의 부분 적용 transaction·override·실패 tab 보존을 현재 코드·회귀 근거와 맞췄다. 외부 계약을 변경한 것은 아니며 중복 Agent 입력은 기존 spec의 첫 출현 순서 계약으로 protocol을 교정했다.
+- 완료·다음: W6를 완료하고 W7을 next로 지정한다. W7은 전체 Host restart/stop/delete·조회·구성 변경의 CLI·daemon 경로다. W8의 Stage6 실제 화면 연결은 남아 있다. Stage6 로그·apps/web·plan·사용자 DB·architecture.excalidraw는 변경하지 않았고 commit/push는 하지 않았다.
+
+### 2026-09-22 · W6 리뷰 결함 재현·수정 재개
+
+- 요청: 개별 적용에서 새 route endpoint 누락에도 성공하는 P1, 직접 HTTP stop·Network 변경의 config 검증 누락, 수동 분할 후 화면 좌표와 다른 pane 배치 순서의 P2 두 건을 지적했다. W6를 재개하고 W7을 대기로 되돌린다.
+- 확인: Host spec은 미적용 상대 endpoint의 route를 400 invalid_yaml·해당 edge·전체 restart 안내로 사전 거절하며, Web spec은 현재 사각형 top→left 순서로 배치한다. 현재 handler는 route 적용 가능성과 YAML 불필요 명령의 config를 검증하지 않고 placeAgent는 트리 순회를 사용한다. 각각 실제 HTTP·저장/실행 보존·수동 분할 배치 회귀로 재현한 뒤 수정한다. 이전 W6 완료 보고의 이 세 경계는 검증이 불충분했다.
+
+### 2026-09-22 22:41 · W6 리뷰 세 결함 수정·재검증 완료
+
+- P1 확인·수정: 새 d와 a→d 또는 d→a를 YAML에 추가한 뒤 restart a를 호출하면 기존 handler가 202로 접수하는 것을 재현했다. 실제 적용할 대상의 관련 route 상대 endpoint가 현재 Host Network membership에 없으면 접수·종료 전에 400 invalid_yaml/stage=yaml, 해당 edge와 전체 `aiox host restart` 안내를 반환한다. 기존 Runtime ID와 DB 전체 snapshot이 그대로임을 HTTP·PTY 회귀로 확인했다. persistence applyAgent도 관련 edge를 filter로 버리지 않고 transaction을 거절하며 정의·정책 전체 rollback을 검증했다.
+- P2 config 확인·수정: 잘못된 JSON config 아래 직접 HTTP Network 변경이 200으로 정책을 변경하는 것을 재현했다. stop·Network 변경 분기에 공통 loadConfig를 추가하여 YAML 선택 없이 config를 먼저 검증한다. block/unblock/reset·Agent stop 모두 500 invalid_config/stage=config이며 기존 Runtime·shell·정책·Operation이 바뀌지 않음을 확인했다.
+- P2 배치 확인·수정: 좌우 각각 상하 분할에서 두 번째 신규 탭이 좌하로 가는 회귀를 재현했다. placeAgent는 현재 split axis/weight로 pane 사각형을 계산하고 top→left로 정렬한다. 균등/비균등 분할과 분할·선택 보존 회귀, 실제 좌상 shell의 빌드 CLI에서 a·e 두 Agent를 시작하여 두 번째가 우상 pane에 놓이는 경로가 통과했다. 단순 reference 수집·검증용 panelLayoutReferences의 순회 계약은 바꾸지 않았다.
+- 검증: 새 테스트의 unknown 응답·narrowed layout 타입 오류를 수정한 뒤 최종 `pnpm check` exit 0 — lint·format·전체 build·typecheck, 61개 파일·731개 테스트(daemon 261개 포함). 빌드된 daemon/CLI Node entry import, 변경 문서 inline-code·wikilink 대상·git diff 검사도 통과했다. 실제 macOS shell·CLI·HTTP/WS/SSE와 vendor 대역 검증이며 실제 vendor·React·Windows/WSL 검증을 추가한 것은 아니다.
+- 반영·상태: system/storage-terminal architecture의 사전 검증·저장 rollback·화면 배치 설명을 구현과 맞췄다. 앞선 완료 보고에서 누락한 세 경계를 보완했으므로 W6를 다시 완료하고 W7을 next로 복원한다. Stage6·apps/web·plan·사용자 DB·architecture.excalidraw는 수정하지 않았으며 commit/push는 하지 않았다.

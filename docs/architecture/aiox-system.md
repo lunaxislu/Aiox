@@ -72,10 +72,11 @@ snapshot을 만든다. 이름으로 선택한 조회·제어와 Host Network 명
 Host 실행 준비는 선택 directory를 shell의 명시 cwd로 전달하여 기존 공통 shell/WSL 검증을
 사용한다. 외부 입력 규칙은 [[docs/specs/aiox-host]]와 [[docs/specs/aiox-runtime]]이 소유한다.
 
-CLI의 `host-input.ts`는 파일 선택 인자와 parser 오류를 보존하여 공통 준비 함수에 전달한다.
-현재 `bootstrap.ts`는 준비 뒤 Host 실행 미구현 오류로 끝난다. daemon의 Host resolve는 같은
-준비 경로를 소비하고 조회·panel 배치·설정 HTTP 및 저장 기반은 연결했다. Host run·Agent 실행과
-제어 handler는 후속 W4~W7 범위다. IDE는 편집 중 불완전한
+CLI의 `host-input.ts`는 파일 선택 인자와 CLI 오류를 보존하여 공통 준비로 전달한다.
+`bootstrap.ts`의 Host run은 준비 후 daemon 접수와 SSE 결과 대기로 연결한다. daemon의 resolve와
+run도 공통 준비를 소비하며 조회·panel 배치·설정 HTTP와 저장 기반을 사용한다. 관리 Agent의
+shell 실행과 개별 Agent·Host Network 제어는 연결했고 전체 Host 제어는 후속 구현 범위다.
+IDE는 편집 중 불완전한
 문서의 AST 진단을 유지하고 실행 준비 모듈을 호출하지 않는다.
 
 근거: [[packages/config/src/host.ts]], [[packages/config/src/host.test.ts]],
@@ -450,9 +451,9 @@ prepare 오류는 부수효과 전 실패, 실행 후 실패는 부분 적용 �
 공개 HTTP/SSE 스키마와 config의 순수 검증은 protocol이 소유한다. config 파일·YAML 로딩은
 config에 남으며 기존 공개 parser를 통해 같은 검증 함수를 사용한다. Host·panel·Operation 저장,
 조회·배치와 workspace shell 제어, 설정 revision 저장, snapshot/state/fault SSE는 daemon에 연결했다.
-Host CLI는 입력 준비 뒤 실행 미구현 오류를 반환하며 공개 Host run·제어는 아직 연결하지 않았다.
-관리 Agent의 내부 실행 연결과 관측은 아래 구현을 소비하며, run의 shell 생성·초기 배치와
-명령별 Operation 조정은 W5~W7이 연결한다.
+Host `run`은 입력 준비 뒤 daemon의 실행 접수 API로 연결하며 Operation의 실제 완료를 SSE로 기다린다.
+개별 Agent 제어와 Host Network 조회·정책 CLI는 연결했으며 전체 Host 제어·조회 CLI는 후속 구현 범위다. 관리 Agent의 내부 연결과 관측은 아래 구현을 소비한다.
+React의 Host 화면 연결과 실제 TUI 표시 검증은 별도 통합 범위로 남아 있다.
 
 근거: [[packages/protocol/src/index.ts]], [[packages/protocol/src/host.test.ts]],
 [[packages/config/src/schema.ts]], [[apps/daemon/src/state-api.ts]],
@@ -460,13 +461,55 @@ Host CLI는 입력 준비 뒤 실행 미구현 오류를 반환하며 공개 Hos
 [[apps/daemon/src/panel-operations.test.ts]], [[apps/cli/src/bootstrap.ts]].
 
 기존 최소 Web의 change 알림 뒤 GET 방식은 새 서버 SSE의 consumer가 아니다. React의
-snapshot/state 소비와 실제 Host TUI 연결은 Stage6·W5 이후 검증 범위다. terminal byte stream은
+snapshot/state 소비와 실제 Host TUI 연결은 Stage6 준비 후 통합 검증 범위다. terminal byte stream은
 기존 WS 경로를 유지한다. 근거: [[apps/web/src/main.ts]], [[apps/web/src/attach.ts]],
 [[apps/daemon/src/web-events.ts]], [[apps/daemon/src/web-events.test.ts]].
 
 기존 terminal 생성/DELETE consumer도 동일 TerminalService/실행 종료 경로를 소비한다.
 panel에 연결된 terminal의 직접 종료나 자연 shell exit는 연결 tab·관리 Runtime 정리를 함께
 반영하고 SSE로 알린다. Host stop은 terminal DELETE가 아니라 Agent owner stop을 사용한다.
+
+### Host run 접수와 실행 [Status: As-built]
+
+CLI는 config/YAML/옵션·실행 환경을 검증한 뒤 source와 requestId를 전송한다. daemon도 입력을
+검증하고 새 Host·전용 Network·선언 순서의 초기 panel/tab·Operation을 같은 transaction으로
+접수한다. 호출한 workspace나 Network pane은 새 Host의 실행 자리로 사용하지 않는다.
+같은 requestId는 기존 Operation으로 복원하며 Host 이름 충돌은 기존 실행을 변경하지 않고 거절한다.
+
+접수 후 검증한 shell 설정으로 각 tab의 terminal을 만들고 빌드된 foreground CLI를 실행한다.
+호출별 Host/key 환경과 terminal 인증을 기존 관리 Agent 연결 경로가 소비한다. RuntimeRegistry의
+준비·실패 이벤트가 target 결과를 결정하며 별도 상태 polling은 없다. 일부 실패는 성공한 실행을
+유지하고, 실행 등록 전 실패도 관리 Agent 이력과 tab 안내에 남긴다. 살아 있는 vendor의 협업
+실패는 TUI를 보존한다. CLI는 SSE snapshot/state의 Operation으로 성공·부분 실패를 출력하며,
+연결 손실 시 requestId/operationId와 재조회 경로를 남긴다.
+
+근거: [[apps/daemon/src/host-run.ts]], [[apps/daemon/src/host-run.test.ts]],
+[[apps/cli/src/host-operation.ts]], [[apps/cli/src/host-operation.test.ts]],
+[[packages/persistence/src/sqlite/host-state.test.ts]]. 실제 shell·빌드 CLI·HTTP/SSE 검증은 macOS에서
+vendor 대역으로 수행하며, 실제 vendor·React·Windows/WSL 연결 검증을 대신하지 않는다.
+
+### 개별 Agent·Host Network 제어 [Status: As-built]
+
+`host-agents.ts`는 config를 검증하며 YAML이 필요 없는 직접 HTTP stop·Network 변경에도 적용한다.
+개별 실행은 YAML과 전체 대상·Network 이름/default, 관련 route 상대 endpoint의 현재 적용 여부를
+검증한 뒤 Operation을 접수한다. 반영 불가능한 edge는 기존 실행을 멈추기 전에 거절한다.
+개별 stop은 Runtime 종료·정산을 기다리고 shell·배치·정책을 유지한다. start/restart는 대상 정의와
+대상에 닿는 membership·route만 저장하고 기존 실행 준비 관측을 재사용한다. 실행 중 대상의 start는
+변경 없이 안내하며, 서로 독립된 대상의 실패와 성공은 Operation에 따로 남긴다.
+
+같은 Host panel의 입력 자리는 현재 Host CLI가 SSE의 preparing 대상을 받아 기존 foreground
+연결로 이어 실행한다. 부모 shell이 CLI 종료를 기다리는 동안 새 명령을 주입해 생기는 교착을
+피하기 위한 연결이며 실행 소유권은 daemon에 있다. 다른 자리는 shell 내부 CLI를 시작한다.
+split weight로 현재 pane 사각형을 복원하여 top→left 순서로 배치한다. 기존 분할·선택을 유지하고
+새 TUI 준비가 확인된 뒤에만 옛 stopped 안내 자원을 정리한다.
+
+Host Network CLI는 정확한 Host·Network 이름 조회로 ID를 고정한다. route 변경은 저장소에서
+전체 endpoint와 진행 중 Operation을 검사한 뒤 하나의 transaction으로 반영하고 SSE에 알린다.
+
+근거: [[apps/daemon/src/host-agents.ts]], [[apps/daemon/src/host-agents.test.ts]],
+[[apps/cli/src/bootstrap.test.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]].
+실제 macOS shell·빌드 CLI·HTTP/SSE를 vendor 대역으로 검증한 범위이며 실제 vendor·React·Windows/WSL
+통합 완료를 뜻하지 않는다.
 
 ### 관리 Agent의 shell 실행 연결 [Status: As-built]
 

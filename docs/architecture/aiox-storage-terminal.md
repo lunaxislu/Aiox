@@ -530,15 +530,30 @@ Operation 접수 뒤 기존 TerminalService로 실행하고 결과를 durable �
 미완료 Operation·실행 이력을 정산하며 없는 terminal의 tab을 unavailable로 표시한다.
 
 완료 Operation과 종료 이력은 보존 기간 이후 정리하되 cleanup 오류가 남은 Operation은 보존한다.
-Host resolve는 공통 config/YAML 준비를 소비한다. 공개 Host run·제어 조정은 W5~W7,
-실제 React 연결은 Stage6·W5 이후 범위다.
+Host resolve와 run은 공통 config/YAML 준비를 소비한다. run 접수·초기 배치·실행 결과는 연결했으며,
+개별 Agent·Host Network 제어는 연결했으며 전체 Host 제어는 후속 구현 범위다. 실제 React 연결은 Stage6 준비 후 통합 검증한다.
 
 근거: [[packages/persistence/src/sqlite/host-schema.ts]],
 [[packages/persistence/src/sqlite/host-state.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]],
 [[apps/daemon/src/state-api.ts]], [[apps/daemon/src/panel-operations.ts]],
 [[apps/daemon/src/panel-operations.test.ts]], [[apps/daemon/src/terminals.ts]].
 
+개별 Agent 적용은 정의·membership·해당 Agent가 endpoint인 manifest edge 교체와 그 범위의
+runtime override 제거를 한 transaction으로 처리한다. 관련 edge의 endpoint가 적용 membership에
+없으면 edge를 누락시키지 않고 transaction 전체를 거절한다. 다른 Agent끼리의 적용 정책은 보존한다.
+Host Network의 block/unblock은 별도 override를 저장하고 reset은 override만 제거하므로
+현재 적용된 manifest edge/default로 돌아간다. 오류 대상이 섞인 복수 route는 전부 거절하며
+진행 중 Host Operation과의 정책 변경 충돌도 저장소에서 거절한다.
+
+근거: [[apps/daemon/src/host-agents.ts]], [[apps/daemon/src/host-agents.test.ts]]와 기존 Host 저장소·회귀 테스트.
+
 ### 관리 실행 이력과 live projection [Status: As-built]
+
+run 접수는 Host·전용 Network·panel과 초기 Operation을 같은 transaction으로 저장한다.
+실행 등록 전 shell·CLI 시작 실패는 `failStart`가 관리 Agent의 lastExit와 해당 tab 안내를
+원자적으로 기록한다. 실패 저장은 명시한 tab ID만 갱신하여 다른 자리의 stopped 안내를 보존한다.
+활성 실행 이력이 남아 있으면 이 경로로 종료를 확정하지 않는다.
+근거: [[apps/daemon/src/host-run.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]].
 
 관리 Runtime 연결 시 실행 이력 시작·Agent의 lastTerminalId·tab의 preparing 표시를 같은
 transaction으로 저장한다. 해당 Host/key의 미정산 실행이 있으면 중복 실행을 거절한다.

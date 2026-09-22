@@ -105,7 +105,7 @@ export const hostResolveResultSchema = z.strictObject({ hostId: id });
 const agentKeys = z
     .array(name)
     .min(1)
-    .refine((v) => new Set(v).size === v.length, "Duplicate Agent key");
+    .transform((v) => [...new Set(v)]);
 export const hostAgentStartRequestSchema = hostRestartRequestSchema.extend({
     agents: agentKeys,
 });

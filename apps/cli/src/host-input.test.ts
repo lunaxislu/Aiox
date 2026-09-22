@@ -6,7 +6,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { createFoundationPort } from "@/bootstrap";
 import { createCli } from "@/cli";
-import { failedHostRequest } from "@/host-input";
+import { failedHostRequest, prepareHostRequest } from "@/host-input";
 const homes: string[] = [];
 
 test.each([
@@ -103,9 +103,16 @@ test("Host restart validates config, YAML and CLI in order without changing exis
     await expect(run("agent", "start", "--path", home)).rejects.toThrow(
         /missing required argument/,
     );
-    await expect(run("run", "--path", home, "--columns", "2")).rejects.toThrow(
-        /arrives in Stage 5/,
-    );
+    await expect(
+        prepareHostRequest(
+            {
+                command: "host.run",
+                args: [],
+                options: { path: home, columns: "2" },
+            },
+            { home },
+        ),
+    ).resolves.toMatchObject({ layout: { preset: "grid", columns: 2 } });
     await expect(run("network", "list")).rejects.toThrow(
         /missing required argument/,
     );
@@ -129,9 +136,21 @@ test("named Host and mandatory Host Network commands do not require YAML; help d
         ["stop", "named"],
         ["delete", "named"],
         ["list"],
-        ["network", "show", "named", "net"],
     ])
         await expect(run(...args)).rejects.toThrow(/arrives in Stage 5/);
+    vi.stubGlobal(
+        "fetch",
+        vi.fn(
+            async () =>
+                new Response("[]", {
+                    status: 200,
+                    headers: { "content-type": "application/json" },
+                }),
+        ),
+    );
+    await expect(run("network", "show", "named", "net")).rejects.toThrow(
+        /unknown_host/,
+    );
     await mkdir(join(home, ".aiox"));
     await writeFile(join(home, ".aiox/config.json"), "{bad");
     const cli = createCli(createFoundationPort({ home }));

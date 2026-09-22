@@ -58,20 +58,17 @@ export async function handlePanelOperation(
     const hash = createHash("sha256")
         .update(JSON.stringify([request.method, url.pathname, input]))
         .digest("hex");
-    const state = await services.db.hostState.snapshot();
-    const previous = state.operations.find(
-        (o) => o.requestId === input.requestId,
+    const previous = await services.db.hostState.getOperation(
+        input.requestId,
+        hash,
     );
     if (previous) {
-        send(
-            response,
-            202,
-            await services.db.hostState.saveOperation(previous, hash),
-        );
+        send(response, 202, previous);
         return true;
     }
     if (!services.lifecycle.acceptingInput())
         throw new HttpError(503, "stopping", "Daemon is stopping.");
+    const state = await services.db.hostState.snapshot();
     const panel = state.panels.find((p) => p.id === panelId);
     if (!panel) throw new HttpError(404, "unknown_panel", "No such panel.");
     if (panel.revision !== input.revision)
