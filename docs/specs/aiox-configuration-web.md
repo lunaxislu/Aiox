@@ -4,7 +4,8 @@ Status: Committed target
 
 이 문서는 사용자 전역 설정, 저장 범주, 운영 Web의 terminal 복귀·알림·설정 UX를 소유한다.
 실행 종료는 [[docs/specs/aiox-runtime]], 작업 공간·manifest는 [[docs/specs/aiox-host]],
-메시지 관측 의미는 [[docs/specs/aiox-collaboration]]을 따른다.
+메시지 관측 의미는 [[docs/specs/aiox-collaboration]]을 따른다. 화면 레이아웃, 사이드바·헤더·
+pane/탭 조작, 빈 화면 문구와 창 폭 반응형은 [[docs/specs/aiox-web-ui]]가 소유한다.
 
 ## 전역 설정과 저장 경계
 
@@ -17,10 +18,16 @@ Stage 1 구현에서는 Node 기본 JSON 처리로 `.aiox/config.json`을 선택
 | 데이터 | 저장 책임 | 확정 범위와 남은 선택 |
 | --- | --- | --- |
 | terminal font/color/cursor/theme, keyboard, 포트 | 전역 설정 파일 | JSON·기본 schema 구현. 상세 UI schema는 후속 확장 |
-| Web dark/light theme | localStorage | terminal palette와 별개. system 선택·언어·소리 설정 저장은 후보 |
+| Web theme | 전역 config의 `appearance.theme` | `system/light/dark`, terminal palette와 별개 |
+| 사이드바 너비·열림 상태, keybindings 변경분 | 전역 설정 파일 | `web.sidebar.width`/`web.sidebar.open`, `keybindings` |
 | 지속 Network/Route, AIOX 메시지·대상별 결과·알림 본문, 실행 이력 | SQLite | 메시지 처리 종료 후 기본 30일 보존 |
 | 알림·읽음, terminal/workspace 배치 | SQLite | 브라우저 복귀에 필요한 지속 데이터 |
 | 살아 있는 process/binding/token/status | 실행 상태 | DB의 과거 running 기록을 생존 증거로 쓰지 않음 |
+
+저장소는 전역 설정 파일과 SQLite 둘뿐이다. 운영 Web은 브라우저 저장소를 쓰지 않으며
+`localStorage`·`sessionStorage`·cookie 어디에도 설정, 사이드바 너비·열림 상태, theme을 남기지
+않는다. 차용한 UI 컴포넌트가 상태를 cookie에 쓰면 그 경로를 제거하고 전역 config로 보낸다.
+[Status: Normative]
 
 vendor transcript·reasoning 전체 복제나 무제한 메시지 본문 저장을 요구하지 않는다. 저장한
 메시지의 자동 재전송도 허용하지 않는다. Host YAML과 DB의 materialization/history를 이중
@@ -34,18 +41,60 @@ WSL 홈·DB를 자동 공유한다고 가정하지 않는다. DB 준비 실패�
 
 ## 공통 shell 화면과 설정
 
-일반 terminal과 Host는 공통 영역·영역별 탭을 사용한다. shell에서 Agent가 시작·종료해도 기존
-terminal 탭을 중복 생성하지 않는다. Network 조회는 Agent·route 조회이며 화면 분할로 Host나
-Network를 만들지 않는다. terminal 수명은 runtime, Host 최초 layout은 host 계약을 따른다.
+일반 terminal과 Host는 공통 영역·영역별 탭을 사용한다. Network 조회는 Agent·route 조회이며
+화면 분할로 Host나 Network를 만들지 않는다. terminal 수명은 runtime, Host 최초 layout은 host
+계약을 따른다.
 
-사이드바 너비는 전역 `web.sidebar.width`로 저장한다. 양의 유한수이며 240은 예시이지 확정
-기본값이 아니다. Host 초기 기본값은 전역 `host.layout`이며 DB에 중복 저장하지 않는다.
-실행 중 분할 비율·탭 순서·선택 상태의 서버 복원은 초기 설정 저장과 별개다.
+Agent 실행은 workspace를 기준으로 배치한다. `aiox agent run`은 `--network`가 가리키는
+workspace에 나타난다. 그 workspace 안에서 실행했으면 해당 pane이 그대로 vendor 화면이 되고,
+밖에서 실행했으면 대상 workspace에 탭이 생기며 명령을 친 shell은 살아남는다. 어느 경우에도
+같은 실행에 탭을 중복 생성하지 않는다. Host panel의 자리 선택과 stopped 탭 재사용은 아래
+Host panel과 Agent terminal UX가 소유한다. [Status: Committed target]
+
+사이드바 너비는 전역 `web.sidebar.width`로 저장한다. 양의 유한수이며 화면 기본값은 240,
+드래그 범위는 180~400이다. 열림 상태는 `web.sidebar.open`으로 같은 파일에 저장한다.
+Host 초기 기본값은 전역 `host.layout`이며 DB에 중복 저장하지 않는다. 실행 중 분할 비율·탭
+순서·선택 상태의 서버 복원은 초기 설정 저장과 별개다.
+
+### 화면 조작 keybindings
 
 기존 `keyboard` 문자열 맵은 보존한다. 새 `keybindings`는 사용자 AIOX 화면 조작 재지정
-책임이며 정확한 기본 키와 OS별 schema는 구현 전에 사용자와 논의한다. 기존 keyboard를
-임의 alias로 바꾸거나 미정 keybindings schema·기본키를 확정하지 않는다. 브라우저 OS를 기준으로
-키를 적용하고 vendor 입력·브라우저 예약키를 보존한다.
+책임이며 기존 keyboard를 임의 alias로 바꾸지 않는다. 브라우저 OS를 기준으로 키를 적용하고
+vendor 입력·브라우저 예약키를 보존한다.
+
+기본키는 코드가 제공하고 파일에는 사용자 변경분만 저장한다. 전체 기본값을 파일에 복사하게
+만들지 않는다. 열한 개 조작이 모두 재지정 대상이다. [Status: Committed target]
+
+| 조작 | action id | macOS | Windows/Linux |
+| --- | --- | --- | --- |
+| 새 shell 탭 | `newShell` | `Cmd+Shift+S` | `Ctrl+Shift+S` |
+| 오른쪽 분할 | `splitRight` | `Cmd+D` | `Ctrl+Shift+D` |
+| 아래쪽 분할 | `splitDown` | `Cmd+Shift+D` | `Ctrl+Shift+E` |
+| 탭 전환 | `switchTab` | `Cmd` + `1`~`9` | `Ctrl+Shift` + `1`~`9` |
+| 탭 닫기 | `closeTab` | `Cmd+Shift+X` | `Ctrl+Shift+X` |
+| 방향 포커스 이동 | `focusLeft`·`focusDown`·`focusUp`·`focusRight` | `Cmd+Alt` + `H`·`J`·`K`·`L` | `Ctrl+Shift` + `H`·`J`·`K`·`L` |
+| 영역 확대·복귀 | `zoomPane` | `Cmd+Shift+M` | `Ctrl+Shift+M` |
+| 크기 균등화 | `equalizeSizes` | `Cmd+Shift+=` | `Ctrl+Shift+=` |
+| 현재 영역 강조 | `flashPane` | `Cmd+Shift+P` | `Ctrl+Shift+P` |
+| 사이드바 토글 | `toggleSidebar` | `Cmd+B` | `Ctrl+Shift+B` |
+| 커맨드 팔레트 | `openPalette` | `Cmd+K` | `Ctrl+K` |
+
+`switchTab`의 마지막 자리 `9`는 마지막 탭이다. `switchTab`만 저장 값이 수식자 부분이고
+숫자 자리는 고정이며, 나머지는 완성된 조합 하나를 저장한다.
+
+Windows/Linux 기본키를 macOS에서 `Cmd`→`Ctrl`로 일괄 치환해 만들지 않는다. Windows/Linux에서
+PTY로 바이트가 나가지 않는 수식자 층은 `Ctrl+Shift`뿐이고 `Alt`가 끼면 `ESC`+문자가 나가므로,
+1:1 치환은 `Ctrl+D`·`Ctrl+B`·`Ctrl+K`·`Ctrl+3`~`Ctrl+8`·`Ctrl+Alt`+문자에서 터미널 입력을
+빼앗는다. `openPalette`의 `Ctrl+K`만 웹 관례 때문에 이 규칙의 예외이며, 렌더러에서 가로채
+xterm에 전달하지 않는다.
+
+근거는 `@xterm/xterm@6.0.0`의 `evaluateKeyboardEvent`다. `default` 분기가
+`(isMac && !macOptionIsMeta) || !altKey || metaKey`로 갈리므로 Windows/Linux는 `!altKey`로만
+바이트 없는 경로에 들어간다.
+
+브라우저·OS 예약키 충돌은 CDP 주입으로 관측되지 않아 사용자 직접 입력으로만 판정한다. macOS는
+위 표의 자리가 실측으로 통과했다. Windows/Linux는 구현 후 실측하며, 확인된 잔여 후보 충돌은
+Firefox의 `Ctrl+Shift+K` 웹 콘솔 하나다. 충돌이 드러나면 해당 조작만 재지정한다.
 
 ### 새 Web shell의 실행 설정
 
@@ -158,10 +207,8 @@ TypeORM과 better-sqlite3 및 transaction을 유지한다. 빈 DB를 현재 sche
 ## 기반 구현과 검증 범위
 
 `packages/config`는 JSON 검증·load/save·last-good session을 제공한다. 구현 기본 포트는 daemon
-4500, Web 4501이며 시작 설정의 해석 우선순위는 CLI override → 파일 → 기본값이다. 재시작의 새 설정 사용·이전 override 변경 안내와 현재 daemon 조회는 runtime의 시작·준비·상태 조회 계약을 따른다. listener 연결과 최소 Web 정적 파일 제공은 Stage 2에 구현됐으며 [[docs/architecture/aiox-system]]의 현재 조립 범위를 따른다. 파일
-watch·운영 Web 설정 배포는 후속 대상이다. terminal의 fontFamily/fontSize/theme과 keyboard 문자열 맵을
-지원하며 상세 UI와 바인딩 의미는 해당 단계에서 구체화한다.
-
+4500, Web 4501이며 시작 설정의 해석 우선순위는 CLI override → 파일 → 기본값이다. 재시작의 새 설정 사용·이전 override 변경 안내와 현재 daemon 조회는 runtime의 시작·준비·상태 조회 계약을 따른다. listener 연결과 최소 Web 정적 파일 제공은 Stage 2에 구현됐으며 [[docs/architecture/aiox-system]]의 현재 조립 범위를 따른다.
+운영 Web 설정 조회·저장은 후속 구현 대상이다. 기존 terminal 표시 필드와 keyboard 문자열 맵은 보존하며, 상세 UI와 바인딩은 해당 단계에서 구체화한다.
 `web.sidebar.width`·`host.layout` 검증과 공통 layout 해석은 구현돼 있다. `parseHostLayout`과
 `resolveHostLayout({ cli, yaml, global })`은 Host parser·CLI 연결이 재사용할 공개 함수이며
 배치 계산·누락 grid 치수의 기본값을 만들지 않는다. [Status: Current]
@@ -173,31 +220,19 @@ transaction·close/reopen을 검증했다. 당시 Node 요구 조건은 >=22.12.
 설치·빌드·타입 검사·테스트·CLI 진단을 통과했다. vendor/PTY/WSL과 npm 전역 배포 검증은 후속 단계다.
 근거: [Stage 1 CI](https://github.com/lunaxislu/aiox-prototype/actions/runs/34189231508).
 
-## 파일·Web 편집과 자동 적용
+## 파일·Web 편집과 적용
 
-Web은 설정 미리보기·저장을 제공하며 직접 파일 편집도 같은 검증과 적용 규칙을 사용한다.
-별도 `aiox config apply` 명령을 추가하지 않는다.
+설정 동기화는 조회·저장 모델이다. watcher·설정 SSE를 추가하지 않는다.
+Web 최초 로드·Settings 열기·저장 직전에 파일을 조회하고, 외부 편집은 다음 조회에 드러난다.
+저장한 브라우저는 즉시 반영하며 다른 브라우저 탭은 다음 조회에서 반영한다.
+미리보기는 저장과 구별하고 Revert/Discard로 조회 기준값에 복귀한다.
+잘못된 파일은 마지막 유효 표시를 유지하며 오류를 보인다. CLI 명령은 last-good로 계속하지 않는다.
+포트는 다음 daemon 시작, shell 실행 설정은 다음 shell 생성, layout은 다음 최초 Host 배치에
+적용한다. 기존 실행·배치를 설정 저장만으로 바꾸지 않는다. 폰트 변경은 fit/resize를 수행한다.
+Web theme은 전역 `appearance.theme`이며 헤더 토글도 같은 필드를 즉시 저장한다.
 
-```text
-Web 수정·미리보기 → 저장 요청 → 검증·파일 저장 → 설정 배포
-외부 파일 저장   → 변경 감지 → 검증 → 설정 배포
-```
-
-| 상황 | 결과 |
-| --- | --- |
-| 유효한 terminal font/color 또는 AIOX keyboard 설정 저장 | 연결된 Web에 즉시 적용·여러 탭에 배포 |
-| daemon·운영 Web 포트 저장 | 저장됨·다음 daemon 시작에 적용 표시 |
-| 잘못된 설정 | 마지막 유효 설정 유지·오류 표시 |
-| daemon이 꺼진 동안 편집 | 다음 시작 때 읽고 검증 |
-
-파일 변경은 짧게 묶고 유효한 설정만 적용한다. 감지 수단·대기 시간은 구현 사항이다.
-설정 저장 때문에 daemon을 자동 재시작하거나 Agent를 종료하지 않는다. 동시 편집 충돌 처리와
-정확한 schema는 Open/deferred다.
-
-Font/size 변경 뒤 terminal geometry를 다시 계산한다. AIOX pane/탭 명령과 vendor에 전달할
-키를 구분하고 Ctrl+O 등 vendor 동작 및 브라우저 예약 키 충돌을 처리한다. AIOX 설정으로 외부
-cmux/일반 터미널 앱 전체 appearance를 바꾸거나 vendor가 직접 그린 모든 요소를 선택적으로
-스타일링한다고 약속하지 않는다.
+Sources: `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`의 모델 B·전역 theme 확정 기록,
+2026-09-21 Stage5 W1 사용자 재확인. 세부 UI/단축키 후속은 Stage6 범위다.
 
 ## 포트와 운영 Web
 
@@ -207,18 +242,20 @@ override를 지원해야 한다. config 구현 기본값은 daemon 4500·Web 450
 계약은 아니다. 개발 Vite port와 배포 운영 Web port를 혼동하지 않는다.
 
 저장된 포트는 다음 daemon 시작에 적용하며 실행 중 MCP 연결을 즉시 이동시키지 않는다.
-브라우저 origin이 바뀔 때 localStorage에 미치는 영향과 실제 실행 endpoint 발견은 구현에서
+브라우저 origin 변경 시 전역 설정 재조회와 실제 실행 endpoint 발견은 구현에서
 정한다. 이를 별도 사용자 로그인·token 입력 절차로 해결하지 않는다.
 
-운영 Web은 React·Tailwind·shadcn/ui를 사용하고 다국어를 제공한다. cmux의 pane·tab·window
+운영 Web은 React·Tailwind·shadcn/ui를 사용하고 UI 문구는 영어로 고정한다. cmux의 pane·tab·window
 UI/UX를 화면 구성과 조작의 참고로 삼으며 실행 소유권이나 배치 정책까지 그대로 복제하지 않는다.
-Vite, use-intl, 한국어·영어 시작, Zustand/TanStack Query는 후보이며 확정된 필수 목록이 아니다. vendor 출력
+Vite와 Zustand/TanStack Query는 후보이며 확정된 필수 목록이 아니다. 운영 Web 다국어는 범위에서 제외한다. vendor 출력
 원문과 제품 UI의 번역을 구분한다. 공개 AIOX 사이트는 별도 앱이며 마지막 제품 단계다.
 공개 사이트를 위해 운영 Web을 Next.js로 바꾸는 요구는 없다.
 
-Web 목록과 사용자 알림은 daemon 소유 실행에 한정한다. 외부 CLI 소유 실행은 협업 등록이
-유효해도 Web 목록·알림에서 제외하며, 외부 terminal을 생성·조작·이관하지 않는다. 아래
-화면·복귀 계약도 daemon 소유 terminal에 적용한다.
+Web의 탭·화면·조작과 사용자 알림은 daemon 소유 실행에 한정한다. 외부 CLI 소유 실행은
+사이드바 섹션 카드의 agent 목록에 표시하되 탭·화면·조작·알림 대상에서 제외하고, 외부
+terminal을 생성·조작·이관하지 않는다. 완전히 숨기면 Network workspace가 그 network의 일부만
+보여 주고, 화면을 줄 수 없는 실행에 탭을 주면 빈 탭이 남기 때문이다. 아래 화면·복귀 계약도
+daemon 소유 terminal에 적용한다. [Status: Committed target]
 
 Web 전용 Agent·미확인 알림 조회와 읽음 처리는 외부 CLI 실행을 제외한다. 알림의 Web 대상과
 terminal 연결은 전송 당시 발신 실행에 귀속하며 해당 실행이 협업 등록에서 사라져도 다른
@@ -368,3 +405,335 @@ Sources:
 
 - `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §§14, 19–24 — 저장·설정·운영 Web·
   알림·복귀 결정과 구현 후보의 provenance.
+
+## W1 전역 config 입력과 적용 계약
+
+아래는 현재 입력과 W1 추가 목표를 구분한 전체 Host 소비 schema다. 모든 object는 알려진
+키만 허용하며 필드는 선택적이다. 명시 null·잘못된 타입은 오류다. 파일 없음만 기본값을 쓴다.
+
+| 필드 | 타입·생략값·제약 |
+| --- | --- |
+| `ports.daemon`, `ports.web` | 정수 1..65535, 기본 4500/4501, 서로 달라야 함 |
+| `messages.retentionDays` | 양의 정수, 30 |
+| `terminal.shell`, `terminal.cwd` | 공백만/NUL 없는 문자열; 위 OS shell·daemon cwd 기본 규칙 |
+| `terminal.args` | NUL 없는 string 배열, `[]` |
+| `terminal.fontFamily` | 공백만 아닌 문자열, 생략 시 renderer 기본 |
+| `terminal.fontSize` | 양의 유한수, 생략 시 renderer 기본 |
+| `terminal.theme` | 값이 공백만 아닌 문자열인 색상 map; 생략 시 renderer 기본 |
+| `keyboard` | 값이 공백만 아닌 문자열인 기존 map; 생략 시 기존 기본 |
+| `web.sidebar.width` | 양의 유한수; 화면 기본값 240, 드래그 범위 180~400 |
+| `web.sidebar.open` | boolean, 생략 시 열림 |
+| `keybindings` | `mac`/`windows`/`linux` 아래의 action id→조합 문자열 map; 변경분만 저장 |
+| `host.layout` | Host spec의 LayoutInput; 생략 시 override 없음 |
+| `appearance.theme` | `system|light|dark`, 생략 시 `system`; W1 추가 목표, 현재 parser 미지원 |
+
+`keybindings`의 OS key는 서버 platform이 아니라 브라우저 OS다. 값은 위 화면 조작 keybindings
+표의 action id를 키로 쓰며 사용자가 바꾼 항목만 담는다. 기본값과 같은 항목을 저장하거나 전체
+기본값을 파일에 복사하지 않는다. W1에서 기존 `keyboard`를 keybindings alias로 발명하지 않는다.
+다른 설정 UI 확장 필드도 공통 schema에 반영하기 전 mock 전용 필드를 서버에 보내지 않는다.
+
+```json
+{
+  "ports":{"daemon":4500,"web":4501},"messages":{"retentionDays":30},
+  "terminal":{"shell":"/bin/zsh","args":[],"cwd":"/work","fontSize":14},
+  "web":{"sidebar":{"width":240,"open":true}},"host":{"layout":{"preset":"grid","columns":2}},
+  "appearance":{"theme":"dark"},
+  "keybindings":{"mac":{"splitDown":"Cmd+Shift+G"},"windows":{"openPalette":"Ctrl+Shift+O"}}
+}
+```
+
+이는 POSIX 예시이며 shell/cwd/240을 플랫폼 공통 기본값으로 만들지 않는다.
+Host는 선택 directory를 명시 shell cwd로 사용하여 전역 terminal.cwd보다 우선한다.
+파일 자체의 형식 오류는 override로 숨기지 않는다. 각 입력의 grid 치수 검증 후
+CLI→YAML→전역→auto로 병합하고 없는 나머지 치수만 마지막에 1로 채운다.
+Host 요청은 기록된 daemon 포트에 연결하며 config 변경으로 현재 listener를 옮기지 않는다.
+
+### 설정 HTTP
+
+`GET /api/config` → 200 `{revision,stored,effective,runningPorts,restartRequired}`.
+revision은 현재 파일 내용의 opaque hash(부재도 고유 값), stored는 변경분 JSON,
+effective는 기본값을 채운 config, runningPorts는 실제 listener 포트다.
+`PUT /api/config` body `{revision,stored}` → 200 같은 DTO.
+서버가 파일을 다시 읽고 revision 비교→전체 schema 검증→임시 파일+rename으로 저장한다.
+다르면 409 `config_conflict`와 최신 DTO, 잘못된 입력은 400 `invalid_request`, 기존 파일의
+읽기/파싱 오류는 500 `invalid_config`다. 새 파일을 성공 저장하기 전 last-good를 교체하지 않는다.
+클라이언트 저장 요청끼리는 직렬화한다. 외부 편집기와 rename 직전의 OS 수준 경쟁까지 잠그는
+계약은 아니며 파일 watcher·자동 merge는 추가하지 않는다. 헤더 theme·sidebar 직접 조작도
+최신 stored의 해당 필드만 바꾸고 이 경로를 사용한다. 실패하면 미저장 표시·재조회/재시도를 제공한다.
+
+설정 PUT의 409 config_conflict 뒤 재시도는 최신 GET의 revision/stored를 기준으로
+이번 사용자 조작의 변경 필드만 다시 병합한다. 오래된 stored 전체를 다시 보내 타 필드를
+되돌리지 않는다. 서버는 revision 검사를 유지하며 충돌을 자동 무시하지 않는다.
+
+## Panel 조회·변경 HTTP와 React DTO
+
+이 절은 Host panel과 같은 공통 shell 배치의 Stage5/6 구현 대상 계약이다.
+`GET /api/panels` → `PanelView[]`, `GET /api/panels/:id` → PanelView.
+조회 목록은 200 JSON 배열이며 모든 mutation은 같은 origin/접속 보호를 거친다.
+Host 조회는 관리 구성을, panel 조회는 화면 배치를, 기존 `/api/terminals`는 실제 terminal 생존을
+제공한다. React는 terminal 생존을 local mock timer나 DB의 과거 실행 값으로 추측하지 않는다.
+
+PanelView는 `{id,kind,section,name,hostId,networkId,revision,layout,activePaneId,tabs}`.
+kind는 `host|workspace|network`, hostId/networkId는 관련 없는 경우 null이다.
+workspace 생성은 Host·Network를 생성하지 않는다. Network panel 자동 생성·삭제 UX는 해당
+Network consumer의 후속 계약이며 이 W1의 Host 실행 panel과 혼용하지 않는다.
+revision은 이름·배치·탭 표시 변경 때 증가한다. layout은 다음 재귀 union이다.
+
+`kind`는 생성 주체·수명 정책, `section`은 사이드바 표시 위치다.
+section은 `workspaces|networks|hosts`이며 서버가 다음 조합만 저장·응답한다.
+
+| kind | 허용 section |
+| --- | --- |
+| workspace | workspaces, networks, hosts |
+| host | hosts만 |
+| network | networks만 |
+
+CLI가 만든 Host/Network panel은 서버가 고정 section을 지정한다. 무효 조합을 요구하는
+입력은 400 invalid_request다. `POST /api/panels`는 사용자 panel(kind workspace)만 만들며
+section 생략은 workspaces다. 다른 section의 사용자 panel도 Host/Network·membership을
+생성하지 않는다. 생성 후 section 변경 endpoint는 제공하지 않는다.
+
+사용자 panel 생성·rename의 name은 문자열이며 앞뒤 ECMAScript trim 공백을 제거한 값을
+저장·응답한다. 정규화 후 Unicode code point 기준 1~128자이고 U+0000~U+001F·U+007F
+제어 문자는 허용하지 않는다. 빈 문자열·공백만·상한 초과·제어 문자는 400 invalid_request와
+field:name이다. 사용자 panel 이름은 같은 section을 포함해 중복을 허용한다. 선택·rename·
+삭제는 ID로 수행하며 이름을 ID 대용으로 쓰지 않는다. Host/Network 이름 유일성은 별도 owner
+계약을 유지한다. 이 이름 규칙은 사용자 panel 전용이며 CLI 이름을 임의 trim하지 않는다.
+
+```text
+Pane  = {type:"pane", id, tabIds:string[], selectedTabId:string|null}
+Split = {type:"split", axis:"x"|"y", weights:number[], children:(Pane|Split)[]}
+x: 좌→우, y: 위→아래; children 최소 2, weights는 같은 길이의 양의 유한수, 합계 1
+```
+
+pane ID는 panel 안에서 유일하다. 모든 tab은 정확히 한 pane에 한 번만 나타나고 selectedTabId는
+그 pane 안의 tab 또는 빈 pane의 null이다. activePaneId는 존재하는 pane다. tabId/terminalId는
+별개이며 이동으로 어느 것도 바뀌지 않는다. 같은 terminal은 panel들에 중복 소유되지 않는다.
+현재 배치의 사각형 top, 그다음 left 순으로 다음 Agent 배치 순서를 계산한다.
+
+TabView는 `{id,terminalId,label,agentKey,runtimeId,presentation,notice}`.
+terminalId/agentKey/runtimeId는 nullable, presentation은 `shell|preparing|tui|stopped|start-failed|crashed|unavailable`.
+preparing 중 notice가 null이면 입력 shell stream을 그대로 보이고, notice가 있으면 기존
+stopped 자리를 준비 안내로 가린다. `notice`는 null 또는 `{message,reason,restartCommand}`;
+reason은 nullable이다. restartCommand는 daemon이 해당 shell 플랫폼 quoting으로 만든 문자열이며
+절대 `--path`와 필요 `--file`로 YAML을 선택한다. 원래 Host를 강제하는 인자는 없다.
+
+```json
+{
+  "id":"p1","kind":"host","section":"hosts","name":"feature-host","hostId":"h1","networkId":"n1","revision":4,
+  "layout":{"type":"pane","id":"pane1","tabIds":["tab1"],"selectedTabId":"tab1"},
+  "activePaneId":"pane1",
+  "tabs":[{"id":"tab1","terminalId":"t1","label":"reviewer","agentKey":"reviewer","runtimeId":null,
+    "presentation":"stopped","notice":{"message":"Agent has stopped.","reason":null,
+      "restartCommand":"aiox host agent start reviewer --path /work/project --file aiox.dev.yaml"}}]
+}
+```
+
+| Method / path | body / caller | 결과 |
+| --- | --- | --- |
+| `POST /api/panels` | Web 각 section [+]: `{name,section?:"workspaces"\|"networks"\|"hosts"}` | 201 PanelView, kind workspace, section 생략 시 workspaces, 빈 pane 하나 |
+| `PUT /api/panels/:id/name` | Web 사용자 panel rename: `{revision,name}` | 200 PanelView; 이름·revision 저장 뒤 panel upsert |
+| `PUT /api/panels/:id/layout` | Web 이동·분할·비율·선택: `{revision,layout,activePaneId}` | 200 PanelView; 프로세스 변경 없음 |
+| `POST /api/panels/:id/shells` | Web [+]/분할: `{requestId,revision,paneId,split?:"right"|"down",cols?,rows?}` | 202 Operation; shell 준비·배치 저장 후 succeeded |
+| `DELETE /api/panels/:id/tabs/:tabId` | Web ×: `{requestId,revision,expectedRuntimeId:string|null,confirm:boolean}` | 202 Operation; 실제 종료 후 tab 제거 |
+| `POST /api/panels/:id/tabs/:tabId/dismiss` | Web Copy 성공 후: `{revision}` | 200 PanelView, 같은 shell 표시 |
+| `DELETE /api/panels/:id` | Web workspace 삭제: `{requestId,revision,confirm:true}` | 202 Operation; workspace만 허용, host kind는 Host delete 경로로 처리 |
+
+network kind의 panel 삭제는 이 endpoint에서 400 invalid_request다.
+rename은 section과 무관하게 kind workspace만 허용한다. kind host/network는 400
+invalid_request, 없는 ID는 404 unknown_panel, 오래된 revision은 409 revision_conflict다.
+name 검증·revision 비교·저장은 같은 변경 경계에서 처리하고 실패하면 기존 이름을 보존한다.
+성공하면 revision을 증가시키고 최신 PanelView를 반환·SSE로 전달한다. CLI Host/Network의
+이름이나 YAML을 연쇄 변경하지 않는다.
+
+탭 닫기가 confirm:false에서 409 confirmation_required로 거절되면 Operation은 생성되지
+않는다. 사용자가 확인한 confirm:true 요청은 새 requestId를 사용한다. 이미 보낸 동일 요청의
+응답 유실 재전송은 같은 requestId와 같은 body를 재사용하는 별도 경우다.
+
+새 pane ID는 Web이 UUID로 생성할 수 있으나 tabId/terminalId는 서버 생성 값만 허용한다.
+layout PUT은 기존 tab 집합을 정확히 보존하며 프로세스 생성/삭제를 표현하지 않는다.
+마지막 tab을 다른 pane으로 옮기면 빈 pane을 병합할 수 있고 마지막 tab을 닫으면
+마지막 빈 pane·panel·[+]를 유지한다. shell 생성과 분할은 성공한 생성·저장 시 함께 공개한다.
+Host shell cwd는 Host directory, workspace shell cwd는 공통 config 규칙이다.
+
+닫기는 서버가 현재 Runtime 신원을 expectedRuntimeId와 비교한다. 실행 중이면 confirm:true를
+요구하고 UI가 확인한다. stopped 안내 ×는 confirm:false로 가능하지만 기반 shell의 실제 종료를
+확인한다. 그 사이 새 Runtime이 시작됐으면 409이며 옛 확인으로 새 실행을 종료하지 않는다.
+일반 shell의 닫기도 그 shell 작업을 종료하는 동작이다. `dismiss`는 종료 안내이고 기반 shell이
+살아 있을 때만 허용하며 agentKey/runtimeId/notice를 null로 바꾼다. 관리 Agent는 지우지 않는다.
+shell 자체 생성 실패로 terminalId가 null이면 실패 tab에 진단을 남긴다. 이때 Copy는 명령만
+복사하고 기존 shell이 없다는 이유를 표시하며 dismiss나 shell 생성을 하지 않는다.
+clipboard 쓰기 실패는 dismiss를 호출하지 않는다. dismiss 저장 실패는 안내를 유지하고 재시도한다.
+
+배치 PUT/Copy는 DB commit 뒤 200, 실행 제어는 202 뒤 Operation 완료를 기다린다.
+revision 불일치는 409 `revision_conflict`이며 최신 panel을 GET하고 충돌을 표시한다.
+저장 실패 시 낙관적 이동은 마지막 서버 배치로 되돌리고 terminal 연결은 유지한다.
+실패한 shell 생성의 정리가 불완전하면 Operation과 생성 terminal을 조회 가능하게 남기며
+보이지 않는 고아 프로세스를 성공 처리하지 않는다. 임의 다른 panel로 이동하는 API는 이 범위에 없다.
+
+### 상태 전달·terminal 연결과 mock 전환 [Status: Committed target]
+
+HTTP는 명령 접수·성공·실패와 상태 조회를, `GET /api/web/events` SSE는 변경된 상태의
+직접 전달을 담당한다. 아래는 새 계약이며 현재 WebEvents의 빈 `change` 알림 구현과 구별한다.
+임시 HTML·JavaScript Web은 React 전환 때 폐기하며 그 consumer의 전체 재조회 방식을
+유지할 의무는 없다. React 내부 상태 관리·이벤트 보관 구현은 Stage6 책임이다.
+
+명령 HTTP 응답과 SSE는 용도가 다르다. 동기 변경은 commit 뒤 200, 실행 제어는 접수 뒤
+202 Operation을 반환한다. SSE는 실제 관측·저장 반영 뒤 발행하며, 202를 준비·종료 완료로
+전달하지 않는다. 정상 변경마다 GET을 요구하지 않는다. HTTP 응답과 SSE의 도착 순서는
+보장하지 않는다. 동일한 작업을 CLI에서 수행해도 같은 상태 전달 경로를 사용한다.
+
+| resource | upsert의 value | 전달 계기 |
+| --- | --- | --- |
+| `host` | HostView | 생성·적용 구성·관리 Agent 실행 상태·activeOperationId 변경 |
+| `network` | HostNetworkView 또는 기존 persistent NetworkView | 생성·membership·route 변경 |
+| `panel` | PanelView | 생성·배치·탭 추가/제거·탭 표시 변경 |
+| `terminal` | 기존 TerminalView | terminal 생성·종료 또는 조회 DTO의 상태 변경 |
+| `agent` | 기존 Web AgentView | standalone를 포함한 Web Agent 조회 상태 변경 |
+| `operation` | Operation | 접수·대상 진행·실제 성공/실패 확정 |
+| `notification` | WebNotificationView | 미확인 알림 생성; 읽음 처리·보존 만료 시 remove |
+
+upsert는 해당 조회와 같은 **완전한 DTO**이며 임의 field patch가 아니다. 삭제는
+`{resource,action:"remove",id}`로 전달한다. stopped 관리 Agent는 삭제된 자원이 아니므로
+HostView의 runtime/lastExit 변경으로 전달한다. terminal 조회에서 제거된 항목은 remove다.
+권한·소유권 필터는 해당 조회와 동일하며 token/env 비밀값을 DTO나 이벤트에 추가하지 않는다.
+
+panel 배치 변경은 어느 pane에 어떤 tab이 있는지, 선택·분할 비율 등 PanelView의 변경이다.
+tab의 terminalId/runtimeId/agentKey는 연결 식별자다. 이동만으로 Agent status를 바꾸거나
+shell·Agent를 재생성하지 않는다. 기존 탭 이동·배치 변경은 HTTP 검증·저장 후 panel을
+전달하고, 새 shell을 만드는 분할은 실제 준비·배치 저장 후 전달한다. PTY 출력 byte는
+이 이벤트의 대상이 아니며 WebSocket으로만 전송한다. Agent 상태가 달라져 panel의 안내도
+바뀌면 host와 panel의 최신 DTO를 같은 반영 단위에 포함한다.
+
+#### 외부 CLI Agent 조회 [Status: Committed target]
+
+기존 AgentView에 `executionOwnership:"daemon"|"external"`을 추가한다. 별도 카드 전용
+API를 만들지 않고 `/api/agents`, `/api/web/agents`와 SSE snapshot.agents/state의 agent에
+같은 필드를 노출한다. SSE state의 agent 변경 id는 기존 AgentView.agentId다. Web 조회와 SSE는
+external도 포함하며 실제 상태·관측 오류·생성·종료 변경을 전달한다. Web 소유 실행만 필터하던
+현재 구현을 새 목표의 필터로 유지하지 않는다. CLI 조회의 기존 필터는 그대로 적용한다.
+
+external은 `terminalId:null`, `hostId:null`이며 서버가 보장한다. 외부 실행 등록에 terminal
+문맥이나 Host 귀속이 제공되면 등록을 거절한다. networkId는 nullable이다. Host 관리 Agent는
+daemon 소유이며 external을 Host의 관리 구성으로 편입하지 않는다. 외부 Agent의 카드 배치는
+[[docs/specs/aiox-web-ui]]가 소유한다. networkId가 있으면 해당 Network의 목록에 표시할 수
+있으나 이를 위해 panel/tab/terminal을 자동 생성하지 않는다. external은 Web 실행 제어·
+terminal 연결·Web 알림 대상이 아니다. Web 제어 API도 이 소유권을 서버에서 검사한다.
+
+현재 공개 external 실행 schema는 hostId를 받지 않고 controller도 전달하지 않는다.
+다만 내부 RegisterRuntime은 hostId를 허용하므로 모든 내부 경로가 이미 null을 보장한다고
+보고하지 않는다. 공통 등록 경계의 명시 검증은 구현 대상이다. terminal 귀속 거절은
+[[apps/daemon/src/daemon.ts]]의 registerRuntime, 외부 입력은
+[[packages/protocol/src/index.ts]]의 externalAgentRunSchema와
+[[apps/daemon/src/agent-controller.ts]]를 근거로 한다.
+
+#### 미확인 Web 알림 HTTP·SSE [Status: Committed target]
+
+알림 목록은 미확인 항목만 담는다. snapshot.notifications는 `WebNotificationView[]`이며
+`readAt:null`인 Web 알림만 포함한다. 배지 수는 이 배열의 항목 수다. UI의 이동·Clear all
+표현은 [[docs/specs/aiox-web-ui]]의 알림 절을 따른다. 알림 목록은 미해결 작업의 권위가
+아니며 확인으로 항목이 사라져도 Agent의 awaiting-user 상태를 해소하지 않는다.
+
+| Method / path | 요청 | 응답·변경 전달 |
+| --- | --- | --- |
+| `GET /api/web/notifications` | 없음 | 200 미확인 WebNotificationView 배열 |
+| `POST /api/web/notifications/read` | `{ids?:string[]}` | 200 `{read:number}`; 저장 완료 뒤 해당 ID remove |
+
+항목 클릭은 ids 하나, Clear all은 ids 생략으로 요청한다. 생략은 서버가 처리할 때의
+미확인 Web 알림 전체, 빈 배열은 변경 없음이다. 이미 읽었거나 존재하지 않거나 Web 대상이
+아닌 ID는 처리 수에 포함하지 않는다. read는 이번에 읽음 저장한 수다. 요청 파싱 오류는
+400 invalid_request, 저장 실패는 공통 500 오류이며 성공 remove를 먼저 보내지 않는다.
+개별 DELETE·일괄 삭제 API는 만들지 않는다. 클릭 대상 terminalId가 null이면 점프 가능한
+terminal이 없다는 뜻이며 읽음 처리 가능 여부와는 별개다.
+
+알림 생성은 notification upsert, 읽음 commit과 보존 기간 만료는 notification remove를
+보낸다. 읽음 처리 후 DTO upsert는 보내지 않는다. remove는 Web 미확인 집합에서 제거한다는
+뜻이며 읽음 처리로 원본 필수 알림·delivery 기록을 삭제하지 않는다. 이미 읽은 ID를 다시
+확인하면 read:0이며 불필요한 변경 이벤트를 만들지 않는다. 보존 만료로 이미 목록에 없는
+항목을 제거하는 이벤트도 소비 결과를 바꾸지 않는다.
+
+```text
+event: state
+data: {"changes":[{"resource":"notification","action":"upsert","id":"notice1","value":{"id":"notice1","originRuntimeId":"r1","body":"Input required","createdAt":1789948800000,"readAt":null,"terminalId":"t1"}}]}
+
+event: state
+data: {"changes":[{"resource":"notification","action":"remove","id":"notice1"}]}
+```
+
+조회·snapshot·state·읽음 처리 모두 저장된 originExecutionOwnership이 daemon인 항목만
+대상으로 한다. external 알림은 전달·읽음 처리 대상에서 제외한다. 실행 종료나 ID 재사용을
+근거로 원본 소유권을 재판정하지 않는다. 기존 WebNotificationView를 재사용하고 내부 소유권
+필드를 Web의 필터 판단에 맡기지 않는다.
+
+보존 기간은 messages.retentionDays(기본 30일)를 재사용하고 별도 Web 개수 상한은 두지
+않는다. 기존 메시지 전체 delivery가 완료되고 마지막 outcomeAt이 보존 cutoff보다 오래된
+경우 정리한다. 진행 중 메시지의 알림은 설정 기간보다 오래 남을 수 있으며 알림 생성 시각만
+기준으로 먼저 지우지 않는다. 읽음 이력을 보여 주는 별도 조회나 dismissedAt을 추가하지 않는다.
+
+#### SSE wire와 최초·재접속 snapshot
+
+`GET /api/web/events`는 새 연결마다 첫 상태 이벤트로 전체 `snapshot`을 보내고,
+이후 같은 연결에서 `state`로 변경된 DTO를 보낸다. 별도 ready 이벤트나 Web 초기 동기화용
+HTTP snapshot endpoint는 만들지 않는다. 기존 개별 GET은 CLI·명시적 조회·Operation 결과
+확인용으로 유지한다. HTTP 명령은 계속 사용하며 응답은 접수·성공·실패를 나타낸다.
+
+```text
+event: snapshot
+data: {"hosts":[],"networks":[],"panels":[],"terminals":[],"agents":[],"operations":[],"notifications":[]}
+
+event: state
+data: {"changes":[{"resource":"terminal","action":"remove","id":"t1"}]}
+```
+
+빈 배열 예시는 자원이 없는 서버의 정상 snapshot이다. 각 배열은 위 resource의 조회 DTO를
+사용하며 operations는 보존 중인 Operation이다. snapshot은 현재 조회 가능한 전체 상태이며
+재접속 때도 이전 목록에 더하는 차분이 아니다. upsert 형식은
+`{resource,action:"upsert",id,value}`다. 같은 반영 단위의 변경들은 하나의 changes에 담는다.
+
+서버는 snapshot의 상태 시점을 확정하고, 그 이후 변화가 빠짐없이 snapshot 뒤의 state로
+전달되도록 구독 등록·snapshot 생성·송신을 연결한다. snapshot 준비 중의 변경도 누락하거나
+snapshot보다 먼저 보내지 않는다. 하나의 연결은 snapshot → 이후 상태 반영 순서로 송신하며,
+독립 GET 결과를 조합해 서로 다른 시점의 snapshot을 만들지 않는다. HTTP와 SSE를 비교하기
+위한 epoch/sequence나 별도 조회 헤더는 요구하지 않는다. Host/Panel의 쓰기 충돌 검사
+revision은 그대로 유지한다.
+
+snapshot 생성 실패는 빈 정상 snapshot으로 보내지 않는다. stream 시작 전이면 공통 HTTP
+오류, 시작 후이면 `event: fault`와 `{code,message}` 진단을 보내고 연결을 종료한다. fault는
+상태 데이터가 아니며 새 연결에서 snapshot부터 다시 시작한다. 새로고침·연결 종료 자체로
+Agent·shell을 종료하지 않으며, daemon 재시작의 unavailable 상태는 기존 복원 정책을 따른다.
+
+과거 이벤트 replay/Last-Event-ID 복원·주기적 전체 polling은 요구하지 않는다. 느리거나
+실패한 SSE 연결은 종료하고 재접속 snapshot으로 복원한다. config는 확정된 조회·저장
+모델을 유지하며 이 SSE 대상이 아니다. 알림도 위 snapshot/state로 전달하며 새 React 계약에 별도 change 알림 경로를 두지 않는다.
+
+terminal 연결은 기존 `WS /ws/terminal/:terminalId`를 사용한다. client의 binary는 사용자 입력,
+JSON은 `{type:"resize",cols,rows}`, `{type:"ack",offset}`, `{type:"response",data}`다.
+server는 `snapshot`(cols/rows/state) → binary 복원 데이터 → `snapshot-end` → tail → `restored`,
+이후 `output`(respond/offset)+binary, resize/exit/error control을 보낸다.
+response는 지정된 respond owner만 보내고 ack는 렌더 파싱 완료 byte까지 보낸다.
+`error.restorable:false`는 미러 복원 불가이며 일반 연결 손실과 구분한다.
+기존 optional runtime query는 특정 vendor 화면 연결용이며 panel 이동용 ID가 아니다.
+정확한 terminal state wire는 기존 packages/terminal의 serialization/restore 타입을 그대로 쓴다.
+
+React terminal 객체·WS 수명은 terminalId로 관리하고 pane 컴포넌트 이동과 분리한다.
+resize는 실제 표시 크기로 보내며 이동만으로 shell/Agent를 재생성하지 않는다.
+재접속 시 SSE의 Host/panel snapshot 수신 후 살아 있는 같은 terminal에 snapshot attach한다. daemon 재시작으로
+terminal이 없으면 unavailable과 원인을 표시하며 저장된 ID로 새 shell을 자동 생성하지 않는다.
+
+최소 mock은 이 HTTP 경계의 DTO/오류와 위 snapshot/state 계약을 제공한다. 컴포넌트별 더미 상태를 만들지
+않고 아래 전이를 같은 fixture의 응답 교체로 제공한다. 실제 xterm bytes는 기존 WS consumer로
+교체하며 mock 성공을 PTY 생존·resize·vendor 준비 실측으로 보고하지 않는다.
+
+| 입력/관측 | Operation / 조회 전이 | React 표시 |
+| --- | --- | --- |
+| run/start 접수 | running, runtime.phase preparing | preparing 라벨; 입력 shell은 stream 유지 |
+| binding+중계 ready | target ready, 전 대상 완료면 succeeded | 같은 terminal TUI |
+| spawn 실패·프로세스 종료 확인 | failed/start_failed, runtime null | start-failed + 실제 이유·Copy |
+| 협업 준비 실패, vendor alive | failed/start_failed, runtime running/status failed | TUI 유지 + 협업 오류; stopped 아님 |
+| stop 접수→exit+cleanup | stopping → stopped / succeeded | 완료 전 TUI, 완료 뒤 stopped 안내 |
+| 정상 /exit 관측 | runtime null, lastExit exited | 같은 shell; 안내 없음 |
+| Copy | clipboard→dismiss 200 | 같은 shell, 관리 카드 stopped 유지 |
+| 다른 shell에서 start 실패 | 새 tab start-failed; 옛 stopped 유지 | 두 자리를 유지 |
+| 다른 shell에서 ready | 새 TUI 확보 후 옛 stopped shell 종료·tab 제거 | 이미 일반 shell인 옛 tab은 보존 |
+| cleanup 실패 | failed/stop_incomplete + cleanupErrors | 남은 자원·재시도 안내, panel 유지 |
+| SSE/WS 손실 | 생존 상태를 임의 변경하지 않음 | 연결 경고→조회/동일 terminal 복원 |

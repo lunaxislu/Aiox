@@ -319,3 +319,181 @@ Sources:
   결정 및 미결의 provenance.
 
 - `logs/2026-09-09-AIOX-TUI-Stage5-Host.md` — 2026-09-21 Host CLI·YAML 선택·restart·stop/delete·shell UI 확정.
+
+## Host 입력 schema와 적용 snapshot
+
+이 절과 아래 HTTP 계약은 Stage5 W1의 구현 대상 계약이다. 현재 Host 구현 완료를 뜻하지 않는다.
+YAML은 UTF-8 단일 document의 mapping이며 알 수 없는 키, 중복 mapping key, 사용자 정의 tag와
+비문자열 map key를 거절한다. 아래 `?`는 생략 가능이며 명시 `null`은 허용하지 않는다.
+이름은 공백만인 값·`/`·NUL을 금지한 문자열이고 대소문자를 구분한다. 이름을 trim하여 다른
+이름으로 저장하지 않는다. instruction/description은 빈 문자열을 허용하며 NUL은 금지한다.
+
+| 경로 | 입력·기본값 |
+| --- | --- |
+| root | `host`, `agents`, `networks`만 필수 |
+| `host` | `name: name`, `instruction?: string`(기본 `""`), `layout?: LayoutInput` |
+| `agents` | 하나 이상인 순서 있는 map. key가 관리 Agent 이름 |
+| `agents.<key>` | `adapter: claude 또는 codex`; `role?: nonblank string`, `description?: string`, `instruction?: string`, `args?: string[]` |
+| Agent 생략값 | role/description은 조회에서 null, instruction `""`, args `[]` |
+| `networks` | 정확히 한 항목인 map. key가 Host 범위 Network 이름 |
+| `networks.<key>` | `agents: name[]`, `routing?: Routing` |
+| membership | 중복 없는 Agent key 목록. 빈 목록·선언 Agent의 부분집합도 유효; 비소속 Agent는 협업 membership 없음 |
+| `Routing` | `default?: allow 또는 deny`(allow), `allow?: Edge[]`, `deny?: Edge[]`(각 `[]`) |
+| `Edge` | `{between: name[]}`(서로 다른 최소 2명) 또는 `{from: name, to: name[]}`(하나 이상); 두 형식 혼합 금지 |
+| route 참조 | 모두 해당 Network membership 안의 Agent key. self edge·중복 endpoint·확장 후 중복 directed edge 금지 |
+| `LayoutInput` | `{preset?: auto 또는 left-main 또는 top-main 또는 grid, columns?: positive-safe-integer, rows?: positive-safe-integer}` |
+
+LayoutInput의 빈 object는 override 없음이다. 치수 없는 명시 grid는 오류이며 나머지
+검증·상속·최종 한쪽 치수 보충은 위 「일반 shell과 초기 layout」을 따른다.
+`args`는 NUL 없는 문자열 배열이며 쉘 문자열이 아니다. Host 공통 instruction 다음에 비어 있지
+않은 Agent instruction을 빈 줄 하나로 잇고, 공통 협업 지침과의 vendor별 합성은
+[[docs/architecture/aiox-vendor-bindings]]가 소유한다. metadata를 vendor role로 임의 승격하지 않는다.
+
+위 전체 YAML 예시에 다음 선택 필드를 넣을 수 있다. 이 외 cwd/env/ports/theme/version/
+worktree/execute/외부 Network 참조는 이 schema에 없다.
+
+```yaml
+# 위 예시의 host 안
+layout: { preset: grid, columns: 2 } # 하위 rows 상속 후 없을 때만 rows=1
+# 위 예시의 agents.reviewer 안
+description: Reviews implementation changes.
+```
+
+서버는 선택 디렉터리·YAML 절대 경로와 읽은 선언을 검증한 뒤 하나의 prepared 입력으로 고정한다.
+실행 도중 파일을 다시 읽어 이번 요청의 정의를 바꾸지 않는다. 파일 편집 감시·hot reload는 없다.
+`applied`는 이 prepared 입력 중 실제 명령 적용 범위만 저장한 결과다. 개별 start/restart는
+선택한 Agent 정의와 그 Agent에 닿는 membership/route만 바꾸며 나머지 적용 구성을 보존한다.
+Network 이름/default가 달라지면 사전 거절한다. 파일 전체와 적용 구성이 같다고 표시하지 않는다.
+실행 실패해도 이미 적용 transaction이 commit됐다면 적용된 정의와 실패 결과를 조회한다.
+
+## Host HTTP 계약
+
+CLI는 daemon listener, React는 동일 origin의 Web listener에서 같은 handler를 호출한다.
+식별자는 opaque 문자열이며 path segment를 percent-encode한다. 자원 path의 `hostId`와
+`networkId`는 ID만 받으며 이름 fallback은 없다. Web과 CLI 모두 조회로 얻은 ID를 사용한다.
+CLI의 hostname/network 인자는 이름 전용이며 ID처럼 생겨도 정확한 이름으로만 조회한다.
+Runtime ID와 YAML Agent key를 교환하지 않는다. 입력 오류/비동기 Operation 공통 형식은
+[[docs/specs/aiox-runtime]]의 「Host 명령 검증과 완료 응답」을 따른다.
+
+`Source = {directory: absolute-directory, file?: string}`. CLI가 `--path` 또는 호출 cwd를
+절대 경로로 만들며 file은 선택 directory 기준 상대 경로나 절대 경로다. 서버가 선택·읽기를
+수행한다. 디렉터리는 YAML의 부모로 암묵 변경되지 않으며 Host 작업 경로로 저장한다.
+`Invocation = {terminalContext?: {terminalId,token}}`는 CLI의 인증된 shell env만 전달한다.
+Web·일반 요청의 panelId나 cwd를 실행 위치 인증으로 사용하지 않는다. token은 응답·로그에서 제외한다.
+
+| Method / path | 요청 body / caller | 성공 body |
+| --- | --- | --- |
+| `POST /api/hosts/run` | CLI: `{requestId,source,layout?:LayoutInput,...Invocation}` | 202 Operation |
+| `POST /api/hosts/restart` | CLI: `{requestId,source,...Invocation}`. 최신 YAML 이름으로 선택 | 202 Operation; 이름 변경이면 새 hostId |
+| `GET /api/hosts` | CLI list / React Hosts; 선택 query `name`은 정확한 이름 필터 | 200 `HostView[]`; name 지정 시 0 또는 1개 |
+| `GET /api/hosts/:hostId` | CLI status / React | 200 HostView |
+| `POST /api/hosts/resolve` | YAML로 status/stop/delete 대상을 찾는 CLI: `{source}` | 200 `{hostId}`; config→YAML 검증 뒤 host.name 정확 일치 조회, 생성·재적용 없음 |
+| `POST /api/hosts/:hostId/stop` | CLI/Web: `{requestId}` | 202 Operation |
+| `DELETE /api/hosts/:hostId` | CLI/Web: `{requestId}` | 202 Operation; 완료 전 Host 유지 |
+| `POST /api/hosts/agents/start` | CLI: `{requestId,source,agents:string[],...Invocation}` | 202 Operation |
+| `POST /api/hosts/agents/restart` | CLI: 같은 body | 202 Operation |
+| `POST /api/hosts/:hostId/agents/stop` | YAML로 Host를 resolve한 CLI 또는 Web: `{requestId,agents:string[]}` | 202 Operation |
+| `GET /api/hosts/:hostId/networks` | CLI network list / React; 선택 query `name`은 해당 Host 안의 정확한 이름 필터 | 200 `HostNetworkView[]`(필터 부재 시 한 항목, 지정 시 0 또는 1개) |
+| `GET /api/hosts/:hostId/networks/:networkId` | CLI network show / React | 200 HostNetworkView |
+| `POST /api/hosts/:hostId/networks/:networkId/route` | CLI: `{operation}`; 기존 between/directed routeOperation 형식, endpoints는 관리 Agent key | 200 HostNetworkView |
+
+`networkId`는 지정한 hostId에 속한 Network ID여야 한다. 존재해도 다른 Host 소속이면
+404 `unknown_network`이며 이름이나 다른 scope로 대체하지 않는다. route는 모든 대상을 검증한 뒤
+한 transaction으로 변경한다. live Runtime이 없어도 관리 Agent key 정책을 변경할 수 있다.
+`host agent start/restart`의 미등록 Host는 404와 `host run` 안내다. 전체 restart는 새 YAML 이름의
+미등록 Host를 별도로 실행할 수 있다. 이미 실행 중인 개별 start는 해당 대상만 `unchanged`,
+개별 restart의 stopped 대상은 409 `agent_not_running`이며 모든 대상 검증 전에 종료하지 않는다.
+중복 agents 인자는 첫 출현 순서로 한 번만 처리한다.
+
+### 이름 조회와 ID 제어의 분리
+
+`name` query는 URL query encoding 후 전달하며 대소문자·공백을 바꾸거나 prefix/부분 일치로
+검색하지 않는다. 지정한 이름이 없으면 배열은 비어 있고 CLI는 unknown_host/unknown_network와
+exit 1로 종료한다. 이름 문자열을 ID path에 대신 넣어 재시도하지 않는다.
+
+```text
+host stop/delete <hostname>
+ → GET /api/hosts?name=<정확한 이름> → HostView.id
+ → POST /api/hosts/:hostId/stop 또는 DELETE /api/hosts/:hostId
+host network block <host> <network> ...
+ → GET /api/hosts?name=<host> → hostId
+ → GET /api/hosts/:hostId/networks?name=<network> → networkId
+ → POST /api/hosts/:hostId/networks/:networkId/route
+```
+
+YAML 기반 resolve/run/restart/개별 start/restart도 `host.name`은 정확한 이름으로만 해석한다.
+서버는 해석한 ID를 이번 작업 대상으로 고정한다. 조회 뒤 대상이 삭제되면 ID 제어는 404이며,
+같은 이름으로 새 Host/Network가 생겨도 재해석하여 조작하지 않는다. 삭제된 ID를 재사용하지 않는다.
+이름을 ID 형태라는 이유로 금지하거나 CLI에 ID 선택을 암묵 추가하지 않는다.
+
+예를 들어 Host A의 `{id:"h1",name:"alpha"}`와 Host B의 `{id:"h2",name:"h1"}`가 있을 때
+`host stop h1`은 이름 조회로 h2를 얻어 B만 정지한다. B가 없으면 A로 fallback하지 않고 오류다.
+`GET /api/hosts/h1`은 ID 전용이므로 A를 반환한다. Host Network에도 같은 규칙을 적용한다.
+
+Persistent Network에도 목표 계약은 동일하다. `GET /api/networks?name=<name>`은 persistent
+scope의 정확한 이름 조회로 `NetworkView[]`(0 또는 1개)를 반환한다. 일반 CLI network
+show/delete/block/unblock/reset은 여기서 ID를 얻고 `GET/DELETE /api/networks/:networkId`,
+`POST /api/networks/:networkId/route`는 persistent ID만 받는다. Host 소속 ID를 일반 제어 경로에
+넣으면 거절하고 이름으로 fallback하지 않는다. Host-qualified network show는 Host 이름을 먼저
+조회하고 위 Host Network 경로를 사용한다. create 응답으로 이미 얻은 ID는 다시 이름 조회하지 않는다.
+Network route의 **Agent endpoint** 이름/Runtime ID 해석과 MCP send 계약은 이 변경 대상이 아니다.
+
+현재 persistent NetworkService.find는 ID 우선·이름 fallback이며 CLI도 입력을 직접 보낸다.
+이 부분은 위 목표와 다른 구현 gap이다. 근거: [[apps/daemon/src/networks.ts]]
+`apps/daemon/src/networks.ts:58-80`, [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:600-650`,
+[[packages/protocol/src/index.ts]] `packages/protocol/src/index.ts:244-247`.
+W1은 계약만 변경했으며 실제 persistent API가 이미 ID 전용이라고 보고하지 않는다.
+
+Host·Network 조회 DTO는 [[docs/specs/aiox-configuration-web]]의 SSE state에서도 그대로
+사용한다. 관리 Agent의 실제 상태 변경은 최신 HostView로 전달하고 배치만 바뀌면 panel을
+전달한다. Host revision은 실행 관측 이벤트의 순번이 아니며 SSE 전달을 위해 별도의 순번으로 전용하지 않는다.
+
+### 조회 DTO와 route 예시
+
+HostView는 `{id,name,directory,sourceFile,instruction,panelId,networkId,revision,agents,activeOperationId}`다.
+`revision`은 적용 구성·route 변경 시 증가하는 양의 정수다. sourceFile은 provenance이며 읽기 성공을
+보증하지 않는다. `agents`는 **적용된 선언 순서**의 ManagedAgentView 배열이다.
+관리 Agent 상태는 탭의 표시와 별개다. stop 뒤에도 배열에서 제거하지 않는다.
+
+```json
+{
+  "id":"h1","name":"feature-host","directory":"/work/project",
+  "sourceFile":"/work/project/aiox.dev.yaml","instruction":"Collaborate on changes.","panelId":"p1","networkId":"n1",
+  "revision":3,"activeOperationId":null,
+  "agents":[{
+    "key":"reviewer","adapter":"claude","role":"review","description":null,
+    "instruction":"Review changes.","args":[],"member":true,
+    "runtime":null,"lastTerminalId":"t1",
+    "lastExit":{"kind":"stopped","message":null,"at":1789948800000}
+  }]
+}
+```
+
+`runtime`는 null 또는 `{id,terminalId,phase,status,status_reason,observation_error,
+collaborationActive,collaborationError}`다. phase는 `preparing|running|stopping`이며 status는
+runtime owner의 다섯 값이다. phase는 실행 수명이고 status는 관측 활동이라 failed와 running이
+함께 가능하다. runtime이 null일 때만 관리 카드가 stopped다. 프로세스 종료는 관측됐지만
+정리가 남으면 runtime은 null이어도 Operation의 cleanup 오류가 남는다.
+`lastExit`는 null 또는 `{kind: stopped|exited|crashed|start-failed|daemon-ended,message:string|null,at:epoch-ms}`.
+`lastTerminalId`는 이력용 nullable 참조이며 재사용 가능 자리 판정에 쓰지 않는다.
+
+HostNetworkView는 `{id,hostId,name,scope:"host",default,members,edges}`다.
+`members`는 `{agentKey,runtimeId:string|null}[]`, `edges`는 self를 제외한 모든 멤버 간
+`{from,to,fromRuntimeId,toRuntimeId,policy,source}` 배열이다. from/to는 Agent key,
+Runtime ID들은 nullable이고 source는 `runtime-override|manifest-edge|manifest-default`다.
+일반 persistent Network DTO의 Runtime ID endpoint와 혼용하지 않는다.
+
+```json
+{
+  "operation":{"kind":"directed","action":"unblock","from":"reviewer","to":["implementer"]}
+}
+```
+
+이 요청의 해당 edge 응답 예시는
+`{"from":"reviewer","to":"implementer","fromRuntimeId":null,"toRuntimeId":null,"policy":"allow","source":"runtime-override"}`다.
+stop은 이를 보존하며 다음 실행 때 key→새 Runtime ID로 materialize한다. send 시 인증된 Runtime의
+현재 membership/route를 다시 검사하는 collaboration 계약은 그대로다.
+
+개별 적용에서 새 route의 다른 endpoint가 아직 적용된 관리 구성에 없으면
+400 `invalid_yaml`과 해당 edge·전체 restart 안내를 반환한다. 요청하지 않은 Agent를 자동 추가하지
+않는다. run의 같은 이름이 다른 sourceFile에 등록돼 있으면 `host_name_conflict`다. 전체 restart의 명시적 구성 교체와 run의 중복 생성 거절은 구분한다.

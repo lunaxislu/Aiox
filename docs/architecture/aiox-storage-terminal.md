@@ -12,13 +12,13 @@ As-built로 표시한 범위 외에는 목표 구조다. OS별 통합 완료를 
 
 | 저장 책임 | 대상 | 경계 |
 | --- | --- | --- |
-| 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·포트·사이드바 너비·Host 초기 layout | 모든 프로젝트·Host·standalone 공통 |
+| 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·포트·사이드바 너비와 열림 상태·화면 조작 keybindings 변경분·Host 초기 layout | 모든 프로젝트·Host·standalone 공통 |
 | SQLite | persistent Network/Route, AIOX send·대상별 결과·daemon 알림 본문, 실행 이력, 알림/읽음, workspace 배치 | 처리 종료 후 기본 30일, 상세는 configuration-web 계약 |
 | daemon memory | live process/PTY/binding/credential/activity | DB의 과거 running을 현재 생존으로 간주하지 않음 |
-| browser localStorage | Web dark/light theme | terminal 전역 theme과 다름 |
+| 전역 config의 `appearance.theme` | Web system/light/dark theme | terminal palette와 별개; 운영 Web은 브라우저 저장소를 쓰지 않음 |
 | Host YAML | Host-managed 정의 | DB persistent 정의와 이중 권위 금지 |
 
-언어·소리 on/off/volume의 localStorage 저장, system theme 선택은 제안이다. 실제 Runtime
+운영 Web 문구는 영어이며 theme은 전역 config에 저장한다. 소리 설정의 세부 schema는 Stage6/7 후속이다. 실제 Runtime
 credential을 영속화된 설정·메시지에 넣지 않는다. vendor transcript/reasoning 전체 복제나 SQLite
 저장을 근거로 동일 delivery 재전송·자동 재시작을 추가하지 않는다.
 
@@ -149,17 +149,14 @@ Linux Docker 결과를 native Windows 검증으로 보고하지 않는다.
 [[docs/specs/aiox-configuration-web]]를 따른다. npm 설치 디렉터리에 사용자 설정을 저장하지 않는다.
 
 ```text
-Web 수정·미리보기 → 저장 요청 → daemon 검증 → 전역 파일 저장 → 유효 설정 배포
-파일 직접 편집  → daemon 변경 감지·검증              → 유효 설정 배포
+Web 열기 → config 조회 → preview → revision 비교·검증·파일 저장 → 저장한 Web에 적용
+파일 직접 편집 → 다음 Web 조회/명령/새 shell 생성에서 검증·소비
 ```
 
-같은 검증·적용 경로를 쓰고 파일 변경 이벤트를 짧게 묶는다. 별도 config apply 명령은 없다.
-잘못된 설정은 마지막 유효 값을 유지하고 오류를 표시한다. daemon이 꺼져 있으면 다음 시작에서
-읽고 검증한다. 동시 편집 충돌 해결 방식·파일 감지 수단과 debounce 수치는 미결이다.
-
-폰트·터미널 색상·AIOX 단축키는 연결된 Web에 즉시 배포한다. font/size 변경 후 fit/resize를
-계산한다. daemon/운영 Web 포트는 다음 시작에 적용하고 Web에 저장됨·재시작 후 적용으로 표시한다.
-설정 저장이 daemon 자동 재시작이나 Agent 종료를 일으키지 않는다.
+설정 watcher·설정 SSE·debounce는 두지 않는다. 조회/저장 모델과 config revision 충돌은
+[[docs/specs/aiox-configuration-web]]의 설정 HTTP가 소유한다. 잘못된 설정은 Web의 마지막
+유효 표시를 유지하되 실행 명령의 실패를 last-good로 숨기지 않는다. shell/port/layout의 적용
+시점을 분리하며 폰트 변경은 저장한 Web에서 fit/resize한다. 다른 탭은 다음 조회에서 적용한다.
 
 Web terminal theme은 외부 cmux/VS Code/일반 터미널의 appearance까지 바꾸는 설정이 아니다.
 vendor가 명시적으로 그리는 모든 요소의 색상 변경을 보장하지 않는다. AIOX pane/탭 keybinding과
@@ -367,7 +364,7 @@ daemon 종료는 열린 SSE를 먼저 닫아 HTTP listener 종료를 가로막�
 느린 viewer·쓰기 실패 격리는 [[apps/daemon/src/web-events.test.ts]]
 `apps/daemon/src/web-events.test.ts:20-47`.
 
-Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. SSE 변경 통지 뒤 HTTP로 terminal·Web 대상 Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·다국어·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
+Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. SSE 변경 통지 뒤 HTTP로 terminal·Web 대상 Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
 
 근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:193-264`, `apps/web/src/main.ts:309-375`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:42-137`; Node DOM 대역 검증은 [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:56-151`. Stage 2 당시 실제 브라우저 UI 검증은 macOS Chrome에서 shell 생성·선택·입출력·resize·재연결(attachment 해제 후 실행 생존)·종료를 확인했다. Windows/Linux 네이티브 브라우저 교차 검증은 아직 하지 않았다.
 
@@ -394,8 +391,8 @@ SSE 전환 전 W5의 built Web은 실제 Chromium/xterm과 제어된 HTTP·WebSo
 Sources: `logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md`의
 “W5 결과 수용과 검증 정정·W6 재개 지점” entry.
 
-운영 Web은 React·Tailwind·shadcn/ui와 다국어를 제공한다. Vite는 재사용 후보이며 use-intl,
-한국어/영어 시작은 제안이다. 공개 site의 Next.js/next-intl 선택과 운영 Web은 독립적이다.
+운영 Web은 React·Tailwind·shadcn/ui를 사용하고 UI 문구는 영어로 고정한다. Vite는 재사용 후보다.
+공개 site의 Next.js/next-intl 선택과 운영 Web은 독립적이다.
 agent 출력과 vendor 오류 원문을 무조건 번역하지 않는다.
 
 Gateway snapshot/event의 projection을 하나로 유지한다. Zustand는 실제 pane/설정/알림 공유
@@ -463,3 +460,123 @@ owner 자원 정리를 확인했다. built daemon과 현재 source를 별도 bun
 검증이며 실제 Claude/Codex 및 Windows/Linux/WSL 실OS 재검증은 아니다. 플랫폼 분기는
 대역 회귀로 확인했다. 이번 수정의 CI·push는 수행하지 않았다.
 Sources: `logs/2026-09-12-AIOX-W1-External-Execution-Survival.md`의 root 결과 수용 entry.
+
+## Host·panel 저장 모델 [Status: Target]
+
+외부 DTO는 [[docs/specs/aiox-host]]의 Host HTTP, [[docs/specs/aiox-configuration-web]]의 Panel
+HTTP가 소유한다. 다음은 첫 배포 전 현재 schema를 직접 설계할 때의 논리 테이블 계약이다.
+SQL 이름은 아래 snake_case를 사용하고 JSON 열은 TEXT에 protocol schema로 검증한 값을 저장한다.
+TypeORM repository/기존 SQLite transaction을 사용한다. JSON 안의 참조는 같은 transaction에서
+검증하며 별도 ORM entity를 pane마다 만드는 요구는 없다.
+
+```text
+Host (h1; 선언 출처·적용 구성)
+├─ ManagedAgent (h1, reviewer; 탭 없이도 존재)
+│  └─ 현재 Runtime r1 [memory] → vendor owner/binding/token
+│     └─ 차용 terminal t1 [memory; shell] ← tab1
+├─ 전용 Host Network n1 → key 기반 적용 membership/route → live Runtime edge
+└─ 소유 panel p1 → split tree → pane1 → tab1 → terminal t1
+일반 workspace panel → 같은 pane/tab/terminal 모델 (Host·Agent 없음)
+```
+
+| 테이블 / primary key | 필수 열·제약 | 쓰기·삭제·복원 |
+| --- | --- | --- |
+| `hosts` / `id` | `name UNIQUE`, `directory`, `source_file`, `instruction`, `revision`, `created_at`; 문자열 NOT NULL | run의 검증 후 생성, 전체 restart 갱신. delete 최종 commit에서 삭제 |
+| `host_agents` / `(host_id,agent_key)` | Host FK, `ordinal`, `adapter`, `role?`, `description?`, `instruction`, `args_json`, `last_terminal_id?`, `last_exit_json?`; ordinal은 Host 안에서 유일 | 적용된 관리 구성. 개별 start/restart는 대상만, 전체 restart는 증감 반영. 탭 닫기로 삭제 안 함 |
+| `host_networks` / `id` | `host_id UNIQUE` FK, `name`, `default_policy` allow/deny | Host 생성·전체 restart 적용; stop 보존, Host delete 연동 |
+| `host_members` / `(network_id,agent_key)` | 같은 Host 관리 Agent를 참조 | 적용 YAML membership, 실행 유무와 독립 |
+| `host_edges` / `(network_id,from_key,to_key)` | `manifest_policy?`, `override_policy?`; 둘 다 null 금지·self 금지·membership 참조 | reset은 override만 null; 둘 다 없으면 행 삭제. 개별 적용은 incident edge만, 전체 적용은 override 제거 |
+| `panels` / `id` | `kind`, `name`, `host_id? UNIQUE`, `network_id?`, `revision`, `layout_json`, `active_pane_id` | 배치의 단일 권위. Host 생성과 panel 생성 함께 commit. 이동/분할/선택 갱신, 소유 자원 종료 확인 후 삭제 |
+| `panel_tabs` / `id` | `panel_id` FK, `terminal_id? UNIQUE`, `label`, `agent_key?`, `presentation`, `notice_json?` | tab 참조·안내 표시 지속. Copy/exit는 일반 shell로 갱신, close는 종료 확인 후 삭제 |
+| `host_operations` / `id` | `request_id UNIQUE`, `request_hash`, `kind`, `host_id?`, `panel_id?`, `state`, `targets_json`, `error_json?`, `cleanup_errors_json`, `created_at`, `finished_at?` | 접수 전에 durable 기록, 관측 결과 갱신. 삭제 완료 응답도 Host FK cascade로 잃지 않음 |
+| `host_executions` / `runtime_id` | `host_id`, `agent_key`, `terminal_id`, `started_at`, `ended_at?`, `exit_json?` | 실행 이력. live credential/binding/status는 저장하지 않음 |
+
+`?` 열은 실제 부재 의미의 nullable이다. 과거 행 호환용 nullable/legacy fallback이 아니다.
+host_executions와 operations의 Host/terminal ID는 삭제 후 이력을 위해 값만 보존하고 live FK로
+삭제를 막지 않는다. 종료 이력·완료 Operation은 종료 후 messages.retentionDays 정책으로 정리하고
+진행 중/정리 미완료 Operation은 제외한다. 관리 구성·배치는 기간 정리 대상이 아니다.
+request hash는 공개 실행 입력의 canonical 값으로 계산하고 terminal token/env를 저장하지 않는다.
+재시도 요청도 현재 접속·terminal 인증을 검사한다. 보존 기한 뒤 requestId 재사용은 보장하지 않는다.
+
+Host YAML의 전체 원문을 별도 권위로 복제하지 않는다. 적용 instruction/args·membership·route는
+위 모델에서 복원하고 미적용 파일 편집 여부를 자동 감시하거나 현재 적용으로 표시하지 않는다.
+Host route는 관리 key로 보존하며 live Runtime edge projection만 실행마다 교체한다.
+기존 persistent_routes는 Runtime ID 기반이며 기존 종료 정리를 유지한다.
+
+### transaction과 실행의 경계
+
+검증된 입력과 대상/배치 revision을 고정한 뒤 Host별 제어를 직렬화한다. 같은 Host의 진행 중
+제어 요청은 409 host_busy, unrelated Host는 진행할 수 있다. 배치 쓰기는 revision 비교로
+Host가 계산한 배치와 Web 이동이 서로 덮어쓰지 않게 한다. stale 계획은 실행 전에 다시 계산한다.
+프로세스 stop을 요청했다는 이유로 적용 구성·panel을 먼저 지우지 않는다.
+
+DB transaction 안에서 OS 프로세스가 rollback된다고 가정하지 않는다. 신규 자원 예약·Operation
+기록 → 실행/관측 → 필요한 적용 구성·표시·이력 commit → SSE 순서로 진행한다.
+실행/저장 실패는 이번 시도가 확보한 자원만 보상하고 실제 종료 확인과 보상 실패를 Operation에
+남긴다. 기존 사용자 shell은 보상 대상으로 취급하지 않는다. 기존 Runtime을 이미 종료한 뒤의
+restart 실패는 이전 실행을 자동 되살리거나 사전 실패처럼 보존됐다고 보고하지 않는다.
+자원 변경 뒤 DB 쓰기 실패 시 live handle·미저장 결과를 daemon이 보존하여 명시 재시도로
+저장을 마무리한다. 조회 오류를 빈 Host/panel로 바꾸지 않는다.
+
+브라우저 재접속은 저장된 배치/안내와 live registry를 합성해 복원한다. daemon 재시작은 별개다.
+시작 시 과거 미완료 Operation은 `daemon_interrupted`, 과거 열린 실행은 `daemon-ended`로
+정산하고 Runtime/token/PTY를 복원하지 않는다. 잔존 OS 프로세스의 죽음을 DB만으로 선언하지
+않으며 관리 연결이 없음을 진단한다. terminal 없는 tab은 unavailable로 남기고 사용자가 닫거나
+새 명령으로 실행한다. Host·Network 정의/적용 정책은 보존하고 활성 membership은 비운다.
+예전 PTY 번호·PID만으로 다시 연결하거나 임의 프로세스를 종료하지 않는다.
+
+### 현재 구현과 W1 차이 [Status: Current gap]
+
+- 현재 DB는 persistent Network/route·message/delivery/notification 테이블을 만든다.
+  위 Host/panel/Operation 테이블은 아직 없다. 근거: [[packages/persistence/src/sqlite/schema.ts]]
+  `packages/persistence/src/sqlite/schema.ts:144-192`; 초기화·재오픈·rollback 근거는
+  [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:66-212`.
+- 현재 shell·terminal metadata와 token은 TerminalService memory에 있으며 browser detach는
+  PTY를 종료하지 않는다. 근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:24-125`,
+  [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:759-864`.
+- 현재 layout parser는 `preset:grid` 단독을 허용하므로 목표의 입력 단계 오류와 다르다.
+  근거: [[packages/config/src/schema.ts]] `packages/config/src/schema.ts:218-279`,
+  [[packages/config/src/schema.test.ts]] `packages/config/src/schema.test.ts:79-105`.
+  W2에서 교정할 대상이며 기존 테스트 기대를 새 계약의 근거로 쓰지 않는다.
+
+### 사용자 panel 분류·이름과 외부 실행 귀속 [Status: Committed target]
+
+panels에는 kind와 별도로 section을 저장한다. 현재 schema에 직접 section과 이름을 설계하며
+기존 개발 DB를 위한 migration/backfill을 만들지 않는다. kind workspace는 세 section,
+kind host/network는 각각 hosts/networks만 허용한다. 이름 정규화·길이·중복 정책은
+[[docs/specs/aiox-configuration-web]]을 따른다. 사용자 panel 이름에는 UNIQUE를 두지 않는다.
+rename은 revision 비교와 이름·revision 갱신을 같은 transaction으로 처리한다. panel DTO와
+SSE는 저장된 section을 전달하며 소비자가 kind로 section을 추정할 필요가 없게 한다.
+
+공통 Runtime 등록 경계는 external의 terminal 귀속과 hostId를 거절한다. Web Agent projection은
+executionOwnership을 노출하고 외부 실행도 포함한다. Runtime 변경 전달도 external을 제외하지
+않되 외부 실행에서 발생한 알림의 Web 제외는 유지한다. panel 분류와 Agent 소유권은 별개다.
+
+### W1 상태 공개 경계 [Status: Committed target]
+
+새 SSE wire와 초기 snapshot은 [[docs/specs/aiox-configuration-web]]이 소유한다. 기존
+WebEvents의 빈 change 방송은 현재 구현이며 새 Host 상태 전달 계약의 완료 근거가 아니다.
+daemon은 기존 관측 owner와 persistence 결과를 조회 DTO로 공개한다. 하나의 반영 단위에서
+연관된 Host/panel/terminal/Operation 결과를 함께 공개한 뒤 SSE state로 보낸다.
+새 연결은 구독 등록과 일관된 snapshot 생성·송신을 연결하며, 준비 중 발생한 후속 변경은
+snapshot 뒤에 순서대로 전달한다. snapshot 시점과 구독 사이의 변경을 누락하지 않는다.
+DB commit 또는 관측 결과 공개에 실패하면 성공 DTO를 먼저 방송하지 않는다. 장시간 실행
+전체를 하나의 transaction으로 묶지 않으며 preparing·ready·실패는 각각 실제 반영 시점의 상태다.
+snapshot 실패·느린 연결은 오류/연결 종료 후 새 snapshot으로 복원한다. 연결 종료는 실행
+자원의 종료가 아니다. 별도 HTTP snapshot endpoint·epoch/sequence·SQLite 이벤트 log나
+migration을 추가하지 않는다. PTY 출력마다 상태 이벤트를 만들지 않고 실제 조회 DTO가
+바뀔 때만 전달한다. HTTP와 SSE는 같은 projection을 소비하며 별도 실행 상태 권위를 만들지 않는다.
+
+### W1 미확인 알림 공개·보존 [Status: Committed target]
+
+미확인 목록은 기존 unreadNotifications()를 조회하고 저장된 originExecutionOwnership의
+daemon 필터를 적용한다. 이 결과를 Web GET과 SSE snapshot.notifications가 공유한다.
+신규 알림 commit은 upsert, 기존 markRead commit은 remove로 공개한다. 읽음 처리와
+필수 메시지 결과 확정은 별개이며 markRead가 Agent 대기를 해소하거나 원본 알림을 지우지 않는다.
+Clear all은 서버가 처리하는 시점의 대상 ID를 고정하고 그 저장 결과만 전달한다. 이후 생성된
+알림까지 과거 Clear all의 결과로 제거하지 않는다. 보존 정리로 미확인 알림이 삭제되면 해당 ID의
+remove를 전달할 수 있도록 정리 대상을 파악한다. 이 삭제 결과를 새 알림처럼 재발행하지 않는다.
+
+보존은 기존 전체 delivery 완료·마지막 outcomeAt 기준 messages.retentionDays를 따른다.
+별도 Web 개수 상한·dismissedAt·개별 삭제 저장 경로·읽음 포함 보존 목록 조회는 추가하지 않는다.
+새 snapshot/state 계약은 기존 임시 Web의 change 알림 후 재조회 구현을 대체한다.

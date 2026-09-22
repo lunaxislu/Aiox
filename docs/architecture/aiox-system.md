@@ -274,7 +274,7 @@ Worktree 자동 생성은 이번 범위에 없다. 같은 경로의 파일을 �
 
 ```text
 CLI: --path / --file, Agent 이름, 실제 명령 입력 terminal 식별
- → YAML 탐색·읽기·전체 사전 검증
+ → config 검증 → YAML 탐색·읽기·전체 검증 → CLI 검증·병합·실행 환경 검증
  → HostController: 대상과 적용 범위 결정
  → 개별 start/restart: Network 이름/default 변경이면 부수효과 전에 거절
  → 최초 실행·새 탭 필요: shell/terminal 생성
@@ -360,3 +360,86 @@ Sources:
 
 - `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §3, §7, §14–§15, §18, §23–§25.
 - `logs/2026-09-07-AIOX-TUI-Stage2-Daemon-MCP-Terminal.md` W2 — 공통 연결 보호·종료 미완료 재시도·직접 관리 자원 범위.
+
+## Host 명령에서 React까지의 실행 경로 [Status: Target]
+
+외부 요청/응답은 [[docs/specs/aiox-host]], Operation·검증은 [[docs/specs/aiox-runtime]],
+배치·config·mock 소비는 [[docs/specs/aiox-configuration-web]], 저장 모델은
+[[docs/architecture/aiox-storage-terminal]]이 소유한다. 다음은 구현 분리를 위한 연결도다.
+
+```text
+CLI (argv/source/인증된 terminal 문맥)      React (조회·배치·명시 제어)
+                 \                         /
+                   공통 daemon HTTP handler
+                     → prepare (config → YAML → CLI → 환경/대상)
+                     → Host application 명령 경로
+                        ├─ persistence transaction → 적용 구성/배치/Operation
+                        └─ shell + 실행 owner + adapter → process/binding 실제 관측
+                                  ↓
+                         registry/projection + 결과 저장
+                                  ↓
+                     HTTP 요청 응답 / SSE state(변경 DTO 직접 전달)
+                                  ↓
+                       React 관리 카드·pane/tab·오류
+                     terminalId → 기존 WS snapshot/stream → xterm
+```
+
+Host application 책임은 daemon의 공통 service 경계에 둔다. CLI용/Web용 lifecycle을 복제하거나
+이 작업만을 위해 새 서버 framework·event bus·별도 application package 이전을 요구하지 않는다.
+Host 내부 실행도 기존 execution owner/adapter/terminal 인증을 소비한다. vendor별 hook·args
+해석을 Host에 복사하지 않는다. AIOX가 생성한 shell의 실행 준비 연결을 사용하고 사용자 일반
+shell을 idle 추측으로 차지하거나 임의 shell 문자열을 입력하는 방식으로 시작하지 않는다.
+Host 명령의 CLI 종료가 daemon 소유 Agent 종료로 이어지지 않게 foreground 제어와 분리한다.
+
+### 시나리오별 완료·실패 경로
+
+```text
+최초 run → 전체 사전 검증 → Host/Network/panel·관리 정의 기록 → shell별 실행
+         → preparing → 실제 ready/실패 기록 → SSE state → React TUI/원인
+         └─ 파일 실패: CLI만 오류; 특정 Agent 확인 뒤 실패: 해당 tab 진단
+
+개별 start/restart → 최신 전체 검증·Network 변경 거절 → 대상 범위만 적용
+         → 입력 shell/재사용 stopped 자리/현재 pane 순서 → 새 Runtime 준비
+         → ready: 옛 stopped 자리만 종료·정리 / 실패: 옛 안내+새 실패 자리 보존
+개별 stop → 적용 관리 대상 → Agent owner 종료 관측·협업 정리
+         → runtime 없음·shell 유지 → stopped 안내
+
+전체 restart → 검증 실패: 현재 실행·정책·화면 유지
+         → 동일 이름: 대상 증감·종료/새 실행·전체 정책 적용, 현재 배치 보존
+         → 다른 이름: 새 Host/panel/Network, 기존 Host 보존
+전체 stop → 관리 Agent 종료·정리 → shell/panel/Network/정책 유지 → 안내
+전체 delete → panel 소유 Agent+사용자 shell 종료 확인 → Host/panel/Network 삭제
+         └─ 실패: Operation 진단+남은 관리 자원 유지 → 명시 재시도
+
+/exit → 실제 Agent exit → binding/credential/membership 정리 → 같은 shell 표시
+Copy → clipboard 성공 → dismiss 저장 → SSE state → 기존 shell (자동 실행 없음)
+이동/분할 → revision 검증 → layout 저장 → SSE state → 같은 terminal 재배치·resize
+닫기 → 실행 중이면 확인 → 종료 관측 → tab 제거 저장 → 빈 마지막 pane 보존
+
+시작 실패 → 프로세스 없음/종료 확인: 실패 안내 + 관리 Agent stopped
+         → vendor 생존/협업만 실패: TUI + 진단 유지, stopped 아님
+최초·재접속 → SSE 전체 snapshot → 이후 state(변경 DTO)
+         → 같은 live terminal snapshot→tail→live → React 복원
+```
+
+prepare 오류는 부수효과 전 실패, 실행 후 실패는 부분 적용 결과다. 독립 대상의 성공을 실패로
+되돌리거나 실패한 대상까지 전체 성공으로 묶지 않는다. shell 생성만으로 Agent 준비 성공,
+서버 ready만으로 React 실제 연결 완료를 보고하지 않는다.
+
+### 현재 경로 대조 [Status: Current gap]
+
+Host parser는 이전 표면을 남기고 bootstrap은 Host 요청을 unavailable로 거절한다.
+근거: [[apps/cli/src/cli.ts]] `apps/cli/src/cli.ts:230-261`, [[apps/cli/src/bootstrap.ts]]
+`apps/cli/src/bootstrap.ts:223-231`, [[apps/cli/src/bootstrap.test.ts]]
+`apps/cli/src/bootstrap.test.ts:663-679`. 따라서 새 계약을 기존 Host 동작으로 보고하지 않는다.
+HTTP handler가 두 listener를 공유하고 terminal/Network/Agent 조회를 제공하는 경로는 재사용한다.
+근거: [[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:111-188`.
+SSE 변경 후 HTTP 조회와 xterm WS 소비는 최소 Web에 구현돼 있다.
+근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:309-375`, `apps/web/src/main.ts:502`,
+[[apps/web/src/attach.ts]] `apps/web/src/attach.ts:161-269`,
+[[apps/web/src/attach.test.ts]] `apps/web/src/attach.test.ts:146-194`.
+W1의 React·Host 저장/제어·최소 mock 구현이나 실제 vendor 검증은 아직 수행하지 않았다.
+
+기존 terminal 생성/DELETE consumer도 동일 TerminalService/실행 종료 경로를 소비한다.
+panel에 연결된 terminal의 직접 종료나 자연 shell exit는 연결 tab·관리 Runtime 정리를 함께
+반영하고 SSE로 알린다. Host stop은 terminal DELETE가 아니라 Agent owner stop을 사용한다.

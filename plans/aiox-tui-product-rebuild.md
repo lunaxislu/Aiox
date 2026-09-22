@@ -15,7 +15,7 @@
 - 전역 설정 파일 저장이 검증·자동 반영되고 포트만 다음 시작에 적용된다.
   브라우저를 닫아도 실행이 유지되고 재방문 때 별도 사용자 인증 절차 없이 기존 화면으로 복귀한다.
 - DB 저장·Runtime 상태·알림·읽음·배치와 Web 취향 저장이 역할에 맞게 동작한다.
-  운영 Web은 다국어·Tailwind·shadcn 및 터미널·단축키 설정을 제공한다.
+  운영 Web은 Tailwind·shadcn 및 터미널·단축키 설정을 제공하며 UI 문구는 영어 하나다.
 - npm 배포 산출물의 설치와 native dependency·실제 TUI·정리가 Windows 네이티브·Linux·macOS에서
   검증된다. WSL은 실행 환경과 Windows 브라우저 연결을 구분해 확인한다.
 - 이전 목표의 코드·fallback·alias와 current 문서가 남아 새 동작을 우회하지 않는다.
@@ -32,7 +32,7 @@
 - [x] Stage 3 — Claude TUI runtime 주입·inbox·hooks·상태·종료 수직 구현 -> `logs/2026-09-09-AIOX-TUI-Stage3-Claude.md`
 - [x] Stage 4 — Codex App Server·TUI·Binding Relay와 두 vendor 메시지 왕복 -> `logs/2026-09-09-AIOX-TUI-Stage4-Codex.md`
 - [>] Stage 5 — 선언형 Host·다중 실행 및 CLI 운영·실패 정리 -> `logs/2026-09-09-AIOX-TUI-Stage5-Host.md`
-- [ ] Stage 6 — 운영 Web·브라우저 복귀·배치·다국어·전역 설정 편집·키 바인딩 -> `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`
+- [ ] Stage 6 — 운영 Web·브라우저 복귀·배치·전역 설정 편집·키 바인딩 -> `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`
 - [ ] Stage 7 — 상태·알림 목록·읽음·포커스 억제·알림음 -> `logs/2026-09-09-AIOX-TUI-Stage7-Notifications.md`
 - [ ] Stage 8 — 통합 시나리오·3 OS/WSL 인증·npm 산출물 검증·잔여 legacy 제거 -> `logs/2026-09-09-AIOX-TUI-Stage8-Integration.md`
 - [ ] Stage 9 — 실제 제품에 맞는 다국어 공개 AIOX 사이트 -> `logs/2026-09-09-AIOX-TUI-Stage9-Site.md`
