@@ -10,12 +10,12 @@ status: open
 - [x] W2 사이드바. react-router v7로 `/`(전체 개요), `/:section`(섹션 개요), `/:section/:panelId`(패널), `/settings`를 두고 shadcn Sidebar 복사본에서 cookie 줄과 단축키 useEffect를 삭제한 뒤 SidebarRail에 드래그 resize를 붙인다. 좁은 폭은 메인 폭을 줄이지 않는 280px 고정 오버레이 드로어이고 리사이즈 핸들을 숨긴다. 세 섹션 아코디언, 생성 주체별 우클릭 메뉴, 섹션 개요 카드, 빈 화면 두 층을 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 PanelView·AgentView zod, SSE 연결과 store 첫 조각, MSW 핸들러다.
 - [x] W3 헤더 구조 승인 후 layout만 적용했다. AppHeader·WorkspaceTitle·HeaderActions·ThemeToggle·ConnectionWarning과 드로어 아이콘 줄의 배치·폭 축약을 사용자에게 확인받는다. font size·색·장식은 미적용이다. 검색 W6·알림 dropdown W7·설정 저장 W8·햄버거 점과 Esc 순서 W9·실제 연결 W10 범위를 유지한다.
 - [x] W4 W4 workspace UI·상태 안내·복구 카드·포커스·Copy 개선을 fixture로 반영하고 코드 리뷰·리팩토링과 spec 정합을 마쳤다. terminal attach 수명·접속 상태 연결 범위도 확정해 기록했다. 남은 것은 사용자 퍼블리싱 화면 확인 하나다. Force stop 서버 보완은 W11, 실제 API·Operation 연결과 통합 검증은 W10에서 추적한다. 실제 terminal 연결은 아직 미구현이다.
-- [>] W5 탭 드래그와 드롭. dnd-kit pointer 기반으로 네 결과를 구분한다. 같은 탭바 순서 변경, 다른 pane 이동, 가장자리 분할, 중앙 합치기다. 드롭 전 반투명 오버레이를 보여 주고 확인받은 뒤 결과를 layout PUT으로 보낸다. 드롭 위치 판정은 Playwright로 검증하며 이때 Playwright를 처음 넣는다.
-- [ ] W6 커맨드 팔레트. shadcn Command로 검색창을 열어 workspace·터미널·agent와 명령을 두 섹션으로 나눠 필터링하고 위아래 화살표·Enter·Esc를 붙인다. 확인 뒤 선택 결과를 해당 workspace·pane·탭으로 점프시키는 store 경로에 잇는다. 점프 대상이 모두 존재해야 하므로 workspace 화면 뒤에 둔다.
-- [ ] W7 알림. 헤더 벨의 dropdown을 열어 미확인 항목을 어떤 agent에서 무슨 일이 있었는지와 상대 시각으로 보여 주고 Clear all을 둔다. 확인 뒤 항목 클릭을 해당 workspace·pane·탭 이동과 확인 처리에 잇고 read 요청은 클릭이 ids 하나, Clear all이 ids 생략이다. 이동 대상이 다 있어야 하므로 main 화면 작업의 마지막이다.
-- [ ] W8 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다.
-- [ ] W9 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙, 햄버거의 미확인 점, 드로어 위 알림 dropdown의 Esc·backdrop 순서다.
-- [ ] W10 실제 daemon 연결과 통합 검증을 소유한다. main을 merge해 `@aiox/protocol`의 zod·타입이 이미 들어왔고 apps/web에는 임시 정의도 MSW도 만든 적이 없으므로 교체·제거 작업은 없다. 화면을 실제 HTTP·SSE·WS에 붙이고 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. Stage5 W11이 갖고 있던 W5~W10 실제 화면 연결과 전체 흐름 통합 검증을 이 항목이 흡수한다. 검증에서 서버 쪽 결함이 나오면 apps/daemon·packages/protocol은 Stage5 단독 수정이므로 고치지 않고 Stage5 W11로 넘긴다. 운영 Web 내부 구조는 docs/architecture/aiox-system.md에 반영한다. Force stop 연결을 명시적으로 포함한다: 세 복구 상태의 버튼 → 확인 dialog → 최신 PanelView의 revision/runtime와 새 requestId로 기존 탭 종료 DELETE → Operation 성공·실패 관측 → 서버 배치 반영. 실패 표시·재시도와 실제 PTY 종료를 통합 검증한다. 서버 빈 pane·포커스 정리 보완 결과를 먼저 확인한다.
+- [x] W5 탭 DnD fixture UI 구현 및 사용자 PASS 완료. 순서 변경·pane 이동·가장자리 분할·중앙 합치기, 삽입선·오버레이·취소를 반영했다. Workspace 소유 TerminalSurface와 pane 표시 자리 분리까지 구조 구현·14개 자동 테스트를 마쳤다. 실제 layout PUT·xterm/WS 연결과 이동·숨김 수명 검증은 W10이다. 사용자 지시로 Playwright는 실행하지 않았다.
+- [-] W6 커맨드 팔레트. shadcn Command로 검색창을 열어 workspace·터미널·agent와 명령을 두 섹션으로 나눠 필터링하고 위아래 화살표·Enter·Esc를 붙인다. 확인 뒤 선택 결과를 해당 workspace·pane·탭으로 점프시키는 store 경로에 잇는다. 점프 대상이 모두 존재해야 하므로 workspace 화면 뒤에 둔다. — cancelled: 커맨드 팔레트 보류. 명령 여섯이 모두 기존 진입점과 중복이며 넷은 전용 키까지 있다. spec은 Open/deferred로 남기고 헤더 검색 버튼 주석·cmdk 유지
+- [>] W7 알림. 헤더 벨의 dropdown을 열어 미확인 항목을 어떤 agent에서 무슨 일이 있었는지와 상대 시각으로 보여 주고 Clear all을 둔다. 확인 뒤 항목 클릭을 해당 workspace·pane·탭 이동과 확인 처리에 잇고 read 요청은 클릭이 ids 하나, Clear all이 ids 생략이다. 이동 대상이 다 있어야 하므로 main 화면 작업의 마지막이다.
+- [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
+- [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
+- [ ] W10 실제 daemon 연결과 통합 검증을 소유한다. main을 merge해 `@aiox/protocol`의 zod·타입이 이미 들어왔고 apps/web에는 임시 정의도 MSW도 만든 적이 없으므로 교체·제거 작업은 없다. 화면을 실제 HTTP·SSE·WS에 붙이고 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. Stage5 W11이 갖고 있던 W5~W10 실제 화면 연결과 전체 흐름 통합 검증을 이 항목이 흡수한다. 검증에서 서버 쪽 결함이 나오면 apps/daemon·packages/protocol은 Stage5 단독 수정이므로 고치지 않고 Stage5 W11로 넘긴다. 운영 Web 내부 구조는 docs/architecture/aiox-system.md에 반영한다. Force stop 연결을 명시적으로 포함한다: 세 복구 상태의 버튼 → 확인 dialog → 최신 PanelView의 revision/runtime와 새 requestId로 기존 탭 종료 DELETE → Operation 성공·실패 관측 → 서버 배치 반영. 실패 표시·재시도와 실제 PTY 종료를 통합 검증한다. 서버 빈 pane·포커스 정리 보완 결과를 먼저 확인한다. W5의 TerminalSurface 표시 수명 구조를 실제 attach에 연결한다. pane 이동은 연결 유지, 숨김·workspace 이탈은 브라우저 자원 정리, 재선택은 복원하며 layout PUT과 실패·revision 충돌도 검증한다.
 - [ ] W11 서버 에이전트 구현 완료 보고 수신. removePanelTabs의 빈 pane·split·포커스 정리와 removeTerminal의 원자 저장은 직접 코드로 확인했다. 보고된 147개 테스트를 이 턴에 재실행하지는 않았다. 문서의 빈 pane·분할 유지 설명 정합성과 Web 통합 검증이 남았다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
@@ -63,7 +63,9 @@ status: open
 
 ### {W4,W5}
 
-- 터미널과 드래그: attach.ts는 현재 호출마다 xterm/WS를 생성하고 close에서 dispose한다. terminalId별 수명 보존은 연결 단계에서 구현해야 할 요구이며, pane 이동이 detach 후 re-attach를 뜻한다고 전제하지 않는다. DOM 노드를 옮기면 세션을 살린 채 자리만 바꿀 수 있으므로 보존 방식은 W5 설계에서 정한다. 확정된 UI 규칙은 하나로, 사용자가 시작하지 않은 재부착에는 reconnecting 카드를 띄우지 않는다. W4 구조·레이아웃 범위에서는 실제 attach를 호출하지 않았다. W5는 pointer 기반 DnD와 실제 브라우저 좌표 검증을 사용한다. 최신 layout children/tabIds 순서를 사용하고 포커스된 탭의 이동은 포커스를 따라가게 한다.
+- W5 DnD UI는 사용자 PASS로 완료했다. 구현·검증 근거는 「W5 DnD 사용자 PASS와 터미널 표시 수명 구조」 블록이다. 사용자가 Playwright 테스트를 제외했으므로 이전 도입·검증 계획을 따르지 않는다. terminal 표시 소유는 Workspace의 TerminalSurface, 배치는 PaneTree의 등록된 표시 자리다. 고정 portal 컨테이너 자체를 이동하며 pane 이동 시 fixture DOM/컴포넌트 유지, 숨김 시 제거를 자동 검증했다. 실제 attach는 아직 호출하지 않으며 xterm/WS 수명·재연결 검증은 W10이다.
+- 최신 UI 기준은 「W4·W5 탭 활성화 결함 해결과 비활성 opacity 60%」 블록이다. 이전 비활성 0.55와 중간 0.8을 대체해 탭 전체(제목·상태 점·×)와 본문 비활성 0.6, 활성 1로 한다. 선택 탭 배경 강조와 강제 focus 이동은 제거했다. TabsList 버블링 및 본문/Portal 진입으로 pane 활성화를 처리하며 관련 Vitest 25개 통과. 드롭 가장자리 20%는 판정 폭, 절반 음영은 50% 분할 결과 미리보기이며 20% 최종 조정은 미확정이다.
+- 후속 사용자 확인으로 드롭 존 가장자리 20% 판정과 절반(50%) 분할 결과 미리보기는 현행 유지로 확정했다. 이전 context의 20% 최종 조정 미확정 표기는 「드롭 존 20% 사용자 확인 완료」 entry가 대체한다.
 ### {W9,W11}
 
 - 키 선정에서 탈락한 것과 미실측 범위. macOS 실측에서 떨어진 자리는 `⌘⇧N` 시크릿 창, `⌘⇧W` 창 닫기, `⌘⇧K` 사용자 Notion 전역 단축키, `⌘⇧Y`, 순차 탭 전환 후보 `⌘⌥좌우`·`⌘⇧대괄호`·`Ctrl+Tab`, `⌘Delete` 계열이며 미도달 원인에서 브라우저 점유와 실측 페이지 매칭 실패를 구분하지 않았다. `⌘T`는 실제 Chrome에서 새 탭이 열리고 페이지에 로그가 남지 않아 제외했다. 통과했으나 쓰지 않는 여유 후보는 `⌘⇧E`·`F`·`G`·`U`·`V`·`A`와 `⌘⌥I`·`U`·`C`다. 탭 전환은 3차 실측에서 `⌘1`~`⌘9`가 모두 통과했고 `⌘⇧1`~`⌘⇧9`는 `⌘⇧3`~`⌘⇧6`이 화면 캡처로 작동해 OS 층에서 막혔다. 이 탈락은 브라우저 예약이나 사용자 앱 전역과 달리 모든 macOS에 공통이라 사용자가 시스템 설정을 바꾸지 않는 한 닫히지 않는다. macOS는 이것으로 닫혔고 남은 미실측은 Windows/Linux뿐이라 W11 범위와 일치한다.
@@ -75,6 +77,13 @@ status: open
 - 카드 입력은 DTO 하나로 오지 않는다. `panelViewSchema`(`packages/protocol/src/host.ts`)는 id·kind·section·name·hostId·networkId·revision·layout·activePaneId·tabs만 갖고 agent가 없다. agent는 `webSnapshotSchema`가 panels·terminals·agents·operations·notifications를 나란한 top-level 배열로 보내는 설계라 join을 Web이 한다. fixture의 `terminalCount`는 tabs의 terminalId 비어있지 않은 개수이고 `panelSummary`가 쓰는 workPath·memberCount·routeCount는 host·network view에서 온다. 즉 카드 하나가 PanelView와 AgentView 목록과 Network·HostView를 합성해야 하고 그 합성은 아직 어디에도 없다. 필요한 필드 자체는 서버가 이미 보낸다. `agentViewSchema`(`core.ts:174`)에 `executionOwnership`·`networkId`·`hostId`·`terminalId`가 있고 [[docs/specs/aiox-web-ui]]가 external의 카드 배치 규칙을 명시한다. networkId가 있을 때만 NETWORKS에 올리고, hostId·terminalId가 항상 null이라 HOSTS와 WORKSPACES 역검색에는 걸리지 않으며, 둘 다 null이면 어느 카드에도 올리지 않는다. 앞서 이 항목에 적었던 "`agentViewSchema`에 대응 필드가 없다"는 틀렸다. 남은 미결은 spec이 "소속 agent와 standalone을 나눠 센다"만 쓰고 standalone 판정식을 주지 않는 것 하나다. repo 전체에서 standalone은 Host에 속하지 않은 독립 실행을 뜻하므로 `hostId === null`로 읽는 것이 자연스럽지만 짐작해서 넣지 말고 이 단계에서 확인하고 정한다. 서버에 `standalone` boolean을 요청하지 않는다. `hostId`에서 파생되므로 `PanelPreview.context`와 같은 중복이 된다.
 - standalone 판정은 `hostId === null && networkId === null`이다. 사용자가 지적해 정정한다. 앞서 이 항목에 적었던 `hostId === null` 단독 판정과 "HOSTS·WORKSPACES에서 split이 degenerate하다"는 분석은 둘 다 틀렸다. 근거는 카드의 agent 집합이 membership 조회 하나가 아니라 membership과 pane shell terminal 역검색의 합집합이라는 것이다. `aiox agent run claude`를 panel의 pane shell에서 치면 [[docs/specs/aiox-runtime]] 표대로 daemon 소유로 그 Web terminal에서 돌고, `bootstrap.ts:548`이 `terminalContextFromEnv(process.env)`의 유무로 external을 가르므로 `terminalId`가 그 pane에 붙는다. `agentRunSchema.network`(`core.ts:75`)는 optional이고 host 지정 인자는 없으므로 이 agent는 `networkId`·`hostId`가 모두 null이다. 따라서 NETWORKS·HOSTS 카드 모두 소속과 standalone이 실제로 섞인다. WORKSPACES만 `panelViewSchema.superRefine`이 workspace panel의 hostId·networkId를 모두 null로 강제해 소속 집합이 공집합이고 전부 standalone이다. 이것은 spec 결함이 아니라 결과다. 또 external ⊂ standalone이라던 기록도 뒤집힌다. `runtimes.ts:130-136`이 external의 terminalId·hostId를 금지하므로 카드에 뜨는 external은 networkId로만 올라오고, networkId가 있으면 standalone이 아니라 소속이다. spec 78행의 "둘 다 null인 external은 어느 카드에도 표시하지 않는다"가 나머지를 배제한다.
 - NETWORKS 카드의 멤버 수도 DTO 하나로 오지 않는다. `networkViewSchema`(`core.ts:134`)는 id·name·scope·routes뿐이고 members가 없다. members를 가진 것은 `hostNetworkViewSchema`(`host.ts:168`, `scope: "host"`)이며 `webNetworkSchema`는 둘의 union이다. 따라서 host scope network는 `members.length`를 그대로 쓰고 persistent network는 agents에서 networkId 매칭으로 세야 한다. 두 경로가 같은 수를 뜻하는지 확인하고 정한다.
+- 터미널 수명은 「W5 DnD 사용자 PASS와 터미널 표시 수명 구조」 블록과 terminal-surface.tsx·visibleTerminals를 이어받는다. 최종 배치에서 계속 보이는 terminal은 유지·DOM 이동, 새로 보이면 연결·복원, 숨김/Workspace 이탈이면 브라우저 자원 정리한다. 서버 프로세스는 연결 해제만으로 종료하지 않는다. terminalId뿐 아니라 runtime 변경을 구분하고, 이동 중 Reconnect 상태 유지·늦은 결과 무시·크기/포커스·숨긴 화면 resize 방지를 실제 attach로 검증한다. DnD layout PUT·revision 충돌·실패 복구도 W10에서 연결한다.
+- SSE 상태 연결 시 같은 panel ID의 최신 snapshot을 WorkspaceView가 직접 소비하도록 fixture용 useState(panel) 복사본을 제거한다. 지금 별도 부모 상태 리팩토링은 하지 않는다. 임시 진단 테스트로 같은 ID의 tabs/layout 갱신 무시와 Reconnect 로컬 override의 새 disconnected 상태 가림을 재현했다. runtime 교체만의 독립 검증은 panel 갱신 반영 후 수행한다. terminalId+runtimeId별 attach 상태와 이전 비동기 결과 정리를 실제 연결 시 검증한다. 근거: 「W10 SSE 연결 시 panel·연결 상태 소유 정리」 블록.
+
+### {W7}
+
+- 재개 출발점과 확인한 join 경로. 벨 버튼은 apps/web/src/widgets/header/header-actions.tsx에 disabled 상태로 있고 Badge도 이미 붙어 있다. dropdown은 shared/ui/dropdown-menu를 쓴다. 표시와 이동에 필요한 join을 코드로 확인했다. agentViewSchema(core.ts:174-193)에는 runtimeId가 없어 알림의 originRuntimeId로 agent를 직접 찾을 수 없다. 대신 tabViewSchema(host.ts:328-333)가 agentKey와 runtimeId를 둘 다 갖는다. 따라서 originRuntimeId로 tab을 찾으면 agentKey가 어떤 agent인지를 주고 그 tab이 속한 panel·pane이 이동 대상을 준다. 한 번의 탐색으로 표시와 이동이 같이 풀리므로 W10 카드처럼 여러 DTO를 합성할 필요가 없다. DTO는 webNotificationViewSchema(core.ts:202-204)의 id·originRuntimeId·body·createdAt·readAt·terminalId이고 읽음 API는 readNotificationsSchema(core.ts:206-208)로 ids 생략이 전체다.
+- 착수 전 사용자에게 답을 받을 미결 둘. 첫째, originRuntimeId에 맞는 탭이 없을 때의 처리를 [[docs/specs/aiox-web-ui]] 244-255행이 정하지 않는다. runtime이 끝나 탭이 사라진 경우이며 항목을 숨길지, 이동 불가로 표시할지, terminalId로 대체 탐색할지 정해야 한다. 짐작해서 넣지 않는다. 둘째, createdAt이 epoch int라 상대 시각 포맷이 필요하다. Intl.RelativeTimeFormat이 표준이라 의존성은 필요 없고 갱신 주기만 정하면 된다. 진행은 apps/web/AGENTS.md대로 구조 보고 후 멈춤, 승인 뒤 fixture 렌더, 확인 뒤 연결 논의 순서이며 TDD는 하지 않는다.
 
 ## 2026-09-21 · 설계 라인 마감과 구현 착수
 
@@ -440,3 +449,91 @@ W5로 넘어간다. 탭 드래그와 드롭으로 같은 탭바 순서 변경, �
 W5에서 먼저 정할 것 둘. 하나는 pane 이동 시 terminal 인스턴스를 어떻게 보존하느냐다. `attach.ts`의 현재 `close()`가 xterm과 WS를 폐기하므로 DOM 노드를 옮겨 세션을 살리는 방식을 설계해야 하며, 이동이 재생성을 뜻한다고 전제하지 않는다. 다른 하나는 드롭 존 두께로 [[docs/specs/aiox-web-ui]] 192행이 pane의 20%를 초안으로 두고 구현 후 조정하라고 열어 뒀다. 실제 좌표 판정은 이 단계에서 처음 들어오는 Playwright로 검증한다.
 
 실제 daemon 연결, API·Operation 전달, PTY resize 통합은 W5가 아니라 W10이다. 서버 보완 대조는 W11이다.
+
+## 2026-09-23 · W5 DnD 사용자 PASS와 터미널 표시 수명 구조
+
+사용자가 기존 DnD UI를 직접 확인하고 UX가 괜찮다고 평가했으며, 이번 요청에서 사용자 PASS로 기록하도록 명시했다. W5의 fixture DnD UI는 완료로 처리한다. 실제 서버 저장·terminal 연결 완료를 뜻하지 않는다. 다음 작업 포인터는 W6 커맨드 팔레트다.
+
+DnD는 logs/artifact/aiox-version9.html과 docs/specs/aiox-web-ui.md의 네 결과를 대조하고 @dnd-kit/core 6.3.1·@dnd-kit/sortable 10.0.0을 추가했다. 같은 탭바 순서 변경, 다른 pane 탭바 이동, 가장자리 분할, 중앙 합치기와 삽입선·반투명 오버레이·Escape 취소를 구현했다. 가장자리 판정은 정규화 거리 20%이며 배치는 드롭 시 한 번 변경한다. 이동은 탭/terminal 엔티티를 제거하지 않고 기존 removePanelTabs로 빈 원본 pane·split 정리를 재사용한다. 마지막 전체 탭을 빈 목적지로 이동할 때 목적지를 잃지 않는 경계 사례도 검증했다. 사용자 지시로 Playwright 테스트는 작성·실행하지 않았다. 이전 W5 기록의 Playwright 도입·검증 예정은 이번 지시로 대체한다.
+
+후속 논의에서는 pane 이동과 탭 숨김의 수명을 분리하기로 결정했다. 이동 후에도 어느 pane에서 선택되어 보이는 terminal은 유지한다. 같은 pane에서 다른 탭을 선택해 숨겨지거나 workspace 화면을 이탈하면 브라우저 xterm·WS를 정리하고, 다시 보이면 서버에서 복원하는 것이 W10 연결 정책이다. 브라우저 연결 해제는 서버 프로세스 종료가 아니다. 사용자가 시작한 Reconnect 중 pane을 옮기면 진행 상태와 결과가 새 표시 위치를 따라가야 한다. 숨겼던 탭의 자동 복원은 명시적 Reconnect와 구분한다.
+
+현재 코드에는 구조만 반영했다. workspace-preview.ts의 visibleTerminals가 선택된 탭 중 notice가 없고 terminalId가 있는 본문을 계산한다. WorkspaceView가 terminalId/runtimeId 조합으로 TerminalSurface를 소유하고, PaneTree는 pane별 빈 표시 div를 등록한다. terminal-surface.tsx는 terminal별 고정 DOM 컨테이너를 만들고 React portal의 목적지는 그대로 유지한 채 컨테이너 자체를 새 pane 자리로 이동한다. pane unmount가 곧 terminal 자원 폐기를 뜻하지 않도록 경계를 분리했다. 숨기면 surface가 unmount되고 다시 선택하면 새로 생성된다. portal의 이벤트 경로에 맞춰 본문 pointer/focus 활성화를 Workspace에 연결했다. reducer·새 상태 저장소는 추가하지 않았다. 스타일 변경 없이 높이·최소 크기 등 배치 클래스만 사용했다.
+
+검증: workspace-preview.test.ts, workspace-dnd.test.tsx, terminal-surface.test.tsx의 Vitest/happy-dom 14개 통과. 실제 pointer 드롭 1회 적용·Escape 취소, 네 방향 분할·탭 유실 방지, notice 우선 표시 대상 계산, pane 이동 후 같은 DOM/컴포넌트와 입력값 유지, 숨김·workspace unmount 시 제거를 확인했다. web typecheck·build, root lint, 변경 파일 oxfmt·git diff --check 통과. React Doctor의 새 TerminalSurface 검사에서 이슈 없음; WorkspaceView의 기존 TerminalBody 복잡도 경고는 남는다. build의 큰 chunk 경고도 남는다. DnD 사용자 PASS와 후속 구조의 자동 검증을 구분하며, 구조 변경 후 화면에 대한 별도 사용자 PASS를 받은 것으로 기록하지 않는다.
+
+남은 W10: 실제 attach.ts 연결, 고정 컨테이너 이동 후 xterm·동일 WS 유지와 입출력·resize·포커스 검증, 숨김/이탈 정리 및 재선택 복원, runtime 교체·늦은 재연결 결과 무시, 배치 PUT revision 충돌·실패 처리. 현재 본문은 여전히 fixture pre이며 실제 xterm/WS 보존을 검증한 것은 아니다. 구조·코드 owner는 apps/web/src/pages/workspace이며 실제 연결에 따른 architecture 반영은 기존 W10 범위를 유지한다.
+
+## 2026-09-23 · W10 SSE 연결 시 panel·연결 상태 소유 정리
+
+사용자와 fixture 이후 서버 갱신 경로를 검토하고, 실제 서버 없이 WorkspaceView의 props를 rerender하는 임시 Vitest 진단 테스트 2개로 확인했다. 같은 panel ID에 새 tabs·layout·selectedTabId를 전달해도 useState(panel)의 기존 복사본 때문에 새 탭과 선택이 반영되지 않았다. Reconnect로 로컬 connected override를 만든 뒤 새 disconnected terminal 데이터를 전달하면 출력은 갱신되지만 복구 버튼은 나타나지 않았다. 동일한 새 props로 처음부터 mount하면 두 경우 모두 정상 표시되어, 기존 로컬 상태가 갱신을 가리는 현상임을 확인했다.
+
+검증 한계: runtimeId 변경도 panel props 미반영에 막히므로, runtime 교체만의 문제를 독립적으로 재현한 것은 아니다. 연결 상태 테스트가 직접 확인한 것은 terminalId별 로컬 override가 이후 전달된 연결 상태를 가린다는 점이다. 진단 테스트 2개는 현상 확인 후 제거했고 production 코드는 수정하지 않았다.
+
+결정: fixture용 상태를 지금 별도로 부모로 옮기는 작업은 하지 않는다. W10에서 SSE → 공용 panel 상태 → WorkspaceView 경로를 연결하면서 useState(panel) 복사본을 제거하고 같은 ID의 최신 snapshot이 표시되도록 한다. SSE 수신 자체로 해결되는 것이 아니라 실제 소비 경로에서 중복 소유를 제거해야 한다. 탭 추가·삭제·이동 결과도 같은 panel 상태 소유자에 반영한다.
+
+연결 상태는 서버의 프로세스 상태와 브라우저 attach 상태를 구분한다. W10에서 terminalId와 runtimeId에 맞춰 attach 상태를 관리하고 runtime 교체 시 이전 상태·비동기 결과가 새 연결에 섞이지 않게 한다. fixture의 Reconnect 즉시 connected 처리는 실제 attach의 reconnecting → 성공/실패 결과로 교체한다. panel 갱신 반영을 연결한 후 runtime 교체도 별도 검증한다. 현재 UI fixture 사용에는 차단 요인이 아니지만 실서버 통합 완료 전에 해결할 항목이다. W6 활성/next와 기존 W10 범위는 유지한다.
+
+## 2026-09-23 · W4·W5 탭 활성화 결함 해결과 비활성 opacity 60%
+
+사용자가 최근 UI·포커스 후속 변경의 기록 정리를 요청했다. 기존 비활성 55% 기록 이후 80%를 적용해 확인했으나 구분이 약하다는 사용자 피드백에 따라 최종 비활성 opacity를 60%로 변경했다. 활성 탭·본문은 100%다. 탭 opacity는 제목·상태 점·×를 포함한 부모에 적용하고, 선택 탭 부모의 has-aria-selected:bg-background는 제거했다. 키보드 focus-visible 테두리는 유지한다. 연결 끊김 화면의 출력 opacity 40%는 별도의 복구 화면 처리로 유지된다.
+
+삭제·드롭 후 강제 focus 이동, Dialog initialFocus/finalFocus 지정과 비교용 주석·미사용 host/cancel ref는 제거했다. × 클릭은 requestClose에서 대상 pane을 먼저 활성화한 뒤 삭제/확인을 처리하며, Dialog 포커스 복귀는 라이브러리 기본 동작을 따른다. 이 삭제 동작은 사용자 확인을 받았다.
+
+Claude가 재현한 두 경로를 수정했다. 이미 선택된 다른 pane의 탭 클릭에서는 Base UI가 onValueChange를 호출하지 않고, 키보드 진입도 기존 pointer 전용 처리로는 pane 활성화가 따라오지 않았다. 현재 TabsList에서 탭 클릭·focus 버블링을 받아 onActivate를 호출한다. 클릭은 role=tab 내부로 제한해 빈 공간은 제외하고 ×는 기존 requestClose 경로가 처리하므로 삭제된 pane을 뒤늦게 다시 활성화하지 않는다. 일반 본문과 Portal TerminalSurface는 각 이벤트 경계에서 포인터·focus 진입을 처리한다. 공통 activatePane은 선택 탭을 바꾸거나 focus()를 호출하지 않고 activePaneId만 변경하며, 이미 활성 상태면 기존 state를 반환한다.
+
+검증: workspace의 명시적 test 파일 4개를 Vitest/happy-dom으로 실행해 25개 통과, typecheck·format 검사 통과. 이미 선택된 탭의 클릭/키보드 진입, 일반 본문/Portal 진입, 빈 탭바 클릭 제외, 중첩 탭 라벨 클릭, 활성 pane의 마지막 탭 삭제를 포함한다. 디렉터리 단위 실행은 Storybook 프로젝트의 로컬 listen EPERM으로 종료되어 test 파일을 명시해 재실행했다. Playwright 브라우저 검증은 수행하지 않았다. 최신 버블링 처리와 60% 외관의 사용자 최종 확인은 별도다.
+
+드롭 존 설명: workspace-preview.ts의 dropZone은 pane 본문 가장자리에서 정규화 거리 20% 미만을 분할 드롭으로 판정한다. workspace-dnd.tsx의 반투명 오버레이는 결과로 차지할 절반(50%)을 미리 보여주는 표시다. 사용자 이미지의 왼쪽 절반 음영은 왼쪽 분할 결과 미리보기이며, 20% 판정 영역 자체를 그린 것이 아니다. 현재 20%는 유지하고 최종 조정 확정으로 처리하지 않는다. W5 DnD 사용자 PASS와 W10 실연결 범위는 유지한다. W6 검색 제외/보류는 논의만 있었고 실행 지시가 확정되지 않아 Work Item과 next를 변경하지 않았다.
+
+### 2026-09-23 20:12 · 드롭 존 20% 사용자 확인 완료
+
+가장자리 20%는 분할 판정 범위이고 절반 음영은 분할 결과 미리보기라는 설명 후, 사용자가 현재 동작이 충분히 괜찮다고 확인했다. 따라서 현재 20% 판정과 50% 결과 미리보기를 유지하며, 앞 기록의 드롭 존 최종 조정 미확정 사항은 사용자 확인 완료로 닫는다. 코드 변경은 없다. 이 확인을 다른 UI나 W10 실연결 검증 완료로 확대하지 않는다.
+
+## 2026-09-23 · W6 커맨드 팔레트 보류와 드롭 존 spec owner 반영
+
+사용자가 W6 커맨드 팔레트를 이번 범위에서 빼기로 결정했다. 판단 근거는 명령 섹션의 여섯 동작이 모두 이미 진입점을 갖는다는 코드 확인이다. New shell·Split right·Split down은 탭바 버튼(apps/web/src/pages/workspace/workspace-view.tsx:511-521), 사이드바 토글은 SidebarTrigger(apps/web/src/widgets/header/app-header.tsx:49), 테마는 apps/web/src/features/theme/theme-toggle.tsx, Settings는 헤더 톱니(apps/web/src/widgets/header/header-actions.tsx:55)다. 앞의 넷은 docs/specs/aiox-configuration-web.md 68-80행 표에 전용 키까지 있어 팔레트가 세 번째 경로가 된다. 팔레트만 여는 동작은 전역 목록이 없는 터미널을 이름으로 찾는 것 하나이며, 그 값어치는 실사용 터미널 수를 본 뒤 정하기로 했다.
+
+삭제가 아니라 보류다. 사용자 지시로 헤더 검색 버튼은 주석으로 남기고 cmdk 의존성과 shared/ui/command primitive는 지우지 않는다. 나중에 만들 때 되살린다. spec 본문도 지우지 않았다. 지우면 나중에 만들 때 설계를 다시 해야 하므로 보류 이유와 상충한다는 판단을 사용자에게 보고하고 진행했다.
+
+owner 문서 반영 셋. docs/specs/aiox-web-ui.md의 커맨드 팔레트 절에 [Status: Open/deferred]와 보류 근거를 넣었고, 같은 문서 헤더 바 절에 검색창이 현재 헤더에 없다는 것을 적었다. docs/specs/aiox-configuration-web.md의 keybindings 표 뒤에 openPalette을 지금 바인딩하지 않는다는 [Status: Open/deferred]를 넣었다. 표 자체와 열한 개 서술은 그대로 두었다. 팔레트를 만들 때 나머지와 같은 재지정 대상이 되기 때문이다. 이로써 W9가 표를 구현할 때 죽은 키를 묶지 않는다.
+
+같은 작업에서 드롭 존 spec을 고쳤다. 앞선 코덱스 보고가 20% 사용자 확인 완료를 로그에만 남기고 owner 문서를 고치지 않아 docs/specs/aiox-web-ui.md 194-195행에 [Status: Open/deferred]와 "구현 후 조정한다"가 그대로 있었다. 확인해 정정했고 20%가 판정 범위, 절반(50%) 오버레이가 결과 미리보기라는 구분을 본문에 넣었다.
+
+코덱스 수정본 검증도 이 턴에 마쳤다. 지난 턴에 임시 테스트로 재현했던 pane 활성화 결함 둘은 닫혔다. TabsList 버블링으로 처리하고 role=tab 안쪽으로 제한해 Base UI TabsTab의 active 가드를 탭 단위가 아니라 공통 지점에서 우회한다. activatePane은 activePaneId만 바꾸고 동일하면 기존 state를 반환한다. 비활성 opacity 60%도 확인했다. 코덱스가 EPERM으로 실행하지 못했다고 보고한 디렉터리 단위 실행은 이 환경에서 정상 동작했고 Storybook chromium 프로젝트 10개를 포함해 통과한다.
+
+검증: apps/web 전체 Vitest 13 files 77 tests 통과, typecheck exit 0, 루트 format·lint 통과, check-markdown-inline-code 통과.
+
+## 2026-09-23 · W8·W9 보류와 W7 다음 W10 순서 확정
+
+사용자가 W8 설정 화면과 W9 keybindings를 보류하고 W7 알림까지 구현한 뒤 W10 실제 daemon 연결로 넘어가기로 결정했다. 순서는 W7 → W10이다. 취소가 아니라 보류이며 두 항목은 열린 상태로 남긴다.
+
+보류가 W10을 막지 않는 것을 확인했다. packages/protocol/src/host.ts:511-519의 webSnapshotSchema는 hosts·networks·panels·terminals·agents·operations·notifications만 싣고 config를 싣지 않는다. 설정 조회·저장은 SSE가 아니라 별도 HTTP 경로이므로 W10의 실제 연결과 독립이다. W10이 소유한 PTY 입출력·resize·shell 생존·재접속 복원·Force stop·layout PUT 어느 것도 설정 화면이나 전역 키 핸들러를 선행 조건으로 요구하지 않는다.
+
+W8과 W9를 함께 보류하는 것은 내부적으로 정합이다. W9는 keybindings 사용자 변경분을 config에 합치는 것을 범위로 갖고 그 저장 경로가 W8이므로 W8 없이 닫히지 않는다.
+
+보류 동안 남는 관측 가능한 상태 둘. /settings는 apps/web/src/app/router.tsx의 제목만 있는 stub이며 헤더 톱니가 그곳으로 간다. 링크가 깨지지는 않고 자리표시자가 보인다. 사이드바 너비는 저장 경로가 W8이므로 세션 간 보존되지 않는다. 브라우저 저장소는 [[docs/specs/aiox-configuration-web]]이 금지하므로 임시 보존을 넣지 않는다.
+
+owner 문서는 고치지 않았다. [[docs/specs/aiox-web-ui]]의 설정 화면 절과 aiox-configuration-web의 keybindings 표는 Committed target이며, 구현 시점을 미루는 것이 승인된 target contract를 바꾸지 않기 때문이다. 보류는 작업 순서이지 계약 상태가 아니다.
+
+미결 하나를 사용자에게 올린다. W9는 세 가지를 묶고 있다. keybindings 표, 남은 반응형 규칙, 그리고 알림 횡단 규칙이다. 셋째는 [[docs/specs/aiox-web-ui]] 355-359행의 햄버거 미확인 점과 좁은 폭 알림 dropdown의 Esc·backdrop 순서로, 알림 기능 자체의 동작이라 W9를 통째로 미루면 W7이 좁은 폭 동작이 빠진 채 끝난다. W7로 편입할지 W9와 함께 미룰지 확인이 필요하다.
+
+## 2026-09-23 · 알림·설정·테마를 헤더 고정으로 변경
+
+사용자 결정으로 알림 벨·설정 톱니·테마 토글을 폭과 무관하게 헤더에만 둔다. 좁은 폭에서 드로어 브랜드 줄로 옮겨 담던 기존 규칙을 없앤다.
+
+이 변경으로 W9가 묶고 있던 알림 횡단 규칙 둘이 결정되는 게 아니라 소멸한다. 벨이 항상 보이므로 사이드바 토글에 미확인 점을 붙일 이유가 없고 벨의 badge 하나로 충분하다. 알림 dropdown이 드로어 위에 뜨지 않으므로 Esc가 패널을 먼저 닫고 드로어를 나중에 닫는 순서, backdrop이 둘을 함께 닫는 규칙도 대상이 없어진다. 앞 블록에서 사용자에게 올렸던 W7 편입 여부 미결은 질문 자체가 사라져 닫힌다.
+
+살아남는 규칙 하나를 구분한다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지한다는 규칙은 유지되며 오히려 더 필요해졌다. 설정 톱니가 헤더에 있어 드로어가 열린 상태에서 눌릴 수 있기 때문이다. 이 규칙은 W9에 남는다.
+
+코드 변경 넷. header-actions.tsx에서 placement prop과 isMobile 분기 둘을 제거해 벨·설정·테마가 항상 렌더된다. 드로어를 닫던 onNavigate prop 대신 HeaderActions가 직접 useSidebar로 setOpenMobile(false)를 호출하며 설정 링크에만 건다. app-sidebar.tsx의 드로어 아이콘 줄 SidebarMenuItem을 제거하고 더 이상 쓰지 않는 HeaderActions import, HeaderActionsProps 상속, unreadCount 구조분해를 정리했다. app-shell.tsx가 AppSidebar에 넘기던 unreadCount도 뺐다.
+
+spec 반영 셋. 헤더 바 절에 셋이 좁은 폭에서도 헤더에 남는다는 것을 적었다. 좁은 폭 사이드바 절의 드로어 아이콘 줄·미확인 점·드로어 위 dropdown 문단을 헤더 고정 서술로 교체했다. 좁은 폭 헤더 절의 검색 진입부 숨김 서술을 셋을 그대로 표시한다로 바꿨다.
+
+용어도 맞췄다. spec이 햄버거라고 부르던 것은 실제로 shared/ui/sidebar.tsx:265의 PanelLeftIcon이라 세 줄 아이콘이 아니다. 같은 문서가 햄버거와 사이드바 토글을 섞어 쓰고 있어 사이드바 토글로 통일했다.
+
+검증: apps/web Vitest 13 files 77 tests 통과, typecheck exit 0, 루트 format·lint 통과, check-markdown-inline-code 통과. 좁은 폭 실제 화면 확인은 받지 않았다.
+
+### 2026-09-23 20:40 · 좁은 폭 헤더 아이콘 사용자 확인
+
+사용자가 좁은 폭에서 알림 벨이 정상 표시되는 것을 직접 확인했다. 앞 블록에서 미확인으로 남겨 뒀던 실물 화면 확인이 닫힌다. 확인 범위는 좁은 폭 헤더의 아이콘 표시이며 알림 dropdown 동작은 아직 구현 전이라 대상이 아니다.

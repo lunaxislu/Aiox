@@ -79,6 +79,10 @@ vendor 입력·브라우저 예약키를 보존한다.
 | 사이드바 토글 | `toggleSidebar` | `Cmd+B` | `Ctrl+Shift+B` |
 | 커맨드 팔레트 | `openPalette` | `Cmd+K` | `Ctrl+K` |
 
+`openPalette`은 커맨드 팔레트와 함께 보류이므로 지금 바인딩하지 않는다. 팔레트를 만들 때
+표의 나머지와 같은 재지정 대상이 된다. 보류 근거는 [[docs/specs/aiox-web-ui]]가 소유한다.
+[Status: Open/deferred]
+
 `switchTab`의 마지막 자리 `9`는 마지막 탭이다. `switchTab`만 저장 값이 수식자 부분이고
 숫자 자리는 고정이며, 나머지는 완성된 조합 하나를 저장한다.
 
