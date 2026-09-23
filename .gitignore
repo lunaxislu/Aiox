@@ -50,3 +50,5 @@ next-env.d.ts
 logs/.log-hints/
 .headroom_*
 .serena/
+*storybook.log
+storybook-static

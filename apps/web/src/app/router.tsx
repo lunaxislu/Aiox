@@ -1,0 +1,45 @@
+import { createBrowserRouter } from "react-router";
+
+import { previewPanels } from "@/entities/panel/fixtures";
+import { NotFoundPage } from "@/pages/not-found/not-found-page";
+import { OverviewPage } from "@/pages/overview/overview-page";
+import { SectionOverviewPage } from "@/pages/section/section-overview-page";
+import { WorkspacePage } from "@/pages/workspace/workspace-page";
+
+import { AppShell } from "./app-shell";
+
+export const router = createBrowserRouter([
+    {
+        path: "/",
+        element: <AppShell />,
+        loader: async () => {
+            // W2 interaction fixtures. Connect real mutations after UI review.
+            const initialPanels = previewPanels;
+            return { initialPanels };
+        },
+
+        children: [
+            { index: true, element: <OverviewPage /> },
+            {
+                path: ":section",
+                element: <SectionOverviewPage />,
+            },
+            {
+                path: ":section/:panelId",
+                element: <WorkspacePage />,
+            },
+            {
+                path: "settings",
+                element: (
+                    <div className="p-6">
+                        <h1 className="text-lg font-semibold">Settings</h1>
+                    </div>
+                ),
+            },
+            {
+                path: "*",
+                element: <NotFoundPage />,
+            },
+        ],
+    },
+]);

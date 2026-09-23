@@ -7,9 +7,9 @@ status: open
 ## Work Items
 
 - [x] W1 의존성 설치와 설정 파일만 한다. React·Tailwind v4·shadcn init, vite·tsconfig·apps/web 자체 vitest(happy-dom, .tsx, alias) 배선, cn import 재작성 여부 판정이다. main.ts를 폐기하고 attach.ts는 남긴다. 화면은 만들지 않고 빈 앱이 뜨는 것까지다.
-- [>] W2 사이드바. react-router v7로 /w/:panelId와 /settings를 두고 shadcn Sidebar 복사본에서 cookie 줄과 단축키 useEffect를 삭제한 뒤 SidebarRail에 드래그 resize를 붙인다. 좁은 폭은 메인 폭을 줄이지 않는 280px 고정 오버레이 드로어이고 리사이즈 핸들을 숨긴다. 세 섹션 아코디언, 생성 주체별 우클릭 메뉴, 섹션 개요 카드, 빈 화면 두 층을 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 PanelView·AgentView zod, SSE 연결과 store 첫 조각, MSW 핸들러, 첫 story다.
-- [ ] W3 헤더 바. 사이드바 토글, workspace 이름과 종류별 맥락, 폭 기반 축약, 검색창·설정 톱니·테마 토글을 fixture로 렌더해 확인받는다. 알림 벨은 자리와 배지 숫자까지만 두고 dropdown과 클릭 이동은 W7로 미룬다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 config GET/PUT zod와 MSW, 저장 절차 없이 바로 쓰는 테마 토글, store의 연결 상태에 잇는 daemon 끊김 경고다.
-- [ ] W4 workspace 화면. shadcn Resizable로 layout 트리를 그리고 pane마다 탭바를 둔다. pane [+] 드롭다운, 탭 상태 점, presentation 일곱 값과 notice·Copy를 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 attach.ts로 terminalId별 xterm 부착, layout PUT·shells·tab close zod와 MSW, Operation store다.
+- [>] W2 사이드바. react-router v7로 `/`(전체 개요), `/:section`(섹션 개요), `/:section/:panelId`(패널), `/settings`를 두고 shadcn Sidebar 복사본에서 cookie 줄과 단축키 useEffect를 삭제한 뒤 SidebarRail에 드래그 resize를 붙인다. 좁은 폭은 메인 폭을 줄이지 않는 280px 고정 오버레이 드로어이고 리사이즈 핸들을 숨긴다. 세 섹션 아코디언, 생성 주체별 우클릭 메뉴, 섹션 개요 카드, 빈 화면 두 층을 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 PanelView·AgentView zod, SSE 연결과 store 첫 조각, MSW 핸들러다.
+- [ ] W3 헤더 바. `AppShell`의 기존 헤더(사이드바 토글·현재 패널/섹션 제목·설정 링크)를 이어서 확장한다. 사이드바 토글, workspace 이름과 종류별 맥락, 폭 기반 축약, 검색창·설정 톱니·테마 토글을 fixture로 렌더해 확인받는다. 알림 벨은 자리와 배지 숫자까지만 두고 dropdown과 클릭 이동은 W7로 미룬다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 config GET/PUT zod와 MSW, 저장 절차 없이 바로 쓰는 테마 토글, store의 연결 상태에 잇는 daemon 끊김 경고다.
+- [ ] W4 workspace 화면. `WorkspacePage`의 기존 패널 검증·빈 화면·비활성 새 터미널 버튼을 출발점으로 삼는다. shadcn Resizable로 layout 트리를 그리고 pane마다 탭바를 둔다. pane [+] 드롭다운, 탭 상태 점, presentation 일곱 값과 notice·Copy를 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 attach.ts로 terminalId별 xterm 부착, layout PUT·shells·tab close zod와 MSW, Operation store다.
 - [ ] W5 탭 드래그와 드롭. dnd-kit pointer 기반으로 네 결과를 구분한다. 같은 탭바 순서 변경, 다른 pane 이동, 가장자리 분할, 중앙 합치기다. 드롭 전 반투명 오버레이를 보여 주고 확인받은 뒤 결과를 layout PUT으로 보낸다. 드롭 위치 판정은 Playwright로 검증하며 이때 Playwright를 처음 넣는다.
 - [ ] W6 커맨드 팔레트. shadcn Command로 검색창을 열어 workspace·터미널·agent와 명령을 두 섹션으로 나눠 필터링하고 위아래 화살표·Enter·Esc를 붙인다. 확인 뒤 선택 결과를 해당 workspace·pane·탭으로 점프시키는 store 경로에 잇는다. 점프 대상이 모두 존재해야 하므로 workspace 화면 뒤에 둔다.
 - [ ] W7 알림. 헤더 벨의 dropdown을 열어 미확인 항목을 어떤 agent에서 무슨 일이 있었는지와 상대 시각으로 보여 주고 Clear all을 둔다. 확인 뒤 항목 클릭을 해당 workspace·pane·탭 이동과 확인 처리에 잇고 read 요청은 클릭이 ids 하나, Clear all이 ids 생략이다. 이동 대상이 다 있어야 하므로 main 화면 작업의 마지막이다.
@@ -31,10 +31,10 @@ status: open
 - 프로토타입 `logs/artifact/aiox-version9.html`은 Claude Design 번들이라 코드를 React로 재사용하지 않는다. 확정되는 것은 화면 규칙뿐이고 디버그 패널도 구현에 포함하지 않는다. 다만 그 패널이 재현한 상태 집합은 fixture·mock으로 다시 만들어 검증해야 한다. `agentViewSchema.status` 다섯 값(`aiox-preparing`·`idle`·`working`·`awaiting-user`·`failed`), 판정 불가 터미널, daemon 연결 끊김의 헤더 경고, `config.json` 외부 변경의 화면 열 때 배너와 저장 시점 충돌 dialog, 섹션 빈 화면 두 층, 드롭 존 두께, 테마 전환, status bar 기본 열림, 알림 추가에 따른 dropdown 표시와 읽음 처리다. 이 목록은 검증 후보이며 확정된 test 계획이 아니다.
 - 실제 구현의 사이드바는 shadcn의 Sidebar를 쓴다. shadcn은 의존성이 아니라 레지스트리에서 소스를 복사해 오는 방식이라 복사본 수정이 유지보수 부담이 되지 않는다. base는 `aria`·`base`·`radix` 셋 중 Base UI(`base`)이며 2026-07부터 shadcn 기본값이다.
 - 최소 Web 인계. `attach.ts`는 버리지 않고 React 컴포넌트로 감싸 재사용한다. `@xterm/xterm` 6.0.0·`@xterm/addon-fit`·`@aiox/terminal`의 restore가 브라우저 쪽 터미널 렌더링과 화면 복원을 담당하며 Stage2-1 snapshot 결과를 중복 구현하지 않는다. `main.ts`는 폐기한다. panel 안의 새 shell은 `/api/terminals` 생성이 아니라 `POST /api/panels/:id/shells`로 만들어야 배치에 들어간다. `/api/terminals`는 terminal 생존 조회용으로만 남는다.
-- 확정 스택. UI는 shadcn(Base UI base)과 `tailwindcss@4`, 상태는 `zustand`이며 TanStack Query는 쓰지 않는다. 서버가 SSE로 완전한 DTO를 미는 push-apply 모델이라 쿼리 캐시를 두면 진실 소스가 둘이 되기 때문이다. 드래그는 `@dnd-kit/core`·`@dnd-kit/sortable`의 pointer 기반이다. mock은 `msw` 한 세트로 HTTP·SSE·WS를 덮되 실제 xterm bytes는 mock하지 않고 기존 WS consumer로 교체한다. 라우팅은 `react-router` v7의 `/w/:panelId`와 `/settings`, 카탈로그는 `storybook`·`@storybook/react-vite`·`msw-storybook-addon`이다. 테스트는 `vitest`·`@testing-library/react`·`@testing-library/user-event`·`happy-dom`이고 `@playwright/test`는 드롭 위치 판정과 스모크에만 쓴다. `lucide-react`·`class-variance-authority`·`clsx`·`tailwind-merge`는 shadcn 컴포넌트 설치 때 따라오므로 따로 넣지 않는다.
+- 확정 스택. UI는 shadcn(Base UI base)과 `tailwindcss@4`, 상태는 `zustand`이며 TanStack Query는 쓰지 않는다. 서버가 SSE로 완전한 DTO를 미는 push-apply 모델이라 쿼리 캐시를 두면 진실 소스가 둘이 되기 때문이다. 드래그는 `@dnd-kit/core`·`@dnd-kit/sortable`의 pointer 기반이다. mock은 `msw` 한 세트로 HTTP·SSE·WS를 덮되 실제 xterm bytes는 mock하지 않고 기존 WS consumer로 교체한다. 라우팅은 `react-router` v7이며 현재 경로와 페이지 매핑은 `apps/web/src/app/router.tsx`를 따른다. 전체 개요와 섹션 개요는 별도 페이지이고 패널은 section 아래에 둔다. 카탈로그는 `storybook`·`@storybook/react-vite`·`msw-storybook-addon`이다. 테스트는 `vitest`·`@testing-library/react`·`@testing-library/user-event`·`happy-dom`이고 `@playwright/test`는 드롭 위치 판정과 스모크에만 쓴다. `lucide-react`·`class-variance-authority`·`clsx`·`tailwind-merge`는 shadcn 컴포넌트 설치 때 따라오므로 따로 넣지 않는다.
 - 모바일 우선으로 만든다. breakpoint는 `768px` 하나이고 Tailwind 기본 클래스가 좁은 폭, `md:`가 768px 이상이다. 각 컴포넌트를 좁은 폭부터 쓰고 넓은 폭을 덧붙이며 반응형을 마지막 작업으로 몰지 않는다. 목적은 폰 전용 화면이 아니라 데스크톱 창 축소 대응이므로 `360px` 미만은 대상이 아니다. 터미널 영역은 창 폭으로 레이아웃을 바꾸지 않고 xterm이 fit·resize만 한다.
 - 세로로 썬다. 각 화면 W는 컴포넌트 단위로 UI를 먼저 만들어 사용자 확인을 받는다. 확인을 받은 뒤 그 화면에 무엇을 붙일지 사용자와 논의해서 정하고 붙인다. 각 W에 적힌 것은 후보이지 확정이 아니며 논의 없이 붙이지 않는다. UI가 없으면 store 모양을 짐작하게 되므로 순서를 뒤집지 않는다. 1단계 fixture도 처음부터 계약 모양으로 한 fixture 파일에 두어 컴포넌트에 더미를 박지 않는다. 그래야 다음 단계가 props를 store로 바꾸는 것만 되고 fixture를 다시 만들지 않는다. 임시 zod 정의도 슬라이스마다 흩지 말고 한 파일에서 키워 `@aiox/protocol` 스키마가 오면 import 한 번으로 교체되게 한다.
-- 검증 도구는 처음 필요한 W에서 넣고 W1에서 미리 설치하지 않는다. Storybook과 `msw-storybook-addon`은 클릭으로 도달하기 번거로운 상태가 처음 나오는 W2에서, Playwright는 드롭 위치 판정이 필요한 W5에서 넣는다. story는 모든 컴포넌트에 만들지 않고 화면에서 재현하기 번거로운 상태에만 만들며, 프로토타입 디버그 패널이 재현하던 상태 집합이 그 후보다. MSW 핸들러 한 세트를 Storybook·vite dev·Vitest·Playwright가 공유해 fixture가 갈라지지 않게 한다.
+- 설치와 기능 연결은 구분한다. 사용자 권한으로 W2에서 설치한 도구는 {W2}의 설치 완료 기록과 `apps/web/package.json`을 확인하고 재설치 작업으로 잡지 않는다. Storybook의 브라우저 테스트 연결은 이미 있으며, 드롭 위치 판정은 W5에서 구현한다. `msw`·`msw-storybook-addon`은 아직 설치되지 않은 후보이고, 도입 시 HTTP·SSE·WS 핸들러 한 세트를 Storybook·vite dev·Vitest·Playwright가 공유한다. story는 필요한 화면·상태를 기존 story에 이어서 작성한다.
 - 스택 선택 중 owner 문서에 근거가 없는 셋. 라우터는 계약이 요구하지 않는다. [[docs/specs/aiox-configuration-web]]의 복귀 계약이 복원하라는 것은 Host·Agent·배치·terminal 현재 화면·미확인 알림뿐이고 전부 서버 소유다. 그래도 두는 이유는 브라우저 저장소가 금지라 무엇을 보고 있었는지를 담을 자리가 URL뿐이고, 없으면 알림·팔레트 점프 뒤 뒤로 가기가 앱을 벗어나며, 탭 두 개가 서로 다른 workspace를 볼 수 없기 때문이다. happy-dom은 jsdom보다 빠르다는 것 말고 강한 이유가 없다. xterm은 canvas가 필요하고 `ResizeObserver`는 둘 다 없어 어차피 mock하므로 실질 차이가 속도뿐이며, 막히면 environment 한 줄로 jsdom에 간다. `cn`을 bare specifier로 두면 shadcn 복사본이 upstream과 같아져 갱신 때 import가 안 흔들리지만 CLI가 alias로 재작성하면 그 이점이 사라지므로 W1에서 보고 정한다.
 - 작업 트리. Stage 6은 `~/Documents/aiox-stage6`의 `stage6-web` 브랜치에서 돌고 Stage 5는 main 체크아웃에 남는다. 이 브랜치의 plan은 활성 단계를 Stage 6으로 두고 main은 Stage 5로 둔다. 두 값이 다른 것은 브랜치별 라우팅이므로 맞추지 않으며 Stage 5의 실제 진행은 Stage 5 로그가 소유한다. `apps/daemon`과 `packages/protocol`은 분기 시점 스냅샷이라 main의 Stage 5 구현과 어긋나며 그 drift도 맞추지 않는다. 정합은 W10이 소유한다. 같은 이유로 Stage 5가 계약을 고쳐도 이 트리의 spec은 조용히 낡으므로 계약 변경은 파일이 아니라 handoff 메시지로 받는다. 새 워크트리에서는 루트 `pnpm install` 뒤 `pnpm -r --if-present build`를 먼저 돌린다. `packages/*/dist`가 없으면 `@aiox/terminal/restore`가 풀리지 않아 web 빌드와 타입체크가 실패한다. 설치를 `--filter`로 좁힐 이유는 없었고 native 빌드도 그대로 통과했다.
 
@@ -44,15 +44,18 @@ status: open
 
 ### {W2}
 
-- 컴포넌트 순서. `AppShell`(라우터·SidebarProvider·본문 슬롯) → `AppSidebar`(Sidebar 껍데기, cookie 줄·단축키 useEffect 삭제, Rail 드래그 resize, 좁은 폭 드로어) → `SidebarSection`(아코디언 헤더와 `+`) → `SidebarItem`(우클릭 메뉴는 생성 주체로 갈림) → `SectionOverviewCard`(WORKSPACES·NETWORKS·HOSTS 세 변형) → `SectionEmptyState`(1층) → `PanelEmptyState`(2층). 이 순서는 위가 아래를 담는 순서이며 각 단계에서 확인을 받는다.
+- 사용자 결정으로 섹션 아코디언·패널 항목·우클릭 메뉴는 `AppSidebar` 안에 유지한다. JSX를 옮기기 위한 `SidebarSection`·`SidebarItem` 분리는 작업 목표가 아니다. 현재 구성과 페이지 경계는 `apps/web/src/widgets/sidebar/app-sidebar.tsx`, `apps/web/src/app/router.tsx` 및 각 페이지 구현을 출발점으로 삼는다. 기존 Overview·SectionOverview·NotFound·카드·빈 화면 story를 이어서 사용한다.
+- 설치 완료 범위는 사용자 권한으로 W2에서 수행했다. `react-router`, `zustand`, Storybook과 관련 addon, `playwright`·`@vitest/browser-playwright` 등 현재 추가된 의존성은 `apps/web/package.json`이 소유한다. Playwright는 Storybook의 Vitest 브라우저 테스트에 연결돼 있다. 설치 완료는 zustand store·SSE·실제 daemon 연결이나 W5 드래그 검증의 완료를 뜻하지 않는다.
 
 ### {W3}
 
 - 컴포넌트 순서. `AppHeader`(전체 배치) → `WorkspaceTitle`(이름과 종류별 맥락, 맥락이 먼저 줄고 이름이 마지막까지 남는 폭 기반 단일 규칙) → `HeaderActions`(검색창, 벨 자리, 톱니, 테마 토글; 좁은 폭에서 검색은 아이콘) → `ThemeToggle` → `ConnectionWarning`. 벨은 자리와 배지 숫자까지만이고 dropdown은 W7이다. Settings 진입은 헤더 톱니뿐이며 사이드바 하단에 Settings 행을 두지 않는다.
+- 재개 출발점은 `apps/web/src/app/app-shell.tsx`의 기존 헤더다. 토글·현재 패널/섹션 제목·설정 링크를 재사용하고, 종류별 맥락·폭 기반 축약·검색·알림·앱 테마 전환·연결 경고를 이어서 구현한다. Storybook의 테마 전환 설정은 앱의 테마 기능 완료가 아니다.
 
 ### {W4}
 
 - 컴포넌트 순서. `PaneTree`(layout 재귀를 Resizable로) → `Pane`(활성 테두리 강조, 빈 pane 유지) → `TabBar` → `Tab`(라벨·상태 점·닫기) → `PaneAddMenu`(New shell·Split right·Split down) → `TerminalView`(`attach.ts` 래퍼) → `TabNotice`(stopped 안내·Copy·restartCommand) → `CloseConfirmDialog`. 탭 닫기 idle 판정은 Web이 하지 않고 `confirm:false`로 보낸 뒤 409 `confirmation_required`면 dialog를 띄워 `confirm:true`로 재전송한다. 이때 requestId는 새로 만든다.
+- 재개 출발점은 `apps/web/src/pages/workspace/workspace-page.tsx`다. section과 panelId 검증, NotFound, 패널 종류별 빈 화면과 비활성 새 터미널 버튼이 있다. pane·탭·layout·xterm 연결은 남은 작업이며 기존 `attach.ts`를 연결한다.
 
 ### {W4,W5}
 
@@ -159,3 +162,11 @@ Host layout grid의 `columns`·`rows` 기본값 1/1은 사용자 확정이다. �
 남긴다. 전역 config가 grid 1x1이면 YAML에 `columns=3`만 있을 때 결과가 3x1이고, 전역이 2x2였을
 때의 3x2와 다르다. 또 grid 1x1은 pane 하나짜리 배치라 preset만 grid로 바꾸고 치수를 안 건드린
 사용자는 auto 4개 배치와 다른 화면을 본다. 사용자 확정 사항이라 그대로 둔다.
+
+### 2026-09-23 12:00 · W2 라우팅 기록을 현재 코드에 정합
+
+사용자가 현재 코드를 기준으로 W2의 route 기록 정합을 요청했다. `apps/web/src/app/router.tsx`와 sidebar·카드·AppShell의 이동 경로를 대조해, W2와 Global의 이전 `/w/:panelId` 표기를 갱신했다. 전체 개요와 섹션 개요를 분리한 구현을 재개 기준으로 삼으며, 유효하지 않은 section 및 section과 맞지 않는 panelId는 페이지에서 NotFound로 처리한다. 이번 정합은 라우팅 기록에 한정하며 W2는 진행 중으로 유지한다.
+
+### 2026-09-23 12:05 · W2 설치·구성 결정과 W3·W4 재개 맥락 정합
+
+사용자가 AppSidebar 내부 유지 결정, 사용자 권한으로 W2에서 수행한 설치, W3·W4의 기존 화면 틀을 기록에 반영하도록 지시했다. W2의 분리 지침과 첫 story 후보, Global의 미래 설치 시점 안내를 갱신하고 W3·W4에는 현재 구현을 출발점으로 명시했다. 설치 사실은 package.json과 Storybook/Vitest 설정으로 확인했으며, 아직 없는 MSW와 store·daemon·드래그 기능 연결은 완료로 간주하지 않았다. W1 완료 이력과 W2 진행/W3·W4 대기 상태는 유지했다. apps/web/AGENTS.md의 sidebar 예시도 현재 경로·DOM·활성 판정에 맞췄다.

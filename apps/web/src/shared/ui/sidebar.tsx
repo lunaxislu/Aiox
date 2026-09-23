@@ -7,30 +7,23 @@ import { cn } from "cn";
 import { PanelLeftIcon } from "lucide-react";
 import * as React from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Separator } from "@/shared/ui/separator";
 import {
     Sheet,
     SheetContent,
     SheetDescription,
     SheetHeader,
     SheetTitle,
-} from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useIsMobile } from "@/hooks/use-mobile";
+} from "@/shared/ui/sheet";
+import { Skeleton } from "@/shared/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "18rem";
+const SIDEBAR_WIDTH = "240px";
+const SIDEBAR_WIDTH_MOBILE = "280px";
 const SIDEBAR_WIDTH_ICON = "3rem";
-const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextProps = {
     state: "expanded" | "collapsed";
@@ -81,9 +74,6 @@ function SidebarProvider({
             } else {
                 _setOpen(openState);
             }
-
-            // This sets the cookie to keep the sidebar state.
-            document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
         },
         [setOpenProp, open],
     );
@@ -94,22 +84,6 @@ function SidebarProvider({
             ? setOpenMobile((open) => !open)
             : setOpen((open) => !open);
     }, [isMobile, setOpen, setOpenMobile]);
-
-    // Adds a keyboard shortcut to toggle the sidebar.
-    React.useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (
-                event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-                (event.metaKey || event.ctrlKey)
-            ) {
-                event.preventDefault();
-                toggleSidebar();
-            }
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [toggleSidebar]);
 
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.
@@ -197,10 +171,12 @@ function Sidebar({
                     data-sidebar="sidebar"
                     data-slot="sidebar"
                     data-mobile="true"
-                    className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+                    className="bg-sidebar p-0 text-sidebar-foreground"
+                    showCloseButton={false}
                     style={
                         {
                             "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+                            width: SIDEBAR_WIDTH_MOBILE,
                         } as React.CSSProperties
                     }
                     side={side}
@@ -222,6 +198,7 @@ function Sidebar({
     return (
         <div
             className="group peer hidden text-sidebar-foreground md:block"
+            inert={state === "collapsed" && collapsible === "offcanvas"}
             data-state={state}
             data-collapsible={state === "collapsed" ? collapsible : ""}
             data-variant={variant}
@@ -232,7 +209,7 @@ function Sidebar({
             <div
                 data-slot="sidebar-gap"
                 className={cn(
-                    "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+                    "relative w-(--sidebar-width) bg-transparent",
                     "group-data-[collapsible=offcanvas]:w-0",
                     "group-data-[side=right]:rotate-180",
                     variant === "floating" || variant === "inset"
@@ -244,7 +221,7 @@ function Sidebar({
                 data-slot="sidebar-container"
                 data-side={side}
                 className={cn(
-                    "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+                    "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
                     // Adjust the padding for floating and inset variants.
                     variant === "floating" || variant === "inset"
                         ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
@@ -291,24 +268,13 @@ function SidebarTrigger({
     );
 }
 
-function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
-    const { toggleSidebar } = useSidebar();
-
+function SidebarRail({ className, ...props }: React.ComponentProps<"div">) {
     return (
-        <button
+        <div
             data-sidebar="rail"
             data-slot="sidebar-rail"
-            aria-label="Toggle Sidebar"
-            tabIndex={-1}
-            onClick={toggleSidebar}
-            title="Toggle Sidebar"
             className={cn(
-                "absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
-                "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
-                "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
-                "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",
-                "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
-                "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
+                "absolute inset-y-0 -right-1 z-20 hidden w-2 cursor-col-resize touch-none select-none after:absolute after:inset-y-0 after:left-1/2 after:w-px hover:after:bg-primary md:block group-data-[collapsible=offcanvas]:hidden",
                 className,
             )}
             {...props}
