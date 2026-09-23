@@ -170,52 +170,52 @@ Host 이름・Host Network 이름의 query는 정확한 이름 일치다.
 
 ```ts
 type HostSource = {
-  directory: string; // 절대 경로
-  file?: string;
+    directory: string; // 절대 경로
+    file?: string;
 };
 
 type Invocation = {
-  terminalContext?: {
-    terminalId: string;
-    token: string;
-  };
+    terminalContext?: {
+        terminalId: string;
+        token: string;
+    };
 };
 
 type LayoutInput = {
-  preset?: "auto" | "grid" | "left-main" | "top-main";
-  columns?: number;
-  rows?: number;
+    preset?: "auto" | "grid" | "left-main" | "top-main";
+    columns?: number;
+    rows?: number;
 };
 
 type HostControlRequest = {
-  requestId: string; // UUID
+    requestId: string; // UUID
 };
 
 type HostRestartRequest = HostControlRequest &
-  Invocation & {
-    source: HostSource;
-  };
+    Invocation & {
+        source: HostSource;
+    };
 
 type HostRunRequest = HostRestartRequest & {
-  layout?: LayoutInput;
+    layout?: LayoutInput;
 };
 
 type HostAgentStartRequest = HostRestartRequest & {
-  agents: string[];
+    agents: string[];
 };
 
 type HostAgentRestartRequest = HostAgentStartRequest;
 
 type HostAgentStopRequest = HostControlRequest & {
-  agents: string[];
+    agents: string[];
 };
 
 type HostResolveRequest = {
-  source: HostSource;
+    source: HostSource;
 };
 
 type HostResolveResult = {
-  hostId: string;
+    hostId: string;
 };
 ```
 
@@ -230,50 +230,50 @@ Host 입력 규칙:
 
 ```ts
 type CreatePanelRequest = {
-  name: string;
-  section?: "workspaces" | "networks" | "hosts";
+    name: string;
+    section?: "workspaces" | "networks" | "hosts";
 };
 
 type RenamePanelRequest = {
-  revision: number;
-  name: string;
+    revision: number;
+    name: string;
 };
 
 type PutPanelLayoutRequest = {
-  revision: number;
-  layout: PanelLayout;
-  activePaneId: string;
+    revision: number;
+    layout: PanelLayout;
+    activePaneId: string;
 };
 
 type CreatePanelShellRequest = {
-  requestId: string; // UUID
-  revision: number;
-  paneId: string;
-  split?: "right" | "down";
-  cols?: number;
-  rows?: number;
+    requestId: string; // UUID
+    revision: number;
+    paneId: string;
+    split?: "right" | "down";
+    cols?: number;
+    rows?: number;
 };
 
 type ClosePanelTabRequest = {
-  requestId: string; // UUID
-  revision: number;
-  expectedRuntimeId: string | null;
-  confirm: boolean;
+    requestId: string; // UUID
+    revision: number;
+    expectedRuntimeId: string | null;
+    confirm: boolean;
 };
 
 type DismissPanelTabRequest = {
-  revision: number;
+    revision: number;
 };
 
 type DeletePanelRequest = {
-  requestId: string; // UUID
-  revision: number;
-  confirm: true;
+    requestId: string; // UUID
+    revision: number;
+    confirm: true;
 };
 
 type PutConfigRequest = {
-  revision: string;
-  stored: StoredConfig;
+    revision: string;
+    stored: StoredConfig;
 };
 ```
 
@@ -296,18 +296,18 @@ Panel 적용 규칙:
 
 ```ts
 type RouteRequest = {
-  operation:
-    | {
-        kind: "between";
-        action: "block" | "unblock" | "reset";
-        agents: string[];
-      }
-    | {
-        kind: "directed";
-        action: "block" | "unblock" | "reset";
-        from: string;
-        to: string[];
-      };
+    operation:
+        | {
+              kind: "between";
+              action: "block" | "unblock" | "reset";
+              agents: string[];
+          }
+        | {
+              kind: "directed";
+              action: "block" | "unblock" | "reset";
+              from: string;
+              to: string[];
+          };
 };
 ```
 
@@ -329,73 +329,69 @@ Host Network에서는:
 
 ```ts
 type RuntimeStatus =
-  | "aiox-preparing"
-  | "idle"
-  | "working"
-  | "awaiting-user"
-  | "failed";
+    "aiox-preparing" | "idle" | "working" | "awaiting-user" | "failed";
 
 type LastExit = {
-  kind: "stopped" | "exited" | "crashed" | "start-failed" | "daemon-ended";
-  message: string | null;
-  at: number;
+    kind: "stopped" | "exited" | "crashed" | "start-failed" | "daemon-ended";
+    message: string | null;
+    at: number;
 };
 
 type ManagedRuntime = {
-  id: string;
-  terminalId: string;
-  phase: "preparing" | "running" | "stopping";
-  status: RuntimeStatus;
-  status_reason: string | null;
-  observation_error: string | null;
-  collaborationActive: boolean;
-  collaborationError: string | null;
+    id: string;
+    terminalId: string;
+    phase: "preparing" | "running" | "stopping";
+    status: RuntimeStatus;
+    status_reason: string | null;
+    observation_error: string | null;
+    collaborationActive: boolean;
+    collaborationError: string | null;
 };
 
 type ManagedAgentView = {
-  key: string;
-  adapter: "claude" | "codex";
-  role: string | null;
-  description: string | null;
-  instruction: string;
-  args: string[];
-  member: boolean;
-  runtime: ManagedRuntime | null;
-  lastTerminalId: string | null;
-  lastExit: LastExit | null;
+    key: string;
+    adapter: "claude" | "codex";
+    role: string | null;
+    description: string | null;
+    instruction: string;
+    args: string[];
+    member: boolean;
+    runtime: ManagedRuntime | null;
+    lastTerminalId: string | null;
+    lastExit: LastExit | null;
 };
 
 type HostView = {
-  id: string;
-  name: string;
-  directory: string;
-  sourceFile: string;
-  instruction: string;
-  panelId: string;
-  networkId: string;
-  revision: number;
-  agents: ManagedAgentView[];
-  activeOperationId: string | null;
+    id: string;
+    name: string;
+    directory: string;
+    sourceFile: string;
+    instruction: string;
+    panelId: string;
+    networkId: string;
+    revision: number;
+    agents: ManagedAgentView[];
+    activeOperationId: string | null;
 };
 
 type HostNetworkView = {
-  id: string;
-  hostId: string;
-  name: string;
-  scope: "host";
-  default: "allow" | "deny";
-  members: {
-    agentKey: string;
-    runtimeId: string | null;
-  }[];
-  edges: {
-    from: string;
-    to: string;
-    fromRuntimeId: string | null;
-    toRuntimeId: string | null;
-    policy: "allow" | "deny";
-    source: "runtime-override" | "manifest-edge" | "manifest-default";
-  }[];
+    id: string;
+    hostId: string;
+    name: string;
+    scope: "host";
+    default: "allow" | "deny";
+    members: {
+        agentKey: string;
+        runtimeId: string | null;
+    }[];
+    edges: {
+        from: string;
+        to: string;
+        fromRuntimeId: string | null;
+        toRuntimeId: string | null;
+        policy: "allow" | "deny";
+        source: "runtime-override" | "manifest-edge" | "manifest-default";
+    }[];
 };
 ```
 
@@ -412,53 +408,53 @@ type HostNetworkView = {
 
 ```ts
 type PanelLayout =
-  | {
-      type: "pane";
-      id: string;
-      tabIds: string[];
-      selectedTabId: string | null;
-    }
-  | {
-      type: "split";
-      axis: "x" | "y";
-      weights: number[];
-      children: PanelLayout[];
-    };
+    | {
+          type: "pane";
+          id: string;
+          tabIds: string[];
+          selectedTabId: string | null;
+      }
+    | {
+          type: "split";
+          axis: "x" | "y";
+          weights: number[];
+          children: PanelLayout[];
+      };
 
 type TabNotice = {
-  message: string;
-  reason: string | null;
-  restartCommand: string;
+    message: string;
+    reason: string | null;
+    restartCommand: string;
 };
 
 type TabView = {
-  id: string;
-  terminalId: string | null;
-  label: string;
-  agentKey: string | null;
-  runtimeId: string | null;
-  presentation:
-    | "shell"
-    | "preparing"
-    | "tui"
-    | "stopped"
-    | "start-failed"
-    | "crashed"
-    | "unavailable";
-  notice: TabNotice | null;
+    id: string;
+    terminalId: string | null;
+    label: string;
+    agentKey: string | null;
+    runtimeId: string | null;
+    presentation:
+        | "shell"
+        | "preparing"
+        | "tui"
+        | "stopped"
+        | "start-failed"
+        | "crashed"
+        | "unavailable";
+    notice: TabNotice | null;
 };
 
 type PanelView = {
-  id: string;
-  kind: "host" | "workspace" | "network";
-  section: "hosts" | "workspaces" | "networks";
-  name: string;
-  hostId: string | null;
-  networkId: string | null;
-  revision: number;
-  layout: PanelLayout;
-  activePaneId: string;
-  tabs: TabView[];
+    id: string;
+    kind: "host" | "workspace" | "network";
+    section: "hosts" | "workspaces" | "networks";
+    name: string;
+    hostId: string | null;
+    networkId: string | null;
+    revision: number;
+    layout: PanelLayout;
+    activePaneId: string;
+    tabs: TabView[];
 };
 ```
 
@@ -478,53 +474,53 @@ layout 제약:
 
 ```ts
 type AgentView = {
-  agentId: string;
-  executionOwnership: "daemon" | "external";
-  name: string;
-  role: string | null;
-  description: string | null;
-  status: RuntimeStatus;
-  networkId: string | null;
-  networkName: string | null;
-  hostId: string | null;
-  terminalId: string | null;
-  status_reason: string | null;
-  observation_error: string | null;
+    agentId: string;
+    executionOwnership: "daemon" | "external";
+    name: string;
+    role: string | null;
+    description: string | null;
+    status: RuntimeStatus;
+    networkId: string | null;
+    networkName: string | null;
+    hostId: string | null;
+    terminalId: string | null;
+    status_reason: string | null;
+    observation_error: string | null;
 };
 
 type TerminalView = {
-  id: string;
-  cwd: string;
-  kind: "shell" | "agent";
-  alive: boolean;
-  vendor?: {
-    runtimeId: string;
+    id: string;
+    cwd: string;
+    kind: "shell" | "agent";
     alive: boolean;
-    relayDisconnected: boolean;
-    collaborationActive: boolean;
-    collaborationError?: string;
-  };
+    vendor?: {
+        runtimeId: string;
+        alive: boolean;
+        relayDisconnected: boolean;
+        collaborationActive: boolean;
+        collaborationError?: string;
+    };
 };
 
 type NetworkView = {
-  id: string;
-  name: string;
-  scope: "persistent" | "host";
-  routes: {
-    from: string;
-    to: string;
-    fromName: string;
-    toName: string;
-  }[];
+    id: string;
+    name: string;
+    scope: "persistent" | "host";
+    routes: {
+        from: string;
+        to: string;
+        fromName: string;
+        toName: string;
+    }[];
 };
 
 type WebNotificationView = {
-  id: string;
-  originRuntimeId: string;
-  body: string;
-  createdAt: number;
-  readAt: number | null;
-  terminalId: string | null;
+    id: string;
+    originRuntimeId: string;
+    body: string;
+    createdAt: number;
+    readAt: number | null;
+    terminalId: string | null;
 };
 ```
 
@@ -538,61 +534,61 @@ type WebNotificationView = {
 
 ```ts
 type OperationError = {
-  code: string;
-  message: string;
-  stage:
-    | "config"
-    | "yaml"
-    | "cli"
-    | "environment"
-    | "execution"
-    | "cleanup"
-    | "storage";
-  field?: string;
-  agentKey?: string;
+    code: string;
+    message: string;
+    stage:
+        | "config"
+        | "yaml"
+        | "cli"
+        | "environment"
+        | "execution"
+        | "cleanup"
+        | "storage";
+    field?: string;
+    agentKey?: string;
 };
 
 type HostError = OperationError & {
-  candidates?: string[];
-  operationId?: string;
+    candidates?: string[];
+    operationId?: string;
 };
 
 type OperationTarget = {
-  agentKey: string | null;
-  terminalId: string | null;
-  state:
-    | "pending"
-    | "preparing"
-    | "ready"
-    | "stopping"
-    | "stopped"
-    | "unchanged"
-    | "failed";
-  error: OperationError | null;
+    agentKey: string | null;
+    terminalId: string | null;
+    state:
+        | "pending"
+        | "preparing"
+        | "ready"
+        | "stopping"
+        | "stopped"
+        | "unchanged"
+        | "failed";
+    error: OperationError | null;
 };
 
 type Operation = {
-  id: string;
-  requestId: string;
-  kind:
-    | "host.run"
-    | "host.restart"
-    | "host.stop"
-    | "host.delete"
-    | "host.agent.start"
-    | "host.agent.restart"
-    | "host.agent.stop"
-    | "panel.shell.create"
-    | "panel.tab.close"
-    | "panel.delete";
-  hostId: string | null;
-  panelId: string | null;
-  state: "running" | "succeeded" | "failed";
-  targets: OperationTarget[];
-  error: OperationError | null;
-  cleanupErrors: OperationError[];
-  createdAt: number;
-  finishedAt: number | null;
+    id: string;
+    requestId: string;
+    kind:
+        | "host.run"
+        | "host.restart"
+        | "host.stop"
+        | "host.delete"
+        | "host.agent.start"
+        | "host.agent.restart"
+        | "host.agent.stop"
+        | "panel.shell.create"
+        | "panel.tab.close"
+        | "panel.delete";
+    hostId: string | null;
+    panelId: string | null;
+    state: "running" | "succeeded" | "failed";
+    targets: OperationTarget[];
+    error: OperationError | null;
+    cleanupErrors: OperationError[];
+    createdAt: number;
+    finishedAt: number | null;
 };
 ```
 
@@ -652,14 +648,14 @@ type Operation = {
 
 ```ts
 type ConfigView = {
-  revision: string;
-  stored: StoredConfig;
-  effective: AioxConfig;
-  runningPorts: {
-    daemon: number;
-    web: number;
-  };
-  restartRequired: boolean;
+    revision: string;
+    stored: StoredConfig;
+    effective: AioxConfig;
+    runningPorts: {
+        daemon: number;
+        web: number;
+    };
+    restartRequired: boolean;
 };
 ```
 
@@ -673,37 +669,37 @@ type ConfigView = {
 
 ```ts
 type AioxConfig = {
-  ports: {
-    daemon: number;
-    web: number;
-  };
-  messages: {
-    retentionDays: number;
-  };
-  terminal?: {
-    shell?: string;
-    args?: string[];
-    cwd?: string;
-    fontFamily?: string;
-    fontSize?: number;
-    theme?: Record<string, string>;
-  };
-  keyboard?: Record<string, string>;
-  keybindings?: Partial<
-    Record<"mac" | "windows" | "linux", Record<string, string>>
-  >;
-  web?: {
-    sidebar?: {
-      width?: number;
-      open?: boolean;
+    ports: {
+        daemon: number;
+        web: number;
     };
-  };
-  appearance?: {
-    theme: "system" | "light" | "dark";
-  };
-  host?: {
-    layout?: HostLayout;
-  };
+    messages: {
+        retentionDays: number;
+    };
+    terminal?: {
+        shell?: string;
+        args?: string[];
+        cwd?: string;
+        fontFamily?: string;
+        fontSize?: number;
+        theme?: Record<string, string>;
+    };
+    keyboard?: Record<string, string>;
+    keybindings?: Partial<
+        Record<"mac" | "windows" | "linux", Record<string, string>>
+    >;
+    web?: {
+        sidebar?: {
+            width?: number;
+            open?: boolean;
+        };
+    };
+    appearance?: {
+        theme: "system" | "light" | "dark";
+    };
+    host?: {
+        layout?: HostLayout;
+    };
 };
 ```
 
@@ -738,22 +734,22 @@ hostLayoutSchema;
 
 ```ts
 type WebSnapshot = {
-  hosts: HostView[];
-  networks: (HostNetworkView | NetworkView)[];
-  panels: PanelView[];
-  terminals: TerminalView[];
-  agents: AgentView[];
-  operations: Operation[];
-  notifications: WebNotificationView[];
+    hosts: HostView[];
+    networks: (HostNetworkView | NetworkView)[];
+    panels: PanelView[];
+    terminals: TerminalView[];
+    agents: AgentView[];
+    operations: Operation[];
+    notifications: WebNotificationView[];
 };
 
 type WebState = {
-  changes: WebChange[];
+    changes: WebChange[];
 };
 
 type WebFault = {
-  code: string;
-  message: string;
+    code: string;
+    message: string;
 };
 ```
 
@@ -811,26 +807,26 @@ webFaultSchema;
 
 ```ts
 import {
-  webSnapshotSchema,
-  webStateSchema,
-  webFaultSchema,
+    webSnapshotSchema,
+    webStateSchema,
+    webFaultSchema,
 } from "@aiox/protocol";
 
 const events = new EventSource("/api/web/events");
 
 events.addEventListener("snapshot", (event) => {
-  const snapshot = webSnapshotSchema.parse(JSON.parse(event.data));
-  // 서버 상태 전체 교체
+    const snapshot = webSnapshotSchema.parse(JSON.parse(event.data));
+    // 서버 상태 전체 교체
 });
 
 events.addEventListener("state", (event) => {
-  const state = webStateSchema.parse(JSON.parse(event.data));
-  // resource + id 기준 반영
+    const state = webStateSchema.parse(JSON.parse(event.data));
+    // resource + id 기준 반영
 });
 
 events.addEventListener("fault", (event) => {
-  const fault = webFaultSchema.parse(JSON.parse(event.data));
-  // 연결 오류 표시
+    const fault = webFaultSchema.parse(JSON.parse(event.data));
+    // 연결 오류 표시
 });
 ```
 
@@ -883,15 +879,15 @@ client → server
 
 ```ts
 import {
-  hostViewSchema,
-  panelViewSchema,
-  operationSchema,
-  webSnapshotSchema,
-  webStateSchema,
-  configViewSchema,
-  type HostView,
-  type PanelView,
-  type Operation,
+    hostViewSchema,
+    panelViewSchema,
+    operationSchema,
+    webSnapshotSchema,
+    webStateSchema,
+    configViewSchema,
+    type HostView,
+    type PanelView,
+    type Operation,
 } from "@aiox/protocol";
 ```
 
