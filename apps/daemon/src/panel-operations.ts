@@ -291,15 +291,12 @@ export async function handlePanelOperation(
                         "Panel disappeared during termination.",
                     );
                 if (tab && latest.tabs.some((t) => t.id === tab.id)) {
-                    const layout = removePanelTabs(
-                        latest.layout,
-                        new Set([tab.id]),
-                    );
+                    const next = removePanelTabs(latest, new Set([tab.id]));
                     await services.db.hostState.updatePanel(
                         {
                             ...latest,
                             revision: latest.revision + 1,
-                            layout,
+                            ...next,
                             tabs: latest.tabs.filter((t) => t.id !== tab.id),
                         },
                         latest.revision,

@@ -361,7 +361,8 @@ networks:
             panelLayoutReferences(replaced.panels[0]!.layout).panes.map(
                 (p) => p.id,
             ),
-        ).toEqual(panes.map((p) => p.id));
+        ).toEqual([panes[0]!.id]);
+        expect(replaced.panels[0]!.activePaneId).toBe(panes[0]!.id);
         await writeFile(
             join(h.home, "aiox.yaml"),
             `host: {name: partial}

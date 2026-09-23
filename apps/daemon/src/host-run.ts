@@ -497,7 +497,7 @@ export async function handleHostRun(
                 panel = latest.panels.find((p) => p.id === panel.id)!;
                 const removedIds = new Set(removed.map((t) => t.id));
                 panel.tabs = panel.tabs.filter((t) => !removedIds.has(t.id));
-                panel.layout = removePanelTabs(panel.layout, removedIds);
+                Object.assign(panel, removePanelTabs(panel, removedIds));
                 let placement = 0;
                 for (const agent of host.agents) {
                     const tab = placeAgent(panel, agent.key, placement++);

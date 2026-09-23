@@ -9,6 +9,7 @@ import type {
     HostNetworkView,
     Operation,
 } from "@aiox/protocol";
+import Database from "better-sqlite3";
 import { test } from "vitest";
 
 import { openDatabase } from "./database";
@@ -734,5 +735,77 @@ test("Host route overrides reset to applied YAML and agent updates preserve unre
         networks: [],
         panels: [],
         operations: [],
+    });
+});
+
+test("terminal removal atomically persists collapsed layout and focus, and repeated cleanup is inert", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "aiox-remove-terminal-"));
+    const path = join(directory, "aiox.db");
+    let db = await openDatabase(path);
+    t.onTestFinished(async () => {
+        await db.close();
+        await rm(directory, { recursive: true, force: true });
+    });
+    const pane = (id: string) => ({
+        type: "pane" as const,
+        id,
+        tabIds: [id],
+        selectedTabId: id,
+    });
+    const panel: PanelView = {
+        id: "p",
+        kind: "workspace",
+        section: "workspaces",
+        name: "Test",
+        hostId: null,
+        networkId: null,
+        revision: 1,
+        activePaneId: "a",
+        layout: {
+            type: "split",
+            axis: "x",
+            weights: [0.3, 0.7],
+            children: [pane("a"), pane("b")],
+        },
+        tabs: ["a", "b"].map((id) => ({
+            id,
+            terminalId: id,
+            label: id,
+            agentKey: null,
+            runtimeId: null,
+            presentation: "shell",
+            notice: null,
+        })),
+    };
+    await db.hostState.createPanel(panel);
+    const raw = new Database(path);
+    t.onTestFinished(() => {
+        raw.close();
+    });
+    raw.exec(
+        "CREATE TRIGGER fail_layout BEFORE UPDATE ON panels BEGIN SELECT RAISE(ABORT, 'layout failure'); END",
+    );
+    await assert.rejects(db.hostState.removeTerminal("a"), /layout failure/);
+    assert.deepEqual((await db.hostState.snapshot()).panels, [panel]);
+    raw.exec("DROP TRIGGER fail_layout");
+    await db.hostState.removeTerminal("a");
+    await db.hostState.removeTerminal("a");
+    await db.close();
+    db = await openDatabase(path);
+    const remaining = (await db.hostState.snapshot()).panels[0]!;
+    assert.deepEqual(remaining, {
+        ...panel,
+        revision: 2,
+        activePaneId: "b",
+        layout: pane("b"),
+        tabs: [panel.tabs[1]!],
+    });
+    await db.hostState.removeTerminal("b");
+    const empty = (await db.hostState.snapshot()).panels[0]!;
+    assert.deepEqual(empty, {
+        ...remaining,
+        revision: 3,
+        tabs: [],
+        layout: { ...pane("b"), tabIds: [], selectedTabId: null },
     });
 });

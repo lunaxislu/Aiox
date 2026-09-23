@@ -340,30 +340,64 @@ export const tabViewSchema = z.strictObject({
     ]),
     notice: tabNoticeSchema.nullable(),
 });
-/** Remove tab references without collapsing panes or changing split geometry. */
+/** Remove tabs and reconcile their layout and focus as one change. */
 export function removePanelTabs(
-    layout: PanelLayout,
+    panel: Pick<PanelView, "layout" | "activePaneId">,
     ids: ReadonlySet<string>,
-): PanelLayout {
-    if (layout.type === "split")
-        return {
-            ...layout,
-            children: layout.children.map((child) =>
-                removePanelTabs(child, ids),
-            ),
-        };
-    const tabIds = layout.tabIds.filter((id) => !ids.has(id));
-    return {
-        ...layout,
-        tabIds,
-        selectedTabId:
-            layout.selectedTabId !== null &&
-            tabIds.includes(layout.selectedTabId)
-                ? layout.selectedTabId
-                : (tabIds[0] ?? null),
+): Pick<PanelView, "layout" | "activePaneId"> {
+    const before = panelLayoutReferences(panel.layout).panes;
+    // A repeated cleanup must not remove unrelated empty panes or move focus.
+    if (!before.some((pane) => pane.tabIds.some((id) => ids.has(id))))
+        return { layout: panel.layout, activePaneId: panel.activePaneId };
+    const prune = (node: PanelLayout): PanelLayout | null => {
+        if (node.type === "pane") {
+            if (!node.tabIds.some((id) => ids.has(id))) return node;
+            const tabIds = node.tabIds.filter((id) => !ids.has(id));
+            if (!tabIds.length) return null;
+            const index = node.tabIds.indexOf(node.selectedTabId!);
+            const selectedTabId = tabIds.includes(node.selectedTabId!)
+                ? node.selectedTabId
+                : (node.tabIds.slice(index + 1).find((id) => !ids.has(id)) ??
+                  tabIds.at(-1)!);
+            return { ...node, tabIds, selectedTabId };
+        }
+        const children: PanelLayout[] = [];
+        const weights: number[] = [];
+        node.children.forEach((child, index) => {
+            const remaining = prune(child);
+            if (remaining) {
+                children.push(remaining);
+                weights.push(node.weights[index]!);
+            }
+        });
+        if (!children.length) return null;
+        if (children.length === 1) return children[0]!;
+        const total = weights.reduce((a, b) => a + b, 0);
+        return { ...node, children, weights: weights.map((w) => w / total) };
     };
+    const pruned = prune(panel.layout);
+    const layout: PanelLayout =
+        pruned && panelLayoutReferences(pruned).tabIds.length
+            ? pruned
+            : {
+                  type: "pane",
+                  id: panel.activePaneId,
+                  tabIds: [],
+                  selectedTabId: null,
+              };
+    const remaining = new Set(
+        panelLayoutReferences(layout).panes.map((p) => p.id),
+    );
+    const index = before.findIndex((p) => p.id === panel.activePaneId);
+    const activePaneId = remaining.has(panel.activePaneId)
+        ? panel.activePaneId
+        : (before.slice(index + 1).find((p) => remaining.has(p.id)) ??
+              before
+                  .slice(0, index)
+                  .reverse()
+                  .find((p) => remaining.has(p.id)))!.id;
+    return { layout, activePaneId };
 }
-
 export function panelLayoutReferences(layout: PanelLayout) {
     const panes: z.infer<typeof paneSchema>[] = [];
     const walk = (node: PanelLayout): void => {

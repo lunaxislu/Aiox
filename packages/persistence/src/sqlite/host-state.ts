@@ -938,6 +938,13 @@ export function hostState(dataSource: BetterSQLite3Database): HostState {
                     .where(eq(PanelEntity.id, tab.panelId))
                     .get();
                 if (!panel) throw new Error("Missing stored panel.");
+                const next = removePanelTabs(
+                    {
+                        layout: JSON.parse(panel.layoutJson),
+                        activePaneId: panel.activePaneId,
+                    },
+                    new Set([tab.id]),
+                );
                 manager
                     .delete(PanelTabEntity)
                     .where(eq(PanelTabEntity.id, tab.id))
@@ -945,12 +952,8 @@ export function hostState(dataSource: BetterSQLite3Database): HostState {
                 manager
                     .update(PanelEntity)
                     .set({
-                        layoutJson: JSON.stringify(
-                            removePanelTabs(
-                                JSON.parse(panel.layoutJson),
-                                new Set([tab.id]),
-                            ),
-                        ),
+                        layoutJson: JSON.stringify(next.layout),
+                        activePaneId: next.activePaneId,
                         revision: panel.revision + 1,
                     })
                     .where(eq(PanelEntity.id, panel.id))

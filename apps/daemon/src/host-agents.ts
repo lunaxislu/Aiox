@@ -515,9 +515,9 @@ export async function handleHostAgents(
                                 current.tabs = current.tabs.filter(
                                     (t) => t.id !== old.id,
                                 );
-                                current.layout = removePanelTabs(
-                                    current.layout,
-                                    new Set([old.id]),
+                                Object.assign(
+                                    current,
+                                    removePanelTabs(current, new Set([old.id])),
                                 );
                                 await services.db.hostState.updatePanel(
                                     {

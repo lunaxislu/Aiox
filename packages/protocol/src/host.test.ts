@@ -4,6 +4,7 @@ import { test } from "vitest";
 
 import {
     removePanelTabs,
+    panelLayoutReferences,
     type PanelLayout,
     hostRunRequestSchema,
     panelViewSchema,
@@ -126,40 +127,77 @@ test("SSE discriminates DTO by resource and remove carries no value", () => {
     );
 });
 
-test("removing layout tab references preserves selection, empty panes and split geometry", () => {
+test("tab removal follows current tab/tree order and collapses empty panes", () => {
+    const pane = (
+        id: string,
+        tabIds = [id],
+        selectedTabId = tabIds[0] ?? null,
+    ): PanelLayout => ({ type: "pane", id, tabIds, selectedTabId });
     const layout: PanelLayout = {
         type: "split",
         axis: "x",
-        weights: [0.3, 0.7],
+        weights: [0.2, 0.3, 0.5],
         children: [
+            pane("z"),
             {
-                type: "pane",
-                id: "a",
-                tabIds: ["one", "two"],
-                selectedTabId: "two",
+                type: "split",
+                axis: "y",
+                weights: [0.4, 0.6],
+                children: [
+                    pane("b", ["third", "first", "second"], "first"),
+                    pane("a"),
+                ],
             },
-            { type: "pane", id: "b", tabIds: ["last"], selectedTabId: "last" },
+            pane("c"),
         ],
     };
-    const before = structuredClone(layout);
-    for (const [ids, tabs, selected] of [
-        [["one"], ["two"], "two"],
-        [["two"], ["one"], "one"],
-        [["one", "two"], [], null],
-        [["missing"], ["one", "two"], "two"],
-    ] as const) {
-        assert.deepEqual(removePanelTabs(layout, new Set([...ids, "last"])), {
-            ...layout,
-            children: [
-                {
-                    type: "pane",
-                    id: "a",
-                    tabIds: [...tabs],
-                    selectedTabId: selected,
-                },
-                { type: "pane", id: "b", tabIds: [], selectedTabId: null },
-            ],
-        });
-        assert.deepEqual(layout, before);
-    }
+    const original = structuredClone(layout);
+    const remove = (ids: string[], activePaneId = "b") =>
+        removePanelTabs({ layout, activePaneId }, new Set(ids));
+    expectSelection(remove(["first"]).layout, "b", "second");
+    expectSelection(remove(["first", "second"]).layout, "b", "third");
+    const collapsed = remove(["third", "first", "second", "z"]);
+    assert.deepEqual(collapsed, {
+        activePaneId: "a",
+        layout: {
+            type: "split",
+            axis: "x",
+            weights: [0.3 / 0.8, 0.5 / 0.8],
+            children: [pane("a"), pane("c")],
+        },
+    });
+    assert.equal(remove(["a"], "c").activePaneId, "c");
+    assert.equal(remove(["c"], "c").activePaneId, "a");
+    expectSelection(remove(["z"], "b").layout, "b", "first");
+    const empty = remove(["z", "third", "first", "second", "a", "c"]);
+    assert.deepEqual(empty, { layout: pane("b", []), activePaneId: "b" });
+    assert.deepEqual(
+        removePanelTabs(collapsed, new Set(["z", "first"])),
+        collapsed,
+    );
+    assert.deepEqual(removePanelTabs(empty, new Set(["b"])), empty);
+    const withEmpty: PanelLayout = {
+        type: "split",
+        axis: "x",
+        weights: [0.5, 0.5],
+        children: [pane("empty", []), pane("tabs", ["one", "two"])],
+    };
+    const focusedEmpty = removePanelTabs(
+        { layout: withEmpty, activePaneId: "empty" },
+        new Set(["one"]),
+    );
+    assert.equal(focusedEmpty.activePaneId, "empty");
+    assert.deepEqual(
+        panelLayoutReferences(focusedEmpty.layout).panes.map((p) => p.id),
+        ["empty", "tabs"],
+    );
+    assert.deepEqual(removePanelTabs(focusedEmpty, new Set(["two"])), {
+        layout: pane("empty", []),
+        activePaneId: "empty",
+    });
+    assert.deepEqual(layout, original);
 });
+function expectSelection(layout: PanelLayout, id: string, selected: string) {
+    const panes = panelLayoutReferences(layout).panes;
+    assert.equal(panes.find((p) => p.id === id)?.selectedTabId, selected);
+}
