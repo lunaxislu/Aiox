@@ -55,6 +55,14 @@ export function AppShell({
                 section: action.section,
                 name,
                 terminalCount: 0,
+                layout: {
+                    type: "pane",
+                    id: "root",
+                    tabIds: [],
+                    selectedTabId: null,
+                },
+                activePaneId: "root",
+                tabs: [],
                 agents: [],
             };
             setPanels((value) => [...value, panel]);

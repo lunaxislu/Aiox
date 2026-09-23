@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import { kindIcons } from "@/entities/panel/icons";
 import {
+    agentCounts,
     panelPath,
     panelSummary,
     type PanelPreview,
@@ -27,8 +28,7 @@ const statusColors = {
 export function SectionOverviewCard({ panel }: { panel: PanelPreview }) {
     const Icon = kindIcons[panel.kind];
     const summary = panelSummary(panel);
-    const affiliated = panel.agents.filter((agent) => !agent.standalone).length;
-    const standalone = panel.agents.length - affiliated;
+    const { affiliated, standalone } = agentCounts(panel);
     return (
         <Link
             to={panelPath(panel)}
@@ -69,7 +69,9 @@ export function SectionOverviewCard({ panel }: { panel: PanelPreview }) {
                                     </span>
                                     <span className="shrink-0 text-muted-foreground">
                                         {agent.status}
-                                        {agent.external ? " · external" : ""}
+                                        {agent.executionOwnership === "external"
+                                            ? " · external"
+                                            : ""}
                                     </span>
                                 </li>
                             ))}

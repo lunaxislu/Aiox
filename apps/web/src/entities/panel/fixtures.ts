@@ -1,15 +1,23 @@
 import type { PanelPreview } from "@/entities/panel/model";
+import {
+    emptyWorkspace,
+    workspacePreview,
+} from "@/entities/panel/workspace-fixtures";
 
 export const previewPanels: PanelPreview[] = [
     {
+        ...workspacePreview,
         id: "main",
         kind: "workspace",
         section: "workspaces",
         name: "main",
-        terminalCount: 0,
+        terminalCount: workspacePreview.tabs.filter(
+            (tab) => tab.terminalId !== null,
+        ).length,
         agents: [],
     },
     {
+        ...emptyWorkspace,
         id: "scratch",
         kind: "workspace",
         section: "networks",
@@ -18,6 +26,7 @@ export const previewPanels: PanelPreview[] = [
         agents: [],
     },
     {
+        ...emptyWorkspace,
         id: "dev",
         kind: "network",
         memberCount: 1,
@@ -31,11 +40,22 @@ export const previewPanels: PanelPreview[] = [
                 id: "reviewer",
                 name: "reviewer",
                 status: "idle",
-                external: true,
+                executionOwnership: "external",
+                hostId: null,
+                networkId: "dev",
+            },
+            {
+                id: "claude",
+                name: "claude",
+                status: "working",
+                executionOwnership: "daemon",
+                hostId: null,
+                networkId: null,
             },
         ],
     },
     {
+        ...emptyWorkspace,
         id: "development",
         kind: "host",
         workPath: "~/projects/app",
@@ -43,7 +63,16 @@ export const previewPanels: PanelPreview[] = [
         name: "development",
         terminalCount: 0,
         command: "aiox host run --path ./aiox.yaml",
-        agents: [{ id: "builder", name: "builder", status: "failed" }],
+        agents: [
+            {
+                id: "builder",
+                name: "builder",
+                status: "failed",
+                executionOwnership: "daemon",
+                hostId: "development",
+                networkId: null,
+            },
+        ],
     },
 ];
 

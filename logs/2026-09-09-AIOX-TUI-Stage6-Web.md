@@ -9,14 +9,15 @@ status: open
 - [x] W1 의존성 설치와 설정 파일만 한다. React·Tailwind v4·shadcn init, vite·tsconfig·apps/web 자체 vitest(happy-dom, .tsx, alias) 배선, cn import 재작성 여부 판정이다. main.ts를 폐기하고 attach.ts는 남긴다. 화면은 만들지 않고 빈 앱이 뜨는 것까지다.
 - [x] W2 사이드바. react-router v7로 `/`(전체 개요), `/:section`(섹션 개요), `/:section/:panelId`(패널), `/settings`를 두고 shadcn Sidebar 복사본에서 cookie 줄과 단축키 useEffect를 삭제한 뒤 SidebarRail에 드래그 resize를 붙인다. 좁은 폭은 메인 폭을 줄이지 않는 280px 고정 오버레이 드로어이고 리사이즈 핸들을 숨긴다. 세 섹션 아코디언, 생성 주체별 우클릭 메뉴, 섹션 개요 카드, 빈 화면 두 층을 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 PanelView·AgentView zod, SSE 연결과 store 첫 조각, MSW 핸들러다.
 - [x] W3 헤더 구조 승인 후 layout만 적용했다. AppHeader·WorkspaceTitle·HeaderActions·ThemeToggle·ConnectionWarning과 드로어 아이콘 줄의 배치·폭 축약을 사용자에게 확인받는다. font size·색·장식은 미적용이다. 검색 W6·알림 dropdown W7·설정 저장 W8·햄버거 점과 Esc 순서 W9·실제 연결 W10 범위를 유지한다.
-- [>] W4 workspace 화면. `WorkspacePage`의 기존 패널 검증·빈 화면·비활성 새 터미널 버튼을 출발점으로 삼는다. shadcn Resizable로 layout 트리를 그리고 pane마다 탭바를 둔다. pane [+] 드롭다운, 탭 상태 점, presentation 일곱 값과 notice·Copy를 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 attach.ts로 terminalId별 xterm 부착, layout PUT·shells·tab close zod와 MSW, Operation store다.
-- [ ] W5 탭 드래그와 드롭. dnd-kit pointer 기반으로 네 결과를 구분한다. 같은 탭바 순서 변경, 다른 pane 이동, 가장자리 분할, 중앙 합치기다. 드롭 전 반투명 오버레이를 보여 주고 확인받은 뒤 결과를 layout PUT으로 보낸다. 드롭 위치 판정은 Playwright로 검증하며 이때 Playwright를 처음 넣는다.
+- [x] W4 W4 workspace UI·상태 안내·복구 카드·포커스·Copy 개선을 fixture로 반영하고 코드 리뷰·리팩토링과 spec 정합을 마쳤다. terminal attach 수명·접속 상태 연결 범위도 확정해 기록했다. 남은 것은 사용자 퍼블리싱 화면 확인 하나다. Force stop 서버 보완은 W11, 실제 API·Operation 연결과 통합 검증은 W10에서 추적한다. 실제 terminal 연결은 아직 미구현이다.
+- [>] W5 탭 드래그와 드롭. dnd-kit pointer 기반으로 네 결과를 구분한다. 같은 탭바 순서 변경, 다른 pane 이동, 가장자리 분할, 중앙 합치기다. 드롭 전 반투명 오버레이를 보여 주고 확인받은 뒤 결과를 layout PUT으로 보낸다. 드롭 위치 판정은 Playwright로 검증하며 이때 Playwright를 처음 넣는다.
 - [ ] W6 커맨드 팔레트. shadcn Command로 검색창을 열어 workspace·터미널·agent와 명령을 두 섹션으로 나눠 필터링하고 위아래 화살표·Enter·Esc를 붙인다. 확인 뒤 선택 결과를 해당 workspace·pane·탭으로 점프시키는 store 경로에 잇는다. 점프 대상이 모두 존재해야 하므로 workspace 화면 뒤에 둔다.
 - [ ] W7 알림. 헤더 벨의 dropdown을 열어 미확인 항목을 어떤 agent에서 무슨 일이 있었는지와 상대 시각으로 보여 주고 Clear all을 둔다. 확인 뒤 항목 클릭을 해당 workspace·pane·탭 이동과 확인 처리에 잇고 read 요청은 클릭이 ids 하나, Clear all이 ids 생략이다. 이동 대상이 다 있어야 하므로 main 화면 작업의 마지막이다.
 - [ ] W8 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다.
 - [ ] W9 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙, 햄버거의 미확인 점, 드로어 위 알림 dropdown의 Esc·backdrop 순서다.
-- [ ] W10 실제 daemon 연결과 통합 검증을 소유한다. main을 merge해 `@aiox/protocol`의 zod·타입이 이미 들어왔고 apps/web에는 임시 정의도 MSW도 만든 적이 없으므로 교체·제거 작업은 없다. 화면을 실제 HTTP·SSE·WS에 붙이고 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. Stage5 W11이 갖고 있던 W5~W10 실제 화면 연결과 전체 흐름 통합 검증을 이 항목이 흡수한다. 검증에서 서버 쪽 결함이 나오면 apps/daemon·packages/protocol은 Stage5 단독 수정이므로 고치지 않고 Stage5 W11로 넘긴다. 운영 Web 내부 구조는 docs/architecture/aiox-system.md에 반영한다.
-- [ ] W11 자동화로 닫을 수 없어 구현 후로 넘긴 사용자 실측 판정을 닫는다. 드롭 존 두께 확정값(초안 pane의 20%)과 Windows/Linux 브라우저 예약키 충돌이다. 사용자가 실제 화면에서 조작해 판정하고 어긋나는 것만 고친다. 탭 드래그·분할·미리보기 동작은 W5에서 pointer 기반으로 바꿔 Playwright가 판정하므로 이 항목에서 제외한다.
+- [ ] W10 실제 daemon 연결과 통합 검증을 소유한다. main을 merge해 `@aiox/protocol`의 zod·타입이 이미 들어왔고 apps/web에는 임시 정의도 MSW도 만든 적이 없으므로 교체·제거 작업은 없다. 화면을 실제 HTTP·SSE·WS에 붙이고 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. Stage5 W11이 갖고 있던 W5~W10 실제 화면 연결과 전체 흐름 통합 검증을 이 항목이 흡수한다. 검증에서 서버 쪽 결함이 나오면 apps/daemon·packages/protocol은 Stage5 단독 수정이므로 고치지 않고 Stage5 W11로 넘긴다. 운영 Web 내부 구조는 docs/architecture/aiox-system.md에 반영한다. Force stop 연결을 명시적으로 포함한다: 세 복구 상태의 버튼 → 확인 dialog → 최신 PanelView의 revision/runtime와 새 requestId로 기존 탭 종료 DELETE → Operation 성공·실패 관측 → 서버 배치 반영. 실패 표시·재시도와 실제 PTY 종료를 통합 검증한다. 서버 빈 pane·포커스 정리 보완 결과를 먼저 확인한다.
+- [ ] W11 서버 에이전트 구현 완료 보고 수신. removePanelTabs의 빈 pane·split·포커스 정리와 removeTerminal의 원자 저장은 직접 코드로 확인했다. 보고된 147개 테스트를 이 턴에 재실행하지는 않았다. 문서의 빈 pane·분할 유지 설명 정합성과 Web 통합 검증이 남았다.
+- [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
 ## Required Context
 
@@ -56,12 +57,13 @@ status: open
 
 ### {W4}
 
-- 컴포넌트 순서. `PaneTree`(layout 재귀를 Resizable로) → `Pane`(활성 테두리 강조, 빈 pane 유지) → `TabBar` → `Tab`(라벨·상태 점·닫기) → `PaneAddMenu`(New shell·Split right·Split down) → `TerminalView`(`attach.ts` 래퍼) → `TabNotice`(stopped 안내·Copy·restartCommand) → `CloseConfirmDialog`. 탭 닫기 idle 판정은 Web이 하지 않고 `confirm:false`로 보낸 뒤 409 `confirmation_required`면 dialog를 띄워 `confirm:true`로 재전송한다. 이때 requestId는 새로 만든다.
+- 구조·상태·포커스·삭제 규칙은 W4 workspace 구조·레이아웃 확정 블록과 후속 entry가 갖는다. WorkspacePage → WorkspaceView의 재귀 PaneTree·Tabs·탭바 액션·notice/terminal/empty·TerminalStatusBar·페이지 단일 종료 dialog를 fixture로 구현하고 스타일까지 적용했다. 사용자 확인으로 마감했고 화면 규칙은 [[docs/specs/aiox-web-ui]]에 반영했다. 실제 terminal/API 연결은 W10이다.
 - 재개 출발점은 `apps/web/src/pages/workspace/workspace-page.tsx`다. section과 panelId 검증, NotFound, 패널 종류별 빈 화면과 비활성 새 터미널 버튼이 있다. pane·탭·layout·xterm 연결은 남은 작업이며 기존 `attach.ts`를 연결한다.
+- 후속 사용자 결정: 포커스 opacity는 탭 버튼과 선택 탭 본문에 함께 적용한다(활성 1, 나머지 0.55). 본문 클릭·키보드 포커스 진입은 해당 pane의 선택 탭을 활성화한다. 이전 탭 버튼만 opacity·본문 클릭 무반응 결정을 대체한다. 상태 바·pane 테두리와 빈 pane은 변경하지 않는다.
 
 ### {W4,W5}
 
-- 터미널과 드래그. `attach.ts`가 terminalId별로 xterm과 WS를 소유하므로 pane 컴포넌트가 옮겨 다녀도 재생성하지 않는다. 드래그를 HTML5 DnD가 아니라 pointer 기반으로 고른 이유는 HTML5 DnD가 합성 이벤트로 발화하지 않아 자동 검증이 원천적으로 불가능하기 때문이다. pointer 기반이면 Testing Library `user-event`의 `user.pointer()`가 이벤트를 발화할 수 있다. 다만 jsdom·happy-dom은 `getBoundingClientRect()`가 전부 0이라 드롭 대상 판정이 불가능하므로 드롭 위치 검증은 실제 레이아웃이 있는 Playwright에서만 한다.
+- 터미널과 드래그: attach.ts는 현재 호출마다 xterm/WS를 생성하고 close에서 dispose한다. terminalId별 수명 보존은 연결 단계에서 구현해야 할 요구이며, pane 이동이 detach 후 re-attach를 뜻한다고 전제하지 않는다. DOM 노드를 옮기면 세션을 살린 채 자리만 바꿀 수 있으므로 보존 방식은 W5 설계에서 정한다. 확정된 UI 규칙은 하나로, 사용자가 시작하지 않은 재부착에는 reconnecting 카드를 띄우지 않는다. W4 구조·레이아웃 범위에서는 실제 attach를 호출하지 않았다. W5는 pointer 기반 DnD와 실제 브라우저 좌표 검증을 사용한다. 최신 layout children/tabIds 순서를 사용하고 포커스된 탭의 이동은 포커스를 따라가게 한다.
 ### {W9,W11}
 
 - 키 선정에서 탈락한 것과 미실측 범위. macOS 실측에서 떨어진 자리는 `⌘⇧N` 시크릿 창, `⌘⇧W` 창 닫기, `⌘⇧K` 사용자 Notion 전역 단축키, `⌘⇧Y`, 순차 탭 전환 후보 `⌘⌥좌우`·`⌘⇧대괄호`·`Ctrl+Tab`, `⌘Delete` 계열이며 미도달 원인에서 브라우저 점유와 실측 페이지 매칭 실패를 구분하지 않았다. `⌘T`는 실제 Chrome에서 새 탭이 열리고 페이지에 로그가 남지 않아 제외했다. 통과했으나 쓰지 않는 여유 후보는 `⌘⇧E`·`F`·`G`·`U`·`V`·`A`와 `⌘⌥I`·`U`·`C`다. 탭 전환은 3차 실측에서 `⌘1`~`⌘9`가 모두 통과했고 `⌘⇧1`~`⌘⇧9`는 `⌘⇧3`~`⌘⇧6`이 화면 캡처로 작동해 OS 층에서 막혔다. 이 탈락은 브라우저 예약이나 사용자 앱 전역과 달리 모든 macOS에 공통이라 사용자가 시스템 설정을 바꾸지 않는 한 닫히지 않는다. macOS는 이것으로 닫혔고 남은 미실측은 Windows/Linux뿐이라 W11 범위와 일치한다.
@@ -71,6 +73,8 @@ status: open
 
 - 정합 순서와 소유 경계. Stage5에 요청했던 zod 스키마·타입은 main merge로 이미 들어왔다. `packages/protocol`과 `apps/daemon` 전체는 Stage5 단독 수정이고 `apps/web` 전체와 [[docs/specs/aiox-web-ui]]는 이 로그가 소유한다. 공동인 [[docs/specs/aiox-configuration-web]]은 Stage5가 API·DTO 절, Stage6이 keybindings·저장 경계 절이다. 서버 계약의 owner는 실행 가능한 zod인 `packages/protocol`과 그 문서의 `Panel 조회·변경 HTTP와 React DTO`·`상태 전달·terminal 연결과 mock 전환` 절이다. worktree 시절의 인계문 `apps/web/Spec.md`는 두 owner를 중복 서술해 2026-09-23에 삭제했다. 계약이 어긋나 보이면 로그나 별도 문서를 만들지 말고 차이를 근거와 함께 보고한다. 운영 Web 내부 구조는 아직 owner 문서가 없으므로 이 단계에서 [[docs/architecture/aiox-system]]에 반영한다.
 - 카드 입력은 DTO 하나로 오지 않는다. `panelViewSchema`(`packages/protocol/src/host.ts`)는 id·kind·section·name·hostId·networkId·revision·layout·activePaneId·tabs만 갖고 agent가 없다. agent는 `webSnapshotSchema`가 panels·terminals·agents·operations·notifications를 나란한 top-level 배열로 보내는 설계라 join을 Web이 한다. fixture의 `terminalCount`는 tabs의 terminalId 비어있지 않은 개수이고 `panelSummary`가 쓰는 workPath·memberCount·routeCount는 host·network view에서 온다. 즉 카드 하나가 PanelView와 AgentView 목록과 Network·HostView를 합성해야 하고 그 합성은 아직 어디에도 없다. 필요한 필드 자체는 서버가 이미 보낸다. `agentViewSchema`(`core.ts:174`)에 `executionOwnership`·`networkId`·`hostId`·`terminalId`가 있고 [[docs/specs/aiox-web-ui]]가 external의 카드 배치 규칙을 명시한다. networkId가 있을 때만 NETWORKS에 올리고, hostId·terminalId가 항상 null이라 HOSTS와 WORKSPACES 역검색에는 걸리지 않으며, 둘 다 null이면 어느 카드에도 올리지 않는다. 앞서 이 항목에 적었던 "`agentViewSchema`에 대응 필드가 없다"는 틀렸다. 남은 미결은 spec이 "소속 agent와 standalone을 나눠 센다"만 쓰고 standalone 판정식을 주지 않는 것 하나다. repo 전체에서 standalone은 Host에 속하지 않은 독립 실행을 뜻하므로 `hostId === null`로 읽는 것이 자연스럽지만 짐작해서 넣지 말고 이 단계에서 확인하고 정한다. 서버에 `standalone` boolean을 요청하지 않는다. `hostId`에서 파생되므로 `PanelPreview.context`와 같은 중복이 된다.
+- standalone 판정은 `hostId === null && networkId === null`이다. 사용자가 지적해 정정한다. 앞서 이 항목에 적었던 `hostId === null` 단독 판정과 "HOSTS·WORKSPACES에서 split이 degenerate하다"는 분석은 둘 다 틀렸다. 근거는 카드의 agent 집합이 membership 조회 하나가 아니라 membership과 pane shell terminal 역검색의 합집합이라는 것이다. `aiox agent run claude`를 panel의 pane shell에서 치면 [[docs/specs/aiox-runtime]] 표대로 daemon 소유로 그 Web terminal에서 돌고, `bootstrap.ts:548`이 `terminalContextFromEnv(process.env)`의 유무로 external을 가르므로 `terminalId`가 그 pane에 붙는다. `agentRunSchema.network`(`core.ts:75`)는 optional이고 host 지정 인자는 없으므로 이 agent는 `networkId`·`hostId`가 모두 null이다. 따라서 NETWORKS·HOSTS 카드 모두 소속과 standalone이 실제로 섞인다. WORKSPACES만 `panelViewSchema.superRefine`이 workspace panel의 hostId·networkId를 모두 null로 강제해 소속 집합이 공집합이고 전부 standalone이다. 이것은 spec 결함이 아니라 결과다. 또 external ⊂ standalone이라던 기록도 뒤집힌다. `runtimes.ts:130-136`이 external의 terminalId·hostId를 금지하므로 카드에 뜨는 external은 networkId로만 올라오고, networkId가 있으면 standalone이 아니라 소속이다. spec 78행의 "둘 다 null인 external은 어느 카드에도 표시하지 않는다"가 나머지를 배제한다.
+- NETWORKS 카드의 멤버 수도 DTO 하나로 오지 않는다. `networkViewSchema`(`core.ts:134`)는 id·name·scope·routes뿐이고 members가 없다. members를 가진 것은 `hostNetworkViewSchema`(`host.ts:168`, `scope: "host"`)이며 `webNetworkSchema`는 둘의 union이다. 따라서 host scope network는 `members.length`를 그대로 쓰고 persistent network는 agents에서 networkId 매칭으로 세야 한다. 두 경로가 같은 수를 뜻하는지 확인하고 정한다.
 
 ## 2026-09-21 · 설계 라인 마감과 구현 착수
 
@@ -299,3 +303,140 @@ W4 착수 전 protocol을 다시 읽어 {W10}의 기록 하나를 정정했다. 
 적용한다", [[docs/decisions/external-execution-survival]] "외부 standalone Agent")는
 standalone을 Host에 속하지 않은 독립 실행으로 쓰므로 `hostId === null`로 읽는 것이
 자연스럽다. 확정은 W10에 남긴다. W4는 표시용 타입 단계라 이 판정 없이 진행한다.
+
+## 2026-09-23 · W4 workspace 구조·레이아웃 확정
+
+사용자와 W4 최종안을 논의하고 구조·레이아웃 구현을 승인받았다. 폰트·색·opacity·장식 CSS는 추가하지 않는다. shared/ui의 의미에 맞는 컴포넌트를 우선 재사용하고, 없으면 shadcn 제공 여부를 확인한다. 최초 테스트·story 금지 지시는 후속 메시지로 변경되어 필요한 테스트와 story를 작성한다.
+
+- 구조: WorkspacePage → 재귀 PaneTree(split은 Resizable, pane은 TabBar·PaneAddMenu·StatusBarToggle·본문·TerminalStatusBar), 페이지에 종료 확인 dialog 하나. [+]는 New shell / Split right / Split down이며 빈 root pane에서도 유지한다.
+- 포커스: pane 테두리와 본문·상태 바는 포커스 때문에 바꾸지 않는다. 스타일 단계에서 포커스된 탭 버튼만 opacity 1, 나머지는 낮춘다. activePaneId + 해당 pane의 selectedTabId로 표현한다. 선택은 두 값을 한 번에 변경한다. pane 빈 영역 클릭은 변경하지 않는다. 실제 터미널 입력 포커스와 선택 동기화는 attach 연결 시 확인한다.
+- 제거: 최신 tabIds/layout children 순서에서 제거 전에 대체 대상을 고른다. 포커스 탭을 제거하면 같은 pane의 다음 탭, 없으면 이전 탭; pane이 비면 다음 pane, 없으면 이전 pane의 선택 탭. 전체가 비면 빈 root pane 하나. 비포커스 탭 제거는 기존 포커스 유지. 빈 pane 정리·형제 비율 정규화·단일 자식 split 축약은 실제 서버 제거 작업과 함께 처리해야 한다. W4는 fixture 동작이며 서버 반영은 미완료다. W5 이동은 최신 트리 순서를 사용하며 포커스된 탭을 따라간다.
+- 본문: notice → terminalId → empty. preparing+notice는 version9처럼 준비 안내만, 명령·Copy 없음; preparing+notice 없음은 기존 terminal 표시. 다른 notice는 안내·이유·명령·Copy. CopyCommand는 기존 구현과 완료 피드백 유지.
+- 다른 Work Item에 담당이 없던 상태 바·접기·긴 이유 펼침·연결 끊김·Reconnect·복원 실패의 ID/이유·Reconnect screen·Force stop 확인은 W4 UI에 포함한다. 탭 DnD는 W5, 실제 daemon 통합은 W10.
+- 데이터: PanelPreview에 Pick<PanelView, "layout" | "activePaneId" | "tabs">를 합성한다. presentation 7값은 agent activity 5값과 별개다. activity/reason은 AgentView, cwd는 TerminalView, 연결 상태는 attach에서 연결해야 한다. branch는 현재 확인한 DTO에 없다.
+- version9 검증: 브라우저에서 pane 전체 opacity 1/0.55와 본문 클릭 포커스를 확인했다. 이는 이번 탭 버튼만 opacity 결정과 의도적으로 다르다. 새 pane을 만들고 마지막 탭을 닫으면 남은 pane 모두 흐려지는 prototype 동작은 채택하지 않는다.
+- 정정: attach.ts는 현재 호출마다 xterm/WS를 생성하고 close에서 dispose한다. terminalId별 보존은 현재 기능이 아니라 연결 단계의 구현 요구다. Dialog 확인 대상은 local state, Operation 결과는 연결 단계 공용 상태다.
+
+다음: 기존 Resizable과 shared/ui를 재사용해 구조·레이아웃을 구현하고, 상태별 story 및 제거·선택의 의미 있는 테스트로 검증한다. 시각 스타일과 실제 daemon/WS 연결은 아직 착수하지 않는다.
+
+### 2026-09-23 16:23 · 구조·레이아웃 구현과 검증
+
+W4 구조·레이아웃을 fixture 상태로 구현했다. WorkspacePage는 route 검증 후 WorkspaceView를 렌더한다. 재귀 Resizable, pane별 Tabs·추가 메뉴·본문·상태 바·접기/이유 펼치기, 연결 실패/복원 실패/재연결/강제 종료 확인을 기존 shared/ui로 조립했다. Tabs는 shared/ui에 없어 shadcn Base UI Tabs 문서(https://ui.shadcn.com/docs/components/base/tabs)를 확인하고 설치된 Base UI를 사용하는 스타일 없는 shared/ui 래퍼를 추가했다. 기존 Resizable과 package/lock 변경은 작업 시작 전에 존재했으며 재설치하지 않았다.
+
+PanelPreview에 protocol PanelView의 layout·activePaneId·tabs를 Pick으로 합성했다. 기존 생성 경로·fixture·타입을 소비하는 story/test에 빈 layout을 공급했다. workspace-fixtures.ts는 presentation 7값, preparing의 두 본문, agent 상태 5값과 연결 상태를 제공한다. 서버 접속 없이 로컬 fixture 선택·추가·분할·종료·재연결만 동작한다. workspace-preview.ts의 빈 pane 정리는 UI 검증용이며 daemon 동작을 구현했다고 보지 않는다.
+
+폰트·색·opacity·장식 CSS는 추가하지 않았다. 기존 shared/ui 기본 스타일은 재사용한다. 포커스는 data-focused로만 표현해 스타일 적용을 보류했다. CopyCommand는 변경하지 않았고 preparing notice에서는 렌더하지 않는다. 탭 선택은 activePaneId와 selectedTabId를 함께 갱신하며, 빈 pane 클릭 handler는 없다. 실제 xterm/WS·HTTP·Operation·W5 DnD·branch 데이터 연결은 미구현이다.
+
+검증: Web 전체 Vitest 10파일/54테스트(story 포함) 통과. W4 전용은 순서 기반 선택·제거·split 축약·빈 root 4테스트와 8 story이다. Web typecheck·build, 루트 lint·format:check, git diff --check 통과. agent-browser로 /workspaces/main을 기본 폭과 390px에서 확인해 분할 영역·높이와 가로 넘침을 점검했다. react-doctor changed 검사에는 기존 router의 error boundary, theme provider context value, button/badge export 진단 4건이 남았고 점수 API는 연결되지 않았다. 이번 범위에서 기존 진단을 수정하지 않았다.
+
+다음: 사용자가 W4 구조·레이아웃을 확인한다. 승인 전 스타일은 추가하지 않는다. 확인 뒤 실제 attach/API/Operation 연결 시점과 범위를 논의한다. W4는 전체 완료로 닫지 않는다.
+
+### 2026-09-23 16:29 · W4 퍼블리싱 적용
+
+사용자가 구조·레이아웃 단계 다음으로 퍼블리싱을 지시했다. 이전 font/color/opacity 보류를 이번 W4 시각 스타일 범위에서 해제했다. 구조와 fixture 동작을 유지하고 workspace-view.tsx에 탭바·상태 점·본문·notice·상태 바·복구 안내·확인 dialog의 간격·타이포·색·축약·스크롤을 적용했다. shared/ui의 Button variant/size·Alert·Collapsible·CopyCommand·Resizable을 재사용하고 추가 의존성은 넣지 않았다.
+
+탭 버튼에만 data-focused 기준 opacity 1/0.55를 적용했다. pane 활성 테두리나 포커스에 따른 본문·상태 바 흐림은 없다. 접속 끊김은 별도 connection 상태에 한해 본문 opacity 0.4와 복구 overlay로 나타낸다. [+]와 상태 바 토글은 고정 아이콘 버튼, 탭 목록은 가로 스크롤이다. 상태 점은 기존 카드의 activity 색 계열에 맞춰 idle 녹색·working 파랑·awaiting-user 황색·preparing 보라·실패 destructive로 표시한다. notice의 preparing Copy 숨김과 기존 CopyCommand 완료 피드백은 그대로다.
+
+검증: W4 4개 로직 테스트와 8개 browser story(총 12개) 통과. Web typecheck·build, lint·format:check·diff check 통과. React Doctor 변경 컴포넌트 진단 없음(점수 API 연결 불가). agent-browser로 1280×800의 밝은/어두운 테마와 390×844 폭을 확인했다. 계산 스타일로 포커스 탭 1/다른 탭 0.55, 모든 pane·정상 terminal 본문 1을 확인했다. 좁은 화면 document 폭 390px로 페이지 가로 넘침이 없다.
+
+다음: 사용자가 W4 퍼블리싱 화면을 확인한다. 실제 daemon·xterm/WS·Operation 연결, branch 데이터는 미연결이다. W5 탭 이동은 이번 작업에 포함하지 않았다.
+
+### 2026-09-23 16:40 · 터미널 본문 포커스와 opacity 범위 변경
+
+사용자 후속 지시로 탭 버튼에만 적용하던 포커스 opacity를 선택 탭의 본문 영역에도 적용한다. 포커스된 탭 버튼·본문은 1, 다른 탭 버튼·본문은 0.55이다. 상태 바와 pane 테두리는 그대로다. 기존 연결 실패 전용 흐림·복구 안내는 유지한다.
+
+터미널 본문 pointer down 또는 키보드 포커스 진입 시 해당 pane의 현재 선택 탭으로 onSelect를 호출해 activePaneId와 selectedTabId를 함께 갱신한다. 빈 pane에는 활성화 handler를 추가하지 않는다. 이전의 본문 클릭 비활성·탭 버튼만 opacity 결정을 이번 지시로 대체한다. 기존 Presentations story에 본문 선택 시 탭 포커스 및 양쪽 본문 opacity 검증을 추가했다.
+
+### 2026-09-23 16:42 · 본문 포커스 검증 결과
+
+기존 browser story 8개와 typecheck·format:check 통과. 본문 클릭 후 탭 data-focused와 양쪽 본문의 data-active 전환을 검증했다. Storybook 테스트에서는 computed opacity가 1로 관측되어 CSS 수치 검증은 제외했고 활성 상태 전이만 검증했다. 실제 화면의 opacity 시각 확인은 별도다.
+
+### 2026-09-23 16:51 · 상태 안내·복구 카드 개선과 명령어 줄바꿈
+
+사용자 요청으로 stopped/start-failed/crashed/unavailable/preparing notice를 shared/ui Empty의 아이콘·제목·설명·재시작 명령으로 정리했다. 연결 복구는 shared/ui Card의 header/content/footer로 분리해 기존 Alert의 아이콘 2열 grid에 버튼이 들어가던 정렬 문제를 제거했다. Reconnecting은 Reconnect 버튼을 없애고 Force stop만 표시한다. Disconnected·Screen lost는 Reconnect와 Force stop을 제공한다. 모든 Force stop은 기존 확인 dialog와 fixture 닫기 흐름에 연결한다. 서버 API 가능 여부와 실제 처리는 사용자 UI 확인 이후 조사한다.
+
+후속 스크린샷에서 명령어 잘림을 확인해 공용 CopyCommand의 truncate를 제거하고 공백 기준 줄바꿈 및 긴 토큰 줄바꿈을 허용했다. 복사 버튼은 우상단에 유지하고 복사·Copied 피드백 로직은 변경하지 않았다. 소비자는 workspace와 section 안내다.
+
+검증: workspace/section browser story 15개, typecheck·lint·format:check·build 통과. 변경 WorkspaceView React Doctor 진단 없음. 브라우저에서 Reconnecting 카드의 정렬과 Force stop, 390px 분할 화면의 명령어 전체 줄바꿈을 확인했다. 서버는 변경하지 않았다. 다음은 사용자 UI 확인 후 새 Force stop 버튼의 API 전달·서버 처리 가능 여부 추적이다.
+
+### 2026-09-23 16:52 · 재시작 안내 정렬과 가용 폭 확대
+
+사용자 피드백에 따라 Run in your terminal to start again 문구를 중앙 정렬했다. TabNotice 명령어 영역의 max-w-sm 제한을 max-w-none으로 해제하고 바깥 여백을 p-6에서 p-4로 줄여 pane 가용 폭을 사용한다. 명령어 자체는 왼쪽 정렬과 줄바꿈을 유지한다. format:check와 diff check 통과.
+
+### 2026-09-23 16:52 · 명령 길이에 맞춘 복사 영역 폭
+
+사용자 피드백: 전체 폭을 채우면서 명령과 복사 버튼 사이가 너무 벌어진다. TabNotice의 CopyCommand에 w-fit max-w-full self-center를 적용한다. 짧은 명령은 내용 너비로 중앙 배치하고 긴 명령은 pane 가용 폭 안에서 줄바꿈한다. 이전 max-w-sm 제한은 되살리지 않는다.
+
+### 2026-09-23 16:55 · Force stop 서버 경로 조사
+
+사용자 UI 확인 뒤 Force stop의 서버 지원 여부를 조사했다. 기존 DELETE /api/panels/:panelId/tabs/:tabId는 requestId/revision/expectedRuntimeId/confirm을 받아 202 Operation을 저장한 다음 stopTerminal을 호출하고 탭을 제거한다. admission·실행 직전 revision/runtime 충돌을 검증하며 실행 실패는 Operation failed/error/cleanupErrors로 남긴다. GET /api/operations/:id와 webEvents로 결과 관측 가능하다. 기존 panel-operations.test.ts 통합 테스트 1개를 실행해 shell 종료·탭 제거·Operation 성공을 확인했다. 세 브라우저 연결 상태 각각의 실연결 end-to-end 검증은 아직 하지 않았다.
+
+별도 기존 DELETE /api/terminals/:terminalId도 존재한다. stopTerminal을 직접 기다려 200 deleted를 반환하며 removeTerminal로 연결 탭을 제거할 수 있지만 panel revision/expectedRuntimeId/Operation 계약이 없다. 현재 Close and stop UI 연결에는 guarded panel tab close API를 권장한다. 새 force endpoint나 force 필드는 필요 없다. stopTerminal은 연결 Runtime 정리 후 terminal.kill을 호출한다. PTY 종료는 Unix에서 SIGTERM 후 2초 대기, SIGKILL 후 2초 대기, 사망 확인 실패 시 throw다. Windows는 node-pty hard kill이다.
+
+Disconnected/Reconnecting/Screen lost는 브라우저 터미널 연결·복원 상태로 종료 API의 입력 조건이 아니다. HTTP로 daemon에 접근 가능하면 동일 API 사용 가능하다는 코드 기반 판단이다. daemon 자체에 접근 불가하면 클릭만으로 종료 보장은 없다. Web은 아직 fixture closePreviewTab이고 PanelPreview에 revision이 없으므로 최신 PanelView와 API/Operation 결과 연결이 필요하다. 실패 시 탭을 선제 제거하지 말고 오류를 표시해야 한다. 빈 pane 제거·비율 정규화·activePaneId 대체는 서버 removePanelTabs/removeTerminal에 미구현이라 기존 합의와 차이가 남는다. 이번 조사에서는 production 코드를 수정하지 않았다.
+
+### 2026-09-23 16:59 · Force stop 남은 작업의 명시적 추적
+
+사용자 요청에 따라 Force stop을 완료된 조사와 남은 구현으로 나누어 기록한다. 기존 종료 API 지원 조사와 서버 에이전트 전달용 프롬프트 작성은 완료했다. 서버 작업이 실제 수행·완료되었다는 근거는 없다. 서버 탭 제거·빈 pane·포커스 정리 및 종료 계약 검증은 W11로 추가하고, Web의 API/Operation 연결은 기존 통합 작업 W10에 구체화했다. W4는 fixture UI 상태이며 xterm attach와 실제 상태 연결은 아직 미구현이다. W5 DnD, W6 팔레트, W7 알림, W8 설정, W9 단축키·횡단 규칙, W10 daemon 통합도 남아 있다.
+
+### 2026-09-23 17:05 · 탭 overflow와 Scroll Area 검토
+
+서버 보완 결과는 사용자가 알려주기로 했다. 현재 우선 작업은 탭 추가 시 폭 밖으로 가려지는 문제다. 현재 TabsList는 overflow-x-auto/scrollbar-none이지만 addShell은 선택 상태만 변경하고 새 탭 가시성 확보를 하지 않는다. shared/ui에 ScrollArea는 없다. 공식 shadcn Base Scroll Area와 Base UI의 Gradient scroll fade 예제를 확인했다. 제안은 ScrollArea viewport에 좌우 overflow CSS 변수로 mask를 적용하고 scrollbar는 렌더하지 않는 것, 추가·선택된 탭을 가까운 가시 위치로 스크롤하는 것, +와 상태 바 토글을 viewport 밖에 고정하는 것이다. 마스킹만으로 새 탭이 보이는 문제는 해결되지 않는다. 이번 턴은 구조·interaction 제안이며 코드 변경은 아직 하지 않았다.
+
+### 2026-09-23 17:11 · 탭 Scroll Area·직접 분할 버튼과 서버 보고 수신
+
+사용자가 승인한 탭 overflow 개선을 반영했다. 설치된 Base UI ScrollArea를 shared/ui에서 재사용하고 scrollbar는 렌더하지 않는다. viewport의 overflow-x-start/end CSS 변수로 양끝 16px 이내 mask를 적용한다. 선택 탭 변경 시 탭과 닫기 버튼이 보이도록 해당 viewport만 최소 스크롤한다. [+] 메뉴는 New shell·Split right·Split down 고정 아이콘 버튼으로 대체했다. 기존 Tooltip을 사용해 각 아이콘과 Status bar에 hover/focus 설명을 표시한다.
+
+실제 Storybook 브라우저의 420px 탭바에서 새 탭 추가 후 scrollLeft 1072, viewport 293px와 좌측 16px/우측 0px mask를 확인했다. 테스트 환경에서는 CSS 기반 너비가 실제 브라우저와 달라 geometry 단언을 제외하고 추가·Home/End 선택·툴팁 동작을 story에서 검증한다.
+
+사용자가 서버 에이전트 완료 보고를 전달했다: 기존 DELETE API 재사용, 공통 제거 경로의 빈 pane·split·포커스 정리, 원자 저장, 관련 147테스트 및 build/type/lint/format 통과. 이는 전달받은 결과이며 이 턴에서 코드를 독립 검증한 것은 아니다. 서버 에이전트가 문서의 빈 pane·분할 유지 설명은 수정하지 않았다고 밝혔으므로 문서 정합성 확인도 남긴다. API 연결 전에 W11 구현·계약과 문서 보완 여부를 대조한다.
+
+### 2026-09-23 17:12 · 탭바 검증 마무리
+
+최종 workspace story 9개(추가·직접 분할·Home/End 선택 포함), typecheck·lint·format:check·build 통과. React Doctor 변경 2파일 진단 없음. 마스킹·자동 스크롤·Status bar hover 툴팁은 실제 agent-browser 화면에서 확인했다. 테스트 환경에서는 툴팁 hover가 재현되지 않아 해당 단언은 제외했다. 앞 기록의 story 툴팁 검증 예정은 실제 브라우저 확인으로 대체한다. 서버 보완은 사용자 전달 결과를 기록했으며 이 턴에 Web API 연결을 시작하지 않았다.
+
+### 2026-09-23 17:16 · 탭바 액션 구분
+
+사용자 승인으로 상태 바 버튼 앞에 기존 shared/ui Separator를 vertical로 추가했다. 분할 버튼은 PanelRightOpen/PanelBottomOpen 아이콘으로 방향을 구별한다. 기존 툴팁과 상태 바 켜짐 배경은 유지하며 좌우 스크롤 버튼은 추가하지 않는다. 탭 이동은 기존 Shift+휠·트랙패드·키보드와 선택 자동 스크롤을 유지한다.
+
+### 2026-09-23 17:18 · 최초 여섯 의견과 잔여 작업 대조
+
+사용자 요청으로 최초 여섯 의견을 현재 코드와 대조했다. (1) notice→terminalId→empty와 preparing Copy 제외는 반영. 빈 workspace는 안내와 추가/분할 버튼, host/network 빈 화면은 command가 있으면 Copy 유지. (2) 본문은 여전히 static pre fixture이며 attach.ts는 호출마다 Terminal/WS를 생성·close에서 dispose한다. 인스턴스 유지·실제 접속 상태 연결은 남음. (3) 확인 대상 local state 반영, 실제 409/API/Operation 공용 상태 연결은 남음. (4) 선택 시 activePaneId/selectedTabId 로컬 동시 변경, 본문 pointer/focus 활성화, 탭/본문 1·0.55와 별도 닫기 버튼 반영. 실제 단일 layout PUT과 DOM 입력 포커스 동기화는 통합 때 검증. (5) orientation·percent defaultSize·onLayoutChanged·재귀 nextLayout은 반영. 서버 저장과 실제 PTY resize 통합은 미연결. (6) 이번 직접 코드 확인에서 removePanelTabs가 layout/activePaneId를 함께 받아 빈 pane·split·비율·대체 포커스·빈 root를 정리하며 persistence.removeTerminal이 transaction 내 저장하는 것을 확인했다. 최초 서버가 병합 안 한다는 설명은 현재 코드 기준으로 더 이상 맞지 않는다. 서버 보고의 147개 테스트는 이 턴에 재실행하지 않았고 문서 정합성·Web 통합 검증은 남아 있다.
+
+탭바 ScrollArea/마스킹/자동 스크롤, 직접 추가·분할 버튼, 상태 바 Tooltip/Separator 및 상태 안내 UI는 반영된 fixture 범위다. W11과 중복된 W12 서버 보완 항목은 W11로 추적을 통일한다.
+
+### 2026-09-23 17:42 · W4 코드 리뷰·리팩토링과 spec 정합
+
+사용자 지시로 코덱스와 사용자가 확정한 W4 코드를 리뷰하고 구현과 어긋난 spec을 고쳤다. opacity는 사용자 결정이므로 구현을 유지하고 spec을 바꿨다.
+
+리팩토링 다섯. (1) `closePreviewTab`이 오늘 Stage5가 커밋한 `removePanelTabs`(`cdd78b4`)와 같은 prune·비율 정규화·대체 포커스를 다시 구현하고 있어 위임으로 바꿨다. 132행에서 92행. 지역 구현은 닫은 탭과 무관한 빈 pane까지 지웠고 서버 쪽은 가드로 막으므로 서버 규칙으로 통일된다. (2) 중첩 `ResizablePanel`의 DOM id가 중복이었다. 라이브러리가 `id`를 실제 DOM 속성으로 렌더하는데 패널 id를 부분 트리의 첫 pane id로 잡아 바깥 그룹의 자식과 안쪽 그룹의 자식이 같은 값을 썼다. depth 접미사로 유일화하고 React key는 내용 기반으로 분리했다. story 단언을 되돌려 panel 4개에 고유 id 3개로 실패하는 것을 실측했다. (3) `CloseAndSplit`의 `queryByRole("separator")`가 resize 핸들이 아니라 탭바 장식 Separator를 잡아 테스트 1건이 실패 중이었다. 장식에 `aria-hidden`, 핸들에 `aria-label`을 줘 접근성 의미와 단언 대상을 함께 맞췄다. (4) `copy-command`의 `whitespace-pre-wrap`과 `truncate`가 같은 `white-space`를 두고 충돌해 한쪽이 죽어 있었다. 줄바꿈이 의도이므로 `truncate`를 뺐다. (5) `StatusDot`의 `string`을 `AgentView["status"]`와 `TabView["presentation"]` union으로 좁혔다.
+
+[[docs/specs/aiox-web-ui]] 다섯 곳을 구현에 맞췄다. 헤더 높이 40px 이하를 60px로(다이어그램 주석과 본문 둘 다), pane `[+]` 드롭다운을 탭바 버튼 셋으로, 분할 핸들을 hover 시 노출에서 상시 노출로, 활성 pane 강조를 테두리에서 opacity로, 그리고 `상태 표시`를 `탭의 상태 점`과 `pane 상태 표시줄` 두 하위 절로 나눠 표시줄 계약을 신설했다. 표시줄에 새로 쓴 것은 필드 순서, 기본 펼침과 탭 없을 때 토글 비활성, 작업 디렉터리를 두는 이유와 축약, 이유 펼치기가 탭 이동으로 풀리는 것, terminal 연결 경고가 헤더의 daemon 경고와 다르다는 구분이다.
+
+정정. 재연결 카드가 어느 spec에도 없다고 보고했던 것은 틀렸다. [[docs/specs/aiox-configuration-web]] 290-293행이 확인한 원인 표시, 화면 다시 연결과 강제 종료의 분리, 재연결 중 사유·진행 유지, 강제 종료의 기존 종료 경로 호출을 이미 소유한다. `aiox-web-ui`와 Host panel 절만 보고 살아 있는 서버로 자동 복귀 절을 빠뜨린 탓이다. 상태 표시줄에서 실제로 신규였던 것은 작업 디렉터리 노출과 접기 정책 둘뿐이고 status·이유·연결 경고는 기존 계약의 표현이었다.
+
+코덱스가 넣은 `unrestorable` 연결 상태를 확인했다. 재연결 버튼 비활성, 종료 후 새로 열기 안내, 실행 생존을 보장하지 않는다는 문구가 같은 문서 296-298행을 충족하고 story가 `toBeDisabled()`로 검증한다. fixture 어휘도 `attach.ts:145`의 restorable 분기와 맞아 `screen-lost`(복원 가능)와 `unrestorable`(복원 불가)이 갈린다.
+
+검증은 `pnpm check` exit 0, `apps/web` 56개 포함 repo 전체 통과, `check-markdown-inline-code` 통과다. 서버는 건드리지 않았다.
+
+### 2026-09-23 17:48 · terminal attach 수명·접속 상태 연결 범위 확정
+
+W4가 남겨 둔 "terminal attach 수명·접속 상태 연결 범위 정리"를 닫는다. 사용자가 매핑을 제시하고 코덱스 검토를 거쳤으며 아래는 `apps/web/src/attach.ts`에 직접 대조해 확인한 결과다.
+
+실제 `AttachmentState` 넷과 화면 처리. `connected`(`:244` restore 완료, 입력 허용·resize·포커스 복귀)는 복구 안내를 지우고 터미널을 보여 준다. `failed`(`fail()` `:139` 또는 socket close `:287`)는 `disconnected` 안내와 실패 이유를 보여 준다. `unrestorable`(`fail(msg, false)`, 서버 `error`의 `restorable: false`가 명시된 경우만 `:265-267`)은 복원 불가 안내와 재연결 비활성이다. `exited`(`:259` 서버 `exit` 메시지)는 정상 종료 흐름이며 연결 실패로 표시하지 않는다. `reconnecting`은 attach에 없는 UI 전용 상태다. attach에 재연결 개념이 없고 재연결은 `attachTerminal()` 재호출이므로 UI가 낙관적으로 갖고 실제 attach 결과로 전환한다.
+
+UI 어휘로 `failed` 대신 `disconnected`를 쓴다. `agentViewSchema.status`에 이미 `failed`가 있어 연결 어휘로 쓰면 agent 상태와 충돌하기 때문이다. fixture의 `connection` 값은 그대로 둔다.
+
+붙일 때 지킬 세 가지. 첫째, `exited`에서 UI가 `presentation`을 바꾸지 않는다. attach는 입력 차단과 종료 출력까지만 하고 `:255-258`이 xterm 버퍼에 종료 배너를 이미 쓴다. 탭의 `presentation`·`notice`·제거는 서버 권위이며 다음 서버 상태 갱신(SSE 또는 재조회)을 기다린다. [[docs/specs/aiox-configuration-web]] 148행의 "실제 Agent 종료 확인 후"와 154행의 "실패하면 이유와 대상 유지"가 근거다. 둘째, 실패 이유는 `onState`의 text를 그대로 표시한다. `:288`의 close 핸들러가 1013일 때 서버 `event.reason`을 싣고 기본 문구가 출력 처리 지연 안내이므로, 일반 연결 끊김과 같은 문서 313행의 1013 계약을 한 원인으로 뭉개지 않는다. 현재 fixture의 `reason` 자리에 연결하며 실제 연결이 구현됐다는 뜻은 아니다. 셋째, `reconnecting`은 사용자가 재연결을 시작한 경우에만 들어간다.
+
+세 번째와 관련해 코덱스 지적으로 정정한다. 앞서 "W5에서 pane 이동은 detach 후 re-attach"라고 적을 뻔했으나 이를 최종 설계로 확정하지 않는다. `{W4,W5}`에 이미 terminalId별 수명 보존이 요구로 기록돼 있고, DOM 노드를 옮기면 xterm과 WS를 살린 채 자리만 바꿀 수 있으므로 이동이 재생성을 뜻한다고 전제하면 안 된다. 확정되는 것은 UI 규칙 하나, 즉 사용자가 시작하지 않은 재부착에는 `reconnecting` 카드를 띄우지 않는다는 것뿐이다. 이동 시 인스턴스를 실제로 어떻게 보존할지는 W5 설계에서 정한다.
+
+## 2026-09-23 · W4 마감과 W5 착수
+
+사용자가 퍼블리싱 화면을 직접 확인하고 통과시켜 W4를 닫는다. W4는 fixture UI, 코드 리뷰·리팩토링, [[docs/specs/aiox-web-ui]] 정합, terminal attach 수명·접속 상태 연결 범위 확정까지 마쳤다. 세부는 앞 블록의 entry들이 갖는다.
+
+W5로 넘어간다. 탭 드래그와 드롭으로 같은 탭바 순서 변경, 다른 pane 이동, 가장자리 분할, 중앙 합치기 네 결과를 구분한다. 선결 조건은 없다. 필요한 구조는 W4가 만든 `WorkspaceView`의 재귀 `PaneTree`와 `workspace-preview.ts`의 layout 전이에 있고, 드래그 대상인 탭바는 이미 `ScrollArea`와 자동 스크롤을 갖췄다.
+
+W5에서 먼저 정할 것 둘. 하나는 pane 이동 시 terminal 인스턴스를 어떻게 보존하느냐다. `attach.ts`의 현재 `close()`가 xterm과 WS를 폐기하므로 DOM 노드를 옮겨 세션을 살리는 방식을 설계해야 하며, 이동이 재생성을 뜻한다고 전제하지 않는다. 다른 하나는 드롭 존 두께로 [[docs/specs/aiox-web-ui]] 192행이 pane의 20%를 초안으로 두고 구현 후 조정하라고 열어 뒀다. 실제 좌표 판정은 이 단계에서 처음 들어오는 Playwright로 검증한다.
+
+실제 daemon 연결, API·Operation 전달, PTY resize 통합은 W5가 아니라 W10이다. 서버 보완 대조는 W11이다.

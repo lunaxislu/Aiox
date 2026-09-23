@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter } from "react-router";
 
+import { emptyWorkspace } from "@/entities/panel/workspace-fixtures";
+
 import { previewPanels } from "./fixtures";
 import { SectionOverviewCard } from "./section-overview-card";
 
@@ -30,6 +32,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
     args: {
         panel: {
+            ...emptyWorkspace,
             id: "development",
             kind: "workspace",
             section: "workspaces",

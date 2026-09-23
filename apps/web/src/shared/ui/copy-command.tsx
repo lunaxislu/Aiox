@@ -31,12 +31,12 @@ export function CopyCommand({ command, className }: Props) {
         <div className={cn("w-full min-w-0", className)}>
             <div
                 className={cn(
-                    "flex items-center gap-2 rounded-md border bg-muted/40 py-1 pr-1 pl-2.5",
+                    "flex items-start gap-2 rounded-md border bg-muted/40 py-1 pr-1 pl-2.5",
                     state === "failed" && "border-destructive",
                 )}
             >
                 {/* 2. bash 프롬프트 심볼 추가 (선택 제외 및 스크린리더 숨김) */}
-                <code className="min-w-0 flex-1 truncate font-mono text-xs select-all">
+                <code className="min-w-0 flex-1 py-1.5 font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere select-all">
                     <span
                         className="font-mono text-xs text-muted-foreground select-none ml-0.5 mr-1"
                         aria-hidden="true"

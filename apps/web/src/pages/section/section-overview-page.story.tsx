@@ -4,6 +4,7 @@ import { fn } from "storybook/test";
 
 import type { AppOutletContext } from "@/app/app-shell";
 import { previewPanels } from "@/entities/panel/fixtures";
+import { emptyWorkspace } from "@/entities/panel/workspace-fixtures";
 import { OverviewPage } from "@/pages/overview/overview-page";
 import { WorkspacePage } from "@/pages/workspace/workspace-page";
 
@@ -46,6 +47,7 @@ export const Hosts: Story = {
         section: "hosts",
         panels: [
             {
+                ...emptyWorkspace,
                 id: "development",
                 kind: "host",
                 workPath: "~/projects/app",
