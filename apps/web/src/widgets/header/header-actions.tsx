@@ -1,4 +1,5 @@
-import { BellIcon, SearchIcon, SettingsIcon } from "lucide-react";
+// SearchIcon: 커맨드 팔레트 보류로 함께 주석. docs/specs/aiox-web-ui.md 커맨드 팔레트 절.
+import { BellIcon, SettingsIcon } from "lucide-react";
 import { Link } from "react-router";
 
 import { ThemeToggle } from "@/features/theme/theme-toggle";
@@ -8,18 +9,13 @@ import { useSidebar } from "@/shared/ui/sidebar";
 
 export type HeaderActionsProps = { unreadCount: number };
 
-export function HeaderActions({
-    unreadCount,
-    placement = "header",
-    onNavigate,
-}: HeaderActionsProps & {
-    placement?: "header" | "drawer";
-    onNavigate?: () => void;
-}) {
-    const { isMobile } = useSidebar();
-    if (placement === "header" && isMobile) return null;
+export function HeaderActions({ unreadCount }: HeaderActionsProps) {
+    const { setOpenMobile, isMobile } = useSidebar();
+    // 설정 진입은 화면 이동이라 드로어를 닫는다. 테마 토글은 이동이 아니라 유지한다.
+    const closeMobileSidebar = () => isMobile && setOpenMobile(false);
     return (
         <div className="flex shrink-0 items-center gap-1">
+            {/* 커맨드 팔레트를 보류해 검색 진입을 주석으로 남긴다. 팔레트를 만들 때 되살린다.
             {placement === "header" && (
                 <Button
                     aria-label="Search"
@@ -29,37 +25,33 @@ export function HeaderActions({
                     <SearchIcon aria-hidden="true" />
                     <span>Search</span>
                 </Button>
-            )}
-            {(placement === "drawer" || !isMobile) && (
-                <>
-                    <Button
-                        size="icon"
-                        className="relative"
-                        aria-label={`Notifications: ${unreadCount} unread`}
-                        disabled
+            )} */}
+            <Button
+                size="icon"
+                className="relative"
+                aria-label={`Notifications: ${unreadCount} unread`}
+                disabled
+            >
+                <BellIcon aria-hidden="true" />
+                {unreadCount > 0 && (
+                    <Badge
+                        className="absolute -right-1 -top-1"
+                        aria-hidden="true"
                     >
-                        <BellIcon aria-hidden="true" />
-                        {unreadCount > 0 && (
-                            <Badge
-                                className="absolute -right-1 -top-1"
-                                aria-hidden="true"
-                            >
-                                {unreadCount}
-                            </Badge>
-                        )}
-                    </Button>
-                    <Button
-                        size="icon"
-                        nativeButton={false}
-                        render={<Link to="/settings" />}
-                        aria-label="Settings"
-                        onClick={onNavigate}
-                    >
-                        <SettingsIcon aria-hidden="true" />
-                    </Button>
-                    <ThemeToggle />
-                </>
-            )}
+                        {unreadCount}
+                    </Badge>
+                )}
+            </Button>
+            <Button
+                size="icon"
+                nativeButton={false}
+                render={<Link to="/settings" />}
+                aria-label="Settings"
+                onClick={closeMobileSidebar}
+            >
+                <SettingsIcon aria-hidden="true" />
+            </Button>
+            <ThemeToggle />
         </div>
     );
 }

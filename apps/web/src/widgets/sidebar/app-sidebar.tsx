@@ -34,15 +34,10 @@ import {
     SidebarMenuSubItem,
     useSidebar,
 } from "@/shared/ui/sidebar";
-import {
-    HeaderActions,
-    type HeaderActionsProps,
-} from "@/widgets/header/header-actions";
 
 import { SidebarResizeHandle } from "./sidebar-resize-handle";
 
-interface Props
-    extends React.ComponentProps<typeof Sidebar>, HeaderActionsProps {
+interface Props extends React.ComponentProps<typeof Sidebar> {
     sidebarWidth: number;
     panels: PanelPreview[];
     onResizeSidebar: (width: number) => void;
@@ -58,7 +53,6 @@ export function AppSidebar(props: Props) {
         onDelete,
         onCreate,
         panels,
-        unreadCount,
         ...sidebarProps
     } = props;
     const { section: activeSection, panelId } = useParams();
@@ -84,13 +78,6 @@ export function AppSidebar(props: Props) {
                                 </span>
                             </div>
                         </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem className="md:hidden">
-                        <HeaderActions
-                            placement="drawer"
-                            unreadCount={unreadCount}
-                            onNavigate={closeMobileSidebar}
-                        />
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarHeader>

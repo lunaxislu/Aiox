@@ -100,7 +100,6 @@ export function AppShell({
             </a>
             <AppSidebar
                 panels={panels}
-                unreadCount={unreadCount}
                 sidebarWidth={width}
                 onResizeSidebar={setWidth}
                 onCreate={create}
