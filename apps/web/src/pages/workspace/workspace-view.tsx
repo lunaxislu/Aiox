@@ -4,22 +4,29 @@ import {
     type PanelLayout,
     type TabView,
 } from "@aiox/protocol";
+import { SortableContext } from "@dnd-kit/sortable";
 import {
     ChevronDownIcon,
     ChevronUpIcon,
     CircleIcon,
-    PanelRightOpenIcon,
     LoaderCircleIcon,
     MonitorXIcon,
     PanelBottomIcon,
-    PlusIcon,
     PanelBottomOpenIcon,
+    PanelRightOpenIcon,
+    PlusIcon,
     SquareIcon,
     TriangleAlertIcon,
     WifiOffIcon,
     XIcon,
 } from "lucide-react";
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import {
+    Fragment,
+    useCallback,
+    useLayoutEffect,
+    useRef,
+    useState,
+} from "react";
 
 import type { PanelPreview } from "@/entities/panel/model";
 import type {
@@ -68,13 +75,17 @@ import {
     ScrollAreaViewport,
 } from "@/shared/ui/scroll-area";
 import { Separator } from "@/shared/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { Tabs, TabsContent, TabsList } from "@/shared/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
+import { TerminalSurface } from "./terminal-surface";
+import { DraggableTab, PaneDropArea, WorkspaceDnd } from "./workspace-dnd";
 import {
     addPreviewShell,
     closePreviewTab,
+    movePreviewTab,
     selectPreviewTab,
+    visibleTerminals,
 } from "./workspace-preview";
 
 export type WorkspaceViewProps = {
@@ -91,31 +102,29 @@ export function WorkspaceView({ panel, terminals }: WorkspaceViewProps) {
         Record<string, TerminalPreview["connection"]>
     >({});
     const [closing, setClosing] = useState<TabView | null>(null);
-    const cancel = useRef<HTMLButtonElement>(null);
-    const host = useRef<HTMLElement>(null);
+    const terminalSlots = useRef(new Map<string, HTMLDivElement>());
+
+    function activatePane(paneId: string) {
+        setState((current) =>
+            current.activePaneId === paneId
+                ? current
+                : { ...current, activePaneId: paneId },
+        );
+    }
 
     function close(tab: TabView) {
-        const next = closePreviewTab(state, tab.id);
-        setState(next);
+        setState((current) => closePreviewTab(current, tab.id));
         setClosing(null);
-        const selected = panelLayoutReferences(next.layout).panes.find(
-            (pane) => pane.id === next.activePaneId,
-        )?.selectedTabId;
-        requestAnimationFrame(() => {
-            const target = Array.from(
-                host.current?.querySelectorAll<HTMLButtonElement>(
-                    "[role=tab]",
-                ) ?? [],
-            ).find((button) => button.dataset.tabId === selected);
-            (
-                target ??
-                host.current?.querySelector<HTMLButtonElement>(
-                    "[data-pane-add]",
-                )
-            )?.focus();
-        });
     }
     function requestClose(tab: TabView, force = false) {
+        setState((current) => {
+            const pane = panelLayoutReferences(current.layout).panes.find(
+                (pane) => pane.tabIds.includes(tab.id),
+            );
+            return pane && pane.id !== current.activePaneId
+                ? { ...current, activePaneId: pane.id }
+                : current;
+        });
         const terminal = tab.terminalId ? terminals[tab.terminalId] : undefined;
         const connection = tab.terminalId
             ? (connections[tab.terminalId] ?? terminal?.connection)
@@ -131,7 +140,9 @@ export function WorkspaceView({ panel, terminals }: WorkspaceViewProps) {
                     connection === "connected"))
         )
             close(tab);
-        else setClosing(tab);
+        else {
+            setClosing(tab);
+        }
     }
     function addShell(paneId: string, axis?: "x" | "y") {
         const id = crypto.randomUUID();
@@ -151,40 +162,75 @@ export function WorkspaceView({ panel, terminals }: WorkspaceViewProps) {
 
     return (
         <section
-            ref={host}
             aria-label={`${panel.name} workspace`}
             className="flex h-full min-h-0 min-w-0 flex-col bg-background"
         >
-            <PaneTree
-                layout={state.layout}
+            <WorkspaceDnd
                 state={state}
-                panel={panel}
-                terminals={terminals}
-                connections={connections}
-                onLayoutChange={(layout) =>
-                    setState((current) => ({ ...current, layout }))
-                }
-                onSelect={(paneId, tabId) =>
+                onDrop={(tabId, target) => {
                     setState((current) =>
-                        selectPreviewTab(current, paneId, tabId),
-                    )
-                }
-                onClose={requestClose}
-                onAdd={addShell}
-                onReconnect={(terminalId) =>
-                    setConnections((current) => ({
-                        ...current,
-                        [terminalId]: "connected",
-                    }))
-                }
-            />
+                        movePreviewTab(
+                            current,
+                            tabId,
+                            target,
+                            crypto.randomUUID(),
+                        ),
+                    );
+                }}
+            >
+                <PaneTree
+                    terminalSlots={terminalSlots}
+                    layout={state.layout}
+                    state={state}
+                    panel={panel}
+                    terminals={terminals}
+                    connections={connections}
+                    onLayoutChange={(layout) =>
+                        setState((current) => ({ ...current, layout }))
+                    }
+                    onSelect={(paneId, tabId) =>
+                        setState((current) =>
+                            selectPreviewTab(current, paneId, tabId),
+                        )
+                    }
+                    onActivate={activatePane}
+                    onClose={requestClose}
+                    onAdd={addShell}
+                />
+            </WorkspaceDnd>
+            {visibleTerminals(state).map(({ paneId, tab, terminalId }) => (
+                <TerminalSurface
+                    key={JSON.stringify([terminalId, tab.runtimeId])}
+                    slots={terminalSlots}
+                    paneId={paneId}
+                    terminalId={terminalId}
+                    onActivate={() => activatePane(paneId)}
+                >
+                    <TerminalBody
+                        tab={tab}
+                        terminal={terminals[terminalId]}
+                        connection={
+                            connections[terminalId] ??
+                            terminals[terminalId]?.connection ??
+                            "connected"
+                        }
+                        onReconnect={() =>
+                            setConnections((current) => ({
+                                ...current,
+                                [terminalId]: "connected",
+                            }))
+                        }
+                        onStop={() => requestClose(tab, true)}
+                    />
+                </TerminalSurface>
+            ))}
             <Dialog
                 open={closing !== null}
                 onOpenChange={(open) => {
                     if (!open) setClosing(null);
                 }}
             >
-                <DialogContent initialFocus={cancel} showCloseButton={false}>
+                <DialogContent showCloseButton={false}>
                     <DialogTitle>Close and stop {closing?.label}?</DialogTitle>
                     <DialogDescription>
                         Closing stops this terminal. It may still be running.
@@ -192,7 +238,6 @@ export function WorkspaceView({ panel, terminals }: WorkspaceViewProps) {
                     <DialogFooter>
                         <Button
                             variant="outline"
-                            ref={cancel}
                             onClick={() => setClosing(null)}
                         >
                             Cancel
@@ -213,14 +258,15 @@ export function WorkspaceView({ panel, terminals }: WorkspaceViewProps) {
 }
 
 type TreeProps = WorkspaceViewProps & {
+    terminalSlots: React.RefObject<Map<string, HTMLDivElement>>;
     layout: PanelLayout;
     state: WorkspaceLayout;
     connections: Record<string, TerminalPreview["connection"]>;
     onLayoutChange: (layout: PanelLayout) => void;
     onSelect: (paneId: string, tabId: string) => void;
+    onActivate: (paneId: string) => void;
     onClose: (tab: TabView, force?: boolean) => void;
     onAdd: (paneId: string, axis?: "x" | "y") => void;
-    onReconnect: (terminalId: string) => void;
 };
 
 function PaneTree(props: TreeProps & { depth?: number }) {
@@ -288,10 +334,21 @@ function Pane({
         terminals,
         connections,
         onSelect,
+        onActivate,
         onClose,
         onAdd,
-        onReconnect,
     } = props;
+    const { terminalSlots } = props;
+    const registerTerminalSlot = useCallback(
+        (node: HTMLDivElement | null) => {
+            if (!node) return;
+            terminalSlots.current.set(pane.id, node);
+            return () => {
+                terminalSlots.current.delete(pane.id);
+            };
+        },
+        [terminalSlots, pane.id],
+    );
     const tabViewport = useRef<HTMLDivElement>(null);
     useLayoutEffect(() => {
         const viewport = tabViewport.current;
@@ -333,88 +390,117 @@ function Pane({
                                 className="h-full w-full mask-[linear-gradient(to_right,transparent,black_min(16px,var(--scroll-area-overflow-x-start)),black_calc(100%-min(16px,var(--scroll-area-overflow-x-end))),transparent)]"
                             >
                                 <ScrollAreaContent className="h-full w-max min-w-full">
-                                    <TabsList
-                                        aria-label={`Tabs in ${pane.id}`}
-                                        activateOnFocus
-                                        className="flex h-full w-max min-w-full"
+                                    <PaneDropArea
+                                        paneId={pane.id}
+                                        kind="tabbar"
                                     >
-                                        {pane.tabIds.map((id) => {
-                                            const item = state.tabs.find(
-                                                (value) => value.id === id,
-                                            )!;
-                                            const activity = item.terminalId
-                                                ? terminals[item.terminalId]
-                                                      ?.status
-                                                : undefined;
-                                            return (
-                                                <div
-                                                    key={id}
-                                                    className="group/tab flex h-full shrink-0 items-center border-r border-border/60 has-aria-selected:bg-background"
-                                                >
-                                                    <TabsTrigger
-                                                        value={id}
-                                                        aria-label={`${item.label} · ${activity ?? item.presentation}`}
-                                                        data-tab-id={id}
-                                                        data-focused={
-                                                            state.activePaneId ===
-                                                                pane.id &&
-                                                            pane.selectedTabId ===
-                                                                id
-                                                        }
-                                                        onFocus={() => {
-                                                            if (
+                                        <SortableContext
+                                            id={pane.id}
+                                            items={pane.tabIds}
+                                        >
+                                            <TabsList
+                                                aria-label={`Tabs in ${pane.id}`}
+                                                activateOnFocus
+                                                onClick={(event) => {
+                                                    // Close buttons activate before removal in requestClose.
+                                                    if (
+                                                        (
+                                                            event.target as Element
+                                                        ).closest(
+                                                            '[role="tab"]',
+                                                        )
+                                                    )
+                                                        onActivate(pane.id);
+                                                }}
+                                                onFocus={() =>
+                                                    onActivate(pane.id)
+                                                }
+                                                className="flex h-full w-max min-w-full"
+                                            >
+                                                {pane.tabIds.map((id) => {
+                                                    const item =
+                                                        state.tabs.find(
+                                                            (value) =>
+                                                                value.id === id,
+                                                        )!;
+                                                    const activity =
+                                                        item.terminalId
+                                                            ? terminals[
+                                                                  item
+                                                                      .terminalId
+                                                              ]?.status
+                                                            : undefined;
+                                                    return (
+                                                        <div
+                                                            key={id}
+                                                            data-sortable-tab
+                                                            data-active={
+                                                                state.activePaneId ===
+                                                                    pane.id &&
                                                                 pane.selectedTabId ===
-                                                                    id &&
-                                                                state.activePaneId !==
-                                                                    pane.id
-                                                            )
-                                                                onSelect(
-                                                                    pane.id,
-                                                                    id,
-                                                                );
-                                                        }}
-                                                        className="flex h-full min-w-0 items-center gap-2 px-3 text-xs opacity-95 outline-none transition-opacity data-[focused=true]:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                                                    >
-                                                        <StatusDot
-                                                            status={
-                                                                activity ??
-                                                                item.presentation
+                                                                    id
                                                             }
-                                                        />
-                                                        <span
-                                                            className="max-w-36 truncate"
-                                                            title={item.label}
+                                                            className="group/tab flex h-full shrink-0 items-center border-r border-border/60 opacity-60 transition-opacity data-[active=true]:opacity-100"
                                                         >
-                                                            {item.label}
-                                                        </span>
-                                                        {item.presentation ===
-                                                            "preparing" && (
-                                                            <span className="text-muted-foreground">
-                                                                preparing
-                                                            </span>
-                                                        )}
-                                                        {item.presentation ===
-                                                            "stopped" && (
-                                                            <span className="text-muted-foreground">
-                                                                stopped
-                                                            </span>
-                                                        )}
-                                                    </TabsTrigger>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon-xs"
-                                                        className="mr-1 shrink-0 text-muted-foreground hover:text-foreground"
-                                                        aria-label={`Close ${item.label}`}
-                                                        onClick={() =>
-                                                            onClose(item)
-                                                        }
-                                                    >
-                                                        <XIcon />
-                                                    </Button>
-                                                </div>
-                                            );
-                                        })}
-                                    </TabsList>
+                                                            <DraggableTab
+                                                                id={id}
+                                                                value={id}
+                                                                aria-label={`${item.label} · ${activity ?? item.presentation}`}
+                                                                data-tab-id={id}
+                                                                data-focused={
+                                                                    state.activePaneId ===
+                                                                        pane.id &&
+                                                                    pane.selectedTabId ===
+                                                                        id
+                                                                }
+                                                                className="flex h-full min-w-0 items-center gap-2 px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                                            >
+                                                                <StatusDot
+                                                                    status={
+                                                                        activity ??
+                                                                        item.presentation
+                                                                    }
+                                                                />
+                                                                <span
+                                                                    className="max-w-36 truncate"
+                                                                    title={
+                                                                        item.label
+                                                                    }
+                                                                >
+                                                                    {item.label}
+                                                                </span>
+                                                                {item.presentation ===
+                                                                    "preparing" && (
+                                                                    <span className="text-muted-foreground">
+                                                                        preparing
+                                                                    </span>
+                                                                )}
+                                                                {item.presentation ===
+                                                                    "stopped" && (
+                                                                    <span className="text-muted-foreground">
+                                                                        stopped
+                                                                    </span>
+                                                                )}
+                                                            </DraggableTab>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon-xs"
+                                                                className="mr-1 shrink-0 text-muted-foreground hover:text-foreground"
+                                                                aria-label={`Close ${item.label}`}
+                                                                onClick={() =>
+                                                                    onClose(
+                                                                        item,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <XIcon />
+                                                            </Button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </TabsList>
+                                        </SortableContext>
+                                    </PaneDropArea>
                                 </ScrollAreaContent>
                             </ScrollAreaViewport>
                         </ScrollArea>
@@ -490,54 +576,50 @@ function Pane({
                             </Tooltip>
                         </div>
                     </div>
-                    {tab ? (
-                        <TabsContent
-                            key={tab.id}
-                            value={tab.id}
-                            data-active={state.activePaneId === pane.id}
-                            onPointerDown={() => {
-                                if (state.activePaneId !== pane.id)
-                                    onSelect(pane.id, tab.id);
-                            }}
-                            onFocusCapture={() => {
-                                if (state.activePaneId !== pane.id)
-                                    onSelect(pane.id, tab.id);
-                            }}
-                            className="min-h-0 flex-1 overflow-auto opacity-55 outline-none transition-opacity data-[active=true]:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                        >
-                            {tab.notice ? (
-                                <TabNotice tab={tab} />
-                            ) : tab.terminalId ? (
-                                <TerminalBody
-                                    tab={tab}
-                                    terminal={terminal}
-                                    connection={connection}
-                                    onReconnect={() =>
-                                        onReconnect(tab.terminalId!)
-                                    }
-                                    onStop={() => onClose(tab, true)}
-                                />
-                            ) : null}
-                        </TabsContent>
-                    ) : (
-                        <Empty className="p-5">
-                            <EmptyHeader>
-                                <EmptyTitle>
-                                    {panel.kind === "workspace"
-                                        ? "No terminals here"
-                                        : `No terminals in ${panel.name}`}
-                                </EmptyTitle>
-                                <EmptyDescription>
-                                    Use + to open a shell or split this pane.
-                                </EmptyDescription>
-                            </EmptyHeader>
-                            {panel.kind !== "workspace" && panel.command && (
-                                <EmptyContent>
-                                    <CopyCommand command={panel.command} />
-                                </EmptyContent>
-                            )}
-                        </Empty>
-                    )}
+                    <PaneDropArea paneId={pane.id} kind="body">
+                        {tab ? (
+                            <TabsContent
+                                key={tab.id}
+                                value={tab.id}
+                                data-active={state.activePaneId === pane.id}
+                                onPointerDown={() => onActivate(pane.id)}
+                                onFocusCapture={() => onActivate(pane.id)}
+                                className="min-h-0 flex-1 overflow-auto opacity-60 outline-none transition-opacity data-[active=true]:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                            >
+                                {tab.notice ? (
+                                    <TabNotice tab={tab} />
+                                ) : tab.terminalId ? (
+                                    <div
+                                        className="h-full min-h-0 min-w-0"
+                                        data-terminal-slot={pane.id}
+                                        ref={registerTerminalSlot}
+                                    />
+                                ) : null}
+                            </TabsContent>
+                        ) : (
+                            <Empty className="p-5">
+                                <EmptyHeader>
+                                    <EmptyTitle>
+                                        {panel.kind === "workspace"
+                                            ? "No terminals here"
+                                            : `No terminals in ${panel.name}`}
+                                    </EmptyTitle>
+                                    <EmptyDescription>
+                                        Use + to open a shell or split this
+                                        pane.
+                                    </EmptyDescription>
+                                </EmptyHeader>
+                                {panel.kind !== "workspace" &&
+                                    panel.command && (
+                                        <EmptyContent>
+                                            <CopyCommand
+                                                command={panel.command}
+                                            />
+                                        </EmptyContent>
+                                    )}
+                            </Empty>
+                        )}
+                    </PaneDropArea>
                 </Tabs>
                 {tab && (
                     <CollapsibleContent className="shrink-0">
