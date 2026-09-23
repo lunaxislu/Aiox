@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
+import { logger } from "@aiox/diagnostics";
 import { InvalidVendorReport } from "@aiox/vendor";
 import type {
     InboundMessage,
@@ -175,7 +176,10 @@ export class ClaudeBinding implements VendorBinding {
             this.#observe(report.event, reader),
         );
         this.#reports = next.catch((error: unknown) => {
-            console.error("AIOX: deferred Claude observation failed:", error);
+            logger.error(
+                { err: error, runtimeId: this.controls.runtimeId },
+                "Deferred Claude observation failed",
+            );
         });
         // Capture the initial offset independently of queued settlement work.
         if (report.event.hook_event_name !== "SessionStart") await next;
@@ -513,8 +517,9 @@ export class ClaudeBinding implements VendorBinding {
                       ? error.message
                       : String(error);
             if (this.#readFailures.get(reader) !== reason)
-                console.error(
-                    `AIOX: Claude transcript read failed (${reader.path}): ${reason}`,
+                logger.error(
+                    { err: error, runtimeId: this.controls.runtimeId },
+                    "Claude transcript read failed",
                 );
             this.#readFailures.set(reader, reason);
             this.#reportObservationError();

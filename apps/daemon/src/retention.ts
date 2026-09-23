@@ -8,12 +8,17 @@ const DAY_MS = 86_400_000;
  * when its siblings finished long ago. Persistent network and route
  * definitions, workspaces and user files are never touched.
  */
-export function purgeExpired(
+export async function purgeExpired(
     db: AioxDatabase,
     retentionDays: number,
     now: number,
 ): Promise<PurgeCounts> {
-    return db.messages.purgeBefore(now - retentionDays * DAY_MS);
+    const cutoff = now - retentionDays * DAY_MS;
+    const [report, operations] = await Promise.all([
+        db.messages.purgeBefore(cutoff),
+        db.hostState.purgeBefore(cutoff),
+    ]);
+    return operations ? { ...report, operations } : report;
 }
 
 export type RetentionSchedule = { stop(): void };

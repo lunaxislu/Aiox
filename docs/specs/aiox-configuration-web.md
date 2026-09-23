@@ -202,7 +202,7 @@ Persistent Network 이름은 DB에 지속한다. 참여 실행의 route 수명�
 
 새 Network·Message·Delivery·Notification 행의 ID는 UUID v7으로 생성한다. 기존 ID를 재발급하지 않으며 Runtime·terminal 참조 ID와 vendor 고유 ID의 형식은 별개다.
 
-TypeORM과 better-sqlite3 및 transaction을 유지한다. 빈 DB를 현재 schema로 직접 초기화하고 저장·조회·재오픈을 검증한다. 첫 배포 전 개발 DB 변경 원칙은 [[AGENTS]]의 Development Database Before First Release를 따른다. 자동 synchronize로 schema를 변경하지 않는다. 현재 초기화 구현과 검증 근거는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
+저장 계층은 Drizzle과 better-sqlite3를 사용하며 원자적 transaction을 유지한다. 빈 DB를 현재 schema로 직접 초기화하고 저장·조회·재오픈을 검증한다. 첫 배포 전 개발 DB 변경 원칙은 [[AGENTS]]의 Development Database Before First Release를 따른다. startup에서 기존 schema를 자동 변경하거나 데이터를 삭제하지 않는다. 현재 초기화 구현과 검증 근거는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 
 ## 기반 구현과 검증 범위
 

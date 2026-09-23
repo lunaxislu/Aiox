@@ -45,7 +45,14 @@ Host Network와 적용 정책은 stop 후 유지하고 delete에서 정리한다
 
 NetworkService와 MessageService는 `uuid`의 v7 생성기를 사용해 새 Network·Message·Delivery·Notification ID를 발급한다. MCP의 전원 대상 부재 응답도 v7 messageId를 쓰되 저장하지 않는다. schema는 문자열 ID를 유지하며 재발급·backfill을 추가하지 않는다. 생성·저장·재오픈 근거는 apps/daemon/src/networks.ts, messaging.ts와 messaging.test.ts의 UUID v7 회귀다.
 
-TypeORM·better-sqlite3 연결을 연 뒤 현재 schema의 DDL을 한 transaction에서 직접 실행한다.
+Drizzle·better-sqlite3 연결이 저장 조회·변경을 담당한다. `schema.ts`와 `host-schema.ts`의
+Drizzle 정의가 컬럼 타입·테이블·index·FK·check의 원본이며 공개 저장 row 타입도 여기서 추론한다.
+`pnpm --filter @aiox/persistence schema:generate`가 Drizzle Kit export로 현재 초기화 SQL을 생성한다.
+생성기는 `IF NOT EXISTS`와 `STRICT`를 적용하고, 회귀 검사가 생성물과 원본의 일치를 확인한다.
+Host member의 교차 테이블 검증 trigger는 `host-schema.ts`에서 별도로 소유한다. 런타임에는
+Drizzle Kit이나 migration 이력 테이블을 사용하지 않는다.
+
+better-sqlite3 연결에서 FK·WAL을 설정한 뒤 생성된 DDL과 trigger를 한 동기 transaction에서 실행한다.
 `IF NOT EXISTS`로 같은 schema의 DB를 재오픈하며 과거 DB migration·version 채택 경로는 없다.
 초기화 실패는 생성 중인 테이블을 rollback하고 연결을 닫아 오류를 전달한다. 기존 데이터를
 자동 삭제하거나 초기화 성공으로 바꾸지 않는다. 첫 배포 전·후 변경 원칙은 [[AGENTS]]의
@@ -54,17 +61,23 @@ Development Database Before First Release를 따른다.
 notification의 실행 소유권은 필수이며 terminal ID는 정상적으로 없는 실행을 위해 nullable을
 유지한다. 과거 행 호환을 위해 소유권을 미확인으로 허용하지 않는다.
 
-단일 SQLite 연결의 조회·쓰기·close를 직렬화한다. route의 최신 값 읽기와 변경 저장은 같은 transaction에 두어 동시 변경을 잃지 않으며 실패한 작업이 후속 작업을 막지 않는다.
+공개 persistence API는 Promise를 유지하지만 각 호출의 조회·쓰기·transaction·close는 yield 전에
+동기적으로 끝난다. 따라서 이전 비동기 ORM의 연결 공유용 Promise 대기열은 필요하지 않다.
+route의 최신 값 읽기와 변경, Host·panel·Operation 변경, delivery outcome과 notification 저장은
+각각 같은 DB transaction에서 commit/rollback한다. 파일·PTY·network 실행과 commit 이후 상태
+알림은 daemon의 책임이며 DB transaction에 넣지 않는다. 실패는 caller로 전달하고 다음 호출을 막지 않는다.
 
-근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:227-287`,
-[[packages/persistence/src/sqlite/schema.ts]] `packages/persistence/src/sqlite/schema.ts:144-192`;
-초기화·재오픈·직렬화·실패 rollback은 [[packages/persistence/src/sqlite/database.test.ts]]
-`packages/persistence/src/sqlite/database.test.ts:66-212`, `packages/persistence/src/sqlite/database.test.ts:252-272`,
-소유권/terminal 제약과 재오픈은 `packages/persistence/src/sqlite/database.test.ts:435-468`.
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:88-299`,
+[[packages/persistence/src/sqlite/host-state.ts]], [[packages/persistence/src/sqlite/schema.ts]],
+[[packages/persistence/src/sqlite/host-schema.ts]], [[packages/persistence/scripts/generate-schema.mjs]],
+[[packages/persistence/src/sqlite/schema.test.ts]]. 초기화·재오픈·rollback·오류 전달과 무결성은
+[[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:66-124`,
+`packages/persistence/src/sqlite/database.test.ts:268-310`, `packages/persistence/src/sqlite/database.test.ts:448-608`;
+revision/requestId 경쟁·재시도는 [[packages/persistence/src/sqlite/host-state.test.ts]]로 검증한다.
 
 메시지·대상별 결과·daemon 알림을 내부 식별자로 연결하고, 전송 당시 역방향 route 관계를 대상별로 보존한다. daemon 시작 시와 하루 한 번 완료된 요청의 보존 기한을 확인해 관련 이력을 함께 정리한다. 진행 중 요청은 제외한다. 보존 기간·범위는 [[docs/specs/aiox-configuration-web]]이 소유한다. Host 실행 종료 정리와 이력 삭제는 다른 경로이며 저장 이력을 실행 복원·재전송에 사용하지 않는다.
 
-근거: [[apps/daemon/src/retention.ts]] `apps/daemon/src/retention.ts:11-43`, [[apps/daemon/src/retention.test.ts]] `apps/daemon/src/retention.test.ts:8-31`; 저장·결과·보존 경계는 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:274-433`.
+근거: [[apps/daemon/src/retention.ts]] `apps/daemon/src/retention.ts:11-43`, [[apps/daemon/src/retention.test.ts]] `apps/daemon/src/retention.test.ts:8-31`; 저장·결과·보존 경계는 [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:290-446`.
 
 ## 메시지 완료 저장과 실패 복구 [Status: As-built]
 
@@ -83,14 +96,14 @@ resolve하고 기존 MessageService의 inFlight.result에 최초 outcome/error/t
 같은 delivery 저장은 settling으로 병합하고 실행 중 새 실패는 다음 batch에서 처리한다. 결과가
 아직 없는 진행 중 delivery는 재시도 대상이 아니다. 성공만 제거하고 남은 대상이 있으면 timer
 하나를 예약하며 pending이 없으면 timer와 backoff를 초기화한다. 각 요청의 transaction은 유지한다.
-최초·변경된 저장 오류와 복구는 기존 daemon stderr로 진단하고 같은 오류의 반복 출력은 억제한다.
+최초·변경된 저장 오류와 복구는 Pino stderr 진단에 deliveryId·대상 runtimeId를 남기며 같은 오류의 반복 출력은 억제한다. 진단 파일·오류 직렬화·민감정보 제외 정책은 [[docs/architecture/aiox-system]]의 서비스 진단 로그 절을 따른다. 저장 오류의 사용자 결과·재시도 상태는 이 진단과 별도로 유지한다.
 
 종료 drain은 timer를 취소하고 active persist/running batch에 합류한 뒤 최종 snapshot을 처리한다.
 미저장 결과가 남으면 warnings와 stopped:false를 반환하며 HTTP 409 stop_incomplete로 daemon·DB를
 유지하고 중앙 재시도를 재개한다. 성공으로 숨기거나 DB를 먼저 닫지 않는다. 메모리 pending은
 프로세스 크래시·daemon 재시작의 내구성을 제공하지 않으며 vendor 입력 재주입도 하지 않는다.
 
-근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:168-194`,
+근거: [[packages/persistence/src/sqlite/database.ts]] `packages/persistence/src/sqlite/database.ts:188-210`,
 [[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:280-389`,
 [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:561-578`.
 검증: [[apps/daemon/src/messaging.test.ts]] `apps/daemon/src/messaging.test.ts:481-607`,
@@ -99,7 +112,7 @@ resolve하고 기존 MessageService의 inFlight.result에 최초 outcome/error/t
 
 ## SQLite와 플랫폼
 
-`packages/persistence`가 현재 schema 초기화·repository를 담당하고 daemon이 DB 연결을 소유한다.
+`packages/persistence`가 현재 schema 초기화·저장 query·transaction을 담당하고 daemon이 DB 연결을 소유한다.
 domain은 DB를 모르고 application은 port를 통해 작업한다. CLI·Web·vendor binding이 직접 DB 파일을
 열어 authoritative 상태를 변경하지 않는다. 필요한 상태 변경은 transaction 경계로 처리한다.
 
@@ -114,7 +127,7 @@ DB 초기화 흐름:
 실행 환경의 사용자 홈 결정
  → 로컬 DB 준비·현재 schema 초기화
  → 단일 daemon 연결 소유
- → repositories를 통한 저장·조회
+ → persistence를 통한 저장·조회
  → 관리 실행 종료 / DB 작업 정리·close
  → 다음 시작에서 저장 데이터 읽기
 ```
@@ -341,30 +354,21 @@ terminal의 알림 ID를 표시 projection에서 제외한 뒤 읽음 저장한�
 
 ## Web 상태와 라이브러리
 
-WebEvents는 데이터 본문 대신 최신 조회가 필요하다는 SSE 통지만 보낸다. terminal 생성·종료,
-daemon 소유 Runtime의 등록·활성 상태·정리, Web 대상 알림의 저장·읽음 완료가 producer다.
-외부 전용 Runtime·알림 변경은 통지하지 않으며 읽음 대상이 없으면 통지하지 않는다.
-retention의 알림 삭제 건수가 양수이면 조회를 갱신하므로 외부 알림만 지운 경우에도 빈 변경
-통지가 나갈 수 있지만, Web 전용 조회의 대상 필터를 우회하거나 외부 내용을 보내지는 않는다.
-SSE는 event replay나 별도 상태 권위를 갖지 않는다. [Status: As-built]
+WebEvents는 최초·재접속 snapshot과 DTO별 state, 조회 실패 fault를 전송한다. 읽는 동안
+관측 버전이 바뀌면 snapshot을 다시 읽고, shell 생성·배치 commit은 공개 경계로 묶어 중간
+배치를 노출하지 않는다. 각 연결의 직전 snapshot과 현재 조회를 비교하여 변경된 DTO만 보낸다.
+Runtime 변경은 external도 포함하며 Web 알림은 daemon 소유만 포함한다. SSE는 replay나
+별도의 durable 상태 권위를 갖지 않는다. [Status: As-built]
 
-최초·재연결 때 한 번 통지하고 준비 gate를 통과한 HTTP 경로만 구독을 연다. 쓰기 실패나
-backpressure를 보인 viewer는 해당 연결만 정리해 새 연결의 최신 조회로 복구하도록 한다.
-daemon 종료는 열린 SSE를 먼저 닫아 HTTP listener 종료를 가로막지 않게 한다. [Status: As-built]
+쓰기 실패·backpressure는 해당 viewer를 닫고, 상태 읽기 실패는 빈 snapshot으로 숨기지 않는다.
+daemon 종료는 SSE를 닫고 접수한 panel Operation을 정산한 뒤 DB를 닫는다. 연결 종료는
+실행 자원을 종료하지 않는다. [Status: As-built]
 
-근거: [[apps/daemon/src/web-events.ts]] `apps/daemon/src/web-events.ts:3-36`,
-[[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:85-147`,
-`apps/daemon/src/runtimes.ts:194-212`, [[apps/daemon/src/daemon.ts]]
-`apps/daemon/src/daemon.ts:96-106`, `apps/daemon/src/daemon.ts:346-354`,
-`apps/daemon/src/daemon.ts:571-585`, [[apps/daemon/src/terminals.ts]]
-`apps/daemon/src/terminals.ts:83-91`, `apps/daemon/src/terminals.ts:126-134`,
-[[apps/daemon/src/http.ts]]
-`apps/daemon/src/http.ts:401-431`; 실제 HTTP 통지·등록 해제 뒤 알림 범위 회귀는
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1673-1908`,
-느린 viewer·쓰기 실패 격리는 [[apps/daemon/src/web-events.test.ts]]
-`apps/daemon/src/web-events.test.ts:20-47`.
+근거: [[apps/daemon/src/web-events.ts]], [[apps/daemon/src/web-state.ts]],
+[[apps/daemon/src/daemon.ts]], [[apps/daemon/src/web-events.test.ts]],
+[[apps/daemon/src/daemon.test.ts]], [[apps/daemon/src/panel-operations.test.ts]].
 
-Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. SSE 변경 통지 뒤 HTTP로 terminal·Web 대상 Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 아래 운영 UI·설정·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
+Stage 2 최소 Web은 plain TypeScript + Vite + xterm/addon-fit이다. 과거 change 이벤트 뒤 HTTP로 terminal·Web 대상 Agent·미확인 알림을 조회하고 일반 shell 생성 및 terminal 선택·WS 연결을 제공한다. 같은 terminal의 Agent 교체는 살아 있는 attachment를 다시 만들지 않으며 끊긴 연결은 재선택할 수 있다. 공통 transport와 attachment 수명을 확인하는 범위여서 DOM·브라우저 API를 사용했으며 React·공유 상태 계층을 추가하지 않았다. 운영 React Web 방향을 폐기한 선택이 아니다. 현재 서버의 snapshot/state 이벤트를 소비하는 React 연결은 Stage6 범위로 남아 있다. 아래 운영 UI·설정·상세 알림 UX는 후속 구현 대상이다. [Status: As-built]
 
 근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:193-264`, `apps/web/src/main.ts:309-375`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:42-137`; Node DOM 대역 검증은 [[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:56-151`. Stage 2 당시 실제 브라우저 UI 검증은 macOS Chrome에서 shell 생성·선택·입출력·resize·재연결(attachment 해제 후 실행 생존)·종료를 확인했다. Windows/Linux 네이티브 브라우저 교차 검증은 아직 하지 않았다.
 
@@ -397,7 +401,7 @@ agent 출력과 vendor 오류 원문을 무조건 번역하지 않는다.
 
 Gateway snapshot/event의 projection을 하나로 유지한다. Zustand는 실제 pane/설정/알림 공유
 필요가 있을 때, TanStack Query는 history pagination/search 같은 조회 필요가 있을 때 평가한다.
-같은 live authority를 여러 store/cache가 독립적으로 수정하게 하지 않는다. 서버 채택 의존성은 [[docs/architecture/aiox-system]]을 따른다. YAML·오디오 등 후속 의존성은 실제 소비 단계에 선택하며 별도 event bus·HTTP framework를 미리 추가하지 않는다.
+같은 live authority를 여러 store/cache가 독립적으로 수정하게 하지 않는다. 서버 채택 의존성은 [[docs/architecture/aiox-system]]을 따른다. YAML·오디오 등 후속 의존성은 실제 소비 단계에 선택하며 별도 event bus를 미리 추가하지 않는다. 서버 HTTP framework는 실제 서비스 경계를 전환한 Hono를 사용하며 조립 책임은 위 system architecture를 따른다.
 
 Sources: `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md` §19–§24.
 
@@ -466,7 +470,7 @@ Sources: `logs/2026-09-12-AIOX-W1-External-Execution-Survival.md`의 root 결과
 외부 DTO는 [[docs/specs/aiox-host]]의 Host HTTP, [[docs/specs/aiox-configuration-web]]의 Panel
 HTTP가 소유한다. 다음은 첫 배포 전 현재 schema를 직접 설계할 때의 논리 테이블 계약이다.
 SQL 이름은 아래 snake_case를 사용하고 JSON 열은 TEXT에 protocol schema로 검증한 값을 저장한다.
-TypeORM repository/기존 SQLite transaction을 사용한다. JSON 안의 참조는 같은 transaction에서
+Drizzle query와 better-sqlite3의 동기 transaction을 사용한다. JSON 안의 참조는 같은 transaction에서
 검증하며 별도 ORM entity를 pane마다 만드는 요구는 없다.
 
 ```text
@@ -525,21 +529,72 @@ restart 실패는 이전 실행을 자동 되살리거나 사전 실패처럼 �
 새 명령으로 실행한다. Host·Network 정의/적용 정책은 보존하고 활성 membership은 비운다.
 예전 PTY 번호·PID만으로 다시 연결하거나 임의 프로세스를 종료하지 않는다.
 
-### 현재 구현과 W1 차이 [Status: Current gap]
+### 현재 저장·API 구현 범위 [Status: As-built]
 
-- 현재 DB는 persistent Network/route·message/delivery/notification 테이블을 만든다.
-  위 Host/panel/Operation 테이블은 아직 없다. 근거: [[packages/persistence/src/sqlite/schema.ts]]
-  `packages/persistence/src/sqlite/schema.ts:144-192`; 초기화·재오픈·rollback 근거는
-  [[packages/persistence/src/sqlite/database.test.ts]] `packages/persistence/src/sqlite/database.test.ts:66-212`.
-- 현재 shell·terminal metadata와 token은 TerminalService memory에 있으며 browser detach는
-  PTY를 종료하지 않는다. 근거: [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:24-125`,
-  [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:759-864`.
-- 현재 layout parser는 `preset:grid` 단독을 허용하므로 목표의 입력 단계 오류와 다르다.
-  근거: [[packages/config/src/schema.ts]] `packages/config/src/schema.ts:218-279`,
-  [[packages/config/src/schema.test.ts]] `packages/config/src/schema.test.ts:79-105`.
-  W2에서 교정할 대상이며 기존 테스트 기대를 새 계약의 근거로 쓰지 않는다.
+탭 참조 제거는 protocol의 `removePanelTabs`가 공통으로 처리한다. 선택 탭 제거 시 남은 첫 탭을 선택하고 마지막 탭 제거 후에도 빈 pane과 분할 구조를 유지한다. Host restart·Agent 안내 탭 정리·사용자 탭 닫기·terminal 제거가 이 변환을 공유하며 종료 확인·transaction·revision 처리는 각 호출 경계에 남는다. 근거: [[packages/protocol/src/host.ts]], [[packages/protocol/src/host.test.ts]].
 
-### 사용자 panel 분류·이름과 외부 실행 귀속 [Status: Committed target]
+Host·관리 Agent·전용 Network·membership/edge, panel/tab, Operation·실행 이력 테이블을 현재
+schema로 직접 초기화한다. pane tree·오류·안내 JSON은 protocol 검증을 통과한 값으로 저장한다.
+Host와 전용 Network·panel 생성은 하나의 transaction이며 panel 쓰기는 revision과 terminal
+유일 소유를 검사한다. 관리 구성과 실제 실행을 분리하여 runtime/token/PTY를 저장하지 않는다.
+
+panel 생성·rename·layout·dismiss는 commit 뒤 응답한다. shell 생성·tab 닫기·workspace 삭제는
+Operation 접수 뒤 기존 TerminalService로 실행하고 결과를 durable 기록한다. 같은 requestId의
+같은 요청은 기존 결과를 반환한다. 자연 shell exit와 직접 terminal 삭제는 같은 tab 정리를
+사용하며 관리 Agent 정의는 지우지 않는다. 정상 daemon 종료는 배치를 보존하고, 다음 startup은
+미완료 Operation·실행 이력을 정산하며 없는 terminal의 tab을 unavailable로 표시한다.
+
+완료 Operation과 종료 이력은 보존 기간 이후 정리하되 cleanup 오류가 남은 Operation은 보존한다.
+Host resolve와 run/restart는 공통 config/YAML 준비를 소비한다. 최초 실행·개별 Agent·Host Network와
+전체 Host 제어를 연결했다. 실제 React 연결은 Stage6 준비 후 통합 검증한다.
+
+근거: [[packages/persistence/src/sqlite/host-schema.ts]],
+[[packages/persistence/src/sqlite/host-state.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]],
+[[apps/daemon/src/state-api.ts]], [[apps/daemon/src/panel-operations.ts]],
+[[apps/daemon/src/panel-operations.test.ts]], [[apps/daemon/src/terminals.ts]].
+
+개별 Agent 적용은 정의·membership·해당 Agent가 endpoint인 manifest edge 교체와 그 범위의
+runtime override 제거를 한 transaction으로 처리한다. 관련 edge의 endpoint가 적용 membership에
+없으면 edge를 누락시키지 않고 transaction 전체를 거절한다. 다른 Agent끼리의 적용 정책은 보존한다.
+Host Network의 block/unblock은 별도 override를 저장하고 reset은 override만 제거하므로
+현재 적용된 manifest edge/default로 돌아간다. 오류 대상이 섞인 복수 route는 전부 거절하며
+진행 중 Host Operation과의 정책 변경 충돌도 저장소에서 거절한다.
+
+근거: [[apps/daemon/src/host-agents.ts]], [[apps/daemon/src/host-agents.test.ts]]와 기존 Host 저장소·회귀 테스트.
+
+전체 구성 교체는 기존 생성과 같은 저장 검증·transaction을 사용한다. 현재 Host·panel revision을
+확인한 뒤 동일 ID의 Host·전용 Network·panel과 최신 선언을 원자적으로 교체하며 실행 이력과
+Operation은 유지한다. 전체 delete는 소유 terminal 참조가 정리된 뒤 Host FK cascade로
+관리 구성·Network·panel을 함께 삭제한다. 남아 있는 terminal 또는 revision 충돌은 삭제를 거절한다.
+저장 실패 rollback과 재오픈 후 구성·삭제 결과의 근거는 위 저장소 회귀 테스트다.
+
+### 관리 실행 이력과 live projection [Status: As-built]
+
+run 접수는 Host·전용 Network·panel과 초기 Operation을 같은 transaction으로 저장한다.
+실행 등록 전 shell·CLI 시작 실패는 `failStart`가 관리 Agent의 lastExit와 해당 tab 안내를
+원자적으로 기록한다. 실패 저장은 명시한 tab ID만 갱신하여 다른 자리의 stopped 안내를 보존한다.
+활성 실행 이력이 남아 있으면 이 경로로 종료를 확정하지 않는다.
+근거: [[apps/daemon/src/host-run.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]].
+
+관리 Runtime 연결 시 실행 이력 시작·Agent의 lastTerminalId·tab의 preparing 표시를 같은
+transaction으로 저장한다. 해당 Host/key의 미정산 실행이 있으면 중복 실행을 거절한다.
+종료 확인과 binding·membership 정리 뒤 실행 이력 종료·lastExit·tab 표시를 원자적으로 저장한다.
+저장이 실패하면 Runtime 등록을 남겨 재시도하며 완료된 이전 실행의 지연 종료는 다음 실행을
+덮어쓰지 않는다. 정상 종료는 shell 표시, 명시 stop·시작 실패·비정상 종료는 원인과 재시작 명령을
+담은 안내다. shell 자체가 종료되어 tab이 없어져도 관리 Agent와 종료 이력은 유지한다.
+
+HTTP와 SSE는 같은 `projectHostState`를 사용한다. Host의 runtime/phase, Network의 live
+membership/edge ID, panel의 runtimeId·preparing/TUI 표시는 실제 RuntimeRegistry에서 합성하며
+저장된 이력을 생존 증거로 사용하지 않는다. 재시작 정산 후 unavailable 안내의 명령도 적용된
+Host source와 Agent key에서 복원한다. Host 통신 정책은 Agent key로 보존하고 현재 Runtime ID로
+해석하므로 실행 교체나 credential 폐기로 선언된 정책을 삭제하지 않는다.
+
+근거: [[packages/persistence/src/sqlite/host-state.ts]],
+[[packages/persistence/src/sqlite/host-state.test.ts]], [[apps/daemon/src/web-state.ts]],
+[[apps/daemon/src/networks.ts]], [[apps/daemon/src/networks.test.ts]],
+[[apps/daemon/src/agent-controller.test.ts]].
+
+### 사용자 panel 분류·이름과 외부 실행 귀속 [Status: As-built]
 
 panels에는 kind와 별도로 section을 저장한다. 현재 schema에 직접 section과 이름을 설계하며
 기존 개발 DB를 위한 migration/backfill을 만들지 않는다. kind workspace는 세 section,
@@ -552,20 +607,31 @@ SSE는 저장된 section을 전달하며 소비자가 kind로 section을 추정�
 executionOwnership을 노출하고 외부 실행도 포함한다. Runtime 변경 전달도 external을 제외하지
 않되 외부 실행에서 발생한 알림의 Web 제외는 유지한다. panel 분류와 Agent 소유권은 별개다.
 
-### W1 상태 공개 경계 [Status: Committed target]
+근거: [[packages/protocol/src/host.ts]], [[apps/daemon/src/state-api.test.ts]],
+[[apps/daemon/src/runtimes.ts]], [[apps/daemon/src/daemon.test.ts]].
+
+### 상태 공개 경계 [Status: As-built]
 
 새 SSE wire와 초기 snapshot은 [[docs/specs/aiox-configuration-web]]이 소유한다. 기존
-WebEvents의 빈 change 방송은 현재 구현이며 새 Host 상태 전달 계약의 완료 근거가 아니다.
+WebEvents는 위 snapshot/state 구현을 사용하며 React 연결 완료 여부는 별도로 검증한다.
 daemon은 기존 관측 owner와 persistence 결과를 조회 DTO로 공개한다. 하나의 반영 단위에서
 연관된 Host/panel/terminal/Operation 결과를 함께 공개한 뒤 SSE state로 보낸다.
 새 연결은 구독 등록과 일관된 snapshot 생성·송신을 연결하며, 준비 중 발생한 후속 변경은
 snapshot 뒤에 순서대로 전달한다. snapshot 시점과 구독 사이의 변경을 누락하지 않는다.
 DB commit 또는 관측 결과 공개에 실패하면 성공 DTO를 먼저 방송하지 않는다. 장시간 실행
 전체를 하나의 transaction으로 묶지 않으며 preparing·ready·실패는 각각 실제 반영 시점의 상태다.
-snapshot 실패·느린 연결은 오류/연결 종료 후 새 snapshot으로 복원한다. 연결 종료는 실행
+snapshot 읽기 실패는 fault/연결 종료 후 새 snapshot으로 복원한다. 단순히 느린 연결은
+전송 가능 시점까지 대기하고 최신 상태 차이를 이어 보내며, backpressure만으로 종료하지 않는다. 연결 종료는 실행
 자원의 종료가 아니다. 별도 HTTP snapshot endpoint·epoch/sequence·SQLite 이벤트 log나
 migration을 추가하지 않는다. PTY 출력마다 상태 이벤트를 만들지 않고 실제 조회 DTO가
 바뀔 때만 전달한다. HTTP와 SSE는 같은 projection을 소비하며 별도 실행 상태 권위를 만들지 않는다.
+
+SSE 응답은 Hono streamSSE와 Node adapter를 통한다. WebEvents는 초기 읽기 중 변경과 진행 중인
+상태 반영을 재확인한 뒤 snapshot을 먼저 쓰며, 해당 stream의 쓰기가 끝나기 전에는 후속 state를
+쌓지 않는다. 느린 소비자의 변경은 마지막 전송 상태와 최신 snapshot 사이의 차이로 합친다.
+연결 취소·daemon 종료는 stream 구독과 대기 writer를 해제하고, Node response의 drain listener도
+정리한다. 근거: [[apps/daemon/src/web-events.ts]], [[apps/daemon/src/web-events.test.ts]],
+[[apps/daemon/src/http.test.ts]], [[apps/daemon/src/daemon.test.ts]]. [Status: As-built]
 
 ### W1 미확인 알림 공개·보존 [Status: Committed target]
 

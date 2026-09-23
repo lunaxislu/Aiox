@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { logger } from "@aiox/diagnostics";
 import {
+    type LastExit,
     agentRunSchema,
     externalAgentClientFrameSchema,
     externalAgentRunSchema,
@@ -21,6 +22,7 @@ import {
     type VendorBinding,
     type VendorExecution,
 } from "@aiox/vendor";
+import type { Context } from "hono";
 import type { WebSocket } from "ws";
 import { z } from "zod";
 
@@ -28,6 +30,9 @@ import type { Daemon } from "@/daemon";
 import { readJson } from "@/http";
 import { bearerToken } from "@/mcp";
 import { collaborationInstruction } from "@/messaging";
+
+import type { HttpEnv } from "./http";
+import { managedLaunch } from "./managed-agents";
 
 const resizeSchema = z.strictObject({
     type: z.literal("resize"),
@@ -46,42 +51,27 @@ export class AgentController {
         private readonly adapters: readonly VendorAdapter[],
     ) {}
 
-    async hook(
-        request: IncomingMessage,
-        response: ServerResponse,
-    ): Promise<void> {
-        const report = this.#reports.get(bearerToken(request) ?? "");
+    async hook(c: Context<HttpEnv>): Promise<Response> {
+        const report = this.#reports.get(bearerToken(c.req.raw) ?? "");
         const active = () =>
             report &&
             this.daemon.services.runtimes.get(report.runtimeId)
                 ?.collaborationActive;
-        if (!active()) {
-            response.writeHead(401).end("Invalid agent report credential.");
-            return;
-        }
-        if (request.method !== "POST") {
-            response.writeHead(405).end();
-            return;
-        }
+        if (!active()) return c.body("Invalid agent report credential.", 401);
+        if (c.req.method !== "POST") return c.body(null, 405);
         try {
-            const body = await readJson(request);
-            if (!active()) {
-                response.writeHead(401).end("Invalid agent report credential.");
-                return;
-            }
+            const body = await readJson(c.req.raw);
+            if (!active())
+                return c.body("Invalid agent report credential.", 401);
             const output = await report!.binding.observe(body);
-            if (output === undefined) response.writeHead(204).end();
-            else
-                response
-                    .writeHead(200, { "Content-Type": "application/json" })
-                    .end(JSON.stringify(output));
+            return output === undefined ? c.body(null, 204) : c.json(output);
         } catch (error) {
-            response
-                .writeHead(error instanceof InvalidVendorReport ? 400 : 409)
-                .end("Agent report could not be applied to this runtime.");
+            return c.body(
+                "Agent report could not be applied to this runtime.",
+                error instanceof InvalidVendorReport ? 400 : 409,
+            );
         }
     }
-
     attachExternal(socket: WebSocket): void {
         this.#attach(socket, true);
     }
@@ -93,6 +83,7 @@ export class AgentController {
         let binding: VendorBinding | undefined;
         let controlsForBinding: RuntimeControls | undefined;
         let runtimeId: string | undefined;
+        let terminalId: string | undefined;
         let reportToken: string | undefined;
         let ended = false;
         let relayDisconnected = false;
@@ -106,6 +97,9 @@ export class AgentController {
         let preparingExecution: Promise<VendorExecution> | undefined;
         let startingExecution: Promise<ExecutionProcess> | undefined;
         let session: TerminalSession | undefined;
+        let hostId: string | undefined;
+        let exitRecord: LastExit | undefined;
+        let stopping = false;
         const send = (frame: object) => {
             if (socket.readyState === socket.OPEN)
                 socket.send(JSON.stringify(frame));
@@ -168,7 +162,20 @@ export class AgentController {
         const finish = (
             message?: string,
             exit?: TerminalExit,
+            failureCode:
+                | "preparation_failed"
+                | "preparation_timeout"
+                | "invalid_lifecycle"
+                | "process_exit"
+                | "launch_timeout" = "preparation_failed",
         ): Promise<void> => {
+            if (message && !ended && !collaborationError && !finishing) {
+                logger.error(
+                    { runtimeId, hostId, terminalId, failureCode },
+                    "Agent collaboration failed",
+                );
+            }
+
             if (!external && session?.alive && message && !ended) {
                 collaborationError = message;
                 if (!foreground) {
@@ -189,6 +196,14 @@ export class AgentController {
                     }
                 })();
             }
+            if (message && hostId) {
+                collaborationError = message;
+                exitRecord ??= {
+                    kind: "start-failed",
+                    message,
+                    at: Date.now(),
+                };
+            }
             finishing ??= (async () => {
                 ended = true;
                 clear();
@@ -202,11 +217,15 @@ export class AgentController {
                 } catch {
                     message =
                         "Agent collaboration cleanup remains unconfirmed.";
-                    console.error(message);
+                    logger.error({ runtimeId, terminalId }, message);
                     send({ type: "error", message });
                     socket.close();
                     return;
                 }
+                logger.info(
+                    { runtimeId, hostId, terminalId },
+                    "Agent execution released",
+                );
                 if (message && !startupFailed) send({ type: "error", message });
                 else if (!message && exit) send({ type: "exit", ...exit });
                 socket.close();
@@ -217,15 +236,30 @@ export class AgentController {
             if (ended) return;
             // Revoke immediately, but let this path return the outcome before closing.
             ended = true;
+            if (hostId && !stopping && !exitRecord)
+                exitRecord = {
+                    kind: !binding?.wasReady
+                        ? "start-failed"
+                        : exit.exitCode === 0 && exit.signal === null
+                          ? "exited"
+                          : "crashed",
+                    message: !binding?.wasReady
+                        ? "Vendor exited before collaboration became ready."
+                        : exit.exitCode === 0 && exit.signal === null
+                          ? null
+                          : `Vendor exited with code ${exit.exitCode}, signal ${exit.signal}.`,
+                    at: Date.now(),
+                };
             this.daemon.services.runtimes.revoke(runtimeId!);
             try {
                 await binding?.processExited(exit.exitCode, exit.signal);
             } finally {
                 await finish(
-                    binding?.wasReady
+                    binding?.wasReady || stopping
                         ? undefined
                         : "Vendor exited before collaboration became ready. Check the vendor startup output and try again.",
                     exit,
+                    "process_exit",
                 );
             }
         };
@@ -248,7 +282,8 @@ export class AgentController {
                     await release();
                 }
             })().catch(() =>
-                console.error(
+                logger.error(
+                    { runtimeId, terminalId },
                     "Agent collaboration cleanup remains unconfirmed after connection loss.",
                 ),
             );
@@ -256,7 +291,12 @@ export class AgentController {
         socket.on("close", disconnected);
         socket.on("error", disconnected);
         timer = setTimeout(
-            () => void finish("No agent launch request was received."),
+            () =>
+                void finish(
+                    "No agent launch request was received.",
+                    undefined,
+                    "launch_timeout",
+                ),
             5000,
         );
         socket.once("message", (raw, binary) => {
@@ -274,29 +314,48 @@ export class AgentController {
                     throw new Error(
                         "Cannot start agent: invalid launch request.",
                     );
-                const input = parsed.data;
-                const webInput = external
+                let input = parsed.data;
+                let webInput = external
                     ? undefined
                     : agentRunSchema.parse(input);
                 if (webInput && !webInput.terminalContext)
                     throw new Error(
                         "Web foreground requires authenticated terminal context.",
                     );
-                if (webInput)
+                if (
+                    external &&
+                    (input.env.AIOX_HOST_ID !== undefined ||
+                        input.env.AIOX_AGENT_KEY !== undefined)
+                )
+                    throw new Error(
+                        "Managed Agent requires authenticated terminal context.",
+                    );
+                if (webInput) {
+                    const managed = await managedLaunch(
+                        this.daemon.services,
+                        webInput,
+                    );
+                    webInput = managed.input;
+                    input = webInput;
+                    hostId = managed.host?.id;
                     dimensions = { cols: webInput.cols, rows: webInput.rows };
+                }
                 const adapter = selectVendor(this.adapters, input.adapter);
                 const networkId =
                     input.network === undefined
                         ? null
-                        : (
-                              await this.daemon.services.networks.require(
-                                  input.network,
-                              )
-                          ).id;
+                        : hostId
+                          ? input.network
+                          : (
+                                await this.daemon.services.networks.require(
+                                    input.network,
+                                )
+                            ).id;
                 if (ended) return;
                 // The owner scope exists before resource acquisition; failed preparation remains retryable.
                 const registration = await this.daemon.registerRuntime({
                     networkId,
+                    ...(hostId === undefined ? {} : { hostId }),
                     executionOwnership: external ? "external" : "daemon",
                     ...(input.name === undefined ? {} : { name: input.name }),
                     ...(input.role === undefined ? {} : { role: input.role }),
@@ -310,6 +369,9 @@ export class AgentController {
                         runtimeId = controls.runtimeId;
                         controlsForBinding = controls;
                         return {
+                            get exit() {
+                                return exitRecord;
+                            },
                             get terminal() {
                                 return session;
                             },
@@ -330,6 +392,7 @@ export class AgentController {
                             mcpConnected: () => binding?.mcpConnected(),
                             revoke: clear,
                             stop: async () => {
+                                stopping = true;
                                 await owner?.stop();
                                 await preparingExecution?.catch(() => {});
                                 await startingExecution?.catch(() => {});
@@ -349,6 +412,9 @@ export class AgentController {
                         };
                     },
                 });
+                terminalId =
+                    this.daemon.services.runtimes.get(runtimeId!)?.terminalId ??
+                    undefined;
                 if (
                     ended ||
                     !this.daemon.services.runtimes.get(runtimeId!)
@@ -383,6 +449,11 @@ export class AgentController {
                 );
                 binding.onReleased = released;
                 binding.onReady = () => {
+                    this.daemon.services.runtimes.ready(runtimeId!);
+                    logger.info(
+                        { runtimeId, hostId, terminalId },
+                        "Agent collaboration ready",
+                    );
                     clearTimeout(timer);
                     if (
                         !ended &&
@@ -397,6 +468,10 @@ export class AgentController {
                     runtimeId: registration.runtimeId,
                     binding,
                 });
+                logger.info(
+                    { runtimeId, hostId, terminalId },
+                    "Agent execution preparing",
+                );
                 const launch = await binding.prepare({
                     executionOwnership: external ? "external" : "daemon",
                     args: input.args,
@@ -433,6 +508,8 @@ export class AgentController {
                         ) {
                             void finish(
                                 "Invalid external agent lifecycle frame.",
+                                undefined,
+                                "invalid_lifecycle",
                             );
                             return;
                         }
@@ -486,6 +563,8 @@ export class AgentController {
                     if (!binding!.wasReady)
                         void finish(
                             "Vendor collaboration did not become ready within 60 seconds. Check vendor startup and settings, then try again.",
+                            undefined,
+                            "preparation_timeout",
                         );
                 }, 60_000);
                 timer.unref();

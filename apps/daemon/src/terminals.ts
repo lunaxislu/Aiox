@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 
 import type { TerminalLaunch } from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import type { TerminalContext, TerminalView } from "@aiox/protocol";
 import type { TerminalSession } from "@aiox/terminal";
 import { createTerminal } from "@aiox/terminal";
@@ -21,7 +22,10 @@ export type TerminalOptions = {
  * owner: closing a tab detaches, it does not stop anything.
  */
 export class TerminalService {
-    constructor(private readonly onChange: () => void = () => {}) {}
+    constructor(
+        private readonly onChange: () => void = () => {},
+        private readonly onRemoved: (id: string) => void = () => {},
+    ) {}
     readonly #sessions = new Map<string, TerminalSession>();
 
     readonly #metadata = new Map<
@@ -125,11 +129,16 @@ export class TerminalService {
 
     #remove(id: string): void {
         const session = this.#sessions.get(id);
+        if (!session) return;
         this.#sessions.delete(id);
         this.#metadata.delete(id);
+        this.onRemoved(id);
         this.onChange();
         void session?.dispose().catch((error: unknown) => {
-            console.error(`terminal ${id}: mirror disposal failed`, error);
+            logger.error(
+                { err: error, terminalId: id },
+                "Terminal mirror disposal failed",
+            );
         });
     }
 

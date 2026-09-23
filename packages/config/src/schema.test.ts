@@ -45,7 +45,7 @@ test("layout priority inherits only matching presets and discards dimensions acr
             yaml: { preset: "auto" },
             cli: { preset: "grid", rows: 1 },
         }),
-    ).toEqual({ preset: "grid", rows: 1 });
+    ).toEqual({ preset: "grid", rows: 1, columns: 1 });
     expect(resolveHostLayout({ global, yaml: {}, cli: {} })).toEqual(global);
     expect(() =>
         resolveHostLayout({
@@ -80,7 +80,7 @@ test("host layout validates presets and grid dimensions without inferring missin
     expect(parseConfig({ host: { layout: {} } }).host).toEqual({
         layout: { preset: "auto" },
     });
-    for (const preset of ["auto", "left-main", "top-main", "grid"]) {
+    for (const preset of ["auto", "left-main", "top-main"]) {
         expect(
             parseConfig({ host: { layout: { preset } } }).host?.layout,
         ).toEqual({ preset });
@@ -153,4 +153,50 @@ test("retention days is a global setting with a 30 day default", () => {
     expect(() => parseConfig({ messages: { keepDays: 30 } })).toThrow(
         ConfigError,
     );
+});
+
+test("grid requires its own dimension before inheritance and fills only the final missing side", () => {
+    for (const source of ["global", "yaml", "cli"] as const) {
+        expect(() =>
+            resolveHostLayout({
+                global: { columns: 2, rows: 2 },
+                [source]: { preset: "grid" },
+            }),
+        ).toThrow(/dimension|columns|rows/);
+    }
+    expect(resolveHostLayout({ yaml: { columns: 3 } })).toEqual({
+        preset: "grid",
+        columns: 3,
+        rows: 1,
+    });
+});
+
+test("UI configuration validates keybindings separately from keyboard and preserves overrides only", () => {
+    const value = {
+        keyboard: { nextPane: "Ctrl+Tab" },
+        keybindings: {
+            mac: { splitDown: "Cmd+Shift+G", switchTab: "Cmd+Alt" },
+            windows: { openPalette: "Ctrl+Shift+O" },
+        },
+        web: { sidebar: { open: false } },
+        appearance: { theme: "dark" },
+    };
+    expect(parseConfig(value)).toMatchObject(value);
+    for (const keybindings of [
+        { other: {} },
+        { mac: { unknown: "Cmd+K" } },
+        { mac: { newShell: "Cmd" } },
+        { linux: { switchTab: "Ctrl+1" } },
+        { mac: { newShell: "Cmd+Cmd+S" } },
+        { mac: { newShell: "Cmd+\0" } },
+    ])
+        expect(() => parseConfig({ keybindings })).toThrow();
+    expect(() => parseConfig({ web: { sidebar: { open: "true" } } })).toThrow();
+    expect(() => parseConfig({ appearance: { theme: "blue" } })).toThrow();
+});
+
+test("CLI overrides cannot conceal conflicting ports in the config file", () => {
+    expect(() =>
+        parseConfig({ ports: { daemon: 4501 } }, { daemon: 5000 }),
+    ).toThrow(/ports must differ/);
 });

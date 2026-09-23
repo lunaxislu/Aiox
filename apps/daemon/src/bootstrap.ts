@@ -61,6 +61,7 @@ export async function boot(
     let daemon: Daemon;
     try {
         daemon = await startDaemon({
+            home,
             ports: config.ports,
             terminal: async () => (await loadConfig({ home })).terminal,
             db,
@@ -90,6 +91,13 @@ export async function boot(
     return { daemon, stateFile };
 }
 
+export class InvalidPortError extends Error {
+    readonly code = "EINVALIDPORT";
+    constructor(readonly field: "--port" | "--web-port") {
+        super(`${field} needs an integer from 1 to 65535`);
+    }
+}
+
 /** `--port` and `--web-port`, mirroring the CLI flags that spawn this process. */
 export function portOverrides(argv: readonly string[]): PortOverrides {
     const overrides: PortOverrides = {};
@@ -98,7 +106,7 @@ export function portOverrides(argv: readonly string[]): PortOverrides {
         const value = Number(argv[index + 1]);
         if (flag !== "--port" && flag !== "--web-port") continue;
         if (!Number.isInteger(value) || value < 1 || value > 65535)
-            throw new Error(`${flag} needs an integer from 1 to 65535`);
+            throw new InvalidPortError(flag);
         if (flag === "--port") overrides.daemon = value;
         else overrides.web = value;
         index++;

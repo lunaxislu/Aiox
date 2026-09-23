@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
+import type { LastExit } from "@aiox/protocol";
 import type { TerminalSession } from "@aiox/terminal";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
@@ -10,6 +11,7 @@ export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
  * implementations; Stage 2 exercises the seam with test doubles.
  */
 export type AgentBinding = {
+    readonly exit?: LastExit | undefined;
     readonly terminal?: TerminalSession | undefined;
     readonly relayDisconnected?: boolean;
     readonly collaborationError?: string | undefined;
@@ -35,6 +37,7 @@ export type RuntimeRecord = {
     collaborationActive: boolean;
     terminalId: string | null;
     terminalOwnership: "owned" | "borrowed" | null;
+    phase: "preparing" | "running" | "stopping";
     status: RuntimeStatus;
     status_reason: string | null;
     observation_error: string | null;
@@ -96,6 +99,17 @@ export class AmbiguousRuntimeError extends Error {
  * written to the database, an argv, a URL or a log line.
  */
 export class RuntimeRegistry {
+    readonly #listeners = new Set<() => void>();
+    subscribe(listener: () => void): () => void {
+        this.#listeners.add(listener);
+        return () => {
+            this.#listeners.delete(listener);
+        };
+    }
+    private changed(): void {
+        this.onChange();
+        for (const listener of this.#listeners) listener();
+    }
     constructor(
         private readonly onChange: () => void = () => {},
         private readonly cleanupPreparation: (
@@ -113,6 +127,13 @@ export class RuntimeRegistry {
     async register(
         input: RegisterRuntime,
     ): Promise<{ record: RuntimeRecord; token: string }> {
+        if (
+            input.executionOwnership === "external" &&
+            (input.terminalId != null || input.hostId != null)
+        )
+            throw new Error(
+                "External executions cannot belong to a Host or terminal.",
+            );
         const id = randomUUID();
         const name = input.name ?? id;
         // Reserve names before any await, including preparation and pending cleanup.
@@ -134,14 +155,14 @@ export class RuntimeRegistry {
                 if (record && record.binding !== unbound) {
                     record.status = status;
                     record.status_reason = reportedReason;
-                    if (record.executionOwnership === "daemon") this.onChange();
+                    this.changed();
                 }
             },
             setObservationError: (error) => {
                 const record = this.#runtimes.get(id);
                 if (!record || record.observation_error === error) return;
                 record.observation_error = error;
-                if (record.executionOwnership === "daemon") this.onChange();
+                this.changed();
             },
             settle: (deliveryId, outcome, error) =>
                 this.#onSettle(id, deliveryId, outcome, error),
@@ -160,6 +181,7 @@ export class RuntimeRegistry {
                 ? (input.terminalOwnership ?? "owned")
                 : null,
             // Not yet a send target: process spawn is not binding readiness.
+            phase: "preparing",
             status: "aiox-preparing",
             status_reason: null,
             observation_error: null,
@@ -169,13 +191,13 @@ export class RuntimeRegistry {
         // own readiness. Nothing can reach it yet: no credential exists, and
         // preparation keeps it out of send, but visible in discovery.
         this.#runtimes.set(id, record);
-        if (record.executionOwnership === "daemon") this.onChange();
+        this.changed();
         try {
             record.binding = await input.createBinding(controls);
             if (!record.collaborationActive) record.binding.revoke?.();
             record.status = reportedStatus;
             record.status_reason = reportedReason;
-            if (record.executionOwnership === "daemon") this.onChange();
+            this.changed();
         } catch (error) {
             // Revoke before fallible route cleanup. Failed cleanup reserves the
             // name and leaves a record that stopRuntime can retry.
@@ -197,6 +219,18 @@ export class RuntimeRegistry {
         const token = randomBytes(32).toString("base64url");
         if (record.collaborationActive) this.#tokens.set(token, id);
         return { record, token };
+    }
+
+    ready(id: string): void {
+        const record = this.#runtimes.get(id);
+        if (
+            record &&
+            record.phase === "preparing" &&
+            record.collaborationActive
+        ) {
+            record.phase = "running";
+            this.changed();
+        }
     }
 
     /** Resolves the authenticated source. A revoked token never resolves. */
@@ -247,15 +281,14 @@ export class RuntimeRegistry {
             if (runtimeId === id) this.#tokens.delete(token);
         }
         if (active) record.binding.revoke?.();
-        if (active && record.executionOwnership === "daemon") this.onChange();
+        if (active) this.changed();
     }
 
     /** Removes a record after its cleanup has succeeded. */
     unregister(id: string): boolean {
-        const record = this.#runtimes.get(id);
         this.revoke(id);
         const removed = this.#runtimes.delete(id);
-        if (removed && record?.executionOwnership === "daemon") this.onChange();
+        if (removed) this.changed();
         return removed;
     }
 }

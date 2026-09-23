@@ -23,8 +23,11 @@ export type CommandName =
     | "host.list"
     | "host.status"
     | "host.stop"
+    | "host.restart"
+    | "host.delete"
     | "host.agent.start"
     | "host.agent.stop"
+    | "host.agent.restart"
     | "host.network.list"
     | "host.network.show"
     | "host.network.block"
@@ -44,7 +47,10 @@ export type CliOptions = {
     json?: boolean;
     force?: boolean;
     path?: string;
-    worktree?: string;
+    file?: string;
+    layout?: string;
+    columns?: string;
+    rows?: string;
     adapter?: string;
     port?: number;
     webPort?: number;
@@ -58,6 +64,8 @@ export type CliRequest = {
     args: (string | string[])[];
     options: CliOptions;
     adapterArgs?: string[];
+    cliErrors?: string[];
+    selectionErrors?: string[];
 };
 
 /** The application/controller boundary. Parsing does not mutate SQLite or runtime state. */

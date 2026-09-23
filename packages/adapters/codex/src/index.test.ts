@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { PassThrough } from "node:stream";
 
+import { logger } from "@aiox/diagnostics";
 import { ExecutionOwner } from "@aiox/vendor";
 import type { Command, ExecutionProcess } from "@aiox/vendor";
 import { expect, test, vi } from "vitest";
@@ -580,9 +581,12 @@ test("App Server startup failure reaches the caller without leaking the MCP toke
         },
     );
     const diagnostic = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const structured = vi.spyOn(logger, "error").mockImplementation(() => {});
     vi.spyOn(owner, "background").mockImplementation(async () => {
         setTimeout(() => {
-            stderr.write("MCP rejected private-mcp-secret\n");
+            stderr.write(
+                "MCP rejected private-mcp-secret arbitrary-vendor-secret\n",
+            );
             fail({ exitCode: 1, signal: null });
         }, 0);
         return {
@@ -620,6 +624,11 @@ test("App Server startup failure reaches the caller without leaking the MCP toke
             "MCP rejected [redacted]",
         );
         expect(launchTui).not.toHaveBeenCalled();
+        expect(structured).toHaveBeenCalledWith(
+            { component: "codex", exitCode: 1, signal: null },
+            "Codex App Server exited",
+        );
+        expect(diagnostic).not.toHaveBeenCalled();
         expect(diagnostic.mock.calls.flat().join("")).not.toContain(
             "private-mcp-secret",
         );

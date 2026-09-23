@@ -1,3 +1,4 @@
+import { logger } from "@aiox/diagnostics";
 import { Terminal } from "@xterm/headless";
 import { type IPtyForkOptions, spawn } from "node-pty";
 
@@ -127,7 +128,14 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
     try {
         pty = spawn(prepared.file, prepared.args, ptyOptions);
     } catch (error) {
-        void integration?.dispose().catch(console.error);
+        void integration
+            ?.dispose()
+            .catch((err: unknown) =>
+                logger.error(
+                    { err, terminalId: options.id },
+                    "Shell integration disposal failed",
+                ),
+            );
         throw error;
     }
 

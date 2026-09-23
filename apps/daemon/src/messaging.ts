@@ -1,3 +1,4 @@
+import { logger } from "@aiox/diagnostics";
 import type { DeliveryOutcome } from "@aiox/domain";
 import { canSend, deliveredContent, notifiesOrigin } from "@aiox/domain";
 import type { AioxDatabase } from "@aiox/persistence";
@@ -313,8 +314,13 @@ export class MessageService {
                 const reason =
                     error instanceof Error ? error.message : String(error);
                 if (flight.storageError !== reason)
-                    console.error(
-                        `AIOX: outcome storage failed for ${deliveryId}: ${reason}`,
+                    logger.error(
+                        {
+                            err: error,
+                            deliveryId,
+                            runtimeId: flight.targetRuntimeId,
+                        },
+                        "Outcome storage failed",
                     );
                 flight.storageError = reason;
             })
@@ -417,7 +423,10 @@ export class MessageService {
         );
         this.#inFlight.delete(deliveryId);
         if (flight.storageError !== undefined)
-            console.error(`AIOX: outcome storage recovered for ${deliveryId}`);
+            logger.info(
+                { deliveryId, runtimeId: flight.targetRuntimeId },
+                "Outcome storage recovered",
+            );
         if (!settled || !notification) return;
         if (notification.originExecutionOwnership === "daemon") this.onChange();
         const body = notification.body;

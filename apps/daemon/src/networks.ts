@@ -26,6 +26,7 @@ export class NetworkService {
             get(id: string): RuntimeRecord | undefined;
             inNetwork(networkId: string): RuntimeRecord[];
         },
+        private readonly onChange: () => void = () => {},
     ) {}
 
     async create(name: string): Promise<PersistentNetwork> {
@@ -49,6 +50,7 @@ export class NetworkService {
                 );
             throw error;
         }
+        this.onChange();
         return this.require(id);
     }
 
@@ -78,7 +80,9 @@ export class NetworkService {
                 `Network '${network.name}' has participating executions. Clean up their participation first, then delete the Network.`,
                 "network_in_use",
             );
-        return this.db.networks.delete(network.id);
+        const deleted = await this.db.networks.delete(network.id);
+        if (deleted) this.onChange();
+        return deleted;
     }
 
     async route(
@@ -110,6 +114,7 @@ export class NetworkService {
                       };
             return applyRouteOperation(current, resolved);
         });
+        this.onChange();
         return this.require(network.id);
     }
 
@@ -140,6 +145,7 @@ export class NetworkService {
                     ({ from, to }) => from !== runtime.id && to !== runtime.id,
                 ),
             }));
+            this.onChange();
         } catch (error) {
             // A Network deleted before or during cleanup has no edges left.
             if (await this.db.networks.get(networkId)) throw error;
@@ -148,6 +154,25 @@ export class NetworkService {
 
     /** The routing snapshot a send or discovery call is judged against. */
     async effective(networkId: string): Promise<Network> {
+        const managed = await this.db.hostState.getNetwork(networkId);
+        if (managed) {
+            const members = this.runtimes
+                .inNetwork(networkId)
+                .filter(
+                    (r) => r.collaborationActive && r.hostId === managed.hostId,
+                );
+            return {
+                id: networkId,
+                defaultPolicy: managed.default,
+                routes: managed.edges.flatMap((edge) => {
+                    const from = members.find((r) => r.name === edge.from),
+                        to = members.find((r) => r.name === edge.to);
+                    return from && to
+                        ? [{ from: from.id, to: to.id, policy: edge.policy }]
+                        : [];
+                }),
+            };
+        }
         const network = await this.require(networkId);
         return {
             id: network.id,

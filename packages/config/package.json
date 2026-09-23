@@ -13,5 +13,9 @@
         "build": "tsup --config ../../tsup.config.ts",
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "test": "vitest run --config ../../vitest.config.ts"
+    },
+    "dependencies": {
+        "@aiox/protocol": "workspace:*",
+        "yaml": "2.8.3"
     }
 }

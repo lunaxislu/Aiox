@@ -1,11 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
 import { codexAdapter } from "@aiox/adapter-codex";
-import type { AioxConfig } from "@aiox/config";
-import { ConfigError, resolveTerminalLaunch } from "@aiox/config";
+import type { AioxConfig, TerminalLaunch } from "@aiox/config";
+import {
+    ConfigError,
+    resolveTerminalLaunch,
+    createConfigDocument,
+} from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import type { AioxDatabase } from "@aiox/persistence";
 import type {
     Ports,
@@ -15,11 +21,14 @@ import type {
 } from "@aiox/protocol";
 import { createShellSchema, terminalContextSchema } from "@aiox/protocol";
 import type { VendorAdapter } from "@aiox/vendor";
+import { getRequestListener } from "@hono/node-server";
 import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { WebSocketServer } from "ws";
 
 import { AgentController } from "@/agent-controller";
-import { createApiHandler, HttpError, readJson } from "@/http";
+import { createApi, apiError, HttpError, readJson } from "@/http";
 import { bearerToken, handleMcpRequest } from "@/mcp";
 import { MessageService } from "@/messaging";
 import { NetworkService } from "@/networks";
@@ -34,7 +43,12 @@ import type { TerminalOptions } from "@/terminals";
 import { attachTerminal, TerminalService } from "@/terminals";
 import { WebEvents } from "@/web-events";
 
+import type { HttpEnv } from "./http";
+import { restartCommand } from "./managed-agents";
+import { readWebSnapshot } from "./web-state";
+
 export type DaemonOptions = {
+    home?: string;
     terminal?: () => Promise<AioxConfig["terminal"]>;
     ports: Ports;
     db: AioxDatabase;
@@ -104,12 +118,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             }));
     }
 
+    await options.db.hostState.recover(now());
     const webEvents = new WebEvents();
     const runtimes: RuntimeRegistry = new RuntimeRegistry(
         webEvents.notify,
         (record) => networks.removeRuntimeRoutes(record),
     );
-    const networks = new NetworkService(options.db, runtimes);
+    const networks = new NetworkService(options.db, runtimes, webEvents.notify);
     const messages = new MessageService(
         options.db,
         runtimes,
@@ -117,7 +132,21 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         now,
         webEvents.notify,
     );
-    const terminals = new TerminalService(webEvents.notify);
+    const terminals = new TerminalService(webEvents.notify, (id) => {
+        if (!admitting) return;
+        const finish = webEvents.beginUpdate();
+        const task = options.db.hostState
+            .removeTerminal(id)
+            .catch((error) =>
+                webEvents.fault(
+                    "storage_error",
+                    error instanceof Error ? error.message : String(error),
+                ),
+            )
+            .finally(finish);
+        services.operationTasks.add(task);
+        void task.then(() => services.operationTasks.delete(task));
+    });
     runtimes.onSettle((runtimeId, deliveryId, outcome, error) =>
         messages.settle(runtimeId, deliveryId, outcome, error),
     );
@@ -133,6 +162,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     let ports = options.ports;
 
     const services: DaemonServices = {
+        operationTasks: new Set(),
+        configDocument: createConfigDocument(
+            options.home === undefined ? {} : { home: options.home },
+            () => ports,
+        ),
+        configLocation:
+            options.home === undefined ? {} : { home: options.home },
         webEvents,
         db: options.db,
         runtimes,
@@ -140,6 +176,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         messages,
         terminals,
         lifecycle: {
+            acceptingInput: () => admitting,
             createShell,
             stopTerminal,
             stopRuntime,
@@ -161,48 +198,68 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         },
     };
 
-    const api = createApiHandler(services);
-    const serveStatic = createStaticHandler(options.webRoot);
-
-    function protectedRequest(
-        request: IncomingMessage,
-        response: ServerResponse,
-        port: number,
-    ): boolean {
-        if (!ready) {
-            response.writeHead(503, { "content-type": "application/json" });
-            response.end(
-                JSON.stringify({
-                    code: "starting",
-                    message: "The daemon is starting.",
-                }),
+    const api = createApi(services);
+    function listener(component: "daemon" | "web") {
+        const app = new Hono<HttpEnv>();
+        app.use(async (c, next) => {
+            const requestId = randomUUID();
+            c.set("requestId", requestId);
+            c.header("x-request-id", requestId);
+            // @hono/node-server leaves a pending drain callback after a blocked
+            // stream closes. This response can no longer drain or accept writes.
+            c.env.outgoing.once("close", () =>
+                c.env.outgoing.removeAllListeners("drain"),
             );
-            return true;
-        }
-        const denied = requestGuard(request, port, ports.web, host);
-        if (!denied) return false;
-        response.writeHead(denied.status, {
-            "content-type": "application/json",
+            logger.info(
+                { requestId, component, method: c.req.method },
+                "HTTP request received",
+            );
+            if (!ready)
+                return c.json(
+                    { code: "starting", message: "The daemon is starting." },
+                    503,
+                );
+            const denied = requestGuard(
+                c.env.incoming,
+                ports[component],
+                ports.web,
+                host,
+            );
+            if (denied)
+                return c.json(
+                    { code: "request_rejected", message: denied.message },
+                    denied.status,
+                );
+            await next();
         });
-        response.end(
-            JSON.stringify({
-                code: "request_rejected",
-                message: denied.message,
-            }),
-        );
-        return true;
-    }
-
-    const daemonServer = createServer((request, response) => {
-        void (async () => {
-            if (protectedRequest(request, response, ports.daemon)) return;
-            const url = new URL(request.url ?? "/", `http://${host}`);
-            if (url.pathname === "/api/agent-hooks" && agents) {
-                await agents.hook(request, response);
-                return;
-            }
-            const mcp = /^\/mcp\/([^/]+)$/.exec(url.pathname);
-            if (mcp) {
+        app.onError((error, c) => {
+            if (
+                c.req.path.startsWith("/api/") &&
+                c.req.path !== "/api/agent-hooks"
+            )
+                return apiError(error, c, services);
+            logger.error(
+                { err: error, requestId: c.get("requestId"), component },
+                "HTTP request failed",
+            );
+            return c.body(
+                String(error),
+                error instanceof HttpError
+                    ? (error.status as ContentfulStatusCode)
+                    : 500,
+            );
+        });
+        if (component === "daemon") {
+            app.all("/api/agent-hooks", (c) => {
+                if (!agents)
+                    throw new HttpError(
+                        404,
+                        "not_found",
+                        `No such endpoint: ${c.req.method} ${c.req.path}`,
+                    );
+                return agents.hook(c);
+            });
+            app.all("/mcp/:networkId", async (c) => {
                 if (!admitting)
                     throw new HttpError(
                         503,
@@ -210,58 +267,45 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                         "The daemon is stopping.",
                     );
                 const body =
-                    request.method === "POST"
-                        ? await readJson(request)
+                    c.req.method === "POST"
+                        ? await readJson(c.req.raw)
                         : undefined;
-                await handleMcpRequest(
-                    decodeURIComponent(mcp[1]!),
-                    request,
-                    response,
+                const response = await handleMcpRequest(
+                    c.req.param("networkId"),
+                    c,
                     body,
                     { runtimes, networks, messages },
                 );
                 if (
-                    response.statusCode === 200 &&
+                    response.status === 200 &&
                     InitializeRequestSchema.safeParse(body).success
                 ) {
-                    const binding = runtimes.authenticate(
-                        bearerToken(request),
-                    )?.binding;
-                    binding?.mcpConnected?.();
+                    runtimes
+                        .authenticate(bearerToken(c.req.raw))
+                        ?.binding.mcpConnected?.();
                 }
-                return;
-            }
-            if (await api(request, response, url)) return;
-            response.writeHead(404, { "content-type": "application/json" });
-            response.end(
-                JSON.stringify({ code: "not_found", message: "Not found." }),
+                return response;
+            });
+        }
+        app.route("/", api);
+        if (component === "web") {
+            app.use("*", createStaticHandler(options.webRoot));
+            app.notFound((c) =>
+                c.text(
+                    options.webRoot === undefined
+                        ? "The operational Web is not built. Run: pnpm --filter @aiox/web build"
+                        : "Not found.",
+                    404,
+                ),
             );
-        })().catch((error: unknown) => {
-            if (!response.headersSent)
-                response.writeHead(
-                    error instanceof HttpError ? error.status : 500,
-                );
-            response.end(String(error));
-        });
-    });
-
-    const webServer = createServer((request, response) => {
-        void (async () => {
-            if (protectedRequest(request, response, ports.web)) return;
-            const url = new URL(request.url ?? "/", `http://${host}`);
-            if (await api(request, response, url)) return;
-            if (await serveStatic(response, url.pathname)) return;
-            response.writeHead(404, { "content-type": "text/plain" });
-            response.end(
-                options.webRoot === undefined
-                    ? "The operational Web is not built. Run: pnpm --filter @aiox/web build"
-                    : "Not found.",
+        } else
+            app.notFound((c) =>
+                c.json({ code: "not_found", message: "Not found." }, 404),
             );
-        })().catch((error: unknown) => {
-            if (!response.headersSent) response.writeHead(500);
-            response.end(String(error));
-        });
-    });
+        return createServer(getRequestListener(app.fetch));
+    }
+    const daemonServer = listener("daemon");
+    const webServer = listener("web");
 
     const sockets = new WebSocketServer({ noServer: true });
     daemonServer.on("upgrade", (request, socket, head) => {
@@ -362,8 +406,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         options.retentionDays,
         {
             now,
+            onError: (err) => logger.error({ err }, "Retention purge failed"),
             onPurge: (report) => {
-                if (report.notifications > 0) webEvents.notify();
+                if (report.notifications > 0 || (report.operations ?? 0) > 0)
+                    webEvents.notify();
             },
         },
     );
@@ -376,6 +422,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     function stopRuntime(runtimeId: string): Promise<void> {
         const pending = runtimeStops.get(runtimeId);
         if (pending) return pending;
+        const stoppingRecord = runtimes.get(runtimeId);
+        if (stoppingRecord) stoppingRecord.phase = "stopping";
         runtimes.revoke(runtimeId);
         const attempt = Promise.resolve()
             .then(async () => {
@@ -389,6 +437,20 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     await terminals.kill(record.terminalId);
                 await networks.removeRuntimeRoutes(record);
                 await messages.forget(runtimeId);
+                if (record.hostId !== null) {
+                    const host = (
+                        await options.db.hostState.snapshot()
+                    ).hosts.find((h) => h.id === record.hostId);
+                    await options.db.hostState.finishExecution(
+                        record.id,
+                        record.binding.exit ?? {
+                            kind: "stopped",
+                            message: "Agent stopped.",
+                            at: now(),
+                        },
+                        host ? restartCommand(host, record.name) : "",
+                    );
+                }
                 // Registration, credential and membership go together.
                 runtimes.unregister(runtimeId);
                 terminalObservers.get(runtimeId)?.();
@@ -399,7 +461,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return attempt;
     }
 
-    async function createShell(input: CreateShell = {}): Promise<TerminalView> {
+    async function createShell(
+        input: CreateShell = {},
+        prepared?: TerminalLaunch,
+    ): Promise<TerminalView> {
         if (!admitting)
             throw new HttpError(503, "stopping", "The daemon is stopping.");
         const parsed = createShellSchema.safeParse(input);
@@ -409,20 +474,22 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 "invalid_request",
                 "Invalid shell options.",
             );
-        const settings = await options.terminal?.();
-        const launch = await resolveTerminalLaunch(
-            settings,
-            parsed.data.cwd === undefined ? {} : { cwd: parsed.data.cwd },
-        ).catch((error: unknown) => {
-            if (
-                error instanceof ConfigError &&
-                error.field === "terminal.cwd" &&
-                parsed.data.cwd !== undefined
-            ) {
-                throw new HttpError(400, "invalid_request", error.message);
-            }
-            throw error;
-        });
+        const settings = prepared ? undefined : await options.terminal?.();
+        const launch =
+            prepared ??
+            (await resolveTerminalLaunch(
+                settings,
+                parsed.data.cwd === undefined ? {} : { cwd: parsed.data.cwd },
+            ).catch((error: unknown) => {
+                if (
+                    error instanceof ConfigError &&
+                    error.field === "terminal.cwd" &&
+                    parsed.data.cwd !== undefined
+                ) {
+                    throw new HttpError(400, "invalid_request", error.message);
+                }
+                throw error;
+            }));
         if (!admitting)
             throw new HttpError(503, "stopping", "The daemon is stopping.");
         const session = terminals.createShell({ ...parsed.data, ...launch });
@@ -431,11 +498,15 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
 
     async function stopTerminal(id: string): Promise<boolean> {
         const session = terminals.get(id);
-        if (!session) return false;
+        if (!session) {
+            await options.db.hostState.removeTerminal(id);
+            return false;
+        }
         for (const record of runtimes.list()) {
             if (record.terminalId === id) await stopRuntime(record.id);
         }
         if (terminals.get(id)) await terminals.kill(id);
+        await options.db.hostState.removeTerminal(id);
         return true;
     }
 
@@ -472,8 +543,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         const onExit = () => {
             // A TUI exiting cleans only its own execution, never the daemon.
             void stopRuntime(runtimeId).catch((error: unknown) => {
-                process.stderr.write(
-                    `Runtime cleanup failed: ${String(error)}\n`,
+                logger.error(
+                    { err: error, runtimeId, terminalId },
+                    "Runtime cleanup failed",
                 );
             });
         };
@@ -529,6 +601,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             // A binding already being prepared must finish before we can stop
             // its real resources, rather than its temporary registration.
             await Promise.allSettled(registrations);
+            await Promise.allSettled(services.operationTasks);
             const warnings: string[] = [];
             for (const record of targets) {
                 try {
@@ -613,16 +686,20 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     function closeListeners(): Promise<void> {
         closing ??= (async () => {
             await options.onClosing?.().catch((error: unknown) => {
-                process.stderr.write(
-                    `Daemon state cleanup failed before listeners closed: ${String(error)}\n`,
+                logger.error(
+                    { err: error },
+                    "Daemon state cleanup failed before listeners closed",
                 );
             });
             await closeServers();
             await options.db.close().catch((error: unknown) => {
-                process.stderr.write(
-                    `Daemon database close failed after listeners closed: ${String(error)}\n`,
+                logger.error(
+                    { err: error },
+                    "Daemon database close failed after listeners closed",
                 );
             });
+            logger.info("Daemon stopped");
+            logger.flush();
             resolveClosed();
         })();
         return closing;
@@ -634,6 +711,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         return outcome;
     }
 
+    webEvents.setSnapshot(() => readWebSnapshot(services));
     const daemon: Daemon = {
         ports,
         services,
@@ -676,6 +754,18 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 )
                     throw new Error("Terminal already has an Agent.");
             }
+            if (
+                input.hostId !== undefined &&
+                runtimes
+                    .list()
+                    .some(
+                        (r) =>
+                            r.hostId === input.hostId && r.name === input.name,
+                    )
+            )
+                throw new Error(
+                    "Managed Agent already has an execution awaiting cleanup.",
+                );
             const registration = runtimes.register({
                 ...input,
                 terminalId,
@@ -683,8 +773,25 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 createBinding: async (controls) => {
                     // Reserve membership before awaiting storage: deletion either
                     // sees this record or precedes this existence check.
-                    if (input.networkId !== null)
-                        await networks.require(input.networkId);
+                    if (input.networkId !== null) {
+                        if (input.hostId === undefined)
+                            await networks.require(input.networkId);
+                        else if (
+                            !(
+                                await options.db.hostState.snapshot()
+                            ).networks.some(
+                                (n) =>
+                                    n.hostId === input.hostId &&
+                                    n.id === input.networkId &&
+                                    n.members.some(
+                                        (m) => m.agentKey === input.name,
+                                    ),
+                            )
+                        )
+                            throw new Error(
+                                "Managed Agent does not belong to this Host Network.",
+                            );
+                    }
                     if (!runtimes.get(controls.runtimeId)?.collaborationActive)
                         throw new Error(
                             "Registration cancelled during preparation.",
@@ -697,6 +804,20 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
             try {
                 const { record, token } = await registration;
                 runtimeId = record.id;
+                if (record.hostId !== null) {
+                    if (!record.terminalId || !borrowing)
+                        throw new Error(
+                            "Managed Agent requires its authenticated shell.",
+                        );
+                    await options.db.hostState.startExecution({
+                        runtimeId: record.id,
+                        hostId: record.hostId,
+                        agentKey: record.name,
+                        terminalId: record.terminalId,
+                        startedAt: now(),
+                    });
+                    webEvents.notify();
+                }
                 if (record.terminalId)
                     attachTerminalTo(record.id, record.terminalId);
                 if (
@@ -753,5 +874,9 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         throw error;
     }
     ready = true;
+    logger.info(
+        { daemonPort: ports.daemon, webPort: ports.web },
+        "Daemon listening",
+    );
     return daemon;
 }

@@ -93,6 +93,7 @@ export async function startTestDaemon(
     const home = await mkdtemp(join(tmpdir(), "aiox-daemon-"));
     const db = await openDatabase(join(home, ".aiox", "aiox.db"));
     const daemon = await startDaemon({
+        home,
         ports: { daemon: 0, web: 0 },
         db,
         retentionDays: () => options.retentionDays ?? 30,
@@ -116,5 +117,25 @@ export async function startTestDaemon(
             await daemon.stop(true);
             await rm(home, { recursive: true, force: true });
         },
+    };
+}
+
+/** Read one LF-delimited frame from the daemon's SSE stream. */
+export function sseFrameReader(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+) {
+    const decoder = new TextDecoder();
+    let buffered = "";
+    return async () => {
+        while (!buffered.includes("\n\n")) {
+            const chunk = await reader.read();
+            if (chunk.done)
+                throw new Error("SSE stream ended before a complete frame");
+            buffered += decoder.decode(chunk.value, { stream: true });
+        }
+        const end = buffered.indexOf("\n\n");
+        const frame = buffered.slice(0, end);
+        buffered = buffered.slice(end + 2);
+        return frame;
     };
 }

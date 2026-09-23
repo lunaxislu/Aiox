@@ -1,8 +1,9 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage } from "node:http";
 
 import { agentViewSchema } from "@aiox/protocol";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import type { Context } from "hono";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 
@@ -10,6 +11,8 @@ import type { MessageService } from "@/messaging";
 import { targetNotFound } from "@/messaging";
 import type { NetworkService } from "@/networks";
 import type { RuntimeRecord, RuntimeRegistry } from "@/runtimes";
+
+import type { HttpEnv } from "./http";
 
 const agent = agentViewSchema.pick({
     name: true,
@@ -20,8 +23,13 @@ const agent = agentViewSchema.pick({
 });
 
 /** Only the header carries the credential; never the URL, argv or a log line. */
-export function bearerToken(request: IncomingMessage): string | undefined {
-    const header = request.headers.authorization;
+export function bearerToken(
+    request: IncomingMessage | Request,
+): string | undefined {
+    const header =
+        request.headers instanceof Headers
+            ? request.headers.get("authorization")
+            : request.headers.authorization;
     if (!header) return undefined;
     const [scheme, value] = header.split(" ");
     return scheme?.toLowerCase() === "bearer" && value ? value : undefined;
@@ -128,16 +136,6 @@ function tools(
     return server;
 }
 
-function refuse(
-    response: ServerResponse,
-    status: number,
-    code: string,
-    message: string,
-): void {
-    response.writeHead(status, { "content-type": "application/json" });
-    response.end(JSON.stringify({ code, message }));
-}
-
 /**
  * One MCP server per request. Statelessness is the point: the credential, the
  * current membership and the route are all re-checked on every call, so a
@@ -145,42 +143,38 @@ function refuse(
  */
 export async function handleMcpRequest(
     networkId: string,
-    request: IncomingMessage,
-    response: ServerResponse,
+    c: Context<HttpEnv>,
     body: unknown,
     services: {
         runtimes: RuntimeRegistry;
         networks: NetworkService;
         messages: MessageService;
     },
-): Promise<void> {
-    const source = services.runtimes.authenticate(bearerToken(request));
-    if (!source) {
-        refuse(
-            response,
+): Promise<Response> {
+    const source = services.runtimes.authenticate(bearerToken(c.req.raw));
+    if (!source)
+        return c.json(
+            {
+                code: "unauthenticated",
+                message: "A valid runtime credential is required.",
+            },
             401,
-            "unauthenticated",
-            "A valid runtime credential is required.",
         );
-        return;
-    }
-    if (source.networkId === null || source.networkId !== networkId) {
-        refuse(
-            response,
+    if (source.networkId === null || source.networkId !== networkId)
+        return c.json(
+            {
+                code: "wrong_network",
+                message: "This credential does not belong to that network.",
+            },
             403,
-            "wrong_network",
-            "This credential does not belong to that network.",
         );
-        return;
-    }
-
     const server = tools(source, services.networks, services.messages);
     // Omitting sessionIdGenerator selects the SDK's stateless mode; there is no
     // session to carry a credential forward past a revoke.
-    const transport = new StreamableHTTPServerTransport({
+    const transport = new WebStandardStreamableHTTPServerTransport({
         enableJsonResponse: true,
     });
-    response.on("close", () => {
+    c.env.outgoing.once("close", () => {
         void transport.close();
         void server.close();
     });
@@ -189,5 +183,5 @@ export async function handleMcpRequest(
     await server.connect(
         transport as unknown as Parameters<McpServer["connect"]>[0],
     );
-    await transport.handleRequest(request, response, body);
+    return transport.handleRequest(c.req.raw, { parsedBody: body });
 }

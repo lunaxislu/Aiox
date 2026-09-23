@@ -4,7 +4,12 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 
 import { claudeAdapter } from "@aiox/adapter-claude";
-import { terminalContextFromEnv, type AgentRun } from "@aiox/protocol";
+import { logger } from "@aiox/diagnostics";
+import {
+    hostViewSchema,
+    terminalContextFromEnv,
+    type AgentRun,
+} from "@aiox/protocol";
 import * as terminals from "@aiox/terminal";
 import type {
     TerminalExit,
@@ -20,6 +25,7 @@ import { WebSocket } from "ws";
 
 import * as http from "@/http";
 import { fakeVendor, startTestDaemon, type DaemonHarness } from "@/testing";
+import { readWebSnapshot } from "@/web-state";
 
 let harness: DaemonHarness;
 const bindings = new Map<string, VendorBinding>();
@@ -38,7 +44,7 @@ const sessions: {
     options: TerminalOptions;
     session: TerminalSession;
     output(data: string): void;
-    exit(): void;
+    exit(exitCode?: number): void;
 }[] = [];
 
 beforeEach(async () => {
@@ -87,8 +93,9 @@ beforeEach(async () => {
         );
         let alive = true;
         const result: TerminalExit = { exitCode: 0, signal: null };
-        const exit = () => {
+        const exit = (exitCode = 0) => {
             if (!alive) return;
+            result.exitCode = exitCode;
             alive = false;
             for (const listener of listeners) listener.exit(result);
             listeners.clear();
@@ -149,6 +156,7 @@ beforeEach(async () => {
 });
 
 test("forwards startup bytes emitted before start resolves exactly once without replay", async () => {
+    const diagnostic = vi.spyOn(logger, "info");
     const webInput = webFrame();
     const create = vi.mocked(terminals.createTerminal).getMockImplementation()!;
     vi.mocked(terminals.createTerminal).mockImplementationOnce((options) => {
@@ -177,6 +185,12 @@ test("forwards startup bytes emitted before start resolves exactly once without 
         );
         expect(messages[1]!.data.toString()).toBe("LIVE");
         expect(messages.every((item) => item.binary)).toBe(true);
+        expect(diagnostic).toHaveBeenCalledWith(
+            expect.objectContaining({
+                runtimeId: harness.daemon.services.runtimes.list()[0]!.id,
+            }),
+            "Agent execution preparing",
+        );
     } finally {
         socket.terminate();
     }
@@ -1303,11 +1317,12 @@ test("external disconnect logs cleanup failure without private details and retai
     const cleanup = vi
         .spyOn(binding, "cleanup")
         .mockRejectedValueOnce(new Error(prepared.launch.env.AIOX_HOOK_TOKEN));
-    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     try {
         socket.terminate();
         await vi.waitFor(() =>
             expect(diagnostic).toHaveBeenCalledWith(
+                expect.objectContaining({ runtimeId }),
                 "Agent collaboration cleanup remains unconfirmed after connection loss.",
             ),
         );
@@ -1723,6 +1738,7 @@ test("keeps Web execution and registration after relay loss and restores the sam
 });
 
 test("Web collaboration timeout revokes only collaboration and retains its usable relay until explicit cleanup", async () => {
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     const input = webFrame();
     const timers = vi.spyOn(globalThis, "setTimeout");
     const { socket } = await connect(input);
@@ -1749,6 +1765,15 @@ test("Web collaboration timeout revokes only collaboration and retains its usabl
         });
     });
     expect(cleanup).toHaveBeenCalledWith("collaboration_lost");
+    expect(diagnostic).toHaveBeenCalledWith(
+        {
+            runtimeId: record.id,
+            terminalId: record.terminalId,
+            hostId: undefined,
+            failureCode: "preparation_timeout",
+        },
+        "Agent collaboration failed",
+    );
     expect(vendor.session.kill).not.toHaveBeenCalled();
     expect(socket.readyState).toBe(WebSocket.OPEN);
     socket.send(Buffer.from("still usable"));
@@ -1766,6 +1791,7 @@ test("Web collaboration timeout revokes only collaboration and retains its usabl
 });
 
 test("a failure after Web PTY creation retains the same vendor for recovery and natural-exit cleanup", async () => {
+    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
     let fail!: (error: Error) => void;
     holdStart = new Promise<void>((_resolve, reject) => {
         fail = reject;
@@ -1779,6 +1805,15 @@ test("a failure after Web PTY creation retains the same vendor for recovery and 
         expect(record.binding.collaborationError).toBe(
             "post-spawn preparation failed",
         ),
+    );
+    expect(diagnostic).toHaveBeenCalledWith(
+        {
+            runtimeId: record.id,
+            terminalId: record.terminalId,
+            hostId: undefined,
+            failureCode: "preparation_failed",
+        },
+        "Agent collaboration failed",
     );
     expect(record.binding.relayDisconnected).toBe(true);
     expect(record.collaborationActive).toBe(false);
@@ -1853,3 +1888,339 @@ test("retained Web vendor cleanup retries failures and rejects stale terminal ow
         harness.daemon.services.terminals.view(record.terminalId!)?.alive,
     ).toBe(true);
 });
+
+async function managedFrame() {
+    const shell = await harness.daemon.createShell({ cwd: harness.home });
+    const terminalContext = terminalContextFromEnv(sessions[0]!.options.env!)!;
+    const panel = {
+        id: "managed-panel",
+        kind: "host" as const,
+        section: "hosts" as const,
+        name: "Managed",
+        hostId: "managed-host",
+        networkId: "managed-network",
+        revision: 1,
+        layout: {
+            type: "pane" as const,
+            id: "pane",
+            tabIds: ["tab"],
+            selectedTabId: "tab",
+        },
+        activePaneId: "pane",
+        tabs: [
+            {
+                id: "tab",
+                terminalId: shell.id,
+                label: "reviewer",
+                agentKey: "reviewer",
+                runtimeId: null,
+                presentation: "shell" as const,
+                notice: null,
+            },
+        ],
+    };
+    await harness.daemon.services.db.hostState.createHost(
+        {
+            id: "managed-host",
+            name: "Managed",
+            directory: harness.home,
+            sourceFile: join(harness.home, "aiox.yaml"),
+            instruction: "Host instruction",
+            revision: 1,
+            panelId: panel.id,
+            networkId: "managed-network",
+            activeOperationId: null,
+            agents: [
+                {
+                    key: "reviewer",
+                    adapter: "claude",
+                    role: "reviewer",
+                    description: null,
+                    instruction: "Agent instruction",
+                    args: [],
+                    member: true,
+                    runtime: null,
+                    lastTerminalId: null,
+                    lastExit: null,
+                },
+            ],
+        },
+        {
+            id: "managed-network",
+            hostId: "managed-host",
+            name: "Team",
+            scope: "host",
+            default: "allow",
+            members: [{ agentKey: "reviewer", runtimeId: null }],
+            edges: [],
+        },
+        panel,
+        Date.now(),
+    );
+    const input = {
+        ...frame(),
+        terminalContext,
+        env: {
+            ...frame().env,
+            AIOX_HOST_ID: "managed-host",
+            AIOX_AGENT_KEY: "reviewer",
+        },
+    };
+    return { shell, input };
+}
+
+test("managed Agent uses its authenticated Host tab, projects readiness and preserves shell after exit", async () => {
+    const { shell, input } = await managedFrame();
+    wasReady = true;
+    const { socket } = await connect(input);
+    try {
+        await vi.waitFor(() => expect(sessions).toHaveLength(2));
+        const record = harness.daemon.services.runtimes.list()[0]!;
+        expect(record.hostId).toBe("managed-host");
+        expect(record.networkId).toBe("managed-network");
+        expect(
+            await (
+                await fetch(harness.apiUrl(`/api/agents/${record.id}`))
+            ).json(),
+        ).toMatchObject({ hostId: "managed-host", networkName: "Team" });
+        expect(prepare.mock.calls[0]![0].instruction).toContain(
+            "Host instruction\n\nAgent instruction",
+        );
+        const hostView = async () =>
+            hostViewSchema.parse(
+                await (
+                    await fetch(harness.apiUrl("/api/hosts/managed-host"))
+                ).json(),
+            );
+        expect((await hostView()).agents[0]!.runtime!.phase).toBe("preparing");
+        bindings.get(record.id)!.onReady?.();
+        expect((await hostView()).agents[0]!.runtime!.phase).toBe("running");
+        const snapshot = await readWebSnapshot(harness.daemon.services);
+        expect(snapshot.hosts[0]!.agents[0]!.runtime?.id).toBe(record.id);
+        expect(snapshot.panels[0]!.tabs[0]!.presentation).toBe("tui");
+        expect(
+            snapshot.networks.find((n) => "members" in n)?.members[0]
+                ?.runtimeId,
+        ).toBe(record.id);
+        sessions[1]!.exit();
+        await vi.waitFor(() =>
+            expect(harness.daemon.services.runtimes.list()).toHaveLength(0),
+        );
+        const after = await hostView();
+        expect(after.agents[0]!).toMatchObject({
+            runtime: null,
+            lastTerminalId: shell.id,
+            lastExit: { kind: "exited" },
+        });
+        expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
+            true,
+        );
+        const stored = await harness.daemon.services.db.hostState.snapshot();
+        expect(stored.panels[0]!.tabs[0]).toMatchObject({
+            presentation: "shell",
+            notice: null,
+        });
+        const second = await connect(input);
+        await vi.waitFor(() => expect(sessions).toHaveLength(3));
+        const replacement = harness.daemon.services.runtimes.list()[0]!;
+        expect(replacement.id).not.toBe(record.id);
+        await harness.daemon.stopRuntime(replacement.id);
+        expect((await hostView()).agents[0]!.lastExit!.kind).toBe("stopped");
+        const tab = (await harness.daemon.services.db.hostState.snapshot())
+            .panels[0]!.tabs[0]!;
+        expect(tab.presentation).toBe("stopped");
+        expect(tab.notice?.restartCommand).toContain("aiox host agent start");
+        second.socket.terminate();
+    } finally {
+        socket.terminate();
+    }
+});
+
+test("managed collaboration timeout preserves execution and shell while revoking collaboration", async () => {
+    const { shell, input } = await managedFrame();
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    const { socket } = await connect(input);
+    try {
+        await vi.waitFor(() =>
+            expect(timers.mock.calls.some((call) => call[1] === 60_000)).toBe(
+                true,
+            ),
+        );
+        const record = harness.daemon.services.runtimes.list()[0]!;
+        const vendor = sessions[1]!;
+        const token = vendor.options.env!.AIOX_MCP_TOKEN!;
+        expect(harness.daemon.services.runtimes.authenticate(token)).toBe(
+            record,
+        );
+        const cleanup = vi.spyOn(bindings.get(record.id)!, "cleanup");
+        const deadline = timers.mock.calls.find(
+            (call) => call[1] === 60_000,
+        )![0];
+        if (typeof deadline !== "function") throw new Error("Missing deadline");
+        deadline();
+        await vi.waitFor(() => {
+            expect(cleanup).toHaveBeenCalledWith("collaboration_lost");
+
+            expect(record.collaborationActive).toBe(false);
+        });
+        expect(
+            harness.daemon.services.runtimes.authenticate(token),
+        ).toBeUndefined();
+        expect(harness.daemon.services.runtimes.get(record.id)).toBe(record);
+        expect(vendor.session.kill).not.toHaveBeenCalled();
+        expect(vendor.session.alive).toBe(true);
+        expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
+            true,
+        );
+        const snapshot = await readWebSnapshot(harness.daemon.services);
+        expect(snapshot.hosts[0]!.agents[0]).toMatchObject({
+            lastExit: null,
+            runtime: {
+                id: record.id,
+                collaborationActive: false,
+                collaborationError: expect.stringContaining("60 seconds"),
+            },
+        });
+        expect(snapshot.panels[0]!.tabs[0]).toMatchObject({
+            runtimeId: record.id,
+            notice: null,
+        });
+        expect(socket.readyState).toBe(WebSocket.OPEN);
+        socket.send(Buffer.from("still usable"));
+        await vi.waitFor(() =>
+            expect(vendor.session.write).toHaveBeenCalledWith(
+                Buffer.from("still usable"),
+            ),
+        );
+        await harness.daemon.stopRuntime(record.id);
+        expect(vendor.session.kill).toHaveBeenCalledOnce();
+        expect(harness.daemon.services.runtimes.get(record.id)).toBeUndefined();
+        expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
+            true,
+        );
+        const stopped = await readWebSnapshot(harness.daemon.services);
+        expect(stopped.hosts[0]!.agents[0]!.lastExit?.kind).toBe("stopped");
+    } finally {
+        socket.terminate();
+    }
+});
+
+test("managed startup failure is durable and leaves its shell usable", async () => {
+    const { shell, input } = await managedFrame();
+    start.mockImplementation(() => {
+        throw new Error("vendor executable missing");
+    });
+    const { socket, messages } = await connect(input);
+    try {
+        await vi.waitFor(() =>
+            expect(
+                messages.some(
+                    (m) =>
+                        !m.binary &&
+                        m.data.toString().includes("vendor executable missing"),
+                ),
+            ).toBe(true),
+        );
+        expect(harness.daemon.services.runtimes.list()).toHaveLength(0);
+        const snapshot = await readWebSnapshot(harness.daemon.services);
+        expect(snapshot.hosts[0]!.agents[0]!.lastExit).toMatchObject({
+            kind: "start-failed",
+            message: "vendor executable missing",
+        });
+        expect(snapshot.panels[0]!.tabs[0]!.presentation).toBe("start-failed");
+        expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
+            true,
+        );
+    } finally {
+        socket.terminate();
+    }
+});
+
+test("managed launch rejects another terminal even with the same cwd before vendor acquisition", async () => {
+    const { input } = await managedFrame();
+    await harness.daemon.createShell({ cwd: harness.home });
+    const { socket, messages } = await connect({
+        ...input,
+        terminalContext: terminalContextFromEnv(sessions[1]!.options.env!)!,
+    });
+    try {
+        await vi.waitFor(() =>
+            expect(
+                messages.some(
+                    (m) =>
+                        !m.binary &&
+                        m.data
+                            .toString()
+                            .includes("does not own this panel terminal"),
+                ),
+            ).toBe(true),
+        );
+        expect(start).not.toHaveBeenCalled();
+        expect(harness.daemon.services.runtimes.list()).toHaveLength(0);
+        expect(
+            (await readWebSnapshot(harness.daemon.services)).hosts[0]!
+                .agents[0]!.lastExit,
+        ).toBeNull();
+    } finally {
+        socket.terminate();
+    }
+});
+
+test("managed stop keeps a failed cleanup reserved and persists stopped only after a successful retry", async () => {
+    const { shell, input } = await managedFrame();
+    wasReady = true;
+    const { socket } = await connect(input);
+    try {
+        await vi.waitFor(() => expect(sessions).toHaveLength(2));
+        const record = harness.daemon.services.runtimes.list()[0]!;
+        vi.spyOn(sessions[1]!.session, "kill").mockRejectedValueOnce(
+            new Error("kill unconfirmed"),
+        );
+        await expect(harness.daemon.stopRuntime(record.id)).rejects.toThrow(
+            "kill unconfirmed",
+        );
+        const pending = await readWebSnapshot(harness.daemon.services);
+        expect(pending.hosts[0]!.agents[0]!.runtime).toMatchObject({
+            phase: "stopping",
+            collaborationActive: false,
+        });
+        expect(pending.hosts[0]!.agents[0]!.lastExit).toBeNull();
+        await harness.daemon.stopRuntime(record.id);
+        expect(
+            (await readWebSnapshot(harness.daemon.services)).hosts[0]!
+                .agents[0]!.lastExit?.kind,
+        ).toBe("stopped");
+        expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
+            true,
+        );
+    } finally {
+        socket.terminate();
+    }
+});
+
+test.each([
+    [false, "start-failed"],
+    [true, "crashed"],
+] as const)(
+    "managed nonzero exit with ready=%s records %s and keeps shell",
+    async (ready, kind) => {
+        const { shell, input } = await managedFrame();
+        wasReady = ready;
+        const { socket } = await connect(input);
+        try {
+            await vi.waitFor(() => expect(sessions).toHaveLength(2));
+            sessions[1]!.exit(9);
+            await vi.waitFor(() =>
+                expect(harness.daemon.services.runtimes.list()).toHaveLength(0),
+            );
+            const snapshot = await readWebSnapshot(harness.daemon.services);
+            expect(snapshot.hosts[0]!.agents[0]!.lastExit?.kind).toBe(kind);
+            expect(snapshot.panels[0]!.tabs[0]!.presentation).toBe(kind);
+            expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
+                true,
+            );
+        } finally {
+            socket.terminate();
+        }
+    },
+);

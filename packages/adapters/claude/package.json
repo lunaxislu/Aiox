@@ -18,6 +18,7 @@
         "test": "vitest run --config ../../../vitest.config.ts"
     },
     "dependencies": {
+        "@aiox/diagnostics": "workspace:*",
         "@aiox/domain": "workspace:*",
         "@aiox/vendor": "workspace:*",
         "zod": "4.5.4"

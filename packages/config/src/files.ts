@@ -36,11 +36,20 @@ export async function saveConfig(
     options: ConfigLocation = {},
 ): Promise<AioxConfig> {
     const config = parseConfig(value);
+    await writeConfigFile(config, options);
+    return config;
+}
+
+export async function writeConfigFile(
+    value: unknown,
+    options: ConfigLocation = {},
+): Promise<void> {
+    parseConfig(value);
     const file = configPath(options.home);
     await mkdir(dirname(file), { recursive: true });
     const temporary = `${file}.${randomUUID()}.tmp`;
     try {
-        await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, {
+        await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, {
             flag: "wx",
             mode: 0o600,
         });
@@ -48,5 +57,4 @@ export async function saveConfig(
     } finally {
         await rm(temporary, { force: true });
     }
-    return config;
 }

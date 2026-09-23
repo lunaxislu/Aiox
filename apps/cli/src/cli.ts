@@ -1,16 +1,42 @@
 import type { ParseOptions } from "commander";
-import { Command, InvalidArgumentError, Option } from "commander";
+import {
+    Command,
+    CommanderError,
+    InvalidArgumentError,
+    Option,
+} from "commander";
 
-import type { CliOptions, CliPort, CommandName } from "@/requests";
+import { failedHostRequest, hostSelection } from "@/host-input";
+import type { CliRequest, CliOptions, CliPort, CommandName } from "@/requests";
 
 class AioxCommand extends Command {
     suppliedArgs: readonly string[] = [];
+    hostFailure?: (request: CliRequest) => Promise<void>;
+    userArgs: readonly string[] = [];
     override async parseAsync(
         argv: readonly string[] = process.argv,
         options?: ParseOptions,
     ): Promise<this> {
         this.suppliedArgs = argv;
-        return super.parseAsync(argv, options);
+        this.userArgs =
+            options?.from === "user"
+                ? argv
+                : argv.slice(options?.from === "electron" ? 1 : 2);
+        try {
+            return await super.parseAsync(argv, options);
+        } catch (error) {
+            if (
+                this.userArgs[0] !== "host" ||
+                !(error instanceof CommanderError) ||
+                error.exitCode === 0 ||
+                !this.hostFailure
+            )
+                throw error;
+            await this.hostFailure(
+                failedHostRequest(this.userArgs, error.message),
+            );
+            return this;
+        }
     }
 }
 
@@ -99,6 +125,10 @@ export function createCli(
         .description("Run and connect vendor TUIs through AIOX")
         .version("0.0.0")
         .exitOverride();
+    cli.hostFailure = async (request) => {
+        const result = await port.execute(request);
+        if (result !== undefined) output(result);
+    };
     const bind = (
         command: Command,
         name: CommandName,
@@ -106,7 +136,7 @@ export function createCli(
     ): Command => {
         command.action(async (...values: unknown[]) => {
             const active = values.at(-1) as Command;
-            const options = active.opts<CliOptions>();
+            const options = active.optsWithGlobals<CliOptions>();
             const args = values
                 .slice(0, -2)
                 .filter((value) => value !== undefined) as (
@@ -129,17 +159,33 @@ export function createCli(
                     throw new Error("Adapter arguments must follow --");
                 }
             }
+            const cliErrors: string[] = [];
             if (
                 ["block", "unblock", "reset"].some((verb) =>
                     name.endsWith(`.${verb}`),
                 )
-            )
-                validateRoute(options);
+            ) {
+                try {
+                    validateRoute(options);
+                } catch (error) {
+                    if (!name.startsWith("host.")) throw error;
+                    cliErrors.push(
+                        error instanceof Error ? error.message : String(error),
+                    );
+                }
+            }
+            const selection = name.startsWith("host.")
+                ? hostSelection(cli.userArgs)
+                : undefined;
             const result = await port.execute({
                 command: name,
                 args,
                 options,
                 ...(adapterArgs === undefined ? {} : { adapterArgs }),
+                ...(cliErrors.length ? { cliErrors } : {}),
+                ...(selection?.errors.length
+                    ? { selectionErrors: selection.errors }
+                    : {}),
             });
             if (result !== undefined) output(result);
         });
@@ -227,21 +273,33 @@ export function createCli(
     for (const verb of ["block", "unblock", "reset"] as const)
         bind(routing(network.command(`${verb} <network>`)), `network.${verb}`);
 
-    const host = cli.command("host").description("Manage manifest-based hosts");
-    bind(
-        host
-            .command("run")
-            .option("--path <aiox.yaml>")
-            .option("--name <host>")
-            .option("--worktree <branch>"),
-        "host.run",
-    );
+    const host = cli
+        .command("host")
+        .description("Manage manifest-based hosts")
+        .configureOutput({ writeErr() {} });
+    const source = (command: Command) =>
+        command.option("--path <directory>").option("--file <yaml>");
+    const layout = (command: Command) =>
+        command
+            .option("--layout <preset>")
+            .option("--columns <columns>")
+            .option("--rows <rows>");
+    bind(layout(source(host)), "host.run");
+    bind(layout(source(host.command("run"))), "host.run");
     bind(host.command("list").option("--json"), "host.list");
-    bind(host.command("status <host>").option("--json"), "host.status");
-    bind(host.command("stop <host>"), "host.stop");
+    bind(
+        source(host.command("status [hostname]")).option("--json"),
+        "host.status",
+    );
+    for (const verb of ["stop", "delete"] as const)
+        bind(source(host.command(`${verb} [hostname]`)), `host.${verb}`);
+    bind(source(host.command("restart")), "host.restart");
     const hostAgent = host.command("agent");
-    bind(hostAgent.command("start <host> <agents...>"), "host.agent.start");
-    bind(hostAgent.command("stop <host> <agents...>"), "host.agent.stop");
+    for (const verb of ["start", "stop", "restart"] as const)
+        bind(
+            source(hostAgent.command(`${verb} <agent-names...>`)),
+            `host.agent.${verb}`,
+        );
     const hostNetwork = host.command("network");
     bind(
         hostNetwork.command("list <host>").option("--json"),

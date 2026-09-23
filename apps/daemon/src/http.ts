@@ -1,11 +1,19 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { HttpBindings } from "@hono/node-server";
+import { Hono, type Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+export type HttpEnv = {
+    Bindings: HttpBindings;
+    Variables: { requestId: string };
+};
 
-import { ConfigError } from "@aiox/config";
+import { ConfigError, ConfigConflictError, HostInputError } from "@aiox/config";
+import { logger } from "@aiox/diagnostics";
 import { RouteOperationError } from "@aiox/domain";
-import type { PersistentNetwork } from "@aiox/persistence";
-import type { AgentView, NetworkView, NotificationView } from "@aiox/protocol";
+import { HostStateError } from "@aiox/persistence";
+import type { NotificationView } from "@aiox/protocol";
 import {
     apiPath,
+    putConfigRequestSchema,
     createNetworkSchema,
     createShellSchema,
     readNotificationsSchema,
@@ -15,19 +23,30 @@ import {
 
 import { NetworkError } from "@/networks";
 import { AmbiguousRuntimeError, DuplicateRuntimeNameError } from "@/runtimes";
-import type { RuntimeRecord } from "@/runtimes";
 import type { DaemonServices } from "@/services";
 
-const MAX_BODY = 1_000_000;
+import { registerStateApi } from "./state-api";
+import { networkView, agentView, terminalView } from "./web-state";
 
-export async function readJson(request: IncomingMessage): Promise<unknown> {
+const MAX_BODY = 1_000_000;
+async function networkNames(
+    services: DaemonServices,
+): Promise<Map<string, string>> {
+    const persistent = await services.networks.list();
+    const { networks: managed } = await services.db.hostState.snapshot();
+    return new Map(
+        [...persistent, ...managed].map(({ id, name }) => [id, name]),
+    );
+}
+
+export async function readJson(request: Request): Promise<unknown> {
     const chunks: Buffer[] = [];
     let size = 0;
-    for await (const chunk of request) {
-        size += (chunk as Buffer).length;
+    for await (const chunk of request.body ?? []) {
+        size += chunk.byteLength;
         if (size > MAX_BODY)
             throw new HttpError(413, "body_too_large", "Body too large.");
-        chunks.push(chunk as Buffer);
+        chunks.push(Buffer.from(chunk));
     }
     if (size === 0) return undefined;
     const text = Buffer.concat(chunks).toString("utf8");
@@ -50,55 +69,10 @@ export class HttpError extends Error {
     }
 }
 
-function send(response: ServerResponse, status: number, body: unknown): void {
-    const text = JSON.stringify(body);
-    response.writeHead(status, {
-        "content-type": "application/json; charset=utf-8",
-        "content-length": Buffer.byteLength(text),
-    });
-    response.end(text);
-}
-
-function networkView(
-    network: PersistentNetwork,
-    runtimes: DaemonServices["runtimes"],
-): NetworkView {
-    return {
-        id: network.id,
-        name: network.name,
-        scope: "persistent",
-        routes: network.routes.map(({ from, to }) => ({
-            from,
-            to,
-            fromName: runtimes.get(from)?.name ?? from,
-            toName: runtimes.get(to)?.name ?? to,
-        })),
-    };
-}
-
-function agentView(
-    record: RuntimeRecord,
-    names: ReadonlyMap<string, string>,
-): AgentView {
-    return {
-        agentId: record.id,
-        name: record.name,
-        role: record.role,
-        description: record.description,
-        status: record.status,
-        networkId: record.networkId,
-        networkName:
-            record.networkId === null
-                ? null
-                : (names.get(record.networkId) ?? null),
-        hostId: record.hostId,
-        terminalId: record.terminalId,
-        status_reason: record.status_reason,
-        observation_error: record.observation_error,
-    };
-}
-
-function parse<T>(schema: { parse(value: unknown): T }, value: unknown): T {
+export function parse<T>(
+    schema: { parse(value: unknown): T },
+    value: unknown,
+): T {
     try {
         return schema.parse(value);
     } catch (error) {
@@ -110,124 +84,172 @@ function parse<T>(schema: { parse(value: unknown): T }, value: unknown): T {
     }
 }
 
-/**
- * The same handler backs both listeners, so the Web reaches the API on its own
- * origin and the CLI reaches it on the daemon port.
- */
-export function createApiHandler(services: DaemonServices) {
-    return async function handle(
-        request: IncomingMessage,
-        response: ServerResponse,
-        url: URL,
-    ): Promise<boolean> {
-        const path = url.pathname;
-        if (!path.startsWith("/api/")) return false;
-        try {
-            await route(request, response, url, path, services);
-        } catch (error) {
-            if (error instanceof HttpError) {
-                send(response, error.status, {
-                    code: error.code,
-                    message: error.message,
-                    ...error.extra,
-                });
-            } else if (error instanceof ConfigError) {
-                send(response, 500, {
-                    code: "invalid_config",
-                    message: error.message,
-                });
-            } else if (error instanceof NetworkError) {
-                send(response, 400, {
-                    code: error.code,
-                    message: error.message,
-                });
-            } else if (error instanceof RouteOperationError) {
-                send(response, 400, {
-                    code: "invalid_route_operation",
-                    message: error.message,
-                });
-            } else if (error instanceof DuplicateRuntimeNameError) {
-                send(response, 409, {
-                    code: error.code,
-                    message: error.message,
-                });
-            } else if (error instanceof AmbiguousRuntimeError) {
-                const names = new Map(
-                    (await services.networks.list()).map(({ id, name }) => [
-                        id,
-                        name,
-                    ]),
-                );
-                send(response, 409, {
-                    code: "ambiguous_agent",
-                    message: error.message,
-                    candidates: error.candidates.map(({ name, networkId }) => ({
-                        name,
-                        network:
-                            networkId === null
-                                ? null
-                                : (names.get(networkId) ?? null),
-                    })),
-                });
-            } else {
-                send(response, 500, {
-                    code: "internal_error",
-                    message:
-                        error instanceof Error ? error.message : String(error),
-                });
-            }
-        }
-        return true;
-    };
-}
-
-async function route(
-    request: IncomingMessage,
-    response: ServerResponse,
-    url: URL,
-    path: string,
+export async function apiError(
+    error: unknown,
+    c: Context<HttpEnv>,
     services: DaemonServices,
-): Promise<void> {
-    const method = request.method ?? "GET";
-    const { runtimes, networks, db, lifecycle } = services;
-    if (path === "/api/web/events" && method === "GET") {
-        services.webEvents.connect(response);
-        return;
-    }
-
-    const terminalView = (id: string) => {
-        const view = services.terminals.view(id);
-        if (!view) return undefined;
-        const record = runtimes
-            .list()
-            .find(
-                (r) =>
-                    r.executionOwnership === "daemon" &&
-                    r.terminalId === id &&
-                    r.binding.terminal,
+): Promise<Response> {
+    const path = c.req.path;
+    const stateContract = ["hosts", "panels", "operations", "config"].some(
+        (resource) =>
+            path === "/api/" + resource ||
+            path.startsWith("/api/" + resource + "/"),
+    );
+    logger.warn(
+        { err: error, requestId: c.get("requestId") },
+        "API request failed",
+    );
+    if (stateContract && !(error instanceof HttpError)) {
+        if (error instanceof HostInputError)
+            error = new HttpError(
+                error.stage === "config" ? 500 : 400,
+                error.stage === "yaml"
+                    ? "invalid_yaml"
+                    : error.stage === "config"
+                      ? "invalid_config"
+                      : "invalid_request",
+                error.message,
+                { stage: error.stage },
             );
-        return record
-            ? {
-                  ...view,
-                  vendor: {
-                      runtimeId: record.id,
-                      alive: record.binding.terminal!.alive,
-                      relayDisconnected:
-                          record.binding.relayDisconnected === true,
-                      collaborationActive: record.collaborationActive,
-                      ...(record.binding.collaborationError
-                          ? {
-                                collaborationError:
-                                    record.binding.collaborationError,
-                            }
-                          : {}),
-                  },
-              }
-            : view;
-    };
-    const vendorMatch = /^\/api\/terminals\/([^/]+)\/vendor$/.exec(path);
-    if (vendorMatch && method === "DELETE") {
-        const id = decodeURIComponent(vendorMatch[1]!);
+        else if (error instanceof HostStateError)
+            error = new HttpError(
+                error.code.startsWith("unknown_") ? 404 : 409,
+                error.code,
+                error.message,
+                { stage: "storage" },
+            );
+        else if (!(error instanceof ConfigError) && path !== "/api/config")
+            error = new HttpError(
+                500,
+                "storage_error",
+                error instanceof Error ? error.message : String(error),
+                { stage: "storage" },
+            );
+    }
+    if (error instanceof HttpError) {
+        return c.json(
+            {
+                code: error.code,
+                message: error.message,
+                ...(stateContract
+                    ? {
+                          stage:
+                              path === "/api/config"
+                                  ? "config"
+                                  : error.status >= 500
+                                    ? "storage"
+                                    : "cli",
+                      }
+                    : {}),
+                ...error.extra,
+            },
+            error.status as ContentfulStatusCode,
+        );
+    } else if (error instanceof ConfigError) {
+        return c.json(
+            {
+                code: "invalid_config",
+                message: error.message,
+                ...(stateContract ? { stage: "config" } : {}),
+            },
+            500,
+        );
+    } else if (error instanceof NetworkError) {
+        return c.json(
+            {
+                code: error.code,
+                message: error.message,
+            },
+            400,
+        );
+    } else if (error instanceof RouteOperationError) {
+        return c.json(
+            {
+                code: "invalid_route_operation",
+                message: error.message,
+            },
+            400,
+        );
+    } else if (error instanceof DuplicateRuntimeNameError) {
+        return c.json(
+            {
+                code: error.code,
+                message: error.message,
+            },
+            409,
+        );
+    } else if (error instanceof AmbiguousRuntimeError) {
+        const names = await networkNames(services);
+        return c.json(
+            {
+                code: "ambiguous_agent",
+                message: error.message,
+                candidates: error.candidates.map(({ name, networkId }) => ({
+                    name,
+                    network:
+                        networkId === null
+                            ? null
+                            : (names.get(networkId) ?? null),
+                })),
+            },
+            409,
+        );
+    } else {
+        return c.json(
+            {
+                code: "internal_error",
+                message: error instanceof Error ? error.message : String(error),
+            },
+            500,
+        );
+    }
+}
+export function createApi(services: DaemonServices) {
+    const app = new Hono<HttpEnv>();
+    const { runtimes, networks, db, lifecycle } = services;
+    const getTerminal = (id: string) => terminalView(services, id);
+    // Hono normally treats HEAD as GET; this API has always required explicit methods.
+    app.use("/api/*", async (c, next) => {
+        if (c.req.method === "HEAD")
+            throw new HttpError(
+                404,
+                "not_found",
+                `No such endpoint: HEAD ${c.req.path}`,
+            );
+        await next();
+    });
+    registerStateApi(app, services);
+    app.get("/api/web/events", async (c) => {
+        try {
+            return await services.webEvents.connect(c);
+        } catch (error) {
+            throw new HttpError(
+                500,
+                "storage_error",
+                error instanceof Error ? error.message : String(error),
+                { stage: "storage" },
+            );
+        }
+    });
+    app.get(apiPath.config, async (c) => {
+        return c.json(await services.configDocument.read(), 200);
+    });
+    app.put(apiPath.config, async (c) => {
+        const input = parse(putConfigRequestSchema, await readJson(c.req.raw));
+        try {
+            c.res = c.json(await services.configDocument.write(input), 200);
+        } catch (error) {
+            if (error instanceof ConfigConflictError)
+                throw new HttpError(409, "config_conflict", error.message, {
+                    current: error.current,
+                });
+            throw error;
+        }
+        return c.res;
+    });
+    app.delete("/api/terminals/:terminalId/vendor", async (c) => {
+        const url = new URL(c.req.url);
+        const id = c.req.param("terminalId");
         const record = runtimes.get(url.searchParams.get("runtime") ?? "");
         if (
             !record ||
@@ -240,58 +262,37 @@ async function route(
                 "No such terminal execution.",
             );
         await lifecycle.stopRuntime(record.id);
-        send(response, 200, { deleted: true });
-        return;
-    }
-
-    if (path === apiPath.terminals) {
-        if (method === "GET") {
-            send(
-                response,
-                200,
-                services.terminals.views().map((view) => terminalView(view.id)),
-            );
-            return;
-        }
-        if (method === "POST") {
-            const body = await readJson(request);
-            const input = parse(
-                createShellSchema,
-                body === undefined ? {} : body,
-            );
-            send(response, 201, await lifecycle.createShell(input));
-            return;
-        }
-    }
-    const terminalMatch = /^\/api\/terminals\/([^/]+)$/.exec(path);
-    if (terminalMatch) {
-        const id = decodeURIComponent(terminalMatch[1]!);
-        if (method === "GET") {
-            const view = terminalView(id);
-            if (!view)
-                throw new HttpError(
-                    404,
-                    "unknown_terminal",
-                    "No such terminal.",
-                );
-            send(response, 200, view);
-            return;
-        }
-        if (method === "DELETE") {
-            send(response, 200, { deleted: await lifecycle.stopTerminal(id) });
-            return;
-        }
-    }
-
-    if (path === apiPath.status && method === "GET") {
-        send(response, 200, await lifecycle.status());
-        return;
-    }
-
-    if (path === apiPath.daemonStop && method === "POST") {
+        return c.json({ deleted: true }, 200);
+    });
+    app.get(apiPath.terminals, async (c) => {
+        return c.json(
+            services.terminals.views().map((view) => getTerminal(view.id)),
+            200,
+        );
+    });
+    app.post(apiPath.terminals, async (c) => {
+        const body = await readJson(c.req.raw);
+        const input = parse(createShellSchema, body === undefined ? {} : body);
+        return c.json(await lifecycle.createShell(input), 201);
+    });
+    app.get("/api/terminals/:terminalId", async (c) => {
+        const id = c.req.param("terminalId");
+        const view = getTerminal(id);
+        if (!view)
+            throw new HttpError(404, "unknown_terminal", "No such terminal.");
+        return c.json(view, 200);
+    });
+    app.delete("/api/terminals/:terminalId", async (c) => {
+        const id = c.req.param("terminalId");
+        return c.json({ deleted: await lifecycle.stopTerminal(id) }, 200);
+    });
+    app.get(apiPath.status, async (c) => {
+        return c.json(await lifecycle.status(), 200);
+    });
+    app.post(apiPath.daemonStop, async (c) => {
         const { force } = parse(
             stopRequestSchema,
-            (await readJson(request)) ?? {},
+            (await readJson(c.req.raw)) ?? {},
         );
         const result = await lifecycle.requestStop(force === true);
         if (!result.stopped) {
@@ -311,173 +312,147 @@ async function route(
                 },
             );
         }
-        send(response, 200, {
-            stopped: true,
-            forced: force === true,
-            ...(result.warnings.length > 0
-                ? { warnings: result.warnings }
-                : {}),
-        });
-        return;
-    }
-
-    if (path === apiPath.networks) {
-        if (method === "GET") {
-            send(
-                response,
-                200,
-                (await networks.list()).map((network) =>
-                    networkView(network, runtimes),
-                ),
-            );
-            return;
-        }
-        if (method === "POST") {
-            const input = parse(createNetworkSchema, await readJson(request));
-            send(
-                response,
-                201,
-                networkView(await networks.create(input.name), runtimes),
-            );
-            return;
-        }
-    }
-
-    const routeMatch = /^\/api\/networks\/([^/]+)\/route$/.exec(path);
-    if (routeMatch && method === "POST") {
+        return c.json(
+            {
+                stopped: true,
+                forced: force === true,
+                ...(result.warnings.length > 0
+                    ? { warnings: result.warnings }
+                    : {}),
+            },
+            200,
+        );
+    });
+    app.get(apiPath.networks, async (c) => {
+        return c.json(
+            (await networks.list()).map((network) =>
+                networkView(network, runtimes),
+            ),
+            200,
+        );
+    });
+    app.post(apiPath.networks, async (c) => {
+        const input = parse(createNetworkSchema, await readJson(c.req.raw));
+        return c.json(
+            networkView(await networks.create(input.name), runtimes),
+            201,
+        );
+    });
+    app.post("/api/networks/:networkId/route", async (c) => {
         const { operation } = parse(
             routeRequestSchema,
-            await readJson(request),
+            await readJson(c.req.raw),
         );
-        send(
-            response,
-            200,
+        return c.json(
             networkView(
-                await networks.route(
-                    decodeURIComponent(routeMatch[1]!),
-                    operation,
-                ),
+                await networks.route(c.req.param("networkId"), operation),
                 runtimes,
             ),
+            200,
         );
-        return;
-    }
-
-    const networkMatch = /^\/api\/networks\/([^/]+)$/.exec(path);
-    if (networkMatch) {
-        const reference = decodeURIComponent(networkMatch[1]!);
-        if (method === "GET") {
-            send(
-                response,
-                200,
-                networkView(await networks.require(reference), runtimes),
-            );
-            return;
-        }
-        if (method === "DELETE") {
-            send(response, 200, { deleted: await networks.delete(reference) });
-            return;
-        }
-    }
-
-    if (
-        (path === apiPath.agents || path === "/api/web/agents") &&
-        method === "GET"
-    ) {
+    });
+    app.get("/api/networks/:networkId", async (c) => {
+        const reference = c.req.param("networkId");
+        return c.json(
+            networkView(await networks.require(reference), runtimes),
+            200,
+        );
+    });
+    app.delete("/api/networks/:networkId", async (c) => {
+        const reference = c.req.param("networkId");
+        return c.json({ deleted: await networks.delete(reference) }, 200);
+    });
+    app.on("GET", [apiPath.agents, "/api/web/agents"], async (c) => {
+        const path = c.req.path;
+        const url = new URL(c.req.url);
         const network = url.searchParams.get("network");
         const host = url.searchParams.get("host");
         const networkId =
             network === null
                 ? null
                 : ((await networks.find(network))?.id ?? network);
-        const names = new Map(
-            (await networks.list()).map(({ id, name }) => [id, name]),
-        );
+        const names = await networkNames(services);
         const views = runtimes
             .list()
             .filter(
                 (record) =>
-                    record.collaborationActive &&
-                    (path !== "/api/web/agents" ||
-                        record.executionOwnership === "daemon") &&
+                    (path === "/api/web/agents" ||
+                        record.collaborationActive) &&
                     (networkId === null || record.networkId === networkId) &&
                     (host === null || record.hostId === host),
             )
             .map((record) => agentView(record, names));
-        send(response, 200, views);
-        return;
-    }
-
-    const agentMatch = /^\/api\/agents\/([^/]+)$/.exec(path);
-    if (agentMatch && method === "GET") {
-        const record = runtimes.find(decodeURIComponent(agentMatch[1]!));
+        return c.json(views, 200);
+    });
+    app.get("/api/agents/:agentId", async (c) => {
+        const record = runtimes.find(c.req.param("agentId"));
         if (!record?.collaborationActive)
             throw new HttpError(404, "unknown_agent", "No such agent.");
-        const names = new Map(
-            (await networks.list()).map(({ id, name }) => [id, name]),
-        );
-        send(response, 200, agentView(record, names));
-        return;
-    }
-
-    if (
-        (path === apiPath.notifications || path === "/api/web/notifications") &&
-        method === "GET"
-    ) {
-        const web = path === "/api/web/notifications";
-        const views: NotificationView[] = (
-            await db.messages.unreadNotifications()
-        )
-            .filter((row) => !web || row.originExecutionOwnership === "daemon")
-            .map((row) => ({
-                id: row.id,
-                originRuntimeId: row.originRuntimeId,
-                body: row.body,
-                createdAt: row.createdAt,
-                readAt: row.readAt,
-                ...(web ? { terminalId: row.originTerminalId } : {}),
-            }));
-        send(response, 200, views);
-        return;
-    }
-
-    if (
-        (path === apiPath.notificationsRead ||
-            path === "/api/web/notifications/read") &&
-        method === "POST"
-    ) {
-        const { ids } = parse(
-            readNotificationsSchema,
-            (await readJson(request)) ?? {},
-        );
-        const unread = (await db.messages.unreadNotifications()).filter(
-            (row) =>
-                path !== "/api/web/notifications/read" ||
-                row.originExecutionOwnership === "daemon",
-        );
-        // Reading is not resolving: this only clears the unread list.
-        const targets =
-            ids === undefined
-                ? unread.map((row) => row.id)
-                : unread
-                      .filter((row) => ids.includes(row.id))
-                      .map((row) => row.id);
-        await db.messages.markRead(targets, Date.now());
-        if (
-            unread.some(
-                (row) =>
-                    row.originExecutionOwnership === "daemon" &&
-                    targets.includes(row.id),
+        const names = await networkNames(services);
+        return c.json(agentView(record, names), 200);
+    });
+    app.on(
+        "GET",
+        [apiPath.notifications, "/api/web/notifications"],
+        async (c) => {
+            const path = c.req.path;
+            const web = path === "/api/web/notifications";
+            const views: NotificationView[] = (
+                await db.messages.unreadNotifications()
             )
-        )
-            services.webEvents.notify();
-        send(response, 200, { read: targets.length });
-        return;
-    }
-
-    throw new HttpError(
-        404,
-        "not_found",
-        `No such endpoint: ${method} ${path}`,
+                .filter(
+                    (row) => !web || row.originExecutionOwnership === "daemon",
+                )
+                .map((row) => ({
+                    id: row.id,
+                    originRuntimeId: row.originRuntimeId,
+                    body: row.body,
+                    createdAt: row.createdAt,
+                    readAt: row.readAt,
+                    ...(web ? { terminalId: row.originTerminalId } : {}),
+                }));
+            return c.json(views, 200);
+        },
     );
+    app.on(
+        "POST",
+        [apiPath.notificationsRead, "/api/web/notifications/read"],
+        async (c) => {
+            const path = c.req.path;
+            const { ids } = parse(
+                readNotificationsSchema,
+                (await readJson(c.req.raw)) ?? {},
+            );
+            const unread = (await db.messages.unreadNotifications()).filter(
+                (row) =>
+                    path !== "/api/web/notifications/read" ||
+                    row.originExecutionOwnership === "daemon",
+            );
+            const targets =
+                ids === undefined
+                    ? unread.map((row) => row.id)
+                    : unread
+                          .filter((row) => ids.includes(row.id))
+                          .map((row) => row.id);
+            await db.messages.markRead(targets, Date.now());
+            if (
+                unread.some(
+                    (row) =>
+                        row.originExecutionOwnership === "daemon" &&
+                        targets.includes(row.id),
+                )
+            )
+                services.webEvents.notify();
+            return c.json({ read: targets.length }, 200);
+        },
+    );
+
+    app.all("/api/*", (c) => {
+        throw new HttpError(
+            404,
+            "not_found",
+            `No such endpoint: ${c.req.method} ${c.req.path}`,
+        );
+    });
+    return app;
 }

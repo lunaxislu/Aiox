@@ -569,16 +569,6 @@ test("routing verbs send one operation and show no blocks", async () => {
         assert.deepEqual(JSON.parse(stub.calls.at(-1)?.body ?? "null"), {
             name: "review",
         });
-        for (const action of ["block", "unblock", "reset"] as const)
-            await assert.rejects(
-                run(
-                    stub.cli,
-                    `host.network.${action}`,
-                    { between: ["a", "b"] },
-                    ["feature", "review"],
-                ),
-                /Stage 5/,
-            );
         assert.equal(stub.calls.length, 7);
     } finally {
         await stub.close();
@@ -628,6 +618,7 @@ test("network output names blocked endpoints and folds reverse pairs without cou
 test("network and agent reads reach their endpoints and summarise without --json", async () => {
     const agent = {
         agentId: "a1",
+        executionOwnership: "daemon",
         name: "reviewer",
         role: "review",
         description: null,
@@ -660,16 +651,108 @@ test("network and agent reads reach their endpoints and summarise without --json
     }
 });
 
-test("unsupported adapters and Host commands remain unavailable", async () => {
+test("Host list/status query registered state and resolve YAML only without a name", async (t) => {
+    const host = {
+        id: "host-id",
+        name: "demo",
+        directory: "/work",
+        sourceFile: "/work/aiox.yaml",
+        instruction: "",
+        revision: 1,
+        panelId: "panel-id",
+        networkId: "network-id",
+        activeOperationId: null,
+        agents: [
+            {
+                key: "a",
+                adapter: "codex",
+                args: [],
+                instruction: "",
+                role: null,
+                description: null,
+                member: true,
+                runtime: null,
+                lastExit: null,
+                lastTerminalId: null,
+            },
+        ],
+    };
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+        if (["/api/hosts", "/api/hosts?name=demo"].includes(call.url))
+            send(response, 200, [host]);
+        if (call.url === "/api/hosts?name=host-id") send(response, 200, []);
+        if (call.url === "/api/hosts/resolve")
+            send(response, 200, { hostId: host.id });
+        if (call.url === "/api/hosts/host-id" && call.method === "GET")
+            send(response, 200, host);
+        if (call.url === "/api/hosts/host-id/stop" || call.method === "DELETE")
+            send(response, 202, {
+                id: "operation",
+                requestId: JSON.parse(call.body).requestId,
+                kind: call.method === "DELETE" ? "host.delete" : "host.stop",
+                hostId: host.id,
+                panelId: host.panelId,
+                state: "succeeded",
+                targets: [],
+                error: null,
+                cleanupErrors: [],
+                createdAt: 1,
+                finishedAt: 2,
+            });
+    });
+    t.onTestFinished(() => stub.close());
+    assert.deepEqual(await run(stub.cli, "host.list", { json: true }), [host]);
+    assert.deepEqual(
+        await run(stub.cli, "host.status", { json: true }, ["demo"]),
+        host,
+    );
+    assert.match(
+        String(await run(stub.cli, "host.status", {}, ["demo"])),
+        /a.*stopped/,
+    );
+    await assert.rejects(
+        run(stub.cli, "host.status", {}, ["host-id"]),
+        /unknown_host/,
+    );
+    assert.ok(!stub.routes.some((route) => route.includes("resolve")));
+    for (const action of ["stop", "delete"] as const) {
+        assert.match(
+            String(await run(stub.cli, `host.${action}`, {}, ["demo"])),
+            /succeeded/,
+        );
+        const call = stub.calls.at(-1)!;
+        assert.equal(call.method, action === "stop" ? "POST" : "DELETE");
+        assert.deepEqual(Object.keys(JSON.parse(call.body)), ["requestId"]);
+    }
+    await writeFile(
+        join(stub.home, "aiox.yaml"),
+        "host: {name: demo}\nagents:\n  a: {adapter: codex}\nnetworks:\n  team: {agents: [a], routing: {default: deny}}\n",
+    );
+    assert.deepEqual(
+        await run(stub.cli, "host.status", { path: stub.home, json: true }),
+        host,
+    );
+    assert.ok(stub.routes.includes("POST /api/hosts/resolve"));
+    assert.deepEqual(
+        JSON.parse(
+            stub.calls.find((call) => call.url === "/api/hosts/resolve")!.body,
+        ),
+        {
+            source: {
+                directory: stub.home,
+                file: join(stub.home, "aiox.yaml"),
+            },
+        },
+    );
+});
+
+test("unsupported adapters fail before contacting the daemon", async () => {
     const stub = await daemonStub(() => {});
     try {
         await assert.rejects(
             run(stub.cli, "agent.run", {}, ["unknown-vendor"]),
             /Unsupported vendor: unknown-vendor/,
-        );
-        await assert.rejects(
-            run(stub.cli, "host.agent.start", {}, ["review"]),
-            /Stage 5/,
         );
         assert.deepEqual(stub.routes, []);
     } finally {
@@ -914,4 +997,197 @@ test("commands follow the port a running daemon recorded, not the configured def
     assert.deepEqual(await run(cli, "agent.list", { json: true }), []);
     assert.deepEqual(stub.routes, ["GET /api/agents"]);
     await stub.close();
+});
+
+test("Host Network resolves exact names to IDs and sends explicit allow/reset operations", async (t) => {
+    const network = {
+        id: "network-id",
+        hostId: "host-id",
+        name: "team",
+        scope: "host",
+        default: "deny",
+        members: [
+            { agentKey: "a", runtimeId: null },
+            { agentKey: "b", runtimeId: null },
+        ],
+        edges: [
+            {
+                from: "a",
+                to: "b",
+                fromRuntimeId: null,
+                toRuntimeId: null,
+                policy: "allow",
+                source: "runtime-override",
+            },
+            {
+                from: "b",
+                to: "a",
+                fromRuntimeId: null,
+                toRuntimeId: null,
+                policy: "deny",
+                source: "manifest-default",
+            },
+        ],
+    };
+    const host = {
+        id: "host-id",
+        name: "demo",
+        directory: "/work",
+        sourceFile: "/work/aiox.yaml",
+        instruction: "",
+        revision: 1,
+        panelId: "panel-id",
+        networkId: "network-id",
+        activeOperationId: null,
+        agents: ["a", "b"].map((key) => ({
+            key,
+            adapter: "codex",
+            args: [],
+            instruction: "",
+            role: null,
+            description: null,
+            member: true,
+            runtime: null,
+            lastExit: null,
+            lastTerminalId: null,
+        })),
+    };
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+        if (call.url === "/api/hosts?name=demo") send(response, 200, [host]);
+        if (call.url === "/api/hosts?name=missing") send(response, 200, []);
+        if (call.url === "/api/hosts/host-id/networks?name=team")
+            send(response, 200, [network]);
+        if (call.url === "/api/hosts/host-id/networks/network-id/route")
+            send(response, 200, network);
+    });
+    t.onTestFinished(() => stub.close());
+    for (const action of ["unblock", "reset"] as const) {
+        const result = await stub.cli.execute({
+            command: `host.network.${action}`,
+            args: ["demo", "team"],
+            options: { from: "a", to: ["b"], json: true },
+        });
+        assert.deepEqual(result, network);
+        assert.deepEqual(JSON.parse(stub.calls.at(-1)!.body), {
+            operation: { kind: "directed", action, from: "a", to: ["b"] },
+        });
+    }
+    await assert.rejects(
+        stub.cli.execute({
+            command: "host.network.show",
+            args: ["missing", "team"],
+            options: {},
+        }),
+        /unknown_host/,
+    );
+});
+
+test("Host Agent commands resolve stop by YAML and wait on admitted operations with deduplicated keys", async (t) => {
+    const stub = await daemonStub((call, response, port) => {
+        if (call.url === "/api/status") send(response, 200, running(port));
+        if (call.url === "/api/hosts/resolve")
+            send(response, 200, { hostId: "host-id" });
+        if (call.method === "POST" && call.url.includes("/agents/")) {
+            const input = JSON.parse(call.body);
+            const verb = call.url.split("/").at(-1);
+            send(response, 202, {
+                id: `op-${verb}`,
+                requestId: input.requestId,
+                kind: `host.agent.${verb}`,
+                hostId: "host-id",
+                panelId: "panel",
+                state: "succeeded",
+                targets: input.agents.map((agentKey: string) => ({
+                    agentKey,
+                    terminalId: null,
+                    state: verb === "stop" ? "stopped" : "ready",
+                    error: null,
+                })),
+                error: null,
+                cleanupErrors: [],
+                createdAt: 1,
+                finishedAt: 2,
+            });
+        }
+    });
+    t.onTestFinished(() => stub.close());
+    await writeFile(
+        join(stub.home, "aiox.yaml"),
+        "host: {name: demo}\nagents:\n  a: {adapter: codex}\nnetworks:\n  team: {agents: [a], routing: {default: deny}}\n",
+    );
+    for (const verb of ["start", "restart", "stop"] as const) {
+        const result = await stub.cli.execute({
+            command: `host.agent.${verb}`,
+            args: [["a", "a"]],
+            options: { path: stub.home },
+        });
+        assert.match(String(result), /succeeded/);
+        const call = stub.calls.at(-1)!;
+        assert.equal(
+            call.url,
+            verb === "stop"
+                ? "/api/hosts/host-id/agents/stop"
+                : `/api/hosts/agents/${verb}`,
+        );
+        const body = JSON.parse(call.body);
+        assert.deepEqual(body.agents, ["a"]);
+        if (verb === "stop") assert.equal(body.source, undefined);
+        else
+            assert.deepEqual(body.source, {
+                directory: stub.home,
+                file: join(stub.home, "aiox.yaml"),
+            });
+    }
+});
+
+test("failed daemon start includes the stored Pino tail in the existing user error", async () => {
+    const home = await mkdtemp(join(tmpdir(), "aiox-w8-cli-log-"));
+    await saveConfig({ terminal: { shell: process.execPath } }, { home });
+    const entries = Array.from({ length: 25 }, (_, index) =>
+        JSON.stringify({
+            level: 50,
+            time: index,
+            msg: `diagnostic-${index}`,
+        }),
+    );
+    await writeFile(
+        join(home, ".aiox", "daemon.log"),
+        entries.join("\n") + "\n",
+    );
+    const fetcher = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValue(new Error("offline"));
+    const stdin = new PassThrough();
+    const child = Object.assign(new EventEmitter(), {
+        stdin,
+        pid: 43210,
+        exitCode: 1,
+        signalCode: null,
+        kill: vi.fn(),
+        unref: vi.fn(),
+    });
+    vi.mocked(spawn).mockReturnValueOnce(
+        child as unknown as ReturnType<typeof spawn>,
+    );
+    try {
+        await assert.rejects(
+            run(createFoundationPort({ home }), "daemon.start"),
+            (error: Error) => {
+                assert.match(error.message, /daemon did not answer/);
+                assert.match(error.message, /Last lines of .*daemon.log/);
+                assert.ok(!error.message.includes('"msg":"diagnostic-4"'));
+                assert.ok(error.message.includes(entries[5]!));
+                assert.ok(error.message.includes(entries[24]!));
+                return true;
+            },
+        );
+        const stdio = vi.mocked(spawn).mock.calls.at(-1)?.[2]?.stdio;
+        assert.ok(Array.isArray(stdio));
+        assert.equal(typeof stdio[1], "number");
+        assert.equal(stdio[1], stdio[2]);
+    } finally {
+        fetcher.mockRestore();
+        await rm(home, { recursive: true, force: true });
+    }
 });

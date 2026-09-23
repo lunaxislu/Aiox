@@ -13,7 +13,10 @@ it("purges on startup and daily without a reporting callback, then stops", async
         deliveries: 1,
         notifications: 0,
     });
-    const db = { messages: { purgeBefore } } as unknown as AioxDatabase;
+    const db = {
+        messages: { purgeBefore },
+        hostState: { purgeBefore: vi.fn().mockResolvedValue(0) },
+    } as unknown as AioxDatabase;
     const day = 86_400_000;
     const startedAt = Date.now();
     const schedule = scheduleRetention(db, () => 30);
