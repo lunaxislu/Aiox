@@ -5,6 +5,11 @@
         "types": ["node", "vite/client"],
         "paths": { "@/*": ["./src/*"] },
         "jsx": "react-jsx",
+        // @storybook/react 10.6.0 puts an @ts-expect-error before an `extends`
+        // clause, a position tsc rejects, so its own .d.ts cannot pass. Our
+        // packages are checked from source in their own typecheck runs, so
+        // skipping .d.ts here loses nothing we still verify elsewhere.
+        "skipLibCheck": true,
         "noEmit": true
     },
     "include": [
