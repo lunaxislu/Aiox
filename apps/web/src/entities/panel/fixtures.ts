@@ -14,7 +14,25 @@ export const previewPanels: PanelPreview[] = [
         terminalCount: workspacePreview.tabs.filter(
             (tab) => tab.terminalId !== null,
         ).length,
-        agents: [],
+        // 탭의 runtimeId가 찬 실행만 여기 있다. 종료된 탭에는 대응하는 실행이 없다.
+        agents: [
+            {
+                id: "runtime-reviewer",
+                name: "reviewer",
+                status: "awaiting-user",
+                executionOwnership: "daemon",
+                hostId: null,
+                networkId: null,
+            },
+            {
+                id: "runtime-preparing-shell",
+                name: "claude",
+                status: "aiox-preparing",
+                executionOwnership: "daemon",
+                hostId: null,
+                networkId: null,
+            },
+        ],
     },
     {
         ...emptyWorkspace,

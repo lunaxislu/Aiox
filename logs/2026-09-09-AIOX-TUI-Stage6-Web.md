@@ -12,10 +12,10 @@ status: open
 - [x] W4 W4 workspace UI·상태 안내·복구 카드·포커스·Copy 개선을 fixture로 반영하고 코드 리뷰·리팩토링과 spec 정합을 마쳤다. terminal attach 수명·접속 상태 연결 범위도 확정해 기록했다. 남은 것은 사용자 퍼블리싱 화면 확인 하나다. Force stop 서버 보완은 W11, 실제 API·Operation 연결과 통합 검증은 W10에서 추적한다. 실제 terminal 연결은 아직 미구현이다.
 - [x] W5 탭 DnD fixture UI 구현 및 사용자 PASS 완료. 순서 변경·pane 이동·가장자리 분할·중앙 합치기, 삽입선·오버레이·취소를 반영했다. Workspace 소유 TerminalSurface와 pane 표시 자리 분리까지 구조 구현·14개 자동 테스트를 마쳤다. 실제 layout PUT·xterm/WS 연결과 이동·숨김 수명 검증은 W10이다. 사용자 지시로 Playwright는 실행하지 않았다.
 - [-] W6 커맨드 팔레트. shadcn Command로 검색창을 열어 workspace·터미널·agent와 명령을 두 섹션으로 나눠 필터링하고 위아래 화살표·Enter·Esc를 붙인다. 확인 뒤 선택 결과를 해당 workspace·pane·탭으로 점프시키는 store 경로에 잇는다. 점프 대상이 모두 존재해야 하므로 workspace 화면 뒤에 둔다. — cancelled: 커맨드 팔레트 보류. 명령 여섯이 모두 기존 진입점과 중복이며 넷은 전용 키까지 있다. spec은 Open/deferred로 남기고 헤더 검색 버튼 주석·cmdk 유지
-- [>] W7 알림. 헤더 벨의 dropdown을 열어 미확인 항목을 어떤 agent에서 무슨 일이 있었는지와 상대 시각으로 보여 주고 Clear all을 둔다. 확인 뒤 항목 클릭을 해당 workspace·pane·탭 이동과 확인 처리에 잇고 read 요청은 클릭이 ids 하나, Clear all이 ids 생략이다. 이동 대상이 다 있어야 하므로 main 화면 작업의 마지막이다.
+- [x] W7 알림 fixture UI 구현과 사용자 시각 확인 PASS 완료. 고정 제목·Clear all, ScrollArea 목록·구분선·최신순·상대 시각, runtime 대상 이동과 NotFound를 반영했다. 실제 SSE·확인 API 및 삭제 후 최신 대상 탐색은 W10에서 연결·검증한다.
 - [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
 - [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
-- [ ] W10 실제 daemon 연결과 통합 검증을 소유한다. main을 merge해 `@aiox/protocol`의 zod·타입이 이미 들어왔고 apps/web에는 임시 정의도 MSW도 만든 적이 없으므로 교체·제거 작업은 없다. 화면을 실제 HTTP·SSE·WS에 붙이고 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. Stage5 W11이 갖고 있던 W5~W10 실제 화면 연결과 전체 흐름 통합 검증을 이 항목이 흡수한다. 검증에서 서버 쪽 결함이 나오면 apps/daemon·packages/protocol은 Stage5 단독 수정이므로 고치지 않고 Stage5 W11로 넘긴다. 운영 Web 내부 구조는 docs/architecture/aiox-system.md에 반영한다. Force stop 연결을 명시적으로 포함한다: 세 복구 상태의 버튼 → 확인 dialog → 최신 PanelView의 revision/runtime와 새 requestId로 기존 탭 종료 DELETE → Operation 성공·실패 관측 → 서버 배치 반영. 실패 표시·재시도와 실제 PTY 종료를 통합 검증한다. 서버 빈 pane·포커스 정리 보완 결과를 먼저 확인한다. W5의 TerminalSurface 표시 수명 구조를 실제 attach에 연결한다. pane 이동은 연결 유지, 숨김·workspace 이탈은 브라우저 자원 정리, 재선택은 복원하며 layout PUT과 실패·revision 충돌도 검증한다.
+- [>] W10 실제 daemon 연결과 통합 검증을 소유한다. main을 merge해 `@aiox/protocol`의 zod·타입이 이미 들어왔고 apps/web에는 임시 정의도 MSW도 만든 적이 없으므로 교체·제거 작업은 없다. 화면을 실제 HTTP·SSE·WS에 붙이고 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. Stage5 W11이 갖고 있던 W5~W10 실제 화면 연결과 전체 흐름 통합 검증을 이 항목이 흡수한다. 검증에서 서버 쪽 결함이 나오면 apps/daemon·packages/protocol은 Stage5 단독 수정이므로 고치지 않고 Stage5 W11로 넘긴다. 운영 Web 내부 구조는 docs/architecture/aiox-system.md에 반영한다. Force stop 연결을 명시적으로 포함한다: 세 복구 상태의 버튼 → 확인 dialog → 최신 PanelView의 revision/runtime와 새 requestId로 기존 탭 종료 DELETE → Operation 성공·실패 관측 → 서버 배치 반영. 실패 표시·재시도와 실제 PTY 종료를 통합 검증한다. 서버 빈 pane·포커스 정리 보완 결과를 먼저 확인한다. W5의 TerminalSurface 표시 수명 구조를 실제 attach에 연결한다. pane 이동은 연결 유지, 숨김·workspace 이탈은 브라우저 자원 정리, 재선택은 복원하며 layout PUT과 실패·revision 충돌도 검증한다.
 - [ ] W11 서버 에이전트 구현 완료 보고 수신. removePanelTabs의 빈 pane·split·포커스 정리와 removeTerminal의 원자 저장은 직접 코드로 확인했다. 보고된 147개 테스트를 이 턴에 재실행하지는 않았다. 문서의 빈 pane·분할 유지 설명 정합성과 Web 통합 검증이 남았다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
@@ -79,11 +79,14 @@ status: open
 - NETWORKS 카드의 멤버 수도 DTO 하나로 오지 않는다. `networkViewSchema`(`core.ts:134`)는 id·name·scope·routes뿐이고 members가 없다. members를 가진 것은 `hostNetworkViewSchema`(`host.ts:168`, `scope: "host"`)이며 `webNetworkSchema`는 둘의 union이다. 따라서 host scope network는 `members.length`를 그대로 쓰고 persistent network는 agents에서 networkId 매칭으로 세야 한다. 두 경로가 같은 수를 뜻하는지 확인하고 정한다.
 - 터미널 수명은 「W5 DnD 사용자 PASS와 터미널 표시 수명 구조」 블록과 terminal-surface.tsx·visibleTerminals를 이어받는다. 최종 배치에서 계속 보이는 terminal은 유지·DOM 이동, 새로 보이면 연결·복원, 숨김/Workspace 이탈이면 브라우저 자원 정리한다. 서버 프로세스는 연결 해제만으로 종료하지 않는다. terminalId뿐 아니라 runtime 변경을 구분하고, 이동 중 Reconnect 상태 유지·늦은 결과 무시·크기/포커스·숨긴 화면 resize 방지를 실제 attach로 검증한다. DnD layout PUT·revision 충돌·실패 복구도 W10에서 연결한다.
 - SSE 상태 연결 시 같은 panel ID의 최신 snapshot을 WorkspaceView가 직접 소비하도록 fixture용 useState(panel) 복사본을 제거한다. 지금 별도 부모 상태 리팩토링은 하지 않는다. 임시 진단 테스트로 같은 ID의 tabs/layout 갱신 무시와 Reconnect 로컬 override의 새 disconnected 상태 가림을 재현했다. runtime 교체만의 독립 검증은 panel 갱신 반영 후 수행한다. terminalId+runtimeId별 attach 상태와 이전 비동기 결과 정리를 실제 연결 시 검증한다. 근거: 「W10 SSE 연결 시 panel·연결 상태 소유 정리」 블록.
+- W7 사용자 PASS 후 남은 연결: SSE 알림 수신과 클릭 ids=[id]/Clear all ids 생략 확인 API 및 실패 처리. WorkspaceView local panel 복사본에서 탭을 삭제해도 AppShell.panels 알림 탐색에는 남는 현상은 기존 SSE 상태 단일화 작업에 포함한다. 실제 최신 상태에서 실행/탭 종료 후 과거 알림 클릭이 NotFound로 이동하고 확인 처리되는지 검증한다. 사용자가 추가한 중복 fixture ID는 W7 차단이 아닌 실험 데이터다.
 
 ### {W7}
 
-- 재개 출발점과 확인한 join 경로. 벨 버튼은 apps/web/src/widgets/header/header-actions.tsx에 disabled 상태로 있고 Badge도 이미 붙어 있다. dropdown은 shared/ui/dropdown-menu를 쓴다. 표시와 이동에 필요한 join을 코드로 확인했다. agentViewSchema(core.ts:174-193)에는 runtimeId가 없어 알림의 originRuntimeId로 agent를 직접 찾을 수 없다. 대신 tabViewSchema(host.ts:328-333)가 agentKey와 runtimeId를 둘 다 갖는다. 따라서 originRuntimeId로 tab을 찾으면 agentKey가 어떤 agent인지를 주고 그 tab이 속한 panel·pane이 이동 대상을 준다. 한 번의 탐색으로 표시와 이동이 같이 풀리므로 W10 카드처럼 여러 DTO를 합성할 필요가 없다. DTO는 webNotificationViewSchema(core.ts:202-204)의 id·originRuntimeId·body·createdAt·readAt·terminalId이고 읽음 API는 readNotificationsSchema(core.ts:206-208)로 ids 생략이 전체다.
+- W7 알림 fixture UI는 사용자 PASS로 완료했다. NotificationMenu와 entities/notification/model이 표시·시각·탐색을 담당하고 AppShell이 fixture 목록·이동을 소유한다. 고정 제목/Clear all·목록 ScrollArea·구분선·light/dark 배지를 반영했다. AgentView.agentId는 runtime record.id이므로 이름 조회에 직접 비교할 수 있고 이동은 tab.runtimeId 탐색 하나다. 최신 완료 근거는 「W7 알림 UI 사용자 PASS와 마감」 블록이며 알림 model+workspace 5 test files/35 tests, typecheck·format 통과. 실제 연결은 W10이다.
 - 착수 전 사용자에게 답을 받을 미결 둘. 첫째, originRuntimeId에 맞는 탭이 없을 때의 처리를 [[docs/specs/aiox-web-ui]] 244-255행이 정하지 않는다. runtime이 끝나 탭이 사라진 경우이며 항목을 숨길지, 이동 불가로 표시할지, terminalId로 대체 탐색할지 정해야 한다. 짐작해서 넣지 않는다. 둘째, createdAt이 epoch int라 상대 시각 포맷이 필요하다. Intl.RelativeTimeFormat이 표준이라 의존성은 필요 없고 갱신 주기만 정하면 된다. 진행은 apps/web/AGENTS.md대로 구조 보고 후 멈춤, 승인 뒤 fixture 렌더, 확인 뒤 연결 논의 순서이며 TDD는 하지 않는다.
+- 화면 규칙은 [[docs/specs/aiox-web-ui]] 알림 절이 소유하므로 로그에 다시 쓰지 않는다. 구현이 쓸 사실만 둔다. 이동 판정은 탭의 runtimeId와 notification.originRuntimeId 비교 하나이고 agents 조회는 이름 표시용이다. createdAt은 epoch 밀리초이며 Intl.RelativeTimeFormat으로 표시한다. 서버 목록은 미확인만·daemon 소유만·createdAt 오름차순이다. 표시 순서는 미결이다. 읽음 요청은 클릭이 ids 하나, Clear all이 ids 생략이며 endpoint는 packages/protocol/src/core.ts의 notificationsRead다. 실제 HTTP 연결은 W10이 소유하므로 W7은 fixture로 만든다.
+- 목록은 표시용 복사본을 정렬해 최신순으로 보인다. 서버가 미는 스냅샷 배열을 그 자리에서 정렬하지 않는다.
 
 ## 2026-09-21 · 설계 라인 마감과 구현 착수
 
@@ -537,3 +540,59 @@ spec 반영 셋. 헤더 바 절에 셋이 좁은 폭에서도 헤더에 남는�
 ### 2026-09-23 20:40 · 좁은 폭 헤더 아이콘 사용자 확인
 
 사용자가 좁은 폭에서 알림 벨이 정상 표시되는 것을 직접 확인했다. 앞 블록에서 미확인으로 남겨 뒀던 실물 화면 확인이 닫힌다. 확인 범위는 좁은 폭 헤더의 아이콘 표시이며 알림 dropdown 동작은 아직 구현 전이라 대상이 아니다.
+
+## 2026-09-23 · W7 알림 이동 대상과 상대 시각 정책 확정
+
+사용자가 W7 알림의 이동 대상 탐색과 상대 시각 정책을 확정했다. 다른 세션이 올린 기준을 코드로 대조한 뒤 owner 문서에 반영했다.
+
+확인한 사실 넷. `agentView`의 `agentId`는 `RuntimeRecord.id`이므로(apps/daemon/src/web-state.ts:31) `notification.originRuntimeId`와 직접 비교할 수 있다. 실행이 멈추면 `runtimes.unregister`가 레코드를 지우고(apps/daemon/src/daemon.ts:455) `projectPanels`가 `tab.runtimeId`를 `runtimes.list()`에서 매번 파생하므로(apps/daemon/src/web-state.ts:117-124) 실행이 사라지면 `agents`와 탭의 `runtimeId`가 함께 비고 저장된 탭만 `stopped` 표시로 남는다. 따라서 "Codex 종료 뒤 이전 알림을 누르면 찾을 수 없는 화면"이라는 사용자 의도가 현재 구현에서 성립한다. 서버 목록은 `readAt IS NULL`만 싣고(packages/persistence/src/sqlite/database.ts:229-238) 실행 존재 여부로 거르지 않으므로 대상이 사라진 알림도 목록에 남는다. `createdAt`은 `Date.now()`라 epoch 밀리초다(apps/daemon/src/messaging.ts:83,134).
+
+정정 하나. 전달받은 기준은 클릭을 "agents에서 실행 탐색 → 해당 runtimeId의 탭 탐색" 2단계로 적었으나, 탭의 `runtimeId`가 같은 `runtimes.list()`에서 파생된 값이라 두 탐색의 결과가 항상 같다. 이동 판정에는 탭 탐색 하나면 충분하고 `agents` 조회는 항목에 표시할 agent 이름을 얻는 데만 필요하다. 구현에서 단계를 늘리지 않는다.
+
+경계 하나. 서버가 `originExecutionOwnership === "daemon"`인 알림만 스냅샷에 싣는다(apps/daemon/src/web-state.ts:101). 외부 CLI 소유 실행의 알림은 애초에 화면에 오지 않으며 이 경계는 [[docs/specs/aiox-configuration-web]]이 이미 소유한다. "대상 실행이 사라져도 숨기지 않는다"는 daemon 소유 알림 안에서의 규칙이다.
+
+spec 반영. [[docs/specs/aiox-web-ui]] 알림 절에 이동 대상이 알림을 보낸 그 실행이라는 것, 실행이나 탭이 없으면 주소 없는 화면과 같은 안내로 보내고 그 경우에도 확인 처리를 함께 끝낸다는 것, 대상이 사라져도 목록과 배지에 남기고 이름을 못 찾으면 본문과 시각만 보인다는 것, 이동 불가 카드나 비활성 표시를 두지 않는다는 것, 상대 시각을 열 때 계산하고 1분마다 갱신하며 닫으면 멈춘다는 것을 넣었다. `Clear all`이 이동하지 않는다는 것도 기존 줄에 붙였다. terminalId 대체 탐색 금지의 근거는 configuration-web이 이미 소유하므로 복사하지 않고 링크했다. 문서 레벨이 Committed target이라 절별 status는 붙이지 않았다.
+
+미결 하나. 서버는 `createdAt` 오름차순(오래된 것 먼저)으로 보낸다. dropdown 표시 순서를 최신 우선으로 뒤집을지 서버 순서를 그대로 쓸지 정하지 않았다.
+
+검증: scripts/check-markdown-inline-code 통과. 코드는 아직 수정하지 않았다.
+
+### 2026-09-23 21:06 · 표시 순서와 탐색 단계 사용자 확정
+
+사용자가 앞 블록의 미결과 정정을 확정했다. 이동은 runtimeId가 일치하는 탭 탐색 하나로 하고 agents는 이름 표시에만 쓴다. 기존 알림 경계는 owner 문서 링크를 유지한다. 목록은 createdAt 내림차순으로 최신이 위에 온다.
+
+서버가 오름차순으로 보내므로 화면에서 뒤집되 스냅샷 배열 자체는 바꾸지 않는다. 배열은 SSE가 밀어 주는 서버 상태라 그 자리에서 sort하면 push-apply 모델의 진실 소스를 화면이 건드리는 것이 된다. 표시용 복사본을 만들어 정렬한다.
+
+spec에는 최신이 위라는 표시 규칙만 넣었다. 원본 배열 불변은 구현 규칙이라 W7 context에 둔다.
+
+### 2026-09-23 21:14 · W7 dropdown 구조 구현
+
+알림 dropdown을 구조 단계까지 구현했다. apps/web/AGENTS.md가 구조 다음에 보고하고 멈추라고 하므로 스타일은 올리지 않았고 className은 레이아웃 최소만 뒀다.
+
+새 파일 넷. entities/notification/model.ts가 최신순 정렬·상대 시각·탭 탐색·이름 조회를 갖고, model.test.ts가 9개로 그 넷을 덮는다. fixtures.ts는 서버와 같은 오름차순 셋을 두되 하나는 실행이 사라진 대상(runtime-crashed)이라 이름 없음과 찾을 수 없는 화면을 같이 확인한다. widgets/header/notification-menu.tsx가 Base UI Menu 기반 dropdown이다.
+
+연결 넷. header-actions.tsx의 disabled 벨을 NotificationMenu로 바꿨고 props는 HeaderActionsProps = NotificationMenuProps로 통일했다. app-shell.tsx가 알림 목록 state와 클릭·Clear all을 갖는다. 클릭은 목록에서 빼고 findRuntimeTab 결과가 있으면 panelPath로, 없으면 /notifications/:id로 보내 router의 `*`가 NotFoundPage를 낸다. 이동 대상 탭 선택은 workspace-page가 location.state로 받아 WorkspaceView에 focus로 넘기고 WorkspaceView가 selectPreviewTab으로 적용한다. WorkspaceView는 key가 panel.id라 재마운트되지 않으므로 터미널 표시 수명은 건드리지 않는다.
+
+fixture 하나를 고쳤다. previewPanels의 main에 agents 둘(runtime-reviewer·runtime-preparing-shell)을 넣었다. 탭의 runtimeId가 찬 실행은 agents에도 있어야 이름 조회가 성립하고, 종료된 탭에는 대응 실행이 없다는 구분이 fixture에서 드러난다. 카드의 agent 줄 표시가 따라 바뀐다.
+
+story 둘을 더했다. Notifications는 최신순·이름 없는 항목·Clear all을, NotificationsEmpty는 빈 목록을 본다. Disconnected의 벨 disabled 단언은 열리는 버튼으로 바꿨다.
+
+검증: apps/web Vitest 14 files 89 tests 통과, typecheck exit 0, 루트 format·lint 통과. 사용자 화면 확인은 아직 받지 않았다.
+
+## 2026-09-23 · W7 알림 UI 사용자 PASS와 마감
+
+사용자가 알림 UI를 확인하고 완료를 승인했다. NotificationMenu는 기존 shared/ui DropdownMenu·Badge·Empty·Separator·ScrollArea를 사용한다. 폭 320px, 목록 높이 최대 288px와 화면 가용 높이 제한, 이름/시각 한 줄과 본문 줄바꿈, 항목 구분선을 적용했다. 제목과 Clear all은 스크롤 영역 밖 상단에 고정하고 빈 목록에서도 Clear all을 비활성으로 보여 준다. 목록만 스크롤되며 얇은 scrollbar는 hover/scroll 시 표시한다. 벨에 가까운 sideOffset 4와 alignOffset -4를 사용한다.
+
+배지는 사용자 피드백으로 외곽 ring과 개별 색상 지정을 제거하고 destructive variant를 사용했다. 기본 반투명 variant가 벨 위에서 식별되지 않아 알림 배지에 한해 불투명 bg-destructive·흰 글자와 dark 배경 override를 유지했다. 공통 Badge variant 자체는 변경하지 않았다.
+
+기존 구현의 runtimeId 기반 이동, 최신순 복사 정렬, 열린 동안만 1분 시각 갱신/닫힘 시 interval 정리, 없는 대상의 NotFound, Clear all 동작은 유지한다. 사용자가 직접 늘린 중복 fixture ID는 UI 실험 데이터이며 W7 미완료 사유로 두지 않는다. 실제 알림 데이터의 ID 고유성이나 중복 key 사용을 정상 계약으로 인정한 것은 아니다.
+
+W7은 fixture UI 사용자 PASS로 완료한다. 실제 SSE 알림 수신·확인 API 및 실패 처리와 서버 최신 panel 소비는 W10이다. WorkspaceView의 local panel 복사본에서 탭을 삭제해도 AppShell.panels에는 남아 알림 탐색이 성공하는 문제는 이미 W10에서 제거하기로 한 상태 이중 소유의 한 사례다. 새로운 W7 차단으로 두지 않고 W10 통합에서 “탭 종료/삭제 후 과거 알림 클릭 → NotFound + 확인 처리”를 검증한다.
+
+권위 문서 대조: docs/specs/aiox-web-ui.md 알림 절에는 runtime 귀속·대상 없음·이름 fallback·최신순·시간 갱신 정책이 이미 반영돼 있다. 이번 승인으로 Clear all 상시 노출, 목록만 스크롤, 항목 구분선, light/dark 배지 식별성을 추가했다. 개별 px·색 클래스와 컴포넌트 구성은 코드가 소유하므로 spec에 복사하지 않았다. docs/specs/aiox-configuration-web.md의 서버 알림 경계와 docs/architecture/aiox-system.md의 Target 서버→React 구조는 변경하지 않는다. 실제 React/SSE 소비 구조의 as-built 승격은 W10 범위다.
+
+검증: 알림 model와 workspace 명시적 test 파일 5개/35개 테스트, typecheck·format 검사가 통과했다. Playwright는 실행하지 않았다. 사용자 시각 확인은 이번 대화의 PASS가 근거다. 기존 「W6 취소와 W8·W9 보류」 결정에 따라 다음 작업은 W10 실제 서버 연결이다. W6 취소와 W8·W9의 W10 이후 보류를 유지한다.
+
+### 2026-09-23 22:03 · W7 커밋 전 정합 확인
+
+사용자 요청으로 W10 활성 포인터를 재확인하고 W7 변경을 커밋한다. WorkspaceView의 DOM focus와 무관한 탭 선택 요청 prop은 tabSelectionRequest로 명명했다. 사용자가 추가한 알림 fixture의 항목 수와 긴 본문은 유지하고 중복 ID만 고유화했다. Header story는 세 개 fixture를 명시적으로 사용하고 상단 Clear all에 맞춰 항목 순서 단언을 갱신했다. 알림 model/workspace 35개 테스트, typecheck, lint, 변경 파일 format 검사를 확인했으며 story의 Playwright 실행은 하지 않았다.

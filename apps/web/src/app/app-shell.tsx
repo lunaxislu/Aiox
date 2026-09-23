@@ -1,6 +1,9 @@
+import type { WebNotificationView } from "@aiox/protocol";
 import { useState, type CSSProperties } from "react";
 import { Outlet, useLoaderData, useNavigate, useParams } from "react-router";
 
+import { previewNotifications } from "@/entities/notification/fixtures";
+import { agentName, findRuntimeTab } from "@/entities/notification/model";
 import { previewHeader } from "@/entities/panel/fixtures";
 import {
     isSection,
@@ -23,10 +26,10 @@ export type AppOutletContext = {
 };
 
 export function AppShell({
-    unreadCount = previewHeader.unreadCount,
+    initialNotifications = previewNotifications,
     connected = previewHeader.connected,
 }: {
-    unreadCount?: number;
+    initialNotifications?: WebNotificationView[];
     connected?: boolean;
 }) {
     const { initialPanels } = useLoaderData<{
@@ -34,6 +37,8 @@ export function AppShell({
     }>();
     // W2 interaction fixtures. Connect real mutations after UI review.
     const [panels, setPanels] = useState(initialPanels);
+    // W7 fixture. 읽음 요청은 W10에서 클릭이 ids 하나, Clear all이 ids 생략으로 붙는다.
+    const [notifications, setNotifications] = useState(initialNotifications);
     const [action, setAction] = useState<WorkspaceAction | null>(null);
     const [width, setWidth] = useState(240);
 
@@ -84,6 +89,21 @@ export function AppShell({
     const create = (section: PanelPreview["section"]) =>
         setAction({ type: "create", section });
 
+    /** 누르는 것으로 이동과 확인이 함께 끝난다. 대상이 없어도 확인은 한다. */
+    function openNotification(notification: WebNotificationView) {
+        setNotifications((value) =>
+            value.filter((item) => item.id !== notification.id),
+        );
+        const target = findRuntimeTab(panels, notification.originRuntimeId);
+        if (!target) {
+            navigate(`/notifications/${notification.id}`);
+            return;
+        }
+        navigate(panelPath(target.panel), {
+            state: { focusTabId: target.tab.id },
+        });
+    }
+
     return (
         <SidebarProvider
             style={
@@ -111,7 +131,10 @@ export function AppShell({
                     title={title}
                     panel={panel}
                     connected={connected}
-                    unreadCount={unreadCount}
+                    notifications={notifications}
+                    agentNameOf={(runtimeId) => agentName(panels, runtimeId)}
+                    onSelect={openNotification}
+                    onClearAll={() => setNotifications([])}
                 />
                 <main
                     id="main-content"

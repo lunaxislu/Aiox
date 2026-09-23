@@ -23,6 +23,7 @@ import {
 import {
     Fragment,
     useCallback,
+    useEffect,
     useLayoutEffect,
     useRef,
     useState,
@@ -94,15 +95,33 @@ export type WorkspaceViewProps = {
         "id" | "name" | "kind" | "command" | "layout" | "activePaneId" | "tabs"
     >;
     terminals: Record<string, TerminalPreview>;
+    /** 알림 클릭이 지목한 탭. `key`는 같은 탭을 다시 지목한 이동을 구분한다. */
+    tabSelectionRequest?: { tabId: string; key: string } | undefined;
 };
 
-export function WorkspaceView({ panel, terminals }: WorkspaceViewProps) {
+export function WorkspaceView({
+    panel,
+    terminals,
+    tabSelectionRequest,
+}: WorkspaceViewProps) {
     const [state, setState] = useState<WorkspaceLayout>(panel);
     const [connections, setConnections] = useState<
         Record<string, TerminalPreview["connection"]>
     >({});
     const [closing, setClosing] = useState<TabView | null>(null);
     const terminalSlots = useRef(new Map<string, HTMLDivElement>());
+
+    useEffect(() => {
+        if (!tabSelectionRequest) return;
+        setState((current) => {
+            const pane = panelLayoutReferences(current.layout).panes.find(
+                (item) => item.tabIds.includes(tabSelectionRequest.tabId),
+            );
+            return pane
+                ? selectPreviewTab(current, pane.id, tabSelectionRequest.tabId)
+                : current;
+        });
+    }, [tabSelectionRequest?.tabId, tabSelectionRequest?.key]);
 
     function activatePane(paneId: string) {
         setState((current) =>

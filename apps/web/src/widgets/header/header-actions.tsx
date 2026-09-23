@@ -1,15 +1,23 @@
 // SearchIcon: 커맨드 팔레트 보류로 함께 주석. docs/specs/aiox-web-ui.md 커맨드 팔레트 절.
-import { BellIcon, SettingsIcon } from "lucide-react";
+import { SettingsIcon } from "lucide-react";
 import { Link } from "react-router";
 
 import { ThemeToggle } from "@/features/theme/theme-toggle";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { useSidebar } from "@/shared/ui/sidebar";
+import {
+    NotificationMenu,
+    type NotificationMenuProps,
+} from "@/widgets/header/notification-menu";
 
-export type HeaderActionsProps = { unreadCount: number };
+export type HeaderActionsProps = NotificationMenuProps;
 
-export function HeaderActions({ unreadCount }: HeaderActionsProps) {
+export function HeaderActions({
+    notifications,
+    agentNameOf,
+    onSelect,
+    onClearAll,
+}: HeaderActionsProps) {
     const { setOpenMobile, isMobile } = useSidebar();
     // 설정 진입은 화면 이동이라 드로어를 닫는다. 테마 토글은 이동이 아니라 유지한다.
     const closeMobileSidebar = () => isMobile && setOpenMobile(false);
@@ -26,22 +34,12 @@ export function HeaderActions({ unreadCount }: HeaderActionsProps) {
                     <span>Search</span>
                 </Button>
             )} */}
-            <Button
-                size="icon"
-                className="relative"
-                aria-label={`Notifications: ${unreadCount} unread`}
-                disabled
-            >
-                <BellIcon aria-hidden="true" />
-                {unreadCount > 0 && (
-                    <Badge
-                        className="absolute -right-1 -top-1"
-                        aria-hidden="true"
-                    >
-                        {unreadCount}
-                    </Badge>
-                )}
-            </Button>
+            <NotificationMenu
+                notifications={notifications}
+                agentNameOf={agentNameOf}
+                onSelect={onSelect}
+                onClearAll={onClearAll}
+            />
             <Button
                 size="icon"
                 nativeButton={false}
