@@ -16,7 +16,7 @@ status: open
 - [x] W8 서비스 진단 로그를 Pino로 전환한다
 - [x] W9 서비스 HTTP 처리를 Hono로 전환한다
 - [x] W10 서비스 SQLite 저장 계층을 TypeORM에서 Drizzle로 전환한다
-- [>] W11 Stage6 준비 후 W5~W10의 실제 화면 연결과 전체 흐름을 통합 검증한다
+- [>] W11 실제 화면 연결과 W5~W10 통합 검증의 소유를 Stage6 W10으로 넘겼다. 같은 통합 지점을 양쪽 로그가 각자 부르면 검증 결과의 권위가 둘로 갈리기 때문이다. Stage6이 worktree를 main에 합쳐 두 stage가 한 트리에서 돌게 된 것이 근거다. 이 항목은 그 검증에서 드러난 서버 쪽 결함을 받아 고치는 자리로 남는다. apps/daemon과 packages/protocol은 Stage5 단독 수정이라 Stage6이 손댈 수 없다. 결함이 없으면 Stage6 W10 완료와 함께 닫는다.
 
 ## Required Context
 

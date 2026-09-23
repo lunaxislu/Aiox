@@ -15,7 +15,7 @@ status: open
 - [ ] W7 알림. 헤더 벨의 dropdown을 열어 미확인 항목을 어떤 agent에서 무슨 일이 있었는지와 상대 시각으로 보여 주고 Clear all을 둔다. 확인 뒤 항목 클릭을 해당 workspace·pane·탭 이동과 확인 처리에 잇고 read 요청은 클릭이 ids 하나, Clear all이 ids 생략이다. 이동 대상이 다 있어야 하므로 main 화면 작업의 마지막이다.
 - [ ] W8 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다.
 - [ ] W9 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙, 햄버거의 미확인 점, 드로어 위 알림 dropdown의 Esc·backdrop 순서다.
-- [ ] W10 @aiox/protocol의 zod 스키마가 오면 임시 정의를 교체하고 MSW를 제거한 뒤 실제 daemon에 연결한다. 실제 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. 운영 Web 내부 구조를 docs/architecture/aiox-system.md에 반영한다.
+- [ ] W10 실제 daemon 연결과 통합 검증을 소유한다. main을 merge해 `@aiox/protocol`의 zod·타입이 이미 들어왔고 apps/web에는 임시 정의도 MSW도 만든 적이 없으므로 교체·제거 작업은 없다. 화면을 실제 HTTP·SSE·WS에 붙이고 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. Stage5 W11이 갖고 있던 W5~W10 실제 화면 연결과 전체 흐름 통합 검증을 이 항목이 흡수한다. 검증에서 서버 쪽 결함이 나오면 apps/daemon·packages/protocol은 Stage5 단독 수정이므로 고치지 않고 Stage5 W11로 넘긴다. 운영 Web 내부 구조는 docs/architecture/aiox-system.md에 반영한다.
 - [ ] W11 자동화로 닫을 수 없어 구현 후로 넘긴 사용자 실측 판정을 닫는다. 드롭 존 두께 확정값(초안 pane의 20%)과 Windows/Linux 브라우저 예약키 충돌이다. 사용자가 실제 화면에서 조작해 판정하고 어긋나는 것만 고친다. 탭 드래그·분할·미리보기 동작은 W5에서 pointer 기반으로 바꿔 Playwright가 판정하므로 이 항목에서 제외한다.
 
 ## Required Context
@@ -36,7 +36,7 @@ status: open
 - 세로로 썬다. 각 화면 W는 컴포넌트 단위로 UI를 먼저 만들어 사용자 확인을 받는다. 확인을 받은 뒤 그 화면에 무엇을 붙일지 사용자와 논의해서 정하고 붙인다. 각 W에 적힌 것은 후보이지 확정이 아니며 논의 없이 붙이지 않는다. UI가 없으면 store 모양을 짐작하게 되므로 순서를 뒤집지 않는다. 1단계 fixture도 처음부터 계약 모양으로 한 fixture 파일에 두어 컴포넌트에 더미를 박지 않는다. 그래야 다음 단계가 props를 store로 바꾸는 것만 되고 fixture를 다시 만들지 않는다. 임시 zod 정의도 슬라이스마다 흩지 말고 한 파일에서 키워 `@aiox/protocol` 스키마가 오면 import 한 번으로 교체되게 한다.
 - 설치와 기능 연결은 구분한다. 사용자 권한으로 W2에서 설치한 도구는 {W2}의 설치 완료 기록과 `apps/web/package.json`을 확인하고 재설치 작업으로 잡지 않는다. Storybook의 브라우저 테스트 연결은 이미 있으며, 드롭 위치 판정은 W5에서 구현한다. `msw`·`msw-storybook-addon`은 아직 설치되지 않은 후보이고, 도입 시 HTTP·SSE·WS 핸들러 한 세트를 Storybook·vite dev·Vitest·Playwright가 공유한다. story는 필요한 화면·상태를 기존 story에 이어서 작성한다.
 - 스택 선택 중 owner 문서에 근거가 없는 셋. 라우터는 계약이 요구하지 않는다. [[docs/specs/aiox-configuration-web]]의 복귀 계약이 복원하라는 것은 Host·Agent·배치·terminal 현재 화면·미확인 알림뿐이고 전부 서버 소유다. 그래도 두는 이유는 브라우저 저장소가 금지라 무엇을 보고 있었는지를 담을 자리가 URL뿐이고, 없으면 알림·팔레트 점프 뒤 뒤로 가기가 앱을 벗어나며, 탭 두 개가 서로 다른 workspace를 볼 수 없기 때문이다. happy-dom은 jsdom보다 빠르다는 것 말고 강한 이유가 없다. xterm은 canvas가 필요하고 `ResizeObserver`는 둘 다 없어 어차피 mock하므로 실질 차이가 속도뿐이며, 막히면 environment 한 줄로 jsdom에 간다. `cn`을 bare specifier로 두면 shadcn 복사본이 upstream과 같아져 갱신 때 import가 안 흔들리지만 CLI가 alias로 재작성하면 그 이점이 사라지므로 W1에서 보고 정한다.
-- 작업 트리. Stage 6은 `~/Documents/aiox-stage6`의 `stage6-web` 브랜치에서 돌고 Stage 5는 main 체크아웃에 남는다. 이 브랜치의 plan은 활성 단계를 Stage 6으로 두고 main은 Stage 5로 둔다. 두 값이 다른 것은 브랜치별 라우팅이므로 맞추지 않으며 Stage 5의 실제 진행은 Stage 5 로그가 소유한다. `apps/daemon`과 `packages/protocol`은 분기 시점 스냅샷이라 main의 Stage 5 구현과 어긋나며 그 drift도 맞추지 않는다. 정합은 W10이 소유한다. 같은 이유로 Stage 5가 계약을 고쳐도 이 트리의 spec은 조용히 낡으므로 계약 변경은 파일이 아니라 handoff 메시지로 받는다. 새 워크트리에서는 루트 `pnpm install` 뒤 `pnpm -r --if-present build`를 먼저 돌린다. `packages/*/dist`가 없으면 `@aiox/terminal/restore`가 풀리지 않아 web 빌드와 타입체크가 실패한다. 설치를 `--filter`로 좁힐 이유는 없었고 native 빌드도 그대로 통과했다.
+- 작업 트리. Stage 6은 `~/Documents/aiox-stage6`의 별도 worktree에서 시작했고 2026-09-23에 그 브랜치를 main에 합쳐 worktree를 없앴다. 분리의 목적은 Stage 5와의 병렬 작업이었는데 Stage 5가 W1~W10을 끝내고 남은 W11이 Stage 6 화면을 요구해 병렬성이 사라졌기 때문이다. merge로 `packages/protocol`의 `core.ts`·`host.ts`·`configuration.ts`와 Hono·Drizzle·Pino 전환이 들어와 스냅샷 drift가 닫혔다. 충돌은 `pnpm-lock.yaml` 하나였고 main은 `apps/web`을 한 줄도 건드리지 않았다. 따라서 임시 zod 정의도 계약 handoff 메시지 경로도 더 이상 필요 없고 `@aiox/protocol`에서 바로 import한다. 소유 경계만 남는다. `apps/daemon`과 `packages/protocol`은 Stage5 단독 수정이고 `apps/web`은 이 로그가 소유한다. 새로 clone한 트리에서는 루트 `pnpm install` 뒤 `pnpm -r --if-present build`를 먼저 돌린다. `packages/*/dist`가 없으면 `@aiox/terminal/restore`가 풀리지 않아 web 빌드와 타입체크가 실패한다.
 
 ### {W1}
 
@@ -67,7 +67,7 @@ status: open
 
 ### {W10}
 
-- 정합 순서와 소유 경계. Stage5에 W3 첫 산출물로 zod 스키마·타입만 먼저 `packages/protocol`에 넣어 달라고 요청했다. `packages/protocol`과 `apps/daemon` 전체는 Stage5 단독 수정이고 `apps/web` 전체와 [[docs/specs/aiox-web-ui]]는 이 로그가 소유한다. 공동인 [[docs/specs/aiox-configuration-web]]은 Stage5가 API·DTO 절, Stage6이 keybindings·저장 경계 절이다. 운영 Web 내부 구조는 아직 owner 문서가 없으므로 이 단계에서 [[docs/architecture/aiox-system]]에 반영한다.
+- 정합 순서와 소유 경계. Stage5에 요청했던 zod 스키마·타입은 main merge로 이미 들어왔다. `packages/protocol`과 `apps/daemon` 전체는 Stage5 단독 수정이고 `apps/web` 전체와 [[docs/specs/aiox-web-ui]]는 이 로그가 소유한다. 공동인 [[docs/specs/aiox-configuration-web]]은 Stage5가 API·DTO 절, Stage6이 keybindings·저장 경계 절이다. 운영 Web 내부 구조는 아직 owner 문서가 없으므로 이 단계에서 [[docs/architecture/aiox-system]]에 반영한다. 서버 계약의 인계문은 `apps/web/Spec.md`이고 기준은 main `fa97647`이다. 이 문서와 현재 코드·owner 문서가 어긋나면 임의로 맞추지 않고 차이를 근거와 함께 보고한다.
 
 
 ## 2026-09-21 · 설계 라인 마감과 구현 착수
