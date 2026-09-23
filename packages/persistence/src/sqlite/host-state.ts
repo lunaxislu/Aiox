@@ -12,7 +12,7 @@ import {
     type HostNetworkView,
     type PanelView,
     type Operation,
-    type PanelLayout,
+    removePanelTabs,
     lastExitSchema,
     type LastExit,
 } from "@aiox/protocol";
@@ -76,6 +76,7 @@ export interface HostState {
         routes: readonly DirectedRoute[],
     ): Promise<void>;
     snapshot(): Promise<HostStateSnapshot>;
+    getNetwork(id: string): Promise<HostNetworkView | undefined>;
     getOperation(
         requestId: string,
         requestHash: string,
@@ -158,6 +159,55 @@ function operationView(row: HostOperationRow): Operation {
         cleanupErrors: JSON.parse(cleanupErrorsJson),
     });
 }
+function networkView(
+    n: typeof HostNetworkEntity.$inferSelect,
+    members: (typeof HostMemberEntity.$inferSelect)[],
+    edges: (typeof HostEdgeEntity.$inferSelect)[],
+): HostNetworkView {
+    const keys = members
+        .filter((m) => m.networkId === n.id)
+        .map((m) => m.agentKey);
+    return hostNetworkViewSchema.parse({
+        id: n.id,
+        hostId: n.hostId,
+        name: n.name,
+        scope: "host",
+        default: n.defaultPolicy,
+        members: keys.map((agentKey) => ({
+            agentKey,
+            runtimeId: null,
+        })),
+        edges: keys.flatMap((from) =>
+            keys
+                .filter((to) => to !== from)
+                .map((to) => {
+                    const edge = edges.find(
+                        (e) =>
+                            e.networkId === n.id &&
+                            e.fromKey === from &&
+                            e.toKey === to,
+                    );
+                    return {
+                        from,
+                        to,
+                        fromRuntimeId: null,
+                        toRuntimeId: null,
+                        policy:
+                            edge?.overridePolicy ??
+                            edge?.manifestPolicy ??
+                            n.defaultPolicy,
+                        source:
+                            edge?.overridePolicy != null
+                                ? "runtime-override"
+                                : edge?.manifestPolicy != null
+                                  ? "manifest-edge"
+                                  : "manifest-default",
+                    };
+                }),
+        ),
+    });
+}
+
 export function hostState(dataSource: BetterSQLite3Database): HostState {
     const manager = dataSource;
     // ponytail: scan local Host collections per snapshot; use indexed joins if measured scale requires it.
@@ -232,50 +282,7 @@ export function hostState(dataSource: BetterSQLite3Database): HostState {
                         })),
                 });
             }),
-            networks: networks.map((n) => {
-                const keys = members
-                    .filter((m) => m.networkId === n.id)
-                    .map((m) => m.agentKey);
-                return hostNetworkViewSchema.parse({
-                    id: n.id,
-                    hostId: n.hostId,
-                    name: n.name,
-                    scope: "host",
-                    default: n.defaultPolicy,
-                    members: keys.map((agentKey) => ({
-                        agentKey,
-                        runtimeId: null,
-                    })),
-                    edges: keys.flatMap((from) =>
-                        keys
-                            .filter((to) => to !== from)
-                            .map((to) => {
-                                const edge = edges.find(
-                                    (e) =>
-                                        e.networkId === n.id &&
-                                        e.fromKey === from &&
-                                        e.toKey === to,
-                                );
-                                return {
-                                    from,
-                                    to,
-                                    fromRuntimeId: null,
-                                    toRuntimeId: null,
-                                    policy:
-                                        edge?.overridePolicy ??
-                                        edge?.manifestPolicy ??
-                                        n.defaultPolicy,
-                                    source:
-                                        edge?.overridePolicy != null
-                                            ? "runtime-override"
-                                            : edge?.manifestPolicy != null
-                                              ? "manifest-edge"
-                                              : "manifest-default",
-                                };
-                            }),
-                    ),
-                });
-            }),
+            networks: networks.map((n) => networkView(n, members, edges)),
             panels: panels.map(({ layoutJson, ...panel }) =>
                 panelViewSchema.parse({
                     ...panel,
@@ -441,6 +448,25 @@ export function hostState(dataSource: BetterSQLite3Database): HostState {
     }
 
     return {
+        async getNetwork(id) {
+            const network = manager
+                .select()
+                .from(HostNetworkEntity)
+                .where(eq(HostNetworkEntity.id, id))
+                .get();
+            if (!network) return undefined;
+            const members = manager
+                .select()
+                .from(HostMemberEntity)
+                .where(eq(HostMemberEntity.networkId, id))
+                .all();
+            const edges = manager
+                .select()
+                .from(HostEdgeEntity)
+                .where(eq(HostEdgeEntity.networkId, id))
+                .all();
+            return networkView(network, members, edges);
+        },
         snapshot,
         async routeNetwork(hostId, networkId, operation) {
             dataSource.transaction((manager) => {
@@ -912,19 +938,6 @@ export function hostState(dataSource: BetterSQLite3Database): HostState {
                     .where(eq(PanelEntity.id, tab.panelId))
                     .get();
                 if (!panel) throw new Error("Missing stored panel.");
-                const remove = (node: PanelLayout): PanelLayout => {
-                    if (node.type === "split")
-                        return { ...node, children: node.children.map(remove) };
-                    const tabIds = node.tabIds.filter((id) => id !== tab.id);
-                    return {
-                        ...node,
-                        tabIds,
-                        selectedTabId:
-                            node.selectedTabId === tab.id
-                                ? (tabIds[0] ?? null)
-                                : node.selectedTabId,
-                    };
-                };
                 manager
                     .delete(PanelTabEntity)
                     .where(eq(PanelTabEntity.id, tab.id))
@@ -933,7 +946,10 @@ export function hostState(dataSource: BetterSQLite3Database): HostState {
                     .update(PanelEntity)
                     .set({
                         layoutJson: JSON.stringify(
-                            remove(JSON.parse(panel.layoutJson)),
+                            removePanelTabs(
+                                JSON.parse(panel.layoutJson),
+                                new Set([tab.id]),
+                            ),
                         ),
                         revision: panel.revision + 1,
                     })

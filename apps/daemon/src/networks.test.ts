@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openDatabase } from "@aiox/persistence";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { NetworkError, NetworkService } from "@/networks";
 import { RuntimeRegistry, type RuntimeRecord } from "@/runtimes";
@@ -283,6 +283,14 @@ test("Host route policy follows Agent keys across fresh Runtime identities and r
         },
         1,
     );
+    const expectedNetwork = (await db.hostState.snapshot()).networks[0];
+    expect(await db.hostState.getNetwork("n")).toEqual(expectedNetwork);
+    const snapshot = vi
+        .spyOn(db.hostState, "snapshot")
+        .mockRejectedValue(
+            new Error("routing must not read the Host snapshot"),
+        );
+    t.onTestFinished(() => snapshot.mockRestore());
     const runtimes = new RuntimeRegistry();
     const networks = new NetworkService(db, runtimes);
     const register = async (name: string) =>
@@ -305,8 +313,7 @@ test("Host route policy follows Agent keys across fresh Runtime identities and r
     const next = await register("b");
     expect((await networks.reachable(a)).map((r) => r.id)).toEqual([next.id]);
     expect(
-        (await db.hostState.snapshot()).networks[0]!.edges.find(
-            (e) => e.from === "a",
-        )?.policy,
+        (await db.hostState.getNetwork("n"))!.edges.find((e) => e.from === "a")
+            ?.policy,
     ).toBe("allow");
 });

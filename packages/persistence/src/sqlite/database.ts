@@ -110,12 +110,29 @@ function networks(db: BetterSQLite3Database): PersistentNetworks {
             return get(id);
         },
         async list() {
-            return db
+            const rows = db
                 .select()
                 .from(NetworkEntity)
                 .orderBy(asc(NetworkEntity.name))
-                .all()
-                .map(({ id }) => get(id)!);
+                .all();
+            const routes = db
+                .select()
+                .from(RouteEntity)
+                .orderBy(asc(RouteEntity.sourceId), asc(RouteEntity.targetId))
+                .all();
+            const byNetwork = new Map<
+                string,
+                PersistentNetwork["routes"][number][]
+            >();
+            for (const { networkId, sourceId: from, targetId: to } of routes) {
+                const edges = byNetwork.get(networkId) ?? [];
+                edges.push({ from, to });
+                byNetwork.set(networkId, edges);
+            }
+            return rows.map((row) => ({
+                ...row,
+                routes: byNetwork.get(row.id) ?? [],
+            }));
         },
         async replaceRouting(id, update) {
             db.transaction((tx) => {

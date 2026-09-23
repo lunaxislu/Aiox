@@ -15,7 +15,7 @@ import {
     hostAgentStartRequestSchema,
     hostAgentStopRequestSchema,
     routeOperationSchema,
-    panelLayoutReferences,
+    removePanelTabs,
     type HostView,
     type PanelView,
     type PanelLayout,
@@ -515,16 +515,10 @@ export async function handleHostAgents(
                                 current.tabs = current.tabs.filter(
                                     (t) => t.id !== old.id,
                                 );
-                                for (const pane of panelLayoutReferences(
+                                current.layout = removePanelTabs(
                                     current.layout,
-                                ).panes) {
-                                    pane.tabIds = pane.tabIds.filter(
-                                        (id) => id !== old.id,
-                                    );
-                                    if (pane.selectedTabId === old.id)
-                                        pane.selectedTabId =
-                                            pane.tabIds[0] ?? null;
-                                }
+                                    new Set([old.id]),
+                                );
                                 await services.db.hostState.updatePanel(
                                     {
                                         ...current,

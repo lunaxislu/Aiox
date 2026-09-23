@@ -524,3 +524,17 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 
 - 사용자 요청으로 W10 Drizzle 저장 전환·owner 문서·DDL 생성기의 Windows pnpm.cmd 의존 제거와 이번 SSE 수신/접수 로그/DB fixture 보완을 함께 커밋한다. W8·W9 기존 커밋은 유지한다.
 - W10 전체 pnpm check 751개 통과와 이후 변경에 대한 최신 관련 53개 테스트·daemon 타입/빌드·lint·포맷 검증 결과를 사용한다. 이후 production 수정은 없으며 현재 diff --check도 통과했다. 전체 suite·Windows 실환경을 추가 실행했다고 주장하지 않는다. push는 하지 않는다.
+
+## 2026-09-23 · 라우팅 조회 범위 축소와 탭 참조 제거 공통화
+
+- 사용자 리뷰 3건을 실제 caller·저장·layout 계약과 대조해 반영했다. W11 화면 통합과 별개인 현재 서버·저장 경로 보완이며 새 캐시·추가 상태·daemon 파일 분할은 도입하지 않는다.
+- 라우팅: MCP Agent 탐색은 NetworkService.reachable→effective, 메시지 전송은 effective를 소비한다. effective의 Host 전체 snapshot 조회를 HostState.getNetwork(id)로 교체했다. Host Network 정의 1회, 해당 membership 1회, 해당 edge 1회만 읽고, 없는 ID는 정의 1회 후 undefined를 반환한다. snapshot과 단건 조회는 기존 networkView 정책 변환을 공유하여 기본 정책·manifest/override 우선순위·runtime ID projection 계약을 유지한다. 일반 Network로의 fallback과 현재 Runtime 참여·철회 필터는 유지한다.
+- 목록: PersistentNetworks.list는 정의·route를 각각 한 번 읽고 Map으로 연결한다. 기존 SQL 이름 오름차순과 from/to route 오름차순을 유지하며 route 없는 Network도 반환한다. 새 캐시 없이 호출마다 현재 저장값을 읽는다.
+- 탭: protocol의 removePanelTabs는 불변 layout 변환만 소유한다. 전체 restart, 이전 Agent 안내 탭 정리, 사용자 탭 닫기, 저장소 terminal 제거의 네 경로에서 공유한다. 선택 탭을 삭제하면 남은 첫 탭을 선택하고, 비선택 탭 제거 시 선택을 유지하며 마지막 탭 제거 후 빈 pane·split geometry를 보존한다. 종료 확인·정리 재시도·DB transaction·revision은 기존 호출 경계에 남긴다. 메시지 정산·SSE·terminal 복원/ACK도 변경하지 않았다.
+- 회귀: 일반 Network 3개 목록의 SELECT 2회를 실제 SQLite prepare 호출로 확인한다. Host 단건 조회는 host_networks/host_members/host_edges만 3회, 없는 ID는 1회임을 검사한다. Host 라우팅 테스트는 getNetwork와 기존 snapshot 결과를 비교한 뒤 snapshot 호출을 실패시키고 Agent Runtime 교체·철회 흐름을 검증한다. 공통 layout 테스트는 선택/비선택/마지막/없는 ID·다중 삭제, split geometry와 원본 불변을 확인한다. 기존 통합 회귀는 유지했다.
+- 검증 경위: 새 테스트는 구현 전 layout 1건·저장 2건 실패를 확인했고 구현 후 통과했다. 타입 검사에서 목록 버킷의 readonly 배열 타입과 새 테스트의 split에 없는 id 필드를 발견해 수정했다. 최종 pnpm check exit 0: lint·포맷·빌드·전체 타입 검사 및 754개 테스트 통과. 출력은 /private/tmp/routing-layout-check.log다. git diff --check와 owner 문서 inline-code 검사도 통과했다.
+- owner: docs/architecture/aiox-storage-terminal.md의 Network 조회 경계와 현재 저장/API 책임에 단건 조회·공통 탭 변환을 반영했다. 공개 HTTP/DTO·저장 schema·실행 수명 spec은 바뀌지 않는다. 실제 지연 개선 폭·Windows 실환경은 측정하지 않았다. W10 완료·W11 next를 유지하며 Stage6·apps/web source·plan·사용자 DB·architecture.excalidraw는 변경하지 않았다. 이번 변경의 commit/push는 하지 않았다.
+
+### 2026-09-23 12:00 · 라우팅 조회·탭 정리 보완 커밋
+
+- 사용자 요청으로 라우팅 단건 조회·목록 재조회 제거·탭 참조 제거 공통 함수와 관련 회귀·owner 문서·로그를 함께 커밋한다. 직전 pnpm check 754개 테스트 통과 이후 production 변경은 없으며 현재 git diff --check도 통과했다. push는 하지 않는다.

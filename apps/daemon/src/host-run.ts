@@ -9,7 +9,7 @@ import { logger } from "@aiox/diagnostics";
 import {
     hostRunRequestSchema,
     hostRestartRequestSchema,
-    panelLayoutReferences,
+    removePanelTabs,
     type HostLayout,
     type HostNetworkView,
     type HostView,
@@ -497,13 +497,7 @@ export async function handleHostRun(
                 panel = latest.panels.find((p) => p.id === panel.id)!;
                 const removedIds = new Set(removed.map((t) => t.id));
                 panel.tabs = panel.tabs.filter((t) => !removedIds.has(t.id));
-                for (const pane of panelLayoutReferences(panel.layout).panes) {
-                    pane.tabIds = pane.tabIds.filter(
-                        (id) => !removedIds.has(id),
-                    );
-                    if (!pane.tabIds.includes(pane.selectedTabId!))
-                        pane.selectedTabId = pane.tabIds[0] ?? null;
-                }
+                panel.layout = removePanelTabs(panel.layout, removedIds);
                 let placement = 0;
                 for (const agent of host.agents) {
                     const tab = placeAgent(panel, agent.key, placement++);

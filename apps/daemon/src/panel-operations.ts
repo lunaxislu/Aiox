@@ -6,6 +6,7 @@ import {
     closePanelTabRequestSchema,
     deletePanelRequestSchema,
     panelLayoutReferences,
+    removePanelTabs,
     type PanelLayout,
     type PanelView,
     type Operation,
@@ -290,19 +291,10 @@ export async function handlePanelOperation(
                         "Panel disappeared during termination.",
                     );
                 if (tab && latest.tabs.some((t) => t.id === tab.id)) {
-                    const layout = mapPanes(latest.layout, (pane) => {
-                        const tabIds = pane.tabIds.filter(
-                            (id) => id !== tab.id,
-                        );
-                        return {
-                            ...pane,
-                            tabIds,
-                            selectedTabId:
-                                pane.selectedTabId === tab.id
-                                    ? (tabIds[0] ?? null)
-                                    : pane.selectedTabId,
-                        };
-                    });
+                    const layout = removePanelTabs(
+                        latest.layout,
+                        new Set([tab.id]),
+                    );
                     await services.db.hostState.updatePanel(
                         {
                             ...latest,

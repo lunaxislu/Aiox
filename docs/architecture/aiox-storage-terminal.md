@@ -531,6 +531,8 @@ restart 실패는 이전 실행을 자동 되살리거나 사전 실패처럼 �
 
 ### 현재 저장·API 구현 범위 [Status: As-built]
 
+탭 참조 제거는 protocol의 `removePanelTabs`가 공통으로 처리한다. 선택 탭 제거 시 남은 첫 탭을 선택하고 마지막 탭 제거 후에도 빈 pane과 분할 구조를 유지한다. Host restart·Agent 안내 탭 정리·사용자 탭 닫기·terminal 제거가 이 변환을 공유하며 종료 확인·transaction·revision 처리는 각 호출 경계에 남는다. 근거: [[packages/protocol/src/host.ts]], [[packages/protocol/src/host.test.ts]].
+
 Host·관리 Agent·전용 Network·membership/edge, panel/tab, Operation·실행 이력 테이블을 현재
 schema로 직접 초기화한다. pane tree·오류·안내 JSON은 protocol 검증을 통과한 값으로 저장한다.
 Host와 전용 Network·panel 생성은 하나의 transaction이며 panel 쓰기는 revision과 terminal

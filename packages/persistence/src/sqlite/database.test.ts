@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import Database from "better-sqlite3";
-import { test, type TestContext } from "vitest";
+import { test, vi, type TestContext } from "vitest";
 
 import { openDatabase } from "@/sqlite/database";
 import type { DeliveryRow, MessageRow } from "@/sqlite/schema";
@@ -578,6 +578,25 @@ test("Host FK cascades preserve independent Networks and execution, Operation an
         { ...message("m1", 1), sourceRuntimeId: "r", networkId: "n" },
         [delivery("d1", "m1", "t1")],
     );
+    const prepare = vi.spyOn(Database.prototype, "prepare");
+    t.onTestFinished(() => prepare.mockRestore());
+    const managed = await store.hostState.getNetwork("n");
+    assert.equal(managed?.id, "n");
+    assert.deepEqual(
+        managed?.members.map((member) => member.agentKey),
+        ["a", "b"],
+    );
+    assert.equal(managed?.edges.length, 2);
+    assert.equal(prepare.mock.calls.length, 3);
+    assert(
+        prepare.mock.calls.every(([sql]) =>
+            /from "host_(networks|members|edges)"/.test(sql),
+        ),
+    );
+    prepare.mockClear();
+    assert.equal(await store.hostState.getNetwork("missing"), undefined);
+    assert.equal(prepare.mock.calls.length, 1);
+    prepare.mockRestore();
     await store.hostState.deleteHost("h", 1);
     for (const table of [
         "hosts",
@@ -613,4 +632,44 @@ test("Host FK cascades preserve independent Networks and execution, Operation an
             1,
         );
     assert.deepEqual(raw.pragma("foreign_key_check"), []);
+});
+
+test("network list reads definitions and sorted routes once each", async (t) => {
+    const store = await openDatabase(databasePath(t));
+    t.onTestFinished(() => store.close());
+    for (const [id, name] of [
+        ["z", "Alpha"],
+        ["a", "Beta"],
+        ["empty", "Gamma"],
+    ])
+        await store.networks.create({ id: id!, name: name! });
+    await store.networks.replaceRouting("z", {
+        routes: [
+            { from: "b", to: "a" },
+            { from: "a", to: "z" },
+            { from: "a", to: "b" },
+        ],
+    });
+    await store.networks.replaceRouting("a", {
+        routes: [{ from: "other", to: "target" }],
+    });
+    const prepare = vi.spyOn(Database.prototype, "prepare");
+    t.onTestFinished(() => prepare.mockRestore());
+    assert.deepEqual(await store.networks.list(), [
+        {
+            id: "z",
+            name: "Alpha",
+            routes: [
+                { from: "a", to: "b" },
+                { from: "a", to: "z" },
+                { from: "b", to: "a" },
+            ],
+        },
+        { id: "a", name: "Beta", routes: [{ from: "other", to: "target" }] },
+        { id: "empty", name: "Gamma", routes: [] },
+    ]);
+    assert.equal(
+        prepare.mock.calls.filter(([sql]) => /^select /i.test(sql)).length,
+        2,
+    );
 });

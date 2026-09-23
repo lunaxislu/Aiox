@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import {
+    removePanelTabs,
+    type PanelLayout,
     hostRunRequestSchema,
     panelViewSchema,
     webStateSchema,
@@ -122,4 +124,42 @@ test("SSE discriminates DTO by resource and remove carries no value", () => {
         }).success,
         true,
     );
+});
+
+test("removing layout tab references preserves selection, empty panes and split geometry", () => {
+    const layout: PanelLayout = {
+        type: "split",
+        axis: "x",
+        weights: [0.3, 0.7],
+        children: [
+            {
+                type: "pane",
+                id: "a",
+                tabIds: ["one", "two"],
+                selectedTabId: "two",
+            },
+            { type: "pane", id: "b", tabIds: ["last"], selectedTabId: "last" },
+        ],
+    };
+    const before = structuredClone(layout);
+    for (const [ids, tabs, selected] of [
+        [["one"], ["two"], "two"],
+        [["two"], ["one"], "one"],
+        [["one", "two"], [], null],
+        [["missing"], ["one", "two"], "two"],
+    ] as const) {
+        assert.deepEqual(removePanelTabs(layout, new Set([...ids, "last"])), {
+            ...layout,
+            children: [
+                {
+                    type: "pane",
+                    id: "a",
+                    tabIds: [...tabs],
+                    selectedTabId: selected,
+                },
+                { type: "pane", id: "b", tabIds: [], selectedTabId: null },
+            ],
+        });
+        assert.deepEqual(layout, before);
+    }
 });

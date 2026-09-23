@@ -154,9 +154,7 @@ export class NetworkService {
 
     /** The routing snapshot a send or discovery call is judged against. */
     async effective(networkId: string): Promise<Network> {
-        const managed = (await this.db.hostState.snapshot()).networks.find(
-            (n) => n.id === networkId,
-        );
+        const managed = await this.db.hostState.getNetwork(networkId);
         if (managed) {
             const members = this.runtimes
                 .inNetwork(networkId)

@@ -340,6 +340,30 @@ export const tabViewSchema = z.strictObject({
     ]),
     notice: tabNoticeSchema.nullable(),
 });
+/** Remove tab references without collapsing panes or changing split geometry. */
+export function removePanelTabs(
+    layout: PanelLayout,
+    ids: ReadonlySet<string>,
+): PanelLayout {
+    if (layout.type === "split")
+        return {
+            ...layout,
+            children: layout.children.map((child) =>
+                removePanelTabs(child, ids),
+            ),
+        };
+    const tabIds = layout.tabIds.filter((id) => !ids.has(id));
+    return {
+        ...layout,
+        tabIds,
+        selectedTabId:
+            layout.selectedTabId !== null &&
+            tabIds.includes(layout.selectedTabId)
+                ? layout.selectedTabId
+                : (tabIds[0] ?? null),
+    };
+}
+
 export function panelLayoutReferences(layout: PanelLayout) {
     const panes: z.infer<typeof paneSchema>[] = [];
     const walk = (node: PanelLayout): void => {
