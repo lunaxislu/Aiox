@@ -2,7 +2,11 @@ import { ArrowUpRightIcon } from "lucide-react";
 import { Link } from "react-router";
 
 import { kindIcons } from "@/entities/panel/icons";
-import { panelPath, type PanelPreview } from "@/entities/panel/model";
+import {
+    panelPath,
+    panelSummary,
+    type PanelPreview,
+} from "@/entities/panel/model";
 import {
     Card,
     CardAction,
@@ -22,6 +26,7 @@ const statusColors = {
 
 export function SectionOverviewCard({ panel }: { panel: PanelPreview }) {
     const Icon = kindIcons[panel.kind];
+    const summary = panelSummary(panel);
     const affiliated = panel.agents.filter((agent) => !agent.standalone).length;
     const standalone = panel.agents.length - affiliated;
     return (
@@ -41,10 +46,8 @@ export function SectionOverviewCard({ panel }: { panel: PanelPreview }) {
                     <CardAction>
                         <ArrowUpRightIcon className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                     </CardAction>
-                    <CardDescription className="truncate" title={panel.context}>
-                        {panel.kind === "workspace"
-                            ? `${panel.terminalCount} terminals`
-                            : panel.context}
+                    <CardDescription className="truncate" title={summary}>
+                        {summary}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">

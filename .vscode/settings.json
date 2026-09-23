@@ -1,14 +1,8 @@
 {
-    "[typescript]": {
-        "editor.defaultFormatter": "oxc.oxc-vscode",
-        "editor.formatOnSave": true
-    },
-    "[json]": {
-        "editor.defaultFormatter": "oxc.oxc-vscode",
-        "editor.formatOnSave": true
-    },
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-        "source.fixAll.eslint": "explicit",
+        "source.fixAll.oxc": "explicit",
         "source.organizeImports": "explicit"
     }
 }

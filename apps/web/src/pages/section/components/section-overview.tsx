@@ -22,7 +22,7 @@ export function SectionOverview({
     }
     // 패딩은 페이지가 소유한다. 여기서 또 걸면 섹션 헤더와 좌측 기준선이 어긋난다.
     return (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 md:gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {panels.map((panel) => (
                 <SectionOverviewCard key={panel.id} panel={panel} />
             ))}

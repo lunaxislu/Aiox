@@ -35,7 +35,6 @@ export const Default: Story = {
             section: "workspaces",
             name: "development",
             terminalCount: 0,
-            context: "~/projects/app",
             command: "aiox workspace run --path ./aiox.yaml",
             agents: [],
         },

@@ -7,9 +7,9 @@ status: open
 ## Work Items
 
 - [x] W1 의존성 설치와 설정 파일만 한다. React·Tailwind v4·shadcn init, vite·tsconfig·apps/web 자체 vitest(happy-dom, .tsx, alias) 배선, cn import 재작성 여부 판정이다. main.ts를 폐기하고 attach.ts는 남긴다. 화면은 만들지 않고 빈 앱이 뜨는 것까지다.
-- [>] W2 사이드바. react-router v7로 `/`(전체 개요), `/:section`(섹션 개요), `/:section/:panelId`(패널), `/settings`를 두고 shadcn Sidebar 복사본에서 cookie 줄과 단축키 useEffect를 삭제한 뒤 SidebarRail에 드래그 resize를 붙인다. 좁은 폭은 메인 폭을 줄이지 않는 280px 고정 오버레이 드로어이고 리사이즈 핸들을 숨긴다. 세 섹션 아코디언, 생성 주체별 우클릭 메뉴, 섹션 개요 카드, 빈 화면 두 층을 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 PanelView·AgentView zod, SSE 연결과 store 첫 조각, MSW 핸들러다.
-- [ ] W3 헤더 바. `AppShell`의 기존 헤더(사이드바 토글·현재 패널/섹션 제목·설정 링크)를 이어서 확장한다. 사이드바 토글, workspace 이름과 종류별 맥락, 폭 기반 축약, 검색창·설정 톱니·테마 토글을 fixture로 렌더해 확인받는다. 알림 벨은 자리와 배지 숫자까지만 두고 dropdown과 클릭 이동은 W7로 미룬다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 config GET/PUT zod와 MSW, 저장 절차 없이 바로 쓰는 테마 토글, store의 연결 상태에 잇는 daemon 끊김 경고다.
-- [ ] W4 workspace 화면. `WorkspacePage`의 기존 패널 검증·빈 화면·비활성 새 터미널 버튼을 출발점으로 삼는다. shadcn Resizable로 layout 트리를 그리고 pane마다 탭바를 둔다. pane [+] 드롭다운, 탭 상태 점, presentation 일곱 값과 notice·Copy를 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 attach.ts로 terminalId별 xterm 부착, layout PUT·shells·tab close zod와 MSW, Operation store다.
+- [x] W2 사이드바. react-router v7로 `/`(전체 개요), `/:section`(섹션 개요), `/:section/:panelId`(패널), `/settings`를 두고 shadcn Sidebar 복사본에서 cookie 줄과 단축키 useEffect를 삭제한 뒤 SidebarRail에 드래그 resize를 붙인다. 좁은 폭은 메인 폭을 줄이지 않는 280px 고정 오버레이 드로어이고 리사이즈 핸들을 숨긴다. 세 섹션 아코디언, 생성 주체별 우클릭 메뉴, 섹션 개요 카드, 빈 화면 두 층을 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 PanelView·AgentView zod, SSE 연결과 store 첫 조각, MSW 핸들러다.
+- [x] W3 헤더 구조 승인 후 layout만 적용했다. AppHeader·WorkspaceTitle·HeaderActions·ThemeToggle·ConnectionWarning과 드로어 아이콘 줄의 배치·폭 축약을 사용자에게 확인받는다. font size·색·장식은 미적용이다. 검색 W6·알림 dropdown W7·설정 저장 W8·햄버거 점과 Esc 순서 W9·실제 연결 W10 범위를 유지한다.
+- [>] W4 workspace 화면. `WorkspacePage`의 기존 패널 검증·빈 화면·비활성 새 터미널 버튼을 출발점으로 삼는다. shadcn Resizable로 layout 트리를 그리고 pane마다 탭바를 둔다. pane [+] 드롭다운, 탭 상태 점, presentation 일곱 값과 notice·Copy를 fixture로 렌더해 확인받는다. 확인 뒤 무엇을 붙일지 논의한다. 후보는 attach.ts로 terminalId별 xterm 부착, layout PUT·shells·tab close zod와 MSW, Operation store다.
 - [ ] W5 탭 드래그와 드롭. dnd-kit pointer 기반으로 네 결과를 구분한다. 같은 탭바 순서 변경, 다른 pane 이동, 가장자리 분할, 중앙 합치기다. 드롭 전 반투명 오버레이를 보여 주고 확인받은 뒤 결과를 layout PUT으로 보낸다. 드롭 위치 판정은 Playwright로 검증하며 이때 Playwright를 처음 넣는다.
 - [ ] W6 커맨드 팔레트. shadcn Command로 검색창을 열어 workspace·터미널·agent와 명령을 두 섹션으로 나눠 필터링하고 위아래 화살표·Enter·Esc를 붙인다. 확인 뒤 선택 결과를 해당 workspace·pane·탭으로 점프시키는 store 경로에 잇는다. 점프 대상이 모두 존재해야 하므로 workspace 화면 뒤에 둔다.
 - [ ] W7 알림. 헤더 벨의 dropdown을 열어 미확인 항목을 어떤 agent에서 무슨 일이 있었는지와 상대 시각으로 보여 주고 Clear all을 둔다. 확인 뒤 항목 클릭을 해당 workspace·pane·탭 이동과 확인 처리에 잇고 read 요청은 클릭이 ids 하나, Clear all이 ids 생략이다. 이동 대상이 다 있어야 하므로 main 화면 작업의 마지막이다.
@@ -28,7 +28,7 @@ status: open
 
 - 확정된 것은 전부 owner 문서에 있다. 화면 규칙은 [[docs/specs/aiox-web-ui]], 설정 필드의 검증·저장·HTTP와 keybindings 키 값·wire schema는 [[docs/specs/aiox-configuration-web]], 저장 경계는 그 문서와 [[docs/architecture/aiox-storage-terminal]], agent 상태 값 의미와 terminal 수명은 [[docs/specs/aiox-runtime]], Host 배치 우선순위는 [[docs/specs/aiox-host]]가 소유한다. 이 로그에 규칙을 다시 쓰지 않는다. 규칙이 바뀌면 로그가 아니라 owner 문서를 고친다.
 - 소유 경계. 3차(Host 종료·재시작) 반영본 검토는 Stage5 W1이 소유하며 이 로그는 판정하지 않는다. plan의 단계 marker와 Stage 3·Stage 5와의 병렬 조율은 사용자가 소유하므로 이 로그에서 plan을 고치지 않는다. Stage 6 착수 자체가 사용자 권위로 이뤄졌다.
-- 프로토타입 `logs/artifact/aiox-version9.html`은 Claude Design 번들이라 코드를 React로 재사용하지 않는다. 확정되는 것은 화면 규칙뿐이고 디버그 패널도 구현에 포함하지 않는다. 다만 그 패널이 재현한 상태 집합은 fixture·mock으로 다시 만들어 검증해야 한다. `agentViewSchema.status` 다섯 값(`aiox-preparing`·`idle`·`working`·`awaiting-user`·`failed`), 판정 불가 터미널, daemon 연결 끊김의 헤더 경고, `config.json` 외부 변경의 화면 열 때 배너와 저장 시점 충돌 dialog, 섹션 빈 화면 두 층, 드롭 존 두께, 테마 전환, status bar 기본 열림, 알림 추가에 따른 dropdown 표시와 읽음 처리다. 이 목록은 검증 후보이며 확정된 test 계획이 아니다.
+- 프로토타입 `logs/artifact/aiox-version9.html`은 Claude Design 번들이라 코드를 React로 재사용하지 않는다. 확정되는 것은 화면 규칙뿐이고 디버그 패널도 구현에 포함하지 않는다. 프로토타입과 구현의 시각 스타일이 달라지는 것은 사용자가 허용했다. font size·weight·간격이 어긋나도 drift로 보지 않으며, 사용자가 지목하지 않는 한 프로토타입과 대조하지 않는다. 다만 그 패널이 재현한 상태 집합은 fixture·mock으로 다시 만들어 검증해야 한다. `agentViewSchema.status` 다섯 값(`aiox-preparing`·`idle`·`working`·`awaiting-user`·`failed`), 판정 불가 터미널, daemon 연결 끊김의 헤더 경고, `config.json` 외부 변경의 화면 열 때 배너와 저장 시점 충돌 dialog, 섹션 빈 화면 두 층, 드롭 존 두께, 테마 전환, status bar 기본 열림, 알림 추가에 따른 dropdown 표시와 읽음 처리다. 이 목록은 검증 후보이며 확정된 test 계획이 아니다.
 - 실제 구현의 사이드바는 shadcn의 Sidebar를 쓴다. shadcn은 의존성이 아니라 레지스트리에서 소스를 복사해 오는 방식이라 복사본 수정이 유지보수 부담이 되지 않는다. base는 `aria`·`base`·`radix` 셋 중 Base UI(`base`)이며 2026-07부터 shadcn 기본값이다.
 - 최소 Web 인계. `attach.ts`는 버리지 않고 React 컴포넌트로 감싸 재사용한다. `@xterm/xterm` 6.0.0·`@xterm/addon-fit`·`@aiox/terminal`의 restore가 브라우저 쪽 터미널 렌더링과 화면 복원을 담당하며 Stage2-1 snapshot 결과를 중복 구현하지 않는다. `main.ts`는 폐기한다. panel 안의 새 shell은 `/api/terminals` 생성이 아니라 `POST /api/panels/:id/shells`로 만들어야 배치에 들어간다. `/api/terminals`는 terminal 생존 조회용으로만 남는다.
 - 확정 스택. UI는 shadcn(Base UI base)과 `tailwindcss@4`, 상태는 `zustand`이며 TanStack Query는 쓰지 않는다. 서버가 SSE로 완전한 DTO를 미는 push-apply 모델이라 쿼리 캐시를 두면 진실 소스가 둘이 되기 때문이다. 드래그는 `@dnd-kit/core`·`@dnd-kit/sortable`의 pointer 기반이다. mock은 `msw` 한 세트로 HTTP·SSE·WS를 덮되 실제 xterm bytes는 mock하지 않고 기존 WS consumer로 교체한다. 라우팅은 `react-router` v7이며 현재 경로와 페이지 매핑은 `apps/web/src/app/router.tsx`를 따른다. 전체 개요와 섹션 개요는 별도 페이지이고 패널은 section 아래에 둔다. 카탈로그는 `storybook`·`@storybook/react-vite`·`msw-storybook-addon`이다. 테스트는 `vitest`·`@testing-library/react`·`@testing-library/user-event`·`happy-dom`이고 `@playwright/test`는 드롭 위치 판정과 스모크에만 쓴다. `lucide-react`·`class-variance-authority`·`clsx`·`tailwind-merge`는 shadcn 컴포넌트 설치 때 따라오므로 따로 넣지 않는다.
@@ -49,8 +49,10 @@ status: open
 
 ### {W3}
 
-- 컴포넌트 순서. `AppHeader`(전체 배치) → `WorkspaceTitle`(이름과 종류별 맥락, 맥락이 먼저 줄고 이름이 마지막까지 남는 폭 기반 단일 규칙) → `HeaderActions`(검색창, 벨 자리, 톱니, 테마 토글; 좁은 폭에서 검색은 아이콘) → `ThemeToggle` → `ConnectionWarning`. 벨은 자리와 배지 숫자까지만이고 dropdown은 W7이다. Settings 진입은 헤더 톱니뿐이며 사이드바 하단에 Settings 행을 두지 않는다.
+- 컴포넌트 순서. AppHeader(전체 배치) → WorkspaceTitle(이름과 종류별 맥락, 맥락부터 줄이는 폭 기반 단일 규칙) → HeaderActions(검색·벨·설정·테마) → ThemeToggle → ConnectionWarning. 모바일 헤더에서는 검색을 포함한 HeaderActions를 숨기고 드로어 브랜드 줄에는 알림·설정·테마만 둔다. 벨 dropdown은 W7이며 사이드바 하단 Settings 행은 두지 않는다.
 - 재개 출발점은 `apps/web/src/app/app-shell.tsx`의 기존 헤더다. 토글·현재 패널/섹션 제목·설정 링크를 재사용하고, 종류별 맥락·폭 기반 축약·검색·알림·앱 테마 전환·연결 경고를 이어서 구현한다. Storybook의 테마 전환 설정은 앱의 테마 기능 완료가 아니다.
+- 사용자가 구조를 확인하고 layout만 승인했다. 헤더/드로어 배치·간격·폭·축약 className은 적용하되 font size·색·장식은 추가하지 않는다. 기존 shared/ui 우선, 없는 primitive는 shadcn 공식 제공 여부부터 확인한다. 테마는 shadcn Vite ThemeProvider/useTheme를 유지하되 메뉴 없이 아이콘 클릭으로 Light/Dark를 전환한다. 초기 system 감지는 provider가 맡으며 W3에는 메모리 상태만 둔다.
+- 헤더 위젯은 `apps/web/src/widgets/header/`가 소유한다. `AppHeader`·`WorkspaceTitle`·`ConnectionWarning`과 `HeaderActions`를 한 폴더에 두며 `widgets/sidebar`와 대칭이다. `app/`에는 shell과 provider만 남는다. `shared/ui`의 `command`·`dialog`·`input-group`·`textarea`·`dropdown-menu`와 `cmdk` 의존성은 지금 소비자가 없지만 사용자 지시로 남긴다. W6 팔레트가 쓸 것이므로 미사용 코드로 보고 지우지 않는다.
 
 ### {W4}
 
@@ -68,7 +70,7 @@ status: open
 ### {W10}
 
 - 정합 순서와 소유 경계. Stage5에 요청했던 zod 스키마·타입은 main merge로 이미 들어왔다. `packages/protocol`과 `apps/daemon` 전체는 Stage5 단독 수정이고 `apps/web` 전체와 [[docs/specs/aiox-web-ui]]는 이 로그가 소유한다. 공동인 [[docs/specs/aiox-configuration-web]]은 Stage5가 API·DTO 절, Stage6이 keybindings·저장 경계 절이다. 서버 계약의 owner는 실행 가능한 zod인 `packages/protocol`과 그 문서의 `Panel 조회·변경 HTTP와 React DTO`·`상태 전달·terminal 연결과 mock 전환` 절이다. worktree 시절의 인계문 `apps/web/Spec.md`는 두 owner를 중복 서술해 2026-09-23에 삭제했다. 계약이 어긋나 보이면 로그나 별도 문서를 만들지 말고 차이를 근거와 함께 보고한다. 운영 Web 내부 구조는 아직 owner 문서가 없으므로 이 단계에서 [[docs/architecture/aiox-system]]에 반영한다.
-
+- 카드 입력은 DTO 하나로 오지 않는다. `panelViewSchema`(`packages/protocol/src/host.ts`)는 id·kind·section·name·hostId·networkId·revision·layout·activePaneId·tabs만 갖고 agent가 없다. agent는 `webSnapshotSchema`가 panels·terminals·agents·operations·notifications를 나란한 top-level 배열로 보내는 설계라 join을 Web이 한다. fixture의 `terminalCount`는 tabs의 terminalId 비어있지 않은 개수이고 `panelSummary`가 쓰는 workPath·memberCount·routeCount는 host·network view에서 온다. 즉 카드 하나가 PanelView와 AgentView 목록과 Network·HostView를 합성해야 하고 그 합성은 아직 어디에도 없다. 필요한 필드 자체는 서버가 이미 보낸다. `agentViewSchema`(`core.ts:174`)에 `executionOwnership`·`networkId`·`hostId`·`terminalId`가 있고 [[docs/specs/aiox-web-ui]]가 external의 카드 배치 규칙을 명시한다. networkId가 있을 때만 NETWORKS에 올리고, hostId·terminalId가 항상 null이라 HOSTS와 WORKSPACES 역검색에는 걸리지 않으며, 둘 다 null이면 어느 카드에도 올리지 않는다. 앞서 이 항목에 적었던 "`agentViewSchema`에 대응 필드가 없다"는 틀렸다. 남은 미결은 spec이 "소속 agent와 standalone을 나눠 센다"만 쓰고 standalone 판정식을 주지 않는 것 하나다. repo 전체에서 standalone은 Host에 속하지 않은 독립 실행을 뜻하므로 `hostId === null`로 읽는 것이 자연스럽지만 짐작해서 넣지 말고 이 단계에서 확인하고 정한다. 서버에 `standalone` boolean을 요청하지 않는다. `hostId`에서 파생되므로 `PanelPreview.context`와 같은 중복이 된다.
 
 ## 2026-09-21 · 설계 라인 마감과 구현 착수
 
@@ -170,3 +172,130 @@ Host layout grid의 `columns`·`rows` 기본값 1/1은 사용자 확정이다. �
 ### 2026-09-23 12:05 · W2 설치·구성 결정과 W3·W4 재개 맥락 정합
 
 사용자가 AppSidebar 내부 유지 결정, 사용자 권한으로 W2에서 수행한 설치, W3·W4의 기존 화면 틀을 기록에 반영하도록 지시했다. W2의 분리 지침과 첫 story 후보, Global의 미래 설치 시점 안내를 갱신하고 W3·W4에는 현재 구현을 출발점으로 명시했다. 설치 사실은 package.json과 Storybook/Vitest 설정으로 확인했으며, 아직 없는 MSW와 store·daemon·드래그 기능 연결은 완료로 간주하지 않았다. W1 완료 이력과 W2 진행/W3·W4 대기 상태는 유지했다. apps/web/AGENTS.md의 sidebar 예시도 현재 경로·DOM·활성 판정에 맞췄다.
+
+## 2026-09-23 · W2 마감 판정과 사이드바 상한 확정
+
+사용자가 직접 W2 잔여 항목을 처리하고 화면에서 검증했다. 우클릭 메뉴는 `ContextMenuTrigger`에
+`onContextMenu` preventDefault를 붙여 CLI 생성 panel에서 브라우저 기본 메뉴를 막았다. Base UI
+1.8.0은 `disabled`만으로는 이것이 되지 않는다. `ContextMenuTrigger.js`의 `handleContextMenu`가
+`disabled`일 때 `stopEvent`(preventDefault) 전에 return하기 때문이다. fixture의 network·host panel
+주석을 풀어 카드의 agent 상태 점과 CLI panel 빈 화면이 실제로 렌더된다.
+
+사이드바 너비 상한을 사용자 확정으로 바꿨다. 이전 규칙은 최대 400px이었고 현재 구현은
+`app-shell.tsx`의 `clamp(180px, width, 90vw)`와 `sidebar-resize-handle.tsx`의 `Math.max(180, next)`라
+상한이 뷰포트 폭의 90%다. 사용자가 실제 화면에서 조작해 이 동작을 의도로 확정했으므로 구현을
+spec에 맞추지 않고 spec을 갱신했다. `docs/specs/aiox-web-ui.md`의 표시·크기 동작과
+`docs/specs/aiox-configuration-web.md`의 저장 서술·검증 표 세 자리를 함께 고쳤고 `180~400` 표기는
+repo에 남지 않는다. Stage5 경계는 건드리지 않았다. `packages/protocol/src/configuration.ts`의
+`web.sidebar.width` 검증이 원래 범위가 아니라 양의 유한수만 보기 때문이다. 상한은 화면 규칙이고
+저장 계약이 아니다.
+
+`sidebar-resize-handle.test.tsx`는 사용자 판단으로 삭제했다. 그 파일의 한 케이스가 400px 초과
+허용을 단정하고 있어 새 상한과 맞지 않았다. 드래그 resize에 자동 검증은 남지 않으며 사용자
+실측으로 대체한다.
+
+카드가 섹션별 문법 차이를 `kind === "workspace" ? terminalCount : context` 한 줄로 뭉개는 것은
+fixture 단계에 한해 사용자가 허용했다. `aiox-version9.html`과 달라진 font size·weight도 사용자
+변경이므로 프로토타입과 재대조하지 않는다.
+
+## 2026-09-23 · W3 헤더 구조와 shadcn 테마 — 사용자 확인 대기
+
+기존 AppShell의 SidebarTrigger·제목·Settings Link를 AppHeader로 옮겨 확장했다. 첫 구현에서 직접 button/input과 로컬 테마 토글, 레이아웃 className을 추가했으나 사용자가 shared/ui 우선·shadcn 테마·구조 확인 후 className 적용을 명시해 수정했다.
+
+현재 composition은 App의 ThemeProvider → RouterProvider → AppShell이며, AppHeader(header) 아래 첫 div에 SidebarTrigger(button), WorkspaceTitle(div > span + span), HeaderActions(div)를 두고 두 번째 자리에 ConnectionWarning(Alert div > AlertDescription div)을 둔다. HeaderActions는 기존 Input·Button, 공식 shadcn Badge·DropdownMenu와 ThemeToggle을 사용한다. Settings는 Button render Link로 anchor 하나이며 중첩 button/link가 아니다. 드로어 브랜드 줄의 기존 li에 같은 HeaderActions의 drawer 구성을 사용한다. W3 composition에 신규 className은 없고 기존 shared/ui 및 공식 설치본 기본 스타일은 유지한다.
+
+테마는 공식 https://ui.shadcn.com/docs/dark-mode/vite 의 ThemeProvider/useTheme 구조와 Light·Dark·System 메뉴다. 원본의 localStorage는 저장 금지와 W3 화면 범위에 맞춰 제외했다. state는 App의 provider 한 곳이며 system 모드 OS 변경을 구독하고 html light/dark 클래스로 전달한다. HTML 고정 dark는 제거했다. 메뉴 열림·키보드는 shadcn Base UI primitive가 소유한다. 선택은 화면 이동 없이 적용하고 드로어를 닫는 콜백을 부르지 않는다.
+
+판단: 카드 context 문자열은 유지하고 PanelPreview의 host workPath·network memberCount를 종류별 필수 필드로 분리했다. fixture와 해당 host story를 맞췄다. 알림 미확인 수와 연결 여부는 AppShell props와 기존 fixtures.ts 기본값으로 전달한다. agent 대기 수에서 알림 수를 계산하지 않는다. 검색과 벨은 disabled 자리이며 W6/W7 콜백을 만들지 않았다. 연결 경고는 header 안 두 번째 줄에서 끊김일 때만 렌더한다. 폭 축약은 스타일 단계에서 CSS로 맥락부터 줄이고 이름을 마지막에 truncate하는 방안을 제안하며 아직 적용·실측하지 않았다. 767/768 보정은 하지 않는다.
+
+검증: pnpm format 및 format:check, web typecheck, 루트 lint, web build 통과. web Vitest 7 files / 38 tests 통과(헤더 Network 맥락·끊김 배지·테마 메뉴 Light/Dark 포함). 초기 sandbox listen EPERM은 승인된 실행으로 해소됐다. react-doctor changed 77점, 기존 router root error boundary 누락과 component 파일 non-component export 경고가 남았다. 점수 비교 baseline은 확보하지 않아 회귀 여부를 단정하지 않는다. 빌드 500KB chunk 경고 및 story의 빈 leaf/hydration 경고가 있다. 좁은 드로어 상호작용·폭 축약 실측은 아직 하지 않았다.
+
+다음: composition·상태·props/콜백 경계·이벤트와 위 네 판단을 사용자에게 보고하고 구조 확인을 받는다. 승인 전 스타일을 진행하지 않는다. 검색 W6, 벨 dropdown W7, 파일 저장 W8, 햄버거 점/Esc 순서 W9, 실제 daemon W10 범위를 유지한다.
+
+## 2026-09-23 · W3 검색 진입 구조 정정과 shadcn Command 설치
+
+사용자가 검색에 shadcn Command를 쓰는 방향을 제시했다. 공식 Base Command 문서와 레지스트리를 확인하고 command를 설치했다. 의존 파일 dialog·input-group·textarea와 cmdk가 함께 추가됐으며 기존 button·input은 덮어쓰지 않았다.
+
+헤더의 disabled Input을 기존 shared/ui Button으로 정정했다. 넓은 폭은 Search 아이콘과 텍스트, 좁은 폭은 아이콘만이며 새 className은 없다. 이후 흐름은 헤더 검색 Button → CommandDialog → CommandInput·CommandList다. 이번에는 설치와 진입부 구조까지만이며 open state, 검색 결과, 단축키, 선택 이동은 기존 W6 범위로 유지한다. W3 구조 확인 대기도 유지한다.
+
+## 2026-09-23 · W3 AppHeader app 배치와 클릭 테마 전환
+
+사용자 지시에 따라 AppHeader를 apps/web/src/app/app-header.tsx로 이동하고 AppShell import를 갱신했다. HeaderActions는 sidebar도 소비하므로 widgets/header에 유지했다. ThemeToggle은 기존 shared/ui Button(button) 하나와 아이콘으로 바꿨으며 dropdown 없이 click/Enter/Space로 현재 적용된 테마의 반대 Light/Dark를 선택한다. state와 setTheme는 기존 shadcn 기반 ThemeProvider/useTheme가 소유한다. 별도 props나 메뉴 state는 없다.
+
+확인 사실: index.css에는 :root Light 변수, .dark 변수, class 기반 dark variant가 있고 prefers-color-scheme 감지는 없다. 따라서 초기 system 및 OS 변경 감지는 provider에 유지했다. system에서 첫 클릭은 matchMedia로 현재 값을 확인해 반대로 선택하고 이후에는 명시적 Light/Dark로 토글한다. 저장과 신규 className은 추가하지 않았다.
+
+테스트 최초 실패는 Storybook 전역 dark decorator와 provider 초기 system의 충돌이었다. 헤더 story의 decorator와 provider 초기값을 Light로 맞춰 양방향 클릭과 메뉴 부재를 검증했다. web typecheck·lint·format 통과, 7 files/38 tests 통과. react-doctor changed 78점(직전 77점), 기존 root route error boundary와 shared/ui Button export 진단은 유지한다. 구조 보고·확인 대기 상태이며 스타일 및 폭 축약 실측은 미수행이다.
+
+## 2026-09-23 · W3 layout만 적용 및 폭 실측
+
+사용자가 구조를 확인하고 font size를 제외한 layout 적용을 승인했다. AppHeader 첫 줄은 높이 40px flex, 토글·제목·우측 액션 순서다. 제목 컨테이너 min-w-0/flex-1, 이름 shrink-0/max-w-full/truncate, 맥락 min-w-0/truncate로 맥락부터 줄인다. 액션은 shrink-0, 검색 160px(좁은 폭 아이콘), 나머지는 shared Button icon 크기이며 배지는 벨 우측 상단에 배치했다. 드로어 브랜드 줄은 items-center로 정렬했다. 폰트·색·border·장식은 추가하지 않았고 shared/ui 기본 스타일을 유지했다.
+
+검증: format·format:check·web typecheck·루트 lint 통과. agent-browser 격리 세션에서 768px 헤더 실제 폭 528px, 이름 95.125px 유지, 맥락 104.875px(원문 116px) 축약을 확인했다. 767px에서는 맥락 116.4375px로 전체 표시됐다. 경계 보정은 없다. 375px에서 긴 이름을 DOM에 임시 대입해 이름 폭 283px/내용 759px, 맥락 폭 0, 페이지 overflow 없음 확인했다. 280px 드로어 스크린샷에서 브랜드 반대편 세 아이콘 정렬을 확인했고 테마 클릭 뒤 drawerOpen=true였다. 스크린샷은 /tmp/w3-header-768.png, /tmp/w3-drawer-375.png다. 임시 DOM 변경은 저장하지 않았다.
+
+다음은 layout 사용자 확인이며 W3 전체 완료로 처리하지 않았다.
+
+## 2026-09-23 · W3 모바일 검색 숨김
+
+사용자가 모바일 검색 진입부도 숨기도록 결정했다. HeaderActions의 header 배치는 isMobile일 때 null을 반환하며 빈 액션 영역도 남기지 않는다. desktop 검색 버튼과 drawer의 알림·설정·테마는 유지한다. aiox-web-ui의 좁은 폭 헤더 규칙과 W3 Required Context를 함께 갱신했다. 이전 모바일 검색 아이콘 기록은 이 결정으로 대체한다.
+
+### 2026-09-23 14:29 · AppHeader를 widgets/header로 되돌림
+
+사용자가 배치 선택을 위임해 `apps/web/src/app/app-header.tsx`를 `widgets/header/app-header.tsx`로
+옮겼다. 앞선 `W3 AppHeader app 배치` 기록의 결정을 대체한다. 근거는 `HeaderActions`가 이미
+`widgets/header`에 있어 헤더 하나가 두 레이어에 쪼개져 있었다는 것이다. `AppSidebar`도 사용처가
+`AppShell` 하나뿐이지만 `widgets/sidebar`에 있으므로 "한 곳에서만 쓴다"는 두 배치를 가르지
+못한다. `app/`에는 shell과 provider만 남긴다. `app-shell.tsx`의 import를 `@/widgets/header/app-header`
+로 바꾸고 위젯 내부는 형제 상대경로로 정리했다. lint·format·tsc·vitest 38개 모두 통과한다.
+
+### 2026-09-23 14:34 · 카드 설명을 타입 필드에서 파생
+
+`PanelPreview.context`를 지우고 카드와 헤더가 `workPath`·`memberCount`·`routeCount`·`terminalCount`
+에서 문구를 만들게 했다. host는 `workPath`와 `context`가 같은 값을 두 벌 들고 있었고 network는
+`memberCount`와 `"1 member · No routes"`가 겹쳐 한쪽만 고치면 조용히 어긋나는 상태였다. 파생은
+`model.ts`의 `panelSummary`(카드)와 `panelContext`(헤더) 둘이 소유한다. 같은 함수로 합치지 않은
+이유는 [[docs/specs/aiox-web-ui]]가 network 카드에는 route 요약을 요구하고 헤더 맥락 표에는
+멤버 수만 두기 때문이다. route 요약은 `routeCount`로 두었다. protocol의 `networkViewSchema.routes`가
+배열이라 개수로 환원되고, 문자열로 두면 방금 지운 중복이 되돌아온다. 화면 출력은 개수 1의
+단복수 외에는 이전과 같다. `model.test.ts`가 두 함수의 분기를 덮는다.
+
+### 2026-09-23 14:43 · W3 스타일 단계 생략과 헤더 높이
+
+사용자가 W3에서 별도 스타일 단계를 두지 않기로 했다. 적용한 것은 헤더 줄 높이 `h-10` →
+`h-15`(60px) 하나이며, 세로 가운데 정렬은 이미 `items-center`로 성립해 있어 추가 변경이 없다.
+font size·색·장식은 계속 미적용이다. [[docs/specs/aiox-web-ui]]에 헤더 높이 규칙이 없어
+spec 반영 대상이 아니다. lint·format·tsc·vitest 40개 통과한다.
+
+## 2026-09-23 · W3 마감과 W4 착수
+
+헤더 바를 닫았다. 구조·layout·테마 전환·연결 경고·모바일 축약이 사용자 확인을 통과했고, 스타일
+단계는 헤더 높이 60px 하나로 갈음했다. 프로토타입과의 시각 차이는 사용자가 허용했으므로
+[[logs/artifact/aiox-version9]] 대조는 하지 않는다. 이 허용은 W3에 국한되지 않아 {Global}의
+프로토타입 항목에 기록했다. W2의 사이드바 font size·weight 차이도 같은 근거로 닫힌다.
+
+W3에서 남기고 가는 것 둘. `shared/ui`의 `command`·`dialog`·`input-group`·`textarea`·
+`dropdown-menu`와 `cmdk`는 소비자가 없지만 W6 팔레트가 쓸 것이라 사용자 지시로 남긴다.
+`sidebar-resize-handle.test.tsx`는 사용자가 삭제해 드래그 resize에 자동 검증이 없다.
+
+W4를 연다. 출발점은 `apps/web/src/pages/workspace/workspace-page.tsx`이고 {W4}의 컴포넌트
+순서와 {W4,W5}의 터미널·드래그 제약을 따른다. UI를 fixture로 먼저 세우고 확인을 받은 뒤
+무엇을 붙일지 논의한다.
+
+### 2026-09-23 15:10 · 카드 agent 합성은 서버 필드 부족이 아니다 — 앞선 기록 정정
+
+W4 착수 전 protocol을 다시 읽어 {W10}의 기록 하나를 정정했다. "소속·standalone 구분은
+`agentViewSchema`에 대응 필드가 없다"고 적었는데 틀렸다. `core.ts:174`의 `agentViewSchema`는
+`executionOwnership`(`daemon`|`external`)·`networkId`·`hostId`·`terminalId`를 모두 보낸다.
+[[docs/specs/aiox-web-ui]]도 external의 카드 배치 규칙을 이미 명시하고 있다. networkId가
+있을 때만 NETWORKS에 올리고, hostId·terminalId가 항상 null이라 HOSTS와 WORKSPACES 역검색에는
+걸리지 않으며, 둘 다 null이면 어느 카드에도 올리지 않는다.
+
+따라서 daemon에 요청할 schema 변경은 없다. `webSnapshotSchema`가 panels·terminals·agents를
+나란한 top-level 배열로 보내는 설계라 join은 원래 Web 몫이고, `panelViewSchema`에 agent가
+없는 것은 결함이 아니라 그 설계의 결과다. 서버에 `standalone` boolean을 요청하지도 않는다.
+`hostId`에서 파생되므로 방금 지운 `PanelPreview.context`와 같은 중복이 된다.
+
+남는 미결은 하나다. spec이 "소속 agent와 standalone을 나눠 센다"만 쓰고 standalone 판정식을
+주지 않는다. repo의 다른 용례([[docs/specs/aiox-configuration-web]] "Host, standalone에
+적용한다", [[docs/decisions/external-execution-survival]] "외부 standalone Agent")는
+standalone을 Host에 속하지 않은 독립 실행으로 쓰므로 `hostId === null`로 읽는 것이
+자연스럽다. 확정은 W10에 남긴다. W4는 표시용 타입 단계라 이 판정 없이 진행한다.

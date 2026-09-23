@@ -22,7 +22,6 @@ export function WorkspacePage() {
         (item) => item.section === section && item.id === panelId,
     );
     if (!isSection(section) || !panel) return <NotFoundPage />;
-    console.log({ panels });
     return (
         <section
             aria-label={`${panel.name} workspace`}

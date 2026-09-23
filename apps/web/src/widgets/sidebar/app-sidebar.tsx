@@ -1,9 +1,4 @@
-import {
-    ChevronRightIcon,
-    PlusIcon,
-    SettingsIcon,
-    TerminalSquareIcon,
-} from "lucide-react";
+import { ChevronRightIcon, PlusIcon, TerminalSquareIcon } from "lucide-react";
 import { Link, useParams } from "react-router";
 
 import { kindIcons } from "@/entities/panel/icons";
@@ -39,10 +34,15 @@ import {
     SidebarMenuSubItem,
     useSidebar,
 } from "@/shared/ui/sidebar";
+import {
+    HeaderActions,
+    type HeaderActionsProps,
+} from "@/widgets/header/header-actions";
 
 import { SidebarResizeHandle } from "./sidebar-resize-handle";
 
-interface Props extends React.ComponentProps<typeof Sidebar> {
+interface Props
+    extends React.ComponentProps<typeof Sidebar>, HeaderActionsProps {
     sidebarWidth: number;
     panels: PanelPreview[];
     onResizeSidebar: (width: number) => void;
@@ -58,6 +58,7 @@ export function AppSidebar(props: Props) {
         onDelete,
         onCreate,
         panels,
+        unreadCount,
         ...sidebarProps
     } = props;
     const { section: activeSection, panelId } = useParams();
@@ -67,7 +68,7 @@ export function AppSidebar(props: Props) {
     return (
         <Sidebar {...sidebarProps}>
             <SidebarHeader>
-                <SidebarMenu className="flex-row justify-between md:flex-col">
+                <SidebarMenu className="flex-row items-center justify-between md:flex-col md:items-stretch">
                     <SidebarMenuItem>
                         <SidebarMenuButton
                             render={
@@ -85,17 +86,11 @@ export function AppSidebar(props: Props) {
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem className="md:hidden">
-                        <SidebarMenuButton
-                            render={
-                                <Link
-                                    to="/settings"
-                                    aria-label="Settings"
-                                    onClick={closeMobileSidebar}
-                                />
-                            }
-                        >
-                            <SettingsIcon className="size-4" />
-                        </SidebarMenuButton>
+                        <HeaderActions
+                            placement="drawer"
+                            unreadCount={unreadCount}
+                            onNavigate={closeMobileSidebar}
+                        />
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarHeader>
@@ -160,7 +155,15 @@ export function AppSidebar(props: Props) {
                                                                 "workspace"
                                                             }
                                                         >
-                                                            <ContextMenuTrigger>
+                                                            <ContextMenuTrigger
+                                                                onContextMenu={(
+                                                                    e,
+                                                                ) =>
+                                                                    panel.kind !==
+                                                                        "workspace" &&
+                                                                    e.preventDefault()
+                                                                }
+                                                            >
                                                                 <SidebarMenuSubButton
                                                                     isActive={
                                                                         isActive

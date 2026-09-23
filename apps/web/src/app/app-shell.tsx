@@ -1,13 +1,7 @@
-import { SettingsIcon } from "lucide-react";
 import { useState, type CSSProperties } from "react";
-import {
-    Link,
-    Outlet,
-    useLoaderData,
-    useNavigate,
-    useParams,
-} from "react-router";
+import { Outlet, useLoaderData, useNavigate, useParams } from "react-router";
 
+import { previewHeader } from "@/entities/panel/fixtures";
 import {
     isSection,
     panelPath,
@@ -19,7 +13,8 @@ import {
     WorkspaceDialog,
     type WorkspaceAction,
 } from "@/features/manage-workspace/workspace-dialog";
-import { SidebarProvider, SidebarTrigger } from "@/shared/ui/sidebar";
+import { SidebarProvider } from "@/shared/ui/sidebar";
+import { AppHeader } from "@/widgets/header/app-header";
 import { AppSidebar } from "@/widgets/sidebar/app-sidebar";
 
 export type AppOutletContext = {
@@ -27,7 +22,13 @@ export type AppOutletContext = {
     onCreate: (section: Section) => void;
 };
 
-export function AppShell() {
+export function AppShell({
+    unreadCount = previewHeader.unreadCount,
+    connected = previewHeader.connected,
+}: {
+    unreadCount?: number;
+    connected?: boolean;
+}) {
     const { initialPanels } = useLoaderData<{
         initialPanels: PanelPreview[];
     }>();
@@ -54,7 +55,6 @@ export function AppShell() {
                 section: action.section,
                 name,
                 terminalCount: 0,
-                context: "",
                 agents: [],
             };
             setPanels((value) => [...value, panel]);
@@ -92,30 +92,24 @@ export function AppShell() {
             </a>
             <AppSidebar
                 panels={panels}
+                unreadCount={unreadCount}
                 sidebarWidth={width}
                 onResizeSidebar={setWidth}
                 onCreate={create}
                 onRename={(panel) => setAction({ type: "rename", panel })}
                 onDelete={(panel) => setAction({ type: "delete", panel })}
             />
-            <div className="flex min-w-0 flex-1 flex-col">
-                <header className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
-                    <SidebarTrigger />
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                        {title}
-                    </span>
-                    <Link
-                        to="/settings"
-                        aria-label="Settings"
-                        className="hidden rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring md:block"
-                    >
-                        <SettingsIcon className="size-4" />
-                    </Link>
-                </header>
+            <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+                <AppHeader
+                    title={title}
+                    panel={panel}
+                    connected={connected}
+                    unreadCount={unreadCount}
+                />
                 <main
                     id="main-content"
                     tabIndex={-1}
-                    className="min-h-0 flex-1 overflow-y-auto"
+                    className="min-h-0 flex-1 "
                 >
                     <Outlet
                         context={

@@ -7,7 +7,6 @@ export const previewPanels: PanelPreview[] = [
         section: "workspaces",
         name: "main",
         terminalCount: 0,
-        context: "",
         agents: [],
     },
     {
@@ -16,34 +15,45 @@ export const previewPanels: PanelPreview[] = [
         section: "networks",
         name: "scratch",
         terminalCount: 0,
-        context: "",
         agents: [],
     },
-    // {
-    //     id: "dev",
-    //     kind: "network",
-    //     section: "networks",
-    //     name: "dev",
-    //     terminalCount: 0,
-    //     context: "1 member · No routes",
-    //     command: "aiox network create dev",
-    //     agents: [
-    //         {
-    //             id: "reviewer",
-    //             name: "reviewer",
-    //             status: "idle",
-    //             external: true,
-    //         },
-    //     ],
-    // },
-    // {
-    //     id: "development",
-    //     kind: "host",
-    //     section: "hosts",
-    //     name: "development",
-    //     terminalCount: 0,
-    //     context: "~/projects/app",
-    //     command: "aiox host run --path ./aiox.yaml",
-    //     agents: [{ id: "builder", name: "builder", status: "failed" }],
-    // },
+    {
+        id: "dev",
+        kind: "network",
+        memberCount: 1,
+        routeCount: 0,
+        section: "networks",
+        name: "dev",
+        terminalCount: 0,
+        command: "aiox network create dev",
+        agents: [
+            {
+                id: "reviewer",
+                name: "reviewer",
+                status: "idle",
+                external: true,
+            },
+        ],
+    },
+    {
+        id: "development",
+        kind: "host",
+        workPath: "~/projects/app",
+        section: "hosts",
+        name: "development",
+        terminalCount: 0,
+        command: "aiox host run --path ./aiox.yaml",
+        agents: [{ id: "builder", name: "builder", status: "failed" }],
+    },
 ];
+
+export const previewHeader = {
+    unreadCount: 0,
+    connected: true,
+};
+
+export const disconnectedHeader = {
+    ...previewHeader,
+    unreadCount: 3,
+    connected: false,
+};

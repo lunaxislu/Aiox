@@ -48,10 +48,10 @@ export const Hosts: Story = {
             {
                 id: "development",
                 kind: "host",
+                workPath: "~/projects/app",
                 section: "hosts",
                 name: "development",
                 terminalCount: 0,
-                context: "~/projects/app",
                 command: "aiox host run --path ./aiox.yaml",
                 agents: [],
             },

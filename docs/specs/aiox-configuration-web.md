@@ -52,7 +52,7 @@ workspace에 나타난다. 그 workspace 안에서 실행했으면 해당 pane�
 Host panel과 Agent terminal UX가 소유한다. [Status: Committed target]
 
 사이드바 너비는 전역 `web.sidebar.width`로 저장한다. 양의 유한수이며 화면 기본값은 240,
-드래그 범위는 180~400이다. 열림 상태는 `web.sidebar.open`으로 같은 파일에 저장한다.
+드래그는 최소 180이고 상한은 뷰포트 폭의 90%다. 열림 상태는 `web.sidebar.open`으로 같은 파일에 저장한다.
 Host 초기 기본값은 전역 `host.layout`이며 DB에 중복 저장하지 않는다. 실행 중 분할 비율·탭
 순서·선택 상태의 서버 복원은 초기 설정 저장과 별개다.
 
@@ -421,7 +421,7 @@ Sources:
 | `terminal.fontSize` | 양의 유한수, 생략 시 renderer 기본 |
 | `terminal.theme` | 값이 공백만 아닌 문자열인 색상 map; 생략 시 renderer 기본 |
 | `keyboard` | 값이 공백만 아닌 문자열인 기존 map; 생략 시 기존 기본 |
-| `web.sidebar.width` | 양의 유한수; 화면 기본값 240, 드래그 범위 180~400 |
+| `web.sidebar.width` | 양의 유한수; 화면 기본값 240, 드래그 최소 180, 상한은 뷰포트 폭의 90% |
 | `web.sidebar.open` | boolean, 생략 시 열림 |
 | `keybindings` | `mac`/`windows`/`linux` 아래의 action id→조합 문자열 map; 변경분만 저장 |
 | `host.layout` | Host spec의 LayoutInput; 생략 시 override 없음 |
