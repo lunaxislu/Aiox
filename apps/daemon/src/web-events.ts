@@ -16,7 +16,7 @@ const resources = {
     operations: "operation",
     notifications: "notification",
 } as const;
-function changes(before: WebSnapshot, after: WebSnapshot): WebChange[] {
+export function changes(before: WebSnapshot, after: WebSnapshot): WebChange[] {
     const result: unknown[] = [];
     for (const [collection, resource] of Object.entries(resources)) {
         const key = collection as keyof WebSnapshot;
@@ -42,7 +42,7 @@ function changes(before: WebSnapshot, after: WebSnapshot): WebChange[] {
 export class WebEvents {
     readonly #clients = new Map<
         SSEStreamingApi,
-        { snapshot: WebSnapshot; finish: () => void }
+        { snapshot: WebSnapshot; version: number; finish: () => void }
     >();
     readonly #blocked = new Set<SSEStreamingApi>();
     #read: (() => Promise<WebSnapshot>) | undefined;
@@ -97,9 +97,13 @@ export class WebEvents {
                 stream.abort();
                 return;
             }
-            this.#clients.set(stream, { snapshot, finish });
-            void this.#send(stream, "snapshot", snapshot);
-            if (capturedVersion !== this.#version) this.notify();
+            this.#clients.set(stream, {
+                snapshot,
+                version: capturedVersion,
+                finish,
+            });
+            void this.#send(stream, "snapshot", JSON.stringify(snapshot));
+            if (capturedVersion !== this.#version) this.#schedule();
             try {
                 await closed;
             } finally {
@@ -114,22 +118,43 @@ export class WebEvents {
     }
     notify = (): void => {
         this.#version++;
+        this.#schedule();
+    };
+    #schedule(): void {
         if (this.#pending || this.#closed || !this.#clients.size) return;
         this.#pending = true;
-        void this.#flush();
-    };
+        queueMicrotask(() => {
+            if (this.#closed || !this.#clients.size) {
+                this.#pending = false;
+                return;
+            }
+            void this.#flush();
+        });
+    }
     async #flush(): Promise<void> {
-        const version = this.#version;
+        let version = this.#version;
         try {
             const { snapshot, version: capturedVersion } =
                 await this.#snapshot();
             if (capturedVersion !== this.#version) return;
+            version = capturedVersion;
+            // Slow/new clients can have different baselines. Share only equal ones.
+            const deltas = new Map<WebSnapshot, string | null>();
             for (const [response, client] of this.#clients) {
                 if (this.#blocked.has(response)) continue;
-                const update = changes(client.snapshot, snapshot);
+                if (!deltas.has(client.snapshot)) {
+                    const update = changes(client.snapshot, snapshot);
+                    deltas.set(
+                        client.snapshot,
+                        update.length
+                            ? JSON.stringify({ changes: update })
+                            : null,
+                    );
+                }
+                const data = deltas.get(client.snapshot)!;
                 client.snapshot = snapshot;
-                if (update.length)
-                    void this.#send(response, "state", { changes: update });
+                client.version = capturedVersion;
+                if (data !== null) void this.#send(response, "state", data);
             }
         } catch (error) {
             this.fault(
@@ -138,14 +163,13 @@ export class WebEvents {
             );
         } finally {
             this.#pending = false;
-            if (version !== this.#version && this.#clients.size) this.notify();
+            if (version !== this.#version) this.#schedule();
         }
     }
     fault(code: string, message: string): void {
+        const data = JSON.stringify({ code, message });
         for (const [stream, client] of this.#clients) {
-            void this.#send(stream, "fault", { code, message }).finally(
-                client.finish,
-            );
+            void this.#send(stream, "fault", data).finally(client.finish);
         }
         this.#clients.clear();
         this.#blocked.clear();
@@ -159,18 +183,23 @@ export class WebEvents {
     async #send(
         stream: SSEStreamingApi,
         event: string,
-        data: unknown,
+        data: string,
     ): Promise<void> {
         this.#blocked.add(stream);
         try {
             // The Node adapter stops pulling on write(false) until drain. Do not
             // queue state while the stream writer waits; coalesce it after drain.
-            await stream.writeSSE({ event, data: JSON.stringify(data) });
+            await stream.writeSSE({ event, data });
         } catch {
             stream.abort();
         } finally {
-            if (this.#blocked.delete(stream) && this.#clients.has(stream))
-                this.notify();
+            const client = this.#clients.get(stream);
+            if (
+                this.#blocked.delete(stream) &&
+                client &&
+                client.version !== this.#version
+            )
+                this.#schedule();
         }
     }
 }

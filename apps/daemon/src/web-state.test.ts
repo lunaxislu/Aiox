@@ -1,7 +1,84 @@
 import { expect, test } from "vitest";
 
+import type { RuntimeRecord } from "./runtimes";
+import type { DaemonServices } from "./services";
 import { fakeVendor, startTestDaemon } from "./testing";
-import { readWebSnapshot } from "./web-state";
+import { projectHostState, readWebSnapshot } from "./web-state";
+
+test("network projection only uses active collaboration in the matching host and network", () => {
+    const records = [
+        {
+            id: "wrong-host",
+            name: "a",
+            hostId: "other",
+            networkId: "n",
+            collaborationActive: true,
+        },
+        {
+            id: "wrong-network",
+            name: "a",
+            hostId: "h",
+            networkId: "other",
+            collaborationActive: true,
+        },
+        {
+            id: "inactive",
+            name: "a",
+            hostId: "h",
+            networkId: "n",
+            collaborationActive: false,
+        },
+        {
+            id: "active",
+            name: "a",
+            hostId: "h",
+            networkId: "n",
+            collaborationActive: true,
+        },
+    ] as RuntimeRecord[];
+    const services = {
+        runtimes: { list: () => records },
+    } as unknown as DaemonServices;
+    const state = projectHostState(
+        {
+            hosts: [],
+            panels: [],
+            operations: [],
+            networks: [
+                {
+                    id: "n",
+                    hostId: "h",
+                    name: "Team",
+                    scope: "host",
+                    default: "allow",
+                    members: [
+                        { agentKey: "a", runtimeId: null },
+                        { agentKey: "b", runtimeId: null },
+                    ],
+                    edges: [
+                        {
+                            from: "a",
+                            to: "b",
+                            fromRuntimeId: null,
+                            toRuntimeId: null,
+                            policy: "allow",
+                            source: "manifest-default",
+                        },
+                    ],
+                },
+            ],
+        },
+        services,
+    );
+    expect(state.networks[0]!.members.map((m) => m.runtimeId)).toEqual([
+        "active",
+        null,
+    ]);
+    expect(state.networks[0]!.edges[0]).toMatchObject({
+        fromRuntimeId: "active",
+        toRuntimeId: null,
+    });
+});
 
 test("a terminal-less tab never acquires an external Runtime through matching null IDs", async (t) => {
     const h = await startTestDaemon();

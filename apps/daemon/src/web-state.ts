@@ -1,7 +1,6 @@
 import type { HostStateSnapshot } from "@aiox/persistence";
 import type { PersistentNetwork } from "@aiox/persistence";
 import type { AgentView, NetworkView, WebSnapshot } from "@aiox/protocol";
-import { webSnapshotSchema } from "@aiox/protocol";
 
 import { restartCommand } from "./managed-agents";
 import type { RuntimeRecord } from "./runtimes";
@@ -87,7 +86,8 @@ export async function readWebSnapshot(
     const names = new Map(
         [...networks, ...state.networks].map((n) => [n.id, n.name]),
     );
-    return webSnapshotSchema.parse({
+    // WebEvents validates the complete projection at the wire boundary.
+    return {
         ...state,
         networks: [
             ...state.networks,
@@ -95,7 +95,7 @@ export async function readWebSnapshot(
         ],
         terminals: services.terminals
             .views()
-            .map((t) => terminalView(services, t.id)),
+            .map((t) => terminalView(services, t.id)!),
         agents: services.runtimes.list().map((r) => agentView(r, names)),
         notifications: notifications
             .filter((n) => n.originExecutionOwnership === "daemon")
@@ -107,7 +107,7 @@ export async function readWebSnapshot(
                 createdAt: n.createdAt,
                 readAt: n.readAt,
             })),
-    });
+    };
 }
 
 export function projectPanels(
@@ -172,14 +172,17 @@ export function projectHostState(
             }),
         })),
         networks: state.networks.map((network) => {
-            const runtimeId = (key: string) =>
-                runtimes.find(
-                    (r) =>
-                        r.hostId === network.hostId &&
-                        r.networkId === network.id &&
-                        r.name === key &&
-                        r.collaborationActive,
-                )?.id ?? null;
+            const active = new Map<string, string>();
+            for (const runtime of runtimes) {
+                if (
+                    runtime.hostId === network.hostId &&
+                    runtime.networkId === network.id &&
+                    runtime.collaborationActive &&
+                    !active.has(runtime.name)
+                )
+                    active.set(runtime.name, runtime.id);
+            }
+            const runtimeId = (key: string) => active.get(key) ?? null;
             return {
                 ...network,
                 members: network.members.map((member) => ({

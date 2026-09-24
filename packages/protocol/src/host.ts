@@ -191,17 +191,17 @@ export const hostNetworkViewSchema = z
         ),
     })
     .superRefine((network, ctx) => {
-        const members = network.members.map((m) => m.agentKey);
+        const members = new Set(network.members.map((m) => m.agentKey));
         const edges = network.edges.map((e) => JSON.stringify([e.from, e.to]));
         if (
-            new Set(members).size !== members.length ||
+            members.size !== network.members.length ||
             new Set(edges).size !== edges.length ||
-            edges.length !== members.length * (members.length - 1) ||
+            edges.length !== members.size * (members.size - 1) ||
             network.edges.some(
                 (e) =>
                     e.from === e.to ||
-                    !members.includes(e.from) ||
-                    !members.includes(e.to),
+                    !members.has(e.from) ||
+                    !members.has(e.to),
             )
         )
             ctx.addIssue({

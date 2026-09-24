@@ -127,6 +127,7 @@ status: open
 - 검증: 최초 run·config/YAML 오류, 개별/전체 restart·stop·delete, /exit·Copy·실패 표시, 사용자 변경 배치에서의 새 Agent 추가, 브라우저 재접속, 실제 terminal 입력/출력·resize·shell 생존. 반복 이동 stress 검증은 추가하지 않는다.
 - stopped ×는 기반 shell·탭 정리, running Agent ×는 확인과 종료 검증, 마지막 탭은 빈 pane/panel과 [+] 유지라는 UI 계약을 Stage6와 대조한다. UI 구현 자체는 Stage6 담당 범위다.
 - OS별 공통 로직과 기존 지원 경계를 확인하고 실제 실행한 플랫폼·미실측 범위를 구분해 보고한다. 검증 결과와 변경된 owner 문서를 맞추고 모든 완료 조건이 충족된 뒤 로그 종료를 판단한다.
+- 2026-09-24 사용자 결정: Zod 업그레이드와 validate 전환은 보류한다. 현재 4.5.4의 DB 개별 compiled parse는 200-agent 최적화 후보일 뿐 적용 작업으로 확정하지 않았다. Web 상태 발행 개선 worktree를 보존하고, 후속 검토 시 이 로그의 규모 측정·Zod 비교 블록에서 실제 반영과 격리 실험을 구분한다.
 
 ## 2026-09-21 · Stage5 구현 작업 구조
 
@@ -538,3 +539,63 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 ### 2026-09-23 12:00 · 라우팅 조회·탭 정리 보완 커밋
 
 - 사용자 요청으로 라우팅 단건 조회·목록 재조회 제거·탭 참조 제거 공통 함수와 관련 회귀·owner 문서·로그를 함께 커밋한다. 직전 pnpm check 754개 테스트 통과 이후 production 변경은 없으며 현재 git diff --check도 통과했다. push는 하지 않는다.
+
+## 2026-09-24 · Web 상태 발행·DB 조회 규모 측정과 개선
+
+- 범위: Stage6 실제 daemon 연결 전 서버 상태 발행·DB 조회를 먼저 측정하고 필요한 개선만 수행했다. 사용자 요청으로 당시 onramp·작업 로그를 생략했으며, 2026-09-24의 기록 요청에 따라 결과를 소급 기록한다. W11의 서버 보완 범위이며 화면 통합 완료를 뜻하지 않는다.
+- 조건: macOS arm64·Apple M4 Pro·Node 24.14.0, 실제 임시 WAL SQLite·localhost HTTP SSE, agent 200·panel 200·tab/terminal 800. Host 200개에 agent 1개씩인 분산 배치와 Host 1개에 agent 200개·방향 edge 39,800개인 집중 배치를 비교했다. runtime은 대역, 별도 persistent Network·Operation·notification은 비어 있다. 지연은 notify부터 모든 HTTP reader의 완전한 frame 수신까지이며 브라우저 렌더링은 아니다.
+- 복잡도 정정: agent가 단일 Host에 속하면 해당 메모리 조인은 O(H×A + A×M)이다. 최초 800만 비교 추정은 사용하지 않았고 실제 두 데이터 분포로 측정했다.
+
+| 항목 | 분산: 변경 전 → 후 | 집중: 변경 전 → 후 |
+| --- | --- | --- |
+| DB snapshot p50 ms | 4.561 → 4.480 | 35.241 → 26.188 |
+| readWebSnapshot p50 ms | 5.894 → 4.829 | 131.293 → 33.746 |
+| Web projection p50 ms | 0.491 → 0.527 | 52.233 → 1.898 |
+| 독립 Web 전체 검증 p50 ms | 0.804 → 0.925 | 36.604 → 22.647 |
+| SSE 1 client p50/p95 ms | 38.591/57.447 → 12.060/14.317 | 679.858/739.954 → 73.064/83.180 |
+| SSE 4 clients p50/p95 ms | 74.651/102.254 → 12.269/15.646 | 1170.655/1195.763 → 75.074/101.488 |
+| 최초 framed snapshot bytes | 373,389 → 동일 | 4,966,518 → 동일 |
+
+- DB snapshot 내부 계측 평균 ms(전→후): 분산 SQLite 0.482→0.451, Zod 1.249→1.248, JSON 0.187→0.206, 조인+ORM 잔여 2.428→2.488. 집중 SQLite 0.386→0.367, Zod 32.355→22.667, JSON 0.251→0.258, 조인+ORM 잔여 5.763→4.959. 잔여값에는 ORM materialization·계측 overhead가 포함되므로 순수 메모리 조인 시간으로 주장하지 않는다.
+- 판정: 집중 배치에서는 발행 지연이 실제 문제였다. edge마다 Runtime을 찾는 projection·Network 검증·불필요한 반복 flush가 개선 대상이었다. SQLite 조회는 지배적이지 않아 snapshot 전체 스캔/DB 조인 Map/SQL JOIN·인덱스·JSON 캐시·변경 출처 직접 delta 생성은 도입하지 않았다. host-state의 indexed joins용 measured-scale 조건에 도달했다는 근거는 얻지 못했다.
+- 반영: web-state의 Network Runtime projection을 Host/Network/참여 상태로 한 번 색인하고 protocol의 Network membership 검증을 Set으로 바꿨다. readWebSnapshot의 중복 전체 parse를 제거하되 WebEvents의 wire 경계 전체 검증은 유지했다. WebEvents는 실제 notify version과 예약을 분리하고 microtask에서 burst를 합치며, 송신 완료 자체가 변경을 만들지 않도록 했다. 한 flush 안에서 기준 snapshot 객체가 같은 client만 encoded delta를 공유한다. blocked client의 이전 기준과 version은 보존해 drain 이후 따라잡으며, 늦게 연결된 client는 자기 snapshot 뒤에 state를 받는다.
+- coalescing: 외부 notify 5,000회당 snapshot read는 1 client 100→25, 4 clients 150→25였다. 별도 분산 배치 inspector 진입 계측의 실제 flush는 75→25, 100→25였다. inspector는 latency 측정과 분리했다. changes 자체의 1/4회 호출 p50은 분산 1.184/4.615→1.179/4.890ms, 집중 10.961/44.605→11.247/44.828ms로 함수 자체가 빨라진 것이 아니라 같은 기준의 중복 계산을 없앤 것이다.
+- 쓰기 확인: updatePanel은 revision 확인 후 같은 transaction에서 panel을 갱신하고 해당 panel의 tab 행을 모두 삭제·재삽입한다. 200회 이동 총시간은 분산 48.666→57.092ms, 집중 54.012→55.130ms였고 저장 구현은 변경하지 않았다. 이동·추가·삭제 각 200회와 최종 revision/tab 수를 검증했다. 쓰기 성능 향상을 주장하지 않는다.
+- 검증: protocol 16 + persistence 23 + daemon 279 = 318개 일반 테스트 통과, opt-in benchmark 별도 통과. daemon dependency build, 세 패키지 typecheck, 변경 파일 oxlint/oxfmt, built Node imports와 diff --check 통과. snapshot 준비 중 변경·재접속·fault·서로 다른 baseline·backpressure 회귀를 유지/보강했다. 전체 workspace check·실 vendor·Windows/WSL·React 렌더링은 이 작업에서 검증하지 않았다.
+- 재실행: `AIOX_SCALE=1 pnpm --filter @aiox/daemon test src/web-state.scale.test.ts`. fixture와 측정 코드는 apps/daemon/src/web-state.scale.test.ts에 있다. 당시 원자료는 /tmp/aiox-baseline-verified.jsonl, /tmp/aiox-final-verified.jsonl, 별도 flush 계측은 /tmp/aiox-count-baseline.jsonl·/tmp/aiox-count-final.jsonl이며 임시 파일은 영구 증거가 아니다.
+- 상태: 위 production/test 변경은 현재 worktree에 있고 commit/push는 하지 않았다. 저장 schema·wire 형식·apps/web·Stage6 로그·사용자 DB는 변경하지 않았다. W11 next와 Stage6의 실제 화면 검증 소유는 유지한다.
+
+## 2026-09-24 · Zod 검증 호환성·성능 비교와 적용 보류
+
+- 요청/경계: 현재 Stage5 개선을 보존한 격리 복사본에서 Zod 4.5.4와 안정 패치 4.6.5의 호환성·parse/validate/compile 비용을 비교했다. npm view와 실제 tarball로 버전을 확인했다. 본 저장소의 source·manifest·lockfile에는 이 실험을 반영하지 않았다. 임시 복사본의 Zod 및 SDK/converter 해석 경로만 교체했으며 다른 주요 버전은 바꾸지 않았다.
+- 의존성 확인: daemon·protocol·adapter-claude·adapter-codex의 직접 Zod는 4.5.4다. MCP SDK 1.30.0의 peer는 ^3.25 || ^4.0, zod-to-json-schema 3.25.2의 peer는 ^3.25.28 || ^4여서 4.6.5를 허용한다. SDK의 v4 JSON Schema 변환은 zod/v4-mini, v3는 converter를 사용한다. 별도 Zod 3.25.76은 Web의 shadcn 4.21.0 경로다. react-doctor의 eslint-plugin-react-hooks→Zod 4.5.4/zod-validation-error 4.0.2는 개발 도구 경로다. persistence의 better-sqlite3 12.11.1·drizzle-orm 0.45.3·drizzle-kit 0.31.11과 SQLite 자체를 Zod 의존성으로 취급하지 않았다. 저장 검증은 protocol을 통해 수행하며 drizzle-zod는 없다.
+- 측정 조건: Node 24.14.0·Apple M4 Pro, 기존 scale fixture의 Host 1개에 agent 40/200개. 두 규모 모두 panel 200·tab/terminal 800, 방향 edge 1,560/39,800이다. 상태 전이 delta는 Host 1개와 agent들로 41/201개다. SQL/조인/JSON을 제외한 DB 엔티티 검증과 전체 snapshot/changes 검증을 warmup 15회 후 50회 측정했다. 아래 단위는 p50/p95 ms이며 고정 순서·단일 환경 측정이라 작은 차이를 확정적 회귀로 해석하지 않는다.
+
+| agent/Host | 대상 | 4.5.4 parse | 4.6.5 parse | 4.6.5 validate | 4.6.5 개별 compiled parse |
+| --- | --- | --- | --- | --- | --- |
+| 40 | DB 엔티티 | 1.064/2.615 | 1.184/2.749 | 1.147/1.427 | 0.792/0.974 |
+| 40 | Web snapshot | 1.208/2.782 | 1.472/3.038 | 1.485/1.837 | 재귀로 거부 |
+| 40 | changes | 0.353/0.450 | 0.388/0.487 | 0.061/0.079 | 재귀로 거부 |
+| 200 | DB 엔티티 | 22.020/27.147 | 25.977/31.209 | 25.785/28.413 | 7.868/9.668 |
+| 200 | Web snapshot | 25.446/27.222 | 28.225/35.355 | 28.499/35.678 | 재귀로 거부 |
+| 200 | changes | 1.608/2.234 | 1.812/2.385 | 0.272/0.314 | 재귀로 거부 |
+
+- compile 구분: Host·Network·Operation은 strict 컴파일 성공, Panel과 이를 포함하는 전체 snapshot/changes는 재귀 subtree 때문에 거부됐다. 비엄격 compile은 원 schema로 fallback하므로 컴파일 성공으로 계산하지 않는다. DB compiled 합계는 Panel을 일반 검증으로 유지한다. 최초 compile 비용은 Host 1.302ms·Network 0.272ms·Operation 0.650ms였다. Operation fixture는 비어 있어 그 자체의 성능 이득은 측정되지 않았다. 4.6.5 DB compiled validate는 40-agent 0.742/0.809ms, 200-agent 7.664/9.164ms였다.
+- 현 버전 후보: z.compile은 4.5부터 존재한다. 4.5.4 개별 compiled parse의 DB 검증은 40-agent 0.702/0.773ms, 200-agent 7.578/9.490ms로 같은 버전 일반 parse보다 빨랐다. 4.5.4 compiled의 실제 SSE 경로는 이번 실험에서 측정하지 않았으므로 아래 4.6.5 수치를 그대로 주장하지 않는다.
+- 실패 입력: 앞쪽 Host/change id 타입 오류와 뒤쪽 panel tab id·agent status·change id 오류를 별도로 검증했다. 200-agent snapshot 앞 오류의 4.6.5 parse/validate p50은 29.090/0.001ms였지만, 뒤 오류는 29.144/29.818ms였다. 뒤 오류에서 validate 실패 후 상세 진단용 parse까지 하면 59.101/66.336ms(p50/p95)로 parse 단독 29.144/34.462ms보다 비쌌다. 공식 실패 경로 배율을 정상 snapshot에 적용하지 않았다.
+
+| agent | SSE clients | 4.5.4 | 4.6.5 버전만 | 4.6.5 DB 개별 compiled parse |
+| --- | --- | --- | --- | --- |
+| 40 | 1 | 9.389/11.132 | 10.005/32.650 | 9.347/11.792 |
+| 40 | 4 | 9.003/11.147 | 9.688/14.344 | 8.627/10.434 |
+| 200 | 1 | 75.417/84.191 | 77.203/85.836 | 60.597/65.092 |
+| 200 | 4 | 74.648/84.519 | 75.815/89.918 | 62.152/66.924 |
+
+- SSE는 localhost HTTP 완전 frame 수신까지의 p50/p95 ms다. 매 조건 25회 burst와 snapshot read 25회로 동일했다. compiled 실험은 persistence의 Host/Network/Operation parse만 바꿨고 전체 Web 검증·검증 시점·JOIN·edge 형식·coalescing은 유지했다. 브라우저 rendering은 포함하지 않았다.
+- 의미 판정: HTTP 요청은 config/layout 변환·agent 중복 제거·panel name trim 결과를 소비하므로 boolean으로 대체하지 않는다. Web 일부 DTO의 z.object는 키를 제거하고 parse는 새 객체를 만든다. 실제 terminal DTO에서 validate가 원본을 유지하는 차이를 확인했다. 새 참조의 identity를 직접 비교하는 caller를 확인한 것은 아니며, snapshot의 정규화·aliasing 격리는 보존했다. changes validate는 이미 정규화된 내부 입력에 한정한 후보가 될 수 있으나 일반 대체는 아니고 실제 SSE에는 적용하지 않았다.
+- 호환성 검증: 일반 4.6.5에서 protocol 16+persistence 23+daemon 280=319개, DB compiled 4.6.5에서 16+23+281=320개 테스트 통과. 이후 보강한 semantics 2개와 host-state 5개도 통과했다. MCP tools/list의 입력/출력 JSON Schema·실제 호출·malformed send 거부, DB revision 오류 거부·저장 원자성·재시도·재오픈, 유효 JSON이나 잘못된 layout을 직접 저장한 뒤 조회/재오픈에서 거부하고 복구 후 조회하는 경로를 검증했다. custom refinement 거부·compiled 오류 issue 일치·재귀 fallback과 기존 SSE 최초/재접속/동시 변경/fault/backpressure 회귀를 확인했다. daemon dependency build·세 패키지 typecheck·built Node imports 통과.
+- 미검증: 전체 workspace lockfile 재해결/clean install, SDK upstream 전체 suite, Web shadcn/v3·개발 도구 실행, 실 vendor·브라우저 rendering·Windows/WSL·장기 메모리 부하·깊은 layout·대량 Operation/notification은 검증하지 않았다. 버전만 올리는 성능 이득은 관측되지 않았고 40-agent에서는 현 경로 유지가 합리적이라는 것이 agent의 판정이다.
+- 공식 근거: https://zod.dev/blog/zod-4-5 (compile 도입), https://zod.dev/blog/zod-4-6 (validate·실패 경로), https://zod.dev/compile (strict/unsupported/fallback). 이를 실제 설치 코드·실행과 대조했다.
+- 실험 위치/재현: /tmp/aiox-zod-report.md에 정상·앞/뒤 오류·compiled fallback 전체 표가 있고, /tmp/aiox-zod-experiment/run-zod-comparison.sh의 baseline/candidate/compiled 모드를 순차 실행하면 새 결과 디렉터리가 생긴다. 원자료는 /tmp/aiox-zod-{baseline,candidate}-final.jsonl 및 /tmp/aiox-zod-sse-{baseline,candidate,compiled}.jsonl이다. 이 경로는 임시 복사본과 현재 설치 의존성을 참조하므로 삭제 후 portable하게 재현되는 저장소 artifact는 아니다. 핵심 수치와 결정은 이 로그에 보존한다.
+- @user 최종 결정: **Zod 업그레이드와 validate 전환은 보류한다. Zod 4.5.4의 DB 개별 compiled parse는 200-agent 최적화 후보로만 남긴다.** 후보를 본 코드에 적용하거나 새 실행 Work Item으로 시작하지 않는다. 기존 Web 발행 개선 worktree는 유지하며 commit/push는 하지 않았다.
+- 재개/배치: W11 next·Stage6의 실제 화면 통합 검증 소유는 유지한다. 두 검토는 같은 Stage5 서버 보완 수명 안에서 완료됐고 별도 독립 재개점이 없어 기존 로그에 기록한다. Stage6 로그·apps/web·plan·사용자 DB는 변경하지 않았다.

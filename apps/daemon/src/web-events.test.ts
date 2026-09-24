@@ -1,4 +1,4 @@
-import type { WebSnapshot } from "@aiox/protocol";
+import { webStateSchema, type WebSnapshot } from "@aiox/protocol";
 import { Hono } from "hono";
 import { expect, it, vi } from "vitest";
 
@@ -21,6 +21,114 @@ async function viewer(events: WebEvents) {
 }
 const text = (value: { value?: Uint8Array; done: boolean }) =>
     new TextDecoder().decode(value.value);
+
+it("does not reread unchanged state just because a write finished", async () => {
+    const events = new WebEvents();
+    const current = empty();
+    const read = vi.fn(async () => structuredClone(current));
+    events.setSnapshot(read);
+    const reader = (await viewer(events)).body!.getReader();
+    try {
+        expect(text(await reader.read())).toContain("event: snapshot");
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(read).toHaveBeenCalledTimes(1);
+        const release = events.beginUpdate();
+        current.terminals.push({
+            id: "t",
+            cwd: "/tmp",
+            kind: "shell",
+            alive: true,
+        });
+        release();
+        expect(text(await reader.read())).toContain("event: state");
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(read).toHaveBeenCalledTimes(2);
+    } finally {
+        events.close();
+        await reader.cancel();
+    }
+});
+
+it("coalesces a synchronous burst before reading the database", async () => {
+    const events = new WebEvents();
+    const current = empty();
+    const read = vi.fn(async () => structuredClone(current));
+    events.setSnapshot(read);
+    const reader = (await viewer(events)).body!.getReader();
+    try {
+        await reader.read();
+        await new Promise((resolve) => setImmediate(resolve));
+        read.mockClear();
+        for (let i = 0; i < 200; i++) {
+            current.terminals.push({
+                id: `t${i}`,
+                cwd: "/tmp",
+                kind: "shell",
+                alive: true,
+            });
+            events.notify();
+        }
+        expect(text(await reader.read())).toContain('"id":"t199"');
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(read).toHaveBeenCalledTimes(1);
+    } finally {
+        events.close();
+        await reader.cancel();
+    }
+});
+
+it("shares deltas only for equal baselines and lets blocked clients catch up", async () => {
+    const events = new WebEvents();
+    let current = empty();
+    events.setSnapshot(async () => structuredClone(current));
+    const readers = await Promise.all(
+        Array.from({ length: 4 }, async () =>
+            (await viewer(events)).body!.getReader(),
+        ),
+    );
+    const parse = vi.spyOn(webStateSchema, "parse");
+    try {
+        await Promise.all(readers.map((reader) => reader.read()));
+        await new Promise((resolve) => setImmediate(resolve));
+        current.terminals.push({
+            id: "t",
+            cwd: "/tmp",
+            kind: "shell",
+            alive: true,
+        });
+        events.notify();
+        await Promise.all(readers.map((reader) => reader.read()));
+        await new Promise((resolve) => setImmediate(resolve));
+        parse.mockClear();
+        current = empty();
+        events.notify();
+        const frames = await Promise.all(
+            readers.map(async (reader) => text(await reader.read())),
+        );
+        expect(new Set(frames).size).toBe(1);
+        expect(frames[0]).toContain('"action":"remove"');
+        expect(parse).toHaveBeenCalledTimes(1);
+        // A new connection has an independent baseline and must still start with snapshot.
+        const late = (await viewer(events)).body!.getReader();
+        readers.push(late);
+        current.terminals.push({
+            id: "new",
+            cwd: "/tmp",
+            kind: "shell",
+            alive: true,
+        });
+        events.notify();
+        await Promise.all(readers.slice(0, 4).map((reader) => reader.read()));
+        expect(text(await late.read())).toContain(
+            'event: snapshot\ndata: {"hosts":[],"networks":[],"panels":[],"terminals":[]',
+        );
+        expect(text(await late.read())).toContain('"id":"new"');
+    } finally {
+        parse.mockRestore();
+        events.close();
+        await Promise.all(readers.map((reader) => reader.cancel()));
+    }
+});
 it("sends a consistent snapshot before concurrent changes and faults on read failure", async () => {
     const events = new WebEvents();
     let current = empty(),

@@ -11,7 +11,54 @@ import {
     webStateSchema,
     layoutInputSchema,
     storedConfigSchema,
+    hostNetworkViewSchema,
 } from "./index";
+
+test("Host Network validation rejects duplicate, missing, self and foreign member edges", () => {
+    const keys = ["a", "b", "c"];
+    const network = {
+        id: "n",
+        hostId: "h",
+        name: "Team",
+        scope: "host",
+        default: "allow",
+        members: keys.map((agentKey) => ({ agentKey, runtimeId: null })),
+        edges: keys.flatMap((from) =>
+            keys
+                .filter((to) => to !== from)
+                .map((to) => ({
+                    from,
+                    to,
+                    fromRuntimeId: null,
+                    toRuntimeId: null,
+                    policy: "allow",
+                    source: "manifest-default",
+                })),
+        ),
+    };
+    assert.deepEqual(hostNetworkViewSchema.parse(network), network);
+    for (const edges of [
+        network.edges.slice(1),
+        [network.edges[0], ...network.edges.slice(0, -1)],
+        [{ ...network.edges[0], to: "a" }, ...network.edges.slice(1)],
+        [{ ...network.edges[0], to: "unknown" }, ...network.edges.slice(1)],
+    ])
+        assert.equal(
+            hostNetworkViewSchema.safeParse({ ...network, edges }).success,
+            false,
+        );
+    assert.equal(
+        hostNetworkViewSchema.safeParse({
+            ...network,
+            members: [
+                network.members[0],
+                network.members[0],
+                network.members[2],
+            ],
+        }).success,
+        false,
+    );
+});
 
 test("Host wire input rejects identity injection and shares config layout validation", () => {
     const input = {
