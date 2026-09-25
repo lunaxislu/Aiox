@@ -1,5 +1,5 @@
 import type { WebNotificationView } from "@aiox/protocol";
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { Outlet, useLoaderData, useNavigate, useParams } from "react-router";
 
 import { previewNotifications } from "@/entities/notification/fixtures";
@@ -16,9 +16,9 @@ import {
     WorkspaceDialog,
     type WorkspaceAction,
 } from "@/features/manage-workspace/workspace-dialog";
-import { SidebarProvider } from "@/shared/ui/sidebar";
 import { AppHeader } from "@/widgets/header/app-header";
-import { AppSidebar } from "@/widgets/sidebar/app-sidebar";
+
+import { AppLayout } from "./app-layout";
 
 export type AppOutletContext = {
     panels: PanelPreview[];
@@ -40,7 +40,6 @@ export function AppShell({
     // W7 fixture. 읽음 요청은 W10에서 클릭이 ids 하나, Clear all이 ids 생략으로 붙는다.
     const [notifications, setNotifications] = useState(initialNotifications);
     const [action, setAction] = useState<WorkspaceAction | null>(null);
-    const [width, setWidth] = useState(240);
 
     const navigate = useNavigate();
     const { section, panelId } = useParams();
@@ -105,27 +104,12 @@ export function AppShell({
     }
 
     return (
-        <SidebarProvider
-            style={
-                {
-                    "--sidebar-width": `clamp(180px, ${width}px, 90vw)`,
-                } as CSSProperties
-            }
+        <AppLayout
+            panels={panels}
+            onCreate={create}
+            onRename={(panel) => setAction({ type: "rename", panel })}
+            onDelete={(panel) => setAction({ type: "delete", panel })}
         >
-            <a
-                href="#main-content"
-                className="sr-only z-50 focus:not-sr-only focus:absolute focus:bg-background focus:p-2"
-            >
-                Skip to content
-            </a>
-            <AppSidebar
-                panels={panels}
-                sidebarWidth={width}
-                onResizeSidebar={setWidth}
-                onCreate={create}
-                onRename={(panel) => setAction({ type: "rename", panel })}
-                onDelete={(panel) => setAction({ type: "delete", panel })}
-            />
             <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
                 <AppHeader
                     title={title}
@@ -158,6 +142,6 @@ export function AppShell({
                     onClose={() => setAction(null)}
                 />
             )}
-        </SidebarProvider>
+        </AppLayout>
     );
 }
