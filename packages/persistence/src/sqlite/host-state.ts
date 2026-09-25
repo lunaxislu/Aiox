@@ -36,6 +36,7 @@ import {
 export class HostStateError extends Error {
     constructor(
         readonly code:
+            | "network_in_use"
             | "revision_conflict"
             | "unknown_panel"
             | "unknown_tab"

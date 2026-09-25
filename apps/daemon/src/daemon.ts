@@ -499,8 +499,10 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 const session = runtimeId
                     ? record?.executionOwnership === "daemon" &&
                       record.terminalId === terminalId &&
-                      record.binding.relayDisconnected
-                        ? record.binding.terminal
+                      terminalId
+                        ? record.binding.relayDisconnected
+                            ? record.binding.terminal
+                            : terminals.get(terminalId)
                         : undefined
                     : terminalId
                       ? terminals.get(terminalId)

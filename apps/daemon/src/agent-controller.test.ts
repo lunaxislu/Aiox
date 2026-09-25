@@ -348,12 +348,23 @@ test("a browser attachment detaches without stopping either the foreground CLI r
     const shell = await harness.daemon.createShell();
     const terminalContext = terminalContextFromEnv(sessions[0]!.options.env!)!;
     const { socket } = await connect({ ...frame(), terminalContext });
+    await vi.waitFor(() => expect(sessions).toHaveLength(2));
+    const runtime = harness.daemon.services.runtimes.list()[0]!;
     const browser = new WebSocket(
-        harness.webUrl(`/ws/terminal/${shell.id}`).replace("http:", "ws:"),
+        harness
+            .webUrl(`/ws/terminal/${shell.id}?runtime=${runtime.id}`)
+            .replace("http:", "ws:"),
     );
     try {
         await once(browser, "open");
         await vi.waitFor(() => expect(sessions).toHaveLength(2));
+        browser.send(Buffer.from("foreground input"));
+        await vi.waitFor(() =>
+            expect(sessions[0]!.session.write).toHaveBeenCalledWith(
+                new Uint8Array(Buffer.from("foreground input")),
+            ),
+        );
+        expect(sessions[1]!.session.write).not.toHaveBeenCalled();
         const closed = once(browser, "close");
         browser.close();
         await closed;

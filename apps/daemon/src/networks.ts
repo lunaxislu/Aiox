@@ -1,6 +1,7 @@
 import type { Network, RouteOperation } from "@aiox/domain";
 import { applyRouteOperation, outboundTargets } from "@aiox/domain";
 import type { AioxDatabase, PersistentNetwork } from "@aiox/persistence";
+import { HostStateError } from "@aiox/persistence";
 import { v7 as uuidv7 } from "uuid";
 
 import type { RuntimeRecord } from "@/runtimes";
@@ -80,7 +81,16 @@ export class NetworkService {
                 `Network '${network.name}' has participating executions. Clean up their participation first, then delete the Network.`,
                 "network_in_use",
             );
-        const deleted = await this.db.networks.delete(network.id);
+        const deleted = await this.db.networks
+            .delete(network.id)
+            .catch((error: unknown) => {
+                if (
+                    error instanceof HostStateError &&
+                    error.code === "network_in_use"
+                )
+                    throw new NetworkError(error.message, "network_in_use");
+                throw error;
+            });
         if (deleted) this.onChange(network.id);
         return deleted;
     }

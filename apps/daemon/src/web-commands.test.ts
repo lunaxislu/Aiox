@@ -12,6 +12,36 @@ import {
     type DaemonHarness,
 } from "./testing";
 
+it("creates an empty Network panel and adds its first shell only through tab.create", async (t) => {
+    const { services, run, panel, spawn, gates } = await harness(t);
+    const network = await services.networks.create("dev");
+    const empty = await panel(network.id);
+    expect(empty).toMatchObject({
+        kind: "network",
+        section: "networks",
+        networkId: network.id,
+        tabs: [],
+        layout: { type: "pane", tabIds: [] },
+    });
+    expect(spawn).not.toHaveBeenCalled();
+    const result = await run(network.id, [
+        {
+            type: "tab.create",
+            tabId: "network-tab",
+            target: { toPaneId: empty.layout.id },
+        },
+    ]);
+    expect(result.status).toBe(200);
+    await vi.waitFor(() => expect(gates).toHaveLength(1));
+    await expect(services.networks.delete(network.id)).rejects.toMatchObject({
+        code: "network_in_use",
+    });
+    gates[0]!();
+    await vi.waitFor(async () =>
+        expect((await panel(network.id)).tabs[0]?.terminalId).toBeTruthy(),
+    );
+});
+
 async function harness(t: { onTestFinished(fn: () => unknown): void }) {
     const h = await startTestDaemon({
         terminal: async () => ({

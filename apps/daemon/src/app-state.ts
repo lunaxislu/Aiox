@@ -373,6 +373,13 @@ export class AppState {
                     });
                     if (network) this.#networks.set(network.id, network);
                     else this.#networks.delete(change.network);
+                    const panel = yield* Effect.tryPromise({
+                        try: () => db.hostState.getPanel(change.network),
+                        catch: (error) => error,
+                    });
+                    if (panel) this.#panels.set(panel.id, panel);
+                    else this.#panels.delete(change.network);
+                    keys.add(`panel:${change.network}`);
                     keys.add(`network:${change.network}`);
                     for (const r of runtimes.list())
                         if (r.networkId === change.network)

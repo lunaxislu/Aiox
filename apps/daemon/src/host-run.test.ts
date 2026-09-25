@@ -194,7 +194,11 @@ networks:
         });
         const state = await h.daemon.services.db.hostState.snapshot();
         expect(state.hosts).toHaveLength(1);
-        expect(state.panels[0]!.tabs.every((t) => t.terminalId)).toBe(true);
+        const hostPanel = state.panels.find(
+            (panel) => panel.hostId === state.hosts[0]!.id,
+        )!;
+        expect(hostPanel.tabs).toHaveLength(2);
+        expect(hostPanel.tabs.every((t) => t.terminalId)).toBe(true);
         expect(
             h.daemon.services.runtimes.list().map((r) => r.networkId),
         ).toEqual([state.networks[0]!.id, state.networks[0]!.id]);
@@ -249,7 +253,9 @@ networks:
             runtimeIds,
         );
         const userShell = await h.daemon.createShell();
-        const customized = structuredClone(beforeInvalid.panels[0]!);
+        const customized = structuredClone(
+            beforeInvalid.panels.find((panel) => panel.id === hostPanel.id)!,
+        );
         const panes = panelLayoutReferences(customized.layout).panes;
         panes[0]!.tabIds.push("user-tab");
         customized.tabs.push({
@@ -315,10 +321,14 @@ networks:
             ),
         ).toBe(true);
         expect(
-            replaced.panels[0]!.tabs.find((tab) => tab.agentKey === "alpha"),
+            replaced.panels
+                .find((panel) => panel.id === hostPanel.id)!
+                .tabs.find((tab) => tab.agentKey === "alpha"),
         ).toMatchObject({ id: oldAlpha.id, terminalId: oldAlpha.terminalId });
         expect(
-            replaced.panels[0]!.tabs.some((tab) => tab.id === oldBeta.id),
+            replaced.panels
+                .find((panel) => panel.id === hostPanel.id)!
+                .tabs.some((tab) => tab.id === oldBeta.id),
         ).toBe(false);
         expect(
             h.daemon.services.terminals.view(oldBeta.terminalId!)?.alive ??
@@ -328,9 +338,10 @@ networks:
             true,
         );
         expect(
-            panelLayoutReferences(replaced.panels[0]!.layout).panes.map(
-                (p) => p.id,
-            ),
+            panelLayoutReferences(
+                replaced.panels.find((panel) => panel.id === hostPanel.id)!
+                    .layout,
+            ).panes.map((p) => p.id),
         ).toEqual([panes[0]!.id]);
         await writeFile(
             join(h.home, "aiox.yaml"),

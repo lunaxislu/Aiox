@@ -116,12 +116,18 @@ it("serves reconnect snapshots from memory and sends subsequent committed change
     const initial = await reconnect.next();
     expect(initial).toMatchObject({
         type: "snapshot",
-        snapshot: { networks: [{ id: network.id }] },
+        snapshot: {
+            networks: [{ id: network.id }],
+            panels: [{ id: network.id, kind: "network", tabs: [] }],
+        },
     });
     await h.daemon.services.networks.delete(network.id);
     expect(await reconnect.next()).toMatchObject({
         type: "delta",
-        changes: [{ action: "remove", id: network.id }],
+        changes: expect.arrayContaining([
+            { resource: "network", action: "remove", id: network.id },
+            { resource: "panel", action: "remove", id: network.id },
+        ]),
     });
     await reconnect.close();
     expect(scan).not.toHaveBeenCalled();

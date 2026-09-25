@@ -634,6 +634,13 @@ Web은 재접속 RPC snapshot으로 상태를 다시 확인한다.
 
 ### 상태 전달·terminal 연결과 mock 전환 [Status: Current]
 
+Persistent Network 생성은 Network 정의와 전용 빈 panel을 함께 등록한다. panel은 Network와
+같은 ID를 사용하며 `kind:network`, `section:networks`, 빈 pane 하나로 시작한다. shell은
+사용자가 `+`로 추가한다. Network 삭제는 참여 실행이 없어야 하고 panel의 tab도 모두 닫혀
+있어야 한다. 삭제 성공 시 해당 panel도 제거되며, 생성·삭제의 두 자원 변경은 같은 delta로 전달한다.
+근거: [[packages/persistence/src/sqlite/database.test.ts]], [[apps/daemon/src/app-state.test.ts]],
+[[apps/daemon/src/web-commands.test.ts]].
+
 앱 명령·상태·알림은 `WS /api/rpc`의 Effect RPC를 사용한다. wire schema, 세션 수명과
 snapshot/delta 적용 계약은 [[docs/specs/aiox-application-rpc]]가 소유한다. CLI HTTP/NDJSON과
 MCP·정적 HTTP는 유지한다. 기존 Web 소스의 RPC client/store/hooks 연결은 후속 작업이다.
@@ -728,6 +735,12 @@ terminal이 없다는 뜻이며 읽음 처리 가능 여부와는 별개다.
 기준으로 먼저 지우지 않는다. 읽음 이력을 보여 주는 별도 조회나 dismissedAt을 추가하지 않는다.
 
 #### RPC stream과 최초·재접속 snapshot
+
+terminal WS의 `runtime` query는 현재 daemon 소유 실행과 terminal의 일치를 검사한다.
+shell 안에서 Agent가 실행 중이고 CLI relay가 정상인 경우 기존 shell PTY에 연결한다.
+relay가 끊긴 경우에는 같은 runtime의 vendor PTY 복원 경로를 사용한다. 존재하지 않거나
+다른 terminal의 runtime으로 연결하는 요청은 거절한다.
+근거: [[apps/daemon/src/daemon.ts]], [[apps/daemon/src/agent-controller.test.ts]].
 
 최초·재접속은 `state.subscribe`의 현재 snapshot으로 상태를 교체한다. 그 뒤 같은 epoch의
 versioned delta를 적용한다. 구독 등록과 snapshot 캡처는 같은 임계 구간에 연결되며 상태 누락을

@@ -48,6 +48,10 @@ Status: Committed target
 | `NETWORKS` | `aiox network create`로만 생성 | 없음 |
 | `HOSTS` | `aiox host run`으로만 생성 | 없음 |
 
+`aiox network create`는 Network 정의와 전용 빈 panel을 함께 등록한다. 처음에는 빈 pane
+하나이며 shell을 실행하지 않는다. 사용자가 panel의 `+`를 누르면 첫 tab과 shell을 생성한다.
+Network panel의 shell은 Network membership을 자동 상속하지 않는다.
+
 세 섹션 헤더 모두 `+`를 가지며 어느 섹션에서 만들든 사용자 생성 panel이 된다. 우클릭 메뉴는
 섹션이 아니라 생성 주체로 갈린다. CLI가 만든 panel에는 메뉴를 주지 않되 핸들러는 붙여
 브라우저 기본 컨텍스트 메뉴가 뜨지 않게 한다.

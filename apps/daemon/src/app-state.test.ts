@@ -50,6 +50,52 @@ async function setup(t: { onTestFinished(fn: () => unknown): void }) {
     return { state, db, terminals, rename };
 }
 
+it("publishes Network and its panel together on creation and deletion without a full scan", async (t) => {
+    const { db, state } = await setup(t);
+    const scan = vi.spyOn(db.hostState, "snapshot");
+    await db.networks.create({ id: "network-panel", name: "dev" });
+    const created = await state.update({ network: "network-panel" });
+    expect(created?.changes).toEqual(
+        expect.arrayContaining([
+            expect.objectContaining({
+                resource: "network",
+                action: "upsert",
+                id: "network-panel",
+            }),
+            expect.objectContaining({
+                resource: "panel",
+                action: "upsert",
+                id: "network-panel",
+                value: expect.objectContaining({
+                    kind: "network",
+                    section: "networks",
+                    tabs: [],
+                }),
+            }),
+        ]),
+    );
+    expect(state.snapshot().panels.some((p) => p.id === "network-panel")).toBe(
+        true,
+    );
+    await db.networks.delete("network-panel");
+    const removed = await state.update({ network: "network-panel" });
+    expect(removed?.changes).toEqual(
+        expect.arrayContaining([
+            expect.objectContaining({
+                resource: "network",
+                action: "remove",
+                id: "network-panel",
+            }),
+            expect.objectContaining({
+                resource: "panel",
+                action: "remove",
+                id: "network-panel",
+            }),
+        ]),
+    );
+    expect(scan).not.toHaveBeenCalled();
+});
+
 it("stays current without viewers and never rescans storage for a normal change", async (t) => {
     const { db, state, terminals, rename } = await setup(t);
     const scans = [

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
 
@@ -7,8 +8,13 @@ import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import * as Drizzle from "drizzle-orm/effect-sqlite-node";
 import { Cause, Effect, ManagedRuntime } from "effect";
 
-import { HOST_MEMBER_TRIGGER } from "./host-schema";
-import { hostState, type HostState } from "./host-state";
+import {
+    HOST_MEMBER_TRIGGER,
+    PanelEntity,
+    PanelTabEntity,
+    DeletedIdEntity,
+} from "./host-schema";
+import { hostState, HostStateError, type HostState } from "./host-state";
 import {
     DeliveryEntity,
     type DeliveryRow,
@@ -232,7 +238,30 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
     const db = runtime.db;
     const networks: PersistentNetworks = {
         async create(input) {
-            await runtime.run(db.insert(NetworkEntity).values(input).run());
+            await runtime.run(
+                db.transaction((tx) =>
+                    Effect.gen(function* () {
+                        yield* tx.insert(NetworkEntity).values(input).run();
+                        yield* tx
+                            .insert(PanelEntity)
+                            .values({
+                                id: input.id,
+                                kind: "network",
+                                section: "networks",
+                                name: input.name,
+                                hostId: null,
+                                networkId: input.id,
+                                revision: 1,
+                                layoutJson: JSON.stringify({
+                                    type: "pane",
+                                    id: randomUUID(),
+                                    tabIds: [],
+                                }),
+                            })
+                            .run();
+                    }),
+                ),
+            );
         },
         async get(id) {
             return runtime.run(
@@ -342,10 +371,36 @@ export async function openDatabase(path: string): Promise<AioxDatabase> {
         },
         async delete(id) {
             const rows = await runtime.run(
-                db
-                    .delete(NetworkEntity)
-                    .where(eq(NetworkEntity.id, id))
-                    .returning({ id: NetworkEntity.id }),
+                db.transaction((tx) =>
+                    Effect.gen(function* () {
+                        const tab = yield* tx
+                            .select({ id: PanelTabEntity.id })
+                            .from(PanelTabEntity)
+                            .where(eq(PanelTabEntity.panelId, id))
+                            .get();
+                        if (tab)
+                            throw new HostStateError(
+                                "network_in_use",
+                                "Network panel is not empty. Close its tabs before deleting the Network.",
+                            );
+                        const rows = yield* tx
+                            .delete(NetworkEntity)
+                            .where(eq(NetworkEntity.id, id))
+                            .returning({ id: NetworkEntity.id });
+                        if (rows.length) {
+                            yield* tx
+                                .insert(DeletedIdEntity)
+                                .values({ id, kind: "panel" })
+                                .onConflictDoNothing()
+                                .run();
+                            yield* tx
+                                .delete(PanelEntity)
+                                .where(eq(PanelEntity.id, id))
+                                .run();
+                        }
+                        return rows;
+                    }),
+                ),
             );
             return rows.length === 1;
         },

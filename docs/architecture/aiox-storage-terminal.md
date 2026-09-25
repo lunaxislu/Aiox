@@ -313,6 +313,13 @@ OSC 배경색 이벤트를 관측하고, serialization이 마지막 지정색 �
 근거: [[apps/web/src/terminal-theme.ts]], [[apps/web/src/terminal-theme.test.ts]],
 [[packages/terminal/src/serialization.ts]], [[packages/terminal/src/serialization.test.ts]].
 
+Persistent Network의 일반 panel은 Network ID를 panel ID로 사용한다. SQLite의 Network 생성·삭제
+transaction이 panel도 함께 저장·제거하며, tab이 남아 있는 Network 삭제는 거절한다.
+Network producer 통지를 받은 AppState는 Network와 해당 panel만 조회해 같은 delta에 반영한다.
+Host 소유 panel과 독립 Network panel은 별개이며, Host 삭제는 독립 Network panel을 제거하지 않는다.
+근거: [[packages/persistence/src/sqlite/database.ts]], [[packages/persistence/src/sqlite/database.test.ts]],
+[[apps/daemon/src/app-state.ts]], [[apps/daemon/src/app-state.test.ts]].
+
 ## 대기 shell의 정상 종료 연동
 
 일반 종료 계약은 [[docs/specs/aiox-runtime]]이 소유한다. daemon은 admission과 기존 Web 입력을

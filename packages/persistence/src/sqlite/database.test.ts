@@ -199,6 +199,72 @@ test("concurrent writes to unrelated networks both commit", async (t) => {
     );
 });
 
+test("Network creation and deletion include an empty panel atomically", async (t) => {
+    const path = databasePath(t);
+    const store = await openDatabase(path);
+    t.onTestFinished(() => store.close());
+    await store.networks.create({ id: "network-panel", name: "dev" });
+    const panel = await store.hostState.getPanel("network-panel");
+    assert.ok(panel);
+    assert.equal(panel.kind, "network");
+    assert.equal(panel.section, "networks");
+    assert.equal(panel.networkId, "network-panel");
+    assert.equal(panel.name, "dev");
+    assert.equal(panel.layout.type, "pane");
+    assert.deepEqual(panel.tabs, []);
+    const reopened = await openDatabase(path);
+    try {
+        assert.deepEqual(await reopened.hostState.getPanel(panel.id), panel);
+    } finally {
+        await reopened.close();
+    }
+    await store.hostState.mutatePanel(panel.id, (current) => ({
+        ...current,
+        layout: { type: "pane", id: "pane", tabIds: ["pending"] },
+        tabs: [
+            {
+                id: "pending",
+                terminalId: null,
+                runtimeId: null,
+                agentKey: null,
+                label: "Shell",
+                presentation: "preparing",
+                notice: null,
+            },
+        ],
+    }));
+    await assert.rejects(store.networks.delete(panel.id), /panel.*not empty/i);
+    assert.ok(await store.networks.get(panel.id));
+    await store.hostState.mutatePanel(panel.id, (current) => ({
+        ...current,
+        layout: panel.layout,
+        tabs: [],
+    }));
+    assert.equal(await store.networks.delete(panel.id), true);
+    assert.equal(await store.hostState.getPanel(panel.id), undefined);
+});
+
+test("a failed Network panel insert rolls back the Network row", async (t) => {
+    const store = await openDatabase(databasePath(t));
+    t.onTestFinished(() => store.close());
+    await store.hostState.createPanel({
+        id: "collision",
+        kind: "workspace",
+        section: "workspaces",
+        name: "Keep",
+        hostId: null,
+        networkId: null,
+        revision: 1,
+        layout: { type: "pane", id: "pane", tabIds: [] },
+        tabs: [],
+    });
+    await assert.rejects(
+        store.networks.create({ id: "collision", name: "dev" }),
+    );
+    assert.equal(await store.networks.get("collision"), undefined);
+    assert.equal((await store.hostState.getPanel("collision"))?.name, "Keep");
+});
+
 test("a rollback cannot absorb another write or expose partial routes to a read", async (t) => {
     const store = await openDatabase(databasePath(t));
     t.onTestFinished(() => store.close());
@@ -605,7 +671,6 @@ test("Host FK cascades preserve independent Networks and execution and message h
         "host_networks",
         "host_members",
         "host_edges",
-        "panels",
         "panel_tabs",
     ])
         assert.equal(
@@ -621,6 +686,7 @@ test("Host FK cascades preserve independent Networks and execution and message h
         "messages",
         "deliveries",
         "persistent_networks",
+        "panels",
         "persistent_routes",
     ])
         assert.equal(
