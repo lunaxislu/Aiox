@@ -1,4 +1,7 @@
 import type { AioxDatabase, PurgeCounts } from "@aiox/persistence";
+import { Clock, Effect } from "effect";
+
+import { DaemonTasks } from "./tasks";
 
 const DAY_MS = 86_400_000;
 
@@ -14,11 +17,45 @@ export async function purgeExpired(
     now: number,
 ): Promise<PurgeCounts> {
     const cutoff = now - retentionDays * DAY_MS;
-    const [report, operations] = await Promise.all([
+    const [report] = await Promise.all([
         db.messages.purgeBefore(cutoff),
         db.hostState.purgeBefore(cutoff),
     ]);
-    return operations ? { ...report, operations } : report;
+    return report;
+}
+
+/** Starts with one purge, then sleeps a day between purges. */
+export function retentionEffect(
+    db: AioxDatabase,
+    retentionDays: () => number,
+    options: {
+        now?: () => number;
+        onPurge?: (report: PurgeCounts) => void;
+        onError?: (error: unknown) => void;
+    } = {},
+): Effect.Effect<never> {
+    const purge = Effect.gen(function* () {
+        const now = options.now
+            ? options.now()
+            : yield* Clock.currentTimeMillis;
+        const result = yield* Effect.result(
+            Effect.tryPromise({
+                try: () => purgeExpired(db, retentionDays(), now),
+                catch: (error) => error,
+            }),
+        );
+        if (result._tag === "Failure") {
+            yield* Effect.sync(() => options.onError?.(result.failure));
+        } else {
+            yield* Effect.sync(() => options.onPurge?.(result.success));
+        }
+    });
+    return Effect.forever(
+        Effect.gen(function* () {
+            yield* purge;
+            yield* Effect.sleep(DAY_MS);
+        }),
+    );
 }
 
 export type RetentionSchedule = { stop(): void };
@@ -33,18 +70,7 @@ export function scheduleRetention(
         onError?: (error: unknown) => void;
     } = {},
 ): RetentionSchedule {
-    const now = options.now ?? (() => Date.now());
-    const run = async () => {
-        try {
-            const report = await purgeExpired(db, retentionDays(), now());
-            options.onPurge?.(report);
-        } catch (error) {
-            // Cleanup failing must not take the daemon down with it.
-            options.onError?.(error);
-        }
-    };
-    void run();
-    const timer = setInterval(() => void run(), DAY_MS);
-    timer.unref();
-    return { stop: () => clearInterval(timer) };
+    const tasks = new DaemonTasks();
+    Effect.runSync(tasks.start(retentionEffect(db, retentionDays, options)));
+    return { stop: () => void tasks.close() };
 }

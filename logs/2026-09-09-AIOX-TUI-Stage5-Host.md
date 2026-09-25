@@ -17,6 +17,8 @@ status: open
 - [x] W9 서비스 HTTP 처리를 Hono로 전환한다
 - [x] W10 서비스 SQLite 저장 계층을 TypeORM에서 Drizzle로 전환한다
 - [>] W11 실제 화면 연결과 W5~W10 통합 검증의 소유를 Stage6 W10으로 넘겼다. 같은 통합 지점을 양쪽 로그가 각자 부르면 검증 결과의 권위가 둘로 갈리기 때문이다. Stage6이 worktree를 main에 합쳐 두 stage가 한 트리에서 돌게 된 것이 근거다. 이 항목은 그 검증에서 드러난 서버 쪽 결함을 받아 고치는 자리로 남는다. apps/daemon과 packages/protocol은 Stage5 단독 수정이라 Stage6이 손댈 수 없다. 결함이 없으면 Stage6 W10 완료와 함께 닫는다.
+- [x] W12 Web panel 명령을 동작별 명령·shell 탭 선등록·병렬 준비·명령 재전송 계약으로 전환한다. 계약은 설정·Web spec의 Panel 조회·변경 HTTP 절과 runtime spec의 Operation과 오류 절이 소유한다. protocol·persistence·daemon과 Web split·fixture 최소 추종을 함께 바꾸고 실패 주입까지 검증한다. Web의 실제 HTTP·SSE 연결과 동작 변경은 Stage6 소유다.
+- [x] W13 공개 Operation을 제거하고 Web 명령을 clientSessionId 순번의 POST /api/web/commands로, Host 명령을 대상별 NDJSON 결과로 바꾼다. daemon 상시 AppState와 대상 단위 SSE 발행, 정리 registry, Effect daemon 수명 작업을 도입한다. 계약은 설정·Web spec Panel HTTP 절과 runtime spec Host 명령 결과 절이 소유한다.
 
 ## Required Context
 
@@ -599,3 +601,44 @@ Host owner에 정확한 이름 query 조회→얻은 ID로 제어하는 계약�
 - 실험 위치/재현: /tmp/aiox-zod-report.md에 정상·앞/뒤 오류·compiled fallback 전체 표가 있고, /tmp/aiox-zod-experiment/run-zod-comparison.sh의 baseline/candidate/compiled 모드를 순차 실행하면 새 결과 디렉터리가 생긴다. 원자료는 /tmp/aiox-zod-{baseline,candidate}-final.jsonl 및 /tmp/aiox-zod-sse-{baseline,candidate,compiled}.jsonl이다. 이 경로는 임시 복사본과 현재 설치 의존성을 참조하므로 삭제 후 portable하게 재현되는 저장소 artifact는 아니다. 핵심 수치와 결정은 이 로그에 보존한다.
 - @user 최종 결정: **Zod 업그레이드와 validate 전환은 보류한다. Zod 4.5.4의 DB 개별 compiled parse는 200-agent 최적화 후보로만 남긴다.** 후보를 본 코드에 적용하거나 새 실행 Work Item으로 시작하지 않는다. 기존 Web 발행 개선 worktree는 유지하며 commit/push는 하지 않았다.
 - 재개/배치: W11 next·Stage6의 실제 화면 통합 검증 소유는 유지한다. 두 검토는 같은 Stage5 서버 보완 수명 안에서 완료됐고 별도 독립 재개점이 없어 기존 로그에 기록한다. Stage6 로그·apps/web·plan·사용자 DB는 변경하지 않았다.
+
+## 2026-09-24 · 2026-09-24 · W12 panel 명령 계약 결정과 명세 반영
+
+- 배경: Stage5 발행 개선 리뷰 뒤 Web의 즉시 반응 UX(낙관적 생성·이동·분할·resize·이름 변경·삭제, 병렬 shell 준비, 실패 시 해당 변경만 제거)를 기준으로 서버 panel 계약을 재검토했다. 사용자·Codex·Claude가 여러 차례 의견을 대조했다.
+- 확인한 문제: shell 생성이 접수·실행 두 번 panel revision을 검사하고 panel_busy로 같은 panel의 병행 Operation을 막아 연속 [+]가 실패한다. updatePanel은 해당 panel 탭 전체를 삭제·재삽입하며 projection 값을 저장할 수 있다. 서버가 tab·split pane ID를 만들어 Web 임시 항목과 대응하기 어렵다. beginUpdate가 shell 생성 중 전역 SSE 발행을 대기시킨다. recover는 terminalId 없는 준비 중 탭을 건너뛴다. 빈도·지연 순위는 측정하지 않았다.
+- 정정한 판단: 모든 agent 상태 변경이 revision을 올리지는 않는다(setStatus는 메모리·notify). 재삽입 범위는 해당 panel 탭이다. revision_conflict는 Host 구성 교체·삭제에도 쓰여 오류 표에서 유지한다. restart는 최신 snapshot 재조회와 panel CAS를 써서 사용자 이동을 덮어쓰지 않으며 위험은 저장 실패 쪽이다. Web은 생성 흐름에서도 Operation의 실패·cleanupErrors를 관측해야 한다. 등록 순서는 Web의 panel별 순차 전송으로만 클릭 순서가 된다.
+- 검토 후 기각: 전체 layout PUT 유지(다른 창·생성 탭을 덮어씀), shell 완료 후 201(선등록과 Operation 진단 이점 상실), Host 작업 전체 host_busy(사용자 조작을 불필요하게 막음), CRDT·OT, 영수증의 브라우저 수명 기반 purge, 삭제 기록 자동 만료.
+- @user 결정: 동작별 명령, shell 탭 선등록 후 202와 병렬 준비, client panel·tab·pane·split ID(terminal·runtime ID는 서버), 명령 revision 검사 제거와 transaction 내 대상 조건 검사, 실제 충돌 조합만 거절, Host restart는 최신 배치에 원자 적용, Host·panel 삭제 접수 뒤 신규 명령 거절, 모든 명령의 requestId 재전송 규칙과 명령 영수증 테이블, 영수증·삭제 기록은 만료 계약 전까지 자동 삭제하지 않음, abort는 취소가 아님. 계약 본문은 aiox-configuration-web의 Panel 조회·변경 HTTP 절과 aiox-runtime의 Operation과 오류 절에 반영했다.
+- 승인 범위: 명세 반영, 영수증 테이블 추가, Stage5의 protocol 변경에 필요한 Web split 생성·fixture·관련 테스트 최소 수정(동작 코드 수정임을 명시). Web의 실제 HTTP·SSE 연결과 동작 변경은 Stage6 W10 소유. 서버 구현 착수는 이어서 승인됐다.
+- 남은 확인: 재시작 뒤 준비 중이던 shell 프로세스가 남지 않는지(DB 복구는 근거가 아님). 구현 후 architecture aiox-storage-terminal의 revision 고정·rename revision 비교 서술을 갱신한다.
+- 검증: 명세 두 파일 inline code 검사와 git diff --check 통과. 코드 변경 없음.
+
+## 2026-09-24 · 2026-09-24 · W12 panel 명령 전환 구현 및 검증 완료
+
+- 구현: protocol은 Split id, pane·split ID 통합 유일성, Operation.tabId, 동작별 요청 schema와 순수 배치 함수(insert/move/resize/select, PanelLayoutError)를 추가했다. persistence는 updatePanel을 없애고 mutatePanel(최신 panel에 transaction 안에서 적용, 바뀐 행만 쓰기, 삭제 tab 기록)·getPanel·getCommand·forgetTab과 panel_commands·deleted_ids 테이블, host_operations.tab_id를 추가했다. panel_busy는 실제 충돌만 거절하는 접수 규칙(panel_deleting·tab_closing·host_busy)으로 바꿨고 route 충돌 코드도 host_busy로 맞췄다. replaceHost는 최신 panel에 탭 변경을 적용하고 panel revision CAS를 없앴다. deleteHost·deletePanel은 revision 인자를 없앴다. recover는 준비 전 shell tab을 start-failed로 바꾼다.
+- daemon: panel 명령 route(name·move·weights·select·dismiss·client ID 생성)를 requestId 재전송 규칙으로 바꿨고 PUT layout을 제거했다. shell은 preparing tab+Operation 등록 후 202, PTY 준비 뒤 terminal만 연결하며 닫힘·삭제 접수면 cancelled로 PTY를 정리한다. 등록 전 닫기는 204와 삭제 기록이다. shell 생성의 beginUpdate 대기는 제거했고 terminal 종료 정리 경로의 beginUpdate는 유지한다. Host restart·Agent 배치·Host delete도 mutatePanel 경로로 옮겼고, terminal_busy는 execution stage로 기록한다.
+- Web: 승인 범위대로 workspace-preview의 split 생성 두 곳이 새 pane ID에서 split ID(split:<paneId>)를 만들게 했고 fixture·관련 테스트에 split id를 넣었다. 호출 signature는 바꾸지 않아 Stage6의 미커밋 파일(app-shell·workspace-view·pane-tree 등)은 수정하지 않았다.
+- 명세 보완: POST /api/panels의 빈 pane ID는 panel ID와 같다. architecture aiox-storage-terminal·aiox-system의 revision 고정·rename revision 비교·restart CAS 서술을 현재 구현으로 갱신했다.
+- 검증: 새 테스트는 순수 배치 함수, 바뀐 행만 쓰기(trigger 기록)·삭제 ID·재전송, 접수 규칙·재시작 정산, 병렬 등록·먼저 준비된 shell 선전달·준비 중 split 이동 보존·준비 중 닫기 취소·등록 전 닫기·생성 실패·삭제 중 취소, 연결 저장 실패·취소 후 종료 실패 주입을 포함한다. pnpm check exit 0(lint·format·build·typecheck, 전체 816 테스트: daemon 280+1 skipped, web 89, cli 75, persistence 24, protocol 17 등). git diff --check·문서 inline code 검사 통과. 로그는 /private/tmp/claude-501/w12-check.log.
+- 경위: 중간 pnpm check 한 번에서 web storybook section story 2건이 import SyntaxError로 실패했으나 변경과 무관한 파일이었고 web 단독 2회·전체 재실행에서 통과했다. host-state 편집 중 문자열 치환이 routeNetwork의 같은 문구를 잡아 코드 구간이 중복됐고 즉시 제거했다.
+- 미검증·주의: 강제 종료(SIGKILL) 뒤 준비 중 PTY의 잔존 여부는 확인하지 않았다(정상 종료는 진행 중 Operation 대기 후 terminal 정리를 코드로 확인). opt-in 규모 benchmark(AIOX_SCALE=1)는 새 명령 경로로 바꿨지만 실행하지 않았다. 기존 개발 DB는 host_operations.tab_id와 새 테이블이 없어 현재 schema와 맞지 않으므로 사용자 승인 뒤 daemon 종료를 확인하고 재생성해야 한다. Web의 실제 HTTP·SSE 명령 사용과 요청 줄은 Stage6 W10 소유다. commit/push는 하지 않았다.
+
+## 2026-09-24 · 2026-09-24 · W12 리뷰 결함 3건 수정
+
+- 배경: Codex 리뷰가 W12 완료 기록 뒤 결함 3건과 문서 부정확 1건을 보고했다. 코드로 모두 확인했다.
+- P1 연결된 shell 분리: 탭 연결 뒤 Operation 성공 기록 저장이 실패하면 catch가 준비 완료 여부와 무관하게 탭을 terminalId null·start-failed로 바꿔 살아 있는 shell이 분리됐다. 준비 완료(target ready)면 탭을 건드리지 않고 기록 실패만 Operation에 남기도록 바꿨다.
+- P1 재전송 근거 삭제: purgeBefore가 완료 panel Operation도 보존 기간으로 지워 응답 유실 재전송이 원 결과 대신 id_conflict를 받을 수 있었다. panel.* Operation은 재전송 만료 계약 전까지 정리하지 않는다. Host 이력은 기존 보존 정책을 유지한다.
+- P2 requestId 전역 유일성: 새 Host 생성 transaction이 panel 명령 기록과의 requestId 충돌을 검사하지 않았다. 생성 경로에도 공통 검사를 넣었다.
+- 문서 정정: Host restart는 최신 panel에 적용하지만 panel·tab 행을 다시 삽입하므로 "바뀐 행만 쓴다"는 서술을 restart와 구분했다(architecture aiox-storage-terminal). 설정·Web spec의 보존 문장에 202 명령의 panel Operation을 포함했다.
+- 검증: 세 회귀 테스트는 각 수정을 되돌리면 실패하고 수정 후 통과함을 확인했다. pnpm check exit 0(daemon 280+1 skipped, web 89, cli 75, persistence 24, protocol 17 등), git diff --check·문서 inline code 검사 통과. 로그는 /private/tmp/claude-501/w12-check2.log.
+- 남은 판단: panel Operation과 명령 기록은 만료가 없어 누적되고, SSE snapshot은 Operation 전체를 보내므로 장기 사용 시 snapshot이 커진다. 재전송 만료 계약이 필요하다. SIGKILL 뒤 PTY 잔존, 규모 benchmark, 개발 DB 재생성은 이전 기록대로 미완료다.
+
+## 2026-09-25 · W13 Operation 제거·Web 명령 순번·상시 snapshot·Effect 도입
+
+- 배경: 사용자 전달 브리프(2026-09-25)가 W12의 202+Operation 계약을 대체했다. 탭 생성 성공=DB 등록 commit, shell 준비·종료는 daemon 작업과 SSE, 삭제 성공=배치 제거 commit이며 프로세스 정리는 별개 결과, 요청 간 의미상 병합은 하지 않음, 순번·재전송·누락 복구, 상시 snapshot, Effect 적용이 요구였다. 과거 W12 결정(202·Operation 영수증·panel_commands·무기한 보존)은 이 브리프로 대체됐다.
+- 구현(확인한 사실, 코드): protocol은 operationSchema·webSnapshot.operations·HostView.activeOperationId·동작별 panel 요청 schema를 제거하고 webCommandRequestSchema(changes: panel.create/rename/delete, tab.create/move/close/dismiss, split.resize, select)·panelTabTargetSchema(생성·이동 공통)·cleanupViewSchema·webSequenceFailureSchema·hostCommandResult/EventSchema·snapshot epoch를 추가했다. persistence는 host_operations·panel_commands 테이블과 관련 API를 없애고 applyPanel(생성·변경·삭제를 한 transaction)·getHost를 추가했으며 deleted_ids는 유지했다. daemon은 app-state.ts(상시 snapshot·대상 단위 재투영·연결별 key 병합 queue·실패 시 fault 후 queue 안 rebuild), sequencer.ts, web-commands.ts, cleanups.ts, tasks.ts(Effect FiberSet), host-command.ts(requestId 합류·최근 128 결과·Host 단위 host_busy·NDJSON·대상 병렬 실행)를 추가하고 panel-operations.ts·web-events.ts·host-operation-log.ts를 삭제했다. CLI는 host-command.ts로 NDJSON을 읽고 launch 이벤트로 호출 terminal의 foreground Agent를 실행한다.
+- 정한 구현값(요구 근거로 제안·결정, 새 제품 의미 아님): 순번 범위 clientSessionId 하나, 누락 복구 10초, session당 결과 64개, 대기 없는 session 1시간 뒤 망각, 실패 범위 뒤 순번은 범위 끝+1부터, daemon 재시작은 snapshot epoch 변경으로 새 session. 코드는 sequence_gap/sequence_expired/sequence_conflict/result_expired로 네 구분을 제공한다.
+- Effect: effect 3.22.2(v3 latest, npm dist-tags 직접 조회)를 daemon에만 추가했다. @effect/vitest·platform·sql·workflow·rpc는 추가하지 않았다. ExecutionOwner는 단일 소유자로 유지하고 내부 전환은 하지 않았다. Claude 관측 재시도, Codex 준비 timeout·relay, MessageService 저장 재시도·drain, retention은 전환하지 않았다(아래 남은 일).
+- 경위: Effect.tryPromise 기본형이 원 오류를 UnknownException으로 감싸 cleanup 진단이 사라지는 것을 테스트가 잡아 catch를 명시했다. Agent start 검증이 메모리 panel을 읽어 테스트가 DB에 직접 넣은 caller 탭을 못 보던 것을 대상 DB 조회로 바꿨다. W12 작업트리의 panel-operations.ts는 삭제 전 백업 없이 지웠고, 세션 초반 전체 Read 결과로 scratchpad에 복원본을 남겼다(repo 밖, 비영속). 다른 삭제·대체 테스트와 git diff 전체는 삭제 전에 scratchpad에 백업했다. git mv/rm로 index에 staging된 변경은 되돌려 index는 변경 전 상태다.
+- 검증(이 세션 직접 실행): pnpm check exit 0(lint·format:check·build·typecheck·test). daemon 25 files 289 passed·1 skipped(opt-in scale), cli 74, protocol 18, persistence 24, web 89. 새 테스트: sequencer 7, cleanups 2, app-state 4, web-commands 5(실 PTY /bin/sh), protocol 1. host-run 16은 실제 bash·빌드 CLI·호출 terminal restart(launch 경로)를 포함한다. 시간 기반 검증은 모두 실제 시간이며 Effect TestClock은 쓰지 않았다. AIOX_SCALE=1 합성 측정 1회: 200 Host panel·800 tab rebuild 18.0ms, panel 대상 갱신 p50 0.122ms·p95 0.199ms, snapshot 직렬화 0.7ms(244KB). 이전 구현과 같은 조건 비교는 하지 않았다.
+- 남은 일·제한: adapter·MessageService·ExecutionOwner 내부의 Effect 전환 미수행(fake timer 기반 테스트와 Effect scheduler 상호작용 미검증, @effect/vitest는 Vitest 4.1.6 peer 범위 밖). SIGKILL 후 PTY 잔존은 미검증. 순번 기록·Host 결과·정리 registry는 메모리라 daemon 재시작 뒤 이어지지 않는다(삭제 ID만 DB). 느린 SSE 연결의 병합 queue는 비상태 이벤트 256개 초과 시 연결을 닫는다. React의 새 명령·cleanup·request-failure 소비는 Stage6 W10. 개발 DB의 옛 host_operations·panel_commands 테이블은 남아도 사용하지 않으며 삭제는 하지 않았다. commit·push는 하지 않았다.

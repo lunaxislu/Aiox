@@ -8,11 +8,11 @@ import type {
     VendorBinding,
     VendorLaunchInput,
 } from "@aiox/vendor";
+import { Effect } from "effect";
 import { expect, test, vi } from "vitest";
 
 import { restartCommand } from "./managed-agents";
-import { startTestDaemon } from "./testing";
-import { readWebSnapshot } from "./web-state";
+import { openTestApplication, startTestDaemon } from "./testing";
 
 test.skipIf(process.platform === "win32")(
     "real shell and built CLI retain terminal identity across managed execution and explicit stop",
@@ -20,15 +20,15 @@ test.skipIf(process.platform === "win32")(
         const launches: VendorLaunchInput[] = [];
         const adapter: VendorAdapter = {
             id: "codex",
-            async createExecution() {
-                return {
+            createExecution() {
+                return Effect.succeed({
                     connection: null,
-                    async start(command, owner) {
+                    start(command, owner) {
                         return owner.foreground(
                             command as Parameters<typeof owner.foreground>[0],
                         );
                     },
-                };
+                });
             },
             createBinding(controls) {
                 let ready = false;
@@ -113,9 +113,7 @@ test.skipIf(process.platform === "win32")(
                 type: "pane",
                 id: "pane",
                 tabIds: ["tab"],
-                selectedTabId: "tab",
             },
-            activePaneId: "pane",
             tabs: [
                 {
                     id: "tab",
@@ -137,7 +135,6 @@ test.skipIf(process.platform === "win32")(
             revision: 1,
             panelId: "p",
             networkId: "n",
-            activeOperationId: null,
             agents: [
                 {
                     key: "agent",
@@ -167,6 +164,11 @@ test.skipIf(process.platform === "win32")(
             panel,
             Date.now(),
         );
+        // Seeded directly in storage: announce it as a producer would.
+        await h.daemon.services.appState.update(
+            { host: "h" },
+            { panel: panel.id },
+        );
         const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
         const command = `env HOME=${quote(h.home)} AIOX_HOST_ID=h AIOX_AGENT_KEY=agent ${quote(process.execPath)} ${quote(resolve("../cli/dist/main.js"))} agent run codex`;
         session.write(`${command}\n`);
@@ -174,28 +176,28 @@ test.skipIf(process.platform === "win32")(
             async () => {
                 expect(output).toContain("VENDOR_READY");
                 expect(
-                    (await readWebSnapshot(h.daemon.services)).hosts[0]!
+                    (await h.daemon.services.appState.current()).hosts[0]!
                         .agents[0]!.runtime?.phase,
                 ).toBe("running");
             },
             { timeout: 10000 },
         );
         const first = h.daemon.services.runtimes.list()[0]!;
-        const stream = await fetch(h.webUrl("/api/web/events"));
-        const reader = stream.body!.getReader();
-        let frame = "";
-        while (!frame.includes("\n\n"))
-            frame += Buffer.from((await reader.read()).value!).toString();
-        expect(frame).toContain('"phase":"running"');
-        expect(frame).toContain(first.id);
-        await reader.cancel();
+        const application = await openTestApplication(h);
+        try {
+            const initial = await application.next();
+            expect(JSON.stringify(initial)).toContain('"phase":"running"');
+            expect(JSON.stringify(initial)).toContain(first.id);
+        } finally {
+            await application.close();
+        }
 
         session.write("exit\n");
         await vi.waitFor(() =>
             expect(h.daemon.services.runtimes.list()).toHaveLength(0),
         );
         expect(
-            (await readWebSnapshot(h.daemon.services)).hosts[0]!.agents[0]!
+            (await h.daemon.services.appState.current()).hosts[0]!.agents[0]!
                 .lastExit?.kind,
         ).toBe("exited");
         session.write("printf 'SHELL_RETURNED\\n'\n");
@@ -216,7 +218,7 @@ test.skipIf(process.platform === "win32")(
         expect(second.terminalId).toBe(shell.id);
         await h.daemon.stopRuntime(second.id);
         expect(session.alive).toBe(true);
-        const snapshot = await readWebSnapshot(h.daemon.services);
+        const snapshot = await h.daemon.services.appState.current();
         expect(snapshot.hosts[0]!.agents[0]!.lastExit?.kind).toBe("stopped");
         expect(snapshot.panels[0]!.tabs[0]!.presentation).toBe("stopped");
         session.write("printf 'AFTER_STOP\\n'\n");

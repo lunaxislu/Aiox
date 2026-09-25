@@ -1,5 +1,7 @@
 import { open } from "node:fs/promises";
 
+import { Effect, Semaphore } from "effect";
+
 /** Reads vendor-owned JSONL; never creates or modifies the transcript. */
 export class ClaudeTranscript {
     #offset = 0;
@@ -7,7 +9,7 @@ export class ClaudeTranscript {
     #skipPartial = false;
     #closed = false;
     #retired = false;
-    #queue = Promise.resolve();
+    readonly #queue = Effect.runSync(Semaphore.make(1));
     constructor(
         public path: string,
         readonly consume: (row: unknown) => Promise<void>,
@@ -53,9 +55,14 @@ export class ClaudeTranscript {
     }
 
     read(): Promise<void> {
-        const next = this.#queue.then(() => this.#read());
-        this.#queue = next.catch(() => {});
-        return next;
+        return Effect.runPromise(
+            Semaphore.withPermit(this.#queue)(
+                Effect.tryPromise({
+                    try: () => this.#read(),
+                    catch: (error) => error,
+                }),
+            ),
+        );
     }
 
     relocate(path: string): void {
@@ -65,13 +72,13 @@ export class ClaudeTranscript {
 
     async close(): Promise<void> {
         this.#closed = true;
-        await this.#queue;
+        await Effect.runPromise(Semaphore.withPermit(this.#queue)(Effect.void));
     }
 
     /** Finish the active snapshot, without starting queued or future reads. */
     async retire(): Promise<void> {
         this.#retired = true;
-        await this.#queue;
+        await Effect.runPromise(Semaphore.withPermit(this.#queue)(Effect.void));
         this.#closed = true;
     }
 

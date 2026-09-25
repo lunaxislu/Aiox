@@ -4,31 +4,32 @@ import { join } from "node:path";
 
 import { saveConfig } from "@aiox/config";
 import {
-    operationSchema,
+    hostCommandResultSchema,
     panelLayoutReferences,
     type PanelLayout,
 } from "@aiox/protocol";
 import type { VendorAdapter, VendorBinding } from "@aiox/vendor";
+import { Effect } from "effect";
 import { expect, test, vi } from "vitest";
 
 import { placeAgent } from "./host-agents";
 import { initialHostPanel, launcher } from "./host-run";
-import { startTestDaemon } from "./testing";
+import { hostResult, startTestDaemon } from "./testing";
 
 test.skipIf(process.platform === "win32")(
     "Agent commands validate before stop, preserve shells, apply scoped YAML and expose failures",
     async (t) => {
         const adapter: VendorAdapter = {
             id: "codex",
-            async createExecution() {
-                return {
+            createExecution() {
+                return Effect.succeed({
                     connection: null,
-                    async start(command, owner) {
+                    start(command, owner) {
                         return owner.foreground(
                             command as Parameters<typeof owner.foreground>[0],
                         );
                     },
-                };
+                });
             },
             createBinding(controls) {
                 let ready = false;
@@ -102,26 +103,17 @@ test.skipIf(process.platform === "win32")(
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify(body),
             });
-            return { status: r.status, body: await r.json() };
+            return r.headers.get("content-type")?.includes("ndjson")
+                ? { status: r.status, body: await hostResult(r) }
+                : { status: r.status, body: await r.json() };
         };
         const request = () => ({
             requestId: randomUUID(),
             source: { directory: h.home },
         });
         const finish = async (result: Awaited<ReturnType<typeof post>>) => {
-            expect(result.status).toBe(202);
-            const admitted = operationSchema.parse(result.body);
-            let op = admitted;
-            await vi.waitFor(
-                async () => {
-                    op = (
-                        await h.daemon.services.db.hostState.snapshot()
-                    ).operations.find((o) => o.id === admitted.id)!;
-                    expect(op.state).not.toBe("running");
-                },
-                { timeout: 20000 },
-            );
-            return op;
+            expect(result.status).toBe(200);
+            return hostCommandResultSchema.parse(result.body);
         };
         expect(
             (await finish(await post("/api/hosts/run", request()))).state,
@@ -313,9 +305,16 @@ test.skipIf(process.platform === "win32")(
         expect(started.state).toBe("succeeded");
         expect(runtime("a")!.id).not.toBe(initial);
         expect(runtime("a")!.terminalId).toBe(terminal);
-        expect(
-            (await post("/api/hosts/agents/start", start)).body,
-        ).toMatchObject({ id: started.id });
+        const activeRuntimeId = runtime("a")!.id;
+        // Finalized commands retain the request key, not the result payload.
+        // Replays are rejected without executing the start again.
+        const replay = await post("/api/hosts/agents/start", start);
+        expect(replay.status).toBe(409);
+        expect(replay.body).toMatchObject({
+            code: "result_expired",
+            stage: "cli",
+        });
+        expect(runtime("a")!.id).toBe(activeRuntimeId);
         const after = (await h.daemon.services.db.hostState.snapshot())
             .networks[0]!;
         expect(
@@ -360,9 +359,9 @@ test.skipIf(process.platform === "win32")(
             presentation: "shell",
             notice: null,
         });
-        await h.daemon.services.db.hostState.updatePanel(
-            { ...current, revision: current.revision + 1 },
-            current.revision,
+        await h.daemon.services.db.hostState.mutatePanel(
+            current.id,
+            () => current,
         );
         const script = join(h.home, "caller.cjs");
         await writeFile(
@@ -403,9 +402,11 @@ test.skipIf(process.platform === "win32")(
         await vi.waitFor(
             async () =>
                 expect(
-                    (await h.daemon.services.db.hostState.snapshot()).hosts[0]!
-                        .activeOperationId,
-                ).toBeNull(),
+                    h.daemon.services.hostCommands.busy(
+                        (await h.daemon.services.db.hostState.snapshot())
+                            .hosts[0]!.id,
+                    ),
+                ).toBe(false),
             { timeout: 15000 },
         );
         expect(runtime("a")!.terminalId).toBe(caller.id);
@@ -522,15 +523,16 @@ test.skipIf(process.platform === "win32")(
             type: "pane" as const,
             id,
             tabIds,
-            selectedTabId: tabIds[0] ?? null,
         });
         manual.layout = {
             type: "split",
+            id: "split-1",
             axis: "x",
             weights: [0.5, 0.5],
             children: [
                 {
                     type: "split",
+                    id: "split-2",
                     axis: "y",
                     weights: [0.5, 0.5],
                     children: [
@@ -540,6 +542,7 @@ test.skipIf(process.platform === "win32")(
                 },
                 {
                     type: "split",
+                    id: "split-3",
                     axis: "y",
                     weights: [0.5, 0.5],
                     children: [
@@ -552,10 +555,9 @@ test.skipIf(process.platform === "win32")(
                 },
             ],
         };
-        manual.activePaneId = "top-left";
-        await h.daemon.services.db.hostState.updatePanel(
-            { ...manual, revision: manual.revision + 1 },
-            manual.revision,
+        await h.daemon.services.db.hostState.mutatePanel(
+            manual.id,
+            () => manual,
         );
         await writeFile(
             script,
@@ -572,9 +574,11 @@ test.skipIf(process.platform === "win32")(
         await vi.waitFor(
             async () =>
                 expect(
-                    (await h.daemon.services.db.hostState.snapshot()).hosts[0]!
-                        .activeOperationId,
-                ).toBeNull(),
+                    h.daemon.services.hostCommands.busy(
+                        (await h.daemon.services.db.hostState.snapshot())
+                            .hosts[0]!.id,
+                    ),
+                ).toBe(false),
             { timeout: 15000 },
         );
         const placed = (await h.daemon.services.db.hostState.snapshot())
@@ -586,7 +590,6 @@ test.skipIf(process.platform === "win32")(
             (p) => p.id === "top-right",
         )!;
         expect(right.tabIds).toContain(second.id);
-        expect(right.selectedTabId).toBe(cTab.id);
         expect(runtime("a")!.terminalId).toBe(caller.id);
         await h.daemon.services.lifecycle.stopRuntime(runtime("a")!.id);
         await vi.waitFor(() => expect(output).toContain("CALLER_DONE"), {
@@ -596,7 +599,7 @@ test.skipIf(process.platform === "win32")(
     90000,
 );
 
-test("placement uses current pane order, caller slot and stopped seats without changing selection", () => {
+test("placement uses current pane order, caller slot and stopped seats", () => {
     const panel = initialHostPanel("h", "n", "Host", ["a", "b", "c"], {
         preset: "auto",
     });
@@ -608,12 +611,10 @@ test("placement uses current pane order, caller slot and stopped seats without c
     b.terminalId = "caller";
     b.presentation = "shell";
     b.agentKey = null;
-    const selections = panes.map((p) => p.selectedTabId);
     expect(placeAgent(panel, "a", 0, "caller").id).toBe(b.id);
     const added = placeAgent(panel, "d", 1, "caller");
     expect(panes[2]!.tabIds).toContain(added.id);
     expect(a.presentation).toBe("stopped");
-    expect(panes.map((p) => p.selectedTabId)).toEqual(selections);
     expect(placeAgent(panel, "a", 0).id).toBe(a.id);
 });
 
@@ -631,17 +632,20 @@ test.each([
         const panes = panelLayoutReferences(panel.layout).panes;
         panel.layout = {
             type: "split",
+            id: "split-4",
             axis: "x",
             weights: [0.4, 0.6],
             children: [
                 {
                     type: "split",
+                    id: "split-5",
                     axis: "y",
                     weights: left,
                     children: [panes[0]!, panes[2]!],
                 },
                 {
                     type: "split",
+                    id: "split-6",
                     axis: "y",
                     weights: right,
                     children: [panes[1]!, panes[3]!],
@@ -650,14 +654,11 @@ test.each([
         };
         panel.tabs[0]!.terminalId = "caller";
         panel.tabs[0]!.presentation = "shell";
-        const selections = panes.map((p) => p.selectedTabId),
-            layoutBefore = structuredClone(panel.layout);
+        const layoutBefore = structuredClone(panel.layout);
         for (let index = 0; index < 4; index++) {
             const added = placeAgent(panel, `new-${index}`, index, "caller");
             expect(panes[order[index]!]!.tabIds).toContain(added.id);
         }
-        expect(panes.map((p) => p.selectedTabId)).toEqual(selections);
-        expect(panel.activePaneId).toBe(panes[0]!.id);
         // Geometry is only read: keep the user's split tree and weights.
         const shape = (layout: PanelLayout): unknown =>
             layout.type === "pane"
@@ -709,7 +710,5 @@ test("Agent HTTP keeps config then YAML then CLI error precedence before any mut
         status: 400,
         body: { code: "invalid_request", stage: "cli" },
     });
-    expect(
-        (await h.daemon.services.db.hostState.snapshot()).operations,
-    ).toEqual([]);
+    expect((await h.daemon.services.db.hostState.snapshot()).hosts).toEqual([]);
 });

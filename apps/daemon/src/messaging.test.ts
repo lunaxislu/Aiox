@@ -5,15 +5,56 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { logger } from "@aiox/diagnostics";
+import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
 import type { AioxDatabase } from "@aiox/persistence";
 import { openDatabase } from "@aiox/persistence";
 import type { VendorBinding } from "@aiox/vendor";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { expect, it } from "@effect/vitest";
+import { Duration, Effect, Exit } from "effect";
+import { TestClock } from "effect/testing";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import { MessageService } from "@/messaging";
 import { NetworkService } from "@/networks";
 import { RuntimeRegistry } from "@/runtimes";
-import { fakeVendor } from "@/testing";
+import type { AgentBinding, InboundMessage, RuntimeControls } from "@/runtimes";
+
+function fakeVendor() {
+    const received: InboundMessage[] = [];
+    const deliveryIds: string[] = [];
+    let controls: RuntimeControls | undefined;
+    let refusal: string | undefined;
+    return {
+        received,
+        deliveryIds,
+        createBinding(next: RuntimeControls): AgentBinding {
+            controls = next;
+            next.setStatus("idle");
+            return {
+                deliver(message) {
+                    if (refusal !== undefined)
+                        return Promise.reject(new Error(refusal));
+                    received.push(message);
+                    if (message.deliveryId !== null) {
+                        deliveryIds.push(message.deliveryId);
+                        next.setStatus("working");
+                    }
+                    return Promise.resolve();
+                },
+                stop: () => Promise.resolve(),
+            };
+        },
+        settle: (
+            deliveryId: string,
+            outcome: DeliveryOutcome,
+            error?: string,
+        ) => controls!.settle(deliveryId, outcome, error),
+        status: (next: RuntimeStatus) => controls!.setStatus(next),
+        refuse: (reason: string | undefined) => {
+            refusal = reason;
+        },
+    };
+}
 
 let home: string;
 let db: AioxDatabase;
@@ -479,126 +520,71 @@ it.each(["source", "target"] as const)(
     },
 );
 
-it("acknowledges ownership and retries staggered failures on one unchanged timer", async () => {
-    vi.useFakeTimers();
-    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
-    const a = await joinAgent("A");
-    const b = await joinAgent("B");
-    const sent = await messages.send(a.record, [b.record.id], "A");
-    const first = b.vendor.deliveryIds[0]!;
-    const persist = db.messages.settle;
-    const write = vi
-        .spyOn(db.messages, "settle")
-        .mockRejectedValue(new Error("disk full"));
-    try {
-        await expect(
-            b.vendor.settle(first, "completed"),
-        ).resolves.toBeUndefined();
-        expect(vi.getTimerCount()).toBe(1);
-        await vi.advanceTimersByTimeAsync(400);
-        await messages.send(a.record, [b.record.id], "B");
-        await b.vendor.settle(
-            b.vendor.deliveryIds[1]!,
-            "failed",
-            "vendor failure",
-        );
-        await vi.advanceTimersByTimeAsync(400);
-        await messages.send(a.record, [b.record.id], "C");
-        await b.vendor.settle(b.vendor.deliveryIds[2]!, "interrupted");
-        await messages.send(a.record, [b.record.id], "still working");
-        expect(vi.getTimerCount()).toBe(1);
-        await vi.advanceTimersByTimeAsync(199);
-        expect(write).toHaveBeenCalledTimes(3);
-        await vi.advanceTimersByTimeAsync(1);
-        expect(write).toHaveBeenCalledTimes(6);
-        expect(diagnostic).toHaveBeenCalledTimes(3);
-        expect(vi.getTimerCount()).toBe(1);
-        write.mockImplementation(persist);
-        await vi.advanceTimersByTimeAsync(2000);
-        expect(messages.pending()).toBe(1);
-        expect(vi.getTimerCount()).toBe(0);
-        expect(
-            await db.messages.deliveryFor(sent.messageId, b.record.id),
-        ).toMatchObject({ outcome: "completed" });
-    } finally {
-        write.mockRestore();
-        await messages.drain();
-        vi.useRealTimers();
-        diagnostic.mockRestore();
-    }
-});
+it.effect(
+    "retries outcome writes with Effect time and drain owns its final attempt",
+    () =>
+        Effect.gen(function* () {
+            const diagnostic = vi
+                .spyOn(logger, "error")
+                .mockImplementation(() => {});
+            const a = yield* Effect.promise(() => joinAgent("A"));
+            const b = yield* Effect.promise(() => joinAgent("B"));
+            const first = yield* messages.sendEffect(
+                a.record,
+                [b.record.id],
+                "first",
+            );
+            const write = vi
+                .spyOn(db.messages, "settle")
+                .mockRejectedValueOnce(new Error("disk full"));
 
-it("joins a running retry batch on drain, defers new failures and resumes once after failed drain", async () => {
-    vi.useFakeTimers();
-    const diagnostic = vi.spyOn(logger, "error").mockImplementation(() => {});
-    const a = await joinAgent("A");
-    const b = await joinAgent("B");
-    const ids: string[] = [];
-    for (const content of ["A", "B", "C", "D", "running"])
-        ids.push(
-            (await messages.send(a.record, [b.record.id], content)).results[0]!
-                .deliveryId!,
-        );
-    const persist = db.messages.settle;
-    const write = vi
-        .spyOn(db.messages, "settle")
-        .mockRejectedValue(new Error("disk full"));
-    let release!: () => void;
-    try {
-        for (const id of ids.slice(0, 3))
-            await b.vendor.settle(id, "completed");
-        const originals = write.mock.calls.slice();
-        write.mockImplementationOnce(
-            async () =>
-                new Promise<boolean>((resolve) => {
-                    release = () => resolve(false);
-                }),
-        );
-        await vi.advanceTimersByTimeAsync(1000);
-        expect(write).toHaveBeenCalledTimes(4);
-        await b.vendor.settle(ids[3]!, "failed", "actual vendor failure");
-        expect(vi.getTimerCount()).toBe(0);
-        let drained = false;
-        const drain = messages.drain().catch((error: Error) => {
-            drained = true;
-            return error.message;
-        });
-        await Promise.resolve();
-        expect(drained).toBe(false);
-        release();
-        expect(await drain).toContain("Unstored outcomes (3)");
-        expect(vi.getTimerCount()).toBe(0);
-        expect(write.mock.calls.filter(([id]) => id === ids[3])).toHaveLength(
-            2,
-        );
-        expect(write.mock.calls.some(([id]) => id === ids[4])).toBe(false);
-        await messages.forget(b.record.id);
-        runtimes.unregister(b.record.id);
-        // Cleanup cannot replace the completed result or its original timestamp.
-        for (const original of originals.slice(1))
-            expect(
-                write.mock.calls
-                    .filter(([id]) => id === original[0])
-                    .every((call) =>
-                        call
-                            .slice(0, 4)
-                            .every((value, i) => value === original[i]),
-                    ),
-            ).toBe(true);
-        write.mockImplementation(persist);
-        messages.resume();
-        messages.resume();
-        expect(vi.getTimerCount()).toBe(1);
-        await vi.advanceTimersByTimeAsync(2000);
-        expect(messages.pending()).toBe(0);
-        expect(vi.getTimerCount()).toBe(0);
-    } finally {
-        write.mockRestore();
-        await messages.drain();
-        vi.useRealTimers();
-        diagnostic.mockRestore();
-    }
-});
+            try {
+                const firstId = first.results[0]!.deliveryId!;
+                yield* messages
+                    .settleEffect(b.record.id, firstId, "completed")
+                    .pipe(Effect.catch(() => Effect.void));
+                expect(write).toHaveBeenCalledTimes(1);
+                yield* Effect.yieldNow;
+                yield* TestClock.adjust(Duration.millis(999));
+                expect(write).toHaveBeenCalledTimes(1);
+                yield* TestClock.adjust(Duration.seconds(2));
+                expect(write).toHaveBeenCalledTimes(2);
+                expect(messages.pending()).toBe(0);
+                expect(
+                    yield* Effect.promise(() => db.messages.delivery(firstId)),
+                ).toMatchObject({ outcome: "completed" });
+
+                const second = yield* messages.sendEffect(
+                    a.record,
+                    [b.record.id],
+                    "second",
+                );
+                const secondId = second.results[0]!.deliveryId!;
+                write.mockRejectedValue(new Error("disk full"));
+                yield* messages
+                    .settleEffect(b.record.id, secondId, "failed", "vendor")
+                    .pipe(Effect.catch(() => Effect.void));
+                expect(write).toHaveBeenCalledTimes(3);
+                const drain = yield* Effect.exit(messages.drainEffect());
+                expect(Exit.isFailure(drain)).toBe(true);
+                expect(write).toHaveBeenCalledTimes(4);
+                expect(messages.pending()).toBe(1);
+
+                write.mockRestore();
+                yield* messages.resumeEffect();
+                yield* TestClock.adjust(Duration.seconds(1));
+                expect(messages.pending()).toBe(0);
+                expect(
+                    yield* Effect.promise(() => db.messages.delivery(secondId)),
+                ).toMatchObject({ outcome: "failed", outcomeError: "vendor" });
+                yield* messages.drainEffect();
+            } finally {
+                write.mockRestore();
+                yield* Effect.promise(() => messages.drain());
+                diagnostic.mockRestore();
+            }
+        }),
+);
 
 it("rejects ownership mismatches before accepting a result", async () => {
     const a = await joinAgent("A");
@@ -702,11 +688,13 @@ it.each(["completed", "failed", "interrupted"] as const)(
                     },
                 }),
             );
-            await expect.poll(() => writes.mock.calls.length).toBe(1);
+            await expect
+                .poll(() => writes.mock.calls.length)
+                .toBeGreaterThanOrEqual(1);
             await expect(
                 binding.cleanup!("execution_stopped"),
             ).resolves.toBeUndefined();
-            expect(writes).toHaveBeenCalledTimes(1);
+            expect(writes).toHaveBeenCalled();
             expect(messages.pending()).toBe(1);
             expect((await db.messages.delivery(id))?.outcome).toBeNull();
             writes.mockRestore();

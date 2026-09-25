@@ -3,8 +3,9 @@ import { randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
+
+import { Clock, Duration, Effect, Option, Semaphore } from "effect";
 
 export type ShellLaunch = {
     file: string;
@@ -158,69 +159,108 @@ end
         rmSync(directory, { recursive: true, force: true });
         throw error;
     }
-    let asking = false;
-    const ask = async (
-        pid: number,
-        action: "query" | "close",
-    ): Promise<boolean> => {
-        if (asking) return false;
-        asking = true;
-        try {
-            readFileSync(ready);
-            // The job table omits disowned children. This is a conservative
-            // extra blocker, never the evidence that permits shell exit.
-            // ponytail: one ps snapshot per request; batch if many shells make stop slow.
-            const { stdout } = await execute(
-                "/bin/ps",
-                ["-axo", "pid=,ppid=,comm="],
-                { timeout: 500, maxBuffer: 4 * 1024 * 1024 },
-            );
-            const rows = stdout
-                .trim()
-                .split("\n")
-                .map((row) => row.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/));
-            if (
-                rows.some(
-                    (row) =>
-                        !row ||
-                        !Number.isSafeInteger(Number(row[1])) ||
-                        !Number.isSafeInteger(Number(row[2])),
-                )
-            )
-                return false;
-            const own = rows.find((row) => Number(row![1]) === pid);
-            if (
-                !own ||
-                basename(own[3]!) !== name ||
-                rows.some((row) => Number(row![2]) === pid)
-            )
-                return false;
-            const token = randomBytes(16).toString("hex");
-            writeFileSync(request, `${action} ${token}\n`, { mode: 0o600 });
-            // WINCH's default action does not terminate an exec replacement.
-            // Only our shell handler can acknowledge or exit; silence is busy.
-            process.kill(pid, "SIGWINCH");
-            const deadline = Date.now() + 500;
-            do {
-                try {
-                    const result = readFileSync(response, "utf8").trim();
-                    if (result === `${token} busy`) return false;
-                    if (
-                        result ===
-                        `${token} ${action === "close" ? "closing" : "idle"}`
-                    )
-                        return true;
-                } catch {}
-                await setTimeout(10);
-            } while (Date.now() < deadline);
-            return false;
-        } catch {
-            return false;
-        } finally {
-            rmSync(request, { force: true });
-            asking = false;
-        }
-    };
+    const asking = Effect.runSync(Semaphore.make(1));
+    const ask = (pid: number, action: "query" | "close"): Promise<boolean> =>
+        Effect.runPromise(
+            Effect.gen(function* () {
+                const attempt = yield* Semaphore.withPermitsIfAvailable(
+                    asking,
+                    1,
+                )(
+                    Effect.gen(function* () {
+                        const result = Effect.gen(function* () {
+                            yield* Effect.try({
+                                try: () => readFileSync(ready),
+                                catch: (error) => error,
+                            });
+                            // job table omits disowned children. This conservative
+                            // extra blocker never treats them as permission to exit.
+                            const { stdout } = yield* Effect.tryPromise({
+                                try: () =>
+                                    execute(
+                                        "/bin/ps",
+                                        ["-axo", "pid=,ppid=,comm="],
+                                        {
+                                            timeout: 500,
+                                            maxBuffer: 4 * 1024 * 1024,
+                                        },
+                                    ),
+                                catch: (error) => error,
+                            });
+                            const rows = stdout
+                                .trim()
+                                .split("\n")
+                                .map((row) =>
+                                    row.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/),
+                                );
+                            if (
+                                rows.some(
+                                    (row) =>
+                                        !row ||
+                                        !Number.isSafeInteger(Number(row[1])) ||
+                                        !Number.isSafeInteger(Number(row[2])),
+                                )
+                            )
+                                return false;
+                            const own = rows.find(
+                                (row) => Number(row![1]) === pid,
+                            );
+                            if (
+                                !own ||
+                                basename(own[3]!) !== name ||
+                                rows.some((row) => Number(row![2]) === pid)
+                            )
+                                return false;
+                            const token = randomBytes(16).toString("hex");
+                            yield* Effect.try({
+                                try: () =>
+                                    writeFileSync(
+                                        request,
+                                        `${action} ${token}\n`,
+                                        { mode: 0o600 },
+                                    ),
+                                catch: (error) => error,
+                            });
+                            // Only the shell's own handler may acknowledge or exit.
+                            yield* Effect.try({
+                                try: () => process.kill(pid, "SIGWINCH"),
+                                catch: (error) => error,
+                            });
+                            const deadline =
+                                (yield* Clock.currentTimeMillis) + 500;
+                            while (
+                                (yield* Clock.currentTimeMillis) < deadline
+                            ) {
+                                const value = yield* Effect.try({
+                                    try: () =>
+                                        readFileSync(response, "utf8").trim(),
+                                    catch: (error) => error,
+                                }).pipe(Effect.catch(() => Effect.succeed("")));
+                                if (value === `${token} busy`) return false;
+                                if (
+                                    value ===
+                                    `${token} ${action === "close" ? "closing" : "idle"}`
+                                )
+                                    return true;
+                                yield* Effect.clockWith((clock) =>
+                                    clock.sleep(Duration.millis(10)),
+                                );
+                            }
+                            return false;
+                        });
+                        return yield* result.pipe(
+                            Effect.catch(() => Effect.succeed(false)),
+                            Effect.ensuring(
+                                Effect.sync(() =>
+                                    rmSync(request, { force: true }),
+                                ),
+                            ),
+                        );
+                    }),
+                );
+                return Option.isSome(attempt) ? attempt.value : false;
+            }),
+        );
     return {
         file: input.file,
         args,

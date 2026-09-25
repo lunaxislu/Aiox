@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import type { IncomingMessage } from "node:http";
 
+import { Duration, Effect, Fiber } from "effect";
 import { WebSocket, WebSocketServer } from "ws";
 
 const threadMethods = new Set(["thread/start", "thread/resume", "thread/fork"]);
@@ -40,7 +41,7 @@ export async function createRelay() {
             peer: WebSocket;
             id: string;
             threadId: string;
-            timer: ReturnType<typeof setTimeout>;
+            timer: Fiber.Fiber<void, never>;
         }
     >();
     const state = (): RelayState => ({
@@ -58,7 +59,7 @@ export async function createRelay() {
         for (const [key, request] of requests) {
             if (peer && request.peer !== peer) continue;
             const { client, id, timer } = request;
-            clearTimeout(timer);
+            Effect.runFork(Fiber.interrupt(timer));
             requests.delete(key);
             send(client, {
                 type: "response",
@@ -98,7 +99,7 @@ export async function createRelay() {
                 if (control === client) control = undefined;
                 for (const [key, value] of requests)
                     if (value.client === client) {
-                        clearTimeout(value.timer);
+                        Effect.runFork(Fiber.interrupt(value.timer));
                         requests.delete(key);
                     }
             });
@@ -127,14 +128,21 @@ export async function createRelay() {
                 }
                 const id = `aiox:${randomBytes(24).toString("hex")}`;
                 const originalId = message.id;
-                const timer = setTimeout(() => {
-                    requests.delete(id);
-                    send(client, {
-                        type: "response",
-                        id: originalId,
-                        error: "Codex input acceptance timed out; outcome is unknown. Input was not retried.",
-                    });
-                }, 30_000);
+                const timer = Effect.runFork(
+                    Effect.gen(function* () {
+                        yield* Effect.clockWith((clock) =>
+                            clock.sleep(Duration.millis(30_000)),
+                        );
+                        const pending = requests.get(id);
+                        if (pending?.client !== client) return;
+                        requests.delete(id);
+                        send(client, {
+                            type: "response",
+                            id: originalId,
+                            error: "Codex input acceptance timed out; outcome is unknown. Input was not retried.",
+                        });
+                    }),
+                );
                 requests.set(id, {
                     client,
                     peer: upstream,
@@ -257,7 +265,7 @@ export async function createRelay() {
             ) {
                 const pending = requests.get(message.id)!;
                 requests.delete(message.id);
-                clearTimeout(pending.timer);
+                Effect.runFork(Fiber.interrupt(pending.timer));
                 send(pending.client, {
                     type: "response",
                     id: pending.id,

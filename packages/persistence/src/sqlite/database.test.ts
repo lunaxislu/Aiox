@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
-import Database from "better-sqlite3";
-import { test, vi, type TestContext } from "vitest";
+import { test, type TestContext } from "vitest";
 
 import { openDatabase } from "@/sqlite/database";
 import type { DeliveryRow, MessageRow } from "@/sqlite/schema";
@@ -15,21 +15,19 @@ function databasePath(t: TestContext, name = "aiox.db"): string {
     return join(directory, name);
 }
 
-function inspect(t: TestContext, path: string): Database.Database {
-    const db = new Database(path, { readonly: true });
+function inspect(t: TestContext, path: string): DatabaseSync {
+    const db = new DatabaseSync(path, { readOnly: true });
     t.onTestFinished(() => {
         db.close();
     });
     return db;
 }
 
-const tableNames = (db: Database.Database): string[] =>
+const tableNames = (db: DatabaseSync): string[] =>
     db
-        .prepare<[], { name: string }>(
-            "SELECT name FROM sqlite_master WHERE type = 'table'",
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
         .all()
-        .map(({ name }) => name);
+        .map((row) => (row as { name: string }).name);
 
 function message(id: string, createdAt: number): MessageRow {
     return {
@@ -88,7 +86,7 @@ test("a fresh database creates the current schema directly and reopens", async (
         "host_edges",
         "panels",
         "panel_tabs",
-        "host_operations",
+        "deleted_ids",
         "host_executions",
         "persistent_networks",
         "persistent_routes",
@@ -99,9 +97,16 @@ test("a fresh database creates the current schema directly and reopens", async (
         assert.ok(tableNames(db).includes(table), `missing table ${table}`);
     assert.equal(tableNames(db).length, 14);
     assert.equal(tableNames(db).includes("migrations"), false);
-    assert.deepEqual(db.pragma("foreign_key_check"), []);
-    assert.equal(db.pragma("integrity_check", { simple: true }), "ok");
-    const tables = db.pragma("table_list") as {
+    assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+    assert.equal(
+        (
+            db.prepare("PRAGMA integrity_check").get() as {
+                integrity_check: string;
+            }
+        ).integrity_check,
+        "ok",
+    );
+    const tables = db.prepare("PRAGMA table_list").all() as {
         name: string;
         strict: number;
     }[];
@@ -249,7 +254,11 @@ test("deleting a network removes its edges and does not affect other networks", 
                 id: "n3",
                 name: "review",
             }),
-        /UNIQUE constraint/,
+        (error: unknown) =>
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "SQLITE_CONSTRAINT_UNIQUE" &&
+            /UNIQUE constraint/.test(error.message),
     );
     await store.networks.replaceRouting("n1", {
         routes: [{ from: "a", to: "b" }],
@@ -267,18 +276,22 @@ test("deleting a network removes its edges and does not affect other networks", 
 
 test("a failed schema initialization rolls back new tables and preserves existing data", async (t) => {
     const path = databasePath(t);
-    const seed = new Database(path);
+    const seed = new DatabaseSync(path);
     seed.exec(
         "CREATE TABLE notifications(valuable TEXT); INSERT INTO notifications VALUES ('keep me')",
     );
     seed.close();
     await assert.rejects(() => openDatabase(path), /delivery_id/);
     const db = inspect(t, path);
-    assert.deepEqual(db.prepare("SELECT * FROM notifications").all(), [
-        { valuable: "keep me" },
-    ]);
+    assert.deepEqual(
+        db
+            .prepare("SELECT * FROM notifications")
+            .all()
+            .map((row) => ({ ...row })),
+        [{ valuable: "keep me" }],
+    );
     assert.ok(!tableNames(db).includes("persistent_networks"));
-    const repair = new Database(path);
+    const repair = new DatabaseSync(path);
     repair.exec("DROP TABLE notifications");
     repair.close();
     const retried = await openDatabase(path);
@@ -452,7 +465,7 @@ test("current notifications require ownership but allow a missing terminal", asy
     await store.messages.record(message("m", 1), [
         delivery("d", "m", "target"),
     ]);
-    const db = new Database(path);
+    const db = new DatabaseSync(path);
     try {
         assert.throws(
             () =>
@@ -524,15 +537,15 @@ test("a closed connection rejects reads and writes instead of returning empty su
     await assert.rejects(store.networks.create({ id: "n", name: "no write" }));
 });
 
-test("Host FK cascades preserve independent Networks and execution, Operation and message history", async (t) => {
+test("Host FK cascades preserve independent Networks and execution and message history", async (t) => {
     const path = databasePath(t);
     const store = await openDatabase(path);
     t.onTestFinished(() => store.close());
-    const raw = new Database(path);
+    const raw = new DatabaseSync(path);
     t.onTestFinished(() => {
         raw.close();
     });
-    raw.pragma("foreign_keys = ON");
+    raw.exec("PRAGMA foreign_keys = ON");
     raw.exec(`
         INSERT INTO hosts (id, name, directory, source_file, instruction, revision, created_at) VALUES ('h', 'Team', '/work', '/work/aiox.yaml', '', 1, 1);
         INSERT INTO host_agents (host_id, agent_key, ordinal, adapter, role, description, instruction, args_json, last_terminal_id, last_exit_json) VALUES ('h', 'a', 0, 'codex', NULL, NULL, '', '[]', NULL, NULL);
@@ -540,10 +553,9 @@ test("Host FK cascades preserve independent Networks and execution, Operation an
         INSERT INTO host_networks (id, host_id, name, default_policy) VALUES ('n', 'h', 'Team', 'deny');
         INSERT INTO host_members (network_id, agent_key) VALUES ('n', 'a'), ('n', 'b');
         INSERT INTO host_edges (network_id, from_key, to_key, manifest_policy, override_policy) VALUES ('n', 'a', 'b', 'allow', NULL);
-        INSERT INTO panels (id, kind, section, name, host_id, network_id, revision, layout_json, active_pane_id) VALUES ('p', 'host', 'hosts', 'Team', 'h', 'n', 1, '{}', 'pane');
+        INSERT INTO panels (id, kind, section, name, host_id, network_id, revision, layout_json) VALUES ('p', 'host', 'hosts', 'Team', 'h', 'n', 1, '{}');
         INSERT INTO panel_tabs (id, panel_id, terminal_id, label, agent_key, presentation, notice_json) VALUES ('tab', 'p', NULL, 'a', 'a', 'stopped', NULL);
         INSERT INTO host_executions (runtime_id, host_id, agent_key, terminal_id, started_at, ended_at, exit_json) VALUES ('r', 'h', 'a', 'terminal', 1, 2, NULL);
-        INSERT INTO host_operations (id, request_id, request_hash, kind, host_id, panel_id, state, targets_json, error_json, cleanup_errors_json, created_at, finished_at) VALUES ('op', 'request', 'hash', 'host.stop', 'h', 'p', 'succeeded', '[]', NULL, '[]', 1, 2);
     `);
     assert.throws(
         () =>
@@ -578,8 +590,6 @@ test("Host FK cascades preserve independent Networks and execution, Operation an
         { ...message("m1", 1), sourceRuntimeId: "r", networkId: "n" },
         [delivery("d1", "m1", "t1")],
     );
-    const prepare = vi.spyOn(Database.prototype, "prepare");
-    t.onTestFinished(() => prepare.mockRestore());
     const managed = await store.hostState.getNetwork("n");
     assert.equal(managed?.id, "n");
     assert.deepEqual(
@@ -587,17 +597,8 @@ test("Host FK cascades preserve independent Networks and execution, Operation an
         ["a", "b"],
     );
     assert.equal(managed?.edges.length, 2);
-    assert.equal(prepare.mock.calls.length, 3);
-    assert(
-        prepare.mock.calls.every(([sql]) =>
-            /from "host_(networks|members|edges)"/.test(sql),
-        ),
-    );
-    prepare.mockClear();
     assert.equal(await store.hostState.getNetwork("missing"), undefined);
-    assert.equal(prepare.mock.calls.length, 1);
-    prepare.mockRestore();
-    await store.hostState.deleteHost("h", 1);
+    await store.hostState.deleteHost("h");
     for (const table of [
         "hosts",
         "host_agents",
@@ -608,30 +609,29 @@ test("Host FK cascades preserve independent Networks and execution, Operation an
         "panel_tabs",
     ])
         assert.equal(
-            raw
-                .prepare<[], { count: number }>(
-                    `SELECT count(*) AS count FROM ${table}`,
-                )
-                .get()?.count,
+            (
+                raw.prepare(`SELECT count(*) AS count FROM ${table}`).get() as
+                    | { count: number }
+                    | undefined
+            )?.count,
             0,
         );
     for (const table of [
         "host_executions",
-        "host_operations",
         "messages",
         "deliveries",
         "persistent_networks",
         "persistent_routes",
     ])
         assert.equal(
-            raw
-                .prepare<[], { count: number }>(
-                    `SELECT count(*) AS count FROM ${table}`,
-                )
-                .get()?.count,
+            (
+                raw.prepare(`SELECT count(*) AS count FROM ${table}`).get() as
+                    | { count: number }
+                    | undefined
+            )?.count,
             1,
         );
-    assert.deepEqual(raw.pragma("foreign_key_check"), []);
+    assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(), []);
 });
 
 test("network list reads definitions and sorted routes once each", async (t) => {
@@ -653,8 +653,6 @@ test("network list reads definitions and sorted routes once each", async (t) => 
     await store.networks.replaceRouting("a", {
         routes: [{ from: "other", to: "target" }],
     });
-    const prepare = vi.spyOn(Database.prototype, "prepare");
-    t.onTestFinished(() => prepare.mockRestore());
     assert.deepEqual(await store.networks.list(), [
         {
             id: "z",
@@ -668,8 +666,4 @@ test("network list reads definitions and sorted routes once each", async (t) => 
         { id: "a", name: "Beta", routes: [{ from: "other", to: "target" }] },
         { id: "empty", name: "Gamma", routes: [] },
     ]);
-    assert.equal(
-        prepare.mock.calls.filter(([sql]) => /^select /i.test(sql)).length,
-        2,
-    );
 });

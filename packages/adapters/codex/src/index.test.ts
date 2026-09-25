@@ -3,11 +3,75 @@ import { PassThrough } from "node:stream";
 
 import { logger } from "@aiox/diagnostics";
 import { ExecutionOwner } from "@aiox/vendor";
-import type { Command, ExecutionProcess } from "@aiox/vendor";
+import type { Command, ExecutionProcess, RuntimeControls } from "@aiox/vendor";
+import { Deferred, Effect } from "effect";
 import { expect, test, vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { codexAdapter } from "./index";
+
+const run = Effect.runPromise;
+
+test("keeps draining real App Server stderr after readiness", async () => {
+    const foregroundExit = Deferred.makeUnsafe<{
+        exitCode: number;
+        signal: number | null;
+    }>();
+    const owner = new ExecutionOwner(() =>
+        Effect.succeed({
+            exited: Deferred.await(foregroundExit),
+            stop: () =>
+                Deferred.succeed(foregroundExit, {
+                    exitCode: 0,
+                    signal: null,
+                }).pipe(Effect.asVoid),
+            write() {},
+            resize() {},
+        }),
+    );
+    const background = owner.background.bind(owner);
+    let helper!: ExecutionProcess;
+    vi.spyOn(owner, "background").mockImplementation((command) =>
+        background({
+            ...command,
+            file: process.execPath,
+            args: [
+                "-e",
+                `
+            process.stderr.write('listening on: ws://127.0.0.1:12345\\n');
+            process.stdin.once('data', () => {
+                process.stderr.write('diagnostic after readiness\\n'.repeat(10000), (error) => { if (error) throw error; process.exit(0); });
+            });
+        `,
+            ],
+        }).pipe(
+            Effect.tap((process) =>
+                Effect.sync(() => {
+                    helper = process;
+                }),
+            ),
+        ),
+    );
+    try {
+        const execution = await run(codexAdapter.createExecution(owner));
+        const command = {
+            file: "codex",
+            args: [],
+            cwd: process.cwd(),
+            env: { ...process.env },
+        };
+        await run(
+            execution.start(
+                { instruction: "", server: command, tui: command },
+                owner,
+            ),
+        );
+        helper.write("continue\n");
+        expect(await run(helper.exited)).toMatchObject({ exitCode: 0 });
+    } finally {
+        await run(owner.stop());
+    }
+});
 
 vi.mock("node:child_process", async (original) => {
     const actual = await original<typeof import("node:child_process")>();
@@ -22,26 +86,46 @@ vi.mock("node:child_process", async (original) => {
     };
 });
 
+test("rejects unexpected Codex connection fields", () => {
+    const controls = {
+        runtimeId: "runtime",
+        setStatus: vi.fn(),
+        setObservationError: vi.fn(),
+        settle: vi.fn(),
+    } satisfies RuntimeControls;
+
+    expect(() =>
+        codexAdapter.createBinding(controls, {
+            url: "ws://127.0.0.1:1234",
+            token: "a".repeat(43),
+            unexpected: true,
+        } as never),
+    ).toThrow();
+});
+
 test("starts App Server before foreground, gates readiness on thread and MCP, and releases collaboration separately", async () => {
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(server, "listening");
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("address");
     let launch: Command | undefined;
-    let exit!: (value: { exitCode: number; signal: number | null }) => void;
+    const exit = Deferred.makeUnsafe<{
+        exitCode: number;
+        signal: number | null;
+    }>();
     const foreground: ExecutionProcess = {
-        exited: new Promise((r) => {
-            exit = r;
-        }),
-        stop: vi.fn(async () => {
-            exit({ exitCode: 0, signal: null });
-        }),
+        exited: Deferred.await(exit),
+        stop: vi.fn(() =>
+            Deferred.succeed(exit, { exitCode: 0, signal: null }).pipe(
+                Effect.asVoid,
+            ),
+        ),
         write() {},
         resize() {},
     };
-    const owner = new ExecutionOwner(async (command) => {
+    const owner = new ExecutionOwner((command) => {
         launch = command;
-        return foreground;
+        return Effect.succeed(foreground);
     });
     const stdout = new PassThrough(),
         stderr = new PassThrough();
@@ -49,15 +133,15 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         ...foreground,
         stdout,
         stderr,
-        stop: vi.fn(async () => {}),
+        stop: vi.fn(() => Effect.void),
     };
-    vi.spyOn(owner, "background").mockImplementation(async () => {
+    vi.spyOn(owner, "background").mockImplementation(() => {
         setTimeout(
             () =>
                 stderr.write(`listening on: ws://127.0.0.1:${address.port}\n`),
             0,
         );
-        return helper;
+        return Effect.succeed(helper);
     });
     const status = vi.fn();
     const settle = vi.fn(
@@ -65,7 +149,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
     );
     let tui: WebSocket | undefined;
     try {
-        const execution = await codexAdapter.createExecution(owner);
+        const execution = await run(codexAdapter.createExecution(owner));
         const binding = codexAdapter.createBinding(
             {
                 runtimeId: "r",
@@ -86,7 +170,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
             reportToken: "",
             instruction: "collaborate",
         });
-        await execution.start(prepared, owner);
+        await run(execution.start(prepared, owner));
         binding.executionStarted();
         expect(binding.wasReady).toBe(false);
         expect(launch!.args).toContain("--remote");
@@ -555,7 +639,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         expect(foreground.stop).not.toHaveBeenCalled();
         const tuiClosed = once(tui, "close");
         const peerClosed = once(peer, "close");
-        await owner.stop();
+        await run(owner.stop());
         await Promise.all([tuiClosed, peerClosed]);
         expect(foreground.stop).toHaveBeenCalledOnce();
         const unavailable = new WebSocket(launch!.args[1]!);
@@ -563,7 +647,7 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
         expect(String(error)).toContain("ECONNREFUSED");
     } finally {
         tui?.terminate();
-        await owner.stop();
+        await run(owner.stop());
         for (const client of server.clients) client.terminate();
         await new Promise<void>((r) => server.close(() => r()));
         vi.restoreAllMocks();
@@ -571,35 +655,45 @@ test("starts App Server before foreground, gates readiness on thread and MCP, an
 });
 
 test("App Server startup failure reaches the caller without leaking the MCP token or launching a TUI", async () => {
-    const launchTui = vi.fn();
+    const launchTui = vi.fn(() =>
+        Effect.fail(new Error("unexpected foreground launch")),
+    );
     const owner = new ExecutionOwner(launchTui);
     const stderr = new PassThrough();
-    let fail!: (value: { exitCode: number; signal: number | null }) => void;
-    const exited = new Promise<{ exitCode: number; signal: number | null }>(
-        (resolve) => {
-            fail = resolve;
-        },
-    );
+    const serverExit = Deferred.makeUnsafe<{
+        exitCode: number;
+        signal: number | null;
+    }>();
+    const exited = Deferred.await(serverExit);
     const diagnostic = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const structured = vi.spyOn(logger, "error").mockImplementation(() => {});
-    vi.spyOn(owner, "background").mockImplementation(async () => {
+    vi.spyOn(owner, "background").mockImplementation(() => {
         setTimeout(() => {
             stderr.write(
                 "MCP rejected private-mcp-secret arbitrary-vendor-secret\n",
             );
-            fail({ exitCode: 1, signal: null });
+            setTimeout(
+                () =>
+                    Effect.runSync(
+                        Deferred.succeed(serverExit, {
+                            exitCode: 1,
+                            signal: null,
+                        }),
+                    ),
+                0,
+            );
         }, 0);
-        return {
+        return Effect.succeed({
             exited,
             stderr,
-            stop: async () => {},
+            stop: () => Effect.void,
             write() {},
             resize() {},
-        };
+        });
     });
     let binding: ReturnType<typeof codexAdapter.createBinding> | undefined;
     try {
-        const execution = await codexAdapter.createExecution(owner);
+        const execution = await run(codexAdapter.createExecution(owner));
         binding = codexAdapter.createBinding(
             {
                 runtimeId: "r",
@@ -620,7 +714,7 @@ test("App Server startup failure reaches the caller without leaking the MCP toke
             reportToken: "",
             instruction: "test",
         });
-        await expect(execution.start(launch, owner)).rejects.toThrow(
+        await expect(run(execution.start(launch, owner))).rejects.toThrow(
             "MCP rejected [redacted]",
         );
         expect(launchTui).not.toHaveBeenCalled();
@@ -634,7 +728,7 @@ test("App Server startup failure reaches the caller without leaking the MCP toke
         );
     } finally {
         await binding?.cleanup("execution_stopped");
-        await owner.stop();
+        await run(owner.stop());
         vi.restoreAllMocks();
     }
 });

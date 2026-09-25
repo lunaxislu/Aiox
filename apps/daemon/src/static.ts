@@ -3,7 +3,11 @@ import { stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 
-import type { MiddlewareHandler } from "hono";
+import type { Context } from "./http-endpoint";
+type MiddlewareHandler = (
+    c: Context,
+    next: () => Promise<Response>,
+) => Promise<Response>;
 
 const types: Record<string, string> = {
     ".css": "text/css; charset=utf-8",

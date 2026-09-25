@@ -1,5 +1,7 @@
 # AIOX 운영 Web UI 디자인 프롬프트 (Stage 6, 1차: workspace 화면)
 
+> 2026-09-25 후속 계약: 이 문서는 당시 HTML 디자인 요청의 이력이다. 현재 화면 규칙은 [Web UI spec](../../docs/specs/aiox-web-ui.md), 저장 경계는 [configuration-web](../../docs/specs/aiox-configuration-web.md), 통신은 [앱 RPC spec](../../docs/specs/aiox-application-rpc.md)을 따른다. 활성 pane·선택 탭은 각 React 앱의 메모리 상태이며 새로고침 시 초기화한다. 서버 API·DB나 localStorage에 선택을 저장하지 않는다.
+
 아래 전체를 클로드 앱에 붙여넣는다. 설정 화면은 2차 프롬프트로 분리한다.
 
 ---
@@ -83,7 +85,7 @@ workspace 화면 = pane 트리이고, pane마다 **독립된 탭바**를 가집�
 
 ## 반드시 동작해야 하는 상호작용
 
-1. 사이드바 항목 클릭 → workspace 전환. 각 workspace는 자기 pane 배치·탭 순서·선택을 기억하고,
+1. 사이드바 항목 클릭 → workspace 전환. pane 배치·탭 순서는 서버 상태를 따르고, 활성 pane·선택 탭은 각 React 앱이 메모리에서 관리한다. 새로고침하면 초기 선택으로 돌아간다. 헤더의 workspace 정보도 함께 바뀐다.
    헤더 바의 맥락 표시도 함께 바뀜
 2. pane의 `[+]` → 드롭다운: New shell (⌘T) / Split right (⌘D) / Split down (⌘⇧D)
 3. 탭 드래그 — 네 가지 결과를 모두 구분:

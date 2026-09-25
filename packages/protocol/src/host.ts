@@ -1,4 +1,5 @@
-import { z } from "zod";
+import * as Schema from "effect/Schema";
+import * as SchemaGetter from "effect/SchemaGetter";
 
 import {
     parseConfig,
@@ -8,6 +9,7 @@ import {
 } from "./configuration";
 import {
     agentViewSchema,
+    agentStatusSchema,
     networkViewSchema,
     terminalViewSchema,
     webNotificationViewSchema,
@@ -15,39 +17,49 @@ import {
     policySchema,
     portsSchema,
 } from "./core";
+import {
+    compatible,
+    fromUnknown,
+    strictStruct,
+    mutableArray,
+    type CompatibleSchema,
+} from "./schema-compat";
 
-const id = z.string().min(1);
-const text = z.string().refine((v) => !v.includes("\0"));
-const nonblank = text.refine((v) => v.trim().length > 0);
-const name = nonblank.refine((v) => !v.includes("/"));
-const positive = z.int().positive();
-const timestamp = z.int().nonnegative();
-const requestId = z.uuid();
+const id = Schema.String.check(
+    Schema.makeFilter((v) => v.length > 0 || "Expected non-empty string"),
+);
+const text = Schema.String.check(
+    Schema.makeFilter(
+        (v) => !v.includes("\0") || "String must not contain NUL",
+    ),
+);
+const nonblank = text.check(
+    Schema.makeFilter(
+        (v) => v.trim().length > 0 || "Expected non-blank string",
+    ),
+);
+const name = nonblank.check(
+    Schema.makeFilter((v) => !v.includes("/") || "Name must not contain /"),
+);
+const positive = Schema.Int.check(Schema.isGreaterThan(0));
+const timestamp = Schema.Natural;
+const requestId = Schema.String.check(Schema.isUUID());
 
 // The same pure parsers serve file loading and the public wire schemas.
-function validate<T>(parser: (value: unknown) => T) {
-    return z.unknown().transform((value, ctx) => {
-        try {
-            return parser(value);
-        } catch (error) {
-            ctx.addIssue({
-                code: "custom",
-                message: error instanceof Error ? error.message : String(error),
-            });
-            return z.NEVER;
-        }
-    });
-}
 export type LayoutInput = {
     preset?: HostLayout["preset"];
     columns?: number;
     rows?: number;
 };
-export const layoutInputSchema = validate((value) => {
-    parseHostLayout(value);
-    return value as LayoutInput;
-});
-export const hostLayoutSchema = validate((value) => parseHostLayout(value));
+export const layoutInputSchema = compatible(
+    fromUnknown((value) => {
+        parseHostLayout(value);
+        return value as LayoutInput;
+    }),
+);
+export const hostLayoutSchema = compatible(
+    fromUnknown((value) => parseHostLayout(value)),
+);
 export type StoredConfig = Omit<
     Partial<AioxConfig>,
     "ports" | "messages" | "host" | "appearance"
@@ -57,164 +69,204 @@ export type StoredConfig = Omit<
     host?: { layout?: LayoutInput };
     appearance?: Partial<NonNullable<AioxConfig["appearance"]>>;
 };
-export const keybindingsSchema = validate(
-    (value) => parseConfig({ keybindings: value }).keybindings!,
+export const keybindingsSchema = compatible(
+    fromUnknown((value) => parseConfig({ keybindings: value }).keybindings!),
 );
-export const storedConfigSchema = validate((value) => {
-    parseConfig(value);
-    return value as StoredConfig;
-});
-export const effectiveConfigSchema = validate((value) => parseConfig(value));
-export const configViewSchema = z.strictObject({
-    revision: id,
-    stored: storedConfigSchema,
-    effective: effectiveConfigSchema,
-    runningPorts: portsSchema,
-    restartRequired: z.boolean(),
-});
-export const putConfigRequestSchema = z.strictObject({
-    revision: id,
-    stored: storedConfigSchema,
-});
-export const hostSourceSchema = z.strictObject({
-    directory: nonblank.refine(
-        (v) =>
-            v.startsWith("/") ||
-            /^[A-Za-z]:[\\/]/.test(v) ||
-            /^\\\\[^\\]+\\[^\\]+/.test(v),
-        "Expected an absolute directory",
-    ),
-    file: nonblank.optional(),
-});
-export const invocationSchema = z.strictObject({
-    terminalContext: terminalContextSchema.optional(),
-});
-export const hostControlRequestSchema = z.strictObject({ requestId });
-export const hostRestartRequestSchema = z.strictObject({
+export const storedConfigSchema = compatible(
+    fromUnknown((value) => {
+        parseConfig(value);
+        return value as StoredConfig;
+    }),
+);
+export const effectiveConfigSchema = compatible(
+    fromUnknown((value) => parseConfig(value)),
+);
+export const configViewSchema = compatible(
+    strictStruct({
+        revision: id,
+        stored: storedConfigSchema,
+        effective: effectiveConfigSchema,
+        runningPorts: portsSchema,
+        restartRequired: Schema.Boolean,
+    }),
+);
+export const putConfigRequestSchema = compatible(
+    strictStruct({
+        revision: id,
+        stored: storedConfigSchema,
+    }),
+);
+export const hostSourceSchema = compatible(
+    strictStruct({
+        directory: nonblank.check(
+            Schema.makeFilter((v) =>
+                v.startsWith("/") ||
+                /^[A-Za-z]:[\\/]/.test(v) ||
+                /^\\\\[^\\]+\\[^\\]+/.test(v)
+                    ? undefined
+                    : "Expected an absolute directory",
+            ),
+        ),
+        file: Schema.optional(nonblank),
+    }),
+);
+const invocationFields = {
+    terminalContext: Schema.optional(terminalContextSchema),
+};
+export const invocationSchema = compatible(strictStruct(invocationFields));
+const hostRestartFields = {
     requestId,
     source: hostSourceSchema,
-    ...invocationSchema.shape,
-});
-export const hostRunRequestSchema = hostRestartRequestSchema.extend({
-    layout: layoutInputSchema.optional(),
-});
-export const hostResolveRequestSchema = z.strictObject({
-    source: hostSourceSchema,
-});
-export const hostResolveResultSchema = z.strictObject({ hostId: id });
-const agentKeys = z
-    .array(name)
-    .min(1)
-    .transform((v) => [...new Set(v)]);
-export const hostAgentStartRequestSchema = hostRestartRequestSchema.extend({
-    agents: agentKeys,
-});
+    ...invocationFields,
+};
+export const hostControlRequestSchema = compatible(strictStruct({ requestId }));
+export const hostRestartRequestSchema = compatible(
+    strictStruct(hostRestartFields),
+);
+export const hostRunRequestSchema = compatible(
+    strictStruct({
+        ...hostRestartFields,
+        layout: Schema.optional(layoutInputSchema),
+    }),
+);
+export const hostResolveRequestSchema = compatible(
+    strictStruct({
+        source: hostSourceSchema,
+    }),
+);
+export const hostResolveResultSchema = compatible(strictStruct({ hostId: id }));
+const agentKeys = mutableArray(name)
+    .check(Schema.isMinLength(1))
+    .pipe(
+        Schema.decodeTo(mutableArray(name), {
+            decode: SchemaGetter.transform((keys) => [...new Set(keys)]),
+            encode: SchemaGetter.transform((keys) => keys),
+        }),
+    );
+export const hostAgentStartRequestSchema = compatible(
+    strictStruct({
+        ...hostRestartFields,
+        agents: agentKeys,
+    }),
+);
 export const hostAgentRestartRequestSchema = hostAgentStartRequestSchema;
-export const hostAgentStopRequestSchema = hostControlRequestSchema.extend({
-    agents: agentKeys,
-});
-export const lastExitSchema = z.strictObject({
-    kind: z.enum([
-        "stopped",
-        "exited",
-        "crashed",
-        "start-failed",
-        "daemon-ended",
-    ]),
-    message: z.string().nullable(),
-    at: timestamp,
-});
-export const managedRuntimeSchema = z.strictObject({
-    id,
-    terminalId: id,
-    phase: z.enum(["preparing", "running", "stopping"]),
-    status: agentViewSchema.shape.status,
-    status_reason: z.string().nullable(),
-    observation_error: z.string().nullable(),
-    collaborationActive: z.boolean(),
-    collaborationError: z.string().nullable(),
-});
-export const managedAgentViewSchema = z.strictObject({
-    key: name,
-    adapter: z.enum(["claude", "codex"]),
-    role: nonblank.nullable(),
-    description: text.nullable(),
-    instruction: text,
-    args: z.array(text),
-    member: z.boolean(),
-    runtime: managedRuntimeSchema.nullable(),
-    lastTerminalId: id.nullable(),
-    lastExit: lastExitSchema.nullable(),
-});
-export const hostViewSchema = z.strictObject({
-    id,
-    name,
-    directory: nonblank,
-    sourceFile: nonblank,
-    instruction: text,
-    panelId: id,
-    networkId: id,
-    revision: positive,
-    agents: z
-        .array(managedAgentViewSchema)
-        .min(1)
-        .refine(
-            (agents) =>
-                new Set(agents.map((a) => a.key)).size === agents.length,
-            "Duplicate managed Agent key",
-        ),
-    activeOperationId: id.nullable(),
-});
-export const hostNetworkViewSchema = z
-    .strictObject({
+export const hostAgentStopRequestSchema = compatible(
+    strictStruct({
+        agents: agentKeys,
+        requestId,
+    }),
+);
+export const lastExitSchema = compatible(
+    strictStruct({
+        kind: Schema.Literals([
+            "stopped",
+            "exited",
+            "crashed",
+            "start-failed",
+            "daemon-ended",
+        ]),
+        message: Schema.NullOr(Schema.String),
+        at: timestamp,
+    }),
+);
+export const managedRuntimeSchema = compatible(
+    strictStruct({
+        id,
+        terminalId: id,
+        phase: Schema.Literals(["preparing", "running", "stopping"]),
+        status: agentStatusSchema,
+        status_reason: Schema.NullOr(Schema.String),
+        observation_error: Schema.NullOr(Schema.String),
+        collaborationActive: Schema.Boolean,
+        collaborationError: Schema.NullOr(Schema.String),
+    }),
+);
+export const managedAgentViewSchema = compatible(
+    strictStruct({
+        key: name,
+        adapter: Schema.Literals(["claude", "codex"]),
+        role: Schema.NullOr(nonblank),
+        description: Schema.NullOr(text),
+        instruction: text,
+        args: mutableArray(text),
+        member: Schema.Boolean,
+        runtime: Schema.NullOr(managedRuntimeSchema),
+        lastTerminalId: Schema.NullOr(id),
+        lastExit: Schema.NullOr(lastExitSchema),
+    }),
+);
+export const hostViewSchema = compatible(
+    strictStruct({
+        id,
+        name,
+        directory: nonblank,
+        sourceFile: nonblank,
+        instruction: text,
+        panelId: id,
+        networkId: id,
+        revision: positive,
+        agents: mutableArray(managedAgentViewSchema)
+            .check(Schema.isMinLength(1))
+            .check(
+                Schema.makeFilter((agents) =>
+                    new Set(agents.map((a) => a.key)).size === agents.length
+                        ? undefined
+                        : "Duplicate managed Agent key",
+                ),
+            ),
+    }),
+);
+export const hostNetworkViewSchema = compatible(
+    strictStruct({
         id,
         hostId: id,
         name,
-        scope: z.literal("host"),
+        scope: Schema.Literal("host"),
         default: policySchema,
-        members: z.array(
-            z.strictObject({ agentKey: name, runtimeId: id.nullable() }),
+        members: mutableArray(
+            strictStruct({
+                agentKey: name,
+                runtimeId: Schema.NullOr(id),
+            }),
         ),
-        edges: z.array(
-            z.strictObject({
+        edges: mutableArray(
+            strictStruct({
                 from: name,
                 to: name,
-                fromRuntimeId: id.nullable(),
-                toRuntimeId: id.nullable(),
+                fromRuntimeId: Schema.NullOr(id),
+                toRuntimeId: Schema.NullOr(id),
                 policy: policySchema,
-                source: z.enum([
+                source: Schema.Literals([
                     "runtime-override",
                     "manifest-edge",
                     "manifest-default",
                 ]),
             }),
         ),
-    })
-    .superRefine((network, ctx) => {
-        const members = new Set(network.members.map((m) => m.agentKey));
-        const edges = network.edges.map((e) => JSON.stringify([e.from, e.to]));
-        if (
-            members.size !== network.members.length ||
-            new Set(edges).size !== edges.length ||
-            edges.length !== members.size * (members.size - 1) ||
-            network.edges.some(
-                (e) =>
-                    e.from === e.to ||
-                    !members.has(e.from) ||
-                    !members.has(e.to),
-            )
-        )
-            ctx.addIssue({
-                code: "custom",
-                message:
-                    "Host Network edges must cover each distinct member pair once",
-            });
-    });
-
-export const operationErrorSchema = z.strictObject({
+    }).check(
+        Schema.makeFilter((network) => {
+            const members = new Set(network.members.map((m) => m.agentKey));
+            const edges = network.edges.map((e) =>
+                JSON.stringify([e.from, e.to]),
+            );
+            return members.size === network.members.length &&
+                new Set(edges).size === edges.length &&
+                edges.length === members.size * (members.size - 1) &&
+                !network.edges.some(
+                    (e) =>
+                        e.from === e.to ||
+                        !members.has(e.from) ||
+                        !members.has(e.to),
+                )
+                ? undefined
+                : "Host Network edges must cover each distinct member pair once";
+        }),
+    ),
+);
+const commandErrorFields = {
     code: id,
-    message: z.string(),
-    stage: z.enum([
+    message: Schema.String,
+    stage: Schema.Literals([
         "config",
         "yaml",
         "cli",
@@ -223,143 +275,157 @@ export const operationErrorSchema = z.strictObject({
         "cleanup",
         "storage",
     ]),
-    field: z.string().optional(),
-    agentKey: z.string().optional(),
-});
-export const hostErrorSchema = operationErrorSchema.extend({
-    candidates: z.array(z.string()).optional(),
-    operationId: id.optional(),
-});
-export const operationTargetSchema = z.strictObject({
-    agentKey: name.nullable(),
-    terminalId: id.nullable(),
-    state: z.enum([
-        "pending",
-        "preparing",
-        "ready",
-        "stopping",
-        "stopped",
-        "unchanged",
-        "failed",
+    field: Schema.optional(Schema.String),
+    agentKey: Schema.optional(Schema.String),
+};
+export const commandErrorSchema = compatible(strictStruct(commandErrorFields));
+export const hostErrorSchema = compatible(
+    strictStruct({
+        ...commandErrorFields,
+        candidates: Schema.optional(mutableArray(Schema.String)),
+    }),
+);
+export const hostCommandSchema = compatible(
+    Schema.Literals([
+        "host.run",
+        "host.restart",
+        "host.stop",
+        "host.delete",
+        "host.agent.start",
+        "host.agent.restart",
+        "host.agent.stop",
     ]),
-    error: operationErrorSchema.nullable(),
-});
-export const operationSchema = z
-    .strictObject({
-        id,
+);
+/** The actual outcome of one Host target; a failed sibling does not undo it. */
+export const hostTargetResultSchema = compatible(
+    strictStruct({
+        agentKey: Schema.NullOr(name),
+        terminalId: Schema.NullOr(id),
+        state: Schema.Literals(["ready", "stopped", "unchanged", "failed"]),
+        error: Schema.NullOr(commandErrorSchema),
+    }),
+);
+/** The HTTP result of a finished Host command; it is neither stored nor listed. */
+export const hostCommandResultSchema = compatible(
+    strictStruct({
         requestId,
-        kind: z.enum([
-            "host.run",
-            "host.restart",
-            "host.stop",
-            "host.delete",
-            "host.agent.start",
-            "host.agent.restart",
-            "host.agent.stop",
-            "panel.shell.create",
-            "panel.tab.close",
-            "panel.delete",
-        ]),
-        hostId: id.nullable(),
-        panelId: id.nullable(),
-        state: z.enum(["running", "succeeded", "failed"]),
-        targets: z.array(operationTargetSchema),
-        error: operationErrorSchema.nullable(),
-        cleanupErrors: z.array(operationErrorSchema),
-        createdAt: timestamp,
-        finishedAt: timestamp.nullable(),
-    })
-    .refine(
-        (v) => (v.state === "running") === (v.finishedAt === null),
-        "Operation completion must include finishedAt",
-    );
-
-export const paneSchema = z
-    .strictObject({
-        type: z.literal("pane"),
+        command: hostCommandSchema,
+        hostId: Schema.NullOr(id),
+        state: Schema.Literals(["succeeded", "failed"]),
+        targets: mutableArray(hostTargetResultSchema),
+        error: Schema.NullOr(commandErrorSchema),
+        cleanupErrors: mutableArray(commandErrorSchema),
+    }),
+);
+/** NDJSON lines of a Host command response; `launch` asks the calling CLI to run the Agent itself. */
+export const hostCommandEventSchema = compatible(
+    Schema.Union([
+        strictStruct({
+            type: Schema.Literal("launch"),
+            hostId: id,
+            agentKey: name,
+            terminalId: id,
+            marker: Schema.String,
+        }),
+        strictStruct({
+            type: Schema.Literal("result"),
+            result: hostCommandResultSchema,
+        }),
+    ]),
+);
+export const paneSchema = compatible(
+    strictStruct({
+        type: Schema.Literal("pane"),
         id,
-        tabIds: z.array(id),
-        selectedTabId: id.nullable(),
-    })
-    .refine(
-        (v) =>
-            v.tabIds.length === 0
-                ? v.selectedTabId === null
-                : v.selectedTabId !== null &&
-                  v.tabIds.includes(v.selectedTabId),
-        "Invalid selected tab",
-    );
+        tabIds: mutableArray(id),
+    }),
+);
+type Pane = { type: "pane"; id: string; tabIds: string[] };
 export type PanelLayout =
-    | z.infer<typeof paneSchema>
+    | Pane
     | {
           type: "split";
+          id: string;
           axis: "x" | "y";
           weights: number[];
           children: PanelLayout[];
       };
-export const panelLayoutSchema: z.ZodType<PanelLayout> = z.discriminatedUnion(
-    "type",
-    [
-        paneSchema,
-        z
-            .strictObject({
-                type: z.literal("split"),
-                axis: z.enum(["x", "y"]),
-                weights: z.array(z.number().positive()),
-                get children(): z.ZodArray<z.ZodType<PanelLayout>> {
-                    return z.array(panelLayoutSchema).min(2);
-                },
-            })
-            .refine(
-                (v) =>
-                    v.weights.length === v.children.length &&
-                    Math.abs(v.weights.reduce((a, b) => a + b, 0) - 1) < 1e-9,
-                "Split weights must match children and sum to one",
-            ),
-    ],
-);
-export const tabNoticeSchema = z.strictObject({
-    message: z.string(),
-    reason: z.string().nullable(),
-    restartCommand: z.string(),
-});
-export const tabViewSchema = z.strictObject({
+let panelLayoutSchema!: CompatibleSchema<Schema.ConstraintDecoder<PanelLayout>>;
+const finitePositive = Schema.Finite.check(Schema.isGreaterThan(0));
+const splitLayoutSchema: Schema.ConstraintDecoder<PanelLayout> = strictStruct({
+    type: Schema.Literal("split"),
     id,
-    terminalId: id.nullable(),
-    label: z.string(),
-    agentKey: name.nullable(),
-    runtimeId: id.nullable(),
-    presentation: z.enum([
-        "shell",
-        "preparing",
-        "tui",
-        "stopped",
-        "start-failed",
-        "crashed",
-        "unavailable",
-    ]),
-    notice: tabNoticeSchema.nullable(),
-});
-/** Remove tabs and reconcile their layout and focus as one change. */
+    axis: Schema.Literals(["x", "y"]),
+    weights: mutableArray(finitePositive),
+    children: mutableArray(
+        Schema.suspend(
+            (): Schema.ConstraintDecoder<PanelLayout> => panelLayoutSchema,
+        ),
+    ).check(
+        Schema.makeFilter((children) =>
+            children.length >= 2 ? undefined : "Expected at least two children",
+        ),
+    ),
+}).check(
+    Schema.makeFilter((v) =>
+        v.weights.length === v.children.length &&
+        Math.abs(v.weights.reduce((a, b) => a + b, 0) - 1) < 1e-9
+            ? undefined
+            : "Split weights must match children and sum to one",
+    ),
+) as unknown as Schema.ConstraintDecoder<PanelLayout>;
+panelLayoutSchema = compatible(
+    Schema.suspend(
+        (): Schema.ConstraintDecoder<PanelLayout> =>
+            Schema.Union([
+                paneSchema,
+                splitLayoutSchema,
+            ]) as Schema.ConstraintDecoder<PanelLayout>,
+    ),
+);
+export { panelLayoutSchema };
+export const tabNoticeSchema = compatible(
+    strictStruct({
+        message: Schema.String,
+        reason: Schema.NullOr(Schema.String),
+        restartCommand: Schema.String,
+    }),
+);
+export const tabViewSchema = compatible(
+    strictStruct({
+        id,
+        terminalId: Schema.NullOr(id),
+        label: Schema.String,
+        agentKey: Schema.NullOr(name),
+        runtimeId: Schema.NullOr(id),
+        presentation: Schema.Literals([
+            "shell",
+            "preparing",
+            "tui",
+            "stopped",
+            "start-failed",
+            "crashed",
+            "unavailable",
+        ]),
+        notice: Schema.NullOr(tabNoticeSchema),
+    }),
+);
+
+/** Remove tabs and prune empty panes as one layout change. */
 export function removePanelTabs(
-    panel: Pick<PanelView, "layout" | "activePaneId">,
+    panel: Pick<PanelView, "layout">,
     ids: ReadonlySet<string>,
-): Pick<PanelView, "layout" | "activePaneId"> {
+): Pick<PanelView, "layout"> {
     const before = panelLayoutReferences(panel.layout).panes;
-    // A repeated cleanup must not remove unrelated empty panes or move focus.
+    // A repeated cleanup must not remove unrelated empty panes.
     if (!before.some((pane) => pane.tabIds.some((id) => ids.has(id))))
-        return { layout: panel.layout, activePaneId: panel.activePaneId };
+        return { layout: panel.layout };
     const prune = (node: PanelLayout): PanelLayout | null => {
         if (node.type === "pane") {
             if (!node.tabIds.some((id) => ids.has(id))) return node;
             const tabIds = node.tabIds.filter((id) => !ids.has(id));
             if (!tabIds.length) return null;
-            const index = node.tabIds.indexOf(node.selectedTabId!);
-            const selectedTabId = tabIds.includes(node.selectedTabId!)
-                ? node.selectedTabId
-                : (node.tabIds.slice(index + 1).find((id) => !ids.has(id)) ??
-                  tabIds.at(-1)!);
-            return { ...node, tabIds, selectedTabId };
+            return { ...node, tabIds };
         }
         const children: PanelLayout[] = [];
         const weights: number[] = [];
@@ -381,223 +447,490 @@ export function removePanelTabs(
             ? pruned
             : {
                   type: "pane",
-                  id: panel.activePaneId,
+                  id: before[0]!.id,
                   tabIds: [],
-                  selectedTabId: null,
               };
-    const remaining = new Set(
-        panelLayoutReferences(layout).panes.map((p) => p.id),
-    );
-    const index = before.findIndex((p) => p.id === panel.activePaneId);
-    const activePaneId = remaining.has(panel.activePaneId)
-        ? panel.activePaneId
-        : (before.slice(index + 1).find((p) => remaining.has(p.id)) ??
-              before
-                  .slice(0, index)
-                  .reverse()
-                  .find((p) => remaining.has(p.id)))!.id;
-    return { layout, activePaneId };
+    return { layout };
 }
 export function panelLayoutReferences(layout: PanelLayout) {
-    const panes: z.infer<typeof paneSchema>[] = [];
+    const panes: Pane[] = [];
+    const splits: Extract<PanelLayout, { type: "split" }>[] = [];
     const walk = (node: PanelLayout): void => {
         if (node.type === "pane") panes.push(node);
-        else node.children.forEach(walk);
+        else {
+            splits.push(node);
+            node.children.forEach(walk);
+        }
     };
     walk(layout);
-    return { panes, tabIds: panes.flatMap((pane) => pane.tabIds) };
+    return { panes, splits, tabIds: panes.flatMap((pane) => pane.tabIds) };
 }
-export const panelViewSchema = z
-    .strictObject({
+/** A rejected panel layout command; `unknown_*` codes mean a missing target. */
+export class PanelLayoutError extends Error {
+    constructor(
+        readonly code:
+            | "unknown_pane"
+            | "unknown_tab"
+            | "unknown_split"
+            | "layout_changed"
+            | "id_conflict",
+        message: string = code,
+    ) {
+        super(message);
+    }
+}
+export type PanelTabTarget =
+    | { toPaneId: string; beforeTabId?: string | undefined }
+    | {
+          split: {
+              targetPaneId: string;
+              side: "left" | "right" | "top" | "bottom";
+              paneId: string;
+              splitId: string;
+          };
+      };
+type PanelPlacement = Pick<PanelView, "layout">;
+function replaceNode(
+    layout: PanelLayout,
+    id: string,
+    change: (node: PanelLayout) => PanelLayout,
+): PanelLayout {
+    if (layout.id === id) return change(layout);
+    return layout.type === "pane"
+        ? layout
+        : {
+              ...layout,
+              children: layout.children.map((child) =>
+                  replaceNode(child, id, change),
+              ),
+          };
+}
+/** Place a tab that is not in the layout yet at a pane or a new split beside it. */
+export function insertPanelTab(
+    panel: PanelPlacement,
+    tabId: string,
+    target: PanelTabTarget,
+): PanelPlacement {
+    const { panes, splits } = panelLayoutReferences(panel.layout);
+    const paneId =
+        "split" in target ? target.split.targetPaneId : target.toPaneId;
+    if (!panes.some((p) => p.id === paneId))
+        throw new PanelLayoutError("unknown_pane", "No such pane.");
+    if (!("split" in target)) {
+        const layout = replaceNode(panel.layout, paneId, (node) => {
+            if (node.type !== "pane") return node;
+            const tabIds = [...node.tabIds];
+            const index = tabIds.indexOf(target.beforeTabId ?? "");
+            tabIds.splice(index < 0 ? tabIds.length : index, 0, tabId);
+            return { ...node, tabIds } as PanelLayout;
+        });
+        return { layout };
+    }
+    const { side, paneId: newPaneId, splitId } = target.split;
+    const taken = new Set([...panes, ...splits].map((n) => n.id));
+    if (taken.has(newPaneId) || taken.has(splitId) || newPaneId === splitId)
+        throw new PanelLayoutError("id_conflict", "Layout ID is already used.");
+    const added: PanelLayout = {
+        type: "pane",
+        id: newPaneId,
+        tabIds: [tabId],
+    };
+    const layout = replaceNode(panel.layout, paneId, (node) => ({
+        type: "split",
+        id: splitId,
+        axis: side === "left" || side === "right" ? "x" : "y",
+        weights: [0.5, 0.5],
+        children:
+            side === "left" || side === "top" ? [added, node] : [node, added],
+    }));
+    return { layout };
+}
+/** Move an existing tab; an emptied source pane merges into its neighbours. */
+export function movePanelTab(
+    panel: PanelPlacement,
+    tabId: string,
+    target: PanelTabTarget,
+): PanelPlacement {
+    const { panes } = panelLayoutReferences(panel.layout);
+    const source = panes.find((p) => p.tabIds.includes(tabId));
+    if (!source) throw new PanelLayoutError("unknown_tab", "No such tab.");
+    const paneId =
+        "split" in target ? target.split.targetPaneId : target.toPaneId;
+    if (!panes.some((p) => p.id === paneId))
+        throw new PanelLayoutError("unknown_pane", "No such pane.");
+    // The only tab of a pane cannot leave it for the same pane.
+    if (source.id === paneId && source.tabIds.length === 1)
+        return { layout: panel.layout };
+    return insertPanelTab(
+        removePanelTabs(panel, new Set([tabId])),
+        tabId,
+        target,
+    );
+}
+export function resizePanelSplit(
+    layout: PanelLayout,
+    splitId: string,
+    children: readonly string[],
+    weights: readonly number[],
+): PanelLayout {
+    const split = panelLayoutReferences(layout).splits.find(
+        (s) => s.id === splitId,
+    );
+    if (!split) throw new PanelLayoutError("unknown_split", "No such split.");
+    if (
+        split.children.length !== children.length ||
+        split.children.some((child, index) => child.id !== children[index])
+    )
+        throw new PanelLayoutError(
+            "layout_changed",
+            "The split children changed; resize the current layout.",
+        );
+    return replaceNode(layout, splitId, (node) => ({
+        ...(node as Extract<PanelLayout, { type: "split" }>),
+        weights: [...weights],
+    }));
+}
+export const panelViewSchema = compatible(
+    strictStruct({
         id,
-        kind: z.enum(["host", "workspace", "network"]),
-        section: z.enum(["hosts", "workspaces", "networks"]),
-        name: z.string(),
-        hostId: id.nullable(),
-        networkId: id.nullable(),
+        kind: Schema.Literals(["host", "workspace", "network"]),
+        section: Schema.Literals(["hosts", "workspaces", "networks"]),
+        name: Schema.String,
+        hostId: Schema.NullOr(id),
+        networkId: Schema.NullOr(id),
         revision: positive,
         layout: panelLayoutSchema,
-        activePaneId: id,
-        tabs: z.array(tabViewSchema),
-    })
-    .superRefine((panel, ctx) => {
-        if (
-            panel.kind === "workspace"
-                ? panel.hostId !== null || panel.networkId !== null
-                : panel.kind === "host"
-                  ? panel.hostId === null ||
-                    panel.networkId === null ||
-                    panel.section !== "hosts"
-                  : panel.hostId !== null ||
-                    panel.networkId === null ||
-                    panel.section !== "networks"
-        )
-            ctx.addIssue({
-                code: "custom",
-                message: "Invalid panel ownership or section",
-            });
-        const { panes, tabIds } = panelLayoutReferences(panel.layout);
-        const paneIds = panes.map((p) => p.id);
-        const ids = panel.tabs.map((t) => t.id);
-        const terminals = panel.tabs.flatMap((t) =>
-            t.terminalId === null ? [] : [t.terminalId],
-        );
-        if (
-            new Set(paneIds).size !== paneIds.length ||
-            !paneIds.includes(panel.activePaneId) ||
-            new Set(tabIds).size !== tabIds.length ||
-            new Set(ids).size !== ids.length ||
-            ids.length !== tabIds.length ||
-            ids.some((id) => !tabIds.includes(id)) ||
-            new Set(terminals).size !== terminals.length
-        )
-            ctx.addIssue({
-                code: "custom",
-                message: "Invalid panel pane/tab/terminal references",
-            });
-    });
-const panelName = z
-    .string()
-    .transform((v) => v.trim())
-    .pipe(
-        z
-            .string()
-            .min(1)
-            .max(128)
-            .refine((v) =>
-                [...v].every(
-                    (char) =>
-                        char.charCodeAt(0) > 31 && char.charCodeAt(0) !== 127,
-                ),
-            ),
+        tabs: mutableArray(tabViewSchema),
+    }).check(
+        Schema.makeFilter((panel) => {
+            const issues: Schema.FilterIssue[] = [];
+            if (
+                (panel.kind === "workspace" &&
+                    (panel.hostId !== null || panel.networkId !== null)) ||
+                (panel.kind === "host" &&
+                    (panel.hostId === null ||
+                        panel.networkId === null ||
+                        panel.section !== "hosts")) ||
+                (panel.kind === "network" &&
+                    (panel.hostId !== null ||
+                        panel.networkId === null ||
+                        panel.section !== "networks"))
+            )
+                issues.push("Invalid panel ownership or section");
+            const { panes, splits, tabIds } = panelLayoutReferences(
+                panel.layout,
+            );
+            const paneIds = panes.map((pane) => pane.id);
+            const nodeIds = [...paneIds, ...splits.map((split) => split.id)];
+            const tabIdsInPanel = panel.tabs.map((tab) => tab.id);
+            const terminalIds = panel.tabs.flatMap((tab) =>
+                tab.terminalId === null ? [] : [tab.terminalId],
+            );
+            if (
+                new Set(nodeIds).size !== nodeIds.length ||
+                new Set(tabIds).size !== tabIds.length ||
+                new Set(tabIdsInPanel).size !== tabIdsInPanel.length ||
+                tabIdsInPanel.length !== tabIds.length ||
+                tabIdsInPanel.some((tabId) => !tabIds.includes(tabId)) ||
+                new Set(terminalIds).size !== terminalIds.length
+            )
+                issues.push("Invalid panel pane/tab/terminal references");
+            return issues;
+        }),
+    ),
+);
+const panelName = Schema.String.pipe(
+    Schema.decodeTo(Schema.String, {
+        decode: SchemaGetter.transform((value) => value.trim()),
+        encode: SchemaGetter.transform((value) => value),
+    }),
+)
+    .check(Schema.isMinLength(1))
+    .check(Schema.isMaxLength(128))
+    .check(
+        Schema.makeFilter((value) =>
+            [...value].every(
+                (char) => char.charCodeAt(0) > 31 && char.charCodeAt(0) !== 127,
+            )
+                ? undefined
+                : "Panel name contains a control character",
+        ),
     );
-export const createPanelRequestSchema = z.strictObject({
-    name: panelName,
-    section: z.enum(["workspaces", "networks", "hosts"]).optional(),
-});
-export const renamePanelRequestSchema = z.strictObject({
-    revision: positive,
-    name: panelName,
-});
-export const putPanelLayoutRequestSchema = z.strictObject({
-    revision: positive,
-    layout: panelLayoutSchema,
-    activePaneId: id,
-});
-export const createPanelShellRequestSchema = z.strictObject({
-    requestId,
-    revision: positive,
-    paneId: id,
-    split: z.enum(["right", "down"]).optional(),
-    cols: positive.optional(),
-    rows: positive.optional(),
-});
-export const closePanelTabRequestSchema = z.strictObject({
-    requestId,
-    revision: positive,
-    expectedRuntimeId: id.nullable(),
-    confirm: z.boolean(),
-});
-export const dismissPanelTabRequestSchema = z.strictObject({
-    revision: positive,
-});
-export const deletePanelRequestSchema = z.strictObject({
-    requestId,
-    revision: positive,
-    confirm: z.literal(true),
-});
-
-const webNetworkSchema = z.union([hostNetworkViewSchema, networkViewSchema]);
-export const webSnapshotSchema = z.strictObject({
-    hosts: z.array(hostViewSchema),
-    networks: z.array(webNetworkSchema),
-    panels: z.array(panelViewSchema),
-    terminals: z.array(terminalViewSchema),
-    agents: z.array(agentViewSchema),
-    operations: z.array(operationSchema),
-    notifications: z.array(webNotificationViewSchema),
-});
-function change<S extends z.ZodType, R extends string>(resource: R, schema: S) {
-    return z.strictObject({
-        resource: z.literal(resource),
-        action: z.literal("upsert"),
+const size = {
+    cols: Schema.optional(positive),
+    rows: Schema.optional(positive),
+};
+/** One destination shape for new and moved tabs: a pane or a new split beside one. */
+export const panelTabTargetSchema = compatible(
+    Schema.Union([
+        strictStruct({ toPaneId: id, beforeTabId: Schema.optional(id) }),
+        strictStruct({
+            split: strictStruct({
+                targetPaneId: id,
+                side: Schema.Literals(["left", "right", "top", "bottom"]),
+                paneId: id,
+                splitId: id,
+            }),
+        }),
+    ]),
+);
+const weights = mutableArray(finitePositive);
+/** One registration or placement change; process effects start only after commit. */
+export const panelChangeSchema = compatible(
+    Schema.Union([
+        strictStruct({
+            type: Schema.Literal("panel.create"),
+            name: panelName,
+            section: Schema.optional(
+                Schema.Literals(["workspaces", "networks", "hosts"]),
+            ),
+            paneId: id,
+            tabId: id,
+            ...size,
+        }),
+        strictStruct({ type: Schema.Literal("panel.rename"), name: panelName }),
+        strictStruct({
+            type: Schema.Literal("panel.delete"),
+            confirm: Schema.Literal(true),
+        }),
+        strictStruct({
+            type: Schema.Literal("tab.create"),
+            tabId: id,
+            target: panelTabTargetSchema,
+            ...size,
+        }),
+        strictStruct({
+            type: Schema.Literal("tab.move"),
+            tabId: id,
+            target: panelTabTargetSchema,
+        }),
+        strictStruct({
+            type: Schema.Literal("tab.close"),
+            tabId: id,
+            expectedRuntimeId: Schema.NullOr(id),
+            confirm: Schema.Boolean,
+        }),
+        strictStruct({ type: Schema.Literal("tab.dismiss"), tabId: id }),
+        strictStruct({
+            type: Schema.Literal("split.resize"),
+            splitId: id,
+            children: mutableArray(id).check(Schema.isMinLength(2)),
+            weights,
+        }),
+    ]),
+);
+/** A panel's ordered changes committed in one transaction. */
+export const webCommandRequestSchema = compatible(
+    strictStruct({
+        clientSessionId: requestId,
+        sequence: positive,
+        requestId,
+        panelId: id,
+        changes: mutableArray(panelChangeSchema).check(Schema.isMinLength(1)),
+    }).check(
+        Schema.makeFilter((command) => {
+            const issues: Schema.FilterIssue[] = [];
+            const last = command.changes.length - 1;
+            command.changes.forEach((change, index) => {
+                if (
+                    (change.type === "panel.create" && index !== 0) ||
+                    (change.type === "panel.delete" && index !== last)
+                )
+                    issues.push({
+                        path: ["changes", index],
+                        issue: "panel.create must come first and panel.delete last",
+                    });
+                if (
+                    change.type === "split.resize" &&
+                    (change.weights.length !== change.children.length ||
+                        Math.abs(
+                            change.weights.reduce((a, b) => a + b, 0) - 1,
+                        ) >= 1e-9)
+                )
+                    issues.push({
+                        path: ["changes", index],
+                        issue: "Split weights must match children and sum to one",
+                    });
+            });
+            return issues;
+        }),
+    ),
+);
+export const webCommandResultSchema = compatible(
+    strictStruct({
+        requestId,
+        sequence: positive,
+        /** The committed panel; null after panel.delete. */
+        panel: Schema.NullOr(panelViewSchema),
+    }),
+);
+/** A process the daemon still has to stop after its tab or panel was removed. */
+export const cleanupViewSchema = compatible(
+    strictStruct({
+        id,
+        terminalId: id,
+        panelId: Schema.NullOr(id),
+        tabId: Schema.NullOr(id),
+        reason: Schema.Literals([
+            "tab-closed",
+            "panel-deleted",
+            "shell-cancelled",
+            "shell-unjoined",
+        ]),
+        state: Schema.Literals(["stopping", "failed"]),
+        error: Schema.NullOr(Schema.String),
+        attempts: Schema.Natural,
+        updatedAt: timestamp,
+    }),
+);
+/** Requests skipped because an earlier sequence did not arrive before its deadline. */
+export const webSequenceFailureSchema = compatible(
+    strictStruct({
+        clientSessionId: requestId,
+        code: Schema.Literal("sequence_gap"),
+        missing: mutableArray(positive),
+        unexecuted: mutableArray(
+            strictStruct({ sequence: positive, requestId }),
+        ),
+    }),
+);
+const webNetworkSchema = compatible(
+    Schema.Union([hostNetworkViewSchema, networkViewSchema]),
+);
+export const webSnapshotSchema = compatible(
+    strictStruct({
+        /** Changes when the daemon restarts; client sessions of an older epoch are gone. */
+        epoch: id,
+        hosts: mutableArray(hostViewSchema),
+        networks: mutableArray(webNetworkSchema),
+        panels: mutableArray(panelViewSchema),
+        terminals: mutableArray(terminalViewSchema),
+        agents: mutableArray(agentViewSchema),
+        cleanups: mutableArray(cleanupViewSchema),
+        notifications: mutableArray(webNotificationViewSchema),
+    }),
+);
+function change<
+    const R extends string,
+    S extends Schema.ConstraintDecoder<unknown>,
+>(resource: R, schema: S) {
+    return strictStruct({
+        resource: Schema.Literal(resource),
+        action: Schema.Literal("upsert"),
         id,
         value: schema,
     });
 }
-export const webChangeSchema = z
-    .union([
+export const webResources = [
+    "host",
+    "network",
+    "panel",
+    "terminal",
+    "agent",
+    "cleanup",
+    "notification",
+] as const;
+export const webChangeSchema = compatible(
+    Schema.Union([
         change("host", hostViewSchema),
         change("network", webNetworkSchema),
         change("panel", panelViewSchema),
         change("terminal", terminalViewSchema),
         change("agent", agentViewSchema),
-        change("operation", operationSchema),
+        change("cleanup", cleanupViewSchema),
         change("notification", webNotificationViewSchema),
-        z.strictObject({
-            resource: z.enum([
-                "host",
-                "network",
-                "panel",
-                "terminal",
-                "agent",
-                "operation",
-                "notification",
-            ]),
-            action: z.literal("remove"),
+        strictStruct({
+            resource: Schema.Literals(webResources),
+            action: Schema.Literal("remove"),
             id,
         }),
-    ])
-    .refine(
-        (v) =>
-            v.action === "remove" ||
-            v.id === (v.resource === "agent" ? v.value.agentId : v.value.id),
-        "Change id must match resource",
-    );
-export const webStateSchema = z.strictObject({
-    changes: z.array(webChangeSchema),
-});
-export const webFaultSchema = z.strictObject({ code: id, message: z.string() });
+    ]).check(
+        Schema.makeFilter((value) =>
+            value.action === "remove" ||
+            value.id ===
+                (value.resource === "agent"
+                    ? value.value.agentId
+                    : value.value.id)
+                ? undefined
+                : "Change id must match resource",
+        ),
+    ),
+);
+export const webStateSchema = compatible(
+    strictStruct({
+        changes: mutableArray(webChangeSchema),
+    }),
+);
+export const webFaultSchema = compatible(
+    strictStruct({
+        code: id,
+        message: Schema.String,
+    }),
+);
 
-export type HostSource = z.infer<typeof hostSourceSchema>;
-export type Invocation = z.infer<typeof invocationSchema>;
-export type HostView = z.infer<typeof hostViewSchema>;
-export type ManagedAgentView = z.infer<typeof managedAgentViewSchema>;
-export type HostNetworkView = z.infer<typeof hostNetworkViewSchema>;
-export type Operation = z.infer<typeof operationSchema>;
-export type OperationTarget = z.infer<typeof operationTargetSchema>;
-export type OperationError = z.infer<typeof operationErrorSchema>;
-export type PanelView = z.infer<typeof panelViewSchema>;
-export type TabView = z.infer<typeof tabViewSchema>;
-export type ConfigView = z.infer<typeof configViewSchema>;
-export type WebSnapshot = z.infer<typeof webSnapshotSchema>;
-export type WebChange = z.infer<typeof webChangeSchema>;
-export type WebState = z.infer<typeof webStateSchema>;
-export type WebFault = z.infer<typeof webFaultSchema>;
-export type HostRunRequest = z.infer<typeof hostRunRequestSchema>;
-export type HostRestartRequest = z.infer<typeof hostRestartRequestSchema>;
-export type HostResolveRequest = z.infer<typeof hostResolveRequestSchema>;
-export type HostControlRequest = z.infer<typeof hostControlRequestSchema>;
-export type HostAgentStartRequest = z.infer<typeof hostAgentStartRequestSchema>;
-export type HostAgentStopRequest = z.infer<typeof hostAgentStopRequestSchema>;
-export type CreatePanelRequest = z.infer<typeof createPanelRequestSchema>;
-export type RenamePanelRequest = z.infer<typeof renamePanelRequestSchema>;
-export type PutPanelLayoutRequest = z.infer<typeof putPanelLayoutRequestSchema>;
-export type CreatePanelShellRequest = z.infer<
-    typeof createPanelShellRequestSchema
+export type HostSource = Schema.Schema.Type<typeof hostSourceSchema>;
+export type Invocation = Schema.Schema.Type<typeof invocationSchema>;
+export type HostView = Schema.Schema.Type<typeof hostViewSchema>;
+export type ManagedAgentView = Schema.Schema.Type<
+    typeof managedAgentViewSchema
 >;
-export type ClosePanelTabRequest = z.infer<typeof closePanelTabRequestSchema>;
-export type DismissPanelTabRequest = z.infer<
-    typeof dismissPanelTabRequestSchema
+export type HostNetworkView = Schema.Schema.Type<typeof hostNetworkViewSchema>;
+export type HostCommand = Schema.Schema.Type<typeof hostCommandSchema>;
+export type HostTargetResult = Schema.Schema.Type<
+    typeof hostTargetResultSchema
 >;
-export type DeletePanelRequest = z.infer<typeof deletePanelRequestSchema>;
-export type PutConfigRequest = z.infer<typeof putConfigRequestSchema>;
-export type LastExit = z.infer<typeof lastExitSchema>;
-export type ManagedRuntime = z.infer<typeof managedRuntimeSchema>;
-export type HostError = z.infer<typeof hostErrorSchema>;
-export type TabNotice = z.infer<typeof tabNoticeSchema>;
-export type HostResolveResult = z.infer<typeof hostResolveResultSchema>;
-export type HostAgentRestartRequest = z.infer<
+export type HostCommandResult = Schema.Schema.Type<
+    typeof hostCommandResultSchema
+>;
+export type HostCommandEvent = Schema.Schema.Type<
+    typeof hostCommandEventSchema
+>;
+export type CommandError = Schema.Schema.Type<typeof commandErrorSchema>;
+export type PanelView = Schema.Schema.Type<typeof panelViewSchema>;
+export type TabView = Schema.Schema.Type<typeof tabViewSchema>;
+export type ConfigView = Schema.Schema.Type<typeof configViewSchema>;
+export type WebSnapshot = Schema.Schema.Type<typeof webSnapshotSchema>;
+export type WebChange = Schema.Schema.Type<typeof webChangeSchema>;
+export type WebState = Schema.Schema.Type<typeof webStateSchema>;
+export type WebFault = Schema.Schema.Type<typeof webFaultSchema>;
+export type HostRunRequest = Schema.Schema.Type<typeof hostRunRequestSchema>;
+export type HostRestartRequest = Schema.Schema.Type<
+    typeof hostRestartRequestSchema
+>;
+export type HostResolveRequest = Schema.Schema.Type<
+    typeof hostResolveRequestSchema
+>;
+export type HostControlRequest = Schema.Schema.Type<
+    typeof hostControlRequestSchema
+>;
+export type HostAgentStartRequest = Schema.Schema.Type<
+    typeof hostAgentStartRequestSchema
+>;
+export type HostAgentStopRequest = Schema.Schema.Type<
+    typeof hostAgentStopRequestSchema
+>;
+export type PanelChange = Schema.Schema.Type<typeof panelChangeSchema>;
+export type WebCommandRequest = Schema.Schema.Type<
+    typeof webCommandRequestSchema
+>;
+export type WebCommandResult = Schema.Schema.Type<
+    typeof webCommandResultSchema
+>;
+export type CleanupView = Schema.Schema.Type<typeof cleanupViewSchema>;
+export type WebSequenceFailure = Schema.Schema.Type<
+    typeof webSequenceFailureSchema
+>;
+export type PutConfigRequest = Schema.Schema.Type<
+    typeof putConfigRequestSchema
+>;
+export type LastExit = Schema.Schema.Type<typeof lastExitSchema>;
+export type ManagedRuntime = Schema.Schema.Type<typeof managedRuntimeSchema>;
+export type HostError = Schema.Schema.Type<typeof hostErrorSchema>;
+export type TabNotice = Schema.Schema.Type<typeof tabNoticeSchema>;
+export type HostResolveResult = Schema.Schema.Type<
+    typeof hostResolveResultSchema
+>;
+export type HostAgentRestartRequest = Schema.Schema.Type<
     typeof hostAgentRestartRequestSchema
 >;
-export type Keybindings = z.infer<typeof keybindingsSchema>;
+export type Keybindings = Schema.Schema.Type<typeof keybindingsSchema>;

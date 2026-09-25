@@ -2,16 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import type { DeliveryOutcome } from "@aiox/domain";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
-import { z } from "zod";
+import { Effect, Option, Schema, Semaphore } from "effect";
 
 import {
     ClaudeTranscriptChain,
     transcriptRowSchema,
 } from "@/claude-transcript-chain";
 
-const observationRowSchema = transcriptRowSchema.extend({
-    content: z.unknown().optional(),
-    level: z.unknown().optional(),
+const observationRowSchema = Schema.Struct({
+    ...transcriptRowSchema.fields,
+    content: Schema.optional(Schema.Unknown),
+    level: Schema.optional(Schema.Unknown),
 });
 
 function escapeAttribute(value: string): string {
@@ -80,7 +81,7 @@ export class ClaudeObservations {
               waitingFor?: string | undefined;
           }
         | undefined;
-    #queue = Promise.resolve();
+    readonly #queue = Effect.runSync(Semaphore.make(1));
 
     constructor(readonly controls: RuntimeControls) {}
 
@@ -205,12 +206,13 @@ export class ClaudeObservations {
     observeTranscript(value: unknown, instance?: ClaudeSession): Promise<void> {
         return this.#enqueue(async () => {
             if (instance?.retired) return;
-            const parsed = observationRowSchema.safeParse(value);
-            const state = parsed.success
-                ? (instance ?? this.#session(parsed.data.sessionId))
+            const parsed =
+                Schema.decodeUnknownOption(observationRowSchema)(value);
+            const state = Option.isSome(parsed)
+                ? (instance ?? this.#session(parsed.value.sessionId))
                 : undefined;
-            if (parsed.success) {
-                const row = parsed.data;
+            if (Option.isSome(parsed)) {
+                const row = parsed.value;
                 // Claude 2.1.278 persists this notice for Esc/Ctrl+C/menu cancellation;
                 // those actions do not emit quota_auto_resume_disabled.
                 if (
@@ -257,7 +259,7 @@ export class ClaudeObservations {
                     await this.#input(key, frame, state!);
                 }
             }
-            const result = parsed.success
+            const result = Option.isSome(parsed)
                 ? state!.chain.observe(value)
                 : undefined;
             if (result && !state!.ambiguous.has(result.key))
@@ -471,9 +473,14 @@ export class ClaudeObservations {
     }
 
     #enqueue(action: () => Promise<void>): Promise<void> {
-        const next = this.#queue.then(action);
-        this.#queue = next.catch(() => {});
-        return next;
+        return Effect.runPromise(
+            Semaphore.withPermit(this.#queue)(
+                Effect.tryPromise({
+                    try: action,
+                    catch: (error) => error,
+                }),
+            ),
+        );
     }
 
     #observeNotification(

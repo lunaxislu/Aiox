@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 
+import * as Schema from "effect/Schema";
 import { test } from "vitest";
 
 import {
     apiPath,
     agentRunSchema,
     agentViewSchema,
+    agentStatusSchema,
     externalAgentRunSchema,
     externalAgentClientFrameSchema,
     errorBodySchema,
@@ -187,22 +189,34 @@ test("foreground launch validates context without re-parsing vendor arguments", 
         { ...input, terminalContext: { terminalId: "t" } },
         { ...input, runtimeId: "borrowed-identity" },
     ])
-        assert.equal(agentRunSchema.safeParse(bad).success, false);
+        assert.equal(
+            agentRunSchema.safeParse(bad).success,
+            false,
+            JSON.stringify(bad),
+        );
 });
 
 test("agent status reasons are required and absent reasons are null", () => {
-    const schema = agentViewSchema.pick({ status_reason: true });
-    assert.throws(() => schema.parse({}));
-    assert.deepEqual(schema.parse({ status_reason: null }), {
-        status_reason: null,
+    const schema = Schema.Struct({
+        status_reason: agentViewSchema.fields.status_reason,
     });
-    assert.deepEqual(schema.parse({ status_reason: "rate_limit" }), {
-        status_reason: "rate_limit",
-    });
+    assert.throws(() => Schema.decodeUnknownSync(schema)({}));
+    assert.deepEqual(
+        Schema.decodeUnknownSync(schema)({ status_reason: null }),
+        {
+            status_reason: null,
+        },
+    );
+    assert.deepEqual(
+        Schema.decodeUnknownSync(schema)({ status_reason: "rate_limit" }),
+        {
+            status_reason: "rate_limit",
+        },
+    );
 });
 
 test("agent status accepts the common vocabulary and excludes stopped", () => {
-    const schema = agentViewSchema.shape.status;
+    const schema = agentStatusSchema;
     for (const status of [
         "aiox-preparing",
         "idle",
@@ -210,7 +224,7 @@ test("agent status accepts the common vocabulary and excludes stopped", () => {
         "awaiting-user",
         "failed",
     ])
-        assert.equal(schema.parse(status), status);
+        assert.equal(Schema.decodeUnknownSync(schema)(status), status);
     for (const status of ["starting", "reasoning", "tool", "stopped"])
-        assert.throws(() => schema.parse(status));
+        assert.throws(() => Schema.decodeUnknownSync(schema)(status));
 });

@@ -4,13 +4,22 @@ import type {
     TerminalLaunch,
 } from "@aiox/config";
 import type { AioxDatabase } from "@aiox/persistence";
-import type { DaemonStatus, CreateShell, TerminalView } from "@aiox/protocol";
+import type {
+    DaemonStatus,
+    CreateShell,
+    TerminalView,
+    WebCommandCommit,
+} from "@aiox/protocol";
 
+import type { AppState } from "@/app-state";
+import type { CleanupRegistry } from "@/cleanups";
+import type { HostCommands } from "@/host-command";
 import type { MessageService } from "@/messaging";
 import type { NetworkService } from "@/networks";
 import type { RuntimeRegistry } from "@/runtimes";
+import type { Sequencer } from "@/sequencer";
+import type { DaemonTasks } from "@/tasks";
 import type { TerminalService } from "@/terminals";
-import type { WebEvents } from "@/web-events";
 
 export type StopOutcome = {
     /** false when a stop was refused or managed cleanup remains unconfirmed. */
@@ -34,10 +43,14 @@ export type Lifecycle = {
 };
 
 export type DaemonServices = {
-    readonly operationTasks: Set<Promise<void>>;
+    /** Daemon-owned preparation work; teardown waits for it. */
+    readonly tasks: DaemonTasks;
+    readonly cleanups: CleanupRegistry;
+    readonly appState: AppState;
+    readonly sequencer: Sequencer<WebCommandCommit>;
+    readonly hostCommands: HostCommands;
     readonly configLocation: ConfigLocation;
     readonly configDocument: ReturnType<typeof createConfigDocument>;
-    readonly webEvents: WebEvents;
     readonly db: AioxDatabase;
     readonly runtimes: RuntimeRegistry;
     readonly networks: NetworkService;

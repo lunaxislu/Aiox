@@ -372,7 +372,7 @@ CLI는 daemon listener, React는 동일 origin의 Web listener에서 같은 hand
 식별자는 opaque 문자열이며 path segment를 percent-encode한다. 자원 path의 `hostId`와
 `networkId`는 ID만 받으며 이름 fallback은 없다. Web과 CLI 모두 조회로 얻은 ID를 사용한다.
 CLI의 hostname/network 인자는 이름 전용이며 ID처럼 생겨도 정확한 이름으로만 조회한다.
-Runtime ID와 YAML Agent key를 교환하지 않는다. 입력 오류/비동기 Operation 공통 형식은
+Runtime ID와 YAML Agent key를 교환하지 않는다. 입력 오류/Host 명령 결과 공통 형식은
 [[docs/specs/aiox-runtime]]의 「Host 명령 검증과 완료 응답」을 따른다.
 
 `Source = {directory: absolute-directory, file?: string}`. CLI가 `--path` 또는 호출 cwd를
@@ -383,16 +383,16 @@ Web·일반 요청의 panelId나 cwd를 실행 위치 인증으로 사용하지 
 
 | Method / path | 요청 body / caller | 성공 body |
 | --- | --- | --- |
-| `POST /api/hosts/run` | CLI: `{requestId,source,layout?:LayoutInput,...Invocation}` | 202 Operation |
-| `POST /api/hosts/restart` | CLI: `{requestId,source,...Invocation}`. 최신 YAML 이름으로 선택 | 202 Operation; 이름 변경이면 새 hostId |
+| `POST /api/hosts/run` | CLI: `{requestId,source,layout?:LayoutInput,...Invocation}` | 200 NDJSON Host 명령 결과 |
+| `POST /api/hosts/restart` | CLI: `{requestId,source,...Invocation}`. 최신 YAML 이름으로 선택 | 200 NDJSON Host 명령 결과; 이름 변경이면 새 hostId |
 | `GET /api/hosts` | CLI list / React Hosts; 선택 query `name`은 정확한 이름 필터 | 200 `HostView[]`; name 지정 시 0 또는 1개 |
 | `GET /api/hosts/:hostId` | CLI status / React | 200 HostView |
 | `POST /api/hosts/resolve` | YAML로 status/stop/delete 대상을 찾는 CLI: `{source}` | 200 `{hostId}`; config→YAML 검증 뒤 host.name 정확 일치 조회, 생성·재적용 없음 |
-| `POST /api/hosts/:hostId/stop` | CLI/Web: `{requestId}` | 202 Operation |
-| `DELETE /api/hosts/:hostId` | CLI/Web: `{requestId}` | 202 Operation; 완료 전 Host 유지 |
-| `POST /api/hosts/agents/start` | CLI: `{requestId,source,agents:string[],...Invocation}` | 202 Operation |
-| `POST /api/hosts/agents/restart` | CLI: 같은 body | 202 Operation |
-| `POST /api/hosts/:hostId/agents/stop` | YAML로 Host를 resolve한 CLI 또는 Web: `{requestId,agents:string[]}` | 202 Operation |
+| `POST /api/hosts/:hostId/stop` | CLI/Web: `{requestId}` | 200 NDJSON Host 명령 결과 |
+| `DELETE /api/hosts/:hostId` | CLI/Web: `{requestId}` | 200 NDJSON Host 명령 결과; 모든 종료 확인 전 Host 유지 |
+| `POST /api/hosts/agents/start` | CLI: `{requestId,source,agents:string[],...Invocation}` | 200 NDJSON Host 명령 결과 |
+| `POST /api/hosts/agents/restart` | CLI: 같은 body | 200 NDJSON Host 명령 결과 |
+| `POST /api/hosts/:hostId/agents/stop` | YAML로 Host를 resolve한 CLI 또는 Web: `{requestId,agents:string[]}` | 200 NDJSON Host 명령 결과 |
 | `GET /api/hosts/:hostId/networks` | CLI network list / React; 선택 query `name`은 해당 Host 안의 정확한 이름 필터 | 200 `HostNetworkView[]`(필터 부재 시 한 항목, 지정 시 0 또는 1개) |
 | `GET /api/hosts/:hostId/networks/:networkId` | CLI network show / React | 200 HostNetworkView |
 | `POST /api/hosts/:hostId/networks/:networkId/route` | CLI: `{operation}`; 기존 between/directed routeOperation 형식, endpoints는 관리 Agent key | 200 HostNetworkView |
@@ -450,7 +450,7 @@ Host·Network 조회 DTO는 [[docs/specs/aiox-configuration-web]]의 SSE state�
 
 ### 조회 DTO와 route 예시
 
-HostView는 `{id,name,directory,sourceFile,instruction,panelId,networkId,revision,agents,activeOperationId}`다.
+HostView는 `{id,name,directory,sourceFile,instruction,panelId,networkId,revision,agents}`다.
 `revision`은 적용 구성·route 변경 시 증가하는 양의 정수다. sourceFile은 provenance이며 읽기 성공을
 보증하지 않는다. `agents`는 **적용된 선언 순서**의 ManagedAgentView 배열이다.
 관리 Agent 상태는 탭의 표시와 별개다. stop 뒤에도 배열에서 제거하지 않는다.
@@ -459,7 +459,7 @@ HostView는 `{id,name,directory,sourceFile,instruction,panelId,networkId,revisio
 {
   "id":"h1","name":"feature-host","directory":"/work/project",
   "sourceFile":"/work/project/aiox.dev.yaml","instruction":"Collaborate on changes.","panelId":"p1","networkId":"n1",
-  "revision":3,"activeOperationId":null,
+  "revision":3,
   "agents":[{
     "key":"reviewer","adapter":"claude","role":"review","description":null,
     "instruction":"Review changes.","args":[],"member":true,
@@ -469,11 +469,11 @@ HostView는 `{id,name,directory,sourceFile,instruction,panelId,networkId,revisio
 }
 ```
 
-`runtime`는 null 또는 `{id,terminalId,phase,status,status_reason,observation_error,
-collaborationActive,collaborationError}`다. phase는 `preparing|running|stopping`이며 status는
+`runtime`는 null 또는
+`{id,terminalId,phase,status,status_reason,observation_error,collaborationActive,collaborationError}`다. phase는 `preparing|running|stopping`이며 status는
 runtime owner의 다섯 값이다. phase는 실행 수명이고 status는 관측 활동이라 failed와 running이
 함께 가능하다. runtime이 null일 때만 관리 카드가 stopped다. 프로세스 종료는 관측됐지만
-정리가 남으면 runtime은 null이어도 Operation의 cleanup 오류가 남는다.
+정리가 남으면 runtime은 null이어도 그 명령 결과의 대상 오류가 남는다.
 `lastExit`는 null 또는 `{kind: stopped|exited|crashed|start-failed|daemon-ended,message:string|null,at:epoch-ms}`.
 `lastTerminalId`는 이력용 nullable 참조이며 재사용 가능 자리 판정에 쓰지 않는다.
 

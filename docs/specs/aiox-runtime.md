@@ -436,72 +436,77 @@ ID 전용 조회·제어 API를 호출한다. 대상이 사라지면 실패하�
 전달, run 외 layout override, restart --force를 추가하지 않는다.
 
 성공한 human 출력은 stdout, 오류·부분 실패·후속 사용법은 stderr다. exit 0은 조회 성공,
-동기 저장 성공 또는 Operation succeeded/unchanged 완료이며 **202 수신은 exit 0이 아니다**.
+동기 저장 성공 또는 Host 명령 결과의 succeeded(대상 ready/stopped/unchanged)이며 **요청 접수만으로 exit 0이 아니다**.
 오류·실행/정리 실패는 exit 1. 목록·조회/route의 `--json`은 해당 API DTO JSON 하나를 stdout에
 출력한다. 실패 시 stdout 성공 JSON을 만들지 않고 stderr에 오류 JSON을 쓴다.
 같은 파일·이름 run의 `host_exists`는 기존 상태와 start/restart 명령을 안내하고 exit 1이다.
-실행 중 Agent start의 unchanged는 exit 0이다. CLI 대기 중 연결이 끊기면 operationId/requestId와
+실행 중 Agent start의 unchanged는 exit 0이다. CLI 대기 중 연결이 끊기면 requestId와
 재조회 방법(`host status <name> --json`)을 남기고 exit 1이며 이미 접수한 실행을 취소하지 않는다.
 
-### Operation과 오류
+### Host 명령 결과와 오류
 
-실행/종료가 필요한 Host 명령과 panel shell 생성·닫기는 `202`와 Operation을 반환한다.
-requestId는 caller가 만드는 UUID이며 같은 요청의 네트워크 재시도에만 재사용한다.
-같은 requestId+동일 입력은 기존 Operation, 다른 입력은 409 `request_conflict`다.
-새로운 사용자 실행은 새 requestId다. confirmation_required로 거절된 뒤
-사용자가 확인한 confirm:true 요청도 새 requestId를 사용한다. 이 사전 거절은 Operation을
-생성하지 않으며, 동일 body의 응답 유실 재전송과 구분한다. 작업별 이벤트 log나 별도 polling 상태 권위를 만들지 않는다.
-CLI는 SSE 최초 snapshot의 operations와 이후 operation upsert에서 해당 ID의 진행·완료를
-받는다. 최초·재접속도 snapshot부터 시작하므로 구독 전 완료를 확인할 수 있다. 명시적 결과
-조회와 응답 유실 복원에는 Operation GET을 유지한다. SSE snapshot/state와 실패 계약은
-[[docs/specs/aiox-configuration-web]]을 따른다.
+실행/종료가 필요한 Host 명령은 선행 검증을 통과하면 200과 `application/x-ndjson` 응답을 연다.
+응답은 대상별 실제 결과가 모두 확정된 뒤의 마지막 `{"type":"result","result":HostCommandResult}`
+한 줄로 끝난다. 선행 검증 실패는 아래 HTTP 오류이며 아무 자원도 만들지 않는다. 작업은 daemon이
+소유하므로 호출자의 연결이 끊겨도 취소되지 않는다. Web panel 명령의 성공 기준(등록 commit)과
+대상 조건·순번 계약은 [[docs/specs/aiox-configuration-web]]이 소유하며 Host 명령과 섞지 않는다.
 
-`GET /api/operations/:id` → 200 Operation; 없음은 404 `unknown_operation`.
-`GET /api/operations?requestId=<uuid>` → 200 `Operation[]`(0 또는 1개)는 접수 응답 유실 복원용이다.
+호출한 CLI의 terminal에 관리 Agent를 배치한 경우에만 결과 전에
+`{"type":"launch","hostId","agentKey","terminalId","marker"}`가 온다. CLI는 그 Agent를 자기
+terminal에서 foreground로 실행하고, 실행 전 실패는 marker가 붙은 진단으로 daemon에 알린다.
+
+requestId는 caller가 만드는 UUID이며 같은 요청의 네트워크 재시도에만 재사용한다. 같은
+requestId+동일 입력은 처리 중이면 그 처리에 합류하고, 끝났으면 기록된 같은 결과를 받는다.
+다른 입력은 409 `request_conflict`다. 결과 기록은 daemon 메모리에 최근 128개까지만 두며 daemon
+재시작 뒤에는 남지 않는다. 새로운 사용자 실행은 새 requestId다. 같은 Host에서 다른 Host 명령이
+진행 중이면 409 `host_busy`다. 공개 Operation 조회·목록·SSE 자원은 없다.
 
 ```json
 {
-  "id":"o1","requestId":"6a8ed620-0000-4000-8000-000000000001",
-  "kind":"host.run","hostId":"h1","panelId":"p1","state":"running",
-  "targets":[{"agentKey":"reviewer","terminalId":"t1","state":"preparing","error":null}],
-  "error":null,"cleanupErrors":[],"createdAt":1789948800000,"finishedAt":null
+  "requestId":"6a8ed620-0000-4000-8000-000000000001","command":"host.run","hostId":"h1",
+  "state":"failed",
+  "targets":[{"agentKey":"reviewer","terminalId":"t1","state":"ready","error":null},
+    {"agentKey":"tester","terminalId":"t2","state":"failed",
+     "error":{"code":"execution_failed","message":"vendor unavailable","stage":"execution","agentKey":"tester"}}],
+  "error":{"code":"execution_failed","message":"vendor unavailable","stage":"execution","agentKey":"tester"},
+  "cleanupErrors":[]
 }
 ```
 
-Operation 필드는 모두 존재하며 hostId/panelId는 대상 없는 작업에서 null이다.
-kind는 `host.run|host.restart|host.stop|host.delete|host.agent.start|host.agent.restart|host.agent.stop|panel.shell.create|panel.tab.close|panel.delete`.
-state는 `running|succeeded|failed`, target.state는
-`pending|preparing|ready|stopping|stopped|unchanged|failed`다.
-각 target의 agentKey/terminalId는 대상이 없는 경우 null이다.
-완료 시 finishedAt을 채우고 상태는 되돌리지 않는다. 실행별 성공·실패는 targets에 남는다.
-오류는 `{code,message,stage,field?,agentKey?}`이고 stage는
+command는 `host.run|host.restart|host.stop|host.delete|host.agent.start|host.agent.restart|host.agent.stop`,
+state는 `succeeded|failed`, target.state는 `ready|stopped|unchanged|failed`다. 각 target의
+agentKey/terminalId는 대상이 없는 경우 null이다. 독립 대상은 병렬로 진행하며 한 대상의 실패가
+다른 대상을 취소하거나 되돌리지 않는다. 일부만 실패하면 result는 failed이고 성공한 대상도 그대로
+반환한다. 오류는 `{code,message,stage,field?,agentKey?}`이고 stage는
 `config|yaml|cli|environment|execution|cleanup|storage`다.
-Host 전체에서 일부만 실패하면 Operation은 failed이고 성공한 대상도 함께 반환한다.
 
 준비 성공은 프로세스와 binding의 실제 ready 및 terminal 중계 가능 관측이다. 브라우저가
 열려 있어야 ready가 되는 것은 아니며 실제 React TUI 통합 확인은 별도다.
 실행 전 실패면 자원을 만들지 않는다. 실행 후 협업 준비 실패만으로 살아 있는 vendor를
-종료하지 않는 기존 runtime 계약을 유지한다. 이때 Operation은 failed여도 runtime은 살아 있고
+종료하지 않는 기존 runtime 계약을 유지한다. 이때 결과는 failed여도 runtime은 살아 있고
 TUI·진단을 유지하며 stopped 안내를 표시하지 않는다. 프로세스가 생성되지 못했거나 실제로
 종료된 시작 실패만 start-failed 안내를 표시한다.
 stop/delete는 실제 종료와 credential/binding/membership 정리, 필요한 DB commit 후 성공이다.
-실패한 cleanup은 `cleanupErrors`에 남기며 panel과 재시도 대상은 유지한다. 명시 재시도에서
-이미 종료된 자원은 건너뛴다. 부분 실행 실패를 전부 원상복구됐다고 보고하지 않는다.
+종료 확인에 실패한 대상은 failed로 남고 delete는 Host와 panel을 유지해 명시 재시도를 기다린다.
+명시 재시도에서 이미 종료된 자원은 건너뛴다. 부분 실행 실패를 전부 원상복구됐다고 보고하지 않는다.
 
 | HTTP / code | 의미·consumer 행동 |
 | --- | --- |
 | 400 `invalid_request`, `invalid_cli`, `invalid_yaml`, `yaml_not_found`, `yaml_ambiguous` | field/파일 위치/후보와 원인 표시; 실행 없음 |
 | 500 `invalid_config` | 서버 config 읽기·형식 오류; 기존 실행 유지 |
 | 400 `invalid_environment` | 확인된 요청 작업 경로/실행 입력 오류; 검증 불확실성은 500 invalid_config와 진단 |
-| 404 `unknown_host`, `unknown_host_agent`, `unknown_network`, `unknown_panel`, `unknown_tab` | 다른 대상으로 대체하지 않음 |
+| 404 `unknown_host`, `unknown_host_agent`, `unknown_network`, `unknown_panel`, `unknown_tab`, `unknown_pane`, `unknown_split` | 다른 대상으로 대체하지 않음 |
 | 409 `host_exists`, `host_name_conflict`, `host_busy`, `network_change_requires_restart`, `agent_not_running` | 기존 상태 유지·현재 대상과 다음 명령 안내 |
-| 409 `revision_conflict`, `request_conflict`, `confirmation_required` | 재조회 후 사용자 의도 재확인, 자동 overwrite 없음 |
+| 409 `revision_conflict`, `request_conflict`, `confirmation_required` | 재조회 후 사용자 의도 재확인, 자동 overwrite 없음. `revision_conflict`는 Host 구성 교체·삭제의 충돌이며 Web panel 명령은 쓰지 않음 |
+| 409 `layout_changed`, `id_conflict`, `id_deleted`, `runtime_conflict` | 서버 상태 유지; Web은 해당 명령의 화면 변경만 제거 |
+| 409 `sequence_gap`, `sequence_expired`, `sequence_conflict`, `result_expired` | Web 명령 순번 실패로 실행하지 않음; 최신 SSE 상태에서 다시 판단 |
 | 500 `storage_error` | 조회/저장 실패를 빈 목록·성공으로 숨기지 않음 |
 | 503 `not_ready` | daemon 준비/종료 중; 접수 전 실패 |
 
-HTTP 오류 본문은 기존 `{code,message}`를 확장하여 `{code,message,stage,field?,agentKey?,candidates?,operationId?}`다. candidates는 파일 선택 오류에서 절대 파일 경로 배열이다.
-접수 뒤 `start_failed`, `stop_incomplete`, `daemon_interrupted`는 Operation 오류이며 GET 자체는
-200이다. 메시지는 실제 진단을 보존하되 token/env 비밀값을 포함하지 않는다.
+HTTP 오류 본문은 기존 `{code,message}`를 확장하여 `{code,message,stage,field?,agentKey?,candidates?}`다. candidates는 파일 선택 오류에서 절대 파일 경로 배열이다.
+실행이 시작된 뒤의 실패는 HTTP 오류가 아니라 Host 명령 결과의 대상·명령 오류다. code는 실행
+`execution_failed`, 저장 `storage_error`, 정리 `cleanup_failed`와 위 표의 code를 그대로 쓰며, 결과
+확정 전에 daemon이 끝나면 `daemon_interrupted`다. 메시지는 실제 진단을 보존하되 token/env 비밀값을 포함하지 않는다.
 
 ```json
 {"code":"invalid_yaml","message":"grid requires columns or rows","stage":"yaml","field":"host.layout"}
@@ -512,8 +517,8 @@ HTTP 오류 본문은 기존 `{code,message}`를 확장하여 `{code,message,sta
 ```
 
 사전 validation·route·layout 변경의 실제 오류 코드는 위 HTTP 표를 따른다.
-준비가 끝나기 전 사용자 종료가 관측되면 Operation은 `start_failed`이며 reason에 실제 종료
-결과를 남긴다. 모든 대상이 ready가 된 뒤의 정상 /exit은 이미 완료된 Operation을 실패로 바꾸지 않는다.
+준비가 끝나기 전 사용자 종료가 관측되면 그 대상은 failed이며 실제 종료 결과를 진단으로 남긴다.
+모든 대상이 ready가 된 뒤의 정상 /exit은 이미 반환한 결과를 바꾸지 않는다.
 
-정리 미완료 실행이 남으면 새 start/restart는 409 `host_busy`로 거절한다. stop/delete의 명시
-재시도는 허용하고 원 Operation의 실패 기록을 바꾸지 않는 새 Operation으로 남은 정리를 수행한다.
+정리 미완료 실행이 남은 Agent의 새 start/restart는 그 대상의 실패로 끝난다. stop/delete의 명시
+재시도는 새 requestId로 남은 정리를 수행하며 이전 결과를 바꾸지 않는다.

@@ -73,7 +73,7 @@ Host 실행 준비는 선택 directory를 shell의 명시 cwd로 전달하여 �
 사용한다. 외부 입력 규칙은 [[docs/specs/aiox-host]]와 [[docs/specs/aiox-runtime]]이 소유한다.
 
 CLI의 `host-input.ts`는 파일 선택 인자와 CLI 오류를 보존하여 공통 준비로 전달한다.
-`bootstrap.ts`의 Host run은 준비 후 daemon 접수와 SSE 결과 대기로 연결한다. daemon의 resolve와
+`bootstrap.ts`의 Host run은 준비 후 daemon 접수와 HTTP NDJSON 결과 대기로 연결한다. daemon의 resolve와
 run도 공통 준비를 소비하며 조회·panel 배치·설정 HTTP와 저장 기반을 사용한다. 관리 Agent의
 shell 실행과 개별 Agent·Host Network 제어, 전체 Host 제어·조회 CLI를 연결했다.
 IDE는 편집 중 불완전한
@@ -86,7 +86,7 @@ IDE는 편집 중 불완전한
 
 ## Stage 2 현재 조립 범위 [Status: As-built]
 
-CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http listener에 연결한 Hono·Node adapter의 daemon/Web HTTP app, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 Drizzle·better-sqlite3 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
+CLI는 HTTP로 daemon lifecycle·persistent Network/Route·Agent 조회를 호출한다. daemon 한 Node 프로세스가 node:http listener에 연결한 Effect HttpRouter·NodeHttpServer의 daemon/Web HTTP app, ws attachment, 공식 MCP TypeScript SDK·Zod, Runtime/credential·messaging과 PTY registry를 조립한다. Web listener는 빌드된 최소 Web 정적 파일과 같은 origin의 API·WebSocket을 제공한다. DB는 daemon boot가 열며 typed Drizzle·Effect SQLite 연결에서 현재 schema를 직접 초기화한다. 초기화 구조는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:222-636`, [[apps/daemon/src/bootstrap.ts]] `apps/daemon/src/bootstrap.ts:46-90`, [[apps/daemon/src/daemon.ts]] `apps/daemon/src/daemon.ts:151-356`; HTTP·포트·route 검증은 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:300-554`.
 
@@ -127,13 +127,44 @@ Web 화면 중계가 끊겨도 daemon의 실행 owner·관리 등록은 유지�
 정리까지 확인한다. transport·협업 권한·실행 수명 분리와 구현 근거는
 [[docs/architecture/aiox-vendor-bindings]]가 소유한다. [Status: As-built]
 
+## Effect 앱 전송과 생명주기 [Status: As-built]
+
+```text
+node:http listeners
+├─ Effect HttpRouter / NodeHttpServer
+│  ├─ /api/rpc → ApplicationRpc → shared command admissions
+│  ├─ CLI HTTP/NDJSON → same command admissions
+│  └─ MCP SDK / static files
+└─ terminal WS → bytes / resize / restore
+
+panel command → session sequencer → latest panel transaction → commit
+  → targeted AppState projection → same versioned delta to response/subscribers
+  → shell preparation / deletion cleanup in daemon task scope
+```
+
+앱 계약은 [[docs/specs/aiox-application-rpc]]가 소유한다. XState daemon actor가
+starting/running/stopping/cleanupFailed/stopped/closed 전이와 접수 guard를 소유한다.
+Effect Fiber가 실제 시작·정리·종료를 실행하며 완료는 Deferred로 연결한다. 종료는 sequence
+접수를 먼저 멈추고 이미 접수한 작업을 drain한 뒤 소유 자원을 정리한다. 정리 실패 시 retry에
+필요한 record/handle을 유지하고 접수 상태를 복구한다. scope close를 프로세스 종료 확인으로
+대체하지 않는다. RuntimeRegistry 등록도 native Effect acquisition/cleanup을 사용하며 늦게
+획득한 binding을 추적하기 전에 호출 취소로 잃지 않는다.
+
+AppState는 상시 메모리 projection이다. snapshot 캡처와 구독 등록을 같은 semaphore에서 수행한다.
+producer의 자원 ID로 관련 저장/실행 상태만 갱신하며 DB commit 뒤 projection 실패 시 구독을
+실패시키고 재구축한다. 정상 변경마다 전체 DB/snapshot을 비교하지 않는다. Effect RPC의 stream
+ACK와 구독 queue 상한은 느린 소비자가 다른 구독을 막지 않도록 한다. 구현·회귀 근거는
+[[apps/daemon/src/daemon.ts]], [[apps/daemon/src/runtimes.ts]], [[apps/daemon/src/tasks.ts]],
+[[apps/daemon/src/application-rpc.test.ts]], [[apps/daemon/src/sequencer.test.ts]],
+[[apps/daemon/src/app-state.test.ts]]다.
+
 ## 서비스 진단 로그 [Status: As-built]
 
-`@aiox/diagnostics`는 Pino 인스턴스와 필드·오류 직렬화 정책을 공유한다. daemon 시작·종료·HTTP 접수/실패·Host Operation 접수/완료·Agent 준비/실패/정리·메시지 저장 실패/복구와 Claude binding·Codex App Server·terminal의 서버 진단이 직접 사용한다. 별도 Logger interface나 worker는 두지 않는다. HTTP `requestId`는 응답 `x-request-id`와 같은 서버 생성 ID이고, Operation 입력의 멱등 키는 로그에서 `operationRequestId`로 구분한다. 최초 접수와 재요청의 접수 로그가 두 ID와 `operationId`·`hostId`를 연결한다. 완료·저장 실패에도 해당 ID를 기록한다. 실행 진단은 Runtime의 `runtimeId`와 조회용 `terminalId`를 사용한다. 공통 실패 경로는 PTY 보존 분기보다 먼저 `failureCode`를 기록해 준비 실패·timeout·잘못된 lifecycle·조기 종료를 구분한다.
+`@aiox/diagnostics`는 Pino 인스턴스와 필드·오류 직렬화 정책을 공유한다. daemon 시작·종료·HTTP 접수/실패·Host 명령 접수/완료·Agent 준비/실패/정리·메시지 저장 실패/복구와 Claude binding·Codex App Server·terminal의 서버 진단이 직접 사용한다. 별도 Logger interface나 worker는 두지 않는다. HTTP `requestId`는 응답 `x-request-id`와 같은 서버 생성 ID이고, Host 명령 입력의 멱등 키는 로그에서 `hostCommandRequestId`로 구분한다. 접수 로그가 두 ID와 명령·`hostId`를 연결하고 완료 로그도 같은 ID와 결과 state를 기록한다. 실행 진단은 Runtime의 `runtimeId`와 조회용 `terminalId`를 사용한다. 공통 실패 경로는 PTY 보존 분기보다 먼저 `failureCode`를 기록해 준비 실패·timeout·잘못된 lifecycle·조기 종료를 구분한다.
 
 진단은 동기 stderr JSONL이다. CLI start가 소유한 append fd가 daemon stdout/stderr를 `~/.aiox/daemon.log`에 연결하며, 시작 실패 안내는 기존처럼 마지막 20줄을 읽는다. 직접 daemon을 실행하면 stderr로 나온다. 각 기록이 동기로 쓰이고 정상 종료는 listener·DB 종료 처리 후 마지막 기록과 flush를 마친 뒤 `closed`를 완료한다. 시작 실패도 stderr에 기록하고 exit code 1을 반환한다. 강제 종료 이전에 호출되지 않은 진단이나 OS 저장장치 내구성까지 보장하는 계약은 아니다.
 
-로그 입력은 고정 설명과 허용된 식별자·상태 필드로 제한한다. Error는 유형과 제한된 OS/SQLite 코드만 직렬화하고, 임의 message·stack·cause·추가 속성은 제외한다. token·credential·환경·요청 본문/URL·경로·vendor/PTY 본문을 기록하지 않는다. 사용자용 HTTP·Operation/SSE 오류와 CLI JSON·MCP 응답·foreground/PTY 출력은 기존 경로를 유지하며, 진단 로그가 사용자 결과 전달을 대신하지 않는다.
+로그 입력은 고정 설명과 허용된 식별자·상태 필드로 제한한다. Error는 유형과 제한된 OS/SQLite 코드만 직렬화하고, 임의 message·stack·cause·추가 속성은 제외한다. token·credential·환경·요청 본문/URL·경로·vendor/PTY 본문을 기록하지 않는다. 사용자용 HTTP·Host 명령 결과/RPC 오류와 CLI JSON·MCP 응답·foreground/PTY 출력은 기존 경로를 유지하며, 진단 로그가 사용자 결과 전달을 대신하지 않는다.
 
 daemon 시작 실패는 `stage`를 기록하며 잘못된 포트는 `EINVALIDPORT`와 검증된 `field`(`--port`·`--web-port`)를 보존하고 입력값은 제외한다. Codex App Server 종료 진단은 고정 메시지와 component·exitCode·signal만 기록한다. token을 가린 vendor 오류는 기존 호출자/Relay 사용자 오류 경로로 전달하고 서버 로그에 복사하지 않는다.
 
@@ -209,7 +240,7 @@ daemon용과 공용 운영 Web용 포트는 각각 설정할 수 있다. 같은 
 [[docs/specs/aiox-configuration-web]]의 포트 계약을 따른다. 실제 CLI 옵션·listener 연결과
 포트 충돌 처리는 현재 조립 범위의 코드·테스트를 따른다.
 
-현재 서버 조립에는 node:http, Hono와 `@hono/node-server`, ws, 공식 MCP TypeScript SDK, Zod, node-pty, Drizzle과 better-sqlite3가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.13.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. DB 초기화·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
+현재 서버 조립에는 node:http, Effect HttpRouter·NodeHttpServer·RPC, ws, 공식 MCP TypeScript SDK와 등록 경계의 Zod, node-pty, typed Drizzle과 Effect SQLite가 설치돼 있다. 필요한 package의 manifest와 pnpm lockfile이 버전을 소유한다. 현재 workspace Node 요구 조건은 `^22.16.0 || >=24.11.0`이다. 근거: [[package.json]] `package.json:29-38`. DB 초기화·플랫폼 검증 경계는 [[docs/architecture/aiox-storage-terminal]]을 따른다.
 
 편집기는 각 package의 `tsconfig.json`으로 source와 같은 디렉터리의 tests를 함께 해석한다.
 domain의 별도 `tsconfig.production.json` 검사는 tests를 제외하고 자동 Node ambient type을
@@ -225,16 +256,16 @@ optional SWC 선언 문제를 우회하며 프로젝트 source의 타입·모듈
 잘못된 연결만 거절한다. 이 입구 보호 뒤에도 MCP의 credential·membership·route 검사는 유지한다.
 CLI 연결과 Web 자동 복귀를 지원하며 사용자 로그인·토큰 입력·허용 목록 수동 설정을 추가하지 않는다.
 
-Hono가 두 listener의 공통 API route·요청/응답·오류 변환을 소유한다. Host·Panel·Operation의
-route 등록은 `state-api.ts`, 일반 Network·Agent·terminal·config·notification·SSE 등록은
+Effect HttpRouter와 NodeHttpServer가 두 listener의 공통 API route·요청/응답·오류 변환을 소유한다. Host·Panel·Web 명령의
+route 등록은 `state-api.ts`, 일반 Network·Agent·terminal·config·notification·RPC 등록은
 `http.ts`가 맡고 기존 service·protocol·config·저장 로직을 호출한다. Host 입력 오류는
 ConfigError보다 먼저 분류하여 config→YAML→CLI 검증 순서와 오류 stage를 보존한다. 공통
 본문 reader는 Content-Length 유무와 관계없이 실제 읽은 byte 수를 제한한다. 요청마다 생성한
-HTTP requestId는 Hono context를 통해 Operation 접수·완료 진단까지 전달한다. [Status: As-built]
+HTTP requestId는 공유 HttpContext를 통해 Host 명령 접수·완료 진단까지 전달한다. [Status: As-built]
 
-daemon 전용 agent hook과 MCP도 Hono route에 연결한다. MCP는 기존 SDK의 Web 표준
+daemon 전용 agent hook과 MCP도 Effect HTTP route에 연결한다. MCP는 기존 SDK의 Web 표준
 transport가 protocol 처리를 맡으며, 요청별 credential·Network 재검증과 무세션 모드를 유지한다.
-SDK 정리는 Node response 종료에 연결한다. Web 정적 제공은 Hono 응답 stream으로 같은 Web
+SDK 정리는 Node response 종료에 연결한다. Web 정적 제공은 Effect HTTP 응답 stream으로 같은 Web
 listener에 연결하고 기존 SPA fallback·파일 부재 처리를 유지한다. WebSocket upgrade와
 terminal PTY attachment는 기존 node:http·ws 경계에 남고 HTTP route로 재구현하지 않는다.
 Node adapter의 stream은 write(false) 뒤 drain까지 전송을 보류하며, 닫힌 response에 남은 drain
@@ -414,7 +445,7 @@ Sources:
 
 ## Host 명령에서 React까지의 실행 경로 [Status: Target]
 
-외부 요청/응답은 [[docs/specs/aiox-host]], Operation·검증은 [[docs/specs/aiox-runtime]],
+외부 요청/응답은 [[docs/specs/aiox-host]], Host 명령 결과·검증은 [[docs/specs/aiox-runtime]],
 배치·config·mock 소비는 [[docs/specs/aiox-configuration-web]], 저장 모델은
 [[docs/architecture/aiox-storage-terminal]]이 소유한다. 다음은 구현 분리를 위한 연결도다.
 
@@ -424,12 +455,12 @@ CLI (argv/source/인증된 terminal 문맥)      React (조회·배치·명시 �
                    공통 daemon HTTP handler
                      → prepare (config → YAML → CLI → 환경/대상)
                      → Host application 명령 경로
-                        ├─ persistence transaction → 적용 구성/배치/Operation
+                        ├─ persistence transaction → 적용 구성/배치
                         └─ shell + 실행 owner + adapter → process/binding 실제 관측
                                   ↓
                          registry/projection + 결과 저장
                                   ↓
-                     HTTP 요청 응답 / SSE state(변경 DTO 직접 전달)
+                     HTTP 요청 응답 / RPC state(변경 DTO 직접 전달)
                                   ↓
                        React 관리 카드·pane/tab·오류
                      terminalId → 기존 WS snapshot/stream → xterm
@@ -446,7 +477,7 @@ Host 명령의 CLI 종료가 daemon 소유 Agent 종료로 이어지지 않게 f
 
 ```text
 최초 run → 전체 사전 검증 → Host/Network/panel·관리 정의 기록 → shell별 실행
-         → preparing → 실제 ready/실패 기록 → SSE state → React TUI/원인
+         → preparing → 실제 ready/실패 기록 → RPC state → React TUI/원인
          └─ 파일 실패: CLI만 오류; 특정 Agent 확인 뒤 실패: 해당 tab 진단
 
 개별 start/restart → 최신 전체 검증·Network 변경 거절 → 대상 범위만 적용
@@ -460,16 +491,17 @@ Host 명령의 CLI 종료가 daemon 소유 Agent 종료로 이어지지 않게 f
          → 다른 이름: 새 Host/panel/Network, 기존 Host 보존
 전체 stop → 관리 Agent 종료·정리 → shell/panel/Network/정책 유지 → 안내
 전체 delete → panel 소유 Agent+사용자 shell 종료 확인 → Host/panel/Network 삭제
-         └─ 실패: Operation 진단+남은 관리 자원 유지 → 명시 재시도
+         └─ 실패: 대상별 결과 진단+남은 관리 자원 유지 → 명시 재시도
 
 /exit → 실제 Agent exit → binding/credential/membership 정리 → 같은 shell 표시
-Copy → clipboard 성공 → dismiss 저장 → SSE state → 기존 shell (자동 실행 없음)
-이동/분할 → revision 검증 → layout 저장 → SSE state → 같은 terminal 재배치·resize
-닫기 → 실행 중이면 확인 → 종료 관측 → tab 제거 저장 → 빈 마지막 pane 보존
+Copy → clipboard 성공 → dismiss 저장 → RPC state → 기존 shell (자동 실행 없음)
+이동/분할 → session 순번 → 최신 panel에 대상 검증·적용 → 바뀐 행 저장 → 200 + RPC state
+         → 같은 terminal 재배치·resize (shell 준비·종료를 기다리지 않음)
+닫기 → 실행 중이면 확인 → tab 제거 commit → 200 → terminal 종료는 정리 registry가 이어서 확인
 
 시작 실패 → 프로세스 없음/종료 확인: 실패 안내 + 관리 Agent stopped
          → vendor 생존/협업만 실패: TUI + 진단 유지, stopped 아님
-최초·재접속 → SSE 전체 snapshot → 이후 state(변경 DTO)
+최초·재접속 → RPC 전체 snapshot → 이후 state(변경 DTO)
          → 같은 live terminal snapshot→tail→live → React 복원
 ```
 
@@ -479,79 +511,82 @@ prepare 오류는 부수효과 전 실패, 실행 후 실패는 부분 적용 �
 
 ### 현재 구현과 남은 연결 [Status: Current gap]
 
-공개 HTTP/SSE 스키마와 config의 순수 검증은 protocol이 소유한다. config 파일·YAML 로딩은
-config에 남으며 기존 공개 parser를 통해 같은 검증 함수를 사용한다. Host·panel·Operation 저장,
-조회·배치와 workspace shell 제어, 설정 revision 저장, snapshot/state/fault SSE는 daemon에 연결했다.
-Host `run`은 입력 준비 뒤 daemon의 실행 접수 API로 연결하며 Operation의 실제 완료를 SSE로 기다린다.
+공개 HTTP/RPC 스키마와 config의 순수 검증은 protocol이 소유한다. config 파일·YAML 로딩은
+config에 남으며 기존 공개 parser를 통해 같은 검증 함수를 사용한다. Host·panel 저장, 조회·배치와
+workspace shell 제어, 설정 revision 저장, snapshot/delta/sequence-failure RPC는 daemon에 연결했다. Host `run`은
+입력 준비 뒤 daemon의 Host 명령 API로 연결하며 그 HTTP 응답의 대상별 실제 결과를 기다린다.
 개별 Agent·Host Network와 전체 Host 제어·조회 CLI를 연결했다. 관리 Agent의 내부 연결과 관측은 아래 구현을 소비한다.
 React의 Host 화면 연결과 실제 TUI 표시 검증은 별도 통합 범위로 남아 있다.
 
 근거: [[packages/protocol/src/index.ts]], [[packages/protocol/src/host.test.ts]],
 [[packages/config/src/schema.ts]], [[apps/daemon/src/state-api.ts]],
-[[apps/daemon/src/panel-operations.ts]], [[apps/daemon/src/state-api.test.ts]],
-[[apps/daemon/src/panel-operations.test.ts]], [[apps/cli/src/bootstrap.ts]].
+[[apps/daemon/src/web-commands.ts]], [[apps/daemon/src/state-api.test.ts]],
+[[apps/daemon/src/web-commands.test.ts]], [[apps/cli/src/bootstrap.ts]].
 
-기존 최소 Web의 change 알림 뒤 GET 방식은 새 서버 SSE의 consumer가 아니다. React의
-snapshot/state 소비와 실제 Host TUI 연결은 Stage6 준비 후 통합 검증 범위다. terminal byte stream은
-기존 WS 경로를 유지한다. 근거: [[apps/web/src/main.ts]], [[apps/web/src/attach.ts]],
-[[apps/daemon/src/web-events.ts]], [[apps/daemon/src/web-events.test.ts]].
+기존 최소 Web의 change 알림 뒤 GET 방식은 새 서버 RPC의 consumer가 아니다. React의
+snapshot/delta 소비와 실제 Host TUI 연결은 Stage6 준비 후 통합 검증 범위다. terminal byte stream은
+기존 WS 경로를 유지한다. 앱은 `WS /api/rpc`의 `panel.command`·서버 발급 session·순번·cleanup
+공개를 소비한다. React 요청 줄·재전송·실패 복구 연결은 Stage6 W10이 이어받으며
+[[docs/specs/aiox-application-rpc]]를 구현 계약으로 사용한다.
+근거: [[apps/web/src/main.tsx]], [[apps/web/src/attach.ts]], [[apps/daemon/src/app-state.ts]],
+[[apps/daemon/src/app-state.test.ts]].
 
 기존 terminal 생성/DELETE consumer도 동일 TerminalService/실행 종료 경로를 소비한다.
 panel에 연결된 terminal의 직접 종료나 자연 shell exit는 연결 tab·관리 Runtime 정리를 함께
-반영하고 SSE로 알린다. Host stop은 terminal DELETE가 아니라 Agent owner stop을 사용한다.
+반영하고 RPC로 알린다. Host stop은 terminal DELETE가 아니라 Agent owner stop을 사용한다.
 
 ### Host run 접수와 실행 [Status: As-built]
 
 CLI는 config/YAML/옵션·실행 환경을 검증한 뒤 source와 requestId를 전송한다. daemon도 입력을
-검증하고 새 Host·전용 Network·선언 순서의 초기 panel/tab·Operation을 같은 transaction으로
-접수한다. 호출한 workspace나 Network pane은 새 Host의 실행 자리로 사용하지 않는다.
-같은 requestId는 기존 Operation으로 복원하며 Host 이름 충돌은 기존 실행을 변경하지 않고 거절한다.
+검증하고 새 Host·전용 Network·선언 순서의 초기 panel/tab을 같은 transaction으로 등록한다.
+호출한 workspace나 Network pane은 새 Host의 실행 자리로 사용하지 않는다. 같은 requestId의 재전송은
+진행 중인 처리에 합류하거나 최근 결과를 받으며 Host 이름 충돌은 기존 실행을 변경하지 않고 거절한다.
 
-접수 후 검증한 shell 설정으로 각 tab의 terminal을 만들고 빌드된 foreground CLI를 실행한다.
+등록 후 검증한 shell 설정으로 각 tab의 terminal을 병렬로 만들고 빌드된 foreground CLI를 실행한다.
 호출별 Host/key 환경과 terminal 인증을 기존 관리 Agent 연결 경로가 소비한다. RuntimeRegistry의
 준비·실패 이벤트가 target 결과를 결정하며 별도 상태 polling은 없다. 일부 실패는 성공한 실행을
 유지하고, 실행 등록 전 실패도 관리 Agent 이력과 tab 안내에 남긴다. 살아 있는 vendor의 협업
-실패는 TUI를 보존한다. CLI는 SSE snapshot/state의 Operation으로 성공·부분 실패를 출력하며,
-연결 손실 시 requestId/operationId와 재조회 경로를 남긴다.
+실패는 TUI를 보존한다. 작업은 daemon 수명 작업이라 CLI 연결이 끊겨도 계속된다. CLI는 NDJSON
+응답의 최종 결과로 성공·부분 실패를 출력하며, 연결 손실 시 requestId와 재조회 경로를 남긴다.
 
 근거: [[apps/daemon/src/host-run.ts]], [[apps/daemon/src/host-run.test.ts]],
-[[apps/cli/src/host-operation.ts]], [[apps/cli/src/host-operation.test.ts]],
-[[packages/persistence/src/sqlite/host-state.test.ts]]. 실제 shell·빌드 CLI·HTTP/SSE 검증은 macOS에서
+[[apps/daemon/src/host-command.ts]], [[apps/cli/src/host-command.ts]], [[apps/cli/src/host-command.test.ts]],
+[[packages/persistence/src/sqlite/host-state.test.ts]]. 실제 shell·빌드 CLI·HTTP/RPC 검증은 macOS에서
 vendor 대역으로 수행하며, 실제 vendor·React·Windows/WSL 연결 검증을 대신하지 않는다.
 
 ### 개별 Agent·Host Network 제어 [Status: As-built]
 
 `host-agents.ts`는 config를 검증하며 YAML이 필요 없는 직접 HTTP stop·Network 변경에도 적용한다.
 개별 실행은 YAML과 전체 대상·Network 이름/default, 관련 route 상대 endpoint의 현재 적용 여부를
-검증한 뒤 Operation을 접수한다. 반영 불가능한 edge는 기존 실행을 멈추기 전에 거절한다.
+검증한 뒤 명령을 시작한다. 반영 불가능한 edge는 기존 실행을 멈추기 전에 거절한다.
 개별 stop은 Runtime 종료·정산을 기다리고 shell·배치·정책을 유지한다. start/restart는 대상 정의와
 대상에 닿는 membership·route만 저장하고 기존 실행 준비 관측을 재사용한다. 실행 중 대상의 start는
-변경 없이 안내하며, 서로 독립된 대상의 실패와 성공은 Operation에 따로 남긴다.
+변경 없이 안내하며, 서로 독립된 대상은 병렬로 진행하고 실패와 성공을 결과에 따로 남긴다.
 
-같은 Host panel의 입력 자리는 현재 Host CLI가 SSE의 preparing 대상을 받아 기존 foreground
+같은 Host panel의 입력 자리는 현재 Host CLI가 응답의 `launch` 이벤트를 받아 기존 foreground
 연결로 이어 실행한다. 부모 shell이 CLI 종료를 기다리는 동안 새 명령을 주입해 생기는 교착을
 피하기 위한 연결이며 실행 소유권은 daemon에 있다. 다른 자리는 shell 내부 CLI를 시작한다.
-split weight로 현재 pane 사각형을 복원하여 top→left 순서로 배치한다. 기존 분할·선택을 유지하고
+split weight로 현재 pane 사각형을 복원하여 top→left 순서로 배치한다. 기존 분할을 유지하고
 새 TUI 준비가 확인된 뒤에만 옛 stopped 안내 자원을 정리한다.
 
 Host Network CLI는 정확한 Host·Network 이름 조회로 ID를 고정한다. route 변경은 저장소에서
-전체 endpoint와 진행 중 Operation을 검사한 뒤 하나의 transaction으로 반영하고 SSE에 알린다.
+전체 endpoint를 검사하고 같은 Host 명령이 진행 중이면 거절한 뒤 하나의 transaction으로 반영하고 RPC에 알린다.
 
 근거: [[apps/daemon/src/host-agents.ts]], [[apps/daemon/src/host-agents.test.ts]],
 [[apps/cli/src/bootstrap.test.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]].
-실제 macOS shell·빌드 CLI·HTTP/SSE를 vendor 대역으로 검증한 범위이며 실제 vendor·React·Windows/WSL
+실제 macOS shell·빌드 CLI·HTTP/RPC를 vendor 대역으로 검증한 범위이며 실제 vendor·React·Windows/WSL
 통합 완료를 뜻하지 않는다.
 
 ### 전체 Host 제어 [Status: As-built]
 
 전체 restart는 `host-run.ts`의 공통 사전 검증·준비 관측을 재사용한다. 기존 이름이면
-Operation 접수, 기존 Runtime 종료, 제거 Agent의 shell 종료 확인, 적용 구성 교체, 선언 Agent 실행을
+기존 Runtime 병렬 종료, 제거 Agent의 shell 종료 확인, 적용 구성 교체, 선언 Agent 병렬 실행을
 순서대로 처리한다. 일반 shell과 pane tree는 유지하고 같은 key의 관리 탭을 재사용한다.
-새 이름이면 기존 Host를 변경하지 않고 최초 실행 경로로 접수한다. 호출 shell을 재사용할 때는
-CLI의 SSE 수신 경로가 foreground 실행을 이어받는다.
+새 이름이면 기존 Host를 변경하지 않고 최초 실행 경로로 등록한다. 호출 shell을 재사용할 때는
+CLI가 응답의 `launch` 이벤트로 foreground 실행을 이어받는다.
 
 `host-control.ts`는 stop을 Runtime 종료에, delete를 panel 소유 terminal의 종료 확인과 저장소 삭제에
-연결한다. 종료 실패는 Operation에 남기며 Host를 유지해 재시도할 수 있다. CLI의 이름 직접 조회·제어는
+연결한다. 종료 실패는 대상 결과에 남기며 Host를 유지해 재시도할 수 있다. CLI의 이름 직접 조회·제어는
 등록 Host를 정확한 이름으로 찾아 ID API를 호출한다. 이름 생략 시에만 YAML resolve를 사용하고
 list/status는 서버의 live projection을 출력한다.
 

@@ -1,0 +1,13 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 515f033f504cd2977ef092c6062484e998b0ae2e..3c6e107da6655a883af719ba9a404c9574ab3d60 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -1028,7 +1028,7 @@ declare const medianAbsoluteDeviation: (samples: SortedSamples) => number;
+  * Returns the current timestamp in milliseconds using `performance.now()`.
+  * @returns the current timestamp in milliseconds
+  */
+-declare const performanceNow: () => DOMHighResTimeStamp;
++declare const performanceNow: () => number;
+ /**
+  * The performance.now() based TimestampProvider.
+  */

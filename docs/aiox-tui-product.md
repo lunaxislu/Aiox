@@ -47,6 +47,7 @@ AIOX daemon
 | [[docs/specs/aiox-collaboration]] | HTTP MCP, 단일 Network·route 기반 통신, 대상 지정 send, 수신·요청 결과·daemon 알림 |
 | [[docs/specs/aiox-host]] | Host·YAML 선택·실행 수명, manifest 예시, membership·routing 선언·override |
 | [[docs/specs/aiox-configuration-web]] | 전역 설정·포트·저장·자동 브라우저 복귀·알림·운영 UI |
+| [[docs/specs/aiox-application-rpc]] | 앱 RPC·서버 세션·순번·snapshot/delta·재접속 계약 |
 | [[docs/specs/aiox-web-ui]] | 운영 Web 화면 규칙, 사이드바·헤더·pane/탭·설정 화면·반응형 |
 | [[docs/architecture/aiox-system]] | apps/packages·domain 책임, 프로세스 구성과 내부 흐름 |
 | [[docs/architecture/aiox-vendor-bindings]] | vendor 실행 주입 코드, inbox·hooks·App Server·Relay와 실측 범위 |

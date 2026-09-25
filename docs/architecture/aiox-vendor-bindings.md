@@ -44,6 +44,27 @@ Codex는 Runtime·threadId·turnId에 입력을 연결하고 `turn/completed`의
 @aiox/adapter-claude → Claude 인자·설정 병합 / inbox / hooks / 버전 검사
 ```
 
+실행 owner의 foreground/background 획득·중단·정리는 native Effect다. XState가 owner의
+사용 가능·할당·중단 중·정리 실패·정리 완료 전이와 guard를 소유한다. 획득 중 취소는 늦게 생긴
+프로세스의 handle까지 owner가 회수하는 경로를 유지한다. 종료 확인 실패는 handle과 원인을 남겨
+다음 stop이 재시도한다. Effect Scope 종료 자체를 OS 프로세스 종료 성공으로 사용하지 않는다.
+CLI·Node·vendor binding의 Promise 호출 계약은 경계에서 이어준다. 구현·회귀 근거는 [[packages/vendor/src/execution.ts]],
+[[packages/vendor/src/execution.test.ts]], [[apps/cli/src/external.test.ts]]다.
+
+AgentController의 socket별 실행 상태는 [[apps/daemon/src/agent-lifecycle.ts]]의 XState actor가
+소유한다. 준비 전/준비 완료/시작과 각 시점의 종료 이력, relay 연결 손실, stop 요청을
+구분한다. `STARTED` 허용 여부와 종료·준비·중단 guard는 actor snapshot에서 읽으며 별도
+boolean으로 복제하지 않는다. 실제 준비·종료·cleanup은 Effect가 수행한다. relay 손실은
+외부 CLI 소유 프로세스의 종료를 뜻하지 않으며, 준비 뒤 최초 협업 실패는 `startup-failed`
+응답으로 전달한다. 근거는 [[apps/daemon/src/agent-controller.ts]]와 인접 lifecycle/controller
+테스트다.
+
+Claude 보고/등록·transcript 읽기와 관측 결과 정산은 Effect semaphore와 소유 Fiber로 직렬화한다.
+Codex의 준비·relay 요청과 입력 수락 대기는 Deferred와 Clock timeout Fiber가 담당하며 응답·종료 시
+대기를 정리한다. daemon 메시지 저장 retry/drain은 [[docs/architecture/aiox-storage-terminal]]의
+결과 인수 경계를 따른다. 효과 실행과 프로세스 수명은 vendor별 코드가 새 owner를 만들지 않고
+위 ExecutionOwner에 연결한다. 실제 vendor 모델 E2E 완료를 이 내부 전환의 근거로 주장하지 않는다.
+
 `createExecution`은 임시 자원 등록과 취소 신호만 받아 프로세스 없이 connection을 준비한다.
 `VendorExecution.start`는 실행 owner를 받아 부속 프로세스를 실행하고 준비를 기다린 뒤 foreground를
 시작할 수 있다. 취소 뒤 늦게 할당된 자원도 owner가 정리하며 중단된 준비가 새 실행을 만들지 않는다.
@@ -261,14 +282,22 @@ ClaudeTranscript는 파일 identity·byte offset과 UTF-8/미완성 행 경계�
 소비한 뒤 폐기한다. 대기 중 읽기와 이후 append는 소비하지 않는다. watcher·cursor·파싱 및
 정산 상태도 해제하며 새 화면에는 관여하지 않는다. 실제 입력으로 해당 instance에 귀속된 남은 요청만 interrupted로 정산하되 이미
 확정한 결과는 바꾸지 않는다. 저장이 거절되면 확정 outcome과 재시도에 필요한 정보만 남긴다.
+retirement Fiber의 저장 실패는 Effect 오류 처리로 관측 진단과 기존 outcome 재시도에 연결한다.
 실제 프로세스 종료는 현재 reader의 마지막 읽기와 진행 중인 옛 읽기의 종료를 기다린 뒤 기존
 종료 원인에 따른 fallback을 적용한다. 근거: claude.test.ts의 discard/fresh EOF, rapid resume,
 retired outcome retry, repeated transitions 및 claude-transcript.test.ts의 retire 회귀.
 
-binding은 존재하는 현재 transcript와 정확한 sessions/<ppid>.json 파일 자체에 fs.watch를
-연결한다. 변경 이벤트는 runtime 관측 queue로 합치고 비동기 읽기를 수행한다. 디렉터리 감시나
-정상 polling은 없다. rename/error는 현재 reader에 한해 재부착하고 실패한 읽기만 backoff로
-재시도한다. 초기 transcript가 없으면 registry 변경에서 부착을 재시도하며 offset 0을 유지한다.
+binding은 Chokidar로 선택한 transcript와 정확한 sessions/<ppid>.json 및 그 파일의 parent를
+감시한다. registry는 atomic replacement 뒤에도 parent watch를 유지하며, transcript 이동·삭제는
+선택된 session과 파일 identity에 따라 다시 연결한다. Chokidar의 동일 경로 change 통지가 50ms 동안
+합쳐지는 구간에서 마지막 쓰기를 놓치지 않도록 change event 뒤 Effect Clock으로 60ms 대기하고
+읽는다. 이벤트가 없는 파일을 주기적으로 스캔하지 않는다. byte offset·부분 행·선택 session과 저장
+확정 의미는 reader/observer의 기존 계약을 따른다. 초기 transcript 부재는 offset 0을 유지하며,
+경로 소실은 config/projects 아래 동일 session 파일의 단일 후보에만 재부착한다. 여러 후보를
+추측하거나 폐기한 session instance를 복구하지 않는다. hook 부가 이벤트 필드는 ingress에서 보존하고
+보고 envelope의 알 수 없는 필드는 거절한다. 구현과 회귀는 [[packages/adapters/claude/src/claude.ts]],
+[[packages/adapters/claude/src/claude-transcript.ts]], [[packages/adapters/claude/src/claude.test.ts]],
+[[apps/daemon/src/agent-controller.test.ts]]를 따른다.
 
 현재 transcript 경로가 사라졌다면 config/projects 바로 아래 디렉터리에서 동일 session 파일명을
 찾고 단일 후보에 reader를 이전한다. 여러 후보는 관측 오류이며 추측하지 않는다. 같은 instance의
@@ -443,6 +472,9 @@ thread/start·resume·fork가 성공한 연결로 보내며 보조 연결 종료
 TUI가 developerInstructions를 명시적으로 덮어쓰면 실행의 AIOX 지침을 병합한다.
 서버 조기 종료는 binding 진단과 실행 위치의 stderr에 전달하고 TUI 종료를 요청한다.
 준비 실패의 stderr는 credential을 가린 뒤 호출자에게 전달한다.
+준비 URL 대기는 Deferred로 완료하고 stderr Stream은 ExecutionOwner가 계속 소비한다.
+준비 완료가 stderr 파이프를 닫지 않으며, 실행 정리에서 reader Fiber를 종료한다.
+[[packages/adapters/codex/src/index.test.ts]]는 실제 Node 자식 프로세스의 준비 후 대량 stderr 출력과 정상 종료를 검증한다.
 App Server 종료의 서버 진단은 Pino의 고정 메시지·exitCode·signal만 남긴다. vendor 원문은 서버 로그로 복사하지 않으며 공통 정책은 [[docs/architecture/aiox-system]]의 서비스 진단 로그 절이 소유한다.
 
 근거: [[packages/adapters/codex/src/index.ts]], [[packages/adapters/codex/src/launch.ts]],
@@ -506,7 +538,7 @@ delivery를 같은 목록에서 소비하고, 목록·결과 정리와 flush 소
 그 뒤 수락된 delivery가 새 flush를 시작하도록 한다.
 최초 outcome을 보존하고 동일 turn flush를 병합한다. controls.settle 인수 ack 뒤 delivery 연결을
 제거하며 인수 전 reject는 cleanup에서 같은 결과로 재시도한다. 인수 후 DB 실패는 daemon이
-소유하므로 binding 종료 뒤에도 중앙 timer가 저장한다. 최근 종료 turn의 중복 결과는 현재 상태를
+소유하므로 binding 종료 뒤에도 중앙 Effect retry Fiber가 저장한다. 최근 종료 turn의 중복 결과는 현재 상태를
 덮어쓰지 않는다.
 TUI가 사용자 승인·질문 응답을 소유한다.
 근거: [[packages/adapters/codex/src/binding.ts]] `packages/adapters/codex/src/binding.ts:231-295`, `packages/adapters/codex/src/binding.ts:347-373`, `packages/adapters/codex/src/binding.ts:445-484`;
@@ -604,7 +636,7 @@ NetworkService의 목록 계산은 기존 membership·outbound route·등록 유
 
 근거: [[packages/vendor/src/index.ts]] `packages/vendor/src/index.ts:37`, [[apps/daemon/src/runtimes.ts]] `apps/daemon/src/runtimes.ts:94`,
 [[apps/daemon/src/networks.ts]] `apps/daemon/src/networks.ts:120`, [[apps/daemon/src/messaging.ts]] `apps/daemon/src/messaging.ts:377`, [[apps/daemon/src/mcp.ts]] `apps/daemon/src/mcp.ts:12`,
-[[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:76`, [[packages/protocol/src/index.ts]] `packages/protocol/src/index.ts:173`, [[apps/web/src/main.ts]] `apps/web/src/main.ts:222`와
+[[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:76`, [[packages/protocol/src/index.ts]] `packages/protocol/src/index.ts:173`, `apps/web/src/main.ts` (React 전환 전 검증 이력) `apps/web/src/main.ts:222`와
 인접 runtimes/mcp/protocol/main 테스트의 현재 이유 교체·제거, 준비 중 표시·전송 거절 검증.
 
 ClaudeObservations는 StopFailure의 오류 분류를 실패 이유로 보관하고 quota 대기를 별도로

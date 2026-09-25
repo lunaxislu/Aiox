@@ -5,20 +5,17 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { saveConfig } from "@aiox/config";
-import {
-    operationSchema,
-    panelLayoutReferences,
-    type HostLayout,
-} from "@aiox/protocol";
+import { panelLayoutReferences, type HostLayout } from "@aiox/protocol";
 import type {
     VendorAdapter,
     VendorBinding,
     VendorLaunchInput,
 } from "@aiox/vendor";
+import { Effect } from "effect";
 import { expect, test, vi } from "vitest";
 
 import { initialHostPanel, launcher } from "./host-run";
-import { startTestDaemon } from "./testing";
+import { hostResult, startTestDaemon } from "./testing";
 
 test.each([
     [{ preset: "auto" }, 1, [["a"]]],
@@ -54,8 +51,6 @@ test.each([
                 ),
             ),
         ).toEqual(expected);
-        expect(panes.every((p) => p.selectedTabId === p.tabIds[0])).toBe(true);
-        expect(panel.activePaneId).toBe(panes[0]!.id);
         if (count === 3 && layout.preset === "auto") {
             expect(panel.layout).toMatchObject({
                 type: "split",
@@ -66,7 +61,7 @@ test.each([
     },
 );
 
-test("run rejects invalid YAML before creating an Operation or Host", async (t) => {
+test("run rejects invalid YAML before creating a Host", async (t) => {
     const h = await startTestDaemon();
     t.onTestFinished(() => h.close(), 30000);
     await writeFile(join(h.home, "aiox.yaml"), "host: []");
@@ -82,7 +77,6 @@ test("run rejects invalid YAML before creating an Operation or Host", async (t) 
     expect(await response.json()).toMatchObject({ stage: "yaml" });
     const state = await h.daemon.services.db.hostState.snapshot();
     expect(state.hosts).toEqual([]);
-    expect(state.operations).toEqual([]);
 });
 
 test.skipIf(process.platform === "win32")(
@@ -91,15 +85,15 @@ test.skipIf(process.platform === "win32")(
         const launches: VendorLaunchInput[] = [];
         const adapter: VendorAdapter = {
             id: "codex",
-            async createExecution() {
-                return {
+            createExecution() {
+                return Effect.succeed({
                     connection: null,
-                    async start(command, owner) {
+                    start(command, owner) {
                         return owner.foreground(
                             command as Parameters<typeof owner.foreground>[0],
                         );
                     },
-                };
+                });
             },
             createBinding(controls) {
                 let ready = false;
@@ -190,19 +184,14 @@ networks:
                 body: JSON.stringify(body),
             });
         const response = await post(input);
-        expect(response.status).toBe(202);
-        const operation = operationSchema.parse(await response.json());
-        await vi.waitFor(
-            async () => {
-                const saved = (await h.daemon.services.db.hostState.snapshot())
-                    .operations[0]!;
-                expect(saved).toMatchObject({
-                    state: "succeeded",
-                    targets: [{ state: "ready" }, { state: "ready" }],
-                });
-            },
-            { timeout: 15000 },
-        );
+        expect(response.status).toBe(200);
+        // The HTTP answer waits for the actual readiness of every target.
+        const result = await hostResult(response);
+        expect(result).toMatchObject({
+            command: "host.run",
+            state: "succeeded",
+            targets: [{ state: "ready" }, { state: "ready" }],
+        });
         const state = await h.daemon.services.db.hostState.snapshot();
         expect(state.hosts).toHaveLength(1);
         expect(state.panels[0]!.tabs.every((t) => t.terminalId)).toBe(true);
@@ -212,9 +201,13 @@ networks:
         expect((await h.daemon.services.networks.list())[0]!.id).not.toBe(
             state.networks[0]!.id,
         );
-        expect(operationSchema.parse(await (await post(input)).json()).id).toBe(
-            operation.id,
-        );
+        // A retransmission answers with the finished result instead of running again.
+        const expiredReplay = await post(input);
+        expect(expiredReplay.status).toBe(409);
+        expect(await expiredReplay.json()).toMatchObject({
+            code: "result_expired",
+            stage: "cli",
+        });
         expect(
             (await post({ ...input, layout: { preset: "left-main" } })).status,
         ).toBe(409);
@@ -268,9 +261,9 @@ networks:
             presentation: "shell",
             notice: null,
         });
-        await h.daemon.services.db.hostState.updatePanel(
-            { ...customized, revision: customized.revision + 1 },
-            customized.revision,
+        await h.daemon.services.db.hostState.mutatePanel(
+            customized.id,
+            () => customized,
         );
         const oldAlpha = customized.tabs.find(
             (tab) => tab.agentKey === "alpha",
@@ -283,46 +276,23 @@ networks:
         const terminate = vi
             .spyOn(h.daemon.services.lifecycle, "stopTerminal")
             .mockRejectedValueOnce(new Error("removed shell still alive"));
-        const rejectedRestart = operationSchema.parse(
-            await (await restart()).json(),
-        );
-        await vi.waitFor(
-            async () => {
-                const failed = await h.daemon.services.db.hostState.snapshot();
-                expect(
-                    failed.operations.find((o) => o.id === rejectedRestart.id),
-                ).toMatchObject({
-                    state: "failed",
-                    error: {
-                        stage: "execution",
-                        message: "removed shell still alive",
-                    },
-                });
-                expect(failed.hosts[0]!.agents.map((a) => a.key)).toEqual([
-                    "alpha",
-                    "beta",
-                ]);
-                expect(
-                    h.daemon.services.terminals.view(oldBeta.terminalId!)
-                        ?.alive,
-                ).toBe(true);
+        expect(await hostResult(await restart())).toMatchObject({
+            state: "failed",
+            error: {
+                stage: "execution",
+                message: "removed shell still alive",
             },
-            { timeout: 10000 },
-        );
+        });
+        const failed = await h.daemon.services.db.hostState.snapshot();
+        expect(failed.hosts[0]!.agents.map((a) => a.key)).toEqual([
+            "alpha",
+            "beta",
+        ]);
+        expect(
+            h.daemon.services.terminals.view(oldBeta.terminalId!)?.alive,
+        ).toBe(true);
         terminate.mockRestore();
-        const restarting = await restart();
-        expect(restarting.status).toBe(202);
-        const restartOperation = operationSchema.parse(await restarting.json());
-        await vi.waitFor(
-            async () => {
-                const latest = await h.daemon.services.db.hostState.snapshot();
-                expect(
-                    latest.operations.find((o) => o.id === restartOperation.id)
-                        ?.state,
-                ).toBe("succeeded");
-            },
-            { timeout: 15000 },
-        );
+        expect((await hostResult(await restart())).state).toBe("succeeded");
         const replaced = await h.daemon.services.db.hostState.snapshot();
         expect(replaced.hosts[0]).toMatchObject({
             id: state.hosts[0]!.id,
@@ -362,7 +332,6 @@ networks:
                 (p) => p.id,
             ),
         ).toEqual([panes[0]!.id]);
-        expect(replaced.panels[0]!.activePaneId).toBe(panes[0]!.id);
         await writeFile(
             join(h.home, "aiox.yaml"),
             `host: {name: partial}
@@ -373,16 +342,15 @@ networks:
   shared: {agents: [alpha, broken], routing: {default: allow}}
 `,
         );
-        const partial = operationSchema.parse(await (await restart()).json());
+        // One failed target does not cancel or undo its ready sibling.
+        const partial = await hostResult(await restart());
+        expect(partial).toMatchObject({
+            state: "failed",
+            targets: [{ state: "ready" }, { state: "failed" }],
+        });
         await vi.waitFor(
             async () => {
                 const state = await h.daemon.services.db.hostState.snapshot();
-                expect(
-                    state.operations.find((o) => o.id === partial.id),
-                ).toMatchObject({
-                    state: "failed",
-                    targets: [{ state: "ready" }, { state: "failed" }],
-                });
                 expect(
                     state.panels
                         .find((p) => p.hostId === partial.hostId)!
@@ -522,16 +490,16 @@ test("invalid caller context creates nothing; shell failure is retained on the d
     vi.spyOn(h.daemon.services.lifecycle, "createShell").mockRejectedValue(
         new Error("shell launch failed"),
     );
-    const accepted = await post({ requestId: randomUUID(), source });
-    expect(accepted.status).toBe(202);
+    expect(
+        await hostResult(await post({ requestId: randomUUID(), source })),
+    ).toMatchObject({
+        state: "failed",
+        targets: [
+            { state: "failed", error: { message: "shell launch failed" } },
+        ],
+    });
     await vi.waitFor(async () => {
         const state = await h.daemon.services.db.hostState.snapshot();
-        expect(state.operations[0]).toMatchObject({
-            state: "failed",
-            targets: [
-                { state: "failed", error: { message: "shell launch failed" } },
-            ],
-        });
         expect(state.hosts[0]!.agents[0]!.lastExit?.message).toBe(
             "shell launch failed",
         );
@@ -544,7 +512,7 @@ test("invalid caller context creates nothing; shell failure is retained on the d
 });
 
 test.skipIf(process.platform === "win32")(
-    "CLI failure before Runtime registration reaches the Operation and tab",
+    "CLI failure before Runtime registration reaches the result and tab",
     async (t) => {
         const h = await startTestDaemon();
         t.onTestFinished(() => h.close(), 15000);
@@ -580,14 +548,12 @@ test.skipIf(process.platform === "win32")(
                 source: { directory: h.home },
             }),
         });
-        expect(response.status).toBe(202);
+        const result = await hostResult(response);
+        expect(result.state).toBe("failed");
+        expect(result.targets[0]!.error?.message).toContain("Invalid JSON");
         await vi.waitFor(
             async () => {
                 const state = await h.daemon.services.db.hostState.snapshot();
-                expect(state.operations[0]!.state).toBe("failed");
-                expect(
-                    state.operations[0]!.targets[0]!.error?.message,
-                ).toContain("Invalid JSON");
                 expect(state.panels[0]!.tabs[0]!.notice?.message).toContain(
                     "Invalid JSON",
                 );
@@ -634,7 +600,6 @@ test.each([
                 hosts: [],
                 panels: [],
                 networks: [],
-                operations: [],
             });
             expect(create).not.toHaveBeenCalled();
         } finally {
@@ -662,12 +627,8 @@ test("run distinguishes the same YAML from another source with the same Host nam
                 source: { directory: h.home, file },
             }),
         });
-    expect((await post("aiox.one.yaml")).status).toBe(202);
-    await vi.waitFor(async () =>
-        expect(
-            (await h.daemon.services.db.hostState.snapshot()).operations[0]!
-                .state,
-        ).toBe("failed"),
+    expect((await hostResult(await post("aiox.one.yaml"))).state).toBe(
+        "failed",
     );
     const before = await h.daemon.services.db.hostState.snapshot();
     const repeated = await post("./aiox.one.yaml");

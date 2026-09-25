@@ -1,7 +1,11 @@
-import { panelLayoutReferences, panelLayoutSchema } from "@aiox/protocol";
+import { panelLayoutSchema } from "@aiox/protocol";
 import { expect, test } from "vitest";
 
 import { workspacePreview } from "@/entities/panel/workspace-fixtures";
+import {
+    panelLayoutReferences,
+    storedLayout,
+} from "@/entities/panel/workspace-layout";
 
 import {
     closePreviewTab,
@@ -64,7 +68,9 @@ test("last tab removal collapses a nested split and uses the latest tree order",
     );
     expect(state.activePaneId).toBe("left");
     expect(state.layout.type).toBe("pane");
-    expect(panelLayoutSchema.safeParse(state.layout).success).toBe(true);
+    expect(
+        panelLayoutSchema.safeParse(storedLayout(state.layout)).success,
+    ).toBe(true);
 });
 
 test("closing all tabs leaves one valid empty pane and no dangling active pane", () => {
@@ -78,7 +84,9 @@ test("closing all tabs leaves one valid empty pane and no dangling active pane",
         tabIds: [],
         selectedTabId: null,
     });
-    expect(panelLayoutSchema.safeParse(state.layout).success).toBe(true);
+    expect(
+        panelLayoutSchema.safeParse(storedLayout(state.layout)).success,
+    ).toBe(true);
 });
 
 test("tab drops reorder or merge without losing tab entities, and prune the empty source", () => {
@@ -90,6 +98,7 @@ test("tab drops reorder or merge without losing tab entities, and prune the empt
         activePaneId: "a",
         layout: {
             type: "split" as const,
+            id: "ab",
             axis: "x" as const,
             weights: [0.5, 0.5],
             children: [
@@ -168,7 +177,9 @@ test.each(["left", "right", "top", "bottom"] as const)(
         );
         expect(next.tabs).toBe(workspacePreview.tabs);
         expect(next.activePaneId).toBe("new");
-        expect(panelLayoutSchema.safeParse(next.layout).success).toBe(true);
+        expect(
+            panelLayoutSchema.safeParse(storedLayout(next.layout)).success,
+        ).toBe(true);
         const references = panelLayoutReferences(next.layout);
         expect(new Set(references.tabIds).size).toBe(
             workspacePreview.tabs.length,
@@ -227,6 +238,7 @@ test("moving the last terminal to an empty destination retains the destination a
         activePaneId: "source",
         layout: {
             type: "split" as const,
+            id: "three-way",
             axis: "x" as const,
             weights: [0.4, 0.3, 0.3],
             children: [

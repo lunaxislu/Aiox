@@ -2,93 +2,190 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
-import type {
-    PanelView,
-    HostView,
-    HostNetworkView,
-    Operation,
-} from "@aiox/protocol";
-import Database from "better-sqlite3";
+import { RouteOperationError } from "@aiox/domain";
+import type { PanelView, HostView, HostNetworkView } from "@aiox/protocol";
+import * as Effect from "effect/Effect";
 import { test } from "vitest";
 
 import { openDatabase } from "./database";
+import { HostStateError } from "./host-state";
 
-test("panel storage preserves layout across reopen, rejects stale writes and duplicate terminal ownership atomically", async (t) => {
+test("panel changes write only changed rows, create and delete in one transaction and keep deleted IDs", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "aiox-panel-"));
-    let db = await openDatabase(join(directory, "aiox.db"));
+    const file = join(directory, "aiox.db");
+    let db = await openDatabase(file);
     t.onTestFinished(async () => {
         await db.close();
         await rm(directory, { recursive: true, force: true });
     });
-    const panel = {
+    const tab = (id: string, terminalId: string | null) => ({
+        id,
+        terminalId,
+        label: "Shell",
+        agentKey: null,
+        runtimeId: null,
+        presentation: "shell" as const,
+        notice: null,
+    });
+    const panel: PanelView = {
         id: "p1",
-        kind: "workspace" as const,
-        section: "hosts" as const,
+        kind: "workspace",
+        section: "hosts",
         name: "Work",
         hostId: null,
         networkId: null,
         revision: 1,
         layout: {
-            type: "pane" as const,
+            type: "pane",
             id: "pane1",
-            tabIds: ["tab1"],
-            selectedTabId: "tab1",
+            tabIds: ["tab1", "tab2"],
         },
-        activePaneId: "pane1",
-        tabs: [
-            {
-                id: "tab1",
-                terminalId: "t1",
-                label: "Shell",
-                agentKey: null,
-                runtimeId: null,
-                presentation: "shell" as const,
-                notice: null,
-            },
-        ],
+        tabs: [tab("tab1", "t1"), tab("tab2", "t2")],
     };
     await db.hostState.createPanel(panel);
-    await assert.rejects(
-        db.hostState.updatePanel({ ...panel, name: "Stale", revision: 3 }, 2),
-        /revision_conflict/,
-    );
+    await assert.rejects(db.hostState.createPanel(panel), /id_conflict/);
     await assert.rejects(
         db.hostState.createPanel({
             ...panel,
             id: "p2",
-            tabs: [{ ...panel.tabs[0]!, id: "tab2" }],
+            tabs: [{ ...tab("tab3", "t1") }],
             layout: {
-                ...panel.layout,
-                tabIds: ["tab2"],
-                selectedTabId: "tab2",
+                type: "pane",
+                id: "pane1",
+                tabIds: ["tab3"],
             },
         }),
         /UNIQUE/,
     );
-    await db.close();
-    db = await openDatabase(join(directory, "aiox.db"));
-    assert.deepEqual((await db.hostState.snapshot()).panels, [panel]);
-    await db.hostState.updatePanel(
-        { ...panel, name: "Renamed", revision: 2 },
-        1,
+
+    // Record row writes on the tab table to prove rename and move leave tab rows alone.
+    const raw = new DatabaseSync(file);
+    raw.exec(
+        "CREATE TABLE tab_writes(op TEXT, id TEXT);" +
+            "CREATE TRIGGER tab_update AFTER UPDATE ON panel_tabs BEGIN INSERT INTO tab_writes VALUES('update', NEW.id); END;" +
+            "CREATE TRIGGER tab_delete AFTER DELETE ON panel_tabs BEGIN INSERT INTO tab_writes VALUES('delete', OLD.id); END;" +
+            "CREATE TRIGGER tab_insert AFTER INSERT ON panel_tabs BEGIN INSERT INTO tab_writes VALUES('insert', NEW.id); END;",
     );
-    assert.equal((await db.hostState.snapshot()).panels[0]!.name, "Renamed");
-    const concurrent = await Promise.allSettled([
-        db.hostState.updatePanel({ ...panel, name: "Winner", revision: 3 }, 2),
-        db.hostState.updatePanel(
-            { ...panel, name: "Stale competitor", revision: 3 },
-            2,
+    const writes = () =>
+        raw
+            .prepare("SELECT op, id FROM tab_writes ORDER BY rowid")
+            .all()
+            .map((row) => ({ op: row.op, id: row.id }));
+    const renamed = await db.hostState.mutatePanel("p1", (p) => ({
+        ...p,
+        name: "Renamed",
+    }));
+    assert.equal(renamed.revision, 2);
+    assert.deepEqual(writes(), []);
+    // An unchanged result neither writes nor advances the change number.
+    assert.equal((await db.hostState.mutatePanel("p1", (p) => p)).revision, 2);
+    await assert.rejects(
+        db.hostState.mutatePanel("p1", () => {
+            throw new Error("rejected command");
+        }),
+        /rejected command/,
+    );
+    assert.equal((await db.hostState.getPanel("p1"))!.name, "Renamed");
+    await db.hostState.mutatePanel("p1", (p) => ({
+        ...p,
+        tabs: p.tabs.map((t) =>
+            t.id === "tab2" ? { ...t, presentation: "stopped" as const } : t,
         ),
+    }));
+    assert.deepEqual(writes(), [{ op: "update", id: "tab2" }]);
+
+    // Concurrent commands both apply to the latest panel instead of conflicting.
+    await Promise.all([
+        db.hostState.mutatePanel("p1", (p) => ({ ...p, name: "First" })),
+        db.hostState.mutatePanel("p1", (p) => ({
+            ...p,
+        })),
     ]);
-    assert.equal(concurrent[0]!.status, "fulfilled");
-    assert.equal(concurrent[1]!.status, "rejected");
-    if (concurrent[1]!.status === "rejected")
-        assert.match(String(concurrent[1]!.reason), /revision_conflict/);
-    assert.equal((await db.hostState.snapshot()).panels[0]!.name, "Winner");
+    assert.equal((await db.hostState.getPanel("p1"))!.name, "First");
+
+    await db.hostState.mutatePanel("p1", (p, context) =>
+        Effect.gen(function* () {
+            assert.equal(yield* context.tabTaken("tab1"), true);
+            assert.equal(yield* context.deleted("tab1"), false);
+            return {
+                ...p,
+                layout: {
+                    ...p.layout,
+                    tabIds: ["tab2"],
+                },
+                tabs: p.tabs.filter((t) => t.id !== "tab1"),
+            } as PanelView;
+        }),
+    );
+    await db.hostState.mutatePanel("p1", (p, context) =>
+        Effect.gen(function* () {
+            assert.equal(yield* context.deleted("tab1"), true);
+            assert.equal(yield* context.tabTaken("tab1"), false);
+            return p;
+        }),
+    );
+    // Creation, its changes and a failure are one transaction: nothing of a rejected create stays.
+    const fresh = {
+        ...panel,
+        id: "p3",
+        tabs: [tab("tab5", null)],
+        layout: {
+            type: "pane" as const,
+            id: "pane5",
+            tabIds: ["tab5"],
+        },
+    };
+    await assert.rejects(
+        db.hostState.applyPanel("p3", (current) => {
+            assert.equal(current, undefined);
+            return {
+                ...fresh,
+                tabs: [tab("tab1", null)],
+                layout: {
+                    ...fresh.layout,
+                    tabIds: ["tab1"],
+                },
+            };
+        }),
+        /id_deleted/,
+    );
+    assert.equal(await db.hostState.getPanel("p3"), undefined);
+    assert.equal((await db.hostState.applyPanel("p3", () => fresh))!.id, "p3");
+    assert.equal(await db.hostState.applyPanel("p3", () => null), null);
+    await db.hostState.applyPanel("p3", (current, context) =>
+        Effect.gen(function* () {
+            assert.equal(current, undefined);
+            assert.equal(yield* context.deleted("p3"), true);
+            assert.equal(yield* context.deleted("tab5"), true);
+            return null;
+        }),
+    );
+    raw.close();
+    await db.close();
+    db = await openDatabase(file);
+    await db.hostState.deletePanel("p1");
+    await assert.rejects(
+        db.hostState.getPanel("p1").then((p) => {
+            if (!p) throw new Error("gone");
+        }),
+        /gone/,
+    );
+    const code = (expected: string) => (error: { code?: string }) =>
+        error.code === expected;
+    await assert.rejects(
+        db.hostState.mutatePanel("p1", (p) => p),
+        code("id_deleted"),
+    );
+    await assert.rejects(
+        db.hostState.mutatePanel("never", (p) => p),
+        code("unknown_panel"),
+    );
+    await assert.rejects(db.hostState.createPanel(panel), /id_deleted/);
 });
 
-test("Host creation is atomic and Operation retries, recovery and retention preserve unfinished cleanup", async (t) => {
+test("Host creation is atomic, targeted Host reads match the snapshot and recovery marks lost terminals", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "aiox-host-state-"));
     let db = await openDatabase(join(directory, "aiox.db"));
     t.onTestFinished(async () => {
@@ -107,9 +204,7 @@ test("Host creation is atomic and Operation retries, recovery and retention pres
             type: "pane",
             id: "pane1",
             tabIds: ["tab1"],
-            selectedTabId: "tab1",
         },
-        activePaneId: "pane1",
         tabs: [
             {
                 id: "tab1",
@@ -131,7 +226,6 @@ test("Host creation is atomic and Operation retries, recovery and retention pres
         revision: 1,
         panelId: "p1",
         networkId: "n1",
-        activeOperationId: null,
         agents: [
             {
                 key: "a",
@@ -234,98 +328,25 @@ test("Host creation is atomic and Operation retries, recovery and retention pres
         ),
     );
     assert.equal((await db.hostState.snapshot()).hosts.length, 1);
-    const operation: Operation = {
-        id: "o1",
-        requestId: "6a8ed620-0000-4000-8000-000000000020",
-        kind: "host.run",
-        hostId: "h1",
-        panelId: "p1",
-        state: "running",
-        targets: [
-            {
-                agentKey: "a",
-                terminalId: "t1",
-                state: "preparing",
-                error: null,
-            },
-        ],
-        error: null,
-        cleanupErrors: [],
-        createdAt: 1,
-        finishedAt: null,
-    };
-    const admitted = await Promise.allSettled([
-        db.hostState.saveOperation(operation, "hash"),
-        db.hostState.saveOperation({ ...operation, id: "retry" }, "hash"),
-        db.hostState.saveOperation({ ...operation, id: "conflict" }, "other"),
-    ]);
-    assert.equal(admitted[0]!.status, "fulfilled");
-    assert.equal(admitted[1]!.status, "fulfilled");
-    if (admitted[1]!.status === "fulfilled")
-        assert.equal(admitted[1]!.value.id, operation.id);
-    assert.equal(admitted[2]!.status, "rejected");
-    if (admitted[2]!.status === "rejected")
-        assert.match(String(admitted[2]!.reason), /request_conflict/);
-    assert.equal(
-        (await db.hostState.getOperation(operation.requestId, "hash"))!.id,
-        "o1",
+    assert.deepEqual(
+        await db.hostState.getHost("h1"),
+        (await db.hostState.snapshot()).hosts[0],
     );
-    await assert.rejects(
-        db.hostState.getOperation(operation.requestId, "other"),
-        /request_conflict/,
-    );
-    assert.equal(await db.hostState.getOperation("missing", "hash"), undefined);
-    assert.equal(
-        (
-            await db.hostState.saveOperation(
-                { ...operation, id: "other" },
-                "hash",
-            )
-        ).id,
-        "o1",
-    );
-    await assert.rejects(
-        db.hostState.saveOperation(operation, "different"),
-        /request_conflict/,
-    );
-    assert.equal(await db.hostState.purgeBefore(100), 0);
+    assert.equal(await db.hostState.getHost("missing"), undefined);
+    // Ended executions older than the retention edge are history only.
+    assert.equal(await db.hostState.purgeBefore(100), 2);
     await db.hostState.recover(10);
     const recovered = await db.hostState.snapshot();
-    assert.equal(recovered.operations[0]!.error?.code, "daemon_interrupted");
     assert.equal(recovered.panels[0]!.tabs[0]!.presentation, "unavailable");
-    assert.equal(recovered.hosts[0]!.activeOperationId, null);
-    assert.equal(
-        (await db.hostState.saveOperation(operation, "hash")).state,
-        "failed",
-    );
     await db.hostState.recover(11);
     assert.equal(
         (await db.hostState.snapshot()).panels[0]!.revision,
         recovered.panels[0]!.revision,
     );
-    const cleanup = {
-        code: "cleanup_failed",
-        message: "Process termination unconfirmed",
-        stage: "cleanup" as const,
-    };
-    await db.hostState.saveOperation(
-        {
-            ...operation,
-            id: "o2",
-            requestId: "6a8ed620-0000-4000-8000-000000000021",
-            state: "failed",
-            error: cleanup,
-            cleanupErrors: [cleanup],
-            finishedAt: 10,
-        },
-        "cleanup",
-    );
-    assert.equal(await db.hostState.purgeBefore(100), 1);
-    assert.equal((await db.hostState.snapshot()).operations[0]!.id, "o2");
     assert.equal((await db.hostState.snapshot()).hosts.length, 1);
 });
 
-test("Host admission atomically stores its Operation and failed pre-registration start survives reopen", async (t) => {
+test("failed pre-registration start survives reopen", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "aiox-admission-"));
     const file = join(directory, "aiox.db");
     let db = await openDatabase(file);
@@ -342,7 +363,6 @@ test("Host admission atomically stores its Operation and failed pre-registration
         revision: 1,
         panelId: "panel",
         networkId: "network",
-        activeOperationId: null,
         agents: [
             {
                 key: "a",
@@ -375,12 +395,10 @@ test("Host admission atomically stores its Operation and failed pre-registration
         hostId: "host",
         networkId: "network",
         revision: 1,
-        activePaneId: "pane",
         layout: {
             type: "pane",
             id: "pane",
             tabIds: ["tab"],
-            selectedTabId: "tab",
         },
         tabs: [
             {
@@ -394,45 +412,7 @@ test("Host admission atomically stores its Operation and failed pre-registration
             },
         ],
     };
-    const operation: Operation = {
-        id: "operation",
-        requestId: "6a8ed620-0000-4000-8000-000000000090",
-        kind: "host.run",
-        hostId: "host",
-        panelId: "panel",
-        state: "running",
-        targets: [
-            { agentKey: "a", terminalId: null, state: "pending", error: null },
-        ],
-        error: null,
-        cleanupErrors: [],
-        createdAt: 1,
-        finishedAt: null,
-    };
-    await db.hostState.saveOperation(
-        { ...operation, hostId: null, panelId: null },
-        "hash",
-    );
-    await assert.rejects(
-        db.hostState.createHost(host, network, panel, 1, {
-            value: operation,
-            requestHash: "hash",
-        }),
-    );
-    assert.deepEqual((await db.hostState.snapshot()).hosts, []);
-    const admitted = {
-        ...operation,
-        id: "admitted",
-        requestId: "6a8ed620-0000-4000-8000-000000000091",
-    };
-    await db.hostState.createHost(host, network, panel, 1, {
-        value: admitted,
-        requestHash: "hash2",
-    });
-    assert.equal(
-        (await db.hostState.snapshot()).hosts[0]!.activeOperationId,
-        "admitted",
-    );
+    await db.hostState.createHost(host, network, panel, 1);
     await db.hostState.failStart(
         "host",
         "a",
@@ -452,10 +432,6 @@ test("Host admission atomically stores its Operation and failed pre-registration
         "shell unavailable",
     );
     assert.equal(state.panels[0]!.tabs[0]!.presentation, "start-failed");
-    assert.equal(
-        state.operations.find((o) => o.id === "admitted")!.state,
-        "running",
-    );
 });
 
 test("Host route overrides reset to applied YAML and agent updates preserve unrelated policies across reopen", async (t) => {
@@ -487,7 +463,6 @@ test("Host route overrides reset to applied YAML and agent updates preserve unre
         revision: 1,
         panelId: "p",
         networkId: "n",
-        activeOperationId: null,
         agents: ["a", "b", "c"].map(agent),
     };
     const panel: PanelView = {
@@ -498,8 +473,7 @@ test("Host route overrides reset to applied YAML and agent updates preserve unre
         hostId: "h",
         networkId: "n",
         revision: 1,
-        layout: { type: "pane", id: "pane", tabIds: [], selectedTabId: null },
-        activePaneId: "pane",
+        layout: { type: "pane", id: "pane", tabIds: [] },
         tabs: [],
     };
     await db.hostState.createHost(
@@ -574,6 +548,16 @@ test("Host route overrides reset to applied YAML and agent updates preserve unre
             action: "block",
             agents: ["a", "b"],
         }),
+        HostStateError,
+    );
+    await assert.rejects(
+        db.hostState.routeNetwork("h", "n", {
+            kind: "directed",
+            action: "block",
+            from: "a",
+            to: ["a"],
+        }),
+        RouteOperationError,
     );
     await db.hostState.routeNetwork("h", "n", {
         kind: "directed",
@@ -627,43 +611,38 @@ test("Host route overrides reset to applied YAML and agent updates preserve unre
         "latest",
     );
     const before = (await db.hostState.snapshot()).panels[0]!;
-    await db.hostState.updatePanel(
-        {
-            ...before,
-            revision: before.revision + 1,
-            layout: {
-                type: "pane",
-                id: "pane",
-                tabIds: ["old", "new"],
-                selectedTabId: "old",
-            },
-            tabs: [
-                {
-                    id: "old",
-                    terminalId: "old-terminal",
-                    agentKey: "a",
-                    runtimeId: null,
-                    label: "a",
-                    presentation: "stopped",
-                    notice: {
-                        message: "old notice",
-                        reason: "stopped",
-                        restartCommand: "start",
-                    },
-                },
-                {
-                    id: "new",
-                    terminalId: null,
-                    agentKey: "a",
-                    runtimeId: null,
-                    label: "a",
-                    presentation: "preparing",
-                    notice: null,
-                },
-            ],
+    await db.hostState.mutatePanel(before.id, () => ({
+        ...before,
+        layout: {
+            type: "pane",
+            id: "pane",
+            tabIds: ["old", "new"],
         },
-        before.revision,
-    );
+        tabs: [
+            {
+                id: "old",
+                terminalId: "old-terminal",
+                agentKey: "a",
+                runtimeId: null,
+                label: "a",
+                presentation: "stopped",
+                notice: {
+                    message: "old notice",
+                    reason: "stopped",
+                    restartCommand: "start",
+                },
+            },
+            {
+                id: "new",
+                terminalId: null,
+                agentKey: "a",
+                runtimeId: null,
+                label: "a",
+                presentation: "preparing",
+                notice: null,
+            },
+        ],
+    }));
     await db.hostState.failStart("h", "a", "new failure", "start", "new");
     const failedTabs = (await db.hostState.snapshot()).panels[0]!.tabs;
     assert.equal(
@@ -699,42 +678,49 @@ test("Host route overrides reset to applied YAML and agent updates preserve unre
         db.hostState.replaceHost(
             replacement,
             replacedNetwork,
-            current.panels[0]!,
+            (latest) => latest,
             replacement.revision,
         ),
         /revision_conflict/,
     );
     assert.deepEqual(await db.hostState.snapshot(), current);
-    await db.hostState.replaceHost(
+    // A user move after the caller read the panel survives the replacement.
+    const moved = await db.hostState.mutatePanel(
+        current.panels[0]!.id,
+        (p) => ({
+            ...p,
+            layout: {
+                ...p.layout,
+                tabIds: ["new", "old"],
+            } as PanelView["layout"],
+        }),
+    );
+    const stored = await db.hostState.replaceHost(
         replacement,
         replacedNetwork,
-        current.panels[0]!,
+        (latest) => {
+            assert.deepEqual(latest, moved);
+            return latest;
+        },
         current.hosts[0]!.revision,
     );
+    assert.equal(stored.revision, moved.revision + 1);
     await db.close();
     db = await openDatabase(path);
     const replaced = await db.hostState.snapshot();
     assert.deepEqual(replaced.hosts, [replacement]);
     assert.deepEqual(replaced.networks, [replacedNetwork]);
-    assert.deepEqual(
-        replaced.panels,
-        current.panels.map((p) => ({ ...p, revision: p.revision + 1 })),
-    );
-    await assert.rejects(
-        db.hostState.deleteHost("h", replaced.panels[0]!.revision),
-        /still owns terminals/,
-    );
+    assert.deepEqual(replaced.panels, [stored]);
+    await assert.rejects(db.hostState.deleteHost("h"), /still owns terminals/);
     assert.deepEqual(await db.hostState.snapshot(), replaced);
     await db.hostState.removeTerminal("old-terminal");
-    const deletable = (await db.hostState.snapshot()).panels[0]!;
-    await db.hostState.deleteHost("h", deletable.revision);
+    await db.hostState.deleteHost("h");
     await db.close();
     db = await openDatabase(path);
     assert.deepEqual(await db.hostState.snapshot(), {
         hosts: [],
         networks: [],
         panels: [],
-        operations: [],
     });
 });
 
@@ -750,7 +736,6 @@ test("terminal removal atomically persists collapsed layout and focus, and repea
         type: "pane" as const,
         id,
         tabIds: [id],
-        selectedTabId: id,
     });
     const panel: PanelView = {
         id: "p",
@@ -760,9 +745,9 @@ test("terminal removal atomically persists collapsed layout and focus, and repea
         hostId: null,
         networkId: null,
         revision: 1,
-        activePaneId: "a",
         layout: {
             type: "split",
+            id: "s",
             axis: "x",
             weights: [0.3, 0.7],
             children: [pane("a"), pane("b")],
@@ -778,7 +763,7 @@ test("terminal removal atomically persists collapsed layout and focus, and repea
         })),
     };
     await db.hostState.createPanel(panel);
-    const raw = new Database(path);
+    const raw = new DatabaseSync(path);
     t.onTestFinished(() => {
         raw.close();
     });
@@ -796,7 +781,6 @@ test("terminal removal atomically persists collapsed layout and focus, and repea
     assert.deepEqual(remaining, {
         ...panel,
         revision: 2,
-        activePaneId: "b",
         layout: pane("b"),
         tabs: [panel.tabs[1]!],
     });
@@ -806,6 +790,48 @@ test("terminal removal atomically persists collapsed layout and focus, and repea
         ...remaining,
         revision: 3,
         tabs: [],
-        layout: { ...pane("b"), tabIds: [], selectedTabId: null },
+        layout: { ...pane("b"), tabIds: [] },
     });
+});
+
+test("restart fails shells that never became ready and marks lost terminals", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "aiox-restart-tabs-"));
+    const db = await openDatabase(join(directory, "aiox.db"));
+    t.onTestFinished(async () => {
+        await db.close();
+        await rm(directory, { recursive: true, force: true });
+    });
+    const tab = (id: string, terminalId: string | null) => ({
+        id,
+        terminalId,
+        label: id,
+        agentKey: null,
+        runtimeId: null,
+        presentation: terminalId ? ("shell" as const) : ("preparing" as const),
+        notice: null,
+    });
+    await db.hostState.createPanel({
+        id: "p",
+        kind: "workspace",
+        section: "workspaces",
+        name: "P",
+        hostId: null,
+        networkId: null,
+        revision: 1,
+        layout: {
+            type: "pane",
+            id: "pane",
+            tabIds: ["shell", "pending"],
+        },
+        tabs: [tab("shell", "t2"), tab("pending", null)],
+    });
+    await db.hostState.recover(100);
+    const tabs = (await db.hostState.getPanel("p"))!.tabs;
+    const pending = tabs.find((t) => t.id === "pending")!;
+    assert.equal(pending.presentation, "start-failed");
+    assert.equal(pending.notice?.reason, "daemon-ended");
+    assert.equal(
+        tabs.find((t) => t.id === "shell")!.presentation,
+        "unavailable",
+    );
 });

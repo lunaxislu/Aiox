@@ -8,8 +8,17 @@ import type {
     VendorBinding,
     VendorLaunchInput,
 } from "@aiox/vendor";
+import {
+    Cause,
+    Deferred,
+    Duration,
+    Effect,
+    Exit,
+    Fiber,
+    Option,
+    Schema,
+} from "effect";
 import { WebSocket } from "ws";
-import { z } from "zod";
 
 import { prepareLaunch } from "@/launch";
 
@@ -39,29 +48,60 @@ export function codexInput(message: InboundMessage) {
     };
 }
 
-export const connectionSchema = z.strictObject({
-    url: z
-        .string()
-        .regex(/^ws:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/)
-        .refine((value) => Number(new URL(value).port) <= 65535),
-    token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+export const connectionSchema = Schema.Struct({
+    url: Schema.String.check(
+        Schema.isPattern(/^ws:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/),
+        Schema.makeFilter((value) => {
+            try {
+                return Number(new URL(value).port) <= 65535
+                    ? undefined
+                    : { path: [], issue: "Port must be at most 65535" };
+            } catch {
+                return { path: [], issue: "Invalid loopback WebSocket URL" };
+            }
+        }),
+    ),
+    token: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{43}$/)),
+}).check(
+    Schema.makeFilter((value) => {
+        const extra = Object.keys(value).find(
+            (key) => !Object.hasOwn({ url: true, token: true }, key),
+        );
+        return extra === undefined
+            ? undefined
+            : { path: [extra], issue: "Unexpected key" };
+    }),
+);
+export type CodexConnection = { readonly url: string; readonly token: string };
+const stateSchema = Schema.Struct({
+    type: Schema.Literal("state"),
+    threadId: Schema.NullOr(Schema.String.check(Schema.isMinLength(1))),
+    error: Schema.NullOr(Schema.String),
+}).check(
+    Schema.makeFilter((value) => {
+        const extra = Object.keys(value).find(
+            (key) =>
+                !Object.hasOwn(
+                    { type: true, threadId: true, error: true },
+                    key,
+                ),
+        );
+        return extra === undefined
+            ? undefined
+            : { path: [extra], issue: "Unexpected key" };
+    }),
+);
+const responseSchema = Schema.Struct({
+    type: Schema.Literal("response"),
+    id: Schema.String,
+    error: Schema.optional(Schema.String),
+    result: Schema.optional(Schema.Unknown),
 });
-const stateSchema = z.strictObject({
-    type: z.literal("state"),
-    threadId: z.string().min(1).nullable(),
-    error: z.string().nullable(),
-});
-const responseSchema = z.object({
-    type: z.literal("response"),
-    id: z.string(),
-    error: z.string().optional(),
-    result: z.unknown().optional(),
-});
-const eventSchema = z.object({
-    type: z.literal("event"),
-    method: z.string(),
-    params: z.record(z.string(), z.unknown()),
-    id: z.union([z.string(), z.number()]).optional(),
+const eventSchema = Schema.Struct({
+    type: Schema.Literal("event"),
+    method: Schema.String,
+    params: Schema.Record(Schema.String, Schema.Unknown),
+    id: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
 });
 type TurnResult = {
     outcome: "completed" | "failed" | "interrupted";
@@ -79,7 +119,7 @@ export class CodexBinding implements VendorBinding {
     #ready = false;
     #turns = new Map<string, Set<string>>();
     #results = new Map<string, TurnResult>();
-    #flushing = new Map<string, Promise<void>>();
+    #flushing = new Map<string, Fiber.Fiber<void, unknown>>();
     #earlyResults = new Map<string, TurnResult>();
     #awaitingAcceptance = 0;
     #activeTurns = new Map<string, string>();
@@ -92,16 +132,15 @@ export class CodexBinding implements VendorBinding {
     #requests = new Map<
         string,
         {
-            resolve(result: unknown): void;
-            reject(error: Error): void;
-            timer: ReturnType<typeof setTimeout>;
+            result: Deferred.Deferred<unknown, Error>;
+            timer: Fiber.Fiber<void, never>;
         }
     >();
     onReady: (() => void) | undefined;
     onReleased: (() => void) | undefined;
     constructor(
         private readonly controls: RuntimeControls,
-        private readonly connection: z.infer<typeof connectionSchema>,
+        private readonly connection: CodexConnection,
     ) {}
     get wasReady() {
         return this.#wasReady;
@@ -128,31 +167,36 @@ export class CodexBinding implements VendorBinding {
                 this.#failed("Invalid Codex relay report.");
                 return;
             }
-            const state = stateSchema.safeParse(value);
-            if (state.success) {
-                this.#thread = state.data.threadId;
-                this.#connectionFailure = state.data.error;
-                if (state.data.error !== null) this.#failed(state.data.error);
+            const state = Schema.decodeUnknownOption(stateSchema, {
+                onExcessProperty: "error",
+            })(value);
+            if (Option.isSome(state)) {
+                this.#thread = state.value.threadId;
+                this.#connectionFailure = state.value.error;
+                if (state.value.error !== null) this.#failed(state.value.error);
                 else this.#updateActivity();
                 return;
             }
-            const event = eventSchema.safeParse(value);
-            if (event.success) {
-                this.#event(event.data);
+            const event = Schema.decodeUnknownOption(eventSchema)(value);
+            if (Option.isSome(event)) {
+                this.#event(event.value);
                 return;
             }
-            const response = responseSchema.safeParse(value);
-            if (!response.success) {
+            const response = Schema.decodeUnknownOption(responseSchema)(value);
+            if (Option.isNone(response)) {
                 this.#failed("Invalid Codex relay report.");
                 return;
             }
-            const pending = this.#requests.get(response.data.id);
+            const pending = this.#requests.get(response.value.id);
             if (!pending) return;
-            clearTimeout(pending.timer);
-            this.#requests.delete(response.data.id);
-            if (response.data.error)
-                pending.reject(new Error(response.data.error));
-            else pending.resolve(response.data.result);
+            this.#requests.delete(response.value.id);
+            Effect.runFork(Fiber.interrupt(pending.timer));
+            Deferred.doneUnsafe(
+                pending.result,
+                response.value.error
+                    ? Effect.fail(new Error(response.value.error))
+                    : Effect.succeed(response.value.result),
+            );
         });
         await once(socket, "open");
         if (this.#stopped) {
@@ -212,7 +256,7 @@ export class CodexBinding implements VendorBinding {
                   : this.#failures.get(threadId),
         );
     }
-    #event(event: z.infer<typeof eventSchema>) {
+    #event(event: Schema.Schema.Type<typeof eventSchema>) {
         const { method, params, id } = event;
         const threadId = params.threadId;
         if (typeof threadId !== "string") return;
@@ -280,7 +324,7 @@ export class CodexBinding implements VendorBinding {
                 }
                 if (this.#turns.has(key)) {
                     if (!this.#results.has(key)) this.#results.set(key, result);
-                    void this.#flush(key).catch(() => {});
+                    this.#flush(key);
                 }
                 if (
                     this.#awaitingAcceptance > 0 &&
@@ -344,31 +388,38 @@ export class CodexBinding implements VendorBinding {
             this.#pending.delete(`${threadId}:${params.requestId}`);
         if (threadId === this.#thread) this.#updateActivity();
     }
-    #flush(key: string): Promise<void> {
+    #flush(key: string): Fiber.Fiber<void, unknown> {
         const active = this.#flushing.get(key);
         if (active) return active;
-        // Register ownership before settling; release it in the same synchronous
-        // step as the drained entries so a late acceptance starts a new flush.
-        const flushing = Promise.resolve().then(async () => {
-            try {
-                const result = this.#results.get(key);
-                const deliveries = this.#turns.get(key);
+        const binding = this;
+        // Register the Fiber before delivery settlement can complete so late
+        // acceptance joins this drain instead of racing a second drain.
+        const flushing = Effect.runFork(
+            Effect.gen(function* () {
+                const result = binding.#results.get(key);
+                const deliveries = binding.#turns.get(key);
                 if (!result || !deliveries) return;
                 for (const deliveryId of deliveries) {
-                    await this.controls.settle(
-                        deliveryId,
-                        result.outcome,
-                        result.error,
-                    );
+                    yield* Effect.tryPromise({
+                        try: () =>
+                            binding.controls.settle(
+                                deliveryId,
+                                result.outcome,
+                                result.error,
+                            ),
+                        catch: (error) => error,
+                    });
                     deliveries.delete(deliveryId);
                 }
-                this.#turns.delete(key);
-                this.#results.delete(key);
-            } finally {
-                this.#flushing.delete(key);
-            }
-        });
+                binding.#turns.delete(key);
+                binding.#results.delete(key);
+            }),
+        );
         this.#flushing.set(key, flushing);
+        flushing.addObserver(() => {
+            if (this.#flushing.get(key) === flushing)
+                this.#flushing.delete(key);
+        });
         return flushing;
     }
     #failed(reason: string) {
@@ -376,8 +427,8 @@ export class CodexBinding implements VendorBinding {
         this.#connectionFailure = reason;
         this.controls.setStatus("failed", reason);
         for (const pending of this.#requests.values()) {
-            clearTimeout(pending.timer);
-            pending.reject(new Error(reason));
+            Effect.runFork(Fiber.interrupt(pending.timer));
+            Deferred.doneUnsafe(pending.result, Effect.fail(new Error(reason)));
         }
         this.#requests.clear();
     }
@@ -397,16 +448,35 @@ export class CodexBinding implements VendorBinding {
         this.#awaitingAcceptance++;
         let result: unknown;
         try {
-            result = await new Promise<unknown>((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    this.#requests.delete(id);
-                    reject(
-                        new Error(
-                            "Codex input outcome is unknown; input was not retried.",
+            const resultDeferred = Deferred.makeUnsafe<unknown, Error>();
+            const binding = this;
+            const timer = Effect.runFork(
+                Effect.gen(function* () {
+                    yield* Effect.clockWith((clock) =>
+                        clock.sleep(Duration.millis(31_000)),
+                    );
+                    const pending = binding.#requests.get(id);
+                    if (pending?.result !== resultDeferred) return;
+                    binding.#requests.delete(id);
+                    Deferred.doneUnsafe(
+                        resultDeferred,
+                        Effect.fail(
+                            new Error(
+                                "Codex input outcome unknown; input was not retried.",
+                            ),
                         ),
                     );
-                }, 31_000);
-                this.#requests.set(id, { resolve, reject, timer });
+                }),
+            );
+            this.#requests.set(id, { result: resultDeferred, timer });
+            const failSend = (error: Error) => {
+                const pending = this.#requests.get(id);
+                if (pending?.result !== resultDeferred) return;
+                this.#requests.delete(id);
+                Effect.runFork(Fiber.interrupt(timer));
+                Deferred.doneUnsafe(resultDeferred, Effect.fail(error));
+            };
+            try {
                 this.#socket!.send(
                     JSON.stringify({
                         type: "deliver",
@@ -414,43 +484,47 @@ export class CodexBinding implements VendorBinding {
                         params: codexInput(message),
                     }),
                     (error) => {
-                        if (error) {
-                            clearTimeout(timer);
-                            this.#requests.delete(id);
-                            reject(
+                        if (error)
+                            failSend(
                                 new Error(
                                     "Codex relay write failed; input outcome is unknown.",
                                 ),
                             );
-                        }
                     },
                 );
-            });
+            } catch (error) {
+                failSend(
+                    new Error(
+                        `Codex relay write failed; input outcome is unknown: ${String(error)}`,
+                    ),
+                );
+            }
+            result = await Effect.runPromise(Deferred.await(resultDeferred));
         } catch (error) {
             if (this.#awaitingAcceptance === 1) this.#earlyResults.clear();
             throw error;
         } finally {
             this.#awaitingAcceptance--;
         }
-        const accepted = z
-            .object({
-                threadId: z.string(),
-                turn: z.object({ id: z.string() }),
-            })
-            .safeParse(result);
-        if (!accepted.success)
+        const accepted = Schema.decodeUnknownOption(
+            Schema.Struct({
+                threadId: Schema.String,
+                turn: Schema.Struct({ id: Schema.String }),
+            }),
+        )(result);
+        if (Option.isNone(accepted))
             throw new Error(
                 "Codex accepted input without thread and turn IDs.",
             );
         if (message.deliveryId) {
-            const key = `${accepted.data.threadId}:${accepted.data.turn.id}`;
+            const key = `${accepted.value.threadId}:${accepted.value.turn.id}`;
             const deliveries = this.#turns.get(key) ?? new Set<string>();
             deliveries.add(message.deliveryId);
             this.#turns.set(key, deliveries);
             const early = this.#earlyResults.get(key);
             if (early) {
                 if (!this.#results.has(key)) this.#results.set(key, early);
-                void this.#flush(key).catch(() => {});
+                this.#flush(key);
             }
         }
         if (this.#awaitingAcceptance === 0) this.#earlyResults.clear();
@@ -469,11 +543,20 @@ export class CodexBinding implements VendorBinding {
     async cleanup() {
         this.#stopped = true;
         this.#failed("Codex collaboration released.");
-        const flushed = await Promise.allSettled(
-            [...this.#results.keys()].map((key) => this.#flush(key)),
+        const flushed = await Effect.runPromise(
+            Effect.all(
+                [...this.#results.keys()].map((key) =>
+                    Effect.exit(Fiber.join(this.#flush(key))),
+                ),
+                { concurrency: "unbounded" },
+            ),
         );
-        const failure = flushed.find((result) => result.status === "rejected");
-        if (failure?.status === "rejected") throw failure.reason;
+        const failures = flushed
+            .filter(Exit.isFailure)
+            .map((exit) => Cause.squash(exit.cause));
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1)
+            throw new AggregateError(failures, failures.map(String).join("; "));
         const socket = this.#socket;
         if (socket && socket.readyState !== WebSocket.CLOSED) {
             const closed = once(socket, "close");

@@ -16,6 +16,7 @@
     },
     "dependencies": {
         "@aiox/protocol": "workspace:*",
+        "effect": "4.0.0-rc.117",
         "yaml": "2.8.3"
     }
 }

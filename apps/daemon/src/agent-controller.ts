@@ -22,23 +22,38 @@ import {
     type VendorBinding,
     type VendorExecution,
 } from "@aiox/vendor";
-import type { Context } from "hono";
+import { Deferred, Duration, Effect, Fiber } from "effect";
+import * as Schema from "effect/Schema";
 import type { WebSocket } from "ws";
-import { z } from "zod";
+import { createActor } from "xstate";
 
 import type { Daemon } from "@/daemon";
 import { readJson } from "@/http";
 import { bearerToken } from "@/mcp";
 import { collaborationInstruction } from "@/messaging";
 
-import type { HttpEnv } from "./http";
+import { agentLifecycle } from "./agent-lifecycle";
+import type { Context } from "./http-endpoint";
 import { managedLaunch } from "./managed-agents";
 
-const resizeSchema = z.strictObject({
-    type: z.literal("resize"),
-    cols: z.int().positive(),
-    rows: z.int().positive(),
-});
+const resizeFields = {
+    type: Schema.Literal("resize"),
+    cols: Schema.Int.check(Schema.isGreaterThan(0)),
+    rows: Schema.Int.check(Schema.isGreaterThan(0)),
+};
+const resizeSchema = Schema.StructWithRest(Schema.Struct(resizeFields), [
+    Schema.Record(Schema.String, Schema.Unknown),
+]).check(
+    Schema.makeFilter((value) => {
+        const extra = Object.keys(value).find(
+            (key) => !Object.hasOwn(resizeFields, key),
+        );
+        return extra === undefined
+            ? undefined
+            : { path: [extra], issue: "Unexpected key" };
+    }),
+);
+const decodeResize = Schema.decodeUnknownSync(resizeSchema);
 
 /** Owns AIOX lifecycle and terminal transport, never vendor launch semantics. */
 export class AgentController {
@@ -51,7 +66,7 @@ export class AgentController {
         private readonly adapters: readonly VendorAdapter[],
     ) {}
 
-    async hook(c: Context<HttpEnv>): Promise<Response> {
+    async hook(c: Context): Promise<Response> {
         const report = this.#reports.get(bearerToken(c.req.raw) ?? "");
         const active = () =>
             report &&
@@ -80,85 +95,132 @@ export class AgentController {
     }
 
     #attach(socket: WebSocket, external: boolean): void {
+        const { daemon, adapters } = this;
+        const reports = this.#reports;
+        const lifecycle = createActor(agentLifecycle).start();
+        const lifecycleSnapshot = () => lifecycle.getSnapshot();
+        const isEnded = () =>
+            lifecycleSnapshot().matches({ execution: "endedBeforePrepared" }) ||
+            lifecycleSnapshot().matches({ execution: "endedAfterPrepared" }) ||
+            lifecycleSnapshot().matches({ execution: "endedAfterStarted" });
+        const isPrepared = () =>
+            lifecycleSnapshot().matches({ execution: "prepared" }) ||
+            lifecycleSnapshot().matches({ execution: "started" }) ||
+            lifecycleSnapshot().matches({ execution: "endedAfterPrepared" }) ||
+            lifecycleSnapshot().matches({ execution: "endedAfterStarted" });
+        const isRelayDisconnected = () =>
+            lifecycleSnapshot().matches({ relay: "disconnected" });
+        const isStopping = () =>
+            lifecycleSnapshot().matches({ process: "stopping" });
         let binding: VendorBinding | undefined;
         let controlsForBinding: RuntimeControls | undefined;
         let runtimeId: string | undefined;
         let terminalId: string | undefined;
         let reportToken: string | undefined;
-        let ended = false;
-        let relayDisconnected = false;
         let collaborationError: string | undefined;
-        let prepared = false;
-        let started = false;
-        let finishing: Promise<void> | undefined;
-        let timer: ReturnType<typeof setTimeout> | undefined;
+        let finishing: Fiber.Fiber<void, unknown> | undefined;
+        let lifecycleFiber: Fiber.Fiber<void, unknown> | undefined;
+        let timeoutFiber: Fiber.Fiber<void, unknown> | undefined;
         let foreground: ExecutionProcess | undefined;
         let execution: VendorExecution | undefined;
-        let preparingExecution: Promise<VendorExecution> | undefined;
-        let startingExecution: Promise<ExecutionProcess> | undefined;
         let session: TerminalSession | undefined;
         let hostId: string | undefined;
         let exitRecord: LastExit | undefined;
-        let stopping = false;
         const send = (frame: object) => {
             if (socket.readyState === socket.OPEN)
                 socket.send(JSON.stringify(frame));
         };
         const clear = () => {
-            clearTimeout(timer);
-            if (reportToken) this.#reports.delete(reportToken);
+            clearTimeoutEffect();
+            if (reportToken) reports.delete(reportToken);
+        };
+        const clearTimeoutEffect = () => {
+            const fiber = timeoutFiber;
+            timeoutFiber = undefined;
+            if (fiber) Effect.runFork(Fiber.interrupt(fiber));
+        };
+        const timeoutAfter = (
+            ms: number,
+            task: () => Effect.Effect<void, unknown>,
+        ) => {
+            clearTimeoutEffect();
+            timeoutFiber = Effect.runFork(
+                Effect.sleep(Duration.millis(ms)).pipe(
+                    Effect.andThen(Effect.suspend(task)),
+                    Effect.catch(() => Effect.void),
+                ),
+            );
         };
         const released = () => {
             clear();
-            if (session?.alive && collaborationError && !ended) return;
-            if (ended) return;
-            ended = true;
+            if (session?.alive && collaborationError && !isEnded()) return;
+            if (isEnded()) return;
+            lifecycle.send({ type: "FINISH" });
             socket.resume();
             socket.close();
         };
         let dimensions = { cols: 80, rows: 24 };
         const owner = external
             ? undefined
-            : new ExecutionOwner(async (command) => {
-                  let resolveExit!: (exit: TerminalExit) => void;
-                  const exited = new Promise<TerminalExit>((resolve) => {
-                      resolveExit = resolve;
-                  });
-                  session = createTerminal({
-                      id: runtimeId!,
-                      ...command,
-                      cols: dimensions.cols,
-                      rows: dimensions.rows,
-                      initialListener: {
-                          data: (data) => {
-                              if (
-                                  !ended &&
-                                  !relayDisconnected &&
-                                  socket.readyState === socket.OPEN
-                              )
-                                  socket.send(data);
+            : new ExecutionOwner((command) =>
+                  Effect.sync(() => {
+                      const exited = Effect.runSync(
+                          Deferred.make<TerminalExit>(),
+                      );
+                      session = createTerminal({
+                          id: runtimeId!,
+                          ...command,
+                          cols: dimensions.cols,
+                          rows: dimensions.rows,
+                          initialListener: {
+                              data: (data) => {
+                                  if (
+                                      !isEnded() &&
+                                      !isRelayDisconnected() &&
+                                      socket.readyState === socket.OPEN
+                                  )
+                                      socket.send(data);
+                              },
+                              exit: (exit) => {
+                                  Effect.runFork(
+                                      Deferred.succeed(exited, exit),
+                                  );
+                              },
                           },
-                          exit: resolveExit,
-                      },
-                  });
-                  const current = session;
-                  void exited.then(processExited).catch(() => {});
-                  this.daemon.services.webEvents.notify();
-                  return {
-                      exited,
-                      write: (data) => current.write(data),
-                      resize: (cols, rows) => current.resize(cols, rows),
-                      stop: async () => {
-                          await current.kill();
-                          await current.dispose();
-                      },
-                  };
-              });
-        const release = async () => {
+                      });
+                      const current = session;
+                      Effect.runFork(
+                          Deferred.await(exited).pipe(
+                              Effect.flatMap(processExited),
+                              Effect.catch(() => Effect.void),
+                          ),
+                      );
+                      if (runtimeId)
+                          daemon.services.runtimes.changed(runtimeId);
+                      return {
+                          exited: Deferred.await(exited),
+                          write: (data) => current.write(data),
+                          resize: (cols, rows) => current.resize(cols, rows),
+                          stop: () =>
+                              Effect.tryPromise({
+                                  try: async () => {
+                                      await current.kill();
+                                      await current.dispose();
+                                  },
+                                  catch: (error) => error,
+                              }),
+                      };
+                  }),
+              );
+        const release = Effect.gen(function* () {
             clear();
-            if (runtimeId) await this.daemon.stopRuntime(runtimeId);
-            else await owner?.stop();
-        };
+            if (runtimeId)
+                yield* Effect.tryPromise({
+                    try: () => daemon.stopRuntime(runtimeId!),
+                    catch: (error) => error,
+                });
+            else if (owner) yield* owner.stop();
+        });
         const finish = (
             message?: string,
             exit?: TerminalExit,
@@ -168,411 +230,514 @@ export class AgentController {
                 | "invalid_lifecycle"
                 | "process_exit"
                 | "launch_timeout" = "preparation_failed",
-        ): Promise<void> => {
-            if (message && !ended && !collaborationError && !finishing) {
-                logger.error(
-                    { runtimeId, hostId, terminalId, failureCode },
-                    "Agent collaboration failed",
-                );
-            }
-
-            if (!external && session?.alive && message && !ended) {
-                collaborationError = message;
-                if (!foreground) {
-                    relayDisconnected = true;
-                    socket.close();
-                }
-                this.daemon.services.runtimes.revoke(runtimeId!);
-                clear();
-                socket.resume();
-                this.daemon.services.webEvents.notify();
-                return (async () => {
-                    try {
-                        await binding?.cleanup("collaboration_lost");
-                    } catch {
-                        collaborationError +=
-                            " Agent collaboration cleanup remains unconfirmed.";
-                        this.daemon.services.webEvents.notify();
-                    }
-                })();
-            }
-            if (message && hostId) {
-                collaborationError = message;
-                exitRecord ??= {
-                    kind: "start-failed",
-                    message,
-                    at: Date.now(),
-                };
-            }
-            finishing ??= (async () => {
-                ended = true;
-                clear();
-                socket.resume();
-                const startupFailed =
-                    external &&
-                    Boolean(message && prepared && !binding?.wasReady);
-                if (startupFailed) send({ type: "startup-failed", message });
-                try {
-                    await release();
-                } catch {
-                    message =
-                        "Agent collaboration cleanup remains unconfirmed.";
-                    logger.error({ runtimeId, terminalId }, message);
-                    send({ type: "error", message });
-                    socket.close();
-                    return;
-                }
-                logger.info(
-                    { runtimeId, hostId, terminalId },
-                    "Agent execution released",
-                );
-                if (message && !startupFailed) send({ type: "error", message });
-                else if (!message && exit) send({ type: "exit", ...exit });
-                socket.close();
-            })();
-            return finishing;
-        };
-        const processExited = async (exit: TerminalExit) => {
-            if (ended) return;
-            // Revoke immediately, but let this path return the outcome before closing.
-            ended = true;
-            if (hostId && !stopping && !exitRecord)
-                exitRecord = {
-                    kind: !binding?.wasReady
-                        ? "start-failed"
-                        : exit.exitCode === 0 && exit.signal === null
-                          ? "exited"
-                          : "crashed",
-                    message: !binding?.wasReady
-                        ? "Vendor exited before collaboration became ready."
-                        : exit.exitCode === 0 && exit.signal === null
-                          ? null
-                          : `Vendor exited with code ${exit.exitCode}, signal ${exit.signal}.`,
-                    at: Date.now(),
-                };
-            this.daemon.services.runtimes.revoke(runtimeId!);
-            try {
-                await binding?.processExited(exit.exitCode, exit.signal);
-            } finally {
-                await finish(
-                    binding?.wasReady || stopping
-                        ? undefined
-                        : "Vendor exited before collaboration became ready. Check the vendor startup output and try again.",
-                    exit,
-                    "process_exit",
-                );
-            }
-        };
-        const disconnected = () => {
-            if (ended) return;
-            if (!external && session?.alive) {
-                relayDisconnected = true;
-                this.daemon.services.webEvents.notify();
-                socket.close();
-                return;
-            }
-            ended = true;
-            clear();
-            // Authority ends before asynchronous outcome persistence or resource cleanup.
-            if (runtimeId) this.daemon.services.runtimes.revoke(runtimeId);
-            void (async () => {
-                try {
-                    if (!external) await binding?.connectionLost();
-                } finally {
-                    await release();
-                }
-            })().catch(() =>
-                logger.error(
-                    { runtimeId, terminalId },
-                    "Agent collaboration cleanup remains unconfirmed after connection loss.",
-                ),
-            );
-        };
-        socket.on("close", disconnected);
-        socket.on("error", disconnected);
-        timer = setTimeout(
-            () =>
-                void finish(
-                    "No agent launch request was received.",
-                    undefined,
-                    "launch_timeout",
-                ),
-            5000,
-        );
-        socket.once("message", (raw, binary) => {
-            clearTimeout(timer);
-            socket.pause();
-            void (async () => {
-                let payload: unknown;
-                try {
-                    payload = binary ? undefined : JSON.parse(raw.toString());
-                } catch {}
-                const parsed = (
-                    external ? externalAgentRunSchema : agentRunSchema
-                ).safeParse(payload);
-                if (!parsed.success)
-                    throw new Error(
-                        "Cannot start agent: invalid launch request.",
+        ): Effect.Effect<void, unknown> =>
+            Effect.suspend(() => {
+                if (message && !isEnded() && !collaborationError) {
+                    logger.error(
+                        { runtimeId, hostId, terminalId, failureCode },
+                        "Agent collaboration failed",
                     );
-                let input = parsed.data;
-                let webInput = external
-                    ? undefined
-                    : agentRunSchema.parse(input);
-                if (webInput && !webInput.terminalContext)
-                    throw new Error(
-                        "Web foreground requires authenticated terminal context.",
-                    );
-                if (
-                    external &&
-                    (input.env.AIOX_HOST_ID !== undefined ||
-                        input.env.AIOX_AGENT_KEY !== undefined)
-                )
-                    throw new Error(
-                        "Managed Agent requires authenticated terminal context.",
-                    );
-                if (webInput) {
-                    const managed = await managedLaunch(
-                        this.daemon.services,
-                        webInput,
-                    );
-                    webInput = managed.input;
-                    input = webInput;
-                    hostId = managed.host?.id;
-                    dimensions = { cols: webInput.cols, rows: webInput.rows };
                 }
-                const adapter = selectVendor(this.adapters, input.adapter);
-                const networkId =
-                    input.network === undefined
-                        ? null
-                        : hostId
-                          ? input.network
-                          : (
-                                await this.daemon.services.networks.require(
-                                    input.network,
-                                )
-                            ).id;
-                if (ended) return;
-                // The owner scope exists before resource acquisition; failed preparation remains retryable.
-                const registration = await this.daemon.registerRuntime({
-                    networkId,
-                    ...(hostId === undefined ? {} : { hostId }),
-                    executionOwnership: external ? "external" : "daemon",
-                    ...(input.name === undefined ? {} : { name: input.name }),
-                    ...(input.role === undefined ? {} : { role: input.role }),
-                    ...(input.description === undefined
-                        ? {}
-                        : { description: input.description }),
-                    ...(webInput?.terminalContext === undefined
-                        ? {}
-                        : { terminalContext: webInput.terminalContext }),
-                    createBinding: (controls) => {
-                        runtimeId = controls.runtimeId;
-                        controlsForBinding = controls;
-                        return {
-                            get exit() {
-                                return exitRecord;
-                            },
-                            get terminal() {
-                                return session;
-                            },
-                            get relayDisconnected() {
-                                return relayDisconnected;
-                            },
-                            get collaborationError() {
-                                return collaborationError;
-                            },
-                            deliver: (message) =>
-                                binding
-                                    ? binding.deliver(message)
-                                    : Promise.reject(
-                                          new Error(
-                                              "Vendor input is not ready.",
-                                          ),
-                                      ),
-                            mcpConnected: () => binding?.mcpConnected(),
-                            revoke: clear,
-                            stop: async () => {
-                                stopping = true;
-                                await owner?.stop();
-                                await preparingExecution?.catch(() => {});
-                                await startingExecution?.catch(() => {});
-                                await owner?.stop();
-                            },
-                            cleanup: async () => {
-                                // For Web, owner.stop has already confirmed termination.
-                                released();
-                                await binding?.cleanup(
-                                    external
-                                        ? "external_connection_lost"
-                                        : collaborationError
-                                          ? "collaboration_lost"
-                                          : "execution_stopped",
-                                );
-                            },
-                        };
-                    },
-                });
-                terminalId =
-                    this.daemon.services.runtimes.get(runtimeId!)?.terminalId ??
-                    undefined;
-                if (
-                    ended ||
-                    !this.daemon.services.runtimes.get(runtimeId!)
-                        ?.collaborationActive
-                ) {
-                    await release();
-                    return;
-                }
-                let connection: unknown;
-                if (external)
-                    connection = externalAgentRunSchema.parse(input).connection;
-                else {
-                    preparingExecution = adapter.createExecution({
-                        own: (dispose) => owner!.own(dispose),
-                        signal: owner!.signal,
+                if (!external && session?.alive && message && !isEnded()) {
+                    const task = Effect.gen(function* () {
+                        collaborationError = message;
+                        if (!foreground) {
+                            lifecycle.send({ type: "RELAY_DISCONNECTED" });
+                            socket.close();
+                        }
+                        daemon.services.runtimes.revoke(runtimeId!);
+                        clear();
+                        socket.resume();
+                        if (runtimeId)
+                            daemon.services.runtimes.changed(runtimeId);
+                        if (binding) {
+                            yield* Effect.tryPromise({
+                                try: () =>
+                                    binding!.cleanup("collaboration_lost"),
+                                catch: (error) => error,
+                            }).pipe(
+                                Effect.catch(() =>
+                                    Effect.sync(() => {
+                                        collaborationError +=
+                                            " Agent collaboration cleanup remains unconfirmed.";
+                                        if (runtimeId)
+                                            daemon.services.runtimes.changed(
+                                                runtimeId,
+                                            );
+                                    }),
+                                ),
+                            );
+                        }
+                        return;
                     });
-                    execution = await preparingExecution;
-                    connection = execution.connection;
+                    return Effect.runFork(task).pipe(Fiber.join);
                 }
-                if (
-                    ended ||
-                    !this.daemon.services.runtimes.get(runtimeId!)
-                        ?.collaborationActive
-                ) {
-                    await release();
-                    return;
-                }
-                // Use the registry controls by creating the binding inside a captured controls callback.
-                binding = adapter.createBinding(
-                    controlsForBinding!,
-                    connection,
-                );
-                binding.onReleased = released;
-                binding.onReady = () => {
-                    this.daemon.services.runtimes.ready(runtimeId!);
+                if (finishing) return Fiber.join(finishing);
+                const task = Effect.gen(function* () {
+                    const startupFailed =
+                        external &&
+                        Boolean(message && isPrepared() && !binding?.wasReady);
+                    if (message && hostId) {
+                        collaborationError = message;
+                        exitRecord ??= {
+                            kind: "start-failed",
+                            message,
+                            at: Date.now(),
+                        };
+                    }
+                    lifecycle.send({ type: "FINISH" });
+                    clear();
+                    socket.resume();
+                    if (startupFailed)
+                        send({ type: "startup-failed", message });
+                    const released = yield* Effect.exit(release);
+                    if (released._tag === "Failure") {
+                        message =
+                            "Agent collaboration cleanup remains unconfirmed.";
+                        logger.error({ runtimeId, terminalId }, message);
+                        send({ type: "error", message });
+                        socket.close();
+                        return;
+                    }
                     logger.info(
                         { runtimeId, hostId, terminalId },
-                        "Agent collaboration ready",
+                        "Agent execution released",
                     );
-                    clearTimeout(timer);
+                    if (message && !startupFailed)
+                        send({ type: "error", message });
+                    else if (!message && exit) send({ type: "exit", ...exit });
+                    socket.close();
+                });
+                const fiber = Effect.runFork(task);
+                finishing = fiber;
+                return Fiber.join(fiber);
+            });
+        const processExited = (
+            exit: TerminalExit,
+        ): Effect.Effect<void, unknown> =>
+            Effect.suspend(() => {
+                if (isEnded()) return Effect.void;
+                lifecycle.send({ type: "EXIT" });
+                if (hostId && !isStopping() && !exitRecord) {
+                    const ready = binding?.wasReady ?? false;
+                    const clean = exit.exitCode === 0 && exit.signal === null;
+                    exitRecord = {
+                        kind: !ready
+                            ? "start-failed"
+                            : clean
+                              ? "exited"
+                              : "crashed",
+                        message: !ready
+                            ? "Vendor exited before collaboration became ready."
+                            : clean
+                              ? null
+                              : `Vendor exited with code ${exit.exitCode}, signal ${exit.signal}.`,
+                        at: Date.now(),
+                    };
+                }
+                daemon.services.runtimes.revoke(runtimeId!);
+                const persist = binding
+                    ? Effect.tryPromise({
+                          try: () =>
+                              binding!.processExited(
+                                  exit.exitCode,
+                                  exit.signal,
+                              ),
+                          catch: (error) => error,
+                      })
+                    : Effect.void;
+                const message =
+                    binding?.wasReady || isStopping()
+                        ? undefined
+                        : "Vendor exited before collaboration became ready. Check vendor startup output and try again.";
+                return persist.pipe(
+                    Effect.ensuring(
+                        Effect.exit(finish(message, exit, "process_exit")).pipe(
+                            Effect.asVoid,
+                        ),
+                    ),
+                );
+            });
+        const disconnected = (): Effect.Effect<void, unknown> =>
+            Effect.suspend(() => {
+                if (isEnded()) return Effect.void;
+                if (!external && session?.alive) {
+                    lifecycle.send({ type: "RELAY_DISCONNECTED" });
+                    if (runtimeId) daemon.services.runtimes.changed(runtimeId);
+                    socket.close();
+                    return Effect.void;
+                }
+                lifecycle.send({ type: "FINISH" });
+                clear();
+                if (runtimeId) daemon.services.runtimes.revoke(runtimeId);
+                return Effect.gen(function* () {
+                    if (!external && binding)
+                        yield* Effect.tryPromise({
+                            try: () => binding!.connectionLost(),
+                            catch: (error) => error,
+                        });
+                    yield* release;
+                }).pipe(
+                    Effect.catch((error) =>
+                        Effect.sync(() =>
+                            logger.error(
+                                { err: error, runtimeId, terminalId },
+                                "Agent collaboration cleanup remains unconfirmed after connection loss.",
+                            ),
+                        ),
+                    ),
+                );
+            });
+        socket.on("close", () => Effect.runFork(disconnected()));
+        socket.on("error", () => Effect.runFork(disconnected()));
+        timeoutAfter(5000, () =>
+            finish(
+                "No agent launch request was received.",
+                undefined,
+                "launch_timeout",
+            ),
+        );
+        socket.once("message", (raw, binary) => {
+            clearTimeoutEffect();
+            socket.pause();
+            lifecycleFiber = Effect.runFork(
+                Effect.gen(function* () {
+                    let payload: unknown;
+                    try {
+                        payload = binary
+                            ? undefined
+                            : JSON.parse(raw.toString());
+                    } catch {}
+                    const parsed = (
+                        external ? externalAgentRunSchema : agentRunSchema
+                    ).safeParse(payload);
+                    if (!parsed.success)
+                        throw new Error(
+                            "Cannot start agent: invalid launch request.",
+                        );
+                    let input = parsed.data;
+                    let webInput = external
+                        ? undefined
+                        : agentRunSchema.parse(input);
+                    if (webInput && !webInput.terminalContext)
+                        throw new Error(
+                            "Web foreground requires authenticated terminal context.",
+                        );
                     if (
-                        !ended &&
-                        this.daemon.services.runtimes.get(runtimeId!)
+                        external &&
+                        (input.env.AIOX_HOST_ID !== undefined ||
+                            input.env.AIOX_AGENT_KEY !== undefined)
+                    )
+                        throw new Error(
+                            "Managed Agent requires authenticated terminal context.",
+                        );
+                    if (webInput) {
+                        const managed = yield* Effect.tryPromise({
+                            try: () =>
+                                managedLaunch(daemon.services, webInput!),
+                            catch: (error) => error,
+                        });
+                        webInput = managed.input;
+                        input = webInput;
+                        hostId = managed.host?.id;
+                        dimensions = {
+                            cols: webInput.cols,
+                            rows: webInput.rows,
+                        };
+                    }
+                    const adapter = selectVendor(adapters, input.adapter);
+                    const networkId =
+                        input.network === undefined
+                            ? null
+                            : hostId
+                              ? input.network
+                              : (yield* Effect.tryPromise({
+                                    try: () =>
+                                        daemon.services.networks.require(
+                                            input.network!,
+                                        ),
+                                    catch: (error) => error,
+                                })).id;
+                    if (isEnded()) return;
+                    // The owner scope exists before resource acquisition; failed preparation remains retryable.
+                    const registration = yield* Effect.tryPromise({
+                        try: () =>
+                            daemon.registerRuntime({
+                                networkId,
+                                ...(hostId === undefined ? {} : { hostId }),
+                                executionOwnership: external
+                                    ? "external"
+                                    : "daemon",
+                                ...(input.name === undefined
+                                    ? {}
+                                    : { name: input.name }),
+                                ...(input.role === undefined
+                                    ? {}
+                                    : { role: input.role }),
+                                ...(input.description === undefined
+                                    ? {}
+                                    : { description: input.description }),
+                                ...(webInput?.terminalContext === undefined
+                                    ? {}
+                                    : {
+                                          terminalContext:
+                                              webInput.terminalContext,
+                                      }),
+                                createBinding: (controls) => {
+                                    runtimeId = controls.runtimeId;
+                                    controlsForBinding = controls;
+                                    return {
+                                        get exit() {
+                                            return exitRecord;
+                                        },
+                                        get terminal() {
+                                            return session;
+                                        },
+                                        get relayDisconnected() {
+                                            return isRelayDisconnected();
+                                        },
+                                        get collaborationError() {
+                                            return collaborationError;
+                                        },
+                                        deliver: (message) =>
+                                            binding
+                                                ? binding.deliver(message)
+                                                : Promise.reject(
+                                                      new Error(
+                                                          "Vendor input is not ready.",
+                                                      ),
+                                                  ),
+                                        mcpConnected: () =>
+                                            binding?.mcpConnected(),
+                                        revoke: clear,
+                                        stop: async () => {
+                                            lifecycle.send({
+                                                type: "STOP_REQUESTED",
+                                            });
+                                            if (owner)
+                                                await Effect.runPromise(
+                                                    owner.stop(),
+                                                );
+                                            if (lifecycleFiber)
+                                                await Effect.runPromise(
+                                                    Fiber.interrupt(
+                                                        lifecycleFiber,
+                                                    ),
+                                                );
+                                        },
+                                        cleanup: async () => {
+                                            // For Web, owner.stop has already confirmed termination.
+                                            released();
+                                            await binding?.cleanup(
+                                                external
+                                                    ? "external_connection_lost"
+                                                    : collaborationError
+                                                      ? "collaboration_lost"
+                                                      : "execution_stopped",
+                                            );
+                                        },
+                                    };
+                                },
+                            }),
+                        catch: (error) => error,
+                    });
+                    terminalId =
+                        daemon.services.runtimes.get(runtimeId!)?.terminalId ??
+                        undefined;
+                    if (
+                        isEnded() ||
+                        !daemon.services.runtimes.get(runtimeId!)
                             ?.collaborationActive
                     ) {
-                        if (external) send({ type: "ready" });
+                        yield* release;
+                        return;
                     }
-                };
-                reportToken = randomBytes(32).toString("base64url");
-                this.#reports.set(reportToken, {
-                    runtimeId: registration.runtimeId,
-                    binding,
-                });
-                logger.info(
-                    { runtimeId, hostId, terminalId },
-                    "Agent execution preparing",
-                );
-                const launch = await binding.prepare({
-                    executionOwnership: external ? "external" : "daemon",
-                    args: input.args,
-                    cwd: input.cwd,
-                    env: input.env,
-                    mcpUrl: networkId === null ? null : registration.mcpUrl,
-                    mcpToken: registration.token,
-                    reportUrl: `http://127.0.0.1:${this.daemon.ports.daemon}/api/agent-hooks`,
-                    reportToken,
-                    instruction: [collaborationInstruction, input.instruction]
-                        .filter(Boolean)
-                        .join("\n\n"),
-                });
-                if (
-                    ended ||
-                    !this.daemon.services.runtimes.get(runtimeId!)
-                        ?.collaborationActive
-                )
-                    return;
-                if (external) {
-                    socket.on("message", (data, isBinary) => {
-                        if (ended) return;
-                        let payload: unknown;
-                        try {
-                            payload = isBinary
-                                ? undefined
-                                : JSON.parse(data.toString());
-                        } catch {}
-                        const frame =
-                            externalAgentClientFrameSchema.safeParse(payload);
+                    let connection: unknown;
+                    if (external)
+                        connection =
+                            externalAgentRunSchema.parse(input).connection;
+                    else {
+                        execution = yield* Effect.uninterruptible(
+                            adapter.createExecution({
+                                own: (dispose) => owner!.own(dispose),
+                                signal: owner!.signal,
+                            }),
+                        );
+                        connection = execution.connection;
+                    }
+                    if (
+                        isEnded() ||
+                        !daemon.services.runtimes.get(runtimeId!)
+                            ?.collaborationActive
+                    ) {
+                        yield* release;
+                        return;
+                    }
+                    // Use the registry controls by creating the binding inside a captured controls callback.
+                    binding = adapter.createBinding(
+                        controlsForBinding!,
+                        connection,
+                    );
+                    binding.onReleased = released;
+                    binding.onReady = () => {
+                        daemon.services.runtimes.ready(runtimeId!);
+                        logger.info(
+                            { runtimeId, hostId, terminalId },
+                            "Agent collaboration ready",
+                        );
+                        clearTimeoutEffect();
                         if (
-                            !frame.success ||
-                            (frame.data.type === "started" && started)
+                            !isEnded() &&
+                            daemon.services.runtimes.get(runtimeId!)
+                                ?.collaborationActive
                         ) {
-                            void finish(
-                                "Invalid external agent lifecycle frame.",
-                                undefined,
-                                "invalid_lifecycle",
-                            );
+                            if (external) send({ type: "ready" });
+                        }
+                    };
+                    reportToken = randomBytes(32).toString("base64url");
+                    reports.set(reportToken, {
+                        runtimeId: registration.runtimeId,
+                        binding,
+                    });
+                    logger.info(
+                        { runtimeId, hostId, terminalId },
+                        "Agent execution preparing",
+                    );
+                    const launch = yield* Effect.tryPromise({
+                        try: () =>
+                            binding!.prepare({
+                                executionOwnership: external
+                                    ? "external"
+                                    : "daemon",
+                                args: input.args,
+                                cwd: input.cwd,
+                                env: input.env,
+                                mcpUrl:
+                                    networkId === null
+                                        ? null
+                                        : registration.mcpUrl,
+                                mcpToken: registration.token,
+                                reportUrl: `http://127.0.0.1:${daemon.ports.daemon}/api/agent-hooks`,
+                                reportToken: reportToken!,
+                                instruction: [
+                                    collaborationInstruction,
+                                    input.instruction,
+                                ]
+                                    .filter(Boolean)
+                                    .join("\n\n"),
+                            }),
+                        catch: (error) => error,
+                    });
+                    if (
+                        isEnded() ||
+                        !daemon.services.runtimes.get(runtimeId!)
+                            ?.collaborationActive
+                    )
+                        return;
+                    lifecycle.send({ type: "PREPARED" });
+                    if (external) {
+                        socket.on("message", (data, isBinary) => {
+                            if (isEnded()) return;
+                            let payload: unknown;
+                            try {
+                                payload = isBinary
+                                    ? undefined
+                                    : JSON.parse(data.toString());
+                            } catch {}
+                            const frame =
+                                externalAgentClientFrameSchema.safeParse(
+                                    payload,
+                                );
+                            if (
+                                !frame.success ||
+                                (frame.data.type === "started" &&
+                                    !lifecycleSnapshot().can({
+                                        type: "STARTED",
+                                    }))
+                            ) {
+                                Effect.runFork(
+                                    finish(
+                                        "Invalid external agent lifecycle frame.",
+                                        undefined,
+                                        "invalid_lifecycle",
+                                    ),
+                                );
+                                return;
+                            }
+                            if (frame.data.type === "started") {
+                                lifecycle.send({ type: "STARTED" });
+                                binding!.executionStarted();
+                            } else Effect.runFork(processExited(frame.data));
+                        });
+                        send({ type: "prepared", launch });
+                    } else {
+                        foreground = yield* execution!.start(launch, owner!);
+                        if (isEnded()) {
+                            yield* owner!.stop();
                             return;
                         }
-                        if (frame.data.type === "started") {
-                            started = true;
-                            binding!.executionStarted();
-                        } else void processExited(frame.data).catch(() => {});
-                    });
-                    prepared = true;
-                    send({ type: "prepared", launch });
-                } else {
-                    startingExecution = execution!.start(launch, owner!);
-                    foreground = await startingExecution;
-                    if (ended) {
-                        await owner!.stop();
-                        return;
-                    }
-                    binding.executionStarted();
-                    socket.on("message", (data, isBinary) => {
-                        if (ended || relayDisconnected) return;
-                        if (isBinary && this.daemon.acceptingInput)
-                            foreground!.write(
-                                Array.isArray(data)
-                                    ? Buffer.concat(data)
-                                    : Buffer.isBuffer(data)
-                                      ? data
-                                      : Buffer.from(data),
-                            );
-                        else
-                            try {
-                                const resize = resizeSchema.safeParse(
-                                    JSON.parse(data.toString()),
+                        lifecycle.send({ type: "STARTED" });
+                        binding.executionStarted();
+                        socket.on("message", (data, isBinary) => {
+                            if (isEnded() || isRelayDisconnected()) return;
+                            if (isBinary && daemon.acceptingInput)
+                                foreground!.write(
+                                    Array.isArray(data)
+                                        ? Buffer.concat(data)
+                                        : Buffer.isBuffer(data)
+                                          ? data
+                                          : Buffer.from(data),
                                 );
-                                if (resize.success)
-                                    foreground!.resize(
-                                        resize.data.cols,
-                                        resize.data.rows,
+                            else
+                                try {
+                                    const resize = decodeResize(
+                                        JSON.parse(data.toString()),
                                     );
-                            } catch {}
-                    });
-                }
-                socket.resume();
-                timer = setTimeout(() => {
-                    if (
-                        !this.daemon.services.runtimes.get(runtimeId!)
-                            ?.collaborationActive
-                    ) {
-                        if (!collaborationError) released();
-                        return;
+                                    foreground!.resize(
+                                        resize.cols,
+                                        resize.rows,
+                                    );
+                                } catch {}
+                        });
                     }
-                    if (!binding!.wasReady)
-                        void finish(
-                            "Vendor collaboration did not become ready within 60 seconds. Check vendor startup and settings, then try again.",
-                            undefined,
-                            "preparation_timeout",
-                        );
-                }, 60_000);
-                timer.unref();
-            })().catch((error: unknown) =>
-                finish(
-                    error instanceof Error
-                        ? error.message
-                        : "Cannot start agent.",
+                    socket.resume();
+                    timeoutAfter(60_000, () => {
+                        if (
+                            !daemon.services.runtimes.get(runtimeId!)
+                                ?.collaborationActive
+                        ) {
+                            if (!collaborationError) released();
+                            return Effect.void;
+                        }
+                        return !binding!.wasReady
+                            ? finish(
+                                  "Vendor collaboration did not become ready within 60 seconds. Check vendor startup and settings.",
+                                  undefined,
+                                  "preparation_timeout",
+                              )
+                            : Effect.void;
+                    });
+                }).pipe(
+                    Effect.catch((error) =>
+                        Effect.sync(() => {
+                            Effect.runFork(
+                                finish(
+                                    error instanceof Error
+                                        ? error.message
+                                        : "Cannot start agent.",
+                                ),
+                            );
+                        }),
+                    ),
+                    Effect.catchDefect((defect) =>
+                        Effect.sync(() => {
+                            const error =
+                                defect instanceof Error
+                                    ? defect
+                                    : new Error(String(defect));
+                            Effect.runFork(finish(error.message));
+                        }),
+                    ),
                 ),
             );
         });

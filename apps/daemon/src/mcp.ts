@@ -3,7 +3,7 @@ import type { IncomingMessage } from "node:http";
 import { agentViewSchema } from "@aiox/protocol";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { Context } from "hono";
+import { Schema, Struct } from "effect";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 
@@ -13,13 +13,17 @@ import type { NetworkService } from "@/networks";
 import type { RuntimeRecord, RuntimeRegistry } from "@/runtimes";
 
 import type { HttpEnv } from "./http";
+import type { Context } from "./http-endpoint";
 
-const agent = agentViewSchema.pick({
-    name: true,
-    role: true,
-    description: true,
-    status: true,
-    status_reason: true,
+// The SDK registration remains Zod; its shape comes from the shared Effect schema.
+const agentDocument = Schema.toJsonSchemaDocument(
+    agentViewSchema.mapFields(
+        Struct.pick(["name", "role", "description", "status", "status_reason"]),
+    ),
+);
+const agent = z.fromJSONSchema({
+    ...agentDocument.schema,
+    $defs: agentDocument.definitions,
 });
 
 /** Only the header carries the credential; never the URL, argv or a log line. */

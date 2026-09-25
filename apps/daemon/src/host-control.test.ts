@@ -5,7 +5,7 @@ import { logger } from "@aiox/diagnostics";
 import { expect, test, vi } from "vitest";
 
 import { initialHostPanel } from "./host-run";
-import { startTestDaemon } from "./testing";
+import { hostResult, startTestDaemon } from "./testing";
 
 test("Host stop preserves shells and policy; delete waits for shell termination and retains retryable failure", async (t) => {
     const h = await startTestDaemon({
@@ -35,7 +35,6 @@ test("Host stop preserves shells and policy; delete waits for shell termination 
             panelId: panel.id,
             networkId: "network",
             revision: 1,
-            activeOperationId: null,
             agents: [
                 {
                     key: "a",
@@ -73,33 +72,20 @@ test("Host stop preserves shells and policy; delete waits for shell termination 
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ requestId }),
         });
-        expect(response.status).toBe(202);
-        const operation = (await response.json()) as { id: string };
-        expect(diagnostic).toHaveBeenCalledWith(
-            expect.objectContaining({
-                operationId: operation.id,
-                operationRequestId: requestId,
-                requestId: response.headers.get("x-request-id"),
-            }),
-            "Host operation accepted",
-        );
-        await vi.waitFor(
-            async () => {
-                expect(
-                    (await services.db.hostState.snapshot()).operations.find(
-                        (o) => o.id === operation.id,
-                    )?.state,
-                ).not.toBe("running");
-            },
-            { timeout: 8000 },
-        );
-        return (await services.db.hostState.snapshot()).operations.find(
-            (o) => o.id === operation.id,
-        )!;
+        expect(response.status).toBe(200);
+        return Object.assign(await hostResult(response), {
+            httpRequestId: response.headers.get("x-request-id"),
+        });
     };
     const before = await services.db.hostState.snapshot();
-    expect((await request("POST", "/api/hosts/host/stop")).state).toBe(
-        "succeeded",
+    const stopped = await request("POST", "/api/hosts/host/stop");
+    expect(stopped.state).toBe("succeeded");
+    expect(diagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({
+            hostCommandRequestId: stopped.requestId,
+            requestId: stopped.httpRequestId,
+        }),
+        "Host command accepted",
     );
     expect(services.terminals.view(shell.id)?.alive).toBe(true);
     expect((await services.db.hostState.snapshot()).networks).toEqual(
@@ -109,9 +95,10 @@ test("Host stop preserves shells and policy; delete waits for shell termination 
         .spyOn(services.lifecycle, "stopTerminal")
         .mockRejectedValueOnce(new Error("termination refused"));
     const failed = await request("DELETE", "/api/hosts/host");
+    // The failed target is reported and the Host stays for a retry.
     expect(failed).toMatchObject({
         state: "failed",
-        error: { message: "termination refused" },
+        error: { message: "termination refused", stage: "cleanup" },
     });
     expect((await services.db.hostState.snapshot()).hosts).toHaveLength(1);
     stop.mockRestore();
@@ -120,12 +107,11 @@ test("Host stop preserves shells and policy; delete waits for shell termination 
     expect(deleted.state).toBe("succeeded");
     expect(diagnostic).toHaveBeenCalledWith(
         expect.objectContaining({
-            operationId: deleted.id,
-            operationRequestId: requestId,
+            hostCommandRequestId: requestId,
             hostId: "host",
             state: "succeeded",
         }),
-        "Host operation finished",
+        "Host command finished",
     );
     expect(await services.db.hostState.snapshot()).toMatchObject({
         hosts: [],
@@ -134,7 +120,17 @@ test("Host stop preserves shells and policy; delete waits for shell termination 
     });
     expect(services.terminals.view(shell.id)?.alive ?? false).toBe(false);
     expect(services.terminals.view(outside.id)?.alive).toBe(true);
-    expect((await request("DELETE", "/api/hosts/host", requestId)).id).toBe(
-        deleted.id,
-    );
+    // Finalized commands retain the request key, not the result payload.
+    // Replays are rejected without executing the delete again.
+    const replay = await fetch(h.apiUrl("/api/hosts/host"), {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestId }),
+    });
+    expect(replay.status).toBe(409);
+    expect(await replay.json()).toMatchObject({
+        code: "result_expired",
+        stage: "cli",
+    });
+    expect((await services.db.hostState.snapshot()).hosts).toEqual([]);
 }, 20000);

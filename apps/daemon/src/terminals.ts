@@ -23,7 +23,7 @@ export type TerminalOptions = {
  */
 export class TerminalService {
     constructor(
-        private readonly onChange: () => void = () => {},
+        private readonly onChange: (id: string) => void = () => {},
         private readonly onRemoved: (id: string) => void = () => {},
     ) {}
     readonly #sessions = new Map<string, TerminalSession>();
@@ -90,9 +90,12 @@ export class TerminalService {
             session.subscribe({ data: () => {}, exit: () => this.#remove(id) });
             if (!session.alive) this.#remove(id);
         } else {
-            session.subscribe({ data: () => {}, exit: () => this.onChange() });
+            session.subscribe({
+                data: () => {},
+                exit: () => this.onChange(id),
+            });
         }
-        this.onChange();
+        this.onChange(id);
         return session;
     }
 
@@ -133,7 +136,7 @@ export class TerminalService {
         this.#sessions.delete(id);
         this.#metadata.delete(id);
         this.onRemoved(id);
-        this.onChange();
+        this.onChange(id);
         void session?.dispose().catch((error: unknown) => {
             logger.error(
                 { err: error, terminalId: id },

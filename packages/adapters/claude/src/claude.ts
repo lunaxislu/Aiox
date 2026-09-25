@@ -1,4 +1,3 @@
-import { watch, type FSWatcher } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
@@ -10,7 +9,17 @@ import type {
     VendorBinding,
     VendorLaunchInput,
 } from "@aiox/vendor";
-import { z } from "zod";
+import chokidar, { type FSWatcher } from "chokidar";
+import {
+    Cause,
+    Duration,
+    Effect,
+    Exit,
+    Fiber,
+    Option,
+    Schema,
+    Semaphore,
+} from "effect";
 
 import { writeClaudeInbox } from "@/claude-inbox";
 import { prepareClaudeLaunch } from "@/claude-launch";
@@ -18,15 +27,40 @@ import { ClaudeObservations } from "@/claude-observations";
 import { ClaudeTranscript } from "@/claude-transcript";
 import { launchHooks } from "@/launch-hooks";
 
-const reportSchema = z.strictObject({
-    ppid: z.number().int().positive(),
-    event: z.looseObject({
-        hook_event_name: z.string().min(1),
-        session_id: z.string().min(1),
+const reportSchema = Schema.Struct({
+    ppid: Schema.Int.check(Schema.isGreaterThan(0)),
+    event: Schema.StructWithRest(
+        Schema.Struct({
+            hook_event_name: Schema.String.check(Schema.isMinLength(1)),
+            session_id: Schema.String.check(Schema.isMinLength(1)),
+            agent_id: Schema.optional(Schema.String),
+            transcript_path: Schema.optional(Schema.String),
+            source: Schema.optional(Schema.Unknown),
+            notification_type: Schema.optional(Schema.String),
+        }),
+        [Schema.Record(Schema.String, Schema.Unknown)],
+    ),
+    inboxPath: Schema.optional(Schema.String),
+    inboxToken: Schema.optional(Schema.String),
+}).check(
+    Schema.makeFilter((value) => {
+        const extra = Object.keys(value).find(
+            (key) =>
+                !Object.hasOwn(
+                    {
+                        ppid: true,
+                        event: true,
+                        inboxPath: true,
+                        inboxToken: true,
+                    },
+                    key,
+                ),
+        );
+        return extra === undefined
+            ? undefined
+            : { path: [extra], issue: "Unexpected key" };
     }),
-    inboxPath: z.string().optional(),
-    inboxToken: z.string().optional(),
-});
+);
 
 /** The registered handle exists before any asynchronous preparation or spawn. */
 export class ClaudeBinding implements VendorBinding {
@@ -45,9 +79,13 @@ export class ClaudeBinding implements VendorBinding {
         ClaudeTranscript,
         ReturnType<ClaudeObservations["selectSession"]>
     >();
-    readonly #retirements = new Set<Promise<void>>();
+    readonly #retirements = new Set<Fiber.Fiber<void, unknown>>();
     #settlementFailure = false;
     readonly #watchers = new Map<ClaudeTranscript, FSWatcher>();
+    readonly #watcherClosures = new Map<
+        FSWatcher,
+        Fiber.Fiber<void, unknown>
+    >();
     readonly #queuedReads = new Set<ClaudeTranscript>();
     readonly #lostWatches = new Set<ClaudeTranscript>();
     #selectedSession: string | undefined;
@@ -57,11 +95,11 @@ export class ClaudeBinding implements VendorBinding {
     #registryQueued = false;
     #registryFailure = false;
     #initializationFailure: string | undefined;
-    #reports = Promise.resolve<unknown>(undefined);
-    #registrations = Promise.resolve<unknown>(undefined);
+    readonly #reports = Effect.runSync(Semaphore.make(1));
+    readonly #registrations = Effect.runSync(Semaphore.make(1));
+    readonly #reportFibers = new Set<Fiber.Fiber<void, unknown>>();
     readonly #readFailures = new Map<ClaudeTranscript, string>();
-    #retryTimer: ReturnType<typeof setTimeout> | undefined;
-    #retrying = false;
+    #retryFiber: Fiber.Fiber<void, unknown> | undefined;
     #retryDelay = 1000;
     #observationClosed = false;
     #started = false;
@@ -119,10 +157,12 @@ export class ClaudeBinding implements VendorBinding {
 
     async observe(value: unknown): Promise<unknown> {
         if (this.#stopped) throw new Error("Claude runtime was stopped.");
-        const parsed = reportSchema.safeParse(value);
-        if (!parsed.success)
+        const parsed = Schema.decodeUnknownOption(reportSchema, {
+            onExcessProperty: "error",
+        })(value);
+        if (Option.isNone(parsed))
             throw new InvalidVendorReport("Invalid Claude hook report.");
-        const report = parsed.data;
+        const report = parsed.value;
         // Runtime report authentication is owned by the controller. Inbox env is
         // readiness evidence and can disappear from late SessionEnd hooks.
         if (
@@ -153,41 +193,59 @@ export class ClaudeBinding implements VendorBinding {
         }
         // Initialization has its own queue: prior transcript settlement must not delay
         // capturing the next session's start position before its hook response.
-        const registration = this.#registrations.then(async () => {
-            try {
-                const output = await this.#registerWatch(
-                    report.event,
-                    report.ppid,
-                );
-                if (report.event.hook_event_name === "SessionStart")
-                    this.#initializationFailure = undefined;
-                this.#reportObservationError();
-                return output;
-            } catch (error) {
-                this.#initializationFailure = `Claude initialization failed: ${error instanceof Error ? error.message : String(error)}`;
-                this.#reportObservationError();
-                throw error;
-            }
-        });
-        this.#registrations = registration.catch(() => {});
-        await registration;
-        const reader = this.#transcripts.get(report.event.session_id);
-        const next = this.#reports.then(() =>
-            this.#observe(report.event, reader),
+        await Effect.runPromise(
+            Semaphore.withPermit(this.#registrations)(
+                Effect.tryPromise({
+                    try: async () => {
+                        try {
+                            await this.#registerWatch(
+                                report.event,
+                                report.ppid,
+                            );
+                            if (report.event.hook_event_name === "SessionStart")
+                                this.#initializationFailure = undefined;
+                            this.#reportObservationError();
+                        } catch (error) {
+                            this.#initializationFailure = `Claude initialization failed: ${error instanceof Error ? error.message : String(error)}`;
+                            this.#reportObservationError();
+                            throw error;
+                        }
+                    },
+                    catch: (error) => error,
+                }),
+            ),
         );
-        this.#reports = next.catch((error: unknown) => {
+        const reader = this.#transcripts.get(report.event.session_id);
+        const observation = Effect.runPromise(
+            Semaphore.withPermit(this.#reports)(
+                Effect.tryPromise({
+                    try: () => this.#observe(report.event, reader),
+                    catch: (error) => error,
+                }),
+            ),
+        );
+        const reportFailure = (error: unknown) => {
             logger.error(
                 { err: error, runtimeId: this.controls.runtimeId },
                 "Deferred Claude observation failed",
             );
-        });
+        };
+        if (report.event.hook_event_name !== "SessionStart") {
+            try {
+                await observation;
+            } catch (error) {
+                reportFailure(error);
+                throw error;
+            }
+        } else {
+            void observation.catch(reportFailure);
+        }
         // Capture the initial offset independently of queued settlement work.
-        if (report.event.hook_event_name !== "SessionStart") await next;
         return undefined;
     }
 
     async #registerWatch(
-        event: z.infer<typeof reportSchema>["event"],
+        event: Schema.Schema.Type<typeof reportSchema>["event"],
         ppid: number,
     ): Promise<void> {
         if (
@@ -208,7 +266,7 @@ export class ClaudeBinding implements VendorBinding {
         if (event.source === "resume") reader = undefined;
         if (reader) {
             if (reader.path !== path) {
-                this.#watchers.get(reader)?.close();
+                this.#closeWatcher(this.#watchers.get(reader));
                 this.#watchers.delete(reader);
                 reader.relocate(path);
             }
@@ -251,24 +309,40 @@ export class ClaudeBinding implements VendorBinding {
 
     #retireTranscript(session: string, reader: ClaudeTranscript): void {
         this.#transcripts.delete(session);
-        this.#watchers.get(reader)?.close();
+        this.#closeWatcher(this.#watchers.get(reader));
         this.#watchers.delete(reader);
         this.#queuedReads.delete(reader);
         this.#lostWatches.delete(reader);
         this.#readFailures.delete(reader);
         const state = this.#sessions.get(reader)!;
-        const retiring = reader
-            .retire()
-            .then(() => this.observations.retireSession(session, state))
-            .catch(() => {
-                this.#settlementFailure = true;
-            })
-            .finally(() => {
-                this.#retirements.delete(retiring);
-                this.#reportObservationError();
-                this.#scheduleReadRetry();
-            });
+        const binding = this;
+        const retiring = Effect.runFork(
+            Effect.gen(function* () {
+                yield* Effect.tryPromise({
+                    try: () => reader.retire(),
+                    catch: (error) => error,
+                });
+                yield* Effect.tryPromise({
+                    try: () =>
+                        binding.observations.retireSession(session, state),
+                    catch: (error) => error,
+                });
+            }).pipe(
+                Effect.catch(() =>
+                    Effect.sync(() => {
+                        binding.#settlementFailure = true;
+                    }),
+                ),
+                Effect.andThen(() =>
+                    Effect.sync(() => {
+                        binding.#reportObservationError();
+                        binding.#scheduleReadRetry();
+                    }),
+                ),
+            ),
+        );
         this.#retirements.add(retiring);
+        retiring.addObserver(() => this.#retirements.delete(retiring));
     }
 
     #ownsReader(reader: ClaudeTranscript): boolean {
@@ -282,7 +356,9 @@ export class ClaudeBinding implements VendorBinding {
             `${ppid}.json`,
         );
         const body = await readFile(path, "utf8");
-        z.object({ sessionId: z.string() }).parse(JSON.parse(body));
+        Schema.decodeUnknownSync(Schema.Struct({ sessionId: Schema.String }))(
+            JSON.parse(body),
+        );
         return path;
     }
 
@@ -346,7 +422,7 @@ export class ClaudeBinding implements VendorBinding {
         // Compare again after I/O: an overlapping or delayed report cannot undo a move.
         if (reader.path !== previous || oldFile || !newFile?.isFile())
             return false;
-        this.#watchers.get(reader)?.close();
+        this.#closeWatcher(this.#watchers.get(reader));
         this.#watchers.delete(reader);
         reader.relocate(path);
         this.#armTranscript(reader);
@@ -354,7 +430,7 @@ export class ClaudeBinding implements VendorBinding {
     }
 
     async #observe(
-        event: z.infer<typeof reportSchema>["event"],
+        event: Schema.Schema.Type<typeof reportSchema>["event"],
         reader: ClaudeTranscript | undefined,
     ): Promise<void> {
         if (
@@ -370,14 +446,29 @@ export class ClaudeBinding implements VendorBinding {
         await this.#read(reader);
     }
 
-    #queueRegistry(): void {
+    #queueRegistry(changeDelay = 0): void {
         if (this.#observationClosed || this.#registryQueued) return;
         this.#registryQueued = true;
-        const next = this.#reports.then(async () => {
-            this.#registryQueued = false;
-            if (!this.#observationClosed) await this.#readRegistry();
-        });
-        this.#reports = next.catch(() => {});
+        const binding = this;
+        let queued!: Fiber.Fiber<void, unknown>;
+        queued = Effect.runFork(
+            Semaphore.withPermit(this.#reports)(
+                Effect.gen(function* () {
+                    if (changeDelay > 0)
+                        yield* Effect.clockWith((clock) =>
+                            clock.sleep(Duration.millis(changeDelay)),
+                        );
+                    binding.#registryQueued = false;
+                    if (binding.#observationClosed) return;
+                    yield* Effect.tryPromise({
+                        try: () => binding.#readRegistry(),
+                        catch: (error) => error,
+                    });
+                }).pipe(Effect.catch(() => Effect.void)),
+            ),
+        );
+        this.#reportFibers.add(queued);
+        queued.addObserver(() => this.#reportFibers.delete(queued));
     }
 
     #armRegistry(): void {
@@ -388,18 +479,27 @@ export class ClaudeBinding implements VendorBinding {
             this.#registryWatch?.path === path
         )
             return;
-        this.#registryWatch?.watcher.close();
-        const watcher = watch(path, { persistent: false }, (event) => {
-            if (event === "rename") {
-                watcher.close();
-                if (this.#registryWatch?.watcher === watcher)
-                    this.#registryWatch = undefined;
+        this.#closeWatcher(this.#registryWatch?.watcher);
+        const watcher = chokidar.watch([dirname(path), path], {
+            persistent: false,
+            ignoreInitial: true,
+            depth: 0,
+            atomic: false,
+        });
+        watcher.on("all", (event, changedPath) => {
+            if (
+                basename(changedPath) === basename(path) &&
+                (event === "add" || event === "change" || event === "unlink")
+            ) {
+                // This watcher owns the directory rather than the file inode;
+                // keep it alive across atomic registry replacement.
+                this.#queueRegistry(event === "change" ? 60 : 0);
             }
-            this.#queueRegistry();
         });
         this.#registryWatch = { path, watcher };
+        watcher.once("ready", () => this.#queueRegistry());
         watcher.on("error", () => {
-            watcher.close();
+            this.#closeWatcher(watcher);
             if (this.#registryWatch?.watcher === watcher)
                 this.#registryWatch = undefined;
             this.#queueRegistry();
@@ -411,15 +511,15 @@ export class ClaudeBinding implements VendorBinding {
             this.#armRegistry();
             const path = this.#registryPath;
             if (!path) return;
-            const body = z
-                .object({
-                    sessionId: z.string(),
-                    status: z
-                        .enum(["idle", "busy", "waiting", "shell"])
-                        .optional(),
-                    waitingFor: z.string().optional(),
-                })
-                .parse(JSON.parse(await readFile(path, "utf8")));
+            const body = Schema.decodeUnknownSync(
+                Schema.Struct({
+                    sessionId: Schema.String,
+                    status: Schema.optional(
+                        Schema.Literals(["idle", "busy", "waiting", "shell"]),
+                    ),
+                    waitingFor: Schema.optional(Schema.String),
+                }),
+            )(JSON.parse(await readFile(path, "utf8")));
             // A registry may move ahead of SessionStart. It cannot select a session.
             if (
                 path !== this.#registryPath ||
@@ -450,15 +550,30 @@ export class ClaudeBinding implements VendorBinding {
         }
     }
 
-    #queueRead(reader: ClaudeTranscript): void {
+    #queueRead(reader: ClaudeTranscript, changeDelay = 0): void {
         if (!this.#ownsReader(reader)) return;
         if (this.#observationClosed || this.#queuedReads.has(reader)) return;
         this.#queuedReads.add(reader);
-        const next = this.#reports.then(async () => {
-            this.#queuedReads.delete(reader);
-            if (!this.#observationClosed) await this.#read(reader);
-        });
-        this.#reports = next.catch(() => {});
+        const binding = this;
+        let queued!: Fiber.Fiber<void, unknown>;
+        queued = Effect.runFork(
+            Semaphore.withPermit(this.#reports)(
+                Effect.gen(function* () {
+                    if (changeDelay > 0)
+                        yield* Effect.clockWith((clock) =>
+                            clock.sleep(Duration.millis(changeDelay)),
+                        );
+                    binding.#queuedReads.delete(reader);
+                    if (!binding.#observationClosed)
+                        yield* Effect.tryPromise({
+                            try: () => binding.#read(reader),
+                            catch: (error) => error,
+                        });
+                }).pipe(Effect.catch(() => Effect.void)),
+            ),
+        );
+        this.#reportFibers.add(queued);
+        queued.addObserver(() => this.#reportFibers.delete(queued));
     }
 
     #armTranscript(reader: ClaudeTranscript): void {
@@ -466,15 +581,21 @@ export class ClaudeBinding implements VendorBinding {
         if (this.#observationClosed || this.#watchers.has(reader)) return;
         let watcher: FSWatcher;
         try {
-            watcher = watch(reader.path, { persistent: false }, (event) => {
+            watcher = chokidar.watch(reader.path, {
+                persistent: false,
+                ignoreInitial: true,
+                depth: 0,
+            });
+            watcher.on("all", (event) => {
                 if (!this.#ownsReader(reader)) return;
-                if (event === "rename") {
+                if (event === "unlink") {
                     this.#lostWatches.add(reader);
-                    watcher.close();
+                    this.#closeWatcher(watcher);
                     if (this.#watchers.get(reader) === watcher)
                         this.#watchers.delete(reader);
                 }
-                this.#queueRead(reader);
+                if (event === "add" || event === "change" || event === "unlink")
+                    this.#queueRead(reader, event === "change" ? 60 : 0);
             });
         } catch (error) {
             // First creation may lag SessionStart. Registry changes retry attachment.
@@ -488,12 +609,15 @@ export class ClaudeBinding implements VendorBinding {
         this.#watchers.set(reader, watcher);
         this.#lostWatches.delete(reader);
         watcher.on("error", (error) => {
-            watcher.close();
+            this.#closeWatcher(watcher);
             if (this.#watchers.get(reader) === watcher)
                 this.#watchers.delete(reader);
             if (this.#observationClosed || !this.#ownsReader(reader)) return;
             this.#lostWatches.add(reader);
-            this.#readFailures.set(reader, error.message);
+            this.#readFailures.set(
+                reader,
+                error instanceof Error ? error.message : String(error),
+            );
             this.#reportObservationError();
             this.#scheduleReadRetry();
         });
@@ -553,71 +677,168 @@ export class ClaudeBinding implements VendorBinding {
     }
 
     #scheduleReadRetry(): void {
-        if (this.#observationClosed || this.#retrying) return;
+        if (this.#observationClosed) return;
         if (
             !this.#readFailures.size &&
             !this.#registryFailure &&
             !this.#settlementFailure
         ) {
-            clearTimeout(this.#retryTimer);
-            this.#retryTimer = undefined;
             this.#retryDelay = 1000;
             return;
         }
-        if (this.#retryTimer) return;
-        // Only failed reads are retried; normal transcript observation remains event-driven.
-        this.#retryTimer = setTimeout(() => {
-            this.#retryTimer = undefined;
-            this.#retrying = true;
-            const next = this.#reports
-                .then(async () => {
-                    if (this.#observationClosed) return;
-                    if (this.#settlementFailure) {
-                        try {
-                            await this.observations.retryOutcomes();
-                            this.#settlementFailure = false;
-                            this.#reportObservationError();
-                        } catch {
-                            /* Keep the immutable outcome for the next retry. */
+        if (this.#retryFiber) return;
+
+        const binding = this;
+        let retrying!: Fiber.Fiber<void, unknown>;
+        const effect = Effect.gen(function* () {
+            yield* Effect.clockWith((clock) =>
+                clock.sleep(Duration.millis(binding.#retryDelay)),
+            );
+            if (
+                binding.#observationClosed ||
+                (!binding.#readFailures.size &&
+                    !binding.#registryFailure &&
+                    !binding.#settlementFailure)
+            )
+                return;
+
+            yield* Semaphore.withPermit(binding.#reports)(
+                Effect.tryPromise({
+                    try: async () => {
+                        if (binding.#observationClosed) return;
+                        if (binding.#settlementFailure) {
+                            try {
+                                await binding.observations.retryOutcomes();
+                                binding.#settlementFailure = false;
+                                binding.#reportObservationError();
+                            } catch {
+                                // Keep immutable outcome for the next retry.
+                            }
                         }
-                    }
-                    if (this.#registryFailure) await this.#readRegistry();
-                    for (const reader of this.#readFailures.keys()) {
-                        if (!this.#readFailures.has(reader)) continue;
-                        await this.#read(reader).catch(() => {});
-                    }
-                })
-                .finally(() => {
-                    this.#retrying = false;
-                    this.#retryDelay = Math.min(this.#retryDelay * 2, 30_000);
-                    this.#scheduleReadRetry();
-                });
-            this.#reports = next.catch(() => {});
-        }, this.#retryDelay);
-        this.#retryTimer.unref();
+                        if (binding.#registryFailure)
+                            await binding.#readRegistry();
+                        for (const reader of binding.#readFailures.keys()) {
+                            if (!binding.#readFailures.has(reader)) continue;
+                            await binding.#read(reader).catch(() => {});
+                        }
+                    },
+                    catch: (error) => error,
+                }),
+            );
+            binding.#retryDelay = Math.min(binding.#retryDelay * 2, 30_000);
+        }).pipe(
+            Effect.ensuring(
+                Effect.sync(() => {
+                    if (binding.#retryFiber === retrying)
+                        binding.#retryFiber = undefined;
+                    binding.#scheduleReadRetry();
+                }),
+            ),
+        );
+        retrying = Effect.runFork(effect);
+        this.#retryFiber = retrying;
+    }
+
+    #closeWatcher(watcher: FSWatcher | undefined): void {
+        if (!watcher) return;
+        if (this.#watcherClosures.has(watcher)) return;
+        const closing = Effect.runFork(
+            Effect.tryPromise({
+                try: () => Promise.resolve(watcher.close()),
+                catch: (error) => error,
+            }),
+        );
+        this.#watcherClosures.set(watcher, closing);
+        closing.addObserver((exit) => {
+            if (Exit.isSuccess(exit)) this.#watcherClosures.delete(watcher);
+        });
     }
 
     async #closeTranscripts(): Promise<void> {
         this.#observationClosed = true;
-        this.#registryWatch?.watcher.close();
+        this.#closeWatcher(this.#registryWatch?.watcher);
         this.#registryWatch = undefined;
-        for (const watcher of this.#watchers.values()) watcher.close();
+        for (const watcher of this.#watchers.values())
+            this.#closeWatcher(watcher);
         this.#watchers.clear();
-        clearTimeout(this.#retryTimer);
-        this.#retryTimer = undefined;
-        await this.#registrations;
-        await Promise.all(this.#retirements);
-        await this.#reports;
-        // Drain every file, even without a final change event. Finish all attempts
-        // before fallback settlement; one corrupt file must not hide another result.
-        const reads = await Promise.allSettled(
-            [...this.#transcripts.values()].map((reader) => this.#read(reader)),
+        const retry = this.#retryFiber;
+        this.#retryFiber = undefined;
+        if (retry) await Effect.runPromise(Fiber.interrupt(retry));
+        await Effect.runPromise(
+            Semaphore.withPermit(this.#registrations)(Effect.void),
         );
-        const failure = reads.find((result) => result.status === "rejected");
-        if (failure?.status === "rejected") throw failure.reason;
-        await Promise.all(
-            [...this.#transcripts.values()].map((reader) => reader.close()),
+        await Effect.runPromise(
+            Effect.all(
+                [...this.#reportFibers].map((fiber) => Fiber.await(fiber)),
+                { concurrency: "unbounded" },
+            ),
         );
+        await Effect.runPromise(
+            Effect.all(
+                [...this.#retirements].map((fiber) => Fiber.await(fiber)),
+                { concurrency: "unbounded" },
+            ),
+        );
+        await Effect.runPromise(
+            Semaphore.withPermit(this.#reports)(Effect.void),
+        );
+        // Drain every file even without a final change event. Exit captures let
+        // every reader finish so one corrupt file cannot hide another result.
+        const reads = await Effect.runPromise(
+            Effect.all(
+                [...this.#transcripts.values()].map((reader) =>
+                    Effect.exit(
+                        Effect.tryPromise({
+                            try: () => this.#read(reader),
+                            catch: (error) => error,
+                        }),
+                    ),
+                ),
+                { concurrency: "unbounded" },
+            ),
+        );
+        const failures = reads
+            .filter(Exit.isFailure)
+            .map((exit) => Cause.squash(exit.cause));
+        if (failures.length)
+            throw new AggregateError(failures, failures.map(String).join("; "));
+        const closes = await Effect.runPromise(
+            Effect.all(
+                [...this.#transcripts.values()].map((reader) =>
+                    Effect.exit(
+                        Effect.tryPromise({
+                            try: () => reader.close(),
+                            catch: (error) => error,
+                        }),
+                    ),
+                ),
+                { concurrency: "unbounded" },
+            ),
+        );
+        const closeFailures = closes
+            .filter(Exit.isFailure)
+            .map((exit) => Cause.squash(exit.cause));
+        if (closeFailures.length)
+            throw new AggregateError(
+                closeFailures,
+                closeFailures.map(String).join("; "),
+            );
+        const closures = await Effect.runPromise(
+            Effect.all(
+                [...this.#watcherClosures.values()].map((fiber) =>
+                    Fiber.await(fiber),
+                ),
+                { concurrency: "unbounded" },
+            ),
+        );
+        const closeErrors = closures
+            .filter(Exit.isFailure)
+            .map((exit) => Cause.squash(exit.cause));
+        if (closeErrors.length)
+            throw new AggregateError(
+                closeErrors,
+                closeErrors.map(String).join("; "),
+            );
         this.#transcripts.clear();
     }
 

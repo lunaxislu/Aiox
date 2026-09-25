@@ -8,6 +8,29 @@ import { join } from "node:path";
 import { loadConfig, saveConfig } from "@aiox/config";
 import { expect, it } from "vitest";
 
+function parseDaemonRecords(text: string) {
+    const lines = text.trim().split("\n");
+    const records: Array<Record<string, unknown>> = [];
+    const runtimeWarnings: string[] = [];
+
+    for (const line of lines) {
+        if (line.startsWith("{"))
+            records.push(JSON.parse(line) as Record<string, unknown>);
+        else runtimeWarnings.push(line);
+    }
+
+    if (runtimeWarnings.length > 0) {
+        expect(runtimeWarnings).toHaveLength(2);
+        expect(runtimeWarnings[0]).toMatch(
+            /^\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time$/,
+        );
+        expect(runtimeWarnings[1]).toBe(
+            "(Use `node --trace-warnings ...` to show where the warning was created)",
+        );
+    }
+    return records;
+}
+
 async function ports() {
     const listeners = [createServer(), createServer()];
     await Promise.all(
@@ -110,10 +133,7 @@ it.each(["SIGTERM", "http"] as const)(
             }
             expect((await exited)[0]).toBe(0);
             const text = await readFile(path, "utf8");
-            const records = text
-                .trim()
-                .split("\n")
-                .map((line) => JSON.parse(line));
+            const records = parseDaemonRecords(text);
             expect(records).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({
@@ -163,11 +183,13 @@ it("serializes startup failure to stderr without dumping prepared input", async 
     child.stdin.end('{"secret":"private-config"');
     expect((await exited)[0]).toBe(1);
     expect(stdout).toBe("");
-    expect(JSON.parse(stderr)).toMatchObject({
-        level: 60,
-        msg: "Daemon startup failed",
-        err: { type: "SyntaxError" },
-    });
+    expect(parseDaemonRecords(stderr)).toContainEqual(
+        expect.objectContaining({
+            level: 60,
+            msg: "Daemon startup failed",
+            err: { type: "SyntaxError" },
+        }),
+    );
     expect(stderr).not.toContain("private-config");
 });
 
@@ -190,12 +212,14 @@ it.each(["--port", "--web-port"])(
         });
         expect((await exited)[0]).toBe(1);
         expect(stdout).toBe("");
-        expect(JSON.parse(stderr)).toMatchObject({
-            msg: "Daemon startup failed",
-            stage: "arguments",
-            field: flag,
-            err: { type: "Error", code: "EINVALIDPORT" },
-        });
+        expect(parseDaemonRecords(stderr)).toContainEqual(
+            expect.objectContaining({
+                msg: "Daemon startup failed",
+                stage: "arguments",
+                field: flag,
+                err: { type: "Error", code: "EINVALIDPORT" },
+            }),
+        );
         expect(stderr).not.toContain("private-invalid-port");
     },
 );

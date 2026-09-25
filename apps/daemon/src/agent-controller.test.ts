@@ -20,12 +20,12 @@ import type {
 import type { VendorBinding, VendorLaunchInput, Command } from "@aiox/vendor";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Effect } from "effect";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
 
 import * as http from "@/http";
 import { fakeVendor, startTestDaemon, type DaemonHarness } from "@/testing";
-import { readWebSnapshot } from "@/web-state";
 
 let harness: DaemonHarness;
 const bindings = new Map<string, VendorBinding>();
@@ -71,21 +71,24 @@ beforeEach(async () => {
         },
     );
     const createExecution = claudeAdapter.createExecution.bind(claudeAdapter);
-    vi.spyOn(claudeAdapter, "createExecution").mockImplementation(
-        async (owner) => {
-            const execution = await createExecution(owner);
+    vi.spyOn(claudeAdapter, "createExecution").mockImplementation((owner) =>
+        Effect.gen(function* () {
+            const execution = yield* createExecution(owner);
             return {
                 connection: execution.connection,
-                start: async (command, executionOwner) => {
-                    start(command);
-                    const foreground = await executionOwner.foreground(
-                        command as Command,
-                    );
-                    await holdStart;
-                    return foreground;
-                },
+                start: (
+                    command: Command,
+                    executionOwner: Parameters<typeof execution.start>[1],
+                ) =>
+                    Effect.gen(function* () {
+                        start(command);
+                        const foreground =
+                            yield* executionOwner.foreground(command);
+                        yield* Effect.promise(() => Promise.resolve(holdStart));
+                        return foreground;
+                    }),
             };
-        },
+        }),
     );
     vi.spyOn(terminals, "createTerminal").mockImplementation((options) => {
         const listeners = new Set<TerminalListener>(
@@ -1098,6 +1101,7 @@ test("external startup timeout explicitly fails and releases collaboration witho
     await response;
     socket.send(JSON.stringify({ type: "started" }));
     const failed = once(socket, "message");
+    console.log("TEST before deadline");
     const deadline = timers.mock.calls.find((call) => call[1] === 60_000)![0];
     if (typeof deadline !== "function")
         throw new Error("Missing startup deadline");
@@ -1404,9 +1408,9 @@ test("another vendor uses external lifecycle without a Claude inbox or daemon pr
         connectionLost: async () => {},
         cleanup,
     };
-    const createExecution = vi.fn(async () => {
-        throw new Error("External owner must execute this vendor.");
-    });
+    const createExecution = vi.fn(() =>
+        Effect.fail(new Error("External owner must execute this vendor.")),
+    );
     const createBinding = vi.fn(
         (_controls: unknown, _connection: unknown) => binding,
     );
@@ -1478,25 +1482,36 @@ test("another vendor starts a helper before its Web foreground and shares owner 
             {
                 id: "another-vendor",
                 createBinding: () => binding,
-                async createExecution(owner) {
-                    await owner.own(disposed);
-                    return {
-                        connection: null,
-                        async start(launch, executionOwner) {
-                            const command = launch as Command;
-                            const helper = await executionOwner.background({
-                                ...command,
-                                file: process.execPath,
-                                args: [
-                                    "-e",
-                                    "process.stdout.write('ready');setInterval(()=>{},1000)",
-                                ],
-                            });
-                            await once(helper.stdout!, "data");
-                            order.push("helper-ready");
-                            return executionOwner.foreground(command);
-                        },
-                    };
+                createExecution(owner) {
+                    return Effect.gen(function* () {
+                        yield* owner.own(() =>
+                            Effect.tryPromise(() => disposed()),
+                        );
+                        return {
+                            connection: null,
+                            start(launch, executionOwner) {
+                                return Effect.gen(function* () {
+                                    const command = launch as Command;
+                                    const helper =
+                                        yield* executionOwner.background({
+                                            ...command,
+                                            file: process.execPath,
+                                            args: [
+                                                "-e",
+                                                "process.stdout.write('ready');setInterval(()=>{},1000)",
+                                            ],
+                                        });
+                                    yield* Effect.promise(() =>
+                                        once(helper.stdout!, "data"),
+                                    );
+                                    order.push("helper-ready");
+                                    return yield* executionOwner.foreground(
+                                        command,
+                                    );
+                                });
+                            },
+                        };
+                    });
                 },
             },
         ],
@@ -1528,17 +1543,15 @@ test("a resource allocated after cancellation is still released by its execution
         release = resolve;
     });
     const disposed = vi.fn(async () => {});
-    vi.mocked(claudeAdapter.createExecution).mockImplementationOnce(
-        async (owner) => {
-            await waiting;
-            await owner.own(disposed);
+    vi.mocked(claudeAdapter.createExecution).mockImplementationOnce((owner) =>
+        Effect.gen(function* () {
+            yield* Effect.promise(() => waiting);
+            yield* owner.own(() => Effect.tryPromise(() => disposed()));
             return {
                 connection: null,
-                start: async () => {
-                    throw new Error("Must not start.");
-                },
+                start: () => Effect.fail(new Error("Must not start.")),
             };
-        },
+        }),
     );
     const { socket } = await connect(webFrame());
     try {
@@ -1619,16 +1632,14 @@ test("Web revocation during execution preparation cannot publish a late binding 
     const waiting = new Promise<void>((resolve) => {
         release = resolve;
     });
-    vi.mocked(claudeAdapter.createExecution).mockImplementationOnce(
-        async () => {
-            await waiting;
+    vi.mocked(claudeAdapter.createExecution).mockImplementationOnce(() =>
+        Effect.gen(function* () {
+            yield* Effect.promise(() => waiting);
             return {
                 connection: { inboxPath: "/tmp/not-created" },
-                start: async () => {
-                    throw new Error("Must not start.");
-                },
+                start: () => Effect.fail(new Error("Must not start.")),
             };
-        },
+        }),
     );
     const { socket } = await connect(webFrame());
     try {
@@ -1904,9 +1915,7 @@ async function managedFrame() {
             type: "pane" as const,
             id: "pane",
             tabIds: ["tab"],
-            selectedTabId: "tab",
         },
-        activePaneId: "pane",
         tabs: [
             {
                 id: "tab",
@@ -1929,7 +1938,6 @@ async function managedFrame() {
             revision: 1,
             panelId: panel.id,
             networkId: "managed-network",
-            activeOperationId: null,
             agents: [
                 {
                     key: "reviewer",
@@ -1956,6 +1964,11 @@ async function managedFrame() {
         },
         panel,
         Date.now(),
+    );
+    // Seeded directly in storage: announce it as a producer would.
+    await harness.daemon.services.appState.update(
+        { host: "managed-host" },
+        { panel: panel.id },
     );
     const input = {
         ...frame(),
@@ -1995,7 +2008,7 @@ test("managed Agent uses its authenticated Host tab, projects readiness and pres
         expect((await hostView()).agents[0]!.runtime!.phase).toBe("preparing");
         bindings.get(record.id)!.onReady?.();
         expect((await hostView()).agents[0]!.runtime!.phase).toBe("running");
-        const snapshot = await readWebSnapshot(harness.daemon.services);
+        const snapshot = await harness.daemon.services.appState.current();
         expect(snapshot.hosts[0]!.agents[0]!.runtime?.id).toBe(record.id);
         expect(snapshot.panels[0]!.tabs[0]!.presentation).toBe("tui");
         expect(
@@ -2072,7 +2085,7 @@ test("managed collaboration timeout preserves execution and shell while revoking
         expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
             true,
         );
-        const snapshot = await readWebSnapshot(harness.daemon.services);
+        const snapshot = await harness.daemon.services.appState.current();
         expect(snapshot.hosts[0]!.agents[0]).toMatchObject({
             lastExit: null,
             runtime: {
@@ -2098,7 +2111,7 @@ test("managed collaboration timeout preserves execution and shell while revoking
         expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
             true,
         );
-        const stopped = await readWebSnapshot(harness.daemon.services);
+        const stopped = await harness.daemon.services.appState.current();
         expect(stopped.hosts[0]!.agents[0]!.lastExit?.kind).toBe("stopped");
     } finally {
         socket.terminate();
@@ -2122,7 +2135,7 @@ test("managed startup failure is durable and leaves its shell usable", async () 
             ).toBe(true),
         );
         expect(harness.daemon.services.runtimes.list()).toHaveLength(0);
-        const snapshot = await readWebSnapshot(harness.daemon.services);
+        const snapshot = await harness.daemon.services.appState.current();
         expect(snapshot.hosts[0]!.agents[0]!.lastExit).toMatchObject({
             kind: "start-failed",
             message: "vendor executable missing",
@@ -2158,7 +2171,7 @@ test("managed launch rejects another terminal even with the same cwd before vend
         expect(start).not.toHaveBeenCalled();
         expect(harness.daemon.services.runtimes.list()).toHaveLength(0);
         expect(
-            (await readWebSnapshot(harness.daemon.services)).hosts[0]!
+            (await harness.daemon.services.appState.current()).hosts[0]!
                 .agents[0]!.lastExit,
         ).toBeNull();
     } finally {
@@ -2179,7 +2192,7 @@ test("managed stop keeps a failed cleanup reserved and persists stopped only aft
         await expect(harness.daemon.stopRuntime(record.id)).rejects.toThrow(
             "kill unconfirmed",
         );
-        const pending = await readWebSnapshot(harness.daemon.services);
+        const pending = await harness.daemon.services.appState.current();
         expect(pending.hosts[0]!.agents[0]!.runtime).toMatchObject({
             phase: "stopping",
             collaborationActive: false,
@@ -2187,7 +2200,7 @@ test("managed stop keeps a failed cleanup reserved and persists stopped only aft
         expect(pending.hosts[0]!.agents[0]!.lastExit).toBeNull();
         await harness.daemon.stopRuntime(record.id);
         expect(
-            (await readWebSnapshot(harness.daemon.services)).hosts[0]!
+            (await harness.daemon.services.appState.current()).hosts[0]!
                 .agents[0]!.lastExit?.kind,
         ).toBe("stopped");
         expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(
@@ -2213,7 +2226,7 @@ test.each([
             await vi.waitFor(() =>
                 expect(harness.daemon.services.runtimes.list()).toHaveLength(0),
             );
-            const snapshot = await readWebSnapshot(harness.daemon.services);
+            const snapshot = await harness.daemon.services.appState.current();
             expect(snapshot.hosts[0]!.agents[0]!.lastExit?.kind).toBe(kind);
             expect(snapshot.panels[0]!.tabs[0]!.presentation).toBe(kind);
             expect(harness.daemon.services.terminals.get(shell.id)?.alive).toBe(

@@ -1,0 +1,26 @@
+diff --git a/dist/Channel.d.ts b/dist/Channel.d.ts
+index 79ff63e809ccea50ecee03843a1f21f19afc5033..2e9cc1346670f67fac436d4892c6ed3ce253c335 100644
+--- a/dist/Channel.d.ts
++++ b/dist/Channel.d.ts
+@@ -4988,7 +4988,7 @@ export declare const splitLines: <Err, Done>() => Channel<Arr.NonEmptyReadonlyAr
+  * @category decoding
+  * @since 4.0.0
+  */
+-export declare const decodeText: <Err, Done>(encoding?: string, options?: TextDecoderOptions) => Channel<Arr.NonEmptyReadonlyArray<string>, Err, Done, Arr.NonEmptyReadonlyArray<Uint8Array>, Err, Done>;
++export declare const decodeText: <Err, Done>(encoding?: string, options?: ConstructorParameters<typeof TextDecoder>[1]) => Channel<Arr.NonEmptyReadonlyArray<string>, Err, Done, Arr.NonEmptyReadonlyArray<Uint8Array>, Err, Done>;
+ /**
+  * Encodes incoming string chunks into `Uint8Array` values using `TextEncoder`.
+  *
+diff --git a/src/Channel.ts b/src/Channel.ts
+index 483641b7754e08fd7b2986edade885449fac5923..7dbf257657d6b547bf808eca7f8e0de6de2fc6d6 100644
+--- a/src/Channel.ts
++++ b/src/Channel.ts
+@@ -8892,7 +8892,7 @@ export const splitLines = <Err, Done>(): Channel<
+  * @category decoding
+  * @since 4.0.0
+  */
+-export const decodeText = <Err, Done>(encoding?: string, options?: TextDecoderOptions): Channel<
++export const decodeText = <Err, Done>(encoding?: string, options?: ConstructorParameters<typeof TextDecoder>[1]): Channel<
+   Arr.NonEmptyReadonlyArray<string>,
+   Err,
+   Done,

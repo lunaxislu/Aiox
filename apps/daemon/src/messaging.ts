@@ -2,6 +2,17 @@ import { logger } from "@aiox/diagnostics";
 import type { DeliveryOutcome } from "@aiox/domain";
 import { canSend, deliveredContent, notifiesOrigin } from "@aiox/domain";
 import type { AioxDatabase } from "@aiox/persistence";
+import type { WebNotificationView } from "@aiox/protocol";
+import {
+    Deferred,
+    Duration,
+    Effect,
+    Exit,
+    Fiber,
+    FiberSet,
+    Schedule,
+    Scope,
+} from "effect";
 import { v7 as uuidv7 } from "uuid";
 
 import type { NetworkService } from "@/networks";
@@ -67,21 +78,42 @@ export function notificationBody(
 
 export class MessageService {
     readonly #inFlight = new Map<string, InFlight>();
-    readonly #sending = new Set<Promise<SendResult>>();
-    readonly #settling = new Map<string, Promise<void>>();
+    readonly #scope = Effect.runSync(Scope.make());
+    readonly #sending = Effect.runSync(
+        FiberSet.make<unknown, unknown>().pipe(
+            Effect.provideService(Scope.Scope, this.#scope),
+        ),
+    );
+    readonly #settlingFibers = Effect.runSync(
+        FiberSet.make<unknown, unknown>().pipe(
+            Effect.provideService(Scope.Scope, this.#scope),
+        ),
+    );
+    readonly #background = Effect.runSync(
+        FiberSet.make<unknown, unknown>().pipe(
+            Effect.provideService(Scope.Scope, this.#scope),
+        ),
+    );
+    readonly #settling = new Map<string, Deferred.Deferred<void>>();
     #admitting = true;
-    #retryTimer: ReturnType<typeof setTimeout> | undefined;
-    #retryBatch: Promise<void> | undefined;
-    #draining: Promise<void> | undefined;
+    #retryFiber: Fiber.Fiber<void, unknown> | undefined;
+    #draining: Deferred.Deferred<Exit.Exit<void, unknown>> | undefined;
     #retryPaused = false;
-    #retryDelay = 1000;
+    readonly #retrySchedule = Schedule.exponential("1 second").pipe(
+        Schedule.modifyDelay(({ duration }) =>
+            Effect.succeed(Duration.min(duration, Duration.seconds(30))),
+        ),
+    );
 
     constructor(
         private readonly db: AioxDatabase,
         private readonly runtimes: RuntimeRegistry,
         private readonly networks: NetworkService,
         private readonly now: () => number = () => Date.now(),
-        private readonly onChange: () => void = () => {},
+        /** A new daemon-owned Web notification was committed. */
+        private readonly onChange: (
+            notification: WebNotificationView,
+        ) => void = () => {},
     ) {}
 
     /**
@@ -94,31 +126,46 @@ export class MessageService {
         targets: readonly string[],
         content: string,
     ): Promise<SendResult> {
+        return Effect.runPromise(this.sendEffect(source, targets, content));
+    }
+
+    sendEffect(
+        source: RuntimeRecord,
+        targets: readonly string[],
+        content: string,
+    ): Effect.Effect<SendResult, unknown> {
         if (!source.collaborationActive)
-            return Promise.reject(
+            return Effect.fail(
                 new Error("This runtime has left collaboration."),
             );
         if (!this.#admitting)
-            return Promise.reject(
+            return Effect.fail(
                 new Error("The daemon is stopping; no new messages."),
             );
-        const sending = this.#send(source, targets, content).finally(() => {
-            this.#sending.delete(sending);
-        });
-        this.#sending.add(sending);
-        return sending;
+        return FiberSet.run(
+            this.#sending,
+            Effect.tryPromise({
+                try: () => this.#send(source, targets, content),
+                catch: (error) => error,
+            }),
+            { startImmediately: true },
+        ).pipe(Effect.flatMap(Fiber.join));
     }
 
     /** Stop admission immediately, then finish existing injection attempts. */
     async pause(): Promise<void> {
         this.#admitting = false;
-        await Promise.allSettled(this.#sending);
+        await Effect.runPromise(FiberSet.awaitEmpty(this.#sending));
     }
 
     resume(): void {
+        Effect.runFork(this.resumeEffect());
+    }
+
+    resumeEffect(): Effect.Effect<void, unknown> {
         this.#admitting = true;
         this.#retryPaused = false;
-        this.#scheduleRetry();
+        return this.#scheduleRetry();
     }
 
     async #send(
@@ -288,48 +335,92 @@ export class MessageService {
         outcome: DeliveryOutcome,
         error?: string,
     ): Promise<void> {
-        const flight = this.#inFlight.get(deliveryId);
-        // A binding may only settle its own delivery, and only once.
-        if (!flight) return this.#ackStored(runtimeId, deliveryId);
-        if (flight.targetRuntimeId !== runtimeId)
-            return Promise.reject(
-                new Error("Runtime does not own this delivery."),
-            );
-        // A later cleanup or duplicate report cannot replace a result whose write failed.
-        flight.result ??= { outcome, error, at: this.now() };
-        return this.#persist(deliveryId, flight);
+        return Effect.runPromise(
+            this.settleEffect(runtimeId, deliveryId, outcome, error),
+        );
     }
 
-    async #ackStored(runtimeId: string, deliveryId: string): Promise<void> {
+    /** Effect seam used by daemon workers and TestClock-based retry tests. */
+    settleEffect(
+        runtimeId: string,
+        deliveryId: string,
+        outcome: DeliveryOutcome,
+        error?: string,
+    ): Effect.Effect<void, unknown> {
+        return Effect.gen({ self: this }, function* () {
+            const flight = this.#inFlight.get(deliveryId);
+            if (!flight) {
+                yield* Effect.tryPromise({
+                    try: () => this.#ackStoredEffect(runtimeId, deliveryId),
+                    catch: (error) => error,
+                });
+                return;
+            }
+            if (flight.targetRuntimeId !== runtimeId)
+                return yield* Effect.fail(
+                    new Error("Runtime does not own this delivery."),
+                );
+            flight.result ??= { outcome, error, at: this.now() };
+            yield* this.#persistEffect(deliveryId, flight);
+        });
+    }
+
+    async #ackStoredEffect(
+        runtimeId: string,
+        deliveryId: string,
+    ): Promise<void> {
         const stored = await this.db.messages.delivery(deliveryId);
         if (stored?.targetRuntimeId !== runtimeId || stored.outcome === null)
-            throw new Error("Runtime does not own a settled delivery.");
+            throw new Error("Runtime does not own this settled delivery.");
     }
 
-    #persist(deliveryId: string, flight: InFlight): Promise<void> {
-        const active = this.#settling.get(deliveryId);
-        if (active) return active;
-        const settling = this.#settle(deliveryId, flight)
-            .catch((error: unknown) => {
-                const reason =
-                    error instanceof Error ? error.message : String(error);
-                if (flight.storageError !== reason)
-                    logger.error(
-                        {
-                            err: error,
-                            deliveryId,
-                            runtimeId: flight.targetRuntimeId,
-                        },
-                        "Outcome storage failed",
-                    );
-                flight.storageError = reason;
-            })
-            .finally(() => {
-                this.#settling.delete(deliveryId);
-                this.#scheduleRetry();
+    #persistEffect(
+        deliveryId: string,
+        flight: InFlight,
+    ): Effect.Effect<void, unknown> {
+        return Effect.gen({ self: this }, function* () {
+            const active = this.#settling.get(deliveryId);
+            if (active) return yield* Deferred.await(active);
+
+            const firstAttempt = Deferred.makeUnsafe<void>();
+            this.#settling.set(deliveryId, firstAttempt);
+            const persist = Effect.gen({ self: this }, function* () {
+                yield* this.#settleOutcomeEffect(deliveryId, flight);
+            }).pipe(
+                Effect.catch((error) =>
+                    Effect.sync(() => {
+                        const reason =
+                            error instanceof Error
+                                ? error.message
+                                : String(error);
+                        if (flight.storageError !== reason) {
+                            logger.error(
+                                {
+                                    err: error,
+                                    deliveryId,
+                                    runtimeId: flight.targetRuntimeId,
+                                },
+                                "Outcome storage failed",
+                            );
+                        }
+                        flight.storageError = reason;
+                    }),
+                ),
+                Effect.ensuring(
+                    Effect.gen({ self: this }, function* () {
+                        this.#settling.delete(deliveryId);
+                        yield* Deferred.succeed(firstAttempt, undefined);
+                        yield* this.#scheduleRetry().pipe(
+                            Effect.catch(() => Effect.void),
+                        );
+                    }),
+                ),
+            );
+            yield* FiberSet.run(this.#settlingFibers, persist, {
+                startImmediately: true,
             });
-        this.#settling.set(deliveryId, settling);
-        return settling;
+            yield* Deferred.await(firstAttempt);
+        });
     }
 
     #snapshot(): [string, InFlight][] {
@@ -338,122 +429,197 @@ export class MessageService {
         );
     }
 
-    #scheduleRetry(): void {
-        if (this.#snapshot().length === 0) {
-            clearTimeout(this.#retryTimer);
-            this.#retryTimer = undefined;
-            this.#retryDelay = 1000;
-            return;
-        }
-        if (this.#retryPaused || this.#retryTimer || this.#retryBatch) return;
-        // Only failed writes start a retry; active first attempts are not failures.
-        if (
-            ![...this.#inFlight.values()].some(
-                (flight) => flight.storageError !== undefined,
+    #scheduleRetry(): Effect.Effect<void, unknown> {
+        return Effect.gen({ self: this }, function* () {
+            if (this.#retryPaused || this.#retryFiber) return;
+            if (
+                ![...this.#inFlight.values()].some(
+                    (flight) => flight.storageError !== undefined,
+                )
             )
-        )
-            return;
-        this.#retryTimer = setTimeout(() => {
-            this.#retryTimer = undefined;
-            const snapshot = this.#snapshot();
-            this.#retryBatch = this.#persistSnapshot(snapshot).finally(() => {
-                this.#retryBatch = undefined;
-                if (snapshot.some(([id]) => this.#inFlight.has(id)))
-                    this.#retryDelay = Math.min(30_000, this.#retryDelay * 2);
-                this.#scheduleRetry();
-            });
-        }, this.#retryDelay);
-        this.#retryTimer.unref();
-    }
-
-    async #persistSnapshot(snapshot: [string, InFlight][]): Promise<void> {
-        for (const [id, flight] of snapshot)
-            if (this.#inFlight.get(id) === flight)
-                await this.#persist(id, flight);
-    }
-
-    /** Join active writes, then make one final attempt; leave failures owned here. */
-    drain(): Promise<void> {
-        if (this.#draining) return this.#draining;
-        this.#retryPaused = true;
-        clearTimeout(this.#retryTimer);
-        this.#retryTimer = undefined;
-        this.#draining = (async () => {
-            await this.#retryBatch;
-            await Promise.all(this.#settling.values());
-            await this.#persistSnapshot(this.#snapshot());
-            const remaining = this.#snapshot();
-            if (remaining.length)
-                throw new Error(
-                    `Unstored outcomes (${remaining.length}): ${remaining.map(([id, flight]) => `${id}: ${flight.storageError ?? "write incomplete"}`).join("; ")}`,
+                return;
+            const retrying = Effect.sleep(Duration.seconds(1))
+                .pipe(
+                    Effect.andThen(
+                        Effect.retry(this.#retryAttempt(), this.#retrySchedule),
+                    ),
+                )
+                .pipe(
+                    Effect.ensuring(
+                        Effect.sync(() => {
+                            this.#retryFiber = undefined;
+                        }),
+                    ),
                 );
-        })().finally(() => {
-            this.#draining = undefined;
-        });
-        return this.#draining;
-    }
-
-    async #settle(deliveryId: string, flight: InFlight): Promise<void> {
-        const { outcome, error, at: createdAt } = flight.result!;
-        const notification = notifiesOrigin(
-            { notifiable: true, reverseRouteAtSend: flight.reverseRouteAtSend },
-            outcome,
-        )
-            ? {
-                  id: uuidv7(),
-                  originRuntimeId: flight.originRuntimeId,
-                  originExecutionOwnership: flight.originExecutionOwnership,
-                  originTerminalId: flight.originTerminalId,
-                  body: notificationBody(
-                      flight.targetName,
-                      outcome,
-                      flight.content,
-                      error,
-                  ),
-                  createdAt,
-                  readAt: null,
-              }
-            : undefined;
-        const settled = await this.db.messages.settle(
-            deliveryId,
-            outcome,
-            createdAt,
-            error,
-            notification,
-        );
-        this.#inFlight.delete(deliveryId);
-        if (flight.storageError !== undefined)
-            logger.info(
-                { deliveryId, runtimeId: flight.targetRuntimeId },
-                "Outcome storage recovered",
-            );
-        if (!settled || !notification) return;
-        if (notification.originExecutionOwnership === "daemon") this.onChange();
-        const body = notification.body;
-        const origin = this.runtimes.get(flight.originRuntimeId);
-        if (!origin?.collaborationActive) return;
-        try {
-            // No delivery id: a daemon notice is not an AIOX request, so its own
-            // turn cannot settle anything and cannot cascade another notice.
-            await origin.binding.deliver({
-                deliveryId: null,
-                from: { name: "AIOX", role: null, description: null },
-                createdAt,
-                content: body,
+            this.#retryFiber = yield* FiberSet.run(this.#background, retrying, {
+                startImmediately: true,
             });
-        } catch {
-            // The Web still shows it; a vendor input path that refuses a notice
-            // is not a failure of the request that produced it.
-        }
+        });
     }
 
-    /** Target exit interrupts unobserved requests and retries already observed results. */
-    async forget(runtimeId: string): Promise<void> {
-        for (const [id, flight] of this.#inFlight) {
-            if (flight.targetRuntimeId === runtimeId) {
-                await this.settle(runtimeId, id, "interrupted");
+    #retryAttempt(): Effect.Effect<void, unknown> {
+        return Effect.gen({ self: this }, function* () {
+            for (const [id, flight] of this.#snapshot()) {
+                if (
+                    this.#inFlight.get(id) === flight &&
+                    flight.storageError !== undefined
+                )
+                    yield* this.#persistEffect(id, flight);
             }
-        }
+            if (
+                [...this.#inFlight.values()].some(
+                    (flight) => flight.storageError !== undefined,
+                )
+            )
+                return yield* Effect.fail(
+                    new Error("Message outcome storage retry failed."),
+                );
+        });
+    }
+
+    #persistSnapshot(): Effect.Effect<void, unknown> {
+        return Effect.gen({ self: this }, function* () {
+            for (const [id, flight] of this.#snapshot())
+                if (this.#inFlight.get(id) === flight)
+                    yield* this.#persistEffect(id, flight);
+        });
+    }
+
+    /** Join writes, suspend retries, then make one final storage attempt. */
+    drain(): Promise<void> {
+        return Effect.runPromise(this.drainEffect());
+    }
+
+    /** Effect seam for callers/tests that need to share a virtual Clock. */
+    drainEffect(): Effect.Effect<void, unknown> {
+        return Effect.suspend(() => {
+            const existing = this.#draining;
+            if (existing)
+                return Effect.flatMap(Deferred.await(existing), (result) =>
+                    Exit.isSuccess(result)
+                        ? Effect.void
+                        : Effect.failCause(result.cause),
+                );
+            const complete = Deferred.makeUnsafe<Exit.Exit<void, unknown>>();
+            this.#draining = complete;
+            return Effect.gen({ self: this }, function* () {
+                const result = yield* Effect.exit(this.#drainWork());
+                yield* Deferred.succeed(complete, result);
+                this.#draining = undefined;
+                if (Exit.isFailure(result))
+                    return yield* Effect.failCause(result.cause);
+            });
+        });
+    }
+
+    #drainWork(): Effect.Effect<void, unknown> {
+        return Effect.gen({ self: this }, function* () {
+            this.#retryPaused = true;
+            if (this.#retryFiber) {
+                yield* Fiber.interrupt(this.#retryFiber);
+                this.#retryFiber = undefined;
+            }
+            yield* Effect.forEach(
+                [...this.#settling.values()],
+                Deferred.await,
+                { discard: true },
+            );
+            yield* this.#persistSnapshot();
+            const remaining = this.#snapshot();
+            if (remaining.length) {
+                const reason = remaining
+                    .map(
+                        ([id, flight]) =>
+                            `${id}: ${flight.storageError ?? "write incomplete"}`,
+                    )
+                    .join("; ");
+                return yield* Effect.fail(
+                    new Error(
+                        `Unstored outcomes (${remaining.length}): ${reason}`,
+                    ),
+                );
+            }
+        });
+    }
+
+    #settleOutcomeEffect(
+        deliveryId: string,
+        flight: InFlight,
+    ): Effect.Effect<void, unknown> {
+        return Effect.gen({ self: this }, function* () {
+            const { outcome, error, at: createdAt } = flight.result!;
+            const notification = notifiesOrigin(
+                {
+                    notifiable: true,
+                    reverseRouteAtSend: flight.reverseRouteAtSend,
+                },
+                outcome,
+            )
+                ? {
+                      id: uuidv7(),
+                      originRuntimeId: flight.originRuntimeId,
+                      originExecutionOwnership: flight.originExecutionOwnership,
+                      originTerminalId: flight.originTerminalId,
+                      body: notificationBody(
+                          flight.targetName,
+                          outcome,
+                          flight.content,
+                          error,
+                      ),
+                      createdAt,
+                      readAt: null,
+                  }
+                : undefined;
+            const settled = yield* Effect.tryPromise({
+                try: () =>
+                    this.db.messages.settle(
+                        deliveryId,
+                        outcome,
+                        createdAt,
+                        error,
+                        notification,
+                    ),
+                catch: (cause) => cause,
+            });
+            this.#inFlight.delete(deliveryId);
+            if (flight.storageError !== undefined) {
+                logger.info(
+                    { deliveryId, runtimeId: flight.targetRuntimeId },
+                    "Outcome storage recovered",
+                );
+            }
+            if (!settled || !notification) return;
+            if (notification.originExecutionOwnership === "daemon") {
+                yield* Effect.sync(() =>
+                    this.onChange({
+                        id: notification.id,
+                        originRuntimeId: notification.originRuntimeId,
+                        terminalId: notification.originTerminalId,
+                        body: notification.body,
+                        createdAt: notification.createdAt,
+                        readAt: notification.readAt,
+                    }),
+                );
+            }
+            const origin = this.runtimes.get(flight.originRuntimeId);
+            if (!origin?.collaborationActive) return;
+            yield* Effect.tryPromise({
+                try: () =>
+                    origin.binding.deliver({
+                        deliveryId: null,
+                        from: { name: "AIOX", role: null, description: null },
+                        createdAt,
+                        content: notification.body,
+                    }),
+                catch: () => undefined,
+            });
+        });
+    }
+
+    async forget(runtimeId: string): Promise<void> {
+        for (const [id, flight] of this.#inFlight)
+            if (flight.targetRuntimeId === runtimeId)
+                await this.settle(runtimeId, id, "interrupted");
     }
 
     pending(): number {

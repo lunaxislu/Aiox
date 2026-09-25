@@ -4,6 +4,7 @@ import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
 import type { LastExit } from "@aiox/protocol";
 import type { TerminalSession } from "@aiox/terminal";
 import type { InboundMessage, RuntimeControls } from "@aiox/vendor";
+import { Cause, Effect, Exit } from "effect";
 export type { InboundMessage, RuntimeControls } from "@aiox/vendor";
 
 /**
@@ -106,12 +107,13 @@ export class RuntimeRegistry {
             this.#listeners.delete(listener);
         };
     }
-    private changed(): void {
-        this.onChange();
+    /** Announces a change of one runtime, including state its binding reports. */
+    changed(id: string): void {
+        this.onChange(id);
         for (const listener of this.#listeners) listener();
     }
     constructor(
-        private readonly onChange: () => void = () => {},
+        private readonly onChange: (id: string) => void = () => {},
         private readonly cleanupPreparation: (
             record: RuntimeRecord,
         ) => Promise<void> = async () => {},
@@ -124,101 +126,117 @@ export class RuntimeRegistry {
         this.#onSettle = handler;
     }
 
-    async register(
+    register(
         input: RegisterRuntime,
     ): Promise<{ record: RuntimeRecord; token: string }> {
-        if (
-            input.executionOwnership === "external" &&
-            (input.terminalId != null || input.hostId != null)
-        )
-            throw new Error(
-                "External executions cannot belong to a Host or terminal.",
-            );
-        const id = randomUUID();
-        const name = input.name ?? id;
-        // Reserve names before any await, including preparation and pending cleanup.
-        if (
-            input.networkId !== null &&
-            this.inNetwork(input.networkId).some(
-                (record) => record.name === name,
+        return Effect.runPromise(this.registerEffect(input));
+    }
+
+    registerEffect(input: RegisterRuntime) {
+        return Effect.gen({ self: this }, function* () {
+            if (
+                input.executionOwnership === "external" &&
+                (input.terminalId != null || input.hostId != null)
             )
-        )
-            throw new DuplicateRuntimeNameError(name);
-        let reportedStatus: RuntimeStatus = "aiox-preparing";
-        let reportedReason: string | null = null;
-        const controls: RuntimeControls = {
-            runtimeId: id,
-            setStatus: (status, reason) => {
-                reportedStatus = status;
-                reportedReason = reason ?? null;
-                const record = this.#runtimes.get(id);
-                if (record && record.binding !== unbound) {
-                    record.status = status;
-                    record.status_reason = reportedReason;
-                    this.changed();
-                }
-            },
-            setObservationError: (error) => {
-                const record = this.#runtimes.get(id);
-                if (!record || record.observation_error === error) return;
-                record.observation_error = error;
-                this.changed();
-            },
-            settle: (deliveryId, outcome, error) =>
-                this.#onSettle(id, deliveryId, outcome, error),
-        };
-        const record: RuntimeRecord = {
-            id,
-            name,
-            role: input.role ?? null,
-            description: input.description ?? null,
-            networkId: input.networkId,
-            hostId: input.hostId ?? null,
-            executionOwnership: input.executionOwnership ?? "daemon",
-            collaborationActive: true,
-            terminalId: input.terminalId ?? null,
-            terminalOwnership: input.terminalId
-                ? (input.terminalOwnership ?? "owned")
-                : null,
-            // Not yet a send target: process spawn is not binding readiness.
-            phase: "preparing",
-            status: "aiox-preparing",
-            status_reason: null,
-            observation_error: null,
-            binding: unbound,
-        };
-        // Registered before the binding is built so the binding can report its
-        // own readiness. Nothing can reach it yet: no credential exists, and
-        // preparation keeps it out of send, but visible in discovery.
-        this.#runtimes.set(id, record);
-        this.changed();
-        try {
-            record.binding = await input.createBinding(controls);
+                throw new Error(
+                    "External executions cannot belong to a Host or terminal.",
+                );
+            const id = randomUUID();
+            const name = input.name ?? id;
+            // Reserve names before any await, including preparation and pending cleanup.
+            if (
+                input.networkId !== null &&
+                this.inNetwork(input.networkId).some(
+                    (record) => record.name === name,
+                )
+            )
+                throw new DuplicateRuntimeNameError(name);
+            let reportedStatus: RuntimeStatus = "aiox-preparing";
+            let reportedReason: string | null = null;
+            const controls: RuntimeControls = {
+                runtimeId: id,
+                setStatus: (status, reason) => {
+                    reportedStatus = status;
+                    reportedReason = reason ?? null;
+                    const record = this.#runtimes.get(id);
+                    if (record && record.binding !== unbound) {
+                        record.status = status;
+                        record.status_reason = reportedReason;
+                        this.changed(id);
+                    }
+                },
+                setObservationError: (error) => {
+                    const record = this.#runtimes.get(id);
+                    if (!record || record.observation_error === error) return;
+                    record.observation_error = error;
+                    this.changed(id);
+                },
+                settle: (deliveryId, outcome, error) =>
+                    this.#onSettle(id, deliveryId, outcome, error),
+            };
+            const record: RuntimeRecord = {
+                id,
+                name,
+                role: input.role ?? null,
+                description: input.description ?? null,
+                networkId: input.networkId,
+                hostId: input.hostId ?? null,
+                executionOwnership: input.executionOwnership ?? "daemon",
+                collaborationActive: true,
+                terminalId: input.terminalId ?? null,
+                terminalOwnership: input.terminalId
+                    ? (input.terminalOwnership ?? "owned")
+                    : null,
+                // Not yet a send target: process spawn is not binding readiness.
+                phase: "preparing",
+                status: "aiox-preparing",
+                status_reason: null,
+                observation_error: null,
+                binding: unbound,
+            };
+            // Registered before the binding is built so the binding can report its
+            // own readiness. Nothing can reach it yet: no credential exists, and
+            // preparation keeps it out of send, but visible in discovery.
+            this.#runtimes.set(id, record);
+            this.changed(id);
+            const acquired = yield* Effect.exit(
+                Effect.tryPromise({
+                    try: async () => input.createBinding(controls),
+                    catch: (error) => error,
+                }),
+            );
+            if (Exit.isFailure(acquired)) {
+                const error = Cause.squash(acquired.cause);
+                // Failed cleanup retains the reserved name and retryable record.
+                this.revoke(id);
+                record.status = "failed";
+                record.status_reason =
+                    error instanceof Error ? error.message : String(error);
+                const cleanup = yield* Effect.exit(
+                    Effect.tryPromise({
+                        try: () => this.cleanupPreparation(record),
+                        catch: (error) => error,
+                    }),
+                );
+                if (Exit.isFailure(cleanup))
+                    return yield* Effect.fail(
+                        new AggregateError(
+                            [error, Cause.squash(cleanup.cause)],
+                            "Registration failed and route cleanup is unconfirmed.",
+                        ),
+                    );
+                this.unregister(id);
+                return yield* Effect.fail(error);
+            }
+            record.binding = acquired.value;
             if (!record.collaborationActive) record.binding.revoke?.();
             record.status = reportedStatus;
             record.status_reason = reportedReason;
-            this.changed();
-        } catch (error) {
-            // Revoke before fallible route cleanup. Failed cleanup reserves the
-            // name and leaves a record that stopRuntime can retry.
-            this.revoke(id);
-            record.status = "failed";
-            record.status_reason =
-                error instanceof Error ? error.message : String(error);
-            try {
-                await this.cleanupPreparation(record);
-            } catch (cleanupError) {
-                throw new AggregateError(
-                    [error, cleanupError],
-                    "Registration failed and route cleanup is unconfirmed.",
-                );
-            }
-            this.unregister(id);
-            throw error;
-        }
-        const token = randomBytes(32).toString("base64url");
-        if (record.collaborationActive) this.#tokens.set(token, id);
-        return { record, token };
+            this.changed(id);
+            const token = randomBytes(32).toString("base64url");
+            if (record.collaborationActive) this.#tokens.set(token, id);
+            return { record, token };
+        }).pipe(Effect.uninterruptible);
     }
 
     ready(id: string): void {
@@ -229,7 +247,7 @@ export class RuntimeRegistry {
             record.collaborationActive
         ) {
             record.phase = "running";
-            this.changed();
+            this.changed(id);
         }
     }
 
@@ -281,14 +299,14 @@ export class RuntimeRegistry {
             if (runtimeId === id) this.#tokens.delete(token);
         }
         if (active) record.binding.revoke?.();
-        if (active) this.changed();
+        if (active) this.changed(id);
     }
 
     /** Removes a record after its cleanup has succeeded. */
     unregister(id: string): boolean {
         this.revoke(id);
         const removed = this.#runtimes.delete(id);
-        if (removed) this.changed();
+        if (removed) this.changed(id);
         return removed;
     }
 }

@@ -27,12 +27,13 @@
         "@aiox/protocol": "workspace:*",
         "@aiox/vendor": "workspace:*",
         "commander": "14.0.3",
+        "effect": "4.0.0-rc.117",
         "ws": "8.21.3"
     },
     "devDependencies": {
         "@types/ws": "8.18.1"
     },
     "engines": {
-        "node": "^22.13.0 || >=24.11.0"
+        "node": "^22.16.0 || >=24.11.0"
     }
 }

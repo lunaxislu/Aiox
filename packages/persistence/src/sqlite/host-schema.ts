@@ -136,7 +136,6 @@ export const PanelEntity = sqliteTable(
         networkId: text("network_id"),
         revision: integer("revision").notNull(),
         layoutJson: text("layout_json").notNull(),
-        activePaneId: text("active_pane_id").notNull(),
     },
     (t) => [
         check(
@@ -178,43 +177,15 @@ export const PanelTabEntity = sqliteTable(
     ],
 );
 
-export const HostOperationEntity = sqliteTable(
-    "host_operations",
+/** Deleted panel and tab IDs are never reused by later client requests. */
+export const DeletedIdEntity = sqliteTable(
+    "deleted_ids",
     {
         id: text("id").notNull().primaryKey(),
-        requestId: text("request_id").notNull().unique(),
-        requestHash: text("request_hash").notNull(),
         kind: text("kind").notNull(),
-        hostId: text("host_id"),
-        panelId: text("panel_id"),
-        state: text("state").notNull(),
-        targetsJson: text("targets_json").notNull(),
-        errorJson: text("error_json"),
-        cleanupErrorsJson: text("cleanup_errors_json").notNull(),
-        createdAt: integer("created_at").notNull(),
-        finishedAt: integer("finished_at"),
     },
-    (t) => [
-        check(
-            "host_operations_check_0",
-            sql`${t.state} IN ('running','succeeded','failed')`,
-        ),
-        check("host_operations_check_1", sql`json_valid(${t.targetsJson})`),
-        check(
-            "host_operations_check_2",
-            sql`${t.errorJson} IS NULL OR json_valid(${t.errorJson})`,
-        ),
-        check(
-            "host_operations_check_3",
-            sql`json_valid(${t.cleanupErrorsJson})`,
-        ),
-        check(
-            "host_operations_check_4",
-            sql`(${t.state}='running')=(${t.finishedAt} IS NULL)`,
-        ),
-    ],
+    (t) => [check("deleted_ids_check_0", sql`${t.kind} IN ('panel','tab')`)],
 );
-export type HostOperationRow = typeof HostOperationEntity.$inferSelect;
 
 export const HostExecutionEntity = sqliteTable(
     "host_executions",

@@ -35,6 +35,7 @@ export async function probeClaude(
     executable = "claude",
     env: NodeJS.ProcessEnv = process.env,
     cwd: string = process.cwd(),
+    signal?: AbortSignal,
 ): Promise<string> {
     const output = await new Promise<string>((resolve, reject) => {
         execFile(
@@ -48,6 +49,7 @@ export async function probeClaude(
                 maxBuffer: 4096,
                 killSignal: "SIGKILL",
                 windowsHide: true,
+                ...(signal ? { signal } : {}),
             },
             (error, stdout) => {
                 if (error) reject(error);

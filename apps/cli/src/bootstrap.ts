@@ -18,7 +18,7 @@ import type {
     DaemonStatus,
     NetworkView,
     RouteOperation,
-    Operation,
+    HostCommandResult,
     HostView,
 } from "@aiox/protocol";
 import {
@@ -32,17 +32,17 @@ import {
     networkViewSchema,
     stopResultSchema,
     terminalContextFromEnv,
-    operationSchema,
     hostViewSchema,
     hostNetworkViewSchema,
 } from "@aiox/protocol";
 import { selectVendor } from "@aiox/vendor";
+import { Schema } from "effect";
 import { WebSocket } from "ws";
 
 import { runExternal } from "@/external";
 import { runForeground } from "@/foreground";
+import { runHostCommand, hostCommandOutput } from "@/host-command";
 import { prepareHostRequest } from "@/host-input";
-import { waitForHostOperation, hostOperationResult } from "@/host-operation";
 import type { CliOptions, CliPort, CliRequest, CommandName } from "@/requests";
 
 const execFileAsync = promisify(execFile);
@@ -599,11 +599,9 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                     const name = args[0] as string | undefined;
                     let hosts: HostView[];
                     if (command === "host.list" || name !== undefined) {
-                        hosts = hostViewSchema
-                            .array()
-                            .parse(
-                                await call(url, `/api/hosts${query({ name })}`),
-                            );
+                        hosts = Schema.decodeUnknownSync(
+                            Schema.mutable(Schema.Array(hostViewSchema)),
+                        )(await call(url, `/api/hosts${query({ name })}`));
                         if (name !== undefined)
                             hosts = hosts.filter((h) => h.name === name);
                     } else {
@@ -638,7 +636,6 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                                 `${host.name} (${host.id})`,
                                 `Source: ${host.sourceFile}`,
                                 `Directory: ${host.directory}`,
-                                `Operation: ${host.activeOperationId ?? "none"}`,
                                 ...host.agents.map(
                                     (agent) =>
                                         `${agent.key}: ${agent.runtime ? `${agent.runtime.phase} / ${agent.runtime.status}` : "stopped"}${!agent.runtime && agent.lastExit?.message ? ` — ${agent.lastExit.message}` : ""}`,
@@ -650,9 +647,9 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                 if (command.startsWith("host.network.")) {
                     const url = await daemonUrl();
                     const name = operand(args, 0);
-                    const hosts = hostViewSchema
-                        .array()
-                        .parse(await call(url, `/api/hosts${query({ name })}`));
+                    const hosts = Schema.decodeUnknownSync(
+                        Schema.mutable(Schema.Array(hostViewSchema)),
+                    )(await call(url, `/api/hosts${query({ name })}`));
                     const host = hosts.find((h) => h.name === name);
                     if (!host)
                         throw new Error(
@@ -663,14 +660,14 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                         command === "host.network.list"
                             ? undefined
                             : operand(args, 1);
-                    const networks = hostNetworkViewSchema
-                        .array()
-                        .parse(
-                            await call(
-                                url,
-                                `${base}${query({ name: networkName })}`,
-                            ),
-                        );
+                    const networks = Schema.decodeUnknownSync(
+                        Schema.mutable(Schema.Array(hostNetworkViewSchema)),
+                    )(
+                        await call(
+                            url,
+                            `${base}${query({ name: networkName })}`,
+                        ),
+                    );
                     let selected = networks;
                     if (networkName !== undefined) {
                         let network = networks.find(
@@ -731,11 +728,9 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                     let hostId: string | undefined;
                     if (control && typeof args[0] === "string") {
                         const name = args[0];
-                        const hosts = hostViewSchema
-                            .array()
-                            .parse(
-                                await call(url, `/api/hosts${query({ name })}`),
-                            );
+                        const hosts = Schema.decodeUnknownSync(
+                            Schema.mutable(Schema.Array(hostViewSchema)),
+                        )(await call(url, `/api/hosts${query({ name })}`));
                         hostId = hosts.find((h) => h.name === name)?.id;
                         if (!hostId)
                             throw new Error(
@@ -764,12 +759,14 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                               : stop
                                 ? `/api/hosts/${encodeURIComponent(hostId!)}/agents/stop`
                                 : `/api/hosts/agents/${command.split(".")[2]}`;
-                    let operation: Operation | undefined;
+                    let result: HostCommandResult | undefined;
                     let foreground: Promise<void> | undefined;
                     let foregroundError: unknown;
                     try {
-                        operation = operationSchema.parse(
-                            await call(url, path, {
+                        result = await runHostCommand(
+                            url,
+                            path,
+                            {
                                 ...post({
                                     requestId,
                                     ...(stop
@@ -820,49 +817,28 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                                 ...(command === "host.delete"
                                     ? { method: "DELETE" }
                                     : {}),
-                            }),
-                        );
-                        operation = await waitForHostOperation(
-                            url,
-                            operation,
-                            (current) => {
-                                if (
-                                    foreground ||
-                                    !terminalContext ||
-                                    !(
-                                        command.startsWith("host.agent.") ||
-                                        command === "host.restart"
-                                    ) ||
-                                    stop
-                                )
-                                    return;
-                                const target = current.targets.find(
-                                    (t) =>
-                                        t.terminalId ===
-                                            terminalContext.terminalId &&
-                                        t.state === "preparing",
-                                );
-                                if (!target?.agentKey) return;
+                            },
+                            describeError,
+                            (launch) => {
+                                // The daemon placed this Agent in the calling terminal: run it here.
+                                if (foreground || stop) return;
                                 foreground = runAgent(
                                     {
                                         command: "agent.run",
                                         args: [
                                             prepared.manifest!.agents[
-                                                target.agentKey
+                                                launch.agentKey
                                             ]!.adapter,
                                         ],
                                         options: {},
                                     },
                                     {
-                                        hostId: current.hostId!,
-                                        agentKey: target.agentKey,
+                                        hostId: launch.hostId,
+                                        agentKey: launch.agentKey,
                                     },
                                 )
                                     .then(() => {
-                                        if (
-                                            process.exitCode &&
-                                            operation?.state === "running"
-                                        )
+                                        if (process.exitCode && !result)
                                             throw new Error(
                                                 `Agent exited with code ${process.exitCode}`,
                                             );
@@ -871,26 +847,26 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                                         foregroundError = error;
                                         const diagnostic = message(error);
                                         process.stdout.write(
-                                            `\x1b]777;AIOX_CALLER_${current.id}_${Buffer.from(diagnostic).subarray(0, 4096).toString("base64")}\x07`,
+                                            `\x1b]777;${launch.marker}${Buffer.from(diagnostic).subarray(0, 4096).toString("base64")}\x07`,
                                         );
                                     });
                             },
                         );
                     } catch (error) {
                         throw new Error(
-                            `${message(error)}\nrequestId=${requestId}${operation ? ` operationId=${operation.id}` : ""}\nRecheck: aiox host status ${JSON.stringify(prepared.manifest?.host.name ?? args[0])} --json; GET /api/operations?requestId=${requestId}`,
+                            `${message(error)}\nrequestId=${requestId}\nRecheck: aiox host status ${JSON.stringify(prepared.manifest?.host.name ?? args[0])} --json`,
                         );
                     }
                     if (foreground) {
-                        if (operation.state !== "succeeded")
+                        if (result.state !== "succeeded")
                             console.error(
-                                operation.error?.message ??
-                                    "Host Agent operation failed.",
+                                result.error?.message ??
+                                    "Host Agent command failed.",
                             );
                         await foreground;
                         if (foregroundError) throw foregroundError;
                     }
-                    return hostOperationResult(operation);
+                    return hostCommandOutput(result);
                 }
                 return unavailable(command);
             }
@@ -939,10 +915,9 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                     );
                     if (options.json) return body;
                     return lines(
-                        networkViewSchema
-                            .array()
-                            .parse(body)
-                            .map(describeNetwork),
+                        Schema.decodeUnknownSync(
+                            Schema.mutable(Schema.Array(networkViewSchema)),
+                        )(body).map(describeNetwork),
                         "no networks",
                     );
                 }
@@ -985,10 +960,9 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                     );
                     if (options.json) return body;
                     return lines(
-                        agentViewSchema
-                            .array()
-                            .parse(body)
-                            .map((agent) => describeAgent(agent)),
+                        Schema.decodeUnknownSync(
+                            Schema.mutable(Schema.Array(agentViewSchema)),
+                        )(body).map((agent) => describeAgent(agent)),
                         "no agents",
                     );
                 }

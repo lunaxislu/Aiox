@@ -13,16 +13,16 @@
         "build": "tsup --config ../../tsup.config.ts",
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "test": "vitest run --config ../../vitest.config.ts",
-        "schema:generate": "node scripts/generate-schema.mjs"
+        "schema:generate": "node --experimental-strip-types scripts/generate-schema.mjs"
     },
     "dependencies": {
         "@aiox/domain": "workspace:*",
         "@aiox/protocol": "workspace:*",
-        "better-sqlite3": "12.11.1",
-        "drizzle-orm": "0.45.3"
+        "@effect/sql-sqlite-node": "4.0.0-rc.117",
+        "drizzle-orm": "1.0.0-rc.5-5935859",
+        "effect": "4.0.0-rc.117"
     },
     "devDependencies": {
-        "@types/better-sqlite3": "9.6.0",
-        "drizzle-kit": "0.31.11"
+        "drizzle-kit": "1.0.0-rc.5-5935859"
     }
 }

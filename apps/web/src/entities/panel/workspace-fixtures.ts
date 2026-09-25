@@ -1,14 +1,8 @@
-import type {
-    AgentView,
-    PanelView,
-    TabView,
-    TerminalView,
-} from "@aiox/protocol";
+import type { AgentView, TabView, TerminalView } from "@aiox/protocol";
 
-export type WorkspaceLayout = Pick<
-    PanelView,
-    "layout" | "activePaneId" | "tabs"
->;
+import type { WorkspaceLayout } from "./workspace-layout";
+export type { WorkspaceLayout } from "./workspace-layout";
+
 export type TerminalPreview = Pick<TerminalView, "cwd"> & {
     output: string;
     connection:
@@ -53,6 +47,7 @@ export const workspacePreview: WorkspaceLayout = {
     activePaneId: "left",
     layout: {
         type: "split",
+        id: "root",
         axis: "x",
         weights: [0.5, 0.5],
         children: [
@@ -64,6 +59,7 @@ export const workspacePreview: WorkspaceLayout = {
             },
             {
                 type: "split",
+                id: "right",
                 axis: "y",
                 weights: [0.5, 0.5],
                 children: [

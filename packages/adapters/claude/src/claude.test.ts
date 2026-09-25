@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import * as fs from "node:fs";
 import {
     appendFile,
     mkdir,
@@ -12,14 +11,18 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { InvalidVendorReport } from "@aiox/vendor";
+import chokidar, { type FSWatcher } from "chokidar";
 import { expect, test, vi } from "vitest";
 
 import { ClaudeBinding } from "@/claude";
 import * as inbox from "@/claude-inbox";
 
-vi.mock("node:fs", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("node:fs")>();
-    return { ...actual, watch: vi.fn(actual.watch) };
+vi.mock("chokidar", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("chokidar")>();
+    return {
+        ...actual,
+        default: { ...actual.default, watch: vi.fn(actual.watch) },
+    };
 });
 
 const controls = () => ({
@@ -34,6 +37,53 @@ const report = {
     inboxToken: "secret",
     event: { hook_event_name: "Notification", session_id: "session" },
 };
+
+test("reports and retries an outcome storage failure while retiring a replaced session", async () => {
+    const f = await fixture();
+    try {
+        await f.start();
+        const frame = f.track();
+        await f.binding.observations.observeTranscript({
+            type: "user",
+            sessionId: "session",
+            promptId: "prompt",
+            isSidechain: false,
+            uuid: "input",
+            parentUuid: null,
+            origin: {
+                kind: "peer",
+                name: "Sender",
+                body: frame.slice(
+                    frame.indexOf("\n") + 1,
+                    frame.lastIndexOf("\n"),
+                ),
+            },
+            promptSource: "system",
+            message: { role: "user", content: frame },
+        });
+        f.control.settle.mockRejectedValueOnce(
+            new Error("storage unavailable"),
+        );
+        await f.start("replacement");
+        await vi.waitFor(() =>
+            expect(f.control.setObservationError).toHaveBeenCalledWith(
+                "Claude outcome storage failed.",
+            ),
+        );
+        await vi.waitFor(
+            () => expect(f.control.settle).toHaveBeenCalledTimes(2),
+            { timeout: 3000 },
+        );
+        expect(f.control.settle.mock.calls).toEqual([
+            ["delivery", "interrupted"],
+            ["delivery", "interrupted"],
+        ]);
+        expect(f.binding.observations.hasPendingOutcomes).toBe(false);
+        expect(f.control.setObservationError).toHaveBeenLastCalledWith(null);
+    } finally {
+        await f.close();
+    }
+});
 
 test("released bindings cannot become ready or accept hook reports", async () => {
     const binding = new ClaudeBinding(controls(), "/assigned");
@@ -99,6 +149,30 @@ test("malformed vendor reports are distinguished from valid reports with invalid
     await expect(
         binding.observe({ ...report, inboxPath: "/wrong" }),
     ).rejects.not.toBeInstanceOf(InvalidVendorReport);
+});
+
+test("Claude hook decoding preserves event fields while rejecting top-level extras", async () => {
+    const f = await fixture();
+    const observe = vi
+        .spyOn(f.binding.observations, "observe")
+        .mockResolvedValue();
+    const event = {
+        hook_event_name: "StopFailure",
+        session_id: "session",
+        prompt_id: "prompt",
+        error: "rate_limit",
+        last_assistant_message: "Usage limit reached",
+    };
+    try {
+        await f.start();
+        await f.binding.observe({ ...report, event });
+        expect(observe.mock.calls.at(-1)?.[0]).toEqual(event);
+        await expect(
+            f.binding.observe({ ...report, event, unexpected: true }),
+        ).rejects.toBeInstanceOf(InvalidVendorReport);
+    } finally {
+        await f.close();
+    }
 });
 
 test("waits for the reported parent PID registry to match before becoming ready", async () => {
@@ -234,9 +308,9 @@ test("reattaches after a watch error and reads missed rows without another chang
         close: vi.fn(),
         ref: vi.fn().mockReturnThis(),
         unref: vi.fn().mockReturnThis(),
-    }) as fs.FSWatcher;
+    }) as unknown as FSWatcher;
     const watcher = vi
-        .spyOn(fs, "watch")
+        .spyOn(chokidar, "watch")
         .mockImplementationOnce(() => failedWatch);
     watcher.mockClear();
     const directory = await mkdtemp(join(tmpdir(), "aiox-watch-recovery-"));
@@ -937,19 +1011,20 @@ test("retries an outcome after its session has been discarded without reopening 
 
 test("keeps only current transcript and registry watches across repeated transitions", async () => {
     const f = await fixture();
-    const active = new Set<fs.FSWatcher>();
-    const watchers: fs.FSWatcher[] = [];
-    const { watch } = await vi.importActual<typeof fs>("node:fs");
+    const active = new Set<FSWatcher>();
+    const watchers: FSWatcher[] = [];
+    const { watch } =
+        await vi.importActual<typeof import("chokidar")>("chokidar");
     const spy = vi
-        .spyOn(fs, "watch")
-        .mockImplementation((...args: Parameters<typeof fs.watch>) => {
+        .spyOn(chokidar, "watch")
+        .mockImplementation((...args: Parameters<typeof chokidar.watch>) => {
             const watcher = watch(...args);
-            const close = watcher.close.bind(watcher);
             active.add(watcher);
             watchers.push(watcher);
-            vi.spyOn(watcher, "close").mockImplementation(() => {
+            const close = watcher.close.bind(watcher);
+            vi.spyOn(watcher, "close").mockImplementation(async () => {
                 active.delete(watcher);
-                close();
+                await close();
             });
             return watcher;
         });
@@ -969,7 +1044,8 @@ test("keeps only current transcript and registry watches across repeated transit
         f.control.setObservationError.mockClear();
         const retired = watchers.find((watcher) => !active.has(watcher))!;
         vi.mocked(retired.close).mockClear();
-        retired.emit("change", "rename");
+        retired.on("error", () => {});
+        retired.emit("all", "change", "rename");
         expect(retired.close).not.toHaveBeenCalled();
         retired.emit("error", new Error("late retired watch error"));
         expect(f.control.setObservationError).not.toHaveBeenCalled();

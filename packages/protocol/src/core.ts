@@ -1,117 +1,173 @@
-import { z } from "zod";
+import * as Schema from "effect/Schema";
 
-/**
- * The daemon HTTP wire contract. The daemon validates against these schemas,
- * the CLI calls the endpoints and the Web reads the inferred types, so the
- * shapes live here once instead of three times.
- */
+import {
+    compatible,
+    strictStruct,
+    mutableStruct,
+    mutableArray,
+} from "./schema-compat";
 
-export const portsSchema = z.object({ daemon: z.int(), web: z.int() });
-export const policySchema = z.enum(["allow", "deny"]);
+/** The daemon HTTP wire contract shared by daemon, CLI, and Web. */
+export const portsSchema = compatible(
+    mutableStruct({ daemon: Schema.Int, web: Schema.Int }),
+);
+export const policySchema = compatible(Schema.Literals(["allow", "deny"]));
 /** Persistent route changes; unblock and reset both remove a blocked edge. */
-export const routeActionSchema = z.enum(["block", "unblock", "reset"]);
+export const routeActionSchema = compatible(
+    Schema.Literals(["block", "unblock", "reset"]),
+);
 
-export const daemonStatusSchema = z.object({
-    status: z.literal("running"),
-    pid: z.int(),
-    ports: portsSchema,
-    startedAt: z.int(),
-    runtimes: z.int(),
-    networks: z.int(),
-});
-
-/** `<home>/.aiox/daemon.json`, written by the daemon once it is listening. */
-export const daemonStateSchema = z.object({
-    pid: z.int(),
-    ports: portsSchema,
-    startedAt: z.int(),
-});
-
-export const stopRequestSchema = z.object({ force: z.boolean().optional() });
-export const createShellSchema = z.strictObject({
-    cwd: z
-        .string()
-        .min(1)
-        .refine((value) => value.trim().length > 0 && !value.includes("\0"))
-        .optional(),
-    cols: z.int().positive().optional(),
-    rows: z.int().positive().optional(),
-});
-export const terminalViewSchema = z.object({
-    id: z.string(),
-    cwd: z.string(),
-    kind: z.enum(["shell", "agent"]),
-    alive: z.boolean(),
-    vendor: z
-        .object({
-            runtimeId: z.string(),
-            alive: z.boolean(),
-            relayDisconnected: z.boolean(),
-            collaborationActive: z.boolean(),
-            collaborationError: z.string().optional(),
-        })
-        .optional(),
-});
-export const terminalContextSchema = z.strictObject({
-    terminalId: z.string().min(1),
-    token: z.string().min(1),
-});
-
-const argument = z.string().refine((value) => !value.includes("\0"));
-const name = z
-    .string()
-    .min(1)
-    .refine((value) => !value.includes("/") && !value.includes("\0"));
-
-/** Private launch frame: environment and terminal credentials are never views. */
-export const agentRunSchema = z.strictObject({
-    adapter: z.string().regex(/^[a-z][a-z0-9-]*$/),
-    cwd: argument.min(1),
-    env: z.record(argument.min(1), argument),
-    args: z.array(argument),
-    cols: z.int().positive(),
-    rows: z.int().positive(),
-    name: name.optional(),
-    network: argument.min(1).optional(),
-    role: argument.optional(),
-    description: argument.optional(),
-    instruction: argument.optional(),
-    terminalContext: terminalContextSchema.optional(),
-});
-
-export type AgentRun = z.infer<typeof agentRunSchema>;
-
-/** External execution reports lifecycle only; it never borrows a daemon terminal. */
-export const externalAgentRunSchema = agentRunSchema
-    .omit({ cols: true, rows: true, terminalContext: true })
-    .extend({ connection: z.json() });
-const externalExitSchema = z.strictObject({
-    type: z.literal("exit"),
-    exitCode: z.int().nonnegative(),
-    signal: z.int().positive().nullable(),
-});
-export const externalAgentClientFrameSchema = z.discriminatedUnion("type", [
-    z.strictObject({ type: z.literal("started") }),
-    externalExitSchema,
-]);
-export const externalAgentServerFrameSchema = z.discriminatedUnion("type", [
-    z.strictObject({
-        type: z.literal("prepared"),
-        launch: z.json(),
+export const daemonStatusSchema = compatible(
+    mutableStruct({
+        status: Schema.Literal("running"),
+        pid: Schema.Int,
+        ports: portsSchema,
+        startedAt: Schema.Int,
+        runtimes: Schema.Int,
+        networks: Schema.Int,
     }),
-    z.strictObject({ type: z.literal("ready") }),
-    z.strictObject({ type: z.literal("startup-failed"), message: z.string() }),
-    z.strictObject({ type: z.literal("error"), message: z.string() }),
-    externalExitSchema,
-]);
-export type ExternalAgentRun = z.infer<typeof externalAgentRunSchema>;
-export type ExternalAgentServerFrame = z.infer<
+);
+/** `<home>/.aiox/daemon.json`, written by the daemon once it is listening. */
+export const daemonStateSchema = compatible(
+    mutableStruct({
+        pid: Schema.Int,
+        ports: portsSchema,
+        startedAt: Schema.Int,
+    }),
+);
+export const stopRequestSchema = compatible(
+    mutableStruct({ force: Schema.optional(Schema.Boolean) }),
+);
+
+const nonEmptyString = Schema.String.check(
+    Schema.makeFilter((value) =>
+        value.length > 0 ? undefined : "Expected a non-empty string",
+    ),
+);
+const nonNulString = Schema.String.check(
+    Schema.makeFilter((value) =>
+        value.includes("\0") ? "String must not contain NUL" : undefined,
+    ),
+);
+const argument = nonNulString;
+const positiveInt = Schema.Int.check(Schema.isGreaterThan(0));
+
+export const createShellSchema = compatible(
+    strictStruct({
+        cwd: Schema.optional(
+            nonEmptyString.check(
+                Schema.makeFilter((value) =>
+                    value.trim().length > 0 && !value.includes("\0")
+                        ? undefined
+                        : "Invalid working directory",
+                ),
+            ),
+        ),
+        cols: Schema.optional(positiveInt),
+        rows: Schema.optional(positiveInt),
+    }),
+);
+export const terminalViewSchema = compatible(
+    mutableStruct({
+        id: Schema.String,
+        cwd: Schema.String,
+        kind: Schema.Literals(["shell", "agent"]),
+        alive: Schema.Boolean,
+        vendor: Schema.optional(
+            mutableStruct({
+                runtimeId: Schema.String,
+                alive: Schema.Boolean,
+                relayDisconnected: Schema.Boolean,
+                collaborationActive: Schema.Boolean,
+                collaborationError: Schema.optional(Schema.String),
+            }),
+        ),
+    }),
+);
+export const terminalContextSchema = compatible(
+    strictStruct({
+        terminalId: nonEmptyString,
+        token: nonEmptyString,
+    }),
+);
+
+const name = nonEmptyString.check(
+    Schema.makeFilter((value) =>
+        !value.includes("/") && !value.includes("\0")
+            ? undefined
+            : "Invalid name",
+    ),
+);
+const agentRunFields = {
+    adapter: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]*$/)),
+    cwd: nonNulString.check(
+        Schema.makeFilter((value) =>
+            value.length > 0 ? undefined : "Expected a non-empty string",
+        ),
+    ),
+    env: Schema.Record(nonEmptyString, argument),
+    args: mutableArray(argument),
+    cols: positiveInt,
+    rows: positiveInt,
+    name: Schema.optional(name),
+    role: Schema.optional(nonEmptyString),
+    description: Schema.optional(argument),
+    instruction: Schema.optional(argument),
+    network: Schema.optional(argument),
+    terminalContext: Schema.optional(terminalContextSchema),
+} as const;
+export const agentRunSchema = compatible(strictStruct(agentRunFields));
+export type AgentRun = Schema.Schema.Type<typeof agentRunSchema>;
+export const externalAgentRunSchema = compatible(
+    strictStruct({
+        adapter: agentRunFields.adapter,
+        cwd: agentRunFields.cwd,
+        env: agentRunFields.env,
+        args: agentRunFields.args,
+        name: agentRunFields.name,
+        role: agentRunFields.role,
+        description: agentRunFields.description,
+        instruction: agentRunFields.instruction,
+        network: agentRunFields.network,
+        connection: Schema.Json,
+    }),
+);
+const externalExitSchema = strictStruct({
+    type: Schema.Literal("exit"),
+    exitCode: Schema.Natural,
+    signal: Schema.NullOr(positiveInt),
+});
+export const externalAgentClientFrameSchema = compatible(
+    Schema.Union([
+        strictStruct({ type: Schema.Literal("started") }),
+        externalExitSchema,
+    ]),
+);
+export const externalAgentServerFrameSchema = compatible(
+    Schema.Union([
+        strictStruct({
+            type: Schema.Literal("prepared"),
+            launch: Schema.Json,
+        }),
+        strictStruct({ type: Schema.Literal("ready") }),
+        strictStruct({
+            type: Schema.Literal("startup-failed"),
+            message: Schema.String,
+        }),
+        strictStruct({ type: Schema.Literal("error"), message: Schema.String }),
+        externalExitSchema,
+    ]),
+);
+
+export type ExternalAgentRun = Schema.Schema.Type<
+    typeof externalAgentRunSchema
+>;
+export type ExternalAgentServerFrame = Schema.Schema.Type<
     typeof externalAgentServerFrameSchema
 >;
-
-export type CreateShell = z.infer<typeof createShellSchema>;
-export type TerminalView = z.infer<typeof terminalViewSchema>;
-export type TerminalContext = z.infer<typeof terminalContextSchema>;
+export type CreateShell = Schema.Schema.Type<typeof createShellSchema>;
+export type TerminalView = Schema.Schema.Type<typeof terminalViewSchema>;
+export type TerminalContext = Schema.Schema.Type<typeof terminalContextSchema>;
 
 /** Internal child environment; absence keeps external standalone execution valid. */
 export function terminalContextFromEnv(
@@ -124,124 +180,152 @@ export function terminalContextFromEnv(
     if (!result.success) throw new Error("Invalid terminal context.");
     return result.data;
 }
-export const stopResultSchema = z.object({
-    stopped: z.boolean(),
-    forced: z.boolean(),
-    /** Resources that could not be confirmed stopped; a stop with warnings is not a clean stop. */
-    warnings: z.array(z.string()).optional(),
-});
 
-export const networkViewSchema = z.object({
-    id: z.string(),
-    name: z.string(),
-    scope: z.enum(["persistent", "host"]),
-    routes: z.array(
-        z.object({
-            from: z.string(),
-            to: z.string(),
-            fromName: z.string(),
-            toName: z.string(),
-        }),
+export const stopResultSchema = compatible(
+    mutableStruct({
+        stopped: Schema.Boolean,
+        forced: Schema.Boolean,
+        /** Resources not confirmed stopped; warnings make this an incomplete stop. */
+        warnings: Schema.optional(mutableArray(Schema.String)),
+    }),
+);
+export const networkViewSchema = compatible(
+    mutableStruct({
+        id: Schema.String,
+        name: Schema.String,
+        scope: Schema.Literals(["persistent", "host"]),
+        routes: mutableArray(
+            mutableStruct({
+                from: Schema.String,
+                to: Schema.String,
+                fromName: Schema.String,
+                toName: Schema.String,
+            }),
+        ),
+    }),
+);
+export const createNetworkSchema = compatible(
+    strictStruct({ name: nonEmptyString }),
+);
+
+const betweenRouteSchema = strictStruct({
+    kind: Schema.Literal("between"),
+    action: routeActionSchema,
+    agents: mutableArray(Schema.String).check(
+        Schema.makeFilter((agents) =>
+            new Set(agents).size >= 2
+                ? undefined
+                : "A route requires at least two distinct agents",
+        ),
     ),
 });
-
-export const createNetworkSchema = z.strictObject({
-    name: z.string().min(1),
+const directedRouteSchema = strictStruct({
+    kind: Schema.Literal("directed"),
+    action: routeActionSchema,
+    from: Schema.String,
+    to: mutableArray(Schema.String).check(Schema.isMinLength(1)),
 });
+export const routeOperationSchema = compatible(
+    Schema.Union([betweenRouteSchema, directedRouteSchema]),
+);
+export const routeRequestSchema = compatible(
+    mutableStruct({ operation: routeOperationSchema }),
+);
 
-export const routeOperationSchema = z.discriminatedUnion("kind", [
-    z.strictObject({
-        kind: z.literal("between"),
-        action: routeActionSchema,
-        agents: z
-            .array(z.string())
-            .refine(
-                (agents) => new Set(agents).size >= 2,
-                "A between operation requires at least two distinct agents",
-            ),
-    }),
-    z.strictObject({
-        kind: z.literal("directed"),
-        action: routeActionSchema,
-        from: z.string(),
-        to: z.array(z.string()).min(1),
-    }),
-]);
-export const routeRequestSchema = z.object({
-    operation: routeOperationSchema,
-});
-
-export const agentViewSchema = z.object({
-    agentId: z.string(),
-    executionOwnership: z.enum(["daemon", "external"]),
-    name: z.string(),
-    role: z.string().nullable(),
-    description: z.string().nullable(),
-    status: z.enum([
+export const agentStatusSchema = compatible(
+    Schema.Literals([
         "aiox-preparing",
         "idle",
         "working",
         "awaiting-user",
         "failed",
     ]),
-    networkId: z.string().nullable(),
-    networkName: z.string().nullable(),
-    hostId: z.string().nullable(),
-    terminalId: z.string().nullable(),
-    status_reason: z.string().nullable(),
-    observation_error: z.string().nullable(),
-});
+);
+export const agentViewSchema = compatible(
+    mutableStruct({
+        agentId: Schema.String,
+        executionOwnership: Schema.Literals(["daemon", "external"]),
+        name: Schema.String,
+        role: Schema.NullOr(Schema.String),
+        description: Schema.NullOr(Schema.String),
+        status: agentStatusSchema,
+        networkId: Schema.NullOr(Schema.String),
+        networkName: Schema.NullOr(Schema.String),
+        hostId: Schema.NullOr(Schema.String),
+        terminalId: Schema.NullOr(Schema.String),
+        status_reason: Schema.NullOr(Schema.String),
+        observation_error: Schema.NullOr(Schema.String),
+    }),
+);
+export const notificationViewSchema = compatible(
+    mutableStruct({
+        id: Schema.String,
+        originRuntimeId: Schema.String,
+        body: Schema.String,
+        createdAt: Schema.Int,
+        readAt: Schema.NullOr(Schema.Int),
+    }),
+);
+export const webNotificationViewSchema = compatible(
+    mutableStruct({
+        ...notificationViewSchema.fields,
+        terminalId: Schema.NullOr(Schema.String),
+    }),
+);
+export type WebNotificationView = Schema.Schema.Type<
+    typeof webNotificationViewSchema
+>;
+export const readNotificationsSchema = compatible(
+    mutableStruct({ ids: Schema.optional(mutableArray(Schema.String)) }),
+);
+export const deletedResultSchema = compatible(
+    mutableStruct({ deleted: Schema.Boolean }),
+);
+export const readResultSchema = compatible(mutableStruct({ read: Schema.Int }));
+/** Every non-2xx body. Codes carry their own fields, so unknown keys survive. */
+export const errorBodySchema = compatible(
+    Schema.StructWithRest(
+        mutableStruct({
+            code: Schema.optional(Schema.String),
+            message: Schema.String,
+            candidates: Schema.optional(
+                mutableArray(
+                    Schema.Union([
+                        Schema.String,
+                        mutableStruct({
+                            name: Schema.String,
+                            network: Schema.NullOr(Schema.String),
+                        }),
+                    ]),
+                ),
+            ),
+        }),
+        [Schema.Record(Schema.String, Schema.Unknown)],
+    ),
+);
 
-export const notificationViewSchema = z.object({
-    id: z.string(),
-    originRuntimeId: z.string(),
-    body: z.string(),
-    createdAt: z.int(),
-    readAt: z.int().nullable(),
-});
-export const webNotificationViewSchema = notificationViewSchema.extend({
-    terminalId: z.string().nullable(),
-});
-export type WebNotificationView = z.infer<typeof webNotificationViewSchema>;
-export const readNotificationsSchema = z.object({
-    ids: z.array(z.string()).optional(),
-});
-
-export const deletedResultSchema = z.object({ deleted: z.boolean() });
-export const readResultSchema = z.object({ read: z.int() });
-
-/** Every non-2xx body. Codes carry their own extra fields, so unknown keys survive. */
-export const errorBodySchema = z.looseObject({
-    code: z.string().optional(),
-    message: z.string(),
-    candidates: z
-        .array(
-            z.union([
-                z.string(),
-                z.object({ name: z.string(), network: z.string().nullable() }),
-            ]),
-        )
-        .optional(),
-});
-
-export type Ports = z.infer<typeof portsSchema>;
-export type Policy = z.infer<typeof policySchema>;
-export type RouteAction = z.infer<typeof routeActionSchema>;
-export type DaemonStatus = z.infer<typeof daemonStatusSchema>;
-export type DaemonState = z.infer<typeof daemonStateSchema>;
-export type StopRequest = z.infer<typeof stopRequestSchema>;
-export type StopResult = z.infer<typeof stopResultSchema>;
-export type NetworkView = z.infer<typeof networkViewSchema>;
-export type CreateNetwork = z.infer<typeof createNetworkSchema>;
-export type RouteOperation = z.infer<typeof routeOperationSchema>;
-export type RouteRequest = z.infer<typeof routeRequestSchema>;
-export type AgentView = z.infer<typeof agentViewSchema>;
+export type Ports = Schema.Schema.Type<typeof portsSchema>;
+export type Policy = Schema.Schema.Type<typeof policySchema>;
+export type RouteAction = Schema.Schema.Type<typeof routeActionSchema>;
+export type DaemonStatus = Schema.Schema.Type<typeof daemonStatusSchema>;
+export type DaemonState = Schema.Schema.Type<typeof daemonStateSchema>;
+export type StopRequest = Schema.Schema.Type<typeof stopRequestSchema>;
+export type StopResult = Schema.Schema.Type<typeof stopResultSchema>;
+export type NetworkView = Schema.Schema.Type<typeof networkViewSchema>;
+export type CreateNetwork = Schema.Schema.Type<typeof createNetworkSchema>;
+export type RouteOperation = Schema.Schema.Type<typeof routeOperationSchema>;
+export type RouteRequest = Schema.Schema.Type<typeof routeRequestSchema>;
+export type AgentView = Schema.Schema.Type<typeof agentViewSchema>;
 export type AgentStatus = AgentView["status"];
-export type NotificationView = z.infer<typeof notificationViewSchema>;
-export type ReadNotifications = z.infer<typeof readNotificationsSchema>;
-export type DeletedResult = z.infer<typeof deletedResultSchema>;
-export type ReadResult = z.infer<typeof readResultSchema>;
-export type ErrorBody = z.infer<typeof errorBodySchema>;
+export type NotificationView = Schema.Schema.Type<
+    typeof notificationViewSchema
+>;
+export type ReadNotifications = Schema.Schema.Type<
+    typeof readNotificationsSchema
+>;
+export type DeletedResult = Schema.Schema.Type<typeof deletedResultSchema>;
+export type ReadResult = Schema.Schema.Type<typeof readResultSchema>;
+export type ErrorBody = Schema.Schema.Type<typeof errorBodySchema>;
 
 export const apiPath = {
     config: "/api/config",
@@ -253,8 +337,7 @@ export const apiPath = {
     hostResolve: "/api/hosts/resolve",
     panels: "/api/panels",
     panel: (id: string) => `/api/panels/${encodeURIComponent(id)}`,
-    operations: "/api/operations",
-    operation: (id: string) => `/api/operations/${encodeURIComponent(id)}`,
+    webCommands: "/api/web/commands",
 
     status: "/api/status",
     daemonStop: "/api/daemon/stop",

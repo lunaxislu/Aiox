@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 
 import type { VendorAdapter } from "@aiox/vendor";
+import { Effect } from "effect";
 import { expect, test, vi } from "vitest";
 import type { WebSocket } from "ws";
 
@@ -11,38 +12,50 @@ vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
 function launch(withHelper = false, waitForHelper = false) {
     vi.mocked(spawn).mockReset();
-    const dispose = vi.fn(async () => {});
+    const dispose = vi.fn(() => Effect.void);
     const adapter = {
         id: "other-vendor",
-        async createExecution(owner) {
-            await owner.own(dispose);
-            return {
-                connection: { endpoint: "local" },
-                start: async (launch, executionOwner) => {
-                    const command = launch as {
-                        file: string;
-                        args: string[];
-                        cwd: string;
-                        env: Record<string, string>;
-                    };
-                    if (withHelper)
-                        await executionOwner.background({
-                            ...command,
-                            file: "helper",
-                        });
-                    if (waitForHelper) {
-                        executionOwner.signal.throwIfAborted();
-                        await new Promise<void>((_resolve, reject) => {
-                            executionOwner.signal.addEventListener(
-                                "abort",
-                                () => reject(executionOwner.signal.reason),
-                                { once: true },
-                            );
-                        });
-                    }
-                    return executionOwner.foreground(command);
-                },
-            };
+        createExecution(owner) {
+            return Effect.gen(function* () {
+                yield* owner.own(dispose);
+                return {
+                    connection: { endpoint: "local" },
+                    start: (launch, executionOwner) =>
+                        Effect.gen(function* () {
+                            const command = launch as {
+                                file: string;
+                                args: string[];
+                                cwd: string;
+                                env: Record<string, string>;
+                            };
+                            if (withHelper)
+                                yield* executionOwner.background({
+                                    ...command,
+                                    file: "helper",
+                                });
+                            if (waitForHelper) {
+                                executionOwner.signal.throwIfAborted();
+                                yield* Effect.promise(
+                                    () =>
+                                        new Promise<void>(
+                                            (_resolve, reject) => {
+                                                executionOwner.signal.addEventListener(
+                                                    "abort",
+                                                    () =>
+                                                        reject(
+                                                            executionOwner
+                                                                .signal.reason,
+                                                        ),
+                                                    { once: true },
+                                                );
+                                            },
+                                        ),
+                                );
+                            }
+                            return yield* executionOwner.foreground(command);
+                        }),
+                };
+            });
         },
         createBinding() {
             throw new Error("CLI never creates a daemon binding");
@@ -337,11 +350,13 @@ test("natural foreground exit reports completion only after helper cleanup", asy
     );
     h.frame({ type: "ready" });
     let release!: () => void;
-    h.dispose.mockImplementation(
-        () =>
-            new Promise<void>((resolve) => {
-                release = resolve;
-            }),
+    h.dispose.mockImplementation(() =>
+        Effect.promise(
+            () =>
+                new Promise<void>((resolve) => {
+                    release = resolve;
+                }),
+        ),
     );
     h.child.emit("exit", 0, null);
     await vi.waitFor(() => expect(h.dispose).toHaveBeenCalled());
@@ -391,7 +406,7 @@ test("local SIGTERM still stops the foreground, helpers and resources after coll
 test.each([false, true])(
     "local SIGTERM cleans resources before prepared (allocation pending=%s)",
     async (pending) => {
-        const dispose = vi.fn(async () => {});
+        const dispose = vi.fn(() => Effect.void);
         let allocate!: () => void;
         let allocated!: () => void;
         const entered = new Promise<void>((resolve) => {
@@ -404,14 +419,19 @@ test.each([false, true])(
         });
         const adapter = {
             id: "other-vendor",
-            async createExecution(owner) {
-                allocated();
-                if (pending)
-                    await new Promise<void>((resolve) => {
-                        allocate = resolve;
-                    });
-                await owner.own(dispose);
-                return { connection: {}, start: vi.fn() };
+            createExecution(owner) {
+                return Effect.gen(function* () {
+                    allocated();
+                    if (pending)
+                        yield* Effect.promise(
+                            () =>
+                                new Promise<void>((resolve) => {
+                                    allocate = resolve;
+                                }),
+                        );
+                    yield* owner.own(dispose);
+                    return { connection: {}, start: vi.fn() };
+                });
             },
             createBinding() {
                 throw new Error("unused");

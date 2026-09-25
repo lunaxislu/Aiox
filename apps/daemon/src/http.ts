@@ -1,10 +1,10 @@
-import type { HttpBindings } from "@hono/node-server";
-import { Hono, type Context } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
-export type HttpEnv = {
-    Bindings: HttpBindings;
-    Variables: { requestId: string };
-};
+import { Effect } from "effect";
+import * as HttpRouter from "effect/unstable/http/HttpRouter";
+
+import type { Context } from "./http-endpoint";
+import { addEndpoint } from "./http-endpoint";
+
+export type HttpEnv = never;
 
 import { ConfigError, ConfigConflictError, HostInputError } from "@aiox/config";
 import { logger } from "@aiox/diagnostics";
@@ -12,6 +12,7 @@ import { RouteOperationError } from "@aiox/domain";
 import { HostStateError } from "@aiox/persistence";
 import type { NotificationView } from "@aiox/protocol";
 import {
+    PanelLayoutError,
     apiPath,
     putConfigRequestSchema,
     createNetworkSchema,
@@ -32,17 +33,15 @@ const MAX_BODY = 1_000_000;
 async function networkNames(
     services: DaemonServices,
 ): Promise<Map<string, string>> {
-    const persistent = await services.networks.list();
-    const { networks: managed } = await services.db.hostState.snapshot();
-    return new Map(
-        [...persistent, ...managed].map(({ id, name }) => [id, name]),
-    );
+    const { networks } = await services.appState.current();
+    return new Map(networks.map(({ id, name }) => [id, name]));
 }
 
 export async function readJson(request: Request): Promise<unknown> {
     const chunks: Buffer[] = [];
     let size = 0;
-    for await (const chunk of request.body ?? []) {
+    for await (const chunk of request.body?.values({ preventCancel: true }) ??
+        []) {
         size += chunk.byteLength;
         if (size > MAX_BODY)
             throw new HttpError(413, "body_too_large", "Body too large.");
@@ -57,17 +56,8 @@ export async function readJson(request: Request): Promise<unknown> {
     }
 }
 
-export class HttpError extends Error {
-    constructor(
-        readonly status: number,
-        readonly code: string,
-        message: string,
-        readonly extra: Record<string, unknown> = {},
-    ) {
-        super(message);
-        this.name = "HttpError";
-    }
-}
+export { HttpError } from "./http-error";
+import { HttpError } from "./http-error";
 
 export function parse<T>(
     schema: { parse(value: unknown): T },
@@ -90,7 +80,7 @@ export async function apiError(
     services: DaemonServices,
 ): Promise<Response> {
     const path = c.req.path;
-    const stateContract = ["hosts", "panels", "operations", "config"].some(
+    const stateContract = ["hosts", "panels", "web/commands", "config"].some(
         (resource) =>
             path === "/api/" + resource ||
             path.startsWith("/api/" + resource + "/"),
@@ -118,6 +108,12 @@ export async function apiError(
                 error.message,
                 { stage: "storage" },
             );
+        else if (error instanceof PanelLayoutError)
+            error = new HttpError(
+                error.code.startsWith("unknown_") ? 404 : 409,
+                error.code,
+                error.message,
+            );
         else if (!(error instanceof ConfigError) && path !== "/api/config")
             error = new HttpError(
                 500,
@@ -143,7 +139,7 @@ export async function apiError(
                     : {}),
                 ...error.extra,
             },
-            error.status as ContentfulStatusCode,
+            error.status,
         );
     } else if (error instanceof ConfigError) {
         return c.json(
@@ -205,36 +201,21 @@ export async function apiError(
     }
 }
 export function createApi(services: DaemonServices) {
-    const app = new Hono<HttpEnv>();
+    const app = Effect.runSync(
+        HttpRouter.make.pipe(
+            Effect.provideService(HttpRouter.RouterConfig, {
+                ignoreTrailingSlash: false,
+                ignoreDuplicateSlashes: false,
+            }),
+        ),
+    );
     const { runtimes, networks, db, lifecycle } = services;
     const getTerminal = (id: string) => terminalView(services, id);
-    // Hono normally treats HEAD as GET; this API has always required explicit methods.
-    app.use("/api/*", async (c, next) => {
-        if (c.req.method === "HEAD")
-            throw new HttpError(
-                404,
-                "not_found",
-                `No such endpoint: HEAD ${c.req.path}`,
-            );
-        await next();
-    });
     registerStateApi(app, services);
-    app.get("/api/web/events", async (c) => {
-        try {
-            return await services.webEvents.connect(c);
-        } catch (error) {
-            throw new HttpError(
-                500,
-                "storage_error",
-                error instanceof Error ? error.message : String(error),
-                { stage: "storage" },
-            );
-        }
-    });
-    app.get(apiPath.config, async (c) => {
+    addEndpoint(app, "GET", apiPath.config, async (c) => {
         return c.json(await services.configDocument.read(), 200);
     });
-    app.put(apiPath.config, async (c) => {
+    addEndpoint(app, "PUT", apiPath.config, async (c) => {
         const input = parse(putConfigRequestSchema, await readJson(c.req.raw));
         try {
             c.res = c.json(await services.configDocument.write(input), 200);
@@ -247,49 +228,54 @@ export function createApi(services: DaemonServices) {
         }
         return c.res;
     });
-    app.delete("/api/terminals/:terminalId/vendor", async (c) => {
-        const url = new URL(c.req.url);
-        const id = c.req.param("terminalId");
-        const record = runtimes.get(url.searchParams.get("runtime") ?? "");
-        if (
-            !record ||
-            record.executionOwnership !== "daemon" ||
-            record.terminalId !== id
-        )
-            throw new HttpError(
-                404,
-                "unknown_agent",
-                "No such terminal execution.",
-            );
-        await lifecycle.stopRuntime(record.id);
-        return c.json({ deleted: true }, 200);
-    });
-    app.get(apiPath.terminals, async (c) => {
+    addEndpoint(
+        app,
+        "DELETE",
+        "/api/terminals/:terminalId/vendor",
+        async (c) => {
+            const url = new URL(c.req.url);
+            const id = c.req.param("terminalId");
+            const record = runtimes.get(url.searchParams.get("runtime") ?? "");
+            if (
+                !record ||
+                record.executionOwnership !== "daemon" ||
+                record.terminalId !== id
+            )
+                throw new HttpError(
+                    404,
+                    "unknown_agent",
+                    "No such terminal execution.",
+                );
+            await lifecycle.stopRuntime(record.id);
+            return c.json({ deleted: true }, 200);
+        },
+    );
+    addEndpoint(app, "GET", apiPath.terminals, async (c) => {
         return c.json(
             services.terminals.views().map((view) => getTerminal(view.id)),
             200,
         );
     });
-    app.post(apiPath.terminals, async (c) => {
+    addEndpoint(app, "POST", apiPath.terminals, async (c) => {
         const body = await readJson(c.req.raw);
         const input = parse(createShellSchema, body === undefined ? {} : body);
         return c.json(await lifecycle.createShell(input), 201);
     });
-    app.get("/api/terminals/:terminalId", async (c) => {
+    addEndpoint(app, "GET", "/api/terminals/:terminalId", async (c) => {
         const id = c.req.param("terminalId");
         const view = getTerminal(id);
         if (!view)
             throw new HttpError(404, "unknown_terminal", "No such terminal.");
         return c.json(view, 200);
     });
-    app.delete("/api/terminals/:terminalId", async (c) => {
+    addEndpoint(app, "DELETE", "/api/terminals/:terminalId", async (c) => {
         const id = c.req.param("terminalId");
         return c.json({ deleted: await lifecycle.stopTerminal(id) }, 200);
     });
-    app.get(apiPath.status, async (c) => {
+    addEndpoint(app, "GET", apiPath.status, async (c) => {
         return c.json(await lifecycle.status(), 200);
     });
-    app.post(apiPath.daemonStop, async (c) => {
+    addEndpoint(app, "POST", apiPath.daemonStop, async (c) => {
         const { force } = parse(
             stopRequestSchema,
             (await readJson(c.req.raw)) ?? {},
@@ -323,7 +309,7 @@ export function createApi(services: DaemonServices) {
             200,
         );
     });
-    app.get(apiPath.networks, async (c) => {
+    addEndpoint(app, "GET", apiPath.networks, async (c) => {
         return c.json(
             (await networks.list()).map((network) =>
                 networkView(network, runtimes),
@@ -331,14 +317,14 @@ export function createApi(services: DaemonServices) {
             200,
         );
     });
-    app.post(apiPath.networks, async (c) => {
+    addEndpoint(app, "POST", apiPath.networks, async (c) => {
         const input = parse(createNetworkSchema, await readJson(c.req.raw));
         return c.json(
             networkView(await networks.create(input.name), runtimes),
             201,
         );
     });
-    app.post("/api/networks/:networkId/route", async (c) => {
+    addEndpoint(app, "POST", "/api/networks/:networkId/route", async (c) => {
         const { operation } = parse(
             routeRequestSchema,
             await readJson(c.req.raw),
@@ -351,18 +337,18 @@ export function createApi(services: DaemonServices) {
             200,
         );
     });
-    app.get("/api/networks/:networkId", async (c) => {
+    addEndpoint(app, "GET", "/api/networks/:networkId", async (c) => {
         const reference = c.req.param("networkId");
         return c.json(
             networkView(await networks.require(reference), runtimes),
             200,
         );
     });
-    app.delete("/api/networks/:networkId", async (c) => {
+    addEndpoint(app, "DELETE", "/api/networks/:networkId", async (c) => {
         const reference = c.req.param("networkId");
         return c.json({ deleted: await networks.delete(reference) }, 200);
     });
-    app.on("GET", [apiPath.agents, "/api/web/agents"], async (c) => {
+    addEndpoint(app, "GET", [apiPath.agents, "/api/web/agents"], async (c) => {
         const path = c.req.path;
         const url = new URL(c.req.url);
         const network = url.searchParams.get("network");
@@ -384,14 +370,15 @@ export function createApi(services: DaemonServices) {
             .map((record) => agentView(record, names));
         return c.json(views, 200);
     });
-    app.get("/api/agents/:agentId", async (c) => {
+    addEndpoint(app, "GET", "/api/agents/:agentId", async (c) => {
         const record = runtimes.find(c.req.param("agentId"));
         if (!record?.collaborationActive)
             throw new HttpError(404, "unknown_agent", "No such agent.");
         const names = await networkNames(services);
         return c.json(agentView(record, names), 200);
     });
-    app.on(
+    addEndpoint(
+        app,
         "GET",
         [apiPath.notifications, "/api/web/notifications"],
         async (c) => {
@@ -414,7 +401,8 @@ export function createApi(services: DaemonServices) {
             return c.json(views, 200);
         },
     );
-    app.on(
+    addEndpoint(
+        app,
         "POST",
         [apiPath.notificationsRead, "/api/web/notifications/read"],
         async (c) => {
@@ -435,19 +423,12 @@ export function createApi(services: DaemonServices) {
                           .filter((row) => ids.includes(row.id))
                           .map((row) => row.id);
             await db.messages.markRead(targets, Date.now());
-            if (
-                unread.some(
-                    (row) =>
-                        row.originExecutionOwnership === "daemon" &&
-                        targets.includes(row.id),
-                )
-            )
-                services.webEvents.notify();
+            await services.appState.update({ notificationsRead: targets });
             return c.json({ read: targets.length }, 200);
         },
     );
 
-    app.all("/api/*", (c) => {
+    addEndpoint(app, "*", "/api/*", (c) => {
         throw new HttpError(
             404,
             "not_found",

@@ -26,7 +26,7 @@ export class NetworkService {
             get(id: string): RuntimeRecord | undefined;
             inNetwork(networkId: string): RuntimeRecord[];
         },
-        private readonly onChange: () => void = () => {},
+        private readonly onChange: (networkId: string) => void = () => {},
     ) {}
 
     async create(name: string): Promise<PersistentNetwork> {
@@ -50,7 +50,7 @@ export class NetworkService {
                 );
             throw error;
         }
-        this.onChange();
+        this.onChange(id);
         return this.require(id);
     }
 
@@ -81,7 +81,7 @@ export class NetworkService {
                 "network_in_use",
             );
         const deleted = await this.db.networks.delete(network.id);
-        if (deleted) this.onChange();
+        if (deleted) this.onChange(network.id);
         return deleted;
     }
 
@@ -114,7 +114,7 @@ export class NetworkService {
                       };
             return applyRouteOperation(current, resolved);
         });
-        this.onChange();
+        this.onChange(network.id);
         return this.require(network.id);
     }
 
@@ -145,7 +145,7 @@ export class NetworkService {
                     ({ from, to }) => from !== runtime.id && to !== runtime.id,
                 ),
             }));
-            this.onChange();
+            this.onChange(networkId);
         } catch (error) {
             // A Network deleted before or during cleanup has no edges left.
             if (await this.db.networks.get(networkId)) throw error;

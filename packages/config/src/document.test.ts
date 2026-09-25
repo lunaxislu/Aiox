@@ -16,8 +16,24 @@ test("config editing preserves stored omissions, rejects stale revisions and rep
     }));
     const initial = await document.read();
     assert.deepEqual(initial.stored, {});
+    const concurrent = await Promise.allSettled([
+        document.write({ revision: initial.revision, stored: {} }),
+        document.write({
+            revision: initial.revision,
+            stored: { ports: { web: 5002 } },
+        }),
+    ]);
+    assert.equal(
+        concurrent.filter((result) => result.status === "fulfilled").length,
+        1,
+    );
+    assert.equal(
+        concurrent.filter((result) => result.status === "rejected").length,
+        1,
+    );
+    const current = await document.read();
     const changed = await document.write({
-        revision: initial.revision,
+        revision: current.revision,
         stored: { ports: { web: 5001 } },
     });
     assert.equal(changed.restartRequired, true);

@@ -4,6 +4,7 @@ import {
     render,
     screen,
     waitFor,
+    within,
 } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, expect, test } from "vitest";
@@ -39,6 +40,7 @@ function panel(split = false, confirm = false): WorkspaceViewProps["panel"] {
         layout: split
             ? {
                   type: "split",
+                  id: "ab",
                   axis: "x",
                   weights: [0.5, 0.5],
                   children: [
@@ -64,6 +66,31 @@ function panel(split = false, confirm = false): WorkspaceViewProps["panel"] {
               },
     };
 }
+
+test("selection is local to each mounted workspace and resets on remount", () => {
+    const fixture = panel();
+    const first = render(<WorkspaceView panel={fixture} terminals={{}} />);
+    const second = render(<WorkspaceView panel={fixture} terminals={{}} />);
+    const firstTabs = within(first.container);
+    const secondTabs = within(second.container);
+    fireEvent.click(firstTabs.getByRole("tab", { name: /Two/ }));
+    expect(
+        firstTabs
+            .getByRole("tab", { name: /Two/ })
+            .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+        secondTabs
+            .getByRole("tab", { name: /One/ })
+            .getAttribute("aria-selected"),
+    ).toBe("true");
+    first.unmount();
+    second.unmount();
+    render(<WorkspaceView panel={fixture} terminals={{}} />);
+    expect(
+        screen.getByRole("tab", { name: /One/ }).getAttribute("aria-selected"),
+    ).toBe("true");
+});
 
 test.each([false, true])(
     "immediate close selects the remaining tab (pane removed: %s), but never focuses the add button",

@@ -10,3 +10,5 @@ export {
     keys,
 } from "./configuration";
 export type { AioxConfig, PortOverrides, HostLayout } from "./configuration";
+
+export * from "./rpc";

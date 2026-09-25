@@ -1,19 +1,15 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { loadConfig } from "@aiox/config";
-import { logger } from "@aiox/diagnostics";
-import {
-    hostControlRequestSchema,
-    type Operation,
-    type OperationError,
-} from "@aiox/protocol";
-import type { Context } from "hono";
+import { hostControlRequestSchema } from "@aiox/protocol";
 
-import { logHostOperationAccepted } from "./host-operation-log";
+import { allTargets, commandError, type HostOutcome } from "./host-command";
 import type { HttpEnv } from "./http";
 import { HttpError, parse, readJson } from "./http";
+import type { Context } from "./http-endpoint";
 import type { DaemonServices } from "./services";
 
+/** Host stop/delete succeed only after actual termination and, for delete, its commit. */
 export async function handleHostControl(
     c: Context<HttpEnv>,
     services: DaemonServices,
@@ -24,165 +20,131 @@ export async function handleHostControl(
     const hash = createHash("sha256")
         .update(JSON.stringify([c.req.method, c.req.path, input]))
         .digest("hex");
-    const previous = await services.db.hostState.getOperation(
-        input.requestId,
-        hash,
+    return services.hostCommands.respond(
+        c,
+        {
+            requestId: input.requestId,
+            hash,
+            command: remove ? "host.delete" : "host.stop",
+        },
+        () => admitHostControl(services, input, remove, c.req.param("hostId")),
     );
-    if (previous) {
-        logHostOperationAccepted(previous, c.get("requestId"));
-        return c.json(previous, 202);
-    }
+}
+
+export async function admitHostControl(
+    services: DaemonServices,
+    input: import("@aiox/protocol").HostControlRequest,
+    remove: boolean,
+    hostId: string,
+): Promise<import("./host-command").AdmittedHostCommand> {
+    await loadConfig(services.configLocation);
+
     if (!services.lifecycle.acceptingInput())
         throw new HttpError(503, "shutting_down", "Daemon stopping.");
-    const state = await services.db.hostState.snapshot();
-    const host = state.hosts.find((h) => h.id === c.req.param("hostId"));
+    const host = await services.db.hostState.getHost(hostId);
     if (!host)
         throw new HttpError(404, "unknown_host", "No such Host.", {
             stage: "cli",
         });
-    const panel = state.panels.find((p) => p.id === host.panelId)!;
-    const operation: Operation = {
-        id: randomUUID(),
-        requestId: input.requestId,
-        kind: remove ? "host.delete" : "host.stop",
+    return {
         hostId: host.id,
-        panelId: panel.id,
-        state: "running",
-        targets: remove
-            ? panel.tabs.map((t) => ({
-                  agentKey: t.agentKey,
-                  terminalId: t.terminalId,
-                  state: "pending",
-                  error: null,
-              }))
-            : host.agents.map((a) => ({
-                  agentKey: a.key,
-                  terminalId: null,
-                  state: "pending",
-                  error: null,
-              })),
-        error: null,
-        cleanupErrors: [],
-        createdAt: Date.now(),
-        finishedAt: null,
-    };
-    const admitted = await services.db.hostState.saveOperation(operation, hash);
-    services.webEvents.notify();
-    logHostOperationAccepted(admitted, c.get("requestId"));
-    c.res = c.json(admitted, 202);
-    if (admitted.id !== operation.id) return c.res;
-
-    const task = new Promise<void>((resolve) => setImmediate(resolve)).then(
-        execute,
-    );
-    services.operationTasks.add(task);
-    void task.finally(() => services.operationTasks.delete(task));
-    return c.res;
-
-    async function execute() {
-        let stage: OperationError["stage"] = "execution";
-        const persist = async () => {
-            const previousStage = stage;
-            stage = "storage";
-            await services.db.hostState.saveOperation(operation, hash);
-            if (operation.finishedAt !== null)
-                logger[operation.state === "failed" ? "error" : "info"](
-                    {
-                        operationId: operation.id,
-                        operationRequestId: operation.requestId,
-                        requestId: c.get("requestId"),
-                        hostId: operation.hostId,
-                        state: operation.state,
-                    },
-                    "Host operation finished",
-                );
-            stage = previousStage;
-            services.webEvents.notify();
-        };
-        try {
-            for (const target of operation.targets) {
-                target.state = "stopping";
-                await persist();
-                if (remove) {
-                    if (target.terminalId) {
-                        await services.lifecycle.stopTerminal(
-                            target.terminalId,
+        agents: "all",
+        execute: async (): Promise<HostOutcome> => {
+            if (!remove) {
+                const stopped = await allTargets(host.agents, async (agent) => {
+                    const runtime = services.runtimes
+                        .list()
+                        .find(
+                            (r) => r.hostId === host.id && r.name === agent.key,
                         );
-                        if (services.terminals.view(target.terminalId)?.alive)
+                    const base = {
+                        agentKey: agent.key,
+                        terminalId: runtime?.terminalId ?? null,
+                    };
+                    try {
+                        if (runtime)
+                            await services.lifecycle.stopRuntime(runtime.id);
+                        return {
+                            target: {
+                                ...base,
+                                state: "stopped",
+                                error: null,
+                            },
+                            cleanupErrors: [],
+                        };
+                    } catch (error) {
+                        return {
+                            target: {
+                                ...base,
+                                state: "failed",
+                                error: commandError(
+                                    error,
+                                    "cleanup",
+                                    agent.key,
+                                ),
+                            },
+                            cleanupErrors: [],
+                        };
+                    }
+                });
+                return { hostId: host.id, ...stopped };
+            }
+            // Every terminal of the panel, including shells that joined meanwhile.
+            const panel = await services.db.hostState.getPanel(host.panelId);
+            const stopped = await allTargets(panel?.tabs ?? [], async (tab) => {
+                const base = {
+                    agentKey: tab.agentKey,
+                    terminalId: tab.terminalId,
+                };
+                try {
+                    if (tab.terminalId) {
+                        await services.lifecycle.stopTerminal(tab.terminalId);
+                        if (services.terminals.view(tab.terminalId)?.alive)
                             throw new Error(
                                 "Shell termination is not confirmed.",
                             );
                     }
-                } else {
-                    const runtime = services.runtimes
-                        .list()
-                        .find(
-                            (r) =>
-                                r.hostId === host!.id &&
-                                r.name === target.agentKey,
-                        );
-                    target.terminalId = runtime?.terminalId ?? null;
-                    if (runtime)
-                        await services.lifecycle.stopRuntime(runtime.id);
+                    return {
+                        target: {
+                            ...base,
+                            state: "stopped",
+                            error: null,
+                        },
+                        cleanupErrors: [],
+                    };
+                } catch (error) {
+                    return {
+                        target: {
+                            ...base,
+                            state: "failed",
+                            error: commandError(
+                                error,
+                                "cleanup",
+                                tab.agentKey ?? undefined,
+                            ),
+                        },
+                        cleanupErrors: [],
+                    };
                 }
-                target.state = "stopped";
-                await persist();
-            }
-            if (remove) {
-                stage = "storage";
-                const latest = (
-                    await services.db.hostState.snapshot()
-                ).panels.find((p) => p.id === panel.id)!;
-                // Shell-less failed-start tabs also belong to this deletion.
-                const originalIds = new Set(panel.tabs.map((t) => t.id));
-                if (latest.tabs.some((t) => !originalIds.has(t.id)))
-                    throw new HttpError(
-                        409,
-                        "revision_conflict",
-                        "Host gained tabs during termination.",
-                    );
-                await services.db.hostState.deleteHost(
-                    host!.id,
-                    latest.revision,
+            });
+            // A failed stop keeps the Host and its panel for a retry.
+            if (stopped.targets.some((t) => t.state === "failed"))
+                return { hostId: host.id, ...stopped };
+            try {
+                await services.db.hostState.deleteHost(host.id);
+            } catch (error) {
+                return {
+                    hostId: host.id,
+                    ...stopped,
+                    error: commandError(error, "storage"),
+                };
+            } finally {
+                await services.appState.update(
+                    { host: host.id },
+                    { panel: host.panelId },
                 );
             }
-            operation.state = "succeeded";
-        } catch (error) {
-            const failure: OperationError = {
-                code:
-                    error instanceof HttpError
-                        ? error.code
-                        : stage === "storage"
-                          ? "storage_error"
-                          : "execution_failed",
-                message: error instanceof Error ? error.message : String(error),
-                stage,
-            };
-            operation.error = failure;
-            operation.state = "failed";
-            if (operation.targets.some((t) => t.state === "stopping"))
-                operation.cleanupErrors.push({ ...failure, stage: "cleanup" });
-            operation.targets = operation.targets.map((t) =>
-                t.state === "stopped"
-                    ? t
-                    : { ...t, state: "failed", error: failure },
-            );
-        }
-        operation.finishedAt = Date.now();
-        try {
-            await persist();
-        } catch (error) {
-            logger.error(
-                {
-                    err: error,
-                    operationId: operation.id,
-                    operationRequestId: operation.requestId,
-                    requestId: c.get("requestId"),
-                    hostId: operation.hostId,
-                },
-                "Host operation storage failed",
-            );
-            services.webEvents.fault("storage_error", String(error));
-        }
-    }
+            return { hostId: host.id, ...stopped };
+        },
+    };
 }

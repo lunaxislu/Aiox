@@ -21,8 +21,8 @@
         "@aiox/diagnostics": "workspace:*",
         "@aiox/domain": "workspace:*",
         "@aiox/vendor": "workspace:*",
-        "ws": "8.21.3",
-        "zod": "4.5.4"
+        "effect": "4.0.0-rc.117",
+        "ws": "8.21.3"
     },
     "devDependencies": {
         "@types/ws": "8.18.1"

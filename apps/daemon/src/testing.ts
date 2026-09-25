@@ -4,6 +4,21 @@ import { join } from "node:path";
 
 import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
 import { openDatabase } from "@aiox/persistence";
+import { ApplicationRpc, type ApplicationEvent } from "@aiox/protocol";
+import { hostCommandEventSchema, type HostCommandResult } from "@aiox/protocol";
+import { NodeSocket } from "@effect/platform-node";
+import {
+    Effect,
+    Exit,
+    Fiber,
+    Layer,
+    ManagedRuntime,
+    Queue,
+    Scope,
+    Stream,
+} from "effect";
+import * as RpcClient from "effect/unstable/rpc/RpcClient";
+import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 
 import type { Daemon, DaemonOptions } from "@/daemon";
 import { startDaemon } from "@/daemon";
@@ -88,6 +103,7 @@ export async function startTestDaemon(
         now?: () => number;
         adapters?: DaemonOptions["adapters"];
         terminal?: DaemonOptions["terminal"];
+        sequenceGapTimeout?: number;
     } = {},
 ): Promise<DaemonHarness> {
     const home = await mkdtemp(join(tmpdir(), "aiox-daemon-"));
@@ -105,6 +121,9 @@ export async function startTestDaemon(
             ? {}
             : { adapters: options.adapters }),
         ...(options.now === undefined ? {} : { now: options.now }),
+        ...(options.sequenceGapTimeout === undefined
+            ? {}
+            : { sequenceGapTimeout: options.sequenceGapTimeout }),
     });
     return {
         daemon,
@@ -120,22 +139,75 @@ export async function startTestDaemon(
     };
 }
 
-/** Read one LF-delimited frame from the daemon's SSE stream. */
-export function sseFrameReader(
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-) {
-    const decoder = new TextDecoder();
-    let buffered = "";
-    return async () => {
-        while (!buffered.includes("\n\n")) {
-            const chunk = await reader.read();
-            if (chunk.done)
-                throw new Error("SSE stream ended before a complete frame");
-            buffered += decoder.decode(chunk.value, { stream: true });
-        }
-        const end = buffered.indexOf("\n\n");
-        const frame = buffered.slice(0, end);
-        buffered = buffered.slice(end + 2);
-        return frame;
-    };
+/** Reads a Host command's NDJSON answer to its final per-target result. */
+export async function hostResult(
+    response: Response,
+): Promise<HostCommandResult> {
+    if (!response.ok)
+        throw new Error(`${response.status} ${await response.text()}`);
+    const events = (await response.text())
+        .trim()
+        .split("\n")
+        .map((line) => hostCommandEventSchema.parse(JSON.parse(line)));
+    const last = events.at(-1);
+    if (last?.type !== "result") throw new Error("No Host command result.");
+    return last.result;
+}
+
+/** Real application RPC client for transport regressions; each call opens a fresh socket scope. */
+export async function openTestApplication(harness: DaemonHarness) {
+    const protocol = RpcClient.layerProtocolSocket({
+        retryTransientErrors: false,
+    }).pipe(
+        Layer.provide(
+            NodeSocket.layerWebSocket(
+                harness.webUrl("/api/rpc").replace("http:", "ws:"),
+            ),
+        ),
+        Layer.provide(RpcSerialization.layerJson),
+    );
+    const runtime = ManagedRuntime.make(protocol);
+    const scope = Effect.runSync(Scope.make());
+    try {
+        const client = await runtime.runPromise(
+            RpcClient.make(ApplicationRpc).pipe(
+                Effect.provideService(Scope.Scope, scope),
+            ),
+        );
+        const session = await runtime.runPromise(client["session.open"]());
+        const events = Effect.runSync(Queue.make<ApplicationEvent, unknown>());
+        const observed: ApplicationEvent[] = [];
+        let closed = false;
+        const subscription = runtime.runFork(
+            Stream.runForEach(
+                client["state.subscribe"]({
+                    clientSessionId: session.clientSessionId,
+                }),
+                (event) => {
+                    observed.push(event);
+                    return Queue.offer(events, event);
+                },
+            ).pipe(
+                Effect.catchCause((cause) => Queue.failCause(events, cause)),
+            ),
+        );
+        return {
+            client,
+            session,
+            observed,
+            run: <A, E>(work: Effect.Effect<A, E>) => runtime.runPromise(work),
+            next: () => runtime.runPromise(Queue.take(events)),
+            async close() {
+                if (closed) return;
+                closed = true;
+                await runtime.runPromise(Fiber.interrupt(subscription));
+                await Effect.runPromise(Scope.close(scope, Exit.void));
+                await runtime.dispose();
+            },
+        };
+    } catch (error) {
+        await Effect.runPromise(Scope.close(scope, Exit.void));
+        await runtime.dispose();
+        throw error;
+    }
 }

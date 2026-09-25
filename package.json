@@ -20,16 +20,18 @@
         "react-doctor": "react-doctor --project apps/web"
     },
     "devDependencies": {
+        "@effect/vitest": "4.0.0-rc.117",
         "@types/node": "22.20.1",
+        "fast-check": "4.10.2",
         "oxfmt": "0.66.0",
         "oxlint": "1.81.0",
         "react-doctor": "^0.9.14",
         "tsup": "8.5.1",
         "typescript": "5.9.3",
-        "vitest": "4.1.6"
+        "vitest": "5.0.1"
     },
     "engines": {
-        "node": "^22.13.0 || >=24.11.0"
+        "node": "^22.16.0 || >=24.11.0"
     },
     "packageManager": "pnpm@10.33.0",
     "pnpm": {
@@ -37,6 +39,11 @@
             "better-sqlite3",
             "esbuild",
             "node-pty"
-        ]
+        ],
+        "patchedDependencies": {
+            "tinybench@6.1.4": "patches/tinybench@6.1.4.patch",
+            "effect@4.0.0-rc.117": "patches/effect@4.0.0-rc.117.patch",
+            "xstate@5.33.2": "patches/xstate@5.33.2.patch"
+        }
     }
 }

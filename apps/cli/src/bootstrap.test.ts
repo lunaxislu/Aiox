@@ -120,6 +120,12 @@ function send(response: ServerResponse, status: number, body: unknown): void {
     response.end(JSON.stringify(body));
 }
 
+/** A Host command's NDJSON answer: only the final result line. */
+function sendResult(response: ServerResponse, result: unknown): void {
+    response.writeHead(200, { "content-type": "application/x-ndjson" });
+    response.end(`${JSON.stringify({ type: "result", result })}\n`);
+}
+
 const running = (port: number) => ({
     status: "running",
     pid: process.pid,
@@ -661,7 +667,6 @@ test("Host list/status query registered state and resolve YAML only without a na
         revision: 1,
         panelId: "panel-id",
         networkId: "network-id",
-        activeOperationId: null,
         agents: [
             {
                 key: "a",
@@ -687,18 +692,14 @@ test("Host list/status query registered state and resolve YAML only without a na
         if (call.url === "/api/hosts/host-id" && call.method === "GET")
             send(response, 200, host);
         if (call.url === "/api/hosts/host-id/stop" || call.method === "DELETE")
-            send(response, 202, {
-                id: "operation",
+            sendResult(response, {
                 requestId: JSON.parse(call.body).requestId,
-                kind: call.method === "DELETE" ? "host.delete" : "host.stop",
+                command: call.method === "DELETE" ? "host.delete" : "host.stop",
                 hostId: host.id,
-                panelId: host.panelId,
                 state: "succeeded",
                 targets: [],
                 error: null,
                 cleanupErrors: [],
-                createdAt: 1,
-                finishedAt: 2,
             });
     });
     t.onTestFinished(() => stub.close());
@@ -1038,7 +1039,6 @@ test("Host Network resolves exact names to IDs and sends explicit allow/reset op
         revision: 1,
         panelId: "panel-id",
         networkId: "network-id",
-        activeOperationId: null,
         agents: ["a", "b"].map((key) => ({
             key,
             adapter: "codex",
@@ -1083,7 +1083,7 @@ test("Host Network resolves exact names to IDs and sends explicit allow/reset op
     );
 });
 
-test("Host Agent commands resolve stop by YAML and wait on admitted operations with deduplicated keys", async (t) => {
+test("Host Agent commands resolve stop by YAML and wait for per-target results with deduplicated keys", async (t) => {
     const stub = await daemonStub((call, response, port) => {
         if (call.url === "/api/status") send(response, 200, running(port));
         if (call.url === "/api/hosts/resolve")
@@ -1091,12 +1091,10 @@ test("Host Agent commands resolve stop by YAML and wait on admitted operations w
         if (call.method === "POST" && call.url.includes("/agents/")) {
             const input = JSON.parse(call.body);
             const verb = call.url.split("/").at(-1);
-            send(response, 202, {
-                id: `op-${verb}`,
+            sendResult(response, {
                 requestId: input.requestId,
-                kind: `host.agent.${verb}`,
+                command: `host.agent.${verb}`,
                 hostId: "host-id",
-                panelId: "panel",
                 state: "succeeded",
                 targets: input.agents.map((agentKey: string) => ({
                     agentKey,
@@ -1106,8 +1104,6 @@ test("Host Agent commands resolve stop by YAML and wait on admitted operations w
                 })),
                 error: null,
                 cleanupErrors: [],
-                createdAt: 1,
-                finishedAt: 2,
             });
         }
     });

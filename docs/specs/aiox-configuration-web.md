@@ -54,7 +54,8 @@ Host panel과 Agent terminal UX가 소유한다. [Status: Committed target]
 사이드바 너비는 전역 `web.sidebar.width`로 저장한다. 양의 유한수이며 화면 기본값은 240,
 드래그는 최소 180이고 상한은 뷰포트 폭의 90%다. 열림 상태는 `web.sidebar.open`으로 같은 파일에 저장한다.
 Host 초기 기본값은 전역 `host.layout`이며 DB에 중복 저장하지 않는다. 실행 중 분할 비율·탭
-순서·선택 상태의 서버 복원은 초기 설정 저장과 별개다.
+순서의 서버 복원은 초기 설정 저장과 별개다. 활성 pane·선택 탭은 각 React 앱의 메모리 상태이며
+새로고침 시 초기 선택으로 돌아간다. 선택은 서버나 브라우저 영속 저장소에 저장하지 않는다.
 
 ### 화면 조작 keybindings
 
@@ -206,7 +207,7 @@ Persistent Network 이름은 DB에 지속한다. 참여 실행의 route 수명�
 
 새 Network·Message·Delivery·Notification 행의 ID는 UUID v7으로 생성한다. 기존 ID를 재발급하지 않으며 Runtime·terminal 참조 ID와 vendor 고유 ID의 형식은 별개다.
 
-저장 계층은 Drizzle과 better-sqlite3를 사용하며 원자적 transaction을 유지한다. 빈 DB를 현재 schema로 직접 초기화하고 저장·조회·재오픈을 검증한다. 첫 배포 전 개발 DB 변경 원칙은 [[AGENTS]]의 Development Database Before First Release를 따른다. startup에서 기존 schema를 자동 변경하거나 데이터를 삭제하지 않는다. 현재 초기화 구현과 검증 근거는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
+저장 계층은 typed Drizzle과 Effect SQLite를 사용하며 원자적 transaction을 유지한다. 빈 DB를 현재 schema로 직접 초기화하고 저장·조회·재오픈을 검증한다. 첫 배포 전 개발 DB 변경 원칙은 [[AGENTS]]의 Development Database Before First Release를 따른다. startup에서 기존 schema를 자동 변경하거나 데이터를 삭제하지 않는다. 현재 초기화 구현과 검증 근거는 [[docs/architecture/aiox-storage-terminal]]의 이력 보존과 ORM 전환을 따른다.
 
 ## 기반 구현과 검증 범위
 
@@ -219,7 +220,7 @@ Persistent Network 이름은 DB에 지속한다. 참여 실행의 route 수명�
 근거: [[packages/config/src/schema.ts]] `packages/config/src/schema.ts:180-279`,
 [[packages/config/src/schema.test.ts]] `packages/config/src/schema.test.ts:28-120`.
 
-Stage 1에서는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
+이전 Stage 1 검증에서는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
 transaction·close/reopen을 검증했다. 당시 Node 요구 조건은 >=22.12.0이며 Windows/Linux/macOS × Node22/24 CI에서
 설치·빌드·타입 검사·테스트·CLI 진단을 통과했다. vendor/PTY/WSL과 npm 전역 배포 검증은 후속 단계다.
 근거: [Stage 1 CI](https://github.com/lunaxislu/aiox-prototype/actions/runs/34189231508).
@@ -301,8 +302,12 @@ terminal의 현재 화면**이다. 단순 WebSocket 재접속만으로 요구를
 실패가 지속돼 복원할 수 없다고 확인되면 재연결을 비활성화하고 사용자 선택에 따른
 종료·새 생성을 안내한다. 원인을 확인하지 못한 연결 실패를 영구 복원 불가로 단정하지 않는다. [Status: Current]
 
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:96-195`, `apps/web/src/main.ts:438-499`,
-[[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:253-388`;
+아래 `apps/web/src/main.ts`·`main.test.ts` 인용은 React 전환 전 Stage2 검증 이력이다.
+해당 파일은 현재 없으며, 현재 React UI와 새 서버의 RPC·terminal 연결 검증은
+[[logs/2026-09-09-AIOX-TUI-Stage6-Web]]의 W10이 소유한다.
+
+근거: `apps/web/src/main.ts` `apps/web/src/main.ts:96-195`, `apps/web/src/main.ts:438-499`,
+`apps/web/src/main.test.ts` `apps/web/src/main.test.ts:253-388`;
 복원 불가 전달은 [[apps/daemon/src/terminals.ts]] `apps/daemon/src/terminals.ts:357-365`,
 [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:139-149`, `apps/web/src/attach.ts:264-269`.
 
@@ -342,8 +347,8 @@ Web의 shell 생성·알림 읽음·명시 종료 결과는 상태 조회와 분
 대상이나 조회 오류를 되돌리지 않는다. 새 작업 성공 이전에 시작한 조회도 그 결과를 되돌리는
 근거로 사용하지 않는다. [Status: Current]
 
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:53-90`, `apps/web/src/main.ts:309-428`,
-[[apps/web/src/main.test.ts]] `apps/web/src/main.test.ts:389-447`, `apps/web/src/main.test.ts:223-251`,
+근거: `apps/web/src/main.ts` `apps/web/src/main.ts:53-90`, `apps/web/src/main.ts:309-428`,
+`apps/web/src/main.test.ts` `apps/web/src/main.test.ts:389-447`, `apps/web/src/main.test.ts:223-251`,
 `apps/web/src/main.test.ts:448-492`.
 
 ## 알림·포커스·사용자 요청
@@ -377,23 +382,13 @@ Web의 shell 생성·알림 읽음·명시 종료 결과는 상태 조회와 분
 미확인 목록과 표시를 억제하고 해당 알림을 읽음 저장한다. popup·소리는 운영 Web 후속
 구현 대상이다. [Status: Current]
 
-현재 Web은 SSE 변경 통지 뒤 최신 목록을 조회하며 주기적 polling을 하지 않는다. 최초
+아직 RPC에 연결하지 않은 기존 Web은 SSE 변경 통지 뒤 최신 목록을 조회하며 주기적 polling을 하지 않는다. 최초
 연결·재연결과 창·탭 활성 복귀에도 최신 상태를 조회한다. 변경 통지 연결 실패는 별도로
 표시하며 단순 목록 조회 성공만으로 연결 복구를 주장하지 않는다. [Status: Current]
 
-`GET /api/web/events`는 `text/event-stream`으로 `event: change`, `data: {}`를 전달한다.
-연결마다 최초 통지를 보내며 알림 본문이나 누적 event 이력을 재생하지 않는다. 수신자는
-Web 전용 조회로 최신 상태를 가져온다. daemon 준비 전 접수는 거절하고 종료 시 연결을
-닫는다. [Status: Current]
-
-근거: [[apps/daemon/src/web-events.ts]] `apps/daemon/src/web-events.ts:3-36`,
-[[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:56-100`,
-`apps/daemon/src/daemon.test.ts:1734-1780`.
-
-
-근거: [[apps/web/src/main.ts]] `apps/web/src/main.ts:266-364`, `apps/web/src/main.ts:401-428`,
-`apps/web/src/main.ts:501-522`; [[apps/web/src/main.test.ts]]
-`apps/web/src/main.test.ts:630-862`.
+이전 `GET /api/web/events` SSE endpoint는 제거했다. 현재 앱 상태 전달·재접속·알림 읽음
+계약은 [[docs/specs/aiox-application-rpc]]를 따른다. 기존 React consumer를 이 RPC에 연결하는
+작업은 Stage6 W10의 후속 구현이며, 서버 변경만으로 UI 통합 완료를 뜻하지 않는다.
 
 짧은 시간에 여러 알림이 오면 항목은 남기고 소리는 묶는 방향이다. 정확한 묶음 시간,
 반복 요청 병합, 여러 탭 중 단일 소리 재생 주체, on/off·volume·차임 선택은 Open/deferred다.
@@ -477,11 +472,14 @@ effective는 기본값을 채운 config, runningPorts는 실제 listener 포트�
 Host 조회는 관리 구성을, panel 조회는 화면 배치를, 기존 `/api/terminals`는 실제 terminal 생존을
 제공한다. React는 terminal 생존을 local mock timer나 DB의 과거 실행 값으로 추측하지 않는다.
 
-PanelView는 `{id,kind,section,name,hostId,networkId,revision,layout,activePaneId,tabs}`.
+PanelView는 `{id,kind,section,name,hostId,networkId,revision,layout,tabs}`.
 kind는 `host|workspace|network`, hostId/networkId는 관련 없는 경우 null이다.
 workspace 생성은 Host·Network를 생성하지 않는다. Network panel 자동 생성·삭제 UX는 해당
 Network consumer의 후속 계약이며 이 W1의 Host 실행 panel과 혼용하지 않는다.
-revision은 이름·배치·탭 표시 변경 때 증가한다. layout은 다음 재귀 union이다.
+revision은 panel 이름·배치·탭 행 중 하나가 바뀔 때마다 서버가 1 증가시키는 변경 번호다.
+Web panel 명령은 revision을 보내지 않고 서버도 일치를 요구하지 않는다. 대신 각 명령은 아래
+대상 조건을 같은 저장 transaction에서 검사한다. Web은 같은 revision의 RPC upsert도 DTO
+전체로 교체한다. layout은 다음 재귀 union이다.
 
 `kind`는 생성 주체·수명 정책, `section`은 사이드바 표시 위치다.
 section은 `workspaces|networks|hosts`이며 서버가 다음 조합만 저장·응답한다.
@@ -493,27 +491,31 @@ section은 `workspaces|networks|hosts`이며 서버가 다음 조합만 저장·
 | network | networks만 |
 
 CLI가 만든 Host/Network panel은 서버가 고정 section을 지정한다. 무효 조합을 요구하는
-입력은 400 invalid_request다. `POST /api/panels`는 사용자 panel(kind workspace)만 만들며
+입력은 400 invalid_request다. Web 명령의 `panel.create`는 사용자 panel(kind workspace)만 만들며
 section 생략은 workspaces다. 다른 section의 사용자 panel도 Host/Network·membership을
 생성하지 않는다. 생성 후 section 변경 endpoint는 제공하지 않는다.
 
 사용자 panel 생성·rename의 name은 문자열이며 앞뒤 ECMAScript trim 공백을 제거한 값을
 저장·응답한다. 정규화 후 Unicode code point 기준 1~128자이고 U+0000~U+001F·U+007F
 제어 문자는 허용하지 않는다. 빈 문자열·공백만·상한 초과·제어 문자는 400 invalid_request와
-field:name이다. 사용자 panel 이름은 같은 section을 포함해 중복을 허용한다. 선택·rename·
+field:name이다. 사용자 panel 이름은 같은 section을 포함해 중복을 허용한다. rename·
 삭제는 ID로 수행하며 이름을 ID 대용으로 쓰지 않는다. Host/Network 이름 유일성은 별도 owner
 계약을 유지한다. 이 이름 규칙은 사용자 panel 전용이며 CLI 이름을 임의 trim하지 않는다.
 
 ```text
-Pane  = {type:"pane", id, tabIds:string[], selectedTabId:string|null}
-Split = {type:"split", axis:"x"|"y", weights:number[], children:(Pane|Split)[]}
+Pane  = {type:"pane", id, tabIds:string[]}
+Split = {type:"split", id, axis:"x"|"y", weights:number[], children:(Pane|Split)[]}
 x: 좌→우, y: 위→아래; children 최소 2, weights는 같은 길이의 양의 유한수, 합계 1
 ```
 
-pane ID는 panel 안에서 유일하다. 모든 tab은 정확히 한 pane에 한 번만 나타나고 selectedTabId는
-그 pane 안의 tab 또는 빈 pane의 null이다. activePaneId는 존재하는 pane다. tabId/terminalId는
+pane ID와 split ID는 panel 안에서 서로 겹치지 않게 유일하다. 모든 tab은 정확히 한 pane에 한 번만 나타난다. tabId/terminalId는
 별개이며 이동으로 어느 것도 바뀌지 않는다. 같은 terminal은 panel들에 중복 소유되지 않는다.
 현재 배치의 사각형 top, 그다음 left 순으로 다음 Agent 배치 순서를 계산한다.
+
+활성 pane과 각 pane의 선택 탭은 각 React 앱의 메모리 상태다. 선택 조작은 서버 명령을 보내거나
+DB에 저장하지 않으며 다른 창에 방송하지 않는다. 새로고침하면 초기 선택으로 돌아가고
+localStorage 등으로 복원하지 않는다. 서버의 구조 변경으로 선택 대상이 사라지면 React 앱이
+남은 pane·tab 중에서 선택을 조정한다. 서버 DTO에는 activePaneId·selectedTabId가 없다.
 
 TabView는 `{id,terminalId,label,agentKey,runtimeId,presentation,notice}`.
 terminalId/agentKey/runtimeId는 nullable, presentation은 `shell|preparing|tui|stopped|start-failed|crashed|unavailable`.
@@ -525,76 +527,123 @@ reason은 nullable이다. restartCommand는 daemon이 해당 shell 플랫폼 quo
 ```json
 {
   "id":"p1","kind":"host","section":"hosts","name":"feature-host","hostId":"h1","networkId":"n1","revision":4,
-  "layout":{"type":"pane","id":"pane1","tabIds":["tab1"],"selectedTabId":"tab1"},
-  "activePaneId":"pane1",
+  "layout":{"type":"pane","id":"pane1","tabIds":["tab1"]},
   "tabs":[{"id":"tab1","terminalId":"t1","label":"reviewer","agentKey":"reviewer","runtimeId":null,
     "presentation":"stopped","notice":{"message":"Agent has stopped.","reason":null,
       "restartCommand":"aiox host agent start reviewer --path /work/project --file aiox.dev.yaml"}}]
 }
 ```
 
-| Method / path | body / caller | 결과 |
+Web의 panel 등록·배치 변경은 명령 endpoint 하나로 보낸다. 한 명령은 한 panel의 서로 의존하는
+변경을 담을 수 있고, 그 변경 전체가 하나의 transaction으로 commit되거나 전부 거절된다. 전체 panel을
+덮어쓰는 요청은 없으며 각 변경은 대상과 관계만 표현한다. 서로 다른 요청을 서버가 의미상 병합하지는
+않는다.
+
+| Method / path | 요청 | 결과 |
 | --- | --- | --- |
-| `POST /api/panels` | Web 각 section [+]: `{name,section?:"workspaces"\|"networks"\|"hosts"}` | 201 PanelView, kind workspace, section 생략 시 workspaces, 빈 pane 하나 |
-| `PUT /api/panels/:id/name` | Web 사용자 panel rename: `{revision,name}` | 200 PanelView; 이름·revision 저장 뒤 panel upsert |
-| `PUT /api/panels/:id/layout` | Web 이동·분할·비율·선택: `{revision,layout,activePaneId}` | 200 PanelView; 프로세스 변경 없음 |
-| `POST /api/panels/:id/shells` | Web [+]/분할: `{requestId,revision,paneId,split?:"right"|"down",cols?,rows?}` | 202 Operation; shell 준비·배치 저장 후 succeeded |
-| `DELETE /api/panels/:id/tabs/:tabId` | Web ×: `{requestId,revision,expectedRuntimeId:string|null,confirm:boolean}` | 202 Operation; 실제 종료 후 tab 제거 |
-| `POST /api/panels/:id/tabs/:tabId/dismiss` | Web Copy 성공 후: `{revision}` | 200 PanelView, 같은 shell 표시 |
-| `DELETE /api/panels/:id` | Web workspace 삭제: `{requestId,revision,confirm:true}` | 202 Operation; workspace만 허용, host kind는 Host delete 경로로 처리 |
+| `POST /api/web/commands` | `{clientSessionId,sequence,requestId,panelId,changes:PanelChange[]}` | 200 `{requestId,sequence,panel:PanelView\|null}`: changes 전체 commit 뒤 응답. panel.delete면 null |
 
-network kind의 panel 삭제는 이 endpoint에서 400 invalid_request다.
-rename은 section과 무관하게 kind workspace만 허용한다. kind host/network는 400
-invalid_request, 없는 ID는 404 unknown_panel, 오래된 revision은 409 revision_conflict다.
-name 검증·revision 비교·저장은 같은 변경 경계에서 처리하고 실패하면 기존 이름을 보존한다.
-성공하면 revision을 증가시키고 최신 PanelView를 반환·SSE로 전달한다. CLI Host/Network의
-이름이나 YAML을 연쇄 변경하지 않는다.
+| PanelChange `type` | 필드 | 등록·배치 결과 | commit 뒤 daemon 작업 |
+| --- | --- | --- | --- |
+| `panel.create` | `name`, `section?`, `paneId`, `tabId`, `cols?`, `rows?` | kind workspace panel과 pane 하나·준비 중 tab 하나. changes의 첫 항목만 허용 | shell 준비 |
+| `panel.rename` | `name` | 이름만 저장 | 없음 |
+| `panel.delete` | `confirm:true` | workspace panel과 모든 tab 제거. changes의 마지막 항목만 허용 | 소유 terminal 정리 |
+| `tab.create` | `tabId`, `target`, `cols?`, `rows?` | 준비 중 tab을 target에 추가 | shell 준비 |
+| `tab.move` | `tabId`, `target` | 기존 tab을 target으로 옮기고 빈 pane을 병합 | 없음. 기존 shell 유지 |
+| `tab.close` | `tabId`, `expectedRuntimeId`, `confirm` | tab 제거와 빈 pane·split·포커스 정리 | terminal 정리 |
+| `tab.dismiss` | `tabId` | 종료 안내를 같은 shell 표시로 바꿈 | 없음 |
+| `split.resize` | `splitId`, `children`, `weights` | 해당 split 비율만 저장 | 없음. PTY cols·rows와 별개 |
 
-탭 닫기가 confirm:false에서 409 confirmation_required로 거절되면 Operation은 생성되지
-않는다. 사용자가 확인한 confirm:true 요청은 새 requestId를 사용한다. 이미 보낸 동일 요청의
-응답 유실 재전송은 같은 requestId와 같은 body를 재사용하는 별도 경우다.
+`target`은 생성과 이동이 같은 형식을 쓴다. `{toPaneId,beforeTabId?}`는 기존 pane의 삽입 위치이고
+`{split:{targetPaneId,side:"left"|"right"|"top"|"bottom",paneId,splitId}}`는 기준 pane 옆의 새 분할이다.
+새 panel은 pane 하나와 tab 하나로 시작하며 빈 pane만 가진 panel을 만들지 않는다.
 
-새 pane ID는 Web이 UUID로 생성할 수 있으나 tabId/terminalId는 서버 생성 값만 허용한다.
-layout PUT은 기존 tab 집합을 정확히 보존하며 프로세스 생성/삭제를 표현하지 않는다.
-마지막 tab을 다른 pane으로 옮기면 빈 pane을 병합할 수 있고 마지막 tab을 닫으면
-마지막 빈 pane·panel·[+]를 유지한다. shell 생성과 분할은 성공한 생성·저장 시 함께 공개한다.
+network kind의 panel 삭제는 400 invalid_request다. rename도 kind workspace만 허용하며 kind
+host/network는 400 invalid_request, 없는 ID는 404 unknown_panel이다. name 검증·저장은 같은 변경
+경계에서 처리하고 실패하면 기존 이름을 보존한다. 성공하면 revision을 증가시키고 최신 PanelView를
+반환·RPC로 전달한다. CLI Host/Network의 이름이나 YAML을 연쇄 변경하지 않는다.
+
+변경의 대상 조건은 다음과 같다. 조건 검사와 저장은 같은 transaction이며 하나라도 실패하면
+명령 전체가 상태를 바꾸지 않는다. 같은 명령의 앞 변경이 만든 panel·tab을 뒤 변경이 대상으로 쓸 수 있다.
+
+- 공통: 삭제된 panel ID는 409 `id_deleted`, 존재한 적 없는 ID는 404 `unknown_panel`이다.
+- move: 탭이 이 panel 소속이 아니면 404 `unknown_tab`, 삭제된 탭이면 409 `id_deleted`다.
+  목적지·대상 pane이 없으면 404 `unknown_pane`이며 서버의 기존 위치를 유지한다. beforeTabId가
+  목적지 pane에 없으면 맨 뒤에 둔다. 여러 창에서 같은 탭을 이동하면 서버가 마지막으로 처리한 이동이 남는다.
+- resize: split이 없으면 404 `unknown_split`, children이 그 split의 현재 자식 ID 순서와 다르면
+  409 `layout_changed`다.
+- create: 대상 pane이 없으면 404 `unknown_pane`이다. panel·tab·pane·split ID가 사용 중이면 409
+  `id_conflict`, 삭제된 ID면 409 `id_deleted`다.
+- close: expectedRuntimeId·confirm 규칙은 아래 닫기 계약을 따르며 준비 중 shell 탭은 확인 없이 닫는다.
+  Host 명령이 그 Agent를 바꾸는 중이면 409 `host_busy`다.
+
+진행 중 작업과 새 명령은 실제로 충돌하는 조합만 거절한다. shell 준비·종료는 명령을 막지 않는다.
+Host run/restart와 Agent start/stop 중에도 선택·이동·비율·이름 변경, shell 생성과 shell 탭 닫기를
+허용한다. 그 작업 대상 Agent 탭의 닫기는 409 `host_busy`다. restart의 Agent 탭 제거·추가는 저장
+시점의 최신 배치에 적용하고 사용자가 옮긴 탭은 제자리에 둔다. panel 삭제는 commit 즉시 끝나므로
+이후 그 panel의 명령은 `id_deleted`다.
+
+#### 명령 순서와 재전송
+
+앱 명령은 Effect RPC의 `panel.command`로 전달한다. 기존 requestId·sequence·panelId·changes[]와
+배치 DTO를 유지하며, 서버 발급 session·연속 checkpoint·pending 합류·과거 결과 만료·gap·재접속
+계약은 [[docs/specs/aiox-application-rpc]]이 소유한다. 클라이언트가 임의 session을
+만들거나 daemon 재시작 뒤 옛 요청을 자동으로 다시 실행하지 않는다.
+
+완료 결과 payload는 cache하지 않는다. 이미 확정된 요청은 `result_expired`로 거절하고 현재
+snapshot으로 상태를 확인한다. 실제 실행 중인 요청은 단순 시간 초과로 미실행 취급하지 않는다.
+
+#### ID·shell 준비·닫기
+
+panel·tab·pane·split ID는 Web이 UUID로 생성하고 terminalId·runtimeId는 서버만 생성한다.
+삭제된 panel·tab ID는 서버가 기록해 재사용을 거절하며 이 기록은 자동 삭제하지 않는다.
+마지막 tab을 다른 pane으로 옮기면 빈 pane을 병합하고 마지막 tab을 닫으면 panel과 빈 pane 하나를 유지한다.
 Host shell cwd는 Host directory, workspace shell cwd는 공통 config 규칙이다.
 
+tab 생성의 성공은 panel·pane·split·tab 등록의 commit이다. HTTP는 shell 준비를 기다리지 않는다.
+daemon이 commit 뒤 shell을 병렬로 준비하고 먼저 준비된 탭은 다른 준비를 기다리지 않는다. 준비가
+끝나면 같은 transaction에서 그 탭이 아직 terminal 없이 준비 중인지 확인한 뒤 terminalId를 연결하고
+shell 표시로 바꾼다. 연결은 탭 위치를 바꾸지 않으므로 준비 중 이동은 유지된다. 탭이 닫혔거나 panel이
+삭제됐으면 연결하지 않고 생성된 shell을 정리 대상으로 넘긴다. 연결 저장 자체가 실패해도 shell을
+정리 대상으로 추적하고 탭을 실패로 표시한다. shell 생성 실패는 등록을 되돌리지 않고 탭을 start-failed와
+실제 원인의 notice로 바꾼다. daemon 재시작 복구는 terminalId 없는 준비 중 shell 탭을 start-failed로
+바꾼다. 이 DB 복구는 프로세스 종료의 근거가 아니다.
+
 닫기는 서버가 현재 Runtime 신원을 expectedRuntimeId와 비교한다. 실행 중이면 confirm:true를
-요구하고 UI가 확인한다. stopped 안내 ×는 confirm:false로 가능하지만 기반 shell의 실제 종료를
-확인한다. 그 사이 새 Runtime이 시작됐으면 409이며 옛 확인으로 새 실행을 종료하지 않는다.
-일반 shell의 닫기도 그 shell 작업을 종료하는 동작이다. `dismiss`는 종료 안내이고 기반 shell이
-살아 있을 때만 허용하며 agentKey/runtimeId/notice를 null로 바꾼다. 관리 Agent는 지우지 않는다.
-shell 자체 생성 실패로 terminalId가 null이면 실패 tab에 진단을 남긴다. 이때 Copy는 명령만
-복사하고 기존 shell이 없다는 이유를 표시하며 dismiss나 shell 생성을 하지 않는다.
-clipboard 쓰기 실패는 dismiss를 호출하지 않는다. dismiss 저장 실패는 안내를 유지하고 재시도한다.
+요구하고 UI가 확인한다. stopped 안내 ×는 confirm:false로 가능하다. 그 사이 새 Runtime이 시작됐으면
+409 `runtime_conflict`이며 옛 확인으로 새 실행을 종료하지 않는다. 일반 shell의 닫기도 그 shell
+작업을 종료하는 동작이다. `dismiss`는 종료 안내이고 기반 shell이 살아 있을 때만 허용하며
+agentKey/runtimeId/notice를 null로 바꾼다. 관리 Agent는 지우지 않는다. shell 자체 생성 실패로
+terminalId가 null이면 실패 tab에 진단을 남긴다. 이때 Copy는 명령만 복사하고 dismiss나 shell 생성을
+하지 않는다. clipboard 쓰기 실패는 dismiss를 호출하지 않는다.
 
-배치 PUT/Copy는 DB commit 뒤 200, 실행 제어는 202 뒤 Operation 완료를 기다린다.
-revision 불일치는 409 `revision_conflict`이며 최신 panel을 GET하고 충돌을 표시한다.
-저장 실패 시 낙관적 이동은 마지막 서버 배치로 되돌리고 terminal 연결은 유지한다.
-실패한 shell 생성의 정리가 불완전하면 Operation과 생성 terminal을 조회 가능하게 남기며
-보이지 않는 고아 프로세스를 성공 처리하지 않는다. 임의 다른 panel로 이동하는 API는 이 범위에 없다.
+탭·panel 제거와 프로세스 정리는 별개의 결과다. tab.close·panel.delete의 성공은 배치 제거의
+commit이며 프로세스 종료 성공을 뜻하지 않는다. 제거된 탭의 terminal은 daemon이 이어서 종료하고
+종료가 확인될 때까지 RPC delta의 `cleanup`으로 대상 terminalId·panelId·tabId·이유·상태·실제 원인·시도
+횟수를 공개한다. 종료 확인에 실패하면 `state:"failed"`와 원인을 남기고 daemon이 재시도하며,
+확인되면 remove로 사라진다. 실패를 어디에 표시할지는 Web 화면 규칙이 정한다.
 
-### 상태 전달·terminal 연결과 mock 전환 [Status: Committed target]
+새로고침·연결 끊김·HTTP abort는 취소가 아니다. 사용자 취소는 명시적 닫기·삭제 명령뿐이며
+Web은 재접속 RPC snapshot으로 상태를 다시 확인한다.
 
-HTTP는 명령 접수·성공·실패와 상태 조회를, `GET /api/web/events` SSE는 변경된 상태의
-직접 전달을 담당한다. 아래는 새 계약이며 현재 WebEvents의 빈 `change` 알림 구현과 구별한다.
-임시 HTML·JavaScript Web은 React 전환 때 폐기하며 그 consumer의 전체 재조회 방식을
-유지할 의무는 없다. React 내부 상태 관리·이벤트 보관 구현은 Stage6 책임이다.
+### 상태 전달·terminal 연결과 mock 전환 [Status: Current]
 
-명령 HTTP 응답과 SSE는 용도가 다르다. 동기 변경은 commit 뒤 200, 실행 제어는 접수 뒤
-202 Operation을 반환한다. SSE는 실제 관측·저장 반영 뒤 발행하며, 202를 준비·종료 완료로
-전달하지 않는다. 정상 변경마다 GET을 요구하지 않는다. HTTP 응답과 SSE의 도착 순서는
-보장하지 않는다. 동일한 작업을 CLI에서 수행해도 같은 상태 전달 경로를 사용한다.
+앱 명령·상태·알림은 `WS /api/rpc`의 Effect RPC를 사용한다. wire schema, 세션 수명과
+snapshot/delta 적용 계약은 [[docs/specs/aiox-application-rpc]]가 소유한다. CLI HTTP/NDJSON과
+MCP·정적 HTTP는 유지한다. 기존 Web 소스의 RPC client/store/hooks 연결은 후속 작업이다.
+
+명령 성공은 등록·배치 commit이며 shell 준비나 프로세스 종료 완료가 아니다. 실제 준비·종료·정리
+결과는 panel·terminal·cleanup delta로 전달한다. 응답의 state와 같은 delta가 구독에 전달되며
+도착 순서는 보장하지 않는다. CLI 명령의 변경도 같은 앱 상태에 반영하지만 CLI는 자기 HTTP 결과를 기다린다.
 
 | resource | upsert의 value | 전달 계기 |
 | --- | --- | --- |
-| `host` | HostView | 생성·적용 구성·관리 Agent 실행 상태·activeOperationId 변경 |
+| `host` | HostView | 생성·적용 구성·관리 Agent 실행 상태 변경 |
 | `network` | HostNetworkView 또는 기존 persistent NetworkView | 생성·membership·route 변경 |
 | `panel` | PanelView | 생성·배치·탭 추가/제거·탭 표시 변경 |
 | `terminal` | 기존 TerminalView | terminal 생성·종료 또는 조회 DTO의 상태 변경 |
 | `agent` | 기존 Web AgentView | standalone를 포함한 Web Agent 조회 상태 변경 |
-| `operation` | Operation | 접수·대상 진행·실제 성공/실패 확정 |
+| `cleanup` | CleanupView `{id,terminalId,panelId,tabId,reason,state,error,attempts,updatedAt}` | 제거된 탭·panel의 terminal 종료 대기·실패; 종료 확인 시 remove |
 | `notification` | WebNotificationView | 미확인 알림 생성; 읽음 처리·보존 만료 시 remove |
 
 upsert는 해당 조회와 같은 **완전한 DTO**이며 임의 field patch가 아니다. 삭제는
@@ -612,8 +661,8 @@ shell·Agent를 재생성하지 않는다. 기존 탭 이동·배치 변경은 H
 #### 외부 CLI Agent 조회 [Status: Committed target]
 
 기존 AgentView에 `executionOwnership:"daemon"|"external"`을 추가한다. 별도 카드 전용
-API를 만들지 않고 `/api/agents`, `/api/web/agents`와 SSE snapshot.agents/state의 agent에
-같은 필드를 노출한다. SSE state의 agent 변경 id는 기존 AgentView.agentId다. Web 조회와 SSE는
+API를 만들지 않고 `/api/agents`, `/api/web/agents`와 RPC snapshot.agents/state의 agent에
+같은 필드를 노출한다. RPC state의 agent 변경 id는 기존 AgentView.agentId다. Web 조회와 RPC는
 external도 포함하며 실제 상태·관측 오류·생성·종료 변경을 전달한다. Web 소유 실행만 필터하던
 현재 구현을 새 목표의 필터로 유지하지 않는다. CLI 조회의 기존 필터는 그대로 적용한다.
 
@@ -631,7 +680,7 @@ terminal 연결·Web 알림 대상이 아니다. Web 제어 API도 이 소유권
 [[packages/protocol/src/index.ts]]의 externalAgentRunSchema와
 [[apps/daemon/src/agent-controller.ts]]를 근거로 한다.
 
-#### 미확인 Web 알림 HTTP·SSE [Status: Committed target]
+#### 미확인 Web 알림 HTTP·RPC [Status: Current]
 
 알림 목록은 미확인 항목만 담는다. snapshot.notifications는 `WebNotificationView[]`이며
 `readAt:null`인 Web 알림만 포함한다. 배지 수는 이 배열의 항목 수다. UI의 이동·Clear all
@@ -657,11 +706,9 @@ terminal이 없다는 뜻이며 읽음 처리 가능 여부와는 별개다.
 항목을 제거하는 이벤트도 소비 결과를 바꾸지 않는다.
 
 ```text
-event: state
-data: {"changes":[{"resource":"notification","action":"upsert","id":"notice1","value":{"id":"notice1","originRuntimeId":"r1","body":"Input required","createdAt":1789948800000,"readAt":null,"terminalId":"t1"}}]}
+{"type":"delta","epoch":"e1","version":1,"changes":[{"resource":"notification","action":"upsert","id":"notice1","value":{"id":"notice1","originRuntimeId":"r1","body":"Input required","createdAt":1789948800000,"readAt":null,"terminalId":"t1"}}]}
 
-event: state
-data: {"changes":[{"resource":"notification","action":"remove","id":"notice1"}]}
+{"type":"delta","epoch":"e1","version":2,"changes":[{"resource":"notification","action":"remove","id":"notice1"}]}
 ```
 
 조회·snapshot·state·읽음 처리 모두 저장된 originExecutionOwnership이 daemon인 항목만
@@ -674,41 +721,13 @@ data: {"changes":[{"resource":"notification","action":"remove","id":"notice1"}]}
 경우 정리한다. 진행 중 메시지의 알림은 설정 기간보다 오래 남을 수 있으며 알림 생성 시각만
 기준으로 먼저 지우지 않는다. 읽음 이력을 보여 주는 별도 조회나 dismissedAt을 추가하지 않는다.
 
-#### SSE wire와 최초·재접속 snapshot
+#### RPC stream과 최초·재접속 snapshot
 
-`GET /api/web/events`는 새 연결마다 첫 상태 이벤트로 전체 `snapshot`을 보내고,
-이후 같은 연결에서 `state`로 변경된 DTO를 보낸다. 별도 ready 이벤트나 Web 초기 동기화용
-HTTP snapshot endpoint는 만들지 않는다. 기존 개별 GET은 CLI·명시적 조회·Operation 결과
-확인용으로 유지한다. HTTP 명령은 계속 사용하며 응답은 접수·성공·실패를 나타낸다.
-
-```text
-event: snapshot
-data: {"hosts":[],"networks":[],"panels":[],"terminals":[],"agents":[],"operations":[],"notifications":[]}
-
-event: state
-data: {"changes":[{"resource":"terminal","action":"remove","id":"t1"}]}
-```
-
-빈 배열 예시는 자원이 없는 서버의 정상 snapshot이다. 각 배열은 위 resource의 조회 DTO를
-사용하며 operations는 보존 중인 Operation이다. snapshot은 현재 조회 가능한 전체 상태이며
-재접속 때도 이전 목록에 더하는 차분이 아니다. upsert 형식은
-`{resource,action:"upsert",id,value}`다. 같은 반영 단위의 변경들은 하나의 changes에 담는다.
-
-서버는 snapshot의 상태 시점을 확정하고, 그 이후 변화가 빠짐없이 snapshot 뒤의 state로
-전달되도록 구독 등록·snapshot 생성·송신을 연결한다. snapshot 준비 중의 변경도 누락하거나
-snapshot보다 먼저 보내지 않는다. 하나의 연결은 snapshot → 이후 상태 반영 순서로 송신하며,
-독립 GET 결과를 조합해 서로 다른 시점의 snapshot을 만들지 않는다. HTTP와 SSE를 비교하기
-위한 epoch/sequence나 별도 조회 헤더는 요구하지 않는다. Host/Panel의 쓰기 충돌 검사
-revision은 그대로 유지한다.
-
-snapshot 생성 실패는 빈 정상 snapshot으로 보내지 않는다. stream 시작 전이면 공통 HTTP
-오류, 시작 후이면 `event: fault`와 `{code,message}` 진단을 보내고 연결을 종료한다. fault는
-상태 데이터가 아니며 새 연결에서 snapshot부터 다시 시작한다. 새로고침·연결 종료 자체로
-Agent·shell을 종료하지 않으며, daemon 재시작의 unavailable 상태는 기존 복원 정책을 따른다.
-
-과거 이벤트 replay/Last-Event-ID 복원·주기적 전체 polling은 요구하지 않는다. 느리거나
-실패한 SSE 연결은 종료하고 재접속 snapshot으로 복원한다. config는 확정된 조회·저장
-모델을 유지하며 이 SSE 대상이 아니다. 알림도 위 snapshot/state로 전달하며 새 React 계약에 별도 change 알림 경로를 두지 않는다.
+최초·재접속은 `state.subscribe`의 현재 snapshot으로 상태를 교체한다. 그 뒤 같은 epoch의
+versioned delta를 적용한다. 구독 등록과 snapshot 캡처는 같은 임계 구간에 연결되며 상태 누락을
+허용하지 않는다. 느린 소비자는 제한된 queue가 가득 차면 실패시키고 snapshot 재접속으로 복구한다.
+구체적인 이벤트 shape·상한·복구·sequence-failure 의미는 [[docs/specs/aiox-application-rpc]]를 따른다.
+설정 watcher·과거 이벤트 replay·정기 전체 재조회는 요구하지 않는다.
 
 terminal 연결은 기존 `WS /ws/terminal/:terminalId`를 사용한다. client의 binary는 사용자 입력,
 JSON은 `{type:"resize",cols,rows}`, `{type:"ack",offset}`, `{type:"response",data}`다.
@@ -721,14 +740,14 @@ response는 지정된 respond owner만 보내고 ack는 렌더 파싱 완료 byt
 
 React terminal 객체·WS 수명은 terminalId로 관리하고 pane 컴포넌트 이동과 분리한다.
 resize는 실제 표시 크기로 보내며 이동만으로 shell/Agent를 재생성하지 않는다.
-재접속 시 SSE의 Host/panel snapshot 수신 후 살아 있는 같은 terminal에 snapshot attach한다. daemon 재시작으로
+재접속 시 RPC의 Host/panel snapshot 수신 후 살아 있는 같은 terminal에 snapshot attach한다. daemon 재시작으로
 terminal이 없으면 unavailable과 원인을 표시하며 저장된 ID로 새 shell을 자동 생성하지 않는다.
 
 최소 mock은 이 HTTP 경계의 DTO/오류와 위 snapshot/state 계약을 제공한다. 컴포넌트별 더미 상태를 만들지
 않고 아래 전이를 같은 fixture의 응답 교체로 제공한다. 실제 xterm bytes는 기존 WS consumer로
 교체하며 mock 성공을 PTY 생존·resize·vendor 준비 실측으로 보고하지 않는다.
 
-| 입력/관측 | Operation / 조회 전이 | React 표시 |
+| 입력/관측 | Host 명령 결과 / 조회 전이 | React 표시 |
 | --- | --- | --- |
 | run/start 접수 | running, runtime.phase preparing | preparing 라벨; 입력 shell은 stream 유지 |
 | binding+중계 ready | target ready, 전 대상 완료면 succeeded | 같은 terminal TUI |
@@ -739,5 +758,5 @@ terminal이 없으면 unavailable과 원인을 표시하며 저장된 ID로 새 
 | Copy | clipboard→dismiss 200 | 같은 shell, 관리 카드 stopped 유지 |
 | 다른 shell에서 start 실패 | 새 tab start-failed; 옛 stopped 유지 | 두 자리를 유지 |
 | 다른 shell에서 ready | 새 TUI 확보 후 옛 stopped shell 종료·tab 제거 | 이미 일반 shell인 옛 tab은 보존 |
-| cleanup 실패 | failed/stop_incomplete + cleanupErrors | 남은 자원·재시도 안내, panel 유지 |
-| SSE/WS 손실 | 생존 상태를 임의 변경하지 않음 | 연결 경고→조회/동일 terminal 복원 |
+| cleanup 실패 | Host: failed + 대상 오류, Web 탭: cleanup failed | 남은 자원·재시도 안내 |
+| RPC/WS 손실 | 생존 상태를 임의 변경하지 않음 | 연결 경고→조회/동일 terminal 복원 |

@@ -17,10 +17,9 @@ export async function managedLaunch(
     const terminal = services.terminals.authenticateContext(
         input.terminalContext,
     );
-    const state = await services.db.hostState.snapshot();
-    const host = state.hosts.find((h) => h.id === hostId);
+    const host = await services.db.hostState.getHost(hostId);
     const agent = host?.agents.find((a) => a.key === agentKey);
-    const panel = state.panels.find((p) => p.id === host?.panelId);
+    const panel = host && (await services.db.hostState.getPanel(host.panelId));
     if (
         !host ||
         !agent ||

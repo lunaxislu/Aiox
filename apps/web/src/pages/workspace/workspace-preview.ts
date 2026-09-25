@@ -1,11 +1,11 @@
+import { type TabView } from "@aiox/protocol";
+
+import type { WorkspaceLayout } from "@/entities/panel/workspace-fixtures";
 import {
     panelLayoutReferences,
     removePanelTabs,
     type PanelLayout,
-    type TabView,
-} from "@aiox/protocol";
-
-import type { WorkspaceLayout } from "@/entities/panel/workspace-fixtures";
+} from "@/entities/panel/workspace-layout";
 
 type Pane = Extract<PanelLayout, { type: "pane" }>;
 export function updatePane(
@@ -44,7 +44,7 @@ export function selectPreviewTab(
     };
 }
 
-/** 배치·초점 재정렬은 daemon과 같은 `removePanelTabs`를 쓰고 탭 목록만 여기서 줄인다. */
+/** Prune the shared layout and reconcile this React app's local selection. */
 export function closePreviewTab(
     state: WorkspaceLayout,
     tabId: string,
@@ -54,6 +54,9 @@ export function closePreviewTab(
         tabs: state.tabs.filter((tab) => tab.id !== tabId),
     };
 }
+
+/** A new split is named after the pane it introduces, so both IDs travel together. */
+export const splitIdFor = (paneId: string) => `split:${paneId}`;
 
 export function addPreviewShell(
     state: WorkspaceLayout,
@@ -66,6 +69,7 @@ export function addPreviewShell(
         axis
             ? {
                   type: "split",
+                  id: splitIdFor(newPaneId),
                   axis,
                   weights: [0.5, 0.5],
                   children: [
@@ -187,6 +191,7 @@ export function movePreviewTab(
         };
         return {
             type: "split",
+            id: splitIdFor(newPaneId),
             axis: target.zone === "left" || target.zone === "right" ? "x" : "y",
             weights: [0.5, 0.5],
             children:

@@ -15,11 +15,39 @@ status: open
 - [x] W7 알림 fixture UI 구현과 사용자 시각 확인 PASS 완료. 고정 제목·Clear all, ScrollArea 목록·구분선·최신순·상대 시각, runtime 대상 이동과 NotFound를 반영했다. 실제 SSE·확인 API 및 삭제 후 최신 대상 탐색은 W10에서 연결·검증한다.
 - [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
 - [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
-- [>] W10 실제 daemon 연결과 통합 검증을 소유한다. main을 merge해 `@aiox/protocol`의 zod·타입이 이미 들어왔고 apps/web에는 임시 정의도 MSW도 만든 적이 없으므로 교체·제거 작업은 없다. 화면을 실제 HTTP·SSE·WS에 붙이고 PTY 입출력·resize·shell 생존과 재접속 복원을 확인한다. Stage5 W11이 갖고 있던 W5~W10 실제 화면 연결과 전체 흐름 통합 검증을 이 항목이 흡수한다. 검증에서 서버 쪽 결함이 나오면 apps/daemon·packages/protocol은 Stage5 단독 수정이므로 고치지 않고 Stage5 W11로 넘긴다. 운영 Web 내부 구조는 docs/architecture/aiox-system.md에 반영한다. Force stop 연결을 명시적으로 포함한다: 세 복구 상태의 버튼 → 확인 dialog → 최신 PanelView의 revision/runtime와 새 requestId로 기존 탭 종료 DELETE → Operation 성공·실패 관측 → 서버 배치 반영. 실패 표시·재시도와 실제 PTY 종료를 통합 검증한다. 서버 빈 pane·포커스 정리 보완 결과를 먼저 확인한다. W5의 TerminalSurface 표시 수명 구조를 실제 attach에 연결한다. pane 이동은 연결 유지, 숨김·workspace 이탈은 브라우저 자원 정리, 재선택은 복원하며 layout PUT과 실패·revision 충돌도 검증한다.
-- [ ] W11 서버 에이전트 구현 완료 보고 수신. removePanelTabs의 빈 pane·split·포커스 정리와 removeTerminal의 원자 저장은 직접 코드로 확인했다. 보고된 147개 테스트를 이 턴에 재실행하지는 않았다. 문서의 빈 pane·분할 유지 설명 정합성과 Web 통합 검증이 남았다.
+- [>] W10 완료된 W15 서버 계약·W16 리뷰 수정·W17 클라이언트 선택 분리를 소비해 React 실연결을 수행한다. docs/specs/aiox-application-rpc.md와 @aiox/protocol을 기준으로 RPC·TanStack DB·낙관적 변경·재접속·알림·실 PTY 연결을 구현/검증한다. activePaneId·selectedTabId는 React 메모리에만 두고 새로고침 시 초기화한다. Settings·Keybinding은 이후다. next: 「2026-09-25 · pane·탭 선택의 클라이언트 전용화와 리뷰 결과 소비」.
+- [x] W11 서버 제거·빈 pane/split 정리와 원자 저장 검토를 완료했다. W17에서 선택을 클라이언트 전용으로 분리하고 owner 정합과 직접 회귀 검증을 완료했다. 실제 Web RPC·PTY 통합 검증은 W10이 소유한다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
+- [x] W13 W10 지원 조사와 테스트 도구 업그레이드. Effect v4 SQL·Drizzle·Workflow·RPC·Automerge·Schema를 조사하고 루트 Vitest5.0.1을 적용했다. 상세 근거·미검증 범위는 [조사 보고서](artifact/2026-09-25-Effect-v4-Ecosystem-Research.md), 실행 결과는 「2026-09-25 · W13 Effect v4 조사와 테스트 도구 전환 완료」를 따른다. 서버 v4 마이그레이션·Web WS 연결 구현은 포함하지 않는다.
+
+- [x] W14 서버 마이그레이션 추가 라이브러리 조사. 사용자 요청대로 ponytail 스킬을 사용하지 않도록 지시한 서브에이전트 3명이 상태/DB·프로세스/adapter·검증/관측을 조사했다. Drizzle RC5 격리 검증까지 완료했다. [추가 조사 보고서](artifact/2026-09-25-Server-Migration-Library-Research.md)를 적용 판단의 근거로 사용하며 모든 후보의 채택 확정으로 소비하지 않는다.
+- [x] W15 Effect v4 서버 마이그레이션을 구현·검증하고 공개 계약을 W10에 반환했다. 결과: `logs/2026-09-25-Effect-Server-Migration.md` (decided), `docs/specs/aiox-application-rpc.md`.
+- [x] W16 서버 마이그레이션 리뷰 결함 3건(Codex stderr 수명, Claude retirement 실패 처리, 알림 읽음 RPC 취소)을 재현·수정·검증한다.
+- [x] W17 pane·탭 선택을 React 메모리 전용으로 분리하고 서버 select 명령·선택 DTO/DB 필드·서버 선택 테스트 제거, 검증·리뷰와 owner/artifact 정합을 기록한다.
+
 ## Required Context
+
+### 2026-09-25 · W10 라이브러리 채택 결정
+
+- 사용자가 XState 5, Drizzle의 Effect SQLite 통합, chokidar 5, fast-check 4의 채택에 동의했다. 아래 W14의 후보 상태보다 이 결정을 우선한다. 설치·제품 마이그레이션 완료를 뜻하지 않는다.
+- XState는 daemon의 상태 전이 규칙을 담당하고 Effect는 실제 실행·대기·취소·재시도를 담당하는 방향이다. ExecutionOwner의 프로세스 단일 소유와 종료 확인·정리 실패 추적을 보존한다.
+- Drizzle 통합의 근거는 W14의 RC5 격리 실행 보고이며 제품 schema·transaction 전체 검증은 남아 있다. chokidar는 파일 변경 관측을 담당하고 JSONL 파싱·읽기 위치·저장 확정은 adapter 책임이다. fast-check는 조작·재전송·시간 경과 조합과 실패 축소에 사용한다.
+- TanStack DB에 대해 사용자는 서버 DB와 클라이언트 메모리 DB 동기화 역할로 이해한다고 말했다. 책임 경계는 daemon이 commit된 변경·현재 snapshot을 전달하고 React 앱의 sync 연결 코드가 TanStack DB 컬렉션에 반영하는 것이다. SQLite 자동 감지나 서버 명령 실행을 위임하는 뜻이 아니다. 기존 TanStack Query와 서버 상태 소유를 중복시키지 않도록 적용 범위를 정해야 하며, 이 발언만으로 Query 전면 제거까지 확정하지 않는다.
+
+### 2026-09-25 · 최신 지원 조사: W14
+
+- 대규모 전환 전에 Effect 외 라이브러리를 조사했다. 제품 설치·코드 변경은 없고 /tmp의 Drizzle RC5 검증만 수행했다. Drizzle1.0.0-rc.5-5935859 + Effect/SQLite RC117은 Node24.14.0에서 query·rollback·commit·재오픈 통과. 앞선 RC4 import 실패와 구분한다.
+- 우선 검토 후보는 Drizzle Effect backend·chokidar5·fast-check4, 기존 Playwright 활용 확대다. XState5·OpenTelemetry·TanStack DB는 책임과 검증 조건을 정한 뒤 비교할 후보이다. 근거·정확 버전·미검증 범위는 [W14 보고서](artifact/2026-09-25-Server-Migration-Library-Research.md)가 소유한다.
+- Effect Node spawner의 finalizer에 종료 실패를 ignore하는 경로가 확인됐다. ExecutionOwner/cleanup의 실제 종료 확인과 실패 진단 책임을 일반 Scope 종료로 대체하지 않는다. diagnostics Pino allowlist가 trace 식별자를 제거하므로 OTEL 도입 시 단순 패키지 설치만으로 correlation이 보존되지 않는다.
+
+### 2026-09-25 · W10 지원 조사: Effect v4·WS·DB·Workflow·Schema
+
+- 사용자 요청으로 서브에이전트 3명이 v4 DB 통합, Workflow·관련 기능, Automerge·Schema를 조사했고, 주 에이전트가 테스트 도구 업그레이드를 수행했다. 완료한 지원 작업은 루트 Vitest 5.0.1 전환과 호환성 조사이다. W10 실제 Web 연결이나 서버 v4 마이그레이션 완료를 뜻하지 않는다.
+- 최신 근거와 다음 적용 판단은 [Effect v4 생태계 조사](artifact/2026-09-25-Effect-v4-Ecosystem-Research.md)를 먼저 읽는다. 이전 v3·HTTP/SSE 구현 설명을 새 아키텍처 확정으로 소비하지 않는다. 앱용 WS와 Effect 서버 전환은 현재 논의 방향이며 이번 작업에서 제품 서버를 바꾸지는 않았다.
+- MCP SDK의 Zod는 사용자 지시대로 유지한다. 자체 Effect Schema는 성능을 비교해 경계별로 판단한다. 합성 DTO 측정에서는 현행 Zod가 더 빨랐으므로 Effect Schema 전면 전환을 성능 개선으로 기록하지 않는다.
+- Effect SQL RC117의 실제 파일 DB commit·rollback·재오픈은 서브에이전트가 Node24.14.0에서 통과시켰다. Drizzle1.0.0-rc.4의 Effect backend는 import 실패했다. Workflow는 Host restart 후보이며 프로세스 복구·완료 기록 정리는 미검증이다.
+- 테스트 도구: 서버·공통 패키지 Vitest5.0.1, Storybook peer 범위 때문에 Web4.1.6 유지. tinybench6.1.4의 DOM 전용 반환 타입 한 줄을 number로 패치했다. lint·format·build·typecheck 통과, sandbox PTY 제한 후 정상 권한 `pnpm test`에서 825 passed/1 skipped. Effect v4나 새 SQL·Workflow·Schema 패키지는 프로젝트에 설치하지 않았다.
 
 ### Return Target
 
@@ -31,13 +59,14 @@ status: open
 - 소유 경계. 3차(Host 종료·재시작) 반영본 검토는 Stage5 W1이 소유하며 이 로그는 판정하지 않는다. plan의 단계 marker와 Stage 3·Stage 5와의 병렬 조율은 사용자가 소유하므로 이 로그에서 plan을 고치지 않는다. Stage 6 착수 자체가 사용자 권위로 이뤄졌다.
 - 프로토타입 `logs/artifact/aiox-version9.html`은 Claude Design 번들이라 코드를 React로 재사용하지 않는다. 확정되는 것은 화면 규칙뿐이고 디버그 패널도 구현에 포함하지 않는다. 프로토타입과 구현의 시각 스타일이 달라지는 것은 사용자가 허용했다. font size·weight·간격이 어긋나도 drift로 보지 않으며, 사용자가 지목하지 않는 한 프로토타입과 대조하지 않는다. 다만 그 패널이 재현한 상태 집합은 fixture·mock으로 다시 만들어 검증해야 한다. `agentViewSchema.status` 다섯 값(`aiox-preparing`·`idle`·`working`·`awaiting-user`·`failed`), 판정 불가 터미널, daemon 연결 끊김의 헤더 경고, `config.json` 외부 변경의 화면 열 때 배너와 저장 시점 충돌 dialog, 섹션 빈 화면 두 층, 드롭 존 두께, 테마 전환, status bar 기본 열림, 알림 추가에 따른 dropdown 표시와 읽음 처리다. 이 목록은 검증 후보이며 확정된 test 계획이 아니다.
 - 실제 구현의 사이드바는 shadcn의 Sidebar를 쓴다. shadcn은 의존성이 아니라 레지스트리에서 소스를 복사해 오는 방식이라 복사본 수정이 유지보수 부담이 되지 않는다. base는 `aria`·`base`·`radix` 셋 중 Base UI(`base`)이며 2026-07부터 shadcn 기본값이다.
-- 최소 Web 인계. `attach.ts`는 버리지 않고 React 컴포넌트로 감싸 재사용한다. `@xterm/xterm` 6.0.0·`@xterm/addon-fit`·`@aiox/terminal`의 restore가 브라우저 쪽 터미널 렌더링과 화면 복원을 담당하며 Stage2-1 snapshot 결과를 중복 구현하지 않는다. `main.ts`는 폐기한다. panel 안의 새 shell은 `/api/terminals` 생성이 아니라 `POST /api/panels/:id/shells`로 만들어야 배치에 들어간다. `/api/terminals`는 terminal 생존 조회용으로만 남는다.
-- 확정 스택. UI는 shadcn(Base UI base)과 `tailwindcss@4`, 상태는 `zustand`이며 TanStack Query는 쓰지 않는다. 서버가 SSE로 완전한 DTO를 미는 push-apply 모델이라 쿼리 캐시를 두면 진실 소스가 둘이 되기 때문이다. 드래그는 `@dnd-kit/core`·`@dnd-kit/sortable`의 pointer 기반이다. mock은 `msw` 한 세트로 HTTP·SSE·WS를 덮되 실제 xterm bytes는 mock하지 않고 기존 WS consumer로 교체한다. 라우팅은 `react-router` v7이며 현재 경로와 페이지 매핑은 `apps/web/src/app/router.tsx`를 따른다. 전체 개요와 섹션 개요는 별도 페이지이고 패널은 section 아래에 둔다. 카탈로그는 `storybook`·`@storybook/react-vite`·`msw-storybook-addon`이다. 테스트는 `vitest`·`@testing-library/react`·`@testing-library/user-event`·`happy-dom`이고 `@playwright/test`는 드롭 위치 판정과 스모크에만 쓴다. `lucide-react`·`class-variance-authority`·`clsx`·`tailwind-merge`는 shadcn 컴포넌트 설치 때 따라오므로 따로 넣지 않는다.
+- 최소 Web 인계의 attach.ts·xterm/headless restore 경계는 유지한다. 앱의 생성·이동·삭제 명령과 상태 구독은 현재 @aiox/protocol의 ApplicationRpc를 사용한다. 과거 개별 HTTP shell 생성·select API 지시를 재사용하지 않는다. terminal 입출력·크기 변경용 WS는 앱 RPC와 별개다.
+- 확정 스택: UI는 shadcn(Base UI base)·Tailwind v4를 유지한다. 서버는 Effect v4 기반 HTTP/RPC 앱 WS로 전환 완료했으며 React의 서버 상태 연결은 TanStack DB를 사용하는 W10 후속 작업이다. Query/Zustand에 같은 서버 상태를 중복 소유하지 않는다. 활성 pane·선택 탭은 각 React 앱의 메모리 상태이고 새로고침 시 초기화한다.
 - 모바일 우선으로 만든다. breakpoint는 `768px` 하나이고 Tailwind 기본 클래스가 좁은 폭, `md:`가 768px 이상이다. 각 컴포넌트를 좁은 폭부터 쓰고 넓은 폭을 덧붙이며 반응형을 마지막 작업으로 몰지 않는다. 목적은 폰 전용 화면이 아니라 데스크톱 창 축소 대응이므로 `360px` 미만은 대상이 아니다. 터미널 영역은 창 폭으로 레이아웃을 바꾸지 않고 xterm이 fit·resize만 한다.
 - 세로로 썬다. 각 화면 W는 컴포넌트 단위로 UI를 먼저 만들어 사용자 확인을 받는다. 확인을 받은 뒤 그 화면에 무엇을 붙일지 사용자와 논의해서 정하고 붙인다. 각 W에 적힌 것은 후보이지 확정이 아니며 논의 없이 붙이지 않는다. UI가 없으면 store 모양을 짐작하게 되므로 순서를 뒤집지 않는다. 1단계 fixture도 처음부터 계약 모양으로 한 fixture 파일에 두어 컴포넌트에 더미를 박지 않는다. 그래야 다음 단계가 props를 store로 바꾸는 것만 되고 fixture를 다시 만들지 않는다. DTO 스키마는 `@aiox/protocol`에서 바로 import한다. merge로 이미 들어와 있으므로 apps/web에 임시 zod를 만들지 않는다. fixture의 `PanelPreview` 같은 표시용 타입은 DTO 대체가 아니라 UI 단계의 입력 모양이므로 protocol 타입과 별개로 둔다.
 - 설치와 기능 연결은 구분한다. 사용자 권한으로 W2에서 설치한 도구는 {W2}의 설치 완료 기록과 `apps/web/package.json`을 확인하고 재설치 작업으로 잡지 않는다. Storybook의 브라우저 테스트 연결은 이미 있으며, 드롭 위치 판정은 W5에서 구현한다. `msw`·`msw-storybook-addon`은 아직 설치되지 않은 후보이고, 도입 시 HTTP·SSE·WS 핸들러 한 세트를 Storybook·vite dev·Vitest·Playwright가 공유한다. story는 필요한 화면·상태를 기존 story에 이어서 작성한다.
 - 스택 선택 중 owner 문서에 근거가 없는 셋. 라우터는 계약이 요구하지 않는다. [[docs/specs/aiox-configuration-web]]의 복귀 계약이 복원하라는 것은 Host·Agent·배치·terminal 현재 화면·미확인 알림뿐이고 전부 서버 소유다. 그래도 두는 이유는 브라우저 저장소가 금지라 무엇을 보고 있었는지를 담을 자리가 URL뿐이고, 없으면 알림·팔레트 점프 뒤 뒤로 가기가 앱을 벗어나며, 탭 두 개가 서로 다른 workspace를 볼 수 없기 때문이다. happy-dom은 jsdom보다 빠르다는 것 말고 강한 이유가 없다. xterm은 canvas가 필요하고 `ResizeObserver`는 둘 다 없어 어차피 mock하므로 실질 차이가 속도뿐이며, 막히면 environment 한 줄로 jsdom에 간다. `cn`을 bare specifier로 두면 shadcn 복사본이 upstream과 같아져 갱신 때 import가 안 흔들리지만 CLI가 alias로 재작성하면 그 이점이 사라지므로 W1에서 보고 정한다.
 - 작업 트리. Stage 6은 `~/Documents/aiox-stage6`의 별도 worktree에서 시작했고 2026-09-23에 그 브랜치를 main에 합쳐 worktree를 없앴다. 분리의 목적은 Stage 5와의 병렬 작업이었는데 Stage 5가 W1~W10을 끝내고 남은 W11이 Stage 6 화면을 요구해 병렬성이 사라졌기 때문이다. merge로 `packages/protocol`의 `core.ts`·`host.ts`·`configuration.ts`와 Hono·Drizzle·Pino 전환이 들어와 스냅샷 drift가 닫혔다. 충돌은 `pnpm-lock.yaml` 하나였고 main은 `apps/web`을 한 줄도 건드리지 않았다. 따라서 임시 zod 정의도 계약 handoff 메시지 경로도 더 이상 필요 없고 `@aiox/protocol`에서 바로 import한다. 소유 경계만 남는다. `apps/daemon`과 `packages/protocol`은 Stage5 단독 수정이고 `apps/web`은 이 로그가 소유한다. 새로 clone한 트리에서는 루트 `pnpm install` 뒤 `pnpm -r --if-present build`를 먼저 돌린다. `packages/*/dist`가 없으면 `@aiox/terminal/restore`가 풀리지 않아 web 빌드와 타입체크가 실패한다.
+- 현재 우선순위(2026-09-25): W15 서버 마이그레이션과 W16 리뷰 결함 수정은 완료됐고, W17은 선택의 React 메모리 전용화와 owner/artifact·검증 기록을 소비한다. W15 당시 Web 의존성만 변경한다는 범위 뒤에 사용자가 Web 전용 선택 타입·로컬 상태 분리를 별도 승인했다. 실제 React RPC/TanStack DB 연결은 W10에 남는다. 이번 사용자 요청으로 리뷰·검증·선택 계약을 로그에 기록하며 이후 논의의 자동 기록까지 승인받은 것은 아니다.
 
 ### {W1}
 
@@ -73,13 +102,21 @@ status: open
 
 ### {W10}
 
-- 정합 순서와 소유 경계. Stage5에 요청했던 zod 스키마·타입은 main merge로 이미 들어왔다. `packages/protocol`과 `apps/daemon` 전체는 Stage5 단독 수정이고 `apps/web` 전체와 [[docs/specs/aiox-web-ui]]는 이 로그가 소유한다. 공동인 [[docs/specs/aiox-configuration-web]]은 Stage5가 API·DTO 절, Stage6이 keybindings·저장 경계 절이다. 서버 계약의 owner는 실행 가능한 zod인 `packages/protocol`과 그 문서의 `Panel 조회·변경 HTTP와 React DTO`·`상태 전달·terminal 연결과 mock 전환` 절이다. worktree 시절의 인계문 `apps/web/Spec.md`는 두 owner를 중복 서술해 2026-09-23에 삭제했다. 계약이 어긋나 보이면 로그나 별도 문서를 만들지 말고 차이를 근거와 함께 보고한다. 운영 Web 내부 구조는 아직 owner 문서가 없으므로 이 단계에서 [[docs/architecture/aiox-system]]에 반영한다.
-- 카드 입력은 DTO 하나로 오지 않는다. `panelViewSchema`(`packages/protocol/src/host.ts`)는 id·kind·section·name·hostId·networkId·revision·layout·activePaneId·tabs만 갖고 agent가 없다. agent는 `webSnapshotSchema`가 panels·terminals·agents·operations·notifications를 나란한 top-level 배열로 보내는 설계라 join을 Web이 한다. fixture의 `terminalCount`는 tabs의 terminalId 비어있지 않은 개수이고 `panelSummary`가 쓰는 workPath·memberCount·routeCount는 host·network view에서 온다. 즉 카드 하나가 PanelView와 AgentView 목록과 Network·HostView를 합성해야 하고 그 합성은 아직 어디에도 없다. 필요한 필드 자체는 서버가 이미 보낸다. `agentViewSchema`(`core.ts:174`)에 `executionOwnership`·`networkId`·`hostId`·`terminalId`가 있고 [[docs/specs/aiox-web-ui]]가 external의 카드 배치 규칙을 명시한다. networkId가 있을 때만 NETWORKS에 올리고, hostId·terminalId가 항상 null이라 HOSTS와 WORKSPACES 역검색에는 걸리지 않으며, 둘 다 null이면 어느 카드에도 올리지 않는다. 앞서 이 항목에 적었던 "`agentViewSchema`에 대응 필드가 없다"는 틀렸다. 남은 미결은 spec이 "소속 agent와 standalone을 나눠 센다"만 쓰고 standalone 판정식을 주지 않는 것 하나다. repo 전체에서 standalone은 Host에 속하지 않은 독립 실행을 뜻하므로 `hostId === null`로 읽는 것이 자연스럽지만 짐작해서 넣지 말고 이 단계에서 확인하고 정한다. 서버에 `standalone` boolean을 요청하지 않는다. `hostId`에서 파생되므로 `PanelPreview.context`와 같은 중복이 된다.
-- standalone 판정은 `hostId === null && networkId === null`이다. 사용자가 지적해 정정한다. 앞서 이 항목에 적었던 `hostId === null` 단독 판정과 "HOSTS·WORKSPACES에서 split이 degenerate하다"는 분석은 둘 다 틀렸다. 근거는 카드의 agent 집합이 membership 조회 하나가 아니라 membership과 pane shell terminal 역검색의 합집합이라는 것이다. `aiox agent run claude`를 panel의 pane shell에서 치면 [[docs/specs/aiox-runtime]] 표대로 daemon 소유로 그 Web terminal에서 돌고, `bootstrap.ts:548`이 `terminalContextFromEnv(process.env)`의 유무로 external을 가르므로 `terminalId`가 그 pane에 붙는다. `agentRunSchema.network`(`core.ts:75`)는 optional이고 host 지정 인자는 없으므로 이 agent는 `networkId`·`hostId`가 모두 null이다. 따라서 NETWORKS·HOSTS 카드 모두 소속과 standalone이 실제로 섞인다. WORKSPACES만 `panelViewSchema.superRefine`이 workspace panel의 hostId·networkId를 모두 null로 강제해 소속 집합이 공집합이고 전부 standalone이다. 이것은 spec 결함이 아니라 결과다. 또 external ⊂ standalone이라던 기록도 뒤집힌다. `runtimes.ts:130-136`이 external의 terminalId·hostId를 금지하므로 카드에 뜨는 external은 networkId로만 올라오고, networkId가 있으면 standalone이 아니라 소속이다. spec 78행의 "둘 다 null인 external은 어느 카드에도 표시하지 않는다"가 나머지를 배제한다.
+- 정합 순서와 소유 경계. W15 서버 마이그레이션 완료 결과는 `logs/2026-09-25-Effect-Server-Migration.md`에서 수용했다. 실행 가능한 Effect Schema·RPC group은 `@aiox/protocol`, 앱 wire/세션/상태 계약은 [[docs/specs/aiox-application-rpc]], panel·terminal 의미는 [[docs/specs/aiox-configuration-web]]가 소유한다. `.parse/.safeParse`는 같은 Effect decoder의 호환 경계다. 예전 Zod·HTTP/SSE 구현 지시는 최신 목표가 아니다. Web UI 계약은 [[docs/specs/aiox-web-ui]], 구조는 [[docs/architecture/aiox-system]]에 반영한다. 중복 인계 spec을 만들지 않는다.
+- 서버 PanelView는 pane/tab의 관계·순서·split 배치와 실행 자원을 전달하며 activePaneId·selectedTabId를 포함하지 않는다. Web의 apps/web/src/entities/panel/workspace-layout.ts가 WorkspaceLayout.activePaneId와 pane별 selectedTabId를 정의한다. React 메모리에서만 선택하고 선택 대상 삭제 시 남은 구조에서 선택을 조정한다. 새로고침 시 초기화하며 서버 select 명령·DB 저장·localStorage를 추가하지 않는다. agent/network/host 소속은 각 공개 DTO와 Web UI spec을 따른다.
+- standalone 판정은 `hostId === null && networkId === null`이다. 사용자가 지적해 정정한다. 앞서 이 항목에 적었던 `hostId === null` 단독 판정과 "HOSTS·WORKSPACES에서 split이 degenerate하다"는 분석은 둘 다 틀렸다. 근거는 카드의 agent 집합이 membership 조회 하나가 아니라 membership과 pane shell terminal 역검색의 합집합이라는 것이다. `aiox agent run claude`를 panel의 pane shell에서 치면 [[docs/specs/aiox-runtime]] 표대로 daemon 소유로 그 Web terminal에서 돌고, `bootstrap.ts:548`이 `terminalContextFromEnv(process.env)`의 유무로 external을 가르므로 `terminalId`가 그 pane에 붙는다. `agentRunSchema.network`(`core.ts:75`)는 optional이고 host 지정 인자는 없으므로 이 agent는 `networkId`·`hostId`가 모두 null이다. 따라서 NETWORKS·HOSTS 카드 모두 소속과 standalone이 실제로 섞인다. WORKSPACES만 panel layout refinement이 workspace panel의 hostId·networkId를 모두 null로 강제해 소속 집합이 공집합이고 전부 standalone이다. 이것은 spec 결함이 아니라 결과다. 또 external ⊂ standalone이라던 기록도 뒤집힌다. `runtimes.ts:130-136`이 external의 terminalId·hostId를 금지하므로 카드에 뜨는 external은 networkId로만 올라오고, networkId가 있으면 standalone이 아니라 소속이다. spec 78행의 "둘 다 null인 external은 어느 카드에도 표시하지 않는다"가 나머지를 배제한다.
 - NETWORKS 카드의 멤버 수도 DTO 하나로 오지 않는다. `networkViewSchema`(`core.ts:134`)는 id·name·scope·routes뿐이고 members가 없다. members를 가진 것은 `hostNetworkViewSchema`(`host.ts:168`, `scope: "host"`)이며 `webNetworkSchema`는 둘의 union이다. 따라서 host scope network는 `members.length`를 그대로 쓰고 persistent network는 agents에서 networkId 매칭으로 세야 한다. 두 경로가 같은 수를 뜻하는지 확인하고 정한다.
-- 터미널 수명은 「W5 DnD 사용자 PASS와 터미널 표시 수명 구조」 블록과 terminal-surface.tsx·visibleTerminals를 이어받는다. 최종 배치에서 계속 보이는 terminal은 유지·DOM 이동, 새로 보이면 연결·복원, 숨김/Workspace 이탈이면 브라우저 자원 정리한다. 서버 프로세스는 연결 해제만으로 종료하지 않는다. terminalId뿐 아니라 runtime 변경을 구분하고, 이동 중 Reconnect 상태 유지·늦은 결과 무시·크기/포커스·숨긴 화면 resize 방지를 실제 attach로 검증한다. DnD layout PUT·revision 충돌·실패 복구도 W10에서 연결한다.
-- SSE 상태 연결 시 같은 panel ID의 최신 snapshot을 WorkspaceView가 직접 소비하도록 fixture용 useState(panel) 복사본을 제거한다. 지금 별도 부모 상태 리팩토링은 하지 않는다. 임시 진단 테스트로 같은 ID의 tabs/layout 갱신 무시와 Reconnect 로컬 override의 새 disconnected 상태 가림을 재현했다. runtime 교체만의 독립 검증은 panel 갱신 반영 후 수행한다. terminalId+runtimeId별 attach 상태와 이전 비동기 결과 정리를 실제 연결 시 검증한다. 근거: 「W10 SSE 연결 시 panel·연결 상태 소유 정리」 블록.
-- W7 사용자 PASS 후 남은 연결: SSE 알림 수신과 클릭 ids=[id]/Clear all ids 생략 확인 API 및 실패 처리. WorkspaceView local panel 복사본에서 탭을 삭제해도 AppShell.panels 알림 탐색에는 남는 현상은 기존 SSE 상태 단일화 작업에 포함한다. 실제 최신 상태에서 실행/탭 종료 후 과거 알림 클릭이 NotFound로 이동하고 확인 처리되는지 검증한다. 사용자가 추가한 중복 fixture ID는 W7 차단이 아닌 실험 데이터다.
+- 터미널 수명은 「W5 DnD 사용자 PASS와 터미널 표시 수명 구조」 블록과 terminal-surface.tsx·visibleTerminals를 이어받는다. 최종 배치에서 계속 보이는 terminal은 유지·DOM 이동, 새로 보이면 연결·복원, 숨김/Workspace 이탈이면 브라우저 자원 정리한다. 서버 프로세스는 연결 해제만으로 종료하지 않는다. terminalId뿐 아니라 runtime 변경을 구분하고, 이동 중 Reconnect 상태 유지·늦은 결과 무시·크기/포커스·숨긴 화면 resize 방지를 실제 attach로 검증한다. W12의 동작별 이동·분할·resize 명령과 대상 충돌·실패 복구를 W10에서 연결한다. 전체 layout PUT 및 Web panel revision 일치 검사는 사용하지 않는다.
+- RPC 상태 연결 시 같은 panel ID의 최신 snapshot을 WorkspaceView가 직접 소비하도록 fixture용 useState(panel) 복사본을 제거한다. 지금 별도 부모 상태 리팩토링은 하지 않는다. 임시 진단 테스트로 같은 ID의 tabs/layout 갱신 무시와 Reconnect 로컬 override의 새 disconnected 상태 가림을 재현했다. runtime 교체만의 독립 검증은 panel 갱신 반영 후 수행한다. terminalId+runtimeId별 attach 상태와 이전 비동기 결과 정리를 실제 연결 시 검증한다. 근거: 「W10 SSE 연결 시 panel·연결 상태 소유 정리」 블록.
+- W7 사용자 PASS 후 남은 연결: RPC 상태 알림 수신과 클릭 ids=[id]/Clear all ids 생략 확인 API 및 실패 처리. WorkspaceView local panel 복사본에서 탭을 삭제해도 AppShell.panels 알림 탐색에는 남는 현상은 기존 RPC 상태 단일화 작업에 포함한다. 실제 최신 상태에서 실행/탭 종료 후 과거 알림 클릭이 NotFound로 이동하고 확인 처리되는지 검증한다. 사용자가 추가한 중복 fixture ID는 W7 차단이 아닌 실험 데이터다.
+- 명령과 세션은 [[docs/specs/aiox-application-rpc]]의 실제 RPC 계약을 소비한다. clientSessionId는 `session.open()`으로 서버에서 발급받으며, sequence·requestId·body를 유지한 pending 재전송만 합류한다. 완료 요청은 result_expired, 만료/재시작 세션은 거부되므로 새 ID로 자동 재실행하지 않는다. 명령 commit·shell 준비·cleanup 결과를 구분한다. 원래 `changes[]`와 target DTO를 유지한다.
+- 낙관적 UI는 서버 확정 상태와 미확정 사용자 변경을 구분한다. 최신 RPC 상태 위에 미확정 변경을 재적용하고 실패한 변경과 그 의존 변경만 조정한다. 예전 Query 캐시 전체 rollback으로 새 상태나 다른 성공을 덮지 않는다. 명령 response와 broadcast의 같은 delta는 epoch/version으로 한 번만 반영하고 서로 다른 부분 변경을 버리지 않는다. 실제 TanStack DB 저장 형태는 W10에서 정하며 서버에 요청 의미상 병합을 추가하지 않는다.
+- W12·W13 소비 검증: 준비 중 이동/닫기, split ID 유지, 연속 [+] 순서와 PTY 병렬 완료, 응답 유실 재전송, 누락 순번 복구·sequence_gap, RPC 상태 재접속·epoch 변경, shell 생성 실패(start-failed notice)와 cleanup failed 표시를 확인한다. 탭 제거 성공과 프로세스 정리 실패는 별개로 표시한다. HTTP abort는 서버 취소가 아니며 명시적 닫기 명령을 보낸다. shell 입력은 WS attach·복원 이후 허용한다.
+- W13의 중간 서버 제한 보고보다 완료된 W15 source·검증을 우선한다. 전체 `pnpm check`는 Node24.14/macOS에서 846개 통과·기존 scale 1개 skip이며 실제 RPC/SQLite/PTY 회귀를 포함한다. Node22.16은 별도 terminal import·SQLite 초기화/rollback/reopen smoke만 수행했다. Windows/Linux 전체 전환·실제 vendor 모델 E2E·성능 개선은 검증하지 않았다.
+- Web 의존성 Effect RC117·TanStack DB0.9.2/React DB0.4.1 설치와 W15 당시 Web 원본 불변 검증 뒤, W17에서 사용자 승인한 Web 전용 선택 타입·로컬 상태 연결을 구현했다. Codex 직접 최종 pnpm check는 exit 0, 전체 851 passed/1 skipped, Web 90 passed다. 두 화면의 선택 독립성과 재마운트 초기화를 확인했다. 실제 React RPC client/store/hooks·TanStack DB·실서버 UI 통합은 아직 구현하지 않았다.
+- 프론트 후속 구현: 앱용 RPC 명령 결과와 상태 구독을 React 공통 수신 경로에서 연결해 TanStack DB에 반영한다. 명령 결과+확정 변경, 전체 창 방송의 중복 식별, 요청 sequence와 daemon 상태 버전 분리, snapshot 후 delta 경계, 실패/의존 변경만 조정, 확정 반영과 낙관적 해제, 재접속/epoch 변경을 함께 구현한다. 높은 버전만 남겨 서로 다른 부분 변경을 버리지 않는다. 기존 HTTP/RPC 상태/Query 연결 지시를 최신 목표로 소비하지 않는다.
+- 프론트 후속 검증: 다른 창의 생성/이동, shell 준비 중 이동/삭제와 늦은 완료, cleanup 실패, 요청 결과/방송 역전·중복·유실, 재접속 snapshot, 알림 최신 대상 탐색을 확인한다. terminal WS와 headless serialize는 앱 snapshot과 별개이며 보이는 pane 이동의 xterm/WS 유지·숨김 시 브라우저 자원 정리·attach 완료 뒤 입력을 보존한다. 이번 서버 작업의 라이브러리 설치만으로 실제 React 통합 PASS를 주장하지 않는다.
+
 
 ### {W7}
 
@@ -87,6 +124,10 @@ status: open
 - 착수 전 사용자에게 답을 받을 미결 둘. 첫째, originRuntimeId에 맞는 탭이 없을 때의 처리를 [[docs/specs/aiox-web-ui]] 244-255행이 정하지 않는다. runtime이 끝나 탭이 사라진 경우이며 항목을 숨길지, 이동 불가로 표시할지, terminalId로 대체 탐색할지 정해야 한다. 짐작해서 넣지 않는다. 둘째, createdAt이 epoch int라 상대 시각 포맷이 필요하다. Intl.RelativeTimeFormat이 표준이라 의존성은 필요 없고 갱신 주기만 정하면 된다. 진행은 apps/web/AGENTS.md대로 구조 보고 후 멈춤, 승인 뒤 fixture 렌더, 확인 뒤 연결 논의 순서이며 TDD는 하지 않는다.
 - 화면 규칙은 [[docs/specs/aiox-web-ui]] 알림 절이 소유하므로 로그에 다시 쓰지 않는다. 구현이 쓸 사실만 둔다. 이동 판정은 탭의 runtimeId와 notification.originRuntimeId 비교 하나이고 agents 조회는 이름 표시용이다. createdAt은 epoch 밀리초이며 Intl.RelativeTimeFormat으로 표시한다. 서버 목록은 미확인만·daemon 소유만·createdAt 오름차순이다. 표시 순서는 미결이다. 읽음 요청은 클릭이 ids 하나, Clear all이 ids 생략이며 endpoint는 packages/protocol/src/core.ts의 notificationsRead다. 실제 HTTP 연결은 W10이 소유하므로 W7은 fixture로 만든다.
 - 목록은 표시용 복사본을 정렬해 최신순으로 보인다. 서버가 미는 스냅샷 배열을 그 자리에서 정렬하지 않는다.
+
+### {W16}
+
+- 사용자 리뷰의 Codex stderr 조기 종료·Claude retirement 저장 실패 진단/재시도 누락·notifications.read 취소 후 DB/AppState 불일치 3건을 대상으로 한다. 공개 계약은 docs/specs/aiox-application-rpc.md, adapter 수명은 docs/architecture/aiox-vendor-bindings.md가 소유한다. Web 소스와 사용자 daemon/DB는 변경하지 않는다.
 
 ## 2026-09-21 · 설계 라인 마감과 구현 착수
 
@@ -477,6 +518,24 @@ DnD는 logs/artifact/aiox-version9.html과 docs/specs/aiox-web-ui.md의 네 결�
 
 연결 상태는 서버의 프로세스 상태와 브라우저 attach 상태를 구분한다. W10에서 terminalId와 runtimeId에 맞춰 attach 상태를 관리하고 runtime 교체 시 이전 상태·비동기 결과가 새 연결에 섞이지 않게 한다. fixture의 Reconnect 즉시 connected 처리는 실제 attach의 reconnecting → 성공/실패 결과로 교체한다. panel 갱신 반영을 연결한 후 runtime 교체도 별도 검증한다. 현재 UI fixture 사용에는 차단 요인이 아니지만 실서버 통합 완료 전에 해결할 항목이다. W6 활성/next와 기존 W10 범위는 유지한다.
 
+### 2026-09-24 18:48 · TanStack Query·동작별 요청·낙관적 UI 연결 결정과 W12 리뷰 소비
+
+사용자는 Stage6에 TanStack Query, requestId 전송과 낙관적 업데이트의 Web 책임을 기록하도록 요청했다. 기존 Global의 Zustand 확정·Query 미사용 결정과 W10의 전체 layout PUT 설명을 최신 합의로 정정한다. 과거 History는 당시 경위로 유지한다. 이 entry는 기존 W10 상태 소유 작업의 재개 기록이며 별도 workstream을 만들지 않는다.
+
+결정: 서버 확정 상태의 소유자는 TanStack Query 하나다. SSE 첫 snapshot/재접속 전체 교체와 이후 DTO upsert/remove를 반영한다. HTTP 명령과 SSE 중 어느 것이 먼저 도착해도 중복 적용·오래된 상태 덮어쓰기가 없어야 한다. HTTP 반환 DTO를 캐시에 반영할지, SSE 확인을 중심으로 쓸지는 순서 보장 설계와 함께 구현 시 결정한다. dropdown/dialog/입력은 local state로 두고 연결 상태·명령 상태와 terminal 연결 상태를 구분한다. 초기 snapshot 전 대기, 연결 끊김/재연결, 명령 실패를 각각 표시하며 매 조작에 전체 로딩 화면을 넣지 않는다.
+
+사용자 흐름: 클릭 → 화면 즉시 변경 → panel별 요청 줄 → HTTP 동작별 명령 → 서버 등록/commit 응답 → SSE 확정 상태와 미확정 변경 재조정. shell은 preparing 탭 등록 후 202이므로 다음 등록 요청을 보내도 PTY 준비는 병렬 진행한다. panel 생성 확인 전 종속 요청은 보내지 않는다. 등록 전 탭 이동은 화면에 먼저 반영하고 등록 확인 후 전송한다. 연속 resize는 의미를 보존하는 범위에서 합치되 이동·생성·닫기 전체를 마지막 하나로 합치지 않는다.
+
+식별과 재전송: Web은 client panel/tab/pane/split ID를 유지하고 명령마다 requestId를 만든다. 같은 요청 재전송은 같은 ID와 최초 body, 새 조작은 새 requestId다. UUID v4 crypto.randomUUID를 권고하며 UUID 시간순 정렬로 명령 순서를 대신하지 않는다. terminal/runtime/Operation ID는 서버 결과를 따른다. split:<paneId>인 현재 Web 생성 방식은 서버 계약·유일성·ID 유지와 대조하고, 클라이언트의 새 split ID 생성 정책을 W10에서 일관되게 맞춘다.
+
+실패 복구: 최신 서버 상태와 남은 사용자 변경으로 화면을 다시 계산한다. 실패 이전 전체 cache 복원은 금지한다. 생성 실패에 의존하는 이동/선택 등은 재판정하고 무관한 성공 작업은 유지한다. 202는 실행 성공이 아니므로 Panel의 tabId/terminalId/presentation과 Operation의 requestId/tabId·error·cleanupErrors를 함께 소비한다. 이미 연결된 shell에서 Operation 저장만 실패한 경우 실제 shell을 실패 탭으로 지우지 않는다. 취소 자체는 알림 생략 가능하지만 정리 실패는 숨기지 않는다. confirmation_required이면 기존 dialog를 열고 자동 확인하지 않는다.
+
+W10 검증: [+] 연속 클릭, 준비 중 이동/split/resize/닫기/panel 삭제, 성공과 실패 혼합, 실패한 부모의 후속 요청, 202와 SSE 역전, 응답 유실 후 재전송, 두 창 조작, 재접속 snapshot 이후 pending 재적용을 확인한다. terminal pane 이동은 인스턴스·WS 유지, 숨김/이탈은 브라우저 자원 정리다. layout 저장과 PTY resize는 독립이며 attach 때 현재 크기를 보낸다. Host당 40 agent를 실사용 평가 기준, 200을 stress 기준으로 클릭→화면 반영, 등록 응답, 실제 완료, WS attach/복원→첫 입력 에코를 분리 측정한다. 40은 서버 제한이 아니다.
+
+Stage5 결과 소비: W12 완료 및 전체 check 통과는 Claude 보고다. Codex는 최초 리뷰에서 발견한 (1) 연결 성공 후 Operation 저장 실패 시 terminalId 제거, (2) panel Operation purge로 재전송 근거 소실, (3) 새 Host 생성의 requestId namespace 검사 누락을 후속 코드에서 다시 확인했다. 관련 daemon panel-operations 3개와 persistence host-state 6개 테스트를 직접 재실행해 모두 통과했다. 최초 리뷰의 저장 실패는 실제 SQLite·PTY 실패 주입으로 재현했고, 생성/닫기 경합은 제어된 promise 해제에서만 재현했으므로 자연 발생 확정 결함으로 다루지 않는다. Host restart는 최신 배치를 적용하나 panel/tab 재삽입은 남는다는 정정도 유지한다.
+
+남은 서버 경계: SIGKILL 후 PTY 생존과 규모 benchmark는 미검증이다. panel Operation 무기한 보존으로 snapshot이 커질 수 있으므로 재전송 기록 보존과 SSE 전달 범위를 분리 검토하되, 완료 Operation을 임의로 숨기거나 만료시키는 계약은 확정하지 않았다. 개발 DB 재생성도 별도 승인 대상이다. 서버 수정 상세 owner는 [[logs/2026-09-09-AIOX-TUI-Stage5-Host]]이며 이 로그는 Web 소비와 통합 검증만 추적한다. Effect/Schema/Stream은 조사 후보이고 도입 완료로 기록하지 않는다.
+
 ## 2026-09-23 · W4·W5 탭 활성화 결함 해결과 비활성 opacity 60%
 
 사용자가 최근 UI·포커스 후속 변경의 기록 정리를 요청했다. 기존 비활성 55% 기록 이후 80%를 적용해 확인했으나 구분이 약하다는 사용자 피드백에 따라 최종 비활성 opacity를 60%로 변경했다. 활성 탭·본문은 100%다. 탭 opacity는 제목·상태 점·×를 포함한 부모에 적용하고, 선택 탭 부모의 has-aria-selected:bg-background는 제거했다. 키보드 focus-visible 테두리는 유지한다. 연결 끊김 화면의 출력 opacity 40%는 별도의 복구 화면 처리로 유지된다.
@@ -596,3 +655,187 @@ W7은 fixture UI 사용자 PASS로 완료한다. 실제 SSE 알림 수신·확�
 ### 2026-09-23 22:03 · W7 커밋 전 정합 확인
 
 사용자 요청으로 W10 활성 포인터를 재확인하고 W7 변경을 커밋한다. WorkspaceView의 DOM focus와 무관한 탭 선택 요청 prop은 tabSelectionRequest로 명명했다. 사용자가 추가한 알림 fixture의 항목 수와 긴 본문은 유지하고 중복 ID만 고유화했다. Header story는 세 개 fixture를 명시적으로 사용하고 상단 Clear all에 맞춰 항목 순서 단언을 갱신했다. 알림 model/workspace 35개 테스트, typecheck, lint, 변경 파일 format 검사를 확인했으며 story의 Playwright 실행은 하지 않았다.
+
+## 2026-09-25 · W13 Effect v4 조사와 테스트 도구 전환 완료
+
+### 2026-09-25 01:26 · 조사 근거와 검증 결과
+
+사용자는 테스트 도구의 가능한 업그레이드와 v4 DB 통합·restart Workflow·관련 라이브러리·Schema 비교를 서브에이전트 조사로 요청했다. MCP SDK의 Zod는 유지하라고 명시했다. 지원 작업 W13은 완료했으며 W10 제품 통합은 계속 열린다.
+
+주 에이전트는 루트 Vitest5.0.1 및 tinybench Node 타입 패치를 반영하고 lint·format·build·typecheck를 확인했다. sandbox PTY 제한으로 중단된 테스트는 정상 권한으로 재실행해 825 passed/1 skipped를 확인했다. Web4.1.6은 Storybook peer 범위 때문에 유지한다. 다른 에이전트의 제품 변경과 사용자 DB는 수정하지 않았다.
+
+세 서브에이전트의 공식 소스 조사·격리 DB 실행·Schema 측정과 제안을 [Effect v4 생태계 조사](artifact/2026-09-25-Effect-v4-Ecosystem-Research.md)에 모았다. Effect SQL RC117의 저장·rollback·재오픈은 통과했으나 Drizzle RC4 import는 실패했다. Workflow 영속 복구와 실제 제품 Schema 전환은 검증되지 않았다. 이 문서는 조사 근거이므로 spec·architecture를 구현 완료로 승격하지 않는다. 다음에는 W10 통합 착수 전에 해당 보고서의 버전·호환 조건과 현재 서버 변경 상태를 확인한다.
+
+## 2026-09-25 · W10 서버 W13 보고의 제한 검토
+
+### 2026-09-25 01:34 · 최신 계약 차이와 순번 만료 재현
+
+사용자가 Claude의 서버 W13 완료 보고를 전달했다. 보고는 Operation 제거·상시 AppState·HTTP/SSE·v3 부분 전환의 구현이며 adapter·메시지 저장 전환은 미완료라고 명시한다. 이후 논의한 Effect v4·앱용 WS·Effect HTTP 전환까지 완료한 보고로 소비하지 않는다. 이번 검토는 전체 코드 리뷰가 아니라 아래 사항에 한정한 직접 확인이다.
+
+- Vitest5.0.1과 lockfile 변경은 Codex의 직전 승인된 작업이다. Codex의 `/tmp/aiox-vitest5-tests.log`에는 서버·공통 패키지 RUN v5.0.1, Web v4.1.6이 기록돼 있다. Claude가 실행한 별도 로그의 버전은 확인하지 않았다.
+- `sequencer.ts:51`에는 최근 완료 결과 기본 64건 보존이 남아 있다. 이는 이후 사용자와 정한 완료 결과 추가 보관 없음과 다르다. `host-command.ts`에는 별도의 최근 128건 보존도 있어 후속 계약 대조 대상이다.
+- 직접 재현: Sequencer에 같은 session/requestId/hash/sequence=1을 처리시키고 주입 clock을 3,600,001ms로 옮겨 동일 요청을 다시 제출하면 run이 두 번 실행된다. 출력은 first value1, replay value2, executions2다. 파일은 `/tmp/aiox-sequencer-idle-review.mts`; 실제 HTTP·DB 명령까지 실행한 재현은 아니다. 원인은 idle sweep으로 session checkpoint를 삭제한 뒤 미등록 session을 settled0으로 다시 만드는 경로다. 알려진 세션의 오래된 순번 거절과 세션 삭제 후 재전송 거절은 별개이며, 후자는 현재 보장되지 않는다.
+- Web 명령 schema에는 epoch 입력 검사가 없고 snapshot에만 epoch가 있다. snapshot epoch 변경과 React의 새 세션 시작 안내만으로 서버가 옛 HTTP 요청을 거절한다고 볼 수 없다. 후속 순번/연결 계약에서 만료·재시작 세션의 재진입을 차단해야 한다.
+- cleanup registry가 메모리라는 보고는 프로세스 정리 복구 제한이다. epoch는 React 상태 복원 경계이며 미정리 프로세스 추적의 대체가 아니다. SIGKILL 후 프로세스 잔존은 이번에도 검증하지 않았다.
+
+제품 코드 수정·전체 테스트 재실행은 하지 않았다. W10 연결 전 최신 결과 미보존 계약과 세션 만료 재실행 문제를 해소해야 하며, v4/WS 마이그레이션에서도 이 불변식을 보존한다.
+
+## 2026-09-25 · W14 서버 마이그레이션 추가 라이브러리 조사
+
+### 2026-09-25 01:47 · 서브에이전트 조사와 Drizzle RC5 검증 완료
+
+사용자는 대규모 마이그레이션에 필요한 Effect 외 라이브러리 조사를 요청했고 서브에이전트의 ponytail 사용을 금지했다. 세 에이전트에 해당 스킬을 호출하지 않고 초기 비용 대비 장기 구조·검증 이득을 평가하도록 지시했다. 중간 중단 이후 사용자 지시로 이어서 완료했다.
+
+서브에이전트는 서버/앱 상태·DB, 프로세스/adapter, 테스트/관측을 조사했고 주 에이전트는 XState·DBOS를 추가 확인했다. 제품 코드나 의존성은 수정하지 않았다. /tmp에서 Drizzle RC5와 Effect RC117의 import·typed query·transaction·파일 재오픈이 통과해, 이전 RC4 실패를 Drizzle 전체의 부적합으로 일반화할 수 없음을 확인했다. 격리 TypeScript 검증은 skipLibCheck 조건이다.
+
+새 [조사 보고서](artifact/2026-09-25-Server-Migration-Library-Research.md)에 직접 검증과 소스 기반 제안·미검증 범위를 분리했다. 이전 Effect v4 보고서에도 RC5 후속 근거 링크를 추가했다. fast-check·chokidar·XState·OTEL·TanStack DB 등은 이번에 프로젝트에 설치하거나 제품 실행 검증하지 않았다. 기존 프로세스 종료·관측·진단 책임의 보존 조건을 다음 설계에서 함께 소비한다. 조사 W14는 완료했으며 W10 제품 마이그레이션·통합은 계속 열린다.
+
+## 2026-09-25 · W10 라이브러리 채택 결정
+
+### 2026-09-25 02:03 · 채택 범위와 책임 경계 기록
+
+사용자가 XState의 상태머신 규칙과 Zustand vanilla reducer의 차이를 비교한 뒤 XState를 선택했다. 이어 Drizzle Effect SQLite 통합·chokidar 5·fast-check 4의 채택에 동의했다. 이는 사용자 결정이며 기존 조사 결과의 검증 범위를 확장하지 않는다. XState는 daemon 상태 전이, Effect는 실행 관리, ExecutionOwner는 실제 프로세스 소유를 담당하는 경계로 기록했다. TanStack DB에 관한 사용자의 동기화 이해는 daemon producer → 전송 → React sync 연결 → 메모리 컬렉션의 책임으로 구분했다. 이번 작업에서는 이 로그의 결정과 Required Context만 갱신했으며 제품 코드·의존성·spec·architecture는 수정하지 않았다. W10의 다음 구현 설계에서 본 결정과 W14 조사 보고서의 제한을 함께 소비한다.
+
+### 2026-09-25 02:03 · 남은 라이브러리 후보 질문
+
+사용자가 추가 후보를 물었다. 기존 조사 범위에서 Effect HTTP/Socket/RPC·Workflow·Schema·Vitest 지원, OpenTelemetry, 기존 Playwright/MSW의 활용을 남은 적용 판단으로 설명한다. Workflow는 재시작 후 작업 단계 복구, XState는 상태 전이 규칙으로 책임을 구분하며 두 계층이 같은 진행 상태를 중복 소유하지 않도록 해야 한다. Automerge·별도 서버 메모리 DB·대체 프로세스 실행 라이브러리는 현재 요구에서 추가 채택 근거가 부족하다는 제안을 유지한다. 이번 질문으로 새 패키지 채택·설치를 확정하지 않는다.
+
+## 2026-09-25 · W10 Effect 서버 마이그레이션 최종 합의·서버 전용 구현 인계·프론트 후속 맥락
+
+사용자가 최종 라이브러리·아키텍처 합의를 로그로 기록하고, 다른 agent에게 전달할 구현 프롬프트를 요청했다. 구현 범위는 서버이며 Web에서는 라이브러리만 추가한다. 사용자는 현재 Codex와 기술 논의를 계속할 예정이므로 이 기록을 현재 Codex의 구현 착수나 agent 자동 실행으로 해석하지 않는다. 이번 기록은 사용자 결정·작업 지시이며 구현 완료 보고가 아니다. 이후 기술 논의는 사용자가 다시 기록을 요청할 때 증류한다.
+
+#### 최종 결정과 이전 제안의 대체
+
+- Effect v4 중심으로 daemon·CLI의 필요한 실행 경계·adapter·메시지 저장/재시도/종료 대기를 전환한다. Hono는 Effect HTTP로 대체한다. 일반 Promise를 감싼 이중 실행 관리자만 남기는 전환은 피한다.
+- XState 5는 복잡한 실행 상태의 전이·guard·진입/이탈 규칙을 담당한다. 실제 작업은 Effect가 수행한다. XState actor와 Effect Fiber가 같은 프로세스를 각각 소유하거나 runtime record와 machine context가 같은 상태를 이중 소유하지 않는다.
+- ExecutionOwner의 역할은 보존하되 내부 구현까지 Effect로 전환한다. 단일 소유자가 프로세스 핸들·준비 작업·취소·종료 확인·미정리 자원·재시도를 끝까지 관리한다. Scope 종료 자체를 실제 프로세스 종료 성공으로 취급하지 않는다.
+- 앱의 명령·상태·알림은 Effect RPC 기반의 하나의 앱용 WS로 통합한다. xterm 입력·출력·cols/rows용 터미널 WS는 별도다. CLI·MCP·Web 파일 제공에 필요한 HTTP는 유지한다.
+- 자체 서버 schema와 공유 wire schema는 Effect Schema로 전환한다. MCP SDK 등록 경계의 Zod는 유지한다. 검증/정규화/오류 의미를 보존하며 성능 향상을 전환 이유로 주장하지 않는다.
+- React 서버 상태는 TanStack DB와 React 연결 패키지를 사용하는 방향이다. daemon의 SQLite 자동 감지가 아니라 daemon producer → WS → React 공통 동기화 코드 → TanStack DB의 관계다. 동일 서버 상태를 Query·Zustand에 중복 저장하지 않는다.
+- Workflow는 이번에 도입하지 않는다. Host restart는 Effect의 대상별 실행과 XState의 실행 상태 규칙으로 처리한다. daemon 종료 이후 작업 자동 재개·기존 PTY 자동 재부착·별도 PTY broker/supervisor는 추가하지 않는다.
+- daemon restart의 기존 목적은 새 설정, 특히 API/Web 포트 적용이다. CLI의 사전 검증 → 일반 stop → 준비한 설정으로 start를 보존한다. POSIX blocker 거절·Windows 일반 stop 정책·외부 CLI 소유 실행 보존을 임의 변경하지 않는다. 상세 근거: [Baseline](2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md) 설정 적용 및 daemon 종료 절, [Runtime spec](../docs/specs/aiox-runtime.md) 시작·종료 절.
+- 요청 간 의미상 병합은 보류한다. 공개 Operation·완료 상세 이력은 되살리지 않는다. 현재 64/128건 결과 캐시는 최신 미보존 계약과 대조해 제거한다. 순번 checkpoint·실행 중 합류·미실행 대기·만료 세션 차단 책임은 보존한다.
+
+#### 이미 구현된 기반 — 다시 미결로 돌리지 않을 것
+
+직전 읽기 전용 확인에서 packages/protocol/src/host.ts의 webCommandRequestSchema는 clientSessionId·sequence·requestId·panelId·changes[]이고 panelTabTargetSchema는 생성/이동 공통 목적지다. 변경 종류는 panel.create/rename/delete, tab.create/move/close/dismiss, split.resize, select다. 새 pane 분할은 target.split로 표현한다. 새 panel은 pane 하나와 preparing tab 하나다. daemon의 applyWebCommand는 changes를 applyPanel transaction에서 적용하고 commit 뒤 shell 준비·정리를 실행한다. 현재 명령 성공 DTO는 requestId·sequence·panel|null이다.
+
+이 기반은 HTTP/SSE·Effect v3 구현이며 새 RPC·상태 버전·TanStack DB 통합 완료를 뜻하지 않는다. 현재 WebState는 changes[]이며 앱 전체 확정 변경 버전은 새 전송 계약에서 연결해야 한다. DTO 변경 사실과 DB 테이블 정규화 완료는 별개다. 배치 관계를 새 제품 요구처럼 재승인받거나 임의의 대규모 정규화를 추가하지 않는다.
+
+#### 다른 agent의 허용 작업 범위
+
+- 서버 구현: apps/daemon, 필요한 apps/cli, packages/protocol/persistence/vendor/adapters/config/diagnostics/terminal 등의 실제 caller/producer/consumer 및 관련 테스트·서버 문서. 경로 이름만으로 전부 변경하는 것이 아니라 책임 이전에 필요한 부분을 추적한다.
+- Web: apps/web/package.json의 effect·@tanstack/db·@tanstack/react-db 등 합의된 클라이언트 의존성과 루트 lockfile만 변경한다. React 컴포넌트·store·hooks·연결 코드·fixture·story·Web 테스트·스타일은 구현하거나 수정하지 않는다. xstate의 Web 도입도 이번 결정이 아니다.
+- 공유 protocol은 서버 전환에 필요하므로 수정할 수 있다. 현재 Web workspace-preview.test.ts가 panelLayoutSchema.safeParse를 소비한다. Web 미수정 경계에서 기존 공개 타입과 실제 사용 API의 영향을 확인한다. 필요하면 동일 Effect Schema를 원본으로 한 최소 호출 호환 경계를 두고 프론트 인계에 명시하되, Zod/Effect 도메인 스키마를 두 벌 유지하지 않는다.
+- 기존 미커밋 변경을 보존한다. 삭제·대체가 필요한 파일은 작업 전 원본과 diff를 먼저 보존한다. architecture.excalidraw는 접근/수정 대상에서 제외한다.
+- 사용자 daemon·vendor·개발 DB를 종료·삭제하지 않는다. 테스트는 임시 home·DB·본인 프로세스로 수행한다. commit/push는 별도 지시 없이 하지 않는다.
+- 서버 작업의 실행 로그/필요한 작업 구성을 repo workflow로 정하고, 이 Stage6 로그는 프론트 후속 맥락과 결과 소비를 소유한다. 현재 stage/plan pointer를 임의 이동하지 않는다. 필요 문서에는 실제 구현 상태와 Target을 구분한다.
+
+#### 의존성 기준과 조사 근거
+
+현재 확인한 manifest: daemon effect 3.22.2·Hono 4.13.8, persistence drizzle-orm 0.45.3·drizzle-kit 0.31.11, root Vitest 5.0.1, Web Vitest 4.1.6, MCP SDK 1.30.0·Zod 4.5.4다. 작업 착수 시 변경 여부를 다시 확인한다.
+
+- effect: 조사 기준 4.0.0-rc.117로 올리고 실제 사용 패키지에 선언.
+- @effect/platform-node: 같은 Effect v4 조합과 호환되는 RC.
+- @effect/sql-sqlite-node: 조사 기준 4.0.0-rc.117 추가.
+- drizzle-orm: 격리 실행을 통과한 1.0.0-rc.5-5935859를 기준으로 전환. drizzle-kit도 schema 생성 호환성을 확인해 맞춘다.
+- xstate 5(조사 기준 5.33.2), chokidar 5(5.0.0), fast-check 4(4.10.2) 추가.
+- @effect/vitest: Effect v4 대응 RC, 서버·공통 Vitest 5에 연결. Web의 Vitest 4는 Storybook peer 조건 때문에 유지한다.
+- Web에는 effect, @tanstack/db(조사 기준 0.9.2), @tanstack/react-db(0.4.1)를 추가하되 사용하는 코드는 만들지 않는다.
+- RC117의 HTTP/Socket/RPC/SQL 공통 기능은 effect/unstable/* 본체 경로, Schema도 본체 기능이다. main 문서의 경로와 혼용하지 않는다. v3의 @effect/sql-drizzle·별도 Schema/RPC 패키지를 잘못 함께 설치하지 않는다.
+- Workflow·Automerge·OpenTelemetry·Toxiproxy·Execa 등 미채택 후보는 추가하지 않는다.
+
+[Effect v4 조사](artifact/2026-09-25-Effect-v4-Ecosystem-Research.md), [추가 라이브러리 조사](artifact/2026-09-25-Server-Migration-Library-Research.md)를 읽는다. Drizzle RC5 + Effect RC117의 import·typed query·commit/rollback·재오픈은 서브에이전트의 격리 실행 보고이며 TypeScript 검사는 skipLibCheck 조건이었다. 제품 전체 schema·동시 transaction·실행 통합 검증으로 확대하지 않는다. Schema 합성 측정에서는 Zod가 더 빨랐으며 전환은 일관성·통합 목적이다.
+
+#### 서버가 구현하고 검증할 계약
+
+1. clientSessionId·sequence·requestId·동일 body 재전송 의미를 보존한다. 진행 중 중복은 합류하고 처리한 요청은 다시 실행하지 않는다. 보관하지 않는 과거 성공/실패를 만들어 반환하지 않는다. checkpoint는 수신 최댓값이 아니라 연속 확정 범위다. 세션 만료/daemon 재시작 뒤 옛 요청이 새 세션처럼 실행되지 않도록 서버에서 차단한다. 기존 idle sweep 재실행 재현은 W10 서버 W13 보고의 제한 검토를 읽는다.
+2. 등록·이동·삭제 등 배치 변경 순서와 shell/Agent 준비 완료 순서는 분리한다. shell 준비 때문에 panel/session의 뒤 배치 변경을 전부 기다리게 하지 않는다. 준비 전 검증은 먼저 하고 DB 등록 후 준비는 병렬로 진행한다.
+3. 한 명령의 changes는 최신 panel에 한 transaction으로 적용한다. 생성/이동 공통 target, 빈 pane·split·선택 정리, expectedRuntimeId·confirm 보호를 보존한다. 이동은 기존 shell을 재생성하지 않는다.
+4. 탭 생성 성공은 DB 등록 commit, 삭제 성공은 배치 제거 commit이다. 준비 완료 시 같은 실행 시도의 유효한 탭에만 terminal을 연결한다. 생성 중 이동은 위치를 보존하고 삭제 후 늦은 생성은 정리한다. 종료 미확인은 성공으로 숨기지 않고 cleanup 자원·진단·재시도를 유지한다.
+5. Host는 대상별 실제 성공·실패를 반환하고 부분 성공을 유지한다. CLI의 HTTP/NDJSON·foreground launch 의미는 실제 caller 기준으로 보존한다. CLI/Web 연결 종료는 명시적 취소가 아니며 daemon이 인수한 실행은 daemon 수명에 둔다.
+6. 모든 상태 producer가 변경한 대상을 전달해 daemon의 현재 snapshot을 갱신한다. 평상시 전체 DB 재조회·전체 snapshot 비교를 하지 않는다. 시작/명시적 복구의 전체 재구성과 메모리 snapshot의 최초/재접속 전달을 구분한다. commit 후 메모리 반영 실패, snapshot-구독 경계, 느린 연결을 실제로 검증한다.
+7. 명령 결과에 확정 변경과 동일 변경 식별/상태 버전을 연결한다. 요청한 창도 전체 상태 방송을 받는 계약이므로 응답·방송에서 같은 변경을 식별할 수 있어야 한다. 상태 버전은 React 요청 sequence와 별개다. 여러 자원의 관련 변경은 같은 반영 단위로 전달한다. 부분 delta를 최신 번호 하나만 남겨 누락시키지 않는다. 합쳐 보내면 포함 범위/기준이 일관돼야 한다.
+8. Effect RPC의 WS·Stream 지원 자체는 순서·멱등성·초기 동기화·재접속을 보장하지 않는다. 실제 RPC client를 사용하는 서버 통합 테스트로 확인한다. 프론트 제품 코드를 작성해 검증 범위를 넘지 않는다.
+9. 자체 schema 전환은 transform/default/strictness/unknown key·오류 수집 의미를 확인하고 기존 실패 회귀를 보존한다. MCP Zod 경계와 외부 vendor wire 검증의 역할을 구분한다. node-pty·xterm/headless/serialize 엔진은 유지한다.
+
+#### 프론트 구현 시 Required Context — 이번에는 구현하지 않음
+
+- apps/web/src는 이번 서버 작업에서 변경하지 않는다. 설치된 TanStack DB/Effect를 실제 사용한 것으로 보고하지 않는다. 기존 fixture 기반 UI와 사용자 PASS는 유지한다.
+- 서버 완료 보고에서 공개 Effect Schema/RPC group/type의 import 경로, 앱 WS 접속·세션 시작 절차, 명령 입력/결과, 최초 snapshot/변경/cleanup/알림/실패 예시, epoch·상태 버전·순번/재접속·만료 규칙을 이어받는다. 추정한 HTTP/SSE 계약으로 연결하지 않는다.
+- React 공통 연결 코드가 모든 입력 메시지를 하나의 반영 경로로 처리한다. TanStack DB에는 서버 확정 상태와 미확정 낙관적 변경을 연결하고 Query/Zustand에 같은 서버 상태를 중복 소유하지 않는다.
+- 확정 상태 반영과 해당 요청의 낙관적 변경 해제를 화면에서 일관되게 처리한다. 실패한 변경과 의존 변경만 조정하며 전체 화면 rollback 금지. 응답/방송의 중복 변경은 한 번 적용하되 요청 완료 처리를 빠뜨리지 않는다.
+- 서로 다른 부분 변경은 높은 상태 버전만 남겨 버리지 않는다. 버전 누락/epoch 변경/재접속 때 현재 snapshot으로 복원하며 과거 낙관적 조작을 무조건 다시 실행하지 않는다. 현재 상태 복원과 과거 결과 재현은 다르다.
+- 다른 창의 생성·변경도 받아야 하므로 현재 로컬 UI에 없는 탭이라는 이유만으로 서버 데이터를 버리지 않는다.
+- terminal WS는 앱 RPC와 별도이며 attach/화면 복원 이후 입력한다. 보이는 탭의 pane 이동은 xterm/WS 유지, 숨김/페이지 이탈은 브라우저 자원 정리, Web 종료는 서버 프로세스 종료가 아니다. headless serialize 화면은 앱 snapshot과 별개다.
+- shell 준비 실패와 탭 삭제 후 cleanup 실패를 구분하고 알림의 최신 대상 탐색·읽음 요청·실패 처리를 연결한다. 기존 설정/키 바인딩 W8·W9는 W10 이후 보류를 유지한다.
+- Web 전용 TestClock 통합 등을 이유로 Storybook/Vitest 버전이나 Web 테스트 코드를 임의 변경하지 않는다. 기존 공개 parse/safeParse 소비 경계를 유지한 경우 프론트 전환 때 해당 제한을 확인한다.
+
+#### 완료 보고와 검증 요구
+
+서버 구현 agent는 변경된 책임/제거한 기존 경로·정확 의존성 버전·실행한 검증과 실패/미검증·남은 제한·Web handoff를 보고한다. pnpm check를 실행하되 Web 코드 변경 없이 build/typecheck/test가 유지되는지 확인하고 실제 수행 범위를 분리한다. 실제 SQLite·PTY·RPC 통합, 생성 중 이동/삭제·late spawn·저장/cleanup 실패·순번 재전송/만료·snapshot과 delta/느린 연결·Host 부분 결과·daemon restart 사전 검증을 검증한다. fast-check로 조합을 생성하고 Effect 시간 기반 테스트를 사용하되 실제 PTY 확인을 대체하지 않는다. 사용자 vendor나 daemon을 임의 재시작하지 않는다.
+
+이번 Codex 작업은 본 결정·인계·프론트 맥락 기록과 전달 프롬프트 작성만 수행한다. 서버 마이그레이션과 Web 의존성 설치는 아직 실행하지 않았고, 다른 agent도 자동 실행하지 않았다. Stage6 W10은 후속 서버 결과 소비와 프론트 구현을 위해 열린 상태를 유지한다.
+
+### 2026-09-25 02:50 · 서버 전용 실행 프롬프트와 프론트 복귀 맥락 기록 완료
+
+사용자 지시대로 서버 구현·Web 의존성 추가 범위의 다른 agent용 프롬프트를 작성했다. Required Context의 Global/W10에 최신 합의 우선순위와 프론트 후속 구현·검증 맥락을 넣고 W10 next pointer를 본 블록으로 갱신했다. log check 및 git diff --check를 통과했고 onramp가 최신 인계 블록을 재개점으로 제시하는 것을 확인했다. 코드·의존성 설치·테스트 실행·agent 자동 실행은 하지 않았다. 연구 보고서와 앞선 W13 구현은 근거로 읽었지만 서버 v4/RPC/XState 전환 완료로 승격하지 않았다. 600행을 넘는 기존 로그 안에 유지한 이유는 현재 W10의 합의·외부 서버 작업 결과 소비·프론트 후속 연결을 한 재개점에서 이어가기 위해서이며, 서버 구현의 별도 실행 수명/작업 분리는 실제 구현 agent가 repo workflow에 따라 정한다.
+
+### 2026-09-25 03:08 · 서버 전용 구현 착수와 W15 분리
+
+사용자가 첨부 서버 구현 지시를 직접 실행하고 기계적인 작업을 Luna high에 위임하도록 요청했다. 이에 서버 전용 구현/검증 수명을 W15로 분리하고 `logs/2026-09-25-Effect-Server-Migration.md`에 위임했다. 기존의 「현재 Codex는 구현 agent를 자동 실행하지 않는다」는 당시 논의 세션 조건이며, 이번 직접 구현 요청에는 적용하지 않는다. W10은 서버 공개 계약을 기다리는 open 후속 작업으로 두며 React 소스·테스트는 이번 서버 작업에서 수정하지 않는다. 서버 전체 전환의 진행·검증·잔여 제한은 child 로그가 소유한다.
+
+### 2026-09-25 10:00 · W15 서버 완료 결과 소비와 W10 공개 계약 인계
+
+- 확인·수용: `logs/2026-09-25-Effect-Server-Migration.md`의 W1-W7 구현·검증 결과를 W15에 소비했다. native Effect 실행/저장/Schema·XState owner·Effect HTTP/RPC WS 및 session/state 전달을 구현했고, 최종 `pnpm check`는 Node24.14/macOS에서 exit 0, 846 tests passed·기존 scale opt-in 1 skipped다. 상세 보정 경위·증거·버전·제한은 해당 로그와 task records가 소유한다.
+- 공개 owner: `docs/specs/aiox-application-rpc.md`와 `@aiox/protocol`의 ApplicationRpc/Effect Schema를 프론트 계약으로 사용한다. 문서의 JSON 예제와 browser TypeScript 예제를 실제 decoder/compile로 검증했다. panel/terminal 의미는 configuration-web, 실행과 저장 내부 구조는 system/storage-terminal/vendor-bindings에 반영했다. 기존 Zod·SSE·client 생성 session 지시를 현재 권위로 소비하지 않도록 W10 Required Context를 갱신했다.
+- 범위 확인: Web 의존성만 Effect4.0.0-rc.117·@tanstack/db0.9.2·@tanstack/react-db0.4.1로 추가하고 Web Vitest4.1.6을 유지했다. Web source/test 72개 hash 일치·새 src 파일 없음, build/typecheck/89 tests 통과다. React RPC client/store/hooks·TanStack DB·낙관적 변경과 실제 서버 화면 연결은 구현하지 않았다.
+- 다음: W15 완료, 서버 child decided. W10은 open 후속으로 RPC session/state와 기존 UI를 연결하며 terminal WS는 별도 수명으로 유지한다. 현재 상태를 바탕으로 명령 확정/방송 중복·역전, reconnect snapshot/epoch, result_expired와 unknown session, 준비 중 이동/삭제, cleanup 실패, 최신 알림 대상 탐색을 검증한다. 서버 scope에서 commit/push·사용자 프로세스 제어·DB 삭제는 수행하지 않았다.
+- 한계: Node22.16은 terminal ESM import와 실제 SQLite init/rollback/reopen smoke까지다. Windows/Linux 전체 Effect 전환·실제 vendor 모델 E2E·성능 개선은 미검증이다. 이 제한을 Web 연결 완료나 모든 플랫폼 인증으로 확대하지 않는다.
+- 재개 정합: W10을 부모의 next pointer로 지정하며, 이는 후속 React 작업의 선택 위치다. 이번 서버 작업에서 Web 구현을 시작한 뜻은 아니다. Stage6은 788행으로 soft threshold를 넘지만 같은 UI 단계의 PASS·후속 연결 맥락을 유지하는 단일 수명이라 이번 반환에서 분리하지 않는다.
+
+## 2026-09-25 · 서버 마이그레이션 리뷰 결함 3건 수정
+
+### 2026-09-25 · 재현과 수정 착수
+
+- 사용자 리뷰: Codex 준비 Stream 종료가 stderr를 닫음, Claude retirement Effect 실패가 JavaScript catch를 우회함, notifications.read 연결 종료 시 DB와 AppState 불일치. 사용자 재현 보고이며 이번 작업에서 직접 재현한다.
+- 범위: 해당 서버 adapter/RPC의 실제 caller·owner·tests를 추적하고 회귀 테스트와 최소 수정, 관련 검증을 수행한다. 기존 서버 완료 기록은 과거 검증 결과로 보존하며 이번 결함으로 보정한다. Web 소스·사용자 daemon·DB·architecture.excalidraw는 수정하지 않는다.
+- 다음: W16 회귀 테스트 실패 확인 후 수정. W10 프론트 연결은 후속으로 유지한다.
+
+### 2026-09-25 12:02 · 리뷰 결함 3건 재현·수정과 전체 검증 완료
+
+- 직접 재현: Codex 실제 Node 자식 프로세스는 기존 준비 Stream 종료 후 대량 stderr 출력에서 exit 1; ClaudeBinding 세션 교체의 실제 outcome 정산 실패 주입은 관측 진단 누락; 실제 SQLite·RPC는 저장을 대기시킨 상태에서 WebSocket을 닫으면 DB 읽음 완료 후 재접속 snapshot에 미확인 알림이 남았다. 사용자 리뷰 3건을 독립적으로 확인했다.
+- 수정: Codex 준비 신호 Deferred와 지속 stderr reader Fiber를 분리하고 ExecutionOwner에 reader 정리를 등록했다. Claude retirement는 Effect.catch에서 저장 실패를 표시하고 기존 진단·outcome 재시도에 연결한다. notifications.read는 세션·종료 상태를 확인한 후 기존 DaemonTasks가 DB 저장과 AppState 갱신을 소유하고 요청 Fiber는 결과만 기다린다. HTTP의 기존 비동기 handler는 연결 취소가 Promise 내부 저장→상태 갱신을 중단하지 않으므로 이번 수정 대상은 RPC다.
+- 회귀 검증: 각 production 파일 옆 index.test.ts / claude.test.ts / application-rpc.test.ts에 테스트 1개씩 추가했다. Codex 준비 후 대량 stderr 정상 종료, Claude 실패 진단→interrupted outcome 재시도→진단 해제, RPC 종료 후 DB·정상 구독자 remove delta·재접속 snapshot·중복 읽음 no-op을 확인했다.
+- 최종 검증: macOS/Node v24.14.0에서 pnpm check exit 0. lint(기존 경고 8, 오류 0)·format·build·typecheck 및 849 passed / 1 skipped(기존 AIOX_SCALE 선택 실행). Codex 20, Claude 141, daemon 298 passed / 1 skipped를 포함한다. 근거: /private/tmp/aiox-review-full-check.log. 초기 sandbox 실행은 loopback EPERM으로 실패했으며, 필요한 권한으로 실제 회귀·전체 검증을 완료했다.
+- 범위·한계: Web 소스·테스트 기존 72개 SHA-256 모두 일치(/private/tmp/aiox-review-web-hashes.log). 실제 Codex/Claude 바이너리 E2E와 다른 OS는 이번에 실행하지 않았다. Claude는 controls.settle 저장 실패 주입이며 SQLite 장애 자체 주입은 아니다. 사용자 daemon/DB·architecture.excalidraw·commit/push는 건드리지 않았다.
+- Owner 반영: [[docs/specs/aiox-application-rpc]]에 연결 종료 후 알림 읽음 완료 보장과 실제 RPC 근거, [[docs/architecture/aiox-vendor-bindings]]에 stderr reader 소유와 retirement 오류 처리를 반영했다. 기존 서버 마이그레이션 완료 기록은 당시 검증 이력으로 보존하고 이번 후속 회귀로 보정한다. Stage6 로그는 현재 UI 통합의 같은 수명을 유지하므로 soft 길이 경고에 따른 추가 분할은 하지 않는다.
+- 결과: W16 완료. 다음은 W10이며 프론트 실연결은 이번 작업에서 수행하지 않았다.
+
+### 2026-09-25 12:41 · 2026-09-25 · Codex 최초 리뷰와 수정 후 재검증 소비
+
+- 직접 확인한 최초 결함 3건: (P1) Codex readiness까지 읽고 Stream을 끝내면 stderr reader가 파이프를 닫아 자식 프로세스가 실패할 수 있었다. Node 자식 프로세스 재현에서 기존 reader는 exit 0, 변경된 reader는 exit 1이었다. (P2) Claude retirement의 Effect 실패가 JavaScript catch를 통과하지 않아 실패 표시·진단·재시도가 빠졌다. 실제 ClaudeBinding의 지연된 settle 실패 주입에서 재시도 0회·진단 없음으로 재현했다. (P2) 알림 읽음 RPC의 요청 Fiber가 연결 종료로 취소되면 DB 저장 후 AppState 반영이 빠졌다. 실제 SQLite/RPC 연결을 끊은 재현에서 DB와 재접속 snapshot의 unread가 달랐다.
+- 타 agent 수정 보고를 코드·호출 경로와 대조했다. Codex는 readiness Deferred와 계속 읽는 stderr Fiber를 분리하고 ExecutionOwner가 소유한다. Claude는 Effect.catch로 실패를 공통 진단·재시도 경로에 연결한다. notifications.read는 DB 변경부터 AppState 반영까지 DaemonTasks가 소유하고 RPC는 결과를 기다린다. 종료 미확인 프로세스의 reader를 먼저 해제하지 않는 경계도 확인했다.
+- Codex 직접 재검증: 관련 테스트 47개(Codex index 4, Claude claude 38, daemon application-rpc/tasks 5)와 기존 재현 3개가 통과했다. 독립 리뷰를 함께 소비했으며 해당 수정에서 추가 확정 결함은 발견하지 못했다. 초기 리뷰에서는 전체 check를 재실행하지 않았고, 수정 agent의 849 passed/1 skipped 전체 check 보고와 구분한다. 이후 선택 상태 분리까지 포함한 Codex 직접 전체 check는 아래 W17의 851 passed/1 skipped 기록을 따른다.
+- 근거: /private/tmp/aiox-codex-readiness-review.mjs, /private/tmp/aiox-claude-retirement-product.test.ts, /tmp/aiox-migration-review.test.ts, /tmp/aiox-review-fix-codex.txt, /tmp/aiox-review-fix-claude.txt, /tmp/aiox-review-fix-rpc.txt, /tmp/aiox-review-fix-prior-rpc.txt, /tmp/aiox-review-fix-prior-claude.txt. 임시 파일은 영구 보존을 보장하지 않는다.
+- 검증 한계: 실제 Codex/Claude 바이너리 E2E는 실행하지 않았다. Claude 재현은 settle 실패와 pending 조건 주입이며 실제 SQLite 장애 주입은 아니다. RPC는 실제 SQLite와 RPC client로 확인했다. SIGKILL 후 PTY 생존이나 타 OS 검증으로 확대하지 않는다. 수정 계약은 이미 반영된 application-rpc·vendor-bindings owner 문서와 일치한다.
+
+## 2026-09-25 · pane·탭 선택의 클라이언트 전용화와 리뷰 결과 소비
+
+- W17. 사용자는 pane·탭 선택이 서버 저장 대상인지 재검토를 요청하고, 선택은 각 React 앱의 메모리 상태이며 새로고침하면 사라지는 것이 요구라고 확정했다. 서버 select 명령·선택 DTO/DB 필드와 관련 서버 테스트 제거를 승인했다.
+- 서버 변경에 맞춰 Web까지 먼저 수정한 것은 범위를 넘은 진행이었다. 사용자의 중단 지시 뒤 해당 Web 변경을 작업 전 원본으로 전부 복구하고 내용 일치를 확인했다. 이후 사용자가 클라이언트 전용 선택 타입 추가를 명시적으로 승인해 현재 Web 변경을 적용했다. 전체 RPC/TanStack DB 연결까지 승인·구현한 것으로 확대하지 않는다.
+- 현재 책임: 서버는 pane/tab의 존재·소속·순서·분할 비율·terminal 상태를 저장한다. Web은 `apps/web/src/entities/panel/workspace-layout.ts`의 `selectedTabId`·`activePaneId`를 React 메모리에서만 사용한다. 서버 `select`·`selectPanelPane`·`PanelView.activePaneId`·`Pane.selectedTabId`·SQLite `active_pane_id`는 제거했다. localStorage·서버 선택 저장·창 간 선택 방송은 없다.
+- 서버의 빈 pane/split 정리는 유지하고 Web에서만 삭제 후 선택을 조정한다. 선택 저장·서버 포커스만 검사하던 assertion과 helper는 삭제하고, 관계·transaction·닫기·분할 회귀는 유지했다. 최초부터 독립적인 `/api/panels/:panelId/select` route를 이번에 삭제한 것으로 기록하지 않는다. 실제 제거 대상은 공통 명령의 `select`다.
+- 검증 직접 실행: protocol 24, persistence 24, CLI 74, daemon 298 passed/1 skipped, Web 90을 포함해 `pnpm check` exit 0, 총 851 passed/1 skipped. lint·format·build·typecheck도 통과했다. Web의 서로 다른 mounted 화면 간 선택 독립성과 재마운트 초기화, 서버 select 거절, SQLite 현재 schema 생성·저장·재오픈을 검증했다. 근거: `/tmp/aiox-selection-final-check.txt`, `/tmp/aiox-web-local-selection-tests.txt`, production 옆 테스트.
+- 검증 한계: 실제 Codex/Claude 바이너리의 새 수동 시나리오나 SIGKILL 후 복구는 수행하지 않았다. React의 실제 RPC/TanStack DB·terminal 연결은 여전히 W10에 남는다. react-doctor는 기존 76점/1 error/4 warnings와 같았고, 기존 root error boundary 등의 진단을 이번 변경의 회귀로 주장하지 않는다.
+- 보존: 기존 미커밋 원본·diff는 `/tmp/aiox-selection-local-baseline/`에 보존했다. 사용자 daemon·개발 DB·architecture.excalidraw·commit/push는 건드리지 않았다. 첫 배포 전 현재 schema를 직접 수정했으며, 옛 선택 필드가 있는 개발 DB 삭제·재생성은 수행하지 않았다.
+- Owner: 선택의 저장 경계는 `docs/specs/aiox-configuration-web.md`, 화면은 `docs/specs/aiox-web-ui.md`, 명령은 `docs/specs/aiox-application-rpc.md`, 저장/코드 책임은 `docs/architecture/aiox-storage-terminal.md`를 따른다.
+- 다음: W10에서 서버 현재 상태만 TanStack DB에 연결하고 클라이언트 선택은 분리한다. 이 로컬 타입 작업을 실제 UI 연결 PASS로 기록하지 않는다. 이 블록은 W10의 같은 인계·복귀 수명이며 soft 600행 기준을 넘었지만 독립 로그로 분리하지 않는다.
+
+### 2026-09-25 12:43 · owner·artifact 반영과 후속 작업 경계
+
+- 사용자 요청에 따라 코드 검증·리뷰 소비와 pane·탭 선택의 클라이언트 전용 계약을 기록했다. configuration-web 상단에 남아 있던 선택의 서버 복원 설명을 수정하고, Web UI spec에 React 앱별 선택 독립성과 새로고침 초기화를 명시했다. application-rpc·storage-terminal·system의 select 제거·저장 경계도 대조했다. vendor-bindings와 application-rpc의 리뷰 결함 3건 수정 계약은 이미 반영돼 있어 중복 추가하지 않았다.
+- artifact 6개 갱신: 2026-09-24-Web-Terminal-Transport-Research, 2026-09-25-Effect-Server-Adapter-Research, 2026-09-25-Effect-v4-Ecosystem-Research, 2026-09-25-Server-Migration-Library-Research에는 조사 시점과 후속 채택·구현 상태를 구분하고 현행 owner 링크를 추가했다. AIOX-TUI-Product-Context-Prompt와 AIOX-Web-UI-Design-Prompt에는 서버 geometry와 React 메모리 선택의 경계, 최신 Effect/RPC·TanStack DB 후속 범위를 반영했다.
+- 삭제 판단: 관련 자료는 고정 commit·버전별 실패/통과 실험·이전 인계의 독립 근거가 남아 있어 삭제하지 않았다. 과거 v3/Hono·HTTP/SSE·Workflow 후보는 현재 구현 지시가 아님을 표시했다. Agent CLI integration의 HTTP/SSE는 MCP 경로이므로 앱 RPC 전환을 이유로 제거하지 않았다. Agent state/notification audit·terminal replay prompt와 HTML 디자인 자산은 이번 선택 계약과 충돌하지 않아 변경하지 않았다.
+- W11의 서버 제거·원자 저장 및 owner 정합은 완료로 소비했다. 남은 실제 React RPC/TanStack DB·PTY 통합 검증은 W10이 소유한다. W17의 로컬 선택 테스트 통과를 실서버 Web 연결 PASS로 확대하지 않는다. Required Context의 Global/W10과 next pointer도 현재 계약으로 맞췄다.
+- 이번 문서 반영에서는 제품 코드·의존성을 추가 수정하지 않았다. 변경 문서의 inline-code 점검을 통과했다. log CLI에 heading rename 기능이 없어 이번에 생성한 제목의 중복 날짜 접두사만 직접 정정했고, entry·Work Items·Required Context 변경은 log 도구로 수행했다.

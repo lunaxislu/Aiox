@@ -8,6 +8,7 @@ import {
     type Ports,
     type PutConfigRequest,
 } from "@aiox/protocol";
+import { Effect, Semaphore } from "effect";
 
 import { configPath, writeConfigFile, type ConfigLocation } from "./files";
 import { parseConfig, ConfigError } from "./schema";
@@ -55,23 +56,33 @@ export function createConfigDocument(
                 effective.ports.web !== ports.web,
         };
     }
-    let pending = Promise.resolve();
+    const writes = Semaphore.makeUnsafe(1);
     return {
         read,
         write(input: PutConfigRequest): Promise<ConfigView> {
-            const result = pending.then(async () => {
-                const current = await read();
-                if (current.revision !== input.revision)
-                    throw new ConfigConflictError(current);
-                const { stored } = putConfigRequestSchema.parse(input);
-                await writeConfigFile(stored, location);
-                return read();
-            });
-            pending = result.then(
-                () => {},
-                () => {},
+            return Effect.runPromise(
+                writes.withPermit(
+                    Effect.gen(function* () {
+                        const current = yield* Effect.tryPromise({
+                            try: read,
+                            catch: (error) => error,
+                        });
+                        if (current.revision !== input.revision)
+                            return yield* Effect.fail(
+                                new ConfigConflictError(current),
+                            );
+                        const { stored } = putConfigRequestSchema.parse(input);
+                        yield* Effect.tryPromise({
+                            try: () => writeConfigFile(stored, location),
+                            catch: (error) => error,
+                        });
+                        return yield* Effect.tryPromise({
+                            try: read,
+                            catch: (error) => error,
+                        });
+                    }),
+                ),
             );
-            return result;
         },
     };
 }

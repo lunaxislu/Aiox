@@ -2,17 +2,27 @@ import { access } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { ExecutionOwner } from "@aiox/vendor";
+import type { ExecutionProcess } from "@aiox/vendor";
+import { Effect } from "effect";
 import { expect, test, vi } from "vitest";
 
 import * as environment from "@/claude-environment";
 import * as version from "@/claude-version";
 import { claudeAdapter } from "@/index";
 
-test("execution owner retains resources after collaboration cleanup and receives the validated vendor launch", async () => {
-    const foreground = vi.fn().mockResolvedValue({ stop: vi.fn() });
+const run = Effect.runPromise;
+const processHandle: ExecutionProcess = {
+    exited: Effect.never,
+    stop: () => Effect.void,
+    write() {},
+    resize() {},
+};
+
+test("execution owner retains resources and validates vendor launch", async () => {
+    const foreground = vi.fn(() => Effect.succeed(processHandle));
     const owner = new ExecutionOwner(foreground);
     const probe = vi.spyOn(version, "probeClaude").mockResolvedValue("2.1.268");
-    const execution = await claudeAdapter.createExecution(owner);
+    const execution = await run(claudeAdapter.createExecution(owner));
     try {
         const binding = claudeAdapter.createBinding(
             {
@@ -27,25 +37,31 @@ test("execution owner retains resources after collaboration cleanup and receives
         const { inboxPath } = execution.connection as { inboxPath: string };
         if (process.platform !== "win32")
             await expect(access(dirname(inboxPath))).resolves.toBeUndefined();
+
         const command = {
             file: "claude",
             args: ["--resume"],
             cwd: process.cwd(),
             env: {},
         };
-        await execution.start(command, owner);
-        expect(probe).toHaveBeenCalledWith("claude", {}, process.cwd());
+        await run(execution.start(command, owner));
+        expect(probe).toHaveBeenCalledWith(
+            "claude",
+            {},
+            process.cwd(),
+            owner.signal,
+        );
         expect(foreground).toHaveBeenCalledWith(command);
         await expect(
-            execution.start({ ...command, file: "other" }, owner),
+            run(execution.start({ ...command, file: "other" }, owner)),
         ).rejects.toThrow();
     } finally {
-        await owner.stop();
+        await run(owner.stop());
         probe.mockRestore();
     }
 });
 
-test("cancellation while allocating the inbox disposes it and rejects execution creation", async () => {
+test("late inbox allocation after shutdown is disposed before creation fails", async () => {
     const dispose = vi.fn(async () => {});
     let allocated!: (value: { path: string; dispose(): Promise<void> }) => void;
     const allocation = vi
@@ -56,43 +72,46 @@ test("cancellation while allocating the inbox disposes it and rejects execution 
                     allocated = resolve;
                 }),
         );
-    const foreground = vi.fn();
+    const foreground = vi.fn(() => Effect.succeed(processHandle));
     const owner = new ExecutionOwner(foreground);
     try {
-        const creating = claudeAdapter.createExecution(owner);
-        await owner.stop();
+        const creating = run(claudeAdapter.createExecution(owner));
+        await vi.waitFor(() => expect(allocated).toBeTypeOf("function"));
+        await run(owner.stop());
         allocated({ path: "/assigned", dispose });
         await expect(creating).rejects.toThrow();
         expect(dispose).toHaveBeenCalledOnce();
         expect(foreground).not.toHaveBeenCalled();
     } finally {
         allocation.mockRestore();
-        await owner.stop();
+        await run(owner.stop());
     }
 });
 
-test("stopped execution skips version probing and cannot spawn", async () => {
-    const foreground = vi.fn();
+test("stop before adapter startup prevents version probe and spawn", async () => {
+    const foreground = vi.fn(() => Effect.succeed(processHandle));
     const owner = new ExecutionOwner(foreground);
-    const execution = await claudeAdapter.createExecution(owner);
-    const probe = vi.spyOn(version, "probeClaude").mockResolvedValue("2.1.268");
+    const execution = await run(claudeAdapter.createExecution(owner));
+    const probe = vi.spyOn(version, "probeClaude");
     try {
-        await owner.stop();
+        await run(owner.stop());
         await expect(
-            execution.start(
-                {
-                    file: "claude",
-                    args: [],
-                    cwd: process.cwd(),
-                    env: {},
-                },
-                owner,
+            run(
+                execution.start(
+                    {
+                        file: "claude",
+                        args: [],
+                        cwd: process.cwd(),
+                        env: {},
+                    },
+                    owner,
+                ),
             ),
         ).rejects.toThrow();
         expect(probe).not.toHaveBeenCalled();
         expect(foreground).not.toHaveBeenCalled();
     } finally {
+        await run(owner.stop());
         probe.mockRestore();
-        await owner.stop();
     }
 });

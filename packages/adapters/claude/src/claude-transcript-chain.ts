@@ -1,36 +1,38 @@
-import { z } from "zod";
+import { Option, Schema } from "effect";
 
-export const transcriptRowSchema = z.object({
-    sessionId: z.string().min(1),
-    uuid: z.string().min(1),
-    parentUuid: z.string().nullable(),
-    isSidechain: z.literal(false),
-    type: z.string(),
-    promptId: z.string().min(1).optional(),
-    subtype: z.string().optional(),
-    origin: z.unknown().optional(),
-    promptSource: z.unknown().optional(),
-    isApiErrorMessage: z.boolean().optional(),
-    isAbortedMidStream: z.boolean().optional(),
-    interruptedMessageId: z.string().optional(),
-    interruptedByShutdown: z.boolean().optional(),
-    durationMs: z.number().nonnegative().optional(),
-    message: z
-        .object({
-            role: z.string(),
-            id: z.string().optional(),
-            stop_reason: z.string().nullable().optional(),
-            content: z.union([
-                z.string(),
-                z.array(
-                    z.object({
-                        type: z.string(),
-                        text: z.string().optional(),
+export const transcriptRowSchema = Schema.Struct({
+    sessionId: Schema.String.check(Schema.isMinLength(1)),
+    uuid: Schema.String.check(Schema.isMinLength(1)),
+    parentUuid: Schema.NullOr(Schema.String),
+    isSidechain: Schema.Literal(false),
+    type: Schema.String,
+    promptId: Schema.optional(Schema.String.check(Schema.isMinLength(1))),
+    subtype: Schema.optional(Schema.String),
+    origin: Schema.optional(Schema.Unknown),
+    promptSource: Schema.optional(Schema.Unknown),
+    isApiErrorMessage: Schema.optional(Schema.Boolean),
+    isAbortedMidStream: Schema.optional(Schema.Boolean),
+    interruptedMessageId: Schema.optional(Schema.String),
+    interruptedByShutdown: Schema.optional(Schema.Boolean),
+    durationMs: Schema.optional(
+        Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
+    ),
+    message: Schema.optional(
+        Schema.Struct({
+            role: Schema.String,
+            id: Schema.optional(Schema.String),
+            stop_reason: Schema.optional(Schema.NullOr(Schema.String)),
+            content: Schema.Union([
+                Schema.String,
+                Schema.Array(
+                    Schema.Struct({
+                        type: Schema.String,
+                        text: Schema.optional(Schema.String),
                     }),
                 ),
             ]),
-        })
-        .optional(),
+        }),
+    ),
 });
 
 type Chain = {
@@ -41,12 +43,21 @@ type Chain = {
     aborted: boolean;
 };
 
+type Mutable<T> = T extends readonly (infer Item)[]
+    ? Mutable<Item>[]
+    : T extends object
+      ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+      : T;
+
 /** Only causal metadata for observed requests; never retains transcript bodies. */
 export class ClaudeTranscriptChain {
     readonly #nodes = new Map<string, Chain>();
     readonly #heads = new Map<string, string>();
     readonly #resumed = new Set<string>();
-    readonly #unlinked = new Map<string, z.infer<typeof transcriptRowSchema>>();
+    readonly #unlinked = new Map<
+        string,
+        Schema.Schema.Type<typeof transcriptRowSchema>
+    >();
     readonly #ignored = new Set<string>();
 
     clear(): void {
@@ -62,9 +73,11 @@ export class ClaudeTranscriptChain {
     ):
         | { key: string; outcome: "completed" | "interrupted"; reason?: string }
         | undefined {
-        const parsed = transcriptRowSchema.safeParse(value);
-        if (!parsed.success) return;
-        const row = parsed.data;
+        const parsed = Schema.decodeUnknownOption(transcriptRowSchema)(value);
+        if (Option.isNone(parsed)) return;
+        const row = structuredClone(parsed.value) as Mutable<
+            Schema.Schema.Type<typeof transcriptRowSchema>
+        >;
         // Retain marker semantics, never transcript text, while awaiting a parent.
         if (row.message) {
             if (typeof row.message.content === "string")

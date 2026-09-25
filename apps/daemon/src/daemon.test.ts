@@ -20,7 +20,7 @@ import { WebSocket } from "ws";
 
 import { startDaemon } from "@/daemon";
 import type { DaemonHarness } from "@/testing";
-import { fakeVendor, startTestDaemon } from "@/testing";
+import { openTestApplication, fakeVendor, startTestDaemon } from "@/testing";
 
 let harness: DaemonHarness;
 
@@ -64,7 +64,7 @@ it("keeps both HTTP surfaces unavailable until required startup recording finish
             for (const port of [ports.daemon, ports.web]) {
                 for (const path of [
                     "/api/status",
-                    "/api/web/events",
+                    "/api/rpc",
                     "/api/web/agents",
                     "/api/daemon/stop",
                     "/mcp/test",
@@ -1798,106 +1798,66 @@ it("keeps Web notifications scoped to their original daemon terminal after unreg
     ]);
 });
 
-it("streams initial and changed Web state, reconnects, and closes with the daemon", async () => {
-    const connect = async () => {
-        const response = await fetch(harness.webUrl("/api/web/events"));
-        expect(response.status).toBe(200);
-        expect(response.headers.get("content-type")).toContain(
-            "text/event-stream",
-        );
-        const reader = response.body!.getReader();
-        expect(new TextDecoder().decode((await reader.read()).value)).toContain(
-            "event: snapshot",
-        );
-        return reader;
-    };
-    const first = await connect();
-    try {
-        const next = first.read();
-        const vendor = fakeVendor();
-        const agent = await harness.daemon.registerRuntime({
-            networkId: null,
-            createBinding: vendor.createBinding,
-        });
-        expect(new TextDecoder().decode((await next).value)).toContain(
-            "event: state",
-        );
-        await first.cancel();
-        const second = await connect();
-        const status = second.read();
-        vendor.status("working");
-        expect(new TextDecoder().decode((await status).value)).toContain(
-            "event: state",
-        );
-        await second.cancel();
-        const third = await connect();
-        const removed = third.read();
-        await harness.daemon.stopRuntime(agent.runtimeId);
-        expect(new TextDecoder().decode((await removed).value)).toContain(
-            "event: state",
-        );
-        await third.cancel();
-        const closing = await connect();
-        const end = closing.read().catch(() => ({ done: true }));
-        expect((await harness.daemon.stop(true)).stopped).toBe(true);
-        expect((await end).done).toBe(true);
-    } finally {
-        await first.cancel().catch(() => {});
-    }
+it("streams initial and changed application state, reconnects, and closes with daemon", async () => {
+    const first = await openTestApplication(harness);
+    expect((await first.next()).type).toBe("snapshot");
+    const vendor = fakeVendor();
+    const agent = await harness.daemon.registerRuntime({
+        networkId: null,
+        createBinding: vendor.createBinding,
+    });
+    expect((await first.next()).type).toBe("delta");
+    await first.close();
+    const second = await openTestApplication(harness);
+    expect((await second.next()).type).toBe("snapshot");
+    vendor.status("working");
+    expect((await second.next()).type).toBe("delta");
+    await harness.daemon.stopRuntime(agent.runtimeId);
+    expect((await second.next()).type).toBe("delta");
+    const end = second.next().then(
+        () => false,
+        () => true,
+    );
+    expect((await harness.daemon.stop(true)).stopped).toBe(true);
+    expect(await end).toBe(true);
+    await second.close();
 });
 
-it("invalidates SSE snapshots on shell exit and committed notification changes, but not no-op reads", async () => {
+it("publishes shell exit and committed notifications but no changes for no-op reads", async () => {
     const network = await harness.daemon.services.networks.create("events");
     const origin = await joinAgent(network.id, "origin");
     const target = await joinAgent(network.id, "target");
-    const connections = vi.spyOn(harness.daemon.services.webEvents, "connect");
-    const response = await fetch(harness.webUrl("/api/web/events"));
-    const writes = vi.spyOn(
-        connections.mock.calls[0]![0].env.outgoing,
-        "write",
-    );
-    const reader = response.body!.getReader();
-    let events = 0;
-    const observing = (async () => {
-        let buffered = "";
-        while (true) {
-            const chunk = await reader.read();
-            if (chunk.done) return;
-            buffered += new TextDecoder().decode(chunk.value);
-            const frames = buffered.split("\n\n");
-            buffered = frames.pop()!;
-            events += frames.filter((frame) =>
-                /event: (snapshot|state)/.test(frame),
-            ).length;
-        }
-    })();
+    const rpc = await openTestApplication(harness);
+    await rpc.next();
     try {
-        await vi.waitFor(() => expect(events).toBe(1));
         const { session } = await borrowableShell();
-        await vi.waitFor(() => expect(events).toBe(2));
+        await vi.waitFor(() => expect(rpc.observed.length).toBe(2));
         session.write("exit\r");
-        // Windows node-pty flushes output for 1s before reporting process exit.
         await vi.waitFor(() => expect(session.alive).toBe(false), {
             timeout: 3000,
         });
-        await vi.waitFor(() => expect(events).toBe(3));
+        await vi.waitFor(() => expect(rpc.observed.length).toBe(3));
         await harness.daemon.services.messages.send(
             harness.daemon.services.runtimes.get(origin.runtimeId)!,
             [target.runtimeId],
             "event",
         );
-        await vi.waitFor(() => expect(events).toBeGreaterThanOrEqual(4));
-        const beforeSettle = events;
+        await vi.waitFor(() =>
+            expect(rpc.observed.length).toBeGreaterThanOrEqual(4),
+        );
+        const beforeSettle = rpc.observed.length;
         await target.vendor.settle(
             target.vendor.deliveryIds[0]!,
             "failed",
             "event failure",
         );
-        await vi.waitFor(() => expect(events).toBeGreaterThan(beforeSettle));
+        await vi.waitFor(() =>
+            expect(rpc.observed.length).toBeGreaterThan(beforeSettle),
+        );
         const unread = (await call("/api/web/notifications"))
             .body as NotificationView[];
         expect(unread).toHaveLength(1);
-        const beforeRead = events;
+        const beforeRead = rpc.observed.length;
         expect(
             (
                 await post("/api/web/notifications/read", {
@@ -1905,8 +1865,9 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
                 })
             ).body,
         ).toEqual({ read: 1 });
-        await vi.waitFor(() => expect(events).toBe(beforeRead + 1));
-        const beforeNoOp = writes.mock.calls.length;
+        await vi.waitFor(() =>
+            expect(rpc.observed.length).toBe(beforeRead + 1),
+        );
         expect(
             (
                 await post("/api/web/notifications/read", {
@@ -1914,35 +1875,18 @@ it("invalidates SSE snapshots on shell exit and committed notification changes, 
                 })
             ).body,
         ).toEqual({ read: 0 });
-        // The HTTP response follows notify(); socket delivery need not have caught up.
-        expect(writes).toHaveBeenCalledTimes(beforeNoOp);
-        expect(events).toBe(beforeRead + 1);
+        expect(rpc.observed.length).toBe(beforeRead + 1);
     } finally {
-        await reader.cancel();
-        await observing;
+        await rpc.close();
     }
 });
 
-it("does not invalidate Web state for external-only runtime and notification changes", async () => {
+it("keeps external-only runtime and notification changes off the application stream", async () => {
     const network =
         await harness.daemon.services.networks.create("external-events");
     const web = await joinAgent(network.id, "web");
-    const connections = vi.spyOn(harness.daemon.services.webEvents, "connect");
-    const response = await fetch(harness.webUrl("/api/web/events"));
-    const writes = vi.spyOn(
-        connections.mock.calls[0]![0].env.outgoing,
-        "write",
-    );
-    const reader = response.body!.getReader();
-    await reader.read();
-    const frames: Uint8Array[] = [];
-    const observing = (async () => {
-        while (true) {
-            const frame = await reader.read();
-            if (frame.done) return;
-            frames.push(frame.value);
-        }
-    })();
+    const rpc = await openTestApplication(harness);
+    await rpc.next();
     try {
         const originVendor = fakeVendor();
         const targetVendor = fakeVendor();
@@ -1967,22 +1911,60 @@ it("does not invalidate Web state for external-only runtime and notification cha
             read: 1,
         });
         await harness.daemon.stopRuntime(origin.runtimeId);
-        // Registration, settlement and cleanup have all completed their notifications.
-        await vi.waitFor(() => expect(writes).toHaveBeenCalled());
         expect((await call("/api/web/notifications")).body).toEqual([]);
+        await vi.waitFor(() =>
+            expect(
+                rpc.observed.some(
+                    (event) =>
+                        event.type === "delta" &&
+                        event.changes.some(
+                            (change) =>
+                                change.resource === "agent" &&
+                                change.id === origin.runtimeId &&
+                                change.action === "remove",
+                        ),
+                ),
+            ).toBe(true),
+        );
+        const externalChanges = rpc.observed
+            .filter((event) => event.type === "delta")
+            .flatMap((event) => event.changes);
+        expect(externalChanges.map((change) => change.resource)).toEqual(
+            expect.arrayContaining(["agent"]),
+        );
+        expect(
+            externalChanges.every((change) => change.resource === "agent"),
+        ).toBe(true);
+        expect(externalChanges.map((change) => change.id)).toContain(
+            target.runtimeId,
+        );
+        const beforeWebNotification = rpc.observed.length;
         await harness.daemon.services.messages.send(
             harness.daemon.services.runtimes.get(web.runtimeId)!,
             [target.runtimeId],
-            "web request",
+            "visible",
         );
         await targetVendor.settle(targetVendor.deliveryIds[1]!, "failed");
-        await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0));
+        await vi.waitFor(() =>
+            expect(
+                rpc.observed.some(
+                    (event) =>
+                        event.type === "delta" &&
+                        event.changes.some(
+                            (change) =>
+                                change.resource === "notification" &&
+                                change.action === "upsert" &&
+                                change.value.originRuntimeId === web.runtimeId,
+                        ),
+                ),
+            ).toBe(true),
+        );
+        expect(rpc.observed.length).toBeGreaterThan(beforeWebNotification);
         expect((await call("/api/web/notifications")).body).toEqual([
             expect.objectContaining({ originRuntimeId: web.runtimeId }),
         ]);
     } finally {
-        await reader.cancel();
-        await observing;
+        await rpc.close();
     }
 });
 

@@ -2,7 +2,11 @@ import { request } from "node:http";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { sseFrameReader, startTestDaemon, type DaemonHarness } from "./testing";
+import {
+    openTestApplication,
+    startTestDaemon,
+    type DaemonHarness,
+} from "./testing";
 let h: DaemonHarness;
 beforeEach(async () => {
     h = await startTestDaemon();
@@ -102,86 +106,23 @@ it("preserves the body limit ahead of MCP authentication and rejects hook creden
     expect(await hook.text()).toBe("Invalid agent report credential.");
 });
 
-it("pauses actual SSE writes until drain and removes the Node drain listener on disconnect", async () => {
-    const connections = vi.spyOn(h.daemon.services.webEvents, "connect");
-    const response = await fetch(h.webUrl("/api/web/events"));
-    const reader = response.body!.getReader();
-    const frame = sseFrameReader(reader);
-    expect(await frame()).toContain("event: snapshot");
-    const outgoing = connections.mock.calls[0]![0].env.outgoing;
-    const write = outgoing.write.bind(outgoing);
-    let blocked = true;
-    const writes = vi
-        .spyOn(outgoing, "write")
-        .mockImplementation((...args: Parameters<typeof write>) => {
-            const result = write(...args);
-            return blocked ? false : result;
-        });
-    const first = await h.daemon.services.networks.create("first");
-    expect(await frame()).toContain(first.id);
-    await vi.waitFor(() => expect(outgoing.listenerCount("drain")).toBe(1));
-    const second = await h.daemon.services.networks.create("second");
-    await h.daemon.services.networks.delete(first.id);
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(writes).toHaveBeenCalledTimes(1);
-    blocked = false;
-    outgoing.emit("drain");
-    let received = "";
-    while (
-        !received.includes(second.id) ||
-        !received.includes('"action":"remove"')
-    )
-        received += await frame();
-    expect(received).toContain(first.id);
-    blocked = true;
-    await h.daemon.services.networks.create("disconnect");
-    await frame();
-    await vi.waitFor(() => expect(outgoing.listenerCount("drain")).toBe(1));
-    await reader.cancel();
-    await vi.waitFor(() => expect(outgoing.destroyed).toBe(true));
-    expect(outgoing.listenerCount("drain")).toBe(0);
-});
-
-it("reconnects over HTTP while the first SSE snapshot is still synchronizing", async () => {
-    const events = h.daemon.services.webEvents;
-    const connections = vi.spyOn(events, "connect");
-    const state = h.daemon.services.db.hostState;
-    const snapshot = state.snapshot.bind(state);
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    const firstRead = vi
-        .spyOn(state, "snapshot")
-        .mockImplementationOnce(async () => {
-            const captured = await snapshot();
-            await gate;
-            return captured;
-        });
-    const abort = new AbortController();
-    const first = fetch(h.webUrl("/api/web/events"), {
-        signal: abort.signal,
-    }).catch((error) => error);
-    await vi.waitFor(() => expect(firstRead).toHaveBeenCalled());
-    const firstResponse = connections.mock.calls[0]![0].env.outgoing;
-    abort.abort();
-    expect(await first).toMatchObject({ name: "AbortError" });
-    await vi.waitFor(() => expect(firstResponse.destroyed).toBe(true));
+it("serves reconnect snapshots from memory and sends subsequent committed changes over RPC", async () => {
+    const scan = vi.spyOn(h.daemon.services.db.hostState, "snapshot");
+    const first = await openTestApplication(h);
+    expect((await first.next()).type).toBe("snapshot");
+    await first.close();
     const network = await h.daemon.services.networks.create("during-sync");
-    const reconnect = await fetch(h.webUrl("/api/web/events"));
-    const reader = reconnect.body!.getReader();
-    const frame = sseFrameReader(reader);
-    const initial = await frame();
-    expect(initial.startsWith("event: snapshot\n")).toBe(true);
-    expect(initial).toContain(network.id);
-    release();
-    await vi.waitFor(() =>
-        expect(firstRead.mock.settledResults[0]?.type).toBe("fulfilled"),
-    );
-    const next = frame();
+    const reconnect = await openTestApplication(h);
+    const initial = await reconnect.next();
+    expect(initial).toMatchObject({
+        type: "snapshot",
+        snapshot: { networks: [{ id: network.id }] },
+    });
     await h.daemon.services.networks.delete(network.id);
-    const changed = await next;
-    expect(changed).toContain(`"action":"remove","id":"${network.id}"`);
-    await reader.cancel();
-    expect(firstResponse.listenerCount("drain")).toBe(0);
+    expect(await reconnect.next()).toMatchObject({
+        type: "delta",
+        changes: [{ action: "remove", id: network.id }],
+    });
+    await reconnect.close();
+    expect(scan).not.toHaveBeenCalled();
 });

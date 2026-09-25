@@ -1,9 +1,8 @@
 import { expect, test } from "vitest";
 
 import type { RuntimeRecord } from "./runtimes";
-import type { DaemonServices } from "./services";
 import { fakeVendor, startTestDaemon } from "./testing";
-import { projectHostState, readWebSnapshot } from "./web-state";
+import { projectHostNetwork } from "./web-state";
 
 test("network projection only uses active collaboration in the matching host and network", () => {
     const records = [
@@ -36,45 +35,32 @@ test("network projection only uses active collaboration in the matching host and
             collaborationActive: true,
         },
     ] as RuntimeRecord[];
-    const services = {
-        runtimes: { list: () => records },
-    } as unknown as DaemonServices;
-    const state = projectHostState(
+    const network = projectHostNetwork(
         {
-            hosts: [],
-            panels: [],
-            operations: [],
-            networks: [
+            id: "n",
+            hostId: "h",
+            name: "Team",
+            scope: "host",
+            default: "allow",
+            members: [
+                { agentKey: "a", runtimeId: null },
+                { agentKey: "b", runtimeId: null },
+            ],
+            edges: [
                 {
-                    id: "n",
-                    hostId: "h",
-                    name: "Team",
-                    scope: "host",
-                    default: "allow",
-                    members: [
-                        { agentKey: "a", runtimeId: null },
-                        { agentKey: "b", runtimeId: null },
-                    ],
-                    edges: [
-                        {
-                            from: "a",
-                            to: "b",
-                            fromRuntimeId: null,
-                            toRuntimeId: null,
-                            policy: "allow",
-                            source: "manifest-default",
-                        },
-                    ],
+                    from: "a",
+                    to: "b",
+                    fromRuntimeId: null,
+                    toRuntimeId: null,
+                    policy: "allow",
+                    source: "manifest-default",
                 },
             ],
         },
-        services,
+        { get: () => undefined, list: () => records },
     );
-    expect(state.networks[0]!.members.map((m) => m.runtimeId)).toEqual([
-        "active",
-        null,
-    ]);
-    expect(state.networks[0]!.edges[0]).toMatchObject({
+    expect(network.members.map((m) => m.runtimeId)).toEqual(["active", null]);
+    expect(network.edges[0]).toMatchObject({
         fromRuntimeId: "active",
         toRuntimeId: null,
     });
@@ -95,9 +81,7 @@ test("a terminal-less tab never acquires an external Runtime through matching nu
             type: "pane",
             id: "pane",
             tabIds: ["tab"],
-            selectedTabId: "tab",
         },
-        activePaneId: "pane",
         tabs: [
             {
                 id: "tab",
@@ -115,7 +99,8 @@ test("a terminal-less tab never acquires an external Runtime through matching nu
         networkId: null,
         createBinding: fakeVendor().createBinding,
     });
-    const snapshot = await readWebSnapshot(h.daemon.services);
+    await h.daemon.services.appState.update({ panel: "p" });
+    const snapshot = await h.daemon.services.appState.current();
     expect(snapshot.agents[0]!.agentId).toBe(external.runtimeId);
     expect(snapshot.panels[0]!.tabs[0]).toMatchObject({
         runtimeId: null,

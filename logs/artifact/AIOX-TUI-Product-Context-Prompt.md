@@ -1,5 +1,13 @@
 # AIOX 제품·아키텍처·결정 기억용 프롬프트
 
+2026-09-25 서버·Web 경계 갱신: 본문의 과거 실험·후보와 현재 구현을 구분한다. 현재 통신은
+[Application RPC](../../docs/specs/aiox-application-rpc.md), 서버 저장은
+[storage-terminal](../../docs/architecture/aiox-storage-terminal.md), 실행 수명은
+[vendor bindings](../../docs/architecture/aiox-vendor-bindings.md)가 소유한다. Operation·앱 SSE·Hono
+기반 설명을 현재 구현 지시로 되살리지 않는다. 활성 pane·선택 탭은 각 React 앱의 메모리에서만
+관리하고 새로고침 시 초기화하며, 서버 DTO·DB·localStorage에는 저장하지 않는다.
+아래 스택·저장 표의 해당 항목도 이 경계로 갱신했다.
+
 초기 기준일: 2026-09-08. Network·MCP·상태·DB 관련 후속 결정은 2026-09-15, Claude 관측 계약은 2026-09-20 기준으로 반영한다. 이 문서는 AIOX에 관한 사용자와의 대화, 제품 요구, 설계 결정, 실험 결과와 남은 논의를 새 Codex 세션에 전달하는 독립적인 문맥이다. 구현 완료 보고서가 아니다.
 
 Host 내용은 2026-09-21 Stage 5 확정과 owner 명세로 갱신했다. 구현 완료 보고가 아니며,
@@ -784,7 +792,7 @@ AIOX send 원문과 daemon 알림 본문을 저장하고 발신자·대상·시�
 
 Persistent Network 이름은 DB에 지속한다. endpoint route는 참여 실행의 수명을 따르며 종료·daemon 재시작 시 정리한다. Host의 정의 원본은 YAML이며 Host Network·정책은 stop 후 유지하고 delete에서 정리한다. DB 이력은 살아 있는 membership이나 Host 복원 근거가 아니다.
 
-TypeORM·better-sqlite3는 도입돼 있으며 현재 schema를 transaction 안에서 직접 초기화한다. 첫 배포 전에는 과거 개발 DB 호환을 위한 migration·backfill·legacy fallback을 유지하지 않는다. 저장 원자성·실패 재시도·재오픈 검증은 유지하고 startup 자동 삭제·reset은 하지 않는다. 배포 완료 통지 이후 schema 변경은 기존 데이터를 보존하는 migration으로 수행한다.
+Drizzle의 Effect SQLite 통합을 사용하며 현재 schema를 transaction 안에서 직접 초기화한다. 첫 배포 전에는 과거 개발 DB 호환을 위한 migration·backfill·legacy fallback을 유지하지 않는다. 저장 원자성·실패 재시도·재오픈 검증은 유지하고 startup 자동 삭제·reset은 하지 않는다. 배포 완료 통지 이후 schema 변경은 기존 데이터를 보존하는 migration으로 수행한다.
 
 새 Network·Message·Delivery·Notification 행의 ID를 UUID v7으로 생성하도록 구현했다. 기존 ID를 재발급하지 않으며 Runtime·terminal 참조 ID와 vendor 고유 ID는 이 변경 대상이 아니다.
 
@@ -978,7 +986,8 @@ aiox host run --layout grid --columns 2 --rows 2
 | 터미널 폰트·색상·키 설정, 사용자 단축키 | 전역 config |
 | Host 초기 layout 기본값 | 전역 config |
 | Host별 초기 layout | YAML·CLI |
-| 실행 중 터미널·분할 비율·탭 순서·선택 상태 | 서버에서 유지·복원 |
+| 실행 중 터미널·분할 비율·탭 순서 | 서버에서 유지·복원 |
+| 활성 pane·선택 탭 | 각 React 앱의 메모리에서만 유지, 새로고침 시 초기 선택 |
 | Web 테마 system/light/dark | localStorage |
 
 브라우저를 닫아도 실행은 유지하고 다시 열면 기존 터미널 화면·배치·놓친 알림으로 복귀한다. 설정 저장과 실행 화면 복원은 다른 책임이며 사이드바 너비를 DB에 중복 저장하지 않는다. 알림 전체 읽음과 실제 승인·질문 해결의 구분은 기존 알림 정책을 따른다.
@@ -1047,13 +1056,13 @@ Web 접속 → snapshot 크기 적용 → 화면 파싱·상태 보완
 
 ### Server / daemon 단계
 
-서버·daemon은 `node:http`, `ws`, 공식 MCP TypeScript SDK, Zod, `node-pty`, TypeORM, `better-sqlite3`를 채택한다. 별도 HTTP framework·event bus·추상화를 미리 추가하지 않는다. TypeORM 도입과 첫 배포 전·후 DB 변경 정책은 앞의 저장 계약을 따른다. 실제 설치 단계에 Node >=22.12.0·SDK 호환성·지원 OS/CPU를 확인해 버전을 선택하며 채택과 설치·통합 검증 완료를 구분한다. YAML parser와 Web 세부 의존성은 실제 사용하는 단계에서 정한다.
+서버는 Effect v4 실행 기반·Effect HTTP/RPC, XState 5 상태 전이, Drizzle의 Effect SQLite 통합과 `node-pty`를 사용한다. 자체 Schema는 Effect Schema이고 MCP SDK 등록 경계의 Zod는 유지한다. 정확한 버전·Node 요구는 현재 package.json/lockfile을 따른다. Workflow를 통한 daemon 사망 후 작업 재개는 이번 범위에 없다.
 
 Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/addon-serialize` 0.14.0이다. 이는 현재 채택·설치된 조합이며 영구 고정 제품 요구가 아니다. 업데이트 때 누락 상태 보완과 복원 회귀 검사를 함께 확인한다.
 
 ### Web 단계
 
-브라우저 터미널은 `@xterm/xterm` 6.0.0을 사용하며 §15의 서버 복원 기반을 소비한다. React·Tailwind·shadcn/ui·다국어 요구는 유지한다. Vite, use-intl, 추가 xterm addon, Zustand, TanStack Query, keybinding·audio 도구의 실제 필요와 역할을 논의한다.
+브라우저 터미널은 `@xterm/xterm` 6.0.0을 사용하며 §15의 복원 기반을 소비한다. React·Tailwind·shadcn/ui·다국어 요구는 유지한다. 서버 상태는 앱 RPC를 TanStack DB에 연결하는 W10 후속 구현 대상이며, Effect·TanStack DB·React DB는 설치된 상태다. 활성 pane·선택 탭은 React 메모리 상태이고 새로고침하면 초기화한다. Query/Zustand에 같은 서버 상태를 중복 저장하지 않는다. 실제 RPC/TanStack DB 화면 연결이 완료됐다고 해석하지 않는다.
 
 - Zustand는 여러 pane/설정/알림이 공유하는 상태가 실제로 필요할 때 선택한다.
 - TanStack Query는 조회·pagination·검색 cache가 필요할 때 선택한다.

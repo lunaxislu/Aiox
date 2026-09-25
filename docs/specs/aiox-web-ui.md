@@ -161,6 +161,11 @@ Settings 진입은 헤더 오른쪽의 톱니이며 사이드바 하단에 Setti
 
 ## workspace 화면
 
+pane·탭 선택은 각 React 앱의 메모리 상태다. 다른 창의 선택을 바꾸지 않고 새로고침하면 초기
+선택으로 돌아간다. 서버 구조 변경으로 선택한 pane·탭이 사라지면 현재 화면이 남은 대상 중에서
+선택을 조정한다. 서버 DTO와 저장 경계는 [[docs/specs/aiox-configuration-web]]의 panel 계약을 따른다.
+
+
 workspace 화면은 pane 트리이고 pane마다 독립된 탭바를 가진다. 각 workspace는 자기 pane
 배치·탭 순서·선택을 기억하며 사이드바 항목을 바꾸면 헤더 맥락도 함께 바뀐다.
 

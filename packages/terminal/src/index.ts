@@ -1,6 +1,8 @@
 import { logger } from "@aiox/diagnostics";
 import { Terminal } from "@xterm/headless";
+import { Deferred, Duration, Effect, Exit, Fiber, Scope } from "effect";
 import { type IPtyForkOptions, spawn } from "node-pty";
+import { assign, createActor, setup } from "xstate";
 
 import { MirrorBoundary, type BoundaryEvent } from "@/boundary";
 import type { TerminalRestoreState } from "@/restore";
@@ -90,6 +92,45 @@ const SIGKILL_GRACE_MS = 2_000;
 const MIRROR_HIGH_WATER = 1024 * 1024;
 const MIRROR_LOW_WATER = MIRROR_HIGH_WATER / 2;
 
+const terminalLifecycle = setup({
+    types: {} as {
+        context: { exit: TerminalExit | undefined };
+        events:
+            | { type: "STOP" }
+            | { type: "STOP_UNCONFIRMED" }
+            | { type: "EXIT"; exit: TerminalExit }
+            | { type: "DISPOSE" };
+    },
+}).createMachine({
+    id: "terminal-lifecycle",
+    initial: "running",
+    context: { exit: undefined },
+    states: {
+        running: {
+            on: {
+                STOP: "stopping",
+                EXIT: {
+                    target: "exited",
+                    actions: assign({ exit: ({ event }) => event.exit }),
+                },
+                DISPOSE: "disposed",
+            },
+        },
+        stopping: {
+            on: {
+                STOP_UNCONFIRMED: "running",
+                EXIT: {
+                    target: "exited",
+                    actions: assign({ exit: ({ event }) => event.exit }),
+                },
+                DISPOSE: "disposed",
+            },
+        },
+        exited: { on: { DISPOSE: "disposed" } },
+        disposed: {},
+    },
+});
+
 /** Platform default interactive shell. */
 export function defaultShell(): { file: string; args: string[] } {
     if (process.platform === "win32") {
@@ -138,6 +179,8 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
             );
         throw error;
     }
+    const lifecycleActor = createActor(terminalLifecycle).start();
+    const terminalExit = () => lifecycleActor.getSnapshot().context.exit;
 
     const listeners = new Set<TerminalListener>();
     if (options.initialListener) listeners.add(options.initialListener);
@@ -149,6 +192,35 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         allowProposedApi: true,
     });
     const boundary = new MirrorBoundary(mirror);
+    const sessionScope = Effect.runSync(Scope.make());
+    Effect.runSync(
+        Scope.addFinalizer(
+            sessionScope,
+            Effect.sync(() => {
+                lifecycleActor.send({ type: "DISPOSE" });
+                lifecycleActor.stop();
+            }),
+        ),
+    );
+    if (integration)
+        Effect.runSync(
+            Scope.addFinalizer(
+                sessionScope,
+                Effect.tryPromise({
+                    try: () => integration.dispose(),
+                    catch: (error) => error,
+                }).pipe(Effect.orDie),
+            ),
+        );
+    Effect.runSync(
+        Scope.addFinalizer(
+            sessionScope,
+            Effect.tryPromise({
+                try: () => boundary.dispose(),
+                catch: (error) => error,
+            }).pipe(Effect.orDie),
+        ),
+    );
     const geometryListeners = new Set<(cols: number, rows: number) => void>();
     let mirrorError: Error | undefined;
     const track = (work: Promise<void>): void => {
@@ -157,14 +229,11 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
                 error instanceof Error ? error : new Error(String(error));
         });
     };
-    let exited: TerminalExit | undefined;
     let parsingBytes = 0;
     let paused = false;
 
-    let settle!: (event: TerminalExit) => void;
-    const exitPromise = new Promise<TerminalExit>((resolve) => {
-        settle = resolve;
-    });
+    const exitDeferred = Effect.runSync(Deferred.make<TerminalExit>());
+    const exitPromise = Effect.runPromise(Deferred.await(exitDeferred));
 
     pty.onData((chunk) => {
         // Normalize Windows text at the PTY boundary so WS output stays binary.
@@ -183,7 +252,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
                 parsingBytes -= bytes.length;
                 if (paused && parsingBytes <= MIRROR_LOW_WATER) {
                     paused = false;
-                    if (!exited) pty.resume();
+                    if (!terminalExit()) pty.resume();
                 }
             }),
         );
@@ -197,11 +266,12 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
 
     pty.onExit(({ exitCode, signal }) => {
         // node-pty reports 0 for "no signal"; the wire wants null.
-        exited = { exitCode, signal: signal ? signal : null };
-        settle(exited);
+        const exit = { exitCode, signal: signal ? signal : null };
+        lifecycleActor.send({ type: "EXIT", exit });
+        Effect.runSync(Deferred.succeed(exitDeferred, exit));
         for (const listener of listeners) {
             try {
-                listener.exit(exited);
+                listener.exit(exit);
             } catch {}
         }
         listeners.clear();
@@ -215,34 +285,35 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         } catch {}
     };
 
-    const exitWithin = (ms: number): Promise<TerminalExit | undefined> =>
-        new Promise((resolve) => {
-            const timer = setTimeout(() => resolve(undefined), ms);
-            void exitPromise.then((event) => {
-                clearTimeout(timer);
-                resolve(event);
-            });
-        });
+    const exitWithin = (ms: number): Effect.Effect<TerminalExit | undefined> =>
+        Effect.race(
+            Deferred.await(exitDeferred),
+            Effect.clockWith((clock) =>
+                clock.sleep(Duration.millis(ms)).pipe(Effect.as(undefined)),
+            ),
+        );
 
-    const terminate = async (): Promise<TerminalExit> => {
-        if (exited) return exited;
+    const terminate = Effect.gen(function* () {
+        const exit = terminalExit();
+        if (exit) return exit;
         signal("SIGTERM");
-        const polite = await exitWithin(SIGTERM_GRACE_MS);
+        const polite = yield* exitWithin(SIGTERM_GRACE_MS);
         if (polite) return polite;
         signal("SIGKILL");
-        const forced = await exitWithin(SIGKILL_GRACE_MS);
+        const forced = yield* exitWithin(SIGKILL_GRACE_MS);
         if (forced) return forced;
-        // The exit event is node-pty's waitpid, so its absence means the child
-        // was not reaped. Reporting a stop we cannot observe is worse than
-        // failing loudly.
-        throw new Error(
-            `terminal ${options.id}: pid ${pty.pid} not confirmed dead ` +
-                `${SIGTERM_GRACE_MS}ms after SIGTERM and ${SIGKILL_GRACE_MS}ms ` +
-                `after SIGKILL`,
+        return yield* Effect.fail(
+            new Error(
+                `terminal ${options.id}: pid ${pty.pid} not confirmed dead ` +
+                    `${SIGTERM_GRACE_MS}ms after SIGTERM and ${SIGKILL_GRACE_MS}ms ` +
+                    `after SIGKILL`,
+            ),
         );
-    };
+    });
 
-    let killing: Promise<TerminalExit> | undefined;
+    let killing: Fiber.Fiber<TerminalExit, unknown> | undefined;
+    let killingPromise: Promise<TerminalExit> | undefined;
+    let disposing: Fiber.Fiber<void, unknown> | undefined;
 
     return {
         id: options.id,
@@ -250,27 +321,30 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
             return pty.pid;
         },
         get alive() {
-            return exited === undefined;
+            return terminalExit() === undefined;
         },
         async busy() {
-            if (exited) return false;
+            if (terminalExit()) return false;
             return integration ? integration.busy(pty.pid) : true;
         },
         async closeIdle() {
-            if (exited) return true;
+            if (terminalExit()) return true;
             if (!integration) return false;
             const accepted = await integration.close(pty.pid);
             // Exit observers may already have disposed the acknowledgement file.
-            if (exited) return true;
+            if (terminalExit()) return true;
             if (!accepted) return false;
-            return (await exitWithin(SIGTERM_GRACE_MS)) !== undefined;
+            return (
+                (await Effect.runPromise(exitWithin(SIGTERM_GRACE_MS))) !==
+                undefined
+            );
         },
         write(data) {
-            if (exited) return;
+            if (terminalExit()) return;
             pty.write(typeof data === "string" ? data : Buffer.from(data));
         },
         resize(cols, rows) {
-            if (exited) return;
+            if (terminalExit()) return;
             if (
                 !Number.isSafeInteger(cols) ||
                 cols <= 0 ||
@@ -353,7 +427,8 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
             });
             listeners.add(live);
             geometryListeners.add(resize);
-            if (exited) live.exit(exited);
+            const exit = terminalExit();
+            if (exit) live.exit(exit);
             void captured.then((value) => {
                 if (detached) return;
                 try {
@@ -371,7 +446,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
             return detach;
         },
         subscribe(listener) {
-            const finished = exited;
+            const finished = terminalExit();
             if (finished) {
                 // Never leave a late viewer waiting for an event that already fired.
                 queueMicrotask(() => listener.exit(finished));
@@ -383,16 +458,28 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
             };
         },
         kill() {
-            killing ??= terminate().catch((error: unknown) => {
-                killing = undefined;
-                throw error;
-            });
-            return killing;
+            if (!killing) {
+                lifecycleActor.send({ type: "STOP" });
+                const fiber = Effect.runFork(terminate);
+                killing = fiber;
+                killingPromise = Effect.runPromise(Fiber.join(fiber));
+                fiber.addObserver((exit) => {
+                    if (Exit.isFailure(exit) && killing === fiber) {
+                        if (!terminalExit())
+                            lifecycleActor.send({
+                                type: "STOP_UNCONFIRMED",
+                            });
+                        killing = undefined;
+                        killingPromise = undefined;
+                    }
+                });
+            }
+            return killingPromise!;
         },
         async dispose() {
             await exitPromise;
-            await boundary.dispose();
-            await integration?.dispose();
+            disposing ??= Effect.runFork(Scope.close(sessionScope, Exit.void));
+            await Effect.runPromise(Fiber.join(disposing));
             geometryListeners.clear();
         },
     };

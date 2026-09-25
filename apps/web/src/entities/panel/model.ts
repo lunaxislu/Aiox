@@ -1,4 +1,4 @@
-import type { PanelView } from "@aiox/protocol";
+import type { WorkspaceLayout } from "./workspace-layout";
 
 export type Section = (typeof sections)[number];
 
@@ -15,7 +15,7 @@ export type PanelPreview = (
     | { kind: "host"; workPath: string }
     | { kind: "network"; memberCount: number; routeCount: number }
 ) &
-    Pick<PanelView, "layout" | "activePaneId" | "tabs"> & {
+    WorkspaceLayout & {
         id: string;
         section: Section;
         name: string;

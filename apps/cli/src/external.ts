@@ -9,6 +9,7 @@ import {
     type ExecutionProcess,
     type VendorAdapter,
 } from "@aiox/vendor";
+import { Effect } from "effect";
 import type { RawData, WebSocket } from "ws";
 
 /** Only the launcher owns execution resources. Collaboration loss never stops them. */
@@ -17,23 +18,26 @@ export async function runExternal(
     input: Omit<ExternalAgentRun, "connection">,
     adapter: VendorAdapter,
 ): Promise<ExecutionExit> {
+    const run = Effect.runPromise;
     const owner = new ExecutionOwner((command) =>
         spawnNative(command, "inherit"),
     );
     let starting: Promise<void> | undefined;
     let finishTermination: ((error?: unknown) => void) | undefined;
     const terminated = () => {
-        void owner.stop().then(
+        void run(owner.stop()).then(
             () => finishTermination?.(),
             (error: unknown) => finishTermination?.(error),
         );
     };
     process.on("SIGTERM", terminated);
     try {
-        const execution = await adapter.createExecution({
-            own: (dispose) => owner.own(dispose),
-            signal: owner.signal,
-        });
+        const execution = await run(
+            adapter.createExecution({
+                own: (dispose) => owner.own(dispose),
+                signal: owner.signal,
+            }),
+        );
         owner.signal.throwIfAborted();
         return await new Promise<ExecutionExit>((resolve, reject) => {
             let foreground: ExecutionProcess | undefined;
@@ -126,14 +130,13 @@ export async function runExternal(
                         clearTimeout(timer);
                         process.on("SIGINT", interrupted);
                         starting = (async () => {
-                            foreground = await execution.start(
-                                frame.launch,
-                                owner,
+                            foreground = await run(
+                                execution.start(frame.launch, owner),
                             );
                             send({ type: "started" });
-                            exited = await foreground.exited;
+                            exited = await run(foreground.exited);
                             // Natural exit also confirms the whole owner, not just its foreground.
-                            await owner.stop();
+                            await run(owner.stop());
                             if (finished) return;
                             if (
                                 !ready &&
@@ -200,9 +203,9 @@ export async function runExternal(
         });
     } finally {
         process.off("SIGTERM", terminated);
-        await owner.stop();
+        await run(owner.stop());
         await starting;
         // Startup may acquire resources while the first stop is in progress.
-        await owner.stop();
+        await run(owner.stop());
     }
 }

@@ -21,6 +21,7 @@
         "@aiox/diagnostics": "workspace:*",
         "@aiox/domain": "workspace:*",
         "@aiox/vendor": "workspace:*",
-        "zod": "4.5.4"
+        "chokidar": "5.0.0",
+        "effect": "4.0.0-rc.117"
     }
 }

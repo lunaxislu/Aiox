@@ -224,7 +224,6 @@ test("Host route policy follows Agent keys across fresh Runtime identities and r
             revision: 1,
             panelId: "p",
             networkId: "n",
-            activeOperationId: null,
             agents: members.map((key) => ({
                 key,
                 adapter: "claude",
@@ -272,12 +271,10 @@ test("Host route policy follows Agent keys across fresh Runtime identities and r
             kind: "host",
             section: "hosts",
             revision: 1,
-            activePaneId: "pane",
             layout: {
                 type: "pane",
                 id: "pane",
                 tabIds: [],
-                selectedTabId: null,
             },
             tabs: [],
         },

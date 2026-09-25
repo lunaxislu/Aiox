@@ -9,12 +9,25 @@ import {
     type HostView,
     type WebSnapshot,
 } from "@aiox/protocol";
+import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 
-import { sseFrameReader, startTestDaemon } from "./testing";
-it("commits workspace panels, rejects stale or injected layout writes and exposes them in the initial SSE snapshot", async (t) => {
+import { openTestApplication, startTestDaemon } from "./testing";
+it("commits workspace panel commands, rejects stale or unknown targets and exposes them in the initial RPC snapshot", async (t) => {
     const h = await startTestDaemon();
     t.onTestFinished(() => h.close());
+    let sequence = 0;
+    const session = Effect.runSync(
+        h.daemon.services.sequencer.open,
+    ).clientSessionId;
+    const command = (changes: unknown[], extra: object = {}) => ({
+        clientSessionId: session,
+        sequence: ++sequence,
+        requestId: `6a8ed620-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+        panelId: "workspace",
+        changes,
+        ...extra,
+    });
     const request = async (path: string, method = "GET", body?: unknown) => {
         const response = await fetch(h.apiUrl(path), {
             method,
@@ -25,57 +38,104 @@ it("commits workspace panels, rejects stale or injected layout writes and expose
                       body: JSON.stringify(body),
                   }),
         });
-        return { status: response.status, body: await response.json() };
+        // Asserted field by field below.
+        const json: any = await response.json();
+        return { status: response.status, body: json };
     };
-    const created = await request("/api/panels", "POST", {
-        name: "  Workspace  ",
-        section: "hosts",
-    });
-    expect(created.status).toBe(201);
-    const panel = panelViewSchema.parse(created.body);
+    const send = (body: object) => request("/api/web/commands", "POST", body);
+    const created = await send(
+        command([
+            {
+                type: "panel.create",
+                name: "  Workspace  ",
+                section: "hosts",
+                paneId: "pane",
+                tabId: "tab",
+            },
+        ]),
+    );
+    expect(created.status).toBe(200);
+    const panel = panelViewSchema.parse(created.body.panel);
     expect(panel).toMatchObject({
+        id: "workspace",
         name: "Workspace",
         section: "hosts",
         kind: "workspace",
         revision: 1,
-        tabs: [],
+        tabs: [{ id: "tab", presentation: "preparing" }],
     });
+    const rename = command([{ type: "panel.rename", name: "Renamed" }]);
+    expect((await send(rename)).status).toBe(200);
+    // Commands carry no revision; a later rename applies to the latest panel.
+    expect(
+        (await send(command([{ type: "panel.rename", name: "Later" }]))).body
+            .panel,
+    ).toMatchObject({ name: "Later" });
+    // Replaying the first rename after a lost response is not applied again.
+    expect((await send(rename)).body.code).toBe("result_expired");
+    expect((await request("/api/panels/workspace")).body.name).toBe("Later");
     expect(
         (
-            await request(`/api/panels/${panel.id}/name`, "PUT", {
-                revision: 1,
-                name: "Renamed",
+            await send({
+                ...rename,
+                changes: [{ type: "panel.rename", name: "Other" }],
             })
-        ).status,
-    ).toBe(200);
+        ).body.code,
+    ).toBe("result_expired");
+    for (const [change, code] of [
+        [
+            {
+                type: "tab.move",
+                tabId: "missing",
+                target: { toPaneId: "pane" },
+            },
+            "unknown_tab",
+        ],
+        [
+            {
+                type: "split.resize",
+                splitId: "missing",
+                children: ["a", "b"],
+                weights: [0.5, 0.5],
+            },
+            "unknown_split",
+        ],
+    ] as const)
+        expect((await send(command([change]))).body.code).toBe(code);
+    // A failed change rejects the whole command: nothing of it is stored.
     expect(
         (
-            await request(`/api/panels/${panel.id}/name`, "PUT", {
-                revision: 1,
-                name: "Stale",
-            })
-        ).status,
-    ).toBe(409);
+            await send(
+                command([
+                    { type: "panel.rename", name: "Half" },
+                    {
+                        type: "tab.move",
+                        tabId: "tab",
+                        target: { toPaneId: "missing" },
+                    },
+                ]),
+            )
+        ).body.code,
+    ).toBe("unknown_pane");
     expect(
         (
-            await request(`/api/panels/${panel.id}/layout`, "PUT", {
-                revision: 2,
-                layout: panel.layout,
-                activePaneId: "missing",
-            })
+            await send(
+                command([{ type: "panel.rename", name: "Stale" }], {
+                    revision: 3,
+                }),
+            )
         ).status,
     ).toBe(400);
-    expect((await request(`/api/panels/${panel.id}`)).body).toMatchObject({
-        name: "Renamed",
-        revision: 2,
+    expect((await request("/api/panels/workspace")).body.name).toBe("Later");
+    const rpc = await openTestApplication(h);
+    const initial = await rpc.next();
+    expect(initial).toMatchObject({
+        type: "snapshot",
+        snapshot: { panels: [expect.objectContaining({ name: "Later" })] },
     });
-    const response = await fetch(h.webUrl("/api/web/events"));
-    const reader = response.body!.getReader();
-    const frame = await sseFrameReader(reader)();
-    await reader.cancel();
-    expect(frame).toContain("event: snapshot");
-    expect(frame).toContain("Renamed");
+    await rpc.close();
     expect((await request("/api/hosts")).body).toEqual([]);
+    // Operations are no longer a public resource.
     expect((await request("/api/operations/missing")).status).toBe(404);
 });
 
@@ -113,9 +173,7 @@ it("resolves applied Hosts by YAML, preserves management on Copy and returns con
             type: "pane",
             id: "pane",
             tabIds: ["tab"],
-            selectedTabId: "tab",
         },
-        activePaneId: "pane",
         tabs: [
             {
                 id: "tab",
@@ -141,7 +199,6 @@ it("resolves applied Hosts by YAML, preserves management on Copy and returns con
         panelId: "panel",
         networkId: "network",
         revision: 1,
-        activeOperationId: null,
         agents: [
             {
                 key: "reviewer",
@@ -171,6 +228,11 @@ it("resolves applied Hosts by YAML, preserves management on Copy and returns con
         panel,
         1,
     );
+    // Seeded directly in storage: announce it as a producer would.
+    await h.daemon.services.appState.update(
+        { host: "host" },
+        { panel: "panel" },
+    );
     await writeFile(
         host.sourceFile,
         "host: {name: Test}\nagents:\n  reviewer: {adapter: claude}\nnetworks:\n  Team: {agents: [reviewer]}\n",
@@ -189,11 +251,19 @@ it("resolves applied Hosts by YAML, preserves management on Copy and returns con
     expect((await request("/api/hosts/host/networks/network")).status).toBe(
         200,
     );
-    const copied = await request("/api/panels/panel/tabs/tab/dismiss", "POST", {
-        revision: 1,
+    const copied = await request("/api/web/commands", "POST", {
+        clientSessionId: Effect.runSync(h.daemon.services.sequencer.open)
+            .clientSessionId,
+        sequence: 1,
+        requestId: "6a8ed620-0000-4000-8000-000000000099",
+        panelId: "panel",
+        changes: [{ type: "tab.dismiss", tabId: "tab" }],
     });
     expect(copied.status).toBe(200);
-    expect(panelViewSchema.parse(copied.body).tabs[0]).toMatchObject({
+    expect(
+        panelViewSchema.parse((copied.body as { panel: unknown }).panel)
+            .tabs[0],
+    ).toMatchObject({
         terminalId: terminal.id,
         agentKey: null,
         runtimeId: null,
@@ -227,9 +297,14 @@ it("resolves applied Hosts by YAML, preserves management on Copy and returns con
             })
         ).body,
     ).toMatchObject({ code: "invalid_yaml", stage: "yaml" });
+    // A failed state update is not served as a stale or empty list.
     const failed = vi
         .spyOn(h.daemon.services.db.hostState, "snapshot")
         .mockRejectedValue(new Error("disk unavailable"));
+    vi.spyOn(h.daemon.services.db.hostState, "getPanel").mockRejectedValueOnce(
+        new Error("disk unavailable"),
+    );
+    await h.daemon.services.appState.update({ panel: "panel" });
     try {
         expect((await request("/api/panels")).body).toMatchObject({
             code: "storage_error",
@@ -251,38 +326,33 @@ it("reports config file read failures as config-stage invalid_config", async (t)
     });
 });
 
-it("streams a large snapshot and subsequent state over a real HTTP connection", async (t) => {
+it("streams a large snapshot and subsequent state over a real RPC WebSocket", async (t) => {
     const h = await startTestDaemon();
     t.onTestFinished(() => h.close());
-    const snapshot: WebSnapshot = {
-        hosts: [],
-        networks: [],
-        panels: [],
-        agents: [],
-        operations: [],
-        notifications: [],
-        terminals: Array.from({ length: 1500 }, (_, i) => ({
-            id: `terminal-${i}`,
-            cwd: h.home,
-            kind: "shell",
-            alive: true,
-        })),
-    };
-    h.daemon.services.webEvents.setSnapshot(async () => snapshot);
-    const response = await fetch(h.webUrl("/api/web/events"));
-    const reader = response.body!.getReader();
-    t.onTestFinished(() => reader.cancel());
-    const frame = sseFrameReader(reader);
-    const initial = await frame();
-    expect(Buffer.byteLength(initial)).toBeGreaterThan(88_589);
-    expect(initial.startsWith("event: snapshot\ndata: ")).toBe(true);
-    expect(JSON.parse(initial.slice("event: snapshot\ndata: ".length))).toEqual(
-        snapshot,
-    );
-    snapshot.terminals.pop();
-    h.daemon.services.webEvents.notify();
-    expect(await frame()).toBe(
-        'event: state\ndata: {"changes":[{"resource":"terminal","action":"remove","id":"terminal-1499"}]}',
-    );
-    await reader.cancel();
+    const state = h.daemon.services.appState;
+    for (let i = 0; i < 1500; i++)
+        await state.update({
+            notification: {
+                id: `notice-${i}`,
+                originRuntimeId: "runtime",
+                terminalId: null,
+                body: "x".repeat(40),
+                createdAt: i,
+                readAt: null,
+            },
+        });
+    const snapshot: WebSnapshot = state.snapshot();
+    const rpc = await openTestApplication(h);
+    t.onTestFinished(() => rpc.close());
+    const initial = await rpc.next();
+    expect(Buffer.byteLength(JSON.stringify(initial))).toBeGreaterThan(88_589);
+    expect(initial).toMatchObject({ type: "snapshot", snapshot });
+    await state.update({ notificationsRead: ["notice-1499"] });
+    expect(await rpc.next()).toMatchObject({
+        type: "delta",
+        changes: [
+            { resource: "notification", action: "remove", id: "notice-1499" },
+        ],
+    });
+    await rpc.close();
 });

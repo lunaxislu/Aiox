@@ -1,6 +1,7 @@
 import type { Readable } from "node:stream";
 
 import type { DeliveryOutcome, RuntimeStatus } from "@aiox/domain";
+import type { Effect } from "effect";
 
 import type { ExecutionOwner } from "@/execution";
 
@@ -17,8 +18,8 @@ export type Command = {
     env: Record<string, string>;
 };
 export type ExecutionProcess = {
-    readonly exited: Promise<ExecutionExit>;
-    stop(): Promise<void>;
+    readonly exited: Effect.Effect<ExecutionExit>;
+    stop(): Effect.Effect<void, unknown>;
     write(data: Uint8Array | string): void;
     resize(cols: number, rows: number): void;
     readonly stdout?: Readable;
@@ -81,7 +82,10 @@ export type VendorExecution = {
     /** JSON metadata; no vendor field is required by the common transport. */
     readonly connection: unknown;
     /** May await helpers before foreground; asynchronous startup must honor owner.signal. */
-    start(launch: unknown, owner: ExecutionContext): Promise<ExecutionProcess>;
+    start(
+        launch: unknown,
+        owner: ExecutionContext,
+    ): Effect.Effect<ExecutionProcess, unknown>;
 };
 export type ExecutionContext = Pick<
     ExecutionOwner,
@@ -92,7 +96,7 @@ export type VendorAdapter = {
     readonly id: string;
     createExecution(
         owner: Pick<ExecutionOwner, "own" | "signal">,
-    ): Promise<VendorExecution>;
+    ): Effect.Effect<VendorExecution, unknown>;
     createBinding(
         controls: RuntimeControls,
         connection: unknown,
