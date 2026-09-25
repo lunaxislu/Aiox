@@ -14,6 +14,7 @@ import {
     useRef,
     type RefObject,
 } from "react";
+import { useGroupRef } from "react-resizable-panels";
 
 import type { PanelPreview } from "@/entities/panel/model";
 import type {
@@ -24,6 +25,7 @@ import {
     panelLayoutReferences,
     type PanelLayout,
 } from "@/entities/panel/workspace-layout";
+import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import {
     Collapsible,
@@ -66,19 +68,41 @@ type TreeProps = {
     onSelect: (paneId: string, tabId: string) => void;
     onActivate: (paneId: string) => void;
     onClose: (tab: TabView, force?: boolean) => void;
+    onDismiss?: ((tab: TabView) => void) | undefined;
     onAdd: (paneId: string, axis?: "x" | "y") => void;
 };
 
 export function PaneTree(props: TreeProps & { depth?: number }) {
-    const { layout, onLayoutChange, depth = 0 } = props;
+    const { layout, depth = 0 } = props;
     if (layout.type === "pane") return <Pane {...props} pane={layout} />;
+    return <Split {...props} layout={layout} depth={depth} />;
+}
+function Split(
+    props: TreeProps & {
+        layout: Extract<PanelLayout, { type: "split" }>;
+        depth: number;
+    },
+) {
+    const { layout, onLayoutChange, depth } = props;
+    const groupRef = useGroupRef();
     // A nested group reuses its subtree's first pane id, so depth keeps the DOM id unique.
     const keys = layout.children.map(
         (child) => panelLayoutReferences(child).panes[0]!.id,
     );
     const ids = keys.map((key) => `${key}@${depth}`);
+    const sizing = JSON.stringify(
+        Object.fromEntries(
+            ids.map((id, index) => [id, layout.weights[index]! * 100]),
+        ),
+    );
+    useLayoutEffect(() => {
+        groupRef.current?.setLayout(JSON.parse(sizing));
+    }, [groupRef, sizing]);
     return (
         <ResizablePanelGroup
+            // Register the new panel set before applying its layout. Terminal portals live outside this group.
+            key={JSON.stringify([layout.axis, ids])}
+            groupRef={groupRef}
             orientation={layout.axis === "x" ? "horizontal" : "vertical"}
             onLayoutChanged={(sizes, meta) => {
                 if (!meta.isUserInteraction) return;
@@ -167,7 +191,9 @@ function Pane({
     const tab = state.tabs.find((item) => item.id === pane.selectedTabId);
     const terminal = tab?.terminalId ? terminals[tab.terminalId] : undefined;
     const connection = tab?.terminalId
-        ? (connections[tab.terminalId] ?? terminal?.connection ?? "connected")
+        ? (connections[JSON.stringify([tab.terminalId, tab.runtimeId])] ??
+          terminal?.connection ??
+          "connected")
         : "connected";
     return (
         <section
@@ -271,7 +297,7 @@ function Pane({
                                                                 </span>
                                                                 {item.presentation ===
                                                                     "preparing" && (
-                                                                    <span className="text-muted-foreground">
+                                                                    <span className="pending-indicator text-muted-foreground">
                                                                         preparing
                                                                     </span>
                                                                 )}
@@ -384,10 +410,18 @@ function Pane({
                                 data-active={state.activePaneId === pane.id}
                                 onPointerDown={() => onActivate(pane.id)}
                                 onFocusCapture={() => onActivate(pane.id)}
-                                className="min-h-0 flex-1 overflow-auto opacity-60 outline-none transition-opacity data-[active=true]:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                className={cn(
+                                    "min-h-0 flex-1 opacity-60 outline-none transition-opacity data-[active=true]:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                    tab.notice
+                                        ? "overflow-auto"
+                                        : "overflow-hidden",
+                                )}
                             >
                                 {tab.notice ? (
-                                    <TabNotice tab={tab} />
+                                    <TabNotice
+                                        tab={tab}
+                                        onDismiss={props.onDismiss}
+                                    />
                                 ) : tab.terminalId ? (
                                     <div
                                         className="h-full min-h-0 min-w-0"

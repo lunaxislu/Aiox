@@ -2,7 +2,7 @@ import { Terminal } from "@xterm/headless";
 import { describe, expect, it } from "vitest";
 
 import { restoreTerminalState, terminalCore } from "@/restore";
-import { serializeTerminal } from "@/serialization";
+import { serializeTerminal, trackTerminalBackground } from "@/serialization";
 async function replay(source: Terminal, target: Terminal) {
     const snapshot = serializeTerminal(source);
     await write(target, snapshot.data);
@@ -42,6 +42,36 @@ function state(terminal: Terminal) {
 }
 
 describe("serializeTerminal", () => {
+    it("restores the last parsed shell background without replaying queries or invalid colors", async () => {
+        const source = create(),
+            target = create();
+        trackTerminalBackground(source);
+        trackTerminalBackground(target);
+        try {
+            await write(
+                source,
+                `${ESC}]11;rgb:12/34/56\x07${ESC}]11;?\x07${ESC}]11;invalid\x07${ESC}]104\x07`,
+            );
+            expect(serializeTerminal(source).data).toMatch(
+                /^\x1b\]11;#123456\x07/,
+            );
+            await replay(source, target);
+            expect(serializeTerminal(target).data).toMatch(
+                /^\x1b\]11;#123456\x07/,
+            );
+            await write(source, `${ESC}]10;#ffffff;#abcdef\x07`);
+            await replay(source, target);
+            expect(serializeTerminal(target).data).toMatch(
+                /^\x1b\]11;#abcdef\x07/,
+            );
+            await write(source, `${ESC}]111\x07`);
+            await replay(source, target);
+            expect(serializeTerminal(target).data).toMatch(/^\x1b\]111\x07/);
+        } finally {
+            source.dispose();
+            target.dispose();
+        }
+    });
     it.each(["", `${ESC}[?12l`, `${ESC}[?12l${ESC}[?12h`])(
         "preserves cursor blinking after restoration (%j)",
         async (mode) => {

@@ -13,6 +13,41 @@ import {
     type TerminalRestoreState,
 } from "@/restore";
 
+const backgrounds = new WeakMap<Terminal, { value?: string }>();
+
+/** Headless xterm parses OSC colors but has no renderer/theme to retain them. */
+export function trackTerminalBackground(terminal: Terminal): void {
+    if (backgrounds.has(terminal)) return;
+    const background: { value?: string } = {};
+    backgrounds.set(terminal, background);
+    // xterm 6 parsed color events: SET=1, RESTORE=2, BACKGROUND=257.
+    const handler = (
+        terminal as unknown as {
+            _core: {
+                _inputHandler: {
+                    onColor(
+                        callback: (
+                            events: {
+                                type: number;
+                                index?: number;
+                                color?: number[];
+                            }[],
+                        ) => void,
+                    ): unknown;
+                };
+            };
+        }
+    )._core._inputHandler;
+    handler.onColor((events) => {
+        for (const event of events) {
+            if (event.index !== 257) continue;
+            if (event.type === 1 && event.color)
+                background.value = `#${event.color.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+            if (event.type === 2) delete background.value;
+        }
+    });
+}
+
 function attributes(value: NativeAttributes): AttributesState {
     return {
         fg: value.fg,
@@ -157,5 +192,7 @@ export function serializeTerminal(terminal: Terminal): {
             id,
             data: core._oscLinkService.getLinkData(id) ?? null,
         }));
-    return { data: addon.serialize(), state: structuredClone(state) };
+    const background = backgrounds.get(terminal)?.value;
+    const color = background ? `\x1b]11;${background}\x07` : "\x1b]111\x07";
+    return { data: color + addon.serialize(), state: structuredClone(state) };
 }

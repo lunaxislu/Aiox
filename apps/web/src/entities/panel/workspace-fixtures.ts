@@ -7,6 +7,8 @@ export type TerminalPreview = Pick<TerminalView, "cwd"> & {
     output: string;
     connection:
         | "connected"
+        | "restoring"
+        | "exited"
         | "reconnecting"
         | "disconnected"
         | "screen-lost"

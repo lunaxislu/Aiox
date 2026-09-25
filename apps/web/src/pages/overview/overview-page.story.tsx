@@ -4,7 +4,7 @@ import { fn } from "storybook/test";
 
 import type { AppOutletContext } from "@/app/app-shell";
 import { previewPanels } from "@/entities/panel/fixtures";
-import { WorkspacePage } from "@/pages/workspace/workspace-page";
+import { WorkspacePage } from "@/pages/workspace/workspace-page-preview";
 
 import { OverviewPage } from "./overview-page";
 
@@ -32,7 +32,7 @@ const meta = {
             </Routes>
         </MemoryRouter>
     ),
-} satisfies Meta<AppOutletContext>;
+} satisfies Meta<Pick<AppOutletContext, "panels" | "onCreate">>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

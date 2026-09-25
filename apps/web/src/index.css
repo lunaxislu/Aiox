@@ -3,6 +3,20 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
+/* Brief preparation/restoration should not flash a loading notice. */
+@keyframes pending-reveal {
+    from {
+        visibility: hidden;
+    }
+    to {
+        visibility: visible;
+    }
+}
+
+.pending-indicator {
+    animation: pending-reveal 0s 300ms both;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

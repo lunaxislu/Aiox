@@ -9,7 +9,7 @@ import {
     TriangleAlertIcon,
     WifiOffIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { TerminalPreview } from "@/entities/panel/workspace-fixtures";
 import { cn } from "@/shared/lib/utils";
@@ -37,13 +37,25 @@ import {
     EmptyTitle,
 } from "@/shared/ui/empty";
 
-export function TabNotice({ tab }: { tab: TabView }) {
+export function TabNotice({
+    tab,
+    onDismiss,
+}: {
+    tab: TabView;
+    onDismiss?: ((tab: TabView) => void) | undefined;
+}) {
     if (!tab.notice) return null;
     const preparing = tab.presentation === "preparing";
     const failed =
         tab.presentation === "start-failed" || tab.presentation === "crashed";
     return (
-        <Empty className="min-h-full gap-5 p-4" role="status">
+        <Empty
+            className={cn(
+                "min-h-full gap-5 p-4",
+                preparing && "pending-indicator",
+            )}
+            role="status"
+        >
             <EmptyHeader className="gap-2.5">
                 <EmptyMedia
                     variant="icon"
@@ -79,6 +91,11 @@ export function TabNotice({ tab }: { tab: TabView }) {
                     <CopyCommand
                         className="w-fit max-w-full self-center"
                         command={tab.notice.restartCommand}
+                        onCopied={
+                            tab.terminalId && onDismiss
+                                ? () => onDismiss(tab)
+                                : undefined
+                        }
                     />
                 </EmptyContent>
             )}
@@ -92,30 +109,46 @@ export function TerminalBody({
     connection,
     onReconnect,
     onStop,
+    children,
 }: {
     tab: TabView;
     terminal: TerminalPreview | undefined;
     connection: TerminalPreview["connection"];
     onReconnect: () => void;
     onStop: () => void;
+    children?: ReactNode;
 }) {
     const unrestorable = connection === "unrestorable";
     const screenLost = connection === "screen-lost" || unrestorable;
-    // Static terminal content for structural review; attach.ts is not connected yet.
+    const restoring =
+        connection === "restoring" || connection === "reconnecting";
     return (
         <div className="relative flex h-full min-h-0 flex-col">
-            {!screenLost && (
-                <pre
-                    className={cn(
-                        "min-h-0 flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed",
-                        connection !== "connected" && "opacity-40",
-                    )}
-                    aria-label={`${tab.label} terminal output`}
+            {children ??
+                (!screenLost && (
+                    <pre
+                        className={cn(
+                            "min-h-0 flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed",
+                            connection !== "connected" && "opacity-40",
+                        )}
+                        aria-label={`${tab.label} terminal output`}
+                    >
+                        {terminal?.output ?? "$ "}
+                    </pre>
+                ))}
+            {connection === "restoring" && (
+                <div
+                    role="status"
+                    className="pending-indicator pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-xs text-muted-foreground"
                 >
-                    {terminal?.output ?? "$ "}
-                </pre>
+                    <LoaderCircleIcon
+                        aria-hidden="true"
+                        className="size-4 motion-safe:animate-spin"
+                    />
+                    Restoring terminal…
+                </div>
             )}
-            {connection !== "connected" && (
+            {connection !== "connected" && connection !== "restoring" && (
                 <div className="absolute inset-0 flex overflow-auto bg-background/85 p-4 backdrop-blur-sm">
                     <Card
                         className="m-auto w-full max-w-sm shrink-0 gap-4 shadow-lg"
@@ -123,7 +156,7 @@ export function TerminalBody({
                     >
                         <CardHeader className="gap-3">
                             <div className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                                {connection === "reconnecting" ? (
+                                {restoring ? (
                                     <LoaderCircleIcon className="size-5 motion-safe:animate-spin" />
                                 ) : screenLost ? (
                                     <MonitorXIcon className="size-5" />
@@ -133,20 +166,24 @@ export function TerminalBody({
                             </div>
                             <div className="space-y-1.5">
                                 <CardTitle>
-                                    {unrestorable
-                                        ? "Terminal screen cannot be restored"
-                                        : screenLost
-                                          ? "Terminal screen could not be restored"
-                                          : connection === "reconnecting"
-                                            ? "Reconnecting…"
-                                            : "Terminal disconnected"}
+                                    {connection === "exited"
+                                        ? "Terminal process exited"
+                                        : unrestorable
+                                          ? "Terminal screen cannot be restored"
+                                          : screenLost
+                                            ? "Terminal screen could not be restored"
+                                            : connection === "reconnecting"
+                                              ? "Reconnecting…"
+                                              : "Terminal disconnected"}
                                 </CardTitle>
                                 <CardDescription className="text-xs leading-relaxed">
-                                    {unrestorable
-                                        ? "The server confirmed this screen cannot be restored. Reconnecting is unavailable. You can stop the terminal, then open a new one. This does not confirm whether the process is still running."
-                                        : connection === "reconnecting"
-                                          ? "Trying to restore the terminal connection."
-                                          : "Reconnect to restore the screen and keyboard link without restarting the process."}
+                                    {connection === "exited"
+                                        ? "The terminal stream reported process exit. Closing removes this tab."
+                                        : unrestorable
+                                          ? "The server confirmed this screen cannot be restored. Reconnecting is unavailable. You can stop the terminal, then open a new one. This does not confirm whether the process is still running."
+                                          : restoring
+                                            ? "Trying to restore the terminal connection."
+                                            : "Reconnect to restore the screen and keyboard link without restarting the process."}
                                 </CardDescription>
                             </div>
                         </CardHeader>
@@ -166,7 +203,7 @@ export function TerminalBody({
                             </div>
                         </CardContent>
                         <CardFooter className="flex-wrap gap-2">
-                            {connection !== "reconnecting" && (
+                            {!restoring && connection !== "exited" && (
                                 <Button
                                     size="sm"
                                     disabled={unrestorable}

@@ -1,23 +1,18 @@
 import { createBrowserRouter } from "react-router";
 
-import { previewPanels } from "@/entities/panel/fixtures";
 import { NotFoundPage } from "@/pages/not-found/not-found-page";
 import { OverviewPage } from "@/pages/overview/overview-page";
 import { SectionOverviewPage } from "@/pages/section/section-overview-page";
 import { WorkspacePage } from "@/pages/workspace/workspace-page";
 
 import { AppShell } from "./app-shell";
+import { RouteError } from "./route-error";
 
 export const router = createBrowserRouter([
     {
         path: "/",
         element: <AppShell />,
-        loader: async () => {
-            // W2 interaction fixtures. Connect real mutations after UI review.
-            const initialPanels = previewPanels;
-            return { initialPanels };
-        },
-
+        errorElement: <RouteError />,
         children: [
             { index: true, element: <OverviewPage /> },
             {

@@ -1,10 +1,10 @@
 import type { WebNotificationView } from "@aiox/protocol";
-import { useState } from "react";
-import { Outlet, useLoaderData, useNavigate, useParams } from "react-router";
+import { Effect, Exit, Cause } from "effect";
+import { useLayoutEffect, useRef, useState } from "react";
+import { Outlet, useNavigate, useParams } from "react-router";
 
-import { previewNotifications } from "@/entities/notification/fixtures";
 import { agentName, findRuntimeTab } from "@/entities/notification/model";
-import { previewHeader } from "@/entities/panel/fixtures";
+import { applicationPanels } from "@/entities/panel/application-panels";
 import {
     isSection,
     panelPath,
@@ -19,90 +19,99 @@ import {
 import { AppHeader } from "@/widgets/header/app-header";
 
 import { AppLayout } from "./app-layout";
-
+import {
+    useApplicationConnection,
+    useApplicationConnectionState,
+} from "./application-provider";
+import { useApplicationState, usePanelCommand } from "./application-state";
+import { CommandFeedback, useCommandFeedback } from "./command-feedback";
 export type AppOutletContext = {
+    reportOutcome: ReturnType<typeof useCommandFeedback>["reportOutcome"];
     panels: PanelPreview[];
     onCreate: (section: Section) => void;
 };
-
-export function AppShell({
-    initialNotifications = previewNotifications,
-    connected = previewHeader.connected,
-}: {
-    initialNotifications?: WebNotificationView[];
-    connected?: boolean;
-}) {
-    const { initialPanels } = useLoaderData<{
-        initialPanels: PanelPreview[];
-    }>();
-    // W2 interaction fixtures. Connect real mutations after UI review.
-    const [panels, setPanels] = useState(initialPanels);
-    // W7 fixture. 읽음 요청은 W10에서 클릭이 ids 하나, Clear all이 ids 생략으로 붙는다.
-    const [notifications, setNotifications] = useState(initialNotifications);
+export function AppShell() {
+    const state = useApplicationState();
+    const panels = applicationPanels(state);
+    const connection = useApplicationConnection()!;
+    const connectionState = useApplicationConnectionState();
+    const send = usePanelCommand();
+    const feedback = useCommandFeedback();
     const [action, setAction] = useState<WorkspaceAction | null>(null);
-
+    const [readError, setReadError] = useState<string | null>(null);
     const navigate = useNavigate();
     const { section, panelId } = useParams();
+    const currentPanel = useRef({ section, panelId });
+    useLayoutEffect(() => {
+        currentPanel.current = { section, panelId };
+    }, [section, panelId]);
     const panel = panels.find(
         (item) => item.section === section && item.id === panelId,
     );
-
     const title =
         panel?.name ??
         (isSection(section) && !panelId ? sectionLabels[section] : "");
     function submit(name: string) {
         if (!action) return;
-        if (action.type === "create") {
-            const panel: PanelPreview = {
-                id: crypto.randomUUID(),
-                kind: "workspace",
-                section: action.section,
-                name,
-                terminalCount: 0,
-                layout: {
-                    type: "pane",
-                    id: "root",
-                    tabIds: [],
-                    selectedTabId: null,
-                },
-                activePaneId: "root",
-                tabs: [],
-                agents: [],
-            };
-            setPanels((value) => [...value, panel]);
-            navigate(panelPath(panel));
-        } else if (action.type === "rename") {
-            setPanels((value) =>
-                value.map((panel) =>
-                    panel.id === action.panel.id ? { ...panel, name } : panel,
-                ),
-            );
-        } else {
-            setPanels((value) =>
-                value.filter((panel) => panel.id !== action.panel.id),
-            );
-            navigate(`/${action.panel.section}`);
-        }
+        const id =
+            action.type === "create" ? crypto.randomUUID() : action.panel.id;
+        const changes =
+            action.type === "create"
+                ? [
+                      {
+                          type: "panel.create" as const,
+                          name,
+                          section: action.section,
+                          paneId: crypto.randomUUID(),
+                          tabId: crypto.randomUUID(),
+                      },
+                  ]
+                : action.type === "rename"
+                  ? [{ type: "panel.rename" as const, name }]
+                  : [{ type: "panel.delete" as const, confirm: true as const }];
+        const operation = send({ panelId: id, changes });
+        feedback.reportOutcome(operation);
+        if (action.type === "create") navigate(`/${action.section}/${id}`);
+        if (action.type === "delete")
+            void operation.result.then((outcome) => {
+                if (
+                    outcome.status === "confirmed" &&
+                    currentPanel.current.section === action.panel.section &&
+                    currentPanel.current.panelId === id
+                )
+                    navigate(`/${action.panel.section}`);
+            });
         setAction(null);
     }
-    const create = (section: PanelPreview["section"]) =>
-        setAction({ type: "create", section });
-
-    /** 누르는 것으로 이동과 확인이 함께 끝난다. 대상이 없어도 확인은 한다. */
-    function openNotification(notification: WebNotificationView) {
-        setNotifications((value) =>
-            value.filter((item) => item.id !== notification.id),
+    async function read(ids?: string[]) {
+        setReadError(null);
+        const result = await Effect.runPromiseExit(
+            connection.call((client, session) =>
+                client["notifications.read"]({
+                    clientSessionId: session.clientSessionId,
+                    ids:
+                        ids ??
+                        state.notifications.map(
+                            (notification) => notification.id,
+                        ),
+                }),
+            ),
         );
-        const target = findRuntimeTab(panels, notification.originRuntimeId);
-        if (!target) {
-            navigate(`/notifications/${notification.id}`);
-            return;
-        }
-        navigate(panelPath(target.panel), {
-            state: { focusTabId: target.tab.id },
-        });
+        if (Exit.isFailure(result))
+            setReadError(
+                `Could not confirm notification read: ${Cause.pretty(result.cause)}`,
+            );
     }
-
+    function openNotification(notification: WebNotificationView) {
+        void read([notification.id]);
+        const target = findRuntimeTab(panels, notification.originRuntimeId);
+        if (!target) navigate(`/notifications/${notification.id}`);
+        else
+            navigate(panelPath(target.panel), {
+                state: { focusTabId: target.tab.id },
+            });
+    }
+    const create = (section: Section) => setAction({ type: "create", section });
     return (
         <AppLayout
             panels={panels}
@@ -114,25 +123,70 @@ export function AppShell({
                 <AppHeader
                     title={title}
                     panel={panel}
-                    connected={connected}
-                    notifications={notifications}
-                    agentNameOf={(runtimeId) => agentName(panels, runtimeId)}
+                    connected={connectionState?.phase === "ready"}
+                    notifications={state.notifications}
+                    agentNameOf={(runtime) => agentName(panels, runtime)}
                     onSelect={openNotification}
-                    onClearAll={() => setNotifications([])}
+                    onClearAll={() => void read()}
                 />
+                <CommandFeedback feedback={feedback} />
+                {readError && (
+                    <p role="alert" className="p-3 text-destructive">
+                        {readError}
+                    </p>
+                )}
+                {state.pending
+                    .filter(
+                        (row) =>
+                            row.status === "unknown" ||
+                            row.status === "blocked",
+                    )
+                    .map((row) => (
+                        <p role="alert" className="p-3" key={row.key}>
+                            {row.status === "unknown"
+                                ? "Command result unknown. Check current state before acting again."
+                                : typeof row.issue === "object" &&
+                                    row.issue !== null &&
+                                    "code" in row.issue &&
+                                    row.issue.code === "sequence_gap"
+                                  ? "Command not executed: sequence gap."
+                                  : "Command could not be applied to the current layout."}{" "}
+                            {JSON.stringify(row.issue)}
+                        </p>
+                    ))}
+                {state.cleanups
+                    .filter((cleanup) => cleanup.state === "failed")
+                    .map((cleanup) => (
+                        <p
+                            role="alert"
+                            className="p-3 text-destructive"
+                            key={cleanup.id}
+                        >
+                            Process cleanup failed ({cleanup.terminalId}):{" "}
+                            {cleanup.error}. The tab removal is separate from
+                            process cleanup.
+                        </p>
+                    ))}
                 <main
                     id="main-content"
                     tabIndex={-1}
-                    className="min-h-0 flex-1 "
+                    className="min-h-0 flex-1"
                 >
-                    <Outlet
-                        context={
-                            {
-                                panels,
-                                onCreate: create,
-                            } satisfies AppOutletContext
-                        }
-                    />
+                    {state.ready ? (
+                        <Outlet
+                            context={
+                                {
+                                    panels,
+                                    onCreate: create,
+                                    reportOutcome: feedback.reportOutcome,
+                                } satisfies AppOutletContext
+                            }
+                        />
+                    ) : (
+                        <p role="status" className="p-6">
+                            Loading application…
+                        </p>
+                    )}
                 </main>
             </div>
             {action && (

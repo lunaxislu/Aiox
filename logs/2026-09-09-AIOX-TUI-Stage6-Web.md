@@ -15,7 +15,7 @@ status: open
 - [x] W7 알림 fixture UI 구현과 사용자 시각 확인 PASS 완료. 고정 제목·Clear all, ScrollArea 목록·구분선·최신순·상대 시각, runtime 대상 이동과 NotFound를 반영했다. 실제 SSE·확인 API 및 삭제 후 최신 대상 탐색은 W10에서 연결·검증한다.
 - [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
 - [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
-- [>] W10 완료된 W15 서버 계약·W16 리뷰 수정·W17 클라이언트 선택 분리를 소비해 React 실연결을 수행한다. docs/specs/aiox-application-rpc.md와 @aiox/protocol을 기준으로 RPC·TanStack DB·낙관적 변경·재접속·알림·실 PTY 연결을 구현/검증한다. activePaneId·selectedTabId는 React 메모리에만 두고 새로고침 시 초기화한다. Settings·Keybinding은 이후다. next: 「2026-09-25 · pane·탭 선택의 클라이언트 전용화와 리뷰 결과 소비」.
+- [>] W10 제품 화면·명령·알림과 운영 터미널 WS·xterm 연결 및 검증을 완료했다. 다음은 Settings·Keybinding 연결과 남은 통합 검증 범위를 확정한다. 이번 터미널 단계만 완료이며 W10 전체는 진행 중이다. next: 「2026-09-25 · W10 운영 터미널 WS·xterm 연결」.
 - [x] W11 서버 제거·빈 pane/split 정리와 원자 저장 검토를 완료했다. W17에서 선택을 클라이언트 전용으로 분리하고 owner 정합과 직접 회귀 검증을 완료했다. 실제 Web RPC·PTY 통합 검증은 W10이 소유한다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
@@ -66,7 +66,7 @@ status: open
 - 설치와 기능 연결은 구분한다. 사용자 권한으로 W2에서 설치한 도구는 {W2}의 설치 완료 기록과 `apps/web/package.json`을 확인하고 재설치 작업으로 잡지 않는다. Storybook의 브라우저 테스트 연결은 이미 있으며, 드롭 위치 판정은 W5에서 구현한다. `msw`·`msw-storybook-addon`은 아직 설치되지 않은 후보이고, 도입 시 HTTP·SSE·WS 핸들러 한 세트를 Storybook·vite dev·Vitest·Playwright가 공유한다. story는 필요한 화면·상태를 기존 story에 이어서 작성한다.
 - 스택 선택 중 owner 문서에 근거가 없는 셋. 라우터는 계약이 요구하지 않는다. [[docs/specs/aiox-configuration-web]]의 복귀 계약이 복원하라는 것은 Host·Agent·배치·terminal 현재 화면·미확인 알림뿐이고 전부 서버 소유다. 그래도 두는 이유는 브라우저 저장소가 금지라 무엇을 보고 있었는지를 담을 자리가 URL뿐이고, 없으면 알림·팔레트 점프 뒤 뒤로 가기가 앱을 벗어나며, 탭 두 개가 서로 다른 workspace를 볼 수 없기 때문이다. happy-dom은 jsdom보다 빠르다는 것 말고 강한 이유가 없다. xterm은 canvas가 필요하고 `ResizeObserver`는 둘 다 없어 어차피 mock하므로 실질 차이가 속도뿐이며, 막히면 environment 한 줄로 jsdom에 간다. `cn`을 bare specifier로 두면 shadcn 복사본이 upstream과 같아져 갱신 때 import가 안 흔들리지만 CLI가 alias로 재작성하면 그 이점이 사라지므로 W1에서 보고 정한다.
 - 작업 트리. Stage 6은 `~/Documents/aiox-stage6`의 별도 worktree에서 시작했고 2026-09-23에 그 브랜치를 main에 합쳐 worktree를 없앴다. 분리의 목적은 Stage 5와의 병렬 작업이었는데 Stage 5가 W1~W10을 끝내고 남은 W11이 Stage 6 화면을 요구해 병렬성이 사라졌기 때문이다. merge로 `packages/protocol`의 `core.ts`·`host.ts`·`configuration.ts`와 Hono·Drizzle·Pino 전환이 들어와 스냅샷 drift가 닫혔다. 충돌은 `pnpm-lock.yaml` 하나였고 main은 `apps/web`을 한 줄도 건드리지 않았다. 따라서 임시 zod 정의도 계약 handoff 메시지 경로도 더 이상 필요 없고 `@aiox/protocol`에서 바로 import한다. 소유 경계만 남는다. `apps/daemon`과 `packages/protocol`은 Stage5 단독 수정이고 `apps/web`은 이 로그가 소유한다. 새로 clone한 트리에서는 루트 `pnpm install` 뒤 `pnpm -r --if-present build`를 먼저 돌린다. `packages/*/dist`가 없으면 `@aiox/terminal/restore`가 풀리지 않아 web 빌드와 타입체크가 실패한다.
-- 현재 우선순위(2026-09-25): W15 서버 마이그레이션과 W16 리뷰 결함 수정은 완료됐고, W17은 선택의 React 메모리 전용화와 owner/artifact·검증 기록을 소비한다. W15 당시 Web 의존성만 변경한다는 범위 뒤에 사용자가 Web 전용 선택 타입·로컬 상태 분리를 별도 승인했다. 실제 React RPC/TanStack DB 연결은 W10에 남는다. 이번 사용자 요청으로 리뷰·검증·선택 계약을 로그에 기록하며 이후 논의의 자동 기록까지 승인받은 것은 아니다.
+- 현재 우선순위(2026-09-25): W10에서 React RPC·TanStack DB·제품 화면 명령/알림과 운영 terminal WS/xterm 연결을 구현·검증했다. 선택은 React 메모리만 소유한다. 다음은 Settings·Keybinding 연결과 남은 통합 검증 범위 확정이며 W10 전체는 진행 중이다. 구현·직접 검증·미검증 범위는 「2026-09-25 · W10 운영 터미널 WS·xterm 연결」을 따른다.
 
 ### {W1}
 
@@ -110,13 +110,14 @@ status: open
 - RPC 상태 연결 시 같은 panel ID의 최신 snapshot을 WorkspaceView가 직접 소비하도록 fixture용 useState(panel) 복사본을 제거한다. 지금 별도 부모 상태 리팩토링은 하지 않는다. 임시 진단 테스트로 같은 ID의 tabs/layout 갱신 무시와 Reconnect 로컬 override의 새 disconnected 상태 가림을 재현했다. runtime 교체만의 독립 검증은 panel 갱신 반영 후 수행한다. terminalId+runtimeId별 attach 상태와 이전 비동기 결과 정리를 실제 연결 시 검증한다. 근거: 「W10 SSE 연결 시 panel·연결 상태 소유 정리」 블록.
 - W7 사용자 PASS 후 남은 연결: RPC 상태 알림 수신과 클릭 ids=[id]/Clear all ids 생략 확인 API 및 실패 처리. WorkspaceView local panel 복사본에서 탭을 삭제해도 AppShell.panels 알림 탐색에는 남는 현상은 기존 RPC 상태 단일화 작업에 포함한다. 실제 최신 상태에서 실행/탭 종료 후 과거 알림 클릭이 NotFound로 이동하고 확인 처리되는지 검증한다. 사용자가 추가한 중복 fixture ID는 W7 차단이 아닌 실험 데이터다.
 - 명령과 세션은 [[docs/specs/aiox-application-rpc]]의 실제 RPC 계약을 소비한다. clientSessionId는 `session.open()`으로 서버에서 발급받으며, sequence·requestId·body를 유지한 pending 재전송만 합류한다. 완료 요청은 result_expired, 만료/재시작 세션은 거부되므로 새 ID로 자동 재실행하지 않는다. 명령 commit·shell 준비·cleanup 결과를 구분한다. 원래 `changes[]`와 target DTO를 유지한다.
-- 낙관적 UI는 서버 확정 상태와 미확정 사용자 변경을 구분한다. 최신 RPC 상태 위에 미확정 변경을 재적용하고 실패한 변경과 그 의존 변경만 조정한다. 예전 Query 캐시 전체 rollback으로 새 상태나 다른 성공을 덮지 않는다. 명령 response와 broadcast의 같은 delta는 epoch/version으로 한 번만 반영하고 서로 다른 부분 변경을 버리지 않는다. 실제 TanStack DB 저장 형태는 W10에서 정하며 서버에 요청 의미상 병합을 추가하지 않는다.
+- 서버 확정 상태·낙관적 명령·로컬 선택의 현재 구현은 docs/architecture/aiox-system.md와 「2026-09-25 · W10 TanStack DB 상태 저장소」를 따른다. ApplicationStore 단일 collection의 resource 행과 pending intent를 구분하며 실제 화면은 아직 fixture다. RPC session·requestId·sequence·재전송은 ApplicationConnection이 소유한다. 화면 연결 시 전체 Query rollback이나 요청 간 의미상 병합을 추가하지 않는다.
 - W12·W13 소비 검증: 준비 중 이동/닫기, split ID 유지, 연속 [+] 순서와 PTY 병렬 완료, 응답 유실 재전송, 누락 순번 복구·sequence_gap, RPC 상태 재접속·epoch 변경, shell 생성 실패(start-failed notice)와 cleanup failed 표시를 확인한다. 탭 제거 성공과 프로세스 정리 실패는 별개로 표시한다. HTTP abort는 서버 취소가 아니며 명시적 닫기 명령을 보낸다. shell 입력은 WS attach·복원 이후 허용한다.
 - W13의 중간 서버 제한 보고보다 완료된 W15 source·검증을 우선한다. 전체 `pnpm check`는 Node24.14/macOS에서 846개 통과·기존 scale 1개 skip이며 실제 RPC/SQLite/PTY 회귀를 포함한다. Node22.16은 별도 terminal import·SQLite 초기화/rollback/reopen smoke만 수행했다. Windows/Linux 전체 전환·실제 vendor 모델 E2E·성능 개선은 검증하지 않았다.
 - Web 의존성 Effect RC117·TanStack DB0.9.2/React DB0.4.1 설치와 W15 당시 Web 원본 불변 검증 뒤, W17에서 사용자 승인한 Web 전용 선택 타입·로컬 상태 연결을 구현했다. Codex 직접 최종 pnpm check는 exit 0, 전체 851 passed/1 skipped, Web 90 passed다. 두 화면의 선택 독립성과 재마운트 초기화를 확인했다. 실제 React RPC client/store/hooks·TanStack DB·실서버 UI 통합은 아직 구현하지 않았다.
 - 프론트 후속 구현: 앱용 RPC 명령 결과와 상태 구독을 React 공통 수신 경로에서 연결해 TanStack DB에 반영한다. 명령 결과+확정 변경, 전체 창 방송의 중복 식별, 요청 sequence와 daemon 상태 버전 분리, snapshot 후 delta 경계, 실패/의존 변경만 조정, 확정 반영과 낙관적 해제, 재접속/epoch 변경을 함께 구현한다. 높은 버전만 남겨 서로 다른 부분 변경을 버리지 않는다. 기존 HTTP/RPC 상태/Query 연결 지시를 최신 목표로 소비하지 않는다.
 - 프론트 후속 검증: 다른 창의 생성/이동, shell 준비 중 이동/삭제와 늦은 완료, cleanup 실패, 요청 결과/방송 역전·중복·유실, 재접속 snapshot, 알림 최신 대상 탐색을 확인한다. terminal WS와 headless serialize는 앱 snapshot과 별개이며 보이는 pane 이동의 xterm/WS 유지·숨김 시 브라우저 자원 정리·attach 완료 뒤 입력을 보존한다. 이번 서버 작업의 라이브러리 설치만으로 실제 React 통합 PASS를 주장하지 않는다.
-
+- 2026-09-25 저장소 연결 완료: ApplicationProvider가 안정적인 소비자로 ApplicationStore를 설치한다. 공개 hooks는 @/app/application-state의 useApplicationState/useApplicationStore/usePanelCommand/usePanelSelection이며 비 React 테스트는 @/shared/api/application-store의 ApplicationStore를 사용한다. panelCommand의 발급 콜백이 비동기 requestId/sequence를 intent에 연결한다. 전체 구현·검증과 다음 UI 연결 지점은 「2026-09-25 · W10 TanStack DB 상태 저장소」를 따른다. fixture 화면·제품 명령·알림·PTY 통합은 계속 W10에 남으며 Settings·Keybinding은 이후다.
+- 제품 조회·panel 명령·알림은 「2026-09-25 · W10 제품 화면 실제 상태·명령·알림 연결」 결과를 소비한다. 운영 경로는 AppShell → WorkspacePage → WorkspaceContent이며 fixture controller는 Storybook 전용이다. 선택은 Provider 한 곳, 읽음은 notifications.read의 필수 ids 배열과 서버 delta, terminal attach는 아직 미연결이라는 경계를 유지한다.
 
 ### {W7}
 
@@ -839,3 +840,146 @@ W7은 fixture UI 사용자 PASS로 완료한다. 실제 SSE 알림 수신·확�
 - 삭제 판단: 관련 자료는 고정 commit·버전별 실패/통과 실험·이전 인계의 독립 근거가 남아 있어 삭제하지 않았다. 과거 v3/Hono·HTTP/SSE·Workflow 후보는 현재 구현 지시가 아님을 표시했다. Agent CLI integration의 HTTP/SSE는 MCP 경로이므로 앱 RPC 전환을 이유로 제거하지 않았다. Agent state/notification audit·terminal replay prompt와 HTML 디자인 자산은 이번 선택 계약과 충돌하지 않아 변경하지 않았다.
 - W11의 서버 제거·원자 저장 및 owner 정합은 완료로 소비했다. 남은 실제 React RPC/TanStack DB·PTY 통합 검증은 W10이 소유한다. W17의 로컬 선택 테스트 통과를 실서버 Web 연결 PASS로 확대하지 않는다. Required Context의 Global/W10과 next pointer도 현재 계약으로 맞췄다.
 - 이번 문서 반영에서는 제품 코드·의존성을 추가 수정하지 않았다. 변경 문서의 inline-code 점검을 통과했다. log CLI에 heading rename 기능이 없어 이번에 생성한 제목의 중복 날짜 접두사만 직접 정정했고, entry·Work Items·Required Context 변경은 log 도구로 수행했다.
+
+## 2026-09-25 · Web 컴포넌트 책임 분리와 커밋 기록
+
+- 사용자 요청: 기존 동작·이벤트·DOM·스타일을 유지하면서 현재 Web의 책임과 파일 구조만 정리했다. 구현 당시에는 로그 기록을 보류했고, 이번 요청에 따라 코드 커밋 후 기록한다. 서버 상태 연결이나 새 의존성 설치는 이 작업에 포함하지 않았다.
+- AppShell의 sidebar width 상태·resize 처리·SidebarProvider 너비 CSS 변수·skip link·AppSidebar 조립을 `apps/web/src/app/app-layout.tsx`로 이동했다. AppShell은 panels·notifications·workspace 관리와 Header/Outlet/Dialog 조립을 유지하고 children으로 전달한다. 구현 사실의 owner는 두 코드 파일이다.
+- WorkspaceView 내부의 PaneTree/Pane을 `pages/workspace/pane-tree.tsx`로, 터미널 출력·복구 UI·TabNotice·TerminalStatusBar·StatusDot을 `terminal-body.tsx`로 추출했다. WorkspaceView의 배치·탭 상태·종료 판단과 TerminalSurface의 DOM 수명은 유지했다. 추출 당시 컴포넌트 본문·상태 처리의 공백 제외 일치를 확인했다. 이후 W17의 클라이언트 선택 타입 변경과 이 구조 분리는 별개 작업이다.
+- 커밋 구분: 이번 커밋 `ac2a6b0` (`refactor(web): isolate sidebar layout state`)은 AppShell/AppLayout 두 파일만 포함한다. WorkspaceView·PaneTree·TerminalBody의 분리는 커밋 전 이력 확인 결과 기존 `3693a33`에 이미 포함되어 있어 재커밋하거나 해당 커밋 전체를 이번 작업으로 주장하지 않는다. 별도 Claude 조사 파일은 포함하지 않았다.
+- 검증: 추출 당시 Web 89 tests·타입 검사·빌드·변경 범위 lint/format 통과. 이번 커밋 직전 최신 트리에서는 Web 14 files/90 tests, typecheck, 두 파일 oxlint·oxfmt, git diff --check 통과했다. 90개 결과에는 후속 W17 테스트가 포함되므로 이번 작업에서 테스트를 추가한 것으로 해석하지 않는다. 테스트는 로컬 포트 권한을 받아 실행했다. 근거: `/tmp/aiox-web-commit-tests.txt`, `/tmp/aiox-web-commit-typecheck.txt` (임시 파일).
+- React Doctor: latest 실행이 지연되어 설치된 CLI의 `--verbose --scope changed`로 점검했다. origin/main 대비 75개 파일에서 1 error/7 warnings를 보고했으나 이번 커밋의 두 파일에는 진단이 없었다. 점수 API 접근 실패로 점수 회귀 비교는 확인하지 못했다. 기존 route error boundary 등의 진단을 이번 작업의 결함이나 해결 완료로 기록하지 않는다. 근거: `/tmp/aiox-web-commit-doctor-local.txt`.
+- 범위와 다음: 구조 정리 자체는 완료이며 공개 API·화면 계약 변경이 없어 spec 수정은 없다. 최신 RPC/TanStack DB·실 PTY 연결은 기존 W10이 소유하고 이번 작업에서 진행하지 않았다. W10의 marker·next pointer와 기존 Required Context는 유지한다. 이 기록은 같은 Stage6 Web 수명의 완료한 보조 작업이므로 별도 Work Item이나 로그 분할을 추가하지 않는다. 로그 파일은 코드 커밋 이후 갱신했으며 커밋하지 않았다.
+
+## 2026-09-25 · W10 React Effect RPC 연결 계층
+
+사용자 요청 범위는 W10 첫 연결 계층이다. TanStack DB·낙관적 UI·fixture 전면 교체·화면 명령·알림 dropdown·terminal WS·설정·키 바인딩은 구현하지 않았다. W10은 진행 중이며 commit/push와 사용자 daemon/vendor 종료는 하지 않았다. 착수 시 이미 수정된 이 로그의 Web 컴포넌트 분리 기록과 untracked research-idea/claude-stopfailure-rate-limit.research.md를 보존했다. architecture.excalidraw는 건드리지 않았다. 타 agent 보고를 구현 근거로 사용하지 않고 공개 계약·실제 source·명령 결과로 확인했다.
+
+직접 확인한 구현:
+- apps/web/src/shared/api/application-connection.ts가 @aiox/protocol의 ApplicationRpc를 RC117 Socket.layerWebSocket + layerWebSocketConstructorGlobal, RpcClient.layerProtocolSocket + RpcSerialization.layerJson으로 소비한다. 앱 origin의 /api/rpc를 사용한다. 앱 실행 하나의 client·상태 구독을 ApplicationProvider가 소유하고 기존 AppShell 연결 경고만 실제 준비 상태를 소비한다.
+- 최초 open → snapshot 소비 후 ready, 네트워크 재연결은 resume → 새 snapshot, session_expired/epoch 변경은 새 세션·snapshot이다. 오류·구독 종료·epoch/version gap은 Effect scope를 닫고 재접속한다. 응답 version은 구독 cursor를 올리지 않는다. 서버 종료가 RPC stream interruption으로 도착하는 경우와 앱 AbortSignal에 의한 종료를 구분한다.
+- call(callback)은 generated client의 명령 API를 그대로 제공한다. session/state/panel 명령은 수명·식별자 소유 경계에서 제외하고 panelCommand({panelId,changes})가 첫 execute 시 requestId·sequence를 발급한다. 반환된 execute Effect를 명시적으로 다시 실행해야 동일 세션/ID/순번/복사된 body를 재전송한다. 자동 명령 재실행은 없다. request getter는 복사본을 반환한다. checkpoint는 연속 확정 번호이며 구독 version과 독립이다. result_expired는 원래 실패를 보존하고 snapshot 복구를 시작하며, 옛 세션 명령을 새 세션으로 실행하지 않는다.
+- RC117의 연결 전 요청 취소 frame이 열린 socket을 기다리는 경로를 확인해 ConnectionHooks.onConnect 이후에만 session RPC를 시작했다. start/stop을 직렬화하여 StrictMode cleanup과 다음 시작이 겹치지 않는다. 결과 전달 전에 resync가 command fiber를 끊던 초기 구현도 수정하고 회귀로 확인했다.
+- 개발 proxy는 AIOX_WEB_PROXY_TARGET에 지정한 daemon Web listener만 사용한다. 최초 브라우저 검증에서 daemon requestGuard의 Host/Origin 거부를 확인했다. 개발 proxy는 자기 HTTP 페이지 Origin만 허용한 뒤 대상 Host/Origin을 전달하며 외부/누락 Origin은 거부한다. 서버 계약이나 requestGuard는 변경하지 않았다.
+
+직접 실행한 검증:
+- Web 전체 Vitest 17 files / 105 passed. 새 연결·Provider·proxy 테스트는 production 인접 파일에 배치했다. 실제 daemon + Node 내장 WebSocket의 open/snapshot·panel 응답/방송·resume·실제 daemon 재시작·불확실한 명령·동일 ID 재전송/result_expired·새 앱 세션·실제 sequence_gap/checkpoint를 확인했다. 만료 응답과 구독 gap/epoch/stream failure는 fault injection이며, 서버의 실제 sequencer 만료 규칙은 별도 서버 테스트가 검증한다. 응답 두 개가 구독 delta보다 먼저 도착해도 두 delta가 남는 것, 알림/cleanup/sequence-failure 전달, StrictMode 연결 전 unmount 정리도 확인했다.
+- 기존 daemon application-rpc·sequencer·app-state 3 files / 15 passed. Web build/typecheck, 루트 lint·format:check 통과. lint는 기존 다른 package 경고 8개만 남았다. build의 500 kB chunk 경고는 남아 있다. 실제 Vite 모듈 그래프 2,502개에서 Node builtins/Node transport/daemon/DB 코드 및 browser external shim은 0개였다.
+- 실제 Chromium(agent-browser 독립 세션): 운영 build 최초 snapshot 준비 시 연결 경고 해제, 임시 daemon 종료 시 경고, 같은 포트의 새 daemon epoch 시작 시 자동 복구를 확인했다. 개발 Vite proxy에서도 연결 경고 해제를 확인했다. 브라우저에서 panel 명령을 화면 조작으로 검증한 것은 아니다. Node 테스트를 브라우저 명령 E2E로 보고하지 않는다. 임시 DB/daemon/Vite와 브라우저는 정리했다.
+- 최초 전체 Web 실행의 Storybook 6개는 동적 모듈 fetch 실패였고 단독 30개 재실행 및 최종 전체 105개에서 통과했다. 초기 sandbox의 로컬 listen EPERM은 임시 포트 허용 실행으로 재검증했다. npx react-doctor@latest는 registry DNS 실패; 설치된 CLI의 동일 --verbose --scope changed 전후 비교는 기존 1 error/7 warnings 동일, 이번 파일 진단 0개다. 점수 API 접근 실패로 수치 점수 비교는 미확인이다.
+- 근거: /tmp/aiox-rpc-web-final-all.txt, /tmp/aiox-rpc-final-focused.txt, /tmp/aiox-rpc-server-regression.txt, /tmp/aiox-rpc-typecheck.txt, /tmp/aiox-rpc-build.txt, /tmp/aiox-rpc-format.txt, /tmp/aiox-rpc-lint.txt, /tmp/aiox-rpc-bundle-audit.json, /tmp/aiox-rpc-doctor-before.txt, /tmp/aiox-rpc-doctor-after-local.txt. 테스트에서 다른 package를 공개 entry로 import하도록 Web devDependency에 기존 workspace @aiox/daemon·@aiox/persistence만 연결했다. 런타임 dependency 추가는 없다.
+
+후속 인계:
+- React 소비자는 @/app/application-provider의 useApplicationConnection/useApplicationConnectionState를 사용한다. 비React 경계는 @/shared/api/application-connection의 ApplicationConnection/ApplicationSession/ConnectionState다. wire 타입은 계속 @aiox/protocol 공개 entry가 소유한다.
+- App의 ApplicationProvider onEvent에 안정적인 동기 소비 함수를 연결하고 snapshot 전체 교체 → 순서대로 delta 적용을 구현한다. 현재 기본 sink는 검증한 이벤트를 보관하지 않는다. 구독 시작 전 소비자를 설치해야 하며 늦게 합류한 소비자를 위한 replay 배열/전체 상태 관리자는 없다. response의 state와 방송은 epoch/version으로 같은 변경을 식별하고, 낙관적 상관관계에는 명령 객체의 requestId/sequence와 반환 result를 사용한다. Effect.runPromiseExit 또는 Effect의 typed error 경로로 실제 실패/불확실성을 처리한다.
+- pane/tab 선택은 기존 React 메모리에 유지한다. TanStack DB·낙관적 상태·terminal 및 화면 명령 통합 완료는 주장하지 않는다. 실제 UI 데이터 전환과 명령 E2E, TLS/Windows/Linux·실 vendor 검증은 남아 있다.
+- owner 정합: application-rpc spec의 미구현 표현/초기 예제를 실제 경계와 인접 tests 참조로 교체하고 configuration-web의 옛 SSE 현재형, system의 연결 소유 표현을 보정했다. wire·서버 계약은 그대로다. 본 작업은 같은 W10 수명의 첫 구현 결과이므로 600행 soft threshold를 넘는 기존 로그 안에 유지하며 별도 workstream으로 분리하지 않는다.
+
+### 2026-09-25 13:29 · 새 파일 포함 최종 검증과 인계 점검
+
+최종 보강: changed-scope 진단은 76개 파일이므로 untracked 신설 파일 누락 가능성을 닫기 위해 full-scope도 실행했다. 설치된 react-doctor가 83개 파일에서 동일한 기존 1 error/7 warnings를 보고했고 신설 연결·Provider 파일의 진단은 없었다. 근거는 /tmp/aiox-rpc-doctor-full.txt다. 공개 workspace entry import로 전환한 뒤 연결·Provider·proxy 3 files / 15 tests를 재실행해 통과했고 Web typecheck·최종 lint/format도 통과했다. log block 도구가 날짜를 자동 부여하므로 중복된 날짜 heading만 수동 정규화했다(heading rename 전용 명령 없음). 로그와 onramp의 W10 next pointer는 이 연결 계층 블록을 가리킨다.
+
+## 2026-09-25 · W10 TanStack DB 상태 저장소
+
+사용자 요청은 완료된 RPC 연결 위에 서버 상태 collection·낙관적 panel 명령·로컬 선택 API를 연결하는 것이다. fixture 전면 교체, 제품 버튼·DnD·알림·터미널 WS·Settings·Keybinding, 서버 계약 변경과 commit/push는 제외한다. 기존 미커밋 RPC 변경과 research 파일을 보존한다.
+
+직접 구현·확인: @tanstack/db 0.9.2와 @tanstack/react-db 0.4.1의 설치 소스와 공식 collection-options-creator 문서를 확인했다. ApplicationStore의 단일 collection에 resource 행과 미확정 intent 행을 구분한다. panel 내부 pane/tab은 wire DTO 그대로이고, applicationView/useApplicationState가 최신 서버 상태 위에 intent를 적용한다. 여러 collection의 write를 원자적이라고 가정하지 않는다. 실제 live query 구독 테스트에서 관련 자원의 단일 publication을 검증했다.
+
+응답 state는 서버 행에 쓰지 않는다. 방송 cursor가 성공 응답의 epoch/version까지 반영될 때 같은 commit에서 intent를 제거한다. snapshot은 현재 상태만 교체하며 과거 요청의 결과를 추측하지 않는다. 거절·결과 불명·sequence-failure 미실행을 분리하고, 불확실한 요청의 자동 재실행은 없다. 명시적 retry는 기존 RPC handle의 식별자를 유지한다. 완료 이력은 collection에 쌓지 않는다.
+
+검증 중 발견·수정: 실제 RPC의 Effect.forkIn 경로에서는 execute 직후 request getter가 아직 undefined였다. panelCommand에 발급 시점의 선택적 onRequest 콜백을 추가해 ID/sequence 발급 책임을 이동하지 않고 intent를 연결했다. 테스트의 동기 mock만으로 이 시점을 단정한 초기 구현을 수정했고 실제 RPC 관측 테스트로 확인한다. React full-scope doctor에서 새 파일의 context 값·export·중첩 lookup 경고를 수정했다. 기존 1 error/7 warnings는 별도 범위이며 score API는 접근 실패다.
+
+현재 focused 5 files/35 tests가 실제 RPC·임시 SQLite·PTY 및 React 수명 포함 통과했다. 최종 추가 회귀·전체 Web build/typecheck/tests와 문서 점검을 이어간다. 초기 sandbox 포트 EPERM은 테스트 전용 권한 확장 실행으로 해결했다. 사용자 daemon·DB·vendor는 사용하지 않는다. 이 블록은 같은 W10 실행 수명의 후속 연결이며 별도 로그로 분리하지 않는다.
+
+### 2026-09-25 14:12 · 저장소 검증 완료와 UI 인계
+
+- 직접 검증: 최종 Web 전체 20 files/132 tests 통과(`/tmp/aiox-store-web-final.txt`). 저장소 단독 23 tests에는 순서 역전·중복·관련 자원 단일 publication·다른 자원의 낮은 delta 보존·실패 격리·agentId key·결과 불명·순번 미실행·명시적 retry·null state와 snapshot 역전이 포함된다. 실제 RPC와 임시 SQLite에서는 preparing 생성→이동→shell 연결, 준비 중 닫힘 뒤 늦은 shell 무효화, 두 앱의 변경 전달, 재접속 삭제 반영·세션 유지와 DB 저장을 확인했다. 테스트 전용 shell은 /bin/sh이며 vendor는 사용하지 않았다. 임시 daemon·DB·PTY는 정리했고 초기 EPERM 실행이 남긴 임시 DB도 열린 프로세스가 없음을 확인한 뒤 제거했다.
+- 직접 검증: Web typecheck/build, 관련 source/tests oxlint·oxfmt, 문서 inline-code와 git diff whitespace 점검 통과. 근거는 `/tmp/aiox-store-typecheck.txt`, `/tmp/aiox-store-build.txt`, `/tmp/aiox-store-lint.txt`, `/tmp/aiox-store-format.txt`. build는 500kB 초과 chunk 경고가 있다. React Doctor changed 검사뿐 아니라 새 untracked 파일을 포함하는 full 검사도 실행했고 초기 새 진단을 수정했다. 최종은 기존 1 error/7 warnings만 남는다(`/tmp/aiox-store-doctor-final.txt`, 기존 비교 `/tmp/aiox-rpc-doctor-full.txt`). score API 접근 실패로 점수는 미확인이다.
+- 검증으로 보강한 규칙: 같은 세션에서 뒤 요청의 응답·방송이 먼저 확정되면, 현재 상태에 순서상 포함된 앞 intent의 화면 적용을 중단한다. 앞 요청의 성공·실패는 여전히 그 응답 또는 sequence-failure로 판단한다. 앞 응답이 늦거나 result_expired여도 뒤 성공 상태를 덮어쓰지 않는다. 결과가 불명인 요청의 의존 작업은 실제 최신 자원에 projection 가능한지와 확정 실패를 구분한다. pane/split ID 의존은 panel 내부로 한정한다.
+- 구현 판단의 근거: 설치된 @tanstack/db 0.9.2의 SyncConfig와 collection/scheduler 구현 및 [공식 custom collection API](https://tanstack.com/db/latest/docs/guides/collection-options-creator)를 확인했다. 일반 row optimistic mutation 대신 명령 intent를 별도 행으로 두어 최신 panel DTO 위에 다시 적용한다. collection 간 원자성이나 라이브러리의 자동 명령 병합을 가정하지 않았다. 서버 DTO·DB schema는 변경하지 않았다.
+- UI 공개 API: `@/app/application-state`의 `useApplicationState()`는 서버 상태+intent를 반영한 목록과 pending을 제공한다. `useApplicationStore()`의 collection은 조회용이며 `dismissUnknown(id)`는 결과를 판정하지 않고 불확실성 표시만 지운다. `usePanelCommand()`는 `{id,request,result,retry}` handle을 반환한다. result는 confirmed/rejected/unknown/unexecuted를 구분한다. confirmed는 DB 등록·배치 성공이며 shell 준비 성공이 아니다. retry는 명시적으로 호출할 때만 기존 request를 재사용한다. `usePanelSelection(panelId)`의 selection/select는 앱 메모리 전용이다.
+
+```tsx
+// ApplicationProvider 아래 component 내부
+const state = useApplicationState();
+const send = usePanelCommand();
+const { selection, select } = usePanelSelection(panelId);
+// 실제 버튼 연결 단계의 handler 예: 이번 작업은 제품 버튼을 연결하지 않았다.
+const rename = async (name: string) => {
+    const operation = send({ panelId, changes: [{ type: "panel.rename", name }] });
+    const outcome = await operation.result;
+    return outcome; // unknown을 rejected로 바꾸지 않는다.
+};
+```
+
+- 비 React consumer는 `@/shared/api/application-store`의 `new ApplicationStore()`에 connection.start(store.onEvent)를 연결하고 store.panelCommand(connection,input), store.getView(), store.dispose()를 사용한다. 연결 start/stop은 여전히 ApplicationConnection이 소유한다. collection에는 terminal view만 있고 화면 바이트·xterm 복원 데이터는 없다.
+- owner 반영: aiox-system에 상태 소유·publication·요청/조회/선택 경계를, aiox-application-rpc와 aiox-configuration-web에 구현된 소비 범위와 미연결 제품 경계를 맞췄다. aiox-storage-terminal의 React 미소비 문장도 저장소와 화면을 구분했다. 새 결정 문서·서버 계약 변경은 필요하지 않았다.
+- 다음 W10: 실제 DTO에서 기존 panel/notification fixture consumer로 이어지는 화면 조회를 연결하고, 버튼·DnD·resize·읽음 명령에 위 API를 적용한다. WorkspaceView의 fixture 선택을 공유 local selection API로 교체하되 서버 선택 필드는 만들지 않는다. terminal WS/xterm attach·restore, runtime 교체와 사용자 화면 오류 전달은 그 다음 통합 검증이다. 이번에 실제 제품 UI·알림 dropdown·terminal attach·Windows/Linux·vendor·40/200 성능은 검증하지 않았다. W10 전체·화면 연결·터미널 통합은 완료 처리하지 않으며 commit/push도 하지 않았다.
+
+### 2026-09-25 14:23 · P2 sequence-failure 확정 결과 보존
+
+- 사용자 리뷰와 코드에서 확인한 결함: 응답 유실로 unknown이 된 요청이 sequence-failure로 미실행 확정되어 blocked가 된 뒤, 재접속 snapshot의 무조건적인 unknown 전환으로 확정 상태를 잃었다. 자원 복구가 요청 결과의 확실성을 낮추는 오류다.
+- 수정: ApplicationStore의 isKnownUnexecuted 판정을 snapshot과 RPC 오류 처리에서 공유한다. 실제 sequence_gap 근거가 있는 요청은 snapshot에서도 blocked·visible:false와 failure 내용을 보존한다. 의존 변경이나 자원 삭제에서 쓰는 일반 blocked 전체를 확정 실패로 간주하지 않는다. 기존 owner의 요청 결과와 현재 자원 상태 분리 계약을 복구한 수정이며 서버 계약·공개 API 변경은 없다.
+- 직접 검증: 응답 유실 → unknown → sequence-failure → blocked → snapshot을 같은 epoch와 새 epoch 각각에서 검증했다. 서버 자원 교체와 failure 근거 보존, 자동 재실행 없음도 확인했다. 저장소·React state/provider 3 files/28 tests 통과(`/tmp/aiox-store-p2-regression.txt`), 실제 RPC·임시 SQLite·PTY 포함. Web typecheck·변경 파일 lint/format·git diff whitespace 점검 통과. React Doctor full은 기존 1 error/7 warnings 유지, 새 진단 없음(`/tmp/aiox-store-p2-doctor.txt`), score API는 접근 실패다. Web 전체 tests/build는 이번 국소 수정에서 다시 실행하지 않았다.
+- W10의 실제 화면·알림·PTY 연결 next pointer와 open 상태는 유지한다. 기존 미커밋 변경을 보존했고 commit/push하지 않았다.
+
+## 2026-09-25 · W10 제품 화면 실제 상태·명령·알림 연결
+
+이번 사용자 범위는 기존 제품 화면의 실제 조회·panel 명령·알림 읽음 연결이다. 터미널 WS/xterm, Settings·Keybinding, Host 실행 제어, 서버 계약·DB schema 변경과 commit/push는 제외한다. 기존 미커밋 RPC·저장소 변경 및 사용자 research 파일을 보존한다.
+
+직접 확인·구현 중: router fixture loader를 제거하고 AppShell은 useApplicationState의 projected 조회, usePanelCommand와 연결 준비 상태를 소비한다. 기존 AppShell fixture는 Storybook 전용 파일로 옮겼다. WorkspacePage는 Provider 선택을 소비하고 WorkspaceContent로 실제 명령을 전달한다. tab create/move의 즉시 선택은 Provider가 store.getView()로 최신 projection을 검증한다. 새 tab 선택용 별도 React state는 제거했다. 준비 중 닫기, expectedRuntimeId·confirm, tab.dismiss의 clipboard 성공 조건을 보존한다. resize는 사용자 onLayoutChanged 완료에서만 전송하고 서버 비율은 imperative setLayout으로 반영한다.
+
+직접 확인한 계약 차이: 현행 notifications.read RPC는 ids가 필수이며 빈 배열도 전체 읽음이 아니다. Clear all은 현재 notification ID 배열을 보낸다. 읽음 UI는 서버 delta를 기다리고 실패 시 unread를 지우지 않는다. 오래된 fixture의 ids 생략 주석은 현행 RPC 근거로 사용하지 않는다.
+
+검증 진행: Web 전체 22 files/145 tests, typecheck, build 통과. 새 선택 회귀 3 tests 통과. 임시 daemon·SQLite의 실제 브라우저에서 빈 상태·생성·preparing→shell·추가·분할·순서 변경·pane 이동·가장자리 분할·resize와 두 앱의 상태 동기화 및 선택 독립성을 직접 확인했다. 나머지 실패·알림·복귀와 최종 회귀/owner 정합은 진행 중이다. W10과 terminal attach는 완료가 아니다.
+
+### 2026-09-25 15:03 · 제품 연결 검증 결과와 terminal 인계
+
+직접 완료한 범위: sidebar·overview·section·workspace는 useApplicationState의 실제 projected panel/host/network/agent/terminal/notification 조회를 사용한다. router의 fixture loader와 운영 AppShell/Workspace의 서버 상태 복사본을 제거했다. Storybook은 app-shell-preview·workspace-page-preview와 기존 WorkspaceView fixture controller를 사용한다. 실제 WorkspaceContent는 usePanelCommand의 생성·이름 변경·삭제·tab 추가/닫기·분할·이동·resize·dismiss를 호출하며 usePanelSelection만 선택을 소유한다. select는 같은 사용자 동작의 새 projection을 store.getView()로 확인한다. useApplicationConnection의 notifications.read는 단건 ID 또는 전체 현재 ID 배열을 받고 목록은 방송 delta로 갱신된다. useApplicationConnectionState는 로딩/단절 표시에 사용한다. 서버 계약·schema 변경, 새 select 명령·재전송 정책·자동 재실행은 없다.
+
+직접 브라우저 검증: agent-browser 작업 전용 Chromium 세션과 임시 daemon 3개·임시 SQLite에서 빈 화면, 최초 로딩, 직접 panel URL, panel 생성/rename/delete, tab 추가/분할, 포인터 순서 변경/pane 이동/가장자리 분할, 빈 pane 병합, resize와 다른 창의 같은 비율, 두 창의 선택 독립성을 확인했다. preparing을 test harness에서 보류한 뒤 이동·닫고 해제해 늦은 shell 준비가 삭제 tab을 복구하지 않음을 확인했다. 현재 panel의 원격 삭제는 다른 창에서 NotFound로 표시됐다. offline 중 마지막 상태 유지·명령 미실행 안내, online 복귀, 새로고침의 실상태 복원도 확인했다. 실제 notification delta는 새로고침 없이 배지·본문에 나타났고 단건 읽음/삭제된 실행 대상 NotFound·전체 읽음·offline 읽음 실패의 unread 유지도 확인했다. 화면 증거는 /tmp/aiox-ui-layout.png, /tmp/aiox-ui-final.png다. 초기 알림 harness의 rebuild는 active subscriber 방송을 검증하지 못하므로 마지막 harness에서 정상 appState.update({notifications:"reload"})로 실시간 수신을 따로 확인했다.
+
+직접 자동 검증: 저장소·RPC·React 수명·Storybook을 포함한 전체 Web 24 files/152 tests, typecheck, build, 전체 Web source oxlint·oxfmt와 git diff whitespace 통과. 마지막 결과 파일은 /tmp/aiox-ui-tests-final.txt, /tmp/aiox-ui-typecheck-final.txt, /tmp/aiox-ui-build-final.txt, /tmp/aiox-ui-lint-final.txt, /tmp/aiox-ui-format-final.txt다. AppShell UI 테스트는 로딩/빈/없는 panel, 최신 snapshot 반영·선택 무명령·원격 삭제, 거절/result_expired/sequence-failure와 snapshot 후 보존·재실행 없음, 준비 중 닫기와 거절 복구, 알림 읽음 실패·ID 전달·서버 delta 대기·최신 runtime tab 이동, shell 준비 실패와 cleanup 실패 분리, dialog에 표시된 expectedRuntimeId 보존을 검증한다. clipboard 실패 및 terminal 없는 shell 실패에서는 dismiss하지 않는 테스트도 추가했다. React Doctor full은 기존 1 error/7 warnings만 남는다(/tmp/aiox-ui-doctor-final.txt). score API 접근 실패로 점수는 미확인이고 build의 기존 500kB chunk 경고는 남는다.
+
+검증 한계: result_expired·sequence-failure·shell/cleanup 실패는 자동 UI 테스트와 기반 RPC 테스트로 확인했으며 모든 해당 장애를 실제 브라우저 daemon에 주입하지 않았다. 살아 있는 vendor 알림 대상 이동은 UI 자동 테스트로 검증했고 실제 vendor는 실행하지 않았다. terminal bytes/xterm/attach/restore, Settings·Keybinding·새 Host 실행 제어, Windows/Linux 실브라우저는 이번에 검증하지 않았다. 새 서버 결함을 확인한 것은 없다. 최초 포트 EPERM 때문에 남은 테스트 DB는 사용 프로세스가 없음을 확인한 뒤 삭제했고, 성공 harness들은 daemon.stop으로 listener·PTY·DB를 정리했다. readline만 남은 테스트 PID는 별도로 종료했다. 사용자 daemon·개발 DB·vendor는 조작하지 않았다.
+
+owner 정합: aiox-application-rpc·aiox-configuration-web의 제품 미연결 표현과 실제 읽음 소비 범위를 보정하고, aiox-system의 화면/저장소/선택 책임 및 aiox-storage-terminal의 terminal attach 미완료 경계를 맞췄다. 제품 UI 전면 재설계나 새 spec 계약은 없다.
+
+다음 연결 지점: WorkspaceContent의 live terminal placeholder와 TerminalSurface(terminalId+runtimeId key, pane slot 이동), WorkspacePage가 전달하는 실제 TerminalView/AgentView, 기존 attach.ts를 연결한다. 현재 TerminalPreview의 output 빈 문자열·disconnected는 bytes 소비 전의 명시적 미연결 상태다. 화면 연결 완료 후에만 reconnect 완료를 표시하고 attach cleanup은 서버 stop과 분리한다. 현재 선택은 Provider에 계속 두고 terminal 크기·입력·복원 수명만 추가한다. W10과 terminal attach는 open이며 commit/push하지 않았다.
+
+### 2026-09-25 15:22 · P2 리뷰 3건 수정과 회귀 검증
+
+- 사용자 리뷰 후 직접 재현·수정: 지연 삭제 성공 시 commit된 현재 section/panelId가 삭제 대상일 때만 이동한다. 실제 AppShell·memory router·지연 응답 테스트로 이후 `/workspaces/q` 이동 보존과 대상 화면 잔류 시 정상 복귀를 검증했다. 기존 조건에서는 이동 보존 테스트가 실패했다(`/tmp/aiox-p2-delete-red.txt`).
+- Host 복사 명령의 directory/sourceFile을 POSIX shell 단일 인용으로 바꾸고 내부 작은따옴표를 분리 인용했다. 실제 `/bin/sh`에서 환경변수, `$()`, 백틱, 공백·작은따옴표가 원래 인자로 전달됨을 검증했다. 기존 코드에서는 치환이 발생했다. aiox는 테스트 shell 함수이며 실제 Host는 실행하지 않았다.
+- 공유 WorkspaceDialog는 trim한 이름이 비면 onSubmit을 호출하지 않고 입력과 연결된 alert를 표시한다. 생성·이름 변경 각각 공백 거절·오류 안내·수정 후 제출을 검증했다. 기존 required·길이·제어문자 검증은 유지한다. preview caller도 같은 폼을 소비한다.
+- 직접 실행한 최종 검증: Web 25 files/156 tests 통과(`/tmp/aiox-p2-tests.txt`), Web typecheck/build, source oxlint/oxfmt, git diff --check 통과. 최초 sandbox 실행은 포트 EPERM으로 실패했고 허용된 재실행에서 RPC·임시 daemon·SQLite·Storybook까지 통과했다. React Doctor changed는 기존과 같은 1 error/7 warnings(`/tmp/aiox-p2-doctor.txt`), score API 접근 실패로 점수는 미확인이다. 기존 build chunk 경고는 남는다.
+- 이번 검증은 실제 컴포넌트 자동 UI 테스트와 shell 실행이다. 운영 브라우저 수동 두 창·재접속이나 terminal WS/xterm은 재검증하지 않았다. 타 agent 보고를 검증 근거로 사용하지 않았다.
+- owner 판단: 계약 변경 없는 구현 결함 수정이므로 code/tests와 로그에 반영한다. 기존 미커밋 변경을 보존했으며 architecture.excalidraw·사용자 daemon/DB/vendor는 변경하지 않았다. W10은 계속 진행 중이고 다음은 기존 인계의 terminalId/runtimeId 기반 WS·xterm attach/restore다. commit/push하지 않았다.
+
+## 2026-09-25 · W10 운영 터미널 WS·xterm 연결
+
+- 사용자 범위: W10의 운영 터미널 WS·xterm 연결과 검증. 기존 미커밋 RPC/store/제품 화면 변경을 보존하고 Settings·Keybinding·새 Host 제어 UI·앱 RPC/store/sequence 재설계는 제외했다. commit/push하지 않았고 architecture.excalidraw를 수정하지 않았다. 이번 기록은 주 에이전트가 직접 읽고 실행한 결과이며 타 agent 보고는 사용하지 않았다.
+- 직접 구현: WorkspacePage → WorkspaceContent → 실행별 TerminalSurface → ConnectedTerminal → attachTerminal → daemon `/ws/terminal/:terminalId[?runtime=…]` → packages/terminal restore 경로를 연결하고 미연결 안내를 제거했다. terminalId가 없는 준비 탭에는 attach하지 않는다. 기존 `preparing` 중 terminalId가 있는 협업 준비 화면은 이미 존재하는 shell 표시를 유지한다. fixture 화면은 Storybook에 남으며 운영 화면에서 임의 connected나 fixture 출력으로 대체하지 않는다.
+- 수명: 보이는 실행의 terminalId/runtimeId를 React key와 연결 상태 key로 사용한다. 같은 실행의 pane 이동은 portal·xterm·WS를 유지한다. 숨김·workspace 이탈·unmount·실행 교체는 attachment만 정리한다. effect별 disposed guard와 attach의 detached guard로 늦은 callback을 차단한다. WS listener abort·ResizeObserver/timer·xterm 입력 listener·xterm dispose는 cleanup이 소유하며 tab.close/kill을 호출하지 않는다. StrictMode에서는 첫 effect를 정리하고 재설치한다.
+- 복원·입출력: 기존 restore·serialization·boundary 및 snapshot→bytes→snapshot-end→tail→restored 순서를 재사용했다. 복원 전 입력 차단, xterm 파싱 완료 후 live ACK, binary 사용자 입력과 JSON 자동 응답·response owner·offset·slow viewer 보호는 그대로다. React에 복원 로직을 복제하지 않았으며 서버 production 코드는 수정하지 않았다.
+- 크기·포커스·오류: 실제 양수 host 크기로 resize를 요청하고 xterm geometry는 서버 이벤트 순서로 적용한다. pane 명령 완료를 기다리지 않는다. canFocus는 최신 활성 pane을 확인하고 복원 중 다른 UI로 이동한 포커스를 빼앗지 않는다. restoring/connected/disconnected/exited/failed/unrestorable 이벤트를 UI로 전달한다. 재연결 중 기존 원인을 유지하고 restorable:false는 재연결을 막는다. 명시적 종료는 기존 confirm·expectedRuntimeId panel 명령을 사용한다. 앱 RPC·shell 준비·terminal 연결·cleanup 실패 경계는 유지한다.
+- URL: HTTP는 ws, HTTPS는 wss를 사용한다. Vite의 `/api/rpc`와 `/ws/terminal` proxy가 같은 origin 검사를 사용한다. 새 의존성은 추가하지 않았다. build 성공 및 산출 JS에서 node:fs/node:net/node-pty/@xterm/headless 미포함을 확인했다.
+- 직접 자동 검증: `pnpm --filter @aiox/web test` 최종 26 files/166 tests PASS(`/tmp/aiox-terminal-web-final.txt`). Web typecheck·build·apps/web 전체 oxlint·oxfmt·git diff --check PASS. 신규 ConnectedTerminal 회귀는 preparing→준비 완료·준비 중 이동/제거, pane 이동 유지, 탭 교체·복귀, runtime 교체·이전 callback 차단, StrictMode 정리, 실패 원인 보존·복원 불가·exit·캡처한 runtime 종료 확인을 검사한다. 기존 앱 RPC/낙관적 명령/선택/알림/종료 실패 테스트도 통과했다. attach 테스트는 URL 선택, 0/분리된 host, 활성 pane focus, 입력/ACK/resize 순서와 실패 분류를 검사한다. 초기 sandbox 포트 EPERM은 허용된 재실행으로 해소했고 Storybook 첫 의존성 캐시 실패도 재실행에서 해소됐다.
+- 직접 서버/terminal 회귀: `pnpm --filter @aiox/daemon exec vitest run --config ../../vitest.config.ts src/terminals.test.ts src/web-commands.test.ts src/agent-controller.test.ts` 3 files/97 tests PASS(`/tmp/aiox-terminal-server.txt`). `pnpm --filter @aiox/terminal test` 4 files/88 tests PASS(`/tmp/aiox-terminal-package.txt`). 실제 임시 SQLite·PTY를 쓰며 restore·serialization·boundary·slow viewer·응답 권한·입력 차단·종료 보호를 포함한다.
+- 직접 브라우저: agent-browser 별도 세션과 임시 home/SQLite/daemon을 사용했다. 처음 생성한 기본 zsh의 입력·출력과 드래그 이동을 확인한 뒤, 임시 config에 `/bin/sh`와 임시 cwd를 지정해 순수 PTY를 검증했다. `/bin/sh` PID 87432의 PLAIN_PTY → AFTER_RECONNECT → AFTER_BROWSER_REOPEN 출력을 확인했다. terminal WS만 닫으면 개별 단절 UI가 나타나고 앱 RPC는 유지됐다. Reconnect는 같은 terminalId로 돌아왔고, workspace 이탈에서 WS close·복귀에서 화면 복원, 브라우저 완전 종료·새 창에서 이전 화면과 동일 PID의 입력 지속을 확인했다. Vite proxy에서도 복원·입력, pane 이동 시 동일 WS 객체(OPEN)·동일 xterm DOM 유지, 실제 splitter 변경 시 stty size 30×64→30×46을 확인했다. 이동 후 다른 pane이 대체 탭을 선택해 만드는 별도 attachment는 이동한 실행의 재생성과 구분했다. 종료 Cancel은 탭/화면 유지, 확인은 탭 제거와 PID 부재로 검증했다. 캡처는 `/tmp/aiox-terminal-plain.png`, `/tmp/aiox-terminal-proxy-resize.png`, `/tmp/aiox-terminal-final.png`다.
+- React Doctor: 설치된 0.9.14의 full JSON scan(schemaVersion 3, ok:true)에서 기존과 같은 1 error/7 warnings, 새 진단 없음(`/tmp/aiox-terminal-doctor-final.json`). 기존 router error boundary·theme context·lookup·큰 컴포넌트/복잡도·fixture state·non-component export 진단은 이번 범위에서 변경하지 않았다. score API 연결 실패로 점수는 미확인이다. Vite 기존 500kB chunk 경고도 남는다.
+- owner 반영: aiox-configuration-web·aiox-application-rpc·aiox-system·aiox-storage-terminal의 후속/미연결 구현 상태를 실제 연결 상태로 갱신했다. 외부 복원·종료·RPC 계약은 바꾸지 않았다. 제품 문서의 owner map과 sibling 경계는 유효하므로 새 문서나 decision을 만들지 않았다.
+- 제한·미검증: 실 TLS handshake/HTTPS reverse proxy, 실 Claude/Codex vendor TUI, Windows/WSL/Linux, 실제 브라우저의 slow viewer·미러 실패·복원 불가·프로세스 종료 실패 주입은 실행하지 않았다. 해당 실패 분류·보호는 자동 테스트 범위이며 실제 vendor 검증으로 주장하지 않는다. pane DOM 이동 중 입력 focus 자체의 유지까지 보장하지 않으며, 검증한 focus 범위는 복원 시 활성 pane 제한과 사용자 선택에 따른 focus다. 임시 daemon은 daemon.stop(true) 완료를 확인했고 임시 DB/home과 본인 Vite·브라우저만 정리했다.
+- 다음: 이번 터미널 통합 단계는 완료다. W10 전체는 진행 중으로 유지한다. Settings·Keybinding 연결, 보류된 통합 시나리오와 미검증 플랫폼/vendor 범위는 후속에서 범위를 확정해 검증한다. 새 shell 생성 없이 복원하는 계약과 runtime guard를 유지해야 한다.
+
+### 2026-09-25 15:52 · 최종 검사와 임시 자원 정리
+
+- 최종 확인: Web 26 files/166 tests, typecheck/build, apps/web 전체 oxlint·oxfmt, git diff --check PASS. 최종 산출물과 일치하며 새 의존성·서버 production 변경은 없다.
+- React Doctor changed(`--base HEAD --include-untracked`)는 기존 router/terminal-body의 1 error/1 warning만 보고했다(`/tmp/aiox-terminal-doctor-changed.json`). full의 기존 1 error/7 warnings와 범위가 다르며, 새 진단 없음·점수 미확인 판정은 동일하다.
+- 종료 확인: 검증 shell PID 87432는 명시적 종료 뒤 부재, 임시 daemon은 `Daemon stopped` 완료, 임시 home/DB 경로는 존재하지 않음을 확인했다. 본인 Vite PID 93818과 격리 브라우저도 종료했다. W10 next pointer와 Required Context를 Settings·Keybinding 및 남은 통합 범위로 맞췄고 open 상태를 유지했다.
+
+### 2026-09-25 16:03 · 기능 리뷰 통과 보고와 RPC 명세 잔여 문장 정정
+
+- 사용자 리뷰 보고: 기능 코드의 Standards/Spec 리뷰를 통과했으며 새 기능 결함은 발견하지 못했다고 전달했다. 사용자가 Web 166개·서버 회귀 97개·terminal 88개와 typecheck/build/lint/format/diff 점검을 직접 재실행해 통과했다고 보고했다. 이번 리뷰에서 운영 브라우저 수동 검증과 React Doctor는 재실행하지 않았고, 번들 크기 경고·실 TLS/vendor/다른 OS·이동 중 입력 포커스 유지 제한은 그대로라고 밝혔다. 이는 사용자 보고이며 이번 정정 턴의 에이전트 직접 재실행 결과로 기록하지 않는다.
+- 에이전트 직접 확인·정정: RPC 명세 162행에 “실제 화면 명령 및 xterm 통합은 후속 Web 작업”이라는 stale 문장이 남아 있었다. 운영 WorkspaceContent→ConnectedTerminal→attachTerminal 연결과 기존 직접 검증 기록, 같은 문서의 경계 절 및 configuration-web/storage-terminal owner를 대조해 문서 정정이 타당함을 확인했다. 해당 문장을 구현 완료와 Web·임시 daemon/SQLite/PTY·브라우저 검증 범위로 바꾸고 터미널 계약 owner 링크를 붙였다. “서버 RPC 통과를 제품 경로 완료 근거로 사용하지 않는다”는 검증 구분은 유지했다.
+- 이번 직접 검증은 관련 owner의 동일 stale 문구 검색, 변경 문장·링크 및 git diff --check다. 문서·로그만 수정했으므로 기능 테스트·브라우저·React Doctor를 다시 실행하지 않았다. 코드 변경과 commit/push는 없으며 W10은 진행 중, next는 Settings·Keybinding 및 남은 통합 검증 범위 확정으로 유지한다.

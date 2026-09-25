@@ -25,7 +25,11 @@ export default defineConfig({
                 extends: true,
                 test: {
                     environment: "happy-dom",
-                    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+                    include: [
+                        "src/**/*.test.ts",
+                        "src/**/*.test.tsx",
+                        "vite.config.test.ts",
+                    ],
                 },
             },
             {

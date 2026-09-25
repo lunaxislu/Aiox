@@ -6,7 +6,7 @@ import { assign, createActor, setup } from "xstate";
 
 import { MirrorBoundary, type BoundaryEvent } from "@/boundary";
 import type { TerminalRestoreState } from "@/restore";
-import { serializeTerminal } from "@/serialization";
+import { serializeTerminal, trackTerminalBackground } from "@/serialization";
 import { prepareShell } from "@/shell-integration";
 
 export { MirrorBoundary, type BoundaryEvent } from "@/boundary";
@@ -191,6 +191,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         cursorBlink: true,
         allowProposedApi: true,
     });
+    trackTerminalBackground(mirror);
     const boundary = new MirrorBoundary(mirror);
     const sessionScope = Effect.runSync(Scope.make());
     Effect.runSync(

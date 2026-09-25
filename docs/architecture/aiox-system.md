@@ -516,18 +516,23 @@ config에 남으며 기존 공개 parser를 통해 같은 검증 함수를 사�
 workspace shell 제어, 설정 revision 저장, snapshot/delta/sequence-failure RPC는 daemon에 연결했다. Host `run`은
 입력 준비 뒤 daemon의 Host 명령 API로 연결하며 그 HTTP 응답의 대상별 실제 결과를 기다린다.
 개별 Agent·Host Network와 전체 Host 제어·조회 CLI를 연결했다. 관리 Agent의 내부 연결과 관측은 아래 구현을 소비한다.
-React의 Host 화면 연결과 실제 TUI 표시 검증은 별도 통합 범위로 남아 있다.
+React의 조회·panel 명령·알림 화면은 연결했고, 실제 TUI 표시 검증은 후속 범위다.
 
 근거: [[packages/protocol/src/index.ts]], [[packages/protocol/src/host.test.ts]],
 [[packages/config/src/schema.ts]], [[apps/daemon/src/state-api.ts]],
 [[apps/daemon/src/web-commands.ts]], [[apps/daemon/src/state-api.test.ts]],
 [[apps/daemon/src/web-commands.test.ts]], [[apps/cli/src/bootstrap.ts]].
 
-기존 최소 Web의 change 알림 뒤 GET 방식은 새 서버 RPC의 consumer가 아니다. React의
-snapshot/delta 소비와 실제 Host TUI 연결은 Stage6 준비 후 통합 검증 범위다. terminal byte stream은
-기존 WS 경로를 유지한다. 앱은 `WS /api/rpc`의 `panel.command`·서버 발급 session·순번·cleanup
-공개를 소비한다. React 요청 줄·재전송·실패 복구 연결은 Stage6 W10이 이어받으며
-[[docs/specs/aiox-application-rpc]]를 구현 계약으로 사용한다.
+기존 최소 Web의 change 알림 뒤 GET 방식은 새 서버 RPC의 소비 방식이 아니다. React 앱의 snapshot/delta 저장소와 제품 화면 조회·명령·알림은 연결됐으며 Host TUI의 terminal attach도 운영 WorkspaceContent에 연결됐다. terminal byte stream은 기존 WS 경로를 유지한다.
+
+`ApplicationConnection`은 공유 RPC 수명·세션 복구·panel 명령 식별자를 소유하며 전체 상태를 보관하지 않는다. `ApplicationStore`가 TanStack DB의 단일 collection에 서버 자원을 `resource:id` 행으로 소유하고, panel의 pane/tab은 DTO 내부에 유지한다. agent key는 `AgentView.agentId`다. delta의 관련 자원과 미확정 명령 정리는 하나의 sync `begin/write/commit`으로 공개한다. 여러 collection에 대한 원자성을 가정하지 않는다.
+
+같은 collection의 별도 pending 행은 전체 panel 복사본이 아닌 명령 intent다. 조회는 최신 서버 행 위에 intent를 순서대로 적용한다. TanStack DB의 전체 행 optimistic mutation은 후속 서버 변경을 가릴 수 있어 사용하지 않는다. 응답 state는 서버 행에 직접 쓰지 않고 방송 반영을 기다리며, 성공 응답의 epoch/version이 반영되는 commit에서 intent를 제거한다. 동일 세션의 뒤 요청까지 확정 상태가 반영되면 앞 요청의 intent도 화면 적용을 중단하지만, 앞 요청의 개별 결과를 성공·실패로 바꾸지는 않는다. 실패는 해당 intent와 생성 대상에 의존하는 projection만 조정한다. 재접속은 서버 행을 교체하고 불확실한 intent의 화면 적용을 중단하되 요청 결과를 추정하거나 재실행하지 않는다. 완료 명령 이력은 저장소에 쌓지 않는다.
+
+`ApplicationProvider`는 저장소를 먼저 설치하고 안정적인 이벤트 소비자를 연결한다. RPC 요청 식별자가 실제 발급될 때의 `panelCommand` 콜백이 intent와 requestId/sequence를 연결한다. `application-state.tsx`는 live query·명령 hooks와 React 메모리의 pane/tab 선택을 소유한다. snapshot에는 선택이 없고 삭제된 선택 대상만 정리한다. AppShell은 목록·알림·명령 결과 안내를, WorkspacePage는 projected 배치와 Provider 선택을 WorkspaceContent에 전달한다. fixture controller는 Storybook 경로에 남는다. 사용자 DnD·resize 완료만 명령을 만들고 서버 비율 반영은 명령을 만들지 않는다. terminal attach는 아직 연결하지 않았다. 앱 계약은 [[docs/specs/aiox-application-rpc]]를 따른다.
+
+저장소 근거: [[apps/web/src/shared/api/application-store.ts]], [[apps/web/src/shared/api/application-store.test.ts]], [[apps/web/src/shared/api/panel-projection.ts]], [[apps/web/src/app/application-state.tsx]], [[apps/web/src/app/application-state.test.tsx]], [[apps/web/src/app/app-shell.test.tsx]], [[apps/web/src/pages/workspace/workspace-commands.test.ts]].
+
 근거: [[apps/web/src/main.tsx]], [[apps/web/src/attach.ts]], [[apps/daemon/src/app-state.ts]],
 [[apps/daemon/src/app-state.test.ts]].
 

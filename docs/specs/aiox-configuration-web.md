@@ -236,6 +236,15 @@ Web 최초 로드·Settings 열기·저장 직전에 파일을 조회하고, 외
 적용한다. 기존 실행·배치를 설정 저장만으로 바꾸지 않는다. 폰트 변경은 fit/resize를 수행한다.
 Web theme은 전역 `appearance.theme`이며 헤더 토글도 같은 필드를 즉시 저장한다.
 
+터미널 배경색은 `terminal.theme.background`가 있으면 그 설정을 우선한다. 설정이 없으면
+shell/program의 OSC 배경색 지정·초기화를 따르고, 지정도 없으면 xterm 기본 배경색을 쓴다.
+터미널 사방 24px 여백과 정수 행 계산 뒤 남는 공간은 실제 터미널 배경색을 따른다.
+재접속은 마지막 shell 배경색을 복원하되 현재 Web/config의 명시 설정이 우선한다.
+macOS Terminal·iTerm 등 다른 앱의 테마를 자동으로 읽는 기능은 아니다.
+현재 Web은 앱 연결 후 `config.read`로 이 설정을 읽으며, Settings 편집 UI는 별도 후속 범위다.
+근거: [[apps/web/src/app/application-config.tsx]], [[apps/web/src/terminal-theme.ts]],
+[[apps/web/src/terminal-theme.test.ts]], [[packages/terminal/src/serialization.test.ts]].
+
 Sources: `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`의 모델 B·전역 theme 확정 기록,
 2026-09-21 Stage5 W1 사용자 재확인. 세부 UI/단축키 후속은 Stage6 범위다.
 
@@ -382,13 +391,10 @@ Web의 shell 생성·알림 읽음·명시 종료 결과는 상태 조회와 분
 미확인 목록과 표시를 억제하고 해당 알림을 읽음 저장한다. popup·소리는 운영 Web 후속
 구현 대상이다. [Status: Current]
 
-아직 RPC에 연결하지 않은 기존 Web은 SSE 변경 통지 뒤 최신 목록을 조회하며 주기적 polling을 하지 않는다. 최초
-연결·재연결과 창·탭 활성 복귀에도 최신 상태를 조회한다. 변경 통지 연결 실패는 별도로
-표시하며 단순 목록 조회 성공만으로 연결 복구를 주장하지 않는다. [Status: Current]
+React 제품 화면은 RPC snapshot/delta 저장소에서 목록·배치·알림을 조회한다. panel 조작은 기존 명령 API를 사용하며 알림 읽음 실패는 unread 성공으로 표시하지 않는다. terminal WS·xterm은 보이는 terminalId/runtimeId에 연결한다. 같은 실행의 pane 이동은 attachment를 유지하고 탭 숨김·workspace 이탈은 detach한다. 재연결은 같은 실행의 화면 복원이며 프로세스를 생성하거나 종료하지 않는다. [Status: Current]
 
 이전 `GET /api/web/events` SSE endpoint는 제거했다. 현재 앱 상태 전달·재접속·알림 읽음
-계약은 [[docs/specs/aiox-application-rpc]]를 따른다. 기존 React consumer를 이 RPC에 연결하는
-작업은 Stage6 W10의 후속 구현이며, 서버 변경만으로 UI 통합 완료를 뜻하지 않는다.
+계약은 [[docs/specs/aiox-application-rpc]]를 따른다. 연결 계층 구현만으로 UI 상태 통합 완료를 뜻하지 않는다.
 
 짧은 시간에 여러 알림이 오면 항목은 남기고 소리는 묶는 방향이다. 정확한 묶음 시간,
 반복 요청 병합, 여러 탭 중 단일 소리 재생 주체, on/off·volume·차임 선택은 Open/deferred다.

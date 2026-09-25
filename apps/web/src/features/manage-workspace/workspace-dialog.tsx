@@ -1,5 +1,5 @@
 import { Dialog } from "@base-ui/react/dialog";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import type { PanelPreview, Section } from "@/entities/panel/model";
 import { Button } from "@/shared/ui/button";
@@ -19,6 +19,7 @@ export function WorkspaceDialog({
     onClose: () => void;
 }) {
     const cancel = useRef<HTMLButtonElement>(null);
+    const [error, setError] = useState<string | null>(null);
     const deleting = action.type === "delete";
     const title =
         action.type === "create"
@@ -50,15 +51,19 @@ export function WorkspaceDialog({
                     <form
                         onSubmit={(event) => {
                             event.preventDefault();
-                            onSubmit(
-                                deleting
-                                    ? ""
-                                    : String(
-                                          new FormData(event.currentTarget).get(
-                                              "name",
-                                          ),
-                                      ),
-                            );
+                            const name = deleting
+                                ? ""
+                                : String(
+                                      new FormData(event.currentTarget).get(
+                                          "name",
+                                      ) ?? "",
+                                  ).trim();
+                            if (!deleting && !name) {
+                                setError("Enter a workspace name.");
+                                return;
+                            }
+                            setError(null);
+                            onSubmit(name);
                         }}
                     >
                         {!deleting && (
@@ -77,11 +82,27 @@ export function WorkspaceDialog({
                                             ? action.panel.name
                                             : ""
                                     }
+                                    aria-invalid={!!error}
+                                    aria-describedby={
+                                        error
+                                            ? "workspace-name-error"
+                                            : undefined
+                                    }
+                                    onChange={() => setError(null)}
                                     required
                                     maxLength={128}
                                     pattern="[^\u0000-\u001f\u007f]+"
                                 />
                             </div>
+                        )}
+                        {error && (
+                            <p
+                                id="workspace-name-error"
+                                role="alert"
+                                className="mt-2 text-sm text-destructive"
+                            >
+                                {error}
+                            </p>
                         )}
                         <div className="mt-5 flex justify-end gap-2">
                             <Dialog.Close

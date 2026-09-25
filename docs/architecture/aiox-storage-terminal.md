@@ -301,9 +301,17 @@ daemon의 `AppState`는 저장된 Host·Network·panel·notification과 live reg
 
 변경은 하나의 Effect semaphore로 직렬화한다. Subscription 등록과 초기 snapshot 캡처도 같은 lock을 사용해 이후 변경이 누락되지 않게 한다. 현재 서버는 Effect RPC WebSocket을 `/api/rpc`에서 제공한다. snapshot event는 epoch와 version을 포함하고, 이어지는 delta는 같은 epoch의 증가하는 version을 사용한다. 각 subscriber queue는 256 event로 제한되며, 느린 subscriber는 `slow_consumer`로 분리되어 reconnect 시 최신 snapshot부터 이어간다. 한 subscriber가 밀려도 다른 subscriber와 producer는 진행한다. commit 뒤 projection 실패는 구독을 실패시키고, recovery는 저장소에서 projection을 다시 만들도록 제한 횟수로 재시도한다. Terminal 화면 바이트는 application state가 아니라 terminal WebSocket을 통해 흐른다.
 
-RPC server와 이 projection은 구현되어 있으나 `apps/web/src`의 React UI는 아직 RPC state stream을 소비하도록 전환되지 않았다. 이 절의 현재 근거는 daemon-side RPC에 한정된다. 앞선 Stage 2 Web의 TypeScript/Vite/xterm client와 HTTP polling·이벤트 갱신 및 W5의 HTTP/WebSocket 대역 검증은 역사 기록이며, 실제 daemon·PTY·vendor 생존 검증은 아니었다. 해당 검증의 재개·정정 기록은 `logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md`의 “W5 결과 수용과 검증 정정·W6 재개 지점”에 있다. 운영 Web은 React·Tailwind·shadcn/ui를 사용하고 영어 UI를 유지한다. Next.js 공개 site와 분리하며 Zustand/TanStack Query는 실제 shared state/cache 요구가 생길 때만 평가한다.
+RPC server와 projection 및 React 앱의 TanStack DB 상태 저장소는 연결됐다. 저장소의 상태 소유·명령 projection은 [[docs/architecture/aiox-system]]을 따른다. 제품 화면은 저장소의 실제 배치·실행 상태와 알림을 소비한다. 운영 WorkspaceContent는 terminalId/runtimeId로 TerminalSurface를 식별하고 ConnectedTerminal이 기존 attachTerminal을 React 수명에 연결한다. pane 이동은 같은 portal·xterm·WS를 유지하며, 숨김·workspace 이탈·실행 교체는 브라우저 attachment만 정리한다. 복원과 ACK·응답 권한 처리는 attach.ts가 소유하고 React에서 복제하지 않는다. 크기는 실제 host의 양수 geometry만 요청하며 xterm resize는 서버 순서를 따른다. 복원 시 포커스는 현재 활성 pane에 한정한다. 연결·복원 실패 원인은 개별 terminal 상태로 표시하고, 재연결 중 원인을 유지하며 restorable:false는 재연결을 막는다. HTTP/HTTPS origin에 따라 ws/wss를 선택하고 개발 proxy도 같은 terminal 경로를 전달한다. 근거는 [[apps/web/src/pages/workspace/connected-terminal.tsx]], [[apps/web/src/pages/workspace/connected-terminal.test.tsx]], [[apps/web/src/pages/workspace/terminal-surface.test.tsx]], [[apps/web/src/attach.test.ts]], [[apps/web/vite.config.test.ts]]다. 앞선 Stage 2 Web의 TypeScript/Vite/xterm client와 HTTP polling·이벤트 갱신 및 W5의 HTTP/WebSocket 대역 검증은 역사 기록이며, 실제 daemon·PTY·vendor 생존 검증은 아니었다. 해당 검증의 재개·정정 기록은 `logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md`의 “W5 결과 수용과 검증 정정·W6 재개 지점”에 있다. 운영 Web은 React·Tailwind·shadcn/ui를 사용하고 영어 UI를 유지한다. Next.js 공개 site와 분리하며 Zustand/TanStack Query는 실제 shared state/cache 요구가 생길 때만 평가한다.
 
 근거: [[apps/daemon/src/app-state.ts]] `apps/daemon/src/app-state.ts:71-76`, `apps/daemon/src/app-state.ts:248-285`, `apps/daemon/src/app-state.ts:509-533`; RPC endpoint는 [[apps/daemon/src/application-rpc.ts]] `apps/daemon/src/application-rpc.ts:272-277`. Snapshot·version·slow consumer·recovery는 [[apps/daemon/src/app-state.test.ts]] `apps/daemon/src/app-state.test.ts:84-180`, 실 RPC subscriber와 reconnect는 [[apps/daemon/src/application-rpc.test.ts]] `apps/daemon/src/application-rpc.test.ts:33-69`, `apps/daemon/src/application-rpc.test.ts:195-280`에서 검증한다.
+
+배경색은 Web의 `terminal-theme.ts`가 xterm 6 ThemeService의 실제 색 변경을 구독해
+24px 여백에 전달한다. 명시 config 배경색은 shell OSC 변경보다 우선한다. 이 구독은
+attachment 종료 때 해제한다. headless mirror는 renderer가 없으므로 시작 시 파싱된
+OSC 배경색 이벤트를 관측하고, serialization이 마지막 지정색 또는 초기화 시퀀스를
+복원 바이트 앞에 넣는다. snapshot의 기존 FIFO·미완성 입력 경계는 유지한다.
+근거: [[apps/web/src/terminal-theme.ts]], [[apps/web/src/terminal-theme.test.ts]],
+[[packages/terminal/src/serialization.ts]], [[packages/terminal/src/serialization.test.ts]].
 
 ## 대기 shell의 정상 종료 연동
 

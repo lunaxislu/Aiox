@@ -6,11 +6,11 @@ import type { AppOutletContext } from "@/app/app-shell";
 import { previewPanels } from "@/entities/panel/fixtures";
 import { emptyWorkspace } from "@/entities/panel/workspace-fixtures";
 import { OverviewPage } from "@/pages/overview/overview-page";
-import { WorkspacePage } from "@/pages/workspace/workspace-page";
+import { WorkspacePage } from "@/pages/workspace/workspace-page-preview";
 
 import { SectionOverviewPage } from "./section-overview-page";
 
-type Args = AppOutletContext & { section: string };
+type Args = Pick<AppOutletContext, "panels" | "onCreate"> & { section: string };
 const meta = {
     title: "Pages/SectionOverview",
     component: SectionOverviewPage,

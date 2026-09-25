@@ -45,7 +45,13 @@ export const Presentations: Story = {
             canvas.getByRole("tab", { name: "preparing · preparing" }),
         );
         let pane = within(canvas.getByRole("region", { name: "Pane left" }));
-        await expect(pane.getByText("Starting reviewer…")).toBeVisible();
+        const notice = pane.getByText("Starting reviewer…");
+        const reveal = notice.closest('[role="status"]')!.getAnimations()[0]!;
+        reveal.pause();
+        reveal.currentTime = 299;
+        await expect(notice).not.toBeVisible();
+        reveal.currentTime = 300;
+        await expect(notice).toBeVisible();
         await expect(
             pane.queryByRole("button", { name: /^Copy / }),
         ).not.toBeInTheDocument();

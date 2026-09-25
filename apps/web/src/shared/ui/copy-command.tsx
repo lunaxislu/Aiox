@@ -6,9 +6,10 @@ import { Button } from "@/shared/ui/button";
 import { cn } from "../lib/utils";
 interface Props {
     command: string;
+    onCopied?: (() => void) | undefined;
     className?: string;
 }
-export function CopyCommand({ command, className }: Props) {
+export function CopyCommand({ command, className, onCopied }: Props) {
     const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
     const copied = state === "copied";
 
@@ -22,6 +23,7 @@ export function CopyCommand({ command, className }: Props) {
         try {
             await navigator.clipboard.writeText(command);
             setState("copied");
+            onCopied?.();
         } catch {
             setState("failed");
         }

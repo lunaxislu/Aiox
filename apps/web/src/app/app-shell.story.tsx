@@ -10,7 +10,7 @@ import {
 } from "@/entities/panel/fixtures";
 import { ThemeProvider } from "@/features/theme/theme-provider";
 
-import { AppShell } from "./app-shell";
+import { AppShell } from "./app-shell-preview";
 
 const meta = {
     title: "App/Header",

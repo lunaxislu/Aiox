@@ -5,13 +5,14 @@
 이 문서는 앱의 명령·상태 전달과 세션 재접속 계약을 소유한다. panel 배치와 닫기의 의미는
 [[docs/specs/aiox-configuration-web]], Host 실행의 의미는 [[docs/specs/aiox-host]],
 터미널 바이트 프로토콜은 [[docs/specs/aiox-configuration-web]]을 따른다.
-기존 React UI에 RPC client/store/hooks와 낙관적 변경을 연결하는 작업은 아직 구현하지 않았다.
+React 앱의 공유 RPC 연결·세션·snapshot 준비 상태와 명령 호출 경계는 구현했다.
+TanStack DB 상태 소비와 낙관적 panel 명령 API도 구현했다. 제품 화면의 조회·panel 명령·알림 읽음을 연결했다. 운영 터미널 WS·xterm은 별도 attachment로 연결하며 앱 RPC 연결 상태와 구분한다.
 
 - 앱: `WS /api/rpc`, Effect RPC JSON serialization. daemon/Web listener가 같은 서비스를 제공한다.
 - 터미널: `WS /ws/terminal/:terminalId`, 기존 bytes/resize/ack/restore 프로토콜.
 - CLI: 기존 HTTP와 Host NDJSON 응답. MCP와 정적 파일도 HTTP에 남는다.
 - 기존 조회·명령 HTTP endpoint는 CLI와 미전환 consumer를 위해 남는다. `GET /api/web/events` SSE는 제거했다.
-  기존 Web 소스는 이 서버 변경에 맞춰 연결하지 않았으므로 제품 통합 완료 상태가 아니다.
+  React 제품 화면은 저장소의 확정 상태와 낙관적 조회를 소비하며, 최초 snapshot 로딩·빈 상태·끊긴 연결의 마지막 상태·없는 panel을 구분한다.
 
 공유 선언의 단일 owner는 [[packages/protocol/src/rpc.ts]]의 `ApplicationRpc`,
 `applicationEventSchema`, `applicationDeltaSchema`, `applicationFaultSchema`다.
@@ -149,36 +150,14 @@ cleanup 성공은 해당 remove로 확인한다. `tab.close`의 expectedRuntimeI
 `openTestApplication`이다. 예제는 `RpcClient.layerProtocolSocket` + `RpcSerialization.layerJson`과
 scope 안의 `RpcClient.make(ApplicationRpc)`를 사용한다.
 
-브라우저의 최소 연결 형태는 아래와 같다. `onEvent`에서 위 snapshot/delta 규칙을 적용한다.
-
-```ts
-import { ApplicationRpc, type ApplicationEvent } from "@aiox/protocol";
-import { Effect, Layer, Stream } from "effect";
-import * as RpcClient from "effect/unstable/rpc/RpcClient";
-import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
-import * as Socket from "effect/unstable/socket/Socket";
-
-const protocol = RpcClient.layerProtocolSocket({ retryTransientErrors: false }).pipe(
-    Layer.provide(Socket.layerWebSocket("ws://127.0.0.1:4501/api/rpc").pipe(
-        Layer.provide(Socket.layerWebSocketConstructorGlobal),
-    )),
-    Layer.provide(RpcSerialization.layerJson),
-);
-const subscribe = (onEvent: (event: ApplicationEvent) => void) => Effect.scoped(
-    Effect.gen(function* () {
-        const client = yield* RpcClient.make(ApplicationRpc);
-        const session = yield* client["session.open"]();
-        yield* Stream.runForEach(client["state.subscribe"]({
-            clientSessionId: session.clientSessionId,
-        }), (event) => Effect.sync(() => onEvent(event)));
-    }),
-).pipe(Effect.provide(protocol));
-```
+브라우저 연결 구현과 검증은 `apps/web/src/shared/api/application-connection.ts` 및 인접 테스트,
+React 소유 경계는 `apps/web/src/app/application-provider.tsx` 및 인접 테스트를 따른다.
+앱 실행 하나의 연결을 공유하며 최초 snapshot 소비 뒤 준비 상태를 공개한다. Provider는 연결 시작 전에 앱 소유 저장소를 이벤트 소비자로 설치한다. 외부 `onEvent` 참조 변경이나 저장소 갱신은 연결을 재시작하지 않는다. 제품 화면은 같은 연결의 저장소 조회·panel 명령·알림을 소비한다. 알림 전체 읽음도 현재 ID 배열을 notifications.read에 보내며, 읽음 delta 전에 목록에서 제거하지 않는다.
 
 브라우저는 NodeSocket 대신 `effect/unstable/socket/Socket`의 `layerWebSocket`에
 `layerWebSocketConstructorGlobal`을 제공한다. client와 subscription의 scope를 앱 연결 수명에 묶되
 연결 종료를 daemon 명령 취소로 해석하지 않는다. Effect와 @effect 계열은 `4.0.0-rc.117`로 맞춘다.
 Web에는 @tanstack/db `0.9.2`, @tanstack/react-db `0.4.1`만 추가했으며 기존 Web Vitest `4.1.6`은 유지한다.
 
-React 낙관적 변경·상관관계 보관·재접속 UI·실제 브라우저/xterm 통합은 후속 Web 작업의 검증 범위다.
+React 저장소는 방송·snapshot만 서버 확정 상태에 반영한다. 명령 응답은 결과를 확정하고, 그 state의 epoch/version까지 구독 상태가 반영된 뒤 낙관적 변경을 제거한다. 응답 version은 구독 cursor를 올리지 않는다. 재접속 snapshot은 현재 화면을 복구하지만 과거 요청의 성공·실패를 판정하지 않는다. 실제 화면 명령과 운영 terminal WS·xterm 통합은 구현됐으며, Web 테스트와 임시 daemon·SQLite·PTY를 연결한 브라우저 검증을 수행했다. 터미널 복원·종료 계약은 [[docs/specs/aiox-configuration-web]]을 따른다.
 서버 RPC 통과를 이 제품 경로의 완료 근거로 사용하지 않는다.

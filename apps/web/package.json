@@ -39,6 +39,8 @@
         "zustand": "^5.0.15"
     },
     "devDependencies": {
+        "@aiox/daemon": "workspace:*",
+        "@aiox/persistence": "workspace:*",
         "@chromatic-com/storybook": "latest",
         "@storybook/addon-a11y": "^10.6.0",
         "@storybook/addon-docs": "^10.6.0",

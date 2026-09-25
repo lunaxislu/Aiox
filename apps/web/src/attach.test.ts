@@ -86,7 +86,7 @@ afterEach(() => {
 let resizeCallback: () => void;
 const disconnect = vi.fn();
 
-function setup() {
+function setup(protocol = "http:", canFocus = () => true) {
     vi.stubGlobal(
         "ResizeObserver",
         class {
@@ -98,6 +98,7 @@ function setup() {
         },
     );
     const socket = Object.assign(new EventTarget(), {
+        url: "",
         readyState: 1,
         send: vi.fn(),
         close: vi.fn(function (this: { readyState: number }) {
@@ -107,12 +108,13 @@ function setup() {
     class Socket {
         static OPEN = 1;
         static CLOSING = 2;
-        constructor() {
+        constructor(url: string) {
+            socket.url = url;
             return socket;
         }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("location", { host: "localhost" });
+    vi.stubGlobal("location", { host: "localhost", protocol });
     // Stands in for the sidebar button that selected this terminal.
     const doc = { activeElement: {} as Element };
     vi.stubGlobal("document", doc);
@@ -121,10 +123,18 @@ function setup() {
         Object.assign(new EventTarget(), { clearTimeout, setTimeout }),
     );
     const report = vi.fn();
+    const host = {
+        replaceChildren() {},
+        isConnected: true,
+        clientWidth: 1000,
+        clientHeight: 600,
+    };
     const attachment = attachTerminal(
-        { replaceChildren() {} } as unknown as HTMLElement,
+        host as unknown as HTMLElement,
         "terminal-1",
         report,
+        undefined,
+        canFocus,
     );
     const message = (value: unknown) =>
         socket.dispatchEvent(
@@ -136,7 +146,7 @@ function setup() {
             }),
         );
     socket.dispatchEvent(new Event("open"));
-    return { socket, attachment, message, report, doc };
+    return { socket, attachment, message, report, doc, host };
 }
 
 async function flush() {
@@ -478,10 +488,63 @@ it("reports a slow-viewer close immediately while the last write is still parsin
     socket.dispatchEvent(close);
     expect(report).toHaveBeenLastCalledWith(
         expect.stringContaining("Viewer is too slow; reconnect"),
-        "failed",
+        "disconnected",
     );
     socket.send.mockClear();
     callbacks.shift()?.();
     await flush();
     expect(socket.send).not.toHaveBeenCalled();
+});
+
+it.each([
+    ["http:", "ws:"],
+    ["https:", "wss:"],
+])("uses %s origin transport as %s", (protocol, expected) => {
+    const { socket, attachment } = setup(protocol);
+    expect(socket.url).toBe(`${expected}//localhost/ws/terminal/terminal-1`);
+    attachment.close();
+});
+it("suppresses focus in inactive panes and zero/disconnected measurements, then fits when visible", async () => {
+    vi.useFakeTimers();
+    let active = false;
+    const { host, attachment, message, socket } = setup("http:", () => active);
+    host.clientWidth = 0;
+    message({ type: "snapshot", cols: 80, rows: 24, state: { version: 1 } });
+    message({ type: "snapshot-end" });
+    message({ type: "restored" });
+    await flush();
+    expect(term.focus).not.toHaveBeenCalled();
+    expect(fit).not.toHaveBeenCalled();
+    host.clientWidth = 1000;
+    host.isConnected = false;
+    resizeCallback();
+    vi.advanceTimersByTime(120);
+    expect(fit).not.toHaveBeenCalled();
+    host.isConnected = true;
+    resizeCallback();
+    vi.advanceTimersByTime(120);
+    expect(socket.send).toHaveBeenLastCalledWith(
+        JSON.stringify({ type: "resize", cols: 170, rows: 40 }),
+    );
+    attachment.focus();
+    expect(term.focus).not.toHaveBeenCalled();
+    active = true;
+    attachment.focus();
+    expect(term.focus).toHaveBeenCalledOnce();
+    attachment.close();
+    attachment.close();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(term.dispose).toHaveBeenCalledOnce();
+    socket.dispatchEvent(new Event("open"));
+    attachment.focus();
+    expect(term.focus).toHaveBeenCalledOnce();
+});
+it("reports connection errors separately from screen restoration failures", () => {
+    const { socket, report, attachment } = setup();
+    socket.dispatchEvent(new Event("error"));
+    expect(report).toHaveBeenLastCalledWith(
+        expect.stringContaining("Connection failed"),
+        "disconnected",
+    );
+    attachment.close();
 });

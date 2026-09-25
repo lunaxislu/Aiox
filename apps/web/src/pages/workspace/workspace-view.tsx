@@ -16,6 +16,7 @@ import {
     DialogTitle,
 } from "@/shared/ui/dialog";
 
+import { ConnectedTerminal } from "./connected-terminal";
 import { PaneTree } from "./pane-tree";
 import { TerminalBody } from "./terminal-body";
 import { TerminalSurface } from "./terminal-surface";
@@ -44,12 +45,6 @@ export function WorkspaceView({
     tabSelectionRequest,
 }: WorkspaceViewProps) {
     const [state, setState] = useState<WorkspaceLayout>(panel);
-    const [connections, setConnections] = useState<
-        Record<string, TerminalPreview["connection"]>
-    >({});
-    const [closing, setClosing] = useState<TabView | null>(null);
-    const terminalSlots = useRef(new Map<string, HTMLDivElement>());
-
     useEffect(() => {
         if (!tabSelectionRequest) return;
         setState((current) => {
@@ -62,46 +57,6 @@ export function WorkspaceView({
         });
     }, [tabSelectionRequest?.tabId, tabSelectionRequest?.key]);
 
-    function activatePane(paneId: string) {
-        setState((current) =>
-            current.activePaneId === paneId
-                ? current
-                : { ...current, activePaneId: paneId },
-        );
-    }
-
-    function close(tab: TabView) {
-        setState((current) => closePreviewTab(current, tab.id));
-        setClosing(null);
-    }
-    function requestClose(tab: TabView, force = false) {
-        setState((current) => {
-            const pane = panelLayoutReferences(current.layout).panes.find(
-                (pane) => pane.tabIds.includes(tab.id),
-            );
-            return pane && pane.id !== current.activePaneId
-                ? { ...current, activePaneId: pane.id }
-                : current;
-        });
-        const terminal = tab.terminalId ? terminals[tab.terminalId] : undefined;
-        const connection = tab.terminalId
-            ? (connections[tab.terminalId] ?? terminal?.connection)
-            : undefined;
-        if (
-            !force &&
-            (tab.presentation === "stopped" ||
-                tab.presentation === "start-failed" ||
-                tab.presentation === "crashed" ||
-                tab.presentation === "unavailable" ||
-                (tab.presentation === "shell" &&
-                    terminal?.busy === "idle" &&
-                    connection === "connected"))
-        )
-            close(tab);
-        else {
-            setClosing(tab);
-        }
-    }
     function addShell(paneId: string, axis?: "x" | "y") {
         const id = crypto.randomUUID();
         const tab: TabView = {
@@ -119,23 +74,93 @@ export function WorkspaceView({
     }
 
     return (
+        <WorkspaceContent
+            panel={panel}
+            terminals={terminals}
+            state={state}
+            onSelect={(paneId, tabId) =>
+                setState((current) =>
+                    tabId
+                        ? selectPreviewTab(current, paneId, tabId)
+                        : { ...current, activePaneId: paneId },
+                )
+            }
+            onLayoutChange={(layout) =>
+                setState((current) => ({ ...current, layout }))
+            }
+            onDrop={(tabId, target) =>
+                setState((current) =>
+                    movePreviewTab(current, tabId, target, crypto.randomUUID()),
+                )
+            }
+            addShell={addShell}
+            onClose={(tab) =>
+                setState((current) => closePreviewTab(current, tab.id))
+            }
+        />
+    );
+}
+
+export type WorkspaceActions = {
+    onSelect: (paneId: string, tabId?: string) => void;
+    onLayoutChange: (layout: WorkspaceLayout["layout"]) => void;
+    onDrop: (
+        tabId: string,
+        target: import("./workspace-preview").TabDrop,
+    ) => void;
+    addShell: (paneId: string, axis?: "x" | "y") => void;
+    onClose: (tab: TabView, confirm: boolean) => void;
+    onDismiss?: ((tab: TabView) => void) | undefined;
+};
+export function WorkspaceContent({
+    panel,
+    terminals,
+    state,
+    onSelect,
+    onLayoutChange,
+    onDrop,
+    addShell,
+    onClose,
+    onDismiss,
+    live = false,
+}: WorkspaceViewProps &
+    WorkspaceActions & { state: WorkspaceLayout; live?: boolean }) {
+    const [connections, setConnections] = useState<
+        Record<string, TerminalPreview["connection"]>
+    >({});
+    const [closing, setClosing] = useState<TabView | null>(null);
+    const terminalSlots = useRef(new Map<string, HTMLDivElement>());
+    const activatePane = (paneId: string) => onSelect(paneId);
+    function close(tab: TabView, confirm = false) {
+        onClose(tab, confirm);
+        setClosing(null);
+    }
+    function requestClose(tab: TabView, force = false) {
+        const pane = panelLayoutReferences(state.layout).panes.find((pane) =>
+            pane.tabIds.includes(tab.id),
+        );
+        if (pane) activatePane(pane.id);
+        const terminal = tab.terminalId ? terminals[tab.terminalId] : undefined;
+        if (
+            !force &&
+            (tab.presentation === "preparing" ||
+                ["stopped", "start-failed", "crashed", "unavailable"].includes(
+                    tab.presentation,
+                ) ||
+                (!live &&
+                    tab.presentation === "shell" &&
+                    terminal?.busy === "idle" &&
+                    terminal.connection === "connected"))
+        )
+            close(tab);
+        else setClosing(tab);
+    }
+    return (
         <section
             aria-label={`${panel.name} workspace`}
             className="flex h-full min-h-0 min-w-0 flex-col bg-background"
         >
-            <WorkspaceDnd
-                state={state}
-                onDrop={(tabId, target) => {
-                    setState((current) =>
-                        movePreviewTab(
-                            current,
-                            tabId,
-                            target,
-                            crypto.randomUUID(),
-                        ),
-                    );
-                }}
-            >
+            <WorkspaceDnd state={state} onDrop={onDrop}>
                 <PaneTree
                     terminalSlots={terminalSlots}
                     layout={state.layout}
@@ -143,17 +168,12 @@ export function WorkspaceView({
                     panel={panel}
                     terminals={terminals}
                     connections={connections}
-                    onLayoutChange={(layout) =>
-                        setState((current) => ({ ...current, layout }))
-                    }
-                    onSelect={(paneId, tabId) =>
-                        setState((current) =>
-                            selectPreviewTab(current, paneId, tabId),
-                        )
-                    }
+                    onLayoutChange={onLayoutChange}
+                    onSelect={onSelect}
                     onActivate={activatePane}
                     onClose={requestClose}
                     onAdd={addShell}
+                    onDismiss={onDismiss}
                 />
             </WorkspaceDnd>
             {visibleTerminals(state).map(({ paneId, tab, terminalId }) => (
@@ -164,22 +184,56 @@ export function WorkspaceView({
                     terminalId={terminalId}
                     onActivate={() => activatePane(paneId)}
                 >
-                    <TerminalBody
-                        tab={tab}
-                        terminal={terminals[terminalId]}
-                        connection={
-                            connections[terminalId] ??
-                            terminals[terminalId]?.connection ??
-                            "connected"
-                        }
-                        onReconnect={() =>
-                            setConnections((current) => ({
-                                ...current,
-                                [terminalId]: "connected",
-                            }))
-                        }
-                        onStop={() => requestClose(tab, true)}
-                    />
+                    {live ? (
+                        <ConnectedTerminal
+                            tab={tab}
+                            terminal={terminals[terminalId]}
+                            active={state.activePaneId === paneId}
+                            onConnection={(connection) =>
+                                setConnections((current) => {
+                                    const next = { ...current };
+                                    if (connection)
+                                        next[
+                                            JSON.stringify([
+                                                terminalId,
+                                                tab.runtimeId,
+                                            ])
+                                        ] = connection;
+                                    else
+                                        delete next[
+                                            JSON.stringify([
+                                                terminalId,
+                                                tab.runtimeId,
+                                            ])
+                                        ];
+                                    return next;
+                                })
+                            }
+                            onStop={() => requestClose(tab, true)}
+                        />
+                    ) : (
+                        <TerminalBody
+                            tab={tab}
+                            terminal={terminals[terminalId]}
+                            connection={
+                                connections[
+                                    JSON.stringify([terminalId, tab.runtimeId])
+                                ] ??
+                                terminals[terminalId]?.connection ??
+                                "connected"
+                            }
+                            onReconnect={() =>
+                                setConnections((current) => ({
+                                    ...current,
+                                    [JSON.stringify([
+                                        terminalId,
+                                        tab.runtimeId,
+                                    ])]: "connected",
+                                }))
+                            }
+                            onStop={() => requestClose(tab, true)}
+                        />
+                    )}
                 </TerminalSurface>
             ))}
             <Dialog
@@ -203,7 +257,7 @@ export function WorkspaceView({
                         <Button
                             variant="destructive"
                             onClick={() => {
-                                if (closing) close(closing);
+                                if (closing) close(closing, true);
                             }}
                         >
                             Close and stop
