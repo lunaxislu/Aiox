@@ -14,6 +14,9 @@ export type AioxConfig = {
         fontFamily?: string;
         fontSize?: number;
         theme?: Record<string, string>;
+        keybindings?: Partial<
+            Record<"mac" | "windows" | "linux", Record<string, string | null>>
+        >;
     };
     keyboard?: Record<string, string>;
     web?: { sidebar?: { width?: number; open?: boolean } };
@@ -66,6 +69,17 @@ function stringMap(value: unknown, label: string): Record<string, string> {
             string(key, `${label} key`);
             return [key, string(entry, `${label}.${key}`)];
         }),
+    );
+}
+
+function keyboardKey(key: string): boolean {
+    return (
+        /^(?:Enter|Tab|Escape|Backspace|Delete|ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|Space|F(?:[1-9]|1[0-9]|2[0-4]))$/.test(
+            key,
+        ) ||
+        (key.length === 1 &&
+            key.charCodeAt(0) > 32 &&
+            key.charCodeAt(0) !== 127)
     );
 }
 
@@ -147,7 +161,15 @@ export function parseConfig(
         const terminal = object(input.terminal, "terminal");
         keys(
             terminal,
-            ["fontFamily", "fontSize", "theme", "shell", "args", "cwd"],
+            [
+                "fontFamily",
+                "fontSize",
+                "theme",
+                "shell",
+                "args",
+                "cwd",
+                "keybindings",
+            ],
             "terminal",
         );
         config.terminal = {};
@@ -189,6 +211,44 @@ export function parseConfig(
         }
         if (terminal.theme !== undefined)
             config.terminal.theme = stringMap(terminal.theme, "terminal.theme");
+        if (terminal.keybindings !== undefined) {
+            const bindings = object(
+                terminal.keybindings,
+                "terminal.keybindings",
+            );
+            keys(bindings, ["mac", "windows", "linux"], "terminal.keybindings");
+            config.terminal.keybindings = {};
+            for (const os of ["mac", "windows", "linux"] as const) {
+                if (bindings[os] === undefined) continue;
+                const map = object(bindings[os], `terminal.keybindings.${os}`);
+                const seen = new Set<string>();
+                const entries: Record<string, string | null> = {};
+                for (const [combination, sequence] of Object.entries(map)) {
+                    const parts = combination.split("+");
+                    const key = parts.pop()!;
+                    const canonical =
+                        [...parts].sort().join("+") + ":" + key.toLowerCase();
+                    if (
+                        !keyboardKey(key) ||
+                        new Set(parts).size !== parts.length ||
+                        parts.some(
+                            (part) =>
+                                !["Cmd", "Ctrl", "Alt", "Shift"].includes(part),
+                        ) ||
+                        seen.has(canonical) ||
+                        (sequence !== null &&
+                            (typeof sequence !== "string" ||
+                                sequence.length === 0))
+                    )
+                        throw new ConfigError(
+                            `Invalid terminal.keybindings.${os}.${combination}`,
+                        );
+                    seen.add(canonical);
+                    entries[combination] = sequence as string | null;
+                }
+                config.terminal.keybindings[os] = entries;
+            }
+        }
     }
     if (input.keyboard !== undefined)
         config.keyboard = stringMap(input.keyboard, "keyboard");
@@ -235,14 +295,6 @@ export function parseConfig(
                 const modifiers =
                     action === "switchTab" ? parts : parts.slice(0, -1);
                 const key = parts.at(-1)!;
-                const namedKey =
-                    /^(?:Enter|Tab|Escape|Backspace|Delete|ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|Space|F(?:[1-9]|1[0-9]|2[0-4]))$/.test(
-                        key,
-                    );
-                const printableKey =
-                    key.length === 1 &&
-                    key.charCodeAt(0) > 32 &&
-                    key.charCodeAt(0) !== 127;
                 if (
                     new Set(modifiers).size !== modifiers.length ||
                     modifiers.some(
@@ -251,7 +303,7 @@ export function parseConfig(
                     ) ||
                     (action === "switchTab"
                         ? !modifiers.length
-                        : !(namedKey || printableKey))
+                        : !keyboardKey(key))
                 )
                     throw new ConfigError(
                         `Invalid keybindings.${os}.${action}: ${combination}`,

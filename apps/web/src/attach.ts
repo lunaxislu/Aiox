@@ -1,7 +1,9 @@
+import type { AioxConfig } from "@aiox/protocol";
 import { restoreTerminalState } from "@aiox/terminal/restore";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 
+import { bindTerminalKeys } from "@/terminal-keybindings";
 import { followTerminalBackground } from "@/terminal-theme";
 
 /**
@@ -55,6 +57,9 @@ export function attachTerminal(
     runtimeId?: string,
     canFocus: () => boolean = () => true,
     appearance?: { background?: string; onBackground: (color: string) => void },
+    keybindings: () => NonNullable<
+        AioxConfig["terminal"]
+    >["keybindings"] = () => undefined,
 ): Attachment {
     host.replaceChildren();
 
@@ -141,6 +146,8 @@ export function attachTerminal(
             parsing = previous;
         }
     };
+
+    bindTerminalKeys(term, keybindings);
     const report = (text: string, state?: AttachmentState): void => {
         if (!detached) onState(text, state);
     };

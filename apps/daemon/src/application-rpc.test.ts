@@ -202,10 +202,27 @@ it("shares config conflicts and Host admission failures through the application 
     const saved = await rpc.run(
         rpc.client["config.write"]({
             clientSessionId,
-            input: { revision: before.revision, stored: before.stored },
+            input: {
+                revision: before.revision,
+                stored: {
+                    ...before.stored,
+                    terminal: {
+                        keybindings: { mac: { "Alt+ArrowLeft": null } },
+                    },
+                },
+            },
         }),
     );
     expect(saved.revision).not.toBe(before.revision);
+    expect(saved.stored.terminal?.keybindings).toEqual({
+        mac: { "Alt+ArrowLeft": null },
+    });
+    const reread = await rpc.run(
+        rpc.client["config.read"]({ clientSessionId }),
+    );
+    expect(reread.effective.terminal?.keybindings).toEqual({
+        mac: { "Alt+ArrowLeft": null },
+    });
     const conflict = await rpc.run(
         Effect.flip(
             rpc.client["config.write"]({

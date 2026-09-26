@@ -98,3 +98,36 @@ test("malformed file reports an error instead of silently restoring defaults", a
         "Invalid JSON",
     );
 });
+
+test("terminal keybindings store only overrides and preserve the file on invalid input", async () => {
+    const directory = await home();
+    const terminal = { keybindings: { mac: { "Alt+ArrowLeft": null } } };
+    await saveConfig({ terminal }, { home: directory });
+    const before = await readFile(configPath(directory), "utf8");
+    expect(JSON.parse(before).terminal).toEqual(terminal);
+    expect((await loadConfig({ home: directory })).terminal).toEqual(terminal);
+    for (const keybindings of [
+        { wsl: {} },
+        { mac: { "Altt+ArrowLeft": "x" } },
+        { mac: { "Alt+Alt+ArrowLeft": "x" } },
+        { mac: { "Alt+ArrowLeft": 3 } },
+        { mac: { "Alt+ArrowLeft": "" } },
+        { mac: { "Ctrl+Shift+k": "a", "Shift+Ctrl+K": "b" } },
+    ]) {
+        await expect(
+            saveConfig({ terminal: { keybindings } }, { home: directory }),
+        ).rejects.toThrow();
+        expect(await readFile(configPath(directory), "utf8")).toBe(before);
+    }
+    await saveConfig(
+        {
+            terminal: {
+                keybindings: { linux: { "Alt+ArrowLeft": "\u001bb" } },
+            },
+        },
+        { home: directory },
+    );
+    expect(
+        (await loadConfig({ home: directory })).terminal?.keybindings,
+    ).toEqual({ linux: { "Alt+ArrowLeft": "\u001bb" } });
+});

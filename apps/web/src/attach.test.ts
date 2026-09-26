@@ -10,6 +10,7 @@ const { term, data, binary, callbacks, operations, fit, restoreState } =
         const operations: string[] = [];
         const term = {
             _core: {
+                _compositionHelper: { keydown: () => true },
                 coreService: {
                     triggerDataEvent(value: string, _user = false) {
                         if (!term.options.disableStdin)
@@ -29,6 +30,11 @@ const { term, data, binary, callbacks, operations, fit, restoreState } =
             open: vi.fn(),
             dispose: vi.fn(),
             focus: vi.fn(),
+            attachCustomKeyEventHandler:
+                vi.fn<(handler: (event: KeyboardEvent) => boolean) => void>(),
+            input(value: string, user = true) {
+                term._core.coreService.triggerDataEvent(value, user);
+            },
             resize: vi.fn((cols: number, rows: number) => {
                 term.cols = cols;
                 term.rows = rows;
@@ -86,7 +92,11 @@ afterEach(() => {
 let resizeCallback: () => void;
 const disconnect = vi.fn();
 
-function setup(protocol = "http:", canFocus = () => true) {
+function setup(
+    protocol = "http:",
+    canFocus = () => true,
+    keybindings?: Parameters<typeof attachTerminal>[6],
+) {
     vi.stubGlobal(
         "ResizeObserver",
         class {
@@ -135,6 +145,8 @@ function setup(protocol = "http:", canFocus = () => true) {
         report,
         undefined,
         canFocus,
+        undefined,
+        keybindings,
     );
     const message = (value: unknown) =>
         socket.dispatchEvent(
@@ -152,6 +164,57 @@ function setup(protocol = "http:", canFocus = () => true) {
 async function flush() {
     for (let i = 0; i < 20; i++) await Promise.resolve();
 }
+
+it("sends mapped keys once as user input, honors live overrides, and preserves lifecycle guards", async () => {
+    vi.stubGlobal("navigator", { platform: "MacIntel" });
+    let overrides: Record<string, string | null> = {};
+    const { socket, message, attachment } = setup(
+        "http:",
+        () => true,
+        () => ({ mac: overrides }),
+    );
+    const handler = term.attachCustomKeyEventHandler.mock.calls[0]![0];
+    const left = () => {
+        const event = new KeyboardEvent("keydown", {
+            key: "ArrowLeft",
+            altKey: true,
+            cancelable: true,
+        });
+        // happy-dom equates AltGraph with Alt; browsers distinguish them.
+        vi.spyOn(event, "getModifierState").mockReturnValue(false);
+        return event;
+    };
+    expect(handler(left())).toBe(false);
+    expect(socket.send).not.toHaveBeenCalled();
+    message({ type: "snapshot", cols: 80, rows: 24, state: {} });
+    message({ type: "snapshot-end" });
+    message({ type: "restored" });
+    await flush();
+    socket.send.mockClear();
+    const event = left();
+    expect(handler(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(socket.send).toHaveBeenCalledExactlyOnceWith(
+        new TextEncoder().encode("\x1bb"),
+    );
+    socket.send.mockClear();
+    overrides = { "Alt+ArrowLeft": "\x1b[1;5D" };
+    expect(handler(left())).toBe(false);
+    expect(socket.send).toHaveBeenCalledExactlyOnceWith(
+        new TextEncoder().encode("\x1b[1;5D"),
+    );
+    socket.send.mockClear();
+    overrides = { "Alt+ArrowLeft": null };
+    expect(handler(left())).toBe(true);
+    expect(
+        handler(new KeyboardEvent("keydown", { key: "v", metaKey: true })),
+    ).toBe(true);
+    expect(socket.send).not.toHaveBeenCalled();
+    overrides = {};
+    attachment.close();
+    handler(left());
+    expect(socket.send).not.toHaveBeenCalled();
+});
 
 it("restores geometry and ordered output before enabling input and requesting pane size", async () => {
     vi.useFakeTimers();

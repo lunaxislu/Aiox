@@ -1,4 +1,4 @@
-import type { TabView } from "@aiox/protocol";
+import { parseConfig, type TabView } from "@aiox/protocol";
 import {
     act,
     cleanup,
@@ -9,10 +9,15 @@ import {
 import { StrictMode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { useApplicationConfig } from "@/app/application-config";
 import { attachTerminal, type AttachmentState } from "@/attach";
 import type { WorkspaceLayout } from "@/entities/panel/workspace-fixtures";
 
 import { WorkspaceContent } from "./workspace-view";
+
+vi.mock("@/app/application-config", () => ({
+    useApplicationConfig: vi.fn(() => ({ loaded: true })),
+}));
 
 vi.mock("@/attach", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@/attach")>()),
@@ -25,6 +30,7 @@ vi.mock("@/attach", async (importOriginal) => ({
 afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.mocked(useApplicationConfig).mockReturnValue({ loaded: true });
 });
 const tab = (id = "t", runtimeId: string | null = null): TabView => ({
     id,
@@ -96,6 +102,32 @@ it("paints terminal padding with the attachment's effective background and ignor
     view.unmount();
     call[5]!.onBackground("#abcdef");
     expect(surface.style.backgroundColor).toBe("#123456");
+});
+
+it("provides refreshed config overrides to a surviving attachment", () => {
+    const configure = (sequence: string | null) => {
+        const stored = {
+            terminal: { keybindings: { mac: { "Alt+ArrowLeft": sequence } } },
+        };
+        vi.mocked(useApplicationConfig).mockReturnValue({
+            loaded: true,
+            value: {
+                revision: "r1",
+                stored,
+                effective: parseConfig(stored),
+                runningPorts: { daemon: 4500, web: 4501 },
+                restartRequired: false,
+            },
+        });
+    };
+    configure(null);
+    const view = setup();
+    const call = vi.mocked(attachTerminal).mock.calls.at(-1)!;
+    expect(call[6]!()).toEqual({ mac: { "Alt+ArrowLeft": null } });
+    configure("\x1b[1;5D");
+    view.update(layout());
+    expect(attachTerminal).toHaveBeenCalledOnce();
+    expect(call[6]!()).toEqual({ mac: { "Alt+ArrowLeft": "\x1b[1;5D" } });
 });
 it.each([false, true])(
     "updates split membership without errors or replacing surviving attachments (StrictMode %s)",

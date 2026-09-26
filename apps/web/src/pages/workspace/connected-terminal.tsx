@@ -51,6 +51,9 @@ export function ConnectedTerminal({
     }>({ connection: "restoring" });
     const canFocus = useEffectEvent(() => active);
     const notify = useEffectEvent(onConnection);
+    const keybindings = useEffectEvent(
+        () => config.value?.effective.terminal?.keybindings,
+    );
     useEffect(() => {
         if (!host.current || !tab.terminalId || !config.loaded) return;
         let disposed = false;
@@ -91,6 +94,7 @@ export function ConnectedTerminal({
                             surface.current.style.backgroundColor = color;
                     },
                 },
+                keybindings,
             );
         } catch (error) {
             report(
