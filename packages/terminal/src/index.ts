@@ -148,11 +148,22 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         args: [
             ...(options.args ?? (options.file === undefined ? shell.args : [])),
         ],
-        env: Object.fromEntries(
-            Object.entries(options.env ?? process.env).filter(
-                (entry): entry is [string, string] => entry[1] !== undefined,
+        // This PTY is rendered by xterm, not by the terminal that launched the
+        // daemon. Leaking Ghostty/Kitty identity enables unsupported image output.
+        env: {
+            ...Object.fromEntries(
+                Object.entries(options.env ?? process.env).filter(
+                    (entry): entry is [string, string] =>
+                        entry[1] !== undefined &&
+                        !/^(?:TERM(?:_.*)?|COLORTERM|LC_TERMINAL(?:_VERSION)?|TMUX(?:_PANE)?|STY|WINDOWID|VTE_VERSION|WT_SESSION|KONSOLE_VERSION|ALACRITTY_.*|GHOSTTY_.*|KITTY_.*|WEZTERM_.*|ITERM_.*)$/.test(
+                            entry[0].toUpperCase(),
+                        ),
+                ),
             ),
-        ),
+            TERM: "xterm-256color",
+            TERM_PROGRAM: "aiox",
+            COLORTERM: "truecolor",
+        },
     };
     const integration = options.shellIntegration
         ? prepareShell(launch)

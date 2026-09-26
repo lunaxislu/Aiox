@@ -690,3 +690,38 @@ it("keeps the PTY alive and marks every attach unrestorable after a mirror write
         spawn.mockRestore();
     }
 });
+
+it("advertises xterm capabilities instead of the daemon's outer terminal", async () => {
+    const session = open({
+        id: "terminal-environment",
+        file: process.execPath,
+        args: [
+            "-e",
+            "console.log(JSON.stringify(Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(TERM(?:_|$)|COLORTERM|GHOSTTY|KITTY|WEZTERM|ITERM|TMUX|STY|AIOX_TEST)/.test(k)))))",
+        ],
+        env: {
+            ...process.env,
+            TERM: "xterm-ghostty",
+            TERM_PROGRAM: "ghostty",
+            TERM_PROGRAM_VERSION: "1.3",
+            GHOSTTY_RESOURCES_DIR: "/outer/ghostty",
+            GHOSTTY_BIN_DIR: "/outer/bin",
+            KITTY_WINDOW_ID: "1",
+            WEZTERM_PANE: "2",
+            WEZTERM_VERSION: "3",
+            ITERM_SESSION_ID: "outer",
+            TMUX: "/outer/tmux",
+            STY: "outer",
+            COLORTERM: "24bit",
+            AIOX_TEST_PRESERVED: "yes",
+        },
+    });
+    const viewer = view(session);
+    await waitFor("terminal environment", () => viewer.exits.length > 0);
+    expect(JSON.parse(viewer.text.trim())).toEqual({
+        TERM: "xterm-256color",
+        TERM_PROGRAM: "aiox",
+        COLORTERM: "truecolor",
+        AIOX_TEST_PRESERVED: "yes",
+    });
+});
