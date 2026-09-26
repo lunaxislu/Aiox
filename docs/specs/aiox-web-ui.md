@@ -169,6 +169,10 @@ pane·탭 선택은 각 React 앱의 메모리 상태다. 다른 창의 선택�
 선택으로 돌아간다. 서버 구조 변경으로 선택한 pane·탭이 사라지면 현재 화면이 남은 대상 중에서
 선택을 조정한다. 서버 DTO와 저장 경계는 [[docs/specs/aiox-configuration-web]]의 panel 계약을 따른다.
 
+CLI 실행 결과나 알림으로 특정 탭에 이동할 때는 대상 탭을 처음부터 선택해 표시한다. 이동한
+패널의 이전 선택 탭을 먼저 연결했다가 대상 탭으로 바꾸지 않는다. 이동이 끝난 뒤에는 사용자가
+다른 탭을 자유롭게 선택할 수 있다. [Status: Normative]
+
 
 workspace 화면은 pane 트리이고 pane마다 독립된 탭바를 가진다. 각 workspace는 자기 pane
 배치·탭 순서·선택을 기억하며 사이드바 항목을 바꾸면 헤더 맥락도 함께 바뀐다.
@@ -238,7 +242,20 @@ agent 상태는 탭에 점으로 표시하고 색을 구분한다.
 - `failed`는 이유 문자열을 함께 보여 준다
 - 실행이 없는 stopped 표시는 실시간 activity의 다섯 status 값과 별개다
 
+일반 shell 탭은 Agent가 준비·실행 중일 때만 해당 Runtime의 이름을 표시한다. 종료하여 Runtime이
+제거되면 저장된 shell 탭 이름으로 돌아온다. 새 Network shell의 기본 이름은 `Shell`이며,
+Host 관리 탭의 Agent 이름과 기존 사용자 shell 탭 이름은 바꾸지 않는다. 실패 원인과 재실행
+명령은 notice에 유지한다. [Status: Current] 근거: [[apps/daemon/src/web-state.ts]],
+[[apps/daemon/src/web-state.test.ts]], [[apps/daemon/src/network-agent.test.ts]].
+
 ### pane 상태 표시줄
+
+작업 경로는 지원 shell이 명령을 마치고 프롬프트로 돌아올 때 갱신하며, 경로가 달라진 경우에만
+Web 상태를 변경한다. 최초에는 생성 경로를 표시하고 hook 미지원·조회 실패 시 마지막 확인 값을
+유지한다. PID 조회가 반환하는 실제 경로는 shell의 심볼릭 링크 표기와 다를 수 있다.
+임의 출력마다 또는 일정 주기마다 갱신하는 보장은 없다. 지원 범위와 관측 경로는
+[[docs/architecture/aiox-storage-terminal]]을 따른다. [Status: Current]
+근거: [[apps/daemon/src/terminals.ts]], [[apps/daemon/src/terminals.test.ts]].
 
 pane 아래에 한 줄짜리 표시줄을 둔다. 선택한 탭의 상태 점과 이름, 이유 요약, terminal의 작업
 디렉터리를 이 순서로 놓는다.

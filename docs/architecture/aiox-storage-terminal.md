@@ -123,8 +123,24 @@ PTY·headless·Serialize·Web 화면 복원은 daemon 소유 terminal의 책임�
 근거: [[apps/cli/src/bootstrap.ts]] `apps/cli/src/bootstrap.ts:491`,
 [[apps/cli/src/external.ts]] `apps/cli/src/external.ts:15`.
 
-일반 shell의 생성 작업 경로·terminal ID는 TerminalService가 유지한다. `cwd` 조회는 생성 경로이며
-shell 안의 `cd`를 실시간 추적한 값이 아니다. 일반 shell에는 Agent credential·membership이 없다.
+일반 shell의 terminal ID와 마지막 확인 작업 경로는 TerminalService가 유지한다. 초기값은
+생성 경로이며, 지원 shell의 프롬프트 hook이 보내는 `OSC 777;aiox-cwd`를 headless 파서가
+감지하면 daemon이 소유한 shell PID의 cwd를 조회한다. 제어 신호에는 PID나 경로를 싣지 않는다.
+Linux와 WSL 내부 daemon은 `/proc/<pid>/cwd`, macOS는 `/usr/sbin/lsof`의 NUL 구분 cwd 필드를
+사용한다. 바뀐 경로만 TerminalService → AppState → Web으로 전달한다. 조회 중 추가 신호는
+후속 조회로 합치며, 세션 제거 뒤 완료된 조회는 상태를 게시하거나 유효한 기준 경로를 반환하지 않는다.
+
+경로 알림은 bash·zsh·fish의 기존 초기화 연동에 설치하되 idle/종료 판별용 trap 설치 조건과
+분리한다. 현재 실행 인자가 있는 shell·그 밖의 shell에는 hook을 설치하지 않는다. 미지원·조회
+실패 시 생성 경로 또는 마지막 확인 경로를 유지한다. Windows daemon에서 시작한 `wsl.exe`의
+Linux PID를 연결하는 관측은 구현하지 않았으며 기존 Linux 표시 경로를 유지한다. 새 탭·분할·
+workspace 생성 시에는 기준 shell PID를 다시 조회하고 기존 실행 경로 검증을 거친다. 서버는
+생성 요청의 기준 참조만 소비하며 브라우저의 포커스·선택 상태를 소유하지 않는다. [Status: As-built]
+근거: [[packages/terminal/src/shell-integration.ts]], [[packages/terminal/src/shell-integration.test.ts]],
+[[packages/terminal/src/index.ts]], [[apps/daemon/src/terminals.ts]], [[apps/daemon/src/terminals.test.ts]],
+[[apps/daemon/src/web-commands.ts]], [[apps/daemon/src/web-commands.test.ts]].
+
+일반 shell에는 Agent credential·membership이 없다.
 일반 shell 생성 시 상속 환경의 `AIOX_*` 문맥을 제거하고, 새 `AIOX_TERMINAL_ID`와 비공개
 `AIOX_TERMINAL_TOKEN`을 child env에 넣는다. 이 문맥은 메모리에만 유지하고 API 목록·URL·argv·로그에
 노출하지 않는다. 일반 shell exit/정리 후에는 유효하지 않다. [Status: As-built]

@@ -25,6 +25,7 @@ status: open
 - [x] W15 Effect v4 서버 마이그레이션을 구현·검증하고 공개 계약을 W10에 반환했다. 결과: `logs/2026-09-25-Effect-Server-Migration.md` (decided), `docs/specs/aiox-application-rpc.md`.
 - [x] W16 서버 마이그레이션 리뷰 결함 3건(Codex stderr 수명, Claude retirement 실패 처리, 알림 읽음 RPC 취소)을 재현·수정·검증한다.
 - [x] W17 pane·탭 선택을 React 메모리 전용으로 분리하고 서버 select 명령·선택 DTO/DB 필드·서버 선택 테스트 제거, 검증·리뷰와 owner/artifact 정합을 기록한다.
+- [x] W18 shell 현재 경로 UI 갱신·새 탭/분할 경로 상속과 Agent 종료 후 탭 이름 복귀를 하위 Agent 구현, 독립 검토·검증 및 owner 반영으로 완료한다.
 
 ## Required Context
 
@@ -130,6 +131,9 @@ status: open
 ### {W16}
 
 - 사용자 리뷰의 Codex stderr 조기 종료·Claude retirement 저장 실패 진단/재시도 누락·notifications.read 취소 후 DB/AppState 불일치 3건을 대상으로 한다. 공개 계약은 docs/specs/aiox-application-rpc.md, adapter 수명은 docs/architecture/aiox-vendor-bindings.md가 소유한다. Web 소스와 사용자 daemon/DB는 변경하지 않는다.
+
+### {W18}
+
 
 ## 2026-09-21 · 설계 라인 마감과 구현 착수
 
@@ -1161,3 +1165,105 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 - 사용자가 현재 변경 내역을 각각 커밋하도록 지시했다. 기존 미커밋 변경을 기능별로 분리해 b1d7cbb(Network·Host 직접 실행·reveal), aadce1f(PTY xterm 환경), 32d07e1(키 기본값·config·IME), c738fc0(기존 Claude StopFailure 조사 기록)으로 기록했다. 조사 기록은 기존 내용을 그대로 보존한 문서 커밋이며 이번 턴에서 새로 검증한 조사 결과가 아니다. 계약·인계·검증 로그 문서는 별도 커밋으로 기록한다. push는 하지 않는다.
 - 검증 근거: 현재 서버·CLI·protocol·persistence·terminal 변경이 포함된 전체 pnpm check는 앞선 키 바인딩 구현에서 exit 0이었다. 뒤이은 IME 변경은 Web 전체 184개·typecheck·build·lint·format 및 Chromium IME 검증을 통과했다. 이번 문맥 문서는 관련 owner·공개 API 연결과 대조했고 markdown inline-code 검사·git diff --check·로그 점검을 수행했다.
 - 로그는 1000줄을 넘지만 이번 작업은 기존 W10 터미널 연결의 동일한 수명에 속하는 후속 수정·문맥 갱신·커밋 정리다. 현재 scope에서 별도 작업으로 분리하거나 과거 기록을 이동하지 않고 같은 block에 소비 관계를 유지한다. W10 전체는 계속 진행 중이다.
+
+## 2026-09-26 · W18 shell 경로 갱신·상속과 Agent 탭 이름 복귀
+
+사용자는 앞선 읽기 전용·로그 금지 지시를 변경하여 합의한 요구를 먼저 기록하고, 적절한 모델·추론의 subagent에게 구현을 맡긴 뒤 주 Agent 검토·검증이 기대를 충족하면 로그와 권위 문서를 갱신하라고 지시했다. 기존 W10의 남은 운영 검증은 유지하며 이번 bounded slice를 W18로 분리한다. 두 구현은 독립 검증 가능한 code/test 변경이며 별도 artifact 수명이나 package handoff를 만들지 않아 Base 로그에서 처리한다.
+
+확정 범위:
+- 터미널 키 바인딩은 다른 Agent가 완료했으므로 제외한다. Windows native 실행 차단도 후속 방향이며 이번에 구현하지 않는다.
+- Linux/macOS 및 WSL 내부 daemon의 shell 현재 경로를 PID로 조회한다. 각 지원 shell의 프롬프트 직전 hook이 제어 신호를 보내면 서버가 조회하고, 바뀐 cwd만 기존 AppState → Web 경로로 전달한다. 일반 출력 전체를 감지하거나 주기 polling을 추가하지 않는다.
+- 새 탭·분할과 기준 터미널이 있는 workspace 생성은 기준 shell의 경로를 재조회하여 생성 cwd로 사용한다. 경로는 daemon cwd → config terminal.cwd → 기존 Host/명시 요청 경로 → 적용 가능한 상속 경로 순으로 덮어쓴다. 기준이 없으면 기존 fallback을 유지한다. 임의 terminal ID나 다른 panel의 terminal을 신뢰하지 않으며 선택은 브라우저 로컬 소유를 유지한다.
+- hook 미지원 또는 PID 조회 실패 시 초기 생성 경로/마지막 확인 경로를 유지한다. 반환한 경로의 새 shell 생성 검증은 유지한다. WSL Windows-hosted launcher의 Linux PID 조회는 범위 밖이며 기존 경로로 fallback한다.
+- agent run claude/codex --name k --network dev의 live Agent 이름은 실행 동안만 표시하고 종료 뒤 기본 shell 탭 이름으로 복귀한다. Host 관리 탭·실패 notice·사용자 label의 기존 의미를 보존한다.
+
+확인한 출발점: TerminalService metadata.cwd는 생성 시에만 저장하고, network-agent는 Agent 이름을 shell 탭 label로 저장하며 projectPanel은 runtime 종료 후 label을 그대로 둔다. 기존 초기화 hook은 bash/zsh/fish 및 실행 인자·trap 조건에 제한이 있으므로 현재 조건을 숨기지 않고 실제 지원 범위를 검증한다.
+
+위임: GPT-6 Sol/high가 경로 관측·상속 전체 producer/consumer와 회귀를 구현하고, GPT-6 Sol/medium이 Network Agent label 수명과 회귀를 구현한다. 파일 충돌은 주 Agent가 조율한다. 하위 Agent 결과는 후보이며 주 Agent 리뷰와 실제 테스트 뒤에만 수용한다. 검증은 실제 shell cd → application state, 생성 경로 상속/기준 없음/fallback, Agent 종료 후 label, 사용자 설정·hook 안전성, 빌드·타입·테스트를 포함한다. OS별 실제 실행 여부와 한계는 분리하여 기록한다.
+
+다음: 구현 위임 후 결과 diff와 검증을 독립 리뷰하고 docs/specs/aiox-configuration-web.md, docs/specs/aiox-web-ui.md 및 docs/architecture/aiox-storage-terminal.md 등 실제 owner의 영향 범위를 닫는다. W10 전체를 완료로 처리하지 않는다.
+
+### 2026-09-26 19:21 · 탭 이름 후보 수용과 경로 조회 경합 리뷰
+
+- tab_label(GPT-6 Sol/medium)은 Network 새 shell의 저장 label을 Shell로 유지하고 projectPanel에서 agentKey가 없는 live shell에만 runtime.name을 덧씌우는 변경을 제출했다. Host 관리 탭 label과 사용자 shell label은 유지한다. 새 launch 실패 탭도 Shell을 유지하고 원인/restartCommand는 notice가 소유한다.
+- 주 Agent는 네 파일 diff와 live/종료/failure 테스트를 검토했고, web-state.test.ts·network-agent.test.ts를 독립 실행하여 2 files/9 tests PASS(exit 0)를 확인해 label 후보를 수용했다. mock vendor를 사용한 실제 daemon/PTY 경로이며 실제 Claude/Codex vendor 실행 검증으로 확대하지 않는다. sandbox 실행은 임시 포트 EPERM으로 실패했고 권한 있는 격리 테스트로 재실행했다. 처음 필터 전달 위치가 잘못된 광범위 daemon 실행은 중단했으며 검증 통과 근거로 사용하지 않는다.
+- cwd(GPT-6 Sol/high) 후보의 초기 리뷰에서 조회 중 두 번째 prompt가 도착하면 이전 pending Promise만 돌려 최종 cwd 갱신이 사라질 수 있음을 지적했다. 후속 신호를 보관해 재조회하도록 수정 중이며, 늦게 끝난 조회가 제거된 terminal을 되살리지 않도록 검사한다. 새 prompt hook이 명령 종료 상태 또는 idle hook 실행을 바꾸지 않는지도 확인하도록 했다.
+- W18은 진행 중이다. 남은 일은 cwd 회귀·브라우저 UI 검증, 통합 체크와 권위 문서 반영이다.
+
+### 2026-09-26 20:45 · 브라우저 실측·독립 리뷰 반영과 통합 검증 진행
+
+- 주 Agent는 agent-browser 전용 세션과 임시 home/SQLite/포트의 daemon에서 실제 zsh로 검증했다. `cd 'changed directory'` 뒤 상태 표시줄 title이 OS가 반환한 /private 경로로 갱신되고, New shell·Split right로 생성한 각 shell의 `pwd -P`가 같은 경로였다. 오른쪽 pane에서 `cd ..` 후 새 workspace 생성 시 왼쪽 pane의 경로가 아니라 활성 오른쪽 pane 경로를 상속했고 `pwd -P`도 일치했다. 기준 없는 첫 생성은 임시 config terminal.cwd를 사용했다. 브라우저와 검증 daemon은 종료했으며 운영 daemon/DB는 변경하지 않았다. 임시 증거: /private/tmp/aiox-w18-cwd.png, /private/tmp/aiox-w18-browser-daemon.log.
+- review(GPT-6 Sol/high)의 읽기 전용 리뷰는 조회 중 제거된 session의 stale cwd 반환과 Promise 완료/외부 finally 사이의 prompt 유실 경합을 지적했다. 실행 재현 주장으로 소비하지 않고 코드 경로를 검토한 뒤, executor가 제거 후 undefined 반환·async 내부 finally cleanup·후속 조회 테스트로 보완했다. reviewer 재검토에서 두 지적은 해소됐고 추가 확정 결함은 없었다.
+- 새 workspace의 cross-panel source 소속은 요청 preflight snapshot 기준이다. 같은 panel의 tab.create는 해당 panel transaction에서 재확인한다. 현재 PanelContext에 cross-panel 조회 API가 없어 이를 위해 persistence API를 확대하지 않는다. source 없는 fallback, 존재하는 source의 조회 실패 fallback, 이미 제거된 source 거절을 구분한다.
+- 첫 pnpm check에서 lint/format/build/typecheck와 terminal 전체 93 tests가 통과했다. daemon은 311 pass/1 fail/1 skip이며, 실패는 기존 이벤트 테스트가 shell 생성 이벤트 수를 2로 고정했는데 초기 PID cwd 갱신으로 3이 된 경우다. no-op reads의 무이벤트 보장은 유지하면서 새 producer를 반영해 수정·재검증 중이다. 이 실행을 전체 PASS로 기록하지 않는다.
+- React Doctor는 --scope changed --base HEAD로 변경 Web 3파일을 검사해 새 issue 없음(exit 0)을 확인했다. 기본 branch 비교는 기존 7 warnings를 포함하므로 변경분 판정에는 HEAD 비교를 사용했다. 실제 동작을 확인한 권위 문서 세 곳에 cwd 상속/관측과 tab label 수명을 반영했고 최종 통합 검증 뒤 W18을 완료 처리한다.
+
+### 2026-09-26 20:52 · W18 최종 수용·권위 반영·검증 완료
+
+- 최종 disposition: cwd·tab_label 구현 후보를 모두 수용했다. 주 Agent diff 검토, GPT-6 Sol/high 독립 코드 리뷰와 경합 보완 재검토, 실제 브라우저/PTY 검증을 통과했다. 루트 리뷰에서 요구한 로컬 활성 pane→새 workspace source 회귀도 추가했고, 기존 daemon 이벤트 테스트는 shell ID별 upsert/remove 확인으로 고쳐 no-op read 검증을 유지했다.
+- 최종 `pnpm check` exit 0: lint, format:check, 전체 build, tsc --noEmit, 전체 Vitest 통과. daemon 312 passed/1 skipped, Web 185 passed, terminal 93 passed, protocol 24, config 39, CLI 74 등. 결과는 /private/tmp/aiox-w18-check-final.log. 기존 Web bundle 크기 경고만 남으며 새 의존성은 추가하지 않았다. 변경 Web 3파일 React Doctor 새 issue 없음. 문서 inline-code 검사, 추가 wikilink 18개 실재 경로 검사, git diff --check도 통과했다.
+- 권위 반영: docs/specs/aiox-configuration-web.md에 상속 기준·override 우선순위·source 검증·실패 fallback을, docs/specs/aiox-web-ui.md에 live Agent label 수명과 현재 경로 표시 계약을, docs/architecture/aiox-storage-terminal.md에 prompt OSC→소유 PID 조회→AppState 전파·후속 조회·세션 제거 경합과 지원 범위를 반영했다. 기존 「생성 cwd만 표시」는 승인된 새 동작으로 대체했다. roadmap/product/decision의 범위 변경은 없어 추가 owner 변경은 필요 없다.
+- 검증 경계: macOS 실제 bash/zsh와 Chromium에서 확인했다. Linux/WSL 내부 daemon 경로는 /proc 구현을 추가했지만 해당 OS 실환경은 이 세션에서 실행하지 못했다. fish binary도 없어 실제 fish 검증은 없다. Windows-hosted wsl.exe의 Linux PID 관측, Windows native 실행 차단, 임의 nested/remote shell의 경로 관측은 이번 범위가 아니다. 실행 인자가 있는 shell의 자동 prompt 관측은 기존 연동 미지원 조건을 유지하며, 명시적 새 생성 시 PID 조회는 수행한다. 기존 이미 실행 중인 daemon/shell에 hook을 소급 설치하지 않으므로 새 빌드 daemon·새 shell로 적용한다. 운영 daemon/DB 변경, commit/push는 하지 않았다.
+- W18 완료. 다음은 W10의 사용자 운영 재확인·남은 통합 검증과 이후 W8 Settings·W9 화면 조작 keybindings다. 터미널 입력 keybinding은 다른 Agent의 완료 상태를 유지하며 이번 변경에 포함하지 않았다. Stage6 로그 전체와 W10은 open이다.
+
+### 2026-09-26 21:03 · 종료 시 Vite WebSocket EPIPE 보고와 격리 재현
+
+- 사용자 관측: 기능은 정상 작동하나 Codex `/exit` 또는 shell 탭의 X·`exit` 종료 직후 Vite `ws proxy error: write EPIPE`와 `ws proxy socket error`가 출력된다.
+- 확인: `apps/web/vite.config.ts`는 `/api/rpc`와 `/ws/terminal`을 Vite WS proxy로 전달한다. 설치된 Vite 8.2.2의 proxy 오류 listener와 client socket 오류 listener가 각각 해당 두 문구를 기록한다. `apps/daemon/src/terminals.ts`의 PTY exit는 exit control 전송 후 WebSocket close, `apps/web/src/attach.ts`의 detach는 socket.close를 수행한다.
+- 격리 검증: 실제 Web Vite config와 임시 WS 서버를 연결한 `/private/tmp/aiox-ws-close-repro.mjs`를 실행했다. 서버 close·양쪽 close·client terminate 각 100회에 작은 출력에서는 오류 0회. `/private/tmp/aiox-ws-close-burst.mjs`에서 종료 전 512 KiB 출력을 추가하면 정상 close 두 경우는 오류 0회이고 client terminate 100회는 오류 200줄로 사용자와 동일한 EPIPE stack 및 두 log prefix를 재현했다(두 번 실행해 같은 결과). 임시 서버는 각 실행 finally에서 종료했으며 제품 daemon은 건드리지 않았다.
+- 판단/한계: 종료 시 남은 출력 전달과 연결 단절의 경합으로 동일 증상이 발생함을 확인했다. 사용자 실제 AIOX 종료에서 어느 연결이 먼저 단절됐는지, 두 로그가 같은 오류인지까지는 직접 관측하지 않아 확정하지 않는다. cwd 조회 실패나 PTY 오류의 증거는 아니다. 코드 변경·에러 일괄 숨김은 하지 않았다. W18 구현 완료 상태는 유지하고 실제 종료 경로의 프록시 진단은 W10 운영 검증에서 이어 확인할 수 있다.
+
+### 2026-09-26 21:15 · 종료 EPIPE 원인 추적·실환경 진단 대기
+
+- 사용자 요청: 원인을 찾는다. 사용 브라우저는 Chrome 또는 Chromium 계열이라고 확인했다.
+- 확인: 설치된 Vite의 http-proxy-3 `createRightProxy`는 browser socket의 error를 proxy error로 재발행하고, Vite는 동일 browser socket에도 별도 error listener를 등록한다. 따라서 사용자 로그의 `ws proxy socket error: EPIPE`는 browser 방향 쓰기 실패이고, 바로 앞 proxy error와 별개의 두 장애라고 해석할 필요가 없다.
+- 실제 UI 관측: agent-browser의 격리 Chromium, 임시 daemon/DB 및 실제 Vite config로 shell exit와 X 종료를 확인했다. 관측된 완료 연결은 daemon/browser 정상 end·close였으며 EPIPE는 재현하지 못했다. 반복 exit 실험은 shell 초기화 전 입력 누락과 미완료 반복이 섞여 있어 고정 횟수 통과 결과로 사용하지 않는다. 무제한 yes 출력은 종료 전 flow-control 1013을 유발해 원래 종료 오류의 재현 근거로 사용하지 않는다. 임시 Agent adapter 실험은 launch schema 오류로 실제 Codex 종료의 검증 근거가 아니다.
+- 변경: `apps/web/vite.config.ts`에 일시적인 `[aiox-ws-debug]` 진단을 추가했다. 오류가 난 browser socket의 경로(query 제외), EPIPE code, read/write 종료 상태, 송수신 byte 수와 최근 양쪽 종료 이벤트만 출력한다. 명령·PTY payload·환경변수는 기록하지 않는다. 기존 origin 검증은 유지했다. `vite.config.test.ts`의 socket/request mock에 event 등록 함수를 보완했다. 이 진단은 원인 포착 후 제거해야 하며 영구 기능·로그 억제 정책으로 수용하지 않는다.
+- 검증: Vite config tests 3/3 통과. 임시 burst/abort 재현으로 debug 출력도 확인했다. 임시 Chromium과 두 daemon은 종료했으며 사용자 daemon은 종료하지 않았다. 사용자에게 같은 종료 후 debug 한 줄을 요청했다. 실제 사용자 연결을 닫게 만든 선행 원인은 아직 미확정이다. 다음은 해당 출력으로 경로·종료 순서를 판별하고 필요하면 원인 수정 후 임시 진단을 제거하는 것이다(W10 운영 검증).
+
+### 2026-09-26 21:28 · 사용자 Vite 실행 경로 확인
+
+- 사용자는 5173 Vite를 `IOX_WEB_PROXY_TARGET=http://127.0.0.1:4501 pnpm --filter @aiox/web dev --port 5173 --strictPort` 형태로 실행한다고 설명했다. 코드가 읽는 정확한 변수는 `AIOX_WEB_PROXY_TARGET`이며, 메시지의 A 누락이 실제 실행에도 있는지는 미확정이다. 해당 오타만으로 기존 EPIPE 원인이라고 결론내리지 않는다.
+- 읽기 전용 확인: 127.0.0.1:4501 HTTP 응답은 200이다. 5173은 localhost 및 127.0.0.1 연결 실패이고 lsof에서도 listener를 찾지 못했다(샌드박스 밖에서도 동일). 현재 공유 환경에서는 사용자 Vite 원본 오류를 직접 수집할 수 없다. 정확한 변수로 Vite를 실행한 뒤 종료 재현의 `[aiox-ws-debug]` 출력 확인이 다음 행동이다.
+
+### 2026-09-26 21:41 · 실제 browser ECONNRESET 수신·close 호출 상태 추가 추적
+
+- 사용자가 실제 `[aiox-ws-debug]`를 제공했다. `/ws/terminal/89e15de1-b665-4b9e-8ff7-0ddcebaf3594`, `ECONNRESET`, `readableEnded=false`, `writableEnded=false`, `destroyed=true`, bytesRead=797/bytesWritten=1317, event history는 daemon upgrade 하나다. 확인된 것은 browser-facing TCP reset이고, 그 전에 수집된 daemon end/close는 없다. 이 로그만으로 앱의 close 호출 여부·호출 당시 상태까지 확정하지 않는다.
+- 격리 Chromium에서 실제 native WebSocket을 연결 직후 close하는 최소 실험으로 EPIPE 1건을 재현했다. 다만 이 사례는 browser end가 daemon upgrade보다 먼저 기록되어 사용자 ECONNRESET 이력과 동일하지 않다. 동일 원인 확정의 근거로 사용하지 않는다.
+- 임시 추적 확장: `apps/web/src/attach.ts`가 open·close·detach·failure-close의 readyState와 terminal/runtime id를 Vite HMR custom event로 보내고, Vite가 `[aiox-browser-ws-debug]`로 기록한다. dev에서만 작동하고 PTY 데이터는 포함하지 않는다. 사용자에게 새로고침 후 같은 종료와 두 debug prefix를 함께 요청했다. 모든 임시 추적은 원인 포착 후 제거할 대상이다.
+
+### 2026-09-26 21:45 · 사용자 전체 trace로 CONNECTING 취소 원인 확정·임시 진단 제거
+
+- 결정적 사용자 trace: 21:41:57.469 source terminal `93b36231...` detach(state=1), 57.475 `3dc75f76...` daemon upgrade, 57.478 같은 `3dc75f76...` detach(state=0/CONNECTING), 57.482 close(code=1006, clean=false), 동일 terminal browser-facing ECONNRESET. 57.543 Agent terminal `ba4114b8...` open. 이에 따라 해당 오류는 AIOX가 연결 중인 중간 terminal WS를 취소한 결과임을 확정했다. Agent WS의 실제 종료는 21:42:00.680 code1005/clean=true로 별개이며, 뒤의 shell 종료들도 clean=true다. 사용자의 최초 종료 시점 설명을 모든 오류의 trigger로 일반화하지 않는다.
+- 코드 경로: `app-shell.tsx` reveal이 `navigate(..., {state:{focusTabId}})`를 호출한다. `workspace-page.tsx` ConnectedWorkspace는 local selection으로 첫 layout을 만들고, 그 뒤 useEffect에서 route focusTabId를 select한다. `selectedLayout`은 기존 local 선택 또는 첫 탭으로 fallback한다. `workspace-view.tsx` visibleTerminals는 그 순간 선택된 terminal의 ConnectedTerminal을 mount한다. 다음 focus 선택에서 cleanup→`attach.ts` close가 CONNECTING socket을 취소한다. 사용자 시간순 trace와 이 중간 선택 경로가 일치한다. EPIPE/ECONNRESET의 중복 출력은 앞서 확인한 Vite proxy와 browser socket의 두 error listener가 소유한다.
+- 해결 방향: route의 목표 탭을 첫 render selection에 반영해 transient 기존 terminal을 연결하지 않는다. WebSocket close 지연이나 Vite 오류 일괄 숨김으로 해결하지 않는다. 사용자의 현재 지시는 원인 조사이므로 동작 수정은 수행하지 않았다. 실제 수정 시 occupied target panel reveal에서 잘못된 기존 terminal이 attach되지 않는 회귀 검증이 필요하다.
+- cleanup: `vite.config.ts`, `vite.config.test.ts`, `attach.ts`의 이번 임시 trace 및 mock 보완을 모두 제거했고 세 파일은 조사 전 상태로 복원했다. 제품 cwd/label 변경은 유지했다. 임시 서버/브라우저는 이미 종료했다. 관련 Vite/attach 테스트 재검증 결과는 아래 후속 확인으로 남긴다. W10 운영 검증에서 이 원인의 수정은 아직 미실행이다.
+
+### 2026-09-26 21:45 · 진단 cleanup 검증 완료
+
+- 임시 진단 제거 후 Vite config·attach 테스트 28/28 통과, git diff --check 통과. 진단으로 수정했던 세 파일의 diff가 없음을 확인했다. 원인 조사 완료이며 render 시 목표 탭 선택 수정은 아직 수행하지 않았다.
+
+### 2026-09-26 21:57 · 중간 연결 용어와 현재 화면 전환 흐름 설명
+
+- 사용자 질문: 중간 연결의 의미와 현재 코드 흐름. 중간 연결은 추가 proxy/서버나 새 PTY가 아니라, 최종 focusTabId 적용 전 기존 선택 탭에 잠깐 붙는 browser WebSocket임을 구분한다.
+- 이번 trace의 A=source `93b36231...`, B=기존 terminal `3dc75f76...`, C=Agent terminal `ba4114b8...`로 설명한다. reveal은 대상 panel과 목표 tab을 전달한다. 첫 render는 해당 panel의 기억된 선택 또는 첫 탭 B를 사용하고, 자식 ConnectedTerminal이 B attach를 시작한다. 이후 부모 useEffect가 목표 tab을 선택해 B cleanup을 실행한다. C가 준비 중이면 placeholder를 거쳐 terminal 생성 후 C attach가 실행된다. 따라서 A→C 의도와 달리 browser 연결이 A→B(연결 중 취소)→C로 움직였다. B의 shell 자체를 새로 생성하거나 종료한 것은 아니다.
+
+### 2026-09-26 22:01 · 선택 시점 수정·회귀 검증·작업별 커밋 승인
+
+- 사용자 승인: subagent에게 수정과 테스트 작성을 맡기고 검토·검증 후 로그 기록 및 현재 git 변경을 각각 커밋한다. root는 gpt-6-sol/high의 cwd agent에 reveal 첫 렌더 선택 수정과 회귀 검증을 맡겼다. 이전 cwd/label 변경은 보존하며 Web 구현·테스트만 executor가 수정한다. root가 검토, 통합 check, React Doctor, 권위 반영 및 커밋을 담당한다.
+- 수용 조건: 목표 탭 전환에서 잘못된 기존 terminal이 attach되지 않을 것, 이후 사용자의 탭 선택을 고정하지 않을 것, 같은 panel reveal·뒤로/앞으로·유효하지 않은 focus 처리 보존. close 지연·프록시 에러 숨김은 추가하지 않는다. 코드와 tests를 검증한 뒤 cwd/상속, Agent label 복귀, reveal 첫 선택 수정, 문서·로그를 구분해 커밋할 계획이다.
+- 로그 수명: 이 후속은 W18 결과의 실제 Web 운영 중 드러난 W10 연결 검증이며 별도 독립 workstream을 만들지 않는다. 로그 hard length 경고는 인지했고 동일 사건의 원인→수정→검증 근거를 같은 블록에 유지한다.
+
+### 2026-09-26 22:08 · reveal 첫 선택 수정 최종 수용·전체 검증 완료
+
+- 구현 수용: gpt-6-sol/high executor가 `WorkspacePage`에서 navigation별 유효한 목표 pane/tab을 첫 렌더부터 반영하고 effect에서 로컬 선택에 한 번 기록하도록 수정했다. 이후 수동 선택은 유지하며 같은 panel reveal·history 재방문에서 목표 선택을 적용한다. 없는/잘못된 focus는 기존 선택을 유지한다. WebSocket.close 지연·프록시 에러 숨김·추가 상태 저장소는 도입하지 않았다.
+- 회귀 근거: `app-shell.test.tsx`는 다른 panel/같은 panel reveal의 attachTerminal 호출을 관측해 목표 C만 연결되고 불필요한 B 연결이 없음을 검증한다. 수동 B 선택, history back/forward, invalid/missing focus도 검증한다. 이전 첫 렌더 순서로 일시 되돌리면 실제 호출이 B+C가 되어 `not.toContain(terminal-b)`에서 실패했고 수정본 원복 후 통과했다. 이전 코드 대조는 `/private/tmp/aiox-focus-old-render-test.log`, scoped 28 tests는 `/private/tmp/aiox-focus-scoped-tests.log`다.
+- 검토: 별도 gpt-6-sol/high reviewer와 root가 상태 소비 시점·첫 attach·후속 수동 선택·이동 경로를 검토했고 추가 결함은 없었다. React Doctor의 effect 의존성 누락 1건은 root가 focusPane.id/focusTabId를 dependencies에 추가해 해결했다. navigation key guard가 중복 선택 변경을 막는다.
+- 통합 검증: `pnpm check` exit 0(`/private/tmp/aiox-terminal-final-check.log`). Web 187 passed, daemon 312 passed/1 skipped, terminal 93 passed이며 나머지 패키지도 통과했다. 최종 의존성 보완 뒤 root lint·format check·Web build·typecheck도 exit 0(`/private/tmp/aiox-focus-post-review.log`); 최종 Web 187 tests는 보완된 소스로 실행됐다. React Doctor changed/HEAD scan 3 files no issues(`/private/tmp/aiox-terminal-react-doctor-final.log`). 기존 Web bundle 크기 경고만 남아 있다.
+- 권위 반영: `aiox-web-ui`에 목적 탭을 처음부터 선택하는 계약, `aiox-system`에 navigation별 첫 선택·로컬 선택 이관을 반영했다. 기존 cwd/상속·Agent label 권위 변경도 함께 유지한다. 추가 wiki target 21개 존재와 markdown inline-code 검사, diff whitespace를 확인했다.
+- 범위/한계: 사용자 trace로 확정된 불필요한 B 연결 생성 경로를 수정했다. 수정 후 실제 사용자 브라우저에서 같은 조작의 재확인은 아직 없으므로 모든 연결 취소 상황의 EPIPE/ECONNRESET이 사라진다고 주장하지 않는다. Linux/WSL/fish 실환경 검증 미실시 범위도 이전과 동일하다. 이번 임시 진단 코드는 남아 있지 않다. W10 전체 운영 검증은 유지하며 이번 결함 수정·테스트·리뷰는 수용 완료했다.
+
+### 2026-09-26 22:10 · 작업별 코드 커밋 완료·문서 기록 동봉
+
+- 사용자 승인 범위의 기존 working tree를 기능별로 분리해 커밋했다: `c2c0418` shell cwd 관측·새 terminal 상속, `a4c051e` Agent 종료 후 shell label 복귀, `55ee89b` reveal 첫 렌더 선택·attach 회귀 테스트. 각 commit은 해당 production code와 tests를 함께 포함한다.
+- 이번 문서 commit에는 cwd/label/reveal의 spec·architecture 반영과 이 작업 로그를 함께 담는다. 전체 통합 검증은 직전 최종 수용 entry의 결과를 따른다. 임시 진단은 전부 제거됐고 unrelated 개인 자산은 변경하지 않았다. push와 사용자 daemon 재시작은 수행하지 않았다. 남은 W10 운영 검증은 유지한다.

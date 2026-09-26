@@ -125,6 +125,18 @@ shell은 실행 파일 이름/경로, args는 인자 배열, cwd는 선택한 sh
 OS shell 및 daemon 작업 경로를 사용한다. Windows 기본은 COMSPEC 또는 cmd.exe이고 POSIX는
 SHELL 또는 /bin/bash다. 시작한 터미널의 화면·shell 상태를 복제하지 않는다.
 
+Web의 새 탭·분할은 조작한 pane의 선택된 탭을, 새 workspace는 현재 화면의 활성 pane에서
+선택된 탭을 경로 상속 기준으로 사용한다. 생성 요청은 기준 panel·terminal ID를 함께 보내고,
+서버는 소속을 확인한 뒤 기준 shell의 현재 경로를 재조회하여 생성 cwd override로 사용한다.
+기준이 없으면 기존 Host/명시 요청 경로 → config의 terminal.cwd → daemon 작업 경로 순으로
+결정한다. 기준 terminal이 없어졌거나 선언한 기준 panel에 속하지 않으면 생성 요청을 거절한다.
+탭·분할 추가의 기준은 대상 panel 안에 있어야 하며, 새 workspace는 기존 panel을 기준으로 삼는다.
+조회 실패 시 기준 shell의 마지막 확인 경로(아직 확인한 적 없으면 생성 경로)를 사용하되,
+최종 경로의 디렉터리·접근 검증은 생략하지 않는다. 브라우저의 선택 상태를 서버에 저장하지 않는다.
+[Status: Current] 근거: [[apps/daemon/src/web-commands.ts]], [[apps/daemon/src/web-commands.test.ts]],
+[[packages/protocol/src/host.ts]], [[apps/web/src/pages/workspace/workspace-page.tsx]],
+[[apps/web/src/app/app-shell.tsx]].
+
 새 shell 생성 시 파일의 실행 설정을 읽고 기존 터미널은 바꾸지 않는다. Web 표시 설정의 파일 watch나
 자동 배포까지 의미하지 않는다. 명시적 생성 요청 cwd는 전역 기본 cwd보다 우선한다. Vendor 실행
 PTY에는 일반 Web shell 설정을 적용하지 않는다. daemon 시작은 설정 구조 검증과 기본값 결정 뒤
