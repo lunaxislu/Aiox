@@ -15,6 +15,8 @@ import { Effect } from "effect";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, expect, it, vi } from "vitest";
 
+import * as configModule from "@/app/application-config";
+import { attachTerminal } from "@/attach";
 import { ThemeProvider } from "@/features/theme/theme-provider";
 import { OverviewPage } from "@/pages/overview/overview-page";
 import { WorkspacePage } from "@/pages/workspace/workspace-page";
@@ -653,5 +655,100 @@ it.each(["networks", "hosts"] as const)(
                     .getAttribute("aria-selected"),
             ).toBe("true"),
         );
+    },
+);
+
+it.each(["another panel", "the same panel"] as const)(
+    "reveals a live tab from %s without transient attachment",
+    async (origin) => {
+        const samePanel = origin === "the same panel";
+        vi.spyOn(configModule, "useApplicationConfig").mockReturnValue({
+            loaded: true,
+        });
+        const app = mount(samePanel ? "/workspaces/target" : "/workspaces/p");
+        const initial = snapshot();
+        if (initial.type !== "snapshot") throw new Error("Expected snapshot");
+        initial.snapshot.panels = [
+            {
+                ...panel,
+                tabs: panel.tabs.map((tab) => ({
+                    ...tab,
+                    terminalId: tab.id === "a" ? "caller" : null,
+                })),
+            },
+            {
+                ...panel,
+                id: "target",
+                name: "Target",
+                layout: { type: "pane", id: "target-pane", tabIds: ["b", "c"] },
+                tabs: ["b", "c"].map((id) => ({
+                    ...panel.tabs[0]!,
+                    id,
+                    label: id.toUpperCase(),
+                    terminalId: `terminal-${id}`,
+                    presentation: "shell" as const,
+                })),
+            },
+        ];
+        initial.snapshot.terminals = ["b", "c"].map((id) => ({
+            id: `terminal-${id}`,
+            cwd: "/tmp",
+            kind: "shell" as const,
+            alive: true,
+        }));
+        app.emit(initial);
+        await screen.findByRole("tab", {
+            name: samePanel ? "B · shell" : "a · preparing",
+        });
+        vi.mocked(attachTerminal).mockClear();
+        app.emit({
+            type: "reveal",
+            epoch: "e",
+            sourceTerminalId: samePanel ? "terminal-b" : "caller",
+            panelId: "target",
+            tabId: "c",
+        });
+        await waitFor(() =>
+            expect(
+                vi.mocked(attachTerminal).mock.calls.map((call) => call[1]),
+            ).toContain("terminal-c"),
+        );
+        expect(
+            vi.mocked(attachTerminal).mock.calls.map((call) => call[1]),
+        ).not.toContain("terminal-b");
+        fireEvent.click(screen.getByRole("tab", { name: /B · shell/ }));
+        await waitFor(() =>
+            expect(
+                vi.mocked(attachTerminal).mock.calls.map((call) => call[1]),
+            ).toContain("terminal-b"),
+        );
+        await act(async () => app.router.navigate(-1));
+        await waitFor(() =>
+            expect(app.router.state.location.pathname).toBe(
+                samePanel ? "/workspaces/target" : "/workspaces/p",
+            ),
+        );
+        vi.mocked(attachTerminal).mockClear();
+        await act(async () => app.router.navigate(1));
+        await waitFor(() =>
+            expect(
+                vi.mocked(attachTerminal).mock.calls.map((call) => call[1]),
+            ).toContain("terminal-c"),
+        );
+        expect(
+            vi.mocked(attachTerminal).mock.calls.map((call) => call[1]),
+        ).not.toContain("terminal-b");
+        for (const focusTabId of ["missing", undefined]) {
+            await act(async () =>
+                app.router.navigate("/workspaces/target", {
+                    state: { focusTabId },
+                }),
+            );
+            expect(
+                screen
+                    .getByRole("tab", { name: /C · shell/ })
+                    .getAttribute("aria-selected"),
+            ).toBe("true");
+        }
     },
 );

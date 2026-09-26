@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { useLocation, useOutletContext, useParams } from "react-router";
 
 import type { AppOutletContext } from "@/app/app-shell";
@@ -30,28 +30,39 @@ function ConnectedWorkspace({ panel }: { panel: PanelPreview }) {
     const { selection, select } = usePanelSelection(panel.id);
     const location = useLocation();
     const { reportOutcome } = useOutletContext<AppOutletContext>();
-    const layout = selectedLayout(panel.layout, selection?.selectedTabId);
+    const handledLocation = useRef<string | null>(null);
+    const requestedTabId = (location.state as { focusTabId?: unknown } | null)
+        ?.focusTabId;
+    const focusTabId =
+        typeof requestedTabId === "string" ? requestedTabId : undefined;
+    const focusPane =
+        handledLocation.current === location.key
+            ? undefined
+            : panelLayoutReferences(panel.layout).panes.find((pane) =>
+                  pane.tabIds.includes(focusTabId ?? ""),
+              );
+    const layout = selectedLayout(
+        panel.layout,
+        focusPane
+            ? { ...selection?.selectedTabId, [focusPane.id]: focusTabId! }
+            : selection?.selectedTabId,
+    );
     const workspace = {
         ...panel,
         layout,
-        activePaneId: selection?.activePaneId ?? panel.activePaneId,
+        activePaneId:
+            focusPane?.id ?? selection?.activePaneId ?? panel.activePaneId,
     };
     const applySelection = useEffectEvent(
-        (tabId: string | undefined | null) => {
-            if (!tabId) return;
-            const pane = panelLayoutReferences(layout).panes.find((pane) =>
-                pane.tabIds.includes(tabId),
-            );
-            if (pane) {
-                select(pane.id, tabId);
-            }
+        (paneId: string | undefined, tabId: string | undefined) => {
+            if (paneId && tabId) select(paneId, tabId);
         },
     );
     useEffect(() => {
-        applySelection(
-            (location.state as { focusTabId?: string } | null)?.focusTabId,
-        );
-    }, [location.key, location.state]);
+        if (handledLocation.current === location.key) return;
+        handledLocation.current = location.key;
+        applySelection(focusPane?.id, focusTabId);
+    }, [location.key, location.state, focusPane?.id, focusTabId]);
     const terminals: Record<string, TerminalPreview> = Object.fromEntries(
         state.terminals.map((terminal) => {
             const agent = state.agents.find(
