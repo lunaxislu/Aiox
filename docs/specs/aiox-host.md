@@ -44,10 +44,10 @@ Host Network 명령은 등록된 `<host>`를 반드시 지정한다. 생략하�
 오류이며 현재 경로의 YAML·`--path`·`--file`로 대체 선택하지 않는다.
 필수 positional `<host>`는 제외한 `--host` 옵션과 별개다. 전체 문법은 runtime spec을 따른다.
 
-| 종류 | 정의 권위 | 실행·종료와 관리 |
-| --- | --- | --- |
-| Persistent Network | daemon DB | `network create/delete/block/unblock/reset`, 명시 delete까지 정의 유지 |
-| Host-managed Network | 해당 `aiox.yaml` | Host에서 실체화, `stop` 후 정책과 함께 유지, `delete`에서 정리 |
+| 종류                 | 정의 권위        | 실행·종료와 관리                                                       |
+| -------------------- | ---------------- | ---------------------------------------------------------------------- |
+| Persistent Network   | daemon DB        | `network create/delete/block/unblock/reset`, 명시 delete까지 정의 유지 |
+| Host-managed Network | 해당 `aiox.yaml` | Host에서 실체화, `stop` 후 정책과 함께 유지, `delete`에서 정리         |
 
 Host당 Network 하나, Agent의 동시 Network 소속도 최대 하나다. daemon 전체에서 여러 독립
 Network를 관리하는 것은 가능하다. Host YAML의 persistent Network external 참조는 제외한다.
@@ -152,46 +152,46 @@ YAML adapter 표기는 `claude`와 `codex`를 사용한다. `claude-code`는 사
 
 ```yaml
 host:
-  name: feature-host
-  instruction: |
-    이 Host의 Agent들은 역할에 따라 협업한다.
+    name: feature-host
+    instruction: |
+        이 Host의 Agent들은 역할에 따라 협업한다.
 
 agents:
-  reviewer:
-    adapter: claude
-    role: review
-    args:
-      - --model
-      - sonnet
-      - --permission-mode
-      - plan
-    instruction: |
-      구현을 검토하고 발견한 문제를 implementer에게 전달한다.
+    reviewer:
+        adapter: claude
+        role: review
+        args:
+            - --model
+            - sonnet
+            - --permission-mode
+            - plan
+        instruction: |
+            구현을 검토하고 발견한 문제를 implementer에게 전달한다.
 
-  implementer:
-    adapter: codex
-    role: implementation
-    instruction: |
-      요구사항에 맞게 구현하고 reviewer에게 검토를 요청한다.
+    implementer:
+        adapter: codex
+        role: implementation
+        instruction: |
+            요구사항에 맞게 구현하고 reviewer에게 검토를 요청한다.
 
-  researcher:
-    adapter: claude
-    role: research
-    instruction: |
-      조사 결과를 reviewer에게 전달한다.
+    researcher:
+        adapter: claude
+        role: research
+        instruction: |
+            조사 결과를 reviewer에게 전달한다.
 
 networks:
-  feature-a:
-    agents:
-      - reviewer
-      - implementer
-      - researcher
-    routing:
-      default: deny
-      allow:
-        - between: [reviewer, implementer]
-        - from: researcher
-          to: [reviewer]
+    feature-a:
+        agents:
+            - reviewer
+            - implementer
+            - researcher
+        routing:
+            default: deny
+            allow:
+                - between: [reviewer, implementer]
+                - from: researcher
+                  to: [reviewer]
 ```
 
 이 예시는 reviewer↔implementer, researcher→reviewer만 허용한다. Network의 `agents`는
@@ -228,10 +228,10 @@ columns 또는 rows 중 하나라도 유효한 양의 정수로 지정하면 입
 YAML columns=3이면 기존대로 3×2이며, 상속할 rows가 없을 때만 3×1이다.
 
 초기 auto는 Agent 1개 전체, 2개 좌우, 3개 왼쪽 하나와 오른쪽 위아래, 4개 이상은 2×2다.
-최초 생성 시 5번째부터 생성한 4개 pane에 선언 순서대로 순환 탭 추가한다. A~F는 [A,E] / [B,F] / [C] / [D]이며 최초 선택 A/B/C/D는 유지한다.
+최초 생성 시 5번째부터 생성한 4개 pane에 선언 순서대로 순환 탭 추가한다. A~~F는 [A,E] / [B,F] / [C] / [D]이며 최초 선택 A/B/C/D는 유지한다.
 Left-main은 왼쪽 하나와 오른쪽 위아래, top-main은 위쪽 하나와 아래쪽 좌우를 사용한다.
 영역 수를 넘는 Agent는 YAML 선언 순서대로 pane에 순환 탭 배치하며 최초 선택 탭을 유지한다.
-2열×1행의 A~F는 [A,C,E] / [B,D,F]이고 최초 선택은 A/B다. 불필요한 빈 영역을 만들지 않는다.
+2열×1행의 A~~F는 [A,C,E] / [B,D,F]이고 최초 선택은 A/B다. 불필요한 빈 영역을 만들지 않는다.
 
 위 preset별 영역 수는 최초 배치 규칙이며 shell/tab/pane 개수의 상한이 아니다.
 이후 사용자는 shell·탭·pane을 추가·삭제·이동·분할할 수 있다. Auto를 포함한 모든 preset에서
@@ -248,14 +248,14 @@ configuration-web 계약을 따른다.
 Host의 Agent 구성·Network·route는 YAML이 소유한다. `host agent add/remove`와
 Declared/Ephemeral 구분은 도입하지 않는다. 실행 중인 Agent의 설정은 파일 편집만으로 바뀌지 않는다.
 
-| 명령 | 적용 범위와 결과 |
-| --- | --- |
-| `host agent start <agent-names...>` | 최신 YAML의 신규 또는 stopped Agent 시작. 실행 중이면 이미 실행 중이라고 안내하고 중복 실행하지 않음 |
-| `host agent restart <agent-names...>` | 실행 중인 대상 Agent를 종료하고 최신 정의·관련 route로 다시 실행 |
-| `host agent stop <agent-names...>` | 대상 Agent 실행 종료, shell·관리 항목·Network 유지 |
-| `host restart` | 최신 YAML 전체 적용. 같은 Host이면 기존 panel과 사용자 shell 보존 |
-| `host stop` | YAML Agent 실행들만 종료. shell·panel·Host Network·정책 보존 |
-| `host delete` | panel이 소유한 Agent·필수 부속 실행·사용자 추가 shell과 그 작업까지 종료 후 Host·Network·panel 삭제 |
+| 명령                                  | 적용 범위와 결과                                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `host agent start <agent-names...>`   | 최신 YAML의 신규 또는 stopped Agent 시작. 실행 중이면 이미 실행 중이라고 안내하고 중복 실행하지 않음 |
+| `host agent restart <agent-names...>` | 실행 중인 대상 Agent를 종료하고 최신 정의·관련 route로 다시 실행                                     |
+| `host agent stop <agent-names...>`    | 대상 Agent 실행 종료, shell·관리 항목·Network 유지                                                   |
+| `host restart`                        | 최신 YAML 전체 적용. 같은 Host이면 기존 panel과 사용자 shell 보존                                    |
+| `host stop`                           | YAML Agent 실행들만 종료. shell·panel·Host Network·정책 보존                                         |
+| `host delete`                         | panel이 소유한 Agent·필수 부속 실행·사용자 추가 shell과 그 작업까지 종료 후 Host·Network·panel 삭제  |
 
 Agent start/restart는 이름을 하나 이상 받는다. 재실행은 새 Runtime ID와 credential을 사용하며
 이전 vendor 대화를 자동 resume하지 않는다. stopped는 관리 항목의 실행 수명이며 실시간 Agent
@@ -279,13 +279,11 @@ Stop/status도 선택 positional `[hostname]`을 지원한다. 명시하면 YAML
 Host를 선택하고, 생략하면 --path/--file 또는 현재 디렉터리의 YAML 선택 규칙을 따른다.
 등록된 Host를 찾지 못하면 오류이며 다른 Host로 대체하지 않는다.
 
-
 Delete는 `aiox host delete <hostname>`으로 등록된 Host를 YAML과 무관하게 선택하거나,
 `aiox host delete --file <yaml>`로 YAML이 가리키는 Host를 선택한다.
 인자 없는 delete는 현재 디렉터리의 YAML 후보를 탐색한다. 후보 하나일 때만 해당 Host를 선택하며,
 후보 없음은 오류, 복수 후보는 파일 또는 Host 이름 지정 안내 후 삭제하지 않는다.
 Host 이름과 `--file`은 함께 지정하지 않는다. 파일 선택의 다른 디렉터리는 `--path`를 사용한다.
-
 
 stop은 OS suspend나 `/exit` 입력 주입이 아니라 Agent 실행 프로세스 종료다. 필수 부속 실행과
 credential·binding·활성 membership 정리까지 확인하되 Agent를 실행하던 shell은 남긴다.
@@ -328,20 +326,20 @@ YAML은 UTF-8 단일 document의 mapping이며 알 수 없는 키, 중복 mappin
 이름은 공백만인 값·`/`·NUL을 금지한 문자열이고 대소문자를 구분한다. 이름을 trim하여 다른
 이름으로 저장하지 않는다. instruction/description은 빈 문자열을 허용하며 NUL은 금지한다.
 
-| 경로 | 입력·기본값 |
-| --- | --- |
-| root | `host`, `agents`, `networks`만 필수 |
-| `host` | `name: name`, `instruction?: string`(기본 `""`), `layout?: LayoutInput` |
-| `agents` | 하나 이상인 순서 있는 map. key가 관리 Agent 이름 |
-| `agents.<key>` | `adapter: claude 또는 codex`; `role?: nonblank string`, `description?: string`, `instruction?: string`, `args?: string[]` |
-| Agent 생략값 | role/description은 조회에서 null, instruction `""`, args `[]` |
-| `networks` | 정확히 한 항목인 map. key가 Host 범위 Network 이름 |
-| `networks.<key>` | `agents: name[]`, `routing?: Routing` |
-| membership | 중복 없는 Agent key 목록. 빈 목록·선언 Agent의 부분집합도 유효; 비소속 Agent는 협업 membership 없음 |
-| `Routing` | `default?: allow 또는 deny`(allow), `allow?: Edge[]`, `deny?: Edge[]`(각 `[]`) |
-| `Edge` | `{between: name[]}`(서로 다른 최소 2명) 또는 `{from: name, to: name[]}`(하나 이상); 두 형식 혼합 금지 |
-| route 참조 | 모두 해당 Network membership 안의 Agent key. self edge·중복 endpoint·확장 후 중복 directed edge 금지 |
-| `LayoutInput` | `{preset?: auto 또는 left-main 또는 top-main 또는 grid, columns?: positive-safe-integer, rows?: positive-safe-integer}` |
+| 경로             | 입력·기본값                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| root             | `host`, `agents`, `networks`만 필수                                                                                       |
+| `host`           | `name: name`, `instruction?: string`(기본 `""`), `layout?: LayoutInput`                                                   |
+| `agents`         | 하나 이상인 순서 있는 map. key가 관리 Agent 이름                                                                          |
+| `agents.<key>`   | `adapter: claude 또는 codex`; `role?: nonblank string`, `description?: string`, `instruction?: string`, `args?: string[]` |
+| Agent 생략값     | role/description은 조회에서 null, instruction `""`, args `[]`                                                             |
+| `networks`       | 정확히 한 항목인 map. key가 Host 범위 Network 이름                                                                        |
+| `networks.<key>` | `agents: name[]`, `routing?: Routing`                                                                                     |
+| membership       | 중복 없는 Agent key 목록. 빈 목록·선언 Agent의 부분집합도 유효; 비소속 Agent는 협업 membership 없음                       |
+| `Routing`        | `default?: allow 또는 deny`(allow), `allow?: Edge[]`, `deny?: Edge[]`(각 `[]`)                                            |
+| `Edge`           | `{between: name[]}`(서로 다른 최소 2명) 또는 `{from: name, to: name[]}`(하나 이상); 두 형식 혼합 금지                     |
+| route 참조       | 모두 해당 Network membership 안의 Agent key. self edge·중복 endpoint·확장 후 중복 directed edge 금지                      |
+| `LayoutInput`    | `{preset?: auto 또는 left-main 또는 top-main 또는 grid, columns?: positive-safe-integer, rows?: positive-safe-integer}`   |
 
 LayoutInput의 빈 object는 override 없음이다. 치수 없는 명시 grid는 오류이며 나머지
 검증·상속·최종 한쪽 치수 보충은 위 「일반 shell과 초기 layout」을 따른다.
@@ -378,24 +376,31 @@ Runtime ID와 YAML Agent key를 교환하지 않는다. 입력 오류/Host 명�
 `Source = {directory: absolute-directory, file?: string}`. CLI가 `--path` 또는 호출 cwd를
 절대 경로로 만들며 file은 선택 directory 기준 상대 경로나 절대 경로다. 서버가 선택·읽기를
 수행한다. 디렉터리는 YAML의 부모로 암묵 변경되지 않으며 Host 작업 경로로 저장한다.
-`Invocation = {terminalContext?: {terminalId,token}}`는 CLI의 인증된 shell env만 전달한다.
+`Invocation = {terminalContext?: {terminalId,token}, env?: Record<string,string>}`는 인증된 shell 문맥과 최초 CLI의 실행 환경을 전달한다.
 Web·일반 요청의 panelId나 cwd를 실행 위치 인증으로 사용하지 않는다. token은 응답·로그에서 제외한다.
 
-| Method / path | 요청 body / caller | 성공 body |
-| --- | --- | --- |
-| `POST /api/hosts/run` | CLI: `{requestId,source,layout?:LayoutInput,...Invocation}` | 200 NDJSON Host 명령 결과 |
-| `POST /api/hosts/restart` | CLI: `{requestId,source,...Invocation}`. 최신 YAML 이름으로 선택 | 200 NDJSON Host 명령 결과; 이름 변경이면 새 hostId |
-| `GET /api/hosts` | CLI list / React Hosts; 선택 query `name`은 정확한 이름 필터 | 200 `HostView[]`; name 지정 시 0 또는 1개 |
-| `GET /api/hosts/:hostId` | CLI status / React | 200 HostView |
-| `POST /api/hosts/resolve` | YAML로 status/stop/delete 대상을 찾는 CLI: `{source}` | 200 `{hostId}`; config→YAML 검증 뒤 host.name 정확 일치 조회, 생성·재적용 없음 |
-| `POST /api/hosts/:hostId/stop` | CLI/Web: `{requestId}` | 200 NDJSON Host 명령 결과 |
-| `DELETE /api/hosts/:hostId` | CLI/Web: `{requestId}` | 200 NDJSON Host 명령 결과; 모든 종료 확인 전 Host 유지 |
-| `POST /api/hosts/agents/start` | CLI: `{requestId,source,agents:string[],...Invocation}` | 200 NDJSON Host 명령 결과 |
-| `POST /api/hosts/agents/restart` | CLI: 같은 body | 200 NDJSON Host 명령 결과 |
-| `POST /api/hosts/:hostId/agents/stop` | YAML로 Host를 resolve한 CLI 또는 Web: `{requestId,agents:string[]}` | 200 NDJSON Host 명령 결과 |
-| `GET /api/hosts/:hostId/networks` | CLI network list / React; 선택 query `name`은 해당 Host 안의 정확한 이름 필터 | 200 `HostNetworkView[]`(필터 부재 시 한 항목, 지정 시 0 또는 1개) |
-| `GET /api/hosts/:hostId/networks/:networkId` | CLI network show / React | 200 HostNetworkView |
-| `POST /api/hosts/:hostId/networks/:networkId/route` | CLI: `{operation}`; 기존 between/directed routeOperation 형식, endpoints는 관리 Agent key | 200 HostNetworkView |
+Host run/restart 및 개별 start/restart는 최초 CLI의 환경을 직접 실행에 사용한다. daemon은
+`AIOX_*`를 제외한 뒤 관리 실행 문맥을 직접 설정한다. 환경 원문은 요청 수명에만 사용하며
+Host 설정·snapshot·로그에 저장하지 않는다. env가 없는 Web/RPC caller는 daemon 환경을 사용한다.
+대상 shell 시작 파일을 다시 평가하여 환경을 수집하지 않는다. vendor는 daemon이 실행되는 OS에서
+실행하므로 Windows daemon에서 WSL shell을 여는 것만으로 vendor 실행 OS가 WSL로 바뀌지는 않는다.
+혼합 실행은 [[docs/specs/aiox-runtime#플랫폼과 검증 경계]]의 미검증 범위다. [Status: Current]
+
+| Method / path                                       | 요청 body / caller                                                                        | 성공 body                                                                      |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `POST /api/hosts/run`                               | CLI: `{requestId,source,layout?:LayoutInput,...Invocation}`                               | 200 NDJSON Host 명령 결과                                                      |
+| `POST /api/hosts/restart`                           | CLI: `{requestId,source,...Invocation}`. 최신 YAML 이름으로 선택                          | 200 NDJSON Host 명령 결과; 이름 변경이면 새 hostId                             |
+| `GET /api/hosts`                                    | CLI list / React Hosts; 선택 query `name`은 정확한 이름 필터                              | 200 `HostView[]`; name 지정 시 0 또는 1개                                      |
+| `GET /api/hosts/:hostId`                            | CLI status / React                                                                        | 200 HostView                                                                   |
+| `POST /api/hosts/resolve`                           | YAML로 status/stop/delete 대상을 찾는 CLI: `{source}`                                     | 200 `{hostId}`; config→YAML 검증 뒤 host.name 정확 일치 조회, 생성·재적용 없음 |
+| `POST /api/hosts/:hostId/stop`                      | CLI/Web: `{requestId}`                                                                    | 200 NDJSON Host 명령 결과                                                      |
+| `DELETE /api/hosts/:hostId`                         | CLI/Web: `{requestId}`                                                                    | 200 NDJSON Host 명령 결과; 모든 종료 확인 전 Host 유지                         |
+| `POST /api/hosts/agents/start`                      | CLI: `{requestId,source,agents:string[],...Invocation}`                                   | 200 NDJSON Host 명령 결과                                                      |
+| `POST /api/hosts/agents/restart`                    | CLI: 같은 body                                                                            | 200 NDJSON Host 명령 결과                                                      |
+| `POST /api/hosts/:hostId/agents/stop`               | YAML로 Host를 resolve한 CLI 또는 Web: `{requestId,agents:string[]}`                       | 200 NDJSON Host 명령 결과                                                      |
+| `GET /api/hosts/:hostId/networks`                   | CLI network list / React; 선택 query `name`은 해당 Host 안의 정확한 이름 필터             | 200 `HostNetworkView[]`(필터 부재 시 한 항목, 지정 시 0 또는 1개)              |
+| `GET /api/hosts/:hostId/networks/:networkId`        | CLI network show / React                                                                  | 200 HostNetworkView                                                            |
+| `POST /api/hosts/:hostId/networks/:networkId/route` | CLI: `{operation}`; 기존 between/directed routeOperation 형식, endpoints는 관리 Agent key | 200 HostNetworkView                                                            |
 
 `networkId`는 지정한 hostId에 속한 Network ID여야 한다. 존재해도 다른 Host 소속이면
 404 `unknown_network`이며 이름이나 다른 scope로 대체하지 않는다. route는 모든 대상을 검증한 뒤
@@ -457,15 +462,32 @@ HostView는 `{id,name,directory,sourceFile,instruction,panelId,networkId,revisio
 
 ```json
 {
-  "id":"h1","name":"feature-host","directory":"/work/project",
-  "sourceFile":"/work/project/aiox.dev.yaml","instruction":"Collaborate on changes.","panelId":"p1","networkId":"n1",
-  "revision":3,
-  "agents":[{
-    "key":"reviewer","adapter":"claude","role":"review","description":null,
-    "instruction":"Review changes.","args":[],"member":true,
-    "runtime":null,"lastTerminalId":"t1",
-    "lastExit":{"kind":"stopped","message":null,"at":1789948800000}
-  }]
+    "id": "h1",
+    "name": "feature-host",
+    "directory": "/work/project",
+    "sourceFile": "/work/project/aiox.dev.yaml",
+    "instruction": "Collaborate on changes.",
+    "panelId": "p1",
+    "networkId": "n1",
+    "revision": 3,
+    "agents": [
+        {
+            "key": "reviewer",
+            "adapter": "claude",
+            "role": "review",
+            "description": null,
+            "instruction": "Review changes.",
+            "args": [],
+            "member": true,
+            "runtime": null,
+            "lastTerminalId": "t1",
+            "lastExit": {
+                "kind": "stopped",
+                "message": null,
+                "at": 1789948800000
+            }
+        }
+    ]
 }
 ```
 
@@ -485,7 +507,12 @@ Runtime ID들은 nullable이고 source는 `runtime-override|manifest-edge|manife
 
 ```json
 {
-  "operation":{"kind":"directed","action":"unblock","from":"reviewer","to":["implementer"]}
+    "operation": {
+        "kind": "directed",
+        "action": "unblock",
+        "from": "reviewer",
+        "to": ["implementer"]
+    }
 }
 ```
 

@@ -33,11 +33,11 @@ Daemon이 materialized Runtime·Network·route의 권위를 갖고 실행 소유
 실행 위치별 소유권은 adapter 선택과 독립적이다. 새 vendor에 Claude inbox나 단일 프로세스 구성을
 요구하지 않는다. 실제 프로세스 배치와 공유 계약은 [[docs/architecture/aiox-vendor-bindings]]가 소유한다.
 
-| 명령과 인증된 실행 위치 | 실행 소유자 | 사용자 화면 |
-| --- | --- | --- |
-| 어디서든 `host run` | daemon | Web |
-| Web shell의 `agent run` | daemon | 기존 Web terminal, 종료 후 같은 shell |
-| 외부 터미널의 `agent run` | CLI | 사용자 터미널, 종료 후 같은 shell |
+| 명령과 인증된 실행 위치   | 실행 소유자 | 사용자 화면                                                                                       |
+| ------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
+| 어디서든 `host run`       | daemon      | Web                                                                                               |
+| Web shell의 `agent run`   | daemon      | Network 미지정·같은 Network panel이면 기존 shell, 다른 Network를 지정하면 대상 panel의 별도 shell |
+| 외부 터미널의 `agent run` | CLI         | 사용자 터미널, 종료 후 같은 shell                                                                 |
 
 외부 실행에는 AIOX PTY·headless·xterm·Serialize를 생성하지 않는다. 실행 소유권은 terminal
 차용 관계나 Network membership과 별개다. 외부 실행은 협업 등록이 유효해도 Web 목록·알림과
@@ -88,13 +88,13 @@ CLI `agent list`는 Agent 이름·상태·role·Network 이름을 간결하게 �
 
 Web과 `agents_list()`는 동일한 `status`와 `status_reason`을 사용한다.
 
-| status | 관측 의미 |
-| --- | --- |
-| `aiox-preparing` | AIOX 실행·연결·현재 대화 준비 중 |
-| `idle` | 현재 진행 중인 작업·미해결 대기가 없음 |
-| `working` | 작업 진행 중; 추론·도구 실행은 현재 이유로 구분 |
-| `awaiting-user` | 명시적으로 관측된 사용자 입력·승인 대기 |
-| `failed` | 관측된 최종 응답 실패 또는 AIOX 연결 실패 |
+| status           | 관측 의미                                       |
+| ---------------- | ----------------------------------------------- |
+| `aiox-preparing` | AIOX 실행·연결·현재 대화 준비 중                |
+| `idle`           | 현재 진행 중인 작업·미해결 대기가 없음          |
+| `working`        | 작업 진행 중; 추론·도구 실행은 현재 이유로 구분 |
+| `awaiting-user`  | 명시적으로 관측된 사용자 입력·승인 대기         |
+| `failed`         | 관측된 최종 응답 실패 또는 AIOX 연결 실패       |
 
 `status_reason`은 현재 상태의 이유이며 없는 정보는 `null`이다. adapter가 vendor 관측을
 해석하고 양쪽 소비자는 같은 값을 표시한다. 새 이유로 교체하고 이유가 없으면 이전 이유를
@@ -134,12 +134,12 @@ Claude는 세 hooks(SessionStart·StopFailure·Notification)와 registry·transc
 관측한 실패가 있으면 `failed`, 없으면 `idle`이다. registry 활동 상태는 개별 요청의
 완료·실패 결과를 변경하지 않는다.
 
-| Claude 관측 | 상태 반영 |
-| --- | --- |
-| `StopFailure` | 현재 instance의 실패 이유를 보관하고 registry가 idle일 때 `failed`로 표시. `rate_limit`을 세션/주간 한도로 임의 번역하지 않으며 `cloud_credential_error`를 보존 |
-| `quota_auto_resume_fired` | 이전 실패·quota 대기 이유를 해제. busy/waiting/idle/shell은 현재 session의 registry로 표시 |
-| `quota_auto_resume_stale` | `awaiting-user`; 자동 재개를 위해 Enter 입력을 기다린다는 이유 표시 |
-| `quota_auto_resume_disabled` | 해당 세션의 quota 대기·자동 재개 기록을 해제한 뒤 상태 재계산. 현재 남은 실패·이유는 보존하고 이미 해제된 과거 실패는 복원하지 않음 |
+| Claude 관측                  | 상태 반영                                                                                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `StopFailure`                | 현재 instance의 실패 이유를 보관하고 registry가 idle일 때 `failed`로 표시. `rate_limit`을 세션/주간 한도로 임의 번역하지 않으며 `cloud_credential_error`를 보존 |
+| `quota_auto_resume_fired`    | 이전 실패·quota 대기 이유를 해제. busy/waiting/idle/shell은 현재 session의 registry로 표시                                                                      |
+| `quota_auto_resume_stale`    | `awaiting-user`; 자동 재개를 위해 Enter 입력을 기다린다는 이유 표시                                                                                             |
+| `quota_auto_resume_disabled` | 해당 세션의 quota 대기·자동 재개 기록을 해제한 뒤 상태 재계산. 현재 남은 실패·이유는 보존하고 이미 해제된 과거 실패는 복원하지 않음                             |
 
 현재 registry가 idle이고 다른 대기가 없을 때 StopFailure → stale → disabled는 현재 실패가 남아 `failed`이고,
 StopFailure → fired → disabled는 fired가 실패를 해제했으므로 `idle`이다. disabled가 새 실패를
@@ -186,11 +186,11 @@ vendor·필수 부속 실행을 종료하지 않는다. 협업 실패에서는 �
 
 명시적 CLI 종료는 실행 소유권을 먼저 구분하고 daemon 소유 실행에만 실행 환경과 force 정책을 적용한다. 외부 `agent run claude/codex`의 vendor·필수 부속 실행은 모든 OS의 일반 stop·force에서 유지하고 협업 등록만 해제한다.
 
-| 요청 | 종료 정책 |
-| --- | --- |
+| 요청                               | 종료 정책                                                                                                        |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | macOS/Linux/WSL daemon의 일반 stop | daemon 소유 등록 실행이 있거나 일반 shell이 busy/unknown이면 거절. idle shell은 종료; 외부 참여는 blocker가 아님 |
-| Windows native daemon의 일반 stop | idle 검사 없이 daemon 소유 실행 종료; 외부 실행은 협업만 해제 |
-| 모든 환경의 stop --force | 작업 상태와 관계없이 daemon 소유 실행 강제 종료; 외부 실행은 협업만 해제 |
+| Windows native daemon의 일반 stop  | idle 검사 없이 daemon 소유 실행 종료; 외부 실행은 협업만 해제                                                    |
+| 모든 환경의 stop --force           | 작업 상태와 관계없이 daemon 소유 실행 강제 종료; 외부 실행은 협업만 해제                                         |
 
 일반 shell의 idle은 AIOX가 처음 만든 shell의 입력 대기와 남은 작업으로 판정한다. 안쪽 shell의
 idle은 추적하지 않으며 자식 shell이 입력 대기 중이어도 바깥 shell의 작업이다. 이전 출력,
@@ -412,17 +412,17 @@ argv에서 파일 선택에 필요한 값만 추출 (아직 CLI 설정 검증·�
 CLI 인자를 검증한 뒤 조회한다. YAML resolve를 사용하는 명령은 resolve body에 cliErrors를
 전달해 YAML 검증 뒤 대상 해석 전에 거절한다. daemon도 입력을 신뢰하지 않고 재검증한다.
 
-| Host 명령 | YAML 소비와 적용 | 출력·옵션 |
-| --- | --- | --- |
-| run | 최신 전체 선언, 새 panel | `--path/--file`, run만 `--layout/--columns/--rows`; 전체 준비 결과 |
-| list | 없음 | `[--json]`; 이름·관리/실행 수·진행 작업 |
-| status [hostname] | 이름 없을 때만 resolve; 적용 없음 | `[--path/--file] [--json]`; 적용 Agent·현재 관측·실패 원인 |
-| stop [hostname] | 이름 없을 때만 resolve; 적용 정의 사용 | `[--path/--file]`; Agent 종료·정리 결과 |
-| restart | 최신 전체 선언 | `[--path/--file]`; 준비 전 오류면 기존 상태 유지 |
-| delete [hostname] | 이름 없을 때만 resolve | `[--path/--file]`; panel 소유 자원 종료·삭제 결과 |
-| agent start/restart names... | 최신 전체 검증, 대상 범위만 적용 | `[--path/--file]`; 대상별 ready/unchanged/failed |
-| agent stop names... | YAML로 Host 선택, 적용된 관리 이름 대상으로 종료 | `[--path/--file]`; 최신 정의 재적용 없음 |
-| network list/show/block/unblock/reset | YAML 없음, 필수 host 및 show/변경의 network | 위 tree의 `--json`과 route 선택 옵션; 적용 정책·출처 |
+| Host 명령                             | YAML 소비와 적용                                 | 출력·옵션                                                          |
+| ------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
+| run                                   | 최신 전체 선언, 새 panel                         | `--path/--file`, run만 `--layout/--columns/--rows`; 전체 준비 결과 |
+| list                                  | 없음                                             | `[--json]`; 이름·관리/실행 수·진행 작업                            |
+| status [hostname]                     | 이름 없을 때만 resolve; 적용 없음                | `[--path/--file] [--json]`; 적용 Agent·현재 관측·실패 원인         |
+| stop [hostname]                       | 이름 없을 때만 resolve; 적용 정의 사용           | `[--path/--file]`; Agent 종료·정리 결과                            |
+| restart                               | 최신 전체 선언                                   | `[--path/--file]`; 준비 전 오류면 기존 상태 유지                   |
+| delete [hostname]                     | 이름 없을 때만 resolve                           | `[--path/--file]`; panel 소유 자원 종료·삭제 결과                  |
+| agent start/restart names...          | 최신 전체 검증, 대상 범위만 적용                 | `[--path/--file]`; 대상별 ready/unchanged/failed                   |
+| agent stop names...                   | YAML로 Host 선택, 적용된 관리 이름 대상으로 종료 | `[--path/--file]`; 최신 정의 재적용 없음                           |
+| network list/show/block/unblock/reset | YAML 없음, 필수 host 및 show/변경의 network      | 위 tree의 `--json`과 route 선택 옵션; 적용 정책·출처               |
 
 명시 hostname의 status/stop/delete는 YAML 파일이 삭제돼도 작동한다. hostname과 Network
 이름은 ID 모양이어도 이름 전용이다. CLI는 Host spec의 정확한 이름 조회로 ID를 얻은 뒤
@@ -451,9 +451,11 @@ ID 전용 조회·제어 API를 호출한다. 대상이 사라지면 실패하�
 소유하므로 호출자의 연결이 끊겨도 취소되지 않는다. Web panel 명령의 성공 기준(등록 commit)과
 대상 조건·순번 계약은 [[docs/specs/aiox-configuration-web]]이 소유하며 Host 명령과 섞지 않는다.
 
-호출한 CLI의 terminal에 관리 Agent를 배치한 경우에만 결과 전에
-`{"type":"launch","hostId","agentKey","terminalId","marker"}`가 온다. CLI는 그 Agent를 자기
-terminal에서 foreground로 실행하고, 실행 전 실패는 marker가 붙은 진단으로 daemon에 알린다.
+Host의 모든 대상은 daemon이 직접 실행한다. 호출한 Web shell을 재사용해도 CLI를 다시 실행하거나
+`launch` 이벤트를 보내지 않는다. CLI는 대상별 실제 준비 결과를 받은 뒤 반환한다. Web은 해당
+runtime의 terminal에 연결하고, Agent 종료 후 같은 탭의 기존 shell로 돌아간다. 외부 OS terminal에서
+실행한 Host CLI도 대상별 결과를 표시하며 그 외부 terminal을 Agent의 입력 relay로 바꾸지 않는다.
+[Status: Current]
 
 requestId는 caller가 만드는 UUID이며 같은 요청의 네트워크 재시도에만 재사용한다. 같은
 requestId+동일 입력은 처리 중이면 그 처리에 합류하고, 끝났으면 기록된 같은 결과를 받는다.
@@ -463,13 +465,36 @@ requestId+동일 입력은 처리 중이면 그 처리에 합류하고, 끝났�
 
 ```json
 {
-  "requestId":"6a8ed620-0000-4000-8000-000000000001","command":"host.run","hostId":"h1",
-  "state":"failed",
-  "targets":[{"agentKey":"reviewer","terminalId":"t1","state":"ready","error":null},
-    {"agentKey":"tester","terminalId":"t2","state":"failed",
-     "error":{"code":"execution_failed","message":"vendor unavailable","stage":"execution","agentKey":"tester"}}],
-  "error":{"code":"execution_failed","message":"vendor unavailable","stage":"execution","agentKey":"tester"},
-  "cleanupErrors":[]
+    "requestId": "6a8ed620-0000-4000-8000-000000000001",
+    "command": "host.run",
+    "hostId": "h1",
+    "state": "failed",
+    "targets": [
+        {
+            "agentKey": "reviewer",
+            "terminalId": "t1",
+            "state": "ready",
+            "error": null
+        },
+        {
+            "agentKey": "tester",
+            "terminalId": "t2",
+            "state": "failed",
+            "error": {
+                "code": "execution_failed",
+                "message": "vendor unavailable",
+                "stage": "execution",
+                "agentKey": "tester"
+            }
+        }
+    ],
+    "error": {
+        "code": "execution_failed",
+        "message": "vendor unavailable",
+        "stage": "execution",
+        "agentKey": "tester"
+    },
+    "cleanupErrors": []
 }
 ```
 
@@ -490,18 +515,18 @@ stop/delete는 실제 종료와 credential/binding/membership 정리, 필요한 
 종료 확인에 실패한 대상은 failed로 남고 delete는 Host와 panel을 유지해 명시 재시도를 기다린다.
 명시 재시도에서 이미 종료된 자원은 건너뛴다. 부분 실행 실패를 전부 원상복구됐다고 보고하지 않는다.
 
-| HTTP / code | 의미·consumer 행동 |
-| --- | --- |
-| 400 `invalid_request`, `invalid_cli`, `invalid_yaml`, `yaml_not_found`, `yaml_ambiguous` | field/파일 위치/후보와 원인 표시; 실행 없음 |
-| 500 `invalid_config` | 서버 config 읽기·형식 오류; 기존 실행 유지 |
-| 400 `invalid_environment` | 확인된 요청 작업 경로/실행 입력 오류; 검증 불확실성은 500 invalid_config와 진단 |
-| 404 `unknown_host`, `unknown_host_agent`, `unknown_network`, `unknown_panel`, `unknown_tab`, `unknown_pane`, `unknown_split` | 다른 대상으로 대체하지 않음 |
-| 409 `host_exists`, `host_name_conflict`, `host_busy`, `network_change_requires_restart`, `agent_not_running` | 기존 상태 유지·현재 대상과 다음 명령 안내 |
-| 409 `revision_conflict`, `request_conflict`, `confirmation_required` | 재조회 후 사용자 의도 재확인, 자동 overwrite 없음. `revision_conflict`는 Host 구성 교체·삭제의 충돌이며 Web panel 명령은 쓰지 않음 |
-| 409 `layout_changed`, `id_conflict`, `id_deleted`, `runtime_conflict` | 서버 상태 유지; Web은 해당 명령의 화면 변경만 제거 |
-| 409 `sequence_gap`, `sequence_expired`, `sequence_conflict`, `result_expired` | Web 명령 순번 실패로 실행하지 않음; 최신 SSE 상태에서 다시 판단 |
-| 500 `storage_error` | 조회/저장 실패를 빈 목록·성공으로 숨기지 않음 |
-| 503 `not_ready` | daemon 준비/종료 중; 접수 전 실패 |
+| HTTP / code                                                                                                                  | 의미·consumer 행동                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 400 `invalid_request`, `invalid_cli`, `invalid_yaml`, `yaml_not_found`, `yaml_ambiguous`                                     | field/파일 위치/후보와 원인 표시; 실행 없음                                                                                        |
+| 500 `invalid_config`                                                                                                         | 서버 config 읽기·형식 오류; 기존 실행 유지                                                                                         |
+| 400 `invalid_environment`                                                                                                    | 확인된 요청 작업 경로/실행 입력 오류; 검증 불확실성은 500 invalid_config와 진단                                                    |
+| 404 `unknown_host`, `unknown_host_agent`, `unknown_network`, `unknown_panel`, `unknown_tab`, `unknown_pane`, `unknown_split` | 다른 대상으로 대체하지 않음                                                                                                        |
+| 409 `host_exists`, `host_name_conflict`, `host_busy`, `network_change_requires_restart`, `agent_not_running`                 | 기존 상태 유지·현재 대상과 다음 명령 안내                                                                                          |
+| 409 `revision_conflict`, `request_conflict`, `confirmation_required`                                                         | 재조회 후 사용자 의도 재확인, 자동 overwrite 없음. `revision_conflict`는 Host 구성 교체·삭제의 충돌이며 Web panel 명령은 쓰지 않음 |
+| 409 `layout_changed`, `id_conflict`, `id_deleted`, `runtime_conflict`                                                        | 서버 상태 유지; Web은 해당 명령의 화면 변경만 제거                                                                                 |
+| 409 `sequence_gap`, `sequence_expired`, `sequence_conflict`, `result_expired`                                                | Web 명령 순번 실패로 실행하지 않음; 최신 SSE 상태에서 다시 판단                                                                    |
+| 500 `storage_error`                                                                                                          | 조회/저장 실패를 빈 목록·성공으로 숨기지 않음                                                                                      |
+| 503 `not_ready`                                                                                                              | daemon 준비/종료 중; 접수 전 실패                                                                                                  |
 
 HTTP 오류 본문은 기존 `{code,message}`를 확장하여 `{code,message,stage,field?,agentKey?,candidates?}`다. candidates는 파일 선택 오류에서 절대 파일 경로 배열이다.
 실행이 시작된 뒤의 실패는 HTTP 오류가 아니라 Host 명령 결과의 대상·명령 오류다. code는 실행
@@ -509,11 +534,21 @@ HTTP 오류 본문은 기존 `{code,message}`를 확장하여 `{code,message,sta
 확정 전에 daemon이 끝나면 `daemon_interrupted`다. 메시지는 실제 진단을 보존하되 token/env 비밀값을 포함하지 않는다.
 
 ```json
-{"code":"invalid_yaml","message":"grid requires columns or rows","stage":"yaml","field":"host.layout"}
+{
+    "code": "invalid_yaml",
+    "message": "grid requires columns or rows",
+    "stage": "yaml",
+    "field": "host.layout"
+}
 ```
 
 ```json
-{"code":"network_change_requires_restart","message":"Network default changed; use aiox host restart.","stage":"yaml","field":"networks.feature-a.routing.default"}
+{
+    "code": "network_change_requires_restart",
+    "message": "Network default changed; use aiox host restart.",
+    "stage": "yaml",
+    "field": "networks.feature-a.routing.default"
+}
 ```
 
 사전 validation·route·layout 변경의 실제 오류 코드는 위 HTTP 표를 따른다.

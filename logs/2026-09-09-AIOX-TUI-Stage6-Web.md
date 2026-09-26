@@ -15,7 +15,7 @@ status: open
 - [x] W7 알림 fixture UI 구현과 사용자 시각 확인 PASS 완료. 고정 제목·Clear all, ScrollArea 목록·구분선·최신순·상대 시각, runtime 대상 이동과 NotFound를 반영했다. 실제 SSE·확인 API 및 삭제 후 최신 대상 탐색은 W10에서 연결·검증한다.
 - [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
 - [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
-- [>] W10 제품 화면·명령·알림과 운영 터미널 WS·xterm 연결 및 검증을 완료했다. 다음은 Settings·Keybinding 연결과 남은 통합 검증 범위를 확정한다. 이번 터미널 단계만 완료이며 W10 전체는 진행 중이다. next: 「2026-09-25 · W10 운영 터미널 WS·xterm 연결」.
+- [>] W10 운영 Web 연동·터미널 기본 키와 config 변경분은 구현했다. 한글 조합 중/종료 대기 단축키의 마지막 글자→이동·삭제 순서를 실제 xterm 회귀와 Chromium IME 경로로 수정·검증했다. 최신 entry를 기준으로 OS 한글 입력기 사용자 확인과 남은 통합 검증을 이어간다. Linux/Windows/WSL 네이티브와 Codex 종료 후 간헐적 입력 변화는 미완료다.
 - [x] W11 서버 제거·빈 pane/split 정리와 원자 저장 검토를 완료했다. W17에서 선택을 클라이언트 전용으로 분리하고 owner 정합과 직접 회귀 검증을 완료했다. 실제 Web RPC·PTY 통합 검증은 W10이 소유한다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
@@ -104,7 +104,7 @@ status: open
 
 - 정합 순서와 소유 경계. W15 서버 마이그레이션 완료 결과는 `logs/2026-09-25-Effect-Server-Migration.md`에서 수용했다. 실행 가능한 Effect Schema·RPC group은 `@aiox/protocol`, 앱 wire/세션/상태 계약은 [[docs/specs/aiox-application-rpc]], panel·terminal 의미는 [[docs/specs/aiox-configuration-web]]가 소유한다. `.parse/.safeParse`는 같은 Effect decoder의 호환 경계다. 예전 Zod·HTTP/SSE 구현 지시는 최신 목표가 아니다. Web UI 계약은 [[docs/specs/aiox-web-ui]], 구조는 [[docs/architecture/aiox-system]]에 반영한다. 중복 인계 spec을 만들지 않는다.
 - 서버 PanelView는 pane/tab의 관계·순서·split 배치와 실행 자원을 전달하며 activePaneId·selectedTabId를 포함하지 않는다. Web의 apps/web/src/entities/panel/workspace-layout.ts가 WorkspaceLayout.activePaneId와 pane별 selectedTabId를 정의한다. React 메모리에서만 선택하고 선택 대상 삭제 시 남은 구조에서 선택을 조정한다. 새로고침 시 초기화하며 서버 select 명령·DB 저장·localStorage를 추가하지 않는다. agent/network/host 소속은 각 공개 DTO와 Web UI spec을 따른다.
-- standalone 판정은 `hostId === null && networkId === null`이다. 사용자가 지적해 정정한다. 앞서 이 항목에 적었던 `hostId === null` 단독 판정과 "HOSTS·WORKSPACES에서 split이 degenerate하다"는 분석은 둘 다 틀렸다. 근거는 카드의 agent 집합이 membership 조회 하나가 아니라 membership과 pane shell terminal 역검색의 합집합이라는 것이다. `aiox agent run claude`를 panel의 pane shell에서 치면 [[docs/specs/aiox-runtime]] 표대로 daemon 소유로 그 Web terminal에서 돌고, `bootstrap.ts:548`이 `terminalContextFromEnv(process.env)`의 유무로 external을 가르므로 `terminalId`가 그 pane에 붙는다. `agentRunSchema.network`(`core.ts:75`)는 optional이고 host 지정 인자는 없으므로 이 agent는 `networkId`·`hostId`가 모두 null이다. 따라서 NETWORKS·HOSTS 카드 모두 소속과 standalone이 실제로 섞인다. WORKSPACES만 panel layout refinement이 workspace panel의 hostId·networkId를 모두 null로 강제해 소속 집합이 공집합이고 전부 standalone이다. 이것은 spec 결함이 아니라 결과다. 또 external ⊂ standalone이라던 기록도 뒤집힌다. `runtimes.ts:130-136`이 external의 terminalId·hostId를 금지하므로 카드에 뜨는 external은 networkId로만 올라오고, networkId가 있으면 standalone이 아니라 소속이다. spec 78행의 "둘 다 null인 external은 어느 카드에도 표시하지 않는다"가 나머지를 배제한다.
+- standalone 판정은 hostId === null && networkId === null이다. Web shell의 Network 참여는 명시적 --network로만 정하며 어느 panel의 shell이든 membership을 자동 상속하지 않는다. 명시한 대상 Network panel 안이면 기존 shell을 사용하고, 다른 workspace이면 대상 panel에 별도 shell·Agent를 준비한 뒤 호출 CLI는 원래 shell로 복귀한다. Claude/Codex 공통 경로이며 Network 생성 자체는 빈 panel만 만든다. 외부 OS 터미널의 CLI 소유 실행은 이 배치 변경과 구분한다. 근거: docs/specs/aiox-configuration-web.md, docs/specs/aiox-runtime.md, apps/daemon/src/network-agent.ts 및 network-agent.test.ts.
 - NETWORKS 카드의 멤버 수도 DTO 하나로 오지 않는다. `networkViewSchema`(`core.ts:134`)는 id·name·scope·routes뿐이고 members가 없다. members를 가진 것은 `hostNetworkViewSchema`(`host.ts:168`, `scope: "host"`)이며 `webNetworkSchema`는 둘의 union이다. 따라서 host scope network는 `members.length`를 그대로 쓰고 persistent network는 agents에서 networkId 매칭으로 세야 한다. 두 경로가 같은 수를 뜻하는지 확인하고 정한다.
 - 터미널 수명은 「W5 DnD 사용자 PASS와 터미널 표시 수명 구조」 블록과 terminal-surface.tsx·visibleTerminals를 이어받는다. 최종 배치에서 계속 보이는 terminal은 유지·DOM 이동, 새로 보이면 연결·복원, 숨김/Workspace 이탈이면 브라우저 자원 정리한다. 서버 프로세스는 연결 해제만으로 종료하지 않는다. terminalId뿐 아니라 runtime 변경을 구분하고, 이동 중 Reconnect 상태 유지·늦은 결과 무시·크기/포커스·숨긴 화면 resize 방지를 실제 attach로 검증한다. W12의 동작별 이동·분할·resize 명령과 대상 충돌·실패 복구를 W10에서 연결한다. 전체 layout PUT 및 Web panel revision 일치 검사는 사용하지 않는다.
 - RPC 상태 연결 시 같은 panel ID의 최신 snapshot을 WorkspaceView가 직접 소비하도록 fixture용 useState(panel) 복사본을 제거한다. 지금 별도 부모 상태 리팩토링은 하지 않는다. 임시 진단 테스트로 같은 ID의 tabs/layout 갱신 무시와 Reconnect 로컬 override의 새 disconnected 상태 가림을 재현했다. runtime 교체만의 독립 검증은 panel 갱신 반영 후 수행한다. terminalId+runtimeId별 attach 상태와 이전 비동기 결과 정리를 실제 연결 시 검증한다. 근거: 「W10 SSE 연결 시 panel·연결 상태 소유 정리」 블록.
@@ -118,6 +118,7 @@ status: open
 - 프론트 후속 검증: 다른 창의 생성/이동, shell 준비 중 이동/삭제와 늦은 완료, cleanup 실패, 요청 결과/방송 역전·중복·유실, 재접속 snapshot, 알림 최신 대상 탐색을 확인한다. terminal WS와 headless serialize는 앱 snapshot과 별개이며 보이는 pane 이동의 xterm/WS 유지·숨김 시 브라우저 자원 정리·attach 완료 뒤 입력을 보존한다. 이번 서버 작업의 라이브러리 설치만으로 실제 React 통합 PASS를 주장하지 않는다.
 - 2026-09-25 저장소 연결 완료: ApplicationProvider가 안정적인 소비자로 ApplicationStore를 설치한다. 공개 hooks는 @/app/application-state의 useApplicationState/useApplicationStore/usePanelCommand/usePanelSelection이며 비 React 테스트는 @/shared/api/application-store의 ApplicationStore를 사용한다. panelCommand의 발급 콜백이 비동기 requestId/sequence를 intent에 연결한다. 전체 구현·검증과 다음 UI 연결 지점은 「2026-09-25 · W10 TanStack DB 상태 저장소」를 따른다. fixture 화면·제품 명령·알림·PTY 통합은 계속 W10에 남으며 Settings·Keybinding은 이후다.
 - 제품 조회·panel 명령·알림은 「2026-09-25 · W10 제품 화면 실제 상태·명령·알림 연결」 결과를 소비한다. 운영 경로는 AppShell → WorkspacePage → WorkspaceContent이며 fixture controller는 Storybook 전용이다. 선택은 Provider 한 곳, 읽음은 notifications.read의 필수 ids 배열과 서버 delta, terminal attach는 아직 미연결이라는 경계를 유지한다.
+- daemon 소유 PTY의 terminal identity는 부모 Ghostty/Kitty/WezTerm에서 상속하지 않는다. packages/terminal/src/index.ts가 TERM=xterm-256color·TERM_PROGRAM=aiox·COLORTERM=truecolor로 정규화한다. 부모 식별값 누출로 Codex가 Kitty 이미지 출력을 보내 입력 지연·화면 오염을 일으켰던 회귀를 유지한다. 기존 shell의 환경은 새 코드로 소급 변경되지 않으므로 새 빌드 daemon과 새 shell로 검증한다.
 
 ### {W7}
 
@@ -983,3 +984,180 @@ owner 정합: aiox-application-rpc·aiox-configuration-web의 제품 미연결 �
 - 사용자 리뷰 보고: 기능 코드의 Standards/Spec 리뷰를 통과했으며 새 기능 결함은 발견하지 못했다고 전달했다. 사용자가 Web 166개·서버 회귀 97개·terminal 88개와 typecheck/build/lint/format/diff 점검을 직접 재실행해 통과했다고 보고했다. 이번 리뷰에서 운영 브라우저 수동 검증과 React Doctor는 재실행하지 않았고, 번들 크기 경고·실 TLS/vendor/다른 OS·이동 중 입력 포커스 유지 제한은 그대로라고 밝혔다. 이는 사용자 보고이며 이번 정정 턴의 에이전트 직접 재실행 결과로 기록하지 않는다.
 - 에이전트 직접 확인·정정: RPC 명세 162행에 “실제 화면 명령 및 xterm 통합은 후속 Web 작업”이라는 stale 문장이 남아 있었다. 운영 WorkspaceContent→ConnectedTerminal→attachTerminal 연결과 기존 직접 검증 기록, 같은 문서의 경계 절 및 configuration-web/storage-terminal owner를 대조해 문서 정정이 타당함을 확인했다. 해당 문장을 구현 완료와 Web·임시 daemon/SQLite/PTY·브라우저 검증 범위로 바꾸고 터미널 계약 owner 링크를 붙였다. “서버 RPC 통과를 제품 경로 완료 근거로 사용하지 않는다”는 검증 구분은 유지했다.
 - 이번 직접 검증은 관련 owner의 동일 stale 문구 검색, 변경 문장·링크 및 git diff --check다. 문서·로그만 수정했으므로 기능 테스트·브라우저·React Doctor를 다시 실행하지 않았다. 코드 변경과 commit/push는 없으며 W10은 진행 중, next는 Settings·Keybinding 및 남은 통합 검증 범위 확정으로 유지한다.
+
+### 2026-09-25 19:52 · Network 배치·Codex 입력 결함 수정과 실제 Codex 실행 검증
+
+사용자 지시: Web shell에서 `agent run claude/codex --network <Network>`를 실행하면 대상 Network panel에 shell과 Agent가 배치되어야 한다. Codex 프롬프트의 한글·영문 입력 지연과 우측 위쪽 문자 노출도 원인을 찾아 수정한다. 이후 Codex의 Network 배치까지 확인하고 로그를 기록하라는 지시를 받았다. 이 entry는 직전 수정 턴과 이번 Codex 추가 검증을 함께 기록하며, 타 agent 보고를 직접 검증으로 바꾸지 않는다.
+
+직접 확인한 요구·구현:
+
+- 사용자가 선택한 Network 생성 UX는 **빈 Network panel 생성, shell은 `+`로 추가**다. 사용자 workspace 생성의 pane+tab+shell 계약과 구분한다. Network와 같은 ID의 빈 panel을 SQLite transaction으로 함께 생성·삭제하고, preparing tab을 포함해 탭이 남아 있으면 Network 삭제를 거절한다. 관련 Network/panel 변경은 같은 AppState delta로 전달한다. 기존 개발 DB의 누락 panel을 backfill하거나 DB를 삭제하지 않았다.
+- Web shell의 foreground Agent 실행 후 재연결이 404가 된 원인은 runtime query 경로가 relay 단절 때만 vendor PTY를 허용했던 것이다. runtime/terminal 일치 검사는 유지하고, relay 정상일 때는 기존 shell PTY, relay 단절 때는 vendor PTY로 연결한다. 위 Network 생성·재연결 수정은 사용자 지시로 `a0de2e6`에 커밋했으며 별도 연구 파일은 포함하지 않았다.
+- 기존 `--network` 구현은 membership만 등록하고 호출 shell을 그대로 차용해 다른 panel 배치 요구를 충족하지 못했다. `network-agent.ts`에서 인증된 호출 shell과 대상 panel의 관계를 확인한다. 같은 Network panel이면 기존 shell을 사용하며, 다른 workspace이면 대상 panel에 탭·별도 shell을 준비하고 그 shell에서 공통 CLI launcher를 실행한다. Host와 준비 관측기를 공유하며 실제 Agent 준비 성공·실패를 호출 CLI에 반환한다. 원래 shell은 유지한다. 생성 중 탭 삭제는 늦은 shell을 cleanup registry로 넘기며, 준비 실패 원인은 호출 CLI와 대상 탭에 보존한다. 외부 OS 터미널의 CLI 소유권 계약은 변경하지 않았다.
+- Codex 입력 문제는 AIOX Agent 중계가 없는 **직접 `codex` 실행**에서도 재현했다. daemon의 부모 cmux/Ghostty 환경(`TERM=xterm-ghostty`, `TERM_PROGRAM=ghostty`, Ghostty 식별값)이 Web PTY로 전달되어 Codex가 xterm에서 지원하지 않는 Kitty 이미지 출력을 사용했다. 입력이 끝난 뒤 화면이 10초 이상 뒤처지는 상황에서 이미지 제어/인코딩 출력을 확인했다. `packages/terminal/src/index.ts`의 공통 PTY 생성 경계에서 부모 터미널 식별값을 제거하고 `TERM=xterm-256color`, `TERM_PROGRAM=aiox`, `COLORTERM=truecolor`를 전달하도록 수정했다. 사용자 PATH·언어·실행 환경 및 AIOX 인증 문맥은 보존하며 외부 CLI 소유 실행에는 적용하지 않는다.
+- 격리 브라우저·실제 Codex 0.157.0의 한글·영문 여러 줄 입력을 비교했다. 수정 전 수집 구간에는 약 26.8MB와 Kitty 이미지 명령 7,731건이 있었고 수정 후에는 Kitty 이미지 명령이 0건이었다. 수집 기간이 다르므로 처리량 성능 배수로 해석하지 않는다. 수정 후 마지막 입력 반영은 단일 관측 약 5ms, 별도 실제 키 이벤트 입력은 약 33ms였다. 평균·p95 측정이 아니며 모든 IME/OS 환경 인증으로 확대하지 않는다.
+
+직접 검증:
+
+| 범위 | 실제 수행 및 결과 | 한계 |
+| --- | --- | --- |
+| 직전 수정 전체 검사 | `pnpm check` exit 0. daemon 303 passed/1 opt-in skipped, terminal 90, Web 175, CLI 74, persistence 26, Codex adapter 20, Claude adapter 141 등 통과. `/tmp/aiox-network-codex-check.txt` | 기존 lint·Web chunk 경고는 남음. 이번 vendor 행렬 확장 전 결과 |
+| 이번 Network 회귀 | `network-agent.test.ts`를 Claude/Codex × 성공·준비 실패·생성 중 삭제 6개로 확장해 모두 통과. 실제 SQLite·shell PTY·빌드된 CLI 사용, Web용 AppState의 terminalId/runtimeId/tui 투영도 검증 | vendor 본체는 제어 가능한 테스트 adapter. 실제 vendor 검증과 구분 |
+| 실제 Codex Network 실행 | 임시 home·DB·인증된 source shell에서 실제 Codex 0.157.0과 제품 adapter 실행. 대상 Network panel에 다른 terminalId, App Server·TUI·MCP 준비 후 runtime `running/idle`, 호출 shell 복귀·후속 입력 성공. `/tmp/aiox-network-real-codex.txt`의 `REAL_CODEX_PASS` | 임시 CODEX_HOME과 로컬 시험 provider 사용. 프롬프트 제출·모델 응답 생성 없음. headless 화면 소비이며 이번 턴 실제 제품 브라우저 조작은 재실행하지 않음 |
+| 종료·보존 | 실제 Codex 검증 daemon 종료 `stopped:true`, blocking/warnings 없음. 임시 프로세스·home·DB 정리. 사용자 daemon·Agent는 중단/재시작하지 않음 | 새 빌드 적용에는 사용자 daemon 재시작 및 새 shell이 필요 |
+
+이번 실제 Codex 검증에서 별도 배치 결함은 발견하지 않았다. 따라서 Codex 전용 production 분기를 추가하지 않고 공통 구현을 유지했으며, Codex 명령과 Web 상태 전달을 회귀 테스트에 추가했다. 관련 typecheck·lint·format·diff 점검도 통과했다. 영속 근거는 [[apps/daemon/src/network-agent.test.ts]], [[apps/daemon/src/agent-controller.test.ts]], [[apps/daemon/src/host-run.test.ts]], [[packages/terminal/src/index.test.ts]]다. `/tmp` 자료는 재개 시 존재 여부를 확인한다.
+
+owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실제 준비 결과 계약, [[docs/specs/aiox-runtime]]에 실행 위치에 따른 화면 경계, [[docs/architecture/aiox-storage-terminal]]에 Network launcher·PTY 환경 정규화 책임을 반영했다. 이번 변경은 아직 커밋하지 않았다. 사용자 별도 미추적 연구 파일과 `architecture.excalidraw`는 변경하지 않았다.
+
+남은 일: 사용자 운영 daemon에서 새 빌드로 재확인, idle shell 삭제 시 불필요한 확인 dialog 정책 수정, W8 Settings·W9 Keybinding 및 W10의 나머지 통합 검증. W10 전체를 완료 처리하지 않는다. 이 로그는 1,000행을 넘지만 이번 기록은 같은 W10 운영 터미널 경로의 결함·검증 후속이므로 기존 owning block에 유지한다. 독립 작업 수명으로 전환할 때 분리를 다시 판단한다.
+
+### 2026-09-25 20:47 · Network·Host CLI 실행 위치의 panel·pane·tab 자동 표시 수정
+
+- 사용자 재현: 기존 탭이 있는 Network에서 `aiox agent run claude/codex --network <name>` 실행 후 해당 panel·pane·tab이 표시되지 않음. Host도 같은 문제가 있는지 확인하고 수정하도록 요청했다.
+- 직접 확인: 이전 Network 수정은 대상 탭/PTY/Runtime 등록과 delta 전달까지였다. React의 기존 로컬 선택과 route는 유지되고 실행 위치를 전달하는 경로가 없었다. Host run/restart와 개별 Agent start/restart도 동일했다.
+- 수정: 배치 delta 뒤 daemon의 `AppState.reveal`이 `epoch/sourceTerminalId/panelId/tabId` 일회성 앱 RPC 이벤트를 전달한다. React는 호출 shell이 현재 보이는 창에서만 대상 panel과 해당 탭의 현재 pane을 선택한다. 다른 shell을 표시하는 창은 이동하지 않는다. 여러 Host Agent는 첫 대상 하나를 선택한다. 서버 선택 상태 저장·전체 DB 조회·재접속 시 과거 이동 재생은 추가하지 않았다.
+- 회귀: React 재현 2개가 수정 전 실패함을 확인했다. 기존 탭이 있는 Network의 Claude/Codex 성공·실패·생성 중 삭제 6개, Host 실제 CLI 경로, 실제 RPC delta→reveal 순서와 재접속 snapshot을 검증했다. 전체 `pnpm check` exit 0: daemon 307 passed/1 opt-in skipped, Web 178, CLI 74, terminal 90, protocol 24, persistence 26, Claude adapter 141, Codex adapter 20. `/tmp/aiox-cli-reveal-check.txt`.
+- 전체 check 뒤 React Doctor의 새 배열 반복 탐색 경고를 단건 탐색으로 제거했다. 이후 AppShell 15개 테스트·Web build·파일 lint/format 통과. 최종 React Doctor 84/100, 기존 7 warnings이고 수정 파일의 새 진단 없음(`/tmp/aiox-cli-reveal-doctor-final.txt`). 도구 버전의 진단 분류가 이전 보고와 달라 이전 점수와 직접 개선 비교하지 않는다. Web chunk 크기 경고는 남는다.
+- 실제 브라우저: 임시 home/SQLite/daemon·실제 bash PTY·빌드된 CLI·제품 Web을 사용했다. 기존 shell 탭이 있는 dev에서 Claude → claude-visible 선택, 이어 Codex → 기존 탭들 보존/codex-visible 선택, Host 두 Agent → Host panel/첫 Agent 탭 선택과 다른 pane의 병렬 실행을 확인했다. vendor는 제어 가능한 테스트 adapter이며 실제 모델 응답은 이번 범위가 아니다. `/tmp/aiox-cli-reveal-browser.txt`.
+- owner 반영: [[docs/specs/aiox-configuration-web]]에 CLI 실행 위치/로컬 선택 계약, [[docs/architecture/aiox-storage-terminal]]에 producer→RPC→React 경로를 반영했다. 임시 브라우저 종료, daemon `stopped: true, blocking: [], warnings: []`, 임시 home 삭제를 확인했다. 기존 변경과 별도 연구 파일을 보존했고 작업 전 diff는 `/tmp/aiox-before-cli-reveal.patch`에 남겼다. 사용자 daemon 재시작·개발 DB 수정·commit/push는 하지 않았다. 운영 적용에는 새 build로 daemon 재시작과 Web 새로고침이 필요하다.
+- 같은 W10 운영 연결 결함 수정 수명이므로 1,000행 초과를 인지하고 이 block에 유지한다. W10 전체는 진행 중이며 idle shell 삭제 확인 정책·Settings/Keybinding·남은 운영 검증은 유지한다.
+
+### 2026-09-26 11:43 · 빌드 후 dev-2 배치 재신고의 실행 daemon 확인
+
+- 사용자 재신고: Workspaces shell에서 `node apps/cli/dist/main.js agent run codex --name munkil --network dev-2` 실행 후 대상 Network에 표시되지 않음.
+- 직접 확인: 로컬 네트워크 접근으로 CLI daemon status는 PID 39114/port 4500/Web 4501 running을 반환했다. `ps`의 시작 시각은 2026-09-25 17:29:01이고 실행 경로는 이 저장소 `apps/daemon/dist/main.js --config-stdin`이다. 현재 daemon/CLI 빌드 파일 수정 시각은 2026-09-26 11:39:14다. 해당 PID는 Network 배치/화면 이동 수정 전부터 실행 중이며 build 후 교체되지 않았다. 최초 sandbox 내부 status의 접속 실패는 실제 daemon 중단으로 해석하지 않았다.
+- 조치: 소스 추가 수정 없이 사용자에게 외부 OS terminal에서 `node apps/cli/dist/main.js daemon restart` 후 Web 새로고침·재시험을 안내한다. 현재 daemon/실행 shell은 임의 종료하지 않았다. 최신 코드로 재시작한 뒤 같은 사용자 시나리오가 성공했는지는 아직 미확인이다.
+
+### 2026-09-26 12:49 · Network 내부 실행 출력·Codex 종료 문구·Option 방향키 원인 진단
+
+- 사용자 제보: Workspaces에서 Network Codex를 실행할 때 내부 node/aiox-launch 경로와 `Disconnected from this task. Any running work continues.`가 표시되며, Agent 종료 후 Option+← 입력이 D로 남음. 불필요한 출력의 이유와 입력 문제 원인을 요청했다.
+- 직접 확인: `network-agent.ts`가 `host-run.ts`의 공통 `writeAgentCommand`로 만든 node+임시 cjs 명령을 대상 shell의 PTY 입력에 CR과 함께 쓴다. 사용자에게 내부 실행 경로가 보이는 것은 shell의 입력 echo/명령행 표시다. Host도 같은 launcher를 사용한다.
+- 직접 확인: 해당 Disconnected 문구는 AIOX 소스에 없고 설치된 Codex 바이너리에 있다. 공식 rust-v0.157.0 `codex-rs/tui/src/app/exit_summary.rs`의 remote TUI UserRequested 종료 문구이며, AIOX adapter는 App Server+remote TUI를 사용한다. 임시 daemon/SQLite/실제 Codex 0.157.1에서 시작 시 문구 없음, /quit 종료 후 문구 있음, Runtime release 및 정리를 확인했다. 사용자 화면의 시작 순간에 보였다는 관찰 자체는 동일하게 재현하지 못했다. AIOX는 해당 실행 종료 후 소유 App Server를 정리하므로 이 문구를 AIOX의 작업 지속 보장으로 해석하면 안 된다.
+- 직접 확인: 현재 xterm Keyboard.ts의 Option+←는 ESC[1;3D, Option+→는 ESC[1;3C다. 사용자 zsh에서 ESC[1;3D는 undefined-key, ESC b는 backward-word다. 격리 PTY에 사용자 zsh 설정을 읽고 ESC[1;3D를 보내 D가 남는 현상을 재현했다. 같은 대상 shell의 실제 Codex 실행 전·정상 종료 후 입력 반응은 동일했다. 따라서 이번 재현은 종료 후 raw mode 복원 실패의 증거가 아니라 키 바인딩 불일치다. 사용자 .zshrc·영구 설정은 수정하지 않았고 임시 ZDOTDIR에서 HISTFILE을 해제했다.
+- 검증: `/tmp/aiox-option-key-probe.txt`, `/tmp/aiox-codex-exit-probe.txt`, `/tmp/aiox-codex-exit-measurements.json`. 실제 Codex는 임시 CODEX_HOME·접속 불가능한 시험 model provider를 사용했으며 모델 프롬프트/유료 호출은 하지 않았다. 재현 도구의 초기 CLI import/출력 판별/Enter 전송 오류는 수정 후 최종 exit 0으로 재실행했다. 사용자 daemon은 변경하지 않았으며 임시 daemon stop은 stopped:true/blocking:[]/warnings:[]다.
+- 판단·후속: 내부 launcher 명령 노출은 공통 실행 경로에서 개선할 대상이다. Codex 원본 종료 메시지를 문자열 필터로 무조건 제거하지 않는다. Option 방향키는 Web의 macOS 키 매핑과 shell/TUI 소비 계약을 맞추고 회귀 검증할 대상이다. 이번에는 원인 조사만 했으며 제품 코드·owner 문서·build·commit/push는 변경하지 않았다. W10 및 기존 후속은 유지한다.
+
+### 2026-09-26 12:59 · Host 전체 실행 경로의 CLI launcher 경유 조사
+
+- 사용자 요청: Network뿐 아니라 Host도 내부 cjs→CLI→daemon 재호출 구조인지 확인. 직전 입력 문제에 대한 사용자 정정은 “처음 정상이고 TUI 종료 후 간헐적 발생”이다. 이전 재현의 실행 전후 동일 D 출력만으로 이 간헐 문제의 원인을 확정할 수 없으며, 실제 정상/비정상 상태의 입력·모드 비교는 남아 있다. Codex Disconnected 문구 논의는 사용자 지시로 보류한다.
+- 직접 코드 확인: Host run/restart는 `host-run.ts`의 start에서, 개별 Agent start/restart는 `host-agents.ts`에서 모두 `host-command.ts:startAgent`로 진입한다. 대상 terminal이 호출 CLI terminal과 다르면 신규·재사용 shell 모두 `launchCommand → writeAgentCommand → 임시 aiox-launch.cjs 생성 → shell.write(command+CR)` 경로다. cjs는 Network/Host 정의 생성이 아니라 AIOX_HOST_ID/AIOX_AGENT_KEY를 넣고 CLI `createFoundationPort.execute(agent.run)`을 다시 호출한다. 해당 CLI가 /api/agent-run WS로 daemon의 adapter/ExecutionOwner 실행 경로에 재진입한다.
+- 직접 코드 확인: 대상 terminal과 호출 CLI terminal이 같은 경우 cjs를 만들지 않는다. daemon은 HTTP NDJSON에 launch를 보내고, 원래 CLI의 bootstrap 소비자가 runAgent를 호출해 같은 daemon Agent 실행 경로에 진입한다. 따라서 “Host는 전부 cjs”는 틀리고 “Host 실행도 CLI 경유에 의존한다”가 정확하다. stop/delete는 startAgent를 통한 실행 경로와 구분한다.
+- 범위·근거: production의 startAgent/launchCommand/writeAgentCommand 전체 호출자를 검색했고 host-run/host-agents/host-command/CLI bootstrap 및 기존 caller restart/start 테스트, aiox-host와 aiox-storage-terminal owner를 대조했다. Host run/개별 start는 CLI 빌드 파일 존재 사전 검사도 갖는다. 이번 턴은 읽기 전용 코드 조사이며 새 실행 테스트·제품 코드 변경·build·commit/push는 하지 않았다.
+- 제안: 추후 중간 CLI 경유를 제거한다면 Network 한 경로만 고치지 않고 Host 전체 실행·재시작과 호출 terminal 재사용 계약까지 공통 Agent 실행 책임으로 검토한다. shell 복귀, 실제 준비/실패 전달, 프로세스 소유·정리는 보존한다. 현재는 변경을 시작하지 않았다.
+
+### 2026-09-26 13:28 · TUI 정상 종료 전후 키 입력 추적·OS별 검증 범위
+
+- 사용자 작업 분담: Network·Host의 daemon→cjs→두번째 CLI→daemon 경유 제거(최초CLI→daemon 유지)는 direct_agent_launch에게 구현 위임했다. 부모는 TUI 종료 후 간헐적 Option 방향키 이상을 정확히 조사한다. 사용자가 bash·zsh·Windows·WSL 지원을 명시했으며 macOS 특정 shell만의 보정으로 처리하지 않는다.
+- 사용자 확인: 정상 동작의 기준은 Codex 실행 전 shell 명령 입력줄이며, 종료 방식은 /quit 또는 /exit다. 따라서 앞선 “Agent 실행 전부터 미등록 키였다”는 별도 재현을 사용자 간헐 결함의 확정 원인으로 쓰지 않는다.
+- 직접 실브라우저 조사: 제품 Web dist·attach.ts 경로, 임시 실제 daemon/SQLite/PTY, 실제 Codex 0.157.1과 격리 CODEX_HOME을 사용했다. macOS의 bash 3.2·사용자 설정을 읽는 zsh 각각을 시험했다. browser keydown의 Alt+ArrowLeft는 ESC[1;3D 한 binary WS frame이고 daemon의 TerminalSession.write에도 같은 바이트가 전달됐다. React→xterm→WS→daemon→PTY→CLI raw relay→vendor PTY와 vendor exit→CLI raw 복원→원래 shell 복귀를 코드와 입력 기록으로 추적했다.
+- 직접 구분 검증: 기본 macOS bash3.2에서는 초기부터 ;3D가 남고 현재 zsh 설정에서는 초기부터 D가 남았다. 시험 shell 메모리에만 해당키를 backward-word로 등록해 정상 기준 상태를 만든 뒤 실제 Codex /quit(bash), /exit(zsh)를 수행했다. shell 복귀 후 abc def에서 Option+←, X는 둘 다 abc Xdef가 됐고 stty -g와 키 바인딩도 유지됐다. zsh Web 새로고침 이후에도 정상 동작했다. 이 시험 설정은 사용자 rc 파일에 저장하지 않았다.
+- 직접 관측한 별도 현상: zsh /exit Enter 직후 원래 runtime WS가 남아 있는 전환 구간에 즉시 입력하면 abc def^[[1;3DX가 잠시 echo된 후 최종 shell 복귀 때 사라졌다. 그 뒤 Option 이동은 정상이다. 지속적으로 D가 입력된다는 사용자 제보와 동일하다고 확정하지 않는다. direct 실행 담당 agent에 전달했다.
+- OS 범위: 기존 로컬 Docker python:3.13-slim의 Linux bash5.2.37에서는 ESC[1;3D/ESC[1;3C가 기본 backward/forward-word에 등록됨을 직접 확인했다. 이 Docker 확인은 기본 키 바인딩 조회이며 Linux Web·Codex 종단 검증이 아니다. Windows/WSL의 ConPTY/배포판 shell은 이 Mac에서 실기 검증하지 않았다. 제품 xterm/PTY 경계와 config WSL 경로는 대조했고, 전 OS 동일 원인·해결을 주장하지 않는다.
+- 현재 결론: 사용자 제보의 정상→비정상 전환은 아직 재현하지 못했고 원인은 미확정이다. 원인 미확정 상태에서 Web 키 치환, zsh rc 수정, 무조건 terminal reset은 적용하지 않았다. 실제 실패 시점의 key event/전송 바이트·shell 키맵·TTY 상태 비교가 남는다. 이번 부모 조사에서 production 파일은 변경하지 않았다.
+- 근거: /tmp/aiox-key-ui-browser-frames.json, /tmp/aiox-key-ui-evidence.json, /tmp/aiox-key-ui-final-screen.txt, /tmp/aiox-key-ui-probe.mjs. 실제 모델 프롬프트/유료호출 없이 실행·입력·종료만 검증했다. 전용 browser aiox-key-lifecycle을 닫았고 임시 daemon·shell·Codex·home은 정리했다. 사용자 daemon/PID/설정은 변경하지 않았다.
+
+### 2026-09-26 14:09 · Network·Host 직접 실행 전환 완료·실 Codex/Web 소비 검증
+
+- 위임 결과 소비: direct_agent_launch가 Network·Host 직접 실행 전환을 구현했다. 부모는 변경된 producer/consumer/실행·종료 경로를 재검토했고, 정상 direct를 relayDisconnected로 표시하려던 초기안을 기각하여 별도 내부 directTerminal로 구분했다. 준비 중 stop의 최초 호출 실패 확정, Host 최초CLI env 전달, 불필요한 startAgent caller 인자 제거를 보완한 최종안을 수용했다.
+- 실제 변경: 최초 CLI→daemon은 유지한다. 다른 panel에서 실행하는 Network와 Host run/restart/개별 Agent start/restart는 AgentController.start를 통해 기존 공통 실행 코어·ExecutionOwner로 직접 실행한다. 중간 aiox-launch.cjs, 두 번째CLI, Host launch NDJSON 이벤트·consumer, OSC marker 준비 관측기를 제거했다. Web WS는 직접 vendor PTY 준비를 기다리며 접속 이탈이 실행을 취소하지 않는다. vendor 종료 시 같은 tab의 기존 shell로 복귀한다. 최초 same-Network/standalone CLI foreground relay는 원래 두 번째 CLI가 없는 경로이므로 유지한다.
+- 실행 환경: Host 최초CLI가 검증된 Invocation.env를 전달하며 AIOX_*를 제외하고 daemon이 관리 문맥을 구성한다. env가 없는 caller는 daemon 환경이다. Network는 원래 AgentRun.env를 사용한다. 환경 원문은 공개 snapshot/영구 Host 설정에 추가하지 않는다. 대상 shell의 시작 파일을 재평가하여 추가 환경을 수집하는 방식은 사용하지 않는다. vendor는 daemon OS에서 실행하며 Windows daemon의 WSL shell 설정만으로 vendor OS까지 WSL이 되는 구현은 아니다. 기존 명세의 혼합 OS 미검증 경계를 유지한다.
+- 서브에이전트 직접 검증 보고 및 부모 출력 확인: 최종 pnpm check exit 0(`/tmp/aiox-direct-check3.txt`), daemon308 PASS/1 opt-in SKIP, CLI74/Web178/terminal90/protocol24/persistence26/Claude141/Codex20 및 기타 패키지 통과. 실제 SQLite/PTY/WS Network 회귀는 Claude·Codex 대역 각각 내부 명령 비노출, 준비 중 접속/이탈, 출력·resize·종료·원래 shell 입력을 확인했다. 준비 중 stop 회귀는 `direct launch rejected while preparation is stopped does not leave its caller pending`이다. Host는 caller env·예약 환경 필터·부분 실패·호출 shell 재사용을 검증했다. 최종 전체검사 뒤 미사용 CLI 인자·옛 주석 정리에 대해서는 CLI typecheck/build를 재실행했다.
+- 부모 직접 추가 검증: 최종 CLI bootstrap/host-command 35 tests PASS(`/tmp/aiox-direct-parent-cli.txt`), formatting/diff PASS. 추가 CLI 검사는 처음 sandbox에서 로컬HTTP가 막힌 실행을 성공으로 세지 않았고, 허용된 로컬네트워크 환경에서 재실행하여 exit0을 확인했다. 실제 Codex0.157.1·임시daemon/SQLite/PTY로 Network 직접 실행→ready→/quit→원래 shell의 동일PID 생존·명령 입력을 확인했다(`/tmp/aiox-direct-real-codex.txt`, `/tmp/aiox-direct-real-codex-result.json`). 내부 launcher 노출=false, source CLI 반환=true다.
+- 부모 실제 제품 Web 추가 검증: 임시 Workspaces shell에서 요청→Network로 자동 이동→실제 Codex 화면/idle→/quit→동일 tab shell 복귀→브라우저에서 입력한 printf의 DIRECT_UI_SHELL_OK 출력을 확인했다. 준비 완료·복귀 화면 모두 dialog=[]이고 내부 cjs 명령이 없다. 근거 `/tmp/aiox-direct-ui-ready.json`, `/tmp/aiox-direct-ui-returned.json`, `/tmp/aiox-direct-ui-evidence.json`. 격리 CODEX_HOME의 접속 불가 시험 provider를 사용하여 모델 요청·유료호출은 하지 않았다.
+- owner 반영: aiox-storage-terminal·aiox-runtime·aiox-host의 직접 실행·CLI 반환·환경 계약을 구현에 맞췄다. architecture.excalidraw·사용자 daemon·vendor·개발 DB는 변경/재시작/삭제하지 않았다. 기존 미커밋 변경을 보존했고 commit/push하지 않았다. 이번 부모/위임의 새 Web 제품 소스 변경은 없다(기존 미커밋 Web 변경은 보존).
+- 제한·다음: 1번은 구현·검증 완료다. 3번의 “Codex 실행 전 shell은 정상, /quit·/exit 후 간헐 D 출력” 원인은 아직 미확정이며 이전 진단 entry의 정상/비정상 구분을 유지한다. 특정 zsh 키 치환이나 무조건 reset을 적용하지 않았다. Windows/WSL/Linux 전체 vendor·Web 종단 실행은 미검증이다. 사용자 실행 daemon에 새 build를 적용하려면 별도 재시작이 필요하다. W10 전체는 open이며 idle shell 삭제 정책·Settings/Keybinding 등 기존 후속은 유지한다.
+
+### 2026-09-26 17:11 · TUI 실행 전 Option 방향키 초기 실패 재현·키 바인딩 불일치 확인
+
+- 사용자 추가 보고: pnpm build 뒤 daemon start, AIOX_WEB_PROXY_TARGET=http://127.0.0.1:4501로 Vite5173을 실행한 Web panel에서 이제 TUI 실행 전부터 Option+방향키 이상이 발생한다고 했다. 이전 정상→종료 후 간헐 실패 보고와 구분한다. 사용자 daemon이 실제로 새 PID로 재시작됐는지는 이번에 직접 확인하지 않았다.
+- 직접 재현: 현재 사용자 rc를 읽는 별도 zsh PTY, 제품과 동일한 xterm-256color/aiox 환경, xterm headless에서 Codex 없이 ESC[1;3D를 입력하면 abc defDX가 됐다. zsh는 해당 코드를 undefined-key로, ESC b를 backward-word로 보고했다. 설치된 xterm6 Keyboard.ts의 Alt+Left 전송 코드와 attach.ts의 별도 키 변환 부재, daemon의 binary 전달은 기존 실제 브라우저 입력 기록과 일치한다. shell-integration의 zsh wrapper는 사용자 rc를 읽지만 해당 키 바인딩을 추가하지 않는다.
+- 원인 분리 시험: 동일 시험 shell에서 ESC b는 abc Xdef로 정상 이동했다. shell 메모리에만 ESC[1;3D→backward-word를 등록한 뒤 원래 전송 코드를 다시 넣어도 abc Xdef였다. 실행 명령 node /tmp/aiox-initial-option-check.mjs, 세 assertion PASS. 이번 초기 재현의 원인은 xterm 전송 코드와 zsh 키 바인딩의 불일치다. 이전 종료 후 간헐 전환이나 모든 OS의 동일 원인을 입증한 것은 아니다. 현재 사용자5173의 실제 실패 탭을 직접 조작한 검증도 아니다.
+- 변경 범위: 진단 스크립트는 /tmp에만 두고 시험 PTY를 종료했다. 사용자 rc·실행 중 shell·제품 소스는 수정하지 않았다. 브라우저 키 변환과 shell별 통합 중 실제 TUI·사용자 키 설정·OS를 보존할 수정 위치를 결정하고 검증하는 작업이 남는다. Vite proxy 문제나 Codex 종료 문제로 원인을 단정하지 않는다.
+
+### 2026-09-26 17:15 · 터미널 입력 불변식과 수정 책임 제안
+
+- 사용자 질문: 초기 D 출력의 원인과 shell별 임시 분기 대신 Linux/macOS 공통 불변식으로 해결하는 방법, 서버·프론트 양쪽 수정 필요 여부를 요청했다.
+- 직접 코드 확인: attach.ts는 xterm onData를 WS binary로 전달하고 terminals.ts는 이를 PTY에 전달한다. 설치 xterm6은 Alt+좌우를 ESC[1;3D/C로 인코딩한다. 앞선 실제 zsh 재현은 전송 누락이 아니라 소비 shell 키맵과의 불일치를 입증했다.
+- 제안(미구현): Web 터미널 경계가 키 입력을 한 번 인코딩하고 daemon은 입력 바이트를 의미 변환 없이 전달하며 foreground shell/TUI가 해석한다는 불변식을 둔다. macOS Option+좌우의 기본 단어 이동을 원하면 Web 터미널 키 정책에서 ESC b/f로 매핑하는 후보를 검증한다. daemon의 shell 종류·idle 상태에 따른 입력 치환, 사용자 rc 강제 변경, TUI 종료 reset은 필요 근거가 없다. 입력 전송 결함을 보지 못했으므로 이번 키 정책의 production 수정 중심은 프론트이며 서버 측은 실제 PTY 통합 회귀를 수행한다. 이 후보를 모든 shell·vi 모드·TUI에서 보장된 해결책으로 확정하지 않는다. Linux/macOS 지원 대상 및 사용자 키 설정을 보존하는 검증이 필요하다.
+
+### 2026-09-26 17:24 · daemon 시작 shell과 Web shell 선택·키 인코딩 책임 구분
+
+- 사용자 질문: daemon start를 입력한 shell을 Web에도 띄운다면 키가 일치해야 하지 않는가, 실제 shell 선택 경로는 무엇인가.
+- 직접 확인: CLI bootstrap은 Node daemon을 spawn하고 env를 별도 지정하지 않아 CLI 환경을 상속한다. Web 생성 web-commands.shellLaunch는 현재 config.terminal을 읽고 resolveTerminalLaunch를 호출한다. Linux/macOS의 우선순위는 terminal.shell 설정 → daemon 환경의 SHELL → /bin/bash다. SHELL은 환경변수이며 daemon 시작 명령을 입력한 현재 shell 프로세스를 조회하거나 복제하는 구현이 아니다. node-pty는 선택한 실행 파일로 별도 shell을 생성한다. shell 통합은 지원 조건에서 사용자 rc를 읽지만 부모 shell 메모리의 bindkey 상태를 복사하지 않는다.
+- 설명 경계: 같은 zsh 실행 파일이어도 원래 terminal emulator와 Web xterm은 별개 입력 인코더다. 제품 PTY 환경은 xterm-256color/aiox로 설정되어 외부 Ghostty 등의 정체성을 상속하지 않는다. 따라서 shell 선택과 키 코드 호환은 별개이며 동일 shell 경로만으로 Option 키 동작이 같아지지는 않는다. 현재 사용자 daemon의 실제 선택 경로를 읽은 결과가 아니라 코드상의 선택 계약을 확인했다. 제품 변경 없음.
+
+### 2026-09-26 17:29 · 부모 shell 키 설정 복사 가능 범위와 입력 호환의 차이
+
+- 사용자 질문: 부모 shell의 bindkey 변경까지 zsh/bash/fish별로 복사하면 이번 문제를 해결할 수 있는가.
+- 확인: zsh 공식 ZLE 문서는 재사용 가능한 bindkey -L 출력과 별도 사용자 widget을 설명한다. 로컬 bash help bind는 -p(함수 바인딩), -s(매크로), -v(변수)의 재사용 출력을 제공한다. fish 공식 bind는 user/preset·mode별 바인딩과 사용자 함수 호출을 지원한다. 같은 shell 종류 사이의 설정 전달은 가능하지만 전체 동작 복제에는 함수·widget·모드 등 의존성이 포함된다.
+- 판단: 별도 CLI는 부모 shell 메모리의 키맵을 자동 상속하지 않으므로 원래 shell 안에서 내보내는 shell 통합이 필요하다. 이번 재현은 이미 사용자 rc를 읽은 zsh에서 ESC[1;3D가 미등록이고 ESC b만 단어 이동인 경우다. 이 매핑을 그대로 복사해도 Web의 ESC[1;3D 전송은 바뀌지 않으므로 해결 보장이 없다. 부모 shell 세션 복제와 Web 입력 호환을 구분하고, 이번 결함만을 위해 세 shell의 세션 복제 기능을 도입하는 것은 추천하지 않는다. 구현 변경 없음.
+
+### 2026-09-26 17:52 · xterm6 Alt 방향키 변경 공식 근거·VS Code 앱 키바인딩 확인
+
+- 사용자 요청으로 Web 공식 이슈·릴리스·소스를 조사했다. xterm.js 6.0.0 릴리스는 #5346을 breaking change로 명시하며 Alt 방향키의 기존 단어 이동 보정을 제거하고 필요한 동작은 임베딩 앱 키바인딩에서 구현하도록 안내한다. https://github.com/xtermjs/xterm.js/releases/tag/6.0.0 , https://github.com/xtermjs/xterm.js/pull/5346 , 원래 maintainer 이슈 https://github.com/xtermjs/xterm.js/issues/4538 .
+- 공식 소스 대조: 5.5.0 Keyboard.ts는 Alt+좌우를 macOS ESC b/f, 다른 OS Ctrl+좌우 코드로 보정한다. 6.0.0은 이 보정 없이 ESC[1;3D/C를 만든다. 현재 AIOX 설치 코드·실브라우저 기록과 일치한다. 과거 #239는 동일 코드로 단어 이동 대신 문자가 출력된 제보다. https://github.com/xtermjs/xterm.js/issues/239 . 이는 유사 증상의 외부 보고이며 AIOX의 모든 종료 후 간헐 현상을 입증하는 자료는 아니다.
+- 실제 앱 코드: VS Code main의 terminalContrib/sendSequence/browser/terminal.sendSequence.contribution.ts는 terminal focus 조건에서 Alt+Left/Right를 macOS ESC b/f, 다른 OS ESC[1;5D/C로 보내는 앱 키바인딩을 등록한다. shell 초기화에서 부모 키맵을 복제하는 방식이 아니다. https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/terminalContrib/sendSequence/browser/terminal.sendSequence.contribution.ts#L176 . 앱별 설정을 통한 전송은 https://code.visualstudio.com/docs/terminal/advanced#_custom-sequence-keyboard-shortcuts 에도 문서화됐다. main은 조사 시점 코드이며 고정 릴리스 실행 검증은 아니다.
+- 정정·제안: 앞서 서버/프론트 책임을 증거 없이 번복했다. 이제 upstream이 지정한 단어 이동 UX 책임과 실제 VS Code 사례에 근거해 AIOX Web의 터미널 키바인딩 정책에서 다루는 방안을 추천한다. 이것은 shell별 예외 추정이 아니라 사용자가 변경/해제할 수 있는 terminal 기본 키바인딩이다. 서버의 shell 키맵 복제는 이번 보정 누락 해결에 필수라는 근거가 없다. TUI 원래 Alt+방향키 의미와 충돌할 수 있으므로 모든 키를 무조건 치환하는 것과 구분한다. 제품 코드는 수정하지 않았으며 Linux/macOS·shell/TUI 호환 검증은 남는다.
+
+### 2026-09-26 18:01 · 불변 키바인딩과 터미널 프로토콜 규칙의 구분 조사
+
+- 사용자 요청으로 불변 키바인딩 존재 여부를 공식 문서에서 조사했다. 결론은 모든 Linux/macOS shell·TUI·사용자 설정에 걸쳐 같은 조작이 같은 동작을 보장하는 전역 바인딩은 없으며, 정해진 프로토콜·모드 안의 인코딩 규칙과 특정 shell 편집 모드의 기본 바인딩을 구분해야 한다.
+- XTerm 공식 control sequence 문서는 방향키가 DECCKM에 따라 Normal의 CSI A/B/C/D와 Application의 SS3 A/B/C/D로 달라짐을 명시한다. 같은 키조차 무조건 한 바이트열로 고정하는 것이 불변식은 아니다. https://invisible-island.net/xterm/ctlseqs/ctlseqs.html (PC-Style Function Keys).
+- GNU Readline은 C-b 등 기본 편집 키를 문서화하며 zsh ZLE는 emacs/viins/vicmd·사용자 keymap을, fish는 Emacs/vi 모드와 재바인딩을 제공한다. 이는 널리 쓰이는 기본 동작이지 모든 앱의 불변 규칙이 아니다. https://www.gnu.org/s/bash/manual/html_node/Readline-Bare-Essentials.html (검색 결과 확인, 직접 open 오류), https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html , https://fishshell.com/docs/current/interactive.html .
+- 적용 판단: xterm이 담당하는 프로토콜 인코딩을 기본으로 두고 AIOX가 명시적으로 제공할 편집 단축키만 제품 정책으로 둔다. Option+좌우=단어 이동은 불변 표준이 아니므로 사용자 override/해제와 TUI 원래 입력 보존 범위를 정해야 한다. Kitty keyboard protocol 역시 키·modifier·event 인코딩/협상 규칙이며 모든 shell의 편집 동작을 통일하는 기능이라고 주장하지 않는다. 제품 변경 없음.
+
+### 2026-09-26 18:03 · 터미널 키 기본값 참고 대상으로 Ghostty·tmux 비교
+
+- 사용자 질문: 단축키 기본 기준으로 Ghostty와 tmux 중 무엇을 참고할지.
+- 공식 확인: Ghostty Config.zig main의 macOS natural text editing 기본값은 Option+Left/Right에 ESC b/f를 등록하고, 주석은 unbind로 원래 인코딩을 복원할 수 있다고 설명한다. keybind 공식 문서는 기본값 조회·사용자 override·unbind·text/esc/csi 전송을 제공한다. https://github.com/ghostty-org/ghostty/blob/main/src/config/Config.zig#L6884 , https://ghostty.org/docs/config/keybind .
+- 공식 확인: tmux 기본 키는 C-b prefix 뒤에 명령을 입력해 창·pane·session을 조작하는 구조다. https://man.openbsd.org/tmux#DEFAULT_KEY_BINDINGS . 따라서 현재 shell 입력 편의 동작의 직접 기준은 Ghostty가 더 가깝고, tmux는 화면 조작/prefix UX의 별도 참고다.
+- 제안(미승인·미구현): 현재 문제의 터미널 입력 기본값은 Ghostty를 참고하되 브라우저에서 제공 가능한 범위와 xterm 모드를 검증하고 AIOX config override/해제를 허용한다. Ghostty native 창 관리·OS 예약 단축키를 통째로 복제하거나 기존 AIOX 화면 조작 키를 임의 대체하지 않는다. tmux prefix 도입은 이번 입력 결함 해결에 추가하지 않는다.
+
+### 2026-09-26 18:17 · OS별 터미널 입력 기본값·clipboard 제안 범위
+
+- 사용자 요청: macOS/Linux/Windows/WSL/WSL2별로 이번에 넣을 터미널 기본 단축키를 구체화한다. 제품 구현 지시로 확장하지 않고 제안 목록을 설명한다.
+- 제안: macOS는 Ghostty natural editing의 Option+Left/Right→ESC b/f, Cmd+Left/Right→Ctrl+A/E, Cmd+Backspace→Ctrl+U 다섯 바인딩을 추가 후보로 둔다. Ctrl+U의 실제 삭제 범위는 shell 편집 모드가 정하며 모든 shell에서 동일하다고 약속하지 않는다. Option+Backspace, Ctrl+문자, Linux/Windows의 Ctrl+방향키·Home/End 등 이미 xterm6이 인코딩하는 입력은 재구현하지 않는다. Linux/Windows Alt+방향키를 Ctrl+방향키로 일괄 바꾸는 추가 보정은 하지 않는 제안이다.
+- clipboard 후보: macOS Cmd+C/V, Linux/Windows Ctrl+Shift+C/V, non-Mac Ctrl+Insert/Shift+Insert. 복사는 선택 있을 때만, 붙여넣기는 기존 xterm paste 경로를 사용해 bracketed paste를 보존한다. 브라우저 예약키/권한에 따른 실제 가능성은 실브라우저에서 검증하며 native Ghostty와 동일하다고 주장하지 않는다. AIOX 화면 생성·분할·탭 전환 키는 기존 owner 계약을 이번 입력 수정과 섞지 않는다.
+- 플랫폼: WSL1/WSL2 자체 키 프리셋은 만들지 않는다. Windows 브라우저→WSL shell은 Windows 프리셋이며 Mac/Linux 브라우저가 접속하면 해당 브라우저 OS 프리셋이다. 지원 대상 shell/vi모드/TUI 실기 검증은 미수행 상태이고 Windows 기본값은 AIOX 제안이지 검증한 Ghostty Windows 제품 기본값이라고 부르지 않는다.
+- 근거: https://github.com/ghostty-org/ghostty/blob/main/src/config/Config.zig (macOS natural editing·clipboard), https://ghostty.org/docs/config/keybind , 현재 설치 xterm6 Keyboard.ts의 Backspace·Ctrl문자·Home/End·수정 방향키 분기. 코드 변경 없음.
+
+### 2026-09-26 18:23 · Ghostty 키바인딩 공식 계약·Linux 복사 확인·defaults 중복 제거
+
+- 사용자 정정 수용: 일반 방향키·Enter·Tab·Esc·Delete·Ctrl+C/D/Z 등 xterm 기본 입력은 AIOX defaults의 pass-through field로 나열하지 않는다. 이전 표는 설명용 범위를 구현 필드처럼 보이게 했다. 기본 map에는 AIOX가 실제로 추가/변경하는 바인딩만 둔다.
+- Ghostty 공식 문서 확인: keybind는 trigger=action 형태이고 기본값 목록은 ghostty +list-keybinds --default로 조회한다. 뒤에 선언한 동일 trigger가 기존 바인딩을 덮어쓴다. unbind는 앱 바인딩 제거 후 일반 입력 경로로 복귀하며 ignore는 앱이 키를 소비하는 동작이다. 기본은 입력 소비, performable은 실제 실행 가능할 때만 소비한다. text/esc/csi 등의 입력 전송과 copy_to_clipboard/paste_from_clipboard/new_split 같은 앱 action을 구분한다. https://ghostty.org/docs/config/keybind , https://ghostty.org/docs/config/keybind/reference , https://ghostty.org/docs/config/reference#keybind .
+- 공식 소스의 현재 main을 별도 직접 조회: copy/paste modifier는 Darwin에서 super, 그 외에서 ctrl+shift이고 C/V에 copy_to_clipboard/paste_from_clipboard를 performable=true로 등록한다. 따라서 Ghostty Linux Ctrl+Shift+C=복사, Ctrl+Shift+V=붙여넣기가 맞다. Ctrl+Insert/Shift+Insert도 non-Mac 보조 기본값이다. 웹 캐시의 파일 line과 실제 main line이 달라 한 차례 줄번호 추출은 엉뚱한 구간이었고, 이후 unicode C 분기 검색으로 실제 modifier·action을 확인했다. https://github.com/ghostty-org/ghostty/blob/main/src/config/Config.zig .
+- AIOX 적용 제안: action과 전송 code를 분리하고 실제 추가 키만 기본값으로 둔다. 사용자 override/해제, 선택 있을 때만 복사, 처리한 키 중복 전송 방지가 핵심이다. Ghostty의 전역 OS hotkey·prefix sequence·key table 전체 기능을 이번에 구현하는 결정은 하지 않는다. 제품 코드 변경 없음.
+
+### 2026-09-26 18:33 · 실제 추가 바인딩 범위·config 변경분·기존 clipboard 재사용 정정
+
+- 사용자 질문에 구현 범위를 정정한다. 앞선 OS별 표는 기존 xterm 동작을 포함한 설명표이며 모든 행을 defaults 코드에 추가하는 목록이 아니다. 실제 편집 매핑 추가 제안은 macOS Option+좌우, Cmd+좌우, Cmd+Backspace 다섯 조합이다. 나머지 xterm 기본 입력은 재구현하지 않는다.
+- 사용자 config 변경분은 코드의 기본값 전체를 저장하는 의미가 아니라 사용자 override/해제만 저장하는 의미다. 미설정이면 내장 기본값을 사용한다. 구체 config field 계약은 기존 keyboard/keybindings 소유 의미를 보존해서 구현 시 연결하며 이번 설명에서 새 스키마 확정하지 않는다.
+- 직접 코드 확인: AIOX attach.ts에는 터미널 전용 copy/paste 재구현이 없고 설치 xterm6 CoreBrowserTerminal은 copy/paste DOM listener를 등록한다. Clipboard.ts는 선택 복사·paste 텍스트 처리·bracketed paste를 처리한다. shared/ui/copy-command.tsx는 안내 명령 문자열 복사용이며 터미널 clipboard와 다른 기능이다.
+- 범위 정정: 기존 브라우저+xterm clipboard를 재사용한다. 기본 복사/붙여넣기 기능을 또 구현하지 않는다. 향후 사용자 지정 키로 clipboard action을 실행해야 한다면 필요한 연결만 기존 xterm paste 경로 등에 붙이고 중복 처리를 피한다. Linux/Windows의 모든 clipboard 조합이 현재 실제 브라우저에서 정상 동작함을 검증한 것으로 보고하지 않는다. 제품 변경 없음.
+
+### 2026-09-26 18:52 · macOS 터미널 기본 키와 config 변경분 구현·검증
+
+- 사용자 지시를 반영했다. 키 입력은 브라우저 OS 기준이며 macOS에 Option+좌/우(ESC b/f), Cmd+좌/우(Ctrl+A/E), Cmd+Backspace(Ctrl+U) 다섯 개만 추가했다. Linux/Windows 및 Windows 브라우저→WSL/WSL2는 기존 xterm 입력을 유지한다. 복사/붙여넣기와 shell bindkey/readline은 변경하지 않았다.
+- 직접 구현: `terminal-keybindings.ts`가 config의 `terminal.keybindings.{mac,windows,linux}` 변경분을 기본값보다 먼저 적용한다. 문자열은 전송 코드이며 null은 해당 AIOX 매핑 해제다. `attach.ts`는 xterm custom handler에서 `term.input(sequence, true)`를 호출하여 기존 복원/연결 상태 검사·사용자 입력 경로를 사용한다. IME·AltGraph·미지정 입력은 기존 처리에 남긴다. ConnectedTerminal은 최신 config getter를 전달해 설정 소비 때문에 attachment를 재생성하지 않는다.
+- 설정 예: `{"terminal":{"keybindings":{"mac":{"Alt+ArrowLeft":"\u0001"}}}}`는 Option+← 하나만 Ctrl+A 코드로 바꾼다. 나머지 기본값은 코드에서 제공하며 저장하지 않는다. `null`은 해제, 항목 삭제는 AIOX 기본값으로 복귀다. 새 Settings UI는 만들지 않았다. daemon home의 config.json을 편집하고 Web 새로고침/재연결 시 기존 config.read로 읽는다. 사용자 실제 config는 수정하지 않았다.
+- 직접 검증: 변경분만 config 파일에 저장·재읽기, 잘못된 키/플랫폼/중복 조합 거절, 실제 config RPC 왕복, override/unbind, IME/AltGraph/키 중복 방지, 복원 전/분리 후 입력 차단, config 갱신 때 attachment 유지 회귀를 추가했다. `pnpm check`를 권한 있는 격리 테스트로 실행해 exit 0을 확인했다(Web 182, daemon 308+1 skipped, config 39, protocol 24, terminal 90, CLI 74 등). 최초 sandbox 실행은 PTY 제한으로 실패했고 통과로 계산하지 않았다. 최종 키 matcher의 Set 변경 뒤 관련 Web 37개를 다시 통과했다.
+- 직접 브라우저 검증: 임시 home·SQLite·daemon·bash/zsh에서 macOS Chromium으로 `abc def → Option+← → X`가 `abc Xdef`가 됐다. 다섯 키의 WS 바이트는 각각 한 번만 전송됐다. 임시 config에서 Option+←만 null로 설정하면 xterm 원래 ESC[1;3D가 전달되고, Ctrl+A 문자열로 바꾸면 해당 키만 바뀌며 Option+→ 기본 ESC f는 유지됐다. 사용자 daemon은 종료/재시작하지 않았다.
+- 한계: Linux/Windows/WSL/fish 네이티브 실행은 미검증이며 플랫폼 분기는 단위 테스트로 확인했다. 이전의 Codex 정상 종료 후 간헐적 키 상태 변화 전체가 이 수정으로 해결됐다고 주장하지 않는다. React Doctor 최종 변경 범위 검사에는 새 진단이 없고 기존 7 warnings가 남으며 score API는 접근 실패했다. 제품 Web build는 기존 chunk 경고가 있다.
+- owner 반영: configuration-web spec에 기본값·override 저장 계약, storage-terminal architecture에 키 입력 책임·전송 경로를 기록했다. 기존 미커밋 작업은 보존했으며 commit/push하지 않았다. W10 전체는 계속 진행 중이다.
+
+### 2026-09-26 19:01 · 한글 조합과 터미널 단축키 순서 수정·검증
+
+- 사용자 보고: 한글 조합 중 Cmd+←를 누르면 마지막 글자가 남는다. 이전 키 바인딩의 IME 제외가 이 사용 흐름을 처리하지 못해 수정했다.
+- 직접 재현: 실제 xterm 6 Terminal로 조합 중/조합 종료 대기 두 경로의 회귀 테스트를 작성했다. 수정 전 조합 중에는 한글만 나가고 Cmd+←가 누락됐으며, 종료 대기에서는 Ctrl+A가 한글보다 먼저 나갔다(2개 실패). xterm CoreBrowserTerminal이 custom handler를 CompositionHelper.keydown보다 먼저 호출하는 코드 순서도 확인했다.
+- 직접 수정: terminal-keybindings의 bindTerminalKeys가 매핑된 키에 기존 CompositionHelper.keydown을 먼저 호출해 조합 확정 → 단축키 순서로 전달한다. isComposing 전체 제외를 제거하되 IME 문자 처리 keyCode 229와 AltGraph는 기존 xterm에 남긴다. 별도 조합 버퍼·타이머·서버 처리는 추가하지 않았다. xterm private helper 의존은 실제 xterm 회귀로 검증한다.
+- 직접 검증: 임시 daemon·PTY에 연결한 Chromium에서 CDP Input.imeSetComposition으로 ㅎ→하→한을 입력했다. macOS 기본 단축키 5개 모두 마지막 한글 바이트 1회 → 단축키 바이트 1회 순서였고 composition-view.active가 해제됐다. 원시 결과는 /tmp/aiox-ime-browser-results.json에 있다. 이는 Chromium IME 경로 주입 검증이며 OS 한글 입력기를 사람이 직접 타이핑한 검증은 아니다. Safari·Windows IME는 미검증이다.
+- 직접 검증: Web 30 files/184 tests, typecheck·build·lint·format 및 git diff --check 통과. 최초 sandbox Web 전체 실행은 포트 EPERM으로 실패했고, 임시 포트·PTY가 허용된 실행으로 재검증해 통과했다. React Doctor 새 진단 없음(기존 7 warnings, score API 접근 실패). build의 기존 chunk 경고는 남는다.
+- configuration-web spec과 storage-terminal architecture에 조합 확정 순서를 반영했다. 임시 브라우저·daemon은 정리하고 사용자 daemon/config와 기존 미커밋 변경은 보존했다. commit/push하지 않았다. Web 새 빌드는 생성했고, 운영 환경의 실제 한글 입력 확인은 사용자 후속 확인으로 남긴다.
+
+### 2026-09-26 19:11 · 제품 문맥 갱신·기능별 커밋 정리
+
+- 사용자 요청으로 logs/artifact/AIOX-TUI-Product-Context-Prompt.md를 최신 코드·owner 계약과 대조해 갱신했다. 앱 RPC/TanStack DB/운영 terminal 연결을 미구현으로 적은 부분을 수정하고, Network 빈 panel과 daemon 직접 Agent 실행·호출 창 reveal, OS별 터미널 키 기본값·config 변경분·IME 확정 순서를 반영했다. Settings·화면 조작 Keybinding UI, 네이티브 OS/IME 검증까지 완료로 확대하지 않았다. configuration-web spec의 동일한 오래된 RPC client/store 후속 문구도 바로잡았다.
+- 사용자가 현재 변경 내역을 각각 커밋하도록 지시했다. 기존 미커밋 변경을 기능별로 분리해 b1d7cbb(Network·Host 직접 실행·reveal), aadce1f(PTY xterm 환경), 32d07e1(키 기본값·config·IME), c738fc0(기존 Claude StopFailure 조사 기록)으로 기록했다. 조사 기록은 기존 내용을 그대로 보존한 문서 커밋이며 이번 턴에서 새로 검증한 조사 결과가 아니다. 계약·인계·검증 로그 문서는 별도 커밋으로 기록한다. push는 하지 않는다.
+- 검증 근거: 현재 서버·CLI·protocol·persistence·terminal 변경이 포함된 전체 pnpm check는 앞선 키 바인딩 구현에서 exit 0이었다. 뒤이은 IME 변경은 Web 전체 184개·typecheck·build·lint·format 및 Chromium IME 검증을 통과했다. 이번 문맥 문서는 관련 owner·공개 API 연결과 대조했고 markdown inline-code 검사·git diff --check·로그 점검을 수행했다.
+- 로그는 1000줄을 넘지만 이번 작업은 기존 W10 터미널 연결의 동일한 수명에 속하는 후속 수정·문맥 갱신·커밋 정리다. 현재 scope에서 별도 작업으로 분리하거나 과거 기록을 이동하지 않고 같은 block에 소비 관계를 유지한다. W10 전체는 계속 진행 중이다.

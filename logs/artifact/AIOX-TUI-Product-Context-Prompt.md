@@ -1,12 +1,14 @@
 # AIOX 제품·아키텍처·결정 기억용 프롬프트
 
-2026-09-25 서버·Web 경계 갱신: 본문의 과거 실험·후보와 현재 구현을 구분한다. 현재 통신은
+2026-09-26 서버·Web 경계 갱신: 본문의 과거 실험·후보와 현재 구현을 구분한다. 현재 통신은
 [Application RPC](../../docs/specs/aiox-application-rpc.md), 서버 저장은
 [storage-terminal](../../docs/architecture/aiox-storage-terminal.md), 실행 수명은
 [vendor bindings](../../docs/architecture/aiox-vendor-bindings.md)가 소유한다. Operation·앱 SSE·Hono
 기반 설명을 현재 구현 지시로 되살리지 않는다. 활성 pane·선택 탭은 각 React 앱의 메모리에서만
 관리하고 새로고침 시 초기화하며, 서버 DTO·DB·localStorage에는 저장하지 않는다.
 아래 스택·저장 표의 해당 항목도 이 경계로 갱신했다.
+
+2026-09-26 현재 코드에서 앱 RPC → TanStack DB → 운영 화면과 별도 terminal WS → xterm 연결을 확인했다. Network·Host의 daemon 직접 실행과 호출한 Web 창의 대상 탭 reveal, 터미널 키 기본값·변경분 config·한글 조합 확정 순서를 반영했다. W10 전체와 Settings·화면 조작 Keybinding UI가 완료됐다는 뜻은 아니다. 검증 범위와 남은 작업은 [Stage6 Web 로그](../2026-09-09-AIOX-TUI-Stage6-Web.md)의 최신 W10 기록을 따른다.
 
 초기 기준일: 2026-09-08. Network·MCP·상태·DB 관련 후속 결정은 2026-09-15, Claude 관측 계약은 2026-09-20 기준으로 반영한다. 이 문서는 AIOX에 관한 사용자와의 대화, 제품 요구, 설계 결정, 실험 결과와 남은 논의를 새 Codex 세션에 전달하는 독립적인 문맥이다. 구현 완료 보고서가 아니다.
 
@@ -870,6 +872,13 @@ aiox agent run claude --network dev
 aiox agent run codex --network dev
 ```
 
+**Network 생성·Agent 배치와 호출 화면 이동**
+
+- `aiox network create dev`는 persistent Network와 NETWORKS의 빈 panel을 함께 만든다. shell은 `+`로 추가한다. 이는 Web에서 새 workspace panel을 만들 때 pane+preparing tab+shell을 만드는 규칙과 구분한다.
+- AIOX Web shell에서 `aiox agent run claude|codex --network dev`를 실행하면 해당 Network panel에 배치한다. 이미 그 panel의 shell에서 호출했다면 해당 자리를 사용하고, 다른 panel에서 호출했다면 목적 panel에 새 탭·shell을 준비한다. 기존 목적 탭과 수동 배치는 보존한다.
+- 최초 CLI → daemon 요청으로 실행한다. daemon이 관리하는 실행을 시작하기 위해 임시 `.cjs`를 shell에 써 넣고 두 번째 AIOX CLI를 실행하지 않는다. Host run/start/restart도 daemon이 직접 실행하고 CLI는 실제 결과를 기다린다. 외부 일반 터미널의 standalone foreground 소유권과는 구분한다.
+- daemon은 대상 상태를 발행한 뒤 일회성 `reveal`을 보낸다. React 앱은 호출 원본 terminal을 선택해 보고 있는 창에서 목적 panel·pane·tab으로 이동한다. 다른 창의 선택을 일괄 변경하거나 재접속 때 예전 reveal을 재생하지 않는다. 실제 공개 계약·진입 경로는 runtime/host spec과 storage-terminal architecture를 따른다.
+
 **Host Agent의 shell·종료 화면**
 
 Panel은 전체 작업 화면, pane은 분할 영역, tab은 그 안의 terminal이다. HOSTS의 [+]는 사용자
@@ -1000,6 +1009,34 @@ aiox host run --layout grid --columns 2 --rows 2
 
 terminal theme/font는 xterm renderer에 적용한다. 외부 cmux·일반 터미널·VS Code의 appearance까지 바꾸는 요구가 아니다. vendor가 명시적으로 그리는 모든 색상을 바꿀 수 있다고 보장하지 않는다. 폰트 변경 때 fit/resize를 처리하고 AIOX 단축키와 vendor의 Ctrl+O·브라우저 예약 키를 구분한다.
 
+**터미널 입력 단축키와 사용자 변경분**
+
+화면의 탭 생성·분할·포커스 단축키와 shell/TUI로 전송하는 입력 코드는 구분한다. 터미널 기본값은 키를 누르는 브라우저 OS로 고른다. Windows 브라우저 → WSL/WSL2는 Windows, macOS 브라우저 → 원격 Linux/WSL은 macOS 기본값이다. 부모 shell의 실행 중 bindkey/readline 설정이나 부모 터미널 앱의 단축키를 복사하지 않는다.
+
+| macOS 기본 키 | 전송 코드       |
+| ------------- | --------------- |
+| Option+← / →  | ESC b / ESC f   |
+| Cmd+← / →     | Ctrl+A / Ctrl+E |
+| Cmd+Backspace | Ctrl+U          |
+
+Linux/Windows의 편집 키와 일반 방향키·Enter·Tab·Esc·Delete·Ctrl+C/D/Z·Option/Alt+Backspace는 xterm 기본 처리에 남긴다. 실제 편집 동작은 shell/TUI 키맵에 따른다. 복사·붙여넣기도 기존 xterm/브라우저 경로를 사용하며 별도 중복 구현하지 않는다.
+
+`terminal.keybindings.{mac,windows,linux}`에는 사용자 변경분만 저장한다. 예를 들어 Option+← 하나를 Ctrl+A로 바꾸는 config는 다음과 같다. 다른 기존 설정은 보존한다.
+
+```json
+{
+    "terminal": {
+        "keybindings": {
+            "mac": { "Alt+ArrowLeft": "\u0001" }
+        }
+    }
+}
+```
+
+항목을 지우면 AIOX 기본값으로 돌아가며 `null`은 해당 AIOX 매핑을 해제해 xterm 기본 인코딩으로 넘긴다. 코드의 기본값 전체를 config에 저장하지 않는다. 현재 config 파일 수정은 Web 새로고침/재연결의 config.read로 반영하며 설정 UI를 구현한 것은 아니다.
+
+한글 조합 중/조합 종료 전송 대기 상태에서 등록한 이동·삭제 키를 누르면 **xterm 조합 확정 → 마지막 글자 전송 → 단축키 전송** 순서를 지킨다. IME 문자 키(keyCode 229)와 AltGraph는 기존 xterm 처리에 남긴다. 별도 조합 버퍼·타이머를 만들지 않는다. 실제 xterm 회귀와 Chromium IME 경로 주입으로 검증했으며 Safari·Windows IME 및 모든 OS 입력기 실사용 검증 완료를 뜻하지 않는다. 상세 계약은 [터미널 입력 바인딩](../../docs/specs/aiox-configuration-web.md#터미널-입력-바인딩-status-current), 내부 xterm 의존과 검증 경계는 storage-terminal architecture를 따른다.
+
 브라우저 복귀:
 
 ```text
@@ -1062,7 +1099,7 @@ Stage 2-1의 서버 터미널 의존성은 `@xterm/headless` 6.0.0과 `@xterm/ad
 
 ### Web 단계
 
-브라우저 터미널은 `@xterm/xterm` 6.0.0을 사용하며 §15의 복원 기반을 소비한다. React·Tailwind·shadcn/ui·다국어 요구는 유지한다. 서버 상태는 앱 RPC를 TanStack DB에 연결하는 W10 후속 구현 대상이며, Effect·TanStack DB·React DB는 설치된 상태다. 활성 pane·선택 탭은 React 메모리 상태이고 새로고침하면 초기화한다. Query/Zustand에 같은 서버 상태를 중복 저장하지 않는다. 실제 RPC/TanStack DB 화면 연결이 완료됐다고 해석하지 않는다.
+브라우저 터미널은 `@xterm/xterm` 6.0.0을 사용하며 §15의 복원 기반을 소비한다. React·Tailwind·shadcn/ui·다국어 요구는 유지한다. 서버 상태는 ApplicationProvider의 앱 RPC 연결 → ApplicationStore의 TanStack DB collection → 운영 화면으로 전달한다. snapshot 교체·delta 적용과 미확정 명령의 낙관적 반영을 연결했고, 실제 터미널은 ConnectedTerminal → attachTerminal → 별도 terminal WS로 연결한다. 활성 pane·선택 탭은 React 메모리 상태이고 새로고침하면 초기화한다. Query/Zustand에 같은 서버 상태를 중복 저장하지 않는다. Settings·화면 조작 Keybinding UI와 남은 통합 검증은 별도 후속이다. 라이브러리 설치만 끝난 상태로 되돌려 설명하지 않는다.
 
 - Zustand는 여러 pane/설정/알림이 공유하는 상태가 실제로 필요할 때 선택한다.
 - TanStack Query는 조회·pagination·검색 cache가 필요할 때 선택한다.

@@ -10,13 +10,13 @@ As-built로 표시한 범위 외에는 목표 구조다. OS별 통합 완료를 
 
 ## 데이터 소유권
 
-| 저장 책임 | 대상 | 경계 |
-| --- | --- | --- |
-| 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·포트·사이드바 너비와 열림 상태·화면 조작 keybindings 변경분·Host 초기 layout | 모든 프로젝트·Host·standalone 공통 |
-| SQLite | persistent Network/Route, AIOX send·대상별 결과·daemon 알림 본문, 실행 이력, 알림/읽음, workspace 배치 | 처리 종료 후 기본 30일, 상세는 configuration-web 계약 |
-| daemon memory | live process/PTY/binding/credential/activity | DB의 과거 running을 현재 생존으로 간주하지 않음 |
-| 전역 config의 `appearance.theme` | Web system/light/dark theme | terminal palette와 별개; 운영 Web은 브라우저 저장소를 쓰지 않음 |
-| Host YAML | Host-managed 정의 | DB persistent 정의와 이중 권위 금지 |
+| 저장 책임                                 | 대상                                                                                                   | 경계                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·포트·사이드바 너비와 열림 상태·화면 조작 keybindings 변경분·Host 초기 layout           | 모든 프로젝트·Host·standalone 공통                              |
+| SQLite                                    | persistent Network/Route, AIOX send·대상별 결과·daemon 알림 본문, 실행 이력, 알림/읽음, workspace 배치 | 처리 종료 후 기본 30일, 상세는 configuration-web 계약           |
+| daemon memory                             | live process/PTY/binding/credential/activity                                                           | DB의 과거 running을 현재 생존으로 간주하지 않음                 |
+| 전역 config의 `appearance.theme`          | Web system/light/dark theme                                                                            | terminal palette와 별개; 운영 Web은 브라우저 저장소를 쓰지 않음 |
+| Host YAML                                 | Host-managed 정의                                                                                      | DB persistent 정의와 이중 권위 금지                             |
 
 운영 Web 문구는 영어이며 theme은 전역 config에 저장한다. 소리 설정의 세부 schema는 Stage6/7 후속이다. 실제 Runtime
 credential을 영속화된 설정·메시지에 넣지 않는다. vendor transcript/reasoning 전체 복제나 SQLite
@@ -129,6 +129,31 @@ shell 안의 `cd`를 실시간 추적한 값이 아니다. 일반 shell에는 Ag
 `AIOX_TERMINAL_TOKEN`을 child env에 넣는다. 이 문맥은 메모리에만 유지하고 API 목록·URL·argv·로그에
 노출하지 않는다. 일반 shell exit/정리 후에는 유효하지 않다. [Status: As-built]
 
+daemon 소유 PTY는 부모 OS 터미널의 식별 환경을 상속하지 않는다. `createTerminal`은
+`TERM=xterm-256color`, `TERM_PROGRAM=aiox`, `COLORTERM=truecolor`로 실제 xterm 렌더러를
+선언하고 Ghostty·Kitty·WezTerm 등의 부모 식별값을 제거한다. 사용자 PATH·언어·실행 환경은 유지한다.
+이를 생략하면 vendor가 부모 터미널 전용 이미지 프로토콜을 보내 화면 오염과 출력 지연을 일으킬 수
+있다. 외부 CLI가 직접 소유한 vendor에는 이 정규화를 적용하지 않는다. [Status: As-built]
+근거: [[packages/terminal/src/index.ts]], [[packages/terminal/src/index.test.ts]].
+
+Web의 독립 Network 실행은 AgentController가 인증된 호출 shell과 대상 소속을 비교한다. 같은
+panel이면 최초 CLI의 기존 foreground 경로를 사용한다. 다른 panel이면 `network-agent`가 daemon
+수명의 작업으로 탭을 등록하고 별도 shell을 준비한 뒤 `AgentController.start`로 직접 Agent를
+실행한다. Host run/restart 및 개별 Agent start/restart도 같은 직접 실행 entry를 사용한다.
+중간 `.cjs`·두 번째 CLI·Host `launch` 이벤트는 없다. 준비 중 탭이 삭제되면 늦게 생성된
+shell을 연결하지 않고 정리하며, 실행 실패는 원래 호출자의 결과와 대상 탭 진단에 남는다.
+[Status: As-built] 근거: [[apps/daemon/src/network-agent.ts]], [[apps/daemon/src/network-agent.test.ts]],
+[[apps/daemon/src/host-command.ts]], [[apps/daemon/src/agent-controller.ts]].
+
+직접 실행도 동일한 ExecutionOwner가 vendor PTY와 부속 자원을 소유한다. 내부 binding의
+`directTerminal`은 정상 직접 연결이고 `relayDisconnected`는 기존 CLI relay 손실이므로 구분한다.
+Web terminal WS는 직접 실행 PTY가 준비될 때까지 접속을 대기하고 해당 PTY에 연결한다.
+대기 중 Web 연결 종료는 Agent 준비를 취소하지 않는다. vendor 종료 후 runtime이 제거되면
+React 앱은 기존 shell terminalId로 다시 연결하여 shell의 snapshot과 입력을 복원한다.
+Host 호출 CLI는 대상별 준비 결과를 받은 뒤 반환하며 shell을 raw relay로 전환하지 않는다.
+[Status: As-built] 근거: [[apps/daemon/src/daemon.ts]], [[apps/daemon/src/network-agent.test.ts]],
+[[apps/cli/src/host-command.ts]].
+
 daemon foreground 연결 소비자는 protocol의 `terminalContextFromEnv(env)`로 문맥을 읽어 daemon의
 `registerRuntime({ terminalContext, createBinding, ... })`에 전달한다. daemon은 살아 있는 shell의
 비밀값과 중복 연결을 검증한 뒤 기존 terminal을 차용한다. 문맥이 없으면 CLI 직접 실행 경로를
@@ -201,6 +226,8 @@ terminal 패키지의 ESM 빌드는 CJS인 `@xterm/headless`만 번들에 포함
 
 PTY 경계는 POSIX raw byte와 Windows 문자열 출력을 공통 바이트로 정규화해 WebSocket binary 출력과 JSON 제어 프레임을 구분한다. Windows 드라이버가 이미 문자열로 디코딩한 원본 바이트까지 복원한다고 보장하지 않는다.
 
+Web 터미널 키 입력은 [[apps/web/src/terminal-keybindings.ts]]에서 브라우저 OS별 기본값에 `terminal.keybindings`의 사용자 변경분을 우선 적용한다. [[apps/web/src/attach.ts]]의 xterm custom key handler는 일치한 keydown만 `term.input(sequence, true)`로 전달하고 xterm의 중복 처리를 막는다. 기존 onData의 연결·복원 상태 검사와 사용자 입력 전송 경로를 그대로 거친다. xterm 6은 custom handler를 조합 처리보다 먼저 호출하므로, 매핑된 키는 기존 CompositionHelper.keydown을 먼저 거쳐 조합 중/종료 대기 문자를 확정한 뒤 보낸다. 별도 조합 버퍼나 확정 타이머를 만들지 않는다. IME 문자 키(keyCode 229)·AltGraph·미지정 키·복사/붙여넣기는 기존 xterm 경로에 남긴다. private CompositionHelper 경계는 실제 xterm을 사용하는 회귀 테스트로 검증한다. ConnectedTerminal은 최신 config를 getter로 제공하므로 설정을 읽은 뒤 attachment를 다시 만들 필요가 없다. 서버는 설정 검증·전달과 입력 바이트의 PTY 전달을 담당하며 shell의 bindkey/readline 설정을 변경하지 않는다. 기본값·변경분 저장 계약은 [[docs/specs/aiox-configuration-web]]을 따른다. [Status: As-built]
+
 근거: [[packages/terminal/src/index.ts]], [[packages/terminal/src/boundary.ts]], [[packages/terminal/src/serialization.ts]], [[packages/terminal/src/restore.ts]], [[apps/web/src/attach.ts]], [[apps/daemon/src/terminals.test.ts]].
 
 ```text
@@ -252,7 +279,6 @@ row에 보존해 발신 등록 정리 뒤에도 Web 대상과 원래 terminal을
 `apps/daemon/src/messaging.ts:197-209`, `apps/daemon/src/messaging.ts:320-350`;
 [[apps/daemon/src/daemon.test.ts]] `apps/daemon/src/daemon.test.ts:1673-1732`.
 
-
 ```text
 Binding / hooks / process 관측
  → daemon Runtime projection / 연결 가능한 입력 관측
@@ -270,12 +296,12 @@ delivery 실패로 귀속하려면 입력 연결 근거가 있어야 한다. 일
 알림 클릭은 해당 terminal 이동+읽음 처리다. 전체 확인은 현재 미확인 항목을 읽음 처리한다.
 읽음은 승인이나 실제 문제 해결이 아니므로 요청이 살아 있으면 Runtime 대기 표시도 유지한다.
 
-| 실제 사용자 상태 | 처리 |
-| --- | --- |
+| 실제 사용자 상태                         | 처리                                                       |
+| ---------------------------------------- | ---------------------------------------------------------- |
 | 브라우저 창·탭 활성 + 해당 terminal 선택 | 팝업·소리·알림 목록 추가·미확인 표시 억제, TUI/상태는 표시 |
-| 다른 terminal 선택 | 대상 알림을 미확인 목록에 추가 |
-| background tab/window | 선택된 pane만으로 읽음 판정하지 않음 |
-| Web 닫힘 | daemon이 미확인 알림 유지, 재방문에 표시 |
+| 다른 terminal 선택                       | 대상 알림을 미확인 목록에 추가                             |
+| background tab/window                    | 선택된 pane만으로 읽음 판정하지 않음                       |
+| Web 닫힘                                 | daemon이 미확인 알림 유지, 재방문에 표시                   |
 
 알림 projection은 terminal의 입력 포커스 대신 브라우저 창·탭 활성과 선택 terminal을
 소비한다. 현재 최소 Web은 visibilityState와 document.hasFocus를 함께 확인하고 선택된
@@ -400,17 +426,17 @@ Host (h1; 선언 출처·적용 구성)
 일반 workspace panel → 같은 pane/tab/terminal 모델 (Host·Agent 없음)
 ```
 
-| 테이블 / primary key | 필수 열·제약 | 쓰기·삭제·복원 |
-| --- | --- | --- |
-| `hosts` / `id` | `name UNIQUE`, `directory`, `source_file`, `instruction`, `revision`, `created_at`; 문자열 NOT NULL | run의 검증 후 생성, 전체 restart 갱신. delete 최종 commit에서 삭제 |
-| `host_agents` / `(host_id,agent_key)` | Host FK, `ordinal`, `adapter`, `role?`, `description?`, `instruction`, `args_json`, `last_terminal_id?`, `last_exit_json?`; ordinal은 Host 안에서 유일 | 적용된 관리 구성. 개별 start/restart는 대상만, 전체 restart는 증감 반영. 탭 닫기로 삭제 안 함 |
-| `host_networks` / `id` | `host_id UNIQUE` FK, `name`, `default_policy` allow/deny | Host 생성·전체 restart 적용; stop 보존, Host delete 연동 |
-| `host_members` / `(network_id,agent_key)` | 같은 Host 관리 Agent를 참조 | 적용 YAML membership, 실행 유무와 독립 |
-| `host_edges` / `(network_id,from_key,to_key)` | `manifest_policy?`, `override_policy?`; 둘 다 null 금지·self 금지·membership 참조 | reset은 override만 null; 둘 다 없으면 행 삭제. 개별 적용은 incident edge만, 전체 적용은 override 제거 |
-| `panels` / `id` | `kind`, `name`, `host_id? UNIQUE`, `network_id?`, `revision`, `layout_json` | 배치의 단일 권위. Host 생성과 panel 생성 함께 commit. panel 명령은 바뀐 열만 갱신하고 revision은 변경 번호로 1 증가. Host restart는 최신 panel에 적용한 결과를 다시 삽입. 소유 자원 종료 확인 후 삭제 |
-| `panel_tabs` / `id` | `panel_id` FK, `terminal_id? UNIQUE`, `label`, `agent_key?`, `presentation`, `notice_json?` | tab 참조·안내 표시 지속. shell tab은 terminal 없이 preparing으로 먼저 등록하고 준비 뒤 terminal만 연결. 바뀐 tab 행만 갱신하고 close는 종료 확인 후 삭제 |
-| `deleted_ids` / `id` | `kind` panel/tab | 삭제된 panel·tab ID의 재사용 거절. 자동 삭제하지 않음 |
-| `host_executions` / `runtime_id` | `host_id`, `agent_key`, `terminal_id`, `started_at`, `ended_at?`, `exit_json?` | 실행 이력. live credential/binding/status는 저장하지 않음 |
+| 테이블 / primary key                          | 필수 열·제약                                                                                                                                           | 쓰기·삭제·복원                                                                                                                                                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hosts` / `id`                                | `name UNIQUE`, `directory`, `source_file`, `instruction`, `revision`, `created_at`; 문자열 NOT NULL                                                    | run의 검증 후 생성, 전체 restart 갱신. delete 최종 commit에서 삭제                                                                                                                                    |
+| `host_agents` / `(host_id,agent_key)`         | Host FK, `ordinal`, `adapter`, `role?`, `description?`, `instruction`, `args_json`, `last_terminal_id?`, `last_exit_json?`; ordinal은 Host 안에서 유일 | 적용된 관리 구성. 개별 start/restart는 대상만, 전체 restart는 증감 반영. 탭 닫기로 삭제 안 함                                                                                                         |
+| `host_networks` / `id`                        | `host_id UNIQUE` FK, `name`, `default_policy` allow/deny                                                                                               | Host 생성·전체 restart 적용; stop 보존, Host delete 연동                                                                                                                                              |
+| `host_members` / `(network_id,agent_key)`     | 같은 Host 관리 Agent를 참조                                                                                                                            | 적용 YAML membership, 실행 유무와 독립                                                                                                                                                                |
+| `host_edges` / `(network_id,from_key,to_key)` | `manifest_policy?`, `override_policy?`; 둘 다 null 금지·self 금지·membership 참조                                                                      | reset은 override만 null; 둘 다 없으면 행 삭제. 개별 적용은 incident edge만, 전체 적용은 override 제거                                                                                                 |
+| `panels` / `id`                               | `kind`, `name`, `host_id? UNIQUE`, `network_id?`, `revision`, `layout_json`                                                                            | 배치의 단일 권위. Host 생성과 panel 생성 함께 commit. panel 명령은 바뀐 열만 갱신하고 revision은 변경 번호로 1 증가. Host restart는 최신 panel에 적용한 결과를 다시 삽입. 소유 자원 종료 확인 후 삭제 |
+| `panel_tabs` / `id`                           | `panel_id` FK, `terminal_id? UNIQUE`, `label`, `agent_key?`, `presentation`, `notice_json?`                                                            | tab 참조·안내 표시 지속. shell tab은 terminal 없이 preparing으로 먼저 등록하고 준비 뒤 terminal만 연결. 바뀐 tab 행만 갱신하고 close는 종료 확인 후 삭제                                              |
+| `deleted_ids` / `id`                          | `kind` panel/tab                                                                                                                                       | 삭제된 panel·tab ID의 재사용 거절. 자동 삭제하지 않음                                                                                                                                                 |
+| `host_executions` / `runtime_id`              | `host_id`, `agent_key`, `terminal_id`, `started_at`, `ended_at?`, `exit_json?`                                                                         | 실행 이력. live credential/binding/status는 저장하지 않음                                                                                                                                             |
 
 `?` 열은 실제 부재 의미의 nullable이다. 과거 행 호환용 nullable/legacy fallback이 아니다.
 host_executions의 Host/terminal ID는 삭제 후 이력을 위해 값만 보존하고 live FK로 삭제를 막지
