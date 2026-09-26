@@ -327,13 +327,15 @@ it("distinguishes an unrestorable mirror from connection failure", async () => {
 });
 
 it("finishes received output and exit notice even when the socket closes during parsing", async () => {
-    const { message, socket } = setup();
+    const { message, socket, report } = setup();
     message({ type: "snapshot", cols: 80, rows: 24, state: { version: 1 } });
     message(new Uint8Array([65]).buffer);
     message({ type: "exit", exitCode: 0, signal: null });
     await flush();
     socket.readyState = 2;
-    socket.dispatchEvent(new Event("close"));
+    socket.dispatchEvent(
+        Object.assign(new Event("close"), { code: 1005, wasClean: true }),
+    );
     callbacks.shift()?.();
     await flush();
     expect(term.write).toHaveBeenCalledTimes(2);
@@ -342,6 +344,25 @@ it("finishes received output and exit notice even when the socket closes during 
     );
     expect(term.options.disableStdin).toBe(true);
     expect(socket.send).not.toHaveBeenCalled();
+    callbacks.shift()?.();
+    await flush();
+    expect(report).not.toHaveBeenCalledWith(expect.any(String), "disconnected");
+    expect(report).toHaveBeenLastCalledWith(
+        expect.stringContaining("process exited"),
+        "exited",
+    );
+});
+
+it("reports a clean close without an exit frame as disconnected", async () => {
+    const { socket, report } = setup();
+    socket.dispatchEvent(
+        Object.assign(new Event("close"), { code: 1005, wasClean: true }),
+    );
+    await flush();
+    expect(report).toHaveBeenLastCalledWith(
+        expect.stringContaining("disconnected"),
+        "disconnected",
+    );
 });
 
 it("resets display attributes before the exit notice so a dying program cannot hide it", async () => {
@@ -546,6 +567,7 @@ it("reports a slow-viewer close immediately while the last write is still parsin
     const close = new Event("close");
     Object.assign(close, {
         code: 1013,
+        wasClean: true,
         reason: "Viewer is too slow; reconnect to restore the screen",
     });
     socket.dispatchEvent(close);

@@ -1167,6 +1167,13 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 - 검증 근거: 현재 서버·CLI·protocol·persistence·terminal 변경이 포함된 전체 pnpm check는 앞선 키 바인딩 구현에서 exit 0이었다. 뒤이은 IME 변경은 Web 전체 184개·typecheck·build·lint·format 및 Chromium IME 검증을 통과했다. 이번 문맥 문서는 관련 owner·공개 API 연결과 대조했고 markdown inline-code 검사·git diff --check·로그 점검을 수행했다.
 - 로그는 1000줄을 넘지만 이번 작업은 기존 W10 터미널 연결의 동일한 수명에 속하는 후속 수정·문맥 갱신·커밋 정리다. 현재 scope에서 별도 작업으로 분리하거나 과거 기록을 이동하지 않고 같은 block에 소비 관계를 유지한다. W10 전체는 계속 진행 중이다.
 
+### 2026-09-27 01:07 · Host Agent 종료 시 일시적 터미널 종료 화면 수정
+
+- 사용자 요청으로 앞서 완료한 수정과 검증을 소급 기록한다. Host Agent 종료 때 오류처럼 보인 화면은 격리 daemon·실제 PTY·vendor 대역의 브라우저 재현에서 `Terminal process exited` 카드였고, 기반 shell 복귀까지 약 27ms 노출됐다. 사용자 실제 Claude/Codex 종료와 X 종료 전체를 동일 원인으로 확정하지 않는다. X 경로에서는 해당 카드를 재현하지 못했다.
+- 수정: `ConnectedTerminal`은 Runtime 연결의 exit를 shell 복귀 대기로 표시하고, 일반 shell exit 카드는 유지한다. `attach.ts`는 정상 WebSocket close에서 이미 받은 출력·exit 처리를 기다린 뒤 disconnected를 판정한다. 비정상 close와 1013은 즉시 기존 오류를 전달한다. 임시 진단은 남기지 않았다.
+- 검증: 당시 Web 전체 188 tests, 대상 38 tests, typecheck·lint·format·build 및 React Doctor 통과. 브라우저 재검증은 종료 카드 없이 restoring 후 shell 복귀를 확인했다. 후속 idle 삭제 변경을 포함한 Web 전체 194 tests도 통과했다. 실제 vendor/네이티브 모든 OS의 재현 결과로 확대하지 않는다.
+- 위치·남은 일: 기존 W10 운영 터미널 수명의 결함 수정이므로 1,000행 초과를 인지하고 이 owning block에 유지한다. W10 전체와 기존 플랫폼·사용자 실측 후속은 열린 상태다. 사용자 daemon 재시작과 push는 수행하지 않았다.
+
 ## 2026-09-26 · W18 shell 경로 갱신·상속과 Agent 탭 이름 복귀
 
 사용자는 앞선 읽기 전용·로그 금지 지시를 변경하여 합의한 요구를 먼저 기록하고, 적절한 모델·추론의 subagent에게 구현을 맡긴 뒤 주 Agent 검토·검증이 기대를 충족하면 로그와 권위 문서를 갱신하라고 지시했다. 기존 W10의 남은 운영 검증은 유지하며 이번 bounded slice를 W18로 분리한다. 두 구현은 독립 검증 가능한 code/test 변경이며 별도 artifact 수명이나 package handoff를 만들지 않아 Base 로그에서 처리한다.

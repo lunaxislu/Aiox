@@ -270,5 +270,13 @@ it("preserves failure during reconnect, distinguishes restore refusal/exit and c
     fireEvent.click(screen.getByRole("button", { name: "Close and stop" }));
     expect(view.close).toHaveBeenCalledWith(tab("t", "r1"), true);
     report("exited");
+    expect(screen.getByText("Restoring terminal…")).toBeTruthy();
+    expect(screen.queryByText("Terminal process exited")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Force stop" })).toBeNull();
+    view.update(layout([tab("t")]));
+    expect(vi.mocked(attachTerminal).mock.calls.at(-1)![3]).toBeUndefined();
+    report("connected");
+    expect(screen.queryByText("Restoring terminal…")).toBeNull();
+    report("exited");
     expect(screen.getByText("Terminal process exited")).toBeTruthy();
 });

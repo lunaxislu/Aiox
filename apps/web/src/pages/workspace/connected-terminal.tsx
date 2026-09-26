@@ -59,10 +59,13 @@ export function ConnectedTerminal({
         let disposed = false;
         const report = (reason: string, state?: AttachmentState) => {
             if (disposed || !state) return;
+            // The Agent stream ends before application state returns this tab to its shell.
             const connection =
-                state === "restoring" && attempt > 0
-                    ? "reconnecting"
-                    : connections[state];
+                state === "exited" && tab.runtimeId
+                    ? "restoring"
+                    : state === "restoring" && attempt > 0
+                      ? "reconnecting"
+                      : connections[state];
             setStatus((previous) => ({
                 connection,
                 ...(state === "connected"

@@ -349,11 +349,17 @@ export function attachTerminal(
         (event) => {
             if (detached) return;
             term.options.disableStdin = true;
-            if (!failed && !ended)
-                report(
-                    `terminal ${terminalId} · ${event.code === 1013 ? event.reason || "Terminal display fell behind. Reconnect to restore the current screen." : "disconnected"}`,
-                    "disconnected",
-                );
+            const reportClose = () => {
+                if (!failed && !ended)
+                    report(
+                        `terminal ${terminalId} · ${event.code === 1013 ? event.reason || "Terminal display fell behind. Reconnect to restore the current screen." : "disconnected"}`,
+                        "disconnected",
+                    );
+            };
+            // A clean close may follow an exit frame still queued behind output.
+            if (event.wasClean && event.code !== 1013)
+                void pending.then(reportClose);
+            else reportClose();
         },
         { signal: socketEvents.signal },
     );
