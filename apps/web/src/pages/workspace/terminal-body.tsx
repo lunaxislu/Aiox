@@ -243,12 +243,14 @@ export function TerminalStatusBar({
     const reason = tab.notice?.reason ?? terminal?.statusReason;
     const status = terminal?.status ?? tab.presentation;
     return (
-        <div
+        <Collapsible
+            open={expanded}
+            onOpenChange={setExpanded}
             role="group"
             aria-label="Terminal status"
             className="flex min-w-0 flex-col border-t bg-muted/30 font-mono text-[11px] text-muted-foreground"
         >
-            <div className="flex min-w-0 items-center gap-2 px-2 py-1">
+            <div className="flex h-6 shrink-0 min-w-0 items-center gap-2 px-2">
                 <span className="flex shrink-0 items-center gap-1.5">
                     <StatusDot status={status} />
                     {status}
@@ -278,27 +280,27 @@ export function TerminalStatusBar({
                         <span className="sr-only">{connection}</span>
                     </span>
                 )}
-            </div>
-            {reason && (
-                <Collapsible open={expanded} onOpenChange={setExpanded}>
+                {reason && (
                     <CollapsibleTrigger
                         render={
                             <Button
                                 variant="ghost"
                                 size="xs"
-                                className="h-5 justify-start rounded-none px-2 font-mono text-[10px] text-muted-foreground"
+                                className="h-5 shrink-0 justify-start rounded-none px-2 font-mono text-[10px] text-muted-foreground"
                             />
                         }
                     >
                         {expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
                         {expanded ? "Collapse reason" : "Show full reason"}
                     </CollapsibleTrigger>
-                    <CollapsibleContent className="max-h-28 overflow-auto px-3 pb-2 leading-relaxed wrap-anywhere">
-                        {reason}
-                    </CollapsibleContent>
-                </Collapsible>
+                )}
+            </div>
+            {reason && (
+                <CollapsibleContent className="max-h-28 overflow-auto px-3 pb-2 leading-relaxed wrap-anywhere">
+                    {reason}
+                </CollapsibleContent>
             )}
-        </div>
+        </Collapsible>
     );
 }
 

@@ -20,6 +20,7 @@ export function AppLayout({ children, ...sidebarProps }: AppLayoutProps) {
 
     return (
         <SidebarProvider
+            className="h-dvh min-h-0 overflow-hidden"
             style={
                 {
                     "--sidebar-width": `clamp(180px, ${width}px, 90vw)`,

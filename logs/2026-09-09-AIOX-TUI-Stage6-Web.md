@@ -1317,3 +1317,13 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 - 검증: 기존 구현에서 빈 panel이 단일 pane으로 남아 새 회귀가 실패하는 RED를 확인했다(`/private/tmp/host-restart-empty-red.out`). 최종 Host 관련 3파일 22테스트 통과(`/private/tmp/host-restart-empty-green.out`), daemon typecheck·build 통과(`/private/tmp/host-restart-empty-types.out`, `/private/tmp/host-restart-empty-build.out`), 대상 lint·format 및 `git diff --check` 통과. 회귀는 70:30 두 pane 대 auto 세 Agent에서 비율·탭 자리·shell 생존 보존, 새 Agent의 첫 pane 추가, 완전히 빈 panel의 auto 세 영역 복원을 확인한다. 실제 macOS PTY·빌드 CLI·HTTP와 vendor 대역 검증이며 실제 vendor·브라우저 UI 직접 재검증을 대신하지 않는다.
 - Owner 반영: `docs/specs/aiox-host.md`, `docs/specs/aiox-configuration-web.md`, `docs/architecture/aiox-system.md`에 기존 배치 보존과 빈 panel 예외를 반영했다. 구현·회귀는 `apps/daemon/src/host-run.ts`, `apps/daemon/src/host-run.test.ts`가 소유한다.
 - 결과·다음: W19 완료, W10 및 W8/W9의 기존 미완료 상태는 유지한다. 실제 사용자 daemon은 재시작하지 않았으며 새 빌드 반영 후 Host 배치 UI 확인은 W10 통합 검증에서 수행한다. 개인 `aiox.yaml`은 수정·커밋 대상에서 제외한다. 이번 commit은 최종 구현·회귀·owner 문서와 이 기록을 함께 포함하며 push는 수행하지 않는다.
+
+## 2026-09-27 · W10 Web viewport·상태바 높이 안정화
+
+- 기록 범위: 사용자가 해결한 변경의 로그 기록과 커밋을 명시적으로 요청하여 완료된 두 높이 수정만 소급 기록한다. W10 운영 Web 검증의 완료된 국소 수정이며 별도 재개·반환 조건이 없어, 1000줄을 넘는 현재 Stage6 로그 안에 유지한다. W10과 W8/W9의 미완료 상태 및 기존 next pointer는 변경하지 않는다.
+- 페이지 높이 재현·수정: 실제 Web에서 창 높이를 900px에서 500px로 줄이자 페이지 scrollHeight가 1356px가 됐다. 최상위 SidebarProvider가 최소 높이만 지정하고 있어 AppLayout에 화면 높이 제한을 적용했다. 하위 pane의 기존 min-height 경로와 terminal ResizeObserver를 재사용하며 JS 높이 계산이나 새 상태는 추가하지 않았다. 구현 owner는 `apps/web/src/app/app-layout.tsx`다.
+- 페이지 높이 검증: 수정 후 Codex 실행 화면에서 viewport/page 높이가 각각 900/900px, 500/500px였고 terminal 본문은 777.5px에서 377.5px로 함께 축소됐다. 390×600 viewport에서도 page width/height가 390×600으로 일치했다. 실행 shell의 PATH에 aiox가 없어 저장소의 빌드된 CLI `node apps/cli/dist/main.js agent run codex --name viewport-check`로 실행했다.
+- 상태바 재현·수정: 실제 TerminalStatusBar를 사용하는 독립 브라우저 화면에서 statusReason이 없을 때 25.5px, 생길 때 45.5px로 높이가 달라지는 것을 측정했다. 별도 줄에 나타나던 상세보기 trigger를 기존 상태 줄 안으로 옮기고 접힌 상태의 줄 높이를 고정했다. 상세 사유의 펼침·접힘 상태는 기존 local state와 Collapsible을 재사용한다. 구현 owner는 `apps/web/src/pages/workspace/terminal-body.tsx`다.
+- 상태바 검증: 사유 없음/있음 20회 전환에서 접힌 상태바 높이가 모두 25px로 유지됐다. Show full reason을 직접 클릭하면 aria-expanded=true와 전체 사유 표시를 확인했다. 사용자가 명시적으로 펼친 상세 영역까지 고정 높이로 막는 변경은 아니다. 임시 브라우저 재현 파일은 검증 뒤 제거했다.
+- 정적·기존 회귀 검증: Web typecheck, 수정 파일 oxlint·oxfmt check, `pnpm --filter @aiox/web exec vitest run src/pages/workspace/terminal-body.test.tsx`의 기존 2 tests 통과. React Doctor 변경 검사 경고 7개는 수정 전후 동일하며 score API 연결 실패로 점수는 확인하지 못했다. 이번 작업에서 전체 monorepo check를 실행한 것으로 기록하지 않는다.
+- 커밋 범위: 위 두 production 파일과 이 로그만 포함한다. 다른 작업의 attach·connected-terminal 변경과 개인 aiox.yaml은 포함하지 않으며 push하지 않는다.
