@@ -1,6 +1,12 @@
 import type { WebNotificationView } from "@aiox/protocol";
 import { Effect, Exit, Cause } from "effect";
-import { useLayoutEffect, useRef, useState } from "react";
+import {
+    useEffect,
+    useEffectEvent,
+    useLayoutEffect,
+    useRef,
+    useState,
+} from "react";
 import { Outlet, useNavigate, useParams } from "react-router";
 
 import { agentName, findRuntimeTab } from "@/entities/notification/model";
@@ -23,7 +29,12 @@ import {
     useApplicationConnection,
     useApplicationConnectionState,
 } from "./application-provider";
-import { useApplicationState, usePanelCommand } from "./application-state";
+import {
+    useApplicationState,
+    useApplicationStore,
+    usePanelCommand,
+    usePanelSelection,
+} from "./application-state";
 import { CommandFeedback, useCommandFeedback } from "./command-feedback";
 export type AppOutletContext = {
     reportOutcome: ReturnType<typeof useCommandFeedback>["reportOutcome"];
@@ -41,6 +52,35 @@ export function AppShell() {
     const [readError, setReadError] = useState<string | null>(null);
     const navigate = useNavigate();
     const { section, panelId } = useParams();
+    const store = useApplicationStore();
+    const { selection } = usePanelSelection(panelId ?? "");
+    const reveal = useEffectEvent(
+        (event: {
+            sourceTerminalId: string;
+            panelId: string;
+            tabId: string;
+        }) => {
+            const current = store.getView().panels;
+            const source = current.find((p) => p.id === panelId);
+            // Only a window displaying the invoking shell follows its CLI action.
+            const sourceTab = source?.tabs.find(
+                (tab) => tab.terminalId === event.sourceTerminalId,
+            );
+            if (
+                !sourceTab ||
+                !Object.values(selection?.selectedTabId ?? {}).includes(
+                    sourceTab.id,
+                )
+            )
+                return;
+            const target = current.find((p) => p.id === event.panelId);
+            if (!target?.tabs.some((tab) => tab.id === event.tabId)) return;
+            void navigate(`/${target.section}/${target.id}`, {
+                state: { focusTabId: event.tabId },
+            });
+        },
+    );
+    useEffect(() => store.subscribeReveal((event) => reveal(event)), [store]);
     const currentPanel = useRef({ section, panelId });
     useLayoutEffect(() => {
         currentPanel.current = { section, panelId };

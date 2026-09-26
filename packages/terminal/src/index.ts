@@ -45,6 +45,8 @@ export type TerminalListener = {
 export type TerminalSession = {
     readonly id: string;
     readonly pid: number;
+    readonly cols: number;
+    readonly rows: number;
     readonly alive: boolean;
     /** Unsupported or unconfirmed shells are busy. */
     busy(): Promise<boolean>;
@@ -318,6 +320,12 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
 
     return {
         id: options.id,
+        get cols() {
+            return pty.cols;
+        },
+        get rows() {
+            return pty.rows;
+        },
         get pid() {
             return pty.pid;
         },

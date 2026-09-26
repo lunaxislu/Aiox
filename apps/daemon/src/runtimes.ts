@@ -15,6 +15,8 @@ export type AgentBinding = {
     readonly exit?: LastExit | undefined;
     readonly terminal?: TerminalSession | undefined;
     readonly relayDisconnected?: boolean;
+    /** Web attaches to the daemon vendor PTY directly; no CLI relay exists. */
+    readonly directTerminal?: boolean;
     readonly collaborationError?: string | undefined;
     /** Resolves when the input was accepted, never when the work is done. */
     deliver(message: InboundMessage): Promise<void>;

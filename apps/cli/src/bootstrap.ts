@@ -509,10 +509,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         ].join("\n");
     }
 
-    async function runAgent(
-        request: CliRequest,
-        managed?: { hostId: string; agentKey: string },
-    ): Promise<void> {
+    async function runAgent(request: CliRequest): Promise<void> {
         const adapter = selectVendor(
             [claudeAdapter, codexAdapter],
             operand(request.args, 0),
@@ -528,12 +525,6 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                         ([, value]) => value !== undefined,
                     ),
                 ),
-                ...(managed
-                    ? {
-                          AIOX_HOST_ID: managed.hostId,
-                          AIOX_AGENT_KEY: managed.agentKey,
-                      }
-                    : {}),
             },
             args: request.adapterArgs ?? [],
             cols: process.stdout.columns ?? 80,
@@ -760,8 +751,6 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                                 ? `/api/hosts/${encodeURIComponent(hostId!)}/agents/stop`
                                 : `/api/hosts/agents/${command.split(".")[2]}`;
                     let result: HostCommandResult | undefined;
-                    let foreground: Promise<void> | undefined;
-                    let foregroundError: unknown;
                     try {
                         result = await runHostCommand(
                             url,
@@ -769,6 +758,23 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                             {
                                 ...post({
                                     requestId,
+                                    ...(stop || control
+                                        ? {}
+                                        : {
+                                              env: Object.fromEntries(
+                                                  Object.entries(
+                                                      process.env,
+                                                  ).filter(
+                                                      ([key, value]) =>
+                                                          value !== undefined &&
+                                                          !key
+                                                              .toUpperCase()
+                                                              .startsWith(
+                                                                  "AIOX_",
+                                                              ),
+                                                  ),
+                                              ),
+                                          }),
                                     ...(stop
                                         ? {}
                                         : {
@@ -819,52 +825,11 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
                                     : {}),
                             },
                             describeError,
-                            (launch) => {
-                                // The daemon placed this Agent in the calling terminal: run it here.
-                                if (foreground || stop) return;
-                                foreground = runAgent(
-                                    {
-                                        command: "agent.run",
-                                        args: [
-                                            prepared.manifest!.agents[
-                                                launch.agentKey
-                                            ]!.adapter,
-                                        ],
-                                        options: {},
-                                    },
-                                    {
-                                        hostId: launch.hostId,
-                                        agentKey: launch.agentKey,
-                                    },
-                                )
-                                    .then(() => {
-                                        if (process.exitCode && !result)
-                                            throw new Error(
-                                                `Agent exited with code ${process.exitCode}`,
-                                            );
-                                    })
-                                    .catch((error) => {
-                                        foregroundError = error;
-                                        const diagnostic = message(error);
-                                        process.stdout.write(
-                                            `\x1b]777;${launch.marker}${Buffer.from(diagnostic).subarray(0, 4096).toString("base64")}\x07`,
-                                        );
-                                    });
-                            },
                         );
                     } catch (error) {
                         throw new Error(
                             `${message(error)}\nrequestId=${requestId}\nRecheck: aiox host status ${JSON.stringify(prepared.manifest?.host.name ?? args[0])} --json`,
                         );
-                    }
-                    if (foreground) {
-                        if (result.state !== "succeeded")
-                            console.error(
-                                result.error?.message ??
-                                    "Host Agent command failed.",
-                            );
-                        await foreground;
-                        if (foregroundError) throw foregroundError;
                     }
                     return hostCommandOutput(result);
                 }

@@ -99,6 +99,14 @@ export class TerminalService {
         return session;
     }
 
+    /** Internal launch credential; never included in public terminal views. */
+    context(id: string): TerminalContext {
+        const token = this.#metadata.get(id)?.token;
+        if (!token || !this.#sessions.get(id)?.alive)
+            throw new Error("Agent shell is no longer available.");
+        return { terminalId: id, token };
+    }
+
     authenticateContext(context: TerminalContext): TerminalSession {
         const session = this.#sessions.get(context.terminalId);
         const token = this.#metadata.get(context.terminalId)?.token;

@@ -108,6 +108,8 @@ beforeEach(async () => {
             closeIdle: async () => false,
             id: options.id,
             pid: 100 + sessions.length,
+            cols: options.cols ?? 80,
+            rows: options.rows ?? 24,
             get alive() {
                 return alive;
             },
@@ -489,6 +491,32 @@ function webFrame(): AgentRun {
     };
 }
 
+async function inNetwork(
+    networkId: string,
+    input: AgentRun,
+): Promise<AgentRun> {
+    const terminalId = input.terminalContext!.terminalId;
+    await harness.daemon.services.db.hostState.mutatePanel(
+        networkId,
+        (panel) => ({
+            ...panel,
+            layout: { type: "pane", id: panel.layout.id, tabIds: [terminalId] },
+            tabs: [
+                {
+                    id: terminalId,
+                    terminalId,
+                    runtimeId: null,
+                    agentKey: null,
+                    label: "shell",
+                    presentation: "shell",
+                    notice: null,
+                },
+            ],
+        }),
+    );
+    return input;
+}
+
 async function connect(input: unknown) {
     const socket = new WebSocket(
         harness.apiUrl("/api/agent-run").replace("http:", "ws:"),
@@ -507,11 +535,13 @@ test("a daemon-owned vendor PTY relays inside the borrowed shell and cleans its 
     const shellSession = sessions[0]!;
     const terminalContext = terminalContextFromEnv(shellSession.options.env!)!;
     const network = await harness.daemon.services.networks.create("dev");
-    const { socket, messages } = await connect({
-        ...frame(),
-        network: network.name,
-        terminalContext,
-    });
+    const { socket, messages } = await connect(
+        await inNetwork(network.id, {
+            ...frame(),
+            network: network.name,
+            terminalContext,
+        }),
+    );
     const inbox = createServer((connection) => {
         connection.on("error", () => {});
         connection.resume();
@@ -786,11 +816,13 @@ test("MCP inbox input settles through direct transcript observation with storage
         networkId: network.id,
         createBinding: sourceVendor.createBinding,
     });
-    const { socket } = await connect({
-        ...webFrame(),
-        name: "Claude target",
-        network: network.name,
-    });
+    const { socket } = await connect(
+        await inNetwork(network.id, {
+            ...webFrame(),
+            name: "Claude target",
+            network: network.name,
+        }),
+    );
     const lines: {
         type: string;
         token?: string;
@@ -2248,3 +2280,26 @@ test.each([
         }
     },
 );
+
+test("direct launch rejected while preparation is stopped does not leave its caller pending", async () => {
+    let resume!: () => void;
+    holdStart = new Promise<void>((resolve) => {
+        resume = resolve;
+    });
+    const pending = harness.daemon.services.lifecycle
+        .startAgent(webFrame())
+        .then(
+            () => "ready",
+            (error: Error) => error.message,
+        );
+    await vi.waitFor(() => expect(sessions).toHaveLength(1));
+    const runtime = harness.daemon.services.runtimes.list()[0]!;
+    const stopped = harness.daemon.stopRuntime(runtime.id);
+    expect(await pending).toContain("stopped before becoming ready");
+    resume();
+    await stopped;
+    expect(harness.daemon.services.runtimes.get(runtime.id)).toBeUndefined();
+    expect(
+        harness.daemon.services.terminals.get(runtime.terminalId!)!.alive,
+    ).toBe(true);
+});

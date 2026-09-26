@@ -13,7 +13,8 @@ import { Effect } from "effect";
 import { expect, test, vi } from "vitest";
 
 import { placeAgent } from "./host-agents";
-import { initialHostPanel, launcher } from "./host-run";
+import { initialHostPanel } from "./host-run";
+const launcher = new URL("../../cli/dist/index.js", import.meta.url);
 import { hostResult, startTestDaemon } from "./testing";
 
 test.skipIf(process.platform === "win32")(
@@ -363,6 +364,7 @@ test.skipIf(process.platform === "win32")(
             current.id,
             () => current,
         );
+        const reveal = vi.spyOn(h.daemon.services.appState, "reveal");
         const script = join(h.home, "caller.cjs");
         await writeFile(
             script,
@@ -410,6 +412,7 @@ test.skipIf(process.platform === "win32")(
             { timeout: 15000 },
         );
         expect(runtime("a")!.terminalId).toBe(caller.id);
+        expect(reveal).toHaveBeenCalledWith(caller.id, current.id, "caller");
         tabs = (await h.daemon.services.db.hostState.snapshot()).panels[0]!
             .tabs;
         expect(tabs.some((t) => t.terminalId === terminal)).toBe(false);

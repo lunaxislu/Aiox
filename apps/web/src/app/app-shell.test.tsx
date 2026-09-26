@@ -486,3 +486,95 @@ it.each([false, true])(
         );
     },
 );
+
+it.each(["networks", "hosts"] as const)(
+    "reveals CLI launch in an occupied %s panel without changing unrelated windows",
+    async (section) => {
+        const app = mount("/workspaces/p");
+        const source = {
+            ...panel,
+            tabs: panel.tabs.map((tab) => ({
+                ...tab,
+                terminalId: tab.id === "a" ? "caller" : "hidden",
+            })),
+        };
+        const target: PanelView = {
+            ...panel,
+            id: "target",
+            name: "Target",
+            section,
+            kind: section === "hosts" ? "host" : "network",
+            layout: {
+                type: "split",
+                id: "split",
+                axis: "x",
+                weights: [0.5, 0.5],
+                children: [
+                    { type: "pane", id: "left", tabIds: ["old"] },
+                    { type: "pane", id: "right", tabIds: ["other", "new"] },
+                ],
+            },
+            tabs: ["old", "other", "new"].map((id) => ({
+                ...panel.tabs[0]!,
+                id,
+                label: id,
+            })),
+        };
+        const initial = snapshot();
+        if (initial.type === "snapshot")
+            initial.snapshot.panels = [
+                source,
+                {
+                    ...target,
+                    layout: {
+                        type: "pane",
+                        id: "left",
+                        tabIds: ["old", "other"],
+                    },
+                    tabs: target.tabs.filter((tab) => tab.id !== "new"),
+                },
+            ];
+        app.emit(initial);
+        await screen.findByRole("tab", { name: "a · preparing" });
+        const reveal = {
+            type: "reveal",
+            epoch: "e",
+            sourceTerminalId: "hidden",
+            panelId: "target",
+            tabId: "new",
+        } as ApplicationEvent;
+        app.emit(reveal);
+        expect(app.router.state.location.pathname).toBe("/workspaces/p");
+        act(() => {
+            app.emit({
+                type: "delta",
+                epoch: "e",
+                version: 1,
+                changes: [
+                    {
+                        action: "upsert",
+                        resource: "panel",
+                        id: target.id,
+                        value: target,
+                    },
+                ],
+            });
+            app.emit({
+                ...reveal,
+                sourceTerminalId: "caller",
+            } as ApplicationEvent);
+        });
+        await waitFor(() =>
+            expect(app.router.state.location.pathname).toBe(
+                `/${section}/target`,
+            ),
+        );
+        await waitFor(() =>
+            expect(
+                screen
+                    .getByRole("tab", { name: "new · preparing" })
+                    .getAttribute("aria-selected"),
+            ).toBe("true"),
+        );
+    },
+);

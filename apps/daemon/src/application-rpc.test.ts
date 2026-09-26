@@ -408,3 +408,43 @@ it("uses a real Effect RPC WebSocket for sessions, atomic commands, matching del
         ).pipe(Effect.provide(protocol)),
     );
 });
+
+it("orders transient CLI reveal after target state, without replaying it on reconnect", async (t) => {
+    const h = await startTestDaemon();
+    t.onTestFinished(() => h.close());
+    const rpc = await openTestApplication(h);
+    t.onTestFinished(() => rpc.close());
+    await rpc.next();
+    const target = panel();
+    target.layout = { type: "pane", id: "pane", tabIds: ["tab"] };
+    target.tabs = [
+        {
+            id: "tab",
+            label: "Agent",
+            agentKey: null,
+            terminalId: null,
+            runtimeId: null,
+            presentation: "preparing",
+            notice: null,
+        },
+    ];
+    await h.daemon.services.db.hostState.createPanel(target);
+    await h.daemon.services.appState.update({ panel: target.id });
+    await h.daemon.services.appState.reveal("caller", target.id, "tab");
+    expect(await rpc.next()).toMatchObject({
+        type: "delta",
+        changes: [{ resource: "panel", id: target.id }],
+    });
+    expect(await rpc.next()).toMatchObject({
+        type: "reveal",
+        sourceTerminalId: "caller",
+        panelId: target.id,
+        tabId: "tab",
+    });
+    const reconnect = await openTestApplication(h);
+    t.onTestFinished(() => reconnect.close());
+    expect(await reconnect.next()).toMatchObject({
+        type: "snapshot",
+        snapshot: { panels: [{ id: target.id }] },
+    });
+});

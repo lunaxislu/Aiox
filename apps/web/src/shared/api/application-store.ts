@@ -65,6 +65,19 @@ function isKnownUnexecuted(row: ApplicationRow | undefined) {
 
 /** One sync transaction covers every resource AND the intent reconciliation. */
 export class ApplicationStore {
+    #reveals = new Set<
+        (event: Extract<ApplicationEvent, { type: "reveal" }>) => void
+    >();
+    readonly subscribeReveal = (
+        listener: (
+            event: Extract<ApplicationEvent, { type: "reveal" }>,
+        ) => void,
+    ) => {
+        this.#reveals.add(listener);
+        return () => {
+            this.#reveals.delete(listener);
+        };
+    };
     #sync!: Sync;
     #order = 0;
     #disposed = false;
@@ -117,6 +130,11 @@ export class ApplicationStore {
     readonly onEvent = (event: ApplicationEvent) => {
         if (this.#disposed) return;
         const cursor = this.collection.get("cursor") as Cursor | undefined;
+        if (event.type === "reveal") {
+            if (cursor?.epoch === event.epoch)
+                for (const listener of this.#reveals) listener(event);
+            return;
+        }
         if (event.type === "sequence-failure") {
             const missing = new Set(event.failure.missing);
             const unexecuted = new Set(
@@ -448,6 +466,7 @@ export class ApplicationStore {
     }
     async dispose() {
         this.#disposed = true;
+        this.#reveals.clear();
         for (const controller of this.#running) controller.abort();
         await this.collection.cleanup();
     }

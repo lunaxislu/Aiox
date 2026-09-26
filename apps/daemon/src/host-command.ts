@@ -1,8 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import type { TerminalLaunch } from "@aiox/config";
 import { logger } from "@aiox/diagnostics";
 import type {
@@ -23,20 +18,12 @@ import {
     Stream,
 } from "effect";
 
-import { launchCommand, waitForAgent } from "./host-run";
 import type { HttpEnv } from "./http";
 import { HttpError } from "./http";
 import type { Context } from "./http-endpoint";
 import { restartCommand } from "./managed-agents";
 import type { DaemonServices } from "./services";
 
-/** Asks the calling CLI to run an Agent in its own terminal. */
-export type Launch = (
-    hostId: string,
-    agentKey: string,
-    terminalId: string,
-    marker: string,
-) => void;
 /** What one Host command did; turned into its HTTP result. */
 export type HostOutcome = {
     hostId: string | null;
@@ -48,7 +35,7 @@ export type AdmittedHostCommand = {
     hostId: string;
     /** Agents whose tabs Web must not close meanwhile; "all" for whole-Host work. */
     agents: readonly string[] | "all";
-    execute(launch: Launch): Promise<HostOutcome>;
+    execute(): Promise<HostOutcome>;
 };
 type Running = {
     hash: string;
@@ -185,25 +172,11 @@ export class HostCommands {
                         },
                         "Host command accepted",
                     );
-                    const launch: Launch = (
-                        hostId,
-                        agentKey,
-                        terminalId,
-                        marker,
-                    ) => {
-                        Queue.offerUnsafe(events, {
-                            type: "launch",
-                            hostId,
-                            agentKey,
-                            terminalId,
-                            marker,
-                        });
-                    };
                     yield* this.services.tasks.start(
                         Effect.gen({ self: this }, function* () {
                             const exit = yield* Effect.exit(
                                 Effect.tryPromise({
-                                    try: () => admitted.execute(launch),
+                                    try: () => admitted.execute(),
                                     catch: (error) => error,
                                 }),
                             );
@@ -289,13 +262,12 @@ function respond(
  */
 export async function startAgent(
     services: DaemonServices,
-    launch: Launch,
     input: {
         host: HostView;
         key: string;
         adapter: string;
+        env?: Record<string, string> | undefined;
         tabId: string;
-        callerTerminalId?: string | undefined;
         terminalLaunch?: TerminalLaunch | undefined;
     },
 ): Promise<{ target: HostTargetResult; cleanupErrors: CommandError[] }> {
@@ -305,7 +277,6 @@ export async function startAgent(
     let terminalId: string | null = null;
     let created = false;
     let saved = false;
-    let launchFile: string | undefined;
     try {
         const tab = (
             await services.db.hostState.getPanel(host.panelId)
@@ -347,31 +318,25 @@ export async function startAgent(
         saved = true;
         await services.appState.update({ panel: host.panelId });
         stage = "execution";
-        const inCaller = terminal.id === input.callerTerminalId;
-        const marker = `AIOX_${inCaller ? "CALLER" : "LAUNCH"}_${randomUUID()}_`;
-        let command: string | undefined;
-        if (!inCaller) {
-            launchFile = join(tmpdir(), `aiox-launch-${randomUUID()}.cjs`);
-            command = await launchCommand(
-                host,
-                key,
-                input.adapter,
-                services.configLocation.home,
-                marker,
-                launchFile,
-            );
-        }
-        const waiting = waitForAgent(services, host, key, terminal.id, marker);
-        try {
-            if (command)
-                services.terminals.get(terminal.id)!.write(command + "\r");
-            else launch(host.id, key, terminal.id, marker);
-        } catch (error) {
-            waiting.cancel();
-            await waiting.ready.catch(() => {});
-            throw error;
-        }
-        await waiting.ready;
+        await services.lifecycle.startAgent({
+            adapter: input.adapter,
+            args: [],
+            cwd: host.directory,
+            env: {
+                ...(Object.fromEntries(
+                    Object.entries(input.env ?? process.env).filter(
+                        ([key, value]) =>
+                            value !== undefined &&
+                            !key.toUpperCase().startsWith("AIOX_"),
+                    ),
+                ) as Record<string, string>),
+                AIOX_HOST_ID: host.id,
+                AIOX_AGENT_KEY: key,
+            },
+            cols: services.terminals.get(terminal.id)!.cols,
+            rows: services.terminals.get(terminal.id)!.rows,
+            terminalContext: services.terminals.context(terminal.id),
+        });
         return {
             target: { agentKey: key, terminalId, state: "ready", error: null },
             cleanupErrors,
@@ -414,16 +379,6 @@ export async function startAgent(
             },
             cleanupErrors,
         };
-    } finally {
-        if (launchFile)
-            await rm(launchFile, { force: true }).catch((error: unknown) => {
-                cleanupErrors.push({
-                    code: "cleanup_failed",
-                    stage: "cleanup",
-                    message: `Could not remove launch file ${launchFile}: ${String(error)}`,
-                    agentKey: key,
-                });
-            });
     }
 }
 

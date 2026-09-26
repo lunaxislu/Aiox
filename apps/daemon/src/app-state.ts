@@ -525,6 +525,30 @@ export class AppState {
         return delta;
     }
 
+    /** Ephemeral navigation intent, ordered after the target's committed state. */
+    async reveal(
+        sourceTerminalId: string,
+        panelId: string,
+        tabId: string,
+    ): Promise<void> {
+        await Effect.runPromise(
+            this.#mutex.withPermit(
+                Effect.sync(() => {
+                    if (this.#closed || this.#broken !== undefined) return;
+                    const panel = this.view("panel", panelId);
+                    if (!panel?.tabs.some((tab) => tab.id === tabId)) return;
+                    this.#enqueue({
+                        type: "reveal",
+                        epoch: this.epoch,
+                        sourceTerminalId,
+                        panelId,
+                        tabId,
+                    });
+                }),
+            ),
+        );
+    }
+
     #enqueue(item: ApplicationEvent): void {
         for (const client of this.#clients) {
             if (!Queue.offerUnsafe(client, item)) {

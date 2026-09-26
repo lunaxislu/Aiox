@@ -1,20 +1,11 @@
-import {
-    hostCommandEventSchema,
-    type HostCommandEvent,
-    type HostCommandResult,
-} from "@aiox/protocol";
+import { hostCommandEventSchema, type HostCommandResult } from "@aiox/protocol";
 
-/**
- * Sends a Host command and reads its NDJSON answer: requests to launch an Agent
- * in this CLI's own terminal, then the one final per-target result. A dropped
- * connection does not cancel the daemon's work.
- */
+/** Reads the final per-target NDJSON result. Reader loss does not cancel daemon work. */
 export async function runHostCommand(
     url: string,
     path: string,
     init: RequestInit,
     describe: (status: number, body: unknown, text: string) => string,
-    onLaunch?: (event: Extract<HostCommandEvent, { type: "launch" }>) => void,
 ): Promise<HostCommandResult> {
     const controller = new AbortController();
     const connectTimeout = setTimeout(
@@ -63,7 +54,6 @@ export async function runHostCommand(
                 if (!line) continue;
                 const event = hostCommandEventSchema.parse(JSON.parse(line));
                 if (event.type === "result") return event.result;
-                onLaunch?.(event);
             }
         }
     } finally {

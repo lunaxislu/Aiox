@@ -52,6 +52,13 @@ export const applicationEventSchema = Schema.Union([
     }),
     applicationDeltaSchema,
     Schema.Struct({
+        type: Schema.Literal("reveal"),
+        epoch: Schema.String,
+        sourceTerminalId: Schema.String,
+        panelId: Schema.String,
+        tabId: Schema.String,
+    }),
+    Schema.Struct({
         type: Schema.Literal("sequence-failure"),
         failure: webSequenceFailureSchema,
     }),

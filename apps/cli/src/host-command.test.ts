@@ -18,7 +18,7 @@ const done: HostCommandResult = {
 const describe = (status: number, _body: unknown, text: string) =>
     `${status}: ${text}`;
 
-test("CLI reads launch requests split across chunks, then waits for the final result", async (t) => {
+test("CLI reads a split final result without launching a second Agent", async (t) => {
     const encoder = new TextEncoder();
     let stream!: ReadableStreamDefaultController<Uint8Array>;
     vi.stubGlobal(
@@ -27,37 +27,26 @@ test("CLI reads launch requests split across chunks, then waits for the final re
             async () =>
                 new Response(
                     new ReadableStream({
-                        start(c) {
-                            stream = c;
+                        start(controller) {
+                            stream = controller;
                         },
                     }),
-                    { headers: { "content-type": "application/x-ndjson" } },
                 ),
         ),
     );
     t.onTestFinished(() => {
         vi.unstubAllGlobals();
     });
-    const launches: string[] = [];
-    let completed = false;
     const waiting = runHostCommand(
         "http://localhost",
         "/api/hosts/agents/start",
-        {},
-        describe,
-        (launch) => launches.push(`${launch.hostId}/${launch.agentKey}`),
-    ).then((result) => {
-        completed = true;
-        return result;
-    });
-    const launch = `${JSON.stringify({ type: "launch", hostId: "host", agentKey: "a", terminalId: "t1", marker: "AIOX_CALLER_x_" })}\n`;
-    stream.enqueue(encoder.encode(launch.slice(0, 20)));
-    stream.enqueue(encoder.encode(launch.slice(20)));
-    await vi.waitFor(() => expect(launches).toEqual(["host/a"]));
-    expect(completed).toBe(false);
-    stream.enqueue(
-        encoder.encode(`${JSON.stringify({ type: "result", result: done })}\n`),
+        { method: "POST" },
+        () => "unexpected",
     );
+    await vi.waitFor(() => expect(stream).toBeDefined());
+    const line = `${JSON.stringify({ type: "result", result: done })}\n`;
+    stream.enqueue(encoder.encode(line.slice(0, 20)));
+    stream.enqueue(encoder.encode(line.slice(20)));
     expect(await waiting).toEqual(done);
 });
 

@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { access, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 
 import { prepareHostInput } from "@aiox/config";
 import {
@@ -13,7 +11,6 @@ import {
     type PanelLayout,
     type PanelView,
 } from "@aiox/protocol";
-import { Deferred, Duration, Effect, Fiber } from "effect";
 import * as Schema from "effect/Schema";
 
 import { placeAgent } from "./host-agents";
@@ -23,7 +20,6 @@ import {
     startAgent,
     type AdmittedHostCommand,
     type HostOutcome,
-    type Launch,
 } from "./host-command";
 import { HttpError, parse, readJson } from "./http";
 import type { Context } from "./http-endpoint";
@@ -139,127 +135,6 @@ export function initialHostPanel(
     };
 }
 
-export const launcher = new URL("../../cli/dist/index.js", import.meta.url);
-
-/** The daemon launches the same foreground CLI inside a fresh authenticated shell. */
-export async function launchCommand(
-    host: HostView,
-    key: string,
-    adapter: string,
-    home: string | undefined,
-    marker: string,
-    file: string,
-): Promise<string> {
-    // Private OSC reports pre-registration failure without displaying protocol data in the TUI.
-    const script = `process.env.AIOX_HOST_ID=${JSON.stringify(host.id)};process.env.AIOX_AGENT_KEY=${JSON.stringify(key)};import(${JSON.stringify(launcher.href)}).then(async ({createFoundationPort})=>{await createFoundationPort(${JSON.stringify({ home })}).execute({command:'agent.run',args:[${JSON.stringify(adapter)}],options:{}});if(process.exitCode)throw new Error('Agent exited with code '+process.exitCode);}).catch(e=>{const message=e instanceof Error?e.message:String(e);console.error(message);process.stdout.write('\\x1b]777;'+${JSON.stringify(marker)}+Buffer.from(message).subarray(0,4096).toString('base64')+'\\x07');process.exitCode=1;});`;
-    // Keep the input line short even before the shell switches out of canonical mode.
-    await writeFile(file, script, { flag: "wx", mode: 0o600 });
-    const quote = (value: string) =>
-        `'${value.replaceAll("'", process.platform === "win32" ? "''" : "'\\''")}'`;
-    const command = `${process.platform === "win32" ? "& " : ""}${quote(process.execPath)} ${quote(file)}`;
-    return process.platform === "win32"
-        ? `powershell.exe -NoProfile -EncodedCommand ${Buffer.from(command, "utf16le").toString("base64")}`
-        : command;
-}
-
-export function waitForAgent(
-    services: DaemonServices,
-    host: HostView,
-    key: string,
-    terminalId: string,
-    marker: string,
-): { ready: Promise<void>; cancel: () => void } {
-    const terminal = services.terminals.get(terminalId)!;
-    const completion = Effect.runSync(Deferred.make<void, Error>());
-    let disposed = false;
-    let unsubscribe = () => {};
-    let terminalUnsubscribe = () => {};
-    const dispose = () => {
-        if (disposed) return;
-        disposed = true;
-        unsubscribe();
-        terminalUnsubscribe();
-    };
-    const finish = (error?: Error) => {
-        dispose();
-        Effect.runFork(
-            error
-                ? Deferred.fail(completion, error)
-                : Deferred.succeed(completion, undefined),
-        );
-    };
-    const timeout = Effect.runFork(
-        Effect.sleep(Duration.seconds(90)).pipe(
-            Effect.andThen(() =>
-                Effect.sync(() =>
-                    finish(
-                        new Error(
-                            "Agent preparation did not complete within 90 seconds. Check its terminal diagnostic.",
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    );
-    const ready = Effect.runPromise(Deferred.await(completion)).finally(() => {
-        dispose();
-        Effect.runFork(Fiber.interrupt(timeout));
-    });
-    let output = "";
-    let registered = false;
-    const check = () => {
-        const runtime = services.runtimes
-            .list()
-            .find(
-                (r) =>
-                    r.hostId === host.id &&
-                    r.name === key &&
-                    r.terminalId === terminalId,
-            );
-        if (runtime) {
-            registered = true;
-            if (
-                runtime.binding.collaborationError ||
-                runtime.status === "failed" ||
-                !runtime.collaborationActive
-            )
-                finish(
-                    new Error(
-                        runtime.binding.collaborationError ??
-                            runtime.status_reason ??
-                            "Agent collaboration preparation failed.",
-                    ),
-                );
-            else if (runtime.phase === "running") finish();
-        } else if (registered)
-            finish(
-                new Error(
-                    "Agent ended before becoming ready. Check terminal startup diagnostic.",
-                ),
-            );
-    };
-    unsubscribe = services.runtimes.subscribe(check);
-    terminalUnsubscribe = terminal.subscribe({
-        data: (data) => {
-            output = (output + Buffer.from(data).toString()).slice(-16384);
-            const match = new RegExp(`${marker}([A-Za-z0-9+/=]+)\\x07`).exec(
-                output,
-            );
-            if (match)
-                finish(new Error(Buffer.from(match[1]!, "base64").toString()));
-        },
-        exit: () =>
-            finish(
-                new Error(
-                    "Host shell exited before Agent preparation completed.",
-                ),
-            ),
-    });
-    const cancel = () => finish(new Error("Host Agent launch was cancelled."));
-    check();
-    return { ready, cancel };
-}
-
 export async function handleHostRun(
     c: Context,
     services: DaemonServices,
@@ -296,15 +171,6 @@ export async function admitHostRun(
         { ...input, launch: true },
         services.configLocation,
     );
-    await access(fileURLToPath(launcher)).catch((error) => {
-        throw new HttpError(
-            400,
-            "invalid_environment",
-            `Host CLI launcher is unavailable: ${String(error)}`,
-            { stage: "environment" },
-        );
-    });
-    // Invocation identifies the caller, never a workspace to commandeer.
     const terminalContext =
         "terminalContext" in input ? input.terminalContext : undefined;
     if (terminalContext) {
@@ -434,9 +300,23 @@ export async function admitHostRun(
         }
         await services.appState.update({ host: hostId }, { panel: panel.id });
     }
-    const start = (launch: Launch) =>
-        allTargets(host.agents, (agent) =>
-            startAgent(services, launch, {
+    const start = async () => {
+        if (terminalContext && host.agents[0]) {
+            const first = panel.tabs.find(
+                (tab) =>
+                    tab.agentKey === host.agents[0]!.key &&
+                    tab.presentation === "preparing",
+            );
+            if (first)
+                await services.appState.reveal(
+                    terminalContext.terminalId,
+                    panel.id,
+                    first.id,
+                );
+        }
+        return allTargets(host.agents, (agent) =>
+            startAgent(services, {
+                env: input.env,
                 host,
                 key: agent.key,
                 adapter: agent.adapter,
@@ -445,15 +325,15 @@ export async function admitHostRun(
                         t.agentKey === agent.key &&
                         t.presentation === "preparing",
                 )!.id,
-                callerTerminalId: terminalContext?.terminalId,
                 terminalLaunch: prepared.terminal,
             }),
         );
+    };
     return {
         hostId,
         agents: "all",
-        async execute(launch): Promise<HostOutcome> {
-            if (!existing) return { hostId, ...(await start(launch)) };
+        async execute(): Promise<HostOutcome> {
+            if (!existing) return { hostId, ...(await start()) };
             // Restart: every current execution stops before the new configuration applies.
             const stopped = await allTargets(
                 services.runtimes.list().filter((r) => r.hostId === hostId),
@@ -540,7 +420,7 @@ export async function admitHostRun(
                 { host: hostId },
                 { panel: panel.id },
             );
-            const started = await start(launch);
+            const started = await start();
             const previous = new Set(host.agents.map((a) => a.key));
             return {
                 hostId,

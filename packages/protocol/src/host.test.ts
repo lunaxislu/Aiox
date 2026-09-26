@@ -111,9 +111,13 @@ test("Host wire input rejects identity injection and shares config layout valida
     assert.deepEqual(storedConfigSchema.parse({}), {});
 });
 
-test("invocation and host run preserve optional terminal context without CLI launch fields", () => {
+test("invocation preserves terminal context and validated caller environment without executable fields", () => {
     assert.deepEqual(invocationSchema.parse({}), {});
-    for (const field of [{ args: [] }, { env: {} }, { cwd: "/work" }]) {
+    for (const field of [
+        { args: [] },
+        { env: { PATH: "bad\0value" } },
+        { cwd: "/work" },
+    ]) {
         assert.equal(invocationSchema.safeParse(field).success, false);
     }
 
@@ -131,8 +135,11 @@ test("invocation and host run preserve optional terminal context without CLI lau
         false,
     );
     assert.equal(
-        hostRestartRequestSchema.safeParse({ ...input, env: {} }).success,
-        false,
+        hostRestartRequestSchema.safeParse({
+            ...input,
+            env: { PATH: "/caller/bin" },
+        }).success,
+        true,
     );
 });
 

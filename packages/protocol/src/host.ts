@@ -10,6 +10,7 @@ import {
 import {
     agentViewSchema,
     agentStatusSchema,
+    agentRunSchema,
     networkViewSchema,
     terminalViewSchema,
     webNotificationViewSchema,
@@ -111,6 +112,7 @@ export const hostSourceSchema = compatible(
     }),
 );
 const invocationFields = {
+    env: Schema.optional(agentRunSchema.fields.env),
     terminalContext: Schema.optional(terminalContextSchema),
 };
 export const invocationSchema = compatible(strictStruct(invocationFields));
@@ -317,22 +319,14 @@ export const hostCommandResultSchema = compatible(
         cleanupErrors: mutableArray(commandErrorSchema),
     }),
 );
-/** NDJSON lines of a Host command response; `launch` asks the calling CLI to run the Agent itself. */
+/** Final per-target Host command result; execution belongs to the daemon. */
 export const hostCommandEventSchema = compatible(
-    Schema.Union([
-        strictStruct({
-            type: Schema.Literal("launch"),
-            hostId: id,
-            agentKey: name,
-            terminalId: id,
-            marker: Schema.String,
-        }),
-        strictStruct({
-            type: Schema.Literal("result"),
-            result: hostCommandResultSchema,
-        }),
-    ]),
+    strictStruct({
+        type: Schema.Literal("result"),
+        result: hostCommandResultSchema,
+    }),
 );
+
 export const paneSchema = compatible(
     strictStruct({
         type: Schema.Literal("pane"),

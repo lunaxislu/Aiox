@@ -380,7 +380,9 @@ describe.skipIf(process.platform === "win32")("createTerminal", () => {
         await waitFor("initial size", () => viewer.text.includes("24 80"));
 
         viewer.text = "";
+        expect([session.cols, session.rows]).toEqual([80, 24]);
         session.resize(100, 40);
+        expect([session.cols, session.rows]).toEqual([100, 40]);
         await waitFor("resized", () => viewer.text.includes("40 100"));
     });
 

@@ -6,6 +6,7 @@ import type {
 import type { AioxDatabase } from "@aiox/persistence";
 import type {
     DaemonStatus,
+    AgentRun,
     CreateShell,
     TerminalView,
     WebCommandCommit,
@@ -31,6 +32,7 @@ export type StopOutcome = {
 };
 
 export type Lifecycle = {
+    startAgent(input: AgentRun): Promise<void>;
     acceptingInput(): boolean;
     status(): Promise<DaemonStatus>;
     requestStop(force: boolean): Promise<StopOutcome>;

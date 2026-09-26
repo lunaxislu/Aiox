@@ -14,7 +14,8 @@ import type {
 import { Effect } from "effect";
 import { expect, test, vi } from "vitest";
 
-import { initialHostPanel, launcher } from "./host-run";
+import { initialHostPanel } from "./host-run";
+const launcher = new URL("../../cli/dist/index.js", import.meta.url);
 import { hostResult, startTestDaemon } from "./testing";
 
 test.each([
@@ -176,6 +177,15 @@ networks:
         const input = {
             requestId: randomUUID(),
             source: { directory: h.home },
+            env: {
+                ...Object.fromEntries(
+                    Object.entries(process.env).filter(
+                        ([, value]) => value !== undefined,
+                    ),
+                ),
+                AIOX_DIRECT_ENV_TEST: "not-forwarded",
+                HOST_CALLER_PATH_TEST: "caller-environment",
+            },
         };
         const post = (body: unknown) =>
             fetch(h.apiUrl("/api/hosts/run"), {
@@ -219,6 +229,17 @@ networks:
             409,
         );
         expect(launches).toHaveLength(2);
+        expect(
+            launches.every(
+                (launch) =>
+                    launch.env.HOST_CALLER_PATH_TEST === "caller-environment",
+            ),
+        ).toBe(true);
+        expect(
+            launches.every(
+                (launch) => launch.env.AIOX_DIRECT_ENV_TEST === undefined,
+            ),
+        ).toBe(true);
         const effective = await h.daemon.services.networks.effective(
             state.networks[0]!.id,
         );
@@ -425,6 +446,7 @@ networks:
             join(h.home, "aiox.yaml"),
             "host: {name: cli-entry}\nagents: {alpha: {adapter: codex}}\nnetworks: {shared: {agents: [alpha]}}\n",
         );
+        const reveal = vi.spyOn(h.daemon.services.appState, "reveal");
         const callerScript = join(h.home, "restart-caller.cjs");
         await writeFile(
             callerScript,
@@ -459,6 +481,16 @@ networks:
             { timeout: 10000 },
         );
         expect(callerOutput).not.toContain("RESTART_CALLER_FAILED");
+        const revealedPanel = await h.daemon.services.db.hostState.getPanel(
+            cliHost.panelId,
+        );
+        expect(reveal).toHaveBeenCalledWith(
+            cliRuntime.terminalId,
+            cliHost.panelId,
+            revealedPanel!.tabs.find(
+                (tab) => tab.terminalId === cliRuntime.terminalId,
+            )!.id,
+        );
         expect((await control("delete")).stdout).toContain(
             "Host delete succeeded",
         );
@@ -523,7 +555,7 @@ test("invalid caller context creates nothing; shell failure is retained on the d
 });
 
 test.skipIf(process.platform === "win32")(
-    "CLI failure before Runtime registration reaches the result and tab",
+    "direct execution failure before Runtime registration reaches the result and tab",
     async (t) => {
         const h = await startTestDaemon();
         t.onTestFinished(() => h.close(), 15000);
@@ -541,16 +573,10 @@ test.skipIf(process.platform === "win32")(
             join(h.home, "aiox.yaml"),
             "host: {name: launch-error}\nagents: {a: {adapter: codex}}\nnetworks: {n: {agents: [a]}}\n",
         );
-        const create = h.daemon.services.lifecycle.createShell;
         vi.spyOn(
             h.daemon.services.lifecycle,
-            "createShell",
-        ).mockImplementationOnce(async (...args) => {
-            const terminal = await create(...args);
-            // The server validated input, but the foreground CLI now encounters a changed config.
-            await writeFile(join(h.home, ".aiox", "config.json"), "{bad");
-            return terminal;
-        });
+            "startAgent",
+        ).mockRejectedValueOnce(new Error("Agent registration rejected"));
         const response = await fetch(h.apiUrl("/api/hosts/run"), {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -561,12 +587,14 @@ test.skipIf(process.platform === "win32")(
         });
         const result = await hostResult(response);
         expect(result.state).toBe("failed");
-        expect(result.targets[0]!.error?.message).toContain("Invalid JSON");
+        expect(result.targets[0]!.error?.message).toContain(
+            "Agent registration rejected",
+        );
         await vi.waitFor(
             async () => {
                 const state = await h.daemon.services.db.hostState.snapshot();
                 expect(state.panels[0]!.tabs[0]!.notice?.message).toContain(
-                    "Invalid JSON",
+                    "Agent registration rejected",
                 );
             },
             { timeout: 5000 },

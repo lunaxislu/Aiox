@@ -528,3 +528,37 @@ it("keeps a lost sequence, surfaces real sequence_gap/checkpoint, and allocates 
     expect(three.request!.sequence).toBe(3);
     expect(one.request!.sequence).toBe(1);
 });
+
+it("delivers CLI reveal without treating it as sequence failure or reconnecting", async (t) => {
+    const harness = await startTestDaemon();
+    t.onTestFinished(() => harness.close());
+    const stored = panel();
+    stored.layout = { type: "pane", id: "pane", tabIds: ["tab"] };
+    stored.tabs = [
+        {
+            id: "tab",
+            terminalId: null,
+            runtimeId: null,
+            agentKey: null,
+            label: "Agent",
+            presentation: "preparing",
+            notice: null,
+        },
+    ];
+    await harness.daemon.services.db.hostState.createPanel(stored);
+    await harness.daemon.services.appState.update({ panel: stored.id });
+    const { connection, events, sockets } = await browserConnection(harness, t);
+    const session = connection.getSnapshot().session;
+    await harness.daemon.services.appState.reveal("caller", stored.id, "tab");
+    await vi.waitFor(() =>
+        expect(events).toContainEqual({
+            type: "reveal",
+            epoch: session!.epoch,
+            sourceTerminalId: "caller",
+            panelId: stored.id,
+            tabId: "tab",
+        }),
+    );
+    expect(connection.getSnapshot()).toMatchObject({ phase: "ready", session });
+    expect(sockets).toHaveLength(1);
+});

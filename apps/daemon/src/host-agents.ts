@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { access } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 
 import {
     loadConfig,
@@ -29,9 +27,7 @@ import {
     startAgent,
     type AdmittedHostCommand,
     type HostOutcome,
-    type Launch,
 } from "./host-command";
-import { launcher } from "./host-run";
 import { HttpError, parse, readJson } from "./http";
 import type { Context } from "./http-endpoint";
 import type { DaemonServices } from "./services";
@@ -321,15 +317,6 @@ export async function admitHostAgents(
                       );
                   })
                 : undefined;
-        if (needsLaunch)
-            await access(fileURLToPath(launcher)).catch((error) => {
-                throw new HttpError(
-                    400,
-                    "invalid_environment",
-                    `Host CLI launcher is unavailable: ${String(error)}`,
-                    { stage: "environment" },
-                );
-            });
         const panel = (await services.db.hostState.getPanel(host.panelId))!;
         if (!panel.tabs.some((t) => t.terminalId === callerTerminalId))
             callerTerminalId = undefined;
@@ -350,9 +337,8 @@ export async function admitHostAgents(
         return {
             hostId: target.id,
             agents: keys,
-            execute: (launch) =>
+            execute: () =>
                 execute(
-                    launch,
                     target,
                     keys,
                     prepared,
@@ -363,7 +349,6 @@ export async function admitHostAgents(
     }
 
     async function execute(
-        launch: Launch,
         host: HostView,
         keys: readonly string[],
         prepared: Awaited<ReturnType<typeof prepareHostInput>> | undefined,
@@ -496,13 +481,20 @@ export async function admitHostAgents(
             { host: host.id },
             { panel: host.panelId },
         );
+        const firstTab = tabs.values().next().value;
+        if (callerTerminalId && firstTab)
+            await services.appState.reveal(
+                callerTerminalId,
+                host.panelId,
+                firstTab,
+            );
         const started = await allTargets([...tabs], async ([key, tabId]) => {
-            const outcome = await startAgent(services, launch, {
+            const outcome = await startAgent(services, {
+                env: "env" in input ? input.env : undefined,
                 host,
                 key,
                 adapter: manifest.agents[key]!.adapter,
                 tabId,
-                callerTerminalId,
                 terminalLaunch,
             });
             if (outcome.target.state === "ready")

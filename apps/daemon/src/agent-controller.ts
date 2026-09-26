@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { logger } from "@aiox/diagnostics";
 import {
     type LastExit,
+    type AgentRun,
     agentRunSchema,
     externalAgentClientFrameSchema,
     externalAgentRunSchema,
@@ -35,6 +36,7 @@ import { collaborationInstruction } from "@/messaging";
 import { agentLifecycle } from "./agent-lifecycle";
 import type { Context } from "./http-endpoint";
 import { managedLaunch } from "./managed-agents";
+import { launchInNetwork } from "./network-agent";
 
 const resizeFields = {
     type: Schema.Literal("resize"),
@@ -94,7 +96,22 @@ export class AgentController {
         this.#attach(socket, false);
     }
 
-    #attach(socket: WebSocket, external: boolean): void {
+    /** Starts daemon-owned execution without a second CLI or a relay socket. */
+    start(input: AgentRun): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.#attach(undefined, false, { input, resolve, reject });
+        });
+    }
+
+    #attach(
+        socket: WebSocket | undefined,
+        external: boolean,
+        direct?: {
+            input: AgentRun;
+            resolve(): void;
+            reject(error: Error): void;
+        },
+    ): void {
         const { daemon, adapters } = this;
         const reports = this.#reports;
         const lifecycle = createActor(agentLifecycle).start();
@@ -127,7 +144,7 @@ export class AgentController {
         let hostId: string | undefined;
         let exitRecord: LastExit | undefined;
         const send = (frame: object) => {
-            if (socket.readyState === socket.OPEN)
+            if (socket && socket.readyState === socket.OPEN)
                 socket.send(JSON.stringify(frame));
         };
         const clear = () => {
@@ -152,12 +169,15 @@ export class AgentController {
             );
         };
         const released = () => {
+            direct?.reject(
+                new Error("Agent was released before becoming ready."),
+            );
             clear();
             if (session?.alive && collaborationError && !isEnded()) return;
             if (isEnded()) return;
             lifecycle.send({ type: "FINISH" });
-            socket.resume();
-            socket.close();
+            socket?.resume();
+            socket?.close();
         };
         let dimensions = { cols: 80, rows: 24 };
         const owner = external
@@ -177,6 +197,7 @@ export class AgentController {
                                   if (
                                       !isEnded() &&
                                       !isRelayDisconnected() &&
+                                      socket !== undefined &&
                                       socket.readyState === socket.OPEN
                                   )
                                       socket.send(data);
@@ -232,6 +253,7 @@ export class AgentController {
                 | "launch_timeout" = "preparation_failed",
         ): Effect.Effect<void, unknown> =>
             Effect.suspend(() => {
+                if (message) direct?.reject(new Error(message));
                 if (message && !isEnded() && !collaborationError) {
                     logger.error(
                         { runtimeId, hostId, terminalId, failureCode },
@@ -243,11 +265,11 @@ export class AgentController {
                         collaborationError = message;
                         if (!foreground) {
                             lifecycle.send({ type: "RELAY_DISCONNECTED" });
-                            socket.close();
+                            socket?.close();
                         }
                         daemon.services.runtimes.revoke(runtimeId!);
                         clear();
-                        socket.resume();
+                        socket?.resume();
                         if (runtimeId)
                             daemon.services.runtimes.changed(runtimeId);
                         if (binding) {
@@ -277,8 +299,8 @@ export class AgentController {
                     const startupFailed =
                         external &&
                         Boolean(message && isPrepared() && !binding?.wasReady);
+                    if (message) collaborationError = message;
                     if (message && hostId) {
-                        collaborationError = message;
                         exitRecord ??= {
                             kind: "start-failed",
                             message,
@@ -287,7 +309,7 @@ export class AgentController {
                     }
                     lifecycle.send({ type: "FINISH" });
                     clear();
-                    socket.resume();
+                    socket?.resume();
                     if (startupFailed)
                         send({ type: "startup-failed", message });
                     const released = yield* Effect.exit(release);
@@ -296,7 +318,7 @@ export class AgentController {
                             "Agent collaboration cleanup remains unconfirmed.";
                         logger.error({ runtimeId, terminalId }, message);
                         send({ type: "error", message });
-                        socket.close();
+                        socket?.close();
                         return;
                     }
                     logger.info(
@@ -306,7 +328,7 @@ export class AgentController {
                     if (message && !startupFailed)
                         send({ type: "error", message });
                     else if (!message && exit) send({ type: "exit", ...exit });
-                    socket.close();
+                    socket?.close();
                 });
                 const fiber = Effect.runFork(task);
                 finishing = fiber;
@@ -364,7 +386,7 @@ export class AgentController {
                 if (!external && session?.alive) {
                     lifecycle.send({ type: "RELAY_DISCONNECTED" });
                     if (runtimeId) daemon.services.runtimes.changed(runtimeId);
-                    socket.close();
+                    socket?.close();
                     return Effect.void;
                 }
                 lifecycle.send({ type: "FINISH" });
@@ -388,18 +410,19 @@ export class AgentController {
                     ),
                 );
             });
-        socket.on("close", () => Effect.runFork(disconnected()));
-        socket.on("error", () => Effect.runFork(disconnected()));
-        timeoutAfter(5000, () =>
-            finish(
-                "No agent launch request was received.",
-                undefined,
-                "launch_timeout",
-            ),
-        );
-        socket.once("message", (raw, binary) => {
+        socket?.on("close", () => Effect.runFork(disconnected()));
+        socket?.on("error", () => Effect.runFork(disconnected()));
+        if (!direct)
+            timeoutAfter(5000, () =>
+                finish(
+                    "No agent launch request was received.",
+                    undefined,
+                    "launch_timeout",
+                ),
+            );
+        const begin = (raw: { toString(): string }, binary: boolean) => {
             clearTimeoutEffect();
-            socket.pause();
+            socket?.pause();
             lifecycleFiber = Effect.runFork(
                 Effect.gen(function* () {
                     let payload: unknown;
@@ -459,6 +482,26 @@ export class AgentController {
                                     catch: (error) => error,
                                 })).id;
                     if (isEnded()) return;
+                    if (!direct && webInput && !hostId && networkId !== null) {
+                        const routed = yield* Effect.tryPromise({
+                            try: () =>
+                                launchInNetwork(
+                                    daemon.services,
+                                    webInput!,
+                                    networkId,
+                                ),
+                            catch: (error) => error,
+                        });
+                        if (routed) {
+                            yield* release;
+                            lifecycle.send({ type: "FINISH" });
+                            clear();
+                            send({ type: "exit", exitCode: 0, signal: null });
+                            socket?.resume();
+                            socket?.close();
+                            return;
+                        }
+                    }
                     // The owner scope exists before resource acquisition; failed preparation remains retryable.
                     const registration = yield* Effect.tryPromise({
                         try: () =>
@@ -493,6 +536,7 @@ export class AgentController {
                                         get terminal() {
                                             return session;
                                         },
+                                        directTerminal: Boolean(direct),
                                         get relayDisconnected() {
                                             return isRelayDisconnected();
                                         },
@@ -511,6 +555,11 @@ export class AgentController {
                                             binding?.mcpConnected(),
                                         revoke: clear,
                                         stop: async () => {
+                                            direct?.reject(
+                                                new Error(
+                                                    "Agent execution stopped before becoming ready.",
+                                                ),
+                                            );
                                             lifecycle.send({
                                                 type: "STOP_REQUESTED",
                                             });
@@ -581,6 +630,7 @@ export class AgentController {
                     binding.onReleased = released;
                     binding.onReady = () => {
                         daemon.services.runtimes.ready(runtimeId!);
+                        direct?.resolve();
                         logger.info(
                             { runtimeId, hostId, terminalId },
                             "Agent collaboration ready",
@@ -636,7 +686,7 @@ export class AgentController {
                         return;
                     lifecycle.send({ type: "PREPARED" });
                     if (external) {
-                        socket.on("message", (data, isBinary) => {
+                        socket?.on("message", (data, isBinary) => {
                             if (isEnded()) return;
                             let payload: unknown;
                             try {
@@ -678,7 +728,7 @@ export class AgentController {
                         }
                         lifecycle.send({ type: "STARTED" });
                         binding.executionStarted();
-                        socket.on("message", (data, isBinary) => {
+                        socket?.on("message", (data, isBinary) => {
                             if (isEnded() || isRelayDisconnected()) return;
                             if (isBinary && daemon.acceptingInput)
                                 foreground!.write(
@@ -700,7 +750,7 @@ export class AgentController {
                                 } catch {}
                         });
                     }
-                    socket.resume();
+                    socket?.resume();
                     timeoutAfter(60_000, () => {
                         if (
                             !daemon.services.runtimes.get(runtimeId!)
@@ -740,6 +790,8 @@ export class AgentController {
                     ),
                 ),
             );
-        });
+        };
+        if (direct) begin(JSON.stringify(direct.input), false);
+        else socket!.once("message", begin);
     }
 }

@@ -259,6 +259,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         messages,
         terminals,
         lifecycle: {
+            startAgent: (input) => agents!.start(input),
             acceptingInput: () => admitting(),
             createShell,
             stopTerminal,
@@ -467,7 +468,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     });
     webServer.on(
         "upgrade",
-        (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+        async (request: IncomingMessage, socket: Duplex, head: Buffer) => {
             try {
                 if (!ready()) {
                     socket.end(
@@ -496,11 +497,39 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                     : undefined;
                 const runtimeId = url.searchParams.get("runtime");
                 const record = runtimeId ? runtimes.get(runtimeId) : undefined;
+                // Direct execution has no shell relay. Wait only for its PTY;
+                // dropping this attachment never cancels daemon-owned preparation.
+                if (
+                    record?.binding.directTerminal &&
+                    !record.binding.terminal
+                ) {
+                    await new Promise<void>((resolve) => {
+                        let unsubscribe = () => {};
+                        const finish = () => {
+                            unsubscribe();
+                            socket.off("close", finish);
+                            resolve();
+                        };
+                        const check = () => {
+                            if (
+                                !runtimes.get(record.id) ||
+                                record.binding.terminal ||
+                                socket.destroyed
+                            )
+                                finish();
+                        };
+                        unsubscribe = runtimes.subscribe(check);
+                        socket.once("close", finish);
+                        check();
+                    });
+                    if (socket.destroyed) return;
+                }
                 const session = runtimeId
                     ? record?.executionOwnership === "daemon" &&
                       record.terminalId === terminalId &&
                       terminalId
-                        ? record.binding.relayDisconnected
+                        ? record.binding.directTerminal ||
+                          record.binding.relayDisconnected
                             ? record.binding.terminal
                             : terminals.get(terminalId)
                         : undefined

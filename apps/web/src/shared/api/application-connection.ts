@@ -228,8 +228,9 @@ export class ApplicationConnection {
                                                 "Event before snapshot.",
                                             );
                                         if (
+                                            event.type === "sequence-failure" &&
                                             event.failure.clientSessionId ===
-                                            session.clientSessionId
+                                                session.clientSessionId
                                         )
                                             this.#checkpoint(
                                                 Math.max(
