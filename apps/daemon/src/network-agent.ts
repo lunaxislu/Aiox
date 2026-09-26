@@ -92,7 +92,7 @@ async function launch(
                         terminalId: null,
                         runtimeId: null,
                         agentKey: null,
-                        label: input.name ?? input.adapter,
+                        label: "Shell",
                         presentation: "preparing",
                         notice: null,
                     },

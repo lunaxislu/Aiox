@@ -1,8 +1,68 @@
+import type { PanelView } from "@aiox/protocol";
 import { expect, test } from "vitest";
 
 import type { RuntimeRecord } from "./runtimes";
 import { fakeVendor, startTestDaemon } from "./testing";
-import { projectHostNetwork } from "./web-state";
+import { projectHostNetwork, projectPanel } from "./web-state";
+
+test("live shell tabs show runtime names and restore their own labels on exit", () => {
+    const panel = {
+        id: "p",
+        kind: "workspace",
+        section: "workspaces",
+        name: "Workspace",
+        hostId: null,
+        networkId: null,
+        revision: 1,
+        layout: { type: "pane", id: "pane", tabIds: ["user", "host"] },
+        tabs: [
+            {
+                id: "user",
+                terminalId: "user-terminal",
+                label: "My shell",
+                agentKey: null,
+                runtimeId: null,
+                presentation: "shell",
+                notice: null,
+            },
+            {
+                id: "host",
+                terminalId: "host-terminal",
+                label: "Host agent",
+                agentKey: "managed",
+                runtimeId: null,
+                presentation: "shell",
+                notice: null,
+            },
+        ],
+    } as PanelView;
+    const runtime = {
+        id: "runtime",
+        name: "k",
+        terminalId: "user-terminal",
+        phase: "running",
+    } as RuntimeRecord;
+    const hostRuntime = {
+        id: "host-runtime",
+        name: "different",
+        terminalId: "host-terminal",
+        phase: "running",
+    } as RuntimeRecord;
+    const runtimes = {
+        get: () => undefined,
+        list: () => [runtime, hostRuntime],
+    };
+
+    expect(projectPanel(panel, runtimes).tabs.map((tab) => tab.label)).toEqual([
+        "k",
+        "Host agent",
+    ]);
+    expect(
+        projectPanel(panel, { ...runtimes, list: () => [] }).tabs.map(
+            (tab) => tab.label,
+        ),
+    ).toEqual(["My shell", "Host agent"]);
+});
 
 test("network projection only uses active collaboration in the matching host and network", () => {
     const records = [

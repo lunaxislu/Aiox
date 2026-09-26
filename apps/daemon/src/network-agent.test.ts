@@ -197,6 +197,15 @@ test.skipIf(process.platform === "win32").each(
         if (mode === "ready") {
             await expect.poll(() => launches.length).toBe(1);
             const runtime = h.daemon.services.runtimes.list()[0]!;
+            await expect
+                .poll(async () =>
+                    (await h.daemon.services.appState.current()).panels
+                        .find((panel) => panel.id === network.id)
+                        ?.tabs.find(
+                            (tab) => tab.terminalId === runtime.terminalId,
+                        ),
+                )
+                .toMatchObject({ label: "OBAO", presentation: "preparing" });
             const url = h
                 .webUrl(
                     `/ws/terminal/${runtime.terminalId}?runtime=${runtime.id}`,
@@ -237,13 +246,14 @@ test.skipIf(process.platform === "win32").each(
         const target = (await h.daemon.services.db.hostState.getPanel(
             network.id,
         ))!;
-        const launchedTab = target.tabs.find((tab) => tab.label === "OBAO");
+        const launchedTab = target.tabs.find((tab) => tab.id !== "existing");
         expect(reveal).toHaveBeenCalledWith(
             caller.id,
             network.id,
             expect.any(String),
         );
         if (mode === "ready") {
+            expect(launchedTab!.label).toBe("Shell");
             expect(
                 target.tabs.find((tab) => tab.id === "existing")?.terminalId,
             ).toBe(oldShell!.id);
@@ -290,6 +300,7 @@ test.skipIf(process.platform === "win32").each(
                 .toMatchObject({
                     terminalId: launchedTab!.terminalId,
                     runtimeId: h.daemon.services.runtimes.list()[0]!.id,
+                    label: "OBAO",
                     presentation: "tui",
                 });
             const runtime = h.daemon.services.runtimes.list()[0]!;
@@ -339,6 +350,11 @@ test.skipIf(process.platform === "win32").each(
                             ?.runtimeId,
                 )
                 .toBe(null);
+            expect(
+                (await h.daemon.services.appState.current()).panels
+                    .find((panel) => panel.id === network.id)
+                    ?.tabs.find((tab) => tab.id === launchedTab!.id)?.label,
+            ).toBe("Shell");
         } else {
             await expect
                 .poll(() => h.daemon.services.runtimes.list().length)
@@ -346,6 +362,7 @@ test.skipIf(process.platform === "win32").each(
             if (mode === "failed") {
                 expect(output).toContain("network launch rejected");
                 expect(target.tabs[0]).toMatchObject({
+                    label: "Shell",
                     presentation: "start-failed",
                     notice: { message: "network launch rejected" },
                 });
