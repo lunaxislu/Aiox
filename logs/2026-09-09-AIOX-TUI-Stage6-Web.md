@@ -1269,6 +1269,45 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 - 사용자 승인 범위의 기존 working tree를 기능별로 분리해 커밋했다: `c2c0418` shell cwd 관측·새 terminal 상속, `a4c051e` Agent 종료 후 shell label 복귀, `55ee89b` reveal 첫 렌더 선택·attach 회귀 테스트. 각 commit은 해당 production code와 tests를 함께 포함한다.
 - 이번 문서 commit에는 cwd/label/reveal의 spec·architecture 반영과 이 작업 로그를 함께 담는다. 전체 통합 검증은 직전 최종 수용 entry의 결과를 따른다. 임시 진단은 전부 제거됐고 unrelated 개인 자산은 변경하지 않았다. push와 사용자 daemon 재시작은 수행하지 않았다. 남은 W10 운영 검증은 유지한다.
 
+### 2026-09-27 00:15 · VS Code 내장 터미널에서 Host 실행 시 Claude 파일 컨텍스트 표시 상황 확인
+
+- 사용자 확인: VS Code 내장 터미널에서 `aiox host`를 실행했으며, 실행된 여러 Claude Code 중 하나의 입력창에 `[In host-run.ts]` 파일 컨텍스트가 표시됐다. 일반 `aiox agent run`에서는 해당 표시를 보지 못했다고 보고했다. 외부 터미널 실행으로 기록하거나 여러 Agent 실행 자체가 IDE 연결을 켠다고 단정하지 않는다.
+- 코드 확인: 설치된 VS Code Claude 확장 `2.1.283`의 `~/.vscode/extensions/anthropic.claude-code-2.1.283-darwin-arm64/extension.js`는 IDE WebSocket의 현재 transport를 하나 보관한다. 새 인증 연결이 들어오면 `Disconnecting previous WebSocket client` 경로에서 이전 transport를 닫고 새 연결에 현재 파일·선택 영역을 전송한다. 한 연결만 유지하는 구현은 확인했지만, 당시 각 세션의 연결 순서나 표시된 세션이 마지막 접속자인지는 직접 관측하지 않았다.
+- AIOX 코드 확인: `apps/cli/src/bootstrap.ts`의 일반 Agent 실행과 Host 실행 모두 호출 환경을 전달한다. `apps/daemon/src/host-command.ts` 및 공통 Claude adapter에 Host만을 위한 IDE 연결 활성화 처리는 발견하지 못했다. VS Code 내장 터미널에서 실행했다는 정정은 IDE 자동 연결 조건과 부합한다. 일반 실행에서 표시가 없었던 차이의 정확한 원인은 미확정이다.
+- 기능 구분: Claude↔VS Code IDE 연결은 현재 열린 파일·선택 영역 등의 편집기 컨텍스트를 전달한다. Claude↔AIOX daemon의 Agent 간 메시지 통신과는 별도 연결이다. IDE 연결 종료 자체는 Claude 프로세스 종료나 AIOX 통신 종료를 뜻하지 않으며, 작업 디렉터리의 파일과 `CLAUDE.md`를 읽는 기능을 차단하지 않는다. 개별 파일의 실제 로드 여부는 별도 확인 사항이다.
+- 공식 근거: https://code.claude.com/docs/en/vs-code#the-built-in-ide-mcp-server , https://code.claude.com/docs/en/env-vars (`CLAUDE_CODE_AUTO_CONNECT_IDE`). 후자는 지원 IDE의 내장 터미널에서 자동 연결하는 기본 동작을 설명한다.
+- 현재 결정: 사용자는 상황 기록과 ASCII UI 설명을 요청했다. IDE 자동 연결 차단이나 추가 제품 수정은 수행하지 않는다. W10 운영 검증과 기존 next pointer는 유지한다.
+
+당시 화면을 단순화하면 다음과 같습니다.
+
+```text
++-------------------------------------------------------+
+| VS Code                                               |
+|                                                       |
+|  열린 파일: host-run.ts                                |
+|  +-------------------------------------------------+  |
+|  | 편집기                                          |  |
+|  +-------------------------------------------------+  |
+|                                                       |
+|  내장 터미널                                          |
+|  $ aiox host                                          |
++-------------------------------------------------------+
+                         |
+                         | 여러 Claude 실행
+                         v
++-------------------------------------------------------+
+| AIOX Web Terminal                                     |
+|                                                       |
+| +-------------------------+ +-----------------------+ |
+| | Claude A                | | Claude B              | |
+| |                         | |                       | |
+| | > [In host-run.ts] ...   | | > ...                 | |
+| +-------------------------+ +-----------------------+ |
+|           ^                                           |
++-----------|-------------------------------------------+
+            |
+```
+
 ## 2026-09-27 · W19 Host restart 배치 보존과 빈 panel 복원
 
 - 기록 범위: 사용자가 앞서 로그 기록을 금지해 작업 중에는 기록하지 않았으며, 이번 명시적 기록·커밋 요청으로 진단과 최종 구현 결과를 소급 기록한다. 이 작업은 W10 운영 Host 검증에서 발견한 배치 문제의 수정·소비 단위다. 로그가 1000줄을 넘지만 별도 미완료 수명이나 반환 대기가 없는 완료 단위이므로 현재 Stage6 로그에 유지한다.
