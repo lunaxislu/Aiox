@@ -11,6 +11,7 @@ import { selectedLayout } from "@/entities/panel/application-panels";
 import { isSection, type PanelPreview } from "@/entities/panel/model";
 import type { TerminalPreview } from "@/entities/panel/workspace-fixtures";
 import { panelLayoutReferences } from "@/entities/panel/workspace-layout";
+import { confirmationTerminals } from "@/features/manage-workspace/close-confirmation";
 import { NotFoundPage } from "@/pages/not-found/not-found-page";
 
 import { dropTarget, resizeChanges } from "./workspace-commands";
@@ -118,16 +119,28 @@ function ConnectedWorkspace({ panel }: { panel: PanelPreview }) {
                 terminals={terminals}
                 live
                 onSelect={select}
-                onClose={(tab, confirm) =>
-                    command([
-                        {
-                            type: "tab.close",
-                            tabId: tab.id,
-                            expectedRuntimeId: tab.runtimeId,
-                            confirm,
-                        },
-                    ])
-                }
+                onClose={async (tab, confirm) => {
+                    const operation = send({
+                        panelId: panel.id,
+                        changes: [
+                            {
+                                type: "tab.close",
+                                tabId: tab.id,
+                                expectedRuntimeId: tab.runtimeId,
+                                confirm,
+                            },
+                        ],
+                    });
+                    const outcome = await operation.result;
+                    if (
+                        !confirm &&
+                        outcome.status === "rejected" &&
+                        confirmationTerminals(outcome.issue)
+                    )
+                        return true;
+                    reportOutcome(operation);
+                    return false;
+                }}
                 onDismiss={(tab) =>
                     command([{ type: "tab.dismiss", tabId: tab.id }])
                 }

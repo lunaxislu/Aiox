@@ -4,7 +4,10 @@ import { Deferred, Duration, Effect, Fiber, Result, Schedule } from "effect";
 
 import type { DaemonTasks } from "./tasks";
 
-type Track = Pick<CleanupView, "terminalId" | "panelId" | "tabId" | "reason">;
+type Track = Pick<
+    CleanupView,
+    "terminalId" | "panelId" | "tabId" | "reason"
+> & { idleOnly?: boolean };
 type RunningCleanup = {
     fiber?: Fiber.Fiber<void, unknown>;
     readonly firstAttempt: Deferred.Deferred<void>;
@@ -18,10 +21,14 @@ type RunningCleanup = {
 export class CleanupRegistry {
     readonly #entries = new Map<string, CleanupView>();
     readonly #running = new Map<string, RunningCleanup>();
+    readonly #idleOnly = new Set<string>();
 
     constructor(
         /** Must reject unless the process is confirmed gone. */
-        private readonly stop: (terminalId: string) => Promise<void>,
+        private readonly stop: (
+            terminalId: string,
+            idleOnly: boolean,
+        ) => Promise<void>,
         private readonly changed: (id: string) => void,
         private readonly tasks: DaemonTasks,
         private readonly now: () => number = Date.now,
@@ -48,10 +55,12 @@ export class CleanupRegistry {
 
     trackEffect(input: Track): Effect.Effect<void> {
         const id = input.terminalId;
+        if (input.idleOnly) this.#idleOnly.add(id);
+        const { idleOnly: _idleOnly, ...entry } = input;
         const existing = this.#entries.get(id);
         this.#entries.set(id, {
             id,
-            ...input,
+            ...entry,
             state: "stopping",
             error: existing?.error ?? null,
             attempts: existing?.attempts ?? 0,
@@ -68,7 +77,7 @@ export class CleanupRegistry {
             this.#running.set(id, running);
             const stopOnce = Effect.uninterruptible(
                 Effect.tryPromise({
-                    try: () => this.stop(id),
+                    try: () => this.stop(id, this.#idleOnly.has(id)),
                     catch: (error) => error,
                 }).pipe(
                     Effect.tapError((error) =>
@@ -77,6 +86,7 @@ export class CleanupRegistry {
                     Effect.tap(() =>
                         Effect.sync(() => {
                             this.#entries.delete(id);
+                            this.#idleOnly.delete(id);
                             this.changed(id);
                         }),
                     ),
@@ -114,13 +124,18 @@ export class CleanupRegistry {
                 const result = yield* Effect.result(
                     Effect.uninterruptible(
                         Effect.tryPromise({
-                            try: () => this.stop(entry.terminalId),
+                            try: () =>
+                                this.stop(
+                                    entry.terminalId,
+                                    this.#idleOnly.has(entry.id),
+                                ),
                             catch: (error) => error,
                         }),
                     ),
                 );
                 if (Result.isSuccess(result)) {
                     this.#entries.delete(entry.id);
+                    this.#idleOnly.delete(entry.id);
                     this.changed(entry.id);
                 } else {
                     this.#failed(entry.id, result.failure);

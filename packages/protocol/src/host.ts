@@ -688,7 +688,7 @@ export const panelChangeSchema = compatible(
         strictStruct({ type: Schema.Literal("panel.rename"), name: panelName }),
         strictStruct({
             type: Schema.Literal("panel.delete"),
-            confirm: Schema.Literal(true),
+            confirm: Schema.Boolean,
         }),
         strictStruct({
             type: Schema.Literal("tab.create"),

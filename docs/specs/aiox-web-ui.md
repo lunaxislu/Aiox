@@ -56,6 +56,12 @@ Network panel의 shell은 Network membership을 자동 상속하지 않는다.
 섹션이 아니라 생성 주체로 갈린다. CLI가 만든 panel에는 메뉴를 주지 않되 핸들러는 붙여
 브라우저 기본 컨텍스트 메뉴가 뜨지 않게 한다.
 
+사용자 생성 Workspace의 우클릭 `Delete`는 포함된 터미널이 모두 idle로 확인되거나
+Workspace가 비어 있으면 확인창 없이 삭제한다. 하나라도 실행 중이거나 판정 불가이면
+삭제 확인 dialog에 Workspace 이름과 전체 터미널의 이름·상태를 표시하고 `Cancel`과
+`Stop and delete`를 제공한다. 살아 있는 Agent는 vendor의 입력 대기 상태와 관계없이
+종료 확인 대상이다. 확인 요청 중에는 Workspace와 터미널 화면을 유지한다.
+
 `NETWORKS`의 `+` panel은 network 상속을 도입하지 않기로 한 결정 때문에 `WORKSPACES`의 `+`
 panel과 기능이 같고 속한 섹션만 다르다.
 

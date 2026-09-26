@@ -38,6 +38,7 @@ type Stop = {
     terminalId: string;
     tabId: string;
     reason: CleanupView["reason"];
+    idleOnly?: boolean;
 };
 
 const gone = (error: unknown) =>
@@ -141,6 +142,7 @@ export async function applyWebCommand(
             panelId: input.panelId,
             tabId: stop.tabId,
             reason: stop.reason,
+            idleOnly: stop.idleOnly ?? false,
         });
     for (const shell of shells)
         void services.tasks.run(
@@ -159,6 +161,34 @@ export async function applyWebCommand(
                     ? undefined
                     : services.appState.view("host", committed.hostId),
             ),
+    };
+}
+
+async function closingStatus(services: DaemonServices, tab: TabView) {
+    const runtime = tab.terminalId
+        ? services.runtimes.list().find((r) => r.terminalId === tab.terminalId)
+        : undefined;
+    let status: "idle" | "running" | "unknown" = runtime
+        ? "running"
+        : "unknown";
+    const session = tab.terminalId
+        ? services.terminals.get(tab.terminalId)
+        : undefined;
+    if (!runtime && session?.alive) {
+        try {
+            if (!(await session.busy())) status = "idle";
+        } catch {
+            // Failed inspection cannot authorize termination.
+        }
+    }
+    // Inspection yields; an Agent may have registered while the shell answered.
+    const current = tab.terminalId
+        ? services.runtimes.list().find((r) => r.terminalId === tab.terminalId)
+        : undefined;
+    return {
+        tabId: tab.id,
+        label: current?.name ?? tab.label,
+        status: current ? ("running" as const) : status,
     };
 }
 
@@ -314,12 +344,31 @@ function applyChange(
                         "invalid_request",
                         "Only workspace panels can be deleted here.",
                     );
+                if (!change.confirm) {
+                    const terminals = yield* Effect.promise(() =>
+                        Promise.all(
+                            panel.tabs.map((tab) =>
+                                closingStatus(services, tab),
+                            ),
+                        ),
+                    );
+                    if (
+                        terminals.some((terminal) => terminal.status !== "idle")
+                    )
+                        throw new HttpError(
+                            409,
+                            "confirmation_required",
+                            "Confirm termination of this workspace and its work.",
+                            { terminals },
+                        );
+                }
                 for (const tab of panel.tabs)
                     if (tab.terminalId)
                         effects.stops.push({
                             terminalId: tab.terminalId,
                             tabId: tab.id,
                             reason: "panel-deleted",
+                            idleOnly: !change.confirm,
                         });
                 return null;
             case "tab.create":
@@ -367,12 +416,30 @@ function applyChange(
                 if (
                     !change.confirm &&
                     (runtime || tab.presentation === "shell")
-                )
-                    throw new HttpError(
-                        409,
-                        "confirmation_required",
-                        "Confirm termination of this shell and its work.",
+                ) {
+                    const terminal = yield* Effect.promise(() =>
+                        closingStatus(services, tab),
                     );
+                    const currentRuntime = services.runtimes
+                        .list()
+                        .find((r) => r.terminalId === tab.terminalId);
+                    if (
+                        change.expectedRuntimeId !==
+                        (currentRuntime?.id ?? null)
+                    )
+                        throw new HttpError(
+                            409,
+                            "runtime_conflict",
+                            "The execution in this tab changed.",
+                        );
+                    if (terminal.status !== "idle")
+                        throw new HttpError(
+                            409,
+                            "confirmation_required",
+                            "Confirm termination of this shell and its work.",
+                            { terminals: [terminal] },
+                        );
+                }
                 if (
                     panel.hostId !== null &&
                     tab.agentKey !== null &&
@@ -388,6 +455,8 @@ function applyChange(
                         terminalId: tab.terminalId,
                         tabId: tab.id,
                         reason: "tab-closed",
+                        idleOnly:
+                            !change.confirm && tab.presentation === "shell",
                     });
                 return {
                     ...panel,

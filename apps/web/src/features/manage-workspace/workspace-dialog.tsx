@@ -5,9 +5,12 @@ import type { PanelPreview, Section } from "@/entities/panel/model";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 
+import type { CloseTerminal } from "./close-confirmation";
+
 export type WorkspaceAction =
     | { type: "create"; section: Section }
-    | { type: "rename" | "delete"; panel: PanelPreview };
+    | { type: "rename"; panel: PanelPreview }
+    | { type: "delete"; panel: PanelPreview; terminals: CloseTerminal[] };
 
 export function WorkspaceDialog({
     action,
@@ -48,6 +51,26 @@ export function WorkspaceDialog({
                             ? `Delete “${action.panel.name}” and its terminals?`
                             : "Choose a name for this workspace."}
                     </Dialog.Description>
+                    {deleting && (
+                        <ul
+                            aria-label="Terminals"
+                            className="max-h-60 overflow-y-auto"
+                        >
+                            {action.terminals.map((terminal) => (
+                                <li
+                                    key={terminal.tabId}
+                                    className="flex justify-between"
+                                >
+                                    <span>{terminal.label}</span>
+                                    <span>
+                                        {terminal.status === "unknown"
+                                            ? "status unknown"
+                                            : terminal.status}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                     <form
                         onSubmit={(event) => {
                             event.preventDefault();
@@ -120,7 +143,7 @@ export function WorkspaceDialog({
                                     ? "Create"
                                     : action.type === "rename"
                                       ? "Rename"
-                                      : "Delete"}
+                                      : "Stop and delete"}
                             </Button>
                         </div>
                     </form>

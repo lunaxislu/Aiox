@@ -15,7 +15,7 @@ status: open
 - [x] W7 알림 fixture UI 구현과 사용자 시각 확인 PASS 완료. 고정 제목·Clear all, ScrollArea 목록·구분선·최신순·상대 시각, runtime 대상 이동과 NotFound를 반영했다. 실제 SSE·확인 API 및 삭제 후 최신 대상 탐색은 W10에서 연결·검증한다.
 - [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
 - [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
-- [>] W10 운영 Web 연동·터미널 기본 키·config 변경과 IME 단축키 순서 검증은 구현했다. W18 및 W19 기록을 기준으로 OS 한글 입력기 사용자 확인과 남은 통합 검증을 이어간다. W19 빈 Host 배치 복원은 daemon 재시작 후 실제 UI에서 확인한다. Linux/Windows/WSL 네이티브와 Codex 종료 후 간헐적 입력 변화는 미완료다.
+- [>] W10 운영 Web 연동·터미널 기본 키·config 변경과 IME 단축키 순서 및 idle 탭/Workspace 삭제 정책·확인 모달 Storybook을 구현했다. W10 종료/삭제 최신 entry와 W18·W19를 기준으로 daemon 재시작 후 idle 종료·삭제 및 빈 Host 배치 복원, Storybook 사용자 확인과 OS 한글 입력기·남은 통합 검증을 이어간다. Linux/Windows/WSL 네이티브와 Codex 종료 후 간헐적 입력 변화는 미완료다.
 - [x] W11 서버 제거·빈 pane/split 정리와 원자 저장 검토를 완료했다. W17에서 선택을 클라이언트 전용으로 분리하고 owner 정합과 직접 회귀 검증을 완료했다. 실제 Web RPC·PTY 통합 검증은 W10이 소유한다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
@@ -1173,6 +1173,17 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 - 수정: `ConnectedTerminal`은 Runtime 연결의 exit를 shell 복귀 대기로 표시하고, 일반 shell exit 카드는 유지한다. `attach.ts`는 정상 WebSocket close에서 이미 받은 출력·exit 처리를 기다린 뒤 disconnected를 판정한다. 비정상 close와 1013은 즉시 기존 오류를 전달한다. 임시 진단은 남기지 않았다.
 - 검증: 당시 Web 전체 188 tests, 대상 38 tests, typecheck·lint·format·build 및 React Doctor 통과. 브라우저 재검증은 종료 카드 없이 restoring 후 shell 복귀를 확인했다. 후속 idle 삭제 변경을 포함한 Web 전체 194 tests도 통과했다. 실제 vendor/네이티브 모든 OS의 재현 결과로 확대하지 않는다.
 - 위치·남은 일: 기존 W10 운영 터미널 수명의 결함 수정이므로 1,000행 초과를 인지하고 이 owning block에 유지한다. W10 전체와 기존 플랫폼·사용자 실측 후속은 열린 상태다. 사용자 daemon 재시작과 push는 수행하지 않았다.
+
+### 2026-09-27 01:08 · idle 탭·Workspace 삭제 정책과 확인 모달 Storybook 구현·수용
+
+- 요구 확인·정정: 사용자 지목으로 `logs/artifact/aiox-version9.html`의 onCtxDelete·busyOf를 확인했다. 사용자 Workspace의 모든 terminal이 idle이거나 비어 있으면 즉시 삭제하고, 나머지는 전체 terminal 이름·상태와 Cancel/Stop and delete를 표시한다. 앞선 spec 검색만으로 Workspace 정책을 누락한 판단을 정정한다. 탭 X의 idle 즉시 종료 역시 Web UI spec의 기존 요구였다.
+- 위임·수용: idle_close가 daemon/protocol과 회귀, modal_story가 Web/Storybook을 구현했다. 주 Agent가 producer→RPC 오류→화면·낙관적 상태·정리 경로와 diff를 검토했고, review_idle 독립 검토에서 차단 결함이 없었다. 후보를 수용했으며 과거 로그의 idle shell 삭제 정책 미완료 항목은 이번 구현으로 대체한다.
+- 구현 owner: 서버가 confirm:false에서 실제 shell idle을 검사하고 확인 필요 시 confirmation_required와 terminal별 상태를 반환한다. Web은 검사 중 화면을 제거하지 않고 해당 결과로 기존 모달을 연다. vendor idle은 살아 있는 Agent의 종료 확인을 생략하지 않는다. shell busy()는 작업 중과 조회 실패를 구분하지 못하므로 idle 미확인은 unknown으로 표시한다. Runtime 신원 재검사를 유지한다.
+- 경합·제한: idle 조회 뒤 새 작업이 시작되면 배치 제거 commit과 process cleanup 분리 계약을 유지하되 협조적 종료만 재시도한다. 강제 종료로 전환하지 않으며 실패 대상·원인을 기존 cleanup UI에 남긴다. preparing/stopped 안내의 기존 닫기 정책은 보존했다. 네이티브 모든 OS에서 실제 shell 종료를 새로 실측한 것은 아니다.
+- UI 구조: 기존 Dialog에 ul/li 목록과 Stop and delete를 추가했고 기존 스타일을 유지했다. Storybook `Features/Workspace/Delete confirmation`의 MixedStates·UnknownState·ManyTerminals를 추가했다. 실제 브라우저에서 이름·상태·버튼·Cancel 기본 포커스를 확인하고 30행 목록의 240px viewport/720px content를 측정했다. screenshot은 임시 `/tmp/aiox-delete-many-terminals.png`이며 영구 증거 파일로 보존하지 않는다. 테스트 서버·브라우저는 정리했다.
+- 검증: Web 전체 31 files/194 tests(Storybook 3개 포함), daemon 대상 2 files/14 tests, protocol 9 tests 통과. parser 파일 분리 후 Web 대상 36 tests·typecheck·lint·format을 재확인했다. daemon typecheck·lint·format, protocol/daemon/Web/Storybook build, React Doctor no issues와 diff check 통과. listen EPERM이 난 sandbox 테스트는 권한을 확보한 동일 대상 재실행으로 통과했다. 전체 monorepo check를 실행한 것은 아니다. Web UI spec의 기존 표 형식에는 별도 oxfmt 경고가 있어 무관한 포맷 변경을 되돌리고 이번 문단만 보존했다.
+- owner 반영: `docs/specs/aiox-web-ui.md`에 Workspace 확인 생략·전체 상태 모달 규칙을, `docs/specs/aiox-configuration-web.md`에 confirm:false·판정 결과·협조적 cleanup 계약을 반영했다. 같은 W10 종료/삭제 수명의 후속이므로 1,000행 초과를 인지하고 기존 block에 기록한다.
+- 다음·커밋 범위: 사용자 daemon 재시작 후 실제 idle 닫기·삭제와 Storybook 사용자 확인을 이어간다. W10 전체와 W8/W9·기존 플랫폼 후속은 완료 처리하지 않는다. 선행 Host 종료 화면 수정은 c4b52ad로 분리했고 이번 구현·회귀·Storybook·owner 문서·로그를 다음 커밋으로 묶는다. 개인 aiox.yaml은 제외하고 사용자 daemon 재시작·push는 하지 않는다.
 
 ## 2026-09-26 · W18 shell 경로 갱신·상속과 Agent 탭 이름 복귀
 

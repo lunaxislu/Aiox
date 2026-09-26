@@ -487,17 +487,40 @@ it("confirmation preserves the runtime seen when the dialog opened", async () =>
         ];
     const send = vi
         .spyOn(app.connection, "panelCommand")
+        .mockImplementationOnce((input, onRequest) => {
+            const request = {
+                ...input,
+                clientSessionId: "session",
+                requestId: "close-check",
+                sequence: 1,
+            };
+            return {
+                request,
+                execute: Effect.suspend(() => {
+                    onRequest?.(request);
+                    return Effect.fail({
+                        code: "confirmation_required",
+                        message: "Confirm",
+                        details: {
+                            terminals: [
+                                { tabId: "a", label: "a", status: "running" },
+                            ],
+                        },
+                    });
+                }),
+            } as ReturnType<ApplicationConnection["panelCommand"]>;
+        })
         .mockReturnValue({ execute: Effect.never, request: undefined });
     app.emit(event);
     fireEvent.click(await screen.findByRole("button", { name: "Close a" }));
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(send).not.toHaveBeenCalled();
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(send).toHaveBeenCalledTimes(1);
     const updated = structuredClone(event);
     if (updated.type === "snapshot")
         updated.snapshot.panels[0]!.tabs[0]!.runtimeId = "new";
     app.emit(updated);
     fireEvent.click(screen.getByRole("button", { name: "Close and stop" }));
-    expect(send.mock.calls[0]?.[0]).toEqual({
+    expect(send.mock.calls[1]?.[0]).toEqual({
         panelId: "p",
         changes: [
             {
@@ -552,7 +575,6 @@ it.each([false, true])(
         fireEvent.click(
             await screen.findByRole("menuitem", { name: "Delete" }),
         );
-        fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
         await waitFor(() => expect(complete).toBeTypeOf("function"));
         if (leave) await act(() => app.router.navigate("/workspaces/q"));
         await act(async () => {
@@ -752,3 +774,53 @@ it.each(["another panel", "the same panel"] as const)(
         }
     },
 );
+
+it("shows server-reported delete states without removing the workspace or reporting an error", async () => {
+    const app = mount("/workspaces/p");
+    const send = vi
+        .spyOn(app.connection, "panelCommand")
+        .mockImplementation((input, onRequest) => {
+            const request = {
+                ...input,
+                clientSessionId: "session",
+                requestId: "delete-check",
+                sequence: 1,
+            };
+            return {
+                request,
+                execute: Effect.suspend(() => {
+                    onRequest?.(request);
+                    return Effect.fail({
+                        code: "confirmation_required",
+                        message: "Confirm",
+                        details: {
+                            terminals: [
+                                { tabId: "a", label: "Shell", status: "idle" },
+                                {
+                                    tabId: "b",
+                                    label: "Reviewer",
+                                    status: "running",
+                                },
+                            ],
+                        },
+                    });
+                }),
+            } as ReturnType<ApplicationConnection["panelCommand"]>;
+        });
+    app.emit(withPanel());
+    fireEvent.click(await screen.findByText("workspaces", { exact: true }));
+    await act(() => app.router.navigate("/workspaces/p"));
+    fireEvent.contextMenu(await screen.findByRole("link", { name: "Live" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.getByText("Reviewer")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+        screen.getByRole("button", { name: "Close a", hidden: true }),
+    ).toBeTruthy();
+    expect(send.mock.calls[0]![0].changes).toEqual([
+        { type: "panel.delete", confirm: false },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(send).toHaveBeenCalledTimes(1);
+});

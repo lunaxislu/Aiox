@@ -187,7 +187,19 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         },
     );
     const cleanups = new CleanupRegistry(
-        async (id) => {
+        async (id, idleOnly) => {
+            if (idleOnly) {
+                if (
+                    runtimes
+                        .list()
+                        .some((runtime) => runtime.terminalId === id) ||
+                    !(await terminals.closeIdle(id))
+                )
+                    throw new Error(
+                        "Terminal is no longer confirmed idle; its work was preserved.",
+                    );
+                return;
+            }
             await stopTerminal(id);
         },
         (id) => void appState.update({ cleanup: id }),

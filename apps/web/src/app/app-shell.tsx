@@ -22,6 +22,7 @@ import {
     type Section,
 } from "@/entities/panel/model";
 import { panelLayoutReferences } from "@/entities/panel/workspace-layout";
+import { confirmationTerminals } from "@/features/manage-workspace/close-confirmation";
 import {
     WorkspaceDialog,
     type WorkspaceAction,
@@ -53,6 +54,11 @@ export function AppShell() {
     const send = usePanelCommand();
     const feedback = useCommandFeedback();
     const [action, setAction] = useState<WorkspaceAction | null>(null);
+    const deleteRequest = useRef(0);
+    function openAction(next: WorkspaceAction | null) {
+        deleteRequest.current++;
+        setAction(next);
+    }
     const [readError, setReadError] = useState<string | null>(null);
     const navigate = useNavigate();
     const { section, panelId } = useParams();
@@ -146,6 +152,30 @@ export function AppShell() {
             });
         setAction(null);
     }
+    async function requestDelete(panel: PanelPreview) {
+        const request = ++deleteRequest.current;
+        const operation = send({
+            panelId: panel.id,
+            changes: [{ type: "panel.delete", confirm: false }],
+        });
+        const outcome = await operation.result;
+        const terminals =
+            outcome.status === "rejected"
+                ? confirmationTerminals(outcome.issue)
+                : null;
+        if (terminals) {
+            if (deleteRequest.current === request)
+                setAction({ type: "delete", panel, terminals });
+            return;
+        }
+        feedback.reportOutcome(operation);
+        if (
+            outcome.status === "confirmed" &&
+            currentPanel.current.section === panel.section &&
+            currentPanel.current.panelId === panel.id
+        )
+            navigate(`/${panel.section}`);
+    }
     async function read(ids?: string[]) {
         setReadError(null);
         const result = await Effect.runPromiseExit(
@@ -174,13 +204,14 @@ export function AppShell() {
                 state: { focusTabId: target.tab.id },
             });
     }
-    const create = (section: Section) => setAction({ type: "create", section });
+    const create = (section: Section) =>
+        openAction({ type: "create", section });
     return (
         <AppLayout
             panels={panels}
             onCreate={create}
-            onRename={(panel) => setAction({ type: "rename", panel })}
-            onDelete={(panel) => setAction({ type: "delete", panel })}
+            onRename={(panel) => openAction({ type: "rename", panel })}
+            onDelete={(panel) => void requestDelete(panel)}
         >
             <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
                 <AppHeader
@@ -256,7 +287,7 @@ export function AppShell() {
                 <WorkspaceDialog
                     action={action}
                     onSubmit={submit}
-                    onClose={() => setAction(null)}
+                    onClose={() => openAction(null)}
                 />
             )}
         </AppLayout>

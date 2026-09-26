@@ -124,3 +124,30 @@ it.effect(
         }).pipe(Effect.ensuring(Effect.promise(() => tasks.close())));
     },
 );
+
+it.effect(
+    "never escalates an idle-only cleanup during retries or final shutdown",
+    () => {
+        const tasks = new DaemonTasks();
+        const stop = vi.fn(async (_id: string, idleOnly: boolean) => {
+            expect(idleOnly).toBe(true);
+            throw new Error("work preserved");
+        });
+        const registry = new CleanupRegistry(
+            stop,
+            () => {},
+            tasks,
+            () => 1,
+            Schedule.spaced("5 millis"),
+        );
+        return Effect.gen(function* () {
+            yield* registry.trackEffect({ ...input, idleOnly: true });
+            yield* TestClock.adjust(5);
+            expect(stop).toHaveBeenCalledTimes(2);
+            expect(yield* registry.stopAllEffect()).toEqual([
+                "terminal t1: work preserved",
+            ]);
+            expect(stop).toHaveBeenCalledTimes(3);
+        }).pipe(Effect.ensuring(Effect.promise(() => tasks.close())));
+    },
+);

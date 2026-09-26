@@ -107,3 +107,36 @@ it("ignores an absent panel for dependent intent instead of resurrecting it", ()
         }),
     ).toBeUndefined();
 });
+
+it("keeps terminals mounted until an unconfirmed close or delete is accepted", () => {
+    const panel = projectPanel(undefined, {
+        panelId: "p",
+        changes: [
+            {
+                type: "panel.create",
+                name: "Panel",
+                paneId: "pane",
+                tabId: "tab",
+            },
+        ],
+    })!;
+    expect(
+        projectPanel(panel, {
+            panelId: "p",
+            changes: [{ type: "panel.delete", confirm: false }],
+        }),
+    ).toBe(panel);
+    expect(
+        projectPanel(panel, {
+            panelId: "p",
+            changes: [
+                {
+                    type: "tab.close",
+                    tabId: "tab",
+                    expectedRuntimeId: null,
+                    confirm: false,
+                },
+            ],
+        }),
+    ).toBe(panel);
+});

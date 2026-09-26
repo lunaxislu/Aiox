@@ -113,7 +113,17 @@ export function AppShell({
             panels={panels}
             onCreate={create}
             onRename={(panel) => setAction({ type: "rename", panel })}
-            onDelete={(panel) => setAction({ type: "delete", panel })}
+            onDelete={(panel) =>
+                setAction({
+                    type: "delete",
+                    panel,
+                    terminals: panel.tabs.map((tab) => ({
+                        tabId: tab.id,
+                        label: tab.label,
+                        status: tab.runtimeId ? "running" : "unknown",
+                    })),
+                })
+            }
         >
             <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
                 <AppHeader

@@ -109,7 +109,7 @@ export type WorkspaceActions = {
         target: import("./workspace-preview").TabDrop,
     ) => void;
     addShell: (paneId: string, axis?: "x" | "y") => void;
-    onClose: (tab: TabView, confirm: boolean) => void;
+    onClose: (tab: TabView, confirm: boolean) => void | Promise<boolean>;
     onDismiss?: ((tab: TabView) => void) | undefined;
 };
 export function WorkspaceContent({
@@ -140,6 +140,14 @@ export function WorkspaceContent({
             pane.tabIds.includes(tab.id),
         );
         if (pane) activatePane(pane.id);
+        if (live && !force) {
+            void Promise.resolve(onClose(tab, false)).then(
+                (needsConfirmation) => {
+                    if (needsConfirmation) setClosing(tab);
+                },
+            );
+            return;
+        }
         const terminal = tab.terminalId ? terminals[tab.terminalId] : undefined;
         if (
             !force &&

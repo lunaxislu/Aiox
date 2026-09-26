@@ -611,7 +611,7 @@ Web의 panel 등록·배치 변경은 명령 endpoint 하나로 보낸다. 한 �
 | ------------------ | ------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------- |
 | `panel.create`     | `name`, `section?`, `paneId`, `tabId`, `cols?`, `rows?` | kind workspace panel과 pane 하나·준비 중 tab 하나. changes의 첫 항목만 허용 | shell 준비                 |
 | `panel.rename`     | `name`                                                  | 이름만 저장                                                                 | 없음                       |
-| `panel.delete`     | `confirm:true`                                          | workspace panel과 모든 tab 제거. changes의 마지막 항목만 허용               | 소유 terminal 정리         |
+| `panel.delete`     | `confirm:boolean`                                       | workspace panel과 모든 tab 제거. changes의 마지막 항목만 허용               | 소유 terminal 정리         |
 | `tab.create`       | `tabId`, `target`, `cols?`, `rows?`                     | 준비 중 tab을 target에 추가                                                 | shell 준비                 |
 | `tab.move`         | `tabId`, `target`                                       | 기존 tab을 target으로 옮기고 빈 pane을 병합                                 | 없음. 기존 shell 유지      |
 | `tab.close`        | `tabId`, `expectedRuntimeId`, `confirm`                 | tab 제거와 빈 pane·split·포커스 정리                                        | terminal 정리              |
@@ -676,7 +676,16 @@ shell 표시로 바꾼다. 연결은 탭 위치를 바꾸지 않으므로 준비
 닫기는 서버가 현재 Runtime 신원을 expectedRuntimeId와 비교한다. 실행 중이면 confirm:true를
 요구하고 UI가 확인한다. stopped 안내 ×는 confirm:false로 가능하다. 그 사이 새 Runtime이 시작됐으면
 409 `runtime_conflict`이며 옛 확인으로 새 실행을 종료하지 않는다. 일반 shell의 닫기도 그 shell
-작업을 종료하는 동작이다. `dismiss`는 종료 안내이고 기반 shell이 살아 있을 때만 허용하며
+작업을 종료하는 동작이다. shell의 `tab.close`와 Workspace의 `panel.delete`는 먼저 confirm:false로
+요청할 수 있다. 서버가 대상 shell의 idle을 확인한 경우에만 확인 없이 제거하며, 빈 Workspace도
+확인 없이 제거한다. 실행 중인 Agent 또는 idle 판정 불가 대상이 있으면 배치를 유지하고
+409 `confirmation_required`를 반환한다. 오류 details.terminals는 대상별 tabId·label·status
+(`idle`·`running`·`unknown`)를 제공한다. shell 관측으로 idle만 증명할 수 있으면 나머지는 unknown이며,
+살아 있는 Agent는 vendor 활동 상태와 관계없이 running이다. 사용자가 확인하면 confirm:true로
+다시 요청한다. 확인 없는 idle 종료는 실제 정리 시에도 협조적 shell 종료만 사용하며 새 작업이
+시작됐다고 강제 종료로 전환하지 않는다. 정리가 끝나지 않으면 아래 cleanup 실패 계약을 따른다.
+
+`dismiss`는 종료 안내이고 기반 shell이 살아 있을 때만 허용하며
 agentKey/runtimeId/notice를 null로 바꾼다. 관리 Agent는 지우지 않는다. shell 자체 생성 실패로
 terminalId가 null이면 실패 tab에 진단을 남긴다. 이때 Copy는 명령만 복사하고 dismiss나 shell 생성을
 하지 않는다. clipboard 쓰기 실패는 dismiss를 호출하지 않는다.

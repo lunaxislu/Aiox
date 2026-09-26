@@ -30,3 +30,28 @@ it.each(["create", "rename"] as const)(
         expect(submit).toHaveBeenCalledWith("Valid");
     },
 );
+
+it("lists every terminal state and offers cancel or explicit stop and delete", () => {
+    const submit = vi.fn();
+    render(
+        <WorkspaceDialog
+            action={{
+                type: "delete",
+                panel: panels[0]!,
+                terminals: [
+                    { tabId: "shell", label: "Shell", status: "idle" },
+                    { tabId: "agent", label: "Reviewer", status: "running" },
+                    { tabId: "unknown", label: "Build", status: "unknown" },
+                ],
+            }}
+            onSubmit={submit}
+            onClose={() => {}}
+        />,
+    );
+    expect(
+        screen.getAllByRole("listitem").map((item) => item.textContent),
+    ).toEqual(["Shellidle", "Reviewerrunning", "Buildstatus unknown"]);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Stop and delete" }));
+    expect(submit).toHaveBeenCalledWith("");
+});

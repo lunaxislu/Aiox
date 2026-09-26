@@ -512,3 +512,166 @@ it("deletes a workspace panel as one result and stops its shells afterwards", as
         ).body.code,
     ).toBe("id_deleted");
 });
+
+it("checks all shells before workspace deletion and preserves work started after inspection", async (t) => {
+    const { services, run, panel, gates } = await harness(t);
+    await run("idle-policy", [
+        {
+            type: "panel.create",
+            name: "Policy",
+            paneId: "pane",
+            tabId: "first",
+        },
+        { type: "tab.create", tabId: "second", target: { toPaneId: "pane" } },
+    ]);
+    await vi.waitFor(() => expect(gates).toHaveLength(2));
+    gates.forEach((release) => release());
+    await vi.waitFor(async () =>
+        expect(
+            (await panel("idle-policy")).tabs.every((tab) => tab.terminalId),
+        ).toBe(true),
+    );
+    const tabs = (await panel("idle-policy")).tabs;
+    const sessions = tabs.map((tab) =>
+        services.terminals.get(tab.terminalId!)!,
+    );
+    const inspections = sessions.map((session) =>
+        vi.spyOn(session, "busy").mockResolvedValue(false),
+    );
+    inspections[1]!.mockResolvedValue(true);
+    const refused = await run("idle-policy", [
+        { type: "panel.delete", confirm: false },
+    ]);
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
+        code: "confirmation_required",
+        terminals: [
+            { tabId: "first", status: "idle" },
+            { tabId: "second", status: "unknown" },
+        ],
+    });
+    expect((await panel("idle-policy")).tabs).toHaveLength(2);
+    inspections[1]!.mockRejectedValueOnce(new Error("inspection failed"));
+    expect(
+        (await run("idle-policy", [{ type: "panel.delete", confirm: false }]))
+            .body.code,
+    ).toBe("confirmation_required");
+    inspections[1]!.mockResolvedValue(false);
+    const cooperative = vi
+        .spyOn(services.terminals, "closeIdle")
+        .mockResolvedValue(false);
+    const kill = vi.spyOn(services.terminals, "kill");
+    const deleted = await run("idle-policy", [
+        { type: "panel.delete", confirm: false },
+    ]);
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.panel).toBeNull();
+    await vi.waitFor(() =>
+        expect(
+            services.cleanups
+                .list()
+                .filter((entry) => entry.state === "failed"),
+        ).toHaveLength(2),
+    );
+    expect(cooperative).toHaveBeenCalled();
+    expect(kill).not.toHaveBeenCalled();
+    cooperative.mockRestore();
+    kill.mockRestore();
+});
+
+it("closes an inspected idle tab without confirmation and deletes its empty workspace", async (t) => {
+    const { services, run, panel, gates } = await harness(t);
+    await run("idle-tab", [
+        { type: "panel.create", name: "Idle", paneId: "pane", tabId: "first" },
+    ]);
+    await vi.waitFor(() => expect(gates).toHaveLength(1));
+    gates[0]!();
+    await vi.waitFor(async () =>
+        expect((await panel("idle-tab")).tabs[0]?.terminalId).toBeTruthy(),
+    );
+    const terminalId = (await panel("idle-tab")).tabs[0]!.terminalId!;
+    vi.spyOn(services.terminals.get(terminalId)!, "busy").mockResolvedValue(
+        false,
+    );
+    const close = vi
+        .spyOn(services.terminals, "closeIdle")
+        .mockResolvedValue(true);
+    const result = await run("idle-tab", [
+        {
+            type: "tab.close",
+            tabId: "first",
+            expectedRuntimeId: null,
+            confirm: false,
+        },
+    ]);
+    expect(result.status).toBe(200);
+    expect(result.body.panel.tabs).toEqual([]);
+    await vi.waitFor(() => expect(close).toHaveBeenCalledWith(terminalId));
+    await vi.waitFor(() => expect(services.cleanups.list()).toEqual([]));
+    expect(
+        (await run("idle-tab", [{ type: "panel.delete", confirm: false }]))
+            .status,
+    ).toBe(200);
+    close.mockRestore();
+});
+
+it("rejects a runtime registered during idle inspection and treats vendor idle as running", async (t) => {
+    const { services, run, panel, gates } = await harness(t);
+    await run("runtime-race", [
+        { type: "panel.create", name: "Race", paneId: "pane", tabId: "first" },
+    ]);
+    await vi.waitFor(() => expect(gates).toHaveLength(1));
+    gates[0]!();
+    await vi.waitFor(async () =>
+        expect((await panel("runtime-race")).tabs[0]?.terminalId).toBeTruthy(),
+    );
+    const terminalId = (await panel("runtime-race")).tabs[0]!.terminalId!;
+    let runtimeId = "";
+    vi.spyOn(
+        services.terminals.get(terminalId)!,
+        "busy",
+    ).mockImplementationOnce(async () => {
+        const { record } = await services.runtimes.register({
+            terminalId,
+            networkId: null,
+            name: "Waiting Agent",
+            createBinding: () => ({
+                deliver: async () => {},
+                stop: async () => {},
+            }),
+        });
+        record.status = "idle";
+        runtimeId = record.id;
+        return false;
+    });
+    const conflict = await run("runtime-race", [
+        {
+            type: "tab.close",
+            tabId: "first",
+            expectedRuntimeId: null,
+            confirm: false,
+        },
+    ]);
+    expect(conflict.body.code).toBe("runtime_conflict");
+    expect((await panel("runtime-race")).tabs).toHaveLength(1);
+    const refused = await run("runtime-race", [
+        {
+            type: "tab.close",
+            tabId: "first",
+            expectedRuntimeId: runtimeId,
+            confirm: false,
+        },
+    ]);
+    expect(refused.body).toMatchObject({
+        code: "confirmation_required",
+        terminals: [{ status: "running", label: "Waiting Agent" }],
+    });
+    expect(
+        (await run("runtime-race", [{ type: "panel.delete", confirm: false }]))
+            .body,
+    ).toMatchObject({
+        code: "confirmation_required",
+        terminals: [{ status: "running" }],
+    });
+    services.runtimes.unregister(runtimeId);
+});

@@ -51,7 +51,7 @@ export function projectPanel(
                 panel = { ...panel, name: change.name };
                 break;
             case "panel.delete":
-                panel = undefined;
+                if (change.confirm) panel = undefined;
                 break;
             case "tab.create":
                 if (!panel.tabs.some((tab) => tab.id === change.tabId))
@@ -78,6 +78,7 @@ export function projectPanel(
                 };
                 break;
             case "tab.close":
+                if (!change.confirm) break;
                 panel = {
                     ...panel,
                     ...removePanelTabs(panel, new Set([change.tabId])),
