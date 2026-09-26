@@ -104,7 +104,7 @@ export function projectPanel(
             if (runtime)
                 return {
                     ...tab,
-                    label: tab.agentKey === null ? runtime.name : tab.label,
+                    label: runtime.name,
                     runtimeId: runtime.id,
                     presentation:
                         runtime.phase === "preparing" ? "preparing" : "tui",
@@ -112,6 +112,10 @@ export function projectPanel(
                 };
             return {
                 ...tab,
+                label:
+                    tab.presentation === "preparing"
+                        ? (tab.agentKey ?? tab.label)
+                        : tab.label,
                 runtimeId: null,
                 ...(host &&
                 tab.agentKey &&

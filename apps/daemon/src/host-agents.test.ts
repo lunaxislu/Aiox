@@ -120,6 +120,9 @@ test.skipIf(process.platform === "win32")(
             (await finish(await post("/api/hosts/run", request()))).state,
         ).toBe("succeeded");
         const state = await h.daemon.services.db.hostState.snapshot();
+        expect(
+            state.panels[0]!.tabs.every((tab) => tab.label === "Shell"),
+        ).toBe(true);
         const host = state.hosts[0]!,
             network = state.networks[0]!;
         const runtime = (key: string) =>
@@ -354,7 +357,7 @@ test.skipIf(process.platform === "win32")(
         current.tabs.push({
             id: "caller",
             terminalId: caller.id,
-            label: "Shell",
+            label: "My shell",
             agentKey: null,
             runtimeId: null,
             presentation: "shell",
@@ -415,6 +418,7 @@ test.skipIf(process.platform === "win32")(
         expect(reveal).toHaveBeenCalledWith(caller.id, current.id, "caller");
         tabs = (await h.daemon.services.db.hostState.snapshot()).panels[0]!
             .tabs;
+        expect(tabs.find((tab) => tab.id === "caller")?.label).toBe("My shell");
         expect(tabs.some((t) => t.terminalId === terminal)).toBe(false);
         expect(h.daemon.services.terminals.get(terminal)).toBeUndefined();
         await h.daemon.services.lifecycle.stopRuntime(runtime("a")!.id);
@@ -609,13 +613,17 @@ test("placement uses current pane order, caller slot and stopped seats", () => {
     const panes = panelLayoutReferences(panel.layout).panes;
     const a = panel.tabs[0]!,
         b = panel.tabs[1]!;
+    expect(panel.tabs.every((tab) => tab.label === "Shell")).toBe(true);
     a.terminalId = "old-a";
     a.presentation = "stopped";
     b.terminalId = "caller";
     b.presentation = "shell";
     b.agentKey = null;
+    b.label = "My shell";
     expect(placeAgent(panel, "a", 0, "caller").id).toBe(b.id);
+    expect(b.label).toBe("My shell");
     const added = placeAgent(panel, "d", 1, "caller");
+    expect(added.label).toBe("Shell");
     expect(panes[2]!.tabIds).toContain(added.id);
     expect(a.presentation).toBe("stopped");
     expect(placeAgent(panel, "a", 0).id).toBe(a.id);

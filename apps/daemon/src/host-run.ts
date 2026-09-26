@@ -83,7 +83,7 @@ export function initialHostPanel(
         return {
             id,
             agentKey,
-            label: agentKey,
+            label: "Shell",
             terminalId: null,
             runtimeId: null,
             presentation: "preparing" as const,

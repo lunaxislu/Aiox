@@ -242,11 +242,13 @@ agent 상태는 탭에 점으로 표시하고 색을 구분한다.
 - `failed`는 이유 문자열을 함께 보여 준다
 - 실행이 없는 stopped 표시는 실시간 activity의 다섯 status 값과 별개다
 
-일반 shell 탭은 Agent가 준비·실행 중일 때만 해당 Runtime의 이름을 표시한다. 종료하여 Runtime이
-제거되면 저장된 shell 탭 이름으로 돌아온다. 새 Network shell의 기본 이름은 `Shell`이며,
-Host 관리 탭의 Agent 이름과 기존 사용자 shell 탭 이름은 바꾸지 않는다. 실패 원인과 재실행
+Workspaces·Networks·Hosts의 shell 탭은 Agent가 준비·실행 중일 때 해당 Runtime의 이름을 표시한다.
+Host가 Runtime을 등록하기 전의 준비 중 탭은 관리 Agent 이름을 표시한다. 종료하여 Runtime이
+제거되면 저장된 shell 탭 이름으로 돌아온다. 새 shell의 기본 이름은 `Shell`이며,
+Agent 배치·재실행은 기존 shell 탭의 저장된 이름을 덮어쓰지 않는다. 실패 원인과 재실행
 명령은 notice에 유지한다. [Status: Current] 근거: [[apps/daemon/src/web-state.ts]],
-[[apps/daemon/src/web-state.test.ts]], [[apps/daemon/src/network-agent.test.ts]].
+[[apps/daemon/src/web-state.test.ts]], [[apps/daemon/src/network-agent.test.ts]],
+[[apps/daemon/src/host-agents.test.ts]].
 
 ### pane 상태 표시줄
 

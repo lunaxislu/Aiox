@@ -123,7 +123,7 @@ export function placeAgent(
             terminalId: null,
             agentKey: key,
             runtimeId: null,
-            label: key,
+            label: "Shell",
             presentation: "preparing",
             notice: null,
         };
@@ -137,7 +137,6 @@ export function placeAgent(
     Object.assign(tab, {
         agentKey: key,
         runtimeId: null,
-        label: key,
         presentation: "preparing",
         notice: null,
     });
@@ -463,7 +462,13 @@ export async function admitHostAgents(
                     layout: view.layout,
                     tabs: [
                         ...stored.tabs.filter((t) => !ids.has(t.id)),
-                        ...placed.map((t) => ({ ...t, runtimeId: null })),
+                        ...placed.map((t) => ({
+                            ...t,
+                            label:
+                                stored.tabs.find((tab) => tab.id === t.id)
+                                    ?.label ?? t.label,
+                            runtimeId: null,
+                        })),
                     ],
                 };
             });
