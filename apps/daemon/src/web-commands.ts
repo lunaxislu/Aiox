@@ -28,7 +28,12 @@ import type { Context } from "./http-endpoint";
 import type { DaemonServices } from "./services";
 import { projectPanel } from "./web-state";
 
-type Shell = { tabId: string; cols?: number; rows?: number };
+type Shell = {
+    tabId: string;
+    launch: TerminalLaunch;
+    cols?: number;
+    rows?: number;
+};
 type Stop = {
     terminalId: string;
     tabId: string;
@@ -71,11 +76,42 @@ export async function applyWebCommand(
 ): Promise<WebCommandResult & { state: ApplicationDelta | undefined }> {
     const shells: Shell[] = [];
     const stops: Stop[] = [];
-    const launch = input.changes.some(
-        (c) => c.type === "tab.create" || c.type === "panel.create",
-    )
-        ? await shellLaunch(services, input.panelId)
-        : undefined;
+    const launches = new Map<PanelChange, TerminalLaunch>();
+    for (const change of input.changes) {
+        if (change.type !== "tab.create" && change.type !== "panel.create")
+            continue;
+        const source = change.source;
+        if (source) {
+            if (
+                change.type === "tab.create" &&
+                source.panelId !== input.panelId
+            )
+                throw new HttpError(
+                    409,
+                    "source_terminal_conflict",
+                    "Source terminal belongs to another panel.",
+                );
+            const panel = await services.db.hostState.getPanel(source.panelId);
+            if (
+                !panel?.tabs.some((tab) => tab.terminalId === source.terminalId)
+            )
+                throw new HttpError(
+                    409,
+                    "source_terminal_conflict",
+                    "Source terminal is no longer in its panel.",
+                );
+        }
+        const cwd = source
+            ? await services.terminals.refreshCwd(source.terminalId)
+            : undefined;
+        if (source && cwd === undefined)
+            throw new HttpError(
+                409,
+                "source_terminal_conflict",
+                "Source terminal is no longer available.",
+            );
+        launches.set(change, await shellLaunch(services, input.panelId, cwd));
+    }
     const committed = await services.db.hostState.applyPanel(
         input.panelId,
         (current, context) =>
@@ -91,6 +127,7 @@ export async function applyWebCommand(
                             context,
                             shells,
                             stops,
+                            launches,
                         },
                     );
                 }
@@ -107,7 +144,7 @@ export async function applyWebCommand(
         });
     for (const shell of shells)
         void services.tasks.run(
-            prepareShell(services, input.panelId, shell, launch!),
+            prepareShell(services, input.panelId, shell, shell.launch),
         );
     return {
         requestId: input.requestId,
@@ -128,6 +165,7 @@ export async function applyWebCommand(
 async function shellLaunch(
     services: DaemonServices,
     panelId: string,
+    inheritedCwd?: string,
 ): Promise<TerminalLaunch> {
     const stored = await services.db.hostState.getPanel(panelId);
     const host =
@@ -137,7 +175,11 @@ async function shellLaunch(
     const config = await loadConfig(services.configLocation);
     return resolveTerminalLaunch(
         config.terminal,
-        host === undefined ? {} : { cwd: host.directory },
+        inheritedCwd === undefined
+            ? host === undefined
+                ? {}
+                : { cwd: host.directory }
+            : { cwd: inheritedCwd },
     ).catch((error: unknown) => {
         throw new HttpError(
             400,
@@ -190,7 +232,12 @@ function applyChange(
     panelId: string,
     panel: PanelView | null,
     change: PanelChange,
-    effects: { context: PanelContext; shells: Shell[]; stops: Stop[] },
+    effects: {
+        context: PanelContext;
+        shells: Shell[];
+        stops: Stop[];
+        launches: Map<PanelChange, TerminalLaunch>;
+    },
 ): Effect.Effect<PanelView | null, any> {
     return Effect.gen(function* () {
         const { context } = effects;
@@ -229,7 +276,11 @@ function applyChange(
             if (panel)
                 throw new HttpError(409, "id_conflict", "Panel ID is in use.");
             yield* freeTab(change.tabId);
-            effects.shells.push({ tabId: change.tabId, ...size(change) });
+            effects.shells.push({
+                tabId: change.tabId,
+                launch: effects.launches.get(change)!,
+                ...size(change),
+            });
             return {
                 id: panelId,
                 kind: "workspace",
@@ -273,7 +324,22 @@ function applyChange(
                 return null;
             case "tab.create":
                 yield* freeTab(change.tabId);
-                effects.shells.push({ tabId: change.tabId, ...size(change) });
+                if (
+                    change.source &&
+                    !panel.tabs.some(
+                        (tab) => tab.terminalId === change.source!.terminalId,
+                    )
+                )
+                    throw new HttpError(
+                        409,
+                        "source_terminal_conflict",
+                        "Source terminal is no longer in this panel.",
+                    );
+                effects.shells.push({
+                    tabId: change.tabId,
+                    launch: effects.launches.get(change)!,
+                    ...size(change),
+                });
                 return {
                     ...panel,
                     ...insertPanelTab(panel, change.tabId, change.target),

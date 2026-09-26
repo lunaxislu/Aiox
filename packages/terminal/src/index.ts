@@ -84,6 +84,8 @@ export type TerminalOptions = {
 
     /** Capture fresh-process output from the first PTY callback. */
     initialListener?: TerminalListener;
+    /** Prompt integration signal; the caller must query the owned process PID. */
+    onPrompt?: () => void;
 };
 
 /** How long a child gets to handle SIGTERM before SIGKILL. */
@@ -203,6 +205,10 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         scrollback: 5000,
         cursorBlink: true,
         allowProposedApi: true,
+    });
+    mirror.parser.registerOscHandler(777, (data) => {
+        if (data === "aiox-cwd") options.onPrompt?.();
+        return data === "aiox-cwd";
     });
     trackTerminalBackground(mirror);
     const boundary = new MirrorBoundary(mirror);

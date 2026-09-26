@@ -1831,12 +1831,23 @@ it("publishes shell exit and committed notifications but no changes for no-op re
     await rpc.next();
     try {
         const { session } = await borrowableShell();
-        await vi.waitFor(() => expect(rpc.observed.length).toBe(2));
+        const hasTerminalChange = (action: "upsert" | "remove") =>
+            rpc.observed.some(
+                (event) =>
+                    event.type === "delta" &&
+                    event.changes.some(
+                        (change) =>
+                            change.resource === "terminal" &&
+                            change.id === session.id &&
+                            change.action === action,
+                    ),
+            );
+        await vi.waitFor(() => expect(hasTerminalChange("upsert")).toBe(true));
         session.write("exit\r");
         await vi.waitFor(() => expect(session.alive).toBe(false), {
             timeout: 3000,
         });
-        await vi.waitFor(() => expect(rpc.observed.length).toBe(3));
+        await vi.waitFor(() => expect(hasTerminalChange("remove")).toBe(true));
         await harness.daemon.services.messages.send(
             harness.daemon.services.runtimes.get(origin.runtimeId)!,
             [target.runtimeId],

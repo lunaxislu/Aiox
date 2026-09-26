@@ -1,5 +1,8 @@
+import { execFile } from "node:child_process";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { readlink } from "node:fs/promises";
 import { resolve } from "node:path";
+import { promisify } from "node:util";
 
 import type { TerminalLaunch } from "@aiox/config";
 import { logger } from "@aiox/diagnostics";
@@ -7,6 +10,30 @@ import type { TerminalContext, TerminalView } from "@aiox/protocol";
 import type { TerminalSession } from "@aiox/terminal";
 import { createTerminal } from "@aiox/terminal";
 import type { WebSocket } from "ws";
+
+const run = promisify(execFile);
+
+async function processCwd(pid: number): Promise<string | undefined> {
+    try {
+        if (process.platform === "linux")
+            return await readlink(`/proc/${pid}/cwd`);
+        if (process.platform === "darwin") {
+            const { stdout } = await run(
+                "/usr/sbin/lsof",
+                ["-a", "-p", String(pid), "-d", "cwd", "-F0n"],
+                { timeout: 1_000, encoding: "buffer" },
+            );
+            const field = stdout
+                .toString("utf8")
+                .split("\0")
+                .find((part) => part.startsWith("n/"));
+            return field?.slice(1);
+        }
+    } catch {
+        // A dead process, missing permission, or unsupported host retains last known cwd.
+    }
+    return undefined;
+}
 
 export type TerminalOptions = {
     file?: string | undefined;
@@ -25,8 +52,15 @@ export class TerminalService {
     constructor(
         private readonly onChange: (id: string) => void = () => {},
         private readonly onRemoved: (id: string) => void = () => {},
+        private readonly queryCwd: (
+            pid: number,
+        ) => Promise<string | undefined> = processCwd,
     ) {}
     readonly #sessions = new Map<string, TerminalSession>();
+    readonly #cwdQueries = new Map<
+        string,
+        { promise: Promise<string | undefined>; dirty: boolean }
+    >();
 
     readonly #metadata = new Map<
         string,
@@ -83,6 +117,12 @@ export class TerminalService {
                 ),
             ),
             cwd,
+            ...(kind === "shell"
+                ? {
+                      onPrompt: () =>
+                          queueMicrotask(() => void this.refreshCwd(id)),
+                  }
+                : {}),
         });
         this.#sessions.set(id, session);
         this.#metadata.set(id, { cwd: displayCwd ?? cwd, kind, token });
@@ -132,6 +172,47 @@ export class TerminalService {
             kind: metadata.kind,
             alive: session.alive,
         };
+    }
+
+    /** Recheck the process itself; failed/unsupported queries retain the last known cwd. */
+    refreshCwd(id: string): Promise<string | undefined> {
+        const pending = this.#cwdQueries.get(id);
+        if (pending) {
+            pending.dirty = true;
+            return pending.promise;
+        }
+        const session = this.#sessions.get(id);
+        const metadata = this.#metadata.get(id);
+        if (!session || !metadata) return Promise.resolve(undefined);
+        const current = {
+            promise: undefined! as Promise<string | undefined>,
+            dirty: false,
+        };
+        current.promise = (async () => {
+            try {
+                do {
+                    current.dirty = false;
+                    const cwd = await this.queryCwd(session.pid);
+                    if (
+                        cwd &&
+                        this.#sessions.get(id) === session &&
+                        this.#metadata.get(id) === metadata &&
+                        metadata.cwd !== cwd
+                    ) {
+                        metadata.cwd = cwd;
+                        this.onChange(id);
+                    }
+                } while (current.dirty && this.#sessions.get(id) === session);
+                return this.#sessions.get(id) === session && session.alive
+                    ? metadata.cwd
+                    : undefined;
+            } finally {
+                if (this.#cwdQueries.get(id) === current)
+                    this.#cwdQueries.delete(id);
+            }
+        })();
+        this.#cwdQueries.set(id, current);
+        return current.promise;
     }
 
     views(): TerminalView[] {

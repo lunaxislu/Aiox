@@ -122,11 +122,25 @@ function ConnectedWorkspace({ panel }: { panel: PanelPreview }) {
                 }
                 addShell={(paneId, axis) => {
                     const tabId = crypto.randomUUID();
+                    const selectedTabId = panelLayoutReferences(
+                        layout,
+                    ).panes.find((pane) => pane.id === paneId)?.selectedTabId;
+                    const sourceTerminalId = panel.tabs.find(
+                        (tab) => tab.id === selectedTabId,
+                    )?.terminalId;
                     command(
                         [
                             {
                                 type: "tab.create",
                                 tabId,
+                                ...(sourceTerminalId
+                                    ? {
+                                          source: {
+                                              panelId: panel.id,
+                                              terminalId: sourceTerminalId,
+                                          },
+                                      }
+                                    : {}),
                                 target: axis
                                     ? {
                                           split: {

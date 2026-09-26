@@ -1,16 +1,16 @@
 import { EventEmitter } from "node:events";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 import * as configModule from "@aiox/config";
 import { loadConfig, saveConfig } from "@aiox/config";
 import * as terminalModule from "@aiox/terminal";
-import { defaultShell } from "@aiox/terminal";
+import { defaultShell, type TerminalSession } from "@aiox/terminal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
-import { attachTerminal } from "@/terminals";
+import { attachTerminal, TerminalService } from "@/terminals";
 import type { DaemonHarness } from "@/testing";
 import { startTestDaemon } from "@/testing";
 
@@ -83,6 +83,101 @@ async function waitFor(
 }
 
 describe("general shell sessions", () => {
+    it("serializes overlapping cwd queries and ignores a result after removal", async () => {
+        let exit!: () => void;
+        let alive = true;
+        vi.spyOn(terminalModule, "createTerminal").mockImplementation(
+            (options) =>
+                ({
+                    id: options.id,
+                    pid: 123,
+                    get alive() {
+                        return alive;
+                    },
+                    subscribe(listener) {
+                        exit = () =>
+                            listener.exit({ exitCode: 0, signal: null });
+                        return () => {};
+                    },
+                    dispose: async () => {},
+                }) as TerminalSession,
+        );
+        const resolve: ((cwd: string | undefined) => void)[] = [];
+        const query = vi.fn(
+            () => new Promise<string | undefined>((done) => resolve.push(done)),
+        );
+        const onChange = vi.fn();
+        const terminals = new TerminalService(onChange, () => {}, query);
+        const shell = terminals.createShell({
+            file: "/bin/sh",
+            args: [],
+            cwd: "/initial",
+        });
+        const first = terminals.refreshCwd(shell.id);
+        const second = terminals.refreshCwd(shell.id);
+        expect(query).toHaveBeenCalledTimes(1);
+        resolve[0]!("/older");
+        await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(2));
+        resolve[1]!("/latest");
+        expect(await first).toBe("/latest");
+        expect(await second).toBe("/latest");
+        expect(terminals.view(shell.id)?.cwd).toBe("/latest");
+        const notifications = onChange.mock.calls.length;
+        const failed = terminals.refreshCwd(shell.id);
+        resolve[2]!(undefined);
+        expect(await failed).toBe("/latest");
+        const unchanged = terminals.refreshCwd(shell.id);
+        resolve[3]!("/latest");
+        expect(await unchanged).toBe("/latest");
+        expect(onChange).toHaveBeenCalledTimes(notifications);
+        const late = terminals.refreshCwd(shell.id);
+        expect(query).toHaveBeenCalledTimes(5);
+        alive = false;
+        exit();
+        const removedNotifications = onChange.mock.calls.length;
+        resolve[4]!("/removed");
+        expect(await late).toBeUndefined();
+        expect(terminals.view(shell.id)).toBeUndefined();
+        expect(onChange).toHaveBeenCalledTimes(removedNotifications);
+    });
+    it.skipIf(process.platform === "win32")(
+        "observes cwd after a shell prompt and refreshes from its own PID",
+        async () => {
+            const target = join(harness.home, "prompt cwd");
+            await mkdir(target);
+            const actualTarget = await realpath(target);
+            await writeFile(
+                join(harness.home, ".bashrc"),
+                "PS1='AIOX_CWD_TEST> '\n",
+            );
+            vi.stubEnv("HOME", harness.home);
+            const terminals = harness.daemon.services.terminals;
+            const shell = terminals.createShell({
+                file: "/bin/bash",
+                args: [],
+                cwd: harness.home,
+            });
+            let output = "";
+            shell.subscribe({
+                data: (chunk) => {
+                    output += Buffer.from(chunk).toString("utf8");
+                },
+                exit() {},
+            });
+            shell.write("\r");
+            await waitFor(
+                () => output.includes("AIOX_CWD_TEST> "),
+                "initial prompt",
+            );
+            shell.write(`cd '${target}'\r`);
+            await waitFor(
+                () => terminals.view(shell.id)?.cwd === actualTarget,
+                () =>
+                    `prompt cwd update: ${terminals.view(shell.id)?.cwd}; ${output.slice(-200)}`,
+            );
+            expect(await terminals.refreshCwd(shell.id)).toBe(actualTarget);
+        },
+    );
     it.each(["", "   ", "\0"])(
         "rejects malformed request cwd %j as request input",
         async (cwd) => {

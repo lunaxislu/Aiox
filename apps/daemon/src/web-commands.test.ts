@@ -1,3 +1,6 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+
 import {
     panelViewSchema,
     webCommandResultSchema,
@@ -11,6 +14,88 @@ import {
     startTestDaemon,
     type DaemonHarness,
 } from "./testing";
+
+it("inherits only a terminal owned by the declared panel for tabs and workspaces", async (t) => {
+    const { h, services, run, panel, gates, spawn } = await harness(t);
+    expect(
+        (
+            await run("source", [
+                {
+                    type: "panel.create",
+                    name: "Source",
+                    paneId: "pane",
+                    tabId: "first",
+                },
+            ])
+        ).status,
+    ).toBe(200);
+    await vi.waitFor(() => expect(gates).toHaveLength(1));
+    gates[0]!();
+    await vi.waitFor(async () =>
+        expect((await panel("source")).tabs[0]?.terminalId).toBeTruthy(),
+    );
+    const terminalId = (await panel("source")).tabs[0]!.terminalId!;
+    const cwd = join(h.home, "inherited cwd");
+    mkdirSync(cwd);
+    const refresh = vi
+        .spyOn(services.terminals, "refreshCwd")
+        .mockResolvedValue(cwd);
+    const source = { panelId: "source", terminalId };
+    expect(
+        (
+            await run("source", [
+                {
+                    type: "tab.create",
+                    tabId: "next",
+                    source,
+                    target: { toPaneId: "pane" },
+                },
+            ])
+        ).status,
+    ).toBe(200);
+    await vi.waitFor(() => expect(gates).toHaveLength(2));
+    expect(spawn.mock.calls.at(-1)?.[1]?.cwd).toBe(cwd);
+    expect(
+        (
+            await run("new", [
+                {
+                    type: "panel.create",
+                    name: "New",
+                    paneId: "pane",
+                    tabId: "new-first",
+                    source,
+                },
+            ])
+        ).status,
+    ).toBe(200);
+    await vi.waitFor(() => expect(gates).toHaveLength(3));
+    expect(spawn.mock.calls.at(-1)?.[1]?.cwd).toBe(cwd);
+    expect(
+        (
+            await run("new", [
+                {
+                    type: "tab.create",
+                    tabId: "bad",
+                    source,
+                    target: { toPaneId: "pane" },
+                },
+            ])
+        ).status,
+    ).toBe(409);
+    expect(
+        (
+            await run("source", [
+                {
+                    type: "tab.create",
+                    tabId: "bad",
+                    source: { panelId: "new", terminalId },
+                    target: { toPaneId: "pane" },
+                },
+            ])
+        ).status,
+    ).toBe(409);
+    expect(refresh).toHaveBeenCalledWith(terminalId);
+});
 
 it("creates an empty Network panel and adds its first shell only through tab.create", async (t) => {
     const { services, run, panel, spawn, gates } = await harness(t);

@@ -122,6 +122,83 @@ function withPanel() {
     if (event.type === "snapshot") event.snapshot.panels = [panel];
     return event;
 }
+it("creates a workspace from the locally active pane's selected terminal", async () => {
+    const app = mount("/workspaces/p");
+    const send = vi
+        .spyOn(app.connection, "panelCommand")
+        .mockImplementation((input, onRequest) => {
+            const request = {
+                ...input,
+                clientSessionId: "session",
+                requestId: "request",
+                sequence: 1,
+            };
+            onRequest?.(request);
+            return {
+                request,
+                execute: Effect.fail({
+                    code: "invalid_request",
+                    message: "test",
+                }),
+            } as ReturnType<ApplicationConnection["panelCommand"]>;
+        });
+    const initial = snapshot();
+    if (initial.type !== "snapshot") throw new Error("Expected snapshot");
+    initial.snapshot.panels = [
+        {
+            ...panel,
+            layout: {
+                type: "split",
+                id: "split",
+                axis: "x",
+                weights: [0.5, 0.5],
+                children: [
+                    { type: "pane", id: "left", tabIds: ["left-tab"] },
+                    { type: "pane", id: "right", tabIds: ["right-tab"] },
+                ],
+            },
+            tabs: [
+                {
+                    ...panel.tabs[0]!,
+                    id: "left-tab",
+                    label: "Left",
+                    terminalId: "left-terminal",
+                    presentation: "shell",
+                },
+                {
+                    ...panel.tabs[0]!,
+                    id: "right-tab",
+                    label: "Right",
+                    terminalId: "right-terminal",
+                    presentation: "shell",
+                },
+            ],
+        },
+    ];
+    initial.snapshot.terminals = [
+        { id: "left-terminal", cwd: "/left", kind: "shell", alive: true },
+        { id: "right-terminal", cwd: "/right", kind: "shell", alive: true },
+    ];
+    app.emit(initial);
+    const right = await screen.findByRole("tab", { name: /Right/ });
+    fireEvent.click(right);
+    await waitFor(() =>
+        expect(right.getAttribute("aria-selected")).toBe("true"),
+    );
+    fireEvent.click(
+        screen.getByRole("button", { name: "Create workspace in workspaces" }),
+    );
+    fireEvent.change(await screen.findByRole("textbox", { name: "Name" }), {
+        target: { value: "New" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(send.mock.calls.at(-1)?.[0].changes).toEqual([
+        expect.objectContaining({
+            type: "panel.create",
+            source: { panelId: "p", terminalId: "right-terminal" },
+        }),
+    ]);
+});
 it("uses current server state, selects without commands, and reflects remote deletion", async () => {
     const app = mount("/workspaces/p");
     const send = vi.spyOn(app.connection, "panelCommand");

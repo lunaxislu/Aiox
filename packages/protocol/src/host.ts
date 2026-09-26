@@ -680,6 +680,9 @@ export const panelChangeSchema = compatible(
             ),
             paneId: id,
             tabId: id,
+            source: Schema.optional(
+                strictStruct({ panelId: id, terminalId: id }),
+            ),
             ...size,
         }),
         strictStruct({ type: Schema.Literal("panel.rename"), name: panelName }),
@@ -691,6 +694,9 @@ export const panelChangeSchema = compatible(
             type: Schema.Literal("tab.create"),
             tabId: id,
             target: panelTabTargetSchema,
+            source: Schema.optional(
+                strictStruct({ panelId: id, terminalId: id }),
+            ),
             ...size,
         }),
         strictStruct({

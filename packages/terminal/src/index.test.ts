@@ -86,6 +86,27 @@ describe("defaultShell", () => {
     });
 });
 
+it("turns a prompt OSC into a signal without trusting terminal output as cwd", async () => {
+    let reportData!: (data: string) => void;
+    const pty = {
+        pid: 123,
+        onData: (listener: typeof reportData) => {
+            reportData = listener;
+            return { dispose() {} };
+        },
+        onExit: () => ({ dispose() {} }),
+    };
+    const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue(pty as never);
+    try {
+        const onPrompt = vi.fn();
+        createTerminal({ id: "prompt", onPrompt });
+        reportData("\u001b]777;aiox-cwd\u0007");
+        await vi.waitFor(() => expect(onPrompt).toHaveBeenCalledOnce());
+    } finally {
+        spawn.mockRestore();
+    }
+});
+
 it.each(["한글\u001b[31m", Buffer.from([0xff, 0x1b, 0x5b, 0x6d])])(
     "delivers PTY output as bytes to live viewers and replay: %s",
     async (chunk) => {

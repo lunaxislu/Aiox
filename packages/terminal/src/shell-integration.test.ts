@@ -16,6 +16,61 @@ import { prepareShell } from "./shell-integration";
 
 const shells = ["/bin/zsh", "/bin/bash"].filter(existsSync);
 
+describe.skipIf(process.platform === "win32")("cwd prompt signal", () => {
+    it.each(shells)(
+        "emits at each %s prompt with a user WINCH trap and preserves status",
+        async (file) => {
+            const home = mkdtempSync(join(tmpdir(), "aiox-cwd-hook-"));
+            const changed = mkdtempSync(join(tmpdir(), "aiox-cwd-target-"));
+            writeFileSync(
+                join(home, file.endsWith("zsh") ? ".zshrc" : ".bashrc"),
+                "trap ':' WINCH\nPS1='AIOX_CWD_PROMPT> '\n",
+            );
+            const shell = prepareShell({
+                file,
+                args: [],
+                env: {
+                    ...process.env,
+                    HOME: home,
+                    ZDOTDIR: home,
+                    TERM: "dumb",
+                } as Record<string, string>,
+            });
+            const pty = spawn(shell.file, shell.args, { env: shell.env });
+            let output = "";
+            pty.onData((data) => {
+                output += data;
+            });
+            try {
+                await expect
+                    .poll(() => output.includes("\u001b]777;aiox-cwd\u0007"))
+                    .toBe(true);
+                output = "";
+                pty.write(`cd '${changed}'\r`);
+                await expect
+                    .poll(() => output.includes("\u001b]777;aiox-cwd\u0007"))
+                    .toBe(true);
+                output = "";
+                pty.write("false\r");
+                await expect
+                    .poll(() => output.includes("AIOX_CWD_PROMPT> "))
+                    .toBe(true);
+                pty.write("printf 'STATUS:%s\\n' \"$?\"\r");
+                await expect.poll(() => output.includes("STATUS:1")).toBe(true);
+                expect(await shell.busy(pty.pid)).toBe(true);
+            } finally {
+                try {
+                    process.kill(pty.pid, "SIGKILL");
+                } catch {}
+                await shell.dispose();
+                rmSync(home, { recursive: true, force: true });
+                rmSync(changed, { recursive: true, force: true });
+            }
+        },
+        10_000,
+    );
+});
+
 it("leaves Windows shells unchanged without installing idle hooks", async () => {
     const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { value: "win32" });

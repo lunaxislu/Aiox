@@ -10,7 +10,10 @@ import {
 import { Outlet, useNavigate, useParams } from "react-router";
 
 import { agentName, findRuntimeTab } from "@/entities/notification/model";
-import { applicationPanels } from "@/entities/panel/application-panels";
+import {
+    applicationPanels,
+    selectedLayout,
+} from "@/entities/panel/application-panels";
 import {
     isSection,
     panelPath,
@@ -18,6 +21,7 @@ import {
     type PanelPreview,
     type Section,
 } from "@/entities/panel/model";
+import { panelLayoutReferences } from "@/entities/panel/workspace-layout";
 import {
     WorkspaceDialog,
     type WorkspaceAction,
@@ -93,6 +97,17 @@ export function AppShell() {
         (isSection(section) && !panelId ? sectionLabels[section] : "");
     function submit(name: string) {
         if (!action) return;
+        const sourceTabId =
+            panel &&
+            panelLayoutReferences(
+                selectedLayout(panel.layout, selection?.selectedTabId),
+            ).panes.find(
+                (pane) =>
+                    pane.id === (selection?.activePaneId ?? panel.activePaneId),
+            )?.selectedTabId;
+        const sourceTerminalId = panel?.tabs.find(
+            (tab) => tab.id === sourceTabId,
+        )?.terminalId;
         const id =
             action.type === "create" ? crypto.randomUUID() : action.panel.id;
         const changes =
@@ -104,6 +119,14 @@ export function AppShell() {
                           section: action.section,
                           paneId: crypto.randomUUID(),
                           tabId: crypto.randomUUID(),
+                          ...(sourceTerminalId && panel
+                              ? {
+                                    source: {
+                                        panelId: panel.id,
+                                        terminalId: sourceTerminalId,
+                                    },
+                                }
+                              : {}),
                       },
                   ]
                 : action.type === "rename"

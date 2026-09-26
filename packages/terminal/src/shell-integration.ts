@@ -63,6 +63,12 @@ __aiox_winch() {
                 script,
                 `
 [[ -f ${quote(join(home, ".bashrc"))} ]] && source ${quote(join(home, ".bashrc"))}
+__aiox_cwd_prompt() { local previous=$?; printf '\\033]777;aiox-cwd\\007'; return "$previous"; }
+if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == 'declare -a '* ]]; then
+  PROMPT_COMMAND+=(__aiox_cwd_prompt)
+else
+  PROMPT_COMMAND+=$'\\n__aiox_cwd_prompt'
+fi
 if [[ -z $(trap -p WINCH) && -z $(trap -p DEBUG) ]]; then
 ${handler}
     __aiox_prompt() { local previous=$?; __aiox_idle=1; return "$previous"; }
@@ -104,6 +110,8 @@ ZDOTDIR=$__aiox_zdotdir
 # macOS /etc/zshrc derives HISTFILE before this wrapper restores ZDOTDIR.
 [[ $HISTFILE = ${quote(join(directory, ".zsh_history"))} ]] && HISTFILE="$ZDOTDIR/.zsh_history"
 [[ -f "$ZDOTDIR/.zshrc" ]] && source "$ZDOTDIR/.zshrc"
+__aiox_cwd_prompt() { local previous=$?; printf '\\033]777;aiox-cwd\\007'; return "$previous"; }
+precmd_functions+=(__aiox_cwd_prompt)
 trap > ${quote(join(directory, "traps"))}
 if [[ $(<${quote(join(directory, "traps"))}) != *WINCH* && \${+functions[TRAPWINCH]} = 0 ]]; then
 ${handler}
@@ -123,6 +131,11 @@ fi
             writeFileSync(
                 script,
                 `
+function __aiox_cwd_prompt --on-event fish_prompt
+    set -l previous $status
+    printf '\\033]777;aiox-cwd\\007'
+    return $previous
+end
 # Keep fish's built-in repaint handler; any additional user WINCH handler is unknown.
 if not functions --handlers | string match -r '^.*SIGWINCH[[:space:]]+.*$' | string match -qrv '^.*SIGWINCH[[:space:]]+__fish_winch_handler$'
     function __aiox_prompt --on-event fish_prompt
