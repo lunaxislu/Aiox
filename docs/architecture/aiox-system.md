@@ -589,6 +589,9 @@ Host Network CLI는 정확한 Host·Network 이름 조회로 ID를 고정한다.
 전체 restart는 `host-run.ts`의 공통 사전 검증·준비 관측을 재사용한다. 기존 이름이면
 기존 Runtime 병렬 종료, 제거 Agent의 shell 종료 확인, 적용 구성 교체, 선언 Agent 병렬 실행을
 순서대로 처리한다. 일반 shell과 pane tree는 유지하고 같은 key의 관리 탭을 재사용한다.
+`replaceHost`의 원자적 panel 변경에서 제거 대상 탭을 제외한 뒤 탭이 하나도 남지 않으면
+`initialHostPanel`의 최신 유효 layout·Agent 탭으로 초기 배치를 복원한다. 탭이 남아 있으면 기존
+`removePanelTabs`·`placeAgent` 경로를 사용하며, 제거 탭의 빈 pane 정리 외에는 기존 pane ID·분할 비율·보존 탭 위치를 유지한다.
 새 이름이면 기존 Host를 변경하지 않고 최초 실행 경로로 등록한다. 호출 shell을 재사용할 때는
 CLI가 응답의 `launch` 이벤트로 foreground 실행을 이어받는다.
 

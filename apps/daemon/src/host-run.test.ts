@@ -364,6 +364,102 @@ networks:
                     .layout,
             ).panes.map((p) => p.id),
         ).toEqual([panes[0]!.id]);
+        // An occupied Host keeps its user split even when YAML requests three panes.
+        const beforeResize = (await h.daemon.services.db.hostState.getPanel(
+            hostPanel.id,
+        ))!;
+        const alpha = beforeResize.tabs.find(
+            (tab) => tab.agentKey === "alpha",
+        )!;
+        const gamma = beforeResize.tabs.find(
+            (tab) => tab.agentKey === "gamma",
+        )!;
+        const split = {
+            type: "split" as const,
+            id: "user-split",
+            axis: "x" as const,
+            weights: [0.7, 0.3],
+            children: [
+                {
+                    type: "pane" as const,
+                    id: "user-left",
+                    tabIds: [alpha.id, "user-tab"],
+                },
+                { type: "pane" as const, id: "user-right", tabIds: [gamma.id] },
+            ],
+        };
+        await h.daemon.services.db.hostState.mutatePanel(
+            hostPanel.id,
+            (current) => ({ ...current, layout: split }),
+        );
+        await writeFile(
+            join(h.home, "aiox.yaml"),
+            `host: {name: demo, layout: {preset: auto}}
+agents:
+  alpha: {adapter: codex}
+  gamma: {adapter: codex}
+  delta: {adapter: codex}
+networks:
+  replaced: {agents: [alpha, gamma, delta], routing: {default: allow}}
+`,
+        );
+        expect((await hostResult(await restart())).state).toBe("succeeded");
+        const retained = (await h.daemon.services.db.hostState.getPanel(
+            hostPanel.id,
+        ))!;
+        const delta = retained.tabs.find((tab) => tab.agentKey === "delta")!;
+        expect(retained.layout).toEqual({
+            ...split,
+            children: [
+                {
+                    ...split.children[0]!,
+                    tabIds: [alpha.id, "user-tab", delta.id],
+                },
+                split.children[1]!,
+            ],
+        });
+        expect(
+            retained.tabs.find((tab) => tab.id === alpha.id)?.terminalId,
+        ).toBe(alpha.terminalId);
+        expect(
+            retained.tabs.find((tab) => tab.id === gamma.id)?.terminalId,
+        ).toBe(gamma.terminalId);
+        expect(
+            retained.tabs.find((tab) => tab.id === "user-tab")?.terminalId,
+        ).toBe(userShell.id);
+        expect(h.daemon.services.terminals.view(userShell.id)?.alive).toBe(
+            true,
+        );
+        // Once all tabs are closed, restart restores the latest configured initial layout.
+        for (const tab of retained.tabs)
+            if (tab.terminalId)
+                await h.daemon.services.lifecycle.stopTerminal(tab.terminalId);
+        await h.daemon.services.db.hostState.mutatePanel(
+            hostPanel.id,
+            (current) => ({
+                ...current,
+                tabs: [],
+                layout: { type: "pane", id: "empty", tabIds: [] },
+            }),
+        );
+        expect((await hostResult(await restart())).state).toBe("succeeded");
+        const restored = (await h.daemon.services.db.hostState.getPanel(
+            hostPanel.id,
+        ))!;
+        expect(restored.layout).toMatchObject({
+            type: "split",
+            axis: "x",
+            weights: [0.5, 0.5],
+        });
+        expect(
+            panelLayoutReferences(restored.layout).panes.map((pane) =>
+                pane.tabIds.map(
+                    (id) =>
+                        restored.tabs.find((tab) => tab.id === id)!.agentKey,
+                ),
+            ),
+        ).toEqual([["alpha"], ["gamma"], ["delta"]]);
+
         await writeFile(
             join(h.home, "aiox.yaml"),
             `host: {name: partial}
@@ -502,9 +598,6 @@ networks:
             "demo",
             "partial",
         ]);
-        expect(h.daemon.services.terminals.view(userShell.id)?.alive).toBe(
-            true,
-        );
     },
     60000,
 );

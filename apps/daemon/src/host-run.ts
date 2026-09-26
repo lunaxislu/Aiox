@@ -386,7 +386,19 @@ export async function admitHostRun(
             const removedIds = new Set(removed.map((t) => t.id));
             const applyHost = (target: PanelView) => {
                 target.tabs = target.tabs.filter((t) => !removedIds.has(t.id));
-                Object.assign(target, removePanelTabs(target, removedIds));
+                if (target.tabs.length === 0) {
+                    const initial = initialHostPanel(
+                        hostId,
+                        networkId,
+                        host.name,
+                        manifest.agentOrder,
+                        prepared.layout,
+                    );
+                    target.layout = initial.layout;
+                    target.tabs = initial.tabs;
+                } else {
+                    Object.assign(target, removePanelTabs(target, removedIds));
+                }
                 let placement = 0;
                 return host.agents.map((agent) =>
                     placeAgent(target, agent.key, placement++),

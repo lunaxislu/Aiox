@@ -209,7 +209,8 @@ Agent role/description/instruction 메타데이터를 유지한다. AIOX 공통 
 Host의 shell은 해당 Host 작업 경로를 사용하지만 그 자체는 Agent나 Network 구성원이 아니다.
 terminal과 Agent의 독립 수명은 runtime 계약을 따른다.
 
-`host.layout`은 최초 화면 배치 설정이다. `preset`은 `auto`(기본값), `left-main`, `top-main`,
+`host.layout`은 최초 실행과 완전히 빈 Host panel의 전체 restart에 적용하는 화면 배치 설정이다.
+`preset`은 `auto`(기본값), `left-main`, `top-main`,
 `grid`이며 `columns`·`rows`는 grid용 양의 정수다. 행·열만 지정하면 grid 생략형으로 해석한다.
 다른 preset에 행·열을 함께 지정하면 오류다.
 
@@ -240,7 +241,7 @@ Left-main은 왼쪽 하나와 오른쪽 위아래, top-main은 위쪽 하나와 
 같은 Host의 명령 입력 shell 우선과 기존 Agent 탭 재사용은 configuration-web 계약을 따른다.
 
 YAML 위치는 `host.layout`, CLI 표면은 `aiox host run --layout <preset> [--columns <n>] [--rows <n>]`다.
-초기 설정 변경으로 사용자가 조정한 현재 화면을 자동 재배치하지 않는다. 공통 영역·탭 UI는
+설정 변경으로 사용자가 조정한 현재 화면을 자동 재배치하지 않는다. 탭이 남아 있으면 전체 restart도 현재 배치를 유지한다. 공통 영역·탭 UI는
 configuration-web 계약을 따른다.
 
 ## 시작·재시작·정지·삭제
@@ -271,7 +272,12 @@ CLI에 안내하고 현재 실행·정책·화면을 그대로 유지한다. 저
 삭제+추가로 처리한다. 이름 변경을 자동 추론하지 않는다.
 삭제된 Agent의 실행 shell 또는 stopped 안내 뒤 shell은 종료를 확인하고 탭과 함께 제거한다.
 이미 `/exit`이나 Copy로 일반 shell로 돌아온 탭과 사용자가 추가한 shell은 보존한다.
-기존 pane 배치를 재정렬하지 않는다. 구체 표시·입력 자리 우선순위는 configuration-web 계약을 따른다.
+탭이 남아 있으면 제거 탭으로 빈 pane을 접는 기존 정리 외에는 pane ID·분할 비율과 탭 위치를 유지한다.
+새 Agent만 현재 pane 순서에 순환 추가한다.
+제거 Agent 탭 정리 후에도 탭이 하나도 없으면 최신 YAML > 전역 설정 > auto로 해석한 `host.layout`의
+최초 배치를 복원한다. 최초 run의 CLI layout override는 재사용하지 않는다. 예를 들어 기존 pane이
+70:30의 두 영역이고 최신 설정이 auto의 세 영역이어도, 탭이 남아 있으면 두 영역과 70:30을 유지한다.
+완전히 빈 panel에서는 선언 Agent 수와 최신 설정에 맞춰 세 영역을 다시 만든다. 구체 표시·입력 자리 우선순위는 configuration-web 계약을 따른다.
 
 ### stop과 delete의 종료 경계
 

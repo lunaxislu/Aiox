@@ -15,7 +15,7 @@ status: open
 - [x] W7 알림 fixture UI 구현과 사용자 시각 확인 PASS 완료. 고정 제목·Clear all, ScrollArea 목록·구분선·최신순·상대 시각, runtime 대상 이동과 NotFound를 반영했다. 실제 SSE·확인 API 및 삭제 후 최신 대상 탐색은 W10에서 연결·검증한다.
 - [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
 - [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
-- [>] W10 운영 Web 연동·터미널 기본 키와 config 변경분은 구현했다. 한글 조합 중/종료 대기 단축키의 마지막 글자→이동·삭제 순서를 실제 xterm 회귀와 Chromium IME 경로로 수정·검증했다. 최신 entry를 기준으로 OS 한글 입력기 사용자 확인과 남은 통합 검증을 이어간다. Linux/Windows/WSL 네이티브와 Codex 종료 후 간헐적 입력 변화는 미완료다.
+- [>] W10 운영 Web 연동·터미널 기본 키·config 변경과 IME 단축키 순서 검증은 구현했다. W18 및 W19 기록을 기준으로 OS 한글 입력기 사용자 확인과 남은 통합 검증을 이어간다. W19 빈 Host 배치 복원은 daemon 재시작 후 실제 UI에서 확인한다. Linux/Windows/WSL 네이티브와 Codex 종료 후 간헐적 입력 변화는 미완료다.
 - [x] W11 서버 제거·빈 pane/split 정리와 원자 저장 검토를 완료했다. W17에서 선택을 클라이언트 전용으로 분리하고 owner 정합과 직접 회귀 검증을 완료했다. 실제 Web RPC·PTY 통합 검증은 W10이 소유한다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
@@ -26,6 +26,7 @@ status: open
 - [x] W16 서버 마이그레이션 리뷰 결함 3건(Codex stderr 수명, Claude retirement 실패 처리, 알림 읽음 RPC 취소)을 재현·수정·검증한다.
 - [x] W17 pane·탭 선택을 React 메모리 전용으로 분리하고 서버 select 명령·선택 DTO/DB 필드·서버 선택 테스트 제거, 검증·리뷰와 owner/artifact 정합을 기록한다.
 - [x] W18 shell 현재 경로 UI 갱신·새 탭/분할 경로 상속과 Agent 종료 후 탭 이름 복귀를 하위 Agent 구현, 독립 검토·검증 및 owner 반영으로 완료한다.
+- [x] W19 Host restart의 기존 pane·비율·탭 위치 보존과 빈 Host 초기 배치 복원을 구현하고 회귀·owner 문서를 검증한다.
 
 ## Required Context
 
@@ -1267,3 +1268,13 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 
 - 사용자 승인 범위의 기존 working tree를 기능별로 분리해 커밋했다: `c2c0418` shell cwd 관측·새 terminal 상속, `a4c051e` Agent 종료 후 shell label 복귀, `55ee89b` reveal 첫 렌더 선택·attach 회귀 테스트. 각 commit은 해당 production code와 tests를 함께 포함한다.
 - 이번 문서 commit에는 cwd/label/reveal의 spec·architecture 반영과 이 작업 로그를 함께 담는다. 전체 통합 검증은 직전 최종 수용 entry의 결과를 따른다. 임시 진단은 전부 제거됐고 unrelated 개인 자산은 변경하지 않았다. push와 사용자 daemon 재시작은 수행하지 않았다. 남은 W10 운영 검증은 유지한다.
+
+## 2026-09-27 · W19 Host restart 배치 보존과 빈 panel 복원
+
+- 기록 범위: 사용자가 앞서 로그 기록을 금지해 작업 중에는 기록하지 않았으며, 이번 명시적 기록·커밋 요청으로 진단과 최종 구현 결과를 소급 기록한다. 이 작업은 W10 운영 Host 검증에서 발견한 배치 문제의 수정·소비 단위다. 로그가 1000줄을 넘지만 별도 미완료 수명이나 반환 대기가 없는 완료 단위이므로 현재 Stage6 로그에 유지한다.
+- 진단: 외부 터미널의 `host run` 이후 다음 명령을 입력하지 못한다는 보고를 처음에는 shell 탭 보존·커서 표시 문제로 잘못 해석했다. 최종 확인 대상은 호출 CLI의 완료와 shell 입력 복귀다. daemon 기록에서 2026-09-26 22:11:47 첫 Host 실행 후 두 Agent만 준비 완료했고 나머지 하나는 준비 완료 기록 없이 종료되어 22:12:18 failed로 끝났다. 다음 실행은 22:12:47 접수 후 22:12:49 succeeded였다. 사용자가 Host 삭제 후 재실행하자 정상 복귀를 확인했다. 누락된 Agent 준비 조건의 원인과 당시 외부 CLI의 응답 수신 여부는 미확정이며, 입력 불가 결함을 수정했다고 주장하지 않는다.
+- 요구 정정: 처음에는 모든 restart에서 설정 pane 구성을 다시 만드는 안을 구현했으나, 사용자가 현재 pane이 2개·70:30이고 설정이 auto 3개여도 기존 두 영역과 비율을 유지하라고 확정했다. 전체 재구성안과 그 전용 정렬 helper·회귀는 철회했다. 최종 계약은 탭이 남으면 기존 pane·비율·기존 탭 위치를 유지하고 새 Agent만 현재 pane 순서로 추가하며, 제거 대상 Agent 탭 정리 뒤 탭이 전혀 없을 때만 최신 YAML·전역 설정·auto의 초기 배치를 복원하는 것이다.
+- 구현·검토: 사용자 지시에 따라 subagent `host_restart_layout`이 구현하고 root가 최종 diff를 검토했다. `host-run.ts`의 기존 `replaceHost` 원자적 callback에 빈 탭 분기만 추가하여 `initialHostPanel`의 layout/tabs를 사용한다. 탭이 남으면 기존 `removePanelTabs`·`placeAgent`를 재사용한다. 일반 shell의 terminal ID·실행을 보존하고, 기존 Host에 대한 run 중복 거절과 개별 Agent 명령 계약은 유지한다. 문서 수정 중 넓은 치환으로 발생한 무관한 삭제는 원복했으며 최종 diff에는 포함하지 않았다.
+- 검증: 기존 구현에서 빈 panel이 단일 pane으로 남아 새 회귀가 실패하는 RED를 확인했다(`/private/tmp/host-restart-empty-red.out`). 최종 Host 관련 3파일 22테스트 통과(`/private/tmp/host-restart-empty-green.out`), daemon typecheck·build 통과(`/private/tmp/host-restart-empty-types.out`, `/private/tmp/host-restart-empty-build.out`), 대상 lint·format 및 `git diff --check` 통과. 회귀는 70:30 두 pane 대 auto 세 Agent에서 비율·탭 자리·shell 생존 보존, 새 Agent의 첫 pane 추가, 완전히 빈 panel의 auto 세 영역 복원을 확인한다. 실제 macOS PTY·빌드 CLI·HTTP와 vendor 대역 검증이며 실제 vendor·브라우저 UI 직접 재검증을 대신하지 않는다.
+- Owner 반영: `docs/specs/aiox-host.md`, `docs/specs/aiox-configuration-web.md`, `docs/architecture/aiox-system.md`에 기존 배치 보존과 빈 panel 예외를 반영했다. 구현·회귀는 `apps/daemon/src/host-run.ts`, `apps/daemon/src/host-run.test.ts`가 소유한다.
+- 결과·다음: W19 완료, W10 및 W8/W9의 기존 미완료 상태는 유지한다. 실제 사용자 daemon은 재시작하지 않았으며 새 빌드 반영 후 Host 배치 UI 확인은 W10 통합 검증에서 수행한다. 개인 `aiox.yaml`은 수정·커밋 대상에서 제외한다. 이번 commit은 최종 구현·회귀·owner 문서와 이 기록을 함께 포함하며 push는 수행하지 않는다.
