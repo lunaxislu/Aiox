@@ -17,7 +17,10 @@ export function bindTerminalKeys(
         const clipboard = terminalClipboardAction(event);
         if (
             clipboard === "paste" ||
-            (clipboard === "copy" && term.hasSelection())
+            // A Cmd chord carries no pty meaning, so it stays browser owned even
+            // with nothing selected. Kitty encodes it otherwise and preventDefault
+            // then cancels the native copy. Ctrl+C must still reach the pty.
+            (clipboard === "copy" && (event.metaKey || term.hasSelection()))
         ) {
             // Match release even if the modifier or selection changed meanwhile.
             if (event.type === "keydown") clipboardKeys.add(key);

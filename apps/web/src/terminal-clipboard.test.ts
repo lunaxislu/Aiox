@@ -99,6 +99,15 @@ it.each(
             );
             expect(term.getSelection()).toBe(selected);
 
+            // Chrome only dispatches copy once beforecopy is cancelled,
+            // because an xterm selection is not a DOM selection.
+            const beforeCopy = new ClipboardEvent("beforecopy", {
+                bubbles: true,
+                cancelable: true,
+            });
+            term.textarea!.dispatchEvent(beforeCopy);
+            expect(beforeCopy.defaultPrevented).toBe(true);
+
             const data = new DataTransfer();
             const copy = new ClipboardEvent("copy", {
                 clipboardData: data,
@@ -147,6 +156,12 @@ it.each(
 
             term.clearSelection();
             bindTerminalKeys(term, () => undefined);
+            const emptyBeforeCopy = new ClipboardEvent("beforecopy", {
+                bubbles: true,
+                cancelable: true,
+            });
+            term.textarea!.dispatchEvent(emptyBeforeCopy);
+            expect(emptyBeforeCopy.defaultPrevented).toBe(false);
             const empty = new ClipboardEvent("copy", {
                 clipboardData: new DataTransfer(),
                 bubbles: true,
@@ -207,10 +222,11 @@ it("uploads clipboard images before pasting each path, preserves Markdown, and r
     const term = new Terminal({ vtExtensions: { kittyKeyboard: true } });
     term.open(host);
     let connected = true;
-    const notice = vi.spyOn(console, "error").mockImplementation(() => {});
+    const notice = vi.fn<(message: string) => void>();
     const clipboard = bindTerminalClipboard(term, host, {
         terminalId: "image-terminal",
         canPaste: () => connected,
+        onFailure: notice,
     });
     const sent: string[] = [];
     term.onData((data) => sent.push(data));
@@ -287,10 +303,7 @@ it("uploads clipboard images before pasting each path, preserves Markdown, and r
         );
         paste(image());
         await vi.waitFor(() =>
-            expect(notice).toHaveBeenLastCalledWith(
-                "Image paste failed",
-                expect.objectContaining({ message: "Disk full" }),
-            ),
+            expect(notice).toHaveBeenLastCalledWith("Disk full"),
         );
         expect(sent).toEqual([]);
         request.mockClear();
@@ -298,10 +311,7 @@ it("uploads clipboard images before pasting each path, preserves Markdown, and r
         paste(image());
         await vi.waitFor(() =>
             expect(notice).toHaveBeenLastCalledWith(
-                "Image paste failed",
-                expect.objectContaining({
-                    message: "Terminal is not connected.",
-                }),
+                "Terminal is not connected.",
             ),
         );
         expect(request).not.toHaveBeenCalled();
@@ -326,10 +336,11 @@ it("does not inject an uploaded image after detach or connection loss", async ()
                     finish = resolve;
                 }),
         );
-        const notice = vi.spyOn(console, "error").mockImplementation(() => {});
+        const notice = vi.fn<(message: string) => void>();
         const clipboard = bindTerminalClipboard(term, host, {
             terminalId: "test",
             canPaste: () => connected,
+            onFailure: notice,
         });
         const sent: string[] = [];
         term.onData((data) => sent.push(data));
@@ -358,11 +369,7 @@ it("does not inject an uploaded image after detach or connection loss", async ()
             } else {
                 await vi.waitFor(() =>
                     expect(notice).toHaveBeenLastCalledWith(
-                        "Image paste failed",
-                        expect.objectContaining({
-                            message:
-                                "Terminal disconnected before the image could be pasted.",
-                        }),
+                        "Terminal disconnected before the image could be pasted.",
                     ),
                 );
             }
@@ -372,7 +379,6 @@ it("does not inject an uploaded image after detach or connection loss", async ()
             term.dispose();
             host.remove();
             request.mockRestore();
-            notice.mockRestore();
         }
     }
 });
@@ -394,6 +400,7 @@ it("keeps ordinary input enabled while an image uploads", async () => {
     const clipboard = bindTerminalClipboard(term, host, {
         terminalId: "test",
         canPaste: () => true,
+        onFailure: vi.fn<(message: string) => void>(),
     });
     try {
         await new Promise<void>((resolve) =>
@@ -419,6 +426,38 @@ it("keeps ordinary input enabled while an image uploads", async () => {
         await vi.waitFor(() => expect(sent).toHaveLength(2));
         expect(term.options.disableStdin).toBe(false);
         expect(sent).toEqual(["\r", "\x1b[200~/tmp/image.png\x1b[201~"]);
+    } finally {
+        clipboard.dispose();
+        term.dispose();
+        host.remove();
+    }
+});
+
+it("reports clipboard files that are not images instead of dropping the paste", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const term = new Terminal({ vtExtensions: { kittyKeyboard: true } });
+    term.open(host);
+    const notice = vi.fn<(message: string) => void>();
+    const clipboard = bindTerminalClipboard(term, host, {
+        terminalId: "test",
+        canPaste: () => true,
+        onFailure: notice,
+    });
+    try {
+        const data = new DataTransfer();
+        data.items.add(
+            new File(["%PDF"], "doc.pdf", { type: "application/pdf" }),
+        );
+        expect([...data.types]).toContain("Files");
+        host.dispatchEvent(
+            new ClipboardEvent("paste", {
+                clipboardData: data,
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+        expect(notice).toHaveBeenCalledWith("Clipboard files were not images.");
     } finally {
         clipboard.dispose();
         term.dispose();

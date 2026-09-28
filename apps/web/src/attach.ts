@@ -71,6 +71,9 @@ export function attachTerminal(
     const term = new Terminal({
         vtExtensions: { kittyKeyboard: true },
         cursorBlink: true,
+        // A TUI that tracks the mouse consumes drags, so macOS has no way to
+        // select and copy without this. xterm ignores Shift for that on macOS.
+        macOptionClickForcesSelection: true,
         disableStdin: true,
         fontSize: 13,
         scrollback: 5_000,
@@ -94,6 +97,8 @@ export function attachTerminal(
                 !failed &&
                 !ended &&
                 socket.readyState === WebSocket.OPEN,
+            onFailure: (message) =>
+                report(`terminal ${terminalId} · ${message}`),
         });
         if (appearance)
             background = followTerminalBackground(

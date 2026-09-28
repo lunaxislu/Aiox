@@ -246,3 +246,38 @@ it.each(["active", "ending"])(
         }
     },
 );
+
+it("keeps Cmd+C native with no selection while Ctrl+C still reaches the pty", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const host = document.createElement("div");
+    document.body.append(host);
+    const terminal = new Terminal({ vtExtensions: { kittyKeyboard: true } });
+    try {
+        terminal.open(host);
+        bindTerminalKeys(terminal, () => undefined);
+        const sent: string[] = [];
+        terminal.onData((data) => sent.push(data));
+        await new Promise<void>((resolve) =>
+            terminal.write("\x1b[>1u\x1b[?u", resolve),
+        );
+        expect(sent.splice(0)).toEqual(["\x1b[?1u"]);
+        expect(terminal.hasSelection()).toBe(false);
+        // Kitty can encode Cmd+C, and that path calls preventDefault, which
+        // would cancel the browser copy the clipboard binding relies on.
+        const copy = key("c", { keyCode: 67, code: "KeyC", metaKey: true });
+        terminal.textarea!.dispatchEvent(copy);
+        expect(sent.splice(0)).toEqual([]);
+        expect(copy.defaultPrevented).toBe(false);
+        const interrupt = key("c", {
+            keyCode: 67,
+            code: "KeyC",
+            ctrlKey: true,
+        });
+        terminal.textarea!.dispatchEvent(interrupt);
+        expect(sent.splice(0)).toEqual(["\x1b[99;5u"]);
+    } finally {
+        terminal.dispose();
+        host.remove();
+        vi.restoreAllMocks();
+    }
+});

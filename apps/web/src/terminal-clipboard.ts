@@ -12,12 +12,19 @@ export function bindTerminalClipboard(
     images?: {
         terminalId: string;
         canPaste(): boolean;
+        onFailure(message: string): void;
     },
 ) {
     const serialize = new SerializeAddon();
     term.loadAddon(serialize);
     const uploads = new AbortController();
     let pending = Promise.resolve();
+    // An xterm selection is not a DOM selection, so the browser reports the copy
+    // command as unavailable and never fires copy. Cancelling beforecopy claims
+    // it. Leave it alone without a selection so surrounding text still copies.
+    const beforeCopy = (event: Event) => {
+        if (term.hasSelection()) event.preventDefault();
+    };
     const copy = (event: ClipboardEvent) => {
         if (!term.hasSelection() || !event.clipboardData) return;
         event.clipboardData.setData("text/plain", term.getSelection());
@@ -44,7 +51,10 @@ export function bindTerminalClipboard(
                 event.preventDefault();
                 event.stopImmediatePropagation();
                 term.paste(data.getData("text/markdown"));
-            }
+            } else if (images && data.types.includes("Files"))
+                // Browsers announce clipboard files under one "Files" type. Say so
+                // rather than dropping the paste, which reads as nothing happening.
+                images.onFailure("Clipboard files were not images.");
             return;
         }
         if (!images) return;
@@ -74,16 +84,22 @@ export function bindTerminalClipboard(
                 }
             } catch (error) {
                 if (!uploads.signal.aborted)
-                    console.error("Image paste failed", error);
+                    images.onFailure(
+                        error instanceof Error
+                            ? error.message
+                            : "Image paste failed.",
+                    );
             }
         });
     };
+    host.addEventListener("beforecopy", beforeCopy);
     host.addEventListener("copy", copy);
     // Capture before xterm's textarea listener reads only text/plain.
     host.addEventListener("paste", paste, true);
     return {
         dispose() {
             uploads.abort();
+            host.removeEventListener("beforecopy", beforeCopy);
             host.removeEventListener("copy", copy);
             host.removeEventListener("paste", paste, true);
         },
