@@ -251,14 +251,22 @@ Web 터미널 키 입력은 [[apps/web/src/terminal-keybindings.ts]]에서 브�
 macOS 복사 키는 선택이 없어도 브라우저 소유로 남긴다. Kitty가 인코딩하면 그 경로의
 `preventDefault()`가 native 복사까지 취소하기 때문이다. xterm 선택은 DOM 선택을 만들지 않아
 브라우저가 복사 명령을 비활성으로 보므로, 선택이 있을 때 host의 `beforecopy`를 취소해 복사
-명령을 청구한다. 마우스를 추적하는 TUI는 드래그를 소비하므로 macOS 선택은
-`macOptionClickForcesSelection`으로 `Option`+드래그에 맡긴다. 이어지는 DOM `copy`
+명령을 청구한다. 이어지는 DOM `copy`
 이벤트에서 [[apps/web/src/terminal-clipboard.ts]]의 SerializeAddon이 선택 영역 HTML을 만들고,
 선택 텍스트와 함께 ClipboardEvent에 기록한다. 복사는 Web attachment 안에서 끝나며
 daemon/PTY를 거치지 않는다. DOM `paste` 이벤트는 기존 xterm 핸들러가 줄바꿈 정규화와
 bracketed paste를 적용한 뒤 기존 사용자 입력 경로로 전달한다. 근거: `apps/web/src/terminal-clipboard.ts:9-145`,
 [[apps/web/src/terminal-keybindings.ts]] `apps/web/src/terminal-keybindings.ts:8-28`,
 [[apps/web/src/terminal-clipboard.test.ts]] `apps/web/src/terminal-clipboard.test.ts:12-178`. [Status: As-built]
+
+마우스를 추적하는 TUI 화면에서는 포인터 이동 보고가 xterm의 사용자 입력으로 처리되어
+선택을 지웠다. DECSET 1003·1006이 켜진 상태에서 선택 뒤 포인터를 한 번 움직이면
+`ESC[<35;5;2M` 보고가 나가고 선택이 사라졌다. xterm은 같은 상태에서 selection service를
+끄기도 한다. `mouseEventsRequireAlt`로 포인터 보고에 Alt를 요구해 두 경로를 함께 막는다.
+휠은 이 조건을 건너뛰어 계속 앱으로 가고, `Option`을 누른 조작만 앱에 포인터를 넘긴다.
+사용자 계약은 [[docs/specs/aiox-configuration-web]]이 소유한다. 근거:
+[[apps/web/src/attach.ts]]의 `terminalMouseOptions`와
+[[apps/web/src/terminal-clipboard.test.ts]]의 mouse-tracking 선택 유지 회귀. [Status: As-built]
 
 이미지 붙여넣기는 host의 capture `paste` listener가 xterm보다 먼저 clipboard의 이미지
 File을 읽는다. Web은 `POST /api/terminals/:terminalId/images`에 `{mediaType, data}` JSON을

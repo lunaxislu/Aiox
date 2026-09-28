@@ -1,6 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { terminalMouseOptions } from "@/attach";
 import {
     bindTerminalClipboard,
     terminalClipboardAction,
@@ -458,6 +459,85 @@ it("reports clipboard files that are not images instead of dropping the paste", 
             }),
         );
         expect(notice).toHaveBeenCalledWith("Clipboard files were not images.");
+    } finally {
+        clipboard.dispose();
+        term.dispose();
+        host.remove();
+    }
+});
+
+it("keeps a drag selection under a mouse-tracking TUI and copies it", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const host = document.createElement("div");
+    host.style.width = "600px";
+    host.style.height = "200px";
+    document.body.append(host);
+    // The real option set decides this, so the test fails if production drops it.
+    const term = new Terminal({ cols: 40, rows: 6, ...terminalMouseOptions });
+    term.open(host);
+    const clipboard = bindTerminalClipboard(term, host);
+    const reported: string[] = [];
+    term.onData((data) => reported.push(data));
+    try {
+        // Any-event tracking with SGR is what Codex and Claude Code turn on.
+        await new Promise<void>((resolve) =>
+            term.write("selectable text\x1b[?1003h\x1b[?1006h", resolve),
+        );
+        term.selectAll();
+        const screen = host.querySelector(".xterm-screen")!;
+        const box = screen.getBoundingClientRect();
+        const pointer = (type: string, init: MouseEventInit = {}) =>
+            screen.dispatchEvent(
+                new MouseEvent(type, {
+                    clientX: box.left + 40,
+                    clientY: box.top + 30,
+                    bubbles: true,
+                    cancelable: true,
+                    ...init,
+                }),
+            );
+
+        // Reporting the motion would count as user input and drop the selection
+        // before any copy key arrives.
+        pointer("mousemove");
+        expect(reported).toEqual([]);
+        expect(term.hasSelection()).toBe(true);
+
+        const beforeCopy = new ClipboardEvent("beforecopy", {
+            bubbles: true,
+            cancelable: true,
+        });
+        host.dispatchEvent(beforeCopy);
+        expect(beforeCopy.defaultPrevented).toBe(true);
+        const data = new DataTransfer();
+        host.dispatchEvent(
+            new ClipboardEvent("copy", {
+                clipboardData: data,
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+        expect(data.getData("text/plain")).toContain("selectable text");
+        expect(data.getData("text/html")).toContain("selectable text");
+
+        // The app still owns the wheel, and Option hands it the pointer back.
+        screen.dispatchEvent(
+            new WheelEvent("wheel", {
+                clientX: box.left + 40,
+                clientY: box.top + 30,
+                deltaY: 120,
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+        expect(reported).toHaveLength(1);
+        pointer("mousedown", {
+            button: 0,
+            buttons: 1,
+            detail: 1,
+            altKey: true,
+        });
+        expect(reported).toHaveLength(2);
     } finally {
         clipboard.dispose();
         term.dispose();

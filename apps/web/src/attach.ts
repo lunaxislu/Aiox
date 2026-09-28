@@ -51,6 +51,11 @@ type ServerMessage = {
 const encoder = new TextEncoder();
 const RESIZE_DEBOUNCE_MS = 120;
 
+// A TUI that tracks the pointer otherwise gets every motion reported as user
+// input, which drops the selection before a copy key can reach it. Requiring
+// Alt for that keeps plain drags selecting; the wheel still reaches the app.
+export const terminalMouseOptions = { mouseEventsRequireAlt: true } as const;
+
 export function attachTerminal(
     host: HTMLElement,
     terminalId: string,
@@ -71,9 +76,7 @@ export function attachTerminal(
     const term = new Terminal({
         vtExtensions: { kittyKeyboard: true },
         cursorBlink: true,
-        // A TUI that tracks the mouse consumes drags, so macOS has no way to
-        // select and copy without this. xterm ignores Shift for that on macOS.
-        macOptionClickForcesSelection: true,
+        ...terminalMouseOptions,
         disableStdin: true,
         fontSize: 13,
         scrollback: 5_000,

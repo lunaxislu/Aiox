@@ -125,12 +125,17 @@ Kitty 모드에서도 브라우저 붙여넣기를 우선하며, 붙여넣은 �
 돌아가므로 별도 사용자 매핑이 없는 한 앱에 전달된다. macOS `Cmd+C`는 PTY 의미가 없으므로
 선택이 없어도 브라우저 소유로 남긴다. 터미널 선택은 DOM 선택이 아니어서 브라우저가 복사
 명령을 비활성으로 보므로, 선택이 있을 때만 `beforecopy`를 취소해 복사 명령을 청구한다.
-선택이 없으면 취소하지 않아 화면의 다른 DOM 텍스트 복사를 방해하지 않는다. macOS에서
-마우스를 추적하는 TUI는 드래그를 소비하므로 `Option`+드래그로 선택한다. 근거: [[apps/web/src/terminal-clipboard.ts]]
+선택이 없으면 취소하지 않아 화면의 다른 DOM 텍스트 복사를 방해하지 않는다. 근거: [[apps/web/src/terminal-clipboard.ts]]
 `apps/web/src/terminal-clipboard.ts:9-145`, [[apps/web/src/terminal-keybindings.ts]]
 `apps/web/src/terminal-keybindings.ts:8-28`, [[apps/web/src/terminal-clipboard.test.ts]]
 `apps/web/src/terminal-clipboard.test.ts:12-178`. 이 테스트는 OS 식별값과 브라우저 이벤트를 주입한
 검증이며 실제 OS의 Codex/Claude 선택·복사 문제 재현 및 해결 검증을 대신하지 않는다.
+
+일반 드래그로 텍스트를 선택하고 OS 기본 복사·붙여넣기를 사용해야 한다. `Option`+드래그 등
+추가 modifier 조작을 요구하지 않는다. 마우스를 추적하는 TUI 화면에서도 같다. 포인터 이동은
+그 화면에서 앱으로 보고하지 않으므로 선택이 유지되며, 휠 스크롤은 계속 앱이 받는다.
+앱에 포인터를 넘기려면 `Option`을 누른 채 조작한다. 즉 `Option`은 선택의 조건이 아니라
+앱 마우스 조작의 조건이다. [Status: Current]
 
 같은 붙여넣기 단축키로 일반 텍스트·Markdown 원문과 외부 앱에서 복사한 이미지를 받는다.
 이미지 파일이 포함된 clipboard는 이미지 입력으로 처리하며, 이미지가 없으면 `text/plain`을

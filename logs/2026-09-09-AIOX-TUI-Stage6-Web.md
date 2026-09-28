@@ -15,7 +15,7 @@ status: open
 - [x] W7 알림 fixture UI 구현과 사용자 시각 확인 PASS 완료. 고정 제목·Clear all, ScrollArea 목록·구분선·최신순·상대 시각, runtime 대상 이동과 NotFound를 반영했다. 실제 SSE·확인 API 및 삭제 후 최신 대상 탐색은 W10에서 연결·검증한다.
 - [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
 - [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
-- [>] W10 운영 Web 연동·키 바인딩·IME·종료/삭제·Kitty 및 OS 텍스트/이미지 clipboard 구현을 완료했다. 최신 Kitty 키보드·OS 클립보드·이미지 붙여넣기 기록과 W18·W19를 기준으로 새 daemon/Web 적용 후 실제 OS 단축키·이미지 첨부·idle 종료/삭제·빈 Host 배치 복원과 Storybook 사용자 확인을 이어간다. dev 프록시 경계와 beforecopy 청구 수정 뒤 사용자 브라우저에서 Cmd+C(Codex는 Option+드래그 선택)와 Cmd+V 이미지 첨부가 실제로 되는지 확인이 남았다. Windows/Linux/WSL native, 맨 Ctrl+C의 SIGINT 충돌 및 Codex 종료 후 간헐적 입력 변화는 미완료다.
+- [>] W10 운영 Web 연동·키 바인딩·IME·종료/삭제·Kitty 및 OS 텍스트/이미지 clipboard의 실제 검증을 이어간다. Option 선택 우회는 철회했고 일반 드래그 선택과 기본 OS copy/paste가 요구사항이다. 마우스 추적 화면의 선택 유실은 mouseEventsRequireAlt로 재현·수정했으며 사용자 브라우저에서 드래그 선택 후 Cmd+C·Cmd+V 확인이 남았다. 최신 Kitty 키보드·OS 클립보드 기록 및 W18·W19를 기준으로 idle 종료/삭제·빈 Host 배치 복원과 Storybook 사용자 확인을 이어간다. Windows/Linux/WSL native, 맨 Ctrl+C의 SIGINT 충돌 및 Codex 종료 후 간헐적 입력 변화는 미완료다.
 - [x] W11 서버 제거·빈 pane/split 정리와 원자 저장 검토를 완료했다. W17에서 선택을 클라이언트 전용으로 분리하고 owner 정합과 직접 회귀 검증을 완료했다. 실제 Web RPC·PTY 통합 검증은 W10이 소유한다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
@@ -1385,3 +1385,24 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 - 사용자 기기 영향: 진단 과정에서 OS 클립보드를 1×1 PNG로 여러 번 덮었고 70바이트 테스트 PNG가 `~/.aiox/attachments/`에 남아 있다. 그중 하나가 실행 중인 Codex 프롬프트에서 `[Image #2]`로 참조되므로 삭제하지 않았다.
 - 남긴 것: 클라이언트 선언 `mediaType`을 버리고 magic byte만 신뢰하는 단순화는 내가 제안만 했고 사용자 결정 대기다. `terminalClipboardAction`이 macOS 외에서 맨 Ctrl+C를 복사로 간주해 선택이 있을 때 SIGINT를 가로채는 문제는 Ghostty·cmux 관례인 Ctrl+Shift+C/V 도입과 함께 Windows/Linux 미완료 범위로 남긴다.
 - 커밋 범위: clipboard·이미지·dev 프록시 변경과 `apps/web/src/attach.ts`의 `onFailure` 배선·Option 선택만 포함한다. 같은 작업본에 있는 terminal 글꼴·theme 전달 변경(`attach.ts`의 나머지와 `apps/web/src/pages/workspace/connected-terminal.tsx`)과 개인 `aiox.yaml`은 앞선 기록대로 제외하며 push하지 않는다.
+
+### 2026-09-28 18:21 · Option 선택 철회와 OS 기본 copy/paste 요구 확인
+
+- 사용자 결정: Option 관련 선택 조작은 필요 없다. 요구사항은 일반 드래그로 출력 텍스트를 선택한 뒤 기본 OS copy/paste를 사용하는 것이다. 이번 명시적 요청 범위에서 로그 기록을 재개한다.
+- 이전 결정 정정: 17:46 entry의 Option+드래그 우회와 a157cc7의 macOptionClickForcesSelection 추가를 철회했다. apps/web/src/attach.ts의 옵션과 전용 주석을 제거했다. Option 편집 단축키 등 무관한 기존 기능, 이미지 업로드, beforecopy 및 OS 복사 키 처리는 유지했다. 전용 Option 선택 테스트는 없어서 삭제할 테스트도 없다.
+- Owner 반영: docs/specs/aiox-configuration-web.md에서 Option 조작 요구를 제거하고 일반 드래그·OS 기본 copy/paste를 승인된 목표로 명시했다. docs/architecture/aiox-storage-terminal.md의 Option 우회 설명을 제거하고 미해결 선택 유지 문제를 Current gap으로 구분했다. 문서 스킬에 따라 계약과 실제 구현 gap을 섞지 않았다.
+- 진단 범위 정정: 실제 Codex 화면에서 선택 후 마우스 이동 → triggerDataEvent → clearSelection 경로를 관찰했지만, 동일한 마우스 모드에서는 xterm 6.0.0과 6.1 베타 모두 재현됐다. 실패 경로와 회귀를 도입한 커밋의 원인은 구분하며 후자는 아직 미확정이다. 옵션 제거를 복사 문제 해결로 보고하지 않는다.
+- 검증: attach, terminal-clipboard, terminal-keybindings의 기존 Vitest 실행 통과. 문서 inline-code 검사와 git diff --check 통과. 실제 OS 복사 복구를 검증한 것은 아니다. 기존 글꼴·테마 작업본과 개인 aiox.yaml은 보존했고 커밋하지 않았다.
+- W10의 남은 일은 일반 드래그 선택 유지와 OS copy/paste 회귀 원인 규명·수정이다. 기존 W10의 후속 결정으로 같은 block에 기록하며, 별도 로그 수명이나 새 Work Item은 만들지 않는다. Stage6 로그의 길이 경고는 유지되며 이번 범위에서 분리하지 않는다.
+
+### 2026-09-28 22:26 · 마우스 추적 화면의 선택 유실 근본 원인 재현과 수정
+
+- 실제 브라우저 증거(사용자 세션, trusted 이벤트): Cmd+C는 `copy` 이벤트가 정상 발생하지만 clipboardData가 비어 있었다. 우리 핸들러는 선택이 없으면 즉시 반환하므로 그 시점에 선택이 없었다는 뜻이다. Cmd+V는 `paste`가 `text/plain` 실제 텍스트(54자·128자)와 함께 정상 발생했다. 이벤트 전달과 키 처리에는 결함이 없었다.
+- 합성 `paste`를 textarea에 넣으면 두 터미널 모두 텍스트가 삽입됐다. 텍스트 붙여넣기 JS 경로도 정상이다. 따라서 사용자가 체감한 붙여넣기 실패는 복사가 클립보드를 채우지 못해 이전 내용이 들어간 결과로 설명된다. 이는 관측 기반 추론이며 사용자 화면에서 별도 확인은 하지 않았다.
+- 재현한 근본 원인: DECSET 1003·1006이 켜진 상태에서 선택을 만든 뒤 포인터를 한 번 움직이면 xterm이 `ESC[<35;5;2M` 보고를 사용자 입력으로 전달하고 선택을 지웠다. 실제 Chromium 테스트에서 `hasSelection()`이 true → false로 바뀌는 것을 측정했다. 같은 상태에서 xterm은 selection service 자체를 끄기도 한다. 그래서 Cmd+C를 누를 시점에는 선택이 남아 있지 않았다.
+- 수정: `mouseEventsRequireAlt`로 포인터 보고에 Alt를 요구해 두 경로를 함께 막았다. 같은 테스트에서 포인터 이동 시 보고 0건·선택 유지, 휠은 앱으로 계속 전달(1건), `Option`+mousedown도 앱으로 전달(1건)을 확인했다. owner는 `apps/web/src/attach.ts`의 `terminalMouseOptions`다. 테스트가 production 옵션을 import하므로 옵션이 제거되면 실패한다.
+- 정정: 앞선 17:46 entry의 `macOptionClickForcesSelection` 접근과, 그 옵션으로도 선택이 안 된다고 테스트로 확정했다는 내 중간 보고는 둘 다 틀렸다. 후자의 테스트는 합성 마우스 이벤트에 `detail`이 없고 DOM row가 비어 좌표가 계산되지 않아 세 옵션 모두 실패한 harness 한계였고, Option+드래그의 실패를 보인 것이 아니다. 실패 원인 판정과 옵션 선택의 근거를 구분한다.
+- 동시 편집 수용: 다른 에이전트가 같은 작업본에서 `macOptionClickForcesSelection` 제거와 owner 문서의 요구사항 확정을 이미 수행했다. 그 요구사항(일반 드래그 선택, Option 요구 금지)을 그대로 따르며, 그 에이전트가 `Current gap`으로 남긴 선택 유실 문제를 이번 수정으로 닫았다. 관찰 내용은 수용했지만 재현은 독립적으로 수행했다.
+- Owner 반영: `docs/specs/aiox-configuration-web.md`의 `Committed target`을 `Current`로 바꾸고 Option의 역할이 선택 조건이 아니라 앱 마우스 조작 조건임을 명시했다. `docs/architecture/aiox-storage-terminal.md`의 `Current gap`을 재현 근거와 기전이 있는 `As-built`로 교체했다.
+- 검증: Web 32 files·217 tests 통과, `tsc --noEmit` 통과, 변경 파일 oxlint·oxfmt와 문서 inline-code 검사 통과. 실제 사용자 브라우저에서 드래그 선택 후 Cmd+C가 복사되는지는 아직 확인받지 않았다. daemon·terminal suite는 실행하지 않았다.
+- 커밋 범위: `attach.ts`의 마우스 옵션과 이 테스트, owner 문서, 이 로그만 포함한다. 같은 작업본의 글꼴·theme 전달 변경과 `connected-terminal.tsx`, 개인 `aiox.yaml`은 계속 제외하며 push하지 않는다.
