@@ -121,8 +121,12 @@ macOS 기본값은 `Alt+ArrowLeft` → `ESC b`, `Alt+ArrowRight` → `ESC f`, `C
 별도 단축키 또는 브라우저 복사 조작으로 수행한다. 클립보드에는 선택 영역의 `text/plain`과
 색상·굵기를 포함한 `text/html`을 함께 기록한다. macOS `Cmd+V`, Windows/Linux `Ctrl+V`는
 Kitty 모드에서도 브라우저 붙여넣기를 우선하며, 붙여넣은 텍스트는 xterm의 bracketed paste
-처리를 거쳐 앱으로 전달한다. 선택이 없으면 복사 키는 기존 입력 처리로 돌아가므로
-별도 사용자 매핑이 없는 `Ctrl+C`는 앱에 전달된다. 근거: [[apps/web/src/terminal-clipboard.ts]]
+처리를 거쳐 앱으로 전달한다. 선택이 없으면 Windows/Linux `Ctrl+C`는 기존 입력 처리로
+돌아가므로 별도 사용자 매핑이 없는 한 앱에 전달된다. macOS `Cmd+C`는 PTY 의미가 없으므로
+선택이 없어도 브라우저 소유로 남긴다. 터미널 선택은 DOM 선택이 아니어서 브라우저가 복사
+명령을 비활성으로 보므로, 선택이 있을 때만 `beforecopy`를 취소해 복사 명령을 청구한다.
+선택이 없으면 취소하지 않아 화면의 다른 DOM 텍스트 복사를 방해하지 않는다. macOS에서
+마우스를 추적하는 TUI는 드래그를 소비하므로 `Option`+드래그로 선택한다. 근거: [[apps/web/src/terminal-clipboard.ts]]
 `apps/web/src/terminal-clipboard.ts:9-145`, [[apps/web/src/terminal-keybindings.ts]]
 `apps/web/src/terminal-keybindings.ts:8-28`, [[apps/web/src/terminal-clipboard.test.ts]]
 `apps/web/src/terminal-clipboard.test.ts:12-178`. 이 테스트는 OS 식별값과 브라우저 이벤트를 주입한

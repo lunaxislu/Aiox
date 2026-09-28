@@ -247,7 +247,12 @@ Web 터미널 키 입력은 [[apps/web/src/terminal-keybindings.ts]]에서 브�
 
 클립보드 단축키는 custom key handler에서 입력 매핑보다 먼저 판단한다. OS별 붙여넣기 키와
 선택이 있는 복사 키의 xterm 인코딩을 중단하되 브라우저 기본 동작은 취소하지 않는다.
-소비한 키의 release도 처리해 modifier를 먼저 떼거나 선택이 사라진 뒤 Kitty keyup이 새지 않게 한다. 이어지는 DOM `copy`
+소비한 키의 release도 처리해 modifier를 먼저 떼거나 선택이 사라진 뒤 Kitty keyup이 새지 않게 한다.
+macOS 복사 키는 선택이 없어도 브라우저 소유로 남긴다. Kitty가 인코딩하면 그 경로의
+`preventDefault()`가 native 복사까지 취소하기 때문이다. xterm 선택은 DOM 선택을 만들지 않아
+브라우저가 복사 명령을 비활성으로 보므로, 선택이 있을 때 host의 `beforecopy`를 취소해 복사
+명령을 청구한다. 마우스를 추적하는 TUI는 드래그를 소비하므로 macOS 선택은
+`macOptionClickForcesSelection`으로 `Option`+드래그에 맡긴다. 이어지는 DOM `copy`
 이벤트에서 [[apps/web/src/terminal-clipboard.ts]]의 SerializeAddon이 선택 영역 HTML을 만들고,
 선택 텍스트와 함께 ClipboardEvent에 기록한다. 복사는 Web attachment 안에서 끝나며
 daemon/PTY를 거치지 않는다. DOM `paste` 이벤트는 기존 xterm 핸들러가 줄바꿈 정규화와
@@ -270,8 +275,9 @@ File을 읽는다. Web은 `POST /api/terminals/:terminalId/images`에 `{mediaTyp
 Web은 저장 성공한 각 경로를 `term.paste`로 삽입한다. 여러 경로를 한 문자열로 합치지
 않아 TUI가 각 이미지를 첨부할 수 있게 한다. 이미지 업로드 동안에도 일반 입력을 유지하며
 이미지 전용 상태 UI나 입력 잠금을 두지 않는다. attachment dispose는 업로드를 abort하고
-완료된 요청도 연결 상태를 재검사한 뒤에만 입력한다. 실패는 console 진단만 남기며
-실패한 파일 경로를 입력하지 않는다. 근거: clipboard 구현과 테스트. [Status: As-built]
+완료된 요청도 연결 상태를 재검사한 뒤에만 입력한다. 실패는 attachment 상태 보고로
+터미널 상태 줄에 사유를 알리며 실패한 파일 경로를 입력하지 않는다. 이미지가 아닌
+clipboard 파일도 조용히 버리지 않고 같은 경로로 사유를 알린다. 근거: clipboard 구현과 테스트. [Status: As-built]
 
 Kitty의 모든 키 보고 모드에서 modifier만 눌러도 선택이 지워지던 xterm 동작은
 [[patches/@xterm__xterm@6.1.0-beta.304.patch]]로 보정한다. modifier의 press/release 바이트는
