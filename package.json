@@ -43,7 +43,8 @@
         "patchedDependencies": {
             "tinybench@6.1.4": "patches/tinybench@6.1.4.patch",
             "effect@4.0.0-rc.117": "patches/effect@4.0.0-rc.117.patch",
-            "xstate@5.33.2": "patches/xstate@5.33.2.patch"
+            "xstate@5.33.2": "patches/xstate@5.33.2.patch",
+            "@xterm/xterm@6.1.0-beta.304": "patches/@xterm__xterm@6.1.0-beta.304.patch"
         }
     }
 }

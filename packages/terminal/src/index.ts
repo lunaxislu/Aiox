@@ -200,6 +200,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
     const listeners = new Set<TerminalListener>();
     if (options.initialListener) listeners.add(options.initialListener);
     const mirror = new Terminal({
+        vtExtensions: { kittyKeyboard: true },
         cols: ptyOptions.cols!,
         rows: ptyOptions.rows!,
         scrollback: 5000,

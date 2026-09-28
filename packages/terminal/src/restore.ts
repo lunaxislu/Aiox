@@ -1,4 +1,11 @@
-/** xterm 6.0.0 state omitted by addon-serialize 0.14.0. No parser or input queue is copied. */
+/** xterm 6.1 state omitted by addon-serialize 0.14.0. No parser or input queue is copied. */
+type KittyKeyboardState = {
+    flags: number;
+    mainFlags: number;
+    altFlags: number;
+    mainStack: number[];
+    altStack: number[];
+};
 export type AttributesState = {
     fg: number;
     bg: number;
@@ -20,6 +27,8 @@ export type BufferRestoreState = {
     savedY: number;
     savedAttributes: AttributesState;
     savedCharset: Charset;
+    savedCharsets: Charset[];
+    savedGlevel: number;
     scrollTop: number;
     scrollBottom: number;
     tabs: number[];
@@ -27,6 +36,7 @@ export type BufferRestoreState = {
     styled: { row: number; col: number; cell: CellState }[];
 };
 export type TerminalRestoreState = {
+    kittyKeyboard: KittyKeyboardState;
     normal: BufferRestoreState;
     alternate: BufferRestoreState;
     links: { id: number; data: LinkData | null }[];
@@ -69,6 +79,8 @@ export type NativeBuffer = {
     savedY: number;
     savedCurAttrData: NativeAttributes;
     savedCharset: NativeCharset;
+    savedCharsets: NativeCharset[];
+    savedGlevel: number;
     scrollTop: number;
     scrollBottom: number;
     tabs: Record<number, boolean>;
@@ -95,8 +107,8 @@ export type TerminalCore = {
         glevel: number;
         _charsets: NativeCharset[];
     };
-    coreMouseService: { activeEncoding: string };
-    coreService: { isCursorHidden: boolean };
+    mouseStateService: { activeEncoding: string };
+    coreService: { isCursorHidden: boolean; kittyKeyboard: KittyKeyboardState };
 };
 export type RestoreTarget = {
     cols: number;
@@ -147,6 +159,10 @@ function applyBuffer(
     target.savedY = state.savedY;
     applyAttributes(target.savedCurAttrData, state.savedAttributes);
     target.savedCharset = state.savedCharset ?? undefined;
+    target.savedCharsets = state.savedCharsets.map(
+        (value) => value ?? undefined,
+    );
+    target.savedGlevel = state.savedGlevel;
     target.scrollTop = state.scrollTop;
     target.scrollBottom = state.scrollBottom;
     target.tabs = Object.fromEntries(state.tabs.map((col) => [col, true]));
@@ -219,8 +235,9 @@ export function restoreTerminalState(
     core._charsetService._charsets = state.charset.sets.map(
         (value) => value ?? undefined,
     );
-    core.coreMouseService.activeEncoding = state.mouseEncoding;
+    core.mouseStateService.activeEncoding = state.mouseEncoding;
     core.coreService.isCursorHidden = state.cursorHidden;
+    core.coreService.kittyKeyboard = state.kittyKeyboard;
     terminal.options.convertEol = state.convertEol;
     terminal.options.cursorBlink = state.cursorBlink;
     terminal.refresh?.(0, terminal.rows - 1);
@@ -242,6 +259,13 @@ function validateState(
         Number.isInteger(value) &&
         value >= -2147483648 &&
         value <= 4294967295;
+    const kitty = (value: unknown): boolean =>
+        object(value) &&
+        [value.flags, value.mainFlags, value.altFlags].every(word) &&
+        [value.mainStack, value.altStack].every(
+            (stack) =>
+                Array.isArray(stack) && stack.length <= 16 && stack.every(word),
+        );
     const attrs = (value: unknown): boolean =>
         object(value) &&
         [value.fg, value.bg, value.extended].every(word) &&
@@ -278,6 +302,11 @@ function validateState(
         Number(value.scrollBottom) < terminal.rows &&
         attrs(value.savedAttributes) &&
         charset(value.savedCharset) &&
+        Array.isArray(value.savedCharsets) &&
+        value.savedCharsets.length <= 4 &&
+        value.savedCharsets.every(charset) &&
+        integer(value.savedGlevel) &&
+        Number(value.savedGlevel) <= 3 &&
         Array.isArray(value.tabs) &&
         value.tabs.every(integer) &&
         Array.isArray(value.hidden) &&
@@ -301,6 +330,7 @@ function validateState(
         );
     if (
         !object(input) ||
+        !kitty(input.kittyKeyboard) ||
         !buffer(input.normal, core._bufferService.buffers.normal) ||
         !buffer(input.alternate, core._bufferService.buffers.alt) ||
         !Array.isArray(input.links) ||

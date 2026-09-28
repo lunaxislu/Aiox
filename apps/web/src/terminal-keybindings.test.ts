@@ -153,3 +153,96 @@ it("applies only the browser platform's overrides, including unbind and reordere
         ),
     ).toBeUndefined();
 });
+
+it.each(["MacIntel", "Win32", "Linux x86_64"])(
+    "%s negotiates Shift+Enter encoding and restores legacy input after Kitty pop",
+    async (platform) => {
+        vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+        const host = document.createElement("div");
+        document.body.append(host);
+        const terminal = new Terminal({
+            vtExtensions: { kittyKeyboard: true },
+        });
+        try {
+            terminal.open(host);
+            bindTerminalKeys(terminal, () => undefined);
+            const sent: string[] = [];
+            terminal.onData((data) => sent.push(data));
+            for (const [mode, expected, flags] of [
+                ["", "\r", 0],
+                ["\x1b[>1u", "\x1b[13;2u", 1],
+                ["\x1b[<u", "\r", 0],
+            ] as const) {
+                await new Promise<void>((resolve) =>
+                    terminal.write(`${mode}\x1b[?u`, resolve),
+                );
+                expect(sent.splice(0)).toEqual([`\x1b[?${flags}u`]);
+                terminal.textarea!.dispatchEvent(
+                    key("Enter", {
+                        keyCode: 13,
+                        code: "Enter",
+                        shiftKey: true,
+                    }),
+                );
+                expect(sent.splice(0)).toEqual([expected]);
+            }
+        } finally {
+            terminal.dispose();
+            host.remove();
+            vi.restoreAllMocks();
+        }
+    },
+);
+
+it.each(["active", "ending"])(
+    "commits Korean composition once before Kitty Shift+Enter while composition is %s",
+    async (phase) => {
+        const host = document.createElement("div");
+        document.body.append(host);
+        const terminal = new Terminal({
+            vtExtensions: { kittyKeyboard: true },
+        });
+        try {
+            terminal.open(host);
+            bindTerminalKeys(terminal, () => undefined);
+            await new Promise<void>((resolve) =>
+                terminal.write("\x1b[>1u", resolve),
+            );
+            const sent: string[] = [];
+            terminal.onData((data) => sent.push(data));
+            const textarea = terminal.textarea!;
+            textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+            textarea.value = "한";
+            textarea.dispatchEvent(
+                new CompositionEvent("compositionupdate", { data: "한" }),
+            );
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            textarea.dispatchEvent(
+                key("Enter", {
+                    keyCode: 229,
+                    shiftKey: true,
+                    isComposing: true,
+                }),
+            );
+            expect(sent).toEqual([]);
+            if (phase === "ending")
+                textarea.dispatchEvent(
+                    new CompositionEvent("compositionend", { data: "한" }),
+                );
+            textarea.dispatchEvent(
+                key("Enter", {
+                    keyCode: 13,
+                    code: "Enter",
+                    shiftKey: true,
+                    isComposing: phase === "active",
+                }),
+            );
+            expect(sent).toEqual(["한", "\x1b[13;2u"]);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            expect(sent).toEqual(["한", "\x1b[13;2u"]);
+        } finally {
+            terminal.dispose();
+            host.remove();
+        }
+    },
+);

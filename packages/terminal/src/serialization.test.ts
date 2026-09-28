@@ -42,6 +42,41 @@ function state(terminal: Terminal) {
 }
 
 describe("serializeTerminal", () => {
+    it("restores Kitty modes and both buffer stacks before subsequent queries and pops", async () => {
+        const source = create(),
+            restored = create();
+        source.options.vtExtensions = { kittyKeyboard: true };
+        restored.options.vtExtensions = { kittyKeyboard: true };
+        const responses: string[] = [];
+        restored.onData((data) => responses.push(data));
+        try {
+            await write(
+                source,
+                `${ESC}[>1u${ESC}[>3u${ESC}[?1049h${ESC}[>5u${ESC}[>7u`,
+            );
+            await replay(source, restored);
+            expect(responses).toEqual([]);
+            const invalid = serializeTerminal(source).state;
+            invalid.kittyKeyboard.altStack = Array(17).fill(0);
+            expect(() => restoreTerminalState(restored, invalid)).toThrow(
+                "Invalid terminal snapshot state.",
+            );
+            await write(
+                restored,
+                `${ESC}[?u${ESC}[<u${ESC}[?u${ESC}[?1049l${ESC}[?u${ESC}[<u${ESC}[?u${ESC}[<u${ESC}[?u`,
+            );
+            expect(responses).toEqual([
+                `${ESC}[?7u`,
+                `${ESC}[?5u`,
+                `${ESC}[?3u`,
+                `${ESC}[?1u`,
+                `${ESC}[?0u`,
+            ]);
+        } finally {
+            source.dispose();
+            restored.dispose();
+        }
+    });
     it("restores the last parsed shell background without replaying queries or invalid colors", async () => {
         const source = create(),
             target = create();
@@ -324,14 +359,14 @@ describe("serializeTerminal", () => {
                 const core = (
                     t as unknown as {
                         _core: {
-                            coreMouseService: { activeEncoding: string };
+                            mouseStateService: { activeEncoding: string };
                             coreService: { isCursorHidden: boolean };
                         };
                     }
                 )._core;
                 return {
                     modes: t.modes,
-                    encoding: core.coreMouseService.activeEncoding,
+                    encoding: core.mouseStateService.activeEncoding,
                     hidden: core.coreService.isCursorHidden,
                 };
             };

@@ -11,6 +11,10 @@ const dirname =
     typeof __dirname !== "undefined"
         ? __dirname
         : path.dirname(fileURLToPath(import.meta.url));
+const terminalBrowserTests = [
+    "src/terminal-keybindings.test.ts",
+    "src/terminal-theme.test.ts",
+];
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
@@ -30,6 +34,20 @@ export default defineConfig({
                         "src/**/*.test.tsx",
                         "vite.config.test.ts",
                     ],
+                    exclude: terminalBrowserTests,
+                },
+            },
+            {
+                extends: true,
+                test: {
+                    name: "terminal-browser",
+                    include: terminalBrowserTests,
+                    browser: {
+                        enabled: true,
+                        headless: true,
+                        provider: playwright({}),
+                        instances: [{ browser: "chromium" }],
+                    },
                 },
             },
             {

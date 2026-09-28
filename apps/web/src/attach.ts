@@ -68,6 +68,7 @@ export function attachTerminal(
     const opener = document.activeElement;
 
     const term = new Terminal({
+        vtExtensions: { kittyKeyboard: true },
         cursorBlink: true,
         disableStdin: true,
         fontSize: 13,

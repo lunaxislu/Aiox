@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@xterm/xterm@6.1.0-beta.304':
+    hash: a020ba7dd3786b5170a807d565fe00b5de3bb72cc6f7602dfcd413475e18b471
+    path: patches/@xterm__xterm@6.1.0-beta.304.patch
   effect@4.0.0-rc.117:
     hash: 468848987c32a3c69ba6504ad3b69ec918c3e376800e018441d45de4ec514ce0
     path: patches/effect@4.0.0-rc.117.patch
@@ -163,8 +166,8 @@ importers:
         specifier: 0.11.0
         version: 0.11.0
       '@xterm/xterm':
-        specifier: 6.0.0
-        version: 6.0.0
+        specifier: 6.1.0-beta.304
+        version: 6.1.0-beta.304(patch_hash=a020ba7dd3786b5170a807d565fe00b5de3bb72cc6f7602dfcd413475e18b471)
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -388,8 +391,8 @@ importers:
         specifier: 0.14.0
         version: 0.14.0
       '@xterm/headless':
-        specifier: 6.0.0
-        version: 6.0.0
+        specifier: 6.1.0-beta.303
+        version: 6.1.0-beta.303
       effect:
         specifier: 4.0.0-rc.117
         version: 4.0.0-rc.117(patch_hash=468848987c32a3c69ba6504ad3b69ec918c3e376800e018441d45de4ec514ce0)
@@ -3197,11 +3200,11 @@ packages:
   '@xterm/addon-serialize@0.14.0':
     resolution: {integrity: sha512-uteyTU1EkrQa2Ux6P/uFl2fzmXI46jy5uoQMKEOM0fKTyiW7cSn0WrFenHm5vO5uEXX/GpwW/FgILvv3r0WbkA==}
 
-  '@xterm/headless@6.0.0':
-    resolution: {integrity: sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==}
+  '@xterm/headless@6.1.0-beta.303':
+    resolution: {integrity: sha512-FjPRg5OF0UdloypPRZcUdtpxaxYKk7FdNArgpOaedoj7UWzinB+THZyEY7t6QHRR5bjcbz7B7s4vX0Zo5LT6aw==}
 
-  '@xterm/xterm@6.0.0':
-    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
+  '@xterm/xterm@6.1.0-beta.304':
+    resolution: {integrity: sha512-Wq9d4qFYslYQBIan+riXotdyurtREc6v+HWdAwV6Y2JSDI9eJ1dkWm/fzYb2rCGgGnM3baiYuSK4Z6OLNKLzDw==}
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -8714,9 +8717,9 @@ snapshots:
 
   '@xterm/addon-serialize@0.14.0': {}
 
-  '@xterm/headless@6.0.0': {}
+  '@xterm/headless@6.1.0-beta.303': {}
 
-  '@xterm/xterm@6.0.0': {}
+  '@xterm/xterm@6.1.0-beta.304(patch_hash=a020ba7dd3786b5170a807d565fe00b5de3bb72cc6f7602dfcd413475e18b471)': {}
 
   accepts@2.0.0:
     dependencies:

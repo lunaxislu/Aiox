@@ -96,6 +96,11 @@ function buffer(
         baseY: value.ybase,
         savedAttributes: attributes(value.savedCurAttrData),
         savedCharset: value.savedCharset ?? null,
+        savedCharsets: Array.from(
+            value.savedCharsets,
+            (value) => value ?? null,
+        ),
+        savedGlevel: value.savedGlevel,
         scrollTop: value.scrollTop,
         scrollBottom: value.scrollBottom,
         tabs: Object.keys(value.tabs)
@@ -150,6 +155,7 @@ export function serializeTerminal(terminal: Terminal): {
         view as unknown as Parameters<SerializeAddon["activate"]>[0],
     );
     const state: TerminalRestoreState = {
+        kittyKeyboard: core.coreService.kittyKeyboard,
         normal: buffer(
             core._bufferService.buffers.normal,
             terminal.cols,
@@ -170,7 +176,7 @@ export function serializeTerminal(terminal: Terminal): {
                 (_, i) => core._charsetService._charsets[i] ?? null,
             ),
         },
-        mouseEncoding: core.coreMouseService
+        mouseEncoding: core.mouseStateService
             .activeEncoding as TerminalRestoreState["mouseEncoding"],
         cursorHidden: core.coreService.isCursorHidden,
         convertEol: terminal.options.convertEol!,

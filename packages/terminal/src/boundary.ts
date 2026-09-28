@@ -103,7 +103,11 @@ export class MirrorBoundary {
                 try: () => {
                     const parsed = Effect.runSync(Deferred.make<void>());
                     this.#mirror.write(event.data, () => {
-                        Effect.runFork(Deferred.succeed(parsed, undefined));
+                        // xterm finalizes its write buffer after this callback;
+                        // a synchronous resize here would reparse the same bytes.
+                        queueMicrotask(() =>
+                            Effect.runFork(Deferred.succeed(parsed, undefined)),
+                        );
                     });
                     this.#parsed = parsed;
                 },
