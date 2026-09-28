@@ -1,13 +1,28 @@
 import type { AioxConfig } from "@aiox/protocol";
 import type { Terminal } from "@xterm/xterm";
 
+import { terminalClipboardAction } from "@/terminal-clipboard";
+
 type Bindings = NonNullable<AioxConfig["terminal"]>["keybindings"];
 
 export function bindTerminalKeys(
     term: Terminal,
     bindings: () => Bindings,
 ): void {
+    const clipboardKeys = new Set<string>();
     term.attachCustomKeyEventHandler((event) => {
+        const key = event.code || event.key;
+        if (event.type === "keyup" && clipboardKeys.delete(key)) return false;
+        if (event.type === "keydown") clipboardKeys.delete(key);
+        const clipboard = terminalClipboardAction(event);
+        if (
+            clipboard === "paste" ||
+            (clipboard === "copy" && term.hasSelection())
+        ) {
+            // Match release even if the modifier or selection changed meanwhile.
+            if (event.type === "keydown") clipboardKeys.add(key);
+            return false;
+        }
         const sequence = terminalKeySequence(event, bindings());
         if (sequence === undefined) return true;
         // xterm invokes this handler before its IME keydown path. Use that

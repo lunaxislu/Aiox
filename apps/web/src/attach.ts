@@ -3,6 +3,7 @@ import { restoreTerminalState } from "@aiox/terminal/restore";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 
+import { bindTerminalClipboard } from "@/terminal-clipboard";
 import { bindTerminalKeys } from "@/terminal-keybindings";
 import { followTerminalBackground } from "@/terminal-theme";
 
@@ -82,8 +83,18 @@ export function attachTerminal(
     term.loadAddon(fit);
     let socket: WebSocket;
     let background: { dispose(): void } | undefined;
+    let clipboard: { dispose(): void } | undefined;
     try {
         term.open(host);
+        clipboard = bindTerminalClipboard(term, host, {
+            terminalId,
+            canPaste: () =>
+                !detached &&
+                restored &&
+                !failed &&
+                !ended &&
+                socket.readyState === WebSocket.OPEN,
+        });
         if (appearance)
             background = followTerminalBackground(
                 term,
@@ -94,6 +105,7 @@ export function attachTerminal(
             `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/terminal/${encodeURIComponent(terminalId)}${runtimeId ? `?runtime=${encodeURIComponent(runtimeId)}` : ""}`,
         );
     } catch (error) {
+        clipboard?.dispose();
         background?.dispose();
         term.dispose();
         throw error;
@@ -421,6 +433,7 @@ export function attachTerminal(
             input.dispose();
             binaryInput.dispose();
             socket.close();
+            clipboard?.dispose();
             background?.dispose();
             term.dispose();
         },

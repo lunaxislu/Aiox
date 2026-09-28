@@ -30,6 +30,7 @@ const { term, data, binary, callbacks, operations, fit, restoreState } =
             open: vi.fn(),
             dispose: vi.fn(),
             focus: vi.fn(),
+            hasSelection: () => false,
             attachCustomKeyEventHandler:
                 vi.fn<(handler: (event: KeyboardEvent) => boolean) => void>(),
             input(value: string, user = true) {
@@ -133,12 +134,12 @@ function setup(
         Object.assign(new EventTarget(), { clearTimeout, setTimeout }),
     );
     const report = vi.fn();
-    const host = {
+    const host = Object.assign(new EventTarget(), {
         replaceChildren() {},
         isConnected: true,
         clientWidth: 1000,
         clientHeight: 600,
-    };
+    });
     const attachment = attachTerminal(
         host as unknown as HTMLElement,
         "terminal-1",
@@ -208,7 +209,7 @@ it("sends mapped keys once as user input, honors live overrides, and preserves l
     expect(handler(left())).toBe(true);
     expect(
         handler(new KeyboardEvent("keydown", { key: "v", metaKey: true })),
-    ).toBe(true);
+    ).toBe(false);
     expect(socket.send).not.toHaveBeenCalled();
     overrides = {};
     attachment.close();

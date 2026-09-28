@@ -13,6 +13,7 @@ const dirname =
         : path.dirname(fileURLToPath(import.meta.url));
 const terminalBrowserTests = [
     "src/terminal-keybindings.test.ts",
+    "src/terminal-clipboard.test.ts",
     "src/terminal-theme.test.ts",
 ];
 

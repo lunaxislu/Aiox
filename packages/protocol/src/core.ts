@@ -67,6 +67,25 @@ export const createShellSchema = compatible(
         rows: Schema.optional(positiveInt),
     }),
 );
+export const MAX_TERMINAL_IMAGE_BYTES = 10 * 1024 * 1024;
+export const terminalImageRequestSchema = compatible(
+    strictStruct({
+        mediaType: Schema.Literals([
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+        ]),
+        data: Schema.String,
+    }),
+);
+export const terminalImageResponseSchema = compatible(
+    strictStruct({ path: nonEmptyString }),
+);
+export type TerminalImageRequest = Schema.Schema.Type<
+    typeof terminalImageRequestSchema
+>;
+
 export const terminalViewSchema = compatible(
     mutableStruct({
         id: Schema.String,
@@ -349,6 +368,8 @@ export const apiPath = {
     agents: "/api/agents",
     terminals: "/api/terminals",
     terminal: (id: string) => `/api/terminals/${encodeURIComponent(id)}`,
+    terminalImage: (id: string) =>
+        `/api/terminals/${encodeURIComponent(id)}/images`,
     agent: (idOrName: string) => `/api/agents/${encodeURIComponent(idOrName)}`,
     notifications: "/api/notifications",
     notificationsRead: "/api/notifications/read",

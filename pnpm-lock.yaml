@@ -165,6 +165,9 @@ importers:
       '@xterm/addon-fit':
         specifier: 0.11.0
         version: 0.11.0
+      '@xterm/addon-serialize':
+        specifier: 0.14.0
+        version: 0.14.0
       '@xterm/xterm':
         specifier: 6.1.0-beta.304
         version: 6.1.0-beta.304(patch_hash=a020ba7dd3786b5170a807d565fe00b5de3bb72cc6f7602dfcd413475e18b471)

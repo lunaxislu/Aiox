@@ -13,6 +13,8 @@ import { HostStateError } from "@aiox/persistence";
 import type { NotificationView } from "@aiox/protocol";
 import {
     PanelLayoutError,
+    MAX_TERMINAL_IMAGE_BYTES,
+    terminalImageRequestSchema,
     apiPath,
     putConfigRequestSchema,
     createNetworkSchema,
@@ -27,6 +29,7 @@ import { AmbiguousRuntimeError, DuplicateRuntimeNameError } from "@/runtimes";
 import type { DaemonServices } from "@/services";
 
 import { registerStateApi } from "./state-api";
+import { saveTerminalImage } from "./terminal-images";
 import { networkView, agentView, terminalView } from "./web-state";
 
 const MAX_BODY = 1_000_000;
@@ -37,13 +40,16 @@ async function networkNames(
     return new Map(networks.map(({ id, name }) => [id, name]));
 }
 
-export async function readJson(request: Request): Promise<unknown> {
+export async function readJson(
+    request: Request,
+    maxBytes = MAX_BODY,
+): Promise<unknown> {
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of request.body?.values({ preventCancel: true }) ??
         []) {
         size += chunk.byteLength;
-        if (size > MAX_BODY)
+        if (size > maxBytes)
             throw new HttpError(413, "body_too_large", "Body too large.");
         chunks.push(Buffer.from(chunk));
     }
@@ -267,6 +273,21 @@ export function createApi(services: DaemonServices) {
         if (!view)
             throw new HttpError(404, "unknown_terminal", "No such terminal.");
         return c.json(view, 200);
+    });
+    addEndpoint(app, "POST", "/api/terminals/:terminalId/images", async (c) => {
+        const input = parse(
+            terminalImageRequestSchema,
+            await readJson(
+                c.req.raw,
+                4 * Math.ceil(MAX_TERMINAL_IMAGE_BYTES / 3) + 1024,
+            ),
+        );
+        const path = await saveTerminalImage(
+            services,
+            c.req.param("terminalId"),
+            input,
+        );
+        return c.json({ path }, 201);
     });
     addEndpoint(app, "DELETE", "/api/terminals/:terminalId", async (c) => {
         const id = c.req.param("terminalId");
