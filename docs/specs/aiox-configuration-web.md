@@ -90,15 +90,11 @@ vendor 입력·브라우저 예약키를 보존한다.
 `switchTab`의 마지막 자리 `9`는 마지막 탭이다. `switchTab`만 저장 값이 수식자 부분이고
 숫자 자리는 고정이며, 나머지는 완성된 조합 하나를 저장한다.
 
-Windows/Linux 기본키를 macOS에서 `Cmd`→`Ctrl`로 일괄 치환해 만들지 않는다. Windows/Linux에서
-PTY로 바이트가 나가지 않는 수식자 층은 `Ctrl+Shift`뿐이고 `Alt`가 끼면 `ESC`+문자가 나가므로,
-1:1 치환은 `Ctrl+D`·`Ctrl+B`·`Ctrl+K`·`Ctrl+3`~`Ctrl+8`·`Ctrl+Alt`+문자에서 터미널 입력을
-빼앗는다. `openPalette`의 `Ctrl+K`만 웹 관례 때문에 이 규칙의 예외이며, 렌더러에서 가로채
-xterm에 전달하지 않는다.
-
-근거는 `@xterm/xterm@6.0.0`의 `evaluateKeyboardEvent`다. `default` 분기가
-`(isMac && !macOptionIsMeta) || !altKey || metaKey`로 갈리므로 Windows/Linux는 `!altKey`로만
-바이트 없는 경로에 들어간다.
+Windows/Linux 기본키를 macOS에서 `Cmd`→`Ctrl`로 일괄 치환해 만들지 않는다. 기존 기본키는
+xterm의 legacy 키 인코딩에서 일반적인 `Ctrl`·`Alt` 터미널 입력을 덜 가로채도록 선택했다.
+`openPalette`의 `Ctrl+K`는 웹 관례를 따른 예외다. 화면 조작 키는 렌더러에서 먼저 처리하므로
+앱으로 전달하지 않는다. Kitty 모드에서는 `Ctrl+Shift`도 앱 입력을 생성할 수 있으므로 이
+조합이 항상 PTY 바이트를 생성하지 않는다고 가정하지 않는다.
 
 브라우저·OS 예약키 충돌은 CDP 주입으로 관측되지 않아 사용자 직접 입력으로만 판정한다. macOS는
 위 표의 자리가 실측으로 통과했다. Windows/Linux는 구현 후 실측하며, 확인된 잔여 후보 충돌은
@@ -108,7 +104,7 @@ Firefox의 `Ctrl+Shift+K` 웹 콘솔 하나다. 충돌이 드러나면 해당 �
 
 `terminal.keybindings`는 화면 조작용 `keybindings` 및 기존 `keyboard`와 별개인 터미널 입력 설정이다. `mac`·`windows`·`linux` 아래에 `키 조합: 전송 문자열 | null` 변경분만 저장한다. 플랫폼은 daemon이나 shell의 OS가 아니라 브라우저 OS다. Windows 브라우저에서 WSL/WSL2에 연결하면 `windows`를 적용한다.
 
-macOS 기본값은 `Alt+ArrowLeft` → `ESC b`, `Alt+ArrowRight` → `ESC f`, `Cmd+ArrowLeft` → Ctrl+A, `Cmd+ArrowRight` → Ctrl+E, `Cmd+Backspace` → Ctrl+U다. 실제 편집 동작은 shell/TUI의 키맵에 따른다. Windows/Linux는 추가 편집 기본값 없이 xterm의 기본 인코딩을 사용한다. 일반 방향키·Enter·Tab·Escape·Delete·Ctrl+문자·Alt+Backspace는 기본값 표에 중복 등록하지 않는다. 기존 복사·붙여넣기 처리는 유지한다.
+macOS 기본값은 `Alt+ArrowLeft` → `ESC b`, `Alt+ArrowRight` → `ESC f`, `Cmd+ArrowLeft` → Ctrl+A, `Cmd+ArrowRight` → Ctrl+E, `Cmd+Backspace` → Ctrl+U다. 실제 편집 동작은 shell/TUI의 키맵에 따른다. Windows/Linux는 추가 편집 기본값 없이 xterm의 기본 인코딩을 사용한다. 일반 방향키·Enter·Tab·Escape·Delete·Ctrl+문자·Alt+Backspace는 기본값 표에 중복 등록하지 않는다. 붙여넣기 단축키는 아래 클립보드 우선 처리 계약을 따른다.
 
 키 조합은 `Ctrl`·`Alt`·`Shift`·`Cmd` modifier와 문자 또는 `ArrowLeft`·`Backspace` 같은 키 이름을 사용한다. modifier 순서는 무관하며 문자는 대소문자를 구별하지 않는다. `Alt`는 macOS Option, `Cmd`는 브라우저 Meta다. 중복 조합·잘못된 modifier·빈 전송 문자열은 거절한다. `null`은 입력을 삼키는 동작이 아니라 해당 AIOX 바인딩을 해제하고 xterm 기본 처리로 복귀시키는 뜻이다. 다음 설정은 한 조합만 해제하며 나머지 기본값은 코드에서 적용한다.
 
@@ -117,6 +113,38 @@ macOS 기본값은 `Alt+ArrowLeft` → `ESC b`, `Alt+ArrowRight` → `ESC f`, `C
 ```
 
 전송 문자열은 JSON escape를 사용한다. 예를 들어 `"\u001bb"`는 ESC+b를 뜻한다. 사용자 config에 기본값 전체를 자동 저장하지 않는다. Web은 연결 시 `config.read`로 설정을 읽으므로 파일을 수정한 뒤 Web 새로고침/앱 연결 복구 시 반영한다. 새 설정을 읽었다는 이유만으로 살아 있는 터미널 attachment를 교체하지 않는다. IME가 처리하는 문자 키(keyCode 229)와 AltGraph 입력은 기존 xterm 경로에 남긴다. 조합 중이거나 조합 종료 전송이 대기 중일 때 등록한 이동·삭제 단축키를 누르면 xterm의 조합 확정 처리를 먼저 거쳐 마지막 글자 → 단축키 순서로 전달한다. 처리한 키와 조합 문자는 중복 전송하지 않는다.
+
+### 터미널 선택 복사와 확장 키 입력 [Status: Current]
+
+터미널 선택 영역이 있을 때 macOS `Cmd+C`, Windows/Linux `Ctrl+C`는 터미널 입력 바인딩보다
+먼저 브라우저 복사로 처리하며 PTY 입력으로 보내지 않는다. 드래그는 선택만 만들고 복사는
+별도 단축키 또는 브라우저 복사 조작으로 수행한다. 클립보드에는 선택 영역의 `text/plain`과
+색상·굵기를 포함한 `text/html`을 함께 기록한다. macOS `Cmd+V`, Windows/Linux `Ctrl+V`는
+Kitty 모드에서도 브라우저 붙여넣기를 우선하며, 붙여넣은 텍스트는 xterm의 bracketed paste
+처리를 거쳐 앱으로 전달한다. 선택이 없으면 복사 키는 기존 입력 처리로 돌아가므로
+별도 사용자 매핑이 없는 `Ctrl+C`는 앱에 전달된다. 근거: [[apps/web/src/terminal-clipboard.ts]]
+`apps/web/src/terminal-clipboard.ts:9-145`, [[apps/web/src/terminal-keybindings.ts]]
+`apps/web/src/terminal-keybindings.ts:8-28`, [[apps/web/src/terminal-clipboard.test.ts]]
+`apps/web/src/terminal-clipboard.test.ts:12-178`. 이 테스트는 OS 식별값과 브라우저 이벤트를 주입한
+검증이며 실제 OS의 Codex/Claude 선택·복사 문제 재현 및 해결 검증을 대신하지 않는다.
+
+같은 붙여넣기 단축키로 일반 텍스트·Markdown 원문과 외부 앱에서 복사한 이미지를 받는다.
+이미지 파일이 포함된 clipboard는 이미지 입력으로 처리하며, 이미지가 없으면 `text/plain`을
+사용하고 이 형식 없이 `text/markdown`만 있으면 그 원문을 사용한다. 이미지는 PNG/JPEG/GIF/WebP,
+파일당 최대 10 MiB를 지원한다. 저장된 이미지 경로를 각각 독립적인 paste로 넣으며 Enter를
+자동 전송하지 않는다. 이미지 전송 중에도 일반 입력을 유지하며 이미지 전용 진행·오류 UI나
+입력 잠금을 추가하지 않는다. 실패한 이미지 경로는 넣지 않으며 연결이 종료되면 지연된
+이미지 입력을 보내지 않는다.
+근거: clipboard 구현과 [[apps/web/src/terminal-clipboard.test.ts]]의 이미지·Markdown·연결 종료·
+일반 입력 유지 회귀.
+저장 계약은 [[docs/architecture/aiox-storage-terminal]]의 이미지 붙여넣기 경로를 따른다.
+
+Web은 Kitty 키보드 프로토콜을 지원하며 앱이 요청한 모드에 따라 modifier를 인코딩한다.
+앱이 활성화하지 않은 상태에서는 legacy 인코딩을 유지한다. AIOX 화면 조작·클립보드 단축키와
+`terminal.keybindings`에서 처리한 키는 기존 우선순위를 유지하고 나머지 키를 프로토콜에 맡긴다.
+Shift+Enter를 무조건 줄바꿈 문자열로 치환하지 않으며 실제 동작은 앱이 결정한다. 재접속 시
+화면뿐 아니라 활성 키보드 모드와 normal/alternate 화면별 모드 스택도 복원한다. 구현·복원
+근거는 [[docs/architecture/aiox-storage-terminal]]의 Web 키 입력과 Kitty 복원 책임을 따른다.
 
 ### 새 Web shell의 실행 설정
 

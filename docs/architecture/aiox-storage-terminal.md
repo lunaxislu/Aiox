@@ -14,6 +14,7 @@ As-built로 표시한 범위 외에는 목표 구조다. OS별 통합 완료를 
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
 | 실행 환경 사용자 홈의 `.aiox/config.json` | 터미널·keyboard·포트·사이드바 너비와 열림 상태·화면 조작 keybindings 변경분·Host 초기 layout           | 모든 프로젝트·Host·standalone 공통                              |
 | SQLite                                    | persistent Network/Route, AIOX send·대상별 결과·daemon 알림 본문, 실행 이력, 알림/읽음, workspace 배치 | 처리 종료 후 기본 30일, 상세는 configuration-web 계약           |
+| 사용자 홈의 `.aiox/attachments/` | Web에서 붙여넣은 이미지 파일 | terminal 종료·재접속 뒤에도 보존; 현재 자동 만료 없음 |
 | daemon memory                             | live process/PTY/binding/credential/activity                                                           | DB의 과거 running을 현재 생존으로 간주하지 않음                 |
 | 전역 config의 `appearance.theme`          | Web system/light/dark theme                                                                            | terminal palette와 별개; 운영 Web은 브라우저 저장소를 쓰지 않음 |
 | Host YAML                                 | Host-managed 정의                                                                                      | DB persistent 정의와 이중 권위 금지                             |
@@ -242,7 +243,57 @@ terminal 패키지의 ESM 빌드는 CJS인 `@xterm/headless`만 번들에 포함
 
 PTY 경계는 POSIX raw byte와 Windows 문자열 출력을 공통 바이트로 정규화해 WebSocket binary 출력과 JSON 제어 프레임을 구분한다. Windows 드라이버가 이미 문자열로 디코딩한 원본 바이트까지 복원한다고 보장하지 않는다.
 
-Web 터미널 키 입력은 [[apps/web/src/terminal-keybindings.ts]]에서 브라우저 OS별 기본값에 `terminal.keybindings`의 사용자 변경분을 우선 적용한다. [[apps/web/src/attach.ts]]의 xterm custom key handler는 일치한 keydown만 `term.input(sequence, true)`로 전달하고 xterm의 중복 처리를 막는다. 기존 onData의 연결·복원 상태 검사와 사용자 입력 전송 경로를 그대로 거친다. xterm 6은 custom handler를 조합 처리보다 먼저 호출하므로, 매핑된 키는 기존 CompositionHelper.keydown을 먼저 거쳐 조합 중/종료 대기 문자를 확정한 뒤 보낸다. 별도 조합 버퍼나 확정 타이머를 만들지 않는다. IME 문자 키(keyCode 229)·AltGraph·미지정 키·복사/붙여넣기는 기존 xterm 경로에 남긴다. private CompositionHelper 경계는 실제 xterm을 사용하는 회귀 테스트로 검증한다. ConnectedTerminal은 최신 config를 getter로 제공하므로 설정을 읽은 뒤 attachment를 다시 만들 필요가 없다. 서버는 설정 검증·전달과 입력 바이트의 PTY 전달을 담당하며 shell의 bindkey/readline 설정을 변경하지 않는다. 기본값·변경분 저장 계약은 [[docs/specs/aiox-configuration-web]]을 따른다. [Status: As-built]
+Web 터미널 키 입력은 [[apps/web/src/terminal-keybindings.ts]]에서 브라우저 OS별 기본값에 `terminal.keybindings`의 사용자 변경분을 우선 적용한다. [[apps/web/src/attach.ts]]의 xterm custom key handler는 일치한 keydown만 `term.input(sequence, true)`로 전달하고 xterm의 중복 처리를 막는다. 기존 onData의 연결·복원 상태 검사와 사용자 입력 전송 경로를 그대로 거친다. xterm 6은 custom handler를 조합 처리보다 먼저 호출하므로, 매핑된 키는 기존 CompositionHelper.keydown을 먼저 거쳐 조합 중/종료 대기 문자를 확정한 뒤 보낸다. 별도 조합 버퍼나 확정 타이머를 만들지 않는다. IME 문자 키(keyCode 229)·AltGraph·미지정 키는 xterm 인코딩 경로에 남긴다. 클립보드 단축키는 아래 우선 처리 경로를 따른다. private CompositionHelper 경계는 실제 xterm을 사용하는 회귀 테스트로 검증한다. ConnectedTerminal은 최신 config를 getter로 제공하므로 설정을 읽은 뒤 attachment를 다시 만들 필요가 없다. 서버는 설정 검증·전달과 입력 바이트의 PTY 전달을 담당하며 shell의 bindkey/readline 설정을 변경하지 않는다. 기본값·변경분 저장 계약은 [[docs/specs/aiox-configuration-web]]을 따른다. [Status: As-built]
+
+클립보드 단축키는 custom key handler에서 입력 매핑보다 먼저 판단한다. OS별 붙여넣기 키와
+선택이 있는 복사 키의 xterm 인코딩을 중단하되 브라우저 기본 동작은 취소하지 않는다.
+소비한 키의 release도 처리해 modifier를 먼저 떼거나 선택이 사라진 뒤 Kitty keyup이 새지 않게 한다. 이어지는 DOM `copy`
+이벤트에서 [[apps/web/src/terminal-clipboard.ts]]의 SerializeAddon이 선택 영역 HTML을 만들고,
+선택 텍스트와 함께 ClipboardEvent에 기록한다. 복사는 Web attachment 안에서 끝나며
+daemon/PTY를 거치지 않는다. DOM `paste` 이벤트는 기존 xterm 핸들러가 줄바꿈 정규화와
+bracketed paste를 적용한 뒤 기존 사용자 입력 경로로 전달한다. 근거: `apps/web/src/terminal-clipboard.ts:9-145`,
+[[apps/web/src/terminal-keybindings.ts]] `apps/web/src/terminal-keybindings.ts:8-28`,
+[[apps/web/src/terminal-clipboard.test.ts]] `apps/web/src/terminal-clipboard.test.ts:12-178`. [Status: As-built]
+
+이미지 붙여넣기는 host의 capture `paste` listener가 xterm보다 먼저 clipboard의 이미지
+File을 읽는다. Web은 `POST /api/terminals/:terminalId/images`에 `{mediaType, data}` JSON을
+보내며 data는 base64다. [[apps/daemon/src/terminal-images.ts]]는 활성 terminal과 daemon 상태,
+10 MiB 크기·base64·MIME과 파일 signature 일치를 검사하고 사용자 홈의 `.aiox/attachments/`에
+서버가 생성한 이름으로 저장한다. 성공 응답 `{path}`는 서버 파일의 절대경로다.
+디렉토리와 파일은 각각 0700·0600으로 생성하며, 저장 중 terminal이 사라지거나 shutdown이
+시작하면 파일을 정리하고 실패를 반환한다. 파일 내용 전체를 디코딩하는 검증은 하지 않는다.
+재개한 대화의 참조를 깨지 않도록 terminal 종료 시 삭제하지 않으며 기존 메시지 retention의
+자동 삭제 대상도 아니다. 근거: `apps/daemon/src/terminal-images.ts:15-76`,
+[[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:277-291`,
+[[apps/daemon/src/terminal-images.test.ts]] `apps/daemon/src/terminal-images.test.ts:43-133`. [Status: As-built]
+
+Web은 저장 성공한 각 경로를 `term.paste`로 삽입한다. 여러 경로를 한 문자열로 합치지
+않아 TUI가 각 이미지를 첨부할 수 있게 한다. 이미지 업로드 동안에도 일반 입력을 유지하며
+이미지 전용 상태 UI나 입력 잠금을 두지 않는다. attachment dispose는 업로드를 abort하고
+완료된 요청도 연결 상태를 재검사한 뒤에만 입력한다. 실패는 console 진단만 남기며
+실패한 파일 경로를 입력하지 않는다. 근거: clipboard 구현과 테스트. [Status: As-built]
+
+Kitty의 모든 키 보고 모드에서 modifier만 눌러도 선택이 지워지던 xterm 동작은
+[[patches/@xterm__xterm@6.1.0-beta.304.patch]]로 보정한다. modifier의 press/release 바이트는
+계속 생성하되 기존 Win32 모드와 같이 선택을 지우는 사용자 입력 알림을 발생시키지 않는다.
+attachment는 이 out-of-parser 이벤트를 response 프레임으로 보내고 daemon은 PTY에 전달한다.
+modifier만으로 응답 소유권을 바꾸지는 않으며 다음 일반 입력이 기존 소유권 경로를 따른다.
+근거: `patches/@xterm__xterm@6.1.0-beta.304.patch:22-43`, [[apps/web/src/attach.ts]]
+`apps/web/src/attach.ts:387-401`, [[apps/daemon/src/terminals.ts]]
+`apps/daemon/src/terminals.ts:378-388`. [Status: As-built]
+
+Web과 headless 미러는 `vtExtensions.kittyKeyboard`를 켜고 앱의 지원 조회·모드 변경을
+xterm 파서에 맡긴다. 현재 의존성은 Web `6.1.0-beta.304`, headless `6.1.0-beta.303`으로
+고정돼 있다. SerializeAddon 화면 바이트만으로는 Kitty 상태가 복원되지 않으므로 snapshot
+보완 상태에 현재 flags와 normal/alternate 스택을 포함한다. 저장 커서의 G 문자 집합 목록도
+함께 보존하며, 복원 시 보완 상태를 검증·적용한 다음 후속 출력과 키 입력을 처리한다.
+근거: [[apps/web/package.json]] `apps/web/package.json:26-28`, [[packages/terminal/package.json]]
+`packages/terminal/package.json:22-24`, [[apps/web/src/attach.ts]] `apps/web/src/attach.ts:71-81`,
+[[packages/terminal/src/index.ts]] `packages/terminal/src/index.ts:196-204`,
+[[packages/terminal/src/serialization.ts]] `packages/terminal/src/serialization.ts:92-103`,
+`packages/terminal/src/serialization.ts:150-158`, [[packages/terminal/src/restore.ts]]
+`packages/terminal/src/restore.ts:233-240`, [[packages/terminal/src/serialization.test.ts]]
+`packages/terminal/src/serialization.test.ts:45-81`. [Status: As-built]
 
 근거: [[packages/terminal/src/index.ts]], [[packages/terminal/src/boundary.ts]], [[packages/terminal/src/serialization.ts]], [[packages/terminal/src/restore.ts]], [[apps/web/src/attach.ts]], [[apps/daemon/src/terminals.test.ts]].
 
