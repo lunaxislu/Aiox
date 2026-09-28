@@ -41,7 +41,9 @@ export function ConnectedTerminal({
     const host = useRef<HTMLDivElement>(null);
     const surface = useRef<HTMLDivElement>(null);
     const config = useApplicationConfig();
-    const background = config.value?.effective.terminal?.theme?.background;
+    const fontFamily = config.value?.effective.terminal?.fontFamily;
+    const theme = config.value?.effective.terminal?.theme;
+    const background = theme?.background;
     const configError = config.value ? undefined : config.error;
     const attachment = useRef<Attachment | null>(null);
     const [attempt, setAttempt] = useState(0);
@@ -91,7 +93,9 @@ export function ConnectedTerminal({
                 tab.runtimeId ?? undefined,
                 canFocus,
                 {
+                    ...(fontFamily !== undefined ? { fontFamily } : {}),
                     ...(background !== undefined ? { background } : {}),
+                    ...(theme !== undefined ? { theme } : {}),
                     onBackground: (color) => {
                         if (!disposed && surface.current)
                             surface.current.style.backgroundColor = color;
@@ -119,6 +123,7 @@ export function ConnectedTerminal({
         attempt,
         config.loaded,
         configError,
+        fontFamily,
         background,
     ]);
     useEffect(() => {
