@@ -1,0 +1,35 @@
+host:
+  name: aiox-core-team
+  instruction: |
+    이 Host의 Agent들은 각자의 역할에 따라 협업하여 소프트웨어를 개발합니다.
+
+agents:
+  researcher:
+    adapter: claude
+    role: research
+    description: "코드베이스 조사 및 기술 분석 담당 에이전트"
+    instruction: |
+      코드베이스 구조, 기술 문서, 라이브러리를 조사하고 그 결과를 reviewer와 implementer에게 전달합니다.
+
+  implementer:
+    adapter: codex
+    role: implementation
+    description: "코드 구현 및 기능 개발 담당 에이전트"
+    instruction: |
+      요구사항과 설계에 맞추어 실제 코드를 구현하고 테스트를 작성합니다. 구현 완료 후 reviewer에게 검토를 요청합니다.
+
+  reviewer:
+    adapter: claude
+    role: review
+    description: "코드 리뷰 및 품질 검증 담당 에이전트"
+    instruction: |
+      implementer가 작성한 코드의 정합성, 테스트 통과 여부, 아키텍처 규칙 준수를 검토하고 피드백을 전달합니다.
+
+networks:
+  team-network:
+    agents:
+      - researcher
+      - implementer
+      - reviewer
+    routing:
+      default: allow
