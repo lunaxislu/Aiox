@@ -15,7 +15,7 @@ status: open
 - [x] W7 알림 fixture UI 구현과 사용자 시각 확인 PASS 완료. 고정 제목·Clear all, ScrollArea 목록·구분선·최신순·상대 시각, runtime 대상 이동과 NotFound를 반영했다. 실제 SSE·확인 API 및 삭제 후 최신 대상 탐색은 W10에서 연결·검증한다.
 - [ ] W8 [보류 · W10 뒤로] 설정 화면. 섹션 목록과 필드, 키 재지정 UI, Save 바와 변경 카운트, theme 미리보기, Discard dialog를 fixture로 렌더해 확인받는다. 좁은 폭은 섹션 목록을 상단 가로 탭으로 바꾸고 필드를 1열로 쌓되 Save 바와 dialog 기본 포커스 규칙은 그대로다. 확인 뒤 config revision 비교로 외부 변경 배너와 저장 충돌 dialog를 잇고 사이드바 너비 드래그를 저장 절차 없이 바로 쓰는 경로에 연결한다. 현재 /settings는 router.tsx의 제목만 있는 stub이며 보류 동안 그대로 둔다.
 - [ ] W9 [보류 · W10 뒤로] 화면 조작 keybindings와 남은 횡단 규칙. 확정된 11행 표를 전역 핸들러로 붙이고 config의 변경분과 합친다. 사용자 변경분이 config에 저장되므로 W8 없이는 닫히지 않아 W8과 함께 보류한다. openPalette 행은 팔레트 보류로 더 뒤다. 컴포넌트 하나로 끝나지 않아 남은 반응형 규칙도 여기서 닫는다. 화면을 이동시키는 동작이 드로어를 닫고 테마 토글처럼 이동이 아닌 동작은 유지하는 규칙이 남는다. 햄버거 미확인 점과 드로어 위 알림 dropdown Esc·backdrop 순서는 알림을 헤더 고정으로 바꿔 규칙 자체가 없어졌다.
-- [>] W10 운영 Web 연동·키 바인딩·IME·종료/삭제·Kitty 및 OS 텍스트/이미지 clipboard의 실제 검증을 이어간다. Option 선택 우회는 철회했고 일반 드래그 선택과 기본 OS copy/paste가 요구사항이다. 마우스 추적 화면의 선택 유실은 mouseEventsRequireAlt로 재현·수정했으며 사용자 브라우저에서 드래그 선택 후 Cmd+C·Cmd+V 확인이 남았다. 최신 Kitty 키보드·OS 클립보드 기록 및 W18·W19를 기준으로 idle 종료/삭제·빈 Host 배치 복원과 Storybook 사용자 확인을 이어간다. Windows/Linux/WSL native, 맨 Ctrl+C의 SIGINT 충돌 및 Codex 종료 후 간헐적 입력 변화는 미완료다.
+- [>] W10 운영 Web 연동·키 바인딩·IME·종료/삭제·Kitty 및 OS 텍스트/이미지 clipboard의 실제 검증을 이어간다. Option 선택 우회와 mouseEventsRequireAlt는 모두 철회했고 일반 드래그 선택과 기본 OS copy/paste가 요구사항이다. 마우스 추적 화면의 선택 유실은 xterm 경로를 측정했으나 vendor TUI와 다른 래퍼에서도 간헐적으로 재현되어 원인 후보가 Web·xterm·vendor로 열려 있다. 최신 Kitty 키보드·OS 클립보드 기록 및 W18·W19를 기준으로 idle 종료/삭제·빈 Host 배치 복원과 Storybook 사용자 확인을 이어간다. Windows/Linux/WSL native, 맨 Ctrl+C의 SIGINT 충돌 및 Codex 종료 후 간헐적 입력 변화는 미완료다.
 - [x] W11 서버 제거·빈 pane/split 정리와 원자 저장 검토를 완료했다. W17에서 선택을 클라이언트 전용으로 분리하고 owner 정합과 직접 회귀 검증을 완료했다. 실제 Web RPC·PTY 통합 검증은 W10이 소유한다.
 - [-] W12 Force stop 서버 보완(서버 에이전트 전달 대상). 기존 panel tab close API를 재사용해 실제 종료·실패·재시도 계약을 확인하고 탭 제거와 빈 pane 축약·비율 정규화·대체 포커스를 서버에서 일관되게 처리한다. 모든 탭 제거 경로와 필요한 테스트를 검증한다. 전달용 프롬프트는 준비했으며 구현 결과는 아직 확인하지 않았다. — cancelled: 동일 Force stop 서버 보완이 W11에 중복 기록되어 W11로 추적을 통일한다.
 
@@ -1406,3 +1406,13 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 - Owner 반영: `docs/specs/aiox-configuration-web.md`의 `Committed target`을 `Current`로 바꾸고 Option의 역할이 선택 조건이 아니라 앱 마우스 조작 조건임을 명시했다. `docs/architecture/aiox-storage-terminal.md`의 `Current gap`을 재현 근거와 기전이 있는 `As-built`로 교체했다.
 - 검증: Web 32 files·217 tests 통과, `tsc --noEmit` 통과, 변경 파일 oxlint·oxfmt와 문서 inline-code 검사 통과. 실제 사용자 브라우저에서 드래그 선택 후 Cmd+C가 복사되는지는 아직 확인받지 않았다. daemon·terminal suite는 실행하지 않았다.
 - 커밋 범위: `attach.ts`의 마우스 옵션과 이 테스트, owner 문서, 이 로그만 포함한다. 같은 작업본의 글꼴·theme 전달 변경과 `connected-terminal.tsx`, 개인 `aiox.yaml`은 계속 제외하며 push하지 않는다.
+
+### 2026-09-28 22:36 · mouseEventsRequireAlt 롤백과 vendor TUI 간헐 실패 관측
+
+- 사용자 결정: 직전 entry의 `mouseEventsRequireAlt` 적용을 되돌렸다. 근거는 같은 복사·붙여넣기 조작이 Codex TUI 자체에서 간헐적으로만 성공하고 cmux에서도 되다 안 되기를 반복한다는 사용자 관측이다. 따라서 실패 원인을 Web 경계 하나로 확정하지 않는다.
+- 되돌린 범위: `apps/web/src/attach.ts`의 `terminalMouseOptions` export와 사용을 사용자가 제거했다. 그 상수를 import하던 `apps/web/src/terminal-clipboard.test.ts`의 mouse-tracking 선택 유지 테스트는 전제가 사라져 함께 삭제했다. 삭제 전 typecheck가 TS2305로 깨진 것을 확인했다. `beforecopy` 청구, OS 복사·붙여넣기 키 처리, 이미지 업로드, dev 프록시 수정은 유지한다.
+- 유지되는 관측: DECSET 1003·1006이 켜진 상태에서 선택 뒤 포인터를 한 번 움직이면 `ESC[<35;5;2M` 보고가 사용자 입력으로 전달되어 선택이 사라지는 것은 실제 브라우저 테스트로 측정한 사실이다. 이 관측 자체는 철회하지 않는다. `mouseEventsRequireAlt`가 그 경로를 막는 것도 측정했으나, TUI 포인터 조작이 `Option` 없이 닫히는 비용 때문에 채택하지 않는다.
+- 판단 구분: 위 xterm 경로는 확인된 사실이고, 그것이 사용자가 겪는 간헐적 실패의 유일한 원인이라는 것은 확인되지 않은 추론이었다. vendor TUI와 다른 래퍼에서도 재현된다는 사용자 관측이 그 추론과 충돌하므로, 원인 후보를 Web·xterm·vendor TUI 셋으로 열어 둔다.
+- Owner 반영: `docs/specs/aiox-configuration-web.md`의 일반 드래그 선택을 `Committed target`으로 되돌리고 미충족 사유를 적었다. `docs/architecture/aiox-storage-terminal.md`를 `Current gap`으로 되돌리고 측정된 경로·적용하지 않은 이유·vendor 간헐 실패 관측을 함께 남겼다.
+- 함께 커밋한 것: 사용자 작업본의 terminal 글꼴·theme 전달(`attach.ts`의 `defaultTerminalTheme`·`fontFamily`·`fontSize` 16과 `connected-terminal.tsx`의 config 전달)과 test용 Host 정의 `aiox.yaml`을 사용자 지시로 별도 커밋했다. 앞선 기록들에서 이 두 건을 제외 대상으로 적었던 것은 이 지시로 해제된다.
+- 검증: Web `tsc --noEmit` 통과, 전체 Vitest 통과, 루트 `format:check`와 문서 inline-code 검사 통과. 실제 OS 복사 복구는 여전히 미검증이며 이번 롤백을 복구로 기록하지 않는다.

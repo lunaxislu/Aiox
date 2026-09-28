@@ -259,14 +259,14 @@ bracketed paste를 적용한 뒤 기존 사용자 입력 경로로 전달한다.
 [[apps/web/src/terminal-keybindings.ts]] `apps/web/src/terminal-keybindings.ts:8-28`,
 [[apps/web/src/terminal-clipboard.test.ts]] `apps/web/src/terminal-clipboard.test.ts:12-178`. [Status: As-built]
 
-마우스를 추적하는 TUI 화면에서는 포인터 이동 보고가 xterm의 사용자 입력으로 처리되어
-선택을 지웠다. DECSET 1003·1006이 켜진 상태에서 선택 뒤 포인터를 한 번 움직이면
-`ESC[<35;5;2M` 보고가 나가고 선택이 사라졌다. xterm은 같은 상태에서 selection service를
-끄기도 한다. `mouseEventsRequireAlt`로 포인터 보고에 Alt를 요구해 두 경로를 함께 막는다.
-휠은 이 조건을 건너뛰어 계속 앱으로 가고, `Option`을 누른 조작만 앱에 포인터를 넘긴다.
-사용자 계약은 [[docs/specs/aiox-configuration-web]]이 소유한다. 근거:
-[[apps/web/src/attach.ts]]의 `terminalMouseOptions`와
-[[apps/web/src/terminal-clipboard.test.ts]]의 mouse-tracking 선택 유지 회귀. [Status: As-built]
+마우스를 추적하는 TUI 화면의 선택 유지는 미해결이다. DECSET 1003·1006이 켜진 상태에서
+선택 뒤 포인터를 한 번 움직이면 `ESC[<35;5;2M` 보고가 사용자 입력으로 전달되며 선택이
+사라지는 것을 실제 브라우저 테스트로 측정했다. xterm은 같은 상태에서 selection service를
+끄기도 한다. `mouseEventsRequireAlt`로 포인터 보고에 Alt를 요구하면 선택은 유지되지만
+TUI의 포인터 조작이 `Option` 없이는 닫히므로 적용하지 않는다. 같은 복사 조작이 vendor
+TUI 자체와 다른 터미널 래퍼에서도 간헐적으로만 성공하는 것이 관측되어, 원인을 이 경계로
+단정하지 않는다. 사용자 계약은 [[docs/specs/aiox-configuration-web]]이 소유한다.
+[Status: Current gap]
 
 이미지 붙여넣기는 host의 capture `paste` listener가 xterm보다 먼저 clipboard의 이미지
 File을 읽는다. Web은 `POST /api/terminals/:terminalId/images`에 `{mediaType, data}` JSON을
