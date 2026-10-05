@@ -1,5 +1,4 @@
 import { panelContext, type PanelPreview } from "@/entities/panel/model";
-import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { SidebarTrigger } from "@/shared/ui/sidebar";
 
 import { HeaderActions, type HeaderActionsProps } from "./header-actions";
@@ -25,23 +24,13 @@ export function WorkspaceTitle({
     );
 }
 
-export function ConnectionWarning({ connected }: { connected: boolean }) {
-    return connected ? null : (
-        <Alert role="status">
-            <AlertDescription>Daemon disconnected</AlertDescription>
-        </Alert>
-    );
-}
-
 export function AppHeader({
     title,
     panel,
-    connected,
     ...actions
 }: HeaderActionsProps & {
     title: string;
     panel: PanelPreview | undefined;
-    connected: boolean;
 }) {
     return (
         <header className="shrink-0 border-b">
@@ -50,7 +39,6 @@ export function AppHeader({
                 <WorkspaceTitle title={title} panel={panel} />
                 <HeaderActions {...actions} />
             </div>
-            <ConnectionWarning connected={connected} />
         </header>
     );
 }

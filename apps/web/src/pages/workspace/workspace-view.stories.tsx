@@ -284,16 +284,14 @@ export const Unrestorable: Story = {
         await expect(
             canvas.queryByLabelText("shell terminal output"),
         ).not.toBeInTheDocument();
-        const reconnect = canvas.getByRole("button", {
-            name: "Reconnect screen",
-        });
-        await expect(reconnect).toBeDisabled();
+        await expect(
+            canvas.queryByRole("button", { name: "Reconnect screen" }),
+        ).not.toBeInTheDocument();
         await userEvent.click(
             canvas.getByRole("button", { name: "Force stop" }),
         );
         let dialog = within(await within(document.body).findByRole("dialog"));
         await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
-        await expect(reconnect).toBeDisabled();
         await expect(canvas.getByRole("tab")).toBeVisible();
         await userEvent.click(
             canvas.getByRole("button", { name: "Force stop" }),
@@ -305,6 +303,9 @@ export const Unrestorable: Story = {
         await expect(canvas.queryByRole("tab")).not.toBeInTheDocument();
     },
 };
+
+/** Unrestorable without the play steps that close the tab. */
+export const UnrestorableCard: Story = { args: Unrestorable.args! };
 
 export const ActivityStates: Story = {
     args: {

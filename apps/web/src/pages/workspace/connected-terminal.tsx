@@ -2,6 +2,7 @@ import type { TabView } from "@aiox/protocol";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { useApplicationConfig } from "@/app/application-config";
+import { useApplicationConnectionState } from "@/app/application-provider";
 import {
     attachTerminal,
     type Attachment,
@@ -51,6 +52,22 @@ export function ConnectedTerminal({
         connection: TerminalPreview["connection"];
         reason?: string;
     }>({ connection: "restoring" });
+    // The app-level ConnectionLost overlay owns an outage; terminal sockets reattach once it ends.
+    const phase = useApplicationConnectionState()?.phase;
+    const offline = phase !== undefined && phase !== "ready";
+    const reconnect = () => {
+        setStatus((previous) => ({
+            ...previous,
+            connection: "reconnecting",
+        }));
+        setAttempt((value) => value + 1);
+    };
+    const resume = useEffectEvent(() => {
+        if (status.connection === "disconnected") reconnect();
+    });
+    useEffect(() => {
+        if (!offline) resume();
+    }, [offline]);
     const canFocus = useEffectEvent(() => active);
     const notify = useEffectEvent(onConnection);
     const keybindings = useEffectEvent(
@@ -140,14 +157,8 @@ export function ConnectedTerminal({
                 connection: status.connection,
                 ...(status.reason ? { reason: status.reason } : {}),
             }}
-            connection={status.connection}
-            onReconnect={() => {
-                setStatus((previous) => ({
-                    ...previous,
-                    connection: "reconnecting",
-                }));
-                setAttempt((value) => value + 1);
-            }}
+            connection={offline ? "connected" : status.connection}
+            onReconnect={reconnect}
             onStop={onStop}
         >
             <div ref={surface} className="flex min-h-0 min-w-0 flex-1 p-6">

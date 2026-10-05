@@ -41,6 +41,7 @@ import {
     usePanelSelection,
 } from "./application-state";
 import { CommandFeedback, useCommandFeedback } from "./command-feedback";
+import { ConnectionLost } from "./connection-lost";
 export type AppOutletContext = {
     reportOutcome: ReturnType<typeof useCommandFeedback>["reportOutcome"];
     panels: PanelPreview[];
@@ -217,7 +218,6 @@ export function AppShell() {
                 <AppHeader
                     title={title}
                     panel={panel}
-                    connected={connectionState?.phase === "ready"}
                     notifications={state.notifications}
                     agentNameOf={(runtime) => agentName(panels, runtime)}
                     onSelect={openNotification}
@@ -264,7 +264,7 @@ export function AppShell() {
                 <main
                     id="main-content"
                     tabIndex={-1}
-                    className="min-h-0 flex-1"
+                    className="relative min-h-0 flex-1"
                 >
                     {state.ready ? (
                         <Outlet
@@ -280,6 +280,11 @@ export function AppShell() {
                         <p role="status" className="p-6">
                             Loading application…
                         </p>
+                    )}
+                    {state.ready && connectionState?.phase !== "ready" && (
+                        <ConnectionLost
+                            stopped={connectionState?.phase === "stopped"}
+                        />
                     )}
                 </main>
             </div>

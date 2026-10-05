@@ -259,12 +259,8 @@ it("preserves failure during reconnect, distinguishes restore refusal/exit and c
     expect(vi.mocked(attachTerminal).mock.calls.at(-1)![3]).toBe("r1");
     report("unrestorable", "mirror failed");
     expect(
-        (
-            screen.getByRole("button", {
-                name: "Reconnect screen",
-            }) as HTMLButtonElement
-        ).disabled,
-    ).toBe(true);
+        screen.queryByRole("button", { name: "Reconnect screen" }),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Force stop" }));
     view.update(layout([tab("t", "r2")]));
     fireEvent.click(screen.getByRole("button", { name: "Close and stop" }));

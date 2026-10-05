@@ -98,9 +98,9 @@ export const Disconnected: Story = {
     },
     play: async ({ canvasElement }) => {
         const header = within(canvasElement.querySelector("header")!);
-        await expect(header.getByRole("status")).toHaveTextContent(
-            "Daemon disconnected",
-        );
+        await expect(
+            within(canvasElement.querySelector("main")!).getByRole("status"),
+        ).toHaveTextContent("Connection lost");
         await expect(
             header.getByRole("button", { name: "Notifications: 3 unread" }),
         ).toBeEnabled();

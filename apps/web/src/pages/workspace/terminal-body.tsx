@@ -203,17 +203,15 @@ export function TerminalBody({
                             </div>
                         </CardContent>
                         <CardFooter className="flex-wrap gap-2">
-                            {!restoring && connection !== "exited" && (
-                                <Button
-                                    size="sm"
-                                    disabled={unrestorable}
-                                    onClick={onReconnect}
-                                >
-                                    {screenLost
-                                        ? "Reconnect screen"
-                                        : "Reconnect"}
-                                </Button>
-                            )}
+                            {!restoring &&
+                                !unrestorable &&
+                                connection !== "exited" && (
+                                    <Button size="sm" onClick={onReconnect}>
+                                        {screenLost
+                                            ? "Reconnect screen"
+                                            : "Reconnect"}
+                                    </Button>
+                                )}
                             <Button
                                 size="sm"
                                 variant="outline"

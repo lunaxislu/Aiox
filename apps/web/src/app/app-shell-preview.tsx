@@ -20,6 +20,7 @@ import { AppHeader } from "@/widgets/header/app-header";
 
 import { AppLayout } from "./app-layout";
 import { useApplicationConnectionState } from "./application-provider";
+import { ConnectionLost } from "./connection-lost";
 
 export type AppOutletContext = {
     panels: PanelPreview[];
@@ -129,7 +130,6 @@ export function AppShell({
                 <AppHeader
                     title={title}
                     panel={panel}
-                    connected={isConnected}
                     notifications={notifications}
                     agentNameOf={(runtimeId) => agentName(panels, runtimeId)}
                     onSelect={openNotification}
@@ -138,7 +138,7 @@ export function AppShell({
                 <main
                     id="main-content"
                     tabIndex={-1}
-                    className="min-h-0 flex-1 "
+                    className="relative min-h-0 flex-1"
                 >
                     <Outlet
                         context={
@@ -148,6 +148,11 @@ export function AppShell({
                             } satisfies AppOutletContext
                         }
                     />
+                    {!isConnected && (
+                        <ConnectionLost
+                            stopped={connection?.phase === "stopped"}
+                        />
+                    )}
                 </main>
             </div>
             {action && (
