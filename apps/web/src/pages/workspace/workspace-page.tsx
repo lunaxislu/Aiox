@@ -15,6 +15,7 @@ import { confirmationTerminals } from "@/features/manage-workspace/close-confirm
 import { NotFoundPage } from "@/pages/not-found/not-found-page";
 
 import { dropTarget, resizeChanges } from "./workspace-commands";
+import { shellSource } from "./workspace-preview";
 import { WorkspaceContent } from "./workspace-view";
 export function WorkspacePage() {
     const { panels } = useOutletContext<AppOutletContext>();
@@ -146,12 +147,7 @@ function ConnectedWorkspace({ panel }: { panel: PanelPreview }) {
                 }
                 addShell={(paneId, axis) => {
                     const tabId = crypto.randomUUID();
-                    const selectedTabId = panelLayoutReferences(
-                        layout,
-                    ).panes.find((pane) => pane.id === paneId)?.selectedTabId;
-                    const sourceTerminalId = panel.tabs.find(
-                        (tab) => tab.id === selectedTabId,
-                    )?.terminalId;
+                    const sourceTerminalId = shellSource(workspace, paneId);
                     command(
                         [
                             {

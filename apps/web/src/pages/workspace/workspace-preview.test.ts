@@ -10,6 +10,7 @@ import {
 import {
     closePreviewTab,
     selectPreviewTab,
+    shellSource,
     visibleTerminals,
     movePreviewTab,
     dropZone,
@@ -322,4 +323,10 @@ test("visible terminals follow selection and moves, excluding notices even with 
     expect(
         visibleTerminals(selected).some((item) => item.tab.id === "shell"),
     ).toBe(false);
+});
+
+test("sources a new shell only from a live terminal", () => {
+    expect(shellSource(workspacePreview, "left")).toBe("terminal-shell");
+    expect(shellSource(workspacePreview, "bottom")).toBeUndefined();
+    expect(shellSource(workspacePreview, "missing")).toBeUndefined();
 });

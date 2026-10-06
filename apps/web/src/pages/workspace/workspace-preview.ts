@@ -208,6 +208,19 @@ export function movePreviewTab(
     return { ...state, layout, activePaneId };
 }
 
+/**
+ * The terminal a new shell inherits its directory from. A tab showing a notice
+ * keeps a terminal ID the daemon no longer serves, and sourcing it is refused.
+ */
+export function shellSource(state: WorkspaceLayout, paneId: string) {
+    const pane = panelLayoutReferences(state.layout).panes.find(
+        (candidate) => candidate.id === paneId,
+    );
+    const tab = state.tabs.find(
+        (candidate) => candidate.id === pane?.selectedTabId,
+    );
+    return tab && !tab.notice && tab.terminalId ? tab.terminalId : undefined;
+}
 /** Only selected terminal bodies need browser resources; notices take precedence. */
 export function visibleTerminals(state: WorkspaceLayout) {
     const tabs = new Map(state.tabs.map((tab) => [tab.id, tab]));

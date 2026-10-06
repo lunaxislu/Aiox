@@ -48,6 +48,9 @@ export function TabNotice({
     const preparing = tab.presentation === "preparing";
     const failed =
         tab.presentation === "start-failed" || tab.presentation === "crashed";
+    // tab.dismiss returns a live shell only from these states; it refuses an unavailable tab.
+    const dismissible =
+        tab.terminalId !== null && (failed || tab.presentation === "stopped");
     return (
         <Empty
             className={cn(
@@ -83,22 +86,28 @@ export function TabNotice({
                         : tab.notice.reason}
                 </EmptyDescription>
             </EmptyHeader>
-            {!preparing && (
-                <EmptyContent className="max-w-none items-stretch gap-2 text-left">
-                    <p className="text-center text-xs text-muted-foreground">
-                        Run in your terminal to start again
-                    </p>
-                    <CopyCommand
-                        className="w-fit max-w-full self-center"
-                        command={tab.notice.restartCommand}
-                        onCopied={
-                            tab.terminalId && onDismiss
-                                ? () => onDismiss(tab)
-                                : undefined
-                        }
-                    />
-                </EmptyContent>
-            )}
+            {!preparing &&
+                (tab.notice.restartCommand ? (
+                    <EmptyContent className="max-w-none items-stretch gap-2 text-left">
+                        <p className="text-center text-xs text-muted-foreground">
+                            Run in your terminal to start again
+                        </p>
+                        <CopyCommand
+                            className="w-fit max-w-full self-center"
+                            command={tab.notice.restartCommand}
+                            onCopied={
+                                dismissible && onDismiss
+                                    ? () => onDismiss(tab)
+                                    : undefined
+                            }
+                        />
+                    </EmptyContent>
+                ) : (
+                    // A shell started from + has no command to restart it with.
+                    <EmptyDescription className="text-xs">
+                        Use + to open a shell or split this pane.
+                    </EmptyDescription>
+                ))}
         </Empty>
     );
 }

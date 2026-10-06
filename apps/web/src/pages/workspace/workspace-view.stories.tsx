@@ -307,6 +307,36 @@ export const Unrestorable: Story = {
 /** Unrestorable without the play steps that close the tab. */
 export const UnrestorableCard: Story = { args: Unrestorable.args! };
 
+/** A shell opened from + has no restart command once the daemon restarts. */
+export const ShellUnavailable: Story = {
+    args: {
+        panel: {
+            ...singlePanel,
+            tabs: [
+                {
+                    ...shell,
+                    presentation: "unavailable" as const,
+                    notice: {
+                        message:
+                            "Terminal is unavailable after daemon restart.",
+                        reason: "daemon-ended",
+                        restartCommand: "",
+                    },
+                },
+            ],
+        },
+    },
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+        await expect(
+            canvas.queryByText("Run in your terminal to start again"),
+        ).not.toBeInTheDocument();
+        await expect(
+            canvas.getByText("Use + to open a shell or split this pane."),
+        ).toBeVisible();
+    },
+};
+
 export const ActivityStates: Story = {
     args: {
         panel: {
