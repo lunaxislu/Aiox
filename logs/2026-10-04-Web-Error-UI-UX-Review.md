@@ -160,3 +160,40 @@ Next: 남은 것(A 시나리오 재캡처, 오프라인 중 종료 터미널 표
 
 Next: 다음 세션은 커밋 분리부터 시작하고, 위 목록을 차례로 사용자와 정한다.
 
+
+## 2026-10-06 · 연결 끊김 화면 커밋 분리
+
+사용자 지시로 커밋했다. repo 관례(최근 커밋들이 code와 logs/docs를 분리)에 맞춰 두 커밋으로 나눴다.
+
+확인한 사실:
+- `4ca3db9 feat(web): show one connection-lost screen for an outage` — `apps/web/src`의 10개 파일(`app/connection-lost.tsx`·stories 신규, `app-shell.tsx`, `app-shell-preview.tsx`, `app-shell.story.tsx`, `pages/workspace/{connected-terminal,terminal-body}.tsx`·test·stories, `widgets/header/app-header.tsx`).
+- `f1c397e docs: record the web error UI review and connection-lost screen` — 이 로그와 `.gitignore`의 캡처 폴더 제외.
+- 커밋 전 `pnpm typecheck`·`format:check`·`lint`·`test`를 모두 다시 실행해 통과했다(web 219 tests, 33 files).
+- 무관 변경은 staging하지 않았다: `apps/cli/src/cli.ts`, `skills-lock.json`, `logs/2026-09-09-AIOX-TUI-Stage6-Web.md`, untracked skill 폴더 4종과 symlink, `logs/2026-10-04-Docs-Site-Nextjs.md`, `better-sqlite3SQLite`. `skills-lock.json`과 skill 폴더는 서로 짝이라 함께 커밋할 대상으로 보이지만 이 작업 범위가 아니다. `better-sqlite3SQLite`는 명령 오타로 생긴 파일로 보이며 내용은 확인하지 않았다.
+
+Next: 남은 항목 중 Stopped 문구 줄바꿈 확인과 daemon 종료 시나리오(A) 재캡처·빈 복사 명령 원인부터 진행한다.
+
+## 2026-10-06 · 빈 재시작 명령 guard와 A 시나리오 실측
+
+사용자 결정: 빈 `restartCommand`일 때 복사 블록을 숨기고 `pane-tree.tsx`의 기존 문구를 재활용한다. 이어서 A 시나리오를 실제로 돌려 캡처한다.
+
+확인한 사실(코드):
+- `""`는 "재시작 명령 없음"을 표현할 타입이 없어 생긴 sentinel이다. `tabNoticeSchema`의 `reason`은 `NullOr(String)`인데 `restartCommand`는 `Schema.String`이다. 같은 값이 `web-state.ts`에서는 "채워야 함" 신호로, UI에서는 "보여줄 명령"으로 읽힌다.
+- 생산 경로는 넷이다. daemon 재시작 복구(`host-state.ts` `recover`)의 start-failed·unavailable, shell 생성/join 실패(`web-commands.ts` `failTab`), host를 못 찾은 agent 종료(`daemon.ts` `stopRuntime`). plain shell은 `agentKey`가 없어 `web-state.ts`의 보강 대상이 아니다.
+- plain shell에 명령이 없는 이유는 구현 공백이 아니라 부재다. agent는 `aiox.yaml` 선언을 `aiox host agent start`로, network agent는 `aiox agent run`으로 되살리지만, CLI에 패널 shell을 만드는 명령 자체가 없다.
+- `tab.dismiss`는 터미널이 alive이고 presentation이 stopped·start-failed·crashed일 때만 허용된다. 복사 성공이 dismiss를 쏘던 기존 배선은 unavailable 탭에서 거부된다.
+
+변경:
+- `terminal-body.tsx` `TabNotice`에 guard 둘. 복사 블록은 `restartCommand`가 있을 때만, 없으면 `Use + to open a shell or split this pane.`(`pane-tree.tsx` 빈 pane 문구 재활용). `onCopied`의 dismiss는 `dismissible`(terminalId 있고 stopped·start-failed·crashed)일 때만.
+- `workspace-preview.ts`에 `shellSource` 추가, `workspace-page.tsx`의 `addShell`이 이를 쓴다. notice 탭의 죽은 terminalId를 source로 보내지 않는다.
+- 테스트: `terminal-body.test.tsx` 2개, `workspace-preview.test.ts` 1개, story `ShellUnavailable`(이 repo는 story도 vitest storybook 프로젝트에서 실행된다). 전체 223 passed, typecheck·lint·format:check 통과.
+
+실측(A 시나리오, 빌드본 + 격리 home harness, 캡처 43~46):
+- SIGTERM으로 daemon을 끄면 `Connection lost` 전체 화면이 뜨고 pane 구분선만 비친다(44, 직접 확인). 같은 home으로 재기동하면 탭마다 unavailable notice가 뜨고 빈 `$` 블록 없이 안내 문구가 보인다(45, 직접 확인).
+- 그 상태에서 + 를 누르면 `Command rejected: {"code":"source_terminal_conflict","message":"Source terminal is no longer available."}`로 거부됐다. 원인은 `addShell`이 선택된 탭의 죽은 terminalId를 source로 보내고 daemon이 `refreshCwd` 실패로 409를 내는 것이다. 즉 새로 넣은 안내가 동작하지 않는 행동을 지시하고 있었다.
+- 수정 뒤 같은 조작에서 새 shell이 실제로 열렸다(46, 직접 확인).
+- Storybook 캡처 39~42는 subagent가 찍었고 39·41은 내가 직접 확인했다. subagent가 제안한 "안내 줄과 reason 줄의 타이포 분리"는 반영하지 않았다. agent 쪽 `Run in your terminal to start again`도 같은 처리라 바꾸면 두 경우가 어긋난다.
+
+미결로 남긴 것: 비활성 pane의 `opacity: 0.6`이 muted 텍스트 대비를 떨어뜨리는 점(이 변경 이전부터 존재, W2 감사 대상). 셸 알림이 raw JSON을 그대로 노출하는 점(W1에서 이미 기록, 46번 캡처 이전 화면에서 재확인).
+
+Next: W2(나머지 에러 UI를 web-design-guidelines로 점검)와 남은 결정(오프라인 중 종료 터미널, Card/Empty 모양 차이, `App/Header` story RangeError, Stopped 문구 줄바꿈)을 사용자와 정한다.
