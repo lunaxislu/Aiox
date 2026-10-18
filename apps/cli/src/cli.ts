@@ -7,7 +7,7 @@ import {
 } from "commander";
 
 import { failedHostRequest, hostSelection } from "@/host-input";
-import type { CliRequest, CliOptions, CliPort, CommandName } from "@/requests";
+import type { CliOptions, CliPort, CliRequest, CommandName } from "@/requests";
 
 class AioxCommand extends Command {
     suppliedArgs: readonly string[] = [];
