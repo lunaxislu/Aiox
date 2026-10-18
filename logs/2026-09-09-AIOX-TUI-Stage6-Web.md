@@ -1416,3 +1416,126 @@ owner 반영: [[docs/specs/aiox-configuration-web]]에 Web Network 배치와 실
 - Owner 반영: `docs/specs/aiox-configuration-web.md`의 일반 드래그 선택을 `Committed target`으로 되돌리고 미충족 사유를 적었다. `docs/architecture/aiox-storage-terminal.md`를 `Current gap`으로 되돌리고 측정된 경로·적용하지 않은 이유·vendor 간헐 실패 관측을 함께 남겼다.
 - 함께 커밋한 것: 사용자 작업본의 terminal 글꼴·theme 전달(`attach.ts`의 `defaultTerminalTheme`·`fontFamily`·`fontSize` 16과 `connected-terminal.tsx`의 config 전달)과 test용 Host 정의 `aiox.yaml`을 사용자 지시로 별도 커밋했다. 앞선 기록들에서 이 두 건을 제외 대상으로 적었던 것은 이 지시로 해제된다.
 - 검증: Web `tsc --noEmit` 통과, 전체 Vitest 통과, 루트 `format:check`와 문서 inline-code 검사 통과. 실제 OS 복사 복구는 여전히 미검증이며 이번 롤백을 복구로 기록하지 않는다.
+
+### 2026-10-02 14:22 · 전역 config 전체 JSON 안내
+
+- 사용자 질문: 현재 aiox config에 넣을 수 있는 전체 JSON 요청. packages/protocol/src/configuration.ts의 parseConfig, packages/config/src/files.ts, Web attach·terminal-keybindings consumer와 configuration spec을 확인했다.
+- 안내 범위: ~/.aiox/config.json의 전체 필드 예시이며 실제 사용자 설정을 읽거나 수정하지 않았다. keyboard는 문자열 map 보존만 확인됐고 화면 keybindings는 parser가 허용하지만 Web 조작 consumer는 아직 없다. terminal.keybindings는 실제 attach consumer가 있다. 예시 값과 제품 기본값을 구분해 안내한다.
+- W10 진행 상태와 next pointer는 변경하지 않는다.
+
+### 2026-10-12 22:37 · node-pty 별도 생성 경로 조사
+
+- 사용자 질문: 현재 node-pty를 따로 생성한다는 설명의 실제 구조 확인. W10 터미널 수명·입출력 경계에 대한 조사이며 기존 작업 상태와 next pointer는 유지한다.
+- 확인 범위: packages/terminal/src/index.ts의 spawn, TerminalService.createShell, AgentController의 ExecutionOwner, CLI bootstrap·foreground·external, daemon terminal WS 선택, Host startAgent, adapter foreground 호출과 관련 tests·architecture를 대조했다.
+- 확인 결과: 일반 shell PTY와 daemon 소유 vendor 실행 PTY가 별도로 생성된다. Web shell에서 AIOX CLI로 Agent를 실행하면 shell PTY 안 CLI가 foreground WS로 vendor PTY를 중계한다. Host 직접 실행은 shell을 보존한 채 Web WS가 vendor PTY에 직접 붙는다. 일반 외부 터미널에서 terminalContext 없이 실행하는 경로는 spawnNative inherit이며 AIOX의 새 PTY를 만들지 않는다. headless와 browser xterm은 화면 상태/표시 객체이고 별도 shell 실행이 아니다.
+- 조사 한계: 현재 source와 테스트 정의를 읽은 결과다. 실제 사용자 프로세스의 PID/TTY 관측이나 테스트 재실행은 하지 않았다. 구현·설계 변경은 없고 조사 경위만 append한다.
+
+### 2026-10-12 22:40 · PTY 별도 생성 질문의 과거 합의 재탐색
+
+- 사용자 정정: 앞선 shell/vendor PTY 두 개 설명으로는 질문 의도를 해결하지 못했다. 사용자는 client/server 실시간 WebSocket 통신 때문에 PTY를 따로 띄우기로 했던 로그를 찾도록 요청했다.
+- 찾은 직접 기록: 2026-09-25 최종 합의(720행)는 앱 명령·상태·알림용 Effect RPC WS와 xterm 입출력·크기용 terminal WS의 분리를 명시한다. 같은 인계의 761행은 배치 변경 순서와 shell/Agent 준비 완료 순서를 분리하여 준비 때문에 후속 배치를 기다리게 하지 않도록 한다. 723행은 별도 PTY broker/supervisor를 추가하지 않는다고 기록한다.
+- 판단: 사용자 기억과 관련된 후보는 terminal WS 분리와 PTY 준비의 병렬 처리다. 어느 쪽을 지칭했는지는 아직 확정할 수 없으며, WebSocket 때문에 shell/vendor PTY 두 개가 필요하다고 합의했다는 근거로 앞선 코드 조사를 사용하지 않는다. 구현 변경 없음.
+
+### 2026-10-13 17:06 · allowProposedApi 옵션 의미 확인
+
+- 사용자 질문: Terminal 생성 옵션 allowProposedApi의 의미. xterm 공식 ITerminalOptions 문서에서 실험적/proposed API 사용 허용, 기본 false, 허용하지 않은 해당 API 사용 시 오류임을 확인했다. 일반 API의 안정성 보장과 구분해 설명한다.
+- 현재 apps/web/src/attach.ts의 Terminal 생성에는 이 옵션이 없다. 사용자가 제시한 snippet 자체만으로 필요성을 확정하지 않는다. production 변경과 테스트 실행은 없으며 W10과 next pointer를 유지한다.
+
+### 2026-10-13 23:17 · session_expired 오류 발생 조건 설명
+
+- 사용자 질문: Command result unknown 안내와 session_expired의 발생 시점. sequencer의 resume/submitEffect와 sweep, application-rpc의 session 검증, Web connection/store/app-shell 및 인접 테스트 정의를 확인했다.
+- 확인 사실: 서버에 ID가 없거나 sequencer가 닫혔을 때 session_expired다. 실행·대기 요청이 없는 세션은 active 갱신 후 기본 1시간을 초과하면 다음 sweep에서 제거된다. daemon 재시작은 메모리 세션을 보존하지 않는다. 단순 WebSocket 접속 유지와 세션 active 갱신은 구분한다.
+- 화면은 session_expired를 명령 결과 unknown으로 분류하고 원래 오류 JSON을 함께 출력한다. connection은 재동기화하고 재접속 시 resume 만료를 새 open으로 복구하며 옛 명령을 자동 재실행하지 않는다. 사용자가 경험한 특정 원인은 실행 로그를 확인하지 않아 확정하지 않는다. 코드 변경·테스트 재실행 없음, W10/next pointer 유지.
+
+### 2026-10-13 23:23 · 터미널 생성 버튼부터 연결과 복원 순서 확인
+
+- 사용자 질문: terminalId 요청 후 terminal WS 연결, 복원 완료 후 창 표시 여부. WorkspacePage.addShell/command, web-commands의 preparingTab/prepareShell, WorkspaceContent/visibleTerminals/ConnectedTerminal, attachTerminal와 TerminalBody, 서버 terminals snapshot 경로 및 관련 테스트 정의를 확인했다.
+- 확인 사실: Web은 tab.create를 RPC로 제출하고 서버는 terminalId null인 preparing 탭을 먼저 등록한다. daemon 소유 prepareShell이 생성 성공 후 terminalId를 탭에 기록하고 상태를 방송한다. Web은 그 상태를 소비해 xterm을 open한 다음 terminalId URL로 WS에 연결한다. 복원 전에도 DOM과 Restoring terminal 안내는 표시되며, snapshot-end에서 상태 적용 후 restored 수신 시 입력 허용·connected로 바뀐다. ID만 별도 요청하거나 복원 완료까지 창 생성을 미루는 구조가 아니다.
+- 준비 실패는 탭의 실패 상태·사유, 화면 연결/복원 실패는 연결 상태 안내로 끝난다. 조사 결과이며 실제 클릭 재현이나 테스트 재실행 없음. production과 W10/next pointer 변경 없음.
+
+### 2026-10-13 23:26 · 복원 전 입력 차단과 fit 실행 조건 안내
+
+- 후속 질문: 복원 전 표시 이유, disableStdin 처리, fitEnabledRef.current 존재 여부. attach.ts와 ConnectedTerminal/TerminalBody의 실제 조건을 확인하고 apps/packages에서 fitEnabledRef/fitEnabled를 검색했다. 해당 이름은 없으며 attach의 restored 로컬 변수가 resize 요청을 차단한다.
+- 확인 사실: 생성 시 disableStdin true, restored 수신 후 false다. sendResize는 restored 및 WS open, host 연결과 양수 크기를 확인한 뒤 FitAddon.proposeDimensions 결과를 서버에 보낸다. 서버 resize 메시지 수신 시 term.resize를 적용하며 fit.fit 직접 호출은 없다. DOM open과 사용자 노출은 구분하고, 복원 전 가시 노출이 필수라고 단정하지 않는다.
+- production 변경과 테스트 실행 없이 설명만 했다. W10/next pointer 유지.
+
+### 2026-10-13 23:27 · restored 메시지와 클라이언트 상태 전이 확인
+
+- 사용자 후속 질문: 현재 restored 처리. 서버 terminals의 session.attach snapshot callback은 snapshot → data → snapshot-end → tail → restored 순서로 보낸다. Web attach는 pending Promise로 메시지 처리를 직렬화하고 term.write callback까지 기다린다. snapshot-end에서 restoreTerminalState 및 snapshotFinished true, restored에서 완료 경계·중복 검증 후 restored true, WS open이면 입력 허용·크기 요청·조건부 focus·connected 보고다.
+- restored는 WS open 자체나 PTY 생성 성공이 아니라 화면 복원 프로토콜 완료 경계다. 연결마다 새 attach의 false에서 시작한다. production 변경·테스트 재실행 없음, W10/next pointer 유지.
+
+### 2026-10-14 01:12 · Web 터미널 생성 초기 cols rows 확인
+
+- 사용자 질문: Web terminal create 요청의 초기 col/row. WorkspacePage.addShell의 tab.create에는 cols/rows가 없다. web-commands prepareShell → daemon createShell → TerminalService → terminal spawn의 옵션 전달을 확인했다. 생략 시 packages/terminal/src/index.ts의 PTY 기본값 cols 80/rows 24를 사용하고, Web 복원 완료 후 proposeDimensions 기반 resize를 보낸다.
+- 현재 생성 버튼 경로는 terminal POST가 아니라 panel.command RPC의 tab.create다. 별도 POST /api/terminals endpoint와 구분한다. 코드 조사만 수행했으며 변경·테스트 재실행 없음. W10/next pointer 유지.
+
+### 2026-10-14 01:32 · Web shell exit 시 탭 제거 경로 확인
+
+- 사용자 질문: Web 터미널에 exit 입력 시 터미널 삭제 로직 존재 여부. TerminalService shell exit → remove/onRemoved → daemon hostState.removeTerminal → panel 상태 방송 → Web 반영 경로와 attach의 exit 처리를 확인했다. 입력 문자열 exit를 Web이 가로채 삭제하는 것이 아니라 shell 프로세스 종료를 서버가 관측해 세션·탭을 제거한다.
+- Web terminal WS exit 처리는 입력 차단·종료 문구·exited 상태만 담당하며 탭 제거는 앱 상태 반영 경로다. daemon 비접수 중에는 onRemoved의 DB 정리가 생략되고, DB 제거 실패는 서버 오류 로그로 남는 조건이 있다. 실제 exit 재현이나 테스트 재실행 없이 소스·기존 테스트 정의만 확인했다. W10/next pointer 유지.
+
+### 2026-10-14 01:54 · localhost 5174 터미널 하단 잔여 공간 측정
+
+- 사용자 질문: absolute inset-0 터미널의 하단 여백. agent-browser 별도 세션으로 localhost:5174를 열고 + 버튼으로 shell을 생성해 DOM 크기를 측정했다. 해당 앱은 현재 저장소 운영 Web이 아니라 /Users/lunaxislu/workSpace/aiox/apps/web의 TerminalSurface/useXterm 앱임을 Vite가 제공한 source로 확인했다.
+- 관측값: 부모 높이 528px, xterm 화면 522px, 29행, 행 높이 18px, 하단 차이 6px. 실제 제공된 addon-fit 코드도 rows 계산에 Math.floor를 사용한다. absolute inset-0는 host를 채우고 xterm의 정수 행 높이와 같음을 보장하지 않으므로 잔여 픽셀이 남는다. 부모 p-4가 있어도 관측 xterm 시작 좌표는 부모 시작과 같아 이번 6px를 padding으로 설명하지 않는다.
+- 제안만: host 배경을 terminal theme background와 맞추면 잔여 공간의 색 차이를 감출 수 있다. 파일이나 실행 앱을 수정하지 않았으며 W10/next pointer 유지. 측정 중 사용자 앱 HMR을 관측해 특정 치수는 측정 시점 값으로 한정한다.
+
+### 2026-10-14 01:57 · 웹 터미널 하단 잔여 공간 타 프로젝트 조사 착수
+
+- 사용자 요청: 다른 웹 터미널 프로젝트의 해결 방식을 subagent에게 상세 조사시킨다. terminal_gap_research에 공식 source·이슈 기반 최소 4개 프로젝트 비교와 research-idea/web-terminal-bottom-gap.research.md 작성만 위임했다. production 및 현재 localhost 앱 수정은 범위 밖이다.
+- 원인과 대응을 분리한다: 정수 행 fit 잔여 공간, 컨테이너 배경 채움, viewport/scrollbar 높이, padding, 행/글꼴 변경을 각각 비교하고 구현 존재와 도입 의도를 구분한다. root가 upstream 논의와 subagent 결과를 독립 대조한 뒤 수용한다. 기존 W10의 후속 조사이며 상태·next pointer와 로그 수명을 변경하지 않는다.
+
+### 2026-10-14 02:01 · 웹 터미널 하단 공간 조사 결과 검토·수용
+
+- subagent 결과: [상세 조사](../research-idea/web-terminal-bottom-gap.research.md)에 VS Code·ttyd·JupyterLab·WeTTY의 SHA 고정 source와 upstream #4853/#5299/#389 근거를 남겼다. root는 다운로드된 실제 CSS와 보고서를 직접 읽고 fit/renderer/host 책임 및 근거 수준을 대조했다. 조사 문서는 research 자료이며 spec/architecture 변경이나 제품 결정으로 승격하지 않는다.
+- 수용 사실: VS Code의 해당 panel/editor CSS는 xterm 자체를 bottom:0으로 정렬하며 배경을 terminal theme과 맞춘다. vertical panel top 정렬과 fixed dimensions 예외가 있다. ttyd는 xterm wrapper 높이 calc(100% - 10px)와 padding5px, JupyterLab은 padding 주변 viewport theme 색을 맞추는 명시적 주석, WeTTY는 기본 body·terminal 검정과 fit을 사용한다. 마지막 둘의 특정 6px 이슈 도입 목적과 모든 테마·버전에서의 화면 효과는 확인하지 않았다.
+- 앞선 안내 보강: bg-black은 기본 검정 테마 예시로 부모색 띠만 감추며 유일한 타 프로젝트 패턴이 아니다. 마지막 행을 하단에 붙이려면 outer host inset0와 별개로 inner xterm bottom 정렬을 선택할 수 있고, 남는 픽셀은 위로 이동한다. 실제 적용·UI 재현 없이 권고로만 보고한다.
+- 검증: 조사 문서 구조·출처·예외 검토 및 git diff --check 통과. production 테스트는 변경이 없어 실행하지 않았다. 로그 inbound 링크로 조사 산출물을 연결했고 W10/next pointer 유지.
+
+### 2026-10-14 02:08 · 다른 작업 경로 Tailwind 스케치와 운영 Web 비교
+
+- 사용자 요청으로 /Users/lunaxislu/workSpace/aiox의 TerminalSurface/useXterm/useXtermSocket를 읽고 Tailwind 배경·하단 정렬 JSX를 제안했다. 일시 적용했던 JSX는 사용자의 스케치만 요청에 따라 제가 추가한 부분만 되돌렸고 원래 return을 확인했다. 제안은 별도 파일 수정으로 남아 있지 않다.
+- 후속 질문: 현재 cwd 운영 Web과 같은 UI인가. 운영 ConnectedTerminal은 flex와 외곽 p-6/내부 host로 구성하며 xterm bottom-0 absolute 규칙이 없다. 배경은 appearance config 및 followTerminalBackground callback으로 외곽에 전달한다. 다른 작업 경로의 bg-black/p-4/내부 xterm absolute bottom 정렬 스케치와 같은 구현이 아니다. 운영 파일 수정·테스트 실행 없고 W10/next pointer 유지.
+
+### 2026-10-14 02:14 · 마이그레이션 대상 Web 생성·Exit UI 제거 책임 제안
+
+- 사용자 설명 정정: /Users/lunaxislu/workSpace/aiox는 별도 제품이 아니라 ai-orchestration 마이그레이션 대상이다. 현재 작업 경로와 migration 대상의 구현 차이를 구분하되 관계를 별개 프로젝트로 설명하지 않는다.
+- 사용자 질문: 생성 버튼으로 terminal 추가, exit 시 제거를 현재 구조에서 어떻게 연결할지. 대상 WebTerminal은 creation.data 한 개로 렌더하며 isSuccess가 버튼을 잠근다. useXtermSocket의 Exit는 TODO이고 onclose는 무조건 ErrorBoundary다. 서버는 PTY 종료 시 Map 삭제/headless dispose, WS Exit 전달 및 stream 완료가 구현돼 있다. 실제 종료 재현 없이 source로 확인했다.
+- 제안: 현재 단순 UI에서 WebTerminal이 표시 terminal ID 목록을 소유, 생성 성공 시 추가하고 Exit를 hook→Surface→Panel→WebTerminal callback으로 전달해 해당 ID 제거. isSuccess 잠금 제거·isPending 유지, 부모의 삭제 callback 안정성 유지, Exit 이후 정상 socket close는 오류로 처리하지 않는다. unmount에서 기존 socket/xterm cleanup 사용하며 Exit에 별도 서버 delete를 보내지 않는다. 기존 운영 Web의 server panel projection 삭제와 다른 임시 UI 목록임을 구분하고 후속 panel/탭 migration에서 owner 전환이 필요함을 설명한다.
+- 스케치만 요청의 기존 범위와 design-decisions skill에 따라 production 수정 없음. W10/next pointer 유지.
+
+### 2026-10-14 02:16 · Exit 확인과 WebSocket close 순서 보장 구분
+
+- 사용자 질문: 제안 exited 변수 필요성과 Exit/close 순서 고정 여부. migration socket source 재확인: PTY 종료 callback이 Exit enqueue 후 Queue.endUnsafe, outgoing send 완료 시 raceFirst가 receive 중단하고 request scope 종료로 소켓 종료다. 설치 Effect Queue source는 end 이후 buffered messages가 소비될 때까지 Closing임을 명시한다.
+- exited는 서버 종료 사실을 Web이 수신했음을 기억해 후속 close를 오류로 중복 보고하지 않는 제안이다. 정상 전달 경로는 Exit 처리 후 close지만 네트워크/전송/서버 강제 종료 경로에는 Exit 자체가 없을 수 있어 모든 close 앞 Exit가 보장된다고 설명하지 않는다. React unmount cleanup 시점만으로 close 오류가 항상 사라진다고 가정하지 않는다. 조사·설명만, 코드 변경과 실측 없음.
+
+### 2026-10-14 02:18 · React cleanup 선행 가정의 실제 source 확인과 exited 제안 보완
+
+- 사용자 지시로 migration Web 파일과 설치 react-dom 19.3.0 development source를 재확인했다. 현재 Exit는 console/TODO뿐이고 목록 삭제/onExit 자체가 아직 없다. close는 무조건 showBoundary, effect cleanup에서 onclose=null 후 socket.close다. 따라서 현재 구현에 onExit 삭제 race가 실제 재현됐다고 주장하지 않는다.
+- React source 확인: dispatchSetStateInternal은 enqueueConcurrentHookUpdate→scheduleUpdateOnFiber로 작업 예약, ensureRootIsScheduled 및 scheduleCallback, 삭제된 function component의 useEffect cleanup은 commitPassiveUnmountEffectsInsideOfDeletedTree_begin→commitHookPassiveUnmountEffects에서 실행된다. state setter 호출이 해당 cleanup을 동기 호출하는 경로가 아님을 확인했다. 특정 사용자 브라우저 Exit/commit/cleanup/close 실제 순서는 측정하지 않았다.
+- 제안 보완: exited boolean은 필수가 아니다. 현재처럼 단일 onclose property handler이면 Exit 처리에서 socket.onclose=null을 먼저 하고 부모 제거를 요청하는 직접적인 대안이 있다. 종료 확인 후 close 오류 보고를 막는 목적과 resource cleanup은 구분한다. 스케치 제안만, production 변경 없음.
+
+### 2026-10-16 12:56 · clientSessionId와 명령 순서·중복 방지 및 DB 원자성 책임 구분
+
+- 사용자 질문에 현재 cwd의 원본 프로젝트를 확인했다. application-rpc panel.command → Sequencer.submitEffect → applyWebCommand → hostState.applyPanel transaction 경로와 관련 spec/architecture 및 sequencer/host-state 테스트 소스를 읽었다. migration 대상 apps/packages에서는 clientId/clientSessionId 계열 검색 결과가 없었으며 두 프로젝트의 보장을 혼동하지 않는다.
+- 확인: clientSessionId는 세션 식별, sequence는 같은 세션 내 실행 순서, requestId/hash는 실행·대기 요청 중복 합류와 충돌 판정이다. 확정 요청은 재실행 거부하며 과거 결과를 재현하지 않는다. 서로 다른 세션의 전역 실행 순서를 보장하는 장치는 아니다.
+- 확인: panel 명령 changes 전체의 저장 원자성은 최신 상태를 읽고 변경하는 applyPanel DB transaction이 담당한다. shell 준비·프로세스 종료와 상태 전달은 commit 후 별도 경로이므로 전체를 하나의 DB transaction으로 성공/rollback하는 구조가 아니다. 세션 정보는 메모리 보관이며 daemon 재시작을 넘는 영속 exactly-once 보장으로 해석하지 않는다. 코드 변경·테스트 실행 없이 소스 확인과 설명만 수행했다.
+
+### 2026-10-16 12:56 · ETag 조건부 갱신으로 단순화 가능한 범위 논의
+
+- 사용자 질문: clientSessionId 등 대신 ETag로 해결 가능한가. RFC9110 If-Match 규약과 현재 panel revision 증가·Host expectedRevision 검사, 직전 확인한 sequencer 경로를 비교했다.
+- 판단: ETag/If-Match 또는 RPC expectedRevision은 오래된 상태 기반 변경을 거절하는 낙관적 동시성 제어다. 같은 세션 순서 보장, 실행 중 중복 합류, 응답 유실 시 자기 요청 성공 판별 및 DB transaction 전체 원자성과 동일한 기능은 아니다. 조건 검사와 저장은 DB에서 원자적으로 해야 한다.
+- 제안 범위: 클라이언트 직렬 전송과 충돌 후 재조회/사용자 재시도를 수용하면 clientSessionId/sequence를 제거하는 설계는 가능하다. 생성/프로세스 시작은 고정 리소스 ID 또는 requestId 등 재시도 정책을 별도로 정해야 하며 단순히 ETag만 추가하는 동일 동작 대체로 설명하지 않는다. 설계 논의만, 코드 변경 없음.
+
+### 2026-10-16 13:14 · 세션 순번 처리에서 panel revision 조건부 명령으로 전환 스케치
+
+- 사용자 요청에 코드 변경 없이 전환 스케치를 제시한다. 현재 application-connection.panelCommand의 세션 검사·sequence 발급·checkpoint 소비, application-rpc의 hash/sequencer 처리, host-state.writePanel의 실제 변경 시 revision 증가를 재확인했다.
+- 제안: 기존 panel revision을 expectedRevision으로 전송하고 applyPanel transaction 내부 최신 상태와 비교한 뒤 changes 전체 적용. RPC revision_conflict를 소비해 최신 상태로 화면 복구·실패 안내 후 종료하며 자동 재시도하지 않는다. requestId는 UI intent/응답 연결에 유지하되 별도 저장 없이는 중복 실행 방지 기능을 갖는다고 설명하지 않는다.
+- 전환 영향: panel 명령의 세션·sequence·checkpoint 경로를 제거할 수 있지만 session은 state.subscribe 및 다른 RPC 검증에도 사용 중이므로 전역 session.open/resume 제거는 해당 소비자 개편이 필요하다. 기존 state epoch/version과 panel revision은 별도 책임이므로 보존한다. 빠른 연속 조작은 panel별 직렬 처리 또는 pending 동안 입력 제한, 서버 background revision 변경도 충돌 가능. panel 생성은 기존 revision이 없으므로 create-if-absent 경로를 따로 설계한다. 전체 변경은 아직 승인·구현되지 않았다.
+
+### 2026-10-16 13:16 · Effect Socket 수신 순서와 RPC handler 실행 순서 확인
+
+- 사용자 요청으로 설치 effect 4.0.0-rc.117의 Socket.ts와 RpcServer.ts, 현재 applicationSocket 설정을 직접 확인했다. 온라인 최신 main의 Socket.runRaw 설명은 설치 버전과 달라 현재 판단 근거로 사용하지 않는다.
+- 확인: 설치 Socket.fromWebSocket은 메시지를 buffer.push하고 pull로 전달하며 RpcServer.makeSocketProtocol은 frames를 for-loop/yield processData하고 decoded requests를 whileLoop로 writeRequest한다. 수신·디코딩 순서와 handler 완료 순서는 다르다.
+- 확인: makeNoSerialization 기본 concurrency는 unbounded이며 handleRequest는 handler effect를 runFork한다. applicationSocket은 toHttpEffectWebsocket(ApplicationRpc)에 옵션 없이 호출하므로 RPC 요청마다 완료를 기다리는 직렬 실행이 아니다. A/B 수신 순서가 보존되어도 A 대기 중 B가 실행·완료될 수 있다. 실행 순서 예시는 코드에서 도출한 가능성이고 실측 재현은 하지 않았다.
+- 판단: 하나의 연결 전송 순서만을 위해 자체 sequence를 추가할 필요는 없지만 기존 sequencer는 명령 완료까지 직렬 처리·중복·세션 복구 정책을 추가한다. 제거 후 panel별 pending 제한/직렬 전송과 revision 검사를 사용하는 선택은 가능하다. 전역 RPC concurrency=1은 오래 지속되는 state.subscribe 등 stream도 처리하므로 단순 대안으로 권하지 않는다. 코드 변경 없음.
