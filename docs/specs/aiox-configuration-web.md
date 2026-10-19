@@ -206,7 +206,7 @@ CLI·YAML·전역 config 모두 grid만 지정하고 columns와 rows를 모두 �
 ## Host panel과 Agent terminal UX
 
 Panel은 사이드바에서 선택하는 작업 화면, pane은 분할 영역, tab은 pane 안의 terminal이다.
-HOSTS의 `[+]`는 사용자 workspace를 만들고, Host CLI run은 별도 실행 panel을 만든다.
+Host 실행 panel은 Host CLI run만 만든다. HOSTS 목록에는 `[+]`가 없다.
 Mockup의 더미 Host/Network 관계를 실제 실행 계약으로 해석하지 않는다. 운영 Web은 React로 구현한다.
 
 Host Agent는 shell 안에서 실행된다. 관리 Agent 목록은 열려 있는 탭만으로 만들지 않고 실제 적용된
@@ -229,7 +229,8 @@ Agent 탭을 닫아도 관리 항목과 YAML 정의는 없어지지 않는다. �
 그 명령의 일반 YAML 선택 규칙을 그대로 적용한다. 원래 탭의 Host와 현재 YAML의 Host 이름이
 달라졌다는 이유로 거절하거나 원래 Host로 강제 지정하지 않는다. 실행 시 YAML이 review를 가리키면
 review가 대상이며, 입력 shell이 dev panel이면 다른 Host panel에서 실행한 배치 규칙을 따른다.
-원래 dev의 Agent를 자동 재시작하는 의미는 아니다. Restart 버튼은 추가하지 않는다. shell의 살아 있는 프로세스와 Agent 실행의
+원래 dev의 Agent를 자동 재시작하는 의미는 아니다. 탭 안내에는 Restart 버튼을 추가하지 않는다.
+Host 전체 Restart는 [[docs/specs/aiox-web-ui]]의 Host 페이지가 제공한다. shell의 살아 있는 프로세스와 Agent 실행의
 종료를 구분하며, stopped 탭을 닫는다고 YAML의 Agent 정의나 Host Network를 삭제하지 않는다.
 
 ```text
@@ -569,14 +570,17 @@ section은 `workspaces|networks|hosts`이며 서버가 다음 조합만 저장·
 
 | kind      | 허용 section                |
 | --------- | --------------------------- |
-| workspace | workspaces, networks, hosts |
+| workspace | workspaces만                |
 | host      | hosts만                     |
 | network   | networks만                  |
 
-CLI가 만든 Host/Network panel은 서버가 고정 section을 지정한다. 무효 조합을 요구하는
-입력은 400 invalid_request다. Web 명령의 `panel.create`는 사용자 panel(kind workspace)만 만들며
-section 생략은 workspaces다. 다른 section의 사용자 panel도 Host/Network·membership을
-생성하지 않는다. 생성 후 section 변경 endpoint는 제공하지 않는다.
+Host/Network panel은 서버가 고정 section을 지정한다. 무효 조합을 요구하는 입력은
+400 invalid_request다. Web 명령의 `panel.create`는 section을 받지 않고 항상 kind workspace·
+section workspaces panel을 만든다. section을 보내면 400 invalid_request다. Network panel은
+`POST /api/networks`, Host panel은 Host run만 만든다. 생성 후 section 변경 endpoint는 제공하지
+않는다. [Status: Current] 근거: [[packages/protocol/src/host.ts]] `packages/protocol/src/host.ts:599-615`,
+`packages/protocol/src/host.ts:677-686`, [[packages/protocol/src/host.test.ts]],
+[[apps/daemon/src/state-api.test.ts]].
 
 사용자 panel 생성·rename의 name은 문자열이며 앞뒤 ECMAScript trim 공백을 제거한 값을
 저장·응답한다. 정규화 후 Unicode code point 기준 1~~128자이고 U+0000~~U+001F·U+007F
@@ -646,7 +650,7 @@ Web의 panel 등록·배치 변경은 명령 endpoint 하나로 보낸다. 한 �
 
 | PanelChange `type` | 필드                                                    | 등록·배치 결과                                                              | commit 뒤 daemon 작업      |
 | ------------------ | ------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------- |
-| `panel.create`     | `name`, `section?`, `paneId`, `tabId`, `cols?`, `rows?` | kind workspace panel과 pane 하나·준비 중 tab 하나. changes의 첫 항목만 허용 | shell 준비                 |
+| `panel.create`     | `name`, `paneId`, `tabId`, `cols?`, `rows?`             | kind workspace panel과 pane 하나·준비 중 tab 하나. changes의 첫 항목만 허용 | shell 준비                 |
 | `panel.rename`     | `name`                                                  | 이름만 저장                                                                 | 없음                       |
 | `panel.delete`     | `confirm:boolean`                                       | workspace panel과 모든 tab 제거. changes의 마지막 항목만 허용               | 소유 terminal 정리         |
 | `tab.create`       | `tabId`, `target`, `cols?`, `rows?`                     | 준비 중 tab을 target에 추가                                                 | shell 준비                 |

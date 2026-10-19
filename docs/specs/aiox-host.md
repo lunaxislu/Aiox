@@ -10,7 +10,7 @@ CLI 전체 표면은 [[docs/specs/aiox-runtime]], 인증·실제 send 판정은
 
 Host는 YAML의 Agent들과 전용 Network 하나를 같은 작업 공간에서 실행하는 독립 namespace다.
 `aiox host run`은 외부 터미널·Web workspace·Network pane 어디에서 호출하든 daemon 소유로
-실행하고 Web의 HOSTS에 실행 panel을 만든다. Hosts 목록의 `[+]`로 만든 사용자 workspace는
+실행하고 Web의 HOSTS에 실행 panel을 만든다. Web은 Host를 만들지 않는다. 사용자 workspace는
 Host 실행이 아니며 run의 실행 panel로 자동 선택하지 않는다.
 
 Host 내부 Agent는 작업 경로를 공유한다. namespace는 파일 sandbox가 아니므로 같은 작업 경로의
@@ -530,3 +530,92 @@ stop은 이를 보존하며 다음 실행 때 key→새 Runtime ID로 materializ
 개별 적용에서 새 route의 다른 endpoint가 아직 적용된 관리 구성에 없으면
 400 `invalid_yaml`과 해당 edge·전체 restart 안내를 반환한다. 요청하지 않은 Agent를 자동 추가하지
 않는다. run의 같은 이름이 다른 sourceFile에 등록돼 있으면 `host_name_conflict`다. 전체 restart의 명시적 구성 교체와 run의 중복 생성 거절은 구분한다.
+
+## Web Network·Host 페이지의 서버 계약
+
+화면 구성은 [[docs/specs/aiox-web-ui]]의 Network·Host 페이지가 소유한다. 이 절은 그 화면이 쓰는
+서버 경로만 정한다.
+
+### Network 생성·삭제 [Status: Current]
+
+Web은 CLI와 같은 `POST /api/networks`로 Network를 만든다. 요청은 `{name}` 하나다. 공백만인
+이름과 `/`가 든 이름은 400 `invalid_name`, 이미 있는 이름은 400 `duplicate_name`이다. 성공하면
+201 NetworkView를 돌려주고 같은 ID의 Network panel이 함께 생긴다. 모든 HTTP 요청은 같은 접속
+보호를 거치며 Web 포트의 localhost origin을 허용한다. 이 endpoint만 Web을 막는 검사는 없다.
+삭제는 `DELETE /api/networks/:networkId`이고 거절 조건은 위 Network 권위와 소속 절을 따른다.
+Network 이름 변경 경로는 CLI·HTTP 어디에도 없으며 Web에도 두지 않는다.
+
+Evidence:
+
+- 생성·삭제 endpoint
+  - [[apps/daemon/src/http.ts]]
+    - `apps/daemon/src/http.ts:341-347`
+    - `apps/daemon/src/http.ts:368-371`
+- 이름 검증과 중복 거절
+  - [[apps/daemon/src/networks.ts]]
+    - `apps/daemon/src/networks.ts:33-52`
+- origin 허용
+  - [[apps/daemon/src/request-guard.ts]]
+    - `apps/daemon/src/request-guard.ts:3-35`
+
+### Agent 추가 [Status: Committed target]
+
+Network 페이지의 Add agent는 `adapter`·`name`·`role`·`instruction`(선택)과 시작 경로를 보내고
+서버가 곧바로 그 Network panel에 tab을 만들어 실행한다. 실행은 `aiox agent run --network`와 같은
+Network Agent 실행 경로를 쓴다. 실패하면 서버 진단을 응답으로 돌려주며 화면은 폼 안에 보인다.
+시작 경로의 기본값은 Web이 마지막으로 포커스한 workspace terminal의 cwd다. Web은 caller
+terminal의 인증 문맥이 없으므로 이 실행은 caller terminal 인증을 요구하지 않는다.
+
+- 대상: `kind=network` panel만 받는다. Host 전용 network는 YAML에 선언된 Agent key만 멤버이므로
+  거절한다(400). 처음 확인할 때와, preparing tab을 추가하는 transaction 안에서 모두 panel 종류와
+  `networkId`를 검사한다.
+- 중복 방지: `name`은 필수다. 같은 Network의 실행 중 이름 중복은 preparing tab과 shell을 만들기
+  전에 거절한다. 그래야 거절된 재요청이 실패 tab을 남기지 않는다.
+- 응답 유실: Web은 Add agent 요청을 자동으로 다시 보내지 않는다. 결과를 받지 못하면 폼에
+  결과를 알 수 없다고 보이고 MEMBERS에서 확인하도록 안내한다. 사용자가 다시 보내면 위 이름
+  중복 거절이 같은 Agent의 두 번째 실행을 막는다. 요청 ID로 결과를 재생하는 서버 저장소는 두지
+  않는다.
+
+### Host 정의 파일과 Restart [Status: Committed target]
+
+- 변경 표시: daemon은 run·restart에서 읽은 정의 파일 내용의 hash를 Host와 함께 기록하고, Web이
+  현재 파일과 다른지 알 수 있게 한다. 지금 Host는 `sourceFile` 경로만 저장한다.
+- Open: endpoint는 `hostId`만 받는다. 열 경로는 DB의 `sourceFile`로만 정하며 요청이 경로를 줄 수
+  없다. daemon은 OS 기본 앱으로 연다(macOS `open`, Linux `xdg-open`, Windows `start`). Reveal in
+  Finder/Explorer도 같은 제약을 따른다. Copy path는 서버를 거치지 않는다.
+- Restart: Web은 HostView의 `directory`와 `sourceFile`을 source로 `host.restart`를 보낸다. env를
+  보내지 않으므로 위 Host HTTP 계약대로 daemon 환경으로 실행한다. 최신 YAML의 `host.name`이
+  바뀌었으면 기존 규칙대로 별도 Host가 새 hostId로 실행된다.
+
+### 열린 질문 [Status: Open/deferred]
+
+- Agent 추가 endpoint의 경로와 요청 형식. `AgentRun`은 `env`와 `cwd`를 필수로 받고, 지금의 Network
+  실행은 caller terminal 인증 문맥을 전제로 tab을 드러낸다(`apps/daemon/src/network-agent.ts:103`).
+  Web 경로가 env를 무엇으로 채울지와 함께 정해야 한다. 대상 검사와 중복 방지는 위 Agent 추가 절이
+  정한다.
+- 시작 경로의 서버 검증. 지금은 빈 문자열만 거절하고, 상대 경로는 daemon의 현재 디렉터리 기준으로
+  풀리며 디렉터리 존재 확인이 없다. 절대 경로 요구와 존재 확인 여부를 정하지 않았다.
+- 열린 workspace terminal이 없을 때의 시작 경로와, 기준 terminal을 폼에 어떻게 보일지.
+- 정의 파일 hash: 개별 Agent start/restart도 기록을 바꾸는지, 비교를 조회 때 파일을 다시 읽어
+  하는지, DTO field 형태, 파일을 읽지 못할 때의 표시. 파일 감시는 위 적용 snapshot 규칙대로 두지 않는다.
+- Open endpoint의 method·path, 기본 앱이 편집기가 아닐 때의 처리(macOS `open -t` 여부), 파일이
+  없을 때의 오류.
+
+Evidence:
+
+- 필수 `cwd`·`env`
+  - [[packages/protocol/src/core.ts]]
+    - `packages/protocol/src/core.ts:120-127`
+- caller 문맥 전제와 kind 미확인
+  - [[apps/daemon/src/network-agent.ts]]
+    - `apps/daemon/src/network-agent.ts:82-107`
+- cwd 해석
+  - [[apps/daemon/src/terminals.ts]]
+    - `apps/daemon/src/terminals.ts:91`
+- `sourceFile`만 저장
+  - [[packages/persistence/src/sqlite/host-schema.ts]]
+    - `packages/persistence/src/sqlite/host-schema.ts:18`
+
+Sources:
+
+- `logs/2026-10-14-Network-Host-Member-Page-Design.md` — 화면 결정과 W2 사전 확인의 provenance.

@@ -2,8 +2,9 @@
 
 Status: Committed target
 
-이 문서는 운영 Web의 화면 규칙을 소유한다. 레이아웃, 사이드바·헤더·workspace 화면의 구성과
-조작, 빈 화면과 dialog가 나타나는 조건, 문구, 창 폭에 따른 반응형이 대상이다.
+이 문서는 운영 Web의 화면 규칙을 소유한다. 레이아웃, 사이드바·헤더·workspace 화면과
+Network·Host 페이지의 구성과 조작, 생성 입력 줄, 빈 화면과 dialog가 나타나는 조건, 오류를
+보이는 자리, 문구, 창 폭에 따른 반응형이 대상이다.
 
 설정 필드의 검증·저장·HTTP 계약, keybindings의 키 값, Host Agent 종료·재시작 탭 동작은
 [[docs/specs/aiox-configuration-web]]이 소유한다. agent 상태 값의 의미는
@@ -39,22 +40,24 @@ Status: Committed target
 
 ### 세 섹션과 생성 주체
 
-`WORKSPACES`·`NETWORKS`·`HOSTS` 세 섹션은 전부 같은 종류인 workspace이고 생기는 방법만 다르다.
-셋 다 클릭하면 같은 형태의 workspace 화면을 연다.
+섹션은 panel 종류와 1:1이다. `WORKSPACES`에는 사용자 workspace만, `NETWORKS`에는 Network
+panel만, `HOSTS`에는 Host 실행 panel만 놓인다. 종류와 섹션의 서버 조합 규칙은
+[[docs/specs/aiox-configuration-web]]의 panel 계약이 소유한다.
 
-| 섹션 | 생성 | 우클릭 메뉴 |
-| --- | --- | --- |
-| `WORKSPACES` | 사용자가 섹션 헤더 `+`로 생성 | Rename·Delete |
-| `NETWORKS` | `aiox network create`로만 생성 | 없음 |
-| `HOSTS` | `aiox host run`으로만 생성 | 없음 |
+| 섹션 | 생성 | 클릭하면 여는 화면 | 우클릭 메뉴 |
+| --- | --- | --- | --- |
+| `WORKSPACES` | 섹션 헤더 `+`의 입력 줄 | workspace 화면 | Rename·Delete |
+| `NETWORKS` | 섹션 헤더 `+`의 입력 줄 또는 `aiox network create` | Network 페이지 | Delete |
+| `HOSTS` | `aiox host run`으로만 생성. 섹션 헤더에 `+`를 두지 않는다 | Host 페이지 | 없음 |
 
-`aiox network create`는 Network 정의와 전용 빈 panel을 함께 등록한다. 처음에는 빈 pane
-하나이며 shell을 실행하지 않는다. 사용자가 panel의 `+`를 누르면 첫 tab과 shell을 생성한다.
-Network panel의 shell은 Network membership을 자동 상속하지 않는다.
+Network는 웹에서도 CLI와 같은 `POST /api/networks`로 만든다. 서버는 Network 정의와 같은 ID의
+전용 빈 panel을 함께 등록하며 shell을 실행하지 않는다. Network의 이름은 웹에서 바꾸지 않는다.
+Network의 Delete는 `DELETE /api/networks/:networkId`를 쓰며 참여 실행이 남아 있으면 서버가
+거절하고 그 진단을 메뉴를 조작한 자리에 보인다. 거절 조건은 [[docs/specs/aiox-host]]의
+Network 권위와 소속 절을 따른다. Network panel의 shell은 Network membership을 자동 상속하지 않는다.
 
-세 섹션 헤더 모두 `+`를 가지며 어느 섹션에서 만들든 사용자 생성 panel이 된다. 우클릭 메뉴는
-섹션이 아니라 생성 주체로 갈린다. CLI가 만든 panel에는 메뉴를 주지 않되 핸들러는 붙여
-브라우저 기본 컨텍스트 메뉴가 뜨지 않게 한다.
+Host는 웹에서 만들지 않는다. 메뉴가 없는 항목에도 핸들러는 붙여 브라우저 기본 컨텍스트 메뉴가
+뜨지 않게 한다.
 
 사용자 생성 Workspace의 우클릭 `Delete`는 포함된 터미널이 모두 idle로 확인되거나
 Workspace가 비어 있으면 확인창 없이 삭제한다. 하나라도 실행 중이거나 판정 불가이면
@@ -62,11 +65,28 @@ Workspace가 비어 있으면 확인창 없이 삭제한다. 하나라도 실행
 `Stop and delete`를 제공한다. 살아 있는 Agent는 vendor의 입력 대기 상태와 관계없이
 종료 확인 대상이다. 확인 요청 중에는 Workspace와 터미널 화면을 유지한다.
 
-`NETWORKS`의 `+` panel은 network 상속을 도입하지 않기로 한 결정 때문에 `WORKSPACES`의 `+`
-panel과 기능이 같고 속한 섹션만 다르다.
-
 섹션은 아코디언이다. 섹션 헤더를 누르면 펼쳐지면서 메인에 그 섹션의 카드 목록을 보여 주고,
-섹션 안의 항목을 누르면 그 workspace 화면으로 들어간다.
+섹션 안의 항목을 누르면 위 표의 화면으로 들어간다.
+
+### 생성·이름 변경 입력 줄
+
+`WORKSPACES`와 `NETWORKS`의 `+`, Workspace의 Rename은 modal dialog 대신 목록 안의 입력 줄을
+쓴다. 입력 중에도 다른 화면을 볼 수 있어야 하기 때문이다.
+
+1. `+`를 누르면 섹션 목록 안에 입력 줄이 생긴다. 기본 이름은 `<base>-<n>`이며 화면에
+   불러온 같은 목록의 이름과 겹치지 않는 가장 작은 n을 쓴다. 기본 이름 전체가 선택된 상태로
+   시작한다. Rename은 현재 이름으로 시작한다.
+2. 빈 이름의 Enter는 무시한다. 기본 이름을 바꾸지 않고 Enter해도 그 이름으로 요청한다.
+3. Enter를 누르면 줄이 `Creating…` 대기 상태가 된다. 서버가 확정하기 전에는 새 화면으로
+   이동하지 않는다. 확정되면 Workspace는 새 workspace 화면, Network는 새 Network 페이지로
+   이동하고 Network는 DRAWER를 `New agent` tab으로 연다.
+4. Esc는 취소다. blur는 대기 중이 아닐 때만 취소이며 대기 중인 요청은 blur로 취소하지 않는다.
+5. 이름 중복·서버 거절은 그 줄 바로 아래에 서버 진단을 보이고 입력을 유지한다. 연결이
+   끊기면 줄 아래가 아니라 앱 덮개(아래 오류와 교체 범위의 A)로 간다.
+
+client가 만든 기본 이름은 제안일 뿐이다. 다른 창이 먼저 같은 Network 이름을 만들면 서버의
+`duplicate_name` 거절이 마지막 방어선이다. Workspace 이름은 중복을 허용하므로 기본 이름이
+겹쳐도 거절되지 않는다.
 
 ### 섹션 개요 카드
 
@@ -104,33 +124,16 @@ including the aiox commands that create networks and hosts.
 [ New workspace ]
 ```
 
-`NETWORKS`와 `HOSTS`는 CLI로만 생기므로 버튼 대신 복사 가능한 명령을 보여 준다.
-
-```text
-No networks yet
-
-Networks let agents talk to each other. Create one from a terminal:
-
-  aiox network create dev                          [copy]
-```
-
-```text
-No hosts yet
-
-A host runs a set of agents declared in aiox.yaml, all sharing one working directory.
-
-  aiox host run --path ./aiox.yaml                 [copy]
-```
+`NETWORKS`가 비면 명령 복사 대신 섹션 헤더 `+`의 입력 줄로 유도한다. `HOSTS`는 웹에서 만들지
+않으므로 정의 파일 예시와 Workspace terminal에서 `aiox host run`을 실행하라는 안내, Workspace를
+여는 버튼을 보인다. 실행 명령을 복사 버튼으로 주지 않는다. 붙여 넣을 terminal이 정해져 있지
+않아서다.
 
 셋이 동시에 비어 있을 때 `Start here`만 제목 형식이 달라 시선이 거기로 가야 한다. 이는
 의도이며 나머지 둘의 `No ~ yet` 형식에 맞추지 않는다.
 
-panel 안이 비었을 때의 문구는 생성 주체로 갈린다. `+`로 만든 panel은 추천할 명령이 없으므로
-`No terminals here`만 보여 주고, CLI가 만든 panel은 `No terminals in <name>`과 해당 명령을
-보여 준다.
-
-어느 종류든 workspace가 비어도 사라지지 않고 빈 pane과 `[+]`를 유지하며 shell을 자동으로
-다시 만들지 않는다.
+Workspace 안이 비면 `No terminals here`만 보여 주고, 빈 pane과 `[+]`를 유지하며 shell을
+자동으로 다시 만들지 않는다. Network·Host 페이지가 비었을 때는 아래 Network·Host 페이지 절을 따른다.
 
 ### 표시·크기 동작
 
@@ -146,7 +149,7 @@ panel 안이 비었을 때의 문구는 생성 주체로 갈린다. `+`로 만�
 왼쪽부터 사이드바 토글, 현재 workspace 이름과 맥락, 오른쪽에 검색창·알림 벨·설정 톱니·테마
 토글이 온다. 토글은 헤더 한 곳에만 둔다. 사이드바를 접어도 진입 경로가 남아야 하기 때문이다.
 검색창은 커맨드 팔레트와 함께 보류라 현재 헤더에 없다. 나머지 셋은 좁은 폭에서도 헤더에
-남으며 폭에 따라 드로어로 옮기지 않는다.
+남으며 폭에 따라 Sheet로 옮기지 않는다.
 
 맥락은 workspace 종류에 따라 다르다.
 
@@ -157,17 +160,18 @@ panel 안이 비었을 때의 문구는 생성 주체로 갈린다. `+`로 만�
 | Workspace | 이름만 |
 
 이름과 맥락은 폭 기반 단일 규칙 하나다. 맥락이 먼저 줄고 이름이 마지막까지 남으며 넘치면
-말줄임표를 쓴다. 이 규칙은 breakpoint와 무관하게 모든 폭에 적용한다. 좁은 폭에서는 드로어가
-오버레이라 헤더가 화면 전폭을 쓰고 넓은 폭에서는 사이드바가 자리를 차지하므로, 창을 `767px`
-에서 `768px`로 넓히면 맥락이 오히려 짧아진다. 이는 드로어가 메인 폭을 줄이지 않기로 한 것과
+말줄임표를 쓴다. 이 규칙은 breakpoint와 무관하게 모든 폭에 적용한다. 좁은 폭에서는 사이드바가
+Sheet라 헤더가 화면 전폭을 쓰고 넓은 폭에서는 사이드바가 자리를 차지하므로, 창을 `767px`
+에서 `768px`로 넓히면 맥락이 오히려 짧아진다. 이는 Sheet가 메인 폭을 줄이지 않기로 한 것과
 같은 규칙의 결과이므로 경계 전용 예외나 최소 폭 보정을 넣지 않는다.
 
 Settings 진입은 헤더 오른쪽의 톱니이며 사이드바 하단에 Settings 행을 두지 않는다. 사이드바
 전체가 토글 대상이라 접었을 때 클릭 진입이 사라지는 것을 막기 위함이다. 커맨드 팔레트의
 `Settings` 항목은 유지하되 Settings 전용 단축키는 만들지 않는다.
 
-연결 상태는 평소에 표시하지 않는다. daemon 연결이 끊겼을 때만 헤더에 경고가 나타난다. 상시
-표시되는 연결 표시등을 두지 않는다.
+연결 상태는 평소에 표시하지 않는다. daemon 연결이 끊기면 아래 오류와 교체 범위의 앱 덮개(A)가
+메인을 덮는다. 상시 표시되는 연결 표시등을 두지 않는다. 헤더 오른쪽의 `⚠` badge는 연결 표시가
+아니라 결과를 확정할 수 없는 일시 오류의 모음이다.
 
 ## workspace 화면
 
@@ -191,12 +195,14 @@ pane 탭바 오른쪽에 `New shell`·`Split right`·`Split down` 세 버튼을 
 
 - pane 경계를 드래그해 크기를 바꾼다. 경계선은 상시 보이고 hover·focus할 때 강조되며 이후 실제
   PTY를 resize한다
-- 활성 pane은 불투명하게, 비활성 pane은 흐리게 한다. 색은 바꾸지 않는다
+- 활성 pane은 불투명하게 두고 얇은 focus ring을 더한다. 비활성 pane과 그 탭은 opacity 0.8로
+  흐리게 한다. 색은 바꾸지 않는다
 - 마지막 탭이 빠져 빈 pane이 되면 인접 pane이 자리를 채우며 병합한다
 - 병합할 것이 없어 workspace가 비면 탭바와 `[+]`만 남은 빈 pane을 유지한다
 
-`+`는 섹션 헤더와 pane 탭바 두 곳에 나타나지만 뜻이 다르다. 섹션 헤더의 `+`는 workspace를
-만들고 pane 탭바의 `+`는 터미널을 만든다. 그 외의 자리에 `+`를 두지 않는다.
+`+`는 섹션 헤더와 workspace의 pane 탭바 두 곳에 나타나지만 뜻이 다르다. 섹션 헤더의 `+`는
+Workspace나 Network를 만들고 pane 탭바의 `+`는 터미널을 만든다. 그 외의 자리에 `+`만 있는
+버튼을 두지 않는다. Network 페이지의 `+ Add agent`는 이름이 붙은 버튼이다.
 
 ### 탭 드래그와 드롭
 
@@ -234,6 +240,82 @@ pane 탭바 오른쪽에 `New shell`·`Split right`·`Split down` 세 버튼을 
 
 Host Agent의 종료·재시작에 따른 탭 본문과 수명은 [[docs/specs/aiox-configuration-web]]의
 Host panel과 Agent terminal UX가 소유한다.
+
+## Network·Host 페이지
+
+Network와 Host panel은 일반 workspace 화면 대신 멤버 중심 페이지로 연다. 주인공은 멤버 목록과
+terminal이다. 관계도나 terminal grid 강화는 쓰지 않는다.
+
+```text
+┌ App sidebar ┬ MEMBERS ─────┬ terminal (PaneTree) ──────┬ DRAWER ────────────┐
+│ WORKSPACES  │ ● reviewer   │ [reviewer][coder]         │ [Info][New agent]  │
+│ NETWORKS    │ ◐ coder      │                           │ [Console]          │
+│   dev       │ routes …     │        terminal           │                    │
+│ HOSTS       │ + Add agent  │                           │ 선택한 tab 내용    │
+└─────────────┴──────────────┴───────────────────────────┴────────────────────┘
+```
+
+### 영역과 토글
+
+- 왼쪽 MEMBERS는 멤버, 각 멤버의 상태, routes를 보인다. 상태 값은 탭의 상태 점과 같은
+  [[docs/specs/aiox-runtime]]의 값을 이름을 바꾸지 않고 쓴다.
+- 가운데 terminal 영역은 workspace 화면의 pane 트리를 그대로 쓴다. 탭 drag·drop과 분할은
+  위 탭 드래그와 드롭 절과 같다. 저장 배치도 같은 panel 계약을 따른다.
+- terminal 영역의 pane 탭바 오른쪽에는 버튼을 두지 않는다. `New shell`, Split 버튼, More 메뉴,
+  상태 표시줄 토글이 모두 없고 분할은 drag로만 한다. 작업 경로는 DRAWER의 Info에서 본다.
+- 멤버를 누르면 그 멤버의 tab을 선택하고 포커스한다. Info tab이 그 멤버로 바뀐다.
+- App sidebar, MEMBERS, DRAWER는 각자 토글한다. 한 번에 모두 접는 집중 모드는 두지 않는다.
+  펼침 상태는 panel마다가 아니라 앱 전체에 하나로 저장하고 새로고침 후에도 유지한다.
+- 접힌 MEMBERS는 terminal 왼쪽 위에 펼치기 버튼으로 남고, `awaiting-user` 멤버 수를 badge로
+  붙인다.
+
+### DRAWER
+
+DRAWER는 modal이 아니다. terminal을 보면서 입력할 수 있다. 위쪽 tab으로 내용을 바꾸며 여러 tab이
+함께 살아 있다.
+
+| tab | 내용 |
+| --- | --- |
+| Info | 선택한 멤버의 role·cwd·routes·instruction. 읽기 전용이다. 실행 중 agent 정보를 바꾸는 서버 경로가 없다 |
+| New agent | Add agent 폼. adapter·name·role·instruction(선택)을 받고 시작 경로는 표시만 한다 |
+| Console | 멤버가 아닌 일반 shell. `aiox`나 `git` 명령을 치는 용도다 |
+
+- New agent 입력 중에 다른 멤버를 눌러 Info로 바뀌어도 입력을 유지한다.
+- Launch가 성공하면 New agent tab을 닫고 Info를 새 멤버로 연다. 실패하면 폼을 유지하고 서버
+  진단을 폼 안에 보인다.
+- 시작 경로는 마지막으로 포커스한 workspace terminal의 cwd다. 서버 검증과 열린 terminal이 없을
+  때의 처리는 [[docs/specs/aiox-host]]의 Web Network 생성과 Agent 추가 절을 따른다.
+- Console은 앱 전체에 하나이고 어느 페이지에서 열어도 같은 shell이다. 새로고침해도 유지한다.
+  처음 만들 때만 포커스 terminal의 cwd를 이어받고 이후는 사용자가 직접 이동한다.
+  Console tab의 `×`는 DRAWER에서 숨기기만 하고 shell은 계속 실행한다. shell이 끝나면 버튼 없이
+  새 shell로 바꾼다.
+
+### Host 페이지
+
+Host 페이지는 같은 틀에 내용만 다르다. MEMBERS에 관리 Agent와 함께 작업 경로와 정의 파일을
+보이고, `+ Add agent` 대신 Host 전체 `Restart`를 둔다.
+
+- 정의 파일이 실행 뒤 바뀌었으면 `Changed since start`를 보이고 Restart를 유도한다.
+- 정의 파일의 `Open`은 daemon이 OS 기본 앱으로 연다. `⋯` 메뉴에 Reveal in Finder/Explorer와
+  Copy path를 둔다.
+- 변경 판정, Open, Restart의 서버 계약은 [[docs/specs/aiox-host]]의 Web Host 페이지 절이 소유한다.
+
+### 빈 페이지와 범위
+
+새 Network 페이지는 MEMBERS 0명이고 DRAWER가 New agent tab으로 열린다. terminal 영역은 빈
+pane이며 shell `+`가 없으므로 첫 tab은 Agent 추가나 `aiox agent run --network`로 생긴다.
+
+이 페이지는 다음을 하지 않는다. topology 그래프, 웹 route 편집, 웹 Host 생성, 멤버 제거 UI,
+Network 이름 변경.
+
+### 열린 질문 [Status: Open/deferred]
+
+- MEMBERS·DRAWER 펼침 상태를 전역 설정 파일과 브라우저 저장 중 어디에 둘지 정하지 않았다.
+  App sidebar의 열림 상태는 위 표시·크기 동작대로 전역 설정 파일에 남는다.
+- Console의 소유 자리: daemon의 shell은 지금 항상 panel tab에 속하고 tab에 붙지 못한 shell은
+  정리 대상이다. 앱 수준 Console 하나를 저장할 자리, 정리에서 빼는 방법, 열린 terminal이 없을
+  때의 첫 cwd(`~` 가정, 미확인), 새 shell이 곧바로 끝나기를 반복할 때 재생성을 멈추는 조건이
+  정해지지 않았다.
 
 ## 상태 표시
 
@@ -295,6 +377,8 @@ shell로 돌아가거나 다른 agent를 실행해도 과거 알림을 새 실�
 그 탭이 지금 없으면 주소가 없는 화면과 같은 안내를 보여 준다. 이동이 그렇게 끝나도 확인
 처리는 함께 끝난다. 누른 항목이 남으면 같은 결과를 다시 누르게 되기 때문이다.
 
+읽음 처리 실패는 🔔 popover 안에 보인다. 헤더 아래나 toast로 보이지 않는다.
+
 목록은 최신 알림이 위에 온다. 방금 받은 것을 맨 위에서 보고 누르게 하려는 것이다.
 
 대상이 사라진 알림도 목록에서 감추지 않는다. 누르기 전까지 미확인 목록과 배지 수에 남는다.
@@ -309,6 +393,33 @@ agent 이름은 지금 있는 실행에서 가져오고 없으면 본문과 시�
 항목이 사라지는 것은 승인이나 질문이 해결됐다는 뜻이 아니다. 해결되지 않은 대기는 탭의
 `awaiting-user` 점이 계속 들고 있으므로 목록에서 빠져도 신호가 남는다. 알림 목록은 미해결
 상태의 권위가 아니라 그곳으로 가라는 포인터다.
+
+## 오류와 교체 범위
+
+오류와 대기 상태는 영향을 받는 범위만 덮는다. 범위는 네 층이다.
+
+| 층 | 덮는 범위 | 예 |
+| --- | --- | --- |
+| A 앱 덮개 | 메인 전체. 사이드바와 헤더는 남는다 | 연결 끊김의 재연결 중·중단(`Reload page`), 첫 로딩 `Loading application…`, 렌더 오류(`Reload page`와 접힌 상세) |
+| B 페이지 교체 | 메인의 한 페이지 | 첫 진입 overview, 빈 섹션, 주소가 없는 화면(Not found와 섹션 링크) |
+| C 탭 본문 교체 | 한 tab의 terminal 본문 | terminal 연결 끊김·재연결 중·화면 복원 실패·복원 불가·process 종료, Agent 준비·시작 실패·비정상 종료·unavailable, 새 shell 연결 중 |
+| D 일시 오류 | 아래 세 자리 중 하나 | 명령 거절, 결과 미확정, 복사 실패 |
+
+A가 떠 있으면 C는 보이지 않는다. 연결이 끊기면 모든 tab의 연결 실패가 한 원인이기 때문이다.
+C의 Agent 안내 문구는 [[docs/specs/aiox-configuration-web]]의 Host panel과 Agent terminal UX를 따른다.
+
+D는 다음 순서로 자리를 고른다.
+
+1. 조작한 그 자리: 입력 줄 아래, 메뉴를 연 항목, 복사 버튼(`Copy failed`), Add agent 폼 안.
+2. 명령을 보낸 pane 안의 한 줄: `tab.move`·`tab.create`(분할 포함)·`tab.close`·`tab.dismiss`가
+   rejected나 unexecuted로 끝나면 그 명령을 보낸 pane 안에 `Move rejected: <reason>` 같은 한 줄과
+   Dismiss를 보인다. 결과에는 pane ID가 없으므로 호출한 화면이 보낸 pane과 명령 이름을 기억해
+   쓴다. 프로토콜은 바꾸지 않는다.
+3. 헤더 `⚠` badge와 popover: 보낸 pane이 없거나 결과가 미확정인 것. 결과 unknown, cleanup
+   실패, 설정 로드 실패가 여기 모인다. badge는 항목 수를 보인다.
+
+toast와 헤더 아래에 쌓는 오류 줄은 쓰지 않는다. 알림 읽음 실패는 위 알림 절대로 🔔 popover 안에
+둔다. `Could not load settings`와 `Something went wrong`은 제안 문구이며 확정하지 않았다.
 
 ## 커맨드 팔레트 [Status: Open/deferred]
 
@@ -396,25 +507,34 @@ theme은 눈으로 보고 골라야 하므로 누르는 즉시 화면에 적용�
 
 ## 창 폭 반응형
 
-대상은 사이드바·헤더·설정 화면 셋이다. 터미널 영역은 창 폭에 따라 레이아웃을 바꾸지 않는다.
+대상은 사이드바·헤더·설정 화면과 Network·Host 페이지의 MEMBERS·DRAWER다. 터미널 영역은 창 폭에
+따라 레이아웃을 바꾸지 않는다.
 pane이 넷이면 각 폭이 1/4로 줄고 xterm이 fit·resize 될 뿐이며 세로 쌓기, 분할 자동 해제,
 탭바 드롭다운 전환을 하지 않는다.
 
 목적은 폰 전용 화면이 아니라 데스크톱 브라우저 창 축소 대응이다. breakpoint는 `768px` 하나이며
 `360px` 이상 `768px` 미만이 좁은 폭, `360px` 미만은 대상이 아니다.
 
-### 좁은 폭 사이드바
+### 좁은 폭의 Sheet
 
-좁은 폭에서 사이드바는 기본 닫힘 오버레이 드로어이며 메인 폭을 줄이지 않는다. 폭은 280px로
-고정하고 리사이즈 핸들을 숨긴다. 헤더의 사이드바 토글이나 토글 키로 열고 바깥 클릭·Esc·workspace
-선택으로 닫는다.
+좁은 폭에서는 terminal만 메인에 inline으로 남는다. 나머지는 기본 닫힘 Sheet이며 메인 폭을 줄이지
+않는다.
 
-알림·설정·테마는 폭과 무관하게 헤더에만 둔다. 드로어 브랜드 줄에 옮겨 담지 않는다. 진입점이
-폭에 따라 자리를 옮기지 않으므로 미확인 수는 벨의 badge 하나로 알리고 사이드바 토글에 점을
-붙이지 않으며, 알림 dropdown도 드로어 위가 아니라 헤더에서 열린다.
+| 영역 | 좁은 폭 | 넓은 폭 |
+| --- | --- | --- |
+| App sidebar | 왼쪽 Sheet | 각자 토글 |
+| MEMBERS | 왼쪽 Sheet. 여는 버튼에 `awaiting-user` 수 badge | 각자 토글 |
+| DRAWER | 오른쪽 Sheet | 각자 토글 |
 
-화면을 이동시키는 동작은 드로어도 닫는다. 알림 항목, 팔레트 결과, workspace 선택, 설정 진입,
-새 shell, 분할이 여기 해당한다. 테마 토글처럼 이동이 아닌 동작은 드로어를 유지한다.
+사이드바 Sheet의 폭은 280px로 고정하고 리사이즈 핸들을 숨긴다. Sheet는 헤더의 버튼이나 토글
+키로 열고 바깥 클릭·Esc로 닫는다.
+
+알림·설정·테마는 폭과 무관하게 헤더에만 둔다. Sheet에 옮겨 담지 않는다. 진입점이 폭에 따라
+자리를 옮기지 않으므로 미확인 수는 벨의 badge 하나로 알리고 사이드바 토글에 점을 붙이지 않으며,
+알림 dropdown도 Sheet 위가 아니라 헤더에서 열린다.
+
+화면을 이동시키는 동작은 사이드바 Sheet도 닫는다. 알림 항목, 팔레트 결과, workspace 선택, 설정
+진입, 새 shell, 분할이 여기 해당한다. 테마 토글처럼 이동이 아닌 동작은 Sheet를 유지한다.
 
 ### 좁은 폭 헤더와 설정 화면
 
@@ -431,7 +551,9 @@ pane이 넷이면 각 폭이 1/4로 줄고 xterm이 fit·resize 될 뿐이며 �
 - 채팅 UI와 프롬프트 입력창. 사용자는 터미널 안에서 직접 입력한다
 - vendor UX 복제. 모델 선택기, slash command 팔레트, 승인 dialog, quota 게이지
 - 파일 트리, 코드 에디터, git diff 뷰어
-- Network·Host 만들기 버튼. CLI로만 생긴다
+- Host 만들기 버튼. Host는 `aiox host run`으로만 생긴다
+- Network 이름 변경, 웹 route 편집, 멤버 제거 UI, topology 그래프
+- toast와 헤더 아래에 쌓는 오류 줄
 - 상시 표시되는 연결 상태 표시등
 - 아이콘만 남는 사이드바 축소 모드
 - 다국어. UI 문구는 영어 하나다. 공개 AIOX 사이트의 다국어는 별도 앱이며 이 범위가 아니다
@@ -442,3 +564,6 @@ pane이 넷이면 각 폭이 1/4로 줄고 xterm이 fit·resize 될 뿐이며 �
 `logs/artifact/AIOX-Web-UI-Design-Prompt.md`에 있다. 프롬프트 파일은 기반 문서 셋에 1차부터
 14차까지의 수정 지시가 누적된 형태이며 현재 규칙의 권위가 아니다. 왜 이 규칙이 됐는지를
 되짚을 때만 읽는다.
+
+Network·Host 페이지, 생성 입력 줄, 좁은 폭 Sheet 배치와 오류 교체 범위의 결정 경위와 확정 시안
+v14는 `logs/2026-10-14-Network-Host-Member-Page-Design.md`와 `logs/artifact/aiox-version14.html`에 있다.

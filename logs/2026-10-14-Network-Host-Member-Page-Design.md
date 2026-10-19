@@ -7,8 +7,8 @@ status: open
 ## Work Items
 
 - [x] W1 Claude 앱 디자인용 프롬프트 작성 및 시안 수령
-- [>] W2 시안 확정 후 docs/specs에 spec 작성(웹 POST /api/networks 허용, host 정의 파일 hash 기록, open-definition endpoint 보안, 웹 Restart env 출처, Add agent cwd 기본값·서버 검증 포함)
-- [ ] W3 panelViewSchema kind·section 불일치 거부와 panel.create section 축소
+- [x] W2 시안 확정 후 docs/specs에 spec 작성(웹 POST /api/networks 허용, host 정의 파일 hash 기록, open-definition endpoint 보안, 웹 Restart env 출처, Add agent cwd 기본값·서버 검증 포함)
+- [x] W3 panelViewSchema kind·section 불일치 거부와 panel.create section 축소
 - [ ] W4 daemon Add agent web endpoint(launch 재사용)와 AddAgentDialog·CreateNetworkDialog·MemberSidebar 구현
 
 ## Required Context
@@ -223,3 +223,61 @@ status: open
 - 2번 기본 이름. 확인 사실: 서버는 이름을 받기만 한다. network는 UNIQUE에 `/` 금지이고 겹치면 `duplicate_name`(`apps/daemon/src/networks.ts:33-50`)을 돌려준다. panel 이름은 겹쳐도 된다. 웹 입력은 지금 빈 칸으로 시작한다(`workspace-dialog.tsx:103`). 제안: client가 목록을 보고 `<base>-<n>`을 만든다. network에서 이름이 겹치면 서버 거부가 마지막 방어선이다.
 - 3번 웹 `POST /api/networks`. 확인 사실: 모든 HTTP 요청은 `requestGuard`(`apps/daemon/src/request-guard.ts`)를 거친다. guard는 웹 포트의 localhost origin을 허용하고, endpoint별로 웹을 막는 검사는 없다. 웹은 아직 이 경로를 호출하지 않는다. 요청 하나로 network와 panel이 같은 id로 생긴다(`packages/persistence/src/sqlite/database.ts:240-260`). 판단: W2 원래 항목인 "웹 허용"에는 서버 변경이 필요 없다.
 - 새로 확인한 충돌: daemon은 workspace가 아닌 panel의 `panel.rename`·`panel.delete`를 거부한다(`apps/daemon/src/web-commands.ts:332-344`, "Only workspace panels can be renamed."). network rename 경로는 CLI·HTTP 어디에도 없다. v14의 Network Rename을 쓰려면 새 서버 경로(`persistent_networks.name`과 panel name을 함께 변경)가 필요하다. 아니면 Network Rename을 범위에서 뺀다. 사용자 결정 대기.
+
+### 2026-10-19 · W2·W3 subagent 위임, choi 서버 검토 수신
+
+- 사용자 지시로 W2(spec)와 W3(kind·section 불일치 거부)를 subagent 하나에 순서대로 맡겼다. 커밋과 로그 편집은 맡기지 않았다. Network Rename은 사용자가 정하지 않아 추천안 A(범위 제외)로 진행한다고 알렸다.
+- 사용자 지시로 AIOX agent choi에게 현재 상황을 전달했다. choi가 서버 코드를 보고 회신했다.
+- 확인 사실(내가 직접 확인):
+  - `launch`(`apps/daemon/src/network-agent.ts:73`)는 `input.terminalContext!.terminalId`로 `reveal`을 무조건 호출한다(:103). 앞의 `mutatePanel`(:82)에는 panel kind 검사가 없다.
+  - 웹의 낙관적 생성(`apps/web/src/shared/api/panel-projection.ts:30-34`)은 `section: "workspaces"`를 고정으로 넣는다.
+- 정정: 10/14 진단의 "내부 `launch`는 terminalContext 없이도 실행한다"는 틀렸다. W4는 공통 launch를 단순히 재사용할 수 없다.
+- choi 제안(W4 입력, 미결정):
+  - 공통 launch는 생성한 tab·terminal·runtime id를 반환하게 한다. CLI의 reveal과 Web의 포커스는 호출하는 쪽에서 처리한다.
+  - Web DTO로 terminalContext나 caller env를 받지 않는다. 서버가 직접 구성한다.
+  - preparing tab을 추가하는 transaction 안에서도 panel kind·networkId를 검사한다.
+  - Host 전용 network를 대상으로 하는 Add agent를 허용할지 정한다.
+  - 시작 실패 진단을 form에 전달한다.
+  - 응답이 유실됐을 때 무조건 다시 시도해 Agent가 중복 생성되지 않도록 정책을 명시한다.
+- W3 영향 지점(app-shell 생성 요청, panel-projection, protocol·daemon test, fixtures·stories)과 Network·Host 실제 생성 경로 보존 요구는 subagent에 추가로 전달했다.
+
+### 2026-10-19 · W2·W3 완료 보고 수령과 재검증
+
+- W2 spec 변경:
+  - `docs/specs/aiox-web-ui.md`: 세 섹션과 생성 주체, 생성·이름 변경 입력 줄, Network·Host 페이지, 오류와 교체 범위, 좁은 폭의 Sheet.
+  - `docs/specs/aiox-host.md`: Web Network·Host 페이지의 서버 계약. Network 생성·삭제는 Current, Agent 추가와 Host 정의 파일·Restart는 Committed target.
+  - `docs/specs/aiox-configuration-web.md`: kind·section 1:1, `panel.create`에서 `section` 제거.
+  - stale 서술 정리: `docs/architecture/aiox-storage-terminal.md`, `docs/aiox-tui-product.md`.
+- spec에 Open으로 남은 질문(사용자 결정 필요, W4 전에 정함):
+  1. Add agent endpoint 형식과 env.
+  2. cwd 서버 검증(절대 경로 요구, 존재 확인).
+  3. 열린 terminal이 없을 때의 cwd.
+  4. 정의 파일 hash의 갱신·비교 시점과 DTO.
+  5. Open endpoint의 형식과 오류.
+  6. MEMBERS·DRAWER 펼침 상태 저장 위치.
+  7. Console 소유와 cleanup.
+  - 웹 Restart가 daemon env로 실행된다는 것은 기존 계약의 결과다. 사용자 확인 대상이다.
+- W3 코드:
+  - `packages/protocol/src/host.ts`: workspace kind는 workspaces section만 허용한다. `panel.create`에서 `section` 필드를 없앴다(보내면 400 `invalid_request`).
+  - daemon과 웹 projection은 `"workspaces"`로 고정했다. 웹 사이드바 `+`는 workspaces에만 보인다.
+  - fixture를 정정하고 protocol·daemon 테스트를 추가했다.
+- 중간 상태: W4 입력 줄이 들어오기 전까지 웹에서 Network를 만들 수 없다. CLI `aiox network create`만 된다.
+- drift(W4에서 처리): `aiox-configuration-web.md` Network panel 절의 "shell은 `+`로 추가"(Current, `pane-tree.tsx:443`)가 새 결정과 충돌한다. spec PanelChange 표에 `source?`가 빠져 있다.
+- 재검증(내가 직접 실행):
+  - 테스트(각 패키지의 `pnpm test`): protocol 25/25, persistence 26/26, daemon 322 pass·1 skip, web 223/223.
+  - `tsc --noEmit`: web, daemon 통과.
+  - 루트 `format:check`와 `check-markdown-inline-code` 통과.
+  - 처음에 `npx vitest run`을 직접 돌려 `@/` alias 실패가 났다. 이는 root config를 빼고 돌린 실행 실수이며 코드 결함이 아니다.
+- 커밋 안 함. 사용자 확인 대기.
+
+### 2026-10-19 · choi 제안 4·6번 결정
+
+- 확인 사실:
+  - CLI `--network` 실행은 `kind=network` panel만 받는다(`apps/daemon/src/network-agent.ts:23`).
+  - Host agent는 YAML의 `AIOX_AGENT_KEY`로만 실행된다(`apps/daemon/src/managed-agents.ts:11-32`).
+  - runtime 이름은 같은 Network 안에서 실행 전에 예약되어 중복이 거절된다(`apps/daemon/src/runtimes.ts:148-155`).
+  - 그런데 `launch`는 이름을 예약하기 전에 preparing tab과 shell을 먼저 만든다.
+- 결정(사용자):
+  - 4번 A: Host 전용 network에 대한 Add agent는 거절한다. kind·networkId는 처음 확인할 때와 tab 추가 transaction 안에서 모두 검사한다.
+  - 6번 A: `name`은 필수다. 이름 중복은 tab·shell 생성 전에 거절한다. 응답이 유실되면 Web은 자동으로 다시 보내지 않고 "결과 unknown, MEMBERS에서 확인"을 표시한다. idempotency key 저장소는 두지 않는다.
+- owner 반영: `docs/specs/aiox-host.md` Agent 추가 절에 세 항목을 넣었다. 열린 질문의 Agent 추가 항목은 env와 endpoint 형식만 남겼다.

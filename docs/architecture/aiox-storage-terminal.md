@@ -621,8 +621,9 @@ transaction 안에서 읽은 최신 panel에 탭 제거·추가를 적용해 동
 ### 사용자 panel 분류·이름과 외부 실행 귀속 [Status: As-built]
 
 panels에는 kind와 별도로 section을 저장한다. 현재 schema에 직접 section과 이름을 설계하며
-기존 개발 DB를 위한 migration/backfill을 만들지 않는다. kind workspace는 세 section,
-kind host/network는 각각 hosts/networks만 허용한다. 이름 정규화·길이·중복 정책은
+기존 개발 DB를 위한 migration/backfill을 만들지 않는다. kind와 section은 1:1이며
+workspace/host/network는 각각 workspaces/hosts/networks만 허용한다. DB CHECK는 section 값만
+제한하고 조합은 저장 전 panel DTO decode가 거절한다. 이름 정규화·길이·중복 정책은
 [[docs/specs/aiox-configuration-web]]을 따른다. 사용자 panel 이름에는 UNIQUE를 두지 않는다.
 rename은 최신 panel의 이름과 변경 번호만 같은 transaction으로 갱신한다. panel DTO와
 Application RPC delta는 저장된 section을 전달하며 소비자가 kind로 section을 추정할 필요가 없게 한다.
