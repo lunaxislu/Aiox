@@ -43,23 +43,24 @@ it("commits workspace panel commands, rejects stale or unknown targets and expos
         return { status: response.status, body: json };
     };
     const send = (body: object) => request("/api/web/commands", "POST", body);
-    const created = await send(
-        command([
-            {
-                type: "panel.create",
-                name: "  Workspace  ",
-                section: "hosts",
-                paneId: "pane",
-                tabId: "tab",
-            },
-        ]),
-    );
+    const create = {
+        type: "panel.create",
+        name: "  Workspace  ",
+        paneId: "pane",
+        tabId: "tab",
+    };
+    // The Web creates workspace panels only; choosing a section is rejected.
+    const sectioned = await send(command([{ ...create, section: "hosts" }]));
+    expect(sectioned.status).toBe(400);
+    expect(sectioned.body.code).toBe("invalid_request");
+    sequence--; // A request rejected at decoding never takes its sequence.
+    const created = await send(command([create]));
     expect(created.status).toBe(200);
     const panel = panelViewSchema.parse(created.body.panel);
     expect(panel).toMatchObject({
         id: "workspace",
         name: "Workspace",
-        section: "hosts",
+        section: "workspaces",
         kind: "workspace",
         revision: 1,
         tabs: [{ id: "tab", presentation: "preparing" }],

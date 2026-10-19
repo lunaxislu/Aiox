@@ -197,6 +197,30 @@ test("panel layout owns every tab once and validates split geometry", () => {
             false,
         );
 });
+test("panel kind fixes its sidebar section", () => {
+    const owned = {
+        host: { hostId: "h1", networkId: "n1" },
+        network: { hostId: null, networkId: "n1" },
+        workspace: { hostId: null, networkId: null },
+    };
+    const sections = {
+        host: "hosts",
+        network: "networks",
+        workspace: "workspaces",
+    } as const;
+    for (const kind of ["host", "network", "workspace"] as const)
+        for (const section of ["hosts", "networks", "workspaces"] as const)
+            assert.equal(
+                panelViewSchema.safeParse({
+                    ...panel,
+                    ...owned[kind],
+                    kind,
+                    section,
+                }).success,
+                sections[kind] === section,
+                `${kind} in ${section}`,
+            );
+});
 test("SSE discriminates DTO by resource and remove carries no value", () => {
     const change = {
         resource: "panel",
@@ -458,6 +482,13 @@ test("a Web command orders panel.create first, panel.delete last and uses one ta
         expect(
             webCommandRequestSchema.safeParse({ ...base, changes }).success,
         ).toBe(false);
+    // The Web creates workspace panels only; it cannot choose a section.
+    expect(
+        webCommandRequestSchema.safeParse({
+            ...base,
+            changes: [{ ...create, section: "networks" }],
+        }).success,
+    ).toBe(false);
     // Commands carry no panel revision; an unknown field is rejected.
     expect(
         webCommandRequestSchema.safeParse({

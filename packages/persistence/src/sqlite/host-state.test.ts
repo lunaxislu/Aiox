@@ -32,7 +32,7 @@ test("panel changes write only changed rows, create and delete in one transactio
     const panel: PanelView = {
         id: "p1",
         kind: "workspace",
-        section: "hosts",
+        section: "workspaces",
         name: "Work",
         hostId: null,
         networkId: null,

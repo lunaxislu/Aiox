@@ -314,7 +314,7 @@ function applyChange(
             return {
                 id: panelId,
                 kind: "workspace",
-                section: change.section ?? "workspaces",
+                section: "workspaces",
                 name: change.name,
                 hostId: null,
                 networkId: null,

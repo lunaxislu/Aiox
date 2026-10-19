@@ -600,7 +600,9 @@ export const panelViewSchema = compatible(
             const issues: Schema.FilterIssue[] = [];
             if (
                 (panel.kind === "workspace" &&
-                    (panel.hostId !== null || panel.networkId !== null)) ||
+                    (panel.hostId !== null ||
+                        panel.networkId !== null ||
+                        panel.section !== "workspaces")) ||
                 (panel.kind === "host" &&
                     (panel.hostId === null ||
                         panel.networkId === null ||
@@ -675,9 +677,6 @@ export const panelChangeSchema = compatible(
         strictStruct({
             type: Schema.Literal("panel.create"),
             name: panelName,
-            section: Schema.optional(
-                Schema.Literals(["workspaces", "networks", "hosts"]),
-            ),
             paneId: id,
             tabId: id,
             source: Schema.optional(

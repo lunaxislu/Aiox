@@ -10,11 +10,17 @@ test.each(["workspaces", "networks", "hosts"] as const)(
     (section) => {
         const panel = {
             id: "p",
-            kind: "workspace",
+            kind: (
+                {
+                    workspaces: "workspace",
+                    networks: "network",
+                    hosts: "host",
+                } as const
+            )[section],
             section,
             name: "Workspace",
-            hostId: null,
-            networkId: null,
+            hostId: section === "hosts" ? "h" : null,
+            networkId: section === "workspaces" ? null : "n",
             revision: 1,
             layout: { type: "pane", id: "pane", tabIds: ["user", "host"] },
             tabs: [

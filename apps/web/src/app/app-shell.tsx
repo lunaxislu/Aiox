@@ -123,7 +123,6 @@ export function AppShell() {
                       {
                           type: "panel.create" as const,
                           name,
-                          section: action.section,
                           paneId: crypto.randomUUID(),
                           tabId: crypto.randomUUID(),
                           ...(sourceTerminalId && panel

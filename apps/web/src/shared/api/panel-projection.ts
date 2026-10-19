@@ -31,7 +31,7 @@ export function projectPanel(
             panel ??= {
                 id: input.panelId,
                 kind: "workspace",
-                section: change.section ?? "workspaces",
+                section: "workspaces",
                 name: change.name,
                 hostId: null,
                 networkId: null,

@@ -38,7 +38,7 @@ export const previewPanels: PanelPreview[] = [
         ...emptyWorkspace,
         id: "scratch",
         kind: "workspace",
-        section: "networks",
+        section: "workspaces",
         name: "scratch",
         terminalCount: 0,
         agents: [],

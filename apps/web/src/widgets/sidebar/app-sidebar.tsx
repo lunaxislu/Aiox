@@ -112,12 +112,14 @@ export function AppSidebar(props: Props) {
                                         {section}
                                     </span>
                                 </CollapsibleTrigger>
-                                <SidebarMenuAction
-                                    aria-label={`Create workspace in ${section}`}
-                                    onClick={() => onCreate(section)}
-                                >
-                                    <PlusIcon className="size-4" />
-                                </SidebarMenuAction>
+                                {section === "workspaces" && (
+                                    <SidebarMenuAction
+                                        aria-label={`Create workspace in ${section}`}
+                                        onClick={() => onCreate(section)}
+                                    >
+                                        <PlusIcon className="size-4" />
+                                    </SidebarMenuAction>
+                                )}
                                 <CollapsibleContent>
                                     <SidebarMenuSub>
                                         {panels
