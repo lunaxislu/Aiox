@@ -10,6 +10,58 @@ afterEach(async () => {
     for (const close of cleanups.splice(0).reverse()) await close();
 });
 
+test("forwards plugin catalog responses larger than 16 MiB without disconnecting the TUI", async () => {
+    const upstream = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await once(upstream, "listening");
+    cleanups.push(async () => {
+        for (const client of upstream.clients) client.terminate();
+        await new Promise<void>((resolve) => upstream.close(() => resolve()));
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("no address");
+    const relay = await createRelay();
+    cleanups.push(() => relay.close());
+    relay.setUpstream(`ws://127.0.0.1:${address.port}`, "token");
+    const connected = once(upstream, "connection");
+    const tui = new WebSocket(relay.connection.url, {
+        headers: { Authorization: `Bearer ${relay.tuiToken}` },
+    });
+    await once(tui, "open");
+    const [peer] = await connected;
+    const receive = () =>
+        Promise.race([
+            once(tui, "message").then(([raw]) => JSON.parse(raw.toString())),
+            once(tui, "close").then(() => {
+                throw new Error(
+                    "TUI disconnected before receiving the response",
+                );
+            }),
+        ]);
+    let request = once(peer, "message");
+    tui.send(JSON.stringify({ id: 1, method: "plugin/list", params: {} }));
+    await request;
+    const description = "x".repeat(17 * 1024 * 1024);
+    let response = receive();
+    peer.send(
+        JSON.stringify({
+            id: 1,
+            result: { marketplaces: [{ description }] },
+        }),
+    );
+    expect((await response).result.marketplaces[0].description).toBe(
+        description,
+    );
+
+    request = once(peer, "message");
+    tui.send(JSON.stringify({ id: 2, method: "thread/start", params: {} }));
+    await request;
+    response = receive();
+    peer.send(JSON.stringify({ id: 2, result: { thread: { id: "A" } } }));
+    expect((await response).result.thread.id).toBe("A");
+    expect(relay.activeThreadId).toBe("A");
+    tui.terminate();
+});
+
 test("tracks only successful TUI thread responses and control loss leaves the TUI connected", async () => {
     const upstream = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(upstream, "listening");

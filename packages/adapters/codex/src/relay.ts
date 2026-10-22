@@ -170,7 +170,8 @@ export async function createRelay() {
         const peer = new WebSocket(upstreamUrl, {
             headers: { Authorization: `Bearer ${upstreamToken}` },
             handshakeTimeout: 10_000,
-            maxPayload: 16 * 1024 * 1024,
+            // Plugin catalogs can exceed 16 MiB even before the first user turn.
+            maxPayload: 100 * 1024 * 1024,
         });
         const queue: string[] = [];
         let queuedBytes = 0;
