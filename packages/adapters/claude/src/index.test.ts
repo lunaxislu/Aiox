@@ -35,8 +35,7 @@ test("execution owner retains resources and validates vendor launch", async () =
         );
         await binding.cleanup("external_connection_lost");
         const { inboxPath } = execution.connection as { inboxPath: string };
-        if (process.platform !== "win32")
-            await expect(access(dirname(inboxPath))).resolves.toBeUndefined();
+        await expect(access(dirname(inboxPath))).resolves.toBeUndefined();
 
         const command = {
             file: "claude",

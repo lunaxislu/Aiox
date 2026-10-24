@@ -69,11 +69,9 @@ export function terminalKeySequence(
         return;
     const os = /Mac|iPhone|iPad|iPod/i.test(platform)
         ? "mac"
-        : /Win/i.test(platform)
-          ? "windows"
-          : /Linux/i.test(platform)
-            ? "linux"
-            : undefined;
+        : /Linux/i.test(platform)
+          ? "linux"
+          : undefined;
     if (!os) return;
     const modifiers = {
         Ctrl: event.ctrlKey,

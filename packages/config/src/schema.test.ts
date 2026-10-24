@@ -2,8 +2,8 @@ import { expect, test } from "vitest";
 
 test("terminal launch settings preserve argv and reject invalid process inputs", () => {
     const terminal = {
-        shell: "wsl.exe",
-        args: ["-d", "Ubuntu", ""],
+        shell: "/bin/bash",
+        args: ["-l", ""],
         cwd: "/home/me",
     };
     expect(parseConfig({ terminal }).terminal).toEqual(terminal);
@@ -176,7 +176,7 @@ test("UI configuration validates keybindings separately from keyboard and preser
         keyboard: { nextPane: "Ctrl+Tab" },
         keybindings: {
             mac: { splitDown: "Cmd+Shift+G", switchTab: "Cmd+Alt" },
-            windows: { openPalette: "Ctrl+Shift+O" },
+            linux: { openPalette: "Ctrl+Shift+O" },
         },
         web: { sidebar: { open: false } },
         appearance: { theme: "dark" },

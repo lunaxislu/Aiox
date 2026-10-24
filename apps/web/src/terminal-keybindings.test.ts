@@ -25,7 +25,7 @@ it("adds only the five macOS editing bindings and leaves xterm input alone", () 
         expect(terminalKeySequence(event, undefined, "MacIntel")).toBe(
             sequence,
         );
-        for (const platform of ["Linux x86_64", "Win32"])
+        for (const platform of ["Linux x86_64"])
             expect(
                 terminalKeySequence(event, undefined, platform),
             ).toBeUndefined();
@@ -114,12 +114,10 @@ it("applies only the browser platform's overrides, including unbind and reordere
             "Alt+ArrowRight": "\x1b[1;3C",
             "Shift+Ctrl+k": "custom",
         },
-        windows: { "Alt+ArrowLeft": "windows" },
         linux: { "Alt+ArrowLeft": "linux" },
     };
     const left = key("ArrowLeft", { altKey: true });
     expect(terminalKeySequence(left, bindings, "MacIntel")).toBeUndefined();
-    expect(terminalKeySequence(left, bindings, "Win32")).toBe("windows");
     expect(terminalKeySequence(left, bindings, "Linux x86_64")).toBe("linux");
     expect(terminalKeySequence(left, bindings, "unknown")).toBeUndefined();
     expect(
@@ -154,7 +152,7 @@ it("applies only the browser platform's overrides, including unbind and reordere
     ).toBeUndefined();
 });
 
-it.each(["MacIntel", "Win32", "Linux x86_64"])(
+it.each(["MacIntel", "Linux x86_64"])(
     "%s negotiates Shift+Enter encoding and restores legacy input after Kitty pop",
     async (platform) => {
         vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);

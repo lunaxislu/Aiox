@@ -78,14 +78,12 @@ export class TerminalService {
     createShell(
         options: TerminalLaunch & Pick<TerminalOptions, "cols" | "rows">,
     ): TerminalSession {
-        const { displayCwd, ...launch } = options;
-        return this.#create(launch, "shell", displayCwd);
+        return this.#create(options, "shell");
     }
 
     #create(
         options: TerminalOptions,
         kind: "shell" | "agent",
-        displayCwd?: string,
     ): TerminalSession {
         const id = randomUUID();
         const cwd = resolve(options.cwd ?? process.cwd());
@@ -125,7 +123,7 @@ export class TerminalService {
                 : {}),
         });
         this.#sessions.set(id, session);
-        this.#metadata.set(id, { cwd: displayCwd ?? cwd, kind, token });
+        this.#metadata.set(id, { cwd, kind, token });
         if (kind === "shell") {
             session.subscribe({ data: () => {}, exit: () => this.#remove(id) });
             if (!session.alive) this.#remove(id);

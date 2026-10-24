@@ -188,24 +188,21 @@ vendor·필수 부속 실행을 종료하지 않는다. 협업 실패에서는 �
 
 | 요청                               | 종료 정책                                                                                                        |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| macOS/Linux/WSL daemon의 일반 stop | daemon 소유 등록 실행이 있거나 일반 shell이 busy/unknown이면 거절. idle shell은 종료; 외부 참여는 blocker가 아님 |
-| Windows native daemon의 일반 stop  | idle 검사 없이 daemon 소유 실행 종료; 외부 실행은 협업만 해제                                                    |
+| macOS/Linux daemon의 일반 stop | daemon 소유 등록 실행이 있거나 일반 shell이 busy/unknown이면 거절. idle shell은 종료; 외부 참여는 blocker가 아님 |
 | 모든 환경의 stop --force           | 작업 상태와 관계없이 daemon 소유 실행 강제 종료; 외부 실행은 협업만 해제                                         |
 
 일반 shell의 idle은 AIOX가 처음 만든 shell의 입력 대기와 남은 작업으로 판정한다. 안쪽 shell의
 idle은 추적하지 않으며 자식 shell이 입력 대기 중이어도 바깥 shell의 작업이다. 이전 출력,
 변경한 cwd와 Enter 전 입력은 blocker가 아니고 미제출 입력은 종료 시 버린다. Agent의 입력 대기는
 빈 일반 shell이 아니라 실행 중인 세션이다. POSIX의 확인 실패를 강제 종료로 대체하지 않는다.
-Windows daemon이 wsl.exe를 실행해도 Windows 정책을 따르며 안쪽 WSL 작업도 중단될 수 있다.
 
 일반 stop과 force는 신규 실행·기존 Web 입력을 먼저 차단하고 진행 중 등록과 동기화한다.
 거절·정리 실패로 daemon이 남으면 접수를 복구한다. 일부 shell만 종료된 뒤 실패할 수 있으며
-이때 stop_incomplete와 남은 자원을 보고한다. restart는 같은 일반 stop 뒤 start하므로 Windows에서는
-작업을 중단할 수 있고, POSIX에서는 blocker가 있으면 거절한다. restart --force는 제공하지 않는다.
-Windows 일반 stop의 작업 중단은 CLI 도움말과 사용자 문서에 명시한다.
+이때 stop_incomplete와 남은 자원을 보고한다. restart는 같은 일반 stop 뒤 start하므로
+blocker가 있으면 거절한다. restart --force는 제공하지 않는다.
 
 ```text
-daemon stop --force (Windows 일반 stop도 같은 종료 대상)
+daemon stop --force
 → 신규 입력·등록·실행·메시지 전달 차단
 → daemon 실행 owner 종료 + 외부 실행의 협업 해제
 → daemon 소유 foreground·필수 부속 실행·자원 정리 확인
@@ -214,7 +211,7 @@ daemon stop --force (Windows 일반 stop도 같은 종료 대상)
 ```
 
 종료는 관리 실행 handle과 소유 관계를 기준으로 한다. 사용자 부모 shell, 무관한 vendor·터미널 앱을
-이름으로 찾아 종료하지 않는다. WSL 배포판 전체 shutdown으로 무관한 실행을 종료하지 않는다.
+이름으로 찾아 종료하지 않는다.
 일반 작업 자식 전체의 추적·종료를 보장하지 않으며 입력/신호 전송을 실제 종료 확인으로 간주하지
 않는다. daemon 소유 실행의 종료 완료는 foreground만이 아니라 실행 owner의 필수 부속 실행과
 자원 정리까지 확인한다. 확인 실패는 성공으로 처리하지 않고 daemon·Web 및 재시도 정보를 유지한다.
@@ -369,14 +366,12 @@ Web을 여는 CLI 진입점, 포트 override를 받는 정확한 시작 명령/�
 
 ## 플랫폼과 검증 경계
 
-Windows native·Linux·macOS 및 npm 전역 설치가 지원 목표다. Node/Git/vendor CLI, PTY와
-SQLite native dependency는 실제 배포 OS·CPU·Node 조합에서 검증한다. WSL Linux 실행과 native
-Windows 실행은 다른 환경이며 한쪽 성공을 다른 쪽의 증거로 사용하지 않는다.
+macOS와 Linux 및 npm 전역 설치가 지원 대상이다. Node/Git/vendor CLI, PTY와
+SQLite native dependency는 실제 배포 OS·CPU·Node 조합에서 검증한다.
 
 Doctor는 설치·버전·실행 환경·vendor 지원과 연결 준비를 진단한다. Claude Peer 지원 최소
-버전은 보고된 기준으로 macOS/Linux/WSL2 2.1.224+, native Windows 2.1.234+다. 내부 wire의
-미래 호환성과 Windows 통합 성공을 보장하는 숫자는 아니다. native Windows token forwarding,
-혼합 Windows/WSL 프로세스 실행, update 신호의 정확한 판정 및 종료 키·타임아웃은 미검증이다.
+버전은 macOS/Linux 2.1.224+다. 최소 버전은 내부 wire의 미래 호환성을 보장하지 않는다.
+update 신호의 정확한 판정 및 종료 키·타임아웃은 미검증이다.
 
 자동 runtime 재시작이나 daemon 재시작 후 옛 PTY 재부착·실행 복원은 현재 약속하지 않는다.
 살아 있는 daemon에 브라우저가 복귀하는 계약과 구분한다.

@@ -211,11 +211,11 @@ export function createCli(
         daemon
             .command("stop")
             .description(
-                "Stop daemon. On native Windows, interrupts daemon-owned work. Elsewhere, refuses while daemon-owned work remains. External CLI vendors keep running.",
+                "Stop daemon. Refuses while daemon-owned work remains. External CLI vendors keep running.",
             )
             .option(
                 "--force",
-                "Terminate daemon-owned executions on all platforms. External CLI vendors keep running",
+                "Terminate daemon-owned executions. External CLI vendors keep running",
             ),
         "daemon.stop",
     );
@@ -223,7 +223,7 @@ export function createCli(
         daemon
             .command("restart")
             .description(
-                "Stop then start daemon. On native Windows, interrupts daemon-owned work. Elsewhere, refuses while daemon-owned work remains. External CLI vendors keep running.",
+                "Stop then start daemon. Refuses while daemon-owned work remains. External CLI vendors keep running.",
             ),
         "daemon.restart",
     );

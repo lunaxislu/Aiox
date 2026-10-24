@@ -51,43 +51,32 @@ function option(args: string[], name: string) {
     return args[args.indexOf(name) + 1]!;
 }
 
-it.each(["win32", "linux"])(
-    "respects %s environment-key case semantics for managed credentials",
-    async (platform) => {
-        vi.stubGlobal(
-            "process",
-            Object.create(process, {
-                platform: { value: platform },
-            }),
-        );
-        try {
-            for (const key of [
-                "aiox_mcp_token",
-                "Aiox_Hook_Token",
-                "aiox_HOOK_url",
-            ]) {
-                const launch = prepareClaudeLaunch(
-                    input([
-                        "--setting-sources",
-                        "",
-                        "--settings",
-                        JSON.stringify({ env: { [key]: "user-value" } }),
-                    ]),
-                );
-                if (platform === "win32")
-                    await expect(launch).rejects.toThrow(
-                        "overrides a connection value",
-                    );
-                else
-                    await expect(launch).resolves.toMatchObject({
-                        env: expect.any(Object),
-                    });
-            }
-        } finally {
-            vi.unstubAllGlobals();
-        }
-    },
-);
+it("preserves case-sensitive POSIX environment keys without weakening credential validation", async () => {
+    for (const key of ["aiox_mcp_token", "Aiox_Hook_Token", "aiox_HOOK_url"]) {
+        await expect(
+            prepareClaudeLaunch(
+                input([
+                    "--setting-sources",
+                    "",
+                    "--settings",
+                    JSON.stringify({ env: { [key]: "user-value" } }),
+                ]),
+            ),
+        ).resolves.toMatchObject({ env: expect.any(Object) });
+    }
+    for (const key of ["AIOX_MCP_TOKEN", "AIOX_HOOK_TOKEN", "AIOX_HOOK_URL"]) {
+        await expect(
+            prepareClaudeLaunch(
+                input([
+                    "--setting-sources",
+                    "",
+                    "--settings",
+                    JSON.stringify({ env: { [key]: "user-value" } }),
+                ]),
+            ),
+        ).rejects.toThrow("overrides a connection value");
+    }
+});
 
 it.each([["--plugin-dir", "./user-plugin"], ["--plugin-dir=./user-plugin"]])(
     "preserves plugin arguments %j",
@@ -287,29 +276,26 @@ it("inspects active user/project sources without rejecting harmless files", asyn
     await expect(prepareClaudeLaunch(input())).resolves.toBeDefined();
 });
 
-it.skipIf(process.platform === "win32")(
-    "checks main repository local settings when launched in a subdirectory",
-    async () => {
-        await promisify(execFile)("git", ["init", cwd]);
-        await mkdir(join(cwd, ".claude"));
-        await mkdir(join(cwd, "child"));
-        await writeFile(
-            join(cwd, ".claude/settings.local.json"),
-            '{"disableAllHooks":true}',
-        );
-        await expect(
-            prepareClaudeLaunch({
-                ...input(),
-                cwd: join(cwd, "child"),
-                env: {
-                    HOME: join(cwd, "home"),
-                    CLAUDE_CONFIG_DIR: join(cwd, "config"),
-                    PATH: process.env.PATH,
-                },
-            }),
-        ).rejects.toThrow("disableAllHooks");
-    },
-);
+it("checks main repository local settings when launched in a subdirectory", async () => {
+    await promisify(execFile)("git", ["init", cwd]);
+    await mkdir(join(cwd, ".claude"));
+    await mkdir(join(cwd, "child"));
+    await writeFile(
+        join(cwd, ".claude/settings.local.json"),
+        '{"disableAllHooks":true}',
+    );
+    await expect(
+        prepareClaudeLaunch({
+            ...input(),
+            cwd: join(cwd, "child"),
+            env: {
+                HOME: join(cwd, "home"),
+                CLAUDE_CONFIG_DIR: join(cwd, "config"),
+                PATH: process.env.PATH,
+            },
+        }),
+    ).rejects.toThrow("disableAllHooks");
+});
 
 it("rejects a managed hooks restriction rather than silently dropping AIOX hooks", async () => {
     const original = (await vi.importActual<typeof fs>("node:fs/promises"))

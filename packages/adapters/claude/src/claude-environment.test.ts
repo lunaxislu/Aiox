@@ -7,11 +7,6 @@ import { createClaudeInbox } from "./claude-environment";
 
 test("the launcher owns a private inbox directory and disposes it after execution", async () => {
     const inbox = await createClaudeInbox();
-    if (process.platform === "win32") {
-        expect(inbox.path).toMatch(/^\\\\\.\\pipe\\aiox-/);
-        await inbox.dispose();
-        return;
-    }
     const directory = dirname(inbox.path);
     try {
         expect(Buffer.byteLength(inbox.path)).toBeLessThanOrEqual(103);

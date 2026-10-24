@@ -10,7 +10,7 @@ import { hostResult, startTestDaemon } from "./testing";
 test("Host stop preserves shells and policy; delete waits for shell termination and retains retryable failure", async (t) => {
     const h = await startTestDaemon({
         terminal: async () => ({
-            shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+            shell: "/bin/sh",
             cwd: h.home,
         }),
     });

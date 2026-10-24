@@ -130,7 +130,7 @@ it("creates an empty Network panel and adds its first shell only through tab.cre
 async function harness(t: { onTestFinished(fn: () => unknown): void }) {
     const h = await startTestDaemon({
         terminal: async () => ({
-            shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+            shell: "/bin/sh",
             args: [],
             cwd: h.home,
         }),

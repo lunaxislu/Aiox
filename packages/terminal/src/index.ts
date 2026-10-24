@@ -137,9 +137,10 @@ const terminalLifecycle = setup({
 
 /** Platform default interactive shell. */
 export function defaultShell(): { file: string; args: string[] } {
-    if (process.platform === "win32") {
-        return { file: process.env["COMSPEC"] ?? "cmd.exe", args: [] };
-    }
+    if (process.platform !== "darwin" && process.platform !== "linux")
+        throw new Error(
+            `AIOX supports macOS and Linux only; unsupported platform: ${process.platform}`,
+        );
     return { file: process.env["SHELL"] ?? "/bin/bash", args: [] };
 }
 
@@ -172,7 +173,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
         : undefined;
     const prepared = integration ?? launch;
 
-    // POSIX encoding: null preserves raw bytes; Windows still emits strings.
+    // Null encoding preserves the original PTY bytes.
     const ptyOptions: IPtyForkOptions = {
         encoding: null,
         cols: options.cols ?? 80,
@@ -257,12 +258,8 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
     const exitPromise = Effect.runPromise(Deferred.await(exitDeferred));
 
     pty.onData((chunk) => {
-        // Normalize Windows text at the PTY boundary so WS output stays binary.
-        // Keep POSIX bytes intact, including output that is not valid UTF-8.
-        const bytes =
-            typeof chunk === "string"
-                ? Buffer.from(chunk, "utf8")
-                : (chunk as Uint8Array);
+        // node-pty returns buffers with null encoding. Preserve invalid UTF-8 too.
+        const bytes = chunk as unknown as Uint8Array;
         parsingBytes += bytes.length;
         if (!paused && parsingBytes >= MIRROR_HIGH_WATER) {
             pty.pause();
@@ -300,9 +297,7 @@ export function createTerminal(options: TerminalOptions): TerminalSession {
 
     const signal = (name: NodeJS.Signals): void => {
         try {
-            // node-pty throws on any signal argument on Windows, where kill()
-            // is already a hard kill of the console process.
-            pty.kill(process.platform === "win32" ? undefined : name);
+            pty.kill(name);
         } catch {}
     };
 

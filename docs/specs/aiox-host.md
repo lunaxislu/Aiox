@@ -389,8 +389,7 @@ Host run/restart 및 개별 start/restart는 최초 CLI의 환경을 직접 실�
 `AIOX_*`를 제외한 뒤 관리 실행 문맥을 직접 설정한다. 환경 원문은 요청 수명에만 사용하며
 Host 설정·snapshot·로그에 저장하지 않는다. env가 없는 Web/RPC caller는 daemon 환경을 사용한다.
 대상 shell 시작 파일을 다시 평가하여 환경을 수집하지 않는다. vendor는 daemon이 실행되는 OS에서
-실행하므로 Windows daemon에서 WSL shell을 여는 것만으로 vendor 실행 OS가 WSL로 바뀌지는 않는다.
-혼합 실행은 [[docs/specs/aiox-runtime#플랫폼과 검증 경계]]의 미검증 범위다. [Status: Current]
+실행한다. 지원 실행 환경은 [[docs/specs/aiox-runtime#플랫폼과 검증 경계]]를 따른다. [Status: Current]
 
 | Method / path                                       | 요청 body / caller                                                                        | 성공 body                                                                      |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -581,7 +580,7 @@ terminal의 인증 문맥이 없으므로 이 실행은 caller terminal 인증�
 - 변경 표시: daemon은 run·restart에서 읽은 정의 파일 내용의 hash를 Host와 함께 기록하고, Web이
   현재 파일과 다른지 알 수 있게 한다. 지금 Host는 `sourceFile` 경로만 저장한다.
 - Open: endpoint는 `hostId`만 받는다. 열 경로는 DB의 `sourceFile`로만 정하며 요청이 경로를 줄 수
-  없다. daemon은 OS 기본 앱으로 연다(macOS `open`, Linux `xdg-open`, Windows `start`). Reveal in
+  없다. daemon은 OS 기본 앱으로 연다(macOS `open`, Linux `xdg-open`). Reveal in
   Finder/Explorer도 같은 제약을 따른다. Copy path는 서버를 거치지 않는다.
 - Restart: Web은 HostView의 `directory`와 `sourceFile`을 source로 `host.restart`를 보낸다. env를
   보내지 않으므로 위 Host HTTP 계약대로 daemon 환경으로 실행한다. 최신 YAML의 `host.name`이

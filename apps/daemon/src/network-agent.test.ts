@@ -16,7 +16,7 @@ import { WebSocket } from "ws";
 const launcher = new URL("../../cli/dist/index.js", import.meta.url);
 import { startTestDaemon } from "./testing";
 
-test.skipIf(process.platform === "win32").each(
+test.each(
     (["claude", "codex"] as const).flatMap((adapter) =>
         (["ready", "failed", "closed"] as const).map((mode) => ({
             adapter,

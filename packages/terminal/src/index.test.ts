@@ -79,6 +79,28 @@ afterEach(async () => {
 });
 
 describe("defaultShell", () => {
+    it.each(["win32", "freebsd"])(
+        "rejects unsupported platform %s before PTY creation",
+        (platform) => {
+            const descriptor = Object.getOwnPropertyDescriptor(
+                process,
+                "platform",
+            )!;
+            const spawn = vi.spyOn(nodePty, "spawn");
+            Object.defineProperty(process, "platform", { value: platform });
+            try {
+                expect(() =>
+                    createTerminal({ id: "unsupported", file: "/bin/sh" }),
+                ).toThrow(
+                    `AIOX supports macOS and Linux only; unsupported platform: ${platform}`,
+                );
+                expect(spawn).not.toHaveBeenCalled();
+            } finally {
+                Object.defineProperty(process, "platform", descriptor);
+                spawn.mockRestore();
+            }
+        },
+    );
     it("names an absolute interactive shell for this platform", () => {
         const shell = defaultShell();
         expect(shell.file.length).toBeGreaterThan(0);
@@ -87,7 +109,7 @@ describe("defaultShell", () => {
 });
 
 it("turns a prompt OSC into a signal without trusting terminal output as cwd", async () => {
-    let reportData!: (data: string) => void;
+    let reportData!: (data: Uint8Array) => void;
     const pty = {
         pid: 123,
         onData: (listener: typeof reportData) => {
@@ -100,17 +122,17 @@ it("turns a prompt OSC into a signal without trusting terminal output as cwd", a
     try {
         const onPrompt = vi.fn();
         createTerminal({ id: "prompt", onPrompt });
-        reportData("\u001b]777;aiox-cwd\u0007");
+        reportData(Buffer.from("\u001b]777;aiox-cwd\u0007"));
         await vi.waitFor(() => expect(onPrompt).toHaveBeenCalledOnce());
     } finally {
         spawn.mockRestore();
     }
 });
 
-it.each(["한글\u001b[31m", Buffer.from([0xff, 0x1b, 0x5b, 0x6d])])(
+it.each([Buffer.from("한글\u001b[31m"), Buffer.from([0xff, 0x1b, 0x5b, 0x6d])])(
     "delivers PTY output as bytes to live viewers and replay: %s",
     async (chunk) => {
-        let reportData!: (data: string) => void;
+        let reportData!: (data: Uint8Array) => void;
         const pty = {
             pid: 0,
             onData: (listener: typeof reportData) => {
@@ -133,7 +155,7 @@ it.each(["한글\u001b[31m", Buffer.from([0xff, 0x1b, 0x5b, 0x6d])])(
                 data: (data) => received.push(data),
                 exit() {},
             });
-            reportData(chunk as string);
+            reportData(chunk);
             expect(received[0]).toBeInstanceOf(Uint8Array);
             expect(Buffer.from(received[0]!)).toEqual(Buffer.from(chunk));
             let off = () => {};
@@ -162,8 +184,8 @@ it("registers the initial foreground listener before the first PTY output", () =
     const data = vi.fn();
     const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue({
         pid: 123,
-        onData(listener: (chunk: string) => void) {
-            listener("FIRST");
+        onData(listener: (chunk: Uint8Array) => void) {
+            listener(Buffer.from("FIRST"));
             return { dispose() {} };
         },
         onExit: () => ({ dispose() {} }),
@@ -178,7 +200,7 @@ it("registers the initial foreground listener before the first PTY output", () =
 });
 
 it("orders snapshot, concurrent output, resize and exit at one attachment boundary", async () => {
-    let output!: (value: string) => void;
+    let output!: (value: Uint8Array) => void;
     let exit!: (value: { exitCode: number }) => void;
     const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue({
         pid: 123,
@@ -194,7 +216,7 @@ it("orders snapshot, concurrent output, resize and exit at one attachment bounda
     } as unknown as ReturnType<typeof nodePty.spawn>);
     try {
         const session = createTerminal({ id: "ordered" });
-        output("BEFORE");
+        output(Buffer.from("BEFORE"));
         const events: string[] = [];
         let outputFrame: object | undefined;
         session.subscribe({
@@ -223,7 +245,7 @@ it("orders snapshot, concurrent output, resize and exit at one attachment bounda
                 error: reject,
             });
         });
-        output("AFTER");
+        output(Buffer.from("AFTER"));
         session.resize(100, 30);
         exit({ exitCode: 0 });
         await session.dispose();
@@ -251,7 +273,7 @@ it("orders snapshot, concurrent output, resize and exit at one attachment bounda
 });
 
 it("keeps live output after restore overflow and permits a fresh attach after recovery", async () => {
-    let output!: (value: string) => void;
+    let output!: (value: Uint8Array) => void;
     const spawn = vi.spyOn(nodePty, "spawn").mockReturnValue({
         pid: 123,
         onData(fn: typeof output) {
@@ -268,7 +290,7 @@ it("keeps live output after restore overflow and permits a fresh attach after re
         const session = createTerminal({ id: "overflow" });
         const live = vi.fn();
         session.subscribe({ data: live, exit() {} });
-        output("\x1b]999;" + "x".repeat(1024 * 1024));
+        output(Buffer.from("\x1b]999;" + "x".repeat(1024 * 1024)));
         const failure = await new Promise<Error>((resolve) =>
             session.attach({
                 snapshot() {
@@ -282,7 +304,7 @@ it("keeps live output after restore overflow and permits a fresh attach after re
         );
         expect(failure.message).toContain("replay limit");
         expect(session.alive).toBe(true);
-        output("\x07RECOVERED");
+        output(Buffer.from("\x07RECOVERED"));
         let off = () => {};
         const captured = await new Promise<TerminalSnapshot>(
             (resolve, reject) => {
@@ -341,7 +363,7 @@ it("retries an unconfirmed termination while sharing each concurrent attempt", a
 });
 
 // Keep transport/process checks native; only unconfirmed-exit timing is simulated.
-describe.skipIf(process.platform === "win32")("createTerminal", () => {
+describe("createTerminal", () => {
     it("streams pty output to a subscriber and runs in the given cwd", async () => {
         const cwd = tempDir();
         const session = open({
@@ -553,7 +575,7 @@ describe.skipIf(process.platform === "win32")("createTerminal", () => {
 });
 
 it("pauses PTY reads while mirror parsing lags and resumes after success or failure", async () => {
-    let output!: (value: string) => void;
+    let output!: (value: Uint8Array) => void;
     let exit!: (value: { exitCode: number; signal: number }) => void;
     const pty = {
         pid: 123,
@@ -586,7 +608,7 @@ it("pauses PTY reads while mirror parsing lags and resumes after success or fail
         );
     try {
         const session = createTerminal({ id: "backpressure" });
-        const chunk = "x".repeat(512 * 1024);
+        const chunk = Buffer.alloc(512 * 1024, "x");
         output(chunk);
         output(chunk);
         output(chunk);
@@ -614,45 +636,40 @@ it("pauses PTY reads while mirror parsing lags and resumes after success or fail
     }
 });
 
-it.skipIf(process.platform === "win32")(
-    "confirms idle exit even when lifecycle disposal removes the shell acknowledgement",
-    async () => {
-        const home = mkdtempSync(join(tmpdir(), "aiox-idle-exit-"));
-        writeFileSync(join(home, ".bashrc"), "PS1='IDLE_EXIT> '\n");
-        const session = open({
-            id: "idle-exit",
-            file: "/bin/bash",
-            shellIntegration: true,
-            env: {
-                ...process.env,
-                HOME: home,
-                TERM: "dumb",
-            } as Record<string, string>,
-        });
-        const viewer = view(session);
-        session.subscribe({
-            data() {},
-            exit() {
-                void session.dispose();
-            },
-        });
-        try {
-            await expect
-                .poll(() => viewer.text.includes("IDLE_EXIT> "))
-                .toBe(true);
-            expect(await session.closeIdle()).toBe(true);
-            expect(session.alive).toBe(false);
-        } finally {
-            await session.kill();
-            await session.dispose();
-            rmSync(home, { recursive: true, force: true });
-        }
-    },
-);
+it("confirms idle exit even when lifecycle disposal removes the shell acknowledgement", async () => {
+    const home = mkdtempSync(join(tmpdir(), "aiox-idle-exit-"));
+    writeFileSync(join(home, ".bashrc"), "PS1='IDLE_EXIT> '\n");
+    const session = open({
+        id: "idle-exit",
+        file: "/bin/bash",
+        shellIntegration: true,
+        env: {
+            ...process.env,
+            HOME: home,
+            TERM: "dumb",
+        } as Record<string, string>,
+    });
+    const viewer = view(session);
+    session.subscribe({
+        data() {},
+        exit() {
+            void session.dispose();
+        },
+    });
+    try {
+        await expect.poll(() => viewer.text.includes("IDLE_EXIT> ")).toBe(true);
+        expect(await session.closeIdle()).toBe(true);
+        expect(session.alive).toBe(false);
+    } finally {
+        await session.kill();
+        await session.dispose();
+        rmSync(home, { recursive: true, force: true });
+    }
+});
 
 it("keeps the PTY alive and marks every attach unrestorable after a mirror write failure", async () => {
     const { default: headless } = await import("@xterm/headless");
-    let output!: (value: string) => void;
+    let output!: (value: Uint8Array) => void;
     let exit!: (value: { exitCode: number }) => void;
     const pty = {
         pid: 123,
@@ -681,7 +698,7 @@ it("keeps the PTY alive and marks every attach unrestorable after a mirror write
     try {
         const live = vi.fn();
         session.subscribe({ data: live, exit() {} });
-        output("first");
+        output(Buffer.from("first"));
         await new Promise((resolve) => setImmediate(resolve));
         for (let attempt = 0; attempt < 2; attempt++) {
             const failure = vi.fn();
@@ -700,7 +717,7 @@ it("keeps the PTY alive and marks every attach unrestorable after a mirror write
             expect(session.alive).toBe(true);
             expect(pty.kill).not.toHaveBeenCalled();
         }
-        output("later");
+        output(Buffer.from("later"));
         session.write("input");
         expect(live).toHaveBeenCalledTimes(2);
         expect(pty.write).toHaveBeenCalledWith("input");

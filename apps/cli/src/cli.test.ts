@@ -252,14 +252,13 @@ test("shutdown help distinguishes daemon-owned work from surviving external vend
         const help = daemon.commands
             .find((command) => command.name() === name)!
             .helpInformation();
-        assert.match(help, /Windows/);
-        assert.match(help, /interrupts daemon-owned work/);
-        assert.match(help, /External CLI vendors keep\s+running/);
+        assert.match(help, /Refuses while daemon-owned\s+work remains/);
+        assert.match(help, /External CLI\s+vendors keep\s+running/);
     }
     const stop = daemon.commands.find((command) => command.name() === "stop")!;
     assert.match(
         stop.options.find((option) => option.long === "--force")!.description,
-        /daemon-owned executions on all platforms/,
+        /Terminate daemon-owned executions/,
     );
 });
 

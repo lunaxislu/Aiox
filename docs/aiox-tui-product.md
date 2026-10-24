@@ -60,7 +60,7 @@ AIOX daemon
 승인된 계약과 구현 완료는 구분한다. Stage 2의 daemon·공통 HTTP MCP·저장·PTY 및 최소 Web 구현 범위와 근거는 system·storage-terminal architecture를 따른다. 최소 Web은 검증용 plain TypeScript이며 위 React 운영 Web은 후속 목표다. 실제 vendor 입력 연결·브라우저 UI·OS별 통합 검증까지 완료됐다는 뜻은 아니다.
 
 Claude 단일 idle inbox 입력과 Stop 연결, native preview 실험 및 Codex active-thread relay는
-기존 실측 근거가 있다. 이 근거를 Windows 전체 연동, 모든 메시지의 정확히 한 번 실행,
+기존 실측 근거가 있다. 이 근거를 지원 OS 전체 연동, 모든 메시지의 정확히 한 번 실행,
 도구 작업 성공까지 확인한 것으로 확대하지 않는다.
 
 이전 spec·architecture·decision 본문은 새 target의 권위가 아니다. 이전 실측 로그는 당시

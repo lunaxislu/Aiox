@@ -2,7 +2,8 @@
 
 외부 실행까지 명시적 종료 대상을 확장한 선택은
 [[docs/decisions/external-execution-survival]]에서 교정했다. 아래는 당시 결정의 기록이며
-Windows shell별 작업 판정 비용을 줄인 이유는 daemon 소유 실행 범위에서 유지한다.
+Windows shell별 작업 판정 비용을 줄인 이유와 당시 정책을 보존한다. 현재 지원 대상은 macOS/Linux이며
+현재 종료 계약은 [[docs/specs/aiox-runtime]]을 따른다.
 
 ## Decision
 

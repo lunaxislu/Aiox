@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
@@ -23,10 +22,7 @@ it.each([undefined, '안녕하세요\n"body" 😀'])(
     "writes auth first and optional content on the actual platform transport",
     async (content) => {
         const directory = await mkdtemp(join(tmpdir(), "ai-"));
-        const path =
-            process.platform === "win32"
-                ? `\\\\.\\pipe\\aiox-test-${randomUUID()}`
-                : join(directory, "inbox.sock");
+        const path = join(directory, "inbox.sock");
         let resolve!: (body: string) => void;
         const received = new Promise<string>((done) => {
             resolve = done;

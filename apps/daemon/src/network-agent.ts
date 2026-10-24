@@ -60,14 +60,9 @@ function restartCommand(input: AgentRun, networkId: string): string {
         ...input.args,
     ];
     const command = args
-        .map(
-            (value) =>
-                `'${value.replaceAll("'", process.platform === "win32" ? "''" : "'\\''")}'`,
-        )
+        .map((value) => `'${value.replaceAll("'", "'\\''")}'`)
         .join(" ");
-    return process.platform === "win32"
-        ? `powershell.exe -NoProfile -EncodedCommand ${Buffer.from("& " + command, "utf16le").toString("base64")}`
-        : command;
+    return command;
 }
 
 async function launch(

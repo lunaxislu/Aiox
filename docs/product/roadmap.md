@@ -51,7 +51,7 @@ Worktree 자동 생성은 이번 Host 구현 범위와 운영 gate에서 제외�
 - 진입 조건: 공개할 계약이 구현되고 관련 검증이 통과한다.
 - 착수 검토 / 열린 결정: 지원 Node·CPU 조합, npm package metadata와 플랫폼별 설치 조건.
 - 통과 조건: 동일 배포 산출물의 clean install, CLI·DB·PTY·vendor 연동과 실행 소유권에 맞는 종료·등록 정리를
-  지원 OS에서 확인하고 native Windows와 WSL 결과를 구분한다.
+  macOS와 Linux에서 확인한다.
 - Owner refs: [[docs/specs/aiox-runtime]]에서 실행·종료 의미,
   [[docs/architecture/aiox-storage-terminal]]에서 DB·PTY 플랫폼 경계를 확인한다.
 
@@ -74,15 +74,13 @@ Worktree 자동 생성은 이번 Host 구현 범위와 운영 gate에서 제외�
 - UI는 실제 터미널 표시·입력·브라우저 복귀로 검증한다.
 - 종료는 프로세스와 자원 정리로, 저장은 재시작 후 읽기로 확인한다.
 - 기존 성공 실측의 provenance는 사용할 수 있지만 새 플랫폼·새 통합 경로의 성공으로 확대하지 않는다.
-- 검증되지 않은 조합은 명시하며 Docker Linux 실행을 Windows 결과로 표시하지 않는다.
+- 검증되지 않은 조합은 명시하며 한 OS의 성공을 다른 OS의 검증으로 확대하지 않는다.
 
 ## Cross-Platform Requirement
 
-Windows 네이티브·Linux·macOS는 지원 목표다. native dependency 설치, 경로·권한,
+macOS와 Linux가 지원 대상이다. native dependency 설치, 경로·권한,
 PTY·IPC·프로세스 종료와 vendor 연결을 해당 OS에서 검증한다.
-WSL은 Linux 실행 환경과 Windows 브라우저 연결을 구분하고, Windows daemon과 Linux vendor의
-혼합 제어는 현재 확정된 지원으로 주장하지 않는다.
 
 Sources:
 
-- 제품 전환·3 OS 범위·사이트 마지막 결정: `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md`.
+- 제품 전환·당시 3 OS 범위·사이트 마지막 결정: `logs/2026-09-07-AIOX-TUI-Product-Rebuild-Baseline.md`.

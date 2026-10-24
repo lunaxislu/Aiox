@@ -1837,8 +1837,8 @@ test("Web collaboration timeout revokes only collaboration and retains its usabl
         ),
     );
     const stopped = (await harness.daemon.stop(false)).stopped;
-    expect(stopped).toBe(process.platform === "win32");
-    if (!stopped) await harness.daemon.stopRuntime(record.id);
+    expect(stopped).toBe(false);
+    await harness.daemon.stopRuntime(record.id);
     expect(vendor.session.kill).toHaveBeenCalledOnce();
     expect(harness.daemon.services.runtimes.list()).toEqual([]);
     socket.terminate();

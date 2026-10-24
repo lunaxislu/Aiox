@@ -10,7 +10,7 @@ import { bindTerminalKeys } from "@/terminal-keybindings";
 afterEach(() => vi.restoreAllMocks());
 
 it.each(
-    ["MacIntel", "Win32", "Linux x86_64"].flatMap((platform) =>
+    ["MacIntel", "Linux x86_64"].flatMap((platform) =>
         [0, 3, 31].map((kittyFlags) => ({ platform, kittyFlags })),
     ),
 )(
@@ -27,7 +27,6 @@ it.each(
         const clipboard = bindTerminalClipboard(term, host);
         bindTerminalKeys(term, () => ({
             mac: { "Cmd+c": "COPY_OVERRIDE", "Cmd+v": "PASTE_OVERRIDE" },
-            windows: { "Ctrl+c": "COPY_OVERRIDE", "Ctrl+v": "PASTE_OVERRIDE" },
             linux: { "Ctrl+c": "COPY_OVERRIDE", "Ctrl+v": "PASTE_OVERRIDE" },
         }));
         const sent: string[] = [];

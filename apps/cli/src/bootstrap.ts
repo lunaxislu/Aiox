@@ -244,6 +244,8 @@ export type CliHome = { home?: string };
 
 /** Drives the daemon over its HTTP contract; parsing stays free of I/O in cli.ts. */
 export function createFoundationPort(location: CliHome = {}): CliPort {
+    if (process.platform !== "darwin" && process.platform !== "linux")
+        throw new Error("AIOX supports macOS and Linux only.");
     const home = location.home ?? homedir();
     const directory = join(home, ".aiox");
     const stateFile = join(directory, "daemon.json");
@@ -354,7 +356,6 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
             }
             child = spawn(process.execPath, [entry, "--config-stdin"], {
                 detached: true,
-                windowsHide: true,
                 stdio: ["pipe", log.fd, log.fd],
             });
             let failure: Error | undefined;
@@ -480,11 +481,6 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
             node: process.version,
             platform: process.platform,
             arch: process.arch,
-            environment:
-                process.platform === "linux" &&
-                Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP)
-                    ? "wsl"
-                    : "native",
             config,
             git,
             daemon: {
@@ -502,7 +498,7 @@ export function createFoundationPort(location: CliHome = {}): CliPort {
         };
         if (options.json) return report;
         return [
-            `Node: ${report.node} (${report.platform}/${report.arch}, ${report.environment})`,
+            `Node: ${report.node} (${report.platform}/${report.arch})`,
             `Config: ${config.path}${"error" in config ? ` — ${config.error}` : " — OK"}`,
             `Git: ${git.available ? git.version : git.error}`,
             `Daemon: ${live ? `running (pid ${live.pid}), port ${port}, web ${live.ports.web}` : `unreachable${port === undefined ? " (no valid port)" : ` on port ${port}`}`}`,

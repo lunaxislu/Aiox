@@ -57,12 +57,6 @@ export async function managedLaunch(
 }
 
 export function restartCommand(host: HostView, agentKey: string): string {
-    // Single quotes work in POSIX shells and PowerShell; no configuration text is executed here.
-    const quote = (value: string) =>
-        `'${value.replaceAll("'", process.platform === "win32" ? "''" : "'\\''")}'`;
-    const command = `aiox host agent start ${quote(agentKey)} --path ${quote(host.directory)} --file ${quote(host.sourceFile)}`;
-    // cmd.exe does not support single-quoted arguments. Encoded PowerShell also avoids cmd expansion of paths containing % or &.
-    return process.platform === "win32"
-        ? `powershell.exe -NoProfile -EncodedCommand ${Buffer.from(command, "utf16le").toString("base64")}`
-        : command;
+    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+    return `aiox host agent start ${quote(agentKey)} --path ${quote(host.directory)} --file ${quote(host.sourceFile)}`;
 }

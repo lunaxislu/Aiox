@@ -69,7 +69,7 @@ Ajv는 배포할 JSON Schema의 테스트에만 사용하며 확장 실행 bundl
 `packages/config/src/host.ts`는 파일 선택·YAML 파싱·전체 참조와 route 검증을 소유한다.
 `prepareHostInput`은 config → YAML → CLI 오류·layout → 실행 환경 순서로 읽기 전용
 snapshot을 만든다. 이름으로 선택한 조회·제어와 Host Network 명령은 YAML을 읽지 않는다.
-Host 실행 준비는 선택 directory를 shell의 명시 cwd로 전달하여 기존 공통 shell/WSL 검증을
+Host 실행 준비는 선택 directory를 shell의 명시 cwd로 전달하여 기존 공통 shell 검증을
 사용한다. 외부 입력 규칙은 [[docs/specs/aiox-host]]와 [[docs/specs/aiox-runtime]]이 소유한다.
 
 CLI의 `host-input.ts`는 파일 선택 인자와 CLI 오류를 보존하여 공통 준비로 전달한다.
@@ -168,7 +168,7 @@ ACK와 구독 queue 상한은 느린 소비자가 다른 구독을 막지 않도
 
 daemon 시작 실패는 `stage`를 기록하며 잘못된 포트는 `EINVALIDPORT`와 검증된 `field`(`--port`·`--web-port`)를 보존하고 입력값은 제외한다. Codex App Server 종료 진단은 고정 메시지와 component·exitCode·signal만 기록한다. token을 가린 vendor 오류는 기존 호출자/Relay 사용자 오류 경로로 전달하고 서버 로그에 복사하지 않는다.
 
-근거: [[packages/diagnostics/src/index.ts]], [[packages/diagnostics/src/index.test.ts]], [[apps/daemon/src/main.test.ts]], [[apps/daemon/src/agent-controller.test.ts]], [[packages/adapters/codex/src/index.test.ts]], [[apps/daemon/src/daemon.ts]], [[apps/daemon/src/http.ts]], [[apps/daemon/src/host-control.test.ts]], [[apps/cli/src/bootstrap.test.ts]]. 실제 vendor·React·Windows/WSL 연결 검증을 이 로그 전환의 검증으로 대체하지 않는다.
+근거: [[packages/diagnostics/src/index.ts]], [[packages/diagnostics/src/index.test.ts]], [[apps/daemon/src/main.test.ts]], [[apps/daemon/src/agent-controller.test.ts]], [[packages/adapters/codex/src/index.test.ts]], [[apps/daemon/src/daemon.ts]], [[apps/daemon/src/http.ts]], [[apps/daemon/src/host-control.test.ts]], [[apps/cli/src/bootstrap.test.ts]]. 실제 vendor·React·지원 OS별 연결 검증을 이 로그 전환의 검증으로 대체하지 않는다.
 
 ## 공통 실행과 vendor adapter 현재 조립 범위 [Status: As-built]
 
@@ -340,8 +340,7 @@ Persistent Network 정의·Worktree·저장 파일을 삭제하지 않는다.
 
 일반 stop은 POSIX에서 daemon 소유 활성 등록과 최초 shell의 busy/unknown을 확인한다.
 외부 등록은 실행 종료 blocker가 아니며 협업 정리의 실패·재시도만 daemon 종료 완료에 반영한다.
-Windows native에서는 이 검사를 생략하고 force와 같은 대상을 종료한다. restart는 이 일반 stop을
-재사용하므로 Windows의 작업 중단 정책도 동일하며 restart --force는 없다. SIGINT/SIGTERM 등
+restart는 이 일반 stop을 재사용하며 restart --force는 없다. SIGINT/SIGTERM 등
 daemon 신호 종료도 명시적 일반 stop·force와 마찬가지로 외부 실행을 보존한다.
 
 ## Host와 Network의 실체화 [Status: Target]
@@ -559,7 +558,7 @@ CLI는 config/YAML/옵션·실행 환경을 검증한 뒤 source와 requestId를
 근거: [[apps/daemon/src/host-run.ts]], [[apps/daemon/src/host-run.test.ts]],
 [[apps/daemon/src/host-command.ts]], [[apps/cli/src/host-command.ts]], [[apps/cli/src/host-command.test.ts]],
 [[packages/persistence/src/sqlite/host-state.test.ts]]. 실제 shell·빌드 CLI·HTTP/RPC 검증은 macOS에서
-vendor 대역으로 수행하며, 실제 vendor·React·Windows/WSL 연결 검증을 대신하지 않는다.
+vendor 대역으로 수행하며, 실제 vendor·React·지원 OS별 연결 검증을 대신하지 않는다.
 
 ### 개별 Agent·Host Network 제어 [Status: As-built]
 
@@ -581,7 +580,7 @@ Host Network CLI는 정확한 Host·Network 이름 조회로 ID를 고정한다.
 
 근거: [[apps/daemon/src/host-agents.ts]], [[apps/daemon/src/host-agents.test.ts]],
 [[apps/cli/src/bootstrap.test.ts]], [[packages/persistence/src/sqlite/host-state.test.ts]].
-실제 macOS shell·빌드 CLI·HTTP/RPC를 vendor 대역으로 검증한 범위이며 실제 vendor·React·Windows/WSL
+실제 macOS shell·빌드 CLI·HTTP/RPC를 vendor 대역으로 검증한 범위이며 실제 vendor·React·지원 OS별
 통합 완료를 뜻하지 않는다.
 
 ### 전체 Host 제어 [Status: As-built]
@@ -602,7 +601,7 @@ list/status는 서버의 live projection을 출력한다.
 
 근거: [[apps/daemon/src/host-control.ts]], [[apps/daemon/src/host-control.test.ts]],
 [[apps/daemon/src/host-run.test.ts]], [[apps/cli/src/bootstrap.test.ts]]. macOS의 실제 shell·빌드 CLI와
-vendor 대역 검증이며 실제 vendor·React·Windows/WSL 연결은 이 근거에 포함하지 않는다.
+vendor 대역 검증이며 실제 vendor·React·지원 OS별 연결은 이 근거에 포함하지 않는다.
 
 ### 관리 Agent의 shell 실행 연결 [Status: As-built]
 

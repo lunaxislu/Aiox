@@ -107,7 +107,7 @@ export async function prepareClaudeLaunch(input: {
             .filter(Boolean),
     );
     if (restricted) sources.clear();
-    const home = input.env.HOME ?? input.env.USERPROFILE ?? homedir();
+    const home = input.env.HOME ?? homedir();
     const configDir = input.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude");
     const inherited: Record<string, unknown>[] = [];
     if (sources.has("user"))
@@ -135,9 +135,7 @@ export async function prepareClaudeLaunch(input: {
     const managedDir =
         process.platform === "darwin"
             ? "/Library/Application Support/ClaudeCode"
-            : process.platform === "win32"
-              ? "C:\\Program Files\\ClaudeCode"
-              : "/etc/claude-code";
+            : "/etc/claude-code";
     const managed = [
         await optionalSettings(join(managedDir, "managed-settings.json")),
     ];
@@ -191,8 +189,7 @@ export async function prepareClaudeLaunch(input: {
         if (
             Object.entries(env).some(
                 ([key, value]) =>
-                    (process.platform === "win32" ? key.toUpperCase() : key) ===
-                        "CLAUDE_CODE_SAFE_MODE" &&
+                    key === "CLAUDE_CODE_SAFE_MODE" &&
                     /^(1|true)$/i.test(String(value)),
             )
         )
@@ -204,13 +201,7 @@ export async function prepareClaudeLaunch(input: {
         "AIOX_HOOK_URL",
         "AIOX_EXECUTION_OWNERSHIP",
     ]) {
-        if (
-            Object.keys(effectiveEnv).some(
-                (key) =>
-                    (process.platform === "win32" ? key.toUpperCase() : key) ===
-                    name,
-            )
-        )
+        if (Object.keys(effectiveEnv).some((key) => key === name))
             invalid(
                 `settings env.${name}`,
                 "overrides a connection value assigned separately for each AIOX Runtime",
@@ -372,7 +363,6 @@ async function localSettingsRoot(
     home: string,
     env: NodeJS.ProcessEnv,
 ): Promise<string> {
-    if (process.platform === "win32") return cwd;
     let output: string;
     try {
         ({ stdout: output } = await promisify(execFile)(

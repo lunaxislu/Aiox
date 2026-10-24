@@ -205,9 +205,6 @@ Claude 2.1.263 사용자 전달 실측에서는 일반 화면에 `Message from @
 ```sh
 # binding이 실행별 경로로 주입하는 hidden 옵션
 claude --messaging-socket-path /tmp/aiox-private/runtime-123.sock
-
-# native Windows PowerShell 형태, Windows 실측 미수행
-claude --messaging-socket-path '\\.\pipe\aiox-runtime-123'
 ```
 
 binding이 Runtime별 주소를 관리한다. `/status` Peer address는 현재 Claude 자신의 주소이고,
@@ -217,25 +214,22 @@ binding이 Runtime별 주소를 관리한다. `/status` Peer address는 현재 C
 
 Unix 명시 경로는 절대 경로·basename·정규화 길이 103 UTF-8 bytes 이하·부모 소유권/권한·symlink·
 live socket 충돌 검사 경계가 조사됐다. binding은 private 부모를 0700으로 생성하며 임의 기본 `/tmp/cc-socks/PID.sock`을
-전 OS 고정 계약으로 만들지 않는다. Windows는 파일 `.sock`가 아니라 named pipe다.
+플랫폼 공통 고정 계약으로 만들지 않는다.
 
 ```json
 {"type":"auth","token":"<Claude inbox token>"}
 {"type":"user","message":{"role":"user","content":"..."}}
 ```
 
-native Windows는 inbox 인증 첫 줄이 필수이며 Unix는 선택 가능하다. 구현은 두 경로 모두
-auth 첫 줄을 보낸다. hook helper가 Claude의 `CLAUDE_CODE_MESSAGING_SOCKET/TOKEN` 결과를
-daemon으로 보고하고 binding은 할당한 주소·실행 내 token 일관성을 확인한다. inbox·hook·MCP
-token은 별개다. Windows named pipe 주소 생성·token 전달·인증 경로는 구현됐지만 Windows 실제
-vendor 통합은 미검증이다. macOS 바이너리 문자열이나 Unix socket 테스트를 Windows 실측으로
-취급하지 않는다. 근거: [[packages/adapters/claude/src/claude.ts]] `packages/adapters/claude/src/claude.ts:101-127`,
-[[packages/adapters/claude/src/claude-inbox.ts]] `packages/adapters/claude/src/claude-inbox.ts:4-53`.
+Unix inbox는 인증 첫 줄이 선택 가능하지만 AIOX는 auth 첫 줄을 보낸다.
+hook helper가 Claude의 `CLAUDE_CODE_MESSAGING_SOCKET/TOKEN` 결과를 daemon으로 보고하고
+binding은 할당한 주소·실행 내 token 일관성을 확인한다. inbox·hook·MCP token은 별개다.
+근거: [[packages/adapters/claude/src/claude.ts]], [[packages/adapters/claude/src/claude-inbox.ts]].
 accept/hold/refuse는 vendor 정책이며 AIOX가 몰래 accept로 바꾸지 않는다.
 [Inbox 문서](https://code.claude.com/docs/en/cross-session-messaging#the-sessions-inbox-socket).
 
 설치/플랫폼/Peer 최소 버전을 확인하고 미지원이면 실행 실패로 보고한다. 전달받은 최소 지원
-근거는 macOS/Linux/WSL2 2.1.224+, native Windows 2.1.234+다. 최소 버전 충족은 raw wire 미래
+근거는 macOS/Linux 2.1.224+다. 최소 버전 충족은 raw wire 미래
 호환 보장이 아니다. 준비는 Web의 살아 있는 관리 PTY 또는 외부 CLI의 시작 통보, 인증된 hook·inbox 연결에 더해 Network Runtime의
 실행별 MCP initialize 성공까지 요구한다. 단순 파일 존재나 write 성공을
 모델 수신으로 승격하지 않는다. 준비 확인을 위해 모델 ACK probe를 자동 실행하지 않는다.
@@ -416,7 +410,8 @@ adapter 자원 수명은 [[packages/vendor/src/execution.test.ts]] `packages/ven
 2026-09-09 macOS Claude 2.1.266 시작 검증 보고는 빌드된 helper의 인증된 SessionStart·inbox 및
 Network MCP initialize 준비와 daemon force stop·등록 정리까지다. 모델 메시지는 보내지 않았다.
 기존 2.1.263 사용자 실험, 이번 시작 확인, 새 제품의 모델 E2E를 구분한다. 사용자 참여 실제 Claude
-입력·응답·표시 확인은 Stage3 W5에 남고 Windows/Linux/WSL의 실제 vendor 실행은 미검증이다.
+입력·응답·표시 확인은 Stage3 W5에 남고 Windows/Linux/WSL의 실제 vendor 실행은 미검증이었다.
+이하 실측 기록의 Windows/WSL 언급은 당시 검증 경계이며 현재 지원 범위를 뜻하지 않는다.
 
 ### 외부 직접 실행 수명 실측 — 2026-09-11 검증 시점
 
@@ -435,9 +430,9 @@ Network MCP initialize 준비와 daemon force stop·등록 정리까지다. 모�
 실측 근거는 `/private/tmp/aiox-w5-real-external.mjs`와
 `/private/tmp/aiox-w5-real-1789120416147/results.json`, 각 mode의 `after-loss-help.txt`·
 `exit-screen.txt`다. 이 결과는 실제 TUI 수명·사용자 조작·shell 복귀 증거이며 모델 호출이나
-HTTP MCP 메시지의 모델 수신·응답 E2E 증거는 아니다. Windows native·Linux·WSL의 실제 vendor
-수명은 미검증이다. Claude 메시지 E2E와 Windows pipe/token 실제 통합은 후속 Claude 통합 검증에서
-별도로 수행하며, 이번 결과를 Codex·Host 구현 완료로 확대하지 않는다.
+HTTP MCP 메시지의 모델 수신·응답 E2E 증거는 아니다. 당시 Windows native·Linux·WSL의 실제 vendor
+수명은 미검증이었다. Claude 메시지 E2E와 Windows pipe/token 실제 통합은 당시 후속 검증 대상으로
+남겼으며, 이 결과를 Codex·Host 구현 완료로 확대하지 않는다.
 
 ### Web 실행·화면 복원 회귀 실측 [Status: As-built]
 
@@ -488,7 +483,7 @@ TUI 조작·shell 복귀를 확인했다. 사용자 동반 resume/fork/clear/new
 gpt-5.6-luna에서는 실제 AIOX TUI·MCP 경로로 양방향 송수신과 양쪽 단방향 전송을 확인했다.
 네 delivery 모두 DB `completed`에 귀속됐고, 단방향 두 건은 원 발신자에게만 완료 알림이
 전달됐으며 알림 재귀는 없었다. 이 교차 검증은 추가 실패·중단·busy 행렬이나 Stage3 전체
-검증을 대신하지 않는다. Windows/Linux/WSL 실측도 남는다.
+검증을 대신하지 않는다. 당시 Windows/Linux/WSL 실측도 남아 있었다.
 
 같은 Codex 버전의 별도 실제 AIOX remote TUI에서 `/rename` 후 같은 thread의 후속 turn이
 완료되고 Web 상태가 idle로 복귀했다. `/cd`는 remote 환경 제한으로 거절됐으며, 후속 `pwd`

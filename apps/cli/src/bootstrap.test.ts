@@ -925,7 +925,7 @@ test("doctor keeps its stage 1 diagnosis and adds daemon reachability", async ()
     assert.equal(report.node, process.version);
     assert.equal(report.platform, process.platform);
     assert.equal(report.arch, process.arch);
-    assert.ok(["native", "wsl"].includes(String(report.environment)));
+    assert.equal(report.environment, undefined);
     assert.equal(
         report.vendorIntegration,
         "Claude and Codex foreground launch",
@@ -1185,5 +1185,20 @@ test("failed daemon start includes the stored Pino tail in the existing user err
     } finally {
         fetcher.mockRestore();
         await rm(home, { recursive: true, force: true });
+    }
+});
+
+test("rejects unsupported operating systems before preparing CLI resources", () => {
+    vi.stubGlobal(
+        "process",
+        Object.create(process, { platform: { value: "win32" } }),
+    );
+    try {
+        assert.throws(
+            () => createFoundationPort(),
+            /supports macOS and Linux only/,
+        );
+    } finally {
+        vi.unstubAllGlobals();
     }
 });

@@ -38,8 +38,7 @@ Standalone Agent와 선언형 Host, 단일 Network 소속, directed route, 공�
 실행 관측, 로컬 SQLite 저장, React 운영 Web을 제품 범위로 둔다.
 실행 구성은 Host manifest가, 사용자 공통 설정은 전역 설정 파일이 담당한다.
 
-Windows 네이티브·Linux·macOS를 지원 목표로 삼는다. Windows의 WSL 실행은 네이티브 실행과
-구분해서 검증한다. Vendor 설치 지원과 AIOX 전체 연동 완료는 같은 주장이 아니다.
+macOS와 Linux를 지원 대상으로 삼는다. Vendor 설치 지원과 AIOX 전체 연동 완료는 같은 주장이 아니다.
 
 공개 다국어 사이트는 실제 제품에 맞는 소개·설치·사용 정보를 제공하며 운영 Web과 분리한다.
 추가 vendor·원격 실행·federation은 현재 구현 범위가 아니다.

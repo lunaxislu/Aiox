@@ -33,10 +33,9 @@ vendor transcript·reasoning 전체 복제나 무제한 메시지 본문 저장�
 메시지의 자동 재전송도 허용하지 않는다. Host YAML과 DB의 materialization/history를 이중
 정의 권위로 만들지 않는다.
 
-SQLite는 Windows/Linux/macOS에서 공통 domain/schema와 DB 초기화 경로를 사용한다. DB 접근은
+SQLite는 macOS/Linux에서 공통 domain/schema와 DB 초기화 경로를 사용한다. DB 접근은
 daemon의 persistence 책임이며 CLI/Web/adapter가 파일을 직접 수정하지 않는다. 실제 DB 경로
-`.aiox/aiox.db` 기본 경로 연결·드라이버와 현재 검증 범위는 [[docs/architecture/aiox-storage-terminal]]을 따른다. WAL은 미결이다. Windows와
-WSL 홈·DB를 자동 공유한다고 가정하지 않는다. DB 준비 실패를 정상 기동이나 빈 DB fallback으로
+`.aiox/aiox.db` 기본 경로 연결·드라이버와 현재 검증 범위는 [[docs/architecture/aiox-storage-terminal]]을 따른다. WAL은 미결이다. DB 준비 실패를 정상 기동이나 빈 DB fallback으로
 숨기지 않고 기존 파일을 자동 삭제하지 않는다.
 
 ## 공통 shell 화면과 설정
@@ -69,7 +68,7 @@ vendor 입력·브라우저 예약키를 보존한다.
 기본키는 코드가 제공하고 파일에는 사용자 변경분만 저장한다. 전체 기본값을 파일에 복사하게
 만들지 않는다. 열한 개 조작이 모두 재지정 대상이다. [Status: Committed target]
 
-| 조작             | action id                                      | macOS                       | Windows/Linux                  |
+| 조작             | action id                                      | macOS                       | Linux                  |
 | ---------------- | ---------------------------------------------- | --------------------------- | ------------------------------ |
 | 새 shell 탭      | `newShell`                                     | `Cmd+Shift+S`               | `Ctrl+Shift+S`                 |
 | 오른쪽 분할      | `splitRight`                                   | `Cmd+D`                     | `Ctrl+Shift+D`                 |
@@ -90,21 +89,21 @@ vendor 입력·브라우저 예약키를 보존한다.
 `switchTab`의 마지막 자리 `9`는 마지막 탭이다. `switchTab`만 저장 값이 수식자 부분이고
 숫자 자리는 고정이며, 나머지는 완성된 조합 하나를 저장한다.
 
-Windows/Linux 기본키를 macOS에서 `Cmd`→`Ctrl`로 일괄 치환해 만들지 않는다. 기존 기본키는
+Linux 기본키를 macOS에서 `Cmd`→`Ctrl`로 일괄 치환해 만들지 않는다. 기존 기본키는
 xterm의 legacy 키 인코딩에서 일반적인 `Ctrl`·`Alt` 터미널 입력을 덜 가로채도록 선택했다.
 `openPalette`의 `Ctrl+K`는 웹 관례를 따른 예외다. 화면 조작 키는 렌더러에서 먼저 처리하므로
 앱으로 전달하지 않는다. Kitty 모드에서는 `Ctrl+Shift`도 앱 입력을 생성할 수 있으므로 이
 조합이 항상 PTY 바이트를 생성하지 않는다고 가정하지 않는다.
 
 브라우저·OS 예약키 충돌은 CDP 주입으로 관측되지 않아 사용자 직접 입력으로만 판정한다. macOS는
-위 표의 자리가 실측으로 통과했다. Windows/Linux는 구현 후 실측하며, 확인된 잔여 후보 충돌은
+위 표의 자리가 실측으로 통과했다. Linux는 구현 후 실측하며, 확인된 잔여 후보 충돌은
 Firefox의 `Ctrl+Shift+K` 웹 콘솔 하나다. 충돌이 드러나면 해당 조작만 재지정한다.
 
 ### 터미널 입력 바인딩 [Status: Current]
 
-`terminal.keybindings`는 화면 조작용 `keybindings` 및 기존 `keyboard`와 별개인 터미널 입력 설정이다. `mac`·`windows`·`linux` 아래에 `키 조합: 전송 문자열 | null` 변경분만 저장한다. 플랫폼은 daemon이나 shell의 OS가 아니라 브라우저 OS다. Windows 브라우저에서 WSL/WSL2에 연결하면 `windows`를 적용한다.
+`terminal.keybindings`는 화면 조작용 `keybindings` 및 기존 `keyboard`와 별개인 터미널 입력 설정이다. `mac`·`linux` 아래에 `키 조합: 전송 문자열 | null` 변경분만 저장한다. 플랫폼은 daemon이나 shell의 OS가 아니라 브라우저 OS다.
 
-macOS 기본값은 `Alt+ArrowLeft` → `ESC b`, `Alt+ArrowRight` → `ESC f`, `Cmd+ArrowLeft` → Ctrl+A, `Cmd+ArrowRight` → Ctrl+E, `Cmd+Backspace` → Ctrl+U다. 실제 편집 동작은 shell/TUI의 키맵에 따른다. Windows/Linux는 추가 편집 기본값 없이 xterm의 기본 인코딩을 사용한다. 일반 방향키·Enter·Tab·Escape·Delete·Ctrl+문자·Alt+Backspace는 기본값 표에 중복 등록하지 않는다. 붙여넣기 단축키는 아래 클립보드 우선 처리 계약을 따른다.
+macOS 기본값은 `Alt+ArrowLeft` → `ESC b`, `Alt+ArrowRight` → `ESC f`, `Cmd+ArrowLeft` → Ctrl+A, `Cmd+ArrowRight` → Ctrl+E, `Cmd+Backspace` → Ctrl+U다. 실제 편집 동작은 shell/TUI의 키맵에 따른다. Linux는 추가 편집 기본값 없이 xterm의 기본 인코딩을 사용한다. 일반 방향키·Enter·Tab·Escape·Delete·Ctrl+문자·Alt+Backspace는 기본값 표에 중복 등록하지 않는다. 붙여넣기 단축키는 아래 클립보드 우선 처리 계약을 따른다.
 
 키 조합은 `Ctrl`·`Alt`·`Shift`·`Cmd` modifier와 문자 또는 `ArrowLeft`·`Backspace` 같은 키 이름을 사용한다. modifier 순서는 무관하며 문자는 대소문자를 구별하지 않는다. `Alt`는 macOS Option, `Cmd`는 브라우저 Meta다. 중복 조합·잘못된 modifier·빈 전송 문자열은 거절한다. `null`은 입력을 삼키는 동작이 아니라 해당 AIOX 바인딩을 해제하고 xterm 기본 처리로 복귀시키는 뜻이다. 다음 설정은 한 조합만 해제하며 나머지 기본값은 코드에서 적용한다.
 
@@ -116,12 +115,12 @@ macOS 기본값은 `Alt+ArrowLeft` → `ESC b`, `Alt+ArrowRight` → `ESC f`, `C
 
 ### 터미널 선택 복사와 확장 키 입력 [Status: Current]
 
-터미널 선택 영역이 있을 때 macOS `Cmd+C`, Windows/Linux `Ctrl+C`는 터미널 입력 바인딩보다
+터미널 선택 영역이 있을 때 macOS `Cmd+C`, Linux `Ctrl+C`는 터미널 입력 바인딩보다
 먼저 브라우저 복사로 처리하며 PTY 입력으로 보내지 않는다. 드래그는 선택만 만들고 복사는
 별도 단축키 또는 브라우저 복사 조작으로 수행한다. 클립보드에는 선택 영역의 `text/plain`과
-색상·굵기를 포함한 `text/html`을 함께 기록한다. macOS `Cmd+V`, Windows/Linux `Ctrl+V`는
+색상·굵기를 포함한 `text/html`을 함께 기록한다. macOS `Cmd+V`, Linux `Ctrl+V`는
 Kitty 모드에서도 브라우저 붙여넣기를 우선하며, 붙여넣은 텍스트는 xterm의 bracketed paste
-처리를 거쳐 앱으로 전달한다. 선택이 없으면 Windows/Linux `Ctrl+C`는 기존 입력 처리로
+처리를 거쳐 앱으로 전달한다. 선택이 없으면 Linux `Ctrl+C`는 기존 입력 처리로
 돌아가므로 별도 사용자 매핑이 없는 한 앱에 전달된다. macOS `Cmd+C`는 PTY 의미가 없으므로
 선택이 없어도 브라우저 소유로 남긴다. 터미널 선택은 DOM 선택이 아니어서 브라우저가 복사
 명령을 비활성으로 보므로, 선택이 있을 때만 `beforecopy`를 취소해 복사 명령을 청구한다.
@@ -159,8 +158,7 @@ Shift+Enter를 무조건 줄바꿈 문자열로 치환하지 않으며 실제 �
 
 공통 config.json의 terminal.shell, terminal.args, terminal.cwd는 모든 OS에서 선택적이다.
 shell은 실행 파일 이름/경로, args는 인자 배열, cwd는 선택한 shell의 시작 폴더다. 생략하면 기존
-OS shell 및 daemon 작업 경로를 사용한다. Windows 기본은 COMSPEC 또는 cmd.exe이고 POSIX는
-SHELL 또는 /bin/bash다. 시작한 터미널의 화면·shell 상태를 복제하지 않는다.
+OS shell 및 daemon 작업 경로를 사용한다. 기본 shell은 SHELL 또는 /bin/bash다. 시작한 터미널의 화면·shell 상태를 복제하지 않는다.
 
 Web의 새 탭·분할은 조작한 pane의 선택된 탭을, 새 workspace는 현재 화면의 활성 pane에서
 선택된 탭을 경로 상속 기준으로 사용한다. 생성 요청은 기준 panel·terminal ID를 함께 보내고,
@@ -180,8 +178,8 @@ PTY에는 일반 Web shell 설정을 적용하지 않는다. daemon 시작은 �
 shell 실행 파일 및 cwd 디렉터리·접근 여부를 확인하고, 실패하면 DB와 listener 준비 전에 중단한다.
 새 shell 생성도 최종 요청 cwd를 포함한 같은 검증을 통과해야 하며 실패해도 기존 실행은 유지한다.
 검증한 실행 파일·인자·cwd로 실행하며 검증 이후의 native 실행 오류 처리도 유지한다.
-파일 존재·권한 검사가 실행 파일 형식이나 초기화 성공까지 보장하지는 않는다. Windows 실행 파일
-ACL 검증은 사전 보장 범위 밖이며 실제 실행 실패로 처리한다. NUL 등 실행 인자 경계 검증은 유지한다.
+파일 존재·권한 검사가 실행 파일 형식이나 초기화 성공까지 보장하지는 않는다.
+NUL 등 실행 인자 경계 검증은 유지한다.
 
 새 shell 생성 API는 서버 설정 오류를 `500 / invalid_config`, 명시적 요청 cwd의 확인된
 오류를 `400 / invalid_request`로 반환한다. 검사 프로세스 timeout처럼 원인이 확인되지 않은
@@ -191,12 +189,6 @@ ACL 검증은 사전 보장 범위 밖이며 실제 실행 실패로 처리한�
 [[apps/daemon/src/http.ts]] `apps/daemon/src/http.ts:123-131`,
 [[apps/daemon/src/terminals.test.ts]] `apps/daemon/src/terminals.test.ts:101-248`.
 
-Windows에서 wsl.exe를 선택하면 args로 배포판을 지정하고 cwd는 해당 Linux 경로로 전달한다.
-Windows PTY의 작업 경로와 Linux 시작 경로를 구분하며 AIOX가 드라이브 문자열을 수동 변환하지 않는다.
-배포판·사용자 선택을 반영한 내부 디렉터리 검사를 수행하고 확인된 Linux cwd를 실행에 전달한다.
-cwd 생략 시 host cwd에서 WSL이 선택한 디렉터리를 확인한다. 검증은 사용자 실행 명령을 실행하지
-않으며 해석할 수 없는 WSL 실행 옵션은 설정 오류로 거절한다. 설정은 WSL 설치·버전 변환·혼합 협업 지원을
-완료시키지 않으며 Windows daemon의 종료 정책은 runtime 계약을 따른다.
 
 CLI·YAML·전역 config 모두 grid만 지정하고 columns와 rows를 모두 생략한 입력은
 검증 단계에서 오류다. 다른 계층의 값이나 기본값으로 보완하지 않는다. columns 또는 rows 중 하나라도
@@ -291,7 +283,8 @@ Persistent Network 이름은 DB에 지속한다. 참여 실행의 route 수명�
 
 이전 Stage 1 검증에서는 better-sqlite3 12.11.1로 persistent Network/Route와 최초 migration·
 transaction·close/reopen을 검증했다. 당시 Node 요구 조건은 >=22.12.0이며 Windows/Linux/macOS × Node22/24 CI에서
-설치·빌드·타입 검사·테스트·CLI 진단을 통과했다. vendor/PTY/WSL과 npm 전역 배포 검증은 후속 단계다.
+설치·빌드·타입 검사·테스트·CLI 진단을 통과했다. 당시 vendor/PTY/WSL과 npm 전역 배포 검증은 후속 단계였으며,
+이 과거 CI 결과는 현재 지원 범위나 현재 구현의 검증을 뜻하지 않는다.
 근거: [Stage 1 CI](https://github.com/lunaxislu/aiox-prototype/actions/runs/34189231508).
 
 ## 파일·Web 편집과 적용
@@ -496,7 +489,7 @@ Sources:
 | `keyboard`                       | 값이 공백만 아닌 문자열인 기존 map; 생략 시 기존 기본                   |
 | `web.sidebar.width`              | 양의 유한수; 화면 기본값 240, 드래그 최소 180, 상한은 뷰포트 폭의 90%   |
 | `web.sidebar.open`               | boolean, 생략 시 열림                                                   |
-| `keybindings`                    | `mac`/`windows`/`linux` 아래의 action id→조합 문자열 map; 변경분만 저장 |
+| `keybindings`                    | `mac`/`linux` 아래의 action id→조합 문자열 map; 변경분만 저장 |
 | `host.layout`                    | Host spec의 LayoutInput; 생략 시 override 없음                          |
 | `appearance.theme`               | `system                                                                 | light | dark`, 생략 시 `system`; W1 추가 목표, 현재 parser 미지원 |
 
@@ -520,7 +513,7 @@ Sources:
     "appearance": { "theme": "dark" },
     "keybindings": {
         "mac": { "splitDown": "Cmd+Shift+G" },
-        "windows": { "openPalette": "Ctrl+Shift+O" }
+        "linux": { "openPalette": "Ctrl+Shift+O" }
     }
 }
 ```

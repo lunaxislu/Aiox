@@ -16,7 +16,7 @@ import { prepareShell } from "./shell-integration";
 
 const shells = ["/bin/zsh", "/bin/bash"].filter(existsSync);
 
-describe.skipIf(process.platform === "win32")("cwd prompt signal", () => {
+describe("cwd prompt signal", () => {
     it.each(shells)(
         "emits at each %s prompt with a user WINCH trap and preserves status",
         async (file) => {
@@ -71,26 +71,7 @@ describe.skipIf(process.platform === "win32")("cwd prompt signal", () => {
     );
 });
 
-it("leaves Windows shells unchanged without installing idle hooks", async () => {
-    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
-    Object.defineProperty(process, "platform", { value: "win32" });
-    try {
-        const launch = { file: "powershell.exe", args: [], env: {} };
-        const shell = prepareShell(launch);
-        try {
-            expect(shell.args).toEqual(launch.args);
-            expect(shell.env).toEqual(launch.env);
-            expect(await shell.busy(1)).toBe(true);
-            expect(await shell.close(1)).toBe(false);
-        } finally {
-            await shell.dispose();
-        }
-    } finally {
-        Object.defineProperty(process, "platform", platform);
-    }
-});
-
-describe.skipIf(process.platform === "win32")("POSIX shell integration", () => {
+describe("POSIX shell integration", () => {
     it.each(shells)(
         "only closes %s at its prompt, preserving user startup configuration",
         async (file) => {

@@ -4,7 +4,7 @@ export function checkClaudeVersion(
     output: string,
     platform: NodeJS.Platform = process.platform,
 ): string {
-    if (!["darwin", "linux", "win32"].includes(platform))
+    if (!["darwin", "linux"].includes(platform))
         throw new Error("Claude inbox is unsupported on this platform");
     const match = /^(\d+)\.(\d+)\.(\d+)(?: \(Claude Code\))?$/.exec(
         output.trim(),
@@ -15,7 +15,7 @@ export function checkClaudeVersion(
         number,
         number,
     ];
-    const minimumPatch = platform === "win32" ? 234 : 224;
+    const minimumPatch = 224;
     if (
         !Number.isSafeInteger(major) ||
         !Number.isSafeInteger(minor) ||
@@ -48,7 +48,6 @@ export async function probeClaude(
                 timeout: 5000,
                 maxBuffer: 4096,
                 killSignal: "SIGKILL",
-                windowsHide: true,
                 ...(signal ? { signal } : {}),
             },
             (error, stdout) => {

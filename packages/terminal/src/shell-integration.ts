@@ -31,7 +31,6 @@ export function prepareShell(input: ShellLaunch): ShellIntegration {
         close: async () => false,
         dispose: async () => {},
     };
-    if (process.platform === "win32") return unsupported;
     const name = basename(input.file);
     if (input.args.length || !["bash", "zsh", "fish"].includes(name))
         return unsupported;

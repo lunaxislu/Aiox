@@ -796,7 +796,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
                 const live = runtimes
                     .list()
                     .filter((record) => record.executionOwnership === "daemon");
-                const terminate = force || process.platform === "win32";
+                const terminate = force;
                 if (!terminate) {
                     const busy = yield* attempt(() => terminals.busy());
                     if (live.length > 0 || busy.length > 0) {

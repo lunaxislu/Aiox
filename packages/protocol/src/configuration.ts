@@ -15,14 +15,12 @@ export type AioxConfig = {
         fontSize?: number;
         theme?: Record<string, string>;
         keybindings?: Partial<
-            Record<"mac" | "windows" | "linux", Record<string, string | null>>
+            Record<"mac" | "linux", Record<string, string | null>>
         >;
     };
     keyboard?: Record<string, string>;
     web?: { sidebar?: { width?: number; open?: boolean } };
-    keybindings?: Partial<
-        Record<"mac" | "windows" | "linux", Record<string, string>>
-    >;
+    keybindings?: Partial<Record<"mac" | "linux", Record<string, string>>>;
     appearance?: { theme: "system" | "light" | "dark" };
     host?: { layout?: HostLayout };
 };
@@ -216,9 +214,9 @@ export function parseConfig(
                 terminal.keybindings,
                 "terminal.keybindings",
             );
-            keys(bindings, ["mac", "windows", "linux"], "terminal.keybindings");
+            keys(bindings, ["mac", "linux"], "terminal.keybindings");
             config.terminal.keybindings = {};
-            for (const os of ["mac", "windows", "linux"] as const) {
+            for (const os of ["mac", "linux"] as const) {
                 if (bindings[os] === undefined) continue;
                 const map = object(bindings[os], `terminal.keybindings.${os}`);
                 const seen = new Set<string>();
@@ -265,9 +263,9 @@ export function parseConfig(
     }
     if (input.keybindings !== undefined) {
         const bindings = object(input.keybindings, "keybindings");
-        keys(bindings, ["mac", "windows", "linux"], "keybindings");
+        keys(bindings, ["mac", "linux"], "keybindings");
         config.keybindings = {};
-        for (const os of ["mac", "windows", "linux"] as const) {
+        for (const os of ["mac", "linux"] as const) {
             if (bindings[os] === undefined) continue;
             const map = stringMap(bindings[os], `keybindings.${os}`);
             keys(

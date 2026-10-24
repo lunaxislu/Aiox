@@ -140,44 +140,41 @@ describe("general shell sessions", () => {
         expect(terminals.view(shell.id)).toBeUndefined();
         expect(onChange).toHaveBeenCalledTimes(removedNotifications);
     });
-    it.skipIf(process.platform === "win32")(
-        "observes cwd after a shell prompt and refreshes from its own PID",
-        async () => {
-            const target = join(harness.home, "prompt cwd");
-            await mkdir(target);
-            const actualTarget = await realpath(target);
-            await writeFile(
-                join(harness.home, ".bashrc"),
-                "PS1='AIOX_CWD_TEST> '\n",
-            );
-            vi.stubEnv("HOME", harness.home);
-            const terminals = harness.daemon.services.terminals;
-            const shell = terminals.createShell({
-                file: "/bin/bash",
-                args: [],
-                cwd: harness.home,
-            });
-            let output = "";
-            shell.subscribe({
-                data: (chunk) => {
-                    output += Buffer.from(chunk).toString("utf8");
-                },
-                exit() {},
-            });
-            shell.write("\r");
-            await waitFor(
-                () => output.includes("AIOX_CWD_TEST> "),
-                "initial prompt",
-            );
-            shell.write(`cd '${target}'\r`);
-            await waitFor(
-                () => terminals.view(shell.id)?.cwd === actualTarget,
-                () =>
-                    `prompt cwd update: ${terminals.view(shell.id)?.cwd}; ${output.slice(-200)}`,
-            );
-            expect(await terminals.refreshCwd(shell.id)).toBe(actualTarget);
-        },
-    );
+    it("observes cwd after a shell prompt and refreshes from its own PID", async () => {
+        const target = join(harness.home, "prompt cwd");
+        await mkdir(target);
+        const actualTarget = await realpath(target);
+        await writeFile(
+            join(harness.home, ".bashrc"),
+            "PS1='AIOX_CWD_TEST> '\n",
+        );
+        vi.stubEnv("HOME", harness.home);
+        const terminals = harness.daemon.services.terminals;
+        const shell = terminals.createShell({
+            file: "/bin/bash",
+            args: [],
+            cwd: harness.home,
+        });
+        let output = "";
+        shell.subscribe({
+            data: (chunk) => {
+                output += Buffer.from(chunk).toString("utf8");
+            },
+            exit() {},
+        });
+        shell.write("\r");
+        await waitFor(
+            () => output.includes("AIOX_CWD_TEST> "),
+            "initial prompt",
+        );
+        shell.write(`cd '${target}'\r`);
+        await waitFor(
+            () => terminals.view(shell.id)?.cwd === actualTarget,
+            () =>
+                `prompt cwd update: ${terminals.view(shell.id)?.cwd}; ${output.slice(-200)}`,
+        );
+        expect(await terminals.refreshCwd(shell.id)).toBe(actualTarget);
+    });
     it.each(["", "   ", "\0"])(
         "rejects malformed request cwd %j as request input",
         async (cwd) => {
@@ -194,8 +191,8 @@ describe("general shell sessions", () => {
     );
 
     it.each([
-        [undefined, 500, "invalid_config", "WSL probe diagnostic"],
-        [undefined, 500, "invalid_config", "Windows probe timed out"],
+        [undefined, 500, "invalid_config", "shell probe diagnostic"],
+        [undefined, 500, "invalid_config", "shell probe timed out"],
         ["terminal.cwd", 400, "invalid_request", "cwd unavailable"],
     ] as const)(
         "classifies probe evidence %s (%s / %s: %s) without guessing from request cwd",
@@ -349,23 +346,20 @@ describe("general shell sessions", () => {
         }
     });
 
-    it.skipIf(process.platform === "win32")(
-        "observes native exec failure through the PTY exit event",
-        async () => {
-            const session = harness.daemon.services.terminals.createShell({
-                file: "aiox-missing-shell-executable",
-                args: [],
-                cwd: process.cwd(),
-            });
-            const exited = new Promise<number>((resolve) =>
-                session.subscribe({
-                    data: () => {},
-                    exit: (event) => resolve(event.exitCode),
-                }),
-            );
-            expect(await exited).not.toBe(0);
-        },
-    );
+    it("observes native exec failure through the PTY exit event", async () => {
+        const session = harness.daemon.services.terminals.createShell({
+            file: "aiox-missing-shell-executable",
+            args: [],
+            cwd: process.cwd(),
+        });
+        const exited = new Promise<number>((resolve) =>
+            session.subscribe({
+                data: () => {},
+                exit: (event) => resolve(event.exitCode),
+            }),
+        );
+        expect(await exited).not.toBe(0);
+    });
     it("does not create a shell when shutdown completes while configuration is loading", async () => {
         let release!: () => void;
         const loading = new Promise<void>((resolve) => {
@@ -529,7 +523,7 @@ describe("general shell sessions", () => {
             await configured.close();
         }
     });
-    it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    it.skipIf(process.getuid?.() === 0)(
         "rejects an inaccessible cwd before creating a PTY",
         async () => {
             const cwd = join(harness.home, "no-access");
@@ -562,26 +556,6 @@ describe("general shell sessions", () => {
         expect(terminals.view(shell.id)?.cwd).toBe(harness.home);
     });
 
-    it("preserves a resolved WSL launch and its Linux display cwd", async () => {
-        const terminals = harness.daemon.services.terminals;
-        const existing = terminals.createShell(
-            await configModule.resolveTerminalLaunch({}),
-        );
-        const spawn = vi
-            .spyOn(terminalModule, "createTerminal")
-            .mockImplementation((options) => ({ ...existing, id: options.id }));
-        const shell = terminals.createShell({
-            file: "C:\\Windows\\System32\\wsl.exe",
-            args: ["--cd", "/home/me", "-d", "Ubuntu"],
-            cwd: process.cwd(),
-            displayCwd: "/home/me",
-        });
-        expect(spawn.mock.calls.at(-1)![0]).toMatchObject({
-            args: ["--cd", "/home/me", "-d", "Ubuntu"],
-            cwd: process.cwd(),
-        });
-        expect(terminals.view(shell.id)?.cwd).toBe("/home/me");
-    });
     it("carries shell input and native resize across a browser detach without an Agent", async () => {
         const shell = harness.daemon.services.terminals.createShell({
             ...(await configModule.resolveTerminalLaunch({})),
@@ -591,11 +565,7 @@ describe("general shell sessions", () => {
         const first = attach(shell.id);
         await first.open;
         try {
-            first.type(
-                process.platform === "win32"
-                    ? "set /a 12345*6789\r"
-                    : "echo $((12345*6789))\r",
-            );
+            first.type("echo $((12345*6789))\r");
             await waitFor(
                 () => first.text().includes("83810205"),
                 "general shell output",
@@ -856,11 +826,7 @@ describe("terminal attachment", () => {
         const viewer = attach(terminal.id);
         await viewer.open;
 
-        viewer.type(
-            process.platform === "win32"
-                ? "set /a 12345*6789\r"
-                : "echo $((12345*6789))\r",
-        );
+        viewer.type("echo $((12345*6789))\r");
         await waitFor(
             () => viewer.text().includes("83810205"),
             () => `shell output: ${JSON.stringify(viewer.text())}`,
@@ -993,7 +959,7 @@ describe("terminal attachment", () => {
         expect(result.stopped).toBe(true);
         expect(result.warnings).toEqual([]);
         expect(session.alive).toBe(false);
-        // ConPTY's close event can precede the OS process handle becoming dead.
+        // Confirm that the OS process is gone in addition to the session closing.
         await waitFor(() => {
             try {
                 process.kill(pid, 0);

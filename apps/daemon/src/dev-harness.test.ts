@@ -22,9 +22,8 @@ test("honors configured cwd and advertises the isolated daemon stop endpoint", a
         expect(output).toContain("http://127.0.0.1:12345/api/daemon/stop");
         expect(output).not.toContain("aiox daemon stop");
         expect(output).not.toContain("refused, an execution is live");
-        expect(output).toContain("Windows");
-        expect(output).toContain("POSIX");
-        expect(output).toContain("POSIX shells: stty size");
+        expect(output).toContain("stty size");
+        expect(output).toContain("Normal stop may refuse");
     } finally {
         on.mockRestore();
         write.mockRestore();

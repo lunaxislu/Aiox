@@ -143,7 +143,7 @@ it("commits workspace panel commands, rejects stale or unknown targets and expos
 it("resolves applied Hosts by YAML, preserves management on Copy and returns config conflicts and storage errors", async (t) => {
     const h = await startTestDaemon({
         terminal: async () => ({
-            shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+            shell: "/bin/sh",
             args: [],
             cwd: h.home,
         }),

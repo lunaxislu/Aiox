@@ -87,7 +87,7 @@ resolve하고 기존 MessageService의 inFlight.result에 최초 outcome/error/t
 
 `packages/persistence`가 schema 초기화·쿼리·transaction을 소유하고 daemon boot가 사용자 데이터베이스를 연다. 경로는 사용자 홈 아래 `.aiox/aiox.db`이며, CLI·Web·vendor binding은 DB 파일을 직접 열지 않는다. 열기와 닫기는 Effect SQLite Node runtime 생성과 dispose 경계에 있다. 외래 키는 연결마다 명시적으로 활성화하며 파일·PTY·network 호출은 DB transaction 바깥에서 수행한다.
 
-Windows native, Linux, macOS는 같은 schema와 저장 경계를 사용한다. Windows native와 WSL은 home과 실행 환경이 다르므로 별도 DB를 사용하며, Windows mount의 DB를 두 daemon이 공유하는 형태는 도입하지 않는다. 지원 목표는 Windows/Linux/macOS다. Windows daemon과 WSL vendor를 혼합하는 경로는 path/socket/token/MCP/shutdown 경계가 추가로 검증될 때까지 Proposed다.
+macOS와 Linux는 같은 schema와 저장 경계를 사용한다. 지원 실행 환경과 검증 경계는 [[docs/specs/aiox-runtime]]을 따른다.
 
 현재 workspace Node engine은 `^22.16.0 || >=24.11.0`이며 Node runtime 요구의 owner는 [[docs/architecture/aiox-system]]과 [[package.json]]이다. 역사적 플랫폼 검증: CI run [34314631099](https://github.com/lunaxislu/aiox-prototype/actions/runs/34314631099)은 당시 `better-sqlite3` 구현이 있던 commit `6621fc3`의 Windows/Linux/macOS × Node 22/24 결과다. 이는 그 시점의 locked install·lint·build·typecheck·test·built CLI 검증이며 이후의 Effect SQLite driver와 Application RPC 변경 검증으로 간주하지 않는다. 현재 구현은 위 as-built 근거와 현재 코드/tests를 기준으로 판단한다.
 
@@ -127,14 +127,13 @@ PTY·headless·Serialize·Web 화면 복원은 daemon 소유 terminal의 책임�
 일반 shell의 terminal ID와 마지막 확인 작업 경로는 TerminalService가 유지한다. 초기값은
 생성 경로이며, 지원 shell의 프롬프트 hook이 보내는 `OSC 777;aiox-cwd`를 headless 파서가
 감지하면 daemon이 소유한 shell PID의 cwd를 조회한다. 제어 신호에는 PID나 경로를 싣지 않는다.
-Linux와 WSL 내부 daemon은 `/proc/<pid>/cwd`, macOS는 `/usr/sbin/lsof`의 NUL 구분 cwd 필드를
+Linux daemon은 `/proc/<pid>/cwd`, macOS는 `/usr/sbin/lsof`의 NUL 구분 cwd 필드를
 사용한다. 바뀐 경로만 TerminalService → AppState → Web으로 전달한다. 조회 중 추가 신호는
 후속 조회로 합치며, 세션 제거 뒤 완료된 조회는 상태를 게시하거나 유효한 기준 경로를 반환하지 않는다.
 
 경로 알림은 bash·zsh·fish의 기존 초기화 연동에 설치하되 idle/종료 판별용 trap 설치 조건과
 분리한다. 현재 실행 인자가 있는 shell·그 밖의 shell에는 hook을 설치하지 않는다. 미지원·조회
-실패 시 생성 경로 또는 마지막 확인 경로를 유지한다. Windows daemon에서 시작한 `wsl.exe`의
-Linux PID를 연결하는 관측은 구현하지 않았으며 기존 Linux 표시 경로를 유지한다. 새 탭·분할·
+실패 시 생성 경로 또는 마지막 확인 경로를 유지한다. 새 탭·분할·
 workspace 생성 시에는 기준 shell PID를 다시 조회하고 기존 실행 경로 검증을 거친다. 서버는
 생성 요청의 기준 참조만 소비하며 브라우저의 포커스·선택 상태를 소유하지 않는다. [Status: As-built]
 근거: [[packages/terminal/src/shell-integration.ts]], [[packages/terminal/src/shell-integration.test.ts]],
@@ -241,7 +240,7 @@ native PTY에서 읽었지만 미러 처리가 끝나지 않은 출력이 1 MiB 
 
 terminal 패키지의 ESM 빌드는 CJS인 `@xterm/headless`만 번들에 포함해 배포 실행의 import 호환성을 유지한다. native `node-pty`는 외부 의존성으로 둔다. [Status: As-built] 근거: [[tsup.config.ts]] `tsup.config.ts:16-20`.
 
-PTY 경계는 POSIX raw byte와 Windows 문자열 출력을 공통 바이트로 정규화해 WebSocket binary 출력과 JSON 제어 프레임을 구분한다. Windows 드라이버가 이미 문자열로 디코딩한 원본 바이트까지 복원한다고 보장하지 않는다.
+PTY 경계는 raw byte 출력을 WebSocket binary 출력으로 전달하고 JSON 제어 프레임과 구분한다.
 
 Web 터미널 키 입력은 [[apps/web/src/terminal-keybindings.ts]]에서 브라우저 OS별 기본값에 `terminal.keybindings`의 사용자 변경분을 우선 적용한다. [[apps/web/src/attach.ts]]의 xterm custom key handler는 일치한 keydown만 `term.input(sequence, true)`로 전달하고 xterm의 중복 처리를 막는다. 기존 onData의 연결·복원 상태 검사와 사용자 입력 전송 경로를 그대로 거친다. xterm 6은 custom handler를 조합 처리보다 먼저 호출하므로, 매핑된 키는 기존 CompositionHelper.keydown을 먼저 거쳐 조합 중/종료 대기 문자를 확정한 뒤 보낸다. 별도 조합 버퍼나 확정 타이머를 만들지 않는다. IME 문자 키(keyCode 229)·AltGraph·미지정 키는 xterm 인코딩 경로에 남긴다. 클립보드 단축키는 아래 우선 처리 경로를 따른다. private CompositionHelper 경계는 실제 xterm을 사용하는 회귀 테스트로 검증한다. ConnectedTerminal은 최신 config를 getter로 제공하므로 설정을 읽은 뒤 attachment를 다시 만들 필요가 없다. 서버는 설정 검증·전달과 입력 바이트의 PTY 전달을 담당하며 shell의 bindkey/readline 설정을 변경하지 않는다. 기본값·변경분 저장 계약은 [[docs/specs/aiox-configuration-web]]을 따른다. [Status: As-built]
 
@@ -408,7 +407,7 @@ daemon의 `AppState`는 저장된 Host·Network·panel·notification과 live reg
 
 변경은 하나의 Effect semaphore로 직렬화한다. Subscription 등록과 초기 snapshot 캡처도 같은 lock을 사용해 이후 변경이 누락되지 않게 한다. 현재 서버는 Effect RPC WebSocket을 `/api/rpc`에서 제공한다. snapshot event는 epoch와 version을 포함하고, 이어지는 delta는 같은 epoch의 증가하는 version을 사용한다. 각 subscriber queue는 256 event로 제한되며, 느린 subscriber는 `slow_consumer`로 분리되어 reconnect 시 최신 snapshot부터 이어간다. 한 subscriber가 밀려도 다른 subscriber와 producer는 진행한다. commit 뒤 projection 실패는 구독을 실패시키고, recovery는 저장소에서 projection을 다시 만들도록 제한 횟수로 재시도한다. Terminal 화면 바이트는 application state가 아니라 terminal WebSocket을 통해 흐른다.
 
-RPC server와 projection 및 React 앱의 TanStack DB 상태 저장소는 연결됐다. 저장소의 상태 소유·명령 projection은 [[docs/architecture/aiox-system]]을 따른다. 제품 화면은 저장소의 실제 배치·실행 상태와 알림을 소비한다. 운영 WorkspaceContent는 terminalId/runtimeId로 TerminalSurface를 식별하고 ConnectedTerminal이 기존 attachTerminal을 React 수명에 연결한다. pane 이동은 같은 portal·xterm·WS를 유지하며, 숨김·workspace 이탈·실행 교체는 브라우저 attachment만 정리한다. 복원과 ACK·응답 권한 처리는 attach.ts가 소유하고 React에서 복제하지 않는다. 크기는 실제 host의 양수 geometry만 요청하며 xterm resize는 서버 순서를 따른다. 복원 시 포커스는 현재 활성 pane에 한정한다. 연결·복원 실패 원인은 개별 terminal 상태로 표시하고, 재연결 중 원인을 유지하며 restorable:false는 재연결을 막는다. HTTP/HTTPS origin에 따라 ws/wss를 선택하고 개발 proxy도 같은 terminal 경로를 전달한다. 근거는 [[apps/web/src/pages/workspace/connected-terminal.tsx]], [[apps/web/src/pages/workspace/connected-terminal.test.tsx]], [[apps/web/src/pages/workspace/terminal-surface.test.tsx]], [[apps/web/src/attach.test.ts]], [[apps/web/vite.config.test.ts]]다. 앞선 Stage 2 Web의 TypeScript/Vite/xterm client와 HTTP polling·이벤트 갱신 및 W5의 HTTP/WebSocket 대역 검증은 역사 기록이며, 실제 daemon·PTY·vendor 생존 검증은 아니었다. 해당 검증의 재개·정정 기록은 `logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md`의 “W5 결과 수용과 검증 정정·W6 재개 지점”에 있다. 운영 Web은 React·Tailwind·shadcn/ui를 사용하고 영어 UI를 유지한다. Next.js 공개 site와 분리하며 Zustand/TanStack Query는 실제 shared state/cache 요구가 생길 때만 평가한다.
+RPC server와 projection 및 React 앱의 TanStack DB 상태 저장소는 연결됐다. 저장소의 상태 소유·명령 projection은 [[docs/architecture/aiox-system]]을 따른다. 제품 화면은 저장소의 실제 배치·실행 상태와 알림을 소비한다. 운영 WorkspaceContent는 terminalId/runtimeId로 TerminalSurface를 식별하고 ConnectedTerminal이 기존 attachTerminal을 React 수명에 연결한다. pane 이동은 같은 portal·xterm·WS를 유지하며, 숨김·workspace 이탈·실행 교체는 브라우저 attachment만 정리한다. 복원과 ACK·응답 권한 처리는 attach.ts가 소유하고 React에서 복제하지 않는다. 크기는 실제 host의 양수 geometry만 요청하며 xterm resize는 서버 순서를 따른다. 복원 시 포커스는 현재 활성 pane에 한정한다. 연결·복원 실패 원인은 개별 terminal 상태로 표시하고, 재연결 중 원인을 유지하며 restorable:false는 재연결을 막는다. HTTP/HTTPS origin에 따라 ws/wss를 선택하고 개발 proxy도 같은 terminal 경로를 전달한다. 근거는 [[apps/web/src/pages/workspace/connected-terminal.tsx]], [[apps/web/src/pages/workspace/connected-terminal.test.tsx]], [[apps/web/src/pages/workspace/terminal-surface.test.tsx]], [[apps/web/src/attach.test.ts]], [[apps/web/vite.config.test.ts]]다. 앞선 Stage 2 Web의 TypeScript/Vite/xterm client와 HTTP polling·이벤트 갱신 및 W5의 HTTP/WebSocket 대역 검증은 역사 기록이며, 실제 daemon·PTY·vendor 생존 검증은 아니었다. 해당 검증의 재개·정정 기록은 `logs/2026-09-12-AIOX-TUI-Stage2-3-Control-Flow-Boundaries.md`의 “W5 결과 수용과 검증 정정·W6 재개 지점”에 있다. 운영 Web은 React·Tailwind·shadcn/ui를 사용하고 영어 UI를 유지한다. 공개 사이트는 현재 구현 범위에 포함하지 않으며, 후속 범위와 framework 선택은 [[docs/product/roadmap]]을 따른다. Zustand/TanStack Query는 실제 shared state/cache 요구가 생길 때만 평가한다.
 
 근거: [[apps/daemon/src/app-state.ts]] `apps/daemon/src/app-state.ts:71-76`, `apps/daemon/src/app-state.ts:248-285`, `apps/daemon/src/app-state.ts:509-533`; RPC endpoint는 [[apps/daemon/src/application-rpc.ts]] `apps/daemon/src/application-rpc.ts:272-277`. Snapshot·version·slow consumer·recovery는 [[apps/daemon/src/app-state.test.ts]] `apps/daemon/src/app-state.test.ts:84-180`, 실 RPC subscriber와 reconnect는 [[apps/daemon/src/application-rpc.test.ts]] `apps/daemon/src/application-rpc.test.ts:33-69`, `apps/daemon/src/application-rpc.test.ts:195-280`에서 검증한다.
 
@@ -445,12 +444,11 @@ macOS zsh/bash 실제 18개 테스트와 Linux Bash5.2.37/Zsh5.9/Fish4.0.2의 PT
 Linux 결과는 분리된 shell 연동 모듈 범위이며 전체 daemon/CLI 검증은 아니다. macOS 빌드 CLI에서는
 출력·cd·Enter 전 문자열이 있는 대기 shell 정상 종료와 vim 실행 중 일반 stop 거절·force 후 실제
 프로세스 종료를 확인했다. 상세 근거와 후속 재개점은 Stage2-2 후속 W7/W9가 소유한다.
-Windows native daemon은 일반 stop에서도 daemon 소유 실행의 작업 상태를 검사하지 않고 native PTY 종료 경로를
-사용한다. PowerShell PSReadLine handshake와 CMD idle 조사 테스트는 제거했으며 Web shell 기본값을
-PowerShell로 강제하지 않는다. 과거 PSReadLine2.4.5 Windows CI 및 CMD 반례 결과는 Stage2-2
-로그에 당시 정책의 검증으로 보존한다. Windows 사용자 실측에서는 일반 stop·force 각각의
-shell PTY child/grandchild와 별도 외부 owner의 foreground/helper 트리 종료를 확인했다.
-외부 owner 종료는 당시 잘못 확장된 정책의 관측이며 현재 외부 생존 계약의 검증으로 사용하지 않는다.
+과거 Windows 실측은 당시 구현과 종료 정책의 근거로만 보존하며 현재 지원 범위에 포함하지 않는다.
+당시 Windows 일반 stop·force 각각에서 shell PTY child/grandchild와 별도 외부 owner의
+foreground/helper 트리 종료를 확인했다. 외부 owner 종료는 당시 잘못 확장된 정책의 관측이며
+현재 외부 생존 계약의 검증으로 사용하지 않는다. PSReadLine2.4.5 Windows CI 및 CMD 반례는
+Stage2-2 로그에 당시 정책의 검증으로 남아 있다.
 최신 소유권 범위와 수정 검증은 [[docs/specs/aiox-runtime]] 및 Stage2-3 W1을 따른다.
 외부 실행은 실제 runExternal·WebSocket·ExecutionOwner 경로와 대역 vendor를 사용했으므로
 실제 Claude/Codex 통합이나 임의 프로세스 트리 전체에 대한 보장으로 확대하지 않는다.
@@ -459,17 +457,14 @@ shell PTY child/grandchild와 별도 외부 owner의 foreground/helper 트리 �
 config의 resolveTerminalLaunch가 기본값·요청 override·실행 파일 탐색과 cwd 검증을 소유한다.
 bootstrap은 DB 준비 전에 검증하고, 새 shell 생성은 파일을 다시 읽어 검증한 뒤 admission을
 재확인한다. TerminalService는 필수 실행 값을 받아 PTY를 생성하며 설정을 다시 해석하지 않는다.
-Windows에서 WSL의 Linux cwd는 선택한 배포판·사용자의 정적 검사 명령으로 확인한 뒤 wsl.exe --cd로
-전달하며 native PTY의 host cwd와 구분한다. Windows native cwd는 Node 자식이 실제 해당 경로에서
-시작할 수 있는지 검사한다. 확인된 cwd 실패만 config 오류에 필드 근거를 붙이고 daemon이 요청
-cwd 유무와 함께 분류한다. Windows 검사 프로세스 실패와 WSL의 확정 cwd 실패 표식 없는 오류는
-실행 환경 실패로 유지한다. HTTP 분류 계약은 configuration/Web spec이 소유한다.
-근거: packages/config/src/terminal.ts 및 wsl.ts와 각 colocated tests,
-apps/daemon/src/bootstrap.test.ts 및 terminals.test.ts. [Status: As-built]
+최종 cwd의 디렉터리·접근 여부를 검증하고 확인된 cwd 실패에 필드 근거를 붙인다.
+HTTP 분류 계약은 configuration/Web spec이 소유한다.
+근거: [[packages/config/src/terminal.ts]]와 colocated tests,
+[[apps/daemon/src/bootstrap.test.ts]], [[apps/daemon/src/terminals.test.ts]]. [Status: As-built]
 설정 watch·현재 경로 polling·부모 shell 추적은 추가하지 않는다.
 계약은 [[docs/specs/aiox-configuration-web]]을 따른다.
 
-Windows 사용자 실측으로 cmd/PowerShell 입출력·cwd·재연결, Windows daemon에서 WSL2 Ubuntu의
+현재 지원 범위에서 제외된 과거 Windows 사용자 실측으로 cmd/PowerShell 입출력·cwd·재연결, Windows daemon에서 WSL2 Ubuntu의
 사용자·cwd 선택, 잘못된 배포판·사용자·cwd 및 Linux 권한 거부, 설정 오류 시 기존 실행 유지와
 복구 후 새 생성을 확인했다. Windows cwd 조회 거부 ACL에서는 Node child의 cwd 사용이 성공했으므로
 cwd 사용 거부는 미재현이며 실행 파일 ACL도 사전 보장 범위 밖이다. 최종 `8c2fbd7`의

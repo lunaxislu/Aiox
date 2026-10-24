@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { chmod, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,11 +7,6 @@ export async function createClaudeInbox(): Promise<{
     path: string;
     dispose(): Promise<void>;
 }> {
-    if (process.platform === "win32")
-        return {
-            path: `\\\\.\\pipe\\aiox-${randomUUID()}`,
-            dispose: async () => {},
-        };
     const directory = await mkdtemp(join(await realpath(tmpdir()), "ax-"));
     const dispose = () => rm(directory, { recursive: true, force: true });
     try {

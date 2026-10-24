@@ -15,8 +15,8 @@ describe("Claude version compatibility", () => {
     });
 
     it("enforces each OS minimum and rejects unknown output or OS", () => {
-        for (const platform of ["darwin", "linux", "win32"] as const) {
-            const patch = platform === "win32" ? 234 : 224;
+        for (const platform of ["darwin", "linux"] as const) {
+            const patch = 224;
             expect(checkClaudeVersion(`2.1.${patch}`, platform)).toBe(
                 `2.1.${patch}`,
             );
@@ -26,9 +26,10 @@ describe("Claude version compatibility", () => {
             expect(checkClaudeVersion("2.2.0", platform)).toBe("2.2.0");
             expect(checkClaudeVersion("3.0.0", platform)).toBe("3.0.0");
         }
-        expect(() => checkClaudeVersion("2.1.266", "freebsd")).toThrow(
-            "platform",
-        );
+        for (const platform of ["win32", "freebsd"] as const)
+            expect(() => checkClaudeVersion("2.1.266", platform)).toThrow(
+                "platform",
+            );
         for (const output of [
             "",
             "v2.1.266",
@@ -57,7 +58,6 @@ it("probes only --version with the caller environment and bounded execution", as
             cwd: "/caller/project",
             timeout: 5000,
             maxBuffer: 4096,
-            windowsHide: true,
         }),
         expect.any(Function),
     );
