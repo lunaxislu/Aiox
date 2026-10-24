@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "description": "AIOX TUI product rebuild",
-    "license": "ISC",
+    "license": "UNLICENSED",
     "type": "module",
     "scripts": {
         "onramp": "scripts/onramp",

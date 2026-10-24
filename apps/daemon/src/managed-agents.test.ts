@@ -12,6 +12,7 @@ import { Effect } from "effect";
 import { expect, test, vi } from "vitest";
 
 import { restartCommand } from "./managed-agents";
+import { hasShellOutputLine } from "./shell-output.testing";
 import { openTestApplication, startTestDaemon } from "./testing";
 
 test("real shell and built CLI retain terminal identity across managed execution and explicit stop", async (t) => {
@@ -196,7 +197,9 @@ test("real shell and built CLI retain terminal identity across managed execution
             .lastExit?.kind,
     ).toBe("exited");
     session.write("printf 'SHELL_RETURNED\\n'\n");
-    await vi.waitFor(() => expect(output).toContain("\r\nSHELL_RETURNED\r\n"));
+    await vi.waitFor(() =>
+        expect(hasShellOutputLine(output, "SHELL_RETURNED")).toBe(true),
+    );
     session.write(`${command}\n`);
     await vi.waitFor(
         () =>
@@ -213,7 +216,9 @@ test("real shell and built CLI retain terminal identity across managed execution
     expect(snapshot.hosts[0]!.agents[0]!.lastExit?.kind).toBe("stopped");
     expect(snapshot.panels[0]!.tabs[0]!.presentation).toBe("stopped");
     session.write("printf 'AFTER_STOP\\n'\n");
-    await vi.waitFor(() => expect(output).toContain("\r\nAFTER_STOP\r\n"));
+    await vi.waitFor(() =>
+        expect(hasShellOutputLine(output, "AFTER_STOP")).toBe(true),
+    );
 }, 20000);
 
 test("restart guidance preserves literal shell arguments", () => {

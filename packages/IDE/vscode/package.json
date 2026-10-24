@@ -7,7 +7,7 @@
     "categories": [
         "Programming Languages"
     ],
-    "license": "ISC",
+    "license": "UNLICENSED",
     "publisher": "aiox",
     "main": "./dist/extension.js",
     "scripts": {

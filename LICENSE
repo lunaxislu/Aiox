@@ -1,0 +1,23 @@
+Copyright (c) 2026 lunaxislu. All rights reserved.
+
+This notice applies only to original AIOX code and documentation for which
+lunaxislu holds the copyright.
+
+The original AIOX materials are made available for viewing and review of the
+project's design and implementation. No general license to execute, use,
+modify, copy, distribute, or redistribute those materials is granted. Such
+activities require prior written permission from the copyright holder,
+including when undertaken for personal, educational, or non-commercial purposes.
+
+This notice does not restrict rights granted by applicable law or by the terms
+of a hosting platform, including GitHub's Terms of Service permissions to view
+and fork a public repository through GitHub's functionality. Those permissions
+do not constitute a general license to use the original AIOX materials outside
+their scope.
+
+Third-party dependencies, copied or adapted third-party code, third-party
+skills, and third-party material included in or modified by patches are excluded
+from this notice and remain subject to their respective licenses. This notice
+does not replace those licenses, remove their copyright or attribution notices,
+or restrict rights granted under them. Retain all applicable third-party
+license and attribution notices.

@@ -14,6 +14,7 @@ import { expect, test, vi, onTestFinished } from "vitest";
 import { WebSocket } from "ws";
 
 const launcher = new URL("../../cli/dist/index.js", import.meta.url);
+import { hasShellOutputLine } from "./shell-output.testing";
 import { startTestDaemon } from "./testing";
 
 test.each(
@@ -385,7 +386,7 @@ test.each(
             .get(caller.id)!
             .write("echo SOURCE_STILL_USABLE\r");
         await expect
-            .poll(() => output.includes("\r\nSOURCE_STILL_USABLE\r\n"))
+            .poll(() => hasShellOutputLine(output, "SOURCE_STILL_USABLE"))
             .toBe(true);
     },
 );

@@ -36,8 +36,8 @@ AIOX가 하지 않는 일: 작업을 스스로 분해하거나 결과 품질을 
 ## 설치
 
 ```sh
-git clone https://github.com/lunaxislu/aiox-prototype.git
-cd aiox-prototype
+git clone https://github.com/lunaxislu/Aiox.git
+cd Aiox
 pnpm install
 pnpm build                       # cli·daemon·web·packages의 dist 생성
 
@@ -254,3 +254,10 @@ pnpm --filter @aiox/web exec playwright install chromium
 pnpm check      # oxlint → oxfmt 검사 → tsup 빌드 → tsc 타입 검사 → Vitest
 pnpm format     # 앱·패키지·개발 설정 포맷
 ```
+
+## 라이선스
+
+이 저장소는 개발 중인 AIOX 프로토타입의 설계와 구현을 공유하기 위해 공개합니다.
+아직 안정성과 사용 경험을 검증하고 있으며, 일반적인 사용·수정·재배포 라이선스는 제공하지 않습니다.
+프로젝트 활용을 원하시면 별도로 문의해 주세요.
+자세한 이용 조건과 제3자 자료의 적용 범위는 [LICENSE](LICENSE)를 참고해 주세요.

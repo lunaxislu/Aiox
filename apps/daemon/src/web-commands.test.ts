@@ -343,6 +343,8 @@ it("keeps a preparing tab where the user moved it and stops shells whose tab clo
     ).toBe("id_deleted");
 });
 
+// Two real shell terminations can each wait through the 2s SIGTERM grace,
+// in addition to the cleanup retry's initial 1s delay and HTTP/storage work.
 it("reports a shell that cannot join or stop without undoing the removal", async (t) => {
     const { services, run, panel, gates } = await harness(t);
     await run("w1", [
@@ -413,14 +415,15 @@ it("reports a shell that cannot join or stop without undoing the removal", async
         },
     );
     gates[1]!();
-    await vi.waitFor(async () =>
-        expect((await panel("w1")).tabs[0]).toMatchObject({
-            id: "t5",
-            terminalId: null,
-            presentation: "start-failed",
-            notice: { message: "SQLITE_BUSY" },
-        }),
-    );
+    // The command only commits registration; failure is stored after the
+    // daemon-owned preparation task awaits the first cleanup attempt.
+    await services.tasks.idle();
+    expect((await panel("w1")).tabs[0]).toMatchObject({
+        id: "t5",
+        terminalId: null,
+        presentation: "start-failed",
+        notice: { message: "SQLITE_BUSY" },
+    });
     await vi.waitFor(
         () => {
             expect(services.cleanups.list()).toEqual([]);
@@ -428,7 +431,7 @@ it("reports a shell that cannot join or stop without undoing the removal", async
         },
         { timeout: 5000 },
     );
-});
+}, 20000);
 
 it("orders a session's commands, rejects finalized retransmissions and fails a missing range unexecuted", async (t) => {
     const { h, services, send, command, run, panel, sessionId } =
